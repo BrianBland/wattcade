@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
-import { debugActions, getFake, activeSession, input, onSystem, startSession } from '../services';
+import { getDifficulty, debugActions, getFake, activeSession, input, onSystem, startSession } from '../services';
 import { fakeKeyAdjust } from '../fakeKeys';
+import { HudLayer } from '../hud/HudLayer';
+import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
 
 const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
@@ -12,6 +14,8 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
   const [error, setError] = useState('');
   const pausedRef = useRef(false);
   const sessionRef = useRef<SessionLike | null>(null);
+  const [session, setSession] = useState<SessionLike | null>(null);
+  const [legendOn, setLegendOn] = useState(() => loadFlag('wattcade.legend', true));
   const setPause = (p: boolean) => {
     pausedRef.current = p; setPaused(p);
     const s = sessionRef.current; if (!s) return;
@@ -35,7 +39,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
     (async () => {
       try {
         const session = startSession(game, profile, onSave);
-        sessionRef.current = session;
+        sessionRef.current = session; setSession(session);
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
         renderer.mount(mount.current!, { profile });
@@ -66,8 +70,8 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
     <div class="game-host">
       <div class="mount" ref={mount} />
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={onQuit}>Back</button></div>}
-      {isFake() && <div class="hud-hint">Fake bike: W/S cadence · E/D power · R/F HR</div>}
-      {paused && <PauseMenu difficulty={1} onResume={() => setPause(false)} onQuit={onQuit} />}
+      {session && <HudLayer session={session} profile={profile} paused={paused} legendOn={legendOn} fake={isFake()} />}
+      {paused && <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }} difficulty={getDifficulty()} onResume={() => setPause(false)} onQuit={onQuit} />}
     </div>
   );
 }

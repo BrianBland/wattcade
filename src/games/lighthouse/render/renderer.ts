@@ -5,6 +5,8 @@ interface Snap {
   t: number; fog: number; chop: number; lamp: number; zone: number; requirement: number; inZone: boolean; day: number;
   ships: Array<{ id: number; progress: number; lane: number; state: string }>;
   buildings: Array<string | null>; cursor: { plot: number; building: string; canBuild: boolean };
+  options: Array<{ type: string; cost: { coin: number; timber: number }; effect: string; owned: number; max: number; selected: boolean; reason: string | null }>;
+  feedback: { text: string; ok: boolean; age: number };
   coin: number; timber: number;
   storm: { phase: string; timeInPhase: number; warnS: number; duration: number; integrity: number; surge: boolean };
 }
@@ -31,6 +33,7 @@ export class LighthouseRenderer implements GameRenderer {
   private container?: HTMLElement;
   private color = '#ffcc33';
   private ro?: ResizeObserver;
+  private pillar?: THREE.Mesh;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }) {
     this.container = container;
@@ -72,8 +75,10 @@ export class LighthouseRenderer implements GameRenderer {
     this.beam.add(cone); this.beam.position.set(-6, 21.6, 0); s.add(this.beam);
 
     // plots marker
-    this.cursor = new THREE.Mesh(new THREE.RingGeometry(1.1, 1.4, 20), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+    this.cursor = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.7, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
     this.cursor.rotation.x = -Math.PI / 2; s.add(this.cursor);
+    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }));
+    s.add(this.pillar);
     for (let i = 0; i < PLOT_COUNT; i++) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), new THREE.MeshLambertMaterial({ color: 0x5c6b3c }));
       m.position.copy(plotPos(i)); m.position.y = 1.25; s.add(m);
@@ -165,7 +170,10 @@ export class LighthouseRenderer implements GameRenderer {
       }
     }
     const cp = plotPos(s.cursor.plot); this.cursor!.position.set(cp.x, 1.4, cp.z);
-    (this.cursor!.material as THREE.MeshBasicMaterial).color.set(s.cursor.canBuild ? 0x66ff88 : 0xff6666);
+    const cc = s.cursor.canBuild ? 0x66ff88 : 0xff6666;
+    (this.cursor!.material as THREE.MeshBasicMaterial).color.set(cc);
+    const pulse = 1 + Math.sin(s.t * 6) * 0.12; this.cursor!.scale.set(pulse, pulse, pulse);
+    this.pillar!.position.set(cp.x, 4.4, cp.z); (this.pillar!.material as THREE.MeshBasicMaterial).color.set(cc);
 
     // ships: sail from far sea toward harbour (x≈8..)
     const live = new Set<number>();
@@ -185,15 +193,17 @@ export class LighthouseRenderer implements GameRenderer {
 
     // HUD
     const st = s.storm;
-    const lines = [
-      `Zone ${bike.effortZone}  (need ${s.requirement}${s.requirement === 5 ? ' SURGE!' : '+'.slice(0, s.requirement >= 3 ? 1 : 0)})  ${s.inZone ? 'LAMP BRIGHT' : 'off target'}`,
-      `Lamp ${(s.lamp * 100) | 0}%  Fog ${(s.fog * 100) | 0}%  Chop ${(s.chop * 100) | 0}%`,
-      `Coin ${s.coin | 0}  Timber ${s.timber | 0}`,
-    ];
-    if (st.phase === 'warning') lines.push(`STORM INCOMING in ${Math.ceil(st.warnS - st.timeInPhase)}s - get ready to push (Z3+)`);
-    if (st.phase === 'storm') lines.push(`STORM  ${Math.ceil(st.duration - st.timeInPhase)}s left  lamp ${(st.integrity * 100) | 0}%`);
-    lines.push(`Build [${s.cursor.building}] plot ${s.cursor.plot + 1}: D-pad, A`);
+    const lines = [`Lamp ${(s.lamp * 100) | 0}%  Fog ${(s.fog * 100) | 0}%  Chop ${(s.chop * 100) | 0}%   Coin ${s.coin | 0}  Timber ${s.timber | 0}`];
+    if (st.phase === 'warning') lines.push(`STORM INCOMING in ${Math.ceil(st.warnS - st.timeInPhase)}s - get ready to push`);
+    if (st.phase === 'storm') lines.push(`STORM ${Math.ceil(st.duration - st.timeInPhase)}s left  lamp integrity ${(st.integrity * 100) | 0}%`);
+    lines.push('', `BUILD on plot ${s.cursor.plot + 1} (up/down to choose, A to build):`);
+    for (const o of s.options) {
+      const mark = o.selected ? '>' : ' ';
+      lines.push(`${mark} ${o.type} ${o.cost.coin}c/${o.cost.timber}t  [${o.owned}/${o.max}] ${o.effect}${o.reason ? '  X ' + o.reason : '  OK'}`);
+    }
+    if (s.feedback.age < 4) lines.push('', s.feedback.text);
     this.hud!.textContent = lines.join('\n');
+    this.hud!.style.color = '#fff';
     this.renderer.render(this.scene, this.camera);
   }
 

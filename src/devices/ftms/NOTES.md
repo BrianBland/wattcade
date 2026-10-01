@@ -26,3 +26,10 @@ CONTRACT-REQUEST: none.
 - Web Bluetooth glue (`trainer.ts`, `monitor.ts`) is untested (no BLE in CI); verify on hardware.
 - Machine Status (0x2ADA) is not subscribed; Feature (0x2ACC) is not read (capabilities assumed sim/erg true).
 - Reconnect does not clear stale `latest` merged sample.
+
+## Connect progress / timeouts (added after hardware feedback)
+- `HeartRateMonitor.connect(onProgress?: (step: string) => void, onLog?: (line: string) => void)`; instance `onLog(cb)`.
+- `FtmsTrainer.connect(onProgress?, onLog?)`, instance `onLog(cb)`.
+- Steps are 8 s timeouts (`steps.ts`: `withTimeout`, `setupWithRetry`); whole setup retried once after gatt.disconnect(); final error names the stuck step.
+- HR: listener added before startNotifications, which is raced with the first beat; connected once subscribed (no beat wait).
+- FTMS connect succeeds even if Request Control is refused: status `{connected:true, detail:'Trainer control refused — close Zwift, then reconnect'}`; each `apply()` re-requests control while not held, and status is re-emitted without detail once granted.

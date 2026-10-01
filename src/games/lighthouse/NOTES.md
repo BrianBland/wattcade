@@ -15,7 +15,7 @@ CONTRACT-REQUESTs: none.
 - Swell: effect `swell`, +-1% sine, 180 s period. Virtual gears enabled.
 - minutesInZone counts zone==2 time (any phase) plus storm-compliant time.
 - Town (14 plots, buildings, coin, timber, totals) saved via ctx.save on build, every 60 s, and in dispose(); loaded via ctx.load.
-- Controls: left/right = plot cursor, up/down = building type, A = build.
+- Controls: left/right = plot cursor (pulsing ring + pillar), up/down = building type, A = build. HUD at top lists cost, effect, and why unavailable; build feedback shown 4 s. Zone changes need to hold `zoneGraceS` (4 s) before the lamp reacts. `hud()` implemented (zone band 2 / storm 3-5 / surge 5, controls, gears).
 
 ## Testing
 `npx vitest run src/games/lighthouse` (uses core runHeadless; stub removed).

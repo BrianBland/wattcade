@@ -2,13 +2,16 @@ import type { BikeState, GameRenderer, InputState, Profile } from '../../../cont
 import type { DungeonSnapshot } from '../sim/types';
 import { TILE } from '../sim/world';
 
-const TS = 32;
+const TILES_ACROSS = 16; // camera zoom: ~16 tiles across
+const MM = 2;            // minimap px per tile
 const COLORS = ['#3a3f4b', '#14161c', '#3d5a3a', '#7a5a2a'];
 
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
   let color = '#4cc9f0';
+  let mini: HTMLCanvasElement | null = null;
+  let miniFor: unknown = null;
   return {
     mount(container: HTMLElement, c: { profile: Readonly<Profile> }) {
       color = c.profile.color;
@@ -19,10 +22,11 @@ export function createRenderer(): GameRenderer {
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
     resize(w, h) { if (canvas) { canvas.width = w; canvas.height = h; } },
-    render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
+    render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
       const W = canvas.width, H = canvas.height, w = s.world;
+      const TS = Math.max(16, Math.round(W / TILES_ACROSS));
       g.fillStyle = '#0b0c10'; g.fillRect(0, 0, W, H);
       const cx = s.player.x * TS - W / 2, cy = s.player.y * TS - H / 2;
       g.save(); g.translate(-cx, -cy);
@@ -54,8 +58,26 @@ export function createRenderer(): GameRenderer {
       g.fillStyle = '#222'; g.fillRect(16, 16, 200, 14);
       g.fillStyle = p.hp < p.maxHp * 0.4 ? '#e44' : '#4c4'; g.fillRect(16, 16, 200 * Math.max(0, p.hp) / p.maxHp, 14);
       g.fillStyle = '#fff'; g.font = '14px sans-serif';
-      g.fillText(`Potions ${p.potions}   Dash ${p.dashCd > 0 ? p.dashCd.toFixed(1) + 's' : 'ready'}   Zone ${bike.effortZone}   ${Math.round(bike.power3s)} W  ${Math.round(bike.cadence3s)} rpm`, 16, 48);
+      g.fillText(`Potions ${p.potions}   Dash ${p.dashCd > 0 ? p.dashCd.toFixed(1) + 's' : 'ready'}`, 16, 48);
       g.fillText(`Rooms ${s.stats.roomsCleared}  Kills ${s.stats.kills}  Deaths ${s.stats.deaths}${p.onSwamp ? '  SWAMP' : ''}`, 16, 66);
+      // minimap (top right)
+      if (miniFor !== w) {
+        miniFor = w; mini = document.createElement('canvas'); mini.width = w.w * MM; mini.height = w.h * MM;
+        const m = mini.getContext('2d')!;
+        for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
+          const k = w.tiles[y * w.w + x]; if (k === TILE.WALL) continue;
+          m.fillStyle = k === TILE.SWAMP ? '#3d5a3a' : '#555a66'; m.fillRect(x * MM, y * MM, MM, MM);
+        }
+      }
+      if (mini) {
+        const mx0 = W - mini.width - 12, my0 = 12;
+        g.globalAlpha = 0.85; g.fillStyle = '#000'; g.fillRect(mx0 - 2, my0 - 2, mini.width + 4, mini.height + 4);
+        g.drawImage(mini, mx0, my0);
+        for (const r of w.rooms) if (r.cleared && r.id > 0) { g.fillStyle = 'rgba(80,200,120,0.25)'; g.fillRect(mx0 + r.x0 * MM, my0 + r.y0 * MM, r.w * MM, r.h * MM); }
+        for (const e of s.enemies) { g.fillStyle = e.kind === 'boss' ? '#c0a' : '#e55'; g.fillRect(mx0 + e.x * MM - 1, my0 + e.y * MM - 1, 3, 3); }
+        g.fillStyle = color; g.fillRect(mx0 + p.x * MM - 2, my0 + p.y * MM - 2, 5, 5);
+        g.globalAlpha = 1;
+      }
       if (s.boss && s.boss.active) {
         g.fillStyle = '#222'; g.fillRect(W / 2 - 200, 16, 400, 16);
         g.fillStyle = s.boss.shielded ? '#6cf' : '#c0a'; g.fillRect(W / 2 - 200, 16, 400 * s.boss.hp / s.boss.maxHp, 16);
@@ -64,6 +86,6 @@ export function createRenderer(): GameRenderer {
         g.textAlign = 'left';
       }
     },
-    unmount() { canvas?.remove(); canvas = null; g = null; },
+    unmount() { canvas?.remove(); canvas = null; g = null; mini = null; miniFor = null; },
   };
 }

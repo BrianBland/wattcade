@@ -1,5 +1,5 @@
 // Keeper's Light sim. Pure logic: no DOM, no three. Deterministic (ctx.rng / ctx.clock only).
-import type { GameContext, GameSim, Seconds } from '../../../contracts';
+import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 
 export type BuildingType = 'cottage' | 'pier' | 'market' | 'bell' | 'lamp2';
 export const BUILDING_TYPES: BuildingType[] = ['cottage', 'pier', 'market', 'bell', 'lamp2'];
@@ -12,6 +12,13 @@ export const BUILD_COST: Record<BuildingType, { coin: number; timber: number }> 
 };
 export const BUILD_MAX: Record<BuildingType, number> = { cottage: 8, pier: 2, market: 1, bell: 2, lamp2: 1 };
 export const PLOT_COUNT = 14;
+export const BUILD_EFFECT: Record<BuildingType, string> = {
+  cottage: '+coin over time',
+  pier: 'ships dock in rougher/foggier water',
+  market: 'all coin x1.25',
+  bell: 'fog rises slower',
+  lamp2: 'stronger lamp, clears fog faster',
+};
 
 export type ShipState = 'sailing' | 'docked' | 'lost' | 'spilled';
 export interface Ship { id: number; progress: number; lane: number; state: ShipState; age: number }
@@ -52,6 +59,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const marketMul = tn.num('marketMult', 1.25, 1, 3, 0.05);
   const bellMul = tn.num('bellFogMult', 0.6, 0.1, 1, 0.05);
   const lamp2Mul = tn.num('lamp2Mult', 1.5, 1, 3, 0.1);
+  const graceS = tn.num('zoneGraceS', 4, 0, 15, 0.5, 'Seconds a new zone must hold before the lamp reacts');
   const dayLen = tn.num('dayLengthS', 1200, 60, 7200, 30);
 
   const saved = ctx.load<Saved>();
@@ -62,7 +70,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
   let t = 0;
   let fog = 0.4, chop = 0.3, lamp = 0.5;
-  let zone = 1;
+  let zone = 1, rawZone = 1, zoneCand = 1, zoneCandS = 0;
+  let fb = { text: '', ok: true, at: -99 };
   let satisfied = false, above = false, below = true;
   const ships: Ship[] = [];
   let nextShipId = 1;
@@ -92,17 +101,25 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     ctx.save({ buildings: buildings.slice(), coin, timber, ...totals } satisfies Saved);
   }
 
-  function canBuild(b: BuildingType): boolean {
+  function whyNot(b: BuildingType, plot: number): string | null {
     const c = BUILD_COST[b];
-    if (count(b) >= BUILD_MAX[b]) return false;
-    if (b === 'lamp2' && count('cottage') < 5) return false;
-    return coin >= c.coin && timber >= c.timber && buildings.includes(null);
+    if (buildings[plot] !== null) return 'plot occupied';
+    if (count(b) >= BUILD_MAX[b]) return `max ${BUILD_MAX[b]} built`;
+    if (b === 'lamp2' && count('cottage') < 5) return `needs ${5 - count('cottage')} more cottages`;
+    if (coin < c.coin) return `need ${Math.ceil(c.coin - coin)} more coin`;
+    if (timber < c.timber) return `need ${Math.ceil(c.timber - timber)} more timber`;
+    return null;
+  }
+  function canBuild(b: BuildingType): boolean {
+    return buildings.includes(null) && whyNot(b, buildings.indexOf(null)) === null;
   }
   function build(b: BuildingType, plot: number): boolean {
-    if (buildings[plot] !== null || !canBuild(b)) return false;
+    const why = whyNot(b, plot);
+    if (why) { fb = { text: `Can't build ${b}: ${why}`, ok: false, at: t }; return false; }
     coin -= BUILD_COST[b].coin; timber -= BUILD_COST[b].timber;
     buildings[plot] = b;
     stat.buildingsBuilt++;
+    fb = { text: `Built ${b} on plot ${plot + 1}`, ok: true, at: t };
     ctx.emit({ type: 'built', data: { building: b, plot } });
     persist();
     return true;
@@ -206,7 +223,13 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     update(dt: Seconds) {
       t += dt;
       const bike = ctx.bike();
-      zone = bike.effortZone;
+      rawZone = bike.effortZone;
+      if (rawZone === zone) { zoneCand = zone; zoneCandS = 0; }
+      else {
+        if (rawZone !== zoneCand) { zoneCand = rawZone; zoneCandS = 0; }
+        zoneCandS += dt;
+        if (zoneCandS >= graceS()) { zone = zoneCand; zoneCandS = 0; }
+      }
       if (opts?.autopilot) autopilot();
       handleInput();
 
@@ -274,12 +297,28 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         day: ((t / dayLen()) + 0.3) % 1,
         ships: ships.map((s) => ({ ...s })),
         buildings: buildings.slice(),
-        cursor: { plot: cursorPlot, building: BUILDING_TYPES[cursorType], canBuild: canBuild(BUILDING_TYPES[cursorType]) },
+        cursor: { plot: cursorPlot, building: BUILDING_TYPES[cursorType], canBuild: whyNot(BUILDING_TYPES[cursorType], cursorPlot) === null },
+        options: BUILDING_TYPES.map((b, i) => ({ type: b, cost: BUILD_COST[b], effect: BUILD_EFFECT[b], owned: count(b), max: BUILD_MAX[b], selected: i === cursorType, reason: whyNot(b, cursorPlot) })),
+        feedback: { ...fb, age: t - fb.at },
         costs: BUILD_COST,
         coin, timber,
         storm: { phase, timeInPhase: phaseT, warnS: warnS(), duration: stormDur, integrity, intensity, surge: surgeNow, nextInS: phase === 'calm' ? calmLeft : 0 },
         hooks: { storm: phase === 'storm' || phase === 'warning' },
         stats: { ...stat },
+      };
+    },
+    hud(): GameHud {
+      const targetZone = phase === 'storm'
+        ? (surgeNow ? { min: 5 as const, max: 5 as const, label: 'Lightning surge' } : { min: 3 as const, max: 5 as const, label: 'Storm!' })
+        : { min: 2 as const, max: 2 as const, label: 'Keep the lamp lit' };
+      return {
+        targetZone,
+        controls: [
+          { button: 'dpad', label: 'left/right = plot, up/down = building' },
+          { button: 'a', label: 'Build' },
+          { button: 'shiftersL', label: 'Gears' }, { button: 'shiftersR', label: 'Gears' },
+        ],
+        gears: true,
       };
     },
     isOver: () => false,

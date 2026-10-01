@@ -6,10 +6,10 @@ import { scenarios } from '../scenarios';
 import { makeRng } from '../../../core';
 
 describe('world', () => {
-  it('generates 8 connected rooms', () => {
+  it('generates 13 connected rooms', () => {
     const w = generateWorld(makeRng(5));
-    expect(w.rooms.length).toBe(8);
-    expect(w.links.length).toBe(7);
+    expect(w.rooms.length).toBe(13);
+    expect(w.links.length).toBe(12);
     expect(w.tiles.includes(TILE.DOOR)).toBe(true);
     expect(w.tiles.includes(TILE.SWAMP)).toBe(true);
   });
@@ -29,6 +29,20 @@ describe('swamp resistance (core mixer)', () => {
     }
     expect(sawBase).toBe(true);
     expect(sawSwamp).toBe(true);
+  });
+});
+
+describe('auto-move and hud', () => {
+  it('moves the player with no D-pad input and exposes hud()', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5 });
+    const p0 = (s.sim.snapshot() as any).player;
+    s.step(300);
+    const p1 = (s.sim.snapshot() as any).player;
+    expect(Math.hypot(p1.x - p0.x, p1.y - p0.y)).toBeGreaterThan(3);
+    const h = s.sim.hud!();
+    expect(h.gears).toBe(true);
+    expect(h.targetZone).toMatchObject({ min: 2, max: 2 });
+    expect(h.controls!.length).toBeGreaterThan(3);
   });
 });
 

@@ -67,8 +67,8 @@ export async function connectDevice(kind: DeviceKind): Promise<void> {
   status[kind] = { connected: false, busy: true }; notify();
   try {
     const hub: any = dataHub;
-    if (kind === 'trainer') { const d: any = await FtmsTrainer.connect(); devices.trainer = d; hub.attachTrainer(d); d.onStatus?.((s: any) => { status.trainer = { connected: s.connected, detail: s.detail }; notify(); }); }
-    else if (kind === 'hr') { const d: any = await HeartRateMonitor.connect(); devices.hr = d; hub.attachHr(d); d.onStatus?.((s: any) => { status.hr = { connected: s.connected }; notify(); }); }
+    if (kind === 'trainer') { const d: any = await FtmsTrainer.connect((step) => { status.trainer = { connected: false, busy: true, detail: step }; notify(); }); devices.trainer = d; hub.attachTrainer(d); d.onStatus?.((s: any) => { status.trainer = { connected: s.connected, detail: s.detail }; notify(); }); }
+    else if (kind === 'hr') { const d: any = await HeartRateMonitor.connect((step: string) => { status.hr = { connected: false, busy: true, detail: step }; notify(); }); devices.hr = d; hub.attachHr(d); d.onStatus?.((s: any) => { status.hr = { connected: s.connected }; notify(); }); }
     else {
       // The Ride's two sides may appear as two devices; the group merges them. First tap adds one side.
       const g = new RideControllerGroup();
@@ -161,9 +161,10 @@ export function debugSnapshot(): DebugSnapshot {
     difficulty: debugState.difficulty, timeScale: debugState.timeScale, fake: s ? !!s.fakeBike : fakeMode,
     fakeScript, scripts: ['manual', ...Object.keys(any(SCRIPTS))],
     stats: { trainer: devices.trainer?.stats?.(), hr: devices.hr?.stats?.(), controller: devices.controller?.stats?.() },
-    controllerInfo,
+    controllerInfo, trainerDetail: status.trainer.detail ?? status.trainer.error,
   };
 }
+export const getDifficulty = () => debugState.difficulty;
 const debugState = { difficulty: 1, timeScale: 1 };
 export const debugActions: DebugActions = {
   setDifficulty(v) { debugState.difficulty = v; any(active)?.mixer?.setDifficulty(v); },

@@ -18,6 +18,7 @@ export interface DebugSnapshot {
   difficulty: number; timeScale: number; fake: boolean;
   fakeScript: string; scripts: string[];
   stats: { trainer?: DeviceStatsView; hr?: DeviceStatsView; controller?: DeviceStatsView };
+  trainerDetail?: string;
   controllerInfo: { firmware?: string; battery?: number; warning?: string };
 }
 /** Everything the overlay can do; implemented in shell/services.ts. */

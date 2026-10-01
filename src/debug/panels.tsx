@@ -26,6 +26,7 @@ export function DevicePanel({ s, pps }: { s: DebugSnapshot; pps: Record<string, 
         ['pkt/s trn', formatNum(pps.trainer ?? 0, 1)], ['pkt/s hr', formatNum(pps.hr ?? 0, 1)], ['pkt/s ride', formatNum(pps.controller ?? 0, 1)],
         ['ride fw', s.controllerInfo.firmware ?? '--'], ['ride batt', s.controllerInfo.battery == null ? '--' : `${s.controllerInfo.battery}%`],
       ]} />
+      {s.trainerDetail && <div style={{ color: 'var(--warn)' }}>trainer: {s.trainerDetail}</div>}
       {s.controllerInfo.warning && <div style={{ color: 'var(--warn)' }}>{s.controllerInfo.warning}</div>}
       {s.stats.controller?.lastStatusHex && ([] as string[]).concat(s.stats.controller.lastStatusHex).map((h, i) => (
         <div class="dim" style={{ wordBreak: 'break-all', maxWidth: '190px' }}>ride{i + 1} raw: {h}</div>

@@ -27,8 +27,9 @@ export function Connect({ onDone }: { onDone: () => void }) {
         {ITEMS.map((it, i) => (
           <div class={`card${idx === i ? ' focused' : ''}`} onClick={() => { setIdx(i); act(i); }}>
             <h3><Dot on={st[it.kind].connected} />{it.label}</h3>
-            <div>{st[it.kind].busy ? 'Connecting...' : st[it.kind].connected ? 'Connected (tap to disconnect)' : 'Tap to connect'}</div>
+            <div>{st[it.kind].busy ? (st[it.kind].detail ? `Connecting: ${st[it.kind].detail}` : 'Connecting...') : st[it.kind].connected ? 'Connected (tap to disconnect)' : 'Tap to connect'}</div>
             <div class="dim" style={{ marginTop: '8px' }}>{it.note}</div>
+            {it.kind === 'trainer' && st.trainer.connected && st.trainer.detail && <div class="warn">{st.trainer.detail}</div>}
             {st[it.kind].error && <div class="warn">{st[it.kind].error}</div>}
             {it.kind === 'controller' && st.controller.connected && <div class="dim">{controllerCount()} of 2 sides · fw {controllerInfo.firmware ?? '?'} · battery {controllerInfo.battery ?? '?'}%</div>}
             {it.kind === 'controller' && st.controller.connected && controllerCount() < 2 && (

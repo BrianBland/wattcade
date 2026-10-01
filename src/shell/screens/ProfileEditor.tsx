@@ -36,6 +36,7 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
         <select value={p.settings.aimMode} onChange={(e) => setS({ aimMode: (e.target as HTMLSelectElement).value as AimMode })}>
           <option value="rotate">Rotate (paddles)</option><option value="auto">Auto</option><option value="axes">Axes</option><option value="buttons">Buttons</option>
         </select>
+        <span /><span class="dim" style={{ fontSize: '14px' }}>Power is steadier for zone games; HR lags 30–60 s</span>
         <Num label="Paddle deadzone" value={p.settings.paddleDeadzone} onChange={(paddleDeadzone) => setS({ paddleDeadzone })} />
         <label>Invert left paddle</label><input type="checkbox" checked={p.settings.paddleInvertL} onChange={(e) => setS({ paddleInvertL: (e.target as HTMLInputElement).checked })} />
         <label>Invert right paddle</label><input type="checkbox" checked={p.settings.paddleInvertR} onChange={(e) => setS({ paddleInvertR: (e.target as HTMLInputElement).checked })} />

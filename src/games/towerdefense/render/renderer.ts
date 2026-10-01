@@ -60,9 +60,16 @@ export class TdRenderer implements GameRenderer {
     g.fillStyle = this.color; g.beginPath(); g.arc(X(BASE_X), Y(BASE_Y), 3.5 * sc, 0, 7); g.fill();
     // HUD
     g.fillStyle = '#fff'; g.font = `${Math.max(12, 3 * sc)}px sans-serif`;
-    g.fillText(`Wave ${s.wave}   Weapon: ${s.weapon}${s.swapLeft > 0 ? ' (swapping)' : ''}`, 10, 22);
-    g.fillText(`Rail ${'#'.repeat(s.railCharges)}${'.'.repeat(s.railMaxCharges - s.railCharges)}  ${Math.round(s.railProgress * 100)}%`, 10, 44);
-    g.fillText(`${Math.round(bike.power3s)} W  ${Math.round(bike.cadence3s)} rpm`, 10, 66);
+    const BTN: Record<string, string> = { gatling: 'A', flame: 'B', rail: 'Y' };
+    g.fillText(`Wave ${s.wave}   [${BTN[s.weapon]}] ${s.weapon.toUpperCase()}`, 10, 22);
+    g.fillStyle = '#333'; g.fillRect(10, 30, 120, 6);
+    g.fillStyle = '#ffd24a'; g.fillRect(10, 30, 120 * (s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1), 6);
+    g.fillStyle = '#fff';
+    for (let i = 0; i < s.railMaxCharges; i++) {
+      g.fillStyle = i < s.railCharges ? COL.purple : '#333';
+      g.beginPath(); g.arc(18 + i * 18, 54, 7, 0, 7); g.fill();
+    }
+    g.fillStyle = COL.purple; g.fillRect(10, 66, 60 * s.railProgress, 4);
     g.fillStyle = '#222'; g.fillRect(10, H - 22, W - 20, 12);
     g.fillStyle = s.baseHp / s.baseMaxHp > 0.3 ? '#4c8' : '#e44'; g.fillRect(10, H - 22, (W - 20) * s.baseHp / s.baseMaxHp, 12);
     if (s.over) { g.fillStyle = '#fff'; g.font = '32px sans-serif'; g.fillText(`Base destroyed - ${s.wavesSurvived} waves`, W / 2 - 180, H / 2); }

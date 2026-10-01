@@ -1,4 +1,4 @@
-import type { BikeState, GameContext, GameSim, InputState, Seconds } from '../../../contracts';
+import type { BikeState, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { generateWorld, tileAt, TILE, type EnemyKind, type Room, type World } from './world';
 import type { BulletView, DungeonSnapshot, EnemyView } from './types';
 
@@ -10,9 +10,9 @@ interface Bullet { x: number; y: number; vx: number; vy: number; r: number; dmg:
 interface Ctl { mx: number; my: number; dash: boolean; potion: boolean; aimAuto: boolean; aimVec: { x: number; y: number } | null; fire: boolean }
 
 const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; contact: number }> = {
-  chaser: { hp: 110, speed: 2.8, r: 0.4, contact: 8 },
-  spitter: { hp: 150, speed: 1.6, r: 0.4, contact: 5 },
-  brute: { hp: 500, speed: 1.5, r: 0.65, contact: 14 },
+  chaser: { hp: 45, speed: 2.8, r: 0.4, contact: 8 },
+  spitter: { hp: 70, speed: 1.6, r: 0.4, contact: 5 },
+  brute: { hp: 160, speed: 1.5, r: 0.65, contact: 14 },
 };
 const PLAYER_R = 0.35;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -43,6 +43,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const woundedFrac = tn.num('woundedHpFrac', 0.4, 0.1, 0.9, 0.05);
   const surgeGrade = tn.num('gradeBossSurge', 5, 0, 12, 0.5);
   const aimTurn = tn.num('aimTurnRate', 2.0, 0.5, 10, 0.1, 'rad/s at full paddle');
+  const autoMove = tn.bool('autoMove', true, 'bot steers (kite, dodge, path to doors); D-pad overrides');
   const autoAimIdle = tn.num('autoAimIdleS', 1.5, 0.2, 10, 0.1);
 
   const world: World = generateWorld(() => ctx.rng());
@@ -159,6 +160,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     } else if (mode === 'axes') {
       if (Math.hypot(input.paddleL, input.paddleR) > 0.25) aimVec = { x: input.paddleL, y: input.paddleR };
     }
+    if (autoMove() && !mx && !my) { const a = autopilotCtl(bike); mx = a.mx; my = a.my; }
     const aimAuto = mode === 'auto' || (mode !== 'buttons' && input.paddleIdleS > autoAimIdle() && !aimVec);
     return {
       mx, my, aimAuto, aimVec, fire,
@@ -363,8 +365,25 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     };
   }
 
+  function hud(): GameHud {
+    const sh = bossShield();
+    const buttons = ctx.profile.settings.aimMode === 'buttons';
+    return {
+      controls: [
+        { button: 'paddles', label: 'Aim' },
+        { button: buttons ? 'shiftUpR' : 'a', label: 'Dash', active: P.dashCd <= 0 },
+        { button: buttons ? 'shiftDnR' : 'b', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp },
+        { button: 'dpad', label: 'Move (optional)' },
+        { button: 'shiftersL', label: 'Gear' },
+        { button: 'shiftersR', label: 'Gear' },
+      ],
+      gears: true,
+      targetZone: sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up' } : { min: 2, max: 2, label: 'Heal' },
+    };
+  }
+
   return {
-    update, snapshot, isOver: () => over,
+    update, hud, snapshot, isOver: () => over,
     summary: () => ({ roomsCleared, kills, deaths, damageDealt: Math.round(damageDealt), bossDefeated, timeS: Math.round(t) }),
     dispose() { ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },
   };

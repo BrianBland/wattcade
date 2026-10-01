@@ -1,4 +1,4 @@
-import type { BikeState, GameModule, Profile, SessionRecord } from '../contracts';
+import type { GameHud, BikeState, GameModule, Profile, SessionRecord } from '../contracts';
 
 export type DeviceKind = 'trainer' | 'controller' | 'hr';
 export interface DeviceUiStatus { connected: boolean; detail?: string; busy?: boolean; error?: string }
@@ -16,7 +16,7 @@ export interface SessionLike {
   pause(): void; resume(): void;
   finish(): SessionRecord;
   ctx: { bike(): Readonly<BikeState> };
-  sim: { isOver(): boolean; snapshot(): unknown };
+  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud };
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }

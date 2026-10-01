@@ -1,5 +1,5 @@
 // Dynamo Defense sim: pure logic, deterministic (ctx.rng + fixed dt only).
-import type { GameContext, GameSim, Seconds } from '../../../contracts';
+import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
@@ -342,6 +342,20 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   return {
     update,
     isOver: () => over,
+    hud(): GameHud {
+      return {
+        gears: false,
+        targetZone: weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail' } : { min: 2, max: 3 },
+        controls: [
+          { button: 'a', label: 'Gatling', active: weapon === 'gatling' },
+          { button: 'b', label: 'Flame', active: weapon === 'flame' },
+          { button: 'y', label: 'Rail', active: weapon === 'rail' },
+          { button: 'z', label: 'Fire rail (hold = dump)' },
+          { button: 'dpad', label: 'Left/right = priority lane' },
+          { button: 'paddles', label: 'Aim' },
+        ],
+      };
+    },
     snapshot(): TdSnapshot {
       return {
         t, wave, waveElapsed, wavesSurvived, baseHp, baseMaxHp, weapon, swapLeft, swapS: swapS(),

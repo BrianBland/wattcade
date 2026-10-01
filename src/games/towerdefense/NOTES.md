@@ -23,6 +23,8 @@ CONTRACT-REQUESTs: none.
 ## Tests
 `npx vitest run src/games/towerdefense` (scenarios via runHeadless; rail tests via createGameSession).
 
+hud(): controls legend (A/B/Y weapons, Z, dpad, paddles), gears:false, targetZone Rail 3-4 else 2-3. Renderer HUD shows [A] GATLING, swap bar, rail pips.
+
 ## Gaps
 Renderer unverified in browser; no sound.
 aimMode 'axes': aim = atan2(L, R) when paddles active.

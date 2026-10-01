@@ -123,8 +123,18 @@ export interface GameContext {
   save(data: unknown): void;                       // persist into profile.gameData[gameId]
   load<T>(): T | undefined;
 }
+/** What a control does right now, for the shell's on-screen controller legend. */
+export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
+export interface ControlHint { button: ControlTarget; label: string; active?: boolean }
+/** Optional per-tick HUD info the shell renders over every game (zone widget, gear chip, controller legend). */
+export interface GameHud {
+  targetZone?: { min: 1|2|3|4|5; max: 1|2|3|4|5; label?: string }; // effort-zone band the game wants now
+  controls?: ControlHint[];        // current button mapping; shown in the controller legend
+  gears?: boolean;                 // true if shifters change virtual gears in this game right now
+}
 export interface GameSim {
   update(dt: Seconds): void;       // called with FIXED_DT
+  hud?(): GameHud;                 // read by the shell each frame; keep it cheap and plain-data
   snapshot(): unknown;             // plain data view-model consumed by renderer and tests
   isOver(): boolean;
   summary(): Record<string, number | string>;

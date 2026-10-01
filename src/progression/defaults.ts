@@ -3,7 +3,7 @@ import type { Profile, ProfileSettings } from '../contracts';
 export function defaultSettings(): ProfileSettings {
   return {
     difficulty: 1.0,
-    zoneSource: 'auto',
+    zoneSource: 'power',
     aimMode: 'rotate',
     paddleDeadzone: 15,
     paddleInvertL: false,

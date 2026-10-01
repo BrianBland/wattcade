@@ -1,9 +1,12 @@
-import type { Button } from '../contracts';
+import type { Button, TrainerCommand } from '../contracts';
 import type { DebugActions, DebugSnapshot, TuningEntry } from './types';
 import { TrainerTest } from './TrainerTest';
 import { formatNum, formatValue } from '../shell/format';
 import { Dot } from '../shell/components/Bits';
 
+const fmtCmd = (c: TrainerCommand): string =>
+  c.mode === 'sim' ? `sim ${c.gradePct.toFixed(2)}%` : c.mode === 'erg' ? `erg ${Math.round(c.watts)}W`
+  : c.mode === 'resistance' ? `res ${Math.round(c.levelPct)}` : 'none';
 const KV = ({ rows }: { rows: Array<[string, string | number]> }) => (
   <div class="kv">{rows.flatMap(([k, v]) => [<span>{k}</span>, <span>{v}</span>])}</div>
 );
@@ -71,7 +74,7 @@ export function MixerPanel({ s, act }: { s: DebugSnapshot; act: DebugActions }) 
     <div class="panel br">
       <h4>Mixer</h4>
       <KV rows={[
-        ['mode', m?.chosenMode ?? '--'], ['last cmd', m?.lastCommand ? JSON.stringify(m.lastCommand) : '--'], ['result', m?.lastResult ?? '--'],
+        ['mode', m?.chosenMode ?? '--'], ['last cmd', m?.lastCommand ? fmtCmd(m.lastCommand) : '--'], ['result', m?.lastResult ?? '--'],
         ['effects', m ? m.activeEffects.map((e) => `${e.id}:${e.mode}`).join(' ') || 'none' : '--'],
       ]} />
       <div>diff {s.difficulty.toFixed(2)} <input type="range" min="0.5" max="1.5" step="0.05" value={s.difficulty} onInput={(e) => act.setDifficulty(+(e.target as HTMLInputElement).value)} />

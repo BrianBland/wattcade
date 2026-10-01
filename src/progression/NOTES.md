@@ -9,11 +9,11 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 
 ## Conventions games must follow
 - Game ids: `dungeon`, `lighthouse`, `towerdefense`.
-- `storm_chaser`: lighthouse should emit `stormWeathered` events (or set `gameSummary.stormsWeathered`); count accumulates in `profile.gameData.lighthouse.stormsWeathered` (lighthouse's own save via ctx.save may share that object; keep that key intact if it overwrites gameData).
+- `storm_chaser`: lighthouse should emit `stormWeathered` events (or set `gameSummary.stormsWeathered`); count accumulates in `profile.gameData._progression.stormsWeathered` (progression-owned slot; games must not write `_progression`).
 - `triple_rail`: event `railFired` with data `{charges: 3}`. `dungeon_clear`: event `bossDefeated`.
 
 ## Test
 `npx vitest run src/progression`
 
 ## Gaps
-- Storm count lives in gameData.lighthouse; if lighthouse's `ctx.save` replaces that whole object, count resets. CONTRACT-REQUEST: none, but Agent G should preserve `stormsWeathered` or tell orchestrator to add a lifetime counter.
+- None known.

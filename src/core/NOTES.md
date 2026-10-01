@@ -20,7 +20,7 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
 - Zone boundaries (power, as fraction of FTP): <.55, <.76, <.91, <1.06, <1.21, <=1.5, >1.5.
 - TuningRegistry: keys `<ns>.<key>`; `core.sprintFtp`, `core.gearStepPct` use ns `core`. localStorage persistence only when `window` exists
   (override with `{storage}`); `set/reset/list/get/onChange`.
-- Scripts: `{name, cadence(t), powerFtp?(t, {hooks, seed}), usesHooks?, input?}`; power is FTP fraction; scripts override trainer power model.
+- Scripts: `{name, cadence(t), powerFtp?(t, {hooks, seed}), usesHooks?, input?}`; power is FTP fraction; script power overrides the trainer model in sim/resistance modes, but ERG always wins (2 s time constant toward target; cadence 0 -> 0 W).
   `storm-ready` reads `snapshot().hooks.storm`. `mash` is a stateless hash of (2 s slot, seed).
 - FakeBike manual mode (no script): `fakeBike.manual = {cadence, power|null, hr|null}`; `useScript(name|null)`.
 

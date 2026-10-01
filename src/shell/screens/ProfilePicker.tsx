@@ -1,5 +1,6 @@
 import type { Profile } from '../../contracts';
 import { Avatar, Btn } from '../components/Bits';
+import { levelView } from '../services';
 import { useMenuNav } from '../useMenuNav';
 
 export function ProfilePicker({ profiles, onPick, onNew, onEdit }: { profiles: Profile[]; onPick: (p: Profile) => void; onNew: () => void; onEdit: (p: Profile) => void }) {
@@ -12,7 +13,7 @@ export function ProfilePicker({ profiles, onPick, onNew, onEdit }: { profiles: P
       <div class="grid">
         {profiles.map((p, i) => (
           <div class={`card${idx === i ? ' focused' : ''}`} onClick={() => { setIdx(i); onPick(p); }}>
-            <div class="row"><Avatar color={p.color} /><div><h3>{p.name}</h3><span class="dim">Lv {p.level} · FTP {p.ftp} W</span></div></div>
+            <div class="row"><Avatar color={p.color} /><div><h3>{p.name}</h3><span class="dim">Lv {levelView(p.xp).level} · {Math.round(p.xp)}/{levelView(p.xp).nextXp} XP · FTP {p.ftp} W</span></div></div>
             <div style={{ marginTop: '12px' }}><Btn small onClick={() => onEdit(p)}>Edit</Btn></div>
           </div>
         ))}

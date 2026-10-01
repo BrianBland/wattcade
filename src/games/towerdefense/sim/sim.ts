@@ -252,7 +252,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const pad = ctx.profile.settings?.aimMode === 'buttons' ? 0 : Math.max(-1, Math.min(1, inp.paddleR - inp.paddleL));
     const paddlesActive = !autopilot && inp.paddleIdleS <= autoAimDelay() && ctx.profile.settings?.aimMode !== 'buttons';
     autoAim = !paddlesActive;
-    if (paddlesActive) {
+    if (paddlesActive && ctx.profile.settings?.aimMode === 'axes') {
+      // axes: L = x, R = y (stick); aim toward atan2(x, y)
+      aim = Math.max(-0.9, Math.min(0.9, Math.atan2(inp.paddleL, Math.max(inp.paddleR, 0.2))));
+    } else if (paddlesActive) {
       aim = Math.max(-0.9, Math.min(0.9, aim + pad * aimRate() * dt));
     } else {
       const tgt = pickAutoTarget(weapon, autopilot ? -1 : lane);

@@ -7,7 +7,7 @@ CONTRACT-REQUESTs: none.
 - `sim/world.ts` seeded 8-room dungeon (self-avoiding walk on a 3x3 grid, chain of rooms, boss last), tiles floor/wall/swamp/door.
 - `sim/sim.ts` `createDungeonSim(ctx, { autopilot? })`; `sim/types.ts` snapshot type (`DungeonSnapshot`, includes `hooks`).
 - `scenarios.ts` sprints-boss (20 min), idle (5 min), z2-progress (20 min); all use `simOpts: { autopilot: true }`.
-- `test/stub.ts` local stub GameContext (delete once runHeadless is wired); `test/dungeon.test.ts`.
+- `test/dungeon.test.ts` runs scenarios via core `runHeadless` and checks swamp grade via `createGameSession` + mixer.
 
 ## Behaviour notes
 - Rooms 1-6 have enemies, room 0 is the safe start, room 7 the boss. Doors of a room lock when the player is 0.75 tile inside and enemies live.
@@ -20,7 +20,7 @@ CONTRACT-REQUESTs: none.
 - Balance (stub, autopilot, FTP 200): z2 beats boss in ~9-10 sim-min with 1-2 deaths; sprints ~7-8 min; idle 0 rooms. enemyDamageScale default is 0.5.
 
 ## Testing
-`npx vitest run src/games/dungeon` (runs scenario asserts through the stub, 36000 steps in ~50 ms).
+`npx vitest run src/games/dungeon` (scenarios via runHeadless)..
 
 ## Known gaps
 - Renderer untested in a browser (typecheck only); no sound; no minimap.

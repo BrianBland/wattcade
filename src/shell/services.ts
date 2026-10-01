@@ -61,6 +61,9 @@ export let controllerInfo: { firmware?: string; battery?: number; warning?: stri
 
 /** Must be called from a user gesture. */
 export async function connectDevice(kind: DeviceKind): Promise<void> {
+  if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
+    status[kind] = { connected: false, error: 'Web Bluetooth unavailable — use Bluefy on iPad or Chrome on desktop (HTTPS or localhost).' }; notify(); return;
+  }
   status[kind] = { connected: false, busy: true }; notify();
   try {
     const hub: any = dataHub;

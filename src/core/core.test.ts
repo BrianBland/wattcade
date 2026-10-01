@@ -159,6 +159,16 @@ describe('FakeTrainer', () => {
     for (let i = 0; i < 20 * 30; i++) p = t.step(FIXED_DT, 90, { massKg: 84, gear: 6 }).power!;
     expect(p).toBeCloseTo(200, 0);
   });
+  it('ERG overrides script power; script power applies in sim mode; cadence 0 -> 0', () => {
+    const t = new FakeTrainer(); const env = { massKg: 84, gear: 6 };
+    t.apply({ mode: 'erg', watts: 100 });
+    let p = 0;
+    for (let i = 0; i < 30 * 30; i++) p = t.step(FIXED_DT, 90, env, 300).power!;
+    expect(p).toBeCloseTo(100, 0);
+    expect(t.step(FIXED_DT, 0, env, 300).power).toBe(0);
+    t.apply({ mode: 'sim', gradePct: 0 });
+    expect(t.step(FIXED_DT, 90, env, 300).power).toBe(300);
+  });
   it('sim power grows with grade; resistance formula', () => {
     const t = new FakeTrainer();
     const flat = t.step(FIXED_DT, 90, { massKg: 84, gear: 6 }).power!;

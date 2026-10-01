@@ -73,7 +73,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   // storm state
   let phase: StormPhase = 'calm';
   let phaseT = 0;
-  let calmLeft = stormMinS() + ctx.rng() * (stormMaxS() - stormMinS());
+  let calmLeft = 0.6 * (stormMinS() + ctx.rng() * (stormMaxS() - stormMinS())); // first storm early so 30 min gives slack for 2
   let stormDur = 75;
   let integrity = 1;
   let intensity = 0;

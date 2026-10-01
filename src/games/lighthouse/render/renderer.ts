@@ -15,7 +15,7 @@ const plotPos = (i: number) => { const a = (i / (PLOT_COUNT - 1)) * Math.PI * 0.
 export class LighthouseRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(55, 1, 0.1, 400);
+  private camera = new THREE.PerspectiveCamera(55, 1, 0.1, 800);
   private sea?: THREE.Mesh;
   private seaBase?: Float32Array;
   private beam?: THREE.Group;
@@ -30,13 +30,15 @@ export class LighthouseRenderer implements GameRenderer {
   private hud?: HTMLDivElement;
   private container?: HTMLElement;
   private color = '#ffcc33';
+  private ro?: ResizeObserver;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }) {
     this.container = container;
     this.color = ctx.profile.color;
     const r = new THREE.WebGLRenderer({ antialias: true });
+    r.setClearColor(0x9fc4e8);
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
-    r.domElement.style.cssText = 'width:100%;height:100%;display:block';
+    r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
     container.appendChild(r.domElement);
     this.renderer = r;
     const s = this.scene;
@@ -45,7 +47,7 @@ export class LighthouseRenderer implements GameRenderer {
     s.add(this.sun, this.amb);
 
     // sea
-    const g = new THREE.PlaneGeometry(260, 260, 48, 48); g.rotateX(-Math.PI / 2);
+    const g = new THREE.PlaneGeometry(500, 500, 96, 96); g.rotateX(-Math.PI / 2);
     this.seaBase = new Float32Array(g.attributes.position.array as ArrayLike<number> as number[]);
     this.sea = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x1d5f8a, flatShading: true }));
     s.add(this.sea);
@@ -85,9 +87,13 @@ export class LighthouseRenderer implements GameRenderer {
 
     const hud = document.createElement('div');
     hud.style.cssText = 'position:absolute;left:12px;top:12px;color:#fff;font:600 16px system-ui;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
-    container.style.position ||= 'relative';
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.appendChild(hud); this.hud = hud;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
+      this.ro.observe(container);
+    }
   }
 
   private makeBuilding(kind: string): THREE.Object3D {
@@ -196,6 +202,7 @@ export class LighthouseRenderer implements GameRenderer {
   }
 
   unmount() {
+    this.ro?.disconnect();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
     this.hud?.remove();

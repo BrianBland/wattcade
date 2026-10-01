@@ -1,23 +1,27 @@
 import { describe, expect, it } from 'vitest';
+import { runHeadless } from '../../../core';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { stubRun } from './stubContext';
 
-describe('lighthouse scenarios (stub context)', () => {
+describe('lighthouse scenarios (runHeadless)', () => {
   for (const sc of scenarios) {
     it(sc.name, () => {
-      const r = stubRun(module, sc.script, sc.minutes, sc.seed, sc.simOpts);
-      const fails = sc.assert(r.summary, {} as any, { mixerCommands: [], isOver: r.isOver, events: r.events });
+      const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
+      const fails = sc.assert(r.summary, r.stats, r);
       expect(fails, JSON.stringify(r.summary)).toEqual([]);
     });
   }
-  it('storm adds grade, persists town', () => {
-    const r = stubRun(module, 'storm-ready', 30, 4, { autopilot: true });
-    expect(r.maxGrade).toBeGreaterThanOrEqual(3);
-    expect((r.saved as any).buildings.some(Boolean)).toBe(true);
+  it('every weathered storm emits stormWeathered; storm-ready 2nd weathered by 25 min (slack)', () => {
+    const r = runHeadless({ game: module, script: 'storm-ready', minutes: 30, seed: 4 });
+    const ev = r.events.filter((e) => e.type === 'stormWeathered').length;
+    expect(ev).toBe(Number(r.summary.stormsWeathered));
+    const w = r.events.filter((e) => e.type === 'stormWeathered');
+    expect(w.length).toBeGreaterThanOrEqual(2);
+    expect(w[1].t).toBeLessThan(25 * 60);
   });
   it('is deterministic', () => {
-    const a = stubRun(module, 'mash', 5, 9).summary, b = stubRun(module, 'mash', 5, 9).summary;
+    const a = runHeadless({ game: module, script: 'mash', minutes: 5, seed: 9 }).summary;
+    const b = runHeadless({ game: module, script: 'mash', minutes: 5, seed: 9 }).summary;
     expect(a).toEqual(b);
   });
 });

@@ -36,7 +36,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   {
     id: 'storm_chaser', name: 'Storm Chaser', desc: 'Weather 3 storms (lifetime)', bonusXp: 50,
     check: (p) => {
-      const d = p.gameData['lighthouse'] as { stormsWeathered?: number } | undefined;
+      const d = p.gameData['_progression'] as { stormsWeathered?: number } | undefined;
       return (d?.stormsWeathered ?? 0) >= 3;
     },
   },

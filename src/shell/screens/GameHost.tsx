@@ -17,7 +17,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
   };
 
   useEffect(() => {
-    let raf = 0, disposed = false, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
+    let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
     const detachTouch = mount.current ? input.attachTouch(mount.current) : () => {};
@@ -30,14 +30,16 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
         renderer.mount(mount.current!, { profile });
-        const ro = new ResizeObserver(() => renderer?.resize?.(mount.current!.clientWidth, mount.current!.clientHeight));
-        ro.observe(mount.current!);
+        const el = mount.current!;
+        ro = new ResizeObserver(() => { if (!disposed) renderer?.resize?.(el.clientWidth, el.clientHeight); });
+        ro.observe(el);
         let last = performance.now();
         const loop = (now: number) => {
+          if (disposed) return;
           const dt = Math.min(0.25, (now - last) / 1000); last = now;
           if (!pausedRef.current) {
             session.frame(dt);
-            if (session.sim.isOver()) { onQuit(); return; }
+            if (session.sim.isOver()) { disposed = true; onQuit(); return; }
           }
           renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
           raf = requestAnimationFrame(loop);
@@ -46,7 +48,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     })();
     return () => {
-      disposed = true; cancelAnimationFrame(raf); offSys(); detachKeys(); detachPad(); detachTouch();
+      disposed = true; cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
     };
   }, [game]);

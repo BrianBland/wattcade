@@ -25,10 +25,11 @@ export class FakeTrainer implements TrainerDevice {
     const v = (cadence / 60) * gearRatio(env.gear) * WHEEL_M; // m/s
     const c = this.command;
     let p: number;
-    if (powerOverride != null) p = powerOverride;
-    else if (cadence <= 0) p = 0;
+    if (cadence <= 0) p = 0;
     else if (c.mode === 'erg') {
       p = this.power + (c.watts - this.power) * (1 - Math.exp(-dt / 2));
+    } else if (powerOverride != null) {
+      p = powerOverride;
     } else if (c.mode === 'resistance') {
       p = this.resistanceK * cadence * (1 + c.levelPct / 40);
     } else {

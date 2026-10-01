@@ -55,6 +55,7 @@ describe('awardSession', () => {
     let r = awardSession(p, lh(2, 1200)); p = r.profile;
     expect(r.newAchievements.map((a) => a.id)).toContain('keeper_20');
     expect(p.achievements).not.toContain('storm_chaser');
+    expect((p.gameData._progression as { stormsWeathered: number }).stormsWeathered).toBe(2);
     r = awardSession(p, lh(1, 0));
     expect(r.newAchievements.map((a) => a.id)).toContain('storm_chaser');
   });

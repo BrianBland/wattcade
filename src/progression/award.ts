@@ -12,12 +12,13 @@ export interface AwardResult {
 
 /**
  * storm_chaser needs a lifetime storm count. Lighthouse should emit `stormWeathered`
- * events (or gameSummary.stormsWeathered); we accumulate into profile.gameData.lighthouse.stormsWeathered.
+ * events (or gameSummary.stormsWeathered); we accumulate into profile.gameData._progression.stormsWeathered.
  */
 function stormsIn(record: SessionRecord): number {
   const ev = record.events.filter((e) => e.type === 'stormWeathered').length;
+  if (ev > 0) return ev;
   const s = Number(record.gameSummary?.stormsWeathered ?? 0);
-  return Math.max(ev, Number.isFinite(s) ? s : 0);
+  return Number.isFinite(s) ? s : 0;
 }
 
 export function awardSession(profile: Profile, record: SessionRecord): AwardResult {
@@ -37,10 +38,10 @@ export function awardSession(profile: Profile, record: SessionRecord): AwardResu
     gameData: { ...profile.gameData },
     achievements: [...profile.achievements],
   };
-  const storms = record.gameId === 'lighthouse' ? stormsIn(record) : 0;
+  const storms = stormsIn(record);
   if (storms > 0) {
-    const prev = (p.gameData['lighthouse'] as Record<string, unknown> | undefined) ?? {};
-    p.gameData['lighthouse'] = { ...prev, stormsWeathered: Number(prev.stormsWeathered ?? 0) + storms };
+    const prev = (p.gameData['_progression'] as Record<string, unknown> | undefined) ?? {};
+    p.gameData['_progression'] = { ...prev, stormsWeathered: Number(prev.stormsWeathered ?? 0) + storms };
   }
 
   const newAchievements: AwardResult['newAchievements'] = [];

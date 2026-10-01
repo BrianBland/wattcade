@@ -22,3 +22,4 @@ CONTRACT-REQUEST: none.
 - PauseMenu difficulty starts at 1.00 display (not read back from mixer). GameHost `onSave` closure captures the profile at mount.
 - Touch overlay (`attachTouch`) attached to the game mount only; not visually tested. Not browser-tested at all with real devices.
 - Tests: `npx vitest run src/shell src/debug`.
+- Fixes (smoke test): GameHost disconnects its ResizeObserver and guards the RAF/resize callbacks after unmount; Connect shows a friendly "Web Bluetooth unavailable" message; debug top panels sit 64 px down; mixer last-cmd is formatted; inline SVG favicon; profile cards show XP/next-level XP.

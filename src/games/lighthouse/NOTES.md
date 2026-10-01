@@ -11,15 +11,14 @@ CONTRACT-REQUESTs: none.
 ## Mechanics (all numbers are `ctx.tuning` keys, `lighthouse.*`)
 - In zone (effortZone == targetZone 2): fog/chop fall, lamp rises. Below: fog rises (bells slow it). Above (non-storm): chop rises.
 - Ships: spawn 40-60 s, sail 60 s, dock if fog<0.5+piers, chop<0.5+piers, lamp>=0.15. Chop failure = spilled, else lost.
-- Storm: every 480-720 s, 20 s warning, 60-90 s storm, +3% grade effect `storm`, requirement zone>=3 with 25 s slack (integrity meter; 0 -> lamp out, stormsFailed). 15 s mid-storm surge needs zone 5; held >=70% gives bonus salvage.
+- Storm: first at ~0.6x interval (~5-7 min), then every 480-720 s, 20 s warning, 60-90 s storm, +3% grade effect `storm`, requirement zone>=3 with 25 s slack (integrity meter; 0 -> lamp out, stormsFailed). 15 s mid-storm surge needs zone 5; held >=70% gives bonus salvage.
 - Swell: effect `swell`, +-1% sine, 180 s period. Virtual gears enabled.
 - minutesInZone counts zone==2 time (any phase) plus storm-compliant time.
 - Town (14 plots, buildings, coin, timber, totals) saved via ctx.save on build, every 60 s, and in dispose(); loaded via ctx.load.
 - Controls: left/right = plot cursor, up/down = building type, A = build.
 
 ## Testing
-`npx vitest run src/games/lighthouse`. `test/stubContext.ts` is a local approximation of runHeadless + scripts (3 s smoothed ftpFraction -> zone). DELETE it and switch `scenarios.test.ts` to `runHeadless` once core exists.
+`npx vitest run src/games/lighthouse` (uses core runHeadless; stub removed).
 
 ## Known gaps
 - Renderer is untested visually (typecheck only); no sound; HUD is plain DOM text.
-- Stub uses default tunables (no registry), so tuning ranges are unvalidated.

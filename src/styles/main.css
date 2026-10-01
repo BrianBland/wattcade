@@ -46,9 +46,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zone-bar .z1 { background: var(--z1); } .zone-bar .z2 { background: var(--z2); } .zone-bar .z3 { background: var(--z3); } .zone-bar .z4 { background: var(--z4); } .zone-bar .z5 { background: var(--z5); }
 /* debug overlay */
 .dbg { position: fixed; inset: 0; pointer-events: none; z-index: 40; font: 11px/1.35 ui-monospace, Menlo, monospace; color: #d8f6ff; }
-.dbg .panel { position: absolute; pointer-events: auto; background: #050816cc; border: 1px solid #1b4a66; border-radius: 6px; padding: 6px 8px; max-width: 46vw; max-height: 46vh; overflow: auto; }
-.dbg .tl { top: 6px; left: 6px; } .dbg .tr { top: 6px; right: 6px; } .dbg .bl { bottom: 6px; left: 6px; } .dbg .br { bottom: 6px; right: 6px; }
-.dbg .tune { top: 6px; left: 50%; transform: translateX(-50%); }
+.dbg .panel { position: absolute; pointer-events: auto; background: #050816cc; border: 1px solid #1b4a66; border-radius: 6px; padding: 6px 8px; max-width: 46vw; max-height: calc(100vh - 72px); overflow: auto; }
+.dbg .tl { top: 64px; left: 6px; } .dbg .tr { top: 64px; right: 6px; } .dbg .bl { bottom: 6px; left: 6px; } .dbg .br { bottom: 6px; right: 6px; }
+.dbg .tune { top: 64px; left: 50%; transform: translateX(-50%); }
 .dbg h4 { margin: 0 0 3px; font-size: 11px; color: var(--pink); text-transform: uppercase; }
 .dbg .kv { display: grid; grid-template-columns: auto auto; gap: 0 12px; }
 .dbg .kv span:nth-child(odd) { color: #6fa8c4; }

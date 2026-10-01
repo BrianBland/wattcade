@@ -21,9 +21,8 @@ CONTRACT-REQUESTs: none.
 - Saves `{ bestWave }` via ctx.save at game over / dispose.
 
 ## Tests
-`npx vitest run src/games/towerdefense`. `test/stub.ts` is a local stub ctx approximating core scripts (ERG override when
-rail selected). DELETE stub (and switch sim.test.ts to runHeadless) once core lands.
-Stub results (seed 1): sprints ~11 waves, idle 2 (dead ~2:20), intervals ~13; seeds 1-4 all pass.
+`npx vitest run src/games/towerdefense` (scenarios via runHeadless; rail tests via createGameSession).
 
 ## Gaps
-Renderer unverified in browser; no sound; aimMode 'axes' treated like 'rotate'.
+Renderer unverified in browser; no sound.
+aimMode 'axes': aim = atan2(L, R) when paddles active.

@@ -1,7 +1,5 @@
 import { render } from 'preact';
-
-function App() {
-  return <div>wattcade — scaffold</div>;
-}
+import { App } from './shell/App';
+import './styles/main.css';
 
 render(<App />, document.getElementById('app')!);

@@ -1,0 +1,103 @@
+import type { GameContext, GameEvent, GameModule, GameSim, Profile, SessionRecord, TrainerCommand } from '../contracts';
+import { FIXED_DT } from '../contracts';
+import { BikeStateStore } from './bikeState';
+import { SimClock } from './clock';
+import { DataHub } from './dataHub';
+import { FakeBike } from './fake';
+import type { InputSource } from './inputs';
+import { GameLoop } from './loop';
+import { ResistanceMixer } from './mixer';
+import { SessionRecorder } from './recorder';
+import { makeRng } from './rng';
+import { TuningRegistry } from './tuning';
+
+export interface SessionOpts {
+  game: GameModule; profile: Profile; input: InputSource; dataHub?: DataHub;
+  fake?: { script?: string } | false; seed?: number; simOpts?: Record<string, unknown>;
+  onEmit?: (e: { t: number } & GameEvent) => void; onSave?: (data: unknown) => void;
+  tuningRegistry?: TuningRegistry;   // optional: share/inspect the registry (e.g. headless overrides)
+}
+
+export interface GameSession {
+  ctx: GameContext; sim: GameSim; mixer: ResistanceMixer; bikeStore: BikeStateStore;
+  tuning: TuningRegistry; recorder: SessionRecorder; fakeBike?: FakeBike; dataHub: DataHub; clock: SimClock;
+  loop: GameLoop; commands: TrainerCommand[];
+  frame(realDtS: number): void; step(n: number): void; pause(): void; resume(): void;
+  finish(): SessionRecord; debugValues(): Record<string, number | string | boolean>;
+}
+
+export function createGameSession(o: SessionOpts): GameSession {
+  const seed = o.seed ?? 1;
+  const profile = o.profile;
+  const tuning = o.tuningRegistry ?? new TuningRegistry({ profileId: profile.id });
+  const clock = new SimClock();
+  const dataHub = o.dataHub ?? new DataHub();
+  const bikeStore = dataHub.store;
+  bikeStore.bindTuning(tuning.scoped('core'));
+  const commands: TrainerCommand[] = [];
+  const mixer = new ResistanceMixer({
+    profile: () => profile, tuning: tuning.scoped('core'),
+    send: (cmd) => { commands.push(cmd); if (commands.length > 5000) commands.shift(); return dataHub.sendCommand(cmd); },
+  });
+  const recorder = new SessionRecorder();
+  const dbg: Record<string, number | string | boolean> = {};
+  const startedAt = Date.now();
+
+  let fakeBike: FakeBike | undefined;
+  const wantFake = o.fake ? true : o.fake === false ? false : !o.dataHub;
+  if (wantFake) {
+    fakeBike = new FakeBike({ rng: makeRng(seed + 7919), seed, script: (o.fake && o.fake.script) || null });
+    dataHub.attachTrainer(fakeBike.trainer);
+    dataHub.attachHr(fakeBike.hr, { fake: true });
+  }
+
+  let saved: unknown = profile.gameData[o.game.id];
+  const ctx: GameContext = {
+    clock, profile,
+    bike: () => bikeStore.get(),
+    input: () => o.input.state(),
+    resistance: mixer,
+    tuning: tuning.scoped(o.game.id),
+    rng: makeRng(seed),
+    emit: (e) => { const t = clock.now(); recorder.event(t, e); o.onEmit?.({ t, ...e }); },
+    debug: (k, v) => { dbg[k] = v; },
+    save: (d) => { saved = d; o.onSave?.(d); },
+    load: <T,>() => saved as T | undefined,
+  };
+  const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
+
+  const hooksOf = () => (sim.snapshot() as { hooks?: Record<string, unknown> } | undefined)?.hooks;
+
+  const stepOnce = (dt: number) => {
+    clock.advance(dt);
+    o.input.beginTick(dt);
+    fakeBike?.tick(dt, { profile, gear: mixer.gear, hooks: fakeBike.usesHooks ? hooksOf() : undefined });
+    bikeStore.setGear(mixer.gear);
+    bikeStore.tick(dt, profile);
+    mixer.tick(dt, o.input.state());
+    bikeStore.setTrainerMode(mixer.command?.mode ?? 'none');
+    sim.update(dt);
+    recorder.tick(dt, bikeStore.get(), mixer.command);
+  };
+
+  const loop = new GameLoop(clock, stepOnce, () => (dataHub.hasRealDevices() ? 1 : clock.timeScale));
+
+  return {
+    ctx, sim, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
+    frame: (dt) => { loop.frame(dt); },
+    step: (n) => loop.step(n),
+    pause: () => { loop.pause(); mixer.panic(true); },
+    resume: () => { mixer.panic(false); loop.resume(); },
+    finish: () => {
+      const summary = sim.summary();
+      sim.dispose?.();
+      return recorder.finish({ profileId: profile.id, gameId: o.game.id, startedAt, gameSummary: summary });
+    },
+    debugValues: () => ({
+      ...dbg, 'core.t': +clock.now().toFixed(2), 'core.mode': bikeStore.get().trainerMode,
+      'core.gear': mixer.gear, 'core.difficulty': mixer.getDifficulty(), 'core.over': sim.isOver(),
+    }),
+  };
+}
+
+export { FIXED_DT };

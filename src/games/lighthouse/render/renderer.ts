@@ -15,7 +15,7 @@ const plotPos = (i: number) => { const a = (i / (PLOT_COUNT - 1)) * Math.PI * 0.
 export class LighthouseRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(55, 1, 0.1, 800);
+  private camera = new THREE.PerspectiveCamera(50, 4 / 3, 0.1, 800);
   private sea?: THREE.Mesh;
   private seaBase?: Float32Array;
   private beam?: THREE.Group;
@@ -83,11 +83,11 @@ export class LighthouseRenderer implements GameRenderer {
     this.clouds = new THREE.Mesh(new THREE.SphereGeometry(120, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x20242c, side: THREE.BackSide, transparent: true, opacity: 0 }));
     s.add(this.clouds);
 
-    this.camera.position.set(34, 16, 34); this.camera.lookAt(-4, 10, -6);
+    // Framing for a 4:3 view: lighthouse left, town right, open sea (ship lanes) across the foreground.
+    this.camera.position.set(-6, 32, 78); this.camera.lookAt(-6, 8, 14);
 
     const hud = document.createElement('div');
     hud.style.cssText = 'position:absolute;left:12px;top:12px;color:#fff;font:600 16px system-ui;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
-    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.appendChild(hud); this.hud = hud;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
@@ -173,9 +173,10 @@ export class LighthouseRenderer implements GameRenderer {
       live.add(sh.id);
       let m = this.shipMeshes.get(sh.id);
       if (!m) { m = this.makeShip(); this.scene.add(m); this.shipMeshes.set(sh.id, m); }
-      const lz = -20 + sh.lane * 40;
-      const x = -90 + sh.progress * 90 + (sh.state === 'lost' || sh.state === 'spilled' ? 0 : 0);
-      m.position.set(x, 0.3 + Math.sin(s.t * 1.5 + sh.id) * waveAmp * 0.4, lz * (1 - sh.progress * 0.5));
+      // lanes run in front of the shore; ships come from the open sea on the left and head for the harbour at x~12
+      const x = -28 + sh.progress * 40;
+      const z = 28 + sh.lane * 8 - sh.progress * 3;
+      m.position.set(x, 0.3 + Math.sin(s.t * 1.5 + sh.id) * waveAmp * 0.4, z);
       m.rotation.y = sh.state === 'lost' ? s.t * 0.5 : 0;
       m.rotation.z = Math.sin(s.t * 1.3 + sh.id) * (0.05 + s.chop * 0.3);
       m.visible = true;

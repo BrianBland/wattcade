@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
-import { debugActions, input, onSystem, startSession } from '../services';
+import { debugActions, getFake, activeSession, input, onSystem, startSession } from '../services';
+import { fakeKeyAdjust } from '../fakeKeys';
 import { PauseMenu } from './PauseMenu';
 
+const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; profile: Profile; onQuit: () => void; onSave: (d: unknown) => void }) {
   const mount = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
@@ -21,6 +23,13 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
     const detachTouch = mount.current ? input.attachTouch(mount.current) : () => {};
+    const onFakeKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName)) return;
+      const a = fakeKeyAdjust(e.code);
+      if (a && !e.ctrlKey && !e.metaKey && !e.altKey) debugActions.fakeAdjust(a.k, a.delta);
+    };
+    window.addEventListener('keydown', onFakeKey);
     const offSys = onSystem((a) => { if (a === 'pause') setPause(!pausedRef.current); else if (a === 'panic') debugActions.panic(true); });
     (navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l; }).catch(() => {});
     (async () => {
@@ -48,7 +57,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     })();
     return () => {
-      disposed = true; cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
+      disposed = true; window.removeEventListener('keydown', onFakeKey); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
     };
   }, [game]);
@@ -57,6 +66,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
     <div class="game-host">
       <div class="mount" ref={mount} />
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={onQuit}>Back</button></div>}
+      {isFake() && <div class="hud-hint">Fake bike: W/S cadence · E/D power · R/F HR</div>}
       {paused && <PauseMenu difficulty={1} onResume={() => setPause(false)} onQuit={onQuit} />}
     </div>
   );

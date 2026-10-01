@@ -73,7 +73,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const waveMax = T.num('waveMaxS', 60, 15, 240, 1);
   const spawnWindow = T.num('heavySpawnWindowS', 20, 3, 60, 1);
   const bossShieldS = T.num('bossShieldCycleS', 7, 2, 30, 1);
-  const clearHeal = T.num('earlyClearHeal', 10, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
+  const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   const goodMult = T.num('goodMult', 1.5, 1, 3, 0.1);
   const badMult = T.num('badMult', 0.25, 0, 1, 0.05);
 

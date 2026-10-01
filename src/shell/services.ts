@@ -156,7 +156,10 @@ export const debugActions: DebugActions = {
   setFakeScript(n) { fakeScript = n; any(active)?.fakeBike?.useScript(n === 'manual' ? null : n); },
   fakeAdjust(k, d) {
     const fb = any(active)?.fakeBike; if (!fb) return;
-    if (fb.script) { fb.useScript(null); fb.manual.cadence = 85; }   // switch to manual control
+    if (fb.script) {   // switch to manual control, seeded from current values so nothing jumps
+      const r = any(active).ctx.bike().raw; fb.useScript(null);
+      fb.manual.cadence = r.cadence; fb.manual.power = r.power; fb.manual.hr = r.hr;
+    }
     const m = fb.manual;
     if (k === 'cadence') m.cadence = Math.max(0, m.cadence + d);
     else if (k === 'power') m.power = Math.max(0, (m.power ?? 150) + d);

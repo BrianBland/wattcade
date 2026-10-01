@@ -9,7 +9,7 @@ import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
-import { ZwiftRideController } from '../devices/zwiftRide';
+import { RideControllerGroup } from '../devices/zwiftRide';
 import type { AchievementView, AwardView, DeviceKind, DeviceStatusMap, LevelView, SessionLike } from './types';
 import type { DebugActions, DebugSnapshot, TuningEntry } from '../debug/types';
 
@@ -69,11 +69,30 @@ export async function connectDevice(kind: DeviceKind): Promise<void> {
     const hub: any = dataHub;
     if (kind === 'trainer') { const d: any = await FtmsTrainer.connect(); devices.trainer = d; hub.attachTrainer(d); d.onStatus?.((s: any) => { status.trainer = { connected: s.connected, detail: s.detail }; notify(); }); }
     else if (kind === 'hr') { const d: any = await HeartRateMonitor.connect(); devices.hr = d; hub.attachHr(d); d.onStatus?.((s: any) => { status.hr = { connected: s.connected }; notify(); }); }
-    else { const d: any = await ZwiftRideController.connect(); devices.controller = d; hub.attachController(d, input); d.onStatus?.((s: any) => { controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { connected: s.connected, detail: s.warning }; notify(); }); }
+    else {
+      // The Ride's two sides may appear as two devices; the group merges them. First tap adds one side.
+      const g = new RideControllerGroup();
+      g.onStatus((s) => { controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { connected: s.connected, detail: s.warning }; notify(); });
+      g.onLog((l) => console.info('[ride]', l));
+      await g.addFromPicker();
+      devices.controller = g; hub.attachController(g, input);
+    }
     status[kind] = { connected: true, detail: status[kind].detail };
   } catch (e) {
     status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
   }
+  notify();
+}
+/** Number of Ride controllers (sides) connected. */
+export const controllerCount = (): number => (devices.controller as RideControllerGroup | undefined)?.count ?? 0;
+
+/** Must be called from a user gesture. Connects the other Ride side into the existing group. */
+export async function addSecondController(): Promise<void> {
+  const g = devices.controller as RideControllerGroup | undefined;
+  if (!g) return connectDevice('controller');
+  status.controller = { ...status.controller, busy: true, error: undefined }; notify();
+  try { await g.addFromPicker(); status.controller = { ...status.controller, busy: false }; }
+  catch (e) { status.controller = { ...status.controller, busy: false, error: e instanceof Error ? e.message : String(e) }; }
   notify();
 }
 export async function disconnectDevice(kind: DeviceKind): Promise<void> {

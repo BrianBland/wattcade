@@ -4,6 +4,7 @@ CONTRACT-REQUESTs: none.
 
 ## Public API
 - `src/input/index.ts`: `InputHub`, `ScriptedInput`, `applyDeadzone`, key maps, `DEBUG_*_STEP`. Exactly the CLAUDE.md seam. Extras: `attachGamepad(getPads?)` (injectable for tests), `showTouch(bool)` / `touchVisible` (touch overlay hidden by default), `onDebugAdjust`.
+- `RideControllerGroup` (group.ts): connects one or both Ride sides (they can appear as two "Zwift SF2" devices), merges buttons (union) and paddles (largest deflection). Service lookup tries 0xFC82, then 00000001-19ca-…, then scans all services.
 - `src/devices/zwiftRide/index.ts`: `ZwiftRideController` (`static connect()`, `onState/onStatus/onLog`, `stats()`, `sendRideOn()`, `disconnect()`), `parseRideMessage`, `buttonsFromMap`, `PolarityDetector`, `firmwareAtLeast`, `pickCharacteristics`.
 - `probe.html` + `src/probe/main.ts` (+ pure `format.ts`): standalone page; Pick any/Ride/FTMS/HR, Send RideOn, live parsed buttons/paddles, hex log with Copy/Download.
 

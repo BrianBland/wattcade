@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { DeviceKind } from '../types';
 import { Btn, Dot } from '../components/Bits';
-import { connectDevice, controllerInfo, disconnectDevice, getDeviceStatus, getFake, setFake, subscribeDevices } from '../services';
+import { addSecondController, connectDevice, controllerCount, controllerInfo, disconnectDevice, getDeviceStatus, getFake, setFake, subscribeDevices } from '../services';
 import { useMenuNav } from '../useMenuNav';
 
 const ITEMS: Array<{ kind: DeviceKind; label: string; note: string }> = [
   { kind: 'trainer', label: 'Trainer', note: 'KICKR CORE. Close Zwift on this iPad first.' },
-  { kind: 'controller', label: 'Controller', note: 'Zwift Ride. Close Zwift on this iPad first.' },
+  { kind: 'controller', label: 'Controller', note: 'Zwift Ride. If two "Zwift SF2" devices appear, connect one, then "+ Add other side" for the second. Close Zwift on this iPad first.' },
   { kind: 'hr', label: 'Heart rate', note: 'Enable Broadcast Heart Rate on your Garmin. Record an Indoor Bike activity on your watch; it is your Garmin/Strava record for now.' },
 ];
 
@@ -30,7 +30,10 @@ export function Connect({ onDone }: { onDone: () => void }) {
             <div>{st[it.kind].busy ? 'Connecting...' : st[it.kind].connected ? 'Connected (tap to disconnect)' : 'Tap to connect'}</div>
             <div class="dim" style={{ marginTop: '8px' }}>{it.note}</div>
             {st[it.kind].error && <div class="warn">{st[it.kind].error}</div>}
-            {it.kind === 'controller' && st.controller.connected && <div class="dim">fw {controllerInfo.firmware ?? '?'} · battery {controllerInfo.battery ?? '?'}%</div>}
+            {it.kind === 'controller' && st.controller.connected && <div class="dim">{controllerCount()} of 2 sides · fw {controllerInfo.firmware ?? '?'} · battery {controllerInfo.battery ?? '?'}%</div>}
+            {it.kind === 'controller' && st.controller.connected && controllerCount() < 2 && (
+              <button class="btn small" onClick={(e) => { e.stopPropagation(); void addSecondController(); }}>+ Add other side</button>
+            )}
             {controllerInfo.warning && it.kind === 'controller' && <div class="warn">{controllerInfo.warning}</div>}
           </div>
         ))}

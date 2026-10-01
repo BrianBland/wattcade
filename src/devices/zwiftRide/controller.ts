@@ -11,6 +11,7 @@ export const RIDE_REQUEST_OPTIONS = {
   filters: [{ namePrefix: 'Zwift' }],
   optionalServices: [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1', 0x180a, 0x180f],
 };
+const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];
 const FW_WARNING = 'Ride V2 firmware (>=1.3.0) is locked to Zwift and may not work. Do not update the controller firmware through Zwift.';
 const BACKOFF_S = [1, 2, 4, 8, 15];
 
@@ -34,9 +35,11 @@ export class ZwiftRideController implements ControllerDevice {
 
   /** Must be called from a user gesture. */
   static async connect(): Promise<ZwiftRideController> {
-    const device = await navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS);
+    return ZwiftRideController.connectDevice(await navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS));
+  }
+  static async connectDevice(device: BluetoothDevice): Promise<ZwiftRideController> {
     const c = new ZwiftRideController(device);
-    await c.setup();
+    try { await c.setup(); } catch (e) { await c.disconnect(); throw e; }
     return c;
   }
 
@@ -66,8 +69,7 @@ export class ZwiftRideController implements ControllerDevice {
     this.polarity = new PolarityDetector();
     const server = await this.device.gatt!.connect();
     this.server = server;
-    const svc = await server.getPrimaryService(0xfc82);
-    const chars = await svc.getCharacteristics();
+    const { svc, chars } = await this.findRideService(server);
     const infos: CharInfo[] = chars.map((c) => ({
       uuid: c.uuid, notify: c.properties.notify, indicate: c.properties.indicate,
       write: c.properties.write, writeNoResp: c.properties.writeWithoutResponse,
@@ -93,6 +95,32 @@ export class ZwiftRideController implements ControllerDevice {
     await this.handshake();
     await this.readInfo(server);
     this.emitStatus({ connected: true });
+  }
+
+  /**
+   * Firmware differs in how it exposes the Ride service: some expose 0xFC82 (what it advertises),
+   * others the 128-bit 00000001-19ca-… service. Try both, then scan every service for 19ca characteristics.
+   */
+  private async findRideService(server: BluetoothRemoteGATTServer) {
+    const tried: string[] = [];
+    for (const id of RIDE_SERVICE_CANDIDATES) {
+      try {
+        const svc = await server.getPrimaryService(id);
+        const chars = await svc.getCharacteristics();
+        this.log(`using service ${svc.uuid}`);
+        return { svc, chars };
+      } catch (e) { tried.push(`${typeof id === 'number' ? '0x' + id.toString(16) : id}: ${String(e)}`); }
+    }
+    let services: BluetoothRemoteGATTService[] = [];
+    try { services = await server.getPrimaryServices(); } catch (e) { tried.push('getPrimaryServices: ' + String(e)); }
+    for (const svc of services) {
+      try {
+        const chars = await svc.getCharacteristics();
+        if (chars.some((c) => c.uuid.includes('19ca-4651'))) { this.log(`using scanned service ${svc.uuid}`); return { svc, chars }; }
+      } catch { /* not readable */ }
+    }
+    for (const t of tried) this.log('service lookup: ' + t);
+    throw new Error(`Zwift Ride service not found on "${this.device.name ?? 'device'}" (services: ${services.map((s) => s.uuid).join(', ') || 'none visible'}). Capture details with /probe.html.`);
   }
 
   private async handshake() {

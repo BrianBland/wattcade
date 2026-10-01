@@ -30,7 +30,7 @@ describe('InputHub edges', () => {
 
 describe('paddles', () => {
   it('deadzone, rescale, invert, idle timer', () => {
-    const h = new InputHub({ deadzone: 20, invertR: true });
+    const h = new InputHub({ deadzone: 20, invertR: true, paddleExpo: 1 });
     h.setControllerState(raw([], 10, 10));
     h.beginTick(0.5);
     expect(h.state().paddleL).toBe(0); expect(h.state().paddleIdleS).toBe(0.5);
@@ -42,7 +42,7 @@ describe('paddles', () => {
     expect(h.state().paddleIdleS).toBeCloseTo(0.5);
   });
   it('applySettings', () => {
-    const h = new InputHub();
+    const h = new InputHub({ paddleExpo: 1 });
     h.applySettings({ paddleDeadzone: 50, paddleInvertL: true, paddleInvertR: false } as any);
     h.setControllerState(raw([], 40, 0)); h.beginTick(0.1); expect(h.state().paddleL).toBe(0);
     h.setControllerState(raw([], 75, 0)); h.beginTick(0.1); expect(h.state().paddleL).toBeCloseTo(-0.5);

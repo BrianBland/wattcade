@@ -1,12 +1,12 @@
 import type { Button, ControllerRawState, InputState, ProfileSettings, Seconds, SystemAction } from '../contracts';
 import { ScriptedInput } from './scripted';
 import {
-  KEY_BUTTONS, KEY_PADDLES, KEY_SYSTEM, PAD_BUTTONS, COMBO_HOLD_MS, SHIFTERS, applyDeadzone,
+  KEY_BUTTONS, KEY_PADDLES, KEY_SYSTEM, PAD_BUTTONS, COMBO_HOLD_MS, SHIFTERS, applyDeadzone, applyExpo,
 } from './mapping';
 
 type Src = InputState['source'];
 type DebugKind = 'difficulty' | 'timeScale';
-export interface HubOptions { deadzone?: number; invertL?: boolean; invertR?: boolean; now?: () => number }
+export interface HubOptions { deadzone?: number; invertL?: boolean; invertR?: boolean; now?: () => number; paddleExpo?: number }
 type PadLike = { buttons: ArrayLike<{ pressed: boolean }>; axes: ArrayLike<number> } | null;
 
 /** Debug-overlay shifter steps (SPEC 3.1): left shifters adjust difficulty, right shifters adjust time scale. */
@@ -21,6 +21,8 @@ export class InputHub {
   touchVisible = false;
 
   private deadzone: number; private invertL: boolean; private invertR: boolean;
+  /** Response-curve exponent for analog paddles/sticks after deadzone (1 = linear; 2 = gentle near rest, full at max). */
+  paddleExpo: number;
   private rideRaw: ControllerRawState = { buttons: EMPTY, paddleL: 0, paddleR: 0 };
   private kbHeld = new Set<Button>(); private kbPaddle = { L: 0, R: 0 };
   private kbDown = { L: new Set<number>(), R: new Set<number>() } as Record<'L' | 'R', Set<number>>;
@@ -41,7 +43,7 @@ export class InputHub {
   private touchEl: HTMLElement | null = null;
 
   constructor(opts: HubOptions = {}) {
-    this.now = opts.now ?? (() => performance.now()); this.deadzone = opts.deadzone ?? 15; this.invertL = opts.invertL ?? false; this.invertR = opts.invertR ?? false;
+    this.now = opts.now ?? (() => performance.now()); this.deadzone = opts.deadzone ?? 15; this.invertL = opts.invertL ?? false; this.invertR = opts.invertR ?? false; this.paddleExpo = opts.paddleExpo ?? 2;
   }
 
   applySettings(s: ProfileSettings): void {
@@ -99,11 +101,12 @@ export class InputHub {
 
   private paddles(): { l: number; r: number } {
     const pick = (...v: number[]) => v.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
-    const rideL = applyDeadzone(this.rideRaw.paddleL, this.deadzone, this.invertL);
-    const rideR = applyDeadzone(this.rideRaw.paddleR, this.deadzone, this.invertR);
+    const curve = (v: number) => applyExpo(v, this.paddleExpo);
+    const rideL = curve(applyDeadzone(this.rideRaw.paddleL, this.deadzone, this.invertL));
+    const rideR = curve(applyDeadzone(this.rideRaw.paddleR, this.deadzone, this.invertR));
     return {
-      l: pick(rideL, this.kbPaddle.L, this.padPaddle.L, this.script?.paddleL ?? 0),
-      r: pick(rideR, this.kbPaddle.R, this.padPaddle.R, this.script?.paddleR ?? 0),
+      l: pick(rideL, this.kbPaddle.L, curve(this.padPaddle.L), this.script?.paddleL ?? 0),
+      r: pick(rideR, this.kbPaddle.R, curve(this.padPaddle.R), this.script?.paddleR ?? 0),
     };
   }
 

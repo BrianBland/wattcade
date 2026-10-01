@@ -64,7 +64,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
   const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
   const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1);
-  const aimRate = T.num('aimTurnRate', 2.0, 0.5, 6, 0.1, 'rad/s at full paddle');
+  const aimRate = T.num('aimTurnRate', 1.2, 0.3, 6, 0.1, 'rad/s at full paddle');
   const autoAimDelay = T.num('autoAimIdleS', 1.5, 0.2, 5, 0.1);
   const baseHpMax = T.num('baseHp', 100, 10, 1000, 5);
   const hpScale = T.num('hpScalePerWave', 0.05, 0, 1, 0.01);

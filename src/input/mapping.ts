@@ -26,6 +26,12 @@ export const COMBO_HOLD_MS = 1000;
 export const SHIFTERS: ReadonlySet<Button> = new Set<Button>(['shiftUpL', 'shiftDnL', 'shiftUpR', 'shiftDnR']);
 
 /** Deadzone then rescale: raw -100..100 -> -1..1, 0 inside the deadzone. */
+/** sign(v)·|v|^expo for v in -1..1: keeps 0 and ±1 fixed, softens partial deflection. */
+export function applyExpo(v: number, expo: number): number {
+  const e = Math.max(1, expo);
+  return Math.sign(v) * Math.pow(Math.min(1, Math.abs(v)), e);
+}
+
 export function applyDeadzone(raw: number, deadzone: number, invert = false): number {
   const dz = Math.max(0, Math.min(99, deadzone));
   const a = Math.abs(raw);

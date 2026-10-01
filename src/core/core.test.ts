@@ -287,3 +287,23 @@ describe('createGameSession / runHeadless', () => {
     expect(s.clock.now() - t0).toBeCloseTo(1, 1);
   });
 });
+
+describe('BikeStateStore HR sources', () => {
+  it('ignores 0 bpm relayed by the trainer and prefers the dedicated HR device', () => {
+    const p = prof(); const st = new BikeStateStore();
+    for (let i = 0; i < 30 * 6; i++) {
+      st.ingestTrainer({ power: 150, cadence: 90, hr: 0 }); // KICKR with no strap paired
+      if (i % 30 === 0) st.ingestHr({ hr: 140 });           // watch at 1 Hz
+      st.tick(FIXED_DT, p);
+    }
+    const s = st.tick(FIXED_DT, p);
+    expect(s.raw.hr).toBe(140);
+    expect(s.hr5s).toBeCloseTo(140, 5);
+  });
+  it('falls back to trainer-relayed HR when no dedicated device is fresh', () => {
+    const p = prof(); const st = new BikeStateStore();
+    st.ingestHr({ hr: 0 });
+    for (let i = 0; i < 60; i++) { st.ingestTrainer({ power: 150, cadence: 90, hr: 120 }); st.tick(FIXED_DT, p); }
+    expect(st.tick(FIXED_DT, p).raw.hr).toBe(120);
+  });
+});

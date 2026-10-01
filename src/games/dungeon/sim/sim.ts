@@ -42,7 +42,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const woundedGrade = tn.num('gradeWounded', 2, 0, 10, 0.5);
   const woundedFrac = tn.num('woundedHpFrac', 0.4, 0.1, 0.9, 0.05);
   const surgeGrade = tn.num('gradeBossSurge', 5, 0, 12, 0.5);
-  const aimTurn = tn.num('aimTurnRate', 3.5, 0.5, 10, 0.1, 'rad/s at full paddle');
+  const aimTurn = tn.num('aimTurnRate', 2.0, 0.5, 10, 0.1, 'rad/s at full paddle');
   const autoAimIdle = tn.num('autoAimIdleS', 1.5, 0.2, 10, 0.1);
 
   const world: World = generateWorld(() => ctx.rng());

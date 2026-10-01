@@ -30,6 +30,10 @@ export class BikeStateStore {
   private rawPower = 0; private rawCadence = 0; private rawSpeed = 0;
   private rawHr: number | null = null; private rawRes: number | null = null;
   private trainerAge = Infinity; private hrAge = Infinity;
+  // HR can arrive from the dedicated HR device or relayed in the trainer's FTMS data. The dedicated
+  // device wins while fresh; 0 bpm (no sensor / not locked yet) is ignored from either source.
+  private devHr: number | null = null; private devHrAge = Infinity;
+  private trnHr: number | null = null; private trnHrAge = Infinity;
   private sprintT = 0;
   private sprintFtp: () => number = () => 1.2;
   private dt0 = 1 / 30;
@@ -59,16 +63,18 @@ export class BikeStateStore {
     if (x.cadence !== undefined) this.rawCadence = x.cadence;
     if (x.speedKph !== undefined) this.rawSpeed = x.speedKph;
     if (x.resistanceLevel !== undefined) this.rawRes = x.resistanceLevel;
-    if (x.hr !== undefined) { this.rawHr = x.hr; this.hrAge = 0; }
+    if (x.hr !== undefined && x.hr > 0) { this.trnHr = x.hr; this.trnHrAge = 0; }
     this.trainerAge = 0;
   }
   ingestHr(x: DeviceSample): void {
-    if (x.hr !== undefined) { this.rawHr = x.hr; this.hrAge = 0; }
+    if (x.hr !== undefined && x.hr > 0) { this.devHr = x.hr; this.devHrAge = 0; }
   }
 
   tick(dt: Seconds, profile: Readonly<Profile>): Readonly<BikeState> {
     const s = this.s;
-    s.t += dt; this.trainerAge += dt; this.hrAge += dt;
+    s.t += dt; this.trainerAge += dt; this.devHrAge += dt; this.trnHrAge += dt;
+    if (this.devHr !== null && this.devHrAge <= STALE_HR_S) { this.rawHr = this.devHr; this.hrAge = this.devHrAge; }
+    else { this.rawHr = this.trnHr; this.hrAge = this.trnHrAge; }
     const stale = this.trainerAge > STALE_TRAINER_S;
     const power = stale ? 0 : this.rawPower;
     const cad = stale ? 0 : this.rawCadence;

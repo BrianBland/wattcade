@@ -54,6 +54,18 @@ function parseFields(buf: Uint8Array, start = 0): Field[] | null {
   return out;
 }
 
+/** Analog press {1: location varint, 2: sint32 zig-zag value}. proto3 omits zeros, so missing = 0. */
+function parsePress(bytes: Uint8Array): { loc: number; value: number } | null {
+  const inner = parseFields(bytes);
+  if (!inner) return null;
+  let loc = 0; let value = 0;
+  for (const g of inner) {
+    if (g.num === 1 && g.wire === 0) loc = g.value!;
+    else if (g.num === 2 && g.wire === 0) value = zigzagDecode(g.value!);
+  }
+  return { loc, value: Math.max(-100, Math.min(100, value)) };
+}
+
 export function parseRideMessage(data: Uint8Array): RideMessage {
   if (!data || data.length === 0) return { kind: 'other', opcode: -1, malformed: true };
   const opcode = data[0];
@@ -62,19 +74,25 @@ export function parseRideMessage(data: Uint8Array): RideMessage {
     if (!fields) return { kind: 'other', opcode, malformed: true };
     let buttonMapRaw: number | null = null;
     const paddles: { 0?: number; 1?: number } = {};
+    const addPress = (bytes: Uint8Array): boolean => {
+      const p = parsePress(bytes);
+      if (!p) return false;
+      if (p.loc === 0 || p.loc === 1) paddles[p.loc] = p.value;
+      return true;
+    };
     for (const f of fields) {
       if (f.num === 1 && f.wire === 0) buttonMapRaw = f.value! % 4294967296;
+      // Layout A (spec): field 3 = repeated analog press {1: location, 2: sint32 value}.
       else if (f.num === 3 && f.wire === 2) {
-        const inner = parseFields(f.bytes!);
-        if (!inner) return { kind: 'other', opcode, malformed: true };
-        let loc: number | undefined; let val = 0;
-        for (const g of inner) {
-          if (g.num === 1 && g.wire === 0) loc = g.value;
-          else if (g.num === 2 && g.wire === 0) val = zigzagDecode(g.value!);
+        if (!addPress(f.bytes!)) return { kind: 'other', opcode, malformed: true };
+      }
+      // Layout B (seen on Ride V1 firmware): field 2 = analog group {repeated 1: analog press}.
+      else if (f.num === 2 && f.wire === 2) {
+        const group = parseFields(f.bytes!);
+        if (!group) return { kind: 'other', opcode, malformed: true };
+        for (const g of group) {
+          if (g.num === 1 && g.wire === 2 && !addPress(g.bytes!)) return { kind: 'other', opcode, malformed: true };
         }
-        // proto3 omits zero values: a nested message with no location means location 0.
-        if (loc === undefined) loc = 0;
-        if (loc === 0 || loc === 1) paddles[loc] = Math.max(-100, Math.min(100, val));
       }
     }
     return { kind: 'status', buttonMapRaw, paddles };

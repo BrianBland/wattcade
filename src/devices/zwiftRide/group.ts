@@ -60,7 +60,13 @@ export class RideControllerGroup implements ControllerDevice {
   onLog(cb: (line: string) => void) { this.logCbs.add(cb); return () => { this.logCbs.delete(cb); }; }
   stats() {
     const st = this.members.map((m) => m.dev.stats());
-    return { packets: st.reduce((a, s) => a + s.packets, 0), lastPacketAt: Math.max(0, ...st.map((s) => s.lastPacketAt)) };
+    const latest = [...st].sort((a, b) => b.lastPacketAt - a.lastPacketAt);
+    return {
+      packets: st.reduce((a, s) => a + s.packets, 0),
+      lastPacketAt: latest[0]?.lastPacketAt ?? 0,
+      /** Last raw 0x23 status message per side, for diagnosing paddle/button layouts in the overlay. */
+      lastStatusHex: st.map((s) => s.lastStatusHex || '--'),
+    };
   }
 
   async disconnect(): Promise<void> {

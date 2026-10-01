@@ -71,3 +71,29 @@ describe('misc', () => {
   });
   it('RideOn', () => { expect(startsWithRideOn(u(0x52, 0x69, 0x64, 0x65, 0x4f, 0x6e, 1, 2))).toBe(true); expect(startsWithRideOn(u(1))).toBe(false); });
 });
+
+describe('parseRideMessage analog group layout (field 2 wrapping repeated field 1)', () => {
+  it('reads both paddles from a field-2 group', () => {
+    // 23 | 08 FF FF 03 | 12 0C ( 0A 04 08 00 10 C7 01? ) -- built below
+    const left = [0x08, 0x00, 0x10, 0xc7, 0x01];      // loc 0, value -100
+    const right = [0x08, 0x01, 0x10, 0x64];           // loc 1, value +50
+    const group = [0x0a, left.length, ...left, 0x0a, right.length, ...right];
+    const msg = new Uint8Array([0x23, 0x08, 0xff, 0xff, 0x03, 0x12, group.length, ...group]);
+    const m = parseRideMessage(msg);
+    expect(m.kind).toBe('status');
+    if (m.kind !== 'status') return;
+    expect(m.buttonMapRaw).toBe(0xffff);
+    expect(m.paddles[0]).toBe(-100);
+    expect(m.paddles[1]).toBe(50);
+  });
+  it('treats an empty press in a group as location 0 value 0, and ignores locations 2/3', () => {
+    const up = [0x08, 0x02, 0x10, 0x14];
+    const group = [0x0a, 0x00, 0x0a, up.length, ...up];
+    const m = parseRideMessage(new Uint8Array([0x23, 0x08, 0xff, 0xff, 0x03, 0x12, group.length, ...group]));
+    expect(m.kind === 'status' && m.paddles).toEqual({ 0: 0 });
+  });
+  it('flags a truncated group as malformed', () => {
+    const m = parseRideMessage(new Uint8Array([0x23, 0x08, 0xff, 0xff, 0x03, 0x12, 0x06, 0x0a, 0x09, 0x08]));
+    expect(m.kind).toBe('other');
+  });
+});

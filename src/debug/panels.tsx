@@ -27,6 +27,9 @@ export function DevicePanel({ s, pps }: { s: DebugSnapshot; pps: Record<string, 
         ['ride fw', s.controllerInfo.firmware ?? '--'], ['ride batt', s.controllerInfo.battery == null ? '--' : `${s.controllerInfo.battery}%`],
       ]} />
       {s.controllerInfo.warning && <div style={{ color: 'var(--warn)' }}>{s.controllerInfo.warning}</div>}
+      {s.stats.controller?.lastStatusHex && ([] as string[]).concat(s.stats.controller.lastStatusHex).map((h, i) => (
+        <div class="dim" style={{ wordBreak: 'break-all', maxWidth: '190px' }}>ride{i + 1} raw: {h}</div>
+      ))}
     </div>
   );
 }

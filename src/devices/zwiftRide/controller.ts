@@ -22,7 +22,7 @@ export class ZwiftRideController implements ControllerDevice {
   private polarity = new PolarityDetector();
   private paddles: [number, number] = [0, 0];
   private buttons: ControllerRawState['buttons'] = new Set();
-  private packets = 0; private lastPacketAt = 0;
+  private packets = 0; private lastPacketAt = 0; private lastStatusHex = '';
   private firmware?: string; private battery?: number; private warning?: string;
   private stopped = false; private reconnecting = false;
   private server?: BluetoothRemoteGATTServer;
@@ -46,7 +46,7 @@ export class ZwiftRideController implements ControllerDevice {
   onState(cb: (s: ControllerRawState) => void) { this.stateCbs.add(cb); return () => { this.stateCbs.delete(cb); }; }
   onStatus(cb: StatusCb) { this.statusCbs.add(cb); return () => { this.statusCbs.delete(cb); }; }
   onLog(cb: (line: string) => void) { this.logCbs.add(cb); return () => { this.logCbs.delete(cb); }; }
-  stats() { return { packets: this.packets, lastPacketAt: this.lastPacketAt }; }
+  stats() { return { packets: this.packets, lastPacketAt: this.lastPacketAt, lastStatusHex: this.lastStatusHex }; }
   get polarityFlipped() { return this.polarity.flipped; }
 
   async disconnect(): Promise<void> {
@@ -149,6 +149,7 @@ export class ZwiftRideController implements ControllerDevice {
     this.packets++; this.lastPacketAt = Date.now();
     if (from === 'syncTx' || startsWithRideOn(bytes)) { this.log(`${from}: ${hex(bytes)}`); return; }
     const m = parseRideMessage(bytes);
+    if (bytes[0] === 0x23) this.lastStatusHex = hex(bytes);
     if (m.kind === 'battery') { this.battery = m.pct; this.emitStatus({ connected: true }); return; }
     if (m.kind === 'other') { this.log(`other opcode 0x${m.opcode.toString(16)}${m.malformed ? ' (malformed)' : ''}: ${hex(bytes)}`); return; }
     if (m.buttonMapRaw !== null) {

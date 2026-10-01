@@ -7,7 +7,7 @@ export interface TuningEntry {
 export interface MixerView {
   activeEffects: Array<Record<string, unknown>>; chosenMode: string; lastCommand: TrainerCommand | null; lastResult: string;
 }
-export interface DeviceStatsView { packets: number; lastPacketAt: number }
+export interface DeviceStatsView { packets: number; lastPacketAt: number; lastStatusHex?: string | string[] }
 export interface DebugSnapshot {
   bike: Readonly<BikeState> | null;
   input: Readonly<InputState> | null;

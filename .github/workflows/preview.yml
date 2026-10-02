@@ -46,7 +46,18 @@ jobs:
             --message "PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }}" | tee upload.log
           cat "$WRANGLER_OUTPUT_FILE_PATH"
           URL=$(jq -r 'select(.type=="version-upload") | .preview_alias_url // .preview_url // empty' "$WRANGLER_OUTPUT_FILE_PATH" | head -1)
-          [ -n "$URL" ] || echo "::warning title=No preview URL::Enable preview URLs for the wattcade Worker (Settings → Domains & Routes) and re-run."
+          if [ -z "$URL" ]; then
+            # Wrangler doesn't always print it; build it from the account's workers.dev subdomain.
+            SUB=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain // empty')
+            [ -n "$SUB" ] && URL="https://pr-${{ github.event.pull_request.number }}-wattcade.$SUB.workers.dev"
+          fi
+          [ -n "$URL" ] || echo "::warning title=No preview URL::Could not determine the workers.dev subdomain."
+          if [ -n "$URL" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            echo "Preview $URL returned HTTP $code"
+            [ "$code" = 200 ] || echo "::warning title=Preview not reachable yet::$URL returned $code. Preview URLs may need enabling with a full deploy."
+          fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
       - name: Comment the preview URL
         if: steps.upload.outputs.url != ''

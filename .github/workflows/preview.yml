@@ -41,9 +41,12 @@ jobs:
           set -euo pipefail
           npm ci
           npm run build
+          export WRANGLER_OUTPUT_FILE_PATH="$RUNNER_TEMP/wrangler-output.ndjson"
           npx wrangler versions upload --preview-alias "pr-${{ github.event.pull_request.number }}" \
             --message "PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }}" | tee upload.log
-          URL=$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev' upload.log | grep -- "pr-${{ github.event.pull_request.number }}-" | head -1 || true)
+          cat "$WRANGLER_OUTPUT_FILE_PATH"
+          URL=$(jq -r 'select(.type=="version-upload") | .preview_alias_url // .preview_url // empty' "$WRANGLER_OUTPUT_FILE_PATH" | head -1)
+          [ -n "$URL" ] || echo "::warning title=No preview URL::Enable preview URLs for the wattcade Worker (Settings → Domains & Routes) and re-run."
           echo "url=$URL" >> "$GITHUB_OUTPUT"
       - name: Comment the preview URL
         if: steps.upload.outputs.url != ''

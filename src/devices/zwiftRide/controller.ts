@@ -7,14 +7,24 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
-// Bluefy shows no picker at all for a namePrefix filter or a 128-bit optional service, so use the plainest
-// request that works there (all devices + the one numeric Ride service). 0x180a/0x180f are left out: the trainer
-// started showing its picker once its extra optional services (incl. 0x180a) were removed; firmware/battery reads are best-effort. The user picks the "Zwift ..." entry.
-export const RIDE_REQUEST_OPTIONS = {
-  acceptAllDevices: true as const,
-  optionalServices: [0xfc82],
-};
-export const requestRideDevice = (): Promise<BluetoothDevice> => navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS);
+// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`), and it worked for the trainer/HR
+// with a plain service filter, so try that first. Fall back through other shapes; rejects are immediate so the gesture survives.
+export const RIDE_REQUEST_OPTIONS = { filters: [{ services: [0xfc82] }] };
+const RIDE_FALLBACK_OPTIONS: RequestDeviceOptions[] = [
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] },
+  { acceptAllDevices: true, optionalServices: [0xfc82] },
+];
+export async function requestRideDevice(): Promise<BluetoothDevice> {
+  const errs: string[] = [];
+  for (const opts of [RIDE_REQUEST_OPTIONS as RequestDeviceOptions, ...RIDE_FALLBACK_OPTIONS]) {
+    try { return await navigator.bluetooth.requestDevice(opts); }
+    catch (e) {
+      if ((e as { name?: string })?.name === 'NotFoundError') throw e; // user cancelled the picker
+      errs.push(`${JSON.stringify(opts)} -> ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+    }
+  }
+  throw new Error('Could not open the Bluetooth picker. ' + errs.join(' | '));
+}
 const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];
 const FW_WARNING = 'Ride V2 firmware (>=1.3.0) is locked to Zwift and may not work. Do not update the controller firmware through Zwift.';
 const BACKOFF_S = [1, 2, 4, 8, 15];

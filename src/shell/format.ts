@@ -28,3 +28,29 @@ export function levelProgress(xp: number, xpAtLevel: number, xpAtNext: number): 
   const span = xpAtNext - xpAtLevel;
   return span <= 0 ? 0 : Math.min(1, Math.max(0, (xp - xpAtLevel) / span));
 }
+/** "distanceKm" -> "Distance km", "roomsCleared" -> "Rooms cleared". */
+export function prettyKey(k: string): string {
+  const s = k.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+/** Average a series into at most `n` buckets (nulls ignored; a bucket of only nulls stays null). */
+export function downsample(xs: ReadonlyArray<number | null>, n: number): Array<number | null> {
+  if (xs.length <= n) return xs.slice();
+  const out: Array<number | null> = [];
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor((i * xs.length) / n), b = Math.floor(((i + 1) * xs.length) / n);
+    let s = 0, c = 0;
+    for (let j = a; j < b; j++) { const v = xs[j]; if (v != null) { s += v; c++; } }
+    out.push(c ? s / c : null);
+  }
+  return out;
+}
+/** "3 days ago" style, from epoch ms. */
+export function timeAgo(then: number | undefined, now = Date.now()): string {
+  if (!then) return 'Not played yet';
+  const m = Math.max(0, (now - then) / 60000);
+  if (m < 2) return 'Just now';
+  if (m < 60) return `${Math.round(m)} min ago`;
+  const h = m / 60; if (h < 24) return `${Math.round(h)} h ago`;
+  const d = h / 24; return d < 2 ? 'Yesterday' : `${Math.round(d)} days ago`;
+}

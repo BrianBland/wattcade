@@ -15,9 +15,10 @@ import { WarmupStage } from './warmup/WarmupStage';
 import { Toasts, toast } from './components/Toasts';
 import { setMenuGate } from './menuInput';
 import { formatDuration } from './format';
+import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  rememberProfile, saveProfile, stopLobby, takePendingRide, WARMUP_CREDIT_S,
+  lastProfileId, rememberProfile, saveProfile, stopLobby, takePendingRide, WARMUP_CREDIT_S,
 } from './services';
 import type { Screen, SessionLike } from './types';
 
@@ -41,6 +42,7 @@ export function App() {
   const asleepRef = useRef(false);
   const setAsleep = (v: boolean) => { asleepRef.current = v; setAsleepState(v); };
   const lastActive = useRef(performance.now());
+  const [lastId, setLastId] = useState<string | null>(null);
   const refresh = () => listProfiles().then(setProfiles);
 
   const applyCredit = (r: { profile: Profile }) => { if (profileRef.current?.id === r.profile.id) setProfile(r.profile); void refresh(); };
@@ -51,7 +53,7 @@ export function App() {
   };
 
   useEffect(() => {
-    void refresh();
+    void refresh(); void lastProfileId().then(setLastId);
     const pending = takePendingRide();
     if (pending) void credit(pending, 'Saved your last ride');
     return bindDebugInput();
@@ -61,15 +63,16 @@ export function App() {
   useEffect(() => {
     const touch = () => { lastActive.current = performance.now(); };
     const onAct = (e: Event) => {
+      unlockAudio(); // iOS: audio can only start from a gesture
       if ((e.target as Element | null)?.closest?.('.hud')) return; // riding controls don't count
       touch();
-      if (asleepRef.current) { setAsleep(false); e.stopPropagation(); e.preventDefault(); }
+      if (asleepRef.current) { setAsleep(false); sfx('uiWake'); e.stopPropagation(); e.preventDefault(); }
     };
     window.addEventListener('pointerdown', onAct, true); window.addEventListener('keydown', onAct, true);
     setMenuGate((p) => {
       if (![...p].some((b) => NAV.has(b))) return true;
       touch();
-      if (asleepRef.current) { setAsleep(false); return false; }
+      if (asleepRef.current) { setAsleep(false); sfx('uiWake'); return false; }
       return true;
     });
     return () => { window.removeEventListener('pointerdown', onAct, true); window.removeEventListener('keydown', onAct, true); setMenuGate(null); };
@@ -109,7 +112,7 @@ export function App() {
   let body;
   switch (screen.name) {
     case 'profiles':
-      body = <ProfilePicker profiles={profiles} onPick={(p) => { setProfile(p); void rememberProfile(p.id); go({ name: 'connect' }); }} onNew={() => edit(null)} onEdit={edit} />; break;
+      body = <ProfilePicker profiles={profiles} lastId={lastId} onPick={(p) => { setProfile(p); setLastId(p.id); void rememberProfile(p.id); go({ name: 'connect' }); }} onNew={() => edit(null)} onEdit={edit} />; break;
     case 'editor':
       body = draft && <ProfileEditor profile={draft} onCancel={async () => { if (!screen.profileId) await deleteProfile(draft.id); await refresh(); go({ name: 'profiles' }); }}
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
@@ -120,7 +123,7 @@ export function App() {
     case 'game':
       body = profile && <GameHost game={screen.game} profile={profile} onQuit={quitGame}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
-    case 'summary': body = <Summary record={screen.record} award={screen.award} onDone={() => go({ name: 'menu' })} />; break;
+    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} onDone={() => go({ name: 'menu' })} />; break;
   }
   const inGame = screen.name === 'game';
   const rider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;

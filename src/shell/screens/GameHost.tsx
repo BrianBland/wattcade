@@ -74,7 +74,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       <div class="hud-probe" ref={probe} />
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={onQuit}>Back</button></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused} legendOn={legendOn} fake={isFake()} />}
-      {paused && <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }} difficulty={getDifficulty()} onResume={() => setPause(false)} onQuit={onQuit} />}
+      {paused && <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }} onResume={() => setPause(false)} onQuit={onQuit} />}
     </div>
   );
 }

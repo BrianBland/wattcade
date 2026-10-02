@@ -131,7 +131,7 @@ function build() {
   root.append(
     el('h2', { textContent: 'wattcade BLE probe' }),
     btn('Pick any device', () => pick('any', { acceptAllDevices: true, optionalServices: KNOWN_SERVICES })),
-    btn('Pick Zwift Ride', () => pick('ride', RIDE_REQUEST_OPTIONS as RequestDeviceOptions, true)),
+    btn('Pick Zwift Ride', () => pick('ride', RIDE_REQUEST_OPTIONS, true)),
     btn('Ride A: name only', () => pick('ride-A name only', { filters: [{ namePrefix: 'Zwift' }] }, true)),
     btn('Ride B: name + fc82', () => pick('ride-B name+fc82', { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] }, true)),
     btn('Ride C: any + fc82', () => pick('ride-C any+fc82', { acceptAllDevices: true, optionalServices: [0xfc82] }, true)),

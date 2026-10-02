@@ -7,16 +7,16 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
-// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`), and the Ride apparently doesn't
-// advertise 0xfc82 (a service filter shows an empty picker). Match by name first; rejects are immediate so the gesture survives.
-export const RIDE_REQUEST_OPTIONS = { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] };
+// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`): probe-verified that a plain
+// name filter works while adding optionalServices [0xfc82] does not. Rejects are immediate so the gesture survives.
+export const RIDE_REQUEST_OPTIONS: RequestDeviceOptions = { filters: [{ namePrefix: 'Zwift' }] };
 const RIDE_FALLBACK_OPTIONS: RequestDeviceOptions[] = [
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] },
   { acceptAllDevices: true, optionalServices: [0xfc82] },
-  { filters: [{ services: [0xfc82] }] },
 ];
 export async function requestRideDevice(): Promise<BluetoothDevice> {
   const errs: string[] = [];
-  for (const opts of [RIDE_REQUEST_OPTIONS as RequestDeviceOptions, ...RIDE_FALLBACK_OPTIONS]) {
+  for (const opts of [RIDE_REQUEST_OPTIONS, ...RIDE_FALLBACK_OPTIONS]) {
     try { return await navigator.bluetooth.requestDevice(opts); }
     catch (e) {
       if ((e as { name?: string })?.name === 'NotFoundError') throw e; // user cancelled the picker

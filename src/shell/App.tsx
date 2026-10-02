@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'preact/hooks';
-import type { Profile } from '../contracts';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import type { Button, Profile, SessionRecord } from '../contracts';
 import { games } from '../games/registry';
 import { DebugOverlay } from '../debug/DebugOverlay';
+import { loadFlag } from '../debug/flag';
 import { Achievements } from './screens/Achievements';
 import { ArcadeMenu } from './screens/ArcadeMenu';
 import { Connect } from './screens/Connect';
@@ -9,24 +10,99 @@ import { GameHost } from './screens/GameHost';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
-import { bindDebugInput, createProfile, deleteProfile, finishSession, listProfiles, rememberProfile, saveProfile } from './services';
-import type { Screen } from './types';
+import { HudLayer } from './hud/HudLayer';
+import { WarmupStage } from './warmup/WarmupStage';
+import { Toasts, toast } from './components/Toasts';
+import { setMenuGate } from './menuInput';
+import { formatDuration } from './format';
+import {
+  bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
+  rememberProfile, saveProfile, stopLobby, takePendingRide, WARMUP_CREDIT_S,
+} from './services';
+import type { Screen, SessionLike } from './types';
+
+/** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
+export const SLEEP_S = 25;
+const SLEEPY: ReadonlyArray<Screen['name']> = ['profiles', 'menu', 'achievements', 'summary'];
+const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary'];
+/** Buttons that count as using the menu (shifters are for riding, so they never wake it). */
+const NAV = new Set<Button>(['up', 'down', 'left', 'right', 'a', 'b', 'y', 'z']);
 
 export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'profiles' });
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfileState] = useState<Profile | null>(null);
+  const profileRef = useRef<Profile | null>(null);
+  const setProfile = (p: Profile | null) => { profileRef.current = p; setProfileState(p); };
   const [draft, setDraft] = useState<Profile | null>(null);
+  const [lobby, setLobby] = useState<SessionLike | null>(null);
+  const [restartKey, setRestartKey] = useState(0);
+  const [asleep, setAsleepState] = useState(false);
+  const asleepRef = useRef(false);
+  const setAsleep = (v: boolean) => { asleepRef.current = v; setAsleepState(v); };
+  const lastActive = useRef(performance.now());
   const refresh = () => listProfiles().then(setProfiles);
-  useEffect(() => { void refresh(); return bindDebugInput(); }, []);
+
+  const applyCredit = (r: { profile: Profile }) => { if (profileRef.current?.id === r.profile.id) setProfile(r.profile); void refresh(); };
+  const credit = async (rec: SessionRecord, label = 'Warm-up saved') => {
+    const r = await creditRide(rec, profileRef.current);
+    if (r) { applyCredit(r); toast(`${label}: ${formatDuration(rec.durationS)} · +${r.award.xpGained} XP`, 'good'); }
+    return r;
+  };
+
+  useEffect(() => {
+    void refresh();
+    const pending = takePendingRide();
+    if (pending) void credit(pending, 'Saved your last ride');
+    return bindDebugInput();
+  }, []);
+
+  // screensaver: fade the menus out when idle; the first tap / nav press only wakes them
+  useEffect(() => {
+    const touch = () => { lastActive.current = performance.now(); };
+    const onAct = (e: Event) => {
+      if ((e.target as Element | null)?.closest?.('.hud')) return; // riding controls don't count
+      touch();
+      if (asleepRef.current) { setAsleep(false); e.stopPropagation(); e.preventDefault(); }
+    };
+    window.addEventListener('pointerdown', onAct, true); window.addEventListener('keydown', onAct, true);
+    setMenuGate((p) => {
+      if (![...p].some((b) => NAV.has(b))) return true;
+      touch();
+      if (asleepRef.current) { setAsleep(false); return false; }
+      return true;
+    });
+    return () => { window.removeEventListener('pointerdown', onAct, true); window.removeEventListener('keydown', onAct, true); setMenuGate(null); };
+  }, []);
+  useEffect(() => {
+    lastActive.current = performance.now();
+    if (!SLEEPY.includes(screen.name)) { setAsleep(false); return; }
+    const id = setInterval(() => { if (!asleepRef.current && performance.now() - lastActive.current > SLEEP_S * 1000) setAsleep(true); }, 1000);
+    return () => clearInterval(id);
+  }, [screen.name]);
 
   const go = (s: Screen) => setScreen(s);
   const edit = async (p: Profile | null) => {
     setDraft(p ?? await createProfile('')); go({ name: 'editor', profileId: p?.id ?? null });
   };
+  const play = async (g: (typeof games)[number]) => {
+    const rec = stopLobby(); // credit the warm-up before the game session starts
+    if (rec) await credit(rec);
+    go({ name: 'game', game: g });
+  };
+  const endRide = async () => {
+    if (!lobbyIsReal()) { toast('Demo ride: connect a trainer to save rides'); return; }
+    const left = WARMUP_CREDIT_S - lobbyActiveSeconds();
+    if (left > 0) { toast(`Pedal ${formatDuration(left)} more to save this ride`); return; }
+    const rec = stopLobby(); if (!rec) return;
+    const r = await creditRide(rec, profileRef.current);
+    setRestartKey((k) => k + 1);
+    if (r) { applyCredit(r); go({ name: 'summary', record: r.record, award: r.award }); }
+  };
   const quitGame = async () => {
-    if (!profile) return go({ name: 'menu' });
-    const r = await finishSession(profile);
+    const p = profileRef.current;
+    if (!p) return go({ name: 'menu' });
+    const r = await finishSession(p);
     setProfile(r.profile); void refresh(); go({ name: 'summary', record: r.record, award: r.award });
   };
 
@@ -39,12 +115,29 @@ export function App() {
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
         onDelete={screen.profileId ? async (p) => { await deleteProfile(p.id); await refresh(); go({ name: 'profiles' }); } : undefined} />; break;
     case 'connect': body = <Connect onDone={() => go({ name: 'menu' })} />; break;
-    case 'menu': body = profile && <ArcadeMenu games={games} profile={profile} onPlay={(g) => go({ name: 'game', game: g })} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
+    case 'menu': body = profile && <ArcadeMenu games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
       body = profile && <GameHost game={screen.game} profile={profile} onQuit={quitGame}
-        onSave={(d) => { const p = { ...profile, gameData: { ...profile.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
+        onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
     case 'summary': body = <Summary record={screen.record} award={screen.award} onDone={() => go({ name: 'menu' })} />; break;
   }
-  return <>{body}<DebugOverlay /></>;
+  const inGame = screen.name === 'game';
+  const rider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;
+  const hud = !inGame && !!rider && !!lobby && HUD_SCREENS.includes(screen.name);
+  return (
+    <>
+      {!inGame && <WarmupStage profile={rider} hud={hud} restartKey={restartKey} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
+      <div class={`screens${asleep ? ' asleep' : ''}${hud ? ' with-hud' : ''}`}>{body}</div>
+      {hud && lobby && rider && (
+        <div class="hud-host">
+          <HudLayer session={lobby} profile={rider} paused={false} legendOn={loadFlag('wattcade.legend', true) && !asleep} fake={!!(lobby as { fakeBike?: unknown }).fakeBike}
+            menu={() => (lobbyIsReal() ? { label: 'End ride', onClick: () => void endRide(), dim: lobbyActiveSeconds() < WARMUP_CREDIT_S } : { label: 'Demo ride', onClick: () => void endRide(), dim: true })} />
+        </div>
+      )}
+      {asleep && <div class="sleep-hint">Tap or press A for the menu</div>}
+      <Toasts />
+      <DebugOverlay />
+    </>
+  );
 }

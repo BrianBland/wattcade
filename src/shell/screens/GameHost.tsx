@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { getDifficulty, debugActions, getFake, activeSession, input, onSystem, startSession } from '../services';
-import { fakeKeyAdjust } from '../fakeKeys';
+import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
 import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
@@ -29,13 +29,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
     const detachTouch = mount.current ? input.attachTouch(mount.current) : () => {};
-    const onFakeKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName)) return;
-      const a = fakeKeyAdjust(e.code);
-      if (a && !e.ctrlKey && !e.metaKey && !e.altKey) debugActions.fakeAdjust(a.k, a.delta);
-    };
-    window.addEventListener('keydown', onFakeKey);
+    const detachFakeKeys = attachFakeKeys();
     unlockAudio(); // GameHost mounts from a menu press, which counts as a user gesture
     const unlock = () => unlockAudio();
     window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock);
@@ -69,7 +63,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     })();
     return () => {
-      disposed = true; window.removeEventListener('keydown', onFakeKey); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
+      disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
     };
   }, [game]);

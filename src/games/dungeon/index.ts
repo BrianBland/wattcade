@@ -1,13 +1,13 @@
 import type { GameModule } from '../../contracts';
-import { createDungeonSim } from './sim/sim';
+import { createDungeonSim, type DungeonOpts } from './sim/sim';
 
 export const module: GameModule = {
   id: 'dungeon',
   title: 'Crank Crawler',
-  blurb: 'Pedal to move and shoot. Stay in zone 2 to heal; sprint to crack the boss shield.',
+  blurb: 'Endless dungeon dive: pedal to shoot, loot ever-better weapons and gear, level up. Zone 2 heals; sprint to crack boss shields.',
   tags: ['zone2', 'sprint'],
   createSim(ctx, opts) {
-    return createDungeonSim(ctx, opts as { seed?: number; autopilot?: boolean } | undefined);
+    return createDungeonSim(ctx, opts as DungeonOpts | undefined);
   },
   async loadRenderer() {
     const m = await import('./render/renderer');

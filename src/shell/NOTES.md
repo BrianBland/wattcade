@@ -17,6 +17,11 @@ CONTRACT-REQUEST: none.
 - Trainer test: debug mixer panel; `applyTest(cmd)` -> during a session sets mixer effect `trainer-test` (priority 99, ttl 10 s; so difficulty scaling and clamps still apply); with no session it calls the real trainer's `apply` directly. "clear" button removes it.
 - Fake sliders: +/- buttons edit `fakeBike.manual` (switching from script to manual) ; script picker includes `manual`.
 
+- HUD chip shows ride time (`bike.activeSeconds`, pedalling time). Pause menu has a Sound on/off toggle (`wattcade.sound` flag).
+- `src/audio/sfx.ts`: shared WebAudio synth (`play(name, { minGapS })`, `unlockAudio()` called by GameHost on mount/gesture). Renderers import it; nothing runs in Node.
+
+- GameHost passes `send` to `renderer.mount`, forwarding to optional `GameSim.receive(action)` (canvas UI taps).
+
 ## Gaps
 - ProfileEditor fields are touch/keyboard only (no D-pad field navigation); Save/Cancel via mouse/touch.
 - PauseMenu difficulty starts at 1.00 display (not read back from mixer). GameHost `onSave` closure captures the profile at mount.

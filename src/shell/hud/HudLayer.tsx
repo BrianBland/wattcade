@@ -3,6 +3,7 @@ import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { getDifficulty, input } from '../services';
 import { CompactLegend } from './CompactLegend';
+import { formatDuration } from '../format';
 import { Legend } from './Legend';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
@@ -41,7 +42,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: 
   return (
     <div class="hud">
       {legendOn && <CompactLegend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} />}
-      <div class="hud-chips"><div class="chip" key={pulse}>{f.hud.gears && <span>Gear {f.bike.gear}</span>}<span>Diff {f.diff.toFixed(2)}</span></div></div>
+      <div class="hud-chips"><div class="chip" key={pulse}><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span>{f.hud.gears && <span>Gear {f.bike.gear}</span>}<span>Diff {f.diff.toFixed(2)}</span></div></div>
       <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
       {legendOn && expanded && <div class="hud-expanded"><Legend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} expanded /></div>}
     </div>

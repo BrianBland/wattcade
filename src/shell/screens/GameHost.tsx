@@ -6,6 +6,7 @@ import { fakeKeyAdjust } from '../fakeKeys';
 import { HudLayer } from '../hud/HudLayer';
 import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
+import { unlockAudio } from '../../audio/sfx';
 
 const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; profile: Profile; onQuit: () => void; onSave: (d: unknown) => void }) {
@@ -34,6 +35,9 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       if (a && !e.ctrlKey && !e.metaKey && !e.altKey) debugActions.fakeAdjust(a.k, a.delta);
     };
     window.addEventListener('keydown', onFakeKey);
+    unlockAudio(); // GameHost mounts from a menu press, which counts as a user gesture
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock); window.addEventListener('keydown', unlock);
     const offSys = onSystem((a) => { if (a === 'pause') setPause(!pausedRef.current); else if (a === 'panic') debugActions.panic(true); });
     (navigator as any).wakeLock?.request?.('screen').then((l: any) => { lock = l; }).catch(() => {});
     (async () => {
@@ -42,7 +46,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
         sessionRef.current = session; setSession(session);
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
-        renderer.mount(mount.current!, { profile });
+        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a) });
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) renderer?.resize?.(el.clientWidth, el.clientHeight); });
         ro.observe(el);
@@ -61,7 +65,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
       } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     })();
     return () => {
-      disposed = true; window.removeEventListener('keydown', onFakeKey); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
+      disposed = true; window.removeEventListener('keydown', onFakeKey); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
     };
   }, [game]);

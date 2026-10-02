@@ -16,7 +16,7 @@ export interface SessionLike {
   pause(): void; resume(): void;
   finish(): SessionRecord;
   ctx: { bike(): Readonly<BikeState> };
-  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud };
+  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; receive?(action: unknown): void };
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }

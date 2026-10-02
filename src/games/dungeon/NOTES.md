@@ -3,31 +3,26 @@
 CONTRACT-REQUESTs: none.
 
 ## Layout
-- `index.ts` exports `module` (GameModule); `loadRenderer` dynamically imports `render/renderer.ts` (`createRenderer()`).
-- `sim/world.ts` seeded 13-room dungeon, 19x13-tile rooms (self-avoiding walk on a 4x4 grid, chain of rooms, boss last), tiles floor/wall/swamp/door.
-- `sim/sim.ts` `createDungeonSim(ctx, { autopilot? })`; `sim/types.ts` snapshot type (`DungeonSnapshot`, includes `hooks`).
-- `scenarios.ts` sprints-boss (20 min), idle (5 min), z2-progress (20 min); all use `simOpts: { autopilot: true }`.
-- `test/dungeon.test.ts` runs scenarios via core `runHeadless` and checks swamp grade via `createGameSession` + mixer.
+- `sim/world.ts` per-floor maze (random spanning tree on 5x4 grid + loops), Z corridors with door tiles, boss room (deepest) holds STAIRS, dead ends get chests, 1-2 shrine rooms. Room layouts: open / quads / scatter (PIT tiles) / braziers (PILLAR tiles). Pits & braziers block walking, not projectiles; the centre cross + border ring stay clear so rooms stay connected.
+- `sim/loot.ts` 7 weapon archetypes x 5 elements x rarities 0-4, plus rarity 5 uniques (homing, orbit, split, nova, ricochet). Gear slots helm/armor/boots/ring. `score` decides auto-equip vs auto-sell.
+- `sim/meta.ts` roguelite upgrades (cost = base x growth^level), `metaMods`, `autoInvest` (cheapest first).
+- `sim/sim.ts` phases: `camp` (spend bank, choose start floor; D-pad + Z (left face button) or tap a row via `GameSim.receive({type:'campRow',row})`; auto-starts after 45 s pedalling, B starts now) then endless `run`. `autopilot`/`skipCamp` skip camp.
+- `render/renderer.ts` + `render/sprites.ts`; sound via `src/audio/sfx.ts` driven by `snapshot.cues` (id-ordered; renderer plays unseen ids, rate-limited).
 
-## Behaviour notes
-- Rooms 1-11 have enemies, room 0 is the safe start, room 12 the boss. Doors of a room lock when the player is 0.75 tile inside and enemies live.
-- Death: respawn in previous room at full HP with 2 s invulnerability; the room's enemies keep their HP.
-- Boss shield: first at t=45 s after bossStart, then every 45 s for 20 s; unshielded boss takes normal damage.
-- Resistance effects (sim mode, virtual gears on): terrain, swamp, wounded, boss-surge; only set/cleared on change.
-- Buttons aim mode: Y/B/Z/A fire up/down/left/right like the Ride diamond (combos = diagonals).
-- Dash = shiftUpR, potion = shiftDnR in every aim mode; virtual gears use the left shifters only (`useVirtualGears(true, 'L')`).
-- Aim: paddles active -> manual (rotate/axes); auto-aim when paddleIdleS > autoAimIdleS (1.5) or aimMode auto.
-- Persists `{ bestTimeS, wins }` via ctx.save on boss kill.
-- Balance (stub, autopilot, FTP 200): enemyDamageScale default 0.5.
+## Rules
+- Controls: buttons aim mode fires Y up / Z left / A right / B down (Ride diamond); dash = shiftUpR, potion = shiftDnR in every aim mode; virtual gears on the left shifters only (`useVirtualGears(true, 'L')`).
+- Save `{ bank, upgrades, bestFloor, runs, autoInvest }`. Every coin earned in a run is banked (persisted on room clear, death, descent, dispose). Death drops 20% of run coins.
+- Start floor defaults to the deepest unlocked (Delver: +2/level, capped at bestFloor-1); deeper starts give a scaled starter weapon and hero level 1+2*(floor-1).
+- Elites (5% + 1.5%/floor, max 25%): Undying (regen), Splitting, Warded (shield bubble), Swift, Volatile (death blast telegraph). x2.6 HP, guaranteed item.
+- Shrines activate when their room is cleared (optional): Fury Z3+ 20s/50s -> weapon +2; Patience hold Z2 over 90s -> 1-4 items; Gold 2 sprints/60s -> coin rain + heal. HUD targetZone follows the active shrine.
+- Hit-stop (sim freezes 0.08-0.35 s) on elite/boss kills, level-ups, uniques, shrine rewards.
+- Melee enemies follow a room-local BFS flow field; `move()` nudges toward tile centres so corners don't snag; autopilot paths in combat when closing distance; friendly hits use swept segments.
 
-- Auto-move (tunable `autoMove`, default on): the autopilot movement logic (path through doors, kite/strafe, bullet dodge) steers unless a D-pad direction is held. Player still aims (paddles/auto-aim), dashes (R shift up), potions (R shift down).
-- `hud()`: controls legend, gears:true, targetZone Z2 'Heal' (Z4-5 'Sprint! Shield up' while boss shield is up). Renderer HUD is top-only (HP, potions, dash, boss bar, minimap top-right); camera ~16 tiles across.
-- Enemy HP: chaser 45 (red), spitter 70, brute 160 (dark red); boss 3500.
-- Balance now (autopilot): z2 clears boss in ~9.5 sim-min, 0 deaths; sprints ~8 min.
+## Balance (autopilot, FTP 200, z2)
+- Fresh hero: ~9-11 floors/hour, rare deaths (enemyDamageScale 1.3). With auto-invest over 6 hourly runs: floor 11 -> 13 -> 15 -> 19 -> 24 -> 26. ~2-4 uniques/hour.
 
 ## Testing
-`npx vitest run src/games/dungeon` (scenarios via runHeadless)..
+`npx vitest run src/games/dungeon` (world connectivity, meta, camp purchase via TimelineInput, scenarios incl. 60-min z2-hour).
 
 ## Known gaps
-- Renderer untested in a browser (typecheck only); no sound; no minimap.
-- Autopilot is crude (kite/strafe + bullet avoidance), only for tests.
+- Renderer verified via throwaway Playwright screenshots only. Pit visuals not screenshot-checked. Manual (non-auto-move) play not balance-tested.

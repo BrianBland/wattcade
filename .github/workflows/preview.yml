@@ -1,10 +1,10 @@
 name: Preview
 
-# Each PR gets its own preview URL (a non-production Worker version with alias pr-<n>).
-# Same-repo PRs only: fork PRs don't receive secrets.
+# Each PR gets a Worker Preview named pr-<n> (wrangler preview), commented on the PR and deleted
+# when the PR closes. Same-repo PRs only: fork PRs don't receive secrets.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, closed]
 
 concurrency:
   group: preview-${{ github.event.pull_request.number }}
@@ -17,10 +17,11 @@ permissions:
 env:
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
 
 jobs:
   preview:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -34,30 +35,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Build and upload preview version
+      - name: Build and create the Preview
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         id: upload
         run: |
           set -euo pipefail
           npm ci
           npm run build
-          export WRANGLER_OUTPUT_FILE_PATH="$RUNNER_TEMP/wrangler-output.ndjson"
-          npx wrangler versions upload --preview-alias "pr-${{ github.event.pull_request.number }}" \
-            --message "PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.head.sha }}" | tee upload.log
-          cat "$WRANGLER_OUTPUT_FILE_PATH"
-          URL=$(jq -r 'select(.type=="version-upload") | .preview_alias_url // .preview_url // empty' "$WRANGLER_OUTPUT_FILE_PATH" | head -1)
-          if [ -z "$URL" ]; then
-            # Wrangler doesn't always print it; build it from the account's workers.dev subdomain.
-            SUB=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | jq -r '.result.subdomain // empty')
-            [ -n "$SUB" ] && URL="https://pr-${{ github.event.pull_request.number }}-wattcade.$SUB.workers.dev"
-          fi
-          [ -n "$URL" ] || echo "::warning title=No preview URL::Could not determine the workers.dev subdomain."
-          if [ -n "$URL" ]; then
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
-            echo "Preview $URL returned HTTP $code"
-            [ "$code" = 200 ] || echo "::warning title=Preview not reachable yet::$URL returned $code. Preview URLs may need enabling with a full deploy."
-          fi
+          npx wrangler preview --name "$PREVIEW_NAME" \
+            --message "PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}" \
+            | tee preview.log
+          URL=$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev[^" ]*' preview.log | head -1 || true)
+          [ -n "$URL" ] || URL=$(grep -Eo 'https://[^" ]+' preview.log | head -1 || true)
           echo "url=$URL" >> "$GITHUB_OUTPUT"
       - name: Comment the preview URL
         if: steps.upload.outputs.url != ''
@@ -67,10 +56,29 @@ jobs:
             const url = '${{ steps.upload.outputs.url }}';
             const marker = '<!-- wattcade-preview -->';
             const sha = context.payload.pull_request.head.sha.slice(0, 7);
-            const body = `${marker}\n**Preview:** ${url}\n\nBuilt from \`${sha}\`. Web Bluetooth needs HTTPS, so this works in Bluefy.`;
+            const body = `${marker}\n**Preview:** ${url}\n\nWorker Preview \`${process.env.PREVIEW_NAME}\` at \`${sha}\`. Web Bluetooth needs HTTPS, so this works in Bluefy. Deleted when this PR closes.`;
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
             const mine = comments.find((c) => c.body?.includes(marker));
             if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        with:
+          node-version: 22
+          cache: npm
+      - name: Delete the Preview
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          npm ci
+          npx wrangler preview delete --worker-name wattcade --name "$PREVIEW_NAME" \
+            || echo "::notice title=Preview cleanup::No Preview named $PREVIEW_NAME to delete."

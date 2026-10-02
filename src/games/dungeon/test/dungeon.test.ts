@@ -120,7 +120,7 @@ describe('meta progression', () => {
     let saved: any = null;
     const input = new TimelineInput([
       { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Might
-      { t: 0.5, press: 'y' }, { t: 0.6, release: 'y' },       // buy (400) with Y (left face button)
+      { t: 0.5, press: 'z' }, { t: 0.6, release: 'z' },       // buy (400) with Z (left face button)
       { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // begin
     ]);
     const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });

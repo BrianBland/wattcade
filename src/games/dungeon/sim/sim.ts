@@ -616,7 +616,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (row.kind === 'floor' && (p('left') || p('right'))) {
       startFloor = clamp(startFloor + (p('left') ? -1 : 1), 1, mods.maxStartFloor); cue('select'); campT = 0;
     }
-    if (p('y') || p('a') || tapped) { // Y = left face button on the Ride; taps select + activate
+    if (p('z') || tapped) { // Z = left face button on the Ride diamond; taps select + activate
       campT = 0;
       if (row.kind === 'start') { startRun(); return; }
       if (row.kind === 'floor') { startFloor = startFloor >= mods.maxStartFloor ? 1 : startFloor + 1; cue('select'); }
@@ -1074,7 +1074,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   function hud(): GameHud {
     if (phase === 'camp') return {
-      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'y', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
+      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'z', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
       gears: true, targetZone: { min: 1, max: 2, label: 'Warm up' },
     };
     const sh = bossShield();

@@ -1,4 +1,4 @@
-import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
@@ -79,6 +79,7 @@ export function createRenderer(): GameRenderer {
   let pillars: Array<{ x: number; y: number }> = [];
   let lastCue = -1;
   let send: ((a: unknown) => void) | undefined;
+  let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
   let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
   const onPointer = (e: PointerEvent) => {
     if (!canvas || !campHits.length) return;
@@ -287,8 +288,8 @@ export function createRenderer(): GameRenderer {
   }
 
   return {
-    mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void }) {
-      color = c.profile.color; send = c.send;
+    mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+      color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0;
       canvas = document.createElement('canvas');
       canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b';
       container.appendChild(canvas);
@@ -297,6 +298,7 @@ export function createRenderer(): GameRenderer {
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
+    setInsets(i) { insetCss = i.bottom; },
     resize(w, h) { if (canvas) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); } },
     render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
@@ -314,7 +316,8 @@ export function createRenderer(): GameRenderer {
         bgFor = w; bg = buildBackground(w); mini = null; pillars = [];
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
-      const cx = p.x * TS - W / 2, cy = p.y * TS - H / 2;
+      const IB = insetCss * dpr, VH = H - IB; // VH: visible play height above the HUD
+      const cx = p.x * TS - W / 2, cy = p.y * TS - VH / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
@@ -432,16 +435,16 @@ export function createRenderer(): GameRenderer {
 
       // torch-light vignette
       const dark = s.curse?.kind === 'darkness';
-      const vg = gg.createRadialGradient(W / 2, H / 2, TS * (dark ? 1.4 : 3.5), W / 2, H / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
+      const vg = gg.createRadialGradient(W / 2, VH / 2, TS * (dark ? 1.4 : 3.5), W / 2, VH / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
       vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.8})`);
       gg.fillStyle = vg; gg.fillRect(0, 0, W, H);
       if (s.curse) { // cursed: pulsing coloured edges
-        const cv = gg.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.7);
+        const cv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.4, W / 2, VH / 2, Math.max(W, H) * 0.7);
         cv.addColorStop(0, s.curse.color + '00'); cv.addColorStop(1, s.curse.color + Math.round(0x30 + 0x20 * Math.sin(t * 3)).toString(16));
         gg.fillStyle = cv; gg.fillRect(0, 0, W, H);
       }
       if (p.hurt < 0.3) { // red edge pulse when hit
-        const hv = gg.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.65);
+        const hv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.35, W / 2, VH / 2, Math.max(W, H) * 0.65);
         hv.addColorStop(0, 'rgba(255,0,0,0)'); hv.addColorStop(1, `rgba(255,0,0,${0.35 * (1 - p.hurt / 0.3)})`);
         gg.fillStyle = hv; gg.fillRect(0, 0, W, H);
       }
@@ -453,19 +456,20 @@ export function createRenderer(): GameRenderer {
 
   function drawCamp(c: CampView, W: number, H: number, t: number) {
     const gg = g!, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25, fs = Math.round(15 * u);
-    const bgG = gg.createRadialGradient(W / 2, H * 0.95, 10, W / 2, H * 0.95, Math.max(W, H) * 0.8);
+    const UH = H - insetCss * dpr; // camp scene sits above the HUD; the backdrop is full-bleed
+    const bgG = gg.createRadialGradient(W / 2, UH * 0.95, 10, W / 2, UH * 0.95, Math.max(W, H) * 0.8);
     bgG.addColorStop(0, '#3a1e10'); bgG.addColorStop(0.4, '#140c14'); bgG.addColorStop(1, '#05040a');
     gg.fillStyle = bgG; gg.fillRect(0, 0, W, H);
     gg.globalCompositeOperation = 'lighter'; // campfire
-    glowAt('#ff8c2a', W / 2, H * 0.93, 140 * u * (1 + Math.sin(t * 7) * 0.06), 0.7); glowAt('#ffe08a', W / 2, H * 0.94, 40 * u, 0.9);
+    glowAt('#ff8c2a', W / 2, UH * 0.93, 140 * u * (1 + Math.sin(t * 7) * 0.06), 0.7); glowAt('#ffe08a', W / 2, UH * 0.94, 40 * u, 0.9);
     gg.globalCompositeOperation = 'source-over';
-    drawSprite('hero', W / 2 - 70 * u, H * 0.97, 5 * u, 1, false, heroPalette(color));
+    drawSprite('hero', W / 2 - 70 * u, UH * 0.97, 5 * u, 1, false, heroPalette(color));
     gg.textAlign = 'center'; gg.fillStyle = '#ffd84a'; gg.font = `900 ${Math.round(30 * u)}px sans-serif`;
     gg.fillText('Camp', W / 2, 44 * u);
     gg.fillStyle = '#ccc'; gg.font = `${fs}px sans-serif`;
     gg.fillText(`Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u);
     const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
-    const maxRows = Math.max(4, Math.floor((H * 0.72 - 90 * u) / rowH));
+    const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
     campHits = [];
     c.rows.slice(first, first + maxRows).forEach((r, i) => {
@@ -488,7 +492,7 @@ export function createRenderer(): GameRenderer {
     });
     gg.textAlign = 'center'; gg.font = `${fs}px sans-serif`; gg.fillStyle = '#bbb';
     const left = Math.ceil(c.autoStartLeft);
-    gg.fillText(`Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, H - 18 * u);
+    gg.fillText(`Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, UH - 18 * u);
     gg.textAlign = 'left';
   }
 
@@ -517,7 +521,7 @@ export function createRenderer(): GameRenderer {
     gg.fillText(p.dashCd > 0 ? `dash ${p.dashCd.toFixed(1)}s` : 'dash ready', L, L + 68 * u);
 
     // weapon + gear card (bottom-left)
-    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = 280 * u, cardH = 64 * u, cx = L, cy = H - cardH - L;
+    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = 280 * u, cardH = 64 * u, cx = L, cy = H - insetCss * dpr - cardH - L;
     gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
     gg.strokeStyle = wcol; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
     weaponIcon(gg, s.weapon, cx + 22 * u, cy + 22 * u, 30 * u, wcol);

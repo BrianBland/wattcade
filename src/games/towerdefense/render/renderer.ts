@@ -1,4 +1,4 @@
-import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { BASE_X, BASE_Y, FIELD, LANE_ANGLES, enemyXY, type TdSnapshot } from '../sim/sim';
 
 const COL: Record<string, string> = { blue: '#4aa3ff', red: '#ff5a4a', purple: '#b06cff', gold: '#ffd24a' };
@@ -7,8 +7,10 @@ export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
   private g!: CanvasRenderingContext2D;
   private color = '#ffffff';
+  private insetB = 0;
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+    this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color;
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#10131a';
@@ -17,15 +19,17 @@ export class TdRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   resize(w: number, h: number) { this.canvas.width = w; this.canvas.height = h; }
+  setInsets(i: Insets) { this.insetB = i.bottom; }
   unmount() { this.canvas?.remove(); }
 
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as TdSnapshot;
-    const g = this.g, W = this.canvas.width, H = this.canvas.height;
+    const g = this.g, W = this.canvas.width, CH = this.canvas.height;
+    const H = Math.max(100, CH - this.insetB); // field and bars sit above the HUD; backdrop is full-bleed
     const sc = Math.min(W, H) / FIELD, ox = (W - FIELD * sc) / 2, oy = (H - FIELD * sc) / 2;
     const X = (x: number) => ox + x * sc, Y = (y: number) => oy + y * sc;
-    g.clearRect(0, 0, W, H);
-    g.fillStyle = '#10131a'; g.fillRect(0, 0, W, H);
+    g.clearRect(0, 0, W, CH);
+    g.fillStyle = '#10131a'; g.fillRect(0, 0, W, CH);
     // lanes
     g.lineWidth = 2; g.strokeStyle = '#232a3a';
     LANE_ANGLES.forEach((a, i) => {

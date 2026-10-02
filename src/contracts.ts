@@ -142,8 +142,13 @@ export interface GameSim {
   /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */
   receive?(action: unknown): void;
 }
+/** CSS px the shell's HUD covers on each edge of the (edge-to-edge) render surface. Draw backgrounds full-bleed; keep foreground UI and the play focus inside. */
+export interface Insets { top: number; right: number; bottom: number; left: number }
+export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface GameRenderer {
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void }): void; // send -> GameSim.receive
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }): void; // send -> GameSim.receive
+  /** Called after mount and whenever the HUD size changes. */
+  setInsets?(insets: Insets): void;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
   unmount(): void;

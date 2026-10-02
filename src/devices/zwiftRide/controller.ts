@@ -8,10 +8,11 @@ import {
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
 // Bluefy shows no picker at all for a namePrefix filter or a 128-bit optional service, so use the plainest
-// request that works there (all devices + numeric optional services). The user picks the "Zwift ..." entry.
+// request that works there (all devices + the one numeric Ride service). 0x180a/0x180f are left out: the trainer
+// started showing its picker once its extra optional services (incl. 0x180a) were removed; firmware/battery reads are best-effort. The user picks the "Zwift ..." entry.
 export const RIDE_REQUEST_OPTIONS = {
   acceptAllDevices: true as const,
-  optionalServices: [0xfc82, 0x180a, 0x180f],
+  optionalServices: [0xfc82],
 };
 export const requestRideDevice = (): Promise<BluetoothDevice> => navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS);
 const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];

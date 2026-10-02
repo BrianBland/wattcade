@@ -2,22 +2,28 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { getDifficulty, input } from '../services';
-import { CompactLegend } from './CompactLegend';
 import { formatDuration } from '../format';
-import { Legend } from './Legend';
+import { Hood, PadKey } from './Pad';
+import { buildPad } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
 
 interface Frame { bike: BikeState; hud: GameHud; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[]; diff: number }
 
-/** Shared in-game HUD strip (zone widget, gear/difficulty chip, controller legend). DOM updates at ~10 Hz. */
+const GEAR_KEYS = [
+  { id: 'shiftDnL', glyph: '−', color: '#b07cff', mapped: true },
+  { id: 'shiftUpL', glyph: '+', color: '#b07cff', mapped: true },
+] as const;
+
+/**
+ * Shared in-game HUD strip, laid out like the controller: left hood | stats, menu and gears | right hood.
+ * The hoods double as touch buttons. DOM updates at ~10 Hz.
+ */
 export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: boolean; session: SessionLike; profile: Profile; paused: boolean; legendOn: boolean }) {
   const hist = useRef(new History());
   const [f, setF] = useState<Frame | null>(null);
-  const [expandedFirst, setExpandedFirst] = useState(true); // short start banner
   const [pulse, setPulse] = useState(0);
   const last = useRef({ gear: -1, diff: -1, t: performance.now() });
-  useEffect(() => { const id = setTimeout(() => setExpandedFirst(false), 4000); return () => clearTimeout(id); }, []);
   useEffect(() => {
     const id = setInterval(() => {
       const bike = session.ctx.bike() as BikeState;
@@ -38,20 +44,25 @@ export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: 
     return () => clearInterval(id);
   }, [session, paused]);
   if (!f) return null;
-  const expanded = paused || expandedFirst;
+  const gears = !!f.hud.gears;
+  const pad = buildPad(f.hud.controls ?? [], gears);
   return (
-    <div class="hud">
-      {legendOn && <CompactLegend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} />}
-      <div class="hud-touch">
-        <button class="hud-btn" onClick={() => input.system('pause')} aria-label="Menu">Menu</button>
-        {f.hud.gears && <><button class="hud-btn" onClick={() => input.tap('shiftDnL')} aria-label="Easier gear">−</button><button class="hud-btn" onClick={() => input.tap('shiftUpL')} aria-label="Harder gear">+</button></>}
-        {f.hud.gears && (f.hud.controls ?? []).filter((c) => c.button === 'shiftUpR' || c.button === 'shiftDnR').map((c) => (
-          <button key={c.button} class={`hud-btn${c.active === false ? ' off' : ''}`} onClick={() => input.tap(c.button as 'shiftUpR' | 'shiftDnR')}>{c.label}</button>
-        ))}
+    <div class={`hud${legendOn ? '' : ' no-pad'}`}>
+      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
+      <div class="hud-center">
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
+        <div class="hud-row">
+          <button type="button" class="hud-menu" onClick={() => input.system('pause')}>Menu</button>
+          <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
+          {gears && (
+            <div class="gearbox" key={pulse}>
+              <div class="pc-btns">{GEAR_KEYS.map((b) => <PadKey b={b} held={f.held} />)}</div>
+              <small>Gear {f.bike.gear}</small>
+            </div>
+          )}
+        </div>
       </div>
-      <div class="hud-chips"><div class="chip" key={pulse}><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span>{f.hud.gears && <span>Gear {f.bike.gear}</span>}<span>Diff {f.diff.toFixed(2)}</span></div></div>
-      <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
-      {legendOn && expanded && <div class="hud-expanded"><Legend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} expanded /></div>}
+      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} />}
     </div>
   );
 }

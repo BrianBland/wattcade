@@ -2,7 +2,12 @@
 // a big coaching line (readable from the saddle), toasts, and the build panel (tap-friendly).
 import type { Snap } from './snap';
 
-const ICON: Record<string, string> = { cottage: '🏠', garden: '🌷', pier: '⚓', market: '🧺', bell: '🔔', lamp2: '🔥' };
+const DISTRICT_NAME: Record<string, string> = { harbour: 'the harbour', hillside: 'the hillside', hilltop: 'the hilltop', headland: 'the headland', islet: 'Gull Rock' };
+const RANKS = ['Apprentice Keeper', 'Keeper', 'Senior Keeper', 'Harbourmaster', 'Master of the Light', 'Admiral of the Light'];
+/** Endless title from lifetime ships and storms. */
+export function keeperRank(ships: number, storms: number) { const pts = ships + storms * 10; const i = Math.min(RANKS.length - 1, Math.floor(Math.sqrt(pts / 25))); return { name: RANKS[i], next: i < RANKS.length - 1 ? (i + 1) * (i + 1) * 25 - pts : 0 }; }
+import { PLOTS } from '../sim/layout';
+
 const SHIP_ICON: Record<string, string> = { smack: '⛵', schooner: '⛵', steamer: '🚢' };
 const SHIP_KIND: Record<string, string> = { smack: 'Fishing smack', schooner: 'Schooner', steamer: 'Steamer' };
 const CHECK: Record<string, [string, string]> = {
@@ -20,7 +25,7 @@ const CSS = `
 .lh-bar i { position:absolute; left:0; top:0; bottom:0; border-radius:6px; transition: width .3s; }
 .lh-bar u { position:absolute; top:-3px; bottom:-3px; width:2px; background:#fff; border-radius:1px; text-decoration:none; }
 .lh-ok { color:#7dff9a } .lh-bad { color:#ff8a7a }
-.lh-next { margin-top:7px; font-size:12px; opacity:.8 }
+.lh-next { margin-top:7px; font-size:12px; opacity:.8; max-width: 250px }
 .lh-tr { position:absolute; right:12px; top:12px; width: 238px; padding:10px 12px; }
 .lh-tr h4 { margin:0 0 6px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; opacity:.75 }
 .lh-ship { padding:6px 0; border-top: 1px solid rgba(255,255,255,0.1); }
@@ -51,13 +56,21 @@ const CSS = `
 .lh-build .acts { display:flex; gap:8px; margin-top:10px } .lh-build .acts .lh-btn { flex:1; text-align:center }
 .lh-btn.go { background:#2f7d3f } .lh-btn.go.no { background:#555; opacity:.7 }
 .lh-hint { font-size:12px; opacity:.75; margin-top:6px; text-align:center }
+.lh-list { max-height: 330px; overflow: hidden; }
+.lh-bonus { margin-top:8px; padding:6px 8px; border-radius:8px; background: rgba(255,216,74,0.14); color:#ffe9a0; font-size:13px }
+.lh-streak { margin-top:6px; font-size:13px } .lh-streak b { color:#ffe9a0 }
+.lh-log { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(680px, 94%); max-height:90%; overflow:auto; padding:14px 18px; pointer-events:auto; font-size:14px }
+.lh-cols { display:grid; grid-template-columns: 1fr 1fr; gap: 0 22px } @media (max-width: 760px) { .lh-cols { grid-template-columns: 1fr } }
+.lh-log h2 { margin:0 0 2px; font-size:22px } .lh-log h4 { margin:12px 0 6px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; opacity:.7 }
+.lh-log .grid { display:grid; grid-template-columns: 1fr auto; gap:3px 16px } .lh-log .grid b { font-variant-numeric: tabular-nums; text-align:right }
+.lh-dist { display:flex; justify-content:space-between; padding:3px 0 } .lh-goal { height:6px; border-radius:3px; background:rgba(255,255,255,.15); margin:2px 0 6px; overflow:hidden } .lh-goal i { display:block; height:100%; background:#8fd3ff }
 @media (max-width: 760px) { .lh-tr { width: 190px } .lh-coach { font-size:17px; max-width: 60% } .lh-g { grid-template-columns: 44px 100px 16px } .lh-build { width: 290px } }
 `;
 
 export class Hud {
   private root: HTMLDivElement;
   private tl: HTMLDivElement; private tr: HTMLDivElement; private storm: HTMLDivElement; private coach: HTMLDivElement;
-  private toasts: HTMLDivElement; private br: HTMLDivElement; private build: HTMLDivElement;
+  private toasts: HTMLDivElement; private br: HTMLDivElement; private build: HTMLDivElement; private log: HTMLDivElement;
   private cache = new Map<HTMLElement, string>();
   private lastT = -1;
 
@@ -66,7 +79,7 @@ export class Hud {
     const root = document.createElement('div'); root.className = 'lh-ui'; root.appendChild(style);
     const mk = (cls: string) => { const d = document.createElement('div'); d.className = cls; root.appendChild(d); return d; };
     this.tl = mk('lh-panel lh-tl'); this.tr = mk('lh-panel lh-tr'); this.storm = mk('lh-panel lh-storm'); this.coach = mk('lh-panel lh-coach');
-    this.toasts = mk('lh-toasts'); this.br = mk('lh-br'); this.build = mk('lh-panel lh-build');
+    this.toasts = mk('lh-toasts'); this.br = mk('lh-br'); this.build = mk('lh-panel lh-build'); this.log = mk('lh-panel lh-log');
     container.appendChild(root); this.root = root;
     root.addEventListener('pointerdown', (e) => {
       const el = (e.target as HTMLElement).closest('[data-act]') as HTMLElement | null;
@@ -77,6 +90,7 @@ export class Hud {
       else if (act === 'open') this.send({ type: 'mode', mode: 'build' });
       else if (act === 'close') this.send({ type: 'mode', mode: 'watch' });
       else if (act === 'view') this.send({ type: 'view' });
+      else if (act === 'log') this.send({ type: 'log' });
       else if (act.startsWith('sel:')) this.send({ type: 'select', building: act.slice(4) });
     });
   }
@@ -97,14 +111,15 @@ export class Hud {
     const nextStorm = st.phase === 'calm' ? `Next storm in ~${Math.max(1, Math.round(st.nextInS / 60))} min` : '';
     this.set(this.tl, `<div class="lh-res"><span>🪙 <b>${Math.floor(s.coin)}</b></span><span>🪵 <b>${Math.floor(s.timber)}</b></span><span title="Island bloom">🌸 <b>${pct(s.meadow)}%</b></span></div>
       <div class="lh-g">${gauge('Lamp', s.lamp, s.limits.lamp, '#ffd84a', s.lamp >= s.limits.lamp)}${gauge('Fog', s.fog, s.limits.fog, '#c9d3dc', s.fog < s.limits.fog)}${gauge('Seas', s.chop, s.limits.chop, '#5ab0ff', s.chop < s.limits.chop)}</div>
-      <div class="lh-next">${nextStorm}</div>`);
+      ${s.streak.mult > 1 || s.streak.s > 30 ? `<div class="lh-streak">✨ Steady Light <b>x${s.streak.mult.toFixed(1)}</b>${s.streak.nextS ? ` · next in ${Math.ceil(s.streak.nextS / 60)} min` : ''}</div>` : ''}
+      <div class="lh-next">${nextStorm}${s.nextDistrict ? `<br>Next land: ${s.nextDistrict.name} (${s.nextDistrict.goals.map((g) => `${Math.min(g.have, g.need)}/${g.need} ${g.label}`).join(', ')})` : ''}</div>`);
 
     // ship forecast
     const sailing = s.ships.filter((x) => x.state === 'sailing').sort((a, b) => a.etaS - b.etaS).slice(0, 3);
     const recent = s.ships.filter((x) => x.state !== 'sailing' && x.age < 6).slice(-1);
     let ships = '<h4>Ships</h4>';
     for (const x of recent) {
-      const [txt, cls] = x.state === 'docked' ? ['Docked ✓', 'ok'] : x.state === 'spilled' ? ['Cargo spilled', 'bad'] : ['Ran aground', 'bad'];
+      const [txt, cls] = x.state === 'docked' ? (x.rescued ? ['Rescued 🛟', 'ok'] : ['Docked ✓', 'ok']) : x.state === 'spilled' ? ['Cargo spilled', 'bad'] : ['Ran aground', 'bad'];
       ships += `<div class="lh-ship"><div class="row"><span>${SHIP_ICON[x.kind]} ${x.name}</span><span class="lh-chip ${cls}">${txt}</span></div></div>`;
     }
     for (const x of sailing) {
@@ -139,25 +154,57 @@ export class Hud {
     // toasts (newest at the bottom, fade after 5 s)
     this.set(this.toasts, s.toasts.filter((x) => x.age < 5.5).map((x) => `<div class="lh-toast" style="color:${x.color};opacity:${x.age > 4.5 ? Math.max(0, 5.5 - x.age) : 1}">${x.text}</div>`).join(''));
 
-    // build panel / buttons
+    // build panel / buttons / log
     if (s.mode === 'build') {
       this.set(this.br, '', false);
-      const plotName = s.cursor.plot < 4 ? 'the beach' : s.cursor.plot < 10 ? 'the lower terrace' : s.cursor.plot < 16 ? 'the middle terrace' : 'the hilltop';
       const sel = s.options.find((o) => o.selected)!;
-      const rows = s.options.map((o) => {
-        const done = o.owned >= o.max;
+      const where = s.cursor.plot < 0 ? 'the lighthouse' : DISTRICT_NAME[PLOTS[s.cursor.plot].district] + (PLOTS[s.cursor.plot].shore ? ' beach' : '');
+      const title = sel.type === 'lens' ? 'Upgrade the lighthouse' : sel.type === 'upgrade' ? `Upgrade on ${where}` : `Build on ${where}`;
+      // show a window of rows around the selection so the panel fits on an iPad
+      const idx = s.options.indexOf(sel), WIN = 7, start = Math.max(0, Math.min(s.options.length - WIN, idx - 3));
+      const rows = s.options.slice(start, start + WIN).map((o) => {
+        const c = o.cost;
         return `<div class="lh-opt ${o.selected ? 'sel' : ''} ${o.reason && !o.selected ? 'dim' : ''}" data-act="sel:${o.type}">
-          <span class="ic">${ICON[o.type]}</span><span class="nm">${o.label} <span style="opacity:.6;font-size:12px">${o.owned}/${o.max}</span></span>
-          <span class="cost">${done ? '' : `🪙${o.cost.coin} 🪵${o.cost.timber}`}</span>
+          <span class="ic">${o.icon}</span><span class="nm">${o.label} ${o.max ? `<span style="opacity:.6;font-size:12px">${o.owned}/${o.max}</span>` : ''}</span>
+          <span class="cost">${c ? `🪙${c.coin} 🪵${c.timber}` : ''}</span>
           <span class="ef">${o.selected && o.reason ? `<span class="why">${o.reason}</span>` : o.effect}</span></div>`;
       }).join('');
-      this.set(this.build, `<h3>Build on ${plotName}</h3><div class="sub">◀ ▶ move plot · ▲ ▼ choose · A build · B close</div>${rows}
-        <div class="acts"><div class="lh-btn go ${sel.reason ? 'no' : ''}" data-act="build">${ICON[sel.type]} Build ${sel.label}</div><div class="lh-btn" data-act="close">Close</div></div>`);
+      const more = (n: number, up: boolean) => (n > 0 ? `<div class="lh-hint">${up ? '▲' : '▼'} ${n} more</div>` : '');
+      const verb = sel.type === 'upgrade' || sel.type === 'lens' ? 'Upgrade' : `Build ${sel.label}`;
+      this.set(this.build, `<h3>${title}</h3><div class="sub">◀ ▶ move · ▲ ▼ choose · A ${sel.type === 'upgrade' || sel.type === 'lens' ? 'upgrade' : 'build'} · B close</div>
+        ${more(start, true)}<div class="lh-list">${rows}</div>${more(s.options.length - start - WIN, false)}
+        ${s.cursor.bonus ? `<div class="lh-bonus">🔗 ${s.cursor.bonus}</div>` : ''}
+        <div class="acts"><div class="lh-btn go ${sel.reason ? 'no' : ''}" data-act="build">${sel.icon} ${verb}</div><div class="lh-btn" data-act="close">Close</div></div>`);
     } else {
       this.set(this.build, '', false);
       const can = s.canBuildAny;
-      this.set(this.br, `<div class="lh-btn" data-act="view">🎥 View</div><div class="lh-btn ${can ? 'hot' : ''}" data-act="open">🔨 Build</div>`);
+      this.set(this.br, `<div class="lh-btn" data-act="log">📜 Log</div><div class="lh-btn" data-act="view">🎥 View</div><div class="lh-btn ${can ? 'hot' : ''}" data-act="open">🔨 Build</div>`);
     }
+    this.set(this.log, this.logHtml(s), s.logOpen && s.mode === 'watch');
+  }
+
+  private logHtml(s: Snap): string {
+    const st = s.stats, tt = s.totals, rank = keeperRank(tt.shipsDockedTotal, tt.stormsWeatheredTotal);
+    const row = (k: string, v: string | number) => `<span>${k}</span><b>${v}</b>`;
+    const built = s.buildings.filter(Boolean).length;
+    const lensNames = ['Oil Lamp', 'Fresnel Lens', 'Twin Beams', 'Electric Lantern'];
+    let lands = '';
+    lands += `<div class="lh-dist" style="flex-wrap:wrap;gap:4px 14px;justify-content:flex-start">${s.districts.map((d) => `<span>${d.open ? '✅' : '🔒'} ${d.name}</span>`).join('')}</div>`;
+    if (s.nextDistrict) lands += `<div style="margin-top:6px">Next: <b>${s.nextDistrict.name}</b></div>`;
+    if (s.nextDistrict) lands += s.nextDistrict.goals.map((g) => `<div style="font-size:13px;opacity:.85">${g.label}: ${Math.min(g.have, g.need)} / ${g.need}</div><div class="lh-goal"><i style="width:${Math.min(100, (g.have / g.need) * 100)}%"></i></div>`).join('');
+    return `<h2>📜 Keeper's Log</h2><div style="opacity:.8">${rank.name}${rank.next ? ` · ${rank.next} renown to the next title` : ''}</div>
+      <div class="lh-cols"><div><h4>This ride</h4><div class="grid">
+        ${row('Ships docked', st.shipsDocked)}${st.shipsRescued ? row('Ships rescued', st.shipsRescued) : ''}${row('Ships lost', st.shipsLost)}
+        ${row('Coin earned', Math.round(st.coinEarned))}${row('Built / upgraded', `${st.buildingsBuilt} / ${st.upgrades}`)}
+        ${row('Storms weathered', `${st.stormsWeathered}${st.stormsFailed ? ` (${st.stormsFailed} lost)` : ''}`)}
+        ${row('Bloom gained', `+${Math.round(st.bloomGained * 100)}%`)}${row('Best Steady Light', `${Math.floor(st.bestStreakS / 60)} min`)}
+      </div></div>
+      <div><h4>The island</h4><div class="grid">
+        ${row('Buildings', built)}${row('Lighthouse', lensNames[s.lens - 1])}${row('Bloom', `${Math.round(s.meadow * 100)}%`)}
+        ${row('Ships docked (all time)', tt.shipsDockedTotal)}${row('Storms weathered (all time)', tt.stormsWeatheredTotal)}
+      </div></div></div>
+      <h4>Lands</h4>${lands}
+      <div class="lh-hint">Z or B to close</div>`;
   }
 
   unmount() { this.root.remove(); }

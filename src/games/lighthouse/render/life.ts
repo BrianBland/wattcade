@@ -1,7 +1,8 @@
 // Everything that makes the island feel alive and reacts to nearby buildings:
 // paths between buildings, flowers/trees/gardens that grow with in-zone riding, villagers, fishers, porters, gulls, butterflies, smoke.
 import * as THREE from 'three';
-import { HARBOUR, islandHeight, LIGHTHOUSE, PIER_LEN, PLOTS, plotHeight } from '../sim/layout';
+import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, PIER_LEN, PLOTS, plotHeight } from '../sim/layout';
+import { plotYaw, SHORE_KINDS } from './buildings';
 import type { Seg, Terrain } from './world';
 import { lam, mergeStatic, mulberry, pick, softTexture } from './util';
 
@@ -11,7 +12,7 @@ const CLOTHES = [0x3b6ea5, 0xc0392b, 0x2e7d32, 0xf1c40f, 0x8e44ad, 0xe67e22, 0x3
 const SKIN = [0xf2c9a0, 0xd9a577, 0xa7754d, 0x7a5236, 0xf5d5b8];
 const HUBS = [{ x: HARBOUR.x - 2, z: HARBOUR.z - 4 }, { x: LIGHTHOUSE.x + 7, z: LIGHTHOUSE.z + 1.5 }];
 
-interface Node { x: number; z: number; kind: string; plot: number; deck?: number }
+interface Node { x: number; z: number; kind: string; plot: number; deck?: number; land: number }
 interface Walker {
   g: THREE.Group; body: THREE.Mesh; crate?: THREE.Mesh; rod?: THREE.Mesh;
   role: 'villager' | 'fisher' | 'porter';
@@ -38,7 +39,7 @@ export class Life {
   private flies: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; cx: number; cz: number; ph: number; y: number }> = [];
   private washing: THREE.Mesh[] = [];
   private smoke: THREE.Points;
-  private buildings: Array<string | null> = [];
+  private buildings: Array<string | null> = []; private levels: number[] = []; private islet = false;
   private dummy = new THREE.Object3D(); private col = new THREE.Color();
 
   constructor(terrain: Terrain) {
@@ -70,8 +71,9 @@ export class Life {
   }
 
   /** Rebuild paths, decor and villagers when the town or its growth changes. */
-  setTown(buildings: Array<string | null>, grow: number[], meadow: number) {
-    const tk = buildings.join(',');
+  setTown(buildings: Array<string | null>, levels: number[], grow: number[], meadow: number, islet: boolean) {
+    const tk = buildings.map((b, i) => (b ? b + levels[i] : '')).join(',') + (islet ? '|islet' : '');
+    this.levels = levels.slice(); this.islet = islet;
     const dk = tk + '|' + grow.map((g) => Math.floor(g * 10)).join('') + '|' + Math.floor(meadow * 40);
     if (tk !== this.townKey) { this.townKey = tk; this.buildings = buildings.slice(); this.buildGraph(grow); this.spawnWalkers(); }
     if (dk !== this.decorKey) { this.decorKey = dk; this.buildGraph(grow, true); this.buildDecor(grow, meadow); }
@@ -80,12 +82,15 @@ export class Life {
   private nodePos(i: number) {
     const p = PLOTS[i], k = this.buildings[i];
     if (k === 'pier') return { x: p.x - 1.2, z: p.z - 1.4 };
+    if (k && SHORE_KINDS.has(k)) return { x: p.x - 2.6, z: p.z - 1.2 };
+    if (k === 'orchard') return { x: p.x, z: p.z + 2.3 };
     return { x: p.x, z: p.z + (k === 'garden' || k === 'market' ? 2.4 : 1.7) };
   }
 
   private buildGraph(grow: number[], paintOnly = false) {
-    const nodes: Node[] = HUBS.map((h, i) => ({ x: h.x, z: h.z, kind: i === 0 ? 'square' : 'lighthouse', plot: -1 }));
-    this.buildings.forEach((k, i) => { if (k) { const p = this.nodePos(i); nodes.push({ x: p.x, z: p.z, kind: k, plot: i }); } });
+    const nodes: Node[] = HUBS.map((h, i) => ({ x: h.x, z: h.z, kind: i === 0 ? 'square' : 'lighthouse', plot: -1, land: 0 }));
+    if (this.islet) nodes.push({ x: BRIDGE.x0 - 0.6, z: BRIDGE.z, kind: 'bridge', plot: -1, land: 0 }, { x: BRIDGE.x1 + 0.6, z: BRIDGE.z, kind: 'bridge', plot: -1, land: 1 });
+    this.buildings.forEach((k, i) => { if (k) { const p = this.nodePos(i); nodes.push({ x: p.x, z: p.z, kind: k, plot: i, land: PLOTS[i].district === 'islet' ? 1 : 0 }); } });
     // Prim's MST over the land nodes so paths look like they grew between neighbours
     const n = nodes.length, inTree = new Array(n).fill(false), best = new Array(n).fill(Infinity), parent = new Array(n).fill(-1);
     best[0] = 0;
@@ -93,8 +98,13 @@ export class Life {
     for (let it = 0; it < n; it++) {
       let u = -1;
       for (let i = 0; i < n; i++) if (!inTree[i] && (u < 0 || best[i] < best[u])) u = i;
+      if (best[u] === Infinity) break; // islet buildings without a bridge stay unconnected
       inTree[u] = true; if (parent[u] >= 0) edges.push([parent[u], u]);
-      for (let v = 0; v < n; v++) if (!inTree[v]) { const d = Math.hypot(nodes[u].x - nodes[v].x, nodes[u].z - nodes[v].z) * (v === 1 || u === 1 ? 1.4 : 1); if (d < best[v]) { best[v] = d; parent[v] = u; } }
+      for (let v = 0; v < n; v++) if (!inTree[v]) {
+        const bridge = nodes[u].kind === 'bridge' && nodes[v].kind === 'bridge';
+        const d = nodes[u].land !== nodes[v].land && !bridge ? Infinity : bridge ? 0 : Math.hypot(nodes[u].x - nodes[v].x, nodes[u].z - nodes[v].z) * (v === 1 || u === 1 ? 1.4 : 1);
+        if (d < best[v]) { best[v] = d; parent[v] = u; }
+      }
     }
     const segs: Seg[] = [], age: number[] = [];
     const g = (nd: Node) => (nd.plot >= 0 ? grow[nd.plot] : 1);
@@ -110,8 +120,8 @@ export class Life {
     nodes.forEach((nd, i) => {
       if (nd.kind !== 'pier') return;
       const p = PLOTS[nd.plot], deck = plotHeight(nd.plot) + 0.25;
-      const s = nodes.push({ x: p.x, z: p.z + 0.5, kind: 'deck', plot: nd.plot, deck }) - 1;
-      const e = nodes.push({ x: p.x, z: p.z + PIER_LEN - 0.4, kind: 'pierEnd', plot: nd.plot, deck }) - 1;
+      const s = nodes.push({ x: p.x, z: p.z + 0.5, kind: 'deck', plot: nd.plot, deck, land: nd.land }) - 1;
+      const e = nodes.push({ x: p.x, z: p.z + PIER_LEN - 0.4, kind: 'pierEnd', plot: nd.plot, deck, land: nd.land }) - 1;
       adj.push([i, e], [s]); adj[i].push(s);
     });
     this.nodes = nodes; this.adj = adj;
@@ -123,6 +133,7 @@ export class Life {
       const p = PLOTS[i];
       if (Math.abs(x - p.x) < 0.8 && z > p.z - 0.2 && z < p.z + PIER_LEN + 0.5) return plotHeight(i) + 0.25;
     }
+    if (this.islet && x > BRIDGE.x0 - 0.5 && x < BRIDGE.x1 + 0.5 && Math.abs(z - BRIDGE.z) < 0.9) return Math.max(BRIDGE.y + 0.1, islandHeight(x, z));
     return Math.max(0.2, islandHeight(x, z));
   }
 
@@ -169,7 +180,7 @@ export class Life {
 
     for (let i = 0; i < PLOTS.length; i++) {
       const k = this.buildings[i]; if (!k) continue;
-      const g = grow[i], p = PLOTS[i], r = mulberry(i * 101 + 3);
+      const g = grow[i], p = PLOTS[i], r = mulberry(i * 101 + 3), lv = this.levels[i] || 1;
       const ring = (n: number, r0: number, r1: number, cb: (x: number, z: number) => void) => {
         let placed = 0;
         for (let tries = 0; tries < n * 5 && placed < n; tries++) {
@@ -181,7 +192,7 @@ export class Life {
       if (k === 'garden') {
         // beds inside the fence fill up as the garden grows
         const beds = [[-0.9, -0.6, 1.3, 0.8], [0.9, -0.6, 1.3, 0.8], [0, 0.7, 1.3, 0.8]];
-        const n = Math.floor(12 + 54 * g);
+        const n = Math.floor((12 + 54 * g) * (1 + 0.35 * (lv - 1)));
         for (let j = 0; j < n; j++) {
           const b = beds[j % 3];
           const fx = p.x + b[0] + (r() - 0.5) * b[2] * 0.9, fz = p.z + b[1] + (r() - 0.5) * b[3] * 0.85;
@@ -192,8 +203,19 @@ export class Life {
         ring(Math.floor(6 + 26 * g), 2.3, 4.2, (x, z) => flower(x, z, pick(r, FLOWER_COLS)));
         ring(2, 2.6, 3.6, (x, z) => tree(x, z, 0.35 + 0.65 * g, pick(r, [0xffb7d5, 0xffc8e0, 0xf7a1c4])));
         ring(Math.floor(6 + 10 * g), 2.2, 4, (x, z) => tuft(x, z, 0.9, r()));
+      } else if (k === 'orchard') {
+        // rows of fruit trees inside the fence; they fill out and fruit as the orchard grows
+        const yaw = plotYaw(k, i, p.x), cs = Math.cos(yaw), sn = Math.sin(yaw);
+        const cols = lv >= 2 ? [-1.5, 0, 1.5] : [-1.2, 1.2], rows = [-0.8, 0.8];
+        for (const lx of cols) for (const lz of rows) {
+          const x = p.x + lx * cs + lz * sn, z = p.z - lx * sn + lz * cs;
+          const sc = 0.3 + 0.45 * g;
+          tree(x, z, sc, 0x5f9e3f);
+          if (g > 0.35) for (let q = 0; q < 5; q++) { const a = q * 1.3 + i; flower(x + Math.cos(a) * sc * 0.9, z + Math.sin(a) * sc * 0.9, pick(r, [0xe8392b, 0xff8a1a, 0xffd23f]), 1.1); }
+        }
+        ring(Math.floor(4 + 6 * g), 2.8, 4, (x, z) => tuft(x, z, 0.9, r()));
       } else if (k === 'cottage') {
-        ring(Math.floor(3 + 14 * g), 1.9, 3.4, (x, z) => flower(x, z, pick(r, FLOWER_COLS)));
+        ring(Math.floor((3 + 14 * g) * (1 + 0.3 * (lv - 1))), 1.9 + 0.3 * (lv - 1), 3.4 + 0.4 * (lv - 1), (x, z) => flower(x, z, pick(r, FLOWER_COLS)));
         ring(1, 2.4, 3.4, (x, z) => tree(x, z, 0.3 + 0.75 * g, pick(r, [0x5f9e3f, 0x6aaa45, g > 0.6 ? 0xffc8e0 : 0x58963a])));
         ring(2, 1.9, 2.8, (x, z) => tree(x, z, 0.28 + 0.12 * g, 0x4f8a3c));
         ring(Math.floor(5 + 8 * g), 1.9, 3.5, (x, z) => tuft(x, z, 0.9, r()));
@@ -205,7 +227,7 @@ export class Life {
         if (g > 0.15) ring(1, 2.0, 2.8, (x, z) => this.addWashing(x, z, r));
       } else {
         ring(Math.floor(2 + 8 * g), 2.2, 3.6, (x, z) => flower(x, z, pick(r, FLOWER_COLS)));
-        if (k !== 'pier') ring(1, 2.6, 3.6, (x, z) => tree(x, z, 0.4 + 0.6 * g, 0x5f9e3f));
+        if (!SHORE_KINDS.has(k)) ring(1, 2.6, 3.6, (x, z) => tree(x, z, 0.4 + 0.6 * g, 0x5f9e3f));
       }
     }
     mergeStatic(this.extras, (o) => this.washing.includes(o as THREE.Mesh));
@@ -214,8 +236,8 @@ export class Life {
     const wild = Math.floor(meadow * 700), tufts = Math.floor(450 + 900 * meadow);
     let w = 0, tf = 0;
     for (let it = 0; it < 9000 && (w < wild || tf < tufts); it++) {
-      const x = -30 + r() * 66, z = -21 + r() * 38, c = r(), s = r();
-      if (!this.okSpot(x, z)) continue;
+      const x = -30 + r() * 90, z = -21 + r() * 38, c = r(), s = r();
+      if ((x > 37 && !this.islet) || !this.okSpot(x, z)) continue;
       if (tf < tufts) { tuft(x, z, 0.7 + s * 0.6, c); tf++; }
       else if (w < wild) { const cl = Math.floor(1 + c * 4); for (let q = 0; q < cl; q++) flower(x + (q - 1) * 0.3, z + ((q * 7) % 3 - 1) * 0.25, pick(r, w % 2 === 0 ? FLOWER_COLS : WILD_COLS), 0.75); w++; }
     }
@@ -282,7 +304,8 @@ export class Life {
     const b = this.buildings;
     const count = (k: string) => b.filter((x) => x === k).length;
     const homes = this.nodes.map((n, i) => (n.kind === 'cottage' ? i : -1)).filter((i) => i >= 0);
-    const nVill = Math.min(18, count('cottage') * 2 + count('market') * 2 + (count('cottage') ? 1 : 0));
+    const homeLv = b.reduce((sum, k, i) => sum + (k === 'cottage' ? (this.levels[i] || 1) + 1 : 0), 0);
+    const nVill = Math.min(28, homeLv + count('market') * 2 + count('orchard') + (count('cottage') ? 1 : 0));
     for (let i = 0; i < nVill; i++) {
       const home = homes.length ? homes[i % homes.length] : 0;
       const { g, body } = this.makePerson(i + 1);

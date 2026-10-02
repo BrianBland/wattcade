@@ -1,20 +1,23 @@
 // Island layout shared by sim (plot navigation) and renderer (terrain, placement). Pure math, no three.
 // World axes: x to the right, z toward the default camera, y up. Sea level is y = 0.
 
-export interface Plot { x: number; z: number; shore: boolean }
+export type DistrictId = 'harbour' | 'hillside' | 'hilltop' | 'headland' | 'islet';
+export interface Plot { x: number; z: number; shore: boolean; district: DistrictId }
 
-/** Building plots. Shore plots sit on the harbour beach; piers can only go there. */
+const P = (district: DistrictId, shore: boolean, ...xz: number[]): Plot[] => {
+  const out: Plot[] = [];
+  for (let i = 0; i < xz.length; i += 2) out.push({ x: xz[i], z: xz[i + 1], shore, district });
+  return out;
+};
+/** Building plots, grouped into districts that unlock over time. Shore plots sit on a beach; piers etc. run +z into the water. */
 export const PLOTS: Plot[] = [
-  // harbour beach (piers run +z into the water)
-  { x: -5, z: 14.5, shore: true }, { x: 4, z: 16, shore: true }, { x: 13, z: 15.5, shore: true }, { x: 21, z: 12.5, shore: true },
-  // lower terrace
-  { x: -11, z: 7.5, shore: false }, { x: -4.5, z: 8.5, shore: false }, { x: 1.5, z: 9.5, shore: false },
-  { x: 7.5, z: 10, shore: false }, { x: 13.5, z: 9, shore: false }, { x: 19.5, z: 6, shore: false },
-  // middle terrace
-  { x: -13, z: 0.5, shore: false }, { x: -7, z: 2, shore: false }, { x: -1, z: 2.5, shore: false },
-  { x: 5, z: 3, shore: false }, { x: 11, z: 2.5, shore: false }, { x: 17, z: -0.5, shore: false },
-  // hilltop
-  { x: -6, z: -6, shore: false }, { x: 0.5, z: -5, shore: false }, { x: 7, z: -5.5, shore: false }, { x: 13, z: -7, shore: false },
+  ...P('harbour', true, -5, 14.5, 4, 16, 13, 15.5, 21, 12.5),
+  ...P('harbour', false, -11, 7.5, -4.5, 8.5, 1.5, 9.5, 7.5, 10, 13.5, 9, 19.5, 6),
+  ...P('hillside', false, -13, 0.5, -7, 2, -1, 2.5, 5, 3, 11, 2.5, 17, -0.5),
+  ...P('hilltop', false, -6, -6, 0.5, -5, 7, -5.5, 13, -7),
+  ...P('headland', false, -28.5, -6.5, -27.5, 1.5, -21, -8.5),
+  ...P('islet', true, 46, 6, 54, 5.5),
+  ...P('islet', false, 45, -1.5, 51, -2.5, 56.5, 0.5),
 ];
 export const PLOT_COUNT = PLOTS.length;
 
@@ -23,6 +26,9 @@ export const HARBOUR = { x: 6, z: 17 };
 /** Where ships wait when there is no pier (a mooring buoy in the harbour). */
 export const MOORING = { x: 8, z: 24 };
 export const PIER_LEN = 7;
+/** Gull Rock, the islet to the east, joined by a bridge once unlocked. */
+export const ISLET = { x: 50, z: 1, rx: 11, rz: 8 };
+export const BRIDGE = { x0: 31, x1: 41.5, z: 1.5, y: 1.3 };
 
 const smooth = (e0: number, e1: number, x: number) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 function hash2(x: number, z: number) { let h = (x * 374761393 + z * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
@@ -50,7 +56,13 @@ function rawHeight(x: number, z: number): number {
   const cliff = 8.5 * c + 1.2 * smooth(6.5, 0, hd) - 6 * (1 - c);          // sheer headland, drops straight into the sea
   const n = smooth(7, 2, Math.hypot((x + 15) * 0.8, z + 2.5)) * smooth(1.15, 0.8, d);
   const neck = 3.4 * n - 6 * (1 - n);                                       // ridge joining headland to island
-  return Math.max(h, cliff, neck);
+  // Gull Rock
+  const di = Math.hypot((x - ISLET.x) / ISLET.rx, (z - ISLET.z) / ISLET.rz) + warp * 0.8;
+  const b2 = smooth(1.02, 0.65, di);
+  let h2 = b2 * 2.2 + 1.2 * smooth(6, 1, Math.hypot(x - 51, z + 1));
+  const t2 = h2 / TERRACE, f2 = Math.floor(t2);
+  h2 = (f2 + smooth(0.5, 1, t2 - f2)) * TERRACE + b2 * 0.5 - 0.5 + smooth(1.0, 1.25, di) * -3.5;
+  return Math.max(h, cliff, neck, h2);
 }
 
 const plotLevel = PLOTS.map((p) => Math.max(0.7, rawHeight(p.x, p.z)));

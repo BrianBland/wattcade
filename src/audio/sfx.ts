@@ -6,7 +6,8 @@ export type SfxName =
   | 'shoot' | 'shootHeavy' | 'zap' | 'flame' | 'hit' | 'crit' | 'kill' | 'explode' | 'hurt'
   | 'coin' | 'pickup' | 'equip' | 'unique' | 'levelup' | 'potion' | 'door' | 'bossStart' | 'bossDie'
   | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse'
-  | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull';
+  | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull'
+  | 'upgrade' | 'unlock' | 'rescue';
 
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number }
 const R: Record<SfxName, Tone[]> = {
@@ -47,6 +48,9 @@ const R: Record<SfxName, Tone[]> = {
   chime: [784, 988, 1175].map((f, i) => ({ type: 'sine' as const, f0: f, dur: 0.6, vol: 0.1, delay: i * 0.1 })),
   surge: [{ type: 'sawtooth', f0: 220, f1: 880, dur: 0.6, vol: 0.12 }, { type: 'noise', f0: 2400, dur: 0.4, vol: 0.12, delay: 0.1 }],
   lampOut: [{ type: 'triangle', f0: 440, f1: 110, dur: 1.0, vol: 0.2 }, { type: 'noise', f0: 300, dur: 0.4, vol: 0.12 }],
+  upgrade: [392, 523, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.22, vol: 0.14, delay: i * 0.08 })),
+  unlock: [{ type: 'sine', f0: 262, dur: 1.2, vol: 0.15 }, { type: 'sine', f0: 330, dur: 1.2, vol: 0.12, delay: 0.15 }, { type: 'sine', f0: 392, dur: 1.2, vol: 0.12, delay: 0.3 }, { type: 'triangle', f0: 523, dur: 1.4, vol: 0.12, delay: 0.45 }],
+  rescue: [{ type: 'square', f0: 880, dur: 0.15, vol: 0.08 }, { type: 'square', f0: 660, dur: 0.15, vol: 0.08, delay: 0.2 }, { type: 'square', f0: 880, dur: 0.15, vol: 0.08, delay: 0.4 }, { type: 'square', f0: 660, dur: 0.15, vol: 0.08, delay: 0.6 }],
   gull: [{ type: 'triangle', f0: 1500, f1: 1100, dur: 0.18, vol: 0.05 }, { type: 'triangle', f0: 1600, f1: 1200, dur: 0.2, vol: 0.05, delay: 0.24 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };

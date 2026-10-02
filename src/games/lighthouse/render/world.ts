@@ -189,13 +189,29 @@ export function createLighthouse(color: string): Lighthouse {
   const tilt = new THREE.Group(); tilt.rotation.z = -0.1; beam.add(tilt);
   tilt.add(new THREE.Mesh(coneGeo, beamMat));
   const back = new THREE.Mesh(coneGeo, beamMat); back.rotation.y = Math.PI; tilt.add(back);
+  // lens tiers: brass Fresnel rings (2), a second pair of beams (3), a pennant on the roof (4)
+  const twin = new THREE.Group(); twin.rotation.y = Math.PI / 2; twin.visible = false;
+  for (const ry of [0, Math.PI]) { const c = new THREE.Mesh(coneGeo, beamMat); c.rotation.set(0, ry, -0.1); twin.add(c); }
+  beam.add(twin);
+  const brass = new THREE.Group(); brass.visible = false;
+  for (const dy of [-0.8, 0, 0.8]) { const ring = mesh(new THREE.TorusGeometry(1.2, 0.07, 4, 20), lam(0xc9a43a), 0, lanternY + dy, 0, false); ring.rotation.x = Math.PI / 2; brass.add(ring); }
+  brass.add(mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.2, 10), new THREE.MeshBasicMaterial({ color: 0xfff6d0 }), 0, lanternY, 0, false));
+  grp.add(brass);
+  const pennant = new THREE.Group(); pennant.visible = false; pennant.position.set(0, lanternY + 2.3, 0);
+  pennant.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 2, 5), lam(0x2d3138), 0, 1, 0, false));
+  const flag = mesh(new THREE.BoxGeometry(1.2, 0.6, 0.03), stripe, 0.62, 1.65, 0, false); pennant.add(flag);
+  grp.add(pennant);
   grp.add(beam);
-  mergeStatic(grp, (o) => o === beam);
+  mergeStatic(grp, (o) => o === beam || o === brass || o === pennant);
 
   const tmp = new THREE.Vector3(), dir = new THREE.Vector3();
   return {
     group: grp, lanternPos,
-    update({ lamp, night, bloom, beamAngle, camera, lens }) {
+    update({ t, lamp, night, bloom, beamAngle, camera, lens: tier }) {
+      const lens = (tier - 1) / 3;
+      brass.visible = tier >= 2; twin.visible = tier >= 3; pennant.visible = tier >= 4;
+      flag.rotation.y = Math.sin(t * 2.3) * 0.3;
+      beamMat.uniforms.uColor.value.setHex(tier >= 4 ? 0xf2f6ff : 0xfff0b8);
       beam.rotation.y = beamAngle;
       const on = Math.max(0, lamp);
       beamMat.uniforms.uOpacity.value = (0.07 + 0.45 * night) * on * (0.75 + 0.25 * lens);

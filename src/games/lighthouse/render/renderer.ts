@@ -2,17 +2,19 @@
 import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
-import { HARBOUR, LIGHTHOUSE, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
-import { LAMP, WIN, makeBuilding, makeShip, type BuildingModel, type ShipModel } from './buildings';
+import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
+import { NEAR } from '../sim/town';
+import { LAMP, WIN, makeBuilding, makeShip, plotYaw, SHORE_KINDS, type BuildingModel, type ShipModel } from './buildings';
 import { Hud } from './hud';
 import { Life } from './life';
 import { createSea, waveHeight, type Sea } from './sea';
 import { Sky } from './sky';
 import type { ShipView, Snap } from './snap';
-import { disposeShared, lam } from './util';
+import { disposeShared, lam, mergeStatic, mesh } from './util';
 import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
 const CUE_GAP: Partial<Record<SfxName, number>> = { select: 0.05, thunder: 0.8, bell: 2, chime: 1 };
+const BONUS_ROWS = new Set(['cottage', 'garden', 'orchard', 'market', 'pier', 'mill']);
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const ease = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
 
@@ -36,7 +38,9 @@ export class LighthouseRenderer implements GameRenderer {
   private lampLight = new THREE.PointLight(0xffe2a0, 0, 70, 1.2);
   private sea!: Sea; private terrain!: Terrain; private lighthouse!: Lighthouse; private life!: Life; private sky!: Sky;
   private hud?: Hud;
-  private models: Array<{ kind: string; model: BuildingModel } | null> = Array(PLOT_COUNT).fill(null);
+  private models: Array<{ kind: string; level: number; model: BuildingModel; boatHome?: THREE.Vector3 } | null> = Array(PLOT_COUNT).fill(null);
+  private bridge?: THREE.Group;
+  private links!: THREE.LineSegments; private range!: THREE.LineLoop; private rangeKey = '';
   private ships = new Map<number, ShipObj>();
   private cursor = new THREE.Group(); private ring!: THREE.Mesh; private ghost?: THREE.Object3D; private ghostKey = '';
   private ghostMat = new THREE.MeshLambertMaterial({ color: 0x66ff88, transparent: true, opacity: 0.45, depthWrite: false });
@@ -85,12 +89,32 @@ export class LighthouseRenderer implements GameRenderer {
       m.position.set(PLOTS[i].x, plotHeight(i) + 0.08, PLOTS[i].z); m.visible = false; s.add(m); this.markers.push(m);
     }
 
+    // neighbour links (cursor -> plots it would boost / be boosted by) and the neighbourhood range
+    this.links = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffd84a, transparent: true, opacity: 0.95, depthTest: false }));
+    this.links.renderOrder = 5; this.links.frustumCulled = false; s.add(this.links);
+    this.range = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45 }));
+    this.range.frustumCulled = false; s.add(this.range);
+    this.bridge = this.makeBridge(); this.bridge.visible = false; s.add(this.bridge);
+
     this.hud = new Hud(container, ctx.send);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
       this.ro.observe(container);
     }
+  }
+
+  private makeBridge(): THREE.Group {
+    const g = new THREE.Group(), wood = lam(0x8b6b3e), dark = lam(0x5e472b);
+    const { x0, x1, z, y } = BRIDGE, L = x1 - x0, cx = (x0 + x1) / 2;
+    g.add(mesh(new THREE.BoxGeometry(L, 0.2, 1.8), wood, cx, y, z));
+    for (let x = x0 + 1; x < x1; x += 2.2) for (const dz of [-0.85, 0.85]) {
+      g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, y + 3, 5), dark, x, (y - 3) / 2, z + dz, false));
+      g.add(mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), dark, x, y + 0.5, z + dz, false));
+    }
+    for (const dz of [-0.85, 0.85]) g.add(mesh(new THREE.BoxGeometry(L, 0.08, 0.08), dark, cx, y + 0.95, z + dz, false));
+    mergeStatic(g);
+    return g;
   }
 
   private pick(e: PointerEvent) {
@@ -100,7 +124,8 @@ export class LighthouseRenderer implements GameRenderer {
     this.ray.setFromCamera(ndc, this.camera);
     const hit = this.ray.intersectObject(this.terrain.mesh, false)[0];
     if (!hit) return;
-    let best = -1, bd = 4;
+    if (Math.hypot(hit.point.x - LIGHTHOUSE.x, hit.point.z - LIGHTHOUSE.z) < 4.5) { this.send({ type: 'plot', plot: -1 }); return; }
+    let best = -2, bd = 4;
     for (let i = 0; i < PLOT_COUNT; i++) { const d = Math.hypot(hit.point.x - PLOTS[i].x, hit.point.z - PLOTS[i].z); if (d < bd) { bd = d; best = i; } }
     if (best >= 0) this.send({ type: 'plot', plot: best });
   }
@@ -109,12 +134,16 @@ export class LighthouseRenderer implements GameRenderer {
   private updateCamera(s: Snap, dt: number) {
     const drift = Math.sin(s.t * 0.025) * 0.12;
     let tgt: THREE.Vector3, R: number, el: number, az: number;
-    if (s.mode === 'build') {
+    const islet = s.districts.some((d) => d.id === 'islet' && d.open);
+    if (s.mode === 'build' && s.cursor.plot < 0) { tgt = this.tmp.set(LIGHTHOUSE.x, LIGHTHOUSE_Y + 8, LIGHTHOUSE.z); R = 34; el = 0.2; az = 0.45; }
+    else if (s.mode === 'build') {
       const p = PLOTS[s.cursor.plot];
-      tgt = this.tmp.set(p.x, plotHeight(s.cursor.plot) + 1, p.z + (s.cursor.building === 'pier' ? 3 : 0));
-      R = 32; el = 0.62; az = 0.1 + drift * 0.3;
+      const shoreFront = SHORE_KINDS.has(s.cursor.building ?? '');
+      tgt = this.tmp.set(p.x, plotHeight(s.cursor.plot) + 1, p.z + (shoreFront ? 3 : 0));
+      R = 34; el = 0.62; az = 0.1 + drift * 0.3;
     } else if (s.view === 1) { tgt = this.tmp.set(HARBOUR.x, 1.5, HARBOUR.z + 3); R = 36; el = 0.36; az = 0.4 + drift; }
     else if (s.view === 2) { tgt = this.tmp.set(LIGHTHOUSE.x + 4, 9, LIGHTHOUSE.z + 6); R = 48; el = 0.16; az = -0.35 + drift * 0.5; }
+    else if (islet) { tgt = this.tmp.set(9, 9, 4); R = 84; el = 0.32; az = drift; }
     else { tgt = this.tmp.set(-2, 4.5, 5); R = 62; el = 0.36; az = drift; }
     if (this.aspect < 1.5) R *= Math.min(1.6, 1.5 / this.aspect);
     const pos = this.tmp2.set(tgt.x + Math.sin(az) * Math.cos(el) * R, tgt.y + Math.sin(el) * R, tgt.z + Math.cos(az) * Math.cos(el) * R);
@@ -126,18 +155,20 @@ export class LighthouseRenderer implements GameRenderer {
   // ---------- buildings ----------
   private syncBuildings(s: Snap) {
     for (let i = 0; i < PLOT_COUNT; i++) {
-      const k = s.buildings[i], cur = this.models[i];
-      if ((cur?.kind ?? null) === k) continue;
+      const k = s.buildings[i], lv = s.levels[i] || 1, cur = this.models[i];
+      if ((cur?.kind ?? null) === k && (!k || cur!.level === lv)) continue;
+      const upgraded = !!cur && cur.kind === k;
       if (cur) this.scene.remove(cur.model.group);
       this.models[i] = null;
       if (!k) continue;
-      const model = makeBuilding(k, i + 1);
+      const model = makeBuilding(k, i + 1, lv);
       const p = PLOTS[i];
       model.group.position.set(p.x, plotHeight(i), p.z);
-      if (k !== 'pier') model.group.rotation.y = (((i * 37) % 7) - 3) * 0.06 + (p.x < -8 ? 0.3 : p.x > 14 ? -0.3 : 0);
-      model.group.scale.setScalar(0.01);
+      model.group.rotation.y = plotYaw(k, i, p.x);
+      model.group.scale.setScalar(upgraded ? 0.7 : 0.01);
       this.scene.add(model.group);
-      this.models[i] = { kind: k, model };
+      model.group.updateMatrixWorld(true);
+      this.models[i] = { kind: k, level: lv, model, boatHome: model.boat?.position.clone() };
     }
   }
 
@@ -148,35 +179,93 @@ export class LighthouseRenderer implements GameRenderer {
       const g = m.model.group;
       if (g.scale.x < 1) { const sc = Math.min(1, g.scale.x + dt * 1.6); g.scale.set(sc, sc * (sc < 1 ? 0.6 + 0.4 * sc + Math.sin(sc * Math.PI) * 0.25 : 1), sc); }
       for (const gl of m.model.glows) (gl.material as THREE.SpriteMaterial).opacity = Math.min(1, night * 0.9 + storm * 0.4);
-      if (m.model.chimney) smoke.push(g.localToWorld(m.model.chimney.clone()));
+      for (const c of m.model.chimney ?? []) smoke.push(g.localToWorld(c.clone()));
       if (m.model.bell) { const a = s.bellAge; m.model.bell.rotation.z = a < 6 ? Math.sin(a * 7) * 0.55 * Math.exp(-a * 0.7) : 0; }
+      if (m.model.spin) m.model.spin.rotation.z -= dt * (0.6 + storm * 2.5);
+      if (m.model.boat && m.boatHome) this.animateLifeboat(s, i, m.model.boat, m.boatHome);
     }
     return smoke;
+  }
+
+  /** The lifeboat runs out to the reef, tows the ship in, then returns to its ramp. */
+  private animateLifeboat(s: Snap, plot: number, boat: THREE.Object3D, home: THREE.Vector3) {
+    const r = s.rescue, a = r.age;
+    const g = boat.parent!;
+    if (r.plot !== plot || a > 18) { boat.position.copy(home); boat.rotation.set(0, -Math.PI / 2, 0); return; }
+    const homeW = g.localToWorld(home.clone());
+    const reef = V(REEFS[0][0] + 3, 0.3, REEFS[0][1] + 1.5);
+    const ship = s.ships.find((x) => x.id === r.ship);
+    const tow = ship && ship.dock >= 0 ? V(PLOTS[ship.dock].x + 3.9, 0.3, PLOTS[ship.dock].z + PIER_LEN + 3) : V(MOORING.x, 0.3, MOORING.z + 2);
+    let w: THREE.Vector3, to: THREE.Vector3;
+    if (a < 5) { w = homeW.clone().lerp(reef, ease(a / 5)); to = reef; }
+    else if (a < 12) { w = reef.clone().lerp(tow, ease((a - 5) / 7)); to = tow; }
+    else { w = tow.clone().lerp(homeW, ease((a - 12) / 6)); to = homeW; }
+    w.y = 0.3 + waveHeight(w.x, w.z, s.t, 0.4);
+    boat.position.copy(g.worldToLocal(w));
+    const d = to.clone().sub(w);
+    boat.rotation.set(0, Math.atan2(-d.z, d.x) - g.rotation.y, 0);
   }
 
   private updateCursor(s: Snap) {
     const on = s.mode === 'build';
     this.cursor.visible = on;
-    for (let i = 0; i < PLOT_COUNT; i++) this.markers[i].visible = on && !s.buildings[i] && (s.cursor.building !== 'pier' || PLOTS[i].shore) && i !== s.cursor.plot;
-    if (!on) { if (this.ghost) { this.scene.remove(this.ghost); this.ghost = undefined; this.ghostKey = ''; } return; }
-    const i = s.cursor.plot, p = PLOTS[i];
-    this.cursor.position.set(p.x, plotHeight(i) + 0.12, p.z);
-    const pulse = 1 + Math.sin(s.t * 5) * 0.08; this.ring.scale.set(pulse, pulse, pulse);
+    const row = s.cursor.row;
+    const open = new Set(s.districts.filter((d) => d.open).map((d) => d.id));
+    const shoreOnly = SHORE_KINDS.has(row);
+    const links = new Set(s.cursor.links);
+    for (let i = 0; i < PLOT_COUNT; i++) {
+      const mk = this.markers[i], mat = mk.material as THREE.MeshBasicMaterial;
+      const valid = row === 'upgrade' ? !!s.buildings[i] : row !== 'lens' && !s.buildings[i] && open.has(PLOTS[i].district) && (!shoreOnly || PLOTS[i].shore);
+      mk.visible = on && i !== s.cursor.plot && (valid || links.has(i));
+      mat.color.set(links.has(i) ? 0xffd84a : 0xffffff); mat.opacity = links.has(i) ? 0.9 : 0.35;
+    }
+    const ghostOff = () => { if (this.ghost) { this.scene.remove(this.ghost); this.ghost = undefined; this.ghostKey = ''; } };
+    if (!on) { ghostOff(); this.links.visible = false; this.range.visible = false; return; }
+    const i = s.cursor.plot;
+    const cx = i < 0 ? LIGHTHOUSE.x : PLOTS[i].x, cz = i < 0 ? LIGHTHOUSE.z : PLOTS[i].z, cy = i < 0 ? LIGHTHOUSE_Y : plotHeight(i);
+    this.cursor.position.set(cx, cy + 0.12, cz);
+    const pulse = (i < 0 ? 1.6 : 1) * (1 + Math.sin(s.t * 5) * 0.08); this.ring.scale.set(pulse, pulse, pulse);
     const ok = s.cursor.canBuild;
     (this.ring.material as THREE.MeshBasicMaterial).color.set(ok ? 0x66ff88 : 0xff6a5a);
     this.ghostMat.color.set(ok ? 0x88ffaa : 0xff8a7a);
-    const key = `${s.cursor.building}@${i}`;
+    // ghost: the new building, or the next level of the building being upgraded
+    const upg = row === 'upgrade' && i >= 0 && s.buildings[i] && s.options.find((o) => o.type === 'upgrade')!.owned < s.options.find((o) => o.type === 'upgrade')!.max;
+    const ghostKind = row === 'upgrade' ? (upg ? s.buildings[i] : null) : row === 'lens' ? null : (i >= 0 && !s.buildings[i] ? row : null);
+    const ghostLevel = row === 'upgrade' ? s.cursor.level + 1 : 1;
+    const key = `${ghostKind}@${i}/${ghostLevel}`;
     if (key !== this.ghostKey) {
-      if (this.ghost) this.scene.remove(this.ghost);
-      this.ghost = undefined; this.ghostKey = key;
-      if (!s.buildings[i]) {
-        const m = makeBuilding(s.cursor.building, i + 1).group;
+      ghostOff(); this.ghostKey = key;
+      if (ghostKind) {
+        const m = makeBuilding(ghostKind, i + 1, ghostLevel).group;
         m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { (o as THREE.Mesh).material = this.ghostMat; o.castShadow = false; } if ((o as THREE.Sprite).isSprite) o.visible = false; });
-        m.position.set(p.x, plotHeight(i), p.z);
+        m.position.set(cx, cy, cz);
+        const real = this.models[i]?.model.group;
+        if (row === 'upgrade' && real) { m.rotation.y = real.rotation.y; m.scale.setScalar(1.06); }
+        else m.rotation.y = plotYaw(ghostKind, i, cx);
         this.ghost = m; this.scene.add(m);
       }
     }
-    if (this.ghost) this.ghost.position.y = plotHeight(i) + 0.15 + Math.sin(s.t * 3) * 0.12;
+    if (this.ghost) this.ghost.position.y = cy + (row === 'upgrade' ? 0.05 : 0.15) + Math.sin(s.t * 3) * 0.12;
+    // neighbour links as arcs, and the neighbourhood range hugging the ground
+    const pts: number[] = [];
+    if (i >= 0) for (const j of s.cursor.links) {
+      const a = V(cx, cy + 1, cz), b = V(PLOTS[j].x, plotHeight(j) + 1, PLOTS[j].z);
+      let prev = a;
+      for (let k = 1; k <= 8; k++) { const q = a.clone().lerp(b, k / 8); q.y += Math.sin((k / 8) * Math.PI) * 2.2; pts.push(prev.x, prev.y, prev.z, q.x, q.y, q.z); prev = q; }
+    }
+    this.links.geometry.dispose();
+    this.links.geometry = new THREE.BufferGeometry(); this.links.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    this.links.visible = pts.length > 0;
+    (this.links.material as THREE.LineBasicMaterial).opacity = 0.6 + 0.35 * Math.sin(s.t * 4);
+    const showRange = i >= 0 && BONUS_ROWS.has(row);
+    this.range.visible = showRange;
+    if (showRange && this.rangeKey !== String(i)) {
+      this.rangeKey = String(i);
+      const rp: number[] = [];
+      for (let k = 0; k < 64; k++) { const a = (k / 64) * Math.PI * 2, x = cx + Math.cos(a) * NEAR, z = cz + Math.sin(a) * NEAR; rp.push(x, Math.max(0.15, islandHeight(x, z)) + 0.25, z); }
+      this.range.geometry.dispose();
+      this.range.geometry = new THREE.BufferGeometry(); this.range.geometry.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
+    }
   }
 
   // ---------- ships ----------
@@ -192,6 +281,13 @@ export class LighthouseRenderer implements GameRenderer {
     if (sh.state === 'docked') {
       let berth: THREE.Vector3;
       if (sh.dock >= 0) { const p = PLOTS[sh.dock]; berth = V(p.x + 3.9, 0, p.z + PIER_LEN + 1.3); } else berth = V(MOORING.x, 0, MOORING.z);
+      if (sh.rescued && sh.age <= 19) { // stranded on the reef until the lifeboat tows her in
+        const reef = V(REEFS[0][0] + 1.5, 0, REEFS[0][1] + 0.8);
+        if (sh.age < 5) { out.copy(app).lerp(reef, ease(sh.age / 3)); return { heading: reef.clone().sub(app).normalize(), sink: 0.05, roll: Math.sin(s.t * 2) * 0.25, wake: 0 }; }
+        const k = ease((sh.age - 5) / 7);
+        out.copy(reef).lerp(berth, k);
+        return { heading: k < 0.95 ? berth.clone().sub(reef).normalize() : V(1, 0, 0), sink: 0, roll: 0, wake: k < 0.95 ? 0.6 : 0 };
+      }
       if (sh.age > 19) {
         const k = ease((sh.age - 19) / 6);
         out.copy(berth).lerp(V(110, 0, 50), k);
@@ -296,8 +392,8 @@ export class LighthouseRenderer implements GameRenderer {
     this.lampLight.intensity = s.lamp * (8 + 40 * night);
 
     // lighthouse + sea
-    this.beamAngle += dt * (0.5 + 0.7 * s.lamp);
-    this.lighthouse.update({ t: s.t, lamp: s.lamp, night, bloom: Math.min(1, s.meadow * 0.8 + (s.grow.reduce((a, g, i) => a + (s.buildings[i] === 'garden' ? g : 0), 0) / 4) * 0.4), beamAngle: this.beamAngle, camera: this.camera, lens: s.buildings.includes('lamp2') ? 1 : 0 });
+    this.beamAngle += dt * (0.5 + 0.7 * s.lamp) * (s.lens >= 3 ? 0.7 : 1);
+    this.lighthouse.update({ t: s.t, lamp: s.lamp, night, bloom: Math.min(1, s.meadow * 0.8 + (s.grow.reduce((a, g, i) => a + (s.buildings[i] === 'garden' ? g : 0), 0) / 4) * 0.4), beamAngle: this.beamAngle, camera: this.camera, lens: s.lens });
     const amp = 0.25 + s.chop * 1.6;
     this.sea.update(s.t, amp, night, storm);
     WIN.color.setRGB(0.16 + 0.84 * night, 0.23 + 0.55 * night, 0.29 + 0.1 * night);
@@ -305,7 +401,9 @@ export class LighthouseRenderer implements GameRenderer {
 
     // town
     this.syncBuildings(s);
-    this.life.setTown(s.buildings, s.grow, s.meadow);
+    const isletOpen = s.districts.some((d) => d.id === 'islet' && d.open);
+    this.bridge!.visible = isletOpen;
+    this.life.setTown(s.buildings, s.levels, s.grow, s.meadow, isletOpen);
     const smoke = this.updateBuildings(s, dt, night, storm);
     this.updateCursor(s);
     this.updateShips(s, amp, night, smoke);

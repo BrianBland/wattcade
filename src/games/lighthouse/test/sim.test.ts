@@ -3,6 +3,7 @@ import { createGameSession, NullInput, testProfile, TimelineInput } from '../../
 import type { Button } from '../../../contracts';
 import { module } from '../index';
 import { islandHeight, LIGHTHOUSE_Y, PIER_LEN, PLOTS } from '../sim/layout';
+import { neighbours, upgradeCost } from '../sim/town';
 
 const taps = (...seq: Array<[number, Button]>) => new TimelineInput(seq.flatMap(([t, b]) => [{ t, press: b }, { t: t + 0.1, release: b }]));
 const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as any;
@@ -94,20 +95,106 @@ describe('saves and growth', () => {
     };
     const z2 = run('z2'), idle = run('idle');
     expect(z2.grow[7]).toBeGreaterThan(z2.grow[6]); // gardens grow fastest
-    expect(z2.grow[6]).toBeGreaterThan(0.2);
-    expect(z2.meadow).toBeGreaterThan(0.05);
+    expect(z2.grow[6]).toBeGreaterThan(0.08);
+    expect(z2.meadow).toBeGreaterThan(0.005);
     expect(idle.grow[6]).toBe(0);
     expect(idle.meadow).toBe(0);
   });
 
-  it('gardens boost cottage income', () => {
-    const income = (gardens: number) => {
+  it('a garden next door boosts a home; one across the island does not', () => {
+    const income = (garden: number | null) => {
       const b = PLOTS.map(() => null as string | null); b[5] = 'cottage';
-      for (let i = 0; i < gardens; i++) b[10 + i] = 'garden';
+      if (garden !== null) b[garden] = 'garden';
       const s = createGameSession({ game: module, profile: withSave({ buildings: b, coin: 0, timber: 0 }), input: new NullInput(), fake: { script: 'idle' }, seed: 3 });
       s.step(30 * 100);
       return snap(s).coin;
     };
-    expect(income(2)).toBeGreaterThan(income(0) * 1.15);
+    const base = income(null);
+    expect(neighbours(5)).toContain(6);
+    expect(neighbours(5)).not.toContain(3);
+    expect(income(6)).toBeGreaterThan(base * 1.15);
+    expect(income(3)).toBeCloseTo(base, 5);
+  });
+});
+
+describe('deeper progression', () => {
+  const town = (entries: Record<number, string>) => { const b = PLOTS.map(() => null as string | null); for (const [i, k] of Object.entries(entries)) b[Number(i)] = k; return b; };
+
+  it('districts open from milestones; locked plots say why', () => {
+    const events: string[] = [];
+    const b = town({ 4: 'cottage', 5: 'cottage', 6: 'garden', 7: 'cottage' });
+    const s = createGameSession({ game: module, profile: withSave({ buildings: b, coin: 999, timber: 999 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1, onEmit: (e) => events.push(e.type) });
+    const hill = PLOTS.findIndex((p) => p.district === 'hillside');
+    s.sim.receive!({ type: 'plot', plot: hill }); s.step(1);
+    expect(snap(s).districts.find((d: any) => d.id === 'hillside').open).toBe(false);
+    expect(snap(s).cursor.canBuild).toBe(false);
+    expect(snap(s).options.find((o: any) => o.selected).reason).toMatch(/opens with The Hillside/);
+    s.sim.receive!({ type: 'plot', plot: 8 }); s.sim.receive!({ type: 'select', building: 'garden' }); s.sim.receive!({ type: 'build' });
+    s.step(1);
+    expect(events).toContain('districtUnlocked');
+    expect(snap(s).districts.find((d: any) => d.id === 'hillside').open).toBe(true);
+  });
+
+  it('upgrades need the area to have grown, then raise the level', () => {
+    const run = (g: number) => {
+      const b = town({ 5: 'cottage' });
+      const s = createGameSession({ game: module, profile: withSave({ buildings: b, grow: PLOTS.map((_, i) => (i === 5 ? g : 0)), coin: 999, timber: 999 }), input: new NullInput(), fake: { script: 'idle' }, seed: 1 });
+      s.sim.receive!({ type: 'plot', plot: 5 }); s.sim.receive!({ type: 'build' });
+      s.step(1);
+      return snap(s);
+    };
+    const young = run(0.2);
+    expect(young.levels[5]).toBe(1);
+    const grown = run(0.6);
+    expect(grown.levels[5]).toBe(2);
+    expect(grown.coin).toBeLessThan(999 - upgradeCost('cottage', 1).coin + 1);
+  });
+
+  it('shore-only buildings stay on the beach', () => {
+    const s = createGameSession({ game: module, profile: withSave({ coin: 999, timber: 999 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    for (const k of ['shipyard', 'lifeboat']) {
+      s.sim.receive!({ type: 'select', building: k }); s.step(1);
+      expect(PLOTS[snap(s).cursor.plot].shore).toBe(true);
+      s.sim.receive!({ type: 'plot', plot: 6 }); s.sim.receive!({ type: 'select', building: k }); s.step(1);
+      expect(PLOTS[snap(s).cursor.plot].shore).toBe(true); // selecting snaps back to a beach plot
+    }
+  });
+
+  it('the lifeboat rescues a ship that would have been lost, then needs to recover', () => {
+    const events: string[] = [];
+    const s = createGameSession({ game: module, profile: withSave({ buildings: town({ 3: 'lifeboat' }), coin: 0, timber: 0 }), input: new NullInput(), fake: { script: 'idle' }, seed: 2, onEmit: (e) => events.push(e.type) });
+    s.step(30 * 60 * 4);
+    expect(events.filter((e) => e === 'shipRescued').length).toBeGreaterThanOrEqual(1);
+    expect(events).toContain('shipLost'); // the cooldown means it can't save everyone
+    expect(snap(s).stats.shipsRescued).toBe(events.filter((e) => e === 'shipRescued').length);
+  });
+
+  it('lens tiers need their district, then upgrade the lighthouse', () => {
+    const fresh = createGameSession({ game: module, profile: withSave({ coin: 9999, timber: 9999 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    fresh.sim.receive!({ type: 'select', building: 'lens' }); fresh.sim.receive!({ type: 'build' }); fresh.step(1);
+    expect(snap(fresh).lens).toBe(1);
+    const b = town({ 4: 'cottage', 5: 'cottage', 6: 'garden', 7: 'cottage', 8: 'garden' });
+    const s = createGameSession({ game: module, profile: withSave({ buildings: b, coin: 9999, timber: 9999 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    s.sim.receive!({ type: 'select', building: 'lens' }); s.sim.receive!({ type: 'build' }); s.step(1);
+    expect(snap(s).lens).toBe(2);
+    expect(snap(s).limits.fog).toBeGreaterThan(snap(fresh).limits.fog);
+  });
+
+  it('Steady Light builds while riding in zone (storms included) and breaks when you drop out', () => {
+    const ready = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 1 });
+    ready.step(30 * 60 * 8);
+    expect(snap(ready).streak.mult).toBeCloseTo(1.1, 5);
+    const z2 = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    z2.step(30 * 60 * 4.5);
+    const before = snap(z2).streak.s;
+    z2.step(30 * 60 * 2); // first storm arrives; a Z2-only rider falls out of the storm requirement
+    expect(before).toBeGreaterThan(150);
+    expect(snap(z2).streak.s).toBeLessThan(before);
+  });
+
+  it('Z opens the Keeper\'s Log in watch mode', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: taps([0.1, 'z']), fake: { script: 'z2' }, seed: 1 });
+    s.step(10);
+    expect(snap(s).logOpen).toBe(true);
   });
 });

@@ -5,7 +5,9 @@ import { loadFlag, saveFlag } from '../debug/flag';
 export type SfxName =
   | 'shoot' | 'shootHeavy' | 'zap' | 'flame' | 'hit' | 'crit' | 'kill' | 'explode' | 'hurt'
   | 'coin' | 'pickup' | 'equip' | 'unique' | 'levelup' | 'potion' | 'door' | 'bossStart' | 'bossDie'
-  | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse';
+  | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse'
+  | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull'
+  | 'upgrade' | 'unlock' | 'rescue';
 
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number }
 const R: Record<SfxName, Tone[]> = {
@@ -33,6 +35,23 @@ const R: Record<SfxName, Tone[]> = {
   select: [{ type: 'square', f0: 660, dur: 0.04, vol: 0.08 }],
   buy: [{ type: 'square', f0: 784, dur: 0.06, vol: 0.12 }, { type: 'square', f0: 1175, dur: 0.1, vol: 0.12, delay: 0.06 }],
   deny: [{ type: 'square', f0: 140, dur: 0.12, vol: 0.12 }],
+  build: [
+    ...[0, 0.16, 0.32, 0.5].map((d) => ({ type: 'noise' as const, f0: 900, dur: 0.07, vol: 0.18, delay: d, q: 2 })),
+    { type: 'triangle', f0: 523, dur: 0.15, vol: 0.12, delay: 0.62 }, { type: 'triangle', f0: 784, dur: 0.25, vol: 0.12, delay: 0.72 },
+  ],
+  horn: [{ type: 'sawtooth', f0: 147, dur: 0.9, vol: 0.12 }, { type: 'sawtooth', f0: 185, dur: 0.9, vol: 0.08 }, { type: 'sine', f0: 147, dur: 0.9, vol: 0.2 }],
+  foghorn: [{ type: 'sawtooth', f0: 82, f1: 78, dur: 2.2, vol: 0.2 }, { type: 'sine', f0: 82, f1: 78, dur: 2.2, vol: 0.3 }, { type: 'sawtooth', f0: 123, f1: 117, dur: 2.2, vol: 0.08 }],
+  bell: [{ type: 'sine', f0: 660, dur: 2.2, vol: 0.16 }, { type: 'sine', f0: 1584, dur: 1.2, vol: 0.06 }, { type: 'sine', f0: 990, dur: 1.6, vol: 0.05 }],
+  thunder: [{ type: 'noise', f0: 160, dur: 2.2, vol: 0.5, q: 0.5 }, { type: 'noise', f0: 600, dur: 0.25, vol: 0.25, delay: 0.05 }, { type: 'sine', f0: 55, f1: 35, dur: 1.5, vol: 0.3 }],
+  wreck: [{ type: 'sawtooth', f0: 90, f1: 60, dur: 0.8, vol: 0.15 }, { type: 'noise', f0: 350, dur: 0.6, vol: 0.25, delay: 0.1 }, { type: 'triangle', f0: 392, f1: 196, dur: 0.6, vol: 0.12, delay: 0.5 }],
+  splash: [{ type: 'noise', f0: 1200, dur: 0.5, vol: 0.25, q: 0.4 }, { type: 'noise', f0: 500, dur: 0.6, vol: 0.15, delay: 0.15 }],
+  chime: [784, 988, 1175].map((f, i) => ({ type: 'sine' as const, f0: f, dur: 0.6, vol: 0.1, delay: i * 0.1 })),
+  surge: [{ type: 'sawtooth', f0: 220, f1: 880, dur: 0.6, vol: 0.12 }, { type: 'noise', f0: 2400, dur: 0.4, vol: 0.12, delay: 0.1 }],
+  lampOut: [{ type: 'triangle', f0: 440, f1: 110, dur: 1.0, vol: 0.2 }, { type: 'noise', f0: 300, dur: 0.4, vol: 0.12 }],
+  upgrade: [392, 523, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.22, vol: 0.14, delay: i * 0.08 })),
+  unlock: [{ type: 'sine', f0: 262, dur: 1.2, vol: 0.15 }, { type: 'sine', f0: 330, dur: 1.2, vol: 0.12, delay: 0.15 }, { type: 'sine', f0: 392, dur: 1.2, vol: 0.12, delay: 0.3 }, { type: 'triangle', f0: 523, dur: 1.4, vol: 0.12, delay: 0.45 }],
+  rescue: [{ type: 'square', f0: 880, dur: 0.15, vol: 0.08 }, { type: 'square', f0: 660, dur: 0.15, vol: 0.08, delay: 0.2 }, { type: 'square', f0: 880, dur: 0.15, vol: 0.08, delay: 0.4 }, { type: 'square', f0: 660, dur: 0.15, vol: 0.08, delay: 0.6 }],
+  gull: [{ type: 'triangle', f0: 1500, f1: 1100, dur: 0.18, vol: 0.05 }, { type: 'triangle', f0: 1600, f1: 1200, dur: 0.2, vol: 0.05, delay: 0.24 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };
 
@@ -83,4 +102,28 @@ export function play(name: SfxName, opts: { vol?: number; minGapS?: number; pitc
       o.connect(g); o.start(t0); o.stop(t0 + tn.dur + 0.02);
     }
   }
+}
+
+// ----- ambient beds (looping filtered noise; e.g. surf, wind, rain) -----
+const beds = new Map<string, { gain: GainNode; filter: BiquadFilterNode; src: AudioBufferSourceNode }>();
+/** Set a looping noise bed's level (0 = silent) and filter centre. Cheap to call every frame. */
+export function setAmbient(id: string, vol: number, freq = 500, q = 0.7): void {
+  const c = ctx(); if (!c || !master || !noise || c.state !== 'running') return;
+  let b = beds.get(id);
+  if (!b) {
+    const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+    const filter = c.createBiquadFilter(); filter.type = 'bandpass';
+    const gain = c.createGain(); gain.gain.value = 0;
+    src.connect(filter); filter.connect(gain); gain.connect(master); src.start();
+    b = { gain, filter, src }; beds.set(id, b);
+  }
+  const now = c.currentTime;
+  b.gain.gain.setTargetAtTime(enabled ? vol : 0, now, 0.3);
+  b.filter.frequency.setTargetAtTime(freq, now, 0.3);
+  b.filter.Q.value = q;
+}
+/** Stop and drop every ambient bed (call on unmount). */
+export function stopAmbient(): void {
+  for (const b of beds.values()) { try { b.src.stop(); } catch { /* already stopped */ } b.gain.disconnect(); }
+  beds.clear();
 }

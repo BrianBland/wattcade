@@ -2,23 +2,30 @@
 
 CONTRACT-REQUESTs: none.
 
-## API
-- `index.ts` exports `module: GameModule` (id `lighthouse`); renderer is dynamic-imported (`render/renderer.ts`, three.js).
-- `sim/sim.ts`: `createLighthouseSim(ctx, opts?: { seed?, autopilot? })`. `autopilot: true` auto-builds in a fixed order (used by scenario `z2-docks`).
-- `scenarios.ts`: z2-docks, idle, mash, storm-ready, z2-no-storm-response (per SPEC 6.2). Summary keys: minutesInZone, shipsDocked, shipsLost, buildingsBuilt, stormsWeathered, stormsFailed, coin.
-- Snapshot has `hooks.storm` (true during storm warning AND storm, so storm-ready starts pushing at the warning).
+## Layout
+- `sim/layout.ts` (pure): 28 plots in 5 districts (harbour 10 incl. 4 beach, hillside 6, hilltop 4, headland 3, Gull Rock islet 5 incl. 2 beach), `islandHeight(x,z)` (terraced island, lighthouse headland, islet), bridge position.
+- `sim/town.ts` (pure): building catalogue (names/effects per level, costs, caps, shore-only), `upgradeCost`/`upgradeGrow`, neighbour rules (`NEAR` 8.5, `homeBonus`, `pierBonus`, `orchardBonus`, `millBonus`, `preview`), `DISTRICTS` milestones, `LENS` tiers.
+- `sim/sim.ts`: `createLighthouseSim(ctx, opts?: { seed?, autopilot? })`; autopilot builds an order, then lens, then cheapest ready upgrade.
+- `render/`: `renderer.ts` (cameras, ships, lifeboat run, build cursor + ghost incl. next-level ghost, neighbour link arcs + range ring, bridge, cues/ambience), `world.ts` (terrain, scenery, lighthouse + lens tiers), `sea.ts`, `sky.ts`, `buildings.ts` (all building levels + ships), `life.ts` (paths MST incl. bridge, flowers/trees/orchards, villagers by home level, fishers, porters, gulls, butterflies, smoke), `hud.ts` (HUD, build list, Keeper's Log, `keeperRank`), `snap.ts`.
+- ~400 draw calls incl. shadow pass with a full town (static meshes merged per material, decor instanced).
 
-## Mechanics (all numbers are `ctx.tuning` keys, `lighthouse.*`)
-- In zone (effortZone == targetZone 2): fog/chop fall, lamp rises. Below: fog rises (bells slow it). Above (non-storm): chop rises.
-- Ships: spawn 40-60 s, sail 60 s, dock if fog<0.5+piers, chop<0.5+piers, lamp>=0.15. Chop failure = spilled, else lost.
-- Storm: first at ~0.6x interval (~5-7 min), then every 480-720 s, 20 s warning, 60-90 s storm, +3% grade effect `storm`, requirement zone>=3 with 25 s slack (integrity meter; 0 -> lamp out, stormsFailed). 15 s mid-storm surge needs zone 5; held >=70% gives bonus salvage.
-- Swell: effect `swell`, +-1% sine, 180 s period. Virtual gears enabled.
-- minutesInZone counts zone==2 time (any phase) plus storm-compliant time.
-- Town (14 plots, buildings, coin, timber, totals) saved via ctx.save on build, every 60 s, and in dispose(); loaded via ctx.load.
-- Controls: left/right = plot cursor (pulsing ring + pillar), up/down = building type, A = build. HUD at top lists cost, effect, and why unavailable; build feedback shown 4 s. Zone changes need to hold `zoneGraceS` (4 s) before the lamp reacts. `hud()` implemented (zone band 2 / storm 3-5 / surge 5, controls, gears).
+## Progression (all numbers are `ctx.tuning` keys, `lighthouse.*`, or constants in town.ts)
+- Buildings: cottage→house→inn, garden→flower garden→glasshouse, orchard (2), pier→long pier→fishery, market→bazaar→trade hall, windmill (2), fog bell→bell tower, shipyard (2, beach), lifeboat station (beach), beacon (2).
+- Upgrades cost base x3 / x7 and need the plot's `grow` >= 0.5 / 1.0; grow rises only in zone (`growPerMin` 0.03, x Steady Light).
+- Neighbours: homes +20% per garden/orchard (max 3) and +25% next to the market; pier +20% cargo next to market; orchard +25% next to a garden; windmill +50% next to an orchard.
+- Districts open from lifetime milestones (buildings / ships docked / storms weathered): hillside 5b; hilltop 10b+25s; headland 14b+80s+3 storms; Gull Rock 18b+250s+10 storms.
+- Lens tiers 2-4 (needs hillside/hilltop/headland): lamp +20%/tier, fog clearing +15%/tier, dock fog limit +0.03/tier; visuals: brass rings, twin beams, pennant.
+- Steady Light: +10% per 5 min continuous in zone (cap x1.5) on cargo and growth; breaks after 12 s out of zone, paused for 45 s after a storm while easing down.
+- Lifeboat: a ship that would be lost/spilled is rescued for half cargo, then 240 s cooldown. Shipyard: cargo x1.3/x1.6, more steamers, Lv2 ships call 15% more often.
+- Bloom (`meadow`): 1/400 per in-zone minute, +15% per garden level.
+- Ideal autopilot (storm-ready, 60 min rides): hilltop ride 1, headland ride 2, Gull Rock + max lens ride 4, all upgrades ~ride 5.
+- Save `{ v: 2, buildings, levels, grow, coin, timber, meadow, lens, totals }`.
+
+## Controls (bike-first)
+- Watch: A = build menu, Y = camera, Z = Keeper's Log (B closes). Build menu rows: Upgrade, 10 buildings, Lighthouse lens. Left/right = next valid plot (free plots, built plots for Upgrade), up/down = row, A = act, B = close. Taps: plots, lighthouse, rows, buttons.
 
 ## Testing
-`npx vitest run src/games/lighthouse` (uses core runHeadless; stub removed).
+`npx vitest run src/games/lighthouse`: scenarios + `test/sim.test.ts` (layout, build flow, districts, upgrades need growth, shore-only, lifeboat, lens, streak, neighbours, log, saves).
 
 ## Known gaps
-- Renderer is untested visually (typecheck only); no sound; HUD is plain DOM text.
+- Renderer checked with throwaway Playwright screenshots, not on a real iPad; sounds untested by ear. Coin piles up once everything is built (only Keeper rank keeps climbing).

@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "wattcade",
+  "compatibility_date": "2026-10-01",
+  // Static site: no Worker script. Cloudflare serves ./dist directly.
+  "assets": {
+    "directory": "./dist"
+  },
+  // Cloudflare creates the DNS record and certificate; brianb.land must be a zone on this account.
+  "routes": [{ "pattern": "wattcade.brianb.land", "custom_domain": true }]
+}

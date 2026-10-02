@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit -p .",
     "sim": "tsx scripts/sim.ts",
     "sim:all": "tsx scripts/sim.ts --all",
-    "deploy": "vite build && wrangler pages deploy dist --project-name wattcade"
+    "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

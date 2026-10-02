@@ -54,16 +54,22 @@ Touch: triple-tap the top-left corner to toggle the debug overlay. While the ove
 5. Don't update the Ride controller firmware through Zwift. Firmware 1.3+ is locked to Zwift.
 6. To debug Bluetooth, open **`/probe.html`**. It lists every service and characteristic, subscribes to all of them, and logs hex with Copy and Download buttons.
 
-## Deploy (Cloudflare Pages)
+## Deploy (Cloudflare Workers, static assets)
 
-```sh
-npx wrangler login
-npm run deploy        # vite build && wrangler pages deploy dist --project-name wattcade
-```
+The site is static, so it ships as a Worker with no script: `wrangler.jsonc` points `assets` at `dist/`.
 
-Then, in the Cloudflare dashboard → Pages → **wattcade** → Custom domains, add e.g. `wattcade.brianb.land`. Optionally put it behind **Cloudflare Access** (Zero Trust → Access → Applications → self-hosted, with an email allow-list of two addresses; this is free) so only you can reach it.
+**One-time setup**
+1. `npx wrangler login`, then `npm run deploy` for the first deploy. It lands at `https://wattcade.<your-subdomain>.workers.dev`, which is HTTPS and works in Bluefy.
+2. The custom domain `wattcade.brianb.land` is declared in `routes` in `wrangler.jsonc` (the zone must be on your Cloudflare account). Edit it there rather than in the dashboard, since deploys treat the file as the source of truth.
+3. Optional gate: Zero Trust → Access → self-hosted application on that hostname, with an email allow-list (free).
 
-Profiles and progress live in the browser's IndexedDB, and there's no backend. Use **Export JSON** in the profile editor to keep a backup.
+**CI/CD (GitHub Actions)**
+- `ci.yml`: typecheck, tests, `sim:all`, build on every PR and push to main.
+- `deploy.yml`: deploys to production after CI passes on main (also manually via *Run workflow*).
+- `preview.yml`: each same-repo PR gets a `pr-<n>` preview URL, posted as a PR comment.
+- Secrets (repo Settings → Secrets → Actions): `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. Create the token from the **Edit Cloudflare Workers** template. Create a GitHub environment named `production` (optionally with required reviewers). Without the secrets, deploy and preview steps skip with a notice.
+
+Profiles and progress live in the browser's IndexedDB, and there's no backend. Use **Export JSON** in the profile editor to keep a backup. When persistence moves server-side, add a Worker `main` plus a D1 binding in `wrangler.jsonc`, and put auth (Cloudflare Access, or Google OAuth) in front of the API routes.
 
 ## Architecture
 

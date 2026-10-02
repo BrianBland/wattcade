@@ -1,7 +1,7 @@
 // The Ride's left and right controllers can show up as two BLE devices (e.g. two "Zwift SF2").
 // RideControllerGroup connects to one or both and presents them as a single ControllerDevice.
 import type { Button, ControllerDevice, ControllerRawState } from '../../contracts';
-import { ZwiftRideController, RIDE_REQUEST_OPTIONS } from './controller';
+import { ZwiftRideController, requestRideDevice } from './controller';
 
 type Status = { connected: boolean; firmware?: string; battery?: number; warning?: string };
 
@@ -40,7 +40,7 @@ export class RideControllerGroup implements ControllerDevice {
 
   /** Must be called from a user gesture. Picking an already-connected controller is rejected. */
   async addFromPicker(): Promise<void> {
-    const device = await navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS);
+    const device = await requestRideDevice();
     if (this.members.some((m) => m.dev.device.id === device.id)) throw new Error('That controller is already connected — pick the other one.');
     this.add(await ZwiftRideController.connectDevice(device));
   }

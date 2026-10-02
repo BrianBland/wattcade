@@ -38,9 +38,8 @@ export class FtmsTrainer implements TrainerDevice {
 
   /** Must be called from a user gesture. */
   static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<FtmsTrainer> {
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [FTMS_SERVICE] }], optionalServices: [0x1818, 0x180a],
-    });
+    // Same minimal request shape as the HR monitor (known to work in Bluefy); the extra optional services were unused.
+    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [FTMS_SERVICE] }] });
     const t = new FtmsTrainer(device);
     if (onLog) t.onLog(onLog);
     if (onProgress) t.progress = onProgress;

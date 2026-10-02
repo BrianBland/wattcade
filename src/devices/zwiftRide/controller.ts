@@ -7,21 +7,13 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
+// Bluefy shows no picker at all for a namePrefix filter or a 128-bit optional service, so use the plainest
+// request that works there (all devices + numeric optional services). The user picks the "Zwift ..." entry.
 export const RIDE_REQUEST_OPTIONS = {
-  filters: [{ namePrefix: 'Zwift' }],
-  optionalServices: [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1', 0x180a, 0x180f],
+  acceptAllDevices: true as const,
+  optionalServices: [0xfc82, 0x180a, 0x180f],
 };
-/** Picker with a fallback: if the browser rejects the name filter/optional-service list outright (TypeError/Security), show all devices. */
-export async function requestRideDevice(): Promise<BluetoothDevice> {
-  try { return await navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS); }
-  catch (e) {
-    const n = (e as { name?: string })?.name;
-    if (n === 'TypeError' || n === 'SecurityError' || n === 'NotSupportedError') {
-      return navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: RIDE_REQUEST_OPTIONS.optionalServices });
-    }
-    throw e;
-  }
-}
+export const requestRideDevice = (): Promise<BluetoothDevice> => navigator.bluetooth.requestDevice(RIDE_REQUEST_OPTIONS);
 const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];
 const FW_WARNING = 'Ride V2 firmware (>=1.3.0) is locked to Zwift and may not work. Do not update the controller firmware through Zwift.';
 const BACKOFF_S = [1, 2, 4, 8, 15];

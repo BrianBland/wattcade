@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput } from '../../../core';
 import type { Button } from '../../../contracts';
+import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
+import { makeUnique, weaponScore } from '../sim/loot';
 import { module } from '../index';
 import { generateWorld, TILE } from '../sim/world';
 import { scenarios } from '../scenarios';
@@ -50,7 +52,7 @@ describe('swamp resistance (core mixer)', () => {
 
 describe('auto-move and hud', () => {
   it('moves the player with no D-pad input and exposes hud()', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5 });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
     const p0 = (s.sim.snapshot() as any).player;
     s.step(300);
     const p1 = (s.sim.snapshot() as any).player;
@@ -67,13 +69,13 @@ describe('buttons aim mode', () => {
   it('aims like the Ride diamond: Y up, Z left, A right, B down', () => {
     const want: Record<string, number> = { y: -Math.PI / 2, z: Math.PI, a: 0, b: Math.PI / 2 };
     for (const [b, ang] of Object.entries(want)) {
-      const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: b as Button }]), fake: { script: 'z2' }, seed: 5 });
+      const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: b as Button }]), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
       s.step(5);
       expect(Math.abs(Math.cos((s.sim.snapshot() as any).aim.angle - ang) - 1), b).toBeLessThan(1e-9);
     }
   });
   it('dash and potion sit on the right shifters without shifting gear', () => {
-    const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: 'shiftUpR' }]), fake: { script: 'z2' }, seed: 5 });
+    const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: 'shiftUpR' }]), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
     const gear0 = s.mixer.gear; s.step(5);
     expect((s.sim.snapshot() as any).player.dashCd).toBeGreaterThan(0);
     expect(s.mixer.gear).toBe(gear0);
@@ -93,5 +95,49 @@ describe('scenarios via runHeadless', () => {
   it('is deterministic', () => {
     const o = { game: module, script: 'z2', minutes: 3, seed: 4, simOpts: { autopilot: true } };
     expect(runHeadless(o).summary).toEqual(runHeadless(o).summary);
+  });
+});
+
+describe('meta progression', () => {
+  it('autoInvest buys cheapest upgrades within the bank', () => {
+    const lv = {};
+    const r = autoInvest(2000, lv);
+    expect(r.bank).toBeGreaterThanOrEqual(0);
+    expect(r.bought.length).toBeGreaterThan(2);
+    const spent = 2000 - r.bank;
+    expect(spent).toBeLessThanOrEqual(2000);
+    const cheapest = Math.min(...UPGRADES.map((d) => upgradeCost(d, (lv as Record<string, number>)[d.id] ?? 0)));
+    expect(cheapest).toBeGreaterThan(r.bank);
+  });
+  it('start floor is capped by best floor', () => {
+    expect(metaMods({ delve: 10 }, 6).maxStartFloor).toBe(5);
+    expect(metaMods({ delve: 1 }, 30).maxStartFloor).toBe(3);
+    expect(metaMods({}, 30).maxStartFloor).toBe(1);
+  });
+  it('camp: buy an upgrade, then start the run; bank persists', () => {
+    const profile = testProfile();
+    (profile.gameData as Record<string, unknown>).dungeon = { bank: 1000, upgrades: {}, bestFloor: 1, runs: 0, autoInvest: false };
+    let saved: any = null;
+    const input = new TimelineInput([
+      { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Might
+      { t: 0.5, press: 'a' }, { t: 0.6, release: 'a' },       // buy (400)
+      { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // begin
+    ]);
+    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    expect((s.sim.snapshot() as any).phase).toBe('camp');
+    s.step(40);
+    expect((s.sim.snapshot() as any).phase).toBe('run');
+    expect(saved.upgrades.might).toBe(1);
+    expect(saved.bank).toBe(600);
+    expect(saved.runs).toBe(1);
+  });
+});
+
+describe('uniques', () => {
+  it('outscore a legendary of the same level', () => {
+    const u = makeUnique(makeRng(9), 5);
+    expect(u.rarity).toBe(5);
+    expect(u.unique).toBeTruthy();
+    expect(weaponScore(u)).toBeGreaterThan(0);
   });
 });

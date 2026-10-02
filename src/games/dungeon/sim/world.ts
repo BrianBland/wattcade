@@ -1,8 +1,10 @@
 // Procedural floor generation. Pure; uses only the supplied rng.
 // A floor is a branching maze of rooms on a grid (random spanning tree + a few loops),
 // so it has dead ends (treasure) and a far-away boss room holding the stairs down.
-export const TILE = { FLOOR: 0, WALL: 1, SWAMP: 2, DOOR: 3, STAIRS: 4 } as const;
-export type TileId = 0 | 1 | 2 | 3 | 4;
+// PIT and PILLAR (brazier) block walking but not projectiles.
+export const TILE = { FLOOR: 0, WALL: 1, SWAMP: 2, DOOR: 3, STAIRS: 4, PIT: 5, PILLAR: 6 } as const;
+export type TileId = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+export type ShrineKind = 'fury' | 'endurance' | 'sprint';
 
 export type EnemyKind = 'chaser' | 'spitter' | 'brute' | 'bat' | 'archer' | 'bomber' | 'summoner';
 export interface SpawnDef { kind: EnemyKind; x: number; y: number }
@@ -10,6 +12,8 @@ export interface Room {
   id: number; x0: number; y0: number; w: number; h: number;
   boss: boolean; cleared: boolean; locked: boolean; seen: boolean;
   chest: { x: number; y: number; opened: boolean } | null;
+  shrine: { x: number; y: number; kind: ShrineKind } | null;
+  layout: 'open' | 'quads' | 'scatter' | 'braziers';
   spawns: SpawnDef[];
   depth: number; // room-graph distance from the start room
 }
@@ -97,7 +101,8 @@ export function generateWorld(rng: () => number, floor = 1): World {
     const deadEnd = id !== 0 && !boss && adj[id].length === 1;
     const room: Room = {
       id, x0, y0, w: rw, h: rh, boss, cleared: id === 0, locked: false, seen: id === 0,
-      chest: deadEnd ? { x: x0 + rw / 2, y: y0 + rh / 2, opened: false } : null, spawns: [], depth: depth[id],
+      chest: deadEnd ? { x: x0 + rw / 2, y: y0 + rh / 2, opened: false } : null, shrine: null, spawns: [], depth: depth[id],
+      layout: id === 0 ? 'open' : boss ? 'braziers' : (['open', 'open', 'quads', 'scatter', 'braziers'] as const)[Math.floor(rng() * 5)],
     };
     for (let y = y0; y < y0 + rh; y++) for (let x = x0; x < x0 + rw; x++) set(x, y, TILE.FLOOR);
     if (id > 0) {
@@ -109,10 +114,18 @@ export function generateWorld(rng: () => number, floor = 1): World {
         }
       }
     }
+    carveLayout(room, rng, set);
     if (id > 0 && !boss) {
       const n = Math.max(2, 1 + Math.round((rw * rh) / 45) + Math.floor(floor / 3) + (deadEnd ? 1 : 0));
       for (let i = 0; i < n; i++) {
-        room.spawns.push({ kind: pickKind(rng, floor), x: x0 + 2 + rng() * (rw - 4), y: y0 + 1.5 + rng() * (rh - 3) });
+        let x = 0, y = 0;
+        for (let k = 0; k < 20; k++) {
+          x = x0 + 2 + rng() * (rw - 4); y = y0 + 1.5 + rng() * (rh - 3);
+          const tl = tiles[Math.floor(y) * w + Math.floor(x)];
+          if (tl === TILE.FLOOR || tl === TILE.SWAMP) break;
+          x = x0 + (rw >> 1) + 0.5; y = y0 + 1.5; // fallback: on the clear centre column
+        }
+        room.spawns.push({ kind: pickKind(rng, floor), x, y });
       }
     }
     world.rooms.push(room);
@@ -150,6 +163,13 @@ export function generateWorld(rng: () => number, floor = 1): World {
       prev = undefined;
     }
   }
+  // shrines: one per floor (two on big floors) in rooms without chests
+  const cand = world.rooms.filter((r) => r.id !== 0 && !r.boss && !r.chest);
+  const kinds: ShrineKind[] = ['endurance', 'fury', 'sprint'];
+  for (let i = 0; i < (roomCount >= 14 ? 2 : 1) && cand.length; i++) {
+    const r = cand.splice(Math.floor(rng() * cand.length), 1)[0];
+    r.shrine = { x: r.x0 + (r.w >> 1) + 0.5, y: r.y0 + (r.h >> 1) + 0.5, kind: kinds[Math.floor(rng() * kinds.length)] };
+  }
   const r0 = world.rooms[0], rb = world.rooms[bossId];
   world.spawn = { x: r0.x0 + r0.w / 2, y: r0.y0 + r0.h / 2 };
   // stairs sit in the boss room's far corner from its centre (away from the boss spawn)
@@ -157,4 +177,30 @@ export function generateWorld(rng: () => number, floor = 1): World {
   set(sx, sy, TILE.STAIRS);
   world.stairs = { x: sx + 0.5, y: sy + 0.5 };
   return world;
+}
+
+/** Obstacles that keep the centre cross (corridor entries) and the 1-tile border ring clear, so rooms stay connected. */
+function carveLayout(r: Room, rng: () => number, set: (x: number, y: number, t: number) => void) {
+  const cx = r.x0 + (r.w >> 1), cy = r.y0 + (r.h >> 1);
+  const ok = (x: number, y: number) => x > r.x0 && x < r.x0 + r.w - 1 && y > r.y0 && y < r.y0 + r.h - 1 && Math.abs(x - cx) > 1 && Math.abs(y - cy) > 1;
+  if (r.layout === 'quads') {
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const xa = sx < 0 ? r.x0 + 2 : cx + 3, xb = sx < 0 ? cx - 3 : r.x0 + r.w - 3;
+      const ya = sy < 0 ? r.y0 + 2 : cy + 3, yb = sy < 0 ? cy - 3 : r.y0 + r.h - 3;
+      for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) if (ok(x, y)) set(x, y, TILE.PIT);
+    }
+  } else if (r.layout === 'scatter') {
+    const n = Math.round((r.w * r.h) / 30);
+    for (let i = 0; i < n; i++) {
+      const x = r.x0 + 2 + Math.floor(rng() * (r.w - 4)), y = r.y0 + 2 + Math.floor(rng() * (r.h - 4)), big = rng() < 0.4;
+      for (let dy = 0; dy <= (big ? 1 : 0); dy++) for (let dx = 0; dx <= (big ? 1 : 0); dx++) if (ok(x + dx, y + dy)) set(x + dx, y + dy, TILE.PIT);
+    }
+  } else if (r.layout === 'braziers') {
+    const corners = r.boss;
+    for (let y = r.y0 + 2; y < r.y0 + r.h - 2; y += 3) for (let x = r.x0 + 2; x < r.x0 + r.w - 2; x += 4) {
+      if (corners && !((x === r.x0 + 2 || x + 4 >= r.x0 + r.w - 2) && (y === r.y0 + 2 || y + 3 >= r.y0 + r.h - 2))) continue;
+      if (corners && x + 4 >= r.x0 + r.w - 2 && y === r.y0 + 2) continue; // stairs corner
+      if (ok(x, y)) set(x, y, TILE.PILLAR);
+    }
+  }
 }

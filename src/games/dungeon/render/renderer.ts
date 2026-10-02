@@ -1,5 +1,6 @@
 import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
-import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx } from '../sim/types';
+import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
+import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { glow, heroPalette, sprite } from './sprites';
@@ -18,6 +19,12 @@ const AURA: Array<{ c: string; a: number; r: number } | null> = [null, null,
   { c: '#5aa0ff', a: 0.35, r: 1.3 }, { c: '#40e0c0', a: 0.45, r: 1.5 }, { c: '#ff9a2a', a: 0.6, r: 1.8 }, { c: '#ff2a2a', a: 0.85, r: 2.3 }];
 const ENEMY_TINT: Record<string, string> = { chaser: '#e66', bat: '#a7f', spitter: '#5d5', archer: '#eee', brute: '#c84', bomber: '#f72', summoner: '#a5f', boss: '#c0a' };
 const BOSS_SPRITE = ['spitter', 'archer', 'brute', 'summoner'];
+const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: '#ffd84a', shielded: '#66ccff', swift: '#ff5af0', volatile: '#ff7a2a' };
+const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
+const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
+const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a' } as const;
+// rate limits (s) for spammy sound cues
+const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
@@ -42,6 +49,16 @@ function buildBackground(w: World): HTMLCanvasElement {
     g.fillStyle = th.grout; g.fillRect(px, py + BT - 1, BT, 1); g.fillRect(px + BT - 1, py, 1, BT);
     if (r > 0.7) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(px + 3 + Math.floor(r * 7), py + 4 + Math.floor(r * 50) % 7, 2, 1); }
     if (r < 0.08) { g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(px + 2, py + 2, 5, 3); }
+    if (k === TILE.PIT) {
+      g.fillStyle = '#030206'; g.fillRect(px, py, BT, BT);
+      if (at(x, y - 1) !== TILE.PIT) { g.fillStyle = th.grout; g.fillRect(px, py, BT, 3); g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(px, py + 3, BT, 3); }
+      continue;
+    }
+    if (k === TILE.PILLAR) { // brazier pedestal (flame drawn live)
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(px + 8, py + 13, 7, 3, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#5a5262'; g.fillRect(px + 4, py + 4, 8, 9); g.fillStyle = '#3a3442'; g.fillRect(px + 3, py + 3, 10, 3); g.fillRect(px + 4, py + 11, 8, 2);
+      continue;
+    }
     if (k === TILE.SWAMP) {
       g.fillStyle = th.swamp; g.fillRect(px, py, BT, BT);
       g.strokeStyle = 'rgba(150,230,140,0.22)'; g.lineWidth = 1;
@@ -59,6 +76,8 @@ export function createRenderer(): GameRenderer {
   let color = '#4cc9f0';
   let bg: HTMLCanvasElement | null = null, bgFor: unknown = null;
   let mini: HTMLCanvasElement | null = null;
+  let pillars: Array<{ x: number; y: number }> = [];
+  let lastCue = -1;
   let dpr = 1;
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
@@ -212,10 +231,11 @@ export function createRenderer(): GameRenderer {
     if (d.kind === 'potion') { drawSprite('potion', x, y, TS / 16, 1, false, undefined, bob); return; }
     const col = RARITY_COLORS[d.rarity];
     gg.globalCompositeOperation = 'lighter';
-    if (d.rarity >= 2) { // light pillar
-      const gr = gg.createLinearGradient(0, y - TS * 2, 0, y);
+    if (d.rarity >= 2) { // light pillar (uniques get a tall pulsing one)
+      const hgt = TS * (d.rarity === 5 ? 4 + Math.sin(t * 6) * 0.5 : 2);
+      const gr = gg.createLinearGradient(0, y - hgt, 0, y);
       gr.addColorStop(0, col + '00'); gr.addColorStop(1, col + '88');
-      gg.fillStyle = gr; gg.fillRect(x - TS * 0.12, y - TS * 2, TS * 0.24, TS * 2);
+      gg.fillStyle = gr; gg.fillRect(x - TS * (d.rarity === 5 ? 0.22 : 0.12), y - hgt, TS * (d.rarity === 5 ? 0.44 : 0.24), hgt);
     }
     glowAt(col, x, y - TS * 0.3 + bob, TS * 0.6, 0.6);
     gg.globalCompositeOperation = 'source-over';
@@ -231,6 +251,7 @@ export function createRenderer(): GameRenderer {
     const flash = e.hurt < 0.06;
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
+    if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
     if (e.shielded) { gg.globalCompositeOperation = 'lighter'; glowAt('#66ccff', x, y - e.r * TS, e.r * TS * 2.4, 0.7 + Math.sin(t * 6) * 0.2); gg.globalCompositeOperation = 'source-over'; }
     const sq = e.kind === 'spitter' ? 1 + Math.sin(t * 6 + e.id) * 0.08 : 1;
@@ -238,6 +259,13 @@ export function createRenderer(): GameRenderer {
     drawSprite(name, x, y, ps, e.face, false, undefined, bob);
     if (flash) { gg.globalAlpha = 0.55; drawSprite(name, x, y, ps, e.face, true, undefined, bob); gg.globalAlpha = 1; }
     gg.restore();
+    if (e.shieldFrac > 0) { gg.strokeStyle = `rgba(102,204,255,${0.3 + 0.6 * e.shieldFrac})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.5, 0, Math.PI * 2); gg.stroke(); }
+    if (e.elite) {
+      const ly = y - def.height * ps - 14;
+      gg.font = `bold ${Math.round(TS * 0.22)}px sans-serif`; gg.textAlign = 'center'; gg.lineWidth = 3; gg.strokeStyle = '#000';
+      const label = `${ELITE_LABEL[e.elite]} ${KIND_LABEL[e.kind] ?? ''}`;
+      gg.strokeText(label, x, ly); gg.fillStyle = ELITE_COLORS[e.elite]; gg.fillText(label, x, ly); gg.textAlign = 'left';
+    }
     if (e.slowed) { gg.fillStyle = 'rgba(127,231,255,0.25)'; gg.fillRect(x - e.r * TS, y - e.r * TS * 2.2, e.r * TS * 2, e.r * TS * 2.2); }
     if (e.dot && Math.floor(t * 8) % 2) { gg.globalCompositeOperation = 'lighter'; glowAt('#7dff5a', x, y - e.r * TS * 1.8, TS * 0.2, 0.8); gg.globalCompositeOperation = 'source-over'; }
     if (isBoss) { // crown
@@ -264,11 +292,18 @@ export function createRenderer(): GameRenderer {
     render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
+      // sound cues (skip any backlog from before mount)
+      if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
+      for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
+      if (s.phase === 'camp' && s.camp) { drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
       const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
       const TS = Math.max(24, Math.round(W / TILES_ACROSS));
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
-      if (bgFor !== w) { bgFor = w; bg = buildBackground(w); mini = null; }
+      if (bgFor !== w) {
+        bgFor = w; bg = buildBackground(w); mini = null; pillars = [];
+        for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
+      }
       const cx = p.x * TS - W / 2, cy = p.y * TS - H / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
@@ -304,6 +339,31 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = '#07060b';
       for (const r of w.rooms) if (!r.seen) gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS, (r.w + 2) * TS, (r.h + 2) * TS);
 
+      // brazier flames
+      gg.globalCompositeOperation = 'lighter';
+      for (const q of pillars) {
+        if (q.x < x0 - 1 || q.x > x1 || q.y < y0 - 1 || q.y > y1) continue;
+        const fl = 1 + Math.sin(t * 9 + q.x * 3 + q.y) * 0.15;
+        glowAt('#ff8c2a', (q.x + 0.5) * TS, (q.y + 0.25) * TS, TS * 1.1 * fl, 0.35);
+        glowAt('#ffe08a', (q.x + 0.5) * TS, (q.y + 0.15) * TS - TS * 0.1 * fl, TS * 0.3 * fl, 0.9);
+      }
+      gg.globalCompositeOperation = 'source-over';
+      // shrines
+      for (const sh of s.shrines) {
+        if (!w.rooms[sh.room].seen) continue;
+        const x = sh.x * TS, y = sh.y * TS, col = sh.state === 'failed' ? '#666666' : SHRINE_COLORS[sh.kind];
+        const a = sh.state === 'active' ? 0.8 + Math.sin(t * 6) * 0.2 : sh.state === 'idle' ? 0.45 : 0.15;
+        gg.globalCompositeOperation = 'lighter'; glowAt(col, x, y - TS * 0.5, TS * 1.4, a); gg.globalCompositeOperation = 'source-over';
+        gg.fillStyle = '#4a4458'; gg.beginPath(); gg.moveTo(x - TS * 0.28, y + TS * 0.2); gg.lineTo(x - TS * 0.18, y - TS * 1.0); gg.lineTo(x, y - TS * 1.2); gg.lineTo(x + TS * 0.18, y - TS * 1.0); gg.lineTo(x + TS * 0.28, y + TS * 0.2); gg.fill();
+        gg.fillStyle = col; gg.fillRect(x - TS * 0.06, y - TS * 0.85, TS * 0.12, TS * 0.5);
+        if (sh.state === 'active') { gg.strokeStyle = col; gg.lineWidth = 4; gg.beginPath(); gg.arc(x, y - TS * 0.5, TS * 0.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sh.progress); gg.stroke(); }
+      }
+      // volatile-elite blasts about to go off
+      for (const h of s.hazards) {
+        const k2 = 1 - h.left / h.total;
+        gg.fillStyle = `rgba(255,90,40,${0.15 + 0.25 * k2})`; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS * k2, 0, Math.PI * 2); gg.fill();
+        gg.strokeStyle = '#ff7a2a'; gg.lineWidth = 2; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS, 0, Math.PI * 2); gg.stroke();
+      }
       for (const d of s.drops) drawDrop(d, TS, t);
 
       // aura (effort zone) under the hero
@@ -343,6 +403,14 @@ export function createRenderer(): GameRenderer {
 
       for (const b of s.bullets) drawBullet(b, TS, t);
       for (const f of s.fx) drawFx(f, t, TS);
+      // orbiting blades (unique)
+      for (const o of s.orbit) {
+        const ox = o.x * TS, oy = o.y * TS, col = ELEMENT_COLORS[s.weapon.element];
+        gg.globalCompositeOperation = 'lighter'; glowAt(col, ox, oy, TS * 0.5, 0.8); gg.globalCompositeOperation = 'source-over';
+        gg.save(); gg.translate(ox, oy); gg.rotate(t * 14); gg.fillStyle = '#eef4ff'; gg.beginPath();
+        for (let i = 0; i < 8; i++) { const rr = i % 2 ? TS * 0.08 : TS * 0.26, a = (i / 8) * Math.PI * 2; gg.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+        gg.fill(); gg.restore();
+      }
 
       // reticle (manual aim only)
       if (!s.aim.auto) {
@@ -367,6 +435,45 @@ export function createRenderer(): GameRenderer {
     unmount() { canvas?.remove(); canvas = null; g = null; bg = null; bgFor = null; mini = null; },
   };
 
+  function drawCamp(c: CampView, W: number, H: number, t: number) {
+    const gg = g!, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25, fs = Math.round(15 * u);
+    const bgG = gg.createRadialGradient(W / 2, H * 0.95, 10, W / 2, H * 0.95, Math.max(W, H) * 0.8);
+    bgG.addColorStop(0, '#3a1e10'); bgG.addColorStop(0.4, '#140c14'); bgG.addColorStop(1, '#05040a');
+    gg.fillStyle = bgG; gg.fillRect(0, 0, W, H);
+    gg.globalCompositeOperation = 'lighter'; // campfire
+    glowAt('#ff8c2a', W / 2, H * 0.93, 140 * u * (1 + Math.sin(t * 7) * 0.06), 0.7); glowAt('#ffe08a', W / 2, H * 0.94, 40 * u, 0.9);
+    gg.globalCompositeOperation = 'source-over';
+    drawSprite('hero', W / 2 - 70 * u, H * 0.97, 5 * u, 1, false, heroPalette(color));
+    gg.textAlign = 'center'; gg.fillStyle = '#ffd84a'; gg.font = `900 ${Math.round(30 * u)}px sans-serif`;
+    gg.fillText('Camp', W / 2, 44 * u);
+    gg.fillStyle = '#ccc'; gg.font = `${fs}px sans-serif`;
+    gg.fillText(`Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u);
+    const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
+    const maxRows = Math.max(4, Math.floor((H * 0.72 - 90 * u) / rowH));
+    const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
+    c.rows.slice(first, first + maxRows).forEach((r, i) => {
+      const idx = first + i, y = 90 * u + i * rowH, sel = idx === c.sel;
+      gg.fillStyle = sel ? 'rgba(255,216,74,0.18)' : 'rgba(0,0,0,0.45)'; gg.fillRect(lx, y, lw, rowH - 4 * u);
+      if (sel) { gg.strokeStyle = '#ffd84a'; gg.lineWidth = 2; gg.strokeRect(lx, y, lw, rowH - 4 * u); }
+      gg.textAlign = 'left'; gg.font = `bold ${fs}px sans-serif`;
+      gg.fillStyle = r.kind === 'start' ? '#7dff5a' : '#fff';
+      gg.fillText(r.name, lx + 10 * u, y + rowH * 0.62);
+      gg.font = `${Math.round(12 * u)}px sans-serif`; gg.fillStyle = '#aaa';
+      gg.fillText(r.desc, lx + 190 * u, y + rowH * 0.62, lw - 330 * u);
+      gg.textAlign = 'right';
+      if (r.kind === 'upgrade') {
+        gg.fillStyle = '#ddd'; gg.fillText(`Lv ${r.level}/${r.max}`, lx + lw - 90 * u, y + rowH * 0.62);
+        gg.fillStyle = r.cost === undefined ? '#7dff5a' : r.affordable ? '#ffd84a' : '#775';
+        gg.font = `bold ${Math.round(13 * u)}px sans-serif`;
+        gg.fillText(r.cost === undefined ? 'MAX' : `● ${r.cost}`, lx + lw - 10 * u, y + rowH * 0.62);
+      }
+    });
+    gg.textAlign = 'center'; gg.font = `${fs}px sans-serif`; gg.fillStyle = '#bbb';
+    const left = Math.ceil(c.autoStartLeft);
+    gg.fillText(`D-pad choose · A buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, H - 18 * u);
+    gg.textAlign = 'left';
+  }
+
   function bar(x: number, y: number, w: number, h: number, frac: number, col: string, label: string) {
     const gg = g!;
     gg.fillStyle = '#000b'; gg.fillRect(x - 2, y - 2, w + 4, h + 4);
@@ -385,7 +492,8 @@ export function createRenderer(): GameRenderer {
     gg.font = `bold ${fs}px sans-serif`; gg.fillStyle = '#fff';
     gg.fillText(`Lv ${p.level}   Floor ${s.floor}`, L, L + 50 * u);
     gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
-    for (let i = 0; i < p.potions; i++) drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u);
+    for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
+    gg.globalAlpha = 1;
     gg.fillStyle = p.dashCd > 0 ? '#888' : '#7fe7ff'; gg.font = `${Math.round(11 * u)}px sans-serif`;
     gg.fillText(p.dashCd > 0 ? `dash ${p.dashCd.toFixed(1)}s` : 'dash ready', L, L + 68 * u);
 
@@ -404,6 +512,23 @@ export function createRenderer(): GameRenderer {
       gearIcon(gg, sl, gx, gy, 16 * u, it ? RARITY_COLORS[it.rarity] : '#444');
     });
 
+    // active shrine banner
+    const act = s.shrines.find((x) => x.state === 'active');
+    if (act) {
+      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L + (s.boss?.active ? 60 : 0) * u + 28 * u;
+      bar(bx, by, bw, 14 * u, act.progress, SHRINE_COLORS[act.kind], '');
+      gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
+      gg.fillText(`${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
+    }
+    // big banners (uniques)
+    for (const f of s.fx) if (f.kind === 'banner') {
+      const k2 = (s.t - f.t0) / f.life; if (k2 < 0 || k2 > 1) continue;
+      gg.globalAlpha = Math.min(1, (1 - k2) * 3); gg.textAlign = 'center';
+      gg.font = `900 ${Math.round(30 * u)}px sans-serif`; gg.lineWidth = 6; gg.strokeStyle = '#000';
+      const by = H * 0.3 - Math.min(1, k2 * 6) * 10 * u;
+      gg.strokeText(f.text!, W / 2, by); gg.fillStyle = f.color; gg.fillText(f.text!, W / 2, by);
+      gg.globalAlpha = 1; gg.textAlign = 'left';
+    }
     // toasts
     gg.font = `bold ${fs}px sans-serif`;
     s.toasts.forEach((tt, i) => {

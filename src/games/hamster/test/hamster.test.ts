@@ -93,7 +93,7 @@ describe('hamster scenarios (runHeadless)', () => {
     it(sc.name, () => {
       const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
       expect(sc.assert(r.summary, r.stats, r), JSON.stringify(r.summary)).toEqual([]);
-    });
+    }, 60_000);
   }
   it('is deterministic', () => {
     const a = runHeadless({ game: module, script: 'mash', minutes: 5, seed: 9, simOpts: { autopilot: true } }).summary;

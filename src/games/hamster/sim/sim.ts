@@ -95,6 +95,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
 
   // ---------- transient ----------
   let t = 0, mono = 1, monoTrend = 0, cadEma = 0, rate = 0, hamRate = 0, legRate = 0, unionOn = false;
+  let milesAt = 0, badgeAt = -1, badges: Partial<Record<TabId, boolean>> = {};
   let tab: TabId = 'gens', row = 0, armedUntil = -1, buySeq = 0, saveAt = 30, autoAt = 2, apAt = 1;
   const effects: Effect[] = [];
   const tol: Record<string, number> = {};
@@ -542,7 +543,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     if (cadence > 20) S.rideS += dt;
     S.peakW = Math.max(S.peakW, rate); sess.peakW = Math.max(sess.peakW, rate);
     if (rate > 0) sess.peakK = Math.max(sess.peakK, kardashev(rate));
-    checkMilestones();
+    if (t >= milesAt) { milesAt = t + 0.5; checkMilestones(); }
     if (t >= autoAt) { autoAt = t + 2; autoBuy(); }
     if (autopilot && t >= apAt) { apAt = t + 1; autopilotStep(); }
     if (t >= newsAt) {
@@ -559,13 +560,15 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
 
   function snapshot(): HamsterSnapshot {
     const b = ctx.bike(), e = era(), tl = tabs();
+    // "something affordable here" dots: rebuilding every tab is costly, so refresh twice a second
+    if (t >= badgeAt) { badgeAt = t + 0.5; badges = {}; for (const id of tl) if (id !== 'gens') badges[id] = items(id).some((x) => x.can && x.owned !== true); }
     const list = items(tab);
     row = clamp(row, 0, Math.max(0, list.length - 1));
     return {
       t, bank: S.bank, rate, hamRate, legRate, k: kardashev(rate), equiv: equivalence(rate),
       mono, monoCap: monoCap(), monoTrend, era: e, eraName: ERAS[e].name, eraBlurb: ERAS[e].blurb,
       gens: GENS.map((g, i) => ({ name: g.name, owned: S.gens[i] })), totalOwned: S.gens.reduce((a, n) => a + n, 0),
-      tabs: tl.map((id) => ({ id, label: TAB_LABEL[id], badge: id !== tab && items(id).some((x) => x.can && !(x.owned === true)) && id !== 'gens' })),
+      tabs: tl.map((id) => ({ id, label: TAB_LABEL[id], badge: id !== tab && !!badges[id] })),
       tab, row, items: list,
       toasts: toasts.filter((x) => t - x.t < 7), cues: cues.slice(), news,
       effects: effects.filter((x) => t >= x.from).map((x) => ({ id: x.id, label: x.label, left: x.until - t, total: x.until - x.from, kind: x.kind, mult: x.mult })),

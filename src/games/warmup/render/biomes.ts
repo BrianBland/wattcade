@@ -1,46 +1,9 @@
 // What each biome looks like. Everything is drawn with primitives into a low-res buffer, so it reads as pixel art.
 // Props are picked per world slot from a hash, so the same spot always holds the same tree.
-import { hash01, type BiomeId } from '../sim/terrain';
-
-export type G = CanvasRenderingContext2D;
-
-export interface BiomeLook {
-  sky: [string, string];          // top, horizon
-  haze: string;                   // far backdrop colour
-  ridge: string;                  // the real-terrain ridge (the road ahead, seen from afar)
-  mid: string;                    // mid ground band
-  ground: string; groundDark: string;
-  road: string; roadEdge: string; roadKind: 'asphalt' | 'planks' | 'dust';
-  stars: number;                  // 0..1 star visibility
-  /** Distant scenery band (parallax ~0.05). `u` = layer scroll in px, `y` = band base. */
-  backdrop(g: G, w: number, y: number, u: number, t: number): void;
-  /** Mid-layer prop standing on (x, y). Return without drawing to leave the slot empty. */
-  midProp(g: G, h: number, x: number, y: number, t: number): void;
-  /** Small foreground bit below the road. */
-  foreProp(g: G, h: number, x: number, y: number): void;
-  /** Sky decoration (sun, Earth, ...). */
-  celestial(g: G, w: number, h: number, t: number): void;
-}
-
-const rect = (g: G, c: string, x: number, y: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
-const disc = (g: G, c: string, x: number, y: number, r: number) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
-const tri = (g: G, c: string, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number) => {
-  g.fillStyle = c; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.lineTo(x3, y3); g.closePath(); g.fill();
-};
-/** Smooth 1D value noise in [0,1]. */
-export function noise1(x: number, seed = 0): number {
-  const i = Math.floor(x), f = x - i, s = f * f * (3 - 2 * f);
-  return hash01(i + seed * 1013) * (1 - s) + hash01(i + 1 + seed * 1013) * s;
-}
-function silhouette(g: G, c: string, w: number, base: number, u: number, amp: number, scale: number, seed: number, jag = 0) {
-  g.fillStyle = c; g.beginPath(); g.moveTo(0, base + 40);
-  for (let x = 0; x <= w; x += 2) {
-    const n = noise1((x + u) / scale, seed) * 0.7 + noise1((x + u) / (scale / 3), seed + 1) * 0.3;
-    const j = jag ? Math.abs(((x + u) % 9) - 4.5) * jag : 0;
-    g.lineTo(x, base - n * amp - j);
-  }
-  g.lineTo(w, base + 40); g.closePath(); g.fill();
-}
+import type { BiomeId } from '../sim/terrain';
+import { disc, rect, silhouette, tri, type BiomeLook, type G } from './paint';
+import { MORE_LOOKS } from './biomesMore';
+export { noise1, type G, type BiomeLook } from './paint';
 
 // ---------------- countryside ----------------
 function tree(g: G, h: number, x: number, y: number) {
@@ -71,6 +34,7 @@ function sheep(g: G, x: number, y: number) {
 const countryside: BiomeLook = {
   sky: ['#4fa3e8', '#cfeaf7'], haze: '#9cc3d9', ridge: '#7fb36a', mid: '#5f9e4c', ground: '#4f8f3a', groundDark: '#3f7a2e',
   road: '#5c5a63', roadEdge: '#3a3940', roadKind: 'asphalt', stars: 0,
+  actor: 'bird', rider: 'road', outdoor: true, ambient: { vol: 0.025, freq: 700 },
   backdrop(g, w, y, u) { silhouette(g, '#9cc3d9', w, y, u, 26, 90, 3); silhouette(g, '#86b3a0', w, y + 8, u * 1.6, 16, 60, 4); },
   midProp(g, h, x, y, t) {
     if (h < 0.42) tree(g, h, x, y);
@@ -111,6 +75,7 @@ function umbrella(g: G, h: number, x: number, y: number) {
 const seaside: BiomeLook = {
   sky: ['#3d8fe0', '#bfe6ff'], haze: '#2f86c9', ridge: '#e4cf95', mid: '#ecd9a2', ground: '#e8d39a', groundDark: '#d4bd80',
   road: '#a77b4f', roadEdge: '#7a5634', roadKind: 'planks', stars: 0,
+  actor: 'gull', rider: 'road', outdoor: true, ambient: { vol: 0.06, freq: 450, q: 0.5 },
   backdrop(g, w, y, u, t) {
     rect(g, '#2b7fc4', 0, y - 14, w, 60);
     g.fillStyle = '#7fc4f0';
@@ -161,6 +126,7 @@ function dish(g: G, x: number, y: number, t: number) {
 const moon: BiomeLook = {
   sky: ['#05040d', '#1a1830'], haze: '#3a3a4a', ridge: '#5a5a68', mid: '#77777f', ground: '#8e8e98', groundDark: '#74747e',
   road: '#a7a7b0', roadEdge: '#5e5e68', roadKind: 'dust', stars: 1,
+  actor: 'ufo', rider: 'bubble', outdoor: false,
   backdrop(g, w, y, u) { silhouette(g, '#30303e', w, y, u, 34, 70, 9, 0.8); silhouette(g, '#45454f', w, y + 8, u * 1.5, 18, 40, 11, 0.5); },
   midProp(g, h, x, y, t) {
     if (h < 0.3) crater(g, x, y, 4 + h * 10);
@@ -185,4 +151,4 @@ const moon: BiomeLook = {
   },
 };
 
-export const LOOKS: Record<BiomeId, BiomeLook> = { countryside, seaside, moon };
+export const LOOKS: Record<BiomeId, BiomeLook> = { countryside, seaside, moon, ...MORE_LOOKS };

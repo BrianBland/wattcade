@@ -187,8 +187,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .game-card::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
 .game-card h3 { font-size: clamp(19px, 2vw, 24px); margin: 2px 0 0; color: #fff; }
 .game-card.focused { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 26px color-mix(in srgb, var(--accent) 50%, transparent); }
-.game-card .blurb { margin: 0; font-size: 14px; line-height: 1.35; color: #d8d4f6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.game-card.focused .blurb { -webkit-line-clamp: 5; }
+.game-card .blurb { margin: 0; font-size: 14px; line-height: 1.35; color: #d8d4f6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.game-card.focused .blurb { -webkit-line-clamp: 4; }
 .game-card .meta { font-size: 12px; margin-top: auto; }
 /* profile picker */
 .rider-row { display: flex; gap: var(--gap); flex-wrap: wrap; }
@@ -230,3 +230,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .modal.pause .field { grid-template-columns: 170px 1fr; }
 .stats.compact { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .stats.compact .stat { padding: 6px 10px; } .stats.compact .stat b { font-size: 20px; } .stats.compact .stat span { font-size: 11px; }
+/* phase 3: card banners + progress */
+.game-card { padding-top: 0; }
+.card-art { display: block; width: calc(100% + 28px); margin: 0 -14px 4px; aspect-ratio: 23 / 10; height: auto; image-rendering: pixelated; border-bottom: 1px solid var(--glass-line); }
+.game-card::before { z-index: 1; }
+.game-card .progress-line { font: 800 13px system-ui; color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }

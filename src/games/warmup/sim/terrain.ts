@@ -1,9 +1,13 @@
 // Pure, seeded road profile + biome sequence. Shared by the sim (trainer grade) and the renderer (what you see),
 // so the hill on screen is exactly the hill under the wheels (just drawn taller).
 
-export const BIOMES = ['countryside', 'seaside', 'moon'] as const;
+/** Loop order tells a little story: down to the beach, under the waves, up through jungle and desert to the volcano, the peaks, and off to the Moon. */
+export const BIOMES = ['countryside', 'seaside', 'underwater', 'jungle', 'desert', 'volcano', 'snow', 'moon'] as const;
 export type BiomeId = (typeof BIOMES)[number];
-export const BIOME_NAMES: Record<BiomeId, string> = { countryside: 'Countryside', seaside: 'Seaside', moon: 'The Moon' };
+export const BIOME_NAMES: Record<BiomeId, string> = {
+  countryside: 'Countryside', seaside: 'Seaside', underwater: 'Under the Sea', jungle: 'Jungle', desert: 'Desert Canyon',
+  volcano: 'Volcano', snow: 'Snowy Pass', moon: 'The Moon',
+};
 
 /** Metres over which one biome blends into the next (sky, props, ground). */
 export const TRANSITION_M = 140;

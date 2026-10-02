@@ -7,12 +7,27 @@ import { scenarios } from '../scenarios';
 import { makeRng } from '../../../core';
 
 describe('world', () => {
-  it('generates 13 connected rooms', () => {
-    const w = generateWorld(makeRng(5));
-    expect(w.rooms.length).toBe(13);
-    expect(w.links.length).toBe(12);
-    expect(w.tiles.includes(TILE.DOOR)).toBe(true);
-    expect(w.tiles.includes(TILE.SWAMP)).toBe(true);
+  it('generates a connected maze floor with stairs in the boss room', () => {
+    for (let seed = 1; seed < 30; seed++) {
+      const w = generateWorld(makeRng(seed), 1 + (seed % 6));
+      expect(w.rooms.length).toBe(Math.min(18, 10 + (seed % 6)));
+      expect(w.rooms.every((r) => r.depth >= 0)).toBe(true);
+      expect(w.tiles.includes(TILE.DOOR)).toBe(true);
+      expect(w.tiles.includes(TILE.STAIRS)).toBe(true);
+      const b = w.rooms.find((r) => r.boss)!;
+      expect(w.stairs.x > b.x0 && w.stairs.x < b.x0 + b.w && w.stairs.y > b.y0 && w.stairs.y < b.y0 + b.h).toBe(true);
+      // every room reachable over floor tiles from spawn
+      const seen = new Set<number>(), q = [Math.floor(w.spawn.y) * w.w + Math.floor(w.spawn.x)];
+      seen.add(q[0]);
+      for (let i = 0; i < q.length; i++) for (const d of [1, -1, w.w, -w.w]) {
+        const n = q[i] + d; if (!seen.has(n) && w.tiles[n] !== TILE.WALL) { seen.add(n); q.push(n); }
+      }
+      for (const r of w.rooms) expect(seen.has((r.y0 + 1) * w.w + r.x0 + 1)).toBe(true);
+    }
+  });
+  it('has dead ends with chests', () => {
+    const w = generateWorld(makeRng(3), 4);
+    expect(w.rooms.some((r) => r.chest)).toBe(true);
   });
 });
 

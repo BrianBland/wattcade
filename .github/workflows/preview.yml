@@ -1,0 +1,84 @@
+name: Preview
+
+# Each PR gets a Worker Preview named pr-<n> (wrangler preview), commented on the PR and deleted
+# when the PR closes. Same-repo PRs only: fork PRs don't receive secrets.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+
+jobs:
+  preview:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Skip without Cloudflare credentials
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        run: echo "::notice title=Preview skipped::Cloudflare secrets are not set."
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build and create the Preview
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        id: upload
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npx wrangler preview --name "$PREVIEW_NAME" \
+            --message "PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}" \
+            | tee preview.log
+          URL=$(grep -Eo 'https://[a-zA-Z0-9.-]+\.workers\.dev[^" ]*' preview.log | head -1 || true)
+          [ -n "$URL" ] || URL=$(grep -Eo 'https://[^" ]+' preview.log | head -1 || true)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Comment the preview URL
+        if: steps.upload.outputs.url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.upload.outputs.url }}';
+            const marker = '<!-- wattcade-preview -->';
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const body = `${marker}\n**Preview:** ${url}\n\nWorker Preview \`${process.env.PREVIEW_NAME}\` at \`${sha}\`. Web Bluetooth needs HTTPS, so this works in Bluefy. Deleted when this PR closes.`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const mine = comments.find((c) => c.body?.includes(marker));
+            if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+      - uses: actions/setup-node@v4
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        with:
+          node-version: 22
+          cache: npm
+      - name: Delete the Preview
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          npm ci
+          npx wrangler preview delete --worker-name wattcade --name "$PREVIEW_NAME" \
+            || echo "::notice title=Preview cleanup::No Preview named $PREVIEW_NAME to delete."

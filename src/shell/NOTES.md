@@ -16,21 +16,30 @@ CONTRACT-REQUEST: none.
 - Debug overlay toggled by system action `toggleDebug`, persisted in localStorage; sets `input.debugOpen` (shifters -> difficulty/timeScale via `onDebugAdjust`).
 - Trainer test: debug mixer panel; `applyTest(cmd)` -> during a session sets mixer effect `trainer-test` (priority 99, ttl 10 s; so difficulty scaling and clamps still apply); with no session it calls the real trainer's `apply` directly. "clear" button removes it.
 - Fake sliders: +/- buttons edit `fakeBike.manual` (switching from script to manual) ; script picker includes `manual`.
-
 - HUD chip shows ride time (`bike.activeSeconds`, pedalling time). Pause menu has a Sound on/off toggle (`wattcade.sound` flag).
 - `src/audio/sfx.ts`: shared WebAudio synth (`play(name, { minGapS })`, `unlockAudio()` called by GameHost on mount/gesture). Renderers import it; nothing runs in Node.
-
 - GameHost passes `send` to `renderer.mount`, forwarding to optional `GameSim.receive(action)` (canvas UI taps).
 
 ## Gaps
 - ProfileEditor fields are touch/keyboard only (no D-pad field navigation); Save/Cancel via mouse/touch.
-- PauseMenu difficulty starts at 1.00 display (not read back from mixer). GameHost `onSave` closure captures the profile at mount.
+- PauseMenu difficulty starts at 1.00 display (not read back from mixer).
 - Touch overlay (`attachTouch`) attached to the game mount only; not visually tested. Not browser-tested at all with real devices.
-- Tests: `npx vitest run src/shell src/debug`.
-- Fixes (smoke test): GameHost disconnects its ResizeObserver and guards the RAF/resize callbacks after unmount; Connect shows a friendly "Web Bluetooth unavailable" message; debug top panels sit 64 px down; mixer last-cmd is formatted; inline SVG favicon; profile cards show XP/next-level XP.
-- Fake bike keys (W/S cadence, E/D power, R/F HR via event.code, `shell/fakeKeys.ts`) active in GameHost; first press switches FakeBike to manual seeded from current raw values; hint shown in the game host when fake.
+- Fake bike keys (W/S cadence, E/D power, R/F HR via event.code, `shell/fakeKeys.ts`) active in GameHost and the warm-up stage (`fakeKeysDom.ts`); first press switches FakeBike to manual seeded from current raw values; hint shown in the game host when fake.
 - In-game HUD (`shell/hud/`): `HudLayer` (10 Hz poll of `session.sim.hud?.()` + bike) renders a bottom strip: `ZoneWidget` (5-zone bar, in-zone marker, targetZone outline, W/%FTP/HR, ~3 min bar chart + HR line), gear/diff chip (pulses on change; Gear only when `hud.gears`), `Legend` (Ride hoods; dim if unmapped, lit when held, `active` outlined; expanded when paused or first 8 s). Pure math + History in `zoneMath.ts` (tested). Legend toggle in pause menu, persisted in localStorage `wattcade.legend`.
 - Connect: HR card shows progress steps via `HeartRateMonitor.connect(onProgress)` (cast; harmless if the arg isn't supported yet) and errors. Editor has the zone-source hint.
-- HUD tweaks: history bars scale to max(1.6×FTP, window max), target label above the zone bar, fake-key hint lives in the zone widget; FtmsTrainer.connect(onProgress) wired; trainer status detail on the Connect card and debug device panel.
 - HUD layout: .mount is edge-to-edge; the HUD (left hood | translucent centre panel | right hood, buttons via InputHub.holdTouch/releaseTouch, clusters from hud/padModel.ts) floats over the bottom --hud-h band. GameHost measures that band (.hud-probe) and gives renderers `Insets` via mount ctx + optional `setInsets()`: draw backgrounds full-bleed, keep foreground UI and play focus above `insets.bottom`.
 - Compact legend is now a text list (`hud/CompactLegend.tsx`, pure `legendLines.ts` tested): coloured key glyphs + label, identical labels merged, active first, 2 columns; expanded drawing unchanged.
+- Warm-up lobby (`warmup/WarmupStage.tsx`): rendered behind every non-game screen. Runs a lobby session of `lobbyGame`
+  (services `startLobby/stopLobby`), draws its renderer full-bleed, owns keyboard/gamepad/fake keys and the InputHub tick.
+  Restarts (keeping road position) on rider/device/fake changes. Guest (no profile) on profiles/editor; demo (fake) rides never credit.
+- Menu input: `menuInput.ts` is the single press source for `useMenuNav` (stage delivers presses buffered across sim steps;
+  otherwise, e.g. the in-game pause menu, it ticks the hub itself). `setMenuGate` lets App swallow the waking press.
+- Warm-up credit: real devices and >= 2 min pedalling (`WARMUP_CREDIT_S`). Credited on: game start (before the game session),
+  HUD "End ride" (-> Summary), rider/device change, 3 min stopped (auto-save), and next launch via a localStorage
+  checkpoint (`wattcade.pendingRide`, every 20 s / on hide). Toasts: `components/Toasts.tsx`.
+- Screensaver: on profiles/menu/achievements/summary, 25 s without menu input fades the screens out (HUD stays, legend hides);
+  the first tap or nav press only wakes. Shifters and HUD taps never wake. HUD centre button is configurable (`menu` getter).
+- App keeps `profileRef` so async credit and game saves always apply to the latest profile.
+- Road: Hills/Flat toggle in the arcade menu (`warmup.hills` tunable, saved per rider).
+
+- Tests: `npx vitest run src/shell src/debug`.

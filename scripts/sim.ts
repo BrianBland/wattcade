@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { GameModule } from '../src/contracts';
 import { runHeadless, SCRIPTS } from '../src/core';
-import { games, getGame } from '../src/games/registry';
+import { allGames, getGame } from '../src/games/registry';
 
 export interface Scenario {
   name: string; script: string; minutes: number; seed: number; simOpts?: Record<string, unknown>;
@@ -31,7 +31,7 @@ async function loadScenarios(game: GameModule): Promise<Scenario[] | null> {
 
 export async function runAll(log: (s: string) => void = console.log): Promise<number> {
   let failed = 0, ran = 0;
-  for (const g of games) {
+  for (const g of allGames) {
     const scs = await loadScenarios(g);
     if (!scs) { console.error(`sim:all: skipping ${g.id} (no scenarios.ts yet)`); continue; }
     for (const sc of scs) {
@@ -57,7 +57,7 @@ async function main() {
   if (a.all) { process.exit(await runAll()); }
   const id = String(a.game ?? ''), script = String(a.script ?? 'z2');
   const game = getGame(id);
-  if (!game) { console.error(`usage: npm run sim -- --game <${games.map((g) => g.id).join('|')}> --script <${Object.keys(SCRIPTS).join('|')}> --minutes N --seed S [--autopilot]`); process.exit(2); }
+  if (!game) { console.error(`usage: npm run sim -- --game <${allGames.map((g) => g.id).join('|')}> --script <${Object.keys(SCRIPTS).join('|')}> --minutes N --seed S [--autopilot]`); process.exit(2); }
   const r = runHeadless({
     game, script, minutes: Number(a.minutes ?? 5), seed: Number(a.seed ?? 1),
     simOpts: a.autopilot ? { autopilot: true } : undefined,

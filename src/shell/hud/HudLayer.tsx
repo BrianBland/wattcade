@@ -15,12 +15,19 @@ const GEAR_KEYS = [
   { id: 'shiftUpL', glyph: '+', color: '#b07cff', mapped: true },
 ] as const;
 
+/** One ride history for every HUD (lobby -> game -> lobby), so the chart doesn't reset between screens. */
+const rideHistory = new History();
+
 /**
  * Shared in-game HUD strip, laid out like the controller: left hood | stats, menu and gears | right hood.
  * The hoods double as touch buttons. DOM updates at ~10 Hz.
  */
-export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: boolean; session: SessionLike; profile: Profile; paused: boolean; legendOn: boolean }) {
-  const hist = useRef(new History());
+export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
+  fake?: boolean; session: SessionLike; profile: Profile; paused: boolean; legendOn: boolean;
+  /** The centre button, read every HUD frame (defaults to the in-game Menu / pause). */
+  menu?: () => { label: string; onClick: () => void; dim?: boolean };
+}) {
+  const hist = useRef(rideHistory);
   const [f, setF] = useState<Frame | null>(null);
   const [pulse, setPulse] = useState(0);
   const last = useRef({ gear: -1, diff: -1, t: performance.now() });
@@ -46,13 +53,14 @@ export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: 
   if (!f) return null;
   const gears = !!f.hud.gears;
   const pad = buildPad(f.hud.controls ?? [], gears);
+  const mb = menu?.();
   return (
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
       {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
       <div class="hud-center">
         <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
         <div class="hud-row">
-          <button type="button" class="hud-menu" onClick={() => input.system('pause')}>Menu</button>
+          <button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>
           <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
           {gears && (
             <div class="gearbox" key={pulse}>

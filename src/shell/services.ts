@@ -3,10 +3,11 @@
  * Written against the CLAUDE.md "Integration seams"; guessed signatures are
  * isolated behind `any` adapters here so fixes stay local.
  */
-import type { GameModule, Profile, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
+import type { Button, GameModule, InputState, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
-import { ProfileStore, SessionStore, awardSession, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
+import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
+import { lobbyGame } from '../games/registry';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
 import { RideControllerGroup } from '../devices/zwiftRide';
@@ -103,6 +104,8 @@ const anyReal = () => Object.keys(devices).length > 0;
 // ---------- sessions ----------
 let active: any = null;
 export const activeSession = (): SessionLike | null => active;
+/** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
+const current = (): any => active ?? lobby;
 
 export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void): SessionLike {
   input.applySettings(profile.settings); debugState.timeScale = 1;
@@ -116,23 +119,105 @@ export function startSession(game: GameModule, profile: Profile, onSave: (d: unk
 export async function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   const record: SessionRecord = active.finish();
   active.mixer?.panic?.(true); active = null;
+  return creditRecord(profile, record);
+}
+/** Save a finished record and apply XP / achievements to `profile`. */
+async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   await sessionStore.save(record);
   const r: any = awardSession(profile, record);
-  const next: Profile = r.profile ?? r['profile\''] ?? profile;
+  const next: Profile = r.profile ?? profile;
   await saveProfile(next);
-  const levelUps: any[] = r.levelUps ?? [];
   const award: AwardView = {
     xpGained: r.xpGained ?? 0,
     levelBefore: profile.level, levelAfter: next.level,
     newAchievements: (r.newAchievements ?? []).map((a: any) => (typeof a === 'string' ? { id: a, name: achievementName(a) } : { id: a.id, name: a.name ?? a.id })),
   };
-  void levelUps;
   return { record, award, profile: next };
+}
+
+// ---------- warm-up lobby (the ride behind the menus) ----------
+/** A warm-up counts (lifetime, XP) once it has this much pedalling on real devices. */
+export const WARMUP_CREDIT_S = 120;
+const PENDING_KEY = 'wattcade.pendingRide';
+let lobby: any = null;
+let lobbyMeta: { profileId: string | null; startedAt: number } = { profileId: null, startedAt: 0 };
+/** Road position carried across lobby restarts so the scenery never jumps. */
+let lobbyCarry: { startDistance: number; startBiome?: number; terrainSeed?: number } = { startDistance: 0 };
+const menuPressed = new Set<Button>();
+/** Lobby input: ticks the shared InputHub and keeps every press for the menus (several sim steps may run per frame). */
+const lobbyInput = {
+  beginTick(dt: Seconds) { input.beginTick(dt); for (const b of input.state().pressed) menuPressed.add(b); },
+  state: (): Readonly<InputState> => input.state(),
+};
+export const lobbySession = (): SessionLike | null => lobby;
+/** Presses collected by the lobby since the last call (cleared). */
+export function takeLobbyPresses(): Set<Button> { const p = new Set(menuPressed); menuPressed.clear(); return p; }
+/** True if the current lobby ride is on real devices (fake demo rides never earn credit). */
+export const lobbyIsReal = (): boolean => !!lobby && !lobby.fakeBike && !!lobbyMeta.profileId;
+const activeSecondsOf = (r: SessionRecord) => r.samples.filter((x) => x.cadence > 20).length;
+const creditable = (r: SessionRecord | null): r is SessionRecord => !!r && activeSecondsOf(r) >= WARMUP_CREDIT_S;
+
+/** Start (or restart) the lobby ride. `profile` null = guest (profile picker): rides, never credits. */
+export function startLobby(profile: Profile | null): SessionLike {
+  if (lobby) stopLobby();
+  const p = profile ?? { ...defaultProfile('Guest'), id: 'guest', color: '#00f0ff' };
+  input.applySettings(p.settings);
+  const useFake = fakeMode || !anyReal();
+  const startedAt = Date.now();
+  lobby = createGameSession({
+    game: lobbyGame, profile: p, input: lobbyInput, dataHub: useFake ? undefined : dataHub,
+    fake: useFake ? { script: fakeScript } : false, seed: Math.floor(startedAt / 86400000), simOpts: { ...lobbyCarry },
+  });
+  lobbyMeta = { profileId: profile?.id ?? null, startedAt };
+  menuPressed.clear();
+  return lobby;
+}
+function lobbyRecord(): SessionRecord | null {
+  if (!lobby || !lobbyMeta.profileId || lobby.fakeBike) return null;
+  return lobby.recorder.finish({ profileId: lobbyMeta.profileId, gameId: lobbyGame.id, startedAt: lobbyMeta.startedAt, gameSummary: lobby.sim.summary() });
+}
+/** Stop the lobby ride. Returns its record if it is worth crediting (real devices, >= 2 min pedalling). */
+export function stopLobby(): SessionRecord | null {
+  if (!lobby) return null;
+  const snap: any = lobby.sim.snapshot();
+  lobbyCarry = { startDistance: snap.d, startBiome: snap.startBiome, terrainSeed: snap.terrainSeed };
+  const rec = lobbyRecord();
+  lobby.finish(); lobby = null;
+  clearPendingRide();
+  return creditable(rec) ? rec : null;
+}
+/** Warm-up road: rolling hills (trainer grade follows the road) or flat. Saved per rider via the tuning registry. */
+export const lobbyHills = (): boolean => (lobby?.tuning?.get?.('warmup.hills') ?? true) as boolean;
+export function setLobbyHills(on: boolean): void { lobby?.tuning?.set?.('warmup.hills', on); }
+/** Ride seconds so far in the lobby (pedalling), for the "End ride" button. */
+export const lobbyActiveSeconds = (): number => { const r = lobbyRecord(); return r ? activeSecondsOf(r) : 0; };
+
+/** Credit a warm-up record to its rider. `latest` is used if it is that rider (avoids a stale read). */
+export async function creditRide(record: SessionRecord, latest?: Profile | null): Promise<{ record: SessionRecord; award: AwardView; profile: Profile } | null> {
+  const p: Profile | undefined = latest?.id === record.profileId ? latest : await profileStore.get(record.profileId);
+  if (!p) return null;
+  return creditRecord(p, record);
+}
+/** Checkpoint the running warm-up so a closed tab still gets credit next launch. */
+export function checkpointLobby(): void {
+  const r = lobbyRecord();
+  if (!creditable(r)) return;
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify(r)); } catch { /* full or unavailable */ }
+}
+export function clearPendingRide(): void { try { localStorage.removeItem(PENDING_KEY); } catch { /* ignore */ } }
+/** A warm-up checkpointed by a previous page that never ended cleanly. */
+export function takePendingRide(): SessionRecord | null {
+  try {
+    const raw = localStorage.getItem(PENDING_KEY); if (!raw) return null;
+    localStorage.removeItem(PENDING_KEY);
+    const r = JSON.parse(raw) as SessionRecord;
+    return r && typeof r.profileId === 'string' && Array.isArray(r.samples) ? r : null;
+  } catch { return null; }
 }
 
 // ---------- trainer test + debug ----------
 export function applyTest(cmd: TrainerCommand): void {
-  const s: any = active;
+  const s: any = current();
   if (s?.mixer) {
     const base = { id: 'trainer-test', priority: 99, ttl: 10 };
     if (cmd.mode === 'none') { s.mixer.clear('trainer-test'); return; }
@@ -149,7 +234,7 @@ const tuningEntries = (s: any): TuningEntry[] =>
   }));
 
 export function debugSnapshot(): DebugSnapshot {
-  const s: any = active;
+  const s: any = current();
   const mx = s?.mixer?.debug?.();
   return {
     bike: s ? s.ctx.bike() : null,
@@ -167,17 +252,17 @@ export function debugSnapshot(): DebugSnapshot {
 export const getDifficulty = () => debugState.difficulty;
 const debugState = { difficulty: 1, timeScale: 1 };
 export const debugActions: DebugActions = {
-  setDifficulty(v) { debugState.difficulty = v; any(active)?.mixer?.setDifficulty(v); },
-  setTimeScale(v) { debugState.timeScale = v; if (active?.loop) active.loop.timeScale = v; if (active?.ctx) active.ctx.clock.timeScale = v; },
-  panic(on) { any(active)?.mixer?.panic(on); },
+  setDifficulty(v) { debugState.difficulty = v; any(current())?.mixer?.setDifficulty(v); },
+  setTimeScale(v) { debugState.timeScale = v; const c = current(); if (c?.ctx) c.ctx.clock.timeScale = v; },
+  panic(on) { any(current())?.mixer?.panic(on); },
   applyTest,
-  setTuning(k, v) { any(active)?.tuning?.set(k, v); },
-  resetTuning() { any(active)?.tuning?.reset(); },
-  setFakeScript(n) { fakeScript = n; any(active)?.fakeBike?.useScript(n === 'manual' ? null : n); },
+  setTuning(k, v) { any(current())?.tuning?.set(k, v); },
+  resetTuning() { any(current())?.tuning?.reset(); },
+  setFakeScript(n) { fakeScript = n; any(current())?.fakeBike?.useScript(n === 'manual' ? null : n); },
   fakeAdjust(k, d) {
-    const fb = any(active)?.fakeBike; if (!fb) return;
+    const fb = any(current())?.fakeBike; if (!fb) return;
     if (fb.script) {   // switch to manual control, seeded from current values so nothing jumps
-      const r = any(active).ctx.bike().raw; fb.useScript(null);
+      const r = any(current()).ctx.bike().raw; fb.useScript(null);
       fb.manual.cadence = r.cadence; fb.manual.power = r.power; fb.manual.hr = r.hr;
     }
     const m = fb.manual;

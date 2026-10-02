@@ -42,7 +42,7 @@ async function pick(label: string, opts: RequestDeviceOptions, ride = false) {
     const server = await device.gatt!.connect();
     log('CONNECT', 'GATT connected');
     await explore(server, ride);
-  } catch (e) { log('ERROR', String(e)); }
+  } catch (e) { log('ERROR', e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${JSON.stringify(e)} (${typeof e})`); }
 }
 
 async function explore(server: BluetoothRemoteGATTServer, ride: boolean) {
@@ -132,6 +132,10 @@ function build() {
     el('h2', { textContent: 'wattcade BLE probe' }),
     btn('Pick any device', () => pick('any', { acceptAllDevices: true, optionalServices: KNOWN_SERVICES })),
     btn('Pick Zwift Ride', () => pick('ride', RIDE_REQUEST_OPTIONS as RequestDeviceOptions, true)),
+    btn('Ride A: name only', () => pick('ride-A name only', { filters: [{ namePrefix: 'Zwift' }] }, true)),
+    btn('Ride B: name + fc82', () => pick('ride-B name+fc82', { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] }, true)),
+    btn('Ride C: any + fc82', () => pick('ride-C any+fc82', { acceptAllDevices: true, optionalServices: [0xfc82] }, true)),
+    btn('Ride D: service fc82', () => pick('ride-D svc fc82', { filters: [{ services: [0xfc82] }] }, true)),
     btn('Pick FTMS', () => pick('ftms', { filters: [{ services: [0x1826] }], optionalServices: KNOWN_SERVICES })),
     btn('Pick HR', () => pick('hr', { filters: [{ services: [0x180d] }], optionalServices: KNOWN_SERVICES })),
     btn('Send RideOn', sendRideOn),

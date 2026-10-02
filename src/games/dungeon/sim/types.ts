@@ -18,6 +18,8 @@ export interface Fx {
 export interface Toast { text: string; color: string; t0: number }
 export interface Hazard { x: number; y: number; r: number; left: number; total: number }
 export interface ShrineView { kind: ShrineKind; label: string; progress: number; leftS: number; state: 'idle' | 'active' | 'done' | 'failed'; x: number; y: number; room: number }
+export type CurseKind = 'frenzy' | 'hexed' | 'swarm' | 'darkness' | 'mire' | 'fragile' | 'bulwark';
+export interface CurseView { kind: CurseKind; name: string; desc: string; color: string; left: number; total: number }
 export interface CampView {
   bank: number; sel: number; autoStartS: number; autoStartLeft: number; startFloor: number; maxStartFloor: number; autoInvest: boolean;
   rows: Array<{ kind: 'start' | 'floor' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }>;
@@ -43,6 +45,7 @@ export interface DungeonSnapshot {
   hazards: Hazard[];
   orbit: Array<{ x: number; y: number }>;
   shrines: ShrineView[];
+  curse: CurseView | null;
   fx: Fx[];
   toasts: Toast[];
   cues: Array<{ name: string; id: number }>; // sound cues; renderer plays ids it hasn't seen
@@ -50,6 +53,6 @@ export interface DungeonSnapshot {
   stairsOpen: boolean;
   frozen: boolean;
   boss: { active: boolean; name: string; hp: number; maxHp: number; shielded: boolean; shieldLeftS: number; nextShieldS: number } | null;
-  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number };
+  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean };
 }

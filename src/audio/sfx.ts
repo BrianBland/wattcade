@@ -5,7 +5,7 @@ import { loadFlag, saveFlag } from '../debug/flag';
 export type SfxName =
   | 'shoot' | 'shootHeavy' | 'zap' | 'flame' | 'hit' | 'crit' | 'kill' | 'explode' | 'hurt'
   | 'coin' | 'pickup' | 'equip' | 'unique' | 'levelup' | 'potion' | 'door' | 'bossStart' | 'bossDie'
-  | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny';
+  | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse';
 
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number }
 const R: Record<SfxName, Tone[]> = {
@@ -33,6 +33,7 @@ const R: Record<SfxName, Tone[]> = {
   select: [{ type: 'square', f0: 660, dur: 0.04, vol: 0.08 }],
   buy: [{ type: 'square', f0: 784, dur: 0.06, vol: 0.12 }, { type: 'square', f0: 1175, dur: 0.1, vol: 0.12, delay: 0.06 }],
   deny: [{ type: 'square', f0: 140, dur: 0.12, vol: 0.12 }],
+  curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };
 
 const KEY = 'wattcade.sound';

@@ -5,7 +5,7 @@ import {
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
 import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
-import type { BulletView, CampView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
+import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
 interface Enemy {
   id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number;
@@ -37,6 +37,17 @@ const SHRINES: Record<ShrineKind, { label: string; window: number; color: string
   endurance: { label: 'Shrine of Patience: hold Z2, treasure grows', window: 90, color: '#5aa9ff' },
   sprint: { label: 'Shrine of Gold: sprint twice', window: 60, color: '#ffd84a' },
 };
+// Curses: temporary difficulty spikes. While cursed you earn +50% coins/XP; surviving (or breaking it with a sprint) pays a bounty.
+const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur: number }> = {
+  frenzy:   { name: 'Curse of Frenzy',   desc: 'enemies move 40% faster',        color: '#ff5a5a', dur: 60 },
+  hexed:    { name: 'Hex of Frailty',    desc: 'you take 40% more damage',       color: '#c77dff', dur: 60 },
+  swarm:    { name: 'Curse of the Swarm', desc: 'rooms spawn extra foes',        color: '#ffb02a', dur: 75 },
+  darkness: { name: 'Curse of Darkness', desc: 'the torchlight shrinks',         color: '#6a6aff', dur: 60 },
+  mire:     { name: 'Curse of the Mire', desc: '+2% grade, slower feet',         color: '#7a9a3a', dur: 45 },
+  fragile:  { name: 'Curse of Thirst',   desc: 'no zone-2 healing',              color: '#ff6b8a', dur: 60 },
+  bulwark:  { name: 'Curse of Iron',     desc: 'enemies take 35% less damage',   color: '#9aa3b5', dur: 60 },
+};
+const CURSE_KINDS = Object.keys(CURSES) as CurseKind[];
 const PLAYER_R = 0.35, MAX_FX = 140, CAMP_AUTOSTART_S = 45;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** Distance from point p to segment a-b (swept projectile hits). */
@@ -73,6 +84,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const itemDropPct = tn.num('itemDropPct', 10, 0, 100, 1, '% chance an enemy drops a weapon/gear');
   const uniquePct = tn.num('uniqueDropPct', 0.6, 0, 100, 0.1, '% of item drops that are uniques (elites x1.5, bosses x10)');
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
+  const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
+  const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
   const deathCoinLoss = tn.num('deathCoinLoss', 0.2, 0, 1, 0.05, 'fraction of run coins lost on death');
   const terrainGrade = tn.num('gradeTerrain', 1, 0, 10, 0.5);
   const swampGrade = tn.num('gradeSwamp', 4, 0, 12, 0.5);
@@ -118,6 +131,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let boss!: Enemy;
   let shrines: Shrine[] = [];
   let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, freezeT = 0;
+  let curse: { kind: CurseKind; left: number; total: number; s0: number } | null = null, cursesSurvived = 0;
+  const cursed = (k: CurseKind) => curse?.kind === k;
+  const bounty = () => (curse ? 1.5 : 1);
   const bullets: Bullet[] = [];
   const drops: Drop[] = [];
   const hazards: Array<Hazard & { dmg: number }> = [];
@@ -295,7 +311,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
   }
   function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult)); }
-  function addCoins(v: number) { P.coins += v; P.coinsEarned += v; }
+  function addCoins(v: number) { v = Math.round(v * bounty()); P.coins += v; P.coinsEarned += v; }
   function collect(d: Drop) {
     if (d.kind === 'coin') { addCoins(d.value); cue('coin'); addFx({ kind: 'text', x: P.x, y: P.y - 0.6, life: 0.8, color: '#ffd84a', text: `+${d.value}` }); return; }
     if (d.kind === 'potion') {
@@ -323,7 +339,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function hurtPlayer(dmg: number) {
     if (P.invuln > 0) return;
     const armor = clamp(gearSum('armor'), 0, 0.75);
-    P.hp -= dmg * enemyDmgScale() * (1 - armor);
+    P.hp -= dmg * enemyDmgScale() * (1 - armor) * (cursed('hexed') ? 1.4 : 1);
     if (t - P.hurtT > 0.25) cue('hurt');
     P.hurtT = t;
   }
@@ -334,6 +350,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       const sh = bossShield();
       if (sh.shielded) dmg *= bike.sprinting ? sprintMult() : shieldLeak();
     }
+    if (cursed('bulwark')) dmg *= 0.65;
     if (e.shield > 0) { const ab = Math.min(e.shield, dmg * 0.8); e.shield -= ab; dmg -= ab; }
     const applied = Math.min(dmg, e.hp);
     e.hp -= dmg; damageDealt += applied; e.hurtT = t;
@@ -372,7 +389,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
   }
   function gainXp(v: number) {
-    P.xp += v * mods.xpMult;
+    P.xp += v * mods.xpMult * bounty();
     while (P.xp >= xpNext(P.level)) {
       P.xp -= xpNext(P.level); P.level++;
       recomputeHp(true); freeze(0.15); cue('levelup');
@@ -671,6 +688,29 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     ctx.emit({ type: 'shrine', data: { kind: s.kind, floor } });
   }
 
+  // ---------- curses ----------
+  function startCurse(bike: Readonly<BikeState>) {
+    const kind = CURSE_KINDS[Math.floor(rng() * CURSE_KINDS.length)], d = CURSES[kind];
+    curse = { kind, left: d.dur, total: d.dur, s0: bike.sprintCount };
+    cue('curse');
+    addFx({ kind: 'banner', x: P.x, y: P.y, life: 3, color: d.color, text: `${d.name}: ${d.desc}` });
+    toast(`${d.name}! +50% coins & XP while it lasts. Sprint to break it.`, d.color);
+    ctx.emit({ type: 'curse', data: { kind, floor } });
+  }
+  function curseUpdate(dt: number, bike: Readonly<BikeState>) {
+    if (!curse) return;
+    curse.left -= dt;
+    const broken = bike.sprintCount > curse.s0;
+    if (curse.left > 0 && !broken) return;
+    const d = CURSES[curse.kind];
+    curse = null; cursesSurvived++;
+    freeze(0.15); cue('reward');
+    addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1.2, color: d.color, r: 2.2 });
+    toast(broken ? `You shattered the ${d.name}! Bounty dropped.` : `${d.name} lifted. Bounty dropped.`, '#ffd84a');
+    dropItem(P.x, P.y, 1, 1.5);
+    for (let i = 0; i < 6; i++) dropAt(P.x, P.y, 'coin', coinValue() * 2);
+  }
+
   // ---------- update ----------
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
@@ -684,7 +724,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     P.invuln = Math.max(0, P.invuln - dt);
     const tile = tileAt(world, Math.floor(P.x), Math.floor(P.y));
     P.onSwamp = tile === TILE.SWAMP;
-    P.speedMult = speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (P.onSwamp ? 0.75 : 1);
+    P.speedMult = speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
     if (ctl.dash && P.dashCd <= 0 && P.dashT <= 0) {
       let dx = ctl.mx, dy = ctl.my;
       if (!dx && !dy) { dx = Math.cos(P.aim); dy = Math.sin(P.aim); }
@@ -711,6 +751,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         room.locked = false; current = r.id; markSeen(r);
         if (!r.cleared) {
           r.locked = true; cue('door');
+          if (!r.boss && cursed('swarm')) for (let k = 0; k < 3; k++) {
+            const sx = r.x0 + (r.w >> 1) + 0.5 + (k - 1) * 1.5, sy = r.y0 + 1.5;
+            spawnEnemy(k === 1 ? 'chaser' : 'bat', sx, sy, r.id);
+          }
+          if (!r.boss && !curse && (floor > 1 || roomsCleared >= 2) && rng() < Math.min(0.2, curseChance() + 0.01 * (floor - 1))) startCurse(bike);
           if (r.boss && !bossStarted) {
             bossStarted = true; bossT = 0; cue('bossStart');
             toast(`${BOSS_NAMES[boss.variant]} awakens!`, '#ff5a5a');
@@ -849,10 +894,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       persist();
     }
     shrineUpdate(dt, bike);
+    curseUpdate(dt, bike);
 
     // --- survival
     const inCombat = cur.locked && liveInRoom(cur.id).length > 0;
-    const regen = gearSum('regen') + mods.regen * P.maxHp / 100 + (bike.effortZone === 2 ? regenPerS() * (P.maxHp / 100) * (inCombat ? 1 : 2) : 0);
+    const regen = gearSum('regen') + mods.regen * P.maxHp / 100 + (bike.effortZone === 2 && !cursed('fragile') ? regenPerS() * (P.maxHp / 100) * (inCombat ? 1 : 2) : 0);
     if (P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + regen * dt);
     if (P.hp <= 0) die();
 
@@ -862,6 +908,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     resSync('swamp', P.onSwamp ? swampGrade() : null);
     resSync('wounded', P.hp < P.maxHp * woundedFrac() ? woundedGrade() : null);
     resSync('boss-surge', bsh.shielded ? surgeGrade() : null);
+    resSync('curse-mire', cursed('mire') ? curseGrade() : null);
 
     if (enemies.length > 300) enemies = enemies.filter((e) => e.alive || e === boss);
     while (fx.length && t - fx[0].t0 > 4) fx.shift();
@@ -880,7 +927,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (e.elite === 'undying' && e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.025 * dt);
     if (e.elite === 'shielded' && t - e.hurtT > 4) e.shield = Math.min(e.shieldMax, e.shield + e.shieldMax * 0.25 * dt);
     const haste = e.elite === 'swift' ? 0.6 : 1;
-    const sp = e.speed * (e.slowT > 0 ? 0.55 : 1) * dt;
+    const sp = e.speed * (e.slowT > 0 ? 0.55 : 1) * (cursed('frenzy') ? 1.4 : 1) * dt;
     const x0 = e.x, y0 = e.y;
     const step = (mx: number, my: number) => move(e, mx * sp, my * sp, e.r);
     const keepAt = (lo: number, hi: number) => { const s = d < lo ? -1 : d > hi ? 1 : 0; step(ux * s, uy * s); };
@@ -980,6 +1027,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     P.x = safe.x0 + safe.w / 2; P.y = safe.y0 + safe.h / 2;
     recomputeHp(true); P.invuln = 2; P.dashT = 0; P.hurtT = -99;
     bullets.length = 0; hazards.length = 0; navPath = [];
+    curse = null; // death lifts the curse (no bounty)
     const lost = Math.floor(P.coins * deathCoinLoss());
     P.coins -= lost; P.coinsEarned -= lost;
     toast(`You fell… dropped ${lost} coins`, '#ff5a5a');
@@ -1015,10 +1063,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       hazards: hazards.map(({ dmg: _d, ...h }) => h),
       orbit: weapon.unique === 'orbit' && phase === 'run' ? orbitBlades() : [],
       shrines: shrines.map((s) => ({ kind: s.kind, label: SHRINES[s.kind].label, progress: s.progress, leftS: Math.max(0, s.left), state: s.state, x: s.x, y: s.y, room: s.room })),
+      curse: curse ? { kind: curse.kind, ...CURSES[curse.kind], left: Math.max(0, curse.left), total: curse.total } satisfies CurseView : null,
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
       room: current, stairsOpen: !boss.alive, frozen: freezeT > 0,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, shielded: sh.shielded, shieldLeftS: sh.leftS, nextShieldS: sh.nextS } : null,
-      stats: { roomsCleared, kills, deaths, damageDealt, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound },
+      stats: { roomsCleared, kills, deaths, damageDealt, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp },
     };
   }
@@ -1037,7 +1086,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up' }
       : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+' }
       : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!' }
-      : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : 'Heal' };
+      : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : curse ? 'Cursed: ride it out' : 'Heal' };
     return {
       controls: [
         ...aim,
@@ -1059,7 +1108,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     summary: () => ({
       'Deepest floor': floor, 'Hero level': P.level, 'Rooms cleared': roomsCleared, Kills: kills, 'Elites slain': elitesSlain,
       'Bosses slain': bossDefeated, Deaths: deaths, 'Coins earned': Math.round(P.coinsEarned), 'Coins banked': Math.round(bankStart + P.coinsEarned),
-      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Final weapon': weapon.name,
+      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name,
     }),
     dispose() { if (phase === 'run') persist(); ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },
   };

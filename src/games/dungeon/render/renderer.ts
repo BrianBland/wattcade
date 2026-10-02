@@ -431,9 +431,15 @@ export function createRenderer(): GameRenderer {
       gg.restore();
 
       // torch-light vignette
-      const vg = gg.createRadialGradient(W / 2, H / 2, TS * 3.5, W / 2, H / 2, Math.max(W, H) * 0.7);
-      vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, 'rgba(7,6,11,0.8)');
+      const dark = s.curse?.kind === 'darkness';
+      const vg = gg.createRadialGradient(W / 2, H / 2, TS * (dark ? 1.4 : 3.5), W / 2, H / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
+      vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.8})`);
       gg.fillStyle = vg; gg.fillRect(0, 0, W, H);
+      if (s.curse) { // cursed: pulsing coloured edges
+        const cv = gg.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.7);
+        cv.addColorStop(0, s.curse.color + '00'); cv.addColorStop(1, s.curse.color + Math.round(0x30 + 0x20 * Math.sin(t * 3)).toString(16));
+        gg.fillStyle = cv; gg.fillRect(0, 0, W, H);
+      }
       if (p.hurt < 0.3) { // red edge pulse when hit
         const hv = gg.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.65);
         hv.addColorStop(0, 'rgba(255,0,0,0)'); hv.addColorStop(1, `rgba(255,0,0,${0.35 * (1 - p.hurt / 0.3)})`);
@@ -532,7 +538,15 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
       gg.fillText(`${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
     }
-    // big banners (uniques)
+    // active curse
+    if (s.curse) {
+      const c = s.curse, bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2;
+      const by = L + (s.boss?.active ? 60 : 0) * u + (act ? 50 : 0) * u + 28 * u;
+      bar(bx, by, bw, 14 * u, c.left / c.total, c.color, '');
+      gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
+      gg.fillText(`☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
+    }
+    // big banners (uniques, curses)
     for (const f of s.fx) if (f.kind === 'banner') {
       const k2 = (s.t - f.t0) / f.life; if (k2 < 0 || k2 > 1) continue;
       gg.globalAlpha = Math.min(1, (1 - k2) * 3); gg.textAlign = 'center';

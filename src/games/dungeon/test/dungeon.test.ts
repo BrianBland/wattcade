@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput } from '../../../core';
+import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, TuningRegistry } from '../../../core';
 import type { Button } from '../../../contracts';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { makeUnique, weaponScore } from '../sim/loot';
@@ -147,6 +147,24 @@ describe('camp taps', () => {
     s.sim.receive!({ type: 'campRow', row: 0 });
     s.step(1);
     expect((s.sim.snapshot() as any).phase).toBe('run');
+  });
+});
+
+describe('curses', () => {
+  it('fall on room entry, pay +50% while active, and lift with a bounty', () => {
+    const profile = testProfile();
+    const reg = new TuningRegistry({ profileId: profile.id, storage: null });
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { autopilot: true }, tuningRegistry: reg });
+    reg.set('dungeon.curseChance', 1);
+    let seen = false, lifted = false;
+    for (let i = 0; i < 30 * 600 && !lifted; i++) {
+      s.step(1);
+      const snap = s.sim.snapshot() as any;
+      if (snap.curse) seen = true;
+      if (seen && snap.stats.curses > 0) lifted = true;
+    }
+    expect(seen).toBe(true);
+    expect(lifted).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 // Keeper's Light renderer: low-poly island in three.js, plus a DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
-import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
 import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
 import { NEAR } from '../sim/town';
@@ -50,11 +50,13 @@ export class LighthouseRenderer implements GameRenderer {
   private send?: (a: unknown) => void;
   private lastCue = -1; private lastT = -1; private beamAngle = 0; private nextGull = 8;
   private aspect = 4 / 3;
+  private insetB = 0; private size: [number, number] = [800, 600];
   private ray = new THREE.Raycaster();
   private onDown = (e: PointerEvent) => this.pick(e);
   private tmp = new THREE.Vector3(); private tmp2 = new THREE.Vector3();
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
+    this.insetB = ctx.insets?.bottom ?? 0;
     this.container = container; this.color = ctx.profile.color; this.send = ctx.send;
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
@@ -97,6 +99,7 @@ export class LighthouseRenderer implements GameRenderer {
     this.bridge = this.makeBridge(); this.bridge.visible = false; s.add(this.bridge);
 
     this.hud = new Hud(container, ctx.send);
+    this.hud.setInsetBottom(this.insetB);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
@@ -418,8 +421,16 @@ export class LighthouseRenderer implements GameRenderer {
 
   resize(w: number, h: number) {
     this.renderer?.setSize(w, h, false);
-    this.aspect = w / Math.max(1, h);
-    this.camera.aspect = this.aspect; this.camera.updateProjectionMatrix();
+    this.aspect = w / Math.max(1, h); this.size = [w, h];
+    this.camera.aspect = this.aspect; this.applyView();
+  }
+
+  setInsets(i: Insets) { this.insetB = i.bottom; this.hud?.setInsetBottom(i.bottom); this.applyView(); }
+  /** Render edge-to-edge, but shift the view up so the framed island is centred above the controller HUD. */
+  private applyView() {
+    const [w, h] = this.size, b = Math.min(this.insetB, h / 2);
+    if (b > 0) this.camera.setViewOffset(w, Math.max(1, h), 0, b / 2, w, Math.max(1, h)); else this.camera.clearViewOffset();
+    this.camera.updateProjectionMatrix();
   }
 
   unmount() {

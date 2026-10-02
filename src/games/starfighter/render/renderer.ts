@@ -1,12 +1,14 @@
-import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { H, W, SHIP_Y, type SfSnapshot } from '../sim/sim';
 
 export class SfRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
   private g!: CanvasRenderingContext2D;
   private color = '#ffffff';
+  private insetB = 0;
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+    this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color;
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#080a14';
@@ -15,12 +17,14 @@ export class SfRenderer implements GameRenderer {
     this.resize(container.clientWidth || 600, container.clientHeight || 800);
   }
   resize(w: number, h: number) { this.canvas.width = w; this.canvas.height = h; }
+  setInsets(i: Insets) { this.insetB = i.bottom; }
   unmount() { this.canvas?.remove(); }
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as SfSnapshot;
     const g = this.g, CW = this.canvas.width, CH = this.canvas.height;
-    const sc = Math.min(CW / W, CH / H), ox = (CW - W * sc) / 2, oy = (CH - H * sc) / 2;
+    const UH = Math.max(100, CH - this.insetB); // play field sits above the HUD; the backdrop is full-bleed
+    const sc = Math.min(CW / W, UH / H), ox = (CW - W * sc) / 2, oy = (UH - H * sc) / 2;
     const X = (x: number) => ox + x * sc, Y = (y: number) => oy + y * sc;
     g.fillStyle = s.hitFlash > 0 ? '#2a0c10' : '#080a14'; g.fillRect(0, 0, CW, CH);
     g.strokeStyle = '#1a2038'; g.beginPath(); g.moveTo(X(W / 2), Y(0)); g.lineTo(X(W / 2), Y(H)); g.stroke();

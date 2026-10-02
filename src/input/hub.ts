@@ -227,5 +227,10 @@ export class InputHub {
     container.addEventListener('pointerdown', corner);
     return () => { container.removeEventListener('pointerdown', corner); root.remove(); if (this.touchEl === root) this.touchEl = null; this.touchHeld.clear(); this.recompute(); };
   }
+  /** Raise a system action from on-screen UI (e.g. the HUD Menu button). */
+  system(a: SystemAction): void { this.fire(a); }
+  /** On-screen button down/up, keyed by pointer id (the HUD's controller pad). */
+  holdTouch(id: number, b: Button): void { this.touchHeld.set(id, b); this.source = 'touch'; this.recompute(); }
+  releaseTouch(id: number): void { if (this.touchHeld.delete(id)) this.recompute(); }
   showTouch(v: boolean): void { this.touchVisible = v; if (this.touchEl) this.touchEl.style.display = v ? 'block' : 'none'; }
 }

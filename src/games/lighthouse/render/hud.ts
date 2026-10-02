@@ -15,7 +15,7 @@ const CHECK: Record<string, [string, string]> = {
 };
 
 const CSS = `
-.lh-ui { position:absolute; inset:0; pointer-events:none; font: 600 15px/1.25 system-ui, -apple-system, sans-serif; color:#fff; text-shadow: 0 1px 2px #0008; -webkit-user-select:none; user-select:none; }
+.lh-ui { position:absolute; inset:0 0 var(--lh-inset, 0px) 0; pointer-events:none; font: 600 15px/1.25 system-ui, -apple-system, sans-serif; color:#fff; text-shadow: 0 1px 2px #0008; -webkit-user-select:none; user-select:none; }
 .lh-panel { background: rgba(12,22,36,0.62); border: 1px solid rgba(255,255,255,0.14); border-radius: 14px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .lh-tl { position:absolute; left:12px; top:12px; padding:10px 12px; min-width: 210px; }
 .lh-res { display:flex; gap:14px; font-size:19px; margin-bottom:8px; }
@@ -73,6 +73,8 @@ export class Hud {
   private toasts: HTMLDivElement; private br: HTMLDivElement; private build: HTMLDivElement; private log: HTMLDivElement;
   private cache = new Map<HTMLElement, string>();
   private lastT = -1;
+
+  setInsetBottom(px: number) { this.root.style.setProperty('--lh-inset', `${px}px`); }
 
   constructor(container: HTMLElement, private send?: (a: unknown) => void) {
     const style = document.createElement('style'); style.textContent = CSS;

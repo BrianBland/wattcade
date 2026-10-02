@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { GameModule, GameRenderer, Profile } from '../../contracts';
+import type { GameModule, GameRenderer, Insets, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { getDifficulty, debugActions, getFake, activeSession, input, onSystem, startSession } from '../services';
 import { fakeKeyAdjust } from '../fakeKeys';
@@ -11,6 +11,7 @@ import { unlockAudio } from '../../audio/sfx';
 const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; profile: Profile; onQuit: () => void; onSave: (d: unknown) => void }) {
   const mount = useRef<HTMLDivElement>(null);
+  const probe = useRef<HTMLDivElement>(null); // sized by --hud-h: the band the HUD covers
   const [paused, setPaused] = useState(false);
   const [error, setError] = useState('');
   const pausedRef = useRef(false);
@@ -46,10 +47,13 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
         sessionRef.current = session; setSession(session);
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a) });
+        const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
+        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets() });
+        renderer.setInsets?.(readInsets());
         const el = mount.current!;
-        ro = new ResizeObserver(() => { if (!disposed) renderer?.resize?.(el.clientWidth, el.clientHeight); });
+        ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);
+        if (probe.current) ro.observe(probe.current);
         let last = performance.now();
         const loop = (now: number) => {
           if (disposed) return;
@@ -73,6 +77,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
   return (
     <div class="game-host">
       <div class="mount" ref={mount} />
+      <div class="hud-probe" ref={probe} />
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={onQuit}>Back</button></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused} legendOn={legendOn} fake={isFake()} />}
       {paused && <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }} difficulty={getDifficulty()} onResume={() => setPause(false)} onQuit={onQuit} />}

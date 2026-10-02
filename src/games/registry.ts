@@ -3,8 +3,9 @@ import { module as dungeon } from './dungeon';
 import { module as lighthouse } from './lighthouse';
 import { module as towerdefense } from './towerdefense';
 import { module as starfighter } from './starfighter';
+import { module as hamster } from './hamster';
 
-export const games: GameModule[] = [dungeon, lighthouse, towerdefense, starfighter];
+export const games: GameModule[] = [dungeon, lighthouse, towerdefense, starfighter, hamster];
 
 export function getGame(id: string): GameModule | undefined {
   return games.find((g) => g.id === id);

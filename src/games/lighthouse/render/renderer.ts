@@ -1,99 +1,91 @@
+// Keeper's Light renderer: low-poly island in three.js, plus a DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
+import { HARBOUR, LIGHTHOUSE, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
+import { LAMP, WIN, makeBuilding, makeShip, type BuildingModel, type ShipModel } from './buildings';
+import { Hud } from './hud';
+import { Life } from './life';
+import { createSea, waveHeight, type Sea } from './sea';
+import { Sky } from './sky';
+import type { ShipView, Snap } from './snap';
+import { disposeShared, lam } from './util';
+import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
-interface Snap {
-  t: number; fog: number; chop: number; lamp: number; zone: number; requirement: number; inZone: boolean; day: number;
-  ships: Array<{ id: number; progress: number; lane: number; state: string }>;
-  buildings: Array<string | null>; cursor: { plot: number; building: string; canBuild: boolean };
-  options: Array<{ type: string; cost: { coin: number; timber: number }; effect: string; owned: number; max: number; selected: boolean; reason: string | null }>;
-  feedback: { text: string; ok: boolean; age: number };
-  coin: number; timber: number;
-  storm: { phase: string; timeInPhase: number; warnS: number; duration: number; integrity: number; surge: boolean };
+const CUE_GAP: Partial<Record<SfxName, number>> = { select: 0.05, thunder: 0.8, bell: 2, chime: 1 };
+const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+const ease = (x: number) => { const t = Math.max(0, Math.min(1, x)); return t * t * (3 - 2 * t); };
+
+function bezier(p: THREE.Vector3[], t: number, out: THREE.Vector3) {
+  const u = 1 - t;
+  out.set(0, 0, 0)
+    .addScaledVector(p[0], u * u * u).addScaledVector(p[1], 3 * u * u * t)
+    .addScaledVector(p[2], 3 * u * t * t).addScaledVector(p[3], t * t * t);
+  return out;
 }
 
-const PLOT_COUNT = 14;
-const plotPos = (i: number) => { const a = (i / (PLOT_COUNT - 1)) * Math.PI * 0.8 - Math.PI * 0.1; return new THREE.Vector3(8 + Math.cos(a) * 5 + (i % 2) * 1.2, 1.2, 6 - Math.sin(a) * 12); };
+interface ShipObj { m: ShipModel; kind: string; crates?: THREE.Group }
 
 export class LighthouseRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(50, 4 / 3, 0.1, 800);
-  private sea?: THREE.Mesh;
-  private seaBase?: Float32Array;
-  private beam?: THREE.Group;
-  private lampLight?: THREE.PointLight;
-  private sun = new THREE.DirectionalLight(0xffffff, 1);
-  private amb = new THREE.AmbientLight(0x8899aa, 0.6);
-  private shipMeshes = new Map<number, THREE.Group>();
-  private plotMeshes: Array<THREE.Object3D | null> = Array(PLOT_COUNT).fill(null);
-  private plotKinds: Array<string | null> = Array(PLOT_COUNT).fill(null);
-  private cursor?: THREE.Mesh;
-  private clouds?: THREE.Mesh;
-  private hud?: HTMLDivElement;
-  private container?: HTMLElement;
-  private color = '#ffcc33';
-  private ro?: ResizeObserver;
-  private pillar?: THREE.Mesh;
+  private camera = new THREE.PerspectiveCamera(42, 4 / 3, 0.5, 1400);
+  private camPos = V(0, 40, 80); private camTgt = V(0, 2, 4);
+  private sun = new THREE.DirectionalLight(0xffffff, 2.6);
+  private hemi = new THREE.HemisphereLight(0xcfe9f7, 0x4a5a3a, 1.4);
+  private lampLight = new THREE.PointLight(0xffe2a0, 0, 70, 1.2);
+  private sea!: Sea; private terrain!: Terrain; private lighthouse!: Lighthouse; private life!: Life; private sky!: Sky;
+  private hud?: Hud;
+  private models: Array<{ kind: string; model: BuildingModel } | null> = Array(PLOT_COUNT).fill(null);
+  private ships = new Map<number, ShipObj>();
+  private cursor = new THREE.Group(); private ring!: THREE.Mesh; private ghost?: THREE.Object3D; private ghostKey = '';
+  private ghostMat = new THREE.MeshLambertMaterial({ color: 0x66ff88, transparent: true, opacity: 0.45, depthWrite: false });
+  private markers: THREE.Mesh[] = [];
+  private container?: HTMLElement; private ro?: ResizeObserver;
+  private color = '#d64545';
+  private send?: (a: unknown) => void;
+  private lastCue = -1; private lastT = -1; private beamAngle = 0; private nextGull = 8;
+  private aspect = 4 / 3;
+  private ray = new THREE.Raycaster();
+  private onDown = (e: PointerEvent) => this.pick(e);
+  private tmp = new THREE.Vector3(); private tmp2 = new THREE.Vector3();
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }) {
-    this.container = container;
-    this.color = ctx.profile.color;
-    const r = new THREE.WebGLRenderer({ antialias: true });
-    r.setClearColor(0x9fc4e8);
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void }) {
+    this.container = container; this.color = ctx.profile.color; this.send = ctx.send;
+    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
-    r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
+    r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(r.domElement);
+    r.domElement.addEventListener('pointerdown', this.onDown);
     this.renderer = r;
+
     const s = this.scene;
-    s.fog = new THREE.FogExp2(0x8899aa, 0.01);
-    this.sun.position.set(-30, 40, 20);
-    s.add(this.sun, this.amb);
+    s.fog = new THREE.FogExp2(0xcfe9f7, 0.006);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    const sc = this.sun.shadow.camera; sc.left = -48; sc.right = 48; sc.top = 36; sc.bottom = -36; sc.near = 1; sc.far = 220;
+    this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.04;
+    s.add(this.sun, this.sun.target, this.hemi);
 
-    // sea
-    const g = new THREE.PlaneGeometry(500, 500, 96, 96); g.rotateX(-Math.PI / 2);
-    this.seaBase = new Float32Array(g.attributes.position.array as ArrayLike<number> as number[]);
-    this.sea = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0x1d5f8a, flatShading: true }));
-    s.add(this.sea);
+    this.sky = new Sky(); s.add(this.sky.group);
+    this.sea = createSea(); s.add(this.sea.mesh);
+    this.terrain = createTerrain(); s.add(this.terrain.mesh);
+    s.add(createScenery());
+    this.lighthouse = createLighthouse(this.color); s.add(this.lighthouse.group);
+    this.lampLight.position.copy(this.lighthouse.lanternPos); s.add(this.lampLight);
+    this.life = new Life(this.terrain); s.add(this.life.group);
 
-    // cliff + lighthouse
-    const cliff = new THREE.Mesh(new THREE.ConeGeometry(14, 14, 7), new THREE.MeshLambertMaterial({ color: 0x6b6258, flatShading: true }));
-    cliff.position.set(-6, 4, 0); s.add(cliff);
-    const shore = new THREE.Mesh(new THREE.BoxGeometry(22, 2.4, 40), new THREE.MeshLambertMaterial({ color: 0x8a7b5a, flatShading: true }));
-    shore.position.set(13, 0, 6); s.add(shore);
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.8, 10, 10), new THREE.MeshLambertMaterial({ color: 0xf2efe6 }));
-    tower.position.set(-6, 16, 0); s.add(tower);
-    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 2, 10), new THREE.MeshLambertMaterial({ color: new THREE.Color(this.color) }));
-    stripe.position.set(-6, 15, 0); s.add(stripe);
-    const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 1.6, 8), new THREE.MeshBasicMaterial({ color: 0xffe9a0 }));
-    lantern.position.set(-6, 21.6, 0); s.add(lantern);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.6, 1.6, 8), new THREE.MeshLambertMaterial({ color: 0x3a3f4a }));
-    roof.position.set(-6, 23.2, 0); s.add(roof);
-    this.lampLight = new THREE.PointLight(0xffe9a0, 2, 80); this.lampLight.position.set(-6, 21.6, 0); s.add(this.lampLight);
-    this.beam = new THREE.Group();
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 60, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }));
-    cone.rotation.z = Math.PI / 2; cone.position.x = 30;
-    this.beam.add(cone); this.beam.position.set(-6, 21.6, 0); s.add(this.beam);
-
-    // plots marker
-    this.cursor = new THREE.Mesh(new THREE.RingGeometry(1.2, 1.7, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-    this.cursor.rotation.x = -Math.PI / 2; s.add(this.cursor);
-    this.pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 }));
-    s.add(this.pillar);
+    // build cursor: pulsing ring + ghost preview; faint markers on free plots
+    this.ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.6, 32), new THREE.MeshBasicMaterial({ color: 0x66ff88, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false }));
+    this.ring.rotation.x = -Math.PI / 2; this.cursor.add(this.ring); this.cursor.visible = false; s.add(this.cursor);
+    const mGeo = new THREE.RingGeometry(1.5, 1.75, 24); mGeo.rotateX(-Math.PI / 2);
     for (let i = 0; i < PLOT_COUNT; i++) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 1.6), new THREE.MeshLambertMaterial({ color: 0x5c6b3c }));
-      m.position.copy(plotPos(i)); m.position.y = 1.25; s.add(m);
+      const m = new THREE.Mesh(mGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false }));
+      m.position.set(PLOTS[i].x, plotHeight(i) + 0.08, PLOTS[i].z); m.visible = false; s.add(m); this.markers.push(m);
     }
 
-    // storm clouds
-    this.clouds = new THREE.Mesh(new THREE.SphereGeometry(120, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x20242c, side: THREE.BackSide, transparent: true, opacity: 0 }));
-    s.add(this.clouds);
-
-    // Framing for a 4:3 view: lighthouse left, town right, open sea (ship lanes) across the foreground.
-    this.camera.position.set(-6, 32, 78); this.camera.lookAt(-6, 8, 14);
-
-    const hud = document.createElement('div');
-    hud.style.cssText = 'position:absolute;left:12px;top:12px;color:#fff;font:600 16px system-ui;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
-    container.appendChild(hud); this.hud = hud;
+    this.hud = new Hud(container, ctx.send);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
@@ -101,122 +93,246 @@ export class LighthouseRenderer implements GameRenderer {
     }
   }
 
-  private makeBuilding(kind: string): THREE.Object3D {
-    const grp = new THREE.Group();
-    const mat = (c: number) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-    if (kind === 'cottage') {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 1.4), mat(0xd9c9a3)); b.position.y = 0.5;
-      const r = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.9, 4), mat(0xb5532f)); r.position.y = 1.45; r.rotation.y = Math.PI / 4;
-      grp.add(b, r);
-    } else if (kind === 'pier') {
-      const p = new THREE.Mesh(new THREE.BoxGeometry(5, 0.2, 1), mat(0x8b6b3e)); p.position.set(-2.5, -0.2, 0); grp.add(p);
-    } else if (kind === 'market') {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 1.6), mat(0xe0b44c)); b.position.y = 0.4;
-      const r = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.15, 1.9), mat(0xc0392b)); r.position.y = 1.2; grp.add(b, r);
-    } else if (kind === 'bell') {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.6, 6), mat(0x555555)); p.position.y = 0.8;
-      const b = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 8), mat(0xd4af37)); b.position.y = 1.6; grp.add(p, b);
-    } else {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 8), mat(0xf2efe6)); p.position.y = 1.5;
-      const l = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe9a0 })); l.position.y = 3.3; grp.add(p, l);
-    }
-    return grp;
+  private pick(e: PointerEvent) {
+    if (!this.renderer || !this.send) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.camera);
+    const hit = this.ray.intersectObject(this.terrain.mesh, false)[0];
+    if (!hit) return;
+    let best = -1, bd = 4;
+    for (let i = 0; i < PLOT_COUNT; i++) { const d = Math.hypot(hit.point.x - PLOTS[i].x, hit.point.z - PLOTS[i].z); if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) this.send({ type: 'plot', plot: best });
   }
 
-  private makeShip(): THREE.Group {
-    const g = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.9, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a4a2a, flatShading: true }));
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1, 0.8, 0.9), new THREE.MeshLambertMaterial({ color: 0xeeeeee }));
-    cab.position.set(-0.6, 0.8, 0);
-    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.6, 0.06), new THREE.MeshLambertMaterial({ color: 0xf4efe0 }));
-    mast.position.set(0.6, 1.2, 0);
-    g.add(hull, cab, mast); return g;
+  // ---------- camera ----------
+  private updateCamera(s: Snap, dt: number) {
+    const drift = Math.sin(s.t * 0.025) * 0.12;
+    let tgt: THREE.Vector3, R: number, el: number, az: number;
+    if (s.mode === 'build') {
+      const p = PLOTS[s.cursor.plot];
+      tgt = this.tmp.set(p.x, plotHeight(s.cursor.plot) + 1, p.z + (s.cursor.building === 'pier' ? 3 : 0));
+      R = 32; el = 0.62; az = 0.1 + drift * 0.3;
+    } else if (s.view === 1) { tgt = this.tmp.set(HARBOUR.x, 1.5, HARBOUR.z + 3); R = 36; el = 0.36; az = 0.4 + drift; }
+    else if (s.view === 2) { tgt = this.tmp.set(LIGHTHOUSE.x + 4, 9, LIGHTHOUSE.z + 6); R = 48; el = 0.16; az = -0.35 + drift * 0.5; }
+    else { tgt = this.tmp.set(-2, 4.5, 5); R = 62; el = 0.36; az = drift; }
+    if (this.aspect < 1.5) R *= Math.min(1.6, 1.5 / this.aspect);
+    const pos = this.tmp2.set(tgt.x + Math.sin(az) * Math.cos(el) * R, tgt.y + Math.sin(el) * R, tgt.z + Math.cos(az) * Math.cos(el) * R);
+    const k = this.lastT < 0 ? 1 : 1 - Math.exp(-dt * 2.2);
+    this.camPos.lerp(pos, k); this.camTgt.lerp(tgt, k);
+    this.camera.position.copy(this.camPos); this.camera.lookAt(this.camTgt);
   }
 
-  render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
-    const s = snapshot as Snap;
-    if (!this.renderer || !s || s.fog === undefined) return;
-    const waveAmp = 0.15 + s.chop * 1.8;
-    // sea
-    const pos = (this.sea!.geometry as THREE.BufferGeometry).attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const x = this.seaBase![i * 3], z = this.seaBase![i * 3 + 2];
-      pos.setY(i, Math.sin(x * 0.18 + s.t * 1.4) * waveAmp * 0.6 + Math.cos(z * 0.23 + s.t * 1.1) * waveAmp * 0.4);
-    }
-    pos.needsUpdate = true; this.sea!.geometry.computeVertexNormals();
-
-    // fog + day/night + storm
-    const night = 0.5 - 0.5 * Math.cos(s.day * Math.PI * 2); // 0 at day=0..; peaks at 0.5
-    const dark = Math.max(night * 0.8, s.storm.phase === 'storm' ? 0.7 : s.storm.phase === 'warning' ? 0.4 : 0);
-    const sky = new THREE.Color(0x9fc4e8).lerp(new THREE.Color(0x0b1226), dark);
-    this.scene.background = sky;
-    (this.scene.fog as THREE.FogExp2).color.copy(sky);
-    (this.scene.fog as THREE.FogExp2).density = 0.004 + s.fog * 0.03;
-    this.sun.intensity = 1.1 * (1 - dark); this.amb.intensity = 0.25 + 0.5 * (1 - dark);
-    (this.clouds!.material as THREE.MeshBasicMaterial).opacity = s.storm.phase === 'calm' ? 0 : s.storm.phase === 'warning' ? 0.35 : 0.65;
-
-    // lamp
-    this.beam!.rotation.y = s.t * (1.2 + s.lamp);
-    this.lampLight!.intensity = 0.3 + s.lamp * 4;
-    this.beam!.children.forEach((c) => ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.05 + 0.3 * s.lamp);
-
-    // buildings
+  // ---------- buildings ----------
+  private syncBuildings(s: Snap) {
     for (let i = 0; i < PLOT_COUNT; i++) {
-      const k = s.buildings[i];
-      if (k !== this.plotKinds[i]) {
-        const old = this.plotMeshes[i]; if (old) this.scene.remove(old);
-        this.plotMeshes[i] = null; this.plotKinds[i] = k;
-        if (k) { const m = this.makeBuilding(k); m.position.copy(plotPos(i)); m.position.y += 0.05; this.scene.add(m); this.plotMeshes[i] = m; }
+      const k = s.buildings[i], cur = this.models[i];
+      if ((cur?.kind ?? null) === k) continue;
+      if (cur) this.scene.remove(cur.model.group);
+      this.models[i] = null;
+      if (!k) continue;
+      const model = makeBuilding(k, i + 1);
+      const p = PLOTS[i];
+      model.group.position.set(p.x, plotHeight(i), p.z);
+      if (k !== 'pier') model.group.rotation.y = (((i * 37) % 7) - 3) * 0.06 + (p.x < -8 ? 0.3 : p.x > 14 ? -0.3 : 0);
+      model.group.scale.setScalar(0.01);
+      this.scene.add(model.group);
+      this.models[i] = { kind: k, model };
+    }
+  }
+
+  private updateBuildings(s: Snap, dt: number, night: number, storm: number) {
+    const smoke: THREE.Vector3[] = [];
+    for (let i = 0; i < PLOT_COUNT; i++) {
+      const m = this.models[i]; if (!m) continue;
+      const g = m.model.group;
+      if (g.scale.x < 1) { const sc = Math.min(1, g.scale.x + dt * 1.6); g.scale.set(sc, sc * (sc < 1 ? 0.6 + 0.4 * sc + Math.sin(sc * Math.PI) * 0.25 : 1), sc); }
+      for (const gl of m.model.glows) (gl.material as THREE.SpriteMaterial).opacity = Math.min(1, night * 0.9 + storm * 0.4);
+      if (m.model.chimney) smoke.push(g.localToWorld(m.model.chimney.clone()));
+      if (m.model.bell) { const a = s.bellAge; m.model.bell.rotation.z = a < 6 ? Math.sin(a * 7) * 0.55 * Math.exp(-a * 0.7) : 0; }
+    }
+    return smoke;
+  }
+
+  private updateCursor(s: Snap) {
+    const on = s.mode === 'build';
+    this.cursor.visible = on;
+    for (let i = 0; i < PLOT_COUNT; i++) this.markers[i].visible = on && !s.buildings[i] && (s.cursor.building !== 'pier' || PLOTS[i].shore) && i !== s.cursor.plot;
+    if (!on) { if (this.ghost) { this.scene.remove(this.ghost); this.ghost = undefined; this.ghostKey = ''; } return; }
+    const i = s.cursor.plot, p = PLOTS[i];
+    this.cursor.position.set(p.x, plotHeight(i) + 0.12, p.z);
+    const pulse = 1 + Math.sin(s.t * 5) * 0.08; this.ring.scale.set(pulse, pulse, pulse);
+    const ok = s.cursor.canBuild;
+    (this.ring.material as THREE.MeshBasicMaterial).color.set(ok ? 0x66ff88 : 0xff6a5a);
+    this.ghostMat.color.set(ok ? 0x88ffaa : 0xff8a7a);
+    const key = `${s.cursor.building}@${i}`;
+    if (key !== this.ghostKey) {
+      if (this.ghost) this.scene.remove(this.ghost);
+      this.ghost = undefined; this.ghostKey = key;
+      if (!s.buildings[i]) {
+        const m = makeBuilding(s.cursor.building, i + 1).group;
+        m.traverse((o) => { if ((o as THREE.Mesh).isMesh) { (o as THREE.Mesh).material = this.ghostMat; o.castShadow = false; } if ((o as THREE.Sprite).isSprite) o.visible = false; });
+        m.position.set(p.x, plotHeight(i), p.z);
+        this.ghost = m; this.scene.add(m);
       }
     }
-    const cp = plotPos(s.cursor.plot); this.cursor!.position.set(cp.x, 1.4, cp.z);
-    const cc = s.cursor.canBuild ? 0x66ff88 : 0xff6666;
-    (this.cursor!.material as THREE.MeshBasicMaterial).color.set(cc);
-    const pulse = 1 + Math.sin(s.t * 6) * 0.12; this.cursor!.scale.set(pulse, pulse, pulse);
-    this.pillar!.position.set(cp.x, 4.4, cp.z); (this.pillar!.material as THREE.MeshBasicMaterial).color.set(cc);
+    if (this.ghost) this.ghost.position.y = plotHeight(i) + 0.15 + Math.sin(s.t * 3) * 0.12;
+  }
 
-    // ships: sail from far sea toward harbour (x≈8..)
+  // ---------- ships ----------
+  private shipPose(sh: ShipView, s: Snap, out: THREE.Vector3): { heading: THREE.Vector3; sink: number; roll: number; wake: number } {
+    const lane = sh.lane;
+    const route = [V(-120, 0, 44 + lane * 16), V(-55, 0, 50 + lane * 8), V(-14, 0, 40), V(HARBOUR.x, 0, 31)];
+    const ahead = new THREE.Vector3();
+    if (sh.state === 'sailing') {
+      bezier(route, sh.progress, out); bezier(route, Math.min(1, sh.progress + 0.01), ahead);
+      return { heading: ahead.sub(out).normalize(), sink: 0, roll: 0, wake: 1 };
+    }
+    const app = route[3];
+    if (sh.state === 'docked') {
+      let berth: THREE.Vector3;
+      if (sh.dock >= 0) { const p = PLOTS[sh.dock]; berth = V(p.x + 3.9, 0, p.z + PIER_LEN + 1.3); } else berth = V(MOORING.x, 0, MOORING.z);
+      if (sh.age > 19) {
+        const k = ease((sh.age - 19) / 6);
+        out.copy(berth).lerp(V(110, 0, 50), k);
+        return { heading: V(1, 0, 0.3).normalize(), sink: 0, roll: 0, wake: k > 0 ? 1 : 0 };
+      }
+      const k = ease(sh.age / 6);
+      out.copy(app).lerp(berth, k);
+      const h = k < 0.95 ? berth.clone().sub(app).normalize() : V(1, 0, 0);
+      return { heading: h, sink: 0, roll: 0, wake: 1 - k };
+    }
+    if (sh.state === 'lost') {
+      const reef = V(REEFS[0][0] + 1.5, 0, REEFS[0][1] + 0.8);
+      const k = ease(sh.age / 4);
+      out.copy(app).lerp(reef, k);
+      const sink = Math.max(0, (sh.age - 4) / 10);
+      return { heading: reef.clone().sub(app).normalize(), sink, roll: sink * 0.6, wake: 1 - k };
+    }
+    // spilled: wallow, then limp back out to sea
+    if (sh.age < 7) { out.copy(app); return { heading: V(1, 0, -0.2).normalize(), sink: 0, roll: Math.sin(s.t * 2.2) * 0.35, wake: 0 }; }
+    const k = ease((sh.age - 7) / 5);
+    out.copy(app).lerp(V(-60, 0, 55), k);
+    return { heading: V(-1, 0, 0.3).normalize(), sink: 0, roll: 0, wake: k };
+  }
+
+  private updateShips(s: Snap, amp: number, night: number, smoke: THREE.Vector3[]) {
     const live = new Set<number>();
+    const p = new THREE.Vector3();
     for (const sh of s.ships) {
       live.add(sh.id);
-      let m = this.shipMeshes.get(sh.id);
-      if (!m) { m = this.makeShip(); this.scene.add(m); this.shipMeshes.set(sh.id, m); }
-      // lanes run in front of the shore; ships come from the open sea on the left and head for the harbour at x~12
-      const x = -28 + sh.progress * 40;
-      const z = 28 + sh.lane * 8 - sh.progress * 3;
-      m.position.set(x, 0.3 + Math.sin(s.t * 1.5 + sh.id) * waveAmp * 0.4, z);
-      m.rotation.y = sh.state === 'lost' ? s.t * 0.5 : 0;
-      m.rotation.z = Math.sin(s.t * 1.3 + sh.id) * (0.05 + s.chop * 0.3);
-      m.visible = true;
+      let o = this.ships.get(sh.id);
+      if (!o) { o = { m: makeShip(sh.kind, sh.id), kind: sh.kind }; this.scene.add(o.m.group); this.ships.set(sh.id, o); }
+      const pose = this.shipPose(sh, s, p);
+      const g = o.m.group;
+      const wy = waveHeight(p.x, p.z, s.t, amp);
+      g.position.set(p.x, wy + 0.35 - pose.sink * 3, p.z);
+      g.rotation.y = Math.atan2(-pose.heading.z, pose.heading.x);
+      o.m.body.rotation.x = Math.sin(s.t * 1.3 + sh.id) * (0.04 + amp * 0.12) + pose.roll;
+      o.m.body.rotation.z = Math.sin(s.t * 1.1 + sh.id * 2) * (0.03 + amp * 0.08) + pose.sink * 0.5;
+      (o.m.wake.material as THREE.MeshBasicMaterial).opacity = 0.45 * pose.wake;
+      for (const l of o.m.lights) (l.material as THREE.SpriteMaterial).opacity = Math.max(night, s.fog * 0.6) * (1 - pose.sink);
+      if (o.m.smoke && pose.sink < 0.2) smoke.push(o.m.body.localToWorld(o.m.smoke.clone()));
+      // floating cargo for spilled ships
+      if (sh.state === 'spilled' && !o.crates) {
+        o.crates = new THREE.Group();
+        for (let i = 0; i < 7; i++) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), lam(0xa07a4a)); c.userData.a = i * 0.9; c.userData.r = 1.5 + (i % 3); o.crates.add(c); }
+        o.crates.position.copy(p); this.scene.add(o.crates);
+      }
+      if (o.crates) {
+        for (const c of o.crates.children) {
+          const a = c.userData.a as number, rr = (c.userData.r as number) * (1 + sh.age * 0.15);
+          const cx = Math.cos(a) * rr, cz = Math.sin(a) * rr;
+          c.position.set(cx, waveHeight(o.crates.position.x + cx, o.crates.position.z + cz, s.t, amp), cz);
+          c.rotation.set(s.t * 0.3 + a, a, Math.sin(s.t + a) * 0.3);
+        }
+      }
     }
-    for (const [id, m] of this.shipMeshes) if (!live.has(id)) { this.scene.remove(m); this.shipMeshes.delete(id); }
+    for (const [id, o] of this.ships) if (!live.has(id)) { this.scene.remove(o.m.group); if (o.crates) this.scene.remove(o.crates); this.ships.delete(id); }
+  }
 
-    // HUD
-    const st = s.storm;
-    const lines = [`Lamp ${(s.lamp * 100) | 0}%  Fog ${(s.fog * 100) | 0}%  Chop ${(s.chop * 100) | 0}%   Coin ${s.coin | 0}  Timber ${s.timber | 0}`];
-    if (st.phase === 'warning') lines.push(`STORM INCOMING in ${Math.ceil(st.warnS - st.timeInPhase)}s - get ready to push`);
-    if (st.phase === 'storm') lines.push(`STORM ${Math.ceil(st.duration - st.timeInPhase)}s left  lamp integrity ${(st.integrity * 100) | 0}%`);
-    lines.push('', `BUILD on plot ${s.cursor.plot + 1} (up/down to choose, A to build):`);
-    for (const o of s.options) {
-      const mark = o.selected ? '>' : ' ';
-      lines.push(`${mark} ${o.type} ${o.cost.coin}c/${o.cost.timber}t  [${o.owned}/${o.max}] ${o.effect}${o.reason ? '  X ' + o.reason : '  OK'}`);
+  // ---------- sound ----------
+  private sounds(s: Snap, storm: number, night: number) {
+    if (this.lastCue < 0) this.lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
+    for (const c of s.cues) if (c.id > this.lastCue) {
+      this.lastCue = c.id;
+      if (c.name === 'thunder') { const d = 300 + Math.random() * 900; setTimeout(() => play('thunder', { minGapS: 0.6, pitch: 0.8 + Math.random() * 0.4 }), d); }
+      else play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] });
     }
-    if (s.feedback.age < 4) lines.push('', s.feedback.text);
-    this.hud!.textContent = lines.join('\n');
-    this.hud!.style.color = '#fff';
+    const surf = 0.5 + 0.5 * Math.sin(s.t * 0.9);
+    setAmbient('sea', 0.05 + 0.06 * surf + s.chop * 0.08, 380 + surf * 260, 0.6);
+    setAmbient('wind', storm * 0.16 + s.fog * 0.02, 700 + Math.sin(s.t * 0.4) * 200, 1.2);
+    setAmbient('rain', Math.max(0, storm - 0.15) * 0.18, 2800, 0.3);
+    this.nextGull -= 1 / 30;
+    if (this.nextGull <= 0) { this.nextGull = 12 + Math.random() * 20; if (night < 0.5 && storm < 0.3) play('gull', { pitch: 0.85 + Math.random() * 0.3 }); }
+  }
+
+  render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
+    const s = snapshot as Snap;
+    if (!this.renderer || !s || s.fog === undefined || !s.grow) return;
+    const dt = this.lastT < 0 ? 1 / 30 : Math.max(0, Math.min(0.1, s.t - this.lastT));
+    const st = s.storm;
+    const storm = st.phase === 'storm' ? Math.max(0.5, st.intensity) : st.phase === 'warning' ? st.intensity : 0;
+    const warn = st.phase === 'warning' ? Math.min(1, st.timeInPhase / Math.max(1, st.warnS)) : 0;
+
+    this.updateCamera(s, dt);
+    const sky = this.sky.update({ t: s.t, dt, day: s.day, fog: s.fog, storm, warn, lightningAge: st.lightningAge, camTarget: this.camTgt });
+    this.sky.group.position.copy(this.camera.position).setY(0);
+    const night = Math.max(sky.night, storm * 0.6);
+    this.scene.background = sky.horizon;
+    const fog = this.scene.fog as THREE.FogExp2;
+    fog.color.copy(sky.horizon);
+    fog.density = 0.0025 + s.fog * s.fog * 0.03 + storm * 0.004;
+
+    // light
+    const sunUp = sky.sunI > 0.02;
+    this.sun.color.copy(sunUp ? sky.sunColor : new THREE.Color(0x8fa8ff));
+    this.sun.intensity = sunUp ? 2.7 * sky.sunI : 0.5 * sky.night;
+    const ld = sunUp ? sky.sunDir : this.tmp.set(-sky.sunDir.x, -sky.sunDir.y, sky.sunDir.z);
+    this.sun.target.position.set(2, 0, 0);
+    this.sun.position.set(2 + ld.x * 120, Math.max(12, ld.y * 120), ld.z * 120);
+    this.hemi.color.copy(sky.horizon);
+    this.hemi.intensity = 0.55 + 1.1 * (1 - night) + sky.flash * 2.5;
+    this.lampLight.intensity = s.lamp * (8 + 40 * night);
+
+    // lighthouse + sea
+    this.beamAngle += dt * (0.5 + 0.7 * s.lamp);
+    this.lighthouse.update({ t: s.t, lamp: s.lamp, night, bloom: Math.min(1, s.meadow * 0.8 + (s.grow.reduce((a, g, i) => a + (s.buildings[i] === 'garden' ? g : 0), 0) / 4) * 0.4), beamAngle: this.beamAngle, camera: this.camera, lens: s.buildings.includes('lamp2') ? 1 : 0 });
+    const amp = 0.25 + s.chop * 1.6;
+    this.sea.update(s.t, amp, night, storm);
+    WIN.color.setRGB(0.16 + 0.84 * night, 0.23 + 0.55 * night, 0.29 + 0.1 * night);
+    LAMP.color.setRGB(0.5 + 0.5 * night, 0.45 + 0.45 * night, 0.3 + 0.3 * night);
+
+    // town
+    this.syncBuildings(s);
+    this.life.setTown(s.buildings, s.grow, s.meadow);
+    const smoke = this.updateBuildings(s, dt, night, storm);
+    this.updateCursor(s);
+    this.updateShips(s, amp, night, smoke);
+    const docked = new Set<number>(s.ships.filter((x) => x.state === 'docked' && x.dock >= 0 && x.age > 5 && x.age < 19).map((x) => x.dock));
+    this.life.update({ t: s.t, dt, night: sky.night, storm, dockedPiers: docked, bellAge: s.bellAge, smokeExtra: smoke });
+
+    this.sounds(s, storm, sky.night);
+    this.hud?.update(s);
+    this.lastT = s.t;
     this.renderer.render(this.scene, this.camera);
   }
 
   resize(w: number, h: number) {
     this.renderer?.setSize(w, h, false);
-    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.aspect = w / Math.max(1, h);
+    this.camera.aspect = this.aspect; this.camera.updateProjectionMatrix();
   }
 
   unmount() {
     this.ro?.disconnect();
+    this.renderer?.domElement.removeEventListener('pointerdown', this.onDown);
+    stopAmbient();
+    this.hud?.unmount();
+    this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+    disposeShared();
     this.renderer?.dispose();
     this.renderer?.domElement.remove();
-    this.hud?.remove();
-    this.shipMeshes.clear();
+    this.ships.clear();
   }
 }

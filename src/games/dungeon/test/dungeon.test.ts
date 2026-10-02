@@ -176,3 +176,23 @@ describe('uniques', () => {
     expect(weaponScore(u)).toBeGreaterThan(0);
   });
 });
+
+describe('lives', () => {
+  function idleRun(lives: number) {
+    const reg = new TuningRegistry({ profileId: 'lives' });
+    reg.scoped('dungeon').num('lives', 3, 0, 9, 1);
+    reg.set('dungeon.lives', lives);
+    reg.set('dungeon.enemyDamageScale', 3);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true }, tuningRegistry: reg });
+    let deathsAtOver = -1;
+    for (let i = 0; i < 30 * 60 * 30 && !s.sim.isOver(); i++) s.step(1);
+    if (s.sim.isOver()) deathsAtOver = (s.sim.snapshot() as { stats: { deaths: number } }).stats.deaths;
+    return { over: s.sim.isOver(), deaths: deathsAtOver };
+  }
+  it('ends the run on the death that spends the last life', () => {
+    expect(idleRun(1)).toEqual({ over: true, deaths: 1 });
+  });
+  it('lives=0 is unlimited', () => {
+    expect(idleRun(0).over).toBe(false);
+  });
+});

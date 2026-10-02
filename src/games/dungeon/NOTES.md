@@ -11,7 +11,7 @@ CONTRACT-REQUESTs: none.
 
 ## Rules
 - Controls: buttons aim mode fires Y up / Z left / A right / B down (Ride diamond); dash = shiftUpR, potion = shiftDnR in every aim mode; virtual gears on the left shifters only (`useVirtualGears(true, 'L')`).
-- Save `{ bank, upgrades, bestFloor, runs, autoInvest }`. Every coin earned in a run is banked (persisted on room clear, death, descent, dispose). Death drops 20% of run coins.
+- Save `{ bank, upgrades, bestFloor, runs, autoInvest }`. Every coin earned in a run is banked (persisted on room clear, death, descent, dispose). Death drops 20% of run coins. `dungeon.lives` tunable (default 3; 1 = permadeath roguelike; 0 = unlimited): the death that spends the last life ends the run (`isOver()`), coins banked; hearts shown in the HUD.
 - Start floor defaults to the deepest unlocked (Delver: +2/level, capped at bestFloor-1); deeper starts give a scaled starter weapon and hero level 1+2*(floor-1).
 - Elites (5% + 1.5%/floor, max 25%): Undying (regen), Splitting, Warded (shield bubble), Swift, Volatile (death blast telegraph). x2.6 HP, guaranteed item.
 - Shrines activate when their room is cleared (optional): Fury Z3+ 20s/50s -> weapon +2; Patience hold Z2 over 90s -> 1-4 items; Gold 2 sprints/60s -> coin rain + heal. HUD targetZone follows the active shrine.

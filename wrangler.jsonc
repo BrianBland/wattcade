@@ -6,6 +6,9 @@
   "assets": {
     "directory": "./dist"
   },
+  // Required for PR preview URLs. Specifying `routes` otherwise defaults workers_dev to off.
+  "workers_dev": true,
+  "preview_urls": true,
   // Cloudflare creates the DNS record and certificate; brianb.land must be a zone on this account.
   "routes": [{ "pattern": "wattcade.brianb.land", "custom_domain": true }]
 }

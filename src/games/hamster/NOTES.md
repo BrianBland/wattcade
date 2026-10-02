@@ -6,7 +6,7 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - `sim/data.ts`: content (24 generators in 8 eras, 5 upgrades each, legs, boredom upgrades, specials, peptides, vibes, news, units).
 - `sim/econ.ts`: pure math: generator i outputs `out0·outStep^i` W and costs `cost0·costStep^i·growth^owned`. Also `fmtJ/fmtW`, Kardashev rating `(log10 W − 6)/10`, and "≈ N toasters".
 - `sim/sim.ts`: `createHamsterSim(ctx, { autopilot?, preset?: { gens, bank } })`. The renderer gets `send({type:'tab'|'row'|'accept'|'inject', i})`.
-- `render/scenes.ts`: one Canvas scene per era, plus Gerald / wheels / Gerald Cam. `render/renderer.ts`: layout, header meters, shop panel, events, toasts, ticker, particles, vibes, peptide overlays, sfx cues.
+- `render/draw.ts`: primitives (rounded rects, shaded hamster with run cycle, 3D-ish wheel). `render/scenes.ts`: one scene per era plus Gerald Cam. `render/renderer.ts`: glass HUD cards, shop panel (icons, cost pills, ETA, afford bars), events, toasts, ticker, particles, vibes, sfx cues.
 
 ## Rules (all numbers are `hamster.*` tunables)
 - Output = (hamsters × zoneEff × union gate + your watts × 2^legs) × Mind-Numbing × milestones (+1% each) × karmic seeds (+5% each) × active effects.
@@ -31,5 +31,5 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 `npx vitest run src/games/hamster`: econ, buy/union/mono/save/market/rebirth via a scripted pad, and the 7 scenarios.
 
 ## Known gaps
-- Visuals were checked with throwaway Playwright screenshots (desktop Chromium), not on the iPad. Comic Sans mode falls back to Chalkboard SE/cursive.
+- Visuals were checked with throwaway Playwright screenshots (desktop Chromium), not on the iPad. Icons are emoji (render as color on iOS). Font is ui-rounded (SF Pro Rounded on iOS), falling back to system-ui.
 - No new sfx: it reuses `src/audio/sfx.ts` names.

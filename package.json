@@ -1,0 +1,35 @@
+{
+  "name": "wattcade",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:ipad": "node -e \"console.log('\\nFor HTTPS on iPad/Bluefy run in another terminal:\\n  cloudflared tunnel --url http://localhost:5173\\n')\" && vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p .",
+    "sim": "tsx scripts/sim.ts",
+    "sim:all": "tsx scripts/sim.ts --all",
+    "deploy": "vite build && wrangler pages deploy dist --project-name wattcade"
+  },
+  "dependencies": {
+    "idb-keyval": "^6.3.0",
+    "preact": "^11.0.0",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^26.6.3",
+    "@types/three": "^0.186.0",
+    "@types/web-bluetooth": "^0.0.21",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^30.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.145.0"
+  }
+}

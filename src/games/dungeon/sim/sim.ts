@@ -87,6 +87,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
   const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
   const deathCoinLoss = tn.num('deathCoinLoss', 0.2, 0, 1, 0.05, 'fraction of run coins lost on death');
+  const livesT = tn.num('lives', 3, 0, 9, 1, 'lives per run; the run ends when they are spent (1 = permadeath roguelike, 0 = unlimited)');
   const terrainGrade = tn.num('gradeTerrain', 1, 0, 10, 0.5);
   const swampGrade = tn.num('gradeSwamp', 4, 0, 12, 0.5);
   const woundedGrade = tn.num('gradeWounded', 2, 0, 10, 0.5);
@@ -105,6 +106,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let mods: MetaMods = metaMods(levels, bestFloor);
   let startFloor = opts?.floor ?? mods.maxStartFloor; // defaults to the deepest unlocked start; lower it at camp
   let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0;
+  let livesLeft = 0, over = false;
   const pending: Array<{ type: 'campRow'; row: number }> = []; // taps from the renderer
 
   // ---------- hero ----------
@@ -644,6 +646,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!opts?.floor) startFloor = wasMax ? mods.maxStartFloor : clamp(startFloor, 1, mods.maxStartFloor);
     floor = startFloor;
     runs++;
+    livesLeft = Math.round(livesT()); over = false;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
     weapon = starterWeapon(floor, rng); bestFind = weapon;
     P.potions = mods.potionCap;
@@ -715,6 +718,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); resSync('terrain', terrainGrade()); return; }
+    if (over) return;
     if (freezeT > 0) { freezeT -= dt; return; } // hit-stop
     t += dt; navAge += dt;
     const ctl = readCtl(input);
@@ -1021,6 +1025,15 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function die() {
     deaths++;
     ctx.emit({ type: 'death', data: { room: current, floor } });
+    if (livesT() > 0 && --livesLeft <= 0) {
+      const lost = Math.floor(P.coins * deathCoinLoss());
+      P.coins -= lost; P.coinsEarned -= lost;
+      P.hp = 0; over = true; bullets.length = 0; hazards.length = 0;
+      addFx({ kind: 'banner', x: P.x, y: P.y, life: 6, color: '#ff5a5a', text: `RUN OVER — floor ${floor}` });
+      toast('You died. The run is over.', '#ff5a5a');
+      persist();
+      return;
+    }
     activeRoom().locked = false;
     const safe = world.rooms[safeRoom];
     current = safe.id;
@@ -1030,7 +1043,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     curse = null; // death lifts the curse (no bounty)
     const lost = Math.floor(P.coins * deathCoinLoss());
     P.coins -= lost; P.coinsEarned -= lost;
-    toast(`You fell… dropped ${lost} coins`, '#ff5a5a');
+    toast(`You fell… dropped ${lost} coins${livesT() > 0 ? ` — ${livesLeft} ${livesLeft === 1 ? 'life' : 'lives'} left` : ''}`, '#ff5a5a');
     persist();
   }
 
@@ -1055,7 +1068,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       player: {
         x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: mods.potionCap, dashCd: P.dashCd, dashCdMax: dashCooldown(),
         invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, dashing: P.dashT > 0, hurt: t - P.hurtT,
-        level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
+        lives: livesT() > 0 ? livesLeft : 0, livesMax: Math.round(livesT()), level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
       },
       weapon, gear: { ...gear },
       aim: { angle: P.aim, auto: P.aimAuto },
@@ -1100,7 +1113,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   return {
-    update, hud, snapshot, isOver: () => false,
+    update, hud, snapshot, isOver: () => over,
     receive(a: unknown) {
       const act = a as { type?: string; row?: number };
       if (act?.type === 'campRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'campRow', row: act.row });

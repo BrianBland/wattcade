@@ -512,6 +512,7 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
     for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
     gg.globalAlpha = 1;
+    if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L + 120 * u, L + 68 * u); }
     gg.fillStyle = p.dashCd > 0 ? '#888' : '#7fe7ff'; gg.font = `${Math.round(11 * u)}px sans-serif`;
     gg.fillText(p.dashCd > 0 ? `dash ${p.dashCd.toFixed(1)}s` : 'dash ready', L, L + 68 * u);
 

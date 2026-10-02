@@ -34,6 +34,7 @@ export interface DungeonSnapshot {
   player: {
     x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number; dashCd: number; dashCdMax: number;
     invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; dashing: boolean; hurt: number;
+    lives: number; livesMax: number; // livesMax 0 = unlimited
     level: number; xp: number; xpNext: number; coins: number; bank: number;
   };
   weapon: Weapon;

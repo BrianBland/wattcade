@@ -20,6 +20,8 @@ CONTRACT-REQUEST: none.
 - HUD chip shows ride time (`bike.activeSeconds`, pedalling time). Pause menu has a Sound on/off toggle (`wattcade.sound` flag).
 - `src/audio/sfx.ts`: shared WebAudio synth (`play(name, { minGapS })`, `unlockAudio()` called by GameHost on mount/gesture). Renderers import it; nothing runs in Node.
 
+- GameHost passes `send` to `renderer.mount`, forwarding to optional `GameSim.receive(action)` (canvas UI taps).
+
 ## Gaps
 - ProfileEditor fields are touch/keyboard only (no D-pad field navigation); Save/Cancel via mouse/touch.
 - PauseMenu difficulty starts at 1.00 display (not read back from mixer). GameHost `onSave` closure captures the profile at mount.

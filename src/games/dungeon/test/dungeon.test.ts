@@ -120,7 +120,7 @@ describe('meta progression', () => {
     let saved: any = null;
     const input = new TimelineInput([
       { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Might
-      { t: 0.5, press: 'a' }, { t: 0.6, release: 'a' },       // buy (400)
+      { t: 0.5, press: 'y' }, { t: 0.6, release: 'y' },       // buy (400) with Y (left face button)
       { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // begin
     ]);
     const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
@@ -130,6 +130,23 @@ describe('meta progression', () => {
     expect(saved.upgrades.might).toBe(1);
     expect(saved.bank).toBe(600);
     expect(saved.runs).toBe(1);
+  });
+});
+
+describe('camp taps', () => {
+  it('a tap on a row selects and buys it; a tap on Begin starts the run', () => {
+    const profile = testProfile();
+    (profile.gameData as Record<string, unknown>).dungeon = { bank: 1000, upgrades: {}, bestFloor: 1, runs: 0, autoInvest: false };
+    let saved: any = null;
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    const rows = (s.sim.snapshot() as any).camp.rows as Array<{ kind: string; id?: string }>;
+    s.sim.receive!({ type: 'campRow', row: rows.findIndex((r) => r.id === 'vitality') });
+    s.step(1);
+    expect(saved.upgrades.vitality).toBe(1);
+    expect((s.sim.snapshot() as any).phase).toBe('camp');
+    s.sim.receive!({ type: 'campRow', row: 0 });
+    s.step(1);
+    expect((s.sim.snapshot() as any).phase).toBe('run');
   });
 });
 

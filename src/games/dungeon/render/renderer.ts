@@ -78,6 +78,14 @@ export function createRenderer(): GameRenderer {
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let lastCue = -1;
+  let send: ((a: unknown) => void) | undefined;
+  let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
+  const onPointer = (e: PointerEvent) => {
+    if (!canvas || !campHits.length) return;
+    const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
+    const hit = campHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
+    if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
+  };
   let dpr = 1;
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
@@ -279,11 +287,12 @@ export function createRenderer(): GameRenderer {
   }
 
   return {
-    mount(container: HTMLElement, c: { profile: Readonly<Profile> }) {
-      color = c.profile.color;
+    mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void }) {
+      color = c.profile.color; send = c.send;
       canvas = document.createElement('canvas');
       canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b';
       container.appendChild(canvas);
+      canvas.addEventListener('pointerdown', onPointer);
       g = canvas.getContext('2d');
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
@@ -296,6 +305,7 @@ export function createRenderer(): GameRenderer {
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
       if (s.phase === 'camp' && s.camp) { drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
+      campHits = [];
       const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
       const TS = Math.max(24, Math.round(W / TILES_ACROSS));
       gg.imageSmoothingEnabled = false;
@@ -432,7 +442,7 @@ export function createRenderer(): GameRenderer {
 
       drawHud(s, W, H, bike);
     },
-    unmount() { canvas?.remove(); canvas = null; g = null; bg = null; bgFor = null; mini = null; },
+    unmount() { canvas?.removeEventListener('pointerdown', onPointer); canvas?.remove(); canvas = null; g = null; bg = null; bgFor = null; mini = null; },
   };
 
   function drawCamp(c: CampView, W: number, H: number, t: number) {
@@ -451,8 +461,10 @@ export function createRenderer(): GameRenderer {
     const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((H * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
+    campHits = [];
     c.rows.slice(first, first + maxRows).forEach((r, i) => {
       const idx = first + i, y = 90 * u + i * rowH, sel = idx === c.sel;
+      campHits.push({ x: lx, y, w: lw, h: rowH - 4 * u, row: idx });
       gg.fillStyle = sel ? 'rgba(255,216,74,0.18)' : 'rgba(0,0,0,0.45)'; gg.fillRect(lx, y, lw, rowH - 4 * u);
       if (sel) { gg.strokeStyle = '#ffd84a'; gg.lineWidth = 2; gg.strokeRect(lx, y, lw, rowH - 4 * u); }
       gg.textAlign = 'left'; gg.font = `bold ${fs}px sans-serif`;
@@ -470,7 +482,7 @@ export function createRenderer(): GameRenderer {
     });
     gg.textAlign = 'center'; gg.font = `${fs}px sans-serif`; gg.fillStyle = '#bbb';
     const left = Math.ceil(c.autoStartLeft);
-    gg.fillText(`D-pad choose · A buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, H - 18 * u);
+    gg.fillText(`Tap a row, or D-pad + Y to buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, H - 18 * u);
     gg.textAlign = 'left';
   }
 

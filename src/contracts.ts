@@ -139,9 +139,11 @@ export interface GameSim {
   isOver(): boolean;
   summary(): Record<string, number | string>;
   dispose?(): void;
+  /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */
+  receive?(action: unknown): void;
 }
 export interface GameRenderer {
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile> }): void;
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void }): void; // send -> GameSim.receive
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
   unmount(): void;

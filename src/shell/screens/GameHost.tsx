@@ -46,7 +46,7 @@ export function GameHost({ game, profile, onQuit, onSave }: { game: GameModule; 
         sessionRef.current = session; setSession(session);
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
-        renderer.mount(mount.current!, { profile });
+        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a) });
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) renderer?.resize?.(el.clientWidth, el.clientHeight); });
         ro.observe(el);

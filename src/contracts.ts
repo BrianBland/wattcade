@@ -158,6 +158,10 @@ export interface GameModule {
   tags: Array<'zone2' | 'sprint' | 'intervals'>;
   createSim(ctx: GameContext, opts?: { seed?: number }): GameSim;
   loadRenderer(): Promise<GameRenderer>;           // must use dynamic import()
+  /** Optional: one short line for the arcade card from this rider's save (profile.gameData[id]), e.g. "Best floor 7". Pure. */
+  progressLine?(save: unknown): string | null;
+  /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */
+  drawCard?(g: CanvasRenderingContext2D, w: number, h: number, t: number, color: string): void;
 }
 
 // ===== Sessions =====

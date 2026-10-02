@@ -1,10 +1,12 @@
 import type { GameModule } from '../../contracts';
 import { createTdSim, type TdOpts } from './sim/sim';
+import { drawCard, progressLine } from './card';
 
 export const module: GameModule = {
   id: 'towerdefense',
   title: 'Dynamo Defense',
   blurb: 'Match weapon to enemy color. Each weapon loads the trainer differently.',
+  progressLine, drawCard,
   tags: ['sprint', 'intervals'],
   createSim(ctx, opts) {
     return createTdSim(ctx, opts as TdOpts | undefined);

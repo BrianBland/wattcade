@@ -1,6 +1,6 @@
 import type { G } from './biomes';
 
-export interface RiderLook { jersey: string; helmet: 'road' | 'bubble' }
+export interface RiderLook { jersey: string; helmet: 'road' | 'bubble' | 'scuba' }
 
 type P = [number, number];
 const line = (g: G, c: string, w: number, ...pts: P[]) => {
@@ -26,9 +26,9 @@ function wheel(g: G, x: number, y: number, r: number, spin: number) {
 
 /**
  * Side-on rider drawn around the rear/front wheel contact midpoint (0,0), facing +x, ~24 px tall.
- * `crank` in revolutions, `wheelM` metres travelled (spins the wheels).
+ * `crank` in revolutions, `wheelM` metres travelled (spins the wheels), `t` seconds (scuba bubbles).
  */
-export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number) {
+export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, t = 0) {
   const r = 4.5, spin = wheelM / 0.34;
   const bb: P = [0, -5], hip: P = [-3, -14], sh: P = [3, -20], head: P = [5.2, -23];
   const th = crank * Math.PI * 2, cr = 2.8;
@@ -37,6 +37,10 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number) 
     const p = pedal(a), k = knee(hip, p, 6.4, 6.6);
     line(g, c, 2.2, hip, k); line(g, sock, 2, k, p); line(g, '#222', 1.6, [p[0] - 1, p[1]], [p[0] + 1.2, p[1]]);
   };
+  if (look.helmet === 'scuba') { // air tank on the back
+    g.fillStyle = '#e8e8f0'; g.beginPath(); g.ellipse(-2.6, -18.6, 1.8, 4.2, -0.9, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffb020'; g.fillRect(-4.5, -21.8, 2, 1);
+  }
   leg(th + Math.PI, '#15151c', '#c49a6c');               // far leg
   wheel(g, -7, -r, r, spin); wheel(g, 7, -r, r, spin);
   line(g, '#d8dbe6', 1.3, [-7, -r], bb, [-3.2, -12.5], [-7, -r]); // rear triangle + seat tube
@@ -50,7 +54,13 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number) 
   line(g, '#f1c27d', 1.6, sh, [5.6, -16.4], [6.8, -13.6]);       // arm
   line(g, look.jersey, 2, sh, [4.6, -17.8]);                     // sleeve
   g.fillStyle = '#f1c27d'; g.beginPath(); g.arc(head[0], head[1], 2.4, 0, Math.PI * 2); g.fill();
-  if (look.helmet === 'bubble') {
+  if (look.helmet === 'scuba') {
+    g.fillStyle = '#1b1b22'; g.beginPath(); g.ellipse(head[0] - 0.3, head[1] - 1.2, 2.8, 1.8, 0, Math.PI, 0); g.fill(); // hood
+    g.fillStyle = '#7fe0ff'; g.fillRect(head[0] + 0.4, head[1] - 1.2, 2.6, 1.6);                                     // mask
+    g.strokeStyle = '#1b1b22'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(head[0] + 1.6, head[1] + 1.4); g.lineTo(-2, -17); g.stroke(); // hose
+    g.fillStyle = '#d8f6ffcc';
+    for (let i = 0; i < 3; i++) { const a = ((t * 0.9 + i / 3) % 1); g.fillRect(Math.round(head[0] + 2 + Math.sin(a * 9 + i) * 1.5), Math.round(head[1] - 4 - a * 14), a > 0.6 ? 2 : 1, a > 0.6 ? 2 : 1); }
+  } else if (look.helmet === 'bubble') {
     g.fillStyle = '#d7f1ff55'; g.strokeStyle = '#e8f6ff'; g.lineWidth = 0.8;
     g.beginPath(); g.arc(head[0], head[1], 4, 0, Math.PI * 2); g.fill(); g.stroke();
     g.fillStyle = '#ffffffaa'; g.fillRect(head[0] + 1, head[1] - 3, 1.2, 1.2);

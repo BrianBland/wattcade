@@ -1,15 +1,22 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { WarmupSnapshot } from '../sim/sim';
 import { BIOME_NAMES, biomeAt, biomeIdAt, hash01, makeTerrain, type BiomeId, type Terrain } from '../sim/terrain';
-import { LOOKS, noise1, type G } from './biomes';
+import { LOOKS, noise1, type BiomeLook, type G } from './biomes';
 import { drawRider } from './rider';
+import { daylight } from './daylight';
+import { setAmbient, stopAmbient } from '../../../audio/sfx';
 
 const PPM = 9;            // low-res px per metre along the road
-const RIDGE_M_PER_PX = 4; // the far ridge shows the same road, zoomed out
+const RIDGE_M_PER_PX = 4;
+const wrap = (x: number, span: number) => ((x % span) + span) % span; // the far ridge shows the same road, zoomed out
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.35, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
 
-interface Actor { kind: 'bird' | 'gull' | 'ufo'; x: number; y: number; vx: number; t0: number; seed: number; beamAt: number }
+interface Actor { kind: BiomeLook['actor']; x: number; y: number; vx: number; vy: number; t0: number; seed: number; beamAt: number; color: string }
+const PARROTS = ['#e74c3c', '#3b82ff', '#ffd23b', '#2de26a'];
+const FISH = ['#ffb020', '#ff6b8a', '#4dabf7', '#ffe066', '#c56cf0'];
+/** `?hour=21` previews the time of day (debug aid). */
+const hourOverride = (() => { try { const v = new URLSearchParams(globalThis.location?.search ?? '').get('hour'); return v == null ? null : Number(v); } catch { return null; } })();
 interface Text { s: string; x: number; y: number; size: number; color: string; align?: CanvasTextAlign; alpha?: number }
 
 // ---- colour helpers ----
@@ -33,10 +40,11 @@ export class WarmupRenderer implements GameRenderer {
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private color = '#00f0ff';
   private terrain: { key: string; t: Terrain } | null = null;
-  private actors: Actor[] = []; private nextActorAt = 0;
+  private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
   private lastBiome: BiomeId | null = null; private titleAt = -99;
   private texts: Text[] = [];
   private lastNow = 0;
+  private ambientAt = 0;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
     this.color = ctx.profile.color;
@@ -57,7 +65,7 @@ export class WarmupRenderer implements GameRenderer {
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
     this.buf.width = this.LW; this.buf.height = this.LH;
   }
-  unmount() { this.canvas?.remove(); }
+  unmount() { this.canvas?.remove(); stopAmbient(); }
 
   private terr(s: WarmupSnapshot): Terrain {
     const key = `${s.terrainSeed}:${s.maxGrade}`;
@@ -90,10 +98,15 @@ export class WarmupRenderer implements GameRenderer {
     if (s.biome !== this.lastBiome) { if (this.lastBiome) this.titleAt = t; this.lastBiome = s.biome; }
 
     // ---- sky ----
+    const now2 = new Date();
+    const day = daylight(hourOverride ?? now2.getHours() + now2.getMinutes() / 60);
+    const night = day.night * ((cur.outdoor ? 1 - mix : 0) + (nxt.outdoor ? mix : 0));
+    const glow = day.glow * ((cur.outdoor ? 1 - mix : 0) + (nxt.outdoor ? mix : 0));
     const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
-    sky.addColorStop(0, mixColor(cur.sky[0], nxt.sky[0], mix)); sky.addColorStop(1, mixColor(cur.sky[1], nxt.sky[1], mix));
+    sky.addColorStop(0, mixColor(mixColor(cur.sky[0], nxt.sky[0], mix), '#0a0f2a', night * 0.92));
+    sky.addColorStop(1, mixColor(mixColor(mixColor(cur.sky[1], nxt.sky[1], mix), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
     g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    const stars = cur.stars + (nxt.stars - cur.stars) * mix;
+    const stars = Math.max(cur.stars + (nxt.stars - cur.stars) * mix, night);
     if (stars > 0.02) {
       for (let i = 0; i < 90; i++) {
         const x = hash01(i * 3 + 1) * W, y = hash01(i * 3 + 2) * UH * 0.6;
@@ -102,10 +115,14 @@ export class WarmupRenderer implements GameRenderer {
       }
       g.globalAlpha = 1;
     }
-    g.globalAlpha = 1 - mix; cur.celestial(g, W, UH, t);
-    g.globalAlpha = mix; if (mix > 0) nxt.celestial(g, W, UH, t);
+    const dayA = (L: BiomeLook) => (L.outdoor ? 1 - day.night : 1);
+    g.globalAlpha = (1 - mix) * dayA(cur); cur.celestial(g, W, UH, t);
+    g.globalAlpha = mix * dayA(nxt); if (mix > 0) nxt.celestial(g, W, UH, t);
+    g.globalAlpha = night; if (night > 0.02) { g.fillStyle = '#f4f1dc'; g.beginPath(); g.arc(W * 0.8, 24, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0a0f2a'; g.beginPath(); g.arc(W * 0.8 + 3, 22, 6, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
-    if (stars < 0.6) this.clouds(g, W, UH, t, s.d, Math.pow(1 - stars / 0.6, 2));
+    const cloudy = (L: BiomeLook) => (L.stars < 0.5 && L.rider !== 'scuba' ? 1 : 0);
+    const clouds = (cloudy(cur) * (1 - mix) + cloudy(nxt) * mix) * (1 - night * 0.92);
+    if (clouds > 0.02) this.clouds(g, W, UH, t, s.d, clouds);
 
     // ---- distant backdrop ----
     const backY = Math.round(UH * 0.5), bu = s.d * PPM * BACK_PARALLAX;
@@ -168,9 +185,13 @@ export class WarmupRenderer implements GameRenderer {
 
     // ---- rider ----
     const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)
-    const moonBob = s.biome === 'moon' && s.v > 1 ? -Math.abs(Math.sin(t * 2.2)) * 2 : 0;
-    g.save(); g.translate(RX, roadY0 + 0.5 + moonBob); g.rotate(-Math.atan(slope));
-    drawRider(g, { jersey: this.color, helmet: s.biome === 'moon' ? 'bubble' : 'road' }, bike.crankRevs, s.d);
+    const gear = (mix < 0.5 ? cur : nxt).rider;
+    const bob = s.v > 1 ? (s.biome === 'moon' ? -Math.abs(Math.sin(t * 2.2)) * 2 : gear === 'scuba' ? Math.sin(t * 1.4) * 1 : 0) : 0;
+    g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
+    if (night > 0.3) { // headlight
+      g.fillStyle = `rgba(255,244,200,${0.18 * night})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
+    }
+    drawRider(g, { jersey: this.color, helmet: gear }, bike.crankRevs, s.d, t);
     g.restore();
 
     // ---- foreground bits ----
@@ -182,7 +203,16 @@ export class WarmupRenderer implements GameRenderer {
       lookAt(lx / (PPM * FORE_PARALLAX)).foreProp(g, h, Math.round(x), Math.round(roadY(dd) + 10 + hash01(k * 5) * 12));
     }
 
-    this.updateActors(g, W, UH, t, dt, s);
+    this.particles(g, W, H, t, s, cur, nxt, mix, night);
+    this.updateActors(g, W, UH, t, dt, s, mix < 0.5 ? cur : nxt);
+    if (night > 0.01) { g.globalAlpha = night * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); }
+    if (glow > 0.01) { g.globalAlpha = glow * 0.14; g.fillStyle = '#ff7a3a'; g.fillRect(0, 0, W, H); }
+    g.globalAlpha = 1;
+    if (now - this.ambientAt > 0.5) {
+      this.ambientAt = now;
+      const L = mix < 0.5 ? cur : nxt;
+      setAmbient('warmup', L.ambient ? L.ambient.vol * Math.min(1, 0.4 + s.v / 8) : 0, L.ambient?.freq ?? 500, L.ambient?.q ?? 0.7);
+    }
 
     // ---- blit + full-res overlay ----
     const m = this.g;
@@ -203,18 +233,35 @@ export class WarmupRenderer implements GameRenderer {
     g.globalAlpha = 1;
   }
 
-  private updateActors(g: G, W: number, UH: number, t: number, dt: number, s: WarmupSnapshot) {
-    if (t >= this.nextActorAt) {
-      const kind: Actor['kind'] | null = s.biome === 'moon' ? 'ufo' : s.biome === 'seaside' ? 'gull' : 'bird';
-      const n = kind === 'ufo' ? 1 : 2 + Math.floor(Math.random() * 4);
-      const fromLeft = Math.random() < 0.5;
-      for (let i = 0; i < n; i++) {
-        const vx = (kind === 'ufo' ? 28 + Math.random() * 30 : 10 + Math.random() * 6) * (fromLeft ? 1 : -1);
-        this.actors.push({ kind, x: (fromLeft ? -20 : W + 20) - i * 7 * Math.sign(vx), y: 18 + Math.random() * UH * 0.25 + i * 3, vx, t0: t, seed: Math.random(), beamAt: kind === 'ufo' && Math.random() < 0.6 ? 0.3 + Math.random() * 0.4 : -1 });
-      }
-      this.nextActorAt = t + (kind === 'ufo' ? 9 + Math.random() * 14 : 6 + Math.random() * 10);
+  /** Flyers / swimmers for the current biome; spawned in small groups from either side. */
+  private updateActors(g: G, W: number, UH: number, t: number, dt: number, s: WarmupSnapshot, look: BiomeLook) {
+    const kind = look.actor;
+    if (kind !== this.actorKind) { // new biome: the old biome's creatures leave (no fish in the jungle sky)
+      this.actorKind = kind;
+      this.actors = this.actors.filter((x) => x.kind === kind || (kind === 'fish' && x.kind === 'none'));
+      this.nextActorAt = Math.min(this.nextActorAt, t + 2);
     }
-    this.actors = this.actors.filter((a) => a.x > -60 && a.x < W + 60 && t - a.t0 < 60);
+    if (t >= this.nextActorAt && kind !== 'none') {
+      const R = Math.random;
+      const fromLeft = R() < 0.5, dir = fromLeft ? 1 : -1;
+      const n = kind === 'ufo' ? 1 : kind === 'vulture' ? 1 + Math.floor(R() * 2) : kind === 'fish' ? 4 + Math.floor(R() * 6) : kind === 'ember' ? 1 + Math.floor(R() * 3) : 2 + Math.floor(R() * 4);
+      const baseY = 18 + R() * UH * (kind === 'fish' ? 0.45 : 0.25);
+      const color = kind === 'parrot' ? PARROTS[Math.floor(R() * 4)] : FISH[Math.floor(R() * FISH.length)];
+      for (let i = 0; i < n; i++) {
+        const speed = kind === 'ufo' ? 28 + R() * 30 : kind === 'fish' ? 12 + R() * 4 : kind === 'vulture' ? 6 : kind === 'parrot' ? 18 + R() * 6 : 10 + R() * 6;
+        if (kind === 'ember') { // lava bombs lobbed from the crater (backdrop, upper right)
+          this.actors.push({ kind, x: W * (0.45 + R() * 0.25), y: UH * 0.3, vx: (R() - 0.5) * 50, vy: -50 - R() * 30, t0: t, seed: R(), beamAt: -1, color: '#ff8a2a' });
+          continue;
+        }
+        const jelly = kind === 'fish' && i === 0 && R() < 0.3;
+        this.actors.push({
+          kind: jelly ? 'none' : kind, x: (fromLeft ? -20 : W + 20) - i * (kind === 'fish' ? 5 : 7) * dir, y: baseY + (kind === 'fish' ? (R() - 0.5) * 14 : i * 3),
+          vx: jelly ? dir * 3 : speed * dir, vy: jelly ? -3 : 0, t0: t, seed: R(), beamAt: kind === 'ufo' && R() < 0.6 ? 0.3 + R() * 0.4 : -1, color: jelly ? '#e8b8ff' : color,
+        });
+      }
+      this.nextActorAt = t + (kind === 'ufo' ? 9 + R() * 14 : kind === 'ember' ? 2 + R() * 4 : kind === 'fish' ? 4 + R() * 6 : 6 + R() * 10);
+    }
+    this.actors = this.actors.filter((a) => a.x > -60 && a.x < W + 60 && a.y < UH + 20 && t - a.t0 < 70);
     for (const a of this.actors) {
       const age = t - a.t0;
       if (a.kind === 'ufo') {
@@ -228,12 +275,36 @@ export class WarmupRenderer implements GameRenderer {
         g.fillStyle = '#b8bcc8'; g.beginPath(); g.ellipse(a.x, y, 10, 2.6, 0, 0, Math.PI * 2); g.fill();
         g.fillStyle = '#6c7080'; g.fillRect(Math.round(a.x - 9), Math.round(y + 1), 18, 1);
         for (let i = 0; i < 4; i++) { g.fillStyle = Math.floor(age * 6 + i) % 2 ? '#ffe066' : '#ff4d6d'; g.fillRect(Math.round(a.x - 6 + i * 4), Math.round(y), 1, 1); }
+      } else if (a.kind === 'fish') {
+        a.x += a.vx * dt;
+        const y = a.y + Math.sin(age * 2 + a.seed * 7) * 2, d = Math.sign(a.vx), wag = Math.sin(age * 12 + a.seed * 9) > 0 ? 1 : 0;
+        g.fillStyle = a.color; g.beginPath(); g.ellipse(a.x, y, 3, 1.6, 0, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.moveTo(a.x - d * 2.5, y); g.lineTo(a.x - d * 5, y - 2 + wag); g.lineTo(a.x - d * 5, y + 2 - wag); g.closePath(); g.fill();
+        g.fillStyle = '#111'; g.fillRect(Math.round(a.x + d * 1.5), Math.round(y - 1), 1, 1);
+      } else if (a.kind === 'none') { // jellyfish: pulse and drift up
+        const pulse = 0.5 + 0.5 * Math.sin(age * 3 + a.seed * 5);
+        a.x += a.vx * dt; a.y += a.vy * dt * (0.4 + pulse);
+        g.globalAlpha = 0.75; g.fillStyle = a.color; g.beginPath(); g.ellipse(a.x, a.y, 4 + pulse, 3, 0, Math.PI, 0); g.fill();
+        g.strokeStyle = a.color; g.lineWidth = 0.6;
+        for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(a.x + i * 2, a.y); g.lineTo(a.x + i * 2 + Math.sin(age * 2 + i) * 1.5, a.y + 6 + pulse); g.stroke(); }
+        g.globalAlpha = 1;
+      } else if (a.kind === 'ember') { // lava bomb: ballistic, glowing trail
+        a.vy += 40 * dt; a.x += a.vx * dt; a.y += a.vy * dt;
+        g.fillStyle = '#ffd23b'; g.fillRect(Math.round(a.x), Math.round(a.y), 2, 2);
+        g.fillStyle = '#ff6a1a88'; g.fillRect(Math.round(a.x - a.vx * 0.04), Math.round(a.y - a.vy * 0.04), 2, 2);
+        if (a.y > UH * 0.68) a.y = UH + 100; // landed
+      } else if (a.kind === 'vulture') { // lazy circles while drifting across
+        a.x += a.vx * dt;
+        const cx = a.x + Math.cos(age * 0.7 + a.seed * 6) * 14, cy = a.y + Math.sin(age * 0.7 + a.seed * 6) * 5;
+        g.strokeStyle = '#2b2026'; g.lineWidth = 1.4;
+        g.beginPath(); g.moveTo(cx - 6, cy - 1); g.quadraticCurveTo(cx - 3, cy - 3, cx, cy); g.quadraticCurveTo(cx + 3, cy - 3, cx + 6, cy - 1); g.stroke();
       } else {
         a.x += a.vx * dt;
-        const flap = Math.sin(age * (a.kind === 'gull' ? 5 : 9) + a.seed * 6) > 0 ? -1.5 : 0.5;
-        const y = a.y + Math.sin(age * 0.8 + a.seed * 4) * 2, w = a.kind === 'gull' ? 4 : 2.5;
-        g.strokeStyle = a.kind === 'gull' ? '#ffffff' : '#2b2b36'; g.lineWidth = 1;
+        const flap = Math.sin(age * (a.kind === 'gull' ? 5 : a.kind === 'parrot' ? 11 : 9) + a.seed * 6) > 0 ? -1.5 : 0.5;
+        const y = a.y + Math.sin(age * 0.8 + a.seed * 4) * 2, w = a.kind === 'gull' ? 4 : a.kind === 'parrot' ? 3 : 2.5;
+        g.strokeStyle = a.kind === 'gull' ? '#ffffff' : a.kind === 'parrot' ? a.color : '#2b2b36'; g.lineWidth = a.kind === 'parrot' ? 1.4 : 1;
         g.beginPath(); g.moveTo(a.x - w, y + flap); g.lineTo(a.x, y); g.lineTo(a.x + w, y + flap); g.stroke();
+        if (a.kind === 'parrot') { g.fillStyle = a.color; g.fillRect(Math.round(a.x - Math.sign(a.vx) * 3), Math.round(y), 2, 1); }
       }
     }
     // shooting stars on the moon
@@ -241,6 +312,29 @@ export class WarmupRenderer implements GameRenderer {
       const x = (t * 140) % (W + 60) - 30, y = 12 + noise1(Math.floor(t / 4), 6) * 30;
       g.strokeStyle = '#ffffffcc'; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 10, y - 3); g.stroke();
     }
+  }
+
+  /** Stateless weather: each particle's position is a function of its index and time, so nothing to simulate. */
+  private particles(g: G, W: number, H: number, t: number, s: WarmupSnapshot, cur: BiomeLook, nxt: BiomeLook, mix: number, night: number) {
+    const scroll = s.d * PPM * 0.6;
+    const field = (kind: BiomeLook['particles'], alpha: number) => {
+      if (!kind || alpha <= 0.02) return;
+      const n = kind === 'dust' ? 24 : kind === 'fireflies' ? 26 : 70;
+      for (let i = 0; i < n; i++) {
+        const h1 = hash01(i * 7 + 1), h2 = hash01(i * 7 + 2), h3 = hash01(i * 7 + 3);
+        let x: number, y: number, c: string, sz = 1, a = alpha;
+        if (kind === 'snow') { x = wrap(h1 * W - scroll * (0.4 + h3) + Math.sin(t + i) * 4, W); y = wrap(h2 * H + t * (10 + h3 * 14), H); c = '#ffffff'; sz = h3 > 0.7 ? 2 : 1; }
+        else if (kind === 'ash') { x = wrap(h1 * W - scroll * 0.5 + Math.sin(t * 0.5 + i) * 6, W); y = wrap(h2 * H + t * (5 + h3 * 6), H); c = h3 > 0.85 ? '#ff8a2a' : '#7a6a6a'; }
+        else if (kind === 'bubbles') { x = wrap(h1 * W - scroll * 0.3 + Math.sin(t * 2 + i) * 2, W); y = wrap(h2 * H - t * (8 + h3 * 12), H); c = '#d8f6ffaa'; sz = h3 > 0.8 ? 2 : 1; }
+        else if (kind === 'fireflies') { x = wrap(h1 * W - scroll * 0.5 + Math.sin(t * 0.7 + i * 3) * 10, W); y = H * 0.45 + h2 * H * 0.35 + Math.sin(t * 0.9 + i) * 6; c = '#f4ff8a'; a = alpha * (0.15 + 0.85 * night) * Math.max(0, Math.sin(t * (1.5 + h3) + i * 2)); }
+        else { x = wrap(h1 * W - scroll * 1.6 - t * 30, W); y = H * 0.55 + h2 * H * 0.4; c = '#e8c894'; sz = 1; a = alpha * 0.6; }
+        if (a <= 0.02) continue;
+        g.globalAlpha = a; g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), sz, sz);
+      }
+      g.globalAlpha = 1;
+    };
+    if (cur.particles === nxt.particles) field(cur.particles, 1);
+    else { field(cur.particles, 1 - mix); field(nxt.particles, mix); }
   }
 
   /** Text and the upcoming-road profile at full resolution. */

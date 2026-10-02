@@ -7,12 +7,12 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
-// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`), and it worked for the trainer/HR
-// with a plain service filter, so try that first. Fall back through other shapes; rejects are immediate so the gesture survives.
-export const RIDE_REQUEST_OPTIONS = { filters: [{ services: [0xfc82] }] };
+// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`), and the Ride apparently doesn't
+// advertise 0xfc82 (a service filter shows an empty picker). Match by name first; rejects are immediate so the gesture survives.
+export const RIDE_REQUEST_OPTIONS = { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] };
 const RIDE_FALLBACK_OPTIONS: RequestDeviceOptions[] = [
-  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] },
   { acceptAllDevices: true, optionalServices: [0xfc82] },
+  { filters: [{ services: [0xfc82] }] },
 ];
 export async function requestRideDevice(): Promise<BluetoothDevice> {
   const errs: string[] = [];

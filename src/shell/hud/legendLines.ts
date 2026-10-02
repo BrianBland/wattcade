@@ -19,4 +19,4 @@ export const GLYPH: Record<ControlTarget, string> = {
   shiftUpL: 'L+', shiftDnL: 'L-', shiftUpR: 'R+', shiftDnR: 'R-', powerUpL: 'PwrL', powerUpR: 'PwrR', onOffL: 'OnL', onOffR: 'OnR',
   dpad: 'D-pad', paddles: 'Paddles', shiftersL: 'L-shift', shiftersR: 'R-shift',
 };
-export const GLYPH_COLOR: Partial<Record<ControlTarget, string>> = { y: '#3b82ff', b: '#ff4d4d', z: '#ff9a2b', a: '#3b82ff' };
+export const GLYPH_COLOR: Partial<Record<ControlTarget, string>> = { y: '#3b82ff', b: '#ff4d4d', z: '#ff9a2b', a: '#2bd96b' };

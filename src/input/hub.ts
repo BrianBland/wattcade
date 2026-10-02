@@ -211,8 +211,9 @@ export class InputHub {
     const L = 'left:'; const B = 'bottom:';
     mk('▲', 'up', `${L}84px;${B}148px`); mk('▼', 'down', `${L}84px;${B}20px`);
     mk('◀', 'left', `${L}20px;${B}84px`); mk('▶', 'right', `${L}148px;${B}84px`);
-    mk('A', 'a', `right:84px;${B}20px`); mk('B', 'b', `right:20px;${B}84px`);
-    mk('Y', 'y', `right:148px;${B}84px`); mk('Z', 'z', `right:84px;${B}148px`);
+    // Ride right hood diamond: Y top, Z left, A right, B bottom.
+    mk('Y', 'y', `right:84px;${B}148px`); mk('B', 'b', `right:84px;${B}20px`);
+    mk('Z', 'z', `right:148px;${B}84px`); mk('A', 'a', `right:20px;${B}84px`);
     if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
     container.appendChild(root);
     this.touchEl = root;

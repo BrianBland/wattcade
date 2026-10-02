@@ -80,13 +80,19 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .legend:not(.expanded) .lg-key { min-width: 26px; padding: 0 3px; border-width: 1px; line-height: 1.1; }
 .legend:not(.expanded) .lg-key span { font-size: 9px; }
 .legend.expanded { font-size: 16px; padding: 12px 16px; gap: 28px; }
-.lg-side { display: grid; grid-template-columns: repeat(2, auto); gap: 4px; align-content: start; }
-.lg-dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; grid-column: span 2; }
-.lg-dpad .lg-key:nth-child(1) { grid-column: 2; } .lg-dpad .lg-key:nth-child(2) { grid-column: 1; grid-row: 2; }
-.lg-dpad .lg-key:nth-child(3) { grid-column: 3; grid-row: 2; } .lg-dpad .lg-key:nth-child(4) { grid-column: 2; grid-row: 3; }
-.lg-abyz { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; grid-column: span 2; }
+/* hoods mirror the Ride: face cluster outboard, shifters inboard, paddle below */
+.lg-hood { display: grid; gap: 4px 8px; align-items: center; }
+.lg-hood.left { grid-template-areas: "face shift" "paddle paddle"; }
+.lg-hood.right { grid-template-areas: "shift face" "paddle paddle"; }
+.lg-face { grid-area: face; display: flex; flex-direction: column; gap: 4px; }
+.lg-shift { grid-area: shift; display: flex; flex-direction: column; gap: 4px; }
+.lg-hood .lg-paddle { grid-area: paddle; }
+.lg-spacer { visibility: hidden; }
+.lg-diamond { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
+.lg-diamond .top { grid-area: 1 / 2; } .lg-diamond .lft { grid-area: 2 / 1; }
+.lg-diamond .rgt { grid-area: 2 / 3; } .lg-diamond .bot { grid-area: 3 / 2; }
 .lg-key { --kc: #6a6a8c; display: flex; flex-direction: column; align-items: center; min-width: 40px; padding: 2px 5px; border: 2px solid var(--kc); border-radius: 8px; opacity: .35; color: #fff; }
-.lg-key.wide { grid-column: span 2; flex-direction: row; gap: 6px; justify-content: center; }
+.lg-key.wide { flex-direction: row; gap: 6px; justify-content: center; }
 .lg-key.mapped { opacity: 1; }
 .lg-key.held { background: var(--kc); box-shadow: 0 0 10px var(--kc); opacity: 1; }
 .lg-key.active { outline: 2px solid var(--lime); }

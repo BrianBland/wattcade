@@ -98,7 +98,7 @@ export interface ResistanceController {
   set(effect: ResistanceEffect): void;
   clear(id: string): void;
   clearAll(): void;
-  useVirtualGears(enabled: boolean): void; // shifters change gear; applies in sim mode only
+  useVirtualGears(enabled: boolean, side?: 'L' | 'R'): void; // shifters change gear (only that hood's if `side` is given); applies in sim mode only
 }
 
 // ===== Tuning =====

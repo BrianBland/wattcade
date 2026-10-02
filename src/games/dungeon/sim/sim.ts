@@ -1,4 +1,4 @@
-import type { BikeState, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
+import type { BikeState, GameContext, ControlHint, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { generateWorld, tileAt, TILE, type EnemyKind, type Room, type World } from './world';
 import type { BulletView, DungeonSnapshot, EnemyView } from './types';
 
@@ -73,7 +73,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     resState.set(id, grade);
     if (grade === null) ctx.resistance.clear(id); else ctx.resistance.set({ id, mode: 'sim', gradePct: grade });
   }
-  ctx.resistance.useVirtualGears(true);
+  ctx.resistance.useVirtualGears(true, 'L'); // right shifters are dash/potion
 
   // ---------- geometry ----------
   const doorLocked = (tx: number, ty: number) => {
@@ -155,7 +155,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const buttons = mode === 'buttons';
     let aimVec: Ctl['aimVec'] = null, fire = true;
     if (buttons) {
-      const ax = (h.has('b') ? 1 : 0) - (h.has('z') ? 1 : 0), ay = (h.has('a') ? 1 : 0) - (h.has('y') ? 1 : 0);
+      // Right-hood diamond: Y up, Z left, A right, B down.
+      const ax = (h.has('a') ? 1 : 0) - (h.has('z') ? 1 : 0), ay = (h.has('b') ? 1 : 0) - (h.has('y') ? 1 : 0);
       if (ax || ay) aimVec = { x: ax, y: ay }; else fire = true;
     } else if (mode === 'axes') {
       if (Math.hypot(input.paddleL, input.paddleR) > 0.25) aimVec = { x: input.paddleL, y: input.paddleR };
@@ -164,8 +165,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const aimAuto = mode === 'auto' || (mode !== 'buttons' && input.paddleIdleS > autoAimIdle() && !aimVec);
     return {
       mx, my, aimAuto, aimVec, fire,
-      dash: buttons ? input.pressed.has('shiftUpR') : input.pressed.has('a'),
-      potion: buttons ? input.pressed.has('shiftDnR') : input.pressed.has('b'),
+      dash: input.pressed.has('shiftUpR'),
+      potion: input.pressed.has('shiftDnR'),
     };
   }
 
@@ -368,14 +369,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function hud(): GameHud {
     const sh = bossShield();
     const buttons = ctx.profile.settings.aimMode === 'buttons';
+    const aim: ControlHint[] = buttons
+      ? [{ button: 'y', label: 'Aim up' }, { button: 'z', label: 'Aim left' }, { button: 'a', label: 'Aim right' }, { button: 'b', label: 'Aim down' }]
+      : [{ button: 'paddles', label: 'Aim' }];
     return {
       controls: [
-        { button: 'paddles', label: 'Aim' },
-        { button: buttons ? 'shiftUpR' : 'a', label: 'Dash', active: P.dashCd <= 0 },
-        { button: buttons ? 'shiftDnR' : 'b', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp },
+        ...aim,
+        { button: 'shiftUpR', label: 'Dash', active: P.dashCd <= 0 },
+        { button: 'shiftDnR', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp },
         { button: 'dpad', label: 'Move (optional)' },
         { button: 'shiftersL', label: 'Gear' },
-        { button: 'shiftersR', label: 'Gear' },
       ],
       gears: true,
       targetZone: sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up' } : { min: 2, max: 2, label: 'Heal' },

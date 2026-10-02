@@ -156,8 +156,8 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - Keyboard: `Esc` → pause, `` ` `` → toggleDebug, `0` → panic
   - Touch: triple-tap the top-left 60×60 px corner → toggleDebug
   - While the debug overlay is open, the left shifters change difficulty ±0.05 and the right shifters change timeScale (fake mode only).
-- **Keyboard mapping:** arrows = D-pad; `K`=A, `L`=B, `I`=Y, `J`=Z; `Q`/`A` = shiftUpL/shiftDnL; `P`/`;` = shiftUpR/shiftDnR; `1`/`2` = powerUpL/powerUpR; `N`/`M` = left paddle −/+; `,`/`.` = right paddle −/+. Fake bike: `W`/`S` = cadence ±5, `E`/`D` = power ±10, `R`/`F` = HR ±5.
-- **Gamepad API** (standard mapping): d-pad buttons 12–15; face buttons 0/1/3/2 → A/B/Y/Z; LB/RB → shiftUp L/R; LT/RT → shiftDn L/R; Select/Start → powerUp L/R; left and right stick x → paddleL/paddleR.
+- **Keyboard mapping:** arrows = D-pad; `L`=A, `K`=B, `I`=Y, `J`=Z (same diamond as the Ride's right hood); `Q`/`A` = shiftUpL/shiftDnL; `P`/`;` = shiftUpR/shiftDnR; `1`/`2` = powerUpL/powerUpR; `N`/`M` = left paddle −/+; `,`/`.` = right paddle −/+. Fake bike: `W`/`S` = cadence ±5, `E`/`D` = power ±10, `R`/`F` = HR ±5.
+- **Gamepad API** (standard mapping): d-pad buttons 12–15; face buttons 1/0/3/2 (right/bottom/top/left) → A/B/Y/Z; LB/RB → shiftUp L/R; LT/RT → shiftDn L/R; Select/Start → powerUp L/R; left and right stick x → paddleL/paddleR.
 
 ## §4 Definition of done (demo)
 
@@ -310,7 +310,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
   Draw an aim reticle.
 - **Firing:** automatic, one shot every `tuning 'revsPerShot'` crank revs (default 0.5). Damage = `base × clamp(ftpFraction, 0.3, 2.5)`.
-- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). A (or `z` in buttons mode) = dash (2 s cooldown). B = potion (3 per run).
+- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Right shift up = dash (2 s cooldown), right shift down = potion (3 per run); virtual gears use the left shifters only.
 - **Resistance** (sim mode, virtual gears enabled):
   - base effect `terrain` 1 %
   - on swamp tiles, `swamp` +4 %

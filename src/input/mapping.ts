@@ -3,7 +3,7 @@ import type { Button, SystemAction } from '../contracts';
 
 export const KEY_BUTTONS: Record<string, Button> = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-  KeyK: 'a', KeyL: 'b', KeyI: 'y', KeyJ: 'z',
+  KeyL: 'a', KeyK: 'b', KeyI: 'y', KeyJ: 'z', // IJKL diamond = Ride right hood
   KeyQ: 'shiftUpL', KeyA: 'shiftDnL', KeyP: 'shiftUpR', Semicolon: 'shiftDnR',
   Digit1: 'powerUpL', Digit2: 'powerUpR',
 };
@@ -16,7 +16,7 @@ export const KEY_SYSTEM: Record<string, SystemAction> = { Escape: 'pause', Backq
 
 /** Gamepad (standard mapping) button index -> Button (SPEC 3.1). Sticks x -> paddles. */
 export const PAD_BUTTONS: Record<number, Button> = {
-  0: 'a', 1: 'b', 3: 'y', 2: 'z', 4: 'shiftUpL', 5: 'shiftUpR', 6: 'shiftDnL', 7: 'shiftDnR',
+  1: 'a', 0: 'b', 3: 'y', 2: 'z', // face buttons by position: right/bottom/top/left 4: 'shiftUpL', 5: 'shiftUpR', 6: 'shiftDnL', 7: 'shiftDnR',
   8: 'powerUpL', 9: 'powerUpR', 12: 'up', 13: 'down', 14: 'left', 15: 'right',
 };
 

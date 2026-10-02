@@ -103,10 +103,10 @@ describe('keyboard / gamepad / script', () => {
   });
   it('gamepad polled in beginTick', () => {
     const h = new InputHub(); const got: SystemAction[] = [];
-    let pressed = [0, 8];
+    let pressed = [1, 8]; // 1 = right face button = A
     h.attachGamepad(() => [{ buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: pressed.includes(i) })), axes: [0, 0, 0, 0] }]);
     h.beginTick(0.03);
-    expect(h.state().held.has('a')).toBe(true); expect(h.state().source).toBe('gamepad'); expect(h.state().held.has('powerUpL')).toBe(true);
+    expect(h.state().held.has('a')).toBe(true); expect(h.state().held.has('b')).toBe(false); expect(h.state().source).toBe('gamepad'); expect(h.state().held.has('powerUpL')).toBe(true);
     pressed = []; h.beginTick(0.03); expect(h.state().released.has('a')).toBe(true);
   });
   it('script timeline', () => {

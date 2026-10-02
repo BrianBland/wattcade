@@ -16,6 +16,7 @@ export class ResistanceMixer implements ResistanceController {
   private difficulty: number;
   private panicOn = false;
   private gears = false;
+  private gearSide: 'L' | 'R' | undefined;
   gear = 6;
   private lastCommand: TrainerCommand | null = null;
   private lastSentAt = -Infinity;
@@ -33,7 +34,7 @@ export class ResistanceMixer implements ResistanceController {
   }
   clear(id: string): void { this.effects.delete(id); }
   clearAll(): void { this.effects.clear(); }
-  useVirtualGears(enabled: boolean): void { if (enabled && !this.gears) this.gear = 6; this.gears = enabled; }
+  useVirtualGears(enabled: boolean, side?: 'L' | 'R'): void { if (enabled && !this.gears) this.gear = 6; this.gears = enabled; this.gearSide = side; }
   setDifficulty(d: number): void { this.difficulty = Math.min(1.5, Math.max(0.5, d)); }
   getDifficulty(): number { return this.difficulty; }
   panic(on: boolean): void {
@@ -46,9 +47,10 @@ export class ResistanceMixer implements ResistanceController {
     this.now += dt;
     for (const [id, e] of this.effects) if (this.now >= e.expiresAt) this.effects.delete(id);
     if (this.gears) {
+      const sides = this.gearSide ? [this.gearSide] : ['L', 'R'];
       for (const b of input.pressed) {
-        if (b === 'shiftUpL' || b === 'shiftUpR') this.gear = Math.min(11, this.gear + 1);
-        else if (b === 'shiftDnL' || b === 'shiftDnR') this.gear = Math.max(1, this.gear - 1);
+        if (sides.some((s) => b === `shiftUp${s}`)) this.gear = Math.min(11, this.gear + 1);
+        else if (sides.some((s) => b === `shiftDn${s}`)) this.gear = Math.max(1, this.gear - 1);
       }
     }
     if (this.panicOn) { this.chosenMode = 'sim'; return; }

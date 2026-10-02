@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDuration, formatNum, formatValue, levelProgress, packetsPerSecond, zoneFractions } from './format';
+import { downsample, formatDuration, formatNum, formatValue, levelProgress, packetsPerSecond, prettyKey, timeAgo, zoneFractions } from './format';
 
 describe('format', () => {
   it('durations', () => {
@@ -22,5 +22,23 @@ describe('format', () => {
     expect(packetsPerSecond({ packets: 10 }, { packets: 20 }, 0)).toBe(0);
     expect(levelProgress(150, 100, 200)).toBe(0.5);
     expect(levelProgress(300, 100, 200)).toBe(1);
+  });
+});
+
+describe('format extras', () => {
+  it('prettyKey', () => {
+    expect(prettyKey('distanceKm')).toBe('Distance km');
+    expect(prettyKey('rooms_cleared')).toBe('Rooms cleared');
+  });
+  it('downsample averages buckets and keeps null gaps', () => {
+    expect(downsample([1, 3, 5, 7], 2)).toEqual([2, 6]);
+    expect(downsample([null, null, 4, 6], 2)).toEqual([null, 5]);
+    expect(downsample([1, 2], 5)).toEqual([1, 2]);
+  });
+  it('timeAgo', () => {
+    expect(timeAgo(undefined)).toBe('Not played yet');
+    expect(timeAgo(1000 - 30 * 60000, 1000)).toBe('30 min ago');
+    expect(timeAgo(0, 3 * 86400000)).toBe('Not played yet');
+    expect(timeAgo(1, 3 * 86400000)).toBe('3 days ago');
   });
 });

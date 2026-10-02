@@ -12,3 +12,23 @@ export function navReduce(state: NavState, key: NavKey, count: number, cols = 1)
   else if (key === 'down') i = i + c;
   return { index: Math.min(Math.max(i, 0), count - 1) };
 }
+
+/**
+ * Navigation over rows of different lengths (e.g. a button bar above a row of cards). Items are numbered row by row.
+ * Left/right stay within the row; up/down jump to the item at the same relative position in the next row.
+ */
+export function navRows(index: number, key: NavKey, rows: readonly number[]): number {
+  const lens = rows.filter((r) => r > 0);
+  const total = lens.reduce((a, b) => a + b, 0);
+  if (!total) return 0;
+  let i = Math.min(Math.max(index, 0), total - 1), r = 0, start = 0;
+  while (i >= start + lens[r]) { start += lens[r]; r++; }
+  const col = i - start;
+  if (key === 'left') return Math.max(start, i - 1);
+  if (key === 'right') return Math.min(start + lens[r] - 1, i + 1);
+  const nr = key === 'up' ? r - 1 : r + 1;
+  if (nr < 0 || nr >= lens.length) return i;
+  const nStart = lens.slice(0, nr).reduce((a, b) => a + b, 0);
+  const frac = lens[r] > 1 ? col / (lens[r] - 1) : 0;
+  return nStart + Math.round(frac * (lens[nr] - 1));
+}

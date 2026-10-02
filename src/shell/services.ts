@@ -249,7 +249,10 @@ export function debugSnapshot(): DebugSnapshot {
     controllerInfo, trainerDetail: status.trainer.detail ?? status.trainer.error,
   };
 }
-export const getDifficulty = () => debugState.difficulty;
+/** Difficulty of the running session's mixer (starts from the profile setting), else the last value set. */
+export const getDifficulty = (): number => any(current())?.mixer?.getDifficulty?.() ?? debugState.difficulty;
+/** Live readings from the real devices (Connect screen). */
+export const liveDevices = () => dataHub.store.get();
 const debugState = { difficulty: 1, timeScale: 1 };
 export const debugActions: DebugActions = {
   setDifficulty(v) { debugState.difficulty = v; any(current())?.mixer?.setDifficulty(v); },

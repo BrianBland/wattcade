@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, runHeadless, testProfile, NullInput } from '../../../core';
+import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput } from '../../../core';
+import type { Button } from '../../../contracts';
 import { module } from '../index';
 import { generateWorld, TILE } from '../sim/world';
 import { scenarios } from '../scenarios';
@@ -43,6 +44,26 @@ describe('auto-move and hud', () => {
     expect(h.gears).toBe(true);
     expect(h.targetZone).toMatchObject({ min: 2, max: 2 });
     expect(h.controls!.length).toBeGreaterThan(3);
+  });
+});
+
+describe('buttons aim mode', () => {
+  const buttonsProfile = () => { const p = testProfile(); p.settings.aimMode = 'buttons'; return p; };
+  it('aims like the Ride diamond: Y up, Z left, A right, B down', () => {
+    const want: Record<string, number> = { y: -Math.PI / 2, z: Math.PI, a: 0, b: Math.PI / 2 };
+    for (const [b, ang] of Object.entries(want)) {
+      const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: b as Button }]), fake: { script: 'z2' }, seed: 5 });
+      s.step(5);
+      expect(Math.abs(Math.cos((s.sim.snapshot() as any).aim.angle - ang) - 1), b).toBeLessThan(1e-9);
+    }
+  });
+  it('dash and potion sit on the right shifters without shifting gear', () => {
+    const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: 'shiftUpR' }]), fake: { script: 'z2' }, seed: 5 });
+    const gear0 = s.mixer.gear; s.step(5);
+    expect((s.sim.snapshot() as any).player.dashCd).toBeGreaterThan(0);
+    expect(s.mixer.gear).toBe(gear0);
+    const hints = new Map(s.sim.hud!().controls!.map((c) => [c.label, c.button]));
+    expect(hints.get('Dash')).toBe('shiftUpR'); expect(hints.get('Potion')).toBe('shiftDnR'); expect(hints.get('Aim right')).toBe('a');
   });
 });
 

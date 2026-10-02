@@ -15,7 +15,7 @@ CONTRACT-REQUESTs: none.
 - `ScriptedInput` clock starts at 0 on `setScript`, advances in `beginTick`; paddle values -1..1 (|v|>1 treated as -100..100). Source reports 'script'.
 - System combos (SPEC 3.1, evaluated on the merged held set of all sources, so they work while paused): powerUpL+powerUpR tapped (<1 s) -> pause; held >= 1 s -> toggleDebug (fires from beginTick/setControllerState, never also pause). powerUp buttons are hidden from state() while part of a combo. No shifter/onOff combos. Keyboard: Esc pause, ` toggleDebug, 0 panic. Touch: triple-tap top-left 60x60 -> toggleDebug. `new InputHub({now})` injects the clock (default performance.now).
 - `debugOpen=true`: shifters are removed from state() and emit `onDebugAdjust`: left shifters -> difficulty +/-0.05; right shifters -> timeScale +/-1 (a step; shell interprets).
-- Keyboard map (SPEC 3.1): arrows dpad, K/L/I/J = a/b/y/z, Q/A shiftUp/DnL, P/; shiftUp/DnR, 1/2 powerUpL/R, N/M left paddle -/+, ,/. right paddle. Gamepad: d-pad 12-15, faces 0/1/3/2 = A/B/Y/Z, LB/RB shiftUp L/R, LT/RT shiftDn L/R, Select/Start powerUp L/R, stick x -> paddles. Ignored while typing in inputs.
+- Keyboard map (SPEC 3.1): arrows dpad, L/K/I/J = a/b/y/z, Q/A shiftUp/DnL, P/; shiftUp/DnR, 1/2 powerUpL/R, N/M left paddle -/+, ,/. right paddle. Gamepad: d-pad 12-15, faces 1/0/3/2 = A/B/Y/Z, LB/RB shiftUp L/R, LT/RT shiftDn L/R, Select/Start powerUp L/R, stick x -> paddles. Ignored while typing in inputs.
 - Controller: reconnect with 1,2,4,8,15s backoff on `gattserverdisconnected`; firmware >= 1.3.0 sets `warning` in status; polarity auto-flip logged via `onLog`.
 - No new runtime deps.
 

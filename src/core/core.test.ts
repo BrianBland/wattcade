@@ -148,6 +148,14 @@ describe('ResistanceMixer', () => {
     m.clearAll(); m.set({ id: 'e', mode: 'erg', watts: 150 }); tick(1);
     expect(sent.at(-1)).toEqual({ mode: 'erg', watts: 150 });
   });
+  it('virtual gears can be limited to one hood', () => {
+    const { m } = mixer();
+    m.useVirtualGears(true, 'L');
+    m.tick(FIXED_DT, noInput(['shiftUpR'])); m.tick(FIXED_DT, noInput(['shiftDnR']));
+    expect(m.gear).toBe(6);
+    m.tick(FIXED_DT, noInput(['shiftUpL']));
+    expect(m.gear).toBe(7);
+  });
 });
 
 describe('FakeTrainer', () => {

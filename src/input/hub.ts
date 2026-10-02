@@ -27,7 +27,7 @@ export class InputHub {
   private kbHeld = new Set<Button>(); private kbPaddle = { L: 0, R: 0 };
   private kbDown = { L: new Set<number>(), R: new Set<number>() } as Record<'L' | 'R', Set<number>>;
   private padHeld = new Set<Button>(); private padPaddle = { L: 0, R: 0 };
-  private touchHeld = new Map<number, Button>();
+  private touchHeld = new Map<number, Button>(); private tapSeq = 0;
   private script: ScriptedInput | null = null;
   private getPads: (() => ArrayLike<PadLike>) | null = null;
 
@@ -226,6 +226,14 @@ export class InputHub {
     };
     container.addEventListener('pointerdown', corner);
     return () => { container.removeEventListener('pointerdown', corner); root.remove(); if (this.touchEl === root) this.touchEl = null; this.touchHeld.clear(); this.recompute(); };
+  }
+  /** Raise a system action from on-screen UI (e.g. the HUD Menu button). */
+  system(a: SystemAction): void { this.fire(a); }
+  /** Synthetic press+release (on-screen buttons); the edge survives until the next beginTick. */
+  tap(b: Button): void {
+    const id = -1 - this.tapSeq++;
+    this.touchHeld.set(id, b); this.source = 'touch'; this.recompute();
+    this.touchHeld.delete(id); this.recompute();
   }
   showTouch(v: boolean): void { this.touchVisible = v; if (this.touchEl) this.touchEl.style.display = v ? 'block' : 'none'; }
 }

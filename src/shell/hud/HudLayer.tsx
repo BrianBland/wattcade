@@ -42,6 +42,13 @@ export function HudLayer({ session, profile, paused, legendOn, fake }: { fake?: 
   return (
     <div class="hud">
       {legendOn && <CompactLegend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} />}
+      <div class="hud-touch">
+        <button class="hud-btn" onClick={() => input.system('pause')} aria-label="Menu">Menu</button>
+        {f.hud.gears && <><button class="hud-btn" onClick={() => input.tap('shiftDnL')} aria-label="Easier gear">−</button><button class="hud-btn" onClick={() => input.tap('shiftUpL')} aria-label="Harder gear">+</button></>}
+        {f.hud.gears && (f.hud.controls ?? []).filter((c) => c.button === 'shiftUpR' || c.button === 'shiftDnR').map((c) => (
+          <button key={c.button} class={`hud-btn${c.active === false ? ' off' : ''}`} onClick={() => input.tap(c.button as 'shiftUpR' | 'shiftDnR')}>{c.label}</button>
+        ))}
+      </div>
       <div class="hud-chips"><div class="chip" key={pulse}><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span>{f.hud.gears && <span>Gear {f.bike.gear}</span>}<span>Diff {f.diff.toFixed(2)}</span></div></div>
       <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
       {legendOn && expanded && <div class="hud-expanded"><Legend controls={f.hud.controls ?? []} held={f.held} paddles={f.paddles} expanded /></div>}

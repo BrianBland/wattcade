@@ -127,8 +127,8 @@ export class ZwiftRideController implements ControllerDevice {
       try {
         const svc = await server.getPrimaryService(id);
         const chars = await svc.getCharacteristics();
-        this.log(`using service ${svc.uuid}`);
-        return { svc, chars };
+        if (this.usable(chars)) { this.log(`using service ${svc.uuid}`); return { svc, chars }; }
+        tried.push(`${svc.uuid}: no usable characteristics [${this.describe(chars)}]`);
       } catch (e) { tried.push(`${typeof id === 'number' ? '0x' + id.toString(16) : id}: ${String(e)}`); }
     }
     let services: BluetoothRemoteGATTService[] = [];
@@ -136,11 +136,23 @@ export class ZwiftRideController implements ControllerDevice {
     for (const svc of services) {
       try {
         const chars = await svc.getCharacteristics();
-        if (chars.some((c) => c.uuid.includes('19ca-4651'))) { this.log(`using scanned service ${svc.uuid}`); return { svc, chars }; }
-      } catch { /* not readable */ }
+        if (this.usable(chars)) { this.log(`using scanned service ${svc.uuid}`); return { svc, chars }; }
+        tried.push(`${svc.uuid}: [${this.describe(chars)}]`);
+      } catch (e) { tried.push(`${svc.uuid}: chars ${String(e)}`); }
     }
     for (const t of tried) this.log('service lookup: ' + t);
-    throw new Error(`Zwift Ride service not found on "${this.device.name ?? 'device'}" (services: ${services.map((s) => s.uuid).join(', ') || 'none visible'}). Capture details with /probe.html.`);
+    throw new Error(`Zwift Ride service not usable on "${this.device.name ?? 'device'}" (visible services: ${services.map((s) => s.uuid).join(', ') || 'none'}; tried: ${tried.join(' | ')})`);
+  }
+
+  private usable(chars: BluetoothRemoteGATTCharacteristic[]): boolean {
+    const p = pickCharacteristics(chars.map((c) => ({
+      uuid: c.uuid, notify: c.properties.notify, indicate: c.properties.indicate,
+      write: c.properties.write, writeNoResp: c.properties.writeWithoutResponse,
+    })));
+    return !!p.async && !!p.syncRx;
+  }
+  private describe(chars: BluetoothRemoteGATTCharacteristic[]): string {
+    return chars.map((c) => `${c.uuid.slice(0, 8)}:${(['notify', 'indicate', 'write', 'writeWithoutResponse', 'read'] as const).filter((k) => c.properties[k]).join('+')}`).join(', ') || 'none';
   }
 
   private async handshake() {

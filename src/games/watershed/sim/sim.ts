@@ -23,6 +23,8 @@ export interface WatershedSnapshot {
   cadence: number; cadNorm: number; rpmLow: number; rpmHigh: number; dropVol: number; inBand: boolean; bandBonus: number;
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
   phase: Phase;
+  view: 'overview' | 'follow';
+  boost: { active: boolean; ready: boolean; cd: number; total: number };
   sky: SkyView;
   salmon: SalmonView | null;
   /** Recent one-shot cues for the renderer (sounds, popups); ids increase. */
@@ -49,6 +51,7 @@ export interface SalmonView {
 }
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const BOOST_LABEL: Record<Phase, string> = { evaporate: 'Heat wave', cloud: 'Inhale', rain: 'Cloudburst', river: 'Surge', salmon: 'Sprint' };
 
 export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): GameSim & { snapshot(): WatershedSnapshot } {
   const tn = ctx.tuning;
@@ -93,6 +96,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   const cutMarks = [2, 4, 6, 8, 10], deltaMarks = [25, 50, 100, 200, 400];
   let cutIdx = 0, deltaIdx = 0, saved = false;
   const salmon = new SalmonRun(terrain, ctx.rng);
+  const BOOST_S = 3, BOOST_CD = 10;
+  let boostT = 0, boostCd = 0, view: 'overview' | 'follow' = 'overview';
   const sky = new Sky(terrain.nx, terrain.ny, terrain.coastY, ctx.rng);
   let raining = 0;
   const cues: Cue[] = [];
@@ -164,37 +169,39 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       bonus += ((inBand ? 1 : 0) - bonus) * (1 - Math.exp(-dt / 1.5));
       if (inBand) bandS += dt;
 
-      // steering: the spring (▲▼, shifters up/down), or the salmon school in the fish's frame
-      // (◀▶, Z/A, paddles analog, left hood darts left, right hood darts right)
-      let dir = 0, nudge = 0, steer = 0, dart = 0;
-      if (input.held.has('up')) dir -= 1;
-      if (input.held.has('down')) dir += 1;
-      for (const p of input.pressed) {
-        if (p === 'shiftUpL' || p === 'shiftUpR') nudge -= 1;
-        if (p === 'shiftDnL' || p === 'shiftDnR') nudge += 1;
-        if (p === 'shiftUpL' || p === 'shiftDnL') dart -= 1;
-        if (p === 'shiftUpR' || p === 'shiftDnR') dart += 1;
-      }
-      if (input.held.has('right') || input.held.has('a')) steer += 1;
-      if (input.held.has('left') || input.held.has('z')) steer -= 1;
+      // controls (every view looks up the valley, so screen right = −x across the valley):
+      //   ◀▶ held / paddles (analog) steer; left hood darts left (up = big, down = small), right hood darts right;
+      //   Y toggles overview/follow; A = the phase's boost (on a cooldown)
+      let steer = 0, dart = 0;
+      if (input.held.has('right')) steer += 1;
+      if (input.held.has('left')) steer -= 1;
       steer = clamp(steer + input.paddleR - input.paddleL, -1, 1);
+      for (const p of input.pressed) {
+        if (p === 'shiftUpL') dart -= 1; else if (p === 'shiftDnL') dart -= 0.35;
+        else if (p === 'shiftUpR') dart += 1; else if (p === 'shiftDnR') dart += 0.35;
+        else if (p === 'y') { view = view === 'follow' ? 'overview' : 'follow'; cue('view', { view }, false); }
+        else if (p === 'a' && boostCd <= 0 && !at.done) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
+      }
+      if (opts.autopilot && boostCd <= 0 && (b.phase === 'salmon' || b.phase === 'cloud')) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
+      boostT = Math.max(0, boostT - dt); boostCd = Math.max(0, boostCd - dt);
+      const boosting = boostT > 0;
       const powerFrac = clamp(bike.power3s / ctx.profile.ftp, 0, 2);
       const flowing = cadence > 20 && !at.done;
       const ap = !!opts.autopilot;
       let flow = 0, area: Emit['area'];
       raining = 0;
       if (b.phase === 'evaporate') {
-        for (const c of sky.evaporate(dt, { cadNorm, power: flowing ? powerFrac : 0, steer, nudge: dart, autopilot: ap }, DEFAULT_SKY)) if (c.type === 'sunlit') cue('sunlit', undefined, false);
+        for (const c of sky.evaporate(dt, { cadNorm, power: flowing ? powerFrac * (boosting ? 1.6 : 1) : 0, steer, nudge: dart, autopilot: ap }, DEFAULT_SKY)) if (c.type === 'sunlit') cue('sunlit', undefined, false);
       } else if (b.phase === 'cloud') {
-        for (const c of sky.drift(dt, at.blockT / (b.minutes * 60 * scale), { steer, nudge: dart, autopilot: ap }, DEFAULT_SKY)) {
+        for (const c of sky.drift(dt, at.blockT / (b.minutes * 60 * scale), { steer, nudge: dart, autopilot: ap, reach: boosting ? 1.6 : 1 }, DEFAULT_SKY)) {
           if (c.type === 'puff') cue('cloudlet', { size: +c.size.toFixed(1) }); else cue('cloudletMissed', undefined, false);
         }
       } else if (b.phase === 'rain') {
-        flow = flowing ? tun.flowPerFtp() * powerFrac * sky.rainFactor(DEFAULT_SKY) : 0;
+        flow = flowing ? tun.flowPerFtp() * powerFrac * sky.rainFactor(DEFAULT_SKY) * (boosting ? 1.8 : 1) : 0;
         area = sky.rain(dt, { steer, nudge: dart, autopilot: ap, flow }, DEFAULT_SKY);
         raining = flow;
       } else if (salmon.active) {
-        const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer, nudge: dart, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale }, DEFAULT_SALMON);
+        const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer, nudge: dart, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale, sprint: boosting }, DEFAULT_SALMON);
         for (const c of sc) {
           if (c.type === 'home') cue('salmonHome', { fish: c.fish, lost: c.lost });
           else if (c.type === 'run') cue('salmonRun', { fish: c.fish });
@@ -204,9 +211,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           else cue(c.type === 'leap' ? 'salmonLeap' : 'salmonStuck');
         }
       } else if (opts.autopilot) sourceX = sky.springX() + 14 * Math.sin((2 * Math.PI * t) / 240);
-      else sourceX += dir * tun.steerRate() * dt + nudge * tun.shiftStep();
+      else sourceX -= steer * tun.steerRate() * dt + dart * tun.shiftStep();
       sourceX = clamp(sourceX, 12, NX - 12);
-      if (b.phase === 'river' || b.phase === 'salmon') flow = flowing ? tun.flowPerFtp() * powerFrac : 0;
+      if (b.phase === 'river' || b.phase === 'salmon') flow = flowing ? tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1) : 0;
 
       const emit: Emit = {
         flow, area,
@@ -246,13 +253,11 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       return {
         targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
-        controls: b.phase === 'evaporate' || b.phase === 'cloud' || b.phase === 'rain'
-          ? [{ button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : 'Steer the cloud' }, { button: 'dpad', label: '◀▶ Steer' },
-            { button: 'shiftersL', label: 'Drift left' }, { button: 'shiftersR', label: 'Drift right' }]
-          : fish
-          ? [{ button: 'paddles', label: 'Steer the school' }, { button: 'dpad', label: '◀▶ Steer' },
-            { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' }]
-          : [{ button: 'dpad', label: '▲▼ Move the spring' }, { button: 'shiftersR', label: 'Nudge the spring' }],
+        controls: [
+          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Move the spring' },
+          { button: 'dpad', label: '◀▶ Steer' }, { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' },
+          { button: 'a', label: BOOST_LABEL[b.phase], active: boostCd <= 0 }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow' },
+        ],
       };
     },
     snapshot(): WatershedSnapshot {
@@ -267,7 +272,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         blocks: PLAN.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
-        phase: at.block.phase,
+        phase: at.block.phase, view, boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
         salmon: salmon.active ? salmonView() : null,
         cues,

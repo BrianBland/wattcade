@@ -15,7 +15,7 @@ const C = {
   silt: new THREE.Color(0xdcc893), seabed: new THREE.Color(0xd2c08c), wet: new THREE.Color(0x3a5236),
 };
 
-function terrainMaterial(): THREE.MeshStandardMaterial {
+export function terrainMaterial(): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader

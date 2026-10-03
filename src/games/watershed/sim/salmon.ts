@@ -101,7 +101,7 @@ export class SalmonRun {
     return Math.max(h[j * nx + i], SEA) + w[j * nx + i];
   }
 
-  update(dt: number, w: Float32Array, inp: { cadence: number; cadNorm: number; steer: number; nudge: number; autopilot: boolean; mayRestart: boolean }, p: SalmonParams): SalmonCue[] {
+  update(dt: number, w: Float32Array, inp: { cadence: number; cadNorm: number; steer: number; nudge: number; autopilot: boolean; mayRestart: boolean; sprint?: boolean }, p: SalmonParams): SalmonCue[] {
     const cues: SalmonCue[] = [];
     if (!this.active) return cues;
     if (this.restart >= 0) {
@@ -131,6 +131,7 @@ export class SalmonRun {
     const falls = rise > p.fallsRise;
     this.needLeap = falls || this.surf(h, w, this.y - 5) - this.surf(h, w, this.y - 3) > p.fallsRise;
     let v = p.swimMin + (p.swimMax - p.swimMin) * inp.cadNorm;
+    if (inp.sprint) v *= 1.8;
     if (inp.cadence < 20) v = 0;
     this.leaping = falls && inp.cadence >= p.leapRpm;
     this.stuck = falls && !this.leaping;

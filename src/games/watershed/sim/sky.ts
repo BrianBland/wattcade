@@ -73,7 +73,7 @@ export class Sky {
   }
 
   /** `k` = 0..1 progress through the cloud block (the cloud drifts from the coast to the peaks). */
-  drift(dt: number, k: number, inp: { steer: number; nudge: number; autopilot: boolean }, p: SkyParams): SkyCue[] {
+  drift(dt: number, k: number, inp: { steer: number; nudge: number; autopilot: boolean; reach?: number }, p: SkyParams): SkyCue[] {
     const cues: SkyCue[] = [];
     this.t += dt;
     this.y = this.seaY + (10 - this.seaY) * Math.min(1, k);
@@ -87,7 +87,7 @@ export class Sky {
     for (const q of this.puffs) {
       q.age += dt;
       if (q.state !== 'ahead' || this.y > q.y) continue;
-      if (Math.abs(q.x - this.x) < this.radius + 2) { q.state = 'caught'; this.size += q.size; this.puffsCaught++; cues.push({ type: 'puff', size: q.size }); }
+      if (Math.abs(q.x - this.x) < (this.radius + 2) * (inp.reach ?? 1)) { q.state = 'caught'; this.size += q.size; this.puffsCaught++; cues.push({ type: 'puff', size: q.size }); }
       else { q.state = 'missed'; this.puffsMissed++; cues.push({ type: 'puffMissed' }); }
     }
     this.puffs = this.puffs.filter((q) => q.state === 'ahead' || q.age < 30);

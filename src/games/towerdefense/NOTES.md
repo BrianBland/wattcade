@@ -1,30 +1,34 @@
-# Dynamo Defense (towerdefense) — Agent H
+# Dynamo Defense (towerdefense)
 
 CONTRACT-REQUESTs: none.
 
-## API
-- `index.ts` exports `module: GameModule` (tags sprint+intervals). `createSim(ctx, opts)` reads `opts.autopilot` (cast).
-- `sim/sim.ts`: `createTdSim(ctx, opts)`; snapshot is `TdSnapshot` (enemies with polar angle/r + x,y on a 100x100 field,
-  weapon, swapLeft, aimAngle, railCharges, tracers, beams, kills...). Pure logic; only `ctx.rng` / fixed dt.
-- `render/renderer.ts`: Canvas 2D `TdRenderer` (loaded via dynamic import). Untested visually, typecheck only.
-- `scenarios.ts`: sprints (>=8 waves), idle (isOver, <=2 waves), intervals (each weapon >=60 s, sim+erg+resistance cmds).
-- Summary keys: wavesSurvived, kills_{blue,red,purple,gold}, weaponSeconds_{gatling,flame,rail}, railChargesFired, baseHpLeft.
+## Layout
+- `sim/defs.ts` (pure): enemy kinds, towers + level tables, 3 curved Bézier lanes (`laneAt` arc-length lookup), 6 build pads, base geometry. Aim angle 0 = up from the base.
+- `sim/waves.ts` (pure, rng passed in): `planWave` heavies per wave, lane bias (main lane, second front from wave 8), dart packs, boss every 5; per-lane colour counts feed the next-wave forecast.
+- `sim/meta.ts`: Garage upgrades (cost = base x growth^level), `metaMods`, `autoInvest`, `partsForWave`.
+- `sim/sim.ts`: `createTdSim(ctx, { autopilot?, skipGarage?, cores? })`, `readSave` (migrates the v1 `{ bestWave }` save). `sim/types.ts`: `TdSnapshot` view-model.
+- `render/`: `layout.ts` (pure; wide = side panels, narrow = top bar; tested vs insets), `renderer.ts` (cached background, particles, fx, shake/flash, cues -> `audio/sfx`, ambient flame/hum, taps), `sprites.ts` (procedural enemies, towers, dynamo base + turret), `panels.ts` (weapons/rail/dynamo, wave/base/surge/forecast/legend, workshop, garage, banners).
 
-## Design notes
-- Weapon effect id `weapon` is re-set on swap start: Gatling sim +1% grade, Flame resistance 35%, Rail erg 0.95 FTP.
-- Rail has no passive damage: only stored charges (charge while ftpFraction >= 0.75, any weapon). Z fires from any weapon
-  (tap = 1 charge on release; hold 0.5 s = dump all, event `railFired{charges}`).
-- Waves end at waveMin (25 s) if heavies dead (heals 10 base HP), else forced at waveMax (60 s); wavesSurvived counts ended waves.
-- Autopilot: picks weapon by proximity-weighted threat per element (2.5 s dwell), auto-aim, dumps rail at 3 charges
-  and single-fires at armored targets when Rail selected.
-- All numbers are `ctx.tuning` tunables (gatlingRevsPerShot, railChargeS, railMaxCharges, flameLevelPct, ...).
-- Saves `{ bestWave }` via ctx.save at game over / dispose.
+## Rules (all numbers are `towerdefense.*` tunables)
+- Weapons per spec: Gatling = sim +1% (bullets per crank rev), Flamer = resistance 35% (dps per watt), Rail = ERG 0.95 FTP (charges at >= 0.75 FTP from any weapon, max 3; Z tap = 1, hold 0.5 s = all) plus a weak targeting laser while selected.
+- Enemies: mini/dart (blue), brute/charger (red, chargers sprint the last half), bastion/carrier (purple, carriers drop minis), prism (cycles colour every 4 s from wave 12), Goliath boss (gold, shield cycles; escorts at 66/33% HP). Right colour x1.5, wrong x0.25.
+- Dynamo: towers fire at `ftpFraction / towerNominalFtp` speed (0.65 FTP = 100%, cap 160%, 0 under 15 rpm). Sprinting = Overdrive (x1.5 damage + tower speed).
+- Towers: Tesla (chain, blue), Mortar (splash shells, red), Prism Lens (beam at the toughest, purple); Lv 1-5. Scrap from kills/waves buys, upgrades, sells (50%) and repairs the base.
+- Power Surge every 3 waves from wave 3: 15 s at power zone 4+ within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Counts power zone (HR lags too much). `hooks.storm`/`hooks.surge` are set while active.
+- Reactor cores (lives, `cores` default 3; 0 = unlimited): losing the base clears the field and rebuilds it; the last core ends the run (`isOver`).
+- Waves end early (heal) when heavies are dead after `waveMinS`, else at `waveMaxS` (60 s).
 
-## Tests
-`npx vitest run src/games/towerdefense` (scenarios via runHeadless; rail tests via createGameSession).
+## Controls (bike-first)
+- A/B/Y weapons, Z rail, paddles aim (auto-aim after 1.5 s idle, prefers the priority lane), D-pad left/right = priority lane, up = all lanes, down = workshop.
+- Workshop: left/right = pad (6 pads + base repair), up/down = option (preset to the tower the lane's next push needs), A = build/upgrade, B = close (auto-closes after 10 s). Taps: pads, base, rows, weapon cards, rail pips.
+- Garage (returning riders only; skipped on the first run and under autopilot): up/down + A buys, left/right sets start wave, B starts; auto-starts after 30 s pedalling.
 
-hud(): controls legend (A/B/Y weapons, Z, dpad, paddles), gears:false, targetZone Rail 3-4 else 2-3. Renderer HUD shows [A] GATLING, swap bar, rail pips.
+## Progression / save
+- `{ v: 2, bestWave, bank, upgrades, runs, autoInvest, totals }`; parts bank on every wave clear and boss kill, persisted then, at game over and on dispose.
+- Balance (autopilot, FTP 200, fresh save): z2 ~40-43 min / wave ~52 before the third core; 20 min sprints/intervals ~30 waves.
 
-## Gaps
-Renderer unverified in browser; no sound.
-aimMode 'axes': aim = atan2(L, R) when paddles active.
+## Testing
+`npx vitest run src/games/towerdefense`: scenarios (sprints, idle, idle-cores, intervals, z2-economy, surge-ready), geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.
+
+## Known gaps
+Renderer checked with throwaway Playwright screenshots (landscape/portrait/phone), not yet on a real iPad; sounds untested by ear. Manual (non-autopilot) play not balance-tested.

@@ -1093,6 +1093,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     };
   }
 
+  const inMenu = () => phase === 'camp';
+
   function hud(): GameHud {
     if (phase === 'camp') return {
       controls: [{ button: 'dpad', label: 'Choose' }, { button: 'z', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
@@ -1123,7 +1125,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   return {
-    update, hud, snapshot, isOver: () => over,
+    update, hud, inMenu, snapshot, isOver: () => over,
     receive(a: unknown) {
       const act = a as { type?: string; row?: number };
       if (act?.type === 'campRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'campRow', row: act.row });

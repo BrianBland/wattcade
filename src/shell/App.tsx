@@ -13,6 +13,7 @@ import { Summary } from './screens/Summary';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
 import { Toasts, toast } from './components/Toasts';
+import { FullscreenButton } from './components/FullscreenButton';
 import { setMenuGate } from './menuInput';
 import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
@@ -146,6 +147,7 @@ export function App() {
       )}
       {asleep && <div class="sleep-hint">Tap or press A for the menu</div>}
       <Toasts />
+      <FullscreenButton />
       <DebugOverlay />
     </>
   );

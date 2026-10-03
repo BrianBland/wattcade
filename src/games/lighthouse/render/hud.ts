@@ -37,6 +37,7 @@ const CSS = `
 .lh-chip.ok { background:#1f7a3e } .lh-chip.bad { background:#9a2b25 } .lh-chip.done { background:#5a4a1a }
 .lh-storm { position:absolute; left:50%; top:12px; transform:translateX(-50%); padding:10px 18px; text-align:center; font-size:20px; min-width: 300px; }
 .lh-storm.warn { background: rgba(120,70,10,0.75) } .lh-storm.on { background: rgba(70,20,30,0.8) } .lh-storm.surge { background: rgba(120,90,10,0.85); animation: lh-pulse .5s infinite alternate }
+.lh-storm.wind { background: rgba(20,70,100,0.8) }
 .lh-storm .bar { height:8px; border-radius:4px; background:rgba(255,255,255,.2); margin-top:6px; overflow:hidden } .lh-storm .bar i { display:block; height:100%; background:#ffd84a }
 @keyframes lh-pulse { from { transform:translateX(-50%) scale(1) } to { transform:translateX(-50%) scale(1.05) } }
 .lh-coach { position:absolute; left:12px; bottom:12px; padding:10px 16px; font-size:22px; border-left: 6px solid #7dff9a; max-width: 52%; }
@@ -133,11 +134,14 @@ export class Hud {
     this.set(this.tr, ships);
 
     // storm banner
-    if (st.phase === 'warning') { this.storm.className = 'lh-panel lh-storm warn'; this.set(this.storm, `⚠️ Storm in ${Math.ceil(st.warnS - st.timeInPhase)}s - build up to Zone 3+`); }
+    if (st.phase === 'warning') { this.storm.className = 'lh-panel lh-storm warn'; this.set(this.storm, `⚠️ Storm in ${Math.ceil(st.warnS - st.timeInPhase)}s - build up to power Zone 3+`); }
     else if (st.phase === 'storm') {
       this.storm.className = `lh-panel lh-storm ${st.surge ? 'surge' : 'on'}`;
-      const head = st.failed ? '🌑 Lamp out - ride it out' : st.surge ? '⚡ LIGHTNING SURGE - Zone 5!' : '⛈️ STORM - hold Zone 3+';
+      const head = st.failed ? '🌑 Lamp out - ride it out' : st.surge ? '⚡ LIGHTNING SURGE - power Zone 5!' : '⛈️ STORM - hold power Zone 3+';
       this.set(this.storm, `${head} <span style="opacity:.8">${Math.ceil(st.duration - st.timeInPhase)}s</span><div class="bar"><i style="width:${pct(st.integrity)}%;background:${st.integrity > 0.4 ? '#ffd84a' : '#ff6b5a'}"></i></div>`);
+    } else if (s.wind) {
+      this.storm.className = 'lh-panel lh-storm wind';
+      this.set(this.storm, `⚙️ Wind the clockwork - spin ${s.wind.rpm}+ rpm <span style="opacity:.8">${Math.ceil(s.wind.left)}s</span><div class="bar"><i style="width:${pct(s.wind.held / s.wind.need)}%;background:#8fd8ff"></i></div>`);
     } else this.set(this.storm, '', false);
 
     // coaching line
@@ -145,7 +149,7 @@ export class Hud {
     if (st.phase === 'storm') {
       if (st.failed) { msg = 'The lamp is out. Spin easy until the storm passes.'; col = '#ff8a7a'; }
       else if (s.zone >= s.requirement) { msg = st.surge ? 'Hold it! The surge salvage is yours.' : 'Strong! The lamp is holding.'; col = '#7dff9a'; }
-      else { msg = `Push harder - Zone ${s.requirement}+ keeps the lamp alive`; col = '#ff8a7a'; }
+      else { msg = `Push harder - power Zone ${s.requirement}+ keeps the lamp alive`; col = '#ff8a7a'; }
     } else if (st.phase === 'warning') { msg = s.zone >= 3 ? 'Good - stay strong for the storm' : 'Storm coming - start building effort'; col = '#ffb347'; }
     else if (s.inZone) { msg = 'Steady - lamp bright, the island grows 🌱'; col = '#7dff9a'; }
     else if (s.above) { msg = 'Ease off a little - you\'re churning up the sea'; col = '#5ab0ff'; }

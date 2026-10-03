@@ -150,6 +150,8 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - **Rate limits:** send a command only when it changes by at least 0.2 % grade, 5 W, or 2 level, and at most once every 750 ms of real time.
   - **Panic/pause:** overrides everything with `{mode:'sim', gradePct:0}` until resumed.
   - For the debug overlay, the mixer exposes `activeEffects`, `chosenMode`, `lastCommand`, and `lastResult`.
+- **Short-effort rule (zone targets):** HR lags 30–60 s, so any zone requirement shorter than ~2 min (sprints, surges, storms, shrines, golden hamsters) is judged on `min(5, powerZone)`, and the game marks its `GameHud.targetZone` with `source: 'power'`. The shell HUD then shows the power scale and the floor watts for that target. Long holds (Z2 grinds) keep using `effortZone`, which follows the profile's zone source.
+- **Cadence targets:** a game can set `GameHud.targetCadence` (`{ min, max?, label? }`, rpm on `cadence3s`). The HUD shows an rpm readout with an in-band/low/high chip. Use these for drills that ask for leg speed rather than watts (e.g. "spin 95+ rpm in an easy gear").
 - **System input combos** (input layer; they are *not* passed to games):
   - Both powerUp buttons tapped together → `pause`
   - Both powerUp buttons held for 1 s → `toggleDebug`
@@ -346,7 +348,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - second lamp: needs 5 cottages; lamp is stronger
 
   **The town persists** via `ctx.save/load` and keeps growing across sessions.
-- **Storms** (the Z3+ spikes): every 8–12 min (tunable). A 20 s warning (dark clouds, horn), then 60–90 s of storm. During a storm the requirement flips to **effortZone ≥ 3** to keep the lamp alive, and a `storm` effect adds +3 % grade. A mid-storm "lightning surge" of 15 s asks for effortZone ≥ 5 (bonus salvage if held). Weathering a storm gives salvage plus a `stormWeathered` event. Expose `hooks.storm` (boolean) in the snapshot for the `storm-ready` script.
+- **Storms** (the Z3+ spikes): every 8–12 min (tunable). A 20 s warning (dark clouds, horn), then 60–90 s of storm. During a storm the requirement flips to **power zone ≥ 3** to keep the lamp alive, and a `storm` effect adds +3 % grade. A mid-storm "lightning surge" of 15 s asks for power zone ≥ 5 (bonus salvage if held). Storms are judged on power, not effortZone, because HR lags 30–60 s (see the short-effort rule below). Weathering a storm gives salvage plus a `stormWeathered` event. Expose `hooks.storm` (boolean) in the snapshot for the `storm-ready` script.
 - **Resistance:** sim mode. A `swell` effect adds ±1 % as a sine wave with a 3-minute period. Virtual gears are enabled.
 - **Summary:** minutesInZone, shipsDocked, shipsLost, buildingsBuilt, stormsWeathered, coin.
 - **Scenarios:**

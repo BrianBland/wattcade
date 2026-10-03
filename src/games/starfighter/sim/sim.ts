@@ -267,7 +267,7 @@ export function createSfSim(ctx: GameContext, opts?: SfOpts): GameSim & { snapsh
   };
 
   const hud = (): GameHud => ({
-    targetZone: phase === 'attack' ? { min: 4, max: 4, label: bossOn ? 'Boss!' : 'Attack run' } : { min: 2, max: 2, label: 'Cruise' },
+    targetZone: phase === 'attack' ? { min: 4, max: 4, label: bossOn ? 'Boss!' : 'Attack run', source: 'power' } : { min: 2, max: 2, label: 'Cruise' },
     controls: [
       { button: 'shiftersL', label: 'Left gun', active: gunL }, { button: 'dpad', label: 'Left gun', active: gunL },
       { button: 'shiftersR', label: 'Right gun', active: gunR },

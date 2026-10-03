@@ -27,6 +27,11 @@ describe('world', () => {
       for (const r of w.rooms) expect(seen.has((r.y0 + 1) * w.w + r.x0 + 1)).toBe(true);
     }
   });
+  it('rolls every shrine kind, including the cadence one', () => {
+    const kinds = new Set<string>();
+    for (let seed = 1; seed < 60; seed++) for (const r of generateWorld(makeRng(seed), 2).rooms) if (r.shrine) kinds.add(r.shrine.kind);
+    expect([...kinds].sort()).toEqual(['endurance', 'fury', 'sprint', 'whirl']);
+  });
   it('has dead ends with chests', () => {
     const w = generateWorld(makeRng(3), 4);
     expect(w.rooms.some((r) => r.chest)).toBe(true);

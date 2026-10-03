@@ -13,7 +13,8 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Union rule: hamsters produce nothing when cadence3s < `unionCadence` (35 rpm). There is no offline progress.
 - Mind-Numbing: builds `monoGainPerMin` in steady Z2 (40% rate if cadence wobbles more than `steadyRpm`). Decays below or above Z2. Frozen during events and BPC-157. Cap is 2 plus boredom upgrades (max 10).
 - Golden hamster every 150–300 s, 25 s window, 6 s at Z4+ to catch → frenzy ×7, lucky lump, quad storm (legs ×777), or a free vial.
-- Short events use `max(effortZone, powerZone)` because HR lags too much for sprints.
+- Short events (golden, strike, rage) use `max(effortZone, powerZone)` because HR lags too much, and their `hud().targetZone` has `source: 'power'` so the shell bar switches to power and shows the watts needed.
+- Spin class (unlocks at 5 hamsters, every 6–10 min): 45 s window, 20 s at ≥ `spinRpm` (95) → hamsters ×3 for 90 s. `targetCadence` drives the HUD rpm chip (also 50 rpm during trials; none otherwise).
 - Strikes (era ≥ 2, every 15–25 min): 20 s warning, then 60 s with hamsters at 10% and +3% grade (`strike` effect). 35 s at Z3+ breaks the strike → ×3 hamsters for 3 min plus a lump.
 - Clinical trials (era ≥ 3, every 20–30 min): offer (Z to accept) → 180 s ERG at 0.8 FTP (`trial` effect, priority 2) → lump + free peptide.
 - Peptides: costs scale with the current rate. Tolerance (+1 per use, −1 per 8 min) shrinks the bonus. Trenbalone has a 30% chance of roid rage (hamsters at −25%; sprint Z4+ for 8 s).

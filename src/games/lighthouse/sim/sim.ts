@@ -63,6 +63,12 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const stormSlack = tn.num('stormSlackS', 25, 5, 120, 1, 'Seconds below storm zone before lamp goes out');
   const surgeZone = tn.num('surgeZone', 5, 1, 5, 1);
   const surgeS = tn.num('surgeS', 15, 5, 60, 1);
+  const windEveryMin = tn.num('windEveryMinS', 240, 60, 3600, 10, 'Clockwork wind-up interval low (s)');
+  const windEveryMax = tn.num('windEveryMaxS', 420, 60, 3600, 10, 'Clockwork wind-up interval high (s)');
+  const windS = tn.num('windS', 40, 10, 180, 5, 'Clockwork wind-up window (s)');
+  const windNeedS = tn.num('windNeedS', 20, 5, 120, 1, 'Seconds at wind-up cadence to wind the clockwork');
+  const windRpm = tn.num('windRpm', 90, 60, 140, 1, 'Wind-up cadence floor (rpm)');
+  const windCoin = tn.num('windCoin', 15, 0, 200, 1, 'Coin for a wound clockwork');
   const swellPct = tn.num('swellGradePct', 1, 0, 3, 0.1, 'Swell effect amplitude');
   const swellPeriod = tn.num('swellPeriodS', 180, 30, 600, 5);
   const cottageCoin = tn.num('cottageCoinPerS', 0.04, 0, 1, 0.01);
@@ -75,6 +81,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const bellMul = tn.num('bellFogMult', 0.6, 0.1, 1, 0.05);
   const lamp2Mul = tn.num('lamp2Mult', 1.5, 1, 3, 0.1);
   const graceS = tn.num('zoneGraceS', 4, 0, 15, 0.5, 'Seconds a new zone must hold before the lamp reacts');
+  const stormGraceS = tn.num('stormZoneGraceS', 1.5, 0, 15, 0.5, 'Zone debounce during storms (power-judged, so shorter)');
   const dayLen = tn.num('dayLengthS', 1800, 60, 7200, 30, 'Length of a full day/night cycle');
   const growPerMin = tn.num('growPerMin', 0.03, 0, 1, 0.005, 'Greenery growth around a building per in-zone minute');
   const meadowPerMin = tn.num('meadowPerMin', 1 / 400, 0, 0.2, 0.0005, 'Island-wide bloom per in-zone minute (gardens add 15% per level)');
@@ -133,6 +140,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   let surgeAt = 0, surgeHeldS = 0, surgeNow = false, surgeDone = false;
   let stormFailedThis = false;
   let lightningAt = -99, nextLightning = 0, bellAt = -99, nextBell = 0;
+  // clockwork wind-up: a calm-weather cadence drill (spin fast in an easy gear; watts stay in Z2)
+  let wind: { until: number; held: number } | null = null, windIn = 150;
 
   const stat = {
     minutesInZoneS: 0, shipsDocked: 0, shipsLost: 0, shipsSpilled: 0, shipsRescued: 0, buildingsBuilt: 0, upgrades: 0,
@@ -388,6 +397,31 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     if (whyNot('upgrade', up) === null) upgrade(up);
   }
 
+  function updateWind(dt: Seconds, cadence: number) {
+    if (!wind) {
+      windIn -= dt;
+      // only in calm weather with room to finish before the next storm
+      if (windIn <= 0 && phase === 'calm' && calmLeft > windS() + 20) {
+        wind = { until: t + windS(), held: 0 };
+        cue('chime'); toast(`The lamp clockwork is winding down - spin ${Math.round(windRpm())}+ rpm to wind it!`, '#8fd8ff');
+      }
+      return;
+    }
+    if (phase !== 'calm') { wind = null; windIn = 60; return; }
+    if (cadence >= windRpm()) wind.held += dt;
+    const next = () => windEveryMin() + ctx.rng() * Math.max(0, windEveryMax() - windEveryMin());
+    if (wind.held >= windNeedS()) {
+      const c = earn(windCoin()); timber += 2; lamp = 1;
+      ctx.emit({ type: 'clockworkWound', data: { completed: true } });
+      toast(`Clockwork wound! Lamp at full, +${Math.round(c)} coin +2 timber`, '#ffd84a'); cue('chime');
+      wind = null; windIn = next();
+    } else if (t >= wind.until) {
+      ctx.emit({ type: 'clockworkWound', data: { completed: false } });
+      toast('The clockwork ran down. Maybe next time.', '#c9d3dc');
+      wind = null; windIn = next();
+    }
+  }
+
   function endStorm(weathered: boolean) {
     ctx.resistance.clear('storm');
     phase = 'calm'; phaseT = 0; intensity = 0; surgeNow = false; stormEndedAt = t;
@@ -522,12 +556,15 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     update(dt: Seconds) {
       t += dt;
       const bike = ctx.bike();
-      rawZone = bike.effortZone;
+      // storms are 60-90 s pushes with a 15 s surge: judge them on power, since HR takes 30-60 s to climb.
+      // The calm Z2 hold uses the profile's zone source (HR-aware).
+      const stormy = phase !== 'calm';
+      rawZone = stormy ? Math.min(5, bike.powerZone) : bike.effortZone;
       if (rawZone === zone) { zoneCand = zone; zoneCandS = 0; }
       else {
         if (rawZone !== zoneCand) { zoneCand = rawZone; zoneCandS = 0; }
         zoneCandS += dt;
-        if (zoneCandS >= graceS()) { zone = zoneCand; zoneCandS = 0; }
+        if (zoneCandS >= (stormy ? stormGraceS() : graceS())) { zone = zoneCand; zoneCandS = 0; }
       }
       if (opts?.autopilot) autopilot();
       handleInput(dt);
@@ -584,6 +621,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       }
 
       updateStorm(dt);
+      updateWind(dt, bike.cadence3s);
 
       // fog bells ring while fog thickens
       if (count('bell') && fog > 0.35 && !satisfied) {
@@ -671,6 +709,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         coin, timber,
         storm: { phase, timeInPhase: phaseT, warnS: warnS(), duration: stormDur, integrity, intensity, surge: surgeNow, nextInS: phase === 'calm' ? calmLeft : 0, lightningAge: t - lightningAt, failed: stormFailedThis },
         bellAge: t - bellAt,
+        wind: wind ? { left: wind.until - t, held: wind.held, need: windNeedS(), rpm: Math.round(windRpm()) } : null,
         hooks: { storm: phase === 'storm' || phase === 'warning' },
         totals: { ...totals },
         stats: { ...stat, bloomGained: meadow - meadowStart },
@@ -678,13 +717,14 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     },
     hud(): GameHud {
       const targetZone = phase === 'storm'
-        ? (surgeNow ? { min: 5 as const, max: 5 as const, label: 'Lightning surge' } : { min: 3 as const, max: 5 as const, label: 'Storm!' })
-        : phase === 'warning' ? { min: 2 as const, max: 5 as const, label: 'Storm coming' }
+        ? (surgeNow ? { min: 5 as const, max: 5 as const, label: 'Lightning surge', source: 'power' as const } : { min: 3 as const, max: 5 as const, label: 'Storm!', source: 'power' as const })
+        : phase === 'warning' ? { min: 2 as const, max: 5 as const, label: 'Storm coming', source: 'power' as const }
           : { min: 2 as const, max: 2 as const, label: 'Keep the lamp lit' };
       const controls = mode === 'build'
         ? [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: 'Build', active: true }, { button: 'b' as const, label: 'Close' }]
         : [{ button: 'a' as const, label: 'Build menu' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", active: logOpen }];
-      return { targetZone, controls: [...controls, { button: 'shiftersL', label: 'Gears' }, { button: 'shiftersR', label: 'Gears' }], gears: true };
+      const targetCadence = wind ? { min: Math.round(windRpm()), label: 'Wind the clockwork' } : undefined;
+      return { targetZone, targetCadence, controls: [...controls, { button: 'shiftersL', label: 'Gears' }, { button: 'shiftersR', label: 'Gears' }], gears: true };
     },
     isOver: () => false,
     summary() {

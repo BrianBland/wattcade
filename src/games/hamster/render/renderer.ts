@@ -365,11 +365,15 @@ export class HamsterRenderer implements GameRenderer {
       if (frac != null) this.bar(g, x + 62, y + 56, w - 78, 9, frac, accent, accent);
       const r = { x, y, w, h }; y += h + 8; return r;
     };
-    if (s.rage) card('rgb(255,70,90)', '😡', `ROID RAGE — ${Math.ceil(s.rage.left)}s`, 'Gerald is running BACKWARDS. Sprint Z4+ to out-pedal him.', s.rage.progress / s.rage.need, true);
-    if (s.golden) card('rgb(255,207,74)', '🌟', `GOLDEN HAMSTER — ${Math.ceil(s.golden.left)}s`, s.hardZone >= 4 ? 'GO GO GO! Keep sprinting!' : `Sprint Z4+ to catch it (you're in Z${s.hardZone})`, s.golden.progress / s.golden.need, true);
+    if (s.rage) card('rgb(255,70,90)', '😡', `ROID RAGE — ${Math.ceil(s.rage.left)}s`, `Gerald is running BACKWARDS. Sprint to power Z4+ to out-pedal him (power Z${s.hardZone} now).`, s.rage.progress / s.rage.need, true);
+    if (s.golden) card('rgb(255,207,74)', '🌟', `GOLDEN HAMSTER — ${Math.ceil(s.golden.left)}s`, s.hardZone >= 4 ? 'GO GO GO! Keep sprinting!' : `Sprint to power Z4+ to catch it (power Z${s.hardZone} now)`, s.golden.progress / s.golden.need, true);
+    if (s.spin) {
+      const on = s.cadence >= s.spin.rpm;
+      card('rgb(120,220,255)', '🚴', `SPIN CLASS — ${Math.ceil(s.spin.left)}s`, on ? `That's it! Keep spinning  ·  ${Math.floor(s.spin.progress)}/${s.spin.need}s` : `Easy gear, spin ${s.spin.rpm}+ rpm (you're at ${Math.round(s.cadence)})`, s.spin.progress / s.spin.need, !on);
+    }
     if (s.strike) {
-      if (s.strike.phase === 'warn') card('rgb(255,140,70)', '📢', `Union meeting… strike in ${Math.ceil(s.strike.left)}s`, 'When they walk out, hold Z3+ to carry the grid.', null, true);
-      else card('rgb(255,110,70)', '✊', `STRIKE! ${Math.ceil(s.strike.left)}s — hamsters at 10%`, `Hold Z3+ to break it  ·  ${Math.floor(s.strike.progress)}/${s.strike.need}s`, s.strike.progress / s.strike.need);
+      if (s.strike.phase === 'warn') card('rgb(255,140,70)', '📢', `Union meeting… strike in ${Math.ceil(s.strike.left)}s`, 'When they walk out, hold power Z3+ to carry the grid.', null, true);
+      else card('rgb(255,110,70)', '✊', `STRIKE! ${Math.ceil(s.strike.left)}s — hamsters at 10%`, `Hold power Z3+ to break it  ·  ${Math.floor(s.strike.progress)}/${s.strike.need}s`, s.strike.progress / s.strike.need);
     }
     if (s.trial) {
       if (s.trial.phase === 'offer') {

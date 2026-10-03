@@ -17,6 +17,8 @@ CONTRACT-REQUESTs: none.
 - Lens tiers 2-4 (needs hillside/hilltop/headland): lamp +20%/tier, fog clearing +15%/tier, dock fog limit +0.03/tier; visuals: brass rings, twin beams, pennant.
 - Steady Light: +10% per 5 min continuous in zone (cap x1.5) on cargo and growth; breaks after 12 s out of zone, paused for 45 s after a storm while easing down.
 - Lifeboat: a ship that would be lost/spilled is rescued for half cargo, then 240 s cooldown. Shipyard: cargo x1.3/x1.6, more steamers, Lv2 ships call 15% more often.
+- Zone source: the calm Z2 hold uses `effortZone` (HR-aware, 4 s debounce). Storm warning + storm + surge use `min(5, powerZone)` (1.5 s debounce, `stormZoneGraceS`), because HR can't follow a 60–90 s push or a 15 s surge; `hud()` marks them `source: 'power'`.
+- Clockwork wind-up (calm only, every 4–7 min): 40 s window, 20 s at ≥ `windRpm` (90) → lamp full, +15 coin, +2 timber. Shown in the storm banner slot plus `hud().targetCadence`.
 - Bloom (`meadow`): 1/400 per in-zone minute, +15% per garden level.
 - Ideal autopilot (storm-ready, 60 min rides): hilltop ride 1, headland ride 2, Gull Rock + max lens ride 4, all upgrades ~ride 5.
 - Save `{ v: 2, buildings, levels, grow, coin, timber, meadow, lens, totals }`.

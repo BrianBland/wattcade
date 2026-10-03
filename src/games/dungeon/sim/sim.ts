@@ -33,9 +33,10 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
 const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich'];
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
-  fury: { label: 'Shrine of Fury: ride Z3+ for 20s', window: 50, color: '#ff8c2a' },
+  fury: { label: 'Shrine of Fury: ride power Z3+ for 20s', window: 50, color: '#ff8c2a' },
   endurance: { label: 'Shrine of Patience: hold Z2, treasure grows', window: 90, color: '#5aa9ff' },
   sprint: { label: 'Shrine of Gold: sprint twice', window: 60, color: '#ffd84a' },
+  whirl: { label: 'Shrine of the Whirlwind: spin fast (easy gear) for 15s', window: 45, color: '#8fd8ff' },
 };
 // Curses: temporary difficulty spikes. While cursed you earn +50% coins/XP; surviving (or breaking it with a sprint) pays a bounty.
 const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur: number }> = {
@@ -96,6 +97,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const aimTurn = tn.num('aimTurnRate', 2.0, 0.5, 10, 0.1, 'rad/s at full paddle');
   const autoMove = tn.bool('autoMove', true, 'bot steers (explore, kite, dodge, stairs); D-pad overrides');
   const autoAimIdle = tn.num('autoAimIdleS', 1.5, 0.2, 10, 0.1);
+  const whirlRpm = tn.num('whirlRpm', 95, 60, 140, 1, 'Whirlwind shrine cadence floor (rpm)');
 
   const rng = () => ctx.rng();
 
@@ -665,7 +667,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (const s of shrines) {
       if (s.state !== 'active') continue;
       s.left -= dt;
-      if (s.kind === 'fury' && bike.effortZone >= 3) s.progress += dt / 20;
+      // fury is a 20 s effort: judge it on power, HR can't climb in time
+      if (s.kind === 'fury' && Math.min(5, bike.powerZone) >= 3) s.progress += dt / 20;
+      if (s.kind === 'whirl' && bike.cadence3s >= whirlRpm()) s.progress += dt / 15;
       if (s.kind === 'endurance' && bike.effortZone === 2) s.progress += dt / (SHRINES.endurance.window * 0.85);
       if (s.kind === 'sprint') s.progress = (bike.sprintCount - s.s0) / 2;
       s.progress = Math.min(1, s.progress);
@@ -680,6 +684,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (s.kind === 'fury') {
       weapon = { ...weapon, plus: weapon.plus + 2 }; weapon.score = weaponScore(weapon);
       toast(`Fury! ${weapon.name} is now +${weapon.plus}`, '#ff8c2a');
+    } else if (s.kind === 'whirl') {
+      for (let i = 0; i < 8; i++) dropAt(s.x, s.y, 'coin', coinValue());
+      if (P.potions < mods.potionCap) P.potions++;
+      toast('Whirlwind! +1 potion and a gust of coins', '#8fd8ff');
     } else if (s.kind === 'sprint') {
       for (let i = 0; i < 20; i++) dropAt(s.x, s.y, 'coin', coinValue() * 2);
       P.hp = P.maxHp; toast('Gold rain! Fully healed', '#ffd84a');
@@ -1096,9 +1104,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       ? [{ button: 'y', label: 'Aim up' }, { button: 'z', label: 'Aim left' }, { button: 'a', label: 'Aim right' }, { button: 'b', label: 'Aim down' }]
       : [{ button: 'paddles', label: 'Aim' }];
     const act = shrines.find((s) => s.state === 'active');
-    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up' }
-      : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+' }
-      : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!' }
+    // shields and shrines are short efforts, judged on power (sprint detection is power-based too)
+    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up', source: 'power' }
+      : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+', source: 'power' }
+      : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!', source: 'power' }
       : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : curse ? 'Cursed: ride it out' : 'Heal' };
     return {
       controls: [
@@ -1109,6 +1118,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         { button: 'shiftersL', label: 'Gear' },
       ],
       gears: true, targetZone: target,
+      targetCadence: act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' } : undefined,
     };
   }
 

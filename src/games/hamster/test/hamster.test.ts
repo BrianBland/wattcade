@@ -88,6 +88,48 @@ describe('hamster sim', () => {
   });
 });
 
+describe('hamster zone & cadence targets', () => {
+  const rider = (cadence: number, ftp: number) => ({ name: 't', description: '', cadence: () => cadence, powerFtp: () => ftp });
+  function ride(cadence: number, ftp: number, hr: number | null, unlocks: string[]) {
+    const events: string[] = [];
+    const profile = testProfile({ gameData: { hamster: { v: 1, gens: [10], bank: 0, unlocks } } });
+    const s = createGameSession({ game: module, profile, input: new Pad(), seed: 3, fake: { script: 'idle' }, onEmit: (e) => events.push(`${e.type}:${(e.data as any)?.completed ?? ''}`) });
+    s.fakeBike!.useScript(rider(cadence, ftp));
+    s.fakeBike!.manual.hr = hr;
+    return { s, events, snap: () => s.sim.snapshot() as HamsterSnapshot };
+  }
+  it('golden hamster is judged on power even when HR sits in Z1', () => {
+    const { s, events, snap } = ride(90, 1.0, 100, ['golden']);
+    let sawPowerTarget = false;
+    for (let i = 0; i < 70 && !events.includes('goldenHamster:'); i++) {
+      s.step(secs(1));
+      if (snap().golden) {
+        expect(s.ctx.bike().effortZone).toBe(1); // HR zone: nowhere near Z4
+        sawPowerTarget ||= s.sim.hud!().targetZone?.source === 'power';
+      }
+    }
+    expect(sawPowerTarget).toBe(true);
+    expect(events).toContain('goldenHamster:');
+  });
+  it('the Z2 grind keeps the profile zone source', () => {
+    const { s } = ride(90, 0.65, 130, []);
+    s.step(secs(5));
+    expect(s.sim.hud!().targetZone).toMatchObject({ min: 2, max: 2 });
+    expect(s.sim.hud!().targetZone?.source).toBeUndefined();
+  });
+  it('spin class: high cadence aces it, low cadence does not', () => {
+    const fast = ride(100, 0.6, null, ['spin']);
+    fast.s.step(secs(400));
+    expect(fast.events).toContain('spinClass:true');
+    const slow = ride(80, 0.6, null, ['spin']);
+    let tc: unknown;
+    for (let i = 0; i < 400 && !slow.events.some((e) => e.startsWith('spinClass')); i++) { slow.s.step(secs(1)); if (slow.snap().spin) tc = slow.s.sim.hud!().targetCadence; }
+    expect(tc).toMatchObject({ min: 95 });
+    expect(slow.events).toContain('spinClass:false');
+    expect(slow.events).not.toContain('spinClass:true');
+  });
+});
+
 describe('hamster scenarios (runHeadless)', () => {
   for (const sc of scenarios) {
     it(sc.name, () => {

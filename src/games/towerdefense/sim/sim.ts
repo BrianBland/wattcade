@@ -345,7 +345,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     hud(): GameHud {
       return {
         gears: false,
-        targetZone: weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail' } : { min: 2, max: 3 },
+        targetZone: weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3 },
         controls: [
           { button: 'a', label: 'Gatling', active: weapon === 'gatling' },
           { button: 'b', label: 'Flame', active: weapon === 'flame' },

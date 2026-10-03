@@ -23,7 +23,7 @@ export const EDITOR_FIELDS: FieldDef[] = [
   { id: 'ftp', label: 'FTP', kind: 'num', step: 5, min: 50, max: 600, unit: 'W', get: (p) => p.ftp, set: (p, v) => ({ ...p, ftp: v }) },
   { id: 'maxHr', label: 'Max HR', kind: 'num', step: 1, min: 100, max: 230, unit: 'bpm', get: (p) => p.maxHr, set: (p, v) => ({ ...p, maxHr: v }) },
   { id: 'weightKg', label: 'Weight', kind: 'num', step: 0.5, min: 30, max: 200, unit: 'kg', digits: 1, get: (p) => p.weightKg, set: (p, v) => ({ ...p, weightKg: v }) },
-  { id: 'zoneSource', label: 'Zones from', kind: 'choice', options: ZONE_OPTS, hint: 'Power is steadier for zone games; HR lags 30–60 s', ...(S('zoneSource') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
+  { id: 'zoneSource', label: 'Zones from', kind: 'choice', options: ZONE_OPTS, hint: 'For long holds; short sprints always use power (HR lags 30–60 s)', ...(S('zoneSource') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'aimMode', label: 'Aim', kind: 'choice', options: AIM_OPTS, ...(S('aimMode') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'paddleDeadzone', label: 'Paddle deadzone', kind: 'num', step: 1, min: 0, max: 60, ...S('paddleDeadzone') },
   { id: 'paddleInvertL', label: 'Invert left paddle', kind: 'bool', ...S('paddleInvertL') },

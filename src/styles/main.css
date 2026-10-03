@@ -110,12 +110,20 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .hud { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: flex-end; gap: 10px; height: var(--hud-h); padding: 0 10px calc(8px + env(safe-area-inset-bottom, 0px)); pointer-events: none; z-index: 20; user-select: none; -webkit-user-select: none; }
 /* hoods mirror the Ride: face cluster outboard, shifters inboard, paddle below */
 .zw { flex: 1; min-width: 0; margin-left: auto; max-width: 600px; display: flex; flex-direction: column; justify-content: space-between; gap: 3px; }
-.zw-nums { display: flex; gap: 22px; align-items: baseline; }
+.zw-nums { display: flex; gap: 14px; align-items: baseline; min-width: 0; }
 .zw-nums b { font-size: 36px; line-height: 1; color: var(--neon); } .zw-nums small { font-size: 16px; margin-left: 4px; color: var(--dim); }
-.zw-src { margin-left: auto; font-size: 13px; }
+.zw-src { margin-left: auto; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zw-bar { position: relative; display: flex; height: 18px; border-radius: 6px; overflow: visible; }
 .zw-bar > i { flex: 1; font: 700 11px/18px system-ui; color: #000a; text-align: center; font-style: normal; }
 .zw-label { font: 700 12px/1 system-ui; text-transform: uppercase; letter-spacing: 1px; }
+.zw-labels { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.zw-labels > .zw-label:first-child { flex: none; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.zw-cad-label { margin-left: auto; color: #8fd8ff; white-space: nowrap; }
+.zw-cad { white-space: nowrap; }
+.zw-cad em { font: 700 12px/1 system-ui; font-style: normal; margin-left: 6px; padding: 2px 5px; border-radius: 5px; background: #ffffff1a; color: var(--dim); }
+.zw-cad.ok b { color: #2de26a; } .zw-cad.ok em { background: #2de26a33; color: #2de26a; }
+.zw-cad.low b, .zw-cad.high b { color: #ffd23b; } .zw-cad.low em, .zw-cad.high em { background: #ffd23b33; color: #ffd23b; }
+.zw-cad-label.ok { color: #2de26a; }
 .zw-target { position: absolute; top: -4px; bottom: -4px; border: 3px solid #fff; border-radius: 6px; font: 700 12px/1 system-ui; color: #fff; text-decoration: none; text-shadow: 0 0 4px #000; padding: 1px 4px; overflow: hidden; }
 .zw-marker { position: absolute; top: -8px; width: 0; height: 0; margin-left: -9px; border: 9px solid transparent; border-top: 14px solid #fff; border-bottom: 0; filter: drop-shadow(0 0 3px #000); }
 .zw-chart { position: relative; display: flex; align-items: flex-end; height: 24px; gap: 1px; flex: none; }

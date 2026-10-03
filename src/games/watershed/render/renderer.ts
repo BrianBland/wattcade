@@ -11,16 +11,14 @@ import { SalmonLayer } from './creatures';
 import { Hud } from './hud';
 import { layout } from './layout';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
+import { BASE, TerrainView } from './terrainView';
+import { WaterView } from './waterView';
 
-const BASE = -10;          // diorama floor
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const C = {
-  grass: new THREE.Color(0x5f8f45), meadow: new THREE.Color(0x8db35a), rock: new THREE.Color(0x8d8070), snow: new THREE.Color(0xf2f5f7),
-  strata: new THREE.Color(0xc49070), earth: new THREE.Color(0x8a5a3a), canyon: new THREE.Color(0xc0643c),
-  silt: new THREE.Color(0xe0cc94), seabed: new THREE.Color(0xd6c592), wet: new THREE.Color(0x3d5a3a),
-  drop: new THREE.Color(0x3aa0ff), mud: new THREE.Color(0xb89a5c), foam: new THREE.Color(0xeaf8ff),
+  drop: new THREE.Color(0x56b4ff), mud: new THREE.Color(0xb89a5c), foam: new THREE.Color(0xeaf8ff),
 };
 
 /** Popup copy for cues: title, sub line, seconds, tone. */
@@ -40,14 +38,13 @@ export class WatershedRenderer implements GameRenderer {
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(38, 4 / 3, 1, 1200);
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
-  private terrain?: THREE.Mesh; private river?: THREE.Mesh; private skirt?: THREE.Mesh; private seaBox?: THREE.Mesh;
+  private terrainView?: TerrainView; private water?: WaterView; private seaBox?: THREE.Mesh; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private springRing?: THREE.Mesh;
   private forest?: Forest; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
   private nx = 0; private ny = 0; private lastVersion = -1; private versionAt = 0; private lastFrame = 0; private lastCue = -1;
-  private wBlur = new Float32Array(0); private wEma = new Float32Array(0);
   private color = '#d64545';
   private camBase = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
   private camPos = new THREE.Vector3(); private camTgt = new THREE.Vector3(); private camInit = false;
@@ -66,6 +63,7 @@ export class WatershedRenderer implements GameRenderer {
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = 1.05;
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(r.domElement);
     this.renderer = r;
@@ -96,48 +94,8 @@ export class WatershedRenderer implements GameRenderer {
   private build(s: WatershedSnapshot) {
     const { nx, ny } = s;
     this.nx = nx; this.ny = ny;
-    this.wBlur = new Float32Array(nx * ny); this.wEma = new Float32Array(nx * ny);
-    const grid = (withColor: boolean) => {
-      const g = new THREE.BufferGeometry();
-      const pos = new Float32Array(nx * ny * 3);
-      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const k = (j * nx + i) * 3; pos[k] = this.wx(j); pos[k + 2] = this.wz(i); }
-      g.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
-      g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3).setUsage(THREE.DynamicDrawUsage));
-      if (withColor) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(nx * ny * 3), 3).setUsage(THREE.DynamicDrawUsage));
-      const idx: number[] = [];
-      for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-        idx.push(a, b, c, b, d, c);
-      }
-      g.setIndex(idx);
-      return g;
-    };
-    this.terrain = new THREE.Mesh(grid(true), new THREE.MeshLambertMaterial({ vertexColors: true }));
-    this.terrain.receiveShadow = true; this.terrain.castShadow = true;
-    this.river = new THREE.Mesh(grid(false), new THREE.MeshPhongMaterial({ color: 0x2b8ad8, transparent: true, opacity: 0.6, shininess: 60, specular: 0x6688aa, depthWrite: false }));
-    this.river.renderOrder = 1; this.river.receiveShadow = true;
-
-    // diorama skirt: a wall around the grid edge, from the terrain down to BASE (lighter at the top, dark at the base)
-    const ring: Array<[number, number]> = [];
-    for (let i = 0; i < nx; i++) ring.push([i, 0]);
-    for (let j = 1; j < ny; j++) ring.push([nx - 1, j]);
-    for (let i = nx - 2; i >= 0; i--) ring.push([i, ny - 1]);
-    for (let j = ny - 2; j > 0; j--) ring.push([0, j]);
-    ring.push(ring[0]);
-    const sp = new Float32Array(ring.length * 6), scol = new Float32Array(ring.length * 6);
-    const top = new THREE.Color(0x8a6244), bot = new THREE.Color(0x3a2618);
-    ring.forEach(([i, j], n) => {
-      sp.set([this.wx(j), 0, this.wz(i), this.wx(j), BASE, this.wz(i)], n * 6);
-      scol.set([top.r, top.g, top.b, bot.r, bot.g, bot.b], n * 6);
-    });
-    const sg = new THREE.BufferGeometry();
-    sg.setAttribute('position', new THREE.BufferAttribute(sp, 3).setUsage(THREE.DynamicDrawUsage));
-    sg.setAttribute('color', new THREE.BufferAttribute(scol, 3));
-    const sidx: number[] = [];
-    for (let n = 0; n < ring.length - 1; n++) { const a = n * 2, b = a + 1, c = a + 2, d = a + 3; sidx.push(a, b, c, b, d, c); }
-    sg.setIndex(sidx); sg.computeVertexNormals();
-    this.skirt = new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    this.skirt.userData.ring = ring;
+    this.terrainView = new TerrainView(nx, ny, this.wx, this.wz);
+    this.water = new WaterView(nx, ny, this.wx, this.wz, this.sun.position);
 
     // the sea: a translucent slab (sides) with a swelling surface on top
     const seaG = new THREE.BoxGeometry(ny - 1.3, SEA - BASE - 0.4, nx - 1.3);
@@ -169,7 +127,7 @@ export class WatershedRenderer implements GameRenderer {
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrain, this.river, this.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.terrainView.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.clouds.group, this.salmon.group);
     this.frameCamera();
   }
 
@@ -187,7 +145,7 @@ export class WatershedRenderer implements GameRenderer {
   private pathWorld(s: WatershedSnapshot, path: Array<[number, number]>, y: number, out: THREE.Vector3): THREE.Vector3 {
     const f = Math.max(0, Math.min(path.length - 1.001, y / 4)), k = Math.floor(f), u = f - k;
     const x = path[k][0] + (path[k + 1][0] - path[k][0]) * u, yy = path[k][1] + (path[k + 1][1] - path[k][1]) * u;
-    const ground = Math.max(SEA, sample(s.h, s.nx, s.ny, x, yy)) + sample(this.wEma, s.nx, s.ny, x, yy) * 0.9;
+    const ground = Math.max(SEA, sample(s.h, s.nx, s.ny, x, yy)) + sample(this.water!.depth, s.nx, s.ny, x, yy) * 0.9;
     return out.set(this.wx(yy), ground, this.wz(x));
   }
 
@@ -259,72 +217,6 @@ export class WatershedRenderer implements GameRenderer {
     this.camera.lookAt(this.camTgt);
   }
 
-  private updateTerrain(s: WatershedSnapshot) {
-    const { nx, ny, h, h0, hard } = s;
-    const g = this.terrain!.geometry, pos = g.getAttribute('position') as THREE.BufferAttribute, nor = g.getAttribute('normal') as THREE.BufferAttribute, col = g.getAttribute('color') as THREE.BufferAttribute;
-    const P = pos.array as Float32Array, N = nor.array as Float32Array, CA = col.array as Float32Array;
-    const at = (i: number, j: number) => h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
-    const c = this.tmpC;
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, z = h[k], o = k * 3;
-      P[o + 1] = z;
-      const dx = (at(i, j + 1) - at(i, j - 1)) / 2, dz = (at(i + 1, j) - at(i - 1, j)) / 2;
-      const inv = 1 / Math.hypot(dx, 1, dz);
-      N[o] = -dx * inv; N[o + 1] = inv; N[o + 2] = -dz * inv;
-      const slope = Math.hypot(dx, dz);
-      if (z < SEA) c.copy(C.seabed).multiplyScalar(Math.max(0.55, 1 + z * 0.06));
-      else {
-        c.copy(C.meadow).lerp(C.grass, Math.min(1, z / 10));
-        c.lerp(C.rock, Math.min(1, Math.max(0, (z - 18) / 8, (slope - 0.9) * 1.5)));
-        c.lerp(C.strata, Math.min(1, Math.max(0, 0.75 - hard[k])) * 1.2);
-        if (z > 28) c.lerp(C.snow, Math.min(1, (z - 28) / 3));
-      }
-      const d = z - h0[k];
-      if (d < -0.15) {
-        c.lerp(-d > 3 ? C.canyon : C.earth, Math.min(1, -d / 2.5));
-        if (-d > 2) c.multiplyScalar(0.9 + 0.1 * Math.sin(z * 2.2)); // strata bands in the canyon walls
-      } else if (d > 0.1) c.lerp(C.silt, Math.min(0.9, d / 1.5));
-      if (this.wEma[k] > 0.05 && z >= SEA) c.lerp(C.wet, 0.3);
-      CA[o] = c.r; CA[o + 1] = c.g; CA[o + 2] = c.b;
-    }
-    pos.needsUpdate = nor.needsUpdate = col.needsUpdate = true;
-    g.computeBoundingSphere();
-
-    const ring = this.skirt!.userData.ring as Array<[number, number]>;
-    const sp = (this.skirt!.geometry.getAttribute('position') as THREE.BufferAttribute);
-    ring.forEach(([i, j], n) => { (sp.array as Float32Array)[n * 6 + 1] = Math.max(h[j * nx + i], BASE + 0.5); });
-    sp.needsUpdate = true;
-  }
-
-  private updateRiver(s: WatershedSnapshot) {
-    const { nx, ny, h, w } = s, B = this.wBlur, E = this.wEma;
-    // 3×3 blur, then a time EMA so the surface reads as a calm body of water, not flickering splats
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      let a = 0, n = 0;
-      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
-        const jj = j + dj, ii = i + di;
-        if (jj < 0 || jj >= ny || ii < 0 || ii >= nx) continue;
-        const wt = di === 0 && dj === 0 ? 4 : 1;
-        a += w[jj * nx + ii] * wt; n += wt;
-      }
-      const k = j * nx + i;
-      B[k] = a / n; E[k] += (B[k] - E[k]) * 0.25;
-    }
-    const g = this.river!.geometry, pos = g.getAttribute('position') as THREE.BufferAttribute, nor = g.getAttribute('normal') as THREE.BufferAttribute;
-    const P = pos.array as Float32Array, N = nor.array as Float32Array;
-    const surf = (k: number) => (E[k] > 0.04 && h[k] > SEA - 0.2 ? h[k] + E[k] * 0.9 + 0.05 : h[k] - 0.4);
-    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
-      const k = j * nx + i, o = k * 3;
-      P[o + 1] = surf(k);
-      const dx = (surf(Math.min(ny - 1, j + 1) * nx + i) - surf(Math.max(0, j - 1) * nx + i)) / 2;
-      const dz = (surf(j * nx + Math.min(nx - 1, i + 1)) - surf(j * nx + Math.max(0, i - 1))) / 2;
-      const inv = 1 / Math.hypot(dx, 1, dz);
-      N[o] = -dx * inv; N[o + 1] = inv; N[o + 2] = -dz * inv;
-    }
-    pos.needsUpdate = nor.needsUpdate = true;
-    g.computeBoundingSphere();
-  }
-
   /** Place drops, extrapolated `ahead` seconds along their velocity (smooth between 30 Hz sim ticks). */
   private updateDrops(s: WatershedSnapshot, ahead: number) {
     const d = this.drops!, { nx, ny, h } = s;
@@ -332,15 +224,19 @@ export class WatershedRenderer implements GameRenderer {
     for (let q = 0; q < n; q++) {
       const vx = s.pvx[q], vy = s.pvy[q], vol = s.pvol[q];
       const x = s.px[q] + vx * ahead, y = s.py[q] + vy * ahead;
-      const ground = Math.max(SEA, sample(h, nx, ny, x, y)), depth = sample(this.wEma, nx, ny, x, y);
-      const r = DROP_SCALE * this.dropK * Math.cbrt(vol);
+      const land = this.terrainView!.heightAt(x, y), ground = Math.max(SEA, land), depth = sample(this.water!.depth, nx, ny, x, y);
+      // drops merge into the surface: in deep water (and the sea) they sink below it, and slow sheet-flow shrinks
+      // away; they only stand proud where the water is fast: the spring, rapids, falls
+      const sink = land < SEA ? 1 : Math.min(1, Math.max(0, (depth - 0.12) / 0.6));
+      const fast = Math.min(1, Math.max(0, (Math.hypot(vx, vy) - 2) / 4));
+      const r = DROP_SCALE * this.dropK * Math.cbrt(vol) * (1 - 0.35 * sink) * (0.4 + 0.6 * fast);
       const sp = Math.hypot(vx, vy);
       const groundAhead = Math.max(SEA, sample(h, nx, ny, x + vx * 0.1, y + vy * 0.1));
       this.dir.set(vy, (groundAhead - ground) * 10, vx);
       if (this.dir.lengthSq() < 1e-6) this.dir.set(1, 0, 0);
       this.dir.normalize();
       this.q.setFromUnitVectors(this.X, this.dir);
-      this.v.set(this.wx(y), ground + depth * 0.9 + r * 0.55, this.wz(x));
+      this.v.set(this.wx(y), ground + depth * 0.9 + r * (0.5 - 1.5 * sink), this.wz(x));
       this.sc.set(r * (1 + Math.min(1, sp * 0.07)), r * 0.9, r * 0.9);
       this.m.compose(this.v, this.q, this.sc);
       d.setMatrixAt(q, this.m);
@@ -404,15 +300,18 @@ export class WatershedRenderer implements GameRenderer {
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as WatershedSnapshot;
     if (!this.renderer || !s || !s.h) return;
-    if (!this.terrain) this.build(s);
+    if (!this.terrainView) this.build(s);
     const tNow = now();
     const dt = this.lastFrame ? Math.min(0.1, (tNow - this.lastFrame) / 1000) : 1 / 60;
     this.lastFrame = tNow;
     if (s.version !== this.lastVersion) {
       this.lastVersion = s.version; this.versionAt = tNow; this.dropsDirty = true;
-      this.updateRiver(s); this.updateTerrain(s);
+      this.water!.absorb(s);
+      // the land changes slowly: rebuild it ~10×/s; the water surface ~15×/s
+      if (this.landTick++ % 3 === 0) this.terrainView!.update(s, this.water!.depth);
+      if (this.landTick % 2 === 0) this.water!.update(this.terrainView!.fh);
       this.treeAcc += dt;
-      if (this.treeAcc > 0.25) { this.forest!.update(s, this.treeAcc); this.treeAcc = 0; }
+      if (this.treeAcc > 0.25) { this.forest!.update(s, this.treeAcc, (x, y) => this.terrainView!.heightAt(x, y)); this.treeAcc = 0; }
     }
     // during the salmon run the river becomes the backdrop: smaller drops so the school stands out
     this.dropK += ((s.salmon ? (this.camMode === 'overhead' ? 0.55 : 0.38) : 1) - this.dropK) * (1 - Math.exp(-dt * 2));
@@ -424,6 +323,8 @@ export class WatershedRenderer implements GameRenderer {
     this.spring.visible = !s.salmon;
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
+    this.water!.tick(tNow / 1000);
+    this.forest!.wind.value = tNow / 1000;
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
     this.cues(s);

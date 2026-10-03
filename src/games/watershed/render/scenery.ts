@@ -1,6 +1,7 @@
 // Watershed scenery: sky gradient, forest that dies where the river erodes/floods/buries it, drifting clouds, a wavy sea.
 import * as THREE from 'three';
 import { SEA, hash2, sample } from '../sim/terrain';
+import { boulderGeometry, broadleafGeometry, pineGeometry, swayMaterial, trunkGeometry } from './models';
 import type { WatershedSnapshot } from '../sim/sim';
 
 export function skyTexture(): THREE.Texture | THREE.Color {
@@ -15,58 +16,85 @@ export function skyTexture(): THREE.Texture | THREE.Color {
   return t;
 }
 
-interface Tree { i: number; j: number; s: number; life: number; kind: number }
+interface Tree { i: number; j: number; s: number; life: number; kind: 0 | 1 | 2; slot: number; rot: number }
 
-/** Instanced pines + round trees on the valley sides. Trees die (shrink and tip over) when the ground under them changes. */
+/**
+ * Instanced pines, broadleaf trees and boulders on the valley sides, swaying in the wind. Trees die (tip over and
+ * sink away) when the ground under them is eroded, flooded or buried; boulders get buried by silt.
+ */
 export class Forest {
   readonly group = new THREE.Group();
+  readonly wind = { value: 0 };
   private trees: Tree[] = [];
-  private crowns: THREE.InstancedMesh; private trunks: THREE.InstancedMesh;
+  private meshes: THREE.InstancedMesh[];    // pines, broadleaf, boulders
+  private trunks: THREE.InstancedMesh;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private e = new THREE.Euler(); private p = new THREE.Vector3(); private sc = new THREE.Vector3();
   dead = 0;
 
   constructor(s: WatershedSnapshot, private wx: (j: number) => number, private wz: (i: number) => number) {
     const { nx, ny, h0, hard } = s;
+    const counts = [0, 0, 0];
     for (let j = 6; j < ny - 2; j += 2) for (let i = 2; i < nx - 2; i += 2) {
-      const r = hash2(i, j, 77), fi = i + hash2(i, j, 5) * 1.6, fj = j + hash2(i, j, 9) * 1.6;
+      const fi = i + hash2(i, j, 5) * 1.6, fj = j + hash2(i, j, 9) * 1.6;
       const z = sample(h0, nx, ny, fi, fj);
       const slope = Math.abs(sample(h0, nx, ny, fi + 1, fj) - sample(h0, nx, ny, fi - 1, fj)) + Math.abs(sample(h0, nx, ny, fi, fj + 1) - sample(h0, nx, ny, fi, fj - 1));
-      if (z < 0.8 || z > 24 || slope > 1.6 || hard[Math.round(fj) * nx + Math.round(fi)] < 0.45) continue;
-      const density = z < 4 ? 0.25 : z < 16 ? 0.55 : 0.3;
-      if (r > density) continue;
-      this.trees.push({ i: fi, j: fj, s: 0.8 + hash2(i, j, 13) * 0.7, life: 1, kind: z > 12 || hash2(i, j, 21) < 0.6 ? 0 : 1 });
+      const rocky = hard[Math.round(fj) * nx + Math.round(fi)] < 0.45;
+      const r = hash2(i, j, 77);
+      let kind: 0 | 1 | 2 | -1 = -1;
+      if (z > 0.8 && z < 26 && (rocky || slope > 1.4) && r < 0.12) kind = 2;
+      else if (z > 0.8 && z < 24 && slope < 1.6 && !rocky && r < (z < 4 ? 0.25 : z < 16 ? 0.55 : 0.3)) kind = z > 12 || hash2(i, j, 21) < 0.6 ? 0 : 1;
+      if (kind === -1) continue;
+      this.trees.push({ i: fi, j: fj, s: 0.75 + hash2(i, j, 13) * 0.75, life: 1, kind, slot: counts[kind]++, rot: hash2(i, j, 31) * Math.PI * 2 });
     }
-    const crownG = new THREE.ConeGeometry(1, 2.6, 7); crownG.translate(0, 2.3, 0);
-    const trunkG = new THREE.CylinderGeometry(0.18, 0.24, 1.2, 5); trunkG.translate(0, 0.6, 0);
-    this.crowns = new THREE.InstancedMesh(crownG, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), this.trees.length);
-    this.trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({ color: 0x6b4a2f }), this.trees.length);
-    const pine = new THREE.Color(0x2f6b3a), leafy = new THREE.Color(0x5d9a3c), tmp = new THREE.Color();
-    this.trees.forEach((t, k) => this.crowns.setColorAt(k, tmp.copy(t.kind === 0 ? pine : leafy).offsetHSL(0, 0, (hash2(k, 3, 1) - 0.5) * 0.08)));
-    for (const m of [this.crowns, this.trunks]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; }
-    this.group.add(this.crowns, this.trunks);
+    const pineMat = swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), this.wind);
+    const leafMat = swayMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }), this.wind, 0.05);
+    const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+    this.meshes = [
+      new THREE.InstancedMesh(pineGeometry(), pineMat, Math.max(1, counts[0])),
+      new THREE.InstancedMesh(broadleafGeometry(), leafMat, Math.max(1, counts[1])),
+      new THREE.InstancedMesh(boulderGeometry(), rockMat, Math.max(1, counts[2])),
+    ];
+    this.trunks = new THREE.InstancedMesh(trunkGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), Math.max(1, counts[0] + counts[1]));
+    const tint = new THREE.Color();
+    for (const t of this.trees) this.meshes[t.kind].setColorAt(t.slot, tint.setScalar(0.88 + hash2(t.slot, t.kind, 3) * 0.24));
+    this.meshes.forEach((m, k) => { m.count = counts[k]; });
+    this.trunks.count = counts[0] + counts[1];
+    for (const m of [...this.meshes, this.trunks]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; this.group.add(m); }
   }
 
-  /** Re-seat trees on the current terrain and kill the ones whose ground was eroded, flooded or buried. */
-  update(s: WatershedSnapshot, dt: number): void {
-    const { nx, ny, h, h0, w } = s;
+  /** Re-seat on the drawn terrain and kill trees whose ground was eroded, flooded or buried. */
+  update(s: WatershedSnapshot, dt: number, heightAt: (x: number, y: number) => number): void {
+    const { nx, h, h0, w } = s;
     this.dead = 0;
-    this.trees.forEach((t, k) => {
-      const ci = Math.round(t.i), cj = Math.round(t.j), c = cj * nx + ci;
-      const z = sample(h, nx, ny, t.i, t.j);
+    let trunk = 0;
+    for (const t of this.trees) {
+      const c = Math.round(t.j) * nx + Math.round(t.i);
+      const z = heightAt(t.i, t.j);
+      if (t.kind === 2) {
+        // boulders don't die; silt slowly buries them
+        const bury = Math.max(0, h[c] - h0[c]);
+        this.p.set(this.wx(t.j), z - bury * 0.6 + 0.15, this.wz(t.i));
+        this.q.setFromAxisAngle(Y, t.rot);
+        this.sc.setScalar(t.s * 0.9);
+        this.m.compose(this.p, this.q, this.sc);
+        this.meshes[2].setMatrixAt(t.slot, this.m);
+        continue;
+      }
       if (t.life > 0 && (h0[c] - h[c] > 0.45 || h[c] - h0[c] > 0.9 || w[c] > 0.18 || z < SEA)) t.life = Math.max(0, t.life - dt * 0.8);
       if (t.life < 1) this.dead++;
       const tip = (1 - t.life) * 1.3, k01 = t.life > 0 ? 0.35 + 0.65 * t.life : 0;
-      this.e.set(tip * 0.6, 0, tip, 'XYZ'); this.q.setFromEuler(this.e);
-      this.p.set(this.wx(t.j), z - (1 - t.life) * 0.6, this.wz(t.i));
-      this.sc.setScalar(t.s * k01 * (t.kind === 1 ? 0.85 : 1)).setY(t.s * k01 * (t.kind === 1 ? 0.75 : 1.05));
+      this.e.set(tip * 0.6, t.rot, tip, 'YXZ'); this.q.setFromEuler(this.e);
+      this.p.set(this.wx(t.j), z - 0.1 - (1 - t.life) * 0.6, this.wz(t.i));
+      this.sc.setScalar(t.s * k01 * (t.kind === 1 ? 0.95 : 1));
       this.m.compose(this.p, this.q, this.sc);
-      this.crowns.setMatrixAt(k, this.m); this.trunks.setMatrixAt(k, this.m);
-    });
-    this.crowns.instanceMatrix.needsUpdate = true; this.trunks.instanceMatrix.needsUpdate = true;
+      this.meshes[t.kind].setMatrixAt(t.slot, this.m); this.trunks.setMatrixAt(trunk++, this.m);
+    }
+    for (const m of [...this.meshes, this.trunks]) m.instanceMatrix.needsUpdate = true;
   }
 
   get count() { return this.trees.length; }
 }
+const Y = new THREE.Vector3(0, 1, 0);
 
 /** A few puffy low-poly clouds drifting downstream (they cast soft shadows on the valley). */
 export class Clouds {

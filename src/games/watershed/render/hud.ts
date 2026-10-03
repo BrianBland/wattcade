@@ -83,8 +83,14 @@ export class Hud {
     this.block.innerHTML = `<div class="nm">${b.name}<b>${fmt(b.left)}</b></div>`
       + `<span class="st" style="background:${STYLE_COLOR[b.style]}">${STYLE_WORD[b.style]}${b.rpm ? ` ${b.rpm.min}${b.rpm.max ? `–${b.rpm.max}` : '+'} rpm` : ''}</span>`
       + ` <span style="font-size:13px;opacity:.8">ERG ${Math.round(b.ftp * 100)}% FTP</span><div class="hint">${b.hint}</div>`;
-    const f = s.salmon;
-    this.stats.innerHTML = f
+    const f = s.salmon, sky = s.sky;
+    this.stats.innerHTML = s.phase === 'evaporate'
+      ? `<span>Vapor</span><b>${Math.round(sky.vapor)}</b><span>Sunlight</span><b>${sky.inSun ? '☀️ yes' : '—'}</b>`
+      : s.phase === 'cloud'
+      ? `<span>Cloud size</span><b>${Math.round(sky.size)}</b><span>Cloudlets</span><b>${sky.caught}</b>`
+      : s.phase === 'rain'
+      ? `<span>Rainfall</span><b>${Math.round(sky.rained)}</b><span>Cloud left</span><b>${Math.round(sky.size)}</b>`
+      : f
       ? `<span class="fish">Salmon run ${f.run}</span><span>School</span><b>${f.alive} 🐟</b><span>Home</span><b>${f.home}</b><span>Lost</span><b>${f.lost}</b>`
       : `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
         + `<span>Valley carved</span><b>${Math.round(s.carved / 10)}</b><span>Delta built</span><b>${Math.round(s.delta / 10)}</b>`;

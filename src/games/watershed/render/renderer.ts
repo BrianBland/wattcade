@@ -13,6 +13,7 @@ import { layout } from './layout';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { BASE, TerrainView } from './terrainView';
 import { Riverbank } from './riverbank';
+import { SkyLayer } from './skyLayer';
 import { WaterView } from './waterView';
 
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
@@ -24,6 +25,9 @@ const C = {
 
 /** Popup copy for cues: title, sub line, seconds, tone. */
 const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> = {
+  evaporate: ['Rise from the sea.', 'Spin to lift vapor · steer into the sunlight with the paddles, ◀▶ or the shifters', 6, ''],
+  cloud: ['Gather your cloud.', 'Drift inland and steer into the cloudlets · a bigger cloud means more rain', 5, ''],
+  rain: ['Rain on the mountains!', 'Grind for a downpour, spin for drizzle · your spring rises where it rains most', 6, ''],
   intro: ['You are the river.', 'Grind to carve deep · spin to carry silt to the sea · ▲▼ moves the spring', 6, ''],
   salmonRun: ['The salmon are running!', 'Follow them home up the river you carved', 5, 'salmon'],
   salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · spin past 95 rpm to leap falls', 6, 'salmon'],
@@ -41,7 +45,7 @@ export class WatershedRenderer implements GameRenderer {
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private seaBox?: THREE.Mesh; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private springRing?: THREE.Mesh;
-  private forest?: Forest; private bank?: Riverbank; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
+  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -126,10 +130,11 @@ export class WatershedRenderer implements GameRenderer {
 
     this.forest = new Forest(s, this.wx, this.wz);
     this.bank = new Riverbank(s, this.wx, this.wz);
+    this.skyLayer = new SkyLayer(this.wx, this.wz, this.sun.position);
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.terrainView.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.terrainView.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.clouds.group, this.salmon.group);
     this.frameCamera();
   }
 
@@ -158,6 +163,17 @@ export class WatershedRenderer implements GameRenderer {
    * Between runs the camera pulls back up to the overhead view.
    */
   private updateCamera(s: WatershedSnapshot, dt: number, t: number) {
+    if (s.phase === 'evaporate' || s.phase === 'cloud' || s.phase === 'rain') {
+      // ride behind the vapor column / cloud from the downstream side, looking inland at the mountains
+      this.camMode = 'overhead';
+      const F = this.skyLayer!.focus, vs = this.skyLayer!.visualScale;
+      const back = 20 + vs * 4, up = 9 + vs * 1.8;
+      const tgt = this.cT.set(F.x - 18, F.y - 8, F.z * 0.8), pos = this.cP.set(F.x + back, F.y + up, F.z * 0.85);
+      const k = 1 - Math.exp(-dt * 1.5);
+      this.camPos.lerp(pos, k); this.camTgt.lerp(tgt, k);
+      this.camera.position.copy(this.camPos); this.camera.lookAt(this.camTgt);
+      return;
+    }
     const f = s.salmon, L = f ? this.salmon?.leaderWorld(this.cL) : null;
     if (!f || !L || f.restarting) {
       this.camMode = 'overhead';
@@ -276,7 +292,7 @@ export class WatershedRenderer implements GameRenderer {
     if (this.lastCue < 0) {
       // first frame: don't replay history, but greet a fresh ride
       this.lastCue = list.length ? list[list.length - 1].id : 0;
-      if (s.t < 8) this.popup('intro');
+      if (s.t < 8) this.popup(s.phase === 'evaporate' ? 'evaporate' : 'intro');
       return;
     }
     for (const c of list) {
@@ -285,8 +301,12 @@ export class WatershedRenderer implements GameRenderer {
       const d = c.data ?? {};
       switch (c.type) {
         case 'blockStart':
-          if (d.style !== 'salmon' && Number(d.index) > 0) { this.hud?.popup(String(d.name), BLOCK_SUB[String(d.style)] ?? '', 3.5); play('chime', { vol: 0.7 }); }
+          if (d.firstOfPhase && (d.phase === 'cloud' || d.phase === 'rain')) { this.popup(d.phase as 'cloud' | 'rain'); play('chime', { vol: 0.7 }); }
+          else if (d.phase === 'river' && Number(d.index) > 0 && !d.firstOfPhase) { this.hud?.popup(String(d.name), BLOCK_SUB[String(d.style)] ?? '', 3.5); play('chime', { vol: 0.7 }); }
           break;
+        case 'springRises': this.popup('intro'); play('splash'); play('chime', { vol: 0.8 }); break;
+        case 'cloudlet': play('pickup', { vol: 0.6 }); break;
+        case 'sunlit': play('chime', { vol: 0.35, minGapS: 2 }); break;
         case 'salmonRun':
           if (s.salmon?.run === 1) this.popup('salmonRun'); else this.hud?.popup(`Salmon run ${s.salmon?.run ?? ''}`, 'A new school sets off from the sea', 3, 'salmon');
           play('splash'); play('reward', { vol: 0.6 }); break;
@@ -313,7 +333,10 @@ export class WatershedRenderer implements GameRenderer {
   private sound(s: WatershedSnapshot) {
     const flow = Math.min(1, s.n / 2200);
     // the river: a low rumble when grinding (heavy water), a bright hiss when spinning (light, fast water)
-    setAmbient('river', 0.06 + 0.28 * flow, 260 + 1500 * s.cadNorm, 0.9);
+    const sky = s.phase === 'evaporate' || s.phase === 'cloud' || s.phase === 'rain';
+    setAmbient('river', sky ? 0.04 * flow : 0.06 + 0.28 * flow, 260 + 1500 * s.cadNorm, 0.9);
+    setAmbient('rain', s.phase === 'rain' ? Math.min(0.3, s.sky.raining * 0.02) : 0, 2600 - 1400 * (1 - s.cadNorm), 0.5);
+    setAmbient('wind', s.phase === 'cloud' ? 0.12 : s.phase === 'evaporate' ? 0.05 : 0, 380, 0.4);
     setAmbient('surf', 0.07, 420, 0.5);
   }
 
@@ -340,12 +363,13 @@ export class WatershedRenderer implements GameRenderer {
     this.spring.position.set(this.wx(2), sample(s.h, s.nx, s.ny, s.sourceX, 2), this.wz(s.sourceX));
     const ph = (t * 0.8) % 1;
     this.springRing!.scale.setScalar(1 + 0.25 * ph); (this.springRing!.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - ph);
-    this.spring.visible = !s.salmon;
+    this.spring.visible = !s.salmon && (s.phase === 'river');
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);
     this.forest!.wind.value = tNow / 1000;
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
+    this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
     this.cues(s);

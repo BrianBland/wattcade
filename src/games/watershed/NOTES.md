@@ -10,7 +10,8 @@ CONTRACT-REQUEST: none.
 - `sim/salmon.ts` `SalmonRun`: path traced from the depth grid (`updatePath`, once a second), lane steering in the fish's
   frame (right = lane −), camera-intro hold (`intro`, cue `go`), bears/eagles,
   falls (surface rise over 2 rows) needing `leapRpm`. Pure; `DEFAULT_SALMON` params (not yet ctx.tuning tunables).
-- `sim/plan.ts`: the fixed 45 min ERG plan (15 blocks, incl. the 6 min salmon run), `planAt(t, scale)`, `bandMid` (for the `cadence-follow` script hook).
+- `sim/sky.ts` `Sky`: evaporation (sunlit patches), cloud drift + cloudlets, rain footprint + rain-weighted spring x.
+- `sim/plan.ts`: the fixed 45 min ERG plan (16 blocks, each with a `phase`: evaporate/cloud/rain/river/salmon), `planAt(t, scale)`, `bandMid` (for the `cadence-follow` script hook).
 - `sim/sim.ts`: ERG effect `flow` (ftpFraction from the plan), cadence → parcel volume/speed/spread, steering, stats once per
   second, `rideDone` + save `{rides, bestCarved, bestDelta}`. Snapshot shares the live typed arrays (no copies).
 - `render/`: Three.js diorama (`renderer.ts`: drops/camera/cues/sound), `terrainView.ts` (2× terrain + skirt, procedural
@@ -21,7 +22,6 @@ CONTRACT-REQUEST: none.
 - Per sim tick: water fields absorb particles; land mesh rebuilds every 3rd tick, water mesh every 2nd (55k-vertex grids).
 - Snapshot `cues` (last 24, increasing ids) drive sounds/popups; the renderer skips history on mount.
 - Requires ERG: `requires: { erg: true }` (arcade gate in `src/shell/services.ts#missingRequirement`).
-
 ## Tuning (`watershed.*`)
 Flow/cadence mapping: flowPerFtp, volHeavy/volLight, rpmLow/rpmHigh, speedLow/speedHigh, bandBonus.
 Water/erosion: gravity, pressure, friction, shallowDrag, capacity, erode, deposit, massExp, talus. Plan: planScale.
@@ -37,4 +37,4 @@ Sim cost ~0.35 ms/step at ~1000 parcels (desktop node).
 ## Gaps / next
 - FTMS `capabilities.erg` is currently always true (Feature 0x2ACC isn't read), so the ERG gate only bites once it is.
 - Salmon params aren't tunables yet. Mesh rebuilds are 55k vertices each: fine on desktop, profile on iPad first.
-- Not built: water wheels, evaporation/cloud/rain phases, generated story levels (see SPEC §6.4 "Later").
+- Not built: water wheels, generated story levels (see SPEC §6.4 "Later"). Achievements live in src/progression.

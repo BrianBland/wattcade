@@ -32,7 +32,7 @@ export interface WatershedSnapshot {
 
 export interface SkyView {
   vapor: number; x: number; y: number; size: number; radius: number; seaY: number; inSun: boolean;
-  sun: SunSpot[]; puffs: Puff[]; rained: number; raining: number; springX: number;
+  sun: SunSpot[]; puffs: Puff[]; caught: number; rained: number; raining: number; springX: number;
 }
 export interface Cue { id: number; type: string; data?: Record<string, number | string | boolean> }
 export interface SalmonView {
@@ -268,7 +268,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
         phase: at.block.phase,
-        sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, rained: sky.rained, raining, springX: sky.springX() },
+        sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
         salmon: salmon.active ? salmonView() : null,
         cues,
         hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },

@@ -828,6 +828,7 @@ export function createSfSim(ctx: GameContext, opts?: SfOpts): GameSim & { snapsh
   return {
     update, hud,
     isOver: () => over,
+    inMenu: () => phase === 'hangar',
     receive(a: unknown) {
       const act = a as { type?: string; row?: number };
       if (act?.type === 'hangarRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'hangarRow', row: act.row });

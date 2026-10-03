@@ -19,7 +19,7 @@ export const RESULT_S = 4;
 export const MILESTONE_S = 600;
 const COUNT_STEP_S = 0.9;
 
-type Phase = 'intro' | 'count' | 'play' | 'ending';
+type Phase = 'intro' | 'menu' | 'count' | 'play' | 'ending';
 const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 
 /**
@@ -56,7 +56,7 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     const s = sessionRef.current; if (!s) return;
     if (p) { s.pause(); debugActions.panic(true); } else { debugActions.panic(false); s.resume(); }
   };
-  const startCount = () => { if (phaseRef.current !== 'intro') return; timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); };
+  const startCount = () => { if (phaseRef.current !== 'intro' && phaseRef.current !== 'menu') return; timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); };
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
     const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
@@ -113,8 +113,12 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
             const p = session.idle(dt);
             T.intro += dt;
             const l = Math.ceil(Math.max(0, INTRO_AUTO_S - T.intro)); if (l !== T.left) { T.left = l; setAutoLeft(l); }
-            if (p.has('a') || T.intro >= INTRO_AUTO_S) startCount();
+            if (p.has('a') || T.intro >= INTRO_AUTO_S) { if (session.sim.inMenu?.()) setPhase('menu'); else startCount(); }
             else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
+          } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), count down once it's dismissed
+            session.frame(dt);
+            if (session.sim.isOver()) toEnding(true);
+            else if (!session.sim.inMenu?.()) startCount();
           } else if (ph === 'count') {
             session.idle(dt);
             T.count += dt;

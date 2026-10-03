@@ -19,7 +19,7 @@ export interface SessionLike {
   mixer?: { rampIn(seconds?: number): void };
   finish(): SessionRecord;
   ctx: { bike(): Readonly<BikeState> };
-  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; receive?(action: unknown): void };
+  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; inMenu?(): boolean; receive?(action: unknown): void };
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }

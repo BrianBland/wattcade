@@ -245,23 +245,23 @@ export class WatershedRenderer implements GameRenderer {
       const vx = s.pvx[q], vy = s.pvy[q], vol = s.pvol[q];
       const x = s.px[q] + vx * ahead, y = s.py[q] + vy * ahead;
       const land = this.terrainView!.heightAt(x, y), ground = Math.max(SEA, land), depth = sample(this.water!.depth, nx, ny, x, y);
-      // drops merge into the surface: in deep water (and the sea) they sink below it, and slow sheet-flow shrinks
-      // away; they only stand proud where the water is fast: the spring, rapids, falls
-      const sink = land < SEA ? 1 : Math.min(1, Math.max(0, (depth - 0.12) / 0.6));
-      const fast = Math.min(1, Math.max(0, (Math.hypot(vx, vy) - 2) / 4));
-      const r = DROP_SCALE * this.dropK * Math.cbrt(vol) * (1 - 0.35 * sink) * (0.4 + 0.6 * fast);
+      // the water surface is the river; drops only appear as whitewater spray where the water is fast or falling
+      // (the spring, rapids, falls: the foam field) and are hidden everywhere else
+      const spray = land < SEA ? 0 : Math.max(sample(this.water!.foam, nx, ny, x, y) * 1.4, y < 4 ? 1 : 0, Math.min(1, Math.max(0, (Math.hypot(vx, vy) - 7) / 3)));
+      if (spray < 0.08) { this.m.makeScale(0, 0, 0); d.setMatrixAt(q, this.m); continue; }
+      const r = DROP_SCALE * this.dropK * Math.cbrt(vol) * Math.min(1, spray) * 0.8;
       const sp = Math.hypot(vx, vy);
       const groundAhead = Math.max(SEA, sample(h, nx, ny, x + vx * 0.1, y + vy * 0.1));
       this.dir.set(vy, (groundAhead - ground) * 10, vx);
       if (this.dir.lengthSq() < 1e-6) this.dir.set(1, 0, 0);
       this.dir.normalize();
       this.q.setFromUnitVectors(this.X, this.dir);
-      this.v.set(this.wx(y), ground + depth * 0.9 + r * (0.5 - 1.5 * sink), this.wz(x));
+      this.v.set(this.wx(y), ground + depth * 0.9 + r * 0.6, this.wz(x));
       this.sc.set(r * (1 + Math.min(1, sp * 0.07)), r * 0.9, r * 0.9);
       this.m.compose(this.v, this.q, this.sc);
       d.setMatrixAt(q, this.m);
       if (this.dropsDirty) {
-        this.tmpC.copy(C.drop).lerp(C.mud, Math.min(0.45, (s.psed[q] / Math.max(0.01, vol)) * 2)).lerp(C.foam, Math.min(0.55, Math.max(0, sp - 5) * 0.1));
+        this.tmpC.copy(C.drop).lerp(C.mud, Math.min(0.45, (s.psed[q] / Math.max(0.01, vol)) * 2)).lerp(C.foam, 0.35 + Math.min(0.4, Math.max(0, sp - 5) * 0.1));
         d.setColorAt(q, this.tmpC);
       }
     }

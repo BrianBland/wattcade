@@ -64,7 +64,7 @@ void main() {
 export class WaterView {
   readonly mesh: THREE.Mesh;
   /** Coarse (sim-grid) smoothed fields: depth, flow (grid x/y), foam. */
-  readonly depth: Float32Array; private fx: Float32Array; private fy: Float32Array; private foam: Float32Array;
+  readonly depth: Float32Array; private fx: Float32Array; private fy: Float32Array; readonly foam: Float32Array;
   private blur: Float32Array; private sx: Float32Array; private sy: Float32Array;
   private fd: Float32Array; private fflow: Float32Array; private ffoam: Float32Array; private cflow: Float32Array;
   private t1: Float32Array; private t2: Float32Array;

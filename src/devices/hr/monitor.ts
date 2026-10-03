@@ -5,6 +5,9 @@ import { parseHeartRate } from './codec';
 
 const STEP_MS = 8000;
 
+const HR_SERVICE_FULL = '0000180d-0000-1000-8000-00805f9b34fb';
+const HR_CHAR_FULL = '00002a37-0000-1000-8000-00805f9b34fb';
+
 export class HeartRateMonitor implements HrDevice {
   private sampleCbs = new Set<(s: DeviceSample) => void>();
   private statusCbs = new Set<(s: { connected: boolean }) => void>();
@@ -22,11 +25,21 @@ export class HeartRateMonitor implements HrDevice {
   private constructor(private device: BluetoothDevice) {}
   onLog(cb: (line: string) => void) { this.logCbs.add(cb); return () => { this.logCbs.delete(cb); }; }
   private log(l: string) { for (const cb of this.logCbs) cb(l); }
-  private step(s: string) { this.log(s); this.progress(s); }
+  private lastStep = '';
+  private step(s: string) { this.lastStep = s; this.log(s); this.progress(s); }
 
   /** Must be called from a user gesture. */
   static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<HeartRateMonitor> {
-    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [0x180d] }] });
+    // Bluefy sometimes rejects with a bare non-Error value (e.g. `2`); label it. Try the full-form UUID first, then 16-bit.
+    let device: BluetoothDevice | undefined; const errs: string[] = [];
+    for (const svc of [HR_SERVICE_FULL, 0x180d] as BluetoothServiceUUID[]) {
+      try { device = await navigator.bluetooth.requestDevice({ filters: [{ services: [svc] }] }); break; }
+      catch (e) {
+        if ((e as { name?: string })?.name === 'NotFoundError') throw e; // user cancelled
+        errs.push(`${svc}: ${e instanceof Error ? `${e.name}: ${e.message}` : `rejected with ${String(e)}`}`);
+      }
+    }
+    if (!device) throw new Error('Heart rate picker failed (' + errs.join(' | ') + ')');
     const m = new HeartRateMonitor(device);
     if (onLog) m.onLog(onLog);
     if (onProgress) m.progress = onProgress;
@@ -35,7 +48,7 @@ export class HeartRateMonitor implements HrDevice {
       await setupWithRetry(() => m.setup(), () => device.gatt?.disconnect(), l => m.log(l));
     } catch (e) {
       device.removeEventListener('gattserverdisconnected', m.onDisc);
-      throw e;
+      throw e instanceof Error ? e : new Error(`Heart rate connect failed at "${m.lastStep}": rejected with ${String(e)}`);
     } finally { m.progress = () => {}; }
     return m;
   }
@@ -46,8 +59,8 @@ export class HeartRateMonitor implements HrDevice {
     this.step('connecting GATT');
     const server = await withTimeout(this.device.gatt!.connect(), STEP_MS, 'connecting GATT');
     this.step('finding HR service');
-    const svc = await withTimeout(server.getPrimaryService(0x180d), STEP_MS, 'finding HR service');
-    const ch = await withTimeout(svc.getCharacteristic(0x2a37), STEP_MS, 'finding HR characteristic');
+    const svc = await withTimeout(server.getPrimaryService(HR_SERVICE_FULL), STEP_MS, 'finding HR service');
+    const ch = await withTimeout(svc.getCharacteristic(HR_CHAR_FULL), STEP_MS, 'finding HR characteristic');
     this.step('subscribing');
     // Listener first; on iOS startNotifications can be slow, so a first beat also counts as subscribed.
     const beat = new Promise<void>(r => { this.firstBeat = r; });

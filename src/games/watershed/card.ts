@@ -1,10 +1,10 @@
 // Arcade card: banner art + progress line (shell calls these; keep tiny, no renderer imports).
-export interface WatershedSave { rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number }
+export interface WatershedSave { rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number; bestScore?: number }
 
 export function progressLine(save: unknown): string | null {
   const s = save as WatershedSave | undefined;
   if (!s?.rides) return null;
-  return `${s.rides} ride${s.rides === 1 ? '' : 's'} · best valley ${Math.round((s.bestCarved ?? 0) / 10)}${s.bestSalmon ? ` · ${s.bestSalmon} salmon home` : ''}`;
+  return `${s.rides} ride${s.rides === 1 ? '' : 's'}${s.bestScore ? ` · best score ${s.bestScore}` : ''}${s.bestSalmon ? ` · ${s.bestSalmon} salmon home` : ''}`;
 }
 
 /** A valley falling to the sea with fat exaggerated drops bouncing down a river. 230×100 units. */

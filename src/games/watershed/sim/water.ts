@@ -48,6 +48,8 @@ export interface Emit {
   sourceX: number;    // across-valley position of the spring
   spread: number;     // spawn spread across the valley, cells
   erodeMul: number;   // multiplier on erosion (cadence-in-band bonus)
+  /** Rain: spawn parcels at rest anywhere in this disc (cells) instead of at the spring. */
+  area?: { x: number; y: number; r: number };
 }
 
 export const REF_VOL = 0.35;
@@ -102,10 +104,17 @@ export class Water {
       if (this.n >= this.max) { this.stats.dropped++; continue; }
       const i = this.n++;
       const r1 = this.rng(), r2 = this.rng(), r3 = this.rng();
-      this.x[i] = Math.min(nx - 2, Math.max(1, e.sourceX + (r1 - 0.5) * 2 * e.spread));
-      this.y[i] = 1 + r2 * 2;
-      this.vx[i] = (r3 - 0.5) * e.speed * 0.6;
-      this.vy[i] = e.speed;
+      if (e.area) {
+        const a = r1 * Math.PI * 2, d = Math.sqrt(r2) * e.area.r;
+        this.x[i] = Math.min(nx - 2, Math.max(1, e.area.x + Math.cos(a) * d));
+        this.y[i] = Math.min(this.t.ny - 2, Math.max(1, e.area.y + Math.sin(a) * d));
+        this.vx[i] = 0; this.vy[i] = (r3 - 0.5) * 0.5;
+      } else {
+        this.x[i] = Math.min(nx - 2, Math.max(1, e.sourceX + (r1 - 0.5) * 2 * e.spread));
+        this.y[i] = 1 + r2 * 2;
+        this.vx[i] = (r3 - 0.5) * e.speed * 0.6;
+        this.vy[i] = e.speed;
+      }
       this.vol[i] = vol; this.sed[i] = 0; this.age[i] = 0;
       const rel = vol / REF_VOL;
       this.kDrag[i] = Math.pow(rel, p.dragExp); this.kDep[i] = Math.pow(rel, p.depositExp); this.kDig[i] = Math.pow(rel, p.massExp);

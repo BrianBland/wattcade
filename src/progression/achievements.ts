@@ -46,5 +46,13 @@ export const ACHIEVEMENTS: Achievement[] = [
     check: (_p, r) => hasEvent(r, 'railFired', (d) => Number(d.charges) === 3),
   },
   { id: 'dungeon_clear', name: 'Dungeon Clear', desc: 'Defeat the boss', bonusXp: 75, check: (_p, r) => hasEvent(r, 'bossDefeated') },
+  // Watershed
+  { id: 'ws_cycle', name: 'The Water Cycle', desc: 'Finish a Watershed ride, sea to sky to sea', bonusXp: 50, check: (_p, r) => r.gameId === 'watershed' && hasEvent(r, 'rideDone') },
+  { id: 'ws_cloud', name: 'Head in the Clouds', desc: 'Soak up 20 cloudlets in one Watershed ride', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.cloudlets ?? 0) >= 20 },
+  { id: 'ws_canyon', name: 'Grand Canyon', desc: 'Carve a 40 m gorge', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.deepestCut ?? 0) >= 10 },
+  { id: 'ws_delta', name: 'Delta Builder', desc: 'Build a big delta (800+) in one ride', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.delta ?? 0) >= 8000 },
+  { id: 'ws_salmon', name: 'Salmon Shepherd', desc: 'Bring 50 salmon home in one ride', bonusXp: 60, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.salmonHome ?? 0) >= 50 },
+  { id: 'ws_clean_run', name: 'No Fish Left Behind', desc: 'Finish a salmon run without losing a fish', bonusXp: 40, check: (_p, r) => hasEvent(r, 'salmonHome', (d) => Number(d.lost) === 0 && Number(d.fish) >= 10) },
+  { id: 'ws_maestro', name: 'Cadence Maestro', desc: 'Hold the cadence band 90% of a Watershed ride', bonusXp: 50, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.bandPct ?? 0) >= 90 },
   { id: 'kilojoule_1000', name: 'Kilojoule Club', desc: '1000 kJ lifetime', bonusXp: 100, check: (p) => p.lifetime.kj >= 1000 },
 ];

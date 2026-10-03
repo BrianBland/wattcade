@@ -35,7 +35,7 @@ export const DEFAULT_SALMON: SalmonParams = {
 };
 
 export type SalmonCue =
-  | { type: 'run'; fish: number } | { type: 'go'; run: number } | { type: 'home'; fish: number } | { type: 'leap' } | { type: 'stuck' }
+  | { type: 'run'; fish: number } | { type: 'go'; run: number } | { type: 'home'; fish: number; lost: number } | { type: 'leap' } | { type: 'stuck' }
   | { type: 'warn'; kind: 'bear' | 'eagle' } | { type: 'strike'; kind: 'bear' | 'eagle'; caught: number };
 
 const GOAL_Y = 4;
@@ -48,7 +48,7 @@ export class SalmonRun {
   /** River centreline x and half-width per row, from the water-depth grid (smoothed in time). */
   readonly px: Float32Array; readonly pw: Float32Array;
   private pathReady = false;
-  private nextPred = 6; private predId = 0; private fallsState: 'none' | 'stuck' | 'leap' = 'none'; private restart = -1; private size = 0;
+  private nextPred = 6; private predId = 0; private fallsState: 'none' | 'stuck' | 'leap' = 'none'; private restart = -1; private size = 0; private lostAtLaunch = 0;
 
   constructor(private t: Terrain, private rng: () => number) {
     this.px = new Float32Array(t.ny).fill(t.nx / 2); this.pw = new Float32Array(t.ny).fill(2);
@@ -87,7 +87,7 @@ export class SalmonRun {
 
   private launch(p: SalmonParams): void {
     this.introTotal = this.intro = this.run === 0 ? p.introS : p.introNextS;
-    this.run++; this.y = this.t.ny - 6; this.fallsState = 'none'; this.lane = 0; this.predators = []; this.nextPred = 6;
+    this.run++; this.lostAtLaunch = this.lost; this.y = this.t.ny - 6; this.fallsState = 'none'; this.lane = 0; this.predators = []; this.nextPred = 6;
     this.fish = [];
     for (let i = 0; i < this.size; i++) {
       const a = this.rng(), b = this.rng();
@@ -166,7 +166,7 @@ export class SalmonRun {
 
     if (this.y <= GOAL_Y) {
       const n = this.fish.filter((f) => f.alive).length + 1;
-      this.home += n; cues.push({ type: 'home', fish: n });
+      this.home += n; cues.push({ type: 'home', fish: n, lost: this.lost - this.lostAtLaunch });
       this.predators = []; this.restart = p.restartS;
     }
     return cues;

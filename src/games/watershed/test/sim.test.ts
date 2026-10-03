@@ -13,8 +13,8 @@ describe('watershed plan', () => {
   it('is a 45 minute ride', () => { expect(PLAN_MINUTES).toBe(45); });
   it('planAt walks the blocks and ramps ERG', () => {
     expect(planAt(0).ftp).toBeCloseTo(PLAN[0].ftpFrom);
-    expect(planAt(3 * 60).ftp).toBeCloseTo((PLAN[0].ftpFrom + PLAN[0].ftpTo) / 2);
-    expect(planAt(6 * 60 + 1).block.name).toBe(PLAN[1].name);
+    expect(planAt(PLAN[0].minutes * 30).ftp).toBeCloseTo((PLAN[0].ftpFrom + PLAN[0].ftpTo) / 2);
+    expect(planAt(PLAN[0].minutes * 60 + 1).block.name).toBe(PLAN[1].name);
     expect(planAt(46 * 60).done).toBe(true);
     for (const b of PLAN) { expect(b.ftpFrom).toBeLessThanOrEqual(1); expect(b.ftpTo).toBeGreaterThanOrEqual(0.4); }
   });
@@ -73,4 +73,18 @@ describe('watershed sim', () => {
     const r = runHeadless({ game: module, script: 'idle', minutes: 2, seed: 1 });
     expect(r.summary.parcels).toBe(0);
   });
+});
+
+describe('watershed sky phases + achievements', () => {
+  it('a full autopilot ride earns the Watershed achievements it should', async () => {
+    const { ACHIEVEMENTS } = await import('../../../progression');
+    const { testProfile } = await import('../../../core');
+    const r = runHeadless({ game: module, script: 'cadence-follow', minutes: 46, seed: 1, simOpts: { autopilot: true } });
+    const record = { id: 'x', profileId: 'p', gameId: 'watershed', startedAt: 0, durationS: 2760, samples: [], events: r.events, stats: r.stats, gameSummary: r.summary };
+    const got = ACHIEVEMENTS.filter((a) => a.id.startsWith('ws_') && a.check(testProfile(), record as never)).map((a) => a.id);
+    expect(got).toEqual(expect.arrayContaining(['ws_cycle', 'ws_cloud', 'ws_salmon', 'ws_clean_run', 'ws_maestro']));
+    expect(Number(r.summary.vapor)).toBeGreaterThan(0);
+    expect(Number(r.summary.rainfall)).toBeGreaterThan(0);
+    expect(r.events.some((e) => e.type === 'springRises')).toBe(true);
+  }, 180_000);
 });

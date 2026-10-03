@@ -5,7 +5,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   id: 'towerdefense',
   title: 'Dynamo Defense',
-  blurb: 'Match weapon to enemy color. Each weapon loads the trainer differently.',
+  blurb: 'Your pedalling powers the base. Match weapons to enemy colours, build towers, sprint for Overdrive.',
   progressLine, drawCard,
   tags: ['sprint', 'intervals'],
   createSim(ctx, opts) {

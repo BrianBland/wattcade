@@ -33,3 +33,5 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 ## Known gaps
 - Visuals were checked with throwaway Playwright screenshots (desktop Chromium), not on the iPad. Icons are emoji (render as color on iOS). Font is ui-rounded (SF Pro Rounded on iOS), falling back to system-ui.
 - No new sfx: it reuses `src/audio/sfx.ts` names.
+
+- HUD insets: `render/layout.ts` lays scene + panel out above `insets.bottom` (tested); the last pixel rows are stretched under the HUD band so backgrounds stay full-bleed.

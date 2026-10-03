@@ -1,9 +1,10 @@
-import type { BikeState, GameRenderer, InputState, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, unlockAudio, type SfxName } from '../../../audio/sfx';
 import { fmtDur, fmtJ, fmtW } from '../sim/econ';
 import type { HamsterSnapshot, ShopItem } from '../sim/sim';
 import { COMIC, FONT, FURS, TAU, glow, hamster, rr } from './draw';
 import { SCENES, type Box, type SceneState } from './scenes';
+import { layout } from './layout';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; kind: 'confetti' | 'spark' | 'text' | 'seed' | 'fw'; color: string; text?: string; size: number; rot: number }
 interface Rect { x: number; y: number; w: number; h: number }
@@ -40,7 +41,7 @@ const ease = (k: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, k)), 3);
 export class HamsterRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
   private g!: CanvasRenderingContext2D;
-  private dpr = 1; private W = 800; private H = 600;
+  private dpr = 1; private W = 800; private H = 600; private insetB = 0;
   private send?: (a: unknown) => void;
   private last = 0; private time = 0; private spin = 0; private hue = 0;
   private parts: Particle[] = [];
@@ -59,8 +60,9 @@ export class HamsterRenderer implements GameRenderer {
     for (const t of this.rowRects) if (inR(t)) { this.send?.({ type: 'row', i: t.i }); return; }
   };
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
     this.send = ctx.send;
+    this.insetB = ctx.insets?.bottom ?? 0;
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0b0812;touch-action:none';
     container.appendChild(this.canvas);
@@ -70,6 +72,7 @@ export class HamsterRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   resize(w: number, h: number) { this.W = w; this.H = h; this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr); }
+  setInsets(i: Insets) { this.insetB = i.bottom; }
   unmount() { this.canvas?.removeEventListener('pointerdown', this.onPointer); this.canvas?.remove(); }
 
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
@@ -88,10 +91,7 @@ export class HamsterRenderer implements GameRenderer {
     const W = this.W, H = this.H;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     g.fillStyle = '#0b0812'; g.fillRect(0, 0, W, H);
-    const wide = W / H > 1.05;
-    const pw = wide ? Math.max(310, Math.min(470, W * 0.38)) : W, ph = wide ? H : H * 0.46;
-    const scene: Box = wide ? { x: 0, y: 0, w: W - pw, h: H } : { x: 0, y: 0, w: W, h: H - ph };
-    const panel: Box = wide ? { x: W - pw, y: 0, w: pw, h: H } : { x: 0, y: H - ph, w: W, h: ph };
+    const { scene, panel, UH } = layout(W, H, this.insetB); // foreground lives above the HUD band; backgrounds are stretched under it below
     const family = vibes.has('comic') ? COMIC : FONT;
     const F: Font = (px, weight = 600) => `${weight} ${px}px ${family}`;
 
@@ -125,6 +125,14 @@ export class HamsterRenderer implements GameRenderer {
     g.restore();
 
     this.drawPanel(g, s, panel, F, dt);
+
+    // keep backgrounds full-bleed: stretch the last rows above the HUD down over the band it covers
+    const band = H - UH;
+    if (band > 0.5) {
+      const d = this.dpr, sy = Math.max(0, Math.round(UH * d) - 3);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.drawImage(this.canvas, 0, sy, this.canvas.width, 3, 0, Math.round(UH * d), this.canvas.width, this.canvas.height - Math.round(UH * d));
+    }
   }
 
   // ---------- bookkeeping ----------

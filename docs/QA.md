@@ -28,3 +28,6 @@ Notes on implausible-looking results:
 - `src/games/towerdefense/sim/sim.ts`: `earlyClearHeal` default 10 -> 14. Sprints waves on seeds 2 and 3 were exactly 8 (threshold 8). Raising baseHp instead pushed idle to 3 waves (breaks the idle assert); healing only applies to cleared waves, so it lifts sprints/intervals margin while idle stays at 2.
 - `src/games/lighthouse/render/renderer.ts`: camera now 50 deg fov, 4:3 default aspect, positioned at (-6, 32, 78) looking at (-6, 8, 14). Ship lanes moved to the open sea in front of the shore (x -28..12, z 28..36) so ships no longer sail into the cliff. Projected check at 4:3: lamp top at NDC y 0.56, town at x 0.16-0.48, ships left and lower across the sea. Removed the forced `position: relative` on the container (shell `.mount` is absolutely positioned; HUD is absolute inside it). Not verified in a real browser.
 - Added `src/core/qa.sanity.test.ts` and this file.
+
+## HUD overlap check (every game, every release)
+With the HUD visible at 1180x820 and 820x1180 (and Fake bike on), confirm nothing important (play focus, wheel/ship/player, panels, tickers, toasts, last list rows, canvas buttons) sits under the bottom HUD band. Backgrounds should still reach the screen edge.

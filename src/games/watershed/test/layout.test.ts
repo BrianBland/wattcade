@@ -6,7 +6,7 @@ describe('watershed layout', () => {
     it(`${W}x${H} inset ${b}: everything sits above the shell HUD`, () => {
       const L = layout(W, H, b);
       const limit = H - b;
-      for (const box of [L.block, L.stats, L.meter, L.plan]) {
+      for (const box of [L.block, L.stats, L.meter, L.plan, L.popup]) {
         expect(box.y + box.h).toBeLessThanOrEqual(limit);
         expect(box.x).toBeGreaterThanOrEqual(0);
         expect(box.x + box.w).toBeLessThanOrEqual(W);

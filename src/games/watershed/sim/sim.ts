@@ -2,6 +2,7 @@ import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts'
 import { bandMid, PLAN, PLAN_MINUTES, planAt, type Style } from './plan';
 import type { WatershedSave } from '../card';
 import { makeTerrain, NX, type Terrain } from './terrain';
+import { DEFAULT_SALMON, SalmonRun, type Predator } from './salmon';
 import { DEFAULT_WATER, Water, type Emit, type WaterParams } from './water';
 
 export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number }
@@ -20,7 +21,20 @@ export interface WatershedSnapshot {
   rideS: number;
   cadence: number; cadNorm: number; rpmLow: number; rpmHigh: number; dropVol: number; inBand: boolean; bandBonus: number;
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
+  salmon: SalmonView | null;
+  /** Recent one-shot cues for the renderer (sounds, popups); ids increase. */
+  cues: Cue[];
   hooks: { cadence: number };
+}
+
+export interface Cue { id: number; type: string; data?: Record<string, number | string | boolean> }
+export interface SalmonView {
+  run: number; y: number; lane: number; home: number; lost: number; alive: number;
+  needLeap: boolean; leaping: boolean; stuck: boolean; restarting: boolean;
+  leader: { x: number; y: number };
+  fish: Array<{ x: number; y: number; alive: boolean }>;
+  /** x = bear's bank / eagle's target (grid x); cx = channel centre at the predator's row. */
+  predators: Array<Predator & { x: number; cx: number }>;
 }
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -67,6 +81,14 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let carved = 0, delta = 0, deepestCut = 0, statAcc = 1;
   const cutMarks = [2, 4, 6, 8, 10], deltaMarks = [25, 50, 100, 200, 400];
   let cutIdx = 0, deltaIdx = 0, saved = false;
+  const salmon = new SalmonRun(terrain, ctx.rng);
+  const cues: Cue[] = [];
+  let cueId = 0;
+  const cue = (type: string, data?: Cue['data'], emit = true) => {
+    cues.push({ id: ++cueId, type, data });
+    if (cues.length > 24) cues.shift();
+    if (emit) ctx.emit({ type, data });
+  };
 
   ctx.resistance.useVirtualGears(false);
 
@@ -80,13 +102,30 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     }
   };
 
+  const salmonView = (): SalmonView => {
+    const L = salmon.pos(salmon.y, salmon.lane);
+    return {
+      run: salmon.run, y: salmon.y, lane: salmon.lane, home: salmon.home, lost: salmon.lost, alive: salmon.alive(),
+      needLeap: salmon.needLeap, leaping: salmon.leaping, stuck: salmon.stuck, restarting: salmon.y <= 4,
+      leader: L,
+      fish: salmon.fish.map((f) => ({ ...salmon.pos(salmon.y + f.dy, f.lane), alive: f.alive })),
+      predators: salmon.predators.map((p) => ({ ...p, x: salmon.pos(p.y, p.kind === 'bear' ? p.side * 1.25 : p.lane).x, cx: salmon.pos(p.y, 0).x })),
+    };
+  };
+
   const sim = {
     update(dt: Seconds) {
       const at = planAt(t, scale);
       const b = at.block;
       if (at.index !== lastBlock) {
         lastBlock = at.index;
-        ctx.emit({ type: 'blockStart', data: { name: b.name, style: b.style, index: at.index } });
+        cue('blockStart', { name: b.name, style: b.style, index: at.index });
+        if (b.style === 'salmon' && !salmon.active) {
+          measure(); salmon.updatePath(water.w);
+          const size = 8 + Math.min(12, Math.floor(carved / 1000));
+          salmon.start(size);
+          cue('salmonRun', { fish: size + 1 });
+        } else if (b.style !== 'salmon' && salmon.active) salmon.stop();
       }
       ctx.resistance.set({ id: 'flow', mode: 'erg', ftpFraction: +at.ftp.toFixed(3) });
 
@@ -99,18 +138,25 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       bonus += ((inBand ? 1 : 0) - bonus) * (1 - Math.exp(-dt / 1.5));
       if (inBand) bandS += dt;
 
-      // steer the spring across the valley head
-      if (opts.autopilot) sourceX = NX / 2 + 18 * Math.sin((2 * Math.PI * t) / 240);
-      else {
-        let dir = 0;
-        if (input.held.has('up')) dir -= 1;
-        if (input.held.has('down')) dir += 1;
-        sourceX += dir * tun.steerRate() * dt;
-        for (const p of input.pressed) {
-          if (p === 'shiftUpL' || p === 'shiftUpR') sourceX -= tun.shiftStep();
-          if (p === 'shiftDnL' || p === 'shiftDnR') sourceX += tun.shiftStep();
-        }
+      // steering: the spring, or the salmon school during the run
+      let dir = 0, nudge = 0;
+      if (input.held.has('up')) dir -= 1;
+      if (input.held.has('down')) dir += 1;
+      for (const p of input.pressed) {
+        if (p === 'shiftUpL' || p === 'shiftUpR') nudge -= 1;
+        if (p === 'shiftDnL' || p === 'shiftDnR') nudge += 1;
       }
+      if (salmon.active) {
+        const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer: dir, nudge, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale }, DEFAULT_SALMON);
+        for (const c of sc) {
+          if (c.type === 'home') cue('salmonHome', { fish: c.fish });
+          else if (c.type === 'run') cue('salmonRun', { fish: c.fish });
+          else if (c.type === 'strike') cue('predatorStrike', { kind: c.kind, caught: c.caught });
+          else if (c.type === 'warn') cue('predatorWarn', { kind: c.kind }, false);
+          else cue(c.type === 'leap' ? 'salmonLeap' : 'salmonStuck');
+        }
+      } else if (opts.autopilot) sourceX = NX / 2 + 18 * Math.sin((2 * Math.PI * t) / 240);
+      else sourceX += dir * tun.steerRate() * dt + nudge * tun.shiftStep();
       sourceX = clamp(sourceX, 12, NX - 12);
 
       const flowing = cadence > 20 && !at.done;
@@ -127,14 +173,18 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       statAcc += dt;
       if (statAcc >= 1) {
         statAcc = 0; measure();
-        while (cutIdx < cutMarks.length && deepestCut >= cutMarks[cutIdx]) ctx.emit({ type: 'gorge', data: { depth: cutMarks[cutIdx++] } });
-        while (deltaIdx < deltaMarks.length && delta >= deltaMarks[deltaIdx]) ctx.emit({ type: 'deltaGrew', data: { volume: deltaMarks[deltaIdx++] } });
+        if (salmon.active) salmon.updatePath(water.w);
+        while (cutIdx < cutMarks.length && deepestCut >= cutMarks[cutIdx]) cue('gorge', { depth: cutMarks[cutIdx++] });
+        while (deltaIdx < deltaMarks.length && delta >= deltaMarks[deltaIdx]) cue('deltaGrew', { volume: deltaMarks[deltaIdx++] });
       }
       if (!saved && t >= rideS) {
         saved = true; measure();
         const prev = ctx.load<WatershedSave>() ?? {};
-        ctx.save({ rides: (prev.rides ?? 0) + 1, bestCarved: Math.max(prev.bestCarved ?? 0, Math.round(carved)), bestDelta: Math.max(prev.bestDelta ?? 0, Math.round(delta)) });
-        ctx.emit({ type: 'rideDone', data: { carved: Math.round(carved), delta: Math.round(delta) } });
+        ctx.save({
+          rides: (prev.rides ?? 0) + 1, bestCarved: Math.max(prev.bestCarved ?? 0, Math.round(carved)),
+          bestDelta: Math.max(prev.bestDelta ?? 0, Math.round(delta)), bestSalmon: Math.max(prev.bestSalmon ?? 0, salmon.home),
+        });
+        cue('rideDone', { carved: Math.round(carved), delta: Math.round(delta), salmon: salmon.home });
       }
       ctx.debug('watershed.block', b.name); ctx.debug('watershed.parcels', water.n);
       ctx.debug('watershed.dropVol', +dropVol.toFixed(2)); ctx.debug('watershed.inBand', inBand);
@@ -142,10 +192,12 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     },
     hud(): GameHud {
       const b = planAt(t, scale).block;
+      const fish = salmon.active;
+      const label = { grind: 'Grind', spin: 'Spin', steady: 'Steady', salmon: salmon.needLeap ? 'Leap: 95+' : 'Swim', free: 'Easy' }[b.style];
       return {
-        targetCadence: b.rpm ? { ...b.rpm, label: b.style === 'grind' ? 'Grind' : b.style === 'spin' ? 'Spin' : 'Steady' } : undefined,
+        targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
-        controls: [{ button: 'dpad', label: 'Steer spring' }, { button: 'shiftersR', label: 'Nudge spring' }],
+        controls: [{ button: 'dpad', label: fish ? 'Steer the school' : 'Move the spring' }, { button: 'shiftersR', label: fish ? 'Dart across' : 'Nudge the spring' }],
       };
     },
     snapshot(): WatershedSnapshot {
@@ -160,7 +212,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         blocks: PLAN.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
-        hooks: { cadence: bandMid(at.block) },
+        salmon: salmon.active ? salmonView() : null,
+        cues,
+        hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },
       };
     },
     isOver: () => t >= rideS,
@@ -171,6 +225,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         carved: Math.round(carved), delta: Math.round(delta), deepestCut: +deepestCut.toFixed(1),
         toSea: Math.round(water.stats.toSea), minutesInBand: +(bandS / 60).toFixed(1),
         bandPct: Math.round((100 * bandS) / Math.max(1, banded)), blocks: lastBlock + 1, parcels: water.stats.spawned,
+        salmonHome: salmon.home, salmonLost: salmon.lost,
       };
     },
     dispose() { ctx.resistance.clear('flow'); },

@@ -3,8 +3,8 @@ import type { WatershedSnapshot } from '../sim/sim';
 import type { Style } from '../sim/plan';
 import { layout, type Box } from './layout';
 
-const STYLE_COLOR: Record<Style, string> = { grind: '#ff9a4a', spin: '#5fd6ff', steady: '#7dff9a', free: '#9aa7b4' };
-const STYLE_WORD: Record<Style, string> = { grind: 'GRIND', spin: 'SPIN', steady: 'STEADY', free: 'EASY' };
+const STYLE_COLOR: Record<Style, string> = { grind: '#ff9a4a', spin: '#5fd6ff', steady: '#7dff9a', free: '#9aa7b4', salmon: '#ff8a8a' };
+const STYLE_WORD: Record<Style, string> = { grind: 'GRIND', spin: 'SPIN', steady: 'STEADY', free: 'EASY', salmon: 'SWIM' };
 
 const CSS = `
 .ws-ui { position:absolute; inset:0; pointer-events:none; font: 600 15px/1.25 system-ui, -apple-system, sans-serif; color:#fff; text-shadow: 0 1px 2px #0008; -webkit-user-select:none; user-select:none; }
@@ -27,6 +27,13 @@ const CSS = `
 .ws-meter .band { position:absolute; top:-3px; bottom:-3px; border:2px solid #fff; border-radius:6px; box-sizing:border-box }
 .ws-meter .dot { position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; background:#fff; box-shadow:0 0 6px #000a; transition: left .25s }
 .ws-meter .dot.ok { background:#7dff9a }
+.ws-pop { position:absolute; box-sizing:border-box; text-align:center; padding: 12px 18px; border-radius: 18px; background: rgba(10,26,40,0.72); border:1px solid rgba(255,255,255,.18);
+  opacity:0; transform: translateY(-8px) scale(.97); transition: opacity .35s, transform .35s; }
+.ws-pop.on { opacity:1; transform:none }
+.ws-pop .t { font-size: 26px; font-weight: 800; letter-spacing:.01em }
+.ws-pop .s { font-size: 16px; opacity:.92; margin-top:4px }
+.ws-pop.salmon { border-color: #ff8a8a } .ws-pop.warn { background: rgba(110,30,20,0.8) }
+.ws-stats .fish { grid-column: 1 / 3; font-size: 12px; letter-spacing: .08em; opacity:.8; text-transform: uppercase }
 `;
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -35,6 +42,7 @@ export class Hud {
   private root = document.createElement('div');
   private style = document.createElement('style');
   private block: HTMLDivElement; private stats: HTMLDivElement; private plan: HTMLDivElement; private meter: HTMLDivElement;
+  private pop = document.createElement('div'); private popLeft = 0;
   private planKey = '';
   private size: [number, number] = [800, 600]; private insetB = 0;
   private rpmLow = 60; private rpmHigh = 110;
@@ -44,6 +52,7 @@ export class Hud {
     this.root.className = 'ws-ui';
     const mk = (cls: string) => { const d = document.createElement('div'); d.className = `ws-panel ${cls}`; this.root.appendChild(d); return d; };
     this.block = mk('ws-block'); this.stats = mk('ws-stats'); this.plan = mk('ws-plan'); this.meter = mk('ws-meter');
+    this.pop.className = 'ws-pop'; this.pop.innerHTML = '<div class="t"></div><div class="s"></div>'; this.root.appendChild(this.pop);
     this.meter.innerHTML = '<div class="row"><span>HEAVY · CARVES</span><span>LIGHT · CARRIES</span></div><div class="track"><div class="band"></div><div class="dot"></div></div>';
     container.append(this.style, this.root);
   }
@@ -55,7 +64,18 @@ export class Hud {
   private place() {
     const L = layout(this.size[0], this.size[1], this.insetB);
     const put = (el: HTMLElement, b: Box) => Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, minHeight: '0' });
-    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter);
+    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter); put(this.pop, L.popup);
+  }
+
+  /** A one-or-two-line instruction popup for `seconds`. */
+  popup(title: string, sub: string, seconds = 4, tone: '' | 'salmon' | 'warn' = '') {
+    (this.pop.querySelector('.t') as HTMLElement).textContent = title;
+    (this.pop.querySelector('.s') as HTMLElement).textContent = sub;
+    this.pop.className = `ws-pop on ${tone}`;
+    this.popLeft = seconds;
+  }
+  tick(dt: number) {
+    if (this.popLeft > 0) { this.popLeft -= dt; if (this.popLeft <= 0) this.pop.classList.remove('on'); }
   }
 
   update(s: WatershedSnapshot) {
@@ -63,8 +83,11 @@ export class Hud {
     this.block.innerHTML = `<div class="nm">${b.name}<b>${fmt(b.left)}</b></div>`
       + `<span class="st" style="background:${STYLE_COLOR[b.style]}">${STYLE_WORD[b.style]}${b.rpm ? ` ${b.rpm.min}${b.rpm.max ? `–${b.rpm.max}` : '+'} rpm` : ''}</span>`
       + ` <span style="font-size:13px;opacity:.8">ERG ${Math.round(b.ftp * 100)}% FTP</span><div class="hint">${b.hint}</div>`;
-    this.stats.innerHTML = `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
-      + `<span>Valley carved</span><b>${Math.round(s.carved / 10)}</b><span>Delta built</span><b>${Math.round(s.delta / 10)}</b>`;
+    const f = s.salmon;
+    this.stats.innerHTML = f
+      ? `<span class="fish">Salmon run ${f.run}</span><span>School</span><b>${f.alive} 🐟</b><span>Home</span><b>${f.home}</b><span>Lost</span><b>${f.lost}</b>`
+      : `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
+        + `<span>Valley carved</span><b>${Math.round(s.carved / 10)}</b><span>Delta built</span><b>${Math.round(s.delta / 10)}</b>`;
 
     const key = `${s.blocks.length}:${b.index}`;
     if (key !== this.planKey) {
@@ -82,8 +105,9 @@ export class Hud {
       const a = pos(b.rpm.min), z = b.rpm.max !== undefined ? pos(b.rpm.max) : 100;
       Object.assign(band.style, { display: 'block', left: `${a}%`, width: `${Math.max(3, z - a)}%` });
     } else band.style.display = 'none';
+    if (f?.needLeap) Object.assign(band.style, { display: 'block', left: `${pos(95)}%`, width: `${100 - pos(95)}%` });
     dot.style.left = `${s.cadNorm * 100}%`;
-    dot.classList.toggle('ok', s.inBand);
+    dot.classList.toggle('ok', f?.needLeap ? s.cadence >= 95 : s.inBand);
   }
 
   unmount() { this.root.remove(); this.style.remove(); }

@@ -15,7 +15,9 @@ export const scenarios: Array<{
     assert(s, _st, run) {
       const f: string[] = [];
       if (!run.isOver) f.push('ride did not finish in 45 min');
-      if (n(s, 'blocks') !== 18) f.push(`blocks ${s.blocks} != 18`);
+      if (n(s, 'blocks') !== 15) f.push(`blocks ${s.blocks} != 15`);
+      if (n(s, 'salmonHome') < 40) f.push(`salmonHome ${s.salmonHome} < 40 with an autopilot dodging`);
+      if (!run.events.some((e) => e.type === 'salmonRun')) f.push('no salmon run');
       if (n(s, 'bandPct') < 85) f.push(`bandPct ${s.bandPct} < 85 while following the band`);
       if (n(s, 'carved') < 3000) f.push(`carved ${s.carved} < 3000`);
       if (n(s, 'delta') < 1000) f.push(`delta ${s.delta} < 1000`);

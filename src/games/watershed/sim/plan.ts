@@ -1,6 +1,6 @@
 // The fixed 45-minute Watershed ride: ERG targets (FTP fraction) and cadence bands per block.
 
-export type Style = 'free' | 'grind' | 'spin' | 'steady';
+export type Style = 'free' | 'grind' | 'spin' | 'steady' | 'salmon';
 
 export interface Block {
   name: string;
@@ -28,10 +28,7 @@ export const PLAN: Block[] = [
   { name: 'Flood surge 3', hint: 'Last surge. Dig!', minutes: 2, ftpFrom: 0.95, ftpTo: 0.95, style: 'grind', rpm: { min: 65, max: 78 } },
   { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, style: 'spin', rpm: SPIN },
   { name: 'Still pool', hint: 'Ease off.', minutes: 2, ftpFrom: 0.55, ftpTo: 0.55, style: 'free' },
-  { name: 'Meander: grind', hint: 'Cut the bend.', minutes: 1.5, ftpFrom: 0.72, ftpTo: 0.72, style: 'grind', rpm: GRIND },
-  { name: 'Meander: spin', hint: 'Sweep the silt.', minutes: 1.5, ftpFrom: 0.72, ftpTo: 0.72, style: 'spin', rpm: SPIN },
-  { name: 'Meander: grind', hint: 'Cut the bend.', minutes: 1.5, ftpFrom: 0.72, ftpTo: 0.72, style: 'grind', rpm: GRIND },
-  { name: 'Meander: spin', hint: 'Sweep the silt.', minutes: 1.5, ftpFrom: 0.72, ftpTo: 0.72, style: 'spin', rpm: SPIN },
+  { name: 'Salmon run', hint: 'Guide the school up your river. Spin to leap the falls!', minutes: 6, ftpFrom: 0.68, ftpTo: 0.68, style: 'salmon', rpm: { min: 85 } },
   { name: 'Delta', hint: 'Cool down. Watch the delta grow.', minutes: 5, ftpFrom: 0.55, ftpTo: 0.45, style: 'free' },
 ];
 
@@ -56,6 +53,7 @@ export function planAt(t: number, scale = 1, plan: Block[] = PLAN): PlanAt {
 
 /** A cadence in the middle of a block's band (what a well-behaved rider would hold). */
 export function bandMid(b: Block): number {
+  if (b.style === 'salmon') return 96;
   if (!b.rpm) return 90;
   return b.rpm.max !== undefined ? (b.rpm.min + b.rpm.max) / 2 : b.rpm.min + 6;
 }

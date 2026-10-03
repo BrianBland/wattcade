@@ -5,7 +5,7 @@ import { controlRows } from '../controlGlyphs';
 import { ZONE_COLORS } from '../hud/zoneMath';
 import { useMenuNav } from '../useMenuNav';
 
-const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals' };
+const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
 
 /**
  * Before a game: title, how to play, the target zone and the current controls, then a 3-2-1-GO countdown.

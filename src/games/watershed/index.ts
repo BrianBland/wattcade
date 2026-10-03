@@ -7,7 +7,8 @@ export const module: GameModule = {
   title: 'Watershed',
   blurb: 'You are the river. ERG sets how much water you are; your cadence decides if it carves gorges or races silt to the sea.',
   progressLine, drawCard,
-  tags: ['zone2', 'intervals'],
+  tags: ['erg', 'intervals'],
+  requires: { erg: true },
   createSim(ctx, opts) {
     return createWatershedSim(ctx, opts as WatershedOpts | undefined);
   },

@@ -13,6 +13,7 @@ export interface Layout {
   stats: Box;     // top-right: gorge / delta
   plan: Box;      // top-centre: the ride timeline
   meter: Box;     // water-style meter (heavy ↔ light) under the block card
+  popup: Box;     // centred instruction popup (one or two lines)
 }
 
 export function layout(W: number, H: number, insetB: number): Layout {
@@ -24,5 +25,8 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const meter: Box = { x: pad, y: (narrow ? stats.y + stats.h : block.y + block.h) + 8, w: Math.min(W - 2 * pad, 300), h: 44 };
   const planX = narrow ? pad : block.x + block.w + pad, planW = narrow ? W - 2 * pad : Math.max(120, stats.x - pad - planX);
   const plan: Box = { x: planX, y: narrow ? meter.y + meter.h + 8 : pad, w: planW, h: 34 };
-  return { UH, viewOffsetY: b / 2, focusY: UH / 2, block, stats, plan, meter };
+  const pw = Math.min(W - 2 * pad, 620), ph = 92;
+  const below = Math.max(meter.y + meter.h, plan.y + plan.h) + 12;
+  const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.24), UH - ph - pad), w: pw, h: ph };
+  return { UH, viewOffsetY: b / 2, focusY: UH / 2, block, stats, plan, meter, popup };
 }

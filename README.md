@@ -1,12 +1,19 @@
 # wattcade
 
-A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broadcast**, played on an iPad in the **Bluefy** browser via Web Bluetooth. It has three games, each tying trainer resistance to gameplay:
+A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broadcast**, played on an iPad in the **Bluefy** browser via Web Bluetooth. It has six games plus a warm-up ride, each tying trainer resistance to gameplay:
 
 | Game | Style | Trainer use |
 |---|---|---|
-| **Crank Crawler** | 2D dungeon crawler (RotMG-lite) | Cadence moves you and crank revs fire. Swamp, low HP and the boss shield add grade. Sprint to crack the shield. |
-| **Keeper's Light** | 3D Zone 2 idle game | Holding Zone 2 clears fog and calms the sea so ships dock. Storms demand Zone 3+. The town persists between sessions. |
+| **Crank Crawler** | 2D endless dungeon crawler (RotMG-lite) with loot, levels and roguelite upgrades | Crank revs fire; Zone 2 heals. Terrain, swamp, low HP, curses and boss shields add grade. Sprint to crack boss shields; shrines ask for Z3+, Z2 holds, sprints or 95 rpm spins. |
+| **Keeper's Light** | 3D Zone 2 idle game | Holding Zone 2 clears fog and calms the sea so ships dock. A gentle swell rolls the grade. Storms add grade and demand Zone 3+, with Z5 lightning surges. The island town persists and grows between sessions. |
 | **Dynamo Defense** | 2D tower defense | Gatling = sim grade, Flamethrower = resistance level, Railgun = ERG. Match each weapon to the enemy colour. |
+| **Sprocket Squadron** | 2D shoot-'em-up with sectors, bosses, power-ups and hangar upgrades | Shifters fire the left/right guns, cadence reloads, power thrusts, and sprints fire the overdrive beam. Attack runs add grade and ask for Zone 4. |
+| **HAMSTERGRID** | Idle/clicker empire, from one hamster to a Dyson swarm | Hamsters run only while you pedal; steady Zone 2 builds a Mind-Numbing multiplier. Each era adds a little grade; strikes add +3 % until a Z3+ push breaks them; spin classes want 95 rpm; clinical trials are 3 min of ERG at 0.8 FTP. |
+| **Watershed** | 3D ERG game: you are the river, with particle water and real-time erosion | **Needs ERG.** A fixed 45 min ERG workout sets how much water you are; your **cadence** sets what kind: grind (60–72 rpm) for heavy water that carves gorges, spin (98+) for light water that carries silt out to a growing delta. Late in the ride, a salmon run swims up the river you carved: steer the school past bears and eagles, and spin past 95 rpm to leap uncut falls. |
+
+Behind the menus runs the **Warm-up Ride**, a free ride through rolling countryside, coast and the Moon where the hills on screen are the grade on the trainer (toggle *Road: Hills/Flat* in the arcade).
+
+**ERG safety:** in ERG mode the trainer holds the watts whatever your cadence, so slowing down means more torque. If cadence drops below 55 rpm, the mixer eases the ERG target to 60 % until you spin back up, then ramps it back in over 8 s (tunable `core.ergRelief*`).
 
 The full spec is in [`docs/SPEC.md`](docs/SPEC.md), QA results are in [`docs/QA.md`](docs/QA.md), and the first-ride checklist is [`HARDWARE_TEST.md`](HARDWARE_TEST.md).
 
@@ -25,7 +32,10 @@ npm run typecheck
 npm run build
 npm run sim -- --game dungeon --script sprints --minutes 20 --seed 1 --autopilot
 npm run sim:all      # every game × scenario headless; exits non-zero on failure
+npm run snap:watershed -- --script grind --minutes 15 --every 5   # top-down PNGs of the river sim in out/watershed/
 ```
+
+Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell).
 
 ## Controls
 
@@ -41,7 +51,7 @@ npm run sim:all      # every game × scenario headless; exits non-zero on failur
 | Debug overlay | `` ` `` | hold both powerUp 1 s | hold Select+Start |
 | Panic (flat resistance) | 0 | — (overlay button) | — |
 
-**Fake bike:** W/S = cadence ±5, E/D = power ±10, R/F = HR ±5. The debug overlay also has sliders and a script picker (idle, z2, z2-drift, sprints, intervals, storm-ready, mash) and a timeScale slider from 1× to 100×. timeScale is available in fake mode only.
+**Fake bike:** W/S = cadence ±5, E/D = power ±10, R/F = HR ±5. The debug overlay also has sliders and a script picker (idle, z2, z2-drift, sprints, intervals, storm-ready, grind, spin, cadence-follow, mash) and a timeScale slider from 1× to 100×. timeScale is available in fake mode only.
 
 Touch: triple-tap the top-left corner to toggle the debug overlay. While the overlay is open, the left shifters change difficulty and the right shifters change timeScale.
 
@@ -90,7 +100,7 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 ## Make a new game
 
 1. **Copy a folder:** `cp -r src/games/towerdefense src/games/mygame` (2D Canvas), or start from `lighthouse` for Three.js.
-2. **Implement `GameModule`** in `index.ts`: `id`, `title`, `blurb`, `tags`, `createSim(ctx, opts)`, and `loadRenderer()`, which must use dynamic `import()`.
+2. **Implement `GameModule`** in `index.ts`: `id`, `title`, `blurb`, `tags`, `createSim(ctx, opts)`, and `loadRenderer()`, which must use dynamic `import()`. Optional: `requires: { erg: true }` if the game can't run without ERG (the arcade then blocks it on a trainer that lacks ERG), `progressLine` and `drawCard` for the arcade card.
 3. **Keep `sim/` pure:**
    - No DOM, `three`, Preact or `Math.random`/`Date.now`.
    - Use `ctx.rng()` and the `dt` passed to `update`.

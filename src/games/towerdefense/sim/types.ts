@@ -26,6 +26,7 @@ export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; i
 export interface GarageRow { kind: 'start' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
 export interface GarageView { bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
+export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
 export type LaneForecast = Record<Element | 'gold' | 'prism', number>;
 
@@ -40,6 +41,8 @@ export interface TdSnapshot {
   flaming: boolean; flameRange: number; flameHalfAngle: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;
   grid: number; overdrive: boolean;
   surge: SurgeView | null;
+  /** cadence drill; `overclock` = seconds of double Gatling fire left */
+  spin: SpinView | null; overclock: number;
   scrap: number; partsRun: number; bank: number;
   towers: TowerView[]; shells: ShellView[]; workshop: WorkshopView | null;
   enemies: EnemyView[]; fx: Fx[]; banner: Banner | null;

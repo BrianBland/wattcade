@@ -14,7 +14,8 @@ CONTRACT-REQUESTs: none.
 - Enemies: mini/dart (blue), brute/charger (red, chargers sprint the last half), bastion/carrier (purple, carriers drop minis), prism (cycles colour every 4 s from wave 12), Goliath boss (gold, shield cycles; escorts at 66/33% HP). Right colour x1.5, wrong x0.25.
 - Dynamo: towers fire at `ftpFraction / towerNominalFtp` speed (0.65 FTP = 100%, cap 160%, 0 under 15 rpm). Sprinting = Overdrive (x1.5 damage + tower speed).
 - Towers: Tesla (chain, blue), Mortar (splash shells, red), Prism Lens (beam at the toughest, purple); Lv 1-5. Scrap from kills/waves buys, upgrades, sells (50%) and repairs the base.
-- Power Surge every 3 waves from wave 3: 15 s at power zone 4+ within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Counts power zone (HR lags too much). `hooks.storm`/`hooks.surge` are set while active.
+- Power Surge every 3 waves from wave 3: 15 s at `min(5, powerZone)` >= 4 within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Short effort, so judged on power (SPEC short-effort rule); `targetZone.source: 'power'` (also on the Rail band). `hooks.storm`/`hooks.surge` set while active.
+- Spin-up (cadence drill) every 3 waves from wave 4: 15 s at >= 95 rpm (`cadence3s`) within 40 s -> Gatling Overclock (double fire rate) for 30 s + scrap. Sets `GameHud.targetCadence`. Fake scripts never reach 95 rpm, so tests drive it with manual cadence.
 - Reactor cores (lives, `cores` default 3; 0 = unlimited): losing the base clears the field and rebuilds it; the last core ends the run (`isOver`).
 - Waves end early (heal) when heavies are dead after `waveMinS`, else at `waveMaxS` (60 s).
 
@@ -28,7 +29,7 @@ CONTRACT-REQUESTs: none.
 - Balance (autopilot, FTP 200, fresh save): z2 ~40-43 min / wave ~52 before the third core; 20 min sprints/intervals ~30 waves.
 
 ## Testing
-`npx vitest run src/games/towerdefense`: scenarios (sprints, idle, idle-cores, intervals, z2-economy, surge-ready), geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.
+`npx vitest run src/games/towerdefense`: scenarios (sprints, idle, idle-cores, intervals, z2-economy, surge-ready), spin-up/surge targets, geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.
 
 ## Known gaps
 Renderer checked with throwaway Playwright screenshots (landscape/portrait/phone), not yet on a real iPad; sounds untested by ear. Manual (non-autopilot) play not balance-tested.

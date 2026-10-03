@@ -113,6 +113,36 @@ describe('garage meta', () => {
   });
 });
 
+describe('effort targets', () => {
+  // step until a challenge starts, then ride it with fixed manual cadence/power
+  function ride(kind: 'spin' | 'surge', cadence: number, power: number) {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { autopilot: true } });
+    let n = 0;
+    while (!snap(s)[kind] && n++ < 30 * 60 * 10) s.step(1);
+    expect(snap(s)[kind]?.state).toBe('active');
+    const hud = s.sim.hud!();
+    s.fakeBike!.useScript(null); s.fakeBike!.manual.cadence = cadence; s.fakeBike!.manual.power = power;
+    s.step(30 * 50);
+    return { s, hud, sum: s.sim.summary() };
+  }
+  it('Spin-up is a cadence drill: 100 rpm overclocks the Gatling', () => {
+    const { s, hud, sum } = ride('spin', 100, 130);
+    expect(hud.targetCadence).toEqual({ min: 95, label: 'Spin up the Gatling' });
+    expect(sum.spinsWon).toBe(1);
+    expect(Number(sum.overclockSeconds)).toBeGreaterThan(0);
+    expect(s.sim.hud!().targetCadence).toBeUndefined();
+  });
+  it('Spin-up is missed at 80 rpm', () => {
+    const { sum } = ride('spin', 80, 130);
+    expect(sum).toMatchObject({ spinsWon: 0, spinsFailed: 1 });
+  });
+  it('surges are short efforts judged on power, and say so to the HUD', () => {
+    const { hud, sum } = ride('surge', 90, 200); // 1.0 FTP = power Z4 straight away, whatever HR does
+    expect(hud.targetZone).toMatchObject({ min: 4, max: 5, source: 'power' });
+    expect(sum.surgesWon).toBe(1);
+  });
+});
+
 describe('workshop', () => {
   it('▼ opens it on an empty pad, A builds, B closes', () => {
     const input = new TimelineInput([

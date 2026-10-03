@@ -16,7 +16,7 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   build: { s: 'build' }, upgrade: { s: 'upgrade' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
   select: { s: 'uiMove' }, uiOpen: { s: 'uiSelect' }, uiClose: { s: 'uiBack' }, waveStart: { s: 'siren', vol: 0.8 }, waveClear: { s: 'chime' },
   baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, coreLost: { s: 'lampOut' },
-  surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
+  surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
 const MODE_VAL: Record<Weapon, string> = { gatling: '+1%', flame: '35%', rail: '95%' };
 

@@ -42,6 +42,7 @@ const TIPS = [
   'Gold bosses shift shield colour; swap to match.',
   'Clear a wave early to repair the base.',
   'Prisms change colour every 4 s: watch the outline.',
+  'Spin-up: high cadence in an easy effort overclocks the Gatling.',
   'Parts bank between runs; spend them in the Garage.',
 ];
 function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number, maxLines = 3): number {
@@ -90,7 +91,9 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
     if (act) { g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, rh - 2, 8 * u); g.stroke(); }
     btnGlyph(g, WEAPON_BUTTON[wp], x + 18 * u, y + rh / 2, 11 * u);
     font(g, 15 * u, 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.75)'; g.fillText(WEAPON_NAME[wp], x + 36 * u, y + 18 * u);
-    font(g, 10.5 * u, 600); g.fillStyle = 'rgba(200,215,240,0.55)'; g.fillText(WEAPON_HINT[wp], x + 36 * u, y + 32 * u);
+    const oc = wp === 'gatling' && s.overclock > 0;
+    font(g, 10.5 * u, oc ? 800 : 600); g.fillStyle = oc ? '#8fd8ff' : 'rgba(200,215,240,0.55)';
+    g.fillText(oc ? `OVERCLOCKED x2 · ${Math.ceil(s.overclock)}s` : WEAPON_HINT[wp], x + 36 * u, y + 32 * u);
     font(g, 10 * u, 800); g.fillStyle = c; g.textAlign = 'right'; g.fillText(`${MODE[wp]} ${modeVal[wp]}`, x + w - 8 * u, y + 18 * u); g.textAlign = 'left';
     if (act && s.swapLeft > 0) bar(g, x + 36 * u, y + rh - 6 * u, w - 44 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
     hits.push({ x, y, w, h: rh, action: { type: 'weapon', w: wp } });
@@ -164,7 +167,8 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     bar(g, x, y, w * 0.7, 8 * u, hpF, hpC);
     for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + w * 0.75 + i * 12 * u, y + 4 * u, 4 * u, 0, TAU); g.fill(); }
     y += 16 * u;
-    if (s.surge?.state === 'active') { label(g, `SURGE ≥${ZONE_FTP[s.surge.zone] ?? 91}% FTP ${Math.ceil(s.surge.leftS)}s`, x, y + 9 * u, 11 * u, '#7df9ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.surge.progress, '#7df9ff'); }
+    if (s.spin?.state === 'active') { label(g, `SPIN ${s.spin.rpm}+ rpm ${Math.ceil(s.spin.leftS)}s`, x, y + 9 * u, 11 * u, '#8fd8ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.spin.held / s.spin.needS, '#8fd8ff'); }
+    else if (s.surge?.state === 'active') { label(g, `SURGE ≥${ZONE_FTP[s.surge.zone] ?? 91}% FTP ${Math.ceil(s.surge.leftS)}s`, x, y + 9 * u, 11 * u, '#7df9ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.surge.progress, '#7df9ff'); }
     else { label(g, `NEXT ${s.forecast.boss ? 'BOSS' : `W${s.forecast.wave}`}: ${LANE_NAMES[s.forecast.mainLane]} heavy · ▼ workshop`, x, y + 9 * u, 10 * u); }
     hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: { type: 'pad', pad: -1 } });
     return hits;
@@ -194,6 +198,18 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)';
     g.fillText(act ? `≥${ZONE_FTP[sv.zone] ?? 91}% FTP for ${Math.ceil(sv.needS * (1 - sv.progress))}s more · ${Math.ceil(sv.leftS)}s left` : sv.state === 'won' ? 'EMP fired' : 'Next time!', x + 10 * u, y + 36 * u);
     bar(g, x + 10 * u, y + 44 * u, w - 20 * u, 6 * u, sv.progress, c);
+    y += bh + 10 * u;
+  }
+  // --- spin-up (cadence drill)
+  if (s.spin) {
+    const sv = s.spin, act = sv.state === 'active', c = act ? '#8fd8ff' : sv.state === 'won' ? '#7dffb0' : '#ff7a5a';
+    const bh = 58 * u, f = Math.min(1, sv.held / sv.needS);
+    g.fillStyle = act ? `rgba(120,200,255,${0.1 + 0.05 * Math.sin(t * 8)})` : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(x, y, w, bh, 8 * u); g.fill();
+    g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, bh - 2, 8 * u); g.stroke();
+    font(g, 14 * u, 800); g.fillStyle = c; g.fillText(act ? 'SPIN UP' : sv.state === 'won' ? 'OVERCLOCKED' : 'SPIN-UP MISSED', x + 10 * u, y + 20 * u);
+    font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)';
+    g.fillText(act ? `${sv.rpm}+ rpm for ${Math.ceil(sv.needS - sv.held)}s more · ${Math.ceil(sv.leftS)}s left` : sv.state === 'won' ? 'Gatling fires x2' : 'Next time!', x + 10 * u, y + 36 * u);
+    bar(g, x + 10 * u, y + 44 * u, w - 20 * u, 6 * u, f, c);
     y += bh + 10 * u;
   }
   // --- forecast (hidden under the workshop when it is open)

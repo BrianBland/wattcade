@@ -9,7 +9,7 @@ import {
 } from './defs';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
 import { planWave, type Spawn, type WavePlan } from './waves';
-import type { Banner, EnemyView, Fx, GarageRow, GarageView, ShellView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import type { Banner, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
@@ -96,7 +96,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const surgeEvery = T.num('surgeEveryWaves', 3, 1, 20, 1, 'a Power Surge challenge every N waves');
   const surgeNeed = T.num('surgeNeedS', 15, 3, 120, 1, 'seconds at the surge zone needed');
   const surgeWindow = T.num('surgeWindowS', 45, 10, 180, 5);
-  const surgeZone = T.num('surgeZone', 4, 2, 5, 1, 'effort zone a surge asks for');
+  const surgeZone = T.num('surgeZone', 4, 2, 5, 1, 'power zone a surge asks for (short effort: judged on power)');
+  const spinEvery = T.num('spinEveryWaves', 3, 1, 20, 1, 'a Spin-up cadence drill every N waves (from wave 4)');
+  const spinRpm = T.num('spinRpm', 95, 60, 140, 1, 'Spin-up cadence floor (rpm)');
+  const spinNeed = T.num('spinNeedS', 15, 3, 120, 1, 'seconds at the spin-up cadence needed');
+  const spinWindow = T.num('spinWindowS', 40, 10, 180, 5);
+  const overclockS = T.num('overclockS', 30, 5, 120, 5, 'Gatling Overclock (double fire rate) after a Spin-up');
   const empDmg = T.num('empDamage', 90, 0, 1000, 5, 'EMP damage to every enemy when a surge is won');
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
   const scrapScale = T.num('scrapMult', 1, 0.2, 5, 0.1);
@@ -136,13 +141,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let zHold = 0, zDown = false, zDumped = false;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
   let surge: SurgeView | null = null, surgeAcc = 0;
+  let spin: SpinView | null = null, overclock = 0;
   let scrap = 0, partsRun = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
   let over = false, lastAutoSwitch = -99, autoBuildT = 0;
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
-  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, coresLost: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0 };
+  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, coresLost: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0 };
 
   // ---------- helpers ----------
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
@@ -247,6 +253,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       surgeAcc = 0;
       cue('surge');
       ctx.emit({ type: 'surgeStart', data: { wave } });
+    } else if (wave >= 4 && (wave - 4) % Math.round(spinEvery()) === 0) {
+      // a cadence drill: leg speed, not watts (the Gatling fires per crank rev)
+      spin = { state: 'active', held: 0, needS: spinNeed(), leftS: spinWindow(), rpm: Math.round(spinRpm()), t0: t };
+      cue('spin');
+      ctx.emit({ type: 'spinStart', data: { wave } });
     }
   }
 
@@ -631,7 +642,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (surge && surge.state === 'active') {
       surge.leftS -= dt;
       // power zone, not effortZone: HR lags far too much for a short surge window
-      if (Math.max(bike.effortZone, Math.min(5, bike.powerZone)) >= surge.zone) surgeAcc += dt;
+      if (Math.min(5, bike.powerZone) >= surge.zone) surgeAcc += dt;
       surge.progress = Math.min(1, surgeAcc / surge.needS);
       if (surgeAcc >= surge.needS) {
         surge.state = 'won'; surge.t0 = t; stats.surgesWon++; save.totals.surges++;
@@ -647,6 +658,24 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         ctx.emit({ type: 'surgeFailed', data: { wave } });
       }
     } else if (surge && t - surge.t0 > 4) surge = null;
+
+    // --- spin-up drill -> Gatling Overclock
+    if (spin && spin.state === 'active') {
+      spin.leftS -= dt;
+      if (bike.cadence3s >= spin.rpm) spin.held += dt;
+      if (spin.held >= spin.needS) {
+        spin.state = 'won'; spin.t0 = t; stats.spinsWon++;
+        overclock = overclockS();
+        const b = gainScrap(10 + wave);
+        say('Overclocked!', `Gatling fires twice as fast for ${Math.round(overclockS())} s · +${b} scrap`, '#8fd8ff', true);
+        cue('overclock');
+        ctx.emit({ type: 'spinWon', data: { wave } });
+      } else if (spin.leftS <= 0) {
+        spin.state = 'failed'; spin.t0 = t; stats.spinsFailed++;
+        ctx.emit({ type: 'spinFailed', data: { wave } });
+      }
+    } else if (spin && t - spin.t0 > 4) spin = null;
+    if (overclock > 0) { overclock = Math.max(0, overclock - dt); stats.overclockS += dt; }
 
     // --- aim
     const mode = ctx.profile.settings?.aimMode;
@@ -672,8 +701,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (weapon === 'gatling' && ready) {
       revAcc += Math.max(0, revs);
       let shots = 0;
-      while (revAcc >= gatlingRevs() && shots < 10) {
-        revAcc -= gatlingRevs(); shots++;
+      const perShot = gatlingRevs() / (overclock > 0 ? 2 : 1);
+      while (revAcc >= perShot && shots < 12) {
+        revAcc -= perShot; shots++;
         const e = nearestInCone(aim, 0.1);
         const end = e ? { x: e.x, y: e.y } : { x: BASE_X + Math.sin(aim) * 110, y: BASE_Y - Math.cos(aim) * 110 };
         if (e) hit(e, gatlingDmg() * mods.gatlingMult * odMult(), 'blue');
@@ -825,13 +855,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start' }, { button: 'b', label: 'Start run' }],
       };
       const tz: GameHud['targetZone'] = surge?.state === 'active'
-        ? { min: clamp(surge.zone, 1, 5) as 1 | 2 | 3 | 4 | 5, max: 5, label: 'Power surge!' }
-        : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail' } : { min: 2, max: 3, label: 'Power the towers' };
+        ? { min: clamp(surge.zone, 1, 5) as 1 | 2 | 3 | 4 | 5, max: 5, label: 'Power surge!', source: 'power' }
+        : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3, label: 'Power the towers' };
+      const targetCadence: GameHud['targetCadence'] = spin?.state === 'active' ? { min: spin.rpm, label: 'Spin up the Gatling' } : undefined;
       if (workshop) return {
-        gears: false, targetZone: tz,
+        gears: false, targetZone: tz, targetCadence,
         controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'z', label: 'Fire rail' }, { button: 'paddles', label: 'Aim' }],
       };
-      return { gears: false, targetZone: tz, controls: playControls() };
+      return { gears: false, targetZone: tz, targetCadence, controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -843,7 +874,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         aimAngle: aim, autoAim, lane, targetId,
         railCharges, railMaxCharges: railCap(), railProgress: Math.min(1, railProgress), railCharging, zHold, railDumpHoldS: railDumpHold(),
         flaming, flameRange: flameRange(), flameHalfAngle: flameHalf(), flamePower, laserId,
-        grid, overdrive, surge: surge ? { ...surge } : null,
+        grid, overdrive, surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap, partsRun, bank: Math.round(bank),
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight })),
@@ -866,6 +897,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills,
         scrapEarned: stats.scrapEarned, partsEarned: partsRun,
         surgesWon: stats.surgesWon, surgesFailed: stats.surgesFailed,
+        spinsWon: stats.spinsWon, spinsFailed: stats.spinsFailed, overclockSeconds: Math.round(stats.overclockS),
         bossesKilled: stats.bosses, coresLost: stats.coresLost,
         overdriveSeconds: Math.round(stats.overdriveS),
       };

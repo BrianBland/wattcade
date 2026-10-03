@@ -7,12 +7,18 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
-// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`): probe-verified that a plain
-// name filter works while adding optionalServices [0xfc82] does not. Rejects are immediate so the gesture survives.
-export const RIDE_REQUEST_OPTIONS: RequestDeviceOptions = { filters: [{ namePrefix: 'Zwift' }] };
+// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`). A plain name filter works but
+// grants no services (getPrimaryService then fails "Unable to find service that satisfies request options"), and numeric
+// optionalServices [0xfc82] were rejected, so try the full 128-bit string forms first. Rejects are immediate so the gesture survives.
+export const RIDE_SERVICE_FC82 = '0000fc82-0000-1000-8000-00805f9b34fb';
+export const RIDE_SERVICE_128 = '00000001-19ca-4651-86e5-fa29dcdd09d1';
+export const RIDE_REQUEST_OPTIONS: RequestDeviceOptions = {
+  filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_FC82, RIDE_SERVICE_128],
+};
 const RIDE_FALLBACK_OPTIONS: RequestDeviceOptions[] = [
-  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] },
-  { acceptAllDevices: true, optionalServices: [0xfc82] },
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_FC82] },
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_128] },
+  { filters: [{ namePrefix: 'Zwift' }] },
 ];
 export async function requestRideDevice(): Promise<BluetoothDevice> {
   const errs: string[] = [];
@@ -25,7 +31,7 @@ export async function requestRideDevice(): Promise<BluetoothDevice> {
   }
   throw new Error('Could not open the Bluetooth picker. ' + errs.join(' | '));
 }
-const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];
+const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [RIDE_SERVICE_FC82, RIDE_SERVICE_128];
 const FW_WARNING = 'Ride V2 firmware (>=1.3.0) is locked to Zwift and may not work. Do not update the controller firmware through Zwift.';
 const BACKOFF_S = [1, 2, 4, 8, 15];
 
@@ -91,7 +97,7 @@ export class ZwiftRideController implements ControllerDevice {
     const pick = pickCharacteristics(infos);
     this.log(`chars: ${infos.map((i) => i.uuid).join(', ')}`);
     if (pick.fallback.length) this.log('fallback characteristics: ' + pick.fallback.join(' '));
-    const byUuid = (u?: string) => chars.find((c) => c.uuid === u);
+    const byUuid = (u?: string) => chars.find((c) => c.uuid.toLowerCase() === u?.toLowerCase());
     const asyncC = byUuid(pick.async); const txC = byUuid(pick.syncTx); const rxC = byUuid(pick.syncRx);
     if (!asyncC || !rxC) throw new Error('Zwift Ride: required characteristics not found');
     this.syncRx = rxC;
@@ -121,8 +127,8 @@ export class ZwiftRideController implements ControllerDevice {
       try {
         const svc = await server.getPrimaryService(id);
         const chars = await svc.getCharacteristics();
-        this.log(`using service ${svc.uuid}`);
-        return { svc, chars };
+        if (this.usable(chars)) { this.log(`using service ${svc.uuid}`); return { svc, chars }; }
+        tried.push(`${svc.uuid}: no usable characteristics [${this.describe(chars)}]`);
       } catch (e) { tried.push(`${typeof id === 'number' ? '0x' + id.toString(16) : id}: ${String(e)}`); }
     }
     let services: BluetoothRemoteGATTService[] = [];
@@ -130,11 +136,23 @@ export class ZwiftRideController implements ControllerDevice {
     for (const svc of services) {
       try {
         const chars = await svc.getCharacteristics();
-        if (chars.some((c) => c.uuid.includes('19ca-4651'))) { this.log(`using scanned service ${svc.uuid}`); return { svc, chars }; }
-      } catch { /* not readable */ }
+        if (this.usable(chars)) { this.log(`using scanned service ${svc.uuid}`); return { svc, chars }; }
+        tried.push(`${svc.uuid}: [${this.describe(chars)}]`);
+      } catch (e) { tried.push(`${svc.uuid}: chars ${String(e)}`); }
     }
     for (const t of tried) this.log('service lookup: ' + t);
-    throw new Error(`Zwift Ride service not found on "${this.device.name ?? 'device'}" (services: ${services.map((s) => s.uuid).join(', ') || 'none visible'}). Capture details with /probe.html.`);
+    throw new Error(`Zwift Ride service not usable on "${this.device.name ?? 'device'}" (visible services: ${services.map((s) => s.uuid).join(', ') || 'none'}; tried: ${tried.join(' | ')})`);
+  }
+
+  private usable(chars: BluetoothRemoteGATTCharacteristic[]): boolean {
+    const p = pickCharacteristics(chars.map((c) => ({
+      uuid: c.uuid, notify: c.properties.notify, indicate: c.properties.indicate,
+      write: c.properties.write, writeNoResp: c.properties.writeWithoutResponse,
+    })));
+    return !!p.async && !!p.syncRx;
+  }
+  private describe(chars: BluetoothRemoteGATTCharacteristic[]): string {
+    return chars.map((c) => `${c.uuid.slice(0, 8)}:${(['notify', 'indicate', 'write', 'writeWithoutResponse', 'read'] as const).filter((k) => c.properties[k]).join('+')}`).join(', ') || 'none';
   }
 
   private async handshake() {

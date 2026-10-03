@@ -17,7 +17,7 @@ import { setMenuGate } from './menuInput';
 import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
-  bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
+  abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
   lastProfileId, rememberProfile, saveProfile, stopLobby, takePendingRide, WARMUP_CREDIT_S,
 } from './services';
 import type { Screen, SessionLike } from './types';
@@ -102,6 +102,11 @@ export function App() {
     setRestartKey((k) => k + 1);
     if (r) { applyCredit(r); go({ name: 'summary', record: r.record, award: r.award }); }
   };
+  const restartGame = async (g: (typeof games)[number]) => {
+    const p = profileRef.current;
+    if (p) { const r = await finishSession(p); setProfile(r.profile); void refresh(); toast(`Ride saved · +${r.award.xpGained} XP`, 'good'); }
+    go({ name: 'game', game: g, run: Date.now() });
+  };
   const quitGame = async () => {
     const p = profileRef.current;
     if (!p) return go({ name: 'menu' });
@@ -121,7 +126,8 @@ export function App() {
     case 'menu': body = profile && <ArcadeMenu games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
-      body = profile && <GameHost game={screen.game} profile={profile} onQuit={quitGame}
+      body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} onQuit={quitGame}
+        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game)}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
     case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} onDone={() => go({ name: 'menu' })} />; break;
   }

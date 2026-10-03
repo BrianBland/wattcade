@@ -1,4 +1,4 @@
-import type { GameContext, GameEvent, GameModule, GameSim, Profile, SessionRecord, TrainerCommand } from '../contracts';
+import type { Button, GameContext, GameEvent, GameModule, GameSim, Profile, SessionRecord, TrainerCommand } from '../contracts';
 import { FIXED_DT } from '../contracts';
 import { BikeStateStore } from './bikeState';
 import { SimClock } from './clock';
@@ -23,6 +23,9 @@ export interface GameSession {
   tuning: TuningRegistry; recorder: SessionRecorder; fakeBike?: FakeBike; dataHub: DataHub; clock: SimClock;
   loop: GameLoop; commands: TrainerCommand[];
   frame(realDtS: number): void; step(n: number): void; pause(): void; resume(): void;
+  /** Advance input, devices, bike state and the mixer but not the sim, clock or recording (game intros / countdowns).
+   *  Returns every button pressed during the steps taken. */
+  idle(realDtS: number): ReadonlySet<Button>;
   finish(): SessionRecord; debugValues(): Record<string, number | string | boolean>;
 }
 
@@ -80,12 +83,29 @@ export function createGameSession(o: SessionOpts): GameSession {
     recorder.tick(dt, bikeStore.get(), mixer.command);
   };
 
+  let idleAcc = 0;
+  const idle = (realDt: number): ReadonlySet<Button> => {
+    const pressed = new Set<Button>();
+    idleAcc = Math.min(idleAcc + realDt, 0.25);
+    while (idleAcc >= FIXED_DT) {
+      idleAcc -= FIXED_DT;
+      o.input.beginTick(FIXED_DT);
+      for (const b of o.input.state().pressed) pressed.add(b);
+      fakeBike?.tick(FIXED_DT, { profile, gear: mixer.gear, hooks: undefined });
+      bikeStore.setGear(mixer.gear);
+      bikeStore.tick(FIXED_DT, profile);
+      mixer.tick(FIXED_DT, o.input.state());
+    }
+    return pressed;
+  };
+
   const loop = new GameLoop(clock, stepOnce, () => (dataHub.hasRealDevices() ? 1 : clock.timeScale));
 
   return {
     ctx, sim, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
     frame: (dt) => { loop.frame(dt); },
     step: (n) => loop.step(n),
+    idle,
     pause: () => { loop.pause(); mixer.panic(true); },
     resume: () => { mixer.panic(false); loop.resume(); },
     finish: () => {

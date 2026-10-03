@@ -24,6 +24,9 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
   `storm-ready` reads `snapshot().hooks.storm`. `mash` is a stateless hash of (2 s slot, seed).
 - FakeBike manual mode (no script): `fakeBike.manual = {cadence, power|null, hr|null}`; `useScript(name|null)`.
 
+- `session.idle(realDt)`: steps input/fake bike/bike store/mixer but not the sim, clock or recorder; returns presses (game intros).
+- `mixer.rampIn(s = core.rampInS 6)`: eases sim grade (×k), ERG (×0.5..1) and resistance (×k) in from neutral; lands exactly at the end.
+
 ## runHeadless / scripts/sim.ts
 `runHeadless({game, script, minutes, seed, simOpts?, tuning?})` stops early if `sim.isOver()` (simMinutes = actual).
 `npm run sim -- --game X --script Y --minutes N --seed S [--autopilot]` prints one JSON line (full mixerCommands).

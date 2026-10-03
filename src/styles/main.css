@@ -235,3 +235,32 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .card-art { display: block; width: calc(100% + 28px); margin: 0 -14px 4px; aspect-ratio: 23 / 10; height: auto; image-rendering: pixelated; border-bottom: 1px solid var(--glass-line); }
 .game-card::before { z-index: 1; }
 .game-card .progress-line { font: 800 13px system-ui; color: var(--accent); text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent); }
+
+/* ---- phase 4: game intro, countdown, result banner ---- */
+.overlay-modal.intro { background: #0008; z-index: 30; }
+.intro-card { max-width: min(760px, 94vw); gap: 14px; }
+.intro-head { display: flex; align-items: flex-start; gap: 14px; }
+.intro-head h1 { margin: 0 0 6px; font-size: var(--t-xl); color: var(--neon); text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 18px #00f0ff88; }
+.intro-zone { --zc: var(--z2); display: flex; flex-direction: column; align-items: center; padding: 8px 14px; border-radius: 14px; border: 2px solid var(--zc); background: color-mix(in srgb, var(--zc) 18%, transparent); }
+.intro-zone b { font-size: 24px; color: var(--zc); } .intro-zone small { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+.intro-blurb { margin: 0; font-size: var(--t-m); line-height: 1.4; }
+.intro-progress { font-weight: 800; color: var(--lime); }
+.intro-controls { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; padding: 12px; border-radius: 14px; background: #ffffff0a; }
+.intro-controls .ctl { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.intro-controls .ctl.active { color: var(--lime); }
+.intro-controls .glyphs { display: inline-flex; gap: 3px; min-width: 56px; }
+.btn small.auto { opacity: .7; font-weight: 700; }
+.intro-count { position: absolute; inset: 0; z-index: 31; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.intro-count b { font: 900 clamp(110px, 22vw, 220px)/1 system-ui; color: #fff; text-shadow: 0 0 40px var(--neon), 0 6px 0 #000; animation: countPop .9s cubic-bezier(.2, .8, .2, 1) both; }
+.intro-count small { font: 800 22px system-ui; color: #fff; text-shadow: 0 2px 4px #000; letter-spacing: 3px; text-transform: uppercase; }
+@keyframes countPop { 0% { transform: scale(2.2); opacity: 0; } 25% { transform: scale(1); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(.8); opacity: 0; } }
+.overlay-modal.result { z-index: 35; background: radial-gradient(ellipse at center, #000c 0%, #000e 70%); cursor: pointer; }
+.result-card { display: flex; flex-direction: column; align-items: center; gap: 16px; animation: screenIn .4s ease-out; }
+.result-card h1 { margin: 0; font: 900 clamp(48px, 9vw, 96px)/1 system-ui; text-transform: uppercase; letter-spacing: 4px; color: var(--pink); text-shadow: 0 0 30px #ff2bd6aa, 0 5px 0 #000; }
+.result-stats { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.result-stats > div { display: flex; flex-direction: column; align-items: center; padding: 10px 18px; border-radius: 14px; background: #ffffff12; border: 1px solid var(--glass-line); animation: screenIn .4s ease-out both; }
+.result-stats > div:nth-child(2) { animation-delay: .1s; } .result-stats > div:nth-child(3) { animation-delay: .2s; } .result-stats > div:nth-child(4) { animation-delay: .3s; }
+.result-stats small { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+.result-stats b { font-size: 28px; color: var(--neon); font-variant-numeric: tabular-nums; }
+.result-xp { font: 900 40px system-ui; color: var(--lime); text-shadow: 0 0 18px #b6ff3b88; }
+.pause-actions .btn { flex: 1; justify-content: center; }

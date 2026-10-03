@@ -14,7 +14,7 @@ CONTRACT-REQUESTs: none.
 - Save `{ bank, upgrades, bestFloor, runs, autoInvest }`. Every coin earned in a run is banked (persisted on room clear, death, descent, dispose). Death drops 20% of run coins. `dungeon.lives` tunable (default 3; 1 = permadeath roguelike; 0 = unlimited): the death that spends the last life ends the run (`isOver()`), coins banked; hearts shown in the HUD.
 - Start floor defaults to the deepest unlocked (Delver: +2/level, capped at bestFloor-1); deeper starts give a scaled starter weapon and hero level 1+2*(floor-1).
 - Elites (5% + 1.5%/floor, max 25%): Undying (regen), Splitting, Warded (shield bubble), Swift, Volatile (death blast telegraph). x2.6 HP, guaranteed item.
-- Shrines activate when their room is cleared (optional): Fury Z3+ 20s/50s -> weapon +2; Patience hold Z2 over 90s -> 1-4 items; Gold 2 sprints/60s -> coin rain + heal. HUD targetZone follows the active shrine.
+- Shrines activate when their room is cleared (optional): Fury Z3+ 20s/50s -> weapon +2; Patience hold Z2 over 90s -> 1-4 items; Gold 2 sprints/60s -> coin rain + heal; Whirlwind `whirlRpm` (95) for 15s/45s -> +1 potion + coins (`targetCadence`). Fury is judged on power zone (HR lags); boss shield / Fury / Gold targets are `source: 'power'`. HUD targetZone follows the active shrine.
 - Hit-stop (sim freezes 0.08-0.35 s) on elite/boss kills, level-ups, uniques, shrine rewards.
 - Melee enemies follow a room-local BFS flow field; `move()` nudges toward tile centres so corners don't snag; autopilot paths in combat when closing distance; friendly hits use swept segments.
 

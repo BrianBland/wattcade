@@ -25,6 +25,7 @@ export interface Snap {
   coin: number; timber: number;
   storm: { phase: StormPhase; timeInPhase: number; warnS: number; duration: number; integrity: number; intensity: number; surge: boolean; nextInS: number; lightningAge: number; failed: boolean };
   bellAge: number;
+  wind: { left: number; held: number; need: number; rpm: number } | null;
   totals: { shipsDockedTotal: number; stormsWeatheredTotal: number };
   stats: {
     shipsDocked: number; shipsLost: number; shipsRescued: number; buildingsBuilt: number; upgrades: number; stormsWeathered: number; stormsFailed: number;

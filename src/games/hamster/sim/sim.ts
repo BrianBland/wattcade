@@ -32,6 +32,7 @@ export interface HamsterSnapshot {
   strike: { phase: 'warn' | 'active'; left: number; progress: number; need: number } | null;
   trial: { phase: 'offer' | 'active'; left: number; compliance: number } | null;
   rage: { left: number; progress: number; need: number } | null;
+  spin: { left: number; progress: number; need: number; rpm: number } | null;
   cadence: number; power: number; zone: number; hardZone: number; unionOn: boolean;
   pepUses: number; giant: boolean; glow: boolean; vibesOn: string[]; buySeq: number; rebirths: number; seeds: number;
   potentialSeeds: number; armed: boolean;
@@ -74,6 +75,11 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     trialFtp: T.num('trialFtp', 0.8, 0.4, 1.2, 0.05, 'Clinical trial ERG target (FTP fraction)'),
     rageChance: T.num('rageChance', 0.3, 0, 1, 0.05, 'Trenbalone roid-rage chance'),
     rageNeedS: T.num('rageNeedS', 8, 1, 60, 1, 'Seconds of Zone 4+ to calm a roid-raging hamster'),
+    spinMinS: T.num('spinMinS', 360, 60, 3600, 30, 'Spin class min interval (s)'),
+    spinMaxS: T.num('spinMaxS', 600, 60, 3600, 30, 'Spin class max interval (s)'),
+    spinS: T.num('spinS', 45, 10, 180, 5, 'Spin class window (s)'),
+    spinNeedS: T.num('spinNeedS', 20, 5, 120, 1, 'Seconds at spin cadence to ace a spin class'),
+    spinRpm: T.num('spinRpm', 95, 60, 140, 1, 'Spin class cadence floor (rpm)'),
     inertiaPerEra: T.num('inertiaPerEra', 0.15, 0, 1, 0.05, 'Flywheel grade % added per era'),
     seedBonus: T.num('seedBonus', 0.05, 0, 1, 0.01, 'Production bonus per karmic seed'),
     seedUnitJ: T.num('seedUnitJ', 1e27, 1e15, 1e40, undefined, 'Life energy for the first karmic seed (seeds = cbrt(E/unit))'),
@@ -105,6 +111,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   let strike: { phase: 'warn' | 'active'; until: number; progress: number } | null = null, nextStrike = Infinity;
   let trial: { phase: 'offer' | 'active'; until: number; ok: number; total: number } | null = null, nextTrial = Infinity;
   let rage: { until: number; progress: number } | null = null;
+  let spin: { until: number; progress: number } | null = null, nextSpin = Infinity;
   const pending: Array<{ type: string; i?: number }> = [];
   const sess = { energy: 0, peakW: 0, peakK: -0.6, gens: 0, upgs: 0, maxMono: 1, goldens: 0, peps: 0, strikesWon: 0, strikesLost: 0, trials: 0, miles: 0, z2S: 0, startEra: S.maxEra };
 
@@ -178,7 +185,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     for (const n of [1, 5]) if (S.strikes >= n) milestone(`strike${n}`, `${n} strike${n > 1 ? 's' : ''} broken`);
     for (const n of [1, 5]) if (S.trials >= n) milestone(`trial${n}`, `${n} clinical trial${n > 1 ? 's' : ''} survived`);
     // feature unlocks
-    if (S.gens[0] >= 1) unlock('golden', 'Golden hamsters now appear. SPRINT (Z4+) to catch them!');
+    if (S.gens[0] >= 1) unlock('golden', 'Golden hamsters now appear. SPRINT (power Z4+) to catch them!');
+    if (S.gens[0] >= 5) unlock('spin', 'Gerald signed up for spin classes. Hit the cadence when the instructor shouts.');
     if (S.life >= 3000) unlock('upgrades', 'Upgrades tab unlocked.');
     if (S.gens[1] >= 1) unlock('market', 'A man in a trench coat offers you "seeds". Black Market unlocked.');
     if (S.life >= 2e4) unlock('vibes', 'Vibes tab unlocked. Purely cosmetic. Absolutely essential.');
@@ -188,6 +196,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     for (const p of PEPTIDES) if (p.era > 0 && p.era <= e && unlocks.has('market')) unlock(`pep:${p.id}`, `Black Market restock: ${p.name}`);
     if (unlocks.has('strikes') && nextStrike === Infinity) nextStrike = t + randIn(300, 600);
     if (unlocks.has('trials') && nextTrial === Infinity) nextTrial = t + randIn(400, 800);
+    if (unlocks.has('spin') && nextSpin === Infinity) nextSpin = t + randIn(120, 300);
   }
 
   // ---------- shop ----------
@@ -297,7 +306,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     const gained = potentialSeeds();
     S.seeds += gained; S.rebirths++;
     S.gens = GENS.map(() => 0); upg.clear(); S.bank = 0; S.life = 0;
-    effects.length = 0; golden = null; strike = null; trial = null; rage = null; mono = 1; armedUntil = -1;
+    effects.length = 0; golden = null; strike = null; trial = null; rage = null; spin = null; mono = 1; armedUntil = -1;
     ctx.resistance.clear('strike'); ctx.resistance.clear('trial');
     tab = 'gens'; row = 0;
     toast(`☸️ You have been reincarnated as a hamster. +${gained} karmic seeds. The wheel turns.`, 'era'); cue('explode');
@@ -350,7 +359,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
   function updateEvents(dt: Seconds, zone: number, cadence: number) {
     // golden hamster
     if (unlocks.has('golden')) {
-      if (!golden && t >= nextGolden && !strike && !trial && !rage) { golden = { until: t + tun.goldenStayS(), progress: 0, x: ctx.rng() }; toast('🌟 A GOLDEN HAMSTER appeared! Sprint (Z4+) to catch it!', 'event'); cue('unique'); }
+      if (!golden && t >= nextGolden && !strike && !trial && !rage && !spin) { golden = { until: t + tun.goldenStayS(), progress: 0, x: ctx.rng() }; toast('🌟 A GOLDEN HAMSTER appeared! Sprint (power Z4+) to catch it!', 'event'); cue('unique'); }
       if (golden) {
         if (zone >= 4) golden.progress += dt;
         if (golden.progress >= tun.goldenCatchS()) { catchGolden(); golden = null; nextGolden = t + randIn(tun.goldenMinS(), tun.goldenMaxS()) * (has('seedsub') ? 0.7 : 1); }
@@ -358,12 +367,12 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       }
     }
     // strike
-    if (!strike && t >= nextStrike && !trial) { strike = { phase: 'warn', until: t + 20, progress: 0 }; golden = null; toast('📢 Union meeting in progress... the hamsters are about to STRIKE!', 'bad'); cue('bossStart'); setNews('BREAKING: Hamster union votes to strike. Demands "more seeds, fewer wheels".'); }
+    if (!strike && t >= nextStrike && !trial) { strike = { phase: 'warn', until: t + 20, progress: 0 }; golden = null; spin = null; toast('📢 Union meeting in progress... the hamsters are about to STRIKE!', 'bad'); cue('bossStart'); setNews('BREAKING: Hamster union votes to strike. Demands "more seeds, fewer wheels".'); }
     if (strike) {
       if (strike.phase === 'warn' && t >= strike.until) {
         strike = { phase: 'active', until: t + tun.strikeS(), progress: 0 };
         ctx.resistance.set({ id: 'strike', mode: 'sim', gradePct: tun.strikeGrade() });
-        toast('✊ STRIKE! Hamsters walked out. Carry the grid yourself: hold Z3+!', 'bad');
+        toast('✊ STRIKE! Hamsters walked out. Carry the grid yourself: hold power Z3+!', 'bad');
       } else if (strike.phase === 'active') {
         if (zone >= 3) strike.progress += dt;
         if (strike.progress >= tun.strikeNeedS()) {
@@ -390,6 +399,26 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
           } else toast('💉 Trial failed: participant "stopped pedaling". No payment.', 'bad');
           ctx.emit({ type: 'clinicalTrial', data: { completed: done } });
           trial = null; nextTrial = t + randIn(tun.trialMinS(), tun.trialMaxS());
+        }
+      }
+    }
+    // spin class (cadence, not watts: spin it up in an easy gear)
+    if (unlocks.has('spin')) {
+      if (!spin && t >= nextSpin && !golden && !strike && !trial && !rage) {
+        spin = { until: t + tun.spinS(), progress: 0 };
+        toast(`🚴 SPIN CLASS! The instructor wants ${Math.round(tun.spinRpm())}+ rpm. Drop a gear and spin!`, 'event'); cue('select');
+      }
+      if (spin) {
+        if (cadence >= tun.spinRpm()) spin.progress += dt;
+        if (spin.progress >= tun.spinNeedS()) {
+          addEffect('spin', 'Spin class ×3', 'ham', 3, 90);
+          toast('🚴 Class aced! Hamsters inspired: ×3 for 90 s.', 'event'); cue('reward');
+          ctx.emit({ type: 'spinClass', data: { completed: true } });
+          spin = null; nextSpin = t + randIn(tun.spinMinS(), tun.spinMaxS());
+        } else if (t >= spin.until) {
+          toast('🚴 Class over. The instructor sighs at your cadence.', 'info');
+          ctx.emit({ type: 'spinClass', data: { completed: false } });
+          spin = null; nextSpin = t + randIn(tun.spinMinS(), tun.spinMaxS());
         }
       }
     }
@@ -576,6 +605,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       strike: strike ? { phase: strike.phase, left: strike.until - t, progress: strike.progress, need: tun.strikeNeedS() } : null,
       trial: trial ? { phase: trial.phase, left: trial.until - t, compliance: trial.total > 0 ? trial.ok / trial.total : 1 } : null,
       rage: rage ? { left: rage.until - t, progress: rage.progress, need: tun.rageNeedS() } : null,
+      spin: spin ? { left: spin.until - t, progress: spin.progress, need: tun.spinNeedS(), rpm: tun.spinRpm() } : null,
       cadence: b.cadence3s, power: b.power3s, zone: b.effortZone, hardZone: Math.max(b.effortZone, Math.min(5, b.powerZone)), unionOn,
       pepUses: S.pepUses, giant: effects.some((x) => x.id === 'mk'), glow: effects.some((x) => x.id === 'stack' || x.id === 'frenzy'),
       vibesOn: [...vibesOn], buySeq, rebirths: S.rebirths, seeds: S.seeds, potentialSeeds: potentialSeeds(), armed: t < armedUntil,
@@ -592,12 +622,16 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       { button: 'z', label: 'Accept trial', active: trial?.phase === 'offer' },
       { button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gear' },
     ];
-    const tz: GameHud['targetZone'] = rage ? { min: 4, max: 5, label: 'Out-pedal Gerald!' }
-      : golden ? { min: 4, max: 5, label: 'Catch the golden hamster!' }
-      : strike?.phase === 'active' ? { min: 3, max: 5, label: 'Carry the grid!' }
+    // short efforts are judged on power (HR can't climb in time); the Z2 grind uses the profile's zone source
+    const tz: GameHud['targetZone'] = rage ? { min: 4, max: 5, label: 'Out-pedal Gerald!', source: 'power' }
+      : golden ? { min: 4, max: 5, label: 'Catch the golden hamster!', source: 'power' }
+      : strike?.phase === 'active' ? { min: 3, max: 5, label: 'Carry the grid!', source: 'power' }
       : trial?.phase === 'active' ? { min: 1, max: 5, label: 'Clinical trial (ERG)' }
       : { min: 2, max: 2, label: `Mind-numbing ×${mono.toFixed(1)}` };
-    return { controls, gears: true, targetZone: tz };
+    const tc: GameHud['targetCadence'] = spin ? { min: Math.round(tun.spinRpm()), label: 'Spin class!' }
+      : trial?.phase === 'active' ? { min: 50, label: 'Keep the cranks turning' }
+      : { min: Math.round(tun.unionCadence()) };
+    return { controls, gears: true, targetZone: tz, targetCadence: tc };
   }
 
   checkMilestones();

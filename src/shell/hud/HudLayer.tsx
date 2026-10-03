@@ -35,7 +35,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
     const id = setInterval(() => {
       const bike = session.ctx.bike() as BikeState;
       const hud = session.sim.hud?.() ?? {};
-      const source = effectiveSource(profile.settings.zoneSource, bike.hr5s);
+      const source = effectiveSource(profile.settings.zoneSource, bike.hr5s, hud.targetZone);
       const frac = source === 'hr' ? (bike.hr5s ?? 0) / profile.maxHr : bike.ftpFraction;
       const pos = zonePosition(frac, boundsFor(source));
       const now = performance.now(); const dt = (now - last.current.t) / 1000; last.current.t = now;
@@ -58,7 +58,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
       {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
       <div class="hud-center">
-        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} bars={f.bars} />
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} />
         <div class="hud-row">
           <button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>
           <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>

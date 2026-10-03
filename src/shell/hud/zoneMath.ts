@@ -18,10 +18,25 @@ export function zonePosition(frac: number, bounds: readonly number[]): ZonePos {
 }
 export const boundsFor = (source: 'power' | 'hr') => (source === 'hr' ? HR_BOUNDS : POWER_BOUNDS);
 
-/** Resolve the effective source for the widget. */
-export function effectiveSource(setting: 'auto' | 'power' | 'hr', hr: number | null): 'power' | 'hr' {
+/** Resolve the effective source for the widget. A power-judged target (short efforts) forces the power scale. */
+export function effectiveSource(setting: 'auto' | 'power' | 'hr', hr: number | null, target?: { source?: 'power' | 'effort' }): 'power' | 'hr' {
+  if (target?.source === 'power') return 'power';
   return setting === 'hr' || (setting === 'auto' && hr != null) ? 'hr' : 'power';
 }
+
+/** Watts at the bottom of power zone `z` (null for Z1, which has no floor). */
+export function zoneFloorWatts(z: number, ftp: number): number | null {
+  return z <= 1 ? null : Math.round(POWER_BOUNDS[Math.min(5, z) - 2] * ftp);
+}
+
+export type CadenceStatus = 'ok' | 'low' | 'high';
+/** Where a cadence sits against a target band (null = no target). */
+export function cadenceStatus(rpm: number, t?: { min: number; max?: number } | null): CadenceStatus | null {
+  if (!t) return null;
+  return rpm < t.min ? 'low' : t.max != null && rpm > t.max ? 'high' : 'ok';
+}
+/** "90–110" / "90+". */
+export const cadenceRange = (t: { min: number; max?: number }) => (t.max != null ? `${t.min}–${t.max}` : `${t.min}+`);
 
 /** Rolling history: one bar per `every` seconds, capped. */
 export interface Bar { power: number; hr: number | null; zone: number }

@@ -4,7 +4,7 @@
 // PIT and PILLAR (brazier) block walking but not projectiles.
 export const TILE = { FLOOR: 0, WALL: 1, SWAMP: 2, DOOR: 3, STAIRS: 4, PIT: 5, PILLAR: 6 } as const;
 export type TileId = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-export type ShrineKind = 'fury' | 'endurance' | 'sprint';
+export type ShrineKind = 'fury' | 'endurance' | 'sprint' | 'whirl';
 
 export type EnemyKind = 'chaser' | 'spitter' | 'brute' | 'bat' | 'archer' | 'bomber' | 'summoner';
 export interface SpawnDef { kind: EnemyKind; x: number; y: number }
@@ -165,7 +165,7 @@ export function generateWorld(rng: () => number, floor = 1): World {
   }
   // shrines: one per floor (two on big floors) in rooms without chests
   const cand = world.rooms.filter((r) => r.id !== 0 && !r.boss && !r.chest);
-  const kinds: ShrineKind[] = ['endurance', 'fury', 'sprint'];
+  const kinds: ShrineKind[] = ['endurance', 'fury', 'sprint', 'whirl'];
   for (let i = 0; i < (roomCount >= 14 ? 2 : 1) && cand.length; i++) {
     const r = cand.splice(Math.floor(rng() * cand.length), 1)[0];
     r.shrine = { x: r.x0 + (r.w >> 1) + 0.5, y: r.y0 + (r.h >> 1) + 0.5, kind: kinds[Math.floor(rng() * kinds.length)] };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { History, POWER_BOUNDS, HR_BOUNDS, effectiveSource, zonePosition } from './zoneMath';
+import { History, POWER_BOUNDS, HR_BOUNDS, cadenceRange, cadenceStatus, effectiveSource, zoneFloorWatts, zonePosition } from './zoneMath';
 
 describe('zonePosition', () => {
   it('finds zones by power fraction', () => {
@@ -19,6 +19,27 @@ describe('zonePosition', () => {
     expect(effectiveSource('auto', 120)).toBe('hr');
     expect(effectiveSource('auto', null)).toBe('power');
     expect(effectiveSource('power', 120)).toBe('power');
+  });
+  it('a power-judged target forces the power scale, even on HR', () => {
+    expect(effectiveSource('hr', 150, { source: 'power' })).toBe('power');
+    expect(effectiveSource('auto', 150, { source: 'power' })).toBe('power');
+    expect(effectiveSource('auto', 150, { source: 'effort' })).toBe('hr');
+    expect(effectiveSource('hr', 150, {})).toBe('hr');
+  });
+  it('zone floor watts', () => {
+    expect(zoneFloorWatts(1, 300)).toBeNull();
+    expect(zoneFloorWatts(2, 300)).toBe(165);
+    expect(zoneFloorWatts(4, 300)).toBe(270);
+    expect(zoneFloorWatts(5, 200)).toBe(210);
+  });
+  it('cadence status and range text', () => {
+    expect(cadenceStatus(80, null)).toBeNull();
+    expect(cadenceStatus(80, { min: 90 })).toBe('low');
+    expect(cadenceStatus(130, { min: 90 })).toBe('ok');
+    expect(cadenceStatus(115, { min: 90, max: 110 })).toBe('high');
+    expect(cadenceStatus(100, { min: 90, max: 110 })).toBe('ok');
+    expect(cadenceRange({ min: 90, max: 110 })).toBe('90–110');
+    expect(cadenceRange({ min: 50 })).toBe('50+');
   });
   it('history averages into bars', () => {
     const h = new History(2, 3);

@@ -126,9 +126,17 @@ export interface GameContext {
 /** What a control does right now, for the shell's on-screen controller legend. */
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
 export interface ControlHint { button: ControlTarget; label: string; active?: boolean }
+/**
+ * A zone band. `source: 'power'` = judged on min(5, powerZone): use it for any effort shorter than ~2 min,
+ * because HR lags 30–60 s and can't follow a sprint. Default 'effort' = effortZone (HR-aware), for long holds.
+ */
+export interface ZoneTarget { min: 1|2|3|4|5; max: 1|2|3|4|5; label?: string; source?: 'power' | 'effort' }
+/** A cadence band in rpm (cadence3s); `max` omitted = no upper limit. */
+export interface CadenceTarget { min: Rpm; max?: Rpm; label?: string }
 /** Optional per-tick HUD info the shell renders over every game (zone widget, gear chip, controller legend). */
 export interface GameHud {
-  targetZone?: { min: 1|2|3|4|5; max: 1|2|3|4|5; label?: string }; // effort-zone band the game wants now
+  targetZone?: ZoneTarget;         // zone band the game wants now
+  targetCadence?: CadenceTarget;   // cadence band the game wants now (shown next to the rpm readout)
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }

@@ -192,6 +192,28 @@ describe('deeper progression', () => {
     expect(snap(z2).streak.s).toBeLessThan(before);
   });
 
+  it('storms are judged on power: a rider whose HR stays low still weathers them', () => {
+    const events: string[] = [];
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 1, onEmit: (e) => events.push(e.type) });
+    s.fakeBike!.manual.hr = 100; // HR Z1 the whole time
+    let source: unknown;
+    for (let i = 0; i < 60 * 9 && !events.includes('stormWeathered'); i++) { s.step(30); if (snap(s).storm.phase === 'storm') source = s.sim.hud!().targetZone?.source; }
+    expect(source).toBe('power');
+    expect(events).toContain('stormWeathered');
+    expect(events).not.toContain('stormFailed');
+  });
+
+  it('clockwork wind-up asks for cadence in calm weather and pays out', () => {
+    const events: Array<{ type: string; data?: any }> = [];
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'idle' }, seed: 1, onEmit: (e) => events.push(e) });
+    s.fakeBike!.useScript({ name: 'spin', description: '', cadence: () => 95, powerFtp: () => 0.65 });
+    let tc: unknown;
+    for (let i = 0; i < 260 && !events.some((e) => e.type === 'clockworkWound'); i++) { s.step(30); if (snap(s).wind) tc = s.sim.hud!().targetCadence; }
+    expect(tc).toMatchObject({ min: 90 });
+    expect(events.find((e) => e.type === 'clockworkWound')?.data).toEqual({ completed: true });
+    expect(snap(s).lamp).toBeGreaterThan(0.9);
+  });
+
   it('Z opens the Keeper\'s Log in watch mode', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: taps([0.1, 'z']), fake: { script: 'z2' }, seed: 1 });
     s.step(10);

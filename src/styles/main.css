@@ -264,3 +264,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .result-stats b { font-size: 28px; color: var(--neon); font-variant-numeric: tabular-nums; }
 .result-xp { font: 900 40px system-ui; color: var(--lime); text-shadow: 0 0 18px #b6ff3b88; }
 .pause-actions .btn { flex: 1; justify-content: center; }
+
+/* Full-screen toggle: tiny, top-right, above everything but the debug overlay. */
+.fs-btn { position: fixed; top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); z-index: 900; width: 34px; height: 34px; padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.18); background: rgba(7,6,15,.55); color: #cfe; font-size: 18px; line-height: 1; opacity: .55; cursor: pointer; }
+.fs-btn:hover, .fs-btn:active { opacity: 1; }

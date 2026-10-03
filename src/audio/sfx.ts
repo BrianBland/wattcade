@@ -8,6 +8,7 @@ export type SfxName =
   | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse'
   | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull'
   | 'upgrade' | 'unlock' | 'rescue' | 'roar' | 'screech' | 'whoosh' | 'plop' | 'croak'
+  | 'rail' | 'railReady' | 'swap' | 'lens' | 'emp' | 'siren' | 'alarm' | 'overdrive'
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
   | 'count' | 'go' | 'gameOver' | 'milestone';
 
@@ -59,6 +60,14 @@ const R: Record<SfxName, Tone[]> = {
   croak: [{ type: 'square', f0: 160, f1: 120, dur: 0.07, vol: 0.06 }, { type: 'square', f0: 170, f1: 125, dur: 0.07, vol: 0.06, delay: 0.1 }, { type: 'noise', f0: 300, dur: 0.15, vol: 0.05, q: 2 }],
   plop: [{ type: 'sine', f0: 900, f1: 260, dur: 0.12, vol: 0.12 }, { type: 'noise', f0: 1400, dur: 0.12, vol: 0.06, delay: 0.03 }],
   gull: [{ type: 'triangle', f0: 1500, f1: 1100, dur: 0.18, vol: 0.05 }, { type: 'triangle', f0: 1600, f1: 1200, dur: 0.2, vol: 0.05, delay: 0.24 }],
+  rail: [{ type: 'sawtooth', f0: 2400, f1: 120, dur: 0.45, vol: 0.16 }, { type: 'sine', f0: 90, f1: 40, dur: 0.5, vol: 0.3 }, { type: 'noise', f0: 3000, dur: 0.25, vol: 0.15 }],
+  railReady: [{ type: 'sine', f0: 660, f1: 1320, dur: 0.18, vol: 0.1 }, { type: 'triangle', f0: 1320, dur: 0.2, vol: 0.08, delay: 0.15 }],
+  swap: [{ type: 'square', f0: 330, f1: 220, dur: 0.06, vol: 0.08 }, { type: 'noise', f0: 1500, dur: 0.05, vol: 0.06, delay: 0.05 }, { type: 'square', f0: 440, f1: 660, dur: 0.08, vol: 0.08, delay: 0.1 }],
+  lens: [{ type: 'sine', f0: 1800, f1: 900, dur: 0.22, vol: 0.08 }, { type: 'triangle', f0: 900, f1: 450, dur: 0.2, vol: 0.06 }],
+  emp: [{ type: 'sine', f0: 60, f1: 30, dur: 1.2, vol: 0.4 }, { type: 'sawtooth', f0: 200, f1: 2000, dur: 0.4, vol: 0.1 }, { type: 'noise', f0: 800, dur: 1.0, vol: 0.25, q: 0.4 }],
+  siren: [{ type: 'triangle', f0: 440, f1: 660, dur: 0.3, vol: 0.09 }, { type: 'triangle', f0: 660, f1: 440, dur: 0.3, vol: 0.09, delay: 0.3 }],
+  alarm: [0, 0.18, 0.36].map((d) => ({ type: 'square' as const, f0: 880, f1: 660, dur: 0.12, vol: 0.07, delay: d })),
+  overdrive: [{ type: 'sawtooth', f0: 110, f1: 440, dur: 0.5, vol: 0.14 }, { type: 'square', f0: 220, f1: 880, dur: 0.5, vol: 0.06 }],
   // menu UI: quiet and short so they never fight the ride
   uiMove: [{ type: 'triangle', f0: 1046, dur: 0.035, vol: 0.05 }],
   uiSelect: [{ type: 'triangle', f0: 784, dur: 0.05, vol: 0.09 }, { type: 'triangle', f0: 1175, dur: 0.08, vol: 0.09, delay: 0.045 }],

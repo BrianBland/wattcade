@@ -145,6 +145,8 @@ export interface GameSim {
   hud?(): GameHud;                 // read by the shell each frame; keep it cheap and plain-data
   snapshot(): unknown;             // plain data view-model consumed by renderer and tests
   isOver(): boolean;
+  /** Optional: true while the sim shows its own pre-game menu (camp, loadout). The shell runs the sim through it and starts the 3-2-1-GO countdown only after it ends. */
+  inMenu?(): boolean;
   summary(): Record<string, number | string>;
   dispose?(): void;
   /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */

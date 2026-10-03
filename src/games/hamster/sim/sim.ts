@@ -630,7 +630,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       : { min: 2, max: 2, label: `Mind-numbing ×${mono.toFixed(1)}` };
     const tc: GameHud['targetCadence'] = spin ? { min: Math.round(tun.spinRpm()), label: 'Spin class!' }
       : trial?.phase === 'active' ? { min: 50, label: 'Keep the cranks turning' }
-      : { min: Math.round(tun.unionCadence()) };
+      : undefined;
     return { controls, gears: true, targetZone: tz, targetCadence: tc };
   }
 

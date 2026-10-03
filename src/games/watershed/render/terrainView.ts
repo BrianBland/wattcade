@@ -32,7 +32,7 @@ function terrainMaterial(): THREE.MeshStandardMaterial {
         c *= 0.8 + 0.36 * n1;
         c *= 0.9 + 0.2 * n2;
         float strata = 0.5 + 0.5 * sin(vWPos.y * 3.4 + n1 * 3.0);
-        c = mix(c, c * (0.72 + 0.4 * strata), smoothstep(0.3, 0.65, slope));
+        c = mix(c, c * (0.86 + 0.2 * strata), smoothstep(0.35, 0.7, slope));
         diffuseColor.rgb = c;
       }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>

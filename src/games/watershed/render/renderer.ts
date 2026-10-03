@@ -12,6 +12,7 @@ import { Hud } from './hud';
 import { layout } from './layout';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { BASE, TerrainView } from './terrainView';
+import { Riverbank } from './riverbank';
 import { WaterView } from './waterView';
 
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
@@ -40,7 +41,7 @@ export class WatershedRenderer implements GameRenderer {
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private seaBox?: THREE.Mesh; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private springRing?: THREE.Mesh;
-  private forest?: Forest; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
+  private forest?: Forest; private bank?: Riverbank; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -75,7 +76,7 @@ export class WatershedRenderer implements GameRenderer {
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -95; sc.right = 95; sc.top = 75; sc.bottom = -75; sc.near = 10; sc.far = 360;
-    this.sun.shadow.bias = -0.0006; this.sun.shadow.normalBias = 0.05;
+    this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.12;
     s.add(this.sun, this.sun.target, new THREE.HemisphereLight(0xd8eeff, 0x5a6a3a, 1.25));
 
     this.hud = new Hud(container);
@@ -124,10 +125,11 @@ export class WatershedRenderer implements GameRenderer {
     this.springRing.rotation.x = -Math.PI / 2; this.spring.add(this.springRing);
 
     this.forest = new Forest(s, this.wx, this.wz);
+    this.bank = new Riverbank(s, this.wx, this.wz);
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.terrainView.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.terrainView.skirt, this.seaBox, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.clouds.group, this.salmon.group);
     this.frameCamera();
   }
 
@@ -168,9 +170,15 @@ export class WatershedRenderer implements GameRenderer {
     // smoothed upstream heading in world space (grid y → world X, grid x → world Z)
     this.cH.set(f.heading.y, 0, f.heading.x).normalize();
     this.camHead.lerp(this.cH, this.camMode === 'chase' ? 1 - Math.exp(-dt * 2) : 1).normalize();
-    const H = this.camHead, up = 14, back = 21;
-    const chasePos = this.cP.copy(L).addScaledVector(H, -back).setY(L.y + up);
-    const chaseTgt = this.cT.copy(L).addScaledVector(H, 9).setY(L.y);
+    // rail cam: ride the traced channel downstream of the leader (so bends and canyon walls stay out of the way),
+    // shifted toward the leader's lane, and look ahead along the channel
+    const up = 14, back = 19;
+    const chasePos = this.pathWorld(s, f.path, Math.min(s.ny - 1, f.y + back), this.cP);
+    const onPath = this.pathWorld(s, f.path, f.y, this.cC);
+    chasePos.x += (L.x - onPath.x) * 0.6; chasePos.z += (L.z - onPath.z) * 0.6;
+    chasePos.y = Math.max(chasePos.y, L.y) + up;
+    const chaseTgt = this.pathWorld(s, f.path, Math.max(0, f.y - 9), this.cT);
+    chaseTgt.lerp(L, 0.5);
 
     if (f.intro > 0) {
       if (this.camMode !== 'intro' || f.run !== this.introRun) {
@@ -213,8 +221,20 @@ export class WatershedRenderer implements GameRenderer {
       const k = 1 - Math.exp(-dt * 3);
       this.camPos.lerp(chasePos, k); this.camTgt.lerp(chaseTgt, k);
     }
+    this.liftClear(this.camPos, L);
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTgt);
+  }
+
+  /** Raise `cam` until its line of sight to `look` clears the terrain (canyon walls, ridges) with some margin. */
+  private liftClear(cam: THREE.Vector3, look: THREE.Vector3) {
+    const tv = this.terrainView!, hAt = (wx: number, wz: number) => tv.heightAt(wz + this.nx / 2, wx + this.ny / 2);
+    let need = hAt(cam.x, cam.z) + 3;
+    for (const t of [0.2, 0.4, 0.6, 0.75]) {
+      const ground = hAt(cam.x + (look.x - cam.x) * t, cam.z + (look.z - cam.z) * t);
+      need = Math.max(need, (ground + 1.5 - look.y * t) / (1 - t));
+    }
+    if (cam.y < need) cam.y += (need - cam.y) * 0.25;   // ease up so it never pops
   }
 
   /** Place drops, extrapolated `ahead` seconds along their velocity (smooth between 30 Hz sim ticks). */
@@ -325,6 +345,7 @@ export class WatershedRenderer implements GameRenderer {
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);
     this.forest!.wind.value = tNow / 1000;
+    this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
     this.cues(s);

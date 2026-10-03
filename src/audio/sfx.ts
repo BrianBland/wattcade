@@ -7,7 +7,7 @@ export type SfxName =
   | 'coin' | 'pickup' | 'equip' | 'unique' | 'levelup' | 'potion' | 'door' | 'bossStart' | 'bossDie'
   | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse'
   | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull'
-  | 'upgrade' | 'unlock' | 'rescue' | 'roar' | 'screech' | 'whoosh' | 'plop'
+  | 'upgrade' | 'unlock' | 'rescue' | 'roar' | 'screech' | 'whoosh' | 'plop' | 'croak'
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
   | 'count' | 'go' | 'gameOver' | 'milestone';
 
@@ -56,6 +56,7 @@ const R: Record<SfxName, Tone[]> = {
   roar: [{ type: 'sawtooth', f0: 95, f1: 70, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 142, f1: 100, dur: 0.8, vol: 0.1 }, { type: 'noise', f0: 260, dur: 0.8, vol: 0.2, q: 1.2 }],
   screech: [{ type: 'sawtooth', f0: 2400, f1: 1500, dur: 0.35, vol: 0.06 }, { type: 'triangle', f0: 2900, f1: 1800, dur: 0.4, vol: 0.06, delay: 0.05 }],
   whoosh: [{ type: 'noise', f0: 600, dur: 0.45, vol: 0.2, q: 0.6 }, { type: 'sine', f0: 300, f1: 700, dur: 0.35, vol: 0.08 }],
+  croak: [{ type: 'square', f0: 160, f1: 120, dur: 0.07, vol: 0.06 }, { type: 'square', f0: 170, f1: 125, dur: 0.07, vol: 0.06, delay: 0.1 }, { type: 'noise', f0: 300, dur: 0.15, vol: 0.05, q: 2 }],
   plop: [{ type: 'sine', f0: 900, f1: 260, dur: 0.12, vol: 0.12 }, { type: 'noise', f0: 1400, dur: 0.12, vol: 0.06, delay: 0.03 }],
   gull: [{ type: 'triangle', f0: 1500, f1: 1100, dur: 0.18, vol: 0.05 }, { type: 'triangle', f0: 1600, f1: 1200, dur: 0.2, vol: 0.05, delay: 0.24 }],
   // menu UI: quiet and short so they never fight the ride

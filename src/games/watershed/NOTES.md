@@ -16,7 +16,8 @@ CONTRACT-REQUEST: none.
 - `render/`: Three.js diorama (`renderer.ts`: drops/camera/cues/sound), `terrainView.ts` (2× terrain + skirt, procedural
   detail shader), `waterView.ts` (merged liquid surface + shader), `upsample.ts` (pure, tested), `models.ts` (organic
   trees/boulders/salmon/bear/eagle + wind/swim shader patches), `scenery.ts` (sky, Forest, Clouds, SeaSurface),
-  `creatures.ts` (school, predators, danger markers), DOM HUD + popups (`hud.ts`), pure `layout.ts`.
+  `creatures.ts` (school, predators, danger markers), `riverbank.ts` (habitat-driven grass/flowers/reeds/pebbles/lily
+  pads, frogs, butterflies), DOM HUD + popups (`hud.ts`), pure `layout.ts`.
 - Per sim tick: water fields absorb particles; land mesh rebuilds every 3rd tick, water mesh every 2nd (55k-vertex grids).
 - Snapshot `cues` (last 24, increasing ids) drive sounds/popups; the renderer skips history on mount.
 - Requires ERG: `requires: { erg: true }` (arcade gate in `src/shell/services.ts#missingRequirement`).

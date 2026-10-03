@@ -4,7 +4,7 @@
 // ripples advected along the local flow (two-phase flow map over procedural noise), Fresnel sky, sun glint, foam lace.
 import * as THREE from 'three';
 import type { WatershedSnapshot } from '../sim/sim';
-import { SEA } from '../sim/terrain';
+import { SEA, sample } from '../sim/terrain';
 import { NOISE_GLSL } from './glsl';
 import { gridIndex } from './terrainView';
 import { fine, upsample2 } from './upsample';
@@ -47,13 +47,13 @@ void main() {
   col += uSunCol * pow(clamp(dot(N, normalize(uSun + V)), 0.0, 1.0), 600.0) * 0.9;  // tight sparkles, not glare
   // foam streaks: noise stretched along the flow direction
   vec2 fdir = sp > 0.01 ? vFlow / sp : vec2(1.0, 0.0);
-  vec2 fp = vec2(dot(vWPos.xz, fdir) * 0.6, dot(vWPos.xz, vec2(-fdir.y, fdir.x)) * 2.4);
+  vec2 fp = vec2(dot(vWPos.xz, fdir) * 0.7, dot(vWPos.xz, vec2(-fdir.y, fdir.x)) * 1.3);
   float n = wsFbm(fp - vec2(sp * 0.25 * p0, 0.0));
   float n2 = wsFbm(vWPos.xz * 2.3 + vec2(uTime * 0.2, 0.0));
   float foam = clamp(vFoam, 0.0, 1.0) * smoothstep(0.55, 0.72, n) * 0.85;
   foam = max(foam, (1.0 - smoothstep(0.02, 0.07, vDepth)) * smoothstep(0.55, 0.75, n2) * 0.35);
   col = mix(col, vec3(0.94, 0.97, 1.0), foam);
-  float alpha = mix(0.5, 0.9, d) * smoothstep(0.008, 0.07, vDepth);
+  float alpha = mix(0.62, 0.92, d) * smoothstep(0.008, 0.07, vDepth);
   alpha = clamp(max(alpha, foam * 0.9) + fres * 0.15, 0.0, 1.0);
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
@@ -165,4 +165,9 @@ export class WaterView {
   }
 
   tick(time: number): void { this.uniforms.uTime.value = time; }
+
+  /** Smoothed water speed (cells/s) at sim-grid coords. */
+  speedAt(x: number, y: number): number {
+    return Math.hypot(sample(this.fx, this.nx, this.ny, x, y), sample(this.fy, this.nx, this.ny, x, y));
+  }
 }

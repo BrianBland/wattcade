@@ -76,7 +76,7 @@ export function boulderGeometry(): THREE.BufferGeometry {
 }
 
 /** Wind sway for instanced trees: bends the crown with height, phase from the instance's world position. */
-export function swayMaterial(mat: THREE.MeshStandardMaterial, time: { value: number }, amount = 0.07): THREE.MeshStandardMaterial {
+export function swayMaterial(mat: THREE.MeshStandardMaterial, time: { value: number }, amount = 0.07, base = 0.6): THREE.MeshStandardMaterial {
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uWind = time;
     sh.vertexShader = sh.vertexShader
@@ -88,34 +88,59 @@ export function swayMaterial(mat: THREE.MeshStandardMaterial, time: { value: num
         vec3 ip = vec3(0.0);
       #endif
       float sw = sin(uWind * 1.4 + ip.x * 0.31 + ip.z * 0.23) + 0.4 * sin(uWind * 3.1 + ip.x * 0.7);
-      float bend = ${amount.toFixed(3)} * max(0.0, position.y - 0.6) * max(0.0, position.y - 0.6);
+      float bend = ${amount.toFixed(3)} * max(0.0, position.y - ${base.toFixed(3)}) * max(0.0, position.y - ${base.toFixed(3)});
       transformed.x += sw * bend; transformed.z += sw * bend * 0.45;`);
   };
   return mat;
 }
 
-// ---------- fauna ----------
-/** Sockeye in spawning colours: red body, olive-green head, pale belly; nose +X, length ~2. */
+// ---------- helpers for merged, vertex-coloured models ----------
+/** Non-indexed copy of `g` with every vertex painted `color` (so parts can be merged into one instanced mesh). */
+function paint(g: THREE.BufferGeometry, color: number | THREE.Color): THREE.BufferGeometry {
+  const n = g.index ? g.toNonIndexed() : g.clone();
+  n.deleteAttribute('uv');
+  if (!n.getAttribute('normal')) n.computeVertexNormals();
+  const c = color instanceof THREE.Color ? color : new THREE.Color(color), p = n.getAttribute('position') as THREE.BufferAttribute;
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) col.set([c.r, c.g, c.b], i * 3);
+  n.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return n;
+}
+const at = (g: THREE.BufferGeometry, x: number, y: number, z: number) => { g.translate(x, y, z); return g; };
+/** A cartoon eye: white ball, black pupil looking outward along +z (mirror with side = −1), tiny highlight. */
+function eye(r: number, x: number, y: number, z: number, side: 1 | -1, look = new THREE.Vector3(0.35, 0.1, 1)): THREE.BufferGeometry[] {
+  const d = look.clone().setZ(look.z * side).normalize();
+  const white = at(new THREE.SphereGeometry(r, 14, 10), x, y, z);
+  const pupil = at(new THREE.SphereGeometry(r * 0.55, 12, 8), x + d.x * r * 0.62, y + d.y * r * 0.62, z + d.z * r * 0.62);
+  const glint = at(new THREE.SphereGeometry(r * 0.18, 8, 6), x + d.x * r * 0.75 + r * 0.2, y + d.y * r * 0.75 + r * 0.3, z + d.z * r * 0.92);
+  return [paint(white, 0xffffff), paint(pupil, 0x111111), paint(glint, 0xffffff)];
+}
+const merged = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts.map((g) => { const n = g.index ? g.toNonIndexed() : g; if (n.getAttribute('uv')) n.deleteAttribute('uv'); return n; }))!;
+
+// ---------- fauna (cartoon, colourful) ----------
+/** Sockeye in spawning colours: bright red body, green head, pale belly, googly eyes; nose +X, length ~2. */
 export function salmonGeometry(): THREE.BufferGeometry {
-  const prof = [[0, 1.0], [0.1, 0.94], [0.2, 0.75], [0.27, 0.45], [0.28, 0.1], [0.24, -0.25], [0.16, -0.55], [0.08, -0.8], [0.05, -0.9]].map(([r, y]) => new THREE.Vector2(r, y));
-  const body = new THREE.LatheGeometry(prof, 12);
-  body.rotateZ(-Math.PI / 2); body.scale(1, 1, 0.55);
-  const tail = new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.85, 0), new THREE.Vector2(-1.3, 0.34), new THREE.Vector2(-1.18, 0), new THREE.Vector2(-1.3, -0.34)]));
-  const dorsal = new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0.15, 0.26), new THREE.Vector2(-0.25, 0.48), new THREE.Vector2(-0.3, 0.22)]));
-  const parts = [body, tail, dorsal].map((g) => (g.index ? g.toNonIndexed() : g));
-  for (const g of parts) { g.deleteAttribute('uv'); g.deleteAttribute('normal'); }
-  const g = mergeGeometries(parts)!;
-  const p = g.getAttribute('position') as THREE.BufferAttribute, col = new Float32Array(p.count * 3), c = new THREE.Color();
-  const red = new THREE.Color(0xd8322a), head = new THREE.Color(0x4f6a2c), belly = new THREE.Color(0xf0d0c0), fin = new THREE.Color(0x8a2a22);
+  const prof = [[0, 1.0], [0.12, 0.94], [0.22, 0.75], [0.29, 0.45], [0.3, 0.1], [0.25, -0.25], [0.16, -0.55], [0.08, -0.8], [0.05, -0.9]].map(([r, y]) => new THREE.Vector2(r, y));
+  const body = new THREE.LatheGeometry(prof, 14);
+  body.rotateZ(-Math.PI / 2); body.scale(1, 1, 0.6);
+  body.deleteAttribute('uv'); body.deleteAttribute('normal');
+  const b = body.toNonIndexed(), p = b.getAttribute('position') as THREE.BufferAttribute, col = new Float32Array(p.count * 3), c = new THREE.Color();
+  const red = new THREE.Color(0xff3b2f), head = new THREE.Color(0x4caf3c), belly = new THREE.Color(0xffe3d0);
   for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    if (x < -0.84 || y > 0.25) c.copy(fin);
-    else { c.copy(red).lerp(head, Math.min(1, Math.max(0, (x - 0.45) / 0.25))); c.lerp(belly, Math.min(1, Math.max(0, (-y - 0.02) / 0.2)) * 0.8); }
-    void z;
+    const x = p.getX(i), y = p.getY(i);
+    c.copy(red).lerp(head, Math.min(1, Math.max(0, (x - 0.42) / 0.18)));
+    c.lerp(belly, Math.min(1, Math.max(0, (-y - 0.02) / 0.18)) * 0.85);
     col.set([c.r, c.g, c.b], i * 3);
   }
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return smoothNormals(g);
+  b.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  smoothNormals(b);
+  const fin = (pts: number[][]) => paint(new THREE.ShapeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y)))), 0xc0221c);
+  return merged([
+    b,
+    fin([[-0.84, 0], [-1.32, 0.38], [-1.18, 0], [-1.32, -0.38]]),
+    fin([[0.15, 0.27], [-0.25, 0.52], [-0.32, 0.22]]),
+    ...eye(0.11, 0.66, 0.08, 0.12, 1), ...eye(0.11, 0.66, 0.08, -0.12, -1),
+  ]);
 }
 /** Swimming undulation: a travelling sideways wave that grows toward the tail, phased per instance. */
 export function swimMaterial(mat: THREE.MeshStandardMaterial, time: { value: number }): THREE.MeshStandardMaterial {
@@ -130,49 +155,152 @@ export function swimMaterial(mat: THREE.MeshStandardMaterial, time: { value: num
   return mat;
 }
 
-const fur = (c: number) => new THREE.MeshStandardMaterial({ color: c, roughness: 1 });
-/** A rounded brown bear standing on all fours, facing +X; the front-right paw is named 'paw' (it swipes). */
+const toon = (c: number, rough = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
+/** A chunky cartoon bear standing on all fours, facing +X; the front-right leg is named 'paw' (it swipes). */
 export function bearModel(): THREE.Group {
-  const g = new THREE.Group(), coat = fur(0x5b3a22), dark = fur(0x3a2414), muzzle = fur(0xa07a54), black = fur(0x111111);
+  const g = new THREE.Group(), coat = toon(0x8a5532), dark = toon(0x5e3820), cream = toon(0xf0d2a0), pink = toon(0xff9aa8), black = toon(0x1a1a1a, 0.4), white = toon(0xffffff, 0.3);
   const mk = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, name = '') => {
     const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; o.name = name; g.add(o); return o;
   };
-  const body = new THREE.SphereGeometry(1, 20, 14); body.scale(1.45, 0.95, 0.9);
-  mk(organic(body, 0.06, 2.5, new THREE.Color(0x4a2f1c), new THREE.Color(0x6a4428), -0.9, 0.9), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }), 0, 1.55, 0);
-  const hump = new THREE.SphereGeometry(0.62, 16, 12); mk(hump, coat, 0.65, 2.25, 0);
-  mk(new THREE.SphereGeometry(0.58, 18, 14), coat, 1.65, 2.05, 0);
-  const snout = new THREE.CapsuleGeometry(0.22, 0.35, 6, 10); snout.rotateZ(Math.PI / 2); mk(snout, muzzle, 2.2, 1.92, 0);
-  mk(new THREE.SphereGeometry(0.09, 10, 8), black, 2.55, 1.98, 0);
-  for (const z of [0.36, -0.36]) mk(new THREE.SphereGeometry(0.16, 10, 8), dark, 1.55, 2.6, z);
-  for (const z of [0.3, -0.3]) mk(new THREE.SphereGeometry(0.06, 8, 6), black, 2.05, 2.2, z);
-  const leg = new THREE.CapsuleGeometry(0.26, 0.85, 6, 10);
-  for (const [x, z] of [[0.95, 0.5], [-0.95, 0.5], [-0.95, -0.5]]) mk(leg, dark, x, 0.65, z);
-  mk(leg, dark, 0.95, 0.65, -0.5, 'paw');
+  const body = new THREE.SphereGeometry(1, 24, 16); body.scale(1.35, 1.0, 0.95); mk(body, coat, 0, 1.55, 0);
+  const belly = new THREE.SphereGeometry(0.8, 18, 12); belly.scale(1.2, 0.7, 0.85); mk(belly, cream, 0.1, 1.2, 0);
+  mk(new THREE.SphereGeometry(0.78, 22, 16), coat, 1.55, 2.3, 0);                  // big round head
+  const snout = new THREE.SphereGeometry(0.36, 16, 12); snout.scale(1.2, 0.85, 1); mk(snout, cream, 2.18, 2.12, 0);
+  mk(new THREE.SphereGeometry(0.13, 12, 8), black, 2.6, 2.22, 0);                  // nose
+  for (const z of [0.5, -0.5]) {
+    mk(new THREE.SphereGeometry(0.26, 14, 10), coat, 1.4, 3.0, z);                 // ears
+    mk(new THREE.SphereGeometry(0.15, 10, 8), pink, 1.5, 3.02, z * 1.02);
+    mk(new THREE.SphereGeometry(0.17, 12, 10), white, 2.05, 2.55, z * 0.62);       // eyes
+    mk(new THREE.SphereGeometry(0.095, 10, 8), black, 2.2, 2.56, z * 0.66);
+  }
+  const leg = new THREE.CapsuleGeometry(0.3, 0.8, 6, 12);
+  for (const [x, z] of [[0.95, 0.52], [-0.95, 0.52], [-0.95, -0.52]]) mk(leg, dark, x, 0.65, z);
+  mk(leg, dark, 0.95, 0.65, -0.52, 'paw');
   return g;
 }
 
-/** A bald eagle: dark body, white head and tail, yellow beak, fingered wings named 'wl'/'wr' (they flap). Faces +X. */
+/** A cartoon bald eagle: brown body, white head and tail, bright yellow beak and feet, googly eyes, fingered wings
+ * named 'wl'/'wr' (they flap). Faces +X. */
 export function eagleModel(): THREE.Group {
   const g = new THREE.Group();
-  const brown = new THREE.MeshStandardMaterial({ color: 0x3b2716, roughness: 0.9, side: THREE.DoubleSide });
-  const white = new THREE.MeshStandardMaterial({ color: 0xf3f0e6, roughness: 0.8, side: THREE.DoubleSide });
-  const yellow = new THREE.MeshStandardMaterial({ color: 0xf2b630, roughness: 0.6 });
+  const brown = new THREE.MeshStandardMaterial({ color: 0x6b4022, roughness: 0.8, side: THREE.DoubleSide });
+  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, side: THREE.DoubleSide });
+  const yellow = new THREE.MeshStandardMaterial({ color: 0xffc21a, roughness: 0.5 });
+  const black = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3 });
   const add = (o: THREE.Mesh) => { o.castShadow = true; g.add(o); return o; };
-  const body = new THREE.CapsuleGeometry(0.28, 0.9, 6, 12); body.rotateZ(Math.PI / 2); add(new THREE.Mesh(body, brown));
-  add(new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), white)).position.set(0.68, 0.08, 0);
-  const beak = new THREE.ConeGeometry(0.09, 0.26, 8); beak.rotateZ(-Math.PI / 2); add(new THREE.Mesh(beak, yellow)).position.set(0.95, 0.04, 0);
-  const tail = new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0, 0.18), new THREE.Vector2(-0.6, 0.32), new THREE.Vector2(-0.66, 0), new THREE.Vector2(-0.6, -0.32), new THREE.Vector2(0, -0.18)]));
+  const body = new THREE.CapsuleGeometry(0.32, 0.85, 6, 14); body.rotateZ(Math.PI / 2); add(new THREE.Mesh(body, brown));
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), white)).position.set(0.7, 0.12, 0);
+  const beak = new THREE.ConeGeometry(0.13, 0.36, 10); beak.rotateZ(-Math.PI / 2); add(new THREE.Mesh(beak, yellow)).position.set(1.08, 0.06, 0);
+  for (const z of [0.17, -0.17]) {
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), white)).position.set(0.92, 0.24, z);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), black)).position.set(0.99, 0.25, z * 1.05);
+    const foot = new THREE.CapsuleGeometry(0.05, 0.22, 4, 6); add(new THREE.Mesh(foot, yellow)).position.set(0.1, -0.38, z * 0.8);
+  }
+  const tail = new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(0, 0.18), new THREE.Vector2(-0.6, 0.34), new THREE.Vector2(-0.68, 0), new THREE.Vector2(-0.6, -0.34), new THREE.Vector2(0, -0.18)]));
   tail.rotateX(Math.PI / 2); add(new THREE.Mesh(tail, white)).position.set(-0.6, 0, 0);
-  const wingShape = (side: 1 | -1) => {
+  const wing = (side: 1 | -1) => {
     const pts: THREE.Vector2[] = [new THREE.Vector2(0.3, 0), new THREE.Vector2(0.35, 1.2), new THREE.Vector2(0.15, 2.4)];
-    // primary feathers: fingers along the tip
     for (let k = 0; k < 5; k++) { const z = 2.4 + k * 0.12; pts.push(new THREE.Vector2(0.1 - k * 0.12, z + 0.35), new THREE.Vector2(0.02 - k * 0.12, z)); }
     pts.push(new THREE.Vector2(-0.5, 2.2), new THREE.Vector2(-0.45, 1.1), new THREE.Vector2(-0.3, 0));
     const geo = new THREE.ShapeGeometry(new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x, p.y * side))));
     geo.rotateX(Math.PI / 2);
     const m = add(new THREE.Mesh(geo, brown)); m.name = side > 0 ? 'wl' : 'wr';
-    return m;
   };
-  wingShape(1); wingShape(-1);
+  wing(1); wing(-1);
   return g;
+}
+
+/** A cartoon frog sitting, facing +X: green body, pale belly, bulging eyes, folded legs. ~0.9 long. */
+export function frogGeometry(): THREE.BufferGeometry {
+  const body = new THREE.SphereGeometry(0.42, 18, 12); body.scale(1.15, 0.72, 0.95);
+  const belly = new THREE.SphereGeometry(0.34, 14, 10); belly.scale(1.1, 0.6, 0.85);
+  const parts = [paint(at(body, 0, 0.3, 0), 0x4fc93a), paint(at(belly, 0.06, 0.22, 0), 0xd8f5a0)];
+  for (const z of [0.2, -0.2]) {
+    parts.push(paint(at(new THREE.SphereGeometry(0.15, 12, 8), 0.22, 0.58, z), 0x4fc93a));           // eye bump
+    parts.push(...eye(0.11, 0.27, 0.64, z * 1.05, z > 0 ? 1 : -1, new THREE.Vector3(0.6, 0.3, 0.6)));
+    const thigh = new THREE.SphereGeometry(0.2, 12, 8); thigh.scale(1.3, 0.7, 0.8);
+    parts.push(paint(at(thigh, -0.22, 0.2, z * 1.6), 0x3fae2e));
+    const foot = new THREE.SphereGeometry(0.12, 10, 6); foot.scale(1.6, 0.35, 1);
+    parts.push(paint(at(foot, 0.05, 0.04, z * 1.8), 0x3fae2e), paint(at(foot.clone(), 0.3, 0.04, z * 1.2), 0x3fae2e));
+  }
+  const smile = new THREE.TorusGeometry(0.16, 0.02, 4, 12, Math.PI); smile.rotateZ(Math.PI); smile.rotateY(Math.PI / 2);
+  parts.push(paint(at(smile, 0.45, 0.34, 0), 0x1f5e18));
+  return merged(parts);
+}
+
+/** A butterfly with two wing pairs (white, tinted per instance) and a dark body. Wings named by group: flap via scale.y. */
+export function butterflyGeometry(): THREE.BufferGeometry {
+  const wing = (side: 1 | -1) => {
+    const sh = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.35, 0.3 * side), new THREE.Vector2(0.15, 0.5 * side), new THREE.Vector2(-0.1, 0.42 * side), new THREE.Vector2(-0.3, 0.3 * side), new THREE.Vector2(-0.18, 0.08 * side)]);
+    const g = new THREE.ShapeGeometry(sh); g.rotateX(Math.PI / 2); return paint(g, 0xffffff);
+  };
+  const body = new THREE.CapsuleGeometry(0.035, 0.3, 4, 6); body.rotateZ(Math.PI / 2);
+  return merged([wing(1), wing(-1), paint(body, 0x222222)]);
+}
+
+// ---------- riverbank flora ----------
+/** A tuft of grass: a few bent blades, darker at the root. Height ~0.7. */
+export function grassGeometry(): THREE.BufferGeometry {
+  const blades: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * Math.PI * 2 + k, lean = 0.15 + (k % 3) * 0.08, hgt = 0.45 + (k % 4) * 0.1;
+    const g = new THREE.BufferGeometry();
+    const w = 0.05, x = Math.cos(a) * 0.08, z = Math.sin(a) * 0.08;
+    const tx = x + Math.cos(a) * lean, tz = z + Math.sin(a) * lean;
+    g.setAttribute('position', new THREE.Float32BufferAttribute([
+      x - w * Math.sin(a), 0, z + w * Math.cos(a), x + w * Math.sin(a), 0, z - w * Math.cos(a), (x + tx) / 2, hgt * 0.55, (z + tz) / 2,
+      (x + tx) / 2, hgt * 0.55, (z + tz) / 2, x + w * Math.sin(a), 0, z - w * Math.cos(a), tx, hgt, tz,
+    ], 3));
+    g.computeVertexNormals();
+    const col = new Float32Array(18), lo = new THREE.Color(0x2f6a22), hi = new THREE.Color(0x9ad14f), c = new THREE.Color();
+    const ys = [0, 0, 0.55, 0.55, 0, 1];
+    ys.forEach((y, i) => { c.copy(lo).lerp(hi, y); col.set([c.r, c.g, c.b], i * 3); });
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    blades.push(g);
+  }
+  return mergeGeometries(blades)!;
+}
+/** A flower: green stem and leaf, five white petals (tinted per instance) around a yellow centre. Height ~0.8. */
+export function flowerGeometry(): THREE.BufferGeometry {
+  const stem = paint(at(new THREE.CylinderGeometry(0.02, 0.025, 0.75, 5), 0, 0.375, 0), 0x3f8f2a);
+  const leaf = new THREE.SphereGeometry(0.1, 8, 6); leaf.scale(1.6, 0.25, 0.7);
+  const parts = [stem, paint(at(leaf, 0.1, 0.3, 0), 0x4fa83a)];
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2, p = new THREE.SphereGeometry(0.1, 10, 6); p.scale(1.3, 0.35, 0.8);
+    p.rotateY(-a); parts.push(paint(at(p, Math.cos(a) * 0.12, 0.78, Math.sin(a) * 0.12), 0xffffff));
+  }
+  parts.push(paint(at(new THREE.SphereGeometry(0.07, 10, 8), 0, 0.8, 0), 0xffd21a));
+  return merged(parts);
+}
+/** A clump of reeds with two cattails. Height ~1.6. */
+export function reedGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 5; k++) {
+    const a = k * 1.3, r = 0.08, hgt = 1.0 + (k % 3) * 0.25;
+    const blade = new THREE.ConeGeometry(0.035, hgt, 4); blade.rotateZ((k - 2) * 0.08);
+    parts.push(paint(at(blade, Math.cos(a) * r, hgt / 2, Math.sin(a) * r), k % 2 ? 0x6a9a3a : 0x86b04a));
+  }
+  for (const [x, z, hgt] of [[0.05, 0.02, 1.5], [-0.06, -0.04, 1.3]]) {
+    parts.push(paint(at(new THREE.CylinderGeometry(0.015, 0.015, hgt, 4), x, hgt / 2, z), 0x6a8a3a));
+    parts.push(paint(at(new THREE.CapsuleGeometry(0.06, 0.22, 4, 8), x, hgt - 0.15, z), 0x7a4a24));
+  }
+  return merged(parts);
+}
+/** A lily pad (a notched disc) with a little pink lotus on top; the flower is a separate geometry so it can be hidden. */
+export function lilyPadGeometry(): THREE.BufferGeometry {
+  const pad = new THREE.CircleGeometry(0.55, 20, 0.25, Math.PI * 2 - 0.5); pad.rotateX(-Math.PI / 2);
+  return merged([paint(pad, 0x3fae3a)]);
+}
+export function lotusGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2, p = new THREE.SphereGeometry(0.1, 8, 6); p.scale(0.6, 1.2, 0.35);
+    p.rotateZ(-0.5); p.rotateY(-a); parts.push(paint(at(p, Math.cos(a) * 0.08, 0.1, Math.sin(a) * 0.08), 0xff8fc0));
+  }
+  parts.push(paint(at(new THREE.SphereGeometry(0.06, 8, 6), 0, 0.1, 0), 0xffe14a));
+  return merged(parts);
+}
+export function pebbleGeometry(): THREE.BufferGeometry {
+  const g = new THREE.IcosahedronGeometry(0.22, 2); g.scale(1.3, 0.6, 1);
+  return organic(g, 0.05, 4, new THREE.Color(0x8a857c), new THREE.Color(0xc9c2b4), -0.1, 0.12, 7);
 }

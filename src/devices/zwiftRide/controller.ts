@@ -7,12 +7,18 @@ import {
 
 type StatusCb = (s: { connected: boolean; firmware?: string; battery?: number; warning?: string }) => void;
 
-// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`): probe-verified that a plain
-// name filter works while adding optionalServices [0xfc82] does not. Rejects are immediate so the gesture survives.
-export const RIDE_REQUEST_OPTIONS: RequestDeviceOptions = { filters: [{ namePrefix: 'Zwift' }] };
+// Bluefy rejects some request shapes immediately with a bare non-Error value (e.g. `2`). A plain name filter works but
+// grants no services (getPrimaryService then fails "Unable to find service that satisfies request options"), and numeric
+// optionalServices [0xfc82] were rejected, so try the full 128-bit string forms first. Rejects are immediate so the gesture survives.
+export const RIDE_SERVICE_FC82 = '0000fc82-0000-1000-8000-00805f9b34fb';
+export const RIDE_SERVICE_128 = '00000001-19ca-4651-86e5-fa29dcdd09d1';
+export const RIDE_REQUEST_OPTIONS: RequestDeviceOptions = {
+  filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_FC82, RIDE_SERVICE_128],
+};
 const RIDE_FALLBACK_OPTIONS: RequestDeviceOptions[] = [
-  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [0xfc82] },
-  { acceptAllDevices: true, optionalServices: [0xfc82] },
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_FC82] },
+  { filters: [{ namePrefix: 'Zwift' }], optionalServices: [RIDE_SERVICE_128] },
+  { filters: [{ namePrefix: 'Zwift' }] },
 ];
 export async function requestRideDevice(): Promise<BluetoothDevice> {
   const errs: string[] = [];
@@ -25,7 +31,7 @@ export async function requestRideDevice(): Promise<BluetoothDevice> {
   }
   throw new Error('Could not open the Bluetooth picker. ' + errs.join(' | '));
 }
-const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'];
+const RIDE_SERVICE_CANDIDATES: BluetoothServiceUUID[] = [RIDE_SERVICE_FC82, RIDE_SERVICE_128];
 const FW_WARNING = 'Ride V2 firmware (>=1.3.0) is locked to Zwift and may not work. Do not update the controller firmware through Zwift.';
 const BACKOFF_S = [1, 2, 4, 8, 15];
 

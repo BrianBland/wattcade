@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit -p .",
     "sim": "tsx scripts/sim.ts",
     "sim:all": "tsx scripts/sim.ts --all",
-    "deploy": "vite build && wrangler deploy"
+    "deploy": "vite build && wrangler deploy",
+    "snap:watershed": "tsx scripts/watershed-snap.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

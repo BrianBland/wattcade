@@ -5,6 +5,8 @@ export interface MixerOpts {
   profile: () => Readonly<Profile>;
   tuning: Tuning;
   send: (cmd: TrainerCommand) => Promise<SendResult>;
+  /** Rider cadence (rpm) for the ERG low-cadence relief; omit to disable it. */
+  cadence?: () => number;
 }
 
 const MIN_INTERVAL_S = 0.75;
@@ -25,11 +27,16 @@ export class ResistanceMixer implements ResistanceController {
   private gearStep: () => number;
   private rampS: () => number;
   private rampLeft = 0; private rampTotal = 0; private rampSettle = false;
+  private ergRelief = 1;
+  private reliefRpm: () => number; private reliefFloor: () => number; private reliefRecoverS: () => number;
 
   constructor(private o: MixerOpts) {
     this.difficulty = o.profile().settings.difficulty ?? 1;
     this.gearStep = o.tuning.num('gearStepPct', 0.8, 0, 3, 0.05, 'Grade added per virtual gear step from neutral');
     this.rampS = o.tuning.num('rampInS', 6, 0, 30, 1, 'Seconds to ease a game\'s resistance in after its countdown');
+    this.reliefRpm = o.tuning.num('ergReliefRpm', 55, 0, 90, 1, 'ERG: below this cadence, ease the target off so the rider can spin back up (0 = off)');
+    this.reliefFloor = o.tuning.num('ergReliefFloor', 0.6, 0.2, 1, 0.05, 'ERG: lowest fraction of the target while relief is on');
+    this.reliefRecoverS = o.tuning.num('ergReliefRecoverS', 8, 1, 30, 1, 'ERG: seconds to ramp back to the full target once cadence recovers');
   }
 
   set(e: ResistanceEffect): void {
@@ -67,6 +74,7 @@ export class ResistanceMixer implements ResistanceController {
         else if (sides.some((s) => b === `shiftDn${s}`)) this.gear = Math.max(1, this.gear - 1);
       }
     }
+    this.tickErgRelief(dt);
     if (this.panicOn) { this.chosenMode = 'sim'; return; }
     if (this.rampLeft > 0) { this.rampLeft = Math.max(0, this.rampLeft - dt); if (this.rampLeft === 0) this.rampSettle = true; }
     const want = this.ramped(this.compute());
@@ -74,6 +82,20 @@ export class ResistanceMixer implements ResistanceController {
     const settle = this.rampSettle && this.now - this.lastSentAt >= MIN_INTERVAL_S - 1e-9;
     if (settle) this.rampSettle = false;
     if (settle ? JSON.stringify(want) !== JSON.stringify(this.lastCommand) : this.shouldSend(want)) this.send(want);
+  }
+
+  /**
+   * ERG "spiral of death" guard: at a fixed target, slower cranks mean more torque, so a rider who bogs down
+   * can get stuck. Below `ergReliefRpm` the target drops quickly toward `ergReliefFloor` × target; once cadence
+   * is back above the threshold + 10 rpm it ramps up over `ergReliefRecoverS`.
+   */
+  private tickErgRelief(dt: Seconds): void {
+    const rpm = this.reliefRpm(), floor = this.reliefFloor();
+    if (!this.o.cadence || rpm <= 0 || this.chosenMode !== 'erg') { this.ergRelief = 1; return; }
+    const c = this.o.cadence();
+    if (c < rpm) this.ergRelief = Math.max(floor, this.ergRelief - dt * 0.5);
+    else if (c >= rpm + 10) this.ergRelief = Math.min(1, this.ergRelief + (dt * (1 - floor)) / this.reliefRecoverS());
+    if (this.ergRelief < floor) this.ergRelief = floor;
   }
 
   /** The unthrottled command for the current effects. */
@@ -95,7 +117,7 @@ export class ResistanceMixer implements ResistanceController {
     }
     if (mode === 'erg') {
       let w = Math.max(0, ...same.map((e) => e.watts ?? (e.ftpFraction !== undefined ? e.ftpFraction * prof.ftp : 0)));
-      w *= this.difficulty;
+      w *= this.difficulty * this.ergRelief;
       return { mode: 'erg', watts: Math.min(prof.ftp * prof.settings.ergCapFtpFraction, Math.max(60, w)) };
     }
     const lvl = same.reduce((a, e) => a + (e.levelPct ?? 0), 0) * this.difficulty;
@@ -127,7 +149,7 @@ export class ResistanceMixer implements ResistanceController {
     return {
       activeEffects: [...this.effects.values()].map(({ expiresAt, ...e }) => e),
       chosenMode: this.chosenMode, lastCommand: this.lastCommand, lastResult: this.lastResult,
-      difficulty: this.difficulty, gear: this.gear, gearsEnabled: this.gears, panic: this.panicOn,
+      difficulty: this.difficulty, ergRelief: +this.ergRelief.toFixed(2), gear: this.gear, gearsEnabled: this.gears, panic: this.panicOn,
     };
   }
   get command(): TrainerCommand | null { return this.lastCommand; }

@@ -56,6 +56,11 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 export const getFake = () => fakeMode;
 export function setFake(on: boolean) { fakeMode = on; notify(); }
+/** Why `game` can't start with the connected devices, or null. Only a real trainer can lack ERG (the fake bike supports it). */
+export function missingRequirement(game: GameModule): string | null {
+  if (!game.requires?.erg || fakeMode || !devices.trainer) return null;
+  return dataHub.capabilities()?.erg === false ? `${game.title} needs a trainer with ERG mode` : null;
+}
 export const getDeviceStatus = (): DeviceStatusMap => status;
 export function subscribeDevices(cb: () => void): () => void { listeners.add(cb); return () => listeners.delete(cb); }
 export let controllerInfo: { firmware?: string; battery?: number; warning?: string } = {};

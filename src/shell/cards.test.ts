@@ -14,6 +14,7 @@ const SAVES: Record<string, unknown> = {
   towerdefense: { bestWave: 9 },
   starfighter: { best: 12345.6 },
   hamster: { life: 5e6, rebirths: 2 },
+  watershed: { rides: 3, bestCarved: 1400, bestDelta: 900 },
 };
 
 describe('arcade card hooks', () => {

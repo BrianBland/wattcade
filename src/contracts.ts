@@ -165,7 +165,9 @@ export interface GameRenderer {
 }
 export interface GameModule {
   id: string; title: string; blurb: string;
-  tags: Array<'zone2' | 'sprint' | 'intervals'>;
+  tags: Array<'zone2' | 'sprint' | 'intervals' | 'erg'>;
+  /** Optional: trainer features the game can't run without. The arcade blocks it when a connected trainer lacks them (the fake bike has all). */
+  requires?: { erg?: boolean };
   createSim(ctx: GameContext, opts?: { seed?: number }): GameSim;
   loadRenderer(): Promise<GameRenderer>;           // must use dynamic import()
   /** Optional: one short line for the arcade card from this rider's save (profile.gameData[id]), e.g. "Best floor 7". Pure. */

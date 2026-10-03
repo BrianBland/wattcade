@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, Profile } from '../../contracts';
 import { Avatar, Btn, Dot, XpBar } from '../components/Bits';
 import { KeyHints } from '../components/ui';
-import { achievementViews, getDeviceStatus, levelView, lobbyHills, setLobbyHills, subscribeDevices } from '../services';
+import { achievementViews, getDeviceStatus, levelView, lobbyHills, missingRequirement, setLobbyHills, subscribeDevices } from '../services';
+import { toast } from '../components/Toasts';
+import { play } from '../../audio/sfx';
 import { timeAgo } from '../format';
 import { useMenuNav } from '../useMenuNav';
 
-const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals' };
+const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
 const ACCENTS = ['#00f0ff', '#ff2bd6', '#b6ff3b', '#ffb020', '#7a5cff', '#2de2a6'];
 const accentFor = (id: string) => ACCENTS[[...id].reduce((a, c) => a + c.charCodeAt(0), 0) % ACCENTS.length];
 
@@ -39,8 +41,9 @@ export function lastPlayedIndex(games: readonly GameModule[], p: Profile): numbe
   return best;
 }
 
-export function ArcadeMenu({ games, profile, onPlay, onNav, onBack }: { games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements') => void; onBack: () => void }) {
+export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements') => void; onBack: () => void }) {
   const n = games.length;
+  const onPlay = (g: GameModule) => { const why = missingRequirement(g); if (why) { toast(`⚠ ${why}`); play('deny'); } else launch(g); };
   const [, force] = useState(0);
   useEffect(() => subscribeDevices(() => force((x) => x + 1)), []);
   const [hills, setHills] = useState(lobbyHills);
@@ -69,6 +72,7 @@ export function ArcadeMenu({ games, profile, onPlay, onNav, onBack }: { games: G
             <h3>{g.title}</h3>
             <div class="tags">{g.tags.map((t) => <span class={`tag ${t}`}>{TAG_LABEL[t] ?? t}</span>)}</div>
             <p class="blurb">{g.blurb}</p>
+            {(() => { const why = missingRequirement(g); return why && <div class="progress-line needs">⚠ {why}</div>; })()}
             {(() => { let line: string | null = null; try { line = g.progressLine?.(profile.gameData[g.id]) ?? null; } catch { /* bad save */ } return line && <div class="progress-line">{line}</div>; })()}
             <div class="meta dim">{timeAgo(profile.lastPlayed[g.id])}</div>
           </div>

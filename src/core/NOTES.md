@@ -25,6 +25,8 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
 - FakeBike manual mode (no script): `fakeBike.manual = {cadence, power|null, hr|null}`; `useScript(name|null)`.
 
 - `session.idle(realDt)`: steps input/fake bike/bike store/mixer but not the sim, clock or recorder; returns presses (game intros).
+- ERG low-cadence relief: mixer opt `cadence()` (session passes `cadence3s`); tunables `core.ergReliefRpm/ergReliefFloor/ergReliefRecoverS`; `debug().ergRelief`.
+- Cadence scripts: `grind`, `spin`, `cadence-follow` (reads `hooks.cadence`); `Script.cadence(t, env)` gets `{hooks, seed}`.
 - `mixer.rampIn(s = core.rampInS 6)`: eases sim grade (×k), ERG (×0.5..1) and resistance (×k) in from neutral; lands exactly at the end.
 
 ## runHeadless / scripts/sim.ts

@@ -97,7 +97,7 @@ export class ZwiftRideController implements ControllerDevice {
     const pick = pickCharacteristics(infos);
     this.log(`chars: ${infos.map((i) => i.uuid).join(', ')}`);
     if (pick.fallback.length) this.log('fallback characteristics: ' + pick.fallback.join(' '));
-    const byUuid = (u?: string) => chars.find((c) => c.uuid === u);
+    const byUuid = (u?: string) => chars.find((c) => c.uuid.toLowerCase() === u?.toLowerCase());
     const asyncC = byUuid(pick.async); const txC = byUuid(pick.syncTx); const rxC = byUuid(pick.syncRx);
     if (!asyncC || !rxC) throw new Error('Zwift Ride: required characteristics not found');
     this.syncRx = rxC;

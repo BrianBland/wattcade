@@ -66,7 +66,7 @@ async function explore(server: BluetoothRemoteGATTServer, ride: boolean) {
         } catch (e) { log('READ-ERR', `${c.uuid}: ${e}`); }
       }
       if (c.properties.notify || c.properties.indicate) notifiers.push(c);
-      if (ride && c.uuid.startsWith('00000003-19ca')) rideRx = c;
+      if (ride && c.uuid.toLowerCase().startsWith('00000003-19ca')) rideRx = c;
     }
   }
   for (const c of notifiers) {

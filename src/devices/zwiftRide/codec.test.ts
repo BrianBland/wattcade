@@ -69,6 +69,10 @@ describe('misc', () => {
     const fb = pickCharacteristics([{ uuid: 'aaa', notify: true, indicate: false, write: false, writeNoResp: false }, { uuid: 'bbb', notify: false, indicate: false, write: true, writeNoResp: false }]);
     expect(fb.async).toBe('aaa'); expect(fb.syncRx).toBe('bbb');
   });
+  it('char pick is case-insensitive (Bluefy reports uppercase UUIDs)', () => {
+    const up = pickCharacteristics([{ uuid: RIDE_UUIDS.async.toUpperCase(), notify: true, indicate: false, write: false, writeNoResp: false }, { uuid: RIDE_UUIDS.syncRx.toUpperCase(), notify: false, indicate: false, write: false, writeNoResp: true }]);
+    expect(up.fallback).toEqual([]); expect(up.async).toBe(RIDE_UUIDS.async); expect(up.syncRx).toBe(RIDE_UUIDS.syncRx);
+  });
   it('RideOn', () => { expect(startsWithRideOn(u(0x52, 0x69, 0x64, 0x65, 0x4f, 0x6e, 1, 2))).toBe(true); expect(startsWithRideOn(u(1))).toBe(false); });
 });
 

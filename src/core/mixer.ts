@@ -23,10 +23,13 @@ export class ResistanceMixer implements ResistanceController {
   private lastResult: SendResult | null = null;
   private chosenMode: TrainerCommand['mode'] = 'none';
   private gearStep: () => number;
+  private rampS: () => number;
+  private rampLeft = 0; private rampTotal = 0; private rampSettle = false;
 
   constructor(private o: MixerOpts) {
     this.difficulty = o.profile().settings.difficulty ?? 1;
     this.gearStep = o.tuning.num('gearStepPct', 0.8, 0, 3, 0.05, 'Grade added per virtual gear step from neutral');
+    this.rampS = o.tuning.num('rampInS', 6, 0, 30, 1, 'Seconds to ease a game\'s resistance in after its countdown');
   }
 
   set(e: ResistanceEffect): void {
@@ -42,6 +45,17 @@ export class ResistanceMixer implements ResistanceController {
     if (on) this.send({ mode: 'sim', gradePct: 0 });
   }
   isPanic(): boolean { return this.panicOn; }
+  /** Ease the next commands in from neutral over `seconds` (default tuning core.rampInS), e.g. after a game's countdown. */
+  rampIn(seconds = this.rampS()): void { this.rampTotal = this.rampLeft = Math.max(0, seconds); }
+  /** Scale a command toward neutral while a ramp-in runs (k: 0 = neutral, 1 = full). */
+  private ramped(c: TrainerCommand): TrainerCommand {
+    if (this.rampLeft <= 0 || this.rampTotal <= 0) return c;
+    const k = 1 - this.rampLeft / this.rampTotal;
+    if (c.mode === 'sim') return { ...c, gradePct: +(c.gradePct * k).toFixed(2) };
+    if (c.mode === 'erg') return { ...c, watts: Math.round(c.watts * (0.5 + 0.5 * k)) };
+    if (c.mode === 'resistance') return { ...c, levelPct: c.levelPct * k };
+    return c;
+  }
 
   tick(dt: Seconds, input: Readonly<InputState>): void {
     this.now += dt;
@@ -54,8 +68,12 @@ export class ResistanceMixer implements ResistanceController {
       }
     }
     if (this.panicOn) { this.chosenMode = 'sim'; return; }
-    const want = this.compute();
-    if (this.shouldSend(want)) this.send(want);
+    if (this.rampLeft > 0) { this.rampLeft = Math.max(0, this.rampLeft - dt); if (this.rampLeft === 0) this.rampSettle = true; }
+    const want = this.ramped(this.compute());
+    // when a ramp ends, land exactly on the full command even if the last step is below the send thresholds
+    const settle = this.rampSettle && this.now - this.lastSentAt >= MIN_INTERVAL_S - 1e-9;
+    if (settle) this.rampSettle = false;
+    if (settle ? JSON.stringify(want) !== JSON.stringify(this.lastCommand) : this.shouldSend(want)) this.send(want);
   }
 
   /** The unthrottled command for the current effects. */

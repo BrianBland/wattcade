@@ -29,6 +29,12 @@ CONTRACT-REQUEST: none.
 - Arcade cards: optional `GameModule.drawCard` banner (animated only on the focused card, `CardArt`) and `progressLine(save)`
   under the blurb; each game implements them in `src/games/<id>/card.ts` (tested in `shell/cards.test.ts`).
 
+- Game flow (GameHost phases): intro card (`game/GameIntro.tsx`: blurb, target zone, controls via pure `controlGlyphs.ts`;
+  A start, B back to menu without saving, auto-start after 8 s) -> 3-2-1-GO with the session `idle()`-ing and the trainer
+  held neutral (panic) -> GO releases it and `mixer.rampIn()` -> play (mid-ride toasts every 10 s from `previewAward`:
+  achievements, level-up, 10-min milestones) -> result banner (`game/ResultBanner.tsx`, 4 s or A) -> summary.
+  Pause adds Controls (intro card as help) and Restart (saves the ride, new run via `screen.run`).
+
 ## Gaps
 - Touch overlay (`attachTouch`) attached to the game mount only; not visually tested. Not browser-tested at all with real devices.
 - Fake bike keys (W/S cadence, E/D power, R/F HR via event.code, `shell/fakeKeys.ts`) active in GameHost and the warm-up stage (`fakeKeysDom.ts`); first press switches FakeBike to manual seeded from current raw values; hint shown in the game host when fake.

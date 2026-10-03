@@ -103,6 +103,7 @@ const anyReal = () => Object.keys(devices).length > 0;
 
 // ---------- sessions ----------
 let active: any = null;
+let activeGameId = '';
 export const activeSession = (): SessionLike | null => active;
 /** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
 const current = (): any => active ?? lobby;
@@ -110,6 +111,7 @@ const current = (): any => active ?? lobby;
 export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void): SessionLike {
   input.applySettings(profile.settings); debugState.timeScale = 1;
   const useFake = fakeMode || !anyReal();
+  activeGameId = game.id;
   active = createGameSession({
     game, profile, input, dataHub: useFake ? undefined : dataHub,
     fake: useFake ? { script: fakeScript } : false, onSave,
@@ -120,6 +122,24 @@ export async function finishSession(profile: Profile): Promise<{ record: Session
   const record: SessionRecord = active.finish();
   active.mixer?.panic?.(true); active = null;
   return creditRecord(profile, record);
+}
+/** Drop the running game session without saving (left from its intro, before riding). */
+export function abandonSession(): void {
+  if (!active) return;
+  active.finish(); active.mixer?.panic?.(true); active = null;
+}
+/** What the rider would earn if the game ended now (for mid-ride toasts). Nothing is saved. */
+export function previewAward(profile: Profile): { xp: number; level: number; achievements: Array<{ id: string; name: string }>; activeS: number; kj: number } | null {
+  if (!active) return null;
+  let summary: Record<string, number | string> = {};
+  try { summary = active.sim.summary(); } catch { /* mid-run summary is best effort */ }
+  const rec: SessionRecord = active.recorder.finish({ profileId: profile.id, gameId: activeGameId, startedAt: Date.now(), gameSummary: summary });
+  const r: any = awardSession(profile, rec);
+  return {
+    xp: r.xpGained ?? 0, level: r.profile?.level ?? profile.level,
+    achievements: (r.newAchievements ?? []).map((x: any) => ({ id: x.id, name: x.name ?? x.id })),
+    activeS: activeSecondsOf(rec), kj: rec.stats.kj,
+  };
 }
 /** Save a finished record and apply XP / achievements to `profile`. */
 async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {

@@ -315,3 +315,33 @@ describe('BikeStateStore HR sources', () => {
     expect(st.tick(FIXED_DT, p).raw.hr).toBe(120);
   });
 });
+
+describe('mixer rampIn + session idle', () => {
+  it('eases a sim grade and an ERG target in from neutral', () => {
+    const { m, sent, tick } = mixer();
+    m.set({ id: 'hill', mode: 'sim', gradePct: 6 });
+    m.rampIn(6); tick(0.05);
+    expect(sent.at(-1).gradePct).toBeLessThan(0.5);
+    tick(3);
+    expect(sent.at(-1).gradePct).toBeGreaterThan(2); expect(sent.at(-1).gradePct).toBeLessThan(4.5);
+    tick(4);
+    expect(sent.at(-1).gradePct).toBe(6);
+    m.clearAll(); m.set({ id: 'e', mode: 'erg', watts: 200 }); m.rampIn(4); tick(0.8);
+    expect(sent.at(-1).watts).toBeLessThan(140);
+    tick(5); expect(sent.at(-1).watts).toBe(200);
+  });
+  it('idle advances the bike but not the sim, clock or recording', () => {
+    let updates = 0;
+    const game: GameModule = {
+      id: 'g', title: 'g', blurb: '', tags: [],
+      createSim: () => ({ update: () => { updates++; }, snapshot: () => ({}), isOver: () => false, summary: () => ({}) }),
+      loadRenderer: () => Promise.reject(new Error('n/a')),
+    };
+    const s = createGameSession({ game, profile: prof(), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    for (let i = 0; i < 90; i++) s.idle(1 / 30);
+    expect(updates).toBe(0);
+    expect(s.clock.now()).toBe(0);
+    expect(s.recorder.samples.length).toBe(0);
+    expect(s.ctx.bike().power3s).toBeGreaterThan(50);
+  });
+});

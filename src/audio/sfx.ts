@@ -8,7 +8,8 @@ export type SfxName =
   | 'stairs' | 'shrine' | 'reward' | 'select' | 'buy' | 'deny' | 'curse'
   | 'build' | 'horn' | 'foghorn' | 'bell' | 'thunder' | 'wreck' | 'splash' | 'chime' | 'surge' | 'lampOut' | 'gull'
   | 'upgrade' | 'unlock' | 'rescue'
-  | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick';
+  | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
+  | 'count' | 'go' | 'gameOver' | 'milestone';
 
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number }
 const R: Record<SfxName, Tone[]> = {
@@ -59,6 +60,10 @@ const R: Record<SfxName, Tone[]> = {
   uiBack: [{ type: 'triangle', f0: 784, dur: 0.05, vol: 0.08 }, { type: 'triangle', f0: 523, dur: 0.08, vol: 0.08, delay: 0.045 }],
   uiTick: [{ type: 'square', f0: 1568, dur: 0.02, vol: 0.035 }],
   uiWake: [{ type: 'sine', f0: 392, f1: 784, dur: 0.25, vol: 0.08 }],
+  count: [{ type: 'square', f0: 660, dur: 0.12, vol: 0.12 }],
+  go: [{ type: 'square', f0: 1320, dur: 0.35, vol: 0.14 }, { type: 'triangle', f0: 660, dur: 0.35, vol: 0.1 }],
+  gameOver: [523, 415, 349, 262].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.3, vol: 0.14, delay: i * 0.16 })),
+  milestone: [{ type: 'triangle', f0: 880, dur: 0.12, vol: 0.1 }, { type: 'triangle', f0: 1320, dur: 0.2, vol: 0.1, delay: 0.1 }],
   countTick: [{ type: 'square', f0: 2093, dur: 0.015, vol: 0.025 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };

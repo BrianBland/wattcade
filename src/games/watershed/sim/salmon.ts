@@ -1,6 +1,10 @@
 // The salmon run: a reward for the river you carved. A school swims up *your* channel from the sea to the spring.
 // Cadence is swim speed; steering (lane across the channel) dodges bears on the banks and diving eagles; high falls
-// (ridges you didn't cut down) need a spin-up to leap. Pure and deterministic (rng injected).
+// (ridges you didn't cut down) need a spin-up to leap. Each run opens with a camera intro during which the school
+// holds still and no predators spawn. Pure and deterministic (rng injected).
+//
+// Lanes: lane −1..1 maps to x = centre + lane · halfWidth. The fish faces upstream (−y), so its RIGHT is −x (lane −).
+// Steering input is in the fish's frame: `steer` > 0 / `nudge` > 0 = towards the fish's right.
 
 import { SEA, type Terrain } from './terrain';
 
@@ -22,13 +26,16 @@ export interface SalmonParams {
   shiftStep: number;                  // lanes per shifter click
   predatorGap: number;                // mean seconds between predators
   catchChance: number;                // chance a fish in a strike zone is taken
+  introS: number;                     // first run's camera intro (school holds still)
+  introNextS: number;                 // later runs' intro
+  restartS: number;                   // pause at the spring before the next school sets off
 }
 export const DEFAULT_SALMON: SalmonParams = {
-  swimMin: 0.5, swimMax: 2.2, leapRpm: 95, fallsRise: 1.6, steerRate: 2.2, shiftStep: 0.45, predatorGap: 11, catchChance: 0.55,
+  swimMin: 0.5, swimMax: 2.2, leapRpm: 95, fallsRise: 1.6, steerRate: 2.2, shiftStep: 0.45, predatorGap: 11, catchChance: 0.55, introS: 9, introNextS: 4, restartS: 5,
 };
 
 export type SalmonCue =
-  | { type: 'run'; fish: number } | { type: 'home'; fish: number } | { type: 'leap' } | { type: 'stuck' }
+  | { type: 'run'; fish: number } | { type: 'go'; run: number } | { type: 'home'; fish: number } | { type: 'leap' } | { type: 'stuck' }
   | { type: 'warn'; kind: 'bear' | 'eagle' } | { type: 'strike'; kind: 'bear' | 'eagle'; caught: number };
 
 const GOAL_Y = 4;
@@ -37,6 +44,7 @@ export class SalmonRun {
   active = false;
   run = 0; y = 0; lane = 0; fish: Fish[] = []; predators: Predator[] = [];
   home = 0; lost = 0; needLeap = false; leaping = false; stuck = false;
+  intro = 0; introTotal = 0;
   /** River centreline x and half-width per row, from the water-depth grid (smoothed in time). */
   readonly px: Float32Array; readonly pw: Float32Array;
   private pathReady = false;
@@ -71,18 +79,19 @@ export class SalmonRun {
     return { x: this.at(this.px, y) + lane * this.at(this.pw, y) * 0.8, y };
   }
 
-  start(size: number): void {
+  start(size: number, p: SalmonParams): void {
     this.active = true; this.size = size; this.run = 0; this.restart = -1;
-    this.launch();
+    this.launch(p);
   }
   stop(): void { this.active = false; this.predators = []; this.restart = -1; }
 
-  private launch(): void {
+  private launch(p: SalmonParams): void {
+    this.introTotal = this.intro = this.run === 0 ? p.introS : p.introNextS;
     this.run++; this.y = this.t.ny - 6; this.fallsState = 'none'; this.lane = 0; this.predators = []; this.nextPred = 6;
     this.fish = [];
     for (let i = 0; i < this.size; i++) {
       const a = this.rng(), b = this.rng();
-      this.fish.push({ lane: (a - 0.5) * 0.9, dx: (a - 0.5) * 0.9, dy: 1 + b * 6, alive: true });
+      this.fish.push({ lane: (a - 0.5) * 0.9, dx: (a - 0.5) * 0.9, dy: 1 + b * 4.5, alive: true });
     }
   }
 
@@ -97,7 +106,12 @@ export class SalmonRun {
     if (!this.active) return cues;
     if (this.restart >= 0) {
       this.restart -= dt;
-      if (this.restart < 0) { if (inp.mayRestart) { this.launch(); cues.push({ type: 'run', fish: this.size + 1 }); } else this.stop(); }
+      if (this.restart < 0) { if (inp.mayRestart) { this.launch(p); cues.push({ type: 'run', fish: this.size + 1 }); } else this.stop(); }
+      return cues;
+    }
+    if (this.intro > 0) {
+      this.intro = Math.max(0, this.intro - dt);
+      if (this.intro === 0) cues.push({ type: 'go', run: this.run });
       return cues;
     }
 
@@ -107,7 +121,7 @@ export class SalmonRun {
       target = 0;
       for (const pr of this.predators) if (pr.struck < 0 && pr.t < 4) target = pr.kind === 'bear' ? -pr.side * 0.85 : pr.lane > 0 ? -0.8 : 0.8;
       this.lane += Math.max(-p.steerRate * dt, Math.min(p.steerRate * dt, target - this.lane));
-    } else this.lane += inp.steer * p.steerRate * dt + inp.nudge * p.shiftStep;
+    } else this.lane -= inp.steer * p.steerRate * dt + inp.nudge * p.shiftStep; // fish's right = lane −
     this.lane = Math.max(-1, Math.min(1, this.lane));
     for (const f of this.fish) f.lane += (this.lane + f.dx - f.lane) * (1 - Math.exp(-dt / 0.45));
 
@@ -153,10 +167,17 @@ export class SalmonRun {
     if (this.y <= GOAL_Y) {
       const n = this.fish.filter((f) => f.alive).length + 1;
       this.home += n; cues.push({ type: 'home', fish: n });
-      this.predators = []; this.restart = 3;
+      this.predators = []; this.restart = p.restartS;
     }
     return cues;
   }
 
   alive(): number { return this.fish.filter((f) => f.alive).length + 1; }
+
+  /** Unit vector (grid) pointing upstream along the channel at row y. */
+  heading(y: number): { x: number; y: number } {
+    const a = this.pos(y + 3, 0), b = this.pos(y - 3, 0);
+    const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
+    return { x: dx / l, y: dy / l };
+  }
 }

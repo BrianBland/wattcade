@@ -7,7 +7,8 @@ CONTRACT-REQUEST: none.
   then flow down the free-surface gradient (`max(h,SEA) + pressure·w`; a particle exerts no net force on itself). Per-parcel
   size factors (drag/deposit/dig) are cached at spawn, so changing `dragExp`/`depositExp`/`massExp` affects new parcels only.
   `settle()` relaxes generated terrain (thermal to convergence) and resets `h0`.
-- `sim/salmon.ts` `SalmonRun`: path traced from the depth grid (`updatePath`, once a second), lane steering, bears/eagles,
+- `sim/salmon.ts` `SalmonRun`: path traced from the depth grid (`updatePath`, once a second), lane steering in the fish's
+  frame (right = lane −), camera-intro hold (`intro`, cue `go`), bears/eagles,
   falls (surface rise over 2 rows) needing `leapRpm`. Pure; `DEFAULT_SALMON` params (not yet ctx.tuning tunables).
 - `sim/plan.ts`: the fixed 45 min ERG plan (15 blocks, incl. the 6 min salmon run), `planAt(t, scale)`, `bandMid` (for the `cadence-follow` script hook).
 - `sim/sim.ts`: ERG effect `flow` (ftpFraction from the plan), cadence → parcel volume/speed/spread, steering, stats once per

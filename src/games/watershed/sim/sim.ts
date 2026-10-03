@@ -30,6 +30,10 @@ export interface WatershedSnapshot {
 export interface Cue { id: number; type: string; data?: Record<string, number | string | boolean> }
 export interface SalmonView {
   run: number; y: number; lane: number; home: number; lost: number; alive: number;
+  /** Seconds left in this run's camera intro (school holds still), and its full length. */
+  intro: number; introTotal: number;
+  /** Upstream unit vector (grid) at the leader, and the river centreline every 4 rows (grid x, y). */
+  heading: { x: number; y: number }; path: Array<[number, number]>;
   needLeap: boolean; leaping: boolean; stuck: boolean; restarting: boolean;
   leader: { x: number; y: number };
   fish: Array<{ x: number; y: number; alive: boolean }>;
@@ -107,6 +111,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     return {
       run: salmon.run, y: salmon.y, lane: salmon.lane, home: salmon.home, lost: salmon.lost, alive: salmon.alive(),
       needLeap: salmon.needLeap, leaping: salmon.leaping, stuck: salmon.stuck, restarting: salmon.y <= 4,
+      intro: salmon.intro, introTotal: salmon.introTotal,
+      heading: salmon.heading(salmon.y),
+      path: Array.from({ length: Math.ceil(terrain.ny / 4) }, (_, k) => { const p = salmon.pos(k * 4, 0); return [p.x, p.y] as [number, number]; }),
       leader: L,
       fish: salmon.fish.map((f) => ({ ...salmon.pos(salmon.y + f.dy, f.lane), alive: f.alive })),
       predators: salmon.predators.map((p) => ({ ...p, x: salmon.pos(p.y, p.kind === 'bear' ? p.side * 1.25 : p.lane).x, cx: salmon.pos(p.y, 0).x })),
@@ -123,7 +130,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         if (b.style === 'salmon' && !salmon.active) {
           measure(); salmon.updatePath(water.w);
           const size = 8 + Math.min(12, Math.floor(carved / 1000));
-          salmon.start(size);
+          salmon.start(size, DEFAULT_SALMON);
           cue('salmonRun', { fish: size + 1 });
         } else if (b.style !== 'salmon' && salmon.active) salmon.stop();
       }
@@ -138,19 +145,26 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       bonus += ((inBand ? 1 : 0) - bonus) * (1 - Math.exp(-dt / 1.5));
       if (inBand) bandS += dt;
 
-      // steering: the spring, or the salmon school during the run
-      let dir = 0, nudge = 0;
+      // steering: the spring (▲▼, shifters up/down), or the salmon school in the fish's frame
+      // (◀▶, Z/A, paddles analog, left hood darts left, right hood darts right)
+      let dir = 0, nudge = 0, steer = 0, dart = 0;
       if (input.held.has('up')) dir -= 1;
       if (input.held.has('down')) dir += 1;
       for (const p of input.pressed) {
         if (p === 'shiftUpL' || p === 'shiftUpR') nudge -= 1;
         if (p === 'shiftDnL' || p === 'shiftDnR') nudge += 1;
+        if (p === 'shiftUpL' || p === 'shiftDnL') dart -= 1;
+        if (p === 'shiftUpR' || p === 'shiftDnR') dart += 1;
       }
+      if (input.held.has('right') || input.held.has('a')) steer += 1;
+      if (input.held.has('left') || input.held.has('z')) steer -= 1;
+      steer = clamp(steer + input.paddleR - input.paddleL, -1, 1);
       if (salmon.active) {
-        const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer: dir, nudge, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale }, DEFAULT_SALMON);
+        const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer, nudge: dart, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale }, DEFAULT_SALMON);
         for (const c of sc) {
           if (c.type === 'home') cue('salmonHome', { fish: c.fish });
           else if (c.type === 'run') cue('salmonRun', { fish: c.fish });
+          else if (c.type === 'go') cue('salmonGo', { run: c.run }, false);
           else if (c.type === 'strike') cue('predatorStrike', { kind: c.kind, caught: c.caught });
           else if (c.type === 'warn') cue('predatorWarn', { kind: c.kind }, false);
           else cue(c.type === 'leap' ? 'salmonLeap' : 'salmonStuck');
@@ -197,7 +211,10 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       return {
         targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
-        controls: [{ button: 'dpad', label: fish ? 'Steer the school' : 'Move the spring' }, { button: 'shiftersR', label: fish ? 'Dart across' : 'Nudge the spring' }],
+        controls: fish
+          ? [{ button: 'paddles', label: 'Steer the school' }, { button: 'dpad', label: '◀▶ Steer' },
+            { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' }]
+          : [{ button: 'dpad', label: '▲▼ Move the spring' }, { button: 'shiftersR', label: 'Nudge the spring' }],
       };
     },
     snapshot(): WatershedSnapshot {

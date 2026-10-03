@@ -81,7 +81,9 @@ export class SalmonLayer {
       cur.x += (tx - cur.x) * k; cur.y += (ty - cur.y) * k; cur.z += (tz - cur.z) * k;
       cur.s += ((f.alive ? 1 : 0) - cur.s) * (1 - Math.exp(-dt * 6));
       const wig = Math.sin(time * 11 + idx * 1.7) * 0.35;
-      this.e.set(0, Math.PI + wig, leap > 0.1 ? 0.5 : 0); this.q.setFromEuler(this.e);
+      // face upstream along the channel: model nose is +X; grid heading (dx, dy) → world (dy, dx)
+      const yaw = Math.atan2(-view.heading.x, view.heading.y);
+      this.e.set(0, yaw + wig, leap > 0.1 ? 0.5 : 0); this.q.setFromEuler(this.e);
       this.p.set(cur.x, cur.y, cur.z);
       this.sc.setScalar((idx === 0 ? 1.8 : 1.15) * cur.s);
       this.m.compose(this.p, this.q, this.sc);

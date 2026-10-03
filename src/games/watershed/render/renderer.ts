@@ -26,7 +26,8 @@ const C = {
 /** Popup copy for cues: title, sub line, seconds, tone. */
 const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> = {
   intro: ['You are the river.', 'Grind to carve deep · spin to carry silt to the sea · ▲▼ moves the spring', 6, ''],
-  salmonRun: ['The salmon are running!', 'Steer the school with ▲▼ or the shifters · dodge bears and eagles', 6, 'salmon'],
+  salmonRun: ['The salmon are running!', 'Follow them home up the river you carved', 5, 'salmon'],
+  salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · spin past 95 rpm to leap falls', 6, 'salmon'],
   salmonStuck: ['Falls ahead!', 'Spin past 95 rpm to leap', 3, 'warn'],
 };
 const BLOCK_SUB: Record<string, string> = {
@@ -50,9 +51,14 @@ export class WatershedRenderer implements GameRenderer {
   private color = '#d64545';
   private camBase = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
   private camPos = new THREE.Vector3(); private camTgt = new THREE.Vector3(); private camInit = false;
+  private camMode: 'overhead' | 'intro' | 'chase' = 'overhead'; private introRun = 0;
+  private introFrom = { pos: new THREE.Vector3(), tgt: new THREE.Vector3() };
+  private camHead = new THREE.Vector3(-1, 0, 0);
+  private cL = new THREE.Vector3(); private cH = new THREE.Vector3(); private cP = new THREE.Vector3(); private cT = new THREE.Vector3();
+  private cA = new THREE.Vector3(); private cB = new THREE.Vector3(); private cC = new THREE.Vector3(); private cD = new THREE.Vector3();
   private treeAcc = 0; private dropsDirty = true; private dropK = 1;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sc = new THREE.Vector3(); private dir = new THREE.Vector3();
-  private X = new THREE.Vector3(1, 0, 0); private tmpC = new THREE.Color(); private tmpV = new THREE.Vector3(); private tmpV2 = new THREE.Vector3();
+  private X = new THREE.Vector3(1, 0, 0); private tmpC = new THREE.Color();
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
     this.insetB = ctx.insets?.bottom ?? 0;
@@ -108,7 +114,7 @@ export class WatershedRenderer implements GameRenderer {
     };
     this.terrain = new THREE.Mesh(grid(true), new THREE.MeshLambertMaterial({ vertexColors: true }));
     this.terrain.receiveShadow = true; this.terrain.castShadow = true;
-    this.river = new THREE.Mesh(grid(false), new THREE.MeshPhongMaterial({ color: 0x2b8ad8, transparent: true, opacity: 0.6, shininess: 120, specular: 0xffffff, depthWrite: false }));
+    this.river = new THREE.Mesh(grid(false), new THREE.MeshPhongMaterial({ color: 0x2b8ad8, transparent: true, opacity: 0.6, shininess: 60, specular: 0x6688aa, depthWrite: false }));
     this.river.renderOrder = 1; this.river.receiveShadow = true;
 
     // diorama skirt: a wall around the grid edge, from the terrain down to BASE (lighter at the top, dark at the base)
@@ -142,7 +148,7 @@ export class WatershedRenderer implements GameRenderer {
 
     // drops: one instanced glossy sphere per water parcel
     const dg = new THREE.SphereGeometry(1, 12, 8);
-    this.drops = new THREE.InstancedMesh(dg, new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 160, specular: 0xcfeeff, emissive: 0x0a2c4a }), s.px.length);
+    this.drops = new THREE.InstancedMesh(dg, new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 160, specular: 0xcfeeff, emissive: 0x1a4a78 }), s.px.length);
     this.drops.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.drops.setColorAt(0, C.drop);
     this.drops.frustumCulled = false;
@@ -177,18 +183,79 @@ export class WatershedRenderer implements GameRenderer {
     if (!this.camInit) { this.camPos.copy(this.camBase.pos); this.camTgt.copy(this.camBase.tgt); this.camInit = true; }
   }
 
+  /** World point on the river centreline at grid row y (from the salmon view's path), at the water surface. */
+  private pathWorld(s: WatershedSnapshot, path: Array<[number, number]>, y: number, out: THREE.Vector3): THREE.Vector3 {
+    const f = Math.max(0, Math.min(path.length - 1.001, y / 4)), k = Math.floor(f), u = f - k;
+    const x = path[k][0] + (path[k + 1][0] - path[k][0]) * u, yy = path[k][1] + (path[k + 1][1] - path[k][1]) * u;
+    const ground = Math.max(SEA, sample(s.h, s.nx, s.ny, x, yy)) + sample(this.wEma, s.nx, s.ny, x, yy) * 0.9;
+    return out.set(this.wx(yy), ground, this.wz(x));
+  }
+
+  /**
+   * Camera: the overhead diorama view, or during the salmon run a chase cam low behind the lead salmon facing upstream.
+   * Each run opens with an intro (the sim holds the school still): the first one sweeps down the river from high above
+   * the spring to the sea, then swings around behind the leader; later ones swoop from overhead into the chase.
+   * Between runs the camera pulls back up to the overhead view.
+   */
   private updateCamera(s: WatershedSnapshot, dt: number, t: number) {
-    const lead = s.salmon ? this.salmon?.leaderWorld(this.tmpV2) : null;
-    let pos = this.camBase.pos, tgt = this.camBase.tgt;
-    if (lead) {
-      // follow the school: closer, from slightly downstream, so dodges read clearly
-      tgt = lead.set(lead.x - 4, lead.y, lead.z * 0.5);
-      pos = this.tmpV.set(tgt.x - 8, tgt.y + 78, tgt.z + 46);
+    const f = s.salmon, L = f ? this.salmon?.leaderWorld(this.cL) : null;
+    if (!f || !L || f.restarting) {
+      this.camMode = 'overhead';
+      const k = 1 - Math.exp(-dt * (f ? 1.6 : 1.2));
+      this.camPos.lerp(this.camBase.pos, k); this.camTgt.lerp(this.camBase.tgt, k);
+      this.camera.position.set(this.camPos.x + Math.sin(t * 0.05) * 3, this.camPos.y + Math.sin(t * 0.07) * 1.5, this.camPos.z);
+      this.camera.lookAt(this.camTgt);
+      return;
     }
-    const k = 1 - Math.exp(-dt * 1.2);
-    this.camPos.lerp(pos, k); this.camTgt.lerp(tgt, k);
-    // a gentle breathing drift so the diorama feels alive
-    this.camera.position.set(this.camPos.x + Math.sin(t * 0.05) * 3, this.camPos.y + Math.sin(t * 0.07) * 1.5, this.camPos.z);
+    // smoothed upstream heading in world space (grid y → world X, grid x → world Z)
+    this.cH.set(f.heading.y, 0, f.heading.x).normalize();
+    this.camHead.lerp(this.cH, this.camMode === 'chase' ? 1 - Math.exp(-dt * 2) : 1).normalize();
+    const H = this.camHead, up = 14, back = 21;
+    const chasePos = this.cP.copy(L).addScaledVector(H, -back).setY(L.y + up);
+    const chaseTgt = this.cT.copy(L).addScaledVector(H, 9).setY(L.y);
+
+    if (f.intro > 0) {
+      if (this.camMode !== 'intro' || f.run !== this.introRun) {
+        this.camMode = 'intro'; this.introRun = f.run;
+        this.introFrom.pos.copy(this.camera.position); this.introFrom.tgt.copy(this.camTgt);
+      }
+      const u = 1 - f.intro / Math.max(0.01, f.introTotal);
+      const ease = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+      const pos = this.cA, tgt = this.cB;
+      if (f.run === 1) {
+        const leadY = f.y;
+        if (u < 0.62) {
+          // phase A: fly down the river from high above the spring, looking downstream
+          const a = ease(u / 0.62), ys = 6 + (leadY - 16 - 6) * a;
+          this.pathWorld(s, f.path, ys, pos); pos.y += 48 + (18 - 48) * a;
+          this.pathWorld(s, f.path, Math.min(s.ny - 1, ys + 22), tgt);
+          const k = ease(a / 0.2);
+          pos.lerpVectors(this.introFrom.pos, pos, k); tgt.lerpVectors(this.introFrom.tgt, tgt, k);
+        } else {
+          // phase B: swing around the leader from upstream-high to the chase seat, turning to face upstream
+          const b = ease((u - 0.62) / 0.38);
+          this.pathWorld(s, f.path, leadY - 16, this.cC); this.cC.y += 18;
+          const o0x = this.cC.x - L.x, o0z = this.cC.z - L.z, o1x = chasePos.x - L.x, o1z = chasePos.z - L.z;
+          const th0 = Math.atan2(o0z, o0x), r0 = Math.hypot(o0x, o0z), r1 = Math.hypot(o1x, o1z);
+          let dth = Math.atan2(o1z, o1x) - th0;
+          while (dth <= 0) dth += Math.PI * 2;                    // swing via the viewer's side (+z) …
+          if (Math.sin(th0 + dth / 2) < 0) dth -= Math.PI * 2;    // … whichever way that is
+          const th = th0 + dth * b, r = r0 + (r1 - r0) * b;
+          pos.set(L.x + Math.cos(th) * r, this.cC.y + (chasePos.y - this.cC.y) * b, L.z + Math.sin(th) * r);
+          this.pathWorld(s, f.path, Math.min(s.ny - 1, leadY - 16 + 22), this.cD);
+          tgt.lerpVectors(this.cD, chaseTgt, b);
+        }
+      } else {
+        const k = ease(u);
+        pos.lerpVectors(this.introFrom.pos, chasePos, k); tgt.lerpVectors(this.introFrom.tgt, chaseTgt, k);
+      }
+      this.camPos.copy(pos); this.camTgt.copy(tgt);
+    } else {
+      this.camMode = 'chase';
+      const k = 1 - Math.exp(-dt * 3);
+      this.camPos.lerp(chasePos, k); this.camTgt.lerp(chaseTgt, k);
+    }
+    this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camTgt);
   }
 
@@ -304,7 +371,12 @@ export class WatershedRenderer implements GameRenderer {
         case 'blockStart':
           if (d.style !== 'salmon' && Number(d.index) > 0) { this.hud?.popup(String(d.name), BLOCK_SUB[String(d.style)] ?? '', 3.5); play('chime', { vol: 0.7 }); }
           break;
-        case 'salmonRun': this.popup('salmonRun'); play('splash'); play('reward', { vol: 0.6 }); break;
+        case 'salmonRun':
+          if (s.salmon?.run === 1) this.popup('salmonRun'); else this.hud?.popup(`Salmon run ${s.salmon?.run ?? ''}`, 'A new school sets off from the sea', 3, 'salmon');
+          play('splash'); play('reward', { vol: 0.6 }); break;
+        case 'salmonGo':
+          if (Number(d.run) === 1) this.popup('salmonGo'); else this.hud?.popup('Go!', 'Dodge, and spin to leap the falls', 2, 'salmon');
+          play('go', { vol: 0.7 }); break;
         case 'salmonHome': this.hud?.popup(`${d.fish} salmon home!`, 'They made it to the spring', 3, 'salmon'); play('reward'); break;
         case 'salmonStuck': this.popup('salmonStuck'); play('deny', { vol: 0.6 }); break;
         case 'salmonLeap': play('whoosh'); play('splash', { vol: 0.6 }); break;
@@ -343,7 +415,7 @@ export class WatershedRenderer implements GameRenderer {
       if (this.treeAcc > 0.25) { this.forest!.update(s, this.treeAcc); this.treeAcc = 0; }
     }
     // during the salmon run the river becomes the backdrop: smaller drops so the school stands out
-    this.dropK += ((s.salmon ? 0.55 : 1) - this.dropK) * (1 - Math.exp(-dt * 2));
+    this.dropK += ((s.salmon ? (this.camMode === 'overhead' ? 0.55 : 0.38) : 1) - this.dropK) * (1 - Math.exp(-dt * 2));
     this.updateDrops(s, Math.min(1 / 20, (tNow - this.versionAt) / 1000));
     const t = s.t;
     this.spring.position.set(this.wx(2), sample(s.h, s.nx, s.ny, s.sourceX, 2), this.wz(s.sourceX));

@@ -316,6 +316,26 @@ describe('BikeStateStore HR sources', () => {
   });
 });
 
+describe('mixer ERG low-cadence relief', () => {
+  it('eases the ERG target off when cadence bogs down, ramps back after recovery', () => {
+    const sent: any[] = []; let rpm = 90;
+    const reg = new TuningRegistry({ storage: null }); const p = prof();
+    const m = new ResistanceMixer({ profile: () => p, tuning: reg.scoped('core'), cadence: () => rpm, send: (c) => { sent.push(c); return Promise.resolve({ ok: true }); } });
+    const tick = (s: number) => { for (let i = 0; i < Math.round(s / FIXED_DT); i++) m.tick(FIXED_DT, noInput()); };
+    m.set({ id: 'e', mode: 'erg', watts: 250 }); tick(1);
+    expect(sent.at(-1).watts).toBe(250);
+    rpm = 45; tick(2);
+    expect(sent.at(-1).watts).toBe(150);              // floor 0.6 × 250
+    rpm = 60; tick(3);                                   // between threshold and +10: hold
+    expect(sent.at(-1).watts).toBe(150);
+    rpm = 85; tick(4);
+    expect(sent.at(-1).watts).toBeGreaterThan(170); expect(sent.at(-1).watts).toBeLessThan(250);
+    tick(6); expect(sent.at(-1).watts).toBe(250);
+    m.clearAll(); m.set({ id: 'g', mode: 'sim', gradePct: 3 }); rpm = 30; tick(2);
+    expect(sent.at(-1)).toEqual({ mode: 'sim', gradePct: 3 });   // sim mode untouched
+  });
+});
+
 describe('mixer rampIn + session idle', () => {
   it('eases a sim grade and an ERG target in from neutral', () => {
     const { m, sent, tick } = mixer();

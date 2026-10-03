@@ -89,8 +89,9 @@ export class FakeBike {
     const p = env.profile;
     let cadence: number, power: number | null;
     if (this.script) {
-      cadence = this.script.cadence(this.t);
-      const f = this.script.powerFtp?.(this.t, { hooks: env.hooks, seed: this.seed });
+      const senv = { hooks: env.hooks, seed: this.seed };
+      cadence = this.script.cadence(this.t, senv);
+      const f = this.script.powerFtp?.(this.t, senv);
       power = f === undefined ? null : f * p.ftp;
     } else { cadence = this.manual.cadence; power = this.manual.power; }
     const s = this.trainer.step(dt, cadence, { massKg: p.weightKg + 9, gear: env.gear }, power);

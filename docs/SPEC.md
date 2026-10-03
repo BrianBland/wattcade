@@ -149,6 +149,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - **Clamps:** grade to [−5, maxGradePct]; ERG to [60 W, ergCap × FTP]; level to [0, 100].
   - **Rate limits:** send a command only when it changes by at least 0.2 % grade, 5 W, or 2 level, and at most once every 750 ms of real time.
   - **Panic/pause:** overrides everything with `{mode:'sim', gradePct:0}` until resumed.
+  - **ERG low-cadence relief** ("spiral of death" guard): at a fixed target, slower cranks mean more torque. While in ERG and `cadence3s < core.ergReliefRpm` (55), the target drops toward `core.ergReliefFloor` (0.6) × target at 0.5/s. Once cadence is back above the threshold + 10 rpm, it ramps back to full over `core.ergReliefRecoverS` (8 s). Exposed as `ergRelief` in the mixer debug.
   - For the debug overlay, the mixer exposes `activeEffects`, `chosenMode`, `lastCommand`, and `lastResult`.
 - **Short-effort rule (zone targets):** HR lags 30–60 s, so any zone requirement shorter than ~2 min (sprints, surges, storms, shrines, golden hamsters) is judged on `min(5, powerZone)`, and the game marks its `GameHud.targetZone` with `source: 'power'`. The shell HUD then shows the power scale and the floor watts for that target. Long holds (Z2 grinds) keep using `effortZone`, which follows the profile's zone source.
 - **Cadence targets:** a game can set `GameHud.targetCadence` (`{ min, max?, label? }`, rpm on `cadence3s`). The HUD shows an rpm readout with an in-band/low/high chip. Use these for drills that ask for leg speed rather than watts (e.g. "spin 95+ rpm in an easy gear").
@@ -228,6 +229,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - `intervals` (4 × (3 min at 1.05 FTP, 2 min at 0.55))
   - `storm-ready` (0.65 FTP; jumps to 0.95 FTP whenever the scenario hook signals a storm)
   - `mash` (random 0.4–1.6 FTP)
+  - cadence-led scripts for ERG games: `grind` (0.7 FTP at ~65 rpm), `spin` (0.7 FTP at ~105 rpm), and `cadence-follow` (rpm follows `snapshot().hooks.cadence`, default 90). `Script.cadence(t, env)` receives the hooks.
   - Scripts may read a `hooks` object the game exposes via `snapshot()` so they can react (for example, to storms), and can carry a paired `ScriptedInput` timeline.
 - `SessionRecorder`: 1 Hz samples, events, stats → `SessionRecord`. Saving is done by progression.
 - **Headless runner** `scripts/sim.ts` (`npm run sim`, `npm run sim:all`):
@@ -378,6 +380,21 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - `idle`, 5 min → base destroyed (isOver) with wavesSurvived ≤ 2
   - `intervals`, 20 min → all three weapons used ≥ 60 s and mixer commands include all of sim, erg, and resistance
   - a unit test: charges cap at 3 and a hold-Z dump emits `railFired{charges:3}`
+
+### §6.4 "Watershed" (ERG, **3D** Three.js, particle water + erosion) · owns `src/games/watershed/`
+
+- **Fantasy:** you are the river. **ERG** sets the watts, which is *how much* water you are. **Cadence** is the input, and it decides *what kind* of water you are. At fixed power, low cadence is high torque: heavy, slow parcels that dig (gorges). High cadence is light, fast parcels that keep silt suspended and carry it to the sea (delta).
+- **Ride:** one fixed 45 min ERG plan (`sim/plan.ts`): warm-up, steady, grind and spin blocks, three flood surges, meanders, cool-down. Each block has an ERG FTP fraction (optionally ramped) and an optional cadence band, shown via `GameHud.targetCadence`. Holding the band adds `bandBonus` erosion. `planScale` shortens the plan for testing.
+- **Sim** (`sim/terrain.ts`, `sim/water.ts`, deterministic):
+  - A 96 × 144 heightfield valley runs from the spring basin, past two rock ridges (lakes pool behind them until they're cut), to the sea. It has an erodibility map, and freshly generated terrain is settled to its talus angles before the ride.
+  - Up to 3000 particles. Each substep: splat volume into a depth grid → accelerate down the gradient of the free surface `max(h, sea) + pressure·depth` (a cheap SPH/shallow-water hybrid: water pools, spreads, fills lakes, spills) → drag (shallow water drags more) → Beyer-style erosion and deposition with a round brush. Capacity ∝ vol · speed · slope.
+  - Parcel size scales drag, digging (heavy digs harder) and deposition (light keeps silt suspended). Erosion fades toward a bedrock depth. Thermal slumping keeps banks at the talus angle.
+  - Near the particle cap, parcels get bigger instead of water being dropped.
+- **Input:** cadence (style), power (flow, `power3s / FTP`). D-pad up/down and the shifters steer the spring across the valley head.
+- **Renderer:** a diorama. The terrain mesh follows the heightfield (colored for carved earth/canyon, deposited silt, rock strata, snow), a translucent river surface follows the blurred depth grid, and a sea slab sits over the coast. Each parcel is an exaggerated glossy instanced drop, stretched along its velocity and tinted muddy by its silt load. The DOM HUD shows the block, the ride timeline, a heavy↔light meter with the cadence band, and gorge/delta stats.
+- **Dev tools:** `npm run snap:watershed -- --script grind --minutes 15 --every 5` writes top-down PNGs (terrain + water + particles, plus a carved/deposited change map) to `out/watershed/`. `/dev/watershed.html?script=…&min=…&autopilot=1` runs the renderer on the fake bike without the shell.
+- **Scenarios:** `cadence-follow` 45 min with autopilot finishes all 18 blocks, keeps bandPct ≥ 85, and carves, builds a delta and reaches the sea. `grind` 15 min → gorge ≥ 8. `spin` 15 min → silt to sea ≥ 100. `idle` → no water.
+- **Later (not built):** water wheels (undershot wants high cadence, overshot wants low), salmon (a cadence surge is a jump), and the evaporation/cloud/precipitation phases. Then generated story-mode levels that mix phases with puzzles, validated headlessly in bulk for difficulty ordering.
 
 ---
 

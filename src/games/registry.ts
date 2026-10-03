@@ -5,9 +5,10 @@ import { module as towerdefense } from './towerdefense';
 import { module as starfighter } from './starfighter';
 import { module as hamster } from './hamster';
 import { module as warmup } from './warmup';
+import { module as watershed } from './watershed';
 
 /** Games shown in the arcade picker. */
-export const games: GameModule[] = [dungeon, lighthouse, towerdefense, starfighter, hamster];
+export const games: GameModule[] = [dungeon, lighthouse, towerdefense, starfighter, hamster, watershed];
 /** The Warm-up Ride the shell runs behind its menus (not in the picker). */
 export const lobbyGame: GameModule = warmup;
 /** Everything with a sim (picker games + lobby), for the headless runner. */

@@ -39,7 +39,7 @@ export function createGameSession(o: SessionOpts): GameSession {
   bikeStore.bindTuning(tuning.scoped('core'));
   const commands: TrainerCommand[] = [];
   const mixer = new ResistanceMixer({
-    profile: () => profile, tuning: tuning.scoped('core'),
+    profile: () => profile, tuning: tuning.scoped('core'), cadence: () => bikeStore.get().cadence3s,
     send: (cmd) => { commands.push(cmd); if (commands.length > 5000) commands.shift(); return dataHub.sendCommand(cmd); },
   });
   const recorder = new SessionRecorder();

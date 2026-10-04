@@ -4,6 +4,7 @@ import { DEFAULT_SKY, Sky, type Puff, type SunSpot } from './sky';
 import type { WatershedSave } from '../card';
 import { makeTerrain, NX, type Terrain } from './terrain';
 import { DEFAULT_SALMON, SalmonRun, type Predator } from './salmon';
+import { Jobs, type Dam, type Field, type Mill, type Objective } from './objectives';
 import { DEFAULT_WATER, Water, type Emit, type WaterParams } from './water';
 
 export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number }
@@ -27,6 +28,7 @@ export interface WatershedSnapshot {
   springs: Array<{ x: number; share: number }>;
   boost: { active: boolean; ready: boolean; cd: number; total: number };
   sky: SkyView;
+  jobs: { mills: Mill[]; village: Jobs['village']; fields: Field[]; dam: Omit<Dam, 'added' | 'base' | 'cells'> | null; objective: Objective | null };
   salmon: SalmonView | null;
   /** Recent one-shot cues for the renderer (sounds, popups); ids increase. */
   cues: Cue[];
@@ -104,6 +106,21 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   /** The springs (largest first). The first is the one the rider steers; the others stay where the rain put them. */
   let springs: Array<{ x: number; share: number }> = [{ x: NX / 2, share: 1 }];
   let forkCued = false;
+  const jobs = new Jobs(terrain);
+  /** Max water depth within ~4 cells (cheap: 9 samples). */
+  const nearW = (x: number, y: number) => {
+    let m = 0;
+    for (const dy of [-4, 0, 4]) for (const dx of [-4, 0, 4]) {
+      const i = Math.round(x + dx), j = Math.round(y + dy);
+      if (i >= 0 && i < terrain.nx && j >= 0 && j < terrain.ny) m = Math.max(m, water.w[j * terrain.nx + i]);
+    }
+    return m;
+  };
+  const jobCue = (c: ReturnType<Jobs['update']>[number]) => {
+    if (c.type === 'objectiveDone' || c.type === 'objectiveFailed') cue(c.type, { kind: c.kind });
+    else if (c.type === 'millTurning') cue('millTurning', { kind: c.kind }, false);
+    else cue(c.type, undefined, c.type !== 'flooding');
+  };
   /** Columns near the head of the valley where the rider carved a channel (local maxima of cut depth). */
   const carvedHeads = (): number[] => {
     const { nx, h, h0 } = terrain, cut = new Float32Array(nx);
@@ -140,8 +157,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
 
   const bandedS = PLAN.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
   /** The ride score: every phase of the cycle counts. */
-  const score = () => Math.round(sky.vapor * 2 + sky.puffsCaught * 20 + sky.rained * 0.05 + carved / 10 + delta / 10
-    + salmon.home * 20 + (100 * bandS / Math.max(1, bandedS)) * 5);
+  const score = () => Math.max(0, Math.round(sky.vapor * 2 + sky.puffsCaught * 20 + sky.rained * 0.05 + carved / 20 + delta / 20
+    + salmon.home * 20 + (100 * bandS / Math.max(1, bandedS)) * 5
+    + jobs.objectivesDone * 250 + jobs.harvests * 40 + jobs.damsBroken * 100 + (jobs.mills[0].output + jobs.mills[1].output) * 2 - jobs.village.floodS * 2));
 
   const salmonView = (): SalmonView => {
     const L = salmon.pos(salmon.y, salmon.lane);
@@ -164,7 +182,11 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       if (at.index !== lastBlock) {
         lastBlock = at.index;
         const prevPhase = at.index > 0 ? PLAN[at.index - 1].phase : null;
+        for (const c of jobs.end()) jobCue(c);
         cue('blockStart', { name: b.name, style: b.style, phase: b.phase, index: at.index, firstOfPhase: prevPhase !== b.phase });
+        jobs.begin(b.job ?? null, b.minutes * 60 * scale);
+        if (jobs.objective) cue('objective', { kind: jobs.objective.kind, title: jobs.objective.title, goal: jobs.objective.goal });
+        if (b.beavers) for (const c of jobs.beavers(water.w)) jobCue(c);
         if (b.phase === 'river' && prevPhase === 'rain') {
           springs = sky.springs().map((sp) => ({ x: clamp(sp.x, 12, NX - 12), share: sp.share }));
           sourceX = springs[0].x;
@@ -238,7 +260,13 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           else if (c.type === 'warn') cue('predatorWarn', { kind: c.kind }, false);
           else cue(c.type === 'leap' ? 'salmonLeap' : 'salmonStuck');
         }
-      } else if (opts.autopilot) sourceX = springs[0].x + 10 * Math.sin((2 * Math.PI * t) / 240);
+      } else if (opts.autopilot) {
+        // autopilot heads for the current job (or away from the village in a flood), else wanders
+        const o = jobs.objective;
+        const goal = o && o.state === 'active' && o.target ? (o.kind === 'village' ? (o.target.x < NX / 2 ? NX - 22 : 22) : o.target.x) : springs[0].x + 10 * Math.sin((2 * Math.PI * t) / 240);
+        sourceX += clamp(goal - sourceX, -tun.steerRate() * dt, tun.steerRate() * dt);
+        if (o && o.kind === 'dam' && o.state === 'active' && boostCd <= 0) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
+      }
       else sourceX -= steer * tun.steerRate() * dt + dart * tun.shiftStep();
       sourceX = clamp(sourceX, 12, NX - 12);
       if (b.phase === 'river' || b.phase === 'salmon') flow = !flowing ? 0 : area ? raining : tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1);
@@ -251,6 +279,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         erodeMul: 1 + tun.bandBonus() * bonus,
       };
       water.step(dt, emit, params());
+      if (b.phase === 'river' || b.phase === 'salmon') for (const c of jobs.update(dt, { n: water.n, x: water.x, y: water.y, vx: water.vx, vy: water.vy, vol: water.vol }, water.w, nearW)) jobCue(c);
       t += dt;
 
       statAcc += dt;
@@ -302,6 +331,10 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
         phase: at.block.phase, view, springs: [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)], boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
+        jobs: {
+          mills: jobs.mills, village: jobs.village, fields: jobs.fields, objective: jobs.objective,
+          dam: jobs.dam ? { x: jobs.dam.x, y: jobs.dam.y, build: jobs.dam.build, health: jobs.dam.health, broken: jobs.dam.broken } : null,
+        },
         salmon: salmon.active ? salmonView() : null,
         cues,
         hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },
@@ -313,6 +346,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       const banded = bandedS;
       return {
         score: score(),
+        objectives: jobs.objectivesDone, flour: Math.round(jobs.mills[0].output), planks: Math.round(jobs.mills[1].output),
+        harvests: jobs.harvests, damsBroken: jobs.damsBroken, floodS: Math.round(jobs.village.floodS),
         vapor: Math.round(sky.vapor), cloudlets: sky.puffsCaught, rainfall: Math.round(sky.rained),
         carved: Math.round(carved), delta: Math.round(delta), deepestCut: +deepestCut.toFixed(1),
         toSea: Math.round(water.stats.toSea), minutesInBand: +(bandS / 60).toFixed(1),

@@ -82,7 +82,7 @@ describe('watershed sky phases + achievements', () => {
     const r = runHeadless({ game: module, script: 'cadence-follow', minutes: 46, seed: 1, simOpts: { autopilot: true } });
     const record = { id: 'x', profileId: 'p', gameId: 'watershed', startedAt: 0, durationS: 2760, samples: [], events: r.events, stats: r.stats, gameSummary: r.summary };
     const got = ACHIEVEMENTS.filter((a) => a.id.startsWith('ws_') && a.check(testProfile(), record as never)).map((a) => a.id);
-    expect(got).toEqual(expect.arrayContaining(['ws_cycle', 'ws_cloud', 'ws_salmon', 'ws_clean_run', 'ws_maestro']));
+    expect(got).toEqual(expect.arrayContaining(['ws_cycle', 'ws_cloud', 'ws_salmon', 'ws_maestro', 'ws_miller', 'ws_dam_buster', 'ws_breadbasket']));
     expect(Number(r.summary.vapor)).toBeGreaterThan(0);
     expect(Number(r.summary.rainfall)).toBeGreaterThan(0);
     expect(r.events.some((e) => e.type === 'springRises')).toBe(true);

@@ -27,6 +27,10 @@ const CSS = `
 .ws-meter .band { position:absolute; top:-3px; bottom:-3px; border:2px solid #fff; border-radius:6px; box-sizing:border-box }
 .ws-meter .dot { position:absolute; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%; background:#fff; box-shadow:0 0 6px #000a; transition: left .25s }
 .ws-meter .dot.ok { background:#7dff9a }
+.ws-block .obj { margin-top:4px; font-size:14px }
+.ws-block .obj.done b { color:#7dff9a } .ws-block .obj.failed b { color:#ff9a8a }
+.ws-block .pbar { height:7px; border-radius:4px; background:rgba(255,255,255,.18); margin-top:4px; overflow:hidden }
+.ws-block .pbar i { display:block; height:100%; background:linear-gradient(90deg,#ffd23f,#7dff9a) }
 .ws-pop { position:absolute; box-sizing:border-box; text-align:center; padding: 12px 18px; border-radius: 18px; background: rgba(10,26,40,0.72); border:1px solid rgba(255,255,255,.18);
   opacity:0; transform: translateY(-8px) scale(.97); transition: opacity .35s, transform .35s; }
 .ws-pop.on { opacity:1; transform:none }
@@ -79,10 +83,11 @@ export class Hud {
   }
 
   update(s: WatershedSnapshot) {
-    const b = s.block;
+    const b = s.block, o = s.jobs?.objective && (s.phase === 'river') ? s.jobs.objective : null;
     this.block.innerHTML = `<div class="nm">${b.name}<b>${fmt(b.left)}</b></div>`
       + `<span class="st" style="background:${STYLE_COLOR[b.style]}">${STYLE_WORD[b.style]}${b.rpm ? ` ${b.rpm.min}${b.rpm.max ? `–${b.rpm.max}` : '+'} rpm` : ''}</span>`
-      + ` <span style="font-size:13px;opacity:.8">ERG ${Math.round(b.ftp * 100)}% FTP</span><div class="hint">${b.hint}</div>`;
+      + ` <span style="font-size:13px;opacity:.8">ERG ${Math.round(b.ftp * 100)}% FTP</span>`
+      + (o ? `<div class="obj ${o.state}"><b>${o.state === 'done' ? '✓ ' : o.state === 'failed' ? '✗ ' : '◎ '}${o.title}</b><div class="pbar"><i style="width:${Math.round(o.progress * 100)}%"></i></div></div>` : `<div class="hint">${b.hint}</div>`);
     const f = s.salmon, sky = s.sky;
     this.stats.innerHTML = s.phase === 'evaporate'
       ? `<span>Vapor</span><b>${Math.round(sky.vapor)}</b><span>Sunlight</span><b>${sky.inSun ? '☀️ yes' : '—'}</b>`
@@ -93,7 +98,8 @@ export class Hud {
       : f
       ? `<span class="fish">Salmon run ${f.run}</span><span>School</span><b>${f.alive} 🐟</b><span>Home</span><b>${f.home}</b><span>Lost</span><b>${f.lost}</b>`
       : `<span>Gorge depth</span><b>${(s.deepestCut * 4).toFixed(0)} m</b>`
-        + `<span>Valley carved</span><b>${Math.round(s.carved / 10)}</b><span>Delta built</span><b>${Math.round(s.delta / 10)}</b>`;
+        + `<span>Flour · Planks</span><b>${Math.round(s.jobs.mills[0].output)} · ${Math.round(s.jobs.mills[1].output)}</b>`
+        + `<span>Harvests</span><b>${s.jobs.fields.reduce((a, f) => a + f.harvests, 0)}</b>`;
 
     const key = `${s.blocks.length}:${b.index}`;
     if (key !== this.planKey) {

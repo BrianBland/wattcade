@@ -13,6 +13,10 @@ export interface Block {
   style: Style;
   phase: Phase;
   rpm?: { min: number; max?: number };
+  /** The river job this block asks for (see objectives.ts). */
+  job?: 'grist' | 'saw' | 'village' | 'dam' | 'fields';
+  /** Beavers move in during this block. */
+  beavers?: boolean;
 }
 
 const GRIND = { min: 60, max: 72 }, SPIN = { min: 98 }, STEADY = { min: 82, max: 95 };
@@ -21,16 +25,16 @@ export const PLAN: Block[] = [
   { name: 'Evaporation', hint: 'Warm up. Spin to lift vapor off the sea, and chase the sunlight.', minutes: 4, ftpFrom: 0.5, ftpTo: 0.58, phase: 'evaporate', style: 'steady', rpm: { min: 80 } },
   { name: 'Gathering cloud', hint: 'Drift inland. Steer into the cloudlets to grow your cloud.', minutes: 4, ftpFrom: 0.62, ftpTo: 0.66, phase: 'cloud', style: 'steady', rpm: STEADY },
   { name: 'Rain on the peaks', hint: 'Grind for a downpour, spin for drizzle. Where you rain, the spring rises.', minutes: 3, ftpFrom: 0.7, ftpTo: 0.72, phase: 'rain', style: 'free' },
-  { name: 'Carve the gorge', hint: 'Grind! Heavy water cuts deep.', minutes: 4, ftpFrom: 0.8, ftpTo: 0.8, phase: 'river', style: 'grind', rpm: GRIND },
+  { name: 'Carve the gorge', hint: 'Grind! Heavy water cuts deep.', minutes: 4, ftpFrom: 0.8, ftpTo: 0.8, phase: 'river', job: 'grist', style: 'grind', rpm: GRIND },
+  { name: 'Still pool', hint: 'Ease off.', minutes: 2, ftpFrom: 0.55, ftpTo: 0.55, phase: 'river', beavers: true, style: 'free' },
+  { name: 'Flush to the sea', hint: 'Spin! Fast water carries silt and breaks dams.', minutes: 4, ftpFrom: 0.75, ftpTo: 0.75, phase: 'river', job: 'dam', style: 'spin', rpm: SPIN },
   { name: 'Still pool', hint: 'Ease off.', minutes: 2, ftpFrom: 0.55, ftpTo: 0.55, phase: 'river', style: 'free' },
-  { name: 'Flush to the sea', hint: 'Spin! Fast water carries silt to the delta.', minutes: 4, ftpFrom: 0.75, ftpTo: 0.75, phase: 'river', style: 'spin', rpm: SPIN },
-  { name: 'Still pool', hint: 'Ease off.', minutes: 2, ftpFrom: 0.55, ftpTo: 0.55, phase: 'river', style: 'free' },
-  { name: 'Flood surge 1', hint: 'Grind through the surge.', minutes: 2, ftpFrom: 0.92, ftpTo: 0.92, phase: 'river', style: 'grind', rpm: { min: 65, max: 78 } },
-  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', style: 'spin', rpm: SPIN },
-  { name: 'Flood surge 2', hint: 'Grind through the surge.', minutes: 2, ftpFrom: 0.92, ftpTo: 0.92, phase: 'river', style: 'grind', rpm: { min: 65, max: 78 } },
-  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', style: 'spin', rpm: SPIN },
-  { name: 'Flood surge 3', hint: 'Last surge. Dig!', minutes: 2, ftpFrom: 0.95, ftpTo: 0.95, phase: 'river', style: 'grind', rpm: { min: 65, max: 78 } },
-  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', style: 'spin', rpm: SPIN },
+  { name: 'Flood surge 1', hint: 'Grind through the surge.', minutes: 2, ftpFrom: 0.92, ftpTo: 0.92, phase: 'river', job: 'village', style: 'grind', rpm: { min: 65, max: 78 } },
+  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', job: 'saw', style: 'spin', rpm: SPIN },
+  { name: 'Flood surge 2', hint: 'Grind through the surge.', minutes: 2, ftpFrom: 0.92, ftpTo: 0.92, phase: 'river', job: 'village', style: 'grind', rpm: { min: 65, max: 78 } },
+  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', job: 'fields', style: 'spin', rpm: SPIN },
+  { name: 'Flood surge 3', hint: 'Last surge. Dig!', minutes: 2, ftpFrom: 0.95, ftpTo: 0.95, phase: 'river', job: 'village', style: 'grind', rpm: { min: 65, max: 78 } },
+  { name: 'Spill', hint: 'Spin it out.', minutes: 1, ftpFrom: 0.6, ftpTo: 0.6, phase: 'river', job: 'fields', style: 'spin', rpm: SPIN },
   { name: 'Still pool', hint: 'Ease off.', minutes: 2, ftpFrom: 0.55, ftpTo: 0.55, phase: 'river', style: 'free' },
   { name: 'Salmon run', hint: 'Guide the school up your river. Spin to leap the falls!', minutes: 6, ftpFrom: 0.68, ftpTo: 0.68, phase: 'salmon', style: 'salmon', rpm: { min: 85 } },
   { name: 'Delta', hint: 'Cool down. Watch the delta grow.', minutes: 5, ftpFrom: 0.55, ftpTo: 0.45, phase: 'river', style: 'free' },

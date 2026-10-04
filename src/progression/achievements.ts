@@ -54,5 +54,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'ws_salmon', name: 'Salmon Shepherd', desc: 'Bring 50 salmon home in one ride', bonusXp: 60, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.salmonHome ?? 0) >= 50 },
   { id: 'ws_clean_run', name: 'No Fish Left Behind', desc: 'Finish a salmon run without losing a fish', bonusXp: 40, check: (_p, r) => hasEvent(r, 'salmonHome', (d) => Number(d.lost) === 0 && Number(d.fish) >= 10) },
   { id: 'ws_maestro', name: 'Cadence Maestro', desc: 'Hold the cadence band 90% of a Watershed ride', bonusXp: 50, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.bandPct ?? 0) >= 90 },
+  { id: 'ws_miller', name: 'Miller', desc: 'Keep both water mills busy in one ride (50 flour and 50 planks)', bonusXp: 50, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.flour ?? 0) >= 50 && Number(r.gameSummary.planks ?? 0) >= 50 },
+  { id: 'ws_dry_feet', name: 'Dry Feet', desc: 'Finish a Watershed ride without flooding Millbrook', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && hasEvent(r, 'rideDone') && Number(r.gameSummary.floodS ?? 1) === 0 },
+  { id: 'ws_dam_buster', name: 'Dam Buster', desc: 'Flush away a beaver dam', bonusXp: 30, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.damsBroken ?? 0) >= 1 },
+  { id: 'ws_breadbasket', name: 'Breadbasket', desc: 'Bring in 20 harvests in one ride', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.harvests ?? 0) >= 20 },
   { id: 'kilojoule_1000', name: 'Kilojoule Club', desc: '1000 kJ lifetime', bonusXp: 100, check: (p) => p.lifetime.kj >= 1000 },
 ];

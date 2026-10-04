@@ -15,6 +15,7 @@ import { TerrainView } from './terrainView';
 import { OuterLand } from './outerLand';
 import { Riverbank } from './riverbank';
 import { SkyLayer } from './skyLayer';
+import { JobsLayer } from './jobsLayer';
 import { WaterView } from './waterView';
 
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
@@ -34,6 +35,8 @@ const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> =
   salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · A: sprint · spin past 95 rpm to leap falls', 6, 'salmon'],
   salmonStuck: ['Falls ahead!', 'Spin past 95 rpm to leap', 3, 'warn'],
 };
+const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving' };
+const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields' };
 const BOOST_TEXT: Record<string, string> = { evaporate: 'Heat wave!', cloud: 'Inhale!', rain: 'Cloudburst!', river: 'Surge!', salmon: 'Sprint!' };
 const BLOCK_SUB: Record<string, string> = {
   grind: 'Grind it out: heavy water carves deep', spin: 'Spin it up: light water races silt to the sea',
@@ -47,7 +50,7 @@ export class WatershedRenderer implements GameRenderer {
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private outer?: OuterLand; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private extraSprings: THREE.Group[] = []; private springRing?: THREE.Mesh;
-  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
+  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -140,10 +143,11 @@ export class WatershedRenderer implements GameRenderer {
     this.forest = new Forest(s, this.wx, this.wz);
     this.bank = new Riverbank(s, this.wx, this.wz);
     this.skyLayer = new SkyLayer(this.wx, this.wz, this.sun.position);
+    this.jobs = new JobsLayer(s, this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.clouds.group, this.salmon.group);
     this.frameCamera();
   }
 
@@ -340,6 +344,14 @@ export class WatershedRenderer implements GameRenderer {
           break;
         case 'springRises': this.popup('intro'); play('splash'); play('chime', { vol: 0.8 }); break;
         case 'cloudlet': play('pickup', { vol: 0.6 }); break;
+        case 'objective': this.hud?.popup(String(d.title), String(d.goal), 5); play('horn', { vol: 0.5 }); break;
+        case 'objectiveDone': this.hud?.popup('Done! ✓', JOB_DONE[String(d.kind)] ?? 'Nice work', 3, 'salmon'); play('reward'); break;
+        case 'objectiveFailed': this.hud?.popup('Missed it', JOB_MISS[String(d.kind)] ?? 'Next time', 3, 'warn'); play('deny', { vol: 0.5 }); break;
+        case 'beavers': this.hud?.popup('Beavers!', 'They are damming the river. Spin to flush the dam away', 4, 'warn'); play('plop'); break;
+        case 'damBroken': this.hud?.popup('Dam broken!', 'The river runs free', 2.5, 'salmon'); play('explode', { vol: 0.4 }); play('splash'); break;
+        case 'flooding': this.hud?.popup('Millbrook is flooding!', 'Steer the spring away, grind a deeper channel', 2.5, 'warn'); play('bell', { vol: 0.6 }); break;
+        case 'millTurning': play('chime', { vol: 0.5, minGapS: 3 }); break;
+        case 'harvest': play('coin', { vol: 0.4, minGapS: 1 }); break;
         case 'boost': play('surge', { vol: 0.5 }); this.hud?.popup(BOOST_TEXT[String(d.phase)] ?? 'Boost!', '', 1.6); break;
         case 'sunlit': play('chime', { vol: 0.35, minGapS: 2 }); break;
         case 'salmonRun':
@@ -411,6 +423,7 @@ export class WatershedRenderer implements GameRenderer {
     this.forest!.wind.value = tNow / 1000;
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
+    this.jobs!.update(s, dt, tNow / 1000);
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
     // the boundary fence lights up near whatever the rider is steering

@@ -288,7 +288,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 Shared infrastructure for music games and the Drive-In: sources, analysis, a two-deck player with a queue, and one **program timeline** that games read. Source-agnostic: each source declares what it can do and games declare what they need.
 
 - **Sources and capability flags** (`MediaSource`): `search(q)`, `browse?()`, `prepare(ref)`, `player()`. Each source has `caps: { pcm, video, pixels, rate: 'free'|'steps'|'none', pitchShift, mix }`.
-  - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs go in OPFS, metadata and analysis in IndexedDB. All caps.
+  - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs, metadata and analyses go in IndexedDB (separate databases, so listing never loads audio). All caps.
   - `SynthSource` (phase 1): seeded procedural songs (`edm`, `rock`, `ambient`, `album` styles), with known ground truth (beats, sections). Used by fake mode, headless scenarios and analysis tests.
   - `YouTubeSource` (phase 3): Data API v3 search plus the IFrame player. Caps `{ video, rate: 'steps' }` only. Used by the Drive-In (§6.6), never for analysis.
   - `JamendoSource` (phase 3, §5.7): Creative Commons catalogue search and streams. All caps except `pixels`/`video`; no offline storage.
@@ -310,7 +310,7 @@ Shared infrastructure for music games and the Drive-In: sources, analysis, a two
   - `planMix(analyses[], mode, opts) → MixPlan` is **pure** (transition times, rate ramps, EQ automation) and drives the decks. Tested headlessly.
 - **Program timeline:** `buildTimeline(plan, analyses) → MediaTimeline` maps every song's beats, onsets, intensity, bands and sections onto one program clock (applying rate ramps and overlaps; in a transition the incoming song's events win after the bass swap). It adds `songs[]: { t0, t1, title, artist, bpm, key, palette }` and `confidence: 'full' | 'metadata'`. **Games only ever see the timeline.**
 - **Clock:** the program position is the master clock. While a media session runs, the shell nudges the loop's `timeScale` within ±2 % (a phase-locked loop on `deck.currentTime` versus sim time) so the sim tracks the audio. A stall (buffering) holds the sim. Pause pauses the decks. A per-device **output latency offset** (tap-along calibration in Settings) is added. Headless runs use the sim clock directly, so sims stay deterministic.
-- **Picker and queue UI** (`src/media/ui/`, Preact, shell UI kit, D-pad navigable; opened by the shell for any game with `requires.media`):
+- **Picker and queue UI** (`src/shell/media/`, Preact, shell UI kit, D-pad navigable; opened by the shell for any game with `requires.media`). `/media-lab.html` (Music Lab) runs the picker and player without a game, with a sync readout and tap-along latency calibration:
   - Library browse/search; song rows show duration, bpm, key and a difficulty/effort chip once analysed (analysis runs in the background as songs are added, with a progress bar).
   - **Preview pane:** cover and palette, a spectrogram/intensity strip with section colours, a simplified track side-profile from the game (`GameModule.mediaPreview?`), and an effort estimate (time per zone, kJ, estimated TSS at the rider's FTP). A 20 s audio preview starts at the most intense section.
   - **Queue panel:** up next, reorder, remove, add a whole album or "all by artist", the mode switch (Continuous / Automix / Crossfade), total length, and a whole-queue intensity strip.
@@ -564,7 +564,7 @@ Keep your own context small: you coordinate; subagents do the building. Use `mod
 
 ## §10 Music roadmap (one PR per phase)
 
-1. **Media core:** analysis worker plus synth ground-truth tests, LocalSource (OPFS, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
+1. **Media core:** analysis worker plus synth ground-truth tests, local library (IndexedDB, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
 2. **Wattsurf v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
 3. **Jamendo catalogue** (§5.7): search, stream, analyse, attribution.
 4. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.

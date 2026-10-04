@@ -49,7 +49,7 @@ export interface Emit {
   spread: number;     // spawn spread across the valley, cells
   erodeMul: number;   // multiplier on erosion (cadence-in-band bonus)
   /** Rain: spawn parcels at rest anywhere in this disc (cells) instead of at the spring. */
-  area?: { x: number; y: number; r: number };
+  area?: { x: number; y: number; r: number; w?: number; h?: number };   // disc of radius r, or a w × h rectangle
   /** Several springs: each parcel picks one by share (sourceX is ignored when present). */
   sources?: Array<{ x: number; share: number }>;
 }
@@ -107,9 +107,11 @@ export class Water {
       const i = this.n++;
       const r1 = this.rng(), r2 = this.rng(), r3 = this.rng();
       if (e.area) {
-        const a = r1 * Math.PI * 2, d = Math.sqrt(r2) * e.area.r;
-        this.x[i] = Math.min(nx - 2, Math.max(1, e.area.x + Math.cos(a) * d));
-        this.y[i] = Math.min(this.t.ny - 2, Math.max(1, e.area.y + Math.sin(a) * d));
+        const ar = e.area;
+        const ox = ar.w ? (r1 - 0.5) * ar.w : Math.cos(r1 * Math.PI * 2) * Math.sqrt(r2) * ar.r;
+        const oy = ar.h ? (r2 - 0.5) * ar.h : Math.sin(r1 * Math.PI * 2) * Math.sqrt(r2) * ar.r;
+        this.x[i] = Math.min(nx - 2, Math.max(1, ar.x + ox));
+        this.y[i] = Math.min(this.t.ny - 2, Math.max(1, ar.y + oy));
         this.vx[i] = 0; this.vy[i] = (r3 - 0.5) * 0.5;
       } else {
         let sx = e.sourceX;

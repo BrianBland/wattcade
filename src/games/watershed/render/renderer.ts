@@ -203,7 +203,8 @@ export class WatershedRenderer implements GameRenderer {
       this.camera.position.copy(this.camPos); this.camera.lookAt(this.camTgt);
       return;
     }
-    if (!f || !L || f.restarting) {
+    // pull up to the overview between runs, and as the school reaches the steep head of the valley (arrival from above)
+    if (!f || !L || f.restarting || (f.y < 14 && f.intro <= 0)) {
       this.camMode = 'overhead';
       const k = 1 - Math.exp(-dt * (f ? 1.6 : 1.2));
       this.camPos.lerp(this.camBase.pos, k); this.camTgt.lerp(this.camBase.tgt, k);
@@ -223,6 +224,9 @@ export class WatershedRenderer implements GameRenderer {
     chasePos.y = Math.max(chasePos.y, L.y) + up;
     const chaseTgt = this.pathWorld(s, f.path, Math.max(0, f.y - 9), this.cT);
     chaseTgt.lerp(L, 0.5);
+    // approaching the steep head of the valley: start looking down at the school
+    const head = Math.min(1, Math.max(0, 1 - (f.y - 14) / 12));
+    chaseTgt.lerp(L, head * 0.6); chasePos.y += head * 10;
 
     if (f.intro > 0) {
       if (this.camMode !== 'intro' || f.run !== this.introRun) {
@@ -278,7 +282,9 @@ export class WatershedRenderer implements GameRenderer {
       const ground = hAt(cam.x + (look.x - cam.x) * t, cam.z + (look.z - cam.z) * t);
       need = Math.max(need, (ground + 1.5 - look.y * t) / (1 - t));
     }
-    if (cam.y < need) cam.y += (need - cam.y) * 0.25;   // ease up so it never pops
+    const floor = hAt(cam.x, cam.z) + 2;
+    if (cam.y < floor) cam.y = floor;                     // never inside the ground
+    if (cam.y < need) cam.y += (need - cam.y) * 0.25;   // ease up above that so it doesn't pop
   }
 
   /** Place drops, extrapolated `ahead` seconds along their velocity (smooth between 30 Hz sim ticks). */
@@ -344,6 +350,7 @@ export class WatershedRenderer implements GameRenderer {
           play('go', { vol: 0.7 }); break;
         case 'salmonHome': this.hud?.popup(`${d.fish} salmon home!`, 'They made it to the spring', 3, 'salmon'); play('reward'); break;
         case 'salmonStuck': this.popup('salmonStuck'); play('deny', { vol: 0.6 }); break;
+        case 'fork': this.hud?.popup('Fork ahead!', 'Steer ◀ or ▶ to choose a branch', 2.5, 'salmon'); play('uiMove'); break;
         case 'salmonLeap': play('whoosh'); play('splash', { vol: 0.6 }); break;
         case 'predatorWarn': play(d.kind === 'bear' ? 'roar' : 'screech', { vol: 0.8 }); break;
         case 'predatorStrike':

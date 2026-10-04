@@ -191,20 +191,26 @@ export class SkyLayer {
     for (const [id, o] of this.puffs) if (!live.has(id)) { this.group.remove(o.g); o.g.traverse((x) => (x as THREE.Mesh).geometry?.dispose()); this.puffs.delete(id); }
 
     // rain streaks: count follows the rain rate, length/weight follow cadence (grind = downpour, spin = drizzle)
-    const want = phase === 'rain' ? Math.min(MAX_RAIN, Math.round(sky.raining * 18)) : 0;
+    // the valley-wide rain at the start of the salmon run falls over the whole head of the valley
+    const valley = phase === 'salmon' && sky.raining > 0;
+    const want = phase === 'rain' || valley ? Math.min(MAX_RAIN, Math.round(sky.raining * 18)) : 0;
     const heavy = 1 - s.cadNorm;
-    while (this.rain.length < want) {
+    const spot = (): [number, number] => {
+      if (valley) return [12 + Math.random() * (s.nx - 24), 5 + Math.random() * 18];
       const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * sky.radius * 0.7;
-      const gx = sky.x + Math.cos(a) * d, gy = sky.y + Math.sin(a) * d;
-      this.rain.push({ x: this.wx(gy), z: this.wz(gx), y: this.alt - 1 - Math.random() * 6, floor: Math.max(SEA, heightAt(gx, gy)), v: 18 + heavy * 10 });
+      return [sky.x + Math.cos(a) * d, sky.y + Math.sin(a) * d];
+    };
+    const top = (gx: number, gy: number) => (valley ? heightAt(gx, gy) + 22 : this.alt - 1);
+    while (this.rain.length < want) {
+      const [gx, gy] = spot();
+      this.rain.push({ x: this.wx(gy), z: this.wz(gx), y: top(gx, gy) - Math.random() * 6, floor: Math.max(SEA, heightAt(gx, gy)), v: 18 + heavy * 10 });
     }
     if (this.rain.length > want) this.rain.length = want;
     this.rain.forEach((r, k) => {
       r.y -= r.v * dt;
       if (r.y < r.floor) {
-        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * sky.radius * 0.7;
-        const gx = sky.x + Math.cos(a) * d, gy = sky.y + Math.sin(a) * d;
-        r.x = this.wx(gy); r.z = this.wz(gx); r.y = this.alt - 1; r.floor = Math.max(SEA, heightAt(gx, gy));
+        const [gx, gy] = spot();
+        r.x = this.wx(gy); r.z = this.wz(gx); r.y = top(gx, gy); r.floor = Math.max(SEA, heightAt(gx, gy));
       }
       this.m.compose(this.p.set(r.x, r.y, r.z), this.q.identity(), this.sc.set(0.6 + heavy * 1.4, 0.8 + heavy * 1.6, 0.6 + heavy * 1.4));
       this.rainMesh.setMatrixAt(k, this.m);

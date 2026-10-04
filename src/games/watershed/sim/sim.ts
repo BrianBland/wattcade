@@ -39,7 +39,7 @@ export interface SkyView {
 }
 export interface Cue { id: number; type: string; data?: Record<string, number | string | boolean> }
 export interface SalmonView {
-  run: number; y: number; lane: number; home: number; lost: number; alive: number;
+  run: number; y: number; lane: number; home: number; lost: number; alive: number; forkAhead: boolean;
   /** Seconds left in this run's camera intro (school holds still), and its full length. */
   intro: number; introTotal: number;
   /** Upstream unit vector (grid) at the leader, and the river centreline every 4 rows (grid x, y). */
@@ -103,6 +103,21 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let raining = 0;
   /** The springs (largest first). The first is the one the rider steers; the others stay where the rain put them. */
   let springs: Array<{ x: number; share: number }> = [{ x: NX / 2, share: 1 }];
+  let forkCued = false;
+  /** Columns near the head of the valley where the rider carved a channel (local maxima of cut depth). */
+  const carvedHeads = (): number[] => {
+    const { nx, h, h0 } = terrain, cut = new Float32Array(nx);
+    for (let i = 0; i < nx; i++) for (let j = 8; j <= 20; j++) cut[i] = Math.max(cut[i], h0[j * nx + i] - h[j * nx + i]);
+    const out: number[] = [];
+    const order = Array.from(cut.keys()).sort((a, b) => cut[b] - cut[a]);
+    for (const i of order) { if (cut[i] < 1.2 || out.length >= 4) break; if (i > 11 && i < nx - 12 && out.every((x) => Math.abs(x - i) >= 10)) out.push(i); }
+    return out;
+  };
+  const mergeSprings = (cur: Array<{ x: number; share: number }>, xs: number[]) => {
+    const all = [...cur.map((c) => c.x)];
+    for (const x of xs) if (all.every((y) => Math.abs(y - x) >= 8)) all.push(x);
+    return all.slice(0, 5).map((x) => ({ x, share: 1 / Math.min(5, all.length) }));
+  };
   const cues: Cue[] = [];
   let cueId = 0;
   const cue = (type: string, data?: Cue['data'], emit = true) => {
@@ -132,7 +147,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     const L = salmon.pos(salmon.y, salmon.lane);
     return {
       run: salmon.run, y: salmon.y, lane: salmon.lane, home: salmon.home, lost: salmon.lost, alive: salmon.alive(),
-      needLeap: salmon.needLeap, leaping: salmon.leaping, stuck: salmon.stuck, restarting: salmon.y <= 4,
+      forkAhead: salmon.forkAhead(), needLeap: salmon.needLeap, leaping: salmon.leaping, stuck: salmon.stuck, restarting: salmon.y <= 4,
       intro: salmon.intro, introTotal: salmon.introTotal,
       heading: salmon.heading(salmon.y),
       path: Array.from({ length: Math.ceil(terrain.ny / 4) }, (_, k) => { const p = salmon.pos(k * 4, 0); return [p.x, p.y] as [number, number]; }),
@@ -156,6 +171,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           cue('springRises', { x: +sourceX.toFixed(1), rained: Math.round(sky.rained), springs: springs.length });
         }
         if (b.style === 'salmon' && !salmon.active) {
+          // every channel you carved gets water: carved channel heads near the top become springs too
+          springs = mergeSprings(springs, carvedHeads());
           measure(); salmon.updatePath(water.w);
           const size = 8 + Math.min(12, Math.floor(carved / 1000));
           salmon.start(size, DEFAULT_SALMON);
@@ -205,6 +222,13 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         area = sky.rain(dt, { steer, nudge: dart, autopilot: ap, flow }, DEFAULT_SKY);
         raining = flow;
       } else if (salmon.active) {
+        if (salmon.intro > 0 && salmon.run === 1) {
+          // while the camera sweeps, it rains across the head of the valley so every channel fills
+          area = { x: NX / 2, y: 14, r: 0, w: NX - 24, h: 18 };
+          raining = tun.flowPerFtp() * powerFrac;
+        }
+        if (salmon.forkAhead() && !forkCued) { forkCued = true; cue('fork', undefined, false); }
+        if (!salmon.forkAhead()) forkCued = false;
         const sc = salmon.update(dt, water.w, { cadence, cadNorm, steer, nudge: dart, autopilot: !!opts.autopilot, mayRestart: at.blockLeft > 45 * scale, sprint: boosting }, DEFAULT_SALMON);
         for (const c of sc) {
           if (c.type === 'home') cue('salmonHome', { fish: c.fish, lost: c.lost });
@@ -217,7 +241,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       } else if (opts.autopilot) sourceX = springs[0].x + 10 * Math.sin((2 * Math.PI * t) / 240);
       else sourceX -= steer * tun.steerRate() * dt + dart * tun.shiftStep();
       sourceX = clamp(sourceX, 12, NX - 12);
-      if (b.phase === 'river' || b.phase === 'salmon') flow = flowing ? tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1) : 0;
+      if (b.phase === 'river' || b.phase === 'salmon') flow = !flowing ? 0 : area ? raining : tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1);
 
       const emit: Emit = {
         flow, area, sources: area ? undefined : [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)],

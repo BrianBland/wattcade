@@ -16,6 +16,7 @@ export interface Predator {
   lane: number;       // eagle: target lane
   t: number;          // seconds until the strike (estimate for bears)
   struck: number;     // seconds since the strike, -1 before
+  enter: number;      // bear: 0 = still off in the woods, 1 = at the water's edge
   caught: number;     // fish taken by this strike
 }
 export interface SalmonParams {
@@ -52,23 +53,66 @@ export class SalmonRun {
 
   constructor(private t: Terrain, private rng: () => number) {
     this.px = new Float32Array(t.ny).fill(t.nx / 2); this.pw = new Float32Array(t.ny).fill(2);
+    this.row = new Float32Array(t.nx);
   }
 
-  /** Re-trace the river from the depth grid: per row, the depth-weighted centre and wet half-width. */
+  /** Rows (ahead of the school, when last traced) where the channel forks. */
+  forks: number[] = [];
+  private row: Float32Array;
+
+  /**
+   * Trace the channel the school will swim, from the river mouth upstream, following real channels (not an average of
+   * them): per row, the local depth maxima near the previous row's x are the candidate channels. At a fork the school
+   * takes the branch on the side it is steering toward (lane > 0 = larger x), else the nearest. Smoothed in time.
+   */
   updatePath(w: Float32Array): void {
-    const { nx, ny, coastY } = this.t;
-    let lastX = this.pathReady ? this.px[2] : nx / 2;
-    const k = this.pathReady ? 0.3 : 1;
-    for (let j = 0; j < ny; j++) {
-      let s = 0, sx = 0, wet = 0;
-      for (let i = 0; i < nx; i++) { const d = w[j * nx + i]; if (d > 0.05) { s += d; sx += d * i; wet++; } }
-      const x = s > 0.2 ? sx / s : lastX;
-      const hw = j > coastY + 3 ? 3 : Math.max(1.5, Math.min(6, wet / 2));
-      this.px[j] += (x - this.px[j]) * k; this.pw[j] += (hw - this.pw[j]) * k;
-      lastX = this.px[j];
+    const { nx, ny, coastY } = this.t, r = this.row;
+    const blur = (j: number) => { for (let i = 0; i < nx; i++) r[i] = (w[j * nx + Math.max(0, i - 1)] + 2 * w[j * nx + i] + w[j * nx + Math.min(nx - 1, i + 1)]) / 4; };
+    blur(Math.min(ny - 1, coastY));
+    let x = nx / 2, best = -1;
+    for (let i = 0; i < nx; i++) if (r[i] > best) { best = r[i]; x = i; }
+    const k = this.pathReady ? 0.6 : 1, forks: number[] = [];
+    for (let j = ny - 1; j >= 0; j--) {
+      let nxp = x, hw = 3;
+      if (j <= coastY + 3) {
+        blur(j);
+        let cands: number[] = [];
+        const scan = (span: number) => {
+          const out: number[] = [];
+          for (let i = Math.max(1, Math.floor(x - span)); i <= Math.min(nx - 2, Math.ceil(x + span)); i++) if (r[i] > 0.05 && r[i] >= r[i - 1] && r[i] >= r[i + 1]) out.push(i);
+          return out;
+        };
+        cands = scan(7);
+        if (!cands.length) {
+          // lost the channel (a dry stretch): jump to the nearest water in the row rather than walking over dry land
+          const wide = scan(25);
+          if (wide.length) cands = [wide.reduce((a, c) => (Math.abs(c - x) < Math.abs(a - x) ? c : a))];
+        }
+        // group maxima closer than 3 cells (one channel, or a flat-topped one) and take each group's middle
+        const ch: number[] = [];
+        for (let n = 0; n < cands.length;) {
+          let m = n; while (m + 1 < cands.length && cands[m + 1] - cands[m] < 3) m++;
+          ch.push(Math.round((cands[n] + cands[m]) / 2)); n = m + 1;
+        }
+        if (ch.length > 1) forks.push(j);
+        if (ch.length) {
+          const lean = this.lane;
+          nxp = ch.length > 1 && Math.abs(lean) > 0.3
+            ? (lean > 0 ? Math.max(...ch) : Math.min(...ch))
+            : ch.reduce((a, c) => (Math.abs(c - x) < Math.abs(a - x) ? c : a));
+          let wet = 0; for (let i = nxp; i < nx && r[i] > 0.05; i++) wet++; for (let i = nxp - 1; i >= 0 && r[i] > 0.05; i--) wet++;
+          hw = Math.max(1.5, Math.min(6, wet / 2));
+        } else hw = 1.5;
+      }
+      this.px[j] += (nxp - this.px[j]) * k; this.pw[j] += (hw - this.pw[j]) * k;
+      x = nxp;
     }
+    this.forks = forks;
     this.pathReady = true;
   }
+
+  /** Is there a fork within the next `rows` rows upstream of the school? */
+  forkAhead(rows = 16): boolean { return this.forks.some((j) => j < this.y - 2 && j > this.y - rows); }
 
   private at(f: Float32Array, y: number): number {
     const j = Math.max(0, Math.min(this.t.ny - 1.001, y)), i = Math.floor(j);
@@ -141,16 +185,21 @@ export class SalmonRun {
     this.fallsState = fs;
     this.y -= v * dt;
 
-    // predators
+    // predators: each run is harder (more often, less warning, hungrier)
+    const lvl = Math.min(3, this.run - 1);
+    const eagleT = Math.max(1.8, 3 - 0.4 * lvl), catchP = Math.min(0.85, p.catchChance + 0.08 * lvl);
     this.nextPred -= dt;
     if (this.nextPred <= 0 && this.y > GOAL_Y + 14) {
-      this.nextPred = p.predatorGap * (0.7 + 0.6 * this.rng());
+      this.nextPred = p.predatorGap * Math.max(0.55, 1 - 0.15 * lvl) * (0.7 + 0.6 * this.rng());
       const kind: 'bear' | 'eagle' = this.rng() < 0.5 ? 'bear' : 'eagle';
-      const ahead = kind === 'bear' ? 9 + 5 * this.rng() : Math.max(2, v * 3);
-      this.predators.push({ id: ++this.predId, kind, y: this.y - ahead, side: this.rng() < 0.5 ? -1 : 1, lane: this.lane, t: kind === 'eagle' ? 3 : ahead / Math.max(0.3, v), struck: -1, caught: 0 });
+      // bears charge in from the woods and arrive at the bank just before the school does
+      const vv = Math.max(0.6, v);
+      const ahead = kind === 'bear' ? vv * (3 + this.rng()) + 2 : Math.max(2, vv * eagleT);
+      this.predators.push({ id: ++this.predId, kind, y: this.y - ahead, side: this.rng() < 0.5 ? -1 : 1, lane: this.lane, t: kind === 'eagle' ? eagleT : ahead / vv, struck: -1, caught: 0, enter: kind === 'eagle' ? 1 : 0 });
       cues.push({ type: 'warn', kind });
     }
     for (const pr of this.predators) {
+      if (pr.kind === 'bear') pr.enter = pr.struck >= 0 ? Math.max(0, pr.enter - dt / 1.2 * (pr.struck > 0.6 ? 1 : 0)) : Math.min(1, pr.enter + dt / 1.8);
       if (pr.struck >= 0) { pr.struck += dt; continue; }
       if (pr.kind === 'eagle') pr.t -= dt; else pr.t = (this.y - pr.y) / Math.max(0.3, v);
       const strike = pr.kind === 'eagle' ? pr.t <= 0 : this.y <= pr.y + 0.5;
@@ -159,11 +208,11 @@ export class SalmonRun {
       for (const f of this.fish) {
         if (!f.alive) continue;
         const inZone = pr.kind === 'bear' ? pr.side * f.lane > 0.05 : Math.abs(f.lane - pr.lane) < 0.38 && Math.abs(this.y + f.dy - pr.y) < 3;
-        if (inZone && this.rng() < p.catchChance) { f.alive = false; pr.caught++; this.lost++; }
+        if (inZone && this.rng() < catchP) { f.alive = false; pr.caught++; this.lost++; }
       }
       cues.push({ type: 'strike', kind: pr.kind, caught: pr.caught });
     }
-    this.predators = this.predators.filter((pr) => pr.struck < 2.5);
+    this.predators = this.predators.filter((pr) => pr.struck < (pr.kind === 'bear' ? 2 : 2.5));
 
     if (this.y <= GOAL_Y) {
       const n = this.fish.filter((f) => f.alive).length + 1;

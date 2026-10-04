@@ -74,7 +74,8 @@ export class SalmonLayer {
       const appear = Math.min(1, o.seen / 0.6);
       const mat = o.marker.material as THREE.MeshBasicMaterial;
       if (pr.kind === 'bear') {
-        const bx = pr.x, by = pr.y;
+        // bears charge in from the woods to the water's edge, swipe, then run back off
+        const bx = pr.x + pr.side * 11 * (1 - pr.enter), by = pr.y;
         const ground = sample(h, nx, ny, bx, by);
         const lunge = pr.struck >= 0 ? Math.min(1, pr.struck * 4) * Math.max(0, 1 - (pr.struck - 0.6) * 1.5) : 0;
         o.g.position.set(this.wx(by), ground - (1 - appear) * 3, this.wz(bx - pr.side * lunge * 1.6));

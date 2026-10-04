@@ -79,7 +79,7 @@ function temple(g: G, x: number, y: number) {
 const jungle: BiomeLook = {
   sky: ['#5fb3d9', '#d6f0c8'], haze: '#4a8a5a', ridge: '#3f8a46', mid: '#2f6e34', ground: '#3a5a22', groundDark: '#2a4418',
   road: '#7a5634', roadEdge: '#5a3e24', roadKind: 'dust', stars: 0,
-  actor: 'parrot', particles: 'fireflies', rider: 'road', outdoor: true, ambient: { vol: 0.02, freq: 3200, q: 1.2 },
+  actor: 'parrot', particles: 'fireflies', rider: 'road', outdoor: true, ambient: { vol: 0.012, freq: 1800, q: 0.9 },
   backdrop(g, w, y, u, t) {
     silhouette(g, '#5a9a6a', w, y, u, 30, 40, 31); silhouette(g, '#3f7f4a', w, y + 8, u * 1.6, 22, 22, 32);
     // a waterfall off a cliff

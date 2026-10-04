@@ -6,7 +6,7 @@ import { onMenuPress } from '../menuInput';
 import { KeyHints, Spinner } from '../components/ui';
 import { Btn } from '../components/Bits';
 import { toast } from '../components/Toasts';
-import { play as sfx } from '../../audio/sfx';
+import { duckAmbient, play as sfx } from '../../audio/sfx';
 import type { MediaRun } from '../types';
 import { fmtTime, MODES, moveItem, nextMode, pickerNav, previewStart, queueRows, SECTION_COLORS, type PickerFocus } from './pickerModel';
 
@@ -72,7 +72,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   }, [focusedSong?.id, focusedSong?.status]);
 
   const stopPreview = () => { const a = audio.current; if (a) { a.pause(); a.removeAttribute('src'); } setPreviewing(null); };
-  useEffect(() => stopPreview, []);
+  useEffect(() => { duckAmbient('picker', true); return () => { duckAmbient('picker', false); stopPreview(); }; }, []); // music screen: no scenery hiss
   const previewingRef = useRef<string | null>(null); previewingRef.current = previewing;
   const togglePreview = async (m: SongMeta | undefined) => {
     if (!m || m.status !== 'ready') return;

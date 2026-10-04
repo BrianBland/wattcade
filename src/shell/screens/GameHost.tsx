@@ -10,7 +10,7 @@ import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { ResultBanner } from '../game/ResultBanner';
 import { toast } from '../components/Toasts';
-import { play, unlockAudio } from '../../audio/sfx';
+import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
 /** Intro waits this long before counting down on its own (the rider may never touch the controller). */
 export const INTRO_AUTO_S = 8;
@@ -100,6 +100,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         if (media && session.media) {
           const engine = mediaEngine(); engine.load(media.plan); engine.setVolume(1);
           music.current = { engine, sync: new ProgramSync() };
+          duckAmbient('music', true); // the game's own ambience would fight the music
         }
         debugActions.panic(true); // trainer neutral through the intro and countdown
         renderer = await game.loadRenderer();
@@ -166,7 +167,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     return () => {
       disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
-      music.current?.engine.stop(); music.current = null;
+      music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);
 

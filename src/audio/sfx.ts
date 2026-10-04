@@ -132,7 +132,14 @@ export function play(name: SfxName, opts: { vol?: number; minGapS?: number; pitc
 }
 
 // ----- ambient beds (looping filtered noise; e.g. surf, wind, rain) -----
-const beds = new Map<string, { gain: GainNode; filter: BiquadFilterNode; src: AudioBufferSourceNode }>();
+const beds = new Map<string, { gain: GainNode; filter: BiquadFilterNode; src: AudioBufferSourceNode; vol: number }>();
+const duckers = new Set<string>();
+/** Silence every ambient bed while music plays (`on`), keyed so several owners can hold it (picker, player…). */
+export function duckAmbient(owner: string, on: boolean): void {
+  if (on) duckers.add(owner); else duckers.delete(owner);
+  const c = ac; if (!c) return;
+  for (const b of beds.values()) { b.gain.gain.cancelScheduledValues(c.currentTime); b.gain.gain.setTargetAtTime(enabled && !duckers.size ? b.vol : 0, c.currentTime, 0.3); }
+}
 /** Set a looping noise bed's level (0 = silent) and filter centre. Cheap to call every frame. */
 export function setAmbient(id: string, vol: number, freq = 500, q = 0.7): void {
   const c = ctx(); if (!c || !master || !noise || c.state !== 'running') return;
@@ -142,10 +149,12 @@ export function setAmbient(id: string, vol: number, freq = 500, q = 0.7): void {
     const filter = c.createBiquadFilter(); filter.type = 'bandpass';
     const gain = c.createGain(); gain.gain.value = 0;
     src.connect(filter); filter.connect(gain); gain.connect(master); src.start();
-    b = { gain, filter, src }; beds.set(id, b);
+    b = { gain, filter, src, vol }; beds.set(id, b);
   }
+  b.vol = vol;
   const now = c.currentTime;
-  b.gain.gain.setTargetAtTime(enabled ? vol : 0, now, 0.3);
+  b.gain.gain.cancelScheduledValues(now);
+  b.gain.gain.setTargetAtTime(enabled && !duckers.size ? vol : 0, now, 0.3);
   b.filter.frequency.setTargetAtTime(freq, now, 0.3);
   b.filter.Q.value = q;
 }

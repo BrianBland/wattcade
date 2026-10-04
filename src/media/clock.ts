@@ -29,18 +29,17 @@ export class ProgramSync {
 }
 
 /**
- * Smooth a coarse media clock (Safari's currentTime can tick in 15–250 ms steps) against a fine monotonic
- * clock: extrapolate from the last anchor at the known rate, re-anchoring when the coarse reading moves away.
+ * Smooth a coarse, jittery media clock (currentTime) against a fine monotonic clock: a small phase-locked
+ * estimate that advances at the playback rate, eases toward the readings, and snaps only on a real jump (seek).
  */
 export class SmoothedPosition {
-  private anchorMedia = 0; private anchorFine = 0; private has = false;
+  private est = 0; private lastFine = 0; private has = false;
   update(mediaS: number, fineS: number, rate: number, playing: boolean): number {
-    if (!this.has || !playing) { this.anchorMedia = mediaS; this.anchorFine = fineS; this.has = true; return mediaS; }
-    const pred = this.anchorMedia + (fineS - this.anchorFine) * rate;
-    if (Math.abs(mediaS - pred) > 0.08) { this.anchorMedia = mediaS; this.anchorFine = fineS; return mediaS; }
-    // drift the anchor gently toward the coarse reading so we never wander
-    this.anchorMedia += (mediaS - pred) * 0.05;
-    return this.anchorMedia + (fineS - this.anchorFine) * rate;
+    if (!this.has || !playing) { this.est = mediaS; this.lastFine = fineS; this.has = playing; return mediaS; }
+    this.est += Math.max(0, fineS - this.lastFine) * rate; this.lastFine = fineS;
+    const err = mediaS - this.est;
+    if (Math.abs(err) > 0.5) this.est = mediaS; else this.est += err * 0.08;
+    return this.est;
   }
   reset(): void { this.has = false; }
 }

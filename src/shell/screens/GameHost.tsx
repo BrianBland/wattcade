@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
+import { startTarget } from '../countGate';
 import { debugActions, getFake, activeSession, input, onSystem, previewAward, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
@@ -56,7 +57,12 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     const s = sessionRef.current; if (!s) return;
     if (p) { s.pause(); debugActions.panic(true); } else { debugActions.panic(false); s.resume(); }
   };
-  const startCount = () => { if (phaseRef.current !== 'intro' && phaseRef.current !== 'menu') return; timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); };
+  /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
+  const startCount = () => {
+    const to = startTarget(phaseRef.current, !!sessionRef.current?.sim.inMenu?.());
+    if (to === 'menu') setPhase('menu');
+    else if (to === 'count') { timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); }
+  };
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
     const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
@@ -113,7 +119,7 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
             const p = session.idle(dt);
             T.intro += dt;
             const l = Math.ceil(Math.max(0, INTRO_AUTO_S - T.intro)); if (l !== T.left) { T.left = l; setAutoLeft(l); }
-            if (p.has('a') || T.intro >= INTRO_AUTO_S) { if (session.sim.inMenu?.()) setPhase('menu'); else startCount(); }
+            if (p.has('a') || T.intro >= INTRO_AUTO_S) startCount();
             else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
           } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), count down once it's dismissed
             session.frame(dt);

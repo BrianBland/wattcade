@@ -29,7 +29,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
     else onDone();
   };
   const anyOn = ITEMS.some((it) => st[it.kind].connected);
-  const [idx, setIdx] = useMenuNav(5, [3, 2], act, onDone);
+  const [idx, setIdx] = useMenuNav(5, [3, 2], act, onDone, true, { initial: 4 }); // default to Ride/Continue so a stray controller press can't disconnect a device
   return (
     <div class="screen">
       <div class="screen-head">
@@ -39,7 +39,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
         {ITEMS.map((it, i) => {
           const s = st[it.kind];
           return (
-            <div class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`} onClick={() => { setIdx(i); act(i); }}>
+            <div class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`} onClick={() => { setIdx(4); act(i); }}>
               <div class="device-top"><span class="icon">{it.icon}</span><h3>{it.label}</h3><span class="spacer" />{s.busy ? <Spinner /> : <Dot on={s.connected} />}</div>
               <div class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? 'Connected · tap to disconnect' : 'Tap to connect'}</div>
               {s.connected && <div class="device-live">{live(it.kind)}</div>}

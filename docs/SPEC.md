@@ -291,7 +291,7 @@ Shared infrastructure for music games and the Drive-In: sources, analysis, a two
   - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs go in OPFS, metadata and analysis in IndexedDB. All caps.
   - `SynthSource` (phase 1): seeded procedural songs (`edm`, `rock`, `ambient`, `album` styles), with known ground truth (beats, sections). Used by fake mode, headless scenarios and analysis tests.
   - `YouTubeSource` (phase 3): Data API v3 search plus the IFrame player. Caps `{ video, rate: 'steps' }` only. Used by the Drive-In (§6.6), never for analysis.
-  - `SpotifySource` (phase 5 experiment, §5.7). `CatalogSource` (Creative Commons, e.g. Jamendo) is later and unspecced.
+  - `JamendoSource` (phase 3, §5.7): Creative Commons catalogue search and streams. All caps except `pixels`/`video`; no offline storage.
 - **Library:** our own minimal tag readers (ID3v2 `TIT2/TPE1/TALB/TRCK/TSRC/APIC`, MP4 `©nam/©ART/©alb/trkn/covr`, FLAC Vorbis comments plus `PICTURE`). Pure and tested with byte fixtures. Browse by Album / Artist / Song, with fuzzy search over title, artist and album. Each song keeps its file hash (SHA-256 of the bytes, the cache key), duration, ISRC if tagged, and a **palette** (5 colours, k-means over the cover art; a fallback derived from key/energy when there's no art).
 - **Analysis** (`src/media/analysis/`, pure TS, no deps, runs in a Web Worker, deterministic, cached by hash plus `ANALYSIS_VERSION`). Input: mono PCM resampled to 22 050 Hz with `OfflineAudioContext`; the decoded copy is dropped afterwards.
   - STFT (own radix-2 FFT, 2048 window / 512 hop, Hann). Band energies low/mid/high (< 150 Hz, 150–2 k, > 2 k) plus a 10 Hz loudness/intensity curve (perceptual-ish weighting, normalised per song and smoothed).
@@ -317,20 +317,18 @@ Shared infrastructure for music games and the Drive-In: sources, analysis, a two
 - **Contract additions (approved with this spec):** `GameModule.requires.media?: Array<keyof MediaCaps>`; optional `GameModule.mediaPreview?(timeline, w, h, g: CanvasRenderingContext2D)`; `GameContext.media?: { timeline: MediaTimeline; positionS(): Seconds }`; `createGameSession` / `runHeadless` take `media?: { timeline } | { synth: { style, songs, seed, mix } }`; scenario entries may set `media`. `MediaTimeline` and `MediaCaps` live in `contracts.ts`.
 - **Tests:** analysis versus synth ground truth, tag-parser fixtures, `planMix` (phrase alignment, rate limits, fallbacks), `buildTimeline` (monotonic, no gaps in continuous mode, events within a transition), and the clock PLL (converges, bounded).
 
-### §5.7 Spotify adapter (phase 5 experiment, personal use) · owns `src/media/spotify/`
+### §5.7 Creative Commons catalogue (Jamendo) · owns `src/media/jamendo/`
 
-**Status:** opt-in and feature-flagged. This breaches the Spotify Developer Policy ("Do not create a game", "Do not synchronize any sound recordings with any visual media"); accepted for a personal dev-mode app (Premium, ≤ 5 users). The worst case is a revoked client ID. Isolated so it can be deleted cleanly.
+Search-anything music on top of local files: Jamendo's CC catalogue (about 600 k tracks), fully analysable because the streams are plain MP3.
 
-- **Why it's limited:** Spotify audio is DRM (no PCM). `audio-analysis` / `audio-features` return 403 for apps created after 2024-11-27 (filahf/r3f-spotify-game relied on them). Search is limited to 10 results per call. Player endpoints and `external_ids` (ISRC) still work (Feb/Mar 2026 changes).
-- **Auth:** Authorization Code + PKCE from the static site (no secret, no backend). Redirect URIs: `https://wattcade.brianb.land/spotify-callback` plus a loopback `http://127.0.0.1:<port>/…` for dev. Scopes: `user-read-playback-state user-modify-playback-state playlist-read-private user-library-read`. Tokens are refreshed and kept per profile.
-- **Playback via Connect:** the Spotify app on the iPad plays in the background. We pick its device, then start/pause/seek through the Web API and poll `GET /me/player` at about 1 Hz, extrapolating position between polls with the latency offset. Queue mode is **continuous only** (one stream; Spotify's own crossfade setting applies).
-- **Mic-free map** (`confidence: 'metadata'`), built from open data keyed by ISRC (all CORS-open, verified 2026-10-04 on one track: AcousticBrainz 396 beats at 114.97 bpm; Deezer 114.84 bpm; LRCLIB synced lyrics, 208 s):
-  1. **Beat grid:** ISRC → MusicBrainz recording(s) → **AcousticBrainz** low-level `rhythm.beats_position` (the full song's beat times), bpm, key, `dynamic_complexity`, loudness. Accept it if the AcousticBrainz length matches Spotify's `duration_ms` within 1.5 s. The archive is frozen at 2022, so newer releases miss.
-  2. **Structure:** **LRCLIB** synced lyrics. Repeated line groups mark the chorus (treated as high energy / `drop`); lyric-free gaps over 2 bars mark `intro/break/outro`; the 4–8 bars before a chorus are a `build`. All boundaries are snapped to downbeats.
-  3. **Texture:** the **Deezer** ISRC lookup (bpm, gain) plus its 30 s preview MP3 (`Access-Control-Allow-Origin: *`) run through our analysis. That gives onset density per band and brightness, which set block density and colours. Its position in the song is unknown, so it isn't used for timing.
-  4. **Fallbacks:** no AcousticBrainz match → Deezer/ReccoBeats bpm plus a **tap-to-sync** (tap A on four beats once the song starts). No lyrics → 8-bar phrase template sections shaped by `dynamic_complexity`.
-  5. Onsets are synthesised on the beat/8th grid with per-section density, and the intensity curve is synthesised from the section labels. Games show an "approximate map" badge.
-- Results are cached per Spotify track ID in IndexedDB. Search, album and playlist import feed the shared queue UI.
+- **API:** `https://api.jamendo.com/v3.0/` with a `client_id` (register at devportal.jamendo.com; it's a public identifier, put it in `.env` as `VITE_JAMENDO_CLIENT_ID`). Responses send `Access-Control-Allow-Origin: *` (verified 2026-10-04). `tracks/` with `search`, `fuzzytags`, `speed`, `vocalinstrumental`, `order`, `limit ≤ 200`, `include=musicinfo` (tags, bpm-ish speed); `albums/tracks`, `playlists/tracks` and `artists/tracks` give whole sets for the queue.
+- **Audio:** `audio` (stream) with `audioformat=mp32` (VBR) for both playback and analysis. Before relying on it, confirm the stream host also sends CORS headers. If it doesn't, analysis falls back to `audiodownload` (only when `audiodownload_allowed`), and failing that the track is marked "play only".
+- **Terms** (non-commercial use is free): show the artist and "via Jamendo" with a **link back to the track page** wherever a Jamendo track is shown (picker rows, preview, title cards, summary). Follow each track's CC licence; never claim ownership.
+- **No offline library:** audio is fetched for playback and analysis and not stored beyond the browser's normal HTTP cache. We keep only the derived `SongAnalysis` and metadata (keyed `jamendo:<id>`), so a replay re-streams but skips analysis.
+- **Picker:** a "Catalogue" tab next to "My music": a search box, genre/tag and speed chips, popular/new ordering, add to queue, add album/playlist. Analysis runs in the background on queued tracks (stream → decode → worker); a track can't start until its analysis is done (progress chip).
+- **Tests:** response mapping from fixtures, URL building, attribution present in every rendered row (jsdom), cache keys.
+
+**Deferred: Spotify.** It was researched on 2026-10-04 and parked because it's too limited to be worth it: DRM (no PCM), audio-analysis gone for new apps, Connect playback only (no automix), and the Developer Policy bans games. A mic-free "approximate map" route exists if we ever want it: ISRC → MusicBrainz → AcousticBrainz `beats_position`, LRCLIB synced lyrics for sections, Deezer preview/bpm (all CORS-open).
 
 ---
 
@@ -491,7 +489,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 ### §6.5 "Wattsurf" (music racer, **3D** Three.js, Audiosurf × Wipeout HD Zone) · owns `src/games/wattsurf/`
 
 - **Fantasy:** ride the song. The track is built from the music: calm passages roll, **builds climb**, **drops dive**. You steer an anti-grav craft across lanes to collect coloured blocks on the hits. The music sets the speed; your legs keep the shield up.
-- **Requires** `media: ['pcm']` (local or synth; Spotify `metadata` timelines are allowed with a badge). Tags `intervals`, `sprint`. Launching it opens the media picker (§5.6), then the game's pre-game menu (`inMenu`): **mode** Mono / Classic and **rhythm difficulty** Casual / Pro / Elite. ◀▶ or shifters choose, A starts, last choice saved. Power difficulty is the existing difficulty knob.
+- **Requires** `media: ['pcm']` (local, Jamendo or synth). Tags `intervals`, `sprint`. Launching it opens the media picker (§5.6), then the game's pre-game menu (`inMenu`): **mode** Mono / Classic and **rhythm difficulty** Casual / Pro / Elite. ◀▶ or shifters choose, A starts, last choice saved. Power difficulty is the existing difficulty knob.
 - **Track** (`sim/track.ts`, pure, from `MediaTimeline`):
   - Speed `v(t) = vBase · (1 + zoneStep·zone) · (0.8 + 0.4·intensity)`, smoothed. **Each section is a zone:** zone count +1, palette shift, speed step (Wipeout Zone).
   - Slope by section: `intro/verse` gentle rolling from intensity; `build` a rising climb (steeper with energy rise); `drop` a crest then a long dive; `break` flat; `outro` easing down. Curvature (gentle S-bends) comes from the mid-band trend. Lanes: 3 (Casual/Pro), 5 (Elite).
@@ -568,6 +566,7 @@ Keep your own context small: you coordinate; subagents do the building. Use `mod
 
 1. **Media core:** analysis worker plus synth ground-truth tests, LocalSource (OPFS, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
 2. **Wattsurf v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
-3. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.
-4. **Wattsurf Classic,** Shift ability, per-song/per-set leaderboards, achievements.
-5. **Experiments:** Spotify adapter (§5.7, mic-free metadata maps); Creative Commons catalogue; LA drive-in skin; YouTube FX (deferred).
+3. **Jamendo catalogue** (§5.7): search, stream, analyse, attribution.
+4. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.
+5. **Wattsurf Classic,** Shift ability, per-song/per-set leaderboards, achievements.
+6. **Later:** LA drive-in skin; YouTube FX (deferred); Spotify (deferred, §5.7).

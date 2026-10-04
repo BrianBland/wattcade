@@ -22,8 +22,7 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
   (`library/store.ts`: meta / analysis / blobs DBs; `MemoryStorage` for tests). Demo set: 6 synth songs ("Generated"), always ready.
   `library/samples.ts`: 9 curated Creative Commons tracks on archive.org (CORS-open), `sampleSongs()` / `downloadSample(id)` → stored
   and analysed like local files, with `credit` (shown in the picker, Music Lab and `MediaSongSpan.credit`).
-- `analysis/worker.ts` + `client.ts`: analysis and synth→WAV rendering off the main thread. `player/decode.ts`: OfflineAudioContext decode
-  at 22.05 kHz mono.
+- `analysis/worker.ts` + `client.ts`: analysis and synth→WAV off the main thread. `player/decode.ts`: 22.05 kHz mono decode for analysis.
 - `player/engine.ts` `MixEngine`: decoded AudioBuffers (current + next, ~85 MB each) on AudioBufferSourceNodes → low/mid/high EQ →
   gain (echo send). `player/schedule.ts` (pure, tested) turns a plan entry into sample-accurate start/offset, playbackRate ramps (pitch
   follows tempo, turntable-style), gain/EQ automation and echo. Program clock = AudioContext clock. Not <audio>: Safari is choppy at

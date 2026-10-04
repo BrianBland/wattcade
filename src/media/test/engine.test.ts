@@ -1,30 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { followerAction, ownerRate } from '../player/engine';
+import { progTime, songTime } from '../mix/plan';
+import { integrateRate, scheduleDeck } from '../player/schedule';
+import { synthQueue } from '../synth/queue';
 
-const base = { err: 0, audible: true, sinceSeekS: 10, sinceRateS: 10, planned: 1, current: 1 };
+/** Pretend the program starts at context time 100 s. */
+const toCtx = (p: number) => 100 + p;
 
-describe('deck correction (rate-limited so browsers do not glitch)', () => {
-  it('leaves a deck alone when it is in step', () => {
-    expect(followerAction({ ...base, err: 0.01 })).toEqual({});
+describe('deck schedules (sample-accurate playback from buffers)', () => {
+  for (const mix of ['automix', 'continuous', 'crossfade'] as const) {
+    it(`${mix}: the scheduled tempo lands every song exactly where the plan says`, () => {
+      const { plan } = synthQueue({ style: 'mixed', songs: 3, seed: 1, mix });
+      for (const e of plan.entries) {
+        const sch = scheduleDeck(e, e.startP, toCtx);
+        expect(sch.when).toBeCloseTo(toCtx(e.startP), 9);
+        expect(sch.offset).toBeCloseTo(songTime(e.segs, e.startP), 9);
+        for (let k = 0; k <= 20; k++) {
+          const p = e.startP + ((e.endP - e.startP) * k) / 20;
+          expect(integrateRate(sch.offset, sch.when, sch.rate, toCtx(p))).toBeCloseTo(songTime(e.segs, p), 6);
+        }
+      }
+    });
+  }
+
+  it('beat-matched decks put the same beat at the same instant', () => {
+    const { plan, items } = synthQueue({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
+    const [a, b] = plan.entries, t = plan.transitions[0];
+    expect(t.kind).toBe('beatmix');
+    const sa = scheduleDeck(a, 0, toCtx), sb = scheduleDeck(b, b.startP, toCtx);
+    // context time at which each deck reaches a given song time, by bisection on the integrated rate
+    const ctxAt = (sch: typeof sa, s: number) => { let lo = sch.when, hi = sch.when + 2000; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (integrateRate(sch.offset, sch.when, sch.rate, m) < s) lo = m; else hi = m; } return lo; };
+    const beatsA = items[0].analysis.beats.filter((x) => { const p = progTime(a.segs, x); return p > t.p0 && p < t.p1; }).map((x) => ctxAt(sa, x));
+    const beatsB = items[1].analysis.beats.filter((x) => { const p = progTime(b.segs, x); return p > t.p0 + 0.25 && p < t.p1 - 0.25; }).map((x) => ctxAt(sb, x));
+    expect(beatsB.length).toBeGreaterThan(16);
+    for (const tb of beatsB) expect(Math.min(...beatsA.map((ta) => Math.abs(ta - tb)))).toBeLessThan(0.002);
   });
-  it('nudges a little, never more than 2 %, and not more than once a second', () => {
-    expect(followerAction({ ...base, err: 0.04 })).toEqual({ rate: 0.98 });
-    expect(followerAction({ ...base, err: -0.3 }).rate).toBeCloseTo(1.02, 6);
-    expect(followerAction({ ...base, err: 0.04, sinceRateS: 0.5 })).toEqual({});
+
+  it('starting mid-song (seek / late decode) offsets everything consistently', () => {
+    const { plan } = synthQueue({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
+    const e = plan.entries[1], from = e.startP + 7.3, sch = scheduleDeck(e, from, toCtx);
+    expect(sch.when).toBeCloseTo(toCtx(from), 9);
+    expect(sch.offset).toBeCloseTo(songTime(e.segs, from), 9);
+    expect(integrateRate(sch.offset, sch.when, sch.rate, toCtx(from + 40))).toBeCloseTo(songTime(e.segs, from + 40), 6);
+    expect(sch.gain[0].t).toBeCloseTo(toCtx(from), 9);
+    expect(sch.gain.every((g, i) => i === 0 || g.t > sch.gain[0].t)).toBe(true);
   });
-  it('goes back to the planned rate once in step', () => {
-    expect(followerAction({ ...base, err: 0.005, current: 1.02, planned: 1 })).toEqual({ rate: 1 });
-  });
-  it('seeks only when far off — much further for a deck you can hear — and not while settling', () => {
-    expect(followerAction({ ...base, err: 0.3 }).seek).toBeUndefined();
-    expect(followerAction({ ...base, err: 0.6 }).seek).toBe(true);
-    expect(followerAction({ ...base, err: 0.1, audible: false }).seek).toBe(true);
-    expect(followerAction({ ...base, err: 2, sinceSeekS: 0.2 })).toEqual({});
-  });
-  it('the master deck only follows planned tempo ramps, in coarse steps', () => {
-    expect(ownerRate(1, 1, 10)).toBeNull();
-    expect(ownerRate(1.0004, 1, 10)).toBeNull();
-    expect(ownerRate(1.05, 1, 10)).toBe(1.05);
-    expect(ownerRate(1.05, 1, 0.2)).toBeNull();
+
+  it('schedules the echo-out of a fallback transition', () => {
+    const { plan } = synthQueue({ style: 'mixed', songs: 3, seed: 1, mix: 'automix' });
+    const echo = plan.transitions.find((t) => t.kind === 'echo')!;
+    expect(scheduleDeck(plan.entries[echo.from], plan.entries[echo.from].startP, toCtx).echoAt).toBeCloseTo(toCtx(echo.p0), 9);
   });
 });

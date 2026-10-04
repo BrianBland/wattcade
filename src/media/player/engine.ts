@@ -1,15 +1,17 @@
-import { SmoothedPosition } from '../clock';
-import { autoAt, progTime, rateAt, songTime, type MixPlan, type PlanEntry } from '../mix/plan';
-import { encodeWav } from './wav';
+import type { MixPlan, PlanEntry } from '../mix/plan';
+import { scheduleDeck, type ParamEvent } from './schedule';
 
 /**
- * Plays a MixPlan on DJ-style decks (browser only). Each deck: <audio> → MediaElementSource → 3-band EQ →
- * gain → master; an echo send for echo-outs.
+ * Plays a MixPlan from decoded buffers on the AudioContext clock (browser only).
  *
- * The deck that owns the program is the master clock: the program position is read from it (smoothed) and it
- * is never nudged, so a single song plays untouched. Only a deck that overlaps it (an automix incoming/outgoing
- * song) is corrected, and gently: an occasional small rate change, or a seek while it's inaudible. Browsers
- * (Safari especially) glitch when playbackRate or currentTime is written often, so every write is rate-limited.
+ * Why buffers and not <audio>: Safari makes a media element routed through Web Audio choppy whenever its
+ * playbackRate isn't 1 (WebKit bug 240405), and media-element timing is too loose for beat matching anyway.
+ * Here every deck is an AudioBufferSourceNode scheduled sample-accurately: start time, offset, tempo ramps
+ * (playbackRate automation; pitch follows tempo like a turntable), gain/EQ automation and the echo-out are
+ * all set up front from the plan. The program clock is simply the context clock, so nothing drifts and
+ * there is nothing to correct. Only the current and next songs are kept decoded (~85 MB each).
+ *
+ * Deck: source → low shelf → peaking mid → high shelf → gain → master; echo send from the EQ into a feedback delay.
  */
 export interface EngineOpts {
   resolveUrl(id: string): Promise<string>;
@@ -19,63 +21,55 @@ export interface EngineOpts {
 }
 export type EngineState = 'idle' | 'starting' | 'playing' | 'paused' | 'ended';
 
-const PRELOAD_S = 8, TICK_MS = 40;
-
-/** What to do with a deck that should follow the program (pure; tested). err = deck time − target, seconds. */
-export function followerAction(o: { err: number; audible: boolean; sinceSeekS: number; sinceRateS: number; planned: number; current: number }): { seek?: true; rate?: number } {
-  if (o.sinceSeekS < 0.6) return {};                                   // still settling after a seek
-  if (Math.abs(o.err) > (o.audible ? 0.5 : 0.08)) return { seek: true }; // far off (audible decks only when badly off)
-  if (o.sinceRateS < 1) return {};
-  const want = Math.abs(o.err) < 0.02 ? o.planned
-    : Math.round(o.planned * (1 - Math.max(-0.02, Math.min(0.02, o.err * 0.5))) * 400) / 400;
-  return Math.abs(want - o.current) >= 0.002 ? { rate: want } : {};
-}
-/** The master deck only follows the plan's rate (tempo ramps), in coarse, infrequent steps. */
-export function ownerRate(planned: number, current: number, sinceRateS: number): number | null {
-  return sinceRateS >= 0.5 && Math.abs(planned - current) >= 0.002 ? Math.round(planned * 1000) / 1000 : null;
-}
+const PRELOAD_S = 40, LOOKAHEAD_S = 1.5, TICK_MS = 100;
 
 class Deck {
-  readonly el: HTMLAudioElement;
   readonly low: BiquadFilterNode; readonly mid: BiquadFilterNode; readonly high: BiquadFilterNode;
-  readonly gain: GainNode; readonly echoSend: GainNode; readonly delay: DelayNode; readonly feedback: GainNode;
-  entry = -1; id = ''; loading: Promise<void> | null = null; echoFired = false; wantPlay = false;
-  lastSeek = -1e9; lastRate = -1e9; lastPlayTry = -1e9;
-  private params = new Map<AudioParam, number>();
-  readonly smooth = new SmoothedPosition();
+  readonly gain: GainNode; readonly echoSend: GainNode; readonly delay: DelayNode;
+  src: AudioBufferSourceNode | null = null;
+  entry = -1;
   constructor(private ctx: AudioContext, dest: AudioNode) {
-    const el = new Audio();
-    el.preload = 'auto'; el.crossOrigin = 'anonymous'; el.setAttribute('playsinline', '');
-    (el as any).preservesPitch = true; (el as any).webkitPreservesPitch = true;
-    this.el = el;
-    const src = ctx.createMediaElementSource(el);
     this.low = Object.assign(ctx.createBiquadFilter(), { type: 'lowshelf' }); this.low.frequency.value = 180;
     this.mid = Object.assign(ctx.createBiquadFilter(), { type: 'peaking' }); this.mid.frequency.value = 1000; this.mid.Q.value = 0.7;
     this.high = Object.assign(ctx.createBiquadFilter(), { type: 'highshelf' }); this.high.frequency.value = 4500;
     this.gain = ctx.createGain(); this.gain.gain.value = 0;
-    src.connect(this.low).connect(this.mid).connect(this.high).connect(this.gain).connect(dest);
+    this.low.connect(this.mid).connect(this.high).connect(this.gain).connect(dest);
     this.echoSend = ctx.createGain(); this.echoSend.gain.value = 0;
-    this.delay = ctx.createDelay(2); this.feedback = ctx.createGain(); this.feedback.gain.value = 0.45;
+    this.delay = ctx.createDelay(2);
+    const fb = ctx.createGain(); fb.gain.value = 0.45;
     const wet = ctx.createGain(); wet.gain.value = 0.7;
-    this.high.connect(this.echoSend).connect(this.delay).connect(this.feedback).connect(this.delay);
+    this.high.connect(this.echoSend).connect(this.delay).connect(fb).connect(this.delay);
     this.delay.connect(wet).connect(dest);
   }
-  /** Song time, smoothed against a fine clock. */
-  time(fine: number): number { return this.smooth.update(this.el.currentTime, fine, this.el.playbackRate, !this.el.paused); }
-  playingOk(): boolean { return !this.loading && !this.el.paused && !this.el.seeking && this.el.readyState >= 3; }
-  seek(s: number, fine: number) { try { this.el.currentTime = Math.max(0, s); } catch { /* not seekable yet */ } this.smooth.reset(); this.lastSeek = fine; }
-  setRate(r: number, fine: number) { this.el.playbackRate = r; this.lastRate = fine; }
-  /** Schedule an AudioParam change only when the value really changes (Safari keeps every scheduled event). */
-  set(param: AudioParam, v: number, eps = 0.004) {
-    const prev = this.params.get(param);
-    if (prev !== undefined && Math.abs(prev - v) < eps) return;
-    this.params.set(param, v);
-    param.cancelScheduledValues(this.ctx.currentTime);
-    param.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+  play(buf: AudioBuffer, e: PlanEntry, fromP: number, toCtx: (p: number) => number) {
+    this.stop();
+    const sch = scheduleDeck(e, fromP, toCtx);
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    apply(src.playbackRate, sch.rate); apply(this.gain.gain, sch.gain);
+    apply(this.low.gain, sch.low); apply(this.mid.gain, sch.mid); apply(this.high.gain, sch.high);
+    if (sch.echoAt !== undefined) {
+      this.delay.delayTime.value = Math.min(1.9, e.beatS * 0.75);
+      this.echoSend.gain.cancelScheduledValues(0);
+      this.echoSend.gain.setValueAtTime(0, this.ctx.currentTime);
+      this.echoSend.gain.setValueAtTime(1, sch.echoAt); this.echoSend.gain.setValueAtTime(0, sch.echoAt + e.beatS);
+    }
+    src.connect(this.low);
+    src.start(Math.max(this.ctx.currentTime, sch.when), Math.min(sch.offset, buf.duration - 0.01));
+    src.stop(sch.stopAt);
+    this.src = src; this.entry = e.index;
   }
-  release() {
-    this.el.pause(); this.wantPlay = false; this.entry = -1; this.id = ''; this.echoFired = false;
-    this.set(this.gain.gain, 0); this.lastSeek = this.lastRate = this.lastPlayTry = -1e9;
+  stop() {
+    if (this.src) { try { this.src.stop(); } catch { /* not started */ } this.src.disconnect(); this.src = null; }
+    const now = this.ctx.currentTime;
+    for (const p of [this.gain.gain, this.echoSend.gain]) { p.cancelScheduledValues(0); p.setValueAtTime(0, now); }
+    this.entry = -1;
+  }
+}
+
+function apply(param: AudioParam, evs: ParamEvent[]) {
+  param.cancelScheduledValues(0);
+  for (const ev of evs) {
+    if (ev.ramp) param.linearRampToValueAtTime(ev.v, ev.t); else param.setValueAtTime(ev.v, ev.t);
   }
 }
 
@@ -85,14 +79,17 @@ export class MixEngine {
   private decks: Deck[] = [];
   private plan: MixPlan | null = null;
   private state: EngineState = 'idle';
-  /** Program clock: last known position and the fine time it was read; frozen = not advancing. */
-  private anchorP = 0; private anchorFine = 0; private frozen = true;
+  /** Program clock: p = anchorP + (ctx.currentTime − anchorCtx) while playing. */
+  private anchorP = 0; private anchorCtx = 0;
+  private buffers = new Map<number, AudioBuffer>();
+  private loading = new Map<number, Promise<void>>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private endedCbs = new Set<() => void>();
-  private blessed = false;
+  private epoch = 0; // bumps on pause/seek/stop so a pending start is abandoned
+  private gen = 0;   // bumps when the plan changes so stale decodes are dropped
   lastError = '';
-  /** Counters for the Music Lab: seeks, playbackRate writes, clock freezes, play() attempts. */
-  stats = { seeks: 0, rates: 0, freezes: 0, plays: 0 };
+  /** Counters for the Music Lab. */
+  stats = { decodes: 0, lateStarts: 0, starts: 0 };
 
   constructor(private o: EngineOpts) {
     const Ctx: typeof AudioContext = (globalThis as any).AudioContext ?? (globalThis as any).webkitAudioContext;
@@ -102,20 +99,21 @@ export class MixEngine {
     for (let i = 0; i < 3; i++) this.decks.push(new Deck(this.ctx, this.master));
   }
 
-  /** Call from a user gesture (tap/key): resumes audio and "blesses" the decks so iOS lets them play later. */
+  /** Call from a user gesture (tap/key): resumes audio (iOS only allows it from one) and plays through the silent switch. */
   unlock(): void {
-    void this.ctx.resume().catch(() => {});
-    if (this.blessed) return;
-    this.blessed = true;
-    const url = URL.createObjectURL(new Blob([encodeWav(new Float32Array(800), 8000) as BlobPart], { type: 'audio/wav' }));
-    for (const d of this.decks) { d.el.src = url; d.el.play().then(() => d.el.pause()).catch(() => {}); }
+    try { const s = (navigator as any).audioSession; if (s && s.type !== 'playback') s.type = 'playback'; } catch { /* Safari < 16.4 */ }
+    if (this.ctx.state !== 'running') void this.ctx.resume().catch(() => {});
+    const b = this.ctx.createBuffer(1, 1, this.ctx.sampleRate), s = this.ctx.createBufferSource();
+    s.buffer = b; s.connect(this.ctx.destination); s.start();
   }
 
   load(plan: MixPlan): void { this.stop(); this.plan = plan; this.state = 'idle'; }
+  /** Decode the first song now (e.g. during a countdown) so start() is instant. */
+  preload(): void { const e = this.plan?.entries[0]; if (e) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); }); }
   getState(): EngineState { return this.state; }
-  playing(): boolean { return this.state === 'playing' && !this.frozen; }
+  playing(): boolean { return this.state === 'playing' && this.ctx.state === 'running'; }
   onEnded(cb: () => void): () => void { this.endedCbs.add(cb); return () => { this.endedCbs.delete(cb); }; }
-  setVolume(v: number): void { this.master.gain.cancelScheduledValues(this.ctx.currentTime); this.master.gain.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05); }
+  setVolume(v: number): void { const g = this.master.gain; g.cancelScheduledValues(0); g.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05); }
 
   /** Program position the rider is *hearing* (output latency and calibration removed), or null before it starts. */
   positionS(): number | null {
@@ -124,117 +122,103 @@ export class MixEngine {
     return Math.max(0, this.programNow() - lat);
   }
 
+  /** Start at program time p0. Resolves once the first song is decoded and scheduled. */
   async start(p0 = 0): Promise<void> {
     if (!this.plan) throw new Error('no plan loaded');
-    await this.ctx.resume().catch(() => {});
-    this.anchorP = p0; this.frozen = true; this.state = 'starting';
-    this.ensureTimer(); this.tick();
+    if (this.ctx.state !== 'running') await this.ctx.resume().catch(() => {});
+    this.anchorP = p0; this.state = 'starting';
+    await this.begin();
   }
   pause(): void {
     if (this.state !== 'playing' && this.state !== 'starting') return;
-    this.anchorP = this.programNow(); this.frozen = true; this.state = 'paused';
-    for (const d of this.decks) { d.el.pause(); d.wantPlay = false; }
+    this.anchorP = this.programNow(); this.state = 'paused'; this.epoch++;
+    for (const d of this.decks) d.stop();
   }
-  resume(): void { if (this.state === 'paused') { this.state = 'starting'; this.ensureTimer(); this.tick(); } }
-  seek(p: number): void { this.anchorP = Math.max(0, p); this.frozen = true; for (const d of this.decks) d.release(); if (this.state === 'playing') this.state = 'starting'; }
+  resume(): void { if (this.state === 'paused') { this.state = 'starting'; void this.begin(); } }
+  seek(p: number): void {
+    const was = this.state;
+    for (const d of this.decks) d.stop();
+    this.epoch++; this.anchorP = Math.max(0, p);
+    if (was === 'playing' || was === 'starting') { this.state = 'starting'; void this.begin(); }
+  }
   stop(): void {
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
-    for (const d of this.decks) d.release();
-    this.state = 'idle'; this.frozen = true; this.anchorP = 0;
+    for (const d of this.decks) d.stop();
+    this.epoch++; this.gen++; this.buffers.clear(); this.loading.clear();
+    this.state = 'idle'; this.anchorP = 0;
   }
-  dispose(): void { this.stop(); for (const d of this.decks) { d.el.removeAttribute('src'); d.el.load(); } void this.ctx.close?.().catch(() => {}); }
+  dispose(): void { this.stop(); void this.ctx.close?.().catch(() => {}); }
 
   debug(): Record<string, number | string | boolean> {
-    const p = this.programNow();
-    const out: Record<string, number | string | boolean> = { state: this.state, p: +p.toFixed(2), frozen: this.frozen };
-    this.decks.forEach((d, i) => { if (d.entry >= 0) out[`deck${i}`] = `#${d.entry} t${d.el.currentTime.toFixed(2)} r${d.el.playbackRate.toFixed(3)} g${d.gain.gain.value.toFixed(2)}${d.el.paused ? ' paused' : ''}${d.playingOk() || d.el.paused ? '' : ' …'}`; });
-    out.stats = `seeks ${this.stats.seeks} rates ${this.stats.rates} freezes ${this.stats.freezes} plays ${this.stats.plays}`;
+    const out: Record<string, number | string | boolean> = { state: this.state, p: +this.programNow().toFixed(2), ctx: this.ctx.state };
+    this.decks.forEach((d, i) => { if (d.entry >= 0) out[`deck${i}`] = `#${d.entry} r${d.src?.playbackRate.value.toFixed(3) ?? '-'} g${d.gain.gain.value.toFixed(2)}`; });
+    const mb = [...this.buffers.values()].reduce((s, b) => s + (b.length * b.numberOfChannels * 4) / 1e6, 0);
+    out.stats = `decodes ${this.stats.decodes} starts ${this.stats.starts} late ${this.stats.lateStarts} · ${Math.round(mb)} MB decoded`;
     if (this.lastError) out.error = this.lastError;
     return out;
   }
 
-  private fine(): number { return performance.now() / 1000; }
-  private programNow(): number { return this.frozen ? this.anchorP : this.anchorP + (this.fine() - this.anchorFine); }
-  private ensureTimer() { if (!this.timer) this.timer = setInterval(() => this.tick(), TICK_MS); }
-  private deckFor(e: PlanEntry): Deck | null {
-    const have = this.decks.find((d) => d.entry === e.index);
-    if (have) return have;
-    const free = this.decks.find((d) => d.entry < 0); if (!free) return null;
-    free.entry = e.index; free.id = e.id; free.echoFired = false; free.wantPlay = false;
-    free.loading = this.o.resolveUrl(e.id).then((url) => { if (free.entry === e.index) { free.el.src = url; free.el.load(); } })
-      .catch((err) => { this.lastError = String(err?.message ?? err); }).finally(() => { free.loading = null; });
-    return free;
+  private programNow(): number { return this.state === 'playing' ? this.anchorP + (this.ctx.currentTime - this.anchorCtx) : this.anchorP; }
+  private toCtx = (p: number) => this.anchorCtx + (p - this.anchorP);
+
+  /** (Re)start playback at anchorP: make sure the current song is decoded, then anchor the clock slightly ahead and schedule. */
+  private async begin(): Promise<void> {
+    const plan = this.plan!; const ep = this.epoch;
+    const cur = plan.entries.find((e) => this.anchorP >= e.startP && this.anchorP < e.endP) ?? plan.entries[0];
+    try { await this.ensureBuffer(cur); } catch (e) { this.lastError = String((e as Error)?.message ?? e); return; }
+    if (ep !== this.epoch || this.state !== 'starting') return;
+    this.anchorCtx = this.ctx.currentTime + 0.1; // a little headroom so the first samples aren't cut
+    this.state = 'playing';
+    for (const e of plan.entries) if (this.anchorP < e.endP && e.startP < this.anchorP + LOOKAHEAD_S) this.schedule(e, this.anchorP);
+    if (!this.timer) this.timer = setInterval(() => this.tick(), TICK_MS);
+  }
+
+  private ensureBuffer(e: PlanEntry): Promise<void> {
+    if (this.buffers.has(e.index)) return Promise.resolve();
+    let p = this.loading.get(e.index);
+    if (!p) {
+      const gen = this.gen;
+      p = (async () => {
+        const url = await this.o.resolveUrl(e.id);
+        const data = await (await fetch(url)).arrayBuffer();
+        const buf = await new Promise<AudioBuffer>((res, rej) => {
+          const r = this.ctx.decodeAudioData(data, res, (err) => rej(err ?? new Error('could not decode')));
+          if (r && typeof (r as Promise<AudioBuffer>).then === 'function') (r as Promise<AudioBuffer>).then(res, rej);
+        });
+        if (gen === this.gen) { this.buffers.set(e.index, buf); this.stats.decodes++; }
+      })().finally(() => this.loading.delete(e.index));
+      this.loading.set(e.index, p);
+    }
+    return p;
+  }
+
+  private schedule(e: PlanEntry, fromP: number) {
+    const buf = this.buffers.get(e.index);
+    if (!buf || this.decks.some((d) => d.entry === e.index)) return;
+    const deck = this.decks.find((d) => d.entry < 0) ?? this.decks.reduce((a, b) => ((a.entry < b.entry ? a : b)));
+    deck.play(buf, e, fromP, this.toCtx);
+    this.stats.starts++;
+    if (fromP > e.startP + 0.05) this.stats.lateStarts++;
   }
 
   private tick(): void {
     const plan = this.plan;
-    if (!plan || (this.state !== 'playing' && this.state !== 'starting')) return;
-    const fine = this.fine();
-    // 1) the program clock follows the owner deck while it plays; it holds while the owner buffers or starts
-    let p = this.programNow();
-    const ownerOf = (x: number) => plan.entries.find((e) => x >= e.own[0] && x < e.own[1]) ?? plan.entries.find((e) => x >= e.startP && x < e.endP);
-    const owner = ownerOf(p);
-    const od = owner && this.decks.find((d) => d.entry === owner.index);
-    if (owner && od?.playingOk() && od.wantPlay && fine - od.lastSeek > 0.3) {
-      const measured = progTime(owner.segs, od.time(fine));
-      // follow the owner: snap when far (seek / start), else ease (its currentTime is noisy)
-      p = this.frozen || Math.abs(measured - p) > 0.25 ? measured : p + (measured - p) * 0.1;
-      this.anchorP = p; this.anchorFine = fine;
-      if (this.frozen) { this.frozen = false; this.state = 'playing'; }
-    } else if (!this.frozen && owner) {
-      this.anchorP = p; this.frozen = true; this.stats.freezes++;
-    }
+    if (!plan || this.state !== 'playing') return;
+    const p = this.programNow();
     if (p >= plan.durationS) { this.finish(); return; }
-
-    // 2) every deck in (or near) its window: load, start, follow, automate
-    const live = new Set<number>();
     for (const e of plan.entries) {
-      if (p < e.startP - PRELOAD_S || p > e.endP + 4) continue;
-      const d = this.deckFor(e); if (!d) continue;
-      live.add(e.index);
-      if (d.loading) continue;
-      const inside = p >= e.startP && p < e.endP;
-      if (!inside) {
-        // cue the next song at its start point (once) so it can start instantly
-        if (p < e.startP && d.el.paused && d.el.readyState >= 1 && fine - d.lastSeek > 2 && Math.abs(d.el.currentTime - songTime(e.segs, e.startP)) > 0.05) d.seek(songTime(e.segs, e.startP), fine);
-        if (p >= e.endP && !d.el.paused) { d.el.pause(); d.wantPlay = false; d.set(d.gain.gain, 0); }
-        continue;
-      }
-      const target = songTime(e.segs, p), rate = rateAt(e.segs, p);
-      if (d.el.paused) {
-        // start (or restart after the browser paused it) — at most once a second, never a seek storm
-        if (fine - d.lastPlayTry >= 1) {
-          d.lastPlayTry = fine; d.wantPlay = true; this.stats.plays++;
-          if (Math.abs(d.el.currentTime - target) > 0.08) { d.seek(target, fine); this.stats.seeks++; }
-          d.setRate(rate, fine);
-          d.el.play().catch((err) => { this.lastError = String(err?.message ?? err); });
-        }
-      } else if (d.playingOk()) {
-        if (owner && e.index === owner.index) {
-          const r = ownerRate(rate, d.el.playbackRate, fine - d.lastRate);
-          if (r !== null) { d.setRate(r, fine); this.stats.rates++; }
-        } else {
-          const a = followerAction({ err: d.time(fine) - target, audible: autoAt(e.gain, p) > 0.05, sinceSeekS: fine - d.lastSeek, sinceRateS: fine - d.lastRate, planned: rate, current: d.el.playbackRate });
-          if (a.seek) { d.seek(target, fine); this.stats.seeks++; }
-          else if (a.rate !== undefined) { d.setRate(a.rate, fine); this.stats.rates++; }
-        }
-      }
-      d.set(d.gain.gain, Math.max(0, autoAt(e.gain, p)));
-      d.set(d.low.gain, autoAt(e.low, p), 0.2); d.set(d.mid.gain, autoAt(e.mid, p), 0.2); d.set(d.high.gain, autoAt(e.high, p), 0.2);
-      if (e.echoAtP !== undefined && p >= e.echoAtP && !d.echoFired) {
-        d.echoFired = true;
-        const beat = 60 / Math.max(60, 120 * rate), now = this.ctx.currentTime;
-        d.delay.delayTime.value = Math.min(1.9, beat * 0.75);
-        d.echoSend.gain.setValueAtTime(1, now); d.echoSend.gain.setValueAtTime(0, now + beat);
-      }
+      // decode ahead; drop buffers we're done with
+      if (e.startP - PRELOAD_S <= p && p < e.endP) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); });
+      if (p > e.endP + 1) { this.buffers.delete(e.index); for (const d of this.decks) if (d.entry === e.index) d.entry = -1; }
+      // schedule songs that start soon (or that we're already late for, e.g. a slow decode)
+      if (e.startP < p + LOOKAHEAD_S && p < e.endP) this.schedule(e, Math.max(p + 0.05, e.startP));
     }
-    for (const d of this.decks) if (d.entry >= 0 && !live.has(d.entry)) d.release();
   }
 
   private finish() {
-    for (const d of this.decks) d.release();
+    for (const d of this.decks) d.stop();
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
-    this.anchorP = this.plan?.durationS ?? 0; this.frozen = true; this.state = 'ended';
+    this.anchorP = this.plan?.durationS ?? 0; this.state = 'ended'; this.buffers.clear();
     for (const cb of [...this.endedCbs]) cb();
   }
 }

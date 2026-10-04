@@ -14,7 +14,7 @@ export class ProgramSync {
   trim = 1;
   constructor(o: SyncOpts = {}) {
     this.gain = o.gain ?? 0.5; this.maxTrim = o.maxTrim ?? 0.02;
-    this.holdAheadS = o.holdAheadS ?? 0.25; this.catchUpS = o.catchUpS ?? 1.5; this.catchUp = o.catchUp ?? 4;
+    this.holdAheadS = o.holdAheadS ?? 0.25; this.catchUpS = o.catchUpS ?? 0.5; this.catchUp = o.catchUp ?? 4;
   }
 
   update(audioPosS: number | null, simPosS: number, playing: boolean): number {

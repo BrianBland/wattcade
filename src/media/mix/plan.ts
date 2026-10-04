@@ -24,6 +24,7 @@ export interface PlanEntry {
   low: Auto; mid: Auto; high: Auto;  // dB (0 flat, −24 ≈ kill)
   echoAtP?: number;         // echo-out starts here (fallback transition)
   own: [number, number];    // program span this song owns in the timeline
+  beatS: number;            // the song's native beat length (echo timing)
 }
 export type TransitionKind = 'gapless' | 'beatmix' | 'echo' | 'crossfade';
 export interface Transition { kind: TransitionKind; from: number; to: number; p0: number; p1: number; rate: number; why?: string }
@@ -118,13 +119,13 @@ export function planMix(items: MixItem[], mode: QueueMode, o: PlanOpts = {}): Mi
   items.forEach((it, i) => {
     const a = it.analysis;
     if (i === 0) {
-      entries.push({ index: 0, id: it.id, startP: 0, endP: a.durationS, segs: [{ p0: 0, s0: 0, r0: 1, r1: 1, dur: a.durationS }],
+      entries.push({ index: 0, id: it.id, beatS: 60 / (a.bpm || 120), startP: 0, endP: a.durationS, segs: [{ p0: 0, s0: 0, r0: 1, r1: 1, dur: a.durationS }],
         gain: [[0, 1]], low: flat(0), mid: flat(0), high: flat(0), own: [0, a.durationS] });
       return;
     }
     const prev = entries[i - 1], pa = items[i - 1].analysis;
     const prevEndP = progTime(prev.segs, pa.durationS);
-    const add = (e: Omit<PlanEntry, 'index' | 'id'>, t: Transition) => { entries.push({ index: i, id: it.id, ...e }); transitions.push(t); };
+    const add = (e: Omit<PlanEntry, 'index' | 'id' | 'beatS'>, t: Transition) => { entries.push({ index: i, id: it.id, beatS: 60 / (a.bpm || 120), ...e }); transitions.push(t); };
 
     if (mode === 'continuous') {
       prev.endP = prevEndP; prev.own[1] = prevEndP;

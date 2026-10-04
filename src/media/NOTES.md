@@ -24,9 +24,10 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
   and analysed like local files, with `credit` (shown in the picker, Music Lab and `MediaSongSpan.credit`).
 - `analysis/worker.ts` + `client.ts`: analysis and synth→WAV rendering off the main thread. `player/decode.ts`: OfflineAudioContext decode
   at 22.05 kHz mono.
-- `player/engine.ts` `MixEngine`: 3 decks (<audio> → MediaElementSource → low/mid/high EQ → gain; echo send). The owner deck is the
-  clock (never nudged); overlapping decks follow via `followerAction` (≤ 2 %, ≤ 1/s; seek only when far/inaudible). Writes are
-  rate-limited (Safari glitches otherwise); owner buffering freezes the clock.
+- `player/engine.ts` `MixEngine`: decoded AudioBuffers (current + next, ~85 MB each) on AudioBufferSourceNodes → low/mid/high EQ →
+  gain (echo send). `player/schedule.ts` (pure, tested) turns a plan entry into sample-accurate start/offset, playbackRate ramps (pitch
+  follows tempo, turntable-style), gain/EQ automation and echo. Program clock = AudioContext clock. Not <audio>: Safari is choppy at
+  rate ≠ 1 through Web Audio (WebKit 240405). `preload()` decodes the first song during the countdown.
   `positionS()` subtracts output latency + `wattcade.media.latencyMs`. Call `unlock()` from a gesture (iOS).
 
 ## Integration
@@ -36,5 +37,5 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
   starts the music at GO, and locks the sim with ProgramSync (idles the session while music buffers). `/media-lab.html` = Music Lab.
 
 ## Tests
-`npx vitest run src/media src/core/media.test.ts src/shell/media`. Gaps: engine/decks are browser-only (checked with Playwright in the
-Music Lab, not unit-tested); continuous mode is near-gapless (deck start latency), not sample-exact; no OPFS (IndexedDB blobs).
+`npx vitest run src/media src/core/media.test.ts src/shell/media`. Gaps: the engine's Web Audio glue is browser-only (checked with Playwright in the Music Lab);
+no key lock (tempo matching shifts pitch ≤ 8 %); IndexedDB blobs (no OPFS).

@@ -98,7 +98,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         const session = startSession(game, profile, onSave, media ? { timeline: media.timeline } : undefined);
         sessionRef.current = session; setSession(session);
         if (media && session.media) {
-          const engine = mediaEngine(); engine.load(media.plan); engine.setVolume(1);
+          const engine = mediaEngine(); engine.load(media.plan); engine.setVolume(1); engine.preload();
           music.current = { engine, sync: new ProgramSync() };
           duckAmbient('music', true); // the game's own ambience would fight the music
         }

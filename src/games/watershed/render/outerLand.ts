@@ -97,6 +97,7 @@ export class OuterLand {
           float near = 1.0 - smoothstep(10.0, 70.0, distance(vW.xz, uFocus.xz));
           float a = (0.035 + 0.55 * near) * line + 0.05 * near;
           a *= 1.0 - smoothstep(14.0, 38.0, vW.y);
+          a *= smoothstep(18.0, 55.0, distance(vW, cameraPosition));   // never a wall right in front of the camera
           if (a < 0.004) discard;
           gl_FragColor = vec4(uColor, a);
         }`,

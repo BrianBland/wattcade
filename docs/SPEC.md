@@ -431,7 +431,13 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 - **Dev tools:** `npm run snap:watershed -- --script grind --minutes 15 --every 5` writes top-down PNGs (terrain + water + particles, plus a carved/deposited change map) to `out/watershed/`. `/dev/watershed.html?script=…&min=…&autopilot=1` runs the renderer on the fake bike without the shell.
 - **Score and achievements:** the summary leads with a ride `score` (vapor, cloudlets, rainfall, valley carved, delta, salmon home and time in the cadence band all count). The best score is saved and shown on the arcade card. Achievements: The Water Cycle, Head in the Clouds, Grand Canyon, Delta Builder, Salmon Shepherd, No Fish Left Behind, Cadence Maestro, Miller, Dry Feet, Dam Buster, Breadbasket.
 - **Scenarios:** `cadence-follow` 45 min with autopilot finishes all 16 blocks, keeps bandPct ≥ 85, gathers vapor and ≥ 15 cloudlets, rains, raises the spring, carves, builds a delta, reaches the sea, and brings ≥ 40 salmon home. `grind` 26 min → gorge ≥ 8. `spin` 26 min → silt to sea ≥ 100. `idle` → no water.
-- **Later (not built):** generated story-mode levels; **geological events** as heightfield edits mid-ride or level modifiers: an earthquake that lifts or drops ridge sections (re-closing a cut saddle, opening a new one), a volcano whose lava flow blocks a valley and forces a reroute (plus an ash cloud that shifts the rain), a landslide that dams a gorge into a lake. Then generated story-mode levels that mix phases with puzzles, validated headlessly in bulk for difficulty ordering.
+- **Geological events** (`sim/events.ts`): a seeded deck per ride (from the terrain seed; 25 % none / 50 % one / 25 % two of earthquake, landslide, volcano, plus a ~6 % meteor; `simOpts.events` forces it). Each warns (rumble + popup) a few seconds ahead, then edits the heightfield, applied to `h` and `h0` alike so it never counts as carving:
+  - earthquake (beavers' still pool): the saddle the river uses lifts shut and another drops open.
+  - landslide (first flood): a wall slumps into the river below ridge 2, damming it.
+  - volcano (carve the gorge): a hard lava tongue seals ridge 1's easiest saddle (glows, cools to basalt; smoke column).
+  - meteor (rare, a later job-free river block): fireball, flash, shake, and a scorched crater that becomes a lake.
+  - Achievements: Extinction Event (see a meteor), Act of Nature (two events in a ride).
+- **Later (not built):** generated story-mode levels (the event deck and seeds are the hooks: place events on purpose and validate difficulty headlessly); an ash cloud that shifts the rain. Then generated story-mode levels that mix phases with puzzles, validated headlessly in bulk for difficulty ordering.
 
 ---
 

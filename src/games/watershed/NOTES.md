@@ -10,6 +10,7 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
   (raises terrain; health = remaining height above its own baseline), per-block objectives.
 - `salmon.ts` `SalmonRun`: path traced up real channels from the mouth (forks follow steering), lane steering in the
   fish frame (right = lane −), intro hold, escalating predators, charging bears, falls needing `leapRpm`.
+- `events.ts`: seeded geological event deck (quake/slide/volcano + rare meteor), heightfield edits to h and h0, `mat` grid.
 - `plan.ts`: `makePlan(20|30|45|60)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`.
 - `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer, hoods dart L/R, Y view, A boost); cues ring for the renderer;
   score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
@@ -17,7 +18,7 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 ## Render (`render/`)
 `renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `terrainView.ts` (2× terrain,
 procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
-`skyLayer.ts`, `jobsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
+`skyLayer.ts`, `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
 `upsample.ts` (tested).
 
 ## Tools
@@ -29,4 +30,4 @@ Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectiv
 
 ## Gaps / next
 - Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
-  on iPad. Not built: story-mode levels, geological events (SPEC §6.4 "Later").
+  on iPad. Not built: story-mode levels (SPEC §6.4 "Later").

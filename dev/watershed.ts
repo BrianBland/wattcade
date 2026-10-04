@@ -12,7 +12,7 @@ hub.attachKeyboard(window);
 const session = createGameSession({
   game: module, profile: testProfile(), input: q.get('autopilot') ? new NullInput() : hub, fake: { script }, seed: Number(q.get('seed') ?? 1),
   // ?menu=1 shows the pre-game ride-length menu; otherwise ?length= (default 45) starts straight away
-  simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { length: Number(q.get('length') ?? 45) }) },
+  simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { length: Number(q.get('length') ?? 45) }), ...(q.get('events') ? { events: q.get('events')!.split(',') } : {}) },
 });
 session.step(Math.round(Number(q.get('min') ?? 0) * 60 * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;

@@ -5,10 +5,11 @@ import type { WatershedSave } from '../card';
 import { makeTerrain, NX, type Terrain } from './terrain';
 import { DEFAULT_SALMON, SalmonRun, type Predator } from './salmon';
 import { Jobs, type Dam, type Field, type Mill, type Objective } from './objectives';
+import { dealEvents, GeoEvents, type EventKind, type GeoEvent } from './events';
 import { DEFAULT_WATER, Water, type Emit, type WaterParams } from './water';
 
 /** `length` (minutes) skips the pre-game menu; `menu: false` skips it with the saved/default length. */
-export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number; length?: number; menu?: boolean }
+export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number; length?: number; menu?: boolean; /** force the geological event deck (else dealt from the seed) */ events?: EventKind[] }
 
 export interface WatershedSnapshot {
   t: number; over: boolean;
@@ -26,6 +27,9 @@ export interface WatershedSnapshot {
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
   /** The pre-game ride-length menu (null once the ride has started). */
   menu: { sel: number; left: number; options: Array<{ minutes: number; blurb: string; blocks: Array<{ phase: Phase; minutes: number }> }> } | null;
+  /** Geological events this ride (pending/warning/active/done), and the ground-material grid (lava/scorched/debris). */
+  events: Array<Omit<GeoEvent, 'edits' | 'marks'>>;
+  mat: Uint8Array;
   phase: Phase;
   view: 'overview' | 'follow';
   springs: Array<{ x: number; share: number }>;
@@ -117,6 +121,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let springs: Array<{ x: number; share: number }> = [{ x: NX / 2, share: 1 }];
   let forkCued = false;
   const jobs = new Jobs(terrain);
+  const geo = new GeoEvents(terrain, menu ? [] : dealEvents(terrainSeed, plan, opts.events), terrainSeed);
   /** Max water depth within ~4 cells (cheap: 9 samples). */
   const nearW = (x: number, y: number) => {
     let m = 0;
@@ -168,6 +173,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
   const startRide = () => {
     rideMin = RIDE_LENGTHS[menuSel]; plan = makePlan(rideMin); rideS = rideMin * 60 * scale;
+    geo.events = dealEvents(terrainSeed, plan, opts.events);
     bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
     menu = false;
     ctx.save({ ...(ctx.load<WatershedSave>() ?? {}), lastLength: rideMin });
@@ -238,6 +244,11 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         } else if (b.style !== 'salmon' && salmon.active) salmon.stop();
       }
       ctx.resistance.set({ id: 'flow', mode: 'erg', ftpFraction: +at.ftp.toFixed(3) });
+      for (const c of geo.update(dt, at.index, at.blockT, b.minutes * 60 * scale, water.w)) {
+        if (c.type === 'eventWarn') cue('eventWarn', { kind: c.kind }, false);
+        else if (c.type === 'eventHit') cue('eventHit', { kind: c.kind, x: +c.x.toFixed(1), y: +c.y.toFixed(1) });
+        else cue('eventDone', { kind: c.kind }, false);
+      }
 
       const bike = ctx.bike(), input = ctx.input();
       cadence = bike.cadence3s;
@@ -368,6 +379,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
         menu: menu ? { sel: menuSel, left: Math.max(0, 25 - menuT), options: RIDE_LENGTHS.map((m) => ({ minutes: m, blurb: RIDE_BLURB[m], blocks: makePlan(m).map((b) => ({ phase: b.phase, minutes: b.minutes })) })) } : null,
+        events: geo.events.map(({ edits, marks, ...e }) => (void edits, void marks, e)), mat: geo.mat,
         phase: at.block.phase, view, springs: [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)], boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
         jobs: {
@@ -387,6 +399,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       const banded = bandedS;
       return {
         score: score(),
+        events: geo.events.filter((e) => e.state !== 'pending').map((e) => e.kind).join(' ') || 'none',
         objectives: jobs.objectivesDone, flour: Math.round(jobs.mills[0].output), planks: Math.round(jobs.mills[1].output),
         harvests: jobs.harvests, damsBroken: jobs.damsBroken, floodS: Math.round(jobs.village.floodS),
         vapor: Math.round(sky.vapor), cloudlets: sky.puffsCaught, rainfall: Math.round(sky.rained),

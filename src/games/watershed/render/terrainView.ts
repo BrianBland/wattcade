@@ -13,6 +13,7 @@ const C = {
   grass: new THREE.Color(0x4f8a3c), meadow: new THREE.Color(0x8fb85a), rock: new THREE.Color(0x857a6c), snow: new THREE.Color(0xf4f7fa),
   strata: new THREE.Color(0xc49070), earth: new THREE.Color(0x8a5a3a), canyon: new THREE.Color(0xc0643c),
   silt: new THREE.Color(0xdcc893), seabed: new THREE.Color(0xd2c08c), wet: new THREE.Color(0x3a5236),
+  lavaHot: new THREE.Color(0xff6a1a), basalt: new THREE.Color(0x2e2a28), scorch: new THREE.Color(0x3a2e26), debris: new THREE.Color(0x8a7350),
 };
 
 export function terrainMaterial(): THREE.MeshStandardMaterial {
@@ -100,6 +101,7 @@ export class TerrainView {
 
   update(s: WatershedSnapshot, wet: Float32Array): void {
     const { nx, ny, h, h0, hard } = s, cc = this.ccol, c = new THREE.Color();
+    const lavaAge = s.events?.find((e) => e.kind === 'volcano' && e.state !== 'pending' && e.state !== 'warning')?.age ?? 0;
     const at = (i: number, j: number) => h[Math.min(ny - 1, Math.max(0, j)) * nx + Math.min(nx - 1, Math.max(0, i))];
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const k = j * nx + i, z = h[k];
@@ -115,6 +117,10 @@ export class TerrainView {
       if (d < -0.15) c.lerp(-d > 3 ? C.canyon : C.earth, Math.min(1, -d / 2.5));
       else if (d > 0.1) c.lerp(C.silt, Math.min(0.9, d / 1.5));
       if (wet[k] > 0.05 && z >= SEA) c.lerp(C.wet, 0.35);
+      const mat = s.mat?.[k] ?? 0;
+      if (mat === 1) c.copy(C.lavaHot).lerp(C.basalt, Math.min(1, lavaAge / 45));
+      else if (mat === 2) c.lerp(C.scorch, 0.8);
+      else if (mat === 3) c.lerp(C.debris, 0.7);
       cc[k * 3] = c.r; cc[k * 3 + 1] = c.g; cc[k * 3 + 2] = c.b;
     }
     const { FX, FY, fh, fcol } = this;

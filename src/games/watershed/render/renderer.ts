@@ -16,6 +16,7 @@ import { OuterLand } from './outerLand';
 import { Riverbank } from './riverbank';
 import { SkyLayer } from './skyLayer';
 import { JobsLayer } from './jobsLayer';
+import { EventsLayer } from './eventsLayer';
 import { WaterView } from './waterView';
 
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
@@ -35,6 +36,12 @@ const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> =
   salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · A: sprint · spin past 95 rpm to leap falls', 6, 'salmon'],
   salmonStuck: ['Falls ahead!', 'Spin past 95 rpm to leap', 3, 'warn'],
 };
+const EVENT_TEXT: Record<string, { warn: [string, string]; hit: [string, string] }> = {
+  earthquake: { warn: ['The ground is rumbling…', 'Hold on, something is shifting'], hit: ['Earthquake!', 'A saddle lifted shut and another opened: find the new path'] },
+  landslide: { warn: ['Rocks are falling…', 'The valley wall is giving way'], hit: ['Landslide!', 'The river is dammed: grind through or go around'] },
+  volcano: { warn: ['The mountain is waking up…', 'Smoke over the ridge'], hit: ['Eruption!', 'Lava has sealed the easy saddle: carve another way'] },
+  meteor: { warn: ['Incoming!', 'Something is falling from the sky…'], hit: ['METEOR!', '…well, that\'s a new lake'] },
+};
 const JOB_DONE: Record<string, string> = { grist: 'The grist mill is grinding flour', saw: 'The sawmill is cutting planks', village: 'Millbrook stayed dry', dam: 'The beavers move on', fields: 'The fields are thriving' };
 const JOB_MISS: Record<string, string> = { grist: 'Carve through to the mill and grind for heavy water', saw: 'The sawmill wants fast water: spin', village: 'The flood reached the houses', dam: 'Spin harder (A: surge) to wear the dam down', fields: 'Run the river beside the fields' };
 const BOOST_TEXT: Record<string, string> = { evaporate: 'Heat wave!', cloud: 'Inhale!', rain: 'Cloudburst!', river: 'Surge!', salmon: 'Sprint!' };
@@ -50,7 +57,7 @@ export class WatershedRenderer implements GameRenderer {
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private outer?: OuterLand; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private extraSprings: THREE.Group[] = []; private springRing?: THREE.Mesh;
-  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
+  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private geo?: EventsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -145,10 +152,11 @@ export class WatershedRenderer implements GameRenderer {
     this.bank = new Riverbank(s, this.wx, this.wz);
     this.skyLayer = new SkyLayer(this.wx, this.wz, this.sun.position);
     this.jobs = new JobsLayer(s, this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
+    this.geo = new EventsLayer(this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.geo.group, this.clouds.group, this.salmon.group);
     this.frameCamera();
   }
 
@@ -379,6 +387,13 @@ export class WatershedRenderer implements GameRenderer {
       }
     }
   }
+  /** Popups and sounds as geological events change state. */
+  private eventCue(kind: string, state: string) {
+    const T = EVENT_TEXT[kind];
+    if (!T) return;
+    if (state === 'warning') { this.hud?.popup(T.warn[0], T.warn[1], 4, 'warn'); play(kind === 'meteor' ? 'whoosh' : 'thunder', { vol: 0.7 }); }
+    if (state === 'active') { this.hud?.popup(T.hit[0], T.hit[1], 4, 'warn'); play(kind === 'volcano' ? 'bossStart' : kind === 'earthquake' ? 'thunder' : 'explode', { vol: kind === 'meteor' ? 0.9 : 0.6 }); }
+  }
   private popup(key: keyof typeof POPUPS) { const [t, sub, sec, tone] = POPUPS[key]; this.hud?.popup(t, sub, sec, tone); }
 
   private sound(s: WatershedSnapshot) {
@@ -427,8 +442,11 @@ export class WatershedRenderer implements GameRenderer {
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
     this.jobs!.update(s, dt, tNow / 1000);
+    this.geo!.update(s, dt, tNow / 1000, (kind, state) => this.eventCue(kind, state));
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
+    const shake = this.geo!.shake;
+    if (shake > 0.01) this.camera.position.add(this.cA.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
     // the boundary fence lights up near whatever the rider is steering
     const sky = s.phase === 'evaporate' || s.phase === 'cloud' || s.phase === 'rain';
     const focus = sky ? this.skyLayer!.focus : s.salmon ? (this.salmon!.leaderWorld(this.cD) ?? this.spring.position) : this.spring.position;

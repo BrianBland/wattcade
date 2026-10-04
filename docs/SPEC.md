@@ -385,7 +385,8 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 - **Fantasy:** you are the river. **ERG** sets the watts, which is *how much* water you are. **Cadence** is the input, and it decides *what kind* of water you are. At fixed power, low cadence is high torque: heavy, slow parcels that dig (gorges). High cadence is light, fast parcels that keep silt suspended and carry it to the sea (delta).
 - **Requires ERG:** `GameModule.requires = { erg: true }` and the `erg` tag. The arcade blocks the game (with a toast and a card note) when the connected real trainer reports no ERG; the fake bike always has it.
-- **Ride:** one fixed 45 min ERG plan (`sim/plan.ts`, 16 blocks), each block tagged with a water-cycle `phase`:
+- **Ride length:** a pre-game menu (`GameSim.inMenu`, shown before the countdown) offers 20/30/45/60 min; ◀▶ or shifters choose, A or a tap starts, it auto-starts after 25 s, and the last choice is saved. `makePlan(minutes)` builds the same story at any length: 1/2/3/4 flood cycles, still pools only from 30 min, blocks scaled to fit (0.5 min steps, at least 1 min). The trainer stays neutral in the menu. Autopilot or `simOpts.length` skip it.
+- **Ride:** the 45 min ERG plan (`sim/plan.ts`, 16 blocks), each block tagged with a water-cycle `phase`:
   - **Evaporation** (4 min warm-up): lift vapor off the sea; sunlit patches drift along the coast and double the rate while your column is in one.
   - **Gathering cloud** (4 min): the vapor becomes a cloud that drifts inland up the valley; steer into cloudlets to grow it.
   - **Rain on the peaks** (3 min): the cloud rains real water parcels onto the mountains (`Emit.area`), so streams and lakes form on their own; a bigger cloud rains more. Cadence picks downpour vs drizzle. The **spring rises at the rain-weighted mean x** (`springRises` cue).

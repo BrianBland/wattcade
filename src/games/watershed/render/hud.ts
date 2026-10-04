@@ -40,6 +40,19 @@ const CSS = `
 .ws-stats .fish { grid-column: 1 / 3; font-size: 12px; letter-spacing: .08em; opacity:.8; text-transform: uppercase }
 `;
 
+const PHASE_COLOR: Record<string, string> = { evaporate: '#ffd76a', cloud: '#e8f4ff', rain: '#7fb6e0', river: '#3d8fd1', salmon: '#ff8a8a' };
+const MENU_CSS = `
+.ws-menu { position:absolute; left:50%; transform:translateX(-50%); width:min(92%, 760px); pointer-events:auto; text-align:center; padding:18px; border-radius:20px; background:rgba(10,26,40,0.78); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px) }
+.ws-menu h2 { margin:0 0 4px; font-size:26px } .ws-menu .sub { opacity:.85; margin-bottom:12px }
+.ws-menu .opts { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px }
+.ws-menu .opt { cursor:pointer; padding:12px 10px; border-radius:14px; background:rgba(255,255,255,.07); border:2px solid transparent; transition: transform .15s }
+.ws-menu .opt.sel { border-color:#ffd23f; background:rgba(255,210,63,.14); transform: scale(1.04) }
+.ws-menu .opt b { display:block; font-size:30px } .ws-menu .opt small { display:block; font-size:13px; opacity:.85; margin:2px 0 8px; min-height:2.4em }
+.ws-menu .tl { display:flex; height:9px; border-radius:5px; overflow:hidden; gap:1px }
+.ws-menu .tl i { display:block; height:100% }
+.ws-menu .go { margin-top:14px; display:inline-block; cursor:pointer; padding:10px 26px; border-radius:14px; background:#2f7d3f; font-weight:800; font-size:18px }
+.ws-menu .hint { margin-top:8px; font-size:13px; opacity:.75 }
+`;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 export class Hud {
@@ -47,18 +60,43 @@ export class Hud {
   private style = document.createElement('style');
   private block: HTMLDivElement; private stats: HTMLDivElement; private plan: HTMLDivElement; private meter: HTMLDivElement;
   private pop = document.createElement('div'); private popLeft = 0;
+  private menuEl = document.createElement('div'); private menuKey = ''; private send?: (a: unknown) => void;
   private planKey = '';
   private size: [number, number] = [800, 600]; private insetB = 0;
   private rpmLow = 60; private rpmHigh = 110;
 
   constructor(container: HTMLElement) {
-    this.style.textContent = CSS;
+    this.style.textContent = CSS + MENU_CSS;
     this.root.className = 'ws-ui';
     const mk = (cls: string) => { const d = document.createElement('div'); d.className = `ws-panel ${cls}`; this.root.appendChild(d); return d; };
     this.block = mk('ws-block'); this.stats = mk('ws-stats'); this.plan = mk('ws-plan'); this.meter = mk('ws-meter');
     this.pop.className = 'ws-pop'; this.pop.innerHTML = '<div class="t"></div><div class="s"></div>'; this.root.appendChild(this.pop);
     this.meter.innerHTML = '<div class="row"><span>HEAVY · CARVES</span><span>LIGHT · CARRIES</span></div><div class="track"><div class="band"></div><div class="dot"></div></div>';
+    this.menuEl.className = 'ws-menu'; this.menuEl.style.display = 'none'; this.root.appendChild(this.menuEl);
     container.append(this.style, this.root);
+  }
+
+  setSend(send?: (a: unknown) => void) { this.send = send; }
+
+  /** The pre-game ride-length menu (cards with a phase timeline each; taps choose, the button starts). */
+  private updateMenu(s: WatershedSnapshot) {
+    const m = s.menu, open = !!m;
+    this.menuEl.style.display = open ? 'block' : 'none';
+    for (const el of [this.block, this.stats, this.plan, this.meter]) el.style.visibility = open ? 'hidden' : 'visible';
+    if (!m) return;
+    const L = layout(this.size[0], this.size[1], this.insetB);
+    this.menuEl.style.top = `${Math.max(12, L.UH * 0.16)}px`;
+    const key = `${m.sel}`;
+    if (key !== this.menuKey) {
+      this.menuKey = key;
+      this.menuEl.innerHTML = `<h2>Choose your ride</h2><div class="sub">Same water cycle, sized to your workout: ERG all the way.</div><div class="opts">${m.options.map((o, i) => {
+        const tot = o.blocks.reduce((a, b) => a + b.minutes, 0);
+        return `<div class="opt${i === m.sel ? ' sel' : ''}" data-min="${o.minutes}"><b>${o.minutes} min</b><small>${o.blurb}</small><div class="tl">${o.blocks.map((b) => `<i style="flex:${b.minutes / tot};background:${PHASE_COLOR[b.phase]}"></i>`).join('')}</div></div>`;
+      }).join('')}</div><div class="go">▶ Start</div><div class="hint"></div>`;
+      this.menuEl.querySelectorAll<HTMLElement>('.opt').forEach((el) => el.addEventListener('pointerdown', () => this.send?.({ type: 'length', minutes: Number(el.dataset.min) })));
+      this.menuEl.querySelector('.go')?.addEventListener('pointerdown', () => this.send?.({ type: 'start' }));
+    }
+    (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ choose · A start · starts by itself in ${Math.ceil(m.left)} s`;
   }
 
   setRpmRange(lo: number, hi: number) { this.rpmLow = lo; this.rpmHigh = hi; }
@@ -83,6 +121,8 @@ export class Hud {
   }
 
   update(s: WatershedSnapshot) {
+    this.updateMenu(s);
+    if (s.menu) return;
     const b = s.block, o = s.jobs?.objective && (s.phase === 'river') ? s.jobs.objective : null;
     this.block.innerHTML = `<div class="nm">${b.name}<b>${fmt(b.left)}</b></div>`
       + `<span class="st" style="background:${STYLE_COLOR[b.style]}">${STYLE_WORD[b.style]}${b.rpm ? ` ${b.rpm.min}${b.rpm.max ? `–${b.rpm.max}` : '+'} rpm` : ''}</span>`

@@ -10,7 +10,7 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
   (raises terrain; health = remaining height above its own baseline), per-block objectives.
 - `salmon.ts` `SalmonRun`: path traced up real channels from the mouth (forks follow steering), lane steering in the
   fish frame (right = lane −), intro hold, escalating predators, charging bears, falls needing `leapRpm`.
-- `plan.ts`: the fixed 45 min ERG plan, 16 blocks, each with a `phase` and optional `job` / `beavers`.
+- `plan.ts`: `makePlan(20|30|45|60)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`.
 - `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer, hoods dart L/R, Y view, A boost); cues ring for the renderer;
   score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
 

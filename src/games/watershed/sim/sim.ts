@@ -1,5 +1,5 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
-import { bandMid, PLAN, PLAN_MINUTES, planAt, type Phase, type Style } from './plan';
+import { bandMid, makePlan, planAt, RIDE_BLURB, RIDE_LENGTHS, type Block, type Phase, type Style } from './plan';
 import { DEFAULT_SKY, Sky, type Puff, type SunSpot } from './sky';
 import type { WatershedSave } from '../card';
 import { makeTerrain, NX, type Terrain } from './terrain';
@@ -7,7 +7,8 @@ import { DEFAULT_SALMON, SalmonRun, type Predator } from './salmon';
 import { Jobs, type Dam, type Field, type Mill, type Objective } from './objectives';
 import { DEFAULT_WATER, Water, type Emit, type WaterParams } from './water';
 
-export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number }
+/** `length` (minutes) skips the pre-game menu; `menu: false` skips it with the saved/default length. */
+export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number; length?: number; menu?: boolean }
 
 export interface WatershedSnapshot {
   t: number; over: boolean;
@@ -23,6 +24,8 @@ export interface WatershedSnapshot {
   rideS: number;
   cadence: number; cadNorm: number; rpmLow: number; rpmHigh: number; dropVol: number; inBand: boolean; bandBonus: number;
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
+  /** The pre-game ride-length menu (null once the ride has started). */
+  menu: { sel: number; left: number; options: Array<{ minutes: number; blurb: string; blocks: Array<{ phase: Phase; minutes: number }> }> } | null;
   phase: Phase;
   view: 'overview' | 'follow';
   springs: Array<{ x: number; share: number }>;
@@ -91,7 +94,14 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   const water = new Water(terrain, ctx.rng);
   water.settle(params());
   const scale = tun.planScale();
-  const rideS = PLAN_MINUTES * 60 * scale;
+  // ride length: chosen in the pre-game menu (or given in opts); the plan is rebuilt for it
+  const prevSave = ctx.load<WatershedSave>() ?? {};
+  let rideMin = opts.length ?? prevSave.lastLength ?? 45;
+  let plan: Block[] = makePlan(rideMin);
+  let rideS = rideMin * 60 * scale;
+  let menu = opts.length === undefined && !opts.autopilot && opts.menu !== false;
+  let menuSel = Math.max(0, RIDE_LENGTHS.indexOf(rideMin as (typeof RIDE_LENGTHS)[number])), menuT = 0;
+  const pendingActions: Array<{ type?: string; minutes?: number }> = [];
 
   let t = 0, sourceX = NX / 2, bandS = 0, bonus = 0, lastBlock = -1;
   let cadence = 0, cadNorm = 0.5, dropVol = 0.3, inBand = false;
@@ -155,7 +165,14 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     }
   };
 
-  const bandedS = PLAN.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
+  let bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
+  const startRide = () => {
+    rideMin = RIDE_LENGTHS[menuSel]; plan = makePlan(rideMin); rideS = rideMin * 60 * scale;
+    bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
+    menu = false;
+    ctx.save({ ...(ctx.load<WatershedSave>() ?? {}), lastLength: rideMin });
+    cue('rideLength', { minutes: rideMin });
+  };
   /** The ride score: every phase of the cycle counts. */
   const score = () => Math.max(0, Math.round(sky.vapor * 2 + sky.puffsCaught * 20 + sky.rained * 0.05 + carved / 20 + delta / 20
     + salmon.home * 20 + (100 * bandS / Math.max(1, bandedS)) * 5
@@ -177,11 +194,30 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
 
   const sim = {
     update(dt: Seconds) {
-      const at = planAt(t, scale);
+      if (menu) {
+        // pre-game menu: pick the ride length (◀▶ / ▲▼ / shifters, A starts, or taps); auto-starts after 25 s
+        ctx.resistance.clear('flow');
+        const input = ctx.input();
+        let move = 0;
+        for (const p of input.pressed) {
+          if (p === 'right' || p === 'down' || p === 'shiftUpR' || p === 'shiftDnR') move++;
+          if (p === 'left' || p === 'up' || p === 'shiftUpL' || p === 'shiftDnL') move--;
+        }
+        if (move) { menuSel = clamp(menuSel + move, 0, RIDE_LENGTHS.length - 1); cue('menuMove', undefined, false); }
+        let go = input.pressed.has('a');
+        for (const a of pendingActions.splice(0)) {   // taps win over a same-tick d-pad move
+          if (a.type === 'length' && typeof a.minutes === 'number') { const k = RIDE_LENGTHS.indexOf(a.minutes as (typeof RIDE_LENGTHS)[number]); if (k >= 0) menuSel = k; }
+          if (a.type === 'start') go = true;
+        }
+        menuT += dt;
+        if (go || menuT >= 25) startRide();
+        return;
+      }
+      const at = planAt(t, scale, plan);
       const b = at.block;
       if (at.index !== lastBlock) {
         lastBlock = at.index;
-        const prevPhase = at.index > 0 ? PLAN[at.index - 1].phase : null;
+        const prevPhase = at.index > 0 ? plan[at.index - 1].phase : null;
         for (const c of jobs.end()) jobCue(c);
         cue('blockStart', { name: b.name, style: b.style, phase: b.phase, index: at.index, firstOfPhase: prevPhase !== b.phase });
         jobs.begin(b.job ?? null, b.minutes * 60 * scale);
@@ -293,6 +329,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         saved = true; measure();
         const prev = ctx.load<WatershedSave>() ?? {};
         ctx.save({
+          ...prev,
           rides: (prev.rides ?? 0) + 1, bestCarved: Math.max(prev.bestCarved ?? 0, Math.round(carved)),
           bestDelta: Math.max(prev.bestDelta ?? 0, Math.round(delta)), bestSalmon: Math.max(prev.bestSalmon ?? 0, salmon.home),
           bestScore: Math.max(prev.bestScore ?? 0, score()),
@@ -304,7 +341,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       ctx.debug('watershed.carved', Math.round(carved)); ctx.debug('watershed.delta', Math.round(delta));
     },
     hud(): GameHud {
-      const b = planAt(t, scale).block;
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length' }, { button: 'a', label: 'Start' }] };
+      const b = planAt(t, scale, plan).block;
       const fish = salmon.active;
       const label = { grind: 'Grind', spin: 'Spin', steady: b.phase === 'evaporate' ? 'Spin' : 'Steady', salmon: salmon.needLeap ? 'Leap: 95+' : 'Swim', free: 'Easy' }[b.style];
       return {
@@ -318,7 +356,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       };
     },
     snapshot(): WatershedSnapshot {
-      const at = planAt(t, scale);
+      const at = planAt(t, scale, plan);
       return {
         t, over: t >= rideS,
         nx: terrain.nx, ny: terrain.ny, coastY: terrain.coastY, ridges: terrain.ridges,
@@ -326,9 +364,10 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         n: water.n, px: water.x, py: water.y, pvx: water.vx, pvy: water.vy, pvol: water.vol, psed: water.sed,
         version: water.version, sourceX,
         block: { index: at.index, name: at.block.name, hint: at.block.hint, style: at.block.style, left: at.blockLeft, ftp: at.ftp, rpm: at.block.rpm },
-        blocks: PLAN.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
+        blocks: plan.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
+        menu: menu ? { sel: menuSel, left: Math.max(0, 25 - menuT), options: RIDE_LENGTHS.map((m) => ({ minutes: m, blurb: RIDE_BLURB[m], blocks: makePlan(m).map((b) => ({ phase: b.phase, minutes: b.minutes })) })) } : null,
         phase: at.block.phase, view, springs: [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)], boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
         jobs: {
@@ -340,7 +379,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },
       };
     },
-    isOver: () => t >= rideS,
+    isOver: () => !menu && t >= rideS,
+    inMenu: () => menu,
+    receive(a: unknown) { if (pendingActions.length < 8 && a && typeof a === 'object') pendingActions.push(a as { type?: string; minutes?: number }); },
     summary() {
       measure();
       const banded = bandedS;

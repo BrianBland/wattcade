@@ -89,6 +89,7 @@ export class WatershedRenderer implements GameRenderer {
     s.add(this.sun, this.sun.target, new THREE.HemisphereLight(0xd8eeff, 0x5a6a3a, 1.25));
 
     this.hud = new Hud(container);
+    this.hud.setSend(ctx.send);
     this.hud.setInsetBottom(this.insetB);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
@@ -330,7 +331,7 @@ export class WatershedRenderer implements GameRenderer {
     if (this.lastCue < 0) {
       // first frame: don't replay history, but greet a fresh ride
       this.lastCue = list.length ? list[list.length - 1].id : 0;
-      if (s.t < 8) this.popup(s.phase === 'evaporate' ? 'evaporate' : 'intro');
+      if (s.t < 8 && !s.menu) this.popup(s.phase === 'evaporate' ? 'evaporate' : 'intro');
       return;
     }
     for (const c of list) {
@@ -344,6 +345,8 @@ export class WatershedRenderer implements GameRenderer {
           break;
         case 'springRises': this.popup('intro'); play('splash'); play('chime', { vol: 0.8 }); break;
         case 'cloudlet': play('pickup', { vol: 0.6 }); break;
+        case 'menuMove': play('uiMove'); break;
+        case 'rideLength': play('uiSelect'); this.popup('evaporate'); break;
         case 'objective': this.hud?.popup(String(d.title), String(d.goal), 5); play('horn', { vol: 0.5 }); break;
         case 'objectiveDone': this.hud?.popup('Done! ✓', JOB_DONE[String(d.kind)] ?? 'Nice work', 3, 'salmon'); play('reward'); break;
         case 'objectiveFailed': this.hud?.popup('Missed it', JOB_MISS[String(d.kind)] ?? 'Next time', 3, 'warn'); play('deny', { vol: 0.5 }); break;

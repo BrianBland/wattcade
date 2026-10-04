@@ -38,15 +38,15 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'grind digs a gorge', script: 'grind', minutes: 26, seed: 2,
+    name: 'grind digs a gorge', script: 'grind', minutes: 26, seed: 2, simOpts: { length: 45 },
     assert(s) { return n(s, 'deepestCut') >= 8 ? [] : [`deepestCut ${s.deepestCut} < 8`]; },
   },
   {
-    name: 'spin reaches the sea', script: 'spin', minutes: 26, seed: 2,
+    name: 'spin reaches the sea', script: 'spin', minutes: 26, seed: 2, simOpts: { length: 45 },
     assert(s) { return n(s, 'toSea') >= 100 ? [] : [`toSea ${s.toSea} < 100`]; },
   },
   {
-    name: 'idle', script: 'idle', minutes: 3, seed: 1,
+    name: 'idle', script: 'idle', minutes: 3, seed: 1, simOpts: { length: 45 },
     assert(s) { return n(s, 'parcels') === 0 && n(s, 'carved') <= 5 ? [] : [`idle made water: ${JSON.stringify(s)}`]; },
   },
 ];

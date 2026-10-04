@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runHeadless } from '../../../core';
 import { module } from '../index';
-import { PLAN, PLAN_MINUTES, planAt } from '../sim/plan';
+import { makePlan, PLAN, PLAN_MINUTES, planAt, RIDE_LENGTHS } from '../sim/plan';
 import { makeTerrain, NX, NY, SEA } from '../sim/terrain';
 import { DEFAULT_WATER, Water, type Emit } from '../sim/water';
 import { makeRng } from '../../../core';
@@ -87,4 +87,35 @@ describe('watershed sky phases + achievements', () => {
     expect(Number(r.summary.rainfall)).toBeGreaterThan(0);
     expect(r.events.some((e) => e.type === 'springRises')).toBe(true);
   }, 180_000);
+});
+
+describe('watershed ride length', () => {
+  it('makePlan fits every offered length, keeps the story, and 45 is the original plan', () => {
+    for (const L of RIDE_LENGTHS) {
+      const p = makePlan(L);
+      expect(p.reduce((a, b) => a + b.minutes, 0)).toBeCloseTo(L);
+      expect(p.map((b) => b.phase).filter((x, i, a) => a.indexOf(x) === i)).toEqual(['evaporate', 'cloud', 'rain', 'river', 'salmon']);
+      expect(p.every((b) => b.minutes >= 1)).toBe(true);
+      expect(p.filter((b) => b.job === 'village').length).toBe(L <= 20 ? 1 : L <= 30 ? 2 : L <= 45 ? 3 : 4);
+    }
+    expect(makePlan(45)).toEqual(PLAN);
+  });
+  it('waits in the pre-game menu until A (or a tap), then rides the chosen length', async () => {
+    const { createGameSession, TimelineInput, testProfile } = await import('../../../core');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 1, press: 'right' }, { t: 1.2, release: 'right' }]), fake: { script: 'z2' }, seed: 3 });
+    s.step(30);
+    expect(s.sim.inMenu?.()).toBe(true);
+    s.sim.receive?.({ type: 'length', minutes: 20 });
+    s.sim.receive?.({ type: 'start' });
+    s.step(2);
+    expect(s.sim.inMenu?.()).toBe(false);
+    expect((s.sim.snapshot() as { rideS: number }).rideS).toBe(20 * 60);
+    expect(s.sim.isOver()).toBe(false);
+  });
+  it('auto-starts after 25 s in the menu', async () => {
+    const { createGameSession, NullInput, testProfile } = await import('../../../core');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 3 });
+    s.step(24 * 30); expect(s.sim.inMenu?.()).toBe(true);
+    s.step(2 * 30); expect(s.sim.inMenu?.()).toBe(false);
+  });
 });

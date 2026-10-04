@@ -72,7 +72,7 @@ async function main() {
   mkdirSync(out, { recursive: true });
   const session = createGameSession({
     game: watershed, profile: testProfile(), input: new NullInput(), fake: { script }, seed,
-    simOpts: a.autopilot ? { autopilot: true } : {},
+    simOpts: { length: Number(a.length ?? 45), ...(a.autopilot ? { autopilot: true } : {}) },
   });
   const stepsPerMin = 60 * 30;
   for (let m = every; m <= minutes + 1e-9; m += every) {

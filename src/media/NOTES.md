@@ -24,8 +24,9 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
   and analysed like local files, with `credit` (shown in the picker, Music Lab and `MediaSongSpan.credit`).
 - `analysis/worker.ts` + `client.ts`: analysis and synth→WAV rendering off the main thread. `player/decode.ts`: OfflineAudioContext decode
   at 22.05 kHz mono.
-- `player/engine.ts` `MixEngine`: 3 decks (<audio> → MediaElementSource → low/mid/high EQ → gain; echo send). Program clock on the
-  AudioContext; decks slaved to it (hard seek > 150 ms, else ±4 % rate nudge); owner deck buffering freezes the clock.
+- `player/engine.ts` `MixEngine`: 3 decks (<audio> → MediaElementSource → low/mid/high EQ → gain; echo send). The owner deck is the
+  clock (never nudged); overlapping decks follow via `followerAction` (≤ 2 %, ≤ 1/s; seek only when far/inaudible). Writes are
+  rate-limited (Safari glitches otherwise); owner buffering freezes the clock.
   `positionS()` subtracts output latency + `wattcade.media.latencyMs`. Call `unlock()` from a gesture (iOS).
 
 ## Integration

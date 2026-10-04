@@ -20,6 +20,9 @@ export const scenarios: Array<{
       if (n(s, 'cloudlets') < 15) f.push(`cloudlets ${s.cloudlets} < 15 with an autopilot steering`);
       if (n(s, 'rainfall') <= 0) f.push('no rain');
       if (!run.events.some((e) => e.type === 'springRises')) f.push('spring never rose');
+      if (n(s, 'objectives') < 4) f.push(`objectives ${s.objectives} < 4 with an autopilot chasing them`);
+      if (!run.events.some((e) => e.type === 'beavers')) f.push('beavers never came');
+      if (n(s, 'flour') <= 0) f.push('grist mill never turned');
       if (n(s, 'salmonHome') < 40) f.push(`salmonHome ${s.salmonHome} < 40 with an autopilot dodging`);
       if (!run.events.some((e) => e.type === 'salmonRun')) f.push('no salmon run');
       if (n(s, 'bandPct') < 85) f.push(`bandPct ${s.bandPct} < 85 while following the band`);
@@ -35,15 +38,15 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'grind digs a gorge', script: 'grind', minutes: 26, seed: 2,
+    name: 'grind digs a gorge', script: 'grind', minutes: 26, seed: 2, simOpts: { length: 45 },
     assert(s) { return n(s, 'deepestCut') >= 8 ? [] : [`deepestCut ${s.deepestCut} < 8`]; },
   },
   {
-    name: 'spin reaches the sea', script: 'spin', minutes: 26, seed: 2,
+    name: 'spin reaches the sea', script: 'spin', minutes: 26, seed: 2, simOpts: { length: 45 },
     assert(s) { return n(s, 'toSea') >= 100 ? [] : [`toSea ${s.toSea} < 100`]; },
   },
   {
-    name: 'idle', script: 'idle', minutes: 3, seed: 1,
+    name: 'idle', script: 'idle', minutes: 3, seed: 1, simOpts: { length: 45 },
     assert(s) { return n(s, 'parcels') === 0 && n(s, 'carved') <= 5 ? [] : [`idle made water: ${JSON.stringify(s)}`]; },
   },
 ];

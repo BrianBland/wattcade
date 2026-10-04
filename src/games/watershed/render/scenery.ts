@@ -111,7 +111,7 @@ export class Clouds {
         m.castShadow = true;
         g.add(m);
       }
-      g.position.set(-span / 2 + (c / 6) * span, 52 + hash2(c, 1, 1) * 10, -60 + hash2(c, 2, 2) * 70);
+      g.position.set(-span / 2 + (c / 6) * span, 215 + hash2(c, 1, 1) * 30, -160 + hash2(c, 2, 2) * 320); g.scale.setScalar(3.2);
       this.items.push(g); this.group.add(g);
     }
   }
@@ -127,8 +127,8 @@ export class Clouds {
 export class SeaSurface {
   readonly mesh: THREE.Mesh;
   private base: Float32Array;
-  constructor(width: number, depth: number, x: number, z: number) {
-    const g = new THREE.PlaneGeometry(width, depth, Math.round(width / 2), Math.round(depth / 2));
+  constructor(width: number, depth: number, x: number, z: number, segs = 0) {
+    const g = new THREE.PlaneGeometry(width, depth, segs || Math.round(width / 2), segs || Math.round(depth / 2));
     g.rotateX(-Math.PI / 2);
     this.base = (g.getAttribute('position').array as Float32Array).slice();
     this.mesh = new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color: 0x2f86c4, transparent: true, opacity: 0.72, shininess: 140, specular: 0xe8f6ff, depthWrite: false }));

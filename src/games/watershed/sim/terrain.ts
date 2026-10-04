@@ -15,6 +15,11 @@ export interface Terrain {
   coastY: number;       // first row (roughly) below sea level along the valley floor
   /** Rows where the rock ridges cross the valley (lakes form behind them until they're cut). */
   ridges: number[];
+  /** Notches in the ridges: where the river can break through (carving one decides the route). */
+  saddles: Array<{ ridge: number; x: number; depth: number }>;
+  /** A lake basin between the ridges and a side basin on the floodplain (for fields and the village). */
+  lake: { x: number; y: number; r: number };
+  side: { x: number; y: number; r: number };
 }
 
 const fract = (v: number) => v - Math.floor(v);
@@ -45,35 +50,54 @@ export function fbm(x: number, y: number, seed: number, octaves = 4): number {
 
 export function makeTerrain(seed: number, nx = NX, ny = NY): Terrain {
   const h = new Float32Array(nx * ny), hard = new Float32Array(nx * ny);
-  const phase = hash2(seed, 7, 3) * Math.PI * 2;
-  const ridges = [Math.round(ny * 0.3), Math.round(ny * 0.55)];
-  const coastT = 0.78;
+  const rnd = (k: number) => hash2(seed, k, 911);
+  const phase = rnd(1) * Math.PI * 2;
+  const coastT = 0.79;
+  const ridges = [Math.round(ny * 0.28), Math.round(ny * 0.55)];
+  // two or three saddles per ridge at different x and depths; the deepest is the "easy" route, the others need carving
+  const saddles: Terrain['saddles'] = [];
+  ridges.forEach((r, ri) => {
+    const xs = ri === 0 ? [0.27, 0.52, 0.76] : [0.36, 0.68];
+    xs.forEach((fx, k) => saddles.push({ ridge: r, x: Math.round(nx * (fx + (rnd(10 + ri * 5 + k) - 0.5) * 0.08)), depth: 0.55 + 0.35 * rnd(20 + ri * 5 + k) }));
+  });
+  const lakeLeft = rnd(3) < 0.5;
+  const lake = { x: Math.round(nx * (lakeLeft ? 0.36 : 0.64)), y: Math.round(ny * 0.42), r: 10 };
+  const side = { x: Math.round(nx * (lakeLeft ? 0.74 : 0.26)), y: Math.round(ny * 0.69), r: 9 };
   for (let j = 0; j < ny; j++) {
     const t = j / (ny - 1);
-    const along = 30 * Math.pow(1 - t, 1.5) - 4 * t;
-    const cx = nx / 2 + 6 * Math.sin(j * 0.05 + phase) + 4 * Math.sin(j * 0.11 + phase * 2);
-    const landK = 1 - smooth(clamp01((t - (coastT - 0.12)) / 0.17)); // valley walls fade out at the coast
+    const along = 24 * Math.pow(1 - t, 1.4) - 3.5 * t + (t < 0.1 ? 10 * Math.pow(1 - t / 0.1, 2) : 0);
+    const cx = nx / 2 + 6 * Math.sin(j * 0.045 + phase);
+    const landK = 1 - smooth(clamp01((t - (coastT - 0.1)) / 0.16));
+    // a gentle cross-tilt that changes sign down the valley: the river has more than one natural path
+    const tilt = 2.2 * Math.sin(j * 0.06 + phase * 1.7);
     for (let i = 0; i < nx; i++) {
       const d = Math.abs(i - cx) / (nx / 2);
-      const walls = (12 * (1 - 0.6 * t) * Math.pow(d, 1.5) + 6 * Math.pow(Math.max(0, d - 0.75) / 0.25, 2)) * landK;
+      const wall = Math.pow(smooth(clamp01((d - 0.55) / 0.45)), 1.3) * (16 - 6 * t) * landK;
       let ridge = 0, rock = 0;
-      for (const r of ridges) {
-        const g = Math.exp(-((j - r) ** 2) / 10);
-        ridge += 3 * g; rock = Math.max(rock, g);
+      for (let ri = 0; ri < ridges.length; ri++) {
+        const g = Math.exp(-((j - ridges[ri]) ** 2) / 12);
+        if (g < 0.01) continue;
+        let notch = 0;
+        for (const sd of saddles) if (sd.ridge === ridges[ri]) notch = Math.max(notch, sd.depth * Math.exp(-(((i - sd.x) / 4.5) ** 2)));
+        ridge += 4.5 * g * (1 - notch); rock = Math.max(rock, g * (1 - 0.5 * notch));
       }
-      const n = fbm(i * 0.07, j * 0.07, seed) * 3 * (1 - 0.6 * t) * (0.3 + 0.7 * landK);
+      const basin = (b: { x: number; y: number; r: number }, depth: number) => {
+        const q = Math.hypot(i - b.x, (j - b.y) * 1.2) / b.r;
+        return q < 1 ? -depth * (1 - q * q) : 0;
+      };
+      const n = fbm(i * 0.08, j * 0.08, seed) * 1.4 * (0.4 + 0.6 * landK) + fbm(i * 0.03, j * 0.03, seed + 7) * 1.2;
       const k = j * nx + i;
-      h[k] = along + walls + n + ridge * landK;
-      const soil = 0.65 + 0.35 * clamp01(fbm(i * 0.11, j * 0.11, seed + 999) + 0.5);
+      h[k] = along + wall + n + (ridge + tilt * ((i - cx) / (nx / 2))) * landK + basin(lake, 2.2) + basin(side, 1.4);
+      const soil = 0.7 + 0.3 * clamp01(fbm(i * 0.11, j * 0.11, seed + 999) + 0.5);
       hard[k] = soil * (1 - 0.8 * rock * landK);
     }
   }
-  // Spring basin: a gentle bowl at the head of the valley so water collects before it runs.
+  // spring basin at the head of the valley
   for (let j = 0; j < 10; j++) for (let i = 0; i < nx; i++) {
-    const d = Math.hypot((i - nx / 2) / 14, j / 8);
-    if (d < 1) h[j * nx + i] -= 2.5 * (1 - d * d);
+    const d = Math.hypot((i - nx / 2) / 18, j / 8);
+    if (d < 1) h[j * nx + i] -= 2.2 * (1 - d * d);
   }
-  return { nx, ny, h, h0: h.slice(), hard, coastY: Math.round(coastT * (ny - 1)), ridges };
+  return { nx, ny, h, h0: h.slice(), hard, coastY: Math.round(coastT * (ny - 1)), ridges, saddles, lake, side };
 }
 
 /** Bilinear sample of a grid field at fractional cell coordinates (clamped to the grid). */

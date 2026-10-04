@@ -27,6 +27,20 @@ describe('salmon run', () => {
     expect(s.px[40]).toBeCloseTo(NX / 2, 0);
     expect(s.pw[40]).toBeGreaterThanOrEqual(1.5);
   });
+  it('follows a real channel at forks: the side the school steers toward', () => {
+    const { t, s } = setup();
+    const w = new Float32Array(NX * NY);
+    for (let j = 0; j < NY; j++) {
+      const split = Math.max(0, 60 - j) * 0.6;
+      for (const cx of split > 0 ? [48 - split, 48 + split] : [48]) for (let i = Math.round(cx) - 1; i <= Math.round(cx) + 1; i++) w[j * NX + i] = 1;
+    }
+    void t;
+    s.lane = 0.8; for (let k = 0; k < 20; k++) s.updatePath(w);   // the trace is smoothed in time
+    expect(s.px[30]).toBeGreaterThan(60);
+    expect(s.forks.length).toBeGreaterThan(0);
+    s.lane = -0.8; for (let k = 0; k < 20; k++) s.updatePath(w);
+    expect(s.px[30]).toBeLessThan(36);
+  });
   it('swims upstream and gets home faster at higher cadence', () => {
     const a = setup(), b = setup();
     a.s.start(10, P); b.s.start(10, P);

@@ -1,40 +1,33 @@
-# watershed (ERG river game)
-CONTRACT-REQUEST: none.
+# watershed (ERG water-cycle game)
+CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/services.ts#missingRequirement`).
 
-## Shape
-- `sim/terrain.ts`: 96×144 valley heightfield (x across, y downstream, sea level 0), erodibility map, two rock ridges, spring basin.
-- `sim/water.ts` `Water`: particle water + erosion, pure and deterministic (rng injected). Particles splat into a depth grid,
-  then flow down the free-surface gradient (`max(h,SEA) + pressure·w`; a particle exerts no net force on itself). Per-parcel
-  size factors (drag/deposit/dig) are cached at spawn, so changing `dragExp`/`depositExp`/`massExp` affects new parcels only.
-  `settle()` relaxes generated terrain (thermal to convergence) and resets `h0`.
-- `sim/salmon.ts` `SalmonRun`: path traced from the depth grid (`updatePath`, once a second), lane steering in the fish's
-  frame (right = lane −), camera-intro hold (`intro`, cue `go`), bears/eagles,
-  falls (surface rise over 2 rows) needing `leapRpm`. Pure; `DEFAULT_SALMON` params (not yet ctx.tuning tunables).
-- `sim/sky.ts` `Sky`: evaporation (sunlit patches), cloud drift + cloudlets, rain footprint + rain-weighted spring x.
-- `sim/plan.ts`: the fixed 45 min ERG plan (16 blocks, each with a `phase`: evaporate/cloud/rain/river/salmon), `planAt(t, scale)`, `bandMid` (for the `cadence-follow` script hook).
-- `sim/sim.ts`: ERG effect `flow` (ftpFraction from the plan), cadence → parcel volume/speed/spread, steering, stats once per
-  second, `rideDone` + save `{rides, bestCarved, bestDelta}`. Snapshot shares the live typed arrays (no copies).
-- `render/`: Three.js diorama (`renderer.ts`: drops/camera/cues/sound), `terrainView.ts` (2× terrain + skirt, procedural
-  detail shader), `waterView.ts` (merged liquid surface + shader), `upsample.ts` (pure, tested), `models.ts` (organic
-  trees/boulders/salmon/bear/eagle + wind/swim shader patches), `scenery.ts` (sky, Forest, Clouds, SeaSurface),
-  `creatures.ts` (school, predators, danger markers), `riverbank.ts` (habitat-driven grass/flowers/reeds/pebbles/lily
-  pads, frogs, butterflies), DOM HUD + popups (`hud.ts`), pure `layout.ts`.
-- Per sim tick: water fields absorb particles; land mesh rebuilds every 3rd tick, water mesh every 2nd (55k-vertex grids).
-- Snapshot `cues` (last 24, increasing ids) drive sounds/popups; the renderer skips history on mount.
-- Requires ERG: `requires: { erg: true }` (arcade gate in `src/shell/services.ts#missingRequirement`).
-## Tuning (`watershed.*`)
-Flow/cadence mapping: flowPerFtp, volHeavy/volLight, rpmLow/rpmHigh, speedLow/speedHigh, bandBonus.
-Water/erosion: gravity, pressure, friction, shallowDrag, capacity, erode, deposit, massExp, talus. Plan: planScale.
+## Sim (`sim/`, pure + deterministic)
+- `terrain.ts`: 96×144 U valley (x across, y downstream, sea level 0), two rock ridges with saddles, lake + side basins.
+- `water.ts` `Water`: particle water + erosion (splat depth grid, flow down `max(h,SEA)+pressure·w`, Beyer-style
+  erosion with a brush, bedrock fade, thermal slump). `Emit` = spring(s) by share, or a rain disc/rectangle.
+- `sky.ts` `Sky`: evaporation (sunlit patches), cloud drift + cloudlets, rain footprint, rain-per-column → `springs()`.
+- `objectives.ts` `Jobs`: grist mill (heavy water), sawmill (fast water), Millbrook flooding, fields, beaver dam
+  (raises terrain; health = remaining height above its own baseline), per-block objectives.
+- `salmon.ts` `SalmonRun`: path traced up real channels from the mouth (forks follow steering), lane steering in the
+  fish frame (right = lane −), intro hold, escalating predators, charging bears, falls needing `leapRpm`.
+- `events.ts`: seeded geological event deck (quake/slide/volcano + rare meteor), heightfield edits to h and h0, `mat` grid.
+- `plan.ts`: `makePlan(20|30|45|60)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`.
+- `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer, hoods dart L/R, Y view, A boost); cues ring for the renderer;
+  score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
 
-## Numbers (seed 2, 15 min, testProfile FTP 200)
-grind: deepestCut ~13, toSea 0 · spin: deepestCut ~11, toSea ~140. Full 45 min cadence-follow: carved ~14k, delta ~10k.
-Sim cost ~0.35 ms/step at ~1000 parcels (desktop node).
+## Render (`render/`)
+`renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `terrainView.ts` (2× terrain,
+procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
+`skyLayer.ts`, `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
+`upsample.ts` (tested).
 
 ## Tools
 - `npm run snap:watershed -- --script spin --minutes 15 --every 5 [--autopilot]` → PNGs in `out/watershed/`.
 - `/dev/watershed.html?script=grind&min=10&autopilot=1&inset=120` (vite dev) renders without the shell.
 
+## Numbers (seed 1, 46 min, testProfile FTP 200)
+Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectives. Sim ~0.4 ms/step (desktop).
+
 ## Gaps / next
-- FTMS `capabilities.erg` is currently always true (Feature 0x2ACC isn't read), so the ERG gate only bites once it is.
-- Salmon params aren't tunables yet. Mesh rebuilds are 55k vertices each: fine on desktop, profile on iPad first.
-- Not built: water wheels, generated story levels (see SPEC §6.4 "Later"). Achievements live in src/progression.
+- Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
+  on iPad. Not built: story-mode levels (SPEC §6.4 "Later").

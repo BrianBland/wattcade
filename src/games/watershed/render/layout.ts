@@ -19,14 +19,16 @@ export interface Layout {
 export function layout(W: number, H: number, insetB: number): Layout {
   const b = Math.max(0, Math.min(insetB, H / 2));
   const UH = Math.max(120, H - b);
-  const pad = 12, narrow = W < 700;
-  const block: Box = { x: pad, y: pad, w: narrow ? Math.min(W - 2 * pad, 300) : 300, h: 96 };
-  const stats: Box = narrow ? { x: pad, y: block.y + block.h + 8, w: Math.min(W - 2 * pad, 300), h: 64 } : { x: W - pad - 220, y: pad, w: 220, h: 96 };
-  const meter: Box = { x: pad, y: (narrow ? stats.y + stats.h : block.y + block.h) + 8, w: Math.min(W - 2 * pad, 300), h: 44 };
-  const planX = narrow ? pad : block.x + block.w + pad, planW = narrow ? W - 2 * pad : Math.max(120, stats.x - pad - planX);
-  const plan: Box = { x: planX, y: narrow ? meter.y + meter.h + 8 : pad, w: planW, h: 34 };
-  const pw = Math.min(W - 2 * pad, 620), ph = 92;
-  const below = Math.max(meter.y + meter.h, plan.y + plan.h) + 12;
-  const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.24), UH - ph - pad), w: pw, h: ph };
+  const pad = 12, colW = Math.min(W - 2 * pad, 290);
+  // left column: block card, then the ride timeline, then the water meter; stats top-right. The top-centre stays
+  // clear: in the up-valley view that's where the spring and the head of the valley are.
+  const block: Box = { x: pad, y: pad, w: colW, h: 96 };
+  const plan: Box = { x: pad, y: block.y + block.h + 6, w: colW, h: 34 };
+  const meter: Box = { x: pad, y: plan.y + plan.h + 6, w: colW, h: 44 };
+  const narrow = W < 700;
+  const stats: Box = narrow ? { x: pad, y: meter.y + meter.h + 6, w: colW, h: 70 } : { x: W - pad - 210, y: pad, w: 210, h: 96 };
+  const pw = Math.min(W - 2 * pad, 600), ph = 92;
+  const below = narrow ? stats.y + stats.h + 12 : pad;
+  const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.3), UH - ph - pad), w: pw, h: ph };
   return { UH, viewOffsetY: b / 2, focusY: UH / 2, block, stats, plan, meter, popup };
 }

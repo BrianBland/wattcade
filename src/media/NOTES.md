@@ -19,7 +19,9 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
 
 ## Browser
 - `library/library.ts` `MediaLibrary`: import (sha256 dedupe, tags, art) → background analysis queue (decode → worker) → IndexedDB
-  (`library/store.ts`: meta / analysis / blobs DBs; `MemoryStorage` for tests). Demo set: 6 synth songs, always ready.
+  (`library/store.ts`: meta / analysis / blobs DBs; `MemoryStorage` for tests). Demo set: 6 synth songs ("Generated"), always ready.
+  `library/samples.ts`: 9 curated Creative Commons tracks on archive.org (CORS-open), `sampleSongs()` / `downloadSample(id)` → stored
+  and analysed like local files, with `credit` (shown in the picker, Music Lab and `MediaSongSpan.credit`).
 - `analysis/worker.ts` + `client.ts`: analysis and synth→WAV rendering off the main thread. `player/decode.ts`: OfflineAudioContext decode
   at 22.05 kHz mono.
 - `player/engine.ts` `MixEngine`: 3 decks (<audio> → MediaElementSource → low/mid/high EQ → gain; echo send). Program clock on the

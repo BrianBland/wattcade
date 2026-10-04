@@ -7,6 +7,7 @@ import { planMix } from '../mix/plan';
 import { buildTimeline } from '../mix/timeline';
 import { rateQueue } from '../rating';
 import { encodeWav } from '../player/wav';
+import { SAMPLE_TRACKS } from '../library/samples';
 
 const fakeAnalyzer = async (_b: Blob, progress: (p: number, s: string) => void) => {
   progress(0.5, 'rhythm');
@@ -67,6 +68,32 @@ describe('MediaLibrary', () => {
     expect(await lib.audioUrl(demos[0].id)).toMatch(/^blob:/);
     const r = rateQueue(tl);
     expect(r.songs).toBe(3); expect(r.drops).toBeGreaterThan(2); expect(r.stars).toBeGreaterThanOrEqual(1); expect(r.stars).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('sample tracks', () => {
+  it('lists CC samples as remote, downloads one on demand with its credit, keeps them out of My music', async () => {
+    const fetched: string[] = [];
+    const lib = new MediaLibrary({ storage: new MemoryStorage(), analyze: fakeAnalyzer, fetch: async (url) => { fetched.push(url); return Uint8Array.from([1, 2, 3, 4]).buffer; } });
+    const list = await lib.sampleSongs();
+    expect(list.length).toBe(SAMPLE_TRACKS.length);
+    expect(list.every((m) => m.status === 'remote' && m.credit?.url.startsWith('https://archive.org/details/'))).toBe(true);
+    const id = list[0].id;
+    await Promise.all([lib.downloadSample(id), lib.downloadSample(id)]); // a double tap downloads once
+    expect(fetched).toHaveLength(1);
+    expect(fetched[0]).toMatch(/^https:\/\/archive\.org\/download\/.+\.mp3$/);
+    expect(fetched[0]).not.toContain(' ');
+    await lib.idle();
+    const m = await lib.get(id);
+    expect(m).toMatchObject({ status: 'ready', source: 'sample', title: SAMPLE_TRACKS[0].title, artist: SAMPLE_TRACKS[0].artist });
+    expect((await lib.mixItem(id))?.credit?.text).toContain(SAMPLE_TRACKS[0].license.name);
+    expect(await lib.localSongs()).toHaveLength(0);
+    await lib.remove(id);
+    expect((await lib.sampleSongs())[0].status).toBe('remote');
+  });
+  it('every sample has a licence that allows attribution-based use', () => {
+    for (const t of SAMPLE_TRACKS) expect(t.license.url).toMatch(/creativecommons\.org\/licenses\/by(-nc|-sa)?\//);
+    expect(new Set(SAMPLE_TRACKS.map((t) => t.key)).size).toBe(SAMPLE_TRACKS.length);
   });
 });
 

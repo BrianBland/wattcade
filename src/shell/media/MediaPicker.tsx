@@ -10,7 +10,8 @@ import { duckAmbient, play as sfx } from '../../audio/sfx';
 import type { MediaRun } from '../types';
 import { fmtTime, MODES, moveItem, nextMode, pickerNav, previewStart, queueRows, SECTION_COLORS, type PickerFocus } from './pickerModel';
 
-const TABS = ['My music', 'Demo tracks', '+ Add music'] as const;
+const TABS = ['My music', 'Samples (CC)', 'Generated', '+ Add music'] as const;
+const ADD_TAB = 3;
 const PREVIEW_S = 20;
 const queueKey = (p: Profile) => `wattcade.media.queue.${p.id}`;
 function loadQueue(p: Profile): { ids: string[]; mode: QueueMode } {
@@ -23,6 +24,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const lib = mediaLibrary();
   const [local, setLocal] = useState<SongMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [samples, setSamples] = useState<SongMeta[]>([]);
   const [tab, setTab] = useState(0);
   const [query, setQuery] = useState('');
   const initial = useMemo(() => loadQueue(profile), [profile.id]);
@@ -38,15 +40,18 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   // library contents (and live analysis progress)
   useEffect(() => {
     let alive = true;
-    const refresh = () => { void lib.localSongs().then((s) => { if (alive) { setLocal(s); setLoaded(true); bump((x) => x + 1); } }); };
+    const refresh = () => {
+      void lib.localSongs().then((s) => { if (alive) { setLocal(s); setLoaded(true); bump((x) => x + 1); } });
+      void lib.sampleSongs().then((s) => { if (alive) setSamples(s); });
+    };
     refresh();
     const off = lib.subscribe(refresh);
     return () => { alive = false; off(); };
   }, []);
-  useEffect(() => { if (loaded && !local.length && tab === 0 && !query) setTab(1); }, [loaded]); // no songs yet: show the demos
+  useEffect(() => { if (loaded && !local.length && tab === 0 && !query) setTab(1); }, [loaded]); // no songs yet: show the samples
   const demos = useMemo(() => lib.demoSongs(), []);
-  const all = useMemo(() => new Map([...demos, ...local].map((m) => [m.id, m])), [demos, local]);
-  const list = (tab === 1 ? demos : local).filter((m) => matchesQuery(m, query));
+  const all = useMemo(() => new Map([...demos, ...samples, ...local].map((m) => [m.id, m])), [demos, samples, local]);
+  const list = (tab === 1 ? samples : tab === 2 ? demos : local).filter((m) => matchesQuery(m, query) || (m.genre ? matchesQuery({ title: m.genre, artist: '', album: '' }, query) : false));
   const queued = queue.map((id) => all.get(id)).filter((m): m is SongMeta => !!m);
   const ready = queued.length > 0 && queued.every((m) => m.status === 'ready');
 
@@ -93,6 +98,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const add = (m: SongMeta | undefined) => {
     if (!m) return;
     if (m.status === 'error') { lib.retry(m.id); toast(`Retrying analysis of ${m.title}`); return; }
+    if (m.status === 'remote') void lib.downloadSample(m.id).catch((e) => toast(`Couldn't download ${m.title}: ${e instanceof Error ? e.message : e}`));
     setQueue((q) => [...q, m.id]); sfx('uiSelect');
   };
   const removeAt = (i: number) => setQueue((q) => q.filter((_, j) => j !== i));
@@ -119,10 +125,10 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     const size = { tabs: TABS.length, list: l.length, queue: q.length };
     for (const k of ['up', 'down', 'left', 'right'] as const) if (p.has(k)) {
       const n = pickerNav(f, k, size);
-      if (n !== f) { sfx('uiMove'); setFocus(n); if (n.zone === 'tabs' && n.tab !== f.tab && n.tab < 2) setTab(n.tab); }
+      if (n !== f) { sfx('uiMove'); setFocus(n); if (n.zone === 'tabs' && n.tab !== f.tab && n.tab < ADD_TAB) setTab(n.tab); }
     }
     if (p.has('a')) {
-      if (f.zone === 'tabs') { if (f.tab === 2) pickFiles(); else setTab(f.tab); }
+      if (f.zone === 'tabs') { if (f.tab === ADD_TAB) pickFiles(); else setTab(f.tab); }
       else if (f.zone === 'list') add(l[f.list]);
       else if (f.queue === 0) { setMode((m) => nextMode(m)); sfx('uiTick'); }
       else if (f.queue === queueRows(q.length) - 1) void start();
@@ -145,8 +151,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
         <div class="panel mp-library">
           <div class="mp-tabs">
             {TABS.map((t, i) => (
-              <button type="button" class={`btn small${tab === i && i < 2 ? ' primary' : ''}${zoneIs('tabs') && focus.tab === i ? ' focused' : ''}`}
-                onClick={() => { unlockMedia(); if (i === 2) pickFiles(); else setTab(i); setFocus({ ...focus, zone: 'tabs', tab: i }); }}>{t}</button>
+              <button type="button" class={`btn small${tab === i && i < ADD_TAB ? ' primary' : ''}${zoneIs('tabs') && focus.tab === i ? ' focused' : ''}`}
+                onClick={() => { unlockMedia(); if (i === ADD_TAB) pickFiles(); else setTab(i); setFocus({ ...focus, zone: 'tabs', tab: i }); }}>{t}</button>
             ))}
             <input ref={fileInput} type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.flac,.wav" style={{ display: 'none' }}
               onChange={(e) => { void onFiles((e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = ''; }} />
@@ -174,8 +180,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             {queued.map((m, i) => (
               <div class={`mp-qrow${zoneIs('queue') && focus.queue === i + 1 ? ' focused' : ''}`} onClick={() => setFocus({ ...focus, zone: 'queue', queue: i + 1 })}>
                 <span class="mp-swatch" style={{ background: m.palette?.[0] ?? '#444' }} />
-                <span class="mp-title"><b>{m.title}</b><small class="dim">{m.artist}</small></span>
-                <StatusChip m={m} progress={lib.progress.get(m.id)} />
+                <span class="mp-title"><b>{m.title}</b><small class="dim">{m.artist}{m.status === 'ready' ? ` · ${Math.round(m.bpm ?? 0)} bpm` : ''}</small></span>
+                {m.status !== 'ready' && <StatusChip m={m} progress={lib.progress.get(m.id)} />}
                 <span class="dim mp-num">{m.durationS ? fmtTime(m.durationS) : ''}</span>
                 <button type="button" class="step" title="Move up" onClick={(e) => { e.stopPropagation(); setQueue((q) => moveItem(q, i, -1)); }}>▲</button>
                 <button type="button" class="step" title="Remove" onClick={(e) => { e.stopPropagation(); removeAt(i); }}>✕</button>
@@ -198,6 +204,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
 function StatusChip({ m, progress }: { m: SongMeta; progress?: { p: number; stage: string } }) {
   if (m.status === 'ready') return <span class="mp-chip">{Math.round(m.bpm ?? 0)} bpm · {m.key}</span>;
   if (m.status === 'error') return <span class="mp-chip bad" title={m.error}>⚠ couldn't read</span>;
+  if (m.status === 'remote') return <span class="mp-chip">{m.genre ? `${m.genre} · ` : ''}↓ {Math.round((m.size ?? 0) / 1e6)} MB</span>;
+  if (progress?.stage === 'downloading') return <span class="mp-chip"><Spinner /> downloading</span>;
   return <span class="mp-chip"><Spinner /> {progress ? `${Math.round(progress.p * 100)}%` : m.status === 'pending' ? 'queued' : '…'}</span>;
 }
 
@@ -230,8 +238,9 @@ function SongPreview({ m, analysis }: { m: SongMeta; analysis: SongAnalysis | nu
         <div>{m.artist}{m.album ? <span class="dim"> · {m.album}</span> : null}</div>
         {m.status === 'ready' && <div class="dim">{fmtTime(m.durationS)} · {Math.round(m.bpm ?? 0)} bpm · key {m.key} · {m.drops ?? 0} drop{m.drops === 1 ? '' : 's'}</div>}
         {pal.length > 0 && <div class="mp-pal">{pal.map((c) => <i style={{ background: c }} />)}</div>}
+        {m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener">{m.credit.text}</a>}
       </div>
-      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">The preview appears once the song is analysed.</div>}
+      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or +) to download and queue it.' : 'The preview appears once the song is analysed.'}</div>}
     </div>
   );
 }

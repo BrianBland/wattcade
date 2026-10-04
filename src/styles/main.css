@@ -313,3 +313,4 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .music-lab .lab-canvas { width: 100%; height: 38vh; border-radius: 14px; display: block; touch-action: none; }
 .lab-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 14px; font: 13px system-ui; }
 .lab-info b { word-break: break-all; }
+.mp-credit { display: block; margin-top: 6px; font: 12px system-ui; color: var(--dim); text-decoration: underline dotted; }

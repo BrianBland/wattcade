@@ -54,7 +54,7 @@ function LabPlayer({ run, onStop }: { run: MediaRun; onStop: () => void }) {
       flash = Math.max(0, flash - dt * 6);
       draw(sim, flash);
       const song = tl.songs.find((s) => sim >= s.t0 && sim < s.t1), sec = tl.sections.find((s) => sim >= s.t0 && sim < s.t1);
-      setInfo({ program: fmtTime(sim), song: song ? `${song.title} — ${song.artist}` : '–', section: sec?.kind ?? '–', bpm: song?.bpm ?? 0,
+      setInfo({ program: fmtTime(sim), song: song ? `${song.title} — ${song.artist}` : '–', ...(song?.credit ? { credit: song.credit.text } : {}), section: sec?.kind ?? '–', bpm: song?.bpm ?? 0,
         syncErrMs: Math.round(sync.errS * 1000), trim: +sync.trim.toFixed(3), ...engine.debug() });
       raf = requestAnimationFrame(frame);
     };

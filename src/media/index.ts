@@ -10,6 +10,7 @@ export { synthQueue, synthTimeline, synthItem, type SynthSpec } from './synth/qu
 export { MediaLibrary, matchesQuery, sha256Hex, DEMO_SONGS, paletteFromImageBlob, type SongMeta, type LibraryOpts } from './library/library';
 export { IdbStorage, MemoryStorage, type MediaStorage } from './library/store';
 export { readTags, type Tags } from './library/tags';
+export { SAMPLE_TRACKS, sampleUrl, samplePage, sampleId, type SampleTrack } from './library/samples';
 export { paletteFromPixels, paletteFromKey } from './library/palette';
 export { MixEngine, type EngineOpts, type EngineState } from './player/engine';
 export { decodeMono } from './player/decode';

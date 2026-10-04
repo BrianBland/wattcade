@@ -182,16 +182,26 @@ export function label(spans: Array<{ t0: number; t1: number }>, intensity: numbe
   });
   const out: MediaSection[] = spans.map((s, i) => ({ t0: round3(s.t0), t1: round3(s.t1), kind: 'verse' as SectionKind, energy: round3(e[i]) }));
   const n = out.length;
-  // drops are the top tier: near the loudest section (a chorus only a little louder than its verse is still a drop)
-  const isDrop = rel.map((r, i) => n > 1 && (r >= 0.85 || e[i] >= hi - 0.08));
+  // drops are the top tier: near the loudest section and clearly above the song's typical level
+  // (a chorus only a little louder than its verse still counts; a song that is loud throughout has few drops)
+  const typical = [...e].sort((a, b) => a - b)[Math.floor(n / 2)];
+  const isDrop = rel.map((r, i) => n > 1 && (r >= 0.85 || e[i] >= hi - 0.08) && (e[i] >= typical + 0.04 || r >= 0.97));
   for (let i = 0; i < n; i++) {
     let k: SectionKind = 'verse';
     if (isDrop[i]) k = 'drop';
     else if (i + 1 < n && isDrop[i + 1] && slope[i] > 0.08) k = 'build';
     else if (rel[i] <= 0.3 && i > 0 && i < n - 1) k = 'break';
-    if (i === 0 && !isDrop[i] && k !== 'build') k = 'intro';
+    if (i === 0 && !isDrop[i]) k = 'intro';
     if (i === n - 1 && n > 1 && !isDrop[i]) k = 'outro';
     out[i].kind = k;
+  }
+  // one long loud stretch is one drop (and one verse is one verse): merge neighbours with the same label
+  for (let i = out.length - 1; i > 0; i--) {
+    const a = out[i - 1], b = out[i];
+    if (a.kind !== b.kind) continue;
+    const da = a.t1 - a.t0, db = b.t1 - b.t0;
+    a.energy = round3((a.energy * da + b.energy * db) / (da + db)); a.t1 = b.t1;
+    out.splice(i, 1);
   }
   return out;
 }

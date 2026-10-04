@@ -4,10 +4,11 @@ import type { SongAnalysis, SongRef } from '../types';
 /** A song in the rider's library (local files) or the built-in demo set. */
 export interface SongMeta extends SongRef {
   addedAt: number;
-  status: 'pending' | 'analyzing' | 'ready' | 'error';
+  /** remote = a sample track not downloaded yet. */
+  status: 'remote' | 'pending' | 'analyzing' | 'ready' | 'error';
   error?: string;
   bpm?: number; key?: string; energy?: number; drops?: number;
-  isrc?: string; fileName?: string; mime?: string; size?: number; hasArt?: boolean;
+  isrc?: string; fileName?: string; mime?: string; size?: number; hasArt?: boolean; genre?: string;
 }
 
 /** Where the library keeps things. IndexedDB in the browser, memory in tests. */

@@ -6,6 +6,7 @@ import type { MixItem } from '../mix/plan';
 import { readTags } from './tags';
 import { paletteFromKey, paletteFromPixels } from './palette';
 import type { MediaStorage, SongMeta } from './store';
+import { SAMPLE_TRACKS, sampleCredit, sampleId, sampleUrl } from './samples';
 
 export type { SongMeta } from './store';
 
@@ -22,6 +23,8 @@ export interface LibraryOpts {
   artPalette?: (blob: Blob) => Promise<string[]>;
   hash?: (buf: ArrayBuffer) => Promise<string>;
   now?: () => number;
+  /** Downloads sample tracks (default: global fetch). */
+  fetch?: (url: string) => Promise<ArrayBuffer>;
 }
 
 /** The built-in demo set: synth songs with exact analyses, always ready (fake mode, testing without files). */
@@ -80,7 +83,7 @@ export class MediaLibrary {
 
   demoSongs(): SongMeta[] { return this.demos.map((d) => ({ ...d })); }
   async localSongs(): Promise<SongMeta[]> {
-    return (await this.o.storage.listMeta()).sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
+    return (await this.o.storage.listMeta()).filter((m) => !m.id.startsWith('sample:')).sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
   }
   async get(id: string): Promise<SongMeta | undefined> {
     return this.demos.find((d) => d.id === id) ?? this.o.storage.getMeta(id);
@@ -91,27 +94,57 @@ export class MediaLibrary {
     const out: SongMeta[] = [];
     for (const f of Array.from(files)) {
       const buf = await f.arrayBuffer();
-      const id = `local:${await (this.o.hash ?? sha256Hex)(buf)}`;
-      const existing = await this.o.storage.getMeta(id);
-      if (existing) { out.push(existing); continue; }
-      const tags = readTags(new Uint8Array(buf), f.name);
-      await this.o.storage.putBlob(`audio:${id}`, new Blob([buf], { type: f.type || mimeOf(f.name) }));
-      if (tags.picture) await this.o.storage.putBlob(`art:${id}`, new Blob([tags.picture.data as BlobPart], { type: tags.picture.mime }));
-      const m: SongMeta = {
-        id, source: 'local', title: tags.title || f.name, artist: tags.artist || 'Unknown artist', album: tags.album, track: tags.track,
-        durationS: 0, addedAt: (this.o.now ?? Date.now)(), status: 'pending', isrc: tags.isrc, fileName: f.name, mime: f.type || mimeOf(f.name),
-        size: f.size, hasArt: !!tags.picture,
-      };
-      await this.o.storage.putMeta(m);
-      out.push(m);
-      this.enqueue(id);
+      out.push(await this.addAudio(buf, f.name, f.type, `local:${await (this.o.hash ?? sha256Hex)(buf)}`, { source: 'local' }));
     }
     this.changed();
     return out;
   }
 
+  private async addAudio(buf: ArrayBuffer, name: string, type: string, id: string, over: Partial<SongMeta>): Promise<SongMeta> {
+    const existing = await this.o.storage.getMeta(id);
+    if (existing) return existing;
+    const tags = readTags(new Uint8Array(buf), name);
+    const mime = type || mimeOf(name);
+    await this.o.storage.putBlob(`audio:${id}`, new Blob([buf], { type: mime }));
+    if (tags.picture) await this.o.storage.putBlob(`art:${id}`, new Blob([tags.picture.data as BlobPart], { type: tags.picture.mime }));
+    const m: SongMeta = {
+      id, source: 'local', title: tags.title || name, artist: tags.artist || 'Unknown artist', album: tags.album, track: tags.track,
+      durationS: 0, addedAt: (this.o.now ?? Date.now)(), status: 'pending', isrc: tags.isrc, fileName: name, mime,
+      size: buf.byteLength, hasArt: !!tags.picture, ...over,
+    };
+    await this.o.storage.putMeta(m);
+    this.enqueue(id);
+    return m;
+  }
+
+  /** The Creative Commons sample set: downloaded ones as stored, the rest as 'remote' placeholders. */
+  async sampleSongs(): Promise<SongMeta[]> {
+    return Promise.all(SAMPLE_TRACKS.map(async (t) => (await this.o.storage.getMeta(sampleId(t))) ?? {
+      id: sampleId(t), source: 'sample', title: t.title, artist: t.artist, album: t.album, genre: t.genre, durationS: 0, addedAt: 0,
+      status: 'remote' as const, size: Math.round(t.sizeMb * 1e6), credit: sampleCredit(t),
+    }));
+  }
+
+  private downloading = new Set<string>();
+  /** Fetch a sample track (CORS-open archive.org download) into the library; it is then analysed like a local file. */
+  async downloadSample(id: string): Promise<SongMeta | undefined> {
+    const t = SAMPLE_TRACKS.find((x) => sampleId(x) === id);
+    if (!t) return undefined;
+    const have = await this.o.storage.getMeta(id);
+    if (have || this.downloading.has(id)) return have;
+    this.downloading.add(id); this.progress.set(id, { p: 0, stage: 'downloading' }); this.changed();
+    try {
+      const get = this.o.fetch ?? (async (url: string) => { const r = await fetch(url); if (!r.ok) throw new Error(`download failed (${r.status})`); return r.arrayBuffer(); });
+      const buf = await get(sampleUrl(t));
+      const m = await this.addAudio(buf, t.file.split('/').pop()!, 'audio/mpeg', id, {
+        source: 'sample', title: t.title, artist: t.artist, album: t.album, genre: t.genre, credit: sampleCredit(t),
+      });
+      return m;
+    } finally { this.downloading.delete(id); this.progress.delete(id); this.changed(); }
+  }
+
   async remove(id: string): Promise<void> {
-    if (!id.startsWith('local:')) return;
+    if (!id.startsWith('local:') && !id.startsWith('sample:')) return;
     this.queue = this.queue.filter((x) => x !== id);
     await Promise.all([this.o.storage.delMeta(id), this.o.storage.delAnalysis(id), this.o.storage.delBlob(`audio:${id}`), this.o.storage.delBlob(`art:${id}`)]);
     const u = this.urls.get(id); if (u) { URL.revokeObjectURL(u); this.urls.delete(id); }

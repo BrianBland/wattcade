@@ -24,6 +24,7 @@ export interface WatershedSnapshot {
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
   phase: Phase;
   view: 'overview' | 'follow';
+  springs: Array<{ x: number; share: number }>;
   boost: { active: boolean; ready: boolean; cd: number; total: number };
   sky: SkyView;
   salmon: SalmonView | null;
@@ -100,6 +101,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let boostT = 0, boostCd = 0, view: 'overview' | 'follow' = 'overview';
   const sky = new Sky(terrain.nx, terrain.ny, terrain.coastY, ctx.rng);
   let raining = 0;
+  /** The springs (largest first). The first is the one the rider steers; the others stay where the rain put them. */
+  let springs: Array<{ x: number; share: number }> = [{ x: NX / 2, share: 1 }];
   const cues: Cue[] = [];
   let cueId = 0;
   const cue = (type: string, data?: Cue['data'], emit = true) => {
@@ -148,8 +151,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         const prevPhase = at.index > 0 ? PLAN[at.index - 1].phase : null;
         cue('blockStart', { name: b.name, style: b.style, phase: b.phase, index: at.index, firstOfPhase: prevPhase !== b.phase });
         if (b.phase === 'river' && prevPhase === 'rain') {
-          sourceX = clamp(sky.springX(), 12, NX - 12);
-          cue('springRises', { x: +sourceX.toFixed(1), rained: Math.round(sky.rained) });
+          springs = sky.springs().map((sp) => ({ x: clamp(sp.x, 12, NX - 12), share: sp.share }));
+          sourceX = springs[0].x;
+          cue('springRises', { x: +sourceX.toFixed(1), rained: Math.round(sky.rained), springs: springs.length });
         }
         if (b.style === 'salmon' && !salmon.active) {
           measure(); salmon.updatePath(water.w);
@@ -210,13 +214,13 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           else if (c.type === 'warn') cue('predatorWarn', { kind: c.kind }, false);
           else cue(c.type === 'leap' ? 'salmonLeap' : 'salmonStuck');
         }
-      } else if (opts.autopilot) sourceX = sky.springX() + 14 * Math.sin((2 * Math.PI * t) / 240);
+      } else if (opts.autopilot) sourceX = springs[0].x + 10 * Math.sin((2 * Math.PI * t) / 240);
       else sourceX -= steer * tun.steerRate() * dt + dart * tun.shiftStep();
       sourceX = clamp(sourceX, 12, NX - 12);
       if (b.phase === 'river' || b.phase === 'salmon') flow = flowing ? tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1) : 0;
 
       const emit: Emit = {
-        flow, area,
+        flow, area, sources: area ? undefined : [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)],
         dropVol,
         speed: tun.speedLow() + (tun.speedHigh() - tun.speedLow()) * cadNorm,
         sourceX, spread: 1 + 3 * cadNorm,
@@ -272,7 +276,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         blocks: PLAN.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
-        phase: at.block.phase, view, boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
+        phase: at.block.phase, view, springs: [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)], boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
         salmon: salmon.active ? salmonView() : null,
         cues,

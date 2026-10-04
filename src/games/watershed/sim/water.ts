@@ -50,6 +50,8 @@ export interface Emit {
   erodeMul: number;   // multiplier on erosion (cadence-in-band bonus)
   /** Rain: spawn parcels at rest anywhere in this disc (cells) instead of at the spring. */
   area?: { x: number; y: number; r: number };
+  /** Several springs: each parcel picks one by share (sourceX is ignored when present). */
+  sources?: Array<{ x: number; share: number }>;
 }
 
 export const REF_VOL = 0.35;
@@ -110,7 +112,13 @@ export class Water {
         this.y[i] = Math.min(this.t.ny - 2, Math.max(1, e.area.y + Math.sin(a) * d));
         this.vx[i] = 0; this.vy[i] = (r3 - 0.5) * 0.5;
       } else {
-        this.x[i] = Math.min(nx - 2, Math.max(1, e.sourceX + (r1 - 0.5) * 2 * e.spread));
+        let sx = e.sourceX;
+        if (e.sources && e.sources.length > 1) {
+          let pick = this.rng(), k = 0;
+          while (k < e.sources.length - 1 && pick > e.sources[k].share) { pick -= e.sources[k].share; k++; }
+          sx = e.sources[k].x;
+        } else if (e.sources?.length) sx = e.sources[0].x;
+        this.x[i] = Math.min(nx - 2, Math.max(1, sx + (r1 - 0.5) * 2 * e.spread));
         this.y[i] = 1 + r2 * 2;
         this.vx[i] = (r3 - 0.5) * e.speed * 0.6;
         this.vy[i] = e.speed;

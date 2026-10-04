@@ -46,7 +46,7 @@ export class WatershedRenderer implements GameRenderer {
   private camera = new THREE.PerspectiveCamera(40, 4 / 3, 1, 1600);
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private outer?: OuterLand; private landTick = 0;
-  private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private springRing?: THREE.Mesh;
+  private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private extraSprings: THREE.Group[] = []; private springRing?: THREE.Mesh;
   private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
@@ -128,6 +128,15 @@ export class WatershedRenderer implements GameRenderer {
     this.springRing = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.12, 6, 32), new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.6 }));
     this.springRing.rotation.x = -Math.PI / 2; this.spring.add(this.springRing);
 
+    // secondary springs: a smaller ring of stones each (no pillar; the rider steers the main one)
+    for (let k = 0; k < 2; k++) {
+      const g = new THREE.Group();
+      for (let a = 0; a < 6; a++) {
+        const m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7), stone);
+        m.position.set(Math.cos((a / 6) * Math.PI * 2) * 2, 0.25, Math.sin((a / 6) * Math.PI * 2) * 2); m.castShadow = true; g.add(m);
+      }
+      g.visible = false; this.extraSprings.push(g); this.scene.add(g);
+    }
     this.forest = new Forest(s, this.wx, this.wz);
     this.bank = new Riverbank(s, this.wx, this.wz);
     this.skyLayer = new SkyLayer(this.wx, this.wz, this.sun.position);
@@ -384,6 +393,11 @@ export class WatershedRenderer implements GameRenderer {
     const ph = (t * 0.8) % 1;
     this.springRing!.scale.setScalar(1 + 0.25 * ph); (this.springRing!.material as THREE.MeshBasicMaterial).opacity = 0.6 * (1 - ph);
     this.spring.visible = !s.salmon && (s.phase === 'river');
+    this.extraSprings.forEach((g, k) => {
+      const sp = s.springs[k + 1];
+      g.visible = !!sp && this.spring.visible;
+      if (sp) g.position.set(this.wx(2), this.terrainView!.heightAt(sp.x, 2), this.wz(sp.x));
+    });
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);

@@ -37,9 +37,12 @@ export class Sky {
   sun: SunSpot[] = [];
   puffs: Puff[] = [];
   private rainX = 0; private nextPuff = 1; private puffId = 0; private t = 0;
+  /** Rain received per column across the valley (for placing springs). */
+  readonly rainHist: Float32Array;
 
   constructor(private nx: number, private ny: number, private coastY: number, private rng: () => number) {
     this.x = nx / 2; this.y = coastY + 8;
+    this.rainHist = new Float32Array(nx);
     for (let k = 0; k < 3; k++) this.sun.push({ x: nx / 2, r: 5 + this.rng() * 2, phase: this.rng() * Math.PI * 2, speed: 0.05 + this.rng() * 0.06 });
   }
 
@@ -49,6 +52,27 @@ export class Sky {
   get radius(): number { return Math.min(14, 4 + Math.sqrt(Math.max(0, this.size)) * 0.9); }
   /** Rain multiplier from cloud size. */
   rainFactor(p: SkyParams): number { return Math.min(1.5, 0.5 + 0.5 * this.size / p.refSize); }
+  /**
+   * Springs rise where it rained most: up to three peaks of the (smoothed) rain-per-column histogram, at least 12 cells
+   * apart and at least 25 % of the biggest; shares are proportional to the rain under each. Largest first.
+   */
+  springs(): Array<{ x: number; share: number }> {
+    const n = this.nx, sm = new Float32Array(n);
+    for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let d = -4; d <= 4; d++) { const k = i + d; if (k >= 0 && k < n) { a += this.rainHist[k]; c++; } } sm[i] = a / c; }
+    const max = Math.max(...sm);
+    if (max <= 0) return [{ x: n / 2, share: 1 }];
+    const peaks: Array<{ x: number; v: number }> = [];
+    const order = Array.from(sm.keys()).sort((a, b) => sm[b] - sm[a]);
+    for (const i of order) {
+      if (sm[i] < max * 0.25 || peaks.length >= 3) break;
+      if (i < 12 || i > n - 13) continue;
+      if (peaks.every((p) => Math.abs(p.x - i) >= 12)) peaks.push({ x: i, v: sm[i] });
+    }
+    if (!peaks.length) peaks.push({ x: Math.round(this.springX()), v: 1 });
+    const tot = peaks.reduce((a, p) => a + p.v, 0);
+    return peaks.map((p) => ({ x: p.x, share: p.v / tot }));
+  }
+
   /** Where the spring should rise: the rain-weighted mean x (centre if it never rained). */
   springX(): number { return this.rained > 0 ? this.rainX / this.rained : this.nx / 2; }
 
@@ -101,6 +125,8 @@ export class Sky {
     this.steer(dt, inp.steer, inp.nudge, inp.autopilot ? this.nx / 2 + 14 * Math.sin(this.t / 20) : null, p);
     const amt = inp.flow * dt;
     this.rained += amt; this.rainX += amt * this.x;
+    const r = Math.max(3, this.radius * 0.7);
+    for (let i = Math.max(0, Math.floor(this.x - r)); i <= Math.min(this.nx - 1, Math.ceil(this.x + r)); i++) this.rainHist[i] += amt * Math.max(0, 1 - Math.abs(i - this.x) / r);
     this.size = Math.max(p.refSize * 0.3, this.size - amt * 0.15);
     return { x: this.x, y: this.y, r: Math.max(3, this.radius * 0.7) };
   }

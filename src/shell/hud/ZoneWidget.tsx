@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import type { BikeState, GameHud } from '../../contracts';
 import { type Bar, type ZonePos, ZONE_COLORS, cadenceRange, cadenceStatus, zoneFloorWatts } from './zoneMath';
 
@@ -8,8 +9,8 @@ const labelAnchor = (t: { min: number; max: number }) => (t.min <= 2
 
 export interface ZoneView { pos: ZonePos; source: 'power' | 'hr' }
 
-export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake }: {
-  ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
+export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, lead, trail }: {
+  lead?: ComponentChildren; trail?: ComponentChildren; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
 }) {
   const maxP = Math.max(1.6 * ftp, 100, ...bars.map((b) => b.power));
   const hrs = bars.map((b) => b.hr).filter((h): h is number => h != null);
@@ -22,6 +23,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake 
   return (
     <div class="zw">
       <div class="zw-nums">
+        {lead}
         <div><b>{Math.round(bike.power3s)}</b><small>W</small></div>
         <div><b>{Math.round(bike.ftpFraction * 100)}</b><small>%FTP</small></div>
         <div><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b><small>HR</small></div>
@@ -29,7 +31,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake 
           <b>{Math.round(bike.cadence3s)}</b><small>rpm</small>
           {cadenceTarget && <em title={cadenceTarget.label}>{cad === 'low' ? '▲' : cad === 'high' ? '▼' : '✓'} {cadenceRange(cadenceTarget)}</em>}
         </div>
-        <div class="zw-src dim">{view.source === 'hr' ? 'zones: HR' : 'zones: power'}</div>
+        {trail}
       </div>
       {(label || cadenceTarget?.label) && (
         <div class="zw-labels">
@@ -37,7 +39,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake 
           {cadenceTarget?.label && <div class={`zw-label zw-cad-label${cad ? ` ${cad}` : ''}`}>{cadenceTarget.label}</div>}
         </div>
       )}
-      <div class="zw-bar">
+      <div class="zw-bar" title={view.source === 'hr' ? 'Zones from heart rate' : 'Zones from power'}>
         {ZONE_COLORS.map((c, i) => <i style={{ background: c }}>Z{i + 1}</i>)}
         {target && <u class="zw-target" style={{ left: `${(target.min - 1) * 20}%`, width: `${(target.max - target.min + 1) * 20}%` }}></u>}
         <s class="zw-marker" style={{ left: `${view.pos.pos * 100}%` }} />

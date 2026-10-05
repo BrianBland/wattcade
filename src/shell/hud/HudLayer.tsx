@@ -58,17 +58,17 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
       {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
       <div class="hud-center">
-        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} />
-        <div class="hud-row">
-          <button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>
-          <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
-          {gears && (
-            <div class="gearbox" key={pulse}>
-              <div class="pc-btns">{GEAR_KEYS.map((b) => <PadKey b={b} held={f.held} />)}</div>
-              <small>Gear {f.bike.gear}</small>
-            </div>
-          )}
-        </div>
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars}
+          lead={<button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>}
+          trail={<>
+            <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
+            {gears && (
+              <div class="gearbox" key={pulse}>
+                <div class="pc-btns">{GEAR_KEYS.map((b) => <PadKey b={b} held={f.held} />)}</div>
+                <small>Gear {f.bike.gear}</small>
+              </div>
+            )}
+          </>} />
       </div>
       {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} />}
     </div>

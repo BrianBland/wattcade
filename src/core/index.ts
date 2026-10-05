@@ -9,6 +9,6 @@ export { FakeBike, FakeTrainer, gearRatio } from './fake';
 export { SCRIPTS, type Script } from './scripts';
 export { SessionRecorder } from './recorder';
 export { type InputSource, TimelineInput, NullInput, type TimelineEvent } from './inputs';
-export { createGameSession, type GameSession, type SessionOpts } from './session';
-export { runHeadless, type HeadlessOpts, type HeadlessResult } from './headless';
+export { createGameSession, type GameSession, type SessionOpts, type SessionMedia } from './session';
+export { runHeadless, resolveMedia, type HeadlessOpts, type HeadlessResult, type MediaSpec } from './headless';
 export { testProfile } from './testProfile';

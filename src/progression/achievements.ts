@@ -60,5 +60,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'ws_breadbasket', name: 'Breadbasket', desc: 'Bring in 20 harvests in one ride', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && Number(r.gameSummary.harvests ?? 0) >= 20 },
   { id: 'ws_meteor', name: 'Extinction Event', desc: 'Witness a meteor strike in Watershed', bonusXp: 60, check: (_p, r) => hasEvent(r, 'eventHit', (d) => d.kind === 'meteor') },
   { id: 'ws_act_of_nature', name: 'Act of Nature', desc: 'Ride out two geological events in one Watershed ride', bonusXp: 40, check: (_p, r) => r.gameId === 'watershed' && r.events.filter((e) => e.type === 'eventHit').length >= 2 },
+  { id: 'wsurf_first', name: 'First Wave', desc: 'Ride a Wattsurf set to the end', bonusXp: 40, check: (_p, r) => r.gameId === 'wattsurf' && hasEvent(r, 'setDone') },
+  { id: 'wsurf_clean', name: 'Clean Zone', desc: 'Clear a Wattsurf zone without missing a block or touching a grey', bonusXp: 40, check: (_p, r) => r.gameId === 'wattsurf' && Number(r.gameSummary.cleanZones ?? 0) >= 1 },
+  { id: 'wsurf_overdrive', name: 'Overdrive', desc: 'Hold every drop of a Wattsurf set (at least two)', bonusXp: 60, check: (_p, r) => r.gameId === 'wattsurf' && Number(r.gameSummary.drops ?? 0) >= 2 && Number(r.gameSummary.dropsHeld ?? 0) === Number(r.gameSummary.drops) },
+  { id: 'wsurf_full_set', name: 'Full Set', desc: 'Ride a 5-song Wattsurf queue to the end', bonusXp: 80, check: (_p, r) => r.gameId === 'wattsurf' && hasEvent(r, 'setDone') && Number(r.gameSummary.songsDone ?? 0) >= 5 },
   { id: 'kilojoule_1000', name: 'Kilojoule Club', desc: '1000 kJ lifetime', bonusXp: 100, check: (p) => p.lifetime.kj >= 1000 },
 ];

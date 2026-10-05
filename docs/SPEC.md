@@ -288,7 +288,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 Shared infrastructure for music games and the Drive-In: sources, analysis, a two-deck player with a queue, and one **program timeline** that games read. Source-agnostic: each source declares what it can do and games declare what they need.
 
 - **Sources and capability flags** (`MediaSource`): `search(q)`, `browse?()`, `prepare(ref)`, `player()`. Each source has `caps: { pcm, video, pixels, rate: 'free'|'steps'|'none', pitchShift, mix }`.
-  - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs go in OPFS, metadata and analysis in IndexedDB. All caps.
+  - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs, metadata and analyses go in IndexedDB (separate databases, so listing never loads audio). All caps.
   - `SynthSource` (phase 1): seeded procedural songs (`edm`, `rock`, `ambient`, `album` styles), with known ground truth (beats, sections). Used by fake mode, headless scenarios and analysis tests.
   - `YouTubeSource` (phase 3): Data API v3 search plus the IFrame player. Caps `{ video, rate: 'steps' }` only. Used by the Drive-In (§6.6), never for analysis.
   - `JamendoSource` (phase 3, §5.7): Creative Commons catalogue search and streams. All caps except `pixels`/`video`; no offline storage.
@@ -302,15 +302,15 @@ Shared infrastructure for music games and the Drive-In: sources, analysis, a two
   - Output `SongAnalysis` (plain JSON, about 50–150 KB): `{ v, durationS, bpm, beats[], downbeats[], phrases[], onsets[], intensity[] @10Hz, bands[3][] @10Hz, sections[], key, palette, confidence: 'full' }`.
   - Quality aids: every analysis stage is unit-tested against `SynthSource` ground truth (tempo within ±1 bpm, beat F-measure ≥ 0.9, section boundaries within 1 bar). A **beat-grid nudge** in the preview (shift ± 10 ms, halve/double tempo) is stored per song.
   - Libraries considered (2026-10): Essentia.js is the most complete but AGPL-3.0, so it's excluded. Meyda (MIT, features only), @audio/beat and MMLL (MIT, beat tracking) and fft.js (MIT) aren't needed. Any of them may be added as a *dev* dependency to cross-check our results in tests.
-- **Player (two decks, DJ-style):** each deck is an `<audio>` element → `MediaElementAudioSourceNode` → 3-band EQ (low shelf / peaking / high shelf) → gain → master → destination. Tempo matching uses `playbackRate` with `preservesPitch` (native time-stretch, no GPL stretchers), limited to ±8 %.
+- **Player (DJ-style decks):** songs are decoded to AudioBuffers (current + next only) and played by AudioBufferSourceNodes → 3-band EQ (low shelf / peaking / high shelf) → gain → master, all scheduled sample-accurately on the AudioContext clock from the plan. Tempo matching ramps `playbackRate` (pitch follows tempo like a turntable; no key lock), limited to ±8 %. Not `<audio>` elements: Safari is choppy at rate ≠ 1 when a media element is routed through Web Audio (WebKit bug 240405), and media-element timing is too loose for beat matching.
   - **Queue modes**, chosen in the picker and remembered per profile:
-    - **Continuous:** album order, gapless. The next deck is started at the outgoing deck's exact end on the audio clock; tags give encoder delay/padding where available.
+    - **Continuous:** album order, gapless: the next song is scheduled at the sample the previous one ends.
     - **Automix** (default): mix out at a phrase boundary in the last 25–90 s (prefer the outro / lowest-energy phrase); mix in at the incoming song's first phrase after its intro start. Beats are aligned and the incoming tempo is ramped to match, then eased back to native over 16 bars. A bass swap (EQ) runs over 8–16 bars. If the tempos differ by more than 8 %, or a song has no confident beat grid, it falls back to an echo-out plus quick crossfade. Optional "smart order" suggests the next song by Camelot compatibility and tempo.
     - **Crossfade:** equal-power, N s (default 6), no beat sync.
   - `planMix(analyses[], mode, opts) → MixPlan` is **pure** (transition times, rate ramps, EQ automation) and drives the decks. Tested headlessly.
 - **Program timeline:** `buildTimeline(plan, analyses) → MediaTimeline` maps every song's beats, onsets, intensity, bands and sections onto one program clock (applying rate ramps and overlaps; in a transition the incoming song's events win after the bass swap). It adds `songs[]: { t0, t1, title, artist, bpm, key, palette }` and `confidence: 'full' | 'metadata'`. **Games only ever see the timeline.**
 - **Clock:** the program position is the master clock. While a media session runs, the shell nudges the loop's `timeScale` within ±2 % (a phase-locked loop on `deck.currentTime` versus sim time) so the sim tracks the audio. A stall (buffering) holds the sim. Pause pauses the decks. A per-device **output latency offset** (tap-along calibration in Settings) is added. Headless runs use the sim clock directly, so sims stay deterministic.
-- **Picker and queue UI** (`src/media/ui/`, Preact, shell UI kit, D-pad navigable; opened by the shell for any game with `requires.media`):
+- **Picker and queue UI** (`src/shell/media/`, Preact, shell UI kit, D-pad navigable; opened by the shell for any game with `requires.media`). `/media-lab.html` (Music Lab) runs the picker and player without a game, with a sync readout and tap-along latency calibration:
   - Library browse/search; song rows show duration, bpm, key and a difficulty/effort chip once analysed (analysis runs in the background as songs are added, with a progress bar).
   - **Preview pane:** cover and palette, a spectrogram/intensity strip with section colours, a simplified track side-profile from the game (`GameModule.mediaPreview?`), and an effort estimate (time per zone, kJ, estimated TSS at the rider's FTP). A 20 s audio preview starts at the most intense section.
   - **Queue panel:** up next, reorder, remove, add a whole album or "all by artist", the mode switch (Continuous / Automix / Crossfade), total length, and a whole-queue intensity strip.
@@ -494,7 +494,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - Speed `v(t) = vBase · (1 + zoneStep·zone) · (0.8 + 0.4·intensity)`, smoothed. **Each section is a zone:** zone count +1, palette shift, speed step (Wipeout Zone).
   - Slope by section: `intro/verse` gentle rolling from intensity; `build` a rising climb (steeper with energy rise); `drop` a crest then a long dive; `break` flat; `outro` easing down. Curvature (gentle S-bends) comes from the mid-band trend. Lanes: 3 (Casual/Pro), 5 (Elite).
   - **Blocks** from onsets: kept by strength above a difficulty threshold, with a minimum spacing (Casual 0.35 s, Pro 0.22 s, Elite 0.14 s). Lane comes from band plus a seeded walk (lows centre, highs outer). Colour from strength × intensity on a 5-step ramp. **Greys** are placed in dense passages (Mono), more at higher difficulty. All seeded (`ctx.rng`).
-- **Modes:**
+- **Modes** (v1 ships Mono; Classic is roadmap phase 5):
   - **Mono:** collect colours (points scale with colour), dodge greys (shield hit −20 %, multiplier reset). Clean-section bonus.
   - **Classic:** collected blocks drop into a 3-column × 7-row grid; 3+ same-colour connected clusters clear for points (bigger clusters multiply). A full column is an **overfill**: the column dumps, a big penalty, and the craft flickers. No greys. **A = Shift** (recolour the next block to the colour you need). Charges are earned by holding power targets.
 - **Effort (sim mode, not ERG):** grade under the wheels = `trackSlope × hillScale` (tunable, default max 7 %, × difficulty), sent as a `track` ResistanceEffect. Virtual gears are on the shifters (`hud.gears: true`) and cadence is free.
@@ -505,7 +505,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 - **Renderer** (`render/`, Three.js, Wipeout HD Zone look; no outrun palette):
   - A black void. The track is a flat ribbon with bright emissive edge rails, lane lines and chevron decals. The world is **two-tone** per zone (base hue plus accent, seeded from the song palette), and the hue shifts on the section's first downbeat.
   - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft with an engine glow.
-  - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts in a self-hosted OFL geometric font. Song title card at each song start (with the cover palette).
+  - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts (system condensed font stack for now; a self-hosted OFL font is a later polish). Song title card at each song start (with the cover palette).
   - **Reduced flashing** (profile setting): beat pulses limited to ≤ 3 full-screen flashes/s, hue jumps become 1-beat crossfades.
   - HUD insets honoured (`render/layout.ts` tested: craft, Classic grid and callouts above `H − insets.bottom`). The game's own sfx are quiet and ducked under the music.
 - **Picker preview** (`mediaPreview`): track side profile (climbs/dives) coloured by block density, sprint markers on drops, and stars from `rateSong(timeline, mode, difficulty, ftp)` (pure: block rate, grey rate, time in Z4+, estimated TSS).
@@ -564,7 +564,7 @@ Keep your own context small: you coordinate; subagents do the building. Use `mod
 
 ## §10 Music roadmap (one PR per phase)
 
-1. **Media core:** analysis worker plus synth ground-truth tests, LocalSource (OPFS, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
+1. **Media core:** analysis worker plus synth ground-truth tests, local library (IndexedDB, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
 2. **Wattsurf v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
 3. **Jamendo catalogue** (§5.7): search, stream, analyse, attribution.
 4. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.

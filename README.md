@@ -91,9 +91,13 @@ src/core/               BikeStateStore, ResistanceMixer (virtual gears, difficul
                         GameLoop (fixed 1/30 s), FakeBike/FakeTrainer, scripts, SessionRecorder,
                         TuningRegistry, createGameSession, runHeadless
 src/progression/        profiles (IndexedDB), XP/levels, achievements, sessions
+src/media/              music core: song analysis (beats, sections, key), library (IndexedDB), mix planner
+                        (continuous / automix / crossfade), program timeline, two-deck player, synth demo songs
 src/shell/, src/debug/  Preact screens + debug overlay
 src/games/<id>/         index.ts, sim/ (pure), render/ (DOM/Canvas/Three), scenarios.ts, test/
 ```
+
+Music games (`requires.media`) open the song picker first and read `ctx.media.timeline` (beats, onsets, sections, intensity on one program clock); the shell plays the mix and keeps the sim locked to it. `/media-lab.html` (Music Lab) tries the library and player on a device without a game, including tap-along latency calibration.
 
 Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set **resistance effects** (`ctx.resistance.set({ id, mode, gradePct | watts | ftpFraction | levelPct, ttl? })`). The core mixer combines the effects, applies difficulty, virtual gears and safety clamps, rate-limits the result, and drives the trainer.
 

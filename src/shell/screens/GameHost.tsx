@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, Profile } from '../../contracts';
-import type { SessionLike } from '../types';
+import type { MediaRun, SessionLike } from '../types';
+import { ProgramSync } from '../../media/clock';
 import { startTarget } from '../countGate';
-import { debugActions, getFake, activeSession, input, onSystem, previewAward, startSession } from '../services';
+import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
 import { loadFlag, saveFlag } from '../../debug/flag';
@@ -10,7 +11,7 @@ import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { ResultBanner } from '../game/ResultBanner';
 import { toast } from '../components/Toasts';
-import { play, unlockAudio } from '../../audio/sfx';
+import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
 /** Intro waits this long before counting down on its own (the rider may never touch the controller). */
 export const INTRO_AUTO_S = 8;
@@ -27,9 +28,11 @@ const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
  * Runs a game: intro card (controls, target zone) -> 3-2-1-GO with the trainer held neutral, then resistance ramps in ->
  * play (pause menu, mid-ride toasts) -> a short result banner -> onQuit (summary).
  */
-export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }: {
-  game: GameModule; profile: Profile; onQuit: () => void; onAbandon: () => void; onRestart: () => void; onSave: (d: unknown) => void;
+export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, onSave }: {
+  game: GameModule; profile: Profile; media?: MediaRun; onQuit: () => void; onAbandon: () => void; onRestart: () => void; onSave: (d: unknown) => void;
 }) {
+  // music games: one player for the queue; the sim is locked to it during play (ProgramSync), the session idles while it buffers
+  const music = useRef<{ engine: ReturnType<typeof mediaEngine>; sync: ProgramSync } | null>(null);
   const mount = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null); // sized by --hud-h: the band the HUD covers
   const [paused, setPaused] = useState(false);
@@ -55,7 +58,7 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     if (phaseRef.current !== 'play') return;
     pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
-    if (p) { s.pause(); debugActions.panic(true); } else { debugActions.panic(false); s.resume(); }
+    if (p) { s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
   /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
   const startCount = () => {
@@ -68,6 +71,7 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
     pausedRef.current = false; setPaused(false); setHelp(false);
     debugActions.panic(true);
+    if (music.current) { music.current.engine.setVolume(0); setTimeout(() => music.current?.engine.stop(), 1500); }
     let summary: Record<string, number | string> = {};
     try { summary = s?.sim.summary?.() ?? {}; } catch { /* best effort */ }
     const pv = previewAward(profile);
@@ -97,8 +101,13 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     };
     (async () => {
       try {
-        const session = startSession(game, profile, onSave);
+        const session = startSession(game, profile, onSave, media ? { timeline: media.timeline } : undefined);
         sessionRef.current = session; setSession(session);
+        if (media && session.media) {
+          const engine = mediaEngine(); engine.load(media.plan); engine.setVolume(1); engine.preload();
+          music.current = { engine, sync: new ProgramSync() };
+          duckAmbient('music', true); // the game's own ambience would fight the music
+        }
         debugActions.panic(true); // trainer neutral through the intro and countdown
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
@@ -131,14 +140,22 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
             const step = Math.floor(T.count / COUNT_STEP_S); // 0,1,2 -> 3,2,1 ; 3 -> GO
             const shown = Math.max(0, 3 - step);
             if (shown !== T.shown) { T.shown = shown; setCount(shown); play(shown === 0 ? 'go' : 'count'); }
-            if (step >= 3) { // GO: release the trainer and ease the game's resistance in
+            if (step >= 3) { // GO: release the trainer and ease the game's resistance in (and start the music)
               debugActions.panic(false); session.mixer?.rampIn();
+              void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
               setPhase('play');
               setTimeout(() => setCount(null), 700);
             }
           } else if (ph === 'play') {
             if (!pausedRef.current) {
-              session.frame(dt); T.playS += dt;
+              const m = music.current;
+              if (m && session.media) {
+                const trim = m.sync.update(m.engine.positionS(), session.media.positionS(), m.engine.playing());
+                session.media.setTrim(trim);
+                if (trim > 0) session.frame(dt); else session.idle(dt); // hold the sim (not the bike) while the music buffers
+                if ((T.playS % 0.5) < dt) { for (const [k, v] of Object.entries(m.engine.debug())) session.ctx.debug?.(`music.${k}`, v); session.ctx.debug?.('music.err', +m.sync.errS.toFixed(3)); }
+              } else session.frame(dt);
+              T.playS += dt;
               if ((T.playS >= seen.nextCheck)) { seen.nextCheck = T.playS + 10; celebrate(); }
               if (session.sim.isOver()) toEnding(true);
             }
@@ -156,6 +173,7 @@ export function GameHost({ game, profile, onQuit, onAbandon, onRestart, onSave }
     return () => {
       disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
+      music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);
 

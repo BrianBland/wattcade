@@ -211,7 +211,8 @@ export class WarmupRenderer implements GameRenderer {
     if (now - this.ambientAt > 0.5) {
       this.ambientAt = now;
       const L = mix < 0.5 ? cur : nxt;
-      setAmbient('warmup', L.ambient ? L.ambient.vol * Math.min(1, 0.4 + s.v / 8) : 0, L.ambient?.freq ?? 500, L.ambient?.q ?? 0.7);
+      // fades out when the rider stops, so a parked screensaver is quiet
+      setAmbient('warmup', L.ambient ? L.ambient.vol * Math.min(1, s.v / 6) : 0, L.ambient?.freq ?? 500, L.ambient?.q ?? 0.7);
     }
 
     // ---- blit + full-res overlay ----

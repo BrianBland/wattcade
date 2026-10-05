@@ -1,4 +1,4 @@
-import type { Button, GameContext, GameEvent, GameModule, GameSim, Profile, SessionRecord, TrainerCommand } from '../contracts';
+import type { Button, GameContext, GameEvent, GameModule, GameSim, MediaTimeline, Profile, SessionRecord, TrainerCommand } from '../contracts';
 import { FIXED_DT } from '../contracts';
 import { BikeStateStore } from './bikeState';
 import { SimClock } from './clock';
@@ -16,6 +16,17 @@ export interface SessionOpts {
   fake?: { script?: string } | false; seed?: number; simOpts?: Record<string, unknown>;
   onEmit?: (e: { t: number } & GameEvent) => void; onSave?: (data: unknown) => void;
   tuningRegistry?: TuningRegistry;   // optional: share/inspect the registry (e.g. headless overrides)
+  /** Music for games with requires.media: the program timeline (ctx.media). */
+  media?: { timeline: MediaTimeline };
+}
+
+/** Program clock for media sessions. It runs with the sim once the game is past any pre-game menu. */
+export interface SessionMedia {
+  timeline: MediaTimeline;
+  positionS(): number;
+  started(): boolean;
+  /** Lock the loop to the music: the effective time scale becomes `trim` (from media/clock ProgramSync); null releases it. */
+  setTrim(trim: number | null): void;
 }
 
 export interface GameSession {
@@ -27,6 +38,7 @@ export interface GameSession {
    *  Returns every button pressed during the steps taken. */
   idle(realDtS: number): ReadonlySet<Button>;
   finish(): SessionRecord; debugValues(): Record<string, number | string | boolean>;
+  media?: SessionMedia;
 }
 
 export function createGameSession(o: SessionOpts): GameSession {
@@ -55,6 +67,7 @@ export function createGameSession(o: SessionOpts): GameSession {
   }
 
   let saved: unknown = profile.gameData[o.game.id];
+  let mediaPos = 0, mediaStarted = false, mediaTrim: number | null = null;
   const ctx: GameContext = {
     clock, profile,
     bike: () => bikeStore.get(),
@@ -66,6 +79,7 @@ export function createGameSession(o: SessionOpts): GameSession {
     debug: (k, v) => { dbg[k] = v; },
     save: (d) => { saved = d; o.onSave?.(d); },
     load: <T,>() => saved as T | undefined,
+    ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted } } : {}),
   };
   const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
 
@@ -79,6 +93,10 @@ export function createGameSession(o: SessionOpts): GameSession {
     bikeStore.tick(dt, profile);
     mixer.tick(dt, o.input.state());
     bikeStore.setTrainerMode(mixer.command?.mode ?? 'none');
+    if (o.media) {
+      if (!mediaStarted && !sim.inMenu?.()) mediaStarted = true;
+      if (mediaStarted) mediaPos += dt;
+    }
     sim.update(dt);
     recorder.tick(dt, bikeStore.get(), mixer.command);
   };
@@ -99,7 +117,7 @@ export function createGameSession(o: SessionOpts): GameSession {
     return pressed;
   };
 
-  const loop = new GameLoop(clock, stepOnce, () => (dataHub.hasRealDevices() ? 1 : clock.timeScale));
+  const loop = new GameLoop(clock, stepOnce, () => (mediaTrim !== null ? mediaTrim : dataHub.hasRealDevices() ? 1 : clock.timeScale));
 
   return {
     ctx, sim, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
@@ -113,8 +131,9 @@ export function createGameSession(o: SessionOpts): GameSession {
       sim.dispose?.();
       return recorder.finish({ profileId: profile.id, gameId: o.game.id, startedAt, gameSummary: summary });
     },
+    ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, setTrim: (k: number | null) => { mediaTrim = k; } } } : {}),
     debugValues: () => ({
-      ...dbg, 'core.t': +clock.now().toFixed(2), 'core.mode': bikeStore.get().trainerMode,
+      ...dbg, ...(o.media ? { 'media.pos': +mediaPos.toFixed(2), 'media.trim': mediaTrim ?? 'free' } : {}), 'core.t': +clock.now().toFixed(2), 'core.mode': bikeStore.get().trainerMode,
       'core.gear': mixer.gear, 'core.difficulty': mixer.getDifficulty(), 'core.over': sim.isOver(),
     }),
   };

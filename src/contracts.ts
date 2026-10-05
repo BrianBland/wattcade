@@ -122,6 +122,8 @@ export interface GameContext {
   debug(key: string, value: number | string | boolean): void; // shown in debug overlay "game" section
   save(data: unknown): void;                       // persist into profile.gameData[gameId]
   load<T>(): T | undefined;
+  /** Present when the game was started with music (GameModule.requires.media). */
+  media?: MediaContext;
 }
 /** What a control does right now, for the shell's on-screen controller legend. */
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
@@ -167,13 +169,55 @@ export interface GameModule {
   id: string; title: string; blurb: string;
   tags: Array<'zone2' | 'sprint' | 'intervals' | 'erg'>;
   /** Optional: trainer features the game can't run without. The arcade blocks it when a connected trainer lacks them (the fake bike has all). */
-  requires?: { erg?: boolean };
+  requires?: { erg?: boolean; media?: MediaNeed[] };
   createSim(ctx: GameContext, opts?: { seed?: number }): GameSim;
   loadRenderer(): Promise<GameRenderer>;           // must use dynamic import()
   /** Optional: one short line for the arcade card from this rider's save (profile.gameData[id]), e.g. "Best floor 7". Pure. */
   progressLine?(save: unknown): string | null;
   /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */
   drawCard?(g: CanvasRenderingContext2D, w: number, h: number, t: number, color: string): void;
+  /** Optional: a small preview of what this game makes of a queue (track profile, effort), drawn in the media picker. Pure Canvas 2D. */
+  mediaPreview?(g: CanvasRenderingContext2D, w: number, h: number, timeline: MediaTimeline, profile: Readonly<Profile>): void;
+}
+
+// ===== Media (music/video; see SPEC §5.6) =====
+/** What a media source can do. Games list what they need in GameModule.requires.media. */
+export interface MediaCaps {
+  pcm: boolean;                     // decoded audio available → full analysis
+  video: boolean;                   // has a picture
+  pixels: boolean;                  // frames usable as a texture
+  rate: 'free' | 'steps' | 'none';  // playback-rate control
+  pitchShift: boolean;              // a rate change can bend pitch
+  mix: boolean;                     // two decks can overlap (automix/crossfade)
+}
+export type MediaNeed = 'pcm' | 'video' | 'pixels' | 'rate' | 'pitchShift' | 'mix';
+export type SectionKind = 'intro' | 'verse' | 'build' | 'drop' | 'break' | 'outro';
+export interface MediaSection { t0: Seconds; t1: Seconds; kind: SectionKind; energy: number /* 0..1 within the song */ }
+/** A detected hit. band 0 = low (< 150 Hz), 1 = mid, 2 = high (> 2 kHz); s = strength 0..1. */
+export interface MediaOnset { t: Seconds; band: 0 | 1 | 2; s: number }
+export interface MediaSongSpan {
+  t0: Seconds; t1: Seconds;         // program time this song owns
+  id: string; title: string; artist: string; bpm: number; key: string; palette: string[];
+  credit?: { text: string; url: string };  // attribution (e.g. Creative Commons catalogue)
+}
+/**
+ * One clock for a whole queue (songs mixed or back to back). Everything is in program seconds.
+ * Curves are sampled at `hz` (10) and normalised 0..1. Games read only this.
+ */
+export interface MediaTimeline {
+  durationS: Seconds; hz: number;
+  intensity: number[];              // overall energy
+  bands: [number[], number[], number[]]; // low / mid / high energy
+  beats: Seconds[]; downbeats: Seconds[]; phrases: Seconds[];
+  onsets: MediaOnset[]; sections: MediaSection[]; songs: MediaSongSpan[];
+  confidence: 'full' | 'metadata';
+}
+export interface MediaContext {
+  timeline: MediaTimeline;
+  /** Program position. Advances with the sim clock once the music is running (not during a pre-game menu). */
+  positionS(): Seconds;
+  /** True once the program has started (after any pre-game menu). */
+  started(): boolean;
 }
 
 // ===== Sessions =====

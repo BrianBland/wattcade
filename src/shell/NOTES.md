@@ -26,8 +26,11 @@ CONTRACT-REQUEST: none.
   Pause: difficulty reads back the session mixer (`getDifficulty`). Summary: staged reveal, ride chart, XP count-up/fill.
   Achievements: progress for lifetime ones (`achievementProgress.ts`). Picker focuses the last rider; Y edits.
 
-- Arcade cards: optional `GameModule.drawCard` banner (animated only on the focused card, `CardArt`) and `progressLine(save)`
+- Arcade cards: optional `GameModule.drawCard` banner (animated only on the hero card, `CardArt`) and `progressLine(save)`
   under the blurb; each game implements them in `src/games/<id>/card.ts` (tested in `shell/cards.test.ts`).
+- Arcade picker is a wrap-around carousel (`GameCarousel` in ArcadeMenu): selected game = large hero (art, tags, blurb,
+  progress, Play), others = compact art + title, fading out. One nav stop; left/right turns it (via `onAdjust`), tap a
+  side card selects, tap the hero plays, swipe turns. Sizes/slots are pure in `carousel.ts` (tested).
 
 - Game flow (GameHost phases): intro card (`game/GameIntro.tsx`: blurb, target zone, controls via pure `controlGlyphs.ts`;
   A start, B back to menu without saving, auto-start after 8 s) -> 3-2-1-GO with the session `idle()`-ing and the trainer

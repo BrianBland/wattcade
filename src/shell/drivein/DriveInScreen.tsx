@@ -17,7 +17,7 @@ function measureMenu(W: number): Rect | null {
   const root = document.querySelector('.screens:not(.asleep)');
   if (!root) return null;
   let bottom = 0;
-  root.querySelectorAll('.topbar, .game-row').forEach((el) => { bottom = Math.max(bottom, el.getBoundingClientRect().bottom); });
+  root.querySelectorAll('.topbar, .carousel > .game-card.hero, .carousel-dots').forEach((el) => { bottom = Math.max(bottom, el.getBoundingClientRect().bottom); });
   return bottom > 0 ? { x: 0, y: 0, w: W, h: bottom } : null;
 }
 

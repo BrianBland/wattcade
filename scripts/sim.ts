@@ -2,11 +2,12 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { GameModule } from '../src/contracts';
-import { runHeadless, SCRIPTS } from '../src/core';
+import { runHeadless, SCRIPTS, type MediaSpec } from '../src/core';
 import { allGames, getGame } from '../src/games/registry';
 
 export interface Scenario {
   name: string; script: string; minutes: number; seed: number; simOpts?: Record<string, unknown>;
+  media?: MediaSpec;   // music for games with requires.media (default: one synth EDM song)
   assert(summary: Record<string, number | string>, stats: any, run: any): string[];
 }
 
@@ -39,7 +40,7 @@ export async function runAll(log: (s: string) => void = console.log): Promise<nu
       let failures: string[] = [];
       let line: Record<string, unknown> = { game: g.id, scenario: sc.name, script: sc.script, seed: sc.seed };
       try {
-        const r = runHeadless({ game: g, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
+        const r = runHeadless({ game: g, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts, media: sc.media });
         failures = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
         const { mixerCommands, events, ...rest } = r;
         line = { ...line, ...rest, mixerCommands: mixerCommands.length, events: events.length };

@@ -3,7 +3,8 @@
  * Written against the CLAUDE.md "Integration seams"; guessed signatures are
  * isolated behind `any` adapters here so fixes stay local.
  */
-import type { Button, GameModule, InputState, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
+import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
+import { ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
@@ -113,16 +114,44 @@ export const activeSession = (): SessionLike | null => active;
 /** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
 const current = (): any => active ?? lobby;
 
-export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void): SessionLike {
+export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline }): SessionLike {
   input.applySettings(profile.settings); debugState.timeScale = 1;
   const useFake = fakeMode || !anyReal();
   activeGameId = game.id;
   active = createGameSession({
     game, profile, input, dataHub: useFake ? undefined : dataHub,
-    fake: useFake ? { script: fakeScript } : false, onSave,
+    fake: useFake ? { script: fakeScript } : false, onSave, media,
   });
   return active;
 }
+
+// ---------- media (music library + player; SPEC §5.6) ----------
+let library: MediaLibrary | null = null;
+let engine: MixEngine | null = null;
+/** The rider's music library (IndexedDB) plus the built-in demo songs. Created on first use. */
+export function mediaLibrary(): MediaLibrary {
+  if (!library) {
+    library = new MediaLibrary({
+      storage: new IdbStorage(),
+      analyze: async (blob, progress) => {
+        progress(0, 'decoding');
+        const { pcm } = await decodeMono(await blob.arrayBuffer(), ANALYSIS_SR);
+        return analyzeInWorker(pcm, ANALYSIS_SR, progress);
+      },
+      renderSynth: async (score) => new Blob([await renderSynthWav(score) as BlobPart], { type: 'audio/wav' }),
+      artPalette: paletteFromImageBlob,
+    });
+    void library.resume();
+  }
+  return library;
+}
+/** One shared music player (one AudioContext for the app). */
+export function mediaEngine(): MixEngine {
+  if (!engine) engine = new MixEngine({ resolveUrl: (id) => mediaLibrary().audioUrl(id), latencyS: () => Number(localStorage.getItem('wattcade.media.latencyMs') ?? 0) / 1000 });
+  return engine;
+}
+/** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */
+export function unlockMedia(): void { try { mediaEngine().unlock(); } catch { /* no Web Audio */ } }
 export async function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   const record: SessionRecord = active.finish();
   active.mixer?.panic?.(true); active = null;

@@ -283,6 +283,53 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - Build the `GameContext` from core, progression, and input. On quit, save the SessionRecord and apply `awardSession`.
 - Deploy scaffolding: add `wrangler` as a dev dependency. The `deploy` script is `vite build && wrangler pages deploy dist --project-name wattcade`. `dev:ipad` runs `vite --host` and prints a hint to use `cloudflared tunnel --url http://localhost:5173` for an HTTPS URL that Bluefy can open.
 
+### §5.6 Media core (music + video for any game) · owns `src/media/`
+
+Shared infrastructure for music games and the Drive-In: sources, analysis, a two-deck player with a queue, and one **program timeline** that games read. Source-agnostic: each source declares what it can do and games declare what they need.
+
+- **Sources and capability flags** (`MediaSource`): `search(q)`, `browse?()`, `prepare(ref)`, `player()`. Each source has `caps: { pcm, video, pixels, rate: 'free'|'steps'|'none', pitchShift, mix }`.
+  - `LocalSource` (phase 1): audio files picked from the iPad Files app (`<input type=file multiple>`, MP3/M4A/AAC/FLAC/WAV; Bandcamp downloads count). Blobs, metadata and analyses go in IndexedDB (separate databases, so listing never loads audio). All caps.
+  - `SynthSource` (phase 1): seeded procedural songs (`edm`, `rock`, `ambient`, `album` styles), with known ground truth (beats, sections). Used by fake mode, headless scenarios and analysis tests.
+  - `YouTubeSource` (phase 3): Data API v3 search plus the IFrame player. Caps `{ video, rate: 'steps' }` only. Used by the Drive-In (§6.6), never for analysis.
+  - `JamendoSource` (phase 3, §5.7): Creative Commons catalogue search and streams. All caps except `pixels`/`video`; no offline storage.
+- **Library:** our own minimal tag readers (ID3v2 `TIT2/TPE1/TALB/TRCK/TSRC/APIC`, MP4 `©nam/©ART/©alb/trkn/covr`, FLAC Vorbis comments plus `PICTURE`). Pure and tested with byte fixtures. Browse by Album / Artist / Song, with fuzzy search over title, artist and album. Each song keeps its file hash (SHA-256 of the bytes, the cache key), duration, ISRC if tagged, and a **palette** (5 colours, k-means over the cover art; a fallback derived from key/energy when there's no art).
+- **Analysis** (`src/media/analysis/`, pure TS, no deps, runs in a Web Worker, deterministic, cached by hash plus `ANALYSIS_VERSION`). Input: mono PCM resampled to 22 050 Hz with `OfflineAudioContext`; the decoded copy is dropped afterwards.
+  - STFT (own radix-2 FFT, 2048 window / 512 hop, Hann). Band energies low/mid/high (< 150 Hz, 150–2 k, > 2 k) plus a 10 Hz loudness/intensity curve (perceptual-ish weighting, normalised per song and smoothed).
+  - **Onsets:** half-wave-rectified spectral flux per band, adaptive threshold (median + k·MAD), peak-picking with a minimum gap. Each onset is `{ t, band, strength }`.
+  - **Tempo:** autocorrelation of the onset envelope with a log-Gaussian prior around 120 bpm. **Beats:** dynamic-programming beat tracking (Ellis 2007) with drift allowed. **Downbeats:** the bar phase (of 4) that maximises low-band onset energy on beat 1. **Phrases:** 8-bar groups, snapped to section changes.
+  - **Key:** 12-bin chroma (mean) against the Krumhansl–Kessler profiles, giving key, mode and a Camelot code.
+  - **Sections:** a self-similarity matrix on beat-synchronous chroma + MFCC-lite (16 mel bands, DCT), a Foote novelty curve, and peaks snapped to downbeats. Each segment is labelled by energy and trend: `intro | verse | build | drop | break | outro` (`build` = rising energy into a high-energy segment; `drop` = a high-energy segment right after a build or a novelty spike).
+  - Output `SongAnalysis` (plain JSON, about 50–150 KB): `{ v, durationS, bpm, beats[], downbeats[], phrases[], onsets[], intensity[] @10Hz, bands[3][] @10Hz, sections[], key, palette, confidence: 'full' }`.
+  - Quality aids: every analysis stage is unit-tested against `SynthSource` ground truth (tempo within ±1 bpm, beat F-measure ≥ 0.9, section boundaries within 1 bar). A **beat-grid nudge** in the preview (shift ± 10 ms, halve/double tempo) is stored per song.
+  - Libraries considered (2026-10): Essentia.js is the most complete but AGPL-3.0, so it's excluded. Meyda (MIT, features only), @audio/beat and MMLL (MIT, beat tracking) and fft.js (MIT) aren't needed. Any of them may be added as a *dev* dependency to cross-check our results in tests.
+- **Player (DJ-style decks):** songs are decoded to AudioBuffers (current + next only) and played by AudioBufferSourceNodes → 3-band EQ (low shelf / peaking / high shelf) → gain → master, all scheduled sample-accurately on the AudioContext clock from the plan. Tempo matching ramps `playbackRate` (pitch follows tempo like a turntable; no key lock), limited to ±8 %. Not `<audio>` elements: Safari is choppy at rate ≠ 1 when a media element is routed through Web Audio (WebKit bug 240405), and media-element timing is too loose for beat matching.
+  - **Queue modes**, chosen in the picker and remembered per profile:
+    - **Continuous:** album order, gapless: the next song is scheduled at the sample the previous one ends.
+    - **Automix** (default): mix out at a phrase boundary in the last 25–90 s (prefer the outro / lowest-energy phrase); mix in at the incoming song's first phrase after its intro start. Beats are aligned and the incoming tempo is ramped to match, then eased back to native over 16 bars. A bass swap (EQ) runs over 8–16 bars. If the tempos differ by more than 8 %, or a song has no confident beat grid, it falls back to an echo-out plus quick crossfade. Optional "smart order" suggests the next song by Camelot compatibility and tempo.
+    - **Crossfade:** equal-power, N s (default 6), no beat sync.
+  - `planMix(analyses[], mode, opts) → MixPlan` is **pure** (transition times, rate ramps, EQ automation) and drives the decks. Tested headlessly.
+- **Program timeline:** `buildTimeline(plan, analyses) → MediaTimeline` maps every song's beats, onsets, intensity, bands and sections onto one program clock (applying rate ramps and overlaps; in a transition the incoming song's events win after the bass swap). It adds `songs[]: { t0, t1, title, artist, bpm, key, palette }` and `confidence: 'full' | 'metadata'`. **Games only ever see the timeline.**
+- **Clock:** the program position is the master clock. While a media session runs, the shell nudges the loop's `timeScale` within ±2 % (a phase-locked loop on `deck.currentTime` versus sim time) so the sim tracks the audio. A stall (buffering) holds the sim. Pause pauses the decks. A per-device **output latency offset** (tap-along calibration in Settings) is added. Headless runs use the sim clock directly, so sims stay deterministic.
+- **Picker and queue UI** (`src/shell/media/`, Preact, shell UI kit, D-pad navigable; opened by the shell for any game with `requires.media`). `/media-lab.html` (Music Lab) runs the picker and player without a game, with a sync readout and tap-along latency calibration:
+  - Library browse/search; song rows show duration, bpm, key and a difficulty/effort chip once analysed (analysis runs in the background as songs are added, with a progress bar).
+  - **Preview pane:** cover and palette, a spectrogram/intensity strip with section colours, a simplified track side-profile from the game (`GameModule.mediaPreview?`), and an effort estimate (time per zone, kJ, estimated TSS at the rider's FTP). A 20 s audio preview starts at the most intense section.
+  - **Queue panel:** up next, reorder, remove, add a whole album or "all by artist", the mode switch (Continuous / Automix / Crossfade), total length, and a whole-queue intensity strip.
+- **Contract additions (approved with this spec):** `GameModule.requires.media?: Array<keyof MediaCaps>`; optional `GameModule.mediaPreview?(timeline, w, h, g: CanvasRenderingContext2D)`; `GameContext.media?: { timeline: MediaTimeline; positionS(): Seconds }`; `createGameSession` / `runHeadless` take `media?: { timeline } | { synth: { style, songs, seed, mix } }`; scenario entries may set `media`. `MediaTimeline` and `MediaCaps` live in `contracts.ts`.
+- **Tests:** analysis versus synth ground truth, tag-parser fixtures, `planMix` (phrase alignment, rate limits, fallbacks), `buildTimeline` (monotonic, no gaps in continuous mode, events within a transition), and the clock PLL (converges, bounded).
+
+### §5.7 Creative Commons catalogue (Jamendo) · owns `src/media/jamendo/`
+
+Search-anything music on top of local files: Jamendo's CC catalogue (about 600 k tracks), fully analysable because the streams are plain MP3.
+
+- **API:** `https://api.jamendo.com/v3.0/` with a `client_id` (register at devportal.jamendo.com; it's a public identifier, put it in `.env` as `VITE_JAMENDO_CLIENT_ID`). Responses send `Access-Control-Allow-Origin: *` (verified 2026-10-04). `tracks/` with `search`, `fuzzytags`, `speed`, `vocalinstrumental`, `order`, `limit ≤ 200`, `include=musicinfo` (tags, bpm-ish speed); `albums/tracks`, `playlists/tracks` and `artists/tracks` give whole sets for the queue.
+- **Audio:** `audio` (stream) with `audioformat=mp32` (VBR) for both playback and analysis. Before relying on it, confirm the stream host also sends CORS headers. If it doesn't, analysis falls back to `audiodownload` (only when `audiodownload_allowed`), and failing that the track is marked "play only".
+- **Terms** (non-commercial use is free): show the artist and "via Jamendo" with a **link back to the track page** wherever a Jamendo track is shown (picker rows, preview, title cards, summary). Follow each track's CC licence; never claim ownership.
+- **No offline library:** audio is fetched for playback and analysis and not stored beyond the browser's normal HTTP cache. We keep only the derived `SongAnalysis` and metadata (keyed `jamendo:<id>`), so a replay re-streams but skips analysis.
+- **Picker:** a "Catalogue" tab next to "My music": a search box, genre/tag and speed chips, popular/new ordering, add to queue, add album/playlist. Analysis runs in the background on queued tracks (stream → decode → worker); a track can't start until its analysis is done (progress chip).
+- **Tests:** response mapping from fixtures, URL building, attribution present in every rendered row (jsdom), cache keys.
+
+**Deferred: Spotify.** It was researched on 2026-10-04 and parked because it's too limited to be worth it: DRM (no PCM), audio-analysis gone for new apps, Connect playback only (no automix), and the Developer Policy bans games. A mic-free "approximate map" route exists if we ever want it: ISRC → MusicBrainz → AcousticBrainz `beats_position`, LRCLIB synced lyrics for sections, Deezer preview/bpm (all CORS-open).
+
 ---
 
 ## §6 Game agents (Wave 1, in parallel with §5)
@@ -439,6 +486,43 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - Achievements: Extinction Event (see a meteor), Act of Nature (two events in a ride).
 - **Later (not built):** generated story-mode levels (the event deck and seeds are the hooks: place events on purpose and validate difficulty headlessly); an ash cloud that shifts the rain. Then generated story-mode levels that mix phases with puzzles, validated headlessly in bulk for difficulty ordering.
 
+### §6.5 "Wattsurf" (music racer, **3D** Three.js, Audiosurf × Wipeout HD Zone) · owns `src/games/wattsurf/`
+
+- **Fantasy:** ride the song. The track is built from the music: calm passages roll, **builds climb**, **drops dive**. You steer an anti-grav craft across lanes to collect coloured blocks on the hits. The music sets the speed; your legs keep the shield up.
+- **Requires** `media: ['pcm']` (local, Jamendo or synth). Tags `intervals`, `sprint`. Launching it opens the media picker (§5.6), then the game's pre-game menu (`inMenu`): **mode** Mono / Classic and **rhythm difficulty** Casual / Pro / Elite. ◀▶ or shifters choose, A starts, last choice saved. Power difficulty is the existing difficulty knob.
+- **Track** (`sim/track.ts`, pure, from `MediaTimeline`):
+  - Speed `v(t) = vBase · (1 + zoneStep·zone) · (0.8 + 0.4·intensity)`, smoothed. **Each section is a zone:** zone count +1, palette shift, speed step (Wipeout Zone).
+  - Slope by section: `intro/verse` gentle rolling from intensity; `build` a rising climb (steeper with energy rise); `drop` a crest then a long dive; `break` flat; `outro` easing down. Curvature (gentle S-bends) comes from the mid-band trend. Lanes: 3 (Casual/Pro), 5 (Elite).
+  - **Blocks** from onsets: kept by strength above a difficulty threshold, with a minimum spacing (Casual 0.35 s, Pro 0.22 s, Elite 0.14 s). Lane comes from band plus a seeded walk (lows centre, highs outer). Colour from strength × intensity on a 5-step ramp. **Greys** are placed in dense passages (Mono), more at higher difficulty. All seeded (`ctx.rng`).
+- **Modes** (v1 ships Mono; Classic is roadmap phase 5):
+  - **Mono:** collect colours (points scale with colour), dodge greys (shield hit −20 %, multiplier reset). Clean-section bonus.
+  - **Classic:** collected blocks drop into a 3-column × 7-row grid; 3+ same-colour connected clusters clear for points (bigger clusters multiply). A full column is an **overfill**: the column dumps, a big penalty, and the craft flickers. No greys. **A = Shift** (recolour the next block to the colour you need). Charges are earned by holding power targets.
+- **Effort (sim mode, not ERG):** grade under the wheels = `trackSlope × hillScale` (tunable, default max 7 %, × difficulty), sent as a `track` ResistanceEffect. Virtual gears are on the shifters (`hud.gears: true`) and cadence is free.
+  - **Build** = a real climb you push. **Drop** = the grade falls away and a **sprint target** appears (`targetZone { min: 5, max: 5, source: 'power' }`; Casual Z4). Holding it gives **Overdrive** (×2 multiplier, speed streaks, craft glow) and charges.
+  - **Break/outro** = recovery (Z1–Z2). No cap on drops for now (revisit with playtests).
+- **Shield** (Wipeout): grey hits and overfills drain it; recharge ∝ time at or above the current zone floor. At 0 the craft **drops out** (ghosted, multiplier locked at ×1) until you hold the zone floor for `rebootS` (5 s). The song never stops early.
+- **Input:** paddles (analog) or ◀▶ held = lateral position; D-pad taps snap lanes; shifters = gears; A = Shift (Classic) / B = air-brake slide (Mono, small lateral boost). Controls legend via `hud.controls`.
+- **Renderer** (`render/`, Three.js, Wipeout HD Zone look; no outrun palette):
+  - A black void. The track is a flat ribbon with bright emissive edge rails, lane lines and chevron decals. The world is **two-tone** per zone (base hue plus accent, seeded from the song palette), and the hue shifts on the section's first downbeat.
+  - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft with an engine glow.
+  - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts (system condensed font stack for now; a self-hosted OFL font is a later polish). Song title card at each song start (with the cover palette).
+  - **Reduced flashing** (profile setting): beat pulses limited to ≤ 3 full-screen flashes/s, hue jumps become 1-beat crossfades.
+  - HUD insets honoured (`render/layout.ts` tested: craft, Classic grid and callouts above `H − insets.bottom`). The game's own sfx are quiet and ducked under the music.
+- **Picker preview** (`mediaPreview`): track side profile (climbs/dives) coloured by block density, sprint markers on drops, and stars from `rateSong(timeline, mode, difficulty, ftp)` (pure: block rate, grey rate, time in Z4+, estimated TSS).
+- **Saves:** best score per (song hash, mode, difficulty), and per queue for sets. The card's progress line is the best score and songs played.
+- **Scenarios** (synth timelines): autopilot Mono Pro on `edm` 3 songs, automixed → ≥ 85 % blocks, shield never 0, a grade command > 2 % during every build, a power target during every drop. `idle` → drops out, still finishes. Classic autopilot → no overfill. Determinism (same seed → same block list).
+- **Achievements:** First Wave, Clean Zone (a section with no misses), Overdrive (hold every drop in a song), Full Set (finish a 5+ song queue), Grid Master (Classic 7-cluster).
+
+### §6.6 "Drive-In" (lobby projector + cinema) · owns `src/shell/drivein/`, plus a biome in `src/games/warmup/`
+
+- **What:** a **lobby mode**. A small glowing projector button in a top corner of the Warm-up lobby opens a **YouTube search/picker**. The chosen video plays on a big drive-in screen in a special **Drive-In biome** while you keep riding the rolling hills. Works for music videos and for anything else (plain cinema mode).
+- **Biome:** desert at dusk/night, regardless of the real clock: mesas, a neon "WATTCADE DRIVE-IN" sign, classic cars on speaker posts, a starry sky. An LA/Hollywood-hills skin can come later. It isn't in the biome loop: starting the projector blends into it (140 m) and stopping blends back. The road, grades and warm-up credit are unchanged.
+- **Screen:** pinned in the backdrop like the moon (no parallax), 16:9, placed above the HUD inset and clear of the lobby menu by a pure tested layout function (min 200×200 px per YouTube policy). The **YouTube IFrame player** is an absolutely positioned iframe over that rect. The canvas draws the screen frame, poles and a light beam from a little **projector trailer** towed behind the rider.
+- **Crank** (toggle, default on for music videos): cadence is the projector crank. In band (`drivein.bandMin`–`bandMax`, default 75–100 rpm) the video plays at 1.0×; slower gives 0.75 → 0.5; faster gives 1.25 → 1.5 (API steps, with hysteresis and ≥ 2 s dwell); stopped > 5 s pauses. The canvas shows a needle "FPS" gauge (24 fps = 1.0×). Cars flash headlights or honk when it drags, and the beam flickers with the crank. **Cinema mode** (crank off) plays at 1.0× and pauses only when you stop riding (optional).
+- **Picker:** Data API v3 `search.list` (`type=video`, `videoEmbeddable=true`) with a referrer-restricted API key (search costs 100 of the 10 k daily quota units, about 100 searches/day). Results grid with thumbnails, D-pad and touch, recents and favourites per profile, and a small video queue (autoplay next).
+- **Policy compliance:** the player is unmodified and fully visible (no CSS filters or overlays on it; FX skipped for now), never backgrounded, at least 200×200. The lobby menu collapses to a "Now showing" chip while a video plays and never overlaps the screen.
+- **iPad:** `playsinline=1`. The first play needs a real touch (a controller press isn't a user gesture on iOS), so the picker's Play is a tap target; afterwards the API controls play/pause/rate. The ambient lobby bed is muted while a video plays. Spike this on the device first (iframe over canvas, rate steps on iOS).
+
 ---
 
 ## §7 Wave 2 — integration and QA
@@ -475,3 +559,14 @@ Keep your own context small: you coordinate; subagents do the building. Use `mod
 **Phase 2 — integrate:** read NOTES.md, resolve CONTRACT-REQUESTs, switch game scenarios to `runHeadless`, get typecheck/test/build/sim:all green. Commit "phase 2".
 
 **Phase 3 — QA and docs:** Agent Q (§7), `HARDWARE_TEST.md`, `README.md`, final checks. Commit "v0 demo".
+
+---
+
+## §10 Music roadmap (one PR per phase)
+
+1. **Media core:** analysis worker plus synth ground-truth tests, local library (IndexedDB, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
+2. **Wattsurf v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
+3. **Jamendo catalogue** (§5.7): search, stream, analyse, attribution.
+4. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.
+5. **Wattsurf Classic,** Shift ability, per-song/per-set leaderboards, achievements.
+6. **Later:** LA drive-in skin; YouTube FX (deferred); Spotify (deferred, §5.7).

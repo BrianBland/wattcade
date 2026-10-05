@@ -12,6 +12,7 @@ import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
+import { MediaPicker } from './media/MediaPicker';
 import { Toasts, toast } from './components/Toasts';
 import { FullscreenButton } from './components/FullscreenButton';
 import { setMenuGate } from './menuInput';
@@ -19,14 +20,14 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  lastProfileId, rememberProfile, saveProfile, stopLobby, takePendingRide, WARMUP_CREDIT_S,
+  lastProfileId, rememberProfile, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
 } from './services';
-import type { Screen, SessionLike } from './types';
+import type { MediaRun, Screen, SessionLike } from './types';
 
 /** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
 export const SLEEP_S = 25;
 const SLEEPY: ReadonlyArray<Screen['name']> = ['profiles', 'menu', 'achievements', 'summary'];
-const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary'];
+const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary', 'media'];
 /** Buttons that count as using the menu (shifters are for riding, so they never wake it). */
 const NAV = new Set<Button>(['up', 'down', 'left', 'right', 'a', 'b', 'y', 'z']);
 
@@ -64,7 +65,7 @@ export function App() {
   useEffect(() => {
     const touch = () => { lastActive.current = performance.now(); };
     const onAct = (e: Event) => {
-      unlockAudio(); // iOS: audio can only start from a gesture
+      unlockAudio(); unlockMedia(); // iOS: audio can only start from a gesture
       if ((e.target as Element | null)?.closest?.('.hud')) return; // riding controls don't count
       touch();
       if (asleepRef.current) { setAsleep(false); sfx('uiWake'); e.stopPropagation(); e.preventDefault(); }
@@ -89,10 +90,11 @@ export function App() {
   const edit = async (p: Profile | null) => {
     setDraft(p ?? await createProfile('')); go({ name: 'editor', profileId: p?.id ?? null });
   };
-  const play = async (g: (typeof games)[number]) => {
+  const play = async (g: (typeof games)[number], media?: MediaRun) => {
+    if (g.requires?.media?.length && !media) { go({ name: 'media', game: g }); return; } // music games pick songs first (the ride keeps going)
     const rec = stopLobby(); // credit the warm-up before the game session starts
     if (rec) await credit(rec);
-    go({ name: 'game', game: g });
+    go({ name: 'game', game: g, media });
   };
   const endRide = async () => {
     if (!lobbyIsReal()) { toast('Demo ride: connect a trainer to save rides'); return; }
@@ -103,10 +105,10 @@ export function App() {
     setRestartKey((k) => k + 1);
     if (r) { applyCredit(r); go({ name: 'summary', record: r.record, award: r.award }); }
   };
-  const restartGame = async (g: (typeof games)[number]) => {
+  const restartGame = async (g: (typeof games)[number], media?: MediaRun) => {
     const p = profileRef.current;
     if (p) { const r = await finishSession(p); setProfile(r.profile); void refresh(); toast(`Ride saved · +${r.award.xpGained} XP`, 'good'); }
-    go({ name: 'game', game: g, run: Date.now() });
+    go({ name: 'game', game: g, run: Date.now(), media });
   };
   const quitGame = async () => {
     const p = profileRef.current;
@@ -126,9 +128,10 @@ export function App() {
     case 'connect': body = <Connect onDone={() => go({ name: 'menu' })} />; break;
     case 'menu': body = profile && <ArcadeMenu games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
+    case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
-      body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} onQuit={quitGame}
-        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game)}
+      body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
+        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
     case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} onDone={() => go({ name: 'menu' })} />; break;
   }

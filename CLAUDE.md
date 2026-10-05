@@ -41,6 +41,8 @@ export const scenarios: Array<{
 ```
 `createSim(ctx, opts)` reads extra opts (e.g. `autopilot`) by casting `opts`. The `storm-ready` script reads `(sim.snapshot() as any).hooks?.storm`.
 
+**Media (`src/media/index.ts`, SPEC §5.6):** music games set `requires: { media: ['pcm'] }` and read `ctx.media` (`timeline: MediaTimeline`, `positionS()`, `started()`); everything (beats, onsets, sections, intensity) is in program seconds. Optional `GameModule.mediaPreview(g, w, h, timeline, profile)` draws in the picker. Scenarios may set `media: { synth: { style: 'edm'|'rock'|'ambient'|'mixed', songs, seed, mix, short } }` (default: one synth EDM song). Sims never touch the player; the shell keeps them in sync.
+
 **Progression (Agent D, `src/progression/index.ts` exports):** `ProfileStore`, `SessionStore`, `awardSession`, `defaultProfile(name?)`, `defaultSettings()`, `levelForXp(xp)`, `xpForLevel(L)`, `ACHIEVEMENTS`.
 
 **Devices (Agent A/B):** `src/devices/ftms/index.ts` → `FtmsTrainer` (static `connect()`), codecs; `src/devices/hr/index.ts` → `HeartRateMonitor` (static `connect()`); `src/devices/zwiftRide/index.ts` → `ZwiftRideController` (static `connect()`), `parseRideMessage`. Each `connect()` must be called from a user gesture. Each device also exposes `stats(): { packets: number; lastPacketAt: number }` for packets/s in the overlay.

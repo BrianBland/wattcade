@@ -73,7 +73,7 @@ describe('awardSession', () => {
     const r2 = awardSession(q, rec({ gameId: 'towerdefense', startedAt: 20 * day }));
     expect(r2.newAchievements.map((a) => a.id)).toEqual(['triple_threat']);
   });
-  it('22 achievements, unique ids', () => { expect(ACHIEVEMENTS).toHaveLength(22); expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(22); });
+  it('26 achievements, unique ids', () => { expect(ACHIEVEMENTS).toHaveLength(26); expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(26); });
 });
 
 describe('stores', () => {

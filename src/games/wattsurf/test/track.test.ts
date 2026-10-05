@@ -65,3 +65,44 @@ describe('Wattsurf track', () => {
     expect(hard.tss).toBeGreaterThan(0);
   });
 });
+
+describe('effort phases', () => {
+  it('drops sprint for at most the difficulty cap, then hold a lower zone', async () => {
+    const { effortAt, DIFF } = await import('../sim/track');
+    const long = synthTimeline({ style: 'edm', songs: 1, seed: 2 }); // 16-bar drops ≈ 30 s
+    for (const diff of ['casual', 'pro', 'elite'] as Difficulty[]) {
+      const tr = buildTrack(long, { difficulty: diff, mode: 'mono', seed: 1 });
+      const drop = tr.zones.find((z) => z.kind === 'drop')!;
+      expect(drop.t1 - drop.t0).toBeGreaterThan(DIFF[diff].sprintS);
+      const a = effortAt(tr, drop.t0 + 1, diff), b = effortAt(tr, drop.t0 + DIFF[diff].sprintS + 1, diff);
+      expect(a.phase).toBe('sprint'); expect(a.left).toBeCloseTo(DIFF[diff].sprintS - 1, 6);
+      expect(b.phase).toBe('hold'); expect(b.floorFtp).toBeLessThan(a.floorFtp); expect(b.ergFtp).toBeLessThan(a.ergFtp);
+      expect(a.target.source).toBe('power');
+    }
+  });
+  it('every phase is power-based with ERG watts that rise through a climb', async () => {
+    const { effortAt } = await import('../sim/track');
+    const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
+    for (let p = 0; p < tr.durationS; p += 3) expect(effortAt(tr, p, 'pro').target.source).toBe('power');
+    const build = tr.zones.find((z) => z.kind === 'build')!;
+    expect(effortAt(tr, build.t1 - 0.5, 'pro').ergFtp).toBeGreaterThan(effortAt(tr, build.t0 + 0.5, 'pro').ergFtp);
+    const brk = tr.zones.find((z) => z.kind === 'break')!;
+    expect(effortAt(tr, brk.t0 + 1, 'pro')).toMatchObject({ phase: 'recover', floorFtp: 0 });
+  });
+});
+
+describe('banks and tunnels', () => {
+  it('every drop banks hard (≈ 66°) and turns with it; breaks are tunnels', () => {
+    const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
+    for (const z of tr.zones.filter((x) => x.kind === 'drop')) {
+      const i0 = Math.round(z.t0 * tr.hz), i1 = Math.round(Math.min(z.t1, z.t0 + 6) * tr.hz);
+      const peak = Math.max(...Array.from(tr.roll.slice(i0, i1), Math.abs));
+      expect(peak).toBeGreaterThan(1.1);
+      expect(Math.abs(tr.curve[i1] - tr.curve[i0])).toBeGreaterThan(0.8); // the track actually turns
+    }
+    expect(Math.max(...Array.from(tr.roll, Math.abs))).toBeLessThan(1.2);
+    for (const z of tr.zones.filter((x) => x.kind === 'break')) expect(tr.tunnel[Math.round((z.t0 + 2) * tr.hz)]).toBe(1);
+    for (const z of tr.zones.filter((x) => x.kind === 'drop')) expect(tr.tunnel[Math.round((z.t0 + 2) * tr.hz)]).toBe(0);
+    expect(tr.tunnels.length).toBeGreaterThan(0);
+  });
+});

@@ -71,13 +71,14 @@ export class Hud {
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>WATTSURF</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(3, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>Classic (match-3 grid) mode is coming soon · builds climb, drops are sprints · steer with the paddles or ◀▶</small>`;
+        this.menu.innerHTML = `<h2>WATTSURF</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: one lane per press · builds climb, drops are short sprints · ERG = the trainer sets the watts, you just pedal</small>`;
         this.menu.querySelectorAll<HTMLElement>('.ws-row').forEach((r) => r.addEventListener('pointerdown', (e) => {
           e.preventDefault(); e.stopPropagation();
           const i = Number(r.dataset.i);
           if (i === 1) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
-          if (i === 2) this.send?.({ type: 'flash' });
-          if (i === 3) this.send?.({ type: 'start' });
+          if (i === 2) this.send?.({ type: 'trainer' });
+          if (i === 3) this.send?.({ type: 'flash' });
+          if (i === 4 || i === 0) this.send?.({ type: 'start' });
         }));
       }
       return;
@@ -85,8 +86,11 @@ export class Hud {
     this.menu.style.display = 'none';
     for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = '';
     this.score.innerHTML = `<b>${s.score.toLocaleString()}</b><span>×${s.mult.toFixed(1)}${s.overdrive ? ' · OVERDRIVE' : ''}${s.chain >= 8 ? ` · chain ${s.chain}` : ''}</span>`;
-    const left = Math.ceil(s.zone.left);
-    this.zone.innerHTML = `<b>ZONE ${String(s.zone.n).padStart(2, '0')}</b><span>${s.zone.kind} · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</span><span class="${s.effort.ok ? 'ok' : 'low'}">${s.zone.label}${s.zone.floorFtp > 0 ? (s.effort.ok ? ' ✓' : ' ↑') : ''}</span>`;
+    const fmt = (x: number) => { const l = Math.max(0, Math.ceil(x)); return `${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`; };
+    const e = s.effort;
+    const PHASE: Record<string, string> = { cruise: 'Cruise', climb: 'Climb', sprint: 'SPRINT', hold: 'Hold it', recover: 'Recover' };
+    const want = e.phase === 'recover' ? 'easy' : e.erg ? `ERG ${e.watts}+ W` : `≥ ${e.watts} W`;
+    this.zone.innerHTML = `<b>ZONE ${String(s.zone.n).padStart(2, '0')}</b><span>${s.zone.kind} · ${fmt(s.zone.left)}</span><span class="${e.ok ? 'ok' : 'low'}">${PHASE[e.phase]} ${want} · ${fmt(e.left)} ${e.phase === 'recover' ? '' : e.ok ? '✓' : '↑'}</span>`;
     this.song.innerHTML = s.song ? `♪ ${esc(s.song.title)} — ${esc(s.song.artist)}${s.song.credit ? `<small>${esc(s.song.credit)}</small>` : ''}` : '';
     const bar = this.shield.firstElementChild as HTMLElement;
     bar.style.width = `${s.shield}%`;

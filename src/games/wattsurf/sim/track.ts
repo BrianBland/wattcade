@@ -11,11 +11,13 @@ export type Difficulty = 'casual' | 'pro' | 'elite';
 export type Mode = 'mono' | 'classic';
 export const DIFFICULTIES: readonly Difficulty[] = ['casual', 'pro', 'elite'];
 
-export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5 }> = {
-  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4 },
-  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5 },
-  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5 },
+export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4 }> = {
+  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3 },
+  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3 },
+  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4 },
 };
+/** ERG watts (FTP fraction) per effort phase, for the ERG option. */
+export const ERG_FTP = { cruise: 0.65, climb: [0.75, 0.92], sprint: 1.12, hold: 0.88, recover: 0.5 } as const;
 /** Lower bound of each power zone as an FTP fraction (Coggan, as core uses). */
 export const ZONE_FLOOR = [0, 0, 0.56, 0.76, 0.91, 1.06] as const;
 /** Block colours (purple → red) and their points. Grey = −1. */
@@ -25,7 +27,11 @@ export interface Block { t: number; lane: number; color: number; zone: number }
 export interface Zone {
   n: number; kind: SectionKind; t0: number; t1: number; energy: number; hue: number; song: number;
   target: ZoneTarget; floorFtp: number;
+  /** Drops: the sprint lasts until here (capped by difficulty); the rest of the drop is a lower hold. */
+  sprintEnd?: number;
 }
+export type Phase = 'cruise' | 'climb' | 'sprint' | 'hold' | 'recover';
+export interface Effort { phase: Phase; target: ZoneTarget; floorFtp: number; ergFtp: number; left: number }
 export interface Track {
   durationS: number; hz: number; lanes: number;
   dist: Float64Array;   // metres travelled at each sample
@@ -34,6 +40,8 @@ export interface Track {
   grade: Float32Array;  // trainer grade % (before difficulty / hill scale)
   curve: Float32Array;  // heading (rad)
   zones: Zone[]; blocks: Block[];
+  /** Bank (roll, rad; + = rolls right) per sample, and tunnel membership per sample (renderer only). */
+  roll: Float32Array; tunnel: Uint8Array; tunnels: Array<{ t0: number; t1: number }>;
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
@@ -50,11 +58,26 @@ export function hexHue(hex: string | undefined): number {
 }
 
 function targetFor(kind: SectionKind, d: (typeof DIFF)[Difficulty]): ZoneTarget {
+  // all power-based: sections are 10–60 s, far too short for heart rate to follow
   switch (kind) {
     case 'build': return { min: d.buildZone, max: (d.buildZone + 1) as 4 | 5, label: 'Climb', source: 'power' };
-    case 'drop': return { min: d.dropZone, max: 5, label: 'Sprint the drop!', source: 'power' };
-    case 'break': case 'outro': return { min: 1, max: 2, label: 'Recover', source: 'effort' };
-    default: return { min: 2, max: 3, label: 'Cruise', source: 'effort' };
+    case 'drop': return { min: d.dropZone, max: 5, label: 'Sprint!', source: 'power' };
+    case 'break': case 'outro': return { min: 1, max: 2, label: 'Recover', source: 'power' };
+    default: return { min: 2, max: 3, label: 'Cruise', source: 'power' };
+  }
+}
+
+/** The effort asked for at program time p: drops sprint for at most `sprintS`, then hold a lower zone. */
+export function effortAt(track: Track, p: number, difficulty: Difficulty): Effort {
+  const z = track.zones[zoneIndexAt(track, p)], d = DIFF[difficulty];
+  const prog = clamp((p - z.t0) / Math.max(1, z.t1 - z.t0), 0, 1);
+  switch (z.kind) {
+    case 'drop':
+      if (p < (z.sprintEnd ?? z.t1)) return { phase: 'sprint', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.sprint, left: (z.sprintEnd ?? z.t1) - p };
+      return { phase: 'hold', target: { min: d.holdZone, max: (d.holdZone + 1) as 4 | 5, label: 'Hold it', source: 'power' }, floorFtp: ZONE_FLOOR[d.holdZone], ergFtp: ERG_FTP.hold, left: z.t1 - p };
+    case 'build': return { phase: 'climb', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.climb[0] + (ERG_FTP.climb[1] - ERG_FTP.climb[0]) * prog, left: z.t1 - p };
+    case 'break': case 'outro': return { phase: 'recover', target: z.target, floorFtp: 0, ergFtp: ERG_FTP.recover, left: z.t1 - p };
+    default: return { phase: 'cruise', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.cruise, left: z.t1 - p };
   }
 }
 
@@ -77,12 +100,32 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const songOf = (t: number) => Math.max(0, tl.songs.findIndex((s) => t >= s.t0 && t < s.t1));
   const zones: Zone[] = sections.map((s, i) => {
     const song = songOf(s.t0), base = hexHue(tl.songs[song]?.palette?.[0]);
-    return { n: i + 1, kind: s.kind, t0: s.t0, t1: s.t1, energy: s.energy, song, hue: (base + i * 47) % 360, target: targetFor(s.kind, d), floorFtp: ZONE_FLOOR[targetFor(s.kind, d).min] };
+    const target = targetFor(s.kind, d);
+    return {
+      n: i + 1, kind: s.kind, t0: s.t0, t1: s.t1, energy: s.energy, song, hue: (base + i * 47) % 360, target,
+      floorFtp: target.min <= 1 ? 0 : ZONE_FLOOR[target.min], ...(s.kind === 'drop' ? { sprintEnd: Math.min(s.t1, s.t0 + d.sprintS) } : {}),
+    };
   });
   const zoneAt = (p: number) => { let k = 0; for (let i = 0; i < zones.length; i++) if (zones[i].t0 <= p) k = i; return k; };
 
   const speed = new Float32Array(n), dist = new Float64Array(n), height = new Float32Array(n), grade = new Float32Array(n), curve = new Float32Array(n);
+  const roll = new Float32Array(n), tunnel = new Uint8Array(n);
   const phase = rng() * Math.PI * 2, curvePhase = rng() * Math.PI * 2;
+  // hard banks: every drop throws you into a near-sideways turn; some longer verses get a softer one
+  const banks: Array<{ t0: number; dur: number; ang: number }> = [];
+  let dir = rng() < 0.5 ? 1 : -1;
+  for (const z of zones) {
+    if (z.kind === 'drop' && z.t1 - z.t0 > 6) { banks.push({ t0: z.t0 + 1, dur: 4.5, ang: dir * 1.15 }); dir = -dir; }
+    else if (z.kind === 'verse' && z.t1 - z.t0 > 20 && rng() < 0.6) { banks.push({ t0: z.t0 + (z.t1 - z.t0) * (0.3 + 0.3 * rng()), dur: 3.5, ang: dir * (0.6 + 0.3 * rng()) }); dir = -dir; }
+  }
+  const env = (t: number, b: { t0: number; dur: number }) => {
+    const u = (t - b.t0) / b.dur; if (u <= 0 || u >= 1) return 0;
+    const e = u < 0.25 ? u / 0.25 : u > 0.75 ? (1 - u) / 0.25 : 1;
+    return e * e * (3 - 2 * e);
+  };
+  // tunnels: breaks always, some verses; never longer than 45 s
+  const tunnels: Array<{ t0: number; t1: number }> = [];
+  for (const z of zones) if ((z.kind === 'break' || (z.kind === 'verse' && rng() < 0.45)) && z.t1 - z.t0 >= 6) tunnels.push({ t0: z.t0, t1: Math.min(z.t1, z.t0 + 45) });
   let ema = 0, g = 0, h = 0, head = 0, x = 0;
   const intensity = (p: number) => sampleAt(tl.intensity, hz, p);
   for (let i = 0; i < n; i++) {
@@ -108,7 +151,11 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     const vis = z.kind === 'drop' ? -6 - 4 * ema : z.kind === 'build' ? g : g - 1.2;
     if (i) h += (vis / 100) * (((speed[i - 1] + v) / 2) / hz);
     height[i] = h;
-    head += (0.0009 * Math.sin(x / 260 + curvePhase) + 0.0006 * Math.sin(x / 97 + 2 * curvePhase) * (0.5 + ema)) * (v / hz);
+    let r = 0, yaw = 0;
+    for (const b of banks) { const e = env(p, b); if (e) { r += b.ang * e; yaw += Math.sign(b.ang) * 0.4 * e; } }
+    roll[i] = r;
+    tunnel[i] = tunnels.some((tu) => p >= tu.t0 && p < tu.t1) ? 1 : 0;
+    head += (0.0009 * Math.sin(x / 260 + curvePhase) + 0.0006 * Math.sin(x / 97 + 2 * curvePhase) * (0.5 + ema)) * (v / hz) + yaw / hz;
     curve[i] = head;
   }
 
@@ -144,7 +191,7 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     }
   }
   return {
-    durationS: tl.durationS, hz, lanes: d.lanes, dist, speed, height, grade, curve, zones, blocks,
+    durationS: tl.durationS, hz, lanes: d.lanes, dist, speed, height, grade, curve, zones, blocks, roll, tunnel, tunnels,
     beats: tl.beats, downbeats: tl.downbeats, phrases: tl.phrases, bands: tl.bands, intensity: tl.intensity,
   };
 }

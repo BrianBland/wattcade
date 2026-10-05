@@ -1,10 +1,18 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { WarmupSnapshot } from '../sim/sim';
-import { BIOME_NAMES, biomeAt, biomeIdAt, hash01, makeTerrain, type BiomeId, type Terrain } from '../sim/terrain';
+import { BIOME_NAMES, biomeAt, biomeOfSeg, biomeWeights, hash01, makeTerrain, type Terrain } from '../sim/terrain';
 import { LOOKS, noise1, type BiomeLook, type G } from './biomes';
-import { drawRider } from './rider';
+import { drawRider, LENS } from './rider';
 import { daylight } from './daylight';
-import { setAmbient, stopAmbient } from '../../../audio/sfx';
+import { blendColors, layerAlphas, mixColor } from './blend';
+import { boardCentre, drawGateway, GATEWAYS } from './gateway';
+import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
+import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
+import { Soundscape, speedFactor, type SceneId } from './soundscape';
+import { ambientDucked, play, setAmbient, stopAmbient } from '../../../audio/sfx';
+import { makeRng } from '../../../core/rng';
+
+export { mixColor } from './blend';
 
 const PPM = 9;            // low-res px per metre along the road
 const RIDGE_M_PER_PX = 4;
@@ -12,39 +20,33 @@ const wrap = (x: number, span: number) => ((x % span) + span) % span; // the far
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.35, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
 
-interface Actor { kind: BiomeLook['actor']; x: number; y: number; vx: number; vy: number; t0: number; seed: number; beamAt: number; color: string }
+interface Actor { kind: BiomeLook['actor']; x: number; y: number; vx: number; vy: number; t0: number; seed: number; beamAt: number; color: string; leaveAt: number }
 const PARROTS = ['#e74c3c', '#3b82ff', '#ffd23b', '#2de26a'];
 const FISH = ['#ffb020', '#ff6b8a', '#4dabf7', '#ffe066', '#c56cf0'];
 /** `?hour=21` previews the time of day (debug aid). */
 const hourOverride = (() => { try { const v = new URLSearchParams(globalThis.location?.search ?? '').get('hour'); return v == null ? null : Number(v); } catch { return null; } })();
-interface Text { s: string; x: number; y: number; size: number; color: string; align?: CanvasTextAlign; alpha?: number }
-
-// ---- colour helpers ----
-const rgbCache = new Map<string, [number, number, number]>();
-function rgb(hex: string): [number, number, number] {
-  let c = rgbCache.get(hex);
-  if (!c) { const n = parseInt(hex.slice(1, 7), 16); c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; rgbCache.set(hex, c); }
-  return c;
-}
-export function mixColor(a: string, b: string, t: number): string {
-  if (t <= 0) return a; if (t >= 1) return b;
-  const x = rgb(a), y = rgb(b);
-  return `rgb(${Math.round(x[0] + (y[0] - x[0]) * t)},${Math.round(x[1] + (y[1] - x[1]) * t)},${Math.round(x[2] + (y[2] - x[2]) * t)})`;
-}
+interface Text { s: string; x: number; y: number; size: number; color: string; align?: CanvasTextAlign; alpha?: number; glow?: string }
+/** Where the shell put the Drive-In video, in CSS px relative to the render surface. */
+export interface ScreenRect { x: number; y: number; w: number; h: number }
+type Scene = Array<[BiomeLook, number]>;
 
 /** Side-scrolling pixel scenery. Draws a low-res buffer, upscales it crisply, then overlays text at full resolution. */
 export class WarmupRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
+  private scratch!: HTMLCanvasElement; private sg!: G;   // one layer of one biome, composited with alpha (the cross-dissolve)
   private dpr = 1; private px = 3; private LW = 300; private LH = 200;
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private color = '#00f0ff';
   private terrain: { key: string; t: Terrain } | null = null;
   private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
-  private lastBiome: BiomeId | null = null; private titleAt = -99;
+  private weeds: Weed[] = []; private nextWeedAt = 0; private weedRng: (() => number) | null = null;
+  private lastBiome: string | null = null; private lastDriveIn = false; private titleAt = -99; private title = '';
   private texts: Text[] = [];
   private lastNow = 0;
   private ambientAt = 0;
+  private sounds: Soundscape | null = null;
+  private screen: ScreenRect | null = null;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
     this.color = ctx.profile.color;
@@ -55,15 +57,19 @@ export class WarmupRenderer implements GameRenderer {
     this.g = this.canvas.getContext('2d')!;
     this.buf = document.createElement('canvas');
     this.b = this.buf.getContext('2d')!;
+    this.scratch = document.createElement('canvas');
+    this.sg = this.scratch.getContext('2d')!;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   setInsets(i: Insets) { this.insets = i; }
+  /** The Drive-In video rectangle (CSS px, relative to this surface), or null while it is off. Drawn as a frame in the backdrop. */
+  setScreen(r: ScreenRect | null) { this.screen = r; }
   resize(w: number, h: number) {
     this.dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr);
     this.px = Math.max(2, Math.floor(this.canvas.height / 230));
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
-    this.buf.width = this.LW; this.buf.height = this.LH;
+    this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
   }
   unmount() { this.canvas?.remove(); stopAmbient(); }
 
@@ -71,6 +77,17 @@ export class WarmupRenderer implements GameRenderer {
     const key = `${s.terrainSeed}:${s.maxGrade}`;
     if (this.terrain?.key !== key) this.terrain = { key, t: makeTerrain(s.terrainSeed, s.maxGrade) };
     return this.terrain.t;
+  }
+
+  /** Draw one layer for every biome in the scene. In a dissolve each biome's layer goes to the scratch buffer first, so the layer blends as a whole. */
+  private layer(scene: Scene, draw: (look: BiomeLook, g: G) => void) {
+    if (scene.length === 1) { draw(scene[0][0], this.b); return; }
+    const alphas = layerAlphas(scene.map(([, w]) => w));
+    scene.forEach(([look], i) => {
+      this.sg.clearRect(0, 0, this.LW, this.LH);
+      draw(look, this.sg);
+      this.b.globalAlpha = alphas[i]; this.b.drawImage(this.scratch, 0, 0); this.b.globalAlpha = 1;
+    });
   }
 
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
@@ -82,31 +99,39 @@ export class WarmupRenderer implements GameRenderer {
     const UH = Math.max(80, H - this.insets.bottom * this.dpr / this.px); // usable height above the HUD
     const terr = this.terr(s);
     const vscale = s.hill * s.exaggeration * PPM;      // screen px per metre of climb
-    const cur = LOOKS[s.biome], nxt = LOOKS[s.nextBiome], mix = s.mix;
+    const di = s.driveIn ?? 0;
+    // what the scene is made of right now: the biome pair being dissolved (by position) and the Drive-In (by time)
+    const scene: Scene = [];
+    for (const [id, w] of biomeWeights({ cur: s.from, next: s.to, mix: s.mix })) if (w * (1 - di) > 0.002) scene.push([LOOKS[id], w * (1 - di)]);
+    if (di > 0.002) scene.push([DRIVE_IN, di]);
+    const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
+    const dom = di > 0.5 ? DRIVE_IN : LOOKS[s.biome];
     const RX = Math.round(W * 0.3), roadY0 = Math.round(UH * 0.8);
     const roadY = (dd: number) => roadY0 - (terr.elev(dd) - terr.elev(s.d)) * vscale;
-    const biomeM = s.biomeM, start = s.startBiome;
-    const lookAt = (dd: number) => LOOKS[biomeIdAt(dd, biomeM, start)];
-    /** Smoothly blended band colour (ground, road, ...) at a road distance; props use lookAt() instead. */
+    const biomeM = s.biomeM, start = s.startBiome, blendM = s.blendM;
+    /** Smoothly blended band colour (ground, road, ...) at a road distance. */
     const band = (dd: number, k: 'mid' | 'ground' | 'groundDark' | 'road' | 'roadEdge') => {
-      const b = biomeAt(dd, biomeM, start);
-      return mixColor(LOOKS[b.cur][k], LOOKS[b.next][k], b.mix);
+      const b = biomeAt(dd, biomeM, start, blendM);
+      const c = mixColor(LOOKS[b.cur][k], LOOKS[b.next][k], b.mix);
+      return di > 0 ? mixColor(c, DRIVE_IN[k], di) : c;
     };
-    const roadKindAt = (dd: number) => { const b = biomeAt(dd, biomeM, start); return LOOKS[b.mix < 0.5 ? b.cur : b.next].roadKind; };
+    const roadKindAt = (dd: number) => { if (di > 0.5) return DRIVE_IN.roadKind; const b = biomeAt(dd, biomeM, start, blendM); return LOOKS[b.mix < 0.5 ? b.cur : b.next].roadKind; };
     this.texts = [];
 
-    if (s.biome !== this.lastBiome) { if (this.lastBiome) this.titleAt = t; this.lastBiome = s.biome; }
+    if (s.biome !== this.lastBiome) { if (this.lastBiome) { this.titleAt = t; this.title = BIOME_NAMES[s.biome]; } this.lastBiome = s.biome; }
+    if ((di > 0.5) !== this.lastDriveIn) { this.lastDriveIn = di > 0.5; this.titleAt = t; this.title = di > 0.5 ? 'Drive-In' : BIOME_NAMES[s.biome]; }
 
     // ---- sky ----
     const now2 = new Date();
     const day = daylight(hourOverride ?? now2.getHours() + now2.getMinutes() / 60);
-    const night = day.night * ((cur.outdoor ? 1 - mix : 0) + (nxt.outdoor ? mix : 0));
-    const glow = day.glow * ((cur.outdoor ? 1 - mix : 0) + (nxt.outdoor ? mix : 0));
+    const outdoor = wsum((l) => (l.outdoor ? 1 : 0));
+    const night = day.night * outdoor, glow = day.glow * outdoor;
+    const dusk = Math.max(night, wsum((l) => l.dusk ?? 0)), lights = Math.max(night, wsum((l) => l.lights ?? 0));
     const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
-    sky.addColorStop(0, mixColor(mixColor(cur.sky[0], nxt.sky[0], mix), '#0a0f2a', night * 0.92));
-    sky.addColorStop(1, mixColor(mixColor(mixColor(cur.sky[1], nxt.sky[1], mix), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
+    sky.addColorStop(0, mixColor(blendColors(scene.map(([l, w]) => [l.sky[0], w] as const)), '#0a0f2a', night * 0.92));
+    sky.addColorStop(1, mixColor(mixColor(blendColors(scene.map(([l, w]) => [l.sky[1], w] as const)), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
     g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    const stars = Math.max(cur.stars + (nxt.stars - cur.stars) * mix, night);
+    const stars = Math.max(wsum((l) => l.stars), night);
     if (stars > 0.02) {
       for (let i = 0; i < 90; i++) {
         const x = hash01(i * 3 + 1) * W, y = hash01(i * 3 + 2) * UH * 0.6;
@@ -115,30 +140,36 @@ export class WarmupRenderer implements GameRenderer {
       }
       g.globalAlpha = 1;
     }
-    const dayA = (L: BiomeLook) => (L.outdoor ? 1 - day.night : 1);
-    g.globalAlpha = (1 - mix) * dayA(cur); cur.celestial(g, W, UH, t);
-    g.globalAlpha = mix * dayA(nxt); if (mix > 0) nxt.celestial(g, W, UH, t);
+    for (const [l, w] of scene) { g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1); if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); }
     g.globalAlpha = night; if (night > 0.02) { g.fillStyle = '#f4f1dc'; g.beginPath(); g.arc(W * 0.8, 24, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0a0f2a'; g.beginPath(); g.arc(W * 0.8 + 3, 22, 6, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
-    const cloudy = (L: BiomeLook) => (L.stars < 0.5 && L.rider !== 'scuba' ? 1 : 0);
-    const clouds = (cloudy(cur) * (1 - mix) + cloudy(nxt) * mix) * (1 - night * 0.92);
+    const clouds = wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)) * (1 - night * 0.92);
     if (clouds > 0.02) this.clouds(g, W, UH, t, s.d, clouds);
 
     // ---- distant backdrop ----
     const backY = Math.round(UH * 0.5), bu = s.d * PPM * BACK_PARALLAX;
-    g.globalAlpha = 1; cur.backdrop(g, W, backY, bu, t);
-    if (mix > 0) { g.globalAlpha = mix; nxt.backdrop(g, W, backY, bu, t); g.globalAlpha = 1; }
+    this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, bu, t));
 
     // ---- the real road, seen from afar (rolling ridge) ----
     const ridgeBase = Math.round(UH * 0.6), ridgeV = Math.max(0.6, s.hill * s.exaggeration * 0.7);
     const ridgeAt = (x: number) => { const uu = s.d + (x - RX) * RIDGE_M_PER_PX; return ridgeBase - (terr.elev(uu) - terr.elev(s.d)) * ridgeV; };
-    g.fillStyle = mixColor(cur.ridge, nxt.ridge, mix);
+    g.fillStyle = blendColors(scene.map(([l, w]) => [l.ridge, w] as const));
     g.beginPath(); g.moveTo(0, H);
     for (let x = 0; x <= W; x += 2) g.lineTo(x, ridgeAt(x));
     g.lineTo(W, H); g.closePath(); g.fill();
     g.strokeStyle = '#ffffff40'; g.lineWidth = 1; g.beginPath();
     for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x) + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
     g.stroke();
+
+    // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----
+    let screenBuf: BufRect | null = null;
+    if (di > 0.01 && this.screen) {
+      const k = this.dpr / this.px, r = this.screen;
+      screenBuf = { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k };
+      g.globalAlpha = di; drawScreenFrame(g, screenBuf, Math.round(UH * 0.7), t); g.globalAlpha = 1;
+      const fade = Math.min(1, di * 2);
+      this.texts.push({ s: 'WATTCADE DRIVE-IN', x: screenBuf.x + screenBuf.w / 2, y: screenBuf.y - 9, size: Math.max(4, Math.min(8, screenBuf.w / 70)), color: '#ff7ae8', align: 'center', alpha: fade * (0.85 + 0.15 * Math.sin(t * 9) * (Math.sin(t * 0.7) > 0.8 ? 1 : 0)), glow: '#ff2bd6' });
+    }
 
     // ---- mid layer: ground band + props ----
     const midBase = Math.round(UH * 0.7), mu = s.d * PPM * MID_PARALLAX;
@@ -149,26 +180,16 @@ export class WarmupRenderer implements GameRenderer {
       const y = Math.round(midY(lx)); g.fillRect(x, y, 2, H - y);
     }
     const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
-    for (let k = k0; k <= k1; k++) {
-      const lx = k * MID_SLOT + (hash01(k * 17 + 3) - 0.5) * 8;
-      const x = lx - mu + RX, h = hash01(k * 31 + 5);
-      lookAt(lx / (PPM * MID_PARALLAX)).midProp(g, h, Math.round(x), Math.round(midY(lx)) + 1, t);
-    }
-
-    // ---- boundary sign (before the next biome) ----
-    const signD = (Math.floor(s.d / biomeM) + 1) * biomeM - 25;
-    for (const sd of [signD, signD - biomeM]) {
-      const sx = RX + (sd - s.d) * PPM;
-      if (sx < -40 || sx > W + 40) continue;
-      const sy = roadY(sd);
-      const toward = biomeAt(sd + 30, biomeM, start).cur;
-      g.fillStyle = '#6b4a2a'; g.fillRect(Math.round(sx), Math.round(sy - 16), 2, 16);
-      g.fillStyle = '#f4ecd8'; g.fillRect(Math.round(sx - 14), Math.round(sy - 24), 30, 9);
-      g.fillStyle = '#6b4a2a'; g.fillRect(Math.round(sx - 14), Math.round(sy - 16), 30, 1);
-      // text sits over everything at full res, so fade it while the rider passes in front of the board
-      const clear = Math.min(1, Math.max(0, (Math.abs(sx - RX) - 12) / 14));
-      if (clear > 0) this.texts.push({ s: `${BIOME_NAMES[toward]} ›`, x: sx + 1, y: sy - 19.5, size: 5, color: '#3a2a1a', align: 'center', alpha: clear });
-    }
+    this.layer(scene, (l, gg) => {
+      for (let k = k0; k <= k1; k++) {
+        const lx = k * MID_SLOT + (hash01(k * 17 + 3) - 0.5) * 8;
+        l.midProp(gg, hash01(k * 31 + 5), Math.round(lx - mu + RX), Math.round(midY(lx)) + 1, t);
+      }
+    });
+    const weedW = wsum((l) => (l.weeds ? 1 : 0));
+    this.updateWeeds(t, s, W, weedW);
+    const weedAtLane = (lane: WeedLane) => this.drawWeeds(g, lane, t, s, RX, roadY, midY, weedW);
+    weedAtLane('far');
 
     // ---- road + near ground ----
     for (let x = 0; x < W; x++) {
@@ -183,43 +204,99 @@ export class WarmupRenderer implements GameRenderer {
       else if (kind === 'dust' && hash01(Math.floor(dd * PPM)) < 0.2) { g.fillStyle = edge; g.fillRect(x, y + 1 + Math.floor(hash01(x + Math.floor(dd)) * 3), 1, 1); }
     }
 
-    // ---- rider ----
-    const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)
-    const gear = (mix < 0.5 ? cur : nxt).rider;
-    const bob = s.v > 1 ? (s.biome === 'moon' ? -Math.abs(Math.sin(t * 2.2)) * 2 : gear === 'scuba' ? Math.sin(t * 1.4) * 1 : 0) : 0;
-    g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
-    if (night > 0.3) { // headlight
-      g.fillStyle = `rgba(255,244,200,${0.18 * night})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
+    // ---- gateway landmarks at the biome boundaries (centre of each dissolve) ----
+    const kb = Math.round(s.d / biomeM);
+    for (let k = kb - 1; k <= kb + 1; k++) {
+      if (k < 1) continue;
+      const bd = k * biomeM, sx = RX + (bd - s.d) * PPM;
+      if (sx < -50 || sx > W + 50) continue;
+      const sy = roadY(bd), to = biomeOfSeg(k, start), st = GATEWAYS[to];
+      g.globalAlpha = 1 - di; drawGateway(g, st, Math.round(sx), Math.round(sy), t); g.globalAlpha = 1;
+      const [bx, by] = boardCentre(), clear = Math.min(1, Math.max(0, (Math.abs(sx - RX) - 12) / 14)) * (1 - di);
+      if (clear > 0) this.texts.push({ s: BIOME_NAMES[to], x: sx + bx, y: sy + by + 0.5, size: 4.4, color: st.text, align: 'center', alpha: clear });
     }
-    drawRider(g, { jersey: this.color, helmet: gear }, bike.crankRevs, s.d, t);
+    weedAtLane('road');
+
+    // ---- rider (towing the projector in the Drive-In) ----
+    const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)
+    const gear = dom.rider;
+    const bob = s.v > 1 ? (s.biome === 'moon' && di < 0.5 ? -Math.abs(Math.sin(t * 2.2)) * 2 : gear === 'scuba' ? Math.sin(t * 1.4) * 1 : 0) : 0;
+    if (screenBuf && di > 0.5) { // light beam from the trailer's lens (rotated with the road under the rider)
+      const c = Math.cos(-Math.atan(slope)), sn = Math.sin(-Math.atan(slope));
+      g.globalAlpha = Math.min(1, (di - 0.5) * 2);
+      drawProjectorBeam(g, RX + LENS[0] * c - LENS[1] * sn, roadY0 + bob + LENS[0] * sn + LENS[1] * c, screenBuf, t);
+      g.globalAlpha = 1;
+    }
+    g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
+    if (lights > 0.3) { // headlight
+      g.fillStyle = `rgba(255,244,200,${0.18 * lights})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
+    }
+    drawRider(g, { jersey: this.color, helmet: gear, trailer: di > 0.5 }, bike.crankRevs, s.d, t);
     g.restore();
+    weedAtLane('near');
 
     // ---- foreground bits ----
     const fu = s.d * PPM * FORE_PARALLAX;
     const f0 = Math.floor((fu - RX - 10) / FORE_SLOT), f1 = Math.ceil((fu - RX + W + 10) / FORE_SLOT);
-    for (let k = f0; k <= f1; k++) {
-      const lx = k * FORE_SLOT, x = lx - fu + RX, dd = s.d + (x - RX) / PPM;
-      const h = hash01(k * 13 + 9);
-      lookAt(lx / (PPM * FORE_PARALLAX)).foreProp(g, h, Math.round(x), Math.round(roadY(dd) + 10 + hash01(k * 5) * 12));
-    }
+    this.layer(scene, (l, gg) => {
+      for (let k = f0; k <= f1; k++) {
+        const lx = k * FORE_SLOT, x = lx - fu + RX, dd = s.d + (x - RX) / PPM;
+        l.foreProp(gg, hash01(k * 13 + 9), Math.round(x), Math.round(roadY(dd) + 10 + hash01(k * 5) * 12));
+      }
+    });
 
-    this.particles(g, W, H, t, s, cur, nxt, mix, night);
-    this.updateActors(g, W, UH, t, dt, s, mix < 0.5 ? cur : nxt);
-    if (night > 0.01) { g.globalAlpha = night * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); }
+    this.particles(g, W, H, t, s, scene, night);
+    this.updateActors(g, W, UH, t, dt, s, dom);
+    if (dusk > 0.01) { g.globalAlpha = dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); }
     if (glow > 0.01) { g.globalAlpha = glow * 0.14; g.fillStyle = '#ff7a3a'; g.fillRect(0, 0, W, H); }
     g.globalAlpha = 1;
-    if (now - this.ambientAt > 0.5) {
-      this.ambientAt = now;
-      const L = mix < 0.5 ? cur : nxt;
-      // fades out when the rider stops, so a parked screensaver is quiet
-      setAmbient('warmup', L.ambient ? L.ambient.vol * Math.min(1, s.v / 6) : 0, L.ambient?.freq ?? 500, L.ambient?.q ?? 0.7);
-    }
+    this.audio(now, s, scene);
 
     // ---- blit + full-res overlay ----
     const m = this.g;
     m.imageSmoothingEnabled = false;
     m.drawImage(this.buf, 0, 0, W * this.px, H * this.px);
     this.overlay(s, RX, roadY0, UH, t);
+  }
+
+  /** Ambient bed (blended across the scene) plus per-biome one-shots; both fade out when the rider stops and duck for music / the Drive-In video. */
+  private audio(now: number, s: WarmupSnapshot, scene: Scene) {
+    if (now - this.ambientAt < 0.5) return;
+    this.ambientAt = now;
+    const sp = speedFactor(s.v);
+    let vol = 0, lf = 0, q = 0;
+    for (const [l, w] of scene) { const a = l.ambient; if (!a) continue; vol += a.vol * w; lf += Math.log(a.freq) * w; q += (a.q ?? 0.7) * w; }
+    const wt = scene.reduce((a, [l, w]) => a + (l.ambient ? w : 0), 0) || 1;
+    setAmbient('warmup', vol * sp, Math.exp(lf / wt), q / wt);
+    this.sounds ??= new Soundscape(makeRng(s.terrainSeed ^ 0x5eed));
+    const weights: Array<[SceneId, number]> = [];
+    for (const [id, w] of biomeWeights({ cur: s.from, next: s.to, mix: s.mix })) weights.push([id, w * (1 - s.driveIn)]);
+    if (s.driveIn > 0) weights.push(['driveIn', s.driveIn]);
+    for (const sh of this.sounds.tick(now, weights, sp, ambientDucked())) play(sh.sfx, { vol: sh.vol, pitch: sh.pitch });
+  }
+
+  /** Spawn and retire tumbleweeds while the scene has any desert in it (seeded, so a given seed rolls the same weeds). */
+  private updateWeeds(t: number, s: WarmupSnapshot, W: number, weight: number) {
+    this.weedRng ??= makeRng(s.terrainSeed ^ 0x7ee0d);
+    if (weight > 0.3 && t >= this.nextWeedAt && this.weeds.length < 6) {
+      const R = this.weedRng, lane: WeedLane = R() < 0.3 ? 'far' : R() < 0.55 ? 'road' : 'near';
+      const scroll = s.d * PPM * LANE_PARALLAX[lane];
+      this.weeds.push(makeWeed(R, lane, t, W + 14 - Math.round(W * 0.3), scroll));
+      this.nextWeedAt = t + 2 + R() * 5;
+    }
+    if (weight < 0.02) this.weeds.length = 0;
+  }
+  private drawWeeds(g: G, lane: WeedLane, t: number, s: WarmupSnapshot, RX: number, roadY: (d: number) => number, midY: (x: number) => number, weight: number) {
+    const keep: Weed[] = [];
+    for (const w of this.weeds) {
+      const pose = weedAt(w, t), scroll = s.d * PPM * LANE_PARALLAX[w.lane], x = RX + pose.u - scroll;
+      if (weedGone(x, w.r, t - w.t0)) continue;
+      keep.push(w);
+      if (w.lane !== lane) continue;
+      const ground = w.lane === 'far' ? midY(pose.u) + 1 : roadY(pose.u / PPM) + (w.lane === 'near' ? 7 : 3);
+      drawTumbleweed(g, Math.round(x), Math.round(ground - w.r * 0.8 - pose.hop), w.r, pose.spin, w.seed, Math.min(1, weight * 2));
+    }
+    if (lane === 'near') this.weeds = keep; // prune once per frame, after the last pass
   }
 
   private clouds(g: G, W: number, UH: number, t: number, d: number, alpha: number) {
@@ -237,9 +314,9 @@ export class WarmupRenderer implements GameRenderer {
   /** Flyers / swimmers for the current biome; spawned in small groups from either side. */
   private updateActors(g: G, W: number, UH: number, t: number, dt: number, s: WarmupSnapshot, look: BiomeLook) {
     const kind = look.actor;
-    if (kind !== this.actorKind) { // new biome: the old biome's creatures leave (no fish in the jungle sky)
+    if (kind !== this.actorKind) { // new biome: the old biome's creatures fade away (no fish in the jungle sky)
       this.actorKind = kind;
-      this.actors = this.actors.filter((x) => x.kind === kind || (kind === 'fish' && x.kind === 'none'));
+      for (const x of this.actors) if (x.leaveAt < 0 && x.kind !== kind && !(kind === 'fish' && x.kind === 'none')) x.leaveAt = t;
       this.nextActorAt = Math.min(this.nextActorAt, t + 2);
     }
     if (t >= this.nextActorAt && kind !== 'none') {
@@ -251,20 +328,21 @@ export class WarmupRenderer implements GameRenderer {
       for (let i = 0; i < n; i++) {
         const speed = kind === 'ufo' ? 28 + R() * 30 : kind === 'fish' ? 12 + R() * 4 : kind === 'vulture' ? 6 : kind === 'parrot' ? 18 + R() * 6 : 10 + R() * 6;
         if (kind === 'ember') { // lava bombs lobbed from the crater (backdrop, upper right)
-          this.actors.push({ kind, x: W * (0.45 + R() * 0.25), y: UH * 0.3, vx: (R() - 0.5) * 50, vy: -50 - R() * 30, t0: t, seed: R(), beamAt: -1, color: '#ff8a2a' });
+          this.actors.push({ kind, x: W * (0.45 + R() * 0.25), y: UH * 0.3, vx: (R() - 0.5) * 50, vy: -50 - R() * 30, t0: t, seed: R(), beamAt: -1, color: '#ff8a2a', leaveAt: -1 });
           continue;
         }
         const jelly = kind === 'fish' && i === 0 && R() < 0.3;
         this.actors.push({
           kind: jelly ? 'none' : kind, x: (fromLeft ? -20 : W + 20) - i * (kind === 'fish' ? 5 : 7) * dir, y: baseY + (kind === 'fish' ? (R() - 0.5) * 14 : i * 3),
-          vx: jelly ? dir * 3 : speed * dir, vy: jelly ? -3 : 0, t0: t, seed: R(), beamAt: kind === 'ufo' && R() < 0.6 ? 0.3 + R() * 0.4 : -1, color: jelly ? '#e8b8ff' : color,
+          vx: jelly ? dir * 3 : speed * dir, vy: jelly ? -3 : 0, t0: t, seed: R(), beamAt: kind === 'ufo' && R() < 0.6 ? 0.3 + R() * 0.4 : -1, color: jelly ? '#e8b8ff' : color, leaveAt: -1,
         });
       }
       this.nextActorAt = t + (kind === 'ufo' ? 9 + R() * 14 : kind === 'ember' ? 2 + R() * 4 : kind === 'fish' ? 4 + R() * 6 : 6 + R() * 10);
     }
-    this.actors = this.actors.filter((a) => a.x > -60 && a.x < W + 60 && a.y < UH + 20 && t - a.t0 < 70);
+    this.actors = this.actors.filter((a) => a.x > -60 && a.x < W + 60 && a.y < UH + 20 && t - a.t0 < 70 && (a.leaveAt < 0 || t - a.leaveAt < 2.5));
     for (const a of this.actors) {
-      const age = t - a.t0;
+      const age = t - a.t0, fade = Math.min(1, age / 1.2) * (a.leaveAt < 0 ? 1 : 1 - (t - a.leaveAt) / 2.5);
+      g.globalAlpha = fade;
       if (a.kind === 'ufo') {
         // hover to beam something up partway across, then zip off
         const frac = a.vx > 0 ? a.x / W : 1 - a.x / W;
@@ -285,10 +363,10 @@ export class WarmupRenderer implements GameRenderer {
       } else if (a.kind === 'none') { // jellyfish: pulse and drift up
         const pulse = 0.5 + 0.5 * Math.sin(age * 3 + a.seed * 5);
         a.x += a.vx * dt; a.y += a.vy * dt * (0.4 + pulse);
-        g.globalAlpha = 0.75; g.fillStyle = a.color; g.beginPath(); g.ellipse(a.x, a.y, 4 + pulse, 3, 0, Math.PI, 0); g.fill();
+        g.globalAlpha = 0.75 * fade; g.fillStyle = a.color; g.beginPath(); g.ellipse(a.x, a.y, 4 + pulse, 3, 0, Math.PI, 0); g.fill();
         g.strokeStyle = a.color; g.lineWidth = 0.6;
         for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(a.x + i * 2, a.y); g.lineTo(a.x + i * 2 + Math.sin(age * 2 + i) * 1.5, a.y + 6 + pulse); g.stroke(); }
-        g.globalAlpha = 1;
+        g.globalAlpha = fade;
       } else if (a.kind === 'ember') { // lava bomb: ballistic, glowing trail
         a.vy += 40 * dt; a.x += a.vx * dt; a.y += a.vy * dt;
         g.fillStyle = '#ffd23b'; g.fillRect(Math.round(a.x), Math.round(a.y), 2, 2);
@@ -308,15 +386,16 @@ export class WarmupRenderer implements GameRenderer {
         if (a.kind === 'parrot') { g.fillStyle = a.color; g.fillRect(Math.round(a.x - Math.sign(a.vx) * 3), Math.round(y), 2, 1); }
       }
     }
+    g.globalAlpha = 1;
     // shooting stars on the moon
-    if (s.biome === 'moon' && noise1(t * 0.7, 5) > 0.93) {
+    if (s.biome === 'moon' && s.driveIn < 0.5 && noise1(t * 0.7, 5) > 0.93) {
       const x = (t * 140) % (W + 60) - 30, y = 12 + noise1(Math.floor(t / 4), 6) * 30;
       g.strokeStyle = '#ffffffcc'; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 10, y - 3); g.stroke();
     }
   }
 
   /** Stateless weather: each particle's position is a function of its index and time, so nothing to simulate. */
-  private particles(g: G, W: number, H: number, t: number, s: WarmupSnapshot, cur: BiomeLook, nxt: BiomeLook, mix: number, night: number) {
+  private particles(g: G, W: number, H: number, t: number, s: WarmupSnapshot, scene: Scene, night: number) {
     const scroll = s.d * PPM * 0.6;
     const field = (kind: BiomeLook['particles'], alpha: number) => {
       if (!kind || alpha <= 0.02) return;
@@ -334,8 +413,9 @@ export class WarmupRenderer implements GameRenderer {
       }
       g.globalAlpha = 1;
     };
-    if (cur.particles === nxt.particles) field(cur.particles, 1);
-    else { field(cur.particles, 1 - mix); field(nxt.particles, mix); }
+    const kinds = new Map<BiomeLook['particles'], number>();
+    for (const [l, w] of scene) kinds.set(l.particles, (kinds.get(l.particles) ?? 0) + w);
+    for (const [kind, w] of kinds) field(kind, w);
   }
 
   /** Text and the upcoming-road profile at full resolution. */
@@ -345,7 +425,9 @@ export class WarmupRenderer implements GameRenderer {
     for (const tx of this.texts) {
       m.globalAlpha = tx.alpha ?? 1; m.fillStyle = tx.color; m.textAlign = tx.align ?? 'left';
       m.font = `800 ${Math.round(tx.size * px)}px system-ui, sans-serif`;
+      if (tx.glow) { m.shadowColor = tx.glow; m.shadowBlur = 10 * dpr; }
       m.fillText(tx.s, tx.x * px, tx.y * px);
+      m.shadowBlur = 0;
     }
     m.globalAlpha = 1;
 
@@ -363,12 +445,12 @@ export class WarmupRenderer implements GameRenderer {
     this.profile(s, UH, t);
 
     // biome title when you arrive
-    const age = t - this.titleAt;
+    const age = t - this.titleAt, title = (this.title || BIOME_NAMES[s.biome]).toUpperCase();
     if (age < 4.5) {
       m.globalAlpha = Math.min(1, age * 2, (4.5 - age) / 1.2);
       m.font = `900 ${Math.round(40 * dpr)}px system-ui, sans-serif`; m.textAlign = 'center';
-      m.fillStyle = '#000a'; m.fillText(BIOME_NAMES[s.biome].toUpperCase(), this.canvas.width / 2 + 3 * dpr, UH * px * 0.42 + 3 * dpr);
-      m.fillStyle = '#fff'; m.fillText(BIOME_NAMES[s.biome].toUpperCase(), this.canvas.width / 2, UH * px * 0.42);
+      m.fillStyle = '#000a'; m.fillText(title, this.canvas.width / 2 + 3 * dpr, UH * px * 0.42 + 3 * dpr);
+      m.fillStyle = '#fff'; m.fillText(title, this.canvas.width / 2, UH * px * 0.42);
       m.globalAlpha = 1;
     }
   }

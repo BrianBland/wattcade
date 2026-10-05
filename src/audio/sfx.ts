@@ -10,9 +10,12 @@ export type SfxName =
   | 'upgrade' | 'unlock' | 'rescue' | 'roar' | 'screech' | 'whoosh' | 'plop' | 'croak'
   | 'rail' | 'railReady' | 'swap' | 'lens' | 'emp' | 'siren' | 'alarm' | 'overdrive'
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
-  | 'count' | 'go' | 'gameOver' | 'milestone';
+  | 'count' | 'go' | 'gameOver' | 'milestone'
+  | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
+  | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic';
 
-interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number }
+/** `atk`: fade-in seconds (swells); `vib`: frequency modulation (FM chirps, warbles) as LFO Hz and depth in Hz; noise `f1` sweeps its filter. */
+interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number; atk?: number; vib?: { hz: number; depth: number } }
 const R: Record<SfxName, Tone[]> = {
   shoot: [{ type: 'square', f0: 880, f1: 440, dur: 0.06, vol: 0.12 }],
   shootHeavy: [{ type: 'sawtooth', f0: 300, f1: 90, dur: 0.12, vol: 0.16 }, { type: 'noise', f0: 1200, dur: 0.08, vol: 0.12 }],
@@ -79,6 +82,25 @@ const R: Record<SfxName, Tone[]> = {
   gameOver: [523, 415, 349, 262].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.3, vol: 0.14, delay: i * 0.16 })),
   milestone: [{ type: 'triangle', f0: 880, dur: 0.12, vol: 0.1 }, { type: 'triangle', f0: 1320, dur: 0.2, vol: 0.1, delay: 0.1 }],
   countTick: [{ type: 'square', f0: 2093, dur: 0.015, vol: 0.025 }],
+  // scenery one-shots for the warm-up biomes: synthesised, very quiet (the menu UI sounds are 2-3x louder)
+  birdTrill: [{ type: 'sine', f0: 3100, f1: 3500, dur: 0.5, vol: 0.03, vib: { hz: 28, depth: 700 } }],
+  birdWhistle: [{ type: 'sine', f0: 1900, f1: 2700, dur: 0.22, vol: 0.035 }, { type: 'sine', f0: 2700, f1: 2100, dur: 0.3, vol: 0.035, delay: 0.26 }],
+  birdChirp: [0, 0.11, 0.24].map((d, i) => ({ type: 'sine' as const, f0: 3600 - i * 200, f1: 4400 - i * 300, dur: 0.07, vol: 0.028, delay: d })),
+  monkeyHoot: [{ type: 'triangle', f0: 380, f1: 520, dur: 0.22, vol: 0.05, vib: { hz: 14, depth: 40 } }, { type: 'triangle', f0: 520, f1: 330, dur: 0.35, vol: 0.05, delay: 0.25, vib: { hz: 14, depth: 40 } }, { type: 'triangle', f0: 400, f1: 560, dur: 0.18, vol: 0.04, delay: 0.7 }],
+  songbird: [0, 0.14, 0.28, 0.5, 0.64].map((d, i) => ({ type: 'sine' as const, f0: 2400 + (i % 3) * 450, f1: 2900 + ((i * 2) % 3) * 400, dur: 0.1, vol: 0.026, delay: d, vib: { hz: 18, depth: 160 } })),
+  cow: [{ type: 'sawtooth', f0: 150, f1: 105, dur: 1.1, vol: 0.03, atk: 0.2, vib: { hz: 5, depth: 8 } }, { type: 'noise', f0: 350, dur: 1.0, vol: 0.02, q: 2, atk: 0.2 }],
+  waveWash: [{ type: 'noise', f0: 300, f1: 1100, dur: 2.6, vol: 0.05, q: 0.5, atk: 1.2 }],
+  windGust: [{ type: 'noise', f0: 400, f1: 900, dur: 3.2, vol: 0.05, q: 0.7, atk: 1.4 }],
+  hawk: [{ type: 'sawtooth', f0: 3000, f1: 1700, dur: 0.7, vol: 0.022, atk: 0.04, vib: { hz: 9, depth: 120 } }, { type: 'triangle', f0: 3300, f1: 1900, dur: 0.7, vol: 0.02, atk: 0.04 }],
+  bubblePop: [{ type: 'sine', f0: 500, f1: 1400, dur: 0.07, vol: 0.05 }, { type: 'sine', f0: 700, f1: 1700, dur: 0.06, vol: 0.04, delay: 0.1 }],
+  whale: [{ type: 'sine', f0: 90, f1: 150, dur: 3.2, vol: 0.09, atk: 1.0, vib: { hz: 2.2, depth: 12 } }, { type: 'sine', f0: 140, f1: 70, dur: 2.4, vol: 0.05, delay: 0.8, atk: 0.8 }],
+  rumble: [{ type: 'noise', f0: 90, f1: 60, dur: 2.4, vol: 0.12, q: 0.8, atk: 0.9 }, { type: 'sine', f0: 48, f1: 38, dur: 2.2, vol: 0.1, atk: 0.8 }],
+  lavaBubble: [{ type: 'sine', f0: 140, f1: 320, dur: 0.14, vol: 0.07 }, { type: 'noise', f0: 500, dur: 0.1, vol: 0.03, q: 2, delay: 0.1 }],
+  windHowl: [{ type: 'noise', f0: 700, f1: 1300, dur: 3.6, vol: 0.05, q: 6, atk: 1.6 }, { type: 'sine', f0: 520, f1: 640, dur: 3.4, vol: 0.012, atk: 1.6, vib: { hz: 0.7, depth: 40 } }],
+  ufoWarble: [{ type: 'sine', f0: 900, f1: 1300, dur: 1.4, vol: 0.03, atk: 0.3, vib: { hz: 7, depth: 220 } }, { type: 'sine', f0: 1350, f1: 800, dur: 1.2, vol: 0.02, delay: 0.5, atk: 0.2, vib: { hz: 9, depth: 160 } }],
+  cricket: [0, 0.07, 0.14, 0.21, 0.28].map((d) => ({ type: 'square' as const, f0: 4300, dur: 0.035, vol: 0.008, delay: d })),
+  // drive-in channel flip: a click then a burst of static
+  chStatic: [{ type: 'square', f0: 220, f1: 90, dur: 0.04, vol: 0.07 }, { type: 'noise', f0: 3000, dur: 0.4, vol: 0.06, q: 0.3, delay: 0.02 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };
 
@@ -115,17 +137,23 @@ export function play(name: SfxName, opts: { vol?: number; minGapS?: number; pitc
   const vol = opts.vol ?? 1, p = opts.pitch ?? 1;
   for (const tn of R[name]) {
     const t0 = now + (tn.delay ?? 0), g = c.createGain();
-    g.gain.setValueAtTime(tn.vol * vol, t0);
+    if (tn.atk) { g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(tn.vol * vol, t0 + tn.atk); }
+    else g.gain.setValueAtTime(tn.vol * vol, t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + tn.dur);
     g.connect(master);
     if (tn.type === 'noise') {
       const s = c.createBufferSource(); s.buffer = noise;
-      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = tn.f0 * p; f.Q.value = tn.q ?? 0.8;
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(tn.f0 * p, t0); f.Q.value = tn.q ?? 0.8;
+      if (tn.f1) f.frequency.exponentialRampToValueAtTime(tn.f1 * p, t0 + tn.dur);
       s.connect(f); f.connect(g); s.start(t0); s.stop(t0 + tn.dur);
     } else {
       const o = c.createOscillator(); o.type = tn.type;
       o.frequency.setValueAtTime(tn.f0 * p, t0);
       if (tn.f1) o.frequency.exponentialRampToValueAtTime(tn.f1 * p, t0 + tn.dur);
+      if (tn.vib) {
+        const l = c.createOscillator(), lg = c.createGain(); l.frequency.value = tn.vib.hz; lg.gain.value = tn.vib.depth * p;
+        l.connect(lg); lg.connect(o.frequency); l.start(t0); l.stop(t0 + tn.dur + 0.02);
+      }
       o.connect(g); o.start(t0); o.stop(t0 + tn.dur + 0.02);
     }
   }
@@ -134,6 +162,8 @@ export function play(name: SfxName, opts: { vol?: number; minGapS?: number; pitc
 // ----- ambient beds (looping filtered noise; e.g. surf, wind, rain) -----
 const beds = new Map<string, { gain: GainNode; filter: BiquadFilterNode; src: AudioBufferSourceNode; vol: number }>();
 const duckers = new Set<string>();
+/** True while something (music, the Drive-In) holds the ambient ducker: scenery one-shots stay quiet too. */
+export function ambientDucked(): boolean { return duckers.size > 0; }
 /** Silence every ambient bed while music plays (`on`), keyed so several owners can hold it (picker, player…). */
 export function duckAmbient(owner: string, on: boolean): void {
   if (on) duckers.add(owner); else duckers.delete(owner);

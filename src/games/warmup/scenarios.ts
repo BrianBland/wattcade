@@ -26,4 +26,13 @@ export const scenarios: Array<{
     name: 'idle stands still', script: 'idle', minutes: 3, seed: 1,
     assert(s) { return Number(s.distanceKm) < 0.05 ? [] : [`idle moved ${s.distanceKm} km`]; },
   },
+  {
+    name: 'drive-in rides the same road', script: 'z2', minutes: 10, seed: 1, simOpts: { driveIn: true },
+    assert(s, _st, run) {
+      const f: string[] = [];
+      if (!(Number(s.distanceKm) > 3)) f.push(`distanceKm ${s.distanceKm} <= 3`);
+      if (grades(run).some((x) => Math.abs(x) > 4)) f.push('grade beyond maxGrade (+gear)');
+      return f;
+    },
+  },
 ];

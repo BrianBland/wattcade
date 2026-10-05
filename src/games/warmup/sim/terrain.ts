@@ -9,8 +9,8 @@ export const BIOME_NAMES: Record<BiomeId, string> = {
   volcano: 'Volcano', snow: 'Snowy Pass', moon: 'The Moon',
 };
 
-/** Metres over which one biome blends into the next (sky, props, ground). */
-export const TRANSITION_M = 140;
+/** Default metres over which one biome dissolves into the next, centred on the boundary (tunable `warmup.blendM`). */
+export const TRANSITION_M = 300;
 
 export interface Terrain {
   /** Road grade in % at distance d (before the hills on/off fade). In [-1, 1] × maxGrade. */
@@ -38,22 +38,30 @@ export function makeTerrain(seed: number, maxGrade: number): Terrain {
   };
 }
 
-export interface BiomeAt { cur: BiomeId; next: BiomeId; /** 0 = fully cur, 1 = fully next (only near the boundary) */ mix: number; toNextM: number; index: number }
+/**
+ * Where a distance sits in the biome loop. Biomes run in a fixed order starting at `start`, each `biomeM` long, and
+ * dissolve over a window of `blendM` centred on each boundary (the gateway landmark stands at the centre).
+ * `cur -> next` is the pair being blended (`mix` 0..1); `dom` is the biome you are "in" (flips exactly at the boundary).
+ */
+export interface BiomeAt { cur: BiomeId; next: BiomeId; mix: number; dom: BiomeId; toNextM: number; index: number }
 
-/** Which biome a distance is in. Biomes run in a fixed loop, starting at `start`, each `biomeM` long. */
-export function biomeAt(d: number, biomeM: number, start: number): BiomeAt {
+/** Biome of loop segment `seg` (segment 0 = `start`). */
+export function biomeOfSeg(seg: number, start: number): BiomeId {
   const n = BIOMES.length;
-  const seg = Math.floor(d / biomeM);
-  const into = d - seg * biomeM;
-  const toNextM = biomeM - into;
-  const idx = (((start + seg) % n) + n) % n;
-  const mix = toNextM < TRANSITION_M ? 1 - toNextM / TRANSITION_M : 0;
-  return { cur: BIOMES[idx], next: BIOMES[(idx + 1) % n], mix, toNextM, index: seg };
+  return BIOMES[(((start + seg) % n) + n) % n];
 }
 
-/** Biome for a single point (props are picked per point, so the boundary is crisp per object but blends visually). */
-export function biomeIdAt(d: number, biomeM: number, start: number): BiomeId {
-  const b = biomeAt(d, biomeM, start);
-  // Inside the transition, objects switch at a seeded point so the two biomes interleave instead of a hard line.
-  return b.mix > 0 && hash01(Math.floor(d / 3)) < b.mix ? b.next : b.cur;
+export function biomeAt(d: number, biomeM: number, start: number, blendM = TRANSITION_M): BiomeAt {
+  const full = Math.max(1, Math.min(blendM, biomeM * 0.9)), half = full / 2;
+  const seg = Math.floor(d / biomeM), into = d - seg * biomeM;
+  const dom = biomeOfSeg(seg, start);
+  let cur = dom, next = biomeOfSeg(seg + 1, start), mix = 0;
+  if (into > biomeM - half) mix = (into - (biomeM - half)) / full;                      // approaching the boundary
+  else if (into < half && seg > 0) { cur = biomeOfSeg(seg - 1, start); next = dom; mix = 0.5 + into / full; } // just past it
+  return { cur, next, mix, dom, toNextM: biomeM - into, index: seg };
+}
+
+/** Each biome's share of the scene at this point (sums to 1). Layers, sky, particles and sounds all blend with these. */
+export function biomeWeights(b: Pick<BiomeAt, 'cur' | 'next' | 'mix'>): Array<[BiomeId, number]> {
+  return b.mix <= 0 ? [[b.cur, 1]] : b.mix >= 1 ? [[b.next, 1]] : [[b.cur, 1 - b.mix], [b.next, b.mix]];
 }

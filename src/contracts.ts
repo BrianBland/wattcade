@@ -12,7 +12,7 @@ export interface ProfileSettings {
   zoneSource: ZoneSource;
   aimMode: AimMode;        // default 'rotate' (paddles) with auto-aim fallback when paddles idle
   paddleDeadzone: number;  // 0..100, default 15
-  paddleInvertL: boolean; paddleInvertR: boolean;
+  paddleInvertR: boolean;
   maxGradePct: number;     // safety cap, default 12
   ergCapFtpFraction: number; // default 1.5
 }

@@ -15,7 +15,6 @@ describe('editor fields', () => {
     expect(adjustField(f('color'), p, -1)!.color).toBe(COLORS[COLORS.length - 1]);
     const z = adjustField(f('zoneSource'), { ...p, settings: { ...p.settings, zoneSource: 'hr' } }, 1)!;
     expect(z.settings.zoneSource).toBe('auto');
-    expect(activateField(f('paddleInvertL'), p)!.settings.paddleInvertL).toBe(!p.settings.paddleInvertL);
   });
   it('leaves text to the keyboard', () => {
     expect(adjustField(f('name'), testProfile(), 1)).toBeNull();

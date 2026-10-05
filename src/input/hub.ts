@@ -6,7 +6,7 @@ import {
 
 type Src = InputState['source'];
 type DebugKind = 'difficulty' | 'timeScale';
-export interface HubOptions { deadzone?: number; invertL?: boolean; invertR?: boolean; now?: () => number; paddleExpo?: number }
+export interface HubOptions { deadzone?: number; invertR?: boolean; now?: () => number; paddleExpo?: number }
 type PadLike = { buttons: ArrayLike<{ pressed: boolean }>; axes: ArrayLike<number> } | null;
 
 /** Debug-overlay shifter steps (SPEC 3.1): left shifters adjust difficulty, right shifters adjust time scale. */
@@ -20,7 +20,7 @@ export class InputHub {
   debugOpen = false;
   touchVisible = false;
 
-  private deadzone: number; private invertL: boolean; private invertR: boolean;
+  private deadzone: number; private invertR: boolean;
   /** Response-curve exponent for analog paddles/sticks after deadzone (1 = linear; 2 = gentle near rest, full at max). */
   paddleExpo: number;
   private rideRaw: ControllerRawState = { buttons: EMPTY, paddleL: 0, paddleR: 0 };
@@ -43,11 +43,11 @@ export class InputHub {
   private touchEl: HTMLElement | null = null;
 
   constructor(opts: HubOptions = {}) {
-    this.now = opts.now ?? (() => performance.now()); this.deadzone = opts.deadzone ?? 15; this.invertL = opts.invertL ?? false; this.invertR = opts.invertR ?? false; this.paddleExpo = opts.paddleExpo ?? 2;
+    this.now = opts.now ?? (() => performance.now()); this.deadzone = opts.deadzone ?? 15; this.invertR = opts.invertR ?? false; this.paddleExpo = opts.paddleExpo ?? 2;
   }
 
   applySettings(s: ProfileSettings): void {
-    this.deadzone = s.paddleDeadzone; this.invertL = s.paddleInvertL; this.invertR = s.paddleInvertR;
+    this.deadzone = s.paddleDeadzone; this.invertR = s.paddleInvertR;
   }
 
   state(): Readonly<InputState> { return this.cur; }
@@ -102,7 +102,7 @@ export class InputHub {
   private paddles(): { l: number; r: number } {
     const pick = (...v: number[]) => v.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
     const curve = (v: number) => applyExpo(v, this.paddleExpo);
-    const rideL = curve(applyDeadzone(this.rideRaw.paddleL, this.deadzone, this.invertL));
+    const rideL = curve(applyDeadzone(this.rideRaw.paddleL, this.deadzone, true));
     const rideR = curve(applyDeadzone(this.rideRaw.paddleR, this.deadzone, this.invertR));
     return {
       l: pick(rideL, this.kbPaddle.L, curve(this.padPaddle.L), this.script?.paddleL ?? 0),

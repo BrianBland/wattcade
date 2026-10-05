@@ -494,7 +494,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - Speed `v(t) = vBase · (1 + zoneStep·zone) · (0.8 + 0.4·intensity)`, smoothed. **Each section is a zone:** zone count +1, palette shift, speed step (Wipeout Zone).
   - Slope by section: `intro/verse` gentle rolling from intensity; `build` a rising climb (steeper with energy rise); `drop` a crest then a long dive; `break` flat; `outro` easing down. Curvature (gentle S-bends) comes from the mid-band trend. Lanes: 3 (Casual/Pro), 5 (Elite).
   - **Blocks** from onsets: kept by strength above a difficulty threshold, with a minimum spacing (Casual 0.35 s, Pro 0.22 s, Elite 0.14 s). Lane comes from band plus a seeded walk (lows centre, highs outer). Colour from strength × intensity on a 5-step ramp. **Greys** are placed in dense passages (Mono), more at higher difficulty. All seeded (`ctx.rng`).
-- **Modes:**
+- **Modes** (v1 ships Mono; Classic is roadmap phase 5):
   - **Mono:** collect colours (points scale with colour), dodge greys (shield hit −20 %, multiplier reset). Clean-section bonus.
   - **Classic:** collected blocks drop into a 3-column × 7-row grid; 3+ same-colour connected clusters clear for points (bigger clusters multiply). A full column is an **overfill**: the column dumps, a big penalty, and the craft flickers. No greys. **A = Shift** (recolour the next block to the colour you need). Charges are earned by holding power targets.
 - **Effort (sim mode, not ERG):** grade under the wheels = `trackSlope × hillScale` (tunable, default max 7 %, × difficulty), sent as a `track` ResistanceEffect. Virtual gears are on the shifters (`hud.gears: true`) and cadence is free.
@@ -505,7 +505,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 - **Renderer** (`render/`, Three.js, Wipeout HD Zone look; no outrun palette):
   - A black void. The track is a flat ribbon with bright emissive edge rails, lane lines and chevron decals. The world is **two-tone** per zone (base hue plus accent, seeded from the song palette), and the hue shifts on the section's first downbeat.
   - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft with an engine glow.
-  - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts in a self-hosted OFL geometric font. Song title card at each song start (with the cover palette).
+  - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts (system condensed font stack for now; a self-hosted OFL font is a later polish). Song title card at each song start (with the cover palette).
   - **Reduced flashing** (profile setting): beat pulses limited to ≤ 3 full-screen flashes/s, hue jumps become 1-beat crossfades.
   - HUD insets honoured (`render/layout.ts` tested: craft, Classic grid and callouts above `H − insets.bottom`). The game's own sfx are quiet and ducked under the music.
 - **Picker preview** (`mediaPreview`): track side profile (climbs/dives) coloured by block density, sprint markers on drops, and stars from `rateSong(timeline, mode, difficulty, ftp)` (pure: block rate, grey rate, time in Z4+, estimated TSS).

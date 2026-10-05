@@ -9,6 +9,8 @@ import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
 import { lobbyGame } from '../games/registry';
+import { getDriveIn } from './drivein/store';
+import { BIOMES } from '../games/warmup/sim/terrain';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
 import { RideControllerGroup } from '../devices/zwiftRide';
@@ -196,7 +198,14 @@ const PENDING_KEY = 'wattcade.pendingRide';
 let lobby: any = null;
 let lobbyMeta: { profileId: string | null; startedAt: number } = { profileId: null, startedAt: 0 };
 /** Road position carried across lobby restarts so the scenery never jumps. */
-let lobbyCarry: { startDistance: number; startBiome?: number; terrainSeed?: number } = { startDistance: 0 };
+let lobbyCarry: { startDistance: number; startBiome?: number; terrainSeed?: number } = lobbyDebugStart();
+/** `?biome=desert&at=0.9` starts the lobby ride in that biome, `at` km in (debug aid for screenshots). */
+function lobbyDebugStart(): { startDistance: number; startBiome?: number } {
+  try {
+    const q = new URLSearchParams(globalThis.location?.search ?? ''), i = (BIOMES as readonly string[]).indexOf(q.get('biome') ?? '');
+    return i < 0 ? { startDistance: 0 } : { startDistance: Number(q.get('at') ?? 0) * 1000, startBiome: i };
+  } catch { return { startDistance: 0 }; }
+}
 const menuPressed = new Set<Button>();
 /** Lobby input: ticks the shared InputHub and keeps every press for the menus (several sim steps may run per frame). */
 const lobbyInput = {
@@ -220,7 +229,7 @@ export function startLobby(profile: Profile | null): SessionLike {
   const startedAt = Date.now();
   lobby = createGameSession({
     game: lobbyGame, profile: p, input: lobbyInput, dataHub: useFake ? undefined : dataHub,
-    fake: useFake ? { script: fakeScript } : false, seed: Math.floor(startedAt / 86400000), simOpts: { ...lobbyCarry },
+    fake: useFake ? { script: fakeScript } : false, seed: Math.floor(startedAt / 86400000), simOpts: { ...lobbyCarry, driveIn: getDriveIn().on },
   });
   lobbyMeta = { profileId: profile?.id ?? null, startedAt };
   menuPressed.clear();

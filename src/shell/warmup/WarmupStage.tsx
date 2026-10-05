@@ -8,6 +8,8 @@ import {
 } from '../services';
 import { deliverMenuPresses, setExternalMenuDriver } from '../menuInput';
 import { attachFakeKeys } from '../fakeKeysDom';
+import { DriveInScreen, type DriveInApi } from '../drivein/DriveInScreen';
+import { getDriveIn } from '../drivein/store';
 
 /** Stop pedalling this long after a creditable ride and it is saved on its own (a fresh ride starts). */
 export const AUTO_SAVE_IDLE_S = 180;
@@ -19,15 +21,19 @@ const deviceKey = () => { const s = getDeviceStatus(); return `${getFake()}|${s.
  * The Warm-up Ride behind every menu: runs the lobby session, draws the scenery full-bleed, and drives the
  * shared InputHub for the menus. Restarts the ride (keeping the road position) when the rider or devices change.
  */
-export function WarmupStage({ profile, hud, restartKey, onSession, onRideEnded }: {
+export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSession, onRideEnded }: {
   profile: Profile | null; hud: boolean; restartKey: number;
+  /** The lobby menu screen is up, so the Drive-In screen may show. */
+  driveInVisible: boolean;
   onSession: (s: SessionLike | null) => void;
   /** A creditable ride ended because of a restart, rider change, auto-save or leaving for a game. */
   onRideEnded: (r: SessionRecord) => void;
 }) {
   const mount = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
-  const renderer = useRef<GameRenderer | null>(null);
+  const renderer = useRef<(GameRenderer & { setScreen?(r: { x: number; y: number; w: number; h: number } | null): void }) | null>(null);
+  const driveIn = useRef<DriveInApi | null>(null);
+  const size = useRef({ w: 0, h: 0, inset: 0 });
   const [devKey, setDevKey] = useState(deviceKey);
   const [autoSaves, setAutoSaves] = useState(0);
   const cb = useRef({ onSession, onRideEnded }); cb.current = { onSession, onRideEnded };
@@ -70,17 +76,24 @@ export function WarmupStage({ profile, hud, restartKey, onSession, onRideEnded }
     wake();
     window.addEventListener('pointerdown', wake); document.addEventListener('visibilitychange', onVis); window.addEventListener('pagehide', checkpointLobby);
     const el = mount.current!;
-    const ro = new ResizeObserver(() => { renderer.current?.resize?.(el.clientWidth, el.clientHeight); renderer.current?.setInsets?.(readInsets()); });
+    const ro = new ResizeObserver(() => { renderer.current?.resize?.(el.clientWidth, el.clientHeight); renderer.current?.setInsets?.(readInsets()); size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 }; });
     ro.observe(el); if (probe.current) ro.observe(probe.current);
 
-    let raf = 0, last = performance.now(), still = 0, sinceCheck = 0;
+    size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 };
+    let raf = 0, last = performance.now(), still = 0, sinceCheck = 0, sentTo: unknown = null, sentOn = false;
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - last) / 1000); last = now;
       const s = lobbySession();
       if (s) {
         s.frame(dt);
         deliverMenuPresses(takeLobbyPresses());
-        renderer.current?.render(s.sim.snapshot(), s.ctx.bike(), input.state());
+        const on = getDriveIn().on;
+        if (s !== sentTo || on !== sentOn) { sentTo = s; sentOn = on; s.sim.receive?.({ type: 'driveIn', on }); } // the scenery blends in / out
+        const snap = s.sim.snapshot();
+        const { w, h, inset } = size.current;
+        // the DOM video and the canvas frame share one rect, computed before the canvas draws
+        renderer.current?.setScreen?.(driveIn.current?.tick(dt, w, h, inset, (snap as { driveIn?: number }).driveIn ?? 0) ?? null);
+        renderer.current?.render(snap, s.ctx.bike(), input.state());
         still = s.ctx.bike().cadence3s < 10 ? still + dt : 0;
         sinceCheck += dt;
         if (sinceCheck >= CHECKPOINT_S || (still > AUTO_SAVE_IDLE_S && sinceCheck >= 5)) {
@@ -102,9 +115,12 @@ export function WarmupStage({ profile, hud, restartKey, onSession, onRideEnded }
   }, []);
 
   return (
-    <div class="game-host stage">
-      <div class="mount" ref={mount} />
-      <div class="hud-probe" ref={probe} style={hud ? undefined : { height: 0 }} />
-    </div>
+    <>
+      <div class="game-host stage">
+        <div class="mount" ref={mount} />
+        <div class="hud-probe" ref={probe} style={hud ? undefined : { height: 0 }} />
+      </div>
+      <DriveInScreen api={driveIn} visible={driveInVisible} />
+    </>
   );
 }

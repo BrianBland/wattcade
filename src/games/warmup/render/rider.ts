@@ -1,6 +1,10 @@
 import type { G } from './biomes';
+import { rect } from './paint';
 
-export interface RiderLook { jersey: string; helmet: 'road' | 'bubble' | 'scuba' }
+export interface RiderLook { jersey: string; helmet: 'road' | 'bubble' | 'scuba'; /** Towing the Drive-In projector trailer. */ trailer?: boolean }
+
+/** Where the trailer's lens is, in rider space (the renderer aims the light beam from here). */
+export const LENS: [number, number] = [-12, -10.5];
 
 type P = [number, number];
 const line = (g: G, c: string, w: number, ...pts: P[]) => {
@@ -37,6 +41,12 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, 
     const p = pedal(a), k = knee(hip, p, 6.4, 6.6);
     line(g, c, 2.2, hip, k); line(g, sock, 2, k, p); line(g, '#222', 1.6, [p[0] - 1, p[1]], [p[0] + 1.2, p[1]]);
   };
+  if (look.trailer) { // little projector trailer on a drawbar behind the rear wheel
+    line(g, '#555', 1, [-11.5, -r], [-14, -r]);
+    wheel(g, -20, -3, 3, spin * 1.4);
+    rect(g, '#4a4a58', -26, -11, 13, 6); rect(g, '#d63a3a', -26, -7, 13, 1); rect(g, '#f4f0e6', -25, -10, 5, 2);
+    rect(g, '#222', -14, -12, 3, 3); rect(g, '#cfe8ff', -12, -11.5, 1, 2);
+  }
   if (look.helmet === 'scuba') { // air tank on the back
     g.fillStyle = '#e8e8f0'; g.beginPath(); g.ellipse(-2.6, -18.6, 1.8, 4.2, -0.9, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#ffb020'; g.fillRect(-4.5, -21.8, 2, 1);

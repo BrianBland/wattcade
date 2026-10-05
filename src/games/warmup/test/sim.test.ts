@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createGameSession, runHeadless, testProfile, NullInput } from '../../../core';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { biomeAt, biomeIdAt, BIOMES, makeTerrain } from '../sim/terrain';
+import { biomeAt, biomeOfSeg, biomeWeights, BIOMES, makeTerrain, type BiomeId } from '../sim/terrain';
 import type { WarmupSnapshot } from '../sim/sim';
 
 describe('scenarios via runHeadless', () => {
@@ -31,12 +31,29 @@ describe('terrain', () => {
     const t = makeTerrain(7, 3);
     for (let d = 0; d < 20000; d += 13) expect(Math.abs(t.grade(d))).toBeLessThanOrEqual(3 + 1e-9);
   });
-  it('biomes loop and blend near the boundary', () => {
+  it('biomes loop and dissolve over a window centred on the boundary', () => {
     expect(biomeAt(0, 1000, 0).cur).toBe(BIOMES[0]);
-    expect(biomeAt(1000 * BIOMES.length + 10, 1000, 0).cur).toBe(BIOMES[0]);
+    expect(biomeAt(1000 * BIOMES.length + 10, 1000, 0).dom).toBe(BIOMES[0]);
     expect(biomeAt(500, 1000, 0).mix).toBe(0);
-    expect(biomeAt(990, 1000, 0).mix).toBeGreaterThan(0.9);
-    expect(biomeIdAt(999.9, 1000, 0)).toBe(BIOMES[1]);
+    const before = biomeAt(900, 1000, 0, 200), at = biomeAt(1000, 1000, 0, 200), after = biomeAt(1099, 1000, 0, 200);
+    expect(before).toMatchObject({ cur: BIOMES[0], next: BIOMES[1], dom: BIOMES[0] });
+    expect(before.mix).toBeCloseTo(0, 1);
+    expect(at.mix).toBeCloseTo(0.5, 6);
+    expect(after).toMatchObject({ cur: BIOMES[0], next: BIOMES[1], dom: BIOMES[1] });
+    expect(after.mix).toBeGreaterThan(0.99);
+    expect(biomeAt(1101, 1000, 0, 200)).toMatchObject({ cur: BIOMES[1], mix: 0 });
+  });
+  it('the dissolve never flips: every biome weight moves smoothly as you ride through', () => {
+    const w = (d: number) => { const m = new Map<BiomeId, number>(biomeWeights(biomeAt(d, 1200, 3, 300))); return m; };
+    for (let d = 0; d < 1200 * BIOMES.length; d += 2) {
+      const a = w(d), b = w(d + 2);
+      for (const id of BIOMES) expect(Math.abs((a.get(id) ?? 0) - (b.get(id) ?? 0))).toBeLessThanOrEqual(2 / 300 + 1e-9);
+    }
+  });
+  it('weights sum to one and segment 0 starts clean', () => {
+    for (let d = 0; d < 6000; d += 37) expect(biomeWeights(biomeAt(d, 1200, 2)).reduce((a, [, x]) => a + x, 0)).toBeCloseTo(1, 9);
+    expect(biomeAt(0, 1200, 2).mix).toBe(0);
+    expect(biomeOfSeg(-1, 0)).toBe(BIOMES[BIOMES.length - 1]);
   });
 });
 
@@ -66,5 +83,36 @@ describe('sim', () => {
     const h = s.sim.hud!();
     expect(h.targetZone).toMatchObject({ min: 1, max: 2 });
     expect(h.gears).toBe(true);
+  });
+  it('Drive-In blends in and out smoothly over driveInS, never flipping', () => {
+    const { s, snap } = session();
+    expect(snap().driveIn).toBe(0);
+    s.sim.receive!({ type: 'driveIn', on: true });
+    let prev = 0;
+    for (let i = 0; i < 30 * 20; i++) {
+      s.step(1);
+      expect(snap().driveIn - prev).toBeLessThanOrEqual(1 / (30 * 8) + 1e-9); // 8 s default
+      prev = snap().driveIn;
+    }
+    expect(snap().driveIn).toBe(1);
+    s.sim.receive!({ type: 'driveIn', on: false });
+    s.step(30 * 3);
+    expect(snap().driveIn).toBeGreaterThan(0.5); expect(snap().driveIn).toBeLessThan(0.7);
+    s.step(30 * 10);
+    expect(snap().driveIn).toBe(0);
+  });
+  it('Drive-In leaves the road, grade and distance untouched', () => {
+    const run = (on: boolean) => {
+      const { s, snap } = session(on ? { driveIn: true } : undefined);
+      s.step(30 * 120);
+      return { d: snap().d, grade: snap().grade, cmds: s.commands.length };
+    };
+    expect(run(true)).toEqual(run(false));
+  });
+  it('can start with the Drive-In already on, and is deterministic', () => {
+    const a = session({ driveIn: true }), b = session({ driveIn: true });
+    expect(a.snap().driveIn).toBe(1);
+    a.s.step(900); b.s.step(900);
+    expect(a.snap()).toEqual(b.snap());
   });
 });

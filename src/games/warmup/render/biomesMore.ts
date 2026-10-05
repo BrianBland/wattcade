@@ -1,5 +1,6 @@
 // Under the Sea, Jungle, Desert Canyon, Volcano, Snowy Pass. Same rules as biomes.ts: primitives in the low-res buffer.
 import { hash01 } from '../sim/terrain';
+import { drawMesaRange, DESERT_MESA } from './mesa';
 import { disc, noise1, rect, silhouette, tri, type BiomeLook, type G } from './paint';
 
 const wrap = (x: number, span: number) => ((x % span) + span) % span;
@@ -105,27 +106,18 @@ const jungle: BiomeLook = {
 };
 
 // ---------------- desert canyon ----------------
-function saguaro(g: G, h: number, x: number, y: number) {
+export function saguaro(g: G, h: number, x: number, y: number) {
   const tall = 14 + h * 14;
   rect(g, '#3f8a46', x - 2, y - tall, 4, tall);
   rect(g, '#3f8a46', x - 7, y - tall * 0.7, 3, 7); rect(g, '#3f8a46', x - 7, y - tall * 0.7 + 4, 6, 3);
   rect(g, '#3f8a46', x + 4, y - tall * 0.55, 3, 6); rect(g, '#3f8a46', x + 1, y - tall * 0.55 + 3, 6, 3);
   rect(g, '#5aa85a', x - 1, y - tall, 1, tall);
 }
-function mesa(g: G, x: number, base: number, wd: number, ht: number, c: string, band: string) {
-  g.fillStyle = c; g.beginPath(); g.moveTo(x - wd / 2 - 8, base); g.lineTo(x - wd / 2, base - ht); g.lineTo(x + wd / 2, base - ht); g.lineTo(x + wd / 2 + 8, base); g.closePath(); g.fill();
-  rect(g, band, x - wd / 2 - 2, base - ht * 0.55, wd + 4, 2); rect(g, band, x - wd / 2 - 4, base - ht * 0.3, wd + 8, 1);
-}
 const desert: BiomeLook = {
   sky: ['#5aa0e0', '#f6e2b8'], haze: '#d89a6a', ridge: '#d9a066', mid: '#e0b07a', ground: '#e8bf84', groundDark: '#cf9f62',
   road: '#6a6264', roadEdge: '#4a4446', roadKind: 'asphalt', stars: 0,
-  actor: 'vulture', particles: 'dust', rider: 'road', outdoor: true, ambient: { vol: 0.03, freq: 900, q: 0.4 },
-  backdrop(g, w, y, u) {
-    for (let i = -1; i < 5; i++) {
-      const k = Math.floor(u / 140) + i, x = k * 140 - u + 60 + hash01(k * 3) * 50;
-      mesa(g, x, y + 6, 40 + hash01(k * 5) * 40, 22 + hash01(k * 7) * 18, '#c8784a', '#a85a32');
-    }
-  },
+  actor: 'vulture', weeds: true, particles: 'dust', rider: 'road', outdoor: true, ambient: { vol: 0.03, freq: 900, q: 0.4 },
+  backdrop(g, w, y, u) { drawMesaRange(g, w, y, u, DESERT_MESA); },
   midProp(g, h, x, y) {
     if (h < 0.26) saguaro(g, h, x, y);
     else if (h < 0.4) { disc(g, '#b8865a', x, y - 3, 3 + h * 4); disc(g, '#cf9f6a', x - 1, y - 4, 1.5); }

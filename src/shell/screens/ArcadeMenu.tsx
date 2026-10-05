@@ -7,6 +7,7 @@ import { toast } from '../components/Toasts';
 import { play } from '../../audio/sfx';
 import { timeAgo } from '../format';
 import { useMenuNav } from '../useMenuNav';
+import { getDriveIn, subscribeDriveIn, toggleDriveIn } from '../drivein/store';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
 const ACCENTS = ['#00f0ff', '#ff2bd6', '#b6ff3b', '#ffb020', '#7a5cff', '#2de2a6'];
@@ -48,7 +49,9 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
   useEffect(() => subscribeDevices(() => force((x) => x + 1)), []);
   const [hills, setHills] = useState(lobbyHills);
   const toggleHills = () => { const v = !lobbyHills(); setLobbyHills(v); setHills(v); };
-  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), onBack];
+  const [driveIn, setDriveIn] = useState(getDriveIn().on);
+  useEffect(() => subscribeDriveIn(() => setDriveIn(getDriveIn().on)), []);
+  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), onBack, () => { toggleDriveIn(); }];
   const [idx, setIdx] = useMenuNav(bar.length + n, [bar.length, n], (i) => (i < bar.length ? bar[i]() : onPlay(games[i - bar.length])), onBack, true,
     { initial: bar.length + lastPlayedIndex(games, profile) });
   const st = getDeviceStatus();
@@ -63,6 +66,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
         <Btn small focused={idx === 1} onClick={bar[1]}><Dot on={st.trainer.connected} busy={st.trainer.busy} /><Dot on={st.controller.connected} busy={st.controller.busy} /><Dot on={st.hr.connected} busy={st.hr.busy} />Devices</Btn>
         <Btn small focused={idx === 2} onClick={bar[2]}>★ {ach.filter((a) => a.unlocked).length}/{ach.length}</Btn>
         <Btn small focused={idx === 3} onClick={onBack}>Switch rider</Btn>
+        <Btn small focused={idx === 4} onClick={bar[4]} class={`projector${driveIn ? ' on' : ''}`}>📽{driveIn ? ' Drive-In' : ''}</Btn>
       </div>
       <div class="game-row">
         {games.map((g, i) => (
@@ -78,7 +82,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
           </div>
         ))}
       </div>
-      <KeyHints hints={[['dpad', 'Move'], ['a', 'Play'], ['b', 'Switch rider'], ['shift', 'Gears']]} />
+      <KeyHints hints={[['dpad', 'Move'], ['a', 'Play'], ['b', 'Switch rider'], ['shift', 'Gears'], ...(driveIn ? [['y', 'Next channel'], ['z', 'Prev channel']] as [string, string][] : [])]} />
     </div>
   );
 }

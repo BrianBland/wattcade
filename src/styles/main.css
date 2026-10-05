@@ -321,3 +321,23 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .lab-info b { word-break: break-all; }
 .mp-credit { display: block; margin-top: 6px; font: 12px system-ui; color: var(--dim); text-decoration: underline dotted; }
 .mp-queue > .btn.primary { position: sticky; bottom: 0; flex-shrink: 0; justify-content: center; box-shadow: 0 -8px 16px #0b0a18; }
+
+/* ---- Drive-In (lobby cinema): the <video> sits over the canvas frame the renderer draws at the same rect ---- */
+.drivein { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+.di-screen { position: absolute; left: 0; top: 0; background: #05040d; overflow: hidden; border-radius: 2px; }
+.di-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.di-snow { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.di-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; color: #e9e6ff; font: 700 clamp(13px, 1.7vw, 22px) system-ui; background: repeating-linear-gradient(90deg, #c0c0c0 0 12.5%, #c0c000 0 25%, #00c0c0 0 37.5%, #00c000 0 50%, #c000c0 0 62.5%, #c00000 0 75%, #0000c0 0 87.5%, #101010 0); }
+.di-card > * { background: #05040dcc; padding: 4px 12px; border-radius: 6px; }
+.di-card small { font-weight: 600; opacity: .8; font-size: .7em; }
+.di-card.ghost { background: transparent; }
+.di-osd { position: absolute; left: 4%; top: 6%; font: 700 clamp(18px, 3.4vw, 40px) ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 2px; color: #3dff6a; text-shadow: 0 0 8px #3dff6a, 2px 2px 0 #000; animation: osdOut 2s steps(1, end) forwards; }
+@keyframes osdOut { 0%, 85% { opacity: 1 } 100% { opacity: 0 } }
+.di-sound { position: absolute; right: 8px; bottom: 8px; pointer-events: auto; border: 0; border-radius: 99px; padding: 8px 14px; font: 800 14px system-ui; color: #fff; background: #05040dcc; box-shadow: 0 0 0 1px #ffffff40; }
+.di-bar { position: absolute; left: 0; top: 0; height: 48px; display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 12px; align-items: center; justify-items: center; padding: 4px 10px; box-sizing: border-box; border-radius: 10px; background: #05040dcc; color: #e9e6ff; font: 800 15px ui-monospace, Menlo, monospace; pointer-events: auto; }
+.di-bar button { pointer-events: auto; border: 0; border-radius: 8px; width: 44px; height: 30px; font: 800 16px system-ui; color: #3dff6a; background: #ffffff14; }
+.di-ch b { color: #3dff6a; }
+.di-credit { grid-column: 1 / -1; font: 600 11px system-ui; color: #bdb8e8; text-decoration: underline; }
+.btn.projector { filter: drop-shadow(0 0 6px #ffd98a); }
+.btn.projector.on { color: #ffd98a; border-color: #ffd98a; box-shadow: 0 0 14px #ffd98a88; animation: projGlow 2.4s ease-in-out infinite; }
+@keyframes projGlow { 50% { box-shadow: 0 0 22px #ffd98acc; } }

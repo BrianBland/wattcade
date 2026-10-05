@@ -23,6 +23,10 @@ export interface BiomeLook {
   actor: 'bird' | 'gull' | 'ufo' | 'fish' | 'parrot' | 'vulture' | 'ember' | 'none';
   /** Weather particles drifting over the scene. */
   particles?: 'snow' | 'ash' | 'bubbles' | 'fireflies' | 'dust';
+  /** Also spawns tumbleweeds (desert-like biomes). */
+  weeds?: boolean;
+  /** 0..1 headlight on / dusk dimming regardless of the real clock (the Drive-In is always dusk). */
+  lights?: number; dusk?: number;
   /** Rider headgear. */
   rider: 'road' | 'bubble' | 'scuba';
   /** Outdoors on Earth: follows the real time of day (night sky, sunset tint). */

@@ -53,4 +53,4 @@ CONTRACT-REQUEST: none.
 - App keeps `profileRef` so async credit and game saves always apply to the latest profile.
 - Road: Hills/Flat toggle in the arcade menu (`warmup.hills` tunable, saved per rider).
 
-- Tests: `npx vitest run src/shell src/debug`.
+- Tests: `npx vitest run src/shell src/debug`.- Drive-In (`shell/drivein/`, see SPEC §6.6): `channels.ts` (lineup, dial reducer, saved state), `layout.ts` (`screenRect`, `easeRect`), `playback.ts` (watchdog), `store.ts` (per-rider state; `handleChannelPress` for Y/Z), `DriveInScreen.tsx` (video, static, OSD, chip, bar; its `api.tick()` is called by `WarmupStage` before each canvas render), `staticFx.ts`. 📽 button = last item of the ArcadeMenu top bar. App's menu gate lets Y/Z through without waking; taps inside `.drivein` don't wake either. Video only shows on the `menu` screen.

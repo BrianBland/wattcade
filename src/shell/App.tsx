@@ -16,6 +16,7 @@ import { MediaPicker } from './media/MediaPicker';
 import { Toasts, toast } from './components/Toasts';
 import { FullscreenButton } from './components/FullscreenButton';
 import { setMenuGate } from './menuInput';
+import { handleChannelPress, loadDriveIn, setDriveInVisible } from './drivein/store';
 import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
@@ -66,12 +67,14 @@ export function App() {
     const touch = () => { lastActive.current = performance.now(); };
     const onAct = (e: Event) => {
       unlockAudio(); unlockMedia(); // iOS: audio can only start from a gesture
-      if ((e.target as Element | null)?.closest?.('.hud')) return; // riding controls don't count
+      if ((e.target as Element | null)?.closest?.('.hud, .drivein')) return; // riding controls and the channel bar don't count
       touch();
       if (asleepRef.current) { setAsleep(false); sfx('uiWake'); e.stopPropagation(); e.preventDefault(); }
     };
     window.addEventListener('pointerdown', onAct, true); window.addEventListener('keydown', onAct, true);
     setMenuGate((p) => {
+      // Y / Z flip Drive-In channels without waking the menus
+      if (handleChannelPress(p) && ![...p].some((b) => b !== 'y' && b !== 'z' && NAV.has(b))) return false;
       if (![...p].some((b) => NAV.has(b))) return true;
       touch();
       if (asleepRef.current) { setAsleep(false); sfx('uiWake'); return false; }
@@ -136,11 +139,14 @@ export function App() {
     case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} onDone={() => go({ name: 'menu' })} />; break;
   }
   const inGame = screen.name === 'game';
+  const driveInRider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;
+  useEffect(() => loadDriveIn(driveInRider?.id ?? null), [driveInRider?.id]);
+  useEffect(() => setDriveInVisible(screen.name === 'menu'), [screen.name]);
   const rider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;
   const hud = !inGame && !!rider && !!lobby && HUD_SCREENS.includes(screen.name);
   return (
     <>
-      {!inGame && <WarmupStage profile={rider} hud={hud} restartKey={restartKey} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
+      {!inGame && <WarmupStage profile={rider} hud={hud} restartKey={restartKey} driveInVisible={screen.name === 'menu'} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
       <div class={`screens${asleep ? ' asleep' : ''}${hud ? ' with-hud' : ''}`}>{body}</div>
       {hud && lobby && rider && (
         <div class="hud-host">

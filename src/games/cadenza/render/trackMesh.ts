@@ -41,7 +41,8 @@ void main() {
   float panel = fract(a * 8.0);
   float seam = 1.0 - smoothstep(0.0, 0.04, min(panel, 1.0 - panel));
   float ring = pow(0.5 + 0.5 * cos(m * 6.2831853 / 12.0), 40.0);
-  float top = exp(-pow((a - 0.5) * 40.0, 2.0)) * step(fract(m * 0.25), 0.4) * 0.45;
+  float q = (a - 0.5) * 40.0; // q * q, not pow(q, 2.0): pow of a negative base is NaN on iOS GPUs, and bloom smears a NaN to black
+  float top = exp(-q * q) * step(fract(m * 0.25), 0.4) * 0.45;
   float streak = pow(0.5 + 0.5 * sin(a * 120.0 + m * 0.05), 30.0) * 0.15;
   vec3 acc = mix(uAcc, hue2rgb(fract(a + uTime * 0.2 + m * 0.01)), uAcid * 0.6);
   vec3 c = uFog * 0.5 + acc * (seam * 0.55 + streak) + uAcc2 * ring * (1.2 + 1.6 * uBeat) + vec3(1.0, 0.95, 0.9) * top * (0.9 + 0.6 * uBands.z);

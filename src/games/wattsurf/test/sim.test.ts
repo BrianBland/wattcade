@@ -36,6 +36,26 @@ describe('Wattsurf sim', () => {
     expect(r.events.some((e) => e.type === 'reboot')).toBe(true); // breaks/outros (recover zones) reboot even at 0 W
   });
 
+  it('riding under the target fades in, then drains the shield; riding over a zone ceiling overcharges', () => {
+    const timeline = synthTimeline({ style: 'edm', songs: 1 });
+    const at = (script: string, kind: string) => {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script }, simOpts: { autopilot: true, difficulty: 'pro' } });
+      const z = timeline.sections.find((x) => x.kind === kind)!;
+      while (s.media!.positionS() < z.t0 + 6) s.step(30);
+      return s.sim.snapshot() as WattsurfSnapshot;
+    };
+    const climbing = at('z2', 'build'); // 0.65 FTP against a Z4 floor
+    expect(climbing.effort.ok).toBe(false);
+    expect(climbing.effort.under).toBeGreaterThan(0.6);
+    expect(climbing.shield).toBeLessThan(100);
+    expect(climbing.effort.over).toBe(0);
+    const cruising = at('intervals', 'intro'); // 1.05 FTP against a Z2–3 cruise
+    expect(cruising.effort.ok).toBe(true);
+    expect(cruising.effort.under).toBe(0);
+    expect(cruising.effort.over).toBeGreaterThan(0.4);
+    expect(cruising.effort.ceilingWatts).toBeGreaterThan(cruising.effort.watts);
+  });
+
   it('is deterministic', () => {
     const run = () => runHeadless({ game: module, script: 'mash', minutes: 4, seed: 7, simOpts: { autopilot: true }, media: { synth: { style: 'rock', songs: 1 } } }).summary;
     expect(run()).toEqual(run());

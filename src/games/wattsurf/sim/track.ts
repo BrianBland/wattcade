@@ -22,6 +22,8 @@ export const ERG_FTP = { cruise: 0.65, climb: [0.75, 0.92], sprint: 1.12, hold: 
 export const ZONE_FLOOR = [0, 0, 0.56, 0.76, 0.91, 1.06] as const;
 /** Block colours (purple → red) and their points. Grey = −1. */
 export const COLOR_POINTS = [10, 20, 30, 50, 80] as const;
+/** Seconds a build's helix takes (one full banked turn). */
+export const HELIX_S = 9;
 
 export interface Block { t: number; lane: number; color: number; zone: number }
 export interface Zone {
@@ -42,6 +44,8 @@ export interface Track {
   zones: Zone[]; blocks: Block[];
   /** Bank (roll, rad; + = rolls right) per sample, and tunnel membership per sample (renderer only). */
   roll: Float32Array; tunnel: Uint8Array; tunnels: Array<{ t0: number; t1: number }>;
+  /** Set pieces: builds that spiral up a banked 360° helix (the coil you rode is below you), drops that open with a corkscrew. */
+  stunts: Array<{ kind: 'helix' | 'corkscrew'; t0: number; t1: number }>;
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
@@ -111,18 +115,30 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const speed = new Float32Array(n), dist = new Float64Array(n), height = new Float32Array(n), grade = new Float32Array(n), curve = new Float32Array(n);
   const roll = new Float32Array(n), tunnel = new Uint8Array(n);
   const phase = rng() * Math.PI * 2, curvePhase = rng() * Math.PI * 2;
-  // hard banks: every drop throws you into a near-sideways turn; some longer verses get a softer one
-  const banks: Array<{ t0: number; dur: number; ang: number }> = [];
-  let dir = rng() < 0.5 ? 1 : -1;
+  // hard banks: every drop throws you into a near-sideways turn; some longer verses get a softer one.
+  // Long builds spiral up a full banked helix; every other drop opens with a 360° corkscrew before its bank.
+  const banks: Array<{ t0: number; dur: number; ang: number; yaw?: number }> = [];
+  const rolls: Array<{ t0: number; dur: number; ang: number }> = [];
+  const stunts: Track['stunts'] = [];
+  let dir = rng() < 0.5 ? 1 : -1, nDrop = 0;
   for (const z of zones) {
-    if (z.kind === 'drop' && z.t1 - z.t0 > 6) { banks.push({ t0: z.t0 + 1, dur: 4.5, ang: dir * 1.15 }); dir = -dir; }
-    else if (z.kind === 'verse' && z.t1 - z.t0 > 20 && rng() < 0.6) { banks.push({ t0: z.t0 + (z.t1 - z.t0) * (0.3 + 0.3 * rng()), dur: 3.5, ang: dir * (0.6 + 0.3 * rng()) }); dir = -dir; }
+    const len = z.t1 - z.t0;
+    if (z.kind === 'drop' && len > 6) {
+      const screw = nDrop++ % 2 === 1 && len > 9;
+      if (screw) { rolls.push({ t0: z.t0 + 0.2, dur: 2.6, ang: dir * Math.PI * 2 }); stunts.push({ kind: 'corkscrew', t0: z.t0 + 0.2, t1: z.t0 + 2.8 }); }
+      banks.push({ t0: z.t0 + (screw ? 3 : 1), dur: 4.5, ang: dir * 1.15 }); dir = -dir;
+    } else if (z.kind === 'build' && len >= HELIX_S + 4) {
+      const t0 = z.t1 - HELIX_S - 1;
+      banks.push({ t0, dur: HELIX_S, ang: dir * 0.75, yaw: (dir * Math.PI * 2) / (0.75 * HELIX_S) }); // the envelope integrates to 0.75 × dur
+      stunts.push({ kind: 'helix', t0, t1: t0 + HELIX_S }); dir = -dir;
+    } else if (z.kind === 'verse' && len > 20 && rng() < 0.6) { banks.push({ t0: z.t0 + len * (0.3 + 0.3 * rng()), dur: 3.5, ang: dir * (0.6 + 0.3 * rng()) }); dir = -dir; }
   }
   const env = (t: number, b: { t0: number; dur: number }) => {
     const u = (t - b.t0) / b.dur; if (u <= 0 || u >= 1) return 0;
     const e = u < 0.25 ? u / 0.25 : u > 0.75 ? (1 - u) / 0.25 : 1;
     return e * e * (3 - 2 * e);
   };
+  const ease = (t: number, b: { t0: number; dur: number }) => { const u = clamp((t - b.t0) / b.dur, 0, 1); return u * u * (3 - 2 * u); };
   // tunnels: breaks always, some verses; never longer than 45 s
   const tunnels: Array<{ t0: number; t1: number }> = [];
   for (const z of zones) if ((z.kind === 'break' || (z.kind === 'verse' && rng() < 0.45)) && z.t1 - z.t0 >= 6) tunnels.push({ t0: z.t0, t1: Math.min(z.t1, z.t0 + 45) });
@@ -148,12 +164,17 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     g += (Math.max(0, want) - g) * (i ? 1 - Math.exp(-1 / hz / 2) : 1);
     grade[i] = Math.round(g * 100) / 100;
     // the visual track: climbs with the grade, dives in drops (downhill rush), rolls elsewhere
-    const vis = z.kind === 'drop' ? -6 - 4 * ema : z.kind === 'build' ? g : g - 1.2;
+    let vis = z.kind === 'drop' ? -6 - 4 * ema : z.kind === 'build' ? g : g - 1.2;
+    let r = 0, yaw = 0;
+    for (const b of banks) {
+      const e = env(p, b); if (!e) continue;
+      r += b.ang * e; yaw += (b.yaw ?? Math.sign(b.ang) * 0.4) * e;
+      if (b.yaw) vis = Math.max(vis, 5 * e); // a helix climbs steeply enough to clear the coil below
+    }
+    for (const c of rolls) r += c.ang * ease(p, c);
+    roll[i] = r;
     if (i) h += (vis / 100) * (((speed[i - 1] + v) / 2) / hz);
     height[i] = h;
-    let r = 0, yaw = 0;
-    for (const b of banks) { const e = env(p, b); if (e) { r += b.ang * e; yaw += Math.sign(b.ang) * 0.4 * e; } }
-    roll[i] = r;
     tunnel[i] = tunnels.some((tu) => p >= tu.t0 && p < tu.t1) ? 1 : 0;
     head += (0.0009 * Math.sin(x / 260 + curvePhase) + 0.0006 * Math.sin(x / 97 + 2 * curvePhase) * (0.5 + ema)) * (v / hz) + yaw / hz;
     curve[i] = head;
@@ -191,7 +212,7 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     }
   }
   return {
-    durationS: tl.durationS, hz, lanes: d.lanes, dist, speed, height, grade, curve, zones, blocks, roll, tunnel, tunnels,
+    durationS: tl.durationS, hz, lanes: d.lanes, dist, speed, height, grade, curve, zones, blocks, roll, tunnel, tunnels, stunts,
     beats: tl.beats, downbeats: tl.downbeats, phrases: tl.phrases, bands: tl.bands, intensity: tl.intensity,
   };
 }

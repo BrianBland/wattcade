@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { GameModule, GameRenderer, Insets, Profile } from '../../contracts';
+import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../contracts';
 import type { MediaRun, SessionLike } from '../types';
 import { ProgramSync } from '../../media/clock';
 import { startTarget } from '../countGate';
@@ -112,7 +112,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         renderer = await game.loadRenderer();
         if (disposed) { renderer.unmount(); return; }
         const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets() });
+        const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
+        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx });
         renderer.setInsets?.(readInsets());
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
@@ -173,7 +174,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     return () => {
       disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); void lock?.release();
-      music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
+      music.current?.engine.setFx({ degrade: 0 }); music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);
 

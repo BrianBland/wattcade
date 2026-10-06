@@ -158,7 +158,7 @@ export interface GameSim {
 export interface Insets { top: number; right: number; bottom: number; left: number }
 export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface GameRenderer {
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }): void; // send -> GameSim.receive
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void }): void; // send -> GameSim.receive
   /** Called after mount and whenever the HUD size changes. */
   setInsets?(insets: Insets): void;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
@@ -212,6 +212,8 @@ export interface MediaTimeline {
   onsets: MediaOnset[]; sections: MediaSection[]; songs: MediaSongSpan[];
   confidence: 'full' | 'metadata';
 }
+/** Effects a music game's renderer may put on the playing music (present in mount ctx only when music is playing). Reset on exit. */
+export interface MusicFx { /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number }
 export interface MediaContext {
   timeline: MediaTimeline;
   /** Program position. Advances with the sim clock once the music is running (not during a pre-game menu). */

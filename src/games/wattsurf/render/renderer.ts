@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
+import type { BikeState, GameRenderer, InputState, Insets, MusicFx, Profile } from '../../../contracts';
 import { play } from '../../../audio/sfx';
 import type { WattsurfSnapshot } from '../sim/sim';
 import { sampleAt, zoneIndexAt, type Track } from '../sim/track';
@@ -24,6 +24,7 @@ export class WattsurfRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer; private post?: Post;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(70, 4 / 3, 0.3, 2000);
+  private musicFx?: (fx: MusicFx) => void;
   private hud?: Hud; private ro?: ResizeObserver; private flash?: HTMLDivElement;
   private size: [number, number] = [800, 600]; private insetB = 0;
   private color = '#00f0ff';
@@ -36,7 +37,8 @@ export class WattsurfRenderer implements GameRenderer {
   private fr = newFrame(); private fc = newFrame(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private m = new THREE.Matrix4();
   private white = new THREE.Color('#ffffff'); private worldUp = new THREE.Vector3(0, 1, 0);
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void }) {
+    this.musicFx = ctx.musicFx;
     this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color;
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -71,6 +73,7 @@ export class WattsurfRenderer implements GameRenderer {
     this.hud?.place(L);
   }
   unmount() {
+    this.musicFx?.({ degrade: 0 });
     this.ro?.disconnect(); this.hud?.dispose(); this.flash?.remove();
     this.post?.dispose(); this.renderer?.dispose(); this.renderer?.domElement.remove();
     this.scene.traverse((o) => { (o as THREE.Mesh).geometry?.dispose?.(); });
@@ -158,11 +161,13 @@ export class WattsurfRenderer implements GameRenderer {
     this.craft.group.position.copy(this.v);
     this.m.makeBasis(this.fr.r, this.fr.u, this.s.copy(this.fr.f).negate());
     this.craft.group.quaternion.setFromRotationMatrix(this.m);
-    this.craft.update(dt, tNow, { overdrive: s.overdrive, ghost: !!s.dropout, bank: this.bank, beat: beat * fx }, this.fr.r, this.fr.u);
+    const under = s.menu ? 0 : s.effort.under, over = s.menu ? 0 : s.effort.over;
+    this.craft.update(dt, tNow, { overdrive: s.overdrive, ghost: !!s.dropout, bank: this.bank, beat: beat * fx, over, under }, this.fr.r, this.fr.u);
+    this.musicFx?.({ degrade: under });
 
     // blocks
     const speed = s.menu ? 0 : sampleAt(t.speed, t.hz, p);
-    this.blocks!.update(s.blockState, this.craft.group.position, this.fr.f, speed, dt, tNow, {
+    this.blocks!.update(s.blockState, this.craft.group.position, dCraft, this.fr.f, speed, dt, tNow, {
       absorb: (c) => { this.craft!.absorb(c); play('coin', { vol: 0.14, minGapS: 0.05, pitch: 0.9 + 0.3 * Math.random() }); },
       greyHit: () => { this.craft!.greyHit(); this.shake = 1; this.hurt = 1; },
     });
@@ -198,7 +203,7 @@ export class WattsurfRenderer implements GameRenderer {
     this.post.set({
       bloom: 0.62 + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0),
       aberr: (0.0012 + 0.006 * this.down + 0.004 * beat * (drop ? 1 : 0.4) + 0.01 * this.hurt) * fx,
-      hurt: this.hurt * (reduced ? 0.4 : 1), time: tNow % 100,
+      hurt: this.hurt * (reduced ? 0.4 : 1), time: tNow % 100, gray: under,
     });
     this.hud.update(s, `#${U.uAcc.value.getHexString()}`, tNow);
     this.post.render();

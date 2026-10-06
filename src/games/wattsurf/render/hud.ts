@@ -20,6 +20,9 @@ const CSS = `
 .ws-callout.on { opacity:1; transform:scale(1); }
 .ws-callout b { display:block; font-size:64px; font-weight:900; font-style:italic; letter-spacing:8px; color:#fff; text-shadow:0 0 24px var(--acc), 0 0 4px var(--acc), 0 3px 0 #000; line-height:1; }
 .ws-callout span { display:block; font-size:22px; font-weight:900; letter-spacing:6px; color:var(--acc); text-shadow:0 2px 0 #000; margin-top:6px; }
+.ws-cue { display:block; font-size:24px; letter-spacing:3px; }
+.ws-cue.up { color:#fff; text-shadow:0 0 14px #fff, 0 2px 0 #000; }
+.ws-cue.down { color:#ff5a2a; text-shadow:0 0 14px #ff3b12, 0 2px 0 #000; }
 .ws-drop { position:absolute; left:0; right:0; text-align:center; font-weight:900; font-style:italic; font-size:30px; letter-spacing:4px; color:#ff3d5a; text-shadow:0 0 16px #ff3d5a, 0 2px 0 #000; }
 .ws-menu { pointer-events:auto; background:#05040ccc; border:2px solid var(--acc); border-radius:6px; padding:18px 20px; box-shadow:0 0 40px color-mix(in srgb, var(--acc) 40%, transparent); display:flex; flex-direction:column; gap:8px; }
 .ws-menu h2 { margin:0 0 4px; font-size:30px; font-style:italic; letter-spacing:6px; color:var(--acc); text-shadow:0 0 12px var(--acc); }
@@ -95,7 +98,11 @@ export class Hud {
     const bar = this.shield.firstElementChild as HTMLElement;
     bar.style.width = `${s.shield}%`;
     this.shield.classList.toggle('low', s.shield < 35 || !!s.dropout);
-    this.drop.textContent = s.dropout ? `DROPOUT · hit your target to reboot ${s.dropout.left.toFixed(1)}s` : '';
+    // off target: a big plain-language prompt under the callout (the world itself greys out / the ship overheats too)
+    if (s.dropout) this.drop.textContent = `DROPOUT · hit your target to reboot ${s.dropout.left.toFixed(1)}s`;
+    else if (e.under > 0.25) this.drop.innerHTML = `<span class="ws-cue up">${e.erg ? 'KEEP PEDALLING' : `POWER UP ▲ ${e.watts} W`}</span>`;
+    else if (e.over > 0.3) this.drop.innerHTML = `<span class="ws-cue down">EASE OFF ▼ ${e.ceilingWatts} W</span>`;
+    else this.drop.textContent = '';
   }
 }
 const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);

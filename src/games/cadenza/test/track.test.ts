@@ -4,7 +4,7 @@ import { buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } f
 
 const tl = synthTimeline({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
 
-describe('Wattsurf track', () => {
+describe('Cadenza track', () => {
   it('one zone per section, each with an effort target; drops are power sprints', () => {
     const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
     expect(tr.zones.length).toBe(tl.sections.length);

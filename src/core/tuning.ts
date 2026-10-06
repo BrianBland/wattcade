@@ -1,4 +1,5 @@
 import type { Tuning } from '../contracts';
+import { migrateTuning } from './renames';
 
 export type TuningValue = number | boolean | string;
 export interface TuningEntry {
@@ -97,6 +98,7 @@ export class TuningRegistry {
     const have = this.loaded.get(ns);
     if (have) return have;
     let m: Record<string, TuningValue> = {};
+    try { if (this.storage) migrateTuning(this.storage, `wattcade.tuning.${this.profileId}.`, ns); } catch { /* ignore */ }
     try { const raw = this.storage?.getItem(this.skey(ns)); if (raw) m = JSON.parse(raw); } catch { /* ignore */ }
     this.loaded.set(ns, m);
     return m;

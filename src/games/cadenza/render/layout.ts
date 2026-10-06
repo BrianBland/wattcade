@@ -1,4 +1,4 @@
-// Pure layout math for the Wattsurf renderer (unit-tested): HUD boxes and camera framing above the shell HUD.
+// Pure layout math for the Cadenza renderer (unit-tested): HUD boxes and camera framing above the shell HUD.
 
 export interface Box { x: number; y: number; w: number; h: number }
 export interface Layout {

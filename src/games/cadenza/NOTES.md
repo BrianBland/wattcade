@@ -1,4 +1,4 @@
-# wattsurf — Wattsurf (SPEC §6.5)
+# cadenza — Cadenza (SPEC §6.5)
 
 CONTRACT-REQUEST: none (uses `requires.media`, `ctx.media`, `mediaPreview` from Phase 1).
 
@@ -31,7 +31,7 @@ at the ship and ooze back past it in the craft's frame). Music FX via mount ctx 
 `renderer.ts` (camera rolls with banks), `hud.ts` (phase + watts), `layout.ts` (tested). Reduced flashing scales all pulses.
 
 ## Dev / tests
-`/dev/wattsurf.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth queue, no audio; `script=z2&sec=44` = under,
-`script=intervals&sec=86` = over). `/dev/craft.html` = ship states + mine turntable. `npx vitest run src/games/wattsurf`;
+`/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth queue, no audio; `script=z2&sec=44` = under,
+`script=intervals&sec=86` = over). `/dev/craft.html` = ship states + mine turntable. `npx vitest run src/games/cadenza`;
 scenarios in `scenarios.ts` (automixed EDM set with autopilot; idle dropout; mixed continuous album on casual).
 Gaps: Classic mode; iPad GPU cost of the full look unmeasured (add a low-FX switch if needed); tune with real rides.

@@ -3,9 +3,9 @@ import type { Button } from '../../../contracts';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
-import type { WattsurfSnapshot } from '../sim/sim';
+import type { CadenzaSnapshot } from '../sim/sim';
 
-describe('Wattsurf sim', () => {
+describe('Cadenza sim', () => {
   it('waits in its menu (music not started), then rides once started', () => {
     const timeline = synthTimeline({ style: 'edm', songs: 1, short: true });
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'z2' } });
@@ -14,7 +14,7 @@ describe('Wattsurf sim', () => {
     expect(s.media!.positionS()).toBe(0);
     s.step(30 * 25); // auto-starts after 25 s
     expect(s.sim.inMenu?.()).toBe(false);
-    const snap = s.sim.snapshot() as WattsurfSnapshot;
+    const snap = s.sim.snapshot() as CadenzaSnapshot;
     expect(snap.started).toBe(true);
     expect(s.media!.positionS()).toBeGreaterThan(0);
   });
@@ -42,7 +42,7 @@ describe('Wattsurf sim', () => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script }, simOpts: { autopilot: true, difficulty: 'pro' } });
       const z = timeline.sections.find((x) => x.kind === kind)!;
       while (s.media!.positionS() < z.t0 + 6) s.step(30);
-      return s.sim.snapshot() as WattsurfSnapshot;
+      return s.sim.snapshot() as CadenzaSnapshot;
     };
     const climbing = at('z2', 'build'); // 0.65 FTP against a Z4 floor
     expect(climbing.effort.ok).toBe(false);
@@ -62,11 +62,11 @@ describe('Wattsurf sim', () => {
   });
 });
 
-describe('Wattsurf controls', () => {
+describe('Cadenza controls', () => {
   const ride = (timeline: Array<{ t: number; press?: Button; release?: Button; paddleL?: number; paddleR?: number }>, secs: number) => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(timeline), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'pro' } });
     s.step(Math.round(secs * 30));
-    return s.sim.snapshot() as WattsurfSnapshot;
+    return s.sim.snapshot() as CadenzaSnapshot;
   };
   it('D-pad and Z/A step exactly one lane per press', () => {
     expect(ride([{ t: 1, press: 'left' }, { t: 1.1, release: 'left' }], 2).x).toBeCloseTo(-1, 3);
@@ -85,7 +85,7 @@ describe('Wattsurf controls', () => {
   it('elite (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
     const elite = (tl: Parameters<typeof ride>[0], secs: number) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'elite' } });
-      s.step(Math.round(secs * 30)); return (s.sim.snapshot() as WattsurfSnapshot).x;
+      s.step(Math.round(secs * 30)); return (s.sim.snapshot() as CadenzaSnapshot).x;
     };
     expect(elite([{ t: 1, paddleR: 0.5 }], 2)).toBeCloseTo(1, 3);
     expect(elite([{ t: 1, paddleL: 1 }], 2)).toBeCloseTo(-2, 3);

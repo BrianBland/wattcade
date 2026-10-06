@@ -486,7 +486,9 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - Achievements: Extinction Event (see a meteor), Act of Nature (two events in a ride).
 - **Later (not built):** generated story-mode levels (the event deck and seeds are the hooks: place events on purpose and validate difficulty headlessly); an ash cloud that shifts the rain. Then generated story-mode levels that mix phases with puzzles, validated headlessly in bulk for difficulty ordering.
 
-### §6.5 "Wattsurf" (music racer, **3D** Three.js, Audiosurf × Wipeout HD Zone) · owns `src/games/wattsurf/`
+### §6.5 "Cadenza" (music racer, **3D** Three.js, Audiosurf × Wipeout HD Zone) · owns `src/games/cadenza/`
+
+*Formerly "Wattsurf" (id `wattsurf`); saves, ride history and tuning migrate via `core/renames.ts`. A cadenza is the soloist's showpiece flourish — and it has your cadence in it.*
 
 - **Fantasy:** ride the song. The track is built from the music: calm passages roll, **builds climb**, **drops dive**. You steer an anti-grav craft across lanes to collect coloured blocks on the hits. The music sets the speed; your legs keep the shield up.
 - **Requires** `media: ['pcm']` (local, Jamendo or synth). Tags `intervals`, `sprint`. Launching it opens the media picker (§5.6), then the game's pre-game menu (`inMenu`): **mode** Mono / Classic and **rhythm difficulty** Casual / Pro / Elite. ◀▶ or shifters choose, A starts, last choice saved. Power difficulty is the existing difficulty knob.
@@ -566,8 +568,8 @@ Keep your own context small: you coordinate; subagents do the building. Use `mod
 ## §10 Music roadmap (one PR per phase)
 
 1. **Media core:** analysis worker plus synth ground-truth tests, local library (IndexedDB, tags, palette), two-deck player (continuous / automix / crossfade), `planMix`, program timeline, clock PLL, picker with preview and queue, contract additions.
-2. **Wattsurf v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
+2. **Cadenza v1:** Mono, track from timeline, sim-grade builds, drop sprints, shield, Zone renderer, reduced flashing, scenarios.
 3. **Jamendo catalogue** (§5.7): search, stream, analyse, attribution.
 4. **Drive-In:** device spike, YouTubeSource, desert drive-in biome, crank-to-speed, cinema mode.
-5. **Wattsurf Classic,** Shift ability, per-song/per-set leaderboards, achievements.
+5. **Cadenza Classic,** Shift ability, per-song/per-set leaderboards, achievements.
 6. **Later:** LA drive-in skin; YouTube FX (deferred); Spotify (deferred, §5.7).

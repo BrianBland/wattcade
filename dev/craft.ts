@@ -1,10 +1,10 @@
-// Dev turntable: the Wattsurf craft (normal / overcharged / underpowered) and a mine, through the game's bloom.
+// Dev turntable: the Cadenza craft (normal / overcharged / underpowered) and a mine, through the game's bloom.
 //   /dev/craft.html?color=%2344aaff&t=1.2&z=34&x=0   (t = fixed turntable angle, omit to spin; z/x = camera distance/pan)
 import * as THREE from 'three';
-import { Craft } from '../src/games/wattsurf/render/craft';
-import { mineGeometry, mineMaterial } from '../src/games/wattsurf/render/blocks';
-import { Post } from '../src/games/wattsurf/render/post';
-import { U } from '../src/games/wattsurf/render/look';
+import { Craft } from '../src/games/cadenza/render/craft';
+import { mineGeometry, mineMaterial } from '../src/games/cadenza/render/blocks';
+import { Post } from '../src/games/cadenza/render/post';
+import { U } from '../src/games/cadenza/render/look';
 
 const q = new URLSearchParams(location.search), color = q.get('color') ?? '#44aaff', fixed = q.get('t');
 const app = document.getElementById('app')!;

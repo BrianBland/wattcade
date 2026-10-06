@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, MusicFx, Profile } from '../../../contracts';
 import { play } from '../../../audio/sfx';
-import type { WattsurfSnapshot } from '../sim/sim';
+import type { CadenzaSnapshot } from '../sim/sim';
 import { sampleAt, zoneIndexAt, type Track } from '../sim/track';
 import { Blocks } from './blocks';
 import { City } from './city';
@@ -20,7 +20,7 @@ import { buildTrackMeshes } from './trackMesh';
  */
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
 
-export class WattsurfRenderer implements GameRenderer {
+export class CadenzaRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer; private post?: Post;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(70, 4 / 3, 0.3, 2000);
@@ -105,7 +105,7 @@ export class WattsurfRenderer implements GameRenderer {
   }
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
-    const s = snapshot as WattsurfSnapshot;
+    const s = snapshot as CadenzaSnapshot;
     if (!this.renderer || !this.post || !this.hud || !this.craft) return;
     if (s.track !== this.track) this.build(s.track, s.track.blocks.length);
     const t = this.track!, path = this.path!;

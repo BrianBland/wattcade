@@ -1,4 +1,4 @@
-import type { WattsurfSnapshot } from '../sim/sim';
+import type { CadenzaSnapshot } from '../sim/sim';
 import type { Box, Layout } from './layout';
 
 /** Wipeout-flavoured DOM HUD: score, zone card, shield, now playing, zone callouts, dropout banner, pre-game menu. */
@@ -64,7 +64,7 @@ export class Hud {
   text(title: string, sub: string, now: number, s = 1.6) { this.callout.innerHTML = `<b style="font-size:44px">${title}</b><span>${sub}</span>`; this.callout.classList.add('on'); this.calloutUntil = now + s; }
   dispose() { this.root.remove(); }
 
-  update(s: WattsurfSnapshot, accent: string, now: number) {
+  update(s: CadenzaSnapshot, accent: string, now: number) {
     this.root.style.setProperty('--acc', accent);
     if (now > this.calloutUntil) this.callout.classList.remove('on');
     if (s.menu) {
@@ -74,7 +74,7 @@ export class Hud {
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>WATTSURF</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: one lane per press · builds climb, drops are short sprints · ERG = the trainer sets the watts, you just pedal</small>`;
+        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: one lane per press · builds climb, drops are short sprints · ERG = the trainer sets the watts, you just pedal</small>`;
         this.menu.querySelectorAll<HTMLElement>('.ws-row').forEach((r) => r.addEventListener('pointerdown', (e) => {
           e.preventDefault(); e.stopPropagation();
           const i = Number(r.dataset.i);

@@ -12,3 +12,4 @@ export { type InputSource, TimelineInput, NullInput, type TimelineEvent } from '
 export { createGameSession, type GameSession, type SessionOpts, type SessionMedia } from './session';
 export { runHeadless, resolveMedia, type HeadlessOpts, type HeadlessResult, type MediaSpec } from './headless';
 export { testProfile } from './testProfile';
+export { RENAMED_GAMES, currentGameId, migrateProfile, migrateSessionRecord, migrateTuning } from './renames';

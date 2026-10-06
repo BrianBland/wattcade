@@ -3,8 +3,8 @@ import { synthTimeline } from '../../../media/synth/queue';
 import { buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 
 export type TrainerStyle = 'grade' | 'erg';
-export interface WattsurfOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
-export interface WattsurfSave {
+export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
+export interface CadenzaSave {
   plays?: number; sets?: number; bestScore?: number; best?: Record<string, number>;
   lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle;
 }
@@ -12,7 +12,7 @@ export interface Cue { id: number; type: string; data?: Record<string, number | 
 /** Block states for the renderer: 0 ahead, 1 collected, 2 missed, 3 grey hit, 4 grey dodged. */
 export const BLOCK = { AHEAD: 0, HIT: 1, MISS: 2, GREY_HIT: 3, GREY_DODGED: 4 } as const;
 
-export interface WattsurfSnapshot {
+export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
   menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
   track: Track; blockState: Uint8Array; x: number; lanes: number;
@@ -40,7 +40,7 @@ const START_GRACE_S = 6;
 const zoneCeiling = (z: number) => (z >= 5 ? 1.21 : ZONE_FLOOR[z + 1]);
 const ease = (x: number, to: number, dt: number, tau: number) => x + (to - x) * (1 - Math.exp(-dt / tau));
 
-export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): GameSim {
+export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): GameSim {
   const t = ctx.tuning;
   const tun = {
     hillScale: t.num('hillScale', 1, 0, 2, 0.05, 'Trainer grade × (builds climb up to 7 % at 1.0)'),
@@ -53,7 +53,7 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
-  const save: WattsurfSave = { ...(ctx.load<WattsurfSave>() ?? {}) };
+  const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
   const seed = opts.seed ?? 1;
   const timeline: MediaTimeline = ctx.media?.timeline ?? synthTimeline({ style: 'edm', songs: 1, seed });
   let difficulty: Difficulty = opts.difficulty ?? save.lastDifficulty ?? 'pro';
@@ -271,7 +271,7 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
         ],
       };
     },
-    snapshot(): WattsurfSnapshot {
+    snapshot(): CadenzaSnapshot {
       const p = position(), zi = Math.max(0, zoneIdx < 0 ? zoneIndexAt(track, p) : zoneIdx), z = track.zones[zi];
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {

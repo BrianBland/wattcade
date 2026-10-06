@@ -1,9 +1,9 @@
-// Dev harness: Wattsurf on the fake bike with a synth queue (no audio), without the shell.
-//   /dev/wattsurf.html?script=target-follow&style=edm&songs=2&sec=40&autopilot=1&inset=120&speed=1&menu=1&diff=pro
+// Dev harness: Cadenza on the fake bike with a synth queue (no audio), without the shell.
+//   /dev/cadenza.html?script=target-follow&style=edm&songs=2&sec=40&autopilot=1&inset=120&speed=1&menu=1&diff=pro
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { synthTimeline } from '../src/media/synth/queue';
-import { module } from '../src/games/wattsurf';
+import { module } from '../src/games/cadenza';
 
 const q = new URLSearchParams(location.search);
 const inset = Number(q.get('inset') ?? 120), speed = Number(q.get('speed') ?? 1);

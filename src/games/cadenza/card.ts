@@ -1,10 +1,10 @@
-// Arcade card + picker preview for Wattsurf (pure Canvas 2D; no renderer imports).
+// Arcade card + picker preview for Cadenza (pure Canvas 2D; no renderer imports).
 import type { MediaTimeline, Profile } from '../../contracts';
 import { buildTrack, rateTrack, type Difficulty } from './sim/track';
-import type { WattsurfSave } from './sim/sim';
+import type { CadenzaSave } from './sim/sim';
 
 export function progressLine(save: unknown): string | null {
-  const s = save as WattsurfSave | undefined;
+  const s = save as CadenzaSave | undefined;
   if (!s?.plays) return null;
   return `${s.plays} ride${s.plays === 1 ? '' : 's'}${s.bestScore ? ` · best ${s.bestScore.toLocaleString()}` : ''}`;
 }
@@ -37,7 +37,7 @@ export function drawCard(g: CanvasRenderingContext2D, w: number, h: number, t: n
 
 /** Picker preview: the track's side profile (climbs/dives), block density, sprint markers, and an effort estimate. */
 export function mediaPreview(g: CanvasRenderingContext2D, w: number, h: number, tl: MediaTimeline, profile: Readonly<Profile>): void {
-  const save = profile.gameData.wattsurf as WattsurfSave | undefined;
+  const save = profile.gameData.cadenza as CadenzaSave | undefined;
   const difficulty: Difficulty = save?.lastDifficulty ?? 'pro';
   const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: 1 });
   const n = tr.height.length; let lo = Infinity, hi = -Infinity;

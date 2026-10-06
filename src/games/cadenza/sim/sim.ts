@@ -1,29 +1,50 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
 import { synthTimeline } from '../../../media/synth/queue';
-import { buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 
 export type TrainerStyle = 'grade' | 'erg';
-export interface WattsurfOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
-export interface WattsurfSave {
+export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
+export interface CadenzaSave {
   plays?: number; sets?: number; bestScore?: number; best?: Record<string, number>;
   lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle;
 }
+/** One finished song's recap. `strip` = effort per second: 0 on target, 1 under, 2 over, 3 recovering (no target). */
+export interface SongRecap {
+  n: number; title: string; artist: string; score: number; accuracyPct: number; maxChain: number;
+  onTargetPct: number; launches: LaunchRating[]; strip: number[];
+}
+/** Chain counts that set off a flourish: 25, 50, then every 50. */
+export const isChainMilestone = (c: number) => c === 25 || (c >= 50 && c % 50 === 0);
 export interface Cue { id: number; type: string; data?: Record<string, number | string | boolean> }
 /** Block states for the renderer: 0 ahead, 1 collected, 2 missed, 3 grey hit, 4 grey dodged. */
 export const BLOCK = { AHEAD: 0, HIT: 1, MISS: 2, GREY_HIT: 3, GREY_DODGED: 4 } as const;
+export type LaunchRating = 'perfect' | 'great' | 'good' | 'weak';
+/** Launch ratio (avg power ÷ the sprint floor, or rpm ÷ 90 in ERG) needed per rating, and its bonus multiple. */
+export const LAUNCH_RATINGS: ReadonlyArray<{ r: LaunchRating; min: number; x: number }> = [
+  { r: 'perfect', min: 1.15, x: 3 }, { r: 'great', min: 1.0, x: 2 }, { r: 'good', min: 0.85, x: 1 }, { r: 'weak', min: -1, x: 0 },
+];
+export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >= x.min)!;
 
-export interface WattsurfSnapshot {
+export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
   menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
   track: Track; blockState: Uint8Array; x: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
+  /** The drop's launch roll: live meter while rolling, then the result for a few seconds. */
+  launch: { active: boolean; progress: number; ratio: number; rating: LaunchRating | null; bonus: number; age: number } | null;
   zone: { index: number; n: number; kind: SectionKind; hue: number; left: number; label: string; floorFtp: number };
   /** The effort asked for right now: phase, floor watts (0 = none), seconds left in the phase. */
-  effort: { ftp: number; ok: boolean; phase: Phase; watts: number; left: number; erg: boolean };
+  effort: { ftp: number; ok: boolean; phase: Phase; watts: number; left: number; erg: boolean;
+    /** 0..1, eased: how far (and how long) the rider has been under the floor / over the zone's ceiling. Drives the fade and the overcharge. */
+    under: number; over: number; ceilingWatts: number;
+    /** For the track gauge: phase floor / ceiling as FTP fractions (0 = none) and rpm. */
+    floorFtp: number; ceilingFtp: number; cadence: number };
   song: { title: string; artist: string; credit?: string } | null;
   difficulty: Difficulty; mode: Mode; reducedFlash: boolean;
   cues: Cue[];
+  /** Finished songs, oldest first (the renderer shows the newest as a recap card). */
+  recaps: SongRecap[];
   hooks: { powerFtp: number };
 }
 
@@ -32,8 +53,13 @@ export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, start: 4 } a
 const MENU_AUTO_S = 25;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const FIXED = 1 / 30;
+/** No off-target penalties in the first seconds of a ride (legs spinning up). */
+const START_GRACE_S = 6;
+/** Top of power zone z as an FTP fraction (Coggan); zone 5 tops out where 6 starts. */
+const zoneCeiling = (z: number) => (z >= 5 ? 1.21 : ZONE_FLOOR[z + 1]);
+const ease = (x: number, to: number, dt: number, tau: number) => x + (to - x) * (1 - Math.exp(-dt / tau));
 
-export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): GameSim {
+export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): GameSim {
   const t = ctx.tuning;
   const tun = {
     hillScale: t.num('hillScale', 1, 0, 2, 0.05, 'Trainer grade × (builds climb up to 7 % at 1.0)'),
@@ -43,8 +69,10 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
     rebootS: t.num('rebootS', 5, 1, 15, 0.5, 'Seconds on target to reboot after a dropout'),
     steer: t.num('steerRate', 9, 2, 30, 0.5, 'Lanes per second the craft can slide'),
     hitWindow: t.num('hitWindow', 0.55, 0.3, 1, 0.05, 'Lateral catch radius (lanes)'),
+    underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
+    underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
-  const save: WattsurfSave = { ...(ctx.load<WattsurfSave>() ?? {}) };
+  const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
   const seed = opts.seed ?? 1;
   const timeline: MediaTimeline = ctx.media?.timeline ?? synthTimeline({ style: 'edm', songs: 1, seed });
   let difficulty: Difficulty = opts.difficulty ?? save.lastDifficulty ?? 'pro';
@@ -62,6 +90,22 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
   let collected = 0, missed = 0, greysHit = 0, greysDodged = 0, dropouts = 0, overdriveS = 0, cleanZones = 0;
   let zoneIdx = -1, zoneClean = true, zoneBlocks = 0, zoneOd = 0, zoneDur = 0, dropsHeld = 0, drops = 0, songsDone = 0;
   let ok = false, overdrive = false, ftp = 0, zoneSprint = 0;
+  let under = 0, over = 0, underS = 0, ceiling = 0, underDrainS = 0, cadence = 0;
+  let nextLaunch = 0, launchSum = 0, launchT = 0, launchActive = false, launchResult: { rating: LaunchRating; bonus: number; ratio: number; at: number } | null = null;
+  let launches = 0, perfectLaunches = 0, launchBonus = 0;
+  const recaps: SongRecap[] = [];
+  const freshSong = () => ({ score0: score, collected: 0, missed: 0, maxChain: 0, chain0: chain, launches: [] as LaunchRating[], strip: [] as number[], t: 0, onS: 0, targetS: 0 });
+  let song = { score0: 0, collected: 0, missed: 0, maxChain: 0, chain0: 0, launches: [] as LaunchRating[], strip: [] as number[], t: 0, onS: 0, targetS: 0 };
+  const closeSong = (k: number) => {
+    const meta = timeline.songs[k], total = song.collected + song.missed;
+    recaps.push({
+      n: k + 1, title: meta?.title ?? '', artist: meta?.artist ?? '', score: score - song.score0,
+      accuracyPct: total ? Math.round((100 * song.collected) / total) : 0, maxChain: song.maxChain,
+      onTargetPct: song.targetS ? Math.round((100 * song.onS) / song.targetS) : 100, launches: song.launches, strip: song.strip,
+    });
+    song = freshSong();
+  };
+  const launchList = () => track.stunts.filter((x) => x.kind === 'launch');
   const cues: Cue[] = []; let cueId = 0;
   const cue = (type: string, data?: Cue['data'], emit = true) => {
     cues.push({ id: ++cueId, type, ...(data ? { data } : {}) }); if (cues.length > 24) cues.shift();
@@ -155,6 +199,7 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
     if (go || menuT >= MENU_AUTO_S) startRide();
   };
   const actions: Array<{ type: string; value?: unknown }> = [];
+  const launchProgress = (p: number) => { const L = launchList()[nextLaunch]; return L ? clamp((p - L.t0) / (L.t1 - L.t0), 0, 1) : 0; };
   let lastEffort = effortAt(track, 0, difficulty);
 
   return {
@@ -173,25 +218,54 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
         zoneIdx = zi; zoneClean = true; zoneBlocks = 0; zoneOd = 0; zoneDur = 0; zoneSprint = 0;
         cue('zone', { n: z.n, kind: z.kind });
       }
-      for (let s = songsDone; s < timeline.songs.length; s++) if (p >= timeline.songs[s].t1 - 0.05) { songsDone = s + 1; cue('songDone', { n: songsDone }); }
+      for (let s = songsDone; s < timeline.songs.length; s++) if (p >= timeline.songs[s].t1 - 0.05) { closeSong(s); songsDone = s + 1; cue('songDone', { n: songsDone }); }
 
       // effort: power targets (sections are too short for HR); ERG holds the watts so pedalling is enough
       const e = effortAt(track, p, difficulty);
-      ftp = bike.ftpFraction;
+      ftp = bike.ftpFraction; cadence = bike.cadence3s;
       const erg = trainer === 'erg';
       ok = e.phase === 'recover' || (erg ? bike.cadence3s >= 55 : bike.ftpFraction >= e.floorFtp - 0.005);
       const wasOd = overdrive;
       overdrive = e.phase === 'sprint' && ok && dropoutLeft < 0;
       if (overdrive && !wasOd) cue('overdrive', undefined, false);
+      // off target: under fades the world (and drains the shield after a grace), over overcharges the ship
+      ceiling = erg || e.phase === 'sprint' ? 0 : zoneCeiling(e.target.max);
+      const short = !ok && p > START_GRACE_S ? clamp((e.floorFtp - ftp) / Math.max(0.1, e.floorFtp) / 0.15, 0.35, 1) : 0;
+      const hot = ceiling && ftp > ceiling + 0.03 ? clamp((ftp - ceiling) / 0.15, 0.35, 1) : 0;
+      under = ease(under, short, dt, short > under ? 1.2 : 0.35);
+      over = ease(over, hot, dt, hot > over ? 1.5 : 0.6);
+      underS = ok ? 0 : underS + dt;
       zoneDur += dt; if (e.phase === 'sprint') zoneSprint += dt;
       if (overdrive) { zoneOd += dt; overdriveS += dt; }
       lastEffort = e;
+
+      // launches: the drop's block-free roll — punch it; average effort over the roll is rated and paid out
+      const ls = launchList(), L = ls[nextLaunch];
+      launchActive = !!L && p >= L.t0 && p < L.t1;
+      if (launchActive) { launchSum += (erg ? bike.cadence3s / 90 : ftp / Math.max(0.3, e.floorFtp)) * dt; launchT += dt; }
+      if (L && p >= L.t1) {
+        const ratio = launchT > 0 ? launchSum / launchT : 0, rt = rateLaunch(ratio), z = track.zones[L.zone];
+        const bonus = dropoutLeft >= 0 ? 0 : Math.round(500 * rt.x * (1 + 0.1 * (z.n - 1)));
+        score += bonus; launches++; launchBonus += bonus; if (rt.r === 'perfect') perfectLaunches++;
+        launchResult = { rating: rt.r, bonus, ratio, at: p };
+        cue('launch', { rating: rt.r, bonus, ratio: Math.round(ratio * 100) / 100 }); song.launches.push(rt.r);
+        nextLaunch++; launchSum = 0; launchT = 0;
+      }
+
+      // per-song effort strip (1 Hz) and time on target
+      const code = e.phase === 'recover' ? 3 : under > 0.25 ? 1 : over > 0.3 ? 2 : 0;
+      song.t += dt; if (e.phase !== 'recover') { song.targetS += dt; if (ok) song.onS += dt; }
+      if (song.t >= song.strip.length + 1) song.strip.push(code);
 
       // shield and dropouts
       if (dropoutLeft >= 0) {
         dropoutLeft = ok ? dropoutLeft - dt : tun.rebootS();
         if (dropoutLeft <= 0) { dropoutLeft = -1; shield = 50; cue('reboot'); }
       } else if (ok) shield = Math.min(100, shield + tun.recharge() * dt);
+      else if (underS > tun.underGrace() && p > START_GRACE_S) {
+        shield -= tun.underDrain() * Math.max(0.35, under) * dt; underDrainS += dt;
+        if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cue('dropout'); }
+      }
 
       // trainer: the track's grade (difficulty and gears are applied by the mixer), or ERG at the phase's watts (eased)
       if (trainer === 'erg') {
@@ -212,11 +286,13 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {
-            chain++; maxChain = Math.max(maxChain, chain); collected++;
+            chain++; maxChain = Math.max(maxChain, chain); collected++; song.collected++; song.maxChain = Math.max(song.maxChain, chain);
+            if (isChainMilestone(chain)) cue('chain', { n: chain }, false);
             score += Math.round(COLOR_POINTS[b.color] * mult());
             blockState[nextBlock] = BLOCK.HIT;
-          } else { missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS; }
+          } else { missed++; song.missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS; }
         } else if (caught) {
+          if (chain >= 25) cue('chainBreak', { n: chain }, false);
           greysHit++; chain = 0; zoneClean = false; blockState[nextBlock] = BLOCK.GREY_HIT; cue('grey', undefined, false);
           if (dropoutLeft < 0) {
             shield -= tun.greyHit();
@@ -250,7 +326,7 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
         ],
       };
     },
-    snapshot(): WattsurfSnapshot {
+    snapshot(): CadenzaSnapshot {
       const p = position(), zi = Math.max(0, zoneIdx < 0 ? zoneIndexAt(track, p) : zoneIdx), z = track.zones[zi];
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {
@@ -258,10 +334,17 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
         menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
         track, blockState, x, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
+        launch: launchActive
+          ? { active: true, progress: launchProgress(p), ratio: launchT > 0 ? launchSum / launchT : 0, rating: null, bonus: 0, age: 0 }
+          : launchResult && p - launchResult.at < 3 ? { active: false, progress: 1, ratio: launchResult.ratio, rating: launchResult.rating, bonus: launchResult.bonus, age: p - launchResult.at } : null,
         zone: { index: zi, n: z.n, kind: z.kind, hue: z.hue, left: Math.max(0, z.t1 - p), label: z.target.label ?? '', floorFtp: z.floorFtp },
-        effort: { ftp, ok, phase: lastEffort.phase, watts: Math.round(lastEffort.floorFtp * ctx.profile.ftp), left: lastEffort.left, erg: trainer === 'erg' },
+        effort: {
+          ftp, ok, phase: lastEffort.phase, watts: Math.round(lastEffort.floorFtp * ctx.profile.ftp), left: lastEffort.left, erg: trainer === 'erg',
+          under, over, ceilingWatts: Math.round(ceiling * ctx.profile.ftp),
+          floorFtp: lastEffort.phase === 'recover' ? 0 : lastEffort.floorFtp, ceilingFtp: ceiling, cadence: Math.round(cadence),
+        },
         song: song ? { title: song.title, artist: song.artist, ...(song.credit ? { credit: song.credit.text } : {}) } : null,
-        difficulty, mode, reducedFlash, cues,
+        difficulty, mode, reducedFlash, cues, recaps,
         hooks: { powerFtp: lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
       };
     },
@@ -271,7 +354,8 @@ export function createWattsurfSim(ctx: GameContext, opts: WattsurfOpts = {}): Ga
       const total = collected + missed;
       return {
         score, collected, missed, accuracyPct: total ? Math.round((100 * collected) / total) : 0, maxChain,
-        greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS),
+        greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS), underDrainS: Math.round(underDrainS),
+        launches, perfectLaunches, launchBonus,
         zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer,
       };
     },

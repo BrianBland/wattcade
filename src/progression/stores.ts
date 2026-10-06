@@ -1,6 +1,7 @@
 import { createStore, get, set, del, keys, getMany, type UseStore } from 'idb-keyval';
 import type { Profile, SessionRecord } from '../contracts';
 import { defaultProfile, defaultSettings } from './defaults';
+import { migrateProfile, migrateSessionRecord } from '../core/renames';
 
 const MAX_SESSIONS = 200;
 
@@ -10,7 +11,8 @@ export class ProfileStore {
     this.store = createStore(dbName, 'kv');
   }
   private norm(p: Profile): Profile {
-    return { ...p, settings: { ...defaultSettings(), ...p.settings } };
+    const m = migrateProfile(p); // renamed games keep their saves
+    return { ...m, settings: { ...defaultSettings(), ...m.settings } };
   }
   async list(): Promise<Profile[]> {
     const ks = (await keys(this.store)).filter((k) => typeof k === 'string' && k.startsWith('p_')) as string[];
@@ -76,7 +78,7 @@ export class SessionStore {
   /** Newest first. */
   async list(profileId: string, limit = MAX_SESSIONS): Promise<SessionRecord[]> {
     const ks = (await this.keysFor(profileId)).reverse().slice(0, limit);
-    return (await getMany<SessionRecord>(ks, this.store)).filter((r): r is SessionRecord => !!r);
+    return (await getMany<SessionRecord>(ks, this.store)).filter((r): r is SessionRecord => !!r).map(migrateSessionRecord);
   }
   async clear(profileId: string): Promise<void> {
     for (const k of await this.keysFor(profileId)) await del(k, this.store);

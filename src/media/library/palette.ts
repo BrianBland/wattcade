@@ -1,6 +1,6 @@
 /**
  * A 5-colour palette from cover art (pure k-means on RGBA pixels), sorted most vivid first.
- * Games seed their look from it (e.g. Wattsurf's zone colours).
+ * Games seed their look from it (e.g. Cadenza's zone colours).
  */
 const hex = (r: number, g: number, b: number) => '#' + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
 

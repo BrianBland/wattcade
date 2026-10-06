@@ -1,4 +1,4 @@
-// Pure layout math for the Wattsurf renderer (unit-tested): HUD boxes and camera framing above the shell HUD.
+// Pure layout math for the Cadenza renderer (unit-tested): HUD boxes and camera framing above the shell HUD.
 
 export interface Box { x: number; y: number; w: number; h: number }
 export interface Layout {
@@ -12,6 +12,8 @@ export interface Layout {
   song: Box;     // under the score: now playing + credit
   callout: Box;  // big centred "ZONE 07 / DROP" callout
   menu: Box;     // pre-game menu panel
+  launch: Box;   // the launch meter (bottom centre, above the shell HUD)
+  recap: Box;    // end-of-song recap card
 }
 
 export function layout(W: number, H: number, insetB: number): Layout {
@@ -28,5 +30,10 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const callout: Box = { x: (W - cw) / 2, y: Math.min(UH - ch - pad, Math.max(shield.y + shield.h + 8, UH * 0.28)), w: cw, h: ch };
   const mw = Math.min(W - 2 * pad, 460), mh = Math.min(UH - 2 * pad, 340);
   const menu: Box = { x: (W - mw) / 2, y: Math.max(pad, (UH - mh) / 2), w: mw, h: mh };
-  return { UH, viewOffsetY: b / 2, score, zone, shield, song, callout, menu };
+  const lw = Math.min(W - 2 * pad, 420), lh = 64;
+  const launch: Box = { x: (W - lw) / 2, y: UH - lh - pad, w: lw, h: lh };
+  const rw = Math.min(W - 2 * pad, 300), rh = Math.min(250, UH - 2 * pad);
+  const recapTop = narrow ? Math.max(pad, (UH - rh) / 2) : Math.min(UH - rh - pad, zone.y + zone.h + 10);
+  const recap: Box = { x: narrow ? (W - rw) / 2 : W - pad - rw, y: Math.max(pad, recapTop), w: rw, h: rh };
+  return { UH, viewOffsetY: b / 2, score, zone, shield, song, callout, menu, launch, recap };
 }

@@ -3,9 +3,9 @@ import type { Button } from '../../../contracts';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
-import type { WattsurfSnapshot } from '../sim/sim';
+import { isChainMilestone, rateLaunch, type CadenzaSnapshot } from '../sim/sim';
 
-describe('Wattsurf sim', () => {
+describe('Cadenza sim', () => {
   it('waits in its menu (music not started), then rides once started', () => {
     const timeline = synthTimeline({ style: 'edm', songs: 1, short: true });
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'z2' } });
@@ -14,7 +14,7 @@ describe('Wattsurf sim', () => {
     expect(s.media!.positionS()).toBe(0);
     s.step(30 * 25); // auto-starts after 25 s
     expect(s.sim.inMenu?.()).toBe(false);
-    const snap = s.sim.snapshot() as WattsurfSnapshot;
+    const snap = s.sim.snapshot() as CadenzaSnapshot;
     expect(snap.started).toBe(true);
     expect(s.media!.positionS()).toBeGreaterThan(0);
   });
@@ -36,17 +36,64 @@ describe('Wattsurf sim', () => {
     expect(r.events.some((e) => e.type === 'reboot')).toBe(true); // breaks/outros (recover zones) reboot even at 0 W
   });
 
+  it('riding under the target fades in, then drains the shield; riding over a zone ceiling overcharges', () => {
+    const timeline = synthTimeline({ style: 'edm', songs: 1 });
+    const at = (script: string, kind: string) => {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script }, simOpts: { autopilot: true, difficulty: 'pro' } });
+      const z = timeline.sections.find((x) => x.kind === kind)!;
+      while (s.media!.positionS() < z.t0 + 6) s.step(30);
+      return s.sim.snapshot() as CadenzaSnapshot;
+    };
+    const climbing = at('z2', 'build'); // 0.65 FTP against a Z4 floor
+    expect(climbing.effort.ok).toBe(false);
+    expect(climbing.effort.under).toBeGreaterThan(0.6);
+    expect(climbing.shield).toBeLessThan(100);
+    expect(climbing.effort.over).toBe(0);
+    const cruising = at('intervals', 'intro'); // 1.05 FTP against a Z2–3 cruise
+    expect(cruising.effort.ok).toBe(true);
+    expect(cruising.effort.under).toBe(0);
+    expect(cruising.effort.over).toBeGreaterThan(0.4);
+    expect(cruising.effort.ceilingWatts).toBeGreaterThan(cruising.effort.watts);
+  });
+
+  it('rates each drop\'s launch roll by the effort over it and pays a bonus', () => {
+    const r = runHeadless({ game: module, script: 'sprints', minutes: 6, seed: 3, simOpts: { autopilot: true }, media: { synth: { style: 'edm', songs: 1 } } });
+    const ls = r.events.filter((e) => e.type === 'launch');
+    expect(ls.length).toBeGreaterThan(0);
+    for (const l of ls) expect(['perfect', 'great', 'good', 'weak']).toContain(l.data?.rating);
+    const idle = runHeadless({ game: module, script: 'idle', minutes: 6, seed: 3, simOpts: { autopilot: true }, media: { synth: { style: 'edm', songs: 1 } } });
+    expect(idle.events.filter((e) => e.type === 'launch').every((e) => e.data?.rating === 'weak' && e.data?.bonus === 0)).toBe(true);
+    expect(rateLaunch(1.2).r).toBe('perfect'); expect(rateLaunch(1.0).r).toBe('great'); expect(rateLaunch(0.9).r).toBe('good'); expect(rateLaunch(0.5).r).toBe('weak');
+  });
+
+  it('recaps every finished song (score, accuracy, launches, effort strip) and flags chain milestones', () => {
+    const timeline = synthTimeline({ style: 'edm', songs: 2, short: true });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'target-follow' }, simOpts: { autopilot: true } });
+    const cues: string[] = [];
+    while (!s.sim.isOver()) { s.step(30); for (const c of (s.sim.snapshot() as CadenzaSnapshot).cues) if (!cues.includes(`${c.id}:${c.type}`)) cues.push(`${c.id}:${c.type}`); }
+    const snap = s.sim.snapshot() as CadenzaSnapshot;
+    expect(snap.recaps.map((r) => r.n)).toEqual([1, 2]);
+    const [a, b] = snap.recaps;
+    expect(a.score + b.score).toBeLessThanOrEqual(snap.score); // + the last zone's clean bonus, paid at the very end
+    expect(a.score + b.score).toBeGreaterThan(snap.score * 0.9);
+    expect(a.accuracyPct).toBeGreaterThan(80);
+    expect(a.onTargetPct).toBeGreaterThan(80);
+    expect(Math.abs(a.strip.length - (timeline.songs[0].t1 - timeline.songs[0].t0))).toBeLessThan(3);
+    expect(cues.some((c) => c.endsWith(':chain'))).toBe(true);
+    expect(isChainMilestone(25) && isChainMilestone(100) && !isChainMilestone(75)).toBe(true);
+  });
+
   it('is deterministic', () => {
     const run = () => runHeadless({ game: module, script: 'mash', minutes: 4, seed: 7, simOpts: { autopilot: true }, media: { synth: { style: 'rock', songs: 1 } } }).summary;
     expect(run()).toEqual(run());
   });
 });
 
-describe('Wattsurf controls', () => {
+describe('Cadenza controls', () => {
   const ride = (timeline: Array<{ t: number; press?: Button; release?: Button; paddleL?: number; paddleR?: number }>, secs: number) => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(timeline), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'pro' } });
     s.step(Math.round(secs * 30));
-    return s.sim.snapshot() as WattsurfSnapshot;
+    return s.sim.snapshot() as CadenzaSnapshot;
   };
   it('D-pad and Z/A step exactly one lane per press', () => {
     expect(ride([{ t: 1, press: 'left' }, { t: 1.1, release: 'left' }], 2).x).toBeCloseTo(-1, 3);
@@ -65,7 +112,7 @@ describe('Wattsurf controls', () => {
   it('elite (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
     const elite = (tl: Parameters<typeof ride>[0], secs: number) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'elite' } });
-      s.step(Math.round(secs * 30)); return (s.sim.snapshot() as WattsurfSnapshot).x;
+      s.step(Math.round(secs * 30)); return (s.sim.snapshot() as CadenzaSnapshot).x;
     };
     expect(elite([{ t: 1, paddleR: 0.5 }], 2)).toBeCloseTo(1, 3);
     expect(elite([{ t: 1, paddleL: 1 }], 2)).toBeCloseTo(-2, 3);

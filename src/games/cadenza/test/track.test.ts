@@ -4,7 +4,7 @@ import { buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } f
 
 const tl = synthTimeline({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
 
-describe('Wattsurf track', () => {
+describe('Cadenza track', () => {
   it('one zone per section, each with an effort target; drops are power sprints', () => {
     const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
     expect(tr.zones.length).toBe(tl.sections.length);
@@ -95,14 +95,36 @@ describe('banks and tunnels', () => {
   it('every drop banks hard (≈ 66°) and turns with it; breaks are tunnels', () => {
     const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
     for (const z of tr.zones.filter((x) => x.kind === 'drop')) {
-      const i0 = Math.round(z.t0 * tr.hz), i1 = Math.round(Math.min(z.t1, z.t0 + 6) * tr.hz);
+      const i0 = Math.round(z.t0 * tr.hz), i1 = Math.round(Math.min(z.t1, z.t0 + 8) * tr.hz); // (after any opening corkscrew)
       const peak = Math.max(...Array.from(tr.roll.slice(i0, i1), Math.abs));
       expect(peak).toBeGreaterThan(1.1);
       expect(Math.abs(tr.curve[i1] - tr.curve[i0])).toBeGreaterThan(0.8); // the track actually turns
     }
-    expect(Math.max(...Array.from(tr.roll, Math.abs))).toBeLessThan(1.2);
+    const inScrew = (i: number) => tr.stunts.some((s) => s.kind === 'launch' && i / tr.hz >= s.t0 - 0.1 && i / tr.hz <= s.t1 + 0.1);
+    expect(Math.max(...Array.from(tr.roll, (r, i) => (inScrew(i) ? 0 : Math.abs(Math.atan2(Math.sin(r), Math.cos(r))))))).toBeLessThan(1.2);
     for (const z of tr.zones.filter((x) => x.kind === 'break')) expect(tr.tunnel[Math.round((z.t0 + 2) * tr.hz)]).toBe(1);
     for (const z of tr.zones.filter((x) => x.kind === 'drop')) expect(tr.tunnel[Math.round((z.t0 + 2) * tr.hz)]).toBe(0);
     expect(tr.tunnels.length).toBeGreaterThan(0);
+  });
+});
+
+describe('stunts', () => {
+  it('long builds spiral up a full banked helix that clears its own coil; every drop opens with a block-free launch roll', () => {
+    const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
+    const helixes = tr.stunts.filter((s) => s.kind === 'helix'), screws = tr.stunts.filter((s) => s.kind === 'launch');
+    expect(helixes.length).toBeGreaterThan(0);
+    for (const h of helixes) {
+      const i0 = Math.round(h.t0 * tr.hz), i1 = Math.round(h.t1 * tr.hz);
+      expect(Math.abs(tr.curve[i1] - tr.curve[i0])).toBeGreaterThan(Math.PI * 1.8);   // ≈ a full turn
+      expect((tr.height[i1] - tr.height[i0]) * 3).toBeGreaterThan(20);                  // the coil below is well clear
+      expect(tr.zones[zoneIndexAt(tr, h.t1)].kind).toBe('build');                        // done before the drop hits
+    }
+    expect(screws.length).toBeGreaterThan(0);
+    for (const c of screws) {
+      const i0 = Math.round((c.t0 - 0.1) * tr.hz), i1 = Math.round((c.t1 + 0.1) * tr.hz);
+      expect(Math.abs(tr.roll[i1] - tr.roll[i0])).toBeCloseTo(Math.PI * 2, 1);
+      expect(tr.zones[c.zone].kind).toBe('drop');
+      expect(tr.blocks.some((b) => b.t > c.t0 - 0.5 && b.t < c.t1 + 0.2)).toBe(false);
+    }
   });
 });

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /**
- * Uniforms shared (by reference) by every Wattsurf shader: zone colours, beat/band pulses, time, acid amount, fog.
+ * Uniforms shared (by reference) by every Cadenza shader: zone colours, beat/band pulses, time, acid amount, fog.
  * The renderer updates them once per frame.
  */
 export const U = {

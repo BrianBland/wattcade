@@ -3,7 +3,7 @@ import type { Button } from '../../../contracts';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
-import type { CadenzaSnapshot } from '../sim/sim';
+import { isChainMilestone, rateLaunch, type CadenzaSnapshot } from '../sim/sim';
 
 describe('Cadenza sim', () => {
   it('waits in its menu (music not started), then rides once started', () => {
@@ -54,6 +54,33 @@ describe('Cadenza sim', () => {
     expect(cruising.effort.under).toBe(0);
     expect(cruising.effort.over).toBeGreaterThan(0.4);
     expect(cruising.effort.ceilingWatts).toBeGreaterThan(cruising.effort.watts);
+  });
+
+  it('rates each drop\'s launch roll by the effort over it and pays a bonus', () => {
+    const r = runHeadless({ game: module, script: 'sprints', minutes: 6, seed: 3, simOpts: { autopilot: true }, media: { synth: { style: 'edm', songs: 1 } } });
+    const ls = r.events.filter((e) => e.type === 'launch');
+    expect(ls.length).toBeGreaterThan(0);
+    for (const l of ls) expect(['perfect', 'great', 'good', 'weak']).toContain(l.data?.rating);
+    const idle = runHeadless({ game: module, script: 'idle', minutes: 6, seed: 3, simOpts: { autopilot: true }, media: { synth: { style: 'edm', songs: 1 } } });
+    expect(idle.events.filter((e) => e.type === 'launch').every((e) => e.data?.rating === 'weak' && e.data?.bonus === 0)).toBe(true);
+    expect(rateLaunch(1.2).r).toBe('perfect'); expect(rateLaunch(1.0).r).toBe('great'); expect(rateLaunch(0.9).r).toBe('good'); expect(rateLaunch(0.5).r).toBe('weak');
+  });
+
+  it('recaps every finished song (score, accuracy, launches, effort strip) and flags chain milestones', () => {
+    const timeline = synthTimeline({ style: 'edm', songs: 2, short: true });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'target-follow' }, simOpts: { autopilot: true } });
+    const cues: string[] = [];
+    while (!s.sim.isOver()) { s.step(30); for (const c of (s.sim.snapshot() as CadenzaSnapshot).cues) if (!cues.includes(`${c.id}:${c.type}`)) cues.push(`${c.id}:${c.type}`); }
+    const snap = s.sim.snapshot() as CadenzaSnapshot;
+    expect(snap.recaps.map((r) => r.n)).toEqual([1, 2]);
+    const [a, b] = snap.recaps;
+    expect(a.score + b.score).toBeLessThanOrEqual(snap.score); // + the last zone's clean bonus, paid at the very end
+    expect(a.score + b.score).toBeGreaterThan(snap.score * 0.9);
+    expect(a.accuracyPct).toBeGreaterThan(80);
+    expect(a.onTargetPct).toBeGreaterThan(80);
+    expect(Math.abs(a.strip.length - (timeline.songs[0].t1 - timeline.songs[0].t0))).toBeLessThan(3);
+    expect(cues.some((c) => c.endsWith(':chain'))).toBe(true);
+    expect(isChainMilestone(25) && isChainMilestone(100) && !isChainMilestone(75)).toBe(true);
   });
 
   it('is deterministic', () => {

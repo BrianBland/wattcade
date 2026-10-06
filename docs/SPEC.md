@@ -490,6 +490,8 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 *Formerly "Wattsurf" (id `wattsurf`); saves, ride history and tuning migrate via `core/renames.ts`. A cadenza is the soloist's showpiece flourish — and it has your cadence in it.*
 
+- **Signature drop — the Launch:** every drop opens with a block-free 360° corkscrew; the camera punches in, a meter shows your effort against the sprint floor, and the roll is rated perfect / great / good / weak (bonus, streak burst, fireworks on perfect). Builds end in a climbing helix. A track-wall power gauge (fill → white target gate, red ceiling posts), chain flourishes (25/50/every 50: trail tiers, shockwave), and a recap card after every song.
+
 - **Fantasy:** ride the song. The track is built from the music: calm passages roll, **builds climb**, **drops dive**. You steer an anti-grav craft across lanes to collect coloured blocks on the hits. The music sets the speed; your legs keep the shield up.
 - **Requires** `media: ['pcm']` (local, Jamendo or synth). Tags `intervals`, `sprint`. Launching it opens the media picker (§5.6), then the game's pre-game menu (`inMenu`): **mode** Mono / Classic and **rhythm difficulty** Casual / Pro / Elite. ◀▶ or shifters choose, A starts, last choice saved. Power difficulty is the existing difficulty knob.
 - **Track** (`sim/track.ts`, pure, from `MediaTimeline`):

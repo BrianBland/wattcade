@@ -1,37 +1,38 @@
 # cadenza — Cadenza (SPEC §6.5)
 
-CONTRACT-REQUEST: none (uses `requires.media`, `ctx.media`, `mediaPreview` from Phase 1).
+CONTRACT-REQUEST: none (uses `requires.media`, `ctx.media`, `mediaPreview`, mount ctx `musicFx`).
 
-Audiosurf × Wipeout HD Zone. Music game: the shell opens the media picker first; the sim reads `ctx.media.timeline` and
-`positionS()` (heard position; the shell locks the loop to the player). Mono mode only for now (Classic = phase 5).
+Music racer (formerly "Wattsurf", id `wattsurf`; `core/renames.ts` migrates saves, history and tuning). The shell opens the
+media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard position). Mono mode only (Classic = later).
 
 ## Sim (`sim/`, pure)
-- `track.ts` `buildTrack(timeline, {difficulty, mode, seed, maxGrade})`: one zone per section (hue from the song palette +
-  47°/zone), speed/distance/height/heading at timeline.hz, trainer grade (builds 2 %→maxGrade, drops crest then 0), hard banks
-  (`roll`: every drop ≈ 66° with a turn, some verses softer), tunnels (breaks + some verses, ≤ 45 s), blocks from onsets (min gap
-  0.36/0.22/0.11 s, lanes 3/3/5; greys never in a neighbour block's lane). Stunts: builds ≥ 13 s end in a 9 s banked 360°
-  helix that climbs ≥ 20 m (you see the coil below); every other drop opens with a 360° corkscrew roll (`stunts`). `effortAt(track, p, difficulty)`: power-only phases
-  cruise Z2 / climb Z3–4 / sprint Z4–5 capped at 10/15/20 s then hold Z3–4 / recover, with ERG fractions. `rateTrack` for the picker.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing; saved), controls (paddles = absolute position: stronger paddle
-  leads, pull depth picks the lane with hysteresis, rest = centre; while both rest D-pad/Z/A step one lane, hold repeats), block
-  judging, score/chain/Overdrive (sprint phase only), shield/dropout/reboot, trainer effect `track` (sim grade × `hillScale`, or ERG
-  eased toward the phase watts), clean zones, drops held (≥ 70 % of the sprint), best scores. Autopilot; `hooks.powerFtp`.
-  Off target: `effort.under` (0..1, eased; below the floor, after a 6 s start grace) drains the shield after `underGraceS`
-  (`underDrain` %/s) and drives the grey-out + music FX; `effort.over` (above the zone's ceiling; never in sprints or ERG) overcharges the ship.
+- `track.ts` `buildTrack`: one zone per section (hue from the song palette + 47°/zone), speed/distance/height/heading at hz,
+  trainer grade (builds 2 %→maxGrade, drops crest then 0), banks (`roll`), tunnels (breaks + some verses, ≤ 45 s), blocks from
+  onsets (min gap 0.36/0.22/0.11 s, lanes 3/3/5; greys never in a neighbour's lane). `stunts`: builds ≥ 13 s end in a 9 s
+  climbing 360° helix (≥ 20 m clear of the coil below); **every drop opens with a launch**: a 2.6 s 360° corkscrew on the drop,
+  block-free (`LAUNCH` margins), then the hard bank. `effortAt`: cruise Z2 / climb Z3–4 / sprint Z4–5 capped 10/15/20 s then
+  hold / recover, with ERG fractions. `rateTrack` for the picker.
+- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
+  judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
+  Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
+  music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor
+  (rpm ÷ 90 in ERG) over the roll → `rateLaunch` perfect ≥ 1.15 / great ≥ 1 / good ≥ 0.85 / weak; bonus 500 × 3/2/1/0 × zone.
+  `recaps` per finished song (score, accuracy, best chain, on-target %, launches, 1 Hz effort strip). Cues `chain` (25, 50,
+  then every 50; `isChainMilestone`), `chainBreak`, `launch`. `effort.floorFtp/ceilingFtp/cadence` feed the gauge.
 
 ## Render (`render/`)
-Shared uniforms (`look.ts`: zone colours, beat/downbeat/bands, acid, craft metres) drive every shader. `path.ts` (rolled frame),
-`trackMesh.ts` (ribbon: edges, lane lines, chevrons, beat waves, tunnel reflections; walls; octagonal tunnel tubes with light
-rings; bass-stretched pylons; downbeat arches), `blocks.ts` (neon cubes / red hazard diamonds, absorb-into-ship, shards),
-`city.ts` (band-stretched skyscrapers, none near a helix; smoggy sky, horizon ring, searchlights), `craft.ts` (lofted hull, canopy,
-twin pods/nozzles, wings, fins; absorb flash, mine knockback + bubble, ghost, overcharge = red-hot hull + arcs, under = sputter + sag),
-`post.ts` (bloom + aberration/vignette/scanlines/grain + red hit edge + `gray`: desaturate/tear/noise when under),
-mines (`blocks.ts`: black spiked balls with white-hot tips, the only monochrome thing; misses crumble against a viscous wall
-at the ship and ooze back past it in the craft's frame). Music FX via mount ctx `musicFx({ degrade: under })` (lowpass, tremolo, crunch).
-`renderer.ts` (camera rolls with banks), `hud.ts` (phase + watts), `layout.ts` (tested). Reduced flashing scales all pulses.
+Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
+arches), `blocks.ts` (neon cubes; mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
+viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` (towers, none near a helix),
+`craft.ts` (lofted hull, canopy, pods, wings, fins; flash, knockback + bubble, ghost, overcharge arcs, under sputter; shockwave
+`ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
+white target gate 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
+`renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
+`hud.ts` (score + chain pops, zone/target, shield, prompts low, launch meter + rating, song recap card), `layout.ts` (tested).
+Music FX via mount ctx `musicFx({ degrade: under })`. Reduced flashing scales pulses.
 
 ## Dev / tests
-`/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth queue, no audio; `script=z2&sec=44` = under,
-`script=intervals&sec=86` = over). `/dev/craft.html` = ship states + mine turntable. `npx vitest run src/games/cadenza`;
-scenarios in `scenarios.ts` (automixed EDM set with autopilot; idle dropout; mixed continuous album on casual).
-Gaps: Classic mode; iPad GPU cost of the full look unmeasured (add a low-FX switch if needed); tune with real rides.
+`/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,
+`script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html` = ship states + mine.
+Scenarios: automixed EDM set (launches ≥ great), idle dropout (no launch bonus), mixed continuous album on casual.
+Gaps: Classic mode; iPad GPU cost unmeasured (low-FX switch if needed); tune launch thresholds with real rides.

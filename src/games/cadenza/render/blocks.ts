@@ -165,6 +165,19 @@ export class Blocks {
     if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
   }
 
+  /** A firework: a sphere of bright shards flung out from `at` (world), slow to fall, half white-hot. */
+  firework(at: THREE.Vector3, c: THREE.Color) {
+    for (let i = 0; i < 46 && this.free.length; i++) {
+      const id = this.free.pop()!, sh = this.pool[id];
+      sh.track = false; sh.pos.copy(at);
+      sh.vel.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(13 + Math.random() * 5);
+      sh.spin.set(Math.random() * 8, Math.random() * 8, Math.random() * 8); sh.rot.set(0, 0, 0);
+      sh.max = sh.life = 1.1 + Math.random() * 0.7; sh.size = 0.35 + Math.random() * 0.3;
+      this.shards.setColorAt(id, i % 2 ? MINE_HOT : c);
+    }
+    if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
+  }
+
   /** A missed block cracks into a 3×3×3 of pieces against the viscous wall at the craft, then drifts back past it. */
   private crumble(k: number, c: THREE.Color) {
     const b = this.path.track.blocks[k], lx0 = b.lane * LW, ly0 = 0.75;

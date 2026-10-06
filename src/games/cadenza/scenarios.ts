@@ -22,6 +22,8 @@ export const scenarios: Array<{
       if (n(s, 'dropouts') !== 0) f.push(`dropouts ${s.dropouts} while riding the targets`);
       if (n(s, 'drops') < 4) f.push(`drops ${s.drops} < 4`);
       if (n(s, 'dropsHeld') !== n(s, 'drops')) f.push(`held ${s.dropsHeld}/${s.drops} drops while following the power target`);
+      if (n(s, 'launches') !== n(s, 'drops')) f.push(`launches ${s.launches} != drops ${s.drops}`);
+      if (n(s, 'launchBonus') < n(s, 'launches') * 1000) f.push(`launch bonus ${s.launchBonus}: following the sprint target should rate at least great`);
       if (Math.max(...grades(run)) < 4) f.push(`steepest climb ${Math.max(...grades(run))}% < 4`);
       if (!run.events.some((e) => e.type === 'zone' && e.data?.kind === 'build')) f.push('no build zone');
       return f;
@@ -35,6 +37,7 @@ export const scenarios: Array<{
       if (!run.isOver) f.push('set did not finish');
       if (n(s, 'dropouts') < 1) f.push('no dropout with nobody steering or pedalling');
       if (n(s, 'dropsHeld') !== 0) f.push('held a drop at 0 W');
+      if (n(s, 'launchBonus') !== 0) f.push(`launch bonus ${s.launchBonus} at 0 W`);
       return f;
     },
   },

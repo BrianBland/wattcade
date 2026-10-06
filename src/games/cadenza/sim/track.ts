@@ -24,6 +24,8 @@ export const ZONE_FLOOR = [0, 0, 0.56, 0.76, 0.91, 1.06] as const;
 export const COLOR_POINTS = [10, 20, 30, 50, 80] as const;
 /** Seconds a build's helix takes (one full banked turn). */
 export const HELIX_S = 9;
+/** A drop's launch roll (s), and the block-free margin before / after it. */
+export const LAUNCH = { s: 2.6, clearBefore: 0.6, clearAfter: 0.3 } as const;
 
 export interface Block { t: number; lane: number; color: number; zone: number }
 export interface Zone {
@@ -44,8 +46,11 @@ export interface Track {
   zones: Zone[]; blocks: Block[];
   /** Bank (roll, rad; + = rolls right) per sample, and tunnel membership per sample (renderer only). */
   roll: Float32Array; tunnel: Uint8Array; tunnels: Array<{ t0: number; t1: number }>;
-  /** Set pieces: builds that spiral up a banked 360° helix (the coil you rode is below you), drops that open with a corkscrew. */
-  stunts: Array<{ kind: 'helix' | 'corkscrew'; t0: number; t1: number }>;
+  /**
+   * Set pieces: builds that spiral up a banked 360° helix (the coil you rode is below you), and every drop opens with
+   * a launch: a 360° corkscrew roll on the drop with no blocks, where the rider punches it (rated by the sim).
+   */
+  stunts: Array<{ kind: 'helix' | 'launch'; t0: number; t1: number; zone: number }>;
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
@@ -116,23 +121,22 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const roll = new Float32Array(n), tunnel = new Uint8Array(n);
   const phase = rng() * Math.PI * 2, curvePhase = rng() * Math.PI * 2;
   // hard banks: every drop throws you into a near-sideways turn; some longer verses get a softer one.
-  // Long builds spiral up a full banked helix; every other drop opens with a 360° corkscrew before its bank.
+  // Long builds spiral up a full banked helix; every drop opens with a launch roll (360° corkscrew) before its bank.
   const banks: Array<{ t0: number; dur: number; ang: number; yaw?: number }> = [];
   const rolls: Array<{ t0: number; dur: number; ang: number }> = [];
   const stunts: Track['stunts'] = [];
-  let dir = rng() < 0.5 ? 1 : -1, nDrop = 0;
-  for (const z of zones) {
+  let dir = rng() < 0.5 ? 1 : -1;
+  zones.forEach((z, zi) => {
     const len = z.t1 - z.t0;
     if (z.kind === 'drop' && len > 6) {
-      const screw = nDrop++ % 2 === 1 && len > 9;
-      if (screw) { rolls.push({ t0: z.t0 + 0.2, dur: 2.6, ang: dir * Math.PI * 2 }); stunts.push({ kind: 'corkscrew', t0: z.t0 + 0.2, t1: z.t0 + 2.8 }); }
-      banks.push({ t0: z.t0 + (screw ? 3 : 1), dur: 4.5, ang: dir * 1.15 }); dir = -dir;
+      rolls.push({ t0: z.t0, dur: LAUNCH.s, ang: dir * Math.PI * 2 }); stunts.push({ kind: 'launch', t0: z.t0, t1: z.t0 + LAUNCH.s, zone: zi });
+      banks.push({ t0: z.t0 + LAUNCH.s + 0.3, dur: 4.5, ang: dir * 1.15 }); dir = -dir;
     } else if (z.kind === 'build' && len >= HELIX_S + 4) {
       const t0 = z.t1 - HELIX_S - 1;
       banks.push({ t0, dur: HELIX_S, ang: dir * 0.75, yaw: (dir * Math.PI * 2) / (0.75 * HELIX_S) }); // the envelope integrates to 0.75 × dur
-      stunts.push({ kind: 'helix', t0, t1: t0 + HELIX_S }); dir = -dir;
+      stunts.push({ kind: 'helix', t0, t1: t0 + HELIX_S, zone: zi }); dir = -dir;
     } else if (z.kind === 'verse' && len > 20 && rng() < 0.6) { banks.push({ t0: z.t0 + len * (0.3 + 0.3 * rng()), dur: 3.5, ang: dir * (0.6 + 0.3 * rng()) }); dir = -dir; }
-  }
+  });
   const env = (t: number, b: { t0: number; dur: number }) => {
     const u = (t - b.t0) / b.dur; if (u <= 0 || u >= 1) return 0;
     const e = u < 0.25 ? u / 0.25 : u > 0.75 ? (1 - u) / 0.25 : 1;
@@ -182,7 +186,9 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
 
   // blocks from hits
   const blocks: Block[] = [];
-  const onsets = tl.onsets.filter((s) => s.s >= d.thr && s.t > 2 && s.t < tl.durationS - 1);
+  const launches = stunts.filter((s) => s.kind === 'launch');
+  const onsets = tl.onsets.filter((s) => s.s >= d.thr && s.t > 2 && s.t < tl.durationS - 1
+    && !launches.some((l) => s.t > l.t0 - LAUNCH.clearBefore && s.t < l.t1 + LAUNCH.clearAfter)); // launches are block-free: just punch it
   const half = (d.lanes - 1) / 2;
   let lastT = -1, lane = 0;
   for (const s of onsets) {

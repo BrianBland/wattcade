@@ -1,12 +1,12 @@
-import type { CadenzaSnapshot } from '../sim/sim';
+import type { CadenzaSnapshot, SongRecap } from '../sim/sim';
 import type { Box, Layout } from './layout';
 
 /** Wipeout-flavoured DOM HUD: score, zone card, shield, now playing, zone callouts, dropout banner, pre-game menu. */
 const CSS = `
 .ws-hud { position:absolute; inset:0; pointer-events:none; font-family:'Eurostile','Michroma','Orbitron','Avenir Next Condensed','Arial Narrow',sans-serif; color:#fff; text-transform:uppercase; }
 .ws-box { position:absolute; }
-.ws-score b { display:block; font-size:34px; font-weight:900; font-style:italic; letter-spacing:2px; text-shadow:0 0 12px var(--acc), 0 2px 0 #000; }
-.ws-score span { font:800 14px system-ui; letter-spacing:2px; color:var(--acc); text-shadow:0 1px 2px #000; }
+.ws-score > div > b { display:block; font-size:34px; font-weight:900; font-style:italic; letter-spacing:2px; text-shadow:0 0 12px var(--acc), 0 2px 0 #000; }
+.ws-score > div > span { font:800 14px system-ui; letter-spacing:2px; color:var(--acc); text-shadow:0 1px 2px #000; }
 .ws-zone { text-align:right; }
 .ws-zone b { display:block; font-size:28px; font-weight:900; font-style:italic; letter-spacing:3px; color:var(--acc); text-shadow:0 0 14px var(--acc), 0 2px 0 #000; }
 .ws-zone span { display:block; font:800 13px system-ui; letter-spacing:2px; text-shadow:0 1px 2px #000; }
@@ -32,20 +32,55 @@ const CSS = `
 .ws-row.go { justify-content:center; background:var(--acc); color:#000; font-size:20px; }
 .ws-row.go.f { box-shadow:0 0 20px var(--acc); border-color:#fff; }
 .ws-menu small { font:600 12px system-ui; text-transform:none; opacity:.7; text-align:center; }
+.ws-pop { position:absolute; left:0; top:100%; font-size:26px; font-weight:900; font-style:italic; letter-spacing:3px; white-space:nowrap; color:#fff; text-shadow:0 0 16px var(--acc), 0 2px 0 #000; opacity:0; transform:translateY(6px) scale(.8); transition:opacity .25s, transform .25s; }
+.ws-pop.on { opacity:1; transform:none; } .ws-pop.bad { color:#9aa0b4; text-shadow:0 2px 0 #000; }
+.ws-launch { text-align:center; opacity:0; transition:opacity .2s; }
+.ws-launch.on { opacity:1; }
+.ws-launch .lbl { font-size:22px; font-weight:900; font-style:italic; letter-spacing:5px; text-shadow:0 0 14px var(--acc), 0 2px 0 #000; }
+.ws-launch .bar { position:relative; height:16px; margin-top:6px; border:2px solid #fff; border-radius:3px; background:#0009; transform:skewX(-20deg); overflow:hidden; }
+.ws-launch .bar i { position:absolute; left:0; top:0; bottom:0; background:linear-gradient(90deg,#9aa0b4,#b6ff3b 70%,#fff); }
+.ws-launch .bar u { position:absolute; top:0; bottom:0; width:2px; background:#fff; opacity:.8; }
+.ws-launch .bar s { position:absolute; left:0; bottom:0; height:3px; background:var(--acc); }
+.ws-launch .res { font-size:34px; font-weight:900; font-style:italic; letter-spacing:4px; line-height:1.1; text-shadow:0 0 22px currentColor, 0 3px 0 #000; }
+.ws-launch .res small { display:block; font-size:18px; letter-spacing:3px; color:#fff; }
+.ws-recap { pointer-events:none; background:#05040cd9; border:2px solid var(--acc); border-radius:6px; padding:12px 14px; box-shadow:0 0 30px color-mix(in srgb, var(--acc) 35%, transparent);
+  opacity:0; transform:translateX(30px); transition:opacity .4s, transform .4s; display:flex; flex-direction:column; gap:6px; box-sizing:border-box; overflow:hidden; }
+.ws-recap.on { opacity:1; transform:none; }
+.ws-recap h3 { margin:0; font-size:15px; letter-spacing:3px; color:var(--acc); }
+.ws-recap .t { font:700 13px system-ui; text-transform:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.9; }
+.ws-recap .big { font-size:30px; font-weight:900; font-style:italic; letter-spacing:2px; }
+.ws-recap .grid { display:grid; grid-template-columns:1fr 1fr; gap:2px 10px; font:800 12px system-ui; letter-spacing:1px; }
+.ws-recap .grid b { font-size:16px; display:block; color:#fff; }
+.ws-recap .grid span { color:#fff9; }
+.ws-recap canvas { width:100%; height:16px; border-radius:2px; }
+.ws-recap .ls { font-size:18px; letter-spacing:3px; }
 `;
+
+const RATING: Record<string, { label: string; color: string; icon: string }> = {
+  perfect: { label: 'PERFECT LAUNCH', color: '#fff36b', icon: '★' }, great: { label: 'GREAT LAUNCH', color: '#b6ff3b', icon: '◆' },
+  good: { label: 'GOOD LAUNCH', color: '#5fd7ff', icon: '●' }, weak: { label: 'WEAK LAUNCH', color: '#9aa0b4', icon: '○' },
+};
+/** Effort strip colours: on target, under, over, recovering. */
+const STRIP = ['#b6ff3b', '#6b7080', '#ff4a1c', '#2b6a8a'];
+/** Launch meter range (ratio) and its rating marks. */
+const METER_MAX = 1.3, MARKS = [0.85, 1.0, 1.15];
 
 export class Hud {
   private root: HTMLDivElement;
   private score = this.el('ws-box ws-score'); private zone = this.el('ws-box ws-zone'); private song = this.el('ws-box ws-song');
   private shield = this.el('ws-box ws-shield'); private callout = this.el('ws-box ws-callout'); private menu = this.el('ws-box ws-menu');
   private drop = document.createElement('div');
+  private launch = this.el('ws-box ws-launch'); private recapEl = this.el('ws-box ws-recap'); private popEl = document.createElement('div');
+  private scoreText = document.createElement('div');
+  private popUntil = 0; private recapUntil = 0; private launchKey = '';
   private send?: (a: unknown) => void;
   private calloutUntil = 0; private lastKey = '';
   constructor(container: HTMLElement) {
     if (!document.getElementById('ws-hud-css')) { const st = document.createElement('style'); st.id = 'ws-hud-css'; st.textContent = CSS; document.head.appendChild(st); }
     this.root = document.createElement('div'); this.root.className = 'ws-hud';
     this.drop.className = 'ws-drop';
-    for (const e of [this.score, this.zone, this.song, this.shield, this.callout, this.menu, this.drop]) this.root.appendChild(e);
+    for (const e of [this.score, this.zone, this.song, this.shield, this.callout, this.menu, this.drop, this.launch, this.recapEl]) this.root.appendChild(e);
+    this.popEl.className = 'ws-pop'; this.score.append(this.scoreText, this.popEl);
     this.shield.appendChild(document.createElement('i'));
     container.appendChild(this.root);
   }
@@ -53,8 +88,8 @@ export class Hud {
   setSend(s?: (a: unknown) => void) { this.send = s; }
   place(L: Layout) {
     const put = (e: HTMLElement, b: Box) => Object.assign(e.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
-    put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout); put(this.menu, L.menu);
-    Object.assign(this.drop.style, { top: `${L.callout.y + L.callout.h + 10}px` });
+    put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout); put(this.menu, L.menu); put(this.launch, L.launch); put(this.recapEl, L.recap);
+    Object.assign(this.drop.style, { top: `${L.launch.y + 8}px` }); // prompts sit low, clear of the target gate (and share the launch meter's spot)
   }
   /** Show the big ZONE callout. */
   zoneCallout(n: number, kind: string, now: number) {
@@ -63,10 +98,45 @@ export class Hud {
   }
   text(title: string, sub: string, now: number, s = 1.6) { this.callout.innerHTML = `<b style="font-size:44px">${title}</b><span>${sub}</span>`; this.callout.classList.add('on'); this.calloutUntil = now + s; }
   dispose() { this.root.remove(); }
+  /** A short flourish under the score (chain milestones; `bad` = greyed, e.g. a broken chain). */
+  pop(text: string, now: number, bad = false) { this.popEl.textContent = text; this.popEl.className = `ws-pop on${bad ? ' bad' : ''}`; this.popUntil = now + 1.4; }
+  /** End-of-song recap card (shown ~9 s). */
+  recap(r: SongRecap, now: number) {
+    const ls = r.launches.length ? r.launches.map((x) => `<span style="color:${RATING[x].color}">${RATING[x].icon}</span>`).join(' ') : '—';
+    this.recapEl.innerHTML = `<h3>SONG ${r.n} COMPLETE</h3><div class="t">${esc(r.title)} — ${esc(r.artist)}</div><div class="big">${r.score.toLocaleString()}</div>`
+      + `<div class="grid"><div><b>${r.accuracyPct}%</b><span>ACCURACY</span></div><div><b>${r.maxChain}</b><span>BEST CHAIN</span></div>`
+      + `<div><b>${r.onTargetPct}%</b><span>ON TARGET</span></div><div><b class="ls">${ls}</b><span>LAUNCHES</span></div></div><canvas width="260" height="16"></canvas>`;
+    const g = (this.recapEl.querySelector('canvas') as HTMLCanvasElement).getContext('2d');
+    if (g) { const n = Math.max(1, r.strip.length), w = 260 / n; r.strip.forEach((c, i) => { g.fillStyle = STRIP[c] ?? '#000'; g.fillRect(i * w, 0, Math.ceil(w), 16); }); }
+    this.recapEl.classList.add('on'); this.recapUntil = now + 9;
+  }
+
+  /** The launch meter while rolling (fill = effort ratio, marks = good / great / perfect), then the rating. */
+  private updateLaunch(s: CadenzaSnapshot) {
+    const L = s.menu ? null : s.launch;
+    this.launch.classList.toggle('on', !!L);
+    if (!L) { this.launchKey = ''; return; }
+    if (L.active) {
+      if (this.launchKey !== 'live') {
+        this.launchKey = 'live';
+        this.launch.innerHTML = `<div class="lbl">PUNCH IT!</div><div class="bar"><i></i>${MARKS.map((m) => `<u style="left:${(100 * m) / METER_MAX}%"></u>`).join('')}<s></s></div>`;
+      }
+      const bar = this.launch.querySelector('.bar')!;
+      (bar.querySelector('i') as HTMLElement).style.width = `${Math.min(100, (100 * L.ratio) / METER_MAX)}%`;
+      (bar.querySelector('s') as HTMLElement).style.width = `${100 * L.progress}%`;
+    } else if (L.rating && this.launchKey !== L.rating) {
+      this.launchKey = L.rating;
+      const r = RATING[L.rating];
+      this.launch.innerHTML = `<div class="res" style="color:${r.color}">${r.label}<small>${L.bonus ? `+${L.bonus.toLocaleString()}` : 'push harder through the roll'}</small></div>`;
+    }
+  }
 
   update(s: CadenzaSnapshot, accent: string, now: number) {
     this.root.style.setProperty('--acc', accent);
     if (now > this.calloutUntil) this.callout.classList.remove('on');
+    if (now > this.popUntil) this.popEl.classList.remove('on');
+    if (now > this.recapUntil) this.recapEl.classList.remove('on');
+    this.updateLaunch(s);
     if (s.menu) {
       this.menu.style.display = 'flex';
       for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = 'none';
@@ -88,7 +158,7 @@ export class Hud {
     }
     this.menu.style.display = 'none';
     for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = '';
-    this.score.innerHTML = `<b>${s.score.toLocaleString()}</b><span>×${s.mult.toFixed(1)}${s.overdrive ? ' · OVERDRIVE' : ''}${s.chain >= 8 ? ` · chain ${s.chain}` : ''}</span>`;
+    this.scoreText.innerHTML = `<b>${s.score.toLocaleString()}</b><span>×${s.mult.toFixed(1)}${s.overdrive ? ' · OVERDRIVE' : ''}${s.chain >= 8 ? ` · chain ${s.chain}` : ''}</span>`;
     const fmt = (x: number) => { const l = Math.max(0, Math.ceil(x)); return `${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`; };
     const e = s.effort;
     const PHASE: Record<string, string> = { cruise: 'Cruise', climb: 'Climb', sprint: 'SPRINT', hold: 'Hold it', recover: 'Recover' };
@@ -99,7 +169,8 @@ export class Hud {
     bar.style.width = `${s.shield}%`;
     this.shield.classList.toggle('low', s.shield < 35 || !!s.dropout);
     // off target: a big plain-language prompt under the callout (the world itself greys out / the ship overheats too)
-    if (s.dropout) this.drop.textContent = `DROPOUT · hit your target to reboot ${s.dropout.left.toFixed(1)}s`;
+    if (s.launch) this.drop.textContent = '';
+    else if (s.dropout) this.drop.textContent = `DROPOUT · hit your target to reboot ${s.dropout.left.toFixed(1)}s`;
     else if (e.under > 0.25) this.drop.innerHTML = `<span class="ws-cue up">${e.erg ? 'KEEP PEDALLING' : `POWER UP ▲ ${e.watts} W`}</span>`;
     else if (e.over > 0.3) this.drop.innerHTML = `<span class="ws-cue down">EASE OFF ▼ ${e.ceilingWatts} W</span>`;
     else this.drop.textContent = '';

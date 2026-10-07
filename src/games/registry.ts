@@ -8,8 +8,8 @@ import { module as warmup } from './warmup';
 import { module as watershed } from './watershed';
 import { module as cadenza } from './cadenza';
 
-/** Games shown in the arcade picker. */
-export const games: GameModule[] = [dungeon, lighthouse, towerdefense, starfighter, hamster, watershed, cadenza];
+/** Games shown in the arcade picker, most polished first (the picker sorts by the rider's recent plays; this breaks ties). */
+export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighthouse, towerdefense, starfighter];
 /** The Warm-up Ride the shell runs behind its menus (not in the picker). */
 export const lobbyGame: GameModule = warmup;
 /** Everything with a sim (picker games + lobby), for the headless runner. */

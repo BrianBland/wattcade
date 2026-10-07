@@ -18,22 +18,29 @@ export function ridesByGame(records: readonly Pick<SessionRecord, 'gameId' | 'du
   return out;
 }
 
-export interface Slot { x: number; w: number; opacity: number; z: number }
+export interface Slot { x: number; w: number; opacity: number; z: number; /** offset from the selection, wrapped: the row loops */ k: number }
 export interface CarouselDims { W: number; activeW: number; sideW: number; gap: number }
 
+/** Offset of card i from the selection on a loop of n: -floor((n-1)/2) .. ceil((n-1)/2). */
+export function loopOffset(i: number, active: number, n: number): number {
+  const k = (((i - active) % n) + n) % n;
+  return k > n / 2 ? k - n : k;
+}
+
 /**
- * Horizontal position of each card (left edge, px) in a W-wide strip: the active card is centred, the others line up
- * on either side at sideW, fading with distance. Cards past the edges are fully transparent (still laid out, so they roll in).
+ * Horizontal position of each card (left edge, px) in a W-wide strip that loops: the active card is centred and the
+ * others line up on either side at sideW by wrapped offset, fading with distance. Cards past the edges are fully
+ * transparent (still laid out, so they roll in).
  */
 export function carouselSlots(n: number, active: number, d: CarouselDims): Slot[] {
   const cx = d.W / 2, half = d.activeW / 2 + d.gap;
   return Array.from({ length: n }, (_, i) => {
-    const k = i - active, a = Math.abs(k);
-    if (!k) return { x: cx - d.activeW / 2, w: d.activeW, opacity: 1, z: n };
+    const k = loopOffset(i, active, n), a = Math.abs(k);
+    if (!k) return { x: cx - d.activeW / 2, w: d.activeW, opacity: 1, z: n, k };
     const near = half + (a - 1) * (d.sideW + d.gap);           // distance from centre to the card's near edge
     const x = k > 0 ? cx + near : cx - near - d.sideW;
     const visible = k > 0 ? Math.min(1, (d.W - x) / d.sideW) : Math.min(1, (x + d.sideW) / d.sideW);
-    return { x, w: d.sideW, opacity: Math.max(0, Math.min(1, visible)) * Math.max(0.35, 1 - 0.18 * (a - 1)), z: n - a };
+    return { x, w: d.sideW, opacity: Math.max(0, Math.min(1, visible)) * Math.max(0.35, 1 - 0.18 * (a - 1)), z: n - a, k };
   });
 }
 

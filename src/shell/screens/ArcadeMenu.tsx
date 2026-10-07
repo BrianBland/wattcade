@@ -69,7 +69,7 @@ function ActiveInfo({ game, profile, rides }: { game: GameModule; profile: Profi
   );
 }
 
-/** One row of games rolling past a centred, enlarged selection. Swipe or tap a side card to roll; tap the centre to play. */
+/** One looping row of games rolling past a centred, enlarged selection. Swipe or tap a side card to roll; tap the centre to play. */
 function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
   games: GameModule[]; sel: number; focused: boolean; profile: Profile; rides: Record<string, GameRides>;
   onSel: (i: number) => void; onPlay: (g: GameModule) => void;
@@ -84,6 +84,9 @@ function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
   const dims = carouselDims(W || 1000), slots = carouselSlots(games.length, sel, dims);
   const narrow = dims.activeW < 440; // portrait iPad: media above the info
   const swipeX = useRef<number | null>(null), swiped = useRef(false);
+  // A card wrapping from one end of the loop to the other jumps there (off-screen) instead of sliding across the row.
+  const lastK = useRef<Record<string, number>>({});
+  const jumped = (id: string, k: number) => { const was = lastK.current[id]; lastK.current[id] = k; return was !== undefined && Math.abs(k - was) > games.length / 2; };
   return (
     <div class={`carousel${narrow ? ' narrow' : ''}`} ref={box}
       onPointerDown={(e) => { swipeX.current = e.clientX; swiped.current = false; }}
@@ -91,14 +94,13 @@ function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
         const x0 = swipeX.current; swipeX.current = null;
         if (x0 == null || Math.abs(e.clientX - x0) < 40) return;
         swiped.current = true; // the click that follows is part of the swipe
-        const to = Math.max(0, Math.min(games.length - 1, sel + (e.clientX < x0 ? 1 : -1)));
-        if (to !== sel) { play('uiMove'); onSel(to); }
+        play('uiMove'); onSel((sel + (e.clientX < x0 ? 1 : -1) + games.length) % games.length);
       }}>
       {games.map((g, i) => {
         const s = slots[i], active = i === sel;
         return (
           <div class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
-            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id) } as Record<string, string | number>}
+            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
             <div class="gc-media"><CardMedia game={g} color={profile.color} live={active} />{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
             {active ? <ActiveInfo game={g} profile={profile} rides={rides[g.id]} /> : <div class="gc-title">{g.title}</div>}
@@ -130,7 +132,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
     initial: B,
     onAdjust: (i, dir) => {
       if (i !== B || driveIn) return false;
-      setSel((s) => Math.max(0, Math.min(n - 1, s + dir)));
+      setSel((s) => (s + dir + n) % n); // the row loops
       return true;
     },
   });

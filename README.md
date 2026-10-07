@@ -14,7 +14,7 @@ A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broa
 
 Behind the menus runs the **Warm-up Ride**, a free ride through rolling countryside, coast and the Moon where the hills on screen are the grade on the trainer (toggle *Road: Hills/Flat* in the arcade). Rides over 2 minutes on real devices count toward XP, and the menus fade out on their own after 25 s so it works as a screensaver.
 
-**Arcade picker:** one row of games that rolls past a centred, enlarged selection (◀▶, swipe, or tap a side card). The selection plays a short clip of the real game and shows its tags, blurb, your progress line, time and kJ ridden in it, and when you last played; the others shrink to a title and a still. Games are sorted by what this rider played most recently, then by the order above.
+**Arcade picker:** one looping row of games that rolls past a centred, enlarged selection (◀▶, swipe, or tap a side card; it wraps around from the last game to the first). The selection plays a short clip of the real game and shows its tags, blurb, your progress line, time and kJ ridden in it, and when you last played; the others shrink to a title and a still. Games are sorted by what this rider played most recently, then by the order above.
 
 **Drive-In:** the 📽 button in the arcade's top bar turns the lobby into a desert drive-in cinema with a big screen playing always-on video channels (native HLS, so iPad/Safari only) while you keep riding. While it's on, the game row is replaced by a single 📽 toggle to bring the games back; Y/Z flip channels, even with the menus asleep.
 

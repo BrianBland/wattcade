@@ -389,6 +389,8 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Above zone** (outside storms): chop rises.
   - A ship spawns every ~40–60 s and sails in over ~60 s. It **docks** only if fog < 0.5 and chop < 0.5 when it arrives. Otherwise it drifts and is lost (or spills cargo if chop was the problem).
   - Docked ships give timber and coin.
+  - Delight layer (cosmetic or coin-only): a keeper who lights the lamp at dusk, ships that flash back at the beam, coins flying into the counter, special visitor ships with gifts, bloom festivals, a decorate tab, seasons per ride pair, calm-weather moods, wildlife, and adaptive music that grows with the Steady Light streak.
+  - Goals never conflict: during a storm, ships shelter offshore and wait it out. For a short calm-down after a storm (HR is still high), and while spinning up the clockwork, riding above zone doesn't churn the sea.
 - **Build:** D-pad cycles the plots/buildings; A builds. Buildings:
   - cottage: +passive coin
   - pier: +docking tolerance

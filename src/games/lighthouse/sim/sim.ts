@@ -5,20 +5,26 @@ import {
   BUILDINGS, BUILDING_TYPES, DISTRICTS, LENS, LENS_EFFECT, districtOpen, homeBonus, maxLevel, millBonus, orchardBonus, pierBonus, preview,
   upgradeCost, upgradeGrow, type BuildingType,
 } from './town';
+import {
+  DECOR, DECOR_IDS, DECOR_MIN_BUILDINGS, FESTIVALS, SEASON_NAME, VISITOR_KINDS, VISITORS, decorMax, pickWeather, seasonFor,
+  type DecorId, type GiftId, type Season, type VisitorKind, type Weather,
+} from './extras';
 
 export { BUILDING_TYPES, PLOT_COUNT, type BuildingType };
-export type ShipKind = 'smack' | 'schooner' | 'steamer';
+export type ShipKind = 'smack' | 'schooner' | 'steamer' | VisitorKind;
+export { DECOR_IDS, type DecorId, type GiftId, type Season, type Weather };
 export type ShipState = 'sailing' | 'docked' | 'lost' | 'spilled';
 export type ShipCheck = 'ok' | 'fog' | 'chop' | 'dark';
 export interface Ship { id: number; kind: ShipKind; name: string; progress: number; lane: number; state: ShipState; age: number; dock: number; rescued: boolean }
 export type StormPhase = 'calm' | 'warning' | 'storm';
 export type Mode = 'watch' | 'build';
+export type Tab = 'build' | 'decor';
 /** A build-menu row: a building type, "upgrade the building under the cursor", or "upgrade the lighthouse lens". */
 export type RowKey = BuildingType | 'upgrade' | 'lens';
 export const ROWS: RowKey[] = ['upgrade', ...BUILDING_TYPES, 'lens'];
 export type LighthouseAction =
   | { type: 'mode'; mode: Mode } | { type: 'plot'; plot: number } | { type: 'select'; building: RowKey }
-  | { type: 'build' } | { type: 'view' } | { type: 'log' };
+  | { type: 'build' } | { type: 'view' } | { type: 'log' } | { type: 'tab'; tab: Tab } | { type: 'decor'; decor: DecorId };
 
 const SHIP_KINDS: Array<{ kind: ShipKind; value: number; w: number }> = [
   { kind: 'smack', value: 0.8, w: 0.45 }, { kind: 'schooner', value: 1, w: 0.4 }, { kind: 'steamer', value: 1.4, w: 0.15 },
@@ -36,6 +42,7 @@ export interface SimOpts { seed?: number; autopilot?: boolean }
 interface Saved {
   v: 2; buildings: Array<BuildingType | null>; levels?: number[]; grow: number[]; coin: number; timber: number; meadow: number; lens?: number;
   shipsDockedTotal: number; stormsWeatheredTotal: number;
+  rides?: number; decor?: Partial<Record<DecorId, number>>; gifts?: GiftId[]; festivals?: number;
 }
 
 export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
@@ -90,6 +97,13 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const streakMax = tn.num('streakMaxMult', 1.5, 1, 3, 0.05, 'Cap on the Steady Light multiplier');
   const streakGrace = tn.num('streakGraceS', 12, 0, 60, 1, 'Seconds out of zone before the streak breaks');
   const rescueEvery = tn.num('lifeboatCooldownS', 240, 30, 1800, 10, 'Lifeboat cooldown between rescues');
+  const calmAfterS = tn.num('stormCalmAfterS', 90, 0, 300, 5, 'After a storm: seconds when riding above zone neither churns the sea nor breaks the streak (HR is still high)');
+  const ridesPerSeason = tn.num('ridesPerSeason', 2, 1, 20, 1, 'Rides per season (spring, summer, autumn, winter)');
+  const festivalS = tn.num('festivalS', 300, 30, 1800, 10, 'How long a bloom festival lasts (s)');
+  const visitorChance = tn.num('visitorChance', 0.12, 0, 1, 0.01, 'Chance a new ship is a special visitor (once eligible)');
+  const weatherMinS = tn.num('weatherEveryMinS', 240, 30, 3600, 10, 'Cosmetic weather change interval low (s)');
+  const weatherMaxS = tn.num('weatherEveryMaxS', 420, 30, 3600, 10, 'Cosmetic weather change interval high (s)');
+  const whaleEvery = tn.num('whaleEveryS', 600, 60, 3600, 10, 'Min seconds between whale visits (only during a Steady Light streak)');
 
   const raw = ctx.load<Saved>();
   const saved = raw && raw.v === 2 ? raw : undefined; // older saves are discarded
@@ -102,6 +116,19 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   let lens = Math.max(1, Math.min(LENS.length, saved?.lens ?? 1));
   const totals = { shipsDockedTotal: saved?.shipsDockedTotal ?? 0, stormsWeatheredTotal: saved?.stormsWeatheredTotal ?? 0 };
   const meadowStart = meadow;
+  const rides = saved?.rides ?? 0;
+  const season: Season = seasonFor(rides, ridesPerSeason());
+  const decor = Object.fromEntries(DECOR_IDS.map((d) => [d, Math.min(decorMax(d), Math.max(0, saved?.decor?.[d] ?? 0))])) as Record<DecorId, number>;
+  const gifts: GiftId[] = (saved?.gifts ?? []).filter((g) => VISITOR_KINDS.some((k) => VISITORS[k].gift === g));
+  // older saves: count the milestones already passed as held, so they don't all fire at once
+  let festivalsHeld = saved?.festivals ?? FESTIVALS.filter((f) => meadow >= f.at).length;
+  let festival: { n: number; name: string; at: number; until: number } | null = null;
+  // cosmetic weather has its own seeded stream so it never shifts gameplay randomness (storms, ships)
+  let wseed = (rides * 2654435761 + 12345) >>> 0;
+  const wrng = () => { wseed = (wseed + 0x6d2b79f5) >>> 0; let z = wseed; z = Math.imul(z ^ (z >>> 15), z | 1); z ^= z + Math.imul(z ^ (z >>> 7), z | 61); return ((z ^ (z >>> 14)) >>> 0) / 4294967296; };
+  let weather: Weather = pickWeather(season, wrng()), prevWeather: Weather = weather, weatherAt = -999;
+  let weatherIn = weatherMinS() + wrng() * Math.max(0, weatherMaxS() - weatherMinS());
+  let shipsSinceVisitor = 0;
 
   let t = 0;
   let fog = 0.4, chop = 0.3, lamp = 0.5;
@@ -114,13 +141,15 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   let sinceSave = 0;
   let streakS = 0, streakOffS = 0, stormEndedAt = -999;
   let rescueReady = 0, rescue = { ship: -1, at: -99, plot: -1 };
+  let lastStorm = false, whale = { at: -999, x: 0, z: 0 }, whaleIn = whaleEvery() * 0.5;
 
   // build UI
   let mode: Mode = 'watch';
-  let sel = 1, cursorPlot = 0, idleS = 0, view = 0, logOpen = false;
+  let sel = 1, cursorPlot = 0, idleS = 0, view = 0, logOpen = false, tab: Tab = 'build', decorSel = 0;
   const pending: LighthouseAction[] = [];
   let nudgeAt = -999, scanIn = 0, canAny = false;
   const nudged = new Set<RowKey>();
+  let nudgedDecor = false;
 
   // cues / toasts for the renderer
   const cues: Array<{ name: string; id: number }> = [];
@@ -145,7 +174,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
   const stat = {
     minutesInZoneS: 0, shipsDocked: 0, shipsLost: 0, shipsSpilled: 0, shipsRescued: 0, buildingsBuilt: 0, upgrades: 0,
-    stormsWeathered: 0, stormsFailed: 0, coinEarned: 0, bestStreakS: 0, districtsOpened: 0,
+    stormsWeathered: 0, stormsFailed: 0, coinEarned: 0, bestStreakS: 0, districtsOpened: 0, whales: 0,
+    festivals: 0, visitors: 0, decorBought: 0,
   };
 
   ctx.resistance.useVirtualGears(true);
@@ -167,7 +197,10 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const rowName = (k: RowKey) => (k === 'upgrade' ? 'Upgrade' : k === 'lens' ? 'Lighthouse lens' : BUILDINGS[k].names[0]);
 
   function persist() {
-    ctx.save({ v: 2, buildings: buildings.slice(), levels: levels.slice(), grow: grow.map((g) => Math.round(g * 1000) / 1000), coin, timber, meadow, lens, ...totals } satisfies Saved);
+    ctx.save({
+      v: 2, buildings: buildings.slice(), levels: levels.slice(), grow: grow.map((g) => Math.round(g * 1000) / 1000), coin, timber, meadow, lens, ...totals,
+      rides: rides + 1, decor: { ...decor }, gifts: gifts.slice(), festivals: festivalsHeld,
+    } satisfies Saved);
   }
 
   function plotOk(k: RowKey, plot: number): boolean {
@@ -268,6 +301,25 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     persist();
     return true;
   }
+  function whyNotDecor(d: DecorId): string | null {
+    if (decor[d] >= decorMax(d)) return 'all done';
+    if (built() < DECOR_MIN_BUILDINGS) return 'build a few homes first';
+    const c = DECOR[d].costs[decor[d]];
+    return coin < c ? `need ${Math.ceil(c - coin)} more coin` : null;
+  }
+  function buyDecor(d: DecorId): boolean {
+    const why = whyNotDecor(d);
+    if (why) { fb = { text: `Can't add ${DECOR[d].names[Math.min(decor[d], decorMax(d) - 1)]}: ${why}`, ok: false, at: t }; cue('deny'); return false; }
+    coin -= DECOR[d].costs[decor[d]]; decor[d]++;
+    stat.decorBought++;
+    toast(`${DECOR[d].icon} ${DECOR[d].names[decor[d] - 1]} added!`, '#ffb3e6');
+    cue('build');
+    ctx.emit({ type: 'decorated', data: { decor: d, level: decor[d] } });
+    persist();
+    return true;
+  }
+  const decorAffordable = () => DECOR_IDS.filter((d) => whyNotDecor(d) === null);
+
   function act(k: RowKey, plot: number): boolean {
     return k === 'lens' ? upgradeLens() : k === 'upgrade' ? upgrade(plot) : build(k, plot);
   }
@@ -297,7 +349,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
   const affordable = () => ROWS.filter((k) => whyNot(k, suggestPlot(k)) === null);
   function openBuild() {
-    mode = 'build'; idleS = 0; logOpen = false;
+    mode = 'build'; idleS = 0; logOpen = false; tab = 'build';
     const can = affordable();
     if (can.length && !can.includes(ROWS[sel])) sel = ROWS.indexOf(can.find((k) => k !== 'upgrade' && k !== 'lens') ?? can[0]);
     cursorPlot = suggestPlot(ROWS[sel]);
@@ -324,6 +376,12 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     if (a.type === 'view') { view = (view + 1) % VIEW_COUNT; cue('select'); }
     else if (a.type === 'log') { logOpen = !logOpen; if (logOpen) mode = 'watch'; cue('select'); }
     else if (a.type === 'mode') { if (a.mode === 'build') openBuild(); else mode = 'watch'; }
+    else if (a.type === 'tab') { if (mode !== 'build') openBuild(); tab = a.tab; cue('select'); }
+    else if (a.type === 'decor') {
+      const i = DECOR_IDS.indexOf(a.decor); if (i < 0) return;
+      if (mode !== 'build') openBuild();
+      tab = 'decor'; decorSel = i; cue('select');
+    }
     else if (a.type === 'plot') {
       if (a.plot < LIGHTHOUSE_PLOT || a.plot >= PLOT_COUNT) return;
       if (mode !== 'build') openBuild();
@@ -340,7 +398,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       cue('select');
     } else if (a.type === 'build') {
       if (mode !== 'build') { openBuild(); return; }
-      if (act(ROWS[sel], cursorPlot)) mode = 'watch';
+      if (tab === 'decor') buyDecor(DECOR_IDS[decorSel]); // stay open: decorating is often several buys in a row
+      else if (act(ROWS[sel], cursorPlot)) mode = 'watch';
     }
   }
 
@@ -356,10 +415,17 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     }
     idleS += dt;
     if (p.size) idleS = 0;
-    if (p.has('right')) stepPlot(1);
-    if (p.has('left')) stepPlot(-1);
-    if (p.has('up')) stepType(-1);
-    if (p.has('down')) stepType(1);
+    if (p.has('y')) { tab = tab === 'build' ? 'decor' : 'build'; cue('select'); }
+    else if (tab === 'decor') {
+      const n = DECOR_IDS.length;
+      if (p.has('up') || p.has('left')) { decorSel = (decorSel + n - 1) % n; cue('select'); }
+      if (p.has('down') || p.has('right')) { decorSel = (decorSel + 1) % n; cue('select'); }
+    } else {
+      if (p.has('right')) stepPlot(1);
+      if (p.has('left')) stepPlot(-1);
+      if (p.has('up')) stepType(-1);
+      if (p.has('down')) stepType(1);
+    }
     if (p.has('a')) apply({ type: 'build' });
     if (p.has('b') || idleS >= buildIdleS()) mode = 'watch';
   }
@@ -371,7 +437,10 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     canAny = can.length > 0;
     if (mode !== 'watch' || t - nudgeAt < 45) return;
     const k = can.find((x) => !nudged.has(x));
-    if (!k) return;
+    if (!k) {
+      if (!nudgedDecor && decorAffordable().length && coin > 120) { nudgedDecor = true; nudgeAt = t; toast('Coin to spare? Open the build menu and press Y to decorate the town', '#ffb3e6'); cue('chime'); }
+      return;
+    }
     nudged.add(k); nudgeAt = t;
     const plot = suggestPlot(k);
     const what = k === 'upgrade' ? `upgrade your ${BUILDINGS[buildings[plot]!].names[levels[plot] - 1]}` : k === 'lens' ? 'upgrade the lighthouse lens' : `build a ${BUILDINGS[k].names[0]}`;
@@ -394,7 +463,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     }
     if (whyNot('lens', LIGHTHOUSE_PLOT) === null) { upgradeLens(); return; }
     const up = suggestPlot('upgrade');
-    if (whyNot('upgrade', up) === null) upgrade(up);
+    if (whyNot('upgrade', up) === null) { upgrade(up); return; }
+    const d = decorAffordable().sort((a, b) => DECOR[a].costs[decor[a]] - DECOR[b].costs[decor[b]])[0];
+    if (d && coin > DECOR[d].costs[decor[d]] + 150) buyDecor(d);
   }
 
   function updateWind(dt: Seconds, cadence: number) {
@@ -422,15 +493,49 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     }
   }
 
+  /** A whale passes the island now and then while you hold a Steady Light streak in calm weather. Pure delight, plus a little bloom. */
+  function updateWhale(dt: Seconds) {
+    whaleIn -= dt;
+    if (whaleIn > 0 || phase !== 'calm' || streakS < streakStepS() || chop > 0.4) return;
+    whaleIn = whaleEvery() * (1 + ctx.rng() * 0.5);
+    whale = { at: t, x: 30 + ctx.rng() * 16, z: -48 + ctx.rng() * 12 }; // open sea beyond the island, in view of the default camera
+    stat.whales++;
+    meadow = Math.min(1, meadow + 0.005);
+    ctx.emit({ type: 'whaleSighted' });
+    toast('A whale is passing the island! The steady light brings visitors', '#bfe8ff');
+    cue('whale');
+  }
+
+  function updateFestival() {
+    if (festival && t >= festival.until) { festival = null; toast('What a festival! The island hums happily', '#ffb3e6'); }
+    if (festival || phase !== 'calm' || festivalsHeld >= FESTIVALS.length || meadow < FESTIVALS[festivalsHeld].at) return;
+    const f = FESTIVALS[festivalsHeld];
+    festival = { n: festivalsHeld, name: f.name, at: t, until: t + festivalS() };
+    festivalsHeld++; stat.festivals++;
+    const c = earn(25 * festivalsHeld);
+    toast(`🎉 The ${f.name}! The island celebrates ${Math.round(f.at * 100)}% bloom  +${Math.round(c)} coin`, '#ffb3e6');
+    cue('festival');
+    ctx.emit({ type: 'festival', data: { n: festival.n, name: f.name } });
+    persist();
+  }
+  function updateWeather(dt: Seconds) {
+    weatherIn -= dt;
+    if (weatherIn > 0) return;
+    weatherIn = weatherMinS() + wrng() * Math.max(0, weatherMaxS() - weatherMinS());
+    prevWeather = weather; weather = pickWeather(season, wrng(), weather); weatherAt = t;
+  }
+
   function endStorm(weathered: boolean) {
     ctx.resistance.clear('storm');
-    phase = 'calm'; phaseT = 0; intensity = 0; surgeNow = false; stormEndedAt = t;
+    phase = 'calm'; phaseT = 0; intensity = 0; surgeNow = false; stormEndedAt = t; lastStorm = weathered;
     calmLeft = stormMinS() + ctx.rng() * Math.max(0, stormMaxS() - stormMinS());
     if (weathered) {
       stat.stormsWeathered++; totals.stormsWeatheredTotal++;
       earn(40); timber += 8;
+      chop = Math.min(chop, 0.1); fog = Math.min(fog, 0.2); // the storm blows the sky clear
       ctx.emit({ type: 'stormWeathered', data: { integrity } });
       toast('Storm weathered! +40 coin +8 timber', '#9cf59c');
+      if (ships.some((x) => x.state === 'sailing')) toast('The seas are calm - ships are making for harbour', '#8fd3ff');
       cue('reward');
       const bonus = surgeDone && surgeHeldS >= surgeS() * 0.7;
       if (bonus) { earn(30); timber += 6; ctx.emit({ type: 'surgeSalvage' }); toast('Surge salvage! +30 coin +6 timber', '#ffd84a'); }
@@ -477,14 +582,25 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     }
   }
 
+  /** A special visitor, sometimes: each brings a one-off gift for the town; once all gifts are in, they still drop by now and then. */
+  function pickVisitor(): VisitorKind | null {
+    if (shipsSinceVisitor < 3 || ships.some((x) => x.state === 'sailing' && x.kind in VISITORS)) return null;
+    const fresh = VISITOR_KINDS.filter((k) => !gifts.includes(VISITORS[k].gift) && built() >= VISITORS[k].needBuildings && totals.shipsDockedTotal >= VISITORS[k].needShips);
+    const pool = fresh.length ? fresh : gifts.length === VISITOR_KINDS.length ? VISITOR_KINDS : [];
+    if (!pool.length || ctx.rng() >= (fresh.length ? visitorChance() : visitorChance() * 0.25)) return null;
+    return pool[Math.floor(ctx.rng() * pool.length) % pool.length];
+  }
   function spawnShip() {
     const y = yard();
     const kinds = SHIP_KINDS.map((k) => ({ ...k, w: k.kind === 'steamer' ? k.w + 0.15 * y : k.w }));
     const tot = kinds.reduce((s, k) => s + k.w, 0);
     let r = ctx.rng() * tot, kind: ShipKind = 'smack';
     for (const k of kinds) { if (r < k.w) { kind = k.kind; break; } r -= k.w; }
+    const visitor = pickVisitor();
+    if (visitor) { kind = visitor; shipsSinceVisitor = 0; toast(`${VISITORS[visitor].icon} A special visitor: ${VISITORS[visitor].title} is on the horizon!`, '#ffe9a0'); cue('chime'); }
+    else shipsSinceVisitor++;
     const id = nextShipId++;
-    ships.push({ id, kind, name: SHIP_NAMES[(id * 7) % SHIP_NAMES.length], progress: 0, lane: ctx.rng(), state: 'sailing', age: 0, dock: -1, rescued: false });
+    ships.push({ id, kind, name: visitor ? VISITORS[visitor].ship : SHIP_NAMES[(id * 7) % SHIP_NAMES.length], progress: 0, lane: ctx.rng(), state: 'sailing', age: 0, dock: -1, rescued: false });
     spawnIn = (spawnMin() + ctx.rng() * Math.max(0, spawnMax() - spawnMin())) * (y >= 2 ? 0.85 : 1);
   }
 
@@ -504,10 +620,21 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     const busy = new Set(ships.filter((o) => o !== s && o.state === 'docked').map((o) => o.dock));
     s.dock = piers.find((i) => !busy.has(i)) ?? -1;
     const y = yard();
-    const value = SHIP_KINDS.find((k) => k.kind === s.kind)!.value * (y ? YARD_MULT[y - 1] : 1) * (s.dock >= 0 ? pierBonus(buildings, s.dock) : 1) * streakMult() * share;
+    const value = (s.kind in VISITORS ? VISITORS[s.kind as VisitorKind].value : SHIP_KINDS.find((k) => k.kind === s.kind)!.value) * (y ? YARD_MULT[y - 1] : 1) * (s.dock >= 0 ? pierBonus(buildings, s.dock) : 1) * streakMult() * share;
     const ct = Math.round((12 + Math.floor(ctx.rng() * 9)) * value), tb = Math.round((2 + Math.floor(ctx.rng() * 3)) * value);
     const got = earn(ct); timber += tb;
     return { got, ct, tb };
+  }
+  function visitorHome(s: Ship) {
+    if (!(s.kind in VISITORS)) return;
+    const v = VISITORS[s.kind as VisitorKind];
+    stat.visitors++;
+    if (gifts.includes(v.gift)) return;
+    gifts.push(v.gift);
+    toast(`${v.icon} ${v.title[0].toUpperCase()}${v.title.slice(1)} leaves ${v.giftName} for the town!`, '#ffe9a0');
+    cue('unlock');
+    ctx.emit({ type: 'visitorGift', data: { visitor: s.kind, gift: v.gift } });
+    persist();
   }
   function arrive(s: Ship) {
     const c = check();
@@ -519,6 +646,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       toast(`${s.name} docked  +${Math.round(got)} coin  +${tb} timber`, '#ffd84a');
       cue('horn');
       checkDistricts();
+      visitorHome(s);
       return;
     }
     const boat = plotsOf('lifeboat')[0];
@@ -531,8 +659,10 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       ctx.emit({ type: 'shipRescued', data: { reason: c } });
       toast(`Lifeboat to the rescue! ${s.name} saved  +${Math.round(got)} coin  +${tb} timber`, '#8fd3ff');
       cue('rescue');
+      visitorHome(s);
       return;
     }
+    if (s.kind in VISITORS) toast(`${VISITORS[s.kind as VisitorKind].title[0].toUpperCase()}${VISITORS[s.kind as VisitorKind].title.slice(1)} turned back - they'll try again another day`, '#c9d3dc');
     if (c === 'chop') {
       s.state = 'spilled'; stat.shipsLost++; stat.shipsSpilled++;
       ctx.emit({ type: 'shipLost', data: { reason: 'chop' } });
@@ -549,7 +679,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   if (saved) {
     const nd = nextDistrict();
-    toast(`Welcome back, keeper!${nd ? ` Next land: ${nd.name}` : ''}`, '#ffe9a0');
+    toast(`Welcome back, keeper! It's ${SEASON_NAME[season].toLowerCase()} on the island.${nd ? ` Next land: ${nd.name}` : ''}`, '#ffe9a0');
   }
 
   return {
@@ -584,8 +714,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
       // Steady Light streak
       const before = streakMult();
+      const easing = above && (t - stormEndedAt < calmAfterS() || wind !== null); // cooling down after a storm, or spinning up the clockwork
       if (satisfied) { streakS += dt; streakOffS = 0; }
-      else if (above && t - stormEndedAt < 45) { /* easing down after a storm: pause, don't break */ }
+      else if (easing) { /* pause, don't break */ }
       else {
         streakOffS += dt;
         if (streakOffS > streakGrace() && streakS > 0) { if (streakS >= streakStepS()) toast('Steady Light streak broken', '#c9d3dc'); streakS = 0; }
@@ -604,6 +735,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         fog = clamp01(fog + fogRise() * bellFactor * dt);
         chop = clamp01(chop - chopFall() * 0.25 * dt);
         if (!(phase === 'storm' && stormFailedThis)) lamp = clamp01(lamp - lampDown() * dt);
+      } else if (easing) {
+        chop = clamp01(chop - chopFall() * 0.25 * dt);
       } else if (above) {
         chop = clamp01(chop + chopRise() * dt);
         fog = clamp01(fog - fogFall() * 0.1 * dt);
@@ -622,6 +755,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
       updateStorm(dt);
       updateWind(dt, bike.cadence3s);
+      updateWhale(dt);
+      updateFestival();
+      updateWeather(dt);
 
       // fog bells ring while fog thickens
       if (count('bell') && fog > 0.35 && !satisfied) {
@@ -632,11 +768,13 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       // swell resistance (sim mode) - 3 min sine
       ctx.resistance.set({ id: 'swell', mode: 'sim', gradePct: swellPct() * Math.sin((2 * Math.PI * t) / swellPeriod()) });
 
-      // ships
-      spawnIn -= dt;
+      // ships: during a storm they heave to offshore and wait it out, so pushing hard never costs a ship
+      const shelter = phase === 'storm';
+      if (!shelter) spawnIn -= dt;
       if (spawnIn <= 0) spawnShip();
       for (const s of ships) {
         if (s.state === 'sailing') {
+          if (shelter) continue;
           s.progress += dt / sailS();
           if (s.progress >= 1) { s.progress = 1; arrive(s); }
         } else s.age += dt;
@@ -680,13 +818,26 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         limits: { fog: dockFog() + tol + lensFog(), chop: dockChop() + tol, lamp: dockLamp() },
         day: ((t / dayLen()) + 0.82) % 1, // 0 = noon, 0.5 = midnight; sessions start mid-morning
         ships: ships.map((s) => ({ ...s, etaS: (1 - s.progress) * sailS(), check: s.state === 'sailing' ? c : 'ok' as ShipCheck })),
+        sheltering: phase === 'storm',
+        calmAfterS: Math.max(0, calmAfterS() - (t - stormEndedAt)),
+        whale: { ...whale, age: t - whale.at },
         nextShipS: spawnIn,
         buildings: buildings.slice(), levels: levels.slice(), grow: grow.slice(), meadow, lens,
         districts: DISTRICTS.map((d) => ({ id: d.id, name: d.name, open: open.has(d.id) })),
         nextDistrict: nextDistrict(),
         streak: { s: streakS, mult: streakMult(), nextS: streakMult() >= streakMax() ? 0 : streakStepS() - (streakS % streakStepS()), off: streakOffS },
         rescue: { ...rescue, age: t - rescue.at, readyInS: plotsOf('lifeboat').length ? Math.max(0, rescueReady - t) : -1 },
-        mode, view, logOpen,
+        mode, view, logOpen, tab,
+        season, ride: rides + 1,
+        weather: { kind: weather, prev: prevWeather, age: t - weatherAt },
+        festival: festival ? { n: festival.n, name: festival.name, age: t - festival.at, left: festival.until - t } : null,
+        festivalsHeld, nextFestival: festivalsHeld < FESTIVALS.length ? { name: FESTIVALS[festivalsHeld].name, at: FESTIVALS[festivalsHeld].at } : null,
+        decor: { ...decor }, gifts: gifts.slice(),
+        decorOptions: DECOR_IDS.map((d, i) => {
+          const lv = decor[d], max = decorMax(d);
+          return { type: d, icon: DECOR[d].icon, label: DECOR[d].names[Math.min(lv, max - 1)] + (lv >= max ? ' ✓' : ''), cost: lv < max ? DECOR[d].costs[lv] : null,
+            effect: DECOR[d].effects[Math.min(lv, max - 1)], owned: lv, max, selected: i === decorSel, reason: whyNotDecor(d) };
+        }),
         cursor: { plot: cursorPlot, row: k, building: k === 'upgrade' ? cb : k === 'lens' ? null : k, level: cursorPlot >= 0 ? levels[cursorPlot] : lens, canBuild: whyNot(k, cursorPlot) === null, links: pv.links, bonus: pv.text },
         canBuildAny: canAny,
         options: ROWS.map((r, i) => {
@@ -707,7 +858,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         toasts: toasts.map((x) => ({ ...x, age: t - x.t })),
         cues: cues.slice(),
         coin, timber,
-        storm: { phase, timeInPhase: phaseT, warnS: warnS(), duration: stormDur, integrity, intensity, surge: surgeNow, nextInS: phase === 'calm' ? calmLeft : 0, lightningAge: t - lightningAt, failed: stormFailedThis },
+        storm: { phase, timeInPhase: phaseT, warnS: warnS(), duration: stormDur, integrity, intensity, surge: surgeNow, nextInS: phase === 'calm' ? calmLeft : 0, lightningAge: t - lightningAt, failed: stormFailedThis, sinceEnd: t - stormEndedAt, lastWeathered: lastStorm },
         bellAge: t - bellAt,
         wind: wind ? { left: wind.until - t, held: wind.held, need: windNeedS(), rpm: Math.round(windRpm()) } : null,
         hooks: { storm: phase === 'storm' || phase === 'warning' },
@@ -721,8 +872,11 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         : phase === 'warning' ? { min: 2 as const, max: 5 as const, label: 'Storm coming', source: 'power' as const }
           : { min: 2 as const, max: 2 as const, label: 'Keep the lamp lit' };
       const controls = mode === 'build'
-        ? [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: 'Build', active: true }, { button: 'b' as const, label: 'Close' }]
-        : [{ button: 'a' as const, label: 'Build menu' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", active: logOpen }];
+        ? tab === 'decor'
+          ? [{ button: 'dpad' as const, label: '▲▼ choose' }, { button: 'a' as const, label: 'Buy', active: true }, { button: 'y' as const, label: 'Build tab' }, { button: 'b' as const, label: 'Close' }]
+          : [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: 'Build', active: true }, { button: 'y' as const, label: 'Decorate' }, { button: 'b' as const, label: 'Close' }]
+        : [{ button: 'a' as const, label: 'Build menu' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", active: logOpen },
+          ...(logOpen ? [{ button: 'b' as const, label: 'Close log' }] : [])];
       const targetCadence = wind ? { min: Math.round(windRpm()), label: 'Wind the clockwork' } : undefined;
       return { targetZone, targetCadence, controls: [...controls, { button: 'shiftersL', label: 'Gears' }, { button: 'shiftersR', label: 'Gears' }], gears: true };
     },
@@ -742,6 +896,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         bestStreakMin: Math.round(stat.bestStreakS / 6) / 10,
         districtsOpen: open.size,
         lensTier: lens,
+        whales: stat.whales,
+        festivals: stat.festivals,
+        visitors: stat.visitors,
       };
     },
     dispose() { persist(); },

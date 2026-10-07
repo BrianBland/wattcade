@@ -2,15 +2,26 @@
 import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, noise2 } from '../sim/layout';
 import { lam, mergeStatic, mesh, mulberry, roofGeo, softTexture } from './util';
+import type { Season } from '../sim/extras';
 
 export type Seg = [number, number, number, number]; // x1 z1 x2 z2
 
-export interface Terrain { mesh: THREE.Mesh; paintPaths(segs: Seg[], age: number[]): void; onPath(x: number, z: number): boolean }
+export interface Terrain { mesh: THREE.Mesh; paintPaths(segs: Seg[], age: number[]): void; onPath(x: number, z: number): boolean; setSeason(s: Season): void }
 
 const SAND = new THREE.Color(0xe6d3a0), WETSAND = new THREE.Color(0xb9a676), ROCK = new THREE.Color(0x8a8378), ROCK2 = new THREE.Color(0x6f6a63);
 const GRASS = [new THREE.Color(0x7fb04a), new THREE.Color(0x6fa543), new THREE.Color(0x8cbb52), new THREE.Color(0x76a948)];
 const SLOPE = [new THREE.Color(0x5f9440), new THREE.Color(0x689a42)];
 const DIRT = new THREE.Color(0xb79a6a), COBBLE = new THREE.Color(0xa9a39a);
+/** Per-season grass and slope palettes (spring is the base look). */
+const hexes = (...h: number[]) => h.map((x) => new THREE.Color(x));
+const SEASON_GRASS: Record<Season, THREE.Color[]> = {
+  spring: GRASS, summer: hexes(0x6aa83e, 0x5f9c38, 0x78b244, 0x64a03c),
+  autumn: hexes(0xa8a548, 0x9a9a40, 0xb5ad55, 0x8f9a3f), winter: hexes(0xeef3f7, 0xe3ebf2, 0xf6f9fb, 0xdfe8ef),
+};
+const SEASON_SLOPE: Record<Season, THREE.Color[]> = {
+  spring: SLOPE, summer: hexes(0x578a3a, 0x60923c), autumn: hexes(0x7d8a3c, 0x86863f), winter: hexes(0xc9d3dc, 0xd8e0e6),
+};
+const WINTER_SAND = new THREE.Color(0xd9d2bf), WINTER_DIRT = new THREE.Color(0xa89a86);
 
 export function createTerrain(): Terrain {
   const W = 128, D = 92, SX = 128, SZ = 92;
@@ -22,6 +33,7 @@ export function createTerrain(): Terrain {
   const faces = pos.count / 3;
   const base = new Float32Array(pos.count * 3);
   const cx = new Float32Array(faces), cz = new Float32Array(faces), soil = new Uint8Array(faces);
+  const kind = new Uint8Array(faces), fv = new Float32Array(faces), fv2 = new Float32Array(faces); // 0 rock 1 slope 2 wet sand 3 sand 4 grass
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
   const col = new THREE.Color();
   for (let f = 0; f < faces; f++) {
@@ -30,18 +42,32 @@ export function createTerrain(): Terrain {
     const h = (a.y + b.y + c.y) / 3, x = (a.x + b.x + c.x) / 3, z = (a.z + b.z + c.z) / 3;
     cx[f] = x; cz[f] = z;
     const v = noise2(x * 0.35, z * 0.35);
-    if (n.y < 0.5 || (h > 4 && Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 10 && n.y < 0.9)) col.copy(v > 0.5 ? ROCK : ROCK2);
-    else if (n.y < 0.8 && h > 0.85) col.copy(SLOPE[Math.floor(v * 1.99)]);
-    else if (h < 0.15) col.copy(WETSAND);
-    else if (h < 0.85) { col.copy(SAND); soil[f] = 1; }
-    else { col.copy(GRASS[Math.floor(v * 3.99)]).offsetHSL(0, 0, (noise2(x * 0.08, z * 0.08) - 0.5) * 0.08); soil[f] = 1; }
-    for (let k = 0; k < 3; k++) col.toArray(base, (f * 3 + k) * 3);
+    fv[f] = v; fv2[f] = noise2(x * 0.08, z * 0.08);
+    if (n.y < 0.5 || (h > 4 && Math.hypot(x - LIGHTHOUSE.x, z - LIGHTHOUSE.z) < 10 && n.y < 0.9)) kind[f] = 0;
+    else if (n.y < 0.8 && h > 0.85) kind[f] = 1;
+    else if (h < 0.15) kind[f] = 2;
+    else if (h < 0.85) { kind[f] = 3; soil[f] = 1; }
+    else { kind[f] = 4; soil[f] = 1; }
   }
+  let season: Season = 'spring';
+  const recolour = () => {
+    const G = SEASON_GRASS[season], S = SEASON_SLOPE[season], snow = season === 'winter';
+    for (let f = 0; f < faces; f++) {
+      const v = fv[f];
+      if (kind[f] === 0) col.copy(v > 0.5 ? ROCK : ROCK2);
+      else if (kind[f] === 1) col.copy(S[Math.floor(v * 1.99)]);
+      else if (kind[f] === 2) col.copy(WETSAND);
+      else if (kind[f] === 3) col.copy(snow ? WINTER_SAND : SAND);
+      else col.copy(G[Math.floor(v * 3.99)]).offsetHSL(0, 0, (fv2[f] - 0.5) * (snow ? 0.04 : 0.08));
+      for (let k = 0; k < 3; k++) col.toArray(base, (f * 3 + k) * 3);
+    }
+  };
+  recolour();
   const colors = new THREE.BufferAttribute(base.slice(), 3);
   g.setAttribute('color', colors);
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
   m.receiveShadow = true;
-  let segs: Seg[] = [];
+  let segs: Seg[] = [], segAge: number[] = [];
   const distSeg = (x: number, z: number, s: Seg) => {
     const dx = s[2] - s[0], dz = s[3] - s[1], L = dx * dx + dz * dz || 1;
     const t = Math.max(0, Math.min(1, ((x - s[0]) * dx + (z - s[1]) * dz) / L));
@@ -50,8 +76,9 @@ export function createTerrain(): Terrain {
   return {
     mesh: m,
     onPath: (x, z) => segs.some((s) => distSeg(x, z, s) < 0.9),
+    setSeason(s) { if (s === season) return; season = s; recolour(); this.paintPaths(segs, segAge); },
     paintPaths(newSegs, age) {
-      segs = newSegs;
+      segs = newSegs; segAge = age;
       const arr = colors.array as Float32Array;
       arr.set(base);
       for (let f = 0; f < faces; f++) {
@@ -60,7 +87,7 @@ export function createTerrain(): Terrain {
           const d = distSeg(cx[f], cz[f], segs[s]);
           const w = 0.55 + 0.15 * noise2(cx[f] * 0.9, cz[f] * 0.9);
           if (d < w) {
-            col.copy(age[s] > 0.6 ? COBBLE : DIRT).offsetHSL(0, 0, (noise2(cx[f] * 2, cz[f] * 2) - 0.5) * 0.06);
+            col.copy(age[s] > 0.6 ? COBBLE : season === 'winter' ? WINTER_DIRT : DIRT).offsetHSL(0, 0, (noise2(cx[f] * 2, cz[f] * 2) - 0.5) * 0.06);
             for (let k = 0; k < 3; k++) col.toArray(arr, (f * 3 + k) * 3);
             break;
           }

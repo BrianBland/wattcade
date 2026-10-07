@@ -317,6 +317,33 @@ export function makeShip(kind: string, seed: number): ShipModel {
     body.add(mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.3, 10), lam(0x1a1a1a), 0.9, 2.5, 0));
     body.add(mesh(new THREE.BoxGeometry(0.06, 2.4, 0.06), lam(0x3a3a3a), 2.2, 1.6, 0, false));
     smoke = new THREE.Vector3(0.9, 2.7, 0);
+  } else if (kind === 'circus') { // red-and-gold hull, a striped big top on deck, bunting from the masts
+    body.add(mesh(hullGeo(6.4, 1.8, 1.2), lam(0xc0392b), 0, 0, 0));
+    body.add(mesh(new THREE.BoxGeometry(6.0, 0.16, 1.55), lam(0xf2c94c), -0.1, 0.5, 0, false));
+    for (let i = 0; i < 10; i++) { const seg = new THREE.Mesh(new THREE.ConeGeometry(1.25, 1.3, 10, 1, true, (i / 10) * Math.PI * 2, Math.PI / 5), lam(i % 2 ? 0xe74c3c : 0xffffff)); seg.position.set(-0.6, 1.85, 0); body.add(seg); }
+    body.add(mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.9, 10), lam(0xfff2d0), -0.6, 0.95, 0));
+    body.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 1, 4), lam(0x5e472b), -0.6, 2.9, 0, false));
+    body.add(mesh(new THREE.BoxGeometry(0.5, 0.3, 0.03), lam(0xffd23f), -0.35, 3.25, 0, false));
+    body.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 4, 5), lam(0x5e472b), 1.9, 2.4, 0, false));
+    const s1 = sail(1.5, 2.6, 0xffd23f, false); s1.position.set(1.85, 1.0, 0); body.add(s1);
+  } else if (kind === 'royal') { // white and gold yacht with purple sails and a crown on the masthead
+    body.add(mesh(hullGeo(7, 1.7, 1.2), lam(0xf4f1ea), 0, 0, 0));
+    body.add(mesh(new THREE.BoxGeometry(6.6, 0.14, 1.6), lam(0xd4a63a), -0.15, -0.1, 0, false));
+    body.add(mesh(new THREE.BoxGeometry(2.0, 0.7, 1.1), lam(0x5b3f8c), -1.6, 0.85, 0));
+    for (const [x, h] of [[1.1, 5.2], [-0.6, 5.8]]) {
+      body.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, h, 5), lam(0xd4a63a), x, h / 2 + 0.4, 0, false));
+      const sl = sail(1.9, h * 0.72, 0x7d4fc0, false); sl.position.set(x - 0.05, 0.9, 0); body.add(sl);
+    }
+    body.add(mesh(new THREE.ConeGeometry(0.22, 0.3, 5), lam(0xf2c94c), -0.6, 6.4, 0, false));
+  } else if (kind === 'research') { // a white steamer with a radar dome and a crane
+    body.add(mesh(hullGeo(6.2, 1.7, 1.3), lam(0xf2f4f6), 0, 0, 0));
+    body.add(mesh(new THREE.BoxGeometry(6.0, 0.15, 1.5), lam(0x2e86c1), -0.15, -0.35, 0, false));
+    body.add(mesh(new THREE.BoxGeometry(2.2, 1.0, 1.25), lam(0xf2efe6), -0.9, 1.0, 0));
+    body.add(mesh(new THREE.SphereGeometry(0.5, 10, 8), lam(0xffffff), -0.9, 2.0, 0));
+    body.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 4), lam(0x3a3a3a), -1.6, 2.2, 0, false));
+    const jib = mesh(new THREE.BoxGeometry(2.2, 0.1, 0.1), lam(0xe67e22), 1.6, 1.6, 0, false); jib.rotation.z = 0.5; body.add(jib);
+    body.add(mesh(new THREE.CylinderGeometry(0.28, 0.32, 1.1, 10), lam(0x2e86c1), 0.4, 1.5, 0));
+    smoke = new THREE.Vector3(0.4, 2.1, 0);
   } else if (kind === 'schooner') {
     body.add(mesh(hullGeo(6, 1.6, 1.1), lam(pick(r, [0x7a4a2a, 0x2f4f6f, 0x3d5a3d])), 0, 0, 0));
     body.add(mesh(new THREE.BoxGeometry(5.6, 0.12, 1.45), lam(0xe8dcc0), -0.1, 0.5, 0, false));

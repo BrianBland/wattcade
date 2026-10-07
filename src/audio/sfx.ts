@@ -12,7 +12,8 @@ export type SfxName =
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
   | 'count' | 'go' | 'gameOver' | 'milestone'
   | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
-  | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic';
+  | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic'
+  | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin';
 
 /** `atk`: fade-in seconds (swells); `vib`: frequency modulation (FM chirps, warbles) as LFO Hz and depth in Hz; noise `f1` sweeps its filter. */
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number; atk?: number; vib?: { hz: number; depth: number } }
@@ -101,6 +102,15 @@ const R: Record<SfxName, Tone[]> = {
   cricket: [0, 0.07, 0.14, 0.21, 0.28].map((d) => ({ type: 'square' as const, f0: 4300, dur: 0.035, vol: 0.008, delay: d })),
   // drive-in channel flip: a click then a burst of static
   chStatic: [{ type: 'square', f0: 220, f1: 90, dur: 0.04, vol: 0.07 }, { type: 'noise', f0: 3000, dur: 0.4, vol: 0.06, q: 0.3, delay: 0.02 }],
+  // island village (Keeper's Light)
+  festival: [523, 659, 784, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: i === 5 ? 0.6 : 0.16, vol: 0.13, delay: [0, 0.14, 0.28, 0.5, 0.64, 0.8][i] })),
+  cheer: [
+    ...[0, 0.05, 0.12, 0.2].map((d, i) => ({ type: 'noise' as const, f0: 900 + i * 350, f1: 1400 + i * 300, dur: 0.9, vol: 0.05, q: 1.6, delay: d, atk: 0.12 })),
+    { type: 'triangle', f0: 520, f1: 700, dur: 0.45, vol: 0.035, delay: 0.1, vib: { hz: 6, depth: 25 } }, { type: 'triangle', f0: 640, f1: 860, dur: 0.4, vol: 0.03, delay: 0.25, vib: { hz: 7, depth: 30 } },
+  ],
+  giggle: [0, 0.09, 0.18, 0.27, 0.36].map((d, i) => ({ type: 'sine' as const, f0: 1250 - i * 60, f1: 1050 - i * 60, dur: 0.07, vol: 0.03, delay: d })),
+  baa: [{ type: 'sawtooth', f0: 330, f1: 300, dur: 0.6, vol: 0.022, atk: 0.04, vib: { hz: 9, depth: 18 } }, { type: 'sawtooth', f0: 660, f1: 600, dur: 0.55, vol: 0.008, atk: 0.04, vib: { hz: 9, depth: 30 } }],
+  puffin: [{ type: 'sawtooth', f0: 140, f1: 110, dur: 0.5, vol: 0.03, atk: 0.05, vib: { hz: 24, depth: 20 } }, { type: 'sawtooth', f0: 150, f1: 120, dur: 0.4, vol: 0.025, delay: 0.55, vib: { hz: 22, depth: 18 } }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };
 
@@ -120,6 +130,12 @@ function ctx(): AudioContext | null {
   const d = noise.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   return ac;
+}
+
+/** The shared audio graph for game-made music (null until audio is unlocked, or when sound is off). Respects the ambient ducker. */
+export function audioOut(): { ctx: AudioContext; out: AudioNode; ducked: boolean } | null {
+  const c = ctx(); if (!c || !master || !enabled || c.state !== 'running') return null;
+  return { ctx: c, out: master, ducked: duckers.size > 0 };
 }
 
 /** Call from any user gesture (iOS needs it before audio can start). */

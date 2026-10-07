@@ -257,10 +257,11 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 
 ### §5.4b Cosmetics · `src/cosmetics/`
 
-- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
+- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
 - **Unlocks are derived, never stored:** defaults + level rewards up to `profile.level` + one item per earned achievement + picks. So catalogue changes apply to existing riders. Stored: `profile.cosmetics.loadout` (equipped id per slot; a missing or locked id falls back to the default) and `profile.cosmetics.picks` (level → chosen id).
 - **Level track:** levels 2–50 each give one item. Every 5th level is a **pick**: choose one of three, and the other two come back in a later pick (after level 50, the passed-over items are offered three at a time every 5 levels). There's no shop or currency.
 - **Every achievement grants exactly one item** (tested).
+- **Pets** follow your effort. Runners trot ahead of the front wheel, with gait from distance travelled; below 0.6 m/s they sit and look back, and they ride in the cargo bike's box. Fliers hover behind your shoulder and flap faster the faster you go. **Trails** stream from behind the rear wheel (behind the Drive-In trailer when towing), scale with speed, and show nothing when stopped. Flames only roar near a sprint.
 - **Drawing** (`draw/`, Canvas 2D, pure): `drawRider(g, look, crankRevs, wheelM, { t, speed, gear, trailer })` draws a side-on rider ~24 px tall at ground (0,0). Bikes set the hip, hands, crank and leg style (`pedal`, `run`, `dangle`), and the body adapts. The warm-up lobby, the profile picker, the arcade top bar, the profile editor, the Locker, reward picks and the summary all draw the same rider.
 - **Shell:** the **Locker** (tabs per slot; locked tiles are silhouettes that preview in full colour when focused, with the unlock hint), the **reward pick** screen (after a summary when a pick is waiting, or from the Locker), "New gear" on the summary, the next reward on the profile card, and the title under the rider's name.
 

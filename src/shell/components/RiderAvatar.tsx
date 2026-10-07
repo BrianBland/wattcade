@@ -16,8 +16,8 @@ function animate(f: (t: number) => void): () => void {
   return () => { live.delete(f); };
 }
 
-/** Rider-space box that holds every bike (x −16..14, y −32..2), with a little headroom for tall hats. */
-const BOX = { x0: -17, x1: 15, y0: -36, y1: 3 };
+/** Rider-space box that holds every bike (x −16..14, y −32..2), a pet ahead (to x 19), with headroom for tall hats. */
+const BOX = { x0: -20, x1: 20, y0: -36, y1: 3 };
 
 /**
  * The rider on their bike, pedalling gently: the profile's loadout, or an explicit `look` (Locker previews).
@@ -41,7 +41,7 @@ export function RiderAvatar({ profile, look, size = 'big', still, road = true, c
       g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
       g.translate(w / 2 - ((BOX.x0 + BOX.x1) / 2) * s, h - BOX.y1 * s); g.scale(s, s);
       if (road) { g.fillStyle = '#ffffff22'; g.fillRect(BOX.x0, 0, BOX.x1 - BOX.x0, 0.8); }
-      try { drawRider(g, resolved, t * 0.8, t * 4.5, { t, speed: 5 }); } catch { /* art must never break a menu */ }
+      try { drawRider(g, resolved, t * 0.8, t * 4.5, { t, speed: 6 }); } catch { /* art must never break a menu */ }
     };
     if (still) {
       draw(1.2);

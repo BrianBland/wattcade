@@ -5,6 +5,8 @@ import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalo
 import { choosePick, equip, isPickLevel, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
+import { PET_IDS } from './draw/pets';
+import { TRAIL_IDS } from './draw/trails';
 import { drawRider } from './draw/rider';
 import { SLOTS } from './types';
 
@@ -39,6 +41,8 @@ describe('catalogue rules', () => {
   it('every bike and hat has a drawer (and every drawer an item)', () => {
     expect(new Set(itemsIn('bike').map((i) => i.id))).toEqual(new Set(Object.keys(BIKES)));
     expect(new Set(itemsIn('hat').map((i) => i.id))).toEqual(new Set(Object.keys(HATS)));
+    expect(new Set(itemsIn('pet').map((i) => i.id))).toEqual(new Set(['none', ...PET_IDS]));
+    expect(new Set(itemsIn('trail').map((i) => i.id))).toEqual(new Set(['none', ...TRAIL_IDS]));
   });
 });
 
@@ -79,10 +83,10 @@ describe('unlocks', () => {
     expect(loadout({ ...q, level: 1 }).hat).toBe('road'); // no longer unlocked (e.g. a restored backup)
   });
   it('look resolves rider colours; titles and previews', () => {
-    const p = equip(equip(rider({ level: 7 }), 'jersey', 'vstripes'), 'title', 't_rookie');
+    const p = equip(equip(rider({ level: 27 }), 'jersey', 'vstripes'), 'title', 't_captain');
     const look = riderLook(p);
     expect(look.jersey.base).toBe('#ff2e93');
-    expect(titleOf(p)).toBe('Rookie');
+    expect(titleOf(p)).toBe('Road Captain');
     expect(withItem(look, item('bike', 'tron')!).bike).toBe('tron');
   });
   it('new unlocks and the next reward', () => {
@@ -105,8 +109,10 @@ function stubContext(): CanvasRenderingContext2D {
 describe('drawing', () => {
   it('every item draws without throwing, in every biome gear', () => {
     const g = stubContext(), base = riderLook(rider());
-    for (const it of ITEMS) for (const gear of [null, 'bubble', 'scuba'] as const) {
-      expect(() => drawRider(g, withItem(base, it), 0.3, 12, { t: 2, speed: 6, gear, trailer: true }), `${it.slot}:${it.id}`).not.toThrow();
+    for (const it of ITEMS) for (const gear of [null, 'bubble', 'scuba'] as const) for (const speed of [0, 6, 12]) {
+      expect(() => drawRider(g, withItem(base, it), 0.3, 12, { t: 2, speed, gear, trailer: speed > 6 }), `${it.slot}:${it.id}`).not.toThrow();
     }
+    // a runner rides in the cargo box
+    expect(() => drawRider(g, { ...base, bike: 'cargo', pet: 'corgi' }, 0, 0, { t: 1, speed: 3 })).not.toThrow();
   });
 });

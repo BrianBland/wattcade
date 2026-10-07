@@ -3,6 +3,8 @@ import { BIKES, paintAt, type BikeCtx, type BikeDef, type WheelOpts } from './bi
 import { drawHat, FULL_HEAD } from './hats';
 import { drawCape, drawTorso, legsOf } from './jersey';
 import { circle, joint, line, rect, SKIN, TAU, type G, type P } from './prims';
+import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
+import { drawTrail } from './trails';
 
 export interface RiderOpts {
   /** Seconds (animations). */
@@ -23,16 +25,25 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, 
   const t = o.t ?? 0, speed = o.speed ?? 0;
   const def: BikeDef = BIKES[look.bike] ?? BIKES.road;
   const c = bikeCtx(g, look, crank, wheelM, t, speed);
+  const pc: PetCtx = { t, speed, gait: (wheelM / 1.1) * TAU, color: look.color };
+  const flier = FLIERS.has(look.pet), inBox = look.bike === 'cargo' && !flier && look.pet !== 'none';
+  if (flier) at(g, FLY_AT, () => drawPet(g, look.pet, pc));
   g.save();
   const bob = def.bob?.(c) ?? 0, tilt = def.tilt?.(c) ?? 0;
   if (tilt) g.rotate(tilt);
   if (bob) g.translate(0, bob);
-  if (o.trailer) trailer(c, def.hitch ?? -7);
+  const hitch = def.hitch ?? -7;
+  if (o.trailer) trailer(c, hitch);
+  drawTrail(g, look.trail, { t, speed, color: look.color, x0: o.trailer ? hitch - 27 : hitch - 4.5 });
   def.back?.(c);
   if (def.stoker) { g.save(); g.globalAlpha *= 0.55; body(c, look, { ...def, ...def.stoker, legs: 'pedal', cr: def.cr }, 'stoker', o); g.restore(); }
   body(c, look, def, 'rider', o);
+  if (inBox) at(g, [7.6, -10.6], () => drawPet(g, look.pet, pc, true)); // a runner rides in the cargo box
   g.restore();
+  if (!flier && !inBox && look.pet !== 'none') at(g, RUN_AT, () => drawPet(g, look.pet, pc));
 }
+
+function at(g: G, p: P, f: () => void) { g.save(); g.translate(p[0], p[1]); f(); g.restore(); }
 
 function bikeCtx(g: G, look: RiderLook, crank: number, wheelM: number, t: number, speed: number): BikeCtx {
   const paint = look.paint;

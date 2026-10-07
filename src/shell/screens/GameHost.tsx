@@ -10,6 +10,7 @@ import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { ResultBanner } from '../game/ResultBanner';
+import { endingStep, MAX_RECAP_S } from '../game/ending';
 import { toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
@@ -49,7 +50,9 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const sessionRef = useRef<SessionLike | null>(null);
   const [session, setSession] = useState<SessionLike | null>(null);
   const [legendOn, setLegendOn] = useState(() => loadFlag('wattcade.legend', true));
-  const timers = useRef({ intro: 0, count: 0, ending: 0, playS: 0, shown: 3, left: INTRO_AUTO_S });
+  const timers = useRef({ intro: 0, count: 0, ending: 0, hold: 0, playS: 0, shown: 3, left: INTRO_AUTO_S });
+  const rendererRef = useRef<GameRenderer | null>(null);
+  const [recap, setRecap] = useState(false);
   const left = useRef(false); // leaving (quit/abandon) happens once
   const leave = (fn: () => void) => { if (left.current) return; left.current = true; fn(); };
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
@@ -76,8 +79,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     try { summary = s?.sim.summary?.() ?? {}; } catch { /* best effort */ }
     const pv = previewAward(profile);
     setEnding({ over, durationS: timers.current.playS, summary, xp: pv?.xp ?? null });
-    timers.current.ending = 0; setPhase('ending');
-    play(over ? 'gameOver' : 'reward');
+    let hold = 0;
+    try { hold = Math.min(MAX_RECAP_S, Math.max(0, Number(rendererRef.current?.ending?.({ over }) ?? 0) || 0)); } catch { /* best effort */ }
+    timers.current.ending = 0; timers.current.hold = hold; setRecap(hold > 0); setPhase('ending');
+    if (hold === 0) play(over ? 'gameOver' : 'reward');
   };
 
   useEffect(() => {
@@ -109,7 +114,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           duckAmbient('music', true); // the game's own ambience would fight the music
         }
         debugActions.panic(true); // trainer neutral through the intro and countdown
-        renderer = await game.loadRenderer();
+        renderer = await game.loadRenderer(); rendererRef.current = renderer;
         if (disposed) { renderer.unmount(); return; }
         const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
@@ -166,7 +171,11 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           } else {
             const p = session.idle(dt);
             T.ending += dt;
-            if (T.ending > 0.6 && (p.has('a') || T.ending >= RESULT_S)) { disposed = true; leave(cb.current.onQuit); return; }
+            const wasRecap = T.ending - dt < T.hold;
+            const e = endingStep(T.ending, T.hold, p.has('a'), RESULT_S);
+            T.hold = e.holdS;
+            if (wasRecap && e.show === 'banner') { setRecap(false); play('reward'); }
+            if (e.leave) { disposed = true; leave(cb.current.onQuit); return; }
           }
           renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
           raf = requestAnimationFrame(loop);
@@ -176,7 +185,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     })();
     return () => {
       disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
-      renderer?.unmount(); void lock?.release();
+      renderer?.unmount(); rendererRef.current = null; void lock?.release();
       music.current?.engine.setFx({ degrade: 0 }); music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };
   }, [game]);
@@ -197,7 +206,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
           onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart} onQuit={() => toEnding(false)} />
       )}
-      {phase === 'ending' && ending && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}
+      {phase === 'ending' && ending && !recap && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}
     </div>
   );
 }

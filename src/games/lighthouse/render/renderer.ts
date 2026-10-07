@@ -17,6 +17,7 @@ import { Keeper } from './keeper';
 import { Decor } from './decor';
 import { HUBS } from './life';
 import { IslandMusic } from './music';
+import { addToAlbum, loadAlbum, popSchedule, postcardLines, snapshot } from './postcard';
 import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
 const VISIT: Record<string, true> = { circus: true, royal: true, research: true };
@@ -50,6 +51,10 @@ export class LighthouseRenderer implements GameRenderer {
   private duskAt = -999; private dawnAt = -999; private prevNight = -1; private flared = true;
   private lastDockAt = -999; private dockAt = { x: HARBOUR.x, z: HARBOUR.z }; private nextFireworks = 0;
   private timers = { baa: 20, puffin: 30, giggle: 15 };
+  // end-of-ride recap: wall-clock driven (the sim has stopped); this ride's new buildings pop in, then the postcard
+  private startTown: Array<string | null> | null = null; private profileId = '';
+  private last?: Snap;
+  private recap: { at: number; pops: Map<number, number>; shotAt: number; shot: boolean; az: number; popped: Set<number> } | null = null;
   private hud?: Hud;
   private models: Array<{ kind: string; level: number; model: BuildingModel; boatHome?: THREE.Vector3 } | null> = Array(PLOT_COUNT).fill(null);
   private bridge?: THREE.Group;
@@ -116,6 +121,8 @@ export class LighthouseRenderer implements GameRenderer {
     this.bridge = this.makeBridge(); this.bridge.visible = false; s.add(this.bridge);
 
     this.hud = new Hud(container, ctx.send);
+    this.profileId = ctx.profile.id;
+    void loadAlbum(this.profileId).then((l) => this.hud?.setAlbum(l));
     this.hud.setInsetBottom(this.insetB);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
@@ -440,15 +447,32 @@ export class LighthouseRenderer implements GameRenderer {
     }
   }
 
+  ending(): number {
+    const s = this.last;
+    if (!s || !this.startTown || s.t < 60 || !this.hud) return 0; // too short a ride for a postcard
+    const fresh = s.buildings.map((b, i) => (b && this.startTown![i] !== b ? i : -1)).filter((i) => i >= 0)
+      .sort((a, b) => Math.hypot(PLOTS[a].x - LIGHTHOUSE.x, PLOTS[a].z - LIGHTHOUSE.z) - Math.hypot(PLOTS[b].x - LIGHTHOUSE.x, PLOTS[b].z - LIGHTHOUSE.z));
+    const when = popSchedule(fresh.length);
+    const shotAt = Math.max(7.5, (when[when.length - 1] ?? 0) + 1.4);
+    const az = Math.atan2(this.camPos.x - this.camTgt.x, this.camPos.z - this.camTgt.z);
+    this.recap = { at: performance.now() / 1000, pops: new Map(fresh.map((p, i) => [p, when[i]])), shotAt, shot: false, az, popped: new Set() };
+    this.hud.setRecap(true);
+    return Math.min(14, shotAt + 4.5);
+  }
+
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
-    const s = snapshot as Snap;
+    let s = snapshot as Snap;
     if (!this.renderer || !s || s.fog === undefined || !s.grow) return;
+    if (!this.startTown) this.startTown = s.buildings.slice();
+    const rc = this.recap, rt = rc ? performance.now() / 1000 - rc.at : 0;
+    if (rc) s = { ...s, t: s.t + rt, mode: 'watch', logOpen: false }; // keep the world moving on wall-clock time
+    else this.last = s;
     const dt = this.lastT < 0 ? 1 / 30 : Math.max(0, Math.min(0.1, s.t - this.lastT));
     const st = s.storm;
     const storm = st.phase === 'storm' ? Math.max(0.5, st.intensity) : st.phase === 'warning' ? st.intensity : 0;
     const warn = st.phase === 'warning' ? Math.min(1, st.timeInPhase / Math.max(1, st.warnS)) : 0;
 
-    this.updateCamera(s, dt);
+    if (rc) this.recapCamera(rt, dt); else this.updateCamera(s, dt);
     const rainbow = st.phase === 'calm' && st.lastWeathered ? Math.min(1, st.sinceEnd / 8) * Math.min(1, Math.max(0, (100 - st.sinceEnd) / 20)) : 0;
     const wk = Math.min(1, Math.max(0, s.weather.age / 20));
     const sky = this.sky.update({ t: s.t, dt, day: s.day, fog: s.fog, storm, warn, lightningAge: st.lightningAge, camTarget: this.camTgt, rainbow, weather: { kind: s.weather.kind, prev: s.weather.prev, k: wk } });
@@ -503,10 +527,50 @@ export class LighthouseRenderer implements GameRenderer {
     this.wild.update({ t: s.t, dt, night: sky.night, storm, amp, meadow: s.meadow, ships: this.escort, whale: s.whale });
     this.fx.update(dt);
 
-    this.sounds(s, storm, sky.night);
+    if (rc) this.recapPops(rc, rt);
+    else this.sounds(s, storm, sky.night);
     this.hud?.update(s);
     this.lastT = s.t;
     this.renderer.render(this.scene, this.camera);
+    if (rc && !rc.shot && rt >= rc.shotAt) this.takePostcard(rc, s);
+  }
+
+  /** A slow orbit around the whole island. */
+  private recapCamera(rt: number, dt: number) {
+    const islet = this.last?.districts.some((d) => d.id === 'islet' && d.open);
+    const tgt = this.tmp.set(islet ? 8 : -3, 6, 2), R = (islet ? 92 : 74) * (this.aspect < 1.5 ? Math.min(1.6, 1.5 / this.aspect) : 1), el = 0.4, az = this.recap!.az + rt * 0.07;
+    const pos = this.tmp2.set(tgt.x + Math.sin(az) * Math.cos(el) * R, tgt.y + Math.sin(el) * R, tgt.z + Math.cos(az) * Math.cos(el) * R);
+    const k = 1 - Math.exp(-dt * 1.2);
+    this.camPos.lerp(pos, k); this.camTgt.lerp(tgt, k);
+    this.camera.position.copy(this.camPos); this.camera.lookAt(this.camTgt);
+  }
+
+  /** This ride's new buildings vanish, then pop back in one by one with a sparkle and a rising note. */
+  private recapPops(rc: NonNullable<LighthouseRenderer['recap']>, rt: number) {
+    for (const [plot, at] of rc.pops) {
+      const m = this.models[plot]; if (!m) continue;
+      if (rt < at) { m.model.group.visible = false; continue; }
+      if (!rc.popped.has(plot)) {
+        rc.popped.add(plot); m.model.group.visible = true; m.model.group.scale.setScalar(0.01);
+        this.fx.sparkle(V(PLOTS[plot].x, plotHeight(plot) + 2.4, PLOTS[plot].z));
+        play('build', { pitch: Math.min(2, 1 + rc.popped.size * 0.06) });
+      }
+    }
+  }
+
+  private takePostcard(rc: NonNullable<LighthouseRenderer['recap']>, s: Snap) {
+    rc.shot = true;
+    let img = '';
+    try { img = snapshot(this.renderer!.domElement); } catch { return; }
+    const st = s.stats;
+    const card = {
+      img, season: s.season, ride: s.ride,
+      date: new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
+      lines: postcardLines({ ...st, stormsWeathered: st.stormsWeathered, festivalsHeld: s.festivalsHeld }),
+    };
+    this.hud?.showPostcard(card);
+    play('chime');
+    void addToAlbum(this.profileId, card).then((l) => this.hud?.setAlbum(l));
   }
 
   resize(w: number, h: number) {

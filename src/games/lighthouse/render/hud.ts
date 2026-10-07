@@ -11,6 +11,7 @@ export function keeperRank(ships: number, storms: number) { const pts = ships + 
 import { PLOTS } from '../sim/layout';
 import { play } from '../../../audio/sfx';
 import { SEASON_NAME, VISITORS } from '../sim/extras';
+import { POSTCARD_CSS, postcardEl, type Postcard } from './postcard';
 
 const SHIP_ICON: Record<string, string> = { smack: '⛵', schooner: '⛵', steamer: '🚢', circus: '🎪', royal: '👑', research: '🔭' };
 const SHIP_KIND: Record<string, string> = { smack: 'Fishing smack', schooner: 'Schooner', steamer: 'Steamer', circus: '✨ Special visitor', royal: '✨ Special visitor', research: '✨ Special visitor' };
@@ -80,12 +81,25 @@ export class Hud {
   private toasts: HTMLDivElement; private build: HTMLDivElement; private log: HTMLDivElement;
   private cache = new Map<HTMLElement, string>();
   private coinShown = -1; private coinHold = 0;
+  private album = document.createElement('div');
+
+  /** Recap mode (ride over): fade the panels away so the island and the postcard have the stage. */
+  setRecap(on: boolean) { this.root.classList.toggle('recap', on); }
+  showPostcard(p: Postcard) { this.root.appendChild(postcardEl(p)); }
+  /** The latest postcards, newest first, shown in the Keeper's Log. */
+  setAlbum(list: Postcard[]) {
+    this.album.className = 'lh-album'; this.album.replaceChildren();
+    for (const p of list.slice(-6).reverse()) {
+      const f = document.createElement('figure'), img = document.createElement('img'), cap = document.createElement('figcaption');
+      img.src = p.img; cap.textContent = `${p.date} · ${p.lines[0] ?? ''}`; f.append(img, cap); this.album.appendChild(f);
+    }
+  }
   private lastT = -1;
 
   setInsetBottom(px: number) { this.root.style.setProperty('--lh-inset', `${px}px`); }
 
   constructor(container: HTMLElement, private send?: (a: unknown) => void) {
-    const style = document.createElement('style'); style.textContent = CSS;
+    const style = document.createElement('style'); style.textContent = CSS + POSTCARD_CSS;
     const root = document.createElement('div'); root.className = 'lh-ui'; root.appendChild(style);
     const mk = (cls: string) => { const d = document.createElement('div'); d.className = cls; root.appendChild(d); return d; };
     this.tl = mk('lh-panel lh-tl'); this.tr = mk('lh-panel lh-tr'); this.storm = mk('lh-panel lh-storm'); this.coach = mk('lh-panel lh-coach');
@@ -224,6 +238,8 @@ export class Hud {
         ${s.cursor.bonus ? `<div class="lh-bonus">🔗 ${s.cursor.bonus}</div>` : ''}`);
     } else this.set(this.build, '', false);
     this.set(this.log, this.logHtml(s), s.logOpen && s.mode === 'watch');
+    const slot = this.log.querySelector('.lh-album-slot'); // images live outside the HTML string (they're big)
+    if (slot && !slot.firstChild && this.album.childElementCount) slot.appendChild(this.album);
     this.log.dataset.act = 'log'; // tap anywhere on the log to close it
   }
 
@@ -249,7 +265,7 @@ export class Hud {
         ${row('Visitors\' gifts', s.gifts.length ? s.gifts.map((g) => GIFT_NAME[g].split(' ')[0]).join(' ') : '-')}
         ${row('Ships docked (all time)', tt.shipsDockedTotal)}${row('Storms weathered (all time)', tt.stormsWeatheredTotal)}
       </div></div></div>
-      <h4>Lands</h4>${lands}`;
+      <h4>Lands</h4>${lands}${this.album.childElementCount ? '<h4>Postcards</h4><div class="lh-album-slot"></div>' : ''}`;
   }
 
   unmount() { this.root.remove(); }

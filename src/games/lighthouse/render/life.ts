@@ -5,24 +5,30 @@ import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, PIER_LEN, PLOTS, plotHeight 
 import { plotYaw, SHORE_KINDS } from './buildings';
 import type { Seg, Terrain } from './world';
 import { lam, mergeStatic, mulberry, pick, softTexture } from './util';
+import type { Season } from '../sim/extras';
 
 const FLOWER_COLS = [0xff6fa8, 0xffd23f, 0xffffff, 0xb07cff, 0xff5a4f, 0xff9f43, 0x6cb4ff, 0xffb3e6];
 const WILD_COLS = [0xffffff, 0xfff27a, 0xd9b8ff, 0xffc2dd, 0xfff6c8];
 const CLOTHES = [0x3b6ea5, 0xc0392b, 0x2e7d32, 0xf1c40f, 0x8e44ad, 0xe67e22, 0x34495e, 0xd35400, 0x16a085];
 const SKIN = [0xf2c9a0, 0xd9a577, 0xa7754d, 0x7a5236, 0xf5d5b8];
-const HUBS = [{ x: HARBOUR.x - 2, z: HARBOUR.z - 4 }, { x: LIGHTHOUSE.x + 7, z: LIGHTHOUSE.z + 1.5 }];
+const SNOW = new THREE.Color(0xf4f8fb);
+/** The village square (first hub) and the lighthouse yard. */
+export const HUBS = [{ x: HARBOUR.x - 2, z: HARBOUR.z - 4 }, { x: LIGHTHOUSE.x + 7, z: LIGHTHOUSE.z + 1.5 }];
 
 interface Node { x: number; z: number; kind: string; plot: number; deck?: number; land: number }
 interface Walker {
   g: THREE.Group; body: THREE.Mesh; crate?: THREE.Mesh; rod?: THREE.Mesh;
-  role: 'villager' | 'fisher' | 'porter';
+  role: 'villager' | 'fisher' | 'porter' | 'kid';
   home: number; at: number; route: number[]; x: number; z: number; wait: number; speed: number; seed: number; hidden: boolean;
+  goal?: number; // greeting a ship / heading to the festival: the node being walked to
+  kite?: { k: THREE.Mesh; line: THREE.Line };
   a?: number; b?: number; pier?: number; // porter endpoints / fisher pier plot
 }
 
 export interface LifeFrame {
   t: number; dt: number; night: number; storm: number;
   dockedPiers: Set<number>; bellAge: number; smokeExtra: THREE.Vector3[];
+  festival?: boolean; windy?: number;
 }
 
 export class Life {
@@ -35,11 +41,16 @@ export class Life {
   private extras = new THREE.Group();
   private walkers: Walker[] = [];
   private nodes: Node[] = []; private adj: number[][] = [];
+  /** Paths between town nodes (for decor: bunting, lanterns). */
+  edgeList: Array<{ a: { x: number; z: number; kind: string }; b: { x: number; z: number; kind: string } }> = [];
   private gulls: Array<{ g: THREE.Group; l: THREE.Object3D; r: THREE.Object3D; ph: number; rad: number; h: number; cx: number; cz: number; sp: number }> = [];
   private flies: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; cx: number; cz: number; ph: number; y: number }> = [];
   private washing: THREE.Mesh[] = [];
   private smoke: THREE.Points;
   private buildings: Array<string | null> = []; private levels: number[] = []; private islet = false;
+  private season: Season = 'spring';
+  /** Recolour trees, grass and flowers for the season (rebuilds the decor next frame). */
+  setSeason(s: Season) { if (s !== this.season) { this.season = s; this.decorKey = ''; } }
   private dummy = new THREE.Object3D(); private col = new THREE.Color();
 
   constructor(terrain: Terrain) {
@@ -74,7 +85,7 @@ export class Life {
   setTown(buildings: Array<string | null>, levels: number[], grow: number[], meadow: number, islet: boolean) {
     const tk = buildings.map((b, i) => (b ? b + levels[i] : '')).join(',') + (islet ? '|islet' : '');
     this.levels = levels.slice(); this.islet = islet;
-    const dk = tk + '|' + grow.map((g) => Math.floor(g * 10)).join('') + '|' + Math.floor(meadow * 40);
+    const dk = tk + '|' + grow.map((g) => Math.floor(g * 10)).join('') + '|' + Math.floor(meadow * 40) + '|' + this.season;
     if (tk !== this.townKey) { this.townKey = tk; this.buildings = buildings.slice(); this.buildGraph(grow); this.spawnWalkers(); }
     if (dk !== this.decorKey) { this.decorKey = dk; this.buildGraph(grow, true); this.buildDecor(grow, meadow); }
   }
@@ -106,6 +117,7 @@ export class Life {
         if (d < best[v]) { best[v] = d; parent[v] = u; }
       }
     }
+    this.edgeList = edges.map(([a, b]) => ({ a: { x: nodes[a].x, z: nodes[a].z, kind: nodes[a].kind }, b: { x: nodes[b].x, z: nodes[b].z, kind: nodes[b].kind } }));
     const segs: Seg[] = [], age: number[] = [];
     const g = (nd: Node) => (nd.plot >= 0 ? grow[nd.plot] : 1);
     const show = this.buildings.some((k) => k);
@@ -137,7 +149,8 @@ export class Life {
     return Math.max(0.2, islandHeight(x, z));
   }
 
-  private okSpot(x: number, z: number, plotClear = 2.1): boolean {
+  /** Open, gentle, unbuilt ground off the paths (decor, sheep). */
+  okSpot(x: number, z: number, plotClear = 2.1): boolean {
     const h = islandHeight(x, z);
     if (h < 0.95) return false;
     if (Math.abs(islandHeight(x + 0.6, z) - h) > 0.35 || Math.abs(islandHeight(x, z + 0.6) - h) > 0.35) return false;
@@ -150,28 +163,44 @@ export class Life {
   private buildDecor(grow: number[], meadow: number) {
     const d = this.dummy;
     let nf = 0, ng = 0, nt = 0, np = 0, nv = 0;
+    const season = this.season, sr = mulberry(808);
+    const AUTUMN = [0xd9822b, 0xc0392b, 0xe5b22f, 0xa0522d, 0xcf6a1f, 0x7a9a3a];
     const flower = (x: number, z: number, c: number, s = 1) => {
       if (nf >= this.flowers.instanceMatrix.count) return;
+      // autumn thins the flowers to warm colours; winter leaves a few snowdrops
+      if (season === 'autumn') { if (sr() < 0.45) return; if (c !== 0x3e8e2e) c = pick(sr, [0xff9f43, 0xffd23f, 0xc0392b, 0xb07cff, c]); }
+      else if (season === 'winter') { if (sr() < 0.85) return; c = 0xffffff; }
       d.position.set(x, islandHeight(x, z) + 0.12 * s, z); d.rotation.set(0, x * 3, 0); d.scale.setScalar(s); d.updateMatrix();
       this.flowers.setMatrixAt(nf, d.matrix); this.flowers.setColorAt(nf, this.col.setHex(c)); nf++;
     };
     const tuft = (x: number, z: number, s: number, light: number) => {
       if (ng >= this.grass.instanceMatrix.count) return;
-      d.position.set(x, islandHeight(x, z) - 0.05, z); d.rotation.set((x % 1) * 0.3, z * 5, (z % 1) * 0.3); d.scale.set(s, s * (0.8 + (x * 7 % 1) * 0.6), s); d.updateMatrix();
-      this.grass.setMatrixAt(ng, d.matrix); this.grass.setColorAt(ng, this.col.setHSL(0.27 + light * 0.04, 0.5, 0.32 + light * 0.12)); ng++;
+      const sh = season === 'winter' ? 0.55 : 1;
+      d.position.set(x, islandHeight(x, z) - 0.05, z); d.rotation.set((x % 1) * 0.3, z * 5, (z % 1) * 0.3); d.scale.set(s, s * sh * (0.8 + (x * 7 % 1) * 0.6), s); d.updateMatrix();
+      if (season === 'autumn') this.col.setHSL(0.13 + light * 0.05, 0.5, 0.36 + light * 0.1);
+      else if (season === 'winter') this.col.setHSL(0.58, 0.15, 0.82 + light * 0.1);
+      else if (season === 'summer') this.col.setHSL(0.28 + light * 0.03, 0.55, 0.28 + light * 0.1);
+      else this.col.setHSL(0.27 + light * 0.04, 0.5, 0.32 + light * 0.12);
+      this.grass.setMatrixAt(ng, d.matrix); this.grass.setColorAt(ng, this.col); ng++;
     };
     const tree = (x: number, z: number, s: number, crown: number, pine = false) => {
       const y = islandHeight(x, z);
       if (pine) {
         if (np >= this.pines.instanceMatrix.count) return;
         d.position.set(x, y - 0.1, z); d.rotation.set(0, x, 0); d.scale.set(s, s * 1.1, s); d.updateMatrix();
-        this.pines.setMatrixAt(np, d.matrix); this.pines.setColorAt(np, this.col.setHex(crown)); np++;
+        this.col.setHex(crown); if (season === 'winter') this.col.lerp(SNOW, 0.45);
+        this.pines.setMatrixAt(np, d.matrix); this.pines.setColorAt(np, this.col); np++;
         return;
       }
+      const blossom = crown === 0xffb7d5 || crown === 0xffc8e0 || crown === 0xf7a1c4;
+      let cs = 1;
+      if (season === 'summer' && blossom) crown = pick(sr, [0x5f9e3f, 0x6aaa45]);
+      else if (season === 'autumn' && crown !== 0x2f6b3a) crown = pick(sr, AUTUMN);
+      else if (season === 'winter') { crown = pick(sr, [0x8a7a6a, 0x9a8a78, 0xe8eef2]); cs = 0.62; } // bare, frosted branches
       if (nt >= this.trunks.instanceMatrix.count) return;
       d.position.set(x, y - 0.05, z); d.rotation.set(0, x * 2, 0); d.scale.set(s, s * 1.3, s); d.updateMatrix();
       this.trunks.setMatrixAt(nt, d.matrix);
-      d.position.set(x, y + s * 1.75, z); d.scale.set(s * 1.05, s * 0.95, s * 1.05); d.updateMatrix();
+      d.position.set(x, y + s * 1.75, z); d.scale.set(s * 1.05 * cs, s * 0.95 * cs, s * 1.05 * cs); d.updateMatrix();
       this.crowns.setMatrixAt(nt, d.matrix); this.crowns.setColorAt(nt, this.col.setHex(crown)); nt++;
     };
     // remove old extras (washing lines etc.)
@@ -299,7 +328,7 @@ export class Life {
   }
 
   private spawnWalkers() {
-    for (const w of this.walkers) this.group.remove(w.g);
+    for (const w of this.walkers) { this.group.remove(w.g); if (w.kite) this.group.remove(w.kite.k, w.kite.line); }
     this.walkers = [];
     const b = this.buildings;
     const count = (k: string) => b.filter((x) => x === k).length;
@@ -311,6 +340,19 @@ export class Life {
       const { g, body } = this.makePerson(i + 1);
       const n = this.nodes[home];
       this.walkers.push({ g, body, role: 'villager', home, at: home, route: [], x: n.x, z: n.z, wait: 1 + i * 1.3, speed: 0.9 + (i % 4) * 0.12, seed: i, hidden: false });
+    }
+    // children: run about the gardens, race to the pier when a ship comes in, fly kites on windy days
+    const nKids = Math.min(7, count('cottage') + Math.floor(count('garden') / 2));
+    for (let i = 0; i < nKids; i++) {
+      const home = homes.length ? homes[i % homes.length] : 0;
+      const { g, body } = this.makePerson(300 + i);
+      g.scale.setScalar(0.62);
+      const n = this.nodes[home];
+      const k = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.2), new THREE.MeshLambertMaterial({ color: pick(mulberry(i + 9), [0xff5a5a, 0xffd23f, 0x4fb3ff, 0xff9fd0, 0x7ddc6a]), side: THREE.DoubleSide }));
+      k.geometry.rotateZ(Math.PI / 4); k.visible = false; this.group.add(k);
+      const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      const line = new THREE.Line(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 })); line.visible = false; line.frustumCulled = false; this.group.add(line);
+      this.walkers.push({ g, body, role: 'kid', home, at: home, route: [], x: n.x, z: n.z, wait: 0.5 + i, speed: 1.7 + (i % 3) * 0.2, seed: 300 + i, hidden: false, kite: { k, line } });
     }
     // a fisher at the end of every pier, porters for unloading
     const market = this.nodes.findIndex((n) => n.kind === 'market');
@@ -350,6 +392,7 @@ export class Life {
   update(f: LifeFrame) {
     const { t, dt, night, storm } = f;
     const indoors = night > 0.62 || storm > 0.35;
+    const greetAt = this.nodes.findIndex((n) => n.kind === 'pierEnd' && f.dockedPiers.has(n.plot));
     for (const w of this.walkers) {
       if (w.role === 'fisher') {
         const n = this.nodes[w.at];
@@ -372,12 +415,31 @@ export class Life {
         }
         w.crate!.visible = w.route.length > 0 && w.route[w.route.length - 1] === w.b;
       } else {
-        if (w.route.length === 0) {
+        // where this walker wants to be right now: the pier to greet a ship, the square for the festival, or free to wander
+        const greeter = w.role === 'kid' || w.seed % 3 === 0;
+        const goal = indoors ? -1 : greeter && greetAt >= 0 ? greetAt : f.festival ? 0 : -1;
+        if (goal !== (w.goal ?? -1)) { w.goal = goal; w.route = goal >= 0 ? this.routeTo(w.at, goal) : []; }
+        if (goal < 0 && w.route.length === 0) {
           w.wait -= dt;
           if (indoors && w.at !== w.home) w.route = this.routeTo(w.at, w.home);
-          else if (!indoors && w.wait <= 0) { w.route = this.routeTo(w.at, this.pickDest(w)); w.wait = 3 + ((w.seed * 37 + Math.floor(t)) % 9); }
+          else if (!indoors && w.wait <= 0) { w.route = this.routeTo(w.at, this.pickDest(w)); w.wait = (w.role === 'kid' ? 1.5 : 3) + ((w.seed * 37 + Math.floor(t)) % 9); }
         }
         w.hidden = indoors && w.at === w.home && w.route.length === 0;
+        if (goal >= 0 && w.route.length === 0 && w.at === goal) { // arrived: wave at the ship / dance in the square
+          const hop = Math.abs(Math.sin(t * (w.role === 'kid' ? 9 : 6) + w.seed)) * (w.role === 'kid' ? 0.35 : 0.22);
+          const n = this.nodes[goal];
+          if (goal === 0) {
+            const ring = 2 + (w.seed % 3) * 0.9, a = t * 0.55 * (w.seed % 2 ? 1 : -1) + w.seed * 1.3;
+            const x = n.x + Math.cos(a) * ring, z = n.z + Math.sin(a) * ring;
+            w.g.position.set(x, this.heightAt(x, z) + hop, z); w.g.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a)) * (w.seed % 2 ? 1 : -1) + t * 2;
+          } else {
+            const x = n.x + ((w.seed % 3) - 1) * 0.45, z = n.z - (w.seed % 4) * 0.5;
+            w.g.position.set(x, this.heightAt(x, z) + hop, z); w.g.rotation.y = 0;
+          }
+          w.body.scale.y = 1; w.g.visible = true;
+          this.flyKite(w, t, false);
+          continue;
+        }
       }
       // walk
       if (w.route.length) {
@@ -391,12 +453,13 @@ export class Life {
       w.body.scale.y = !moving && kind === 'garden' ? 0.65 : 1;
       w.g.position.set(w.x, this.heightAt(w.x, w.z) + (moving ? Math.abs(Math.sin(t * 9 + w.seed)) * 0.08 : 0), w.z);
       w.g.visible = !w.hidden;
+      this.flyKite(w, t, !w.hidden && !indoors && (f.windy ?? 0) > 0.3 && w.seed % 2 === 0);
     }
     // washing flaps in the wind
     for (let i = 0; i < this.washing.length; i++) this.washing[i].rotation.x = Math.sin(t * 3 + i) * (0.15 + storm * 0.6);
     // butterflies
     for (const b of this.flies) {
-      const vis = night < 0.4 && storm < 0.2; b.g.visible = vis; if (!vis) continue;
+      const vis = night < 0.4 && storm < 0.2 && this.season !== 'winter'; b.g.visible = vis; if (!vis) continue;
       const a = t * 0.6 + b.ph;
       b.g.position.set(b.cx + Math.sin(a) * 2.2 + Math.sin(a * 2.3) * 0.5, b.y + Math.sin(a * 3.1) * 0.4, b.cz + Math.cos(a * 0.8) * 1.8);
       b.g.rotation.y = a;
@@ -412,6 +475,17 @@ export class Life {
       gl.l.rotation.x = 0.35 + flap; gl.r.rotation.x = -0.35 - flap;
     }
     this.updateSmoke(f);
+  }
+
+  private flyKite(w: Walker, t: number, on: boolean) {
+    if (!w.kite) return;
+    w.kite.k.visible = w.kite.line.visible = on;
+    if (!on) return;
+    const hx = w.g.position.x, hy = w.g.position.y + 0.5, hz = w.g.position.z;
+    const kx = hx + 5 + Math.sin(t * 0.7 + w.seed) * 1.2, ky = hy + 6 + Math.sin(t * 1.3 + w.seed) * 0.8, kz = hz - 1 + Math.cos(t * 0.9 + w.seed) * 1.0;
+    w.kite.k.position.set(kx, ky, kz); w.kite.k.rotation.set(0, -0.6, Math.sin(t * 2 + w.seed) * 0.3);
+    const p = w.kite.line.geometry.attributes.position as THREE.BufferAttribute;
+    p.setXYZ(0, hx, hy, hz); p.setXYZ(1, kx, ky - 0.5, kz); p.needsUpdate = true;
   }
 
   private makeGulls() {

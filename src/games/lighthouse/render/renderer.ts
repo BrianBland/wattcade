@@ -11,8 +11,15 @@ import { createSea, waveHeight, type Sea } from './sea';
 import { Sky } from './sky';
 import type { ShipView, Snap } from './snap';
 import { disposeShared, lam, mergeStatic, mesh } from './util';
+import { Fx } from './fx';
+import { Wildlife, type WildFrame } from './wildlife';
+import { Keeper } from './keeper';
+import { Decor } from './decor';
+import { HUBS } from './life';
+import { IslandMusic } from './music';
 import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
+const VISIT: Record<string, true> = { circus: true, royal: true, research: true };
 const CUE_GAP: Partial<Record<SfxName, number>> = { select: 0.05, thunder: 0.8, bell: 2, chime: 1 };
 const BONUS_ROWS = new Set(['cottage', 'garden', 'orchard', 'market', 'pier', 'mill']);
 const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -26,7 +33,7 @@ function bezier(p: THREE.Vector3[], t: number, out: THREE.Vector3) {
   return out;
 }
 
-interface ShipObj { m: ShipModel; kind: string; crates?: THREE.Group }
+interface ShipObj { m: ShipModel; kind: string; crates?: THREE.Group; fx?: boolean; flashAt?: number }
 
 export class LighthouseRenderer implements GameRenderer {
   private renderer?: THREE.WebGLRenderer;
@@ -37,6 +44,12 @@ export class LighthouseRenderer implements GameRenderer {
   private hemi = new THREE.HemisphereLight(0xcfe9f7, 0x4a5a3a, 1.4);
   private lampLight = new THREE.PointLight(0xffe2a0, 0, 70, 1.2);
   private sea!: Sea; private terrain!: Terrain; private lighthouse!: Lighthouse; private life!: Life; private sky!: Sky;
+  private fx!: Fx; private wild!: Wildlife; private lastLens = 0; private escort: WildFrame['ships'] = [];
+  private keeper = new Keeper(); private decor!: Decor; private music = new IslandMusic();
+  /** Dusk lamp-lighting / dawn chorus, in sim seconds. */
+  private duskAt = -999; private dawnAt = -999; private prevNight = -1; private flared = true;
+  private lastDockAt = -999; private dockAt = { x: HARBOUR.x, z: HARBOUR.z }; private nextFireworks = 0;
+  private timers = { baa: 20, puffin: 30, giggle: 15 };
   private hud?: Hud;
   private models: Array<{ kind: string; level: number; model: BuildingModel; boatHome?: THREE.Vector3 } | null> = Array(PLOT_COUNT).fill(null);
   private bridge?: THREE.Group;
@@ -81,6 +94,10 @@ export class LighthouseRenderer implements GameRenderer {
     this.lighthouse = createLighthouse(this.color); s.add(this.lighthouse.group);
     this.lampLight.position.copy(this.lighthouse.lanternPos); s.add(this.lampLight);
     this.life = new Life(this.terrain); s.add(this.life.group);
+    this.fx = new Fx(); s.add(this.fx.group);
+    this.wild = new Wildlife(this.fx, (x, z) => this.life.okSpot(x, z, 2.8)); s.add(this.wild.group);
+    this.decor = new Decor(this.life); s.add(this.decor.group);
+    s.add(this.keeper.group);
 
     // build cursor: pulsing ring + ghost preview; faint markers on free plots
     this.ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 2.6, 32), new THREE.MeshBasicMaterial({ color: 0x66ff88, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false }));
@@ -138,16 +155,18 @@ export class LighthouseRenderer implements GameRenderer {
     const drift = Math.sin(s.t * 0.025) * 0.12;
     let tgt: THREE.Vector3, R: number, el: number, az: number;
     const islet = s.districts.some((d) => d.id === 'islet' && d.open);
-    if (s.mode === 'build' && s.cursor.plot < 0) { tgt = this.tmp.set(LIGHTHOUSE.x, LIGHTHOUSE_Y + 8, LIGHTHOUSE.z); R = 34; el = 0.2; az = 0.45; }
+    if (s.mode === 'build' && s.tab === 'decor') { tgt = this.tmp.set(HUBS[0].x, 3, HUBS[0].z - 2); R = 44; el = 0.5; az = 0.15 + drift * 0.3; }
+    else if (s.mode === 'build' && s.cursor.plot < 0) { tgt = this.tmp.set(LIGHTHOUSE.x, LIGHTHOUSE_Y + 8, LIGHTHOUSE.z); R = 34; el = 0.2; az = 0.45; }
     else if (s.mode === 'build') {
       const p = PLOTS[s.cursor.plot];
       const shoreFront = SHORE_KINDS.has(s.cursor.building ?? '');
       tgt = this.tmp.set(p.x, plotHeight(s.cursor.plot) + 1, p.z + (shoreFront ? 3 : 0));
       R = 34; el = 0.62; az = 0.1 + drift * 0.3;
     } else if (s.view === 1) { tgt = this.tmp.set(HARBOUR.x, 1.5, HARBOUR.z + 3); R = 36; el = 0.36; az = 0.4 + drift; }
-    else if (s.view === 2) { tgt = this.tmp.set(LIGHTHOUSE.x + 4, 9, LIGHTHOUSE.z + 6); R = 48; el = 0.16; az = -0.35 + drift * 0.5; }
-    else if (islet) { tgt = this.tmp.set(9, 9, 4); R = 84; el = 0.32; az = drift; }
-    else { tgt = this.tmp.set(-2, 4.5, 5); R = 62; el = 0.36; az = drift; }
+    else if (s.view === 2) { tgt = this.tmp.set(LIGHTHOUSE.x + 3, 12, LIGHTHOUSE.z + 4); R = 46; el = 0.2; az = -0.35 + drift * 0.5; }
+    // default: the whole island with the lighthouse in frame (it's the star), tilted low enough to see the sea it guards
+    else if (islet) { tgt = this.tmp.set(8, 9, 1); R = 90; el = 0.3; az = drift; }
+    else { tgt = this.tmp.set(-5, 8, 1); R = 68; el = 0.31; az = 0.06 + drift; }
     if (this.aspect < 1.5) R *= Math.min(1.6, 1.5 / this.aspect);
     const pos = this.tmp2.set(tgt.x + Math.sin(az) * Math.cos(el) * R, tgt.y + Math.sin(el) * R, tgt.z + Math.cos(az) * Math.cos(el) * R);
     const k = this.lastT < 0 ? 1 : 1 - Math.exp(-dt * 2.2);
@@ -161,6 +180,10 @@ export class LighthouseRenderer implements GameRenderer {
       const k = s.buildings[i], lv = s.levels[i] || 1, cur = this.models[i];
       if ((cur?.kind ?? null) === k && (!k || cur!.level === lv)) continue;
       const upgraded = !!cur && cur.kind === k;
+      if (k && this.lastT >= 0) { // celebrate new buildings and upgrades (not the town loading in)
+        const at = V(PLOTS[i].x, plotHeight(i) + 0.4, PLOTS[i].z);
+        this.fx.dust(at); this.fx.sparkle(at.setY(at.y + 2.2), upgraded ? [0xffe98a, 0xffffff, 0xffb627] : [0x9cf59c, 0xffffff, 0xffe98a]);
+      }
       if (cur) this.scene.remove(cur.model.group);
       this.models[i] = null;
       if (!k) continue;
@@ -177,11 +200,14 @@ export class LighthouseRenderer implements GameRenderer {
 
   private updateBuildings(s: Snap, dt: number, night: number, storm: number) {
     const smoke: THREE.Vector3[] = [];
+    // after the lamp is lit at dusk, the windows come on one by one, nearest the lighthouse first
+    const since = s.t - this.duskAt, staged = since >= 0 && since < 40;
     for (let i = 0; i < PLOT_COUNT; i++) {
       const m = this.models[i]; if (!m) continue;
       const g = m.model.group;
       if (g.scale.x < 1) { const sc = Math.min(1, g.scale.x + dt * 1.6); g.scale.set(sc, sc * (sc < 1 ? 0.6 + 0.4 * sc + Math.sin(sc * Math.PI) * 0.25 : 1), sc); }
-      for (const gl of m.model.glows) (gl.material as THREE.SpriteMaterial).opacity = Math.min(1, night * 0.9 + storm * 0.4);
+      const lit = staged ? Math.max(0, Math.min(1, (since - 6 - Math.hypot(PLOTS[i].x - LIGHTHOUSE.x, PLOTS[i].z - LIGHTHOUSE.z) * 0.12) / 0.5)) : 1;
+      for (const gl of m.model.glows) (gl.material as THREE.SpriteMaterial).opacity = Math.min(1, night * 0.9 * lit + storm * 0.4);
       for (const c of m.model.chimney ?? []) smoke.push(g.localToWorld(c.clone()));
       if (m.model.bell) { const a = s.bellAge; m.model.bell.rotation.z = a < 6 ? Math.sin(a * 7) * 0.55 * Math.exp(-a * 0.7) : 0; }
       if (m.model.spin) m.model.spin.rotation.z -= dt * (0.6 + storm * 2.5);
@@ -210,7 +236,7 @@ export class LighthouseRenderer implements GameRenderer {
   }
 
   private updateCursor(s: Snap) {
-    const on = s.mode === 'build';
+    const on = s.mode === 'build' && s.tab !== 'decor';
     this.cursor.visible = on;
     const row = s.cursor.row;
     const open = new Set(s.districts.filter((d) => d.open).map((d) => d.id));
@@ -318,6 +344,7 @@ export class LighthouseRenderer implements GameRenderer {
   private updateShips(s: Snap, amp: number, night: number, smoke: THREE.Vector3[]) {
     const live = new Set<number>();
     const p = new THREE.Vector3();
+    this.escort = [];
     for (const sh of s.ships) {
       live.add(sh.id);
       let o = this.ships.get(sh.id);
@@ -325,12 +352,29 @@ export class LighthouseRenderer implements GameRenderer {
       const pose = this.shipPose(sh, s, p);
       const g = o.m.group;
       const wy = waveHeight(p.x, p.z, s.t, amp);
+      if (sh.state === 'sailing' && sh.progress > 0.3) this.escort.push({ x: p.x, z: p.z, hx: pose.heading.x, hz: pose.heading.z });
+      // when the beam sweeps over a ship in the dark or fog, she flashes her lantern back and gives a little toot
+      if (sh.state === 'sailing' && (night > 0.3 || s.fog > 0.3) && s.lamp > 0.2) {
+        const bx = p.x - LIGHTHOUSE.x, bz = p.z - LIGHTHOUSE.z, bl = Math.hypot(bx, bz) || 1;
+        const a = this.beamAngle, d1 = Math.abs((Math.cos(a) * bx - Math.sin(a) * bz) / bl), d2 = s.lens >= 3 ? Math.abs((-Math.sin(a) * bx - Math.cos(a) * bz) / bl) : 0;
+        if (Math.max(d1, d2) > 0.997 && s.t - (o.flashAt ?? -99) > 8) { o.flashAt = s.t; play('horn', { vol: 0.35, pitch: 1.5, minGapS: 2 }); }
+      }
+      // a shower of coins when she ties up; a splash when she hits the reef
+      if (!o.fx && sh.state === 'docked' && sh.age > (sh.rescued ? 12 : 5.5) && sh.age < 19) {
+        o.fx = true; this.fx.coins(V(p.x, wy + 2.2, p.z));
+        this.lastDockAt = s.t; this.dockAt = { x: p.x, z: p.z };
+        const sc = V(p.x, wy + 2.2, p.z).project(this.camera);
+        this.hud?.flyCoins((sc.x + 1) / 2 * this.size[0], (1 - sc.y) / 2 * this.size[1], sh.kind in VISIT ? 14 : 8);
+        if (s.buildings.includes('cottage')) play('cheer', { minGapS: 3 });
+      }
+      if (!o.fx && sh.state === 'lost' && sh.age > 3.5) { o.fx = true; this.fx.splash(V(p.x, wy, p.z), 2.5); }
       g.position.set(p.x, wy + 0.35 - pose.sink * 3, p.z);
       g.rotation.y = Math.atan2(-pose.heading.z, pose.heading.x);
       o.m.body.rotation.x = Math.sin(s.t * 1.3 + sh.id) * (0.04 + amp * 0.12) + pose.roll;
       o.m.body.rotation.z = Math.sin(s.t * 1.1 + sh.id * 2) * (0.03 + amp * 0.08) + pose.sink * 0.5;
       (o.m.wake.material as THREE.MeshBasicMaterial).opacity = 0.45 * pose.wake;
-      for (const l of o.m.lights) (l.material as THREE.SpriteMaterial).opacity = Math.max(night, s.fog * 0.6) * (1 - pose.sink);
+      const flash = Math.max(0, 1 - (s.t - (o.flashAt ?? -99)) / 0.8);
+      for (const l of o.m.lights) { (l.material as THREE.SpriteMaterial).opacity = Math.max(Math.max(night, s.fog * 0.6) * (1 - pose.sink), flash); l.scale.setScalar(1.6 + flash * 3); }
       if (o.m.smoke && pose.sink < 0.2) smoke.push(o.m.body.localToWorld(o.m.smoke.clone()));
       // floating cargo for spilled ships
       if (sh.state === 'spilled' && !o.crates) {
@@ -355,15 +399,45 @@ export class LighthouseRenderer implements GameRenderer {
     if (this.lastCue < 0) this.lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
     for (const c of s.cues) if (c.id > this.lastCue) {
       this.lastCue = c.id;
+      if (c.name === 'unlock' || c.name === 'reward' || c.name === 'festival') this.fx.fireworks(V(HARBOUR.x, 2, HARBOUR.z + 8), c.name === 'reward' ? 6 : c.name === 'festival' ? 12 : 9);
       if (c.name === 'thunder') { const d = 300 + Math.random() * 900; setTimeout(() => play('thunder', { minGapS: 0.6, pitch: 0.8 + Math.random() * 0.4 }), d); }
       else play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] });
     }
     const surf = 0.5 + 0.5 * Math.sin(s.t * 0.9);
     setAmbient('sea', 0.05 + 0.06 * surf + s.chop * 0.08, 380 + surf * 260, 0.6);
-    setAmbient('wind', storm * 0.16 + s.fog * 0.02, 700 + Math.sin(s.t * 0.4) * 200, 1.2);
-    setAmbient('rain', Math.max(0, storm - 0.15) * 0.18, 2800, 0.3);
+    const wk = this.weatherK(s);
+    setAmbient('wind', storm * 0.16 + s.fog * 0.02 + wk('windy') * 0.06, 700 + Math.sin(s.t * 0.4) * 200, 1.2);
+    setAmbient('rain', Math.max(0, storm - 0.15) * 0.18 + wk('shower') * 0.05, 2800, 0.3);
+    // village life: sheep, puffins on the cliff, children at play (by day, out of storms)
+    const day = night < 0.5 && storm < 0.3, T = this.timers, step = 1 / 30;
+    T.baa -= step; T.puffin -= step; T.giggle -= step;
+    if (T.baa <= 0) { T.baa = 25 + Math.random() * 30; if (day) play('baa', { pitch: 0.9 + Math.random() * 0.25 }); }
+    if (T.puffin <= 0) { T.puffin = 35 + Math.random() * 30; if (day) play('puffin', { vol: s.view === 2 ? 1.4 : 0.7 }); }
+    if (T.giggle <= 0) { T.giggle = 20 + Math.random() * 25; if (day && s.buildings.includes('cottage') && s.season !== 'winter') play('giggle', { pitch: 0.9 + Math.random() * 0.3 }); }
+    // festival nights get fireworks every so often
+    if (s.festival && night > 0.4 && s.t > this.nextFireworks) { this.nextFireworks = s.t + 22; this.fx.fireworks(V(HARBOUR.x, 2, HARBOUR.z + 8), 5); }
     this.nextGull -= 1 / 30;
     if (this.nextGull <= 0) { this.nextGull = 12 + Math.random() * 20; if (night < 0.5 && storm < 0.3) play('gull', { pitch: 0.85 + Math.random() * 0.3 }); }
+  }
+
+  /** Weight (0..1) of a cosmetic weather kind, blending over 20 s from the previous one. */
+  private weatherK(s: Snap) {
+    const k = Math.min(1, Math.max(0, s.weather.age / 20));
+    return (name: string) => (s.weather.kind === name ? k : 0) + (s.weather.prev === name ? 1 - k : 0);
+  }
+
+  /** Dusk: the keeper climbs up, the lamp flares on, windows light one by one. Dawn: a burst of birdsong. */
+  private ceremony(s: Snap, night: number) {
+    if (this.prevNight >= 0) {
+      if (this.prevNight < 0.3 && night >= 0.3) { this.duskAt = s.t; this.flared = false; }
+      if (this.prevNight >= 0.3 && night < 0.3) { this.dawnAt = s.t; play('songbird'); setTimeout(() => play('birdTrill'), 700); setTimeout(() => play('songbird', { pitch: 1.2 }), 1500); }
+    }
+    this.prevNight = night;
+    if (!this.flared && s.t - this.duskAt >= 4.5) {
+      this.flared = true;
+      this.fx.sparkle(this.lighthouse.lanternPos.clone(), [0xfff2a8, 0xffffff, 0xffd84a]);
+      play('shrine');
+    }
   }
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
@@ -375,7 +449,12 @@ export class LighthouseRenderer implements GameRenderer {
     const warn = st.phase === 'warning' ? Math.min(1, st.timeInPhase / Math.max(1, st.warnS)) : 0;
 
     this.updateCamera(s, dt);
-    const sky = this.sky.update({ t: s.t, dt, day: s.day, fog: s.fog, storm, warn, lightningAge: st.lightningAge, camTarget: this.camTgt });
+    const rainbow = st.phase === 'calm' && st.lastWeathered ? Math.min(1, st.sinceEnd / 8) * Math.min(1, Math.max(0, (100 - st.sinceEnd) / 20)) : 0;
+    const wk = Math.min(1, Math.max(0, s.weather.age / 20));
+    const sky = this.sky.update({ t: s.t, dt, day: s.day, fog: s.fog, storm, warn, lightningAge: st.lightningAge, camTarget: this.camTgt, rainbow, weather: { kind: s.weather.kind, prev: s.weather.prev, k: wk } });
+    this.ceremony(s, sky.night);
+    // before the keeper lights it at dusk, the lamp stays dim; then it flares up
+    const since = s.t - this.duskAt, preLit = since >= 0 && since < 4.5, flare = since >= 4.5 && since < 7 ? 1 - (since - 4.5) / 2.5 : 0;
     this.sky.group.position.copy(this.camera.position).setY(0);
     const night = Math.max(sky.night, storm * 0.6);
     this.scene.background = sky.horizon;
@@ -392,11 +471,12 @@ export class LighthouseRenderer implements GameRenderer {
     this.sun.position.set(2 + ld.x * 120, Math.max(12, ld.y * 120), ld.z * 120);
     this.hemi.color.copy(sky.horizon);
     this.hemi.intensity = 0.55 + 1.1 * (1 - night) + sky.flash * 2.5;
-    this.lampLight.intensity = s.lamp * (8 + 40 * night);
+    const lampNight = preLit ? night * 0.1 : night;
+    this.lampLight.intensity = s.lamp * (8 + 40 * lampNight) + flare * 60;
 
     // lighthouse + sea
     this.beamAngle += dt * (0.5 + 0.7 * s.lamp) * (s.lens >= 3 ? 0.7 : 1);
-    this.lighthouse.update({ t: s.t, lamp: s.lamp, night, bloom: Math.min(1, s.meadow * 0.8 + (s.grow.reduce((a, g, i) => a + (s.buildings[i] === 'garden' ? g : 0), 0) / 4) * 0.4), beamAngle: this.beamAngle, camera: this.camera, lens: s.lens });
+    this.lighthouse.update({ t: s.t, lamp: preLit ? s.lamp * 0.2 : Math.min(1.4, s.lamp + flare * 0.6), night: lampNight, bloom: Math.min(1, s.meadow * 0.8 + (s.grow.reduce((a, g, i) => a + (s.buildings[i] === 'garden' ? g : 0), 0) / 4) * 0.4), beamAngle: this.beamAngle, camera: this.camera, lens: s.lens });
     const amp = 0.25 + s.chop * 1.6;
     this.sea.update(s.t, amp, night, storm);
     WIN.color.setRGB(0.16 + 0.84 * night, 0.23 + 0.55 * night, 0.29 + 0.1 * night);
@@ -406,12 +486,22 @@ export class LighthouseRenderer implements GameRenderer {
     this.syncBuildings(s);
     const isletOpen = s.districts.some((d) => d.id === 'islet' && d.open);
     this.bridge!.visible = isletOpen;
+    this.terrain.setSeason(s.season); this.life.setSeason(s.season);
     this.life.setTown(s.buildings, s.levels, s.grow, s.meadow, isletOpen);
+    this.decor.sync({ decor: s.decor, gifts: s.gifts, festival: !!s.festival, buildings: s.buildings, townKey: s.buildings.map((b, i) => (b ? b + s.levels[i] : '')).join(',') + isletOpen });
     const smoke = this.updateBuildings(s, dt, night, storm);
     this.updateCursor(s);
     this.updateShips(s, amp, night, smoke);
     const docked = new Set<number>(s.ships.filter((x) => x.state === 'docked' && x.dock >= 0 && x.age > 5 && x.age < 19).map((x) => x.dock));
-    this.life.update({ t: s.t, dt, night: sky.night, storm, dockedPiers: docked, bellAge: s.bellAge, smokeExtra: smoke });
+    const windy = this.weatherK(s)('windy');
+    this.life.update({ t: s.t, dt, night: sky.night, storm, dockedPiers: docked, bellAge: s.bellAge, smokeExtra: smoke, festival: !!s.festival && storm < 0.2, windy });
+    this.decor.update({ t: s.t, dt, night: sky.night, storm, amp, festival: !!s.festival });
+    this.keeper.update({ t: s.t, dt, inZone: s.inZone, storm: st.phase === 'storm', night: sky.night, dockAge: s.t - this.lastDockAt, harbour: this.dockAt, wantUp: since >= -1 && since < 12, festival: !!s.festival });
+    this.music.update({ t: s.t, streakS: s.streak.s, night: sky.night, storm: st.phase !== 'calm', festival: !!s.festival && st.phase === 'calm', paused: false });
+    if (this.lastLens && s.lens > this.lastLens) this.fx.sparkle(this.lighthouse.lanternPos.clone(), [0xffe98a, 0xffffff, 0xfff2a8]);
+    this.lastLens = s.lens;
+    this.wild.update({ t: s.t, dt, night: sky.night, storm, amp, meadow: s.meadow, ships: this.escort, whale: s.whale });
+    this.fx.update(dt);
 
     this.sounds(s, storm, sky.night);
     this.hud?.update(s);
@@ -436,7 +526,7 @@ export class LighthouseRenderer implements GameRenderer {
   unmount() {
     this.ro?.disconnect();
     this.renderer?.domElement.removeEventListener('pointerdown', this.onDown);
-    stopAmbient();
+    stopAmbient(); this.music.dispose();
     this.hud?.unmount();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
     disposeShared();

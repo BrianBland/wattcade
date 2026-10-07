@@ -220,3 +220,111 @@ describe('deeper progression', () => {
     expect(snap(s).logOpen).toBe(true);
   });
 });
+
+describe('storms never cost ships to a rider who answers them', () => {
+  it('a storm-ready ride loses no ships, and ships shelter (hold position) during the storm', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 4 });
+    let sawShelter = false;
+    for (let i = 0; i < 40 * 60 * 3; i++) {
+      s.step(10);
+      const b = snap(s);
+      if (b.sheltering) {
+        const before = b.ships.filter((x: any) => x.state === 'sailing').map((x: any) => x.progress);
+        s.step(30);
+        const after = snap(s).ships.filter((x: any) => x.state === 'sailing').map((x: any) => x.progress);
+        if (snap(s).sheltering && before.length) { expect(after).toEqual(before); sawShelter = true; }
+      }
+    }
+    expect(sawShelter).toBe(true);
+    const sum = s.sim.summary();
+    expect(sum.stormsWeathered).toBeGreaterThanOrEqual(2);
+    expect(sum.shipsLost).toBe(0);
+  });
+
+  it('riding above zone right after a storm (HR still high) does not churn the sea', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 4 });
+    while (snap(s).storm.phase !== 'storm') s.step(30);
+    while (snap(s).storm.phase === 'storm') s.step(30);
+    const chop0 = snap(s).chop;
+    s.tuning.set('lighthouse.zoneGraceS', 0);
+    s.fakeBike!.useScript(null); s.fakeBike!.manual = { cadence: 90, power: 0.82 * testProfile().ftp, hr: null };
+    s.step(60 * 30);
+    expect(snap(s).above).toBe(true);
+    expect(snap(s).chop).toBeLessThanOrEqual(chop0 + 1e-9);
+  });
+});
+
+describe('whales', () => {
+  it('visit during a long steady streak, with a toast and an event', () => {
+    const events: string[] = [];
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 2, onEmit: (e: any) => events.push(e.type) });
+    s.tuning.set('lighthouse.stormEveryMinS', 3600); s.tuning.set('lighthouse.stormEveryMaxS', 3600);
+    s.step(20 * 60 * 30);
+    expect(events).toContain('whaleSighted');
+    expect(s.sim.summary().whales).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('decorations', () => {
+  it('Y switches the build menu to Decorate; A buys a level, stays open, and the purchase is saved', () => {
+    let saved: any = null;
+    const built = PLOTS.map((_, i) => (i === 5 ? 'cottage' : i === 6 ? 'garden' : null));
+    const s = createGameSession({ game: module, profile: withSave({ coin: 100, timber: 0, buildings: built, levels: built.map((b) => (b ? 1 : 0)) }), input: taps([0.1, 'a'], [0.4, 'y'], [0.7, 'a']), fake: { script: 'z2' }, seed: 1, onSave: (d) => { saved = d; } });
+    s.step(15); expect(snap(s).tab).toBe('decor');
+    expect(s.sim.hud!().controls!.some((c) => c.button === 'y' && c.label === 'Build tab')).toBe(true);
+    s.step(15);
+    const b = snap(s);
+    expect(b.mode).toBe('build');
+    expect(b.decor.bunting).toBe(1);
+    expect(b.coin).toBeCloseTo(60, 0);
+    expect(saved.decor.bunting).toBe(1);
+  });
+
+  it('needs a little town and enough coin', () => {
+    const s = createGameSession({ game: module, profile: withSave({ coin: 999 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    s.sim.receive!({ type: 'decor', decor: 'fountain' }); s.sim.receive!({ type: 'build' }); s.step(1);
+    expect(snap(s).decor.fountain).toBe(0);
+    expect(snap(s).decorOptions.find((o: any) => o.type === 'fountain').reason).toMatch(/homes first/);
+  });
+});
+
+describe('festivals, visitors, seasons, weather', () => {
+  it('reaching a bloom milestone throws a festival once, with coin and an event', () => {
+    const events: string[] = [];
+    const s = createGameSession({ game: module, profile: withSave({ meadow: 0.0999, festivals: 0 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1, onEmit: (e: any) => events.push(e.type) });
+    s.step(30 * 60 * 2);
+    expect(snap(s).festival?.name).toBe('Blossom Fair');
+    expect(snap(s).festivalsHeld).toBe(1);
+    s.step(30 * 60 * 6);
+    expect(snap(s).festival).toBeNull();
+    expect(events.filter((e) => e === 'festival')).toHaveLength(1);
+  });
+
+  it('old saves count milestones already passed, so festivals do not stack up', () => {
+    const s = createGameSession({ game: module, profile: withSave({ meadow: 0.3 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    s.step(30 * 60);
+    expect(snap(s).festivalsHeld).toBe(2);
+    expect(snap(s).festival).toBeNull();
+  });
+
+  it('a special visitor that docks leaves its gift for the town (saved)', () => {
+    let saved: any = null;
+    const built = PLOTS.map((_, i) => (i < 4 ? 'pier' : i < 10 ? 'cottage' : null));
+    const s = createGameSession({ game: module, profile: withSave({ coin: 0, buildings: built, levels: built.map((b) => (b ? 1 : 0)) }), input: new NullInput(), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    s.tuning.set('lighthouse.visitorChance', 1); s.tuning.set('lighthouse.stormEveryMinS', 3600); s.tuning.set('lighthouse.stormEveryMaxS', 3600);
+    s.step(30 * 60 * 15);
+    expect(snap(s).gifts).toContain('carousel');
+    expect(saved.gifts).toContain('carousel');
+  });
+
+  it('seasons advance every ridesPerSeason rides; weather is cosmetic and changes over a ride', () => {
+    const seasonAt = (rides: number) => snap(createGameSession({ game: module, profile: withSave({ rides }), input: new NullInput(), fake: { script: 'z2' }, seed: 1 })).season;
+    expect([0, 1, 2, 4, 6, 8].map(seasonAt)).toEqual(['spring', 'spring', 'summer', 'autumn', 'winter', 'spring']);
+    let saved: any = null;
+    const s = createGameSession({ game: module, profile: withSave({ rides: 3 }), input: new NullInput(), fake: { script: 'z2' }, seed: 1, onSave: (d) => { saved = d; } });
+    const kinds = new Set<string>();
+    for (let i = 0; i < 40; i++) { s.step(30 * 60); kinds.add(snap(s).weather.kind); }
+    expect(kinds.size).toBeGreaterThan(1);
+    expect(saved.rides).toBe(4);
+  });
+});

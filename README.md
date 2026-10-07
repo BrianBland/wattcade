@@ -1,17 +1,22 @@
 # wattcade
 
-A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broadcast**, played on an iPad in the **Bluefy** browser via Web Bluetooth. It has six games plus a warm-up ride, each tying trainer resistance to gameplay:
+A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broadcast**, played on an iPad in the **Bluefy** browser via Web Bluetooth. It has seven games plus a warm-up ride, each tying trainer resistance to gameplay (listed in the arcade's tie-break order, most polished first):
 
 | Game | Style | Trainer use |
 |---|---|---|
+| **Cadenza** | 3D music racer (Wipeout-style) built from your own songs: pick a queue, then ride the track the music makes | **Needs music** (local files, Jamendo or the synth demo songs). Builds are real climbs; every drop dives into a sprint target, opening with a block-free corkscrew Launch rated on your effort. Steer across lanes to catch blocks on the hits, dodge mines; holding the target zone keeps your shield up and fires Overdrive. Shifters are virtual gears. |
+| **HAMSTERGRID** | Idle/clicker empire, from one hamster to a Dyson swarm | Hamsters run only while you pedal; steady Zone 2 builds a Mind-Numbing multiplier. Each era adds a little grade; strikes add +3 % until a Z3+ push breaks them; spin classes want 95 rpm; clinical trials are 3 min of ERG at 0.8 FTP. |
+| **Watershed** | 3D ERG game: you are the whole water cycle, with particle water and real-time erosion | **Needs ERG.** Pick a 20, 30, 45 or 60 min ERG workout before you start. Rise as vapor off the sea (spin, chase the sunlight), gather into a cartoon cloud, rain on the peaks: springs rise where you rained. As the river your **cadence** shapes the water (grind = heavy, carves; spin = light, fast, carries) and each block gives you a job: turn the grist mill, break the beavers' dam, keep Millbrook dry in the floods, spin the sawmill, water the fields. Earthquakes, landslides, volcanoes (and, very rarely, a meteor) can reshape the valley mid-ride. Then a salmon run up every channel you carved, dodging bears and eagles. Steer with the paddles, ◀▶ or the shifters (left hood left, right hood right); A = boost, Y = view. |
 | **Crank Crawler** | 2D endless dungeon crawler (RotMG-lite) with loot, levels and roguelite upgrades | Crank revs fire; Zone 2 heals. Terrain, swamp, low HP, curses and boss shields add grade. Sprint to crack boss shields; shrines ask for Z3+, Z2 holds, sprints or 95 rpm spins. |
 | **Keeper's Light** | 3D Zone 2 idle game | Holding Zone 2 clears fog and calms the sea so ships dock. A gentle swell rolls the grade. Storms add grade and demand Zone 3+, with Z5 lightning surges. The island town persists and grows between sessions. |
 | **Dynamo Defense** | 2D tower defense with towers, a workshop, waves, bosses and garage upgrades | Your pedalling powers the base: towers fire faster at higher FTP fraction, and sprinting triggers Overdrive. Gatling = sim grade, Flamethrower = resistance level, Railgun = ERG (charges at ≥ 0.75 FTP). Match each weapon to the enemy colour. Power Surges (Z4+) fire an EMP; Spin-ups (95 rpm) overclock the Gatling. |
 | **Sprocket Squadron** | 2D shoot-'em-up with sectors, bosses, power-ups and hangar upgrades | Shifters fire the left/right guns, cadence reloads, power thrusts, and sprints fire the overdrive beam. Attack runs add grade and ask for Zone 4. |
-| **HAMSTERGRID** | Idle/clicker empire, from one hamster to a Dyson swarm | Hamsters run only while you pedal; steady Zone 2 builds a Mind-Numbing multiplier. Each era adds a little grade; strikes add +3 % until a Z3+ push breaks them; spin classes want 95 rpm; clinical trials are 3 min of ERG at 0.8 FTP. |
-| **Watershed** | 3D ERG game: you are the whole water cycle, with particle water and real-time erosion | **Needs ERG.** Pick a 20, 30, 45 or 60 min ERG workout before you start. Rise as vapor off the sea (spin, chase the sunlight), gather into a cartoon cloud, rain on the peaks: springs rise where you rained. As the river your **cadence** shapes the water (grind = heavy, carves; spin = light, fast, carries) and each block gives you a job: turn the grist mill, break the beavers' dam, keep Millbrook dry in the floods, spin the sawmill, water the fields. Earthquakes, landslides, volcanoes (and, very rarely, a meteor) can reshape the valley mid-ride. Then a salmon run up every channel you carved, dodging bears and eagles. Steer with the paddles, ◀▶ or the shifters (left hood left, right hood right); A = boost, Y = view. |
 
-Behind the menus runs the **Warm-up Ride**, a free ride through rolling countryside, coast and the Moon where the hills on screen are the grade on the trainer (toggle *Road: Hills/Flat* in the arcade).
+Behind the menus runs the **Warm-up Ride**, a free ride through rolling countryside, coast and the Moon where the hills on screen are the grade on the trainer (toggle *Road: Hills/Flat* in the arcade). Rides over 2 minutes on real devices count toward XP, and the menus fade out on their own after 25 s so it works as a screensaver.
+
+**Arcade picker:** one row of games that rolls past a centred, enlarged selection (◀▶, swipe, or tap a side card). The selection plays a short clip of the real game and shows its tags, blurb, your progress line, time and kJ ridden in it, and when you last played; the others shrink to a title and a still. Games are sorted by what this rider played most recently, then by the order above.
+
+**Drive-In:** the 📽 button in the arcade's top bar turns the lobby into a desert drive-in cinema with a big screen playing always-on video channels (native HLS, so iPad/Safari only) while you keep riding. While it's on, the game row is replaced by a single 📽 toggle to bring the games back; Y/Z flip channels, even with the menus asleep.
 
 **ERG safety:** in ERG mode the trainer holds the watts whatever your cadence, so slowing down means more torque. If cadence drops below 55 rpm, the mixer eases the ERG target to 60 % until you spin back up, then ramps it back in over 8 s (tunable `core.ergRelief*`).
 
@@ -33,9 +38,10 @@ npm run build
 npm run sim -- --game dungeon --script sprints --minutes 20 --seed 1 --autopilot
 npm run sim:all      # every game × scenario headless; exits non-zero on failure
 npm run snap:watershed -- --script grind --minutes 15 --every 5   # top-down PNGs of the river sim in out/watershed/
+npm run capture:cards -- [--only hamster]   # re-record the arcade clips (needs `npm run dev -- --port 5199`, ffmpeg, Playwright's Chromium)
 ```
 
-Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell).
+Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.html` (Music Lab), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell), `/dev/cadenza.html?autopilot=1` (Cadenza on a synth set), `/dev/capture.html?game=<id>&sec=600&opts={"autopilot":true}` (any game's renderer, fast-forwarded, no HUD; what `capture:cards` records).
 
 ## Controls
 
@@ -93,7 +99,8 @@ src/core/               BikeStateStore, ResistanceMixer (virtual gears, difficul
 src/progression/        profiles (IndexedDB), XP/levels, achievements, sessions
 src/media/              music core: song analysis (beats, sections, key), library (IndexedDB), mix planner
                         (continuous / automix / crossfade), program timeline, two-deck player, synth demo songs
-src/shell/, src/debug/  Preact screens + debug overlay
+src/shell/, src/debug/  Preact screens (arcade carousel, Drive-In, HUD, warm-up stage) + debug overlay
+public/cards/           arcade clips + posters per game (recorded by scripts/capture-cards.ts)
 src/games/<id>/         index.ts, sim/ (pure), render/ (DOM/Canvas/Three), scenarios.ts, test/
 ```
 
@@ -104,7 +111,7 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 ## Make a new game
 
 1. **Copy a folder:** `cp -r src/games/towerdefense src/games/mygame` (2D Canvas), or start from `lighthouse` for Three.js.
-2. **Implement `GameModule`** in `index.ts`: `id`, `title`, `blurb`, `tags`, `createSim(ctx, opts)`, and `loadRenderer()`, which must use dynamic `import()`. Optional: `requires: { erg: true }` if the game can't run without ERG (the arcade then blocks it on a trainer that lacks ERG), `progressLine` and `drawCard` for the arcade card.
+2. **Implement `GameModule`** in `index.ts`: `id`, `title`, `blurb`, `tags`, `createSim(ctx, opts)`, and `loadRenderer()`, which must use dynamic `import()`. Optional: `requires: { erg: true }` if the game can't run without ERG (the arcade then blocks it on a trainer that lacks ERG), `progressLine` for the arcade card, and `drawCard` (Canvas 2D art the card falls back to until the game has a recorded clip).
 3. **Keep `sim/` pure:**
    - No DOM, `three`, Preact or `Math.random`/`Date.now`.
    - Use `ctx.rng()` and the `dt` passed to `update`.
@@ -115,4 +122,5 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
    - `ctx.emit({ type: 'bossDefeated' })` feeds the session log and achievements (see `src/progression`).
    - `ctx.save(data)` / `ctx.load()` persist per-profile game data.
 6. **Scenarios:** in `scenarios.ts`, export `scenarios = [{ name, script, minutes, seed, simOpts, assert(summary, stats, run) }]`. Then `npm run sim:all` checks your balance headlessly, and an `autopilot` flag in `simOpts` lets the sim steer itself.
-7. **Register** the module in `src/games/registry.ts`.
+7. **Register** the module in `src/games/registry.ts` (its position there is the picker's tie-break order).
+8. **Card clip:** add a shot to `SHOTS` in `scripts/capture-cards.ts` (script, how far to fast-forward, crop) and run `npm run capture:cards -- --only mygame`. `src/shell/arcade.test.ts` checks every game has `public/cards/<id>.mp4` + `.webp`.

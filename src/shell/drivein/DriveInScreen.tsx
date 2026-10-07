@@ -12,12 +12,12 @@ export interface DriveInApi { tick(dt: number, W: number, H: number, insetBottom
 const HLS = 'application/vnd.apple.mpegurl';
 const supportsHls = () => typeof document !== 'undefined' && !!document.createElement('video').canPlayType(HLS);
 const pad = (n: number) => String(n).padStart(2, '0');
-/** The awake lobby menu (top bar + game cards) as a box from the top of the page, or null while the menus sleep. */
+/** The awake lobby menu (top bar + game carousel or the Drive-In toggle) as a box from the top of the page, or null while the menus sleep. */
 function measureMenu(W: number): Rect | null {
   const root = document.querySelector('.screens:not(.asleep)');
   if (!root) return null;
   let bottom = 0;
-  root.querySelectorAll('.topbar, .game-row').forEach((el) => { bottom = Math.max(bottom, el.getBoundingClientRect().bottom); });
+  root.querySelectorAll('.topbar, .carousel, .di-toggle-row').forEach((el) => { bottom = Math.max(bottom, el.getBoundingClientRect().bottom); });
   return bottom > 0 ? { x: 0, y: 0, w: W, h: bottom } : null;
 }
 

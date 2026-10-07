@@ -10,6 +10,7 @@ import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
 import { lobbyGame } from '../games/registry';
 import { getDriveIn } from './drivein/store';
+import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
@@ -34,6 +35,10 @@ export async function createProfile(name: string): Promise<Profile> {
 }
 export const exportBackup = (): Promise<string> => profileStore.exportJson();
 export const importBackup = async (json: string): Promise<void> => { await profileStore.importJson(json); };
+/** This rider's ride count / time / kJ per game, from saved sessions (for the arcade picker). */
+export async function gameRides(profileId: string): Promise<Record<string, GameRides>> {
+  try { return ridesByGame(await sessionStore.list(profileId)); } catch { return {}; }
+}
 export async function lastProfileId(): Promise<string | null> { return (await profileStore.getLastProfileId?.()) ?? null; }
 export async function rememberProfile(id: string): Promise<void> { await profileStore.setLastProfileId?.(id); }
 

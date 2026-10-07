@@ -248,17 +248,11 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - XP = `round(kJ) + 2 × activeMinutes + 1 × minutes in effortZone 2 + 5 × sprints` + achievement bonuses.
   - Level L requires cumulative `floor(100 × (L−1)^1.6)` XP.
   - Also updates `lifetime` and `lastPlayed`.
-- **Achievements** (id, name, rule, bonus XP):
-  - `first_ride`: any session (25)
-  - `triple_threat`: played all three games (50)
-  - `balanced_week`: all three games within 7 days (100)
-  - `keeper_20`: ≥ 20 min in effort zone 2 in one lighthouse session (50)
-  - `storm_chaser`: 3 storms weathered, lifetime (50)
-  - `sprinter_10`: 10 sprints in one session (50)
-  - `triple_rail`: tower defense event `railFired` with `charges=3` (40)
-  - `dungeon_clear`: dungeon event `bossDefeated` (75)
-  - `kilojoule_1000`: lifetime kJ ≥ 1000 (100)
-  - Rules read `record.events`, `gameSummary`, and lifetime/lastPlayed, so games only need to emit events.
+- **Achievements** (`AchievementDef` in contracts; ids are permanent, each has bonus XP):
+  - Cross-game and fitness ones live in `progression/achievements.ts`; each game lists its own in `src/games/<id>/achievements.ts` (exported as `GameModule.achievements`, written with `progression/kit.ts`: `feat`, `tally`, `num`, `hasEvent`).
+  - Two shapes: a **goal** on a number (`value(profile)`, or `count` accumulated per ride into `profile.counters` with `sum`/`max`/`bits`), shown with a progress bar; or a one-ride **feat** (`check(profile, record, earnedThisRide)`).
+  - Kinds: variety (3/5/all games, 3 games in a week, 2 in a day), calendar (weekend, 3 days in a week, 4/12-week streaks from `profile.rideDays`, welcome back, night owl, early bird, New Year), lifetime totals (kJ, hours, rides, sprints, virtual km and sim-mode climbing from a power→speed model), one-ride fitness (30/60/90 min, an hour of Z2, 500 kJ, 20 min at 90+ rpm, 5 s at 2×FTP, variability ≤ 1.05), secrets (hidden until earned), and per game (floors, waves, sectors, eras, biomes, storms, songs…).
+  - Game achievements only count rides of that game. Rules read `record.events` and `gameSummary`, so games only need to emit events and summary keys; `progression/scenarios.test.ts` runs real headless rides to keep those names honest.
 - Tests use fake-indexeddb.
 
 ### §5.5 Agent E — Shell + debug overlay · owns `src/shell/`, `src/debug/`, `index.html`, `src/main.tsx`, `src/styles/`
@@ -272,7 +266,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - **Game host:** full-screen container. Mounts the renderer from `loadRenderer()`, runs `GameLoop`, and keeps the screen awake with `navigator.wakeLock` if available.
   - **Pause:** Resume / Difficulty / Quit → summary. Pausing triggers mixer panic.
   - **Session summary:** duration, avg/max power, kJ, avg HR, a time-in-zone bar, sprints, game summary, XP gained with a level-up animation, new achievements.
-  - **Achievements & stats:** a simple list.
+  - **Achievements & stats:** grouped by game ("Everywhere" first), a "Closest goals" row, progress bars for goals, secrets shown as ???; the D-pad scrolls.
 - **Debug overlay** (toggle via system action; remembered in localStorage; transparent; `pointer-events: none` except on its panels):
   - **Top-left, device panel:** raw power/cadence/speed/HR/resistance level, packets per second, last packet age, connection dots, controller firmware/battery.
   - **Top-right, derived panel:** power3s/10s, zones, ftpFraction, crankRevs, sprinting/sprintCount, gear, kJ.

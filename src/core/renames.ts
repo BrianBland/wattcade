@@ -3,15 +3,25 @@ import type { Profile, SessionRecord } from '../contracts';
 /**
  * Games that changed id: old id → new id. Saves, last-played, ride history and tuning overrides stored under the
  * old id are moved to the new one when read, so a rename never loses a rider's progress. Never remove an entry.
- * (Achievement ids are independent of game ids and never change.)
  */
 export const RENAMED_GAMES: Readonly<Record<string, string>> = { wattsurf: 'cadenza' };
 
+/**
+ * Achievements that changed id: old id → new id, rewritten in `profile.achievements` when read.
+ * Temporary: drop an entry once every saved profile has been read since the rename.
+ */
+export const RENAMED_ACHIEVEMENTS: Readonly<Record<string, string>> = {
+  wsurf_first: 'cz_first', wsurf_clean: 'cz_clean', wsurf_overdrive: 'cz_overdrive', wsurf_full_set: 'cz_full_set',
+};
+
 export const currentGameId = (id: string): string => RENAMED_GAMES[id] ?? id;
 
-/** Move per-game keys (gameData, lastPlayed) from old ids to new. Returns the same object if nothing changed. */
+/** Move per-game keys (gameData, lastPlayed) and renamed achievement ids to their new ids. Returns the same object if nothing changed. */
 export function migrateProfile(p: Profile): Profile {
   let out = p;
+  if ((out.achievements ?? []).some((a) => a in RENAMED_ACHIEVEMENTS)) {
+    out = { ...out, achievements: [...new Set(out.achievements.map((a) => RENAMED_ACHIEVEMENTS[a] ?? a))] };
+  }
   for (const [from, to] of Object.entries(RENAMED_GAMES)) {
     const data = from in (out.gameData ?? {}), played = from in (out.lastPlayed ?? {});
     if (!data && !played) continue;

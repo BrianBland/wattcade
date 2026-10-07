@@ -24,7 +24,7 @@ CONTRACT-REQUEST: none.
   onAdjust takes left/right on value rows; UI sounds (`uiMove/uiSelect/uiBack/uiTick/uiWake`) play from here.
 - Editor: rows from pure `editorFields.ts` (tested); left/right adjust, A toggles/cycles/types, delete needs a second A.
   Pause: difficulty reads back the session mixer (`getDifficulty`). Summary: staged reveal, ride chart, XP count-up/fill.
-  Achievements: progress for lifetime ones (`achievementProgress.ts`). Picker focuses the last rider; Y edits.
+  Achievements: views (group, progress, secret) come from `services.achievementViews`; grouping + closest goals in `achievementGroups.ts`. Picker focuses the last rider; Y edits.
 
 - Arcade picker (`ArcadeMenu` + pure `arcade.ts`, tested): one-row looping carousel (`carouselSlots`/`loopOffset`; a card wrapping ends skips its transition), selection centred/enlarged with
   clip (`public/cards/<id>.mp4`, recorded by `scripts/capture-cards.ts` via `dev/capture.html`), tags, blurb, `progressLine(save)`,

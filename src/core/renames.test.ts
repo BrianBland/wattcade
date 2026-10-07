@@ -18,6 +18,11 @@ describe('renamed games keep riders\' progress (wattsurf → cadenza)', () => {
     const m = migrateProfile({ ...testProfile(), gameData: { wattsurf: { old: true }, cadenza: { fresh: true } }, lastPlayed: {} });
     expect(m.gameData).toEqual({ cadenza: { fresh: true } });
   });
+  it('renames wsurf_* achievements to cz_*', () => {
+    const m = migrateProfile({ ...testProfile(), achievements: ['first_ride', 'wsurf_first', 'wsurf_full_set', 'cz_first'] });
+    expect(m.achievements).toEqual(['first_ride', 'cz_first', 'cz_full_set']);
+    expect(migrateProfile(m)).toBe(m);
+  });
   it('relabels ride history', () => {
     const r = { gameId: 'wattsurf' } as SessionRecord;
     expect(migrateSessionRecord(r).gameId).toBe('cadenza');

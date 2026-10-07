@@ -1,6 +1,7 @@
-import type { Profile, SessionRecord } from '../contracts';
-import { ACHIEVEMENTS } from './achievements';
+import type { AchievementDef, Profile, SessionRecord } from '../contracts';
+import { ACHIEVEMENTS, achievementValue } from './achievements';
 import { levelForXp } from './levels';
+import { addDay, localDay } from './rideStats';
 
 export interface AwardResult {
   profile: Profile;
@@ -10,18 +11,30 @@ export interface AwardResult {
   newAchievements: Array<{ id: string; name: string; bonusXp: number }>;
 }
 
-/**
- * storm_chaser needs a lifetime storm count. Lighthouse should emit `stormWeathered`
- * events (or gameSummary.stormsWeathered); we accumulate into profile.gameData._progression.stormsWeathered.
- */
-function stormsIn(record: SessionRecord): number {
-  const ev = record.events.filter((e) => e.type === 'stormWeathered').length;
-  if (ev > 0) return ev;
-  const s = Number(record.gameSummary?.stormsWeathered ?? 0);
-  return Number.isFinite(s) ? s : 0;
+/** Fold this ride into the counters every `count` achievement reads (once per key). */
+export function updateCounters(p: Readonly<Profile>, record: Readonly<SessionRecord>, list: readonly AchievementDef[] = ACHIEVEMENTS): Record<string, number> {
+  const out = { ...migratedCounters(p) };
+  const seen = new Set<string>();
+  for (const a of list) {
+    const c = a.count;
+    if (!c || seen.has(c.key)) continue;
+    seen.add(c.key);
+    const v = c.of(record, p), prev = out[c.key] ?? 0;
+    if (!Number.isFinite(v)) continue;
+    out[c.key] = c.agg === 'max' ? Math.max(prev, v) : c.agg === 'bits' ? (prev | v) >>> 0 : prev + v;
+  }
+  return out;
 }
 
-export function awardSession(profile: Profile, record: SessionRecord): AwardResult {
+/** Counters, seeded from the pre-counter storm tally (`gameData._progression.stormsWeathered`). */
+function migratedCounters(p: Readonly<Profile>): Record<string, number> {
+  const c = { ...(p.counters ?? {}) };
+  const old = Number((p.gameData?.['_progression'] as { stormsWeathered?: number } | undefined)?.stormsWeathered ?? 0);
+  if (c['lighthouse.storms'] == null && old > 0) c['lighthouse.storms'] = old;
+  return c;
+}
+
+export function awardSession(profile: Profile, record: SessionRecord, list: readonly AchievementDef[] = ACHIEVEMENTS): AwardResult {
   const activeMin = record.samples.filter((s) => s.cadence > 20).length / 60;
   const z2Min = (record.stats.zoneSeconds[1] ?? 0) / 60;
   const baseXp = Math.round(record.stats.kj) + Math.round(2 * activeMin) + Math.round(z2Min) + 5 * record.stats.sprints;
@@ -37,20 +50,20 @@ export function awardSession(profile: Profile, record: SessionRecord): AwardResu
     lastPlayed: { ...profile.lastPlayed, [record.gameId]: record.startedAt },
     gameData: { ...profile.gameData },
     achievements: [...profile.achievements],
+    rideDays: addDay(profile.rideDays, localDay(record.startedAt)),
   };
-  const storms = stormsIn(record);
-  if (storms > 0) {
-    const prev = (p.gameData['_progression'] as Record<string, unknown> | undefined) ?? {};
-    p.gameData['_progression'] = { ...prev, stormsWeathered: Number(prev.stormsWeathered ?? 0) + storms };
-  }
+  // Counters see the updated profile (e.g. the week streak includes today).
+  p.counters = updateCounters(p, record, list);
 
   const newAchievements: AwardResult['newAchievements'] = [];
-  for (const a of ACHIEVEMENTS) {
+  const earned: string[] = [];
+  for (const a of list) {
     if (p.achievements.includes(a.id)) continue;
-    if (a.check(p, record)) {
-      p.achievements.push(a.id);
-      newAchievements.push({ id: a.id, name: a.name, bonusXp: a.bonusXp });
-    }
+    const ok = a.goal != null ? achievementValue(a, p) >= a.goal : !!a.check?.(p, record, earned);
+    if (!ok) continue;
+    p.achievements.push(a.id);
+    earned.push(a.id);
+    newAchievements.push({ id: a.id, name: a.name, bonusXp: a.bonusXp });
   }
   const bonus = newAchievements.reduce((s, a) => s + a.bonusXp, 0);
   const xpGained = baseXp + bonus;

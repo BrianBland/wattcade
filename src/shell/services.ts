@@ -7,8 +7,8 @@ import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, S
 import { ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
-import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
-import { lobbyGame } from '../games/registry';
+import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
+import { getGame, lobbyGame } from '../games/registry';
 import { getDriveIn } from './drivein/store';
 import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
@@ -49,11 +49,16 @@ export function levelView(xp: number): LevelView {
   return { level, xp, nextXp: hi, progress: hi > lo ? Math.min(1, Math.max(0, (xp - lo) / (hi - lo))) : 0 };
 }
 export function achievementViews(p: Profile): AchievementView[] {
-  return any<any[]>(ACHIEVEMENTS).map((a) => ({
-    id: a.id, name: a.name ?? a.title ?? a.id, desc: a.desc ?? a.description ?? a.rule ?? '', unlocked: p.achievements.includes(a.id),
-  }));
+  return ACHIEVEMENTS.map((a) => {
+    const unlocked = p.achievements.includes(a.id), gameId = ACHIEVEMENT_GAME[a.id];
+    return {
+      id: a.id, name: a.name, desc: a.desc, unlocked, secret: !!a.secret,
+      gameId, group: gameId ? getGame(gameId)?.title ?? gameId : 'Everywhere',
+      progress: unlocked ? null : achievementProgress(a, p),
+    };
+  });
 }
-const achievementName = (id: string) => achievementViews({ achievements: [] } as any).find((a) => a.id === id)?.name ?? id;
+const achievementName = (id: string) => ACHIEVEMENTS.find((a) => a.id === id)?.name ?? id;
 
 // ---------- devices ----------
 let fakeMode = false;

@@ -10,7 +10,7 @@ export function Panel({ children, class: cls = '', focused }: { children: Compon
 
 const KEY_STYLE: Record<string, { glyph: string; color: string }> = {
   a: { glyph: 'A', color: '#2bd96b' }, b: { glyph: 'B', color: '#ff4d4d' }, y: { glyph: 'Y', color: '#3b82ff' }, z: { glyph: 'Z', color: '#ff9a2b' },
-  dpad: { glyph: '✥', color: '#8a84b8' }, lr: { glyph: '◀▶', color: '#8a84b8' }, shift: { glyph: '±', color: '#b07cff' },
+  dpad: { glyph: '✥', color: '#8a84b8' }, lr: { glyph: '◀▶', color: '#8a84b8' }, ud: { glyph: '▲▼', color: '#8a84b8' }, shift: { glyph: '±', color: '#b07cff' },
 };
 /** Ride-style button glyph. */
 export function Key({ k }: { k: keyof typeof KEY_STYLE | string }) {

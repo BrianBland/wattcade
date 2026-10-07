@@ -1,8 +1,10 @@
 import type { GameModule } from '../../contracts';
+import { achievements } from './achievements';
 import { createTdSim, type TdOpts } from './sim/sim';
 import { drawCard, progressLine } from './card';
 
 export const module: GameModule = {
+  achievements,
   id: 'towerdefense',
   title: 'Dynamo Defense',
   blurb: 'Your pedalling powers the base. Match weapons to enemy colours, build towers, sprint for Overdrive.',

@@ -3,9 +3,12 @@ import { describe, it, expect } from 'vitest';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from './index';
 import type { SessionRecord } from '../contracts';
 
+/** A plain Wednesday lunchtime (local): no calendar achievements. */
+const NOON = new Date(2026, 4, 13, 12, 0).getTime();
+
 function rec(over: Partial<SessionRecord> = {}, stats: Partial<SessionRecord['stats']> = {}): SessionRecord {
   return {
-    id: 's' + Math.random(), profileId: 'x', gameId: 'dungeon', startedAt: 1_000_000, durationS: 600,
+    id: 's' + Math.random(), profileId: 'x', gameId: 'dungeon', startedAt: NOON, durationS: 600,
     samples: Array.from({ length: 600 }, (_, t) => ({ t, power: 150, cadence: 85, hr: null, grade: null, mode: 'sim' as const })),
     events: [],
     stats: { avgPower: 150, maxPower: 300, kj: 90, avgHr: null, zoneSeconds: [0, 300, 0, 0, 0], sprints: 2, ...stats },
@@ -35,7 +38,7 @@ describe('awardSession', () => {
     expect(r.levelUps).toEqual([2]);
     expect(r.newAchievements.map((a) => a.id)).toEqual(['first_ride']);
     expect(r.profile.lifetime).toMatchObject({ kj: 90, seconds: 600, sessions: 1, sprints: 2 });
-    expect(r.profile.lastPlayed.dungeon).toBe(1_000_000);
+    expect(r.profile.lastPlayed.dungeon).toBe(NOON);
     expect(p.xp).toBe(0); // input not mutated
     expect(awardSession(r.profile, rec()).newAchievements).toEqual([]);
   });
@@ -45,7 +48,10 @@ describe('awardSession', () => {
       events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } }],
     }, { sprints: 10, kj: 1000 }));
     const ids = r.newAchievements.map((a) => a.id);
-    expect(ids).toEqual(expect.arrayContaining(['dungeon_clear', 'triple_rail', 'sprinter_10', 'kilojoule_1000']));
+    expect(ids).toEqual(expect.arrayContaining(['dungeon_clear', 'sprinter_10', 'kilojoule_1000']));
+    expect(ids).not.toContain('triple_rail'); // a Dynamo Defense feat: not from a dungeon ride
+    const td = awardSession(r.profile, rec({ gameId: 'towerdefense', events: [{ t: 2, type: 'railFired', data: { charges: 3 } }] }));
+    expect(td.newAchievements.map((a) => a.id)).toContain('triple_rail');
   });
   it('keeper_20 and storms', () => {
     let p = defaultProfile();
@@ -55,7 +61,7 @@ describe('awardSession', () => {
     let r = awardSession(p, lh(2, 1200)); p = r.profile;
     expect(r.newAchievements.map((a) => a.id)).toContain('keeper_20');
     expect(p.achievements).not.toContain('storm_chaser');
-    expect((p.gameData._progression as { stormsWeathered: number }).stormsWeathered).toBe(2);
+    expect(p.counters!['lighthouse.storms']).toBe(2);
     r = awardSession(p, lh(1, 0));
     expect(r.newAchievements.map((a) => a.id)).toContain('storm_chaser');
   });
@@ -71,9 +77,16 @@ describe('awardSession', () => {
     q = awardSession(q, rec({ gameId: 'dungeon', startedAt: 0 })).profile;
     q = awardSession(q, rec({ gameId: 'lighthouse', startedAt: 3 * day })).profile;
     const r2 = awardSession(q, rec({ gameId: 'towerdefense', startedAt: 20 * day }));
-    expect(r2.newAchievements.map((a) => a.id)).toEqual(['triple_threat']);
+    expect(r2.newAchievements.map((a) => a.id)).toContain('triple_threat');
+    expect(r2.newAchievements.map((a) => a.id)).not.toContain('balanced_week');
   });
-  it('26 achievements, unique ids', () => { expect(ACHIEVEMENTS).toHaveLength(26); expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(26); });
+  it('unique ids, and every pre-existing id is still there', () => {
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+    const kept = ['first_ride', 'triple_threat', 'balanced_week', 'keeper_20', 'storm_chaser', 'sprinter_10', 'triple_rail', 'dungeon_clear',
+      'ws_cycle', 'ws_cloud', 'ws_canyon', 'ws_delta', 'ws_salmon', 'ws_clean_run', 'ws_maestro', 'ws_miller', 'ws_dry_feet', 'ws_dam_buster',
+      'ws_breadbasket', 'ws_meteor', 'ws_act_of_nature', 'cz_first', 'cz_clean', 'cz_overdrive', 'cz_full_set', 'kilojoule_1000'];
+    for (const id of kept) expect(ACHIEVEMENTS.map((a) => a.id)).toContain(id);
+  });
 });
 
 describe('stores', () => {

@@ -1,8 +1,10 @@
 import type { GameModule } from '../../contracts';
+import { achievements } from './achievements';
 import { createWatershedSim, type WatershedOpts } from './sim/sim';
 import { drawCard, progressLine } from './card';
 
 export const module: GameModule = {
+  achievements,
   id: 'watershed',
   title: 'Watershed',
   blurb: 'You are the river. ERG sets how much water you are; your cadence decides if it carves gorges or races silt to the sea.',

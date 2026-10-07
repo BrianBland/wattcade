@@ -11,6 +11,8 @@ import { play } from '../../audio/sfx';
 import { useMenuNav } from '../useMenuNav';
 
 const N = 120;
+/** New achievements listed one by one; the rest are summed up. */
+const MAX_ACH = 6;
 /** Power bars coloured by zone + HR line over the ride. */
 function RideChart({ record, ftp }: { record: SessionRecord; ftp: number }) {
   const pw = downsample(record.samples.map((s) => s.power), N) as Array<number | null>;
@@ -38,11 +40,12 @@ export function Summary({ record, award, xpAfter, ftp, onDone }: { record: Sessi
   const leveled = award.levelAfter > award.levelBefore;
   const before = levelView(Math.max(0, xpAfter - award.xpGained)), after = levelView(xpAfter);
   const [bar, setBar] = useState(leveled ? 0 : before.progress);
+  const shownAch = award.newAchievements.slice(0, MAX_ACH), moreAch = award.newAchievements.length - shownAch.length;
   useEffect(() => {
     const ts = [
       setTimeout(() => { play('reward'); setBar(after.progress); }, 1300),
       leveled ? setTimeout(() => play('levelup'), 2300) : 0,
-      ...award.newAchievements.map((_a, i) => setTimeout(() => play('unique'), 2600 + i * 500)),
+      ...award.newAchievements.slice(0, MAX_ACH).map((_a, i) => setTimeout(() => play('unique'), 2600 + i * 500)),
     ];
     return () => ts.forEach((t) => t && clearTimeout(t));
   }, []);
@@ -74,7 +77,8 @@ export function Summary({ record, award, xpAfter, ftp, onDone }: { record: Sessi
           <div class="row"><b>Level {after.level}</b><span class="spacer" /><span class="dim">{Math.round(after.xp)} / {after.nextXp}</span></div>
           <div class="bar big"><i style={{ width: `${bar * 100}%` }} /></div>
           {leveled && <div class="levelup reveal" style={{ animationDelay: '2300ms' }}>LEVEL UP! {award.levelBefore} → {award.levelAfter}</div>}
-          {award.newAchievements.map((a, i) => <div class="badge on reveal" style={{ animationDelay: `${2600 + i * 500}ms` }}><span class="medal">★</span><b>{a.name}</b></div>)}
+          {shownAch.map((a, i) => <div class="badge on reveal" style={{ animationDelay: `${2600 + i * 500}ms` }}><span class="medal">★</span><b>{a.name}</b></div>)}
+          {moreAch > 0 && <div class="dim reveal" style={{ animationDelay: `${2600 + shownAch.length * 500}ms` }}>+{moreAch} more achievements</div>}
         </div>
       </div>
       <KeyHints hints={[['a', 'Continue']]} />

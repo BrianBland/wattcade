@@ -8,7 +8,13 @@ export type DeviceStatusMap = Record<DeviceKind, DeviceUiStatus>;
 export interface AwardView {
   xpGained: number; levelBefore: number; levelAfter: number; newAchievements: Array<{ id: string; name: string }>;
 }
-export interface AchievementView { id: string; name: string; desc: string; unlocked: boolean }
+export interface AchievementView {
+  id: string; name: string; desc: string; unlocked: boolean; secret: boolean;
+  /** Owning game id (undefined = rides anywhere) and the heading it is listed under. */
+  gameId?: string; group: string;
+  /** Progress toward a goal achievement (null when unlocked or a one-ride feat). */
+  progress: { frac: number; label: string } | null;
+}
 export interface LevelView { level: number; progress: number; xp: number; nextXp: number }
 
 /** Minimal view of core's GameSession used by the shell. */

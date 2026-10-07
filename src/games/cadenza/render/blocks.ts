@@ -48,7 +48,7 @@ varying float vTip; varying vec3 vBary; varying float vDepth; varying vec3 vN; v
 void main() {
   float edge = 1.0 - smoothstep(0.0, 0.06, min(vBary.x, min(vBary.y, vBary.z)));
   float strobe = step(0.5, fract(uTime * 6.0 + vPhase));                    // a hard 6 Hz warning blink
-  float sheen = pow(1.0 - abs(vN.z), 3.0);
+  float sheen = pow(max(0.0, 1.0 - abs(vN.z)), 3.0);
   vec3 c = uDark * (0.25 + 0.75 * sheen);
   c += uHot * edge * (vTip > 0.01 ? 0.5 + 0.9 * vTip : 0.22);                // white wire edges: faint on the core, hot up the spikes
   c += uHot * pow(vTip, 6.0) * (1.4 + 2.2 * strobe);                         // white-hot tips
@@ -99,7 +99,7 @@ interface Shard {
   track: boolean; o: number; lx: number; ly: number; vo: number; vx: number; vy: number;
 }
 /** Track shards: start drifting back at this speed (m/s), then accelerate back this hard (m/s²) as the wall gives. */
-const SLOW = { v0: 1.2, accel: 5.5, life: 2.4, spread: 1.1, drag: 1.6 };
+const SLOW = { v0: 3, accel: 24, life: 0.5, spread: 2, drag: 1.6 };
 
 /** Blocks on the track, collected blocks flying into the ship, misses shattering into shards. */
 export class Blocks {

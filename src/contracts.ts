@@ -25,6 +25,33 @@ export interface Profile {
   lastPlayed: Record<string, number>;                 // game id -> epoch ms
   settings: ProfileSettings;
   createdAt: number;
+  /** Lifetime/best counters for achievements, keyed `<scope>.<name>` (progression-owned; absent on old profiles). */
+  counters?: Record<string, number>;
+  /** Local calendar days ridden (days since 1970-01-01 in local time), sorted, recent ones only (progression-owned). */
+  rideDays?: number[];
+  /**
+   * Cosmetics (see src/cosmetics): `loadout` = equipped item id per slot (missing = the slot's default);
+   * `picks` = level → the item chosen at that level's reward pick. Everything else unlocked is derived from level + achievements.
+   */
+  cosmetics?: { loadout?: Record<string, string>; picks?: Record<string, string> };
+}
+
+/**
+ * An achievement. Two shapes:
+ * - a **goal** on a number: `value(profile)` (derived from the profile) or `count` (accumulated into
+ *   `profile.counters[count.key]` from each ride: `sum` adds, `max` keeps the best, `bits` ORs flags and counts the set bits). Unlocks at `>= goal`; the shell
+ *   shows a progress bar. Achievements sharing a `count.key` must share `of` and `agg` (tiers).
+ * - a one-ride **feat**: `check(profile, record, earned)` with the profile already updated for this ride
+ *   (lifetime, lastPlayed, counters, rideDays); `earned` = ids unlocked earlier in this same award.
+ */
+export interface AchievementDef {
+  id: string; name: string; desc: string; bonusXp: number;
+  /** Hidden ("???") until unlocked. */
+  secret?: boolean;
+  goal?: number; unit?: string;
+  value?(p: Readonly<Profile>): number;
+  count?: { key: string; of(r: Readonly<SessionRecord>, p: Readonly<Profile>): number; agg?: 'sum' | 'max' | 'bits' };
+  check?(p: Readonly<Profile>, r: Readonly<SessionRecord>, earned: readonly string[]): boolean;
 }
 
 // ===== Bike state =====
@@ -176,6 +203,8 @@ export interface GameModule {
   progressLine?(save: unknown): string | null;
   /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */
   drawCard?(g: CanvasRenderingContext2D, w: number, h: number, t: number, color: string): void;
+  /** Optional: this game's achievements (ids are global and never change; see AchievementDef). Rides in other games never satisfy them unless `check`/`count` says so. */
+  achievements?: AchievementDef[];
   /** Optional: a small preview of what this game makes of a queue (track profile, effort), drawn in the media picker. Pure Canvas 2D. */
   mediaPreview?(g: CanvasRenderingContext2D, w: number, h: number, timeline: MediaTimeline, profile: Readonly<Profile>): void;
 }

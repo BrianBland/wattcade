@@ -150,7 +150,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           } else if (ph === 'play') {
             if (!pausedRef.current) {
               const m = music.current;
-              if (m && session.media) {
+              if (m && session.media && m.engine.getState() === 'ended') {
+                // the music has finished: the heard position stops short of the end by the output latency, so let the sim run out on its own clock
+                session.media.setTrim(null); session.frame(dt);
+              } else if (m && session.media) {
                 const trim = m.sync.update(m.engine.positionS(), session.media.positionS(), m.engine.playing());
                 session.media.setTrim(trim);
                 if (trim > 0) session.frame(dt); else session.idle(dt); // hold the sim (not the bike) while the music buffers

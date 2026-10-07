@@ -24,10 +24,12 @@ CONTRACT-REQUEST: none.
   onAdjust takes left/right on value rows; UI sounds (`uiMove/uiSelect/uiBack/uiTick/uiWake`) play from here.
 - Editor: rows from pure `editorFields.ts` (tested); left/right adjust, A toggles/cycles/types, delete needs a second A.
   Pause: difficulty reads back the session mixer (`getDifficulty`). Summary: staged reveal, ride chart, XP count-up/fill.
-  Achievements: progress for lifetime ones (`achievementProgress.ts`). Picker focuses the last rider; Y edits.
+  Locker (`screens/Locker.tsx`) and reward picks (`screens/RewardPick.tsx`; Summary routes there when `award.picks > 0`); `components/RiderAvatar.tsx` draws the rider (shared rAF loop, `still` for thumbnails) in place of the old colour dot; the lobby renderer remounts when the look changes. Achievements: views (group, progress, secret) come from `services.achievementViews`; grouping + closest goals in `achievementGroups.ts`. Picker focuses the last rider; Y edits.
 
-- Arcade cards: optional `GameModule.drawCard` banner (animated only on the focused card, `CardArt`) and `progressLine(save)`
-  under the blurb; each game implements them in `src/games/<id>/card.ts` (tested in `shell/cards.test.ts`).
+- Arcade picker (`ArcadeMenu` + pure `arcade.ts`, tested): one-row looping carousel (`carouselSlots`/`loopOffset`; a card wrapping ends skips its transition), selection centred/enlarged with
+  clip (`public/cards/<id>.mp4`, recorded by `scripts/capture-cards.ts` via `dev/capture.html`), tags, blurb, `progressLine(save)`,
+  `ridesLine` (time/kJ from `services.gameRides`), last played; side cards = poster + title. `drawCard` is the fallback art.
+  Order: `orderGames` (lastPlayed desc, registry order = polish). Nav rows [top bar, 1]: ◀▶ on the row roll it via onAdjust.
 
 - Game flow (GameHost phases): intro card (`game/GameIntro.tsx`: blurb, target zone, controls via pure `controlGlyphs.ts`;
   A start, B back to menu without saving, auto-start after 8 s) -> 3-2-1-GO with the session `idle()`-ing and the trainer
@@ -53,4 +55,4 @@ CONTRACT-REQUEST: none.
 - App keeps `profileRef` so async credit and game saves always apply to the latest profile.
 - Road: Hills/Flat toggle in the arcade menu (`warmup.hills` tunable, saved per rider).
 
-- Tests: `npx vitest run src/shell src/debug`.- Drive-In (`shell/drivein/`, see SPEC §6.6): `channels.ts` (lineup, dial reducer, saved state), `layout.ts` (`screenRect`, `easeRect`), `playback.ts` (watchdog), `store.ts` (per-rider state; `handleChannelPress` for Y/Z), `DriveInScreen.tsx` (video, static, OSD, chip, bar; its `api.tick()` is called by `WarmupStage` before each canvas render), `staticFx.ts`. 📽 button = last item of the ArcadeMenu top bar. App's menu gate lets Y/Z through without waking; taps inside `.drivein` don't wake either. Video only shows on the `menu` screen.
+- Tests: `npx vitest run src/shell src/debug`.- Drive-In (`shell/drivein/`, see SPEC §6.6): `channels.ts` (lineup, dial reducer, saved state), `layout.ts` (`screenRect`, `easeRect`), `playback.ts` (watchdog), `store.ts` (per-rider state; `handleChannelPress` for Y/Z), `DriveInScreen.tsx` (video, static, OSD, chip, bar; its `api.tick()` is called by `WarmupStage` before each canvas render), `staticFx.ts`. 📽 button = last item of the ArcadeMenu top bar; while on, the carousel is replaced by a lone 📽 toggle (`.di-toggle-row`, measured with `.topbar`/`.carousel` by `measureMenu`). App's menu gate lets Y/Z through without waking; taps inside `.drivein` don't wake either. Video only shows on the `menu` screen.

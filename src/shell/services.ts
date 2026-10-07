@@ -7,9 +7,12 @@ import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, S
 import { ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
-import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS } from '../progression';
-import { lobbyGame } from '../games/registry';
+import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
+import { getGame, lobbyGame } from '../games/registry';
+import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
+import type { Item, Slot } from '../cosmetics/types';
 import { getDriveIn } from './drivein/store';
+import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
@@ -34,6 +37,10 @@ export async function createProfile(name: string): Promise<Profile> {
 }
 export const exportBackup = (): Promise<string> => profileStore.exportJson();
 export const importBackup = async (json: string): Promise<void> => { await profileStore.importJson(json); };
+/** This rider's ride count / time / kJ per game, from saved sessions (for the arcade picker). */
+export async function gameRides(profileId: string): Promise<Record<string, GameRides>> {
+  try { return ridesByGame(await sessionStore.list(profileId)); } catch { return {}; }
+}
 export async function lastProfileId(): Promise<string | null> { return (await profileStore.getLastProfileId?.()) ?? null; }
 export async function rememberProfile(id: string): Promise<void> { await profileStore.setLastProfileId?.(id); }
 
@@ -44,11 +51,33 @@ export function levelView(xp: number): LevelView {
   return { level, xp, nextXp: hi, progress: hi > lo ? Math.min(1, Math.max(0, (xp - lo) / (hi - lo))) : 0 };
 }
 export function achievementViews(p: Profile): AchievementView[] {
-  return any<any[]>(ACHIEVEMENTS).map((a) => ({
-    id: a.id, name: a.name ?? a.title ?? a.id, desc: a.desc ?? a.description ?? a.rule ?? '', unlocked: p.achievements.includes(a.id),
-  }));
+  return ACHIEVEMENTS.map((a) => {
+    const unlocked = p.achievements.includes(a.id), gameId = ACHIEVEMENT_GAME[a.id];
+    return {
+      id: a.id, name: a.name, desc: a.desc, unlocked, secret: !!a.secret,
+      gameId, group: gameId ? getGame(gameId)?.title ?? gameId : 'Everywhere',
+      progress: unlocked ? null : achievementProgress(a, p),
+    };
+  });
 }
-const achievementName = (id: string) => achievementViews({ achievements: [] } as any).find((a) => a.id === id)?.name ?? id;
+const achievementName = (id: string) => ACHIEVEMENTS.find((a) => a.id === id)?.name ?? id;
+
+// ---------- cosmetics (Locker, reward picks) ----------
+/** How to unlock a locked item ("Reach level 12", "Earn “Leg Day”"). */
+export const itemHint = (it: Item): string => unlockHint(it, (id) => ACHIEVEMENTS.find((a) => a.id === id));
+/** Equip an item and save the profile. Returns the updated profile (unchanged if the item is locked). */
+export async function equipItem(p: Profile, slot: Slot, id: string): Promise<Profile> {
+  const next = equip(p, slot, id);
+  if (next !== p) await saveProfile(next);
+  return next;
+}
+/** Take the reward picked at `level` (it is equipped too) and save. */
+export async function pickReward(p: Profile, level: number, id: string): Promise<Profile> {
+  const next = choosePick(p, level, id);
+  if (next !== p) await saveProfile(next);
+  return next;
+}
+export { pendingPicks };
 
 // ---------- devices ----------
 let fakeMode = false;
@@ -187,6 +216,8 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
     xpGained: r.xpGained ?? 0,
     levelBefore: profile.level, levelAfter: next.level,
     newAchievements: (r.newAchievements ?? []).map((a: any) => (typeof a === 'string' ? { id: a, name: achievementName(a) } : { id: a.id, name: a.name ?? a.id })),
+    newItems: newUnlocks(profile, next).map((it) => ({ slot: it.slot, id: it.id, name: it.name })),
+    picks: pendingPicks(next).length,
   };
   return { record, award, profile: next };
 }

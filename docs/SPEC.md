@@ -248,18 +248,22 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - XP = `round(kJ) + 2 × activeMinutes + 1 × minutes in effortZone 2 + 5 × sprints` + achievement bonuses.
   - Level L requires cumulative `floor(100 × (L−1)^1.6)` XP.
   - Also updates `lifetime` and `lastPlayed`.
-- **Achievements** (id, name, rule, bonus XP):
-  - `first_ride`: any session (25)
-  - `triple_threat`: played all three games (50)
-  - `balanced_week`: all three games within 7 days (100)
-  - `keeper_20`: ≥ 20 min in effort zone 2 in one lighthouse session (50)
-  - `storm_chaser`: 3 storms weathered, lifetime (50)
-  - `sprinter_10`: 10 sprints in one session (50)
-  - `triple_rail`: tower defense event `railFired` with `charges=3` (40)
-  - `dungeon_clear`: dungeon event `bossDefeated` (75)
-  - `kilojoule_1000`: lifetime kJ ≥ 1000 (100)
-  - Rules read `record.events`, `gameSummary`, and lifetime/lastPlayed, so games only need to emit events.
+- **Achievements** (`AchievementDef` in contracts; ids are permanent, each has bonus XP):
+  - Cross-game and fitness ones live in `progression/achievements.ts`; each game lists its own in `src/games/<id>/achievements.ts` (exported as `GameModule.achievements`, written with `progression/kit.ts`: `feat`, `tally`, `num`, `hasEvent`).
+  - Two shapes: a **goal** on a number (`value(profile)`, or `count` accumulated per ride into `profile.counters` with `sum`/`max`/`bits`), shown with a progress bar; or a one-ride **feat** (`check(profile, record, earnedThisRide)`).
+  - Kinds: variety (3/5/all games, 3 games in a week, 2 in a day), calendar (weekend, 3 days in a week, 4/12-week streaks from `profile.rideDays`, welcome back, night owl, early bird, New Year), lifetime totals (kJ, hours, rides, sprints, virtual km and sim-mode climbing from a power→speed model), one-ride fitness (30/60/90 min, an hour of Z2, 500 kJ, 20 min at 90+ rpm, 5 s at 2×FTP, variability ≤ 1.05), secrets (hidden until earned), and per game (floors, waves, sectors, eras, biomes, storms, songs…).
+  - Game achievements only count rides of that game. Rules read `record.events` and `gameSummary`, so games only need to emit events and summary keys; `progression/scenarios.test.ts` runs real headless rides to keep those names honest.
 - Tests use fake-indexeddb.
+
+### §5.4b Cosmetics · `src/cosmetics/`
+
+- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
+- **Unlocks are derived, never stored:** defaults + level rewards up to `profile.level` + one item per earned achievement + picks. So catalogue changes apply to existing riders. Stored: `profile.cosmetics.loadout` (equipped id per slot; a missing or locked id falls back to the default) and `profile.cosmetics.picks` (level → chosen id).
+- **Level track:** levels 2–50 each give one item. Every 5th level is a **pick**: choose one of three, and the other two come back in a later pick (after level 50, the passed-over items are offered three at a time every 5 levels). There's no shop or currency.
+- **Every achievement grants exactly one item** (tested).
+- **Pets** follow your effort. Runners trot ahead of the front wheel, with gait from distance travelled; below 0.6 m/s they sit and look back, and they ride in the cargo bike's box. Fliers hover behind your shoulder and flap faster the faster you go. **Trails** stream from behind the rear wheel (behind the Drive-In trailer when towing), scale with speed, and show nothing when stopped. Flames only roar near a sprint.
+- **Drawing** (`draw/`, Canvas 2D, pure): `drawRider(g, look, crankRevs, wheelM, { t, speed, gear, trailer })` draws a side-on rider ~24 px tall at ground (0,0). Bikes set the hip, hands, crank and leg style (`pedal`, `run`, `dangle`), and the body adapts. The warm-up lobby, the profile picker, the arcade top bar, the profile editor, the Locker, reward picks and the summary all draw the same rider.
+- **Shell:** the **Locker** (tabs per slot; locked tiles are silhouettes that preview in full colour when focused, with the unlock hint), the **reward pick** screen (after a summary when a pick is waiting, or from the Locker), "New gear" on the summary, the next reward on the profile card, and the title under the rider's name.
 
 ### §5.5 Agent E — Shell + debug overlay · owns `src/shell/`, `src/debug/`, `index.html`, `src/main.tsx`, `src/styles/`
 
@@ -268,11 +272,11 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - **Profile picker:** cards, "+ New", edit.
   - **Profile editor:** name, color swatches, FTP, max HR, weight, zone source, aim mode, paddle deadzone/invert, max grade; plus Backup export/import.
   - **Connect:** three big buttons (Trainer / Controller / Heart rate), each with a status, a "Fake bike" toggle, notes ("Close Zwift on this iPad first", "Enable Broadcast Heart Rate on your Garmin", "Record an Indoor Bike activity on your watch; it's your Garmin/Strava record for now"), and a firmware warning display.
-  - **Arcade menu:** three game cards with tags and the profile's level/XP bar.
+  - **Arcade menu:** top bar (rider, level/XP, road, devices, achievements, switch rider, 📽) over one row of games: a looping carousel (wraps both ways) with the selection centred and enlarged (recorded clip of the real game from `public/cards/`, tags, blurb, progress line, time/kJ ridden, last played); the rest show a title and a still. Sorted by the rider's most recent plays, ties in registry order (most polished first). While the Drive-In is on, the row is replaced by its toggle alone.
   - **Game host:** full-screen container. Mounts the renderer from `loadRenderer()`, runs `GameLoop`, and keeps the screen awake with `navigator.wakeLock` if available.
   - **Pause:** Resume / Difficulty / Quit → summary. Pausing triggers mixer panic.
   - **Session summary:** duration, avg/max power, kJ, avg HR, a time-in-zone bar, sprints, game summary, XP gained with a level-up animation, new achievements.
-  - **Achievements & stats:** a simple list.
+  - **Achievements & stats:** grouped by game ("Everywhere" first), a "Closest goals" row, progress bars for goals, secrets shown as ???; the D-pad scrolls.
 - **Debug overlay** (toggle via system action; remembered in localStorage; transparent; `pointer-events: none` except on its panels):
   - **Top-left, device panel:** raw power/cadence/speed/HR/resistance level, packets per second, last packet age, connection dots, controller firmware/battery.
   - **Top-right, derived panel:** power3s/10s, zones, ftpFraction, crankRevs, sprinting/sprintCount, gear, kJ.
@@ -521,7 +525,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ### §6.6 "Drive-In" (lobby projector + cinema) · owns `src/shell/drivein/`, plus a biome in `src/games/warmup/`
 
-- **What:** a **lobby mode**. A small glowing projector button (📽) at the right end of the arcade menu's top bar turns it on; on/off, the last channel and the sound choice persist per rider (`wattcade.drivein.<profileId>`). The ride blends into a special **Drive-In biome** and a big drive-in screen plays an always-on video channel while you keep riding. It works in the screensaver (menus asleep), which is the point: warm up and watch.
+- **What:** a **lobby mode**. A small glowing projector button (📽) at the right end of the arcade menu's top bar turns it on (while on, the game row is replaced by a single 📽 toggle that turns it off); on/off, the last channel and the sound choice persist per rider (`wattcade.drivein.<profileId>`). The ride blends into a special **Drive-In biome** and a big drive-in screen plays an always-on video channel while you keep riding. It works in the screensaver (menus asleep), which is the point: warm up and watch.
 - **v1 content: stream channels via native HLS.** "Infinite Slop by @levelsio + fal.ai" (verified 2026-10-05): it can't be iframed and its JSON endpoints send no CORS headers, but it serves plain HLS that WebKit plays natively in a `<video playsinline>`: live `https://infiniteslop.ai/live/playlist.m3u8`, and rerun channels (VOD playlists) `https://infiniteslop.ai/api/channel?ch=<name>&limit=<n>`. No hls.js (needs CORS). Where native HLS is unsupported (desktop Chrome) the screen shows a "This channel needs Safari / iPad" card. A finished VOD channel reloads its URL for a fresh playlist so it always feels on. Lineup (pure data, `channels.ts`, `kind` extensible): CH 1 LIVE, 2 NEWEST, 3 TOP, 4 NEWS, 5 COMEDY, 6 MUSIC, 7 CARTOON, 8 SCI-FI, 9 DANCE, 10 ANIMATION, 11 HORROR, 12 ADS. The channel bar always shows the credit and a link. **YouTube (below) and the media library are later channel kinds.**
 - **Biome:** `DRIVE_IN` look in `games/warmup/render/driveIn.ts`: a desert drive-in at dusk regardless of the real clock: dusk mesas, stars, classic cars on speaker posts, a concession stand, lamp posts, a neon "WATTCADE DRIVE-IN" marquee, and a little projector trailer towed by the rider with a flickering light beam. It isn't in the loop: the shell sends `GameSim.receive({ type: 'driveIn', on })` and the sim blends `driveIn` 0..1 over `warmup.driveInS` (default 8 s, time-based so it works while parked). Road, grades and warm-up credit are unchanged.
 - **Screen:** pinned in the backdrop (no parallax). `screenRect(W, H, insetBottom, { menuBox })` (pure, `layout.ts`) gives a 16:9 rect as large as fits above the HUD, below the marquee, above the horizon, and under any awake menu; at least 320×180 when possible. When awake menus leave no room it returns null and the video fades out until they sleep. `DriveInScreen` positions the `<video>` exactly there, and the stage hands the same eased rect to the canvas, which draws the frame, poles and marquee.
@@ -551,7 +555,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ## §8 Out of scope for this demo (don't build)
 
-FIT export, Garmin/Strava upload (the watch records the ride for now; `SessionRecord.samples` is kept for later), character picker/skins, multiplayer, sound design beyond stubs, art assets, a backend of any kind.
+FIT export, Garmin/Strava upload (the watch records the ride for now; `SessionRecord.samples` is kept for later), multiplayer, sound design beyond stubs, art assets, a backend of any kind.
 
 ---
 

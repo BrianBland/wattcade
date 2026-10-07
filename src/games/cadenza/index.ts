@@ -1,8 +1,10 @@
 import type { GameModule } from '../../contracts';
+import { achievements } from './achievements';
 import { createCadenzaSim, type CadenzaOpts } from './sim/sim';
 import { drawCard, mediaPreview, progressLine } from './card';
 
 export const module: GameModule = {
+  achievements,
   id: 'cadenza',
   title: 'Cadenza',
   blurb: 'Ride your music. Builds climb, drops dive into sprints; steer through the beat and keep your shield up with your legs.',

@@ -56,7 +56,7 @@ const BEAM_VS = /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Positio
 const BEAM_FS = /* glsl */ `
 uniform vec3 uCol; varying vec2 vUv;
 void main() {
-  float a = (1.0 - vUv.y) * 0.9 * (0.4 + 0.8 * uBands.y) * pow(sin(vUv.x * 3.14159), 2.0);
+  float a = (1.0 - vUv.y) * 0.9 * (0.4 + 0.8 * uBands.y) * pow(max(0.0, sin(vUv.x * 3.14159)), 2.0);
   gl_FragColor = vec4(uCol * a * 0.35, 1.0);
 }`;
 

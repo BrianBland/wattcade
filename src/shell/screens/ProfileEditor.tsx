@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Profile } from '../../contracts';
-import { Avatar, Btn } from '../components/Bits';
+import { Btn } from '../components/Bits';
+import { RiderAvatar } from '../components/RiderAvatar';
 import { Choice, Field, KeyHints, Stepper, Toggle } from '../components/ui';
 import { exportBackup, importBackup } from '../services';
 import { COLORS, EDITOR_FIELDS, activateField, adjustField, type FieldDef } from '../editorFields';
@@ -65,7 +66,7 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
   return (
     <div class="screen">
       <div class="screen-head">
-        <Avatar color={p.color} big />
+        <RiderAvatar profile={p} size="big" />
         <div><h1>{isNew ? 'New rider' : p.name || 'Rider'}</h1><div class="sub">{isNew ? 'Set up a profile' : 'Edit profile'}</div></div>
       </div>
       <div class="panel editor" ref={listRef}>

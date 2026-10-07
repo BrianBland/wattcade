@@ -255,6 +255,15 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
   - Game achievements only count rides of that game. Rules read `record.events` and `gameSummary`, so games only need to emit events and summary keys; `progression/scenarios.test.ts` runs real headless rides to keep those names honest.
 - Tests use fake-indexeddb.
 
+### §5.4b Cosmetics · `src/cosmetics/`
+
+- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
+- **Unlocks are derived, never stored:** defaults + level rewards up to `profile.level` + one item per earned achievement + picks. So catalogue changes apply to existing riders. Stored: `profile.cosmetics.loadout` (equipped id per slot; a missing or locked id falls back to the default) and `profile.cosmetics.picks` (level → chosen id).
+- **Level track:** levels 2–50 each give one item. Every 5th level is a **pick**: choose one of three, and the other two come back in a later pick (after level 50, the passed-over items are offered three at a time every 5 levels). There's no shop or currency.
+- **Every achievement grants exactly one item** (tested).
+- **Drawing** (`draw/`, Canvas 2D, pure): `drawRider(g, look, crankRevs, wheelM, { t, speed, gear, trailer })` draws a side-on rider ~24 px tall at ground (0,0). Bikes set the hip, hands, crank and leg style (`pedal`, `run`, `dangle`), and the body adapts. The warm-up lobby, the profile picker, the arcade top bar, the profile editor, the Locker, reward picks and the summary all draw the same rider.
+- **Shell:** the **Locker** (tabs per slot; locked tiles are silhouettes that preview in full colour when focused, with the unlock hint), the **reward pick** screen (after a summary when a pick is waiting, or from the Locker), "New gear" on the summary, the next reward on the profile card, and the title under the rider's name.
+
 ### §5.5 Agent E — Shell + debug overlay · owns `src/shell/`, `src/debug/`, `index.html`, `src/main.tsx`, `src/styles/`
 
 - **Style:** an arcade-cabinet look (dark, neon accents, big type readable from the saddle about 1 m from an iPad). Everything navigable by Ride D-pad + A (select) / B (back), keyboard, and touch.
@@ -543,7 +552,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ## §8 Out of scope for this demo (don't build)
 
-FIT export, Garmin/Strava upload (the watch records the ride for now; `SessionRecord.samples` is kept for later), character picker/skins, multiplayer, sound design beyond stubs, art assets, a backend of any kind.
+FIT export, Garmin/Strava upload (the watch records the ride for now; `SessionRecord.samples` is kept for later), multiplayer, sound design beyond stubs, art assets, a backend of any kind.
 
 ---
 

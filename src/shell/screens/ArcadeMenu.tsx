@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, Profile } from '../../contracts';
-import { Avatar, Btn, Dot, XpBar } from '../components/Bits';
+import { Btn, Dot, XpBar } from '../components/Bits';
+import { RiderAvatar } from '../components/RiderAvatar';
 import { KeyHints } from '../components/ui';
-import { achievementViews, gameRides, getDeviceStatus, levelView, lobbyHills, missingRequirement, setLobbyHills, subscribeDevices } from '../services';
+import { achievementViews, gameRides, getDeviceStatus, levelView, lobbyHills, missingRequirement, pendingPicks, setLobbyHills, subscribeDevices } from '../services';
 import { toast } from '../components/Toasts';
 import { play } from '../../audio/sfx';
 import { timeAgo } from '../format';
@@ -111,7 +112,7 @@ function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
   );
 }
 
-export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements') => void; onBack: () => void }) {
+export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements' | 'locker') => void; onBack: () => void }) {
   const list = useMemo(() => orderGames(games, profile), [games, profile.lastPlayed]);
   const n = list.length;
   const onPlay = (g: GameModule) => { const why = missingRequirement(g); if (why) { toast(`⚠ ${why}`); play('deny'); } else launch(g); };
@@ -126,7 +127,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
   const [sel, setSel] = useState(0); // most recently played
   const selRef = useRef(sel); selRef.current = sel;
   // Top bar, then one more row: the carousel (left/right roll it) or, while the Drive-In is on, its toggle alone.
-  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), onBack, ...(driveIn ? [] : [toggleDriveIn])];
+  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), () => onNav('locker'), onBack, ...(driveIn ? [] : [toggleDriveIn])];
   const B = bar.length;
   const [idx, setIdx] = useMenuNav(B + 1, [B, 1], (i) => (i < B ? bar[i]() : driveIn ? toggleDriveIn() : onPlay(list[selRef.current])), onBack, true, {
     initial: B,
@@ -142,14 +143,15 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
   return (
     <div class="screen menu">
       <div class="panel topbar">
-        <Avatar color={profile.color} />
+        <RiderAvatar profile={profile} size="small" road={false} />
         <div class="who"><b>{profile.name}</b><XpBar lv={levelView(profile.xp)} compact /></div>
         <span class="spacer" />
         <Btn small focused={idx === 0} onClick={toggleHills}>{hills ? '⛰ Road: Hills' : '▬ Road: Flat'}</Btn>
         <Btn small focused={idx === 1} onClick={bar[1]}><Dot on={st.trainer.connected} busy={st.trainer.busy} /><Dot on={st.controller.connected} busy={st.controller.busy} /><Dot on={st.hr.connected} busy={st.hr.busy} />Devices</Btn>
         <Btn small focused={idx === 2} onClick={bar[2]}>★ {ach.filter((a) => a.unlocked).length}/{ach.length}</Btn>
-        <Btn small focused={idx === 3} onClick={onBack}>Switch rider</Btn>
-        {!driveIn && <Btn small focused={idx === 4} onClick={toggleDriveIn} class="projector">📽</Btn>}
+        <Btn small focused={idx === 3} onClick={bar[3]}>{pendingPicks(profile).length ? '🎁 Locker' : '🎒 Locker'}</Btn>
+        <Btn small focused={idx === 4} onClick={onBack}>Switch rider</Btn>
+        {!driveIn && <Btn small focused={idx === 5} onClick={toggleDriveIn} class="projector">📽</Btn>}
       </div>
       {driveIn
         ? <div class="di-toggle-row"><Btn focused={idx === B} onClick={toggleDriveIn} class="projector on">📽 Drive-In · show games</Btn></div>

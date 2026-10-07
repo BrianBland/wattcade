@@ -7,6 +7,10 @@ export type DeviceStatusMap = Record<DeviceKind, DeviceUiStatus>;
 
 export interface AwardView {
   xpGained: number; levelBefore: number; levelAfter: number; newAchievements: Array<{ id: string; name: string }>;
+  /** Cosmetics unlocked by this ride (level rewards and achievement items). */
+  newItems: Array<{ slot: string; id: string; name: string }>;
+  /** Reward picks waiting after this ride. */
+  picks: number;
 }
 export interface AchievementView {
   id: string; name: string; desc: string; unlocked: boolean; secret: boolean;
@@ -31,7 +35,7 @@ export interface SessionLike {
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }
-  | { name: 'menu' } | { name: 'achievements' }
+  | { name: 'menu' } | { name: 'achievements' } | { name: 'locker' } | { name: 'pick' }
   | { name: 'media'; game: GameModule }
   | { name: 'game'; game: GameModule; run?: number; media?: MediaRun }
   | { name: 'summary'; record: SessionRecord; award: AwardView };

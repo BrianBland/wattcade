@@ -1,10 +1,18 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { Profile } from '../../contracts';
-import { Avatar, Btn } from '../components/Bits';
+import { Btn } from '../components/Bits';
+import { RiderAvatar } from '../components/RiderAvatar';
+import { nextReward, titleOf } from '../../cosmetics/unlocks';
 import { KeyHints } from '../components/ui';
 import { levelView } from '../services';
 import { timeAgo } from '../format';
 import { useMenuNav } from '../useMenuNav';
+
+/** "Lv 12: Penny-farthing" under the XP bar. */
+function NextUp({ p }: { p: Profile }) {
+  const n = nextReward(p);
+  return n ? <div class="dim small">Lv {n.level}: {n.pick ? 'pick a reward' : n.items.map((i) => i.name).join(', ')}</div> : null;
+}
 
 const lastRide = (p: Profile) => Math.max(0, ...Object.values(p.lastPlayed));
 
@@ -28,10 +36,12 @@ export function ProfilePicker({ profiles, lastId, onPick, onNew, onEdit }: { pro
           const lv = levelView(p.xp);
           return (
             <div class={`card rider-card${idx === i ? ' focused' : ''}`} onClick={() => { setIdx(i); onPick(p); }}>
-              <Avatar color={p.color} big />
+              <RiderAvatar profile={p} size="big" still={idx !== i} />
               <h3>{p.name}</h3>
+              {titleOf(p) && <div class="rider-title">{titleOf(p)}</div>}
               <div class="dim">Lv {lv.level} · FTP {p.ftp} W</div>
               <div class="bar"><i style={{ width: `${lv.progress * 100}%` }} /></div>
+              <NextUp p={p} />
               <div class="dim small">{lastRide(p) ? `Last ride ${timeAgo(lastRide(p)).toLowerCase()}` : 'No rides yet'}</div>
               <Btn small onClick={() => onEdit(p)}>Edit</Btn>
             </div>

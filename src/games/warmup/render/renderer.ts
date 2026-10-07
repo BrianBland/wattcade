@@ -2,7 +2,9 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import type { WarmupSnapshot } from '../sim/sim';
 import { BIOME_NAMES, biomeAt, biomeOfSeg, biomeWeights, hash01, makeTerrain, type Terrain } from '../sim/terrain';
 import { LOOKS, noise1, type BiomeLook, type G } from './biomes';
-import { drawRider, LENS } from './rider';
+import { drawRider, lensFor } from '../../../cosmetics/draw/rider';
+import { riderLook } from '../../../cosmetics/unlocks';
+import type { RiderLook } from '../../../cosmetics/types';
 import { daylight } from './daylight';
 import { blendColors, layerAlphas, mixColor } from './blend';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
@@ -38,6 +40,7 @@ export class WarmupRenderer implements GameRenderer {
   private dpr = 1; private px = 3; private LW = 300; private LH = 200;
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private color = '#00f0ff';
+  private look: RiderLook | null = null;
   private terrain: { key: string; t: Terrain } | null = null;
   private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
   private weeds: Weed[] = []; private nextWeedAt = 0; private weedRng: (() => number) | null = null;
@@ -50,6 +53,7 @@ export class WarmupRenderer implements GameRenderer {
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
     this.color = ctx.profile.color;
+    this.look = riderLook({ ...ctx.profile, level: ctx.profile.level ?? 1, achievements: ctx.profile.achievements ?? [] }); // the guest lobby passes a bare { color }
     if (ctx.insets) this.insets = ctx.insets;
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#4fa3e8';
@@ -219,19 +223,20 @@ export class WarmupRenderer implements GameRenderer {
 
     // ---- rider (towing the projector in the Drive-In) ----
     const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)
-    const gear = dom.rider;
+    const gear = dom.rider, look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const bob = s.v > 1 ? (s.biome === 'moon' && di < 0.5 ? -Math.abs(Math.sin(t * 2.2)) * 2 : gear === 'scuba' ? Math.sin(t * 1.4) * 1 : 0) : 0;
     if (screenBuf && di > 0.5) { // light beam from the trailer's lens (rotated with the road under the rider)
       const c = Math.cos(-Math.atan(slope)), sn = Math.sin(-Math.atan(slope));
       g.globalAlpha = Math.min(1, (di - 0.5) * 2);
-      drawProjectorBeam(g, RX + LENS[0] * c - LENS[1] * sn, roadY0 + bob + LENS[0] * sn + LENS[1] * c, screenBuf, t);
+      const lens = lensFor(look.bike);
+      drawProjectorBeam(g, RX + lens[0] * c - lens[1] * sn, roadY0 + bob + lens[0] * sn + lens[1] * c, screenBuf, t);
       g.globalAlpha = 1;
     }
     g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
     if (lights > 0.3) { // headlight
       g.fillStyle = `rgba(255,244,200,${0.18 * lights})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
     }
-    drawRider(g, { jersey: this.color, helmet: gear, trailer: di > 0.5 }, bike.crankRevs, s.d, t);
+    drawRider(g, look, bike.crankRevs, s.d, { t, speed: s.v, gear: gear === 'road' ? null : gear, trailer: di > 0.5 });
     g.restore();
     weedAtLane('near');
 

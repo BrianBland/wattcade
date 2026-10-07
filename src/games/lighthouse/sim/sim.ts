@@ -497,8 +497,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   function updateWhale(dt: Seconds) {
     whaleIn -= dt;
     if (whaleIn > 0 || phase !== 'calm' || streakS < streakStepS() || chop > 0.4) return;
-    whaleIn = whaleEvery() * (1 + ctx.rng() * 0.5);
-    whale = { at: t, x: 30 + ctx.rng() * 16, z: -48 + ctx.rng() * 12 }; // open sea beyond the island, in view of the default camera
+    // cosmetic stream, like weather: whales must not shift storm or ship timing
+    whaleIn = whaleEvery() * (1 + wrng() * 0.5);
+    whale = { at: t, x: 30 + wrng() * 16, z: -48 + wrng() * 12 }; // open sea beyond the island, in view of the default camera
     stat.whales++;
     meadow = Math.min(1, meadow + 0.005);
     ctx.emit({ type: 'whaleSighted' });
@@ -587,8 +588,8 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     if (shipsSinceVisitor < 3 || ships.some((x) => x.state === 'sailing' && x.kind in VISITORS)) return null;
     const fresh = VISITOR_KINDS.filter((k) => !gifts.includes(VISITORS[k].gift) && built() >= VISITORS[k].needBuildings && totals.shipsDockedTotal >= VISITORS[k].needShips);
     const pool = fresh.length ? fresh : gifts.length === VISITOR_KINDS.length ? VISITOR_KINDS : [];
-    if (!pool.length || ctx.rng() >= (fresh.length ? visitorChance() : visitorChance() * 0.25)) return null;
-    return pool[Math.floor(ctx.rng() * pool.length) % pool.length];
+    if (!pool.length || wrng() >= (fresh.length ? visitorChance() : visitorChance() * 0.25)) return null;
+    return pool[Math.floor(wrng() * pool.length) % pool.length];
   }
   function spawnShip() {
     const y = yard();

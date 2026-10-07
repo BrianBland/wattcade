@@ -66,7 +66,7 @@ export function riderLook(p: P): RiderLook {
   const look = j?.slot === 'jersey' ? j.look : { pattern: 'plain' as const, base: 'rider', ink: '#ffffff' };
   const sub = (c: string) => (c === 'rider' ? color : c);
   return {
-    bike: l.bike, hat: l.hat, color,
+    bike: l.bike, hat: l.hat, pet: l.pet, trail: l.trail, color,
     jersey: { pattern: look.pattern, base: sub(look.base), ink: sub(look.ink) },
     paint: pt?.slot === 'paint' ? pt.look : { frame: '#d8dbe6' },
   };
@@ -111,6 +111,8 @@ export function withItem(look: RiderLook, it: Item): RiderLook {
     case 'hat': return { ...look, hat: it.id };
     case 'jersey': return { ...look, jersey: { pattern: it.look.pattern, base: sub(it.look.base), ink: sub(it.look.ink) } };
     case 'paint': return { ...look, paint: it.look };
+    case 'pet': return { ...look, pet: it.id };
+    case 'trail': return { ...look, trail: it.id };
     default: return look;
   }
 }

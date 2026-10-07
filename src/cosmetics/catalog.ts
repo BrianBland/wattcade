@@ -17,6 +17,8 @@ const P = (pick: number): Source => ({ pick });
 const bike = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'bike', id, name, source, flavor });
 const hat = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'hat', id, name, source, flavor });
 const title = (id: string, name: string, source: Source): Item => ({ slot: 'title', id, name, source });
+const pet = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'pet', id, name, source, flavor });
+const trail = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'trail', id, name, source, flavor });
 const jersey = (id: string, name: string, source: Source, pattern: JerseyPattern, base = 'rider', ink = '#ffffff', flavor?: string): Item =>
   ({ slot: 'jersey', id, name, source, look: { pattern, base, ink } as JerseyLook, flavor });
 const paint = (id: string, name: string, source: Source, frame: string, kind: PaintLook['kind'] = 'solid', frame2?: string): Item =>
@@ -158,31 +160,62 @@ export const ITEMS: Item[] = [
   paint('synthwave', 'Synthwave', A('cz_chain'), '#ff2e93', 'fade', '#00e5ff'),
   paint('lava', 'Lava', A('ws_act_of_nature'), '#ff3b1a', 'fade', '#ffd23b'),
 
+  // ---------- pets (run ahead or fly alongside; they follow your effort) ----------
+  pet('none', 'No pet', D),
+  pet('corgi', 'Corgi', L(7), 'Short legs, maximum effort.'),
+  pet('cat', 'Cat', A('triple_threat'), 'Keeps up when it feels like it.'),
+  pet('pig', 'Piglet', A('welcome_back')),
+  pet('chicken', 'Chicken', A('weekend_warrior'), 'Why did it cross the road? To ride with you.'),
+  pet('bee', 'Bumblebee', A('hummingbird')),
+  pet('parrot', 'Parrot', A('hours_50')),
+  pet('bat', 'Bat', A('dg_floor5')),
+  pet('dragon', 'Baby Dragon', A('dg_elites'), 'Sneezes sparks when you sprint.'),
+  pet('ghost', 'Ghost', A('dg_kills')),
+  pet('gull', 'Seagull', A('lh_districts'), 'Mostly here for your chips.'),
+  pet('robodog', 'Robo-Dog', A('td_wave10')),
+  pet('drone', 'Drone', A('sf_boss')),
+  pet('miniufo', 'Mini UFO', A('sf_flawless')),
+  pet('hamsterball', 'Gerald (in a ball)', A('hm_era3'), 'Gerald himself. Rolls faster the harder you push.'),
+  pet('trex', 'Tiny T-Rex', A('ws_canyon'), 'Survived the meteor. Tiny arms, huge heart.'),
+  pet('penguin', 'Penguin', A('ws_clean_run')),
+
+  // ---------- trails (behind the rear wheel; stronger the faster you go) ----------
+  trail('none', 'No trail', D),
+  trail('sparks', 'Sparks', L(16)),
+  trail('rainbow', 'Rainbow', A('balanced_week')),
+  trail('confetti', 'Confetti', A('sessions_200')),
+  trail('stars', 'Stardust', A('td_wave50')),
+  trail('flames', 'Flames', A('td_spotless'), 'Only really roars at a sprint.'),
+  trail('lightning', 'Lightning', A('lh_storm_season')),
+  trail('gold', 'Gold Dust', A('hm_golden')),
+  trail('leaves', 'Falling Leaves', A('wu_scenic')),
+  trail('notes', 'Music Notes', A('cz_full_set')),
+  trail('pixels', 'Pixels', A('cz_clean')),
+  trail('bubbles', 'Bubbles', A('ws_delta')),
+
   // ---------- titles ----------
   title('none', 'No title', D),
-  title('t_rookie', 'Rookie', L(7)), title('t_pusher', 'Pedal Pusher', L(16)), title('t_captain', 'Road Captain', L(27)),
-  title('t_legend', 'Legend of the Lanes', L(38)), title('t_wizard', 'Watt Wizard', L(47)),
-  title('t_triple', 'Triple Threat', A('triple_threat')), title('t_rounded', 'Well Rounded', A('balanced_week')),
-  title('t_weekend', 'Weekend Warrior', A('weekend_warrior')), title('t_comeback', 'The Comeback Kid', A('welcome_back')),
-  title('t_sore', 'Saddle Sore', A('hours_10')), title('t_iron', 'Iron Bottom', A('hours_50')), title('t_lifer', 'Lifer', A('sessions_200')),
-  title('t_hauler', 'Long Hauler', A('km_1000')), title('t_everest', 'Everester', A('climb_8848')), title('t_halfhour', 'Half Hour Hero', A('ride_30')),
-  title('t_steady', 'Steady Eddie', A('steady_eddie')), title('t_hummingbird', 'Hummingbird', A('hummingbird')),
-  title('t_delver', 'Delver', A('dg_floor5')), title('t_elite', 'Elite Hunter', A('dg_elites')), title('t_masher', 'Monster Masher', A('dg_kills')),
-  title('t_weathered', 'Weathered', A('lh_storm_season')), title('t_lamplighter', 'Lamplighter', A('lh_lens')), title('t_mayor', 'Island Mayor', A('lh_districts')),
+  title('t_captain', 'Road Captain', L(27)),
+  title('t_legend', 'Legend of the Lanes', L(38)),
+  title('t_wizard', 'Watt Wizard', L(47)),
+  title('t_sore', 'Saddle Sore', A('hours_10')),
+  title('t_hauler', 'Long Hauler', A('km_1000')),
+  title('t_everest', 'Everester', A('climb_8848')),
+  title('t_halfhour', 'Half Hour Hero', A('ride_30')),
+  title('t_steady', 'Steady Eddie', A('steady_eddie')),
+  title('t_lamplighter', 'Lamplighter', A('lh_lens')),
   title('t_clockwork', 'Clockwork Keeper', A('lh_clockwork')),
-  title('t_line', 'Line Holder', A('td_wave10')), title('t_unbreakable', 'Unbreakable', A('td_wave50')), title('t_spotless', 'Spotless', A('td_spotless')),
   title('t_spin', 'Spin Cycle', A('td_spin')),
-  title('t_firstblood', 'First Blood', A('sf_boss')), title('t_flawless', 'Flawless', A('sf_flawless')),
-  title('t_capitalist', 'Hamster Capitalist', A('hm_era3')), title('t_k1', 'Kardashev I', A('hm_k1')), title('t_golden', 'Golden Touch', A('hm_golden')),
-  title('t_union', 'Union Rep', A('hm_strike')), title('t_reborn', 'Reincarnated', A('hm_reincarnate')),
-  title('t_scenic', 'Scenic Route', A('wu_scenic')),
-  title('t_cleanzone', 'Clean Zone', A('cz_clean')), title('t_headliner', 'Headliner', A('cz_full_set')), title('t_landing', 'Stuck the Landing', A('cz_launch')),
+  title('t_k1', 'Kardashev I', A('hm_k1')),
+  title('t_union', 'Union Rep', A('hm_strike')),
+  title('t_reborn', 'Reincarnated', A('hm_reincarnate')),
+  title('t_landing', 'Stuck the Landing', A('cz_launch')),
   title('t_sharp', 'Sharpshooter', A('cz_sharp')),
-  title('t_canyon', 'Canyon Carver', A('ws_canyon')), title('t_delta', 'Delta Builder', A('ws_delta')), title('t_fish', 'Fish Whisperer', A('ws_clean_run')),
-  title('t_maestro', 'Cadence Maestro', A('ws_maestro')), title('t_bread', 'Breadbasket', A('ws_breadbasket')),
+  title('t_maestro', 'Cadence Maestro', A('ws_maestro')),
+  title('t_bread', 'Breadbasket', A('ws_breadbasket')),
 ];
 
 const BY_ID = new Map(ITEMS.map((i) => [`${i.slot}:${i.id}`, i]));
 export const item = (slot: Slot, id: string): Item | undefined => BY_ID.get(`${slot}:${id}`);
-export const DEFAULTS: Record<Slot, string> = { bike: 'road', hat: 'road', jersey: 'plain', paint: 'silver', title: 'none' };
+export const DEFAULTS: Record<Slot, string> = { bike: 'road', hat: 'road', jersey: 'plain', paint: 'silver', pet: 'none', trail: 'none', title: 'none' };
 export const itemsIn = (slot: Slot): Item[] => ITEMS.filter((i) => i.slot === slot);

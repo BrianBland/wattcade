@@ -15,7 +15,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
   import the registry (achievements.ts does; games import kit).
 
 ## Conventions games must follow
-- Achievement ids never change (Cadenza keeps `wsurf_*`). Achievements read summary keys/events: rename one → update `achievements.ts`;
+- Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.
 - Old profiles: `gameData._progression.stormsWeathered` seeds `counters['lighthouse.storms']`.
 

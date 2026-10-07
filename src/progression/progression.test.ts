@@ -84,7 +84,7 @@ describe('awardSession', () => {
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
     const kept = ['first_ride', 'triple_threat', 'balanced_week', 'keeper_20', 'storm_chaser', 'sprinter_10', 'triple_rail', 'dungeon_clear',
       'ws_cycle', 'ws_cloud', 'ws_canyon', 'ws_delta', 'ws_salmon', 'ws_clean_run', 'ws_maestro', 'ws_miller', 'ws_dry_feet', 'ws_dam_buster',
-      'ws_breadbasket', 'ws_meteor', 'ws_act_of_nature', 'wsurf_first', 'wsurf_clean', 'wsurf_overdrive', 'wsurf_full_set', 'kilojoule_1000'];
+      'ws_breadbasket', 'ws_meteor', 'ws_act_of_nature', 'cz_first', 'cz_clean', 'cz_overdrive', 'cz_full_set', 'kilojoule_1000'];
     for (const id of kept) expect(ACHIEVEMENTS.map((a) => a.id)).toContain(id);
   });
 });

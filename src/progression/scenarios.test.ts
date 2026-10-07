@@ -46,6 +46,6 @@ describe('headless rides unlock game achievements', () => {
     expect(await unlocked('warmup', 'z2 rolls along')).toContain('wu_tourist');
   });
   it('cadenza', async () => {
-    expect(await unlocked('cadenza', 'autopilot rides an automixed EDM set')).toEqual(expect.arrayContaining(['wsurf_first', 'wsurf_overdrive', 'cz_chain', 'cz_sharp']));
+    expect(await unlocked('cadenza', 'autopilot rides an automixed EDM set')).toEqual(expect.arrayContaining(['cz_first', 'cz_overdrive', 'cz_chain', 'cz_sharp']));
   });
 }, 120_000);

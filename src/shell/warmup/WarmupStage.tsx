@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameRenderer, Insets, Profile, SessionRecord } from '../../contracts';
 import type { SessionLike } from '../types';
 import { lobbyGame } from '../../games/registry';
+import { riderLook } from '../../cosmetics/unlocks';
 import {
   checkpointLobby, getDeviceStatus, getFake, input, lobbyActiveSeconds, lobbyIsReal, lobbySession, startLobby, stopLobby,
   subscribeDevices, takeLobbyPresses, WARMUP_CREDIT_S,
@@ -52,7 +53,8 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     };
   }, [profile?.id, devKey, restartKey, autoSaves]);
 
-  // renderer (remounted per rider so the jersey colour follows the profile)
+  // renderer (remounted per rider, and when their look changes in the Locker)
+  const lookKey = profile ? JSON.stringify(riderLook(profile)) : '';
   useEffect(() => {
     let disposed = false;
     void lobbyGame.loadRenderer().then((r) => {
@@ -61,7 +63,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
       renderer.current = r;
     });
     return () => { disposed = true; renderer.current?.unmount(); renderer.current = null; };
-  }, [profile?.id]);
+  }, [profile?.id, lookKey]);
   useEffect(() => { renderer.current?.setInsets?.(readInsets()); }, [hud]);
 
   // frame loop, input, wake lock (once)

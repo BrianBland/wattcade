@@ -29,6 +29,11 @@ export interface Profile {
   counters?: Record<string, number>;
   /** Local calendar days ridden (days since 1970-01-01 in local time), sorted, recent ones only (progression-owned). */
   rideDays?: number[];
+  /**
+   * Cosmetics (see src/cosmetics): `loadout` = equipped item id per slot (missing = the slot's default);
+   * `picks` = level → the item chosen at that level's reward pick. Everything else unlocked is derived from level + achievements.
+   */
+  cosmetics?: { loadout?: Record<string, string>; picks?: Record<string, string> };
 }
 
 /**

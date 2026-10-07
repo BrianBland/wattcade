@@ -45,4 +45,6 @@ export const scenarios: Array<{
 
 **Progression (Agent D, `src/progression/index.ts` exports):** `ProfileStore`, `SessionStore`, `awardSession`, `defaultProfile(name?)`, `defaultSettings()`, `levelForXp(xp)`, `xpForLevel(L)`, `ACHIEVEMENTS`.
 
+**Cosmetics (`src/cosmetics/`):** `catalog.ts` (`ITEMS`, every item and its source), `unlocks.ts` (pure: `riderLook(profile)`, `isUnlocked`, `equip`, `choosePick`, `pendingPicks`, `newUnlocks`, `nextReward`), `draw/rider.ts` `drawRider(g, look, crankRevs, wheelM, opts)`. Renderers may draw the rider; sims never import cosmetics.
+
 **Devices (Agent A/B):** `src/devices/ftms/index.ts` → `FtmsTrainer` (static `connect()`), codecs; `src/devices/hr/index.ts` → `HeartRateMonitor` (static `connect()`); `src/devices/zwiftRide/index.ts` → `ZwiftRideController` (static `connect()`), `parseRideMessage`. Each `connect()` must be called from a user gesture. Each device also exposes `stats(): { packets: number; lastPacketAt: number }` for packets/s in the overlay.

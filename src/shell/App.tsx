@@ -10,6 +10,8 @@ import { GameHost } from './screens/GameHost';
 import { ProfileEditor } from './screens/ProfileEditor';
 import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
+import { Locker } from './screens/Locker';
+import { RewardPick } from './screens/RewardPick';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
 import { MediaPicker } from './media/MediaPicker';
@@ -27,8 +29,8 @@ import type { MediaRun, Screen, SessionLike } from './types';
 
 /** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
 export const SLEEP_S = 25;
-const SLEEPY: ReadonlyArray<Screen['name']> = ['profiles', 'menu', 'achievements', 'summary'];
-const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary', 'media'];
+const SLEEPY: ReadonlyArray<Screen['name']> = ['profiles', 'menu', 'achievements', 'summary', 'locker'];
+const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary', 'media', 'locker', 'pick'];
 /** Buttons that count as using the menu (shifters are for riding, so they never wake it). */
 const NAV = new Set<Button>(['up', 'down', 'left', 'right', 'a', 'b', 'y', 'z']);
 
@@ -90,6 +92,8 @@ export function App() {
   }, [screen.name]);
 
   const go = (s: Screen) => setScreen(s);
+  /** A profile change from a screen (Locker equips, reward picks): already saved; refresh state + the picker list. */
+  const updateProfile = (p: Profile) => { setProfile(p); void refresh(); };
   const edit = async (p: Profile | null) => {
     setDraft(p ?? await createProfile('')); go({ name: 'editor', profileId: p?.id ?? null });
   };
@@ -131,12 +135,14 @@ export function App() {
     case 'connect': body = <Connect onDone={() => go({ name: 'menu' })} />; break;
     case 'menu': body = profile && <ArcadeMenu games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
+    case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={() => go({ name: 'menu' })} />; break;
+    case 'pick': body = profile && <RewardPick profile={profile} onProfile={updateProfile} onDone={() => go({ name: 'locker' })} />; break;
     case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
         onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
-    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} onDone={() => go({ name: 'menu' })} />; break;
+    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
   }
   const inGame = screen.name === 'game';
   const driveInRider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;

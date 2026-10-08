@@ -48,13 +48,24 @@ interface Callbacks {
   ready(): void;
   state(playing: boolean, muted: boolean): void;
   sound(sound: boolean): void;
-  error(): void;
+  error(reason: string, code?: number): void;
+}
+
+export function youtubeErrorReason(code: number): string {
+  switch (code) {
+    case 2: return 'Invalid video link';
+    case 5: return 'YouTube playback failed';
+    case 100: return 'Video is unavailable or private';
+    case 101: case 150: return 'This video cannot play in an embedded player';
+    case 153: return 'YouTube could not identify this player';
+    default: return 'YouTube player failed';
+  }
 }
 
 /** Muted start; a gesture unmutes. Destroy also cancels a pending API load and removes the iframe. */
 export function mountYouTube(host: HTMLElement, videoId: string, title: string, callbacks: Callbacks) {
   let player: YouTubePlayer | undefined, gone = false, failed = false, ready = false, retries = 0;
-  let poll = 0, retry = 0, observedMuted = true;
+  let poll = 0, retry = 0, timeout = 0, observedMuted = true;
   const frame = document.createElement('iframe');
   frame.src = embedUrl(videoId, window.location.origin);
   frame.title = `${title} · YouTube player`;
@@ -62,12 +73,11 @@ export function mountYouTube(host: HTMLElement, videoId: string, title: string, 
   frame.allowFullscreen = true;
   frame.referrerPolicy = 'strict-origin-when-cross-origin';
   host.appendChild(frame);
-  const fail = () => {
+  const fail = (reason: string, code?: number) => {
     if (gone || failed) return;
     failed = true; clearTimeout(timeout); clearTimeout(retry); clearInterval(poll);
-    callbacks.error();
+    callbacks.error(reason, code);
   };
-  const timeout = window.setTimeout(() => { if (!ready) fail(); }, 20000);
   const observe = () => {
     if (gone || failed || !ready || !player) return;
     const muted = player.isMuted() || player.getVolume() === 0;
@@ -76,6 +86,8 @@ export function mountYouTube(host: HTMLElement, videoId: string, title: string, 
   };
   void loadYouTubeAPI().then((api) => {
     if (gone || failed) return;
+    // The API download has its own timeout; don't subtract it from the iframe's readiness budget.
+    timeout = window.setTimeout(() => { if (!ready) fail('YouTube player took too long to load'); }, 20000);
     player = new api.Player(frame, { events: {
       onReady: ({ target }) => {
         if (gone || failed) return;
@@ -96,10 +108,10 @@ export function mountYouTube(host: HTMLElement, videoId: string, title: string, 
         clearTimeout(retry);
         // Only retry transient HTML5 playback failures; removed/private/unembeddable videos are skipped.
         if (data === 5 && ++retries < 3) retry = window.setTimeout(() => player?.loadVideoById(videoId), retries * 1200);
-        else fail();
+        else fail(youtubeErrorReason(data), data);
       },
     } });
-  }).catch(fail);
+  }).catch(() => fail('YouTube player could not load'));
   return {
     unmute() {
       if (gone || failed || !ready || !player) return;

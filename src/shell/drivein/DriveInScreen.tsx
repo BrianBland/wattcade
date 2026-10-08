@@ -6,6 +6,7 @@ import { FRESH, onPlayEvent, retryDelayMs, START_TIMEOUT_MS, type PlayEvent, typ
 import { fillStatic } from './staticFx';
 import { flipChannel, getDriveIn, setDriveInSound, skipBadChannel, subscribeDriveIn } from './store';
 import { mountYouTube } from './youtube';
+import { toast } from '../components/Toasts';
 
 /** Called by the warm-up stage every frame (before it renders the canvas) so the DOM video and the canvas frame share one rect. */
 export interface DriveInApi { tick(dt: number, W: number, H: number, insetBottom: number, blend: number): Rect | null }
@@ -122,7 +123,11 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
         duckAmbient('drivein', playing && !silent);
       },
       sound: setDriveInSound,
-      error: () => { setStatus('searching'); skipBadChannel(); },
+      error: (reason, code) => {
+        console.warn('[Drive-In] YouTube channel failed', { channel: ch.id, videoId: ch.videoId, reason, code });
+        toast(`${ch.name}: ${reason}`);
+        setStatus('searching'); skipBadChannel();
+      },
     });
     youtube.current = controller;
     return () => { controller.destroy(); youtube.current = null; duckAmbient('drivein', false); };

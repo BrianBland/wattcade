@@ -12,3 +12,5 @@
 - YouTube height is at least 200px on supported iPad layouts; HLS retains the existing Safari/iPad limitation.
 - Automated checks: Drive-In tests (including mocked YouTube lifecycle), typecheck and build.
 - External playlist contents, distinct feeds and current YouTube embed availability could not be checked: network policy blocks direct access. Validate on iPad/Bluefy before merging.
+- User testing: Live and Puppies work; all six Slop reruns are identical; Lofi Girl and Kittens are skipped. These failures are unresolved pending actual playlist routing and video/embed availability evidence.
+- Follow-up: YouTube readiness gets its full timeout after the API download; skipped streams report a readable reason and log the original error code/video ID.

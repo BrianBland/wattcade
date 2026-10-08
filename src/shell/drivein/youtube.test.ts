@@ -49,7 +49,15 @@ describe('YouTube channel lifecycle', () => {
     options.events.onError({ data: 5 }); vi.advanceTimersByTime(2400);
     expect(cb.error).not.toHaveBeenCalled();
     options.events.onError({ data: 5 }); expect(cb.error).toHaveBeenCalledTimes(1);
+    expect(cb.error).toHaveBeenCalledWith('YouTube playback failed', 5);
     options.events.onError({ data: 150 }); expect(cb.error).toHaveBeenCalledTimes(1);
+    session.destroy();
+  });
+  it('reports the specific embedding error rather than silently skipping', async () => {
+    const cb = callbacks(), session = mountYouTube(document.createElement('div'), 'video', 'Video', cb);
+    await flush(); options.events.onReady({ target: player });
+    options.events.onError({ data: 150 });
+    expect(cb.error).toHaveBeenCalledWith('This video cannot play in an embedded player', 150);
     session.destroy();
   });
   it('includes origin and inline muted playback while retaining native controls and referrer', async () => {

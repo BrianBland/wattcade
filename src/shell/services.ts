@@ -23,7 +23,7 @@ import type { DebugActions, DebugSnapshot, TuningEntry } from '../debug/types';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const any = <T = any>(x: unknown) => x as T;
 
-export const input = new InputHub();
+export const input = new InputHub({ debounceMs: 90 });
 export const dataHub = new DataHub();
 const profileStore: any = new ProfileStore();
 const sessionStore: any = new SessionStore();

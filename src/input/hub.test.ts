@@ -123,3 +123,22 @@ describe('keyboard / gamepad / script', () => {
     new InputHub().beginTick(0.03);
   });
 });
+
+describe('button debounce', () => {
+  it('collapses a chattering release+re-press into one press', () => {
+    let t = 0; const h = new InputHub({ now: () => t, debounceMs: 90 });
+    h.setControllerState(raw(['a'])); h.beginTick(0.03);
+    expect(h.state().pressed.has('a')).toBe(true);
+    t = 20; h.setControllerState(raw([]));
+    t = 40; h.setControllerState(raw(['a']));
+    h.beginTick(0.03);
+    expect(h.state().pressed.has('a')).toBe(false);
+    t = 500; h.setControllerState(raw([])); t = 700; h.setControllerState(raw(['a'])); h.beginTick(0.03);
+    expect(h.state().pressed.has('a')).toBe(true);
+  });
+  it('is off by default', () => {
+    const h = new InputHub();
+    h.setControllerState(raw(['a'])); h.setControllerState(raw([])); h.setControllerState(raw(['a']));
+    h.beginTick(0.03); expect(h.state().pressed.has('a')).toBe(true);
+  });
+});

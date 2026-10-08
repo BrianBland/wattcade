@@ -3,6 +3,7 @@
  * Written against the CLAUDE.md "Integration seams"; guessed signatures are
  * isolated behind `any` adapters here so fixes stay local.
  */
+import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
 import { ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
@@ -53,10 +54,11 @@ export function levelView(xp: number): LevelView {
 export function achievementViews(p: Profile): AchievementView[] {
   return ACHIEVEMENTS.map((a) => {
     const unlocked = p.achievements.includes(a.id), gameId = ACHIEVEMENT_GAME[a.id];
+    const progress = unlocked ? null : achievementProgress(a, p);
     return {
-      id: a.id, name: a.name, desc: a.desc, unlocked, secret: !!a.secret,
+      id: a.id, name: a.name, desc: measurementText(a.desc, unitsFor(p)), unlocked, secret: !!a.secret,
       gameId, group: gameId ? getGame(gameId)?.title ?? gameId : 'Everywhere',
-      progress: unlocked ? null : achievementProgress(a, p),
+      progress: progress ? { ...progress, label: measurementText(progress.label, unitsFor(p)) } : null,
     };
   });
 }

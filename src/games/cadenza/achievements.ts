@@ -6,7 +6,7 @@ const G = 'cadenza';
 // The first four were `wsurf_*` (the game was Wattsurf); core/renames.ts migrates old profiles.
 export const achievements: AchievementDef[] = [
   feat(G, { id: 'cz_first', name: 'First Wave', desc: 'Ride a Cadenza set to the end', bonusXp: 40, check: (r) => hasEvent(r, 'setDone') }),
-  tally(G, 'cleanZones', (r) => num(r, 'cleanZones'))({ id: 'cz_clean', name: 'Clean Zone', desc: 'Clear 100 Cadenza zones without missing a block or touching a grey', bonusXp: 60, goal: 100, unit: ' zones' }),
+  tally(G, 'cleanZones', (r) => num(r, 'cleanZones'))({ id: 'cz_clean', name: 'Clean Zone', desc: 'Clear 100 Cadenza zones without missing a block or touching a gray', bonusXp: 60, goal: 100, unit: ' zones' }),
   feat(G, { id: 'cz_overdrive', name: 'Overdrive', desc: 'Hold every drop of a Cadenza set (at least two)', bonusXp: 60, check: (r) => num(r, 'drops') >= 2 && num(r, 'dropsHeld') === num(r, 'drops') }),
   feat(G, { id: 'cz_full_set', name: 'Full Set', desc: 'Ride a 5-song Cadenza queue to the end', bonusXp: 80, check: (r) => hasEvent(r, 'setDone') && num(r, 'songsDone') >= 5 }),
   feat(G, { id: 'cz_chain', name: 'Unbroken', desc: 'Build a 1,500-block chain in Cadenza', bonusXp: 80, check: (r) => num(r, 'maxChain') >= 1500 }),

@@ -33,15 +33,15 @@ function label(g: CanvasRenderingContext2D, s: string, x: number, y: number, px:
 const ZONE_FTP: Record<number, number> = { 2: 56, 3: 76, 4: 91, 5: 106 };
 const MODE: Record<Weapon, string> = { gatling: 'SIM', flame: 'RES', rail: 'ERG' };
 const TIPS = [
-  'Match colours: blue = Gatling, red = Flamer, purple = Rail.',
+  'Match colors: blue = Gatling, red = Flamer, purple = Rail.',
   'Towers run on your watts: 65% FTP = full speed.',
   'Press ▼ to open the workshop and build towers.',
   'Hold Z to fire every rail charge in a spread.',
   'Sprint for Overdrive: x1.5 damage and tower speed.',
   'Power Surge: ride the asked zone to fire an EMP.',
-  'Gold bosses shift shield colour; swap to match.',
+  'Gold bosses shift shield color; swap to match.',
   'Clear a wave early to repair the base.',
-  'Prisms change colour every 4 s: watch the outline.',
+  'Prisms change color every 4 s: watch the outline.',
   'Spin-up: high cadence in an easy effort overclocks the Gatling.',
   'Parts bank between runs; spend them in the Garage.',
 ];
@@ -303,7 +303,7 @@ export function drawGarage(g: CanvasRenderingContext2D, gv: GarageView, b: Box, 
   // auto-start bar
   bar(g, x, y, w, 6 * u, 1 - gv.autoLeft / gv.autoS, '#7dffb0');
   font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.65)';
-  g.fillText(`Keep pedalling: the run starts in ${Math.max(0, Math.ceil(gv.autoLeft))}s · ▲▼ choose · A buy · B start now`, x, y + 22 * u);
+  g.fillText(`Keep pedaling: the run starts in ${Math.max(0, Math.ceil(gv.autoLeft))}s · ▲▼ choose · A buy · B start now`, x, y + 22 * u);
   y += 34 * u;
   const rh = Math.max(30 * u, Math.min(44 * u, (b.y + b.h - p - y) / gv.rows.length - 4 * u));
   const fit = Math.max(3, Math.floor((b.y + b.h - p - y) / (rh + 4 * u)));

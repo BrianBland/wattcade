@@ -4,7 +4,7 @@ import { Btn } from '../components/Bits';
 import { RiderAvatar } from '../components/RiderAvatar';
 import { Choice, Field, KeyHints, Stepper, Toggle } from '../components/ui';
 import { exportBackup, importBackup } from '../services';
-import { COLORS, EDITOR_FIELDS, activateField, adjustField, type FieldDef } from '../editorFields';
+import { COLORS, editorFields, activateField, adjustField, type FieldDef } from '../editorFields';
 import { useMenuNav } from '../useMenuNav';
 import { onMenuPress } from '../menuInput';
 
@@ -35,15 +35,16 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
     ...(onDelete ? [{ label: armDelete ? 'Really delete?' : 'Delete', run: del }] : []),
     { label: 'Export backup', run: () => void doExport() }, { label: 'Import backup', run: () => fileRef.current?.click() },
   ];
-  const nF = EDITOR_FIELDS.length;
-  const rows = [...EDITOR_FIELDS.map(() => 1), actions.length];
+  const fields = editorFields(p);
+  const nF = fields.length;
+  const rows = [...fields.map(() => 1), actions.length];
   const [idx, setIdx] = useMenuNav(nF + actions.length, rows, (i) => {
     if (i >= nF) { actions[i - nF].run(); return; }
-    const f = EDITOR_FIELDS[i];
+    const f = fields[i];
     if (f.kind === 'text') { nameRef.current?.focus(); return; }
     const next = activateField(f, p); if (next) setP(next);
   }, onCancel, true, {
-    onAdjust: (i, d) => { if (i >= nF) return false; const next = adjustField(EDITOR_FIELDS[i], p, d); if (next) { setP(next); return true; } return false; },
+    onAdjust: (i, d) => { if (i >= nF) return false; const next = adjustField(fields[i], p, d); if (next) { setP(next); return true; } return false; },
   });
   const deleteIdx = onDelete ? nF + 2 : -1;
   useEffect(() => { if (idx !== deleteIdx) setArmDelete(false); }, [idx]);
@@ -71,7 +72,7 @@ export function ProfileEditor({ profile, onSave, onCancel, onDelete }: { profile
       </div>
       <div class="panel editor" ref={listRef}>
         <div class="fields">
-          {EDITOR_FIELDS.map((f, i) => <Field label={f.label} focused={idx === i} hint={'hint' in f ? f.hint : undefined} onClick={() => setIdx(i)}>{control(f, i)}</Field>)}
+          {fields.map((f, i) => <Field label={f.label} focused={idx === i} hint={'hint' in f ? f.hint : undefined} onClick={() => setIdx(i)}>{control(f, i)}</Field>)}
         </div>
         <div class="row actions">
           {actions.map((a, j) => <Btn primary={a.primary} focused={idx === nF + j} onClick={a.run}>{a.label}</Btn>)}

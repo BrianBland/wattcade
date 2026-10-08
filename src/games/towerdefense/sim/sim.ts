@@ -200,7 +200,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     };
     place(e);
     spawned.push(e);
-    if (kind === 'boss') { say(`${k.name} incoming`, `Wave ${wave} boss · ${LANE_NAMES[laneIdx]} lane · shield shifts colour`, '#ffd24a', true); cue('bossStart'); }
+    if (kind === 'boss') { say(`${k.name} incoming`, `Wave ${wave} boss · ${LANE_NAMES[laneIdx]} lane · shield shifts color`, '#ffd24a', true); cue('bossStart'); }
   }
 
   function hit(e: Enemy, base: number, el: Element | null, src: 'player' | 'tower' | 'emp' = 'player') {

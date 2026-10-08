@@ -1,3 +1,5 @@
+import { unitsFor, formatSpeed, formatDistance, formatElevation, formatUpcoming } from '../../../units';
+import type { UnitSystem } from '../../../contracts';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { WarmupSnapshot } from '../sim/sim';
 import { BIOME_NAMES, biomeAt, biomeOfSeg, biomeWeights, hash01, makeTerrain, type Terrain } from '../sim/terrain';
@@ -34,6 +36,7 @@ type Scene = Array<[BiomeLook, number]>;
 
 /** Side-scrolling pixel scenery. Draws a low-res buffer, upscales it crisply, then overlays text at full resolution. */
 export class WarmupRenderer implements GameRenderer {
+  private units: UnitSystem = 'imperial';
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
   private scratch!: HTMLCanvasElement; private sg!: G;   // one layer of one biome, composited with alpha (the cross-dissolve)
@@ -52,6 +55,7 @@ export class WarmupRenderer implements GameRenderer {
   private screen: ScreenRect | null = null;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+    this.units = unitsFor(ctx.profile);
     this.color = ctx.profile.color;
     this.look = riderLook({ ...ctx.profile, level: ctx.profile.level ?? 1, achievements: ctx.profile.achievements ?? [] }); // the guest lobby passes a bare { color }
     if (ctx.insets) this.insets = ctx.insets;
@@ -439,7 +443,7 @@ export class WarmupRenderer implements GameRenderer {
     // grade chip above the rider
     const g = s.grade, up = g > 0.25, down = g < -0.25;
     const label = !s.hillsOn && s.hill < 0.01 ? 'FLAT' : `${up ? '▲' : down ? '▼' : '■'} ${Math.abs(g).toFixed(1)}%`;
-    const kph = `${(s.v * 3.6).toFixed(1)} km/h`;
+    const kph = formatSpeed(s.v * 3.6, this.units);
     const cx = RX * px, cy = (roadY0 - 36) * px;
     m.font = `800 ${Math.round(15 * dpr)}px system-ui, sans-serif`; m.textAlign = 'center';
     const w = Math.max(m.measureText(label).width, m.measureText(kph).width) + 18 * dpr;
@@ -481,9 +485,9 @@ export class WarmupRenderer implements GameRenderer {
     const ix = (back / (back + ahead)) * n;
     m.fillStyle = this.color; m.beginPath(); m.arc(X(ix), Y(terr.elev(s.d) * s.hill) - 3 * dpr, 4 * dpr, 0, Math.PI * 2); m.fill();
     m.font = `700 ${Math.round(11 * dpr)}px system-ui, sans-serif`; m.textAlign = 'left'; m.fillStyle = '#e9e6ff';
-    m.fillText(`${(s.rodeM / 1000).toFixed(2)} km · ▲${Math.round(s.climbM)} m`, x0 + 8 * dpr, y0 + 9 * dpr);
+    m.fillText(`${formatDistance(s.rodeM / 1000, this.units)} · ▲${formatElevation(s.climbM, this.units)}`, x0 + 8 * dpr, y0 + 9 * dpr);
     m.textAlign = 'right'; m.fillStyle = '#bdb8e8';
-    m.fillText(`${BIOME_NAMES[s.nextBiome]} in ${s.toNextM >= 1000 ? `${(s.toNextM / 1000).toFixed(1)} km` : `${Math.round(s.toNextM / 10) * 10} m`}`, x0 + w - 8 * dpr, y0 + 9 * dpr);
+    m.fillText(`${BIOME_NAMES[s.nextBiome]} in ${formatUpcoming(s.toNextM, this.units)}`, x0 + w - 8 * dpr, y0 + 9 * dpr);
   }
 
   private round(m: G, x: number, y: number, w: number, h: number, r: number) {

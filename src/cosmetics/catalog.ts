@@ -33,7 +33,7 @@ export const ITEMS: Item[] = [
   bike('mtb', 'Mountain Bike', L(24), 'Fat tyres and a suspension fork, for the moon’s craters.'),
   bike('chopper', 'Chopper', L(31), 'Ape-hanger bars, banana seat, endless cool.'),
   bike('hobbyhorse', 'Hobby Horse', L(37), 'No pedals. You just run. Neigh.'),
-  bike('tandem', 'Tandem', L(43), 'A ghostly stoker in your colours pedals along behind.'),
+  bike('tandem', 'Tandem', L(43), 'A ghostly stoker in your colors pedals along behind.'),
   bike('cruiser', 'Beach Cruiser', P(5), 'Swept bars, whitewalls, no hurry.'),
   bike('clown', 'Clown Bike', P(10), 'Knees meet ears. Honk honk.'),
   bike('cargo', 'Cargo Bike', P(15), 'A big box up front. Room for a friend.'),
@@ -53,7 +53,7 @@ export const ITEMS: Item[] = [
   bike('wheel', 'Hamster Wheel', A('hm_era8'), 'Gerald’s ultimate gift: ride inside the wheel.'),
 
   // ---------- helmets & hats ----------
-  hat('road', 'Road Helmet', D, 'Safety first, with a stripe in your colour.'),
+  hat('road', 'Road Helmet', D, 'Safety first, with a stripe in your color.'),
   hat('beanie', 'Beanie', L(3)), hat('cowboy', 'Cowboy Hat', L(8)), hat('tophat', 'Top Hat', L(13)),
   hat('pirate', 'Pirate Hat', L(17)), hat('chef', 'Chef’s Hat', L(21)), hat('cone', 'Traffic Cone', L(26)),
   hat('jester', 'Jester', L(29)), hat('antlers', 'Antlers', L(33)), hat('unicorn', 'Unicorn Horn', L(36)),

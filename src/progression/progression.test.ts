@@ -111,6 +111,20 @@ describe('stores', () => {
     expect(await s.getLastProfileId()).toBeUndefined();
     expect(await s.list()).toHaveLength(1);
   });
+  it('keeps units per player through backup and defaults old profiles to imperial', async () => {
+    const s = new ProfileStore('units-store');
+    const a = await s.create('Imperial');
+    const b = await s.create('Metric');
+    await s.update({ ...b, settings: { ...b.settings, units: 'metric' } });
+    const restored = new ProfileStore('units-restored');
+    await restored.importJson(await s.exportJson());
+    expect((await restored.get(a.id))!.settings.units).toBe('imperial');
+    expect((await restored.get(b.id))!.settings.units).toBe('metric');
+    const { units, ...legacy } = a.settings;
+    await restored.importJson(JSON.stringify({ profiles: [{ ...a, settings: legacy }] }));
+    expect((await restored.get(a.id))!.settings.units).toBe('imperial');
+    expect((await restored.get(a.id))!.weightKg).toBe(75);
+  });
   it('session store keeps last 200', async () => {
     const s = new SessionStore('t3');
     for (let i = 0; i < 205; i++) await s.save(rec({ profileId: 'pp', startedAt: i, id: 'id' + i }));

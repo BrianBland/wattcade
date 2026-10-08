@@ -60,7 +60,7 @@ const LANE_CTRL: Array<[P, P, P, P]> = [
   [{ x: 50, y: -3 }, { x: 34, y: 28 }, { x: 66, y: 52 }, { x: BASE_X, y: BASE_Y }],
   [{ x: 103, y: 16 }, { x: 72, y: 18 }, { x: 82, y: 66 }, { x: BASE_X, y: BASE_Y }],
 ];
-export const LANE_NAMES = ['Left', 'Centre', 'Right'];
+export const LANE_NAMES = ['Left', 'Center', 'Right'];
 const SAMPLES = 160;
 function bez(c: [P, P, P, P], t: number): P {
   const u = 1 - t, a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;

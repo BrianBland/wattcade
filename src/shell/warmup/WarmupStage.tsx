@@ -63,7 +63,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
       renderer.current = r;
     });
     return () => { disposed = true; renderer.current?.unmount(); renderer.current = null; };
-  }, [profile?.id, lookKey]);
+  }, [profile?.id, lookKey, profile?.settings.units]);
   useEffect(() => { renderer.current?.setInsets?.(readInsets()); }, [hud]);
 
   // frame loop, input, wake lock (once)

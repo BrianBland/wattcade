@@ -3,6 +3,7 @@ import { RULES_VERSION } from './levels';
 
 export function defaultSettings(): ProfileSettings {
   return {
+    units: 'imperial',
     difficulty: 1.0,
     zoneSource: 'auto',
     aimMode: 'rotate',

@@ -31,6 +31,8 @@ const SHIP_KINDS: Array<{ kind: ShipKind; value: number; w: number }> = [
 ];
 const SHIP_NAMES = ['Marigold', 'Kittiwake', 'Sea Wren', 'Good Hope', 'Bramble', 'Puffin', 'Lantern', 'Saltmarsh', 'Morwenna',
   'Selkie', 'Halcyon', 'Driftwood', 'Tern', 'Bluebell', 'Cormorant', 'Gannet', 'Wayfarer', 'Periwinkle', 'Thistle', 'Osprey'];
+/** Seconds after arrival until the ship is tied up and pays out; keep in step with the approach animation in render/renderer.ts. */
+const DOCK_PAYOUT_S = 5.5, RESCUE_PAYOUT_S = 12;
 const LINGER: Record<Exclude<ShipState, 'sailing'>, number> = { docked: 25, lost: 14, spilled: 12 };
 /** Relative grow speed of the greenery around each building. */
 const GROW_RATE: Record<BuildingType, number> = { garden: 2, orchard: 1.5, cottage: 1, market: 0.8, pier: 0.8, mill: 0.7, shipyard: 0.6, lifeboat: 0.6, bell: 0.6, lamp2: 0.6 };
@@ -615,11 +617,12 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     if (!(fog < dockFog() + tol + lensFog())) return 'fog';
     return 'ok';
   }
-  function dock(s: Ship, share: number) {
+  function berth(s: Ship) {
     s.state = 'docked';
-    const piers = plotsOf('pier');
     const busy = new Set(ships.filter((o) => o !== s && o.state === 'docked').map((o) => o.dock));
-    s.dock = piers.find((i) => !busy.has(i)) ?? -1;
+    s.dock = plotsOf('pier').find((i) => !busy.has(i)) ?? -1;
+  }
+  function dock(s: Ship, share: number) {
     const y = yard();
     const value = (s.kind in VISITORS ? VISITORS[s.kind as VisitorKind].value : SHIP_KINDS.find((k) => k.kind === s.kind)!.value) * (y ? YARD_MULT[y - 1] : 1) * (s.dock >= 0 ? pierBonus(buildings, s.dock) : 1) * streakMult() * share;
     const ct = Math.round((12 + Math.floor(ctx.rng() * 9)) * value), tb = Math.round((2 + Math.floor(ctx.rng() * 3)) * value);
@@ -637,30 +640,39 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     ctx.emit({ type: 'visitorGift', data: { visitor: s.kind, gift: v.gift } });
     persist();
   }
+  const payouts = new Map<number, { at: number; fn: () => void }>();
+  const later = (s: Ship, at: number, fn: () => void) => { payouts.set(s.id, { at, fn }); };
   function arrive(s: Ship) {
     const c = check();
     s.age = 0;
     if (c === 'ok') {
-      const { got, ct, tb } = dock(s, 1);
-      stat.shipsDocked++; totals.shipsDockedTotal++;
-      ctx.emit({ type: 'shipDocked', data: { coin: ct, timber: tb } });
-      toast(`${s.name} docked  +${Math.round(got)} coin  +${tb} timber`, '#ffd84a');
-      cue('horn');
-      checkDistricts();
-      visitorHome(s);
+      // the ship still has to sail in to her berth: pay out when she ties up, not when she reaches the harbour mouth
+      berth(s);
+      later(s, DOCK_PAYOUT_S, () => {
+        const { got, ct, tb } = dock(s, 1);
+        stat.shipsDocked++; totals.shipsDockedTotal++;
+        ctx.emit({ type: 'shipDocked', data: { coin: ct, timber: tb } });
+        toast(`${s.name} docked  +${Math.round(got)} coin  +${tb} timber`, '#ffd84a');
+        cue('horn');
+        checkDistricts();
+        visitorHome(s);
+      });
       return;
     }
     const boat = plotsOf('lifeboat')[0];
     if (boat !== undefined && t >= rescueReady) {
       s.rescued = true;
-      const { got, tb } = dock(s, 0.5);
-      stat.shipsRescued++;
+      berth(s);
       rescueReady = t + rescueEvery();
       rescue = { ship: s.id, at: t, plot: boat };
       ctx.emit({ type: 'shipRescued', data: { reason: c } });
-      toast(`Lifeboat to the rescue! ${s.name} saved  +${Math.round(got)} coin  +${tb} timber`, '#8fd3ff');
-      cue('rescue');
-      visitorHome(s);
+      later(s, RESCUE_PAYOUT_S, () => {
+        const { got, tb } = dock(s, 0.5);
+        stat.shipsRescued++;
+        toast(`Lifeboat to the rescue! ${s.name} saved  +${Math.round(got)} coin  +${tb} timber`, '#8fd3ff');
+        cue('rescue');
+        visitorHome(s);
+      });
       return;
     }
     if (s.kind in VISITORS) toast(`${VISITORS[s.kind as VisitorKind].title[0].toUpperCase()}${VISITORS[s.kind as VisitorKind].title.slice(1)} turned back - they'll try again another day`, '#c9d3dc');
@@ -778,7 +790,11 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
           if (shelter) continue;
           s.progress += dt / sailS();
           if (s.progress >= 1) { s.progress = 1; arrive(s); }
-        } else s.age += dt;
+        } else {
+          s.age += dt;
+          const pay = payouts.get(s.id);
+          if (pay && s.age >= pay.at) { payouts.delete(s.id); pay.fn(); }
+        }
       }
       for (let i = ships.length - 1; i >= 0; i--) { const s = ships[i]; if (s.state !== 'sailing' && s.age > LINGER[s.state]) ships.splice(i, 1); }
 

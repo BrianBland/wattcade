@@ -16,7 +16,7 @@ Behind the menus runs the **Warm-up Ride**, a free ride through rolling countrys
 
 **Arcade picker:** one looping row of games that rolls past a centred, enlarged selection (◀▶, swipe, or tap a side card; it wraps around from the last game to the first). The selection plays a short clip of the real game and shows its tags, blurb, your progress line, time and kJ ridden in it, and when you last played; the others shrink to a title and a still. Games are sorted by what this rider played most recently, then by the order above.
 
-**Drive-In:** the 📽 button in the arcade's top bar turns the lobby into a desert drive-in cinema with a big screen playing always-on video channels (native HLS, so iPad/Safari only) while you keep riding. While it's on, the game row is replaced by a single 📽 toggle to bring the games back; Y/Z flip channels, even with the menus asleep.
+**Drive-In:** the 📽 button in the arcade's top bar turns the lobby into a desert drive-in cinema with a big screen playing Infinite Slop channels (native HLS on iPad/Safari) and YouTube streams (Lofi Girl, Kittens and Puppies) while you keep riding. While it's on, the game row is replaced by a single 📽 toggle to bring the games back; Y/Z flip channels, even with the menus asleep.
 
 **ERG safety:** in ERG mode the trainer holds the watts whatever your cadence, so slowing down means more torque. If cadence drops below 55 rpm, the mixer eases the ERG target to 60 % until you spin back up, then ramps it back in over 8 s (tunable `core.ergRelief*`).
 

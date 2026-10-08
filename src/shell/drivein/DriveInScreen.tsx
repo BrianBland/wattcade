@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { duckAmbient, play } from '../../audio/sfx';
-import { channelById } from './channels';
+import { channelById, freshPlaylistUrl } from './channels';
 import { easeRect, screenRect, type Rect } from './layout';
 import { FRESH, onPlayEvent, retryDelayMs, START_TIMEOUT_MS, type PlayEvent, type PlayState } from './playback';
 import { fillStatic } from './staticFx';
 import { flipChannel, getDriveIn, setDriveInSound, skipBadChannel, subscribeDriveIn } from './store';
+import { mountYouTube } from './youtube';
+import { toast } from '../components/Toasts';
 
 /** Called by the warm-up stage every frame (before it renders the canvas) so the DOM video and the canvas frame share one rect. */
 export interface DriveInApi { tick(dt: number, W: number, H: number, insetBottom: number, blend: number): Rect | null }
@@ -21,7 +23,7 @@ function measureMenu(W: number): Rect | null {
   return bottom > 0 ? { x: 0, y: 0, w: W, h: bottom } : null;
 }
 
-type Status = 'loading' | 'playing' | 'searching';
+type Status = 'loading' | 'ready' | 'playing' | 'searching';
 
 /**
  * The Drive-In screen: a native-HLS <video> over the canvas frame, TV static between channels, a green VCR OSD,
@@ -32,14 +34,16 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
   useEffect(() => subscribeDriveIn(() => force((n) => n + 1)), []);
   const st = getDriveIn(), ch = channelById(st.dial.id);
   const active = st.on && visible;
-  const supported = useRef(supportsHls()).current;
+  const hlsSupported = useRef(supportsHls()).current;
+  const isYouTube = ch.kind === 'youtube', supported = isYouTube || hlsSupported;
 
   const wrap = useRef<HTMLDivElement>(null), bar = useRef<HTMLDivElement>(null), video = useRef<HTMLVideoElement>(null), snow = useRef<HTMLCanvasElement>(null);
+  const youtubeHost = useRef<HTMLDivElement>(null), youtube = useRef<ReturnType<typeof mountYouTube> | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [muted, setMuted] = useState(true);
   const [burst, setBurst] = useState(false);
   const [osd, setOsd] = useState<{ text: string; k: number } | null>(null);
-  const live = useRef({ active, sound: st.sound }); live.current = { active, sound: st.sound };
+  const live = useRef({ active, sound: st.sound, isYouTube }); live.current = { active, sound: st.sound, isYouTube };
 
   // layout: one rect shared with the canvas frame; eased so it glides when the menus wake or sleep
   useEffect(() => {
@@ -50,7 +54,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
         if (!root || !b) return null;
         if (!live.current.active) { root.style.visibility = b.style.visibility = 'hidden'; cur = null; return null; }
         if (n++ % 8 === 0) menu = measureMenu(W);
-        const target = screenRect(W, H, inset, { menuBox: menu });
+        const target = screenRect(W, H, inset, { menuBox: menu, minH: live.current.isYouTube ? 200 : undefined });
         if (target) cur = easeRect(cur, target, dt);
         show += ((target ? 1 : 0) - show) * (1 - Math.exp(-10 * dt));   // fades out while awake menus leave no room
         if (!cur || show < 0.02) { root.style.visibility = b.style.visibility = 'hidden'; return null; }
@@ -80,7 +84,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
   // playback of the current channel
   useEffect(() => {
     const v = video.current;
-    if (!active || !supported || !v) { setStatus('loading'); return; }
+    if (!active || isYouTube || !supported || !v) { setStatus('loading'); return; }
     let pst: PlayState = FRESH, timer = 0, retry = 0, stall = 0, gone = false;
     const feed = (ev: PlayEvent) => {
       const r = onPlayEvent(pst, ev); pst = r.st;
@@ -91,7 +95,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
     function start() {
       if (gone) return;
       clearTimeout(timer); setStatus((s) => (s === 'playing' ? s : 'loading'));
-      v!.src = ch.url; v!.load(); feed('loaded'); tryPlay(); // reloading the same URL fetches a fresh playlist
+      v!.src = freshPlaylistUrl(ch.url); v!.load(); feed('loaded'); tryPlay();
       timer = window.setTimeout(() => feed('timeout'), START_TIMEOUT_MS);
     }
     const onPlaying = () => { clearTimeout(timer); clearTimeout(stall); setStatus('playing'); feed('playing'); };
@@ -109,9 +113,34 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
     };
   }, [active, ch.id, supported]);
 
+  useEffect(() => {
+    if (!active || ch.kind !== 'youtube' || !youtubeHost.current) return;
+    setStatus('loading'); setMuted(true);
+    const controller = mountYouTube(youtubeHost.current, ch.videoId, ch.name, {
+      ready: () => setStatus('ready'),
+      state: (playing, silent) => {
+        setStatus(playing ? 'playing' : 'ready'); setMuted(silent);
+        duckAmbient('drivein', playing && !silent);
+      },
+      sound: setDriveInSound,
+      error: (reason, code) => {
+        console.warn('[Drive-In] YouTube channel failed', { channel: ch.id, videoId: ch.videoId, reason, code });
+        toast(`${ch.name}: ${reason}`);
+        setStatus('searching'); skipBadChannel();
+      },
+    });
+    youtube.current = controller;
+    return () => { controller.destroy(); youtube.current = null; duckAmbient('drivein', false); };
+  }, [active, ch.id]);
+
+  useEffect(() => {
+    if (!st.sound) { youtube.current?.mute(); if (video.current) video.current.muted = true; }
+  }, [st.sound, ch.id]);
+
   // first tap anywhere unmutes if the rider chose sound earlier (iOS needs a gesture); `[` / `]` flip channels
   useEffect(() => {
     const unlock = () => {
+      if (live.current.active && live.current.sound && live.current.isYouTube) { youtube.current?.unmute(); return; }
       const v = video.current;
       if (live.current.active && live.current.sound && v && v.muted) { v.muted = false; void v.play().catch(() => { v.muted = true; }); }
     };
@@ -121,7 +150,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
   }, []);
 
   // static: a burst on every flip, and while the channel is loading or searching
-  const showSnow = active && supported && (burst || status !== 'playing');
+  const showSnow = active && supported && (burst || (!isYouTube && status !== 'playing'));
   useEffect(() => {
     const c = snow.current; if (!c || !showSnow) return;
     const g = c.getContext('2d')!, img = g.createImageData(c.width, c.height);
@@ -131,6 +160,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
   }, [showSnow]);
 
   const unmute = () => {
+    if (isYouTube) { setDriveInSound(true); youtube.current?.unmute(); return; }
     const v = video.current; if (!v) return;
     v.muted = false; setDriveInSound(true);
     void v.play().catch(() => { v.muted = true; });
@@ -139,12 +169,12 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
   return (
     <div class="drivein">
       <div class="di-screen" ref={wrap} style={{ visibility: 'hidden' }}>
-        <video ref={video} playsInline muted autoplay disablePictureInPicture />
+        {isYouTube ? <div class="di-youtube" ref={youtubeHost} /> : <video ref={video} playsInline muted autoplay disablePictureInPicture />}
         {showSnow && <canvas class="di-snow" ref={snow} width={192} height={108} />}
         {!supported && <div class="di-card"><b>CH {pad(ch.number)} · {ch.name}</b><span>This channel needs Safari / iPad</span><small>Flip to another channel, or open Wattcade on the iPad.</small></div>}
         {supported && status === 'searching' && <div class="di-card ghost"><b>Searching…</b><span>CH {pad(ch.number)} · {ch.name}</span></div>}
         {osd && <div class="di-osd" key={osd.k}>{osd.text}</div>}
-        {supported && muted && status === 'playing' && <button type="button" class="di-sound" onClick={unmute}>🔈 Tap for sound</button>}
+        {supported && muted && (status === 'playing' || status === 'ready') && <button type="button" class="di-sound" onClick={unmute}>🔈 Tap for sound</button>}
       </div>
       <div class="di-bar" ref={bar} style={{ visibility: 'hidden' }}>
         <button type="button" aria-label="Previous channel" onClick={() => flipChannel(-1)}>◀</button>

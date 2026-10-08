@@ -336,6 +336,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .drivein { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 .di-screen { position: absolute; left: 0; top: 0; background: #05040d; overflow: hidden; border-radius: 2px; }
 .di-screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.di-youtube, .di-youtube iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.di-youtube iframe { pointer-events: auto; }
 .di-snow { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
 .di-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; color: #e9e6ff; font: 700 clamp(13px, 1.7vw, 22px) system-ui; background: repeating-linear-gradient(90deg, #c0c0c0 0 12.5%, #c0c000 0 25%, #00c0c0 0 37.5%, #00c000 0 50%, #c000c0 0 62.5%, #c00000 0 75%, #0000c0 0 87.5%, #101010 0); }
 .di-card > * { background: #05040dcc; padding: 4px 12px; border-radius: 6px; }

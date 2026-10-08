@@ -9,6 +9,11 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 
 - Award order: lifetime/lastPlayed/`rideDays` (local days, last 120) → `counters` (each `count.key` once) → achievements in list order
   (core, games in `allGames` order, then `overachiever`, which sees the ids earned earlier in the same award).
+- Pacing (sims, autopilot): a 30-min zone 2 ride ≈ 330 XP; level `400·(L−1)^1.5` → L5 ≈ 10 rides, L10 ≈ 30. A first ride
+  unlocks ~1 item and later rides ~1 each. "First time you do X" feats are lifetime tallies; one-ride feats need a long or excellent ride.
+- `rebalance.ts`: `RULES_VERSION` (in `levels.ts`, stored at `gameData._progression.rules`, new profiles start current).
+  `ProfileStore` re-grades older profiles on read: level from XP, changed achievements revoked (minus their bonus XP)
+  unless saved counters still meet the new goal, picks above the new level dropped. Making things harder = bump + list ids.
 - `rideStats.ts` (pure): power→speed model for virtual km / climb (sim-mode grade only), peak averages, variability index,
   local-calendar helpers (`localDay`, `weekday`, `weekOf`, `weekStreak`).
 - `kit.ts`: helpers games use in `src/games/<id>/achievements.ts` (`feat`, `tally`, `num`, `hasEvent`, `countEvents`). It must not

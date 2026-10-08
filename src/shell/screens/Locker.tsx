@@ -66,7 +66,7 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
               const un = isUnlocked(profile, it), on = worn[slot] === it.id, f = idx === gridStart + i;
               return (
                 <div class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
-                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <RiderAvatar look={withItem(base, it)} size="thumb" still road={false} />}
+                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <RiderAvatar look={withItem(base, it)} size="thumb" still road={false} silhouette={!un} />}
                   <div class="item-name">{un ? it.name : '🔒'}</div>
                   {!un && <div class="item-hint">{itemHint(it)}</div>}
                 </div>

@@ -19,10 +19,10 @@ function rec(over: Partial<SessionRecord> = {}, stats: Partial<SessionRecord['st
 describe('levels', () => {
   it('curve', () => {
     expect(xpForLevel(1)).toBe(0);
-    expect(xpForLevel(2)).toBe(100);
-    expect(xpForLevel(3)).toBe(Math.floor(100 * 2 ** 1.6));
-    expect(levelForXp(99)).toBe(1);
-    expect(levelForXp(100)).toBe(2);
+    expect(xpForLevel(2)).toBe(400);
+    expect(xpForLevel(3)).toBe(Math.floor(400 * 2 ** 1.5));
+    expect(levelForXp(399)).toBe(1);
+    expect(levelForXp(400)).toBe(2);
     for (let L = 1; L < 30; L++) expect(levelForXp(xpForLevel(L))).toBe(L);
   });
 });
@@ -35,7 +35,8 @@ describe('awardSession', () => {
     expect(r.baseXp).toBe(125);
     expect(r.xpGained).toBe(150);
     expect(r.profile.xp).toBe(150);
-    expect(r.levelUps).toEqual([2]);
+    expect(r.levelUps).toEqual([]);
+    expect(awardSession(p, rec({}, { kj: 400 })).levelUps).toEqual([2]);
     expect(r.newAchievements.map((a) => a.id)).toEqual(['first_ride']);
     expect(r.profile.lifetime).toMatchObject({ kj: 90, seconds: 600, sessions: 1, sprints: 2 });
     expect(r.profile.lastPlayed.dungeon).toBe(NOON);
@@ -46,9 +47,10 @@ describe('awardSession', () => {
     const p = defaultProfile();
     const r = awardSession(p, rec({
       events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } }],
-    }, { sprints: 10, kj: 1000 }));
+      gameSummary: { 'Elites slain': 75 },
+    }, { sprints: 10, kj: 2500 }));
     const ids = r.newAchievements.map((a) => a.id);
-    expect(ids).toEqual(expect.arrayContaining(['dungeon_clear', 'sprinter_10', 'kilojoule_1000']));
+    expect(ids).toEqual(expect.arrayContaining(['dg_elites', 'sprinter_10', 'kilojoule_1000']));
     expect(ids).not.toContain('triple_rail'); // a Dynamo Defense feat: not from a dungeon ride
     const td = awardSession(r.profile, rec({ gameId: 'towerdefense', events: [{ t: 2, type: 'railFired', data: { charges: 3 } }] }));
     expect(td.newAchievements.map((a) => a.id)).toContain('triple_rail');
@@ -59,10 +61,11 @@ describe('awardSession', () => {
       gameId: 'lighthouse', events: Array.from({ length: storms }, (_, i) => ({ t: i, type: 'stormWeathered' })),
     }, { zoneSeconds: [0, z2, 0, 0, 0] });
     let r = awardSession(p, lh(2, 1200)); p = r.profile;
-    expect(r.newAchievements.map((a) => a.id)).toContain('keeper_20');
+    expect(r.newAchievements.map((a) => a.id)).not.toContain('keeper_20'); // 45 min
+    expect(awardSession(p, lh(0, 45 * 60)).newAchievements.map((a) => a.id)).toContain('keeper_20');
     expect(p.achievements).not.toContain('storm_chaser');
     expect(p.counters!['lighthouse.storms']).toBe(2);
-    r = awardSession(p, lh(1, 0));
+    r = awardSession(p, lh(23, 0));
     expect(r.newAchievements.map((a) => a.id)).toContain('storm_chaser');
   });
   it('triple_threat and balanced_week', () => {

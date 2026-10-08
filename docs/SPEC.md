@@ -246,7 +246,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 - `SessionStore`: save a `SessionRecord`; keep the last 200 per profile.
 - `awardSession(profile, record) → { profile', xpGained, levelUps, newAchievements }`:
   - XP = `round(kJ) + 2 × activeMinutes + 1 × minutes in effortZone 2 + 5 × sprints` + achievement bonuses.
-  - Level L requires cumulative `floor(100 × (L−1)^1.6)` XP.
+  - Level L requires cumulative `floor(400 × (L−1)^1.5)` XP (a 30-min zone 2 ride ≈ 330 XP).
   - Also updates `lifetime` and `lastPlayed`.
 - **Achievements** (`AchievementDef` in contracts; ids are permanent, each has bonus XP):
   - Cross-game and fitness ones live in `progression/achievements.ts`; each game lists its own in `src/games/<id>/achievements.ts` (exported as `GameModule.achievements`, written with `progression/kit.ts`: `feat`, `tally`, `num`, `hasEvent`).

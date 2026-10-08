@@ -1,4 +1,5 @@
 import type { Profile, ProfileSettings } from '../contracts';
+import { RULES_VERSION } from './levels';
 
 export function defaultSettings(): ProfileSettings {
   return {
@@ -31,7 +32,7 @@ export function defaultProfile(name = 'Rider'): Profile {
     level: 1,
     achievements: [],
     lifetime: { kj: 0, seconds: 0, sessions: 0, sprints: 0 },
-    gameData: {},
+    gameData: { _progression: { rules: RULES_VERSION } },
     lastPlayed: {},
     settings: defaultSettings(),
     createdAt: Date.now(),

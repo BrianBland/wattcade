@@ -2,6 +2,7 @@ import { createStore, get, set, del, keys, getMany, type UseStore } from 'idb-ke
 import type { Profile, SessionRecord } from '../contracts';
 import { defaultProfile, defaultSettings } from './defaults';
 import { migrateProfile, migrateSessionRecord } from '../core/renames';
+import { rebalanceProfile } from './rebalance';
 
 const MAX_SESSIONS = 200;
 
@@ -11,7 +12,7 @@ export class ProfileStore {
     this.store = createStore(dbName, 'kv');
   }
   private norm(p: Profile): Profile {
-    const m = migrateProfile(p); // renamed games keep their saves
+    const m = rebalanceProfile(migrateProfile(p)); // renamed games keep their saves; older rules are re-graded once
     return { ...m, settings: { ...defaultSettings(), ...m.settings } };
   }
   async list(): Promise<Profile[]> {

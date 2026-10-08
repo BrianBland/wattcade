@@ -82,18 +82,18 @@ describe('achievement catalogue', () => {
 describe('counters and goals', () => {
   it('max keeps the best, with progress', () => {
     let p = defaultProfile();
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 7 } })).profile;
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 14 } })).profile;
     p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 4 } })).profile;
-    expect(p.counters!['towerdefense.bestWave']).toBe(7);
-    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.7, label: 'Best 7/10 waves' });
-    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 12 } }));
+    expect(p.counters!['towerdefense.bestWave']).toBe(14);
+    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.7, label: 'Best 14/20 waves' });
+    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 24 } }));
     expect(ids(r)).toContain('td_wave10');
     expect(ids(r)).not.toContain('td_wave25');
   });
   it('sum accumulates across rides', () => {
     let p = defaultProfile();
-    for (let i = 0; i < 4; i++) p = awardSession(p, rec({ gameId: 'starfighter', gameSummary: { kills: 2600 } })).profile;
-    expect(p.counters!['starfighter.kills']).toBe(10400);
+    for (let i = 0; i < 4; i++) p = awardSession(p, rec({ gameId: 'starfighter', gameSummary: { kills: 13000 } })).profile;
+    expect(p.counters!['starfighter.kills']).toBe(52000);
     expect(p.achievements).toContain('sf_kills');
   });
   it('bits collect warm-up biomes', () => {
@@ -106,10 +106,10 @@ describe('counters and goals', () => {
     expect(ids(r)).toEqual(expect.arrayContaining(['wu_globetrotter', 'wu_moon']));
   });
   it('the old storm tally carries over', () => {
-    const p = { ...defaultProfile(), gameData: { _progression: { stormsWeathered: 2 } } };
+    const p = { ...defaultProfile(), gameData: { _progression: { stormsWeathered: 24 } } };
     const r = awardSession(p, rec({ gameId: 'lighthouse', events: [{ t: 1, type: 'stormWeathered' }] }));
     expect(ids(r)).toContain('storm_chaser');
-    expect(r.profile.counters!['lighthouse.storms']).toBe(3);
+    expect(r.profile.counters!['lighthouse.storms']).toBe(25);
   });
   it('lifetime totals use the updated profile', () => {
     const p = { ...defaultProfile(), lifetime: { kj: 9950, seconds: 0, sessions: 9, sprints: 0 } };
@@ -160,9 +160,15 @@ describe('variety and calendar', () => {
 
 describe('one-ride feats', () => {
   it('long rides, zone 2 and spin', () => {
-    const r = awardSession(defaultProfile(), { ...rec({}, flat(3700, 150, 92)), stats: { ...rec({}, flat(3700, 150, 92)).stats, zoneSeconds: [0, 3650, 0, 0, 0] } });
-    expect(ids(r)).toEqual(expect.arrayContaining(['ride_30', 'ride_60', 'diesel', 'spin_doctor', 'steady_eddie']));
+    const hour = flat(3700, 150, 92).map((s) => ({ ...s, mode: 'resistance' as const }));
+    const r = awardSession(defaultProfile(), { ...rec({}, hour), stats: { ...rec({}, hour).stats, zoneSeconds: [0, 3650, 0, 0, 0] } });
+    expect(ids(r)).toEqual(expect.arrayContaining(['ride_60', 'diesel', 'spin_doctor', 'steady_eddie']));
     expect(ids(r)).not.toContain('ride_90');
+    expect(ids(r)).not.toContain('ride_30'); // 10 half-hour rides
+    expect(achievementProgress(byId('ride_30'), r.profile)!.label).toBe('1/10 rides');
+  });
+  it('steady power in ERG mode is not Steady Eddie', () => {
+    expect(ids(awardSession(defaultProfile(), rec({}, flat(3700, 150, 92))))).not.toContain('steady_eddie');
   });
   it('rocket legs, leg day and hummingbird', () => {
     const s = flat(600); for (let i = 100; i < 106; i++) s[i] = { ...s[i], power: 1050, cadence: 135 };

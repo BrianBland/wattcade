@@ -57,7 +57,7 @@ export const CORE_ACHIEVEMENTS: AchievementDef[] = [
   { id: 'early_bird', name: 'Early Bird', desc: 'Start a ride before 7 am', bonusXp: 30, check: (_p, r) => hour(r) >= 4 && hour(r) < 7 },
   { id: 'new_year', name: 'New Year, New Watts', desc: 'Ride on New Year’s Day', bonusXp: 50, check: (_p, r) => { const d = new Date(r.startedAt); return d.getMonth() === 0 && d.getDate() === 1; } },
   // --- lifetime ---
-  total('kilojoule_1000', 'Kilojoule Club', '1000 kJ lifetime', 100, 1000, ' kJ', (p) => p.lifetime.kj),
+  total('kilojoule_1000', 'Kilojoule Club', '2,500 kJ lifetime', 100, 2500, ' kJ', (p) => p.lifetime.kj),
   total('kj_10k', 'Megajoule Maker', '10,000 kJ lifetime', 200, 10000, ' kJ', (p) => p.lifetime.kj),
   total('kj_50k', 'Power Station', '50,000 kJ lifetime', 400, 50000, ' kJ', (p) => p.lifetime.kj),
   total('hours_10', 'Saddle Time', 'Ride for 10 hours (lifetime)', 100, 10, ' h', (p) => p.lifetime.seconds / 3600),
@@ -75,14 +75,18 @@ export const CORE_ACHIEVEMENTS: AchievementDef[] = [
   climbTotal('climb_8848', 'Everest', 'Climb 8,848 m, the height of Everest', 250, 8848, ' m'),
   // --- one ride ---
   { id: 'sprinter_10', name: 'Sprinter', desc: '10 sprints in one session', bonusXp: 50, check: (_p, r) => r.stats.sprints >= 10 },
-  { id: 'ride_30', name: 'Half Hour Hero', desc: 'Pedal 30 minutes in one ride', bonusXp: 40, check: (_p, r) => activeSeconds(r) >= 30 * 60 },
+  { id: 'ride_30', name: 'Half Hour Hero', desc: 'Pedal 30+ minutes in 10 different rides', bonusXp: 60, goal: 10, unit: ' rides', count: { key: 'ride.halfHours', agg: 'sum', of: (r) => (activeSeconds(r) >= 30 * 60 ? 1 : 0) } },
   { id: 'ride_60', name: 'The Hour', desc: 'Pedal 60 minutes in one ride', bonusXp: 80, check: (_p, r) => activeSeconds(r) >= 60 * 60 },
   { id: 'ride_90', name: 'Ninety', desc: 'Pedal 90 minutes in one ride', bonusXp: 120, check: (_p, r) => activeSeconds(r) >= 90 * 60 },
   { id: 'diesel', name: 'Diesel Engine', desc: '60 minutes in zone 2 in one ride', bonusXp: 100, check: (_p, r) => (r.stats.zoneSeconds[1] ?? 0) >= 60 * 60 },
   { id: 'big_day', name: 'Big Day', desc: '500 kJ in one ride', bonusXp: 100, check: (_p, r) => r.stats.kj >= 500 },
   { id: 'spin_doctor', name: 'Spin Doctor', desc: '20 minutes at 90+ rpm in one ride', bonusXp: 60, check: (_p, r) => r.samples.filter((s) => s.cadence >= 90).length >= 20 * 60 },
   { id: 'rocket_legs', name: 'Rocket Legs', desc: 'Hold twice your FTP for 5 seconds', bonusXp: 60, check: (p, r) => p.ftp > 0 && peakAvg(r.samples, 5) >= 2 * p.ftp },
-  { id: 'steady_eddie', name: 'Steady Eddie', desc: 'Ride 20+ minutes with very even power (variability ≤ 1.05)', bonusXp: 60, check: (_p, r) => { if (activeSeconds(r) < 20 * 60) return false; const vi = variabilityIndex(r.samples); return vi > 0 && vi <= 1.05; } },
+  {
+    id: 'steady_eddie', name: 'Steady Eddie', desc: 'Ride 45+ minutes with very even power (variability ≤ 1.05), not in ERG mode', bonusXp: 80,
+    // ERG holds the power for you, so it doesn't count.
+    check: (_p, r) => { if (activeSeconds(r) < 45 * 60 || r.samples.filter((s) => s.mode === 'erg').length > r.samples.length / 4) return false; const vi = variabilityIndex(r.samples); return vi > 0 && vi <= 1.05; },
+  },
   // --- secret ---
   { id: 'leg_day', name: 'Leg Day', desc: 'Hit 1,000 W', bonusXp: 50, secret: true, check: (_p, r) => r.stats.maxPower >= 1000 },
   { id: 'hummingbird', name: 'Hummingbird', desc: 'Spin at 130+ rpm for 10 seconds', bonusXp: 40, secret: true, check: (_p, r) => longestRun(r.samples, (s) => s.cadence >= 130) >= 10 },

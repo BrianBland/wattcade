@@ -834,7 +834,10 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         inZone: satisfied, above, below,
         limits: { fog: dockFog() + tol + lensFog(), chop: dockChop() + tol, lamp: dockLamp() },
         day: ((t / dayLen()) + 0.82) % 1, // 0 = noon, 0.5 = midnight; sessions start mid-morning
-        ships: ships.map((s) => ({ ...s, etaS: (1 - s.progress) * sailS(), check: s.state === 'sailing' ? c : 'ok' as ShipCheck })),
+        ships: ships.map((s) => ({ ...s, etaS: (1 - s.progress) * sailS(),
+          // seconds since the outcome was announced; negative while a docking ship is still sailing in to her berth
+          since: s.state === 'docked' ? s.age - (s.rescued ? RESCUE_PAYOUT_S : DOCK_PAYOUT_S) : s.age,
+          check: s.state === 'sailing' ? c : 'ok' as ShipCheck })),
         sheltering: phase === 'storm',
         calmAfterS: Math.max(0, calmAfterS() - (t - stormEndedAt)),
         whale: { ...whale, age: t - whale.at },

@@ -4,7 +4,7 @@ import type { DecorId, GiftId, Season, Weather } from '../sim/extras';
 import type { DistrictId } from '../sim/layout';
 
 export interface ShipView {
-  id: number; kind: ShipKind; name: string; progress: number; lane: number; state: ShipState; age: number; dock: number; rescued: boolean; etaS: number; check: ShipCheck;
+  id: number; kind: ShipKind; name: string; progress: number; lane: number; state: ShipState; age: number; dock: number; rescued: boolean; etaS: number; since: number; check: ShipCheck;
 }
 export interface Snap {
   t: number; fog: number; chop: number; lamp: number; zone: number; requirement: number;

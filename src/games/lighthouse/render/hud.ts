@@ -148,10 +148,10 @@ export class Hud {
 
     // ship forecast
     const sailing = s.ships.filter((x) => x.state === 'sailing').sort((a, b) => a.etaS - b.etaS).slice(0, 3);
-    const recent = s.ships.filter((x) => x.state !== 'sailing' && x.age < 6).slice(-1);
+    const recent = s.ships.filter((x) => x.state !== 'sailing' && x.since < 6).slice(-1);
     let ships = '<h4>Ships</h4>';
     for (const x of recent) {
-      const [txt, cls] = x.state === 'docked' ? (x.rescued ? ['Rescued 🛟', 'ok'] : ['Docked ✓', 'ok']) : x.state === 'spilled' ? ['Cargo spilled', 'bad'] : ['Ran aground', 'bad'];
+      const [txt, cls] = x.state === 'docked' ? (x.since < 0 ? [x.rescued ? 'Stranded - lifeboat coming 🛟' : 'Docking…', 'ok'] : x.rescued ? ['Rescued 🛟', 'ok'] : ['Docked ✓', 'ok']) : x.state === 'spilled' ? ['Cargo spilled', 'bad'] : ['Ran aground', 'bad'];
       ships += `<div class="lh-ship"><div class="row"><span>${SHIP_ICON[x.kind]} ${x.name}</span><span class="lh-chip ${cls}">${txt}</span></div></div>`;
     }
     for (const x of sailing) {

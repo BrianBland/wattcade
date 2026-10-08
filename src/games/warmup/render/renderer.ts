@@ -53,6 +53,8 @@ export class WarmupRenderer implements GameRenderer {
   private ambientAt = 0;
   private sounds: Soundscape | null = null;
   private screen: ScreenRect | null = null;
+  private ridge: number[] = [];
+  private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
     this.units = unitsFor(ctx.profile);
@@ -115,15 +117,22 @@ export class WarmupRenderer implements GameRenderer {
     const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
     const dom = di > 0.5 ? DRIVE_IN : LOOKS[s.biome];
     const RX = Math.round(W * 0.3), roadY0 = Math.round(UH * 0.8);
-    const roadY = (dd: number) => roadY0 - (terr.elev(dd) - terr.elev(s.d)) * vscale;
+    const elevation = terr.elev(s.d);
+    const roadY = (dd: number) => roadY0 - (terr.elev(dd) - elevation) * vscale;
     const biomeM = s.biomeM, start = s.startBiome, blendM = s.blendM;
     /** Smoothly blended band colour (ground, road, ...) at a road distance. */
+    let bandDistance = NaN;
+    let bandBiome: ReturnType<typeof biomeAt>;
+    const biome = (dd: number) => {
+      if (dd !== bandDistance) { bandDistance = dd; bandBiome = biomeAt(dd, biomeM, start, blendM); }
+      return bandBiome;
+    };
     const band = (dd: number, k: 'mid' | 'ground' | 'groundDark' | 'road' | 'roadEdge') => {
-      const b = biomeAt(dd, biomeM, start, blendM);
+      const b = biome(dd);
       const c = mixColor(LOOKS[b.cur][k], LOOKS[b.next][k], b.mix);
       return di > 0 ? mixColor(c, DRIVE_IN[k], di) : c;
     };
-    const roadKindAt = (dd: number) => { if (di > 0.5) return DRIVE_IN.roadKind; const b = biomeAt(dd, biomeM, start, blendM); return LOOKS[b.mix < 0.5 ? b.cur : b.next].roadKind; };
+    const roadKindAt = (dd: number) => { if (di > 0.5) return DRIVE_IN.roadKind; const b = biome(dd); return LOOKS[b.mix < 0.5 ? b.cur : b.next].roadKind; };
     this.texts = [];
 
     if (s.biome !== this.lastBiome) { if (this.lastBiome) { this.titleAt = t; this.title = BIOME_NAMES[s.biome]; } this.lastBiome = s.biome; }
@@ -160,13 +169,14 @@ export class WarmupRenderer implements GameRenderer {
 
     // ---- the real road, seen from afar (rolling ridge) ----
     const ridgeBase = Math.round(UH * 0.6), ridgeV = Math.max(0.6, s.hill * s.exaggeration * 0.7);
-    const ridgeAt = (x: number) => { const uu = s.d + (x - RX) * RIDGE_M_PER_PX; return ridgeBase - (terr.elev(uu) - terr.elev(s.d)) * ridgeV; };
+    const ridgeAt = (x: number) => { const uu = s.d + (x - RX) * RIDGE_M_PER_PX; return ridgeBase - (terr.elev(uu) - elevation) * ridgeV; };
     g.fillStyle = blendColors(scene.map(([l, w]) => [l.ridge, w] as const));
     g.beginPath(); g.moveTo(0, H);
-    for (let x = 0; x <= W; x += 2) g.lineTo(x, ridgeAt(x));
+    const ridge = this.ridge;
+    for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x); ridge[x / 2] = y; g.lineTo(x, y); }
     g.lineTo(W, H); g.closePath(); g.fill();
     g.strokeStyle = '#ffffff40'; g.lineWidth = 1; g.beginPath();
-    for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x) + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
+    for (let x = 0; x <= W; x += 2) { const y = ridge[x / 2] + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
     g.stroke();
 
     // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----
@@ -469,20 +479,30 @@ export class WarmupRenderer implements GameRenderer {
     const m = this.g, dpr = this.dpr, terr = this.terr(s);
     const w = 230 * dpr, h = 56 * dpr, x0 = this.canvas.width - w - 14 * dpr, y0 = UH * this.px - h - 12 * dpr;
     const back = 150, ahead = 1500, n = 92;
-    const xs: number[] = [], es: number[] = [];
-    for (let i = 0; i <= n; i++) { const dd = s.d - back + ((back + ahead) * i) / n; xs.push(dd); es.push(terr.elev(dd) * s.hill); }
-    const lo = Math.min(...es), hi = Math.max(...es), span = Math.max(hi - lo, (s.maxGrade / 100) * 120);
+    let cache = this.profileCache;
+    // Terrain bars change slowly; keep the rider marker and labels live below.
+    if (!cache || cache.terrain !== terr || cache.hill !== s.hill || Math.abs(cache.d - s.d) > 10 || _t - cache.at >= 0.1) {
+      const es: number[] = [], grades: number[] = [];
+      for (let i = 0; i <= n; i++) {
+        const dd = s.d - back + ((back + ahead) * i) / n;
+        es.push(terr.elev(dd) * s.hill);
+        if (i < n) grades.push(s.hill * terr.grade(dd + (back + ahead) / n / 2));
+      }
+      const lo = Math.min(...es), hi = Math.max(...es);
+      cache = this.profileCache = { terrain: terr, hill: s.hill, d: s.d, at: _t, es, grades, lo, span: Math.max(hi - lo, (s.maxGrade / 100) * 120) };
+    }
+    const { es, grades, lo, span } = cache;
     const X = (i: number) => x0 + (w * i) / n, Y = (e: number) => y0 + h - 8 * dpr - ((e - lo) / span) * (h - 22 * dpr);
     m.fillStyle = '#05040db0'; this.round(m, x0, y0, w, h, 10 * dpr); m.fill();
     for (let i = 0; i < n; i++) {
-      const gr = s.hill * terr.grade((xs[i] + xs[i + 1]) / 2);
+      const gr = grades[i];
       m.fillStyle = gr > 2 ? '#ff4d6d' : gr > 1 ? '#ffb020' : gr > 0 ? '#b6ff3b' : '#2de2a6';
-      m.globalAlpha = xs[i] < s.d ? 0.35 : 0.9;
+      m.globalAlpha = i < back / (back + ahead) * n ? 0.35 : 0.9;
       const yy = Y((es[i] + es[i + 1]) / 2);
       m.fillRect(X(i), yy, w / n + 0.5, y0 + h - 6 * dpr - yy);
     }
     m.globalAlpha = 1;
-    const ix = (back / (back + ahead)) * n;
+    const ix = ((s.d - cache.d + back) / (back + ahead)) * n;
     m.fillStyle = this.color; m.beginPath(); m.arc(X(ix), Y(terr.elev(s.d) * s.hill) - 3 * dpr, 4 * dpr, 0, Math.PI * 2); m.fill();
     m.font = `700 ${Math.round(11 * dpr)}px system-ui, sans-serif`; m.textAlign = 'left'; m.fillStyle = '#e9e6ff';
     m.fillText(`${formatDistance(s.rodeM / 1000, this.units)} · ▲${formatElevation(s.climbM, this.units)}`, x0 + 8 * dpr, y0 + 9 * dpr);

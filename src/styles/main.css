@@ -383,3 +383,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .new-gear .gear { width: 96px; text-align: center; }
 .new-gear .gear small { display: block; font-weight: 700; }
 @media (max-width: 760px) { .locker-grid { grid-template-columns: 1fr; } .item-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .pick-row { grid-template-columns: 1fr; } }
+
+/* The toolbar panel supplies the glass backdrop; avoid filtering it again per button. */
+.menu .topbar .btn { -webkit-backdrop-filter: none; backdrop-filter: none; }

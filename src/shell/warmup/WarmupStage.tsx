@@ -1,3 +1,4 @@
+import { FrameGate } from './frameGate';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameRenderer, Insets, Profile, SessionRecord } from '../../contracts';
 import type { SessionLike } from '../types';
@@ -83,6 +84,8 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
 
     size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 };
     let raf = 0, last = performance.now(), still = 0, sinceCheck = 0, sentTo: unknown = null, sentOn = false;
+    const draws = new FrameGate(60);
+    let drawDt = 0;
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - last) / 1000); last = now;
       const s = lobbySession();
@@ -91,11 +94,15 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
         deliverMenuPresses(takeLobbyPresses());
         const on = getDriveIn().on;
         if (s !== sentTo || on !== sentOn) { sentTo = s; sentOn = on; s.sim.receive?.({ type: 'driveIn', on }); } // the scenery blends in / out
-        const snap = s.sim.snapshot();
-        const { w, h, inset } = size.current;
-        // the DOM video and the canvas frame share one rect, computed before the canvas draws
-        renderer.current?.setScreen?.(driveIn.current?.tick(dt, w, h, inset, (snap as { driveIn?: number }).driveIn ?? 0) ?? null);
-        renderer.current?.render(snap, s.ctx.bike(), input.state());
+        drawDt += dt;
+        if (document.visibilityState !== 'hidden' && draws.ready(now)) {
+          const snap = s.sim.snapshot();
+          const { w, h, inset } = size.current;
+          // the DOM video and the canvas frame share one rect, computed before the canvas draws
+          renderer.current?.setScreen?.(driveIn.current?.tick(Math.min(0.25, drawDt), w, h, inset, (snap as { driveIn?: number }).driveIn ?? 0) ?? null);
+          renderer.current?.render(snap, s.ctx.bike(), input.state());
+          drawDt = 0;
+        }
         still = s.ctx.bike().cadence3s < 10 ? still + dt : 0;
         sinceCheck += dt;
         if (sinceCheck >= CHECKPOINT_S || (still > AUTO_SAVE_IDLE_S && sinceCheck >= 5)) {

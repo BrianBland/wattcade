@@ -266,6 +266,7 @@ export function startLobby(profile: Profile | null): SessionLike {
   });
   lobbyMeta = { profileId: profile?.id ?? null, startedAt };
   menuPressed.clear();
+  activeSamplesSeen = activeSamplesCount = 0;
   return lobby;
 }
 function lobbyRecord(): SessionRecord | null {
@@ -286,7 +287,15 @@ export function stopLobby(): SessionRecord | null {
 export const lobbyHills = (): boolean => (lobby?.tuning?.get?.('warmup.hills') ?? true) as boolean;
 export function setLobbyHills(on: boolean): void { lobby?.tuning?.set?.('warmup.hills', on); }
 /** Ride seconds so far in the lobby (pedalling), for the "End ride" button. */
-export const lobbyActiveSeconds = (): number => { const r = lobbyRecord(); return r ? activeSecondsOf(r) : 0; };
+let activeSamplesSeen = 0, activeSamplesCount = 0;
+export const lobbyActiveSeconds = (): number => {
+  if (!lobbyIsReal()) return 0;
+  const samples: SessionRecord['samples'] = lobby.recorder.samples;
+  for (; activeSamplesSeen < samples.length; activeSamplesSeen++) {
+    if (samples[activeSamplesSeen].cadence > 20) activeSamplesCount++;
+  }
+  return activeSamplesCount;
+};
 
 /** Credit a warm-up record to its rider. `latest` is used if it is that rider (avoids a stale read). */
 export async function creditRide(record: SessionRecord, latest?: Profile | null): Promise<{ record: SessionRecord; award: AwardView; profile: Profile } | null> {

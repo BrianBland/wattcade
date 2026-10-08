@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { duckAmbient, play } from '../../audio/sfx';
-import { channelById } from './channels';
+import { channelById, freshPlaylistUrl } from './channels';
 import { easeRect, screenRect, type Rect } from './layout';
 import { FRESH, onPlayEvent, retryDelayMs, START_TIMEOUT_MS, type PlayEvent, type PlayState } from './playback';
 import { fillStatic } from './staticFx';
@@ -95,7 +95,7 @@ export function DriveInScreen({ api, visible }: { api: { current: DriveInApi | n
     function start() {
       if (gone) return;
       clearTimeout(timer); setStatus((s) => (s === 'playing' ? s : 'loading'));
-      v!.src = ch.url; v!.load(); feed('loaded'); tryPlay(); // reloading the same URL fetches a fresh playlist
+      v!.src = freshPlaylistUrl(ch.url); v!.load(); feed('loaded'); tryPlay();
       timer = window.setTimeout(() => feed('timeout'), START_TIMEOUT_MS);
     }
     const onPlaying = () => { clearTimeout(timer); clearTimeout(stall); setStatus('playing'); feed('playing'); };

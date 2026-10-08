@@ -9,8 +9,14 @@ export type Channel = ChannelBase & ({ kind: 'hls' } | { kind: 'youtube'; videoI
 
 const SLOP = 'https://infiniteslop.ai';
 const CREDIT = { text: 'Infinite Slop by @levelsio + fal.ai', url: SLOP };
-/** A rerun channel: a VOD playlist; the player reloads it when it ends so the channel never stops. */
-export const rerunUrl = (ch: string, limit = 50) => `${SLOP}/api/channel?ch=${encodeURIComponent(ch)}&limit=${limit}`;
+/** A tag rerun uses ch=tag and q=<tag>; passing the tag as ch returns the generic feed. */
+export const rerunUrl = (tag: string, limit = 50) => `${SLOP}/api/channel?ch=tag&q=${encodeURIComponent(tag)}&limit=${limit}`;
+/** Match the site's cache-busting r parameter when fetching/reloading a rerun playlist. */
+export function freshPlaylistUrl(url: string, nonce = Date.now().toString(36)): string {
+  const fresh = new URL(url);
+  if (fresh.pathname === '/api/channel') fresh.searchParams.set('r', nonce);
+  return fresh.href;
+}
 
 const youtube = (id: string, name: string, videoId: string, credit: string): Omit<ChannelBase, 'number'> & { kind: 'youtube'; videoId: string } => ({
   id, name, kind: 'youtube', videoId, url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -19,8 +25,8 @@ const youtube = (id: string, name: string, videoId: string, credit: string): Omi
 const LINEUP: Array<Omit<ChannelBase, 'number'> & ({ kind: 'hls' } | { kind: 'youtube'; videoId: string })> = [
   { id: 'live', name: 'LIVE', kind: 'hls', url: `${SLOP}/live/playlist.m3u8`, credit: CREDIT },
   ...(['comedy', 'animals', 'surreal', 'commercial', 'goth', 'meme'] as const).map((id) => ({ id, name: id.toUpperCase(), kind: 'hls' as const, url: rerunUrl(id), credit: CREDIT })),
-  youtube('lofi-girl', 'LOFI GIRL', 'jfKfPfyJRdk', 'Lofi Girl · YouTube'),
-  youtube('kittens', 'KITTENS', 'd1krrgloAzU', 'Kitten Rescue / Explore.org · YouTube'),
+  youtube('lofi-girl', 'LOFI GIRL', '1-LpQekNa9g', 'Lofi Girl · YouTube'),
+  youtube('kittens', 'KITTENS', '-m_nQT62B4Y', 'Kittens · YouTube'),
   youtube('puppies', 'PUPPIES', 'h-Z0wCdD3dI', 'Puppies · YouTube'),
 ];
 export const CHANNELS: readonly Channel[] = LINEUP.map((channel, i) => ({ ...channel, number: i + 1 }));

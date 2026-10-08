@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CHANNELS, channelById, clearBad, flip, initialDial, markBad, parseSaved, rerunUrl, storageKey } from './channels';
+import { CHANNELS, channelById, clearBad, flip, freshPlaylistUrl, initialDial, markBad, parseSaved, rerunUrl, storageKey } from './channels';
 import { BAR_H, easeRect, MARQUEE_H, MIN_H, MIN_W, screenRect, type Rect } from './layout';
 import { FRESH, MAX_FAILS, onPlayEvent } from './playback';
 
@@ -15,7 +15,7 @@ describe('channels', () => {
       expect(u.pathname === '/live/playlist.m3u8' || (u.pathname === '/api/channel' && !!u.searchParams.get('ch') && Number(u.searchParams.get('limit')) > 0)).toBe(true);
       expect(c.credit.text).toContain('Infinite Slop'); expect(new URL(c.credit.url).protocol).toBe('https:');
     }
-    expect(rerunUrl('sci fi', 5)).toBe('https://infiniteslop.ai/api/channel?ch=sci%20fi&limit=5');
+    expect(rerunUrl('sci fi', 5)).toBe('https://infiniteslop.ai/api/channel?ch=tag&q=sci%20fi&limit=5');
   });
   it('flips next/prev and wraps both ways', () => {
     const last = CHANNELS[CHANNELS.length - 1].id;
@@ -24,12 +24,23 @@ describe('channels', () => {
     expect(flip(initialDial('comedy'), 1).id).toBe('animals');
   });
   it('uses distinct selected tag names and the exact requested YouTube video', () => {
-    expect(CHANNELS.filter((c) => c.kind === 'hls' && c.id !== 'live').map((c) => new URL(c.url).searchParams.get('ch')))
+    const tags = CHANNELS.filter((c) => c.kind === 'hls' && c.id !== 'live');
+    for (const c of tags) expect(new URL(c.url).searchParams.get('ch')).toBe('tag');
+    expect(tags.map((c) => new URL(c.url).searchParams.get('q')))
       .toEqual(['comedy', 'animals', 'surreal', 'commercial', 'goth', 'meme']);
     const videos = CHANNELS.filter((c) => c.kind === 'youtube');
-    expect(videos.map((c) => c.videoId)).toEqual(['jfKfPfyJRdk', 'd1krrgloAzU', 'h-Z0wCdD3dI']);
+    expect(videos.map((c) => c.videoId)).toEqual(['1-LpQekNa9g', '-m_nQT62B4Y', 'h-Z0wCdD3dI']);
     for (const c of videos) expect(new URL(c.url).searchParams.get('v')).toBe(c.videoId);
     expect(CHANNELS.some((c) => c.id === 'top' || c.id === 'ads')).toBe(false);
+  });
+  it('matches the observed Goth request and refreshes reruns without changing their tag', () => {
+    const first = new URL(freshPlaylistUrl(channelById('goth').url, 'e6243w'));
+    expect(first.searchParams.get('ch')).toBe('tag');
+    expect(first.searchParams.get('q')).toBe('goth');
+    expect(first.searchParams.get('r')).toBe('e6243w');
+    const next = new URL(freshPlaylistUrl(first.href, 'next'));
+    expect(next.searchParams.get('q')).toBe('goth'); expect(next.searchParams.getAll('r')).toEqual(['next']);
+    expect(freshPlaylistUrl(channelById('live').url, 'next')).toBe(channelById('live').url);
   });
   it('skips unavailable channels, and stays put when none is left', () => {
     let d = markBad(initialDial('comedy'), 'animals');

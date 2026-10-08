@@ -328,3 +328,54 @@ describe('festivals, visitors, seasons, weather', () => {
     expect(saved.rides).toBe(4);
   });
 });
+
+describe('beach plots are kept for the docks', () => {
+  const beach = PLOTS.map((p, i) => (p.shore ? i : -1)).filter((i) => i >= 0);
+  const inland = PLOTS.map((p, i) => (!p.shore && p.district === 'harbour' ? i : -1)).filter((i) => i >= 0);
+
+  it('refuses a home on the last beach plots, but allows one while spares remain', () => {
+    const b: Array<string | null> = PLOTS.map(() => null);
+    const tryBuild = (taken: number[], plot: number) => {
+      const bb = b.slice(); for (const i of taken) bb[i] = 'cottage';
+      const s = createGameSession({ game: module, profile: withSave({ buildings: bb, coin: 999, timber: 999 }), input: new NullInput(), fake: { script: 'idle' }, seed: 1 });
+      s.step(1);
+      for (const a of [{ type: 'mode', mode: 'build' }, { type: 'select', building: 'cottage' }, { type: 'plot', plot }, { type: 'build' }]) { s.sim.receive?.(a); s.step(1); }
+      return (snap(s).buildings as Array<string | null>)[plot];
+    };
+    expect(tryBuild([], beach[0])).toBe('cottage'); // 6 beach plots, 4 needed: 2 spare
+    expect(tryBuild([beach[1], beach[4]], beach[0])).not.toBe('cottage'); // would eat into the 4 the docks need (the menu offers a pier there instead)
+  });
+
+  it('demolish needs a second press, refunds 75% of everything spent, and frees the plot', () => {
+    const b: Array<string | null> = PLOTS.map(() => null);
+    b[beach[0]] = 'cottage';
+    const lv = PLOTS.map(() => 0); lv[beach[0]] = 2;
+    const s = createGameSession({ game: module, profile: withSave({ buildings: b, levels: lv, coin: 0, timber: 0 }), input: new NullInput(), fake: { script: 'idle' }, seed: 1 });
+    s.step(1);
+    const send = (a: unknown) => { s.sim.receive?.(a); s.step(1); };
+    send({ type: 'mode', mode: 'build' }); send({ type: 'select', building: 'demolish' }); send({ type: 'plot', plot: beach[0] });
+    send({ type: 'build' });
+    expect(snap(s).buildings[beach[0]]).toBe('cottage'); // first press only arms it
+    expect(snap(s).cursor.confirming).toBe(true);
+    send({ type: 'build' });
+    expect(snap(s).buildings[beach[0]]).toBeNull();
+    const spent = 25 + upgradeCost('cottage', 1).coin, spentT = 8 + upgradeCost('cottage', 1).timber;
+    expect(snap(s).coin).toBeCloseTo(Math.round(spent * 0.75), 0);
+    expect(snap(s).timber).toBeCloseTo(Math.round(spentT * 0.75), 0);
+  });
+
+  it('moving the cursor cancels the confirmation, and opened districts stay open', () => {
+    const b: Array<string | null> = PLOTS.map(() => null);
+    b[beach[0]] = 'cottage'; b[beach[1]] = 'cottage';
+    const s = createGameSession({ game: module, profile: withSave({ buildings: b, open: ['harbour', 'hillside'], coin: 0, timber: 0 }), input: new NullInput(), fake: { script: 'idle' }, seed: 1 });
+    s.step(1);
+    const send = (a: unknown) => { s.sim.receive?.(a); s.step(1); };
+    send({ type: 'mode', mode: 'build' }); send({ type: 'select', building: 'demolish' }); send({ type: 'plot', plot: beach[0] });
+    send({ type: 'build' }); send({ type: 'plot', plot: beach[1] }); send({ type: 'build' });
+    expect(snap(s).buildings[beach[0]]).toBe('cottage');
+    expect(snap(s).buildings[beach[1]]).toBe('cottage');
+    send({ type: 'build' });
+    expect(snap(s).buildings[beach[1]]).toBeNull();
+    expect(snap(s).districts.find((d: any) => d.id === 'hillside').open).toBe(true); // 1 building left, still open
+  });
+});

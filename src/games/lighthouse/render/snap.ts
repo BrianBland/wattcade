@@ -25,9 +25,9 @@ export interface Snap {
   festivalsHeld: number; nextFestival: { name: string; at: number } | null;
   decor: Record<DecorId, number>; gifts: GiftId[];
   decorOptions: Array<{ type: DecorId; icon: string; label: string; cost: number | null; effect: string; owned: number; max: number; selected: boolean; reason: string | null }>;
-  cursor: { plot: number; row: RowKey; building: BuildingType | null; level: number; canBuild: boolean; links: number[]; bonus: string };
+  cursor: { plot: number; row: RowKey; building: BuildingType | null; level: number; canBuild: boolean; links: number[]; bonus: string; confirming: boolean };
   canBuildAny: boolean;
-  options: Array<{ type: RowKey; icon: string; label: string; cost: { coin: number; timber: number } | null; effect: string; owned: number; max: number; selected: boolean; reason: string | null }>;
+  options: Array<{ type: RowKey; icon: string; label: string; cost: { coin: number; timber: number } | null; refund: { coin: number; timber: number } | null; effect: string; owned: number; max: number; selected: boolean; reason: string | null }>;
   toasts: Array<{ id: number; text: string; color: string; age: number }>;
   cues: Array<{ name: string; id: number }>;
   coin: number; timber: number;

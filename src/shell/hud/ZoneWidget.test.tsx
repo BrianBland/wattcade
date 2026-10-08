@@ -10,8 +10,8 @@ it('identifies the active metric, target band and position independently of colo
   const el = document.createElement('div');
   render(<ZoneWidget bike={bike} ftp={250} view={{ source: 'hr', pos: { zone: 3, within: .5, pos: .5 } }} target={{ min: 2, max: 3 }} bars={[]} />, el);
   expect(el.querySelector('.zw-source')?.textContent).toContain('Heart rate');
-  expect(el.querySelector('.zw-position')?.textContent).toContain('Target Z2–3');
-  expect(el.querySelector('.zw-position')?.textContent).toContain('In target');
+  expect(el.textContent).not.toContain('Target Z2–3');
+  expect(el.querySelector('.zw-source')?.textContent).toContain('In target');
   expect(el.querySelectorAll('.outside')).toHaveLength(3);
   expect(el.querySelector('.zw-bar')?.getAttribute('aria-label')).toContain('Target Z2–3');
 });
@@ -20,7 +20,7 @@ it('shows power and cadence guidance together without placing gear controls amon
   const el = document.createElement('div');
   render(<ZoneWidget bike={bike} ftp={250} view={{ source: 'power', pos: { zone: 3, within: .5, pos: .5 } }} target={{ min: 4, max: 5, source: 'power', label: 'Sprint' }} cadenceTarget={{ min: 90, max: 110, label: 'Spin faster' }} trail={<button>Gear +</button>} bars={[]} />, el);
   expect(el.querySelector('.zw-source')?.textContent).toContain('Power');
-  expect(el.querySelector('.zw-position')?.textContent).toContain('Below target');
+  expect(el.querySelector('.zw-source')?.textContent).toContain('Below target');
   expect(el.querySelector('.zw-label')?.textContent).toContain('225+ W');
   expect(el.querySelector('.zw-cad-guide')?.textContent).toContain('Raise · 90–110 rpm');
   expect(el.querySelector('.zw-actions button')?.textContent).toBe('Gear +');

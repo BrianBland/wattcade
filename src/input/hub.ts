@@ -6,7 +6,7 @@ import {
 
 type Src = InputState['source'];
 type DebugKind = 'difficulty' | 'timeScale';
-export interface HubOptions { deadzone?: number; now?: () => number; paddleExpo?: number }
+export interface HubOptions { debounceMs?: number; deadzone?: number; now?: () => number; paddleExpo?: number }
 type PadLike = { buttons: ArrayLike<{ pressed: boolean }>; axes: ArrayLike<number> } | null;
 
 /** Debug-overlay shifter steps (SPEC 3.1): left shifters adjust difficulty, right shifters adjust time scale. */
@@ -21,6 +21,7 @@ export class InputHub {
   touchVisible = false;
 
   private deadzone: number;
+  private debounceMs: number; private hwHeld = new Set<Button>(); private lastHwRelease = new Map<Button, number>();
   /** Response-curve exponent for analog paddles/sticks after deadzone (1 = linear; 2 = gentle near rest, full at max). */
   paddleExpo: number;
   private rideRaw: ControllerRawState = { buttons: EMPTY, paddleL: 0, paddleR: 0 };
@@ -43,7 +44,7 @@ export class InputHub {
   private touchEl: HTMLElement | null = null;
 
   constructor(opts: HubOptions = {}) {
-    this.now = opts.now ?? (() => performance.now()); this.deadzone = opts.deadzone ?? 15; this.paddleExpo = opts.paddleExpo ?? 2;
+    this.now = opts.now ?? (() => performance.now()); this.debounceMs = opts.debounceMs ?? 0; this.deadzone = opts.deadzone ?? 15; this.paddleExpo = opts.paddleExpo ?? 2;
   }
 
   applySettings(s: ProfileSettings): void {
@@ -114,6 +115,20 @@ export class InputHub {
   private recompute(): void {
     const next = new Set<Button>();
     for (const s of [this.rideRaw.buttons, this.kbHeld, this.padHeld, this.touchHeld.values(), this.script?.held ?? EMPTY]) for (const b of s) next.add(b);
+    // Hardware buttons (Ride/gamepad) can chatter: a release+re-press within debounceMs is the same press.
+    if (this.debounceMs > 0) {
+      const hw = new Set<Button>([...this.rideRaw.buttons, ...this.padHeld]);
+      const t = this.now();
+      for (const b of this.hwHeld) if (!hw.has(b)) this.lastHwRelease.set(b, t);
+      const accepted = new Set<Button>();
+      for (const b of hw) {
+        const rel = this.lastHwRelease.get(b);
+        const bounce = !this.hwHeld.has(b) && rel !== undefined && t - rel < this.debounceMs;
+        if (bounce) { if (!this.kbHeld.has(b) && ![...this.touchHeld.values()].includes(b) && !this.script?.held.has(b)) next.delete(b); }
+        else accepted.add(b);
+      }
+      this.hwHeld = accepted;
+    }
     for (const b of next) if (!this.merged.has(b)) this.pendingPressed.add(b);
     for (const b of this.merged) if (!next.has(b)) this.pendingReleased.add(b);
     this.merged = next;

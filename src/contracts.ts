@@ -189,6 +189,9 @@ export interface GameRenderer {
   setInsets?(insets: Insets): void;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
+  /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the shell's
+   *  result banner (capped at 15; A skips). The sim no longer steps, so animate on wall-clock time. */
+  ending?(info: { over: boolean }): number | void;
   unmount(): void;
 }
 export interface GameModule {

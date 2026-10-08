@@ -34,7 +34,7 @@ CONTRACT-REQUEST: none.
 - Game flow (GameHost phases): intro card (`game/GameIntro.tsx`: blurb, target zone, controls via pure `controlGlyphs.ts`;
   A start, B back to menu without saving, auto-start after 8 s) -> 3-2-1-GO with the session `idle()`-ing and the trainer
   held neutral (panic) -> GO releases it and `mixer.rampIn()` -> play (mid-ride toasts every 10 s from `previewAward`:
-  achievements, level-up, 10-min milestones) -> result banner (`game/ResultBanner.tsx`, 4 s or A) -> summary.
+  achievements, level-up, 10-min milestones) -> optional game recap (`GameRenderer.ending()` returns its seconds, ≤ 15, A skips; `game/ending.ts`) -> result banner (`game/ResultBanner.tsx`, 4 s or A) -> summary.
   Pause adds Controls (intro card as help) and Restart (saves the ride, new run via `screen.run`).
 
 ## Gaps

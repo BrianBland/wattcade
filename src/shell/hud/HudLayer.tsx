@@ -27,8 +27,18 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   /** The centre button, read every HUD frame (defaults to the in-game Menu / pause). */
   menu?: () => { label: string; onClick: () => void; dim?: boolean };
 }) {
-  const hist = useRef(rideHistory);
   const [f, setF] = useState<Frame | null>(null);
+  const center = useRef<HTMLDivElement>(null);
+  // Keep renderer insets in sync when target copy or narrow screens grow the panel.
+  useEffect(() => {
+    const el = center.current;
+    if (!el) return;
+    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${el.getBoundingClientRect().height + 10}px`);
+    const observer = new ResizeObserver(measure);
+    observer.observe(el); measure();
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); };
+  }, [!!f]);
+  const hist = useRef(rideHistory);
   const [pulse, setPulse] = useState(0);
   const last = useRef({ gear: -1, diff: -1, t: performance.now() });
   useEffect(() => {
@@ -57,7 +67,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   return (
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
       {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
-      <div class="hud-center">
+      <div class="hud-center" ref={center}>
         <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars}
           lead={<button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>}
           trail={<>

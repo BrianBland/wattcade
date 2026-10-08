@@ -33,7 +33,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   useEffect(() => {
     const el = center.current;
     if (!el) return;
-    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${el.getBoundingClientRect().height + 10}px`);
+    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${el.getBoundingClientRect().height}px`);
     const observer = new ResizeObserver(measure);
     observer.observe(el); measure();
     return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); };

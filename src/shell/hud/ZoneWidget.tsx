@@ -20,7 +20,8 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
   const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
   return (
     <div class="zw">
-      <div class="zw-controls">{lead}{trail}</div>
+      <div class="zw-menu">{lead}</div>
+      <div class="zw-actions">{trail}</div>
       <div class="zw-main">
         <div class={`zw-zone ${view.source}`}>
           <div class="zw-source"><span aria-hidden="true">{view.source === 'hr' ? '♥' : 'ϟ'}</span><b>{view.source === 'hr' ? 'Heart rate' : 'Power'}</b><strong style={{ color: missing ? undefined : ZONE_COLORS[view.pos.zone - 1] }}>{missing ? '—' : `Z${view.pos.zone}`}</strong></div>

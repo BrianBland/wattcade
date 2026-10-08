@@ -23,7 +23,7 @@ it('shows power and cadence guidance together without placing gear controls amon
   expect(el.querySelector('.zw-position')?.textContent).toContain('Below target');
   expect(el.querySelector('.zw-label')?.textContent).toContain('225+ W');
   expect(el.querySelector('.zw-cad-guide')?.textContent).toContain('Raise · 90–110 rpm');
-  expect(el.querySelector('.zw-controls button')?.textContent).toBe('Gear +');
+  expect(el.querySelector('.zw-actions button')?.textContent).toBe('Gear +');
 });
 
 it('does not imply a current HR zone while the sensor is missing', () => {

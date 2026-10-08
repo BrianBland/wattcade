@@ -110,9 +110,17 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 /* in-game HUD strip: solid band below the play area */
 .hud { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: flex-end; gap: 10px; height: var(--hud-h); padding: 0 8px calc(4px + env(safe-area-inset-bottom, 0px)); pointer-events: none; z-index: 20; user-select: none; -webkit-user-select: none; }
 /* hoods mirror the Ride: face cluster outboard, shifters inboard, paddle below */
-.zw { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-.zw-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
-.zw-controls .hud-time { margin-left: auto; }
+.zw { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) 80px; gap: 5px 8px; align-items: center; }
+.zw-menu { grid-column: 1; grid-row: 1; }
+.zw-actions { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.zw-main { grid-column: 2; grid-row: 1; }
+.zw-chart, .zw > .dim { grid-column: 1 / -1; }
+.zw-menu .hud-menu { width: 44px; min-height: 40px; padding: 0 3px; font-size: 12px; }
+.zw-actions .hud-time { font-size: 12px; }
+.zw-actions .hud-time small { font-size: 10px; }
+.zw-actions .gearbox { flex-direction: column-reverse; padding: 3px; gap: 3px; }
+.zw-actions .gearbox .pk { width: 34px; height: 32px; }
+
 .zw-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: center; }
 .zw-zone { min-width: 0; }
 .zw-source { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; line-height: 1; }
@@ -120,9 +128,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-zone.hr .zw-source > span { color: #ff799e; }
 .zw-source strong { font-size: 20px; margin-left: auto; }
 .zw-source small { color: var(--dim); width: 100%; }
-.zw-position { display: flex; align-items: center; gap: 8px; margin: 3px 0 8px; font-size: 12px; line-height: 1; }
+.zw-position { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; font-size: 12px; line-height: 1; }
 .zw-position b { font-size: 24px; line-height: 1; }
-.zw-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 8px; min-width: 0; line-height: 1; }
+.zw-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 8px; min-width: 0; line-height: 1; }
 .zw-nums > div { line-height: 1; min-width: 0; }
 .zw-nums > div > div { white-space: nowrap; }
 .zw-ftp { display: block; font-size: 10px; color: var(--dim); margin-top: 2px; }
@@ -137,7 +145,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-target { position: absolute; top: -3px; bottom: -3px; border: 2px solid #fff; border-radius: 4px; text-decoration: none; }
 .zw-marker { position: absolute; top: -7px; bottom: -5px; width: 3px; margin-left: -1.5px; background: white; box-shadow: 0 0 0 1px #000; }
 .zw-marker::before { content: ''; position: absolute; top: -3px; left: -3px; border: 4px solid transparent; border-top-color: white; }
-.zw-label { font: 700 11px/1.2 system-ui; margin-top: 5px; overflow-wrap: anywhere; }
+.zw-label { font: 700 11px/1.2 system-ui; margin-top: 3px; overflow-wrap: anywhere; }
 .zw-cad-guide em, .zw-cad-label { display: block; font: 600 10px/1.3 system-ui; overflow-wrap: anywhere; margin-top: 2px; }
 .zw-cad-label { color: var(--dim); }
 .zw-cad.ok, .zw-cad-guide.ok { color: #2de26a; }
@@ -149,10 +157,13 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .hud { gap: 4px; padding-left: 4px; padding-right: 4px; }
   .hood { gap: 3px; }
   .hud-center { padding: 6px !important; }
-  .zw-main { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .zw { grid-template-columns: 44px minmax(0, 1fr); }
+  .zw-main { grid-column: 1 / -1; grid-row: 1; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .zw-menu { grid-column: 1; grid-row: 2; }
+  .zw-actions { grid-column: 2; grid-row: 2; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; }
+  .zw-chart { grid-row: 3; }
   .zw-nums b { font-size: 20px; }
-  .zw-source strong { font-size: 20px; margin-left: auto; }
-.zw-source small { margin-left: 0; }
+
 }
 
 /* controller pad: hoods flank the stats, mirroring the Ride (L: paddle, shifters, D-pad | R: face, shifters, paddle) */
@@ -180,7 +191,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .pp-track { position: relative; flex: 1; width: 12px; background: #1a1830; border: 1px solid #5a5690; border-radius: 6px; overflow: hidden; }
 .pp-track i { position: absolute; left: 0; right: 0; background: var(--neon); }
 .pp small { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 10px/1 system-ui; color: var(--lime); max-height: 40%; overflow: hidden; }
-.hud-center { flex: 1 1 560px; max-width: 680px; min-width: 0; margin: 0 auto; align-self: flex-end; display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; background: #05040dc0; border: 1px solid #ffffff22; border-radius: 16px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.hud-center { flex: 1 1 560px; max-width: 620px; min-width: 0; margin: 0 auto; align-self: flex-end; display: flex; flex-direction: column; gap: 4px; padding: 4px 10px; background: #05040dc0; border: 1px solid #ffffff22; border-radius: 16px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .hud-center .zw { margin: 0 auto; width: 100%; max-width: 600px; flex: none; }
 .hud-row { display: flex; align-items: center; justify-content: center; gap: 12px; pointer-events: auto; }
 .hud-menu { min-height: 40px; padding: 0 14px; pointer-events: auto; font: 800 16px system-ui; color: #fff; background: #000a; border: 2px solid var(--neon); border-radius: 10px; touch-action: manipulation; }
@@ -192,6 +203,23 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .gearbox .pk { width: 36px; height: 32px; border-radius: 12px; }
 .gearbox small { font-size: 11px; color: #fff; max-width: none; }
 @keyframes gearPulse { 0% { border-color: #fff; } 100% { transform: scale(1); } }
+
+@media (min-width: 701px) and (max-width: 900px) and (min-height: 500px) {
+  .zw-main { grid-column: 1 / -1; grid-row: 1; }
+  .zw-menu { grid-column: 1; grid-row: 2; }
+  .zw-actions { grid-column: 3; grid-row: 2; flex-direction: row; justify-content: flex-end; }
+  .zw-chart { grid-column: 1 / -1; grid-row: 3; height: 12px; }
+  .zw-menu .hud-menu { min-height: 32px; }
+  .zw-actions .gearbox .pk { height: 24px; }
+  .zw-nums b { font-size: 20px; }
+  .zw-nums small { font-size: 9px; margin-left: 2px; }
+  .zw-source > span, .zw-source strong { font-size: 18px; }
+  .zw-position { margin-bottom: 5px; }
+  .zw-label { margin-top: 1px; }
+  .zw-cad-guide em, .zw-cad-label { margin-top: 0; line-height: 1.2; }
+  .zw-actions .gearbox { flex-direction: row; gap: 2px; }
+  .zw { grid-template-columns: 44px minmax(0, 1fr) 180px; }
+}
 
 /* warm-up stage: the ride behind every menu; screens float above it and fade out when idle */
 .game-host.stage { z-index: 0; background: #4fa3e8; }

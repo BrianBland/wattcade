@@ -14,6 +14,8 @@ export interface ScreenOpts {
   /** Awake menu panels (everything from the top of the page to this box's bottom is taken). Null when the menus are asleep. */
   menuBox?: Rect | null;
   margin?: number; barH?: number; marqueeH?: number;
+  /** YouTube requires at least 200px of player height. */
+  minH?: number;
 }
 
 /**
@@ -23,6 +25,7 @@ export interface ScreenOpts {
  */
 export function screenRect(W: number, H: number, insetBottom: number, o: ScreenOpts = {}): Rect | null {
   const margin = o.margin ?? 60, bar = o.barH ?? BAR_H, mq = o.marqueeH ?? MARQUEE_H;
+  const minH = o.minH ?? MIN_H;
   const usable = Math.max(0, H - insetBottom);
   const top = Math.max(margin, o.menuBox ? o.menuBox.y + o.menuBox.h + 10 : 0) + mq;
   const fit = (bottom: number) => {
@@ -32,8 +35,8 @@ export function screenRect(W: number, H: number, insetBottom: number, o: ScreenO
   };
   // prefer clearing the horizon; if that leaves less than 320x180, accept a lower limit, then the minimum size (it may overlap the scenery, never the HUD or menu)
   let size = fit(usable * HORIZON);
-  if (size.h < MIN_H) { const alt = fit(usable * HORIZON_LOW); if (alt.h > size.h) size = alt; }
-  if (size.h < MIN_H) { if (o.menuBox) return null; size = { w: MIN_W, h: MIN_H }; } // no room beside awake menus: the screen steps aside
+  if (size.h < minH) { const alt = fit(usable * HORIZON_LOW); if (alt.h > size.h) size = alt; }
+  if (size.h < minH) { if (o.menuBox) return null; size = { w: minH * 16 / 9, h: minH }; } // no room beside awake menus: the screen steps aside
   const w = Math.min(size.w, Math.max(0, W - 2 * margin)), h = (w * 9) / 16;
   return { x: Math.round((W - w) / 2), y: Math.round(top), w: Math.round(w), h: Math.round(h) };
 }

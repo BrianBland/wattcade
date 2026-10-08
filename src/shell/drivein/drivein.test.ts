@@ -4,12 +4,12 @@ import { BAR_H, easeRect, MARQUEE_H, MIN_H, MIN_W, screenRect, type Rect } from 
 import { FRESH, MAX_FAILS, onPlayEvent } from './playback';
 
 describe('channels', () => {
-  it('has the suggested lineup, numbered 1..12', () => {
-    expect(CHANNELS.map((c) => `${c.number} ${c.name}`)).toEqual(['1 LIVE', '2 NEWEST', '3 TOP', '4 NEWS', '5 COMEDY', '6 MUSIC', '7 CARTOON', '8 SCI-FI', '9 DANCE', '10 ANIMATION', '11 HORROR', '12 ADS']);
+  it('has the current lineup, numbered 1..10', () => {
+    expect(CHANNELS.map((c) => `${c.number} ${c.name}`)).toEqual(['1 LIVE', '2 COMEDY', '3 ANIMALS', '4 SURREAL', '5 COMMERCIAL', '6 GOTH', '7 MEME', '8 LOFI GIRL', '9 KITTENS', '10 PUPPIES']);
     expect(new Set(CHANNELS.map((c) => c.id)).size).toBe(CHANNELS.length);
   });
   it('URLs are well-formed https Infinite Slop HLS playlists, with attribution', () => {
-    for (const c of CHANNELS) {
+    for (const c of CHANNELS.filter((c) => c.kind === 'hls')) {
       const u = new URL(c.url);
       expect(u.protocol).toBe('https:'); expect(u.hostname).toBe('infiniteslop.ai');
       expect(u.pathname === '/live/playlist.m3u8' || (u.pathname === '/api/channel' && !!u.searchParams.get('ch') && Number(u.searchParams.get('limit')) > 0)).toBe(true);
@@ -21,25 +21,35 @@ describe('channels', () => {
     const last = CHANNELS[CHANNELS.length - 1].id;
     expect(flip(initialDial(last), 1).id).toBe(CHANNELS[0].id);
     expect(flip(initialDial(CHANNELS[0].id), -1).id).toBe(last);
-    expect(flip(initialDial('comedy'), 1).id).toBe('music');
+    expect(flip(initialDial('comedy'), 1).id).toBe('animals');
+  });
+  it('uses distinct selected tag names and the exact requested YouTube video', () => {
+    expect(CHANNELS.filter((c) => c.kind === 'hls' && c.id !== 'live').map((c) => new URL(c.url).searchParams.get('ch')))
+      .toEqual(['comedy', 'animals', 'surreal', 'commercial', 'goth', 'meme']);
+    const videos = CHANNELS.filter((c) => c.kind === 'youtube');
+    expect(videos.map((c) => c.videoId)).toEqual(['jfKfPfyJRdk', 'd1krrgloAzU', 'h-Z0wCdD3dI']);
+    for (const c of videos) expect(new URL(c.url).searchParams.get('v')).toBe(c.videoId);
+    expect(CHANNELS.some((c) => c.id === 'top' || c.id === 'ads')).toBe(false);
   });
   it('skips unavailable channels, and stays put when none is left', () => {
-    let d = markBad(initialDial('news'), 'comedy');
-    expect(flip(d, 1).id).toBe('music');
-    expect(flip({ ...d, id: 'music' }, -1).id).toBe('news');
-    for (const c of CHANNELS) if (c.id !== 'news') d = markBad(d, c.id);
-    expect(flip(d, 1).id).toBe('news');
+    let d = markBad(initialDial('comedy'), 'animals');
+    expect(flip(d, 1).id).toBe('surreal');
+    expect(flip({ ...d, id: 'surreal' }, -1).id).toBe('comedy');
+    for (const c of CHANNELS) if (c.id !== 'comedy') d = markBad(d, c.id);
+    expect(flip(d, 1).id).toBe('comedy');
     expect(clearBad(d).bad).toEqual([]);
-    expect(markBad(d, 'comedy')).toBe(d);
+    expect(markBad(d, 'animals')).toBe(d);
   });
   it('restores the last channel, falling back for unknown ids', () => {
-    expect(initialDial('horror').id).toBe('horror');
+    expect(initialDial('goth').id).toBe('goth');
     expect(initialDial('nope').id).toBe('live');
     expect(initialDial(null).id).toBe('live');
     expect(channelById('x').id).toBe('live');
   });
   it('parses saved state defensively', () => {
-    expect(parseSaved(JSON.stringify({ on: true, ch: 'top', sound: true }))).toEqual({ on: true, ch: 'top', sound: true });
+    expect(parseSaved(JSON.stringify({ on: true, ch: 'top', sound: true }))).toEqual({ on: true, ch: 'live', sound: true });
+    expect(parseSaved(JSON.stringify({ on: true, ch: 'ads', sound: true }))).toEqual({ on: true, ch: 'commercial', sound: true });
+    expect(channelById('ads').url).toBe(rerunUrl('commercial'));
     expect(parseSaved('garbage')).toEqual({ on: false, ch: 'live', sound: false });
     expect(parseSaved(null).on).toBe(false);
     expect(parseSaved('{"on":"yes","ch":5}')).toEqual({ on: false, ch: 'live', sound: false });
@@ -53,6 +63,13 @@ const SIZES: Array<[string, number, number, number]> = [
 ];
 const hit = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 describe('screenRect', () => {
+  it('reserves YouTube minimum height above the HUD on supported iPads', () => {
+    for (const [, W, H, hud] of SIZES) {
+      const r = screenRect(W, H, hud, { minH: 200 })!;
+      expect(r.h).toBeGreaterThanOrEqual(200);
+      expect(r.y + r.h + BAR_H).toBeLessThanOrEqual(H - hud);
+    }
+  });
   for (const [name, W, H, hud] of SIZES) {
     it(`${name}: 16:9, above the HUD, with room for marquee and bar, and big enough`, () => {
       const r = screenRect(W, H, hud)!;
@@ -126,10 +143,10 @@ describe('static + store', () => {
     setDriveInVisible(true);
     expect(handleChannelPress(new Set(['a']))).toBe(false);
     expect(handleChannelPress(new Set(['y', 'z']))).toBe(false);
-    expect(handleChannelPress(new Set(['y']))).toBe(true); expect(getDriveIn().dial.id).toBe('newest');
+    expect(handleChannelPress(new Set(['y']))).toBe(true); expect(getDriveIn().dial.id).toBe('comedy');
     expect(handleChannelPress(new Set(['z']))).toBe(true); expect(getDriveIn().dial.id).toBe('live');
     let n = 0; const off = subscribeDriveIn(() => n++); flipChannel(1); skipBadChannel(); off();
-    expect(n).toBe(2); expect(getDriveIn().dial.bad).toEqual(['newest']); expect(getDriveIn().dial.id).toBe('top');
+    expect(n).toBe(2); expect(getDriveIn().dial.bad).toEqual(['comedy']); expect(getDriveIn().dial.id).toBe('animals');
     toggleDriveIn(); expect(getDriveIn().dial.bad).toEqual([]);
   });
 });

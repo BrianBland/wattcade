@@ -1,29 +1,37 @@
-// Drive-In channels (pure data + the dial reducer). v1 is Infinite Slop (https://infiniteslop.ai) over plain HLS, which
-// WebKit plays natively in a <video> without CORS. `kind` is a union so YouTube and the media library can join later.
+// Drive-In channels: native HLS for Infinite Slop, official embedded players for YouTube.
 
-export interface Channel {
+interface ChannelBase {
   id: string; number: number; name: string;
-  kind: 'hls';
   url: string;
   credit: { text: string; url: string };
 }
+export type Channel = ChannelBase & ({ kind: 'hls' } | { kind: 'youtube'; videoId: string });
 
 const SLOP = 'https://infiniteslop.ai';
 const CREDIT = { text: 'Infinite Slop by @levelsio + fal.ai', url: SLOP };
 /** A rerun channel: a VOD playlist; the player reloads it when it ends so the channel never stops. */
 export const rerunUrl = (ch: string, limit = 50) => `${SLOP}/api/channel?ch=${encodeURIComponent(ch)}&limit=${limit}`;
 
-const LINEUP: Array<[string, string, string]> = [
-  ['live', 'LIVE', `${SLOP}/live/playlist.m3u8`],
-  ...(['newest', 'top', 'news', 'comedy', 'music', 'cartoon', 'scifi', 'dance', 'animation', 'horror', 'ads'] as const).map((c) => [c, c === 'scifi' ? 'SCI-FI' : c.toUpperCase(), rerunUrl(c)] as [string, string, string]),
+const youtube = (id: string, name: string, videoId: string, credit: string): Omit<ChannelBase, 'number'> & { kind: 'youtube'; videoId: string } => ({
+  id, name, kind: 'youtube', videoId, url: `https://www.youtube.com/watch?v=${videoId}`,
+  credit: { text: credit, url: `https://www.youtube.com/watch?v=${videoId}` },
+});
+const LINEUP: Array<Omit<ChannelBase, 'number'> & ({ kind: 'hls' } | { kind: 'youtube'; videoId: string })> = [
+  { id: 'live', name: 'LIVE', kind: 'hls', url: `${SLOP}/live/playlist.m3u8`, credit: CREDIT },
+  ...(['comedy', 'animals', 'surreal', 'commercial', 'goth', 'meme'] as const).map((id) => ({ id, name: id.toUpperCase(), kind: 'hls' as const, url: rerunUrl(id), credit: CREDIT })),
+  youtube('lofi-girl', 'LOFI GIRL', 'jfKfPfyJRdk', 'Lofi Girl · YouTube'),
+  youtube('kittens', 'KITTENS', 'd1krrgloAzU', 'Kitten Rescue / Explore.org · YouTube'),
+  youtube('puppies', 'PUPPIES', 'h-Z0wCdD3dI', 'Puppies · YouTube'),
 ];
-// number order from the brief: 1 LIVE, 2 NEWEST, 3 TOP, 4 NEWS, 5 COMEDY, 6 MUSIC, 7 CARTOON, 8 SCI-FI, 9 DANCE, 10 ANIMATION, 11 HORROR, 12 ADS
-export const CHANNELS: readonly Channel[] = LINEUP.map(([id, name, url], i) => ({ id, number: i + 1, name, kind: 'hls' as const, url, credit: CREDIT }));
+export const CHANNELS: readonly Channel[] = LINEUP.map((channel, i) => ({ ...channel, number: i + 1 }));
 
 /** The dial: which channel is on, and which have been marked unavailable after errors (skipped when flipping). */
 export interface Dial { id: string; bad: readonly string[] }
 
-export const channelById = (id: string, list: readonly Channel[] = CHANNELS): Channel => list.find((c) => c.id === id) ?? list[0];
+export const channelById = (id: string, list: readonly Channel[] = CHANNELS): Channel => {
+  const currentId = id === 'ads' ? 'commercial' : id;
+  return list.find((c) => c.id === currentId) ?? list[0];
+};
 /** Restore the last channel; an unknown or missing id falls back to the first. */
 export const initialDial = (savedId?: string | null, list: readonly Channel[] = CHANNELS): Dial => ({ id: channelById(savedId ?? '', list).id, bad: [] });
 

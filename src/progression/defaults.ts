@@ -6,7 +6,6 @@ export function defaultSettings(): ProfileSettings {
     zoneSource: 'auto',
     aimMode: 'rotate',
     paddleDeadzone: 15,
-    paddleInvertR: false,
     maxGradePct: 12,
     ergCapFtpFraction: 1.5,
   };

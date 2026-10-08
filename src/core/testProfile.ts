@@ -9,7 +9,7 @@ export function testProfile(over: Partial<Profile> = {}): Profile {
     gameData: {}, lastPlayed: {}, createdAt: 0,
     settings: {
       difficulty: 1, zoneSource: 'auto', aimMode: 'rotate', paddleDeadzone: 15,
-      paddleInvertR: false, maxGradePct: 12, ergCapFtpFraction: 1.5,
+      maxGradePct: 12, ergCapFtpFraction: 1.5,
     },
     ...over,
   };

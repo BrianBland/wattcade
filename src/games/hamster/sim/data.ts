@@ -20,7 +20,7 @@ export const GENS: GenDef[] = [
   { id: 'wheelwork', name: 'WheelWork™ Coworking', flavor: 'Disrupting the wheel. Kombucha on tap. $47B valuation.',
     upg: ['Kombucha on Tap', 'Ping Pong Table', 'Hustle Culture', 'Series B', '"We\'re a Family Here"'] },
   { id: 'influencer', name: 'Hamstagram Influencer', flavor: 'Sells pre-workout. Generates energy from engagement.',
-    upg: ['Ring Light', 'Sponsored Content', 'Code GERALD20', 'Viral Reel', 'Cancelled & Comeback Tour'] },
+    upg: ['Ring Light', 'Sponsored Content', 'Code GERALD20', 'Viral Reel', 'Canceled & Comeback Tour'] },
   { id: 'hedge', name: 'Hamster Hedge Fund', flavor: 'Shorts the sunflower seed market. Somehow makes watts.',
     upg: ['Insider Trading (Seeds)', '100x Leverage', 'Short the Gerbils', 'Taxpayer Bailout', 'Too Big to Fail'] },
   { id: 'substation', name: 'Gerbil-to-Grid Substation', flavor: 'Your utility bill now lists "rodent" as a source.',

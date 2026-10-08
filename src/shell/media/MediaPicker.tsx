@@ -106,7 +106,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const onFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     const added = await lib.importFiles(files);
-    setTab(0); toast(`Added ${added.length} song${added.length === 1 ? '' : 's'} · analysing…`, 'good');
+    setTab(0); toast(`Added ${added.length} song${added.length === 1 ? '' : 's'} · analyzing…`, 'good');
   };
   const start = async () => {
     if (!ready) { toast(queued.length ? 'Waiting for analysis to finish…' : 'Add a song to the queue first'); sfx('deny'); return; }
@@ -192,7 +192,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
           {timeline && game.mediaPreview && <GamePreview game={game} timeline={timeline} profile={profile} />}
           {rating && <div class="mp-stats">{fmtTime(rating.durationS)} · {rating.songs} song{rating.songs === 1 ? '' : 's'} · {rating.drops} drop{rating.drops === 1 ? '' : 's'} · {rating.bpmMin === rating.bpmMax ? rating.bpmMin : `${rating.bpmMin}–${rating.bpmMax}`} bpm · <span class="mp-stars">{'★'.repeat(rating.stars)}<span class="dim">{'★'.repeat(5 - rating.stars)}</span></span></div>}
           <Btn primary focused={zoneIs('queue') && focus.queue === queueRows(queued.length) - 1} disabled={!ready} onClick={() => void start()}>
-            {ready ? '▶ Start ride' : queued.length ? <><Spinner /> Analysing…</> : 'Queue is empty'}
+            {ready ? '▶ Start ride' : queued.length ? <><Spinner /> Analyzing…</> : 'Queue is empty'}
           </Btn>
         </div>
       </div>
@@ -240,7 +240,7 @@ function SongPreview({ m, analysis }: { m: SongMeta; analysis: SongAnalysis | nu
         {pal.length > 0 && <div class="mp-pal">{pal.map((c) => <i style={{ background: c }} />)}</div>}
         {m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener">{m.credit.text}</a>}
       </div>
-      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or +) to download and queue it.' : 'The preview appears once the song is analysed.'}</div>}
+      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or +) to download and queue it.' : 'The preview appears once the song is analyzed.'}</div>}
     </div>
   );
 }

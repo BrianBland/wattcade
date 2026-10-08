@@ -65,7 +65,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     hillScale: t.num('hillScale', 1, 0, 2, 0.05, 'Trainer grade × (builds climb up to 7 % at 1.0)'),
     maxGrade: t.num('maxGrade', 7, 2, 12, 0.5, 'Steepest build climb (%)'),
     recharge: t.num('shieldRecharge', 8, 1, 30, 1, 'Shield % per second while on target'),
-    greyHit: t.num('greyHit', 20, 5, 60, 1, 'Shield lost per grey block'),
+    greyHit: t.num('greyHit', 20, 5, 60, 1, 'Shield lost per gray block'),
     rebootS: t.num('rebootS', 5, 1, 15, 0.5, 'Seconds on target to reboot after a dropout'),
     steer: t.num('steerRate', 9, 2, 30, 0.5, 'Lanes per second the craft can slide'),
     hitWindow: t.num('hitWindow', 0.55, 0.3, 1, 0.05, 'Lateral catch radius (lanes)'),

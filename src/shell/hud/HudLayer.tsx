@@ -61,7 +61,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
         <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars}
           lead={<button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>}
           trail={<>
-            <div class="hud-time"><span title="Ride time (pedalling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
+            <div class="hud-time"><span title="Ride time (pedaling)">⏱ {formatDuration(f.bike.activeSeconds)}</span><small>Diff {f.diff.toFixed(2)}</small></div>
             {gears && (
               <div class="gearbox" key={pulse}>
                 <div class="pc-btns">{GEAR_KEYS.map((b) => <PadKey b={b} held={f.held} />)}</div>

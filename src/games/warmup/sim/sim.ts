@@ -45,7 +45,7 @@ export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSi
     cda: ctx.tuning.num('cda', 0.32, 0.15, 0.6, 0.01, 'Rider drag area for the on-screen speed (m²)'),
     crr: ctx.tuning.num('crr', 0.005, 0.001, 0.02, 0.001, 'Rolling resistance for the on-screen speed'),
     hillFadeS: ctx.tuning.num('hillFadeS', 3, 0.5, 15, 0.5, 'Seconds to flatten/raise the road when hills are toggled'),
-    blendM: ctx.tuning.num('blendM', 300, 60, 800, 20, 'Metres over which one biome cross-dissolves into the next (centred on the gateway)'),
+    blendM: ctx.tuning.num('blendM', 300, 60, 800, 20, 'Meters over which one biome cross-dissolves into the next (centered on the gateway)'),
     driveInS: ctx.tuning.num('driveInS', 8, 1, 30, 1, 'Seconds to blend into / out of the Drive-In biome'),
   };
   const terrainSeed = opts.terrainSeed ?? Math.floor(ctx.rng() * 1e9);

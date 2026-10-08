@@ -492,7 +492,7 @@ export function createRenderer(): GameRenderer {
     });
     gg.textAlign = 'center'; gg.font = `${fs}px sans-serif`; gg.fillStyle = '#bbb';
     const left = Math.ceil(c.autoStartLeft);
-    gg.fillText(`Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedalling`, W / 2, UH - 18 * u);
+    gg.fillText(`Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u);
     gg.textAlign = 'left';
   }
 

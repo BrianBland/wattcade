@@ -171,7 +171,7 @@ export class Hud {
     // off target: a big plain-language prompt under the callout (the world itself greys out / the ship overheats too)
     if (s.launch) this.drop.textContent = '';
     else if (s.dropout) this.drop.textContent = `DROPOUT · hit your target to reboot ${s.dropout.left.toFixed(1)}s`;
-    else if (e.under > 0.25) this.drop.innerHTML = `<span class="ws-cue up">${e.erg ? 'KEEP PEDALLING' : `POWER UP ▲ ${e.watts} W`}</span>`;
+    else if (e.under > 0.25) this.drop.innerHTML = `<span class="ws-cue up">${e.erg ? 'KEEP PEDALING' : `POWER UP ▲ ${e.watts} W`}</span>`;
     else if (e.over > 0.3) this.drop.innerHTML = `<span class="ws-cue down">EASE OFF ▼ ${e.ceilingWatts} W</span>`;
     else this.drop.textContent = '';
   }

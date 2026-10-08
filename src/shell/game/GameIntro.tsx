@@ -24,7 +24,7 @@ export function GameIntro({ game, hud, profile, mode, count, autoLeft, onStart, 
     return (
       <div class="intro-count" key={count}>
         <b>{count > 0 ? count : 'GO!'}</b>
-        {count > 0 && <small>Get pedalling</small>}
+        {count > 0 && <small>Get pedaling</small>}
       </div>
     );
   }

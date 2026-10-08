@@ -4,6 +4,14 @@ import { type Bar, type ZonePos, ZONE_COLORS, cadenceRange, cadenceStatus, zoneF
 
 export interface ZoneView { pos: ZonePos; source: 'power' | 'hr' }
 
+function MetricIcon({ source }: { source: 'power' | 'hr' | 'cadence' }) {
+  return <svg class="zw-metric-icon" viewBox="0 0 24 24" aria-hidden="true">
+    {source === 'cadence'
+      ? <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 8a8 8 0 0 0-14-2L3 9m0-5v5h5M4 16a8 8 0 0 0 14 2l3-3m0 5v-5h-5" /><circle cx="12" cy="12" r="2" /></g>
+      : <path fill="currentColor" d={source === 'hr' ? 'M12 21 3.6 12.8C-2 7.2 5.8-.6 12 5.6 18.2-.6 26 7.2 20.4 12.8Z' : 'M13 2 3 14h7l-1 8 12-14h-8l1-6Z'} />}
+  </svg>;
+}
+
 export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, lead, trail, footer }: {
   lead?: ComponentChildren; trail?: ComponentChildren; footer?: ComponentChildren; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
 }) {
@@ -37,10 +45,10 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
           {label && <div class="zw-label" title={label}>{label}</div>}
         </div>
         <div class="zw-nums">
-          <div class={view.source === 'power' ? 'primary' : ''}><div><b>{Math.round(bike.power3s)}</b><small>W</small></div><span class="zw-ftp">{Math.round(bike.ftpFraction * 100)}% FTP</span></div>
-          <div class={view.source === 'hr' ? 'primary' : ''}><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b><small>bpm</small></div>
+          <div class={view.source === 'power' ? 'primary' : ''}><div class="zw-reading" aria-label={`${Math.round(bike.power3s)} watts`} title="Power (watts)"><MetricIcon source="power" /><b>{Math.round(bike.power3s)}</b></div><span class="zw-ftp">{Math.round(bike.ftpFraction * 100)}% FTP</span></div>
+          <div class={view.source === 'hr' ? 'primary' : ''}><div class="zw-reading" aria-label={bike.hr5s == null ? 'Heart rate unavailable' : `${Math.round(bike.hr5s)} beats per minute`} title="Heart rate (bpm)"><MetricIcon source="hr" /><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b></div></div>
           <div class={`zw-cad${cad ? ` ${cad}` : ''}`}>
-            <div><b>{Math.round(bike.cadence3s)}</b><small>rpm</small></div>
+            <div class="zw-reading" aria-label={`${Math.round(bike.cadence3s)} revolutions per minute`} title="Cadence (rpm)"><MetricIcon source="cadence" /><b>{Math.round(bike.cadence3s)}</b></div>
             {cadenceTarget && <em class="zw-cad-guide" title={cadenceTarget.label} aria-label={`Cadence target ${cadenceRange(cadenceTarget)} rpm`}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)}</em>}
           </div>
         </div>

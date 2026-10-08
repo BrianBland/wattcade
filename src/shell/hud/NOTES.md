@@ -1,9 +1,10 @@
 # Shared HUD
 
 - Controller legends retain the original --k: min(64px, 7vw, 8.6vh) dimensions; gear buttons also retain original width/height sizing.
-- Wide screens use one aligned instrument row (Menu, zone/metrics, gears) and one clock/history row.
+- Wide screens place icon/number readings above a zone meter spanning the full width between Menu and gears, with clock/history below.
 - Tablet portrait groups Menu, clock, and gears in a filled controls row; history spans the panel beneath it.
-- Zone labels have a stable width so short effort text does not break into a tall column.
+- Headline icons replace visible unit text; tooltips and accessible labels preserve watts, bpm, and rpm.
+- Effort labels align below Z1 on the widened meter.
 - A heart or solid zigzag bolt sits beside the compact zone meter; amber indicates effort outside the target, dim indicates missing HR.
 - Visible metric-name, status, and current-zone captions are omitted; accessible labels preserve source, status, and target range.
 - The target outline, dimmed outside zones, and position marker remain.

@@ -27,6 +27,9 @@ it('shows power and cadence guidance together without placing gear controls amon
   expect(el.querySelector('.zw-icon')?.classList.contains('off-target')).toBe(true);
   expect(el.querySelector('.zw-icon path')?.getAttribute('d')).toContain('M13 2');
   expect(el.querySelector('.zw-label')?.textContent).toContain('225+ W');
+  expect(el.querySelector('[aria-label="210 watts"]')).not.toBeNull();
+  expect(el.querySelector('[aria-label="145 beats per minute"]')).not.toBeNull();
+  expect(el.querySelector('[aria-label="80 revolutions per minute"]')).not.toBeNull();
   expect(el.querySelector('.zw-cad-guide')?.textContent).toContain('↑ 90–110');
   expect(el.querySelector('.zw-actions button')?.textContent).toBe('Gear +');
 });

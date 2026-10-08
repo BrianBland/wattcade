@@ -251,7 +251,7 @@ export class LighthouseRenderer implements GameRenderer {
     const links = new Set(s.cursor.links);
     for (let i = 0; i < PLOT_COUNT; i++) {
       const mk = this.markers[i], mat = mk.material as THREE.MeshBasicMaterial;
-      const valid = row === 'upgrade' ? !!s.buildings[i] : row !== 'lens' && !s.buildings[i] && open.has(PLOTS[i].district) && (!shoreOnly || PLOTS[i].shore);
+      const valid = row === 'upgrade' || row === 'demolish' ? !!s.buildings[i] : row !== 'lens' && !s.buildings[i] && open.has(PLOTS[i].district) && (!shoreOnly || PLOTS[i].shore);
       mk.visible = on && i !== s.cursor.plot && (valid || links.has(i));
       mat.color.set(links.has(i) ? 0xffd84a : 0xffffff); mat.opacity = links.has(i) ? 0.9 : 0.35;
     }
@@ -261,12 +261,12 @@ export class LighthouseRenderer implements GameRenderer {
     const cx = i < 0 ? LIGHTHOUSE.x : PLOTS[i].x, cz = i < 0 ? LIGHTHOUSE.z : PLOTS[i].z, cy = i < 0 ? LIGHTHOUSE_Y : plotHeight(i);
     this.cursor.position.set(cx, cy + 0.12, cz);
     const pulse = (i < 0 ? 1.6 : 1) * (1 + Math.sin(s.t * 5) * 0.08); this.ring.scale.set(pulse, pulse, pulse);
-    const ok = s.cursor.canBuild;
+    const ok = s.cursor.canBuild && row !== 'demolish';
     (this.ring.material as THREE.MeshBasicMaterial).color.set(ok ? 0x66ff88 : 0xff6a5a);
     this.ghostMat.color.set(ok ? 0x88ffaa : 0xff8a7a);
     // ghost: the new building, or the next level of the building being upgraded
     const upg = row === 'upgrade' && i >= 0 && s.buildings[i] && s.options.find((o) => o.type === 'upgrade')!.owned < s.options.find((o) => o.type === 'upgrade')!.max;
-    const ghostKind = row === 'upgrade' ? (upg ? s.buildings[i] : null) : row === 'lens' ? null : (i >= 0 && !s.buildings[i] ? row : null);
+    const ghostKind = row === 'upgrade' ? (upg ? s.buildings[i] : null) : row === 'lens' || row === 'demolish' ? null : (i >= 0 && !s.buildings[i] ? row : null);
     const ghostLevel = row === 'upgrade' ? s.cursor.level + 1 : 1;
     const key = `${ghostKind}@${i}/${ghostLevel}`;
     if (key !== this.ghostKey) {

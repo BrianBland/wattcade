@@ -3,6 +3,7 @@
 // Button prompts live in the shell's controller legend (GameSim.hud().controls), which doubles as touch buttons, so this
 // overlay draws no buttons of its own: tap a build row to choose it, tap it again to build.
 import type { Snap } from './snap';
+import { rowWindow } from './panel';
 
 const DISTRICT_NAME: Record<string, string> = { harbour: 'the harbour', hillside: 'the hillside', hilltop: 'the hilltop', headland: 'the headland', islet: 'Gull Rock' };
 const RANKS = ['Apprentice Keeper', 'Keeper', 'Senior Keeper', 'Harbourmaster', 'Master of the Light', 'Admiral of the Light'];
@@ -64,7 +65,8 @@ const CSS = `
 .lh-opt .why { color:#ff9a8a }
 .lh-opt.sel.go { border-color:#7dff9a; box-shadow: 0 0 12px rgba(125,255,154,.35) }
 .lh-hint { font-size:12px; opacity:.75; margin-top:6px; text-align:center }
-.lh-list { max-height: 330px; overflow: hidden; }
+.lh-build { display:flex; flex-direction:column; max-height: calc(100% - 24px); box-sizing:border-box } .lh-list { min-height:0; overflow:hidden }
+.lh-opt.boom.sel { border-color:#ff6a5a; box-shadow: 0 0 12px rgba(255,106,90,.4) } .lh-opt.boom.sel.arm { background: rgba(255,90,70,.28) }
 .lh-bonus { margin-top:8px; padding:6px 8px; border-radius:8px; background: rgba(255,216,74,0.14); color:#ffe9a0; font-size:13px }
 .lh-streak { margin-top:6px; font-size:13px } .lh-streak b { color:#ffe9a0 }
 .lh-log { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(680px, 94%); max-height:90%; overflow:auto; padding:14px 18px; pointer-events:auto; font-size:14px }
@@ -222,15 +224,17 @@ export class Hud {
     } else if (s.mode === 'build') {
       const sel = s.options.find((o) => o.selected)!;
       const where = s.cursor.plot < 0 ? 'the lighthouse' : DISTRICT_NAME[PLOTS[s.cursor.plot].district] + (PLOTS[s.cursor.plot].shore ? ' beach' : '');
-      const title = sel.type === 'lens' ? 'Upgrade the lighthouse' : sel.type === 'upgrade' ? `Upgrade on ${where}` : `Build on ${where}`;
+      const title = sel.type === 'demolish' ? `Demolish on ${where}` : sel.type === 'lens' ? 'Upgrade the lighthouse' : sel.type === 'upgrade' ? `Upgrade on ${where}` : `Build on ${where}`;
       // show a window of rows around the selection so the panel fits on an iPad
-      const idx = s.options.indexOf(sel), WIN = 7, start = Math.max(0, Math.min(s.options.length - WIN, idx - 3));
+      const idx = s.options.indexOf(sel), { start, count: WIN } = rowWindow(s.options.length, idx, this.root.clientHeight);
       const rows = s.options.slice(start, start + WIN).map((o) => {
         const c = o.cost;
-        return `<div class="lh-opt ${o.selected ? 'sel' : ''} ${o.selected && !o.reason ? 'go' : ''} ${o.reason && !o.selected ? 'dim' : ''}" data-act="sel:${o.type}">
+        const boom = o.type === 'demolish', arm = boom && o.selected && s.cursor.confirming;
+        const rf = o.refund ? `+🪙${o.refund.coin} 🪵${o.refund.timber}` : '';
+        return `<div class="lh-opt ${o.selected ? 'sel' : ''} ${boom ? 'boom' : ''} ${arm ? 'arm' : ''} ${o.selected && !o.reason && !boom ? 'go' : ''} ${o.reason && !o.selected ? 'dim' : ''}" data-act="sel:${o.type}">
           <span class="ic">${o.icon}</span><span class="nm">${o.label} ${o.max ? `<span style="opacity:.6;font-size:12px">${o.owned}/${o.max}</span>` : ''}</span>
-          <span class="cost">${c ? `🪙${c.coin} 🪵${c.timber}` : ''}</span>
-          <span class="ef">${o.selected && o.reason ? `<span class="why">${o.reason}</span>` : o.effect}</span></div>`;
+          <span class="cost">${c ? `🪙${c.coin} 🪵${c.timber}` : rf}</span>
+          <span class="ef">${arm ? '<span class="why">Press A again to confirm</span>' : o.selected && o.reason ? `<span class="why">${o.reason}</span>` : o.effect}</span></div>`;
       }).join('');
       const more = (n: number, up: boolean) => (n > 0 ? `<div class="lh-hint">${up ? '▲' : '▼'} ${n} more</div>` : '');
       this.set(this.build, `<div class="lh-tabs"><div class="lh-tab on">🔨 Build</div><div class="lh-tab" data-act="tab:decor">🎀 Decorate</div></div><h3>${title}</h3>

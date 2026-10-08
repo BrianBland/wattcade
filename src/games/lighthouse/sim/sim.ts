@@ -20,8 +20,8 @@ export type StormPhase = 'calm' | 'warning' | 'storm';
 export type Mode = 'watch' | 'build';
 export type Tab = 'build' | 'decor';
 /** A build-menu row: a building type, "upgrade the building under the cursor", or "upgrade the lighthouse lens". */
-export type RowKey = BuildingType | 'upgrade' | 'lens';
-export const ROWS: RowKey[] = ['upgrade', ...BUILDING_TYPES, 'lens'];
+export type RowKey = BuildingType | 'upgrade' | 'lens' | 'demolish';
+export const ROWS: RowKey[] = ['upgrade', ...BUILDING_TYPES, 'lens', 'demolish'];
 export type LighthouseAction =
   | { type: 'mode'; mode: Mode } | { type: 'plot'; plot: number } | { type: 'select'; building: RowKey }
   | { type: 'build' } | { type: 'view' } | { type: 'log' } | { type: 'tab'; tab: Tab } | { type: 'decor'; decor: DecorId };
@@ -44,7 +44,7 @@ export interface SimOpts { seed?: number; autopilot?: boolean }
 interface Saved {
   v: 2; buildings: Array<BuildingType | null>; levels?: number[]; grow: number[]; coin: number; timber: number; meadow: number; lens?: number;
   shipsDockedTotal: number; stormsWeatheredTotal: number;
-  rides?: number; decor?: Partial<Record<DecorId, number>>; gifts?: GiftId[]; festivals?: number;
+  open?: DistrictId[]; rides?: number; decor?: Partial<Record<DecorId, number>>; gifts?: GiftId[]; festivals?: number;
 }
 
 export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
@@ -80,6 +80,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const windCoin = tn.num('windCoin', 15, 0, 200, 1, 'Coin for a wound clockwork');
   const swellPct = tn.num('swellGradePct', 1, 0, 3, 0.1, 'Swell effect amplitude');
   const swellPeriod = tn.num('swellPeriodS', 180, 30, 600, 5);
+  const refundFrac = tn.num('demolishRefund', 0.75, 0, 1, 0.05, 'Fraction of everything spent on a building that demolishing refunds');
   const cottageCoin = tn.num('cottageCoinPerS', 0.04, 0, 1, 0.01);
   const orchardCoin = tn.num('orchardCoinPerS', 0.03, 0, 1, 0.005);
   const orchardTimber = tn.num('orchardTimberPerS', 0.008, 0, 1, 0.001);
@@ -184,23 +185,27 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
 
   // ---------- town state helpers ----------
   const count = (b: BuildingType) => buildings.filter((x) => x === b).length;
+  // Beach plots are scarce (piers, shipyard, lifeboat need them): other buildings may only take a beach plot while spares remain.
+  const shoreNeed = () => BUILDING_TYPES.reduce((n, k) => n + (BUILDINGS[k].shore ? BUILDINGS[k].max - count(k) : 0), 0);
+  const freeBeach = () => PLOTS.reduce((n, p, i) => n + (p.shore && buildings[i] === null ? 1 : 0), 0);
+  const beachOk = (k: BuildingType, plot: number) => BUILDINGS[k].shore ? PLOTS[plot].shore : !PLOTS[plot].shore || freeBeach() > shoreNeed();
   const plotsOf = (b: BuildingType) => buildings.map((x, i) => (x === b ? i : -1)).filter((i) => i >= 0);
   const levelSum = (b: BuildingType, w: number[]) => plotsOf(b).reduce((s, i) => s + (w[levels[i] - 1] ?? w[w.length - 1]), 0);
   const built = () => buildings.filter((b) => b).length;
   const progress = () => ({ buildings: built(), ships: totals.shipsDockedTotal, storms: totals.stormsWeatheredTotal });
   const openSet = () => new Set(DISTRICTS.filter((d) => districtOpen(d, progress())).map((d) => d.id));
-  let open = openSet();
+  let open = new Set<DistrictId>([...openSet(), ...(saved?.open ?? [])]); // once opened, land stays open even if buildings are demolished
   const unlocked = (plot: number) => open.has(PLOTS[plot].district);
   const districtName = (id: DistrictId) => DISTRICTS.find((d) => d.id === id)!.name;
   const streakMult = () => Math.min(streakMax(), 1 + 0.1 * Math.floor(streakS / streakStepS()));
   const coinMult = () => { const m = plotsOf('market')[0]; return m === undefined ? 1 : marketMul() * MARKET_MULT[levels[m] - 1] / MARKET_MULT[0]; };
   const yard = () => { const y = plotsOf('shipyard')[0]; return y === undefined ? 0 : levels[y]; };
   const earn = (c: number) => { const v = c * coinMult(); coin += v; stat.coinEarned += v; return v; };
-  const rowName = (k: RowKey) => (k === 'upgrade' ? 'Upgrade' : k === 'lens' ? 'Lighthouse lens' : BUILDINGS[k].names[0]);
+  const rowName = (k: RowKey) => (k === 'upgrade' ? 'Upgrade' : k === 'lens' ? 'Lighthouse lens' : k === 'demolish' ? 'Demolish' : BUILDINGS[k].names[0]);
 
   function persist() {
     ctx.save({
-      v: 2, buildings: buildings.slice(), levels: levels.slice(), grow: grow.map((g) => Math.round(g * 1000) / 1000), coin, timber, meadow, lens, ...totals,
+      v: 2, open: [...open], buildings: buildings.slice(), levels: levels.slice(), grow: grow.map((g) => Math.round(g * 1000) / 1000), coin, timber, meadow, lens, ...totals,
       rides: rides + 1, decor: { ...decor }, gifts: gifts.slice(), festivals: festivalsHeld,
     } satisfies Saved);
   }
@@ -208,18 +213,29 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   function plotOk(k: RowKey, plot: number): boolean {
     if (k === 'lens') return plot === LIGHTHOUSE_PLOT;
     if (plot < 0) return false;
-    if (k === 'upgrade') return buildings[plot] !== null;
-    return buildings[plot] === null && unlocked(plot) && (!BUILDINGS[k].shore || PLOTS[plot].shore);
+    if (k === 'upgrade' || k === 'demolish') return buildings[plot] !== null;
+    return buildings[plot] === null && unlocked(plot) && beachOk(k, plot);
   }
   function costOf(k: RowKey, plot: number): { coin: number; timber: number } | null {
+    if (k === 'demolish') return null;
     if (k === 'lens') return lens < LENS.length ? LENS[lens].cost : null;
     if (k === 'upgrade') { const b = plot >= 0 ? buildings[plot] : null; return b && levels[plot] < maxLevel(b) ? upgradeCost(b, levels[plot]) : null; }
     return BUILDINGS[k].cost;
+  }
+  /** What demolishing refunds: a fraction of everything spent on the plot (build + upgrades). */
+  function refundOf(plot: number): { coin: number; timber: number } {
+    const b = plot >= 0 ? buildings[plot] : null;
+    if (!b) return { coin: 0, timber: 0 };
+    let c = BUILDINGS[b].cost.coin, tb = BUILDINGS[b].cost.timber;
+    for (let l = 1; l < levels[plot]; l++) { const u = upgradeCost(b, l); c += u.coin; tb += u.timber; }
+    return { coin: Math.round(c * refundFrac()), timber: Math.round(tb * refundFrac()) };
   }
   function whyNot(k: RowKey, plot: number): string | null {
     if (k === 'lens') {
       if (lens >= LENS.length) return 'fully upgraded';
       if (!open.has(LENS[lens].needs)) return `opens with ${districtName(LENS[lens].needs)}`;
+    } else if (k === 'demolish') {
+      return plot >= 0 && buildings[plot] ? null : 'pick a building to demolish';
     } else if (k === 'upgrade') {
       const b = plot >= 0 ? buildings[plot] : null;
       if (!b) return 'pick a building to upgrade';
@@ -231,11 +247,12 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       if (count(k) >= d.max) return `all ${d.max} built`;
       if (k === 'lamp2' && count('cottage') < 5) return `needs ${5 - count('cottage')} more homes`;
       if (d.shore && !PLOTS.some((p, i) => p.shore && buildings[i] === null && unlocked(i))) return 'no free beach plot';
-      if (!PLOTS.some((_, i) => buildings[i] === null && unlocked(i))) return 'no free plot - wait for new land';
+      if (!PLOTS.some((_, i) => buildings[i] === null && unlocked(i) && beachOk(k, i))) return 'no free plot - wait for new land';
       if (plot < 0) return 'pick a plot';
       if (!unlocked(plot)) return `opens with ${districtName(PLOTS[plot].district)}`;
       if (buildings[plot] !== null) return 'plot taken';
       if (d.shore && !PLOTS[plot].shore) return 'goes on a beach';
+      if (!beachOk(k, plot)) return 'beach kept for piers and the shipyard';
     }
     const c = costOf(k, plot)!;
     if (coin < c.coin) return `need ${Math.ceil(c.coin - coin)} more coin`;
@@ -245,6 +262,10 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   /** Best plot for a row: beach for shore buildings, otherwise the free plot with the most neighbour bonuses near the town. */
   function suggestPlot(k: RowKey): number {
     if (k === 'lens') return LIGHTHOUSE_PLOT;
+    if (k === 'demolish') {
+      if (cursorPlot >= 0 && buildings[cursorPlot]) return cursorPlot;
+      return buildings.findIndex((b) => b) >= 0 ? buildings.findIndex((b) => b) : Math.max(0, cursorPlot);
+    }
     if (k === 'upgrade') {
       const own = buildings.map((b, i) => (b ? i : -1)).filter((i) => i >= 0);
       const ready = own.filter((i) => whyNot('upgrade', i) === null);
@@ -322,8 +343,32 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   }
   const decorAffordable = () => DECOR_IDS.filter((d) => whyNotDecor(d) === null);
 
+  // demolishing needs a second press on the same plot within a few seconds
+  let armed: { plot: number; at: number } | null = null;
+  const confirming = () => armed !== null && ROWS[sel] === 'demolish' && armed.plot === cursorPlot && t - armed.at < 8;
+  function demolish(plot: number): boolean {
+    const why = whyNot('demolish', plot);
+    if (why) { fb = { text: `Can't demolish: ${why}`, ok: false, at: t }; cue('deny'); return false; }
+    const b = buildings[plot]!, r = refundOf(plot);
+    if (!(armed && armed.plot === plot && t - armed.at < 8)) {
+      armed = { plot, at: t };
+      fb = { text: `Press A again to demolish this ${BUILDINGS[b].names[levels[plot] - 1]} (refund ${r.coin} coin, ${r.timber} timber)`, ok: false, at: t };
+      cue('deny');
+      return false;
+    }
+    armed = null;
+    const name = BUILDINGS[b].names[levels[plot] - 1];
+    coin += r.coin; timber += r.timber;
+    buildings[plot] = null; levels[plot] = 0; grow[plot] = 0;
+    toast(`${name} demolished  +${r.coin} coin  +${r.timber} timber`, '#ffb199');
+    cue('build'); nudged.clear();
+    ctx.emit({ type: 'demolished', data: { building: b, plot } });
+    persist();
+    return true;
+  }
+
   function act(k: RowKey, plot: number): boolean {
-    return k === 'lens' ? upgradeLens() : k === 'upgrade' ? upgrade(plot) : build(k, plot);
+    return k === 'demolish' ? demolish(plot) : k === 'lens' ? upgradeLens() : k === 'upgrade' ? upgrade(plot) : build(k, plot);
   }
   function checkDistricts() {
     const now = openSet();
@@ -333,7 +378,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       cue('unlock');
       ctx.emit({ type: 'districtUnlocked', data: { district: d.id } });
     }
-    open = now;
+    open = new Set([...open, ...now]);
   }
   function nextDistrict() {
     const d = DISTRICTS.find((x) => !open.has(x.id));
@@ -349,9 +394,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     };
   }
 
-  const affordable = () => ROWS.filter((k) => whyNot(k, suggestPlot(k)) === null);
+  const affordable = () => ROWS.filter((k) => k !== 'demolish' && whyNot(k, suggestPlot(k)) === null);
   function openBuild() {
-    mode = 'build'; idleS = 0; logOpen = false; tab = 'build';
+    mode = 'build'; idleS = 0; logOpen = false; tab = 'build'; armed = null;
     const can = affordable();
     if (can.length && !can.includes(ROWS[sel])) sel = ROWS.indexOf(can.find((k) => k !== 'upgrade' && k !== 'lens') ?? can[0]);
     cursorPlot = suggestPlot(ROWS[sel]);
@@ -360,6 +405,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   function stepPlot(dir: 1 | -1) {
     const k = ROWS[sel];
     if (k === 'lens') return;
+    armed = null;
     const order = PLOTS.map((_, i) => i).filter((i) => plotOk(k, i) || i === cursorPlot)
       .sort((i, j) => PLOTS[i].x - PLOTS[j].x || PLOTS[i].z - PLOTS[j].z);
     if (order.length <= 1) return;
@@ -370,6 +416,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   }
   function stepType(dir: 1 | -1) {
     sel = (sel + dir + ROWS.length) % ROWS.length;
+    armed = null;
     if (!plotOk(ROWS[sel], cursorPlot)) cursorPlot = suggestPlot(ROWS[sel]);
     cue('select');
   }
@@ -387,14 +434,16 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     else if (a.type === 'plot') {
       if (a.plot < LIGHTHOUSE_PLOT || a.plot >= PLOT_COUNT) return;
       if (mode !== 'build') openBuild();
+      if (cursorPlot !== a.plot) armed = null;
       cursorPlot = a.plot;
       if (a.plot === LIGHTHOUSE_PLOT) sel = ROWS.indexOf('lens');
-      else if (buildings[a.plot] !== null) sel = ROWS.indexOf('upgrade');
+      else if (buildings[a.plot] !== null) { if (ROWS[sel] !== 'demolish') sel = ROWS.indexOf('upgrade'); }
       else if (!plotOk(ROWS[sel], a.plot)) sel = ROWS.indexOf(PLOTS[a.plot].shore && whyNot('pier', a.plot) === null ? 'pier' : 'cottage');
       cue('select');
     } else if (a.type === 'select') {
       const i = ROWS.indexOf(a.building); if (i < 0) return;
       if (mode !== 'build') openBuild();
+      if (sel !== i) armed = null;
       sel = i;
       if (!plotOk(a.building, cursorPlot)) cursorPlot = suggestPlot(a.building);
       cue('select');
@@ -445,7 +494,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
     }
     nudged.add(k); nudgeAt = t;
     const plot = suggestPlot(k);
-    const what = k === 'upgrade' ? `upgrade your ${BUILDINGS[buildings[plot]!].names[levels[plot] - 1]}` : k === 'lens' ? 'upgrade the lighthouse lens' : `build a ${BUILDINGS[k].names[0]}`;
+    const what = k === 'upgrade' ? `upgrade your ${BUILDINGS[buildings[plot]!].names[levels[plot] - 1]}` : k === 'lens' ? 'upgrade the lighthouse lens' : k === 'demolish' ? 'demolish' : `build a ${BUILDINGS[k].names[0]}`;
     toast(`You can ${what} - press A`, '#ffd84a');
     cue('chime');
   }
@@ -827,7 +876,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       const tol = tolerance();
       const k = ROWS[sel];
       const cb = cursorPlot >= 0 ? buildings[cursorPlot] : null;
-      const pv = k !== 'upgrade' && k !== 'lens' && cursorPlot >= 0 && buildings[cursorPlot] === null ? preview(buildings, k, cursorPlot) : { links: [] as number[], text: '' };
+      const pv = k !== 'upgrade' && k !== 'lens' && k !== 'demolish' && cursorPlot >= 0 && buildings[cursorPlot] === null ? preview(buildings, k, cursorPlot) : { links: [] as number[], text: '' };
       return {
         t, fog, chop: effChop(), baseChop: chop, lamp, zone, rawZone,
         requirement: phase === 'storm' ? (surgeNow ? surgeZone() : stormZone()) : zoneTarget(),
@@ -858,7 +907,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
           return { type: d, icon: DECOR[d].icon, label: DECOR[d].names[Math.min(lv, max - 1)] + (lv >= max ? ' ✓' : ''), cost: lv < max ? DECOR[d].costs[lv] : null,
             effect: DECOR[d].effects[Math.min(lv, max - 1)], owned: lv, max, selected: i === decorSel, reason: whyNotDecor(d) };
         }),
-        cursor: { plot: cursorPlot, row: k, building: k === 'upgrade' ? cb : k === 'lens' ? null : k, level: cursorPlot >= 0 ? levels[cursorPlot] : lens, canBuild: whyNot(k, cursorPlot) === null, links: pv.links, bonus: pv.text },
+        cursor: { plot: cursorPlot, row: k, building: k === 'upgrade' || k === 'demolish' ? cb : k === 'lens' ? null : k, confirming: confirming(), level: cursorPlot >= 0 ? levels[cursorPlot] : lens, canBuild: whyNot(k, cursorPlot) === null, links: pv.links, bonus: pv.text },
         canBuildAny: canAny,
         options: ROWS.map((r, i) => {
           const plot = r === 'lens' ? LIGHTHOUSE_PLOT : cursorPlot;
@@ -868,11 +917,16 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
             label = cb ? (lv < maxLevel(cb) ? `${BUILDINGS[cb].names[lv - 1]} → ${BUILDINGS[cb].names[lv]}` : `${BUILDINGS[cb].names[lv - 1]} (max)`) : 'Upgrade a building';
             effect = cb && lv < maxLevel(cb) ? BUILDINGS[cb].effects[lv] : 'Pick one of your buildings';
             owned = lv; max = cb ? maxLevel(cb) : 0;
+          } else if (r === 'demolish') {
+            const rf = refundOf(cursorPlot);
+            label = cb ? `Demolish ${BUILDINGS[cb].names[levels[cursorPlot] - 1]}` : 'Demolish';
+            effect = cb ? `Refunds ${rf.coin} coin and ${rf.timber} timber (${Math.round(refundFrac() * 100)}%). Press A twice` : 'Pick a building to remove';
+            owned = 0; max = 0;
           } else if (r === 'lens') {
             label = lens < LENS.length ? `Lens: ${LENS[lens].name}` : `Lens: ${LENS[lens - 1].name} (max)`;
             effect = LENS_EFFECT; owned = lens; max = LENS.length;
           } else { effect = BUILDINGS[r].effects[0]; owned = count(r); max = BUILDINGS[r].max; }
-          return { type: r, icon: r === 'upgrade' ? '⬆️' : r === 'lens' ? '💡' : BUILDINGS[r].icon, label, cost: costOf(r, plot), effect, owned, max, selected: i === sel, reason: whyNot(r, plot) };
+          return { type: r, icon: r === 'upgrade' ? '⬆️' : r === 'lens' ? '💡' : r === 'demolish' ? '🧨' : BUILDINGS[r].icon, label, cost: costOf(r, plot), refund: r === 'demolish' && cb ? refundOf(cursorPlot) : null, effect, owned, max, selected: i === sel, reason: whyNot(r, plot) };
         }),
         feedback: { ...fb, age: t - fb.at },
         toasts: toasts.map((x) => ({ ...x, age: t - x.t })),
@@ -894,7 +948,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       const controls = mode === 'build'
         ? tab === 'decor'
           ? [{ button: 'dpad' as const, label: '▲▼ choose' }, { button: 'a' as const, label: 'Buy', active: true }, { button: 'y' as const, label: 'Build tab' }, { button: 'b' as const, label: 'Close' }]
-          : [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: 'Build', active: true }, { button: 'y' as const, label: 'Decorate' }, { button: 'b' as const, label: 'Close' }]
+          : [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: ROWS[sel] === 'demolish' ? (confirming() ? 'Confirm demolish' : 'Demolish') : 'Build', active: true }, { button: 'y' as const, label: 'Decorate' }, { button: 'b' as const, label: 'Close' }]
         : [{ button: 'a' as const, label: 'Build menu' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", active: logOpen },
           ...(logOpen ? [{ button: 'b' as const, label: 'Close log' }] : [])];
       const targetCadence = wind ? { min: Math.round(windRpm()), label: 'Wind the clockwork' } : undefined;

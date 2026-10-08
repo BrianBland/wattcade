@@ -24,8 +24,10 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
       <div class="zw-actions">{trail}</div>
       <div class="zw-main">
         <div class={`zw-zone ${view.source}`}>
-          <div class="zw-source"><span class="zw-icon" aria-hidden="true">{view.source === 'hr' ? '♥' : 'ϟ'}</span><b>{view.source === 'hr' ? 'Heart rate' : 'Power'}</b>{(target || missing) && <small class="zw-status">{status}</small>}</div>
-          <div class="zw-meter"><strong style={{ color: missing ? undefined : ZONE_COLORS[view.pos.zone - 1] }}>{missing ? '—' : `Z${view.pos.zone}`}</strong>
+          <div class="zw-meter">
+            <svg class={`zw-icon${missing ? ' missing' : target && (view.pos.zone < target.min || view.pos.zone > target.max) ? ' off-target' : ' on-target'}`} viewBox="0 0 24 24" role="img" aria-label={`${view.source === 'hr' ? 'Heart rate' : 'Power'}: ${status}`}>
+              <path fill="currentColor" d={view.source === 'hr' ? 'M12 21 3.6 12.8C-2 7.2 5.8-.6 12 5.6 18.2-.6 26 7.2 20.4 12.8Z' : 'M13 2 3 14h7l-1 8 12-14h-8l1-6Z'} />
+            </svg>
           <div class="zw-bar" role="img" aria-label={`${view.source === 'hr' ? 'Heart rate' : 'Power'} zones. ${status}${target ? `. Target ${range}` : ''}`}>
             {ZONE_COLORS.map((c, i) => <i class={target && (i + 1 < target.min || i + 1 > target.max) ? 'outside' : ''} style={{ background: c }}>Z{i + 1}</i>)}
             {target && <u class="zw-target" style={{ left: `${(target.min - 1) * 20}%`, width: `${(target.max - target.min + 1) * 20}%` }} />}
@@ -39,8 +41,8 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
           <div class={view.source === 'hr' ? 'primary' : ''}><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b><small>bpm</small></div>
           <div class={`zw-cad${cad ? ` ${cad}` : ''}`}>
             <div><b>{Math.round(bike.cadence3s)}</b><small>rpm</small></div>
+            {cadenceTarget && <em class="zw-cad-guide" title={cadenceTarget.label}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)} rpm</em>}
           </div>
-          {cadenceTarget && <div class={`zw-cad-guide ${cad}`} title={cadenceTarget.label}><em>{cad === 'low' ? '↑ Raise' : cad === 'high' ? '↓ Lower' : '✓ On target'} · {cadenceRange(cadenceTarget)} rpm</em>{cadenceTarget.label && <span class="zw-cad-label">{cadenceTarget.label}</span>}</div>}
         </div>
       </div>
       <div class="zw-history">

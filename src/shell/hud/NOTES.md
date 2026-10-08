@@ -1,17 +1,15 @@
 # Shared HUD
 
-- Wide layouts place Menu in a left rail and gears in a right rail beside the zone display and ride metrics.
-- Tablet portrait moves controls below the metrics; history retains its own full-width row.
-- The active zone source has a heart/power icon and explicit text; the matching metric is highlighted.
-- The compact five-zone meter dims zones outside the target, outlines the target range, and marks current position.
-- Current zone and below/in/above target status provide cues independent of color.
-- Missing HR shows a waiting state without a misleading zone marker.
-- Ride time and difficulty form one quiet footer group beside the wide power history and HR trace.
-- Target status sits beside the active source name; the outlined meter communicates target zones without repeated text.
-- Gear buttons use fixed dimensions and pulse their border without scaling outside the panel.
-- HudLayer measures the center panel with ResizeObserver; --hud-h reserves the larger of panel or controller height plus safe-area padding.
-- Phone layouts stack the zone and metrics; target copy wraps rather than pushing controls outside the panel.
-- Combined-target fixture: at 1024×768 the panel is 620×102 px and HUD band 129 px (original 535×131 and 168 px).
-- At 768×1024 the HUD band is 136 px (original 143 px). Measurements exclude safe-area padding.
-- PR screenshots in docs/screenshots/hud use deterministic preview fixtures with HR/power targets, cadence guidance, gears, and 90 history bars.
-- Validation: TypeScript, shell Vitest suite, production build, and Chromium containment checks at 1366×768, 1024×768, 768×1024, 390×844, and 844×390.
+- Controller legends retain the original --k: min(64px, 7vw, 8.6vh) dimensions; gear buttons also retain original width/height sizing.
+- Menu and gears flank metrics on wide screens; tablets place controls below metrics.
+- A heart or solid zigzag bolt sits beside the compact zone meter; amber indicates effort outside the target, dim indicates missing HR.
+- Visible metric-name, status, and current-zone captions are omitted; accessible labels preserve source, status, and target range.
+- The target outline, dimmed outside zones, and position marker remain.
+- Effort labels align with Z1 rather than the source icon.
+- Cadence target range sits directly below measured rpm, with an up/down arrow when outside target; extra tips are omitted.
+- A prominent ride clock sits beside history; difficulty is omitted.
+- History retains the power bars and existing HR trace.
+- Gear feedback pulses a border rather than scaling outside the panel.
+- HudLayer measures the panel so renderer insets reserve the larger of panel or original controller height, plus safe-area padding.
+- Screenshots in docs/screenshots/hud use deterministic HR/power target fixtures with cadence guidance, gears, and 90 history bars.
+- Validation: TypeScript, shell/inset Vitest suites, production build, Chromium containment checks at desktop/tablet/phone sizes.

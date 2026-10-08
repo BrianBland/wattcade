@@ -41,7 +41,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
           <div class={view.source === 'hr' ? 'primary' : ''}><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b><small>bpm</small></div>
           <div class={`zw-cad${cad ? ` ${cad}` : ''}`}>
             <div><b>{Math.round(bike.cadence3s)}</b><small>rpm</small></div>
-            {cadenceTarget && <em class="zw-cad-guide" title={cadenceTarget.label}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)} rpm</em>}
+            {cadenceTarget && <em class="zw-cad-guide" title={cadenceTarget.label} aria-label={`Cadence target ${cadenceRange(cadenceTarget)} rpm`}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)}</em>}
           </div>
         </div>
       </div>

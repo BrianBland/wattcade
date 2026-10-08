@@ -12,7 +12,7 @@ const own = (st: SceneState, i: number) => st.s.gens[i]?.owned ?? 0;
 function style(st: SceneState, idx = 0, base: WheelStyle = STEEL): WheelStyle {
   if (!st.vibes.has('rgb')) return base;
   const h = (st.hue + idx * 37) % 360;
-  return { rim: `hsl(${h},100%,70%)`, rimDark: `hsl(${h},80%,40%)`, glow: `hsl(${h},100%,60%)` };
+  return { ...base, rim: `hsl(${h},100%,70%)`, rimDark: `hsl(${h},80%,40%)`, glow: `hsl(${h},100%,60%)` };
 }
 
 // ---------- runners ----------
@@ -30,7 +30,7 @@ export function geraldWheel(g: G, x: number, y: number, r: number, st: SceneStat
   if (st.s.glow) glow(g, x, y, r * 1.8, 'rgba(255,210,80,A)', 0.35);
   const run = (fx: number, fy: number) => hamster(g, fx - (giant > 1 ? r * 0.35 : 0), fy, r * 0.78 * giant, st.spin * 4 * dir, geraldLook(st), st.time);
   // a giant Gerald no longer fits inside the wheel, so he's drawn over it
-  wheelWith(g, x, y, r, st.spin * dir, style(st, 0, { rim: '#f4f8ff', rimDark: '#8a94b0' }), st.speed, giant > 1 ? undefined : run);
+  wheelWith(g, x, y, r, st.spin * dir, style(st, 0, { rim: '#f4f8ff', rimDark: '#8a94b0', motionDirection: dir }), st.speed, giant > 1 ? undefined : run);
   if (giant > 1) run(x, y + r * 0.94);
 }
 function minion(g: G, x: number, y: number, r: number, st: SceneState, idx: number, fur: Fur, extra: Look = {}) {

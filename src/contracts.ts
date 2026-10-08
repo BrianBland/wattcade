@@ -6,8 +6,10 @@ export interface Clock { now(): Seconds; timeScale: number; }
 
 // ===== Profiles & progression =====
 export type ZoneSource = 'auto' | 'power' | 'hr'; // auto = HR if connected & fresh (<5s), else power
+export type UnitSystem = 'imperial' | 'metric';
 export type AimMode = 'auto' | 'rotate' | 'axes' | 'buttons';
 export interface ProfileSettings {
+  units?: UnitSystem;      // absent on older profiles: imperial
   difficulty: number;      // 0.5..1.5, default 1.0
   zoneSource: ZoneSource;
   aimMode: AimMode;        // default 'rotate' (paddles) with auto-aim fallback when paddles idle

@@ -1,3 +1,4 @@
+import { unitsFor, formatDistance, formatElevation, formatSpeed } from '../../units';
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile, SessionRecord } from '../../contracts';
 import { item } from '../../cosmetics/catalog';
@@ -39,6 +40,16 @@ function RideChart({ record, ftp }: { record: SessionRecord; ftp: number }) {
 export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { record: SessionRecord; award: AwardView; xpAfter: number; ftp: number; profile?: Profile | null; onDone: () => void }) {
   useMenuNav(1, 1, onDone, onDone);
   const s = record.stats;
+  const units = unitsFor(profile);
+  const summaryValue = (key: string, value: number | string | boolean) => {
+    if (typeof value === 'number') {
+      if (key === 'distanceKm') return formatDistance(value, units);
+      if (key === 'climbM') return formatElevation(value, units);
+      if (key === 'topKph' || key === 'avgKph') return formatSpeed(value, units);
+    }
+    return formatValue(value);
+  };
+  const summaryLabel = (key: string) => ({ distanceKm: 'Distance', climbM: 'Climb', topKph: 'Top speed', avgKph: 'Avg speed' }[key] ?? prettyKey(key));
   const game = getGame(record.gameId);
   const warm = record.gameId === 'warmup';
   const leveled = award.levelAfter > award.levelBefore;
@@ -73,7 +84,7 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
           <div class="reveal" style={{ animationDelay: '500ms' }}><RideChart record={record} ftp={ftp} /><ZoneBar zoneSeconds={s.zoneSeconds} /></div>
           {Object.keys(record.gameSummary).length > 0 && <>
             <h2 class="gap-top">{warm ? 'Route' : 'Game'}</h2>
-            <div class="stats compact">{Object.entries(record.gameSummary).map(([k, v], i) => <Stat label={prettyKey(k)} value={formatValue(v)} delayMs={700 + i * 60} />)}</div>
+            <div class="stats compact">{Object.entries(record.gameSummary).map(([k, v], i) => <Stat label={summaryLabel(k)} value={summaryValue(k, v)} delayMs={700 + i * 60} />)}</div>
           </>}
         </div>
         <div class="panel rewards reveal" style={{ animationDelay: '1100ms' }}>

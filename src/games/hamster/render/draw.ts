@@ -145,7 +145,7 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
 }
 
 // ---------- wheel ----------
-export interface WheelStyle { rim: string; rimDark: string; glow?: string }
+export interface WheelStyle { rim: string; rimDark: string; glow?: string; motionDirection?: number }
 export const STEEL: WheelStyle = { rim: '#e8eef8', rimDark: '#7a849c' };
 /** The back half of a hamster wheel (drawn behind the runner). Depth is faked by offsetting the back rim. */
 export function wheelBack(g: G, x: number, y: number, r: number, ang: number, st: WheelStyle, speed = 1) {
@@ -157,7 +157,10 @@ export function wheelBack(g: G, x: number, y: number, r: number, ang: number, st
   // back spokes
   g.strokeStyle = st.rimDark; g.lineWidth = Math.max(1, r * 0.035); g.lineCap = 'round';
   const blur = Math.min(1, speed / 2.5);
-  g.globalAlpha = 1 - blur * 0.6;
+  // Dense repeated detail can alias into apparent reverse motion. On Gerald's
+  // wheel, fade it as speed rises and let the unique rim marker carry motion.
+  const detail = st.motionDirection === undefined ? 1 : 1 / (1 + speed * speed * 2);
+  g.globalAlpha = (1 - blur * 0.6) * detail;
   for (let i = 0; i < 6; i++) { const a = ang + (i / 6) * TAU; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + Math.cos(a) * r, by + Math.sin(a) * r); g.stroke(); }
   g.globalAlpha = 1;
   if (blur > 0.2) { g.strokeStyle = `rgba(200,210,230,${blur * 0.12})`; g.lineWidth = r * 0.9; g.beginPath(); g.arc(bx, by, r * 0.5, 0, TAU); g.stroke(); }
@@ -168,7 +171,7 @@ export function wheelBack(g: G, x: number, y: number, r: number, ang: number, st
   g.lineWidth = Math.max(0.8, r * 0.028); g.strokeStyle = st.rimDark;
   for (let i = 0; i < n; i++) {
     const a = ang + (i / n) * TAU, c = Math.cos(a), s = Math.sin(a);
-    g.globalAlpha = 0.55 + 0.45 * Math.max(0, s);
+    g.globalAlpha = (0.55 + 0.45 * Math.max(0, s)) * detail;
     g.beginPath(); g.moveTo(bx + c * r, by + s * r); g.lineTo(x + c * r, y + s * r); g.stroke();
   }
   g.globalAlpha = 1;
@@ -205,5 +208,20 @@ export function wheelWith(g: G, x: number, y: number, r: number, ang: number, st
   wheelBack(g, x, y, r, ang, st, speed);
   runner?.(x, y + r * 0.94);
   wheelFront(g, x, y, r, st);
+  if (st.motionDirection !== undefined) {
+    g.save();
+    g.strokeStyle = '#ffc85a'; g.lineWidth = Math.max(2, r * 0.055); g.lineCap = 'round';
+    // A single bright rim patch breaks rotational symmetry. Its fading trail
+    // follows the true direction, including the reversal during rage mode.
+    const trail = Math.min(TAU / 4, speed * TAU / 12);
+    for (let i = 8; i >= 1; i--) {
+      const a = ang - st.motionDirection * trail * i / 8;
+      g.globalAlpha = (1 - i / 9) * 0.35;
+      g.beginPath(); g.arc(x, y, r, a - 0.045, a + 0.045); g.stroke();
+    }
+    g.globalAlpha = 1;
+    g.beginPath(); g.arc(x, y, r, ang - 0.06, ang + 0.06); g.stroke();
+    g.restore();
+  }
   hub(g, x, y, r, st);
 }

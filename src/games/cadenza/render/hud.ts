@@ -89,11 +89,11 @@ export class Hud {
   place(L: Layout) {
     const put = (e: HTMLElement, b: Box) => Object.assign(e.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
     put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout); put(this.menu, L.menu); put(this.launch, L.launch); put(this.recapEl, L.recap);
-    Object.assign(this.drop.style, { top: `${L.launch.y + 8}px` }); // prompts sit low, clear of the target gate (and share the launch meter's spot)
+    Object.assign(this.drop.style, { top: `${L.launch.y + 8}px` }); // prompts sit low, clear of the road (and share the launch meter's spot)
   }
-  /** Show the big ZONE callout. */
-  zoneCallout(n: number, kind: string, now: number) {
-    this.callout.innerHTML = `<b>ZONE ${String(n).padStart(2, '0')}</b><span>${kind}</span>`;
+  /** Announce the current musical section. */
+  zoneCallout(kind: string, now: number) {
+    this.callout.innerHTML = `<b>${kind.toUpperCase()}</b>`;
     this.callout.classList.add('on'); this.calloutUntil = now + 1.8;
   }
   text(title: string, sub: string, now: number, s = 1.6) { this.callout.innerHTML = `<b style="font-size:44px">${title}</b><span>${sub}</span>`; this.callout.classList.add('on'); this.calloutUntil = now + s; }
@@ -163,7 +163,7 @@ export class Hud {
     const e = s.effort;
     const PHASE: Record<string, string> = { cruise: 'Cruise', climb: 'Climb', sprint: 'SPRINT', hold: 'Hold it', recover: 'Recover' };
     const want = e.phase === 'recover' ? 'easy' : e.erg ? `ERG ${e.watts}+ W` : `≥ ${e.watts} W`;
-    this.zone.innerHTML = `<b>ZONE ${String(s.zone.n).padStart(2, '0')}</b><span>${s.zone.kind} · ${fmt(s.zone.left)}</span><span class="${e.ok ? 'ok' : 'low'}">${PHASE[e.phase]} ${want} · ${fmt(e.left)} ${e.phase === 'recover' ? '' : e.ok ? '✓' : '↑'}</span>`;
+    this.zone.innerHTML = `<b>${s.zone.kind.toUpperCase()}</b><span>${fmt(s.zone.left)} left</span><span class="${e.ok ? 'ok' : 'low'}">${PHASE[e.phase]} ${want} · ${fmt(e.left)} ${e.phase === 'recover' ? '' : e.ok ? '✓' : '↑'}</span>`;
     this.song.innerHTML = s.song ? `♪ ${esc(s.song.title)} — ${esc(s.song.artist)}${s.song.credit ? `<small>${esc(s.song.credit)}</small>` : ''}` : '';
     const bar = this.shield.firstElementChild as HTMLElement;
     bar.style.width = `${s.shield}%`;

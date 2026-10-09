@@ -129,10 +129,10 @@ export class CadenzaRenderer implements GameRenderer {
     for (const c of s.cues) {
       if (c.id <= this.lastCue) continue;
       this.lastCue = c.id;
-      if (c.type === 'zone' && c.data) { this.hud.zoneCallout(Number(c.data.n), String(c.data.kind), tNow); play('whoosh', { vol: 0.5 }); this.flashOnce(reduced ? 0.04 : 0.25); }
+      if (c.type === 'zone' && c.data) { this.hud.zoneCallout(String(c.data.kind), tNow); play('whoosh', { vol: 0.5 }); this.flashOnce(reduced ? 0.04 : 0.25); }
       else if (c.type === 'dropout') { play('lampOut'); this.hud.text('DROPOUT', 'hit your target to reboot', tNow); }
       else if (c.type === 'reboot') { play('railReady'); this.hud.text('REBOOTED', 'shield back online', tNow, 1.2); }
-      else if (c.type === 'cleanZone') { play('reward', { vol: 0.6 }); this.hud.text('CLEAN ZONE', `+${c.data?.bonus ?? ''}`, tNow, 1.4); this.queueFireworks(tNow, 5); }
+      else if (c.type === 'cleanZone') { play('reward', { vol: 0.6 }); this.hud.text('SECTION CLEARED', `+${c.data?.bonus ?? ''}`, tNow, 1.4); this.queueFireworks(tNow, 5); }
       else if (c.type === 'launch' && c.data) {
         const k = ({ perfect: 1, great: 0.66, good: 0.33, weak: 0 } as Record<string, number>)[String(c.data.rating)] ?? 0;
         this.launchKick = k; this.shake = Math.max(this.shake, 0.7 * k); this.craft.absorb(this.white); this.craft.ring(k);

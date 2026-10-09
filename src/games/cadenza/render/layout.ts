@@ -7,7 +7,7 @@ export interface Layout {
   /** three.js setViewOffset y shift so the craft sits in the usable area. */
   viewOffsetY: number;
   score: Box;    // top-left: score, multiplier, chain
-  zone: Box;     // top-right: ZONE nn · kind, time left, target
+  zone: Box;     // top-right: section kind, time left, target
   shield: Box;   // top-centre: shield bar
   song: Box;     // under the score: now playing + credit
   callout: Box;  // big centred "ZONE 07 / DROP" callout

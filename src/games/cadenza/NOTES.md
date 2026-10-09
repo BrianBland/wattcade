@@ -22,13 +22,13 @@ media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard 
 ## Render (`render/`)
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (neon cubes; mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
-viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` (towers, none near a helix),
+viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
 `craft.ts` (lofted hull, canopy, pods, wings, fins; flash, knockback + bubble, ghost, overcharge arcs, under sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
-white target gate 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
+white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
-`hud.ts` (score + chain pops, zone/target, shield, prompts low, launch meter + rating, song recap card), `layout.ts` (tested).
-AV penalty: 3 s grace, 12 s ramp, eased attack/recovery, quadratic shortfall, capped at 0.6; reduced flashing halves gray.
+`hud.ts` (section names replace numbered ZONE labels; score + chain pops, section kind/target, shield, prompts low, launch meter + rating, song recap card), `layout.ts` (tested).
+AV penalty: 3 s grace, 10 s ramp, 3 s attack/1.2 s recovery, quadratic shortfall, capped at 0.75; reduced flashing halves gray.
 
 ## Dev / tests
 `/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,

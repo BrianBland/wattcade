@@ -25,11 +25,11 @@ export class Gauge {
   private pos: Float32Array; private col: Float32Array; private fr = newFrame(); private c = new THREE.Color(); private shown = 0;
   // 2 edge strips × (SEG+1) rows × 2 verts, then 2 ticks × 2 sides × 4 verts
   constructor(private path: Path) {
-    const nStrip = 2 * (SEG + 1) * 2, n = nStrip + 16 + 8;
+    const nStrip = 2 * (SEG + 1) * 2, n = nStrip + 16;
     this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 3);
     const idx: number[] = [];
     for (let side = 0; side < 2; side++) for (let i = 0; i < SEG; i++) { const a = side * (SEG + 1) * 2 + i * 2, b = a + 2; idx.push(a, b, a + 1, a + 1, b, b + 1); }
-    for (let q = 0; q < 6; q++) { const a = nStrip + q * 4; idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3); }
+    for (let q = 0; q < 4; q++) { const a = nStrip + q * 4; idx.push(a, a + 1, a + 2, a + 2, a + 1, a + 3); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.col, 3)); g.setIndex(idx);
     this.mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
@@ -64,10 +64,6 @@ export class Gauge {
     const hit = g.state === 'ok' ? 1.4 : 1, ta = (0.9 + 0.3 * Math.sin(t * 6)) * hit;
     tick(g.target, this.c.copy(TARGET), ta);
     tick(g.ceil, CEIL, g.state === 'over' ? 1.4 + 0.6 * Math.sin(t * 14) : 0.7);
-    // the target gate: a thin bar across the track between the target posts (reach it = on target)
-    const ga = g.target === null ? 0 : visible * ta * 0.8, gd = dCraft + (g.target ?? 0);
-    for (const dd of [-0.2, 0.2]) for (const x of [-wall, wall]) put(gd + dd, x, 2.4, TARGET, ga);
-    for (const h of [2.15, 2.4]) for (const x of [-wall, wall]) put(gd, x, h, TARGET, ga);
     (this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.mesh.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
   }

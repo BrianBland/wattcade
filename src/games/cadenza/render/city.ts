@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from '../../../core/rng';
 import { disposeObjects } from './dispose';
 import { shader } from './look';
+import { roadClearanceFor } from './cityPlacement';
 import { newFrame, type Path } from './path';
 
 /**
@@ -69,25 +70,27 @@ export class City {
     const fr = newFrame(), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
     const W = path.halfWidth;
     const spots: Array<{ pos: THREE.Vector3; size: THREE.Vector3; rot: number; band: number; seed: number }> = [];
-    // helixes sweep ~60 m sideways: no tower may stand near any part of one (an open canyon to spiral up through)
-    const coil: THREE.Vector3[] = [];
-    for (const st of path.track.stunts) if (st.kind === 'helix' && st.t1 >= fromS - 20 && st.t0 <= toS + 20) for (let d = path.distAt(st.t0 - 2); d < path.distAt(st.t1 + 2); d += 8) coil.push(path.at(d, fr).p.clone());
-    const nearCoil = (p: THREE.Vector3, r: number) => coil.some((c) => (c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r * r);
+    const clearance = roadClearanceFor(path);
     for (let d = Math.max(0, Math.floor((path.distAt(fromS) - 400) / 16) * 16); d < path.distAt(toS) + 400; d += 16) {
       const rng = makeRng(seed * 31 + 5 + Math.floor(d / 16) * 1009);
       path.at(d, fr);
       for (const side of [-1, 1]) for (let row = 0; row < 2; row++) {
         if (rng() < 0.25) continue;
         const off = W + 38 + row * 85 + rng() * 70, h = 18 + rng() ** 2 * (row ? 220 : 120);
-        const flat = new THREE.Vector3(fr.r.x, 0, fr.r.z).normalize();
+        const flat = new THREE.Vector3(-fr.f.z, 0, fr.f.x).normalize();
         v.copy(fr.p).addScaledVector(flat, side * off); v.y = fr.p.y - 30 - rng() * 10;
-        if (coil.length && nearCoil(v, W + 34)) continue;
-        spots.push({ pos: v.clone(), size: new THREE.Vector3(6 + rng() * 20, h + 30, 6 + rng() * 20), rot: rng() * Math.PI, band: Math.floor(rng() * 3), seed: rng() });
+        const size = new THREE.Vector3(6 + rng() * 20, h + 30, 6 + rng() * 20);
+        const rot = rng() * Math.PI, band = Math.floor(rng() * 3), towerSeed = rng();
+        if (!clearance.allows(v.x, v.z, Math.hypot(size.x, size.z) / 2, W)) continue;
+        // Anchor every tower to the same ground plane, even beside elevated road.
+        size.y += v.y - clearance.groundY; v.y = clearance.groundY;
+        spots.push({ pos: v.clone(), size, rot, band, seed: towerSeed });
       }
     }
     const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0);
     const band = new Float32Array(spots.length), sd = new Float32Array(spots.length);
     const towers = new THREE.InstancedMesh(geo, shader(TOWER_VS, TOWER_FS), Math.max(1, spots.length));
+    towers.count = spots.length;
     spots.forEach((b, k) => {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.rot);
       towers.setMatrixAt(k, m.compose(b.pos, q, s.copy(b.size)));

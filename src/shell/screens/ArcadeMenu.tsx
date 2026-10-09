@@ -1,3 +1,5 @@
+import { FrameGate } from '../warmup/frameGate';
+import { usePageVisible } from '../usePageVisible';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, Profile } from '../../contracts';
 import { Btn, Dot, XpBar } from '../components/Bits';
@@ -27,8 +29,9 @@ function CardArt({ game, color, live }: { game: GameModule; color: string; live:
     let raf = 0;
     const size = () => { const dpr = Math.min(2, globalThis.devicePixelRatio || 1); c.width = Math.max(1, Math.round(c.clientWidth * dpr)); c.height = Math.max(1, Math.round(c.clientHeight * dpr)); };
     const t0 = performance.now();
+    const draws = new FrameGate();
     const frame = (now: number) => {
-      try { g.clearRect(0, 0, c.width, c.height); draw(g, c.width, c.height, 2 + (live ? (now - t0) / 1000 : 0), color); } catch { /* art must never break the menu */ }
+      if (!live || draws.ready(now)) try { g.clearRect(0, 0, c.width, c.height); draw(g, c.width, c.height, 2 + (live ? (now - t0) / 1000 : 0), color); } catch { /* art must never break the menu */ }
       if (live) raf = requestAnimationFrame(frame);
     };
     size(); frame(performance.now());
@@ -40,14 +43,13 @@ function CardArt({ game, color, live }: { game: GameModule; color: string; live:
 }
 
 /** The game's recorded clip: looping video on the focused card, still poster elsewhere. */
-function CardMedia({ game, color, live }: { game: GameModule; color: string; live: boolean }) {
+function CardMedia({ game, color, live, selected }: { game: GameModule; color: string; live: boolean; selected: boolean }) {
   const [missing, setMissing] = useState(false);
   const vid = useRef<HTMLVideoElement>(null);
-  useEffect(() => { const v = vid.current; if (!v) return; v.muted = true; v.play?.()?.catch?.(() => { /* poster stays */ }); }, [live]); // iOS: muted inline autoplay
+  useEffect(() => { const v = vid.current; if (!v) return; v.muted = true; if (live) v.play?.()?.catch?.(() => { /* poster stays */ }); else v.pause(); }, [live, selected]); // iOS: muted inline autoplay
   if (missing) return <CardArt game={game} color={color} live={live} />;
-  return live
-    ? <video class="card-media" ref={vid} src={clip(game.id, 'mp4')} poster={clip(game.id, 'webp')} autoplay muted loop playsInline disablePictureInPicture onError={() => setMissing(true)} />
-    : <img class="card-media" src={clip(game.id, 'webp')} alt="" draggable={false} onError={() => setMissing(true)} />;
+  if (!selected) return <img class="card-media" src={clip(game.id, 'webp')} alt="" draggable={false} onError={() => setMissing(true)} />;
+  return <video class="card-media" ref={vid} src={clip(game.id, 'mp4')} poster={clip(game.id, 'webp')} muted loop playsInline disablePictureInPicture onError={() => setMissing(true)} />;
 }
 
 function ActiveInfo({ game, profile, rides }: { game: GameModule; profile: Profile; rides?: GameRides }) {
@@ -71,8 +73,8 @@ function ActiveInfo({ game, profile, rides }: { game: GameModule; profile: Profi
 }
 
 /** One looping row of games rolling past a centred, enlarged selection. Swipe or tap a side card to roll; tap the centre to play. */
-function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
-  games: GameModule[]; sel: number; focused: boolean; profile: Profile; rides: Record<string, GameRides>;
+function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay }: {
+  visible: boolean; games: GameModule[]; sel: number; focused: boolean; profile: Profile; rides: Record<string, GameRides>;
   onSel: (i: number) => void; onPlay: (g: GameModule) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -103,7 +105,7 @@ function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
           <div class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
             style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
-            <div class="gc-media"><CardMedia game={g} color={profile.color} live={active} />{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
+            <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
             {active ? <ActiveInfo game={g} profile={profile} rides={rides[g.id]} /> : <div class="gc-title">{g.title}</div>}
           </div>
         );
@@ -112,7 +114,9 @@ function Carousel({ games, sel, focused, profile, rides, onSel, onPlay }: {
   );
 }
 
-export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements' | 'locker') => void; onBack: () => void }) {
+export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, visible = true }: { visible?: boolean; games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements' | 'locker') => void; onBack: () => void }) {
+  const pageVisible = usePageVisible();
+  const animate = visible && pageVisible;
   const list = useMemo(() => orderGames(games, profile), [games, profile.lastPlayed]);
   const n = list.length;
   const onPlay = (g: GameModule) => { const why = missingRequirement(g); if (why) { toast(`⚠ ${why}`); play('deny'); } else launch(g); };
@@ -143,7 +147,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
   return (
     <div class="screen menu">
       <div class="panel topbar">
-        <RiderAvatar profile={profile} size="small" road={false} />
+        <RiderAvatar profile={profile} size="small" road={false} still={!animate} />
         <div class="who"><b>{profile.name}</b><XpBar lv={levelView(profile.xp)} compact /></div>
         <span class="spacer" />
         <Btn small focused={idx === 0} onClick={toggleHills}>{hills ? '⛰ Road: Hills' : '▬ Road: Flat'}</Btn>
@@ -155,7 +159,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack }: { 
       </div>
       {driveIn
         ? <div class="di-toggle-row"><Btn focused={idx === B} onClick={toggleDriveIn} class="projector on">📽 Drive-In · show games</Btn></div>
-        : <Carousel games={list} sel={sel} focused={idx === B} profile={profile} rides={rides}
+        : <Carousel visible={animate} games={list} sel={sel} focused={idx === B} profile={profile} rides={rides}
             onSel={(i) => { setSel(i); setIdx(B); }} onPlay={onPlay} />}
       <KeyHints hints={[['dpad', 'Move'], ['a', driveIn ? 'Show games' : 'Play'], ['b', 'Switch rider'], ['shift', 'Gears'], ...(driveIn ? [['y', 'Next channel'], ['z', 'Prev channel']] as [string, string][] : [])]} />
     </div>

@@ -1,3 +1,4 @@
+import { FrameGate } from '../warmup/frameGate';
 import { useEffect, useRef } from 'preact/hooks';
 import type { Profile } from '../../contracts';
 import type { RiderLook } from '../../cosmetics/types';
@@ -7,9 +8,10 @@ import { drawRider } from '../../cosmetics/draw/rider';
 /** One rAF loop for every animated avatar on screen. */
 const live = new Set<(t: number) => void>();
 let raf = 0;
+const draws = new FrameGate();
 function loop(now: number) {
   raf = live.size ? requestAnimationFrame(loop) : 0;
-  for (const f of live) f(now / 1000);
+  if (document.visibilityState !== 'hidden' && draws.ready(now)) for (const f of live) f(now / 1000);
 }
 function animate(f: (t: number) => void): () => void {
   live.add(f); if (!raf) raf = requestAnimationFrame(loop);
@@ -41,10 +43,15 @@ export function RiderAvatar({ profile, look, size = 'big', still, road = true, s
   useEffect(() => {
     const c = ref.current; if (!c) return;
     const g = c.getContext('2d'); if (!g) return;
-    const draw = (t: number) => {
+    let w = 1, h = 1;
+    const resize = () => {
       const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
-      const w = Math.min(MAX_PX, Math.max(1, Math.round(c.clientWidth * dpr))), h = Math.min(MAX_PX, Math.max(1, Math.round(c.clientHeight * dpr)));
+      w = Math.min(MAX_PX, Math.max(1, Math.round(c.clientWidth * dpr)));
+      h = Math.min(MAX_PX, Math.max(1, Math.round(c.clientHeight * dpr)));
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    };
+    resize();
+    const draw = (t: number) => {
       const s = Math.min(w / (BOX.x1 - BOX.x0), h / (BOX.y1 - BOX.y0));
       g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
       g.translate(w / 2 - ((BOX.x0 + BOX.x1) / 2) * s, h - BOX.y1 * s); g.scale(s, s);
@@ -55,15 +62,11 @@ export function RiderAvatar({ profile, look, size = 'big', still, road = true, s
         g.fillStyle = 'rgba(0, 0, 0, 0.45)'; g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over';
       }
     };
-    if (still) {
-      draw(1.2);
-      // Redraw only when the box really changed size (a redraw never changes it, but be safe).
-      let lw = c.clientWidth, lh = c.clientHeight;
-      const ro = new ResizeObserver(() => { if (c.clientWidth === lw && c.clientHeight === lh) return; lw = c.clientWidth; lh = c.clientHeight; draw(1.2); });
-      ro.observe(c);
-      return () => ro.disconnect();
-    }
-    return animate(draw);
+    const ro = new ResizeObserver(() => { resize(); if (still) draw(1.2); });
+    ro.observe(c);
+    const stop = still ? (draw(1.2), () => {}) : animate(draw);
+    return () => { stop(); ro.disconnect(); };
+
   }, [key, still, road, silhouette]);
   return <div class={`rider-av ${size}${cls ? ` ${cls}` : ''}`}><canvas ref={ref} /></div>;
 }

@@ -68,7 +68,6 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     greyHit: t.num('greyHit', 20, 5, 60, 1, 'Shield lost per gray block'),
     rebootS: t.num('rebootS', 5, 1, 15, 0.5, 'Seconds on target to reboot after a dropout'),
     steer: t.num('steerRate', 9, 2, 30, 0.5, 'Lanes per second the craft can slide'),
-    hitWindow: t.num('hitWindow', 0.55, 0.3, 1, 0.05, 'Lateral catch radius (lanes)'),
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
@@ -86,7 +85,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let revision = timeline.revision ?? 0;
 
   let ownP = 0, started = false, done = false, saved = false;
-  let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padLevel = 0, padActive = false, ergF = 0.6;
+  let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padActive = false, ergF = 0.6;
   let nextBlock = 0, score = 0, chain = 0, maxChain = 0, shield = 100, dropoutLeft = -1;
   let collected = 0, missed = 0, greysHit = 0, greysDodged = 0, dropouts = 0, overdriveS = 0, cleanZones = 0;
   let zoneIdx = -1, zoneClean = true, zoneBlocks = 0, zoneOd = 0, zoneDur = 0, dropsHeld = 0, drops = 0, songsDone = 0;
@@ -142,29 +141,22 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       let want = laneTarget;
       const nextColour = track.blocks.slice(nextBlock, nextBlock + 8).find((b) => b.color >= 0 && b.t < p + 1.5);
       if (nextColour) want = nextColour.lane;
-      if (nb && nb.color < 0 && nb.t < p + 0.6 && Math.abs(nb.lane - (nb.t - p < 0.15 ? x : want)) <= tun.hitWindow()) {
+      if (nb && nb.color < 0 && nb.t < p + 0.6 && nb.lane === Math.round(nb.t - p < 0.15 ? x : want)) {
         const away = [nb.lane - 1, nb.lane + 1].filter((l) => l >= -h && l <= h);
         want = away.sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
       }
       laneTarget = want;
       return;
     }
-    // Paddles = absolute position: the stronger paddle leads (left pulls left, right pulls right); how far you pull picks
-    // the lane (with hysteresis); letting both rest returns you to the centre. While both rest, the D-pad and Z/A step
-    // one lane per press (holding repeats).
+    // Paddles place the ship continuously; buttons step between lane centres.
+    // Resting both paddles returns to centre once, then leaves button steering available.
     const l = Math.abs(inp.paddleL), r = Math.abs(inp.paddleR);
-    if (l > 0.05 || r > 0.05) {
-      const v = l >= r ? -l : r, mag = Math.abs(v);
-      let level = 0;
-      for (let k = 1; k <= h; k++) {
-        const on = 0.3 + ((k - 1) * 0.7) / h, held = Math.abs(padLevel) >= k;
-        if (mag >= (held ? on - 0.08 : on)) level = k;
-      }
-      padLevel = Math.sign(v) * level;
-      laneTarget = padLevel; padActive = true; holdDir = 0;
+    if (l > 0 || r > 0) {
+      laneTarget = clamp((l >= r ? -l : r) * h, -h, h);
+      padActive = true; holdDir = 0;
       return;
     }
-    if (padActive) { padActive = false; padLevel = 0; laneTarget = 0; }
+    if (padActive) { padActive = false; laneTarget = 0; }
     let step = 0;
     if (inp.pressed.has('left') || inp.pressed.has('z')) step = -1;
     if (inp.pressed.has('right') || inp.pressed.has('a')) step = 1;
@@ -294,7 +286,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       // blocks reaching the craft
       while (nextBlock < track.blocks.length && track.blocks[nextBlock].t <= p) {
         const b = track.blocks[nextBlock];
-        const caught = Math.abs(b.lane - x) <= tun.hitWindow();
+        const caught = b.lane === Math.round(x);
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {
@@ -333,7 +325,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       return {
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,
         controls: [
-          { button: 'dpad', label: '◀▶ Lane' }, { button: 'z', label: 'Left' }, { button: 'a', label: 'Right' }, { button: 'paddles', label: 'Lane' },
+          { button: 'dpad', label: '◀▶ Lane' }, { button: 'z', label: 'Left' }, { button: 'a', label: 'Right' }, { button: 'paddles', label: 'Position' },
           ...(erg ? [] : [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }]),
         ],
       };

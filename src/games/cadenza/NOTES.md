@@ -11,7 +11,7 @@ media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard 
   climbing 360° helix (≥ 20 m clear of the coil below); **every drop opens with a launch**: a 2.6 s 360° corkscrew on the drop,
   block-free (`LAUNCH` margins), then the hard bank. `effortAt`: cruise Z2 / climb Z3–4 / sprint Z4–5 capped 10/15/20 s then
   hold / recover, with ERG fractions. `rateTrack` for the picker.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
+- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = continuous absolute position; D-pad/Z/A step; nearest lane judges pickups/mines),
   judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor

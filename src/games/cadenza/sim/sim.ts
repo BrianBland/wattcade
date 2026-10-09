@@ -28,7 +28,7 @@ export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >=
 export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
   menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
-  track: Track; blockState: Uint8Array; x: number; lanes: number;
+  track: Track; blockState: Uint8Array; x: number; previousX: number; steeringTick: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
   /** The drop's launch roll: live meter while rolling, then the result for a few seconds. */
@@ -85,6 +85,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let revision = timeline.revision ?? 0;
 
   let ownP = 0, started = false, done = false, saved = false;
+  let previousX = 0, steeringTick = 0;
   let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padActive = false, ergF = 0.6;
   let nextBlock = 0, score = 0, chain = 0, maxChain = 0, shield = 100, dropoutLeft = -1;
   let collected = 0, missed = 0, greysHit = 0, greysDodged = 0, dropouts = 0, overdriveS = 0, cleanZones = 0;
@@ -280,6 +281,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       // steering
       steer();
       const h = half();
+      previousX = x; steeringTick++;
       x += clamp(laneTarget - x, -tun.steer() * dt, tun.steer() * dt);
       x = clamp(x, -h, h);
 
@@ -336,7 +338,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       return {
         p, durationS: track.durationS, started, done,
         menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
-        track, blockState, x, lanes: track.lanes,
+        track, blockState, x, previousX, steeringTick, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
         launch: launchActive
           ? { active: true, progress: launchProgress(p), ratio: launchT > 0 ? launchSum / launchT : 0, rating: null, bonus: 0, age: 0 }

@@ -26,7 +26,7 @@ viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `
 `craft.ts` (lofted hull, canopy, pods, wings, fins; flash, knockback + bubble, ghost, overcharge arcs, under sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white target gate 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
-`renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
+`renderer.ts` + `steering.ts` (ship, bank and camera interpolate 30 Hz steering at display refresh; camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
 `hud.ts` (score + chain pops, zone/target, shield, prompts low, launch meter + rating, song recap card), `layout.ts` (tested).
 AV penalty: 3 s grace, 12 s ramp, eased attack/recovery, quadratic shortfall, capped at 0.6; reduced flashing halves gray.
 

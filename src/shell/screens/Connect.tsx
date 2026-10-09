@@ -3,6 +3,7 @@ import type { DeviceKind } from '../types';
 import { Btn, Dot } from '../components/Bits';
 import { KeyHints, Spinner } from '../components/ui';
 import { addSecondController, connectDevice, controllerCount, controllerInfo, disconnectDevice, getDeviceStatus, getFake, liveDevices, setFake, subscribeDevices } from '../services';
+import { MediaServerConnection } from '../components/MediaServerConnection';
 import { useMenuNav } from '../useMenuNav';
 
 const ITEMS: Array<{ kind: DeviceKind; label: string; icon: string; note: string }> = [
@@ -25,11 +26,12 @@ export function Connect({ onDone }: { onDone: () => void }) {
   const st = getDeviceStatus();
   const act = (i: number) => {
     if (i < 3) { const k = ITEMS[i].kind; void (st[k].connected ? disconnectDevice(k) : connectDevice(k)); }
-    else if (i === 3) setFake(!getFake());
+    else if (i === 3) document.querySelector<HTMLInputElement>('[aria-label="Media server URL"]')?.focus();
+    else if (i === 4) setFake(!getFake());
     else onDone();
   };
   const anyOn = ITEMS.some((it) => st[it.kind].connected);
-  const [idx, setIdx] = useMenuNav(5, [3, 2], act, onDone, true, { initial: 4 }); // default to Ride/Continue so a stray controller press can't disconnect a device
+  const [idx, setIdx] = useMenuNav(6, [4, 2], act, onDone, true, { initial: 5 }); // default to Ride/Continue so a stray controller press can't disconnect a device
   return (
     <div class="screen">
       <div class="screen-head">
@@ -39,7 +41,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
         {ITEMS.map((it, i) => {
           const s = st[it.kind];
           return (
-            <div class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`} onClick={() => { setIdx(4); act(i); }}>
+            <div class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`} onClick={() => { setIdx(5); act(i); }}>
               <div class="device-top"><span class="icon">{it.icon}</span><h3>{it.label}</h3><span class="spacer" />{s.busy ? <Spinner /> : <Dot on={s.connected} />}</div>
               <div class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? 'Connected · tap to disconnect' : 'Tap to connect'}</div>
               {s.connected && <div class="device-live">{live(it.kind)}</div>}
@@ -54,10 +56,11 @@ export function Connect({ onDone }: { onDone: () => void }) {
             </div>
           );
         })}
+        <MediaServerConnection focused={idx === 3} onFocus={() => setIdx(3)}/>
       </div>
       <div class="row">
-        <Btn focused={idx === 3} onClick={() => act(3)}>{getFake() ? 'Fake bike: ON' : 'Fake bike: off'}</Btn>
-        <Btn primary focused={idx === 4} onClick={onDone}>{anyOn ? 'Ride ▶' : 'Continue ▶'}</Btn>
+        <Btn focused={idx === 4} onClick={() => act(4)}>{getFake() ? 'Fake bike: ON' : 'Fake bike: off'}</Btn>
+        <Btn primary focused={idx === 5} onClick={onDone}>{anyOn ? 'Ride ▶' : 'Continue ▶'}</Btn>
       </div>
       <KeyHints hints={[['dpad', 'Move'], ['a', 'Connect / select'], ['b', 'Continue']]} />
     </div>

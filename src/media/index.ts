@@ -17,3 +17,10 @@ export { decodeMono } from './player/decode';
 export { encodeWav } from './player/wav';
 export { analyzeInWorker, renderSynthWav } from './analysis/client';
 export { rateQueue, type QueueRating } from './rating';
+
+export { searchOnline, loadOnlineAudio, resolverConfig, setResolverConfig, type OnlineProvider } from './online/client';
+
+export { mediaServerConfig, saveMediaServerConfig, subscribeMediaServer, type MediaServerConfig } from './online/config';
+export { checkMediaServer, loadAudioRange } from './online/client';
+
+export { RollingQueue, estimatedAnalysis, type RangeSource } from './online/rolling';

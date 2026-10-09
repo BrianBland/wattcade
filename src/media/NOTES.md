@@ -35,6 +35,6 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
 - Shell: launching a game with `requires.media` opens `shell/media/MediaPicker` (queue persisted per profile); GameHost loads the plan,
   starts the music at GO, and locks the sim with ProgramSync (idles the session while music buffers). `/media-lab.html` = Music Lab.
 
-## Tests
 `npx vitest run src/media src/core/media.test.ts src/shell/media`. Gaps: the engine's Web Audio glue is browser-only (checked with Playwright in the Music Lab);
-no key lock (tempo matching shifts pitch ≤ 8 %); IndexedDB blobs (no OPFS).
+Online: app-wide config; `RollingQueue` loads/merges overlapping 30s windows, evicts PCM, fixes estimated crossfades.
+`MixEngine.load(plan, ranges)` schedules chunks and holds clocks on starvation. Setup: docs/CADENZA_STREAMING.md.

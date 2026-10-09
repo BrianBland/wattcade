@@ -1,6 +1,6 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
 import { synthTimeline } from '../../../media/synth/queue';
-import { buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { extendTrack, buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -83,6 +83,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let menuRow: number = MENU.start, menuT = 0;
   let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
   let blockState = new Uint8Array(track.blocks.length);
+  let revision = timeline.revision ?? 0;
 
   let ownP = 0, started = false, done = false, saved = false;
   let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padLevel = 0, padActive = false, ergF = 0.6;
@@ -205,6 +206,17 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   return {
     receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     update(dt) {
+      if ((timeline.revision ?? 0) !== revision) {
+        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+        // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
+        const from = started ? Math.max(position() + 3, timeline.updateFromS ?? position() + 35) : 0;
+        const previous = blockState;
+        track = started ? extendTrack(track, next, from) : next;
+        blockState = new Uint8Array(track.blocks.length);
+        const kept = started ? track.blocks.filter((b) => b.t < from).length : 0;
+        blockState.set(previous.subarray(0, Math.min(kept, blockState.length)));
+        revision = timeline.revision ?? 0; timeline.updateFromS = undefined;
+      }
       if (menu) { updateMenu(dt); return; }
       if (!ctx.media) ownP += dt;
       const p = position();

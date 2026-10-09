@@ -40,6 +40,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [help, setHelp] = useState(false);
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
+  const [musicWait, setMusicWait] = useState('');
+  const musicWaitRef = useRef('');
   const [phase, setPhaseState] = useState<Phase>('intro');
   const [count, setCount] = useState<number | null>(null);
   const [autoLeft, setAutoLeft] = useState(INTRO_AUTO_S);
@@ -109,7 +111,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         const session = startSession(game, profile, onSave, media ? { timeline: media.timeline } : undefined);
         sessionRef.current = session; setSession(session);
         if (media && session.media) {
-          const engine = mediaEngine(); engine.load(media.plan); engine.setVolume(1); engine.preload();
+          const engine = mediaEngine(); engine.load(media.plan, media.rolling); engine.setVolume(1); engine.preload();
           music.current = { engine, sync: new ProgramSync() };
           duckAmbient('music', true); // the game's own ambience would fight the music
         }
@@ -130,6 +132,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           if (disposed) return;
           const dt = Math.min(0.25, (now - last) / 1000); last = now;
           const ph = phaseRef.current;
+          const audioEngine = music.current?.engine;
+          const waiting = ph === 'play' && !pausedRef.current && audioEngine && ['starting', 'buffering'].includes(audioEngine.getState());
+          const wait = waiting ? audioEngine.lastError ? `Music is waiting · ${audioEngine.lastError}` : 'Buffering music…' : '';
+          if (wait !== musicWaitRef.current) { musicWaitRef.current = wait; setMusicWait(wait); }
           if (ph === 'intro') {
             const p = session.idle(dt);
             T.intro += dt;
@@ -195,6 +201,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     <div class="game-host">
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
+      {musicWait && <div role="status" class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}</div>}
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={() => leave(onAbandon)}>Back</button></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused || phase === 'intro'} legendOn={legendOn} fake={isFake()} />}
       {session && (phase === 'intro' || count != null) && (

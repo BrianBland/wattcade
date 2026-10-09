@@ -5,7 +5,7 @@
  */
 import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
-import { ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
+import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
@@ -18,7 +18,7 @@ import { BIOMES } from '../games/warmup/sim/terrain';
 import { FtmsTrainer } from '../devices/ftms';
 import { HeartRateMonitor } from '../devices/hr';
 import { RideControllerGroup } from '../devices/zwiftRide';
-import type { AchievementView, AwardView, DeviceKind, DeviceStatusMap, LevelView, SessionLike } from './types';
+import type { AchievementView, AwardView, DeviceKind, DeviceStatusMap, LevelView, SessionLike, MediaRun } from './types';
 import type { DebugActions, DebugSnapshot, TuningEntry } from '../debug/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -166,6 +166,7 @@ export function mediaLibrary(): MediaLibrary {
   if (!library) {
     library = new MediaLibrary({
       storage: new IdbStorage(),
+      loadOnlineAudio,
       analyze: async (blob, progress) => {
         progress(0, 'decoding');
         const { pcm } = await decodeMono(await blob.arrayBuffer(), ANALYSIS_SR);
@@ -182,6 +183,47 @@ export function mediaLibrary(): MediaLibrary {
 export function mediaEngine(): MixEngine {
   if (!engine) engine = new MixEngine({ resolveUrl: (id) => mediaLibrary().audioUrl(id), latencyS: () => Number(localStorage.getItem('wattcade.media.latencyMs') ?? 0) / 1000 });
   return engine;
+}
+/** Streaming runs keep only the configured horizon decoded; analysis is per audio window. */
+export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode): Promise<MediaRun> {
+  const lib = mediaLibrary(), config = mediaServerConfig(), ctx = mediaEngine().ctx;
+  if (!config.enabled) throw new Error('Enable the media server on Connect first.');
+  const metas = await Promise.all(ids.map((id) => lib.get(id)));
+  if (metas.some((m) => !m)) throw new Error('A queued song is missing.');
+  const items = await Promise.all(metas.map(async (meta) => {
+    const m = meta!;
+    if (m.sourceUrl) return { id: m.id, title: m.title, artist: m.artist, palette: m.palette, credit: m.credit, analysis: estimatedAnalysis(m.durationS) };
+    const item = await lib.mixItem(m.id); if (!item) throw new Error(`Still preparing ${m.title}.`); return structuredClone(item);
+  }));
+  const local = new Map<number, AudioBuffer>();
+  const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal) => {
+    const meta = metas[index]!;
+    let buffer: AudioBuffer;
+    if (meta.sourceUrl) {
+      const data = await loadAudioRange(meta, startS, durationS, config, signal);
+      buffer = await ctx.decodeAudioData(data);
+    } else {
+      let full = local.get(index);
+      if (!full) {
+        full = await ctx.decodeAudioData(await (await fetch(await lib.audioUrl(meta.id), { signal })).arrayBuffer());
+        for (const k of local.keys()) if (k < index - 1) local.delete(k);
+        local.set(index, full);
+      }
+      const from = Math.round(startS * full.sampleRate), length = Math.min(Math.round(durationS * full.sampleRate), full.length - from);
+      buffer = ctx.createBuffer(full.numberOfChannels, length, full.sampleRate);
+      for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
+    }
+    if (signal.aborted) throw new Error('Media queue was closed.');
+    const pcm = new Float32Array(Math.floor(buffer.duration * ANALYSIS_SR));
+    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+    for (let i = 0; i < pcm.length; i++) {
+      const x = i * buffer.sampleRate / ANALYSIS_SR, k = Math.floor(x), f = x - k;
+      for (const ch of channels) pcm[i] += ((ch[k] ?? 0) * (1 - f) + (ch[k + 1] ?? ch[k] ?? 0) * f) / channels.length;
+    }
+    const analysis = await analyzeInWorker(pcm, ANALYSIS_SR, () => {});
+    return { buffer, analysis };
+  });
+  return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };
 }
 /** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */
 export function unlockMedia(): void { try { mediaEngine().unlock(); } catch { /* no Web Audio */ } }

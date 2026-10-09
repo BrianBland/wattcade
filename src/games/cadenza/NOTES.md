@@ -10,7 +10,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   (other drops ride as a hold); breaks ≥25/15/12 s, handovers 36/24/20 s, 40/30/25 s rest after 150/180/210 s of work. Rests
   are trimmed around sprints, so the 3-2-1 runs at the end of a rest; rests < 8 s / work slivers < 6 s fold away.
   `effortAt`: countdown opens the ceiling to Z5 (floor unchanged); transitions judge old ∪ new band for 5 s, `band` = shown.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing, ship), controls (paddles = absolute position; D-pad/Z/A step),
+- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing, ship), controls (paddles = continuous absolute position; D-pad/Z/A step; nearest lane judges hits),
   judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor

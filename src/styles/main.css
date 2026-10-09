@@ -146,7 +146,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 /* controller pad: hoods flank the stats, mirroring the Ride (L: paddle, shifters, D-pad | R: face, shifters, paddle) */
-.hood { display: flex; align-items: center; gap: calc(var(--k) * .22); pointer-events: auto; touch-action: none; }
+.hood { display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 14px; background: linear-gradient(135deg, #101322e8, #080b15e8); box-shadow: inset 0 0 0 1px #ffffff24, 0 6px 24px #0005; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; touch-action: none; }
 .pc { display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
 .pc.unused { opacity: .5; }
 .pc-grid { position: relative; width: var(--pad-h); height: var(--pad-h); }
@@ -154,22 +154,22 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .pc-grid .top { top: 0; left: calc(50% - var(--k) / 2); } .pc-grid .bot { bottom: 0; left: calc(50% - var(--k) / 2); }
 .pc-grid .lft { left: 0; top: calc(50% - var(--k) / 2); } .pc-grid .rgt { right: 0; top: calc(50% - var(--k) / 2); }
 .pc-btns { display: flex; flex-direction: column; gap: 4px; }
-.pc-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--k) * 1.4); text-align: center; font: 800 12px/1.1 system-ui; color: var(--lime); text-shadow: 0 0 4px #000, 0 0 2px #000; pointer-events: none; }
-.pc small, .gearbox small { font: 700 10px/1 system-ui; color: var(--lime); text-align: center; max-width: calc(var(--k) * 1.3); }
-.pk { --kc: #8a84b8; display: flex; flex-direction: column; align-items: center; justify-content: center; width: var(--k); height: var(--k); padding: 0; color: #fff; background: color-mix(in srgb, var(--kc) 14%, #0b0a18c8); border: 2px solid var(--kc); border-radius: 50%; opacity: .28; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.pc-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--k) * 1.4); text-align: center; font: 800 12px/1.1 system-ui; color: #dce1ed; text-shadow: 0 1px 3px #000; pointer-events: none; }
+.pc small { font: 700 10px/1 system-ui; color: #b3bdd0; text-align: center; max-width: calc(var(--k) * 1.3); }
+.pk { --kc: #8a84b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: var(--k); height: var(--k); padding: 0; color: #657086; background: #ffffff03; border: 1px solid #ffffff12; border-radius: 50%; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .pk b { font: 800 calc(var(--k) * .36)/1 system-ui; }
-.pk span { font: 700 10px/1 system-ui; color: var(--lime); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pk.mapped { opacity: 1; background: color-mix(in srgb, var(--kc) 35%, #0b0a18d8); }
-.pk.merged { opacity: .55; } .pk.merged b { opacity: .6; }
+.pk span { font: 700 10px/1 system-ui; color: #dce1ed; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk.mapped { color: color-mix(in srgb, var(--kc) 65%, white); border-color: color-mix(in srgb, var(--kc) 45%, #ffffff16); background: color-mix(in srgb, var(--kc) 9%, #101322); }
 .pk.off { opacity: .45; }
-.pk.active { outline: 2px solid var(--lime); outline-offset: 1px; }
-.pk.held, .pk:active:not(:disabled) { background: var(--kc); box-shadow: 0 0 12px var(--kc); opacity: 1; }
+.pk.active { box-shadow: inset 0 0 0 2px var(--neon); }
+.pk:focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+.pk.held, .pk:active:not(:disabled) { color: #fff; background: color-mix(in srgb, var(--kc) 45%, #101322); border-color: var(--kc); box-shadow: inset 0 0 0 1px var(--kc); }
 .shift .pk { width: calc(var(--k) * 1.1); border-radius: 14px; }
 .pp { display: flex; flex-direction: column; align-items: center; gap: 3px; height: var(--pad-h); opacity: .3; pointer-events: none; }
 .pp.mapped { opacity: 1; }
-.pp-track { position: relative; flex: 1; width: 12px; background: #1a1830; border: 1px solid #5a5690; border-radius: 6px; overflow: hidden; }
+.pp-track { position: relative; flex: 1; width: 12px; background: #ffffff08; border: 1px solid #ffffff30; border-radius: 6px; overflow: hidden; }
 .pp-track i { position: absolute; left: 0; right: 0; background: var(--neon); }
-.pp small { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 10px/1 system-ui; color: var(--lime); max-height: 40%; overflow: hidden; }
+.pp small { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 10px/1 system-ui; color: #b3bdd0; max-height: 40%; overflow: hidden; }
 .hud-center { flex: 1 1 560px; max-width: 620px; min-width: 0; margin: 0 auto; align-self: flex-end; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: linear-gradient(135deg, #101322e8, #080b15e8); border: 1px solid #ffffff24; border-radius: 14px; box-shadow: 0 6px 24px #0005; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .hud-center .zw { margin: 0 auto; width: 100%; max-width: 600px; flex: none; }
 .hud-row { display: flex; align-items: center; justify-content: center; gap: 12px; pointer-events: auto; }
@@ -177,7 +177,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .hud-menu-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
 .hud-menu-hit:focus-visible { outline: 2px solid var(--neon); outline-offset: 3px; }
 .hud-center:has(.hud-menu-hit:hover) { border-color: #ffffff50; }
-.pc .pc-gear { color: #d4b6ff; font-size: 11px; white-space: nowrap; }
+.pc .pc-gear { color: #aeb8cd; font-size: 11px; white-space: nowrap; }
+.pc-gear strong { color: #e9ddff; font-size: 14px; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) {
   .zw-nums b { font-size: 18px; }
   .zw-nums, .has-gears .zw-nums { gap: 4px; }
@@ -188,7 +189,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 }
 @media (max-width: 700px) {
   .hud { gap: 4px; padding-left: 4px; padding-right: 4px; }
-  .hood { gap: 3px; }
+  .hood { gap: 3px; padding: 0 3px; }
   .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .zw-ftp, .zw-cad-guide { padding-left: 17px; }
   .zw-clock b { font-size: 14px; }

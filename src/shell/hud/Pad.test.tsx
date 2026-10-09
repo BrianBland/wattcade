@@ -41,3 +41,17 @@ it('shows current gear above assigned shifters and shifts through touch input', 
   expect(el.querySelector('.pc-gear')).toBeNull();
   expect(el.textContent).toContain('Dash');
 });
+
+it('removes unused peripheral controls while retaining assigned paddles and actions', () => {
+  const el = document.createElement('div');
+  const empty = buildPad([], false);
+  render(<Hood side="L" model={empty.left} held={new Set()} paddle={0} />, el);
+  expect(el.querySelector('.pp')).toBeNull();
+  expect(el.querySelector('.shift')).toBeNull();
+  expect(el.querySelectorAll('.pc-grid .pk')).toHaveLength(4);
+  const assigned = buildPad([{ button: 'paddles', label: 'Aim' }, { button: 'shiftUpR', label: 'Dash' }], false);
+  render(<Hood side="R" model={assigned.right} held={new Set()} paddle={.5} />, el);
+  expect(el.querySelector('.pp')?.textContent).toBe('Aim');
+  expect(el.querySelector('[aria-label="Dash"]')).not.toBeNull();
+  expect(el.querySelector('[aria-label="Right controller"]')).not.toBeNull();
+});

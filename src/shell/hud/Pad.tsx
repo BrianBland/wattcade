@@ -22,7 +22,7 @@ function Group({ c, held, gear }: { c: Cluster; held: Held; gear?: number }) {
   if (c.kind === 'shift') {
     return (
       <div class={`pc shift${c.mapped ? '' : ' unused'}`}>
-        {c.gears && <small class="pc-gear">Gear {gear ?? '—'}</small>}
+        {c.gears && <small class="pc-gear">Gear <strong>{gear ?? '—'}</strong></small>}
         <div class="pc-btns">{c.buttons.map((b) => <PadKey b={b} held={held} merged={!!c.label && !c.gears} />)}</div>
         {c.label && !c.gears && <small>{c.label}</small>}
       </div>
@@ -49,10 +49,10 @@ function Paddle({ model, v }: { model: HoodModel['paddle']; v: number }) {
 
 /** One hood, laid out outer→inner like the controller: left = paddle, shifters, D-pad; right = face buttons, shifters, paddle. */
 export function Hood({ side, model, held, paddle, gear }: { side: 'L' | 'R'; model: HoodModel; held: Held; paddle: number; gear?: number }) {
-  const pad = <Paddle model={model.paddle} v={paddle} />;
-  const shift = model.shift && <Group c={model.shift} held={held} gear={gear} />;
+  const pad = model.paddle.mapped && <Paddle model={model.paddle} v={paddle} />;
+  const shift = model.shift?.mapped && <Group c={model.shift} held={held} gear={gear} />;
   const stick = <Group c={model.stick} held={held} />;
   return side === 'L'
-    ? <div class="hood left">{pad}{shift}{stick}</div>
-    : <div class="hood right">{stick}{shift}{pad}</div>;
+    ? <div class="hood left" role="group" aria-label="Left controller">{pad}{shift}{stick}</div>
+    : <div class="hood right" role="group" aria-label="Right controller">{stick}{shift}{pad}</div>;
 }

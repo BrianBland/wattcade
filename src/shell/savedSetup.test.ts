@@ -122,6 +122,21 @@ describe('saved setup', () => {
       expect(s.getDeviceStatus().trainer.busy).toBe(true);
     } finally { release(); await restoring; }
   });
+  it('distinguishes an automatic failure from each manual saved-watch retry', async () => {
+    rememberDevices('hr', ['hr']);
+    mocks.hr.mockRejectedValueOnce(2).mockRejectedValueOnce(2).mockRejectedValueOnce(2);
+    const s = await import('./services'); await s.restoreSavedSetup();
+    expect(s.getDeviceStatus().hr.detail).toBe('Automatic watch connection #1 failed');
+    expect(s.getDeviceStatus().hr.error).toContain('Select watch again');
+    await s.selectSavedHrWatch('hr');
+    expect(s.getDeviceStatus().hr.detail).toBe('Saved watch retry #2 failed');
+    await s.selectSavedHrWatch('hr');
+    expect(s.getDeviceStatus().hr.detail).toBe('Saved watch retry #3 failed');
+    expect(mocks.hrPicker).not.toHaveBeenCalled();
+    await s.connectDevice('hr');
+    expect(mocks.hrPicker).toHaveBeenCalledTimes(1);
+    expect(s.getDeviceStatus().hr.connected).toBe(true);
+  });
   it('blocks manual picker requests while saved permissions are loading', async () => {
     rememberDevices('trainer', ['trainer']);
     let release!: (d: BluetoothDevice[]) => void;

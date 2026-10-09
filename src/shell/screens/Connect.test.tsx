@@ -4,7 +4,7 @@ import { act } from 'preact/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
   select: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
-  status: { trainer: { connected: false }, controller: { connected: false }, hr: { connected: false, busy: false, detail: '' } },
+  status: { trainer: { connected: false }, controller: { connected: false }, hr: { connected: false, busy: false, detail: '', error: undefined as string | undefined } },
 }));
 vi.mock('../services', () => ({
   addSecondController: vi.fn(), connectDevice: m.connect, disconnectDevice: m.disconnect,
@@ -32,4 +32,14 @@ it('explains that a saved-watch button is disabled while connecting', async () =
   m.status.hr.busy = true; m.status.hr.detail = 'Garmin: connecting GATT'; await mount();
   const button = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('Wait for connection:'))!;
   expect(button.disabled).toBe(true); expect(host.textContent).toContain('Garmin: connecting GATT');
+});
+
+it('shows retry feedback while disconnected and offers explicit picker selection', async () => {
+  m.status.hr.busy = false; m.status.hr.detail = 'Saved watch retry #2 failed'; m.status.hr.error = 'rejected with 2';
+  await mount();
+  expect(host.textContent).toContain('Saved watch retry #2 failed');
+  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Select watch again')!;
+  await act(() => button.click());
+  expect(m.connect).toHaveBeenCalledExactlyOnceWith('hr');
+  expect(m.disconnect).not.toHaveBeenCalled();
 });

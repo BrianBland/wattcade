@@ -4,3 +4,4 @@
 - Repeat on the same origin after reload/relaunch to measure permission persistence.
 - Tests: `npx vitest run src/probe`; typecheck and build.
 - Saved-device diagnostics report gatt.connect/addEventListener types to verify returned objects support reconnect on Bluefy.
+- Check saved devices fills a selector; Connect selected saved device tests GATT directly with an 8 s timeout and reports bare native rejections. Compare with Pick HR on the same origin.

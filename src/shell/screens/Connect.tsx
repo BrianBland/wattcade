@@ -46,7 +46,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
               <div class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? 'Connected · tap to disconnect' : 'Tap to connect'}</div>
               {s.connected && <div class="device-live">{live(it.kind)}</div>}
               {it.kind === 'trainer' && s.connected && s.detail && <div class="warn">{s.detail}</div>}
-              {it.kind === 'hr' && s.connected && s.detail && <div class="dim small">{s.detail}</div>}
+              {it.kind === 'hr' && !s.busy && s.detail && <div class="dim small">{s.detail}</div>}
               {it.kind === 'hr' && (
                 <div class="row" onClick={(e) => e.stopPropagation()}>
                   {savedHrWatches().map((watch) => (
@@ -54,7 +54,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
                       {s.busy ? 'Wait for connection:' : watch.selected ? 'Using' : 'Use'} {watch.name} · {watch.id.slice(-6)}
                     </button>
                   ))}
-                  <button class="btn small" disabled={s.busy} onClick={() => void connectDevice('hr')}>+ Add watch</button>
+                  <button class="btn small" disabled={s.busy} onClick={(e) => { e.stopPropagation(); void connectDevice('hr'); }}>{s.error ? 'Select watch again' : '+ Add watch'}</button>
                 </div>
               )}
               {s.error && <div class="warn">{s.error}</div>}

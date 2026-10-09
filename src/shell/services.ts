@@ -101,6 +101,7 @@ export function subscribeDevices(cb: () => void): () => void { listeners.add(cb)
 export let controllerInfo: { firmware?: string; battery?: number; warning?: string } = {};
 
 const authorizedHrDevices = new Map<string, BluetoothDevice>();
+let hrConnectionAttempt = 0;
 export function savedHrWatches(): Array<{ id: string; name: string; selected: boolean }> {
   return (readSavedSetup().hr ?? []).flatMap((id) => {
     const device = authorizedHrDevices.get(id);
@@ -121,11 +122,13 @@ export async function connectDevice(kind: DeviceKind): Promise<void> {
   return openDevice(kind);
 }
 
-async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promise<void> {
+async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automatic = false): Promise<void> {
+  const hrAction = automatic ? 'Automatic watch connection' : granted ? 'Saved watch retry' : 'Watch selection';
+  const hrAttempt = kind === 'hr' ? ++hrConnectionAttempt : 0;
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
     status[kind] = { connected: false, error: 'Web Bluetooth unavailable — use Bluefy on iPad or Chrome on desktop (HTTPS or localhost).' }; notify(); return;
   }
-  status[kind] = { connected: false, busy: true, detail: granted?.[0]?.name ? `Connecting to ${granted[0].name}` : undefined }; notify();
+  status[kind] = { connected: false, busy: true, detail: kind === 'hr' ? `${hrAction} #${hrAttempt}: starting` : granted?.[0]?.name ? `Connecting to ${granted[0].name}` : undefined }; notify();
   try {
     if (devices[kind]) { await devices[kind].disconnect(); delete devices[kind]; }
     const hub: any = dataHub;
@@ -138,7 +141,7 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promis
     }
     else if (kind === 'hr') {
       let connectingName = 'HR watch';
-      const progress = (step: string) => { status.hr = { connected: false, busy: true, detail: `${connectingName}: ${step}` }; notify(); };
+      const progress = (step: string) => { status.hr = { connected: false, busy: true, detail: `${hrAction} #${hrAttempt} · ${connectingName}: ${step}` }; notify(); };
       let d: HeartRateMonitor | undefined;
       if (granted) {
         const errors: string[] = [];
@@ -147,7 +150,7 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promis
           try { d = await HeartRateMonitor.connectDevice(device, progress); break; }
           catch (e) { errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
         }
-        if (!d) throw new Error('No saved watch connected. Enable HR broadcast or choose a watch. ' + errors.join(' · '));
+        if (!d) throw new Error('Saved watch connection failed. Enable HR broadcast, or tap Select watch again to open the picker. ' + errors.join(' · '));
       } else d = await HeartRateMonitor.connect(progress);
       devices.hr = d; hub.attachHr(d);
       d.onStatus((st) => { status.hr = { ...status.hr, connected: st.connected }; notify(); });
@@ -175,7 +178,7 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promis
     }
     status[kind] = { connected: true, detail: status[kind].detail, error: status[kind].error };
   } catch (e) {
-    status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
+    status[kind] = { connected: false, detail: kind === 'hr' ? `${hrAction} #${hrAttempt} failed` : undefined, error: e instanceof Error ? e.message : String(e) };
   }
   notify();
 }
@@ -200,7 +203,7 @@ async function restoreSetup(): Promise<void> {
       if (!granted[kind]?.length) {
         status[kind] = { connected: false, error: 'Choose your device to reconnect; saved permission is unavailable.' };
       } else {
-        await openDevice(kind, granted[kind]);
+        await openDevice(kind, granted[kind], true);
         if (kind === 'controller' && status[kind].connected && granted[kind]!.length < saved[kind]!.length) {
           status[kind].error = 'A saved controller needs to be selected again. Use Add other side.';
         }

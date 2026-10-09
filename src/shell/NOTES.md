@@ -36,3 +36,4 @@ CONTRACT-REQUEST: none.
 - Startup: Connect → ProfilePicker → Arcade; reopening Connect returns to Arcade when a player is selected. Tests: savedSetup.test.ts + App.test.tsx.
 - HR pool: remembers multiple IDs, last-used first; tries alternatives on startup. Saved-watch buttons switch without a picker; Add watch authorizes another. Only one HR watch is active; not tied to player profiles.
 - Restore HR before trainer/controllers so their setup cannot block watch selection. Saved-watch attempts show the watch name and GATT step; disabled buttons explain that connection is pending. DOM tests cover non-bubbling watch clicks.
+- HR feedback identifies automatic connection vs manual retry and increments each attempt even when Bluefy returns the same error. Select watch again explicitly opens the picker; saved retries never do.

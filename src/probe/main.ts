@@ -2,6 +2,7 @@
 // Intentionally imports no game code (only the pure Ride codec for live parsed output).
 import { toHex, propsList, fmtLine, isPrintable } from './format';
 import { parseRideMessage, PolarityDetector, RIDE_ON } from '../devices/zwiftRide/codec';
+import { withTimeout } from '../devices/ftms/steps';
 import { RIDE_REQUEST_OPTIONS } from '../devices/zwiftRide/controller';
 
 const KNOWN_SERVICES: Array<number | string> = [
@@ -16,6 +17,8 @@ let logEl: HTMLPreElement; let parsedEl: HTMLDivElement; let treeEl: HTMLDivElem
 let device: BluetoothDevice | undefined;
 let rideRx: BluetoothRemoteGATTCharacteristic | undefined;
 const polarity = new PolarityDetector();
+let savedDevices: BluetoothDevice[] = [];
+let savedSelect: HTMLSelectElement;
 
 function log(tag: string, text: string) {
   const l = fmtLine(performance.now() - t0, tag, text);
@@ -125,9 +128,27 @@ async function checkSavedDevices() {
   }
   try {
     const devices = await navigator.bluetooth.getDevices();
+    savedDevices = devices;
+    const selected = savedSelect.value;
+    savedSelect.replaceChildren(...devices.map(d => el('option', { value: d.id, textContent: `${d.name ?? '(no name)'} · ${d.id.slice(-6)}` })));
+    if (devices.some(d => d.id === selected)) savedSelect.value = selected;
     log('SAVED', `${devices.length} authorized device(s) for ${location.origin}; this is not a scan or a connection check`);
-    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false} gatt.connect=${typeof d.gatt?.connect} events=${typeof d.addEventListener}`);
+    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false} gatt.connect=${typeof d.gatt?.connect} events=${typeof d.addEventListener} watchAdvertisements=${typeof d.watchAdvertisements}`);
   } catch (e) { log('SAVED-ERROR', String(e)); }
+}
+
+/** Compare the object returned by getDevices with the fresh picker path. No discovery or chooser. */
+async function connectSavedDevice() {
+  const saved = savedDevices.find(d => d.id === savedSelect.value);
+  if (!saved) { log('SAVED-ERROR', 'Check saved devices first, then select a device'); return; }
+  try {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    device = saved;
+    log('SAVED-CONNECT', `${saved.name ?? '(no name)'} id=${saved.id}: connecting GATT without a picker`);
+    if (typeof saved.gatt?.connect !== 'function') throw new Error('Saved object has no gatt.connect method');
+    await withTimeout(saved.gatt.connect(), 8000, 'saved-device GATT connection');
+    log('SAVED-CONNECT', 'GATT connected; compare with Pick HR after disconnecting');
+  } catch (e) { log('SAVED-CONNECT-ERROR', e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`); }
 }
 
 function build() {
@@ -138,6 +159,9 @@ function build() {
   logEl = el('pre', { style: 'background:#111;color:#9f9;padding:8px;height:320px;overflow:auto;font-size:12px;white-space:pre-wrap' });
   parsedEl = el('div', { style: 'white-space:pre;font-family:monospace;background:#eef;padding:8px;min-height:3em' });
   parsedEl.textContent = 'Ride parsed output appears here';
+  savedSelect = document.createElement('select');
+  savedSelect.setAttribute('aria-label', 'Saved device to test');
+  savedSelect.style.cssText = 'max-width:100%;padding:10px';
   treeEl = el('div', { style: 'font-family:monospace;font-size:12px;white-space:pre-wrap' });
   root.append(
     el('h2', { textContent: 'wattcade BLE probe' }),
@@ -153,6 +177,7 @@ function build() {
     btn('Send RideOn', sendRideOn),
     btn('Disconnect', () => device?.gatt?.disconnect()),
     btn('Check saved devices', checkSavedDevices),
+    savedSelect, btn('Connect selected saved device', connectSavedDevice),
     btn('Copy log', copy), btn('Download log', download),
     btn('Clear', () => { lines.length = 0; logEl.textContent = ''; }),
     parsedEl, logEl, el('h3', { textContent: 'Services / characteristics' }), treeEl,

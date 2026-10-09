@@ -50,8 +50,8 @@ export function Connect({ onDone }: { onDone: () => void }) {
               {it.kind === 'hr' && (
                 <div class="row" onClick={(e) => e.stopPropagation()}>
                   {savedHrWatches().map((watch) => (
-                    <button key={watch.id} class="btn small" disabled={s.busy || watch.selected} onClick={() => void selectSavedHrWatch(watch.id)}>
-                      {watch.selected ? 'Using' : 'Use'} {watch.name} · {watch.id.slice(-6)}
+                    <button key={watch.id} class="btn small" disabled={s.busy || watch.selected} onClick={(e) => { e.stopPropagation(); void selectSavedHrWatch(watch.id); }}>
+                      {s.busy ? 'Wait for connection:' : watch.selected ? 'Using' : 'Use'} {watch.name} · {watch.id.slice(-6)}
                     </button>
                   ))}
                   <button class="btn small" disabled={s.busy} onClick={() => void connectDevice('hr')}>+ Add watch</button>

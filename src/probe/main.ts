@@ -126,7 +126,7 @@ async function checkSavedDevices() {
   try {
     const devices = await navigator.bluetooth.getDevices();
     log('SAVED', `${devices.length} authorized device(s) for ${location.origin}; this is not a scan or a connection check`);
-    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false}`);
+    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false} gatt.connect=${typeof d.gatt?.connect} events=${typeof d.addEventListener}`);
   } catch (e) { log('SAVED-ERROR', String(e)); }
 }
 

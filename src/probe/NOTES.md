@@ -3,3 +3,4 @@
 - Check saved devices lists authorized IDs without a picker, scan, or GATT connection.
 - Repeat on the same origin after reload/relaunch to measure permission persistence.
 - Tests: `npx vitest run src/probe`; typecheck and build.
+- Saved-device diagnostics report gatt.connect/addEventListener types to verify returned objects support reconnect on Bluefy.

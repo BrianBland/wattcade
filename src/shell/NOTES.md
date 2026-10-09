@@ -35,3 +35,4 @@ CONTRACT-REQUEST: none.
 - Saved setup: `savedSetup.ts` stores origin-local trainer/HR/two Ride IDs shared by all players. `restoreSavedSetup()` runs once on startup via getDevices, never a picker; missing grants/failed connections allow manual selection.
 - Startup: Connect → ProfilePicker → Arcade; reopening Connect returns to Arcade when a player is selected. Tests: savedSetup.test.ts + App.test.tsx.
 - HR pool: remembers multiple IDs, last-used first; tries alternatives on startup. Saved-watch buttons switch without a picker; Add watch authorizes another. Only one HR watch is active; not tied to player profiles.
+- Restore HR before trainer/controllers so their setup cannot block watch selection. Saved-watch attempts show the watch name and GATT step; disabled buttons explain that connection is pending. DOM tests cover non-bubbling watch clicks.

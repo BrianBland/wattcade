@@ -109,6 +109,19 @@ describe('saved setup', () => {
     expect(s.getDeviceStatus().hr.error).toBeUndefined();
     expect(readSavedSetup().hr).toEqual(['wife', 'mine']);
   });
+  it('restores HR before a trainer that stalls, leaving watch selection usable', async () => {
+    saveAll();
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const original = mocks.trainer.getMockImplementation()!;
+    mocks.trainer.mockImplementationOnce(async d => { await blocked; return original(d); });
+    const s = await import('./services'); const restoring = s.restoreSavedSetup();
+    try {
+      await vi.waitFor(() => expect(s.getDeviceStatus().hr.connected).toBe(true));
+      expect(s.getDeviceStatus().hr.busy).toBeFalsy();
+      expect(s.getDeviceStatus().trainer.busy).toBe(true);
+    } finally { release(); await restoring; }
+  });
   it('blocks manual picker requests while saved permissions are loading', async () => {
     rememberDevices('trainer', ['trainer']);
     let release!: (d: BluetoothDevice[]) => void;

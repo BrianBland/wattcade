@@ -111,7 +111,8 @@ export function savedHrWatches(): Array<{ id: string; name: string; selected: bo
 export async function selectSavedHrWatch(id: string): Promise<void> {
   if (status.hr.busy || (devices.hr?.id === id && status.hr.connected)) return;
   const device = authorizedHrDevices.get(id);
-  if (device) await openDevice('hr', [device]);
+  if (!device) { status.hr = { connected: false, error: 'Saved watch permission is unavailable. Use Add watch to select it again.' }; notify(); return; }
+  await openDevice('hr', [device]);
 }
 
 /** Must be called from a user gesture. */
@@ -124,7 +125,7 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promis
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
     status[kind] = { connected: false, error: 'Web Bluetooth unavailable — use Bluefy on iPad or Chrome on desktop (HTTPS or localhost).' }; notify(); return;
   }
-  status[kind] = { connected: false, busy: true }; notify();
+  status[kind] = { connected: false, busy: true, detail: granted?.[0]?.name ? `Connecting to ${granted[0].name}` : undefined }; notify();
   try {
     if (devices[kind]) { await devices[kind].disconnect(); delete devices[kind]; }
     const hub: any = dataHub;
@@ -136,11 +137,13 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[]): Promis
       rememberDevices(kind, [d.id]);
     }
     else if (kind === 'hr') {
-      const progress = (detail: string) => { status.hr = { connected: false, busy: true, detail }; notify(); };
+      let connectingName = 'HR watch';
+      const progress = (step: string) => { status.hr = { connected: false, busy: true, detail: `${connectingName}: ${step}` }; notify(); };
       let d: HeartRateMonitor | undefined;
       if (granted) {
         const errors: string[] = [];
         for (const device of granted) {
+          connectingName = device.name ?? 'HR watch';
           try { d = await HeartRateMonitor.connectDevice(device, progress); break; }
           catch (e) { errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
         }
@@ -183,7 +186,7 @@ export function restoreSavedSetup(): Promise<void> {
 }
 async function restoreSetup(): Promise<void> {
   const saved = readSavedSetup();
-  const kinds = (Object.keys(saved) as DeviceKind[]).filter((kind) => !status[kind].busy && !devices[kind]);
+  const kinds = (['hr', 'trainer', 'controller'] as DeviceKind[]).filter((kind) => saved[kind]?.length).filter((kind) => !status[kind].busy && !devices[kind]);
   if (!kinds.length) return;
   for (const kind of kinds) status[kind] = { connected: false, busy: true, detail: 'Finding saved device' };
   notify();

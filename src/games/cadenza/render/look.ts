@@ -25,9 +25,12 @@ uniform float uBeat; uniform float uDown; uniform float uBeatAge; uniform vec3 u
 uniform float uCraftM; uniform float uNear; uniform float uFar;
 vec3 hue2rgb(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
+// Contain invalid shader values before they enter half-float bloom targets.
+float finiteLight(float x) { return x >= 0.0 ? min(x, 64.0) : 0.0; }
+vec4 safeLight(vec4 c) { return vec4(finiteLight(c.r), finiteLight(c.g), finiteLight(c.b), clamp(c.a, 0.0, 1.0)); }
 float fogF(float depth) { return smoothstep(uNear, uFar, depth); }
 `;
 
 export function shader(vertex: string, fragment: string, extra: Record<string, THREE.IUniform> = {}, opts: Partial<THREE.ShaderMaterialParameters> = {}) {
-  return new THREE.ShaderMaterial({ uniforms: { ...U, ...extra }, vertexShader: GLSL_COMMON + vertex, fragmentShader: GLSL_COMMON + fragment, toneMapped: false, ...opts });
+  return new THREE.ShaderMaterial({ uniforms: { ...U, ...extra }, vertexShader: GLSL_COMMON + vertex, fragmentShader: GLSL_COMMON + fragment.replace(/void\s+main\s*\(\s*\)/, 'void shade()') + '\nvoid main() { shade(); gl_FragColor = safeLight(gl_FragColor); }', toneMapped: false, ...opts });
 }

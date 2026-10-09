@@ -1,3 +1,4 @@
+import { MAX_STREAM_DURATION_S } from '../../src/media/online/limits';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -26,16 +27,31 @@ export function trackUrl(value: string): { provider: Provider; url: string } {
   throw new Error('Only individual YouTube and SoundCloud track links are supported.');
 }
 
-export function mapTrack(t: Record<string, any>, provider: Provider): OnlineTrack | null {
-  const page = provider === 'youtube' ? `https://www.youtube.com/watch?v=${t.id}` : t.webpage_url ?? t.url;
+type TrackProblem = 'invalid' | 'live' | 'drm' | 'missing-duration' | 'too-long';
+const pageUrl = (t: Record<string, any>, provider: Provider) => provider === 'youtube' ? `https://www.youtube.com/watch?v=${t.id}` : t.webpage_url ?? t.url;
+function trackProblem(t: unknown, provider: Provider): TrackProblem | null {
+  if (!t || typeof t !== 'object') return 'invalid';
+  const info = t as Record<string, any>;
   try {
-    const parsed = trackUrl(page);
-    if (parsed.provider !== provider || !t.id || typeof t.title !== 'string' || t.is_live || t.live_status === 'is_live' || t.has_drm) return null;
-    const duration = Number(t.duration);
-    if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_DURATION) return null;
-    return { id: `${provider}:${t.id}`, source: provider, title: t.title,
-      artist: String(t.artist ?? t.uploader ?? t.channel ?? 'Unknown artist'), durationS: duration, pageUrl: parsed.url };
-  } catch { return null; }
+    if (trackUrl(pageUrl(info, provider)).provider !== provider || !info.id || typeof info.title !== 'string') return 'invalid';
+  } catch { return 'invalid'; }
+  if (info.is_live || info.live_status === 'is_live' || info.live_status === 'is_upcoming') return 'live';
+  if (info.has_drm) return 'drm';
+  const duration = Number(info.duration);
+  if (!Number.isFinite(duration) || duration <= 0) return 'missing-duration';
+  return duration > MAX_STREAM_DURATION_S ? 'too-long' : null;
+}
+const problemText: Record<TrackProblem, string> = {
+  invalid: 'unsupported or incomplete track information',
+  live: 'live or upcoming streams are not supported',
+  drm: 'protected audio is not supported',
+  'missing-duration': 'the source did not supply a usable track duration',
+  'too-long': 'tracks longer than the 12-hour limit are not supported',
+};
+export function mapTrack(t: Record<string, any>, provider: Provider): OnlineTrack | null {
+  if (trackProblem(t, provider)) return null;
+  return { id: `${provider}:${t.id}`, source: provider, title: t.title,
+    artist: String(t.artist ?? t.uploader ?? t.channel ?? 'Unknown artist'), durationS: Number(t.duration), pageUrl: trackUrl(pageUrl(t, provider)).url };
 }
 
 export type RunExtractor = (args: string[], timeoutMs: number) => Promise<string>;
@@ -59,8 +75,21 @@ export async function search(provider: Provider, query: string, run = runExtract
   const target = direct?.url ?? `${provider === 'youtube' ? 'ytsearch' : 'scsearch'}10:${query.trim()}`;
   const json = await run([...COMMON, '--dump-single-json', '--skip-download', ...(direct ? [] : ['--flat-playlist']), '--', target], 60000);
   const result = JSON.parse(json);
-  const tracks = direct ? [result] : result.entries ?? [];
-  return tracks.map((t: Record<string, any>) => mapTrack(t, provider)).filter((t: OnlineTrack | null): t is OnlineTrack => !!t);
+  const tracks: unknown[] = direct ? [result] : result?.entries ?? [];
+  if (!Array.isArray(tracks)) throw new Error('The source returned an invalid search response.');
+  const playable = tracks.map((t) => mapTrack(t as Record<string, any>, provider)).filter((t): t is OnlineTrack => !!t);
+  if (!playable.length && tracks.length) {
+    if (direct) {
+      const t = result as Record<string, any>, reason = trackProblem(t, provider)!;
+      const length = reason === 'too-long' ? ` (${Math.round(Number(t.duration) / 60)} minutes)` : '';
+      throw new Error(`Cannot queue this track${length}: ${problemText[reason]}.`);
+    }
+    const counts = new Map<TrackProblem, number>();
+    for (const t of tracks) { const reason = trackProblem(t, provider)!; counts.set(reason, (counts.get(reason) ?? 0) + 1); }
+    const details = [...counts].map(([reason, n]) => `${n}: ${problemText[reason]}`).join('; ');
+    throw new Error(`No playable tracks among ${tracks.length} search results. ${details}. Try an individual song or another search.`);
+  }
+  return playable;
 }
 
 export async function extractAudio(value: string, run = runExtractor): Promise<Buffer> {
@@ -81,11 +110,11 @@ export async function extractAudio(value: string, run = runExtractor): Promise<B
 /** Download only the requested window; yt-dlp delegates range cutting to native ffmpeg. */
 export async function extractRange(value: string, startS: number, durationS: number, run = runExtractor): Promise<Buffer> {
   const { url } = trackUrl(value);
-  if (!Number.isFinite(startS) || !Number.isFinite(durationS) || startS < 0 || startS >= MAX_DURATION || durationS <= 0 || durationS > 40 || startS + durationS > MAX_DURATION + 4)
-    throw new Error('Audio ranges must be between 0 and 30 minutes and at most 40 seconds long.');
+  if (!Number.isFinite(startS) || !Number.isFinite(durationS) || startS < 0 || startS >= MAX_STREAM_DURATION_S || durationS <= 0 || durationS > 40 || startS + durationS > MAX_STREAM_DURATION_S + 4)
+    throw new Error('Audio ranges must be between 0 and 12 hours and at most 40 seconds long.');
   const dir = await mkdtemp(join(tmpdir(), 'cadenza-range-'));
   try {
-    await run([...COMMON, '--max-filesize', String(MAX_BYTES), '--match-filters', `duration <= ${MAX_DURATION} & !is_live`,
+    await run([...COMMON, '--match-filters', `duration <= ${MAX_STREAM_DURATION_S} & !is_live`,
       '-f', 'bestaudio/best', '--force-keyframes-at-cuts', '--download-sections', `*${startS}-${startS + durationS}`,
       '-x', '--audio-format', 'wav', '--postprocessor-args', 'ExtractAudio+ffmpeg_o:-ar 44100 -ac 2',
       '-o', join(dir, 'track.%(ext)s'), '--', url], 90000);

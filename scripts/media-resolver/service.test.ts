@@ -15,7 +15,7 @@ describe('audio resolver', () => {
   it('filters live/DRM/long/malformed results and safely passes searches as one argument', async () => {
     const t = { id, title: 'A song', uploader: 'Artist', duration: 120 };
     expect(mapTrack(t, 'youtube')).toMatchObject({ id: `youtube:${id}`, artist: 'Artist' });
-    for (const over of [{ is_live: true }, { has_drm: true }, { duration: 3600 }, { duration: null }, { id: 'bad' }])
+    for (const over of [{ is_live: true }, { has_drm: true }, { duration: 43201 }, { duration: null }, { id: 'bad' }])
       expect(mapTrack({ ...t, ...over }, 'youtube')).toBeNull();
     const calls: string[][] = [];
     const run: RunExtractor = async (args) => { calls.push(args); return JSON.stringify({ entries: [t, { ...t, is_live: true }] }); };
@@ -51,7 +51,33 @@ it('extracts bounded exact audio windows and cleans up after range failures', as
   };
   expect((await extractRange(`https://youtu.be/${id}`, 28, 34, run)).toString()).toBe('WAV');
   await expect(access(dir)).rejects.toThrow();
-  for (const [start, duration] of [[-1, 30], [0, 41], [0, 0], [1800, 30], [NaN, 1]]) await expect(extractRange(`https://youtu.be/${id}`, start, duration, run)).rejects.toThrow('range');
+  for (const [start, duration] of [[-1, 30], [0, 41], [0, 0], [43200, 30], [NaN, 1]]) await expect(extractRange(`https://youtu.be/${id}`, start, duration, run)).rejects.toThrow('range');
   await expect(extractRange(`https://youtu.be/${id}`, 28, 34, async (args) => { dir = dirname(args[args.indexOf('-o') + 1]); throw new Error('timeout'); })).rejects.toThrow('timeout');
   await expect(access(dir)).rejects.toThrow();
+});
+
+it('explains why a direct long mixtape or a search with only filtered results cannot be queued', async () => {
+  const mix = { id: '412AHrISlqg', title: 'Lane 8 Fall mixtape', duration: 4 * 3600 };
+  expect(await search('youtube', `https://www.youtube.com/watch?v=${mix.id}`, async () => JSON.stringify(mix))).toMatchObject([{ durationS: 14400 }]);
+  const long = { ...mix, duration: 13 * 3600 };
+  await expect(search('youtube', `https://www.youtube.com/watch?v=${long.id}`, async () => JSON.stringify(long))).rejects.toThrow('780 minutes');
+  await expect(search('youtube', 'mixtape', async () => JSON.stringify({ entries: [long, { ...long, id, duration: null }] }))).rejects.toThrow('12-hour limit');
+  await expect(search('soundcloud', 'song', async () => JSON.stringify({ entries: [{ id: '123', title: 'Song', webpage_url: 'https://soundcloud.com/artist/song', duration: null }] }))).rejects.toThrow('usable track duration');
+});
+it('distinguishes genuinely empty searches and keeps valid songs when other results are filtered', async () => {
+  expect(await search('youtube', 'unknown', async () => JSON.stringify({ entries: [] }))).toEqual([]);
+  const t = { id, title: 'Song', duration: 120 };
+  expect(await search('youtube', 'song', async () => JSON.stringify({ entries: [null, t, { ...t, duration: 43201 }] }))).toHaveLength(1);
+  await expect(search('youtube', 'song', async () => JSON.stringify({ entries: {} }))).rejects.toThrow('invalid search response');
+  await expect(search('youtube', `https://youtu.be/${id}`, async () => JSON.stringify({ ...t, is_live: true }))).rejects.toThrow('live or upcoming');
+});
+
+it('extracts late windows in a four-hour mix without rejecting the full source file size', async () => {
+  const run: RunExtractor = async (args) => {
+    expect(args[args.indexOf('--download-sections') + 1]).toBe('*14368-14400');
+    expect(args).not.toContain('--max-filesize');
+    expect(args[args.indexOf('--match-filters') + 1]).toContain('43200');
+    await writeFile(join(dirname(args[args.indexOf('-o') + 1]), 'track.wav'), Buffer.from('late WAV')); return '';
+  };
+  expect((await extractRange(`https://youtu.be/${id}`, 14368, 32, run)).toString()).toBe('late WAV');
 });

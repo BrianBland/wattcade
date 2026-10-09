@@ -75,3 +75,17 @@ it('tolerates subsecond rounding in the final song duration without accepting in
   await q.prepare(1);
   expect(q.readyThrough(1)).toBeCloseTo(64);
 });
+
+it('starts and seeks near the end of a four-hour video with only the configured PCM horizon', async () => {
+  const calls: number[][] = [];
+  const q = new RollingQueue([item('long', 14400)], 'continuous', 60, async (_, start, duration) => {
+    calls.push([start, duration]); return { buffer: buffer(duration), analysis: analysis(duration) };
+  });
+  await q.prepare(0); expect(calls).toEqual([[0, 32], [28, 34]]);
+  q.cancel(); calls.length = 0;
+  await q.prepare(14340); q.evict(14340);
+  expect(calls).toEqual([[14338, 34], [14368, 32]]);
+  expect(q.windows(q.plan.entries[0])).toHaveLength(2);
+  expect(q.readyThrough(14340)).toBe(14400);
+  q.dispose();
+});

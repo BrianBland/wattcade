@@ -115,7 +115,11 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
       floorFtp: target.min <= 1 ? 0 : ZONE_FLOOR[target.min], ...(s.kind === 'drop' ? { sprintEnd: Math.min(s.t1, s.t0 + d.sprintS) } : {}),
     };
   });
-  const zoneAt = (p: number) => { let k = 0; for (let i = 0; i < zones.length; i++) if (zones[i].t0 <= p) k = i; return k; };
+  const zoneAt = (p: number) => {
+    let lo = 0, hi = zones.length;
+    while (lo + 1 < hi) { const m = (lo + hi) >> 1; if (zones[m].t0 <= p) lo = m; else hi = m; }
+    return lo;
+  };
 
   const speed = new Float32Array(n), dist = new Float64Array(n), height = new Float32Array(n), grade = new Float32Array(n), curve = new Float32Array(n);
   const roll = new Float32Array(n), tunnel = new Uint8Array(n);
@@ -254,7 +258,9 @@ export function extendTrack(old: Track, next: Track, fromS: number): Track {
   next.stunts = [...old.stunts.filter((s) => s.t0 < at), ...next.stunts.filter((s) => s.t0 >= at)].map((s) => ({ ...s, zone: zoneIndexAt(next, s.t0) }));
   next.tunnels = [...old.tunnels.filter((s) => s.t0 < at).map((s) => ({ ...s, t1: Math.min(s.t1, at) })), ...next.tunnels.filter((s) => s.t1 > at).map((s) => ({ ...s, t0: Math.max(s.t0, at) }))];
   for (const key of ['beats', 'downbeats', 'phrases'] as const) next[key] = [...old[key].filter((t) => t < at), ...next[key].filter((t) => t >= at)];
-  next.intensity.splice(0, cut, ...old.intensity.slice(0, cut));
-  for (let b = 0; b < 3; b++) next.bands[b].splice(0, cut, ...old.bands[b].slice(0, cut));
+  for (let i = 0; i < cut; i++) {
+    next.intensity[i] = old.intensity[i];
+    for (let b = 0; b < 3; b++) next.bands[b][i] = old.bands[b][i];
+  }
   return next;
 }

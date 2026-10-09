@@ -23,7 +23,7 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  lastProfileId, rememberProfile, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
+  lastProfileId, rememberProfile, restoreSavedSetup, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
@@ -35,7 +35,7 @@ const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'con
 const NAV = new Set<Button>(['up', 'down', 'left', 'right', 'a', 'b', 'y', 'z']);
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>({ name: 'profiles' });
+  const [screen, setScreen] = useState<Screen>({ name: 'connect' });
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profile, setProfileState] = useState<Profile | null>(null);
   const profileRef = useRef<Profile | null>(null);
@@ -58,6 +58,7 @@ export function App() {
   };
 
   useEffect(() => {
+    void restoreSavedSetup();
     void refresh(); void lastProfileId().then(setLastId);
     const pending = takePendingRide();
     if (pending) void credit(pending, 'Saved your last ride');
@@ -127,12 +128,12 @@ export function App() {
   let body;
   switch (screen.name) {
     case 'profiles':
-      body = <ProfilePicker profiles={profiles} lastId={lastId} onPick={(p) => { setProfile(p); setLastId(p.id); void rememberProfile(p.id); go({ name: 'connect' }); }} onNew={() => edit(null)} onEdit={edit} />; break;
+      body = <ProfilePicker profiles={profiles} lastId={lastId} onPick={(p) => { setProfile(p); setLastId(p.id); void rememberProfile(p.id); go({ name: 'menu' }); }} onNew={() => edit(null)} onEdit={edit} />; break;
     case 'editor':
       body = draft && <ProfileEditor profile={draft} onCancel={async () => { if (!screen.profileId) await deleteProfile(draft.id); await refresh(); go({ name: 'profiles' }); }}
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
         onDelete={screen.profileId ? async (p) => { await deleteProfile(p.id); await refresh(); go({ name: 'profiles' }); } : undefined} />; break;
-    case 'connect': body = <Connect onDone={() => go({ name: 'menu' })} />; break;
+    case 'connect': body = <Connect onDone={() => go({ name: profile ? 'menu' : 'profiles' })} />; break;
     case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
     case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={() => go({ name: 'menu' })} />; break;

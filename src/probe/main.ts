@@ -2,6 +2,7 @@
 // Intentionally imports no game code (only the pure Ride codec for live parsed output).
 import { toHex, propsList, fmtLine, isPrintable } from './format';
 import { parseRideMessage, PolarityDetector, RIDE_ON } from '../devices/zwiftRide/codec';
+import { withTimeout } from '../devices/ftms/steps';
 import { RIDE_REQUEST_OPTIONS } from '../devices/zwiftRide/controller';
 
 const KNOWN_SERVICES: Array<number | string> = [
@@ -16,6 +17,9 @@ let logEl: HTMLPreElement; let parsedEl: HTMLDivElement; let treeEl: HTMLDivElem
 let device: BluetoothDevice | undefined;
 let rideRx: BluetoothRemoteGATTCharacteristic | undefined;
 const polarity = new PolarityDetector();
+let savedDevices: BluetoothDevice[] = [];
+let savedSelect: HTMLSelectElement;
+let savedConnectionBusy = false;
 
 function log(tag: string, text: string) {
   const l = fmtLine(performance.now() - t0, tag, text);
@@ -32,6 +36,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<Omit<H
 }
 
 async function pick(label: string, opts: RequestDeviceOptions, ride = false) {
+  let stage = 'requestDevice';
   try {
     if (!navigator.bluetooth) { log('ERROR', 'Web Bluetooth not available (use Chrome or Bluefy over HTTPS)'); return; }
     log('PICK', label);
@@ -39,10 +44,41 @@ async function pick(label: string, opts: RequestDeviceOptions, ride = false) {
     device = await navigator.bluetooth.requestDevice(opts);
     log('DEVICE', `${device.name ?? '(no name)'} id=${device.id}`);
     device.addEventListener('gattserverdisconnected', () => log('DISCONN', 'gattserverdisconnected'));
+    stage = 'connecting GATT';
+    log('CONNECT', 'connecting GATT after picker');
     const server = await device.gatt!.connect();
     log('CONNECT', 'GATT connected');
+    stage = 'exploring services';
     await explore(server, ride);
-  } catch (e) { log('ERROR', e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${JSON.stringify(e)} (${typeof e})`); }
+  } catch (e) { log('ERROR', `${stage}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${JSON.stringify(e)} (${typeof e})`)); }
+}
+
+// Match Wattcade's HR picker options: full UUID first, short UUID only on request failure.
+async function pickHr() {
+  if (!navigator.bluetooth) { log('ERROR', 'Web Bluetooth not available'); return; }
+  let selected: BluetoothDevice | undefined;
+  try {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    for (const svc of ['0000180d-0000-1000-8000-00805f9b34fb', 0x180d]) {
+      const opts: RequestDeviceOptions = { filters: [{ services: [svc] }] };
+      log('PICK', `HR requestDevice ${JSON.stringify(opts)}`);
+      try { selected = await navigator.bluetooth.requestDevice(opts); break; }
+      catch (e) {
+        log('PICK-ERROR', `requestDevice ${svc}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`));
+        if ((e as { name?: string })?.name === 'NotFoundError') return;
+      }
+    }
+    if (!selected) { log('ERROR', 'HR requestDevice failed for both UUID forms; GATT was not attempted'); return; }
+    device = selected;
+    log('DEVICE', `${device.name ?? '(no name)'} id=${device.id}`);
+    device.addEventListener('gattserverdisconnected', () => log('DISCONN', 'gattserverdisconnected'));
+    log('CONNECT', 'connecting GATT after HR picker');
+    try {
+      const server = await withTimeout(device.gatt!.connect(), 8000, 'HR GATT connection');
+      log('CONNECT', 'GATT connected');
+      await explore(server, false);
+    } catch (e) { log('ERROR', `after HR selection: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`)); }
+  } catch (e) { log('ERROR', `HR picker preparation: ${String(e)}`); }
 }
 
 async function explore(server: BluetoothRemoteGATTServer, ride: boolean) {
@@ -119,6 +155,69 @@ async function copy() {
   }
 }
 
+async function checkSavedDevices() {
+  if (typeof navigator.bluetooth?.getDevices !== 'function') {
+    log('SAVED', 'getDevices() is not exposed by this browser'); return;
+  }
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    savedDevices = devices;
+    const selected = savedSelect.value;
+    savedSelect.replaceChildren(...devices.map(d => el('option', { value: d.id, textContent: `${d.name ?? '(no name)'} · ${d.id.slice(-6)}` })));
+    if (devices.some(d => d.id === selected)) savedSelect.value = selected;
+    log('SAVED', `${devices.length} authorized device(s) for ${location.origin}; this is not a scan or a connection check`);
+    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false} gatt.connect=${typeof d.gatt?.connect} events=${typeof d.addEventListener} watchAdvertisements=${typeof d.watchAdvertisements}`);
+  } catch (e) { log('SAVED-ERROR', String(e)); }
+}
+
+/** Compare direct GATT with advertisement-assisted discovery. Neither opens a chooser. */
+async function connectSavedDevice(discover = false) {
+  if (savedConnectionBusy) { log('SAVED-ERROR', 'A saved connection test is already running'); return; }
+  const saved = savedDevices.find(d => d.id === savedSelect.value);
+  if (!saved) { log('SAVED-ERROR', 'Check saved devices first, then select a device'); return; }
+  savedConnectionBusy = true;
+  let stage = 'preparing saved device';
+  try {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    device = saved;
+    if (discover) {
+      stage = 'waiting for advertisement';
+      await waitForSavedAdvertisement(saved);
+    }
+    stage = 'connecting GATT';
+    log('SAVED-CONNECT', `${saved.name ?? '(no name)'} id=${saved.id}: connecting GATT without a picker`);
+    if (typeof saved.gatt?.connect !== 'function') throw new Error('Saved object has no gatt.connect method');
+    await withTimeout(saved.gatt.connect(), 8000, 'saved-device GATT connection');
+    log('SAVED-CONNECT', 'GATT connected; compare with Pick HR after disconnecting');
+  } catch (e) { log('SAVED-CONNECT-ERROR', `${stage}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`)); }
+  finally { savedConnectionBusy = false; }
+}
+
+async function waitForSavedAdvertisement(saved: BluetoothDevice) {
+  if (typeof saved.watchAdvertisements !== 'function') throw new Error('Saved object has no watchAdvertisements method');
+  const abort = new AbortController();
+  let onAdvertisement: (event: Event) => void = () => {};
+  const received = new Promise<void>(resolve => {
+    onAdvertisement = event => {
+      const adv = event as Event & { device?: BluetoothDevice; rssi?: number };
+      log('ADVERTISEMENT', `received for ${saved.id}; event.device.id=${adv.device?.id ?? '(missing)'} sameObject=${adv.device === saved} rssi=${adv.rssi ?? '(missing)'}`);
+      resolve();
+    };
+    saved.addEventListener('advertisementreceived', onAdvertisement, { once: true });
+  });
+  try {
+    log('ADVERTISEMENT', `calling device.watchAdvertisements({signal}); watchingAdvertisements=${saved.watchingAdvertisements}; waiting up to 10 s`);
+    const watching = saved.watchAdvertisements({ signal: abort.signal }).then(() => {
+      log('ADVERTISEMENT', `watchAdvertisements resolved; watchingAdvertisements=${saved.watchingAdvertisements}`);
+    });
+    await withTimeout(Promise.all([watching, received]), 10000, 'saved-device advertisement discovery');
+  } finally {
+    saved.removeEventListener('advertisementreceived', onAdvertisement);
+    abort.abort();
+    log('ADVERTISEMENT', 'scan abort requested; advertisement listener removed');
+  }
+}
+
 function build() {
   document.title = 'wattcade BLE probe';
   const root = document.getElementById('probe')!;
@@ -127,6 +226,9 @@ function build() {
   logEl = el('pre', { style: 'background:#111;color:#9f9;padding:8px;height:320px;overflow:auto;font-size:12px;white-space:pre-wrap' });
   parsedEl = el('div', { style: 'white-space:pre;font-family:monospace;background:#eef;padding:8px;min-height:3em' });
   parsedEl.textContent = 'Ride parsed output appears here';
+  savedSelect = document.createElement('select');
+  savedSelect.setAttribute('aria-label', 'Saved device to test');
+  savedSelect.style.cssText = 'max-width:100%;padding:10px';
   treeEl = el('div', { style: 'font-family:monospace;font-size:12px;white-space:pre-wrap' });
   root.append(
     el('h2', { textContent: 'wattcade BLE probe' }),
@@ -138,14 +240,18 @@ function build() {
     btn('Ride C: any + fc82', () => pick('ride-C any+fc82', { acceptAllDevices: true, optionalServices: [0xfc82] }, true)),
     btn('Ride D: service fc82', () => pick('ride-D svc fc82', { filters: [{ services: [0xfc82] }] }, true)),
     btn('Pick FTMS', () => pick('ftms', { filters: [{ services: [0x1826] }], optionalServices: KNOWN_SERVICES })),
-    btn('Pick HR', () => pick('hr', { filters: [{ services: [0x180d] }], optionalServices: KNOWN_SERVICES })),
+    btn('Pick HR', pickHr),
     btn('Send RideOn', sendRideOn),
     btn('Disconnect', () => device?.gatt?.disconnect()),
+    btn('Check saved devices', checkSavedDevices),
+    savedSelect, btn('Connect selected saved device', () => connectSavedDevice()),
+    btn('Discover then connect saved device', () => connectSavedDevice(true)),
     btn('Copy log', copy), btn('Download log', download),
     btn('Clear', () => { lines.length = 0; logEl.textContent = ''; }),
     parsedEl, logEl, el('h3', { textContent: 'Services / characteristics' }), treeEl,
   );
   log('INFO', `UA: ${navigator.userAgent}`);
   log('INFO', navigator.bluetooth ? 'Web Bluetooth available' : 'Web Bluetooth NOT available');
+  log('CAPABILITIES', `secureContext=${window.isSecureContext} origin=${location.origin} requestDevice=${typeof navigator.bluetooth?.requestDevice} getDevices=${typeof navigator.bluetooth?.getDevices}`);
 }
 build();

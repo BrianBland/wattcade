@@ -9,8 +9,9 @@ Keep a note open and write down anything marked **record**.
 - [ ] Do **not** update the Ride controller firmware through Zwift. Firmware ≥ 1.3 locks the controller to Zwift.
 - [ ] Garmin: enable **Broadcast Heart Rate**. If you want a Garmin/Strava record, also start an Indoor Bike activity on the watch.
 
-## 1. Open and profile (1 min)
-- [ ] Open the site in Bluefy and create or select a profile with your real FTP, max HR and weight.
+## 1. Open and connect (1 min)
+- [ ] Open the site in Bluefy. Device setup appears before player selection; any saved authorized setup connects automatically.
+- [ ] On the first launch, select the trainer, both Ride sides, and HR using the sections below. Continue to create or select a profile with your real FTP, max HR and weight.
 
 ## 2. Trainer (4 min)
 - [ ] Connect → **Trainer** → pick the KICKR. The status turns connected.
@@ -31,7 +32,9 @@ Keep a note open and write down anything marked **record**.
 - [ ] If anything looks wrong, open **`/probe.html`**: Pick Zwift Ride → Send RideOn → press buttons → **Download** the hex log and keep it.
 
 ## 4. Heart rate (1 min)
-- [ ] Connect → **Heart rate** → pick the watch. `hr` should be live in the DEVICES panel, and the `hrZone` in DERIVED should look plausible.
+- [ ] Connect → **Heart rate** → pick the watch. Use **Add watch** to save a second household watch. `hr` should be live in the DEVICES panel, and the `hrZone` in DERIVED should look plausible.
+
+- [ ] Disable HR broadcast on the last-used watch, enable it on the other, then reload. Automatic connection should try the other saved watch without a picker. If both broadcast, use the named saved-watch buttons to switch; verify the live HR source changes.
 
 ## 5. Games (3 × ~3 min)
 - [ ] **Crank Crawler:** pedal to move and fire, aim with the paddles, and step on swamp tiles (green). **Record:** is the grade change noticeable? Does the 90 rpm movement speed feel right?
@@ -41,7 +44,16 @@ Keep a note open and write down anything marked **record**.
 
 ## 6. Wrap-up (1 min)
 - [ ] Quit to summary. Duration, power, kJ and HR should look right, and XP should be awarded.
-- [ ] Reload the page. The profile, level and achievements should persist.
+- [ ] Reload the same HTTPS URL. Device setup appears first and the saved trainer, both Ride sides, and HR should connect without a picker if Bluefy retains authorization. Continue to player selection; the profile, level and achievements should persist.
+- [ ] Force-quit/relaunch Bluefy and repeat. Record any missing grants or connection errors; manual selection must still work.
 - [ ] Export a backup from the profile editor, because Bluefy storage can be cleared.
 
 **Report back:** the recorded items above, the probe log if one was captured, and which of the sim, ERG and resistance tests were felt.
+
+### Saved-device advertisement discovery
+
+- In Bluefy with BLE advertisements enabled and HR broadcast active, reload Wattcade on the same HTTPS origin. HR should show “Waiting for device advertisement”, then connect without a picker.
+- Repeat after quitting/reopening Bluefy. The fēnix 6 Pro probe test passed after reload; this app-startup/restart behavior remains to verify.
+- Repeat with KICKR CORE and both Ride sides awake; their advertisement-assisted restoration is implemented but not yet hardware verified.
+- With the last-used watch off and the other saved watch broadcasting, verify the 10-second discovery timeout advances to the other watch without forgetting either.
+- If all saved watches are off, verify busy state ends and Select watch again remains usable. Browsers lacking watchAdvertisements should retain direct saved GATT connection.

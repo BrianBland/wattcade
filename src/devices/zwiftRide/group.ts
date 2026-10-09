@@ -36,11 +36,15 @@ export class RideControllerGroup implements ControllerDevice {
   private logCbs = new Set<(line: string) => void>();
 
   get count() { return this.members.length; }
+  get ids() { return this.members.map((m) => m.dev.device.id); }
   get names() { return this.members.map((m) => m.dev.device.name ?? m.dev.device.id); }
 
   /** Must be called from a user gesture. Picking an already-connected controller is rejected. */
   async addFromPicker(): Promise<void> {
-    const device = await requestRideDevice();
+    return this.addDevice(await requestRideDevice());
+  }
+
+  async addDevice(device: BluetoothDevice): Promise<void> {
     if (this.members.some((m) => m.dev.device.id === device.id)) throw new Error('That controller is already connected — pick the other one.');
     this.add(await ZwiftRideController.connectDevice(device));
   }

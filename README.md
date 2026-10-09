@@ -65,10 +65,16 @@ Touch: triple-tap the top-left corner to toggle the debug overlay. While the ove
 
 1. Install **Bluefy** from the App Store. Web Bluetooth requires **HTTPS**.
 2. To test on the iPad from your dev machine, run `npm run dev:ipad` and then, in a second terminal, `cloudflared tunnel --url http://localhost:5173`. Open the printed `https://…trycloudflare.com` URL in Bluefy.
-3. Close Zwift first, because only one app can control the trainer. Bluefy can't remember devices, so you pick each device once per session from the Connect screen.
+3. Close Zwift first, because only one app can control the trainer. Device setup opens before player selection. Pick each device once; Wattcade saves the setup locally and automatically connects authorized devices on later launches using `getDevices()`. HR supports multiple saved watches shared by all players: automatic connection tries the last-used watch first, then other saved watches. Use the saved-watch buttons when both are broadcasting, and **Add watch** to authorize another without forgetting existing watches. If Bluefy does not retain permission, or a device is unavailable, select it manually. Use the same HTTPS hostname for subsequent rides (temporary tunnel URLs have different permissions).
 4. On the Garmin, enable **Broadcast Heart Rate**. Recording an Indoor Bike activity on the watch gives you the Garmin/Strava record for now; wattcade does not upload anything.
 5. Don't update the Ride controller firmware through Zwift. Firmware 1.3+ is locked to Zwift.
 6. To debug Bluetooth, open **`/probe.html`**. It lists every service and characteristic, subscribes to all of them, and logs hex with Copy and Download buttons.
+
+### Testing saved connections in desktop Chrome
+
+Basic Bluetooth connection and `getDevices()` have different availability. If saved connection reports `getDevices()` is missing, enable **Use the new permissions backend for Web Bluetooth** at `chrome://flags/#enable-web-bluetooth-new-permissions-backend` and relaunch Chrome. Google's [getDevices sample](https://googlechrome.github.io/samples/web-bluetooth/get-devices.html) documents this flag. If the method is still absent in your Chrome version, the [implementation status](https://github.com/whatwg/bluetooth/blob/main/implementation-status.md) also lists `chrome://flags/#enable-experimental-web-platform-features` for exposing it. After changing flags, select devices again on the same origin, then reload to test restoration.
+
+Bluefy does not use Chrome flags. Its App Store release notes advertise `getDevices()`, but installed-version support and permission persistence need iPad verification. On `/probe.html`, inspect the CAPABILITIES line and use **Check saved devices** before/after reload and Bluefy relaunch. `getDevices=function` verifies exposure; retaining the same IDs across those steps verifies permission persistence. The returned list can include offline devices, so actual reconnection is a separate test. Saved connections wait up to 10 seconds for an advertisement when `device.watchAdvertisements()` is available, then stop scanning and connect GATT; browsers without that method try GATT directly. An iPad/Bluefy fēnix 6 Pro probe test needed this discovery step after page reload and connected successfully with it. Wattcade startup, Bluefy app restart, trainer, and Ride restoration still need hardware verification. Keep BLE advertisements enabled in Bluefy settings.
 
 ## Deploy (Cloudflare Workers, static assets)
 

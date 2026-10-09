@@ -21,7 +21,7 @@ This file is both the product spec and the execution plan for Claude Code. **Orc
 
 ## §1 Hardware and protocol facts (source of truth)
 
-**Target runtime:** Bluefy on iPadOS. It supports `navigator.bluetooth.requestDevice` and requires HTTPS. It has **no** `getDevices()`/`watchAdvertisements()`, so the user picks each device once per session, and each `requestDevice` call needs its own user tap. Desktop Chrome must also work (used for development). Assume three BLE devices are connected at the same time.
+**Target runtime:** Bluefy on iPadOS. It supports `navigator.bluetooth.requestDevice` and requires HTTPS. Feature-detect `getDevices()` to restore a browser-local saved setup automatically before player selection. Grant persistence on Bluefy needs hardware verification; retain manual selection as a fallback. Each `requestDevice` call needs its own user tap. Desktop Chrome must also work (used for development). Assume three BLE devices are connected at the same time.
 
 ### 1.1 KICKR CORE — FTMS (Fitness Machine Service)
 

@@ -12,6 +12,8 @@ import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, x
 import { getGame, lobbyGame } from '../games/registry';
 import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
 import type { Item, Slot } from '../cosmetics/types';
+import { readSavedSetup, rememberDevices, resolveSavedSetup } from './savedSetup';
+import { discoverSavedDevice } from './savedDiscovery';
 import { getDriveIn } from './drivein/store';
 import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
@@ -99,43 +101,144 @@ export const getDeviceStatus = (): DeviceStatusMap => status;
 export function subscribeDevices(cb: () => void): () => void { listeners.add(cb); return () => listeners.delete(cb); }
 export let controllerInfo: { firmware?: string; battery?: number; warning?: string } = {};
 
+const authorizedHrDevices = new Map<string, BluetoothDevice>();
+let hrConnectionAttempt = 0;
+export function savedHrWatches(): Array<{ id: string; name: string; selected: boolean }> {
+  return (readSavedSetup().hr ?? []).flatMap((id) => {
+    const device = authorizedHrDevices.get(id);
+    return device ? [{ id, name: device.name ?? 'HR watch', selected: devices.hr?.id === id && status.hr.connected }] : [];
+  });
+}
+/** Switch to a saved authorized watch without opening the browser picker. */
+export async function selectSavedHrWatch(id: string): Promise<void> {
+  if (status.hr.busy || (devices.hr?.id === id && status.hr.connected)) return;
+  const device = authorizedHrDevices.get(id);
+  if (!device) { status.hr = { connected: false, error: 'Saved watch permission is unavailable. Use Add watch to select it again.' }; notify(); return; }
+  await openDevice('hr', [device]);
+}
+
 /** Must be called from a user gesture. */
 export async function connectDevice(kind: DeviceKind): Promise<void> {
+  if (status[kind].busy) return;
+  return openDevice(kind);
+}
+
+async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automatic = false): Promise<void> {
+  const hrAction = automatic ? 'Automatic watch connection' : granted ? 'Saved watch retry' : 'Watch selection';
+  const hrAttempt = kind === 'hr' ? ++hrConnectionAttempt : 0;
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
     status[kind] = { connected: false, error: 'Web Bluetooth unavailable — use Bluefy on iPad or Chrome on desktop (HTTPS or localhost).' }; notify(); return;
   }
-  status[kind] = { connected: false, busy: true }; notify();
+  status[kind] = { connected: false, busy: true, detail: kind === 'hr' ? `${hrAction} #${hrAttempt}: starting` : granted?.[0]?.name ? `Connecting to ${granted[0].name}` : undefined }; notify();
   try {
+    if (devices[kind]) { await devices[kind].disconnect(); delete devices[kind]; }
     const hub: any = dataHub;
-    if (kind === 'trainer') { const d: any = await FtmsTrainer.connect((step) => { status.trainer = { connected: false, busy: true, detail: step }; notify(); }); devices.trainer = d; hub.attachTrainer(d); d.onStatus?.((s: any) => { status.trainer = { connected: s.connected, detail: s.detail }; notify(); }); }
-    else if (kind === 'hr') { const d: any = await HeartRateMonitor.connect((step: string) => { status.hr = { connected: false, busy: true, detail: step }; notify(); }); devices.hr = d; hub.attachHr(d); d.onStatus?.((s: any) => { status.hr = { connected: s.connected }; notify(); }); }
+    if (kind === 'trainer') {
+      const progress = (detail: string) => { status.trainer = { connected: false, busy: true, detail }; notify(); };
+      if (granted) await discoverSavedDevice(granted[0], progress);
+      const d = granted ? await FtmsTrainer.connectDevice(granted[0], progress) : await FtmsTrainer.connect(progress);
+      devices.trainer = d; hub.attachTrainer(d);
+      d.onStatus((st) => { status.trainer = { ...status.trainer, connected: st.connected, detail: st.detail }; notify(); });
+      rememberDevices(kind, [d.id]);
+    }
+    else if (kind === 'hr') {
+      let connectingName = 'HR watch';
+      const progress = (step: string) => { status.hr = { connected: false, busy: true, detail: `${hrAction} #${hrAttempt} · ${connectingName}: ${step}` }; notify(); };
+      let d: HeartRateMonitor | undefined;
+      if (granted) {
+        const errors: string[] = [];
+        for (const device of granted) {
+          connectingName = device.name ?? 'HR watch';
+          try {
+            await discoverSavedDevice(device, progress);
+            d = await HeartRateMonitor.connectDevice(device, progress); break;
+          }
+          catch (e) { errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
+        }
+        if (!d) throw new Error('Saved watch connection failed. Enable HR broadcast, or tap Select watch again to open the picker. ' + errors.join(' · '));
+      } else d = await HeartRateMonitor.connect(progress);
+      devices.hr = d; hub.attachHr(d);
+      d.onStatus((st) => { status.hr = { ...status.hr, connected: st.connected }; notify(); });
+      authorizedHrDevices.set(d.id, d.bluetoothDevice);
+      status.hr.detail = d.name;
+      rememberDevices(kind, [d.id]);
+    }
     else {
       // The Ride's two sides may appear as two devices; the group merges them. First tap adds one side.
       const g = new RideControllerGroup();
-      g.onStatus((s) => { controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { connected: s.connected, detail: s.warning }; notify(); });
+      g.onStatus((s) => { controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { ...status.controller, connected: s.connected, detail: s.warning }; notify(); });
       g.onLog((l) => console.info('[ride]', l));
-      await g.addFromPicker();
+      if (granted) {
+        const errors: string[] = [];
+        for (const device of granted) {
+          try {
+            await discoverSavedDevice(device, detail => { status.controller = { connected: false, busy: true, detail: `${device.name ?? 'Controller'}: ${detail}` }; notify(); });
+            await g.addDevice(device);
+          }
+          catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+        }
+        if (!g.count) throw new Error(errors.join(' · '));
+        if (errors.length) status.controller.error = 'One controller could not connect: ' + errors.join(' · ');
+      } else await g.addFromPicker();
       devices.controller = g; hub.attachController(g, input);
+      // Preserve missing/offline saved sides during restoration.
+      if (!granted) rememberDevices(kind, g.ids);
     }
-    status[kind] = { connected: true, detail: status[kind].detail };
+    status[kind] = { connected: true, detail: status[kind].detail, error: status[kind].error };
   } catch (e) {
-    status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
+    status[kind] = { connected: false, detail: kind === 'hr' ? `${hrAction} #${hrAttempt} failed` : undefined, error: e instanceof Error ? e.message : String(e) };
   }
   notify();
 }
+// Restore once per page load, independently of player selection or menu revisits.
+let restoringSetup: Promise<void> | undefined;
+export function restoreSavedSetup(): Promise<void> {
+  return restoringSetup ??= restoreSetup();
+}
+async function restoreSetup(): Promise<void> {
+  const saved = readSavedSetup();
+  const kinds = (['hr', 'trainer', 'controller'] as DeviceKind[]).filter((kind) => saved[kind]?.length).filter((kind) => !status[kind].busy && !devices[kind]);
+  if (!kinds.length) return;
+  for (const kind of kinds) status[kind] = { connected: false, busy: true, detail: 'Finding saved device' };
+  notify();
+  try {
+    const bluetooth = typeof navigator === 'undefined' ? undefined : navigator.bluetooth;
+    if (!bluetooth?.getDevices) throw new Error('Automatic connection is unavailable because this browser does not expose getDevices(). Select devices manually. Desktop Chrome may need its Web Bluetooth permissions flag enabled.');
+    const granted = resolveSavedSetup(saved, await bluetooth.getDevices());
+    for (const device of granted.hr ?? []) authorizedHrDevices.set(device.id, device);
+    // Serialize GATT setup to avoid overloading the iPad's Bluetooth bridge.
+    for (const kind of kinds) {
+      if (!granted[kind]?.length) {
+        status[kind] = { connected: false, error: 'Choose your device to reconnect; saved permission is unavailable.' };
+      } else {
+        await openDevice(kind, granted[kind], true);
+        if (kind === 'controller' && status[kind].connected && granted[kind]!.length < saved[kind]!.length) {
+          status[kind].error = 'A saved controller needs to be selected again. Use Add other side.';
+        }
+      }
+      notify();
+    }
+  } catch (e) {
+    for (const kind of kinds) status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
+    notify();
+  }
+}
+
 /** Number of Ride controllers (sides) connected. */
 export const controllerCount = (): number => (devices.controller as RideControllerGroup | undefined)?.count ?? 0;
 
 /** Must be called from a user gesture. Connects the other Ride side into the existing group. */
 export async function addSecondController(): Promise<void> {
+  if (status.controller.busy) return;
   const g = devices.controller as RideControllerGroup | undefined;
   if (!g) return connectDevice('controller');
   status.controller = { ...status.controller, busy: true, error: undefined }; notify();
-  try { await g.addFromPicker(); status.controller = { ...status.controller, busy: false }; }
+  try { await g.addFromPicker(); rememberDevices('controller', g.ids); status.controller = { ...status.controller, busy: false }; }
   catch (e) { status.controller = { ...status.controller, busy: false, error: e instanceof Error ? e.message : String(e) }; }
   notify();
 }
 export async function disconnectDevice(kind: DeviceKind): Promise<void> {
+  if (status[kind].busy) return;
   await devices[kind]?.disconnect?.(); delete devices[kind]; status[kind] = { connected: false }; notify();
 }
 const anyReal = () => Object.keys(devices).length > 0;

@@ -40,6 +40,11 @@ export class FtmsTrainer implements TrainerDevice {
   static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<FtmsTrainer> {
     // Same minimal request shape as the HR monitor (known to work in Bluefy); the extra optional services were unused.
     const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [FTMS_SERVICE] }] });
+    return FtmsTrainer.connectDevice(device, onProgress, onLog);
+  }
+
+  /** Connect an already-authorized device without opening the picker. */
+  static async connectDevice(device: BluetoothDevice, onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<FtmsTrainer> {
     const t = new FtmsTrainer(device);
     if (onLog) t.onLog(onLog);
     if (onProgress) t.progress = onProgress;
@@ -54,6 +59,7 @@ export class FtmsTrainer implements TrainerDevice {
   }
 
   stats(): { packets: number; lastPacketAt: number } { return { packets: this.packets, lastPacketAt: this.lastPacketAt }; }
+  get id(): string { return this.device.id; }
   get name(): string { return this.device.name ?? 'FTMS trainer'; }
 
   private async setup(): Promise<void> {

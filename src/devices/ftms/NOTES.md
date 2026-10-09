@@ -33,3 +33,5 @@ CONTRACT-REQUEST: none.
 - Steps are 8 s timeouts (`steps.ts`: `withTimeout`, `setupWithRetry`); whole setup retried once after gatt.disconnect(); final error names the stuck step.
 - HR: listener added before startNotifications, which is raced with the first beat; connected once subscribed (no beat wait).
 - FTMS connect succeeds even if Request Control is refused: status `{connected:true, detail:'Trainer control refused — close Zwift, then reconnect'}`; each `apply()` re-requests control while not held, and status is re-emitted without detail once granted.
+
+- Trainer/HR `connectDevice(device, onProgress?, onLog?)` uses an authorized object without a picker; `id` exposes the selected ID for saved setup.

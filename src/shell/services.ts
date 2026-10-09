@@ -189,7 +189,7 @@ async function restoreSetup(): Promise<void> {
   notify();
   try {
     const bluetooth = typeof navigator === 'undefined' ? undefined : navigator.bluetooth;
-    if (!bluetooth?.getDevices) throw new Error('Choose your device to connect. Saved connections are unavailable in this browser.');
+    if (!bluetooth?.getDevices) throw new Error('Automatic connection is unavailable because this browser does not expose getDevices(). Select devices manually. Desktop Chrome may need its Web Bluetooth permissions flag enabled.');
     const granted = resolveSavedSetup(saved, await bluetooth.getDevices());
     for (const device of granted.hr ?? []) authorizedHrDevices.set(device.id, device);
     // Serialize GATT setup to avoid overloading the iPad's Bluetooth bridge.

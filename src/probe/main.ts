@@ -119,6 +119,17 @@ async function copy() {
   }
 }
 
+async function checkSavedDevices() {
+  if (typeof navigator.bluetooth?.getDevices !== 'function') {
+    log('SAVED', 'getDevices() is not exposed by this browser'); return;
+  }
+  try {
+    const devices = await navigator.bluetooth.getDevices();
+    log('SAVED', `${devices.length} authorized device(s) for ${location.origin}; this is not a scan or a connection check`);
+    for (const d of devices) log('SAVED', `${d.name ?? '(no name)'} id=${d.id} connected=${d.gatt?.connected ?? false}`);
+  } catch (e) { log('SAVED-ERROR', String(e)); }
+}
+
 function build() {
   document.title = 'wattcade BLE probe';
   const root = document.getElementById('probe')!;
@@ -141,11 +152,13 @@ function build() {
     btn('Pick HR', () => pick('hr', { filters: [{ services: [0x180d] }], optionalServices: KNOWN_SERVICES })),
     btn('Send RideOn', sendRideOn),
     btn('Disconnect', () => device?.gatt?.disconnect()),
+    btn('Check saved devices', checkSavedDevices),
     btn('Copy log', copy), btn('Download log', download),
     btn('Clear', () => { lines.length = 0; logEl.textContent = ''; }),
     parsedEl, logEl, el('h3', { textContent: 'Services / characteristics' }), treeEl,
   );
   log('INFO', `UA: ${navigator.userAgent}`);
   log('INFO', navigator.bluetooth ? 'Web Bluetooth available' : 'Web Bluetooth NOT available');
+  log('CAPABILITIES', `secureContext=${window.isSecureContext} origin=${location.origin} requestDevice=${typeof navigator.bluetooth?.requestDevice} getDevices=${typeof navigator.bluetooth?.getDevices}`);
 }
 build();

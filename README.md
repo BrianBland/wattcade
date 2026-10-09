@@ -70,6 +70,12 @@ Touch: triple-tap the top-left corner to toggle the debug overlay. While the ove
 5. Don't update the Ride controller firmware through Zwift. Firmware 1.3+ is locked to Zwift.
 6. To debug Bluetooth, open **`/probe.html`**. It lists every service and characteristic, subscribes to all of them, and logs hex with Copy and Download buttons.
 
+### Testing saved connections in desktop Chrome
+
+Basic Bluetooth connection and `getDevices()` have different availability. If saved connection reports `getDevices()` is missing, enable **Use the new permissions backend for Web Bluetooth** at `chrome://flags/#enable-web-bluetooth-new-permissions-backend` and relaunch Chrome. Google's [getDevices sample](https://googlechrome.github.io/samples/web-bluetooth/get-devices.html) documents this flag. If the method is still absent in your Chrome version, the [implementation status](https://github.com/whatwg/bluetooth/blob/main/implementation-status.md) also lists `chrome://flags/#enable-experimental-web-platform-features` for exposing it. After changing flags, select devices again on the same origin, then reload to test restoration.
+
+Bluefy does not use Chrome flags. Its App Store release notes advertise `getDevices()`, but installed-version support and permission persistence need iPad verification. On `/probe.html`, inspect the CAPABILITIES line and use **Check saved devices** before/after reload and Bluefy relaunch. `getDevices=function` verifies exposure; retaining the same IDs across those steps verifies permission persistence. The returned list can include offline devices, so actual reconnection is a separate test.
+
 ## Deploy (Cloudflare Workers, static assets)
 
 The site is static, so it ships as a Worker with no script: `wrangler.jsonc` points `assets` at `dist/`.

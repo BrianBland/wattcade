@@ -114,7 +114,7 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
   );
 }
 
-export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, visible = true }: { visible?: boolean; games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements' | 'locker') => void; onBack: () => void }) {
+export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, onEndRide, visible = true }: { visible?: boolean; games: GameModule[]; profile: Profile; onPlay: (g: GameModule) => void; onNav: (to: 'connect' | 'achievements' | 'locker') => void; onBack: () => void; onEndRide?: () => void }) {
   const pageVisible = usePageVisible();
   const animate = visible && pageVisible;
   const list = useMemo(() => orderGames(games, profile), [games, profile.lastPlayed]);
@@ -131,7 +131,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, visi
   const [sel, setSel] = useState(0); // most recently played
   const selRef = useRef(sel); selRef.current = sel;
   // Top bar, then one more row: the carousel (left/right roll it) or, while the Drive-In is on, its toggle alone.
-  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), () => onNav('locker'), onBack, ...(driveIn ? [] : [toggleDriveIn])];
+  const bar = [toggleHills, () => onNav('connect'), () => onNav('achievements'), () => onNav('locker'), onBack, ...(onEndRide ? [onEndRide] : []), ...(driveIn ? [] : [toggleDriveIn])];
   const B = bar.length;
   const [idx, setIdx] = useMenuNav(B + 1, [B, 1], (i) => (i < B ? bar[i]() : driveIn ? toggleDriveIn() : onPlay(list[selRef.current])), onBack, true, {
     initial: B,
@@ -155,7 +155,8 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, visi
         <Btn small focused={idx === 2} onClick={bar[2]}>★ {ach.filter((a) => a.unlocked).length}/{ach.length}</Btn>
         <Btn small focused={idx === 3} onClick={bar[3]}>{pendingPicks(profile).length ? '🎁 Locker' : '🎒 Locker'}</Btn>
         <Btn small focused={idx === 4} onClick={onBack}>Switch rider</Btn>
-        {!driveIn && <Btn small focused={idx === 5} onClick={toggleDriveIn} class="projector">📽</Btn>}
+        {onEndRide && <Btn small focused={idx === 5} onClick={onEndRide}>End ride</Btn>}
+        {!driveIn && <Btn small focused={idx === (onEndRide ? 6 : 5)} onClick={toggleDriveIn} class="projector">📽</Btn>}
       </div>
       {driveIn
         ? <div class="di-toggle-row"><Btn focused={idx === B} onClick={toggleDriveIn} class="projector on">📽 Drive-In · show games</Btn></div>

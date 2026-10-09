@@ -20,11 +20,15 @@ it('merges four identical face buttons', () => {
   expect(p.right.stick.label).toBe('Fire');
 });
 
-it('gears take over the L shifters (and R when only labelled as gears)', () => {
+it('maps gears to shifters while preserving right-side game actions', () => {
   const g = buildPad([{ button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gears' }], true);
-  expect(g.left.shift).toBeNull(); expect(g.right.shift).toBeNull();
+  expect(g.left.shift?.gears).toBe(true); expect(g.right.shift?.gears).toBe(true);
+  expect(g.left.shift?.buttons.every((b) => b.mapped)).toBe(true);
   const d = buildPad([{ button: 'shiftUpR', label: 'Dash' }, { button: 'shiftDnR', label: 'Potion' }], true);
-  expect(d.left.shift).toBeNull(); expect(d.right.shift).not.toBeNull();
+  expect(d.left.shift?.gears).toBe(true); expect(d.right.shift?.gears).not.toBe(true);
+  expect(d.right.shift?.buttons.map((b) => b.label)).toEqual(['Dash', 'Potion']);
+  const defaultGears = buildPad([], true);
+  expect(defaultGears.right.shift?.gears).toBe(true);
 });
 
 it('paddles hint applies to both hoods', () => {

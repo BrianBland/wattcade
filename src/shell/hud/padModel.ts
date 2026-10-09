@@ -2,7 +2,7 @@ import type { Button, ControlHint } from '../../contracts';
 
 export interface PadButton { id: Button; glyph: string; label?: string; mapped: boolean; active?: boolean; color: string }
 /** One group of physical buttons. `label` is set when every mapped member does the same thing (drawn once, centered). */
-export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; mapped: boolean }
+export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; mapped: boolean; gears?: boolean }
 export interface HoodModel { paddle: { label?: string; mapped: boolean }; shift: Cluster | null; stick: Cluster }
 export interface PadModel { left: HoodModel; right: HoodModel }
 
@@ -26,16 +26,15 @@ function cluster(kind: Cluster['kind'], defs: Def, hints: Map<string, ControlHin
   return { kind, buttons, label: merged?.label, mapped: buttons.some((b) => b.mapped) };
 }
 
-/**
- * Build the on-screen controller from the game's control hints. With `gears`, the L shifters belong to the
- * gear box (and R ones too when they are only labelled as gears), so their clusters are dropped.
- */
+/** Map game controls onto the hoods, including virtual gears on their assigned shifters. */
 export function buildPad(controls: ControlHint[], gears: boolean): PadModel {
   const hints = new Map<string, ControlHint>(controls.map((c) => [c.button as string, c]));
   const paddle = { label: hints.get('paddles')?.label, mapped: hints.has('paddles') };
   const shift = (side: 'L' | 'R'): Cluster | null => {
     const c = cluster('shift', [[`shiftUp${side}`, '+'], [`shiftDn${side}`, '−']] as Def, hints, `shifters${side}`);
-    if (gears && (side === 'L' || /gear/i.test(c.label ?? ''))) return null;
+    if (gears && (side === 'L' || !c.mapped || /gear/i.test(c.label ?? '') || c.buttons.filter((b) => b.mapped).every((b) => /gear/i.test(b.label ?? '')))) {
+      return { ...c, gears: true, label: 'Gear', mapped: true, buttons: c.buttons.map((b) => ({ ...b, mapped: true, label: undefined, active: undefined })) };
+    }
     return c;
   };
   return {

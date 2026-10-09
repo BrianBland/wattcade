@@ -14,7 +14,7 @@ import { scheduleDeck, type ParamEvent } from './schedule';
  * there is nothing to correct. Only the current and next songs are kept decoded (~85 MB each).
  *
  * Deck: source → low shelf → peaking mid → high shelf → gain → master; echo send from the EQ into a feedback delay.
- * Master → game FX (lowpass → tremolo → dry + waveshaper wet) → out. FX are bypassed (flat) unless a game sets them.
+ * Master → game FX (gentle lowpass) → out. FX are bypassed (flat) unless a game sets them.
  */
 export interface EngineOpts {
   resolveUrl(id: string): Promise<string>;
@@ -84,7 +84,7 @@ function apply(param: AudioParam, evs: ParamEvent[]) {
 export class MixEngine {
   readonly ctx: AudioContext;
   private master: GainNode;
-  private fx: { lp: BiquadFilterNode; trem: GainNode; lfoDepth: GainNode; dry: GainNode; wet: GainNode } | null = null;
+  private fx: { lp: BiquadFilterNode } | null = null;
   private fxDegrade = 0;
   private decks: Deck[] = [];
   private plan: MixPlan | null = null;
@@ -128,33 +128,19 @@ export class MixEngine {
   onEnded(cb: () => void): () => void { this.endedCbs.add(cb); return () => { this.endedCbs.delete(cb); }; }
   setVolume(v: number): void { const g = this.master.gain; g.cancelScheduledValues(0); g.setTargetAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime, 0.05); }
 
-  /**
-   * Game-driven music FX. `degrade` 0..1 muffles the music (lowpass sweeps down), makes it sputter (tremolo) and
-   * crunches it (waveshaper), like a failing signal. 0 = untouched. Smoothed; call every frame if you like.
-   */
+  /** Underpowered riding gently muffles music, without hard gain modulation or bit crushing. */
   setFx(o: { degrade: number }): void {
-    const d = Math.max(0, Math.min(1, o.degrade)), fx = this.fx;
+    const d = Number.isFinite(o.degrade) ? Math.max(0, Math.min(1, o.degrade)) : 0, fx = this.fx;
     if (!fx || Math.abs(d - this.fxDegrade) < 0.005) return;
     this.fxDegrade = d;
-    const t = this.ctx.currentTime, k = 0.08;
-    fx.lp.frequency.setTargetAtTime(20000 * Math.pow(600 / 20000, Math.pow(d, 0.8)), t, k);
-    fx.lfoDepth.gain.setTargetAtTime(0.4 * d * d, t, k);
-    fx.trem.gain.setTargetAtTime(1 - 0.4 * d * d, t, k);
-    fx.dry.gain.setTargetAtTime(1 - 0.55 * d, t, k);
-    fx.wet.gain.setTargetAtTime(0.45 * d, t, k);
+    fx.lp.frequency.setTargetAtTime(20000 * Math.pow(3000 / 20000, d), this.ctx.currentTime, 0.08);
   }
   private buildFx(): AudioNode | null {
     const c = this.ctx;
-    if (typeof c.createBiquadFilter !== 'function' || typeof c.createWaveShaper !== 'function' || typeof c.createOscillator !== 'function') return null;
-    const lp = Object.assign(c.createBiquadFilter(), { type: 'lowpass' as BiquadFilterType }); lp.frequency.value = 20000; lp.Q.value = 2;
-    const trem = c.createGain(), lfoDepth = c.createGain(), dry = c.createGain(), wet = c.createGain();
-    lfoDepth.gain.value = 0; wet.gain.value = 0;
-    const lfo = c.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 7.5; lfo.connect(lfoDepth).connect(trem.gain); lfo.start();
-    const shaper = c.createWaveShaper(), n = 1024, curve = new Float32Array(n);
-    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.round(Math.tanh(6 * x) * 6) / 6; } // driven, then crushed to a few steps
-    shaper.curve = curve; shaper.oversample = '2x';
-    lp.connect(trem); trem.connect(dry).connect(c.destination); trem.connect(shaper).connect(wet).connect(c.destination);
-    this.fx = { lp, trem, lfoDepth, dry, wet };
+    if (typeof c.createBiquadFilter !== 'function') return null;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 20000; lp.Q.value = 0.7;
+    lp.connect(c.destination);
+    this.fx = { lp };
     return lp;
   }
 

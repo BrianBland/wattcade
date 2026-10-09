@@ -1,6 +1,5 @@
 # cadenza — Cadenza (SPEC §6.5)
 
-CONTRACT-REQUEST: none (uses `requires.media`, `ctx.media`, `mediaPreview`, mount ctx `musicFx`).
 
 Music racer (formerly "Wattsurf", id `wattsurf`; `core/renames.ts` migrates saves, history and tuning). The shell opens the
 media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard position). Mono mode only (Classic = later).
@@ -29,11 +28,13 @@ viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `
 white target gate 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
 `hud.ts` (score + chain pops, zone/target, shield, prompts low, launch meter + rating, song recap card), `layout.ts` (tested).
-Music FX via mount ctx `musicFx({ degrade: under })`. Reduced flashing scales pulses.
+AV penalty: 3 s grace, 12 s ramp, eased attack/recovery, quadratic shortfall, capped at 0.6; reduced flashing halves gray.
 
 ## Dev / tests
 `/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,
 `script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html` = ship states + mine.
+`node scripts/cadenza-render-smoke.mjs` against Vite checks finite bloom, bounded GPU allocations, smooth audio.
 Scenarios: automixed EDM set (launches ≥ great), idle dropout (no launch bonus), mixed continuous album on casual.
 Gaps: Classic mode; iPad GPU cost unmeasured (low-FX switch if needed); tune launch thresholds with real rides.
 Rolling analysis: timeline revisions extend future road; `extendTrack` preserves ridden geometry/block indexes.
+Nearby road/city/blocks only (≤140 s), dispose replaced GPU resources. Clamp shader light before bloom; safe pow/vignette math.

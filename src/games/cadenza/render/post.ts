@@ -28,9 +28,9 @@ void main() {
   c = mix(c, vec3(luma) * (1.0 - 0.35 * uGray), min(1.0, uGray * 1.1));
   c *= 1.0 - (uScan + 0.25 * uGray) * (0.5 + 0.5 * sin(vUv.y * 900.0));
   c += (rnd(vUv * 731.0) - 0.5) * (0.035 + 0.12 * uGray);
-  c *= mix(1.0, smoothstep(0.85, 0.2, r), uVignette * (0.55 + 0.4 * uGray));
+  c *= mix(1.0, (1.0 - smoothstep(0.2, 0.85, r)), uVignette * (0.55 + 0.4 * uGray));
   c = mix(c, vec3(1.0, 0.05, 0.1), uHurt * smoothstep(0.25, 0.75, r) * 0.7);
-  gl_FragColor = vec4(c, 1.0);
+  gl_FragColor = vec4(max(c, vec3(0.0)), 1.0);
 }`,
 };
 
@@ -52,5 +52,5 @@ export class Post {
     u.uAberr.value = o.aberr; u.uHurt.value = o.hurt; u.uTime.value = o.time; u.uGray.value = o.gray ?? 0;
   }
   render() { this.composer.render(); }
-  dispose() { this.composer.dispose(); }
+  dispose() { for (const pass of this.composer.passes) pass.dispose(); this.composer.dispose(); }
 }

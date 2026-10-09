@@ -12,14 +12,17 @@ clock, and evicted after playback. Only buffered audio is analyzed; duration is 
 Automix uses estimated duration-based crossfades, with no promise of beat or phrase matching.
 The plan stays fixed as local BPM/section estimates arrive. Cadenza publishes new road ahead
 and preserves ridden geometry and collected blocks. If preparation falls behind, music and
-game clocks hold together until the buffer recovers. Local files retain full-analysis behavior.
+game clocks hold together until the buffer recovers. Road/city GPU geometry covers only the nearby
+140 seconds; lightweight timeline curves and the centreline still scale with queue duration. Local files retain full-analysis behavior.
 
 This is an unofficial extraction integration. Tracks can fail when upstream sites change,
 require a login, impose regional restrictions, or block extraction. No account cookies or DRM
 support is provided. Use content you have permission to use. Live streams, playlists, and
-tracks over 30 minutes are excluded. Direct links and searches whose results are all excluded
+tracks over 12 hours are excluded. Direct links and searches whose results are all excluded
 show the reason (including missing durations or the duration limit), rather than a silent empty list. Window requests have a 90-second extractor timeout,
-a 40-second maximum range, and a 64 MB output limit. Two extraction/search jobs can run at once.
+a 40-second maximum range (including late windows in multi-hour videos), and a 64 MB output limit. Two extraction/search jobs can run at once. The legacy full-file endpoint retains its separate
+30-minute/64 MB cap; online playback uses the window endpoint. Range extraction depends on upstream
+seeking support; verify the server can supply windows faster than playback before a long ride.
 
 ## Steps for your Linux machine
 

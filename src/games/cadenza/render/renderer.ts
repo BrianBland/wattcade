@@ -4,6 +4,8 @@ import { play } from '../../../audio/sfx';
 import type { CadenzaSnapshot } from '../sim/sim';
 import { sampleAt, zoneIndexAt, type Track } from '../sim/track';
 import { BLOCK_COLORS, Blocks } from './blocks';
+import { advanceDegradation, type Degradation } from './degradation';
+import { disposeObjects } from './dispose';
 import { City } from './city';
 import { Craft } from './craft';
 import { Gauge, gaugeMarks } from './gauge';
@@ -29,12 +31,13 @@ export class CadenzaRenderer implements GameRenderer {
   private hud?: Hud; private ro?: ResizeObserver; private flash?: HTMLDivElement;
   private size: [number, number] = [800, 600]; private insetB = 0;
   private color = '#00f0ff';
-  private track?: Track; private path?: Path; private world = new THREE.Group();
+  private windowBucket = -1; private track?: Track; private path?: Path; private world = new THREE.Group();
   private blocks?: Blocks; private city?: City; private craft?: Craft; private gauge?: Gauge;
   /** Launch exit burst (0..1 by rating, decays), and queued fireworks [time, kind]. */
   private launchKick = 0; private fireworks: Array<{ at: number; c: THREE.Color }> = []; private lastRecap = -2; // -2 = not primed (never replay a recap on mount)
   private streaks?: THREE.LineSegments; private streakPos = new Float32Array(0);
   private hue = 200; private hueTarget = 200; private lastZone = -1; private lastCue = -1; private lastT = now(); private lastX = 0; private bank = 0;
+  private degradation: Degradation = { belowS: 0, level: 0 }; private lastP = 0;
   private shake = 0; private hurt = 0; private down = 0; private lastDown = -1;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camUp = new THREE.Vector3(0, 1, 0); private camInit = false;
   private fr = newFrame(); private fc = newFrame(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private m = new THREE.Matrix4();
@@ -78,8 +81,8 @@ export class CadenzaRenderer implements GameRenderer {
   unmount() {
     this.musicFx?.({ degrade: 0 });
     this.ro?.disconnect(); this.hud?.dispose(); this.flash?.remove();
+    disposeObjects(this.scene); this.scene.clear();
     this.post?.dispose(); this.renderer?.dispose(); this.renderer?.domElement.remove();
-    this.scene.traverse((o) => { (o as THREE.Mesh).geometry?.dispose?.(); });
   }
 
   private buildStreaks() {
@@ -95,27 +98,30 @@ export class CadenzaRenderer implements GameRenderer {
     this.streakPos.set([x, y, z, x, y, z - 3 - Math.random() * 7], i * 6);
   }
 
-  private build(t: Track, seed: number) {
+  private build(t: Track, p: number) {
+    if (t !== this.track) this.path = new Path(t);
     this.track = t;
-    this.world.clear();
-    this.path = new Path(t);
-    this.world.add(buildTrackMeshes(this.path));
-    this.blocks = new Blocks(this.path);
-    this.gauge = new Gauge(this.path);
+    this.windowBucket = Math.floor(p / 30);
+    const fromS = Math.max(0, this.windowBucket * 30 - 20), toS = Math.min(t.durationS, (this.windowBucket + 1) * 30 + 90);
+    disposeObjects(this.world); this.world.clear();
+    this.world.add(buildTrackMeshes(this.path!, fromS, toS));
+    this.blocks = new Blocks(this.path!, fromS, toS);
+    this.gauge = new Gauge(this.path!);
     this.world.add(this.blocks.group, this.gauge.mesh);
     this.lastRecap = -2;
     this.city?.removeFrom(this.scene);
-    this.city = new City(this.path, seed);
+    this.city = new City(this.path!, 1, fromS, toS);
     this.city.addTo(this.scene);
   }
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as CadenzaSnapshot;
     if (!this.renderer || !this.post || !this.hud || !this.craft) return;
-    if (s.track !== this.track) this.build(s.track, s.track.blocks.length);
+    const p = s.menu ? 0 : Math.max(0, s.p);
+    if (Math.abs(p - this.lastP) > 3) this.camInit = false; // seeks snap the chase camera to the new road
+    if (s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);
     const t = this.track!, path = this.path!;
     const tNow = now(), dt = Math.min(0.1, tNow - this.lastT); this.lastT = tNow;
-    const p = s.menu ? 0 : Math.max(0, s.p);
     const reduced = s.reducedFlash, fx = reduced ? 0.35 : 1;
 
     // cues → sounds and callouts (never replay history on mount)
@@ -175,7 +181,10 @@ export class CadenzaRenderer implements GameRenderer {
     this.craft.group.position.copy(this.v);
     this.m.makeBasis(this.fr.r, this.fr.u, this.s.copy(this.fr.f).negate());
     this.craft.group.quaternion.setFromRotationMatrix(this.m);
-    const under = s.menu ? 0 : s.effort.under, over = s.menu ? 0 : s.effort.over;
+    if (s.menu || p < this.lastP) this.degradation = { belowS: 0, level: 0 };
+    this.lastP = p;
+    this.degradation = advanceDegradation(this.degradation, s.menu ? 0 : s.effort.under, dt);
+    const under = this.degradation.level, over = s.menu ? 0 : s.effort.over;
     const tier = s.chain >= 100 ? 3 : s.chain >= 50 ? 2 : s.chain >= 25 ? 1 : 0;
     this.craft.update(dt, tNow, { overdrive: s.overdrive, ghost: !!s.dropout, bank: this.bank, beat: beat * fx, over, under, tier }, this.fr.r, this.fr.u);
     this.musicFx?.({ degrade: under });
@@ -232,7 +241,7 @@ export class CadenzaRenderer implements GameRenderer {
     this.post.set({
       bloom: 0.62 + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0),
       aberr: (0.0012 + 0.006 * this.down + 0.004 * beat * (drop ? 1 : 0.4) + 0.01 * this.hurt) * fx,
-      hurt: this.hurt * (reduced ? 0.4 : 1), time: tNow % 100, gray: under,
+      hurt: this.hurt * (reduced ? 0.4 : 1), time: tNow % 100, gray: under * (reduced ? 0.5 : 1),
     });
     if (this.lastRecap === -2) this.lastRecap = s.recaps.length - 1;
     else if (s.recaps.length - 1 > this.lastRecap) { this.lastRecap = s.recaps.length - 1; this.hud.recap(s.recaps[this.lastRecap], tNow); }

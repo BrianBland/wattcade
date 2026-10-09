@@ -1,3 +1,4 @@
+import { MAX_STREAM_DURATION_S } from '../../src/media/online/limits';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -38,14 +39,14 @@ function trackProblem(t: unknown, provider: Provider): TrackProblem | null {
   if (info.has_drm) return 'drm';
   const duration = Number(info.duration);
   if (!Number.isFinite(duration) || duration <= 0) return 'missing-duration';
-  return duration > MAX_DURATION ? 'too-long' : null;
+  return duration > MAX_STREAM_DURATION_S ? 'too-long' : null;
 }
 const problemText: Record<TrackProblem, string> = {
   invalid: 'unsupported or incomplete track information',
   live: 'live or upcoming streams are not supported',
   drm: 'protected audio is not supported',
   'missing-duration': 'the source did not supply a usable track duration',
-  'too-long': 'tracks longer than the current 30-minute limit are not supported',
+  'too-long': 'tracks longer than the 12-hour limit are not supported',
 };
 export function mapTrack(t: Record<string, any>, provider: Provider): OnlineTrack | null {
   if (trackProblem(t, provider)) return null;
@@ -109,11 +110,11 @@ export async function extractAudio(value: string, run = runExtractor): Promise<B
 /** Download only the requested window; yt-dlp delegates range cutting to native ffmpeg. */
 export async function extractRange(value: string, startS: number, durationS: number, run = runExtractor): Promise<Buffer> {
   const { url } = trackUrl(value);
-  if (!Number.isFinite(startS) || !Number.isFinite(durationS) || startS < 0 || startS >= MAX_DURATION || durationS <= 0 || durationS > 40 || startS + durationS > MAX_DURATION + 4)
-    throw new Error('Audio ranges must be between 0 and 30 minutes and at most 40 seconds long.');
+  if (!Number.isFinite(startS) || !Number.isFinite(durationS) || startS < 0 || startS >= MAX_STREAM_DURATION_S || durationS <= 0 || durationS > 40 || startS + durationS > MAX_STREAM_DURATION_S + 4)
+    throw new Error('Audio ranges must be between 0 and 12 hours and at most 40 seconds long.');
   const dir = await mkdtemp(join(tmpdir(), 'cadenza-range-'));
   try {
-    await run([...COMMON, '--max-filesize', String(MAX_BYTES), '--match-filters', `duration <= ${MAX_DURATION} & !is_live`,
+    await run([...COMMON, '--match-filters', `duration <= ${MAX_STREAM_DURATION_S} & !is_live`,
       '-f', 'bestaudio/best', '--force-keyframes-at-cuts', '--download-sections', `*${startS}-${startS + durationS}`,
       '-x', '--audio-format', 'wav', '--postprocessor-args', 'ExtractAudio+ffmpeg_o:-ar 44100 -ac 2',
       '-o', join(dir, 'track.%(ext)s'), '--', url], 90000);

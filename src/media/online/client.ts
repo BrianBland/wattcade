@@ -1,3 +1,4 @@
+import { MAX_STREAM_DURATION_S } from './limits';
 import type { SongMeta } from '../library/store';
 export type OnlineProvider = 'youtube' | 'soundcloud';
 export interface ResolverConfig { url: string; token: string }
@@ -24,7 +25,7 @@ export async function searchOnline(provider: OnlineProvider, query: string, conf
   if (!Array.isArray(body.tracks)) throw new Error('Invalid audio resolver response.');
   return body.tracks.map((t: any) => {
     if (t.source !== provider || !String(t.id).startsWith(`${provider}:`) || typeof t.title !== 'string'
-        || typeof t.durationS !== 'number' || !Number.isFinite(t.durationS) || t.durationS <= 0 || t.durationS > 1800
+        || typeof t.durationS !== 'number' || !Number.isFinite(t.durationS) || t.durationS <= 0 || t.durationS > MAX_STREAM_DURATION_S
         || typeof t.artist !== 'string' || typeof t.pageUrl !== 'string' || !t.pageUrl.startsWith('https://')) throw new Error('Invalid online track.');
     return { id: t.id, source: t.source, title: t.title, artist: t.artist, durationS: t.durationS,
       sourceUrl: t.pageUrl, addedAt: 0, status: 'remote', credit: { text: `via ${provider === 'youtube' ? 'YouTube' : 'SoundCloud'}`, url: t.pageUrl } };

@@ -51,7 +51,7 @@ void main() {
   float sheen = pow(max(0.0, 1.0 - abs(vN.z)), 3.0);
   vec3 c = uDark * (0.25 + 0.75 * sheen);
   c += uHot * edge * (vTip > 0.01 ? 0.5 + 0.9 * vTip : 0.22);                // white wire edges: faint on the core, hot up the spikes
-  c += uHot * pow(vTip, 6.0) * (1.4 + 2.2 * strobe);                         // white-hot tips
+  c += uHot * pow(clamp(vTip, 0.0, 1.0), 6.0) * (1.4 + 2.2 * strobe);                         // white-hot tips
   gl_FragColor = vec4(mix(c, uFog, smoothstep(uNear, uFar, vDepth) * 0.85), 1.0);
 }`;
 
@@ -106,21 +106,24 @@ export class Blocks {
   readonly group = new THREE.Group();
   private cubes: THREE.InstancedMesh; private mines: THREE.InstancedMesh;
   /** Block index → instance index in its mesh (cubes or mines). */
-  private slot: Int32Array;
+  private slot: Int32Array; private visible: number[];
   private shards: THREE.InstancedMesh; private pool: Shard[] = []; private free: number[] = [];
   private prev: Uint8Array; private flies: Fly[] = []; private primed = false;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private fr = newFrame();
   private home: Float32Array;
-  constructor(private path: Path) {
-    const t = path.track, nMine = t.blocks.filter((b) => b.color < 0).length, nCube = t.blocks.length - nMine;
+  constructor(private path: Path, fromS = 0, toS = path.track.durationS) {
+    const t = path.track;
+    this.visible = t.blocks.flatMap((b, k) => b.t >= fromS && b.t <= toS ? [k] : []);
+    const nMine = this.visible.filter((k) => t.blocks[k].color < 0).length, nCube = this.visible.length - nMine;
     const cubeGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95), mineGeo = mineGeometry();
     this.cubes = new THREE.InstancedMesh(cubeGeo, shader(CUBE_VS, CUBE_FS), Math.max(1, nCube));
     this.mines = new THREE.InstancedMesh(mineGeo, mineMaterial(), Math.max(1, nMine));
     const cubePhase = new Float32Array(Math.max(1, nCube)), minePhase = new Float32Array(Math.max(1, nMine));
-    this.slot = new Int32Array(t.blocks.length);
+    this.slot = new Int32Array(t.blocks.length).fill(-1);
     this.home = new Float32Array(t.blocks.length * 3);
     let ci = 0, mi = 0;
-    t.blocks.forEach((b, k) => {
+    this.visible.forEach((k) => {
+      const b = t.blocks[k];
       const mine = b.color < 0, i = mine ? mi++ : ci++;
       this.slot[k] = i; (mine ? minePhase : cubePhase)[i] = (k * 2.399) % 6.283;
       path.point(path.distAt(b.t), b.lane, mine ? 1.0 : 0.75, this.fr, this.v);
@@ -146,6 +149,7 @@ export class Blocks {
   }
 
   private place(k: number, at: THREE.Vector3, scale: number) {
+    if (this.slot[k] < 0) return;
     const mesh = this.path.track.blocks[k].color < 0 ? this.mines : this.cubes;
     mesh.setMatrixAt(this.slot[k], this.m.compose(at, this.q.identity(), this.s.set(scale, scale, scale)));
   }
@@ -204,9 +208,9 @@ export class Blocks {
     const t = this.path.track;
     if (!this.primed) { // first frame (mount mid-ride): show the current state without replaying history
       this.primed = true;
-      for (let k = 0; k < state.length; k++) { this.prev[k] = state[k]; if (state[k] !== BLOCK.AHEAD && state[k] !== BLOCK.GREY_DODGED) this.place(k, this.v, 0); }
+      for (const k of this.visible) { this.prev[k] = state[k]; if (state[k] !== BLOCK.AHEAD && state[k] !== BLOCK.GREY_DODGED) this.place(k, this.v, 0); }
     }
-    for (let k = 0; k < state.length; k++) {
+    for (const k of this.visible) {
       const st = state[k];
       if (st === this.prev[k]) continue;
       this.prev[k] = st;

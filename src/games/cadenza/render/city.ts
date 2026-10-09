@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeRng } from '../../../core/rng';
+import { disposeObjects } from './dispose';
 import { shader } from './look';
 import { newFrame, type Path } from './path';
 
@@ -64,15 +65,16 @@ export class City {
   readonly group = new THREE.Group();
   readonly sky: THREE.Mesh; readonly ring: THREE.Mesh;
   private beams: THREE.Mesh[] = [];
-  constructor(path: Path, seed: number) {
-    const rng = makeRng(seed * 31 + 5), fr = newFrame(), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
+  constructor(path: Path, seed: number, fromS = 0, toS = path.track.durationS) {
+    const fr = newFrame(), m = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
     const W = path.halfWidth;
     const spots: Array<{ pos: THREE.Vector3; size: THREE.Vector3; rot: number; band: number; seed: number }> = [];
     // helixes sweep ~60 m sideways: no tower may stand near any part of one (an open canyon to spiral up through)
     const coil: THREE.Vector3[] = [];
-    for (const st of path.track.stunts) if (st.kind === 'helix') for (let d = path.distAt(st.t0 - 2); d < path.distAt(st.t1 + 2); d += 8) coil.push(path.at(d, fr).p.clone());
+    for (const st of path.track.stunts) if (st.kind === 'helix' && st.t1 >= fromS - 20 && st.t0 <= toS + 20) for (let d = path.distAt(st.t0 - 2); d < path.distAt(st.t1 + 2); d += 8) coil.push(path.at(d, fr).p.clone());
     const nearCoil = (p: THREE.Vector3, r: number) => coil.some((c) => (c.x - p.x) ** 2 + (c.z - p.z) ** 2 < r * r);
-    for (let d = 0; d < path.length + 400; d += 16) {
+    for (let d = Math.max(0, Math.floor((path.distAt(fromS) - 400) / 16) * 16); d < path.distAt(toS) + 400; d += 16) {
+      const rng = makeRng(seed * 31 + 5 + Math.floor(d / 16) * 1009);
       path.at(d, fr);
       for (const side of [-1, 1]) for (let row = 0; row < 2; row++) {
         if (rng() < 0.25) continue;
@@ -121,5 +123,5 @@ export class City {
     });
   }
   addTo(scene: THREE.Scene) { scene.add(this.group, this.sky, this.ring, ...this.beams); }
-  removeFrom(scene: THREE.Scene) { scene.remove(this.group, this.sky, this.ring, ...this.beams); }
+  removeFrom(scene: THREE.Scene) { scene.remove(this.group, this.sky, this.ring, ...this.beams); disposeObjects(this.group, this.sky, this.ring, ...this.beams); }
 }

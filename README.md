@@ -65,7 +65,7 @@ Touch: triple-tap the top-left corner to toggle the debug overlay. While the ove
 
 1. Install **Bluefy** from the App Store. Web Bluetooth requires **HTTPS**.
 2. To test on the iPad from your dev machine, run `npm run dev:ipad` and then, in a second terminal, `cloudflared tunnel --url http://localhost:5173`. Open the printed `https://…trycloudflare.com` URL in Bluefy.
-3. Close Zwift first, because only one app can control the trainer. Bluefy can't remember devices, so you pick each device once per session from the Connect screen.
+3. Close Zwift first, because only one app can control the trainer. Device setup opens before player selection. Pick each device once; Wattcade saves the setup locally and automatically connects authorized devices on later launches using `getDevices()`. HR supports multiple saved watches shared by all players: automatic connection tries the last-used watch first, then other saved watches. Use the saved-watch buttons when both are broadcasting, and **Add watch** to authorize another without forgetting existing watches. If Bluefy does not retain permission, or a device is unavailable, select it manually. Use the same HTTPS hostname for subsequent rides (temporary tunnel URLs have different permissions).
 4. On the Garmin, enable **Broadcast Heart Rate**. Recording an Indoor Bike activity on the watch gives you the Garmin/Strava record for now; wattcade does not upload anything.
 5. Don't update the Ride controller firmware through Zwift. Firmware 1.3+ is locked to Zwift.
 6. To debug Bluetooth, open **`/probe.html`**. It lists every service and characteristic, subscribes to all of them, and logs hex with Copy and Download buttons.

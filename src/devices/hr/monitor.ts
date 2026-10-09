@@ -11,7 +11,7 @@ const HR_CHAR_FULL = '00002a37-0000-1000-8000-00805f9b34fb';
 export class HeartRateMonitor implements HrDevice {
   private sampleCbs = new Set<(s: DeviceSample) => void>();
   private statusCbs = new Set<(s: { connected: boolean }) => void>();
-  private packets = 0; private lastPacketAt = 0; private closed = false;
+  private packets = 0; private lastPacketAt = 0; private closed = false; private initializing = true;
   private onDisc = () => this.handleDisconnect();
   private onHr = (e: Event) => {
     const hr = parseHeartRate((e.target as BluetoothRemoteGATTCharacteristic).value!);
@@ -40,6 +40,11 @@ export class HeartRateMonitor implements HrDevice {
       }
     }
     if (!device) throw new Error('Heart rate picker failed (' + errs.join(' | ') + ')');
+    return HeartRateMonitor.connectDevice(device, onProgress, onLog);
+  }
+
+  /** Connect an already-authorized device without opening the picker. */
+  static async connectDevice(device: BluetoothDevice, onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<HeartRateMonitor> {
     const m = new HeartRateMonitor(device);
     if (onLog) m.onLog(onLog);
     if (onProgress) m.progress = onProgress;
@@ -47,12 +52,14 @@ export class HeartRateMonitor implements HrDevice {
     try {
       await setupWithRetry(() => m.setup(), () => device.gatt?.disconnect(), l => m.log(l));
     } catch (e) {
-      device.removeEventListener('gattserverdisconnected', m.onDisc);
+      await m.disconnect();
       throw e instanceof Error ? e : new Error(`Heart rate connect failed at "${m.lastStep}": rejected with ${String(e)}`);
-    } finally { m.progress = () => {}; }
+    } finally { m.initializing = false; m.progress = () => {}; }
     return m;
   }
   stats(): { packets: number; lastPacketAt: number } { return { packets: this.packets, lastPacketAt: this.lastPacketAt }; }
+  get bluetoothDevice(): BluetoothDevice { return this.device; }
+  get id(): string { return this.device.id; }
   get name(): string { return this.device.name ?? 'HR monitor'; }
 
   private async setup(): Promise<void> {
@@ -75,6 +82,7 @@ export class HeartRateMonitor implements HrDevice {
     this.emit(true);
   }
   private handleDisconnect(): void {
+    if (this.initializing) return;
     this.emit(false);
     if (this.closed) return;
     void reconnectLoop({ cancelled: () => this.closed, connect: () => this.setup() });

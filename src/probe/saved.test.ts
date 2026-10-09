@@ -38,3 +38,45 @@ it('falls back only when the full-UUID HR picker fails and omits optional servic
   expect(document.body.textContent).toContain('PICK-ERROR');
   expect(connect).toHaveBeenCalledTimes(1);
 });
+
+it('waits for an advertisement before saved GATT and stops the scan without a picker', async () => {
+  document.body.innerHTML = '<div id="probe"></div>';
+  const watch = new EventTarget() as BluetoothDevice;
+  const connect = vi.fn().mockResolvedValue({});
+  let signal: AbortSignal;
+  const watchAdvertisements = vi.fn().mockImplementation((opts: { signal: AbortSignal }) => {
+    signal = opts.signal;
+    return Promise.resolve();
+  });
+  Object.assign(watch, { id: 'hr', watchAdvertisements, gatt: { connect, connected: false } });
+  const requestDevice = vi.fn();
+  vi.stubGlobal('navigator', { userAgent: 'test', bluetooth: { getDevices: async () => [watch], requestDevice } });
+  await import('./main');
+  const click = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent === text)!.click();
+  click('Check saved devices');
+  await vi.waitFor(() => expect(document.querySelector('select')?.value).toBe('hr'));
+  click('Discover then connect saved device');
+  await vi.waitFor(() => expect(watchAdvertisements).toHaveBeenCalledOnce());
+  expect(connect).not.toHaveBeenCalled();
+  watch.dispatchEvent(Object.assign(new Event('advertisementreceived'), { device: watch, rssi: -55 }));
+  await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce());
+  expect(signal!.aborted).toBe(true);
+  expect(requestDevice).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain('sameObject=true rssi=-55');
+});
+
+it('reports advertisement API rejection without attempting GATT or picker', async () => {
+  document.body.innerHTML = '<div id="probe"></div>';
+  const watch = new EventTarget();
+  const connect = vi.fn();
+  Object.assign(watch, { id: 'hr', watchAdvertisements: () => Promise.reject(2), gatt: { connect } });
+  const requestDevice = vi.fn();
+  vi.stubGlobal('navigator', { userAgent: 'test', bluetooth: { getDevices: async () => [watch], requestDevice } });
+  await import('./main');
+  const click = (text: string) => [...document.querySelectorAll('button')].find(b => b.textContent === text)!.click();
+  click('Check saved devices');
+  await vi.waitFor(() => expect(document.querySelector('select')?.value).toBe('hr'));
+  click('Discover then connect saved device');
+  await vi.waitFor(() => expect(document.body.textContent).toContain('waiting for advertisement: non-Error rejection: 2'));
+  expect(connect).not.toHaveBeenCalled(); expect(requestDevice).not.toHaveBeenCalled();
+});

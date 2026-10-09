@@ -6,3 +6,4 @@
 - Saved-device diagnostics report gatt.connect/addEventListener types to verify returned objects support reconnect on Bluefy.
 - Check saved devices fills a selector; Connect selected saved device tests GATT directly with an 8 s timeout and reports bare native rejections. Compare with Pick HR on the same origin.
 - Pick HR matches the app: full HR UUID with no optional services, then short UUID on request failure; logs picker failures separately from GATT.
+- Discover then connect saved device waits up to 10 s for device.watchAdvertisements plus advertisementreceived, aborts the scan, then tests GATT without a chooser. After reload, test this before Pick HR to isolate discovery from picker initialization.

@@ -19,6 +19,7 @@ let rideRx: BluetoothRemoteGATTCharacteristic | undefined;
 const polarity = new PolarityDetector();
 let savedDevices: BluetoothDevice[] = [];
 let savedSelect: HTMLSelectElement;
+let savedConnectionBusy = false;
 
 function log(tag: string, text: string) {
   const l = fmtLine(performance.now() - t0, tag, text);
@@ -169,18 +170,52 @@ async function checkSavedDevices() {
   } catch (e) { log('SAVED-ERROR', String(e)); }
 }
 
-/** Compare the object returned by getDevices with the fresh picker path. No discovery or chooser. */
-async function connectSavedDevice() {
+/** Compare direct GATT with advertisement-assisted discovery. Neither opens a chooser. */
+async function connectSavedDevice(discover = false) {
+  if (savedConnectionBusy) { log('SAVED-ERROR', 'A saved connection test is already running'); return; }
   const saved = savedDevices.find(d => d.id === savedSelect.value);
   if (!saved) { log('SAVED-ERROR', 'Check saved devices first, then select a device'); return; }
+  savedConnectionBusy = true;
+  let stage = 'preparing saved device';
   try {
     if (device?.gatt?.connected) device.gatt.disconnect();
     device = saved;
+    if (discover) {
+      stage = 'waiting for advertisement';
+      await waitForSavedAdvertisement(saved);
+    }
+    stage = 'connecting GATT';
     log('SAVED-CONNECT', `${saved.name ?? '(no name)'} id=${saved.id}: connecting GATT without a picker`);
     if (typeof saved.gatt?.connect !== 'function') throw new Error('Saved object has no gatt.connect method');
     await withTimeout(saved.gatt.connect(), 8000, 'saved-device GATT connection');
     log('SAVED-CONNECT', 'GATT connected; compare with Pick HR after disconnecting');
-  } catch (e) { log('SAVED-CONNECT-ERROR', e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`); }
+  } catch (e) { log('SAVED-CONNECT-ERROR', `${stage}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`)); }
+  finally { savedConnectionBusy = false; }
+}
+
+async function waitForSavedAdvertisement(saved: BluetoothDevice) {
+  if (typeof saved.watchAdvertisements !== 'function') throw new Error('Saved object has no watchAdvertisements method');
+  const abort = new AbortController();
+  let onAdvertisement: (event: Event) => void = () => {};
+  const received = new Promise<void>(resolve => {
+    onAdvertisement = event => {
+      const adv = event as Event & { device?: BluetoothDevice; rssi?: number };
+      log('ADVERTISEMENT', `received for ${saved.id}; event.device.id=${adv.device?.id ?? '(missing)'} sameObject=${adv.device === saved} rssi=${adv.rssi ?? '(missing)'}`);
+      resolve();
+    };
+    saved.addEventListener('advertisementreceived', onAdvertisement, { once: true });
+  });
+  try {
+    log('ADVERTISEMENT', `calling device.watchAdvertisements({signal}); watchingAdvertisements=${saved.watchingAdvertisements}; waiting up to 10 s`);
+    const watching = saved.watchAdvertisements({ signal: abort.signal }).then(() => {
+      log('ADVERTISEMENT', `watchAdvertisements resolved; watchingAdvertisements=${saved.watchingAdvertisements}`);
+    });
+    await withTimeout(Promise.all([watching, received]), 10000, 'saved-device advertisement discovery');
+  } finally {
+    saved.removeEventListener('advertisementreceived', onAdvertisement);
+    abort.abort();
+    log('ADVERTISEMENT', 'scan abort requested; advertisement listener removed');
+  }
 }
 
 function build() {
@@ -209,7 +244,8 @@ function build() {
     btn('Send RideOn', sendRideOn),
     btn('Disconnect', () => device?.gatt?.disconnect()),
     btn('Check saved devices', checkSavedDevices),
-    savedSelect, btn('Connect selected saved device', connectSavedDevice),
+    savedSelect, btn('Connect selected saved device', () => connectSavedDevice()),
+    btn('Discover then connect saved device', () => connectSavedDevice(true)),
     btn('Copy log', copy), btn('Download log', download),
     btn('Clear', () => { lines.length = 0; logEl.textContent = ''; }),
     parsedEl, logEl, el('h3', { textContent: 'Services / characteristics' }), treeEl,

@@ -9,6 +9,7 @@ import { toast } from '../components/Toasts';
 import { duckAmbient, play as sfx } from '../../audio/sfx';
 import type { MediaRun } from '../types';
 import { fmtTime, MODES, moveItem, nextMode, pickerNav, previewStart, queueRows, SECTION_COLORS, type PickerFocus } from './pickerModel';
+import { useSearchKeyboard } from './useSearchKeyboard';
 
 const TABS = ['My music', 'Samples (CC)', 'Generated', 'Online music', '+ Add music'] as const;
 const ADD_TAB = 4;
@@ -32,6 +33,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const [resolver, setResolver] = useState(mediaServerConfig);
   const [searching, setSearching] = useState(false);
   const [onlineError, setOnlineError] = useState('');
+  const searchInput = useRef<HTMLInputElement>(null);
+  const keyboard = useSearchKeyboard(searchInput);
   const searchAbort = useRef<AbortController | null>(null);
   useEffect(() => () => searchAbort.current?.abort(), []);
   useEffect(() => subscribeMediaServer(() => setResolver(mediaServerConfig())), []);
@@ -45,6 +48,10 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
       if (!controller.signal.aborted) { setOnline(songs); setFocus((f) => ({ ...f, list: 0 })); if (!songs.length) setOnlineError('No matching tracks. Try another search or paste an individual track URL.'); }
     } catch (e) { if (!controller.signal.aborted) setOnlineError(e instanceof Error ? e.message : String(e)); }
     finally { if (!controller.signal.aborted) setSearching(false); }
+  };
+  const submitSearch = () => {
+    searchInput.current?.blur(); // Dismiss iPad's keyboard on Enter / Search.
+    if (tab === 3 && resolver.enabled && !searching && query.trim()) void discover();
   };
   const initial = useMemo(() => loadQueue(profile), [profile.id]);
   const [queue, setQueue] = useState<string[]>(initial.ids);
@@ -169,7 +176,9 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const rating = timeline ? rateQueue(timeline) : null;
   const zoneIs = (z: PickerFocus['zone']) => focus.zone === z;
   return (
-    <div class="screen media-picker">
+    <div class={`screen media-picker${keyboard ? ' keyboard-open' : ''}`} style={keyboard ? {
+      top: `${keyboard.top}px`, left: `${keyboard.left}px`, width: `${keyboard.width}px`, height: `${keyboard.height}px`,
+    } : undefined}>
       <div class="screen-head">
         <div><h1>Pick your music</h1><div class="sub">{game.title} · {queued.length ? `${queued.length} in the queue` : 'add songs to the queue'}</div></div>
         <span class="spacer" />
@@ -185,16 +194,23 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             <input ref={fileInput} type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.flac,.wav" style={{ display: 'none' }}
               onChange={(e) => { void onFiles((e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = ''; }} />
           </div>
-          {tab === 3 && <div>
+          {tab === 3 && <div class="mp-provider">
             <select class="mp-search" aria-label="Music service" value={provider} onChange={(e) => {
               searchAbort.current?.abort(); setSearching(false); setOnline([]); setOnlineError('');
               setProvider((e.target as HTMLSelectElement).value as OnlineProvider);
             }}><option value="youtube">YouTube</option><option value="soundcloud">SoundCloud</option></select>
             <small class="dim">{resolver.enabled ? `Media server enabled · ${resolver.bufferS}s buffer ahead` : 'Enable the optional media server on the Connect screen to search online music.'}</small>
           </div>}
-          <input class="mp-search" aria-label="Search music" placeholder={tab === 3 ? 'Search songs or paste a track URL' : 'Search title, artist, album'} value={query}
-            onInput={(e) => setQuery((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (tab === 3 && e.key === 'Enter') void discover(); }} />
-          {tab === 3 && <Btn small disabled={!resolver.enabled || searching || !query.trim()} onClick={() => void discover()}>{searching ? 'Searching…' : 'Search'}</Btn>}
+          <form class="mp-search-form" role="search" onSubmit={(e) => {
+            e.preventDefault();
+            submitSearch();
+          }}>
+            <input ref={searchInput} type="search" enterKeyHint="search" class="mp-search" aria-label="Search music" placeholder={tab === 3 ? 'Search songs or paste a track URL' : 'Search title, artist, album'} value={query}
+              onInput={(e) => setQuery((e.target as HTMLInputElement).value)} onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submitSearch(); }
+              }} />
+            {tab === 3 && <button type="submit" class="btn small" disabled={!resolver.enabled || searching || !query.trim()}>{searching ? 'Searching…' : 'Search'}</button>}
+          </form>
           <div class="mp-list">
             {tab === 3 && onlineError && <div role="alert">{onlineError}</div>}
             {!list.length && !(tab === 3 && (searching || onlineError)) && <div class="dim mp-empty">{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : tab === 3 ? 'Search YouTube or SoundCloud, then tap + to queue a song.' : 'No matches.'}</div>}

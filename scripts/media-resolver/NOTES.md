@@ -14,3 +14,4 @@
   through the real service, MP3 decode, analysis worker, mix planning and playback.
 - API v2 browser checks: both providers, WAV/worker playback, chunk boundaries, crossfade, pause, starvation/recovery, eviction; Cadenza road updates.
 - Cloudflare Tunnel setup and systemd template: docs/CADENZA_STREAMING.md.
+- Search reports rejection reasons for direct links/all-filtered results rather than returning an unexplained empty list.

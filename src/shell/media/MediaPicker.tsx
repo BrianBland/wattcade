@@ -42,7 +42,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     setSearching(true); setOnlineError(''); setOnline([]);
     try {
       const songs = await searchOnline(provider, query, resolver, controller.signal);
-      if (!controller.signal.aborted) { setOnline(songs); setFocus((f) => ({ ...f, list: 0 })); }
+      if (!controller.signal.aborted) { setOnline(songs); setFocus((f) => ({ ...f, list: 0 })); if (!songs.length) setOnlineError('No matching tracks. Try another search or paste an individual track URL.'); }
     } catch (e) { if (!controller.signal.aborted) setOnlineError(e instanceof Error ? e.message : String(e)); }
     finally { if (!controller.signal.aborted) setSearching(false); }
   };

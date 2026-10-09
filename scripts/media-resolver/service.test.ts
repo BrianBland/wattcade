@@ -55,3 +55,17 @@ it('extracts bounded exact audio windows and cleans up after range failures', as
   await expect(extractRange(`https://youtu.be/${id}`, 28, 34, async (args) => { dir = dirname(args[args.indexOf('-o') + 1]); throw new Error('timeout'); })).rejects.toThrow('timeout');
   await expect(access(dir)).rejects.toThrow();
 });
+
+it('explains why a direct long mixtape or a search with only filtered results cannot be queued', async () => {
+  const long = { id: '412AHrISlqg', title: 'Lane 8 Fall mixtape', duration: 4 * 3600 };
+  await expect(search('youtube', `https://www.youtube.com/watch?v=${long.id}`, async () => JSON.stringify(long))).rejects.toThrow('240 minutes');
+  await expect(search('youtube', 'mixtape', async () => JSON.stringify({ entries: [long, { ...long, id, duration: null }] }))).rejects.toThrow('30-minute limit');
+  await expect(search('soundcloud', 'song', async () => JSON.stringify({ entries: [{ id: '123', title: 'Song', webpage_url: 'https://soundcloud.com/artist/song', duration: null }] }))).rejects.toThrow('usable track duration');
+});
+it('distinguishes genuinely empty searches and keeps valid songs when other results are filtered', async () => {
+  expect(await search('youtube', 'unknown', async () => JSON.stringify({ entries: [] }))).toEqual([]);
+  const t = { id, title: 'Song', duration: 120 };
+  expect(await search('youtube', 'song', async () => JSON.stringify({ entries: [null, t, { ...t, duration: 14400 }] }))).toHaveLength(1);
+  await expect(search('youtube', 'song', async () => JSON.stringify({ entries: {} }))).rejects.toThrow('invalid search response');
+  await expect(search('youtube', `https://youtu.be/${id}`, async () => JSON.stringify({ ...t, is_live: true }))).rejects.toThrow('live or upcoming');
+});

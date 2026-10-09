@@ -17,7 +17,8 @@ game clocks hold together until the buffer recovers. Local files retain full-ana
 This is an unofficial extraction integration. Tracks can fail when upstream sites change,
 require a login, impose regional restrictions, or block extraction. No account cookies or DRM
 support is provided. Use content you have permission to use. Live streams, playlists, and
-tracks over 30 minutes are excluded. Window requests have a 90-second extractor timeout,
+tracks over 30 minutes are excluded. Direct links and searches whose results are all excluded
+show the reason (including missing durations or the duration limit), rather than a silent empty list. Window requests have a 90-second extractor timeout,
 a 40-second maximum range, and a 64 MB output limit. Two extraction/search jobs can run at once.
 
 ## Steps for your Linux machine

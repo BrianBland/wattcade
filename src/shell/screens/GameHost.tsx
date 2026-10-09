@@ -156,6 +156,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
               debugActions.panic(false); session.mixer?.rampIn();
               void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
               setPhase('play');
+              toast('Tap the HUD for the menu');
               setTimeout(() => setCount(null), 700);
             }
           } else if (ph === 'play') {

@@ -134,7 +134,7 @@ export function App() {
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
         onDelete={screen.profileId ? async (p) => { await deleteProfile(p.id); await refresh(); go({ name: 'profiles' }); } : undefined} />; break;
     case 'connect': body = <Connect onDone={() => go({ name: profile ? 'menu' : 'profiles' })} />; break;
-    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} />; break;
+    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} onEndRide={() => void endRide()} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
     case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={() => go({ name: 'menu' })} />; break;
     case 'pick': body = profile && <RewardPick profile={profile} onProfile={updateProfile} onDone={() => go({ name: 'locker' })} />; break;
@@ -158,7 +158,7 @@ export function App() {
       {hud && lobby && rider && (
         <div class="hud-host">
           <HudLayer session={lobby} profile={rider} paused={false} legendOn={loadFlag('wattcade.legend', true) && !asleep} fake={!!(lobby as { fakeBike?: unknown }).fakeBike}
-            menu={() => (lobbyIsReal() ? { label: 'End ride', onClick: () => void endRide(), dim: lobbyActiveSeconds() < WARMUP_CREDIT_S } : { label: 'Demo ride', onClick: () => void endRide(), dim: true })} />
+            menu={() => ({ label: 'Open arcade menu', onClick: () => { lastActive.current = performance.now(); setAsleep(false); go({ name: 'menu' }); } })} />
         </div>
       )}
       {asleep && <div class="sleep-hint">Tap or press A for the menu</div>}

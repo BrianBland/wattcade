@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { input } from '../services';
-import { formatDuration } from '../format';
 import { Hood } from './Pad';
 import { buildPad } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
@@ -19,7 +18,7 @@ const rideHistory = new History();
  */
 export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   fake?: boolean; session: SessionLike; profile: Profile; paused: boolean; legendOn: boolean;
-  /** The centre button, read every HUD frame (defaults to the in-game Menu / pause). */
+  /** The centre HUD action, read every HUD frame (defaults to the in-game Menu / pause). */
   menu?: () => { label: string; onClick: () => void; dim?: boolean };
 }) {
   const [f, setF] = useState<Frame | null>(null);
@@ -57,10 +56,8 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
       {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} gear={f.bike.gear} />}
       <div class="hud-center" ref={center}>
-        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars}
-          lead={<button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>}
-          footer={<div class="hud-time"><span title="Ride time (pedalling)">Ride {formatDuration(f.bike.activeSeconds)}</span></div>}
-          trail={gears && <div class="hud-gear" title="Current virtual gear"><small>Gear</small><b>{f.bike.gear}</b></div>} />
+        <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={mb?.onClick ?? (() => input.system('pause'))} />
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears} />
       </div>
       {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} />}
     </div>

@@ -35,6 +35,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<Omit<H
 }
 
 async function pick(label: string, opts: RequestDeviceOptions, ride = false) {
+  let stage = 'requestDevice';
   try {
     if (!navigator.bluetooth) { log('ERROR', 'Web Bluetooth not available (use Chrome or Bluefy over HTTPS)'); return; }
     log('PICK', label);
@@ -42,10 +43,41 @@ async function pick(label: string, opts: RequestDeviceOptions, ride = false) {
     device = await navigator.bluetooth.requestDevice(opts);
     log('DEVICE', `${device.name ?? '(no name)'} id=${device.id}`);
     device.addEventListener('gattserverdisconnected', () => log('DISCONN', 'gattserverdisconnected'));
+    stage = 'connecting GATT';
+    log('CONNECT', 'connecting GATT after picker');
     const server = await device.gatt!.connect();
     log('CONNECT', 'GATT connected');
+    stage = 'exploring services';
     await explore(server, ride);
-  } catch (e) { log('ERROR', e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${JSON.stringify(e)} (${typeof e})`); }
+  } catch (e) { log('ERROR', `${stage}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${JSON.stringify(e)} (${typeof e})`)); }
+}
+
+// Match Wattcade's HR picker options: full UUID first, short UUID only on request failure.
+async function pickHr() {
+  if (!navigator.bluetooth) { log('ERROR', 'Web Bluetooth not available'); return; }
+  let selected: BluetoothDevice | undefined;
+  try {
+    if (device?.gatt?.connected) device.gatt.disconnect();
+    for (const svc of ['0000180d-0000-1000-8000-00805f9b34fb', 0x180d]) {
+      const opts: RequestDeviceOptions = { filters: [{ services: [svc] }] };
+      log('PICK', `HR requestDevice ${JSON.stringify(opts)}`);
+      try { selected = await navigator.bluetooth.requestDevice(opts); break; }
+      catch (e) {
+        log('PICK-ERROR', `requestDevice ${svc}: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`));
+        if ((e as { name?: string })?.name === 'NotFoundError') return;
+      }
+    }
+    if (!selected) { log('ERROR', 'HR requestDevice failed for both UUID forms; GATT was not attempted'); return; }
+    device = selected;
+    log('DEVICE', `${device.name ?? '(no name)'} id=${device.id}`);
+    device.addEventListener('gattserverdisconnected', () => log('DISCONN', 'gattserverdisconnected'));
+    log('CONNECT', 'connecting GATT after HR picker');
+    try {
+      const server = await withTimeout(device.gatt!.connect(), 8000, 'HR GATT connection');
+      log('CONNECT', 'GATT connected');
+      await explore(server, false);
+    } catch (e) { log('ERROR', `after HR selection: ` + (e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`)); }
+  } catch (e) { log('ERROR', `HR picker preparation: ${String(e)}`); }
 }
 
 async function explore(server: BluetoothRemoteGATTServer, ride: boolean) {
@@ -173,7 +205,7 @@ function build() {
     btn('Ride C: any + fc82', () => pick('ride-C any+fc82', { acceptAllDevices: true, optionalServices: [0xfc82] }, true)),
     btn('Ride D: service fc82', () => pick('ride-D svc fc82', { filters: [{ services: [0xfc82] }] }, true)),
     btn('Pick FTMS', () => pick('ftms', { filters: [{ services: [0x1826] }], optionalServices: KNOWN_SERVICES })),
-    btn('Pick HR', () => pick('hr', { filters: [{ services: [0x180d] }], optionalServices: KNOWN_SERVICES })),
+    btn('Pick HR', pickHr),
     btn('Send RideOn', sendRideOn),
     btn('Disconnect', () => device?.gatt?.disconnect()),
     btn('Check saved devices', checkSavedDevices),

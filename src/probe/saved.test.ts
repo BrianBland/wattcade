@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 
-afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals(); });
+afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals(); vi.resetModules(); });
 it('reports saved GATT rejection separately from a successful fresh picker connection', async () => {
   document.body.innerHTML = '<div id="probe"></div>';
   const saved = new EventTarget() as BluetoothDevice;
@@ -19,4 +19,22 @@ it('reports saved GATT rejection separately from a successful fresh picker conne
   click('Pick HR');
   await vi.waitFor(() => expect(document.body.textContent).toContain('GATT connected'));
   expect(requestDevice).toHaveBeenCalledTimes(1); expect(connect).toHaveBeenCalledTimes(2);
+});
+
+it('falls back only when the full-UUID HR picker fails and omits optional services', async () => {
+  document.body.innerHTML = '<div id="probe"></div>';
+  const watch = new EventTarget();
+  const connect = vi.fn().mockResolvedValue({ getPrimaryServices: async () => [] });
+  Object.assign(watch, { id: 'hr', gatt: { connect, connected: false } });
+  const requestDevice = vi.fn().mockRejectedValueOnce(2).mockResolvedValue(watch);
+  vi.stubGlobal('navigator', { userAgent: 'test', bluetooth: { requestDevice } });
+  await import('./main');
+  [...document.querySelectorAll('button')].find(b => b.textContent === 'Pick HR')!.click();
+  await vi.waitFor(() => expect(document.body.textContent).toContain('GATT connected'));
+  expect(requestDevice.mock.calls.map(c => c[0])).toEqual([
+    { filters: [{ services: ['0000180d-0000-1000-8000-00805f9b34fb'] }] },
+    { filters: [{ services: [0x180d] }] },
+  ]);
+  expect(document.body.textContent).toContain('PICK-ERROR');
+  expect(connect).toHaveBeenCalledTimes(1);
 });

@@ -1,19 +1,14 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
-import { getDifficulty, input } from '../services';
+import { input } from '../services';
 import { formatDuration } from '../format';
-import { Hood, PadKey } from './Pad';
+import { Hood } from './Pad';
 import { buildPad } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
 
-interface Frame { bike: BikeState; hud: GameHud; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[]; diff: number }
-
-const GEAR_KEYS = [
-  { id: 'shiftDnL', glyph: '−', color: '#b07cff', mapped: true },
-  { id: 'shiftUpL', glyph: '+', color: '#b07cff', mapped: true },
-] as const;
+interface Frame { bike: BikeState; hud: GameHud; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[] }
 
 /** One ride history for every HUD (lobby -> game -> lobby), so the chart doesn't reset between screens. */
 const rideHistory = new History();
@@ -39,8 +34,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
     return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); };
   }, [!!f]);
   const hist = useRef(rideHistory);
-  const [pulse, setPulse] = useState(0);
-  const last = useRef({ gear: -1, diff: -1, t: performance.now() });
+  const last = useRef({ t: performance.now() });
   useEffect(() => {
     const id = setInterval(() => {
       const bike = session.ctx.bike() as BikeState;
@@ -50,13 +44,8 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
       const pos = zonePosition(frac, boundsFor(source));
       const now = performance.now(); const dt = (now - last.current.t) / 1000; last.current.t = now;
       if (!paused) hist.current.push(dt, bike.power3s, bike.hr5s, pos.zone);
-      const diff = getDifficulty();
-      if (last.current.gear !== bike.gear || last.current.diff !== diff) {
-        if (last.current.gear !== -1) setPulse((n) => n + 1);
-        last.current.gear = bike.gear; last.current.diff = diff;
-      }
       const st = input.state();
-      setF({ bike, hud, held: st.held, paddles: [st.paddleL, st.paddleR], view: { pos, source }, bars: hist.current.bars.slice(), diff });
+      setF({ bike, hud, held: st.held, paddles: [st.paddleL, st.paddleR], view: { pos, source }, bars: hist.current.bars.slice() });
     }, 100);
     return () => clearInterval(id);
   }, [session, paused]);
@@ -66,21 +55,14 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   const mb = menu?.();
   return (
     <div class={`hud${legendOn ? '' : ' no-pad'}`}>
-      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} />}
+      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} gear={f.bike.gear} />}
       <div class="hud-center" ref={center}>
         <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars}
           lead={<button type="button" class={`hud-menu${mb?.dim ? ' dim' : ''}`} onClick={mb?.onClick ?? (() => input.system('pause'))}>{mb?.label ?? 'Menu'}</button>}
           footer={<div class="hud-time"><span title="Ride time (pedalling)">Ride {formatDuration(f.bike.activeSeconds)}</span></div>}
-          trail={<>
-            {gears && (
-              <div class="gearbox" key={pulse}>
-                <div class="pc-btns">{GEAR_KEYS.map((b) => <PadKey b={b} held={f.held} />)}</div>
-                <small>Gear {f.bike.gear}</small>
-              </div>
-            )}
-          </>} />
+          trail={gears && <div class="hud-gear" title="Current virtual gear"><small>Gear</small><b>{f.bike.gear}</b></div>} />
       </div>
-      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} />}
+      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} />}
     </div>
   );
 }

@@ -180,12 +180,10 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-history .zw-chart { flex: 1; min-width: 0; }
 .hud-time { display: flex; flex-direction: row; align-items: baseline; gap: 8px; font: 800 18px/1 system-ui; color: var(--fg); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
 .hud-time small { font: 600 10px/1 system-ui; }
-.gearbox { pointer-events: auto; display: flex; flex-direction: column-reverse; align-items: center; gap: 5px; padding: 5px; border: 1px solid #b07cff45; border-radius: 11px; background: #b07cff08; animation: gearPulse .6s ease-out; }
-.gearbox .pc-btns { flex-direction: row; }
-.gearbox .pk { width: var(--k); height: calc(var(--k) * .7); border-radius: 8px; }
-.gearbox small { font: 700 11px/1 system-ui; color: #dbd5eb; max-width: none; white-space: nowrap; }
-@keyframes gearPulse { 0% { border-color: #fff; } 100% { transform: scale(1); } }
-
+.hud-gear { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 10px; border: 1px solid #b07cff40; border-radius: 9px; background: #b07cff0a; }
+.hud-gear small { font: 700 10px/1 system-ui; color: var(--dim); }
+.hud-gear b { font: 800 24px/1 system-ui; color: #d4b6ff; font-variant-numeric: tabular-nums; }
+.pc .pc-gear { color: #d4b6ff; font-size: 11px; white-space: nowrap; }
 @media (max-width: 900px) and (min-height: 500px) {
   .zw { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; }
   .zw-main { grid-column: 1 / -1; grid-row: 1; flex-direction: column-reverse; gap: 5px; }
@@ -198,7 +196,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-history .zw-chart { grid-column: 1 / -1; grid-row: 3; height: 16px; flex: none; }
   .hud-center { padding: 6px; }
   .zw { gap: 6px 8px; }
-  .zw-actions .gearbox { flex-direction: row; padding: 3px; gap: 3px; }
   .zw-nums b { font-size: 22px; }
   .zw-nums small { font-size: 9px; margin-left: 2px; }
 }
@@ -212,6 +209,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-history { display: flex; grid-row: 3; flex-wrap: wrap; }
   .zw-history .zw-chart { flex: 1 1 100%; }
   .zw-history .hud-time { justify-content: flex-start; }
+  .zw-nums { grid-template-columns: minmax(0, 1fr); }
+  .zw-reading { justify-content: center; }
+  .zw-ftp, .zw-cad-guide { padding-left: 0; text-align: center; }
   .zw-nums b { font-size: 20px; }
 }
 

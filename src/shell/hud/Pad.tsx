@@ -10,7 +10,7 @@ export function PadKey({ b, held, merged, pos }: { b: PadButton; held: Held; mer
   const off = (e: PointerEvent) => input.releaseTouch(e.pointerId);
   const cls = `pk${pos ? ` ${pos}` : ''}${b.mapped ? ' mapped' : ''}${merged ? ' merged' : ''}${held.has(b.id) ? ' held' : ''}${b.active ? ' active' : ''}${b.active === false ? ' off' : ''}`;
   return (
-    <button type="button" class={cls} style={{ '--kc': b.color } as any} disabled={!b.mapped}
+    <button type="button" class={cls} style={{ '--kc': b.color } as any} disabled={!b.mapped} aria-label={b.label ?? b.id}
       onPointerDown={(e) => { e.preventDefault(); input.holdTouch(e.pointerId, b.id); }}
       onPointerUp={off} onPointerCancel={off} onPointerLeave={off} onContextMenu={(e) => e.preventDefault()}>
       <b>{b.glyph}</b>{!merged && b.label && <span>{b.label}</span>}
@@ -18,12 +18,13 @@ export function PadKey({ b, held, merged, pos }: { b: PadButton; held: Held; mer
   );
 }
 
-function Group({ c, held }: { c: Cluster; held: Held }) {
+function Group({ c, held, gear }: { c: Cluster; held: Held; gear?: number }) {
   if (c.kind === 'shift') {
     return (
       <div class={`pc shift${c.mapped ? '' : ' unused'}`}>
-        <div class="pc-btns">{c.buttons.map((b) => <PadKey b={b} held={held} merged={!!c.label} />)}</div>
-        {c.label && <small>{c.label}</small>}
+        {c.gears && <small class="pc-gear">Gear {gear ?? '—'}</small>}
+        <div class="pc-btns">{c.buttons.map((b) => <PadKey b={b} held={held} merged={!!c.label && !c.gears} />)}</div>
+        {c.label && !c.gears && <small>{c.label}</small>}
       </div>
     );
   }
@@ -47,9 +48,9 @@ function Paddle({ model, v }: { model: HoodModel['paddle']; v: number }) {
 }
 
 /** One hood, laid out outer→inner like the controller: left = paddle, shifters, D-pad; right = face buttons, shifters, paddle. */
-export function Hood({ side, model, held, paddle }: { side: 'L' | 'R'; model: HoodModel; held: Held; paddle: number }) {
+export function Hood({ side, model, held, paddle, gear }: { side: 'L' | 'R'; model: HoodModel; held: Held; paddle: number; gear?: number }) {
   const pad = <Paddle model={model.paddle} v={paddle} />;
-  const shift = model.shift && <Group c={model.shift} held={held} />;
+  const shift = model.shift && <Group c={model.shift} held={held} gear={gear} />;
   const stick = <Group c={model.stick} held={held} />;
   return side === 'L'
     ? <div class="hood left">{pad}{shift}{stick}</div>

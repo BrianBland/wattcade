@@ -244,6 +244,8 @@ export interface MediaTimeline {
   beats: Seconds[]; downbeats: Seconds[]; phrases: Seconds[];
   onsets: MediaOnset[]; sections: MediaSection[]; songs: MediaSongSpan[];
   confidence: 'full' | 'metadata';
+  /** Rolling sources mutate this object; consumer clears updateFromS after applying the earliest pending revision. */
+  revision?: number; updateFromS?: Seconds;
 }
 /** Effects a music game's renderer may put on the playing music (present in mount ctx only when music is playing). Reset on exit. */
 export interface MusicFx { /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number }

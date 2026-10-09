@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, MediaTimeline, Profile } from '../../contracts';
-import { buildTimeline, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta } from '../../media';
-import { mediaLibrary, unlockMedia } from '../services';
+import { buildTimeline, searchOnline, mediaServerConfig, subscribeMediaServer, estimatedAnalysis, type OnlineProvider, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta } from '../../media';
+import { mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
 import { onMenuPress } from '../menuInput';
 import { KeyHints, Spinner } from '../components/ui';
 import { Btn } from '../components/Bits';
@@ -10,8 +10,8 @@ import { duckAmbient, play as sfx } from '../../audio/sfx';
 import type { MediaRun } from '../types';
 import { fmtTime, MODES, moveItem, nextMode, pickerNav, previewStart, queueRows, SECTION_COLORS, type PickerFocus } from './pickerModel';
 
-const TABS = ['My music', 'Samples (CC)', 'Generated', '+ Add music'] as const;
-const ADD_TAB = 3;
+const TABS = ['My music', 'Samples (CC)', 'Generated', 'Online music', '+ Add music'] as const;
+const ADD_TAB = 4;
 const PREVIEW_S = 20;
 const queueKey = (p: Profile) => `wattcade.media.queue.${p.id}`;
 function loadQueue(p: Profile): { ids: string[]; mode: QueueMode } {
@@ -27,6 +27,25 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const [samples, setSamples] = useState<SongMeta[]>([]);
   const [tab, setTab] = useState(0);
   const [query, setQuery] = useState('');
+  const [provider, setProvider] = useState<OnlineProvider>('youtube');
+  const [online, setOnline] = useState<SongMeta[]>([]);
+  const [resolver, setResolver] = useState(mediaServerConfig);
+  const [searching, setSearching] = useState(false);
+  const [onlineError, setOnlineError] = useState('');
+  const searchAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => searchAbort.current?.abort(), []);
+  useEffect(() => subscribeMediaServer(() => setResolver(mediaServerConfig())), []);
+  const discover = async () => {
+    if (!resolver.enabled) return;
+    searchAbort.current?.abort();
+    const controller = new AbortController(); searchAbort.current = controller;
+    setSearching(true); setOnlineError(''); setOnline([]);
+    try {
+      const songs = await searchOnline(provider, query, resolver, controller.signal);
+      if (!controller.signal.aborted) { setOnline(songs); setFocus((f) => ({ ...f, list: 0 })); }
+    } catch (e) { if (!controller.signal.aborted) setOnlineError(e instanceof Error ? e.message : String(e)); }
+    finally { if (!controller.signal.aborted) setSearching(false); }
+  };
   const initial = useMemo(() => loadQueue(profile), [profile.id]);
   const [queue, setQueue] = useState<string[]>(initial.ids);
   const [mode, setMode] = useState<QueueMode>(initial.mode);
@@ -50,20 +69,22 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   }, []);
   useEffect(() => { if (loaded && !local.length && tab === 0 && !query) setTab(1); }, [loaded]); // no songs yet: show the samples
   const demos = useMemo(() => lib.demoSongs(), []);
-  const all = useMemo(() => new Map([...demos, ...samples, ...local].map((m) => [m.id, m])), [demos, samples, local]);
-  const list = (tab === 1 ? samples : tab === 2 ? demos : local).filter((m) => matchesQuery(m, query) || (m.genre ? matchesQuery({ title: m.genre, artist: '', album: '' }, query) : false));
+  const all = useMemo(() => new Map([...demos, ...samples, ...online, ...local].map((m) => [m.id, m])), [demos, samples, online, local]);
+  const list = tab === 3 ? online.map((m) => all.get(m.id) ?? m) : (tab === 1 ? samples : tab === 2 ? demos : local).filter((m) => matchesQuery(m, query) || (m.genre ? matchesQuery({ title: m.genre, artist: '', album: '' }, query) : false));
   const queued = queue.map((id) => all.get(id)).filter((m): m is SongMeta => !!m);
-  const ready = queued.length > 0 && queued.every((m) => m.status === 'ready');
+  const streaming = queued.some((m) => !!m.sourceUrl);
+  const ready = queue.length > 0 && queued.length === queue.length && queued.every((m) => m.sourceUrl ? resolver.enabled && m.durationS > 0 : m.status === 'ready');
+  const [starting, setStarting] = useState(false);
 
   useEffect(() => { localStorage.setItem(queueKey(profile), JSON.stringify({ ids: queue, mode })); }, [queue, mode]);
   // queue → program timeline (for the strip, the game's preview and the stats)
   useEffect(() => {
     let alive = true;
     if (!ready) { setTimeline(null); return; }
-    void Promise.all(queue.map((id) => lib.mixItem(id))).then((items) => {
+    void Promise.all(queue.map(async (id) => { const m = all.get(id)!; return m.sourceUrl ? { id, title: m.title, artist: m.artist, palette: m.palette, analysis: estimatedAnalysis(m.durationS) } : lib.mixItem(id); })).then((items) => {
       if (!alive || items.some((i) => !i)) return;
       const its = items as NonNullable<(typeof items)[number]>[];
-      setTimeline(buildTimeline(planMix(its, mode), its));
+      setTimeline(buildTimeline(planMix(its, streaming && mode === 'automix' ? 'crossfade' : mode), its));
     });
     return () => { alive = false; };
   }, [queue.join('|'), mode, ready]);
@@ -80,7 +101,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   useEffect(() => { duckAmbient('picker', true); return () => { duckAmbient('picker', false); stopPreview(); }; }, []); // music screen: no scenery hiss
   const previewingRef = useRef<string | null>(null); previewingRef.current = previewing;
   const togglePreview = async (m: SongMeta | undefined) => {
-    if (!m || m.status !== 'ready') return;
+    if (!m || m.status !== 'ready' || m.sourceUrl) return;
     if (previewingRef.current === m.id) { stopPreview(); return; }
     try {
       const a = audio.current ?? (audio.current = Object.assign(new Audio(), { preload: 'auto' }));
@@ -97,8 +118,9 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
 
   const add = (m: SongMeta | undefined) => {
     if (!m) return;
+    if (m.sourceUrl) { void lib.rememberOnline(m).catch((e) => toast(String(e))); setQueue((q) => [...q, m.id]); sfx('uiSelect'); return; }
     if (m.status === 'error') { lib.retry(m.id); toast(`Retrying analysis of ${m.title}`); return; }
-    if (m.status === 'remote') void lib.downloadSample(m.id).catch((e) => toast(`Couldn't download ${m.title}: ${e instanceof Error ? e.message : e}`));
+    if (m.status === 'remote') void (m.sourceUrl ? lib.prepareOnline(m) : lib.downloadSample(m.id)).catch((e) => toast(`Couldn't load ${m.title}: ${e instanceof Error ? e.message : e}`));
     setQueue((q) => [...q, m.id]); sfx('uiSelect');
   };
   const removeAt = (i: number) => setQueue((q) => q.filter((_, j) => j !== i));
@@ -110,10 +132,16 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   };
   const start = async () => {
     if (!ready) { toast(queued.length ? 'Waiting for analysis to finish…' : 'Add a song to the queue first'); sfx('deny'); return; }
+    if (starting) return;
     stopPreview(); unlockMedia();
+    setStarting(true);
+    try {
+    if (streaming) { onStart(await rollingMediaRun(queue, mode)); return; }
     const items = (await Promise.all(queue.map((id) => lib.mixItem(id)))).filter((i): i is NonNullable<typeof i> => !!i);
     const plan = planMix(items, mode);
     onStart({ ids: queue, mode, items, plan, timeline: buildTimeline(plan, items) });
+    } catch (e) { toast(e instanceof Error ? e.message : String(e)); }
+    finally { setStarting(false); }
   };
 
   // controller / keyboard
@@ -157,13 +185,23 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             <input ref={fileInput} type="file" multiple accept="audio/*,.mp3,.m4a,.aac,.flac,.wav" style={{ display: 'none' }}
               onChange={(e) => { void onFiles((e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = ''; }} />
           </div>
-          <input class="mp-search" placeholder="Search title, artist, album" value={query} onInput={(e) => setQuery((e.target as HTMLInputElement).value)} />
+          {tab === 3 && <div>
+            <select class="mp-search" aria-label="Music service" value={provider} onChange={(e) => {
+              searchAbort.current?.abort(); setSearching(false); setOnline([]); setOnlineError('');
+              setProvider((e.target as HTMLSelectElement).value as OnlineProvider);
+            }}><option value="youtube">YouTube</option><option value="soundcloud">SoundCloud</option></select>
+            <small class="dim">{resolver.enabled ? `Media server enabled · ${resolver.bufferS}s buffer ahead` : 'Enable the optional media server on the Connect screen to search online music.'}</small>
+          </div>}
+          <input class="mp-search" aria-label="Search music" placeholder={tab === 3 ? 'Search songs or paste a track URL' : 'Search title, artist, album'} value={query}
+            onInput={(e) => setQuery((e.target as HTMLInputElement).value)} onKeyDown={(e) => { if (tab === 3 && e.key === 'Enter') void discover(); }} />
+          {tab === 3 && <Btn small disabled={!resolver.enabled || searching || !query.trim()} onClick={() => void discover()}>{searching ? 'Searching…' : 'Search'}</Btn>}
           <div class="mp-list">
-            {!list.length && <div class="dim mp-empty">{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : 'No matches.'}</div>}
+            {tab === 3 && onlineError && <div role="alert">{onlineError}</div>}
+            {!list.length && !(tab === 3 && (searching || onlineError)) && <div class="dim mp-empty">{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : tab === 3 ? 'Search YouTube or SoundCloud, then tap + to queue a song.' : 'No matches.'}</div>}
             {list.map((m, i) => (
               <SongRow m={m} focused={zoneIs('list') && focus.list === i} progress={lib.progress.get(m.id)} previewing={previewing === m.id}
                 onClick={() => { unlockMedia(); setFocus({ ...focus, zone: 'list', list: i }); }} onAdd={() => add(m)} onPreview={() => void togglePreview(m)}
-                onRemove={m.source === 'local' ? () => { if (confirm(`Remove "${m.title}" from your library?`)) { setQueue((q) => q.filter((x) => x !== m.id)); void lib.remove(m.id); } } : undefined} />
+                onRemove={(m.source === 'local' || !!m.sourceUrl) ? () => { if (confirm(`Remove "${m.title}" from your library?`)) { setQueue((q) => q.filter((x) => x !== m.id)); void lib.remove(m.id); } } : undefined} />
             ))}
           </div>
         </div>
@@ -173,7 +211,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
         <div class="panel mp-queue">
           <div class={`mp-mode${zoneIs('queue') && focus.queue === 0 ? ' focused' : ''}`}>
             {MODES.map((x) => <button type="button" class={`btn small${mode === x.value ? ' primary' : ''}`} onClick={() => setMode(x.value)}>{x.label}</button>)}
-            <small class="dim">{MODES.find((x) => x.value === mode)?.hint}</small>
+            <small class="dim">{streaming && mode === 'automix' ? 'Estimated crossfades; beat and phrase matching needs full-song analysis.' : MODES.find((x) => x.value === mode)?.hint}</small>
           </div>
           <div class="mp-qlist">
             {!queued.length && <div class="dim mp-empty">Press A on a song (or tap +) to queue it.</div>}
@@ -190,9 +228,10 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
           </div>
           {timeline && <QueueStrip timeline={timeline} />}
           {timeline && game.mediaPreview && <GamePreview game={game} timeline={timeline} profile={profile} />}
-          {rating && <div class="mp-stats">{fmtTime(rating.durationS)} · {rating.songs} song{rating.songs === 1 ? '' : 's'} · {rating.drops} drop{rating.drops === 1 ? '' : 's'} · {rating.bpmMin === rating.bpmMax ? rating.bpmMin : `${rating.bpmMin}–${rating.bpmMax}`} bpm · <span class="mp-stars">{'★'.repeat(rating.stars)}<span class="dim">{'★'.repeat(5 - rating.stars)}</span></span></div>}
-          <Btn primary focused={zoneIs('queue') && focus.queue === queueRows(queued.length) - 1} disabled={!ready} onClick={() => void start()}>
-            {ready ? '▶ Start ride' : queued.length ? <><Spinner /> Analyzing…</> : 'Queue is empty'}
+          {rating && !streaming && <div class="mp-stats">{fmtTime(rating.durationS)} · {rating.songs} song{rating.songs === 1 ? '' : 's'} · {rating.drops} drop{rating.drops === 1 ? '' : 's'} · {rating.bpmMin === rating.bpmMax ? rating.bpmMin : `${rating.bpmMin}–${rating.bpmMax}`} bpm · <span class="mp-stars">{'★'.repeat(rating.stars)}<span class="dim">{'★'.repeat(5 - rating.stars)}</span></span></div>}
+          {streaming && <div class="dim small">Estimated timing · duration-based crossfades · audio analyzed within the {resolver.bufferS}s buffer. Full-song difficulty is unknown until played.</div>}
+          <Btn primary focused={zoneIs('queue') && focus.queue === queueRows(queued.length) - 1} disabled={!ready || starting} onClick={() => void start()}>
+            {starting ? 'Preparing…' : ready ? '▶ Start ride' : streaming && !resolver.enabled ? 'Enable media server on Connect' : queued.length ? <><Spinner /> Preparing music…</> : 'Queue is empty'}
           </Btn>
         </div>
       </div>
@@ -202,8 +241,11 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
 }
 
 function StatusChip({ m, progress }: { m: SongMeta; progress?: { p: number; stage: string } }) {
+  if (m.sourceUrl) return <span class="mp-chip">JIT analysis</span>;
   if (m.status === 'ready') return <span class="mp-chip">{Math.round(m.bpm ?? 0)} bpm · {m.key}</span>;
-  if (m.status === 'error') return <span class="mp-chip bad" title={m.error}>⚠ couldn't read</span>;
+  if (m.status === 'error') return <span class="mp-chip bad" title={m.error}>⚠ tap + to retry</span>;
+  if (m.status === 'remote' && m.sourceUrl) return <span class="mp-chip">↓ load</span>;
+  if (progress?.stage === 'extracting') return <span class="mp-chip"><Spinner /> extracting audio</span>;
   if (m.status === 'remote') return <span class="mp-chip">{m.genre ? `${m.genre} · ` : ''}↓ {Math.round((m.size ?? 0) / 1e6)} MB</span>;
   if (progress?.stage === 'downloading') return <span class="mp-chip"><Spinner /> downloading</span>;
   return <span class="mp-chip"><Spinner /> {progress ? `${Math.round(progress.p * 100)}%` : m.status === 'pending' ? 'queued' : '…'}</span>;
@@ -216,10 +258,10 @@ function SongRow({ m, focused, progress, previewing, onClick, onAdd, onPreview, 
   return (
     <div class={`mp-row${focused ? ' focused' : ''}`} onClick={onClick}>
       <span class="mp-swatch" style={{ background: m.palette ? `linear-gradient(135deg, ${m.palette[0]}, ${m.palette[1] ?? m.palette[0]})` : '#333' }} />
-      <span class="mp-title"><b>{m.title}</b><small class="dim">{m.artist}{m.album ? ` · ${m.album}` : ''}</small></span>
+      <span class="mp-title"><b>{m.title}</b><small class="dim">{m.artist}{m.album ? ` · ${m.album}` : ''}</small>{m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>{m.credit.text}</a>}</span>
       <StatusChip m={m} progress={progress} />
       <span class="dim mp-num">{m.durationS ? fmtTime(m.durationS) : ''}</span>
-      <button type="button" class="step" title="Preview" disabled={m.status !== 'ready'} onClick={(e) => { e.stopPropagation(); onPreview(); }}>{previewing ? '■' : '▶'}</button>
+      <button type="button" class="step" title="Preview" disabled={m.status !== 'ready' || !!m.sourceUrl} onClick={(e) => { e.stopPropagation(); onPreview(); }}>{previewing ? '■' : '▶'}</button>
       <button type="button" class="step" title="Add to queue" onClick={(e) => { e.stopPropagation(); onAdd(); }}>+</button>
       {onRemove && <button type="button" class="step" title="Remove from library" onClick={(e) => { e.stopPropagation(); onRemove(); }}>🗑</button>}
     </div>
@@ -240,7 +282,7 @@ function SongPreview({ m, analysis }: { m: SongMeta; analysis: SongAnalysis | nu
         {pal.length > 0 && <div class="mp-pal">{pal.map((c) => <i style={{ background: c }} />)}</div>}
         {m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener">{m.credit.text}</a>}
       </div>
-      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or +) to download and queue it.' : 'The preview appears once the song is analyzed.'}</div>}
+      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or +) to queue it. Audio will be analyzed as it buffers.' : 'The preview appears once the song is analyzed.'}</div>}
     </div>
   );
 }

@@ -4,9 +4,11 @@ import type { SongAnalysis, SongRef } from '../types';
 /** A song in the rider's library (local files) or the built-in demo set. */
 export interface SongMeta extends SongRef {
   addedAt: number;
-  /** remote = a sample track not downloaded yet. */
+  /** remote = an online song not prepared yet. */
   status: 'remote' | 'pending' | 'analyzing' | 'ready' | 'error';
   error?: string;
+  /** Stable page URL for session-only online audio. */
+  sourceUrl?: string;
   bpm?: number; key?: string; energy?: number; drops?: number;
   isrc?: string; fileName?: string; mime?: string; size?: number; hasArt?: boolean; genre?: string;
 }

@@ -36,3 +36,4 @@ Music FX via mount ctx `musicFx({ degrade: under })`. Reduced flashing scales pu
 `script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html` = ship states + mine.
 Scenarios: automixed EDM set (launches ≥ great), idle dropout (no launch bonus), mixed continuous album on casual.
 Gaps: Classic mode; iPad GPU cost unmeasured (low-FX switch if needed); tune launch thresholds with real rides.
+Rolling analysis: timeline revisions extend future road; `extendTrack` preserves ridden geometry/block indexes.

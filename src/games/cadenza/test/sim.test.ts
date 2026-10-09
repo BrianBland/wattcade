@@ -127,3 +127,22 @@ describe('Cadenza controls', () => {
     expect(r.summary.trainer).toBe('erg');
   });
 });
+
+it('applies rolling timeline revisions without resetting score or collected blocks', () => {
+  const timeline = { ...synthTimeline({ style: 'edm', songs: 1, short: true }), revision: 0, updateFromS: undefined as number | undefined };
+  const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'target-follow' }, simOpts: { autopilot: true } });
+  s.step(30 * 20);
+  const before = s.sim.snapshot() as CadenzaSnapshot;
+  const kept = before.track.blocks.filter((b) => b.t < 60).length;
+  const states = [...before.blockState.slice(0, kept)];
+  const summary = s.sim.summary();
+  timeline.onsets = timeline.onsets.filter((o) => o.t < 60);
+  timeline.revision++; timeline.updateFromS = 60;
+  s.step(1);
+  const after = s.sim.snapshot() as CadenzaSnapshot;
+  expect(after.track).not.toBe(before.track);
+  expect(after.track.blocks.slice(0, kept)).toEqual(before.track.blocks.slice(0, kept));
+  expect([...after.blockState.slice(0, kept)]).toEqual(states);
+  expect(Number(s.sim.summary().score)).toBeGreaterThanOrEqual(Number(summary.score));
+  expect(timeline.updateFromS).toBeUndefined();
+});

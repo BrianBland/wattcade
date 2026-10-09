@@ -42,7 +42,7 @@ function LabPlayer({ run, onStop }: { run: MediaRun; onStop: () => void }) {
   const pos = useRef(0);
 
   useEffect(() => {
-    engine.load(run.plan); engine.setVolume(1); void engine.start(0).catch(() => {});
+    engine.load(run.plan, run.rolling); engine.setVolume(1); void engine.start(0).catch(() => {});
     const sync = new ProgramSync();
     let sim = 0, raf = 0, last = performance.now(), beatIdx = 0, flash = 0;
     const frame = (now: number) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { synthTimeline } from '../../../media/synth/queue';
-import { buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } from '../sim/track';
+import { extendTrack, buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } from '../sim/track';
 
 const tl = synthTimeline({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
 
@@ -127,4 +127,18 @@ describe('stunts', () => {
       expect(tr.blocks.some((b) => b.t > c.t0 - 0.5 && b.t < c.t1 + 0.2)).toBe(false);
     }
   });
+});
+
+it('rolling road updates preserve ridden geometry and block indexes while extending the future', () => {
+  const opts = { difficulty: 'pro' as const, mode: 'mono' as const, seed: 1 };
+  const old = buildTrack(tl, opts);
+  const next = buildTrack({ ...tl, sections: tl.sections.map((s) => ({ ...s, kind: s.kind === 'build' ? 'break' as const : s.kind })), onsets: tl.onsets.filter((o) => o.t > 60) }, opts);
+  const result = extendTrack(old, next, 60), cut = 60 * old.hz;
+  expect([...result.dist.slice(0, cut)]).toEqual([...old.dist.slice(0, cut)]);
+  expect([...result.height.slice(0, cut)]).toEqual([...old.height.slice(0, cut)]);
+  expect(result.blocks.filter((b) => b.t < 60)).toEqual(old.blocks.filter((b) => b.t < 60));
+  expect(result.dist[cut]).toBeCloseTo(old.dist[cut]);
+  expect(result.height[cut]).toBeCloseTo(old.height[cut]);
+  expect([...result.dist].every((d, i, a) => i === 0 || d > a[i - 1])).toBe(true);
+  expect(result.blocks.every((b) => result.zones[b.zone].t0 <= b.t && result.zones[b.zone].t1 >= b.t)).toBe(true);
 });

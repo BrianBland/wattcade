@@ -17,6 +17,8 @@ export type SynthRenderer = (score: SynthScore) => Promise<Blob>;
 
 export interface LibraryOpts {
   storage: MediaStorage;
+  /** Fetch extracted online audio without persisting it to IndexedDB. */
+  loadOnlineAudio?: (song: SongMeta) => Promise<Blob>;
   analyze: FileAnalyzer;
   renderSynth?: SynthRenderer;
   /** Cover-art palette (browser: decode the image). */
@@ -56,6 +58,9 @@ export class MediaLibrary {
   private queue: string[] = [];
   private busy = false;
   private urls = new Map<string, string>();
+  private onlineBlobs = new Map<string, Blob>();
+  private onlineLoads = new Map<string, Promise<Blob>>();
+  private revisions = new Map<string, number>();
   /** Live analysis progress per song id (0..1 and the stage name). */
   readonly progress = new Map<string, { p: number; stage: string }>();
   private demos: SongMeta[];
@@ -98,6 +103,35 @@ export class MediaLibrary {
     }
     this.changed();
     return out;
+  }
+
+  /** Remember a streaming song without downloading or scheduling full-file analysis. */
+  async rememberOnline(song: SongMeta): Promise<SongMeta> {
+    if (!['youtube', 'soundcloud'].includes(song.source) || !song.sourceUrl) throw new Error('Invalid online song.');
+    const meta = { ...song, status: 'remote' as const, error: undefined, addedAt: (this.o.now ?? Date.now)() };
+    await this.o.storage.putMeta(meta); this.changed(); return meta;
+  }
+
+  async prepareOnline(song: SongMeta): Promise<SongMeta> {
+    if (!['youtube', 'soundcloud'].includes(song.source) || !song.id.startsWith(`${song.source}:`) || !song.sourceUrl || !this.o.loadOnlineAudio) throw new Error('Online audio resolver is not configured.');
+    const existing = await this.o.storage.getMeta(song.id);
+    if (existing && existing.status !== 'error' && (existing.status !== 'ready' || await this.analysis(song.id))) return existing;
+    const m: SongMeta = { ...song, status: 'pending', error: undefined, addedAt: (this.o.now ?? Date.now)() };
+    await this.o.storage.putMeta(m); this.enqueue(m.id); this.changed(); return m;
+  }
+
+  private async audioBlob(id: string): Promise<Blob | undefined> {
+    if (!isOnline(id)) return this.o.storage.getBlob(`audio:${id}`);
+    const cached = this.onlineBlobs.get(id); if (cached) return cached;
+    const m = await this.o.storage.getMeta(id);
+    if (!m || !this.o.loadOnlineAudio) throw new Error('Online song or resolver is missing.');
+    const shared = this.onlineLoads.get(id); if (shared) return shared;
+    const revision = this.revisions.get(id) ?? 0;
+    const load = this.o.loadOnlineAudio(m).then(async (blob) => {
+      if ((this.revisions.get(id) ?? 0) !== revision || !await this.o.storage.getMeta(id)) throw new Error('Song was removed.');
+      this.onlineBlobs.set(id, blob); return blob;
+    }).finally(() => { if (this.onlineLoads.get(id) === load) this.onlineLoads.delete(id); });
+    this.onlineLoads.set(id, load); return load;
   }
 
   private async addAudio(buf: ArrayBuffer, name: string, type: string, id: string, over: Partial<SongMeta>): Promise<SongMeta> {
@@ -144,8 +178,10 @@ export class MediaLibrary {
   }
 
   async remove(id: string): Promise<void> {
-    if (!id.startsWith('local:') && !id.startsWith('sample:')) return;
+    if (!id.startsWith('local:') && !id.startsWith('sample:') && !isOnline(id)) return;
     this.queue = this.queue.filter((x) => x !== id);
+    this.revisions.set(id, (this.revisions.get(id) ?? 0) + 1);
+    this.onlineBlobs.delete(id); this.onlineLoads.delete(id);
     await Promise.all([this.o.storage.delMeta(id), this.o.storage.delAnalysis(id), this.o.storage.delBlob(`audio:${id}`), this.o.storage.delBlob(`art:${id}`)]);
     const u = this.urls.get(id); if (u) { URL.revokeObjectURL(u); this.urls.delete(id); }
     this.changed();
@@ -177,8 +213,9 @@ export class MediaLibrary {
     if (s) {
       if (!this.o.renderSynth) throw new Error('No synth renderer');
       blob = await this.o.renderSynth(s);
-    } else blob = await this.o.storage.getBlob(`audio:${id}`);
+    } else blob = await this.audioBlob(id);
     if (!blob) throw new Error('Song file is missing');
+    const sharedUrl = this.urls.get(id); if (sharedUrl) return sharedUrl;
     const u = URL.createObjectURL(blob); this.urls.set(id, u); return u;
   }
   async artUrl(id: string): Promise<string | null> {
@@ -203,13 +240,15 @@ export class MediaLibrary {
         const m = await this.o.storage.getMeta(id); if (!m) continue;
         try {
           await this.o.storage.putMeta({ ...m, status: 'analyzing', error: undefined }); this.changed();
-          const blob = await this.o.storage.getBlob(`audio:${id}`);
+          if (isOnline(id) && !this.onlineBlobs.has(id)) { this.progress.set(id, { p: 0, stage: 'extracting' }); this.changed(); }
+          const blob = await this.audioBlob(id);
           if (!blob) throw new Error('Song file is missing');
           const a = await this.o.analyze(blob, (p, stage) => { this.progress.set(id, { p, stage }); this.changed(); });
           let palette: string[] = [];
           const art = m.hasArt ? await this.o.storage.getBlob(`art:${id}`) : undefined;
           if (art && this.o.artPalette) palette = await this.o.artPalette(art).catch(() => []);
           if (palette.length < 3) palette = paletteFromKey(a.key.camelot, avg(a.intensity));
+          if (!await this.o.storage.getMeta(id)) { this.progress.delete(id); this.changed(); continue; }
           await this.o.storage.putAnalysis(id, a);
           const cur = (await this.o.storage.getMeta(id)) ?? m; // the rider may have removed it meanwhile
           if (await this.o.storage.getMeta(id)) await this.o.storage.putMeta({
@@ -226,6 +265,7 @@ export class MediaLibrary {
   }
 }
 
+const isOnline = (id: string) => id.startsWith('youtube:') || id.startsWith('soundcloud:');
 const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((s, x) => s + x, 0) / xs.length) * 1000) / 1000 : 0);
 function mimeOf(name: string): string {
   const ext = name.toLowerCase().split('.').pop() ?? '';

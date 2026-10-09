@@ -1,0 +1,21 @@
+[Unit]
+Description=Wattcade Cadenza media server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace with your absolute checkout path.
+WorkingDirectory=/home/YOUR_USER/wattcade
+EnvironmentFile=%h/.config/wattcade/media.env
+# Include the directory containing your Node 22+ and npm binaries if using nvm.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env npm run media:resolver
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

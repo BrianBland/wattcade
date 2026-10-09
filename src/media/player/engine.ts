@@ -1,4 +1,6 @@
 import type { MixPlan, PlanEntry } from '../mix/plan';
+import { progTime } from '../mix/plan';
+import type { RangeSource } from '../online/rolling';
 import { scheduleDeck, type ParamEvent } from './schedule';
 
 /**
@@ -20,7 +22,7 @@ export interface EngineOpts {
   /** Extra output-latency calibration in seconds (Settings). */
   latencyS?: () => number;
 }
-export type EngineState = 'idle' | 'starting' | 'playing' | 'paused' | 'ended';
+export type EngineState = 'idle' | 'starting' | 'playing' | 'paused' | 'buffering' | 'ended';
 
 const PRELOAD_S = 40, LOOKAHEAD_S = 1.5, TICK_MS = 100;
 
@@ -28,6 +30,7 @@ class Deck {
   readonly low: BiquadFilterNode; readonly mid: BiquadFilterNode; readonly high: BiquadFilterNode;
   readonly gain: GainNode; readonly echoSend: GainNode; readonly delay: DelayNode;
   src: AudioBufferSourceNode | null = null;
+  private sources = new Set<AudioBufferSourceNode>();
   entry = -1;
   constructor(private ctx: AudioContext, dest: AudioNode) {
     this.low = Object.assign(ctx.createBiquadFilter(), { type: 'lowshelf' }); this.low.frequency.value = 180;
@@ -42,25 +45,29 @@ class Deck {
     this.high.connect(this.echoSend).connect(this.delay).connect(fb).connect(this.delay);
     this.delay.connect(wet).connect(dest);
   }
-  play(buf: AudioBuffer, e: PlanEntry, fromP: number, toCtx: (p: number) => number) {
-    this.stop();
+  play(buf: AudioBuffer, e: PlanEntry, fromP: number, toCtx: (p: number) => number, bufferStartS = 0, endP?: number) {
+    const same = this.entry === e.index && endP !== undefined;
+    if (!same) this.stop();
     const sch = scheduleDeck(e, fromP, toCtx);
     const src = this.ctx.createBufferSource(); src.buffer = buf;
-    apply(src.playbackRate, sch.rate); apply(this.gain.gain, sch.gain);
-    apply(this.low.gain, sch.low); apply(this.mid.gain, sch.mid); apply(this.high.gain, sch.high);
-    if (sch.echoAt !== undefined) {
+    apply(src.playbackRate, sch.rate); if (!same) apply(this.gain.gain, sch.gain);
+    if (!same) { apply(this.low.gain, sch.low); apply(this.mid.gain, sch.mid); apply(this.high.gain, sch.high); }
+    if (!same && sch.echoAt !== undefined) {
       this.delay.delayTime.value = Math.min(1.9, e.beatS * 0.75);
       this.echoSend.gain.cancelScheduledValues(0);
       this.echoSend.gain.setValueAtTime(0, this.ctx.currentTime);
       this.echoSend.gain.setValueAtTime(1, sch.echoAt); this.echoSend.gain.setValueAtTime(0, sch.echoAt + e.beatS);
     }
     src.connect(this.low);
-    src.start(Math.max(this.ctx.currentTime, sch.when), Math.min(sch.offset, buf.duration - 0.01));
-    src.stop(sch.stopAt);
+    src.start(Math.max(this.ctx.currentTime, sch.when), Math.max(0, Math.min(sch.offset - bufferStartS, buf.duration - 0.01)));
+    src.stop(endP === undefined ? sch.stopAt : toCtx(Math.min(endP, e.endP)));
+    this.sources.add(src);
+    src.onended = () => { this.sources.delete(src); src.disconnect(); };
     this.src = src; this.entry = e.index;
   }
   stop() {
-    if (this.src) { try { this.src.stop(); } catch { /* not started */ } this.src.disconnect(); this.src = null; }
+    for (const src of this.sources) { try { src.stop(); } catch { /* not started */ } src.disconnect(); }
+    this.sources.clear(); this.src = null;
     const now = this.ctx.currentTime;
     for (const p of [this.gain.gain, this.echoSend.gain]) { p.cancelScheduledValues(0); p.setValueAtTime(0, now); }
     this.entry = -1;
@@ -81,6 +88,9 @@ export class MixEngine {
   private fxDegrade = 0;
   private decks: Deck[] = [];
   private plan: MixPlan | null = null;
+  private ranges: RangeSource | undefined;
+  private scheduled = new Set<string>();
+  private preparing = false;
   private state: EngineState = 'idle';
   /** Program clock: p = anchorP + (ctx.currentTime − anchorCtx) while playing. */
   private anchorP = 0; private anchorCtx = 0;
@@ -110,9 +120,9 @@ export class MixEngine {
     s.buffer = b; s.connect(this.ctx.destination); s.start();
   }
 
-  load(plan: MixPlan): void { this.stop(); this.plan = plan; this.state = 'idle'; }
+  load(plan: MixPlan, ranges?: RangeSource): void { this.stop(); if (this.ranges !== ranges) this.ranges?.dispose(); this.ranges = ranges; this.plan = plan; this.state = 'idle'; }
   /** Decode the first song now (e.g. during a countdown) so start() is instant. */
-  preload(): void { const e = this.plan?.entries[0]; if (e) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); }); }
+  preload(): void { if (this.ranges) { void this.ranges.prepare(0).catch((e) => { this.lastError = String(e.message ?? e); }); return; } const e = this.plan?.entries[0]; if (e) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); }); }
   getState(): EngineState { return this.state; }
   playing(): boolean { return this.state === 'playing' && this.ctx.state === 'running'; }
   onEnded(cb: () => void): () => void { this.endedCbs.add(cb); return () => { this.endedCbs.delete(cb); }; }
@@ -150,7 +160,7 @@ export class MixEngine {
 
   /** Program position the rider is *hearing* (output latency and calibration removed), or null before it starts. */
   positionS(): number | null {
-    if (this.state !== 'playing' && this.state !== 'paused') return null;
+    if (this.state !== 'playing' && this.state !== 'paused' && this.state !== 'buffering') return null;
     const lat = ((this.ctx as any).outputLatency ?? this.ctx.baseLatency ?? 0) + (this.o.latencyS?.() ?? 0);
     return Math.max(0, this.programNow() - lat);
   }
@@ -163,30 +173,31 @@ export class MixEngine {
     await this.begin();
   }
   pause(): void {
-    if (this.state !== 'playing' && this.state !== 'starting') return;
+    if (this.state !== 'playing' && this.state !== 'starting' && this.state !== 'buffering') return;
     this.anchorP = this.programNow(); this.state = 'paused'; this.epoch++;
-    for (const d of this.decks) d.stop();
+    for (const d of this.decks) d.stop(); this.scheduled.clear();
   }
   resume(): void { if (this.state === 'paused') { this.state = 'starting'; void this.begin(); } }
   seek(p: number): void {
     const was = this.state;
     for (const d of this.decks) d.stop();
-    this.epoch++; this.anchorP = Math.max(0, p);
-    if (was === 'playing' || was === 'starting') { this.state = 'starting'; void this.begin(); }
+    this.scheduled.clear(); this.epoch++; this.anchorP = Math.max(0, p);
+    if (was === 'playing' || was === 'starting' || was === 'buffering') { this.state = 'starting'; void this.begin(); }
   }
   stop(): void {
     if (this.timer) { clearInterval(this.timer); this.timer = null; }
     for (const d of this.decks) d.stop();
-    this.epoch++; this.gen++; this.buffers.clear(); this.loading.clear();
-    this.state = 'idle'; this.anchorP = 0;
+    this.ranges?.cancel(); this.epoch++; this.gen++; this.buffers.clear(); this.loading.clear();
+    this.scheduled.clear(); this.state = 'idle'; this.anchorP = 0;
   }
-  dispose(): void { this.stop(); void this.ctx.close?.().catch(() => {}); }
+  dispose(): void { this.stop(); this.ranges?.dispose(); void this.ctx.close?.().catch(() => {}); }
 
   debug(): Record<string, number | string | boolean> {
     const out: Record<string, number | string | boolean> = { state: this.state, p: +this.programNow().toFixed(2), ctx: this.ctx.state };
     this.decks.forEach((d, i) => { if (d.entry >= 0) out[`deck${i}`] = `#${d.entry} r${d.src?.playbackRate.value.toFixed(3) ?? '-'} g${d.gain.gain.value.toFixed(2)}`; });
     const mb = [...this.buffers.values()].reduce((s, b) => s + (b.length * b.numberOfChannels * 4) / 1e6, 0);
     out.stats = `decodes ${this.stats.decodes} starts ${this.stats.starts} late ${this.stats.lateStarts} · ${Math.round(mb)} MB decoded`;
+    if (this.ranges) Object.assign(out, this.ranges.debug(), { estimatedTransitions: true });
     if (this.lastError) out.error = this.lastError;
     return out;
   }
@@ -198,11 +209,12 @@ export class MixEngine {
   private async begin(): Promise<void> {
     const plan = this.plan!; const ep = this.epoch;
     const cur = plan.entries.find((e) => this.anchorP >= e.startP && this.anchorP < e.endP) ?? plan.entries[0];
-    try { await this.ensureBuffer(cur); } catch (e) { this.lastError = String((e as Error)?.message ?? e); return; }
+    try { if (this.ranges) await this.ranges.prepare(this.anchorP); else await this.ensureBuffer(cur); } catch (e) { this.lastError = String((e as Error)?.message ?? e); if (ep === this.epoch) { this.state = this.ranges ? 'buffering' : 'paused'; if (this.ranges && !this.timer) this.timer = setInterval(() => this.tick(), TICK_MS); } return; }
     if (ep !== this.epoch || this.state !== 'starting') return;
     this.anchorCtx = this.ctx.currentTime + 0.1; // a little headroom so the first samples aren't cut
     this.state = 'playing';
-    for (const e of plan.entries) if (this.anchorP < e.endP && e.startP < this.anchorP + LOOKAHEAD_S) this.schedule(e, this.anchorP);
+    if (this.ranges) this.scheduleRanges(this.anchorP);
+    else for (const e of plan.entries) if (this.anchorP < e.endP && e.startP < this.anchorP + LOOKAHEAD_S) this.schedule(e, this.anchorP);
     if (!this.timer) this.timer = setInterval(() => this.tick(), TICK_MS);
   }
 
@@ -236,15 +248,48 @@ export class MixEngine {
 
   private tick(): void {
     const plan = this.plan;
-    if (!plan || this.state !== 'playing') return;
+    if (!plan || (this.state !== 'playing' && this.state !== 'buffering')) return;
     const p = this.programNow();
     if (p >= plan.durationS) { this.finish(); return; }
+    if (this.ranges) {
+      const ranges = this.ranges;
+      ranges.evict(p);
+      if (!this.preparing) {
+        this.preparing = true;
+        void ranges.prepare(p).then(() => { this.lastError = ''; }).catch((e) => { this.lastError = String(e.message ?? e); }).finally(() => { this.preparing = false; });
+      }
+      const lead = ranges.readyThrough(p) - p;
+      // Keep the visible road inside the analyzed horizon, and freeze both clocks on starvation.
+      if (this.state === 'playing' && lead < Math.min(35, plan.durationS - p) - 0.1) {
+        this.anchorP = p; this.state = 'buffering'; this.scheduled.clear();
+        for (const d of this.decks) d.stop();
+      } else if (this.state === 'buffering' && lead >= Math.min(55, plan.durationS - p) - 0.1) {
+        this.anchorCtx = this.ctx.currentTime + 0.1; this.state = 'playing';
+      }
+      if (this.state === 'playing') this.scheduleRanges(p);
+      return;
+    }
     for (const e of plan.entries) {
       // decode ahead; drop buffers we're done with
       if (e.startP - PRELOAD_S <= p && p < e.endP) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); });
       if (p > e.endP + 1) { this.buffers.delete(e.index); for (const d of this.decks) if (d.entry === e.index) d.entry = -1; }
       // schedule songs that start soon (or that we're already late for, e.g. a slow decode)
       if (e.startP < p + LOOKAHEAD_S && p < e.endP) this.schedule(e, Math.max(p + 0.05, e.startP));
+    }
+  }
+
+  private scheduleRanges(p: number) {
+    for (const e of this.plan!.entries) {
+      if (e.endP <= p || e.startP > p + LOOKAHEAD_S) continue;
+      for (const w of this.ranges!.windows(e)) {
+        const start = Math.max(e.startP, progTime(e.segs, w.startS)), end = Math.min(e.endP, progTime(e.segs, w.endS));
+        const key = `${e.index}:${w.startS}`;
+        if (end <= p || start > p + LOOKAHEAD_S || this.scheduled.has(key)) continue;
+        const deck = this.decks.find((d) => d.entry === e.index) ?? this.decks.find((d) => d.entry < 0 || this.plan!.entries[d.entry].endP <= p);
+        if (!deck) continue;
+        deck.play(w.buffer, e, Math.max(start, p), this.toCtx, w.bufferStartS, end);
+        this.scheduled.add(key); this.stats.starts++;
+      }
     }
   }
 

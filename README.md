@@ -4,7 +4,7 @@ A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broa
 
 | Game | Style | Trainer use |
 |---|---|---|
-| **Cadenza** | 3D music racer (Wipeout-style) built from your own songs: pick a queue, then ride the track the music makes | **Needs music** (local files, Jamendo or the synth demo songs). Builds are real climbs; every drop dives into a sprint target, opening with a block-free corkscrew Launch rated on your effort. Steer across lanes to catch blocks on the hits, dodge mines; holding the target zone keeps your shield up and fires Overdrive. Shifters are virtual gears. |
+| **Cadenza** | 3D music racer (Wipeout-style) built from your own songs: pick a queue, then ride the track the music makes | **Needs music** (local files, YouTube, SoundCloud, CC samples or the synth demo songs). Builds are real climbs; every drop dives into a sprint target, opening with a block-free corkscrew Launch rated on your effort. Steer across lanes to catch blocks on the hits, dodge mines; holding the target zone keeps your shield up and fires Overdrive. Shifters are virtual gears. |
 | **HAMSTERGRID** | Idle/clicker empire, from one hamster to a Dyson swarm | Hamsters run only while you pedal; steady Zone 2 builds a Mind-Numbing multiplier. Each era adds a little grade; strikes add +3 % until a Z3+ push breaks them; spin classes want 95 rpm; clinical trials are 3 min of ERG at 0.8 FTP. |
 | **Watershed** | 3D ERG game: you are the whole water cycle, with particle water and real-time erosion | **Needs ERG.** Pick a 20, 30, 45 or 60 min ERG workout before you start. Rise as vapor off the sea (spin, chase the sunlight), gather into a cartoon cloud, rain on the peaks: springs rise where you rained. As the river your **cadence** shapes the water (grind = heavy, carves; spin = light, fast, carries) and each block gives you a job: turn the grist mill, break the beavers' dam, keep Millbrook dry in the floods, spin the sawmill, water the fields. Earthquakes, landslides, volcanoes (and, very rarely, a meteor) can reshape the valley mid-ride. Then a salmon run up every channel you carved, dodging bears and eagles. Steer with the paddles, ◀▶ or the shifters (left hood left, right hood right); A = boost, Y = view. |
 | **Crank Crawler** | 2D endless dungeon crawler (RotMG-lite) with loot, levels and roguelite upgrades | Crank revs fire; Zone 2 heals. Terrain, swamp, low HP, curses and boss shields add grade. Sprint to crack boss shields; shrines ask for Z3+, Z2 holds, sprints or 95 rpm spins. |
@@ -124,3 +124,10 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 6. **Scenarios:** in `scenarios.ts`, export `scenarios = [{ name, script, minutes, seed, simOpts, assert(summary, stats, run) }]`. Then `npm run sim:all` checks your balance headlessly, and an `autopilot` flag in `simOpts` lets the sim steer itself.
 7. **Register** the module in `src/games/registry.ts` (its position there is the picker's tie-break order).
 8. **Card clip:** add a shot to `SHOTS` in `scripts/capture-cards.ts` (script, how far to fast-forward, crop) and run `npm run capture:cards -- --only mygame`. `src/shell/arcade.test.ts` checks every game has `public/cards/<id>.mp4` + `.webp`.
+
+## Cadenza online music
+
+Enable **Connect → Media server**, then search YouTube/SoundCloud or paste a track URL in
+**Online music**. A Linux yt-dlp/ffmpeg daemon behind Cloudflare Tunnel supplies short audio
+windows for buffered playback and JIT analysis (60s ahead by default). Online automix uses estimated crossfades.
+See [setup and deployment instructions](docs/CADENZA_STREAMING.md).

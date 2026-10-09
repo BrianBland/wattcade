@@ -14,7 +14,8 @@
     "sim:all": "tsx scripts/sim.ts --all",
     "deploy": "vite build && wrangler deploy",
     "snap:watershed": "tsx scripts/watershed-snap.ts",
-    "capture:cards": "tsx scripts/capture-cards.ts"
+    "capture:cards": "tsx scripts/capture-cards.ts",
+    "media:resolver": "tsx scripts/media-resolver/main.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",

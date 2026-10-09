@@ -235,3 +235,26 @@ export function rateTrack(track: Track): { stars: number; tss: number; blocksPer
   const score = clamp((IF - 0.6) / 0.35, 0, 1) * 0.6 + clamp(bpm / 120, 0, 1) * 0.4;
   return { stars: Math.max(1, Math.min(5, Math.round(1 + score * 4))), tss, blocksPerMin: Math.round(bpm), greyPct: Math.round((100 * greys) / Math.max(1, track.blocks.length)), minutesZ4: Math.round(z4 / 6) / 10 };
 }
+
+/** Publish newly analyzed road ahead without changing collected blocks or the ridden path. */
+export function extendTrack(old: Track, next: Track, fromS: number): Track {
+  const cut = Math.min(old.dist.length - 1, Math.max(0, Math.ceil(fromS * old.hz)));
+  if (!cut) return next;
+  const at = cut / old.hz;
+  const distOffset = old.dist[cut] - next.dist[cut], heightOffset = old.height[cut] - next.height[cut], curveOffset = old.curve[cut] - next.curve[cut];
+  for (let i = cut; i < next.dist.length; i++) {
+    next.dist[i] += distOffset; next.height[i] += heightOffset; next.curve[i] += curveOffset;
+    const f = Math.min(1, (i - cut) / (3 * old.hz));
+    for (const key of ['speed', 'grade', 'roll'] as const) next[key][i] = old[key][cut] * (1 - f) + next[key][i] * f;
+  }
+  for (const key of ['dist', 'speed', 'height', 'grade', 'curve', 'roll', 'tunnel'] as const) next[key].set(old[key].subarray(0, cut));
+  const before = old.zones.filter((z) => z.t0 < at).map((z) => ({ ...z, t1: Math.min(z.t1, at) }));
+  next.zones = [...before, ...next.zones.filter((z) => z.t1 > at).map((z) => ({ ...z, t0: Math.max(z.t0, at) }))].map((z, n) => ({ ...z, n }));
+  next.blocks = [...old.blocks.filter((b) => b.t < at), ...next.blocks.filter((b) => b.t >= at)].map((b) => ({ ...b, zone: zoneIndexAt(next, b.t) }));
+  next.stunts = [...old.stunts.filter((s) => s.t0 < at), ...next.stunts.filter((s) => s.t0 >= at)].map((s) => ({ ...s, zone: zoneIndexAt(next, s.t0) }));
+  next.tunnels = [...old.tunnels.filter((s) => s.t0 < at).map((s) => ({ ...s, t1: Math.min(s.t1, at) })), ...next.tunnels.filter((s) => s.t1 > at).map((s) => ({ ...s, t0: Math.max(s.t0, at) }))];
+  for (const key of ['beats', 'downbeats', 'phrases'] as const) next[key] = [...old[key].filter((t) => t < at), ...next[key].filter((t) => t >= at)];
+  next.intensity.splice(0, cut, ...old.intensity.slice(0, cut));
+  for (let b = 0; b < 3; b++) next.bands[b].splice(0, cut, ...old.bands[b].slice(0, cut));
+  return next;
+}

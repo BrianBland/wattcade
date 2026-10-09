@@ -1,9 +1,10 @@
 // The Ride's left and right controllers can show up as two BLE devices (e.g. two "Zwift SF2").
 // RideControllerGroup connects to one or both and presents them as a single ControllerDevice.
 import type { Button, ControllerDevice, ControllerRawState } from '../../contracts';
+import type { ConnectionOptions } from '../bluetooth/lifecycle';
 import { ZwiftRideController, requestRideDevice } from './controller';
 
-type Status = { connected: boolean; firmware?: string; battery?: number; warning?: string };
+type Status = { connected: boolean; firmware?: string; battery?: number; warning?: string; detail?: string };
 
 /** Union of buttons; each paddle comes from whichever controller reports the larger deflection. */
 export function mergeRideStates(states: ControllerRawState[]): ControllerRawState {
@@ -25,6 +26,7 @@ export function mergeRideStatuses(statuses: Status[]): Status {
     connected: statuses.some((s) => s.connected),
     firmware: firmwares.length ? firmwares.join(' / ') : undefined,
     battery: batteries.length ? Math.min(...batteries) : undefined,
+    detail: statuses.find(s => !s.connected && s.detail)?.detail,
     warning: statuses.find((s) => s.warning)?.warning,
   };
 }
@@ -35,25 +37,31 @@ export class RideControllerGroup implements ControllerDevice {
   private statusCbs = new Set<(s: Status) => void>();
   private logCbs = new Set<(line: string) => void>();
 
-  get count() { return this.members.length; }
+  get count() { return this.members.filter(m => m.status.connected).length; }
   get ids() { return this.members.map((m) => m.dev.device.id); }
   get names() { return this.members.map((m) => m.dev.device.name ?? m.dev.device.id); }
 
   /** Must be called from a user gesture. Picking an already-connected controller is rejected. */
-  async addFromPicker(): Promise<void> {
-    return this.addDevice(await requestRideDevice());
+  async addFromPicker(options: ConnectionOptions = {}): Promise<void> {
+    const device = await requestRideDevice(); await options.beforeConnect?.();
+    return this.addDevice(device, options);
   }
 
-  async addDevice(device: BluetoothDevice): Promise<void> {
-    if (this.members.some((m) => m.dev.device.id === device.id)) throw new Error('That controller is already connected — pick the other one.');
-    this.add(await ZwiftRideController.connectDevice(device));
+  async addDevice(device: BluetoothDevice, options: ConnectionOptions = {}, progress: (s: string) => void = () => {}): Promise<void> {
+    const existing = this.members.find(m => m.dev.device.id === device.id);
+    if (existing?.status.connected) throw new Error('That controller is already connected — pick the other one.');
+    if (existing) {
+      existing.offs.forEach(off => off()); await existing.dev.disconnect();
+      this.members = this.members.filter(m => m !== existing); this.emitState();
+    }
+    this.add(await ZwiftRideController.connectDevice(device, options, progress));
   }
 
   add(dev: ZwiftRideController): void {
     const m = { dev, state: { buttons: new Set<Button>(), paddleL: 0, paddleR: 0 } as ControllerRawState, status: { connected: true } as Status, offs: [] as Array<() => void> };
     const tag = `[${dev.device.name ?? 'ride'} ${this.members.length + 1}] `;
     m.offs.push(dev.onState((s) => { m.state = s; this.emitState(); }));
-    m.offs.push(dev.onStatus((s) => { m.status = s; this.emitStatus(); }));
+    m.offs.push(dev.onStatus((s) => { m.status = s; if (!s.connected) { m.state = { buttons: new Set(), paddleL: 0, paddleR: 0 }; this.emitState(); } this.emitStatus(); }));
     m.offs.push(dev.onLog((l) => { for (const cb of this.logCbs) cb(tag + l); }));
     this.members.push(m);
     this.emitStatus();
@@ -76,7 +84,7 @@ export class RideControllerGroup implements ControllerDevice {
   async disconnect(): Promise<void> {
     const ms = this.members.splice(0);
     for (const m of ms) { m.offs.forEach((f) => f()); await m.dev.disconnect(); }
-    this.emitStatus();
+    this.emitState(); this.emitStatus();
   }
 
   private emitState() { const s = mergeRideStates(this.members.map((m) => m.state)); for (const cb of this.stateCbs) cb(s); }

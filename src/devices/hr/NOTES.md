@@ -2,9 +2,13 @@
 - `connect()` still requires a picker gesture.
 - `connectDevice(device, onProgress?, onLog?)` connects an already-authorized device.
 - `id` exposes the selected device ID for browser-local saved setup.
-- Existing GATT setup and reconnect behavior is shared by both entry points.
+- Both entry points use shared serialized setup and a cancelable, bounded recovery lifecycle.
 - Validate on Garmin broadcast / iPad Bluefy.
 - Tests: `npx vitest run src/devices/hr`.
 - `bluetoothDevice` exposes the authorized object for saved-watch switching.
 - Initial setup cleanup does not trigger reconnect; final failure stops/removes listeners so the next saved watch can be attempted safely.
 - `monitor.test.ts` verifies failed setup leaves no reconnect timer/listener.
+- HR is ready only after a valid measurement; failed/stale subscriptions are removed.
+- Tests cover duplicate disconnects, silent broadcasts, cleanup, and late results after close.
+- `ConnectionOptions.signal` cancels setup/recovery; picker `beforeConnect` delays retiring the previous watch.
+- Hardware test and verified documentation: `docs/BLUETOOTH.md`.

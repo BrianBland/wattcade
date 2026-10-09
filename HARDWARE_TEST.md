@@ -49,3 +49,11 @@ Keep a note open and write down anything marked **record**.
 - [ ] Export a backup from the profile editor, because Bluefy storage can be cleared.
 
 **Report back:** the recorded items above, the probe log if one was captured, and which of the sim, ERG and resistance tests were felt.
+
+### Saved-device advertisement discovery
+
+- In Bluefy with BLE advertisements enabled and HR broadcast active, reload Wattcade on the same HTTPS origin. HR should show “Waiting for device advertisement”, then connect without a picker.
+- Repeat after quitting/reopening Bluefy. The fēnix 6 Pro probe test passed after reload; this app-startup/restart behavior remains to verify.
+- Repeat with KICKR CORE and both Ride sides awake; their advertisement-assisted restoration is implemented but not yet hardware verified.
+- With the last-used watch off and the other saved watch broadcasting, verify the 10-second discovery timeout advances to the other watch without forgetting either.
+- If all saved watches are off, verify busy state ends and Select watch again remains usable. Browsers lacking watchAdvertisements should retain direct saved GATT connection.

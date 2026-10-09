@@ -37,3 +37,4 @@ CONTRACT-REQUEST: none.
 - HR pool: remembers multiple IDs, last-used first; tries alternatives on startup. Saved-watch buttons switch without a picker; Add watch authorizes another. Only one HR watch is active; not tied to player profiles.
 - Restore HR before trainer/controllers so their setup cannot block watch selection. Saved-watch attempts show the watch name and GATT step; disabled buttons explain that connection is pending. DOM tests cover non-bubbling watch clicks.
 - HR feedback identifies automatic connection vs manual retry and increments each attempt even when Bluefy returns the same error. Select watch again explicitly opens the picker; saved retries never do.
+- Saved GATT connections use savedDiscovery.ts: when watchAdvertisements exists, wait up to 10 s for an advertisement, then abort scanning; unsupported browsers connect directly. Bluefy HR reload probe succeeded with this sequence; trainer/Ride and app restart still need hardware tests.

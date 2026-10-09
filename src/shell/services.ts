@@ -13,6 +13,7 @@ import { getGame, lobbyGame } from '../games/registry';
 import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
 import type { Item, Slot } from '../cosmetics/types';
 import { readSavedSetup, rememberDevices, resolveSavedSetup } from './savedSetup';
+import { discoverSavedDevice } from './savedDiscovery';
 import { getDriveIn } from './drivein/store';
 import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
@@ -134,6 +135,7 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automat
     const hub: any = dataHub;
     if (kind === 'trainer') {
       const progress = (detail: string) => { status.trainer = { connected: false, busy: true, detail }; notify(); };
+      if (granted) await discoverSavedDevice(granted[0], progress);
       const d = granted ? await FtmsTrainer.connectDevice(granted[0], progress) : await FtmsTrainer.connect(progress);
       devices.trainer = d; hub.attachTrainer(d);
       d.onStatus((st) => { status.trainer = { ...status.trainer, connected: st.connected, detail: st.detail }; notify(); });
@@ -147,7 +149,10 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automat
         const errors: string[] = [];
         for (const device of granted) {
           connectingName = device.name ?? 'HR watch';
-          try { d = await HeartRateMonitor.connectDevice(device, progress); break; }
+          try {
+            await discoverSavedDevice(device, progress);
+            d = await HeartRateMonitor.connectDevice(device, progress); break;
+          }
           catch (e) { errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
         }
         if (!d) throw new Error('Saved watch connection failed. Enable HR broadcast, or tap Select watch again to open the picker. ' + errors.join(' · '));
@@ -166,7 +171,10 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automat
       if (granted) {
         const errors: string[] = [];
         for (const device of granted) {
-          try { await g.addDevice(device); }
+          try {
+            await discoverSavedDevice(device, detail => { status.controller = { connected: false, busy: true, detail: `${device.name ?? 'Controller'}: ${detail}` }; notify(); });
+            await g.addDevice(device);
+          }
           catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
         }
         if (!g.count) throw new Error(errors.join(' · '));

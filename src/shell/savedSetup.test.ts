@@ -56,6 +56,39 @@ describe('saved setup', () => {
     expect(mocks.trainerPicker).not.toHaveBeenCalled(); expect(mocks.hrPicker).not.toHaveBeenCalled(); expect(mocks.ridePicker).not.toHaveBeenCalled();
     expect(s.controllerCount()).toBe(2); expect(s.getDeviceStatus().trainer.connected).toBe(true);
   });
+  it('discovers each saved device before GATT and never opens a picker', async () => {
+    saveAll();
+    const granted = ['hr', 'trainer', 'left', 'right'].map(id => {
+      const d = new EventTarget() as BluetoothDevice;
+      const signals: AbortSignal[] = [];
+      const watchAdvertisements = vi.fn(async (opts: { signal: AbortSignal }) => { signals.push(opts.signal); });
+      Object.assign(d, { id, name: id, watchAdvertisements });
+      return { d, watchAdvertisements, signals };
+    });
+    vi.stubGlobal('navigator', { bluetooth: { getDevices: async () => granted.map(g => g.d) } });
+    const s = await import('./services'); const restoring = s.restoreSavedSetup();
+    for (const [i, g] of granted.entries()) {
+      await vi.waitFor(() => expect(g.watchAdvertisements).toHaveBeenCalledOnce());
+      const kind = i === 0 ? 'hr' : i === 1 ? 'trainer' : 'controller';
+      expect(s.getDeviceStatus()[kind].detail).toContain('Waiting for device advertisement');
+      expect([mocks.hr, mocks.trainer, mocks.ride].reduce((sum, fn) => sum + fn.mock.calls.length, 0)).toBe(i);
+      g.d.dispatchEvent(new Event('advertisementreceived'));
+      await vi.waitFor(() => expect(g.signals[0].aborted).toBe(true));
+    }
+    await restoring;
+    expect(s.getDeviceStatus().hr.connected).toBe(true); expect(s.controllerCount()).toBe(2);
+    expect(mocks.hrPicker).not.toHaveBeenCalled(); expect(mocks.trainerPicker).not.toHaveBeenCalled(); expect(mocks.ridePicker).not.toHaveBeenCalled();
+  });
+  it('tries another saved watch if discovery fails before GATT', async () => {
+    rememberDevices('hr', ['mine', 'wife']);
+    const mine = new EventTarget() as BluetoothDevice;
+    Object.assign(mine, { id: 'mine', watchAdvertisements: () => Promise.reject(2) });
+    vi.stubGlobal('navigator', { bluetooth: { getDevices: async () => [mine, device('wife')] } });
+    const s = await import('./services'); await s.restoreSavedSetup();
+    expect(mocks.hr.mock.calls.map(([d]) => d.id)).toEqual(['wife']);
+    expect(s.getDeviceStatus().hr.connected).toBe(true); expect(readSavedSetup().hr).toEqual(['wife', 'mine']);
+    expect(mocks.hrPicker).not.toHaveBeenCalled();
+  });
   it('preserves missing sides and keeps successful devices when another fails', async () => {
     saveAll(); vi.stubGlobal('navigator', { bluetooth: { getDevices: async () => [device('trainer'), device('left'), device('hr')] } });
     mocks.trainer.mockRejectedValueOnce(new Error('powered off'));

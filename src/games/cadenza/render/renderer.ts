@@ -239,7 +239,7 @@ export class CadenzaRenderer implements GameRenderer {
     this.city!.follow(this.camera, this.fr.f, tNow);
 
     this.post.set({
-      bloom: 0.62 + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0),
+      bloom: (0.62 + (drop ? 0.25 : 0) + 0.3 * beat * fx + (s.overdrive ? 0.2 : 0)) * 0.85,
       aberr: (0.0012 + 0.006 * this.down + 0.004 * beat * (drop ? 1 : 0.4) + 0.01 * this.hurt) * fx,
       hurt: this.hurt * (reduced ? 0.4 : 1), time: tNow % 100, gray: under * (reduced ? 0.5 : 1),
     });

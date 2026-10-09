@@ -1,6 +1,5 @@
 # cadenza — Cadenza (SPEC §6.5)
 
-
 Music racer (formerly "Wattsurf", id `wattsurf`; `core/renames.ts` migrates saves, history and tuning). The shell opens the
 media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard position). Mono mode only (Classic = later).
 
@@ -38,3 +37,4 @@ Scenarios: automixed EDM set (launches ≥ great), idle dropout (no launch bonus
 Gaps: Classic mode; iPad GPU cost unmeasured (low-FX switch if needed); tune launch thresholds with real rides.
 Rolling analysis: timeline revisions extend future road; `extendTrack` preserves ridden geometry/block indexes.
 Nearby road/city/blocks only (≤140 s), dispose replaced GPU resources. Clamp shader light before bloom; safe pow/vignette math.
+Bloom strength is scaled to 85% (including peak drop/beat/Overdrive).

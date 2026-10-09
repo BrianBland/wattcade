@@ -136,7 +136,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-target { position: absolute; top: -3px; bottom: -3px; border: 2px solid #fff; border-radius: 4px; text-decoration: none; }
 .zw-marker { position: absolute; top: -7px; bottom: -5px; width: 3px; margin-left: -1.5px; background: white; box-shadow: 0 0 0 1px #000; }
 .zw-marker::before { content: ''; position: absolute; top: -3px; left: -3px; border: 4px solid transparent; border-top-color: white; }
-.zw-label { padding-left: 35px; font: 700 11px/1.2 system-ui; margin-top: 3px; overflow-wrap: anywhere; }
+.zw-label-track { display: flex; margin-left: 35px; margin-right: 3px; }
+.zw-label { max-width: 100%; font: 700 11px/1.2 system-ui; margin-top: 3px; overflow-wrap: anywhere; }
 .zw-cad-guide { padding-left: 22px; display: block; font: 600 10px/1.3 system-ui; font-style: normal; margin-top: 4px; white-space: nowrap; }
 .zw-cad.ok { color: #2de26a; }
 .zw-cad.low, .zw-cad.high { color: #ffd23b; }
@@ -146,7 +147,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-chart svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 /* controller pad: hoods flank the stats, mirroring the Ride (L: paddle, shifters, D-pad | R: face, shifters, paddle) */
-.hood { display: flex; align-items: center; gap: 6px; padding: 0 6px; border-radius: 14px; background: linear-gradient(135deg, #101322e8, #080b15e8); box-shadow: inset 0 0 0 1px #ffffff24, 0 6px 24px #0005; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: auto; touch-action: none; }
+.hood { display: flex; align-items: center; gap: 6px; pointer-events: auto; touch-action: none; }
 .pc { display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
 .pc.unused { opacity: .5; }
 .pc-grid { position: relative; width: var(--pad-h); height: var(--pad-h); }
@@ -189,7 +190,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 }
 @media (max-width: 700px) {
   .hud { gap: 4px; padding-left: 4px; padding-right: 4px; }
-  .hood { gap: 3px; padding: 0 3px; }
+  .hood { gap: 3px; }
   .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .zw-ftp, .zw-cad-guide { padding-left: 17px; }
   .zw-clock b { font-size: 14px; }

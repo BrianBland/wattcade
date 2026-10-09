@@ -2,6 +2,11 @@ import { formatDuration } from '../format';
 import type { BikeState, GameHud } from '../../contracts';
 import { type Bar, type ZonePos, ZONE_COLORS, cadenceRange, cadenceStatus, zoneFloorWatts } from './zoneMath';
 
+// Anchor low targets at their start and high targets at their end to keep text inside the meter.
+const labelAnchor = (t: { min: number; max: number }) => t.min <= 2
+  ? { marginLeft: `${(t.min - 1) * 20}%` }
+  : { marginLeft: 'auto', marginRight: `${(5 - t.max) * 20}%`, textAlign: 'right' as const };
+
 export interface ZoneView { pos: ZonePos; source: 'power' | 'hr' }
 
 function MetricIcon({ source }: { source: 'power' | 'hr' | 'cadence' | 'clock' | 'gear' }) {
@@ -44,7 +49,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
             {!missing && <s class="zw-marker" style={{ left: `${Math.min(.98, Math.max(.02, view.pos.pos)) * 100}%` }} />}
           </div>
           </div>
-          {label && <div class="zw-label" title={label}>{label}</div>}
+          {label && <div class="zw-label-track"><div class="zw-label" style={target ? labelAnchor(target) : undefined} title={label}>{label}</div></div>}
         </div>
         <div class="zw-nums">
           <div class={view.source === 'power' ? 'primary' : ''}><div class="zw-reading" aria-label={`${Math.round(bike.power3s)} watts`} title="Power (watts)"><MetricIcon source="power" /><b>{Math.round(bike.power3s)}</b></div><span class="zw-ftp">{Math.round(bike.ftpFraction * 100)}% FTP</span></div>

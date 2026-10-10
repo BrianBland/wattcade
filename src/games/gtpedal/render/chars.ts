@@ -280,6 +280,14 @@ function pose(r: Rig, p: PoseIn) {
   if (p.lean) r.root.rotation.z += p.lean;
 }
 
+let GLARE: THREE.DataTexture | undefined;
+/** Hard-cored radial glare (harsh siren bloom). */
+function glareTex() {
+  if (GLARE) return GLARE;
+  const N = 32, d = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const r = Math.hypot(x - N / 2 + 0.5, y - N / 2 + 0.5) / (N / 2); const a = r < 0.25 ? 1 : Math.max(0, 1 - (r - 0.25) / 0.75) ** 2.2; const i = (y * N + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = Math.round(a * 255); }
+  GLARE = new THREE.DataTexture(d, N, N); GLARE.needsUpdate = true; return GLARE;
+}
 export class Crowd {
   readonly group = new THREE.Group();
   private rig = makeRig(); private holder = new THREE.Object3D();
@@ -356,7 +364,7 @@ export class Characters {
       g = new THREE.Group();
       for (const [x, c] of [[-0.12, 0xff1a1a], [0.12, 0x1a4dff]] as const) {
         const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.1), new THREE.MeshBasicMaterial({ color: c })); b.position.x = x; b.name = 'bar';
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color: c, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.9 })); sp.position.x = x * 2; sp.scale.setScalar(1.6); sp.name = 'glare';
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color: c, map: glareTex(), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 1 })); sp.position.x = x * 2; sp.scale.setScalar(1.3); sp.name = 'glare';
         g.add(b, sp);
       }
       this.lights.set(id, g); this.group.add(g);

@@ -11,7 +11,7 @@ import { HALF, boxTop, BRIDGE, bridgeAngle, buildingAt, hash, CANAL, COOP, heigh
 export interface SimOpts {
   seed?: number;
   /** test/scene setup: start pose, explicit pedestrians (replaces the random crowd), starting heat, cops on/off, ammo */
-  spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; /** how a ride begins: on foot with no bike (the game) or already riding (tests/scenes). Default 'foot'. */ start?: 'bike' | 'foot'; /** starting bike kind when riding (tests/scenes) */ startKind?: BikeKind; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean; /** NPC cyclists (default: tunable, or 0 when `npcs` is given) */ cyclists?: number;
+  spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; /** how a ride begins: on foot with no bike (the game) or already riding (tests/scenes). Default 'foot'. */ start?: 'bike' | 'foot'; /** starting bike kind when riding (tests/scenes) */ startKind?: BikeKind; /** scene hook: light mood override (render only) */ mood?: number; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean; /** NPC cyclists (default: tunable, or 0 when `npcs` is given) */ cyclists?: number;
   /** explicit cyclists (tests/captures): ride `line` (default nearest path) in direction `dir` */ cyclistsAt?: Array<{ x: number; z: number; kind: BikeKind; line?: number; dir?: 1 | -1; cruise?: number }>; /** false = no trams (isolated tests) */ trams?: boolean;
   ammo?: Partial<Record<WeaponKind, number>>; startWeapon?: WeaponKind; copSpawn?: Array<{ kind: CopKind; x: number; z: number }>;
   /** autopilot also fires the locked weapon every few seconds */ autoFire?: boolean;
@@ -211,7 +211,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   let curBridge = 0, padSm = 0, arrowSteer = false;
   let steerLock: SteerLock = null;
   let groggy = 0, stoker = -1, screamT = 2;
-  const TANDEM_SOLO = { ...BIKES.tandem, power: 0.45, top: 0.62, turn: 0.45 }, TANDEM_DUO = { ...BIKES.tandem, power: 1.9, top: 1.4 };
+  const TANDEM_SOLO = { ...BIKES.tandem, power: 0.45, top: 0.62, turn: 0.45 }, TANDEM_DUO = { ...BIKES.tandem, power: 1.8, top: 1.3 };
   const bikeSpec = () => kind === 'tandem' ? (stoker >= 0 ? TANDEM_DUO : TANDEM_SOLO) : BIKES[kind];
   /** A bystander close enough to snatch onto the tandem's back seat. */
   const stokerCand = (r: number): Npc | undefined => mode !== 'bike' || kind !== 'tandem' || stoker >= 0 ? undefined : npcs.filter((n) => !n.bike && !n.stoker && n.airS <= 0 && n.stunS <= 0 && n.angryS <= 0 && n.alive && Math.hypot(n.x - body.x, n.z - body.z) < r)
@@ -724,7 +724,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         lockAt: (() => { const q = people()[lock]; return lock >= 0 && q ? { x: q.x, y: q.y, z: q.z, cop: lock >= npcs.length } : null; })(),
         trams: trams.map((tr) => ({ ...tr })), onTram: !!onTram, hitched: hitch >= 0, tramHopReady: !!hopTram(), jackCamT, stoker, stokerAt: (() => { const c = stokerCand(30); return c ? { x: c.x, z: c.z, near: Math.hypot(c.x - body.x, c.z - body.z) < tun.jackR() + 0.6 } : null; })(),
         goal: mode === 'foot' && !hasHadBike ? 'Grab a bike: jack a passing cyclist (Ⓐ) · ◀ ▶ to lock one' : mode === 'bike' && kind === 'tandem' && stoker < 0 ? 'Tandem needs a stoker! Grab a bystander (Ⓐ)' : '',
-        look: { grit: tun.grit(), mood: Math.round(tun.mood()) },
+        look: { grit: tun.grit(), mood: Math.round(opts.mood ?? tun.mood()) },
         fx: { speedLines: tun.fxSpeedLines(), speedLineMin: tun.fxSpeedLineMin(), dust: tun.fxDust(), shake: tun.fxShake(), squash: tun.fxSquash(), smoke: tun.fxSmoke() },
         cops: cops.map((c) => ({ ...c, path: [] })), projectiles: projectiles.map((p) => ({ ...p })), patches: patches.map((p) => ({ ...p })), blasts: blasts.map((b) => ({ ...b })),
         pickups: pickups.map((p) => ({ ...p })), ammo: { ...ammo }, art: opts.artStyle ?? tun.artStyle(), busted, lostS, paint, spinOutS, lastEvent, lastEventAt,

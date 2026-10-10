@@ -276,6 +276,7 @@ export class GtpRenderer implements GameRenderer {
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
     (globalThis as { __gtpInfo?: unknown }).__gtpInfo = { calls: this.r.info.render.calls, triangles: this.r.info.render.triangles, geometries: this.r.info.memory.geometries };
     if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : s.jackId >= 0 ? 'Ⓐ JACK THAT BIKE!' : s.stokerAt?.near ? 'Ⓐ GRAB THEM!' : s.goal || '');
+    if (this.toast) { const isGoal = !!s.goal && this.toast.textContent === s.goal; this.toast.style.whiteSpace = isGoal ? 'nowrap' : ''; this.toast.style.fontSize = isGoal ? '20px' : ''; }
     if (this.poster) {
       const stars = Math.round(s.heat), show = s.art !== 'classic' && s.heat > 0.05;
       const key = `${show}:${stars}:${s.cops.length > 0}`;

@@ -1,17 +1,43 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 const hull = new THREE.ConeGeometry(2.2, 7, 4);
 hull.rotateX(-Math.PI / 2); hull.rotateZ(Math.PI / 4);
 const box = new THREE.BoxGeometry(1, 1, 1);
 const sphere = new THREE.SphereGeometry(1, 12, 8);
 const ring = new THREE.TorusGeometry(1, 0.08, 6, 32); ring.rotateX(Math.PI / 2);
-export const geometries = { hull, box, sphere, ring };
+const rock=new THREE.IcosahedronGeometry(1,0);
+export const geometries = { hull, box, sphere, ring, rock };
+const compiled = new Map<string, THREE.BufferGeometry[]>();
+export function isSharedGeometry(g: THREE.BufferGeometry) {
+  return (Object.values(geometries) as THREE.BufferGeometry[]).includes(g) || [...compiled.values()].some(gs=>gs.includes(g));
+}
+/** Merge static enemy parts by material; retain named aiming barrels as separate meshes. */
+function compactModel(group: THREE.Group, key: string): THREE.Group {
+  const batches=new Map<THREE.Material,THREE.Mesh[]>();
+  for(const child of [...group.children]) if(child instanceof THREE.Mesh && child.name!=='barrel') {
+    const m=child.material as THREE.Material;if(!batches.has(m))batches.set(m,[]);batches.get(m)!.push(child);
+  }
+  let cached=compiled.get(key);const created:THREE.BufferGeometry[]=[];
+  [...batches].forEach(([material,meshes],i)=>{
+    let geometry=cached?.[i];
+    if(!geometry){const parts=meshes.map(m=>{m.updateMatrix();return m.geometry.clone().applyMatrix4(m.matrix);});geometry=mergeGeometries(parts)!;parts.forEach(g=>g.dispose());created.push(geometry);}
+    meshes.forEach(m=>group.remove(m));group.add(new THREE.Mesh(geometry,material));
+  });
+  if(!cached)compiled.set(key,created);return group;
+}
 export function shipModel(color: string, kind: string): THREE.Group {
   const g = new THREE.Group();
-  if(kind==='turret') {
+  if(kind==='turret' || kind==='tank') {
     const armor=new THREE.MeshStandardMaterial({color:'#e8ddec',metalness:0.6,roughness:0.3});
     const glow=new THREE.MeshBasicMaterial({color:'#ff3bbf'});
     const base=new THREE.Mesh(sphere,armor);base.scale.set(2.5,1.3,2.5);g.add(base);
-    const barrel=new THREE.Mesh(box,glow);barrel.position.set(0,1.3,1);barrel.scale.set(0.8,0.8,4);g.add(barrel);return g;
+    const barrel=new THREE.Mesh(box,glow);barrel.position.set(0,1.3,1);barrel.scale.set(0.8,0.8,4);barrel.name='barrel';g.add(barrel);
+    if(kind==='tank') {
+      const dark=new THREE.MeshStandardMaterial({color:'#162b3c',metalness:0.6,roughness:0.4});
+      for(const side of [-1,1]){const tread=new THREE.Mesh(box,dark);tread.position.set(side*2.3,-0.6,0);tread.scale.set(1.4,1.6,6);g.add(tread);for(let i=0;i<5;i++){const wheel=new THREE.Mesh(sphere,armor);wheel.position.set(side*3,-0.6,-2+i);wheel.scale.set(0.2,0.6,0.6);g.add(wheel);}}
+      const body=new THREE.Mesh(box,armor);body.position.y=-0.5;body.scale.set(4,1.5,5);g.add(body);
+    }
+    return compactModel(g,kind);
   }
   const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
@@ -39,7 +65,7 @@ export function shipModel(color: string, kind: string): THREE.Group {
     }
   }
   if (kind !== 'player' && kind !== 'escort') g.rotation.y = Math.PI;
-  return g;
+  return kind==='player'||kind==='escort'||kind==='boss'?g:compactModel(g,`${kind}:${color}`);
 }
 export function bossModel(style: number): THREE.Group {
   const g = shipModel(['#ffb93a', '#ff438e', '#43e9e2', '#b16cff', '#71ffa7'][style], 'boss');
@@ -61,7 +87,7 @@ export function bossModel(style: number): THREE.Group {
     const pod = new THREE.Mesh(box, material), a = i * Math.PI * 2 / (style + 2);
     pod.position.set(Math.cos(a) * 4, 0.7, Math.sin(a) * 3); pod.scale.set(0.8, 0.8, 1.8); g.add(pod);
   }
-  return g;
+  return compactModel(g,`boss-${style}`);
 }
 export function disposeModel(g: THREE.Object3D) {
   const materials = new Set<THREE.Material>();

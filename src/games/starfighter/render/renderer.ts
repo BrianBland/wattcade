@@ -5,7 +5,7 @@ import { NO_INSETS } from '../../../contracts';
 import type { SfSnapshot } from '../sim/types';
 import { craftName } from '../sim/save';
 import { sectionLabel } from '../sim/director';
-import { bossModel, disposeModel, geometries, shipModel } from './models';
+import { bossModel, disposeModel, isSharedGeometry, geometries, shipModel } from './models';
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
@@ -17,7 +17,7 @@ export class SfRenderer implements GameRenderer {
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
-  private bullets?: THREE.InstancedMesh; private bolts?: THREE.InstancedMesh; private effects?: THREE.InstancedMesh;
+  private bullets?: THREE.InstancedMesh; private bolts?: THREE.InstancedMesh; private boltGlow?: THREE.InstancedMesh; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
@@ -71,7 +71,8 @@ export class SfRenderer implements GameRenderer {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#a4f3ff', 300); this.bolts = makePool(geometries.sphere, '#ff35c7', 160); this.effects = makePool(geometries.ring, '#ffcc8a', 160);
+    this.bullets = makePool(geometries.box, '#a4f3ff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
+    const glowMat=this.boltGlow.material as THREE.MeshBasicMaterial;glowMat.opacity=0.2;glowMat.depthWrite=false;glowMat.blending=THREE.AdditiveBlending; this.effects = makePool(geometries.ring, '#ffcc8a', 160);
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -103,31 +104,38 @@ export class SfRenderer implements GameRenderer {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
       this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
     }
-    this.craft!.position.set(s.shipX, 0, s.shipY - 50); this.craft!.rotation.z = s.bank;
+    this.craft!.position.set(s.shipX, 10, s.shipY - 50); this.craft!.rotation.z = s.bank;
     this.craft!.scale.setScalar(1.55 + (s.gunLevel - 1) * 0.055);
     this.craft!.traverse(o => { if (o.name === 'engine') o.scale.z = 1.2 + s.beat * 0.8 + s.quality * 0.6; if (o.name.startsWith('weapon-')) o.visible = Number(o.name.slice(7)) <= s.gunLevel; });
     this.craft!.visible = s.rejoinLeft <= 0 || Math.sin(s.t * 4) > 0;
     while (this.wings.length < s.wingmen) { const wing = shipModel('#658dc5', 'player'); wing.scale.setScalar(0.5); this.wings.push(wing); this.scene.add(wing); }
-    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.position.set(s.shipX + (i ? 10 : -10), 0, s.shipY - 47); });
-    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,0,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
+    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.position.set(s.shipX + (i ? 10 : -10), 10, s.shipY - 47); });
+    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
     this.combat?.update(s);
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
       if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
-      model.position.set(e.x, 0, e.y - 50); model.rotation.z = Math.sin(e.age*1.4) * 0.22; model.position.y = e.kind === 'boss' ? 3 : 1.5 + Math.sin(e.age)*1.2;
+      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13:10+Math.sin(e.age)*1.2,e.y-50);
+      model.rotation.z=e.ground?0:e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
+      model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
+      model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
     }
     for (const [id, model] of this.enemies) if (!live.has(id)) { this.scene.remove(model); disposeModel(model); this.enemies.delete(id); }
     const mat = this.matrix;
-    s.shots.slice(0, 300).forEach((b, i) => { mat.position.set(b.x, 0.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(b.kind === 'missile' ? 0.8 : 0.28, 0.25, b.kind === 'wing' ? 2.5 : 4); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix); });
+    s.shots.slice(0, 300).forEach((b, i) => { mat.position.set(b.x, 10.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(b.kind === 'missile' ? 0.8 : 0.28, 0.25, b.kind === 'wing' ? 2.5 : 4); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix); });
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
-    s.bolts.slice(0, 160).forEach((b, i) => { mat.position.set(b.x, 0.6, b.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(0.7, 0.35, 0.7); mat.updateMatrix(); this.bolts!.setMatrixAt(i, mat.matrix); });
-    this.bolts!.count = Math.min(160, s.bolts.length); this.bolts!.instanceMatrix.needsUpdate = true;
+    const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
+    s.bolts.slice(0,640).forEach((b,i)=>{
+      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,0,0);mat.scale.set(0.85,0.55,1.2);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
+      mat.scale.set(1.8,1,2.5);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
+    });
+    for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
     const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
-    this.halo!.position.set(s.shipX, 0.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
+    this.halo!.position.set(s.shipX, 10.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent);
     const l = layout(this.w, this.h, this.insets);
@@ -153,16 +161,16 @@ export class SfRenderer implements GameRenderer {
     const countdown = this.menu.querySelector('.sq-countdown');
     if (countdown) countdown.textContent = `Pedalling launches in ${Math.ceil(s.menuLeft)}s · A to launch`;
   }
-  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size }; }
+  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }
   unmount() {
     this.observer?.disconnect(); this.overlay?.removeEventListener('click', this.controls);
     const mats = new Set<THREE.Material>(), geos = new Set<THREE.BufferGeometry>();
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.Points) { geos.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m); } });
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
-    for (const g of geos) if (!(Object.values(geometries) as THREE.BufferGeometry[]).includes(g)) g.dispose();
-    for (const pool of [this.bullets, this.bolts, this.effects]) pool?.dispose();
-    this.combat?.dispose();
+    for (const g of geos) if (!isSharedGeometry(g)) g.dispose();
+    for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects]) pool?.dispose();
+    this.combat?.dispose(); this.space?.dispose();
     this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();
   }

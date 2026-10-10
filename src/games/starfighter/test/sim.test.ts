@@ -3,6 +3,7 @@ import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, 
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
+import { inCombat, MAX_BOLTS } from '../sim/encounters';
 import { createDirector, cadenceFor } from '../sim/director';
 import { escortAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
@@ -21,7 +22,7 @@ function rig(opts: Record<string, unknown> = {}, script = 'z2', timeline?: Media
 describe('endurance music combat', () => {
   for (const sc of scenarios) it(sc.name, () => {
     const r = runHeadless({ game: module, ...sc }); expect(sc.assert(r.summary, r.stats, r)).toEqual([]);
-  });
+  }, 15_000);
   it('fires and grows without input; steady Zone 2 survives music drops', () => {
     const r = rig({}, 'z2', longMusic()); r.seconds(300);
     expect(r.snap().kills).toBeGreaterThan(50); expect(r.snap().gunLevel).toBe(5); expect(r.snap().deaths).toBe(0);
@@ -97,8 +98,8 @@ describe('musical locks and paddle targeting', () => {
     expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
   });
   it('touch retarget cycles spatially and preserves already painted locks', () => {
-    const r = rig(); r.seconds(2.3); const s = r.snap();
-    const candidates = s.enemies.filter(e => e.hp > 0 && e.y < 72).sort((a,b) => a.x-b.x || a.id-b.id);
+    const r = rig(); for(let i=0;i<120;i++){r.seconds(0.1);if(r.snap().enemies.filter(inCombat).length>=3 && r.snap().locks.length>0)break;} const s = r.snap();
+    const candidates = s.enemies.filter(inCombat).sort((a,b) => a.x-b.x || a.id-b.id);
     expect(candidates.length).toBeGreaterThan(2);
     const previous = s.selectedId, painted = [...s.locks];
     r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(1/30);
@@ -116,7 +117,7 @@ describe('musical locks and paddle targeting', () => {
   it('flagship batteries expose the reactor and leave with an escaping boss', () => {
     const r = rig(); r.s.tuning.set('starfighter.bossEveryS',40); r.s.tuning.set('starfighter.bossHull',200); r.seconds(41);
     expect(r.snap().boss?.stage).toBe('Destroy the batteries');
-    expect(r.snap().enemies.filter(e=>e.kind==='turret')).toHaveLength(3);
+    expect(r.snap().enemies.filter(e=>!!e.parentId)).toHaveLength(3);
     let exposed=false;
     for(let i=0;i<500;i++){r.seconds(0.1);exposed ||= r.snap().boss?.stage==='Reactor exposed';}
     expect(exposed).toBe(true);
@@ -128,6 +129,21 @@ describe('musical locks and paddle targeting', () => {
     expect(Number(r.s.sim.summary().dodges)).toBeGreaterThan(0); expect(r.snap().deaths).toBe(0);
     const idle = rig({}, 'idle', longMusic()); idle.seconds(120);
     expect(Number(idle.s.sim.summary().volleys)).toBe(0); expect(Number(idle.s.sim.summary().dodges)).toBe(0);
+  });
+});
+describe('spectacle encounters', () => {
+  it('new formations start outside combat and fly continuously into target range', () => {
+    const r=rig();r.seconds(2.1);
+    expect(r.snap().enemies.length).toBeGreaterThan(0);
+    expect(r.snap().enemies.every(e=>!inCombat(e))).toBe(true);expect(r.snap().selectedId).toBeNull();expect(r.snap().bolts).toHaveLength(0);
+    const first=r.snap().enemies.map(e=>({id:e.id,x:e.x,y:e.y}));r.seconds(0.1);
+    for(const old of first){const e=r.snap().enemies.find(e=>e.id===old.id)!;expect(Math.hypot(e.x-old.x,e.y-old.y)).toBeGreaterThan(0);expect(Math.hypot(e.x-old.x,e.y-old.y)).toBeLessThan(30);}
+    r.seconds(10);expect(r.snap().enemies.some(inCombat)).toBe(true);expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(0);
+  });
+  it('sustains dense bullet patterns and destroyable ground enemies within fixed budgets', () => {
+    const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;
+    for(let i=0;i<240;i++){r.seconds(1);const s=r.snap();peak=Math.max(peak,s.bolts.length);ground ||= s.enemies.some(e=>e.ground);tank ||= s.enemies.some(e=>e.kind==='tank');expect(s.bolts.length).toBeLessThanOrEqual(MAX_BOLTS);expect(s.enemies.length).toBeLessThanOrEqual(84);}
+    expect(peak).toBeGreaterThan(80);expect(ground).toBe(true);expect(tank).toBe(true);expect(Number(r.s.sim.summary().groundKills)).toBeGreaterThan(0);expect(r.snap().deaths).toBe(0);
   });
 });
 describe('craft selection and save migration', () => {

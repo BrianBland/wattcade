@@ -11,7 +11,7 @@ const renderer = new SfRenderer();
 renderer.mount(document.getElementById('app')!, { profile, send: a => session.sim.receive?.(a), insets: { top: 0, left: 0, right: 0, bottom: Number(q.get('inset') ?? 100) } });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const frame = () => renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
-const api = { advance(seconds: number) { session.step(Math.round(seconds * 30)); frame(); }, snapshot: () => session.sim.snapshot(),
+const api = { advance(seconds: number, render = true) { session.step(Math.round(seconds * 30)); if(render) frame(); }, snapshot: () => session.sim.snapshot(),
   resources: () => renderer.debugResources(), script: (name: string) => session.fakeBike?.useScript(name),
   dispose: () => { renderer.unmount(); session.sim.dispose?.(); } };
 Object.assign(window, { __squadron: api });

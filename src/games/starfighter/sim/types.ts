@@ -5,14 +5,15 @@ export interface SfSave {
   craft: CraftId; totals: { kills: number; bosses: number }; legacy?: Record<string, unknown>;
 }
 export interface EnemyView {
-  id: number; kind: 'drone' | 'armor' | 'weaver' | 'gunner' | 'turret' | 'boss';
-  parentId?: number; mountX?: number;
+  id: number; kind: 'drone' | 'armor' | 'weaver' | 'gunner' | 'turret' | 'tank' | 'boss';
+  parentId?: number; mountX?: number; ground?: boolean; heading?: number;
+  entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
   x: number; y: number; hp: number; maxHp: number; age: number; fireAt: number; bossStyle: number;
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing' }
-export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; side: number; damage: number; hit: boolean }
-export interface BoltView { id: number; x: number; y: number; vx: number; vy: number }
-export interface FxView { id: number; x: number; y: number; at: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' }
+export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; side: number; height: number; damage: number; hit: boolean }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run'; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean; unlockMinutes: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;

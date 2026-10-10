@@ -1,6 +1,7 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
 import { clamp, createDirector, sectionLabel, sectionTarget } from './director';
 import { craftName, escortAvailable, migrateSave } from './save';
+import { MAX_ENEMIES, MAX_BOLTS, entryFor, advanceEntry, inCombat, bulletPattern } from './encounters';
 import { SECTORS } from './content';
 import type { CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
@@ -32,6 +33,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, dodgeX = 0, selectedId: number | null = null;
   let lockIn = 0, volleyAge = 0, volleyAt = -99, volleys = 0, dodges = 0;
   const locks: number[] = [], lasers: LaserView[] = [];
+  let groundIn = 8, formations = 0, bulletsFired = 0, groundKills = 0;
   let fireIn = 0, spawnIn = 2, lastSpawn = -99, encounter = 0, bossDue = Math.min(tun.firstBoss(), tun.bossEvery()), bossAt: number | null = null;
   let bossStart = 0, boss: EnemyView | null = null, targetFtp = 0.65, settleLeft = tun.start(), lastWanted = 0.65;
   let music = director.step(0), cadence: SfSnapshot['cadence'] = null, cadenceLast = 0, cadSuccess = 0, rapidLeft = 0;
@@ -41,7 +43,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let savedOn = 0, savedKills = 0, savedBosses = 0, saveAt = 0;
   const emit = (type: string, data?: Record<string, number | string | boolean>) => ctx.emit({ type, data });
   const announce = (text: string) => { banner = text; bannerUntil = t + 4; };
-  const effect = (kind: FxView['kind'], ex: number, ey: number) => fx.push({ id: ++id, kind, x: ex, y: ey, at: t });
+  const effect = (kind: FxView['kind'], ex: number, ey: number, size = 1, ground = false) => fx.push({ id: ++id, kind, x: ex, y: ey, at: t, size, ground });
   const persist = () => {
     save.onTargetS += Math.max(0, onTargetS - savedOn); savedOn = onTargetS;
     save.totals.kills += kills - savedKills; savedKills = kills;
@@ -56,7 +58,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   };
   const unlockCheck = () => escortAvailable({ ...save, onTargetS: save.onTargetS + onTargetS - savedOn });
   const kill = (e: EnemyView) => {
-    effect('boom', e.x, e.y); kills++; combo++; maxCombo = Math.max(maxCombo, combo);
+    effect('boom', e.x, e.y, e.kind==='boss'?3:e.kind==='armor'||e.ground?1.5:1, e.ground); if(e.ground) groundKills++; kills++; combo++; maxCombo = Math.max(maxCombo, combo);
     score += e.kind === 'boss' ? 5000 : e.kind === 'armor' ? 180 : 100;
     if (e.parentId && boss?.id === e.parentId) boss.hp -= boss.maxHp * 0.15;
     if (e.kind === 'boss') {
@@ -67,7 +69,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const nova = () => {
     if (!started || done || charge < 100 || coverLeft > 0 || rejoinLeft > 0) return;
     charge = 0; coverLeft = tun.coverS(); settleLeft = tun.settle(); bolts.length = 0;
-    for (const e of enemies) e.hp -= e.kind === 'boss' ? 180 : e.hp;
+    for (const e of enemies) if(inCombat(e)) e.hp -= e.kind === 'boss' ? 180 : e.hp;
     effect('nova', x, SHIP_Y); emit('nova'); announce('Nova · escort cover, take a breather');
   };
   const hurt = (amount: number) => {
@@ -80,18 +82,26 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     }
   };
   const spawn = () => {
-    if (enemies.length > 40) return;
     const recovery = music.kind === 'break' || music.kind === 'outro';
-    const n = recovery ? 3 : 5 + Math.floor(music.intensity * 3);
+    const n = Math.min(Math.max(0,Math.min(MAX_ENEMIES-enemies.length,60-enemies.filter(e=>!e.ground).length)), recovery ? 5 : 9 + Math.floor(music.intensity * 4));
     const kind: EnemyView['kind'] = music.kind === 'build' ? 'armor' : music.kind === 'drop' ? 'weaver' : encounter % 3 === 2 ? 'gunner' : 'drone';
-    const center = (ctx.rng() - 0.5) * 32;
+    const center = (ctx.rng() - 0.5) * 20, pattern = formations++ % 3;
     for (let i = 0; i < n; i++) {
       const hp = kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
-      enemies.push({ id: ++id, kind, x: clamp(center + (i - (n - 1) / 2) * 10, -42, 42), y: -4 - (encounter % 3 === 0 ? Math.abs(i - (n - 1) / 2) * 5 : encounter % 3 === 1 ? i * 3 : 0),
-        hp, maxHp: hp, age: 0, fireAt: 4 + i * 0.6, bossStyle: 0 });
+      const entry=entryFor(i,n,pattern,center);
+      enemies.push({ id: ++id, kind, x: entry.fromX, y: entry.fromY, entry,
+        hp, maxHp: hp, age: 0, fireAt: 4 + i * 0.2, bossStyle: 0 });
     }
   };
-  const targetable = () => enemies.filter(e => e.hp > 0 && e.y < SHIP_Y - 12).sort((a, b) => a.x - b.x || a.id - b.id);
+  const spawnGround = () => {
+    for(let i=0;i<3 && enemies.length<MAX_ENEMIES;i++) {
+      const kind=i===1?'tank':'turret', toX=(i-1)*18+(ctx.rng()-0.5)*6;
+      const hp=kind==='tank'?64:48;
+      enemies.push({id:++id,kind,ground:true,x:toX,y:-500,entry:{fromX:toX,fromY:-500,toX,toY:-60-i*9,duration:8},
+        hp,maxHp:hp,age:0,fireAt:9+i*0.3,bossStyle:0});
+    }
+  };
+  const targetable = () => enemies.filter(inCombat).sort((a, b) => a.x - b.x || a.id - b.id);
   const retarget = (direction: number) => {
     const candidates = targetable();
     if (!candidates.length) { selectedId = null; return; }
@@ -176,8 +186,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       // Predict nearby bullets and bank into a safe lane while protection is active.
       const cruiseX = Math.sin(t * 0.22) * 12 + Math.sin(t * 0.57) * 3;
-      const threat = bolts.filter(b => b.vy > 0 && b.y > SHIP_Y - 32 && b.y < SHIP_Y + 3)
-        .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
+      let threat: BoltView | undefined, nearest = Infinity;
+      for(const b of bolts) {
+        if(b.vy<=0 || b.y<=SHIP_Y-32 || b.y>=SHIP_Y+3)continue;
+        const distance=Math.abs(b.x+b.vx*Math.max(0,(shipY-b.y)/b.vy)-x);
+        if(distance<nearest){nearest=distance;threat=b;}
+      }
       const evading = !!threat && quality >= 0.8 && pedalling && Math.abs(threat.x + threat.vx * Math.max(0, (shipY - threat.y) / threat.vy) - x) < 10;
       if (evading && dodge < 0.1) { dodges++; emit('autoDodge'); }
       dodge += ((evading ? 1 : 0) - dodge) * (1 - Math.exp(-dt * (evading ? 10 : 2)));
@@ -191,11 +205,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (!boss && bossAt === null && p >= bossDue - 8) bossAt = director.bossAt(Math.max(bossDue, p + 8));
       if (!boss && bossAt !== null && p >= bossAt) {
         const hp = tun.bossHull() + (sector - 1) * 100;
-        boss = { id: ++id, kind: 'boss', x: 0, y: 14, hp, maxHp: hp, age: 0, fireAt: 2, bossStyle: (sector - 1) % 5 };
+        boss = { id: ++id, kind: 'boss', x: 0, y: -500, entry:{fromX:0,fromY:-500,toX:0,toY:14,duration:7}, hp, maxHp: hp, age: 0, fireAt: 2, bossStyle: (sector - 1) % 5 };
         enemies.push(boss);
         for (const mountX of [-15,0,15]) {
           const hp = Math.max(24, tun.bossHull()*0.1);
-          enemies.push({id:++id,kind:'turret',parentId:boss.id,mountX,x:mountX,y:20,hp,maxHp:hp,age:0,fireAt:3,bossStyle:0});
+          enemies.push({id:++id,kind:'turret',parentId:boss.id,mountX,x:mountX,y:-496,hp,maxHp:hp,age:0,fireAt:3,bossStyle:0});
         }
         bossStart = p; announce(`${SECTORS[(sector - 1) % 5].name} · flagship inbound`); emit('bossArrived');
       }
@@ -208,14 +222,16 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (((music.downbeat || music.phrase || !timeline?.downbeats.length && music.beat) && p - lastSpawn > (boss ? 7 : 2.6) || spawnIn <= 0) && !protectedRide) {
         spawn(); lastSpawn = p; spawnIn = boss ? 8 : 4;
       }
+      groundIn-=dt;
+      if(groundIn<=0 && !protectedRide) {spawnGround();groundIn=12;}
       const candidates = targetable();
-      if (!candidates.some(e => e.id === selectedId)) selectedId = [...candidates].sort((a, b) => b.y - a.y)[0]?.id ?? null;
+      if (!candidates.some(e => e.id === selectedId)) selectedId = (candidates.find(e=>e.parentId===boss?.id && !!e.parentId) ?? [...candidates].sort((a, b) => b.y - a.y)[0])?.id ?? null;
       for (let i = locks.length - 1; i >= 0; i--) if (!candidates.some(e => e.id === locks[i])) locks.splice(i, 1);
       const capacity = 4 + gunLevel - 1;
       volleyAge += dt; lockIn -= dt;
       if (pedalling && quality >= 0.8 && candidates.length && locks.length < capacity && lockIn <= 0) {
         const priority = candidates.find(e => e.id === selectedId)!;
-        const ordered = [priority, ...candidates.filter(e => e.id !== selectedId).sort((a, b) => b.y - a.y)];
+        const ordered = [priority, ...candidates.filter(e => e.id !== selectedId).sort((a, b) => Number(!!b.parentId || b.kind==='boss')-Number(!!a.parentId || a.kind==='boss') || b.y-a.y)];
         const target = ordered.find(e => !locks.includes(e.id)) ?? priority;
         locks.push(target.id); lockIn = 0.38; emit('lockAcquired', { target: target.id, count: locks.length });
       }
@@ -223,16 +239,16 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         locks.forEach((targetId, i) => {
           const e = candidates.find(e => e.id === targetId)!;
           lasers.push({ id: ++id, targetId, sx: x, sy: shipY - 3, x: e.x, y: e.y, at: t + i * 0.045,
-            side: (i % 2 ? 1 : -1) * (12 + i * 2), damage: 24 + gunLevel * 3, hit: false });
+            height:e.ground?-3.5:e.kind==='boss'?13:12, side: (i % 2 ? 1 : -1) * (12 + i * 2), damage: 24 + gunLevel * 3, hit: false });
         });
         emit('lockVolley', { locks: locks.length }); volleys++; locks.length = 0; volleyAge = 0; volleyAt = t;
       }
       if (!pedalling || quality < 0.3) locks.length = 0;
       fireIn -= dt;
       if ((fireIn <= 0 || (music.beat || music.hit) && fireIn < 0.15) && quality > 0.05 && pedalling) {
-        const targets = enemies.filter(e => e.hp > 0 && e.y < SHIP_Y).sort((a, b) => b.y - a.y);
+        const targets = enemies.filter(inCombat).sort((a, b) => b.y - a.y);
         const n = Math.min(3, gunLevel) + (craft === 'escort' ? 0 : 1);
-        for (let i = 0; i < n; i++) shot(x + (i - (n - 1) / 2) * 2.3, 'pulse', boss && i >= 2 ? boss : targets[i % Math.max(1, targets.length)], 2 + gunLevel * 0.35);
+        for (let i = 0; i < n; i++) shot(x + (i - (n - 1) / 2) * 2.3, 'pulse', boss && inCombat(boss) && i >= 2 ? boss : targets[i % Math.max(1, targets.length)], 2 + gunLevel * 0.35);
 
         const wingmen = craft === 'escort' ? 2 : gunLevel >= 5 ? 2 : 0;
         for (let i = 0; i < wingmen; i++) shot(x + (i ? 10 : -10), 'wing', targets[i % Math.max(1, targets.length)], 5);
@@ -241,18 +257,23 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       for (const e of enemies) {
         if (e.hp <= 0) continue;
         e.age += dt;
+        const oldX=e.x, oldY=e.y;
         if (e.parentId) { if (!boss || boss.id !== e.parentId) { e.hp=-1;e.y=SHIP_Y;continue; } e.x=boss.x+(e.mountX??0);e.y=boss.y+4; }
-        else if (e.kind === 'boss') { e.x = Math.sin(e.age * (0.3 + e.bossStyle * 0.08)) * 24; e.y = 16 + Math.sin(e.age * 0.4) * 3; }
-        else { e.y += dt * (e.kind === 'armor' ? 7 : 10); if (e.kind === 'weaver') e.x += Math.cos(e.age * 1.4 + e.id) * dt * 9; else if (e.kind === 'drone') e.x += Math.sin(e.age * 0.8 + encounter) * dt * 3; }
-        if ((e.kind === 'boss' || e.kind === 'gunner' || e.kind === 'weaver' || e.kind === 'turret') && e.age >= e.fireAt) {
-          e.fireAt += e.kind === 'boss' ? (e.hp < e.maxHp*0.4 ? 1.1 : 1.8) : 3;
-          const n = e.kind === 'boss' ? 3 + e.bossStyle : 1;
-          for (let i = 0; i < n; i++) {
-            const a = Math.atan2(shipY - e.y, x - e.x) + (i - (n - 1) / 2) * 0.13;
-            bolts.push({ id: ++id, x: e.x, y: e.y, vx: Math.cos(a) * 24, vy: Math.sin(a) * 24 });
+        else if(!advanceEntry(e)) {
+          if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*24;e.y=16+Math.sin((e.age-7)*0.4)*3;}
+          else {e.y+=dt*(e.ground?9:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
+        }
+        e.heading=Math.atan2(e.x-oldX,e.y-oldY);
+        if (inCombat(e) && e.age >= e.fireAt) {
+          e.fireAt=e.age+(e.kind==='boss'?1.4:e.kind==='tank'?1.5:e.kind==='turret'?2:e.kind==='weaver'?2.5:3.5);
+          const pattern=bulletPattern(e,x,shipY);
+          for(const shot of pattern) {
+            if(bolts.length>=MAX_BOLTS) break;
+            bolts.push({id:++id,x:e.x,y:e.y,height:e.ground?-2.5:12,...shot});bulletsFired++;
           }
         }
         if (e.y >= SHIP_Y) {
+          if(e.ground) {e.hp=-1;e.y=SHIP_Y;continue;}
           if (quality >= 0.8 && pedalling) effect('intercept', e.x, SHIP_Y - 4);
           else hurt(e.kind === 'armor' ? 20 : 12);
           e.hp = -1;
@@ -260,7 +281,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       for (const s of shots) {
         s.x += s.vx * dt; s.y += s.vy * dt;
-        const hit = enemies.find(e => e.hp > 0 && Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === 'boss' ? 10 : 4));
+        const hit = enemies.find(e => inCombat(e) && Math.hypot(e.x - s.x, e.y - s.y) < (e.kind === 'boss' ? 10 : 4));
         if (hit) { hit.hp -= s.damage * (hit.kind === 'boss' ? 0.1 : 1); s.y = -200; }
       }
       for (const laser of lasers) {
@@ -273,7 +294,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       for (let i = lasers.length - 1; i >= 0; i--) if (t - lasers[i].at > 1.3) lasers.splice(i, 1);
       for (const b of bolts) {
-        b.x += b.vx * dt; b.y += b.vy * dt;
+        b.x += b.vx * dt; b.y += b.vy * dt; b.height+=(10-b.height)*(1-Math.exp(-dt*5));
         if (Math.hypot(b.x - x, b.y - shipY) < 3.5) {
           if (quality >= (craft === 'escort' ? 0.65 : 0.8) && pedalling) effect('intercept', b.x, b.y);
           else hurt(8);
@@ -285,7 +306,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         enemies.splice(i, 1);
       }
       for (let i = shots.length - 1; i >= 0; i--) if (shots[i].y < -30 || Math.abs(shots[i].x) > 70) shots.splice(i, 1);
-      for (let i = bolts.length - 1; i >= 0; i--) if (bolts[i].y > 110 || Math.abs(bolts[i].x) > 80) bolts.splice(i, 1);
+      for (let i = bolts.length - 1; i >= 0; i--) if (bolts[i].y > 120 || bolts[i].y < -100 || Math.abs(bolts[i].x) > 100) bolts.splice(i, 1);
       for (let i = fx.length - 1; i >= 0; i--) if (t - fx[i].at > 1.6) fx.splice(i, 1);
       if (quality > 0.8 && pedalling) shield = Math.min(100, shield + dt * 3);
       if (t - saveAt > 30) persist();
@@ -310,7 +331,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
           ...(craft === 'cruiser' ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Target ◀ ▶' }] : [{ button: 'shiftersR' as const, label: 'Target ◀ ▶' }]), { button: 'a', label: 'Nova', active: charge >= 100 }] };
     },
-    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, goldens: gunLevel - 1 }),
+    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, formations, bulletsFired, groundKills, goldens: gunLevel - 1 }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
   function protectedTarget() { return coverLeft > 0 || rejoinLeft > 0 ? tun.recovery() : 0.65; }

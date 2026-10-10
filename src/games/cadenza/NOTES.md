@@ -30,7 +30,7 @@ viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
 `hud.ts` (callout: big instruction 3 s per effort change / 4 s Break, + a smaller line in the same style — band · watts,
-`Sprint incoming`, `Easy pedaling · Z1–2`; countdown digits pop + tick, coaching/dropout stay up; accent text `--acc-t`), `layout.ts`.
+`Sprint incoming`, `Easy pedaling · Z1–2`; countdown digits pop (no sfx over the music), coaching/dropout stay up; accent text `--acc-t`), `layout.ts`.
 Recovery calms pulses, bloom, shake, streaks, rings (`uMotion`), no fireworks. AV penalty: 3 s grace, 10 s ramp, capped 0.75.
 
 ## Dev / tests

@@ -38,7 +38,7 @@ export class CadenzaRenderer implements GameRenderer {
   private streaks?: THREE.LineSegments; private streakPos = new Float32Array(0);
   private hue = 200; private hueTarget = 200; private lastZone = -1; private lastCue = -1; private lastT = now(); private lastX = 0; private bank = 0;
   private degradation: Degradation = { belowS: 0, level: 0 }; private lastP = 0;
-  private shake = 0; private hurt = 0; private down = 0; private lastDown = -1; private lastCount: number | null = null;
+  private shake = 0; private hurt = 0; private down = 0; private lastDown = -1;
   private motion = 0.6;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camUp = new THREE.Vector3(0, 1, 0); private camInit = false;
   private fr = newFrame(); private fc = newFrame(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private m = new THREE.Matrix4();
@@ -129,16 +129,12 @@ export class CadenzaRenderer implements GameRenderer {
     const fx = (reduced ? 0.35 : 1) * this.motion;
     U.uMotion.value = fx;
 
-    // 3-2-1 into a sprint: race-start ticks, then the surge on the sprint cue below
-    const count = s.menu ? null : s.effort.countdown;
-    if (count && count !== this.lastCount) play('select', { vol: 1.6 });
-    this.lastCount = count;
     // cues → sounds and callouts (never replay history on mount)
     if (this.lastCue < 0) this.lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
     for (const c of s.cues) {
       if (c.id <= this.lastCue) continue;
       this.lastCue = c.id;
-      if (c.type === 'effort' && c.data?.phase === 'sprint') { play('surge', { vol: 0.6 }); play('whoosh', { vol: 0.5 }); this.flashOnce(0.25 * fx); this.shake = Math.max(this.shake, 0.35); }
+      if (c.type === 'effort' && c.data?.phase === 'sprint') { this.flashOnce(0.25 * fx); this.shake = Math.max(this.shake, 0.35); }
       else if (c.type === 'dropout') play('lampOut');
       else if (c.type === 'reboot') { play('railReady'); this.hud.pop('REBOOTED', tNow); }
       else if (c.type === 'cleanZone') { play('reward', { vol: 0.6 }); this.hud.pop(`+${c.data?.bonus ?? ''}`, tNow); if (s.effort.phase !== 'recover') this.queueFireworks(tNow, 5); }

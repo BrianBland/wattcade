@@ -6,6 +6,8 @@ import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES } from '../sim/wo
 import { stepCam, type CamState } from './camera';
 import { JsrSliver } from './jsr';
 import { Characters } from './chars';
+import { Reticle } from './reticle';
+import { bakeInPlace } from './bake';
 import { layout, viewOffsetY } from './layout';
 
 const BIKE_COL: Record<string, number> = { city: 0x3a7bd5, fixie: 0xff4f7b, bmx: 0xffb000, cargo: 0x2e9e5b, tandem: 0x9b59b6, ebike: 0x00d0d0 };
@@ -20,7 +22,7 @@ export class GtpRenderer implements GameRenderer {
   private cam = new THREE.PerspectiveCamera(60, 4 / 3, 0.3, 800);
   private rider = new THREE.Group(); private riderBike = box(0.4, 0.8, 1.8, 0x3a7bd5);
   private bikes = new Map<number, THREE.Mesh>(); private npcs: THREE.Mesh[] = [];
-  private leaves: THREE.Mesh[] = []; private reticle = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.12, 6, 20), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
+  private leaves: THREE.Mesh[] = []; private reticle = new Reticle();
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
   private chars?: Characters; private charDt = 0; private charT = -1;
@@ -37,7 +39,7 @@ export class GtpRenderer implements GameRenderer {
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
     this.container = container; this.insetB = ctx.insets?.bottom ?? 0;
-    const r = new THREE.WebGLRenderer({ antialias: true }); this.r = r;
+    const r = new THREE.WebGLRenderer({ antialias: true }); this.r = r; r.info.autoReset = false;
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
     container.appendChild(r.domElement);
@@ -60,25 +62,31 @@ export class GtpRenderer implements GameRenderer {
     const N = 120, S = HALF * 2, geo = new THREE.PlaneGeometry(S, S, N, N); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position, cols: number[] = [];
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i), h = heightAt(x, z); pos.setY(i, Math.max(h, -CANAL.depth));
+      // the drawbridge deck is drawn ONLY by the leaf meshes: the static ground keeps open water under the bridge,
+      // otherwise heightAt's closed deck (y=0) is coplanar with the leaf tops and z-fights / hides a leaf.
+      const x = pos.getX(i), z = pos.getZ(i), inCanal = z > CANAL.z0 + 0.01 && z < CANAL.z1 - 0.01, h = inCanal ? -CANAL.depth : heightAt(x, z); pos.setY(i, Math.max(h, -CANAL.depth));
       const c = new THREE.Color(h < -3 ? 0x2a6fb0 : h < -0.1 || h > 0.1 ? 0x5cbf4a : Math.abs(z - 18) < 3 ? 0xaaaaaa : 0x7fd36a); cols.push(c.r, c.g, c.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); geo.computeVertexNormals();
     this.scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
     for (const b of BUILDINGS) { const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2); this.scene.add(m); this.buildingMeshes.push({ mesh: m, b }); }
-    for (const l of LINES) {
-      const pts = l.pts.map(([x, z]) => new THREE.Vector3(x, Math.max(0, heightAt(x, z)) + 0.08, z));
-      const col = l.kind === 'tram' ? 0x444444 : l.kind === 'rail' ? 0xdddddd : l.kind === 'ramp' ? 0xffaa33 : 0xfff2c0;
-      this.scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: col })));
+    { // all nav lines in one LineSegments draw
+      const pos: number[] = [], col: number[] = [], c = new THREE.Color();
+      for (const l of LINES) {
+        c.set(l.kind === 'tram' ? 0x444444 : l.kind === 'rail' ? 0xdddddd : l.kind === 'ramp' ? 0xffaa33 : 0xfff2c0);
+        for (let i = 0; i < l.pts.length - 1; i++) for (const [x, z] of [l.pts[i], l.pts[i + 1]]) { pos.push(x, Math.max(0, heightAt(x, z)) + 0.08, z); col.push(c.r, c.g, c.b); }
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      this.scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true })));
     }
     for (let i = 0; i < 2; i++) { const leaf = box(BRIDGE.x1 - BRIDGE.x0, 0.4, (CANAL.z1 - CANAL.z0) / 2, 0xb04030); this.leaves.push(leaf); this.scene.add(leaf); }
     const coop = new THREE.Group();
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(COOP.r, COOP.r, 0.15, 24), new THREE.MeshLambertMaterial({ color: 0xffe14d })); coop.add(pad);
     for (let i = 0; i < 6; i++) { const st = box(0.4, 4, 0.4, PAINT[i]); const a = (i / 6) * Math.PI * 2; st.position.set(Math.cos(a) * COOP.r, 2, Math.sin(a) * COOP.r); coop.add(st); }
     const sign = box(6, 1.2, 0.3, 0x2e9e5b); sign.position.set(0, 4.6, 0); coop.add(sign);
-    coop.position.set(COOP.x, heightAt(COOP.x, COOP.z) + 0.05, COOP.z); this.scene.add(coop);
+    coop.position.set(COOP.x, heightAt(COOP.x, COOP.z) + 0.05, COOP.z); this.scene.add(coop); bakeInPlace(coop);
     const body = box(0.6, 1.2, 0.5, new THREE.Color(color).getHex()); body.position.y = 1.4; this.riderBike.position.y = 0.5;
-    this.rider.add(body, this.riderBike); this.scene.add(this.rider, this.reticle);
+    this.rider.add(body, this.riderBike); this.scene.add(this.rider, this.reticle.group);
   }
 
   setInsets(insets: Insets) { this.insetB = insets.bottom; this.resize(this.W, this.H); }
@@ -179,15 +187,10 @@ export class GtpRenderer implements GameRenderer {
     // ammo crates
     this.sync('pickup', s.pickups.map((p, i) => ({ ...p, id: i })), (p) => { const g = new THREE.Group(); g.add(box(1.2, 1.2, 1.2, 0xc8873a)); g.add(box(1.25, 0.3, 1.25, WEAPON_COL[p.kind])); return g; },
       (o, p) => { o.visible = s.t >= p.readyAt; o.position.set(p.x, heightAt(p.x, p.z) + 0.8 + Math.sin(s.t * 2 + p.id) * 0.2, p.z); o.rotation.y = s.t; });
-    // 3D lock-on reticle: spins, coloured by weapon, bobs over the target's head
+    // lock-on reticle (render/reticle.ts): billboarded brackets, on top of everything; updated after the camera moves
     const tgt = s.lockAt;
-    this.reticle.visible = !!tgt;
-    if (tgt) {
-      this.reticle.position.set(tgt.x, tgt.y + (tgt.cop ? 3.6 : 2.4) + Math.sin(s.t * 5) * 0.15, tgt.z); this.reticle.lookAt(this.cam.position); this.reticle.rotateZ(s.t * 3);
-      (this.reticle.material as THREE.MeshBasicMaterial).color.setHex(WEAPON_COL[s.weapon] ?? 0xff3030);
-      this.reticle.scale.setScalar(1 + 0.15 * Math.sin(s.t * 10));
-    }
-
+    const lockPt = tgt ? new THREE.Vector3(tgt.x, tgt.y + (tgt.cop ? 1.5 : 0.95), tgt.z) : null;
+    const lockSize = tgt?.cop ? 2.6 : 1.9;
     const half = (CANAL.z1 - CANAL.z0) / 2;
     this.leaves.forEach((leaf, i) => {
       const sgn = i === 0 ? 1 : -1, hz = i === 0 ? CANAL.z0 : CANAL.z1;
@@ -207,7 +210,9 @@ export class GtpRenderer implements GameRenderer {
       `${'★'.repeat(Math.round(s.heat))}${'☆'.repeat(5 - Math.round(s.heat))}  ${s.weapon} ×${s.ammo[s.weapon]}${s.cops.length ? `  🚨${s.cops.filter((c) => c.state !== 'patrol').length}` : ''}${s.lostS > 0.5 ? `  hiding ${s.lostS.toFixed(0)}s` : ''}${s.gradePct > 0 ? `  ⛰ ${s.gradePct.toFixed(1)}%` : ''}`;
     const EV: Record<string, string> = { busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
+    (globalThis as { __gtpInfo?: unknown }).__gtpInfo = { calls: this.r.info.render.calls, triangles: this.r.info.render.triangles, geometries: this.r.info.memory.geometries };
     if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : '');
+    this.reticle.update(this.cam, lockPt, lockSize, s.weapon, s.t, Math.max(1 / 60, this.charT < 0 ? 1 / 30 : s.t - this.charT));
     if (this.chars) {
       const classic = s.art === 'classic';
       this.charDt = this.charT < 0 ? 1 / 30 : Math.max(0, Math.min(0.1, s.t - this.charT)); this.charT = s.t;
@@ -217,6 +222,7 @@ export class GtpRenderer implements GameRenderer {
       for (const o of this.pools.get('cop')?.values() ?? []) o.visible = classic;
       for (const o of this.pools.get('flame')?.values() ?? []) o.visible = true;
     }
+    this.r.info.reset();
     if (this.jsr) { this.jsr.setStyle(s.art ?? 'sliver'); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
   }
 

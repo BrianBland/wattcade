@@ -8,6 +8,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { heightAt, PLAZA } from '../sim/world';
+import { bakeInPlace } from './bake';
 
 export type ArtStyle = 'sliver' | 'classic';
 /** The styled sliver: sunken plaza + the tower on its east side. */
@@ -144,7 +145,7 @@ export class JsrSliver {
     geo.computeVertexNormals();
     const floor = new THREE.Mesh(geo, toon(0xcdb894)); floor.position.set(cx, 0, cz); // sandstone paving
     (floor.material as THREE.Material).polygonOffset = true; (floor.material as THREE.Material).polygonOffsetFactor = -1;
-    G.add(floor);
+    floor.userData.dyn = true; G.add(floor); // keeps its polygon offset, not batched
     // stair nosings: bold stripes on each step edge
     for (let k = 1; k <= 5; k++) { const z = PLAZA.stairsZ + (PLAZA.stairsLen * k) / 5 - 0.05; const st = new THREE.Mesh(new THREE.BoxGeometry(PLAZA.x1 - PLAZA.x0, 0.08, 0.25), toon(k % 2 ? JSR.yellow : 0xa89a85)); st.position.set((PLAZA.x0 + PLAZA.x1) / 2, heightAt(50, z - 0.3) + 0.07, z - 0.12); G.add(st); }
     const y = (x: number, z: number) => heightAt(x, z);
@@ -154,6 +155,7 @@ export class JsrSliver {
     [[32, 28], [48, 26], [64, 27], [80, 28], [88, 50], [88, 70], [33, 58]].forEach(([x, z], k) => put(tree(k), x, z));
     [[42, 34.5], [58, 34.5], [30, 48], [90, 40], [90, 62], [50, 82]].forEach(([x, z], k) => put(lamp(), x, z, k * 1.3));
     put(ledge(10), 50, 58, 0); put(ledge(8), 82, 56, Math.PI / 2);
+    bakeInPlace(G); // all static props → one toon batch + one ink batch + one shadow batch
   }
 
   /** Toon + ink the buildings inside the sliver (material swap so 'classic' can switch back). */

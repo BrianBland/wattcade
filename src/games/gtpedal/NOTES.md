@@ -38,3 +38,11 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
 - Held back: achievements, cosmetic titles, card clip (arcade.test accepts `drawCard` art when no clip exists;
   achievements.test lists gtpedal as PENDING). sfx.
 - Not tuned on a real trainer yet; all bike↔game numbers are `gtpedal.*` tunables.
+
+## Render perf / fixes
+- Drawbridge flicker: the static ground mesh used heightAt(bridge=0), i.e. a closed deck at y=0 coplanar with the leaf
+  tops -> z-fighting. Ground now keeps open water under the bridge; only the leaves draw the deck.
+- Static batching (`render/bake.ts`): merges a subtree into one vertex-coloured toon mesh + one mesh per extra material
+  (ink, shadows). Parked bikes ~2 calls, rider bike ~6 (frame/ink, 2 wheels, crank, bars), Segway 4, horse 22,
+  plaza props 3 + floor, co-op 1, nav lines 1. `globalThis.__gtpInfo` exposes renderer.info (calls/tris) for capture scripts.
+- Lock-on: `render/reticle.ts` billboarded brackets + chevron, ink outline, muted weapon tint, depthTest off, snap-in.

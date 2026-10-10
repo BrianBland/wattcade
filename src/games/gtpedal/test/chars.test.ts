@@ -19,10 +19,11 @@ describe('procedural characters', () => {
       const b = buildBike(k);
       expect(b.wheels).toHaveLength(2); expect(b.cranks.length).toBe(k === 'tandem' ? 2 : 1);
       const bb = new THREE.Box3().setFromObject(b.root); sizes.add(`${bb.getSize(new THREE.Vector3()).z.toFixed(2)}:${b.wheelR.join()}`);
-      expect(calls(b.root)).toBeLessThanOrEqual(40);
+      expect(calls(b.root)).toBeLessThanOrEqual(k === 'tandem' ? 7 : 6); // frame+ink, 2 wheels, crank(s), bars
+      expect(calls(buildBike(k, undefined, true).root)).toBeLessThanOrEqual(2); // parked: fully baked
     }
     expect(sizes.size).toBeGreaterThanOrEqual(4);
-    expect(calls(buildSegway().root)).toBeLessThan(20); expect(calls(buildHorse().root)).toBeLessThanOrEqual(40);
+    expect(calls(buildSegway().root)).toBeLessThanOrEqual(4); expect(calls(buildHorse().root)).toBeLessThanOrEqual(22);
   });
   it('the whole crowd is a fixed number of instanced draw calls', () => {
     const c = new Crowd(32);
@@ -30,5 +31,12 @@ describe('procedural characters', () => {
     c.end();
     expect(c.drawCalls).toBeLessThanOrEqual(40);
     expect(lookFor(3)).not.toEqual(lookFor(4));
+  });
+});
+describe('lock-on reticle', () => {
+  it('snaps in with a small overshoot and settles at 1', async () => {
+    const { acquireEase } = await import('../render/reticle');
+    expect(acquireEase(0)).toBeCloseTo(0, 5); expect(acquireEase(1)).toBeCloseTo(1, 5);
+    const mid = [0.1, 0.15, 0.2, 0.25].map((t) => acquireEase(t)); expect(Math.max(...mid)).toBeGreaterThan(1);
   });
 });

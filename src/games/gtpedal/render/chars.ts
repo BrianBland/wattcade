@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Snapshot } from '../sim/sim';
 import { heightAt } from '../sim/world';
 import { JSR, toon } from './jsr';
+import { bakeInPlace } from './bake';
 
 // ---------- shared materials ----------
 const inkCache = new Map<number, THREE.Material>();
@@ -22,7 +23,8 @@ export function inkMat(w = 0.022): THREE.Material {
 }
 const toonCache = new Map<number, THREE.Material>();
 const T = (c: number) => { let m = toonCache.get(c); if (!m) toonCache.set(c, (m = toon(c))); return m; };
-const withInk = (geo: THREE.BufferGeometry, color: number, w = 0.02) => { const m = new THREE.Mesh(geo, T(color)); m.add(new THREE.Mesh(geo, inkMat(w))); return m; };
+// one ink width for all props so baking yields a single ink batch per object
+const withInk = (geo: THREE.BufferGeometry, color: number, _w = 0.014) => { const m = new THREE.Mesh(geo, T(color)); m.add(new THREE.Mesh(geo, inkMat(0.014))); return m; };
 
 // ---------- palette ----------
 export const SKIN = [0xf1d3b6, 0xe0b48f, 0xc68e64, 0x9c6a45, 0x6e4a32, 0x4a3122];
@@ -51,13 +53,12 @@ export interface BikeRig { root: THREE.Group; wheels: THREE.Object3D[]; wheelR: 
 function wheel(r: number, color: number): THREE.Group {
   const g = new THREE.Group();
   const tire = new THREE.TorusGeometry(r, 0.035, 6, 24); tire.rotateY(Math.PI / 2);
-  g.add(withInk(tire, 0x2a2420, 0.012));
+  g.add(new THREE.Mesh(tire, T(0x2a2420)));
   const rim = new THREE.TorusGeometry(r - 0.04, 0.012, 4, 24); rim.rotateY(Math.PI / 2);
   g.add(new THREE.Mesh(rim, T(0xb8b0a0)));
-  const pts: number[] = [];
-  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; pts.push(0, 0, 0, (i % 2 ? 0.02 : -0.02), Math.cos(a) * (r - 0.04), Math.sin(a) * (r - 0.04)); }
-  const sp = new THREE.BufferGeometry(); sp.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  g.add(new THREE.LineSegments(sp, new THREE.LineBasicMaterial({ color: 0x8c857a })));
+  const spokes: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2; spokes.push(tube(V(i % 2 ? 0.02 : -0.02, 0, 0), V(0, Math.cos(a) * (r - 0.04), Math.sin(a) * (r - 0.04)), 0.004, 3)); }
+  g.add(new THREE.Mesh(merge(spokes), T(0x8c857a)));
   const hub = new THREE.CylinderGeometry(0.04, 0.04, 0.1, 8); hub.rotateZ(Math.PI / 2); g.add(new THREE.Mesh(hub, T(color)));
   return g;
 }
@@ -72,7 +73,8 @@ function crankSet(len: number): { crank: THREE.Group; pedals: THREE.Object3D[] }
   }
   return { crank, pedals };
 }
-export function buildBike(kind: string, color = BIKE_TINT[kind] ?? 0x6f8a7a): BikeRig {
+/** `parked`: bake the whole bike into one static mesh (+ ink): ~2 draw calls. Otherwise frame / each wheel / crank / bars are batched separately (~6). */
+export function buildBike(kind: string, color = BIKE_TINT[kind] ?? 0x6f8a7a, parked = false): BikeRig {
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
   const frame = new THREE.Group(); root.add(frame);
   const rr = kind === 'bmx' ? 0.25 : kind === 'cargo' ? 0.32 : 0.34, rf = kind === 'bmx' ? 0.25 : kind === 'cargo' ? 0.24 : rr;
@@ -118,10 +120,12 @@ export function buildBike(kind: string, color = BIKE_TINT[kind] ?? 0x6f8a7a): Bi
   bt.push(tube(V(-0.28, gy, gz), V(0.28, gy, gz), 0.016));
   if (kind === 'fixie') for (const s of [1, -1]) { bt.push(tube(V(s * 0.2, gy, gz), V(s * 0.2, gy - 0.1, gz + 0.1), 0.014)); bt.push(tube(V(s * 0.2, gy - 0.1, gz + 0.1), V(s * 0.2, gy - 0.14, gz - 0.02), 0.014)); }
   if (kind === 'bmx') bt.push(tube(V(-0.2, 0.12, -0.02), V(0.2, 0.12, -0.02), 0.012));
-  bars.add(withInk(merge(bt), 0x3d3a36, 0.008));
-  if (kind === 'city') { const bk = new THREE.BoxGeometry(0.36, 0.24, 0.3); bk.translate(0, -0.05, 0.3); bars.add(withInk(bk, 0x9a7350, 0.01)); }
+  bars.add(new THREE.Mesh(merge(bt), T(0x3d3a36)));
+  if (kind === 'city') { const bk = new THREE.BoxGeometry(0.36, 0.24, 0.3); bk.translate(0, -0.05, 0.3); bars.add(new THREE.Mesh(bk, T(0x9a7350))); }
   if (kind === 'tandem') { const sb = merge([tube(V(-0.2, 0.92, wb / 2 - 0.5), V(0.2, 0.92, wb / 2 - 0.5), 0.014)]); frame.add(withInk(sb, 0x3d3a36, 0.008)); }
   const gripZ = kind === 'fixie' ? gz - 0.02 : gz;
+  if (parked) { bars.rotation.y = 0.35; bakeInPlace(root); }
+  else { for (const o of [wR, wF, bars, ...cranks]) o.userData.dyn = true; bakeInPlace(root); for (const o of [wR, wF, bars, ...cranks]) { o.userData.dyn = false; bakeInPlace(o); o.userData.dyn = true; } }
   return { root, wheels: [wR, wF], wheelR: [rr, rf], cranks, pedals, bars, seat: S.clone().add(V(0, 0.07, 0)), bb: B.clone(), grip: H.clone().add(V(0, kind === 'fixie' ? gy - 0.1 : gy, gripZ)), crankLen: cl, kind };
 }
 
@@ -131,7 +135,8 @@ export function buildSegway(): SegwayRig {
   const plat = new THREE.BoxGeometry(0.5, 0.08, 0.3); plat.translate(0, 0.22, 0); root.add(withInk(plat, 0x3d4247, 0.012));
   const st = merge([tube(V(0, 0.22, 0.05), V(0, 1.05, 0.12), 0.03), tube(V(-0.22, 1.05, 0.12), V(0.22, 1.05, 0.12), 0.025)]); root.add(withInk(st, 0x6f7479, 0.01));
   const wheels: THREE.Object3D[] = [];
-  for (const s of [1, -1]) { const g = new THREE.Group(); const w = new THREE.CylinderGeometry(0.22, 0.22, 0.09, 14); w.rotateZ(Math.PI / 2); g.add(withInk(w, 0x2a2420, 0.012)); const h = new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8); h.rotateZ(Math.PI / 2); g.add(new THREE.Mesh(h, T(0xb8b0a0))); g.position.set(s * 0.32, 0.22, 0); root.add(g); wheels.push(g); }
+  for (const s of [1, -1]) { const g = new THREE.Group(); g.userData.dyn = true; const w = new THREE.CylinderGeometry(0.22, 0.22, 0.09, 14); w.rotateZ(Math.PI / 2); g.add(new THREE.Mesh(w, T(0x2a2420))); const h = new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8); h.rotateZ(Math.PI / 2); g.add(new THREE.Mesh(h, T(0xb8b0a0))); g.position.set(s * 0.32, 0.22, 0); root.add(g); wheels.push(g); }
+  bakeInPlace(root); for (const w of wheels) { w.userData.dyn = false; bakeInPlace(w); w.userData.dyn = true; }
   return { root, wheels };
 }
 
@@ -157,6 +162,10 @@ export function buildHorse(coat = 0x6b4a33): HorseRig {
     const hoof = new THREE.CylinderGeometry(0.07, 0.08, 0.08, 6); hoof.translate(0, -0.5, 0.01); knee.add(withInk(hoof, 0x2a2420, 0.008));
     legs.push({ hip, knee, phase: ph });
   }
+  const dyn = [neck, tail, ...legs.flatMap((l) => [l.hip, l.knee])];
+  for (const o of dyn) o.userData.dyn = true;
+  bakeInPlace(root);
+  for (const o of dyn) { o.userData.dyn = false; bakeInPlace(o); o.userData.dyn = true; }
   return { root, legs, neck, tail };
 }
 export function poseHorse(h: HorseRig, gaitPhase: number, speed: number, t: number) {
@@ -385,9 +394,8 @@ export class Characters {
     const seen = new Set<number>();
     for (const pb of s.bikes) {
       seen.add(pb.id); let b = this.parked.get(pb.id);
-      if (!b) { b = buildBike(pb.kind); this.parked.set(pb.id, b); this.group.add(b.root); }
+      if (!b) { b = buildBike(pb.kind, undefined, true); this.parked.set(pb.id, b); this.group.add(b.root); }
       b.root.position.set(pb.x, heightAt(pb.x, pb.z, s.bridge), pb.z); b.root.rotation.set(0, pb.heading, 0.12);
-      b.bars.rotation.y = 0.35;
     }
     for (const [id, b] of this.parked) if (!seen.has(id)) { this.group.remove(b.root); this.parked.delete(id); }
     // --- cops ---

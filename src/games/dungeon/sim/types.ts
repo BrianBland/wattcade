@@ -24,6 +24,7 @@ export interface CampView {
   bank: number; sel: number; autoStartS: number; autoStartLeft: number; startFloor: number; maxStartFloor: number; autoInvest: boolean;
   rows: Array<{ kind: 'start' | 'floor' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }>;
   bestFloor: number; runs: number;
+  lastDeath?: { floor: number; banked: number }; // set when camp follows a death
 }
 export interface DungeonSnapshot {
   t: number;
@@ -34,7 +35,7 @@ export interface DungeonSnapshot {
   player: {
     x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number;
     invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; rolling: boolean; warded: boolean; rallied: boolean; hurt: number;
-    lives: number; livesMax: number; // livesMax 0 = unlimited
+    secondWind: number; secondWindFlash: number; // Second Wind ready 0..1; flash 1->0 after it fires
     level: number; xp: number; xpNext: number; coins: number; bank: number;
   };
   weapon: Weapon;

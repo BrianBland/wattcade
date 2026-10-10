@@ -4,6 +4,7 @@ import type { Button } from '../../../contracts';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { makeUnique, weaponScore } from '../sim/loot';
 import { module } from '../index';
+import { migrateSave } from '../sim/sim';
 import { generateWorld, TILE } from '../sim/world';
 import { scenarios } from '../scenarios';
 import { makeRng } from '../../../core';
@@ -240,23 +241,57 @@ describe('uniques', () => {
   });
 });
 
-describe('lives', () => {
-  function idleRun(lives: number) {
-    const reg = new TuningRegistry({ profileId: 'lives' });
-    reg.scoped('dungeon').num('lives', 3, 0, 9, 1);
-    reg.set('dungeon.lives', lives);
+describe('death to camp, Second Wind, saves', () => {
+  function fragile(opts: { swCd?: number; seed?: number; save?: unknown } = {}) {
+    const reg = new TuningRegistry({ profileId: 'death' });
     reg.set('dungeon.enemyDamageScale', 3);
     reg.scoped('dungeon').num('playerHp', 100, 20, 500, 10); reg.set('dungeon.playerHp', 20);
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true }, tuningRegistry: reg });
-    let deathsAtOver = -1;
-    for (let i = 0; i < 30 * 60 * 30 && !s.sim.isOver(); i++) s.step(1);
-    if (s.sim.isOver()) deathsAtOver = (s.sim.snapshot() as { stats: { deaths: number } }).stats.deaths;
-    return { over: s.sim.isOver(), deaths: deathsAtOver };
+    if (opts.swCd !== undefined) { reg.scoped('dungeon').num('secondWindCdS', 540, 30, 1800, 10); reg.set('dungeon.secondWindCdS', opts.swCd); }
+    const profile = testProfile();
+    if (opts.save) profile.gameData = { ...profile.gameData, dungeon: opts.save };
+    const saves: any[] = [];
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: opts.seed ?? 5, simOpts: { skipCamp: true }, tuningRegistry: reg, onSave: (d) => saves.push(d) });
+    return { s, saves, snap: () => s.sim.snapshot() as any };
   }
-  it('ends the run on the death that spends the last life', () => {
-    expect(idleRun(1)).toEqual({ over: true, deaths: 1 });
+  it('a death sends the hero to camp, banks every run coin, and never reduces the bank', () => {
+    const { s, saves, snap } = fragile();
+    let bankBefore = 0, died = false;
+    for (let i = 0; i < 30 * 60 * 20 && !died; i++) {
+      const pre = snap(); if (pre.phase === 'run') bankBefore = pre.player.bank;
+      s.step(1); died = snap().stats.deaths > 0;
+    }
+    expect(died).toBe(true);
+    expect(snap().phase).toBe('camp');
+    expect(snap().camp.bank).toBeGreaterThanOrEqual(bankBefore);
+    for (let k = 1; k < saves.length; k++) expect(saves[k].bank).toBeGreaterThanOrEqual(saves[k - 1].bank); // banks only grow (no camp spends here)
+    expect(s.sim.isOver()).toBe(false);
   });
-  it('lives=0 is unlimited', () => {
-    expect(idleRun(0).over).toBe(false);
+  it('Second Wind saves the hero once per cooldown', () => {
+    const { s: s2, snap: snap2 } = fragile({ swCd: 1800 });
+    let fired = -1, diedAt = -1;
+    for (let i = 0; i < 30 * 60 * 20 && diedAt < 0; i++) { s2.step(1); const p = snap2(); if (fired < 0 && p.player.secondWindFlash > 0.9) fired = i; if (p.stats.deaths > 0) diedAt = i; }
+    expect(fired).toBeGreaterThanOrEqual(0);  // the first lethal hit was caught
+    expect(diedAt).toBeGreaterThan(fired);     // the next one (still on cooldown) was not
+  });
+  it('the hero level and loot reset at the next descent, camp upgrades persist', () => {
+    const { s, snap, saves } = fragile({ save: { upgrades: { luck: 2 }, bank: 0, autoInvest: false } });
+    for (let i = 0; i < 30 * 60 * 20 && snap().stats.deaths === 0; i++) s.step(1);
+    expect(snap().stats.deaths).toBe(1);
+    for (let i = 0; i < 30 * 50 && snap().phase === 'camp'; i++) s.step(1); // camp auto-starts
+    expect(snap().phase).toBe('run');
+    expect(snap().player.level).toBe(1);
+    expect(snap().weapon.name).toBe('Apprentice Wand');
+    expect(saves.at(-1).upgrades.luck).toBe(2);
+  });
+  it('migrates v1 saves: Swiftness refunded as coins, totals added, lives gone', () => {
+    // Swiftness L3 cost 500 + 750 + 1125 = 2375
+    const m = migrateSave({ bank: 100, upgrades: { swift: 3, vitality: 2 } as any, bestFloor: 4, runs: 7 });
+    expect(m.ver).toBe(2);
+    expect(m.bank).toBe(100 + 2375);
+    expect((m.upgrades as any).swift).toBeUndefined();
+    expect(m.upgrades!.vitality).toBe(2);
+    expect(m.totals!.runs).toBe(7);
+    expect(migrateSave(m)).toEqual(m); // idempotent
+    expect(migrateSave(undefined).ver).toBe(2);
   });
 });

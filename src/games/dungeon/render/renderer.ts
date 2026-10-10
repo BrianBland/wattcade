@@ -488,6 +488,8 @@ export function createRenderer(): GameRenderer {
     gg.fillText('Camp', W / 2, 44 * u);
     gg.fillStyle = '#ccc'; gg.font = `${fs}px sans-serif`;
     gg.fillText(`Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u);
+    if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = `bold ${Math.round(fs * 0.9)}px sans-serif`;
+      gg.fillText(`You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, UH * 0.82); }
     const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
@@ -536,7 +538,13 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
     for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
     gg.globalAlpha = 1;
-    if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L, L + 68 * u); }
+    { // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
+      const sw = p.secondWind, x0 = L, y0 = L + 58 * u, w = 92 * u, h = 13 * u, ready = sw >= 1;
+      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(x0, y0, w, h);
+      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(x0, y0, w * Math.min(1, sw), h);
+      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = 2; gg.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2); }
+      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
+    }
     // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
     const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length);
     { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);

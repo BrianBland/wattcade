@@ -1,17 +1,18 @@
 // Grand Theft Pedal sim: pure + deterministic (ctx.rng, fixed dt). Playground v1.
 import type { GameContext, GameHud, GameSim } from '../../../contracts';
 import { BIKES, isBikeKind, type BikeKind } from './bikes';
-import { newBody, stepBody, switchLine, type Body, type Params, type StepOut } from './physics';
+import { candidateLines, newBody, stepBody, type Body, type Params, type StepOut } from './physics';
 import { behindTram, newTrams, stepTram, TRAM, tramAt, tramRoofY, type Tram } from './trams';
 import { inPatch, lob, MAX_AMMO, pickLock, PICKUP_AMMO, radialLaunch, START_AMMO, stepProjectile, WEAPONS, type Blast, type Patch, type Projectile, type WeaponKind } from './weapons';
 import { canSee, newCop, stepCop, type Cop, type CopKind, type CopParams } from './cops';
 import { findPath, navNodes, visible, type NavNode } from './nav';
-import { BRIDGE, bridgeAngle, buildingAt, CANAL, COOP, heightAt, LINES, nearestOnLine, PARKED_BIKES, PICKUPS, SPAWN } from './world';
+import { BRIDGE, bridgeAngle, buildingAt, hash, CANAL, COOP, heightAt, LINES, nearestOnLine, PARKED_BIKES, PICKUPS, SPAWN } from './world';
 
 export interface SimOpts {
   seed?: number;
   /** test/scene setup: start pose, explicit pedestrians (replaces the random crowd), starting heat, cops on/off, ammo */
-  spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean; /** false = no trams (isolated tests) */ trams?: boolean;
+  spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean; /** NPC cyclists (default: tunable, or 0 when `npcs` is given) */ cyclists?: number;
+  /** explicit cyclists (tests/captures): ride `line` (default nearest path) in direction `dir` */ cyclistsAt?: Array<{ x: number; z: number; kind: BikeKind; line?: number; dir?: 1 | -1; cruise?: number }>; /** false = no trams (isolated tests) */ trams?: boolean;
   ammo?: Partial<Record<WeaponKind, number>>; startWeapon?: WeaponKind; copSpawn?: Array<{ kind: CopKind; x: number; z: number }>;
   /** autopilot also fires the locked weapon every few seconds */ autoFire?: boolean;
   /** scene setup: replace the parked bikes */ bikesAt?: Array<{ kind: BikeKind; x: number; z: number; heading: number }>;
@@ -19,7 +20,9 @@ export interface SimOpts {
   /** scene/test hook: fire the current weapon at these sim times (s) */ fireAt?: number[]; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean; /** daredevil autopilot asks the fake bike (target-follow script) for this × FTP; default 1.0 */ sprintFtp?: number }
 export type Mode = 'bike' | 'foot' | 'ragdoll';
 export interface ParkedBike { id: number; x: number; z: number; heading: number; kind: BikeKind; flat: boolean; mine?: boolean }
-export interface Npc { id: number; x: number; z: number; y: number; vx: number; vy: number; vz: number; heading: number; line: number; dir: 1 | -1; airS: number; alive: boolean; flailS: number; stunS: number }
+export interface Npc { id: number; x: number; z: number; y: number; vx: number; vy: number; vz: number; heading: number; line: number; dir: 1 | -1; airS: number; alive: boolean; flailS: number; stunS: number;
+  /** riding this bike (NPC cyclist) or null on foot */ bike: BikeKind | null; speed: number; cruise: number; /** angry after being bike-jacked: chases + shakes fist */ angryS: number }
+export type SteerLock = { kind: 'line' | 'npc' | 'bike'; id: number } | null;
 export interface Pickup { kind: WeaponKind; x: number; z: number; readyAt: number }
 export interface Snapshot {
   t: number; mode: Mode; rider: Body & { kind: BikeKind | null; flat: boolean; boost: number };
@@ -31,7 +34,7 @@ export interface Snapshot {
   /** render-only art style: 'cel' = calm cel-shaded world everywhere, 'classic' = plain blocks (debug) */ art: 'cel' | 'classic';
   busted: boolean; lostS: number; paint: number; spinOutS: number; lastEvent: string; lastEventAt: number;
   cam: { airLag: number; groundLag: number; airPull: number; airRise: number; airFov: number; lookMix: number };
-  footTarget: number; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
+  footTarget: number; steerLock: { kind: 'line' | 'npc' | 'bike'; id: number; x?: number; z?: number } | null; jackId: number; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
   stats: Record<string, number>;
   /** fake-bike script hooks (target-follow reads powerFtp) */
   hooks?: { powerFtp: number };
@@ -43,7 +46,6 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const AUTO_ROUTE: Array<[number, number]> = [[0, 86], [85, 86], [85, 8], [0, 8], [0, -100]];
 /** daredevil: shuttle up and down the avenue over the drawbridge */
 const DARE_ROUTE: Array<[number, number]> = [[0, 70], [0, -95]];
-export type LineLeave = 'hold' | 'forks';
 export interface GtpSave { rides?: number; stealsTotal?: number; bestAirS?: number; gradeScale?: number; gradeMax?: number }
 
 /** Structural twin of the shell's GameSetting (src/shell/gameSettings.ts); sims don't import the shell. */
@@ -64,8 +66,6 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     turnRate: T.num('turnRate', 1.8, 0.3, 5, 0.1, 'rad/s free steer'),
     snapR: T.num('snapR', 4, 0.5, 15, 0.5, 'line snap radius m'),
     snapPull: T.num('snapPull', 4, 0.5, 15, 0.5, 'heading ease to line per s'),
-    tapS: T.num('tapS', 0.35, 0.1, 1, 0.05, 'paddle tap vs hold threshold s'),
-    walkSpeed: T.num('walkSpeed', 4, 1, 10, 0.5, 'auto-walk m/s'),
     crashSpeed: T.num('crashSpeed', 7, 2, 20, 0.5, 'wall hit speed that ragdolls you'),
     ragdollS: T.num('ragdollS', 2.2, 0.5, 6, 0.1, 'seconds flailing before standing up'),
     trickBoost: T.num('trickBoost', 0.15, 0, 1, 0.05, 'top speed boost per landed trick'),
@@ -111,10 +111,17 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     copSpawnS: T.num('copSpawnS', 3, 0.5, 30, 0.5, 'seconds between cop spawns while short of the heat quota'),
     artStyle: T.choice<'cel' | 'classic'>('artStyle', 'cel', ['cel', 'classic'], "render look: 'cel' = calm cel-shaded city everywhere (default); 'classic' = plain blocks (debug fallback)"),
     dpadRampS: T.num('dpadRampS', 0.5, 0.05, 2, 0.05, 'D-pad/arrow steer ramps from 35% to full over this many s'),
-    lineLeave: T.choice<LineLeave>('lineLeave', 'hold', ['hold', 'forks'], 'hold: holding a paddle always free-steers off a line; forks: on a line, a hold only switches lines at forks'),
+    steerSmoothS: T.num('steerSmoothS', 0.12, 0, 0.6, 0.02, 'paddle → handlebar smoothing time constant s (0 = raw)'),
+    rampAssist: T.num('rampAssist', 0, 0, 1, 0.1, 'optional alignment assist on ramps/rails while free steering (0 = off)'),
+    lockR: T.num('lockR', 12, 4, 30, 1, 'D-pad lock: lines within this many m are candidates'),
+    runSpeed: T.num('runSpeed', 7, 2, 12, 0.5, 'on-foot speed at footFtp × FTP (m/s); power 0 = stand still'),
+    footFtp: T.num('footFtp', 1, 0.3, 2, 0.05, 'fraction of FTP that gives full running speed'),
+    footTurn: T.num('footTurn', 3, 0.5, 8, 0.5, 'on-foot paddle turn rate rad/s'),
+    jackR: T.num('jackR', 2.8, 1, 6, 0.2, 'bike-jack reach m'),
+    cyclists: T.num('cyclists', 16, 0, 40, 1, 'NPC cyclists going about their business'),
   };
   const P = (): Params => ({ drive: tun.drive(), drag: tun.drag(), rollDecay: tun.rollDecay(), topSpeed: tun.topSpeed(), gravity: tun.gravity(),
-    launchMul: tun.launchMul(), climbMul: tun.climbMul(), turnRate: tun.turnRate(), snapR: tun.snapR(), snapPull: tun.snapPull(),
+    launchMul: tun.launchMul(), climbMul: tun.climbMul(), turnRate: tun.turnRate(), snapR: tun.snapR(), snapPull: tun.snapPull(), assist: tun.rampAssist(),
     crashSpeed: tun.crashSpeed(), grindR: tun.grindR(), effortTop: tun.effortTop() });
 
   let t = 0, mode: Mode = 'bike', kind: BikeKind = 'city', flat = false, boost = 0, heat = 0, heatCool = 0;
@@ -123,18 +130,33 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   let routeI = 0, autoCool = 0, autoBrake = false;
   const body = newBody(SPAWN.x, SPAWN.z, SPAWN.heading);
   const grind = { s: 0 };
-  const held = { L: 0, R: 0 };
-  const stats = { busts: 0, lostCops: 0, repaints: 0, copsLaunched: 0, shots: 0, flats: 0, pickups: 0, spinOuts: 0, distanceM: 0, airS: 0, maxAirS: 0, jumps: 0, crashes: 0, steals: 0, tricks: 0, grinds: 0, launches: 0, bridgeJumps: 0, splashes: 0, lineSwitches: 0, tramHits: 0, tramRides: 0, hitches: 0 };
+  const stats = { busts: 0, lostCops: 0, repaints: 0, copsLaunched: 0, shots: 0, flats: 0, pickups: 0, spinOuts: 0, distanceM: 0, airS: 0, maxAirS: 0, jumps: 0, crashes: 0, steals: 0, tricks: 0, grinds: 0, launches: 0, bridgeJumps: 0, splashes: 0, lineSwitches: 0, jacks: 0, cyclistsKnocked: 0, tramHits: 0, tramRides: 0, hitches: 0 };
   const trams: Tram[] = opts.trams === false ? [] : newTrams();
   let onTram: { id: number; ox: number; oz: number } | null = null, hitch = -1;
   let nextBikeId = 0;
   const bikes: ParkedBike[] = opts.bikesAt ? opts.bikesAt.map((b) => ({ id: nextBikeId++, ...b, flat: false })) : PARKED_BIKES.map((b) => ({ id: nextBikeId++, x: b.x, z: b.z, heading: 0, kind: isBikeKind(b.kind) ? b.kind : 'city', flat: false }));
   const npcs: Npc[] = [];
-  const mkNpc = (i: number, x: number, z: number, line: number): Npc => ({ id: i, x, z, y: heightAt(x, z), vx: 0, vy: 0, vz: 0, heading: 0, line, dir: ctx.rng() < 0.5 ? 1 : -1, airS: 0, alive: true, flailS: 0, stunS: 0 });
+  const mkNpcBare = (i: number, x: number, z: number, line: number): Npc => ({ id: i, x, z, y: heightAt(x, z), vx: 0, vy: 0, vz: 0, heading: 0, line, dir: 1, airS: 0, alive: true, flailS: 0, stunS: 0, bike: null, speed: 0, cruise: 1.4, angryS: 0 });
+  const mkNpc = (i: number, x: number, z: number, line: number): Npc => ({ id: i, x, z, y: heightAt(x, z), vx: 0, vy: 0, vz: 0, heading: 0, line, dir: ctx.rng() < 0.5 ? 1 : -1, airS: 0, alive: true, flailS: 0, stunS: 0, bike: null, speed: 0, cruise: 1.4, angryS: 0 });
   if (opts.npcs) opts.npcs.forEach((p, i) => npcs.push(mkNpc(i, p.x, p.z, -1)));
   else for (let i = 0; i < 14; i++) {
     const l = LINES[Math.floor(ctx.rng() * LINES.length)], p = l.pts[Math.floor(ctx.rng() * l.pts.length)];
     npcs.push(mkNpc(i, p[0], p[1], l.id));
+  }
+  { // NPC cyclists: deterministic placement (world hash, no rng draws) on the path network, varied bikes
+    const paths = LINES.filter((l) => l.kind === 'path');
+    const KINDS: BikeKind[] = ['city', 'city', 'fixie', 'bmx', 'cargo', 'ebike', 'city', 'tandem'];
+    const n = opts.cyclists ?? (opts.npcs ? 0 : Math.round(tun.cyclists()));
+    for (let i = 0; i < n; i++) {
+      const l = paths[Math.floor(hash(i, 9) * paths.length) % paths.length], sg = Math.floor(hash(i, 3) * (l.pts.length - 1)), u = hash(i, 4);
+      const [ax, az] = l.pts[sg], [bx, bz] = l.pts[sg + 1];
+      const c: Npc = { ...mkNpcBare(1000 + i, ax + (bx - ax) * u, az + (bz - az) * u, l.id), dir: i % 2 ? 1 : -1, bike: KINDS[i % KINDS.length] };
+      c.cruise = 4.5 + hash(i, 5) * 2.5 * BIKES[c.bike!].top; c.speed = c.cruise; npcs.push(c);
+    }
+    (opts.cyclistsAt ?? []).forEach((q, k) => {
+      const line = q.line ?? paths.reduce((a, l) => (nearestOnLine(l, q.x, q.z).d < nearestOnLine(a, q.x, q.z).d ? l : a)).id;
+      const c: Npc = { ...mkNpcBare(2000 + k, q.x, q.z, line), dir: q.dir ?? 1, bike: q.kind, cruise: q.cruise ?? 5 }; c.speed = c.cruise; npcs.push(c);
+    });
   }
   if (opts.spawn) { body.x = opts.spawn.x; body.z = opts.spawn.z; body.heading = opts.spawn.heading; body.y = heightAt(body.x, body.z); if (opts.spawn.mode === 'foot') mode = 'foot'; }
   let dpadRamp = 0;
@@ -156,7 +178,8 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   // rider-facing pause-menu settings (persisted); fall back to the debug tunables
   const user = { gradeScale: prev.gradeScale, gradeMax: prev.gradeMax };
   const gScale = () => user.gradeScale ?? tun.gradeScale(), gMax = () => user.gradeMax ?? tun.gradeMax();
-  let forkHeld = false, curBridge = 0;
+  let curBridge = 0, padSm = 0, arrowSteer = false;
+  let steerLock: SteerLock = null;
   let bridgeTry: { effort: number } | null = null;
   let saveAt = 30, saved = false;
   const persist = () => ctx.save({ rides: (prev.rides ?? 0) + 1, stealsTotal: (prev.stealsTotal ?? 0) + stats.steals, bestAirS: Math.max(prev.bestAirS ?? 0, Math.round(stats.maxAirS * 10) / 10),
@@ -181,8 +204,47 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     if (!b.mine) { stats.steals++; addHeat(0.5); }
     if (!b.mine) ctx.emit({ type: 'steal', data: { kind } });
   };
-  const footCandidates = () => bikes.map((b, i) => ({ i, d: Math.hypot(b.x - body.x, b.z - body.z), a: Math.atan2(b.x - body.x, b.z - body.z) }))
-    .filter((c) => c.d < 60).sort((a, b) => wrap(a.a - body.heading) - wrap(b.a - body.heading));
+  type LockCand = { kind: 'line' | 'npc' | 'bike'; id: number; side: number; d: number };
+  /** Bike lock candidates, left→right: lines roughly along your heading within lockR + NPC cyclists ahead. */
+  const bikeLockCands = (): LockCand[] => {
+    const out: LockCand[] = candidateLines(body, tun.lockR(), 0.9).map((c) => ({ kind: 'line' as const, id: c.line.id, side: c.side, d: c.d }));
+    for (const n of npcs) if (n.bike && n.airS <= 0) {
+      const dx = n.x - body.x, dz = n.z - body.z, d = Math.hypot(dx, dz);
+      if (d > 35 || d < 1 || Math.abs(wrap(Math.atan2(dx, dz) - body.heading)) > 0.8) continue;
+      out.push({ kind: 'npc', id: n.id, side: -dx * Math.cos(body.heading) + dz * Math.sin(body.heading), d });
+    }
+    return out.sort((a, b) => a.side - b.side);
+  };
+  /** On-foot lock candidates, left→right by bearing: parked bikes, cyclists, pedestrians. */
+  const footLockCands = (): LockCand[] => {
+    const out: LockCand[] = [];
+    const add = (kind: 'bike' | 'npc', id: number, x: number, z: number, r: number) => { const d = Math.hypot(x - body.x, z - body.z); if (d < r && d > 0.3) out.push({ kind, id, d, side: -wrap(Math.atan2(x - body.x, z - body.z) - body.heading) }); };
+    for (const b of bikes) add('bike', b.id, b.x, b.z, 60);
+    for (const n of npcs) if (n.airS <= 0) add('npc', n.id, n.x, n.z, 40);
+    return out.sort((a, b) => a.side - b.side);
+  };
+  /** Position of the current target lock (bike / npc); clears a stale lock. */
+  const lockPos = (): { x: number; z: number } | null => {
+    if (!steerLock || steerLock.kind === 'line') return null;
+    if (steerLock.kind === 'bike') { const b = bikes.find((q) => q.id === steerLock!.id); if (b) return b; }
+    else { const n = npcs.find((q) => q.id === steerLock!.id); if (n && n.airS <= 0 && Math.hypot(n.x - body.x, n.z - body.z) < 70) return n; }
+    steerLock = null; return null;
+  };
+  const jackable = (): Npc | undefined => npcs.filter((n) => n.bike && n.airS <= 0 && n.stunS <= 0 && Math.hypot(n.x - body.x, n.z - body.z) < tun.jackR())
+    .sort((a, b) => Math.hypot(a.x - body.x, a.z - body.z) - Math.hypot(b.x - body.x, b.z - body.z))[0];
+  /** Rip a cyclist off their bike and ride away on it. */
+  const jack = (n: Npc) => {
+    const was = mode;
+    if (was === 'bike') bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat, mine: true }); // old bike clatters to the ground
+    kind = n.bike!; flat = false; mode = 'bike'; body.line = -1; body.grindAuto = false; steerLock = null; footTarget = -1;
+    if (was === 'foot') { body.heading = n.heading; body.speed = n.speed * 0.7; } else body.speed *= 0.85;
+    body.x = n.x; body.z = n.z; body.y = heightAt(n.x, n.z, curBridge);
+    const rx = -Math.cos(n.heading), rz = Math.sin(n.heading); // yanked off to the right
+    n.bike = null; n.speed = 0; n.airS = 0.01; n.vy = 5.5; n.vx = rx * 4; n.vz = rz * 4; n.angryS = 9;
+    stats.jacks++; stats.steals++; addHeat(1); event('bikejack', { kind });
+  };
+  /** Knock a cyclist off (weapons, oil, trams, collisions): their bike drops where they were. */
+  const dropBike = (n: Npc) => { if (!n.bike) return; bikes.push({ id: nextBikeId++, x: n.x, z: n.z, heading: n.heading, kind: n.bike, flat: false }); n.bike = null; n.speed = 0; stats.cyclistsKnocked++; };
 
   function update(dt: number) {
     t += dt;
@@ -194,25 +256,36 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     const auto = !!opts.autopilot;
     // paddles: tap vs hold
     for (const tr of trams) stepTram(tr, dt);
-    // paddles OR D-pad/arrow keys (same semantics: tap = switch line / pick target, hold = steer, in air = spin)
+    // PADDLES: proportional free steering (handlebars), smoothed; in the air they spin you. No line snapping.
+    const pl = Math.abs(inp.paddleL), pr = Math.abs(inp.paddleR);
+    const padRaw = Math.max(-1, Math.min(1, (pl > 0.12 ? pl : 0) - (pr > 0.12 ? pr : 0)));
+    const sm = tun.steerSmoothS();
+    padSm = sm > 0 ? padSm + (padRaw - padSm) * (1 - Math.exp(-dt / sm)) : padRaw;
+    if (padRaw === 0 && Math.abs(padSm) < 0.02) padSm = 0;
+    const paddleActive = padRaw !== 0;
+    // D-PAD / arrows: taps cycle a lock (line or target) and the bike/walker auto-steers along it; with nothing to
+    // lock onto, a held arrow is plain ramped steering. Any paddle input cancels the lock.
     const dL = inp.held.has('left'), dR = inp.held.has('right');
-    const L = Math.abs(inp.paddleL) > 0.5 || dL, R = Math.abs(inp.paddleR) > 0.5 || dR;
+    const tapL = inp.pressed.has('left'), tapR = inp.pressed.has('right');
     dpadRamp = dL || dR ? Math.min(1, dpadRamp + dt / tun.dpadRampS()) : 0;
-    let tapL = false, tapR = false;
-    if (L) held.L += dt; else { if (held.L > 0 && held.L < tun.tapS()) tapL = true; held.L = 0; }
-    if (R) held.R += dt; else { if (held.R > 0 && held.R < tun.tapS()) tapR = true; held.R = 0; }
-    let steer = (held.L >= tun.tapS() ? 1 : 0) - (held.R >= tun.tapS() ? 1 : 0);
-    // D-pad has no analogue travel: ramp the steer in so a held arrow feels like easing a paddle
-    if (steer !== 0 && !(Math.abs(inp.paddleL) > 0.5 || Math.abs(inp.paddleR) > 0.5)) steer *= 0.35 + 0.65 * dpadRamp;
-    let freeSteer = steer !== 0;
-    // airborne: paddles spin you (held, no tap threshold)
-    const airSpin = (L ? 1 : 0) - (R ? 1 : 0);
-    // 'forks' mode: on a line a hold doesn't leave it; it switches lines toward that side if there is one
-    if (mode === 'bike' && !body.air && body.line >= 0 && tun.lineLeave() === 'forks' && steer !== 0) {
-      if (!forkHeld) { const l = switchLine(body, steer > 0 ? -1 : 1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } forkHeld = true; }
-      steer = 0; freeSteer = false;
+    if (paddleActive && steerLock) { steerLock = null; body.line = -1; body.grindAuto = false; arrowSteer = false; }
+    if ((tapL || tapR) && !auto) {
+      const c = mode === 'bike' ? bikeLockCands() : mode === 'foot' ? footLockCands() : [];
+      if (!c.length) arrowSteer = true;
+      else {
+        arrowSteer = false;
+        const cur = steerLock ? c.find((e) => e.kind === steerLock!.kind && e.id === steerLock!.id) : undefined;
+        let pick: LockCand | undefined;
+        if (!cur) pick = tapL ? [...c].filter((e) => e.side <= 0.5).sort((a, b) => b.side - a.side)[0] ?? c[0] : c.filter((e) => e.side >= -0.5).sort((a, b) => a.side - b.side)[0] ?? c[c.length - 1];
+        else pick = tapL ? [...c].reverse().find((e) => e.side < cur.side - 0.3) : c.find((e) => e.side > cur.side + 0.3);
+        if (pick && (!steerLock || pick.kind !== steerLock.kind || pick.id !== steerLock.id)) { steerLock = { kind: pick.kind, id: pick.id }; stats.lineSwitches++; if (pick.kind === 'line') { body.line = pick.id; body.grindAuto = false; } else body.line = -1; }
+      }
     }
-    if (!L && !R) forkHeld = false;
+    if (!dL && !dR) arrowSteer = arrowSteer && false;
+    const arrow = arrowSteer && (dL || dR) ? ((dL ? 1 : 0) - (dR ? 1 : 0)) * (0.35 + 0.65 * dpadRamp) : 0;
+    let steer = paddleActive || padSm !== 0 ? padSm : arrow;
+    let freeSteer = true;
+    const airSpin = padRaw;
     const press = (b: 'a' | 'b' | 'y' | 'z') => inp.pressed.has(b);
     // weapons cycle
     if (inp.pressed.has('shiftUpL') || inp.pressed.has('shiftUpR')) weaponI = (weaponI + 1) % WEAPONS.length;
@@ -233,35 +306,44 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         body.x = rag.x; body.z = rag.z; body.y = heightAt(body.x, body.z, bridge); rag = null; mode = 'foot';
       }
     } else if (mode === 'foot') {
-      const cands = footCandidates();
-      if (auto) { let bi = -1, bd = Infinity; bikes.forEach((b, i) => { const d = Math.hypot(b.x - body.x, b.z - body.z); if (d < bd) { bd = d; bi = i; } }); footTarget = bi; }
-      else {
-        if (footTarget < 0 || footTarget >= bikes.length) footTarget = cands.length ? cands.reduce((a, c) => (c.d < a.d ? c : a)).i : -1;
-        const k = cands.findIndex((c) => c.i === footTarget);
-        if (cands.length && tapL) footTarget = cands[(k - 1 + cands.length) % cands.length].i;
-        if (cands.length && tapR) footTarget = cands[(k + 1) % cands.length].i;
-      }
-      const tb = footTarget >= 0 ? bikes[footTarget] : undefined;
-      if (tb) {
-        const d = Math.hypot(tb.x - body.x, tb.z - body.z);
-        // auto-walk along the nav graph when the bike isn't in a straight line
+      // power → walk / jog / run (scaled by FTP); zero power = stand still
+      const spd = effort <= 0.02 ? 0 : tun.runSpeed() * Math.min(1.3, Math.pow(effort / tun.footFtp(), 0.8));
+      if (auto) { let bb: ParkedBike | undefined, bd = Infinity; for (const b of bikes) { const d = Math.hypot(b.x - body.x, b.z - body.z); if (d < bd) { bd = d; bb = b; } } steerLock = bb ? { kind: 'bike', id: bb.id } : null; }
+      const tp = lockPos();
+      let d = Infinity;
+      if (tp) { // locked: auto-walk to it along the nav graph
+        d = Math.hypot(tp.x - body.x, tp.z - body.z);
         walkRepath -= dt;
-        if (walkRepath <= 0) { walkPath = findPath(body.x, body.z, tb.x, tb.z); walkRepath = 1; }
+        if (walkRepath <= 0) { walkPath = findPath(body.x, body.z, tp.x, tp.z); walkRepath = 1; }
         while (walkPath.length > 1 && Math.hypot(walkPath[0].x - body.x, walkPath[0].z - body.z) < 1.5) walkPath.shift();
-        const wp = walkPath[0] ?? tb;
+        const wp = walkPath[0] ?? tp;
         body.heading = Math.atan2(wp.x - body.x, wp.z - body.z);
-        if (d > tun.stealR() * 0.6) {
-          const nx = body.x + Math.sin(body.heading) * tun.walkSpeed() * dt, nz = body.z + Math.cos(body.heading) * tun.walkSpeed() * dt;
-          if (!buildingAt(nx, nz)) { body.x = nx; body.z = nz; }
-          body.y = heightAt(body.x, body.z, bridge);
-        }
-        if (d < tun.stealR() && (press('a') || auto)) mount(tb);
-      } else if (steer) body.heading = wrap(body.heading + steer * tun.turnRate() * dt);
+      } else body.heading = wrap(body.heading + steer * tun.footTurn() * dt); // paddles: natural walking direction
+      body.speed = 0;
+      if (spd > 0 && d > 1.2) {
+        const nx = body.x + Math.sin(body.heading) * spd * dt, nz = body.z + Math.cos(body.heading) * spd * dt;
+        if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -3) { body.x = nx; body.z = nz; body.speed = spd; }
+        body.y = heightAt(body.x, body.z, bridge);
+      }
+      const jn = jackable();
+      const lockedBike = steerLock?.kind === 'bike' ? bikes.find((b) => b.id === steerLock!.id) : undefined;
+      const nearBike = lockedBike && Math.hypot(lockedBike.x - body.x, lockedBike.z - body.z) < tun.stealR() ? lockedBike
+        : bikes.filter((b) => Math.hypot(b.x - body.x, b.z - body.z) < tun.stealR()).sort((a, b) => Math.hypot(a.x - body.x, a.z - body.z) - Math.hypot(b.x - body.x, b.z - body.z))[0];
+      if (press('a') || auto) { if (jn && !auto) jack(jn); else if (nearBike) mount(nearBike); }
+      footTarget = steerLock?.kind === 'bike' ? bikes.findIndex((b) => b.id === steerLock!.id) : nearBike ? bikes.indexOf(nearBike) : -1;
     } else {
-      // on bike
+      // on bike: D-pad lock steering (line follow in stepBody, or chase a cyclist), else paddles/arrows free steer
+      if (steerLock?.kind === 'line' && body.line !== steerLock.id) steerLock = null; // ran off the end / lost it
+      if (steerLock?.kind === 'line') freeSteer = false;
+      else if (steerLock?.kind === 'npc') { // chase: aim to pull up alongside (on their left) — jack range, no ploughing
+        const tp = lockPos() as Npc | null;
+        if (tp) { const lx = Math.cos(tp.heading) * 1.6, lz = -Math.sin(tp.heading) * 1.6; steer = Math.max(-1, Math.min(1, wrap(Math.atan2(tp.x + lx - body.x, tp.z + lz - body.z) - body.heading) * 2.5)); }
+      }
+      else if (steerLock) steerLock = null;
       if (press('a')) {
-        bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat, mine: true }); mode = 'foot';
-        body.speed = 0;
+        const jn = jackable();
+        if (jn) jack(jn);
+        else { bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat, mine: true }); mode = 'foot'; body.speed = 0; body.line = -1; steerLock = null; }
       }
       if (auto) {
         autoCool -= dt;
@@ -281,13 +363,17 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         const toCanal = (body.z < CANAL.z0 && Math.cos(body.heading) > 0.5 ? CANAL.z0 - body.z : body.z > CANAL.z1 && Math.cos(body.heading) < -0.5 ? body.z - CANAL.z1 : 99);
         autoBrake = (!opts.daredevil && toCanal < 50 && bridgeAt(t + (toCanal + 22) / Math.max(10, body.speed)) + bridge > 0.01 && Math.abs(body.x) < 20) || (Math.abs(da) > 0.5 && body.speed > 4);
         if (trams.some((tr) => { const dz = tr.z - body.z, toward = dz * Math.cos(body.heading) > 0; return toward && Math.abs(dz) < 6 + body.speed * 1.6 && Math.abs(dz) > 1.8 && Math.abs(tr.x + tr.dir * tr.speed * 1.5 - body.x) < TRAM.len / 2 + 10 && (tr.speed > 0.3 || Math.abs(tr.x - body.x) < TRAM.len / 2 + 2); })) autoBrake = true; // wait for the tram
-        freeSteer = Math.abs(da) > 0.25; steer = Math.max(-1, Math.min(1, da * 2));
+        freeSteer = true; steer = Math.max(-1, Math.min(1, da * 2));
+        { // pass cyclists instead of ploughing through them
+          const fx = Math.sin(body.heading), fz = Math.cos(body.heading);
+          const cy = npcs.find((q) => q.bike && q.airS <= 0 && (() => { const dx = q.x - body.x, dz = q.z - body.z, al = dx * fx + dz * fz; return al > 0 && al < 3 + body.speed * 0.6 && Math.abs(dx * fz - dz * fx) < 1.6; })());
+          void cy; // cyclists yield to a faster rider coming up behind (see npc loop)
+        }
         const near = bikes.find((b) => b.kind !== kind && Math.hypot(b.x - body.x, b.z - body.z) < tun.stealR());
         if (near && autoCool <= 0 && !opts.daredevil) { autoCool = 30; bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat }); mount(near); }
+        else { const jn = jackable(); if (jn && autoCool <= 0 && !opts.daredevil) { autoCool = 30; jack(jn); } }
       }
       if (mode === 'bike') {
-        if (tapL) { const l = switchLine(body, -1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } }
-        if (tapR) { const l = switchLine(body, 1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } }
         if (press('y') && !body.air) { body.air = true; body.vy = tun.hopV() * BIKES[kind].air; body.line = -1; }
         const spinIn = body.air ? (auto ? 0 : airSpin) : 0;
         if (flat && !body.air) body.heading = wrap(body.heading + Math.sin(t * 9) * tun.flatWobble() * dt * 3); // wobbly flat
@@ -416,6 +502,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     // ---- pedestrians: walk lines, fly when launched, slip on oil, flail when on fire ----
     for (const n of npcs) {
       if (n.airS > 0) {
+        if (n.bike) dropBike(n);
         n.airS += dt; n.vy -= tun.gravity() * dt; n.y += n.vy * dt; n.x += n.vx * dt; n.z += n.vz * dt;
         if (buildingAt(n.x, n.z)) { n.vx *= -0.5; n.vz *= -0.5; n.x += n.vx * dt * 2; n.z += n.vz * dt * 2; }
         const g = heightAt(n.x, n.z, bridge);
@@ -424,19 +511,35 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       }
       const tn = tramAt(trams, n.x, n.z, 0.3);
       if (tn && tn.speed > 1) { n.vy = 9; n.vx = tn.dir * (tn.speed + 5); n.vz = (n.z >= tn.z ? 1 : -1) * 3; n.airS = 0.01; stats.launches++; event('tramLaunch'); continue; }
-      if (inPatch(patches, n.x, n.z, 'fire') && n.flailS <= 0) { n.flailS = tun.flailS(); event('onFire'); }
+      if (inPatch(patches, n.x, n.z, 'fire') && n.flailS <= 0) { n.flailS = tun.flailS(); event('onFire'); dropBike(n); }
+      if (n.bike && mode === 'bike' && !body.air && body.speed > 5 && Math.hypot(n.x - body.x, n.z - body.z) < 1.1) { // you plough into a cyclist
+        n.vy = 6; n.vx = Math.sin(body.heading) * body.speed * 0.6; n.vz = Math.cos(body.heading) * body.speed * 0.6; n.airS = 0.01; body.speed *= 0.6; event('cyclistKnocked'); continue;
+      }
       if (n.stunS <= 0 && inPatch(patches, n.x, n.z, 'oil')) { n.vy = 4; n.airS = 0.01; n.vx = Math.sin(n.heading) * 2; n.vz = Math.cos(n.heading) * 2; continue; } // slip!
       if (n.stunS > 0) { n.stunS -= dt; continue; }
-      let sp = 1.4;
-      if (n.flailS > 0) { n.flailS -= dt; n.heading += Math.sin(n.flailS * 9 + n.id) * dt * 7; sp = 5; }
+      let sp = n.bike ? n.speed : 1.4;
+      if (n.angryS > 0 && !n.bike) { // jacked: chase you, shaking a fist, then give up
+        n.angryS -= dt; n.heading = Math.atan2(body.x - n.x, body.z - n.z); sp = Math.hypot(body.x - n.x, body.z - n.z) > 1.8 ? 3.2 : 0;
+      } else if (n.flailS > 0) { n.flailS -= dt; n.heading += Math.sin(n.flailS * 9 + n.id) * dt * 7; sp = 5; }
       else if (n.line >= 0) {
         const l = LINES[n.line], np = nearestOnLine(l, n.x, n.z);
         const end = n.dir > 0 ? l.pts[Math.min(l.pts.length - 1, np.seg + 1)] : l.pts[np.seg];
-        if (Math.hypot(end[0] - n.x, end[1] - n.z) < 1) { n.dir = n.dir > 0 ? -1 : 1; n.x += (np.px - n.x) * 0.1; }
-        n.heading = Math.atan2(end[0] - n.x, end[1] - n.z);
+        if (Math.hypot(end[0] - n.x, end[1] - n.z) < (n.bike ? 2.2 : 1)) { n.dir = n.dir > 0 ? -1 : 1; n.x += (np.px - n.x) * 0.1; }
+        if (n.bike) { // keep right, loose flow: ease off behind slower traffic and behind you
+          const h0 = Math.atan2(end[0] - np.px, end[1] - np.pz), rx = -Math.cos(h0), rz = Math.sin(h0);
+          const bx = body.x - n.x, bz = body.z - n.z, behind = -(bx * Math.sin(h0) + bz * Math.cos(h0));
+          const off = mode === 'bike' && behind > 0 && behind < 14 && Math.hypot(bx, bz) < 14 && body.speed > n.speed ? 3.2 : 1.2; // pull over for faster traffic
+          n.heading = Math.atan2(end[0] + rx * off - n.x + (np.px + rx * off - n.x) * 0.8, end[1] + rz * off - n.z + (np.pz + rz * off - n.z) * 0.8);
+          let want = n.cruise;
+          const fx = Math.sin(n.heading), fz = Math.cos(n.heading);
+          const ahead = (x: number, z: number) => { const dx = x - n.x, dz = z - n.z, a = dx * fx + dz * fz, lat = Math.abs(dx * fz - dz * fx); return a > 0 && a < 5 && lat < 1.6; };
+          for (const o of npcs) if (o !== n && o.airS <= 0 && ahead(o.x, o.z) && (!o.bike || Math.cos(o.heading - n.heading) > 0.3)) want = Math.min(want, o.bike ? Math.max(1.5, o.speed * 0.9) : 1.5); // same-direction traffic only (oncoming keep right)
+          if (mode !== 'ragdoll' && ahead(body.x, body.z)) want = Math.min(want, mode === 'bike' ? Math.max(1, body.speed) : 1);
+          n.speed += Math.max(-6 * dt, Math.min(2 * dt, want - n.speed)); sp = n.speed;
+        } else n.heading = Math.atan2(end[0] - n.x, end[1] - n.z);
       } else sp = 0; // scripted bystanders stand still
       const nx = n.x + Math.sin(n.heading) * sp * dt, nz = n.z + Math.cos(n.heading) * sp * dt;
-      if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -2) { n.x = nx; n.z = nz; } else n.heading += 2;
+      if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -2) { n.x = nx; n.z = nz; } else if (n.bike) n.dir = n.dir > 0 ? -1 : 1; else n.heading += 2; // cyclists turn back
       n.y = heightAt(n.x, n.z, bridge);
     }
     // ---- cops: quota by heat, pursue on the nav graph, tackle ----
@@ -503,15 +606,19 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     update,
     isOver: () => false,
     hud(): GameHud {
+      const jn = mode !== 'ragdoll' ? jackable() : undefined;
+      const lockLbl = steerLock ? (steerLock.kind === 'line' ? 'Locked line · ◀ ▶ next' : steerLock.kind === 'npc' ? 'Locked target · ◀ ▶ next' : 'Locked bike · ◀ ▶ next') : 'Lock line / target';
       return { controls: mode === 'bike'
-        ? [{ button: 'a', label: 'Dismount' }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'y', label: 'Hop' }, { button: 'z', label: 'Grind · hitch tram' }, { button: 'dpad', label: 'Steer (or paddles)' }, { button: 'paddles', label: body.air ? 'Spin' : tun.lineLeave() === 'forks' && body.line >= 0 ? 'Tap/hold: switch line at forks' : 'Tap: switch line · Hold: steer' }, { button: 'shiftersL', label: 'Weapon' }, { button: 'shiftersR', label: 'Weapon' }]
-        : [{ button: 'a', label: 'Steal bike', active: footTarget >= 0 }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'paddles', label: 'Pick target (or ◀ ▶)' }] };
+        ? [{ button: 'a', label: jn ? 'JACK BIKE!' : 'Dismount', active: !!jn }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'y', label: 'Hop' }, { button: 'z', label: 'Grind · hitch tram' }, { button: 'dpad', label: lockLbl, active: !!steerLock }, { button: 'paddles', label: body.air ? 'Spin' : 'Steer (cancels lock)' }, { button: 'shiftersL', label: 'Weapon' }, { button: 'shiftersR', label: 'Weapon' }]
+        : [{ button: 'a', label: jn ? 'JACK BIKE!' : 'Steal bike', active: !!jn || footTarget >= 0 }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'dpad', label: lockLbl, active: !!steerLock }, { button: 'paddles', label: 'Walk direction · pedal to run' }] };
     },
     snapshot(): Snapshot {
       return { t, mode, rider: { ...body, kind: mode === 'bike' ? kind : null, flat, boost }, ragdoll: rag ? { x: rag.x, y: rag.y, z: rag.z, spin: rag.spin } : null,
         bikes: bikes.map((b) => ({ ...b })), npcs: npcs.map((n) => ({ ...n })), bridge: bridgeAngle(t, tun.bridgePeriodS(), (tun.bridgeMaxDeg() * Math.PI) / 180),
         hooks: opts.daredevil ? { powerFtp: opts.sprintFtp ?? 1 } : undefined,
         weapon: WEAPONS[weaponI], lock, footTarget,
+        steerLock: steerLock ? { ...steerLock, ...(steerLock.kind === 'line' ? {} : (() => { const q = steerLock.kind === 'bike' ? bikes.find((b) => b.id === steerLock!.id) : npcs.find((n) => n.id === steerLock!.id); return q ? { x: q.x, z: q.z } : {}; })()) } : null,
+        jackId: mode !== 'ragdoll' ? jackable()?.id ?? -1 : -1,
         lockAt: (() => { const q = people()[lock]; return lock >= 0 && q ? { x: q.x, y: q.y, z: q.z, cop: lock >= npcs.length } : null; })(),
         trams: trams.map((tr) => ({ ...tr })), onTram: !!onTram, hitched: hitch >= 0,
         cops: cops.map((c) => ({ ...c, path: [] })), projectiles: projectiles.map((p) => ({ ...p })), patches: patches.map((p) => ({ ...p })), blasts: blasts.map((b) => ({ ...b })),

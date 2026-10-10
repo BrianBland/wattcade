@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { Snapshot } from '../sim/sim';
-import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES } from '../sim/world';
+import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES, nearestOnLine } from '../sim/world';
 import { stepCam, type CamState } from './camera';
 import { JsrSliver } from './jsr';
 import { Characters } from './chars';
@@ -99,6 +99,40 @@ export class GtpRenderer implements GameRenderer {
     coop.position.set(COOP.x, heightAt(COOP.x, COOP.z) + 0.05, COOP.z); this.scene.add(coop); bakeInPlace(coop);
     const body = box(0.6, 1.2, 0.5, new THREE.Color(color).getHex()); body.position.y = 1.4; this.riderBike.position.y = 0.5;
     this.rider.add(body, this.riderBike); this.scene.add(this.rider, this.reticle.group);
+  }
+
+  private lockMesh?: THREE.InstancedMesh; private lockRing?: THREE.Mesh;
+  /** Steering-lock indicator: cream chevrons down the locked line ahead, or a ring + bobbing chevron on the locked target. */
+  private lockMarks(s: Snapshot) {
+    if (!this.lockMesh) {
+      const sh = new THREE.Shape(); sh.moveTo(-0.7, -0.35); sh.lineTo(0, 0.35); sh.lineTo(0.7, -0.35); sh.lineTo(0.7, -0.05); sh.lineTo(0, 0.65); sh.lineTo(-0.7, -0.05); sh.closePath();
+      const g = new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI / 2); g.rotateY(Math.PI);
+      this.lockMesh = new THREE.InstancedMesh(g, new THREE.MeshBasicMaterial({ color: 0xf1e8d4, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }), 10);
+      this.lockMesh.frustumCulled = false; this.lockMesh.renderOrder = 2; this.scene.add(this.lockMesh);
+      this.lockRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.2, 24), new THREE.MeshBasicMaterial({ color: 0xf1e8d4, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+      this.lockRing.rotation.x = -Math.PI / 2; this.scene.add(this.lockRing);
+    }
+    const im = this.lockMesh, M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0);
+    let n = 0; this.lockRing!.visible = false;
+    const L0 = s.steerLock;
+    const put = (x: number, y: number, z: number, h: number, sc: number) => { Q.setFromAxisAngle(Y, h); M.compose(new THREE.Vector3(x, y, z), Q, new THREE.Vector3(sc, sc, sc)); im.setMatrixAt(n++, M); };
+    if (L0?.kind === 'line' && LINES[L0.id] && s.mode === 'bike') {
+      const l = LINES[L0.id], R = s.rider, pts = l.pts;
+      const near = nearestOnLine(l, R.x, R.z);
+      const fwd = Math.cos(near.heading - R.heading) >= 0 ? 1 : -1;
+      let i = near.seg, px = near.px, pz = near.pz, travelled = 0, nextAt = 3 + ((s.t * 6) % 3);
+      while (n < 10 && i >= 0 && i < pts.length - 1) {
+        const [tx, tz] = fwd > 0 ? pts[i + 1] : pts[i], dx = tx - px, dz = tz - pz, seg = Math.hypot(dx, dz);
+        if (travelled + seg >= nextAt) { const u = (nextAt - travelled) / seg; const x = px + dx * u, z = pz + dz * u; put(x, Math.max(heightAt(x, z, s.bridge), -1) + 0.12, z, Math.atan2(dx, dz), 1); nextAt += 3; continue; }
+        travelled += seg; px = tx; pz = tz; i += fwd;
+      }
+    } else if (L0 && L0.x !== undefined && L0.z !== undefined) {
+      const y = heightAt(L0.x, L0.z, s.bridge);
+      this.lockRing!.visible = true; this.lockRing!.position.set(L0.x, y + 0.08, L0.z); this.lockRing!.scale.setScalar(1 + 0.1 * Math.sin(s.t * 6));
+      Q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2); const q2 = new THREE.Quaternion().setFromAxisAngle(Y, s.t * 2); q2.multiply(Q);
+      M.compose(new THREE.Vector3(L0.x, y + 2.9 + Math.sin(s.t * 4) * 0.15, L0.z), q2, new THREE.Vector3(0.8, 0.8, 0.8)); im.setMatrixAt(n++, M);
+    }
+    im.count = n; im.instanceMatrix.needsUpdate = true;
   }
 
   setInsets(insets: Insets) { this.insetB = insets.bottom; this.resize(this.W, this.H); }
@@ -219,11 +253,13 @@ export class GtpRenderer implements GameRenderer {
     this.cam.position.lerp(want, 1 - Math.exp(-8 * dt)); this.cam.lookAt(...c.look);
     if (Math.abs(this.cam.fov - c.fov) > 0.05) { this.cam.fov = c.fov; this.cam.updateProjectionMatrix(); }
     if (this.hud) this.hud.textContent = `${s.mode === 'bike' ? (R.kind ?? '') : s.mode}  ${(R.speed * 3.6).toFixed(0)} km/h${R.flat ? '  FLAT' : ''}\n` +
+      (s.steerLock ? `🔒 ${s.steerLock.kind === 'line' ? `${LINES[s.steerLock.id]?.kind ?? 'line'} line` : s.steerLock.kind === 'npc' ? (s.npcs.find((n) => n.id === s.steerLock!.id)?.bike ? 'cyclist' : 'person') : 'bike'}  ◀ ▶ next · paddle = free\n` : '') +
       `${'★'.repeat(Math.round(s.heat))}${'☆'.repeat(5 - Math.round(s.heat))}  ${s.weapon} ×${s.ammo[s.weapon]}${s.cops.length ? `  🚨${s.cops.filter((c) => c.state !== 'patrol').length}` : ''}${s.lostS > 0.5 ? `  hiding ${s.lostS.toFixed(0)}s` : ''}${s.gradePct > 0 ? `  ⛰ ${s.gradePct.toFixed(1)}%` : ''}`;
-    const EV: Record<string, string> = { busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
+    const EV: Record<string, string> = { bikejack: 'BIKE-JACKED!', cyclistKnocked: 'Sorry!', hitch: 'Hitching!', tramHit: 'TRAM!', busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
     (globalThis as { __gtpInfo?: unknown }).__gtpInfo = { calls: this.r.info.render.calls, triangles: this.r.info.render.triangles, geometries: this.r.info.memory.geometries };
-    if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : '');
+    if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : s.jackId >= 0 ? 'Ⓐ JACK THAT BIKE!' : '');
+    this.lockMarks(s);
     this.reticle.update(this.cam, lockPt, lockSize, s.weapon, s.t, Math.max(1 / 60, this.charT < 0 ? 1 / 30 : s.t - this.charT));
     if (this.chars) {
       const classic = s.art === 'classic';

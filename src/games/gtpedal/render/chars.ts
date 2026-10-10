@@ -328,7 +328,7 @@ export class Characters {
   readonly group = new THREE.Group();
   readonly crowd = new Crowd(64);
   private riderBikes = new Map<string, BikeRig>();
-  private parked = new Map<number, BikeRig>();
+  private parked = new Map<number, BikeRig>(); private cyc = new Map<number, BikeRig & { wa: number; ca: number }>();
   private segways = new Map<number, SegwayRig>(); private horses = new Map<number, HorseRig>();
   private prev = new Map<string, { x: number; z: number; h: number; dist: number; lean: number; steer: number }>();
   private crank = 0; private wheelA = 0; private riderLook: PersonLook;
@@ -381,8 +381,25 @@ export class Characters {
     }
     if (s.ragdoll) this.crowd.add(worldAt(s.ragdoll.x, s.ragdoll.y + 0.5, s.ragdoll.z, R.heading), this.riderLook, { kind: 'ragdoll', t, phase: 0, spin: s.ragdoll.spin });
     // --- pedestrians ---
+    const seenC = new Set<number>();
     for (const n of s.npcs) {
-      const { m } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
+      const { m, v } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
+      if (n.bike && n.airS <= 0) { // NPC cyclist: own bike rig, pedalling, seated rider (hidden when far away)
+        const far = Math.hypot(n.x - R.x, n.z - R.z) > 110;
+        let b = this.cyc.get(n.id);
+        if (!b || b.kind !== n.bike) { if (b) this.group.remove(b.root); b = Object.assign(buildBike(n.bike), { wa: 0, ca: 0 }); this.cyc.set(n.id, b); this.group.add(b.root); }
+        seenC.add(n.id); b.root.visible = !far; if (far) continue;
+        b.wa += (v / b.wheelR[0]) * dt; b.ca += (v / b.wheelR[0] / 2.6) * dt;
+        b.root.position.set(n.x, n.y, n.z); b.root.rotation.set(0, n.heading, m.lean);
+        this.spin(b, b.wa, b.ca, m.steer); b.root.updateMatrixWorld(true);
+        this.addRider(b, lookFor(n.id), 0, t, m.lean);
+        continue;
+      }
+      if (n.angryS > 0 && n.airS <= 0 && n.stunS <= 0) { // jacked victim: run after you, shaking a fist
+        const lk2 = lookFor(n.id), hip = L.thigh + L.shin + 0.05;
+        this.crowd.add(worldAt(n.x, n.y + hip, n.z, n.heading), lk2, v > 0.5 ? { kind: 'walk', t, phase: m.dist * 2.2 + n.id } : { kind: 'flail', t: t * 1.6 + n.id, phase: 0 });
+        continue;
+      }
       const lk = lookFor(n.id);
       const hipY = L.thigh + L.shin + 0.05;
       if (n.airS > 0) this.crowd.add(worldAt(n.x, n.y + 0.6, n.z, n.heading), lk, { kind: 'ragdoll', t: t + n.id, phase: 0, spin: n.airS * 7 });
@@ -390,6 +407,7 @@ export class Characters {
       else if (n.flailS > 0) this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'flail', t: t + n.id * 0.3, phase: 0 });
       else this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'walk', t, phase: m.dist * 2.6 + n.id });
     }
+    for (const [id, b] of this.cyc) if (!seenC.has(id)) { this.group.remove(b.root); this.cyc.delete(id); }
     // --- parked bikes (upright on a kickstand lean) ---
     const seen = new Set<number>();
     for (const pb of s.bikes) {

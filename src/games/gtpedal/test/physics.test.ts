@@ -43,13 +43,22 @@ describe('arcade physics', () => {
     for (let i = 0; i < 30; i++) c2 ||= stepBody(slow, P, IN({ effort: 0 }), DT, 0, { s: 0 }).crashed;
     expect(c2).toBe(false);
   });
-  it('snaps to a line and paddle taps switch tram rails', () => {
-    const b = newBody(-60, TRAM_Z - 1.2, Math.PI / 2 + 0.2); b.speed = 10;
+  it('never grabs a line by itself (no snapping); a locked line is followed; switchLine picks neighbouring rails', () => {
+    const free = newBody(-60, TRAM_Z - 1.2, Math.PI / 2 + 0.2); free.speed = 10;
+    for (let i = 0; i < 30; i++) stepBody(free, P, IN({ freeSteer: true }), DT, 0, { s: 0 });
+    expect(free.line).toBe(-1); expect(free.heading).toBeCloseTo(Math.PI / 2 + 0.2, 5);
+    const b = newBody(-60, TRAM_Z - 1.2, Math.PI / 2 + 0.2); b.speed = 10; b.line = 1;
     for (let i = 0; i < 30; i++) stepBody(b, P, IN(), DT, 0, { s: 0 });
     expect(b.line).toBe(1); expect(Math.abs(b.heading - Math.PI / 2)).toBeLessThan(0.1);
-    // heading +x, the rider's right is +z, so rail 2 (z+0.75) is a right tap away
     expect(switchLine(b, 1, P.snapR)).toBe(2);
     expect(switchLine(b, -1, P.snapR)).toBe(1);
+  });
+  it('Z grabs a rail you ride along, and lets go when released', () => {
+    const b = newBody(-60, TRAM_Z - 0.9, Math.PI / 2 + 0.1); b.speed = 10; const g = { s: 0 };
+    for (let i = 0; i < 10; i++) stepBody(b, P, IN({ freeSteer: true, grindHeld: true }), DT, 0, g);
+    expect(b.grinding).toBe(true);
+    stepBody(b, P, IN({ freeSteer: true }), DT, 0, g);
+    expect(b.line).toBe(-1); expect(b.grinding).toBe(false);
   });
   it('grinding a tram rail keeps speed and reports grind time', () => {
     const b = newBody(-60, TRAM_Z - 0.75, Math.PI / 2); b.speed = 12; b.line = 1; const g = { s: 0 };
@@ -70,8 +79,8 @@ describe('arcade physics', () => {
 describe('sim', () => {
   const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as any;
   it('A dismounts and A again steals back (own bike is not a steal)', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 3, press: 'a' }, { t: 3.1, release: 'a' }, { t: 4, press: 'a' }, { t: 4.1, release: 'a' }]), fake: { script: 'z2' }, seed: 1 });
-    s.step(30 * 3.5); expect(snap(s).mode).toBe('foot');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 3, press: 'a' }, { t: 3.1, release: 'a' }, { t: 3.3, press: 'a' }, { t: 3.4, release: 'a' }]), fake: { script: 'z2' }, seed: 1 });
+    s.step(30 * 3.15); expect(snap(s).mode).toBe('foot');
     s.step(30 * 1.5); expect(snap(s).mode).toBe('bike'); expect(snap(s).stats.steals).toBe(0);
   });
   it('pedalling moves you; climbing sets trainer grade', () => {
@@ -108,12 +117,9 @@ describe('pause settings, spins, line-leave modes', () => {
     const spin = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.05, release: 'y', paddleL: 1 }, { t: 4.5, paddleL: 0 }]), fake: { script: 'z2' }, seed: 1 });
     spin.step(30 * 4.4); expect(Math.abs(snap(spin).rider.spin)).toBeGreaterThan(1);
   });
-  it("'forks' mode: holding a paddle on a line never free-steers off it", () => {
-    const mk = (mode: string) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 2, paddleR: 1 }, { t: 5, paddleR: 0 }]), fake: { script: 'z2' }, seed: 1 });
-      s.tuning.set('gtpedal.lineLeave', mode); s.step(30 * 5); return snap(s).rider;
-    };
-    expect(Math.abs(mk('forks').x)).toBeLessThan(3);   // stayed on the avenue
-    expect(Math.abs(mk('hold').x)).toBeGreaterThan(5);  // steered off
+  it('paddles free-steer off a D-pad-locked line and cancel the lock', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 1, press: 'right' }, { t: 1.1, release: 'right' }, { t: 3, paddleR: 1 }, { t: 3.8, paddleR: 0 }]), fake: { script: 'z2' }, seed: 1, simOpts: { cyclists: 0 } } as any);
+    s.step(30 * 2.5); expect(snap(s).steerLock?.kind).toBe('line');
+    s.step(30 * 2); expect(snap(s).steerLock).toBeNull(); expect(Math.abs(snap(s).rider.x)).toBeGreaterThan(2);
   });
 });

@@ -19,15 +19,33 @@ A canal with a drawbridge that keeps cycling partly open, so you can try to jump
 ## Controls (Zwift Ride)
 | Input | On bike | On foot |
 |---|---|---|
-| Paddles (L/R) **or D-pad ◀ ▶ / arrow keys** | tap: switch to the next line left/right; hold: free steer (`lineLeave: hold`, default) or switch at forks only (`lineLeave: forks`); **in the air: hold to spin** | tap: cycle candidate target (bikes, path directions); auto-walk to it |
-| A | dismount (leave bike parked) | steal / mount the targeted bike |
+| Paddles (L/R) | **free steering, always**: proportional (half press = half lock), smoothed like handlebars (`steerSmoothS`); never snaps you to a line; cancels any D-pad lock; **in the air: spin** | walking direction (turn) |
+| D-pad ◀ ▶ / arrow keys | **lock steering**: tap cycles locks left→right among lines ahead (within `lockR`) and NPC cyclists ahead; while locked the bike rides the line hands-off (or chases the cyclist, pulling up alongside on their left = jack range). The lock ends at the line's end. If there is nothing to lock onto, a held arrow is plain ramped steering (`dpadRampS`) — so keyboard-only play always works | tap cycles target locks (parked bikes, cyclists, people) by bearing; locked = auto-walk there along the nav graph |
+| A | **jack** the cyclist next to you (`jackR`), else dismount | jack a cyclist next to you, else steal/mount the nearest (or locked) bike |
 | B | fire current weapon at lock-on target | same |
 | Y | hop | — |
-| Z | grind (hold near tram track / rail); **hold right behind a moving tram to hitch** | — |
-| Shifters | cycle weapon (L down/up = prev/next) | same |
-| D-pad ◀ ▶ | same as the paddles (tap = switch line / pick target, hold = steer with a 0.5 s ramp from 35 % to full lock since there's no analogue travel (`dpadRampS`), air = spin) | same as paddles |
-| Desktop pedalling | no trainer needed: the repo's fake-bike keys (W/S cadence, E/D power, R/F HR; `shell/fakeKeys.ts`) already drive power, so no extra up-arrow mapping | — |
-| powerUpL/R pair | reserved (pause) | reserved |
+| Z | grind: grabs the rail/tram track you're riding along while held; hitch a moving tram from behind | — |
+| Shifters | cycle weapon | same |
+| Pedals | speed | **walk/jog/run: speed = `runSpeed` × (power / (`footFtp` × FTP))^0.8, capped 1.3×; zero power = stand still** |
+| Desktop | no trainer needed: the repo's fake-bike keys (W/S cadence, E/D power) drive power; arrows = D-pad | |
+Indicator: cream chevrons stream down the locked line ahead; a pulsing ring + bobbing chevron mark a locked target; HUD shows `🔒 path line · ◀ ▶ next · paddle = free`; "Ⓐ JACK THAT BIKE!" when a cyclist is in reach.
+
+### Why steering used to "randomly snap back and forth" (root cause, fixed)
+`stepBody` re-acquired the NEAREST line every tick whenever no paddle was being held long enough to count as a hold
+(< `tapS` = 0.35 s counted as "not steering"), within `snapR` and ±0.5 rad, in either direction. Lines were dropped at 2.5×`snapR`
+or at their ends and immediately re-grabbed — at crossings the nearest line changes, so you'd get yanked onto the cross street;
+releasing a paddle after a turn snapped you back onto whatever line was near; the first 0.35 s of every paddle press did nothing
+(tap window) and then free-steered, then snapped again on release. No hysteresis anywhere. Now there is **no automatic acquisition
+at all**: only an explicit D-pad lock (or holding Z for a grind) attaches you to a line, and paddles detach immediately.
+The `lineLeave` / `tapS` tunables are gone. Optional `rampAssist` (0 = off, default) gently aligns you with a ramp/rail you're already
+riding along within 0.35 rad.
+
+## Bike-jacking + NPC cyclists
+`cyclists` (default 16) NPC cyclists ride the path network on varied bikes (city/fixie/bmx/cargo/e-bike/tandem), keep right,
+ease off behind same-direction traffic, pull over for a faster rider coming up behind, and turn back at walls/line ends.
+Ride or run up alongside and press A: you yank them off (comedic sideways launch), ride away on their bike, +1 heat (counts as a
+steal); the victim tumbles, then chases you shaking a fist for ~9 s. Weapons, oil, fire, trams or ploughing into them knock
+cyclists off and their bike drops where they fell (stealable). Only 4 parked bikes remain.
 
 ## Movement & physics (pure sim, hand-rolled; no physics library)
 - **Drive:** `accel = drive × (power3s/ftp) × bike.power − drag × v² − g × slope × climbMul`. Coasting decay is low.

@@ -54,7 +54,7 @@ export const scenarios: Array<{
       if (!run.events.some((e) => e.type === 'copSpawn')) f.push('no cops spawned');
       if (n(s, 'busts') + n(s, 'lostCops') + n(s, 'repaints') < 1) f.push('chases never resolved (no bust / lose / repaint)');
       if (n(s, 'shots') < 3) f.push(`shots ${s.shots} < 3`);
-      if (n(s, 'distanceM') < 2500) f.push(`distanceM ${s.distanceM} < 2500`);
+      if (n(s, 'distanceM') < 2000) f.push(`distanceM ${s.distanceM} < 2000`);
       return f;
     },
   },

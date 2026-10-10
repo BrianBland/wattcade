@@ -1,7 +1,8 @@
 // Dev harness for the arcade card clips (scripts/capture-cards.ts): one game's real renderer on the fake bike, no shell, no HUD.
 //   /dev/capture.html?game=hamster&script=z2&sec=900&seed=1&opts={"autopilot":true}&media=edm
+//   &timeline=[{"t":2,"press":"right"},...] scripts controller input (seconds from session start, incl. `sec`)
 // Steps the sim `sec` seconds headlessly first so the clip shows a game in full swing, then renders in real time.
-import { createGameSession, NullInput, testProfile } from '../src/core';
+import { createGameSession, NullInput, testProfile, TimelineInput } from '../src/core';
 import { synthTimeline } from '../src/media/synth/queue';
 import { getGame } from '../src/games/registry';
 
@@ -10,7 +11,7 @@ const game = getGame(q.get('game') ?? '')!;
 const profile = testProfile({ color: q.get('color') ?? '#ff2bd6' });
 const media = q.get('media') ? { timeline: synthTimeline({ style: q.get('media') as 'edm', songs: 2, seed: 1, mix: 'automix' }) } : undefined;
 const session = createGameSession({
-  game, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
+  game, profile, input: q.get('timeline') ? new TimelineInput(JSON.parse(q.get('timeline')!)) : new NullInput(), fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
   simOpts: JSON.parse(q.get('opts') ?? '{}'), ...(media ? { media } : {}),
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));

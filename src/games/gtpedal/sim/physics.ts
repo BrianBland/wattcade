@@ -3,13 +3,13 @@ import { buildingAt, heightAt, LINES, nearestOnLine, type Line } from './world';
 
 export interface Params {
   drive: number; drag: number; rollDecay: number; topSpeed: number; gravity: number; launchMul: number;
-  climbMul: number; turnRate: number; snapR: number; snapPull: number; crashSpeed: number; grindR: number;
+  climbMul: number; turnRate: number; snapR: number; snapPull: number; crashSpeed: number; grindR: number; /** optional ramp/rail alignment assist 0..1 (0 = off) */ assist?: number;
   /** share of top speed that scales with effort (0 = flat cap; 0.5 = 0.65 FTP gets 82 %, 1.2 FTP gets 110 %) */
   effortTop?: number;
 }
 export interface Body {
   x: number; z: number; y: number; vy: number; heading: number; speed: number;
-  air: boolean; airS: number; spin: number; line: number; grinding: boolean;
+  air: boolean; airS: number; spin: number; line: number; grinding: boolean; /** line was grabbed by a grind (released with Z) */ grindAuto?: boolean;
 }
 export const newBody = (x: number, z: number, heading: number): Body =>
   ({ x, z, y: heightAt(x, z), vy: 0, heading, speed: 0, air: false, airS: 0, spin: 0, line: -1, grinding: false });
@@ -49,13 +49,29 @@ export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: nu
   const effTop = Math.max(0.4, Math.min(1.4, 1 - et + et * inp.effort));
   const top = p.topSpeed * effTop * inp.bike.top * inp.topMul * (1 + inp.boost);
   // steering: line snap unless free-steering or airborne
+  // Lines are ONLY followed when explicitly locked (D-pad) or while a grind holds you on a rail. There is no
+  // automatic re-acquisition: that (nearest line grabbed every tick whenever no paddle was held, dropped again at
+  // 2.5×snapR, re-grabbed at the next crossing) was the "random snapping back and forth".
   if (!b.air) {
-    if (inp.freeSteer || b.line < 0) {
-      b.heading = wrap(b.heading + inp.steer * p.turnRate * inp.bike.turn * dt);
-      if (!inp.freeSteer) { const c = candidateLines(b, p.snapR, 0.5); if (c.length) b.line = c.reduce((a, e) => (e.d < a.d ? e : a)).line.id; }
-      else b.line = -1;
+    if (inp.grindHeld && b.line < 0 && b.speed > 2) { // Z grabs a rail/tram track you're riding along
+      let best = -1, bd = p.grindR;
+      for (const l of LINES) if (l.kind === 'tram' || l.kind === 'rail') {
+        const n = nearestOnLine(l, b.x, b.z); const da = Math.abs(wrap(n.heading - b.heading));
+        if (n.d < bd && Math.min(da, Math.PI - da) < 0.6) { bd = n.d; best = l.id; }
+      }
+      if (best >= 0) { b.line = best; b.grindAuto = true; }
     }
-    if (b.line >= 0 && !inp.freeSteer) {
+    if (b.grindAuto && !inp.grindHeld) { b.line = -1; b.grindAuto = false; }
+    const follow = b.line >= 0 && (!inp.freeSteer || b.grindAuto);
+    if (!follow) {
+      b.heading = wrap(b.heading + inp.steer * p.turnRate * inp.bike.turn * dt);
+      if (p.assist && p.assist > 0) { // optional (off by default): ease into alignment with a ramp/rail you're already riding along
+        for (const l of LINES) if (l.kind === 'ramp' || l.kind === 'rail') {
+          const n = nearestOnLine(l, b.x, b.z); let h = n.heading; if (Math.abs(wrap(h - b.heading)) > Math.PI / 2) h = wrap(h + Math.PI);
+          if (n.d < 1.5 && Math.abs(wrap(h - b.heading)) < 0.35) { b.heading = wrap(b.heading + wrap(h - b.heading) * Math.min(1, p.assist * p.snapPull * dt)); break; }
+        }
+      }
+    } else {
       const l = LINES[b.line], n = nearestOnLine(l, b.x, b.z);
       if (n.d > p.snapR * 2.5) b.line = -1;
       else {
@@ -63,7 +79,10 @@ export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: nu
         const side = -(n.px - b.x) * Math.cos(b.heading) + (n.pz - b.z) * Math.sin(b.heading);
         const want = wrap(h - Math.max(-0.6, Math.min(0.6, side * 0.25)));
         b.heading = wrap(b.heading + wrap(want - b.heading) * Math.min(1, p.snapPull * dt));
-        if (n.seg === l.pts.length - 2 && n.d < 0.01 && (Math.hypot(b.x - l.pts[l.pts.length - 1][0], b.z - l.pts[l.pts.length - 1][1]) < 1)) b.line = -1; // end
+        const [ex, ez] = l.pts[l.pts.length - 1], [sx, sz] = l.pts[0];
+        const endAhead = Math.cos(wrap(Math.atan2(ex - b.x, ez - b.z) - b.heading)) > 0 ? [ex, ez] : [sx, sz];
+        if (l.pts.length > 2 && l.pts[0][0] === ex && l.pts[0][1] === ez) { /* closed loop: never ends */ }
+        else if (Math.hypot(b.x - endAhead[0], b.z - endAhead[1]) < 1.2) { b.line = -1; b.grindAuto = false; } // end of the line releases the lock
       }
     }
   } else {

@@ -161,8 +161,8 @@ const ring = (cx: number, cz: number, r: number, n: number): Array<[number, numb
 
 export const LINES: Line[] = [
   { id: 0, kind: 'path', pts: [[0, -110], [0, 110]] },                        // central avenue over the drawbridge
-  { id: 1, kind: 'tram', pts: [[-115, TRAM_Z - 0.75], [115, TRAM_Z - 0.75]] }, // tram rails (two)
-  { id: 2, kind: 'tram', pts: [[-115, TRAM_Z + 0.75], [115, TRAM_Z + 0.75]] },
+  { id: 1, kind: 'tram', pts: [[-188, TRAM_Z - 0.75], [188, TRAM_Z - 0.75]] }, // tram rails (two)
+  { id: 2, kind: 'tram', pts: [[-188, TRAM_Z + 0.75], [188, TRAM_Z + 0.75]] },
   { id: 3, kind: 'path', pts: [[-110, 30], [-40, 30], [-40, 40], [-25, 40], [-10, 30], [20, 30]] }, // park path
   { id: 4, kind: 'ramp', pts: ring(BOWL.x, BOWL.z, BOWL.r - 2, 16) },          // bowl carve line
   { id: 5, kind: 'rail', pts: [[34, 30.5], [76, 30.5]] },                       // plaza stair handrail
@@ -176,7 +176,7 @@ export const LINES: Line[] = [
   { id: 12, kind: 'path', pts: [[-120, 124], [194, 124]] },                    // old-town lower street
   { id: 13, kind: 'path', pts: [[-120, 179], [130, 179]] },                    // old-town upper street
   { id: 14, kind: 'path', pts: [[-64, 86], [-64, 196]] }, { id: 15, kind: 'path', pts: [[64, 86], [64, 196]] }, { id: 16, kind: 'path', pts: [[126, 86], [126, 196]] },
-  { id: 17, kind: 'path', pts: [[-122, -150], [122, -150]] },                  // market square crossing
+  { id: 17, kind: 'path', pts: [[-100, -150], [100, -150]] },                  // market square crossing
   { id: 18, kind: 'path', pts: [[-90, -110], [-90, -176]] }, { id: 19, kind: 'path', pts: [[90, -110], [90, -176]] },
   { id: 20, kind: 'path', pts: [[-85, 2], [-85, -30]] }, { id: 21, kind: 'path', pts: [[95, 2], [95, -30]] }, // footbridges
   { id: 22, kind: 'path', pts: [[-110, 0], [-140, 30], [-170, 0], [-140, -30], [-175, -60], [-150, -100], [-185, -130]] }, // hillside switchbacks
@@ -195,8 +195,7 @@ export const BOATS = [-110, -60, -30, 30, 60, 130, 165].map((x, i) => ({ x, z: i
 
 export const PARKED_BIKES: Array<{ x: number; z: number; kind: string }> = [
   { x: 4, z: -100, kind: 'city' }, { x: -50, z: 26, kind: 'bmx' }, { x: 40, z: 22, kind: 'fixie' },
-  { x: 60, z: 84, kind: 'cargo' }, { x: -20, z: 84, kind: 'ebike' }, { x: 80, z: 2, kind: 'tandem' },
-  { x: -90, z: 4, kind: 'city' },
+  { x: -90, z: 4, kind: 'city' }, // the rest of the town's bikes are ridden by NPC cyclists now (jack them!)
 ];
 export const SPAWN = { x: 0, z: -100, heading: 0 };
 

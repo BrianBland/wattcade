@@ -34,7 +34,9 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
   for `insets.bottom` (tested).
 
 - `sim/trams.ts`: `stepTram`, `tramAt`, `behindTram`; sim handles roof riding (`onTram`), hitching (Z), knock-offs, NPC/cop launches.
-- D-pad ◀ ▶ mirror the paddles in `sim.ts` (ramped steer, `dpadRampS`). Desktop pedalling = existing fake-bike keys (W/S, E/D).
+- Steering: paddles = proportional free steer (smoothed), D-pad = locks (`steerLock` line/npc/bike in the snapshot); `stepBody` never auto-acquires lines (root cause of the old snapping). Z grabs a rail for grinds (`Body.grindAuto`).
+- On foot speed from power (`runSpeed`, `footFtp`). NPC cyclists are `Npc`s with `bike` set; `jack()` / `dropBike()`; `cyclistsAt` sim opt for tests/captures.
+- `dev/capture.ts` accepts `&timeline=[...]` (TimelineInput) for scripted-input clips.
 
 ## Not done / next
 - Cable car / ferry (optional) not built. Hedges/trees are render-only (ride through them).

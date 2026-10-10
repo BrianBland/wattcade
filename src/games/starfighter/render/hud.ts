@@ -20,6 +20,7 @@ const CSS = `
 .sq-locks i { display:inline-block; width:9px; height:9px; margin-left:4px; border-radius:50%; border:2px solid #fff36b; vertical-align:middle; }
 .sq-locks i.on { background:#fff36b; box-shadow:0 0 8px #fff36b; }
 .sq-status { text-align:center; font:800 13px system-ui; letter-spacing:2px; text-transform:uppercase; }
+.sq-elite { margin-top:4px; color:#ffd34d; font:900 italic 13px system-ui; letter-spacing:3px; text-shadow:0 0 calc(4px + var(--b,0) * 10px) #ffd34d, 0 1px 2px #000; }
 .sq-status.warn { color:var(--warn,#ffb020); }
 .sq-bar { height:10px; margin:6px auto 0; max-width:360px; border:2px solid var(--pink,#ff2bd6); border-radius:3px; background:#0009; transform:skewX(-20deg); overflow:hidden; }
 .sq-bar i { display:block; height:100%; background:linear-gradient(90deg,var(--pink,#ff2bd6),#fff); transition:width .2s; }
@@ -106,6 +107,7 @@ export class SquadronHud {
       : s.bossIn !== null ? `Flagship inbound · ${Math.ceil(s.bossIn)}s`
       : s.upcoming ? `${s.upcoming.label} · ${s.upcoming.watts} W in ${Math.ceil(s.upcoming.left)}s`
       : s.cadence ? `Optional spin · ${s.cadence.min}–${s.cadence.max} RPM` : STATUS[s.effort.status];
+    if (s.eliteHint) this.status.insertAdjacentHTML('beforeend', `<div class="sq-elite" style="--b:${s.beat.toFixed(2)}">${s.eliteHint < 0 ? '◀ Elite wing' : 'Elite wing ▶'}</div>`);
     // Callouts: perfect formations take priority over banners.
     const last = s.clear.last;
     if (last && last.at !== this.lastClearAt) {

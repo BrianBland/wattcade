@@ -3,7 +3,7 @@ import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, 
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { inCombat, MAX_BOLTS, bulletPattern, wallPattern } from '../sim/encounters';
+import { inCombat, MAX_BOLTS, bulletPattern, wallPattern, groupOf } from '../sim/encounters';
 import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createDirector, cadenceFor } from '../sim/director';
 import { escortAvailable, migrateSave } from '../sim/save';
@@ -99,15 +99,15 @@ describe('musical locks and paddle targeting', () => {
     }
     expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
   });
-  it('touch retarget cycles spatially and preserves already painted locks', () => {
-    const r = rig(); for(let i=0;i<120;i++){r.seconds(0.1);if(r.snap().enemies.filter(inCombat).length>=3 && r.snap().locks.length>0)break;} const s = r.snap();
-    const candidates = s.enemies.filter(inCombat).sort((a,b) => a.x-b.x || a.id-b.id);
-    expect(candidates.length).toBeGreaterThan(2);
-    const previous = s.selectedId, painted = [...s.locks];
-    r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(1/30);
-    expect(r.snap().selectedId).toBe(candidates[(candidates.findIndex(e => e.id === previous)+1)%candidates.length].id);
-    expect(r.snap().locks).toEqual(painted);
-    r.s.sim.receive!({ type: 'target', direction: -1 }); r.seconds(1/30); expect(r.snap().selectedId).toBe(previous);
+  it('touch retarget cycles formations spatially and preserves already painted locks', () => {
+    const r = rig(); const groupsOf = () => { const m = new Map<number, number[]>(); for (const e of r.snap().enemies.filter(inCombat)) { const k = groupOf(e); m.set(k, [...(m.get(k) ?? []), e.x]); } return [...m].map(([k, xs]) => ({ k, x: xs.reduce((a, b) => a + b, 0) / xs.length })).sort((a, b) => a.x - b.x || a.k - b.k); };
+    for (let i = 0; i < 300; i++) { r.seconds(0.1); if (groupsOf().length >= 3 && r.snap().locks.length > 0) break; }
+    const groups = groupsOf(); expect(groups.length).toBeGreaterThan(2);
+    const previous = r.snap().selectedGroup, painted = [...r.snap().locks];
+    r.s.sim.receive!({ type: 'target', direction: 1 }); r.s.step(1);
+    expect(r.snap().selectedGroup).toBe(groups[(groups.findIndex(g => g.k === previous) + 1) % groups.length].k);
+    expect(r.snap().locks.slice(0, painted.length)).toEqual(painted);
+    r.s.sim.receive!({ type: 'target', direction: -1 }); r.s.step(1); expect(r.snap().selectedGroup).toBe(previous);
   });
   it('right paddles select targets without activating Nova; left paddles still change Cruiser gears', () => {
     const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }]);
@@ -182,6 +182,24 @@ describe('spectacle encounters', () => {
     expect(events.filter(t=>t==='wall').length).toBeGreaterThan(3);
     expect(Number(sum.clearPct)).toBeGreaterThan(20);expect(Number(sum.perfects)).toBeGreaterThan(0);expect(Number(sum.absorbed)).toBe(0);
     expect(r.snap().clear.rate).toBeCloseTo(Number(sum.clearPct)/100,1);
+  }, 15_000);
+  it('elite wings reward attentive targeting and never lower the clear rate when ignored', () => {
+    const auto = rig({}, 'z2', longMusic()), smart = rig({ smartTarget: true }, 'z2', longMusic());
+    auto.seconds(900); smart.seconds(900);
+    const a = auto.s.sim.summary(), b = smart.s.sim.summary();
+    expect(Number(a.elitesSeen)).toBeGreaterThan(5); expect(Number(a.elitesCleared)).toBe(0);
+    expect(Number(b.elitesCleared)).toBeGreaterThan(2); expect(Number(b.score)).toBeGreaterThan(Number(a.score));
+    expect(Math.abs(Number(b.clearPct) - Number(a.clearPct))).toBeLessThan(10);
+    expect(Number(a.absorbed) + Number(b.absorbed)).toBe(0);
+  }, 20_000);
+  it('locks tick on sixteenths, volleys release on beats, and laser impacts land on beats', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); const volleys: number[] = [], locks: number[] = [], impacts: number[] = []; const seen = new Set<number>();
+    r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') volleys.push(p); if (ev.type === 'lockAcquired') locks.push(p); }) as typeof r.s.ctx.emit;
+    for (let i = 0; i < 30 * 180; i++) { r.s.step(1); for (const l of r.snap().lasers) if (l.hit && !seen.has(l.id)) { seen.add(l.id); impacts.push(r.s.ctx.media!.positionS()); } }
+    const sixteenths = tl.beats.flatMap((b, i) => { const n = tl.beats[i + 1] ?? b + 0.5; return [0, 1, 2, 3].map(k => b + (n - b) * k / 4); });
+    const on = (xs: number[], grid: number[]) => xs.filter(x => grid.some(g => Math.abs(g - x) < 0.04)).length / xs.length;
+    expect(volleys.length).toBeGreaterThan(20); expect(on(volleys, tl.beats)).toBeGreaterThan(0.9);
+    expect(on(impacts, tl.beats)).toBeGreaterThan(0.9); expect(on(locks, sixteenths)).toBeGreaterThan(0.9);
   }, 15_000);
   it('sustains moderate bullet patterns and destroyable ground enemies within fixed budgets', () => {
     const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;

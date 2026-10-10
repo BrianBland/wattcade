@@ -11,17 +11,23 @@ export interface EnemyView {
   parentId?: number; mountX?: number; ground?: boolean; heading?: number;
   /** Formation this enemy entered with (clear-rate tracking). */
   formation?: number;
+  /** Elite wings cross the far field and leave; only a rider who targets them can clear them. */
+  elite?: boolean; fled?: boolean;
   /** 0..1 muzzle charge shown before the enemy fires. */
   warn?: number;
   entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
   x: number; y: number; hp: number; maxHp: number; age: number; fireAt: number; bossStyle: number;
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing' }
-export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; side: number; height: number; damage: number; hit: boolean }
-export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean }
+export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' }
 export interface SfSnapshot {
-  t: number; phase: 'hangar' | 'run'; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
+  t: number; phase: 'hangar' | 'run';
+  /** Downbeat pulse (1 at a bar line, decaying), alongside `beat`. */
+  bar: number;
+  /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
+  selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
   crafts: Record<CraftId, { level: number; progress: number; next: string | null; unlocked: boolean }>; tester: boolean;
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;

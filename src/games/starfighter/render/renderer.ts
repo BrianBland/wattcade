@@ -7,6 +7,7 @@ import { bossModel, disposeModel, isSharedGeometry, geometries, shipModel } from
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
+import { SquadronPost } from './post';
 import { SECTORS } from '../sim/content';
 import { SquadronHud, bigPerfect } from './hud';
 import { WING_OFFSETS } from '../sim/progression';
@@ -22,6 +23,7 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
+  private cameraBase = new THREE.Vector3(); private post?: SquadronPost;
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
@@ -34,9 +36,9 @@ export class SfRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
     this.container = container; this.color = ctx.profile.color; this.send = ctx.send; this.insets = ctx.insets ?? NO_INSETS;
     const gl = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    gl.setPixelRatio(Math.min(1.5, devicePixelRatio || 1)); gl.setClearColor('#050917', 0);
+    gl.setPixelRatio(Math.min(1.5, devicePixelRatio || 1)); gl.setClearColor('#050917', 0); gl.info.autoReset = false;
     gl.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
-    this.webgl = gl; container.appendChild(gl.domElement);
+    this.webgl = gl; container.appendChild(gl.domElement); this.post = new SquadronPost(gl, this.scene, this.camera);
     const overlay = document.createElement('div'); overlay.dataset.squadronBackdrop = ''; this.overlay = overlay;
     overlay.style.cssText = 'position:absolute;inset:0;color:#eaf5ff;font:14px system-ui;pointer-events:none;background:radial-gradient(ellipse at 70% 35%,#22456044,transparent 50%),radial-gradient(ellipse at 20% 70%,#6b235333,transparent 55%);';
     // Backdrop beneath the transparent Three.js surface, HUD above it.
@@ -45,7 +47,7 @@ export class SfRenderer implements GameRenderer {
     container.appendChild(hud); hud.style.zIndex = '2'; this.overlay = hud;
     hud.addEventListener('click', this.controls);
     this.scene.add(new THREE.HemisphereLight('#c6e9ff', '#142035', 2.7));
-    const key = new THREE.DirectionalLight('#e6f3ff', 3.5); key.position.set(-25, 40, -30); this.scene.add(key);
+    const key = new THREE.DirectionalLight('#e6f3ff', 3); key.position.set(-25, 40, -30); this.scene.add(key);
     const rim = new THREE.DirectionalLight('#9574ff', 2); rim.position.set(30, 15, 40); this.scene.add(rim);
     this.camera.position.set(0, 110, 100); this.camera.lookAt(0, 0, -6);
     const stars = new Float32Array(240 * 3);
@@ -71,11 +73,11 @@ export class SfRenderer implements GameRenderer {
   }
   setInsets(insets: Insets) { this.insets = { ...insets }; this.resize(this.w, this.h); }
   resize(w: number, h: number) {
-    this.w = Math.max(1, w); this.h = Math.max(1, h); this.webgl?.setSize(this.w, this.h, false);
+    this.w = Math.max(1, w); this.h = Math.max(1, h); this.webgl?.setSize(this.w, this.h, false); this.post?.setSize(this.w, this.h);
     const l = layout(this.w, this.h, this.insets), fw = Math.max(1, l.field.w), fh = Math.max(1, l.field.h), aspect = fw / fh;
     this.camera.aspect = aspect;
     const distance = Math.max(145, 130 / Math.max(0.2, aspect));
-    this.camera.position.set(0, distance*0.74, distance*0.67); this.camera.lookAt(0, 0, -6);
+    this.camera.position.set(0, distance*0.74, distance*0.67); this.camera.lookAt(0, 0, -6); this.cameraBase.copy(this.camera.position);
     // Frame the play area in `field` while the scene itself fills the whole surface (full-bleed backdrop under the HUDs).
     this.camera.setViewOffset(fw, fh, -l.field.x, -l.field.y, this.w, this.h); this.camera.updateProjectionMatrix();
     this.hud?.place(l);
@@ -95,6 +97,7 @@ export class SfRenderer implements GameRenderer {
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
     if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
     if (!this.webgl) return;
+    this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
       this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
@@ -112,8 +115,8 @@ export class SfRenderer implements GameRenderer {
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
-      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
-      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13:10+Math.sin(e.age)*1.2,e.y-50);
+      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
+      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
@@ -125,9 +128,10 @@ export class SfRenderer implements GameRenderer {
     const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
     s.bolts.slice(0,640).forEach((b,i)=>{
       // Subtle beat pulse: cores swell a little, glows a little more, so the bullet field breathes with the music.
-      const core=1+s.beat*0.12, halo=1+s.beat*0.35;
-      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,0,0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
-      mat.scale.set(1.8*halo,1,2.5*halo);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
+      // Walls are drawn larger so the gate reads; glows stretch along the flight direction as a short trail.
+      const big=b.wall?1.6:1, core=(1+s.beat*0.12)*big, halo=(1+s.beat*0.35)*big;
+      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,Math.atan2(b.vx,b.vy),0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
+      mat.position.x-=b.vx*0.04;mat.position.z-=b.vy*0.04;mat.scale.set(1.35*halo,1,2*halo+Math.hypot(b.vx,b.vy)*0.06);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
     });
     for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
     const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
@@ -142,8 +146,10 @@ export class SfRenderer implements GameRenderer {
     this.halo!.position.set(s.shipX, 10.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
-    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent);
-    this.webgl.setViewport(0, 0, this.w, this.h); this.webgl.render(this.scene, this.camera);
+    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar);
+    // A barely-there settle of the camera on each bar line.
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
+    this.webgl.setViewport(0, 0, this.w, this.h); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
   }
   debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }
@@ -156,7 +162,7 @@ export class SfRenderer implements GameRenderer {
     for (const g of geos) if (!isSharedGeometry(g)) g.dispose();
     for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects, this.beams]) pool?.dispose();
     this.combat?.dispose(); this.space?.dispose();
-    this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
+    this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();
   }
 }

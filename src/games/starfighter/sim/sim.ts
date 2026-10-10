@@ -2,13 +2,13 @@ import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../cont
 import { after, clamp, createDirector, sectionLabel, sectionTarget } from './director';
 import { craftName, escortAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, WING_OFFSETS } from './progression';
-import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
+import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
 import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
 import type { CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
 export const H = 100, SHIP_Y = 84;
-export interface SfOpts { autopilot?: boolean; skipHangar?: boolean; craft?: CraftId; endless?: boolean }
+export interface SfOpts { autopilot?: boolean; skipHangar?: boolean; craft?: CraftId; endless?: boolean; /** Harness bot that targets elite wings like an attentive rider. */ smartTarget?: boolean }
 
 export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const tun = {
@@ -22,7 +22,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     recovery: ctx.tuning.num('recoveryFtp', 0.5, 0.3, 0.56, 0.01), settle: ctx.tuning.num('ergSettleS', 6, 2, 12, 1),
     earnS: ctx.tuning.num('salvageEveryS', 12, 3, 30, 1), cadenceGap: ctx.tuning.num('cadenceGapS', 150, 60, 300, 10),
     // Playtesting: 1 unlocks every craft at max level; pace speeds up in-ride arsenal growth.
-    tester: ctx.tuning.num('testerUnlockAll', 0, 0, 1, 1), tierLock: ctx.tuning.num('tierLockScale', 0.93, 0.7, 1, 0.01), pace: ctx.tuning.num('arsenalPace', 1, 0.25, 20, 0.25),
+    tester: ctx.tuning.num('testerUnlockAll', 0, 0, 1, 1), tierLock: ctx.tuning.num('tierLockScale', 0.95, 0.7, 1, 0.01), pace: ctx.tuning.num('arsenalPace', 1, 0.25, 20, 0.25),
   };
   const timeline: MediaTimeline | undefined = ctx.media?.timeline;
   const director = createDirector(timeline);
@@ -39,7 +39,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const route = newRoute();
   let prevX = 0, grazed = 0;
   // Formation bookkeeping: an enemy resolves when it dies (kill) or passes the ship (escape).
-  const squads = new Map<number, { total: number; killed: number; left: number }>();
+  const squads = new Map<number, { total: number; killed: number; left: number; elite?: boolean }>();
+  let elitePursuitUntil = -99;
+  let selectedGroup: number | null = null, eliteHint: -1 | 0 | 1 = 0, eliteSeen = 0, eliteCleared = 0, airFormations = 0, eliteSide = 1;
   let clearKilled = 0, clearTotal = 0, perfects = 0, lastClear: SfSnapshot['clear']['last'] = null;
   let wall: { id: number; at: number } | null = null, lastWall = -99;
   const cruiseLine = (at: number) => Math.sin(at * 0.22) * 12 + Math.sin(at * 0.57) * 3;
@@ -80,7 +82,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let perfectStreak = 0, fullLockAt = -99, heavyIn = 3, eatIn = 0, eaten = 0, lastBeam = -99;
   const kill = (e: EnemyView) => {
     effect('boom', e.x, e.y, e.kind==='boss'?3:e.kind==='armor'||e.ground?1.5:1, e.ground); if(e.ground) groundKills++; kills++; combo++; maxCombo = Math.max(maxCombo, combo);
-    score += e.kind === 'boss' ? 5000 : e.kind === 'armor' ? 180 : 100;
+    score += e.kind === 'boss' ? 5000 : e.elite ? 350 : e.kind === 'armor' ? 180 : 100;
     if (e.parentId && boss?.id === e.parentId) boss.hp -= boss.maxHp * 0.15;
     if (e.kind === 'boss') {
       for (const mount of enemies) if (mount.parentId === e.id) { effect('boom',mount.x,mount.y); mount.hp=-1; mount.y=SHIP_Y; }
@@ -110,11 +112,15 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     const n = Math.min(Math.max(0,Math.min(MAX_ENEMIES-enemies.length,60-enemies.filter(e=>!e.ground).length)), recovery ? 5 : 6 + Math.floor(music.intensity * 3.99));
     const kind: EnemyView['kind'] = music.kind === 'build' ? 'armor' : music.kind === 'drop' ? 'weaver' : encounter % 3 === 2 ? 'gunner' : 'drone';
     const center = (ctx.rng() - 0.5) * 20, pattern = formations++ % 3;
-    if (n > 0) squads.set(formations, { total: n, killed: 0, left: n });
-    for (let i = 0; i < n; i++) {
-      const hp = kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
-      const entry=entryFor(i,n,pattern,center);
-      enemies.push({ id: ++id, kind, x: entry.fromX, y: entry.fromY, entry, formation: formations,
+    // About once a minute (every eighth formation outside calm sections and flagship fights) an elite wing crosses the far field.
+    const elite = !recovery && !boss && ++airFormations % 8 === 0, eliteY = -16 + ctx.rng() * 10;
+    const size = elite ? Math.min(n, 5) : n;
+    if (size > 0) squads.set(formations, { total: size, killed: 0, left: size, elite });
+    if (elite) eliteSide = -eliteSide;
+    for (let i = 0; i < size; i++) {
+      const hp = elite ? 26 : kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
+      const entry = elite ? eliteEntry(i, eliteSide, eliteY) : entryFor(i,n,pattern,center);
+      enemies.push({ id: ++id, kind: elite ? 'weaver' : kind, elite, x: entry.fromX, y: entry.fromY, entry, formation: formations,
         hp, maxHp: hp, age: 0, fireAt: firesInFormation(kind, i) ? 4 + i * 0.2 : 1e9, bossStyle: 0 });
     }
   };
@@ -129,13 +135,16 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     }
   };
   const targetable = () => enemies.filter(inCombat).sort((a, b) => a.x - b.x || a.id - b.id);
+  /** Formations in combat, keyed by group (boss batteries group with their flagship). */
+  const groups = () => { const m = new Map<number, EnemyView[]>(); for (const e of targetable()) { const k = groupOf(e); const g = m.get(k); if (g) g.push(e); else m.set(k, [e]); } return m; };
+  const centroid = (g: EnemyView[]) => g.reduce((a, e) => a + e.x, 0) / g.length;
   const retarget = (direction: number) => {
-    const candidates = targetable();
-    if (!candidates.length) { selectedId = null; return; }
-    const index = candidates.findIndex(e => e.id === selectedId);
-    selectedId = candidates[(index < 0 ? 0 : index + (direction < 0 ? -1 : 1) + candidates.length) % candidates.length].id;
+    const gs = [...groups()].sort((a, b) => centroid(a[1]) - centroid(b[1]) || a[0] - b[0]);
+    if (!gs.length) { selectedGroup = null; selectedId = null; return; }
+    const index = gs.findIndex(g => g[0] === selectedGroup);
+    selectedGroup = gs[(index < 0 ? 0 : index + (direction < 0 ? -1 : 1) + gs.length) % gs.length][0];
     // Redirect the next acquisition; already painted locks remain committed.
-    lockIn = Math.min(lockIn, 0.15); emit('retarget', { target: selectedId });
+    lockIn = Math.min(lockIn, 0.15); emit('retarget', { target: selectedGroup });
   };
   const shot = (sx: number, kind: ShotView['kind'], target: EnemyView | undefined, damage: number) => {
     const ey = shipY - 5, dy = (target?.y ?? -20) - ey, dx = (target?.x ?? sx) - sx, d = Math.hypot(dx, dy) || 1;
@@ -255,24 +264,40 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       groundIn-=dt;
       if(groundIn<=0 && !protectedRide) {spawnGround();groundIn=12;}
-      const candidates = targetable();
-      if (!candidates.some(e => e.id === selectedId)) selectedId = (candidates.find(e=>e.parentId===boss?.id && !!e.parentId) ?? [...candidates].sort((a, b) => b.y - a.y)[0])?.id ?? null;
+      const candidates = targetable(), gs = groups();
+      // Selection sticks to a formation until it is gone. Auto-pick: flagship, else the nearest ordinary formation;
+      // elite wings are only ever chosen by the rider (or the harness bot).
+      if (selectedGroup === null || !gs.has(selectedGroup)) {
+        const maxY = (g: EnemyView[]) => Math.max(...g.map(e => e.y));
+        const eliteGroup = opts.smartTarget ? [...gs].find(([, m]) => m[0].elite)?.[0] : undefined;
+        selectedGroup = eliteGroup ?? (boss && gs.has(boss.id) ? boss.id : [...gs].filter(([, m]) => !m[0].elite).sort((a, b) => maxY(b[1]) - maxY(a[1]))[0]?.[0] ?? null);
+      }
+      const selected = selectedGroup !== null ? [...gs.get(selectedGroup) ?? []].sort((a, b) => Number(!!b.parentId) - Number(!!a.parentId) || b.y - a.y) : [];
+      selectedId = selected[0]?.id ?? null;
+      if (selected[0]?.elite) elitePursuitUntil = t + 6;
+      const elites = [...gs].filter(([k, m]) => m[0].elite && k !== selectedGroup);
+      eliteHint = elites.length ? (centroid(elites[0][1]) < (selected.length ? centroid(selected) : x) ? -1 : 1) : 0;
       for (let i = locks.length - 1; i >= 0; i--) if (!candidates.some(e => e.id === locks[i])) locks.splice(i, 1);
       const capacity = lockCapacity();
       volleyAge += dt; lockIn -= dt;
-      if (pedalling && quality >= 0.8 && candidates.length && locks.length < capacity && lockIn <= 0) {
-        const priority = candidates.find(e => e.id === selectedId)!;
-        const ordered = [priority, ...candidates.filter(e => e.id !== selectedId).sort((a, b) => Number(!!b.parentId || b.kind==='boss')-Number(!!a.parentId || a.kind==='boss') || b.y-a.y)];
-        const target = ordered.find(e => !locks.includes(e.id)) ?? priority;
-        locks.push(target.id); lockIn = lockInterval(); emit('lockAcquired', { target: target.id, count: locks.length });
+      // Locks paint on the sixteenth-note grid: the rising ticks play as a rhythm.
+      if (pedalling && quality >= 0.8 && candidates.length && locks.length < capacity && lockIn <= 0 && (music.sixteenth || !timeline?.beats.length)) {
+        // Fill the selected formation first, then spill to the nearest ordinary enemies; elites only when selected.
+        const spill = candidates.filter(e => !e.elite && groupOf(e) !== selectedGroup).sort((a, b) => Number(!!b.parentId || b.kind==='boss')-Number(!!a.parentId || a.kind==='boss') || b.y-a.y);
+        const ordered = [...selected, ...spill];
+        const target = ordered.find(e => !locks.includes(e.id)) ?? selected[0] ?? spill[0];
+        if (target) { locks.push(target.id); lockIn = lockInterval(); emit('lockAcquired', { target: target.id, count: locks.length }); }
       }
-      if (locks.length && pedalling && quality >= 0.8 && (volleyAge >= 2.4 && (music.downbeat || music.phrase || music.beat) || volleyAge >= 3.4)) {
+      // Volleys release on a downbeat (a beat if it is late) and their lasers land together on the next beat.
+      const barLine = music.downbeat || music.phrase || !timeline?.downbeats.length && music.beat;
+      if (locks.length && pedalling && quality >= 0.8 && (volleyAge >= 2.4 && barLine || volleyAge >= 3.2 && music.beat || volleyAge >= 4.2)) {
+        const hitAt = impactAt();
         // Cruiser signature: a full lock-on volley hits harder and scores a bonus.
         const full = craft === 'cruiser' && locks.length >= capacity;
         if (full) { fullLockAt = t; score += 25 * locks.length; emit('fullLock', { locks: locks.length }); }
         locks.forEach((targetId, i) => {
           const e = candidates.find(e => e.id === targetId)!;
-          lasers.push({ id: ++id, targetId, sx: x, sy: shipY - 3, x: e.x, y: e.y, at: t + i * 0.045,
+          lasers.push({ id: ++id, targetId, sx: x, sy: shipY - 3, x: e.x, y: e.y, at: t + i * 0.045, hitAt,
             height:e.ground?-3.5:e.kind==='boss'?13:12, side: (i % 2 ? 1 : -1) * (12 + i * 2), damage: (20 + gunLevel * 4) * (full ? 1.5 : 1), hit: false });
         });
         emit('lockVolley', { locks: locks.length }); volleys++; locks.length = 0; volleyAge = 0; volleyAt = t;
@@ -292,7 +317,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       heavyIn -= dt;
       if (pk.heavy && steady && heavyIn <= 0 && (music.beat || heavyIn < -0.6) && candidates.length) {
         const target = [...candidates].sort((a, b) => Number(!!b.parentId) - Number(!!a.parentId) || b.hp - a.hp)[0];
-        lasers.push({ id: ++id, targetId: target.id, sx: x, sy: shipY + 6, x: target.x, y: target.y, at: t, height: target.ground ? -3.5 : 12, side: 22, damage: 40, hit: false });
+        lasers.push({ id: ++id, targetId: target.id, sx: x, sy: shipY + 6, x: target.x, y: target.y, at: t, hitAt: impactAt(), height: target.ground ? -3.5 : 12, side: 22, damage: 40, hit: false });
         heavyIn = 3.2;
       }
       if (craft === 'escort' && steady) {
@@ -322,6 +347,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         const oldX=e.x, oldY=e.y;
         if (e.parentId) { if (!boss || boss.id !== e.parentId) { e.hp=-1;e.y=SHIP_Y;continue; } e.x=boss.x+(e.mountX??0);e.y=boss.y+4; }
         else if(!advanceEntry(e)) {
+          if (e.elite) { e.hp = -1; e.fled = true; continue; }
           if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*24;e.y=16+Math.sin((e.age-7)*0.4)*3;}
           else {e.y+=dt*(e.ground?9:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
         }
@@ -333,7 +359,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
             const raw = wallPattern(e, x, shipY);
             for (const shot of alert >= 0.8 ? choreograph(route, t, e.x, e.y, raw, SHIP_Y, true) : raw) {
               if (bolts.length >= MAX_BOLTS) break;
-              bolts.push({ id: ++id, x: e.x, y: e.y, height: 12, ...shot }); bulletsFired++;
+              bolts.push({ id: ++id, x: e.x, y: e.y, height: 12, wall: true, ...shot }); bulletsFired++;
             }
             wall = null; e.fireAt = Math.max(e.fireAt, e.age + 1.5); emit('wall');
           }
@@ -364,12 +390,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       for (const laser of lasers) {
         const e = enemies.find(e => e.id === laser.targetId && e.hp > 0);
         if (e && !laser.hit) { laser.x = e.x; laser.y = e.y; }
-        if (!laser.hit && t - laser.at >= 0.52) {
+        if (!laser.hit && t >= laser.hitAt) {
           laser.hit = true;
           if (e) { e.hp -= laser.damage * (e.kind === 'boss' ? (enemies.some(m=>m.parentId===e.id && m.hp>0) ? 0.2 : 0.65) : 1); effect('intercept', e.x, e.y); }
         }
       }
-      for (let i = lasers.length - 1; i >= 0; i--) if (t - lasers[i].at > 1.3) lasers.splice(i, 1);
+      for (let i = lasers.length - 1; i >= 0; i--) if (t - lasers[i].hitAt > 0.8) lasers.splice(i, 1);
       for (const b of bolts) {
         b.x += b.vx * dt; b.y += b.vy * dt; b.height+=(10-b.height)*(1-Math.exp(-dt*5));
         if (!b.grazed && Math.abs(b.y - shipY) < 3 && Math.abs(b.x - x) < ROUTE.graze && Math.abs(b.x - x) >= 3.5) {
@@ -382,19 +408,26 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         }
       }
       for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].hp <= 0) {
-        const e = enemies[i], killedIt = e.y < SHIP_Y;
-        if (killedIt) kill(e); else combo = 0;
+        const e = enemies[i], killedIt = e.y < SHIP_Y && !e.fled;
+        if (killedIt) kill(e); else if (!e.fled) combo = 0;
         const squad = e.formation !== undefined ? squads.get(e.formation) : undefined;
         if (squad) {
           if (killedIt) squad.killed++;
-          if (--squad.left <= 0) {
+          if (--squad.left <= 0 && squad.elite) {
+            // Elites are a bonus for attentive riders: letting them go never lowers the clear rate.
+            squads.delete(e.formation!); eliteSeen++;
+            if (squad.killed === squad.total) {
+              eliteCleared++; score += 500 * squad.total; if (coverLeft <= 0) charge = Math.min(100, charge + 25);
+              effect('perfect', e.x, e.y, 2.5); emit('eliteCleared'); announce('Elite wing down · Nova charged');
+            }
+          } else if (squad.left <= 0) {
             squads.delete(e.formation!); clearKilled += squad.killed; clearTotal += squad.total;
             const perfect = squad.killed === squad.total && squad.total >= 5 && !e.ground;
             lastClear = { pct: Math.round(squad.killed / squad.total * 100), perfect, at: t };
             if (perfect) {
               perfectStreak++; perfects++; score += Math.round(60 * squad.total * (1 + 0.5 * Math.min(4, perfectStreak - 1)));
               effect('perfect', e.x, e.y, 2, e.ground); emit('formationPerfect', { size: squad.total, streak: perfectStreak });
-            } else if (!e.ground && squad.total >= 5) perfectStreak = 0;
+            } else if (!e.ground && squad.total >= 5 && t > elitePursuitUntil) perfectStreak = 0;
           }
         }
         enemies.splice(i, 1);
@@ -409,7 +442,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     },
     snapshot(): SfSnapshot {
       const theme = (sector - 1) % 5;
-      return { t, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
+      return { t, bar: music.barPulse, selectedGroup, eliteHint, elites: { cleared: eliteCleared, seen: eliteSeen }, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
         crafts: Object.fromEntries(CRAFTS.map(c => { const info = craftLevel(pendingS(c)), level = levelOf(c);
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null, unlocked: c === 'cruiser' || unlockCheck() }]; })) as SfSnapshot['crafts'],
         heavy: pk.heavy, ace: pk.ace, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
@@ -429,10 +462,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
           ...(craft === 'cruiser' ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Target ◀ ▶' }] : [{ button: 'shiftersR' as const, label: 'Target ◀ ▶' }]), { button: 'a', label: 'Nova', active: charge >= 100 }] };
     },
-    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten }),
+    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
   /** Each arsenal tier paints locks faster: in-ride growth is what lets a rider clear whole formations. */
+  /** Impact time for a volley fired now: the next beat when it is a natural flight time away. */
+  function impactAt() { const nb = timeline?.beats.length ? beatAfter(t + 0.35) : t + 0.52; return nb - t <= 0.95 && nb > t + 0.3 ? nb : t + 0.52; }
   function lockInterval() { return pk.lockS * Math.pow(tun.tierLock(), gunLevel - 1); }
   function lockCapacity() { return Math.max(2, 3 + gunLevel - (craft === 'escort' ? 2 : 0)); }
   function protectedTarget() { return coverLeft > 0 || rejoinLeft > 0 ? tun.recovery() : 0.65; }

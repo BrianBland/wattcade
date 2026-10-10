@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { SfSnapshot } from '../sim/types';
 import { geometries } from './models';
+import { groupOf } from '../sim/encounters';
 
 /** Fixed-size pools: no geometry or material allocation in the frame loop. */
 export function createCombat(scene: THREE.Scene) {
@@ -17,7 +18,7 @@ export function createCombat(scene: THREE.Scene) {
   // Muzzle charge before an enemy fires, and cyan streak sparks where a bullet grazes the ship.
   const warns = pool(geometries.sphere, '#ffffff', 96, true), warnRings = pool(geometries.ring, '#ffffff', 96, true), sparks = pool(geometries.box, '#9ffbff', 192, true);
   (warns.material as THREE.MeshBasicMaterial).opacity = 0.75; (warnRings.material as THREE.MeshBasicMaterial).opacity = 0.9; (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
-  const warnColor = new THREE.Color(), pink = new THREE.Color('#ff45c9'), amber = new THREE.Color('#ffd24f');
+  const warnColor = new THREE.Color(), gold = new THREE.Color('#ffd34d'), pink = new THREE.Color('#ff45c9'), amber = new THREE.Color('#ffd24f');
   const mat = new THREE.Object3D(), a = new THREE.Vector3(), b = new THREE.Vector3(), direction = new THREE.Vector3(), axis = new THREE.Vector3(0,0,1);
   const bezier = (u: number, sx: number, sy: number, ex: number, ey: number, side: number, height: number, out: THREE.Vector3) => {
     const v = 1 - u;
@@ -29,7 +30,7 @@ export function createCombat(scene: THREE.Scene) {
       let n = 0;
       for (const laser of s.lasers) {
         const age = s.t - laser.at; if (age < 0) continue;
-        const head = Math.min(1, age / 0.52), tail = Math.max(0, (age - 0.68) / 0.52);
+        const flight = Math.max(0.05, laser.hitAt - laser.at), head = Math.min(1, age / flight), tail = Math.max(0, (age - flight - 0.16) / 0.52);
         for (let j = 0; j < 24 && n < 512; j++) {
           const u = tail + (head-tail)*j/24, v = tail + (head-tail)*(j+1)/24;
           bezier(u, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a);
@@ -42,9 +43,9 @@ export function createCombat(scene: THREE.Scene) {
       trails.count = cores.count = n; trails.instanceMatrix.needsUpdate = cores.instanceMatrix.needsUpdate = true;
       n = 0;
       for (const e of s.enemies) {
-        const count = s.locks.filter(id => id === e.id).length;
-        if (!count && e.id !== s.selectedId) continue;
-        const size = e.kind === 'boss' ? 12 : 4.5;
+        const count = s.locks.filter(id => id === e.id).length, inGroup = s.selectedGroup !== null && groupOf(e) === s.selectedGroup;
+        if (!count && e.id !== s.selectedId && !inGroup) continue;
+        const size = (e.kind === 'boss' ? 12 : 4.5) * (count || e.id === s.selectedId ? 1 : 0.6);
         mat.position.set(e.x, e.ground?-2.2:12.2, e.y-50); mat.rotation.set(0, s.t * 0.7, 0); mat.scale.setScalar(size); mat.updateMatrix(); rings.setMatrixAt(n++, mat.matrix);
         if (count > 1 && n < 48) { mat.scale.setScalar(size+1); mat.updateMatrix(); rings.setMatrixAt(n++, mat.matrix); }
         if (n >= 46) break;
@@ -75,6 +76,13 @@ export function createCombat(scene: THREE.Scene) {
         }
       }
       let w = 0;
+      // Elite wings wear a gold ring that breathes with the beat, so they read apart from amber armour.
+      for (const e of s.enemies) {
+        if (!e.elite || w >= 96) continue;
+        mat.position.set(e.x, 10, e.y - 50); mat.rotation.set(0, 0, 0); mat.scale.setScalar(3.2 + s.beat * 0.5); mat.updateMatrix();
+        warnRings.setMatrixAt(w, mat.matrix); warns.setMatrixAt(w, mat.matrix); warnColor.copy(gold).multiplyScalar(0.75 + s.beat * 0.25);
+        warnRings.setColorAt(w, warnColor); warns.setColorAt(w++, warnColor.multiplyScalar(0.25));
+      }
       for (const e of s.enemies) {
         if (!e.warn || e.warn < 0.05 || w >= 96) continue;
         const pulse = 1 + Math.sin(s.t * 26) * 0.12 * e.warn;

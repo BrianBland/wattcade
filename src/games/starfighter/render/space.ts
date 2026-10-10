@@ -5,12 +5,12 @@ float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(
 float cloud(vec2 p){return noise(p)*0.55+noise(p*2.03)*0.28+noise(p*4.07)*0.12+noise(p*8.11)*0.05;}`;
 /** Stream spatial tiles beyond the camera: carrier → neon city → canyon waterways. */
 export function createSpace(scene: THREE.Scene) {
-  const uniforms={time:{value:0}};
+  const uniforms={time:{value:0},pulse:{value:0}};
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
-    fragmentShader:`varying vec3 world;uniform float time;${noise}
+    fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;${noise}
     void main(){float travel=160.0-world.z+time*9.0;float biome=mod(floor(travel/512.0),3.0);vec2 p=vec2(world.x,travel);float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n);float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));vec3 c;
-    if(biome<0.5){c=mix(vec3(0.03,0.28,0.62),vec3(0.8,0.94,1.0),smoothstep(0.32,0.72,n));if(abs(p.x)<42.0){c=vec3(0.065,0.14,0.23)+grid*0.04;float lane=step(abs(p.x),0.25)*step(0.4,fract(p.y/8.0));float edge=step(40.5,abs(p.x));c+=lane*vec3(0.3,0.7,0.8)+edge*vec3(0.02,0.7,0.85);}}
+    if(biome<0.5){c=mix(vec3(0.03,0.28,0.62),vec3(0.8,0.94,1.0),smoothstep(0.32,0.72,n));if(abs(p.x)<42.0){c=vec3(0.065,0.14,0.23)+grid*0.04;float lane=step(abs(p.x),0.25)*step(0.4,fract(p.y/8.0));float edge=step(40.5,abs(p.x));c+=(lane*vec3(0.3,0.7,0.8)+edge*vec3(0.02,0.7,0.85))*(1.0+pulse*0.7);}}
     else if(biome<1.5){c=vec3(0.10,0.21,0.27)+n*0.09;if(abs(p.x)>90.0)c=water;float road=step(abs(mod(p.x+9.0,36.0)-18.0),3.0)+step(abs(mod(p.y+8.0,64.0)-32.0),4.0);c=mix(c,vec3(0.035,0.08,0.15),min(1.0,road));c+=grid*vec3(0.01,0.07,0.08);}
     else{c=mix(vec3(0.27,0.11,0.18),vec3(0.67,0.36,0.24),n);float river=abs(p.x-sin(p.y*0.016)*15.0);c=mix(water,c,smoothstep(11.0,15.0,river));c+=step(0.93,fract(n*12.0))*0.025;}
     gl_FragColor=vec4(c,1.0);}` }));
@@ -19,9 +19,11 @@ export function createSpace(scene: THREE.Scene) {
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;scene.add(m);return m;};
   const stone=make(geometries.rock,material('#b67565',0.15),256);
   const walls=make(geometries.box,material('#28486a'),768);
-  const roofs=make(geometries.box,material('#9ebed1'),768);
-  const glass=make(geometries.box,new THREE.MeshBasicMaterial({color:'#28c9ff'}),1536);
-  const trim=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffbb42'}),768);
+  const roofs=make(geometries.box,material('#7d9cb4'),768);
+  const glassMat=new THREE.MeshBasicMaterial({color:'#28c9ff'}),trimMat=new THREE.MeshBasicMaterial({color:'#ffbb42'});
+  const glassBase=glassMat.color.clone(),trimBase=trimMat.color.clone(),white=new THREE.Color('#ffffff');
+  const glass=make(geometries.box,glassMat,1536);
+  const trim=make(geometries.box,trimMat,768);
   const domes=make(geometries.sphere,material('#3ba5ba'),128);
   const pools=[stone,walls,roofs,glass,trim,domes],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D();
@@ -30,8 +32,10 @@ export function createSpace(scene: THREE.Scene) {
     matrix.position.set(x,y,z);matrix.rotation.set(0,angle,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
   };
   return {
-    update(time:number,_intensity:number,_color:string){
-      uniforms.time.value=time;counts.clear();const scroll=time*9,first=Math.floor(scroll/64),fraction=scroll%64;
+    /** `beat`/`bar` are decaying pulses: runway dashes and window lights breathe with the bar, a touch on each beat. */
+    update(time:number,_intensity:number,_color:string,beat=0,bar=0){
+      uniforms.time.value=time;uniforms.pulse.value=bar*0.8+beat*0.2;
+      glassMat.color.copy(glassBase).lerp(white,bar*0.18+beat*0.05);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();const scroll=time*9,first=Math.floor(scroll/64),fraction=scroll%64;
       for(let i=0;i<16;i++) {
         const tile=first+i,z=160-i*64+fraction,biome=Math.floor(tile/8)%3;
         for(const side of [-1,1]) {

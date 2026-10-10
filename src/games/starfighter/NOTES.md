@@ -19,7 +19,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 
 ## Graphics / checks
 - Three.js perspective camera, modeled craft/flagships, streamed carrier/city/canyon terrain and instanced buildings/rocks, fixed-size laser/reticle/debris/shadow/smoke pools, route banking/ghosts. R paddles cycle priority targets; L paddles remain Cruiser gears. First flagship ~150s, then six-minute spacing; lockable batteries protect the reactor.
-- render/hud.ts: DOM HUD on shared main.css classes; scene is full-bleed and `camera.setViewOffset` frames the play field above the insets. render/layout.ts honors all shell insets. Menu supports touch/controller and pedal auto-launch; footer Nova button remains stable while frames update.
+- render/post.ts: half-res bloom, threshold above scenery, self-disables after ~90 slow frames. render/hud.ts: DOM HUD on shared main.css classes; scene is full-bleed and `camera.setViewOffset` frames the play field above the insets. render/layout.ts honors all shell insets. Menu supports touch/controller and pedal auto-launch; footer Nova button remains stable while frames update.
 - `npm run typecheck`; `npx vitest run src/games/starfighter src/core/media.test.ts src/progression/scenarios.test.ts src/games/insets.test.ts`.
 - `node scripts/squadron-render-smoke.mjs` with Vite on :5199 and system Chromium checks landscape/portrait/touch and bounded allocations.
 - `/dev/squadron.html?sec=375&craft=escort` silent ground-truth timeline; `menu=1`, `unlocked=1`, `script=idle`, `inset=150`, `manual=1`.
@@ -30,6 +30,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 
 ## Spectacle pass
 - flight.ts: ship route is a pure schedule of holds + eased moves (start and end on beats, phrase sweeps, 8s ahead, ≤~34 u/s). `choreograph` re-aims/drops on-target shots so all miss the route by ≥5.5; under target the ship lags the route and fire is raw. Summary: `grazes`, `absorbed` (on-target hits; must stay 0).
+- Targeting by formation (`groupOf`): paddles cycle groups by centroid x; locks fill the selected group then spill to non-elite enemies. Elites (every 8th air formation, `eliteEntry`) are only targeted when selected; `smartTarget` simOpt = attentive harness bot. Locks quantized to sixteenths (director `sixteenth`), volleys on bar lines, `LaserView.hitAt` on the next beat. Snapshot `bar` pulse drives scenery/camera/bloom.
 - Formations carry an id; clear rate = killed/resolved over finished formations (kill or pass the ship). Air formations ≥5 all killed = PERFECT (+score, callout). Walls: build/drop downbeat, ≥7s apart, gated by `choreograph(..., gate=true)`.
 - encounters.ts supplies continuous top/side entrances, combat eligibility, gunner designation, fire intervals, and readable aimed/fan/petal patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.

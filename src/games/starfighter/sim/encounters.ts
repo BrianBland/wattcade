@@ -10,6 +10,12 @@ export function entryFor(index: number, count: number, pattern: number, center: 
   return { fromX: pattern === 0 ? toX : side * (220 + index * 12), fromY: pattern === 0 ? -500 - index * 12 : -60-index*8,
     toX, toY, duration: 6.5 + index * 0.12 };
 }
+/** Elite wings fly a high line across the far field from one flank to the other, then leave. */
+export function eliteEntry(index: number, side: number, y: number): NonNullable<EnemyView['entry']> {
+  return { fromX: side * (95 + index * 9), fromY: y - index * 1.5, toX: -side * (95 - index * 9), toY: y - index * 1.5, duration: 13 };
+}
+/** Formation key for targeting: boss batteries group with their flagship. */
+export const groupOf = (e: EnemyView) => e.parentId ?? (e.kind === 'boss' ? e.id : e.formation ?? -e.id);
 export function advanceEntry(e: EnemyView): boolean {
   if (!e.entry || e.age >= e.entry.duration) return false;
   const u = clamp(e.age/e.entry.duration, 0, 1), ease = 1-Math.pow(1-u,3);

@@ -3,7 +3,7 @@ import type { BikeState, GameRenderer, InputState, Insets, MusicFx, Profile } fr
 import { play } from '../../../audio/sfx';
 import type { CadenzaSnapshot } from '../sim/sim';
 import { sampleAt, zoneIndexAt, type Track } from '../sim/track';
-import { BLOCK_COLORS, Blocks } from './blocks';
+import { Blocks } from './blocks';
 import { advanceDegradation, type Degradation } from './degradation';
 import { disposeObjects } from './dispose';
 import { City } from './city';
@@ -250,7 +250,9 @@ export class CadenzaRenderer implements GameRenderer {
   }
 
   private queueFireworks(t: number, n: number) {
-    for (let i = 0; i < n; i++) this.fireworks.push({ at: t + 0.12 + i * 0.28, c: BLOCK_COLORS[(i * 2 + Math.floor(t)) % BLOCK_COLORS.length] });
+    // in the track's palette: accent, its complement, and white-hot
+    const palette = [U.uAcc.value, U.uAcc2.value, this.white];
+    for (let i = 0; i < n; i++) this.fireworks.push({ at: t + 0.12 + i * 0.28, c: palette[(i + Math.floor(t)) % palette.length].clone() });
   }
 
   private flashOnce(opacity: number, color = '#ffffff') {

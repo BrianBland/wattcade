@@ -14,23 +14,24 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
   slope gravity, ground follow, launch when ground drops away faster than a ballistic arc, landings, building
   hits (crash above `crashSpeed`, bonk below), walls (>0.8 m step), grind on tram/rail lines, line snapping.
   Heading: 0 = +z, π/2 = +x; rider's right is (-cos h, sin h). `switchLine` for paddle taps.
-- `sim/bikes.ts` bike table; `sim/weapons.ts` weapon list + `pickLock` (nearest in forward cone, sticky).
+- `sim/bikes.ts` bike table. `sim/weapons.ts`: ammo tables, `pickLock`, `lob`, `stepProjectile`, `radialLaunch`, patches.
+- `sim/cops.ts`: Segway/horse `stepCop` (sight, pursue via `sim/nav.ts` A* graph, stun/flail/launch, tackle).
+  `sim/nav.ts`: nodes (line points + building corners), visibility edges, `findPath`, `visible`.
 - `sim/sim.ts`: modes bike / foot / ragdoll. Paddle tap (< `tapS`) = switch line (bike) or cycle target (foot);
   hold = free steer (`lineLeave` hold) or switch at forks (`forks`); in the air paddles spin. A = dismount/steal,
   B = fire (bazooka launch only), Y = hop,
   Z = grind, shifters = cycle weapon. Tricks (spin ≥180, grind ≥0.6 s, big air) give a decaying speed boost.
-  Spin landed sideways or wall hit ⇒ ragdoll, then on foot; bike left behind (re-mounting your own bike
-  isn't a steal). Canal = splash, respawn on the bank. Heat stub + one cop that chases at heat ≥ 1.
+  Spin landed sideways or wall hit ⇒ ragdoll, then on foot; bike left behind. Canal = splash, bank respawn.
+  Weapons/cops/heat/co-op/busts: see DESIGN.md. Test setup opts: spawn, npcs, heat, cops, copSpawn, ammo, startWeapon.
   Trainer grade: `terrain` sim effect = slope × grade scale, capped, quantised to 0.5 %; both from the pause menu
   (`settings()`/`receive`, saved) falling back to tunables `gradeScale`/`gradeMax`.
   Autopilot (`simOpts.autopilot`): waypoint loop with wall probing, brakes for corners / open bridge
   (`daredevil: true` shuttles the avenue and asks target-follow for `sprintFtp`×FTP; emits `bridgeAttempt`), swaps onto other bikes it passes.
-- `render/renderer.ts`: three.js, height-field ground mesh, box buildings/bikes/NPCs, line overlays, bridge
-  leaves, lock-on reticle, chase camera, DOM HUD. `render/layout.ts` pure HUD layout + camera view offset
+- `render/renderer.ts`: three.js blocky world, id-keyed pools for cops/projectiles/patches/blasts/flames/crates,
+  3D reticle, co-op pad, DOM HUD + event toasts. `render/camera.ts` pure jump-aware chase cam (tested). `render/layout.ts` pure HUD layout + camera view offset
   for `insets.bottom` (tested).
 
 ## Not done / next
-- Weapons other than bazooka, glass/flat tires in play, oil/fire patches, real cop AI, co-op repaint.
 - Tandem/cargo special rules; e-bike heat is the only per-bike rule besides handling.
 - Held back: achievements, cosmetic titles, card clip (arcade.test accepts `drawCard` art when no clip exists;
   achievements.test lists gtpedal as PENDING). sfx.

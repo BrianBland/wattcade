@@ -114,3 +114,15 @@ export function nearestOnLine(l: Line, x: number, z: number): { d: number; px: n
   }
   return best;
 }
+
+/** Bike co-op: ride through to repaint your bike (heat → 0). */
+export const COOP = { x: -60, z: 8, r: 5 };
+/** Ammo crates (respawn after a while). */
+export const PICKUPS: Array<{ x: number; z: number; kind: 'bazooka' | 'grenade' | 'oil' | 'bottle' | 'molotov' }> = [
+  { x: 0, z: -60, kind: 'bottle' }, { x: 0, z: 70, kind: 'grenade' }, { x: -70, z: 30, kind: 'oil' },
+  { x: 60, z: 10, kind: 'molotov' }, { x: 85, z: 60, kind: 'bazooka' }, { x: -100, z: 86, kind: 'grenade' },
+];
+/** On the plaza stairs (Segways hate them). */
+export function onStairs(x: number, z: number): boolean {
+  return x > PLAZA.x0 && x < PLAZA.x1 && z > PLAZA.stairsZ - 0.5 && z < PLAZA.stairsZ + PLAZA.stairsLen + 0.5;
+}

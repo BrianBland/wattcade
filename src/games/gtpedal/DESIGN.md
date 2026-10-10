@@ -59,21 +59,39 @@ A canal with a drawbridge that keeps cycling partly open, so you can try to jump
 | e-bike | 1.6 | 1.3 | 1.0 | 1.0 | raises heat while ridden |
 - **Flat tire** (glass): top speed × `flatTopMul`, wobble. Best fix: steal another bike.
 
-## Weapons (Wile E. Coyote)
-Auto-aim: lock-on reticle on the nearest target inside a forward cone (`lockRange`, `lockCone`); it re-picks each
-tick (sticky for `lockStickyS`). B fires. Shifters cycle.
-- **Bazooka:** rocket → big skyward launch of the target and anyone near.
-- **Grenade:** lobbed arc, fuse, radial pop-up of everyone in radius.
-- **Oil slick:** dropped behind you; riders spin out.
-- **Bottle:** thrown, leaves a glass patch → flat tires (including yours if you're careless).
-- **Molotov:** burning patch; pedestrians run through with their butts on fire, bikes get scorched paint.
-v1: bazooka only, as a straight launch of the locked target. Others are table entries / stubs.
+## Weapons (Wile E. Coyote) — implemented
+Auto-aim: a spinning 3D reticle (coloured by weapon) over the nearest person (bystander or cop) inside a forward cone
+(`lockRange`, `lockCone`), sticky while valid. B fires; shifters (either hood) cycle. Ammo per weapon (start
+3/4/3/6/3, cap 9); ammo crates around the playground refill one weapon and respawn after `pickupS`.
+- **Bazooka:** rocket flies straight at the lock (or ahead); explodes on contact/ground/wall: radial launch
+  (`bazookaR`, `bazookaV`). Fireball + smoke ring.
+- **Grenade:** lobbed arc onto the target, sits blinking for `grenadeFuse`, then a bigger radial launch (`grenadeR`, `grenadeV`).
+- **Oil slick:** dropped behind you (`oilS` lifetime). Cops spin out (stunned), pedestrians slip and flip, and you
+  spin out too if you ride through it.
+- **Bottle:** lobbed, shatters into a glass patch (`glassS`). Ride over it: flat tyre (top speed × `flatTopMul`,
+  `flatWobble`) until you steal another bike. Segway cops get flats too.
+- **Molotov:** lobbed, leaves a burning patch (`fireS`); bystanders and cops in it flail around with their butts on
+  fire for `flailS` (cops stop chasing while burning).
+Heat from hits: +0.5 per bystander (max +1.5 per blast), +1 per cop, +0.5 per molotov.
 
-## Cops & heat
-Heat 0–5 stars rises with steals, launches and e-bike use; decays when out of sight of cops for `heatCoolS`.
-Cops: Segway (fast, poor jumps), mounted horse (rough terrain, can't climb stairs), later a recumbent SWAT unit.
-Lose them (jump the drawbridge!) or roll through the **bike co-op** to repaint your ride (heat → 0).
-v1: heat number + one Segway cop that chases; being caught = ragdoll and heat reset.
+## Cops & heat — implemented
+- Heat 0–5: steals +0.5, weapon hits (above), e-bike riding. Sub-1 heat cools off after `heatCoolS`.
+- Quota by heat: Segways = ceil(heat) up to 3; horses at 3+ stars (2 at 4.5+). Spawn every `copSpawnS` on a nav node
+  ~55 m away, preferring ones out of your sight.
+- **Segway:** `segwaySpeed` on flats, × `segwayRampMul` on slopes, × `stairsMul` on the plaza stairs.
+  **Horse:** `horseSpeed` everywhere (slower on stairs). Both pursue on a nav graph (line points + building
+  corners, visibility edges, A*) toward you while they can see you (`sightR`, LOS blocked by buildings), else to
+  where they last saw you.
+- **Tackle** within `tackleR` while you're grounded: BUSTED. You ragdoll, the bike is confiscated, heat → 0, all cops
+  stand down, you get back up on foot on the nearest path ~15 m away.
+- **Lose them:** out of every cop's sight for `loseS` and farther than `loseDist` from the nearest → heat 0.
+- **Bike co-op** (yellow pad with paint posts, west of the bridge): ride through with heat → repaint (new colour), heat 0.
+- Cops are launched/oiled/set on fire like everyone else; hurting cops raises heat.
+
+## Camera
+Chase cam (`render/camera.ts`, pure, tested): vertical follow lags in the air (`camAirLag` vs `camGroundLag`) and
+aims between ground and rider (`camLookMix`); with airtime it pulls back (`camAirPull`), rises (`camAirRise`) and
+widens FOV (`camAirFov`) so the ground and the rider are both in shot.
 
 ## v1 scope: the playground (NO missions)
 One compact neighbourhood (~240 × 240 m):
@@ -103,8 +121,8 @@ One compact neighbourhood (~240 × 240 m):
 1. **Playground feel** (this branch): scaffold, world + height field, momentum/jumps, line snapping, crash→ragdoll,
    steal/dismount, bike types, hop/spin/grind boosts, grade resistance, bazooka stub, heat stub, blocky renderer.
    Ride never ends until you quit (no timer, no bust limit).
-2. **Weapons pass:** all five weapons with projectiles, patches (oil/glass/fire), flat tires, NPC ragdolls.
-3. **Cops pass:** Segway + horse AI, heat stars, co-op repaint, drawbridge getaway tuning.
+2. ✅ **Weapons pass:** all five weapons with projectiles, patches (oil/glass/fire), flat tires, NPC ragdolls.
+3. ✅ **Cops pass:** Segway + horse AI, heat stars, co-op repaint. (Recumbent SWAT unit: later.)
 4. **Juice:** proper models, rider cosmetics (`drawRider` look), sfx/music. Held back on purpose until the game is
    more polished: achievements (+ cosmetic titles) and the arcade card clip (the card uses `drawCard` art for now).
 5. Later / maybe: missions, more districts, tandem stoker, cargo passengers.
@@ -119,5 +137,7 @@ rider via `ctx.save`. Mechanism: the sim exposes `settings()`, the shell reads i
 - Grade 0.6× / cap 8 % kept, adjustable in pause. Drawbridge tuned for ~FTP sprints.
 
 ## Open questions
+- Should busts cost anything beyond the bike (ammo, a timer)? Should cops ever ram you off mid-air?
+- Ammo: keep crates, or regenerate slowly while riding hard (watts → ammo)?
 - Should `forks` become the default after play-testing?
 - Should weapons/cops raise grade too (e.g. dragging a tandem stoker)?

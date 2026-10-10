@@ -85,7 +85,7 @@ export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: nu
     const drive = p.drive * inp.effort * inp.bike.power * (b.grinding ? 0.3 : 1);
     let a = drive - p.drag * b.speed * b.speed - p.rollDecay * b.speed - p.gravity * slope * p.climbMul;
     if (b.grinding) a = drive; // grinds are frictionless
-    if (inp.brake) a -= 8;
+    if (inp.brake) a = Math.min(a, -8);
     b.speed = Math.max(0, b.speed + a * dt);
     if (b.speed > top) b.speed = Math.max(top, b.speed - 6 * dt);
   }

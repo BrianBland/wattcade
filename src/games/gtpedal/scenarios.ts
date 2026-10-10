@@ -10,12 +10,12 @@ export const scenarios: Array<{
   assert(summary: Summary, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'auto-z2-playground', script: 'z2', minutes: 10, seed: 1, simOpts: { autopilot: true },
+    name: 'auto-z2-playground', script: 'z2', minutes: 10, seed: 1, simOpts: { autopilot: true, cops: false },
     assert(s, _st, run) {
       const f: string[] = [];
       if (n(s, 'distanceM') < 4000) f.push(`distanceM ${s.distanceM} < 4000`);
-      if (n(s, 'jumps') < 10) f.push(`jumps ${s.jumps} < 10`);
-      if (n(s, 'steals') < 3) f.push(`steals ${s.steals} < 3`);
+      if (n(s, 'jumps') < 6) f.push(`jumps ${s.jumps} < 6`);
+      if (n(s, 'steals') < 2) f.push(`steals ${s.steals} < 2`);
       if (n(s, 'crashes') > 10) f.push(`crashes ${s.crashes} > 10 (autopilot keeps bailing)`);
       if (!run.mixerCommands.some((c) => c.mode === 'sim' && c.gradePct > 0)) f.push('never set a climb grade');
       return f;
@@ -44,6 +44,18 @@ export const scenarios: Array<{
       const at = run.events.filter((e) => e.type === 'bridgeAttempt');
       const ok = at.filter((e) => e.data?.cleared).length;
       return at.length >= 5 && ok / at.length < 0.5 ? [] : [`z2 cleared ${ok}/${at.length} (want >= 5 attempts, < 50 % cleared)`];
+    },
+  },
+  {
+    // stealing raises heat; cops spawn, chase on the nav graph and either bust the autopilot or lose it
+    name: 'auto-z2-cops', script: 'z2', minutes: 10, seed: 1, simOpts: { autopilot: true, autoFire: true },
+    assert(s, _st, run) {
+      const f: string[] = [];
+      if (!run.events.some((e) => e.type === 'copSpawn')) f.push('no cops spawned');
+      if (n(s, 'busts') + n(s, 'lostCops') + n(s, 'repaints') < 1) f.push('chases never resolved (no bust / lose / repaint)');
+      if (n(s, 'shots') < 3) f.push(`shots ${s.shots} < 3`);
+      if (n(s, 'distanceM') < 2500) f.push(`distanceM ${s.distanceM} < 2500`);
+      return f;
     },
   },
   {

@@ -3,6 +3,7 @@ import { synthTimeline } from '../../../media/synth/queue';
 import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 import { rideIndexAt } from './ride';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
+import { Announcements } from './announcements';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -87,6 +88,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
+  const announcements = new Announcements(ctx.media);
+  announcements.setTrack(track, ctx.media?.positionS() ?? 0);
 
   let ownP = 0, started = false, done = false, saved = false;
   let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padLevel = 0, padActive = false, ergF = 0.6;
@@ -123,6 +126,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   const startRide = () => {
     menu = false;
     track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
     save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; ctx.save(save);
     ctx.resistance.useVirtualGears(true);
@@ -213,9 +217,12 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if ((timeline.revision ?? 0) !== revision) {
         const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
-        const from = started ? Math.max(position() + 3, timeline.updateFromS ?? position() + 35) : 0;
+        const from = Math.max(announcements.untilS, timeline.frozenUntilS ?? 0,
+          started ? timeline.updateFromS ?? (timeline.frozenUntilS === undefined ? position() + 35 : 0) : 0,
+          started && timeline.frozenUntilS === undefined ? position() + 3 : 0);
         const previous = blockState;
-        track = started ? extendTrack(track, next, from) : next;
+        track = extendTrack(track, next, from);
+        announcements.setTrack(track, position());
         blockState = new Uint8Array(track.blocks.length);
         const kept = started ? track.blocks.filter((b) => b.t < from).length : 0;
         blockState.set(previous.subarray(0, Math.min(kept, blockState.length)));
@@ -225,6 +232,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (!ctx.media) ownP += dt;
       const p = position();
       if (!started && (ctx.media ? ctx.media.started() : true)) { started = true; cue('start'); }
+      announcements.show(p);
       const bike = ctx.bike();
 
       // zone bookkeeping
@@ -350,6 +358,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     },
     snapshot(): CadenzaSnapshot {
       const p = position(), zi = Math.max(0, zoneIdx < 0 ? zoneIndexAt(track, p) : zoneIdx), z = track.zones[zi];
+      if (!menu) announcements.show(p);
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {
         p, durationS: track.durationS, started, done,

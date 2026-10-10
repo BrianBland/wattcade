@@ -21,6 +21,20 @@ const MIN_RECOVERY_S = 8;
 /** Work slivers shorter than this (e.g. the last seconds of a build before its drop) fold into a neighbour. */
 const MIN_SLIVER_S = 6;
 
+/** Rhythm-driven challenges need reliable analysis throughout their countdown and effort. */
+export function reliableRhythm(tl: MediaTimeline, t0: number, t1: number): boolean {
+  if (tl.coverage === undefined) return true;
+  const spans = [...tl.coverage].sort((a, b) => a.t0 - b.t0);
+  if (spans.some((s) => s.t0 < t1 && s.t1 > t0 && !(s.rhythm >= 0.6))) return false;
+  let end = Math.max(0, t0);
+  for (const s of spans) {
+    if (s.t0 > end) break;
+    if (s.rhythm >= 0.6) end = Math.max(end, s.t1);
+    if (end >= t1) return true;
+  }
+  return false;
+}
+
 export const rideTarget = (phase: Phase, d: RideConfig): ZoneTarget => {
   switch (phase) {
     case 'recover': return { min: 1, max: 2, label: 'Break', source: 'power' };
@@ -70,6 +84,7 @@ export function planRide(tl: MediaTimeline, d: RideConfig): RideBlock[] {
     if (s.kind !== 'drop') continue;
     const t0 = Math.max(0, s.t0), t1 = Math.min(duration, s.t1, t0 + d.sprintS);
     if (t1 - t0 < 3 || t0 - lastSprint < d.sprintEveryS) continue; // a skipped drop is ridden as a hold
+    if (!reliableRhythm(tl, t0 - COUNTDOWN_S, t1)) continue; // effort-only hold in uncertain or unanalysed music
     sprints.push({ t0, t1 }); lastSprint = t0;
   }
 

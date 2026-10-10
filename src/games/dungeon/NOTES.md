@@ -29,3 +29,18 @@ CONTRACT-REQUESTs: none.
 - Stances (#87, `sim/stances.ts`): D-pad left/right cycles Vanguard (flame/pellet, close, 0.6x dmg taken) / Ranger (arrow/bolt, far) / Skirmisher (star/spark, kite, +5% move) / Arcanist (orb; camp unlock `arcanist`, else orbs feed the Ranger). Each has its own weapon slot; loot fills the matching slot and `stanceDropBias` of weapon drops roll for the current stance. `stanceCdS` 8, `stanceSwapS` 1.5 (no attacks). Style bonus `styleBonus` (+10% armor/fire/move/dmg) while cadence is in the stance band (70-82 / 92-100 / 88-98 / 85-95) AND power ≥ Z2, hidden while a spin-up is called. Per-shot damage x `dmgCadenceRef`/cadence (0.8-1.5) so damage per second follows power, not cadence; parity test in `test/stances.test.ts`.
 - Pacing (#89, `sim/director.ts`, pure): warm-up (run's first floor, `paceWarmupS` 120) → explore Z2 → ambush Z3-4 (`paceAmbushS` 40, `ambushEnemies` 4 +1/3 floors, needs a locked fight room, ≥ `paceFirstAmbushS` 75) → recover (60) → called spin-up (`paceSpinupS` 20 >`paceSpinRpm` 100; answered if ≥50% above → all actions recharge + coins; Rally live) → boss → cool-down. Rides past `paceSecondEffortMin` 30 get a 2nd ambush. Per segment `grade_<seg>` offsets (grade mode) or `erg_<seg>` FTP targets (ERG: camp 'Trainer mode' toggle, saved `erg`; no gears; boss shield = called surge `ergBossSurge` 1.15, counts as sprinting). Speed is flat 60-90 rpm; >90 only pays in a called spin-up (`ai.cadenceSpeed`). Rooms 9-21 x 7-15 (cells 27x19); camera smooth-follows and zooms to 0.8 in arenas. ~7.3 min/floor on z2.
 - Bosses (#90, `sim/boss.ts`, pure): 6 bosses by floor ((floor-1)%6; Bone King and Frost Wyrm reuse the skeleton/slime sprites with new palettes until #91). 3 phases at `bossPhase2Hp` .66 / `bossPhase3Hp` .33 with a 1.5 s stagger, banner, cleared shots; attacks speed up 12%/phase. No timed shield: every `bossBigEveryS` 20 (-3 s/phase) a telegraphed (`bossWindupS` 2) big attack, then EXPOSED `bossExposedS` 5 (stunned, x`bossExposedMult` 2; sprint or ERG surge x`bossSprintDamageMult` 1.5). Ward up at the big attack = parry +2 s; first Strike in the window +1.5 s; Arcanist +1 s. Turning Tide after `bossTideAfterS` 120: +`bossTideRate` 1%/s damage taken (cap +100%). Boss-surge grade / ERG surge run during windup+exposed. Intro and death set pieces.
+
+## Difficulty (balance pass)
+Zone 2 with no actions is survivable for a while, not forever. Bot targets (40-min rides, 8 seeds, see the PR table):
+a steady z2 rider dies about once every 25-30 min (first death ~18 min) and stalls on bosses (~100 s fights, ~30% reach
+Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses actions (`hook-responsive` script +
+`actionBot` sim opt) clears more bosses, goes deeper and dies less. Floor 1 is eased (no deaths there in tests).
+- Zone-2 regen only works out of combat from floor 2 on (`regenInCombatFrac` 0; half on floor 1).
+- Enemy damage grows `enemyDamageGrowth` per floor (1.28), floor 1 x `floor1Ease` (0.6), base `enemyDamageScale` 1.9.
+- Boss HP grows `bossHpGrowth` per floor (1.42) from `bossHp` 4500 (floor 1 x0.55).
+- Boss Fury: after `bossFuryAfterS` (60 s, not floor 1) boss-fight damage climbs `bossFuryRate` (3%/s, max +150%),
+  racing Turning Tide. Sprinting in Exposed windows does x2 (`bossSprintDamageMult`).
+- The autopilot steps in on an Exposed boss while Strike is ready so the rider's Strike lands.
+- Camp: Might +10%/level, Vitality +12%/level, both from 300 coins (x1.3).
+- `actionBot` (headless only): Strike on Exposed boss or 3+ enemies, Ward on late windups or low HP in a crowd,
+  Rally on called spin-ups, potion under 50% HP.

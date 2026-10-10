@@ -25,13 +25,42 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'z2-hour', script: 'z2', minutes: 60, seed: 21, simOpts: { autopilot: true },
+    name: 'z2-hour', script: 'z2', minutes: 60, seed: 19, simOpts: { autopilot: true },
     assert: (s) => {
       const f: string[] = [];
       if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);
       if ((s['Deepest floor'] as number) > 16) f.push(`floor ${s['Deepest floor']} > 16 (too easy)`);
       if ((s['Hero level'] as number) < 8) f.push(`level ${s['Hero level']} < 8`);
       if ((s.Deaths as number) > 5) f.push(`deaths ${s.Deaths} > 5`);
+      return f;
+    },
+  },
+  {
+    // interval pacing: ambush efforts and called spin-ups happen every floor, and the cadence-follow rider answers spin-ups
+    name: 'pacing-cadence-follow', script: 'cadence-follow', minutes: 30, seed: 13, simOpts: { autopilot: true },
+    assert: (s, _st, run) => {
+      const f: string[] = [];
+      const amb = run.events.filter((e) => e.type === 'ambush').length, spins = run.events.filter((e) => e.type === 'spinup');
+      if (amb < 2) f.push(`ambushes ${amb} < 2`);
+      if (!spins.some((e) => (e.data as { ok?: boolean }).ok)) f.push('no spin-up answered');
+      if ((s['Bosses slain'] as number) < 2) f.push(`bosses ${s['Bosses slain']} < 2`);
+      return f;
+    },
+  },
+  {
+    name: 'intervals', script: 'intervals', minutes: 25, seed: 14, simOpts: { autopilot: true },
+    assert: (s) => ((s['Bosses slain'] as number) >= 2 && (s.Deaths as number) <= 3 ? [] : [`bosses ${s['Bosses slain']}, deaths ${s.Deaths}`]),
+  },
+  {
+    // ERG: the trainer holds a target for every segment (warm-up, explore, ambush, recover, boss, surge, cool-down)
+    name: 'erg-target-follow', script: 'target-follow', minutes: 25, seed: 13, simOpts: { autopilot: true, erg: true },
+    assert: (_s, _st, run) => {
+      const ergs = new Set(run.mixerCommands.filter((c) => (c as { mode?: string }).mode === 'erg').map((c) => Math.round((c as { watts: number }).watts)));
+      const firstErg = run.mixerCommands.findIndex((c) => (c as { mode?: string }).mode === 'erg');
+      const sims = run.mixerCommands.slice(Math.max(0, firstErg)).filter((c) => (c as { mode?: string }).mode === 'sim').length;
+      const f: string[] = [];
+      if (ergs.size < 5) f.push(`only ${ergs.size} distinct ERG targets (${[...ergs].join(', ')})`);
+      if (sims > 0) f.push(`${sims} grade commands after ERG took over`);
       return f;
     },
   },

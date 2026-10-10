@@ -27,6 +27,8 @@ const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: '
 const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
 // rate limits (s) for spammy sound cues
+/** Tile scale in arenas (boss rooms, rooms 17+ wide or 13+ tall). */
+const ARENA_ZOOM = 0.8;
 const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -94,6 +96,7 @@ export function createRenderer(): GameRenderer {
     if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
+  let camX = NaN, camY = NaN, camT = 0, zoom = 1, camFor: unknown = null;
   let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
@@ -316,7 +319,13 @@ export function createRenderer(): GameRenderer {
       if (s.phase === 'camp' && s.camp) { actionHits = []; drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
       campHits = []; if (s.phase !== 'run') actionHits = [];
       const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
-      const TS = Math.max(24, Math.round(W / TILES_ACROSS));
+      // camera: smooth follow, and zoom out in arenas (boss rooms and big rooms) so the whole fight fits
+      const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
+      const here = w.rooms.find((r) => p.x >= r.x0 && p.x < r.x0 + r.w && p.y >= r.y0 && p.y < r.y0 + r.h);
+      const dtR = Math.max(0, Math.min(0.1, t - camT)); camT = t;
+      const zt = bossE || (here && (here.boss || here.w >= 17 || here.h >= 13)) ? ARENA_ZOOM : 1;
+      zoom += (zt - zoom) * Math.min(1, dtR * 2.5);
+      const TS = Math.max(20, Math.round((W / TILES_ACROSS) * zoom));
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w) {
@@ -326,9 +335,10 @@ export function createRenderer(): GameRenderer {
       const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
       const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the control dock (which sits above the HUD)
       // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
-      const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
-      const cx = fx0 * TS - W / 2, cy = fy0 * TS - VH / 2;
+      if (camFor !== w || !Number.isFinite(camX) || Math.hypot(fx0 - camX, fy0 - camY) > 8) { camX = fx0; camY = fy0; camFor = w; }
+      else { const kf = Math.min(1, dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
+      const cx = camX * TS - W / 2, cy = camY * TS - VH / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;

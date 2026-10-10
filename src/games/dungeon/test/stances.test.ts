@@ -45,7 +45,7 @@ describe('stance changes (D-pad)', () => {
 describe('riding style changes how power is delivered, not how much', () => {
   const mk = (name: string, rpm: number) => { SCRIPTS[name] = { ...SCRIPTS.z2, name, cadence: (t: number) => rpm + 2 * Math.sin(t / 5) }; };
   mk('test-rpm76', 76); mk('test-rpm96', 96);
-  const rooms = (script: string, stance: string) => [11, 12, 13].reduce((a, seed) =>
+  const rooms = (script: string, stance: string) => [11, 12, 13, 14].reduce((a, seed) =>
     a + (runHeadless({ game: module, script, minutes: 15, seed, simOpts: { autopilot: true, stance } }).summary['Rooms cleared'] as number), 0);
   it('grind (76 rpm) vs spin (96 rpm) at the same power land within 10% for every stance, and near that stance at z2', () => {
     for (const st of ['vanguard', 'ranger', 'skirmisher']) {
@@ -54,5 +54,5 @@ describe('riding style changes how power is delivered, not how much', () => {
       expect(Math.abs(lo - hi) / Math.max(lo, hi), `${st} ${lo} vs ${hi}`).toBeLessThanOrEqual(0.1);
       expect(Math.abs((lo + hi) / 2 - base) / base, `${st} vs z2 ${base}`).toBeLessThanOrEqual(0.15);
     }
-  }, 90_000); // 27 quarter-hour headless rides
+  }, 120_000); // 36 quarter-hour headless rides
 });

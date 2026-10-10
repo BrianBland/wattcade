@@ -65,7 +65,7 @@ describe('auto-move and hud', () => {
     expect(Math.hypot(p1.x - p0.x, p1.y - p0.y)).toBeGreaterThan(3);
     const h = s.sim.hud!();
     expect(h.gears).toBe(true);
-    expect(h.targetZone).toMatchObject({ min: 2, max: 2 });
+    expect(h.targetZone).toMatchObject({ min: 1, max: 2, label: 'Warm up' }); // floor 1 opens with the warm-up segment
     expect(h.controls!.length).toBeGreaterThan(3);
   });
 });

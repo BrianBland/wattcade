@@ -326,8 +326,10 @@ const worldAt = (x: number, y: number, z: number, heading: number, pitch = 0, ro
 
 export class Characters {
   readonly group = new THREE.Group();
-  readonly crowd = new Crowd(64);
+  readonly crowd = new Crowd(160);
   private riderBikes = new Map<string, BikeRig>();
+  /** squash & stretch y-scale for the player's bike + rider (set by Fx) */
+  squash = 1;
   private parked = new Map<number, BikeRig>(); private cyc = new Map<number, BikeRig & { wa: number; ca: number }>();
   private segways = new Map<number, SegwayRig>(); private horses = new Map<number, HorseRig>();
   private prev = new Map<string, { x: number; z: number; h: number; dist: number; lean: number; steer: number }>();
@@ -368,6 +370,7 @@ export class Characters {
       this.crank += cadence > 5 ? (cadence / 60) * Math.PI * 2 * dt : (R.speed / r0 / 2.6) * dt;
       const wob = R.flat ? Math.sin(t * 9) * 0.12 : 0;
       b.root.position.set(R.x, R.y, R.z); b.root.rotation.set(R.air ? -0.05 : 0, R.heading, m.lean + wob);
+      { const sq = this.squash, w = 1 / Math.sqrt(sq); b.root.scale.set(w, sq, w); }
       b.root.visible = true;
       this.spin(b, this.wheelA, this.crank, R.air ? 0 : m.steer + wob);
       b.root.updateMatrixWorld(true);

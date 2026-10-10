@@ -1,5 +1,7 @@
 // Grand Theft Pedal neighbourhood: pure data + analytic height field. No DOM / three.
-export interface Box { x0: number; z0: number; x1: number; z1: number; h: number; color: number }
+export interface Box { x0: number; z0: number; x1: number; z1: number; h: number; color: number; /** ground level of the base (default 0) */ y0?: number }
+/** Top of a solid box in world y. */
+export const boxTop = (b: Box) => (b.y0 ?? 0) + b.h;
 export type LineKind = 'path' | 'ramp' | 'rail' | 'tram';
 export interface Line { id: number; kind: LineKind; pts: Array<[number, number]> }
 /** A kicker/berm: height rises linearly along `dir` from 0 to h over len, then drops off (a launch lip). */
@@ -88,6 +90,16 @@ export const KICKERS: Kicker[] = [
   { x: -40, z: 40, dir: Math.PI / 2, len: 8, w: 6, h: 2.2 },   // park kicker heading +x
   { x: -30, z: 70, dir: Math.PI, len: 10, w: 8, h: 3 },         // berm facing -z... heading direction = -z
   { x: 0, z: 36, dir: 0, len: 9, w: 5, h: 2.5 },                // avenue kicker heading +z
+  // ---- districts ----
+  { x: -40, z: 124, dir: Math.PI / 2, len: 7, w: 5, h: 1.8 },    // old town lower street
+  { x: 95, z: 179, dir: -Math.PI / 2, len: 7, w: 5, h: 2 },      // old town upper street
+  { x: 64, z: 150, dir: 0, len: 6, w: 4, h: 1.6 },               // cross street hop toward the tram street
+  { x: -75, z: -150, dir: Math.PI / 2, len: 8, w: 6, h: 2.2 },   // market square
+  { x: 75, z: -150, dir: -Math.PI / 2, len: 8, w: 6, h: 2.2 },
+  { x: -125, z: 15, dir: -Math.PI / 4, len: 7, w: 5, h: 2 },     // hillside switchback jumps
+  { x: -155, z: -15, dir: (3 * Math.PI) / 4, len: 7, w: 5, h: 2.2 },
+  { x: -162, z: -80, dir: Math.PI, len: 8, w: 5, h: 2.6 },
+  { x: 150, z: -40, dir: 0, len: 8, w: 6, h: 2.4 },              // park
 ];
 
 /** Drawbridge leaf angle (radians) at sim time t: closed, rising, open, falling. */
@@ -150,9 +162,17 @@ export function heightAt(x: number, z: number, bridge = 0): number {
   return h;
 }
 
-export function buildingAt(x: number, z: number): Box | null {
+/** Buildings only (no trees/hedges). */
+export function blockAt(x: number, z: number): Box | null {
   const cell = GRID.get(Math.floor(x / CELL) * 1000 + Math.floor(z / CELL));
   if (cell) for (const b of cell) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return b;
+  return null;
+}
+/** Anything solid at (x,z): buildings, tree trunks, hedges. Compare heights with `boxTop`. */
+export function buildingAt(x: number, z: number): Box | null {
+  const b = blockAt(x, z); if (b) return b;
+  const cell = OGRID.get(Math.floor(x / CELL) * 1000 + Math.floor(z / CELL));
+  if (cell) for (const o of cell) if (x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1) return o;
   return null;
 }
 
@@ -183,8 +203,61 @@ export const LINES: Line[] = [
   { id: 23, kind: 'path', pts: [[110, 0], [190, 0]] }, { id: 24, kind: 'path', pts: [[150, -110], [150, 110]] }, // park paths
   { id: 25, kind: 'ramp', pts: ring(BOWL2.x, BOWL2.z, BOWL2.r - 2, 16) },
   { id: 26, kind: 'ramp', pts: [[HALFPIPE.x - HALFPIPE.w + 1.5, HALFPIPE.z0 + 8], [HALFPIPE.x - HALFPIPE.w + 1.5, HALFPIPE.z1 - 8]] }, // half-pipe wall line
-  { id: 27, kind: 'path', pts: [[110, 86], [190, 86]] }, { id: 28, kind: 'path', pts: [[-110, -110], [110, -110]] },
+  { id: 27, kind: 'path', pts: [[110, 86], [190, 86]] },
+  { id: 28, kind: 'path', pts: [[-110, -110], [110, -110]] },
+  { id: 29, kind: 'rail', pts: [[12, CANAL.z1 + 0.35], [120, CANAL.z1 + 0.35]] }, { id: 30, kind: 'rail', pts: [[-120, CANAL.z1 + 0.35], [-12, CANAL.z1 + 0.35]] }, // quay coping
+  { id: 31, kind: 'rail', pts: [[12, CANAL.z0 - 0.35], [120, CANAL.z0 - 0.35]] }, { id: 32, kind: 'rail', pts: [[-120, CANAL.z0 - 0.35], [-12, CANAL.z0 - 0.35]] },
+  { id: 33, kind: 'rail', pts: [[-116, 126.6], [-74, 126.6]] }, { id: 34, kind: 'rail', pts: [[12, 126.6], [54, 126.6]] }, { id: 35, kind: 'rail', pts: [[74, 126.6], [116, 126.6]] }, // stoop ledges
+  { id: 36, kind: 'rail', pts: [[-58, -171], [58, -171]] },                     // market handrail
+  { id: 37, kind: 'rail', pts: [[-176, -60], [-176, 60]] },                     // hillside terrace wall
 ];
+// ---- solid scenery: trees (trunk hitbox) and hedges, deterministic scatter (render draws exactly these) ----
+export interface Tree { x: number; z: number; s: number; seed: number }
+const nearAnyLine = (x: number, z: number, r: number, kinds: LineKind[] = ['path', 'tram', 'rail', 'ramp']) => LINES.some((l) => kinds.includes(l.kind) && nearestOnLine(l, x, z).d < r);
+export const TREES: Tree[] = [];
+for (let i = 0; i < 1600 && TREES.length < 260; i++) {
+  const x = (hash(i, 1) * 2 - 1) * (HALF - 6), z = (hash(i, 2) * 2 - 1) * (HALF - 6);
+  if (blockAt(x, z) || blockAt(x + 3, z) || blockAt(x - 3, z) || blockAt(x, z + 3) || blockAt(x, z - 3) || (z > CANAL.z0 - 3 && z < CANAL.z1 + 3) || nearAnyLine(x, z, 4)) continue;
+  if (Math.hypot(x - BOWL.x, z - BOWL.z) < BOWL.r + 3 || Math.hypot(x - BOWL2.x, z - BOWL2.z) < BOWL2.r + 3 || (Math.abs(x - HALFPIPE.x) < HALFPIPE.w + 10 && z > HALFPIPE.z0 - 4 && z < HALFPIPE.z1 + 4)) continue;
+  if (x > PLAZA.x0 - 2 && x < PLAZA.x1 + 2 && z > PLAZA.z0 - 2 && z < PLAZA.z1 + 2) continue;
+  if (KICKERS.some((k) => Math.hypot(x - k.x, z - k.z) < k.len + 6)) continue;
+  if (Math.abs(heightAt(x + 1, z) - heightAt(x - 1, z)) > 0.6) continue; // not on slopes' faces
+  TREES.push({ x, z, s: 0.8 + hash(i, 3) * 0.6, seed: i });
+}
+for (const [x, z] of [[32, 28], [48, 26], [64, 27], [80, 28], [88, 50], [88, 70], [33, 58]]) TREES.push({ x, z, s: 1, seed: -1 }); // plaza trees (render: jsr)
+export const HEDGES: Box[] = [];
+for (const [x0, x1, z] of [[-110, -45, 34], [110, 190, 4], [110, 190, -4], [-118, -70, 120], [10, 56, 120], [72, 118, 120], [-40, 40, -114]] as Array<[number, number, number]>)
+  for (let x = x0; x < x1; x += 3.2) { if (nearAnyLine(x, z, 3, ['path', 'tram', 'ramp', 'rail'])) continue; HEDGES.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 0.55, z1: z + 0.55, h: 1.3, color: 0x4f7a4c, y0: heightAt(x, z) }); }
+export const OBSTACLES: Box[] = [...TREES.map((t) => { const r = 0.45 * t.s; return { x0: t.x - r, x1: t.x + r, z0: t.z - r, z1: t.z + r, h: 6, color: 0x6b4a33, y0: heightAt(t.x, t.z) }; }), ...HEDGES];
+for (const b of GEN_BLOCKS) if (b.kind === 'villa') b.y0 = Math.min(heightAt(b.x0, b.z0), heightAt(b.x1, b.z0), heightAt(b.x0, b.z1), heightAt(b.x1, b.z1));
+const OGRID = new Map<number, Box[]>();
+for (const b of OBSTACLES) for (let cx = Math.floor(b.x0 / CELL); cx <= Math.floor(b.x1 / CELL); cx++) for (let cz = Math.floor(b.z0 / CELL); cz <= Math.floor(b.z1 / CELL); cz++) {
+  const k = cx * 1000 + cz; const a = OGRID.get(k) ?? []; a.push(b); OGRID.set(k, a);
+}
+
+/** True if the segment a→b passes within `clear` m of a tree trunk / hedge (for nav visibility). */
+export function obstacleOnSeg(ax: number, az: number, bx: number, bz: number, clear = 0.8): boolean {
+  const d = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(d / (CELL * 0.5))), seen = new Set<Box>();
+  for (let i = 0; i <= n; i++) {
+    const x = ax + ((bx - ax) * i) / n, z = az + ((bz - az) * i) / n;
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const cell = OGRID.get((Math.floor(x / CELL) + dx) * 1000 + Math.floor(z / CELL) + dz); if (!cell) continue;
+      for (const o of cell) {
+        if (seen.has(o)) continue; seen.add(o);
+        const cx = Math.max(o.x0, Math.min(o.x1, ax)), cz0 = Math.max(o.z0, Math.min(o.z1, az));
+        // closest point on segment to box centre, then box-distance
+        const ox = (o.x0 + o.x1) / 2, oz = (o.z0 + o.z1) / 2, L2 = d * d || 1;
+        const t = Math.max(0, Math.min(1, ((ox - ax) * (bx - ax) + (oz - az) * (bz - az)) / L2));
+        const px = ax + (bx - ax) * t, pz = az + (bz - az) * t;
+        const ex = Math.max(o.x0 - px, 0, px - o.x1), ez = Math.max(o.z0 - pz, 0, pz - o.z1);
+        void cx; void cz0;
+        if (Math.hypot(ex, ez) < clear) return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** Tram routes (shuttle back and forth between ends; stop at stops). Along +x on z = z. */
 export const TRAM_ROUTES = [
   { id: 0, z: TRAM_Z, x0: -185, x1: 185, stops: [-150, -60, 30, 120] },
@@ -218,6 +291,9 @@ export const COOP = { x: -60, z: 8, r: 5 };
 export const PICKUPS: Array<{ x: number; z: number; kind: 'bazooka' | 'grenade' | 'oil' | 'bottle' | 'molotov' }> = [
   { x: 0, z: -60, kind: 'bottle' }, { x: 0, z: 70, kind: 'grenade' }, { x: -70, z: 30, kind: 'oil' },
   { x: 60, z: 10, kind: 'molotov' }, { x: 85, z: 60, kind: 'bazooka' }, { x: -100, z: 86, kind: 'grenade' },
+  // districts (bigger map: a crate every ~60-80 m of riding)
+  { x: 30, z: 124, kind: 'bottle' }, { x: -60, z: 179, kind: 'bazooka' }, { x: 0, z: -140, kind: 'molotov' }, { x: 40, z: -160, kind: 'oil' },
+  { x: 150, z: 86, kind: 'grenade' }, { x: 150, z: 0, kind: 'bazooka' }, { x: -140, z: 30, kind: 'bottle' }, { x: 90, z: -60, kind: 'grenade' },
 ];
 /** On the plaza stairs (Segways hate them). */
 export function onStairs(x: number, z: number): boolean {

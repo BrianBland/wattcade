@@ -1,5 +1,6 @@
 // Grand Theft Pedal renderer: blocky three.js neighbourhood + DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
+import { Fx } from './fx';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { Snapshot } from '../sim/sim';
 import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES, nearestOnLine } from '../sim/world';
@@ -28,6 +29,7 @@ export class GtpRenderer implements GameRenderer {
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
   private chars?: Characters; private charDt = 0; private charT = -1;
+  private fx = new Fx();
   private cel?: CelWorld; private classic = new THREE.Group(); private celGround?: THREE.Mesh; private art = '';
   private hemi?: THREE.HemisphereLight; private sun?: THREE.DirectionalLight;
   private jsr?: JsrSliver; private buildingMeshes: Array<{ mesh: THREE.Mesh; b: (typeof BUILDINGS)[number] }> = [];
@@ -81,7 +83,7 @@ export class GtpRenderer implements GameRenderer {
       this.celGround = new THREE.Mesh(cg, toonVC()); this.scene.add(this.celGround);
     }
     for (const b of BUILDINGS) { const y0 = Math.min(0, heightAt(b.x0, b.z0), heightAt(b.x1, b.z1)); const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, y0 + b.h / 2, (b.z0 + b.z1) / 2); this.classic.add(m); this.buildingMeshes.push({ mesh: m, b }); }
-    this.cel = new CelWorld(); this.scene.add(this.cel.group);
+    this.cel = new CelWorld(); this.scene.add(this.cel.group); this.scene.add(this.fx.group);
     { // all nav lines in one LineSegments draw
       const pos: number[] = [], col: number[] = [], c = new THREE.Color();
       for (const l of LINES) {
@@ -250,6 +252,11 @@ export class GtpRenderer implements GameRenderer {
     const airborne = s.mode === 'bike' ? R.air : !!s.ragdoll;
     const c = stepCam(this.camSt, { x: rp.x, y: rp.y, z: rp.z, heading: R.heading, air: airborne, airS: s.mode === 'bike' ? R.airS : 0.6, groundY: Math.max(-CANAL.depth, heightAt(rp.x, rp.z, s.bridge)), onBike: s.mode === 'bike' }, s.cam, dt);
     const want = new THREE.Vector3(...c.pos);
+    if (s.t - (s.jackCamT ?? -99) < 3 && s.mode === 'bike') { // just jacked a bike: rise & pull back so the tumbling, fist-shaking victim stays in shot
+      const k = Math.sin(Math.min(1, (s.t - s.jackCamT) / 3) * Math.PI);
+      want.x -= Math.sin(R.heading) * 4 * k; want.z -= Math.cos(R.heading) * 4 * k; want.y += 3 * k;
+    }
+    this.cam.position.sub(this.fx.shake);
     this.cam.position.lerp(want, 1 - Math.exp(-8 * dt)); this.cam.lookAt(...c.look);
     if (Math.abs(this.cam.fov - c.fov) > 0.05) { this.cam.fov = c.fov; this.cam.updateProjectionMatrix(); }
     if (this.hud) this.hud.textContent = `${s.mode === 'bike' ? (R.kind ?? '') : s.mode}  ${(R.speed * 3.6).toFixed(0)} km/h${R.flat ? '  FLAT' : ''}\n` +
@@ -286,6 +293,7 @@ export class GtpRenderer implements GameRenderer {
       (this.scene.background as THREE.Color).setHex(cel ? 0xeee3cf : 0x9fd8ff);
     }
     this.cel?.update(s.t);
+    this.fx.frame(s, this.cam); this.cam.position.add(this.fx.shake); if (this.chars) this.chars.squash = this.fx.squash;
     const ov = (globalThis as { __gtpCam?: { pos: [number, number, number]; look: [number, number, number]; fov?: number } }).__gtpCam;
     if (ov && this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 500; this.scene.fog.far = 1600; }
     if (ov) { this.cam.position.set(...ov.pos); this.cam.lookAt(...ov.look); this.cam.fov = ov.fov ?? 60; this.cam.updateProjectionMatrix(); } // capture/debug only

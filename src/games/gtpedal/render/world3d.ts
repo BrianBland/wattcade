@@ -2,7 +2,7 @@
 // Everything static is merged per 100 m chunk into ONE vertex-coloured toon mesh + ONE ink-hull mesh (+ props batch),
 // so the whole map is a few dozen draw calls and three.js frustum-culls whole chunks. Render-only, deterministic.
 import * as THREE from 'three';
-import { BOATS, CANAL, CORE_BUILDINGS, FOOTBRIDGES, GEN_BLOCKS, HALF, HALFPIPE, hash, heightAt, LINES, nearestOnLine, BOWL, BOWL2, TRAM_ROUTES, buildingAt, PARKED_BIKES, PLAZA, type Block, type Box } from '../sim/world';
+import { HEDGES, KICKERS, TREES, BOATS, CANAL, CORE_BUILDINGS, FOOTBRIDGES, GEN_BLOCKS, HALF, HALFPIPE, hash, heightAt, LINES, nearestOnLine, BOWL, BOWL2, TRAM_ROUTES, buildingAt, PARKED_BIKES, PLAZA, type Block, type Box } from '../sim/world';
 import { TRAM } from '../sim/trams';
 import { bench, celShadow, INK, JSR, lamp, planter, tree } from './jsr';
 import { bakeInPlace, toonVC } from './bake';
@@ -34,6 +34,8 @@ class Batch {
     put(this.body, w, h, d, y, c);
     if (ink) put(this.ink, w + ink * 2, h + ink * 2, d + ink * 2, y - ink);
   }
+  /** Raw triangles (body only, no ink). */
+  tris(v: number[][], c: number) { this.tri(this.body, v, c); }
   /** Gable roof: ridge along local x (length L), span D, rise H, sitting at y. */
   gable(x: number, y: number, z: number, L: number, D: number, H: number, c: number, ink = 0, ry = 0) {
     const put = (arr: number[], l: number, d: number, hh: number, y0: number, colr?: number) => {
@@ -204,14 +206,28 @@ export class CelWorld {
     for (const r of TRAM_ROUTES) { const L = r.x1 - r.x0; for (let i = 0; i < Math.ceil(L / 50); i++) { const x = r.x0 + i * 50 + 25, bb = B(x, r.z); bb.box(x, heightAt(x, r.z) + 5.9, r.z, 50, 0.04, 0.04, 0x2f2a26); } }
 
     // trees / hedges / grass / lamps / benches / bike racks (deterministic scatter)
-    let trees = 0;
-    for (let i = 0; i < 1600 && trees < 260; i++) {
-      const x = (hash(i, 1) * 2 - 1) * (HALF - 6), z = (hash(i, 2) * 2 - 1) * (HALF - 6);
-      if (buildingAt(x, z) || buildingAt(x + 3, z) || buildingAt(x - 3, z) || buildingAt(x, z + 3) || buildingAt(x, z - 3) || inCanal(z, 3) || nearLine(x, z, 4)) continue;
-      if (Math.hypot(x - BOWL.x, z - BOWL.z) < BOWL.r + 3 || Math.hypot(x - BOWL2.x, z - BOWL2.z) < BOWL2.r + 3 || (Math.abs(x - HALFPIPE.x) < HALFPIPE.w + 10 && z > HALFPIPE.z0 - 4 && z < HALFPIPE.z1 + 4)) continue;
-      if (x > PLAZA.x0 - 2 && x < PLAZA.x1 + 2 && z > PLAZA.z0 - 2 && z < PLAZA.z1 + 2) continue;
-      if (Math.abs(heightAt(x + 1, z) - heightAt(x - 1, z)) > 0.6) continue; // not on kicker faces
-      const t = tree(i); t.scale.setScalar(0.8 + hash(i, 3) * 0.6); put(t, x, z, hash(i, 4) * 6); trees++;
+    for (const tr of TREES) if (tr.seed >= 0) { const t = tree(tr.seed); t.scale.setScalar(tr.s); put(t, tr.x, tr.z, hash(tr.seed, 4) * 6); } // same list the sim collides with
+    // kickers: slatted wooden wedges following the sim's height profile
+    for (const k of KICKERS) {
+      const fx = Math.sin(k.dir), fz = Math.cos(k.dir), rx = fz, rz = -fx, bb = B(k.x, k.z), N = 8;
+      const at = (along: number, side: number, up = 0.12) => { const x = k.x + fx * along + rx * side, z = k.z + fz * along + rz * side; return [x, heightAt(x, z) + up, z]; };
+      for (let i = 0; i < N; i++) {
+        const a0 = (k.len * i) / N, a1 = (k.len * (i + 1)) / N, c = i % 2 ? 0x9a7a55 : 0xa9875e;
+        const p = [at(a0, -k.w / 2), at(a1, -k.w / 2), at(a1, k.w / 2), at(a0, k.w / 2)];
+        bb.tris([p[0], p[2], p[1], p[0], p[3], p[2]], c); bb.tris([p[0], p[1], p[2], p[0], p[2], p[3]], c);
+      }
+      const lip = [at(k.len, -k.w / 2), at(k.len, k.w / 2), at(k.len, k.w / 2, 0.12 - k.h), at(k.len, -k.w / 2, 0.12 - k.h)];
+      bb.box((lip[0][0] + lip[1][0]) / 2, heightAt(k.x + fx * k.len, k.z + fz * k.len) + 0.02, (lip[0][2] + lip[1][2]) / 2, k.w + 0.2, 0.14, 0.25, 0x5c4a3a, 0.03, k.dir); // steel lip
+    }
+    // grind rails: steel bar on posts (stoops, quays, market, hillside)
+    for (const l of LINES) if (l.kind === 'rail' && l.id >= 29) for (let i = 0; i < l.pts.length - 1; i++) {
+      const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1], L = Math.hypot(bx - ax, bz - az), ry = Math.atan2(bx - ax, bz - az), n = Math.max(1, Math.round(L / 6));
+      for (let k = 0; k < n; k++) {
+        const x0 = ax + ((bx - ax) * k) / n, z0 = az + ((bz - az) * k) / n, x1 = ax + ((bx - ax) * (k + 1)) / n, z1 = az + ((bz - az) * (k + 1)) / n, bb = B(x0, z0);
+        const y0 = heightAt(x0, z0), y1 = heightAt(x1, z1);
+        bb.box(x0, y0, z0, 0.1, 0.5, 0.1, 0x4f5a5e, 0.025);
+        bb.box((x0 + x1) / 2, (y0 + y1) / 2 + 0.45, (z0 + z1) / 2, 0.09, 0.09, L / n, 0xb8bcb4, 0.025, ry);
+      }
     }
     for (let i = 0; i < 900; i++) { // grass tufts (no ink)
       const x = (hash(i, 21) * 2 - 1) * (HALF - 4), z = (hash(i, 22) * 2 - 1) * (HALF - 4);
@@ -219,10 +235,8 @@ export class CelWorld {
       const bb = B(x, z), y = heightAt(x, z), c = pick(PAL.leaf, hash(i, 23));
       for (let k = 0; k < 3; k++) bb.box(x + (k - 1) * 0.18, y, z + (k % 2) * 0.15, 0.08, 0.35 + hash(i, k) * 0.3, 0.08, c, 0, k);
     }
-    // hedges along the park and old-town paths
-    for (const [x0, x1, z] of [[-110, -45, 34], [110, 190, 4], [110, 190, -4], [-118, -70, 120], [10, 56, 120], [72, 118, 120], [-40, 40, -114]] as Array<[number, number, number]>) {
-      for (let x = x0; x < x1; x += 3.2) { if (nearLine(x, z, 4.5, ['path', 'tram', 'ramp'])) continue; const bb = B(x, z); bb.box(x, heightAt(x, z), z, 3.0, 1.1, 1.1, 0x4f7a4c, 0.05); bb.box(x, heightAt(x, z) + 1.1, z, 2.6, 0.25, 0.8, 0x6c8a5a); }
-    }
+    // hedges (solid in the sim: HEDGES)
+    for (const h of HEDGES) { const x = (h.x0 + h.x1) / 2, z = (h.z0 + h.z1) / 2, bb = B(x, z); bb.box(x, h.y0 ?? 0, z, h.x1 - h.x0, 1.1, h.z1 - h.z0, 0x4f7a4c, 0.05); bb.box(x, (h.y0 ?? 0) + 1.1, z, h.x1 - h.x0 - 0.4, 0.25, h.z1 - h.z0 - 0.3, 0x6c8a5a); }
     // street lamps + benches along paths
     for (const l of LINES) if (l.kind === 'path' && l.id >= 8) for (let i = 0; i < l.pts.length - 1; i++) {
       const [ax, az] = l.pts[i], [bx, bz] = l.pts[i + 1], L = Math.hypot(bx - ax, bz - az), n = Math.floor(L / 26), nx = (bz - az) / L, nz = -(bx - ax) / L;

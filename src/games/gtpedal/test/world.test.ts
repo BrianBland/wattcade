@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, testProfile, TimelineInput } from '../../../core';
-import { BUILDINGS, buildingAt, CORE, HALF, heightAt, LINES, PARKED_BIKES, PICKUPS, SPAWN, TRAM_ROUTES, GEN_BLOCKS } from '../sim/world';
+import { boxTop, HEDGES, KICKERS, OBSTACLES, TREES, BUILDINGS, buildingAt, CORE, HALF, heightAt, LINES, PARKED_BIKES, PICKUPS, SPAWN, TRAM_ROUTES, GEN_BLOCKS } from '../sim/world';
 import { newTrams, stepTram, TRAM } from '../sim/trams';
 import { module } from '../index';
 
@@ -103,4 +103,45 @@ describe('trams', () => {
     expect(snap(s).stats.launches).toBeGreaterThanOrEqual(1);
   });
   it('appear in the snapshot', () => { const s = mk([]); s.step(30); expect(snap(s).trams.length).toBe(TRAM_ROUTES.length); });
+});
+
+describe('round 6: traffic, tram surfing, solid scenery, lines', () => {
+  it('Y right alongside a tram is a boosted hop that lands you on the roof (tram surfing)', () => {
+    const r = TRAM_ROUTES[1], s = mk([{ t: 0.3, press: 'y' }, { t: 0.35, release: 'y' }], { cyclists: 0, npcs: [], cops: false, spawn: { x: r.x1 - 3, z: r.z + TRAM.w / 2 + 1.2, heading: -Math.PI / 2 } });
+    s.step(8); expect(snap(s).tramHopReady).toBe(true);
+    s.step(30 * 2.5);
+    expect(snap(s).onTram).toBe(true); expect(snap(s).stats.tramRides).toBe(1); expect(snap(s).stats.crashes).toBe(0);
+    expect(snap(s).rider.y).toBeGreaterThan(heightAt(snap(s).rider.x, snap(s).rider.z) + TRAM.roof - 0.1);
+  });
+  it('a plain hop away from trams is still a small hop', () => {
+    const s = mk([{ t: 1, press: 'y' }, { t: 1.05, release: 'y' }], { cyclists: 0, trams: false }); s.step(30); expect(snap(s).tramHopReady).toBe(false);
+    let top = 0; for (let i = 0; i < 30; i++) { s.step(1); top = Math.max(top, snap(s).rider.y); } expect(top).toBeLessThan(2);
+  });
+  it('trees and hedges are solid: you bonk/crash instead of riding through, on a slope too', () => {
+    expect(TREES.length).toBeGreaterThan(150); expect(HEDGES.length).toBeGreaterThan(20);
+    const t = TREES.find((q) => q.seed >= 0 && Math.abs(q.x) < 150 && Math.abs(q.z) < 150 && !buildingAt(q.x - 12, q.z) && [2, 4, 6, 8, 10, 12].every((d) => !buildingAt(q.x - d, q.z) || buildingAt(q.x - d, q.z) === buildingAt(q.x, q.z)))!;
+    const box = buildingAt(t.x, t.z)!; expect(box).toBeTruthy(); expect(boxTop(box)).toBeGreaterThan(heightAt(t.x, t.z) + 3);
+    const s = mk([], { cyclists: 0, npcs: [], cops: false, trams: false, spawn: { x: t.x - 12, z: t.z, heading: Math.PI / 2 } });
+    let inside = false; for (let i = 0; i < 30 * 5; i++) { s.step(1); const q = snap(s); if (q.rider.x > box.x0 && q.rider.x < box.x1 && q.rider.z > box.z0 && q.rider.z < box.z1) inside = true; }
+    expect(inside).toBe(false); expect(snap(s).rider.x).toBeLessThan(t.x + 3);
+    expect(OBSTACLES.every((o) => !LINES.some((l) => l.kind === 'path' && l.pts.some(([x, z]) => x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1)))).toBe(true);
+  });
+  it('traffic is recycled around you: lively near the rider wherever you go', () => {
+    const s = mk([], { cops: false, spawn: { x: 0, z: 124, heading: Math.PI / 2 } });
+    s.step(30 * 40); const q = snap(s), near = (b: boolean) => q.npcs.filter((n: any) => !!n.bike === b && Math.hypot(n.x - q.rider.x, n.z - q.rider.z) < 100).length;
+    expect(near(true)).toBeGreaterThanOrEqual(14); expect(near(false)).toBeGreaterThanOrEqual(8);
+  });
+  it('districts got more lines: kickers, quay copings, stoop ledges, market rail, hillside jumps; more crates', () => {
+    expect(KICKERS.length).toBeGreaterThanOrEqual(12); expect(LINES.filter((l) => l.kind === 'rail').length).toBeGreaterThanOrEqual(9);
+    expect(PICKUPS.length).toBeGreaterThanOrEqual(12);
+    expect(KICKERS.filter((k) => k.x < -110).some((k) => heightAt(k.x, k.z) > 1)).toBe(true); // a jump on the hillside
+    LINES.forEach((l, i) => expect(l.id).toBe(i));
+  });
+  it('a jacked victim tumbles ahead of you (in shot), then chases / shakes a fist', () => {
+    const s = mk([{ t: 0.1, press: 'a' }, { t: 0.15, release: 'a' }], { cyclists: 0, npcs: [], cops: false, cyclistsAt: [{ x: 1, z: -97, kind: 'bmx', line: 0, dir: 1, cruise: 3 }], spawn: { x: 0, z: -98, heading: 0 } });
+    s.step(6); expect(snap(s).stats.jacks).toBe(1);
+    s.step(12); const q = snap(s), v = q.npcs.find((n: any) => n.id === 2000), fx = Math.sin(q.rider.heading), fz = Math.cos(q.rider.heading);
+    expect((v.x - q.rider.x) * fx + (v.z - q.rider.z) * fz).toBeGreaterThan(-0.5); // not behind the camera
+    s.step(30 * 3); expect(snap(s).npcs.find((n: any) => n.id === 2000).angryS).toBeGreaterThan(0);
+  });
 });

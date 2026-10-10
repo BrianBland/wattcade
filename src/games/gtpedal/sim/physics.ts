@@ -1,5 +1,5 @@
 // Arcade rider physics: pure functions over plain state. Heading convention: 0 = +z, PI/2 = +x.
-import { buildingAt, heightAt, LINES, nearestOnLine, type Line } from './world';
+import { boxTop, buildingAt, heightAt, LINES, nearestOnLine, type Line } from './world';
 
 export interface Params {
   drive: number; drag: number; rollDecay: number; topSpeed: number; gravity: number; launchMul: number;
@@ -111,7 +111,7 @@ export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: nu
   const nx = b.x + fx * b.speed * dt, nz = b.z + fz * b.speed * dt;
   const hit = buildingAt(nx, nz);
   const wall = heightAt(nx, nz, bridge) - b.y > 0.8; // too tall to roll up: edge walls, raised leaf ends
-  if ((hit && b.y < hit.h) || wall) {
+  if ((hit && b.y < boxTop(hit) - 0.05) || wall) {
     out.impact = b.speed;
     if (b.speed > p.crashSpeed) { out.crashed = true; return out; }
     b.speed *= 0.3; b.heading = wrap(b.heading + Math.PI * 0.8); return out; // bonk

@@ -26,6 +26,8 @@ describe('weapons', () => {
     expect(n.airS > 0 || n.y > 1).toBe(true);
     expect(snap(s).ammo.bazooka).toBe(2); expect(snap(s).heat).toBeGreaterThan(0);
     expect(evs.some((e) => e.type === 'launch' && e.data.weapon === 'bazooka')).toBe(true);
+    let top = 0; for (let i = 0; i < 60; i++) { S(s, 0.05); top = Math.max(top, snap(s).npcs[0].y); }
+    expect(top).toBeGreaterThan(2.5); expect(top).toBeLessThan(9); // funny, but stays in shot
   });
   it('grenade: lobbed, sits on its fuse, then pops everyone in radius', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -88 }, { x: 3, z: -88 }], startWeapon: 'grenade' }, taps([0.5, 'b']));

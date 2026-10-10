@@ -1,5 +1,5 @@
 // Navigation graph for cops: nodes along the lines + around building corners, visibility edges, A*. Pure.
-import { BUILDINGS, buildingAt, heightAt, HALF, LINES } from './world';
+import { obstacleOnSeg, BUILDINGS, buildingAt, heightAt, HALF, LINES } from './world';
 
 export interface NavNode { x: number; z: number }
 /** Straight segment passable on the ground: no building, no water, no wall, inside the map. */
@@ -9,7 +9,7 @@ export function visible(ax: number, az: number, bx: number, bz: number, step = 2
     const x = ax + ((bx - ax) * i) / n, z = az + ((bz - az) * i) / n;
     if (Math.abs(x) > HALF - 1 || Math.abs(z) > HALF - 1 || buildingAt(x, z) || heightAt(x, z, 0) < -2) return false;
   }
-  return true;
+  return !obstacleOnSeg(ax, az, bx, bz);
 }
 
 let NODES: NavNode[] | null = null, ADJ: number[][] | null = null;

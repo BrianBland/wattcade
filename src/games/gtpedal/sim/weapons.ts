@@ -45,14 +45,15 @@ export function stepProjectile(p: Projectile, dt: number, g: number, ground: (x:
 }
 
 /** Radial launch: everyone within r gets thrown up and away, stronger near the centre. Returns indices hit. */
-export function radialLaunch(people: Array<{ x: number; y: number; z: number; vx: number; vy: number; vz: number; airS: number; alive: boolean }>, x: number, z: number, r: number, v: number): number[] {
+export function radialLaunch(people: Array<{ x: number; y: number; z: number; vx: number; vy: number; vz: number; airS: number; alive: boolean }>, x: number, z: number, r: number, v: number, hv = v * 0.35): number[] {
   const hit: number[] = [];
   people.forEach((p, i) => {
     if (!p.alive) return;
     const dx = p.x - x, dz = p.z - z, d = Math.hypot(dx, dz);
     if (d > r) return;
     const k = 1 - 0.5 * (d / r), a = d > 0.01 ? Math.atan2(dx, dz) : i;
-    p.vy = v * k; p.vx = Math.sin(a) * v * 0.35 * k; p.vz = Math.cos(a) * v * 0.35 * k; p.airS = 0.01;
+    const kh = 0.55 + 0.45 * (1 - d / r); // horizontal shove: strongest at the centre, still real at the rim
+    p.vy = v * k; p.vx = Math.sin(a) * hv * kh; p.vz = Math.cos(a) * hv * kh; p.airS = 0.01;
     hit.push(i);
   });
   return hit;

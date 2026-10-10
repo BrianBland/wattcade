@@ -26,7 +26,7 @@ export interface ParkedBike { id: number; x: number; z: number; heading: number;
 export interface Npc { id: number; x: number; z: number; y: number; vx: number; vy: number; vz: number; heading: number; line: number; dir: 1 | -1; airS: number; alive: boolean; flailS: number; stunS: number;
   /** riding this bike (NPC cyclist) or null on foot */ bike: BikeKind | null; speed: number; cruise: number; /** angry after being bike-jacked: chases + shakes fist */ angryS: number; /** wobbly after getting up */ groggyS?: number; /** riding the back seat of your tandem */ stoker?: boolean;
   /** rival gang member */ gang?: boolean; /** witness on the phone: s left until the call goes through, and the heat it adds */ callS?: number; callHeat?: number;
-  /** ambient reaction (render: pose + speech bubble) */ react?: 'shout' | 'flip' | 'heckle' | 'dodge'; reactS?: number; say?: string;
+  /** ambient reaction (render: pose + speech bubble) */ react?: 'shout' | 'flip' | 'heckle' | 'dodge'; reactS?: number; say?: string; /** tumble roll angle while skidding */ roll?: number;
   /** street-race rival */ racer?: boolean; racePassed?: number; raceName?: string; remountS?: number }
 export type SteerLock = { kind: 'line' | 'npc' | 'bike'; id: number } | null;
 export interface Pickup { kind: WeaponKind; x: number; z: number; readyAt: number }
@@ -84,6 +84,12 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     ragGravity: T.num('ragGravity', 36, 10, 80, 1, 'gravity for tumbling bodies (player ragdoll, NPCs, cops): heavy, not floaty'),
     npcDownS: T.num('npcDownS', 3.2, 0.5, 8, 0.1, 'NPCs/cops lie on the ground this long after a knockdown'),
     groggyS: T.num('groggyS', 1.4, 0, 5, 0.1, 'groggy wobble after getting up'),
+    kbBlast: T.num('kbBlast', 8.5, 0, 20, 0.5, 'horizontal knockback m/s of an explosion at its centre (blast away from the centre)'),
+    kbBike: T.num('kbBike', 5.5, 0, 15, 0.5, 'sideways knockback m/s when you plough into someone (plus a share of your speed forward)'),
+    kbJack: T.num('kbJack', 6, 0, 15, 0.5, 'sideways yank m/s of a jacked rider'),
+    kbHop: T.num('kbHop', 6.5, 2, 15, 0.5, 'upward m/s of a knockback (≈0.35 s arc at ragGravity 36)'),
+    kbKeep: T.num('kbKeep', 0.8, 0, 1, 0.05, 'share of horizontal speed kept on the thud (rest of it is skid / tumble)'),
+    tumbleFric: T.num('tumbleFric', 6.5, 1, 30, 0.5, 'm/s² friction of the post-thud tumble/skid'),
     slideFric: T.num('slideFric', 9, 1, 30, 0.5, 'm/s² friction of the post-thud slide'),
     trickBoost: T.num('trickBoost', 0.15, 0, 1, 0.05, 'top speed boost per landed trick'),
     boostCap: T.num('boostCap', 0.45, 0, 2, 0.05, 'max stacked boost'),
@@ -222,7 +228,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   let nextFx = 0, copId = 100, copSpawnT = 0, lostS = 0, coopCool = 0, busted = false, paint = 0, spinOutS = 0, lastEvent = '', lastEventAt = -99, autoFireT = 4;
   const event = (type: string, data?: Record<string, number | string | boolean>) => { lastEvent = type; lastEventAt = t; ctx.emit(data ? { type, data } : { type }); };
   const addHeat = (h: number) => { heat = Math.min(5, heat + h); heatCool = 0; };
-  const CP = (): CopParams => ({ segwaySpeed: tun.segwaySpeed(), horseSpeed: tun.horseSpeed(), segwayRampMul: tun.segwayRampMul(), stairsMul: tun.stairsMul(), sightR: tun.sightR(), tackleR: tun.tackleR(), gravity: tun.ragGravity(), downS: tun.npcDownS() });
+  const CP = (): CopParams => ({ segwaySpeed: tun.segwaySpeed(), horseSpeed: tun.horseSpeed(), segwayRampMul: tun.segwayRampMul(), stairsMul: tun.stairsMul(), sightR: tun.sightR(), tackleR: tun.tackleR(), gravity: tun.ragGravity(), downS: tun.npcDownS(), kbKeep: tun.kbKeep(), tumbleFric: tun.tumbleFric() });
   if (opts.heat != null) heat = opts.heat;
   for (const c of opts.copSpawn ?? []) cops.push(newCop(copId++, c.kind, c.x, c.z));
   if (opts.startWeapon) weaponI = WEAPONS.indexOf(opts.startWeapon);
@@ -337,7 +343,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     if (rc.state === 'racing' && mode === 'bike' && pd < 1.5 && rc.shoveT <= 0) {
       rc.shoveT = 4; stats.raceShoves++; const sx = (body.x - n.x) / Math.max(0.1, pd), sz = (body.z - n.z) / Math.max(0.1, pd);
       if (!buildingAt(body.x + sx * 0.8, body.z + sz * 0.8)) { body.x += sx * 0.8; body.z += sz * 0.8; } body.speed *= 0.88; event('raceShove');
-      if (body.speed > 10 && hash(n.id, Math.floor(t)) < 0.15) crash(sx * 4, sz * 4, 2);
+      if (body.speed > 10 && hash(n.id, Math.floor(t)) < 0.15) crash(sx * tun.kbBike() + Math.sin(body.heading) * 3, sz * tun.kbBike() + Math.cos(body.heading) * 3, 2);
     }
     if (rc.state === 'racing' && rc.bottleT <= 0 && pd > 6 && pd < 20 && gapM < 0 && !done) {
       rc.bottleT = 14 + hash(n.id, Math.floor(t)) * 6; const sy = n.y + 1.5, lx = body.x + Math.sin(body.heading) * body.speed * 0.8, lz = body.z + Math.cos(body.heading) * body.speed * 0.8;
@@ -362,7 +368,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   const dropStoker = (tumble: boolean) => {
     const n = npcs.find((q) => q.id === stoker); stoker = -1; if (!n) return;
     n.stoker = false; n.x = body.x - Math.sin(body.heading) * 1.2; n.z = body.z - Math.cos(body.heading) * 1.2; n.y = heightAt(n.x, n.z, curBridge);
-    if (tumble) { n.airS = 0.01; n.vy = 3; n.vx = Math.sin(body.heading) * body.speed * 0.5 + 1.5; n.vz = Math.cos(body.heading) * body.speed * 0.5; } else n.stunS = 0.5;
+    if (tumble) { n.airS = 0.01; n.vy = tun.kbHop(); n.vx = Math.sin(body.heading) * body.speed * 0.4 - Math.cos(body.heading) * tun.kbBike(); n.vz = Math.cos(body.heading) * body.speed * 0.4 + Math.sin(body.heading) * tun.kbBike(); } else n.stunS = 0.5;
     n.flailS = 3;
   };
   let jackCamT = -99, tramHop: number = -1, recycleT = 0.5, recycleN = 0;
@@ -381,7 +387,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     if (!confiscate) stats.crashes++;
     const bz = heightAt(body.x, body.z, curBridge) < -2 || (body.z > CANAL.z0 && body.z < CANAL.z1) ? bank(body.z) : body.z;
     if (!confiscate && mode === 'bike') bikes.push({ id: nextBikeId++, x: body.x, z: bz, heading: body.heading, kind, flat, mine: true });
-    rag = { x: body.x, y: body.y + 0.6, z: body.z, vx, vy: Math.min(up * 0.55, 6), vz, spin: 0, s: 0 }; // heavy, low tumble
+    rag = { x: body.x, y: body.y + 0.6, z: body.z, vx, vy: Math.max(tun.kbHop() * 0.6, Math.min(up * 0.55, 6)), vz, spin: 0, s: 0 }; // heavy, low tumble
     mode = 'ragdoll'; body.speed = 0; body.air = false; body.line = -1; boost = 0;
     if (!confiscate) ctx.emit({ type: 'crash', data: { x: Math.round(body.x), z: Math.round(body.z), y: Math.round(body.y * 10) / 10 } });
   };
@@ -430,7 +436,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     body.x = n.x; body.z = n.z; body.y = heightAt(n.x, n.z, curBridge);
     const rx = -Math.cos(n.heading), rz = Math.sin(n.heading); // yanked off to the right
     const fx = Math.sin(body.heading), fz = Math.cos(body.heading), fwd = body.speed + 2.5; // flung ahead & aside so the chase cam sees the tumble
-    n.bike = null; n.speed = 0; n.airS = 0.01; n.vy = 5.5; n.vx = fx * fwd + rx * 2.2; n.vz = fz * fwd + rz * 2.2; n.angryS = 10; jackCamT = t; n.vy = 3.2;
+    n.bike = null; n.speed = 0; n.airS = 0.01; n.vx = fx * fwd * 0.45 + rx * tun.kbJack(); n.vz = fz * fwd * 0.45 + rz * tun.kbJack(); n.angryS = 10; jackCamT = t; n.vy = tun.kbHop();
     stats.jacks++; stats.steals++; crime(1, body.x, body.z); event('bikejack', { kind });
   };
   /** Knock a cyclist off (weapons, oil, trams, collisions): their bike drops where they were. */
@@ -452,8 +458,8 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     n.y = heightAt(n.x, n.z, bridge);
     if (tgt === 'you' && pd < 1.5 && gang.knockCool <= 0 && !(onTram)) { // ram you off
       gang.knockCool = 5; stats.gangKnocks++; event('gangKnock');
-      crash(Math.sin(n.heading) * 5, Math.cos(n.heading) * 5, 3);
-    } else if (tgt === 'cop' && cop && Math.hypot(cop.x - n.x, cop.z - n.z) < 1.6) { cop.airS = 0.01; cop.vy = 3.5; cop.vx = Math.sin(n.heading) * 5; cop.vz = Math.cos(n.heading) * 5; event('gangVsCop'); }
+      crash(Math.sin(n.heading) * 3 + Math.cos(n.heading) * tun.kbBike(), Math.cos(n.heading) * 3 - Math.sin(n.heading) * tun.kbBike(), 3);
+    } else if (tgt === 'cop' && cop && Math.hypot(cop.x - n.x, cop.z - n.z) < 1.6) { cop.airS = 0.01; cop.vy = tun.kbHop(); cop.vx = Math.sin(n.heading) * 3 + Math.cos(n.heading) * tun.kbBike(); cop.vz = Math.cos(n.heading) * 3 - Math.sin(n.heading) * tun.kbBike(); event('gangVsCop'); }
     if (tgt) { // lob a bottle now and then
       const td = tgt === 'you' ? pd : Math.hypot(tx - n.x, tz - n.z);
       if (n.id === gang.ids[Math.floor(t / 3) % gang.ids.length] && gang.throwT <= 0 && td > 5 && td < 24) {
@@ -530,9 +536,9 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       if (buildingAt(rag.x, rag.z)) { rag.vx *= -0.4; rag.vz *= -0.4; rag.x += rag.vx * dt * 2; rag.z += rag.vz * dt * 2; }
       const g = heightAt(rag.x, rag.z, bridge);
       if (rag.y <= g) { // thud, short slide, lie there
-        if (!rag.down) { rag.down = 0.0001; rag.vx *= 0.55; rag.vz *= 0.55; event('thud'); }
+        if (!rag.down) { rag.down = 0.0001; rag.vx *= tun.kbKeep(); rag.vz *= tun.kbKeep(); event('thud'); }
         rag.y = g; rag.vy = 0; rag.down += dt;
-        const v = Math.hypot(rag.vx, rag.vz), nv = Math.max(0, v - tun.slideFric() * dt); if (v > 0) { rag.vx *= nv / v; rag.vz *= nv / v; }
+        const v = Math.hypot(rag.vx, rag.vz), nv = Math.max(0, v - tun.tumbleFric() * dt); if (v > 0) { rag.vx *= nv / v; rag.vz *= nv / v; rag.spin += nv * dt / 0.35; }
       }
       if ((rag.down ?? 0) > tun.ragdollS() || rag.s > 8) {
         if (g < -2) rag.z = bank(rag.z);
@@ -744,7 +750,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     }
     const boom = (x: number, y: number, z: number, r: number, v: number, cause: string) => {
       blasts.push({ id: nextFx++, x, y, z, r, at: t, kind: 'boom' });
-      const hit = radialLaunch(ppl, x, z, r, v);
+      const hit = radialLaunch(ppl, x, z, r, v, tun.kbBlast());
       let civ = 0, cop = 0;
       for (const i of hit) if (i >= npcs.length) { cop++; (ppl[i] as Cop).state = 'chase'; } else civ++;
       stats.launches += hit.length; stats.copsLaunched += cop;
@@ -825,19 +831,21 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         n.airS += dt; n.vy -= tun.ragGravity() * dt; n.y += n.vy * dt; n.x += n.vx * dt; n.z += n.vz * dt;
         if (buildingAt(n.x, n.z)) { n.vx *= -0.5; n.vz *= -0.5; n.x += n.vx * dt * 2; n.z += n.vz * dt * 2; }
         const g = heightAt(n.x, n.z, bridge);
-        if (n.y <= g) { n.y = g; n.vy = 0; n.vx *= 0.55; n.vz *= 0.55; n.airS = 0; n.stunS = tun.npcDownS(); n.groggyS = tun.groggyS(); if (g < -2) { n.z = bank(n.z); n.y = heightAt(n.x, n.z, bridge); n.vx = n.vz = 0; } }
+        if (n.y <= g) { n.y = g; n.vy = 0; n.vx *= tun.kbKeep(); n.vz *= tun.kbKeep(); n.roll = 0; n.airS = 0; n.stunS = tun.npcDownS(); n.groggyS = tun.groggyS(); if (g < -2) { n.z = bank(n.z); n.y = heightAt(n.x, n.z, bridge); n.vx = n.vz = 0; } }
         continue;
       }
       const tn = tramAt(trams, n.x, n.z, 0.3);
       if (tn && tn.speed > 1) { n.vy = 6; n.vx = tn.dir * (tn.speed + 5); n.vz = (n.z >= tn.z ? 1 : -1) * 3; n.airS = 0.01; stats.launches++; event('tramLaunch'); continue; }
       if (inPatch(patches, n.x, n.z, 'fire') && n.flailS <= 0) { n.flailS = tun.flailS(); event('onFire'); dropBike(n); }
       if (n.bike && mode === 'bike' && !body.air && body.speed > 5 && Math.hypot(n.x - body.x, n.z - body.z) < 1.1) { // you plough into a cyclist
-        n.vy = 3; n.vx = Math.sin(body.heading) * body.speed * 0.6; n.vz = Math.cos(body.heading) * body.speed * 0.6; n.airS = 0.01; body.speed *= 0.93; event('cyclistKnocked'); continue;
+        { const fx = Math.sin(body.heading), fz = Math.cos(body.heading), sd = (n.x - body.x) * fz - (n.z - body.z) * fx >= 0 ? 1 : -1, fw = Math.min(5, body.speed * 0.35); // sideways off your line + some of your speed
+          n.vy = tun.kbHop(); n.vx = fx * fw + fz * sd * tun.kbBike(); n.vz = fz * fw - fx * sd * tun.kbBike(); }
+        n.airS = 0.01; body.speed *= 0.93; event('cyclistKnocked'); continue;
       }
       if (n.stunS <= 0 && inPatch(patches, n.x, n.z, 'oil')) { n.vy = 2.5; n.airS = 0.01; n.vx = Math.sin(n.heading) * 2; n.vz = Math.cos(n.heading) * 2; continue; } // slip!
       if (n.stunS > 0) { // lying there after the thud, sliding to a stop
-        n.stunS -= dt; const v = Math.hypot(n.vx, n.vz), nv = Math.max(0, v - tun.slideFric() * dt);
-        if (v > 0) { n.vx *= nv / v; n.vz *= nv / v; const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt; if (!buildingAt(nx, nz)) { n.x = nx; n.z = nz; n.y = heightAt(n.x, n.z, bridge); } else n.vx = n.vz = 0; }
+        n.stunS -= dt; const v = Math.hypot(n.vx, n.vz), nv = Math.max(0, v - tun.tumbleFric() * dt);
+        if (v > 0) { n.vx *= nv / v; n.vz *= nv / v; n.roll = (n.roll ?? 0) + nv * dt / 0.35; const nx = n.x + n.vx * dt, nz = n.z + n.vz * dt; if (!buildingAt(nx, nz)) { n.x = nx; n.z = nz; n.y = heightAt(n.x, n.z, bridge); } else n.vx = n.vz = 0; }
         continue;
       }
       if ((n.groggyS ?? 0) > 0) n.groggyS! -= dt;

@@ -602,6 +602,7 @@ export class Characters {
       const lk = npcLook(n);
       const hipY = L.thigh + L.shin + 0.05;
       if (n.airS > 0) this.crowd.add(worldAt(n.x, n.y + 0.6, n.z, n.heading), lk, { kind: 'ragdoll', t: t + n.id, phase: 0, spin: n.airS * 7 });
+      else if (n.stunS > 0 && Math.hypot(n.vx, n.vz) > 0.6) this.crowd.add(worldAt(n.x, n.y + 0.45, n.z, Math.atan2(n.vx, n.vz)), lk, { kind: 'ragdoll', t: 0.3 + n.id, phase: 0, spin: n.roll ?? 0, expr: EXPR.dazed }); // tumbling / skidding along the ground
       else if (n.stunS > 0) this.crowd.add(worldAt(n.x, n.y + 0.2, n.z, n.heading, -Math.PI / 2), lk, { kind: 'ragdoll', t: 0.3 + n.id, phase: 0, spin: 0, expr: EXPR.dazed });
       else if (n.flailS > 0) this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'flail', t: t + n.id * 0.3, phase: 0 });
       else this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'walk', t, phase: m.dist * 2.6 + n.id, expr: (n.callS ?? 0) > 0 ? EXPR.angry : n.react === 'shout' || n.react === 'dodge' ? EXPR.scared : n.react ? EXPR.angry : (n.groggyS ?? 0) > 0 ? EXPR.dazed : EXPR.neutral,
@@ -629,6 +630,7 @@ export class Characters {
         for (const w of g.wheels) w.rotation.x += (v / 0.22) * dt;
         const hipY = 0.26 + L.thigh + L.shin;
         if (flying) this.crowd.add(worldAt(c.x, c.y + 0.8, c.z, c.heading), lk, { kind: 'ragdoll', t, phase: 0, spin: spinR * 1.3 });
+        else if (c.downed && c.stunS > 0 && Math.hypot(c.vx, c.vz) > 0.6) this.crowd.add(worldAt(c.x, c.y + 0.45, c.z, Math.atan2(c.vx, c.vz)), lk, { kind: 'ragdoll', t: 0.3 + c.id, phase: 0, spin: c.roll ?? 0, expr: EXPR.dazed });
         else if (c.downed && c.stunS > 0) this.crowd.add(worldAt(c.x + 0.8, c.y + 0.2, c.z, c.heading, -Math.PI / 2), lk, { kind: 'ragdoll', t: 0.3 + c.id, phase: 0, spin: 0, expr: EXPR.dazed }); // flat on the ground
         else this.crowd.add(worldAt(c.x, c.y + hipY, c.z, c.heading, Math.min(0.25, v * 0.02)), lk, { kind: c.flailS > 0 ? 'flail' : 'stand', t, phase: 0, expr: c.state === 'patrol' ? EXPR.neutral : EXPR.angry });
       } else {

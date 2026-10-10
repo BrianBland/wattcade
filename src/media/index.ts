@@ -24,3 +24,4 @@ export { mediaServerConfig, saveMediaServerConfig, subscribeMediaServer, type Me
 export { checkMediaServer, loadAudioRange } from './online/client';
 
 export { RollingQueue, estimatedAnalysis, type RangeSource } from './online/rolling';
+export { PreviewPrefetch, isBusyError, type PartialPreview, type PreviewLoader, type PreviewState } from './online/prefetch';

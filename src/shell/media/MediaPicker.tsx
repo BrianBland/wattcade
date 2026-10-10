@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, MediaTimeline, Profile } from '../../contracts';
-import { buildTimeline, searchOnline, mediaServerConfig, subscribeMediaServer, estimatedAnalysis, type OnlineProvider, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta } from '../../media';
-import { mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
+import { buildTimeline, searchOnline, mediaServerConfig, subscribeMediaServer, estimatedAnalysis, type OnlineProvider, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta, PreviewPrefetch, type PartialPreview } from '../../media';
+import { analyzeStreamWindow, mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
 import { onMenuPress } from '../menuInput';
 import { KeyHints, Spinner } from '../components/ui';
 import { Btn } from '../components/Bits';
@@ -82,6 +82,16 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const streaming = queued.some((m) => !!m.sourceUrl);
   const ready = queue.length > 0 && queued.length === queue.length && queued.every((m) => m.sourceUrl ? resolver.enabled && m.durationS > 0 : m.status === 'ready');
   const [starting, setStarting] = useState(false);
+
+  // Streamed songs: analyze the first chunk on enqueue for a partial preview (memory only; the ride fetches its own audio).
+  const [, bumpPrefetch] = useState(0);
+  const makePrefetch = () => new PreviewPrefetch({ load: analyzeStreamWindow, onChange: () => bumpPrefetch((x) => x + 1) });
+  const prefetch = useRef<PreviewPrefetch | null>(null);
+  if (!prefetch.current) prefetch.current = makePrefetch();
+  useEffect(() => () => prefetch.current?.cancel(), []);
+  useEffect(() => { prefetch.current?.setQueue(resolver.enabled ? queued : []); }, [queue.join('|'), resolver.enabled, queued.length]);
+  useEffect(() => { prefetch.current?.pause(searching); }, [searching]);
+  const partialOf = (m: SongMeta | undefined) => (m?.sourceUrl ? prefetch.current?.get(m.id) : undefined);
 
   useEffect(() => { localStorage.setItem(queueStorageKey(profile.id), serializeQueue(queue.map((songId) => ({ songId, origin: { kind: 'manual' } })), mode)); }, [queue, mode]);
   // queue → program timeline (for the strip, the game's preview and the stats)
@@ -185,13 +195,14 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     if (!ready) { toast(queued.length ? 'Waiting for analysis to finish…' : 'Add a song to the queue first'); sfx('deny'); return; }
     if (starting) return;
     stopPreview(); unlockMedia();
+    prefetch.current?.cancel();
     setStarting(true);
     try {
     if (streaming) { onStart(await rollingMediaRun(queue, mode)); return; }
     const items = (await Promise.all(queue.map((id) => lib.mixItem(id)))).filter((i): i is NonNullable<typeof i> => !!i);
     const plan = planMix(items, mode);
     onStart({ ids: queue, mode, items, plan, timeline: buildTimeline(plan, items) });
-    } catch (e) { toast(e instanceof Error ? e.message : String(e)); }
+    } catch (e) { toast(e instanceof Error ? e.message : String(e)); prefetch.current = makePrefetch(); prefetch.current.setQueue(queued); }
     finally { setStarting(false); }
   };
 
@@ -265,7 +276,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             {tab === 3 && onlineError && <div role="alert">{onlineError}</div>}
             {!list.length && !(tab === 3 && (searching || onlineError)) && <div class="dim mp-empty">{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : tab === 3 ? 'Search YouTube or SoundCloud, then tap Add to queue a song.' : 'No matches.'}</div>}
             {list.map((m, i) => m.id === hidden ? null : (
-              <SongRow m={m} focused={zoneIs('list') && focus.list === i} progress={lib.progress.get(m.id)} previewing={previewing === m.id}
+              <SongRow m={m} focused={zoneIs('list') && focus.list === i} progress={lib.progress.get(m.id)} partial={partialOf(m)} previewing={previewing === m.id}
                 inQueue={queue.filter((x) => x === m.id).length}
                 onClick={() => { unlockMedia(); setFocus({ ...focus, zone: 'list', list: i }); }} onAdd={() => { unlockMedia(); add(m); }}
                 onPreviewEnter={(t) => previewEnter(m, t)} onPreviewLeave={() => previewLeave(m)}
@@ -274,7 +285,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
           </div>
         </div>
         <div class="panel mp-preview">
-          {focusedSong ? <SongPreview m={focusedSong} analysis={analysis} /> : <div class="dim">Highlight a song to preview it.</div>}
+          {focusedSong ? <SongPreview m={focusedSong} analysis={analysis} partial={partialOf(focusedSong)} /> : <div class="dim">Highlight a song to preview it.</div>}
         </div>
         <div class="panel mp-queue">
           <div class={`mp-mode${zoneIs('queue') && focus.queue === 0 ? ' focused' : ''}`}>
@@ -286,8 +297,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             {queued.map((m, i) => (
               <div class={`mp-qrow${zoneIs('queue') && focus.queue === i + 1 ? ' focused' : ''}`} onClick={() => setFocus({ ...focus, zone: 'queue', queue: i + 1 })}>
                 <span class="mp-swatch" style={{ background: m.palette?.[0] ?? '#444' }} />
-                <span class="mp-title"><b>{m.title}</b><small class="dim">{m.artist}{m.status === 'ready' ? ` · ${Math.round(m.bpm ?? 0)} bpm` : ''}</small></span>
-                {m.status !== 'ready' && <StatusChip m={m} progress={lib.progress.get(m.id)} />}
+                <span class="mp-title"><b>{m.title}</b><small class="dim">{m.status === 'ready' ? `${m.artist} · ${Math.round(m.bpm ?? 0)} bpm` : <StatusChip m={m} progress={lib.progress.get(m.id)} partial={partialOf(m)} />}</small></span>
                 <span class="dim mp-num">{m.durationS ? fmtTime(m.durationS) : ''}</span>
                 <button type="button" class="step" title="Move up" onClick={(e) => { e.stopPropagation(); setQueue((q) => moveItem(q, i, -1)); }}>▲</button>
                 <button type="button" class="btn small mp-qremove" aria-label={`Remove ${m.title} from the queue`} title="Remove from queue (the song stays in your library)" onClick={(e) => { e.stopPropagation(); removeAt(i); }}>✕ Remove</button>
@@ -313,8 +323,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   );
 }
 
-function StatusChip({ m, progress }: { m: SongMeta; progress?: { p: number; stage: string } }) {
-  if (m.sourceUrl) return <span class="mp-chip">JIT analysis</span>;
+function StatusChip({ m, progress, partial }: { m: SongMeta; progress?: { p: number; stage: string }; partial?: PartialPreview }) {
+  if (m.sourceUrl) return <PartialChip p={partial} />;
   if (m.status === 'ready') return <span class="mp-chip">{Math.round(m.bpm ?? 0)} bpm · {m.key}</span>;
   if (m.status === 'error') return <span class="mp-chip bad" title={m.error}>⚠ tap Add to retry</span>;
   if (m.status === 'remote' && m.sourceUrl) return <span class="mp-chip">↓ load</span>;
@@ -324,8 +334,8 @@ function StatusChip({ m, progress }: { m: SongMeta; progress?: { p: number; stag
   return <span class="mp-chip"><Spinner /> {progress ? `${Math.round(progress.p * 100)}%` : m.status === 'pending' ? 'queued' : '…'}</span>;
 }
 
-function SongRow({ m, focused, progress, previewing, inQueue, onClick, onAdd, onPreviewEnter, onPreviewLeave, onDelete }: {
-  m: SongMeta; focused: boolean; progress?: { p: number; stage: string }; previewing: boolean; inQueue: number;
+function SongRow({ m, focused, progress, partial, previewing, inQueue, onClick, onAdd, onPreviewEnter, onPreviewLeave, onDelete }: {
+  m: SongMeta; focused: boolean; progress?: { p: number; stage: string }; partial?: PartialPreview; previewing: boolean; inQueue: number;
   onClick: () => void; onAdd: () => void; onPreviewEnter: (t: PreviewTrigger) => void; onPreviewLeave: () => void; onDelete?: () => void;
 }) {
   const fromButton = (e: Event) => !!(e.target as Element | null)?.closest?.('button, a');
@@ -346,7 +356,7 @@ function SongRow({ m, focused, progress, previewing, inQueue, onClick, onAdd, on
         {previewing && <span class="mp-eq" aria-hidden="true"><i /><i /><i /></span>}
       </span>
       <span class="mp-title"><b>{m.title}</b><small class="dim">{previewing ? <span class="mp-playing">♪ Previewing</span> : <>{m.artist}{m.album ? ` · ${m.album}` : ''}</>}</small>{m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener" onClick={(e) => e.stopPropagation()}>{m.credit.text}</a>}</span>
-      <StatusChip m={m} progress={progress} />
+      <StatusChip m={m} progress={progress} partial={partial} />
       <span class="dim mp-num">{m.durationS ? fmtTime(m.durationS) : ''}</span>
       {onDelete && <button type="button" class="mp-delete" aria-label={`Delete ${m.title} from your library`} title="Delete from library (you can undo)" onClick={(e) => { e.stopPropagation(); onDelete(); }}>🗑</button>}
       <button type="button" class={`btn small mp-add${inQueue ? ' queued' : ' primary'}`} aria-label={`Add ${m.title} to the queue`} onClick={(e) => { e.stopPropagation(); onAdd(); }}>
@@ -356,7 +366,7 @@ function SongRow({ m, focused, progress, previewing, inQueue, onClick, onAdd, on
   );
 }
 
-function SongPreview({ m, analysis }: { m: SongMeta; analysis: SongAnalysis | null }) {
+function SongPreview({ m, analysis, partial }: { m: SongMeta; analysis: SongAnalysis | null; partial?: PartialPreview }) {
   const [art, setArt] = useState<string | null>(null);
   useEffect(() => { let alive = true; setArt(null); if (m.hasArt) void mediaLibrary().artUrl(m.id).then((u) => { if (alive) setArt(u); }); return () => { alive = false; }; }, [m.id]);
   const pal = m.palette ?? [];
@@ -366,11 +376,12 @@ function SongPreview({ m, analysis }: { m: SongMeta; analysis: SongAnalysis | nu
       <div class="mp-meta">
         <h3>{m.title}</h3>
         <div>{m.artist}{m.album ? <span class="dim"> · {m.album}</span> : null}</div>
+        {partial && partial.coveredS > 0 && <div class="dim">{fmtTime(m.durationS)} · ~{Math.round(partial.analysis.bpm)} bpm · key ~{partial.analysis.key.camelot || partial.analysis.key.name} <span class="mp-approx">(from first {fmtTime(partial.coveredS)})</span></div>}
         {m.status === 'ready' && <div class="dim">{fmtTime(m.durationS)} · {Math.round(m.bpm ?? 0)} bpm · key {m.key} · {m.drops ?? 0} drop{m.drops === 1 ? '' : 's'}</div>}
         {pal.length > 0 && <div class="mp-pal">{pal.map((c) => <i style={{ background: c }} />)}</div>}
         {m.credit && <a class="mp-credit" href={m.credit.url} target="_blank" rel="noopener">{m.credit.text}</a>}
       </div>
-      {analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or Add) to queue it. Audio will be analyzed as it buffers.' : 'The preview appears once the song is analyzed.'}</div>}
+      {partial ? <PartialStrip p={partial} /> : analysis ? <SpecStrip a={analysis} /> : m.status === 'ready' ? <Spinner /> : <div class="dim">{m.status === 'remote' ? 'Press A (or Add) to queue it. Audio will be analyzed as it buffers.' : 'The preview appears once the song is analyzed.'}</div>}
     </div>
   );
 }
@@ -418,6 +429,69 @@ function SpecStrip({ a }: { a: SongAnalysis }) {
     <div class="mp-spec">
       <canvas ref={ref} />
       <div class="mp-legend">{(['intro', 'verse', 'build', 'drop', 'break', 'outro'] as const).filter((k) => a.sections.some((s) => s.kind === k)).map((k) => <span><i style={{ background: SECTION_COLORS[k] }} />{k}</span>)}</div>
+    </div>
+  );
+}
+
+/** Streamed-song analysis state for chips: in progress, partial coverage, busy, or failed. */
+function PartialChip({ p }: { p?: PartialPreview }) {
+  if (!p) return <span class="mp-chip">JIT analysis</span>;
+  const cov = `${fmtTime(p.coveredS)} / ${fmtTime(p.durationS)}`;
+  switch (p.state) {
+    case 'waiting': return <span class="mp-chip">{p.coveredS ? `partial · ${cov}` : 'analysis queued'}</span>;
+    case 'loading': return <span class="mp-chip partial"><Spinner /> {p.coveredS ? `partial · ${cov}` : 'analyzing first 0:30'}</span>;
+    case 'partial': return <span class="mp-chip partial" title="Approximate: only part of the song is analyzed. The rest is analyzed while riding.">partial · {cov}</span>;
+    case 'complete': return <span class="mp-chip">analyzed · {fmtTime(p.durationS)}</span>;
+    case 'busy': return <span class="mp-chip" title="The media server is busy; retrying shortly.">server busy · retrying</span>;
+    case 'error': return <span class="mp-chip bad" title={p.error}>⚠ preview unavailable</span>;
+  }
+}
+
+/** Partial spectrogram for a streamed song: analyzed windows drawn normally, the rest hatched grey. */
+function PartialStrip({ p }: { p: PartialPreview }) {
+  const ref = useCanvas((g, w, h) => {
+    const sh = Math.round(h * 0.78), strip = h - sh, D = p.durationS, X = (t: number) => (t / D) * w;
+    g.clearRect(0, 0, w, h);
+    for (const win of p.windows) {
+      const bytes = atob(win.spec.data), nb = win.spec.bands, cols = Math.floor(bytes.length / Math.max(1, nb));
+      const x0 = Math.floor(X(win.startS)), x1 = Math.ceil(X(win.endS)), ww = Math.max(1, x1 - x0);
+      if (!cols) continue;
+      const img = g.createImageData(ww, sh);
+      for (let x = 0; x < ww; x++) {
+        const t = win.startS + ((x + 0.5) / ww) * (win.endS - win.startS);
+        const c = Math.max(0, Math.min(cols - 1, Math.floor((t - win.bufferStartS) * win.spec.hz)));
+        for (let y = 0; y < sh; y++) {
+          const b = Math.min(nb - 1, Math.floor(((sh - 1 - y) / sh) * nb)), v = bytes.charCodeAt(c * nb + b) / 255, i = (y * ww + x) * 4;
+          img.data[i] = Math.min(255, 40 + 255 * v * 1.4); img.data[i + 1] = Math.min(255, 255 * v * v * 1.1); img.data[i + 2] = Math.min(255, 90 + 200 * v); img.data[i + 3] = 255;
+        }
+      }
+      g.putImageData(img, x0, 0);
+    }
+    // unanalyzed remainder: grey with diagonal hatching
+    const cx = X(p.coveredS);
+    g.fillStyle = '#1b1830'; g.fillRect(cx, 0, w - cx, h);
+    g.save(); g.beginPath(); g.rect(cx, 0, w - cx, h); g.clip();
+    g.strokeStyle = '#ffffff1f'; g.lineWidth = Math.max(1, w / 400);
+    for (let x = cx - h; x < w + h; x += Math.max(8, w / 60)) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke(); }
+    g.restore();
+    for (const s of p.analysis.sections) {
+      if (s.t0 >= p.coveredS) continue;
+      g.fillStyle = SECTION_COLORS[s.kind] ?? '#888';
+      const x0 = X(s.t0), x1 = X(Math.min(s.t1, p.coveredS));
+      g.fillRect(x0, sh + 2, Math.max(1, x1 - x0 - 2), strip - 2);
+    }
+    if (p.coveredS > 0 && p.coveredS < D) { g.fillStyle = '#ffffffaa'; g.fillRect(cx - 1, 0, 2, h); }
+  }, [p, p.windows.length, p.state]);
+  const kinds = (['intro', 'verse', 'build', 'drop', 'break', 'outro'] as const).filter((k) => p.analysis.sections.some((s) => s.kind === k && s.t0 < p.coveredS));
+  return (
+    <div class="mp-spec">
+      <canvas ref={ref} aria-label={`Partial analysis: ${fmtTime(p.coveredS)} of ${fmtTime(p.durationS)} analyzed`} />
+      <div class="mp-legend">
+        <span class="mp-partial-label">{p.state === 'complete' ? `analyzed · ${fmtTime(p.durationS)}` : `partial · ${fmtTime(p.coveredS)} / ${fmtTime(p.durationS)}`}{p.state === 'loading' && <> · <Spinner /> analyzing</>}{p.state === 'busy' && ' · server busy, retrying'}</span>
+        {kinds.map((k) => <span><i style={{ background: SECTION_COLORS[k] }} />{k}</span>)}
+        {p.coveredS < p.durationS && <span><i class="mp-hatch" />not analyzed yet</span>}
+      </div>
+      {p.state === 'error' && <div class="dim">Preview unavailable: {p.error}. The song is still analyzed while riding.</div>}
     </div>
   );
 }

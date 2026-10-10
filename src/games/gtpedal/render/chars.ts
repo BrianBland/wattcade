@@ -1,3 +1,4 @@
+import { ROUTES } from '../sim/race';
 // Procedural people, bikes, Segways and horses: cel-shaded with warm-brown ink. Render-only.
 // Crowd (pedestrians + cops + rider) = one InstancedMesh per body part (+ one ink hull each), posed from a single
 // template rig, so the whole crowd is ~2 × parts draw calls. Bikes/Segways/horses are small merged groups.
@@ -456,6 +457,7 @@ export class Crowd {
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(0, 0, 0, 'YXZ'), P = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
 const worldAt = (x: number, y: number, z: number, heading: number, pitch = 0, roll = 0) => M.compose(P.set(x, y, z), Q.setFromEuler(E.set(pitch, heading, roll, 'YXZ')), ONE).clone();
 
+const ORGANIZER_LOOK: PersonLook = { ...lookFor(91), top: 'hoodie', jacket: 0x1f1d1b, shirt: 0x1f1d1b, bottom: 'pants', pants: 0x2a2724, hat: 'beanie', hatCol: 0x141312, carry: 'none', face: 3 } as PersonLook;
 const DEALER_LOOK: PersonLook = { ...lookFor(77), top: 'jacket', jacket: 0x2b2622, shirt: 0x5a3a2a, bottom: 'pants', pants: 0x1f1c1a, hat: 'beanie', hatCol: 0x3a2a20, carry: 'bag', carryCol: 0x4a3a2a, face: 3 };
 /** look for a crowd NPC: rival gang wear matching mustard jackets + dark beanies; witnesses hold a phone */
 function npcLook(n: { id: number; gang?: boolean; callS?: number }): PersonLook {
@@ -563,13 +565,19 @@ export class Characters {
     // --- pedestrians ---
     const seenC = new Set<number>();
     // the dealer by his van
+    if (!s.race || s.race.state === 'done') for (const r of ROUTES) { // hooded race organizers by each chalk start line
+      const ox = r.start.x + Math.cos(r.start.heading) * 4.4, oz = r.start.z - Math.sin(r.start.heading) * 4.4;
+      if (Math.hypot(ox - R.x, oz - R.z) < 110) this.crowd.add(worldAt(ox, heightAt(ox, oz, s.bridge) + L.thigh + L.shin + 0.05, oz, Math.atan2(R.x - ox, R.z - oz)), ORGANIZER_LOOK, { kind: 'walk', t, phase: Math.PI / 2, expr: EXPR.neutral, arm: Math.hypot(ox - R.x, oz - R.z) < 8 ? { kind: 'flip', u: 0 } : undefined });
+    }
     if (Math.hypot(DEALER.x - R.x, DEALER.z - R.z) < 130) this.crowd.add(worldAt(DEALER.x, heightAt(DEALER.x, DEALER.z, s.bridge) + L.thigh + L.shin + 0.05, DEALER.z, Math.atan2(R.x - DEALER.x, R.z - DEALER.z)), DEALER_LOOK, { kind: 'walk', t, phase: Math.PI / 2, expr: s.dealer.menu ? EXPR.neutral : EXPR.angry, arm: s.dealer.near ? { kind: 'carry', u: 0 } : undefined });
+    // full bike rigs only for the 4 nearest riders inside 28 m (keeps a race grid / busy junction under the draw-call budget)
+    const fullRig = new Set(s.npcs.filter((n) => n.bike && n.airS <= 0 && !n.stoker).map((n) => [n.id, Math.hypot(n.x - R.x, n.z - R.z)] as const).filter(([, d]) => d <= 28).sort((a, b) => a[1] - b[1]).slice(0, 4).map(([id]) => id));
     for (const n of s.npcs) {
       if (n.stoker) continue; // drawn on your tandem's back seat
       const { m, v } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
       if (n.bike && n.airS <= 0) { // NPC cyclist: own bike rig, pedalling, seated rider (hidden when far away)
         const dist = Math.hypot(n.x - R.x, n.z - R.z);
-        if (dist > 28) { // LOD: one instanced silhouette per bike kind (2 calls for all of them) + instanced rider
+        if (!fullRig.has(n.id)) { // LOD: one instanced silhouette per bike kind (2 calls for all of them) + instanced rider
           if (dist > 120) continue;
           const tp = this.farTpl(n.bike); tp.root.position.set(n.x, n.y, n.z); tp.root.rotation.set(0, n.heading, m.lean); tp.root.updateMatrixWorld(true);
           const fi = this.farInst(n.bike); if (fi.n < fi.body.count) { fi.body.setMatrixAt(fi.n, tp.root.matrixWorld); fi.ink.setMatrixAt(fi.n, tp.root.matrixWorld); fi.n++; }

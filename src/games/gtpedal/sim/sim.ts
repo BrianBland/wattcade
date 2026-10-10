@@ -6,6 +6,7 @@ import { behindTram, newTrams, stepTram, TRAM, tramAt, tramRoofY, type Tram } fr
 import { inPatch, lob, MAX_AMMO, pickLock, PICKUP_AMMO, radialLaunch, START_AMMO, stepProjectile, WEAPONS, type Blast, type Patch, type Projectile, type WeaponKind } from './weapons';
 import { canSee, newCop, stepCop, type Cop, type CopKind, type CopParams } from './cops';
 import { findPath, navNodes, visible, type NavNode } from './nav';
+import { GATE_R, payout, progress, skipping, RIVAL_KINDS, RIVAL_NAMES, RIVAL_PACE, ROUTES, rubberBand, type Route } from './race';
 import { DEALER, DEALER_STOCK, FENCE, fencePrice, GANG, GANG_REWARD, HECKLES, hotList, SHOUTS, TURF, UNWITNESSED } from './crime';
 import { onGrass, onStairs, HALF, boxTop, BRIDGE, bridgeAngle, buildingAt, hash, CANAL, COOP, heightAt, LINES, nearestOnLine, PARKED_BIKES, PICKUPS, SPAWN } from './world';
 
@@ -19,13 +20,14 @@ export interface SimOpts {
   /** scene setup: replace the parked bikes */ bikesAt?: Array<{ kind: BikeKind; x: number; z: number; heading: number }>;
   /** render look override (else the gtpedal.artStyle tunable) */ artStyle?: 'cel' | 'classic';
   /** scene/test hook: fire the current weapon at these sim times (s) */ fireAt?: number[]; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean; /** daredevil autopilot asks the fake bike (target-follow script) for this × FTP; default 1.0 */ sprintFtp?: number;
-  /** crime layer (witnesses, ambient reactions, rival gang). Default on, off for autopilot unless set. */ crime?: boolean; /** spawn the rival gang (default: with crime, unless explicit npcs) */ gang?: boolean; /** starting cash (tests/scenes; else the save) */ cash?: number }
+  /** crime layer (witnesses, ambient reactions, rival gang). Default on, off for autopilot unless set. */ crime?: boolean; /** spawn the rival gang (default: with crime, unless explicit npcs) */ gang?: boolean; /** starting cash (tests/scenes; else the save) */ cash?: number; /** street races (default on, off for autopilot) */ races?: boolean; /** test/capture hook: steer the rider gate-to-gate during a race (power still from the trainer/script) */ autoRace?: boolean; /** race difficulty override (else tunable raceDiff) */ raceDiff?: number }
 export type Mode = 'bike' | 'foot' | 'ragdoll';
 export interface ParkedBike { id: number; x: number; z: number; heading: number; kind: BikeKind; flat: boolean; mine?: boolean }
 export interface Npc { id: number; x: number; z: number; y: number; vx: number; vy: number; vz: number; heading: number; line: number; dir: 1 | -1; airS: number; alive: boolean; flailS: number; stunS: number;
   /** riding this bike (NPC cyclist) or null on foot */ bike: BikeKind | null; speed: number; cruise: number; /** angry after being bike-jacked: chases + shakes fist */ angryS: number; /** wobbly after getting up */ groggyS?: number; /** riding the back seat of your tandem */ stoker?: boolean;
   /** rival gang member */ gang?: boolean; /** witness on the phone: s left until the call goes through, and the heat it adds */ callS?: number; callHeat?: number;
-  /** ambient reaction (render: pose + speech bubble) */ react?: 'shout' | 'flip' | 'heckle' | 'dodge'; reactS?: number; say?: string }
+  /** ambient reaction (render: pose + speech bubble) */ react?: 'shout' | 'flip' | 'heckle' | 'dodge'; reactS?: number; say?: string;
+  /** street-race rival */ racer?: boolean; racePassed?: number; raceName?: string; remountS?: number }
 export type SteerLock = { kind: 'line' | 'npc' | 'bike'; id: number } | null;
 export interface Pickup { kind: WeaponKind; x: number; z: number; readyAt: number }
 export interface Snapshot {
@@ -41,19 +43,23 @@ export interface Snapshot {
   footTarget: number; steerLock: { kind: 'line' | 'npc' | 'bike'; id: number; x?: number; z?: number } | null; jackId: number; jackCamT: number; /** weapon wind-up in progress (aim, pin pull, light the rag, throw) */ cast: { w: WeaponKind; t0: number; dur: number } | null; lastShot: { w: WeaponKind; t: number } | null; stoker: number; stokerAt: { x: number; z: number; near: boolean } | null; goal: string; /** riding alongside a tram: Y = boosted hop onto the roof */ tramHopReady: boolean; look: { grit: number; mood: number }; fx: { speedLines: number; dust: number; shake: number; squash: number; smoke: number; speedLineMin: number }; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
   /** crime layer */ cash: number; rep: number; hot: BikeKind[]; fence: { near: boolean; price: number; hot: boolean } | null;
   dealer: { near: boolean; menu: { sel: number; items: Array<{ w: WeaponKind; qty: number; price: number; afford: boolean }> } | null };
+  race: RaceSnap | null;
   gang: { provoked: boolean; left: number; respawnS: number }; msg: { text: string; at: number } | null;
   stats: Record<string, number>;
   /** fake-bike script hooks (target-follow reads powerFtp) */
   hooks?: { powerFtp: number };
 }
 
+export interface RaceResult { id: number; name: string; you: boolean; place: number; time: number | null; payout: number }
+export interface RaceSnap { id: string; name: string; state: 'countdown' | 'racing' | 'done'; countdown: number; time: number; passed: number; total: number; lap: number; laps: number;
+  pos: number; field: number; next: { x: number; z: number } | null; after: { x: number; z: number } | null; missed: boolean; drafting: boolean; results: RaceResult[] | null; best: number | null; buyIn: number; won: number }
 const blocked = (x: number, z: number, y: number, br: number) => !!buildingAt(x, z) || heightAt(x, z, br) - y > 0.8;
 const bank = (z: number) => (z < (CANAL.z0 + CANAL.z1) / 2 ? CANAL.z0 - 2 : CANAL.z1 + 2);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const AUTO_ROUTE: Array<[number, number]> = [[0, 86], [85, 86], [85, 8], [0, 8], [0, -100]];
 /** daredevil: shuttle up and down the avenue over the drawbridge */
 const DARE_ROUTE: Array<[number, number]> = [[0, 70], [0, -95]];
-export interface GtpSave { cash?: number; rep?: number; sales?: number; rides?: number; stealsTotal?: number; bestAirS?: number; gradeScale?: number; gradeMax?: number }
+export interface GtpSave { raceBest?: Record<string, number>; races?: number; cash?: number; rep?: number; sales?: number; rides?: number; stealsTotal?: number; bestAirS?: number; gradeScale?: number; gradeMax?: number }
 
 /** Structural twin of the shell's GameSetting (src/shell/gameSettings.ts); sims don't import the shell. */
 export interface PauseSetting { key: string; label: string; value: number; min: number; max: number; step: number; digits?: number; unit?: string; hint?: string }
@@ -133,6 +139,11 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     callS: T.num('callS', 3.2, 0.5, 10, 0.1, 'witness phone call: s until the heat lands'),
     witnessR: T.num('witnessR', 22, 5, 60, 1, 'how far bystanders notice a crime m'),
     callEscapeR: T.num('callEscapeR', 45, 10, 120, 1, 'get this far from a caller and the call fizzles m'),
+    raceDiff: T.num('raceDiff', 1, 0, 2, 1, 'street race difficulty: 0 easy (~0.6 FTP wins), 1 normal (~0.75), 2 hard (~FTP+)'),
+    raceRubber: T.num('raceRubber', 0.08, 0, 0.3, 0.01, 'rival rubber-band strength (± pace at 60 m gap)'),
+    raceRivals: T.num('raceRivals', 4, 1, 5, 1, 'rival racers'),
+    raceHeat: T.num('raceHeat', 0.05, 0, 0.5, 0.01, 'heat/s while racing (cops come to watch), up to 2.5 stars'),
+    draftAccel: T.num('draftAccel', 0.8, 0, 3, 0.1, 'drafting push m/s² tucked in behind a rival'),
     gangSpeed: T.num('gangSpeed', 8.5, 2, 20, 0.5, 'rival gang chase speed m/s'),
     cyclists: T.num('cyclists', 40, 0, 80, 1, 'NPC cyclists going about their business (recycled to stay near you)'),
     peds: T.num('peds', 30, 0, 60, 1, 'extra pedestrians strolling the paths (recycled to stay near you)'),
@@ -158,7 +169,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   let routeI = 0, autoCool = 0, autoBrake = false;
   const body = newBody(SPAWN.x, SPAWN.z, SPAWN.heading);
   const grind = { s: 0 };
-  const stats = { busts: 0, lostCops: 0, repaints: 0, copsLaunched: 0, shots: 0, flats: 0, pickups: 0, spinOuts: 0, distanceM: 0, airS: 0, maxAirS: 0, jumps: 0, crashes: 0, steals: 0, tricks: 0, grinds: 0, launches: 0, bridgeJumps: 0, splashes: 0, lineSwitches: 0, jacks: 0, cyclistsKnocked: 0, stokers: 0, tramHits: 0, tramRides: 0, hitches: 0, sales: 0, cashEarned: 0, buys: 0, witnessCalls: 0, callsStopped: 0, gangBeaten: 0, gangEscapes: 0, gangKnocks: 0, heckles: 0 };
+  const stats = { busts: 0, lostCops: 0, repaints: 0, copsLaunched: 0, shots: 0, flats: 0, pickups: 0, spinOuts: 0, distanceM: 0, airS: 0, maxAirS: 0, jumps: 0, crashes: 0, steals: 0, tricks: 0, grinds: 0, launches: 0, bridgeJumps: 0, splashes: 0, lineSwitches: 0, jacks: 0, cyclistsKnocked: 0, stokers: 0, tramHits: 0, tramRides: 0, hitches: 0, races: 0, raceWins: 0, checkpoints: 0, raceShoves: 0, draftS: 0, sales: 0, cashEarned: 0, buys: 0, witnessCalls: 0, callsStopped: 0, gangBeaten: 0, gangEscapes: 0, gangKnocks: 0, heckles: 0 };
   const trams: Tram[] = opts.trams === false ? [] : newTrams();
   let onTram: { id: number; ox: number; oz: number } | null = null, hitch = -1;
   let nextBikeId = 0;
@@ -236,7 +247,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   const crime = (base: number, x: number, z: number) => {
     if (!crimeOn) { addHeat(base); return; }
     addHeat(base * UNWITNESSED);
-    const ws = npcs.filter((n) => !n.bike && !n.gang && !n.stoker && n.airS <= 0 && n.stunS <= 0 && n.flailS <= 0 && n.angryS <= 0 && !(n.callS! > 0) && Math.hypot(n.x - x, n.z - z) < tun.witnessR() && visible(n.x, n.z, x, z))
+    const ws = npcs.filter((n) => !n.bike && !n.gang && !n.racer && !n.stoker && n.airS <= 0 && n.stunS <= 0 && n.flailS <= 0 && n.angryS <= 0 && !(n.callS! > 0) && Math.hypot(n.x - x, n.z - z) < tun.witnessR() && visible(n.x, n.z, x, z))
       .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z)).slice(0, 2);
     for (const n of ws) { n.callS = tun.callS(); n.callHeat = base * (1 - UNWITNESSED) + 0.4; n.reactS = 0; }
     if (ws.length) event('witness', { n: ws.length });
@@ -251,6 +262,88 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     say(`SOLD ${BIKES[kind].label} · +$${price}${isHot ? ' (HOT LIST!)' : flat ? ' (flat tyre…)' : ''}`);
     event('fenceSale', { kind, price, hot: isHot }); persist();
   };
+  // ---- street races ----
+  const raceOn = opts.races ?? !opts.autopilot;
+  const raceBest: Record<string, number> = { ...(prev.raceBest ?? {}) };
+  let racesRun = 0;
+  type RaceSt = { r: Route; state: 'countdown' | 'racing' | 'done'; t0: number; passed: number; ids: number[]; fin: Map<number, number>; missS: number; awayS: number; doneAt: number; bottleT: number; shoveT: number; results: RaceResult[] | null; won: number; drafting: boolean };
+  let race: RaceSt | null = null;
+  const routeNear = () => mode === 'bike' && !body.air ? ROUTES.find((r) => Math.hypot(body.x - r.start.x, body.z - r.start.z) < 5) : undefined;
+  const raceTotal = (r: Route) => r.gates.length * r.laps;
+  const segLen = (r: Route) => r.gates.reduce((a, g, i) => a + Math.hypot(g[0] - (i ? r.gates[i - 1][0] : r.start.x), g[1] - (i ? r.gates[i - 1][1] : r.start.z)), 0) / r.gates.length;
+  const gridAt = (r: Route, slot: number) => { const f = [Math.sin(r.start.heading), Math.cos(r.start.heading)], rt = [-f[1], f[0]], row = Math.floor((slot + 1) / 2), side = slot === 0 ? 0 : slot % 2 ? 1 : -1; return { x: r.start.x - f[0] * row * 3 + rt[0] * side * 2.2, z: r.start.z - f[1] * row * 3 + rt[1] * side * 2.2 }; };
+  const startRace = (r: Route) => {
+    if (cash < r.buyIn) { say(`Organizer: "Buy-in's $${r.buyIn}. Beat it."`); event('raceBroke'); return; }
+    cash -= r.buyIn; racesRun++; stats.races++;
+    const ids: number[] = [];
+    for (let i = 0; i < Math.round(tun.raceRivals()); i++) {
+      const id = 600 + i, g = gridAt(r, i + 1), old = npcs.findIndex((n) => n.id === id); if (old >= 0) npcs.splice(old, 1);
+      npcs.push({ ...mkNpcBare(id, g.x, g.z, -1), heading: r.start.heading, bike: RIVAL_KINDS[i % RIVAL_KINDS.length], racer: true, racePassed: 0, raceName: RIVAL_NAMES[i % RIVAL_NAMES.length] }); ids.push(id);
+    }
+    race = { r, state: 'countdown', t0: t, passed: 0, ids, fin: new Map(), missS: 0, awayS: 0, doneAt: 0, bottleT: 12, shoveT: 2, results: null, won: 0, drafting: false };
+    dropStoker(false); steerLock = null; body.line = -1;
+    say(`${r.name}${r.buyIn ? ` · buy-in $${r.buyIn}` : ''} · ${r.laps > 1 ? `${r.laps} laps` : 'sprint'}`); event('raceEnter', { route: r.id });
+  };
+  const raceProg = (passed: number, x: number, z: number) => race ? progress(race.r, passed, x, z) : 0;
+  const endRace = (finished: boolean) => {
+    if (!race || race.state === 'done') return;
+    const rc = race, total = raceTotal(rc.r), field = rc.ids.length + 1, tNow = t - rc.t0 - 3;
+    const ents = [{ id: -1, name: 'YOU', you: true, time: finished ? tNow : null, prog: finished ? total : raceProg(rc.passed, body.x, body.z) },
+      ...rc.ids.map((id) => { const n = npcs.find((q) => q.id === id); return { id, name: n?.raceName ?? 'rival', you: false, time: rc.fin.get(id) ?? null, prog: n ? raceProg(n.racePassed ?? 0, n.x, n.z) : 0 }; })];
+    ents.sort((a, b) => (a.time != null) !== (b.time != null) ? (a.time != null ? -1 : 1) : a.time != null ? a.time - b.time! : b.prog - a.prog);
+    rc.results = ents.map((e, i) => ({ id: e.id, name: e.name, you: e.you, place: i, time: e.time, payout: e.you && finished ? payout(rc.r, i, field) : 0 }));
+    const me = rc.results.find((e) => e.you)!;
+    rc.won = me.payout; cash += me.payout; stats.cashEarned += me.payout; if (finished && me.place === 0) stats.raceWins++;
+    if (finished && (raceBest[rc.r.id] == null || tNow < raceBest[rc.r.id])) raceBest[rc.r.id] = Math.round(tNow * 100) / 100;
+    rc.state = 'done'; rc.doneAt = t;
+    say(finished ? `${['1ST', '2ND', '3RD', '4TH', '5TH', '6TH'][me.place]} · ${tNow.toFixed(1)}s${me.payout ? ` · +$${me.payout}` : ''}` : 'Race abandoned');
+    event(finished ? 'raceFinish' : 'raceQuit', { place: me.place, payout: me.payout }); persist();
+  };
+  /** Rival racer: hammer gate to gate (cutting corners = shortcuts), rubber-banded to you, shove, lob a bottle, remount when knocked off. */
+  function stepRacer(n: Npc, dt: number, bridge: number) {
+    const rc = race!; const total = raceTotal(rc.r);
+    if (rc.state === 'countdown') { n.speed = 0; return; }
+    if (!n.bike) { // knocked off: grab a dropped bike nearby, jack a cyclist, or produce a spare after a bit
+      n.remountS = (n.remountS ?? 5) - dt;
+      const b = bikes.filter((q) => Math.hypot(q.x - n.x, q.z - n.z) < 15).sort((a, c) => Math.hypot(a.x - n.x, a.z - n.z) - Math.hypot(c.x - n.x, c.z - n.z))[0];
+      const cy = npcs.find((q) => q.bike && !q.racer && !q.gang && Math.hypot(q.x - n.x, q.z - n.z) < 2);
+      if (cy) { n.bike = cy.bike; cy.bike = null; cy.airS = 0.01; cy.vy = 3; cy.vx = 2; cy.angryS = 6; n.remountS = undefined; event('rivalJack'); return; }
+      if (b) { n.heading = Math.atan2(b.x - n.x, b.z - n.z); if (Math.hypot(b.x - n.x, b.z - n.z) < 1.2) { n.bike = b.kind; bikes.splice(bikes.indexOf(b), 1); n.remountS = undefined; return; } const nx = n.x + Math.sin(n.heading) * 4.5 * dt, nz = n.z + Math.cos(n.heading) * 4.5 * dt; if (!buildingAt(nx, nz)) { n.x = nx; n.z = nz; } n.y = heightAt(n.x, n.z, bridge); return; }
+      if (n.remountS <= 0) { n.bike = RIVAL_KINDS[(n.id - 600) % RIVAL_KINDS.length]; n.remountS = undefined; }
+      return;
+    }
+    const done = (n.racePassed ?? 0) >= total;
+    const [gx, gz] = done ? [n.x + Math.sin(n.heading) * 5, n.z + Math.cos(n.heading) * 5] : rc.r.gates[(n.racePassed ?? 0) % rc.r.gates.length];
+    if (!done && Math.hypot(gx - n.x, gz - n.z) < GATE_R) { n.racePassed = (n.racePassed ?? 0) + 1; if (n.racePassed >= total) { rc.fin.set(n.id, t - rc.t0 - 3); event('rivalFinish'); } }
+    const lane = ((n.id % 5) - 2) * 1.1; // spread across the road
+    const h0 = Math.atan2(gx - n.x, gz - n.z), tx = gx - Math.cos(h0) * lane, tz = gz + Math.sin(h0) * lane;
+    let want = done ? 0 : RIVAL_PACE[Math.max(0, Math.min(2, Math.round(opts.raceDiff ?? tun.raceDiff())))] * (n.bike === 'scooter' ? 0.86 : 0.95 + 0.05 * BIKES[n.bike].top);
+    const gapM = (raceProg(n.racePassed ?? 0, n.x, n.z) - (rc.state === 'racing' ? raceProg(rc.passed, body.x, body.z) : 0)) * segLen(rc.r);
+    want *= rubberBand(gapM, tun.raceRubber());
+    if (onStairs(n.x, n.z)) want *= n.bike === 'scooter' ? 0.3 : 0.7; else if (onGrass(n.x, n.z)) want *= n.bike === 'scooter' ? 0.45 : 0.8;
+    let hd = Math.atan2(tx - n.x, tz - n.z);
+    const free = (h: number) => { const px = n.x + Math.sin(h) * 3, pz = n.z + Math.cos(h) * 3; return !buildingAt(px, pz) && heightAt(px, pz, bridge) > -2; };
+    const wet = (h: number, d: number) => heightAt(n.x + Math.sin(h) * d, n.z + Math.cos(h) * d, bridge) < -2;
+    if (wet(hd, 3) || wet(hd, 6)) want = 0; // drawbridge up: wait at the gap
+    else if (!free(hd)) { const alt = [0.5, -0.5, 1, -1].map((o) => hd + o).find(free); if (alt != null) hd = alt; else want = 0; }
+    if (tramAt(trams, n.x + Math.sin(hd) * 4, n.z + Math.cos(hd) * 4, 1.2)) want = Math.min(want, 2); // brake for a tram
+    n.heading += Math.max(-3 * dt, Math.min(3 * dt, wrap(hd - n.heading)));
+    n.speed += Math.max(-7 * dt, Math.min(3.2 * dt, want - n.speed));
+    const nx = n.x + Math.sin(n.heading) * n.speed * dt, nz = n.z + Math.cos(n.heading) * n.speed * dt;
+    if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -2) { n.x = nx; n.z = nz; } else n.speed *= 0.3;
+    n.y = heightAt(n.x, n.z, bridge);
+    // dirty tricks
+    const pd = Math.hypot(body.x - n.x, body.z - n.z);
+    if (rc.state === 'racing' && mode === 'bike' && pd < 1.5 && rc.shoveT <= 0) {
+      rc.shoveT = 4; stats.raceShoves++; const sx = (body.x - n.x) / Math.max(0.1, pd), sz = (body.z - n.z) / Math.max(0.1, pd);
+      if (!buildingAt(body.x + sx * 0.8, body.z + sz * 0.8)) { body.x += sx * 0.8; body.z += sz * 0.8; } body.speed *= 0.88; event('raceShove');
+      if (body.speed > 10 && hash(n.id, Math.floor(t)) < 0.15) crash(sx * 4, sz * 4, 2);
+    }
+    if (rc.state === 'racing' && rc.bottleT <= 0 && pd > 6 && pd < 20 && gapM < 0 && !done) {
+      rc.bottleT = 14 + hash(n.id, Math.floor(t)) * 6; const sy = n.y + 1.5, lx = body.x + Math.sin(body.heading) * body.speed * 0.8, lz = body.z + Math.cos(body.heading) * body.speed * 0.8;
+      projectiles.push({ id: nextFx++, kind: 'bottle', x: n.x, y: sy, z: n.z, ...lob(n.x, sy, n.z, lx, heightAt(lx, lz, bridge), lz, 0.6, tun.gravity()), fuse: 9, landed: false, age: 0 }); event('rivalBottle');
+    }
+  }
   // rider-facing pause-menu settings (persisted); fall back to the debug tunables
   const user = { gradeScale: prev.gradeScale, gradeMax: prev.gradeMax };
   const gScale = () => user.gradeScale ?? tun.gradeScale(), gMax = () => user.gradeMax ?? tun.gradeMax();
@@ -264,7 +357,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   /** tiny wheels: grass bogs a scooter right down, stairs rattle it to a crawl */
   const scooterSpec = (x: number, z: number) => onStairs(x, z) ? { ...BIKES.scooter, power: 0.3, top: 0.22 } : onGrass(x, z) ? { ...BIKES.scooter, power: 0.35, top: 0.3, turn: 1.2 } : BIKES.scooter;
   /** A bystander close enough to snatch onto the tandem's back seat. */
-  const stokerCand = (r: number): Npc | undefined => mode !== 'bike' || kind !== 'tandem' || stoker >= 0 ? undefined : npcs.filter((n) => !n.bike && !n.stoker && !n.gang && !(n.callS! > 0) && n.airS <= 0 && n.stunS <= 0 && n.angryS <= 0 && n.alive && Math.hypot(n.x - body.x, n.z - body.z) < r)
+  const stokerCand = (r: number): Npc | undefined => mode !== 'bike' || kind !== 'tandem' || stoker >= 0 ? undefined : npcs.filter((n) => !n.bike && !n.stoker && !n.gang && !n.racer && !(n.callS! > 0) && n.airS <= 0 && n.stunS <= 0 && n.angryS <= 0 && n.alive && Math.hypot(n.x - body.x, n.z - body.z) < r)
     .sort((a, b) => Math.hypot(a.x - body.x, a.z - body.z) - Math.hypot(b.x - body.x, b.z - body.z))[0];
   const dropStoker = (tumble: boolean) => {
     const n = npcs.find((q) => q.id === stoker); stoker = -1; if (!n) return;
@@ -275,7 +368,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   let jackCamT = -99, tramHop: number = -1, recycleT = 0.5, recycleN = 0;
   let bridgeTry: { effort: number } | null = null;
   let saveAt = 30, saved = false;
-  const persist = () => ctx.save({ cash: Math.round(cash), rep, sales: (prev.sales ?? 0) + stats.sales, rides: (prev.rides ?? 0) + 1, stealsTotal: (prev.stealsTotal ?? 0) + stats.steals, bestAirS: Math.max(prev.bestAirS ?? 0, Math.round(stats.maxAirS * 10) / 10),
+  const persist = () => ctx.save({ raceBest: { ...raceBest }, races: (prev.races ?? 0) + racesRun, cash: Math.round(cash), rep, sales: (prev.sales ?? 0) + stats.sales, rides: (prev.rides ?? 0) + 1, stealsTotal: (prev.stealsTotal ?? 0) + stats.steals, bestAirS: Math.max(prev.bestAirS ?? 0, Math.round(stats.maxAirS * 10) / 10),
     ...(user.gradeScale != null ? { gradeScale: user.gradeScale } : {}), ...(user.gradeMax != null ? { gradeMax: user.gradeMax } : {}) } satisfies GtpSave);
 
   const trick = (name: string, mag: number) => {
@@ -425,6 +518,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       eat.add('a'); eat.add('b');
     } else if (!auto && press('a') && dealerNear()) { menu = { sel: 0 }; eat.add('a'); say('Van Guy: "Psst. Lookin’ to buy?"'); event('dealerOpen'); }
     else if (!auto && press('a') && fenceNear() && body.speed < 4) { sell(); eat.add('a'); }
+    else if (!auto && raceOn && !race && press('a') && routeNear() && !jackable()) { startRace(routeNear()!); eat.add('a'); }
     padEdge = { l: pl, r: pr };
     // weapons cycle
     if (inp.pressed.has('shiftUpL') || inp.pressed.has('shiftUpR')) weaponI = (weaponI + 1) % WEAPONS.length;
@@ -482,6 +576,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       const nearBike = lockedBike && Math.hypot(lockedBike.x - body.x, lockedBike.z - body.z) < tun.stealR() ? lockedBike
         : bikes.filter((b) => Math.hypot(b.x - body.x, b.z - body.z) < tun.stealR()).sort((a, b) => Math.hypot(a.x - body.x, a.z - body.z) - Math.hypot(b.x - body.x, b.z - body.z))[0];
       if (press('a') || auto) { if (jn && !auto) jack(jn); else if (nearBike) mount(nearBike); }
+      if (opts.autoRace && race && mode === 'foot') { const ob = bikes.find((b) => Math.hypot(b.x - body.x, b.z - body.z) < 6); if (ob) mount(ob); }
       footTarget = steerLock?.kind === 'bike' ? bikes.findIndex((b) => b.id === steerLock!.id) : nearBike ? bikes.indexOf(nearBike) : -1;
     } else {
       // on bike: D-pad lock steering (line follow in stepBody, or chase a cyclist), else paddles/arrows free steer
@@ -492,6 +587,12 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         if (tp) { const lx = Math.cos(tp.heading) * 1.6, lz = -Math.sin(tp.heading) * 1.6; steer = Math.max(-1, Math.min(1, wrap(Math.atan2(tp.x + lx - body.x, tp.z + lz - body.z) - body.heading) * 2.5)); }
       }
       else if (steerLock) steerLock = null;
+      if (opts.autoRace && race?.state === 'racing' && race.passed < raceTotal(race.r)) {
+        const [gx, gz] = race.r.gates[race.passed % race.r.gates.length];
+        const err = wrap(Math.atan2(gx - body.x, gz - body.z) - body.heading);
+        steer = Math.max(-1, Math.min(1, err * 2.2)); freeSteer = true; steerLock = null;
+        if (Math.abs(err) > 0.5 && body.speed > 10) body.speed -= 6 * dt; // brake into corners
+      }
       if (press('a')) {
         const jn = jackable(), sc = stokerCand(tun.jackR() + 0.6);
         if (jn) { dropStoker(false); jack(jn); }
@@ -671,6 +772,39 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     for (const pk of pickups) if (t >= pk.readyAt && mode !== 'ragdoll' && Math.hypot(pk.x - body.x, pk.z - body.z) < 2.5) {
       ammo[pk.kind] = Math.min(MAX_AMMO, ammo[pk.kind] + PICKUP_AMMO[pk.kind]); pk.readyAt = t + tun.pickupS(); stats.pickups++; event('pickup', { weapon: pk.kind });
     }
+    // ---- street race: countdown hold, gates, missed / quit, drafting, heat ----
+    if (race) {
+      const rc: RaceSt = race, total = raceTotal(rc.r);
+      rc.bottleT -= dt; rc.shoveT -= dt;
+      if (rc.state === 'countdown') {
+        const g = gridAt(rc.r, 0);
+        if (mode === 'bike') { body.x = g.x; body.z = g.z; body.heading = rc.r.start.heading; body.speed = 0; body.y = heightAt(g.x, g.z, bridge); }
+        if (t - rc.t0 >= 3) { rc.state = 'racing'; event('raceGo'); say('GO GO GO!'); }
+      } else if (rc.state === 'racing') {
+        const [gx, gz] = rc.r.gates[rc.passed % rc.r.gates.length];
+        const dG = Math.hypot(gx - body.x, gz - body.z);
+        if (mode !== 'ragdoll' && dG < GATE_R) { rc.passed++; stats.checkpoints++; event('checkpoint', { n: rc.passed }); if (rc.passed >= total) endRace(true); }
+        if (race && rc.state === 'racing') {
+          const skipped = skipping(rc.r, rc.passed, body.x, body.z);
+          rc.missS = skipped ? rc.missS + dt : Math.max(0, rc.missS - dt * 2);
+          if (rc.missS > 0.5 && rc.missS - dt <= 0.5) { say('MISSED CHECKPOINT! Go back ↩'); event('missedCheckpoint'); }
+          rc.awayS = dG > 150 || (mode === 'foot') ? rc.awayS + dt : 0;
+          if (rc.awayS > (mode === 'foot' ? 12 : 5)) endRace(false);
+          if (heat < 2.5) addHeat(tun.raceHeat() * dt);
+          // drafting: tucked in 1.5-7 m behind a rival going your way
+          rc.drafting = false;
+          if (mode === 'bike' && !body.air && body.speed > 6) for (const id of rc.ids) {
+            const n = npcs.find((q) => q.id === id); if (!n?.bike) continue;
+            const fx = Math.sin(n.heading), fz = Math.cos(n.heading), dx = n.x - body.x, dz = n.z - body.z, along = dx * fx + dz * fz, lat = Math.abs(dx * fz - dz * fx);
+            if (along > 1.5 && along < 7 && lat < 1.3 && Math.cos(n.heading - body.heading) > 0.8) { rc.drafting = true; break; }
+          }
+          if (rc.drafting) { body.speed += tun.draftAccel() * dt; stats.draftS += dt; }
+        }
+      } else if (t - rc.doneAt > 8) { // results shown; the field disperses
+        for (const id of rc.ids) { const i = npcs.findIndex((q) => q.id === id); if (i >= 0) npcs.splice(i, 1); }
+        race = null;
+      }
+    }
     // ---- pedestrians: walk lines, fly when launched, slip on oil, flail when on fire ----
     if (stoker >= 0) { // passenger: rides your back seat (rendered on the tandem), screams now and then
       if (mode !== 'bike' || kind !== 'tandem') dropStoker(false);
@@ -708,6 +842,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       }
       if ((n.groggyS ?? 0) > 0) n.groggyS! -= dt;
       if (n.gang && n.bike) { stepGanger(n, dt, bridge); continue; }
+      if (n.racer) { if (race) stepRacer(n, dt, bridge); continue; }
       if (crimeOn && !n.bike && !n.gang && n.angryS <= 0 && n.flailS <= 0 && !(n.callS! > 0) && !(n.reactS! > 0) && mode !== 'ragdoll') { // ambient: dodge + shout / flip off, or heckle
         const d = pdist(n), hh = hash(n.id, Math.floor(t * 0.5));
         if (mode === 'bike' && body.speed > 6 && d < 3.2) {
@@ -840,6 +975,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     hud(): GameHud {
       if (menu) return { controls: [{ button: 'a', label: `Buy ${DEALER_STOCK[menu.sel].qty}× ${DEALER_STOCK[menu.sel].w} $${DEALER_STOCK[menu.sel].price}`, active: cash >= DEALER_STOCK[menu.sel].price }, { button: 'dpad', label: '◀ ▶ browse (or tap a paddle)' }, { button: 'b', label: 'Leave' }] };
       if (dealerNear()) return { controls: [{ button: 'a', label: 'Talk to Van Guy (buy)', active: true }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'paddles', label: 'Steer · pedal' }] };
+      if (!race && raceOn && routeNear()) { const r = routeNear()!; return { controls: [{ button: 'a', label: `Enter ${r.name}${r.buyIn ? ` ($${r.buyIn} buy-in)` : ''}`, active: cash >= r.buyIn }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'paddles', label: 'Steer · pedal' }] }; }
       if (fenceNear()) return { controls: [{ button: 'a', label: body.speed < 4 ? `SELL ${BIKES[kind].label} $${fencePrice(kind, flat, hot().includes(kind))}` : 'Stop to sell', active: body.speed < 4 }, { button: 'b', label: `Fire ${WEAPONS[weaponI]} ×${ammo[WEAPONS[weaponI]]}` }, { button: 'paddles', label: 'Steer · pedal' }] };
       const jn = mode !== 'ragdoll' ? jackable() : undefined;
       const lockLbl = steerLock ? (steerLock.kind === 'line' ? 'Locked line · ◀ ▶ next' : steerLock.kind === 'npc' ? 'Locked target · ◀ ▶ next' : 'Locked bike · ◀ ▶ next') : 'Lock line / target';
@@ -850,13 +986,18 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     snapshot(): Snapshot {
       return { t, mode, rider: { ...body, kind: mode === 'bike' ? kind : null, flat, boost }, ragdoll: rag ? { x: rag.x, y: rag.y, z: rag.z, spin: rag.spin } : null,
         bikes: bikes.map((b) => ({ ...b })), npcs: npcs.map((n) => ({ ...n })), bridge: bridgeAngle(t, tun.bridgePeriodS(), (tun.bridgeMaxDeg() * Math.PI) / 180),
-        hooks: opts.daredevil ? { powerFtp: opts.sprintFtp ?? 1 } : undefined,
+        hooks: opts.daredevil || opts.sprintFtp != null ? { powerFtp: opts.sprintFtp ?? 1 } : undefined,
         weapon: WEAPONS[weaponI], lock, footTarget,
         steerLock: steerLock ? { ...steerLock, ...(steerLock.kind === 'line' ? {} : (() => { const q = steerLock.kind === 'bike' ? bikes.find((b) => b.id === steerLock!.id) : npcs.find((n) => n.id === steerLock!.id); return q ? { x: q.x, z: q.z } : {}; })()) } : null,
         jackId: mode !== 'ragdoll' ? jackable()?.id ?? -1 : -1,
         lockAt: (() => { const q = people()[lock]; return lock >= 0 && q ? { x: q.x, y: q.y, z: q.z, cop: lock >= npcs.length } : null; })(),
         trams: trams.map((tr) => ({ ...tr })), onTram: !!onTram, hitched: hitch >= 0, tramHopReady: !!hopTram(), jackCamT, cast: cast ? { ...cast } : null, lastShot: lastShot ? { ...lastShot } : null, stoker, stokerAt: (() => { const c = stokerCand(30); return c ? { x: c.x, z: c.z, near: Math.hypot(c.x - body.x, c.z - body.z) < tun.jackR() + 0.6 } : null; })(),
         cash, rep, hot: hot(), msg,
+        race: race ? (() => { const rc: RaceSt = race!, total = raceTotal(rc.r), n = rc.r.gates.length, me = raceProg(rc.passed, body.x, body.z);
+          const ahead = rc.ids.filter((id) => { const q = npcs.find((m) => m.id === id); return q && (rc.fin.has(id) || raceProg(q.racePassed ?? 0, q.x, q.z) > me); }).length;
+          const g = rc.passed < total ? rc.r.gates[rc.passed % n] : null, g2 = rc.passed + 1 < total ? rc.r.gates[(rc.passed + 1) % n] : null;
+          return { id: rc.r.id, name: rc.r.name, state: rc.state, countdown: Math.max(0, 3 - (t - rc.t0)), time: Math.max(0, t - rc.t0 - 3), passed: rc.passed, total, lap: Math.min(rc.r.laps, Math.floor(rc.passed / n) + 1), laps: rc.r.laps,
+            pos: ahead + 1, field: rc.ids.length + 1, next: g ? { x: g[0], z: g[1] } : null, after: g2 ? { x: g2[0], z: g2[1] } : null, missed: rc.missS > 0.5, drafting: rc.drafting, results: rc.results, best: raceBest[rc.r.id] ?? null, buyIn: rc.r.buyIn, won: rc.won }; })() : null,
         fence: Math.hypot(body.x - FENCE.x, body.z - FENCE.z) < FENCE.r + 25 && mode === 'bike' ? { near: fenceNear() && body.speed < 4, price: fencePrice(kind, flat, hot().includes(kind)), hot: hot().includes(kind) } : null,
         dealer: { near: dealerNear(), menu: menu ? { sel: menu.sel, items: DEALER_STOCK.map((it) => ({ ...it, afford: cash >= it.price })) } : null },
         gang: { provoked: gang.provoked, left: gang.ids.filter((id) => npcs.find((n) => n.id === id)?.bike).length, respawnS: gang.done ? gang.respawnS : 0 },
@@ -876,6 +1017,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     },
     receive(a: unknown) {
       const m = a as { type?: string; key?: string; value?: number } | null;
+      if (m?.type === 'quitRace') { endRace(false); return; }
       if (m?.type !== 'setting' || typeof m.value !== 'number' || !Number.isFinite(m.value)) return;
       if (m.key === 'gradeScale') user.gradeScale = Math.max(0, Math.min(2, m.value));
       else if (m.key === 'gradeMax') user.gradeMax = Math.max(0, Math.min(15, m.value));

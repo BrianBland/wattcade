@@ -233,3 +233,6 @@ rider via `ctx.save`. Mechanism: the sim exposes `settings()`, the shell reads i
 - The crowd talks back: dodges, shouts, middle fingers, heckles.
 - Razor scooters are stealable too: kick-push speed from your power, low top speed, very tight turns, small hops, grinds; bad on grass and stairs.
 - Arrows at the screen edge point to the chop shop, the van and the turf.
+
+## Street races (R10)
+Underground races from chalk start lines (see NOTES R10): buy-in, 3-2-1-GO, flare-and-chalk-arch gates with a chevron ribbon, position/lap/time HUD, missed-checkpoint warning, results panel with payout by place (winner: prize + 60% of pot; 2nd 25%; 3rd 15%), best times per profile. Rivals are FTP-relative paced and rubber-banded; on hard you need ~FTP+ to win. Cops get drawn in, trams and the drawbridge cycle get in the way.

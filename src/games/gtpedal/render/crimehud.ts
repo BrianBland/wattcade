@@ -5,19 +5,26 @@ import type { Snapshot } from '../sim/sim';
 import { DEALER, FENCE, TURF } from '../sim/crime';
 import { BIKES } from '../sim/bikes';
 import { heightAt } from '../sim/world';
+import { ROUTES } from '../sim/race';
+const fmt = (t: number | null) => t == null ? 'DNF' : `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+const ORD = ['1st', '2nd', '3rd', '4th', '5th', '6th'];
 
 const css = <E extends HTMLElement>(el: E, s: string) => { el.style.cssText = s; return el; };
 const div = (s: string) => css(document.createElement('div'), s);
 const ICON: Record<string, string> = { bottle: '🍾', molotov: '🔥', oil: '🛢', grenade: '💣', bazooka: '🚀' };
 export class CrimeHud {
   private root: HTMLDivElement; private money: HTMLDivElement; private panel: HTMLDivElement; private msg: HTMLDivElement;
-  private bubbles: HTMLDivElement[] = []; private marks: HTMLDivElement[] = []; private v = new THREE.Vector3(); private panelKey = '';
+  private rpanel: HTMLDivElement; private count: HTMLDivElement; private results: HTMLDivElement; private bubbles: HTMLDivElement[] = []; private marks: HTMLDivElement[] = []; private v = new THREE.Vector3(); private panelKey = '';
   constructor(container: HTMLElement) {
     this.root = div('position:absolute;inset:0;pointer-events:none;overflow:hidden;font-family:system-ui');
     this.money = div('position:absolute;left:18px;top:62px;font:800 18px system-ui;color:#e9d58a;text-shadow:0 1px 3px #000;white-space:pre');
     this.panel = div('position:absolute;left:50%;bottom:120px;transform:translateX(-50%);display:none;background:rgba(36,26,18,.88);border:2px solid #c9a227;border-radius:8px;padding:10px 14px;color:#f1e6cf;font:600 14px system-ui;min-width:280px;box-shadow:0 4px 18px #000a');
     this.msg = div('position:absolute;left:0;right:0;top:22%;text-align:center;font:900 24px system-ui;color:#f2c14e;text-shadow:0 2px 0 #2b1d14,0 3px 8px #000;opacity:0;transition:opacity .2s');
-    for (let i = 0; i < 3; i++) { const m = div('position:absolute;font:800 12px system-ui;color:#fff;text-align:center;transform:translate(-50%,-50%);text-shadow:0 1px 3px #000'); this.marks.push(m); this.root.append(m); }
+    this.rpanel = div('position:absolute;left:50%;top:14px;transform:translateX(-50%);display:none;background:rgba(30,22,16,.82);border:2px solid #f2c14e;border-radius:8px;padding:6px 16px;color:#f4eee2;font:800 16px system-ui;text-align:center;white-space:pre;text-shadow:0 1px 2px #000');
+    this.count = div('position:absolute;left:0;right:0;top:30%;text-align:center;font:900 120px system-ui;color:#f2c14e;text-shadow:0 5px 0 #2b1d14,0 8px 24px #000;display:none');
+    this.results = div('position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;background:rgba(30,22,16,.92);border:3px solid #f2c14e;border-radius:10px;padding:16px 26px;color:#f4eee2;font:700 17px system-ui;min-width:340px;box-shadow:0 6px 30px #000c');
+    this.root.append(this.rpanel, this.count, this.results);
+    for (let i = 0; i < 8; i++) { const m = div('position:absolute;font:800 12px system-ui;color:#fff;text-align:center;transform:translate(-50%,-50%);text-shadow:0 1px 3px #000'); this.marks.push(m); this.root.append(m); }
     this.root.append(this.money, this.panel, this.msg); container.append(this.root);
   }
   private bubble(i: number) { while (this.bubbles.length <= i) { const b = div('position:absolute;transform:translate(-50%,-100%);background:#f4eee2;color:#2b1d14;border:2px solid #2b1d14;border-radius:10px;padding:2px 7px;font:800 12px system-ui;white-space:nowrap'); this.bubbles.push(b); this.root.append(b); } return this.bubbles[i]; }
@@ -54,12 +61,23 @@ export class CrimeHud {
     }
     for (let i = bi; i < this.bubbles.length; i++) this.bubbles[i].style.display = 'none';
     // markers: on-screen pin, else clamped arrow at the edge
-    const sites = [{ x: FENCE.x, z: FENCE.z, label: '$ Chop shop', col: '#9fd48a' }, { x: DEALER.x, z: DEALER.z, label: '🔫 Van Guy', col: '#f2c14e' }, { x: TURF.x, z: TURF.z, label: s.gang.provoked ? '☠ Deck Rats!' : '☠ Deck Rats', col: s.gang.provoked ? '#f26b4e' : '#c9a227' }];
+    const rc = s.race;
+    this.rpanel.style.display = rc && rc.state !== 'done' ? 'block' : 'none';
+    if (rc && rc.state !== 'done') this.rpanel.innerHTML = `<div style="font-size:12px;color:#f2c14e;letter-spacing:2px">${rc.name.toUpperCase()}</div><span style="font-size:30px">${rc.pos}</span>/${rc.field}  ·  ${rc.laps > 1 ? `LAP ${rc.lap}/${rc.laps}  ·  ` : ''}GATE ${Math.min(rc.total, rc.passed + 1)}/${rc.total}  ·  ${fmt(rc.time)}${rc.best != null ? `<div style="font-size:12px;opacity:.75">best ${fmt(rc.best)}</div>` : ''}${rc.missed ? '<div style="color:#f26b4e;font-size:20px">↩ MISSED CHECKPOINT</div>' : ''}${rc.drafting ? '<div style="color:#9fd48a;font-size:14px">» DRAFTING «</div>' : ''}`;
+    const cd = rc?.state === 'countdown' ? String(Math.ceil(rc.countdown)) : rc?.state === 'racing' && rc.time < 0.8 ? 'GO!' : '';
+    this.count.style.display = cd ? 'block' : 'none'; this.count.textContent = cd;
+    this.results.style.display = rc?.state === 'done' && rc.results ? 'block' : 'none';
+    if (rc?.state === 'done' && rc.results) this.results.innerHTML = `<div style="font:900 22px system-ui;color:#f2c14e;text-align:center;margin-bottom:8px">🏁 ${rc.name}</div>` +
+      rc.results.map((e) => `<div style="display:flex;gap:14px;padding:3px 6px;${e.you ? 'background:#f2c14e33;border-radius:4px;color:#ffe9a8' : ''}"><span style="width:38px">${ORD[e.place]}</span><span style="flex:1">${e.name}</span><span>${fmt(e.time)}</span><span style="width:56px;text-align:right;color:#9fd48a">${e.payout ? `+$${e.payout}` : ''}</span></div>`).join('') +
+      `<div style="margin-top:8px;font-size:13px;opacity:.8;text-align:center">${rc.buyIn ? `buy-in $${rc.buyIn} · ` : ''}best ${fmt(rc.best)}</div>`;
+    const racing = rc && rc.state !== 'done';
+    const sites = racing ? (rc.next ? [{ x: rc.next.x, z: rc.next.z, label: `Gate ${rc.passed + 1}/${rc.total}`, col: '#f2c14e' }] : []) : [{ x: FENCE.x, z: FENCE.z, label: '$ Chop shop', col: '#9fd48a' }, { x: DEALER.x, z: DEALER.z, label: '🔫 Van Guy', col: '#f2c14e' }, { x: TURF.x, z: TURF.z, label: s.gang.provoked ? '☠ Deck Rats!' : '☠ Deck Rats', col: s.gang.provoked ? '#f26b4e' : '#c9a227' }, ...ROUTES.map((r) => ({ x: r.start.x, z: r.start.z, label: `🏁 ${r.name}${r.buyIn ? ` $${r.buyIn}` : ''}`, col: '#e9e4d6' }))];
+    for (let i = sites.length; i < this.marks.length; i++) this.marks[i].style.display = 'none';
     sites.forEach((st, i) => {
       const m = this.marks[i], d = Math.hypot(st.x - s.rider.x, st.z - s.rider.z);
       const p = this.project(cam, st.x, heightAt(st.x, st.z) + 5, st.z, W, H);
       m.style.color = st.col;
-      if (d < 12) { m.style.display = 'none'; return; }
+      if (d < (racing ? 3 : 12) || (!racing && i >= 3 && d > 140)) { m.style.display = 'none'; return; }
       m.style.display = 'block';
       if (p.on) { m.style.left = `${p.x}px`; m.style.top = `${p.y}px`; m.innerHTML = `▼<br>${st.label} ${Math.round(d)}m`; return; }
       let dx = p.x - W / 2, dy = p.y - H / 2; if (p.behind) { dx = -dx; dy = -dy; }

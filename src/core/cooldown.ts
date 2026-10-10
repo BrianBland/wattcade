@@ -29,4 +29,9 @@ export function completeCooldown(c: Cooldown): boolean {
 
 /** Fill 0..1 for a button (1 = ready). */
 export const readyFrac = (c: Cooldown) => (c.total <= 0 ? 1 : 1 - Math.max(0, Math.min(1, c.left / c.total)));
+/** Effort palette (matches the shell zone widget), index = power zone 1..5. Pure so sims can tint HUD hints. */
+export const ZONE_TINTS: readonly string[] = ['#8a8aa0', '#8a8aa0', '#3b82ff', '#2de26a', '#ffd23b', '#ff4d4d'];
+export const effortTint = (zone: number) => ZONE_TINTS[clampZone(zone)];
+/** Flourish intensity for a power zone: 0 in Z1 rising to 1 in Z5. */
+export const effortFlourish = (zone: number) => (clampZone(zone) - 1) / 4;
 export const isReady = (c: Cooldown) => c.left <= 0;

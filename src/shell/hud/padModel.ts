@@ -1,6 +1,6 @@
-import type { Button, ControlHint } from '../../contracts';
+import type { Button, ControlCooldown, ControlHint } from '../../contracts';
 
-export interface PadButton { id: Button; glyph: string; label?: string; mapped: boolean; active?: boolean; color: string }
+export interface PadButton { id: Button; glyph: string; label?: string; mapped: boolean; active?: boolean; color: string; cooldown?: ControlCooldown }
 /** One group of physical buttons. `label` is set when every mapped member does the same thing (drawn once, centered). */
 export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; mapped: boolean; gears?: boolean }
 export interface HoodModel { paddle: { label?: string; mapped: boolean }; shift: Cluster | null; stick: Cluster }
@@ -21,7 +21,7 @@ function cluster(kind: Cluster['kind'], defs: Def, hints: Map<string, ControlHin
   const merged = (g && !member.some(Boolean)) ? g : same ? member[0] : undefined;
   const buttons = defs.map(([id, glyph], i): PadButton => {
     const h = merged ?? member[i] ?? (g && !member.some(Boolean) ? g : undefined);
-    return { id, glyph, label: merged ? undefined : h?.label, mapped: !!h, active: h?.active, color: color(id) };
+    return { id, glyph, label: merged ? undefined : h?.label, mapped: !!h, active: h?.active, color: color(id), cooldown: h?.cooldown };
   });
   return { kind, buttons, label: merged?.label, mapped: buttons.some((b) => b.mapped) };
 }

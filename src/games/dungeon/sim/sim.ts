@@ -4,7 +4,7 @@ import {
   ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, rollRarity, sellValue, starterWeapon, weaponScore,
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
-import { DEFAULT_ZONE_REFILL, completeCooldown, refillRate, tickCooldown } from '../../../core/cooldown';
+import { DEFAULT_ZONE_REFILL, completeCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
 import { findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
@@ -1169,10 +1169,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : curse ? 'Cursed: ride it out' : 'Heal' };
     return {
       controls: [
-        { button: 'a', label: 'Strike', active: cds.strike.left <= 0 },
-        { button: 'b', label: 'Ward', active: cds.ward.left <= 0 },
-        { button: 'y', label: 'Rally', active: cds.rally.left <= 0 && spinCalled() },
-        { button: 'z', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp && cds.potion.left <= 0 },
+        ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
+          const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
+          return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
+            cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
+        }),
         { button: 'dpad', label: 'Stance', active: stanceCd <= 0 && !swapTo },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },

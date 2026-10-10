@@ -16,11 +16,7 @@ export interface ActionButtonSpec {
   scale?: number;                               // text scale (default derives from h)
 }
 
-/** Effort palette (matches the shell's zone widget colours), zone 1..5. */
-export const ZONE_TINTS = ['#8a8aa0', '#8a8aa0', '#3b82ff', '#2de26a', '#ffd23b', '#ff4d4d'];
-export const effortTint = (zone: number) => ZONE_TINTS[Math.max(1, Math.min(5, Math.round(zone)))];
-/** Flourish intensity for a power zone: none in Z1, rising to 1 in Z5. */
-export const effortFlourish = (zone: number) => Math.max(0, Math.min(1, (Math.round(zone) - 1) / 4));
+export { ZONE_TINTS, effortTint, effortFlourish } from '../../core/cooldown';
 
 function rgb(hex: string): [number, number, number] {
   const h = hex.replace('#', ''), n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h.slice(0, 6), 16);

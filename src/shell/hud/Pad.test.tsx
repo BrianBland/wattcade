@@ -55,3 +55,22 @@ it('removes unused peripheral controls while retaining assigned paddles and acti
   expect(el.querySelector('[aria-label="Dash"]')).not.toBeNull();
   expect(el.querySelector('[aria-label="Right controller"]')).not.toBeNull();
 });
+
+it('draws a game cooldown on the key: partial fill tinted by effort, then a ready glow', () => {
+  const pad = buildPad([
+    { button: 'a', label: 'Strike', cooldown: { fill: 0.4, ready: false, tint: '#ffd23b', flourish: 0.75 } },
+    { button: 'b', label: 'Ward', active: true, cooldown: { fill: 1, ready: true } },
+    { button: 'y', label: 'Rally' },
+  ], false);
+  const el = document.createElement('div');
+  render(<Hood side="R" model={pad.right} held={new Set()} paddle={0} />, el);
+  const k = (l: string) => el.querySelector<HTMLButtonElement>(`[aria-label="${l}"]`)!;
+  expect(k('Strike').className).toMatch(/\bcd\b/); expect(k('Strike').className).not.toMatch(/\bready\b/);
+  expect(k('Strike').className).toContain('hot');
+  expect(k('Strike').style.getPropertyValue('--fill')).toBe('40%');
+  expect(k('Strike').style.getPropertyValue('--tint')).toBe('#ffd23b');
+  expect(k('Strike').querySelector('.pk-fill')).not.toBeNull();
+  expect(k('Ward').className).toMatch(/\bcd ready\b/);
+  expect(k('Rally').className).not.toMatch(/\bcd\b/);
+  expect(k('Rally').querySelector('.pk-fill')).toBeNull();
+});

@@ -444,3 +444,12 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .mp-delete:hover, .mp-delete:focus-visible { border-color: #ff5a6e; color: #ff5a6e; background: #ff5a6e14; }
 .mp-qremove { flex: none; }
 .mp-undo { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: #15122cf0; border: 1px solid var(--glass-line); box-shadow: 0 8px 30px #0008; }
+/* Streamed-song partial analysis preview (#65, related #64). */
+.mp-chip.partial { border-color: #ffb020aa; color: #ffd27a; }
+.mp-partial-label { font-weight: 800; color: #ffd27a; }
+.mp-hatch { background: repeating-linear-gradient(135deg, #1b1830 0 3px, #ffffff33 3px 5px) !important; }
+.mp-approx { font-style: italic; }
+.mp-qrow .mp-title { min-width: 80px; flex: 1 1 auto; overflow: hidden; }
+.mp-qrow .mp-title b, .mp-row .mp-title b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-qrow .mp-title .mp-chip { display: inline-flex; margin: 2px 0 0; }
+.mp-qremove { padding-left: 8px; padding-right: 8px; }

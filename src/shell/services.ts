@@ -3,6 +3,7 @@
  * Written against the CLAUDE.md "Integration seams"; guessed signatures are
  * isolated behind `any` adapters here so fixes stay local.
  */
+import type { SongAnalysis, SongMeta } from '../media';
 import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
 import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
@@ -324,6 +325,23 @@ export function mediaEngine(): MixEngine {
   return engine;
 }
 /** Streaming runs keep only the configured horizon decoded; analysis is per audio window. */
+/** Mono PCM at ANALYSIS_SR from a decoded buffer (linear resample). */
+function downmix(buffer: AudioBuffer): Float32Array {
+  const pcm = new Float32Array(Math.floor(buffer.duration * ANALYSIS_SR));
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+  for (let i = 0; i < pcm.length; i++) {
+    const x = i * buffer.sampleRate / ANALYSIS_SR, k = Math.floor(x), f = x - k;
+    for (const ch of channels) pcm[i] += ((ch[k] ?? 0) * (1 - f) + (ch[k + 1] ?? ch[k] ?? 0) * f) / channels.length;
+  }
+  return pcm;
+}
+/** Picker preview: fetch one range of a streamed song and analyze it. The decoded audio is dropped right away (analysis only). */
+export async function analyzeStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal): Promise<SongAnalysis> {
+  const data = await loadAudioRange(song, startS, durationS, mediaServerConfig(), signal);
+  const pcm = downmix(await mediaEngine().ctx.decodeAudioData(data));
+  if (signal.aborted) throw new Error('Preview was cancelled.');
+  return analyzeInWorker(pcm, ANALYSIS_SR, () => {});
+}
 export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode): Promise<MediaRun> {
   const lib = mediaLibrary(), config = mediaServerConfig(), ctx = mediaEngine().ctx;
   if (!config.enabled) throw new Error('Enable the media server on Connect first.');
@@ -353,13 +371,7 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
       for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
     }
     if (signal.aborted) throw new Error('Media queue was closed.');
-    const pcm = new Float32Array(Math.floor(buffer.duration * ANALYSIS_SR));
-    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
-    for (let i = 0; i < pcm.length; i++) {
-      const x = i * buffer.sampleRate / ANALYSIS_SR, k = Math.floor(x), f = x - k;
-      for (const ch of channels) pcm[i] += ((ch[k] ?? 0) * (1 - f) + (ch[k + 1] ?? ch[k] ?? 0) * f) / channels.length;
-    }
-    const analysis = await analyzeInWorker(pcm, ANALYSIS_SR, () => {});
+    const analysis = await analyzeInWorker(downmix(buffer), ANALYSIS_SR, () => {});
     return { buffer, analysis };
   });
   return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };

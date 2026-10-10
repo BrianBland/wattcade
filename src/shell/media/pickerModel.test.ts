@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fmtTime, moveItem, nextMode, pickerNav, previewStart, type PickerFocus } from './pickerModel';
+import { fmtTime, moveItem, nextMode, pickerNav, previewStart, type PickerFocus, previewIntent, canPreview } from './pickerModel';
 
 const size = { tabs: 3, list: 5, queue: 2 };
 const f0: PickerFocus = { zone: 'list', tab: 0, list: 0, queue: 0 };
@@ -40,4 +40,37 @@ describe('queue helpers', () => {
     expect(previewStart([], 120)).toBe(40);
   });
   it('formats times', () => { expect(fmtTime(65)).toBe('1:05'); expect(fmtTime(3725)).toBe('1:02:05'); });
+});
+
+describe('preview intent', () => {
+  const rig = () => {
+    const timers: Array<{ fn: () => void; ms: number; dead?: boolean }> = []; const log: string[] = [];
+    const p = previewIntent({ start: (id) => log.push(`start ${id}`), stop: () => log.push('stop'),
+      setTimer: (fn, ms) => { const t = { fn, ms }; timers.push(t); return t; }, clearTimer: (h) => { (h as { dead: boolean }).dead = true; } });
+    const fire = () => timers.filter((t) => !t.dead).splice(0).forEach((t) => { t.dead = true; t.fn(); });
+    return { p, log, timers, fire };
+  };
+  it('debounces hover and stops on leave', () => {
+    const { p, log, timers, fire } = rig();
+    p.enter('a', 'hover'); expect(timers[0].ms).toBe(350); expect(log).toEqual([]);
+    p.leave('a'); fire(); expect(log).toEqual([]);           // quick pass-over never plays
+    p.enter('a', 'hover'); fire(); expect(log).toEqual(['start a']); expect(p.playing).toBe('a');
+    p.enter('a', 'hover'); expect(timers.filter((t) => !t.dead)).toHaveLength(0); // re-enter is a no-op
+    p.leave('b'); expect(p.playing).toBe('a');                // leaving another row is ignored
+    p.leave('a'); expect(log).toEqual(['start a', 'stop']);
+  });
+  it('switches rows, uses per-trigger delays, and refuses unavailable audio', () => {
+    const { p, log, timers, fire } = rig();
+    p.enter('a', 'press'); expect(timers[0].ms).toBe(250); fire();
+    p.enter('b', 'focus'); expect(log).toEqual(['start a', 'stop']); expect(timers[1].ms).toBe(600); fire();
+    expect(p.playing).toBe('b');
+    p.enter('c', 'hover', false); expect(log.at(-1)).toBe('stop'); expect(p.playing).toBeNull(); expect(p.pending).toBeNull();
+    p.enter('d', 'hover'); p.reset(); fire(); expect(p.playing).toBeNull();
+  });
+  it('canPreview only for ready, local audio', () => {
+    expect(canPreview({ status: 'ready' })).toBe(true);
+    expect(canPreview({ status: 'ready', sourceUrl: 'https://x' })).toBe(false);
+    expect(canPreview({ status: 'analyzing' })).toBe(false);
+    expect(canPreview(undefined)).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { checkMediaServer, mediaServerConfig, saveMediaServerConfig } from '../../media';
+import { checkMediaServer, mediaServerConfig, saveMediaServerConfig, STREAM_BUFFER_OPTIONS } from '../../media';
 import { Btn, Dot } from './Bits';
 
 /** Optional app-wide extension, configured beside the bike devices. */
@@ -21,8 +21,9 @@ export function MediaServerConnection({ focused, onFocus }: { focused?: boolean;
       onInput={(e) => save({ ...config, token: e.currentTarget.value })}/></label>
     <label class="dim small">Buffer ahead<select class="mp-search" aria-label="Buffer ahead" value={config.bufferS}
       onChange={(e) => save({ ...config, bufferS: Number(e.currentTarget.value) })}>
-      {[60, 90, 120, 180].map((s) => <option value={s}>{s} seconds</option>)}
+      {STREAM_BUFFER_OPTIONS.map((s) => <option value={s}>{s} seconds</option>)}
     </select></label>
+    <div class="dim small">A longer buffer gives ride planning more time for steady efforts and breaks, but takes longer to start.</div>
     <Btn small disabled={busy || !config.url.trim()} onClick={() => void connect()}>{busy ? 'Connecting…' : 'Test connection'}</Btn>
     {message && <div role="status" class={connected ? 'device-live' : 'warn'}>{message}</div>}
     <div class="dim small note">Search YouTube and SoundCloud. Online mixes use estimated transitions and analyze the buffered audio as you ride. The token lasts for this tab; server settings are remembered.</div>

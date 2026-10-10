@@ -7,10 +7,10 @@ export interface Layout {
   /** three.js setViewOffset y shift so the craft sits in the usable area. */
   viewOffsetY: number;
   score: Box;    // top-left: score, multiplier, chain
-  zone: Box;     // top-right: section kind, time left, target
+  zone: Box;     // top-right: target band and effort time left
   shield: Box;   // top-centre: shield bar
   song: Box;     // under the score: now playing + credit
-  callout: Box;  // big centred "ZONE 07 / DROP" callout
+  callout: Box;  // primary coaching instruction / drop countdown
   menu: Box;     // pre-game menu panel
   launch: Box;   // the launch meter (bottom centre, above the shell HUD)
   recap: Box;    // end-of-song recap card

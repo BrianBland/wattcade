@@ -1,6 +1,7 @@
 import type { MixPlan, PlanEntry } from '../mix/plan';
 import { progTime } from '../mix/plan';
 import type { RangeSource } from '../online/rolling';
+import { STREAM_PAUSE_LEAD_S, STREAM_RESUME_LEAD_S } from '../online/buffer';
 import { scheduleDeck, type ParamEvent } from './schedule';
 
 /**
@@ -245,11 +246,11 @@ export class MixEngine {
         void ranges.prepare(p).then(() => { this.lastError = ''; }).catch((e) => { this.lastError = String(e.message ?? e); }).finally(() => { this.preparing = false; });
       }
       const lead = ranges.readyThrough(p) - p;
-      // Keep the visible road inside the analyzed horizon, and freeze both clocks on starvation.
-      if (this.state === 'playing' && lead < Math.min(35, plan.durationS - p) - 0.1) {
+      // Reserve analyzed music for the next effort and recovery, freezing both clocks if preparation falls behind.
+      if (this.state === 'playing' && lead < Math.min(STREAM_PAUSE_LEAD_S, plan.durationS - p) - 0.1) {
         this.anchorP = p; this.state = 'buffering'; this.scheduled.clear();
         for (const d of this.decks) d.stop();
-      } else if (this.state === 'buffering' && lead >= Math.min(55, plan.durationS - p) - 0.1) {
+      } else if (this.state === 'buffering' && lead >= Math.min(STREAM_RESUME_LEAD_S, plan.durationS - p) - 0.1) {
         this.anchorCtx = this.ctx.currentTime + 0.1; this.state = 'playing';
       }
       if (this.state === 'playing') this.scheduleRanges(p);

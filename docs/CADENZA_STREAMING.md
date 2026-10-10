@@ -5,14 +5,17 @@ individual track URLs. A nearby Linux machine runs yt-dlp and ffmpeg. Cloudflare
 that daemon a public HTTPS hostname; the iPad connects to it directly from the hosted app.
 No Worker runs the extractor, and no incoming router port or local TLS certificate is needed.
 
-Online queues start after preparing the configured buffer (60 seconds by default, adjustable
-to 180). Playback uses 30-second PCM windows with up to two seconds of analysis context on each
+Online queues start after preparing the configured buffer (180 seconds by default, adjustable
+from 120 to 240; older 60/90-second preferences move to 120). This lookahead gives Cadenza room
+to plan steady efforts and recovery across song changes, at the cost of a longer startup.
+Playback uses 30-second PCM windows with up to two seconds of analysis context on each
 side. Windows are decoded and analyzed in the browser worker, scheduled on the AudioContext
 clock, and evicted after playback. Only buffered audio is analyzed; duration is known up front.
 Automix uses estimated duration-based crossfades, with no promise of beat or phrase matching.
 The plan stays fixed as local BPM/section estimates arrive. Cadenza publishes new road ahead
 and preserves ridden geometry and collected blocks. If preparation falls behind, music and
-game clocks hold together until the buffer recovers. Road/city GPU geometry covers only the nearby
+game clocks hold together when analyzed lookahead falls below 90 seconds, then resume at
+120 seconds (or the queue end, if closer). Road/city GPU geometry covers only the nearby
 140 seconds; lightweight timeline curves and the centreline still scale with queue duration. Local files retain full-analysis behavior.
 
 This is an unofficial extraction integration. Tracks can fail when upstream sites change,
@@ -89,7 +92,7 @@ seeking support; verify the server can supply windows faster than playback befor
    Use the app's origin in `MEDIA_RESOLVER_ORIGIN` exactly, including its port if any.
 
 5. Open the hosted app on the iPad. On **Connect**, enable **Media server**, enter
-   `https://media.YOUR_DOMAIN` and the **app access token**, leave the buffer at 60 seconds,
+   `https://media.YOUR_DOMAIN` and the **app access token**, leave the buffer at 180 seconds,
    and tap **Test connection**. Then launch Cadenza → **Online music**, search YouTube or
    SoundCloud, tap **+** to enqueue songs, and start the ride. If the token is forgotten on a
    new tab, enter it again; server URL, enabled state and buffer preference persist.

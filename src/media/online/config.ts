@@ -1,12 +1,14 @@
+import { DEFAULT_STREAM_BUFFER_S, streamBufferS } from './buffer';
+
 export interface MediaServerConfig { enabled: boolean; url: string; token: string; bufferS: number }
 const KEY = 'wattcade.media.server';
-const defaults: MediaServerConfig = { enabled: false, url: '/media-resolver', token: '', bufferS: 60 };
+const defaults: MediaServerConfig = { enabled: false, url: '/media-resolver', token: '', bufferS: DEFAULT_STREAM_BUFFER_S };
 const listeners = new Set<() => void>();
 export function mediaServerConfig(): MediaServerConfig {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     const token = sessionStorage.getItem(`${KEY}.token`) ?? '';
-    return { ...defaults, ...saved, enabled: saved.enabled === true, token, bufferS: Math.max(60, Math.min(180, Number(saved.bufferS) || 60)) };
+    return { ...defaults, ...saved, enabled: saved.enabled === true, token, bufferS: streamBufferS(saved.bufferS) };
   } catch { return { ...defaults }; }
 }
 export function saveMediaServerConfig(c: MediaServerConfig): void {

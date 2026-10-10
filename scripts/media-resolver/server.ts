@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { extractAudio, extractRange, search, type Provider } from './service';
+import { MAX_PLAYLIST_ITEMS, playlist, PlaylistChoiceRequired } from './playlist';
 
-interface Options { origin: string; token?: string; search?: typeof search; extractAudio?: typeof extractAudio; extractRange?: typeof extractRange }
+interface Options { origin: string; token?: string; search?: typeof search; extractAudio?: typeof extractAudio; extractRange?: typeof extractRange; playlist?: typeof playlist }
 const equal = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
 async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new Error('Expected JSON.');
@@ -23,8 +24,8 @@ export function resolverServer(o: Options) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
     if (o.token && !equal(req.headers.authorization ?? '', `Bearer ${o.token}`)) { json(401, { error: 'Resolver token is invalid.' }); return; }
-    if (req.method !== 'POST' || !['/health', '/search', '/audio', '/chunk'].includes(req.url ?? '')) { json(404, { error: 'Endpoint not found.' }); return; }
-    if (req.url === '/health') { json(200, { api: 2, name: 'Cadenza media server', capabilities: { search: true, ranges: true }, maxRangeS: 40 }); return; }
+    if (req.method !== 'POST' || !['/health', '/search', '/playlist', '/audio', '/chunk'].includes(req.url ?? '')) { json(404, { error: 'Endpoint not found.' }); return; }
+    if (req.url === '/health') { json(200, { api: 2, name: 'Cadenza media server', capabilities: { search: true, ranges: true, playlists: true }, maxRangeS: 40, maxPlaylistItems: MAX_PLAYLIST_ITEMS }); return; }
     if (active >= 2) { json(429, { error: 'Resolver is busy. Try again shortly.' }); return; }
     active++;
     try {
@@ -33,6 +34,19 @@ export function resolverServer(o: Options) {
         if (typeof data.query !== 'string' || !['youtube', 'soundcloud'].includes(String(data.provider))) throw new Error('Invalid search.');
         const tracks = await (o.search ?? search)(data.provider as Provider, data.query);
         json(200, { tracks });
+      } else if (req.url === '/playlist') {
+        if (typeof data.url !== 'string' || data.url.length > 2048) throw new Error('Invalid playlist URL.');
+        if (data.choice !== undefined && data.choice !== 'playlist' && data.choice !== 'track') throw new Error('Invalid import choice.');
+        if (data.limit !== undefined && typeof data.limit !== 'number') throw new Error('Invalid playlist limit.');
+        // Cancel extraction when the browser goes away.
+        const abort = new AbortController();
+        res.on('close', () => { if (!res.writableFinished) abort.abort(); });
+        try {
+          json(200, await (o.playlist ?? playlist)(data.url, { choice: data.choice as 'playlist' | 'track' | undefined, limit: data.limit as number | undefined, signal: abort.signal }));
+        } catch (e) {
+          if (e instanceof PlaylistChoiceRequired) { json(409, { error: e.message, code: e.code, videoUrl: e.videoUrl, playlistUrl: e.playlistUrl }); return; }
+          throw e;
+        }
       } else {
         if (typeof data.url !== 'string' || data.url.length > 2048) throw new Error('Invalid track URL.');
         const ranged = req.url === '/chunk';

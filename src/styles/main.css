@@ -404,6 +404,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .locker-focus .lock { color: var(--warn); }
 .good { color: var(--lime); }
 .locker-items .tabs { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+/* The panel supplies the glass effect. Avoid a separate backdrop filter for every tile over the animated lobby. */
+.locker-items .item-tile, .locker-items .tabs .btn { -webkit-backdrop-filter: none; backdrop-filter: none; }
 .btn.on { border-color: var(--pink); box-shadow: inset 0 -3px 0 var(--pink); }
 .item-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-height: max(220px, calc(100vh - var(--hud-h, 0px) - 220px)); overflow-y: auto; padding: 6px; }
 .item-tile { padding: 6px; text-align: center; min-width: 0; }
@@ -421,3 +423,33 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 
 /* The toolbar panel supplies the glass backdrop; avoid filtering it again per button. */
 .menu .topbar .btn { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Media picker: prominent Add, hover/press preview, separated remove vs delete with undo (#65). */
+.mp-row:hover { background: #ffffff0a; }
+.mp-row:focus-visible { outline: none; border-color: var(--neon); }
+.mp-row.previewing { border-color: #ff2bd6aa; background: #ff2bd614; }
+.mp-row { -webkit-touch-callout: none; user-select: none; }
+.mp-swatch { position: relative; }
+.mp-eq { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; gap: 2px; padding: 5px; }
+.mp-eq i { width: 3px; background: #fff; border-radius: 1px; animation: mp-eq 0.8s ease-in-out infinite; }
+.mp-eq i:nth-child(2) { animation-delay: -0.3s; } .mp-eq i:nth-child(3) { animation-delay: -0.55s; }
+@keyframes mp-eq { 0%, 100% { height: 25%; } 50% { height: 85%; } }
+@media (prefers-reduced-motion: reduce) { .mp-eq i { animation: none; height: 60%; } }
+.mp-playing { color: #ff7be6; font-weight: 700; }
+.mp-add { flex: none; min-width: 92px; min-height: 40px; font-weight: 900; }
+.mp-add.queued { border-color: #2de2a6; color: #2de2a6; background: #2de2a614; }
+.mp-again { opacity: 0.7; margin-left: 4px; }
+.mp-delete { flex: none; width: 34px; height: 34px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--dim); cursor: pointer; opacity: 0.55; font-size: 15px; }
+.mp-row:hover .mp-delete, .mp-row.focused .mp-delete, .mp-delete:focus-visible { opacity: 1; }
+.mp-delete:hover, .mp-delete:focus-visible { border-color: #ff5a6e; color: #ff5a6e; background: #ff5a6e14; }
+.mp-qremove { flex: none; }
+.mp-undo { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: #15122cf0; border: 1px solid var(--glass-line); box-shadow: 0 8px 30px #0008; }
+/* Streamed-song partial analysis preview (#65, related #64). */
+.mp-chip.partial { border-color: #ffb020aa; color: #ffd27a; }
+.mp-partial-label { font-weight: 800; color: #ffd27a; }
+.mp-hatch { background: repeating-linear-gradient(135deg, #1b1830 0 3px, #ffffff33 3px 5px) !important; }
+.mp-approx { font-style: italic; }
+.mp-qrow .mp-title { min-width: 80px; flex: 1 1 auto; overflow: hidden; }
+.mp-qrow .mp-title b, .mp-row .mp-title b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-qrow .mp-title .mp-chip { display: inline-flex; margin: 2px 0 0; }
+.mp-qremove { padding-left: 8px; padding-right: 8px; }

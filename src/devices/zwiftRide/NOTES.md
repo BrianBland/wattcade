@@ -2,6 +2,10 @@
 - `RideControllerGroup.ids` exposes both registered peripheral IDs.
 - `addDevice(device)` adds an authorized peripheral without opening a picker.
 - `addFromPicker()` delegates to it; duplicate IDs are rejected.
-- Existing controller handshake/reconnect logic is unchanged.
+- Shared lifecycle bounds setup and handshake; serializes recovery with trainer/HR; cancels stale attempts.
 - Tests: `npx vitest run src/devices/zwiftRide`.
 - Verify both same-name Ride sides reconnect on Bluefy after reload/restart.
+- `count` reports connected sides; `ids` includes registered offline sides. Offline sides can be selected again.
+- Disconnect clears input state and old notification listeners; group removal emits neutral state.
+- Mock tests cover handshake replay, bounded failure, duplicate disconnects, and closing recovery.
+- Hardware test and verified documentation: `docs/BLUETOOTH.md`.

@@ -53,7 +53,7 @@ export function mediaPreview(g: CanvasRenderingContext2D, w: number, h: number, 
   for (let i = 0; i < n; i += 5) { const x = X(i / tr.hz), y = Y(tr.height[i]); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
   g.stroke();
   g.fillStyle = '#ff2bd6'; g.font = 'bold 11px system-ui'; g.textAlign = 'center';
-  for (const z of tr.zones) if (z.kind === 'drop') g.fillText('⚡', X((z.t0 + z.t1) / 2), top + 11);
+  for (const b of tr.rideBlocks) if (b.phase === 'sprint') g.fillText('⚡', X((b.t0 + b.t1) / 2), top + 11);
   const r = rateTrack(tr);
   g.textAlign = 'left'; g.fillStyle = '#e9e6ff'; g.font = 'bold 11px system-ui';
   g.fillText(`${difficulty.toUpperCase()} · ${r.blocksPerMin} blocks/min · ~${r.tss} TSS · ${r.minutesZ4} min Z4+ · ${'★'.repeat(r.stars)}`, 4, 13);

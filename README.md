@@ -135,5 +135,6 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 
 Enable **Connect → Media server**, then search YouTube/SoundCloud or paste a track URL in
 **Online music**. A Linux yt-dlp/ffmpeg daemon behind Cloudflare Tunnel supplies short audio
-windows for buffered playback and JIT analysis (60s ahead by default). Online automix uses estimated crossfades.
+windows for buffered playback and JIT analysis (180s ahead by default, adjustable from 120–240s).
+Online automix uses estimated crossfades.
 See [setup and deployment instructions](docs/CADENZA_STREAMING.md).

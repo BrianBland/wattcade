@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Button } from '../../../contracts';
+import { scenarios } from '../scenarios';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
@@ -161,4 +162,13 @@ it('applies rolling timeline revisions without resetting score or collected bloc
   expect([...after.blockState.slice(0, kept)]).toEqual(states);
   expect(Number(s.sim.summary().score)).toBeGreaterThanOrEqual(Number(summary.score));
   expect(timeline.updateFromS).toBeUndefined();
+});
+
+describe('cadenza scenarios (runHeadless)', () => {
+  for (const sc of scenarios) {
+    it(sc.name, () => {
+      const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts, media: sc.media });
+      expect(sc.assert(r.summary, r.stats, r), JSON.stringify(r.summary)).toEqual([]);
+    });
+  }
 });

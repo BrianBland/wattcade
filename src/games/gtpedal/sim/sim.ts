@@ -119,9 +119,9 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     footFtp: T.num('footFtp', 1, 0.3, 2, 0.05, 'fraction of FTP that gives full running speed'),
     footTurn: T.num('footTurn', 3, 0.5, 8, 0.5, 'on-foot paddle turn rate rad/s'),
     jackR: T.num('jackR', 2.8, 1, 6, 0.2, 'bike-jack reach m'),
-    cyclists: T.num('cyclists', 32, 0, 80, 1, 'NPC cyclists going about their business (recycled to stay near you)'),
-    peds: T.num('peds', 24, 0, 60, 1, 'extra pedestrians strolling the paths (recycled to stay near you)'),
-    recycleR: T.num('recycleR', 120, 60, 300, 5, 'traffic farther than this from you respawns 60-100 m away'),
+    cyclists: T.num('cyclists', 40, 0, 80, 1, 'NPC cyclists going about their business (recycled to stay near you)'),
+    peds: T.num('peds', 30, 0, 60, 1, 'extra pedestrians strolling the paths (recycled to stay near you)'),
+    recycleR: T.num('recycleR', 95, 50, 300, 5, 'traffic farther than this from you respawns near you (behind the camera or 70-95 m ahead)'),
     tramHopV: T.num('tramHopV', 1.2, 0.3, 3, 0.1, 'tram hop: clearance over the roof, m'),
     fxSpeedLines: T.num('fxSpeedLines', 1, 0, 2, 0.1, 'VFX: speed-line strength'),
     fxSpeedLineMin: T.num('fxSpeedLineMin', 11, 4, 25, 0.5, 'VFX: speed lines above this m/s'),
@@ -312,6 +312,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
 
     if (mode === 'ragdoll' && rag) {
       rag.s += dt; rag.vy -= tun.gravity() * dt; rag.x += rag.vx * dt; rag.y += rag.vy * dt; rag.z += rag.vz * dt; rag.spin += dt * 9;
+      { const lim = HALF - 2; if (Math.abs(rag.x) > lim) { rag.x = Math.sign(rag.x) * lim; rag.vx *= -0.4; } if (Math.abs(rag.z) > lim) { rag.z = Math.sign(rag.z) * lim; rag.vz *= -0.4; } }
       if (buildingAt(rag.x, rag.z)) { rag.vx *= -0.4; rag.vz *= -0.4; rag.x += rag.vx * dt * 2; rag.z += rag.vz * dt * 2; }
       const g = heightAt(rag.x, rag.z, bridge);
       if (rag.y < g) { rag.y = g; rag.vy = Math.abs(rag.vy) * 0.3; rag.vx *= 0.6; rag.vz *= 0.6; }
@@ -340,8 +341,10 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       } else body.heading = wrap(body.heading + steer * tun.footTurn() * dt); // paddles: natural walking direction
       body.speed = 0;
       if (spd > 0 && d > 1.2) {
-        const nx = body.x + Math.sin(body.heading) * spd * dt, nz = body.z + Math.cos(body.heading) * spd * dt;
-        if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -3 && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { body.x = nx; body.z = nz; body.speed = spd; }
+        for (const off of [0, 0.7, -0.7, 1.4, -1.4]) { // slide along walls, trunks and hedges instead of sticking
+          const h = body.heading + off, nx = body.x + Math.sin(h) * spd * dt, nz = body.z + Math.cos(h) * spd * dt;
+          if (!buildingAt(nx, nz) && heightAt(nx, nz, bridge) > -3 && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { body.x = nx; body.z = nz; body.speed = spd * Math.cos(off); break; }
+        }
         body.y = heightAt(body.x, body.z, bridge);
       }
       const jn = jackable();
@@ -546,7 +549,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
       if (tn && tn.speed > 1) { n.vy = 9; n.vx = tn.dir * (tn.speed + 5); n.vz = (n.z >= tn.z ? 1 : -1) * 3; n.airS = 0.01; stats.launches++; event('tramLaunch'); continue; }
       if (inPatch(patches, n.x, n.z, 'fire') && n.flailS <= 0) { n.flailS = tun.flailS(); event('onFire'); dropBike(n); }
       if (n.bike && mode === 'bike' && !body.air && body.speed > 5 && Math.hypot(n.x - body.x, n.z - body.z) < 1.1) { // you plough into a cyclist
-        n.vy = 6; n.vx = Math.sin(body.heading) * body.speed * 0.6; n.vz = Math.cos(body.heading) * body.speed * 0.6; n.airS = 0.01; body.speed *= 0.85; event('cyclistKnocked'); continue;
+        n.vy = 6; n.vx = Math.sin(body.heading) * body.speed * 0.6; n.vz = Math.cos(body.heading) * body.speed * 0.6; n.airS = 0.01; body.speed *= 0.93; event('cyclistKnocked'); continue;
       }
       if (n.stunS <= 0 && inPatch(patches, n.x, n.z, 'oil')) { n.vy = 4; n.airS = 0.01; n.vx = Math.sin(n.heading) * 2; n.vz = Math.cos(n.heading) * 2; continue; } // slip!
       if (n.stunS > 0) { n.stunS -= dt; continue; }
@@ -586,7 +589,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         for (let k = 0; k < 16; k++) {
           const h = recycleN++, l = paths[Math.floor(hash(h, 41) * paths.length) % paths.length], sg = Math.floor(hash(h, 42) * (l.pts.length - 1)), u = hash(h, 43);
           const [ax, az] = l.pts[sg], [bx, bz] = l.pts[sg + 1], x = ax + (bx - ax) * u, z = az + (bz - az) * u, d = Math.hypot(x - body.x, z - body.z);
-          if (d < 60 || d > 100 || buildingAt(x, z)) continue;
+          const fwd = (x - body.x) * Math.sin(body.heading) + (z - body.z) * Math.cos(body.heading); if (!(fwd < -d * 0.3 ? d > 22 && d < 80 : d > 70 && d < 95) || buildingAt(x, z)) continue; // pop in behind the camera or out in the haze
           n.x = x; n.z = z; n.line = l.id; n.y = heightAt(x, z, bridge); n.dir = hash(h, 44) < 0.5 ? 1 : -1; if (n.bike) n.speed = n.cruise; n.stunS = 0;
           break;
         }

@@ -52,3 +52,4 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
   (ink, shadows). Parked bikes ~2 calls, rider bike ~6 (frame/ink, 2 wheels, crank, bars), Segway 4, horse 22,
   plaza props 3 + floor, co-op 1, nav lines 1. `globalThis.__gtpInfo` exposes renderer.info (calls/tris) for capture scripts.
 - Lock-on: `render/reticle.ts` billboarded brackets + chevron, ink outline, muted weapon tint, depthTest off, snap-in.
+- r6: traffic recycling near the player (cyclists/peds), cyclist LOD in chars.ts, tram hop (Y alongside), TREES/HEDGES solid (world.ts), new kickers/rails/crates, render/fx.ts VFX, rebalance. See DESIGN "Round 6".

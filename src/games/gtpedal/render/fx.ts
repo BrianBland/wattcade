@@ -88,13 +88,13 @@ export class Fx {
     this.shake.set(Math.sin(s.t * 61) * A, Math.sin(s.t * 47 + 1) * A * 0.7, Math.sin(s.t * 53 + 2) * A);
     // --- speed lines: thin cream streaks rushing past the view edges ---
     const speed = s.mode === 'bike' ? R.speed : 0, k = Math.max(0, Math.min(1, (speed - fx.speedLineMin) / 8)) * fx.speedLines;
-    this.lines.visible = k > 0.02; this.lineMat.opacity = Math.min(0.85, 0.65 * k);
+    this.lines.visible = k > 0.02; this.lineMat.opacity = Math.min(0.6, 0.45 * k);
     if (this.lines.visible) {
       const fwd = new THREE.Vector3(); cam.getWorldDirection(fwd);
       const right = new THREE.Vector3().crossVectors(fwd, cam.up).normalize(), up = new THREE.Vector3().crossVectors(right, fwd).normalize();
       const tanH = Math.tan(((cam.fov * Math.PI) / 180) / 2);
       for (let n = 0; n < LINES_N; n++) {
-        const th = rnd(n, 7) * Math.PI * 2, d = 2.5 + frac(rnd(n, 8) - s.t * (0.6 + speed * 0.05)) * 9, rr = d * tanH * (0.75 + rnd(n, 9) * 0.45);
+        const th = rnd(n, 7) * Math.PI * 2, d = 2.5 + frac(rnd(n, 8) - s.t * (0.6 + speed * 0.05)) * 9, rr = d * tanH * (0.85 + rnd(n, 9) * 0.4);
         this.v.copy(cam.position).addScaledVector(fwd, d).addScaledVector(right, Math.cos(th) * rr * cam.aspect).addScaledVector(up, Math.sin(th) * rr);
         this.q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), fwd);
         this.m.compose(this.v, this.q, this.sc.set(1, 1, 0.6 + k * 2.4)); this.lines.setMatrixAt(n, this.m);

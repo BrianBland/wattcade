@@ -203,3 +203,13 @@ rider via `ctx.save`. Mechanism: the sim exposes `settings()`, the shell reads i
 - Ammo: keep crates, or regenerate slowly while riding hard (watts → ammo)?
 - Should `forks` become the default after play-testing?
 - Should weapons/cops raise grade too (e.g. dragging a tandem stoker)?
+
+## Round 6: lively streets, tram surfing, solid scenery, juice
+
+- **Traffic**: 40 NPC cyclists + 30 extra strollers (tunables `cyclists`, `peds`) on top of the 14 rng pedestrians. Every 0.5 s anything farther than `recycleR` (95 m) respawns on a path near you: behind the camera (22-80 m) or out in the haze ahead (70-95 m), so nothing pops in view. Placement is world-hash based (no rng draws), so the sim stays deterministic. Render LOD: cyclists inside 28 m get the full animated bike rig; 28-120 m get one instanced silhouette per bike kind (2 draw calls for all of them) with the instanced rider.
+- **Tram surfing**: ride right alongside a tram (within its length, 0.35-2.6 m off its side) and the Y button shows **TRAM HOP!**. That hop is boosted to clear the roof by `tramHopV` and drifts you sideways onto the car, where the normal roof landing takes over (`onTram`, a `tram surf` trick).
+- **Solid scenery**: `TREES` (trunk hitbox about 0.9 m, 6 m tall) and `HEDGES` (3 × 1.1 × 1.3 m) live in the sim and are drawn from the same list. `buildingAt` covers them and `boxTop` uses the base height (`y0`), so hillside villas and trees are solid on slopes too. Walking slides along obstacles, nav visibility avoids trunks, and the autopilot probes in a 3-wide fan.
+- **More lines**: 9 district kickers (old town ×3, market ×2, hillside ×3, park), quay copings along both canal banks, stoop ledges on the old-town rows, a market handrail, and a hillside terrace rail. They render as slatted wooden wedges with a steel lip and as steel rails on posts. There are now 14 ammo crates across the districts.
+- **VFX** (`render/fx.ts`, 3-4 draw calls; tunables `fxSpeedLines`, `fxSpeedLineMin`, `fxDust`, `fxShake`, `fxSquash`, `fxSmoke`): speed-line streaks above 11 m/s, dust puffs on landings and crashes, cartoon smoke puffs that grow then shrink (no transparency) on booms and molotovs, screen shake on blasts, crashes and tram hits, and a squash-and-stretch bounce on landing.
+- **Rebalance**: `bazookaV` 18→12.5 (peak about 5-6 m, stays in shot), `grenadeV` 14→11, `heatCoolS` 20→14, cops spawn about `copSpawnD` = 75 m away (was 55). Ploughing through a cyclist only costs 7% speed.
+- **Jacked victim**: flung ahead and to the side of you, so the tumble happens in front of the camera, which rises and pulls back for 3 s. The victim then chases at 4.2 m/s, and once you've left them more than 16 m behind they stand and shake a fist.

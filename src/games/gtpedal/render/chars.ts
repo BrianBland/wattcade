@@ -328,6 +328,23 @@ export class Characters {
   readonly group = new THREE.Group();
   readonly crowd = new Crowd(160);
   private riderBikes = new Map<string, BikeRig>();
+  private tpl = new Map<string, BikeRig>(); private far = new Map<string, { body: THREE.InstancedMesh; ink: THREE.InstancedMesh; n: number }>();
+  private farTpl(kind: string) { let r = this.tpl.get(kind); if (!r) { r = buildBike(kind); this.tpl.set(kind, r); } return r; }
+  private farInst(kind: string) {
+    let f = this.far.get(kind);
+    if (!f) {
+      const tp = this.farTpl(kind), parts: THREE.BufferGeometry[] = [];
+      tp.wheels.forEach((w, i) => { const g = new THREE.TorusGeometry(tp.wheelR[i], 0.04, 4, 14); g.rotateY(Math.PI / 2); g.translate(w.position.x, w.position.y, w.position.z); parts.push(g.toNonIndexed()); });
+      const [r0, r1] = tp.wheels.map((w) => w.position), L = r1.distanceTo(r0);
+      const fr = new THREE.BoxGeometry(0.05, 0.05, L * 0.75); fr.translate(0, tp.bb.y + 0.15, (r0.z + r1.z) / 2); parts.push(fr.toNonIndexed());
+      const st = new THREE.BoxGeometry(0.05, tp.seat.y - tp.bb.y, 0.05); st.translate(0, (tp.seat.y + tp.bb.y) / 2, tp.seat.z); parts.push(st.toNonIndexed());
+      const g = mergeGeometries(parts)!; g.computeVertexNormals();
+      const body = new THREE.InstancedMesh(g, toon(BIKE_TINT[kind] ?? 0x6f8a7a), 48), ink = new THREE.InstancedMesh(g, inkMat(0.02), 48);
+      body.frustumCulled = ink.frustumCulled = false; body.instanceMatrix.setUsage(THREE.DynamicDrawUsage); ink.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      f = { body, ink, n: 0 }; this.far.set(kind, f); this.group.add(body, ink);
+    }
+    return f;
+  }
   /** squash & stretch y-scale for the player's bike + rider (set by Fx) */
   squash = 1;
   private parked = new Map<number, BikeRig>(); private cyc = new Map<number, BikeRig & { wa: number; ca: number }>();
@@ -358,6 +375,7 @@ export class Characters {
 
   update(s: Snapshot, dt: number, cadence: number, paintCol: number | undefined) {
     const t = s.t;
+    for (const f of this.far.values()) f.n = 0;
     this.crowd.begin();
     const used = new Set<string>();
     // --- rider ---
@@ -388,7 +406,15 @@ export class Characters {
     for (const n of s.npcs) {
       const { m, v } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
       if (n.bike && n.airS <= 0) { // NPC cyclist: own bike rig, pedalling, seated rider (hidden when far away)
-        const far = Math.hypot(n.x - R.x, n.z - R.z) > 110;
+        const dist = Math.hypot(n.x - R.x, n.z - R.z);
+        if (dist > 28) { // LOD: one instanced silhouette per bike kind (2 calls for all of them) + instanced rider
+          if (dist > 120) continue;
+          const tp = this.farTpl(n.bike); tp.root.position.set(n.x, n.y, n.z); tp.root.rotation.set(0, n.heading, m.lean); tp.root.updateMatrixWorld(true);
+          const fi = this.farInst(n.bike); if (fi.n < fi.body.count) { fi.body.setMatrixAt(fi.n, tp.root.matrixWorld); fi.ink.setMatrixAt(fi.n, tp.root.matrixWorld); fi.n++; }
+          this.addRider(tp, lookFor(n.id), 0, t, m.lean);
+          continue;
+        }
+        const far = false;
         let b = this.cyc.get(n.id);
         if (!b || b.kind !== n.bike) { if (b) this.group.remove(b.root); b = Object.assign(buildBike(n.bike), { wa: 0, ca: 0 }); this.cyc.set(n.id, b); this.group.add(b.root); }
         seenC.add(n.id); b.root.visible = !far; if (far) continue;
@@ -411,6 +437,7 @@ export class Characters {
       else this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'walk', t, phase: m.dist * 2.6 + n.id });
     }
     for (const [id, b] of this.cyc) if (!seenC.has(id)) { this.group.remove(b.root); this.cyc.delete(id); }
+    for (const f of this.far.values()) { f.body.count = f.ink.count = f.n; f.body.visible = f.ink.visible = f.n > 0; f.body.instanceMatrix.needsUpdate = f.ink.instanceMatrix.needsUpdate = true; }
     // --- parked bikes (upright on a kickstand lean) ---
     const seen = new Set<number>();
     for (const pb of s.bikes) {

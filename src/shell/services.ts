@@ -6,7 +6,7 @@
 import type { SongAnalysis, SongMeta } from '../media';
 import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
-import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
+import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, analyzeWindowInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
@@ -353,7 +353,7 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
     const item = await lib.mixItem(m.id); if (!item) throw new Error(`Still preparing ${m.title}.`); return structuredClone(item);
   }));
   const local = new Map<number, AudioBuffer>();
-  const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal) => {
+  const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal, hint) => {
     const meta = metas[index]!;
     let buffer: AudioBuffer;
     if (meta.sourceUrl) {
@@ -371,8 +371,9 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
       for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
     }
     if (signal.aborted) throw new Error('Media queue was closed.');
-    const analysis = await analyzeInWorker(downmix(buffer), ANALYSIS_SR, () => {});
-    return { buffer, analysis };
+    // Mono 22.05 kHz copy for analysis; only compact per-beat features come back (structure is rebuilt from them).
+    const { analysis, beats } = await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm);
+    return { buffer, analysis, beats };
   });
   return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };
 }

@@ -1,6 +1,8 @@
 import type { MediaTimeline } from '../../contracts';
 import { ANALYSIS_VERSION, CURVE_HZ, type QueueMode, type SongAnalysis } from '../types';
 import { buildTimeline } from '../mix/timeline';
+import { foldTempo } from '../analysis/tempo';
+import { structureFromBeats, type BeatFeature } from '../analysis/structure';
 import { planMix, progTime, songTime, type MixItem, type PlanEntry } from '../mix/plan';
 
 export const CHUNK_S = 30, CONTEXT_S = 2;
@@ -14,8 +16,8 @@ export interface RangeSource {
   dispose(): void;
   debug(): Record<string, number | string>;
 }
-export interface WindowResult { buffer: AudioBuffer; analysis: SongAnalysis }
-export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal) => Promise<WindowResult>;
+export interface WindowResult { buffer: AudioBuffer; analysis: SongAnalysis; /** Per-beat features (times relative to the buffer start). */ beats?: BeatFeature[] }
+export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) => Promise<WindowResult>;
 
 /** Honest placeholders: no invented beats or drops; only duration is known. */
 export function estimatedAnalysis(durationS: number): SongAnalysis {
@@ -28,11 +30,7 @@ export function estimatedAnalysis(durationS: number): SongAnalysis {
 /** Windows shorter than this (core seconds) never set song tempo/key on their own: too little audio. */
 export const MIN_ESTIMATE_S = 10;
 const songEstimates = new WeakMap<SongAnalysis, { bpmW: number; bpmSum: number; keys: Map<string, { w: number; key: SongAnalysis['key'] }> }>();
-/** Fold a tempo onto the octave of a reference tempo (half/double-time ambiguity). */
-export function foldTempo(bpm: number, ref: number): number {
-  if (!(bpm > 0) || !(ref > 0)) return bpm;
-  let b = bpm; while (b < ref / Math.SQRT2) b *= 2; while (b > ref * Math.SQRT2) b /= 2; return b;
-}
+export { foldTempo };
 /**
  * Song-level tempo/key from many windows: duration-weighted, half/double folded onto the running estimate,
  * short tail windows ignored (they used to overwrite the song's BPM, e.g. 108 → 58 from a 0.4 s final window).
@@ -53,7 +51,7 @@ function foldSongEstimates(target: SongAnalysis, a: SongAnalysis, coreS: number)
 }
 
 /** Commit only this window's events, with overlap used for context but never duplicated. */
-export function mergeWindow(target: SongAnalysis, a: SongAnalysis, bufferStart: number, start: number, end: number): void {
+export function mergeWindow(target: SongAnalysis, a: SongAnalysis, bufferStart: number, start: number, end: number, feats?: readonly BeatFeature[]): void {
   const inside = (t: number) => t >= start - 1e-6 && t < end - 1e-6;
   for (const key of ['beats', 'downbeats', 'phrases'] as const) {
     target[key] = [...target[key].filter((t) => !inside(t)), ...a[key].map((t) => t + bufferStart).filter(inside)].sort((x, y) => x - y);
@@ -70,8 +68,50 @@ export function mergeWindow(target: SongAnalysis, a: SongAnalysis, bufferStart: 
     for (let b = 0; b < 3; b++) target.bands[b][i] = a.bands[b][k] ?? 0;
   }
   foldSongEstimates(target, a, end - start);
+  if (feats) mergeStructure(target, feats, bufferStart, start, end);
   // Remains metadata-confidence: estimated song-wide structure and transitions are not a full-file analysis.
 }
+
+interface SongStructure { beats: BeatFeature[]; spans: Array<[number, number]> }
+const songStructure = new WeakMap<SongAnalysis, SongStructure>();
+/** Contiguous analysed coverage from 0 s. */
+function coveredFromZero(spans: Array<[number, number]>): number {
+  let c = 0; for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) { if (a > c + 1e-6) break; c = Math.max(c, b); } return c;
+}
+/** Remove a duplicate or fill one missing beat where two windows meet (period from the song tempo). */
+export function stitchSeam(beats: BeatFeature[], seam: number, period: number): BeatFeature[] {
+  if (!(period > 0)) return beats;
+  const i = beats.findIndex((b) => b.t >= seam - 1e-6);
+  if (i <= 0 || i >= beats.length) return beats;
+  const gap = beats[i].t - beats[i - 1].t;
+  if (gap < 0.5 * period) return [...beats.slice(0, i), ...beats.slice(i + 1)];
+  if (gap > 1.6 * period && gap < 2.4 * period) return [...beats.slice(0, i), { ...beats[i], t: Math.round(((beats[i - 1].t + beats[i].t) / 2) * 1000) / 1000 }, ...beats.slice(i)];
+  return beats;
+}
+/**
+ * Memory-light rolling structure: keep compact per-beat features from every committed window (no audio), stitch beats at
+ * seams, then recompute downbeats, sections and phrases over the whole analysed stretch from 0 s.
+ */
+function mergeStructure(target: SongAnalysis, feats: readonly BeatFeature[], bufferStart: number, start: number, end: number): void {
+  let st = songStructure.get(target);
+  if (!st) { st = { beats: [], spans: [] }; songStructure.set(target, st); }
+  const inside = (t: number) => t >= start - 1e-6 && t < end - 1e-6;
+  st.beats = [...st.beats.filter((b) => !inside(b.t)), ...feats.map((b) => ({ ...b, t: Math.round((b.t + bufferStart) * 1000) / 1000 })).filter((b) => inside(b.t))].sort((x, y) => x.t - y.t);
+  st.spans.push([start, end]);
+  const period = target.bpm > 0 ? 60 / target.bpm : 0;
+  st.beats = stitchSeam(stitchSeam(st.beats, start, period), end, period);
+  target.beats = st.beats.map((b) => b.t);
+  const covered = coveredFromZero(st.spans);
+  if (covered <= 0) return;
+  const s = structureFromBeats(st.beats.filter((b) => b.t < covered), target.intensity, CURVE_HZ, covered);
+  const after = target.sections.filter((x) => x.t1 > covered).map((x) => ({ ...x, t0: Math.max(x.t0, covered) }));
+  const later = (xs: number[]) => xs.filter((t) => t >= covered);
+  target.downbeats = [...s.downbeats, ...later(target.downbeats)];
+  target.phrases = [...s.phrases, ...later(target.phrases)];
+  target.sections = [...s.sections.map((x, i, all) => (i === all.length - 1 && covered < target.durationS - 0.1 && x.kind === 'outro' ? { ...x, kind: 'verse' as const } : x)), ...after];
+}
+/** Bytes of retained rolling features for a song (payload only: 26 float32 + t + low per beat). */
+export function retainedFeatureBytes(target: SongAnalysis): number { return (songStructure.get(target)?.beats.length ?? 0) * (24 * 4 + 5 * 8); }
 
 /** Bounded playback cache plus an append-only record of committed per-window analysis. */
 export class RollingQueue implements RangeSource {
@@ -118,7 +158,7 @@ export class RollingQueue implements RangeSource {
       const { e, start, end } = pending, bufferStart = Math.max(0, start - CONTEXT_S);
       const requestedEnd = Math.min(this.items[e.index].analysis.durationS, end + CONTEXT_S);
       try {
-        const result = await this.load(e.index, bufferStart, requestedEnd - bufferStart, controller.signal);
+        const result = await this.load(e.index, bufferStart, requestedEnd - bufferStart, controller.signal, this.items[e.index].analysis.bpm > 0 ? { bpm: this.items[e.index].analysis.bpm } : undefined);
         if (!this.alive || controller !== this.controller) return;
         // Search durations can be rounded to whole seconds. Only the final window may end slightly early.
         const tolerance = end === this.items[e.index].analysis.durationS ? 1 : 0.1;
@@ -126,7 +166,7 @@ export class RollingQueue implements RangeSource {
         const key = this.key(e.index, start);
         this.cache.set(key, { startS: start, endS: end, bufferStartS: bufferStart, buffer: result.buffer });
         if (!this.committed.has(key)) {
-          mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end);
+          mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
           const revision = (this.timeline.revision ?? 0) + 1;
           Object.assign(this.timeline, buildTimeline(this.plan, this.items), { revision, updateFromS: Math.min(this.timeline.updateFromS ?? Infinity, Math.max(0, progTime(e.segs, start))) });
           this.committed.add(key);

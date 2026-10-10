@@ -1,11 +1,16 @@
 import { ANALYSIS_VERSION, CURVE_HZ, type SongAnalysis } from '../types';
 import { computeFrames, frameTime, type Frames } from './features';
 import { detectOnsets, estimateTempo, onsetEnvelope, trackBeats } from './rhythm';
-import { bandCurves, detectKey, findDownbeats, findPhrases, findSections, intensityCurve, previewSpectrogram } from './structure';
+import { foldTempo } from './tempo';
+import { beatFeatures, bandCurves, detectKey, type BeatFeature, findDownbeats, findPhrases, findSections, intensityCurve, previewSpectrogram } from './structure';
 
 export interface AnalyzeOpts {
   /** Called with 0..1 between stages. */
   progress?: (p: number, stage: string) => void;
+  /** Rolling windows: song tempo so far. The window's own estimate is folded onto its octave (no half/double flips). */
+  tempoHint?: number;
+  /** Rolling windows: receive compact per-beat features (the audio itself is not kept). */
+  onBeatFeatures?: (b: BeatFeature[]) => void;
 }
 
 /** Full analysis of mono PCM (any rate; ANALYSIS_SR recommended). Pure and deterministic. */
@@ -16,8 +21,9 @@ export function analyzePcm(pcm: Float32Array, sr: number, opts: AnalyzeOpts = {}
   const f = computeFrames(pcm, sr);
   say(0.55, 'rhythm');
   const env = onsetEnvelope(f);
-  const bpm = estimateTempo(env, f.rate);
+  const bpm = opts.tempoHint ? foldTempo(estimateTempo(env, f.rate), opts.tempoHint) : estimateTempo(env, f.rate);
   const beats = trackBeats(env, f.rate, bpm, (i) => frameTime(f, i), audibleSpan(f));
+  if (opts.onBeatFeatures) opts.onBeatFeatures(beatFeatures(f, beats));
   const onsets = detectOnsets(f);
   say(0.75, 'structure');
   const downbeats = findDownbeats(f, beats);

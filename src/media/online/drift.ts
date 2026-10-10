@@ -1,4 +1,5 @@
 import { analyzePcm } from '../analysis/analyze';
+import type { BeatFeature } from '../analysis/structure';
 import { CURVE_HZ, type SongAnalysis } from '../types';
 import { CHUNK_S, CONTEXT_S, estimatedAnalysis, mergeWindow } from './rolling';
 
@@ -9,13 +10,14 @@ import { CHUNK_S, CONTEXT_S, estimatedAnalysis, mergeWindow } from './rolling';
  */
 export interface RollingReplay { merged: SongAnalysis; windows: Array<{ start: number; end: number; bpm: number }> }
 
-export function replayRolling(pcm: Float32Array, sr: number, o: { chunkS?: number; contextS?: number } = {}): RollingReplay {
-  const chunk = o.chunkS ?? CHUNK_S, context = o.contextS ?? CONTEXT_S, dur = pcm.length / sr;
+export function replayRolling(pcm: Float32Array, sr: number, o: { chunkS?: number; contextS?: number; features?: boolean } = {}): RollingReplay {
+  const chunk = o.chunkS ?? CHUNK_S, context = o.contextS ?? CONTEXT_S, dur = pcm.length / sr, feats = o.features ?? true;
   const merged = estimatedAnalysis(dur), windows: RollingReplay['windows'] = [];
   for (let start = 0; start < dur - 1e-6; start += chunk) {
     const end = Math.min(dur, start + chunk), b0 = Math.max(0, start - context), b1 = Math.min(dur, end + context);
-    const a = analyzePcm(pcm.subarray(Math.round(b0 * sr), Math.round(b1 * sr)), sr);
-    mergeWindow(merged, a, b0, start, end);
+    let beats: BeatFeature[] | undefined;
+    const a = analyzePcm(pcm.subarray(Math.round(b0 * sr), Math.round(b1 * sr)), sr, feats ? { tempoHint: merged.bpm > 0 ? merged.bpm : undefined, onBeatFeatures: (b) => { beats = b; } } : {});
+    mergeWindow(merged, a, b0, start, end, beats);
     windows.push({ start, end, bpm: a.bpm });
   }
   return { merged, windows };

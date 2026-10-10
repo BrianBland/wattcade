@@ -87,7 +87,9 @@ export class Hud {
   setSend(s?: (a: unknown) => void) { this.send = s; }
   place(L: Layout) {
     const put = (e: HTMLElement, b: Box) => Object.assign(e.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
-    put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout); put(this.menu, L.menu); put(this.launch, L.launch); put(this.recapEl, L.recap);
+    put(this.score, L.score); put(this.zone, L.zone); put(this.song, L.song); put(this.shield, L.shield); put(this.callout, L.callout);
+    Object.assign(this.menu.style, { left: `${L.menu.x}px`, width: `${L.menu.w}px`, height: 'auto', maxHeight: `${L.menu.h}px`,
+      top: `${L.menu.y + L.menu.h / 2}px`, transform: 'translateY(-50%)' }); put(this.launch, L.launch); put(this.recapEl, L.recap);
   }
   dispose() { this.root.remove(); }
   /** A short flourish under the score (chain milestones; `bad` = greyed, e.g. a broken chain). */

@@ -40,6 +40,10 @@ const CSS = `
 .sq-actions .btn.ready { border-color:var(--neon,#00f0ff); box-shadow:0 0 18px #00f0ff88; }
 .sq-menu { position:absolute; display:none; align-items:center; justify-content:center; padding:12px; box-sizing:border-box; background:#07060fb3; pointer-events:auto; overflow:auto; }
 .sq-menu .panel { width:min(620px,100%); text-align:center; }
+/* Hangar showcase: the turning craft takes the free side (right in landscape, bottom in portrait). */
+.sq-menu.wide { justify-content:flex-start; padding-left:max(12px, 3%); background:linear-gradient(90deg,#07060fd9 0%,#07060f99 52%,transparent 72%); } .sq-menu.wide .panel { width:min(560px, 54%); }
+.sq-menu.tall { align-items:flex-start; padding-top:max(12px, 4%); background:linear-gradient(180deg,#07060fd9 0%,#07060f99 55%,transparent 75%); }
+.sq-grow { margin:-6px 0 12px; font:800 11px system-ui; letter-spacing:2px; text-transform:uppercase; color:var(--neon,#00f0ff); }
 .sq-menu h2 { margin:0; font-size:var(--t-l,26px); font-style:italic; letter-spacing:5px; text-transform:uppercase; color:var(--neon,#00f0ff); text-shadow:0 0 14px #00f0ff99, 0 2px 0 #000; }
 .sq-menu .sub { margin:6px 0 16px; color:var(--dim,#a29dcc); }
 .sq-crafts { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:16px; text-align:left; }
@@ -91,6 +95,7 @@ export class SquadronHud {
     place(this.callout, safe.x + pad, safe.y + safe.h * 0.34, safe.w - pad * 2);
     place(this.foot, safe.x + pad, safe.y + safe.h - l.footer + 8, safe.w - pad * 2, l.footer - 16);
     place(this.menu, safe.x, safe.y, safe.w, safe.h);
+    const wide = safe.w > safe.h * 1.1; this.menu.classList.toggle('wide', wide); this.menu.classList.toggle('tall', !wide);
   }
 
   update(s: SfSnapshot) {
@@ -149,13 +154,13 @@ export class SquadronHud {
       const info = s.crafts[c];
       const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : c === 'escort' && !s.escortUnlocked ? 'Unlocks at Cruiser level 3' : c === s.craft ? 'Selected' : 'Choose';
       const level = locked ? '' : `<div class="sq-lvl">Lv ${info.level}<div class="bar"><i style="width:${Math.round(info.progress * 100)}%"></i></div></div>`
-        + `<div class="sq-next">${info.next ? `Next: ${escapeHtml(info.next)}` : 'Max level'}</div>`;
+        + `<div class="sq-next">${info.next ? `Lv ${info.level + 1}: ${escapeHtml(info.next)}${info.minutesToNext ? ` · ${info.minutesToNext} min` : ''}` : 'Max level'}</div>`;
       return `<button class="card${c === s.craft ? ' focused' : ''}" data-action="craft" data-craft="${c}" ${locked ? 'disabled' : ''}>`
         + `<h3>${craftName(c)}</h3>${c === 'cruiser' ? '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>' : '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>'}`
         + `<p>${c === 'cruiser' ? 'Ride steady with virtual gears. Fill every lock slot for full-lock volleys.' : 'The trainer holds the watts. Wingmen shoot down bullets; a beam sweeps your lane on each phrase.'}</p>${level}<small>${note}</small></button>`;
     };
     this.menu.innerHTML = `<div class="panel">${s.tester ? '<span class="tag sq-tester" style="color:var(--warn,#ffb020)">Tester · everything unlocked</span>' : ''}<h2>Sprocket Squadron</h2><div class="sub">Hold the groove to paint targets. Your squadron flies itself — choose who it hits.</div>`
-      + `<div class="sq-crafts">${card('cruiser')}${card('escort')}</div>`
+      + `<div class="sq-grow">Arsenal grows to tier ${s.crafts[s.craft].arsenalCap} each ride</div><div class="sq-crafts">${card('cruiser')}${card('escort')}</div>`
       + `<button class="btn primary" data-action="launch">Launch squadron</button><p class="hint">${countdown}</p></div>`;
   }
 }

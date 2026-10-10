@@ -20,10 +20,10 @@ export interface EnemyView {
   entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
   x: number; y: number; hp: number; maxHp: number; age: number; fireAt: number; bossStyle: number;
 }
-export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing' }
-export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean }
+export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
+export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean }
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run';
   /** Downbeat pulse (1 at a bar line, decaying), alongside `beat`. */
@@ -31,7 +31,7 @@ export interface SfSnapshot {
   /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
   selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
-  crafts: Record<CraftId, { level: number; progress: number; next: string | null; unlocked: boolean }>; tester: boolean;
+  crafts: Record<CraftId, { level: number; progress: number; next: string | null; minutesToNext: number | null; unlocked: boolean; arsenalCap: number }>; tester: boolean;
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;
   song: string; shipX: number; shipY: number; bank: number; dodge: number; hull: number; shield: number; quality: number;

@@ -10,7 +10,8 @@ export function createCombat(scene: THREE.Scene) {
       opacity: glow ? 0.28 : 0.95, depthWrite: false, blending: glow ? THREE.AdditiveBlending : THREE.NormalBlending }), count);
     mesh.count = 0; mesh.frustumCulled = false; scene.add(mesh); return mesh;
   };
-  const trails = pool(geometries.box, '#33eaff', 512, true), cores = pool(geometries.box, '#ddffff', 512);
+  const trails = pool(geometries.box, '#ffffff', 512, true), cores = pool(geometries.box, '#ffffff', 512);
+  const trailColor = new THREE.Color(), coreColor = new THREE.Color();
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
   const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
@@ -31,16 +32,21 @@ export function createCombat(scene: THREE.Scene) {
       for (const laser of s.lasers) {
         const age = s.t - laser.at; if (age < 0) continue;
         const flight = Math.max(0.05, laser.hitAt - laser.at), head = Math.min(1, age / flight), tail = Math.max(0, (age - flight - 0.16) / 0.52);
+        // Lasers grow with the arsenal: thin cyan, then wider white-cyan, then a gold core. Full-lock volleys burn gold.
+        const tier = laser.tier ?? 1, wide = 0.8 + tier * 0.08, core = 0.85 + tier * 0.07;
+        trailColor.set(laser.heavy ? '#ff9d4d' : laser.full ? '#ffe066' : tier >= 7 ? '#5fd0ff' : tier >= 4 ? '#8fe9ff' : '#33eaff');
+        coreColor.set(laser.heavy ? '#fff0c8' : laser.full ? '#ffffff' : tier >= 7 ? '#ffd34d' : tier >= 4 ? '#ffffff' : '#ddffff');
         for (let j = 0; j < 24 && n < 512; j++) {
           const u = tail + (head-tail)*j/24, v = tail + (head-tail)*(j+1)/24;
           bezier(u, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a);
           bezier(v, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, b);
           mat.position.copy(a).add(b).multiplyScalar(0.5); mat.quaternion.setFromUnitVectors(axis,direction.copy(b).sub(a).normalize());
-          mat.scale.set(2.5, 0.8, Math.max(0.01, a.distanceTo(b))); mat.updateMatrix(); trails.setMatrixAt(n, mat.matrix);
-          mat.scale.x = 0.42; mat.scale.y = 0.24; mat.updateMatrix(); cores.setMatrixAt(n++, mat.matrix);
+          mat.scale.set(2.5 * wide, 0.8, Math.max(0.01, a.distanceTo(b))); mat.updateMatrix(); trails.setMatrixAt(n, mat.matrix); trails.setColorAt(n, trailColor);
+          mat.scale.x = 0.42 * core; mat.scale.y = 0.24 * core; mat.updateMatrix(); cores.setMatrixAt(n, mat.matrix); cores.setColorAt(n++, coreColor);
         }
       }
       trails.count = cores.count = n; trails.instanceMatrix.needsUpdate = cores.instanceMatrix.needsUpdate = true;
+      for (const p of [trails, cores]) if (p.instanceColor) p.instanceColor.needsUpdate = true;
       n = 0;
       for (const e of s.enemies) {
         const count = s.locks.filter(id => id === e.id).length, inGroup = s.selectedGroup !== null && groupOf(e) === s.selectedGroup;

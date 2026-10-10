@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { SfSnapshot } from '../sim/types';
-import { bossModel, disposeModel, isSharedGeometry, geometries, shipModel } from './models';
+import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
@@ -24,6 +24,7 @@ export class SfRenderer implements GameRenderer {
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
   private cameraBase = new THREE.Vector3(); private post?: SquadronPost;
+  private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
@@ -56,7 +57,7 @@ export class SfRenderer implements GameRenderer {
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
     this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
     for (let i=0;i<2;i++) {
-      const ghost=shipModel('#26dfff','player');
+      const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
       ghost.visible=false;this.ghosts.push(ghost);this.scene.add(ghost);
     }
@@ -65,7 +66,7 @@ export class SfRenderer implements GameRenderer {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#a4f3ff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
+    this.bullets = makePool(geometries.box, '#ffffff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
     const glowMat=this.boltGlow.material as THREE.MeshBasicMaterial;glowMat.opacity=0.2;glowMat.depthWrite=false;glowMat.blending=THREE.AdditiveBlending; this.effects = makePool(geometries.ring, '#ffcc8a', 160);
     this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
@@ -101,15 +102,51 @@ export class SfRenderer implements GameRenderer {
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
       this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
+      this.liveryKey = '';
     }
-    this.craft!.position.set(s.shipX, 10, s.shipY - 50); this.craft!.rotation.z = s.bank;
-    this.craft!.scale.setScalar(1.55 + (s.gunLevel - 1) * 0.055);
-    this.craft!.traverse(o => { if (o.name === 'engine') o.scale.z = 1.2 + s.beat * 0.8 + s.quality * 0.6; if (o.name.startsWith('weapon-')) o.visible = Number(o.name.slice(7)) <= s.gunLevel; });
-    this.craft!.visible = s.rejoinLeft <= 0 || Math.sin(s.t * 4) > 0;
-    while (this.wings.length < s.wingmen) { const wing = shipModel('#658dc5', 'player'); wing.scale.setScalar(0.5); this.wings.push(wing); this.scene.add(wing); }
-    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.position.set(s.shipX + WING_OFFSETS[i], 10, s.shipY - 47 + (i > 1 ? 4 : 0)); wing.rotation.z = s.bank * 0.8; });
-    if (s.heavy && !this.heavy) { this.heavy = shipModel('#8fa7d6', 'escort'); this.heavy.scale.setScalar(0.9); this.scene.add(this.heavy); }
-    if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(s.shipX, 9, s.shipY - 41); this.heavy.rotation.z = s.bank * 0.6; }
+    const craft = this.craft!, hangar = s.phase === 'hangar', level = s.crafts[s.craft].level;
+    // Hangar: show the craft large and turning, wearing its livery and the arsenal it grows into each ride.
+    const tier = hangar ? s.crafts[s.craft].arsenalCap : s.gunLevel, wide = this.w > this.h * 1.1, spin = performance.now() / 1000;
+    // Showcase spot: the free side of the hangar, pulled most of the way toward the camera along the same sight line.
+    const show = hangar ? new THREE.Vector3(wide ? 27 : 0, 16, wide ? 6 : 34).lerp(this.cameraBase, wide ? 0.5 : 0.22) : null;
+    const hx = show ? show.x : s.shipX, hz = show ? show.z : s.shipY - 50, hy = show ? show.y : 10;
+    craft.position.set(hx, hy, hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank);
+    craft.scale.setScalar(hangar ? 3.1 : 1.55 + (tier - 1) * 0.055);
+    if (tier > this.tierSeen) { for (let k = this.tierSeen + 1; k <= tier; k++) this.tierAt.set(k, this.tierSeen && !hangar ? s.t : -99); this.tierSeen = tier; }
+    if (tier < this.tierSeen) { this.tierSeen = tier; }
+    craft.traverse(o => {
+      if (o.name === 'engine') o.scale.z = 1.2 + s.beat * 0.8 + s.quality * 0.6;
+      if (o.name.startsWith('tier-')) {
+        const k = Number(o.name.slice(5)); o.visible = k <= tier;
+        // Unfold with a slight overshoot; afterburners breathe with the beat.
+        const u = Math.min(1, Math.max(0, (s.t - (this.tierAt.get(k) ?? -99)) / 0.55)), grow = u >= 1 ? 1 : 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2);
+        const base = o.userData.scale as THREE.Vector3 | undefined; if (base) o.scale.copy(base).multiplyScalar(Math.max(0.01, grow));
+        if (k === 6 && base) o.scale.z = base.z * grow * (1 + s.beat * 0.35);
+      }
+      if (o.name === 'trim-3') o.visible = level >= 3;
+      if (o.name === 'stripe-5') o.visible = level >= 5;
+    });
+    const key = `${s.craft}:${level}`;
+    if (key !== this.liveryKey) {
+      // Craft-level livery: tinted engines at 7, gold trim and accents at 10.
+      this.liveryKey = key; const u = craft.userData as { trim: THREE.MeshBasicMaterial; engineGlow: THREE.MeshBasicMaterial; white: THREE.MeshStandardMaterial; plume: THREE.MeshBasicMaterial };
+      const rider = new THREE.Color(this.color), gold = new THREE.Color('#ffd34d');
+      u.trim.color.copy(level >= 10 ? gold : rider.clone().lerp(new THREE.Color('#ffffff'), 0.45));
+      u.engineGlow.color.set(level >= 7 ? rider.clone().lerp(new THREE.Color('#ffffff'), 0.3) : new THREE.Color('#38edff'));
+      u.plume.color.copy(level >= 7 ? rider.clone().lerp(new THREE.Color('#ffffff'), 0.5) : new THREE.Color('#7ff4ff'));
+      u.white.color.set(level >= 10 ? '#ffe08a' : '#eaf6ff'); u.white.metalness = level >= 10 ? 0.85 : 0.4;
+    }
+    craft.visible = s.rejoinLeft <= 0 || Math.sin(s.t * 4) > 0;
+    while (this.wings.length < s.wingmen) {
+      // Wingmen fly in the rider's colours, without the lead craft's arsenal or livery parts.
+      const wing = shipModel(new THREE.Color(this.color).lerp(new THREE.Color('#658dc5'), 0.35).getStyle(), 'player'); wing.scale.setScalar(0.5);
+      wing.traverse(o => { if (/^(tier|trim|stripe)-/.test(o.name)) o.visible = false; });
+      this.wings.push(wing); this.scene.add(wing);
+    }
+    const lift = hangar ? 2 : 1;
+    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy, hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8); });
+    if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
+    if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
     this.combat?.update(s);
     const live = new Set<number>();
@@ -123,7 +160,14 @@ export class SfRenderer implements GameRenderer {
     }
     for (const [id, model] of this.enemies) if (!live.has(id)) { this.scene.remove(model); disposeModel(model); this.enemies.delete(id); }
     const mat = this.matrix;
-    s.shots.slice(0, 300).forEach((b, i) => { mat.position.set(b.x, 10.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(b.kind === 'missile' ? 0.8 : 0.28, 0.25, b.kind === 'wing' ? 2.5 : 4); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix); });
+    // Pulse shots change shape with the arsenal: dots, then bolts, then long spears (white, then gold at the top tiers).
+    const pulseColor = new THREE.Color();
+    s.shots.slice(0, 300).forEach((b, i) => {
+      const len = b.kind === 'wing' ? 2.5 : b.tier >= 4 ? 4.8 : b.tier >= 2 ? 3.2 : 1.4, width = b.kind === 'wing' ? 0.28 : b.tier >= 4 ? 0.36 : b.tier >= 2 ? 0.28 : 0.4;
+      mat.position.set(b.x, 10.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(width, 0.25, len); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix);
+      this.bullets!.setColorAt(i, pulseColor.set(b.kind === 'wing' ? '#a4f3ff' : b.tier >= 7 ? '#ffe27a' : b.tier >= 4 ? '#effcff' : '#a4f3ff'));
+    });
+    if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
     const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
     s.bolts.slice(0,640).forEach((b,i)=>{
@@ -134,8 +178,8 @@ export class SfRenderer implements GameRenderer {
       mat.position.x-=b.vx*0.04;mat.position.z-=b.vy*0.04;mat.scale.set(1.35*halo,1,2*halo+Math.hypot(b.vx,b.vy)*0.06);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
     });
     for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
+    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
     // Escort phrase beam: a bright column sweeping up the ship's lane, narrowing as it fades.
@@ -143,7 +187,7 @@ export class SfRenderer implements GameRenderer {
     beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
       mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
     this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
-    this.halo!.position.set(s.shipX, 10.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
+    this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar);

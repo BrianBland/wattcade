@@ -201,6 +201,12 @@ describe('spectacle encounters', () => {
     }
     expect(passed).toBeGreaterThan(20); expect(vanishedNearShip).toBe(0); expect(r.snap().deaths).toBe(0);
   }, 15_000);
+  it('new arsenal tiers unfold on bar lines', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.arsenalPace', 10); const ups: number[] = [];
+    r.s.ctx.emit = ((ev: { type: string }) => { if (ev.type === 'gunUpgrade') ups.push(r.s.ctx.media!.positionS()); }) as typeof r.s.ctx.emit;
+    r.seconds(240);
+    expect(ups.length).toBe(4); for (const u of ups) expect(tl.downbeats.some(d => Math.abs(d - u) < 0.04) || tl.phrases.some(d => Math.abs(d - u) < 0.04)).toBe(true);
+  });
   it('locks tick on sixteenths, volleys release on beats, and laser impacts land on beats', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); const volleys: number[] = [], locks: number[] = [], impacts: number[] = []; const seen = new Set<number>();
     r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') volleys.push(p); if (ev.type === 'lockAcquired') locks.push(p); }) as typeof r.s.ctx.emit;

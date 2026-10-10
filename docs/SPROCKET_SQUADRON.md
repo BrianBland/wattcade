@@ -55,6 +55,12 @@ HUD: floats over a full-bleed scene in the shared arcade style (main.css tokens,
 
 About once a minute, outside calm sections and flagship fights, an elite wing of five gold fighters with breathing gold rings crosses the far field from one flank and leaves. A HUD hint (◀ / ▶ Elite wing) points the paddle direction. Elites are only targeted when the rider selects them. Each elite kill scores more than an ordinary one; a full clear adds a bonus, 25 Nova charge, and a banner. Ignored elites never count against the clear rate. Chasing one protects the PERFECT streak for a few seconds. Measured: an attentive bot clears ~40% of elites and scores ~19% more over 30 minutes than a rider who never touches the paddles.
 
+## Visible growth
+
+In a ride, each arsenal tier adds a distinct part that unfolds with a slight overshoot on a bar line. Tier 2 adds twin nose guns, 3 spread cannons, 4 prism wing-tip emitters, 5 extended wing fins, 6 afterburner ribbons that breathe on the beat, 7 glowing panel lines, and 8 a spine lance with a halo. Lasers widen with the tier and move from cyan through white-cyan to a gold core. Full-lock volleys burn gold and ring the ship; impact bursts grow with the tier. Pulse shots go from dots to bolts to long spears, gold at the top tiers.
+
+Across rides, craft levels show as livery. Level 3 adds wing and spine trim in a light tint of the rider colour, level 5 pod stripes, level 7 rider-tinted engines and afterburners, and level 10 gold trim and gold accents. Wingmen fly in the rider's colours, and the heavy escort is its own twin-boom gunship. The hangar shows the selected craft large and turning on the free side of the screen: it wears its livery and the arsenal it grows into each ride, with companions alongside. Each card shows the level, its progress, the next reward, and the minutes remaining.
+
 ## Musical layer (subtle, cumulative)
 
 Locks paint on the sixteenth-note grid, so the rising ticks play as a rhythm. Volleys release on a bar line (a beat if late), and every laser in a volley lands together on the next beat. Enemies fire on beats; route moves leave and land on beats and sweep on phrases. Bullets, enemies, runway dashes, window lights, the camera, and bloom carry small beat/bar pulses. No single effect is loud; together they lock the picture to the track. Measured: 100% of lock ticks on sixteenths, 99% of volleys on beats (56% on bar lines), 100% of impacts on beats.

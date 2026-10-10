@@ -57,15 +57,52 @@ export function shipModel(color: string, kind: string): THREE.Group {
   }
   if (kind === 'player' || kind === 'escort') {
     const white = new THREE.MeshStandardMaterial({ color: '#eaf6ff', metalness: 0.4, roughness: 0.25 });
+    // Livery materials (craft level): trim/stripes in a light tint of the rider colour, engine glow, gold at level 10.
+    const trim = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.45) });
+    const engineGlow = new THREE.MeshBasicMaterial({ color: '#38edff' });
+    const plume = new THREE.MeshBasicMaterial({ color: '#7ff4ff', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+    g.userData = { trim, engineGlow, white, plate, plume };
+    g.traverse(o => { if (o instanceof THREE.Mesh && o.name === 'engine') o.material = engineGlow; });
+    const part = (name: string, geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => { const m = add(geo, mat, pos, scale); m.name = name; m.userData.scale = m.scale.clone(); return m; };
     for (const side of [-1, 1]) {
       add(hull, white, [side*2.7,0.8,0.6],[0.5,0.4,0.7]);
       const sprocket = add(ring, light, [side*2.7,1.2,1.8],[0.9,0.9,0.9]); sprocket.name='sprocket';
       for (let i=0;i<8;i++) {const a=i*Math.PI/4; add(box,white,[side*2.7+Math.cos(a),1.2,1.8+Math.sin(a)],[0.35,0.3,0.35]);}
-      for(let level=2;level<=5;level++) { const pod=add(box,light,[side*(3+level*0.45),0.8,1.8-level*0.6],[0.45,0.4,1.8]);pod.name=`weapon-${level}`; }
+      // Arsenal tiers (in-ride), each a distinct visible part that unfolds when the tier arrives.
+      part('tier-2', box, light, [side*0.55,0.9,-3.4], [0.22,0.22,1.6]);                         // twin pulse guns at the nose
+      part('tier-3', box, dark, [side*1.9,0.4,-1.8], [0.35,0.35,3.2]); part('tier-3', box, light, [side*1.9,0.4,-3.5], [0.4,0.4,0.4]); // spread cannons
+      part('tier-4', rock, light, [side*(wings+0.6),0.7,-0.6], [0.45,0.45,0.7]);                 // prism emitters at the wing tips
+      part('tier-5', box, plate, [side*(wings+1.4),0.55,1.1], [1.8,0.2,1.2]).rotation.y = side*0.5; // extended wing fins
+      part('tier-5', box, light, [side*(wings+2.1),0.6,1.5], [0.3,0.25,0.9]);
+      part('tier-6', sphere, plume, [side*1.1,0.6,5.2], [0.45,0.3,2.6]);                         // afterburner ribbons
+      part('tier-7', box, light, [side*wings*0.55,0.83,0.75], [wings*0.85,0.04,0.12]).rotation.y = side*0.22; // glowing panel lines
+      part('trim-3', box, trim, [side*wings*0.5,0.81,1.35], [wings*0.9,0.05,0.16]).rotation.y = side*0.22;    // craft level 3: wing trim
+      part('stripe-5', box, trim, [side*wings,1.08,0], [0.82,0.05,2.4]);                        // craft level 5: pod stripes
     }
+    part('tier-7', box, light, [0,1.12,0.4], [0.12,0.05,4.6]);
+    part('tier-8', box, light, [0,0.9,-5.4], [0.18,0.18,4]);                                      // spine lance
+    part('tier-8', ring, light, [0,0.8,0.4], [4.6,4.6,4.6]);                                      // halo
+    part('trim-3', box, trim, [0,1.02,1.6], [0.5,0.05,3]);
   }
   if (kind !== 'player' && kind !== 'escort') g.rotation.y = Math.PI;
   return kind==='player'||kind==='escort'||kind==='boss'?g:compactModel(g,`${kind}:${color}`);
+}
+/** Heavy escort (craft level 7): a broad twin-boom gunship with missile racks, distinct from any craft. */
+export function heavyModel(color: string): THREE.Group {
+  const g = new THREE.Group();
+  const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
+  const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
+  const light = new THREE.MeshBasicMaterial({ color: '#38edff' });
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => { const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m; };
+  add(hull, plate, [0, 0.6, 0], [1.5, 0.6, 0.8]);
+  add(box, plate, [0, 0.5, 1.2], [6.5, 0.3, 1.6]);
+  for (const side of [-1, 1]) {
+    add(box, dark, [side * 2.6, 0.5, 0.6], [0.9, 0.9, 5.5]);
+    for (let i = 0; i < 3; i++) add(box, light, [side * (1.6 + i * 0.35), 0.15, -0.6], [0.22, 0.22, 1.4]);
+    add(sphere, light, [side * 2.6, 0.5, 3.5], [0.45, 0.35, 1]).name = 'engine';
+  }
+  add(sphere, dark, [0, 1.2, -0.6], [0.9, 0.5, 1.5]);
+  return g;
 }
 export function bossModel(style: number): THREE.Group {
   const g = shipModel(['#ffb93a', '#ff438e', '#43e9e2', '#b16cff', '#71ffa7'][style], 'boss');

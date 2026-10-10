@@ -1,5 +1,6 @@
 // Grand Theft Pedal renderer: blocky three.js neighbourhood + DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
+import { buildWeapon, flicker, type WeaponModel } from './weapons3d';
 import { Fx } from './fx';
 /** Grit-pass light moods (cel only): hazy late afternoon, overcast, late dusk. */
 const MOODS = [
@@ -202,13 +203,16 @@ export class GtpRenderer implements GameRenderer {
       if (l) (l.material as THREE.MeshLambertMaterial).color.setHex(Math.floor(s.t * 6) % 2 ? 0xff2020 : 0x2050ff);
     });
     // projectiles
-    this.sync('proj', s.projectiles, (p) => {
-      if (p.kind === 'rocket') { const g = new THREE.Group(); const m = box(0.3, 0.3, 1.1, 0xdddddd); g.add(m); const tip = box(0.32, 0.32, 0.3, 0xff3030); tip.position.z = 0.6; g.add(tip); const fl = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.6), this.fireMat); fl.position.z = -0.8; g.add(fl); return g; }
-      return box(0.35, p.kind === 'grenade' ? 0.35 : 0.6, 0.35, p.kind === 'grenade' ? 0x2e6b2e : p.kind === 'bottle' ? 0x7fe6ff : 0xff9a1f);
+    this.sync('proj', s.projectiles, (p) => { // the same models you hold: rocket (with exhaust), bottle, lit molotov, pin-less grenade
+      const w = buildWeapon(p.kind === 'rocket' ? 'rocket' : p.kind); if (w.pin) w.pin.visible = false;
+      const g = new THREE.Group(); w.root.scale.setScalar(p.kind === 'rocket' ? 1.6 : 2.2); g.add(w.root); g.userData.w = w; return g;
     }, (o, p) => {
-      o.position.set(p.x, p.y + (p.landed ? 0.2 : 0), p.z);
-      if (p.kind === 'rocket') o.rotation.y = Math.atan2(p.vx, p.vz); else o.rotation.set(p.age * 9, p.age * 5, 0);
-      if (p.kind === 'grenade' && p.landed) o.scale.setScalar(1 + 0.3 * Math.abs(Math.sin(p.fuse * 20)));
+      const w = o.userData.w as WeaponModel;
+      o.position.set(p.x, p.y + (p.landed ? 0.15 : 0), p.z);
+      if (p.kind === 'rocket') { o.rotation.set(-Math.atan2(p.vy, Math.hypot(p.vx, p.vz)), Math.atan2(p.vx, p.vz), 0, 'YXZ'); flicker(w, s.t); }
+      else if (p.landed) o.rotation.set(Math.PI / 2, 0, 0);
+      else { o.rotation.set(p.age * 11, Math.atan2(p.vx, p.vz), 0, 'YXZ'); flicker(w, s.t + p.id, p.kind === 'molotov'); }
+      if (p.kind === 'grenade' && p.landed) o.scale.setScalar(1 + 0.25 * Math.abs(Math.sin(p.fuse * 20)));
     });
     // ground patches: oil (black), glass (sparkly), fire (flickering)
     this.sync('patch', s.patches, (p) => {

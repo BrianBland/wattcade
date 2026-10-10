@@ -29,7 +29,7 @@ describe('weapons', () => {
   });
   it('grenade: lobbed, sits on its fuse, then pops everyone in radius', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -88 }, { x: 3, z: -88 }], startWeapon: 'grenade' }, taps([0.5, 'b']));
-    S(s, 1.6); // in flight / fusing
+    S(s, 1.6 + 0.45); // + wind-up (pin pull) // in flight / fusing
     expect(snap(s).projectiles.some((p: any) => p.kind === 'grenade' && p.landed)).toBe(true);
     expect(snap(s).npcs.every((n: any) => n.airS === 0)).toBe(true);
     S(s, 1.2);
@@ -38,14 +38,14 @@ describe('weapons', () => {
   });
   it('oil: dropped behind you; a chasing Segway cop spins out on it', () => {
     const s = run({ spawn: { x: 0, z: -100, heading: 0 }, heat: 1, copSpawn: [{ kind: 'segway', x: 0, z: -117 }], startWeapon: 'oil' }, taps([0.2, 'b']));
-    S(s, 0.3);
+    S(s, 0.45);
     const p = snap(s).patches[0]; expect(p.kind).toBe('oil'); expect(p.z).toBeLessThan(-100);
     S(s, 3);
     expect(evs.some((e) => e.type === 'copSpinOut')).toBe(true);
   });
   it('bottle: glass patch where it lands; riding over it gives a flat (slower, wobbly) until you swap bikes', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -92 }], startWeapon: 'bottle' }, taps([0.2, 'b']), 'z2');
-    S(s, 1);
+    S(s, 1.3);
     expect(snap(s).patches.some((p: any) => p.kind === 'glass')).toBe(true);
     S(s, 4);
     expect(snap(s).rider.flat).toBe(true); expect(evs.some((e) => e.type === 'flat')).toBe(true);
@@ -55,7 +55,7 @@ describe('weapons', () => {
   });
   it('molotov: burning patch sets bystanders running around on fire', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -88 }], startWeapon: 'molotov' }, taps([0.5, 'b']));
-    S(s, 1.5);
+    S(s, 1.9);
     expect(snap(s).patches.some((p: any) => p.kind === 'fire')).toBe(true);
     expect(snap(s).npcs[0].flailS).toBeGreaterThan(0);
     expect(evs.some((e) => e.type === 'onFire')).toBe(true);
@@ -114,7 +114,7 @@ describe('cops', () => {
   });
   it('cops get launched by weapons (and that makes things worse)', () => {
     const s = run({ spawn: { x: 0, z: -100, heading: 0 }, heat: 1, npcs: [], copSpawn: [{ kind: 'horse', x: 0, z: -84 }], startWeapon: 'bazooka' }, taps([0.3, 'b']));
-    S(s, 0.8);
+    S(s, 1.0);
     expect(snap(s).stats.copsLaunched).toBe(1);
     expect(snap(s).cops[0].airS > 0 || snap(s).cops[0].stunS > 0).toBe(true);
     expect(snap(s).heat).toBeGreaterThanOrEqual(2);

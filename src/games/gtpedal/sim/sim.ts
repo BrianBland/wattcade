@@ -34,7 +34,7 @@ export interface Snapshot {
   /** render-only art style: 'cel' = calm cel-shaded world everywhere, 'classic' = plain blocks (debug) */ art: 'cel' | 'classic';
   busted: boolean; lostS: number; paint: number; spinOutS: number; lastEvent: string; lastEventAt: number;
   cam: { airLag: number; groundLag: number; airPull: number; airRise: number; airFov: number; lookMix: number };
-  footTarget: number; steerLock: { kind: 'line' | 'npc' | 'bike'; id: number; x?: number; z?: number } | null; jackId: number; jackCamT: number; stoker: number; stokerAt: { x: number; z: number; near: boolean } | null; goal: string; /** riding alongside a tram: Y = boosted hop onto the roof */ tramHopReady: boolean; look: { grit: number; mood: number }; fx: { speedLines: number; dust: number; shake: number; squash: number; smoke: number; speedLineMin: number }; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
+  footTarget: number; steerLock: { kind: 'line' | 'npc' | 'bike'; id: number; x?: number; z?: number } | null; jackId: number; jackCamT: number; /** weapon wind-up in progress (aim, pin pull, light the rag, throw) */ cast: { w: WeaponKind; t0: number; dur: number } | null; lastShot: { w: WeaponKind; t: number } | null; stoker: number; stokerAt: { x: number; z: number; near: boolean } | null; goal: string; /** riding alongside a tram: Y = boosted hop onto the roof */ tramHopReady: boolean; look: { grit: number; mood: number }; fx: { speedLines: number; dust: number; shake: number; squash: number; smoke: number; speedLineMin: number }; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
   stats: Record<string, number>;
   /** fake-bike script hooks (target-follow reads powerFtp) */
   hooks?: { powerFtp: number };
@@ -210,7 +210,9 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   const gScale = () => user.gradeScale ?? tun.gradeScale(), gMax = () => user.gradeMax ?? tun.gradeMax();
   let curBridge = 0, padSm = 0, arrowSteer = false;
   let steerLock: SteerLock = null;
+  let cast: { w: WeaponKind; t0: number; dur: number } | null = null, lastShot: { w: WeaponKind; t: number } | null = null;
   let groggy = 0, stoker = -1, screamT = 2;
+  const WINDUP: Record<WeaponKind, number> = { bazooka: 0.2, grenade: 0.45, bottle: 0.3, molotov: 0.4, oil: 0.12 };
   const TANDEM_SOLO = { ...BIKES.tandem, power: 0.45, top: 0.62, turn: 0.45 }, TANDEM_DUO = { ...BIKES.tandem, power: 1.8, top: 1.3 };
   const bikeSpec = () => kind === 'tandem' ? (stoker >= 0 ? TANDEM_DUO : TANDEM_SOLO) : BIKES[kind];
   /** A bystander close enough to snatch onto the tandem's back seat. */
@@ -529,8 +531,13 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     const solid = (x: number, z: number, y: number) => { const b = buildingAt(x, z); return !!b && y < boxTop(b); };
     let fire = press('b') || !!opts.fireAt?.some((ft) => t - dt < ft && t >= ft);
     if (auto && opts.autoFire) { autoFireT -= dt; if (autoFireT <= 0 && lock >= 0) { fire = true; autoFireT = 5; } if (ammo[WEAPONS[weaponI]] <= 0) weaponI = (weaponI + 1) % WEAPONS.length; }
-    const wk = WEAPONS[weaponI];
-    if (fire && mode !== 'ragdoll' && ammo[wk] > 0) {
+    // wind-up before the release (render shows aim / pin pull / lighting the rag / the throw)
+    if (fire && !cast && mode !== 'ragdoll' && ammo[WEAPONS[weaponI]] > 0) cast = { w: WEAPONS[weaponI], t0: t, dur: WINDUP[WEAPONS[weaponI]] };
+    if (mode === 'ragdoll') cast = null;
+    const release = !!cast && t - cast.t0 >= cast.dur - 1e-9;
+    const wk = cast ? cast.w : WEAPONS[weaponI];
+    if (release && cast) { cast = null; lastShot = { w: wk, t }; }
+    if (release && ammo[wk] > 0) {
       ammo[wk]--; stats.shots++;
       const tgt = lock >= 0 ? ppl[lock] : null;
       const fx = Math.sin(body.heading), fz = Math.cos(body.heading);
@@ -722,7 +729,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         steerLock: steerLock ? { ...steerLock, ...(steerLock.kind === 'line' ? {} : (() => { const q = steerLock.kind === 'bike' ? bikes.find((b) => b.id === steerLock!.id) : npcs.find((n) => n.id === steerLock!.id); return q ? { x: q.x, z: q.z } : {}; })()) } : null,
         jackId: mode !== 'ragdoll' ? jackable()?.id ?? -1 : -1,
         lockAt: (() => { const q = people()[lock]; return lock >= 0 && q ? { x: q.x, y: q.y, z: q.z, cop: lock >= npcs.length } : null; })(),
-        trams: trams.map((tr) => ({ ...tr })), onTram: !!onTram, hitched: hitch >= 0, tramHopReady: !!hopTram(), jackCamT, stoker, stokerAt: (() => { const c = stokerCand(30); return c ? { x: c.x, z: c.z, near: Math.hypot(c.x - body.x, c.z - body.z) < tun.jackR() + 0.6 } : null; })(),
+        trams: trams.map((tr) => ({ ...tr })), onTram: !!onTram, hitched: hitch >= 0, tramHopReady: !!hopTram(), jackCamT, cast: cast ? { ...cast } : null, lastShot: lastShot ? { ...lastShot } : null, stoker, stokerAt: (() => { const c = stokerCand(30); return c ? { x: c.x, z: c.z, near: Math.hypot(c.x - body.x, c.z - body.z) < tun.jackR() + 0.6 } : null; })(),
         goal: mode === 'foot' && !hasHadBike ? 'Grab a bike: jack a passing cyclist (Ⓐ) · ◀ ▶ to lock one' : mode === 'bike' && kind === 'tandem' && stoker < 0 ? 'Tandem needs a stoker! Grab a bystander (Ⓐ)' : '',
         look: { grit: tun.grit(), mood: Math.round(opts.mood ?? tun.mood()) },
         fx: { speedLines: tun.fxSpeedLines(), speedLineMin: tun.fxSpeedLineMin(), dust: tun.fxDust(), shake: tun.fxShake(), squash: tun.fxSquash(), smoke: tun.fxSmoke() },

@@ -53,3 +53,12 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
   plaza props 3 + floor, co-op 1, nav lines 1. `globalThis.__gtpInfo` exposes renderer.info (calls/tris) for capture scripts.
 - Lock-on: `render/reticle.ts` billboarded brackets + chevron, ink outline, muted weapon tint, depthTest off, snap-in.
 - r6: traffic recycling near the player (cyclists/peds), cyclist LOD in chars.ts, tram hop (Y alongside), TREES/HEDGES solid (world.ts), new kickers/rails/crates, render/fx.ts VFX, rebalance. See DESIGN "Round 6".
+
+## R8: people + weapons
+- `render/textures.ts`: all textures are generated from code at load into `DataTexture`s (no image files, no canvas, so tests can build them): a 256² face atlas (4 face variants × neutral/angry/scared/dazed) and a 64² tileable fabric detail map (folds, seams, stitching, hem, grime) multiplied into clothing colours.
+- People (`render/chars.ts`): rebuilt part set: tapered torso/limbs, hands, rounded shoes with soles, face decal (instanced, per-instance atlas cell via `aCell`), hoodie hood, jacket/uniform collar, vest shell, skirt, cargo pockets + belt, beanie / ball cap / helmet / cop cap, backpack / messenger bag; cops get uniform, badge, belt, gloves. Paired limbs share one InstancedMesh (2 instances per person), so the whole crowd is 45 draw calls (was 36) regardless of head count or outfit mix. Expressions: angry (jacked victims, chasing cops, you while attacking), scared (flailing, airborne, stoker), dazed (lying down, groggy).
+- Stoker: `flailArms` windmills both arms over the head + scared face.
+- Weapons (`render/weapons3d.ts`): bazooka (tube, venturi, optic, sights, grips, sling, warhead), rocket, glass bottle (green/brown), molotov (bottle + rag + flicker flame), pineapple grenade (ridges, spoon, ring pin), oil can. Each is one vertex-coloured merged mesh + ink (2-4 calls). Projectiles use the same models.
+- Sim: weapons now have a short wind-up before release (`WINDUP`: bazooka 0.2 s aim, grenade 0.45 s pin pull + throw, molotov 0.4 s light + throw, bottle 0.3 s, oil 0.12 s); snapshot exposes `cast` and `lastShot` for the animations. Combat tests shifted by the wind-up.
+- Held: in hand on foot, the bazooka slung on the back / shouldered while aiming (recoil kick), throwables at the hip while riding and in the hand during the throw.
+- Dev: `dev/gtpedal-lineup.html?view=people|cops|weapons` (lineup stills).

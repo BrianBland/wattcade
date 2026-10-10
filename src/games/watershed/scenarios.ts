@@ -1,4 +1,6 @@
 import type { GameEvent, SessionRecord, TrainerCommand } from '../../contracts';
+import { testProfile } from '../../core/testProfile';
+import { achievements } from './achievements';
 
 type Run = { mixerCommands: TrainerCommand[]; isOver: boolean; events: Array<{ t: number } & GameEvent> };
 type Summary = Record<string, number | string>;
@@ -34,6 +36,10 @@ export const scenarios: Array<{
       else if (Math.min(...w) > 100 || Math.max(...w) < 180) f.push(`ERG range ${Math.min(...w)}..${Math.max(...w)} W too narrow`);
       if (run.mixerCommands.some((c) => c.mode === 'sim' && c.gradePct !== 0)) f.push('sent a sim grade');
       if (!run.events.some((e) => e.type === 'rideDone')) f.push('no rideDone event');
+      // The one-ride Watershed feats a full autopilot ride should earn (ws_cloud and ws_dam_buster are lifetime tallies).
+      const record = { id: 'x', profileId: 'p', gameId: 'watershed', startedAt: 0, durationS: 2760, samples: [], events: run.events, stats: _st, gameSummary: s } as unknown as SessionRecord;
+      const got = achievements.filter((a) => a.check?.(testProfile(), record, [])).map((a) => a.id);
+      for (const id of ['ws_cycle', 'ws_salmon', 'ws_maestro', 'ws_miller', 'ws_breadbasket']) if (!got.includes(id)) f.push(`achievement ${id} not earned`);
       return f;
     },
   },

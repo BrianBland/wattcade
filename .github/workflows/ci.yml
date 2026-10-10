@@ -21,7 +21,5 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
-      - name: Headless game scenarios
-        run: npm run sim:all
+      - run: npm test # includes every game's headless scenarios (npm run sim:all is the same set, for local use)
       - run: npm run build

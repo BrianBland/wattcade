@@ -7,6 +7,14 @@ import { makeScore } from '../synth/score';
 import { scoreAnalysis } from '../synth/truth';
 import { ANALYSIS_SR } from '../types';
 
+// Rendering a full synth song costs ~0.4-0.7 s; several tests below reuse the same (style, seed), so render each once.
+const rendered = new Map<string, { s: ReturnType<typeof makeScore>; truth: ReturnType<typeof scoreAnalysis>; pcm: Float32Array }>();
+const song = (style: Parameters<typeof makeScore>[0], seed: number) => {
+  const key = `${style}/${seed}`;
+  if (!rendered.has(key)) { const s = makeScore(style, seed); rendered.set(key, { s, truth: scoreAnalysis(s), pcm: renderScore(s, ANALYSIS_SR) }); }
+  return rendered.get(key)!;
+};
+
 const grid = (bpm: number, from: number, to: number) => { const out: number[] = []; for (let t = from; t < to; t += 60 / bpm) out.push(Math.round(t * 1000) / 1000); return out; };
 
 describe('drift metrics', () => {
@@ -76,7 +84,7 @@ describe('feature-accumulated rolling structure (#64 PR 2)', () => {
   });
   const SONGS = [['edm', 1], ['rock', 1], ['ambient', 2], ['rock', 2]] as const;
   it.each(SONGS)('%s #%i: streamed phrase accuracy >= 0.85 with bar phase and BPM intact; features stay small', (style, seed) => {
-    const s = makeScore(style, seed), truth = scoreAnalysis(s), pcm = renderScore(s, ANALYSIS_SR), dur = pcm.length / ANALYSIS_SR;
+    const { truth, pcm } = song(style, seed), dur = pcm.length / ANALYSIS_SR;
     const r = replayRolling(pcm, ANALYSIS_SR), rep = driftReport(r.merged, truth, seamsOf(dur));
     expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);
     expect(rep.downbeatF).toBeGreaterThan(0.95);
@@ -88,7 +96,7 @@ describe('feature-accumulated rolling structure (#64 PR 2)', () => {
   // Full-length songs: the short variants have 4-bar builds, below findSections' 8-bar minimum section length
   // (whole-file scores 0.40 on that fixture; song-global energy scores 0.76 there, per-window energy happened to score 0.97).
   it('silence between songs restarts the bar count (phrase accuracy >= 0.85)', () => {
-    const mk = (seed: number) => { const s = makeScore('edm', seed), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
+    const mk = (seed: number) => { const { truth, pcm } = song('edm', seed); return { pcm, ref: truth }; };
     const a = mk(1), b = mk(3), c = concatFixtures([a, { pcm: silence(12, ANALYSIS_SR) }, b], ANALYSIS_SR);
     const r = replayRolling(c.pcm, ANALYSIS_SR), rep = driftReport(r.merged, { bpm: a.ref.bpm, ...c.ref }, seamsOf(c.durationS));
     expect(rep.downbeatF).toBeGreaterThan(0.95);
@@ -106,7 +114,7 @@ describe('song-global energy for streamed structure', () => {
     expect(c[615]).toBe(0);                                                    // after the last beat (+2 periods): silent
   });
   it('tempo change inside one stream (121 -> 90 bpm): phrase accuracy >= 0.85', () => {
-    const mk = (style: 'edm' | 'ambient', seed: number) => { const s = makeScore(style, seed), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
+    const mk = (style: 'edm' | 'ambient', seed: number) => { const { truth, pcm } = song(style, seed); return { pcm, ref: truth }; };
     const a = mk('edm', 1), b = mk('ambient', 1), c = concatFixtures([a, b], ANALYSIS_SR);
     const r = replayRolling(c.pcm, ANALYSIS_SR), rep = driftReport(r.merged, { bpm: a.ref.bpm, ...c.ref }, seamsOf(c.durationS));
     expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);

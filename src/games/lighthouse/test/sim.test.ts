@@ -239,7 +239,7 @@ describe('storms never cost ships to a rider who answers them', () => {
     const sum = s.sim.summary();
     expect(sum.stormsWeathered).toBeGreaterThanOrEqual(2);
     expect(sum.shipsLost).toBe(0);
-  });
+  }, 60_000); // ~40 sim-minutes with a snapshot every 1/3 s: ~2.4 s locally, hit 5 s on a CI runner
 
   it('riding above zone right after a storm (HR still high) does not churn the sea', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'storm-ready' }, seed: 4 });

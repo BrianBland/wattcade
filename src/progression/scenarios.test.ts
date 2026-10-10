@@ -8,7 +8,14 @@ import { awardSession, defaultProfile } from './index';
  * Real headless rides must unlock the game achievements they obviously earn. This guards the summary keys and
  * event names the achievements read against renames in the sims.
  */
-async function ride(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
+// Each (game, scenario) ride is deterministic, so run it once and share it between the unlock and counter checks.
+const rides = new Map<string, Promise<{ ids: string[]; counters: Record<string, number> }>>();
+function ride(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
+  const key = `${gameId}/${scenarioName}`;
+  if (!rides.has(key)) rides.set(key, rideOnce(gameId, scenarioName));
+  return rides.get(key)!;
+}
+async function rideOnce(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
   const game = getGame(gameId)!;
   const { scenarios } = await import(`../games/${gameId}/scenarios.ts`) as { scenarios: Array<{ name: string; script: string; minutes: number; seed: number; simOpts?: Record<string, unknown>; media?: never }> };
   const sc = scenarios.find((s) => s.name === scenarioName)!;
@@ -27,36 +34,43 @@ async function counted(gameId: string, scenarioName: string, keys: string[]) {
   for (const k of keys) expect(counters[`${gameId}.${k}`] ?? 0, k).toBeGreaterThan(0);
 }
 
+// Each test runs a full headless ride (up to ~2.3 s locally), so give them room on slow CI runners.
+const RIDE_TIMEOUT = 30_000;
+
 describe('headless rides unlock game achievements', () => {
   it('dungeon hour', async () => {
     expect(await unlocked('dungeon', 'z2-hour')).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
     await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestFloor']);
-  });
+  }, RIDE_TIMEOUT);
   it('dungeon sprints find uniques', async () => {
     await counted('dungeon', 'sprints-boss', ['uniques']);
-  });
+  }, RIDE_TIMEOUT);
   it('lighthouse storms', async () => {
     await counted('lighthouse', 'storm-ready', ['storms', 'docked', 'windups']);
-  });
+  }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
     expect(await unlocked('towerdefense', 'surge-ready')).toEqual(expect.arrayContaining(['td_wave10', 'td_wave25']));
     await counted('towerdefense', 'surge-ready', ['bosses', 'kills']);
-  });
+  }, RIDE_TIMEOUT);
   it('sprocket squadron', async () => {
     expect(await unlocked('starfighter', 'z2-half-hour')).toContain('sf_maw');
     await counted('starfighter', 'z2-half-hour', ['bosses', 'kills']);
-  });
-  it('hamstergrid', async () => {
+  }, RIDE_TIMEOUT);
+  it('hamstergrid clinical trial', async () => {
     expect(await unlocked('hamster', 'clinical-trial')).toEqual(expect.arrayContaining(['hm_era3', 'hm_era4']));
     await counted('hamster', 'clinical-trial', ['trials']);
+  }, RIDE_TIMEOUT);
+  it('hamstergrid golden chaser', async () => {
     await counted('hamster', 'golden-chaser', ['goldens']);
+  }, RIDE_TIMEOUT);
+  it('hamstergrid strike breaker', async () => {
     await counted('hamster', 'strike-breaker', ['strikes']);
-  });
+  }, RIDE_TIMEOUT);
   it('warm-up', async () => {
     expect(await unlocked('warmup', 'z2 rolls along')).toContain('wu_tourist');
-  });
+  }, RIDE_TIMEOUT);
   it('cadenza', async () => {
     expect(await unlocked('cadenza', 'autopilot rides an automixed EDM set')).toEqual(expect.arrayContaining(['cz_first', 'cz_overdrive']));
     await counted('cadenza', 'autopilot rides an automixed EDM set', ['cleanZones', 'songs']);
-  });
-}, 120_000);
+  }, RIDE_TIMEOUT);
+});

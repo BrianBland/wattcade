@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { SfSnapshot } from '../sim/types';
 import { geometries } from './models';
-import { groupOf } from '../sim/encounters';
+import { groupOf, GROUND_SPEED } from '../sim/encounters';
 
 /** Fixed-size pools: no geometry or material allocation in the frame loop. */
 export function createCombat(scene: THREE.Scene) {
@@ -65,13 +65,15 @@ export function createCombat(scene: THREE.Scene) {
       for (const fx of s.fx) {
         const age = s.t-fx.at;
         if (fx.kind !== 'boom' && fx.kind !== 'intercept') continue;
+        // Ground explosions and smoke stay put on the terrain as it scrolls.
+        const fy = fx.y + (fx.ground ? age * GROUND_SPEED : 0);
         if (age < 0.45 && f < 160) {
-          mat.position.set(fx.x,fx.ground?-2:12,fx.y-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
+          mat.position.set(fx.x,fx.ground?-2:12,fy-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
         }
-        if(fx.kind==='boom' && sm<128) {mat.position.set(fx.x,(fx.ground?-2:12)+age*5,fx.y-50);mat.scale.setScalar((2+age*3)*(fx.size??1));mat.updateMatrix();smoke.setMatrixAt(sm++,mat.matrix);}
+        if(fx.kind==='boom' && sm<128) {mat.position.set(fx.x,(fx.ground?-2:12)+age*5,fy-50);mat.scale.setScalar((2+age*3)*(fx.size??1));mat.updateMatrix();smoke.setMatrixAt(sm++,mat.matrix);}
         if (fx.kind === 'boom') for (let j=0; j<12*(fx.size??1) && d<512; j++) {
           const angle = j*Math.PI/4 + fx.id, speed = (5+j%3*4)*(fx.size??1);
-          mat.position.set(fx.x+Math.cos(angle)*age*speed, (fx.ground?-2:12)+Math.sin(age*Math.PI/1.6)*5, fx.y-50+Math.sin(angle)*age*speed);
+          mat.position.set(fx.x+Math.cos(angle)*age*speed, (fx.ground?-2:12)+Math.sin(age*Math.PI/1.6)*5, fy-50+Math.sin(angle)*age*speed);
           mat.rotation.set(age*3, angle+age*4, age*2); const size=Math.max(0.03, (1-age/1.6)*0.65); mat.scale.set(size, size, size*2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
         }
       }

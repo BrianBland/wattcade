@@ -1,6 +1,8 @@
 import type { EnemyView } from './types';
 import { clamp } from './director';
 export const MAX_ENEMIES = 80, MAX_BOLTS = 160;
+/** Terrain scroll speed (units/s). Ground units ride the terrain at exactly this speed; the renderer scrolls scenery with it. */
+export const GROUND_SPEED = 22;
 /** Spawn beyond the widest supported field; enter along a continuous flight path. */
 export function entryFor(index: number, count: number, pattern: number, center: number): NonNullable<EnemyView['entry']> {
   const lane = index - (count - 1) / 2;
@@ -24,7 +26,8 @@ export function advanceEntry(e: EnemyView): boolean {
   return true;
 }
 export function inCombat(e: EnemyView): boolean {
-  return e.hp > 0 && e.y >= -28 && e.y < 72 && Math.abs(e.x) < 55;
+  // Ground units are visible further ahead (they ride the faster terrain), so they become targetable earlier.
+  return e.hp > 0 && e.y >= (e.ground ? -60 : -28) && e.y < 72 && Math.abs(e.x) < 55;
 }
 /** Seconds between volleys by enemy kind; the sim also waits for a beat before releasing. */
 export const FIRE_EVERY: Record<EnemyView['kind'], number> = { boss: 2.2, tank: 3, turret: 3.4, weaver: 3.6, gunner: 3.8, armor: 3.8, drone: 4.5 };

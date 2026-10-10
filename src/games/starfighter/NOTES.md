@@ -19,6 +19,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 
 ## Graphics / checks
 - Three.js perspective camera, modeled craft/flagships, streamed carrier/city/canyon terrain and instanced buildings/rocks, fixed-size laser/reticle/debris/shadow/smoke pools, route banking/ghosts. R paddles cycle priority targets; L paddles remain Cruiser gears. First flagship ~150s, then six-minute spacing; lockable batteries protect the reactor.
+- `GROUND_SPEED` (encounters.ts) couples sim ground units and render/space.ts scroll; vehicles/boats/wisps are world-placed and biome-gated (`biomeAt`).
 - render/post.ts: half-res bloom, threshold above scenery, self-disables after ~90 slow frames. render/hud.ts: DOM HUD on shared main.css classes; scene is full-bleed and `camera.setViewOffset` frames the play field above the insets. render/layout.ts honors all shell insets. Menu supports touch/controller and pedal auto-launch; footer Nova button remains stable while frames update.
 - `npm run typecheck`; `npx vitest run src/games/starfighter src/core/media.test.ts src/progression/scenarios.test.ts src/games/insets.test.ts`.
 - `node scripts/squadron-render-smoke.mjs` with Vite on :5199 and system Chromium checks landscape/portrait/touch and bounded allocations.

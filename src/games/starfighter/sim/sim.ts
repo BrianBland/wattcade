@@ -2,7 +2,7 @@ import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../cont
 import { after, clamp, createDirector, sectionLabel, sectionTarget } from './director';
 import { craftName, escortAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, WING_OFFSETS } from './progression';
-import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
+import { MAX_ENEMIES, MAX_BOLTS, GROUND_SPEED, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
 import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
 import type { CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
@@ -130,8 +130,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     for(let i=0;i<n;i++) {
       const kind=i===1?'tank':'turret', toX=(i-1)*18+(ctx.rng()-0.5)*6;
       const hp=kind==='tank'?64:48;
-      enemies.push({id:++id,kind,ground:true,formation:squad,x:toX,y:-500,entry:{fromX:toX,fromY:-500,toX,toY:-60-i*9,duration:8},
-        hp,maxHp:hp,age:0,fireAt:9+i*0.3,bossStyle:0});
+      // No entry glide: ground units ride the terrain from the horizon at exactly the scroll speed.
+      enemies.push({id:++id,kind,ground:true,formation:squad,x:toX,y:-300-i*9,
+        hp,maxHp:hp,age:0,fireAt:(240+i*9)/GROUND_SPEED+0.8+i*0.3,bossStyle:0});
     }
   };
   const targetable = () => enemies.filter(inCombat).sort((a, b) => a.x - b.x || a.id - b.id);
@@ -371,7 +372,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         const oldX=e.x, oldY=e.y;
         if (e.passing) {
           // Escaped enemies peel away around the ship and leave the screen instead of vanishing beside it.
-          e.y += dt * (e.ground ? 9 : 24 + Math.min(20, (e.y - SHIP_Y) * 0.8));
+          e.y += dt * (e.ground ? GROUND_SPEED : 24 + Math.min(20, (e.y - SHIP_Y) * 0.8));
           if (!e.ground) e.x += (e.x >= x ? 1 : -1) * dt * 16;
           e.heading = Math.atan2(e.x - oldX, e.y - oldY);
           if (e.y > 140 || Math.abs(e.x) > 110) { e.hp = -1; e.fled = true; }
@@ -381,7 +382,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         else if(!advanceEntry(e)) {
           if (e.elite) { e.hp = -1; e.fled = true; continue; }
           if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*24;e.y=16+Math.sin((e.age-7)*0.4)*3;}
-          else {e.y+=dt*(e.ground?9:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
+          else {e.y+=dt*(e.ground?GROUND_SPEED:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
         }
         e.heading=Math.atan2(e.x-oldX,e.y-oldY);
         if (wall?.id === e.id) {

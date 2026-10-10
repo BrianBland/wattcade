@@ -1,6 +1,8 @@
 // Grand Theft Pedal renderer: blocky three.js neighbourhood + DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
 import { buildWeapon, flicker, type WeaponModel } from './weapons3d';
+import { CrimeHud } from './crimehud';
+import { animateSites, buildCrimeSites, type CrimeSites } from './crime3d';
 import { Fx } from './fx';
 /** Grit-pass light moods (cel only): hazy late afternoon, overcast, late dusk. */
 const MOODS = [
@@ -35,6 +37,7 @@ export class GtpRenderer implements GameRenderer {
   private leaves: THREE.Mesh[] = []; private reticle = new Reticle();
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
+  private crimeHud?: CrimeHud; private sites?: CrimeSites;
   private chars?: Characters; private charDt = 0; private charT = -1;
   private poster?: HTMLDivElement; private posterKey = '';
   private moodKey = ''; private mood?: (typeof MOODS)[number];
@@ -63,6 +66,7 @@ export class GtpRenderer implements GameRenderer {
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(60, 100, 30); this.scene.add(sun); this.sun = sun;
     this.buildWorld(ctx.profile.color);
     this.chars = new Characters(new THREE.Color(ctx.profile.color).lerp(new THREE.Color(0x8a8070), 0.45).getHex()); this.scene.add(this.chars.group);
+    this.sites = buildCrimeSites(); this.scene.add(this.sites.group); this.crimeHud = new CrimeHud(container);
     this.jsr = new JsrSliver(this.scene); this.jsr.styleRider(this.rider.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh));
     this.hud = document.createElement('div');
     this.hud.style.cssText = 'position:absolute;font:600 15px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
@@ -335,10 +339,12 @@ export class GtpRenderer implements GameRenderer {
     }
     if (this.mood) this.jsr?.setLook({ top: this.mood.top, mid: this.mood.mid, low: this.mood.low, fog: this.mood.fog, grit: s.look?.grit ?? 1, dusk: this.mood.dusk, t: s.t });
     this.cel?.update(s.t);
+    if (this.sites) animateSites(this.sites, s.t);
     this.fx.frame(s, this.cam); this.cam.position.add(this.fx.shake); if (this.chars) this.chars.squash = this.fx.squash;
     const ov = (globalThis as { __gtpCam?: { pos: [number, number, number]; look: [number, number, number]; fov?: number } }).__gtpCam;
     if (ov && this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 500; this.scene.fog.far = 1600; }
     if (ov) { this.cam.position.set(...ov.pos); this.cam.lookAt(...ov.look); this.cam.fov = ov.fov ?? 60; this.cam.updateProjectionMatrix(); } // capture/debug only
+    this.crimeHud?.update(s, this.cam, this.W, this.H);
     this.r.info.reset();
     if (this.jsr) { this.jsr.setStyle(art); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
   }
@@ -346,6 +352,6 @@ export class GtpRenderer implements GameRenderer {
   unmount() {
     this.ro?.disconnect(); this.jsr?.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | undefined; if (mat && 'dispose' in mat) mat.dispose(); });
-    this.r?.dispose(); this.r?.domElement.remove(); this.hud?.remove(); this.toast?.remove(); this.poster?.remove(); this.r = undefined;
+    this.r?.dispose(); this.r?.domElement.remove(); this.hud?.remove(); this.crimeHud?.dispose(); this.toast?.remove(); this.poster?.remove(); this.r = undefined;
   }
 }

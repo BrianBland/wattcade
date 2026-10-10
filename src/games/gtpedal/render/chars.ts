@@ -8,6 +8,7 @@ import { heightAt } from '../sim/world';
 import { JSR, toon } from './jsr';
 import { bakeInPlace } from './bake';
 import { EXPR, faceAtlas, faceCell, fabricTex } from './textures';
+import { DEALER, GANG } from '../sim/crime';
 import { buildWeapon, flicker, type WeaponModel, type WeaponModelKind } from './weapons3d';
 
 // ---------- shared materials ----------
@@ -33,7 +34,7 @@ export const SKIN = [0xf1d3b6, 0xe0b48f, 0xc68e64, 0x9c6a45, 0x6e4a32, 0x4a3122]
 const SHIRT = [0x8a9a7b, 0xb07a5a, 0xc9b894, 0x5f7480, 0x9d5c4a, 0x6b7b5c, 0xd8cbb0, 0x7a6a8a, 0x4f6d6a];
 const PANTS = [0x4a4a52, 0x5c4a3a, 0x3d4f5f, 0x6b6450, 0x2f3a33, 0x8a7a60];
 const HAIR = [0x2b1d14, 0x5a3a22, 0x8a6a3a, 0xc9a66b, 0x6d6d6d, 0x3a2a20];
-export const BIKE_TINT: Record<string, number> = { city: 0x6f8a7a, fixie: 0xa8573d, bmx: 0x4f6d8a, cargo: 0x7d6a4a, tandem: 0x5f7480, ebike: 0x4a6b55 };
+export const BIKE_TINT: Record<string, number> = { scooter: 0x9d3a2e, city: 0x6f8a7a, fixie: 0xa8573d, bmx: 0x4f6d8a, cargo: 0x7d6a4a, tandem: 0x5f7480, ebike: 0x4a6b55 };
 const COP = { shirt: 0x2f3e52, pants: 0x232c38, cap: 0x1f2834, helmet: 0xe8e2d4 };
 
 // ---------- geometry helpers ----------
@@ -76,7 +77,31 @@ function crankSet(len: number): { crank: THREE.Group; pedals: THREE.Object3D[] }
   return { crank, pedals };
 }
 /** `parked`: bake the whole bike into one static mesh (+ ink): ~2 draw calls. Otherwise frame / each wheel / crank / bars are batched separately (~6). */
+/** Razor kick scooter: low deck with grip tape, rear fender brake, tiny urethane wheels, folding T-bar. Rider stands on the
+ * deck; `pedals[0]` = planted front foot, `pedals[1]` = kicking foot (animated in spin()). */
+function buildScooter(color: number, parked: boolean): BikeRig {
+  const root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const r = 0.1, R = V(0, r, -0.36), F = V(0, r, 0.36), H = V(0, 0.98, 0.42);
+  const deck = new THREE.BoxGeometry(0.13, 0.04, 0.62); deck.translate(0, 0.14, -0.02);
+  const tape = new THREE.BoxGeometry(0.115, 0.01, 0.56); tape.translate(0, 0.165, -0.03);
+  const fender = new THREE.BoxGeometry(0.1, 0.02, 0.16); fender.rotateX(-0.25); fender.translate(0, 0.22, -0.4);
+  root.add(withInk(deck, 0xb8bcc0, 0.01));
+  root.add(withInk(tape, 0x2b2a24, 0.004)); root.add(withInk(fender, color, 0.008));
+  const neck = merge([tube(V(0, 0.15, 0.27), V(0, 0.2, 0.36), 0.022), tube(V(0, 0.2, 0.36), H, 0.02)]);
+  root.add(withInk(neck, color, 0.01));
+  const clamp = new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8); clamp.translate(0, 0.55, 0.4); root.add(withInk(clamp, 0x2b2a24, 0.006));
+  const sw = (rr: number) => { const g = new THREE.Group(); const tyre = new THREE.TorusGeometry(rr * 0.75, rr * 0.28, 6, 14); tyre.rotateY(Math.PI / 2); g.add(withInk(tyre, 0xd8cbb0, 0.008)); const hub = new THREE.CylinderGeometry(rr * 0.4, rr * 0.4, 0.05, 8); hub.rotateZ(Math.PI / 2); g.add(new THREE.Mesh(hub, T(color))); return g; };
+  const wR = sw(r), wF = sw(r); wR.position.copy(R); wF.position.copy(F); root.add(wR, wF);
+  const bars = new THREE.Group(); bars.position.copy(H); root.add(bars);
+  bars.add(withInk(merge([tube(V(-0.24, 0, 0), V(0.24, 0, 0), 0.016)]), 0x3d3a36, 0.008));
+  for (const sx of [-1, 1]) { const g = new THREE.CylinderGeometry(0.024, 0.024, 0.1, 8); g.rotateZ(Math.PI / 2); g.translate(sx * 0.2, 0, 0); bars.add(new THREE.Mesh(g, T(0x2b2a24))); }
+  const p0 = new THREE.Object3D(), p1 = new THREE.Object3D(); p0.position.set(0.04, 0.2, 0.08); p1.position.set(-0.08, 0.2, -0.18); root.add(p0, p1);
+  if (parked) { bars.rotation.y = 0.35; bakeInPlace(root); }
+  else { for (const o of [wR, wF, bars]) o.userData.dyn = true; bakeInPlace(root); for (const o of [wR, wF, bars]) { o.userData.dyn = false; bakeInPlace(o); o.userData.dyn = true; } }
+  return { root, wheels: [wR, wF], wheelR: [r, r], cranks: [], pedals: [p0, p1], bars, seat: V(0, 0.2 + L.thigh + L.shin + 0.06, -0.06), bb: V(0, 0.2, 0), grip: H.clone(), crankLen: 0, kind: 'scooter' };
+}
 export function buildBike(kind: string, color = BIKE_TINT[kind] ?? 0x6f8a7a, parked = false): BikeRig {
+  if (kind === 'scooter') return buildScooter(color, parked);
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
   const frame = new THREE.Group(); root.add(frame);
   const rr = kind === 'bmx' ? 0.25 : kind === 'cargo' ? 0.32 : 0.34, rf = kind === 'bmx' ? 0.25 : kind === 'cargo' ? 0.24 : rr;
@@ -221,7 +246,7 @@ export type Bottom = 'pants' | 'cargo' | 'shorts' | 'skirt';
 export type Hat = 'none' | 'beanie' | 'ballcap' | 'helmet' | 'copCap';
 export interface PersonLook {
   skin: number; top: Top; shirt: number; jacket: number; bottom: Bottom; pants: number; shoes: number;
-  hair: number; hairStyle: 'short' | 'bun' | 'bald'; hat: Hat; hatCol: number; carry: 'none' | 'backpack' | 'bag'; carryCol: number; face: number; cop?: boolean;
+  hair: number; hairStyle: 'short' | 'bun' | 'bald'; hat: Hat; hatCol: number; carry: 'none' | 'backpack' | 'bag'; carryCol: number; face: number; cop?: boolean; /** holding a phone to the ear (witness) */ phone?: boolean;
 }
 type Part = { marks: MarkKey[]; geo: () => THREE.BufferGeometry; ink: number; fabric?: boolean; col: (lk: PersonLook) => number; show?: (lk: PersonLook) => boolean };
 const sleeveLong = (lk: PersonLook) => lk.top === 'hoodie' || lk.top === 'jacket' || lk.top === 'uniform';
@@ -252,6 +277,7 @@ const PARTS_DEF: Record<string, Part> = {
   ballcap: { marks: ['ballcap'], ink: 0.012, fabric: true, col: (lk) => lk.hatCol, show: (lk) => lk.hat === 'ballcap', geo: () => { const g = new THREE.SphereGeometry(0.163, 14, 6, 0, Math.PI * 2, 0, Math.PI * 0.47); const brim = new THREE.CylinderGeometry(0.11, 0.11, 0.014, 12, 1, false, -Math.PI / 2, Math.PI); brim.scale(1, 1, 1.4); brim.translate(0, 0.0, 0.13); return merge([g.toNonIndexed(), brim.toNonIndexed()]); } },
   backpack: { marks: ['backpack'], ink: 0.014, fabric: true, col: (lk) => lk.carryCol, show: (lk) => lk.carry === 'backpack', geo: () => { const g = new THREE.BoxGeometry(0.3, 0.36, 0.14, 2, 2, 1); const top = cap(0.07, 0.16, 6); top.rotateZ(Math.PI / 2); top.translate(0, 0.18, 0); const pocket = new THREE.BoxGeometry(0.2, 0.14, 0.06); pocket.translate(0, -0.08, -0.08); return merge([g.toNonIndexed(), top.toNonIndexed(), pocket.toNonIndexed()]); } },
   bag: { marks: ['bag'], ink: 0.012, fabric: true, col: (lk) => lk.carryCol, show: (lk) => lk.carry === 'bag', geo: () => { const g = new THREE.BoxGeometry(0.08, 0.24, 0.32); const flap = new THREE.BoxGeometry(0.09, 0.1, 0.33); flap.translate(0.005, 0.08, 0); const strap = new THREE.BoxGeometry(0.02, 0.02, 0.62); strap.rotateX(0.95); strap.rotateY(0.0); strap.translate(-0.1, 0.36, 0); return merge([g.toNonIndexed(), flap.toNonIndexed(), strap.toNonIndexed()]); } },
+  phone: { marks: ['handR'], ink: 0, col: () => 0x1d1f22, show: (lk) => !!lk.phone, geo: () => { const g = new THREE.BoxGeometry(0.045, 0.1, 0.012); g.translate(0, 0.02, 0.03); return g; } },
   badge: { marks: ['badge'], ink: 0, col: () => 0xd8b24a, show: (lk) => !!lk.cop, geo: () => { const g = new THREE.CylinderGeometry(0.035, 0.035, 0.012, 6); g.rotateX(Math.PI / 2); return g; } },
 };
 const PARTS = Object.keys(PARTS_DEF);
@@ -284,7 +310,7 @@ export function ik2(dy: number, dz: number, l1: number, l2: number, bendFwd = tr
 
 export type PoseKind = 'ride' | 'walk' | 'stand' | 'flail' | 'ragdoll' | 'horse';
 /** weapon use overriding the arms: aim (bazooka on shoulder, `kick` = recoil 0..1), throw (u 0..1 wind-up → release → follow-through), pull (grenade pin, u 0..1), carry (item in hand), pour (oil) */
-export interface ArmUse { kind: 'aim' | 'throw' | 'pull' | 'carry' | 'pour'; u: number; kick?: number }
+export interface ArmUse { kind: 'aim' | 'throw' | 'pull' | 'carry' | 'pour' | 'phone' | 'flip'; u: number; kick?: number }
 export interface PoseIn { kind: PoseKind; t: number; phase: number; lean?: number; spin?: number;
   /** ride: targets in rig-root (hip) space */ feet?: [THREE.Vector3, THREE.Vector3]; hands?: THREE.Vector3; torsoLean?: number;
   /** face expression (EXPR) */ expr?: number; /** arms flail wildly regardless of pose (stoker) */ flailArms?: boolean; arm?: ArmUse }
@@ -348,6 +374,8 @@ function armUse(r: Rig, a: ArmUse) {
     const w = ease(a.u);
     R.rotation.set(-1.0 - tl, 0.3, -0.1); RE.rotation.x = -1.6;
     Lh.rotation.set(-1.0 - tl, lerp(-0.3, 0.6, w), lerp(0.1, 0.9, w)); LE.rotation.x = lerp(-1.6, -0.6, w);
+  } else if (a.kind === 'phone') { R.rotation.set(-0.35 - tl, 0, -0.55); RE.rotation.x = -2.55; r.neck.rotation.z = -0.15; // phone to the ear
+  } else if (a.kind === 'flip') { const w = Math.sin(a.u * 9) * 0.12; R.rotation.set(-2.3 - tl + w, 0, -0.15); RE.rotation.x = -0.35; r.torso.rotation.y = -0.2;
   } else if (a.kind === 'pour') { R.rotation.set(-0.7 - tl, 0, -0.6 + Math.sin(a.u * 20) * 0.1); RE.rotation.x = -0.6; }
   else { R.rotation.set(-0.55 - tl, 0, -0.1); RE.rotation.x = -0.9; }
 }
@@ -428,6 +456,13 @@ export class Crowd {
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), E = new THREE.Euler(0, 0, 0, 'YXZ'), P = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1);
 const worldAt = (x: number, y: number, z: number, heading: number, pitch = 0, roll = 0) => M.compose(P.set(x, y, z), Q.setFromEuler(E.set(pitch, heading, roll, 'YXZ')), ONE).clone();
 
+const DEALER_LOOK: PersonLook = { ...lookFor(77), top: 'jacket', jacket: 0x2b2622, shirt: 0x5a3a2a, bottom: 'pants', pants: 0x1f1c1a, hat: 'beanie', hatCol: 0x3a2a20, carry: 'bag', carryCol: 0x4a3a2a, face: 3 };
+/** look for a crowd NPC: rival gang wear matching mustard jackets + dark beanies; witnesses hold a phone */
+function npcLook(n: { id: number; gang?: boolean; callS?: number }): PersonLook {
+  const lk = lookFor(n.id);
+  if (n.gang) return { ...lk, top: 'jacket', jacket: GANG.colour, shirt: GANG.accent, bottom: 'cargo', pants: 0x2b2a24, hat: 'helmet', hatCol: GANG.colour, carry: 'none' };
+  return (n.callS ?? 0) > 0 ? { ...lk, phone: true } : lk;
+}
 export class Characters {
   readonly group = new THREE.Group();
   readonly crowd = new Crowd(160);
@@ -527,6 +562,8 @@ export class Characters {
     if (s.ragdoll) this.crowd.add(worldAt(s.ragdoll.x, s.ragdoll.y + 0.5, s.ragdoll.z, R.heading), this.riderLook, { kind: 'ragdoll', t, phase: 0, spin: s.ragdoll.spin, expr: s.ragdoll.y < heightAt(s.ragdoll.x, s.ragdoll.z, s.bridge) + 0.3 ? EXPR.dazed : EXPR.scared });
     // --- pedestrians ---
     const seenC = new Set<number>();
+    // the dealer by his van
+    if (Math.hypot(DEALER.x - R.x, DEALER.z - R.z) < 130) this.crowd.add(worldAt(DEALER.x, heightAt(DEALER.x, DEALER.z, s.bridge) + L.thigh + L.shin + 0.05, DEALER.z, Math.atan2(R.x - DEALER.x, R.z - DEALER.z)), DEALER_LOOK, { kind: 'walk', t, phase: Math.PI / 2, expr: s.dealer.menu ? EXPR.neutral : EXPR.angry, arm: s.dealer.near ? { kind: 'carry', u: 0 } : undefined });
     for (const n of s.npcs) {
       if (n.stoker) continue; // drawn on your tandem's back seat
       const { m, v } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
@@ -536,30 +573,31 @@ export class Characters {
           if (dist > 120) continue;
           const tp = this.farTpl(n.bike); tp.root.position.set(n.x, n.y, n.z); tp.root.rotation.set(0, n.heading, m.lean); tp.root.updateMatrixWorld(true);
           const fi = this.farInst(n.bike); if (fi.n < fi.body.count) { fi.body.setMatrixAt(fi.n, tp.root.matrixWorld); fi.ink.setMatrixAt(fi.n, tp.root.matrixWorld); fi.n++; }
-          this.addRider(tp, lookFor(n.id), 0, t, m.lean);
+          this.addRider(tp, npcLook(n), 0, t, m.lean);
           continue;
         }
         const far = false;
         let b = this.cyc.get(n.id);
-        if (!b || b.kind !== n.bike) { if (b) this.group.remove(b.root); b = Object.assign(buildBike(n.bike), { wa: 0, ca: 0 }); this.cyc.set(n.id, b); this.group.add(b.root); }
+        if (!b || b.kind !== n.bike) { if (b) this.group.remove(b.root); b = Object.assign(buildBike(n.bike, n.gang ? GANG.colour : undefined), { wa: 0, ca: 0 }); this.cyc.set(n.id, b); this.group.add(b.root); }
         seenC.add(n.id); b.root.visible = !far; if (far) continue;
         b.wa += (v / b.wheelR[0]) * dt; b.ca += (v / b.wheelR[0] / 2.6) * dt;
         b.root.position.set(n.x, n.y, n.z); b.root.rotation.set(0, n.heading, m.lean);
         this.spin(b, b.wa, b.ca, m.steer); b.root.updateMatrixWorld(true);
-        this.addRider(b, lookFor(n.id), 0, t, m.lean);
+        this.addRider(b, npcLook(n), 0, t, m.lean);
         continue;
       }
       if (n.angryS > 0 && n.airS <= 0 && n.stunS <= 0) { // jacked victim: run after you, shaking a fist
-        const lk2 = lookFor(n.id), hip = L.thigh + L.shin + 0.05;
+        const lk2 = npcLook(n), hip = L.thigh + L.shin + 0.05;
         this.crowd.add(worldAt(n.x, n.y + hip, n.z, n.heading), lk2, v > 0.5 ? { kind: 'walk', t, phase: m.dist * 2.2 + n.id, expr: EXPR.angry, arm: { kind: 'carry', u: 0 } } : { kind: 'flail', t: t * 1.6 + n.id, phase: 0, expr: EXPR.angry });
         continue;
       }
-      const lk = lookFor(n.id);
+      const lk = npcLook(n);
       const hipY = L.thigh + L.shin + 0.05;
       if (n.airS > 0) this.crowd.add(worldAt(n.x, n.y + 0.6, n.z, n.heading), lk, { kind: 'ragdoll', t: t + n.id, phase: 0, spin: n.airS * 7 });
       else if (n.stunS > 0) this.crowd.add(worldAt(n.x, n.y + 0.2, n.z, n.heading, -Math.PI / 2), lk, { kind: 'ragdoll', t: 0.3 + n.id, phase: 0, spin: 0, expr: EXPR.dazed });
       else if (n.flailS > 0) this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'flail', t: t + n.id * 0.3, phase: 0 });
-      else this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'walk', t, phase: m.dist * 2.6 + n.id, expr: (n.groggyS ?? 0) > 0 ? EXPR.dazed : EXPR.neutral });
+      else this.crowd.add(worldAt(n.x, n.y + hipY, n.z, n.heading), lk, { kind: 'walk', t, phase: m.dist * 2.6 + n.id, expr: (n.callS ?? 0) > 0 ? EXPR.angry : n.react === 'shout' || n.react === 'dodge' ? EXPR.scared : n.react ? EXPR.angry : (n.groggyS ?? 0) > 0 ? EXPR.dazed : EXPR.neutral,
+        arm: (n.callS ?? 0) > 0 ? { kind: 'phone', u: 0 } : n.react === 'flip' || n.react === 'heckle' ? { kind: 'flip', u: t } : undefined });
     }
     for (const [id, b] of this.cyc) if (!seenC.has(id)) { this.group.remove(b.root); this.cyc.delete(id); }
     for (const f of this.far.values()) { f.body.count = f.ink.count = f.n; f.body.visible = f.ink.visible = f.n > 0; f.body.instanceMatrix.needsUpdate = f.ink.instanceMatrix.needsUpdate = true; }
@@ -655,6 +693,12 @@ export class Characters {
   private spin(b: BikeRig, wheelA: number, crankA: number, steer: number) {
     for (const w of b.wheels) w.rotation.x = wheelA * (b.wheelR[0] / b.wheelR[b.wheels.indexOf(w)]);
     for (const c of b.cranks) c.rotation.x = crankA;
+    if (b.kind === 'scooter' && b.pedals[1]) { // kick-push loop: plant behind, sweep back along the ground, lift and swing forward
+      const ph = (crankA / (Math.PI * 2)) % 1, u = ph < 0 ? ph + 1 : ph;
+      const back = u < 0.55 ? u / 0.55 : 1 - (u - 0.55) / 0.45, lift = u < 0.55 ? 0 : Math.sin(((u - 0.55) / 0.45) * Math.PI) * 0.16;
+      b.pedals[1].position.set(-0.11, (u < 0.55 ? 0.02 : 0.08) + lift, -0.05 - back * 0.55);
+      b.root.userData.kick = u;
+    }
     for (const p of b.pedals) p.rotation.x = -crankA;
     b.bars.rotation.y = steer;
   }

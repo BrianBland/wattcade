@@ -1,4 +1,5 @@
 // Grand Theft Pedal neighbourhood: pure data + analytic height field. No DOM / three.
+import { DEALER_VAN } from './crime';
 export interface Box { x0: number; z0: number; x1: number; z1: number; h: number; color: number; /** ground level of the base (default 0) */ y0?: number }
 /** Top of a solid box in world y. */
 export const boxTop = (b: Box) => (b.y0 ?? 0) + b.h;
@@ -228,7 +229,7 @@ for (const [x, z] of [[32, 28], [48, 26], [64, 27], [80, 28], [88, 50], [88, 70]
 export const HEDGES: Box[] = [];
 for (const [x0, x1, z] of [[-110, -45, 34], [110, 190, 4], [110, 190, -4], [-118, -70, 120], [10, 56, 120], [72, 118, 120], [-40, 40, -114]] as Array<[number, number, number]>)
   for (let x = x0; x < x1; x += 3.2) { if (nearAnyLine(x, z, 3, ['path', 'tram', 'ramp', 'rail'])) continue; HEDGES.push({ x0: x - 1.5, x1: x + 1.5, z0: z - 0.55, z1: z + 0.55, h: 1.3, color: 0x4f7a4c, y0: heightAt(x, z) }); }
-export const OBSTACLES: Box[] = [...TREES.map((t) => { const r = 0.45 * t.s; return { x0: t.x - r, x1: t.x + r, z0: t.z - r, z1: t.z + r, h: 6, color: 0x6b4a33, y0: heightAt(t.x, t.z) }; }), ...HEDGES];
+export const OBSTACLES: Box[] = [{ ...DEALER_VAN, color: 0x6b6450, y0: heightAt((DEALER_VAN.x0 + DEALER_VAN.x1) / 2, (DEALER_VAN.z0 + DEALER_VAN.z1) / 2) }, ...TREES.map((t) => { const r = 0.45 * t.s; return { x0: t.x - r, x1: t.x + r, z0: t.z - r, z1: t.z + r, h: 6, color: 0x6b4a33, y0: heightAt(t.x, t.z) }; }), ...HEDGES];
 for (const b of GEN_BLOCKS) if (b.kind === 'villa') b.y0 = Math.min(heightAt(b.x0, b.z0), heightAt(b.x1, b.z0), heightAt(b.x0, b.z1), heightAt(b.x1, b.z1));
 const OGRID = new Map<number, Box[]>();
 for (const b of OBSTACLES) for (let cx = Math.floor(b.x0 / CELL); cx <= Math.floor(b.x1 / CELL); cx++) for (let cz = Math.floor(b.z0 / CELL); cz <= Math.floor(b.z1 / CELL); cz++) {
@@ -295,6 +296,11 @@ export const PICKUPS: Array<{ x: number; z: number; kind: 'bazooka' | 'grenade' 
   { x: 30, z: 124, kind: 'bottle' }, { x: -60, z: 179, kind: 'bazooka' }, { x: 0, z: -140, kind: 'molotov' }, { x: 40, z: -160, kind: 'oil' },
   { x: 150, z: 86, kind: 'grenade' }, { x: 150, z: 0, kind: 'bazooka' }, { x: -140, z: 30, kind: 'bottle' }, { x: 90, z: -60, kind: 'grenade' },
 ];
+/** Unpaved ground (grass / park lawns): well away from any path, track, ramp or rail, and off the plaza. Scooters hate it. */
+export function onGrass(x: number, z: number): boolean {
+  if (x > PLAZA.x0 && x < PLAZA.x1 && z > PLAZA.z0 && z < PLAZA.z1) return false;
+  return !nearAnyLine(x, z, 3.2);
+}
 /** On the plaza stairs (Segways hate them). */
 export function onStairs(x: number, z: number): boolean {
   return x > PLAZA.x0 && x < PLAZA.x1 && z > PLAZA.stairsZ - 0.5 && z < PLAZA.stairsZ + PLAZA.stairsLen + 0.5;

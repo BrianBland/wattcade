@@ -10,18 +10,18 @@ export type WeaponModelKind = 'bazooka' | 'rocket' | 'bottle' | 'molotov' | 'gre
 export interface WeaponModel { root: THREE.Group; kind: WeaponModelKind; flame?: THREE.Object3D; pin?: THREE.Object3D; warhead?: THREE.Object3D }
 
 const C = new THREE.Color();
-function piece(g: THREE.BufferGeometry, col: number, m?: THREE.Matrix4) {
+export function piece(g: THREE.BufferGeometry, col: number, m?: THREE.Matrix4) {
   const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal') n.deleteAttribute(k);
   if (m) n.applyMatrix4(m);
   C.set(col); const a = new Float32Array(n.attributes.position.count * 3); for (let i = 0; i < a.length; i += 3) { a[i] = C.r; a[i + 1] = C.g; a[i + 2] = C.b; }
   n.setAttribute('color', new THREE.BufferAttribute(a, 3)); return n;
 }
-const Mt = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
+export const Mt = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(1, 1, 1));
 const cyl = (r0: number, r1: number, h: number, s = 10) => new THREE.CylinderGeometry(r0, r1, h, s);
 const Z = Math.PI / 2;
 let VMAT: THREE.Material | undefined;
 const vmat = () => { if (!VMAT) { const m = toon(0xffffff) as THREE.MeshToonMaterial; m.vertexColors = true; VMAT = m; } return VMAT; };
-function mesh(parts: THREE.BufferGeometry[], ink = 0.01) {
+export function mesh(parts: THREE.BufferGeometry[], ink = 0.01) {
   const g = mergeGeometries(parts)!; g.computeVertexNormals();
   const m = new THREE.Mesh(g, vmat()); m.add(new THREE.Mesh(g, inkMat(ink))); return m;
 }

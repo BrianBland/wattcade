@@ -225,3 +225,11 @@ rider via `ctx.save`. Mechanism: the sim exposes `settings()`, the shell reads i
 ## Round 8: people and weapons
 - People have faces (eyes, brows, mouths, four expressions), hands, tapered silhouettes, and varied outfits (tees, hoodies, jackets, vests, tanks; pants, cargos, shorts, skirts; beanies, caps, helmets; backpacks, messenger bags), with painted-on fabric folds, seams and grime. Cops wear navy uniforms with a badge, belt, gloves and cap (or a white helmet on horseback).
 - Weapons are real held models with wind-up animations: shoulder the bazooka and feel the recoil; pull the grenade pin; light the molotov rag, wind up and throw; pour the oil. What you throw is the same model you held.
+
+## Round 9: the underworld
+- Cash (HUD, saved). Spokey Joe's Chop Shop buys stolen rides (by type, flats pay less, rotating hot list pays ×1.6). Van Guy sells ammo from his van: Ⓐ talk, ◀ ▶ / paddle tap browse, Ⓐ buy, Ⓑ leave.
+- The Deck Rats, a Razor-scooter gang, own a turf in the park: ride in and they chase, ram and lob bottles (and pick on cops). Wreck them or outrun them for cash + rep. Tip: lure them onto grass, where scooters crawl.
+- Witnesses phone it in: most of a crime's heat only lands if a bystander's call goes through. Knock the caller over or leave.
+- The crowd talks back: dodges, shouts, middle fingers, heckles.
+- Razor scooters are stealable too: kick-push speed from your power, low top speed, very tight turns, small hops, grinds; bad on grass and stairs.
+- Arrows at the screen edge point to the chop shop, the van and the turf.

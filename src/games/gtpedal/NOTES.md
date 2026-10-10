@@ -62,3 +62,12 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
 - Sim: weapons now have a short wind-up before release (`WINDUP`: bazooka 0.2 s aim, grenade 0.45 s pin pull + throw, molotov 0.4 s light + throw, bottle 0.3 s, oil 0.12 s); snapshot exposes `cast` and `lastShot` for the animations. Combat tests shifted by the wind-up.
 - Held: in hand on foot, the bazooka slung on the back / shouldered while aiming (recoil kick), throwables at the hip while riding and in the hand during the throw.
 - Dev: `dev/gtpedal-lineup.html?view=people|cops|weapons` (lineup stills).
+
+## R9: underworld (cash, fence, dealer, gang, witnesses) + Razor scooters
+- `sim/crime.ts`: locations (FENCE chop shop 100,-36 · DEALER van -108,-104 · TURF Deck Rats 126,18 r26), fence prices (`BIKE_VALUE` × flat 0.45 × hot 1.6), hot list (2 kinds, rotates every 120 s, hash of seed+slot), dealer stock, gang rewards, heckles. Van is a solid obstacle.
+- Cash + rep persisted in the save (`GtpSave.cash/rep/sales`), written immediately on sale/buy/gang result.
+- Crime layer is on by default, off for the autopilot unless `simOpts.crime` (gang: `simOpts.gang`, default on unless explicit `npcs`). Autopilot world also gets no scooters in traffic.
+- Witnesses: a crime (steal, jack, stoker grab, civilian blast) lands only 35% of its heat at once; up to 2 bystanders in sight (22 m) pull out a phone (`callS` 3.2 s) and add the rest +0.4 unless knocked down / you get 45 m away.
+- Gang: 4 Razor-scooter riders in mustard helmets/jackets. Enter the turf → provoked: chase, ram (5 s cooldown), lob bottles, ram cops too. Knock all off their scooters → $150 + 3 rep (respawn after 120 s); escape 45 m beyond turf for 4 s → $40 + 1 rep. Scooters are slow on grass/stairs (so is the gang).
+- Scooter (`BikeKind 'scooter'`): power 0.85, top 0.6, turn 1.8, hop 0.55; grass ×0.3 top, stairs ×0.22. Model = deck/grip tape/fender/T-bar/tiny wheels; kick-push foot loop driven by the crank phase.
+- Render: `render/crime3d.ts` (chop shop canopy + garage, van, turf drums/couches/banners; sign text from an in-code 5×7 pixel font), `render/crimehud.ts` (DOM only: cash/rep/hot list, dealer menu, fence quote, toasts, speech/phone bubbles, edge-of-screen arrows).

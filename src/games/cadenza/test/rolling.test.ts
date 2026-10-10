@@ -60,6 +60,8 @@ describe('Cadenza rolling cues', () => {
       const cut = Math.ceil(frozen * old.hz);
       for (const key of ['dist', 'speed', 'height', 'grade', 'curve', 'roll', 'tunnel'] as const)
         expect(track[key].slice(0, cut)).toEqual(old[key].slice(0, cut));
+      expect(track.zones.filter((z) => z.t0 < frozen).map(({ t1: _, ...z }) => z))
+        .toEqual(old.zones.filter((z) => z.t0 < frozen).map(({ t1: _, ...z }) => z));
     }
     expect(revision).toBeGreaterThan(8);
     expect(calls).toBeGreaterThan(50);

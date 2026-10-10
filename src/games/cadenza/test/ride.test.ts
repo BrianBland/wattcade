@@ -24,30 +24,55 @@ describe('Cadenza ride pacing', () => {
       expect(e.countdown).toBe(count); expect(e.target.max).toBe(5);
       expect(e.target.min).toBe(before.target.min); expect(e.floorFtp).toBe(before.floorFtp);
     }
-    expect(effortAt(track, 50, 'pro')).toMatchObject({ countdown: null, phase: 'sprint', instruction: 'Punch It!' });
+    expect(effortAt(track, 50, 'pro')).toMatchObject({ countdown: null, phase: 'sprint', instruction: 'Sprint!' });
     const after = effortAt(track, 66, 'pro');
     expect(after).toMatchObject({ phase: 'hold', instruction: 'Ease Off', target: { min: 3, max: 5 } });
     expect(effortAt(track, 71, 'pro').target).toMatchObject({ min: 3, max: 4 });
   });
 
-  it('extends brief breaks and gives more recovery with Longer Breaks', () => {
+  it('extends brief breaks, longer on casual', () => {
     const tl = rideTimeline([[0, 60, 'verse'], [60, 65, 'break'], [65, 150, 'build'], [150, 210, 'verse']]);
-    const normal = planRide(tl, DIFF.pro), longer = planRide(tl, DIFF.pro, true);
-    expect(normal.find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 75 });
-    expect(longer.find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 105 });
-    const recovery = (xs: typeof normal) => xs.filter((b) => b.phase === 'recover').reduce((sum, b) => sum + b.t1 - b.t0, 0);
-    expect(recovery(longer)).toBeGreaterThan(recovery(normal));
+    expect(planRide(tl, DIFF.pro).find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 75 });
+    expect(planRide(tl, DIFF.casual).find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 85 });
   });
 
-  it('protects song handovers and skips a drop inside recovery, including its launch', () => {
+  it('rests around song handovers but never skips the drop: recovery ends where its countdown lands', () => {
     const tl = rideTimeline([[0, 80, 'verse'], [80, 110, 'build'], [110, 150, 'drop'], [150, 220, 'verse']], [0, 100]);
-    for (const longerBreaks of [false, true]) {
-      const track = buildTrack(tl, { ...options, longerBreaks });
+    for (const difficulty of ['casual', 'pro', 'elite'] as const) {
+      const track = buildTrack(tl, { ...options, difficulty });
       const recovery = track.rideBlocks.find((b) => b.phase === 'recover' && b.t0 <= 100 && b.t1 >= 100)!;
-      expect(recovery.t1 - recovery.t0).toBeGreaterThanOrEqual(longerBreaks ? 60 : 24);
-      expect(effortAt(track, 110, 'pro')).toMatchObject({ phase: 'recover', countdown: null, floorFtp: 0, ergFtp: 0.5, gradePct: 0.5 });
-      expect(track.stunts.some((s) => s.kind === 'launch' && s.t0 === 110)).toBe(false);
+      expect(recovery.t1).toBe(110);
+      expect(recovery.t1 - recovery.t0).toBeGreaterThanOrEqual(DIFF[difficulty].mixRestS / 2);
+      expect(effortAt(track, 108, 'pro')).toMatchObject({ phase: 'recover', countdown: 2, floorFtp: 0, ergFtp: 0.5, gradePct: 0.5 });
+      expect(effortAt(track, 110, 'pro')).toMatchObject({ phase: 'sprint', countdown: null });
+      expect(track.stunts.some((s) => s.kind === 'launch' && s.t0 === 110)).toBe(true);
     }
+  });
+
+  it('casual rests more and sprints less often than elite, but every difficulty keeps sprinting', () => {
+    const tl = synthTimeline({ style: 'edm', songs: 3, seed: 1 });
+    const rest = (xs: ReturnType<typeof planRide>) => xs.filter((b) => b.phase === 'recover').reduce((t, b) => t + b.t1 - b.t0, 0);
+    const casual = planRide(tl, DIFF.casual), elite = planRide(tl, DIFF.elite);
+    expect(rest(casual)).toBeGreaterThan(rest(elite));
+    const count = (xs: typeof casual) => xs.filter((b) => b.phase === 'sprint').length;
+    expect(count(casual)).toBeGreaterThanOrEqual(2);
+    expect(count(elite)).toBeGreaterThan(count(casual));
+    for (const d of Object.values(DIFF)) expect(planRide(tl, d).every((b) => b.t1 - b.t0 >= 6 || b.phase === 'sprint')).toBe(true);
+  });
+
+  it('caps sprint density by difficulty, riding skipped drops as a hold', () => {
+    const tl = rideTimeline(Array.from({ length: 12 }, (_, i) => [[i * 50, i * 50 + 30, 'verse'], [i * 50 + 30, i * 50 + 50, 'drop']] as const).flat().map(([a, b, k]) => [a, b, k]));
+    for (const d of Object.values(DIFF)) {
+      const ride = planRide(tl, d), sprints = ride.filter((b) => b.phase === 'sprint');
+      expect(sprints.length).toBeLessThanOrEqual(Math.ceil(600 / d.sprintEveryS));
+      expect(ride.some((b) => b.phase === 'hold')).toBe(true);
+    }
+  });
+
+  it('shows the new band during a transition while still accepting the old one', () => {
+    const track = buildTrack(rideTimeline([[0, 60, 'verse'], [60, 100, 'build'], [100, 160, 'verse']]), options);
+    const e = effortAt(track, 61, 'pro');
+    expect(e).toMatchObject({ phase: 'climb', transition: true, instruction: 'Harder', band: { min: 4, max: 5 }, target: { min: 2, max: 5 } });
   });
 
   it('retains builds and drops throughout a music set instead of turning most of the ride into rest', () => {
@@ -56,7 +81,9 @@ describe('Cadenza ride pacing', () => {
     const recoveryS = ride.filter((b) => b.phase === 'recover').reduce((t, b) => t + b.t1 - b.t0, 0);
     expect(recoveryS / tl.durationS).toBeLessThan(0.45);
     expect(ride.filter((b) => b.phase === 'climb').length).toBeGreaterThanOrEqual(5);
-    expect(ride.filter((b) => b.phase === 'sprint').length).toBe(tl.sections.filter((s) => s.kind === 'drop').length);
+    const sprints = ride.filter((b) => b.phase === 'sprint');
+    expect(sprints.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < sprints.length; i++) expect(sprints[i].t0 - sprints[i - 1].t0).toBeGreaterThanOrEqual(DIFF.pro.sprintEveryS);
     expect(ride.filter((b) => b.phase === 'hold').length).toBeGreaterThanOrEqual(5);
   });
 
@@ -66,7 +93,6 @@ describe('Cadenza ride pacing', () => {
     expect(effortAt(track, 50, 'pro').phase).toBe('climb');
     expect(effortAt(track, 72, 'pro')).toMatchObject({ phase: 'recover', countdown: 3, target: { min: 1, max: 5 } });
     expect(effortAt(track, 75, 'pro').phase).toBe('sprint');
-    expect(effortAt(buildTrack(tl, { ...options, longerBreaks: true }), 75, 'pro').phase).toBe('recover');
   });
 
   it('limits sprint duration, rejects closely spaced drops and rests in music without detected breaks', () => {
@@ -76,7 +102,7 @@ describe('Cadenza ride pacing', () => {
       const sprints = ride.filter((b) => b.phase === 'sprint');
       expect(sprints.map((b) => b.t0)).toEqual([40]);
       expect(sprints[0].t1 - sprints[0].t0).toBeLessThanOrEqual(d.sprintS);
-      expect(ride.some((b) => b.phase === 'recover' && b.t1 - b.t0 >= 30)).toBe(true);
+      expect(ride.some((b) => b.phase === 'recover' && b.t1 - b.t0 >= d.periodicRestS)).toBe(true);
     }
   });
 

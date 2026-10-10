@@ -1,6 +1,6 @@
 import type { MediaTimeline, SectionKind, ZoneTarget } from '../../../contracts';
 import { makeRng } from '../../../core/rng';
-import { COUNTDOWN_S, TRANSITION_S, planRide, rideIndexAt, type RideBlock } from './ride';
+import { COUNTDOWN_S, TRANSITION_S, planRide, rideIndexAt, rideTarget, type RideBlock } from './ride';
 
 /**
  * The ride, built from the music (pure, deterministic). Everything is sampled on the program clock at `hz`.
@@ -12,10 +12,10 @@ export type Difficulty = 'casual' | 'pro' | 'elite';
 export type Mode = 'mono' | 'classic';
 export const DIFFICULTIES: readonly Difficulty[] = ['casual', 'pro', 'elite'];
 
-export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4 }> = {
-  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3 },
-  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3 },
-  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4 },
+export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4; sprintEveryS: number; restS: number; mixRestS: number; maxWorkS: number; periodicRestS: number }> = {
+  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3, sprintEveryS: 150, restS: 25, mixRestS: 36, maxWorkS: 150, periodicRestS: 40 },
+  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3, sprintEveryS: 120, restS: 15, mixRestS: 24, maxWorkS: 180, periodicRestS: 30 },
+  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4, sprintEveryS: 75, restS: 12, mixRestS: 20, maxWorkS: 210, periodicRestS: 25 },
 };
 /** ERG watts (FTP fraction) per effort phase, for the ERG option. */
 export const ERG_FTP = { cruise: 0.65, climb: [0.75, 0.92], sprint: 1.12, hold: 0.88, recover: 0.5 } as const;
@@ -36,7 +36,14 @@ export interface Zone {
   sprintEnd?: number;
 }
 export type Phase = 'cruise' | 'climb' | 'sprint' | 'hold' | 'recover';
-export interface Effort { phase: Phase; target: ZoneTarget; floorFtp: number; ergFtp: number; left: number; instruction: string; countdown: number | null; transition: boolean; gradePct: number }
+export interface Effort {
+  phase: Phase;
+  /** What is judged: during a transition the union of the old and new bands; during a countdown the ceiling opens to Z5. */
+  target: ZoneTarget;
+  /** What the rider is asked for (the block's own band), shown on the HUD. */
+  band: { min: number; max: number };
+  floorFtp: number; ergFtp: number; left: number; instruction: string; countdown: number | null; transition: boolean; gradePct: number;
+}
 export interface Track {
   durationS: number; hz: number; lanes: number; maxGrade: number;
   dist: Float64Array;   // metres travelled at each sample
@@ -56,7 +63,7 @@ export interface Track {
   /** From the music, for the renderer's pulses and skyline (program seconds / curves at hz). */
   beats: number[]; downbeats: number[]; phrases: number[]; bands: [number[], number[], number[]]; intensity: number[];
 }
-export interface TrackOpts { difficulty: Difficulty; mode: Mode; seed: number; vBase?: number; maxGrade?: number; longerBreaks?: boolean }
+export interface TrackOpts { difficulty: Difficulty; mode: Mode; seed: number; vBase?: number; maxGrade?: number }
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 export function hexHue(hex: string | undefined): number {
@@ -80,22 +87,23 @@ function targetFor(kind: SectionKind, d: (typeof DIFF)[Difficulty]): ZoneTarget 
 
 /** Effort follows the ride plan, independently of the music's visual sections. */
 export function effortAt(track: Track, p: number, difficulty: Difficulty): Effort {
-  const index = rideIndexAt(track.rideBlocks, p), b = track.rideBlocks[index], prev = track.rideBlocks[index - 1], next = track.rideBlocks[index + 1];
+  const blocks = track.rideBlocks, index = rideIndexAt(blocks, p), b = blocks[index], prev = blocks[index - 1];
   const prog = clamp((p - b.t0) / Math.max(1, b.t1 - b.t0), 0, 1);
   let target = { ...b.target }, instruction = target.label ?? 'Hold Steady';
-  const countdown = next?.phase === 'sprint' && next.t0 - p <= COUNTDOWN_S + 1e-6 && next.t0 > p
-    ? Math.max(1, Math.ceil(next.t0 - p - 1e-6)) : null;
+  // look past a short block so the full 3-2-1 always lands on the sprint
+  const sprint = blocks.slice(index + 1, index + 3).find((x) => x.phase === 'sprint');
+  const countdown = sprint && sprint.t0 > p && sprint.t0 - p <= COUNTDOWN_S + 1e-6 ? Math.max(1, Math.ceil(sprint.t0 - p - 1e-6)) : null;
   const transition = !!prev && b.phase !== 'sprint' && p - b.t0 < TRANSITION_S;
   if (countdown) { target.max = 5; instruction = String(countdown); }
   else if (transition) {
     target.min = Math.min(prev.target.min, target.min) as ZoneTarget['min'];
     target.max = Math.max(prev.target.max, target.max) as ZoneTarget['max'];
-    instruction = b.phase === 'recover' ? 'Break' : b.target.min < prev.target.min ? 'Ease Off' : 'Harder';
+    instruction = b.phase === 'recover' ? 'Break' : b.target.min < prev.target.min ? 'Ease Off' : b.target.min > prev.target.min ? 'Harder' : instruction;
   }
   const ergFtp = b.phase === 'recover' ? ERG_FTP.recover : b.phase === 'sprint' ? ERG_FTP.sprint
     : b.phase === 'climb' ? ERG_FTP.climb[0] + (ERG_FTP.climb[1] - ERG_FTP.climb[0]) * prog
     : b.phase === 'hold' ? ERG_FTP.hold : ERG_FTP.cruise;
-  return { phase: b.phase, target: { ...target, label: instruction }, instruction, countdown, transition,
+  return { phase: b.phase, target: { ...target, label: instruction }, band: { min: b.target.min, max: b.target.max }, instruction, countdown, transition,
     floorFtp: b.phase === 'recover' ? 0 : ZONE_FLOOR[target.min], ergFtp,
     gradePct: b.phase === 'recover' ? 0.5 : b.phase === 'sprint' ? 0 : b.phase === 'climb' ? 2 + (track.maxGrade - 2) * prog : b.phase === 'hold' ? 2 : 1.5,
     left: Math.max(0, b.t1 - p) };
@@ -115,7 +123,7 @@ export function zoneIndexAt(track: Track, p: number): number {
 
 export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const d = DIFF[o.difficulty], hz = tl.hz || 10, n = Math.max(2, Math.ceil(tl.durationS * hz) + 1);
-  const rideBlocks = planRide(tl, d, o.longerBreaks);
+  const rideBlocks = planRide(tl, d);
   const rng = makeRng(o.seed * 101 + 7), maxGrade = o.maxGrade ?? 7, vBase = o.vBase ?? 26;
   const sections = tl.sections.length ? tl.sections : [{ t0: 0, t1: tl.durationS, kind: 'verse' as SectionKind, energy: 0.5 }];
   const songOf = (t: number) => Math.max(0, tl.songs.findIndex((s) => t >= s.t0 && t < s.t1));
@@ -264,7 +272,7 @@ export function extendTrack(old: Track, next: Track, fromS: number): Track {
   const beforeRide = old.rideBlocks.filter((b) => b.t0 < rideCut).map((b) => ({ ...b, t1: Math.min(b.t1, rideCut) }));
   const afterRide = next.rideBlocks.filter((b) => b.t1 > rideCut).map((b) => {
     // A newly detected sprint may not start halfway through, without its countdown.
-    if (b.phase === 'sprint' && b.t0 < rideCut + COUNTDOWN_S) return { ...b, t0: Math.max(b.t0, rideCut), phase: 'cruise' as Phase, target: targetFor('verse', DIFF.pro) };
+    if (b.phase === 'sprint' && b.t0 < rideCut + COUNTDOWN_S) return { ...b, t0: Math.max(b.t0, rideCut), phase: 'cruise' as Phase, target: rideTarget('cruise', DIFF.pro) }; // cruise is Z2–3 at every difficulty
     return { ...b, t0: Math.max(b.t0, rideCut) };
   });
   next.rideBlocks = [...beforeRide, ...afterRide].reduce<RideBlock[]>((blocks, b) => {

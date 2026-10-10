@@ -28,7 +28,7 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const shield: Box = narrow ? { x: pad, y: song.y + song.h + 6, w: sw, h: 22 } : { x: (W - sw) / 2, y: pad, w: sw, h: 22 };
   const cw = Math.min(W - 2 * pad, 560), ch = Math.min(120, Math.max(60, UH - (shield.y + shield.h + 8) - pad));
   const callout: Box = { x: (W - cw) / 2, y: Math.min(UH - ch - pad, Math.max(shield.y + shield.h + 8, UH * 0.28)), w: cw, h: ch };
-  const mw = Math.min(W - 2 * pad, 460), mh = Math.min(UH - 2 * pad, 440);
+  const mw = Math.min(W - 2 * pad, 460), mh = Math.min(UH - 2 * pad, 340);
   const menu: Box = { x: (W - mw) / 2, y: Math.max(pad, (UH - mh) / 2), w: mw, h: mh };
   const lw = Math.min(W - 2 * pad, 420), lh = 64;
   const launch: Box = { x: (W - lw) / 2, y: UH - lh - pad, w: lw, h: lh };

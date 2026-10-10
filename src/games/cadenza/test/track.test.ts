@@ -93,11 +93,11 @@ describe('effort phases', () => {
 });
 
 describe('banks and tunnels', () => {
-  it('planned sprints bank hard (≈ 66°); drops skipped for recovery stay calm; breaks are tunnels', () => {
+  it('planned sprints bank hard (≈ 66°); drops without a sprint stay calm; breaks are tunnels', () => {
     const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
     for (const z of tr.zones.filter((x) => x.kind === 'drop')) {
       const i0 = Math.round(z.t0 * tr.hz), i1 = Math.round(Math.min(z.t1, z.t0 + 8) * tr.hz); // (after any opening corkscrew)
-      const peak = Math.max(...Array.from(tr.roll.slice(i0, i1), Math.abs));
+      const peak = Math.max(...Array.from(tr.roll.slice(i0, i1), (r) => Math.abs(Math.atan2(Math.sin(r), Math.cos(r))))); // a finished helix leaves 2π
       if (!tr.stunts.some((s) => s.kind === 'launch' && s.t0 === z.t0)) { expect(peak).toBeLessThan(0.1); continue; }
       expect(peak).toBeGreaterThan(1.1);
       expect(Math.abs(tr.curve[i1] - tr.curve[i0])).toBeGreaterThan(0.8); // the track actually turns

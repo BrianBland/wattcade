@@ -3,26 +3,38 @@ import type { Phase } from './track';
 
 /** Music sections stay intact; these longer blocks are the rider's instructions. */
 export interface RideBlock { t0: number; t1: number; phase: Phase; target: ZoneTarget }
-export interface RideConfig { buildZone: 3 | 4; dropZone: 4 | 5; holdZone: 3 | 4; sprintS: number }
+/**
+ * Difficulty sets the intensity *and* the rest: `sprintEveryS` = minimum time between sprint starts (drop-heavy music
+ * doesn't stack efforts), `restS` = shortest break / outro recovery, `mixRestS` = recovery around a song handover,
+ * `periodicRestS` after `maxWorkS` of uninterrupted work.
+ */
+export interface RideConfig {
+  buildZone: 3 | 4; dropZone: 4 | 5; holdZone: 3 | 4; sprintS: number;
+  sprintEveryS: number; restS: number; mixRestS: number; maxWorkS: number; periodicRestS: number;
+}
 export const COUNTDOWN_S = 3;
 export const TRANSITION_S = 5;
 export const MIN_BLOCK_S = 30;
 const MUSICAL_EFFORT_S = 12;
+/** Recovery left shorter than this after making room for a sprint is not worth announcing. */
+const MIN_RECOVERY_S = 8;
+/** Work slivers shorter than this (e.g. the last seconds of a build before its drop) fold into a neighbour. */
+const MIN_SLIVER_S = 6;
 
-const target = (phase: Phase, d: RideConfig): ZoneTarget => {
+export const rideTarget = (phase: Phase, d: RideConfig): ZoneTarget => {
   switch (phase) {
     case 'recover': return { min: 1, max: 2, label: 'Break', source: 'power' };
-    case 'sprint': return { min: d.dropZone, max: 5, label: 'Punch It!', source: 'power' };
-    case 'climb': return { min: d.buildZone, max: (d.buildZone + 1) as 4 | 5, label: 'Hold Steady', source: 'power' };
+    case 'sprint': return { min: d.dropZone, max: 5, label: 'Sprint!', source: 'power' };
+    case 'climb': return { min: d.buildZone, max: (d.buildZone + 1) as 4 | 5, label: 'Climb', source: 'power' };
     case 'hold': return { min: d.holdZone, max: (d.holdZone + 1) as 4 | 5, label: 'Hold Steady', source: 'power' };
-    default: return { min: 2, max: 3, label: 'Hold Steady', source: 'power' };
+    default: return { min: 2, max: 3, label: 'Cruise', source: 'power' };
   }
 };
 
 type Window = { t0: number; t1: number };
 function mergeWindows(windows: Window[], duration: number): Window[] {
   const result: Window[] = [];
-  for (const w of windows.sort((a, b) => a.t0 - b.t0)) {
+  for (const w of [...windows].sort((a, b) => a.t0 - b.t0)) {
     const t0 = Math.max(0, w.t0), t1 = Math.min(duration, w.t1);
     if (t1 <= t0) continue;
     const prev = result.at(-1);
@@ -32,47 +44,54 @@ function mergeWindows(windows: Window[], duration: number): Window[] {
   }
   return result;
 }
+/** Recovery never covers a sprint: the drop is the payoff, so rest is trimmed to end where it starts (the countdown runs in the rest). */
+function around(windows: Window[], sprints: Window[]): Window[] {
+  const out: Window[] = [];
+  for (const w of windows) {
+    let pieces = [w];
+    for (const s of sprints) pieces = pieces.flatMap((p) => (s.t1 <= p.t0 || s.t0 >= p.t1 ? [p] : [{ t0: p.t0, t1: s.t0 }, { t0: s.t1, t1: p.t1 }]));
+    out.push(...pieces.filter((p) => p.t1 - p.t0 >= MIN_RECOVERY_S));
+  }
+  return out;
+}
 
-export function planRide(tl: MediaTimeline, d: RideConfig, longerBreaks = false): RideBlock[] {
-  const duration = Math.max(0.1, tl.durationS), recoveryS = longerBreaks ? 45 : 15;
-  const mixRecoveryS = longerBreaks ? 60 : 24;
+/**
+ * The rider's plan: drops open with a sprint (difficulty-capped, at most one per `sprintEveryS`), breaks / outros / song
+ * handovers become recovery around them, and long stretches of work get a periodic rest. Short wobbles in the music
+ * are smoothed toward ≥ 30 s portions, keeping meaningful builds and post-drop holds.
+ */
+export function planRide(tl: MediaTimeline, d: RideConfig): RideBlock[] {
+  const duration = Math.max(0.1, tl.durationS);
   const sections = [...tl.sections].sort((a, b) => a.t0 - b.t0);
-  const natural: Window[] = [];
-  for (const s of sections) {
-    if (s.kind === 'break' || s.kind === 'outro') {
-      let t1 = Math.max(s.t1, s.t0 + recoveryS);
-      // Standard rides keep the next musical drop; Longer Breaks deliberately protects more rest.
-      if (!longerBreaks) {
-        const drop = sections.find((x) => x.kind === 'drop' && x.t0 >= s.t1 && x.t0 < t1);
-        if (drop) t1 = drop.t0;
-      }
-      natural.push({ t0: s.t0, t1 });
-    }
-  }
-  for (const song of tl.songs.slice(1)) natural.push({ t0: song.t0 - mixRecoveryS / 2, t1: song.t0 + mixRecoveryS / 2 });
-  let recoveries = mergeWindows(natural, duration);
-  // Even a long mix with no detected breaks needs periodic recovery.
-  const maxWorkS = longerBreaks ? 90 : 180, periodic: Window[] = [];
-  let cursor = 0;
-  for (const w of [...recoveries, { t0: duration, t1: duration }]) {
-    while (w.t0 - cursor > maxWorkS) {
-      const t0 = cursor + maxWorkS, t1 = Math.min(w.t0, t0 + (longerBreaks ? 45 : 30));
-      periodic.push({ t0, t1 }); cursor = t1;
-    }
-    cursor = Math.max(cursor, w.t1);
-  }
-  recoveries = mergeWindows([...recoveries, ...periodic], duration);
 
   const sprints: Window[] = [];
-  let lastSprintEnd = -Infinity;
+  let lastSprint = -Infinity;
   for (const s of sections) {
     if (s.kind !== 'drop') continue;
     const t0 = Math.max(0, s.t0), t1 = Math.min(duration, s.t1, t0 + d.sprintS);
-    if (t1 - t0 < 3 || t0 - lastSprintEnd < (longerBreaks ? 60 : 30)) continue;
-    // Standard rides can count down during the end of a musical break.
-    if (recoveries.some((w) => w.t0 < t1 && w.t1 > t0 - (longerBreaks ? COUNTDOWN_S : 0))) continue;
-    sprints.push({ t0, t1 }); lastSprintEnd = t1;
+    if (t1 - t0 < 3 || t0 - lastSprint < d.sprintEveryS) continue; // a skipped drop is ridden as a hold
+    sprints.push({ t0, t1 }); lastSprint = t0;
   }
+
+  const natural: Window[] = [];
+  for (const s of sections) if (s.kind === 'break' || s.kind === 'outro') natural.push({ t0: s.t0, t1: Math.max(s.t1, s.t0 + d.restS) });
+  for (const song of tl.songs.slice(1)) natural.push({ t0: song.t0 - d.mixRestS / 2, t1: song.t0 + d.mixRestS / 2 });
+  let recoveries = around(mergeWindows(natural, duration), sprints);
+  // Even a long mix with no detected breaks needs periodic recovery.
+  const periodic: Window[] = [];
+  let cursor = 0;
+  for (const w of [...recoveries, { t0: duration, t1: duration }]) {
+    while (w.t0 - cursor > d.maxWorkS) {
+      let t0 = cursor + d.maxWorkS;
+      const s = sprints.find((x) => x.t0 - COUNTDOWN_S < t0 && x.t1 > t0);
+      if (s) t0 = s.t1; // finish the sprint first
+      const t1 = Math.min(w.t0, t0 + d.periodicRestS);
+      if (t1 - t0 >= MIN_RECOVERY_S) periodic.push({ t0, t1 });
+      cursor = Math.max(t1, cursor + 1);
+    }
+    cursor = Math.max(cursor, w.t1);
+  }
+  recoveries = around(mergeWindows([...recoveries, ...periodic], duration), sprints);
 
   const cuts = [...new Set([0, duration, ...sections.flatMap((s) => [s.t0, s.t1]),
     ...recoveries.flatMap((w) => [w.t0, w.t1]), ...sprints.flatMap((w) => [w.t0, w.t1])])]
@@ -85,10 +104,10 @@ export function planRide(tl: MediaTimeline, d: RideConfig, longerBreaks = false)
     while (ri < recoveries.length && recoveries[ri].t1 <= p) ri++;
     while (pi < sprints.length && sprints[pi].t1 <= p) pi++;
     const section = sections[si], kind = section && p < section.t1 ? section.kind : 'verse';
-    const phase: Phase = recoveries[ri] && p >= recoveries[ri].t0 ? 'recover'
-      : sprints[pi] && p >= sprints[pi].t0 ? 'sprint'
+    const phase: Phase = sprints[pi] && p >= sprints[pi].t0 ? 'sprint'
+      : recoveries[ri] && p >= recoveries[ri].t0 ? 'recover'
       : kind === 'build' ? 'climb' : kind === 'drop' ? 'hold' : 'cruise';
-    blocks.push({ t0, t1, phase, target: target(phase, d) });
+    blocks.push({ t0, t1, phase, target: rideTarget(phase, d) });
   }
   const coalesce = (xs: RideBlock[]) => {
     const result: RideBlock[] = [];
@@ -99,6 +118,7 @@ export function planRide(tl: MediaTimeline, d: RideConfig, longerBreaks = false)
     }
     return result;
   };
+  const become = (b: RideBlock, as: RideBlock) => { b.phase = as.phase; b.target = as.target; };
   blocks = coalesce(blocks);
   // Smooth small fluctuations, but retain meaningful builds and post-drop effort.
   // Work may merge into other work, never into a neighboring break.
@@ -107,10 +127,16 @@ export function planRide(tl: MediaTimeline, d: RideConfig, longerBreaks = false)
       && !((b.phase === 'climb' || b.phase === 'hold') && b.t1 - b.t0 >= MUSICAL_EFFORT_S)
       && [blocks[i - 1], blocks[i + 1]].some((x) => x && x.phase !== 'sprint' && x.phase !== 'recover'));
     if (i < 0) break;
-    const b = blocks[i];
     const neighbors = [blocks[i - 1], blocks[i + 1]].filter((x) => x && x.phase !== 'sprint' && x.phase !== 'recover');
     const chosen = neighbors.sort((a, c) => (c.t1 - c.t0) - (a.t1 - a.t0))[0];
-    if (chosen) { b.phase = chosen.phase; b.target = chosen.target; blocks = coalesce(blocks); }
+    become(blocks[i], chosen); blocks = coalesce(blocks);
+  }
+  // A few seconds of work wedged between rest and a sprint (or two rests) would only flash a cue: fold it into the rest.
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i], prev = blocks[i - 1], next = blocks[i + 1];
+    if (b.phase === 'sprint' || b.phase === 'recover' || b.t1 - b.t0 >= MIN_SLIVER_S) continue;
+    const into = prev && prev.phase !== 'sprint' ? prev : next && next.phase !== 'sprint' ? next : null;
+    if (into) become(b, into);
   }
   return coalesce(blocks);
 }

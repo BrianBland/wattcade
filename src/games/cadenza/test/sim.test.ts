@@ -31,22 +31,6 @@ describe('Cadenza sim', () => {
     expect(Object.keys(last.best)[0]).toMatch(/^synth:edm:1:s\|mono\|pro$/);
   });
 
-  it('saves Longer Breaks from the menu and restores it on the next ride', () => {
-    const timeline = rideTimeline([[0, 60, 'verse'], [60, 65, 'break'], [65, 160, 'verse']]);
-    let saved: CadenzaSave = {};
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, onSave: (d) => { saved = { ...d as CadenzaSave }; } });
-    expect((s.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(false);
-    s.sim.receive?.({ type: 'breaks' }); s.step(1);
-    expect((s.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(true);
-    s.sim.receive?.({ type: 'start' }); s.step(2);
-    expect(saved.longerBreaks).toBe(true);
-    const profile = testProfile(); profile.gameData.cadenza = saved;
-    const restored = createGameSession({ game: module, profile, input: new NullInput(), media: { timeline } });
-    expect((restored.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(true);
-    const breakBlock = (s.sim.snapshot() as CadenzaSnapshot).track.rideBlocks.find((b) => b.phase === 'recover')!;
-    expect(breakBlock.t1 - breakBlock.t0).toBeGreaterThanOrEqual(45);
-  });
-
   it('eases trainer demand for protected recovery even when the music is still a build', () => {
     const timeline = rideTimeline([[0, 110, 'build'], [110, 150, 'drop'], [150, 220, 'build']], [0, 100]);
     for (const trainer of ['grade', 'erg']) {

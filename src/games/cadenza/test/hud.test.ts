@@ -13,7 +13,8 @@ it('puts coaching and the countdown in the main text, with the actual target und
   s.step(48 * 30);
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 48);
   expect(document.querySelector('.ws-callout b')!.textContent).toBe('2');
-  expect(document.querySelector('.ws-zone b')!.textContent).toBe('Z2–5');
+  expect(document.querySelector('.ws-callout span')!.textContent).toBe('Sprint incoming');
+  expect(document.querySelector('.ws-zone b')!.textContent).toBe('Z2–3'); // the band asked for, not the countdown's open ceiling
   s.step(2 * 30);
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 50);
   expect(document.querySelector('.ws-zone span')!.textContent).toBe('0:15 left');
@@ -24,7 +25,7 @@ it('puts coaching and the countdown in the main text, with the actual target und
   hud.update(snap, '#00f0ff', 51);
   expect(document.querySelector('.ws-callout b')!.textContent).toBe('Harder');
   expect(document.querySelector('.ws-zone')!.textContent).not.toContain('DROP');
-  expect(document.querySelector('.ws-drop')!.textContent).toBe('');
+  expect(document.querySelector('.ws-callout span')!.textContent).toMatch(/^Z5 · \d+\+ W$/);
   hud.dispose();
 });
 
@@ -51,14 +52,14 @@ it('fades routine instructions, keeps sustained coaching visible, and clears it 
   hud.dispose();
 });
 
-it('exposes Longer Breaks as a touch menu action', () => {
+it('starts the ride from the touch menu', () => {
   const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput() });
   const hud = new Hud(document.body);
   hud.setSend((a) => s.sim.receive?.(a));
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 0);
   const row = document.querySelector('[data-i="4"]')!;
-  expect(row.textContent).toContain('Longer breaks');
+  expect(row.textContent).toContain('Ride');
   row.dispatchEvent(new Event('pointerdown', { bubbles: true })); s.step(1);
-  expect((s.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(true);
+  expect((s.sim.snapshot() as CadenzaSnapshot).menu).toBeNull();
   hud.dispose();
 });

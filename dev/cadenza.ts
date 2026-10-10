@@ -11,7 +11,7 @@ const hub = new InputHub(); hub.attachKeyboard(window);
 const timeline = synthTimeline({ style: (q.get('style') ?? 'edm') as 'edm', songs: Number(q.get('songs') ?? 2), seed: Number(q.get('seed') ?? 1), mix: 'automix' });
 const session = createGameSession({
   game: module, profile: testProfile(), input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
-  media: { timeline }, simOpts: { longerBreaks: q.get('breaks') === '1', ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },
+  media: { timeline }, simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;

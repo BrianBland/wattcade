@@ -59,13 +59,13 @@ describe('analysis vs synth ground truth', () => {
       const lows = a.onsets.filter((o) => o.band === 0).map((o) => o.t);
       expect(fMeasure(lows, kicks, 0.05)).toBeGreaterThan(0.6);
       expect(atob(a.spec.data).length).toBe(Math.ceil(a.durationS * a.spec.hz) * a.spec.bands);
-    });
+    }, 30_000); // renders and fully analyses a 2-3 min synth song: ~2.5 s locally, can pass 5 s on a busy CI runner
   }
 
   it('is deterministic', () => {
     const s = makeScore('edm', 4, { short: true }), pcm = renderScore(s, ANALYSIS_SR);
     expect(JSON.stringify(analyzePcm(pcm, ANALYSIS_SR))).toBe(JSON.stringify(analyzePcm(pcm, ANALYSIS_SR)));
-  });
+  }, 30_000); // two full analyses of a short synth song: ~2 s locally
 
   it('copes with silence and very short clips', () => {
     const a = analyzePcm(new Float32Array(ANALYSIS_SR * 3), ANALYSIS_SR);

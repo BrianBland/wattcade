@@ -7,6 +7,11 @@ import { SCRIPTS, TimelineInput, TuningRegistry, createGameSession, testProfile 
 function findBad(v: unknown, path = '$', depth = 0): string | null {
   if (typeof v === 'number') return Number.isFinite(v) ? null : `${path}=${v}`;
   if (v === null || typeof v !== 'object' || depth > 8) return null;
+  if (ArrayBuffer.isView(v) && !(v instanceof DataView)) { // typed arrays (terrain, water grids): same check, no per-element Object.entries
+    const a = v as unknown as ArrayLike<number | bigint>;
+    for (let i = 0; i < a.length; i++) { const x = a[i]; if (typeof x === 'number' && !Number.isFinite(x)) return `${path}.${i}=${x}`; }
+    return null;
+  }
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
     const r = findBad(x, `${path}.${k}`, depth + 1);
     if (r) return r;
@@ -41,7 +46,7 @@ describe('QA sanity: no NaN/Infinity in snapshots or summaries', () => {
         if (sb) bad.push(sb);
         expect(bad).toEqual([]);
         for (const c of s.commands) expect(findBad(c, 'cmd')).toBeNull();
-      });
+      }, 15_000); // 2 sim-minutes per game x script; watershed's water grid makes it ~1.7-2 s locally
     }
   }
 });

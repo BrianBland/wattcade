@@ -58,7 +58,7 @@ describe('watershed water', () => {
     for (let i = 0; i < 30 * 60; i++) w.step(1 / 30, emit({ flow: 40, dropVol: 0.1 }), DEFAULT_WATER);
     expect(w.n).toBeLessThanOrEqual(500);
     expect(Math.min(...t.h)).toBeGreaterThanOrEqual(-8.5);
-  });
+  }, 60_000); // 60 s of water at the particle cap: ~1.9 s locally
 });
 
 describe('watershed sim', () => {
@@ -75,19 +75,7 @@ describe('watershed sim', () => {
   });
 });
 
-describe('watershed sky phases + achievements', () => {
-  it('a full autopilot ride earns the Watershed achievements it should', async () => {
-    const { ACHIEVEMENTS } = await import('../../../progression');
-    const { testProfile } = await import('../../../core');
-    const r = runHeadless({ game: module, script: 'cadence-follow', minutes: 46, seed: 1, simOpts: { autopilot: true } });
-    const record = { id: 'x', profileId: 'p', gameId: 'watershed', startedAt: 0, durationS: 2760, samples: [], events: r.events, stats: r.stats, gameSummary: r.summary };
-    const got = ACHIEVEMENTS.filter((a) => a.id.startsWith('ws_') && a.check?.(testProfile(), record as never, [])).map((a) => a.id);
-    expect(got).toEqual(expect.arrayContaining(['ws_cycle', 'ws_salmon', 'ws_maestro', 'ws_miller', 'ws_breadbasket'])); // ws_cloud, ws_dam_buster: lifetime tallies
-    expect(Number(r.summary.vapor)).toBeGreaterThan(0);
-    expect(Number(r.summary.rainfall)).toBeGreaterThan(0);
-    expect(r.events.some((e) => e.type === 'springRises')).toBe(true);
-  }, 420_000); // 46-min autopilot ride: ~95 s in tsx, ~140 s under vitest locally; slower CI runners need headroom
-});
+// The 46-min autopilot achievement ride lives in scenarios.ts ('full ride'), run by `npm run sim:all`.
 
 describe('watershed ride length', () => {
   it('makePlan fits every offered length, keeps the story, and 45 is the original plan', () => {

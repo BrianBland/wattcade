@@ -111,7 +111,7 @@ function mergeStructure(target: SongAnalysis, feats: readonly BeatFeature[], buf
   target.sections = [...s.sections.map((x, i, all) => (i === all.length - 1 && covered < target.durationS - 0.1 && x.kind === 'outro' ? { ...x, kind: 'verse' as const } : x)), ...after];
 }
 /** Bytes of retained rolling features for a song (payload only: 26 float32 + t + low per beat). */
-export function retainedFeatureBytes(target: SongAnalysis): number { return (songStructure.get(target)?.beats.length ?? 0) * (24 * 4 + 3 * 8); }
+export function retainedFeatureBytes(target: SongAnalysis): number { return (songStructure.get(target)?.beats.length ?? 0) * (24 * 4 + 5 * 8); }
 
 /** Bounded playback cache plus an append-only record of committed per-window analysis. */
 export class RollingQueue implements RangeSource {

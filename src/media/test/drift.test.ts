@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { concatFixtures, driftReport, matchEvents, replayRolling, seamsOf, silence } from '../online/drift';
 import { estimatedAnalysis, foldTempo, mergeWindow, MIN_ESTIMATE_S, retainedFeatureBytes, stitchSeam } from '../online/rolling';
-import { beatRuns } from '../analysis/structure';
+import { beatIntensity, beatRuns } from '../analysis/structure';
 import { renderScore } from '../synth/render';
 import { makeScore } from '../synth/score';
 import { scoreAnalysis } from '../synth/truth';
@@ -62,7 +62,7 @@ describe('rolling replay vs ground truth (short synth fixture)', () => {
 });
 
 describe('feature-accumulated rolling structure (#64 PR 2)', () => {
-  const bf = (t: number) => ({ t, low: 0, energy: 0, timbre: new Float32Array(12), chroma: new Float32Array(12) });
+  const bf = (t: number) => ({ t, low: 0, energy: 0, loud: 0, act: 0, timbre: new Float32Array(12), chroma: new Float32Array(12) });
   it('stitchSeam drops a duplicate and fills one missing beat at a seam', () => {
     expect(stitchSeam([0, 0.5, 1.0, 1.1, 1.5].map(bf), 1.05, 0.5).map((b) => b.t)).toEqual([0, 0.5, 1.0, 1.5]);
     expect(stitchSeam([0, 0.5, 1.5, 2.0].map(bf), 1.2, 0.5).map((b) => b.t)).toEqual([0, 0.5, 1.0, 1.5, 2.0]);
@@ -85,11 +85,31 @@ describe('feature-accumulated rolling structure (#64 PR 2)', () => {
     expect(retainedFeatureBytes(r.merged)).toBeLessThan(64 * 1024);           // vs ~12 MB per decoded 34 s stereo window
     expect(r.merged.confidence).toBe('metadata');
   }, 120000);
+  // Full-length songs: the short variants have 4-bar builds, below findSections' 8-bar minimum section length
+  // (whole-file scores 0.40 on that fixture; song-global energy scores 0.76 there, per-window energy happened to score 0.97).
   it('silence between songs restarts the bar count (phrase accuracy >= 0.85)', () => {
-    const mk = (seed: number) => { const s = makeScore('edm', seed, { short: true }), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
+    const mk = (seed: number) => { const s = makeScore('edm', seed), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
     const a = mk(1), b = mk(3), c = concatFixtures([a, { pcm: silence(12, ANALYSIS_SR) }, b], ANALYSIS_SR);
     const r = replayRolling(c.pcm, ANALYSIS_SR), rep = driftReport(r.merged, { bpm: a.ref.bpm, ...c.ref }, seamsOf(c.durationS));
     expect(rep.downbeatF).toBeGreaterThan(0.95);
     expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);
   }, 120000);
+});
+
+describe('song-global energy for streamed structure', () => {
+  it('beatIntensity normalises over the whole song, not per window', () => {
+    const beat = (t: number, loud: number) => ({ t, low: 0, energy: 0, loud, act: loud, timbre: new Float32Array(12), chroma: new Float32Array(12) });
+    const bf = [...grid(120, 0, 30).map((t) => beat(t, -20)), ...grid(120, 30, 60).map((t) => beat(t, -5))];
+    const c = beatIntensity(bf, 10, 62);
+    expect(c).toHaveLength(620);
+    expect(c[100]).toBeLessThan(0.2); expect(c[500]).toBeGreaterThan(0.8);   // quiet half stays quiet relative to the loud half
+    expect(c[615]).toBe(0);                                                    // after the last beat (+2 periods): silent
+  });
+  it('tempo change inside one stream (121 -> 90 bpm): phrase accuracy >= 0.85', () => {
+    const mk = (style: 'edm' | 'ambient', seed: number) => { const s = makeScore(style, seed), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
+    const a = mk('edm', 1), b = mk('ambient', 1), c = concatFixtures([a, b], ANALYSIS_SR);
+    const r = replayRolling(c.pcm, ANALYSIS_SR), rep = driftReport(r.merged, { bpm: a.ref.bpm, ...c.ref }, seamsOf(c.durationS));
+    expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);
+    expect(rep.downbeatF).toBeGreaterThan(0.9);
+  }, 180000);
 });

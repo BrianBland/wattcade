@@ -108,7 +108,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     };
     (async () => {
       try {
-        const session = startSession(game, profile, onSave, media ? { timeline: media.timeline } : undefined);
+        const session = startSession(game, profile, onSave, media ? { timeline: media.timeline, ...(media.rolling?.announce ? { announce: (id: string, t: number) => media.rolling?.announce?.(id, t) } : {}) } : undefined);
         sessionRef.current = session; setSession(session);
         if (media && session.media) {
           const engine = mediaEngine(); engine.load(media.plan, media.rolling); engine.setVolume(1); engine.preload();

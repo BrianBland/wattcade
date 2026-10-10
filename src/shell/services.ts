@@ -287,7 +287,7 @@ export const activeSession = (): SessionLike | null => active;
 /** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
 const current = (): any => active ?? lobby;
 
-export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline }): SessionLike {
+export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline; announce?(id: string, t: number): void }): SessionLike {
   input.applySettings(profile.settings); debugState.timeScale = 1;
   const useFake = fakeMode || !anyReal();
   activeGameId = game.id;

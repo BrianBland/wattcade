@@ -8,16 +8,16 @@ import { Btn } from '../components/Bits';
 import { toast } from '../components/Toasts';
 import { duckAmbient, play as sfx } from '../../audio/sfx';
 import type { MediaRun } from '../types';
+import { loadQueue as loadPersistedQueue, queueIds, queueStorageKey, serializeQueue } from '../../media/queue';
 import { fmtTime, MODES, moveItem, nextMode, pickerNav, previewStart, queueRows, SECTION_COLORS, type PickerFocus } from './pickerModel';
 import { useSearchKeyboard } from './useSearchKeyboard';
 
 const TABS = ['My music', 'Samples (CC)', 'Generated', 'Online music', '+ Add music'] as const;
 const ADD_TAB = 4;
 const PREVIEW_S = 20;
-const queueKey = (p: Profile) => `wattcade.media.queue.${p.id}`;
+// Queue persistence v2 (src/media/queue). Old `{ ids, mode }` data is ignored and cleared; no migration.
 function loadQueue(p: Profile): { ids: string[]; mode: QueueMode } {
-  try { const v = JSON.parse(localStorage.getItem(queueKey(p)) ?? ''); if (Array.isArray(v.ids)) return { ids: v.ids, mode: v.mode ?? 'automix' }; } catch { /* none yet */ }
-  return { ids: [], mode: 'automix' };
+  try { const q = loadPersistedQueue(localStorage, p.id); return { ids: queueIds(q.entries), mode: q.mode }; } catch { return { ids: [], mode: 'automix' }; }
 }
 
 /** Pick songs for a music game: library / demo list with search, a song preview, and the queue (play mode + Start). */
@@ -83,7 +83,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const ready = queue.length > 0 && queued.length === queue.length && queued.every((m) => m.sourceUrl ? resolver.enabled && m.durationS > 0 : m.status === 'ready');
   const [starting, setStarting] = useState(false);
 
-  useEffect(() => { localStorage.setItem(queueKey(profile), JSON.stringify({ ids: queue, mode })); }, [queue, mode]);
+  useEffect(() => { localStorage.setItem(queueStorageKey(profile.id), serializeQueue(queue.map((songId) => ({ songId, origin: { kind: 'manual' } })), mode)); }, [queue, mode]);
   // queue → program timeline (for the strip, the game's preview and the stats)
   useEffect(() => {
     let alive = true;

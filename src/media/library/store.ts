@@ -10,6 +10,10 @@ export interface SongMeta extends SongRef {
   /** Stable page URL for session-only online audio. */
   sourceUrl?: string;
   bpm?: number; key?: string; energy?: number; drops?: number;
+  /** Online provider identity (optional; old records stay valid). Used for queue dedupe. */
+  provider?: 'youtube' | 'soundcloud'; providerId?: string;
+  /** Set when an online source was found to be gone. */
+  unavailable?: { at: number; reason: string };
   isrc?: string; fileName?: string; mime?: string; size?: number; hasArt?: boolean; genre?: string;
 }
 

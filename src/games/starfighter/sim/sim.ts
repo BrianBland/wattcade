@@ -109,7 +109,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   };
   const spawn = () => {
     const recovery = music.kind === 'break' || music.kind === 'outro';
-    const n = Math.min(Math.max(0,Math.min(MAX_ENEMIES-enemies.length,60-enemies.filter(e=>!e.ground).length)), recovery ? 5 : 6 + Math.floor(music.intensity * 3.99));
+    const n = Math.min(Math.max(0,Math.min(MAX_ENEMIES-enemies.length,60-enemies.filter(e=>!e.ground&&!e.passing).length)), recovery ? 5 : 6 + Math.floor(music.intensity * 3.99));
     const kind: EnemyView['kind'] = music.kind === 'build' ? 'armor' : music.kind === 'drop' ? 'weaver' : encounter % 3 === 2 ? 'gunner' : 'drone';
     const center = (ctx.rng() - 0.5) * 20, pattern = formations++ % 3;
     // About once a minute (every eighth formation outside calm sections and flagship fights) an elite wing crosses the far field.
@@ -145,6 +145,30 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     selectedGroup = gs[(index < 0 ? 0 : index + (direction < 0 ? -1 : 1) + gs.length) % gs.length][0];
     // Redirect the next acquisition; already painted locks remain committed.
     lockIn = Math.min(lockIn, 0.15); emit('retarget', { target: selectedGroup });
+  };
+  /** Count an enemy toward its formation once: when it dies, or when it gets past the ship. */
+  const resolve = (e: EnemyView, killedIt: boolean) => {
+    e.resolved = true;
+    const squad = e.formation !== undefined ? squads.get(e.formation) : undefined;
+    if (squad) {
+      if (killedIt) squad.killed++;
+      if (--squad.left <= 0 && squad.elite) {
+        // Elites are a bonus for attentive riders: letting them go never lowers the clear rate.
+        squads.delete(e.formation!); eliteSeen++;
+        if (squad.killed === squad.total) {
+          eliteCleared++; score += 500 * squad.total; if (coverLeft <= 0) charge = Math.min(100, charge + 25);
+          effect('perfect', e.x, e.y, 2.5); emit('eliteCleared'); announce('Elite wing down · Nova charged');
+        }
+      } else if (squad.left <= 0) {
+        squads.delete(e.formation!); clearKilled += squad.killed; clearTotal += squad.total;
+        const perfect = squad.killed === squad.total && squad.total >= 5 && !e.ground;
+        lastClear = { pct: Math.round(squad.killed / squad.total * 100), perfect, at: t };
+        if (perfect) {
+          perfectStreak++; perfects++; score += Math.round(60 * squad.total * (1 + 0.5 * Math.min(4, perfectStreak - 1)));
+          effect('perfect', e.x, e.y, 2, e.ground); emit('formationPerfect', { size: squad.total, streak: perfectStreak });
+        } else if (!e.ground && squad.total >= 5 && t > elitePursuitUntil) perfectStreak = 0;
+      }
+    }
   };
   const shot = (sx: number, kind: ShotView['kind'], target: EnemyView | undefined, damage: number) => {
     const ey = shipY - 5, dy = (target?.y ?? -20) - ey, dx = (target?.x ?? sx) - sx, d = Math.hypot(dx, dy) || 1;
@@ -345,6 +369,14 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         if (e.hp <= 0) continue;
         e.age += dt;
         const oldX=e.x, oldY=e.y;
+        if (e.passing) {
+          // Escaped enemies peel away around the ship and leave the screen instead of vanishing beside it.
+          e.y += dt * (e.ground ? 9 : 24 + Math.min(20, (e.y - SHIP_Y) * 0.8));
+          if (!e.ground) e.x += (e.x >= x ? 1 : -1) * dt * 16;
+          e.heading = Math.atan2(e.x - oldX, e.y - oldY);
+          if (e.y > 140 || Math.abs(e.x) > 110) { e.hp = -1; e.fled = true; }
+          continue;
+        }
         if (e.parentId) { if (!boss || boss.id !== e.parentId) { e.hp=-1;e.y=SHIP_Y;continue; } e.x=boss.x+(e.mountX??0);e.y=boss.y+4; }
         else if(!advanceEntry(e)) {
           if (e.elite) { e.hp = -1; e.fled = true; continue; }
@@ -376,10 +408,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           }
         }
         if (e.y >= SHIP_Y) {
-          if(e.ground) {e.hp=-1;e.y=SHIP_Y;continue;}
-          if (quality >= 0.8 && pedalling) effect('intercept', e.x, SHIP_Y - 4);
-          else hurt(e.kind === 'armor' ? 20 : 12);
-          e.hp = -1;
+          // Under target, living fighters ram the ship (and burst). Otherwise they get past and fly on.
+          if (!e.ground && !(quality >= 0.8 && pedalling)) { hurt(e.kind === 'armor' ? 20 : 12); effect('boom', e.x, e.y); e.hp = -1; }
+          else { e.passing = true; if (!e.ground) combo = 0; resolve(e, false); }
         }
       }
       for (const s of shots) {
@@ -408,28 +439,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         }
       }
       for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].hp <= 0) {
-        const e = enemies[i], killedIt = e.y < SHIP_Y && !e.fled;
-        if (killedIt) kill(e); else if (!e.fled) combo = 0;
-        const squad = e.formation !== undefined ? squads.get(e.formation) : undefined;
-        if (squad) {
-          if (killedIt) squad.killed++;
-          if (--squad.left <= 0 && squad.elite) {
-            // Elites are a bonus for attentive riders: letting them go never lowers the clear rate.
-            squads.delete(e.formation!); eliteSeen++;
-            if (squad.killed === squad.total) {
-              eliteCleared++; score += 500 * squad.total; if (coverLeft <= 0) charge = Math.min(100, charge + 25);
-              effect('perfect', e.x, e.y, 2.5); emit('eliteCleared'); announce('Elite wing down · Nova charged');
-            }
-          } else if (squad.left <= 0) {
-            squads.delete(e.formation!); clearKilled += squad.killed; clearTotal += squad.total;
-            const perfect = squad.killed === squad.total && squad.total >= 5 && !e.ground;
-            lastClear = { pct: Math.round(squad.killed / squad.total * 100), perfect, at: t };
-            if (perfect) {
-              perfectStreak++; perfects++; score += Math.round(60 * squad.total * (1 + 0.5 * Math.min(4, perfectStreak - 1)));
-              effect('perfect', e.x, e.y, 2, e.ground); emit('formationPerfect', { size: squad.total, streak: perfectStreak });
-            } else if (!e.ground && squad.total >= 5 && t > elitePursuitUntil) perfectStreak = 0;
-          }
-        }
+        const e = enemies[i], killedIt = e.y < SHIP_Y && !e.fled && !e.passing;
+        if (killedIt) kill(e); else if (!e.fled && !e.passing) combo = 0;
+        if (!e.resolved) resolve(e, killedIt);
         enemies.splice(i, 1);
       }
       for (let i = shots.length - 1; i >= 0; i--) if (shots[i].y < -30 || Math.abs(shots[i].x) > 70) shots.splice(i, 1);

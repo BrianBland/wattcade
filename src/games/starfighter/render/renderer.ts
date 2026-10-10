@@ -117,7 +117,7 @@ export class SfRenderer implements GameRenderer {
       live.add(e.id); let model = this.enemies.get(e.id);
       if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
       model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
-      model.rotation.z=e.ground?0:e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
+      model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
     }

@@ -13,6 +13,8 @@ export interface EnemyView {
   formation?: number;
   /** Elite wings cross the far field and leave; only a rider who targets them can clear them. */
   elite?: boolean; fled?: boolean;
+  /** Escaped past the ship: still flying (peeling away / scrolling off-screen), no longer in combat; `resolved` = counted. */
+  passing?: boolean; resolved?: boolean;
   /** 0..1 muzzle charge shown before the enemy fires. */
   warn?: number;
   entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };

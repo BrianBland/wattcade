@@ -192,6 +192,15 @@ describe('spectacle encounters', () => {
     expect(Math.abs(Number(b.clearPct) - Number(a.clearPct))).toBeLessThan(10);
     expect(Number(a.absorbed) + Number(b.absorbed)).toBe(0);
   }, 20_000);
+  it('enemies that get past fly on off-screen instead of vanishing beside the ship', () => {
+    const r = rig({}, 'z2', longMusic()); r.seconds(20); let last = new Map(r.snap().enemies.map(e => [e.id, { ...e }])), passed = 0, vanishedNearShip = 0;
+    for (let i = 0; i < 30 * 240; i++) {
+      r.s.step(1); const now = new Map(r.snap().enemies.map(e => [e.id, { ...e }]));
+      for (const [id, e] of last) if (!now.has(id) && e.passing) { passed++; if (e.y < 125 && Math.abs(e.x) < 100) vanishedNearShip++; }
+      last = now;
+    }
+    expect(passed).toBeGreaterThan(20); expect(vanishedNearShip).toBe(0); expect(r.snap().deaths).toBe(0);
+  }, 15_000);
   it('locks tick on sixteenths, volleys release on beats, and laser impacts land on beats', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); const volleys: number[] = [], locks: number[] = [], impacts: number[] = []; const seen = new Set<number>();
     r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') volleys.push(p); if (ev.type === 'lockAcquired') locks.push(p); }) as typeof r.s.ctx.emit;

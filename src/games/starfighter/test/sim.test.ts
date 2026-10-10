@@ -1,266 +1,135 @@
 import { describe, it, expect } from 'vitest';
-import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, TuningRegistry } from '../../../core';
-import type { InputState } from '../../../contracts';
+import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, TuningRegistry, DataHub, FakeTrainer } from '../../../core';
+import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { progressLine } from '../card';
-import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
-import { BOSSES, SECTORS, sectorTheme } from '../sim/content';
-import type { SfSnapshot } from '../sim/types';
+import { createDirector, cadenceFor } from '../sim/director';
+import { escortAvailable, migrateSave } from '../sim/save';
+import { upgradeCost, UPGRADES } from '../sim/meta';
+import type { SfSave, SfSnapshot } from '../sim/types';
+import type { MediaTimeline } from '../../../contracts';
 
-describe('scenarios via runHeadless', () => {
-  for (const sc of scenarios) {
-    it(sc.name, () => {
-      const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
-      expect(sc.assert(r.summary, r.stats, r)).toEqual([]);
-    });
-  }
-});
-
-function rigged(simOpts: Record<string, unknown> = { skipHangar: true }, tune: Record<string, number> = {}) {
-  const held = new Set<string>(), pressed = new Set<string>(), released = new Set<string>();
-  const st = { held, pressed, released, paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' } as unknown as InputState;
-  const input = { beginTick() { pressed.clear(); released.clear(); }, state: () => st };
-  const profile = testProfile();
-  const reg = new TuningRegistry({ profileId: profile.id, storage: null });
-  const session = createGameSession({ game: module, profile, input, fake: { script: 'sprints' }, seed: 3, simOpts, tuningRegistry: reg });
-  for (const [k, v] of Object.entries(tune)) reg.set('starfighter.' + k, v); // keys exist once the sim registered them
-  return { session, held, pressed, snap: () => session.sim.snapshot() as SfSnapshot };
+const longMusic = () => synthTimeline({ style: 'mixed', songs: 20, seed: 1 });
+function rig(opts: Record<string, unknown> = {}, script = 'z2', timeline?: MediaTimeline, raw?: Record<string, unknown>) {
+  const profile = testProfile(); if (raw) profile.gameData.starfighter = raw;
+  let saved: SfSave | undefined;
+  const tuning = new TuningRegistry({ profileId: profile.id, storage: null });
+  const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script }, seed: 3,
+    simOpts: { skipHangar: true, ...opts }, ...(timeline ? { media: { timeline } } : {}), tuningRegistry: tuning, onSave: d => { saved = d as SfSave; } });
+  return { s, profile, snap: () => s.sim.snapshot() as SfSnapshot, saved: () => saved!, seconds: (secs: number) => s.step(Math.round(secs * 30)) };
 }
-
-describe('guns', () => {
-  for (const [btn, side] of [['shiftUpL', 'L'], ['left', 'L'], ['shiftDnR', 'R'], ['y', 'R']] as const) {
-    it(`${btn} fires only the ${side} gun`, () => {
-      const h = rigged();
-      h.session.step(30 * 5);
-      h.held.add(btn);
-      const sides = new Set<string>();
-      for (let i = 0; i < 90; i++) { h.session.step(1); for (const b of h.snap().shots) if (b.kind === 'shot') sides.add(b.side); }
-      expect([...sides]).toEqual([side]);
-    });
-  }
-  it('idle triggers fire nothing', () => {
-    const h = rigged();
-    let n = 0;
-    for (let i = 0; i < 150; i++) { h.session.step(1); n += h.snap().shots.length; }
-    expect(n).toBe(0);
+describe('endurance music combat', () => {
+  for (const sc of scenarios) it(sc.name, () => {
+    const r = runHeadless({ game: module, ...sc }); expect(sc.assert(r.summary, r.stats, r)).toEqual([]);
   });
-});
-
-describe('hud', () => {
-  it('exposes zone target and no gears; attack run and boss want zone 4', () => {
-    const h = rigged({ autopilot: true });
-    h.session.step(1); // autopilot leaves the hangar on the first tick
-    const hud = h.session.sim.hud!();
-    expect(hud.gears).toBe(false);
-    expect(hud.targetZone).toMatchObject({ min: 2, max: 2 });
-    h.session.step(30 * 155);
-    expect(h.session.sim.hud!().targetZone).toMatchObject({ min: 4, max: 4 });
+  it('fires and grows without input; steady Zone 2 survives music drops', () => {
+    const r = rig({}, 'z2', longMusic()); r.seconds(300);
+    expect(r.snap().kills).toBeGreaterThan(50); expect(r.snap().gunLevel).toBe(5); expect(r.snap().deaths).toBe(0);
+    expect(r.snap().effort).toMatchObject({ floorWatts: 112, ceilingWatts: 150, erg: false });
+    expect(r.s.commands.every(c => c.mode !== 'erg')).toBe(true);
   });
-});
-
-describe('sectors and bosses', () => {
-  it('every sector theme has a boss and the five bosses are all different', () => {
-    expect(new Set(SECTORS.map(s => s.boss)).size).toBe(Object.keys(BOSSES).length);
-    expect(sectorTheme(6).name).toBe(sectorTheme(1).name);
+  it('sustained shortfall weakens guns and permits ramming; restored riding recovers', () => {
+    const r = rig({}, 'idle'); let weakest = 1, lowestShield = 100;
+    for (let i = 0; i < 100; i++) { r.seconds(0.25); weakest = Math.min(weakest, r.snap().quality); lowestShield = Math.min(lowestShield, r.snap().shield); }
+    expect(weakest).toBeLessThan(0.5); expect(lowestShield).toBeLessThan(100);
+    r.s.fakeBike!.useScript('z2'); r.seconds(10);
+    expect(r.snap().quality).toBeGreaterThan(0.9); expect(r.snap().effort.status).toBe('on');
   });
-  it('the Twin Lancer is two halves: both must fall to clear the sector', () => {
-    const h = rigged({ autopilot: true, sector: 3 }, { cruiseS: 20, attackS: 20 });
-    let parts = 0, defeated = false;
-    for (let i = 0; i < 30 * 240 && !defeated; i++) {
-      h.session.step(1);
-      const s = h.snap();
-      parts = Math.max(parts, s.enemies.filter(e => e.kind === 'boss').length);
-      defeated = s.bossesDefeated > 0;
-    }
-    expect(parts).toBe(2);
-    expect(defeated).toBe(true);
+  it('brief power dip is tolerated, extra power earns no upgrades or charge', () => {
+    const r = rig(); r.seconds(20); r.s.fakeBike!.useScript('idle'); r.seconds(2);
+    expect(r.snap().quality).toBeGreaterThan(0.9);
+    const fast = rig({}, 'intervals'); fast.seconds(60);
+    expect(fast.snap().effort.status).toBe('over'); expect(fast.snap().charge).toBe(0); expect(fast.snap().salvage).toBe(0);
   });
-  it('a boss that is not beaten in time escapes; the run moves on without the clear bonus', () => {
-    const h = rigged({ autopilot: true }, { cruiseS: 20, attackS: 20, bossTimeoutS: 30, bossHpMult: 5 });
-    h.session.step(30 * 90);
-    const sm = h.session.sim.summary();
-    expect(sm.bossesEscaped).toBe(1);
-    expect(sm.sector).toBe(2);
+  it('Nova grants protected recovery, reduces ERG target, and cannot recharge during cover', () => {
+    const r = rig({ craft: 'escort' }, 'z2', undefined, { v: 2, bank: 1000 });
+    r.s.tuning.set('starfighter.novaChargeS', 10); r.seconds(30);
+    expect(r.snap().charge).toBe(100); r.s.sim.receive!({ type: 'nova' }); r.seconds(1);
+    expect(r.snap().coverLeft).toBeGreaterThan(18); expect(r.snap().effort.status).toBe('recover');
+    r.seconds(10); expect(r.snap().charge).toBe(0); expect(r.snap().effort.targetWatts).toBeLessThan(110);
+    r.s.sim.receive!({ type: 'nova' }); r.seconds(1); expect(r.snap().coverLeft).toBeLessThan(10);
   });
-});
-
-describe('ships and lives', () => {
-  it('idle loses all three ships, then the run is over and scrap is banked', () => {
-    const r = runHeadless({ game: module, script: 'idle', minutes: 10, seed: 1, simOpts: { autopilot: true } });
-    expect(r.isOver).toBe(true);
-    expect(r.summary.deaths).toBe(3);
-    expect(r.events.filter(e => e.type === 'shipLost').length).toBe(2);
+  it('ERG craft uses measured power and cadence at smoothed, bounded targets', () => {
+    const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); r.seconds(120);
+    expect(r.snap().craft).toBe('escort'); expect(r.snap().wingmen).toBe(2); expect(r.snap().effort.erg).toBe(true);
+    expect(r.s.commands.some(c => c.mode === 'erg')).toBe(true);
+    expect(r.s.commands.filter(c => c.mode === 'erg').every(c => c.watts <= 141)).toBe(true);
+    r.s.fakeBike!.useScript('idle'); let weakest = 1; for (let i = 0; i < 20; i++) { r.seconds(1); weakest = Math.min(weakest, r.snap().quality); } expect(weakest).toBeLessThan(0.5);
   });
-  it('lives = 0 means unlimited ships', () => {
-    const r = runHeadless({ game: module, script: 'idle', minutes: 8, seed: 1, simOpts: { autopilot: true }, tuning: { 'starfighter.lives': 0 } });
-    expect(r.isOver).toBe(false);
-    expect(Number(r.summary.deaths)).toBeGreaterThan(3);
+  it('bosses announce then appear without imposing intervals, including without beat analysis', () => {
+    const r = rig(); r.s.tuning.set('starfighter.bossEveryS', 40); r.s.tuning.set('starfighter.bossHull', 50); r.seconds(34);
+    expect(r.snap().bossIn).toBeGreaterThan(5); expect(r.snap().boss).toBeNull(); r.seconds(10);
+    expect(r.snap().boss).not.toBeNull(); expect(r.snap().effort.ceilingWatts).toBe(150);
+    r.seconds(60); expect(Number(r.s.sim.summary().bossesDefeated)).toBeGreaterThan(0);
   });
-});
-
-describe('hangar', () => {
-  it('meta: auto-invest buys cheapest first; warp start capped by best sector', () => {
-    const l = {} as Record<string, number>;
-    const r = autoInvest(1000, l);
-    const cheapest = Math.min(...UPGRADES.map(d => upgradeCost(d, l[d.id] ?? 0)));
-    expect(r.bought.length).toBeGreaterThan(0);
-    expect(cheapest).toBeGreaterThan(r.bank);
-    expect(metaMods({ warp: 10 }, 6).maxStartSector).toBe(5);
-    expect(metaMods({ warp: 1 }, 30).maxStartSector).toBe(2);
-    expect(metaMods({}, 30).maxStartSector).toBe(1);
+  it('idle can regroup indefinitely without terminating playback', () => {
+    const r = rig({}, 'idle'); r.seconds(180);
+    expect(r.snap().deaths).toBeGreaterThan(0); expect(r.s.sim.isOver()).toBe(false);
   });
-  it('D-pad + A buys an upgrade, B launches; the save keeps the bank', () => {
-    const profile = testProfile();
-    (profile.gameData as Record<string, unknown>).starfighter = { bank: 1000, upgrades: {}, bestSector: 1, runs: 0, autoInvest: false };
-    let saved: any = null;
-    const input = new TimelineInput([
-      { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Cannons
-      { t: 0.5, press: 'a' }, { t: 0.6, release: 'a' },       // buy (240)
-      { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // launch
-    ]);
-    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
-    expect((s.sim.snapshot() as SfSnapshot).phase).toBe('hangar');
-    expect(s.sim.hud!().targetZone?.label).toBe('Hangar');
-    s.step(40);
-    expect((s.sim.snapshot() as SfSnapshot).phase).toBe('run');
-    expect(saved.upgrades.cannons).toBe(1);
-    expect(saved.bank).toBe(1000 - UPGRADES.find(u => u.id === 'cannons')!.base);
-    expect(saved.runs).toBe(1);
+  it('ends at the media clock and releases its resistance effect', () => {
+    const tl = longMusic(); tl.durationS = 20;
+    const r = rig({}, 'z2', tl); r.seconds(22);
+    expect(r.s.sim.isOver()).toBe(true); expect(r.snap().t).toBeCloseTo(20, 1);
   });
-  it('a tap on a row buys it; a tap on Launch starts the run', () => {
-    const profile = testProfile();
-    (profile.gameData as Record<string, unknown>).starfighter = { bank: 5000, upgrades: {}, bestSector: 1, runs: 0, autoInvest: false };
-    let saved: any = null;
-    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
-    const rows = (s.sim.snapshot() as SfSnapshot).hangar!.rows;
-    s.sim.receive!({ type: 'hangarRow', row: rows.findIndex(r => r.id === 'pod') });
-    s.step(1);
-    expect(saved.upgrades.pod).toBe(1);
-    s.sim.receive!({ type: 'hangarRow', row: 0 });
-    s.step(1);
-    const snap = s.sim.snapshot() as SfSnapshot;
-    expect(snap.phase).toBe('run');
-    expect(snap.livesMax).toBe(4); // 3 ships + 1 escape pod
+  it('uncertain online analysis never asks for cadence', () => {
+    const tl = longMusic(); tl.confidence = 'metadata';
+    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60);
+    for (let i = 0; i < 240; i++) { r.seconds(1); expect(r.snap().cadence).toBeNull(); }
   });
-  it('pedalling in the hangar launches on its own', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 3 });
-    s.step(30 * 10);
-    expect((s.sim.snapshot() as SfSnapshot).phase).toBe('hangar');
-    s.step(30 * 30);
-    expect((s.sim.snapshot() as SfSnapshot).phase).toBe('run');
+  it('full beat analysis can offer a cadence bonus without changing the endurance target', () => {
+    const tl = longMusic(); tl.beats = Array.from({ length: 1200 }, (_, i) => i * 0.5); tl.phrases = Array.from({ length: 40 }, (_, i) => i * 16);
+    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60); r.seconds(65);
+    expect(r.snap().cadence).toMatchObject({ min: 83, max: 97 }); expect(r.snap().effort.ceilingWatts).toBe(150);
   });
-  it('scrap carries over between rides and auto-invest spends it at launch', () => {
-    const profile = testProfile();
-    const ride = () => {
-      const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'sprints' }, seed: 4, simOpts: { autopilot: true }, onSave: (d) => { profile.gameData.starfighter = d; } });
-      s.step(30 * 60 * 6); s.sim.dispose?.();
-      return s.sim.summary();
-    };
-    ride();
-    const after1 = profile.gameData.starfighter as any;
-    expect(after1.bank).toBeGreaterThan(500);
-    expect(after1.runs).toBe(1);
-    ride();
-    const after2 = profile.gameData.starfighter as any;
-    expect(Object.values(after2.upgrades as Record<string, number>).reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
-    expect(after2.runs).toBe(2);
-    expect(after2.totals.kills).toBeGreaterThan(after1.totals.kills);
-  });
-  it('an old Crank Fighter save keeps its best score', () => {
-    const profile = testProfile();
-    (profile.gameData as Record<string, unknown>).starfighter = { best: 98765 };
-    let saved: any = null;
-    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true }, onSave: (d) => { saved = d; } });
-    s.step(30);
-    expect(saved.best).toBe(98765);
-    expect(saved.v).toBe(2);
-  });
-});
-
-describe('cruise challenges (zone + cadence targets)', () => {
-  const rider = (cadence: number, ftp: number) => ({ name: 't', description: '', cadence: () => cadence, powerFtp: () => ftp });
-  function ride(sector: number, cadence: number, ftp: number, hr: number | null) {
-    const events: Array<{ type: string; data?: any }> = [];
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'idle' }, seed: 2, simOpts: { autopilot: true, sector }, onEmit: (e) => events.push(e) });
-    s.fakeBike!.useScript(rider(cadence, ftp));
-    s.fakeBike!.manual.hr = hr;
-    return { s, events, snap: () => s.sim.snapshot() as SfSnapshot };
-  }
-  const done = (events: Array<{ type: string; data?: any }>, type: string) => events.find((e) => e.type === type)?.data?.completed;
-
-  it('attack runs and bosses are judged on power; cruise keeps the profile zone source', () => {
-    const { s } = ride(1, 90, 0.65, null);
-    s.step(30 * 5);
-    expect(s.sim.hud!().targetZone).toMatchObject({ min: 2, max: 2 });
-    expect(s.sim.hud!().targetZone?.source).toBeUndefined();
-    s.step(30 * 150);
-    expect(s.sim.hud!().targetZone).toMatchObject({ min: 4, max: 4, source: 'power' });
-  });
-  it('odd sectors: Slipstream is judged on power even when HR sits in Z1', () => {
-    const { s, events, snap } = ride(1, 90, 0.95, 100);
-    let source: unknown, cad: unknown = 'unset';
-    for (let i = 0; i < 150 && done(events, 'slipstreamDone') === undefined; i++) {
-      s.step(30);
-      if (snap().challenge?.state === 'active') { source = s.sim.hud!().targetZone?.source; cad = s.sim.hud!().targetCadence; expect(s.ctx.bike().effortZone).toBe(1); }
-    }
-    expect(source).toBe('power');
-    expect(cad).toBeUndefined();
-    expect(done(events, 'slipstreamDone')).toBe(true);
-    expect(Number(s.sim.summary().slipstreams)).toBe(1);
-  });
-  it('even sectors: Spin-Up asks for cadence in zone 2; spinning fast earns Rapid Fire', () => {
-    const { s, events, snap } = ride(2, 100, 0.6, null);
-    let tc: unknown, tz: unknown;
-    for (let i = 0; i < 150 && done(events, 'spinUpDone') === undefined; i++) {
-      s.step(30);
-      if (snap().challenge?.kind === 'spinup' && snap().challenge?.state === 'active') { tc = s.sim.hud!().targetCadence; tz = s.sim.hud!().targetZone; }
-    }
-    expect(tc).toMatchObject({ min: 95 });
-    expect(tz).toMatchObject({ min: 2, max: 2 });
-    expect(done(events, 'spinUpDone')).toBe(true);
-    expect(snap().rapidLeft).toBeGreaterThan(0);
-    s.step(30 * 40);
-    expect(Number(s.sim.summary().rapidFireS)).toBe(30);
-    expect(s.sim.summary().slipstreams).toBe(0);
-  });
-  it('Spin-Up: a slow cadence misses it, even at high power', () => {
-    const { s, events } = ride(2, 80, 1.0, null);
-    for (let i = 0; i < 150 && done(events, 'spinUpDone') === undefined; i++) s.step(30);
-    expect(done(events, 'spinUpDone')).toBe(false);
-    expect(s.sim.summary().spinUps).toBe(0);
-  });
-  it('Rapid Fire doubles trigger pulls per crank rev', () => {
-    const held = new Set<string>(['shiftUpL', 'shiftUpR']);
-    const st = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' } as unknown as InputState;
-    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => st }, fake: { script: 'idle' }, seed: 2, simOpts: { skipHangar: true, sector: 2 } });
-    s.fakeBike!.useScript(rider(100, 0.6));
-    const snap = () => s.sim.snapshot() as SfSnapshot;
-    const pulls = (secs: number) => { // each pull leaves one muzzle flash
-      let n = 0; const seen = new Set<number>();
-      for (let i = 0; i < 30 * secs; i++) { s.step(1); for (const f of snap().fx) if (f.kind === 'muzzle' && !seen.has(f.id)) { seen.add(f.id); n++; } }
-      return n;
-    };
-    s.step(30 * 5);
-    const before = pulls(10);
-    for (let i = 0; i < 150 && !(snap().rapidLeft > 0); i++) s.step(30);
-    expect(snap().rapidLeft).toBeGreaterThan(10);
-    const during = pulls(10);
-    expect(during / before).toBeGreaterThan(1.8);
-  });
-});
-
-describe('card', () => {
-  it('progress line', () => {
-    expect(progressLine(undefined)).toBeNull();
-    expect(progressLine({ best: 1234 })).toBe('best 1,234');
-    expect(progressLine({ best: 1234, bestSector: 5, bank: 900 })).toBe('Sector 5 · best 1,234 · 900 scrap');
-  });
-});
-
-describe('determinism', () => {
-  it('same seed -> identical summary', () => {
-    const run = () => runHeadless({ game: module, script: 'sprints', minutes: 6, seed: 7, simOpts: { autopilot: true } }).summary;
+  it('same seed and rider produce identical results', () => {
+    const run = () => { const r = rig({}, 'z2', longMusic()); r.seconds(100); return r.s.sim.summary(); };
     expect(run()).toEqual(run());
+  });
+});
+describe('craft selection and save migration', () => {
+  it('preserves legacy investment and best without carrying permanent damage bonuses', () => {
+    const legacy = { best: 9999, bank: 250, upgrades: { cannons: 2 }, runs: 4 };
+    const s = migrateSave(legacy);
+    expect(s.legacy).toEqual(legacy); expect(s.legacyBest).toBe(9999); expect(s.best).toBe(0);
+    expect(s.unlockCredit).toBe(250 + upgradeCost(UPGRADES[0], 0) + upgradeCost(UPGRADES[0], 1));
+    expect(migrateSave(s as unknown as Record<string, unknown>)).toEqual(s);
+  });
+  it('unlocks Escort through accumulated groove time, persists once, and retains selected craft', () => {
+    const r = rig(); r.seconds(620); r.s.sim.dispose!();
+    expect(escortAvailable(r.saved())).toBe(true);
+    const before = r.saved().onTargetS; r.s.sim.dispose!(); expect(r.saved().onTargetS).toBe(before);
+    const next = rig({ craft: 'escort' }, 'z2', undefined, r.saved() as unknown as Record<string, unknown>);
+    expect(next.snap().craft).toBe('escort'); expect(next.saved().runs).toBe(2);
+  });
+  it('locked craft cannot be selected by options or touch', () => {
+    const r = rig({ skipHangar: false, craft: 'escort' });
+    r.s.sim.receive!({ type: 'craft', craft: 'escort' }); r.seconds(1); expect(r.snap().craft).toBe('cruiser');
+    r.s.sim.receive!({ type: 'launch' }); r.seconds(1); expect(r.snap().phase).toBe('run');
+  });
+  it('keeps the cruiser available and blocks the ERG craft on an unsupported trainer', () => {
+    const profile = testProfile(); profile.gameData.starfighter = { bank: 1000 };
+    const hub = new DataHub(), trainer = new FakeTrainer(); trainer.capabilities.erg = false; hub.attachTrainer(trainer);
+    const s = createGameSession({ game: module, profile, input: new NullInput(), dataHub: hub, fake: false, simOpts: { craft: 'escort', skipHangar: true } });
+    s.step(30); const snap = s.sim.snapshot() as SfSnapshot;
+    expect(snap.craft).toBe('cruiser'); expect(snap.ergAvailable).toBe(false);
+    expect(s.commands.every(c => c.mode !== 'erg')).toBe(true); expect(module.requires?.erg).toBeUndefined();
+  });
+  it('controller selection and launch match touch behavior', () => {
+    const profile = testProfile(); profile.gameData.starfighter = { bank: 1000 };
+    const input = new TimelineInput([{ t: 0.2, press: 'right' }, { t: 0.3, release: 'right' }, { t: 0.5, press: 'a' }]);
+    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' } }); s.step(30);
+    expect((s.sim.snapshot() as SfSnapshot).craft).toBe('escort'); expect(s.sim.inMenu!()).toBe(false);
+  });
+});
+describe('music director revisions and rhythm', () => {
+  it('keeps announced timing and section, consumes new beats once', () => {
+    const tl = longMusic(); tl.sections = [{ t0: 0, t1: 10, kind: 'verse', energy: 0.5 }, { t0: 10, t1: 30, kind: 'drop', energy: 1 }]; tl.beats = [0, 1, 2, 3, 4];
+    const d = createDirector(tl); expect(d.step(3).upcoming).toMatchObject({ at: 10, kind: 'drop' });
+    tl.sections[1] = { t0: 12, t1: 30, kind: 'break', energy: 0.1 }; tl.revision = 1;
+    expect(d.step(4).upcoming).toMatchObject({ at: 10, kind: 'drop' }); expect(d.step(4).beat).toBe(false);
+    expect(d.step(10).kind).toBe('drop');
+  });
+  it('chooses comfortable subdivisions and skips unsuitable tempos', () => {
+    expect(cadenceFor(120)).toBe(90); expect(cadenceFor(174)).toBe(87); expect(cadenceFor(30)).toBeNull();
   });
 });

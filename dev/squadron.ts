@@ -8,6 +8,7 @@ if (q.get('unlocked') === '1' || q.get('craft') === 'escort') profile.gameData.s
 const session = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'z2' },
   seed: Number(q.get('seed') ?? 1), simOpts: { skipHangar: q.get('menu') !== '1', craft: q.get('craft') ?? 'cruiser' },
   media: { timeline: synthTimeline({ style: 'mixed', songs: 20, seed: 3 }) } });
+if (q.get('tester') === '1') session.tuning.set('starfighter.testerUnlockAll', 1);
 const renderer = new SfRenderer();
 renderer.mount(document.getElementById('app')!, { profile, send: a => session.sim.receive?.(a), insets: { top: 0, left: 0, right: 0, bottom: Number(q.get('inset') ?? 100) } });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));

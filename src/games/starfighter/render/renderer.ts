@@ -8,7 +8,8 @@ import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
 import { SECTORS } from '../sim/content';
-import { SquadronHud } from './hud';
+import { SquadronHud, bigPerfect } from './hud';
+import { WING_OFFSETS } from '../sim/progression';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
@@ -21,6 +22,7 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
+  private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
@@ -63,6 +65,7 @@ export class SfRenderer implements GameRenderer {
     };
     this.bullets = makePool(geometries.box, '#a4f3ff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
     const glowMat=this.boltGlow.material as THREE.MeshBasicMaterial;glowMat.opacity=0.2;glowMat.depthWrite=false;glowMat.blending=THREE.AdditiveBlending; this.effects = makePool(geometries.ring, '#ffcc8a', 160);
+    this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -90,7 +93,7 @@ export class SfRenderer implements GameRenderer {
     this.last = { ...s, locks: [...s.locks] };
     const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
-    if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; play('milestone', { vol: 0.35, minGapS: 1 }); }
+    if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
     if (!this.webgl) return;
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
@@ -101,7 +104,9 @@ export class SfRenderer implements GameRenderer {
     this.craft!.traverse(o => { if (o.name === 'engine') o.scale.z = 1.2 + s.beat * 0.8 + s.quality * 0.6; if (o.name.startsWith('weapon-')) o.visible = Number(o.name.slice(7)) <= s.gunLevel; });
     this.craft!.visible = s.rejoinLeft <= 0 || Math.sin(s.t * 4) > 0;
     while (this.wings.length < s.wingmen) { const wing = shipModel('#658dc5', 'player'); wing.scale.setScalar(0.5); this.wings.push(wing); this.scene.add(wing); }
-    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.position.set(s.shipX + (i ? 10 : -10), 10, s.shipY - 47); });
+    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.position.set(s.shipX + WING_OFFSETS[i], 10, s.shipY - 47 + (i > 1 ? 4 : 0)); wing.rotation.z = s.bank * 0.8; });
+    if (s.heavy && !this.heavy) { this.heavy = shipModel('#8fa7d6', 'escort'); this.heavy.scale.setScalar(0.9); this.scene.add(this.heavy); }
+    if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(s.shipX, 9, s.shipY - 41); this.heavy.rotation.z = s.bank * 0.6; }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
     this.combat?.update(s);
     const live = new Set<number>();
@@ -119,15 +124,23 @@ export class SfRenderer implements GameRenderer {
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
     const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
     s.bolts.slice(0,640).forEach((b,i)=>{
-      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,0,0);mat.scale.set(0.85,0.55,1.2);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
-      mat.scale.set(1.8,1,2.5);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
+      // Subtle beat pulse: cores swell a little, glows a little more, so the bullet field breathes with the music.
+      const core=1+s.beat*0.12, halo=1+s.beat*0.35;
+      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,0,0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
+      mat.scale.set(1.8*halo,1,2.5*halo);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
     });
     for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
+    // Escort phrase beam: a bright column sweeping up the ship's lane, narrowing as it fades.
+    const beams = s.fx.filter(f => f.kind === 'beam' && s.t - f.at < 0.6).slice(-4);
+    beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
+      mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
+    this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
     this.halo!.position.set(s.shipX, 10.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
+    (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent);
     this.webgl.setViewport(0, 0, this.w, this.h); this.webgl.render(this.scene, this.camera);
@@ -141,7 +154,7 @@ export class SfRenderer implements GameRenderer {
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g)) g.dispose();
-    for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects]) pool?.dispose();
+    for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects, this.beams]) pool?.dispose();
     this.combat?.dispose(); this.space?.dispose();
     this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();

@@ -18,19 +18,25 @@ export function routeX(r: Route, t: number): number {
 }
 export const routeEnd = (r: Route) => r.moves[r.moves.length - 1].end;
 /**
- * Extend the schedule to `t + ahead`. `rand` is the sim rng; `snap` aligns move starts to musical beats (sim seconds).
- * Lanes wander away from the edges and toward a slow cruise line so the route reads as deliberate flying.
+ * Extend the schedule to `t + ahead`. `rand` is the sim rng; `snap` moves a time to the next beat (sim seconds), so moves
+ * both leave and land on beats. `phrase` gives the next phrase boundary: when one falls inside a hold, the ship launches a
+ * long sweep exactly on it. Lanes wander away from the edges and toward a slow cruise line.
  */
-export function extendRoute(r: Route, t: number, rand: () => number, cruise: (t: number) => number, snap: (t: number) => number = s => s): void {
+export function extendRoute(r: Route, t: number, rand: () => number, cruise: (t: number) => number,
+  snap: (t: number) => number = s => s, phrase: (t: number) => number = () => Infinity): void {
   while (r.moves.length > 1 && r.moves[1].end < t) r.moves.shift();
   while (routeEnd(r) < t + ROUTE.ahead) {
     const last = r.moves[r.moves.length - 1], from = last.to;
-    const start = snap(last.end + ROUTE.holdMin + rand() * (ROUTE.holdMax - ROUTE.holdMin));
+    const planned = snap(last.end + ROUTE.holdMin + rand() * (ROUTE.holdMax - ROUTE.holdMin));
+    // Hold a little longer rather than start a move that would straddle an imminent phrase.
+    const nextPhrase = phrase(last.end + ROUTE.holdMin * 0.5), sweep = nextPhrase <= planned + 1.2;
+    const start = sweep ? nextPhrase : planned;
     const toward = clamp(cruise(start) - from, -1, 1) * 0.6 + (rand() - 0.5);
-    const dir = Math.abs(from) > r.field * 0.7 ? -Math.sign(from) : toward >= 0 ? 1 : -1;
-    const dist = ROUTE.minMove + rand() * (ROUTE.maxMove - ROUTE.minMove);
+    // Phrase sweeps cross toward the far side of the field; ordinary moves wander.
+    const dir = sweep ? (from > 0 ? -1 : 1) : Math.abs(from) > r.field * 0.7 ? -Math.sign(from) : toward >= 0 ? 1 : -1;
+    const dist = sweep ? ROUTE.maxMove + 8 : ROUTE.minMove + rand() * (ROUTE.maxMove - ROUTE.minMove);
     const to = clamp(from + dir * dist, -r.field, r.field);
-    r.moves.push({ start, end: start + 0.3 + Math.abs(to - from) / ROUTE.speed, from, to });
+    r.moves.push({ start, end: snap(start + 0.3 + Math.abs(to - from) / ROUTE.speed), from, to });
   }
 }
 /** Closest approach of a shot fired from (ex, ey) to the route while it crosses the ship row; Infinity if it never does. */

@@ -13,8 +13,8 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Section/intensity drive enemies; beats/downbeats/onsets drive entrances/firing/visual pulses. Uncertain analysis uses steady fallback encounters.
 - Optional cadence bonuses only for full-confidence regular grids, comfortable BPM subdivisions, broad RPM bands; never crank-phase judging.
 - Flagship every ~6min, announced 8s ahead, phrase alignment or bounded fallback; timeout continues flight. Bosses do not raise effort.
-- Salvage from groove time upgrades guns automatically; 4–8 lock slots and unfolding pods/tier5 wingmen. No permanent damage spending.
-- save.ts v3: old record retained in `legacy`, old score in `legacyBest`; investment converted once into unlock credit. Escort unlocks at 10 groove minutes or 1000 credit. New score starts separately.
+- progression.ts: craft levels from per-craft groove minutes (L10 ≈ 10.5h). Perks = companions, arsenal ceiling 5→8, faster locks, Escort beam/intercept; never raw damage. In-ride tier from on-target minutes. Escort unlocks at Cruiser L3. Tunables `testerUnlockAll`, `arsenalPace`, `tierLockScale`; dev `?tester=1`.
+- save.ts v3: old record retained in `legacy`, old score in `legacyBest`; investment converted once into unlock credit (≥1000 also unlocks the Escort). `craftS`/`unlocked` added; early v3 saves seed the Cruiser. New score starts separately.
 - Snapshot is plain data; sim deterministic. UI actions queued by `receive`, never applied by renderer.
 
 ## Graphics / checks
@@ -29,7 +29,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Future: additional riding contracts, optional manual dodges, shared confidence/commit API, improved selection and playlists. Existing media analysis/mixer reused.
 
 ## Spectacle pass
-- flight.ts: ship route is a pure schedule of holds + eased moves (beat-aligned, 6s ahead, ≤~34 u/s). `choreograph` re-aims/drops on-target shots so all miss the route by ≥5.5; under target the ship lags the route and fire is raw. Summary: `grazes`, `absorbed` (on-target hits; must stay 0).
+- flight.ts: ship route is a pure schedule of holds + eased moves (start and end on beats, phrase sweeps, 8s ahead, ≤~34 u/s). `choreograph` re-aims/drops on-target shots so all miss the route by ≥5.5; under target the ship lags the route and fire is raw. Summary: `grazes`, `absorbed` (on-target hits; must stay 0).
 - Formations carry an id; clear rate = killed/resolved over finished formations (kill or pass the ship). Air formations ≥5 all killed = PERFECT (+score, callout). Walls: build/drop downbeat, ≥7s apart, gated by `choreograph(..., gate=true)`.
 - encounters.ts supplies continuous top/side entrances, combat eligibility, gunner designation, fire intervals, and readable aimed/fan/petal patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.

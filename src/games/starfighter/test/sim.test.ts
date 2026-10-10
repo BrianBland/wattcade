@@ -8,6 +8,7 @@ import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from 
 import { createDirector, cadenceFor } from '../sim/director';
 import { escortAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
+import { arsenalTier, craftLevel, perks } from '../sim/progression';
 import type { SfSave, SfSnapshot } from '../sim/types';
 import type { MediaTimeline } from '../../../contracts';
 
@@ -26,7 +27,7 @@ describe('endurance music combat', () => {
   }, 15_000);
   it('fires and grows without input; steady Zone 2 survives music drops', () => {
     const r = rig({}, 'z2', longMusic()); r.seconds(300);
-    expect(r.snap().kills).toBeGreaterThan(50); expect(r.snap().gunLevel).toBe(5); expect(r.snap().deaths).toBe(0);
+    expect(r.snap().kills).toBeGreaterThan(50); expect(r.snap().gunLevel).toBe(2); expect(r.snap().deaths).toBe(0);
     expect(r.snap().effort).toMatchObject({ floorWatts: 112, ceilingWatts: 150, erg: false });
     expect(r.s.commands.every(c => c.mode !== 'erg')).toBe(true);
   });
@@ -150,6 +151,16 @@ describe('spectacle encounters', () => {
     expect(Number(sum.absorbed)).toBe(0);expect(Number(sum.grazes)).toBeGreaterThan(100);
     expect(bolts/n).toBeGreaterThan(25);expect(bolts/n).toBeLessThan(100);
   }, 15_000);
+  it('route moves leave and land on beats, and sweep across the field on phrase boundaries', () => {
+    let seed=11;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
+    const beat=(at:number)=>Math.ceil(at*2-1e-9)/2, phrase=(at:number)=>Math.ceil(at/8-1e-9)*8;
+    const route=newRoute(),seen=new Set<(typeof route.moves)[number]>();
+    for(let t=0;t<120;t+=1){extendRoute(route,t,rand,()=>0,beat,phrase);route.moves.slice(1).forEach(m=>seen.add(m));}
+    const moves=[...seen];expect(moves.length).toBeGreaterThan(30);
+    for(const m of moves){expect(m.start*2%1).toBeCloseTo(0,6);expect(m.end*2%1).toBeCloseTo(0,6);expect(m.end).toBeGreaterThan(m.start);}
+    const sweeps=moves.filter(m=>m.start%8===0);expect(sweeps.length).toBeGreaterThan(moves.filter(m=>m.start>=moves[0].start).length/8);
+    for(const m of sweeps)expect(Math.abs(m.to-m.from)).toBeGreaterThan(20);
+  });
   it('choreographed patterns keep clearance from the route, opening gates when rotation cannot', () => {
     let seed=7;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
     const route=newRoute();extendRoute(route,0,rand,()=>0);
@@ -186,13 +197,38 @@ describe('craft selection and save migration', () => {
     expect(s.unlockCredit).toBe(250 + upgradeCost(UPGRADES[0], 0) + upgradeCost(UPGRADES[0], 1));
     expect(migrateSave(s as unknown as Record<string, unknown>)).toEqual(s);
   });
-  it('unlocks Escort through accumulated groove time, persists once, and retains selected craft', () => {
-    const r = rig(); r.seconds(620); r.s.sim.dispose!();
-    expect(escortAvailable(r.saved())).toBe(true);
-    const before = r.saved().onTargetS; r.s.sim.dispose!(); expect(r.saved().onTargetS).toBe(before);
+  it('new riders start with only the Cruiser; Escort unlocks at Cruiser level 3, persists once, and retains selected craft', () => {
+    const fresh = rig(); expect(fresh.snap().crafts.escort.unlocked).toBe(false); expect(fresh.snap().crafts.cruiser.level).toBe(1);
+    const nearly = migrateSave({ v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 89 * 60, unlockCredit: 0, craft: 'cruiser', totals: { kills: 0, bosses: 0 }, craftS: { cruiser: 89 * 60, escort: 0 }, unlocked: ['cruiser'] });
+    expect(escortAvailable(nearly)).toBe(false);
+    const r = rig({}, 'z2', undefined, nearly as unknown as Record<string, unknown>); const events: string[] = [];
+    r.s.ctx.emit = ((ev: { type: string }) => { events.push(ev.type); }) as typeof r.s.ctx.emit;
+    r.seconds(90); expect(r.snap().crafts.cruiser.level).toBe(3); expect(events).toContain('craftLevel'); expect(r.snap().wingmen).toBe(1);
+    r.s.sim.dispose!(); expect(escortAvailable(r.saved())).toBe(true); expect(r.saved().unlocked).toContain('escort');
+    const before = r.saved().craftS.cruiser; r.s.sim.dispose!(); expect(r.saved().craftS.cruiser).toBe(before);
     const next = rig({ craft: 'escort' }, 'z2', undefined, r.saved() as unknown as Record<string, unknown>);
-    expect(next.snap().craft).toBe('escort'); expect(next.saved().runs).toBe(2);
+    expect(next.snap().craft).toBe('escort'); expect(next.saved().runs).toBe(3);
   });
+  it('craft levels add companions and arsenal ceiling, never raw damage; tester mode unlocks everything', () => {
+    expect(craftLevel(0).level).toBe(1); expect(craftLevel(45 * 60).level).toBe(2); expect(craftLevel(630 * 60)).toMatchObject({ level: 10, nextAtS: null });
+    expect(perks('cruiser', 1)).toMatchObject({ arsenalCap: 5, wingmen: 0, heavy: false });
+    expect(perks('cruiser', 10)).toMatchObject({ arsenalCap: 8, wingmen: 2, heavy: true, ace: true });
+    expect(perks('escort', 1).wingmen).toBe(2);
+    expect(arsenalTier(60 * 60, 5)).toBe(5); expect(arsenalTier(60 * 60, 8)).toBe(8); expect(arsenalTier(5 * 60, 8)).toBe(2);
+    const t = rig({ craft: 'escort', skipHangar: false }); t.s.tuning.set('starfighter.testerUnlockAll', 1); t.s.step(1);
+    expect(t.snap()).toMatchObject({ tester: true, escortUnlocked: true }); expect(t.snap().crafts.cruiser.level).toBe(10);
+    t.s.tuning.set('starfighter.arsenalPace', 20); t.s.sim.receive!({ type: 'launch' }); t.seconds(200);
+    expect(t.snap().gunLevel).toBe(8); expect(t.snap().heavy).toBe(true); expect(t.snap().lockCapacity).toBe(11);
+  });
+  it('Escort signatures: wingmen shoot down bullets and a phrase beam sweeps the lane', () => {
+    const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); const events: string[] = [];
+    r.s.ctx.emit = ((ev: { type: string }) => { events.push(ev.type); }) as typeof r.s.ctx.emit; r.seconds(240);
+    expect(r.snap().eaten).toBeGreaterThan(20); expect(events.filter(e => e === 'beam').length).toBeGreaterThan(5);
+    expect(events).not.toContain('fullLock');
+    const c = rig({}, 'z2', longMusic()); const ce: string[] = [];
+    c.s.ctx.emit = ((ev: { type: string }) => { ce.push(ev.type); }) as typeof c.s.ctx.emit; c.seconds(240);
+    expect(ce).toContain('fullLock'); expect(c.snap().eaten).toBe(0);
+  }, 15_000);
   it('locked craft cannot be selected by options or touch', () => {
     const r = rig({ skipHangar: false, craft: 'escort' });
     r.s.sim.receive!({ type: 'craft', craft: 'escort' }); r.seconds(1); expect(r.snap().craft).toBe('cruiser');

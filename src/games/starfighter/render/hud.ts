@@ -46,6 +46,12 @@ const CSS = `
 .sq-crafts .card:disabled { opacity:.45; cursor:default; }
 .sq-crafts .card p { margin:8px 0; color:var(--dim,#a29dcc); font-size:14px; }
 .sq-crafts .card small { font-weight:800; letter-spacing:1px; text-transform:uppercase; font-size:11px; }
+.sq-lvl { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font:800 12px system-ui; letter-spacing:1px; text-transform:uppercase; }
+.sq-lvl .bar { flex:1; height:8px; }
+.sq-next { font-size:12px; color:var(--dim,#a29dcc); }
+.sq-pop { display:block; margin-top:4px; font:900 italic 13px system-ui; letter-spacing:2px; text-transform:uppercase; color:#fff36b; text-shadow:0 0 10px #fff36b; opacity:0; transition:opacity .2s; }
+.sq-pop.on { opacity:1; }
+.sq-tester { display:inline-block; margin-bottom:8px; }
 .sq-menu .hint { margin:12px 0 0; font-size:13px; color:var(--dim,#a29dcc); }
 .sq-hud.hangar > .sq-box { visibility:hidden; }
 @media (max-width: 560px) { .sq-title b { font-size:13px; letter-spacing:2px; } .sq-title span { font-size:10px; letter-spacing:1px; display:block; } .sq-stats { gap:10px; } .sq-stat b { font-size:18px; } .sq-stat span { font-size:9px; letter-spacing:1px; } .sq-locks div, .sq-long { display:none; } .sq-shield { min-width:0; } .sq-shield .sq-bar { width:90px; } }
@@ -87,11 +93,12 @@ export class SquadronHud {
   }
 
   update(s: SfSnapshot) {
-    this.title.innerHTML = `<b>Sprocket Squadron</b><span>${craftName(s.craft)} · Arsenal ${s.gunLevel}</span>`;
+    this.title.innerHTML = `<b>Sprocket Squadron</b><span>${craftName(s.craft)} Lv ${s.crafts[s.craft].level} · Arsenal ${s.gunLevel}${s.tester ? ' · Tester' : ''}</span>`;
     const pips = Array.from({ length: s.lockCapacity }, (_, i) => `<i class="${i < s.locks.length ? 'on' : ''}"></i>`).join('');
     this.stats.innerHTML = `<div class="sq-stat"><b>${s.score.toLocaleString()}</b><span>Score</span></div>`
       + `<div class="sq-stat" style="--acc:#b6ff3b"><b>${Math.round(s.clear.rate * 100)}%</b><span>Cleared</span></div>`
-      + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b>${s.locks.length}</b><span>Locks</span><div>${pips}</div></div>`;
+      + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b>${s.locks.length}</b><span>Locks</span><div>${pips}</div>`
+      + `<em class="sq-pop${s.fullLock > 0 ? ' on' : ''}">Full lock</em><em class="sq-pop${s.clear.streak > 1 && s.clear.last?.perfect && s.t - s.clear.last.at < 3 ? ' on' : ''}">Perfect ×${s.clear.streak}</em></div>`;
     const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6;
     this.status.classList.toggle('warn', warn);
     this.status.innerHTML = s.boss
@@ -103,7 +110,7 @@ export class SquadronHud {
     const last = s.clear.last;
     if (last && last.at !== this.lastClearAt) {
       this.lastClearAt = last.at;
-      if (last.perfect) this.call('Perfect', 'Formation cleared', '#fff36b', s.t, 1.6);
+      if (last.perfect && bigPerfect(s.clear.streak)) this.call('Perfect', s.clear.streak > 1 ? `Streak ×${s.clear.streak}` : 'Formation cleared', '#fff36b', s.t, 1.6);
     }
     if (s.banner && s.banner !== this.lastBanner && s.t >= this.callUntil) {
       const [head, ...rest] = s.banner.split(' · ');
@@ -132,19 +139,24 @@ export class SquadronHud {
     this.root.classList.toggle('hangar', s.phase === 'hangar');
     this.menu.style.display = s.phase === 'hangar' ? 'flex' : 'none';
     const countdown = `Pedalling launches in ${Math.ceil(s.menuLeft)}s · A to launch`;
-    const key = `${s.phase}:${s.craft}:${s.escortUnlocked}:${s.ergAvailable}`;
+    const key = `${s.phase}:${s.craft}:${s.escortUnlocked}:${s.ergAvailable}:${s.tester}:${s.crafts.cruiser.level}:${s.crafts.escort.level}`;
     if (key === this.menuKey) { const c = this.menu.querySelector('.hint'); if (c) c.textContent = countdown; return; }
     this.menuKey = key;
     const card = (c: 'cruiser' | 'escort') => {
       const locked = c === 'escort' && (!s.escortUnlocked || !s.ergAvailable);
-      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : c === 'escort' && !s.escortUnlocked ? `Unlocks in ${Math.ceil(s.unlockMinutes)} on-target minutes` : c === s.craft ? 'Selected' : 'Choose';
+      const info = s.crafts[c];
+      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : c === 'escort' && !s.escortUnlocked ? 'Unlocks at Cruiser level 3' : c === s.craft ? 'Selected' : 'Choose';
+      const level = locked ? '' : `<div class="sq-lvl">Lv ${info.level}<div class="bar"><i style="width:${Math.round(info.progress * 100)}%"></i></div></div>`
+        + `<div class="sq-next">${info.next ? `Next: ${escapeHtml(info.next)}` : 'Max level'}</div>`;
       return `<button class="card${c === s.craft ? ' focused' : ''}" data-action="craft" data-craft="${c}" ${locked ? 'disabled' : ''}>`
         + `<h3>${craftName(c)}</h3>${c === 'cruiser' ? '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>' : '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>'}`
-        + `<p>${c === 'cruiser' ? 'Ride steady with virtual gears. Lock-on laser volleys land on the music.' : 'The trainer holds the watts. Wingmen fly escort beside you.'}</p><small>${note}</small></button>`;
+        + `<p>${c === 'cruiser' ? 'Ride steady with virtual gears. Fill every lock slot for full-lock volleys.' : 'The trainer holds the watts. Wingmen shoot down bullets; a beam sweeps your lane on each phrase.'}</p>${level}<small>${note}</small></button>`;
     };
-    this.menu.innerHTML = `<div class="panel"><h2>Sprocket Squadron</h2><div class="sub">Hold the groove to paint targets. Your squadron flies itself — choose who it hits.</div>`
+    this.menu.innerHTML = `<div class="panel">${s.tester ? '<span class="tag sq-tester" style="color:var(--warn,#ffb020)">Tester · everything unlocked</span>' : ''}<h2>Sprocket Squadron</h2><div class="sub">Hold the groove to paint targets. Your squadron flies itself — choose who it hits.</div>`
       + `<div class="sq-crafts">${card('cruiser')}${card('escort')}</div>`
       + `<button class="btn primary" data-action="launch">Launch squadron</button><p class="hint">${countdown}</p></div>`;
   }
 }
+/** Full-screen PERFECT only for the first in a run of perfects and at streak milestones; the rest pop by the lock pips. */
+export const bigPerfect = (streak: number) => streak <= 1 || streak === 3 || streak % 5 === 0;
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);

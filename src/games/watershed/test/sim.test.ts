@@ -86,7 +86,7 @@ describe('watershed sky phases + achievements', () => {
     expect(Number(r.summary.vapor)).toBeGreaterThan(0);
     expect(Number(r.summary.rainfall)).toBeGreaterThan(0);
     expect(r.events.some((e) => e.type === 'springRises')).toBe(true);
-  }, 180_000);
+  }, 420_000); // 46-min autopilot ride: ~95 s in tsx, ~140 s under vitest locally; slower CI runners need headroom
 });
 
 describe('watershed ride length', () => {

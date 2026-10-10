@@ -1,3 +1,4 @@
+import '../src/styles/main.css';
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { synthTimeline } from '../src/media/synth/queue';
 import { module } from '../src/games/starfighter';

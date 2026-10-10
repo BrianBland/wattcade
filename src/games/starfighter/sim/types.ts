@@ -7,13 +7,17 @@ export interface SfSave {
 export interface EnemyView {
   id: number; kind: 'drone' | 'armor' | 'weaver' | 'gunner' | 'turret' | 'tank' | 'boss';
   parentId?: number; mountX?: number; ground?: boolean; heading?: number;
+  /** Formation this enemy entered with (clear-rate tracking). */
+  formation?: number;
+  /** 0..1 muzzle charge shown before the enemy fires. */
+  warn?: number;
   entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
   x: number; y: number; hp: number; maxHp: number; age: number; fireAt: number; bossStyle: number;
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing' }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; side: number; height: number; damage: number; hit: boolean }
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run'; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean; unlockMinutes: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;
@@ -27,5 +31,7 @@ export interface SfSnapshot {
   enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[];
   boss: { name: string; stage: string; hp: number; maxHp: number; left: number } | null;
   bossIn: number | null; banner: string;
+  /** Ride clear rate over resolved formations, perfect formations, and the most recently resolved formation. */
+  clear: { rate: number; perfects: number; last: { pct: number; perfect: boolean; at: number } | null };
   hooks: { powerFtp: number; cadence: number; boss: boolean };
 }

@@ -3,7 +3,7 @@ import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, 
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { inCombat, MAX_BOLTS, bulletPattern } from '../sim/encounters';
+import { inCombat, MAX_BOLTS, bulletPattern, wallPattern } from '../sim/encounters';
 import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createDirector, cadenceFor } from '../sim/director';
 import { escortAvailable, migrateSave } from '../sim/save';
@@ -159,6 +159,19 @@ describe('spectacle encounters', () => {
       for(const s of choreograph(route,t,ex,ey,bulletPattern(e,routeX(route,t),84),84))expect(missDistance(route,t,ex,ey,s,84)).toBeGreaterThanOrEqual(ROUTE.clearance);
     }
   });
+  it('walls open a wide gate on the route, and formations report clears and perfects', () => {
+    const route=newRoute();extendRoute(route,0,()=>0.5,()=>0);
+    const e={id:1,kind:'gunner' as const,x:0,y:0,hp:1,maxHp:1,age:0,fireAt:0,bossStyle:0};
+    const raw=wallPattern(e,routeX(route,0),84),gated=choreograph(route,0,0,0,raw,84,true);
+    expect(gated.length).toBeLessThan(raw.length);expect(gated.length).toBeGreaterThan(raw.length/2);
+    for(const s of gated)expect(missDistance(route,0,0,0,s,84)).toBeGreaterThanOrEqual(ROUTE.clearance*1.8);
+    const r=rig({},'z2',longMusic());const events:string[]=[];
+    r.s.ctx.emit=((ev:{type:string})=>{events.push(ev.type);}) as typeof r.s.ctx.emit;r.seconds(600);
+    const sum=r.s.sim.summary();
+    expect(events.filter(t=>t==='wall').length).toBeGreaterThan(3);
+    expect(Number(sum.clearPct)).toBeGreaterThan(20);expect(Number(sum.perfects)).toBeGreaterThan(0);expect(Number(sum.absorbed)).toBe(0);
+    expect(r.snap().clear.rate).toBeCloseTo(Number(sum.clearPct)/100,1);
+  }, 15_000);
   it('sustains moderate bullet patterns and destroyable ground enemies within fixed budgets', () => {
     const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;
     for(let i=0;i<240;i++){r.seconds(1);const s=r.snap();peak=Math.max(peak,s.bolts.length);ground ||= s.enemies.some(e=>e.ground);tank ||= s.enemies.some(e=>e.kind==='tank');expect(s.bolts.length).toBeLessThanOrEqual(MAX_BOLTS);expect(s.enemies.length).toBeLessThanOrEqual(84);}

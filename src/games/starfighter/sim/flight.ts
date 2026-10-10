@@ -7,7 +7,7 @@ import { clamp } from './director';
 export interface Move { start: number; end: number; from: number; to: number }
 export interface Route { moves: Move[]; field: number }
 export interface Shot { vx: number; vy: number }
-export const ROUTE = { field: 30, speed: 22, minMove: 8, maxMove: 26, holdMin: 0.5, holdMax: 1.9, ahead: 6, clearance: 5.5, graze: 9 };
+export const ROUTE = { field: 30, speed: 22, minMove: 8, maxMove: 26, holdMin: 0.5, holdMax: 1.9, ahead: 8, clearance: 5.5, graze: 9 };
 export const newRoute = (x = 0, t = 0): Route => ({ moves: [{ start: t, end: t, from: x, to: x }], field: ROUTE.field });
 const ease = (u: number) => u * u * u * (u * (u * 6 - 15) + 10);
 export function routeX(r: Route, t: number): number {
@@ -45,7 +45,7 @@ export function missDistance(r: Route, t: number, ex: number, ey: number, s: Sho
     const tt = Math.max(0, t0 + (t1 - t0) * i / n), bx = ex + s.vx * tt;
     if (Math.abs(bx) > 100) continue;
     // Shots crossing beyond the scheduled route are unpredictable; treat them as hits so they get re-aimed or dropped.
-    if (t + tt > routeEnd(r) + ROUTE.ahead * 0.5) return 0;
+    if (t + tt > routeEnd(r)) return 0;
     best = Math.min(best, Math.abs(bx - routeX(r, t + tt)));
   }
   return best;
@@ -54,7 +54,9 @@ export function missDistance(r: Route, t: number, ex: number, ey: number, s: Sho
  * Re-aim a pattern so every shot misses the route by at least `clearance`. Try rotating the whole pattern by small
  * angles (keeps its shape, usually yields a close graze); shots that still connect are dropped, opening a gate.
  */
-export function choreograph<T extends Shot>(r: Route, t: number, ex: number, ey: number, shots: T[], shipY: number): T[] {
+export function choreograph<T extends Shot>(r: Route, t: number, ex: number, ey: number, shots: T[], shipY: number, gate = false): T[] {
+  // Walls keep their shape and open a wide, readable gate instead of rotating.
+  if (gate) return shots.filter(s => missDistance(r, t, ex, ey, s, shipY) >= ROUTE.clearance * 1.8);
   const rotate = (s: T, a: number): T => ({ ...s, vx: s.vx * Math.cos(a) - s.vy * Math.sin(a), vy: s.vx * Math.sin(a) + s.vy * Math.cos(a) });
   const safe = (s: T) => missDistance(r, t, ex, ey, s, shipY) >= ROUTE.clearance;
   for (const a of [0, 0.05, -0.05, 0.1, -0.1, 0.16, -0.16]) {

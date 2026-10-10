@@ -14,6 +14,10 @@ export function createCombat(scene: THREE.Scene) {
   const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
   const debris = pool(geometries.box, '#ffb339', 512), flashes = pool(geometries.sphere, '#fff4c9', 160, true);
+  // Muzzle charge before an enemy fires, and cyan streak sparks where a bullet grazes the ship.
+  const warns = pool(geometries.sphere, '#ffffff', 96, true), warnRings = pool(geometries.ring, '#ffffff', 96, true), sparks = pool(geometries.box, '#9ffbff', 192, true);
+  (warns.material as THREE.MeshBasicMaterial).opacity = 0.75; (warnRings.material as THREE.MeshBasicMaterial).opacity = 0.9; (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
+  const warnColor = new THREE.Color(), pink = new THREE.Color('#ff45c9'), amber = new THREE.Color('#ffd24f');
   const mat = new THREE.Object3D(), a = new THREE.Vector3(), b = new THREE.Vector3(), direction = new THREE.Vector3(), axis = new THREE.Vector3(0,0,1);
   const bezier = (u: number, sx: number, sy: number, ex: number, ey: number, side: number, height: number, out: THREE.Vector3) => {
     const v = 1 - u;
@@ -70,8 +74,32 @@ export function createCombat(scene: THREE.Scene) {
           mat.rotation.set(age*3, angle+age*4, age*2); const size=Math.max(0.03, (1-age/1.6)*0.65); mat.scale.set(size, size, size*2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
         }
       }
+      let w = 0;
+      for (const e of s.enemies) {
+        if (!e.warn || e.warn < 0.05 || w >= 96) continue;
+        const pulse = 1 + Math.sin(s.t * 26) * 0.12 * e.warn;
+        mat.position.set(e.x, e.ground ? -1.5 : e.kind === 'boss' ? 13 : 10, e.y - 50 + 2.5); mat.rotation.set(0, 0, 0);
+        const big = e.kind === 'boss' ? 2.2 : 1;
+        mat.scale.setScalar((1 + e.warn * 2.8) * pulse * big); mat.updateMatrix(); warns.setMatrixAt(w, mat.matrix);
+        // A ring closing in on the muzzle reads as "about to fire".
+        mat.scale.setScalar((9 - e.warn * 6) * big); mat.updateMatrix(); warnRings.setMatrixAt(w, mat.matrix);
+        warnColor.copy(e.ground || e.kind === 'turret' || e.kind === 'tank' ? amber : pink).multiplyScalar(0.3 + 0.7 * e.warn);
+        warns.setColorAt(w, warnColor); warnRings.setColorAt(w++, warnColor);
+      }
+      for (const p of [warns, warnRings]) { p.count = w; p.instanceMatrix.needsUpdate = true; if (p.instanceColor) p.instanceColor.needsUpdate = true; }
+      let k = 0;
+      for (const fx of s.fx) {
+        const age = s.t - fx.at;
+        if (fx.kind !== 'graze' || age > 0.35 || age < 0) continue;
+        for (let j = 0; j < 4 && k < 192; j++) {
+          const angle = fx.id * 1.7 + j * Math.PI / 2, r = age * 26, life = 1 - age / 0.35;
+          mat.position.set(fx.x + Math.cos(angle) * r, 10.6, fx.y - 50 + Math.sin(angle) * r); mat.rotation.set(0, -angle + Math.PI / 2, 0);
+          mat.scale.set(0.18 * life, 0.18 * life, 2.4 * life); mat.updateMatrix(); sparks.setMatrixAt(k++, mat.matrix);
+        }
+      }
+      sparks.count = k; sparks.instanceMatrix.needsUpdate = true;
       smoke.count=sm;smoke.instanceMatrix.needsUpdate=true;debris.count=d; flashes.count=f; debris.instanceMatrix.needsUpdate=flashes.instanceMatrix.needsUpdate=true;
     },
-    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke]) { mesh.dispose(); } },
+    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks]) { mesh.dispose(); } },
   };
 }

@@ -3,13 +3,12 @@ import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { SfSnapshot } from '../sim/types';
-import { craftName } from '../sim/save';
-import { sectionLabel } from '../sim/director';
 import { bossModel, disposeModel, isSharedGeometry, geometries, shipModel } from './models';
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
 import { SECTORS } from '../sim/content';
+import { SquadronHud } from './hud';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
@@ -22,7 +21,7 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private header?: HTMLElement; private status?: HTMLElement; private footer?: HTMLElement; private menu?: HTMLElement;
+  private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
     if (el?.dataset.action === 'target') this.send?.({ type: 'target', direction: Number(el.dataset.direction) });
@@ -40,17 +39,8 @@ export class SfRenderer implements GameRenderer {
     overlay.style.cssText = 'position:absolute;inset:0;color:#eaf5ff;font:14px system-ui;pointer-events:none;background:radial-gradient(ellipse at 70% 35%,#22456044,transparent 50%),radial-gradient(ellipse at 20% 70%,#6b235333,transparent 55%);';
     // Backdrop beneath the transparent Three.js surface, HUD above it.
     container.insertBefore(overlay, gl.domElement);
-    const hud = document.createElement('div'); hud.style.cssText = 'position:absolute;inset:0;pointer-events:none;color:#eaf5ff;font:14px system-ui';
-    overlay.appendChild(hud); overlay.style.zIndex = '0'; gl.domElement.style.zIndex = '1';
+    this.hud = new SquadronHud(); const hud = this.hud.root; overlay.style.zIndex = '0'; gl.domElement.style.zIndex = '1';
     container.appendChild(hud); hud.style.zIndex = '2'; this.overlay = hud;
-    this.header = document.createElement('div'); this.status = document.createElement('div'); this.footer = document.createElement('div'); this.menu = document.createElement('div');
-    for (const el of [this.header, this.status, this.footer, this.menu]) hud.appendChild(el);
-    this.header.style.cssText = 'position:absolute;display:flex;justify-content:space-between;gap:12px;padding:12px 20px;box-sizing:border-box;background:linear-gradient(#050917ee,#05091788);';
-    this.status.style.cssText = 'position:absolute;text-align:center;font-size:13px;color:#a8bfd5';
-    this.footer.innerHTML = '<div class="sq-riding" style="text-align:left;min-width:110px"></div><div style="min-width:0;text-align:center"><div class="sq-song" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div><div class="sq-detail" style="font-size:11px;color:#8de8ed"></div><div style="display:flex;gap:8px;justify-content:center;margin-top:4px"><button data-action="target" data-direction="-1" aria-label="Previous target">‹</button><span style="font-size:10px;letter-spacing:1px;color:#b7d9ed">R PADDLES · TARGET</span><button data-action="target" data-direction="1" aria-label="Next target">›</button></div></div><button data-action="nova" style="pointer-events:auto;border:1px solid #24dcec;background:#123652;color:#dff8ff;padding:8px 12px;border-radius:8px;white-space:nowrap"></button>';
-    this.footer.querySelectorAll<HTMLButtonElement>('[data-action="target"]').forEach(b => { b.style.cssText='pointer-events:auto;border:1px solid #5e8099;background:#142b46;color:#ffe954;border-radius:4px;padding:2px 10px'; });
-    this.footer.style.cssText = 'position:absolute;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 20px;box-sizing:border-box;background:#05091799';
-    this.menu.style.cssText = 'position:absolute;display:none;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;background:#050917b8;pointer-events:auto;overflow:auto';
     hud.addEventListener('click', this.controls);
     this.scene.add(new THREE.HemisphereLight('#c6e9ff', '#142035', 2.7));
     const key = new THREE.DirectionalLight('#e6f3ff', 3.5); key.position.set(-25, 40, -30); this.scene.add(key);
@@ -79,14 +69,13 @@ export class SfRenderer implements GameRenderer {
   setInsets(insets: Insets) { this.insets = { ...insets }; this.resize(this.w, this.h); }
   resize(w: number, h: number) {
     this.w = Math.max(1, w); this.h = Math.max(1, h); this.webgl?.setSize(this.w, this.h, false);
-    const l = layout(this.w, this.h, this.insets), aspect = l.field.w / Math.max(1, l.field.h);
+    const l = layout(this.w, this.h, this.insets), fw = Math.max(1, l.field.w), fh = Math.max(1, l.field.h), aspect = fw / fh;
     this.camera.aspect = aspect;
     const distance = Math.max(145, 130 / Math.max(0.2, aspect));
-    this.camera.position.set(0, distance*0.74, distance*0.67); this.camera.lookAt(0, 0, -6); this.camera.updateProjectionMatrix();
-    if (this.header) Object.assign(this.header.style, { left: `${l.safe.x}px`, top: `${l.safe.y}px`, width: `${l.safe.w}px`, height: `${Math.min(62, l.header)}px` });
-    if (this.status) Object.assign(this.status.style, { left: `${l.safe.x + 12}px`, top: `${l.safe.y + Math.min(62, l.header)}px`, width: `${Math.max(0, l.safe.w - 24)}px`, height: `${Math.max(0, l.header - 74)}px` });
-    if (this.footer) Object.assign(this.footer.style, { left: `${l.safe.x}px`, top: `${l.safe.y + l.safe.h - l.footer}px`, width: `${l.safe.w}px`, height: `${l.footer}px` });
-    if (this.menu) Object.assign(this.menu.style, { left: `${l.safe.x}px`, top: `${l.safe.y}px`, width: `${l.safe.w}px`, height: `${l.safe.h}px` });
+    this.camera.position.set(0, distance*0.74, distance*0.67); this.camera.lookAt(0, 0, -6);
+    // Frame the play area in `field` while the scene itself fills the whole surface (full-bleed backdrop under the HUDs).
+    this.camera.setViewOffset(fw, fh, -l.field.x, -l.field.y, this.w, this.h); this.camera.updateProjectionMatrix();
+    this.hud?.place(l);
   }
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as SfSnapshot;
@@ -99,7 +88,10 @@ export class SfRenderer implements GameRenderer {
     if(recentBoom) play('kill',{vol:0.25,minGapS:0.2});
     this.lastFxId=Math.max(this.lastFxId,...s.fx.map(f=>f.id));
     this.last = { ...s, locks: [...s.locks] };
-    if (!this.webgl || !this.header || !this.status || !this.footer || !this.menu) return;
+    const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
+    if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
+    if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; play('milestone', { vol: 0.35, minGapS: 1 }); }
+    if (!this.webgl) return;
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
       this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
@@ -131,35 +123,15 @@ export class SfRenderer implements GameRenderer {
       mat.scale.set(1.8,1,2.5);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
     });
     for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && s.t-f.at < (f.kind==='boom'?0.6:1.6)).slice(-160);
+    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
     this.halo!.position.set(s.shipX, 10.4, s.shipY - 50); this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent);
-    const l = layout(this.w, this.h, this.insets);
-    this.webgl.setViewport(l.field.x, this.h - l.field.y - l.field.h, l.field.w, l.field.h); this.webgl.render(this.scene, this.camera);
-    const status = { on: 'In the groove', under: 'Keep the pedals turning', over: 'Ease off · return to Zone 2', recover: 'Escort cover · easy spin', settling: 'Find your rhythm' }[s.effort.status];
-    this.header.innerHTML = `<div><div style="font-size:clamp(12px,2vw,18px);font-weight:800;letter-spacing:2px;color:#d9faff">⚙ SPROCKET SQUADRON</div><div style="font-size:11px;color:#8de8ed">${craftName(s.craft)} · ARSENAL ${s.gunLevel}</div></div><div style="text-align:right"><div style="font-size:11px;letter-spacing:2px;color:#b9e8ff">LOCKS <strong style="font-size:25px;color:#ffe95b">${s.locks.length}</strong> / ${s.lockCapacity}</div><div style="font-size:11px">Hull ${Math.round(s.hull)}% · ${s.score.toLocaleString()}</div></div>`;
-    this.footer.querySelector('.sq-riding')!.innerHTML = `<strong style="font-size:clamp(22px,3.5vw,36px);font-variant-numeric:tabular-nums;color:white">${Math.round(_bike.power3s)}<small style="font-size:14px"> W</small></strong><div style="font-size:10px;color:#87eaff">${s.effort.erg ? `${s.effort.targetWatts} W · ERG` : `${s.effort.floorWatts}–${s.effort.ceilingWatts} W`}</div>`;
-    this.status.textContent = s.boss ? `${s.boss.name} · ${s.boss.stage} · ${Math.max(0, Math.round(s.boss.hp / s.boss.maxHp * 100))}% · ${Math.ceil(s.boss.left)}s` : s.bossIn !== null ? `Flagship inbound in ${Math.ceil(s.bossIn)}s` : s.upcoming ? `${s.upcoming.label} · ${s.upcoming.watts} W in ${Math.ceil(s.upcoming.left)}s` : s.banner || status;
-    this.status.style.color = s.effort.status === 'over' || s.quality < 0.6 ? '#ffb986' : '#a8d6e6';
-    const novaLabel = s.coverLeft > 0 ? `Cover ${Math.ceil(s.coverLeft)}s` : s.charge >= 100 ? 'Nova · take a breather' : `Nova charging ${Math.floor(s.charge)}%`;
-    const songEl = this.footer.querySelector<HTMLElement>('.sq-song')!;
-    songEl.textContent = s.song; songEl.style.maxWidth = `${Math.max(40, l.safe.w - 270)}px`;
-    this.footer.querySelector('.sq-detail')!.textContent = s.dodge > 0.2 ? 'AUTO DODGE »' : s.effort.status === 'on' ? '● ON TARGET · AUTO DODGE' : s.cadence ? `Optional ${s.cadence.min}–${s.cadence.max} RPM` : status;
-    const novaButton = this.footer.querySelector<HTMLButtonElement>('[data-action="nova"]')!;
-    novaButton.textContent = novaLabel; novaButton.disabled = s.charge < 100 || s.coverLeft > 0 || s.rejoinLeft > 0;
-    novaButton.style.opacity = novaButton.disabled ? '0.65' : '1';
-    this.menu.style.display = s.phase === 'hangar' ? 'flex' : 'none';
-    const menuKey = `${s.craft}:${s.escortUnlocked}:${s.ergAvailable}`;
-    if (menuKey !== this.lastMenu) {
-      this.lastMenu = menuKey;
-      this.menu.innerHTML = `<div style="width:560px;max-width:100%;text-align:center"><div style="letter-spacing:3px;font-size:12px;color:#9bbed8">HOLD THE GROOVE</div><h1 style="font-size:clamp(24px,4vw,38px);margin:12px 0">Choose your riding style</h1><p style="color:#a7bfd2">Hold the groove to paint targets and unleash laser volleys. Your squadron handles the dodging.</p><div style="display:flex;gap:12px;flex-wrap:wrap;margin:24px 0">${(['cruiser', 'escort'] as const).map(c => `<button data-action="craft" data-craft="${c}" ${c === 'escort' && (!s.escortUnlocked || !s.ergAvailable) ? 'disabled' : ''} style="flex:1;min-width:180px;padding:20px 12px;border:1px solid ${c === s.craft ? '#9eeaff' : '#334c68'};border-radius:14px;background:${c === s.craft ? '#163749' : '#0b1829'};color:#eaf5ff;text-align:left"><strong style="font-size:18px">${craftName(c)}</strong><p>${c === 'cruiser' ? 'Steady Zone 2 · virtual gears<br>Musical lock volleys · left paddles for gears' : 'ERG endurance · automatic resistance<br>Wingmen and heavy lock volleys'}</p><small style="color:#a5cbdc">${c === 'escort' && !s.ergAvailable ? 'Requires an ERG-capable trainer' : c === 'escort' && !s.escortUnlocked ? `Unlock in ${Math.ceil(s.unlockMinutes)} on-target minutes` : c === s.craft ? 'Selected' : 'Choose craft'}</small></button>`).join('')}</div><button data-action="launch" style="padding:14px 30px;border:0;border-radius:10px;background:#9ce7ed;color:#092031;font-size:17px;font-weight:700">Launch squadron</button><p class="sq-countdown" style="font-size:12px;color:#88a6bd">Pedalling launches in ${Math.ceil(s.menuLeft)}s · A to launch</p></div>`;
-    }
-    const countdown = this.menu.querySelector('.sq-countdown');
-    if (countdown) countdown.textContent = `Pedalling launches in ${Math.ceil(s.menuLeft)}s · A to launch`;
+    this.webgl.setViewport(0, 0, this.w, this.h); this.webgl.render(this.scene, this.camera);
+    this.hud?.update(s);
   }
   debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }
   unmount() {

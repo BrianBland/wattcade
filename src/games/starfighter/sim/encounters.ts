@@ -39,3 +39,8 @@ export function bulletPattern(e: EnemyView, shipX: number, shipY: number): Array
   else add(aimed,18,'pink');
   return shots;
 }
+/** A slow, wide wall; choreography opens a gate in it where the route will be. */
+export function wallPattern(e: EnemyView, shipX: number, shipY: number): Array<{ vx: number; vy: number; kind: 'pink' | 'amber' }> {
+  const aimed = Math.atan2(shipY-e.y, shipX-e.x);
+  return Array.from({ length: 13 }, (_, i) => { const a = aimed + (i - 6) * 0.085; return { vx: Math.cos(a) * 15, vy: Math.sin(a) * 15, kind: 'amber' as const }; });
+}

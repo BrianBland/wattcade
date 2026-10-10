@@ -1,8 +1,9 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
-import { clamp, createDirector, sectionLabel, sectionTarget } from './director';
+import { after, clamp, createDirector, sectionLabel, sectionTarget } from './director';
 import { craftName, escortAvailable, migrateSave } from './save';
-import { MAX_ENEMIES, MAX_BOLTS, entryFor, advanceEntry, inCombat, bulletPattern } from './encounters';
+import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, entryFor, advanceEntry, inCombat, bulletPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
+import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
 import type { CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
 export const H = 100, SHIP_Y = 84;
@@ -30,8 +31,13 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let t = 0, p = 0, id = 0, score = 0, kills = 0, combo = 0, maxCombo = 0, deaths = 0, bosses = 0, escaped = 0, sector = 1;
   let hull = 100, shield = 100, quality = 1, underS = 0, charge = 0, coverLeft = 0, rejoinLeft = 0;
   let onTargetS = 0, salvage = 0, earned = 0, gunLevel = 1, banner = '', bannerUntil = 0;
-  let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, dodgeX = 0, selectedId: number | null = null;
+  let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, absorbed = 0, selectedId: number | null = null;
   let lockIn = 0, volleyAge = 0, volleyAt = -99, volleys = 0, dodges = 0;
+  const route = newRoute();
+  let prevX = 0, grazed = 0;
+  const cruiseLine = (at: number) => Math.sin(at * 0.22) * 12 + Math.sin(at * 0.57) * 3;
+  /** Next beat at or after sim time `at`, mapped through the media clock offset. */
+  const beatAfter = (at: number) => { const beats = timeline?.beats; if (!beats?.length) return at; const b = beats[after(beats, at - t + p - 1e-6)]; return b !== undefined && b - p + t - at < 0.8 ? b - p + t : at; };
   const locks: number[] = [], lasers: LaserView[] = [];
   let groundIn = 8, formations = 0, bulletsFired = 0, groundKills = 0;
   let fireIn = 0, spawnIn = 2, lastSpawn = -99, encounter = 0, bossDue = Math.min(tun.firstBoss(), tun.bossEvery()), bossAt: number | null = null;
@@ -74,7 +80,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   };
   const hurt = (amount: number) => {
     if (coverLeft > 0 || rejoinLeft > 0 || t < tun.start()) return;
-    combo = 0; const absorbed = Math.min(shield, amount); shield -= absorbed; hull -= amount - absorbed;
+    combo = 0; const blocked = Math.min(shield, amount); shield -= blocked; hull -= amount - blocked;
     if (hull <= 0) {
       deaths++; rejoinLeft = tun.rejoinS(); hull = 100; shield = 100; bolts.length = 0;
       for (const e of enemies) if (e.kind !== 'boss') { e.hp = -1; e.y = SHIP_Y; }
@@ -90,7 +96,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const hp = kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
       const entry=entryFor(i,n,pattern,center);
       enemies.push({ id: ++id, kind, x: entry.fromX, y: entry.fromY, entry,
-        hp, maxHp: hp, age: 0, fireAt: 4 + i * 0.2, bossStyle: 0 });
+        hp, maxHp: hp, age: 0, fireAt: firesInFormation(kind, i) ? 4 + i * 0.2 : 1e9, bossStyle: 0 });
     }
   };
   const spawnGround = () => {
@@ -184,22 +190,16 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           cadence = null;
         }
       }
-      // Predict nearby bullets and bank into a safe lane while protection is active.
-      const cruiseX = Math.sin(t * 0.22) * 12 + Math.sin(t * 0.57) * 3;
-      let threat: BoltView | undefined, nearest = Infinity;
-      for(const b of bolts) {
-        if(b.vy<=0 || b.y<=SHIP_Y-32 || b.y>=SHIP_Y+3)continue;
-        const distance=Math.abs(b.x+b.vx*Math.max(0,(shipY-b.y)/b.vy)-x);
-        if(distance<nearest){nearest=distance;threat=b;}
-      }
-      const evading = !!threat && quality >= 0.8 && pedalling && Math.abs(threat.x + threat.vx * Math.max(0, (shipY - threat.y) / threat.vy) - x) < 10;
-      if (evading && dodge < 0.1) { dodges++; emit('autoDodge'); }
-      dodge += ((evading ? 1 : 0) - dodge) * (1 - Math.exp(-dt * (evading ? 10 : 2)));
-      if (evading) dodgeX = threat!.x >= x ? -12 : 12;
-      const oldX = x;
-      x += (clamp(cruiseX + dodgeX * dodge, -38, 38) - x) * (1 - Math.exp(-dt * (evading ? 9 : 2.5)));
-      shipY = SHIP_Y - dodge * 3;
-      bank += (clamp((x - oldX) / Math.max(dt, 0.001) * -0.018, -0.5, 0.5) - bank) * (1 - Math.exp(-dt * 8));
+      // Choreographed flight: follow the scheduled route; a sloppy pilot lags it and loses the authored misses.
+      const alert = pedalling ? quality : 0;
+      extendRoute(route, t, ctx.rng, cruiseLine, beatAfter);
+      const routeNow = routeX(route, t), routeV = (routeNow - routeX(route, t - dt)) / Math.max(dt, 1e-3);
+      const follow = alert >= 0.8 ? 14 : 0.5 + 1.2 * alert;
+      x += routeV * dt * (alert >= 0.8 ? 1 : 0) + (routeNow - x) * (1 - Math.exp(-dt * follow));
+      const vx = (x - prevX) / Math.max(dt, 1e-3); prevX = x;
+      dodge += (clamp(Math.abs(vx) / 30, 0, 1) - dodge) * (1 - Math.exp(-dt * 4));
+      shipY = SHIP_Y - dodge * 1.5;
+      bank += (clamp(vx * -0.016, -0.5, 0.5) - bank) * (1 - Math.exp(-dt * 6));
       if (music.phrase) encounter++;
       if (sector === 1 && !boss && bossAt === null) bossDue = Math.min(bossDue, tun.bossEvery());
       if (!boss && bossAt === null && p >= bossDue - 8) bossAt = director.bossAt(Math.max(bossDue, p + 8));
@@ -264,9 +264,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           else {e.y+=dt*(e.ground?9:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
         }
         e.heading=Math.atan2(e.x-oldX,e.y-oldY);
-        if (inCombat(e) && e.age >= e.fireAt) {
-          e.fireAt=e.age+(e.kind==='boss'?1.4:e.kind==='tank'?1.5:e.kind==='turret'?2:e.kind==='weaver'?2.5:3.5);
-          const pattern=bulletPattern(e,x,shipY);
+        // Volleys land on the beat (bounded wait), and calm sections fire less.
+        if (inCombat(e) && e.age >= e.fireAt && (music.beat || e.age >= e.fireAt + 0.7)) {
+          e.fireAt=e.age+FIRE_EVERY[e.kind]*(music.kind==='break'||music.kind==='outro'?1.6:1);
+          const raw=bulletPattern(e,x,shipY);
+          // On target, fire is authored around the route: shots graze past, or leave a gate the ship flies through.
+          const pattern=alert>=0.8?choreograph(route,t,e.x,e.y,raw,SHIP_Y):raw;
           for(const shot of pattern) {
             if(bolts.length>=MAX_BOLTS) break;
             bolts.push({id:++id,x:e.x,y:e.y,height:e.ground?-2.5:12,...shot});bulletsFired++;
@@ -295,8 +298,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       for (let i = lasers.length - 1; i >= 0; i--) if (t - lasers[i].at > 1.3) lasers.splice(i, 1);
       for (const b of bolts) {
         b.x += b.vx * dt; b.y += b.vy * dt; b.height+=(10-b.height)*(1-Math.exp(-dt*5));
+        if (!b.grazed && Math.abs(b.y - shipY) < 3 && Math.abs(b.x - x) < ROUTE.graze && Math.abs(b.x - x) >= 3.5) {
+          b.grazed = true; if (alert >= 0.8) { grazed++; dodges++; score += 5; emit('autoDodge'); }
+        }
         if (Math.hypot(b.x - x, b.y - shipY) < 3.5) {
-          if (quality >= (craft === 'escort' ? 0.65 : 0.8) && pedalling) effect('intercept', b.x, b.y);
+          if (quality >= (craft === 'escort' ? 0.65 : 0.8) && pedalling) { effect('intercept', b.x, b.y); absorbed++; }
           else hurt(8);
           b.y = 200;
         }
@@ -331,7 +337,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
           ...(craft === 'cruiser' ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Target ◀ ▶' }] : [{ button: 'shiftersR' as const, label: 'Target ◀ ▶' }]), { button: 'a', label: 'Nova', active: charge >= 100 }] };
     },
-    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, formations, bulletsFired, groundKills, goldens: gunLevel - 1 }),
+    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, formations, bulletsFired, groundKills, goldens: gunLevel - 1 }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
   function protectedTarget() { return coverLeft > 0 || rejoinLeft > 0 ? tun.recovery() : 0.65; }

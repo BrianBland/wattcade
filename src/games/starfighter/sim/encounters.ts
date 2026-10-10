@@ -1,6 +1,6 @@
 import type { EnemyView } from './types';
 import { clamp } from './director';
-export const MAX_ENEMIES = 80, MAX_BOLTS = 640;
+export const MAX_ENEMIES = 80, MAX_BOLTS = 160;
 /** Spawn beyond the widest supported field; enter along a continuous flight path. */
 export function entryFor(index: number, count: number, pattern: number, center: number): NonNullable<EnemyView['entry']> {
   const lane = index - (count - 1) / 2;
@@ -20,21 +20,22 @@ export function advanceEntry(e: EnemyView): boolean {
 export function inCombat(e: EnemyView): boolean {
   return e.hp > 0 && e.y >= -28 && e.y < 72 && Math.abs(e.x) < 55;
 }
-/** Fans, paired aimed streams, and rotating petals share a bounded projectile budget. */
+/** Seconds between volleys by enemy kind; the sim also waits for a beat before releasing. */
+export const FIRE_EVERY: Record<EnemyView['kind'], number> = { boss: 2.2, tank: 3, turret: 3.4, weaver: 3.6, gunner: 3.8, armor: 3.8, drone: 4.5 };
+/** Only designated gunners in a formation fire, keeping density moderate and readable. */
+export const firesInFormation = (kind: EnemyView['kind'], index: number) => kind === 'armor' ? index % 2 === 0 : index % 3 === 1;
+/** Small, slow, readable patterns: aimed singles, narrow fans, and a rotating flagship fan with petals. */
 export function bulletPattern(e: EnemyView, shipX: number, shipY: number): Array<{ vx: number; vy: number; kind: 'pink' | 'amber' }> {
   const aimed = Math.atan2(shipY-e.y, shipX-e.x), shots: Array<{vx:number;vy:number;kind:'pink'|'amber'}> = [];
   const add = (angle:number,speed:number,kind:'pink'|'amber') => shots.push({vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,kind});
+  const fan = (n:number,spread:number,speed:number,kind:'pink'|'amber') => { for(let i=0;i<n;i++) add(aimed+(i-(n-1)/2)*spread,speed,kind); };
   if(e.kind==='boss') {
-    for(let i=0;i<17;i++) add(Math.PI*0.5 + (i-8)*0.13 + Math.sin(e.age*0.6)*0.22, 20+(i%2)*3,'pink');
-    for(let i=0;i<12;i++) add(i*Math.PI/6+e.age*0.35,18,'amber');
-  } else if(e.kind==='tank') {
-    for(let i=-2;i<=2;i++) add(aimed+i*0.065,32,'amber');
-  } else if(e.kind==='turret') {
-    for(let i=-4;i<=4;i++) add(aimed+i*0.13,23,'amber');
-  } else if(e.kind==='weaver') {
-    for(let i=-2;i<=2;i++) add(aimed+i*0.18,22,'pink');
-  } else if(e.kind==='gunner' || e.kind==='armor') {
-    for(let i=-2;i<=2;i++) add(aimed+i*0.11,26,'pink');
-  } else { add(aimed-0.05,25,'pink');add(aimed+0.05,25,'pink'); }
+    for(let i=0;i<7;i++) add(Math.PI*0.5 + (i-3)*0.2 + Math.sin(e.age*0.6)*0.3, 16,'pink');
+    for(let i=0;i<6;i++) add(i*Math.PI/3+e.age*0.35,14,'amber');
+  } else if(e.kind==='tank') fan(2,0.1,20,'amber');
+  else if(e.kind==='turret') fan(3,0.22,16,'amber');
+  else if(e.kind==='weaver') fan(3,0.26,17,'pink');
+  else if(e.kind==='gunner' || e.kind==='armor') fan(3,0.18,18,'pink');
+  else add(aimed,18,'pink');
   return shots;
 }

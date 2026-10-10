@@ -18,7 +18,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Snapshot is plain data; sim deterministic. UI actions queued by `receive`, never applied by renderer.
 
 ## Graphics / checks
-- Three.js perspective camera, modeled craft/flagships, streamed carrier/city/canyon terrain and instanced buildings/rocks, fixed-size laser/reticle/debris/shadow/smoke pools, auto-dodge banking/ghosts. R paddles cycle priority targets; L paddles remain Cruiser gears. First flagship ~150s, then six-minute spacing; lockable batteries protect the reactor.
+- Three.js perspective camera, modeled craft/flagships, streamed carrier/city/canyon terrain and instanced buildings/rocks, fixed-size laser/reticle/debris/shadow/smoke pools, route banking/ghosts. R paddles cycle priority targets; L paddles remain Cruiser gears. First flagship ~150s, then six-minute spacing; lockable batteries protect the reactor.
 - render/layout.ts honors all shell insets. Menu supports touch/controller and pedal auto-launch; footer Nova button remains stable while frames update.
 - `npm run typecheck`; `npx vitest run src/games/starfighter src/core/media.test.ts src/progression/scenarios.test.ts src/games/insets.test.ts`.
 - `node scripts/squadron-render-smoke.mjs` with Vite on :5199 and system Chromium checks landscape/portrait/touch and bounded allocations.
@@ -29,7 +29,8 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Future: additional riding contracts, optional manual dodges, shared confidence/commit API, improved selection and playlists. Existing media analysis/mixer reused.
 
 ## Spectacle pass
-- encounters.ts supplies continuous top/side entrances, combat eligibility, and aimed/fan/petal bullet patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
-- Up to 60 aircraft plus ground groups; 640-projectile budget. Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
+- flight.ts: ship route is a pure schedule of holds + eased moves (beat-aligned, 6s ahead, ≤~34 u/s). `choreograph` re-aims/drops on-target shots so all miss the route by ≥5.5; under target the ship lags the route and fire is raw. Summary: `grazes`, `absorbed` (on-target hits; must stay 0).
+- encounters.ts supplies continuous top/side entrances, combat eligibility, gunner designation, fire intervals, and readable aimed/fan/petal patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
+- Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
 - Scenery tiles recycle behind/beyond the camera across carrier, neon city, and canyon stretches. No new geometry/material allocation on terrain transitions.
 - Boss weak points get spare automatic lock slots so denser escorts do not starve the flagship fight. The rider-selected priority still acquires first.

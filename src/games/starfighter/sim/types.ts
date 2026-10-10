@@ -12,7 +12,7 @@ export interface EnemyView {
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing' }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; side: number; height: number; damage: number; hit: boolean }
-export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run'; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean; unlockMinutes: number;

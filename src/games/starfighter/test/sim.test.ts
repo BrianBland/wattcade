@@ -3,7 +3,8 @@ import { createGameSession, runHeadless, testProfile, NullInput, TimelineInput, 
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { inCombat, MAX_BOLTS } from '../sim/encounters';
+import { inCombat, MAX_BOLTS, bulletPattern } from '../sim/encounters';
+import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createDirector, cadenceFor } from '../sim/director';
 import { escortAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
@@ -124,7 +125,7 @@ describe('musical locks and paddle targeting', () => {
     const idle=rig({},'idle');idle.s.tuning.set('starfighter.bossEveryS',40);idle.s.tuning.set('starfighter.bossTimeoutS',30);idle.seconds(71);
     expect(idle.snap().boss).toBeNull();expect(idle.snap().enemies.some(e=>e.parentId)).toBe(false);
   });
-  it('steady riding visibly banks out of bullet lanes; idle never earns volleys or dodges', () => {
+  it('steady riding grazes past choreographed fire; idle never earns volleys or dodges', () => {
     const r = rig({}, 'z2', longMusic()); r.seconds(120);
     expect(Number(r.s.sim.summary().dodges)).toBeGreaterThan(0); expect(r.snap().deaths).toBe(0);
     const idle = rig({}, 'idle', longMusic()); idle.seconds(120);
@@ -140,10 +141,28 @@ describe('spectacle encounters', () => {
     for(const old of first){const e=r.snap().enemies.find(e=>e.id===old.id)!;expect(Math.hypot(e.x-old.x,e.y-old.y)).toBeGreaterThan(0);expect(Math.hypot(e.x-old.x,e.y-old.y)).toBeLessThan(30);}
     r.seconds(10);expect(r.snap().enemies.some(inCombat)).toBe(true);expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(0);
   });
-  it('sustains dense bullet patterns and destroyable ground enemies within fixed budgets', () => {
+  it('steady riding flies a smooth choreographed route that every shot misses', () => {
+    const r=rig({},'z2',longMusic());r.seconds(10);let px=r.snap().shipX,pv=0,reversals=0,peak=0,bolts=0,n=0;
+    for(let i=0;i<180*30;i++){r.s.step(1);const s=r.snap(),v=(s.shipX-px)*30;px=s.shipX;
+      if(Math.abs(v)>2){if(pv&&Math.sign(v)!==Math.sign(pv))reversals++;pv=v;}peak=Math.max(peak,Math.abs(v));bolts+=s.bolts.length;n++;}
+    const sum=r.s.sim.summary();
+    expect(reversals/3).toBeLessThan(30);expect(peak).toBeLessThan(45);
+    expect(Number(sum.absorbed)).toBe(0);expect(Number(sum.grazes)).toBeGreaterThan(100);
+    expect(bolts/n).toBeGreaterThan(25);expect(bolts/n).toBeLessThan(100);
+  }, 15_000);
+  it('choreographed patterns keep clearance from the route, opening gates when rotation cannot', () => {
+    let seed=7;const rand=()=>(seed=(seed*16807)%2147483647)/2147483647;
+    const route=newRoute();extendRoute(route,0,rand,()=>0);
+    for(let i=0;i<300;i++){
+      const t=rand()*2,ex=(rand()-0.5)*80,ey=-20+rand()*60,kind=(['drone','gunner','weaver','turret','tank','boss'] as const)[i%6];
+      const e={id:1,kind,x:ex,y:ey,hp:1,maxHp:1,age:rand()*20,fireAt:0,bossStyle:0};
+      for(const s of choreograph(route,t,ex,ey,bulletPattern(e,routeX(route,t),84),84))expect(missDistance(route,t,ex,ey,s,84)).toBeGreaterThanOrEqual(ROUTE.clearance);
+    }
+  });
+  it('sustains moderate bullet patterns and destroyable ground enemies within fixed budgets', () => {
     const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;
     for(let i=0;i<240;i++){r.seconds(1);const s=r.snap();peak=Math.max(peak,s.bolts.length);ground ||= s.enemies.some(e=>e.ground);tank ||= s.enemies.some(e=>e.kind==='tank');expect(s.bolts.length).toBeLessThanOrEqual(MAX_BOLTS);expect(s.enemies.length).toBeLessThanOrEqual(84);}
-    expect(peak).toBeGreaterThan(80);expect(ground).toBe(true);expect(tank).toBe(true);expect(Number(r.s.sim.summary().groundKills)).toBeGreaterThan(0);expect(r.snap().deaths).toBe(0);
+    expect(peak).toBeGreaterThan(40);expect(ground).toBe(true);expect(tank).toBe(true);expect(Number(r.s.sim.summary().groundKills)).toBeGreaterThan(0);expect(r.snap().deaths).toBe(0);
   });
 });
 describe('craft selection and save migration', () => {

@@ -22,7 +22,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'auto-sprints', script: 'sprints', minutes: 10, seed: 2, simOpts: { autopilot: true },
+    name: 'auto-sprints', script: 'sprints', minutes: 10, seed: 2, simOpts: { autopilot: true, cops: false },
     assert(s) { return n(s, 'distanceM') > 4000 ? [] : [`distanceM ${s.distanceM} <= 4000`]; },
   },
   {

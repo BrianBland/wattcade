@@ -1,4 +1,4 @@
-// Jet Set Radio-style beauty pass for ONE sliver (the sunken plaza corner). Render-only, no new deps.
+// Cel beauty pass (began as a JSR sliver on the plaza corner; now the default look everywhere). Render-only, no new deps.
 // Toon ramp shading (MeshToonMaterial + 3-step gradient), ink outlines (scaled inverted hulls), calm natural palette,
 // hand-shaped props, sky gradient, flat cel shadows, and a light grade post pass
 // (cadenza Post pattern) that only runs while the camera is near the sliver.
@@ -10,7 +10,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { heightAt, PLAZA } from '../sim/world';
 import { bakeInPlace } from './bake';
 
-export type ArtStyle = 'sliver' | 'classic';
+export type ArtStyle = 'cel' | 'classic';
 /** The styled sliver: sunken plaza + the tower on its east side. */
 export const SLIVER = { x0: PLAZA.x0 - 4, z0: PLAZA.z0 - 8, x1: 96, z1: PLAZA.z1 + 4 };
 /** 1 inside the sliver, fading to 0 over `fade` m outside. */
@@ -42,9 +42,9 @@ export function inked(mesh: THREE.Mesh, thick = 0.06): THREE.Mesh {
 }
 const part = (geo: THREE.BufferGeometry, color: number, x: number, y: number, z: number, thick = 0.05) => { const m = inked(new THREE.Mesh(geo, toon(color)), thick); m.position.set(x, y, z); return m; };
 
-const SHADOW = new THREE.MeshBasicMaterial({ color: JSR.shadow, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+export const SHADOW = new THREE.MeshBasicMaterial({ color: JSR.shadow, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
 /** Flat cel shadow: a blob under the prop plus a sheared slab cast away from the sun (-x,-z). */
-function celShadow(r: number, h: number): THREE.Group {
+export function celShadow(r: number, h: number): THREE.Group {
   const g = new THREE.Group();
   const blob = new THREE.Mesh(new THREE.CircleGeometry(r, 12), SHADOW); blob.rotation.x = -Math.PI / 2; g.add(blob);
   const len = h * 0.7, w = r * 1.2, shp = new THREE.Shape();
@@ -55,7 +55,7 @@ function celShadow(r: number, h: number): THREE.Group {
 }
 
 // ---- props (hand-shaped from a few primitives each) ----
-function bench(): THREE.Group {
+export function bench(): THREE.Group {
   const g = new THREE.Group();
   for (let i = 0; i < 3; i++) g.add(part(new THREE.BoxGeometry(2.4, 0.12, 0.22), JSR.orange, 0, 0.55, -0.25 + i * 0.25, 0.03));
   for (let i = 0; i < 2; i++) g.add(part(new THREE.BoxGeometry(2.4, 0.12, 0.12), JSR.orange, 0, 0.85 + i * 0.25, 0.4, 0.03));
@@ -63,7 +63,7 @@ function bench(): THREE.Group {
   g.add(celShadow(1.3, 1.2));
   return g;
 }
-function planter(color: number): THREE.Group {
+export function planter(color: number): THREE.Group {
   const g = new THREE.Group();
   g.add(part(new THREE.CylinderGeometry(1.1, 0.8, 0.9, 8), color, 0, 0.45, 0, 0.06));
   for (let i = 0; i < 5; i++) { const a = i * 1.26; g.add(part(new THREE.IcosahedronGeometry(0.45, 0), i % 2 ? JSR.lime : JSR.deep, Math.cos(a) * 0.5, 1.05 + (i % 2) * 0.2, Math.sin(a) * 0.5, 0.04)); }
@@ -71,7 +71,7 @@ function planter(color: number): THREE.Group {
   g.add(celShadow(1.2, 1.4));
   return g;
 }
-function tree(k: number): THREE.Group {
+export function tree(k: number): THREE.Group {
   const g = new THREE.Group();
   const trunk = part(new THREE.CylinderGeometry(0.22, 0.38, 3, 6), 0x6b4a33, 0, 1.5, 0, 0.05); trunk.rotation.z = 0.08 * (k % 3 - 1); g.add(trunk);
   const cols = [JSR.lime, JSR.deep, 0x6c8a5a];
@@ -79,7 +79,7 @@ function tree(k: number): THREE.Group {
   g.add(celShadow(1.6, 5.5));
   return g;
 }
-function lamp(): THREE.Group {
+export function lamp(): THREE.Group {
   const g = new THREE.Group();
   g.add(part(new THREE.CylinderGeometry(0.1, 0.16, 4.6, 6), JSR.violet, 0, 2.3, 0, 0.04));
   const arm = part(new THREE.TorusGeometry(0.6, 0.07, 4, 10, Math.PI), JSR.violet, 0.6, 4.6, 0, 0.03); g.add(arm);
@@ -120,7 +120,7 @@ export class JsrSliver {
   private styledBuildings: Array<{ mesh: THREE.Mesh; classic: THREE.Material; jsr: THREE.Material; hull: THREE.Mesh }> = [];
   private riderParts: Array<{ mesh: THREE.Mesh; classic: THREE.Material; hull: THREE.Mesh }> = [];
   private riderToon = new Map<THREE.Mesh, THREE.MeshToonMaterial>();
-  private style: ArtStyle = 'sliver';
+  private style: ArtStyle = 'cel';
 
   constructor(scene: THREE.Scene) {
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 12), new THREE.ShaderMaterial({
@@ -184,7 +184,7 @@ export class JsrSliver {
 
   /** amt = how much of the look applies at the camera/rider (0 = classic frame, composer skipped). */
   frame(renderer: THREE.WebGLRenderer, scene: THREE.Scene, cam: THREE.PerspectiveCamera, riderAt: { x: number; z: number }) {
-    const amt = this.active ? sliverAmt(riderAt.x, riderAt.z) : 0;
+    void riderAt; const amt = this.active ? 1 : 0; // cel everywhere (sliver gating retired)
     this.sky.position.copy(cam.position); this.skyU.uAmt.value = amt; this.sky.visible = amt > 0.01;
     const inS = amt > 0.5;
     for (const r of this.riderParts) {
@@ -193,7 +193,7 @@ export class JsrSliver {
       t.color.copy(base.color);
       r.mesh.material = inS ? t : base; r.hull.visible = inS;
     }
-    if (scene.fog instanceof THREE.Fog) { scene.fog.color.set(0x9fd8ff).lerp(new THREE.Color(JSR.skyLow), amt * 0.7); }
+    if (scene.fog instanceof THREE.Fog) scene.fog.color.set(amt ? JSR.skyLow : 0x9fd8ff);
     if (amt < 0.01) { renderer.render(scene, cam); return; }
     if (!this.composer) {
       this.composer = new EffectComposer(renderer); this.composer.addPass(new RenderPass(scene, cam));

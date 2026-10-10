@@ -6,7 +6,7 @@ pause-menu settings. Today the shell reads it structurally (`src/shell/gameSetti
 Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver()` always false.
 
 ## Layout
-- `sim/world.ts` (pure): ~240 m neighbourhood. `heightAt(x,z,bridgeRad)` analytic height field: kickers/berms
+- `sim/world.ts` (pure): 400 m map (`HALF` 200; the original 240 m `CORE` in the middle) with districts (`GEN_BLOCKS`: rowhouses/shops/stalls/villas, hillside `HILL`, park `HALFPIPE`/`BOWL2`/`MOUNDS`, `FOOTBRIDGES`, `BOATS`, `TRAM_ROUTES`); `buildingAt` uses a 10 m spatial hash. `heightAt(x,z,bridgeRad)` analytic height field: kickers/berms
   (concave face, gentle back, rolled-off sides), sunken bowl, sunken plaza (5 steps down, ramp out north),
   canal with a two-leaf drawbridge (`bridgeAngle(t)` cycles closed/rising/open/falling), 6 m edge walls.
   `BUILDINGS` (AABBs), `LINES` (path/ramp/rail/tram polylines), `PARKED_BIKES`, `nearestOnLine`.
@@ -30,10 +30,14 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
 - `render/renderer.ts`: three.js blocky world, id-keyed pools for cops/projectiles/patches/blasts/flames/crates,
   3D reticle, co-op pad, DOM HUD + event toasts. `render/camera.ts` pure jump-aware chase cam (tested).
   `render/chars.ts` procedural people (instanced crowd rig), bikes, Segways, horses.
-  `render/jsr.ts` JSR beauty sliver (toon/ink/props/graffiti/sky/grade); `snapshot.art` from `artStyle` tunable or `simOpts.artStyle`. `render/layout.ts` pure HUD layout + camera view offset
+  `render/world3d.ts` cel city (chunked merged facades/props, toon water, `buildTram`), `render/jsr.ts` toon/ink/props/sky/grade (now on everywhere); `snapshot.art` from `artStyle` tunable or `simOpts.artStyle`. `render/layout.ts` pure HUD layout + camera view offset
   for `insets.bottom` (tested).
 
+- `sim/trams.ts`: `stepTram`, `tramAt`, `behindTram`; sim handles roof riding (`onTram`), hitching (Z), knock-offs, NPC/cop launches.
+- D-pad ◀ ▶ mirror the paddles in `sim.ts` (ramped steer, `dpadRampS`). Desktop pedalling = existing fake-bike keys (W/S, E/D).
+
 ## Not done / next
+- Cable car / ferry (optional) not built. Hedges/trees are render-only (ride through them).
 - Tandem/cargo special rules; e-bike heat is the only per-bike rule besides handling.
 - Held back: achievements, cosmetic titles, card clip (arcade.test accepts `drawCard` art when no clip exists;
   achievements.test lists gtpedal as PENDING). sfx.

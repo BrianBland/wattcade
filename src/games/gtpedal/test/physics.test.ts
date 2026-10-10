@@ -81,7 +81,7 @@ describe('sim', () => {
     expect(s.finish().stats).toBeTruthy();
   });
   it('B fires the bazooka at the locked target and launches them', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { npcs: [{ x: 0.5, z: -80 }] } } as any);
     let fired = false;
     for (let i = 0; i < 30 * 120 && !fired; i++) { s.step(1); if (snap(s).lock >= 0) fired = true; }
     expect(fired).toBe(true);

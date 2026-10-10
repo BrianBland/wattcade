@@ -7,7 +7,9 @@ import { stepCam, type CamState } from './camera';
 import { JsrSliver } from './jsr';
 import { Characters } from './chars';
 import { Reticle } from './reticle';
-import { bakeInPlace } from './bake';
+import { bakeInPlace, toonVC } from './bake';
+import { buildTram, CelWorld, groundColour } from './world3d';
+import { inked, toon } from './jsr';
 import { layout, viewOffsetY } from './layout';
 
 const BIKE_COL: Record<string, number> = { city: 0x3a7bd5, fixie: 0xff4f7b, bmx: 0xffb000, cargo: 0x2e9e5b, tandem: 0x9b59b6, ebike: 0x00d0d0 };
@@ -26,6 +28,8 @@ export class GtpRenderer implements GameRenderer {
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
   private chars?: Characters; private charDt = 0; private charT = -1;
+  private cel?: CelWorld; private classic = new THREE.Group(); private celGround?: THREE.Mesh; private art = '';
+  private hemi?: THREE.HemisphereLight; private sun?: THREE.DirectionalLight;
   private jsr?: JsrSliver; private buildingMeshes: Array<{ mesh: THREE.Mesh; b: (typeof BUILDINGS)[number] }> = [];
   private camSt: CamState = { y: 0, air: 0 }; private lastT = -1;
   private pools = new Map<string, Map<number, THREE.Object3D>>();
@@ -44,11 +48,11 @@ export class GtpRenderer implements GameRenderer {
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%';
     container.appendChild(r.domElement);
     this.scene.background = new THREE.Color(0x9fd8ff); this.scene.fog = new THREE.Fog(0x9fd8ff, 120, 320);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x557744, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(60, 100, 30); this.scene.add(sun);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x557744, 1.6); this.scene.add(this.hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(60, 100, 30); this.scene.add(sun); this.sun = sun;
     this.buildWorld(ctx.profile.color);
     this.chars = new Characters(new THREE.Color(ctx.profile.color).lerp(new THREE.Color(0x8a8070), 0.45).getHex()); this.scene.add(this.chars.group);
-    this.jsr = new JsrSliver(this.scene); this.jsr.styleBuildings(this.buildingMeshes); this.jsr.styleRider(this.rider.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh));
+    this.jsr = new JsrSliver(this.scene); this.jsr.styleRider(this.rider.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh));
     this.hud = document.createElement('div');
     this.hud.style.cssText = 'position:absolute;font:600 15px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
     this.toast = document.createElement('div');
@@ -59,17 +63,25 @@ export class GtpRenderer implements GameRenderer {
   }
 
   private buildWorld(color: string) {
-    const N = 120, S = HALF * 2, geo = new THREE.PlaneGeometry(S, S, N, N); geo.rotateX(-Math.PI / 2);
+    const N = HALF, S = HALF * 2, geo = new THREE.PlaneGeometry(S, S, N, N); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position, cols: number[] = [];
     for (let i = 0; i < pos.count; i++) {
       // the drawbridge deck is drawn ONLY by the leaf meshes: the static ground keeps open water under the bridge,
       // otherwise heightAt's closed deck (y=0) is coplanar with the leaf tops and z-fights / hides a leaf.
-      const x = pos.getX(i), z = pos.getZ(i), inCanal = z > CANAL.z0 + 0.01 && z < CANAL.z1 - 0.01, h = inCanal ? -CANAL.depth : heightAt(x, z); pos.setY(i, Math.max(h, -CANAL.depth));
+      const x = pos.getX(i), z = pos.getZ(i), inCanal = z > CANAL.z0 + 0.01 && z < CANAL.z1 - 0.01 && x > CANAL.xWest, h = inCanal ? -CANAL.depth : heightAt(x, z); pos.setY(i, Math.max(h, -CANAL.depth));
       const c = new THREE.Color(h < -3 ? 0x2a6fb0 : h < -0.1 || h > 0.1 ? 0x5cbf4a : Math.abs(z - 18) < 3 ? 0xaaaaaa : 0x7fd36a); cols.push(c.r, c.g, c.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); geo.computeVertexNormals();
-    this.scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
-    for (const b of BUILDINGS) { const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2); this.scene.add(m); this.buildingMeshes.push({ mesh: m, b }); }
+    this.scene.add(this.classic);
+    this.classic.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
+    { // cel ground: same terrain, calm district colours, toon-shaded
+      const cg = geo.clone(), cp = cg.attributes.position, cc: number[] = [], k = new THREE.Color();
+      for (let i = 0; i < cp.count; i++) { k.setHex(groundColour(cp.getX(i), cp.getZ(i), cp.getY(i))); cc.push(k.r, k.g, k.b); }
+      cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+      this.celGround = new THREE.Mesh(cg, toonVC()); this.scene.add(this.celGround);
+    }
+    for (const b of BUILDINGS) { const y0 = Math.min(0, heightAt(b.x0, b.z0), heightAt(b.x1, b.z1)); const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, y0 + b.h / 2, (b.z0 + b.z1) / 2); this.classic.add(m); this.buildingMeshes.push({ mesh: m, b }); }
+    this.cel = new CelWorld(); this.scene.add(this.cel.group);
     { // all nav lines in one LineSegments draw
       const pos: number[] = [], col: number[] = [], c = new THREE.Color();
       for (const l of LINES) {
@@ -77,13 +89,13 @@ export class GtpRenderer implements GameRenderer {
         for (let i = 0; i < l.pts.length - 1; i++) for (const [x, z] of [l.pts[i], l.pts[i + 1]]) { pos.push(x, Math.max(0, heightAt(x, z)) + 0.08, z); col.push(c.r, c.g, c.b); }
       }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-      this.scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true })));
+      this.classic.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true })));
     }
-    for (let i = 0; i < 2; i++) { const leaf = box(BRIDGE.x1 - BRIDGE.x0, 0.4, (CANAL.z1 - CANAL.z0) / 2, 0xb04030); this.leaves.push(leaf); this.scene.add(leaf); }
+    for (let i = 0; i < 2; i++) { const leaf = inked(new THREE.Mesh(new THREE.BoxGeometry(BRIDGE.x1 - BRIDGE.x0, 0.4, (CANAL.z1 - CANAL.z0) / 2), toon(0x8a5a44)), 0.05); this.leaves.push(leaf); this.scene.add(leaf); }
     const coop = new THREE.Group();
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(COOP.r, COOP.r, 0.15, 24), new THREE.MeshLambertMaterial({ color: 0xffe14d })); coop.add(pad);
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(COOP.r, COOP.r, 0.15, 24), toon(0xd3bf98)); coop.add(pad);
     for (let i = 0; i < 6; i++) { const st = box(0.4, 4, 0.4, PAINT[i]); const a = (i / 6) * Math.PI * 2; st.position.set(Math.cos(a) * COOP.r, 2, Math.sin(a) * COOP.r); coop.add(st); }
-    const sign = box(6, 1.2, 0.3, 0x2e9e5b); sign.position.set(0, 4.6, 0); coop.add(sign);
+    const sign = box(6, 1.2, 0.3, 0x3f6b45); sign.position.set(0, 4.6, 0); coop.add(sign);
     coop.position.set(COOP.x, heightAt(COOP.x, COOP.z) + 0.05, COOP.z); this.scene.add(coop); bakeInPlace(coop);
     const body = box(0.6, 1.2, 0.5, new THREE.Color(color).getHex()); body.position.y = 1.4; this.riderBike.position.y = 0.5;
     this.rider.add(body, this.riderBike); this.scene.add(this.rider, this.reticle.group);
@@ -222,8 +234,27 @@ export class GtpRenderer implements GameRenderer {
       for (const o of this.pools.get('cop')?.values() ?? []) o.visible = classic;
       for (const o of this.pools.get('flame')?.values() ?? []) o.visible = true;
     }
+    // trams (cel models; classic gets them too so the debug view still shows what can hit you)
+    this.sync('tram', s.trams ?? [], () => buildTram(), (o, t) => {
+      const h = heightAt(t.x, t.z), sl = (heightAt(t.x + 3, t.z) - heightAt(t.x - 3, t.z)) / 6;
+      o.position.set(t.x, h, t.z); o.rotation.set(0, t.dir > 0 ? Math.PI / 2 : -Math.PI / 2, 0); o.rotateX(-Math.atan(sl * t.dir));
+    });
+    const art = s.art === 'classic' ? 'classic' : 'cel';
+    if (art !== this.art) {
+      this.art = art; const cel = art === 'cel';
+      this.classic.visible = !cel; if (this.cel) this.cel.group.visible = cel; if (this.celGround) this.celGround.visible = cel;
+      // warm late-afternoon light + haze for the cel city; flat daylight for classic
+      this.hemi?.color.setHex(cel ? 0xdfe6ea : 0xffffff); this.hemi?.groundColor.setHex(cel ? 0x6b5a40 : 0x557744); if (this.hemi) this.hemi.intensity = cel ? 1.25 : 1.6;
+      this.sun?.color.setHex(cel ? 0xffd6a0 : 0xffffff); this.sun?.position.set(cel ? -90 : 60, cel ? 55 : 100, cel ? -40 : 30); if (this.sun) this.sun.intensity = cel ? 2.1 : 1.6;
+      if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = cel ? 150 : 120; this.scene.fog.far = cel ? 430 : 320; }
+      (this.scene.background as THREE.Color).setHex(cel ? 0xeee3cf : 0x9fd8ff);
+    }
+    this.cel?.update(s.t);
+    const ov = (globalThis as { __gtpCam?: { pos: [number, number, number]; look: [number, number, number]; fov?: number } }).__gtpCam;
+    if (ov && this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 500; this.scene.fog.far = 1600; }
+    if (ov) { this.cam.position.set(...ov.pos); this.cam.lookAt(...ov.look); this.cam.fov = ov.fov ?? 60; this.cam.updateProjectionMatrix(); } // capture/debug only
     this.r.info.reset();
-    if (this.jsr) { this.jsr.setStyle(s.art ?? 'sliver'); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
+    if (this.jsr) { this.jsr.setStyle(art); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
   }
 
   unmount() {

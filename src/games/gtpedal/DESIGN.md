@@ -19,13 +19,14 @@ A canal with a drawbridge that keeps cycling partly open, so you can try to jump
 ## Controls (Zwift Ride)
 | Input | On bike | On foot |
 |---|---|---|
-| Paddles (L/R) | tap: switch to the next line left/right; hold: free steer (`lineLeave: hold`, default) or switch at forks only (`lineLeave: forks`); **in the air: hold to spin** | tap: cycle candidate target (bikes, path directions); auto-walk to it |
+| Paddles (L/R) **or D-pad ◀ ▶ / arrow keys** | tap: switch to the next line left/right; hold: free steer (`lineLeave: hold`, default) or switch at forks only (`lineLeave: forks`); **in the air: hold to spin** | tap: cycle candidate target (bikes, path directions); auto-walk to it |
 | A | dismount (leave bike parked) | steal / mount the targeted bike |
 | B | fire current weapon at lock-on target | same |
 | Y | hop | — |
-| Z | grind (hold near tram track / rail) | — |
+| Z | grind (hold near tram track / rail); **hold right behind a moving tram to hitch** | — |
 | Shifters | cycle weapon (L down/up = prev/next) | same |
-| D-pad | camera nudge / spare | — |
+| D-pad ◀ ▶ | same as the paddles (tap = switch line / pick target, hold = steer with a 0.5 s ramp from 35 % to full lock since there's no analogue travel (`dpadRampS`), air = spin) | same as paddles |
+| Desktop pedalling | no trainer needed: the repo's fake-bike keys (W/S cadence, E/D power, R/F HR; `shell/fakeKeys.ts`) already drive power, so no extra up-arrow mapping | — |
 | powerUpL/R pair | reserved (pause) | reserved |
 
 ## Movement & physics (pure sim, hand-rolled; no physics library)
@@ -88,14 +89,37 @@ Heat from hits: +0.5 per bystander (max +1.5 per blast), +1 per cop, +0.5 per mo
 - **Bike co-op** (yellow pad with paint posts, west of the bridge): ride through with heat → repaint (new colour), heat 0.
 - Cops are launched/oiled/set on fire like everyone else; hurting cops raises heat.
 
-## Art direction: Jet Set Radio sliver (render-only)
-`gtpedal.artStyle` = `sliver` (default) | `classic`. In `sliver`, ONE corner (the sunken plaza + east tower,
-`render/jsr.ts` `SLIVER`) gets the beauty pass; the rest of town stays blocky:
-toon ramp shading (3-step `MeshToonMaterial`), thin warm-brown ink outlines (scaled back-face hulls), a calm grounded
-palette (brick/terracotta, sandstone, sage + deep greens, weathered wood, slate, cream), hand-shaped
-benches/planters/trees/lamps/ledges, sandstone paving following the steps (no graffiti, by request), flat cel shadows (blob + sheared slab), sky gradient, and a single gentle grade pass (slight
-saturation, gentle warmth, soft vignette; cadenza `Post` pattern) that only runs while the rider is within 25 m of the sliver.
-The rider swaps to toon + ink while inside. Next step if it lands: roll the kit out district by district.
+## Art direction: calm cel city (render-only)
+`gtpedal.artStyle` = `cel` (default, everywhere) | `classic` (plain blocks, debug fallback). The JSR sliver gating is retired:
+toon ramp shading (3-step `MeshToonMaterial`), thin warm-brown ink hulls, calm grounded palette (brick/terracotta, sandstone,
+sage + deep greens, weathered wood, slate, cream), sky gradient, warm low golden sun + warm haze fog, one gentle grade pass.
+`render/world3d.ts` builds the city procedurally (deterministic hash): rowhouses subdivided into 6-9 m houses with varied
+height/colour, framed windows with mullions, doors with stoops, balconies with railings, flower boxes, shopfronts with
+striped awnings, gable roofs with chimneys and dormers or flat roofs with parapets + rooftop gardens; towers dressed on all four
+faces; market stalls with striped canopies and crates; hillside villas; quay walls + coping, footbridges, moored boats; tram
+stops (platform, shelter, sign), overhead wire poles; toon trees, grass tufts, hedges, lamps, benches, bike racks, planters.
+Canal water is a toon shader (hard-edged ripple bands, animated foam at the quay walls). Ground is vertex-coloured per district.
+
+### Districts (map 400 × 400 m, ~2.8× the old 240 m core which is unchanged in the middle)
+- **Old town** (north): three rows of brick rowhouse blocks, cross streets every ~64 m, tram line 2 on `TRAM2_Z`.
+- **Canal quarter**: the canal now runs from the foot of the hillside to the east edge; drawbridge + two fixed footbridges; boats.
+- **Park** (east): half-pipe channel with decks, second bowl, grassy mounds.
+- **Market** (south): shop rows around a square full of stalls.
+- **Hillside** (west): smooth 16 m climb (real trainer grade), switchback path, villas.
+
+### Perf
+Static world merged per 100 m chunk into one vertex-coloured toon mesh + one ink mesh (+ one baked props batch); three.js
+frustum-culls whole chunks. Measured (`renderer.info`, 960×540): street views 57-116 draw calls, ride/tram clips max 126,
+full-map aerial 168 — all under the 200 target. Triangles 0.2-0.45 M per street view.
+
+## Public transit (sim: `sim/trams.ts`, pure)
+Two tram routes (`TRAM_ROUTES`) shuttle end to end, easing into each stop (dwell 4 s, 6 s at termini) and turning back.
+- Grind the rails alongside (existing tram lines).
+- **Tram surfing**: land on the roof from a jump and ride along; paddles/D-pad turn you round; Y hops off with the tram's speed.
+- **Hitch**: hold Z just behind the rear bumper of a moving tram to be towed; released when you let go or it stops.
+- Moving tram + you on the ground = knocked off (cartoon launch). A stopped tram is a wall you bounce off.
+- Pedestrians and cops in its way get launched. Autopilot waits for trams at crossings.
+Optional cable car / ferry: not built (the hillside tram route already climbs the hill).
 
 ## Characters & bikes (render-only, `render/chars.ts`)
 Procedural, cel-shaded with warm-brown ink (normal-pushed back-face hulls that work on merged + instanced geometry).

@@ -15,7 +15,7 @@ export { paletteFromPixels, paletteFromKey } from './library/palette';
 export { MixEngine, type EngineOpts, type EngineState } from './player/engine';
 export { decodeMono } from './player/decode';
 export { encodeWav } from './player/wav';
-export { analyzeInWorker, renderSynthWav } from './analysis/client';
+export { analyzeInWorker, analyzeWindowInWorker, renderSynthWav } from './analysis/client';
 export { rateQueue, type QueueRating } from './rating';
 
 export { searchOnline, loadOnlineAudio, resolverConfig, setResolverConfig, type OnlineProvider } from './online/client';

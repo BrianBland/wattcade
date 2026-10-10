@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { concatFixtures, driftReport, matchEvents, replayRolling, seamsOf, silence } from '../online/drift';
-import { estimatedAnalysis, foldTempo, mergeWindow, MIN_ESTIMATE_S } from '../online/rolling';
+import { estimatedAnalysis, foldTempo, mergeWindow, MIN_ESTIMATE_S, retainedFeatureBytes, stitchSeam } from '../online/rolling';
+import { beatRuns } from '../analysis/structure';
 import { renderScore } from '../synth/render';
 import { makeScore } from '../synth/score';
 import { scoreAnalysis } from '../synth/truth';
@@ -58,4 +59,37 @@ describe('rolling replay vs ground truth (short synth fixture)', () => {
     expect(rep.seams.every((x) => x.barPhaseKept !== false)).toBe(true);
     expect(Math.abs(r.merged.bpm - truth.bpm)).toBeLessThan(1);
   }, 60000);
+});
+
+describe('feature-accumulated rolling structure (#64 PR 2)', () => {
+  const bf = (t: number) => ({ t, low: 0, energy: 0, timbre: new Float32Array(12), chroma: new Float32Array(12) });
+  it('stitchSeam drops a duplicate and fills one missing beat at a seam', () => {
+    expect(stitchSeam([0, 0.5, 1.0, 1.1, 1.5].map(bf), 1.05, 0.5).map((b) => b.t)).toEqual([0, 0.5, 1.0, 1.5]);
+    expect(stitchSeam([0, 0.5, 1.5, 2.0].map(bf), 1.2, 0.5).map((b) => b.t)).toEqual([0, 0.5, 1.0, 1.5, 2.0]);
+    expect(stitchSeam([0, 0.5, 1.0].map(bf), 0.7, 0.5).map((b) => b.t)).toEqual([0, 0.5, 1.0]);
+  });
+  it('beatRuns splits at silence gaps and sustained tempo changes', () => {
+    const a = grid(120, 0, 10), b = grid(120, 22, 30), c = grid(90, 30.5, 40);
+    expect(beatRuns([...a, ...b]).length).toBe(2);
+    expect(beatRuns([...a, ...c]).length).toBe(2);
+    expect(beatRuns(grid(120, 0, 20))).toEqual([[0, 40]]);
+  });
+  const SONGS = [['edm', 1], ['rock', 1], ['ambient', 2], ['rock', 2]] as const;
+  it.each(SONGS)('%s #%i: streamed phrase accuracy >= 0.85 with bar phase and BPM intact; features stay small', (style, seed) => {
+    const s = makeScore(style, seed), truth = scoreAnalysis(s), pcm = renderScore(s, ANALYSIS_SR), dur = pcm.length / ANALYSIS_SR;
+    const r = replayRolling(pcm, ANALYSIS_SR), rep = driftReport(r.merged, truth, seamsOf(dur));
+    expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);
+    expect(rep.downbeatF).toBeGreaterThan(0.95);
+    expect(rep.seamBeatF).toBeGreaterThan(0.95);
+    expect(Math.abs(r.merged.bpm - truth.bpm)).toBeLessThan(1);
+    expect(retainedFeatureBytes(r.merged)).toBeLessThan(64 * 1024);           // vs ~12 MB per decoded 34 s stereo window
+    expect(r.merged.confidence).toBe('metadata');
+  }, 120000);
+  it('silence between songs restarts the bar count (phrase accuracy >= 0.85)', () => {
+    const mk = (seed: number) => { const s = makeScore('edm', seed, { short: true }), t = scoreAnalysis(s); return { pcm: renderScore(s, ANALYSIS_SR), ref: t }; };
+    const a = mk(1), b = mk(3), c = concatFixtures([a, { pcm: silence(12, ANALYSIS_SR) }, b], ANALYSIS_SR);
+    const r = replayRolling(c.pcm, ANALYSIS_SR), rep = driftReport(r.merged, { bpm: a.ref.bpm, ...c.ref }, seamsOf(c.durationS));
+    expect(rep.downbeatF).toBeGreaterThan(0.95);
+    expect(rep.phraseF).toBeGreaterThanOrEqual(0.85);
+  }, 120000);
 });

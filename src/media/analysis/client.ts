@@ -1,5 +1,6 @@
 import type { SongAnalysis } from '../types';
 import { analyzePcm } from './analyze';
+import type { BeatFeature } from './structure';
 import { renderScore } from '../synth/render';
 import { encodeWav } from '../player/wav';
 import type { SynthScore } from '../synth/score';
@@ -41,4 +42,10 @@ export async function analyzeInWorker(pcm: Float32Array, sr: number, progress?: 
 export async function renderSynthWav(score: SynthScore, sr = 32000): Promise<Uint8Array> {
   if (typeof Worker === 'undefined') return encodeWav(renderScore(score, sr), sr);
   return call<Uint8Array>({ kind: 'synth', score, sr }, []);
+}
+
+/** Rolling window: analysis plus compact per-beat features; the PCM is transferred and dropped (no audio retained). */
+export async function analyzeWindowInWorker(pcm: Float32Array, sr: number, tempoHint?: number): Promise<{ analysis: SongAnalysis; beats: BeatFeature[] }> {
+  if (typeof Worker === 'undefined') { let beats: BeatFeature[] = []; const analysis = analyzePcm(pcm, sr, { tempoHint, onBeatFeatures: (b) => { beats = b; } }); return { analysis, beats }; }
+  return call({ kind: 'window', pcm, sr, tempoHint }, [pcm.buffer]);
 }

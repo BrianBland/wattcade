@@ -3,6 +3,7 @@ import { DIFF, buildTrack, effortAt, extendTrack } from '../sim/track';
 import { planRide } from '../sim/ride';
 import { advanceCoaching, freshCoaching } from '../sim/coaching';
 import { rideTimeline } from './fixtures';
+import { synthTimeline } from '../../../media/synth/queue';
 
 const options = { difficulty: 'pro' as const, mode: 'mono' as const, seed: 1 };
 describe('Cadenza ride pacing', () => {
@@ -32,7 +33,7 @@ describe('Cadenza ride pacing', () => {
   it('extends brief breaks and gives more recovery with Longer Breaks', () => {
     const tl = rideTimeline([[0, 60, 'verse'], [60, 65, 'break'], [65, 150, 'build'], [150, 210, 'verse']]);
     const normal = planRide(tl, DIFF.pro), longer = planRide(tl, DIFF.pro, true);
-    expect(normal.find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 90 });
+    expect(normal.find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 75 });
     expect(longer.find((b) => b.phase === 'recover')).toMatchObject({ t0: 60, t1: 105 });
     const recovery = (xs: typeof normal) => xs.filter((b) => b.phase === 'recover').reduce((sum, b) => sum + b.t1 - b.t0, 0);
     expect(recovery(longer)).toBeGreaterThan(recovery(normal));
@@ -43,10 +44,29 @@ describe('Cadenza ride pacing', () => {
     for (const longerBreaks of [false, true]) {
       const track = buildTrack(tl, { ...options, longerBreaks });
       const recovery = track.rideBlocks.find((b) => b.phase === 'recover' && b.t0 <= 100 && b.t1 >= 100)!;
-      expect(recovery.t1 - recovery.t0).toBeGreaterThanOrEqual(longerBreaks ? 60 : 45);
+      expect(recovery.t1 - recovery.t0).toBeGreaterThanOrEqual(longerBreaks ? 60 : 24);
       expect(effortAt(track, 110, 'pro')).toMatchObject({ phase: 'recover', countdown: null, floorFtp: 0, ergFtp: 0.5, gradePct: 0.5 });
       expect(track.stunts.some((s) => s.kind === 'launch' && s.t0 === 110)).toBe(false);
     }
+  });
+
+  it('retains builds and drops throughout a music set instead of turning most of the ride into rest', () => {
+    const tl = synthTimeline({ style: 'edm', songs: 3, seed: 1 });
+    const ride = planRide(tl, DIFF.pro);
+    const recoveryS = ride.filter((b) => b.phase === 'recover').reduce((t, b) => t + b.t1 - b.t0, 0);
+    expect(recoveryS / tl.durationS).toBeLessThan(0.45);
+    expect(ride.filter((b) => b.phase === 'climb').length).toBeGreaterThanOrEqual(5);
+    expect(ride.filter((b) => b.phase === 'sprint').length).toBe(tl.sections.filter((s) => s.kind === 'drop').length);
+    expect(ride.filter((b) => b.phase === 'hold').length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('keeps a build between breaks and lets a standard ride count down into the next musical drop', () => {
+    const tl = rideTimeline([[0, 30, 'verse'], [30, 45, 'break'], [45, 60, 'build'], [60, 75, 'break'], [75, 105, 'drop'], [105, 150, 'verse']]);
+    const track = buildTrack(tl, options);
+    expect(effortAt(track, 50, 'pro').phase).toBe('climb');
+    expect(effortAt(track, 72, 'pro')).toMatchObject({ phase: 'recover', countdown: 3, target: { min: 1, max: 5 } });
+    expect(effortAt(track, 75, 'pro').phase).toBe('sprint');
+    expect(effortAt(buildTrack(tl, { ...options, longerBreaks: true }), 75, 'pro').phase).toBe('recover');
   });
 
   it('limits sprint duration, rejects closely spaced drops and rests in music without detected breaks', () => {

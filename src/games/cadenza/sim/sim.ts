@@ -2,7 +2,7 @@ import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '
 import { synthTimeline } from '../../../media/synth/queue';
 import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 import { rideIndexAt } from './ride';
-import { advanceCoaching, freshCoaching } from './coaching';
+import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle; longerBreaks?: boolean }
@@ -38,7 +38,7 @@ export interface CadenzaSnapshot {
   zone: { index: number; n: number; kind: SectionKind; hue: number; left: number; label: string; floorFtp: number };
   /** The effort asked for right now: phase, floor watts (0 = none), seconds left in the phase. */
   effort: { ftp: number; ok: boolean; phase: Phase; watts: number; left: number; erg: boolean;
-    instruction: string; countdown: number | null; min: number; max: number; transition: boolean;
+    instruction: string; countdown: number | null; min: number; max: number; transition: boolean; coaching: Direction;
     /** 0..1, eased: how far (and how long) the rider has been under the floor / over the zone's ceiling. Drives the fade and the overcharge. */
     under: number; over: number; ceilingWatts: number;
     /** For the track gauge: phase floor / ceiling as FTP fractions (0 = none) and rpm. */
@@ -368,6 +368,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
           instruction: lastEffort.countdown ? String(lastEffort.countdown) : coaching.direction === 'harder' ? trainer === 'erg' ? 'Keep Spinning' : 'Harder'
             : coaching.direction === 'easier' ? 'Ease Off' : trainer === 'erg' && lastEffort.instruction === 'Harder' ? 'Keep Spinning' : lastEffort.instruction,
           countdown: lastEffort.countdown, min: lastEffort.target.min, max: lastEffort.target.max, transition: lastEffort.transition,
+          coaching: lastEffort.countdown || lastEffort.transition ? null : coaching.direction,
           under, over, ceilingWatts: Math.round(ceiling * ctx.profile.ftp),
           floorFtp: lastEffort.phase === 'recover' ? 0 : lastEffort.floorFtp, ceilingFtp: ceiling, cadence: Math.round(cadence),
         },

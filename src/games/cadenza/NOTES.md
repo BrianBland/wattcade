@@ -9,10 +9,13 @@ media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard 
   onsets (min gap 0.36/0.22/0.11 s, lanes 3/3/5; greys never in a neighbour's lane). `stunts`: builds ≥ 13 s end in a 9 s
   climbing 360° helix (≥ 20 m clear of the coil below, suppressed during recovery); **planned sprints open with a launch**: a 2.6 s 360° corkscrew,
   block-free (`LAUNCH` margins), then the hard bank. Drops skipped for recovery do not launch or bank hard.
-- `ride.ts` plans effort separately: coalesces short normal targets into ≥30 s portions, preserves difficulty-capped
-  10/15/20 s sprints, suppresses sprints less than 30 s apart (60 s with Longer Breaks). Breaks/outros/later intros
-  get ≥30 s recovery (45 s with Longer Breaks); song handovers get 45 s (60 s). Nearby recovery windows merge.
-  If analysis has no breaks, recovery follows at most 120 s work (90 s with Longer Breaks). End-of-set windows may be shorter.
+- `ride.ts` plans effort separately: smooths brief normal fluctuations toward ≥30 s portions while preserving meaningful
+  builds and post-drop holds of ≥12 s. Work never merges into recovery. It preserves difficulty-capped
+  10/15/20 s sprints, suppresses sprints less than 30 s apart (60 s with Longer Breaks). Breaks/outros
+  get ≥15 s recovery (45 s with Longer Breaks); song handovers get 24 s (60 s). Only recovery windows ≤3 s apart merge;
+  later intros rely on the handover window rather than becoming separate breaks. Standard rides can count down in the
+  last 3 s of a musical break and preserve the next drop. If analysis has no breaks, 30 s recovery follows at most
+  180 s work (45 s after 90 s with Longer Breaks). End-of-set windows may be shorter.
   `effortAt` uses these blocks: 3 s countdown widens the upper bound to Z5 without raising the floor; normal transitions
   allow the union of old/new bands for 5 s before settling. `rateTrack` estimates load from the ride plan.
 - `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing, persisted Longer Breaks), controls (paddles = absolute position; D-pad/Z/A step),
@@ -34,7 +37,9 @@ viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
-`hud.ts` (persistent big pedal instruction/countdown; target band + effort time, shield, score + chain pops, launch meter + rating, song recap card), `layout.ts` (tested).
+`hud.ts` (big pedal instructions for 3 s on effort changes, 4 s for Break; countdown and sustained off-target coaching stay
+visible while relevant; target band + effort time, shield, score + chain pops, launch meter + rating, song recap card), `layout.ts` (tested).
+Callout subtext uses larger white sentence-case text on a dark backing, with actionable recovery guidance.
 Recovery smoothly reduces pulses, bloom, camera shake, streaks, shader band motion and tunnel rings/reflections. Fireworks
 are suppressed in recovery. Reduced flashing multiplies this effort-driven intensity.
 AV penalty: 3 s grace, 10 s ramp, 3 s attack/1.2 s recovery, quadratic shortfall, capped at 0.75; reduced flashing halves gray.

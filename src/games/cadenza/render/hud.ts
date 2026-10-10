@@ -1,5 +1,6 @@
 import type { CadenzaSnapshot, SongRecap } from '../sim/sim';
 import type { Box, Layout } from './layout';
+import { rideIndexAt } from '../sim/ride';
 
 /** Wipeout-flavoured DOM HUD: score, zone card, shield, now playing, zone callouts, dropout banner, pre-game menu. */
 const CSS = `
@@ -19,7 +20,8 @@ const CSS = `
 .ws-callout { text-align:center; opacity:0; transition:opacity .35s, transform .35s; transform:scale(.9); }
 .ws-callout.on { opacity:1; transform:scale(1); }
 .ws-callout b { display:block; font-size:clamp(26px,5vw,58px); font-weight:900; font-style:italic; letter-spacing:3px; color:#fff; text-shadow:0 0 12px var(--acc), 0 3px 0 #000; line-height:1; }
-.ws-callout span { display:block; font:800 16px system-ui; letter-spacing:2px; color:var(--acc); text-shadow:0 2px 0 #000; margin-top:6px; }
+.ws-callout span { display:table; margin:10px auto 0; padding:5px 12px; border-radius:5px; background:#05040ce6; font:700 clamp(18px,2.4vw,24px)/1.3 system-ui; letter-spacing:.5px; color:#fff; text-transform:none; text-shadow:0 1px 2px #000; }
+.ws-callout span:empty { display:none; }
 .ws-cue { display:block; font-size:24px; letter-spacing:3px; }
 .ws-cue.up { color:#fff; text-shadow:0 0 14px #fff, 0 2px 0 #000; }
 .ws-cue.down { color:#ff5a2a; text-shadow:0 0 14px #ff3b12, 0 2px 0 #000; }
@@ -75,6 +77,7 @@ export class Hud {
   private popUntil = 0; private recapUntil = 0; private launchKey = '';
   private send?: (a: unknown) => void;
   private lastKey = '';
+  private effortKey = ''; private calloutUntil = 0; private calloutContent = ''; private lastP = -1;
   constructor(container: HTMLElement) {
     if (!document.getElementById('ws-hud-css')) { const st = document.createElement('style'); st.id = 'ws-hud-css'; st.textContent = CSS; document.head.appendChild(st); }
     this.root = document.createElement('div'); this.root.className = 'ws-hud';
@@ -132,6 +135,7 @@ export class Hud {
     this.updateLaunch(s);
     if (s.menu) {
       this.callout.classList.remove('on'); this.drop.textContent = '';
+      this.effortKey = ''; this.calloutUntil = 0;
       this.menu.style.display = 'flex';
       for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = 'none';
       const m = s.menu, key = JSON.stringify(m) + accent;
@@ -158,9 +162,18 @@ export class Hud {
     const e = s.effort;
     const want = e.erg ? 'ERG · keep spinning' : e.phase === 'recover' ? 'Easy pedaling' : `${e.watts}${e.ceilingWatts ? `–${e.ceilingWatts}` : '+'} W`;
     this.zone.innerHTML = `<b>Z${e.min}${e.max !== e.min ? `–${e.max}` : ''}</b><span>${fmt(e.left)} left</span><span class="${e.ok ? 'ok' : 'low'}">${want}</span>`;
-    const instruction = e.countdown ? String(e.countdown) : s.dropout ? e.phase === 'recover' ? 'Break' : e.erg ? 'Keep Spinning' : 'Harder' : e.instruction;
-    this.callout.innerHTML = `<b>${esc(instruction)}</b><span>${e.countdown ? 'Get ready' : s.dropout ? `Reboot · ${s.dropout.left.toFixed(1)}s` : e.phase === 'recover' ? 'Take a breath' : ''}</span>`;
-    this.callout.classList.add('on');
+    const block = s.track.rideBlocks[rideIndexAt(s.track.rideBlocks, s.p)], key = `${block.t0}:${e.phase}`;
+    if (key !== this.effortKey || s.p < this.lastP) {
+      this.effortKey = key; this.calloutUntil = now + (e.phase === 'recover' ? 4 : 3);
+    }
+    this.lastP = s.p;
+    const show = !s.done && (!!e.countdown || !!e.coaching || !!s.dropout || now < this.calloutUntil);
+    this.callout.classList.toggle('on', show);
+    if (show) {
+      const instruction = e.countdown ? String(e.countdown) : s.dropout ? e.phase === 'recover' ? 'Break' : e.erg ? 'Keep Spinning' : 'Harder' : e.instruction;
+      const content = `<b>${esc(instruction)}</b><span>${e.countdown ? 'Get ready' : s.dropout ? `Reboot · ${s.dropout.left.toFixed(1)}s` : e.phase === 'recover' ? 'Easy pedaling · Z1–2' : ''}</span>`;
+      if (content !== this.calloutContent) { this.callout.innerHTML = content; this.calloutContent = content; }
+    }
     this.song.innerHTML = s.song ? `♪ ${esc(s.song.title)} — ${esc(s.song.artist)}${s.song.credit ? `<small>${esc(s.song.credit)}</small>` : ''}` : '';
     const bar = this.shield.firstElementChild as HTMLElement;
     bar.style.width = `${s.shield}%`;

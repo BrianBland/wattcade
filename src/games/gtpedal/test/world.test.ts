@@ -6,7 +6,7 @@ import { module } from '../index';
 
 const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as any;
 const mk = (tl: ConstructorParameters<typeof TimelineInput>[0], simOpts: Record<string, unknown> = {}) =>
-  createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), fake: { script: 'z2' }, seed: 1, simOpts } as any);
+  createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike', ...simOpts } } as any);
 
 describe('steering: paddles = handlebars, D-pad = locks', () => {
   it('paddles are proportional: a half paddle turns less than a full one, and nothing snaps you back', () => {
@@ -39,7 +39,7 @@ describe('steering: paddles = handlebars, D-pad = locks', () => {
 });
 
 describe('on foot: power = walk/jog/run', () => {
-  const run = (script: string) => { const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 1, simOpts: { cyclists: 0, npcs: [], spawn: { x: -100, z: 62, heading: 0, mode: 'foot' } } } as any); s.step(30 * 4); const r = snap(s).rider; return Math.hypot(r.x + 100, r.z - 62); };
+  const run = (script: string) => { const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 1, simOpts: { start: 'bike', cyclists: 0, npcs: [], spawn: { x: -100, z: 62, heading: 0, mode: 'foot' } } } as any); s.step(30 * 4); const r = snap(s).rider; return Math.hypot(r.x + 100, r.z - 62); };
   it('zero power stands still; more power runs further', () => {
     expect(run('idle')).toBeLessThan(0.01);
     expect(run('sprints')).toBeGreaterThan(0); expect(run('z2')).toBeGreaterThan(4);
@@ -143,5 +143,45 @@ describe('round 6: traffic, tram surfing, solid scenery, lines', () => {
     s.step(12); const q = snap(s), v = q.npcs.find((n: any) => n.id === 2000), fx = Math.sin(q.rider.heading), fz = Math.cos(q.rider.heading);
     expect((v.x - q.rider.x) * fx + (v.z - q.rider.z) * fz).toBeGreaterThan(-0.5); // not behind the camera
     s.step(30 * 3); expect(snap(s).npcs.find((n: any) => n.id === 2000).angryS).toBeGreaterThan(0);
+  });
+});
+
+describe('round 7: heavy knockdowns, start on foot, bike-like walking, tandem stoker', () => {
+  const raw = (tl: ConstructorParameters<typeof TimelineInput>[0], simOpts: Record<string, unknown> = {}, script = 'z2') =>
+    createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(tl), fake: { script }, seed: 1, simOpts } as any);
+  it('knockdowns are low and heavy: thud, short slide, lie there ~3 s, then groggy', () => {
+    const s = mk([{ t: 0.1, press: 'a' }, { t: 0.15, release: 'a' }], { cyclists: 0, npcs: [], cops: false, cyclistsAt: [{ x: 1, z: -97, kind: 'bmx', line: 0, dir: 1, cruise: 3 }], spawn: { x: 0, z: -98, heading: 0 } }); // yank a cyclist off
+    let top = 0, downAt = -1, upAt = -1;
+    for (let i = 0; i < 30 * 10; i++) { s.step(1); const q = snap(s), n = q.npcs.find((m: any) => m.id === 2000); top = Math.max(top, n.y); if (n.stunS > 0 && downAt < 0) downAt = q.t; if (downAt > 0 && upAt < 0 && n.stunS <= 0 && n.airS <= 0 && q.t > downAt + 0.2) upAt = q.t; }
+    expect(top).toBeLessThan(1); expect(downAt).toBeGreaterThan(0); expect(upAt - downAt).toBeGreaterThan(2.5); expect(upAt - downAt).toBeLessThan(4.5);
+  });
+  it('a player crash is a low tumble and you are back up in ~1.5-2 s of lying down', () => {
+    const s = raw([], { start: 'bike', cyclists: 0, npcs: [], cops: false, trams: false, spawn: { x: 0, z: 40, heading: Math.PI / 2 } }, 'sprints'); // into the plaza wall
+    let top = 0, t0 = -1, t1 = -1;
+    for (let i = 0; i < 30 * 12; i++) { s.step(1); const q = snap(s); if (q.mode === 'ragdoll') { if (t0 < 0) t0 = q.t; top = Math.max(top, q.ragdoll.y - heightAt(q.ragdoll.x, q.ragdoll.z)); } else if (t0 > 0 && t1 < 0) t1 = q.t; }
+    expect(t0).toBeGreaterThan(0); expect(top).toBeLessThan(2.5); expect(t1 - t0).toBeGreaterThan(1.4); expect(t1 - t0).toBeLessThan(3.5);
+  });
+  it('the game starts on foot with no bike and a call to action; a cyclist comes by to jack', () => {
+    const probe = raw([], {}); expect(snap(probe).mode).toBe('foot'); expect(snap(probe).goal).toMatch(/Grab a bike/);
+    expect(snap(probe).bikes.some((b: any) => b.mine)).toBe(false);
+    let T = -1; for (let i = 0; i < 30 * 15 && T < 0; i++) { probe.step(1); if (snap(probe).jackId >= 0) T = snap(probe).t; }
+    expect(T).toBeGreaterThan(0); expect(T).toBeLessThan(12);
+    const s = raw([{ t: T + 0.1, press: 'a' }, { t: T + 0.15, release: 'a' }], {}); s.step(Math.round((T + 0.4) * 30));
+    expect(snap(s).mode).toBe('bike'); expect(snap(s).stats.jacks).toBe(1); expect(snap(s).goal).not.toMatch(/Grab a bike/);
+  });
+  it('on foot it handles like a bike: paddles turn proportionally, power walks straight, a lock never auto-walks', () => {
+    const turn = (v: number) => { const s = raw([{ t: 1, paddleL: v }, { t: 2, paddleL: 0 }], { cyclists: 0, npcs: [], spawn: { x: 0, z: -100, heading: 0, mode: 'foot' } }); s.step(30); const h0 = snap(s).rider.heading; s.step(30); return Math.abs(snap(s).rider.heading - h0); };
+    expect(turn(0.5)).toBeGreaterThan(0.2); expect(turn(1)).toBeGreaterThan(turn(0.5) * 1.6);
+    const s = raw([], { cyclists: 0, npcs: [], spawn: { x: 0, z: -100, heading: 0, mode: 'foot' } }); s.step(30 * 3);
+    expect(Math.abs(snap(s).rider.heading)).toBeLessThan(1e-6); expect(snap(s).rider.z).toBeGreaterThan(-96);
+  });
+  it('tandem: sluggish solo; Ⓐ next to a bystander snatches a stoker and it flies; a crash drops them', () => {
+    const top = (opts: Record<string, unknown>, tl: ConstructorParameters<typeof TimelineInput>[0] = []) => { const s = raw(tl, { start: 'bike', startKind: 'tandem', cyclists: 0, cops: false, trams: false, ...opts }, 'sprints'); s.step(30 * 8); return s; };
+    const solo = top({ npcs: [] });
+    expect(snap(solo).goal).toMatch(/stoker/);
+    const duo = top({ npcs: [{ x: 1, z: -99 }], spawn: { x: 0, z: -100, heading: 0 } }, [{ t: 0.1, press: 'a' }, { t: 0.15, release: 'a' }]);
+    expect(snap(duo).stoker).toBeGreaterThanOrEqual(0); expect(snap(duo).stats.stokers).toBe(1);
+    expect(snap(duo).rider.speed).toBeGreaterThan(snap(solo).rider.speed * 1.6);
+    expect(snap(duo).goal).toBe('');
   });
 });

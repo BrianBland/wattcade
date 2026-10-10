@@ -1,6 +1,12 @@
 // Grand Theft Pedal renderer: blocky three.js neighbourhood + DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
 import { Fx } from './fx';
+/** Grit-pass light moods (cel only): hazy late afternoon, overcast, late dusk. */
+const MOODS = [
+  { hemi: 0xd6dadb, ground: 0x6b5a44, hemiI: 1.2, sun: 0xf0cc9c, sunI: 1.9, sunPos: [-90, 55, -40] as [number, number, number], fog: 0xddd2bf, fogNear: 140, fogFar: 420, top: 0x8ea3b4, mid: 0xc0c6c6, low: 0xddd2bf, dusk: 0 },
+  { hemi: 0xc7cbcd, ground: 0x5e5a50, hemiI: 1.5, sun: 0xd9d6cf, sunI: 0.85, sunPos: [-30, 90, -20] as [number, number, number], fog: 0xbcbdb8, fogNear: 90, fogFar: 330, top: 0x8c949a, mid: 0xaeb2b1, low: 0xc3c1b8, dusk: 0 },
+  { hemi: 0x8a90a8, ground: 0x4a3a30, hemiI: 0.95, sun: 0xff9a5a, sunI: 1.7, sunPos: [-140, 16, -60] as [number, number, number], fog: 0x9c8884, fogNear: 80, fogFar: 300, top: 0x3c4868, mid: 0x9a7a7a, low: 0xd9926a, dusk: 1 },
+];
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { Snapshot } from '../sim/sim';
 import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES, nearestOnLine } from '../sim/world';
@@ -29,7 +35,9 @@ export class GtpRenderer implements GameRenderer {
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
   private chars?: Characters; private charDt = 0; private charT = -1;
-  private fx = new Fx();
+  private poster?: HTMLDivElement; private posterKey = '';
+  private moodKey = ''; private mood?: (typeof MOODS)[number];
+  private fx = new Fx(); private stokerMark?: THREE.Group;
   private cel?: CelWorld; private classic = new THREE.Group(); private celGround?: THREE.Mesh; private art = '';
   private hemi?: THREE.HemisphereLight; private sun?: THREE.DirectionalLight;
   private jsr?: JsrSliver; private buildingMeshes: Array<{ mesh: THREE.Mesh; b: (typeof BUILDINGS)[number] }> = [];
@@ -59,7 +67,9 @@ export class GtpRenderer implements GameRenderer {
     this.hud.style.cssText = 'position:absolute;font:600 15px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
     this.toast = document.createElement('div');
     this.toast.style.cssText = 'position:absolute;text-align:center;font:800 26px system-ui;color:#ffe14d;text-shadow:0 2px 4px #000;pointer-events:none';
-    container.append(this.hud, this.toast);
+    this.poster = document.createElement('div'); // wanted poster heat HUD (grit pass)
+    this.poster.style.cssText = 'position:absolute;right:18px;top:64px;width:132px;padding:8px 8px 7px;background:linear-gradient(160deg,#e9dcbc,#d4c194 70%,#bfa874);color:#3a2214;font:700 11px Georgia,serif;text-align:center;box-shadow:2px 3px 0 #2a1a10,0 0 0 2px #6b4a2a inset;transform:rotate(-3deg);pointer-events:none;display:none;filter:sepia(.25) contrast(1.05)';
+    container.append(this.hud, this.toast, this.poster);
     this.ro = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.ro.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -261,12 +271,29 @@ export class GtpRenderer implements GameRenderer {
     if (Math.abs(this.cam.fov - c.fov) > 0.05) { this.cam.fov = c.fov; this.cam.updateProjectionMatrix(); }
     if (this.hud) this.hud.textContent = `${s.mode === 'bike' ? (R.kind ?? '') : s.mode}  ${(R.speed * 3.6).toFixed(0)} km/h${R.flat ? '  FLAT' : ''}\n` +
       (s.steerLock ? `🔒 ${s.steerLock.kind === 'line' ? `${LINES[s.steerLock.id]?.kind ?? 'line'} line` : s.steerLock.kind === 'npc' ? (s.npcs.find((n) => n.id === s.steerLock!.id)?.bike ? 'cyclist' : 'person') : 'bike'}  ◀ ▶ next · paddle = free\n` : '') +
-      `${'★'.repeat(Math.round(s.heat))}${'☆'.repeat(5 - Math.round(s.heat))}  ${s.weapon} ×${s.ammo[s.weapon]}${s.cops.length ? `  🚨${s.cops.filter((c) => c.state !== 'patrol').length}` : ''}${s.lostS > 0.5 ? `  hiding ${s.lostS.toFixed(0)}s` : ''}${s.gradePct > 0 ? `  ⛰ ${s.gradePct.toFixed(1)}%` : ''}`;
-    const EV: Record<string, string> = { bikejack: 'BIKE-JACKED!', cyclistKnocked: 'Sorry!', hitch: 'Hitching!', tramHit: 'TRAM!', busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
+      `${s.art === 'classic' ? `${'★'.repeat(Math.round(s.heat))}${'☆'.repeat(5 - Math.round(s.heat))}  ` : ''}${s.weapon} ×${s.ammo[s.weapon]}${s.cops.length ? `  🚨${s.cops.filter((c) => c.state !== 'patrol').length}` : ''}${s.lostS > 0.5 ? `  hiding ${s.lostS.toFixed(0)}s` : ''}${s.gradePct > 0 ? `  ⛰ ${s.gradePct.toFixed(1)}%` : ''}`;
+    const EV: Record<string, string> = { scream: 'AAAAAAH!', stoker: 'STOKER ACQUIRED! Pedal, hostage!', bikejack: 'BIKE-JACKED!', cyclistKnocked: 'Sorry!', hitch: 'Hitching!', tramHit: 'TRAM!', busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
     (globalThis as { __gtpInfo?: unknown }).__gtpInfo = { calls: this.r.info.render.calls, triangles: this.r.info.render.triangles, geometries: this.r.info.memory.geometries };
-    if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : s.jackId >= 0 ? 'Ⓐ JACK THAT BIKE!' : '');
+    if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : s.jackId >= 0 ? 'Ⓐ JACK THAT BIKE!' : s.stokerAt?.near ? 'Ⓐ GRAB THEM!' : s.goal || '');
+    if (this.poster) {
+      const stars = Math.round(s.heat), show = s.art !== 'classic' && s.heat > 0.05;
+      const key = `${show}:${stars}:${s.cops.length > 0}`;
+      if (key !== this.posterKey) {
+        this.posterKey = key; this.poster.style.display = show ? 'block' : 'none';
+        this.poster.innerHTML = `<div style="font:900 22px Georgia,serif;letter-spacing:2px;border-bottom:2px solid #3a2214;margin-bottom:3px">WANTED</div>` +
+          `<div style="font-size:9px;letter-spacing:1px">FOR CRIMES AGAINST CYCLING</div>` +
+          `<div style="font-size:20px;color:#8a1c12;margin:3px 0;text-shadow:1px 1px 0 #2a1a10">${'★'.repeat(stars)}<span style="color:#a89468">${'★'.repeat(5 - stars)}</span></div>` +
+          `<div style="font-size:9px">${s.cops.length ? 'APPROACH WITH CAUTION' : 'REWARD: 1 BIKE LIGHT'}</div>`;
+      }
+      if (show && stars >= 3) this.poster.style.transform = `rotate(${-3 + Math.sin(s.t * 18) * 1.2}deg)`; else if (show) this.poster.style.transform = 'rotate(-3deg)';
+    }
     this.lockMarks(s);
+    { // bouncing arrow over the nearest bystander you could snatch onto the tandem
+      if (!this.stokerMark) { const g = new THREE.Group(), cone = new THREE.ConeGeometry(0.32, 0.7, 4); cone.rotateX(Math.PI); const m = new THREE.Mesh(cone, new THREE.MeshBasicMaterial({ color: 0xf2a541, depthTest: false })); m.renderOrder = 20; const ink = new THREE.Mesh(cone, new THREE.MeshBasicMaterial({ color: 0x2b1d14, side: THREE.BackSide, depthTest: false })); ink.scale.setScalar(1.18); ink.renderOrder = 19; g.add(ink, m); this.stokerMark = g; this.scene.add(g); }
+      const st = s.stokerAt; this.stokerMark.visible = !!st;
+      if (st) { this.stokerMark.position.set(st.x, heightAt(st.x, st.z, s.bridge) + 2.5 + Math.abs(Math.sin(s.t * 4)) * 0.35, st.z); this.stokerMark.rotation.y = s.t * 2; this.stokerMark.scale.setScalar(st.near ? 1.3 : 1); }
+    }
     this.reticle.update(this.cam, lockPt, lockSize, s.weapon, s.t, Math.max(1 / 60, this.charT < 0 ? 1 / 30 : s.t - this.charT));
     if (this.chars) {
       const classic = s.art === 'classic';
@@ -283,6 +310,8 @@ export class GtpRenderer implements GameRenderer {
       o.position.set(t.x, h, t.z); o.rotation.set(0, t.dir > 0 ? Math.PI / 2 : -Math.PI / 2, 0); o.rotateX(-Math.atan(sl * t.dir));
     });
     const art = s.art === 'classic' ? 'classic' : 'cel';
+    const moodKey = `${art}:${s.look?.mood ?? 0}`;
+    if (moodKey !== this.moodKey) { this.moodKey = moodKey; this.art = ''; }
     if (art !== this.art) {
       this.art = art; const cel = art === 'cel';
       this.classic.visible = !cel; if (this.cel) this.cel.group.visible = cel; if (this.celGround) this.celGround.visible = cel;
@@ -291,7 +320,15 @@ export class GtpRenderer implements GameRenderer {
       this.sun?.color.setHex(cel ? 0xffd6a0 : 0xffffff); this.sun?.position.set(cel ? -90 : 60, cel ? 55 : 100, cel ? -40 : 30); if (this.sun) this.sun.intensity = cel ? 2.1 : 1.6;
       if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = cel ? 150 : 120; this.scene.fog.far = cel ? 430 : 320; }
       (this.scene.background as THREE.Color).setHex(cel ? 0xeee3cf : 0x9fd8ff);
+      if (cel) { // grit pass moods
+        const M = MOODS[s.look?.mood ?? 0] ?? MOODS[0];
+        this.hemi?.color.setHex(M.hemi); this.hemi?.groundColor.setHex(M.ground); if (this.hemi) this.hemi.intensity = M.hemiI;
+        this.sun?.color.setHex(M.sun); this.sun?.position.set(...M.sunPos); if (this.sun) this.sun.intensity = M.sunI;
+        if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = M.fogNear; this.scene.fog.far = M.fogFar; }
+        (this.scene.background as THREE.Color).setHex(M.fog); this.mood = M;
+      }
     }
+    if (this.mood) this.jsr?.setLook({ top: this.mood.top, mid: this.mood.mid, low: this.mood.low, fog: this.mood.fog, grit: s.look?.grit ?? 1, dusk: this.mood.dusk, t: s.t });
     this.cel?.update(s.t);
     this.fx.frame(s, this.cam); this.cam.position.add(this.fx.shake); if (this.chars) this.chars.squash = this.fx.squash;
     const ov = (globalThis as { __gtpCam?: { pos: [number, number, number]; look: [number, number, number]; fov?: number } }).__gtpCam;
@@ -304,6 +341,6 @@ export class GtpRenderer implements GameRenderer {
   unmount() {
     this.ro?.disconnect(); this.jsr?.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | undefined; if (mat && 'dispose' in mat) mat.dispose(); });
-    this.r?.dispose(); this.r?.domElement.remove(); this.hud?.remove(); this.toast?.remove(); this.r = undefined;
+    this.r?.dispose(); this.r?.domElement.remove(); this.hud?.remove(); this.toast?.remove(); this.poster?.remove(); this.r = undefined;
   }
 }

@@ -15,12 +15,15 @@ export const PAL = {
 };
 const C = new THREE.Color();
 
+let GRIT = true;
+/** Toggle baked grime (call before building the city). */
+export const setGrit = (on: boolean) => { GRIT = on; };
 /** Geometry collector: boxes / prisms with a per-vertex colour, optional ink hull. */
 class Batch {
   body: number[] = []; col: number[] = []; ink: number[] = [];
   private tri(arr: number[], v: number[][], c?: number) {
     for (const p of v) arr.push(p[0], p[1], p[2]);
-    if (c !== undefined) { C.setHex(c); for (let i = 0; i < v.length; i++) this.col.push(C.r, C.g, C.b); }
+    if (c !== undefined) for (const p of v) { C.setHex(GRIT ? grime(c, p[0], p[1], p[2]) : c); this.col.push(C.r, C.g, C.b); }
   }
   /** Axis box centred (x,z), bottom at y; optional rotation about y. */
   box(x: number, y: number, z: number, w: number, h: number, d: number, c: number, ink = 0, ry = 0) {
@@ -229,6 +232,15 @@ export class CelWorld {
         bb.box((x0 + x1) / 2, (y0 + y1) / 2 + 0.45, (z0 + z1) / 2, 0.09, 0.09, L / n, 0xb8bcb4, 0.025, ry);
       }
     }
+    if (GRIT) for (let i = 0; i < 1400; i++) { // litter: paper, cans, bags, bottles — near paths and walls
+      const x = (hash(i, 51) * 2 - 1) * (HALF - 4), z = (hash(i, 52) * 2 - 1) * (HALF - 4);
+      if (buildingAt(x, z) || inCanal(z, 0.5) || !(nearLine(x, z, 3.5) || buildingAt(x + 2, z) || buildingAt(x - 2, z) || buildingAt(x, z + 2) || buildingAt(x, z - 2))) continue;
+      const bb = B(x, z), y = heightAt(x, z) + 0.01, k = hash(i, 53), ry = hash(i, 54) * 6.28;
+      if (k < 0.45) bb.box(x, y, z, 0.26, 0.015, 0.2, pick([0xe8e2d0, 0xd9cfb6, 0xc9c2b0, 0xb8b0a0], hash(i, 55)), 0, ry);       // paper / flyer
+      else if (k < 0.7) bb.box(x, y, z, 0.07, 0.12, 0.07, pick([0xa33a2a, 0x9aa3a6, 0x3f6b45, 0xc8a24a], hash(i, 56)), 0, ry);  // can
+      else if (k < 0.85) bb.box(x, y, z, 0.32, 0.26, 0.28, pick([0x2c2a28, 0x3b4146, 0x5a4a3a], hash(i, 57)), 0.02, ry);        // bin bag
+      else { bb.box(x, y, z, 0.06, 0.06, 0.24, pick([0x4f6b45, 0x6b4a2a, 0x8aa0a0], hash(i, 58)), 0, ry); }                       // bottle on its side
+    }
     for (let i = 0; i < 900; i++) { // grass tufts (no ink)
       const x = (hash(i, 21) * 2 - 1) * (HALF - 4), z = (hash(i, 22) * 2 - 1) * (HALF - 4);
       if (buildingAt(x, z) || inCanal(z, 1) || nearLine(x, z, 2.5)) continue;
@@ -285,7 +297,15 @@ export class CelWorld {
 }
 
 /** Ground colours for the cel style (per vertex): paving on paths, rails grey, district greens, market cream, stone banks. */
-export function groundColour(x: number, z: number, h: number): number {
+/** Grit pass: multiply a colour by a blotchy wear/grime factor (deterministic, per position). */
+export function grime(c: number, x: number, y: number, z: number, amt = 1): number {
+  const n1 = hash(Math.floor(x * 0.45) * 7 + Math.floor(z * 0.45) * 131, Math.floor(y * 0.9) + 3), n2 = hash(Math.floor(x * 1.7), Math.floor(z * 1.7) * 3 + Math.floor(y * 2.1));
+  const f = 1 - amt * (0.1 * n1 + 0.06 * n2 + (y % 6 < 0.7 ? 0.05 : 0)); // patches + speckle + soot band near each storey's foot
+  const r = ((c >> 16) & 255) * f, g = ((c >> 8) & 255) * f, b = (c & 255) * f * 0.98;
+  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b);
+}
+export function groundColour(x: number, z: number, h: number): number { return grime(groundBase(x, z, h), x, 0, z, 1.3); }
+function groundBase(x: number, z: number, h: number): number {
   if (h < -CANAL.depth + 0.5) return 0x3f6f78;
   if (Math.hypot(x - BOWL.x, z - BOWL.z) < BOWL.r || Math.hypot(x - BOWL2.x, z - BOWL2.z) < BOWL2.r) return 0xbfb4a0;
   if (Math.abs(x - HALFPIPE.x) < HALFPIPE.w && z > HALFPIPE.z0 && z < HALFPIPE.z1) return 0xc4b8a2;

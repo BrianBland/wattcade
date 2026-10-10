@@ -97,10 +97,11 @@ function ledge(len: number): THREE.Group {
 
 // ---- post grade (cadenza Post pattern; one cheap full-screen pass) ----
 const GRADE = {
-  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, uAmt: { value: 0 } },
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, uAmt: { value: 0 }, uGrit: { value: 1 }, uT: { value: 0 }, uDusk: { value: 0 } },
   vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
-uniform sampler2D tDiffuse; uniform float uAmt; varying vec2 vUv;
+uniform sampler2D tDiffuse; uniform float uAmt; uniform float uGrit; uniform float uT; uniform float uDusk; varying vec2 vUv;
+float hh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
   vec3 c = texture2D(tDiffuse, vUv).rgb;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -108,7 +109,14 @@ void main() {
   g = floor(g * 8.0 + 0.5) / 8.0 * 0.08 + g * 0.92;      // barely-there banding
   g = (g - 0.5) * 1.03 + 0.505;                         // gentle contrast
   g *= mix(vec3(1.0), vec3(1.03, 1.0, 0.95), 1.0);      // magenta-warm tint
-  float v = smoothstep(0.95, 0.35, length(vUv - 0.5)); g *= 0.9 + 0.1 * v;
+  // grit: pull saturation down, dusty warm-grey lift, crushed toe, fine film grain, heavier vignette
+  float lg = dot(g, vec3(0.299, 0.587, 0.114));
+  g = mix(g, vec3(lg), 0.3 * uGrit);
+  g = mix(g, vec3(0.80, 0.74, 0.64) * (0.55 + 0.45 * lg), 0.11 * uGrit);
+  g = mix(g, smoothstep(0.03, 1.0, g), 0.35 * uGrit);
+  g += (hh(floor(vUv * vec2(960.0, 540.0)) + fract(uT * 7.0) * 61.0) - 0.5) * 0.035 * uGrit;
+  g = mix(g, g * vec3(1.02, 0.94, 0.98), uDusk * 0.5);
+  float v = smoothstep(0.95, 0.35, length(vUv - 0.5)); g *= mix(0.9 + 0.1 * v, 0.76 + 0.24 * v, uGrit);
   gl_FragColor = vec4(mix(c, clamp(g, 0.0, 1.0), uAmt), 1.0);
 }`,
 };
@@ -121,6 +129,11 @@ export class JsrSliver {
   private riderParts: Array<{ mesh: THREE.Mesh; classic: THREE.Material; hull: THREE.Mesh }> = [];
   private riderToon = new Map<THREE.Mesh, THREE.MeshToonMaterial>();
   private style: ArtStyle = 'cel';
+  private fogCol = JSR.skyLow; private grit = 1; private t = 0; private dusk = 0;
+  /** Grit pass: sky gradient + fog colour per mood, grade strength, grain clock. */
+  setLook(o: { top: number; mid: number; low: number; fog: number; grit: number; dusk: number; t: number }) {
+    this.skyU.uTop.value.setHex(o.top); this.skyU.uMid.value.setHex(o.mid); this.skyU.uLow.value.setHex(o.low); this.fogCol = o.fog; this.grit = o.grit; this.dusk = o.dusk; this.t = o.t;
+  }
 
   constructor(scene: THREE.Scene) {
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 12), new THREE.ShaderMaterial({
@@ -193,14 +206,14 @@ export class JsrSliver {
       t.color.copy(base.color);
       r.mesh.material = inS ? t : base; r.hull.visible = inS;
     }
-    if (scene.fog instanceof THREE.Fog) scene.fog.color.set(amt ? JSR.skyLow : 0x9fd8ff);
+    if (scene.fog instanceof THREE.Fog) scene.fog.color.set(amt ? this.fogCol : 0x9fd8ff);
     if (amt < 0.01) { renderer.render(scene, cam); return; }
     if (!this.composer) {
       this.composer = new EffectComposer(renderer); this.composer.addPass(new RenderPass(scene, cam));
       this.grade = new ShaderPass(GRADE); this.composer.addPass(this.grade); this.composer.addPass(new OutputPass());
       const sz = renderer.getSize(new THREE.Vector2()); this.composer.setSize(sz.x, sz.y);
     }
-    (this.grade!.uniforms as typeof GRADE.uniforms).uAmt.value = amt;
+    { const u = this.grade!.uniforms as typeof GRADE.uniforms; u.uAmt.value = amt; u.uGrit.value = this.grit; u.uT.value = this.t; u.uDusk.value = this.dusk; }
     this.composer.render();
   }
   setSize(w: number, h: number) { this.composer?.setSize(w, h); }

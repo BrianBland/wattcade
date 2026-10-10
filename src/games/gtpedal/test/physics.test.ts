@@ -79,18 +79,18 @@ describe('arcade physics', () => {
 describe('sim', () => {
   const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as any;
   it('A dismounts and A again steals back (own bike is not a steal)', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 3, press: 'a' }, { t: 3.1, release: 'a' }, { t: 3.3, press: 'a' }, { t: 3.4, release: 'a' }]), fake: { script: 'z2' }, seed: 1 });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 3, press: 'a' }, { t: 3.1, release: 'a' }, { t: 3.3, press: 'a' }, { t: 3.4, release: 'a' }]), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike' } } as any);
     s.step(30 * 3.15); expect(snap(s).mode).toBe('foot');
     s.step(30 * 1.5); expect(snap(s).mode).toBe('bike'); expect(snap(s).stats.steals).toBe(0);
   });
   it('pedalling moves you; climbing sets trainer grade', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike' } } as any);
     s.step(30 * 20);
     expect(snap(s).stats.distanceM).toBeGreaterThan(150);
     expect(s.finish().stats).toBeTruthy();
   });
   it('B fires the bazooka at the locked target and launches them', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { npcs: [{ x: 0.5, z: -80 }] } } as any);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike', npcs: [{ x: 0.5, z: -80 }] } } as any);
     let fired = false;
     for (let i = 0; i < 30 * 120 && !fired; i++) { s.step(1); if (snap(s).lock >= 0) fired = true; }
     expect(fired).toBe(true);
@@ -102,7 +102,7 @@ describe('pause settings, spins, line-leave modes', () => {
   it('grade settings come from the save, apply via receive and persist', () => {
     const p = testProfile(); (p.gameData as Record<string, unknown>).gtpedal = { gradeScale: 1.2, gradeMax: 5 };
     let saved: any = null;
-    const s = createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1, onSave: (d) => { saved = d; } });
+    const s = createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1, onSave: (d: unknown) => { saved = d; }, simOpts: { start: 'bike' } } as any);
     const sim = s.sim as any;
     expect(sim.settings().map((x: any) => [x.key, x.value])).toEqual([['gradeScale', 1.2], ['gradeMax', 5]]);
     sim.receive({ type: 'setting', key: 'gradeScale', value: 0.4 });
@@ -111,14 +111,14 @@ describe('pause settings, spins, line-leave modes', () => {
     sim.receive({ type: 'setting', key: 'gradeMax', value: 99 }); expect(sim.settings()[1].value).toBe(15);
   });
   it('holding a paddle in the air spins; Y alone just hops', () => {
-    const hop = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.6, release: 'y' }]), fake: { script: 'z2' }, seed: 1 });
+    const hop = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.6, release: 'y' }]), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike' } } as any);
     hop.step(30 * 4); const h0 = snap(hop).rider.heading; hop.step(8); expect(snap(hop).rider.air).toBe(true);
     expect(Math.abs(snap(hop).rider.spin)).toBe(0); void h0;
-    const spin = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.05, release: 'y', paddleL: 1 }, { t: 4.5, paddleL: 0 }]), fake: { script: 'z2' }, seed: 1 });
+    const spin = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.05, release: 'y', paddleL: 1 }, { t: 4.5, paddleL: 0 }]), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike' } } as any);
     spin.step(30 * 4.4); expect(Math.abs(snap(spin).rider.spin)).toBeGreaterThan(1);
   });
   it('paddles free-steer off a D-pad-locked line and cancel the lock', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 1, press: 'right' }, { t: 1.1, release: 'right' }, { t: 3, paddleR: 1 }, { t: 3.8, paddleR: 0 }]), fake: { script: 'z2' }, seed: 1, simOpts: { cyclists: 0 } } as any);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 1, press: 'right' }, { t: 1.1, release: 'right' }, { t: 3, paddleR: 1 }, { t: 3.8, paddleR: 0 }]), fake: { script: 'z2' }, seed: 1, simOpts: { start: 'bike', cyclists: 0 } } as any);
     s.step(30 * 2.5); expect(snap(s).steerLock?.kind).toBe('line');
     s.step(30 * 2); expect(snap(s).steerLock).toBeNull(); expect(Math.abs(snap(s).rider.x)).toBeGreaterThan(2);
   });

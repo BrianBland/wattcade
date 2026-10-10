@@ -12,7 +12,7 @@ const taps = (...seq: Array<[number, Button]>) => new TimelineInput(seq.flatMap(
 const evs: Array<{ type: string; data?: any }> = [];
 function run(opts: Record<string, unknown>, input: any = new NullInput(), script = 'idle') {
   evs.length = 0;
-  return createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 1, simOpts: opts, onEmit: (e: any) => evs.push(e) } as any);
+  return createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 1, simOpts: { start: 'bike', ...opts }, onEmit: (e: any) => evs.push(e) } as any);
 }
 const S = (s: { step(n: number): void }, sec: number) => s.step(Math.round(sec * 30));
 const base = { spawn: { x: 0, z: -100, heading: 0 }, cops: false };
@@ -21,13 +21,11 @@ describe('weapons', () => {
   it('bazooka: rocket to the locked bystander, boom launches them skyward, costs ammo, adds heat', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -85 }], startWeapon: 'bazooka' }, taps([0.5, 'b']));
     S(s, 0.4); expect(snap(s).lockAt).not.toBeNull();
-    S(s, 1.0);
-    const n = snap(s).npcs[0];
-    expect(n.airS > 0 || n.y > 1).toBe(true);
+    let top = 0, downed = false; for (let i = 0; i < 40; i++) { S(s, 0.05); const q = snap(s).npcs[0]; top = Math.max(top, q.y); if (q.stunS > 1.5) downed = true; }
+    expect(top).toBeGreaterThan(0.8); expect(top).toBeLessThan(3); // a modest hop, not a moon shot
+    expect(downed).toBe(true); // thud: lies on the ground a while
     expect(snap(s).ammo.bazooka).toBe(2); expect(snap(s).heat).toBeGreaterThan(0);
     expect(evs.some((e) => e.type === 'launch' && e.data.weapon === 'bazooka')).toBe(true);
-    let top = 0; for (let i = 0; i < 60; i++) { S(s, 0.05); top = Math.max(top, snap(s).npcs[0].y); }
-    expect(top).toBeGreaterThan(2.5); expect(top).toBeLessThan(9); // funny, but stays in shot
   });
   it('grenade: lobbed, sits on its fuse, then pops everyone in radius', () => {
     const s = run({ ...base, npcs: [{ x: 0, z: -88 }, { x: 3, z: -88 }], startWeapon: 'grenade' }, taps([0.5, 'b']));

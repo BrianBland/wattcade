@@ -348,6 +348,21 @@ export class Characters {
   /** squash & stretch y-scale for the player's bike + rider (set by Fx) */
   squash = 1;
   private parked = new Map<number, BikeRig>(); private cyc = new Map<number, BikeRig & { wa: number; ca: number }>();
+  private lights = new Map<number, THREE.Group>();
+  /** Harsh strobing red/blue light bar + glare sprites (grit pass). */
+  private copLight(id: number) {
+    let g = this.lights.get(id);
+    if (!g) {
+      g = new THREE.Group();
+      for (const [x, c] of [[-0.12, 0xff1a1a], [0.12, 0x1a4dff]] as const) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.1), new THREE.MeshBasicMaterial({ color: c })); b.position.x = x; b.name = 'bar';
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color: c, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.9 })); sp.position.x = x * 2; sp.scale.setScalar(1.6); sp.name = 'glare';
+        g.add(b, sp);
+      }
+      this.lights.set(id, g); this.group.add(g);
+    }
+    return g;
+  }
   private segways = new Map<number, SegwayRig>(); private horses = new Map<number, HorseRig>();
   private prev = new Map<string, { x: number; z: number; h: number; dist: number; lean: number; steer: number }>();
   private crank = 0; private wheelA = 0; private riderLook: PersonLook;
@@ -393,7 +408,7 @@ export class Characters {
       this.spin(b, this.wheelA, this.crank, R.air ? 0 : m.steer + wob);
       b.root.updateMatrixWorld(true);
       this.addRider(b, this.riderLook, 0, t, m.lean);
-      if (b.kind === 'tandem') this.addRider(b, lookFor(99), 1, t, m.lean);
+      if (b.kind === 'tandem' && (s.stoker ?? -1) >= 0) this.addRider(b, lookFor(s.stoker), 1, t, m.lean + Math.sin(t * 11) * 0.12); // snatched stoker, squirming
     }
     for (const [k, b] of this.riderBikes) if (!used.has(k)) b.root.visible = false;
     if (s.mode === 'foot') {
@@ -404,6 +419,7 @@ export class Characters {
     // --- pedestrians ---
     const seenC = new Set<number>();
     for (const n of s.npcs) {
+      if (n.stoker) continue; // drawn on your tandem's back seat
       const { m, v } = this.motion(`n${n.id}`, n.x, n.z, n.heading, dt);
       if (n.bike && n.airS <= 0) { // NPC cyclist: own bike rig, pedalling, seated rider (hidden when far away)
         const dist = Math.hypot(n.x - R.x, n.z - R.z);
@@ -458,6 +474,7 @@ export class Characters {
         for (const w of g.wheels) w.rotation.x += (v / 0.22) * dt;
         const hipY = 0.26 + L.thigh + L.shin;
         if (flying) this.crowd.add(worldAt(c.x, c.y + 0.8, c.z, c.heading), lk, { kind: 'ragdoll', t, phase: 0, spin: spinR * 1.3 });
+        else if (c.downed && c.stunS > 0) this.crowd.add(worldAt(c.x + 0.8, c.y + 0.2, c.z, c.heading, -Math.PI / 2), lk, { kind: 'ragdoll', t: 0.3 + c.id, phase: 0, spin: 0 }); // flat on the ground
         else this.crowd.add(worldAt(c.x, c.y + hipY, c.z, c.heading, Math.min(0.25, v * 0.02)), lk, { kind: c.flailS > 0 ? 'flail' : 'stand', t, phase: 0 });
       } else {
         let h = this.horses.get(c.id); if (!h) { h = buildHorse(c.id % 2 ? 0x6b4a33 : 0x8a6a4a); this.horses.set(c.id, h); this.group.add(h.root); } hc.add(c.id);
@@ -467,6 +484,17 @@ export class Characters {
         if (flying) this.crowd.add(worldAt(c.x, c.y + 2.2, c.z, c.heading), lk, { kind: 'ragdoll', t, phase: 0, spin: spinR * 1.2 });
         else { const w = h.root.matrixWorld.clone().multiply(new THREE.Matrix4().makeTranslation(0, 1.82 + Math.abs(Math.sin(m.dist * 1.2)) * 0.05, -0.05)); this.crowd.add(w, lk, { kind: c.flailS > 0 ? 'flail' : 'horse', t, phase: 0, torsoLean: 0.1, hands: new THREE.Vector3(0, 0.15, 0.4) }); }
       }
+    }
+    { // cop light bars: double-flash strobe, red/blue alternating, glare blooms
+      const seen = new Set<number>();
+      for (const c of s.cops) {
+        if (c.state === 'patrol') continue; seen.add(c.id);
+        const g = this.copLight(c.id), hy = c.kind === 'horse' ? 3.25 : 2.35;
+        g.position.set(c.x, c.y + hy, c.z); g.rotation.y = c.heading;
+        const ph = (t * 4 + c.id * 0.37) % 1, side = Math.floor(t * 4 + c.id * 0.37) % 2, on = ph < 0.18 || (ph > 0.3 && ph < 0.48);
+        g.children.forEach((o, i) => { const mine = Math.floor(i / 2) === side; o.visible = o.name === 'bar' ? true : mine && on; if (o.name === 'bar') ((o as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(mine && on ? (i < 2 ? 0xff3030 : 0x3060ff) : (i < 2 ? 0x551010 : 0x101a55)); });
+      }
+      for (const [id, g] of this.lights) if (!seen.has(id)) { this.group.remove(g); this.lights.delete(id); }
     }
     for (const [id, g] of this.segways) if (!sc.has(id)) { this.group.remove(g.root); this.segways.delete(id); }
     for (const [id, h] of this.horses) if (!hc.has(id)) { this.group.remove(h.root); this.horses.delete(id); }

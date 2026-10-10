@@ -4,12 +4,12 @@ import { heightAt, onStairs, buildingAt } from './world';
 
 export type CopKind = 'segway' | 'horse';
 export type CopState = 'chase' | 'search' | 'patrol';
-export interface Cop {
+export interface Cop { /** knocked flat (lying) rather than spinning out */ downed?: boolean;
   id: number; kind: CopKind; x: number; y: number; z: number; vx: number; vy: number; vz: number; heading: number; speed: number;
   state: CopState; airS: number; stunS: number; flailS: number; flat: boolean; alive: boolean;
   path: NavNode[]; repathS: number; lastSeen: { x: number; z: number } | null; tackleCool: number;
 }
-export interface CopParams { segwaySpeed: number; horseSpeed: number; segwayRampMul: number; stairsMul: number; sightR: number; tackleR: number; gravity: number }
+export interface CopParams { segwaySpeed: number; horseSpeed: number; segwayRampMul: number; stairsMul: number; sightR: number; tackleR: number; gravity: number; /** lie on the ground after landing */ downS?: number }
 
 export const newCop = (id: number, kind: CopKind, x: number, z: number): Cop => ({ id, kind, x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, heading: 0, speed: 0,
   state: 'chase', airS: 0, stunS: 0, flailS: 0, flat: false, alive: true, path: [], repathS: 0, lastSeen: null, tackleCool: 1 });
@@ -34,10 +34,10 @@ export function stepCop(c: Cop, p: CopParams, dt: number, rider: { x: number; z:
     c.airS += dt; c.vy -= p.gravity * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.z += c.vz * dt;
     if (buildingAt(c.x, c.z)) { c.vx *= -0.5; c.vz *= -0.5; c.x += c.vx * dt * 2; c.z += c.vz * dt * 2; }
     const g = heightAt(c.x, c.z, bridge);
-    if (c.y <= g) { c.y = g; c.vy = 0; c.vx = 0; c.vz = 0; c.airS = 0; c.stunS = Math.max(c.stunS, 2.5); }
+    if (c.y <= g) { c.y = g; c.vy = 0; c.vx = 0; c.vz = 0; c.airS = 0; c.stunS = Math.max(c.stunS, p.downS ?? 3); c.downed = true; }
     return false;
   }
-  if (c.stunS > 0) { c.stunS -= dt; c.heading += dt * 8; c.speed = 0; return false; } // seeing stars / spinning out
+  if (c.stunS > 0) { c.stunS -= dt; if (!c.downed) c.heading += dt * 8; else if (c.stunS <= 0) c.downed = false; c.speed = 0; return false; } // seeing stars / spinning out
   let tx: number, tz: number;
   if (c.flailS > 0) { // butt on fire: run around wildly
     c.flailS -= dt; c.heading += Math.sin(c.flailS * 7) * dt * 6; tx = c.x + Math.sin(c.heading) * 5; tz = c.z + Math.cos(c.heading) * 5;

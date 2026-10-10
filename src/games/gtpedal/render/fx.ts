@@ -18,6 +18,7 @@ export class Fx {
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sc = new THREE.Vector3(); private c = new THREE.Color();
   private zero = new THREE.Matrix4().makeScale(0, 0, 0);
   private prevAir = false; private prevAirS = 0; private prevMode = ''; private prevEvAt = -99; private seenBlast = new Set<number>(); private prevT = -1;
+  private npcAir = new Map<number, number>(); private ragDown = false;
   private shakeA = 0; private squashT = 9; private squashA = 0;
   /** camera offset applied this frame (renderer subtracts it before the next follow step) */
   readonly shake = new THREE.Vector3();
@@ -54,6 +55,12 @@ export class Fx {
       this.shakeA = Math.max(this.shakeA, 0.45 * fx.shake);
       if (fx.dust > 0) this.puff(R.x, R.y + 0.2, R.z, Math.round(10 * fx.dust), { spread: 3.5, up: 1.2, s0: 0.2, s1: 0.6, life: 0.7, col: 0xe6d6b8 });
     }
+    for (const n of s.npcs) { // NPC thuds: a puff of dust where they hit the ground
+      const was = this.npcAir.get(n.id) ?? 0; this.npcAir.set(n.id, n.airS);
+      if (was > 0.15 && n.airS <= 0 && fx.dust > 0 && Math.hypot(n.x - R.x, n.z - R.z) < 60) this.puff(n.x, n.y + 0.1, n.z, Math.round(5 * fx.dust), { spread: 2, up: 0.5, s0: 0.12, s1: 0.4, life: 0.5, col: 0xd9c9a8 });
+    }
+    if (s.ragdoll && s.ragdoll.y <= heightAt(s.ragdoll.x, s.ragdoll.z, s.bridge) + 0.05 && !this.ragDown) { this.ragDown = true; this.shakeA = Math.max(this.shakeA, 0.3 * fx.shake); if (fx.dust > 0) this.puff(s.ragdoll.x, s.ragdoll.y + 0.1, s.ragdoll.z, Math.round(8 * fx.dust), { spread: 2.5, up: 0.6, s0: 0.15, s1: 0.5, life: 0.6, col: 0xd9c9a8 }); }
+    if (!s.ragdoll) this.ragDown = false;
     if (s.lastEventAt !== this.prevEvAt) { this.prevEvAt = s.lastEventAt; if (s.lastEvent === 'tramHit') this.shakeA = Math.max(this.shakeA, 0.6 * fx.shake); }
     for (const b of s.blasts) {
       if (this.seenBlast.has(b.id)) continue; this.seenBlast.add(b.id);

@@ -1,30 +1,48 @@
 import * as THREE from 'three';
 import { BLOCK } from '../sim/sim';
-import { shader } from './look';
+import { COLOR_POINTS } from '../sim/track';
+import { shader, U } from './look';
 import { LW, newFrame, type Path } from './path';
 
-export const BLOCK_COLORS = ['#a35cff', '#3d8bff', '#2dffa0', '#ffd23d', '#ff3d5a'].map((c) => new THREE.Color(c));
+/**
+ * Blocks wear the track's live palette rather than a fixed rainbow: the zone accent (`uAcc`), running toward white-hot as
+ * the block is worth more. Value tier 0..1 = colour index / top index (the shader gets it in instanceColor.r).
+ */
+export const blockTier = (color: number) => Math.max(0, color) / (COLOR_POINTS.length - 1);
+/** How far the top-value block runs toward white (× tier²). */
+export const BLOCK_WHITE = 0.25;
+const WHITE = new THREE.Color('#ffffff');
+/** A block's colour right now (for effects that leave the shader: absorb flash, miss shards). */
+export function blockColor(color: number, out = new THREE.Color()): THREE.Color {
+  const t = blockTier(color);
+  return out.copy(U.uAcc.value).lerp(WHITE, BLOCK_WHITE * t * t);
+}
 /** Hazards are the only monochrome thing on the track: black glass mines with white-hot spikes. */
 const MINE_HOT = new THREE.Color('#ffffff'), MINE_DARK = new THREE.Color('#34343f');
 
 const CUBE_VS = /* glsl */ `
 attribute float aPhase;
-varying vec2 vUv; varying vec3 vCol; varying float vDepth;
+varying vec2 vUv; varying float vTier; varying float vDepth;
 mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0., -s, 0., 1., 0., s, 0., c); }
 void main() {
-  vUv = uv; vCol = instanceColor;
+  vUv = uv; vTier = instanceColor.r;
   vec3 p = rotY(uTime * 1.7 + aPhase) * position;                     // spin
   p *= 1.0 + 0.16 * uBeat;                                              // and pump on the beat
   p.y += 0.12 * sin(uTime * 3.0 + aPhase);
   vec4 mv = modelViewMatrix * instanceMatrix * vec4(p, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv;
 }`;
 const CUBE_FS = /* glsl */ `
-varying vec2 vUv; varying vec3 vCol; varying float vDepth;
+uniform float uWhite;
+varying vec2 vUv; varying float vTier; varying float vDepth;
 void main() {
   float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
   float rim = 1.0 - smoothstep(0.03, 0.16, e);
   float core = 1.0 - smoothstep(0.0, 0.5, length(vUv - 0.5));
-  vec3 c = vCol * (0.35 + 0.9 * core + 2.2 * rim) * (1.0 + 0.5 * uBeat);
+  // the track's accent (and its drop shimmer, as the road does); worth more = hotter and brighter
+  vec3 acc = mix(uAcc, hue2rgb(fract(vDepth * 0.004 + uTime * 0.12 + vTier * 0.2)), uAcid * 0.6);
+  vec3 col = mix(acc, vec3(1.0), uWhite * vTier * vTier);
+  // glassy: a dim tinted core and a saturated neon rim, so the hue survives bloom; value lifts the glow
+  vec3 c = col * (0.16 + 0.3 * core + (0.75 + 0.35 * vTier) * rim) * (0.85 + 0.3 * vTier) * (1.0 + 0.3 * uBeat);
   gl_FragColor = vec4(mix(c, uFog, smoothstep(uNear, uFar, vDepth) * 0.9), 1.0);
 }`;
 
@@ -110,13 +128,13 @@ export class Blocks {
   private shards: THREE.InstancedMesh; private pool: Shard[] = []; private free: number[] = [];
   private prev: Uint8Array; private flies: Fly[] = []; private primed = false;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private fr = newFrame();
-  private home: Float32Array;
+  private home: Float32Array; private tier = new THREE.Color(); private c = new THREE.Color();
   constructor(private path: Path, fromS = 0, toS = path.track.durationS) {
     const t = path.track;
     this.visible = t.blocks.flatMap((b, k) => b.t >= fromS && b.t <= toS ? [k] : []);
     const nMine = this.visible.filter((k) => t.blocks[k].color < 0).length, nCube = this.visible.length - nMine;
     const cubeGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95), mineGeo = mineGeometry();
-    this.cubes = new THREE.InstancedMesh(cubeGeo, shader(CUBE_VS, CUBE_FS), Math.max(1, nCube));
+    this.cubes = new THREE.InstancedMesh(cubeGeo, shader(CUBE_VS, CUBE_FS, { uWhite: { value: BLOCK_WHITE } }), Math.max(1, nCube));
     this.mines = new THREE.InstancedMesh(mineGeo, mineMaterial(), Math.max(1, nMine));
     const cubePhase = new Float32Array(Math.max(1, nCube)), minePhase = new Float32Array(Math.max(1, nMine));
     this.slot = new Int32Array(t.blocks.length).fill(-1);
@@ -129,9 +147,9 @@ export class Blocks {
       path.point(path.distAt(b.t), b.lane, mine ? 1.0 : 0.75, this.fr, this.v);
       this.home.set([this.v.x, this.v.y, this.v.z], k * 3);
       this.place(k, this.v, 1);
-      if (!mine) this.cubes.setColorAt(i, BLOCK_COLORS[b.color]);
+      if (!mine) { const t = blockTier(b.color); this.cubes.setColorAt(i, this.tier.setRGB(t, t, t)); }
     });
-    if (!nCube) this.cubes.setColorAt(0, BLOCK_COLORS[0]);
+    if (!nCube) this.cubes.setColorAt(0, this.tier.setRGB(0, 0, 0));
     if (!nCube) this.cubes.setMatrixAt(0, this.m.makeScale(0, 0, 0));
     if (!nMine) this.mines.setMatrixAt(0, this.m.makeScale(0, 0, 0));
     cubeGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(cubePhase, 1));
@@ -142,7 +160,7 @@ export class Blocks {
     this.shards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }), SH);
     for (let i = 0; i < SH; i++) {
       this.pool.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), rot: new THREE.Euler(), spin: new THREE.Vector3(), life: 0, max: 1, size: 0.2, track: false, o: 0, lx: 0, ly: 0, vo: 0, vx: 0, vy: 0 });
-      this.free.push(i); this.shards.setMatrixAt(i, this.m.makeScale(0, 0, 0)); this.shards.setColorAt(i, BLOCK_COLORS[0]);
+      this.free.push(i); this.shards.setMatrixAt(i, this.m.makeScale(0, 0, 0)); this.shards.setColorAt(i, WHITE);
     }
     this.shards.frustumCulled = false;
     this.group.add(this.cubes, this.mines, this.shards);
@@ -214,7 +232,7 @@ export class Blocks {
       const st = state[k];
       if (st === this.prev[k]) continue;
       this.prev[k] = st;
-      const b = t.blocks[k], c = b.color >= 0 ? BLOCK_COLORS[b.color] : MINE_DARK;
+      const b = t.blocks[k], c = b.color >= 0 ? blockColor(b.color, this.c) : MINE_DARK;
       if (st === BLOCK.HIT) this.flies.push({ i: k, t0: now, from: this.homeOf(k).clone() });
       else if (st === BLOCK.MISS) { this.crumble(k, c); this.place(k, this.v, 0); }
       else if (st === BLOCK.GREY_HIT) { this.shatter(this.homeOf(k).clone(), MINE_DARK, 40, 11, this.s.copy(fwd).multiplyScalar(speed * 0.7)); this.place(k, this.v, 0); on.greyHit(); }
@@ -224,7 +242,7 @@ export class Blocks {
     // collected blocks zip into the ship
     this.flies = this.flies.filter((f) => {
       const a = (now - f.t0) / 0.14;
-      if (a >= 1) { this.place(f.i, this.v, 0); const b = t.blocks[f.i]; on.absorb(BLOCK_COLORS[Math.max(0, b.color)]); return false; }
+      if (a >= 1) { this.place(f.i, this.v, 0); const b = t.blocks[f.i]; on.absorb(blockColor(b.color, this.c)); return false; }
       this.v.copy(f.from).lerp(craft, a * a);
       this.place(f.i, this.v, 1 - 0.7 * a);
       return true;

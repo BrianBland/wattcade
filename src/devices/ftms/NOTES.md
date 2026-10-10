@@ -6,7 +6,7 @@ CONTRACT-REQUEST: none.
 - `src/devices/ftms/index.ts`: `FtmsTrainer` (static `connect()`, user gesture; implements `TrainerDevice`; also `stats()`, `name`),
   pure codecs `parseIndoorBikeData`, `encodeSetSim/SetPower/SetResistance(raw,'u8'|'s16')/RequestControl/Start`,
   `parseControlPointResponse`, `parseResistanceRange` (real units, 0.1 applied), `parsePowerRange`, `resistancePctToRaw`,
-  `ControlPointQueue` (one in-flight write, coalesced per opcode, 3 s timeout), `reconnectLoop`/`backoffDelayS` (1,2,4,8,15 s).
+  `ControlPointQueue` (one in-flight write, coalesced per opcode, 3 s timeout), `reconnectLoop`/`backoffDelayS` (legacy exports; adapters use shared Bluetooth lifecycle).
 - `src/devices/hr/index.ts`: `HeartRateMonitor` (static `connect()`; implements `HrDevice`; `stats()`), `parseHeartRate`.
 - `stats().lastPacketAt` uses `performance.now()` (ms).
 
@@ -16,22 +16,22 @@ CONTRACT-REQUEST: none.
 - Resistance: uint8 form first; on failure retries as sint16 and remembers. `levelPct` 0..100 maps onto the supported range.
 - `apply({mode:'none'})` is a no-op (ok). Superseded (coalesced) commands resolve `{ok:true, detail:'coalesced'}`.
 - Bike data samples are merged across split packets; each callback gets the merged latest sample.
-- Reconnect reuses the same BluetoothDevice (`gattserverdisconnected`), status via `onStatus` (`detail` = "reconnect #n in Xs").
-- HR reconnect imports `reconnectLoop` from `../ftms/reconnect`.
+- Reconnect reuses the same BluetoothDevice (`gattserverdisconnected`), status via `onStatus` with bounded backoff and progress detail.
+- Trainer/HR use shared `../bluetooth/lifecycle`: serialized setup, cancellation, one bounded recovery task.
 
 ## Test
 `npx vitest run src/devices/ftms src/devices/hr`
 
 ## Gaps
-- Web Bluetooth glue (`trainer.ts`, `monitor.ts`) is untested (no BLE in CI); verify on hardware.
+- Glue failure/cancel/recovery paths have mock tests; real BLE remains a hardware check.
 - Machine Status (0x2ADA) is not subscribed; Feature (0x2ACC) is not read (capabilities assumed sim/erg true).
-- Reconnect does not clear stale `latest` merged sample.
+- Reconnect clears merged samples/ranges, reacquires control, and removes old notification listeners.
 
 ## Connect progress / timeouts (added after hardware feedback)
 - `HeartRateMonitor.connect(onProgress?: (step: string) => void, onLog?: (line: string) => void)`; instance `onLog(cb)`.
 - `FtmsTrainer.connect(onProgress?, onLog?)`, instance `onLog(cb)`.
-- Steps are 8 s timeouts (`steps.ts`: `withTimeout`, `setupWithRetry`); whole setup retried once after gatt.disconnect(); final error names the stuck step.
-- HR: listener added before startNotifications, which is raced with the first beat; connected once subscribed (no beat wait).
+- Connect deadline 15 s; other native steps 8 s. Initial retry follows cleanup/backoff; final failure closes the adapter.
+- HR: listener added before startNotifications, which is raced with the first beat; connected only after a valid beat (15 s wait).
 - FTMS connect succeeds even if Request Control is refused: status `{connected:true, detail:'Trainer control refused — close Zwift, then reconnect'}`; each `apply()` re-requests control while not held, and status is re-emitted without detail once granted.
 
 - Trainer/HR `connectDevice(device, onProgress?, onLog?)` uses an authorized object without a picker; `id` exposes the selected ID for saved setup.

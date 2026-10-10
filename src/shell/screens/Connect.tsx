@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { DeviceKind } from '../types';
 import { Btn, Dot } from '../components/Bits';
 import { KeyHints, Spinner } from '../components/ui';
-import { addSecondController, connectDevice, controllerCount, controllerInfo, disconnectDevice, getDeviceStatus, getFake, liveDevices, setFake, subscribeDevices, savedHrWatches, selectSavedHrWatch } from '../services';
+import { addSecondController, connectDevice, controllerCount, controllerInfo, disconnectDevice, getDeviceStatus, getFake, downloadBluetoothLog, liveDevices, setFake, subscribeDevices, savedHrWatches, selectSavedHrWatch } from '../services';
 import { MediaServerConnection } from '../components/MediaServerConnection';
 import { useMenuNav } from '../useMenuNav';
 
@@ -25,13 +25,14 @@ export function Connect({ onDone }: { onDone: () => void }) {
   useEffect(() => { const id = setInterval(() => force((n) => n + 1), 250); return () => clearInterval(id); }, []); // live readings
   const st = getDeviceStatus();
   const act = (i: number) => {
-    if (i < 3) { const k = ITEMS[i].kind; if (st[k].busy) return; void (st[k].connected ? disconnectDevice(k) : connectDevice(k)); }
+    if (i < 3) { const k = ITEMS[i].kind; void (st[k].busy || st[k].connected ? disconnectDevice(k) : connectDevice(k)); }
     else if (i === 3) document.querySelector<HTMLInputElement>('[aria-label="Media server URL"]')?.focus();
     else if (i === 4) setFake(!getFake());
-    else onDone();
+    else if (i === 5) onDone();
+    else downloadBluetoothLog();
   };
   const anyOn = ITEMS.some((it) => st[it.kind].connected);
-  const [idx, setIdx] = useMenuNav(6, [4, 2], act, onDone, true, { initial: 5 }); // default to Ride/Continue so a stray controller press can't disconnect a device
+  const [idx, setIdx] = useMenuNav(7, [4, 2, 1], act, onDone, true, { initial: 5 }); // default to Ride/Continue so a stray controller press can't disconnect a device
   return (
     <div class="screen">
       <div class="screen-head">
@@ -57,6 +58,8 @@ export function Connect({ onDone }: { onDone: () => void }) {
                   <button class="btn small" disabled={s.busy} onClick={(e) => { e.stopPropagation(); void connectDevice('hr'); }}>{s.error ? 'Select watch again' : '+ Add watch'}</button>
                 </div>
               )}
+              {s.busy && <button class="btn small" onClick={(e) => { e.stopPropagation(); void disconnectDevice(it.kind); }}>Cancel connection</button>}
+              {!s.connected && !s.busy && s.detail && it.kind !== 'hr' && <div class="dim small">{s.detail}</div>}
               {s.error && <div class="warn">{s.error}</div>}
               {it.kind === 'controller' && s.connected && <div class="dim small">fw {controllerInfo.firmware ?? '?'}</div>}
               {it.kind === 'controller' && s.connected && controllerCount() < 2 && (
@@ -73,6 +76,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
         <Btn focused={idx === 4} onClick={() => act(4)}>{getFake() ? 'Fake bike: ON' : 'Fake bike: off'}</Btn>
         <Btn primary focused={idx === 5} onClick={onDone}>Continue ▶</Btn>
       </div>
+      <Btn focused={idx === 6} onClick={downloadBluetoothLog}>Download Bluetooth log</Btn>
       <KeyHints hints={[['dpad', 'Move'], ['a', 'Connect / select'], ['b', 'Continue']]} />
     </div>
   );

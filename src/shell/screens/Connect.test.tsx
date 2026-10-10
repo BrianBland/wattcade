@@ -7,7 +7,7 @@ const m = vi.hoisted(() => ({
   status: { trainer: { connected: false }, controller: { connected: false }, hr: { connected: false, busy: false, detail: '', error: undefined as string | undefined } },
 }));
 vi.mock('../services', () => ({
-  addSecondController: vi.fn(), connectDevice: m.connect, disconnectDevice: m.disconnect,
+  downloadBluetoothLog: vi.fn(), addSecondController: vi.fn(), connectDevice: m.connect, disconnectDevice: m.disconnect,
   controllerCount: () => 0, controllerInfo: {}, getDeviceStatus: () => m.status, getFake: () => false,
   liveDevices: () => ({ raw: { power: 0, cadence: 0 } }), setFake: vi.fn(), subscribeDevices: () => () => {},
   savedHrWatches: () => [{ id: 'watch-1', name: 'Garmin', selected: false }], selectSavedHrWatch: m.select,
@@ -42,4 +42,10 @@ it('shows retry feedback while disconnected and offers explicit picker selection
   await act(() => button.click());
   expect(m.connect).toHaveBeenCalledExactlyOnceWith('hr');
   expect(m.disconnect).not.toHaveBeenCalled();
+});
+it('cancels the busy watch without bubbling to the device-card action', async () => {
+  m.status.hr.busy = true; await mount();
+  const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Cancel connection')!;
+  await act(() => button.click());
+  expect(m.disconnect).toHaveBeenCalledExactlyOnceWith('hr'); expect(m.connect).not.toHaveBeenCalled();
 });

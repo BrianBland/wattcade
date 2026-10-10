@@ -1,0 +1,11 @@
+# Shared Bluetooth lifecycle
+- `lifecycle.ts` serializes discovery/setup transactions; notifications stay concurrent.
+- `ConnectionLifecycle` owns initial retry, one bounded recovery sequence, cancellation and cleanup.
+- `Attempt` checks ownership before/after every step; connect deadline 15 s in adapters, other steps 8 s.
+- Failed setup disconnects, drains native promises up to 2 s, then retains the queue for 500 ms.
+- Pending native connect promises are tracked by ID; new setup waits up to 5 s and won't stack another connect.
+- Native disconnect completion is not inferred from a JS timeout; late native results are logged.
+- Recovery uses 2/4/8/15 s delays, then offers manual retry. Initial retry waits 2 s.
+- Ring log retains 600 timestamped lines; shell exports it locally on request.
+- Tests: `npx vitest run src/devices/bluetooth`; see `docs/BLUETOOTH.md` for sources/hardware checks.
+- No new dependencies or changes to shared contracts.

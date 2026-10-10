@@ -38,3 +38,10 @@ it('skips discovery when the browser does not expose watchAdvertisements', async
   await discoverSavedDevice({ id: 'watch' } as BluetoothDevice, progress);
   expect(progress).not.toHaveBeenCalled();
 });
+it('cancels an active scan and lets another device proceed', async () => {
+  const w = watch(); const scope = new AbortController();
+  const result = expect(discoverSavedDevice(w.device, () => {}, scope.signal)).rejects.toThrow('canceled');
+  await vi.waitFor(() => expect(w.watchAdvertisements).toHaveBeenCalledOnce()); scope.abort(); await result;
+  expect(w.signal().aborted).toBe(true);
+  await discoverSavedDevice({ id: 'next' } as BluetoothDevice, () => {});
+});

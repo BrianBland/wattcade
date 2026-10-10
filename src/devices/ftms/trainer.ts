@@ -5,10 +5,8 @@ import {
   parseIndoorBikeData, parsePowerRange, parseResistanceRange, resistancePctToRaw, type IndoorBikeData,
 } from './codec';
 import { ControlPointQueue } from './queue';
-import { reconnectLoop } from './reconnect';
-import { setupWithRetry, withTimeout } from './steps';
+import { Attempt, ConnectionLifecycle, type ConnectionOptions } from '../bluetooth/lifecycle';
 
-const STEP_MS = 8000;
 const REFUSED = 'Trainer control refused — close Zwift, then reconnect';
 
 type Apply = { ok: boolean; result?: number; detail?: string };
@@ -24,37 +22,48 @@ export class FtmsTrainer implements TrainerDevice {
   private cpChar: BluetoothRemoteGATTCharacteristic | null = null;
   private resForm: 'u8' | 's16' = 'u8';
   private resRange: [number, number, number] | undefined;
-  private closed = false; private connected = false;
+  private connected = false;
+  private lifecycle: ConnectionLifecycle;
+  private bikeChar: BluetoothRemoteGATTCharacteristic | null = null;
   private onDisc = () => this.handleDisconnect();
-  private onBike = (e: Event) => this.handleBike((e.target as BluetoothRemoteGATTCharacteristic).value!);
-  private onCp = (e: Event) => this.cp?.onIndication((e.target as BluetoothRemoteGATTCharacteristic).value!);
+  private onBike = (e: Event) => { if (!this.lifecycle.isClosed && e.target === this.bikeChar) this.handleBike((e.target as BluetoothRemoteGATTCharacteristic).value!); };
+  private onCp = (e: Event) => { if (!this.lifecycle.isClosed && e.target === this.cpChar) this.cp?.onIndication((e.target as BluetoothRemoteGATTCharacteristic).value!); };
 
   private logCbs = new Set<(l: string) => void>();
   private progress: (step: string) => void = () => {};
-  private constructor(private device: BluetoothDevice) {}
+  private constructor(private device: BluetoothDevice, options: ConnectionOptions) {
+    this.lifecycle = new ConnectionLifecycle(device, closing => { this.teardown(); if (closing) device.removeEventListener('gattserverdisconnected', this.onDisc); }, options);
+  }
+  private teardown() {
+    this.connected = false; this.hasControl = false; this.latest = {}; this.resRange = undefined;
+    this.cp?.reset('closed'); this.cp = null;
+    this.cpChar?.removeEventListener('characteristicvaluechanged', this.onCp); this.cpChar = null;
+    this.bikeChar?.removeEventListener('characteristicvaluechanged', this.onBike); this.bikeChar = null;
+  }
   onLog(cb: (line: string) => void) { this.logCbs.add(cb); return () => { this.logCbs.delete(cb); }; }
   private log(l: string) { for (const cb of this.logCbs) cb(l); }
   private step(s: string) { this.log(s); this.progress(s); }
 
   /** Must be called from a user gesture. */
-  static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<FtmsTrainer> {
+  static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void, options: ConnectionOptions = {}): Promise<FtmsTrainer> {
     // Same minimal request shape as the HR monitor (known to work in Bluefy); the extra optional services were unused.
     const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [FTMS_SERVICE] }] });
-    return FtmsTrainer.connectDevice(device, onProgress, onLog);
+    await options.beforeConnect?.();
+    return FtmsTrainer.connectDevice(device, onProgress, onLog, options);
   }
 
   /** Connect an already-authorized device without opening the picker. */
-  static async connectDevice(device: BluetoothDevice, onProgress?: (step: string) => void, onLog?: (line: string) => void): Promise<FtmsTrainer> {
-    const t = new FtmsTrainer(device);
+  static async connectDevice(device: BluetoothDevice, onProgress?: (step: string) => void, onLog?: (line: string) => void, options: ConnectionOptions = {}): Promise<FtmsTrainer> {
+    const t = new FtmsTrainer(device, options);
     if (onLog) t.onLog(onLog);
     if (onProgress) t.progress = onProgress;
     device.addEventListener('gattserverdisconnected', t.onDisc);
     try {
-      await setupWithRetry(() => t.setup(), () => device.gatt?.disconnect(), l => t.log(l));
+      await t.lifecycle.connect(a => t.setup(a), step => t.step(step));
     } catch (e) {
-      device.removeEventListener('gattserverdisconnected', t.onDisc);
+      await t.disconnect();
       throw e;
-    } finally { t.progress = () => {}; }
+    }
     return t;
   }
 
@@ -62,25 +71,23 @@ export class FtmsTrainer implements TrainerDevice {
   get id(): string { return this.device.id; }
   get name(): string { return this.device.name ?? 'FTMS trainer'; }
 
-  private async setup(): Promise<void> {
-    this.step('connecting GATT');
-    const server = await withTimeout(this.device.gatt!.connect(), STEP_MS, 'connecting GATT');
-    this.step('finding FTMS service');
-    const svc = await withTimeout(server.getPrimaryService(FTMS_SERVICE), STEP_MS, 'finding FTMS service');
-    const cpChar = await withTimeout(svc.getCharacteristic(CHAR.controlPoint), STEP_MS, 'finding control point');
+  private async setup(a: Attempt): Promise<void> {
+    this.teardown();
+    const server = await a.step('connecting GATT', () => this.device.gatt!.connect(), 15000);
+    const svc = await a.step('finding FTMS service', () => server.getPrimaryService(FTMS_SERVICE));
+    const cpChar = await a.step('finding control point', () => svc.getCharacteristic(CHAR.controlPoint));
     this.cpChar = cpChar;
     this.cp?.reset('reconnect');
     this.cp = new ControlPointQueue(b => cpChar.writeValueWithResponse(b as BufferSource));
     cpChar.addEventListener('characteristicvaluechanged', this.onCp);
-    this.step('subscribing');
-    await withTimeout(cpChar.startNotifications(), STEP_MS, 'subscribing (control point)');
-    const bike = await withTimeout(svc.getCharacteristic(CHAR.indoorBikeData), STEP_MS, 'finding bike data');
+    await a.step('subscribing (control point)', () => cpChar.startNotifications());
+    const bike = await a.step('finding bike data', () => svc.getCharacteristic(CHAR.indoorBikeData));
+    this.bikeChar = bike;
     bike.addEventListener('characteristicvaluechanged', this.onBike);
-    await withTimeout(bike.startNotifications(), STEP_MS, 'subscribing (bike data)');
-    this.step('requesting control');
-    const gotControl = await this.takeControl();
-    this.step('reading capabilities');
-    await withTimeout(this.readCapabilities(svc), STEP_MS, 'reading capabilities');
+    await a.step('subscribing (bike data)', () => bike.startNotifications());
+    const gotControl = await a.step('requesting control', () => this.takeControl());
+    await this.readCapabilities(svc, a);
+    a.check();
     this.step('connected');
     this.connected = true;
     this.emitStatus(gotControl ? { connected: true } : { connected: true, detail: REFUSED });
@@ -88,8 +95,12 @@ export class FtmsTrainer implements TrainerDevice {
 
   private hasControl = false;
   private async takeControl(): Promise<boolean> {
-    const r = await this.cp!.send(encodeRequestControl());
-    if (r.ok) await this.cp!.send(encodeStart());
+    const cp = this.cp;
+    if (!cp) return false;
+    const r = await cp.send(encodeRequestControl());
+    if (this.cp !== cp || this.lifecycle.isClosed) return false;
+    if (r.ok) await cp.send(encodeStart());
+    if (this.cp !== cp || this.lifecycle.isClosed) return false;
     if (r.ok !== this.hasControl) {
       const was = this.hasControl; this.hasControl = r.ok;
       if (this.connected && !was && r.ok) this.emitStatus({ connected: true }); // clears the refused detail
@@ -97,12 +108,12 @@ export class FtmsTrainer implements TrainerDevice {
     return r.ok;
   }
 
-  private async readCapabilities(svc: BluetoothRemoteGATTService): Promise<void> {
+  private async readCapabilities(svc: BluetoothRemoteGATTService, a: Attempt): Promise<void> {
     const caps: TrainerCapabilities = { sim: true, erg: true, resistance: true };
-    try { const c = await svc.getCharacteristic(CHAR.resistanceRange); this.resRange = parseResistanceRange(await c.readValue()); }
+    try { const c = await a.step('finding resistance range', () => svc.getCharacteristic(CHAR.resistanceRange)); this.resRange = parseResistanceRange(await a.step('reading resistance range', () => c.readValue())); }
     catch { caps.resistance = false; }
     if (this.resRange) caps.resistanceRange = this.resRange; else caps.resistance = false;
-    try { const c = await svc.getCharacteristic(CHAR.powerRange); const p = parsePowerRange(await c.readValue()); if (p) caps.powerRange = p; }
+    try { const c = await a.step('finding power range', () => svc.getCharacteristic(CHAR.powerRange)); const p = parsePowerRange(await a.step('reading power range', () => c.readValue())); if (p) caps.powerRange = p; }
     catch { /* optional */ }
     this.capabilities = caps;
   }
@@ -122,10 +133,13 @@ export class FtmsTrainer implements TrainerDevice {
 
   async apply(cmd: TrainerCommand): Promise<Apply> {
     if (!this.connected || !this.cp) return { ok: false, detail: 'not connected' };
+    const cp = this.cp;
     if (!this.hasControl && cmd.mode !== 'none' && !(await this.takeControl())) {
+      if (!this.connected || this.cp !== cp) return { ok: false, detail: 'not connected' };
       this.emitStatus({ connected: true, detail: REFUSED });
       return { ok: false, detail: 'control refused' };
     }
+    if (!this.connected || this.cp !== cp) return { ok: false, detail: 'not connected' };
     switch (cmd.mode) {
       case 'none': return { ok: true, detail: 'noop' };
       case 'sim': return this.send(encodeSetSim(cmd.gradePct, cmd.windMps, cmd.crr, cmd.cw), OP.setSim, cmd.gradePct);
@@ -146,7 +160,10 @@ export class FtmsTrainer implements TrainerDevice {
   }
 
   private async send(bytes: Uint8Array, _op: number, value: number, retried = false): Promise<Apply> {
-    const r = await this.cp!.send(bytes);
+    const cp = this.cp;
+    if (!cp || !this.connected) return { ok: false, detail: 'not connected' };
+    const r = await cp.send(bytes);
+    if (this.cp !== cp || !this.connected) return { ok: false, detail: 'not connected' };
     if (r.result === RESULT.notPermitted && !retried) {
       this.hasControl = false;
       if (await this.takeControl()) return this.send(bytes, _op, value, true);
@@ -156,14 +173,9 @@ export class FtmsTrainer implements TrainerDevice {
   }
 
   private handleDisconnect(): void {
-    this.connected = false; this.cp?.reset('disconnected');
-    this.emitStatus({ connected: false, detail: this.closed ? 'closed' : 'reconnecting' });
-    if (this.closed) return;
-    void reconnectLoop({
-      cancelled: () => this.closed,
-      connect: () => this.setup(),
-      onAttempt: (n, d) => this.emitStatus({ connected: false, detail: `reconnect #${n + 1} in ${d}s` }),
-    });
+    this.lifecycle.disconnected();
+    this.teardown(); this.emitStatus({ connected: false, detail: 'reconnecting' });
+    this.lifecycle.recover(a => this.setup(a), detail => { this.step(detail); this.emitStatus({ connected: false, detail }); });
   }
 
   private emitStatus(s: { connected: boolean; detail?: string }): void { for (const cb of this.statusCbs) cb(s); }
@@ -171,10 +183,8 @@ export class FtmsTrainer implements TrainerDevice {
   onStatus(cb: (s: { connected: boolean; detail?: string }) => void) { this.statusCbs.add(cb); return () => { this.statusCbs.delete(cb); }; }
 
   async disconnect(): Promise<void> {
-    this.closed = true; this.connected = false;
-    this.cp?.reset('closed');
     this.device.removeEventListener('gattserverdisconnected', this.onDisc);
-    try { this.device.gatt?.disconnect(); } catch { /* ignore */ }
+    await this.lifecycle.close();
     this.emitStatus({ connected: false, detail: 'closed' });
   }
 }

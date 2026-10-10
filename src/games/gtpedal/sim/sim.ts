@@ -3,9 +3,9 @@ import type { GameContext, GameHud, GameSim } from '../../../contracts';
 import { BIKES, isBikeKind, type BikeKind } from './bikes';
 import { newBody, stepBody, switchLine, type Body, type Params } from './physics';
 import { pickLock, WEAPONS, IMPLEMENTED, type WeaponKind } from './weapons';
-import { bridgeAngle, buildingAt, CANAL, heightAt, LINES, nearestOnLine, PARKED_BIKES, SPAWN } from './world';
+import { BRIDGE, bridgeAngle, buildingAt, CANAL, heightAt, LINES, nearestOnLine, PARKED_BIKES, SPAWN } from './world';
 
-export interface SimOpts { seed?: number; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean }
+export interface SimOpts { seed?: number; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean; /** daredevil autopilot asks the fake bike (target-follow script) for this × FTP; default 1.0 */ sprintFtp?: number }
 export type Mode = 'bike' | 'foot' | 'ragdoll';
 export interface ParkedBike { id: number; x: number; z: number; heading: number; kind: BikeKind; flat: boolean; mine?: boolean }
 export interface Npc { id: number; x: number; z: number; y: number; vy: number; heading: number; line: number; dir: 1 | -1; airS: number; alive: boolean; cop: boolean }
@@ -15,14 +15,23 @@ export interface Snapshot {
   bikes: ParkedBike[]; npcs: Npc[]; bridge: number; weapon: WeaponKind; lock: number;
   footTarget: number; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
   stats: Record<string, number>;
+  /** fake-bike script hooks (target-follow reads powerFtp) */
+  hooks?: { powerFtp: number };
 }
 
 const blocked = (x: number, z: number, y: number, br: number) => !!buildingAt(x, z) || heightAt(x, z, br) - y > 0.8;
 const bank = (z: number) => (z < (CANAL.z0 + CANAL.z1) / 2 ? CANAL.z0 - 2 : CANAL.z1 + 2);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const AUTO_ROUTE: Array<[number, number]> = [[0, 86], [85, 86], [85, 8], [0, 8], [0, -100]];
+/** daredevil: shuttle up and down the avenue over the drawbridge */
+const DARE_ROUTE: Array<[number, number]> = [[0, 70], [0, -95]];
+export type LineLeave = 'hold' | 'forks';
+export interface GtpSave { rides?: number; stealsTotal?: number; bestAirS?: number; gradeScale?: number; gradeMax?: number }
 
-export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
+/** Structural twin of the shell's GameSetting (src/shell/gameSettings.ts); sims don't import the shell. */
+export interface PauseSetting { key: string; label: string; value: number; min: number; max: number; step: number; digits?: number; unit?: string; hint?: string }
+
+export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { settings(): PauseSetting[] } {
   const T = ctx.tuning;
   const tun = {
     drive: T.num('drive', 9, 1, 30, 0.5, 'm/s² of drive at 1.0 FTP'),
@@ -53,11 +62,13 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     flatTopMul: T.num('flatTopMul', 0.5, 0.1, 1, 0.05, 'top speed with a flat'),
     heatCoolS: T.num('heatCoolS', 20, 2, 120, 1, 's per heat star cooled'),
     bridgePeriodS: T.num('bridgePeriodS', 40, 10, 120, 1, 'drawbridge cycle s'),
-    bridgeMaxDeg: T.num('bridgeMaxDeg', 22, 0, 60, 1, 'drawbridge max leaf angle'),
+    bridgeMaxDeg: T.num('bridgeMaxDeg', 15, 0, 45, 1, 'drawbridge max leaf angle (gap grows with it, see world GAP)'),
+    effortTop: T.num('effortTop', 0.5, 0, 1, 0.05, 'share of top speed that scales with effort (FTP sprint clears the bridge)'),
+    lineLeave: T.choice<LineLeave>('lineLeave', 'hold', ['hold', 'forks'], 'hold: holding a paddle always free-steers off a line; forks: on a line, a hold only switches lines at forks'),
   };
   const P = (): Params => ({ drive: tun.drive(), drag: tun.drag(), rollDecay: tun.rollDecay(), topSpeed: tun.topSpeed(), gravity: tun.gravity(),
     launchMul: tun.launchMul(), climbMul: tun.climbMul(), turnRate: tun.turnRate(), snapR: tun.snapR(), snapPull: tun.snapPull(),
-    crashSpeed: tun.crashSpeed(), grindR: tun.grindR() });
+    crashSpeed: tun.crashSpeed(), grindR: tun.grindR(), effortTop: tun.effortTop() });
 
   let t = 0, mode: Mode = 'bike', kind: BikeKind = 'city', flat = false, boost = 0, heat = 0, heatCool = 0;
   let rag: { x: number; y: number; z: number; vx: number; vy: number; vz: number; spin: number; s: number } | null = null;
@@ -75,9 +86,15 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     npcs.push({ id: i, x: p[0], z: p[1], y: 0, vy: 0, heading: 0, line: l.id, dir: ctx.rng() < 0.5 ? 1 : -1, airS: 0, alive: true, cop: i === 0 });
   }
   let airStartZ = 0;
-  const prev = ctx.load<{ rides?: number; stealsTotal?: number; bestAirS?: number }>() ?? {};
+  const prev = ctx.load<GtpSave>() ?? {};
+  // rider-facing pause-menu settings (persisted); fall back to the debug tunables
+  const user = { gradeScale: prev.gradeScale, gradeMax: prev.gradeMax };
+  const gScale = () => user.gradeScale ?? tun.gradeScale(), gMax = () => user.gradeMax ?? tun.gradeMax();
+  let forkHeld = false, curBridge = 0;
+  let bridgeTry: { effort: number } | null = null;
   let saveAt = 30, saved = false;
-  const persist = () => ctx.save({ rides: (prev.rides ?? 0) + 1, stealsTotal: (prev.stealsTotal ?? 0) + stats.steals, bestAirS: Math.max(prev.bestAirS ?? 0, Math.round(stats.maxAirS * 10) / 10) });
+  const persist = () => ctx.save({ rides: (prev.rides ?? 0) + 1, stealsTotal: (prev.stealsTotal ?? 0) + stats.steals, bestAirS: Math.max(prev.bestAirS ?? 0, Math.round(stats.maxAirS * 10) / 10),
+    ...(user.gradeScale != null ? { gradeScale: user.gradeScale } : {}), ...(user.gradeMax != null ? { gradeMax: user.gradeMax } : {}) } satisfies GtpSave);
 
   const trick = (name: string, mag: number) => {
     boost = Math.min(tun.boostCap(), boost + tun.trickBoost() * mag);
@@ -86,7 +103,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
   };
   const crash = (vx: number, vz: number, up: number) => {
     stats.crashes++;
-    const bz = heightAt(body.x, body.z) < -2 ? bank(body.z) : body.z;
+    const bz = heightAt(body.x, body.z, curBridge) < -2 || (body.z > CANAL.z0 && body.z < CANAL.z1) ? bank(body.z) : body.z;
     bikes.push({ id: nextBikeId++, x: body.x, z: bz, heading: body.heading, kind, flat, mine: true });
     rag = { x: body.x, y: body.y + 1, z: body.z, vx, vy: up, vz, spin: 0, s: 0 };
     mode = 'ragdoll'; body.speed = 0; body.air = false; body.line = -1; boost = 0;
@@ -107,7 +124,8 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     const inp = ctx.input(), bk = ctx.bike();
     const ftp = Math.max(50, ctx.profile.ftp || 200);
     const effort = Math.max(0, Math.min(2, bk.power3s / ftp));
-    const bridge = bridgeAngle(t, tun.bridgePeriodS(), (tun.bridgeMaxDeg() * Math.PI) / 180);
+    const bridgeAt = (tt: number) => bridgeAngle(tt, tun.bridgePeriodS(), (tun.bridgeMaxDeg() * Math.PI) / 180);
+    const bridge = bridgeAt(t); curBridge = bridge;
     const auto = !!opts.autopilot;
     // paddles: tap vs hold
     const L = Math.abs(inp.paddleL) > 0.5, R = Math.abs(inp.paddleR) > 0.5;
@@ -116,6 +134,14 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     if (R) held.R += dt; else { if (held.R > 0 && held.R < tun.tapS()) tapR = true; held.R = 0; }
     let steer = (held.L >= tun.tapS() ? 1 : 0) - (held.R >= tun.tapS() ? 1 : 0);
     let freeSteer = steer !== 0;
+    // airborne: paddles spin you (held, no tap threshold)
+    const airSpin = (L ? 1 : 0) - (R ? 1 : 0);
+    // 'forks' mode: on a line a hold doesn't leave it; it switches lines toward that side if there is one
+    if (mode === 'bike' && !body.air && body.line >= 0 && tun.lineLeave() === 'forks' && steer !== 0) {
+      if (!forkHeld) { const l = switchLine(body, steer > 0 ? -1 : 1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } forkHeld = true; }
+      steer = 0; freeSteer = false;
+    }
+    if (!L && !R) forkHeld = false;
     const press = (b: 'a' | 'b' | 'y' | 'z') => inp.pressed.has(b);
     // weapons cycle
     if (inp.pressed.has('shiftUpL') || inp.pressed.has('shiftUpR')) weaponI = (weaponI + 1) % WEAPONS.length;
@@ -158,32 +184,44 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
       }
       if (auto) {
         autoCool -= dt;
-        const [wx, wz] = AUTO_ROUTE[routeI];
-        if (Math.hypot(wx - body.x, wz - body.z) < 8) routeI = (routeI + 1) % AUTO_ROUTE.length;
+        const route = opts.daredevil ? DARE_ROUTE : AUTO_ROUTE;
+        routeI %= route.length;
+        const [wx, wz] = route[routeI];
+        if (Math.hypot(wx - body.x, wz - body.z) < 8) routeI = (routeI + 1) % route.length;
         let want = Math.atan2(wx - body.x, wz - body.z);
+        // daredevil lane-keeping: pure pursuit down the avenue centre between the turnarounds
+        const goingN = wz > body.z;
+        if ((opts.daredevil ? body.z > -70 && body.z < 45 : Math.abs(body.x) < 20 && body.z > -55 && body.z < 25 && Math.abs(wz - body.z) > 20)) want = Math.atan2(-body.x, goingN ? 15 : -15);
         for (let k = 1; k <= 5 && blocked(body.x + Math.sin(want) * 6, body.z + Math.cos(want) * 6, body.y, bridge); k++) want += 0.5; // probe around walls
         const da = wrap(want - body.heading);
         const toCanal = (body.z < CANAL.z0 && Math.cos(body.heading) > 0.5 ? CANAL.z0 - body.z : body.z > CANAL.z1 && Math.cos(body.heading) < -0.5 ? body.z - CANAL.z1 : 99);
-        autoBrake = (!opts.daredevil && bridge > 0.01 && toCanal < 25 && Math.abs(body.x) < 12) || (Math.abs(da) > 0.5 && body.speed > 4);
+        autoBrake = (!opts.daredevil && toCanal < 35 && bridgeAt(t + (toCanal + 22) / Math.max(3, body.speed)) + bridge > 0.01 && Math.abs(body.x) < 20) || (Math.abs(da) > 0.5 && body.speed > 4);
         freeSteer = Math.abs(da) > 0.25; steer = Math.max(-1, Math.min(1, da * 2));
         const near = bikes.find((b) => b.kind !== kind && Math.hypot(b.x - body.x, b.z - body.z) < tun.stealR());
-        if (near && autoCool <= 0) { autoCool = 30; bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat }); mount(near); }
+        if (near && autoCool <= 0 && !opts.daredevil) { autoCool = 30; bikes.push({ id: nextBikeId++, x: body.x, z: body.z, heading: body.heading, kind, flat }); mount(near); }
       }
       if (mode === 'bike') {
         if (tapL) { const l = switchLine(body, -1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } }
         if (tapR) { const l = switchLine(body, 1, tun.snapR()); if (l !== body.line) { body.line = l; stats.lineSwitches++; } }
         if (press('y') && !body.air) { body.air = true; body.vy = tun.hopV() * BIKES[kind].air; body.line = -1; }
-        const spinIn = body.air && inp.held.has('y') ? (steer || 1) : 0;
+        const spinIn = body.air ? (auto ? 0 : airSpin) : 0;
         const wasAir = body.air;
         const spec = BIKES[kind];
         const o = stepBody(body, P(), { brake: auto && autoBrake, effort, steer, freeSteer, spinIn, grindHeld: inp.held.has('z') || auto, bike: spec, topMul: flat ? tun.flatTopMul() : 1, boost }, dt, bridge, grind);
         slope = o.slope;
         stats.distanceM += body.speed * dt;
-        if (!wasAir && body.air) { airStartZ = body.z; }
+        if (!wasAir && body.air) {
+          airStartZ = body.z;
+          if (body.z > CANAL.z0 - 1 && body.z < CANAL.z1 + 1 && Math.abs(body.x) < BRIDGE.x1 && bridge > 0.02) bridgeTry = { effort };
+        }
         if (body.air) { stats.airS += dt; stats.maxAirS = Math.max(stats.maxAirS, body.airS); }
         if (o.landed) {
           stats.jumps++;
-          if ((airStartZ < CANAL.z0 && body.z > CANAL.z1) || (airStartZ > CANAL.z1 && body.z < CANAL.z0)) { stats.bridgeJumps++; ctx.emit({ type: 'bridgeJump' }); }
+          const mid = (CANAL.z0 + CANAL.z1) / 2;
+          if ((airStartZ < mid && body.z > CANAL.z1) || (airStartZ > mid && body.z < CANAL.z0)) { stats.bridgeJumps++; ctx.emit({ type: 'bridgeJump' }); }
+          // a landing across the middle = cleared; a hop that lands back on the same leaf isn't an attempt
+          if (bridgeTry && (airStartZ < mid) !== (body.z < mid)) ctx.emit({ type: 'bridgeAttempt', data: { cleared: true, effort: Math.round(bridgeTry.effort * 100) / 100 } });
+          bridgeTry = null;
           const turns = Math.abs(o.spinLanded) / Math.PI;
           const off = Math.abs(wrap(o.spinLanded));
           if (turns >= 0.9 && off > 1.0 && off < 2.2) crash(Math.sin(body.heading) * body.speed, Math.cos(body.heading) * body.speed, 4); // landed sideways
@@ -191,8 +229,12 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
           else if (body.airS === 0 && o.impact > 4) trick('air', 0.5);
         }
         if (o.grindEnded > 0.6) { stats.grinds++; trick('grind', Math.min(3, o.grindEnded)); }
+        if ((o.crashed || o.splash) && bridgeTry) { ctx.emit({ type: 'bridgeAttempt', data: { cleared: false, effort: Math.round(bridgeTry.effort * 100) / 100 } }); bridgeTry = null; }
         if (o.crashed) crash(-Math.sin(body.heading) * body.speed * 0.4, -Math.cos(body.heading) * body.speed * 0.4, 6 + body.speed * 0.4);
-        else if (o.splash) { stats.splashes++; crash(0, 0, 3); }
+        else if (o.splash) {
+          stats.splashes++;
+          crash(0, 0, 3);
+        }
         heat = Math.min(5, heat + spec.heat * dt);
       }
     }
@@ -232,7 +274,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     // heat cooldown
     heatCool += dt; if (heatCool > tun.heatCoolS() && heat > 0) { heat = Math.max(0, heat - 1); heatCool = 0; }
     // trainer grade on climbs (bike, grounded)
-    gradePct = mode === 'bike' && !body.air ? Math.max(0, Math.min(tun.gradeMax(), slope * 100 * tun.gradeScale())) : 0;
+    gradePct = mode === 'bike' && !body.air ? Math.max(0, Math.min(gMax(), slope * 100 * gScale())) : 0;
     const q = Math.round(gradePct * 2) / 2;
     if (q !== lastGrade) { lastGrade = q; if (q > 0) ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: q }); else ctx.resistance.clear('terrain'); }
     if (t >= saveAt) { saveAt = t + 30; saved = true; persist(); }
@@ -244,13 +286,30 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim {
     isOver: () => false,
     hud(): GameHud {
       return { controls: mode === 'bike'
-        ? [{ button: 'a', label: 'Dismount' }, { button: 'b', label: `Fire ${WEAPONS[weaponI]}` }, { button: 'y', label: 'Hop / spin' }, { button: 'z', label: 'Grind' }, { button: 'paddles', label: 'Tap: switch line · Hold: steer' }, { button: 'shiftersL', label: 'Weapon' }]
+        ? [{ button: 'a', label: 'Dismount' }, { button: 'b', label: `Fire ${WEAPONS[weaponI]}` }, { button: 'y', label: 'Hop' }, { button: 'z', label: 'Grind' }, { button: 'paddles', label: body.air ? 'Spin' : tun.lineLeave() === 'forks' && body.line >= 0 ? 'Tap/hold: switch line at forks' : 'Tap: switch line · Hold: steer' }, { button: 'shiftersL', label: 'Weapon' }]
         : [{ button: 'a', label: 'Steal bike', active: footTarget >= 0 }, { button: 'b', label: `Fire ${WEAPONS[weaponI]}` }, { button: 'paddles', label: 'Pick target' }] };
     },
     snapshot(): Snapshot {
       return { t, mode, rider: { ...body, kind: mode === 'bike' ? kind : null, flat, boost }, ragdoll: rag ? { x: rag.x, y: rag.y, z: rag.z, spin: rag.spin } : null,
         bikes: bikes.map((b) => ({ ...b })), npcs: npcs.map((n) => ({ ...n })), bridge: bridgeAngle(t, tun.bridgePeriodS(), (tun.bridgeMaxDeg() * Math.PI) / 180),
+        hooks: opts.daredevil ? { powerFtp: opts.sprintFtp ?? 1 } : undefined,
         weapon: WEAPONS[weaponI], lock, footTarget, heat, slope, gradePct, lastTrick, lastTrickAt, stats: { ...stats } };
+    },
+    /** Pause-menu settings (read structurally by src/shell/gameSettings.ts). */
+    settings(): PauseSetting[] {
+      return [
+        { key: 'gradeScale', label: 'Hill feel', value: gScale(), min: 0, max: 2, step: 0.05, digits: 2, unit: '×', hint: 'Trainer grade per % of slope' },
+        { key: 'gradeMax', label: 'Max grade', value: gMax(), min: 0, max: 15, step: 0.5, digits: 1, unit: '%', hint: 'Cap on climbs (profile cap still applies)' },
+      ];
+    },
+    receive(a: unknown) {
+      const m = a as { type?: string; key?: string; value?: number } | null;
+      if (m?.type !== 'setting' || typeof m.value !== 'number' || !Number.isFinite(m.value)) return;
+      if (m.key === 'gradeScale') user.gradeScale = Math.max(0, Math.min(2, m.value));
+      else if (m.key === 'gradeMax') user.gradeMax = Math.max(0, Math.min(15, m.value));
+      else return;
+      lastGrade = -99; // re-apply on the next tick
+      persist();
     },
     summary() {
       if (saved || t > 5) persist();

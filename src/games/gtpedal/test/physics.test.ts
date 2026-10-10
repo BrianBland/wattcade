@@ -16,13 +16,24 @@ describe('arcade physics', () => {
     for (let i = 0; i < 150; i++) { const o = stepBody(b, P, IN(), DT, 0, { s: 0 }); air ||= b.air; landed ||= o.landed && air; }
     expect(air).toBe(true); expect(landed).toBe(true);
   });
-  it('enough speed jumps the open drawbridge; too little splashes', () => {
-    const br = bridgeAngle(25, 40, (22 * Math.PI) / 180); expect(br).toBeGreaterThan(0.3);
-    const run = (v: number, effort = 2) => { const b = newBody(0, CANAL.z0 - 15, 0); b.speed = v; let splash = false;
-      for (let i = 0; i < 120; i++) { const o = stepBody(b, P, IN({ effort, bike: { power: 1.6, top: 1.5, turn: 1, air: 1 } }), DT, br, { s: 0 }); splash ||= o.splash; }
-      return { splash, z: b.z }; };
-    const fast = run(26); expect(fast.splash).toBe(false); expect(fast.z).toBeGreaterThan(CANAL.z1);
-    expect(run(4, 0).z).toBeLessThan(CANAL.z1); // too slow: never makes it across
+  it('a ~FTP rider clears the open drawbridge at every phase; Z2 mostly does not', () => {
+    const MAX = (15 * Math.PI) / 180, PP = { ...P, effortTop: 0.5 };
+    const clearRate = (effort: number) => {
+      let ok = 0, tot = 0;
+      for (let t0 = 16; t0 < 40; t0 += 0.5) {
+        if (bridgeAngle(t0, 40, MAX) < 0.02) continue;
+        const b = newBody(0, CANAL.z0 - 60, 0); b.speed = 18 * (0.5 + 0.5 * effort); let t = t0 - 60 / b.speed, bad = false;
+        for (let i = 0; i < 300 && b.z < CANAL.z1 + 3 && !bad; i++) { t += DT; const o = stepBody(b, PP, IN({ effort }), DT, bridgeAngle(t, 40, MAX), { s: 0 }); bad = o.splash || o.crashed; }
+        tot++; if (!bad && b.z > CANAL.z1) ok++;
+      }
+      return ok / tot;
+    };
+    expect(clearRate(1.0)).toBe(1); expect(clearRate(1.2)).toBe(1);
+    expect(clearRate(0.65)).toBeLessThan(0.4);
+    // too slow and not pedalling: never makes it across
+    const b = newBody(0, CANAL.z0 - 15, 0); b.speed = 4;
+    for (let i = 0; i < 120; i++) stepBody(b, PP, IN({ effort: 0 }), DT, MAX, { s: 0 });
+    expect(b.z).toBeLessThan(CANAL.z1);
   });
   it('fast into a building = crash; slow = bonk', () => {
     const fast = newBody(30, -75, 0); fast.speed = 15; let crashed = false;
@@ -74,5 +85,35 @@ describe('sim', () => {
     let fired = false;
     for (let i = 0; i < 30 * 120 && !fired; i++) { s.step(1); if (snap(s).lock >= 0) fired = true; }
     expect(fired).toBe(true);
+  });
+});
+
+describe('pause settings, spins, line-leave modes', () => {
+  const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as any;
+  it('grade settings come from the save, apply via receive and persist', () => {
+    const p = testProfile(); (p.gameData as Record<string, unknown>).gtpedal = { gradeScale: 1.2, gradeMax: 5 };
+    let saved: any = null;
+    const s = createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1, onSave: (d) => { saved = d; } });
+    const sim = s.sim as any;
+    expect(sim.settings().map((x: any) => [x.key, x.value])).toEqual([['gradeScale', 1.2], ['gradeMax', 5]]);
+    sim.receive({ type: 'setting', key: 'gradeScale', value: 0.4 });
+    expect(sim.settings()[0].value).toBe(0.4);
+    expect(saved.gradeScale).toBe(0.4); expect(saved.gradeMax).toBe(5);
+    sim.receive({ type: 'setting', key: 'gradeMax', value: 99 }); expect(sim.settings()[1].value).toBe(15);
+  });
+  it('holding a paddle in the air spins; Y alone just hops', () => {
+    const hop = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.6, release: 'y' }]), fake: { script: 'z2' }, seed: 1 });
+    hop.step(30 * 4); const h0 = snap(hop).rider.heading; hop.step(8); expect(snap(hop).rider.air).toBe(true);
+    expect(Math.abs(snap(hop).rider.spin)).toBe(0); void h0;
+    const spin = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 4, press: 'y' }, { t: 4.05, release: 'y', paddleL: 1 }, { t: 4.5, paddleL: 0 }]), fake: { script: 'z2' }, seed: 1 });
+    spin.step(30 * 4.4); expect(Math.abs(snap(spin).rider.spin)).toBeGreaterThan(1);
+  });
+  it("'forks' mode: holding a paddle on a line never free-steers off it", () => {
+    const mk = (mode: string) => {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 2, paddleR: 1 }, { t: 5, paddleR: 0 }]), fake: { script: 'z2' }, seed: 1 });
+      s.tuning.set('gtpedal.lineLeave', mode); s.step(30 * 5); return snap(s).rider;
+    };
+    expect(Math.abs(mk('forks').x)).toBeLessThan(3);   // stayed on the avenue
+    expect(Math.abs(mk('hold').x)).toBeGreaterThan(5);  // steered off
   });
 });

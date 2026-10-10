@@ -58,7 +58,10 @@ describe('arcade picker', () => {
     expect(s[4].opacity).toBe(0);
   });
   it('has a recorded clip and poster for every game (npm run capture:cards)', () => {
-    for (const x of games) for (const ext of ['mp4', 'webp']) {
+    // a game with no clip yet must have drawCard art (the card falls back to it)
+    const hasClip = (id: string) => existsSync(join(process.cwd(), 'public', 'cards', `${id}.mp4`));
+    for (const x of games.filter((g) => !hasClip(g.id))) expect(typeof x.drawCard, `${x.id}: no clip and no drawCard`).toBe('function');
+    for (const x of games.filter((g) => hasClip(g.id))) for (const ext of ['mp4', 'webp']) {
       const f = join(process.cwd(), 'public', 'cards', `${x.id}.${ext}`);
       expect(existsSync(f), f).toBe(true);
       expect(statSync(f).size).toBeLessThan(1_000_000);

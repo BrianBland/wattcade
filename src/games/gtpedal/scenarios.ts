@@ -26,6 +26,27 @@ export const scenarios: Array<{
     assert(s) { return n(s, 'distanceM') > 4000 ? [] : [`distanceM ${s.distanceM} <= 4000`]; },
   },
   {
+    // daredevil autopilot shuttles over the drawbridge; target-follow rides 5 % over the sim's hooks.powerFtp (1.0)
+    name: 'daredevil-ftp-clears-bridge', script: 'target-follow', minutes: 10, seed: 5, simOpts: { autopilot: true, daredevil: true, sprintFtp: 1.0 },
+    assert(s, _st, run) {
+      const at = run.events.filter((e) => e.type === 'bridgeAttempt');
+      const f: string[] = [];
+      if (at.length < 5) f.push(`only ${at.length} bridge attempts`);
+      const miss = at.filter((e) => !e.data?.cleared);
+      if (miss.length) f.push(`${miss.length}/${at.length} attempts at ~FTP fell in (efforts ${miss.map((e) => e.data?.effort).join(',')})`);
+      if (n(s, 'bridgeJumps') < 5) f.push(`bridgeJumps ${s.bridgeJumps} < 5`);
+      return f;
+    },
+  },
+  {
+    name: 'daredevil-z2-mostly-splashes', script: 'z2', minutes: 10, seed: 6, simOpts: { autopilot: true, daredevil: true },
+    assert(_s, _st, run) {
+      const at = run.events.filter((e) => e.type === 'bridgeAttempt');
+      const ok = at.filter((e) => e.data?.cleared).length;
+      return at.length >= 5 && ok / at.length < 0.5 ? [] : [`z2 cleared ${ok}/${at.length} (want >= 5 attempts, < 50 % cleared)`];
+    },
+  },
+  {
     name: 'idle', script: 'idle', minutes: 5, seed: 3,
     assert(s) { return n(s, 'distanceM') === 0 ? [] : [`distanceM ${s.distanceM} != 0`]; },
   },

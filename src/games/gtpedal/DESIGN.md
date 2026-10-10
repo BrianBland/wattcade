@@ -19,10 +19,10 @@ A canal with a drawbridge that keeps cycling partly open, so you can try to jump
 ## Controls (Zwift Ride)
 | Input | On bike | On foot |
 |---|---|---|
-| Paddles (L/R) | tap: switch to the next line left/right at a fork; hold: free steer | tap: cycle candidate target (bikes, path directions); auto-walk to it |
+| Paddles (L/R) | tap: switch to the next line left/right; hold: free steer (`lineLeave: hold`, default) or switch at forks only (`lineLeave: forks`); **in the air: hold to spin** | tap: cycle candidate target (bikes, path directions); auto-walk to it |
 | A | dismount (leave bike parked) | steal / mount the targeted bike |
 | B | fire current weapon at lock-on target | same |
-| Y | hop (tap on ground); hold in air + paddles = spin | — |
+| Y | hop | — |
 | Z | grind (hold near tram track / rail) | — |
 | Shifters | cycle weapon (L down/up = prev/next) | same |
 | D-pad | camera nudge / spare | — |
@@ -30,16 +30,22 @@ A canal with a drawbridge that keeps cycling partly open, so you can try to jump
 
 ## Movement & physics (pure sim, hand-rolled; no physics library)
 - **Drive:** `accel = drive × (power3s/ftp) × bike.power − drag × v² − g × slope × climbMul`. Coasting decay is low.
+  Top speed also scales with effort (`effortTop` 0.5: 0.65 FTP → 82 %, 1.0 → 100 %, 1.2 → 110 %), so a sprint matters.
+- **Drawbridge:** leaves cycle to 15°; the gap grows with the angle. Tuned so ~1.0–1.2 FTP clears it at every
+  phase of the opening and Z2 mostly doesn't (unit test + `daredevil-*` scenarios).
 - **Terrain:** analytic height field `heightAt(x, z, t)` built from features (kickers, berms, bowl, stairs, canal,
   drawbridge leaves whose angle cycles over time). Grounded rider follows height; when the ground falls away faster
   than a ballistic arc, the rider goes airborne keeping vertical speed × `launchMul`. Exaggerated low gravity.
 - **Lines:** polylines tagged `path | ramp | rail | tram`. On a line the heading eases to its tangent and a lateral
   spring keeps you centred. Paddle tap switches to the nearest neighbouring line on that side within `snapR`.
-  Holding a paddle > `tapS` drops into free steering; you re-snap when a line runs roughly your way.
+  Leaving a line is a tunable, `lineLeave`: `hold` (default; holding a paddle > `tapS` free-steers off the line,
+  re-snapping when a line runs your way) or `forks` (on a line a hold only switches to the neighbouring line on
+  that side; free steering only once you're off a line). Default `hold`: more control, and the 'forks' feel can
+  be tried from the debug overlay.
 - **Crash:** hitting a building faster than `crashSpeed` throws you off: ragdoll (ballistic body + spin) for
   `ragdollS`, then you stand up on foot. The bike stays where it fell. Slower hits just bounce/scrub speed.
   Landing badly (large spin remainder) also bails you. Falling in the canal = splash, respawn on the bank.
-- **Light tricks only, no score:** hop, spins (180/360…), tram/rail grind. Each landed trick grants a short speed
+- **Light tricks only, no score:** hop (Y), spins (hold a paddle while airborne; 180/360…), tram/rail grind. Each landed trick grants a short speed
   boost (`trickBoost`, stacking up to `boostCap`). No combo meter.
 
 ## Bikes (stolen, never owned)
@@ -96,13 +102,22 @@ One compact neighbourhood (~240 × 240 m):
 ## Milestones
 1. **Playground feel** (this branch): scaffold, world + height field, momentum/jumps, line snapping, crash→ragdoll,
    steal/dismount, bike types, hop/spin/grind boosts, grade resistance, bazooka stub, heat stub, blocky renderer.
+   Ride never ends until you quit (no timer, no bust limit).
 2. **Weapons pass:** all five weapons with projectiles, patches (oil/glass/fire), flat tires, NPC ragdolls.
 3. **Cops pass:** Segway + horse AI, heat stars, co-op repaint, drawbridge getaway tuning.
-4. **Juice:** proper models, rider cosmetics (`drawRider` look), sfx/music, card clip (`capture-cards`), achievements.
+4. **Juice:** proper models, rider cosmetics (`drawRider` look), sfx/music. Held back on purpose until the game is
+   more polished: achievements (+ cosmetic titles) and the arcade card clip (the card uses `drawCard` art for now).
 5. Later / maybe: missions, more districts, tandem stoker, cargo passengers.
 
+## Pause menu
+"Hill feel" (grade scale, default 0.6×) and "Max grade" (default 8 %) steppers in the shell pause menu, persisted per
+rider via `ctx.save`. Mechanism: the sim exposes `settings()`, the shell reads it structurally
+(`src/shell/gameSettings.ts`) and sends `receive({ type: 'setting', key, value })`.
+
+## Decisions (from review)
+- Line-leaving: both modes behind `lineLeave`, default `hold`. Spins: paddles in the air. Ride-until-quit.
+- Grade 0.6× / cap 8 % kept, adjustable in pause. Drawbridge tuned for ~FTP sprints.
+
 ## Open questions
-- Free steer vs line-snap balance: should holding a paddle ever leave a line, or only at forks?
-- Should spins be auto (Y in air) or need paddles? (Paddles are also steering.)
-- Does the game want an end condition (timed session / "wanted" bust count) or ride-until-quit?
-- Grade feel: how much resistance is fun on a 3 m berm vs. annoying? (v1: scale 0.6, cap 8%.)
+- Should `forks` become the default after play-testing?
+- Should weapons/cops raise grade too (e.g. dragging a tandem stoker)?

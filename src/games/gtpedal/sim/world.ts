@@ -6,7 +6,9 @@ export interface Line { id: number; kind: LineKind; pts: Array<[number, number]>
 export interface Kicker { x: number; z: number; dir: number; len: number; w: number; h: number }
 
 export const HALF = 120;
-export const CANAL = { z0: -14, z1: -4, depth: 5 };
+export const CANAL = { z0: -24, z1: -4, depth: 5 };
+/** Drawbridge gap: half-width (m) at the middle = GAP.base + GAP.perRad × leaf angle (tuned so ~FTP clears it, Z2 doesn't). */
+export const GAP = { base: 1, perRad: 28 };
 export const BRIDGE = { x0: -9, x1: 9 }; // central avenue crosses the canal here; two leaves hinge at z0/z1
 export const BOWL = { x: -70, z: 50, r: 16, depth: 4.5 };
 export const PLAZA = { x0: 30, z0: 30, x1: 80, z1: 80, drop: 2, stairsZ: 30, stairsLen: 4 };
@@ -56,7 +58,7 @@ export function heightAt(x: number, z: number, bridge = 0): number {
     if (x > BRIDGE.x0 && x < BRIDGE.x1) {
       const mid = (CANAL.z0 + CANAL.z1) / 2, tan = Math.tan(bridge);
       const fromHinge = z < mid ? z - CANAL.z0 : CANAL.z1 - z;
-      const gapHalf = bridge > 0.02 ? 0.6 + bridge * 2 : 0; // gap opens at the middle
+      const gapHalf = bridge > 0.02 ? GAP.base + bridge * GAP.perRad : 0; // gap opens at the middle
       if (Math.abs(z - mid) < gapHalf) return -CANAL.depth;
       return fromHinge * tan;
     }

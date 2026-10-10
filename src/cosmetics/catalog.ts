@@ -213,12 +213,6 @@ export const ITEMS: Item[] = [
   title('t_sharp', 'Sharpshooter', A('cz_sharp')),
   title('t_maestro', 'Cadence Maestro', A('ws_maestro')),
   title('t_bread', 'Breadbasket', A('ws_breadbasket')),
-  title('t_gtp_thief', 'Bike Thief', A('gtp_first_steal')),
-  title('t_gtp_bridge', 'Bridge Jumper', A('gtp_drawbridge')),
-  title('t_gtp_coyote', 'Super Genius', A('gtp_bail')),
-  title('t_gtp_air', 'Frequent Flyer', A('gtp_big_air')),
-  title('t_gtp_kingpin', 'Kingpin', A('gtp_kingpin')),
-  title('t_gtp_acme', 'ACME Rep', A('gtp_acme')),
 ];
 
 const BY_ID = new Map(ITEMS.map((i) => [`${i.slot}:${i.id}`, i]));

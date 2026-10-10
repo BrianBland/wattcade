@@ -4,6 +4,8 @@ import { buildingAt, heightAt, LINES, nearestOnLine, type Line } from './world';
 export interface Params {
   drive: number; drag: number; rollDecay: number; topSpeed: number; gravity: number; launchMul: number;
   climbMul: number; turnRate: number; snapR: number; snapPull: number; crashSpeed: number; grindR: number;
+  /** share of top speed that scales with effort (0 = flat cap; 0.5 = 0.65 FTP gets 82 %, 1.2 FTP gets 110 %) */
+  effortTop?: number;
 }
 export interface Body {
   x: number; z: number; y: number; vy: number; heading: number; speed: number;
@@ -43,7 +45,9 @@ export interface StepOut { crashed: boolean; landed: boolean; spinLanded: number
 
 export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: number, grindS: { s: number }): StepOut {
   const out: StepOut = { crashed: false, landed: false, spinLanded: 0, slope: 0, splash: false, impact: 0, grindEnded: 0 };
-  const top = p.topSpeed * inp.bike.top * inp.topMul * (1 + inp.boost);
+  const et = p.effortTop ?? 0;
+  const effTop = Math.max(0.4, Math.min(1.4, 1 - et + et * inp.effort));
+  const top = p.topSpeed * effTop * inp.bike.top * inp.topMul * (1 + inp.boost);
   // steering: line snap unless free-steering or airborne
   if (!b.air) {
     if (inp.freeSteer || b.line < 0) {
@@ -74,7 +78,9 @@ export function stepBody(b: Body, p: Params, inp: StepIn, dt: number, bridge: nu
   const g0 = heightAt(b.x, b.z, bridge);
   const fx = Math.sin(b.heading), fz = Math.cos(b.heading);
   const ahead = heightAt(b.x + fx * 0.5, b.z + fz * 0.5, bridge);
-  const slope = b.air ? 0 : (ahead - g0) / 0.5; out.slope = slope;
+  const rawSlope = (ahead - g0) / 0.5;
+  // a lip (ground falls away just ahead) is not a downhill: it must not slingshot you
+  const slope = b.air || ahead - g0 < -0.3 ? 0 : Math.max(-1, Math.min(1, rawSlope)); out.slope = slope;
   if (!b.air) {
     const drive = p.drive * inp.effort * inp.bike.power * (b.grinding ? 0.3 : 1);
     let a = drive - p.drag * b.speed * b.speed - p.rollDecay * b.speed - p.gravity * slope * p.climbMul;

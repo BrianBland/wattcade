@@ -1,4 +1,5 @@
-import type { MediaTimeline } from '../../contracts';
+import type { MediaCoverage, MediaTimeline } from '../../contracts';
+import { freezeHorizon, freezeMerge, songCoverage } from './freeze';
 import { ANALYSIS_VERSION, CURVE_HZ, type QueueMode, type SongAnalysis } from '../types';
 import { buildTimeline } from '../mix/timeline';
 import { foldTempo } from '../analysis/tempo';
@@ -15,6 +16,8 @@ export interface RangeSource {
   cancel(): void;
   dispose(): void;
   debug(): Record<string, number | string>;
+  /** Register a cue a game has shown (program time); later revisions never move it (MediaContext.announce). */
+  announce?(id: string, t: number): void;
 }
 export interface WindowResult { buffer: AudioBuffer; analysis: SongAnalysis; /** Per-beat features (times relative to the buffer start). */ beats?: BeatFeature[] }
 export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) => Promise<WindowResult>;
@@ -123,6 +126,8 @@ export class RollingQueue implements RangeSource {
   private wantedP = 0;
   private error = '';
   private alive = true;
+  private announced = new Map<string, number>();
+  private analysed = new Map<number, Array<[number, number]>>();
   constructor(readonly items: MixItem[], mode: QueueMode, readonly bufferS: number, private load: WindowLoader) {
     this.plan = planMix(items, mode === 'continuous' ? mode : 'crossfade');
     this.plan.mode = mode;
@@ -167,12 +172,35 @@ export class RollingQueue implements RangeSource {
         this.cache.set(key, { startS: start, endS: end, bufferStartS: bufferStart, buffer: result.buffer });
         if (!this.committed.has(key)) {
           mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
-          const revision = (this.timeline.revision ?? 0) + 1;
-          Object.assign(this.timeline, buildTimeline(this.plan, this.items), { revision, updateFromS: Math.min(this.timeline.updateFromS ?? Infinity, Math.max(0, progTime(e.segs, start))) });
           this.committed.add(key);
+          const spans = this.analysed.get(e.index) ?? []; spans.push([start, end]); this.analysed.set(e.index, spans);
+          this.revise(Math.max(0, progTime(e.segs, start)));
         }
       } catch (e) { if (controller !== this.controller || !this.alive) return; this.error = e instanceof Error ? e.message : String(e); throw e; }
     }
+  }
+  /** Apply a new revision under the freeze horizon (playhead + 3 s floor over analysed time, plus every announced cue). */
+  private revise(changedFromS: number) {
+    const prev = this.timeline, revision = (prev.revision ?? 0) + 1;
+    const h = freezeHorizon(prev.frozenUntilS ?? 0, this.wantedP, this.announced.values(), prev.coverage ?? []);
+    const next = freezeMerge(prev, { ...buildTimeline(this.plan, this.items), coverage: this.coverage() }, h);
+    const from = Math.max(changedFromS, next.frozenUntilS ?? 0);
+    const updateFromS = Math.min(prev.updateFromS ?? Infinity, from);
+    for (const k of Object.keys(prev) as Array<keyof MediaTimeline>) if (!(k in next)) delete prev[k];
+    Object.assign(prev, next, { revision, updateFromS });
+  }
+  private coverage(): MediaCoverage[] {
+    const out: MediaCoverage[] = [];
+    for (const e of this.plan.entries) {
+      const w = this.analysed.get(e.index);
+      if (w) out.push(...songCoverage(this.items[e.index].analysis, w, (s) => progTime(e.segs, s), e.own[0], e.own[1]));
+    }
+    return out.sort((a, b) => a.t0 - b.t0);
+  }
+  announce(id: string, t: number) {
+    if (this.announced.has(id)) return;   // first announcement wins: a cue's time never changes
+    this.announced.set(id, t);
+    this.timeline.frozenUntilS = freezeHorizon(this.timeline.frozenUntilS ?? 0, this.wantedP, [t], this.timeline.coverage ?? []);
   }
   readyThrough(p: number): number {
     let end = this.plan.durationS;

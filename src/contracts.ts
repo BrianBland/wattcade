@@ -237,6 +237,8 @@ export interface MediaSongSpan {
  * One clock for a whole queue (songs mixed or back to back). Everything is in program seconds.
  * Curves are sampled at `hz` (10) and normalised 0..1. Games read only this.
  */
+/** An analysed span of program time (rolling sources only) with separate 0..1 confidence in its rhythm (beat grid) and structure (sections/phrases). */
+export interface MediaCoverage { t0: Seconds; t1: Seconds; rhythm: number; structure: number }
 export interface MediaTimeline {
   durationS: Seconds; hz: number;
   intensity: number[];              // overall energy
@@ -246,6 +248,10 @@ export interface MediaTimeline {
   confidence: 'full' | 'metadata';
   /** Rolling sources mutate this object; consumer clears updateFromS after applying the earliest pending revision. */
   revision?: number; updateFromS?: Seconds;
+  /** Rolling sources: analysed spans in program time. Absent = the whole timeline is fully analysed. Time not covered is unanalysed (estimates). */
+  coverage?: MediaCoverage[];
+  /** Rolling sources: revisions never change events, sections or curves before this time (playhead + 3 s floor, and every announced cue). Absent = nothing will change. */
+  frozenUntilS?: Seconds;
 }
 /** Effects a music game's renderer may put on the playing music (present in mount ctx only when music is playing). Reset on exit. */
 export interface MusicFx { /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number }
@@ -255,6 +261,8 @@ export interface MediaContext {
   positionS(): Seconds;
   /** True once the program has started (after any pre-game menu). */
   started(): boolean;
+  /** Register a cue the game has shown the rider (`t` = program time of the event it targets). Later revisions never move or remove events at or before it. Absent when the timeline can't change. */
+  announce?(id: string, t: Seconds): void;
 }
 
 // ===== Sessions =====

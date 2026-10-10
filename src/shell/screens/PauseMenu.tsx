@@ -7,7 +7,7 @@ import { setSoundEnabled, soundEnabled } from '../../audio/sfx';
 
 const clampDiff = (v: number) => Math.min(1.5, Math.max(0.5, +v.toFixed(2)));
 
-export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLegend, initial = 0 }: { initial?: number; legendOn: boolean; onLegend: (v: boolean) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLegend, initial = 0, quitLabel = 'Finish ride' }: { initial?: number; quitLabel?: string; legendOn: boolean; onLegend: (v: boolean) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
   const [diff, setDiff] = useState(getDifficulty);
   const setD = (v: number) => { const c = clampDiff(v); setDiff(c); debugActions.setDifficulty(c); };
   const [sound, setSound] = useState(soundEnabled());
@@ -37,7 +37,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLeg
         <div class="row pause-actions">
           <Btn focused={idx === 4} onClick={onHelp}>Controls</Btn>
           <Btn focused={idx === 5} onClick={onRestart}>↻ Restart</Btn>
-          <Btn focused={idx === 6} onClick={onQuit}>Finish ride</Btn>
+          <Btn focused={idx === 6} onClick={onQuit}>{quitLabel}</Btn>
         </div>
         <KeyHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
       </div>

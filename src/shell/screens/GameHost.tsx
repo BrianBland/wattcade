@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../contracts';
 import type { MediaRun, SessionLike } from '../types';
 import { ProgramSync } from '../../media/clock';
-import { startTarget } from '../countGate';
+import { canPause, openingPhase, startTarget } from '../countGate';
 import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
@@ -60,9 +60,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
 
   const setPause = (p: boolean) => {
-    if (phaseRef.current !== 'play') return;
+    if (!canPause(phaseRef.current)) return;
     pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
+    if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
     if (p) { s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
   /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
@@ -110,6 +111,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       try {
         const session = startSession(game, profile, onSave, media ? { timeline: media.timeline } : undefined);
         sessionRef.current = session; setSession(session);
+        if (openingPhase(!!session.sim.inMenu?.()) === 'menu') setPhase('menu'); // the game's own menu replaces the intro card
         if (media && session.media) {
           const engine = mediaEngine(); engine.load(media.plan, media.rolling); engine.setVolume(1); engine.preload();
           music.current = { engine, sync: new ProgramSync() };
@@ -143,9 +145,11 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             if (p.has('a') || T.intro >= INTRO_AUTO_S) startCount();
             else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
           } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), count down once it's dismissed
-            session.frame(dt);
-            if (session.sim.isOver()) toEnding(true);
-            else if (!session.sim.inMenu?.()) startCount();
+            if (!pausedRef.current) {
+              session.frame(dt);
+              if (session.sim.isOver()) toEnding(true);
+              else if (!session.sim.inMenu?.()) startCount();
+            }
           } else if (ph === 'count') {
             session.idle(dt);
             T.count += dt;
@@ -212,7 +216,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       {paused && help && session && <IntroHelp game={game} hud={hud} profile={profile} onClose={() => setHelp(false)} />}
       {paused && !help && (
         <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
-          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart} onQuit={() => toEnding(false)} />
+          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
+          {...(phase === 'menu' ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) } : { onQuit: () => toEnding(false) })} />
       )}
       {phase === 'ending' && ending && !recap && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}
     </div>

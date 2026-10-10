@@ -91,10 +91,10 @@ Heat from hits: +0.5 per bystander (max +1.5 per blast), +1 per cop, +0.5 per mo
 ## Art direction: Jet Set Radio sliver (render-only)
 `gtpedal.artStyle` = `sliver` (default) | `classic`. In `sliver`, ONE corner (the sunken plaza + east tower,
 `render/jsr.ts` `SLIVER`) gets the beauty pass; the rest of town stays blocky:
-toon ramp shading (3-step `MeshToonMaterial`), ink outlines (scaled back-face hulls), bold JSR palette, procedural
-canvas graffiti (tower murals, floor/ledge tags), hand-shaped benches/planters/trees/lamps/ledges, pastel tile floor
-following the steps, flat cel shadows (blob + sheared slab), sky gradient, and a single grade pass (saturation,
-light posterize, contrast, vignette; cadenza `Post` pattern) that only runs while the rider is within 25 m of the sliver.
+toon ramp shading (3-step `MeshToonMaterial`), thin warm-brown ink outlines (scaled back-face hulls), a calm grounded
+palette (brick/terracotta, sandstone, sage + deep greens, weathered wood, slate, cream), hand-shaped
+benches/planters/trees/lamps/ledges, sandstone paving following the steps (no graffiti, by request), flat cel shadows (blob + sheared slab), sky gradient, and a single gentle grade pass (slight
+saturation, gentle warmth, soft vignette; cadenza `Post` pattern) that only runs while the rider is within 25 m of the sliver.
 The rider swaps to toon + ink while inside. Next step if it lands: roll the kit out district by district.
 
 ## Camera

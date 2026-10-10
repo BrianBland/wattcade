@@ -10,11 +10,11 @@ import type { SfSave, SfSnapshot } from '../sim/types';
 import type { MediaTimeline } from '../../../contracts';
 
 const longMusic = () => synthTimeline({ style: 'mixed', songs: 20, seed: 1 });
-function rig(opts: Record<string, unknown> = {}, script = 'z2', timeline?: MediaTimeline, raw?: Record<string, unknown>) {
+function rig(opts: Record<string, unknown> = {}, script = 'z2', timeline?: MediaTimeline, raw?: Record<string, unknown>, input = new NullInput()) {
   const profile = testProfile(); if (raw) profile.gameData.starfighter = raw;
   let saved: SfSave | undefined;
   const tuning = new TuningRegistry({ profileId: profile.id, storage: null });
-  const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script }, seed: 3,
+  const s = createGameSession({ game: module, profile, input, fake: { script }, seed: 3,
     simOpts: { skipHangar: true, ...opts }, ...(timeline ? { media: { timeline } } : {}), tuningRegistry: tuning, onSave: d => { saved = d as SfSave; } });
   return { s, profile, snap: () => s.sim.snapshot() as SfSnapshot, saved: () => saved!, seconds: (secs: number) => s.step(Math.round(secs * 30)) };
 }
@@ -84,6 +84,50 @@ describe('endurance music combat', () => {
   it('same seed and rider produce identical results', () => {
     const run = () => { const r = rig({}, 'z2', longMusic()); r.seconds(100); return r.s.sim.summary(); };
     expect(run()).toEqual(run());
+  });
+});
+describe('musical locks and paddle targeting', () => {
+  it('automatically acquires and releases bounded volleys without beat analysis', () => {
+    const r = rig(); let sawLocks = false, sawLasers = false;
+    for (let i = 0; i < 400; i++) {
+      r.seconds(0.1); const s = r.snap(); sawLocks ||= s.locks.length > 0; sawLasers ||= s.lasers.length > 0;
+      expect(s.locks.length).toBeLessThanOrEqual(s.lockCapacity); expect(s.lasers.length).toBeLessThanOrEqual(24);
+      expect(s.lasers.every(l => Number.isFinite(l.x) && Number.isFinite(l.y))).toBe(true);
+    }
+    expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
+  });
+  it('touch retarget cycles spatially and preserves already painted locks', () => {
+    const r = rig(); r.seconds(2.3); const s = r.snap();
+    const candidates = s.enemies.filter(e => e.hp > 0 && e.y < 72).sort((a,b) => a.x-b.x || a.id-b.id);
+    expect(candidates.length).toBeGreaterThan(2);
+    const previous = s.selectedId, painted = [...s.locks];
+    r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(1/30);
+    expect(r.snap().selectedId).toBe(candidates[(candidates.findIndex(e => e.id === previous)+1)%candidates.length].id);
+    expect(r.snap().locks).toEqual(painted);
+    r.s.sim.receive!({ type: 'target', direction: -1 }); r.seconds(1/30); expect(r.snap().selectedId).toBe(previous);
+  });
+  it('right paddles select targets without activating Nova; left paddles still change Cruiser gears', () => {
+    const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }]);
+    const r = rig({}, 'z2', undefined, undefined, input); r.s.tuning.set('starfighter.novaChargeS',10); r.seconds(20);
+    const gear = r.s.ctx.bike().gear; r.seconds(1);
+    expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
+    expect(r.s.recorder.events.some(e=>e.type==='retarget')).toBe(true); expect(r.s.ctx.bike().gear).toBeGreaterThan(gear!);
+  });
+  it('flagship batteries expose the reactor and leave with an escaping boss', () => {
+    const r = rig(); r.s.tuning.set('starfighter.bossEveryS',40); r.s.tuning.set('starfighter.bossHull',200); r.seconds(41);
+    expect(r.snap().boss?.stage).toBe('Destroy the batteries');
+    expect(r.snap().enemies.filter(e=>e.kind==='turret')).toHaveLength(3);
+    let exposed=false;
+    for(let i=0;i<500;i++){r.seconds(0.1);exposed ||= r.snap().boss?.stage==='Reactor exposed';}
+    expect(exposed).toBe(true);
+    const idle=rig({},'idle');idle.s.tuning.set('starfighter.bossEveryS',40);idle.s.tuning.set('starfighter.bossTimeoutS',30);idle.seconds(71);
+    expect(idle.snap().boss).toBeNull();expect(idle.snap().enemies.some(e=>e.parentId)).toBe(false);
+  });
+  it('steady riding visibly banks out of bullet lanes; idle never earns volleys or dodges', () => {
+    const r = rig({}, 'z2', longMusic()); r.seconds(120);
+    expect(Number(r.s.sim.summary().dodges)).toBeGreaterThan(0); expect(r.snap().deaths).toBe(0);
+    const idle = rig({}, 'idle', longMusic()); idle.seconds(120);
+    expect(Number(idle.s.sim.summary().volleys)).toBe(0); expect(Number(idle.s.sim.summary().dodges)).toBe(0);
   });
 });
 describe('craft selection and save migration', () => {

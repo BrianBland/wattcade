@@ -19,7 +19,7 @@ const SHOTS: Record<string, Shot> = {
   dungeon: { query: `script=sprints&sec=150&seed=11&${ap()}` },
   lighthouse: { query: `script=z2&sec=900&${ap()}`, crop: [210, 110, 680, 383] },
   towerdefense: { query: `script=sprints&sec=300&${ap()}`, crop: [152, 0, 656, 369] },
-  starfighter: { query: `script=z2&sec=270&media=edm&${ap()}` },
+  starfighter: { query: `script=z2&sec=155&media=edm&${ap()}` },
 };
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };

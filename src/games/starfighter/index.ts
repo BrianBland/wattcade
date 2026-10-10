@@ -8,7 +8,7 @@ export const module: GameModule = {
   achievements,
   id: 'starfighter',
   title: 'Sprocket Squadron',
-  blurb: 'Hold the groove. Ride Zone 2 through your music while your squadron flies and fires. Grow your arsenal, break flagships, and unlock craft with different riding styles.',
+  blurb: 'Hold the groove. Paint targets with your paddles, unleash musical laser volleys, and auto-dodge through bright carrier battles. Ride Zone 2, grow your arsenal, and break flagships.',
   progressLine, drawCard,
   tags: ['zone2', 'erg'],
   requires: { media: ['pcm'] },

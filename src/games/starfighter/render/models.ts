@@ -7,9 +7,15 @@ const ring = new THREE.TorusGeometry(1, 0.08, 6, 32); ring.rotateX(Math.PI / 2);
 export const geometries = { hull, box, sphere, ring };
 export function shipModel(color: string, kind: string): THREE.Group {
   const g = new THREE.Group();
+  if(kind==='turret') {
+    const armor=new THREE.MeshStandardMaterial({color:'#e8ddec',metalness:0.6,roughness:0.3});
+    const glow=new THREE.MeshBasicMaterial({color:'#ff3bbf'});
+    const base=new THREE.Mesh(sphere,armor);base.scale.set(2.5,1.3,2.5);g.add(base);
+    const barrel=new THREE.Mesh(box,glow);barrel.position.set(0,1.3,1);barrel.scale.set(0.8,0.8,4);g.add(barrel);return g;
+  }
   const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
-  const light = new THREE.MeshBasicMaterial({ color: kind === 'player' || kind === 'escort' ? '#80eeff' : '#ffad66' });
+  const light = new THREE.MeshBasicMaterial({ color: kind === 'player' || kind === 'escort' ? '#38edff' : '#ff43bd' });
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m;
   };
@@ -23,12 +29,32 @@ export function shipModel(color: string, kind: string): THREE.Group {
     add(box, light, [side * wings, 0.65, -1.6], [0.3, 0.3, 0.7]);
     const engine = add(sphere, light, [side * 1.1, 0.6, 3.1], [0.5, 0.3, 1.2]); engine.name = 'engine';
   }
+  if (kind === 'player' || kind === 'escort') {
+    const white = new THREE.MeshStandardMaterial({ color: '#eaf6ff', metalness: 0.4, roughness: 0.25 });
+    for (const side of [-1, 1]) {
+      add(hull, white, [side*2.7,0.8,0.6],[0.5,0.4,0.7]);
+      const sprocket = add(ring, light, [side*2.7,1.2,1.8],[0.9,0.9,0.9]); sprocket.name='sprocket';
+      for (let i=0;i<8;i++) {const a=i*Math.PI/4; add(box,white,[side*2.7+Math.cos(a),1.2,1.8+Math.sin(a)],[0.35,0.3,0.35]);}
+      for(let level=2;level<=5;level++) { const pod=add(box,light,[side*(3+level*0.45),0.8,1.8-level*0.6],[0.45,0.4,1.8]);pod.name=`weapon-${level}`; }
+    }
+  }
   if (kind !== 'player' && kind !== 'escort') g.rotation.y = Math.PI;
   return g;
 }
 export function bossModel(style: number): THREE.Group {
-  const g = shipModel(['#c29049', '#aa503b', '#459da2', '#8860ba', '#609c51'][style], 'boss');
+  const g = shipModel(['#ffb93a', '#ff438e', '#43e9e2', '#b16cff', '#71ffa7'][style], 'boss');
   g.scale.setScalar(2.3);
+  const armor = new THREE.MeshStandardMaterial({color:'#d6e5f3',metalness:0.7,roughness:0.3});
+  for(const side of [-1,1]) {const deck=new THREE.Mesh(box,armor);deck.position.set(side*6,0,0);deck.scale.set(6,1.6,9);g.add(deck);}
+
+  const navy = new THREE.MeshStandardMaterial({color:'#203b69',metalness:0.6,roughness:0.35});
+  const neon = new THREE.MeshBasicMaterial({color:'#ff48c4'});
+  for(const side of [-1,1]) {
+    const roof=new THREE.Mesh(hull,navy);roof.position.set(side*6,1.4,-0.8);roof.scale.set(1.2,0.5,1.2);g.add(roof);
+    for(let i=0;i<5;i++) {const stripe=new THREE.Mesh(box,neon);stripe.position.set(side*6,1,-3+i*1.4);stripe.scale.set(4,0.15,0.2);g.add(stripe);}
+    const thruster=new THREE.Mesh(sphere,neon);thruster.position.set(side*6,0,5);thruster.scale.set(1,0.6,1.8);g.add(thruster);
+  }
+  const reactor=new THREE.Mesh(sphere,neon);reactor.position.set(0,2,0);reactor.scale.set(1.6,1,1.6);g.add(reactor);
   const material = new THREE.MeshBasicMaterial({ color: '#ffb964' });
   const hoop = new THREE.Mesh(ring, material); hoop.scale.setScalar(3.4 + style * 0.2); hoop.position.y = 1; g.add(hoop);
   for (let i = 0; i < style + 2; i++) {

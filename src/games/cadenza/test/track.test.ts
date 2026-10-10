@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { synthTimeline } from '../../../media/synth/queue';
 import { extendTrack, buildTrack, DIFF, rateTrack, sampleAt, zoneIndexAt, type Difficulty } from '../sim/track';
+import { rideTimeline } from './fixtures';
 
 const tl = synthTimeline({ style: 'edm', songs: 2, seed: 1, mix: 'automix' });
 
@@ -69,7 +70,7 @@ describe('Cadenza track', () => {
 describe('effort phases', () => {
   it('drops sprint for at most the difficulty cap, then hold a lower zone', async () => {
     const { effortAt, DIFF } = await import('../sim/track');
-    const long = synthTimeline({ style: 'edm', songs: 1, seed: 2 }); // 16-bar drops ≈ 30 s
+    const long = rideTimeline([[0, 40, 'break'], [40, 80, 'build'], [80, 140, 'drop'], [140, 180, 'break']]);
     for (const diff of ['casual', 'pro', 'elite'] as Difficulty[]) {
       const tr = buildTrack(long, { difficulty: diff, mode: 'mono', seed: 1 });
       const drop = tr.zones.find((z) => z.kind === 'drop')!;
@@ -82,7 +83,7 @@ describe('effort phases', () => {
   });
   it('every phase is power-based with ERG watts that rise through a climb', async () => {
     const { effortAt } = await import('../sim/track');
-    const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
+    const tr = buildTrack(rideTimeline([[0, 40, 'break'], [40, 80, 'build'], [80, 140, 'drop'], [140, 180, 'break']]), { difficulty: 'pro', mode: 'mono', seed: 1 });
     for (let p = 0; p < tr.durationS; p += 3) expect(effortAt(tr, p, 'pro').target.source).toBe('power');
     const build = tr.zones.find((z) => z.kind === 'build')!;
     expect(effortAt(tr, build.t1 - 0.5, 'pro').ergFtp).toBeGreaterThan(effortAt(tr, build.t0 + 0.5, 'pro').ergFtp);
@@ -92,11 +93,12 @@ describe('effort phases', () => {
 });
 
 describe('banks and tunnels', () => {
-  it('every drop banks hard (≈ 66°) and turns with it; breaks are tunnels', () => {
+  it('planned sprints bank hard (≈ 66°); drops skipped for recovery stay calm; breaks are tunnels', () => {
     const tr = buildTrack(tl, { difficulty: 'pro', mode: 'mono', seed: 1 });
     for (const z of tr.zones.filter((x) => x.kind === 'drop')) {
       const i0 = Math.round(z.t0 * tr.hz), i1 = Math.round(Math.min(z.t1, z.t0 + 8) * tr.hz); // (after any opening corkscrew)
       const peak = Math.max(...Array.from(tr.roll.slice(i0, i1), Math.abs));
+      if (!tr.stunts.some((s) => s.kind === 'launch' && s.t0 === z.t0)) { expect(peak).toBeLessThan(0.1); continue; }
       expect(peak).toBeGreaterThan(1.1);
       expect(Math.abs(tr.curve[i1] - tr.curve[i0])).toBeGreaterThan(0.8); // the track actually turns
     }

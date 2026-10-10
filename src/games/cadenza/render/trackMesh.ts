@@ -21,9 +21,9 @@ void main() {
   float chev = step(fract(m * 0.055 - au * 0.35), 0.06) * step(au, uInner);
   float grid = step(fract(m * 0.25), 0.02);
   // beat waves: a ring of light runs forward from the craft on every beat
-  float wave = exp(-abs(m - (uCraftM + uBeatAge * 70.0)) * 0.22) * exp(-uBeatAge * 1.6);
+  float wave = exp(-abs(m - (uCraftM + uBeatAge * 70.0)) * 0.22) * exp(-uBeatAge * 1.6) * uMotion;
   // tunnel reflections of the ring lights (every 12 m), glossy
-  float refl = vTun * pow(clamp(0.5 + 0.5 * cos(m * 6.2831853 / 12.0), 0.0, 1.0), 16.0) * (0.5 + 0.9 * uBeat);
+  float refl = vTun * pow(clamp(0.5 + 0.5 * cos(m * 6.2831853 / 12.0), 0.0, 1.0), 16.0) * (0.15 + 0.35 * uMotion + 0.9 * uBeat);
   float sheen = vTun * 0.25 * pow(clamp(0.5 + 0.5 * cos(m * 6.2831853 / 4.0 + u * 2.0), 0.0, 1.0), 30.0);
   vec3 base = uFog * 0.6 + vec3(0.006);
   vec3 c = base + acc * (edge * (1.3 + uBands.x * 1.2) + line * (0.22 + 0.5 * uBands.z) + chev * (0.08 + 0.2 * uBeat) + grid * 0.08 + wave * 1.1)
@@ -45,7 +45,7 @@ void main() {
   float top = exp(-q * q) * step(fract(m * 0.25), 0.4) * 0.45;
   float streak = pow(clamp(0.5 + 0.5 * sin(a * 120.0 + m * 0.05), 0.0, 1.0), 30.0) * 0.15;
   vec3 acc = mix(uAcc, hue2rgb(fract(a + uTime * 0.2 + m * 0.01)), uAcid * 0.6);
-  vec3 c = uFog * 0.5 + acc * (seam * 0.55 + streak) + uAcc2 * ring * (1.2 + 1.6 * uBeat) + vec3(1.0, 0.95, 0.9) * top * (0.9 + 0.6 * uBands.z);
+  vec3 c = uFog * 0.5 + acc * (seam * 0.55 + streak * uMotion) + uAcc2 * ring * (0.25 + 0.95 * uMotion + 1.6 * uBeat) + vec3(1.0, 0.95, 0.9) * top * (0.5 + 0.4 * uMotion + 0.6 * uBands.z);
   gl_FragColor = vec4(mix(c, uFog, fogF(vDepth) * 0.85), 1.0);
 }`;
 

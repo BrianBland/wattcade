@@ -24,7 +24,8 @@ export const scenarios: Array<{
       if (n(s, 'dropsHeld') !== n(s, 'drops')) f.push(`held ${s.dropsHeld}/${s.drops} drops while following the power target`);
       if (n(s, 'launches') !== n(s, 'drops')) f.push(`launches ${s.launches} != drops ${s.drops}`);
       if (n(s, 'launchBonus') < n(s, 'launches') * 1000) f.push(`launch bonus ${s.launchBonus}: following the sprint target should rate at least great`);
-      if (Math.max(...grades(run)) < 4) f.push(`steepest climb ${Math.max(...grades(run))}% < 4`);
+      if (Math.max(...grades(run)) > 7) f.push(`steepest climb ${Math.max(...grades(run))}% > 7`);
+      if (!grades(run).some((g) => g < 0.7)) f.push('trainer never eases for recovery');
       if (!run.events.some((e) => e.type === 'zone' && e.data?.kind === 'build')) f.push('no build zone');
       return f;
     },

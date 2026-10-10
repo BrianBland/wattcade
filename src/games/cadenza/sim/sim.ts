@@ -1,12 +1,14 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
 import { synthTimeline } from '../../../media/synth/queue';
-import { extendTrack, buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { rideIndexAt } from './ride';
+import { advanceCoaching, freshCoaching } from './coaching';
 
 export type TrainerStyle = 'grade' | 'erg';
-export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
+export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle; longerBreaks?: boolean }
 export interface CadenzaSave {
   plays?: number; sets?: number; bestScore?: number; best?: Record<string, number>;
-  lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle;
+  lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle; longerBreaks?: boolean;
 }
 /** One finished song's recap. `strip` = effort per second: 0 on target, 1 under, 2 over, 3 recovering (no target). */
 export interface SongRecap {
@@ -27,7 +29,7 @@ export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >=
 
 export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
-  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
+  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; longerBreaks: boolean; left: number } | null;
   track: Track; blockState: Uint8Array; x: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
@@ -36,6 +38,7 @@ export interface CadenzaSnapshot {
   zone: { index: number; n: number; kind: SectionKind; hue: number; left: number; label: string; floorFtp: number };
   /** The effort asked for right now: phase, floor watts (0 = none), seconds left in the phase. */
   effort: { ftp: number; ok: boolean; phase: Phase; watts: number; left: number; erg: boolean;
+    instruction: string; countdown: number | null; min: number; max: number; transition: boolean;
     /** 0..1, eased: how far (and how long) the rider has been under the floor / over the zone's ceiling. Drives the fade and the overcharge. */
     under: number; over: number; ceilingWatts: number;
     /** For the track gauge: phase floor / ceiling as FTP fractions (0 = none) and rpm. */
@@ -48,8 +51,8 @@ export interface CadenzaSnapshot {
   hooks: { powerFtp: number };
 }
 
-const MENU_ROWS = 5; // mode, difficulty, trainer, reduced flashing, start
-export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, start: 4 } as const;
+const MENU_ROWS = 6; // mode, difficulty, trainer, reduced flashing, longer breaks, start
+export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, breaks: 4, start: 5 } as const;
 const MENU_AUTO_S = 25;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const FIXED = 1 / 30;
@@ -79,9 +82,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let mode: Mode = 'mono'; // classic arrives in a later phase
   let reducedFlash = !!save.reducedFlash;
   let trainer: TrainerStyle = opts.trainer ?? save.trainer ?? 'grade';
+  let longerBreaks = opts.longerBreaks ?? save.longerBreaks ?? false;
   let menu = opts.menu !== false && !opts.autopilot && !opts.difficulty;
   let menuRow: number = MENU.start, menuT = 0;
-  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+  let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), longerBreaks });
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
 
@@ -92,6 +96,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let zoneIdx = -1, zoneClean = true, zoneBlocks = 0, zoneOd = 0, zoneDur = 0, dropsHeld = 0, drops = 0, songsDone = 0;
   let ok = false, overdrive = false, ftp = 0, zoneSprint = 0;
   let under = 0, over = 0, underS = 0, ceiling = 0, underDrainS = 0, cadence = 0;
+  let coaching = freshCoaching(), effortIdx = -1, trainerGrade = 0;
   let nextLaunch = 0, launchSum = 0, launchT = 0, launchActive = false, launchResult: { rating: LaunchRating; bonus: number; ratio: number; at: number } | null = null;
   let launches = 0, perfectLaunches = 0, launchBonus = 0;
   const recaps: SongRecap[] = [];
@@ -118,9 +123,9 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
   const startRide = () => {
     menu = false;
-    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), longerBreaks });
     blockState = new Uint8Array(track.blocks.length);
-    save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; ctx.save(save);
+    save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; save.longerBreaks = longerBreaks; ctx.save(save);
     ctx.resistance.useVirtualGears(true);
   };
   if (!menu) startRide();
@@ -129,7 +134,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     if (zoneIdx < 0) return;
     const z = track.zones[zoneIdx];
     if (zoneClean && zoneBlocks >= 6) { cleanZones++; score += 250 * z.n; cue('cleanZone', { n: z.n, bonus: 250 * z.n }); }
-    if (z.kind === 'drop') { drops++; if (zoneSprint > 0 && zoneOd / zoneSprint >= 0.7) { dropsHeld++; cue('dropHeld', { n: z.n }); } }
+    if (z.kind === 'drop' && zoneSprint > 0) { drops++; if (zoneOd / zoneSprint >= 0.7) { dropsHeld++; cue('dropHeld', { n: z.n }); } }
   };
 
   const steer = () => {
@@ -185,6 +190,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (row === MENU.difficulty) difficulty = DIFFICULTIES[(DIFFICULTIES.indexOf(difficulty) + d + 3) % 3];
       if (row === MENU.trainer) trainer = trainer === 'grade' ? 'erg' : 'grade';
       if (row === MENU.flash) reducedFlash = !reducedFlash;
+      if (row === MENU.breaks) longerBreaks = !longerBreaks;
       menuT = 0;
     };
     if (dir) { change(menuRow, dir); cue('menuMove', undefined, false); }
@@ -193,6 +199,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (a.type === 'difficulty' && DIFFICULTIES.includes(a.value as Difficulty)) difficulty = a.value as Difficulty;
       if (a.type === 'trainer') trainer = trainer === 'grade' ? 'erg' : 'grade';
       if (a.type === 'flash') reducedFlash = !reducedFlash;
+      if (a.type === 'breaks') longerBreaks = !longerBreaks;
       if (a.type === 'start') go = true;
       menuT = 0;
     }
@@ -207,7 +214,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     update(dt) {
       if ((timeline.revision ?? 0) !== revision) {
-        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+        const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade(), longerBreaks });
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
         const from = started ? Math.max(position() + 3, timeline.updateFromS ?? position() + 35) : 0;
         const previous = blockState;
@@ -234,19 +241,22 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
       // effort: power targets (sections are too short for HR); ERG holds the watts so pedalling is enough
       const e = effortAt(track, p, difficulty);
+      const ei = rideIndexAt(track.rideBlocks, p);
+      if (ei !== effortIdx) { effortIdx = ei; coaching = freshCoaching(); cue('effort', { phase: e.phase }); }
       ftp = bike.ftpFraction; cadence = bike.cadence3s;
       const erg = trainer === 'erg';
-      ok = e.phase === 'recover' || (erg ? bike.cadence3s >= 55 : bike.ftpFraction >= e.floorFtp - 0.005);
+      ok = e.phase === 'recover' || (erg ? bike.cadence3s >= 55 : bike.ftpFraction >= e.floorFtp - 0.02);
       const wasOd = overdrive;
       overdrive = e.phase === 'sprint' && ok && dropoutLeft < 0;
       if (overdrive && !wasOd) cue('overdrive', undefined, false);
       // off target: under fades the world (and drains the shield after a grace), over overcharges the ship
-      ceiling = erg || e.phase === 'sprint' ? 0 : zoneCeiling(e.target.max);
+      ceiling = erg || e.target.max === 5 ? 0 : zoneCeiling(e.target.max);
       const short = !ok && p > START_GRACE_S ? clamp((e.floorFtp - ftp) / Math.max(0.1, e.floorFtp) / 0.15, 0.35, 1) : 0;
       const hot = ceiling && ftp > ceiling + 0.03 ? clamp((ftp - ceiling) / 0.15, 0.35, 1) : 0;
       under = ease(under, short, dt, short > under ? 1.2 : 0.35);
       over = ease(over, hot, dt, hot > over ? 1.5 : 0.6);
       underS = ok ? 0 : underS + dt;
+      coaching = advanceCoaching(coaching, e.countdown || e.transition ? null : !ok ? 'harder' : hot ? 'easier' : null, dt);
       zoneDur += dt; if (e.phase === 'sprint') zoneSprint += dt;
       if (overdrive) { zoneOd += dt; overdriveS += dt; }
       lastEffort = e;
@@ -283,7 +293,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (trainer === 'erg') {
         ergF += (lastEffort.ergFtp - ergF) * (1 - Math.exp(-dt / 2.5));
         ctx.resistance.set({ id: 'track', mode: 'erg', ftpFraction: Math.round(ergF * 100) / 100 });
-      } else ctx.resistance.set({ id: 'track', mode: 'sim', gradePct: sampleAt(track.grade, track.hz, p) * tun.hillScale() });
+      } else {
+        trainerGrade = ease(trainerGrade, e.gradePct * tun.hillScale(), dt, e.phase === 'recover' ? 1 : 2.5);
+        ctx.resistance.set({ id: 'track', mode: 'sim', gradePct: trainerGrade });
+      }
 
       // steering
       steer();
@@ -319,7 +332,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       }
       if (done && !saved) {
         saved = true;
-        const key = `${timeline.songs.map((s) => s.id).join('+')}|${mode}|${difficulty}`;
+        const key = `${timeline.songs.map((s) => s.id).join('+')}|${mode}|${difficulty}${longerBreaks ? '|longer-breaks' : ''}`;
         const best = { ...(save.best ?? {}) };
         if (score > (best[key] ?? 0)) { best[key] = score; cue('newBest', { score }); }
         Object.assign(save, { best, plays: (save.plays ?? 0) + 1, sets: (save.sets ?? 0) + (timeline.songs.length >= 5 ? 1 : 0), bestScore: Math.max(save.bestScore ?? 0, score) });
@@ -343,7 +356,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {
         p, durationS: track.durationS, started, done,
-        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
+        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, longerBreaks, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
         track, blockState, x, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
         launch: launchActive
@@ -352,12 +365,17 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         zone: { index: zi, n: z.n, kind: z.kind, hue: z.hue, left: Math.max(0, z.t1 - p), label: z.target.label ?? '', floorFtp: z.floorFtp },
         effort: {
           ftp, ok, phase: lastEffort.phase, watts: Math.round(lastEffort.floorFtp * ctx.profile.ftp), left: lastEffort.left, erg: trainer === 'erg',
+          instruction: lastEffort.countdown ? String(lastEffort.countdown) : coaching.direction === 'harder' ? trainer === 'erg' ? 'Keep Spinning' : 'Harder'
+            : coaching.direction === 'easier' ? 'Ease Off' : trainer === 'erg' && lastEffort.instruction === 'Harder' ? 'Keep Spinning' : lastEffort.instruction,
+          countdown: lastEffort.countdown, min: lastEffort.target.min, max: lastEffort.target.max, transition: lastEffort.transition,
           under, over, ceilingWatts: Math.round(ceiling * ctx.profile.ftp),
           floorFtp: lastEffort.phase === 'recover' ? 0 : lastEffort.floorFtp, ceilingFtp: ceiling, cadence: Math.round(cadence),
         },
         song: song ? { title: song.title, artist: song.artist, ...(song.credit ? { credit: song.credit.text } : {}) } : null,
         difficulty, mode, reducedFlash, cues, recaps,
-        hooks: { powerFtp: lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
+        // The fake rider prepares during the countdown, just as a rider can now do without an over-power warning.
+        hooks: { powerFtp: lastEffort.countdown ? ZONE_FLOOR[DIFF[difficulty].dropZone] + 0.03
+          : lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
       };
     },
     isOver: () => !menu && done,
@@ -368,7 +386,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         score, collected, missed, accuracyPct: total ? Math.round((100 * collected) / total) : 0, maxChain,
         greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS), underDrainS: Math.round(underDrainS),
         launches, perfectLaunches, launchBonus,
-        zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer,
+        zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer, longerBreaks: longerBreaks ? 1 : 0,
       };
     },
   };

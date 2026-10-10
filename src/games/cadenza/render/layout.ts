@@ -7,10 +7,10 @@ export interface Layout {
   /** three.js setViewOffset y shift so the craft sits in the usable area. */
   viewOffsetY: number;
   score: Box;    // top-left: score, multiplier, chain
-  zone: Box;     // top-right: section kind, time left, target
+  zone: Box;     // top-right: target band and effort time left
   shield: Box;   // top-centre: shield bar
   song: Box;     // under the score: now playing + credit
-  callout: Box;  // big centred "ZONE 07 / DROP" callout
+  callout: Box;  // primary coaching instruction / drop countdown
   menu: Box;     // pre-game menu panel
   launch: Box;   // the launch meter (bottom centre, above the shell HUD)
   recap: Box;    // end-of-song recap card
@@ -28,7 +28,7 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const shield: Box = narrow ? { x: pad, y: song.y + song.h + 6, w: sw, h: 22 } : { x: (W - sw) / 2, y: pad, w: sw, h: 22 };
   const cw = Math.min(W - 2 * pad, 560), ch = Math.min(120, Math.max(60, UH - (shield.y + shield.h + 8) - pad));
   const callout: Box = { x: (W - cw) / 2, y: Math.min(UH - ch - pad, Math.max(shield.y + shield.h + 8, UH * 0.28)), w: cw, h: ch };
-  const mw = Math.min(W - 2 * pad, 460), mh = Math.min(UH - 2 * pad, 340);
+  const mw = Math.min(W - 2 * pad, 460), mh = Math.min(UH - 2 * pad, 440);
   const menu: Box = { x: (W - mw) / 2, y: Math.max(pad, (UH - mh) / 2), w: mw, h: mh };
   const lw = Math.min(W - 2 * pad, 420), lh = 64;
   const launch: Box = { x: (W - lw) / 2, y: UH - lh - pad, w: lw, h: lh };

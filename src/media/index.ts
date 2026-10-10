@@ -25,3 +25,4 @@ export { checkMediaServer, loadAudioRange } from './online/client';
 
 export { RollingQueue, estimatedAnalysis, type RangeSource } from './online/rolling';
 export { PreviewPrefetch, isBusyError, type PartialPreview, type PreviewLoader, type PreviewState } from './online/prefetch';
+export { STREAM_BUFFER_OPTIONS } from './online/buffer';

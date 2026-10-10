@@ -39,7 +39,7 @@ export function drawCard(g: CanvasRenderingContext2D, w: number, h: number, t: n
 export function mediaPreview(g: CanvasRenderingContext2D, w: number, h: number, tl: MediaTimeline, profile: Readonly<Profile>): void {
   const save = profile.gameData.cadenza as CadenzaSave | undefined;
   const difficulty: Difficulty = save?.lastDifficulty ?? 'pro';
-  const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: 1 });
+  const tr = buildTrack(tl, { difficulty, mode: 'mono', seed: 1, longerBreaks: save?.longerBreaks });
   const n = tr.height.length; let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < n; i++) { lo = Math.min(lo, tr.height[i]); hi = Math.max(hi, tr.height[i]); }
   const top = 28, bot = h - 6, X = (p: number) => (p / tr.durationS) * w, Y = (v: number) => bot - ((v - lo) / (hi - lo || 1)) * (bot - top);
@@ -53,7 +53,7 @@ export function mediaPreview(g: CanvasRenderingContext2D, w: number, h: number, 
   for (let i = 0; i < n; i += 5) { const x = X(i / tr.hz), y = Y(tr.height[i]); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
   g.stroke();
   g.fillStyle = '#ff2bd6'; g.font = 'bold 11px system-ui'; g.textAlign = 'center';
-  for (const z of tr.zones) if (z.kind === 'drop') g.fillText('⚡', X((z.t0 + z.t1) / 2), top + 11);
+  for (const b of tr.rideBlocks) if (b.phase === 'sprint') g.fillText('⚡', X((b.t0 + b.t1) / 2), top + 11);
   const r = rateTrack(tr);
   g.textAlign = 'left'; g.fillStyle = '#e9e6ff'; g.font = 'bold 11px system-ui';
   g.fillText(`${difficulty.toUpperCase()} · ${r.blocksPerMin} blocks/min · ~${r.tss} TSS · ${r.minutesZ4} min Z4+ · ${'★'.repeat(r.stars)}`, 4, 13);

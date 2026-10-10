@@ -1,9 +1,23 @@
 import { expect, it } from 'vitest';
 import { RollingQueue, estimatedAnalysis, mergeWindow } from '../online/rolling';
 import type { MixItem } from '../mix/plan';
+import { DEFAULT_STREAM_BUFFER_S } from '../online/buffer';
 const item = (id: string, durationS = 180): MixItem => ({ id, title: id, artist: '', analysis: estimatedAnalysis(durationS) });
 const buffer = (duration: number) => ({ duration } as AudioBuffer);
 const analysis = (duration: number) => ({ ...estimatedAnalysis(duration), bpm: 120, beats: [0, 2, 29, 30, 31], onsets: [{ t: 2, s: 0.9, band: 0 as const }] });
+it('analyzes three minutes across a song handover while keeping decoded windows bounded', async () => {
+  const q = new RollingQueue([item('a', 120), item('b', 600)], 'automix', DEFAULT_STREAM_BUFFER_S,
+    async (_, __, duration) => ({ buffer: buffer(duration), analysis: analysis(duration) }));
+  await q.prepare(0);
+  expect(q.readyThrough(0)).toBeGreaterThanOrEqual(180);
+  expect(q.windows(q.plan.entries[1]).length).toBeGreaterThan(0);
+  expect(q.items[1].analysis.beats.length).toBeGreaterThan(0);
+  await q.prepare(200); q.evict(200);
+  expect(q.readyThrough(200)).toBeGreaterThanOrEqual(380);
+  expect(q.windows(q.plan.entries[0])).toHaveLength(0);
+  expect(q.windows(q.plan.entries[1]).length).toBeLessThanOrEqual(8);
+  q.dispose();
+});
 it('loads just the horizon, merges contextual events once and evicts old PCM', async () => {
   const calls: number[][] = [];
   const q = new RollingQueue([item('a')], 'automix', 60, async (_, start, duration) => {

@@ -3,7 +3,8 @@ import type { Button } from '../../../contracts';
 import { createGameSession, NullInput, runHeadless, testProfile, TimelineInput } from '../../../core';
 import { synthTimeline } from '../../../media/synth/queue';
 import { module } from '../index';
-import { isChainMilestone, rateLaunch, type CadenzaSnapshot } from '../sim/sim';
+import { isChainMilestone, rateLaunch, type CadenzaSnapshot, type CadenzaSave } from '../sim/sim';
+import { rideTimeline } from './fixtures';
 
 describe('Cadenza sim', () => {
   it('waits in its menu (music not started), then rides once started', () => {
@@ -30,6 +31,37 @@ describe('Cadenza sim', () => {
     expect(Object.keys(last.best)[0]).toMatch(/^synth:edm:1:s\|mono\|pro$/);
   });
 
+  it('saves Longer Breaks from the menu and restores it on the next ride', () => {
+    const timeline = rideTimeline([[0, 60, 'verse'], [60, 65, 'break'], [65, 160, 'verse']]);
+    let saved: CadenzaSave = {};
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, onSave: (d) => { saved = { ...d as CadenzaSave }; } });
+    expect((s.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(false);
+    s.sim.receive?.({ type: 'breaks' }); s.step(1);
+    expect((s.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(true);
+    s.sim.receive?.({ type: 'start' }); s.step(2);
+    expect(saved.longerBreaks).toBe(true);
+    const profile = testProfile(); profile.gameData.cadenza = saved;
+    const restored = createGameSession({ game: module, profile, input: new NullInput(), media: { timeline } });
+    expect((restored.sim.snapshot() as CadenzaSnapshot).menu?.longerBreaks).toBe(true);
+    const breakBlock = (s.sim.snapshot() as CadenzaSnapshot).track.rideBlocks.find((b) => b.phase === 'recover')!;
+    expect(breakBlock.t1 - breakBlock.t0).toBeGreaterThanOrEqual(45);
+  });
+
+  it('eases trainer demand for protected recovery even when the music is still a build', () => {
+    const timeline = rideTimeline([[0, 110, 'build'], [110, 150, 'drop'], [150, 220, 'build']], [0, 100]);
+    for (const trainer of ['grade', 'erg']) {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script: 'target-follow' }, simOpts: { difficulty: 'pro', autopilot: true, trainer } });
+      s.step(30 * 100);
+      const snap = s.sim.snapshot() as CadenzaSnapshot;
+      expect(snap.zone.kind).toBe('build'); expect(snap.effort.phase).toBe('recover'); expect(snap.effort.instruction).toBe('Break');
+      expect(snap.shield).toBeGreaterThan(90);
+      const command = s.mixer.command!;
+      if (command.mode === 'sim') expect(command.gradePct).toBeLessThan(0.7);
+      else if (command.mode === 'erg') expect(command.watts).toBeLessThan(testProfile().ftp * 0.6);
+      else throw new Error('Expected a trainer demand');
+    }
+  });
+
   it('a dropout locks the multiplier until the rider holds the target for the reboot time', () => {
     const r = runHeadless({ game: module, script: 'idle', minutes: 8, seed: 5, simOpts: { difficulty: 'elite' }, media: { synth: { style: 'edm', songs: 1 } } });
     expect(Number(r.summary.dropouts)).toBeGreaterThan(0);
@@ -37,11 +69,11 @@ describe('Cadenza sim', () => {
   });
 
   it('riding under the target fades in, then drains the shield; riding over a zone ceiling overcharges', () => {
-    const timeline = synthTimeline({ style: 'edm', songs: 1 });
+    const timeline = rideTimeline([[0, 40, 'intro'], [40, 100, 'build'], [100, 140, 'drop'], [140, 200, 'break']]);
     const at = (script: string, kind: string) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), media: { timeline }, fake: { script }, simOpts: { autopilot: true, difficulty: 'pro' } });
       const z = timeline.sections.find((x) => x.kind === kind)!;
-      while (s.media!.positionS() < z.t0 + 6) s.step(30);
+      while (s.media!.positionS() < z.t0 + 10) s.step(30);
       return s.sim.snapshot() as CadenzaSnapshot;
     };
     const climbing = at('z2', 'build'); // 0.65 FTP against a Z4 floor

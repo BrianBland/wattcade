@@ -61,12 +61,12 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
         </div>
         <div class="panel locker-items">
           <div class="row tabs">{SLOTS.map((s, i) => <Btn small focused={idx === tabStart + i} class={tab === i ? 'on' : ''} onClick={() => { setTab(i); setIdx(tabStart + i); }}>{SLOT_NAMES[s]}</Btn>)}</div>
-          <div class="item-grid" ref={grid}>
+          <div class="item-grid" ref={grid} key={slot}>
             {items.map((it, i) => {
               const un = isUnlocked(profile, it), on = worn[slot] === it.id, f = idx === gridStart + i;
               return (
-                <div class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
-                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <RiderAvatar look={withItem(base, it)} size="thumb" still road={false} silhouette={!un} />}
+                <div key={it.id} class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
+                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <RiderAvatar look={withItem(base, it)} size="thumb" still lazy road={false} silhouette={!un} />}
                   <div class="item-name">{un ? it.name : '🔒'}</div>
                   {!un && <div class="item-hint">{itemHint(it)}</div>}
                 </div>

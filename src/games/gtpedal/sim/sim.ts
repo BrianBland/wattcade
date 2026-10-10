@@ -13,6 +13,7 @@ export interface SimOpts {
   spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean;
   ammo?: Partial<Record<WeaponKind, number>>; startWeapon?: WeaponKind; copSpawn?: Array<{ kind: CopKind; x: number; z: number }>;
   /** autopilot also fires the locked weapon every few seconds */ autoFire?: boolean;
+  /** scene setup: replace the parked bikes */ bikesAt?: Array<{ kind: BikeKind; x: number; z: number; heading: number }>;
   /** render look override (else the gtpedal.artStyle tunable) */ artStyle?: 'sliver' | 'classic';
   /** scene/test hook: fire the current weapon at these sim times (s) */ fireAt?: number[]; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean; /** daredevil autopilot asks the fake bike (target-follow script) for this × FTP; default 1.0 */ sprintFtp?: number }
 export type Mode = 'bike' | 'foot' | 'ragdoll';
@@ -122,7 +123,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
   const held = { L: 0, R: 0 };
   const stats = { busts: 0, lostCops: 0, repaints: 0, copsLaunched: 0, shots: 0, flats: 0, pickups: 0, spinOuts: 0, distanceM: 0, airS: 0, maxAirS: 0, jumps: 0, crashes: 0, steals: 0, tricks: 0, grinds: 0, launches: 0, bridgeJumps: 0, splashes: 0, lineSwitches: 0 };
   let nextBikeId = 0;
-  const bikes: ParkedBike[] = PARKED_BIKES.map((b) => ({ id: nextBikeId++, x: b.x, z: b.z, heading: 0, kind: isBikeKind(b.kind) ? b.kind : 'city', flat: false }));
+  const bikes: ParkedBike[] = opts.bikesAt ? opts.bikesAt.map((b) => ({ id: nextBikeId++, ...b, flat: false })) : PARKED_BIKES.map((b) => ({ id: nextBikeId++, x: b.x, z: b.z, heading: 0, kind: isBikeKind(b.kind) ? b.kind : 'city', flat: false }));
   const npcs: Npc[] = [];
   const mkNpc = (i: number, x: number, z: number, line: number): Npc => ({ id: i, x, z, y: heightAt(x, z), vx: 0, vy: 0, vz: 0, heading: 0, line, dir: ctx.rng() < 0.5 ? 1 : -1, airS: 0, alive: true, flailS: 0, stunS: 0 });
   if (opts.npcs) opts.npcs.forEach((p, i) => npcs.push(mkNpc(i, p.x, p.z, -1)));

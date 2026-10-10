@@ -5,6 +5,7 @@ import type { Snapshot } from '../sim/sim';
 import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES } from '../sim/world';
 import { stepCam, type CamState } from './camera';
 import { JsrSliver } from './jsr';
+import { Characters } from './chars';
 import { layout, viewOffsetY } from './layout';
 
 const BIKE_COL: Record<string, number> = { city: 0x3a7bd5, fixie: 0xff4f7b, bmx: 0xffb000, cargo: 0x2e9e5b, tandem: 0x9b59b6, ebike: 0x00d0d0 };
@@ -22,6 +23,7 @@ export class GtpRenderer implements GameRenderer {
   private leaves: THREE.Mesh[] = []; private reticle = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.12, 6, 20), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
+  private chars?: Characters; private charDt = 0; private charT = -1;
   private jsr?: JsrSliver; private buildingMeshes: Array<{ mesh: THREE.Mesh; b: (typeof BUILDINGS)[number] }> = [];
   private camSt: CamState = { y: 0, air: 0 }; private lastT = -1;
   private pools = new Map<string, Map<number, THREE.Object3D>>();
@@ -43,6 +45,7 @@ export class GtpRenderer implements GameRenderer {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x557744, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(60, 100, 30); this.scene.add(sun);
     this.buildWorld(ctx.profile.color);
+    this.chars = new Characters(new THREE.Color(ctx.profile.color).lerp(new THREE.Color(0x8a8070), 0.45).getHex()); this.scene.add(this.chars.group);
     this.jsr = new JsrSliver(this.scene); this.jsr.styleBuildings(this.buildingMeshes); this.jsr.styleRider(this.rider.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh));
     this.hud = document.createElement('div');
     this.hud.style.cssText = 'position:absolute;font:600 15px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
@@ -205,6 +208,15 @@ export class GtpRenderer implements GameRenderer {
     const EV: Record<string, string> = { busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
     if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : '');
+    if (this.chars) {
+      const classic = s.art === 'classic';
+      this.charDt = this.charT < 0 ? 1 / 30 : Math.max(0, Math.min(0.1, s.t - this.charT)); this.charT = s.t;
+      this.chars.setVisible(!classic);
+      if (!classic) this.chars.update(s, this.charDt, _bike?.cadence3s ?? 0, s.paint ? PAINT[s.paint % PAINT.length] : undefined);
+      this.rider.visible = classic; for (const m of this.npcs) m.visible = classic; for (const m of this.bikes.values()) m.visible = classic;
+      for (const o of this.pools.get('cop')?.values() ?? []) o.visible = classic;
+      for (const o of this.pools.get('flame')?.values() ?? []) o.visible = true;
+    }
     if (this.jsr) { this.jsr.setStyle(s.art ?? 'sliver'); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
   }
 

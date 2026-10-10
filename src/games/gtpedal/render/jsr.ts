@@ -28,7 +28,7 @@ function ramp(): THREE.DataTexture {
   return RAMP;
 }
 export const toon = (color: number, map?: THREE.Texture) => new THREE.MeshToonMaterial({ color, gradientMap: ramp(), ...(map ? { map } : {}) });
-const INK = new THREE.MeshBasicMaterial({ color: JSR.ink, side: THREE.BackSide });
+export const INK = new THREE.MeshBasicMaterial({ color: JSR.ink, side: THREE.BackSide });
 /** Ink outline: a slightly scaled back-face copy. Cheap and gap-free on convex primitives. */
 export function inked(mesh: THREE.Mesh, thick = 0.06): THREE.Mesh {
   thick *= 0.7;

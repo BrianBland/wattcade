@@ -97,6 +97,17 @@ benches/planters/trees/lamps/ledges, sandstone paving following the steps (no gr
 saturation, gentle warmth, soft vignette; cadenza `Post` pattern) that only runs while the rider is within 25 m of the sliver.
 The rider swaps to toon + ink while inside. Next step if it lands: roll the kit out district by district.
 
+## Characters & bikes (render-only, `render/chars.ts`)
+Procedural, cel-shaded with warm-brown ink (normal-pushed back-face hulls that work on merged + instanced geometry).
+- People: rounded capsule limbs/torso, sphere head, hair cap/bun/bald/helmet/cop cap; varied skin/clothing from a
+  calm palette (seeded by id). One template rig posed per person: pedalling (2-bone IK to the real pedals, hands on the
+  grips, torso lean from reach), walk cycle by distance, flail on fire, ragdoll when launched/crashed/stunned, Segway
+  stance, mounted seat. The whole crowd (pedestrians + cops + rider) is one InstancedMesh per part (+ ink): 36 calls.
+- Bikes: merged tube frames per type (city step-through + basket, fixie drops, BMX small wheels + risers, cargo long
+  low frame + box, tandem two seats/cranks, e-bike battery), spoked wheels spinning with speed, cranks/pedals with
+  cadence (fallback: speed), bars steer and the bike leans with yaw rate. Segways and trotting horses for cops.
+- `artStyle: classic` falls back to the old boxes.
+
 ## Camera
 Chase cam (`render/camera.ts`, pure, tested): vertical follow lags in the air (`camAirLag` vs `camGroundLag`) and
 aims between ground and rider (`camLookMix`); with airtime it pulls back (`camAirPull`), rises (`camAirRise`) and

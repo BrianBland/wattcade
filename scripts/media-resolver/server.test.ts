@@ -48,6 +48,6 @@ it('serves the playlist route with choice, validation and protection', async () 
   for (const bad of [{}, { url: 5 }, { url: 'x'.repeat(3000) }, { url: 'https://x', choice: 'all' }, { url: 'https://x', limit: '5' }])
     expect((await post(bad)).status).toBe(400);
   expect(await (await post({ url: `https://www.youtube.com/playlist?list=${list}&fail` })).json()).toEqual({ error: 'boom' });
-  expect(await (await fetch(base + '/health', { method: 'POST', headers, body: '{}' })).json()).toMatchObject({ api: 2, capabilities: { playlists: true }, maxPlaylistItems: 200 });
+  expect(await (await fetch(base + '/health', { method: 'POST', headers, body: '{}' })).json()).toMatchObject({ api: 2, capabilities: { playlists: true }, maxPlaylistItems: 100 });
   expect(seen).toContain(10);
 });

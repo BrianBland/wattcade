@@ -1,7 +1,8 @@
 import { COMMON, mapTrack, problemText, runExtractor, trackProblem, type OnlineTrack, type RunExtractor, type TrackProblem } from './service';
 
 /** Playlist metadata only (no audio). Single-track resolution stays in service.ts with --no-playlist. */
-export const MAX_PLAYLIST_ITEMS = 200, DEFAULT_PLAYLIST_ITEMS = 100;
+/** Owner decision: imports cap at 100 tracks; raise here (health advertises it). Entries past the cap are dropped and `truncated` is set. */
+export const MAX_PLAYLIST_ITEMS = 100, DEFAULT_PLAYLIST_ITEMS = MAX_PLAYLIST_ITEMS;
 const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com'];
 
 export type PlaylistChoice = 'playlist' | 'track';

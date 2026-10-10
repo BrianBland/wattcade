@@ -50,6 +50,14 @@ describe('playlist extraction', () => {
     expect(r.skipped.map((s) => [s.index, s.reason])).toEqual([[2, 'unavailable'], [3, 'unavailable'], [4, 'duplicate'], [5, 'live'], [6, 'invalid'], [7, 'too-long']]);
     expect(r.truncated).toBe(false);
   });
+  it('caps at 100 by default and flags truncation', async () => {
+    const calls: string[][] = [];
+    const entries = Array.from({ length: 101 }, (_, i) => entry(i + 1));
+    const r = await playlist(`https://www.youtube.com/playlist?list=${list}`, {}, fake({ entries }, calls));
+    expect(MAX_PLAYLIST_ITEMS).toBe(100);
+    expect(r.tracks).toHaveLength(100); expect(r.tracks.at(-1)!.index).toBe(100); expect(r.truncated).toBe(true); expect(r.limit).toBe(100);
+    expect(calls[0][calls[0].indexOf('--playlist-items') + 1]).toBe('1:101');
+  });
   it('enforces limits and flags truncation', async () => {
     const entries = Array.from({ length: 4 }, (_, i) => entry(i + 1));
     const r = await playlist(`https://www.youtube.com/playlist?list=${list}`, { limit: 3 }, fake({ entries }));

@@ -133,7 +133,7 @@ Audio still needs a tap or key gesture on iOS; Bluetooth compatibility is indepe
 
 POST `/health` advertises API version 2 and ranged-audio support. POST `/search` takes
 `{provider, query}`; POST `/chunk` takes `{url, startS, durationS}` and returns stereo 44.1 kHz WAV.
-POST `/playlist` takes `{url, choice?: 'playlist', limit?: 1–200}` for a public YouTube playlist and returns
+POST `/playlist` takes `{url, choice?: 'playlist', limit?: 1–100 (MAX_PLAYLIST_ITEMS)}` for a public YouTube playlist and returns
 `{playlist, tracks[], skipped[], truncated, limit}` metadata only (no audio download); a watch URL with both `v` and
 `list` answers 409 `choice-required` unless `choice: 'playlist'`. `/health` advertises `capabilities.playlists`.
 All routes require `Authorization: Bearer TOKEN` when configured and allow only the configured

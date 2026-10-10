@@ -25,6 +25,33 @@ export function estimatedAnalysis(durationS: number): SongAnalysis {
     spec: { hz: 1, bands: 1, data: '' }, confidence: 'metadata' };
 }
 
+/** Windows shorter than this (core seconds) never set song tempo/key on their own: too little audio. */
+export const MIN_ESTIMATE_S = 10;
+const songEstimates = new WeakMap<SongAnalysis, { bpmW: number; bpmSum: number; keys: Map<string, { w: number; key: SongAnalysis['key'] }> }>();
+/** Fold a tempo onto the octave of a reference tempo (half/double-time ambiguity). */
+export function foldTempo(bpm: number, ref: number): number {
+  if (!(bpm > 0) || !(ref > 0)) return bpm;
+  let b = bpm; while (b < ref / Math.SQRT2) b *= 2; while (b > ref * Math.SQRT2) b /= 2; return b;
+}
+/**
+ * Song-level tempo/key from many windows: duration-weighted, half/double folded onto the running estimate,
+ * short tail windows ignored (they used to overwrite the song's BPM, e.g. 108 → 58 from a 0.4 s final window).
+ */
+function foldSongEstimates(target: SongAnalysis, a: SongAnalysis, coreS: number): void {
+  let st = songEstimates.get(target);
+  if (!st) { st = { bpmW: 0, bpmSum: 0, keys: new Map() }; songEstimates.set(target, st); }
+  const weight = coreS >= MIN_ESTIMATE_S ? coreS : st.bpmW === 0 && !(target.bpm > 0) ? coreS * 0.01 : 0;
+  if (weight > 0 && a.bpm > 0) {
+    const bpm = st.bpmW > 0 ? foldTempo(a.bpm, st.bpmSum / st.bpmW) : a.bpm;
+    st.bpmSum += bpm * weight; st.bpmW += weight; target.bpm = Math.round((st.bpmSum / st.bpmW) * 100) / 100;
+  }
+  if (weight > 0 && a.key.camelot) {
+    const k = st.keys.get(a.key.camelot) ?? { w: 0, key: a.key };
+    k.w += weight * Math.max(0.05, a.key.confidence); k.key = a.key.confidence >= k.key.confidence ? a.key : k.key; st.keys.set(a.key.camelot, k);
+    target.key = [...st.keys.values()].reduce((x, y) => (y.w > x.w ? y : x)).key;
+  }
+}
+
 /** Commit only this window's events, with overlap used for context but never duplicated. */
 export function mergeWindow(target: SongAnalysis, a: SongAnalysis, bufferStart: number, start: number, end: number): void {
   const inside = (t: number) => t >= start - 1e-6 && t < end - 1e-6;
@@ -42,8 +69,7 @@ export function mergeWindow(target: SongAnalysis, a: SongAnalysis, bufferStart: 
     target.intensity[i] = a.intensity[k] ?? 0;
     for (let b = 0; b < 3; b++) target.bands[b][i] = a.bands[b][k] ?? 0;
   }
-  if (a.bpm > 0) target.bpm = a.bpm;
-  target.key = a.key;
+  foldSongEstimates(target, a, end - start);
   // Remains metadata-confidence: estimated song-wide structure and transitions are not a full-file analysis.
 }
 

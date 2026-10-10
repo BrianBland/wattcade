@@ -13,6 +13,7 @@ export interface SimOpts {
   spawn?: { x: number; z: number; heading: number; mode?: 'bike' | 'foot' }; npcs?: Array<{ x: number; z: number }>; heat?: number; cops?: boolean;
   ammo?: Partial<Record<WeaponKind, number>>; startWeapon?: WeaponKind; copSpawn?: Array<{ kind: CopKind; x: number; z: number }>;
   /** autopilot also fires the locked weapon every few seconds */ autoFire?: boolean;
+  /** render look override (else the gtpedal.artStyle tunable) */ artStyle?: 'sliver' | 'classic';
   /** scene/test hook: fire the current weapon at these sim times (s) */ fireAt?: number[]; autopilot?: boolean; /** autopilot sends it at the drawbridge instead of waiting */ daredevil?: boolean; /** daredevil autopilot asks the fake bike (target-follow script) for this × FTP; default 1.0 */ sprintFtp?: number }
 export type Mode = 'bike' | 'foot' | 'ragdoll';
 export interface ParkedBike { id: number; x: number; z: number; heading: number; kind: BikeKind; flat: boolean; mine?: boolean }
@@ -24,6 +25,7 @@ export interface Snapshot {
   bikes: ParkedBike[]; npcs: Npc[]; bridge: number; weapon: WeaponKind; lock: number;
   /** locked target position (null = none) */ lockAt: { x: number; y: number; z: number; cop: boolean } | null;
   cops: Cop[]; projectiles: Projectile[]; patches: Patch[]; blasts: Blast[]; pickups: Pickup[]; ammo: Record<WeaponKind, number>;
+  /** render-only art style: 'sliver' = JSR look in the plaza corner, 'classic' = plain blocks everywhere */ art: 'sliver' | 'classic';
   busted: boolean; lostS: number; paint: number; spinOutS: number; lastEvent: string; lastEventAt: number;
   cam: { airLag: number; groundLag: number; airPull: number; airRise: number; airFov: number; lookMix: number };
   footTarget: number; heat: number; slope: number; gradePct: number; lastTrick: string; lastTrickAt: number;
@@ -104,6 +106,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
     loseS: T.num('loseS', 8, 1, 60, 1, 'seconds out of every cop\'s sight to lose them'),
     loseDist: T.num('loseDist', 30, 0, 100, 1, 'and at least this far from the nearest cop m'),
     copSpawnS: T.num('copSpawnS', 3, 0.5, 30, 0.5, 'seconds between cop spawns while short of the heat quota'),
+    artStyle: T.choice<'sliver' | 'classic'>('artStyle', 'sliver', ['sliver', 'classic'], "render look: 'sliver' = Jet Set Radio beauty pass on the plaza corner; 'classic' = plain blocks"),
     lineLeave: T.choice<LineLeave>('lineLeave', 'hold', ['hold', 'forks'], 'hold: holding a paddle always free-steers off a line; forks: on a line, a hold only switches lines at forks'),
   };
   const P = (): Params => ({ drive: tun.drive(), drag: tun.drag(), rollDecay: tun.rollDecay(), topSpeed: tun.topSpeed(), gravity: tun.gravity(),
@@ -458,7 +461,7 @@ export function createGtpSim(ctx: GameContext, opts: SimOpts = {}): GameSim & { 
         weapon: WEAPONS[weaponI], lock, footTarget,
         lockAt: (() => { const q = people()[lock]; return lock >= 0 && q ? { x: q.x, y: q.y, z: q.z, cop: lock >= npcs.length } : null; })(),
         cops: cops.map((c) => ({ ...c, path: [] })), projectiles: projectiles.map((p) => ({ ...p })), patches: patches.map((p) => ({ ...p })), blasts: blasts.map((b) => ({ ...b })),
-        pickups: pickups.map((p) => ({ ...p })), ammo: { ...ammo }, busted, lostS, paint, spinOutS, lastEvent, lastEventAt,
+        pickups: pickups.map((p) => ({ ...p })), ammo: { ...ammo }, art: opts.artStyle ?? tun.artStyle(), busted, lostS, paint, spinOutS, lastEvent, lastEventAt,
         cam: { airLag: tun.camAirLag(), groundLag: tun.camGroundLag(), airPull: tun.camAirPull(), airRise: tun.camAirRise(), airFov: tun.camAirFov(), lookMix: tun.camLookMix() }, heat, slope, gradePct, lastTrick, lastTrickAt, stats: { ...stats } };
     },
     /** Pause-menu settings (read structurally by src/shell/gameSettings.ts). */

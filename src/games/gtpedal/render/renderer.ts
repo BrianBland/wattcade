@@ -4,6 +4,7 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import type { Snapshot } from '../sim/sim';
 import { BRIDGE, BUILDINGS, CANAL, COOP, HALF, heightAt, LINES } from '../sim/world';
 import { stepCam, type CamState } from './camera';
+import { JsrSliver } from './jsr';
 import { layout, viewOffsetY } from './layout';
 
 const BIKE_COL: Record<string, number> = { city: 0x3a7bd5, fixie: 0xff4f7b, bmx: 0xffb000, cargo: 0x2e9e5b, tandem: 0x9b59b6, ebike: 0x00d0d0 };
@@ -21,6 +22,7 @@ export class GtpRenderer implements GameRenderer {
   private leaves: THREE.Mesh[] = []; private reticle = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.12, 6, 20), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
   private hud?: HTMLDivElement; private toast?: HTMLDivElement; private container?: HTMLElement; private ro?: ResizeObserver;
   private insetB = 0; private W = 800; private H = 600;
+  private jsr?: JsrSliver; private buildingMeshes: Array<{ mesh: THREE.Mesh; b: (typeof BUILDINGS)[number] }> = [];
   private camSt: CamState = { y: 0, air: 0 }; private lastT = -1;
   private pools = new Map<string, Map<number, THREE.Object3D>>();
   private fireMat = new THREE.MeshBasicMaterial({ color: 0xffb02e });
@@ -41,6 +43,7 @@ export class GtpRenderer implements GameRenderer {
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x557744, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(60, 100, 30); this.scene.add(sun);
     this.buildWorld(ctx.profile.color);
+    this.jsr = new JsrSliver(this.scene); this.jsr.styleBuildings(this.buildingMeshes); this.jsr.styleRider(this.rider.children.filter((c): c is THREE.Mesh => (c as THREE.Mesh).isMesh));
     this.hud = document.createElement('div');
     this.hud.style.cssText = 'position:absolute;font:600 15px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none;white-space:pre';
     this.toast = document.createElement('div');
@@ -59,7 +62,7 @@ export class GtpRenderer implements GameRenderer {
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); geo.computeVertexNormals();
     this.scene.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true })));
-    for (const b of BUILDINGS) { const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2); this.scene.add(m); }
+    for (const b of BUILDINGS) { const m = box(b.x1 - b.x0, b.h, b.z1 - b.z0, b.color); m.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2); this.scene.add(m); this.buildingMeshes.push({ mesh: m, b }); }
     for (const l of LINES) {
       const pts = l.pts.map(([x, z]) => new THREE.Vector3(x, Math.max(0, heightAt(x, z)) + 0.08, z));
       const col = l.kind === 'tram' ? 0x444444 : l.kind === 'rail' ? 0xdddddd : l.kind === 'ramp' ? 0xffaa33 : 0xfff2c0;
@@ -79,7 +82,7 @@ export class GtpRenderer implements GameRenderer {
 
   resize(w: number, h: number) {
     this.W = Math.max(1, w); this.H = Math.max(1, h);
-    this.r?.setSize(this.W, this.H, false);
+    this.r?.setSize(this.W, this.H, false); this.jsr?.setSize(this.W, this.H);
     this.cam.aspect = this.W / this.H;
     this.cam.setViewOffset(this.W, this.H, 0, viewOffsetY(this.insetB), this.W, this.H);
     this.cam.updateProjectionMatrix();
@@ -202,11 +205,11 @@ export class GtpRenderer implements GameRenderer {
     const EV: Record<string, string> = { busted: 'BUSTED! Bike confiscated', lostCops: 'Lost them!', repaint: 'Fresh paint! Heat cleared', flat: 'FLAT TYRE! Steal another', spinOut: 'Whoa, oil!', launch: 'KABOOM!', pickup: `+${s.weapon}` };
     const ev = s.t - s.lastEventAt < 2 ? EV[s.lastEvent] : undefined;
     if (this.toast) this.toast.textContent = ev ?? (s.t - s.lastTrickAt < 1.5 ? `${s.lastTrick}! +boost` : s.mode === 'ragdoll' ? 'BAIL!' : '');
-    this.r.render(this.scene, this.cam);
+    if (this.jsr) { this.jsr.setStyle(s.art ?? 'sliver'); this.jsr.frame(this.r, this.scene, this.cam, { x: rp.x, z: rp.z }); } else this.r.render(this.scene, this.cam);
   }
 
   unmount() {
-    this.ro?.disconnect();
+    this.ro?.disconnect(); this.jsr?.dispose();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); const mat = m.material as THREE.Material | undefined; if (mat && 'dispose' in mat) mat.dispose(); });
     this.r?.dispose(); this.r?.domElement.remove(); this.hud?.remove(); this.toast?.remove(); this.r = undefined;
   }

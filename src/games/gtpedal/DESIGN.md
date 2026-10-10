@@ -88,6 +88,15 @@ Heat from hits: +0.5 per bystander (max +1.5 per blast), +1 per cop, +0.5 per mo
 - **Bike co-op** (yellow pad with paint posts, west of the bridge): ride through with heat → repaint (new colour), heat 0.
 - Cops are launched/oiled/set on fire like everyone else; hurting cops raises heat.
 
+## Art direction: Jet Set Radio sliver (render-only)
+`gtpedal.artStyle` = `sliver` (default) | `classic`. In `sliver`, ONE corner (the sunken plaza + east tower,
+`render/jsr.ts` `SLIVER`) gets the beauty pass; the rest of town stays blocky:
+toon ramp shading (3-step `MeshToonMaterial`), ink outlines (scaled back-face hulls), bold JSR palette, procedural
+canvas graffiti (tower murals, floor/ledge tags), hand-shaped benches/planters/trees/lamps/ledges, pastel tile floor
+following the steps, flat cel shadows (blob + sheared slab), sky gradient, and a single grade pass (saturation,
+light posterize, contrast, vignette; cadenza `Post` pattern) that only runs while the rider is within 25 m of the sliver.
+The rider swaps to toon + ink while inside. Next step if it lands: roll the kit out district by district.
+
 ## Camera
 Chase cam (`render/camera.ts`, pure, tested): vertical follow lags in the air (`camAirLag` vs `camGroundLag`) and
 aims between ground and rider (`camLookMix`); with airtime it pulls back (`camAirPull`), rises (`camAirRise`) and

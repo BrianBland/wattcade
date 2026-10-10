@@ -28,7 +28,8 @@ Design: `DESIGN.md`. Status: milestone 1 (playground feel). No missions, `isOver
   Autopilot (`simOpts.autopilot`): waypoint loop with wall probing, brakes for corners / open bridge
   (`daredevil: true` shuttles the avenue and asks target-follow for `sprintFtp`×FTP; emits `bridgeAttempt`), swaps onto other bikes it passes.
 - `render/renderer.ts`: three.js blocky world, id-keyed pools for cops/projectiles/patches/blasts/flames/crates,
-  3D reticle, co-op pad, DOM HUD + event toasts. `render/camera.ts` pure jump-aware chase cam (tested). `render/layout.ts` pure HUD layout + camera view offset
+  3D reticle, co-op pad, DOM HUD + event toasts. `render/camera.ts` pure jump-aware chase cam (tested).
+  `render/jsr.ts` JSR beauty sliver (toon/ink/props/graffiti/sky/grade); `snapshot.art` from `artStyle` tunable or `simOpts.artStyle`. `render/layout.ts` pure HUD layout + camera view offset
   for `insets.bottom` (tested).
 
 ## Not done / next

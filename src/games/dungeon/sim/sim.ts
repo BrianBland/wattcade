@@ -6,6 +6,7 @@ import {
 } from './loot';
 import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
+import { DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
 import { cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
@@ -35,7 +36,8 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
   summoner: { hp: 90, speed: 1.4, r: 0.42, contact: 5, xp: 10 },
 };
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
-const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich'];
+const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich', 'Bone King', 'Frost Wyrm'];
+export const BOSS_COUNT = BOSS_NAMES.length;
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
   fury: { label: 'Shrine of Fury: ride power Z3+ for 20s', window: 50, color: '#ff8c2a' },
   endurance: { label: 'Shrine of Patience: hold Z2, treasure grows', window: 90, color: '#5aa9ff' },
@@ -120,10 +122,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
   const enemyHpGrowth = tn.num('enemyHpGrowth', 1.26, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 1800, 100, 20000, 50, 'floor-1 boss HP (scales with enemyHpGrowth)');
-  const shieldPeriod = tn.num('bossShieldPeriodS', 45, 10, 120, 5);
-  const shieldDur = tn.num('bossShieldDurS', 15, 1, 60, 1);
-  const shieldLeak = tn.num('bossShieldLeak', 0.2, 0, 1, 0.05, 'damage fraction through shield when not sprinting');
-  const sprintMult = tn.num('bossSprintDamageMult', 3, 1, 10, 0.5);
+  const sprintMult = tn.num('bossSprintDamageMult', 1.5, 1, 5, 0.1, 'extra damage for sprinting (or the ERG surge) while the boss is exposed');
+  const bossTn = {
+    p2: tn.num('bossPhase2Hp', DEFAULT_BOSS.phaseSplits[0], 0.1, 0.95, 0.01), p3: tn.num('bossPhase3Hp', DEFAULT_BOSS.phaseSplits[1], 0.05, 0.9, 0.01),
+    bigEveryS: tn.num('bossBigEveryS', DEFAULT_BOSS.bigEveryS, 6, 60, 1, 'idle seconds before the telegraphed big attack (phase 1; -3 s per phase)'),
+    windupS: tn.num('bossWindupS', DEFAULT_BOSS.windupS, 0.5, 5, 0.1),
+    exposedS: tn.num('bossExposedS', DEFAULT_BOSS.exposedS, 1, 15, 0.5, 'stun window after the big attack'),
+    exposedMult: tn.num('bossExposedMult', DEFAULT_BOSS.exposedMult, 1, 5, 0.1),
+    strikeBonusS: tn.num('bossStrikeBonusS', DEFAULT_BOSS.strikeBonusS, 0, 5, 0.5), parryBonusS: tn.num('bossParryBonusS', DEFAULT_BOSS.parryBonusS, 0, 5, 0.5),
+    tideAfterS: tn.num('bossTideAfterS', DEFAULT_BOSS.tideAfterS, 30, 600, 10, 'Turning Tide starts after this long on the boss'),
+    tideRate: tn.num('bossTideRate', DEFAULT_BOSS.tideRate, 0, 0.05, 0.001, 'extra boss damage taken per second of tide'),
+  };
+  const bossCfg = (): BossCfg => ({ ...DEFAULT_BOSS, phaseSplits: [bossTn.p2(), Math.min(bossTn.p3(), bossTn.p2() - 0.05)], bigEveryS: bossTn.bigEveryS(), windupS: bossTn.windupS(),
+    exposedS: bossTn.exposedS(), exposedMult: bossTn.exposedMult(), strikeBonusS: bossTn.strikeBonusS(), parryBonusS: bossTn.parryBonusS(), tideAfterS: bossTn.tideAfterS(), tideRate: bossTn.tideRate() });
   const itemDropPct = tn.num('itemDropPct', 10, 0, 100, 1, '% chance an enemy drops a weapon/gear');
   const uniquePct = tn.num('uniqueDropPct', 0.6, 0, 100, 0.1, '% of item drops that are uniques (elites x1.5, bosses x10)');
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
@@ -212,6 +223,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let boss!: Enemy;
   let shrines: Shrine[] = [];
   let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, freezeT = 0;
+  let bs: BossState = newBoss();
   let curse: { kind: CurseKind; left: number; total: number; s0: number } | null = null, cursesSurvived = 0;
   const cursed = (k: CurseKind) => curse?.kind === k;
   const bounty = () => (curse ? 1.5 : 1);
@@ -255,9 +267,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const br = world.rooms.find((r) => r.boss)!;
     const hp = bossHpT() * hpMul();
     boss = spawnEnemy('chaser', br.x0 + br.w / 2, br.y0 + br.h / 2 + 1, br.id);
-    Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: (floor - 1) % 4 });
+    Object.assign(boss, { kind: 'boss', r: 1.1, hp, maxHp: hp, speed: 1.1, contact: 18 * dmgMul(), fireCd: 2, fireCd2: 1.2, xp: 120 * (1 + 0.3 * (floor - 1)), variant: (floor - 1) % BOSS_NAMES.length });
     shrines = world.rooms.filter((r) => r.shrine).map((r) => ({ room: r.id, kind: r.shrine!.kind, x: r.shrine!.x, y: r.shrine!.y, state: 'idle' as const, progress: 0, left: 0, s0: 0 }));
-    current = 0; safeRoom = 0; bossStarted = false; bossT = 0; navPath = []; navKey = ''; flowKey = -1;
+    current = 0; safeRoom = 0; bossStarted = false; bossT = 0; bs = newBoss(); navPath = []; navKey = ''; flowKey = -1;
     P.x = world.spawn.x; P.y = world.spawn.y;
     markSeen(world.rooms[0]);
   }
@@ -375,13 +387,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
 
+  /** The boss's push window (telegraph + exposed): boss-surge grade in grade mode, the called surge in ERG. */
   function bossShield(): { shielded: boolean; leftS: number; nextS: number } {
     if (!bossStarted || !boss.alive) return { shielded: false, leftS: 0, nextS: 0 };
-    const per = shieldPeriod(), dur = Math.min(shieldDur(), per - 1);
-    if (bossT < per) return { shielded: false, leftS: 0, nextS: per - bossT };
-    const ph = bossT % per;
-    return ph < dur ? { shielded: true, leftS: dur - ph, nextS: 0 } : { shielded: false, leftS: 0, nextS: per - ph };
+    const push = bs.cycle === 'windup' || bs.cycle === 'exposed';
+    return { shielded: push, leftS: push ? bs.left : 0, nextS: bs.cycle === 'idle' ? bs.left : 0 };
   }
+
 
   // ---------- loot ----------
   function dropAt(x: number, y: number, kind: Drop['kind'], value: number, item?: Weapon | Gear) {
@@ -451,8 +463,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!e.alive) return;
     let dmg = raw;
     if (e.kind === 'boss') {
-      const sh = bossShield();
-      if (sh.shielded) dmg *= bike.sprinting || erg ? sprintMult() : shieldLeak(); // in ERG the trainer holds the called surge
+      dmg *= bossDamageMult(bs, bossCfg());
+      if (bs.cycle === 'exposed' && (bike.sprinting || erg)) dmg *= sprintMult(); // in ERG the trainer holds the called surge
     }
     if (cursed('bulwark')) dmg *= 0.65;
     if (e.shield > 0) { const ab = Math.min(e.shield, dmg * 0.8); e.shield -= ab; dmg -= ab; }
@@ -472,7 +484,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (let i = 0; i < coins; i++) dropAt(e.x, e.y, 'coin', coinValue());
     if (e.kind === 'boss') {
       dropItem(e.x, e.y, 2, 10); dropItem(e.x, e.y, 1, 10); dropAt(e.x, e.y, 'potion', 0);
-      bossDefeated++; totals.bosses++; freeze(0.35); cue('bossDie');
+      bossDefeated++; totals.bosses++; freeze(0.8); cue('bossDie');
+      for (let k = 0; k < 5; k++) addFx({ kind: 'boom', x: e.x + Math.cos(k * 1.3) * k * 0.5, y: e.y + Math.sin(k * 1.3) * k * 0.5, life: 0.6 + k * 0.2, color: k % 2 ? '#ffe08a' : '#c77dff', r: 2 + k });
+      for (const b of bullets) if (!b.friendly) b.life = 0;
       addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.8, color: '#c77dff', r: 4 });
       toast(`${BOSS_NAMES[e.variant]} defeated! Stairs open.`, '#ff8c2a');
       ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor } });
@@ -600,6 +614,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!hit.length) { cue('deny'); return false; }
     const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
     for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    if (hit.some((e) => e.kind === 'boss') && strikeBoss(bs, bossCfg())) toast(`Timed Strike: exposed +${bossCfg().strikeBonusS}s`, '#ffd84a');
     addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
     freeze(0.08); cue('explode');
     return true;
@@ -919,7 +934,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           }
           if (!r.boss && !curse && (floor > 1 || roomsCleared >= 2) && rng() < Math.min(0.2, curseChance() + 0.01 * (floor - 1))) startCurse(bike);
           if (r.boss && !bossStarted) {
-            bossStarted = true; bossT = 0; cue('bossStart');
+            bossStarted = true; bossT = 0; bs = newBoss(bossCfg()); cue('bossStart'); freeze(0.5);
+            addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 3, color: '#ff5a5a', text: BOSS_NAMES[boss.variant].toUpperCase() });
+            addFx({ kind: 'boom', x: boss.x, y: boss.y, life: 1, color: '#c77dff', r: 5 });
             toast(`${BOSS_NAMES[boss.variant]} awakens!`, '#ff5a5a');
             ctx.emit({ type: 'bossStart', data: { room: r.id, floor } });
           }
@@ -1007,7 +1024,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
 
     // --- enemies
-    if (bossStarted && boss.alive) bossT += dt;
+    if (bossStarted && boss.alive) { bossT += dt; bossTick(dt); }
     updateFlow();
     const live = liveInRoom(current);
     for (const e of live) updateEnemy(e, dt, bike);
@@ -1140,7 +1157,43 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (e.contact > 0 && d < e.r + PLAYER_R + 0.1 && e.contactCd <= 0) { hurtPlayer(e.contact); e.contactCd = e.kind === 'brute' ? 1 : 0.8; }
   }
 
+  function bossTick(dt: number) {
+    const cfg = bossCfg();
+    for (const ev of stepBoss(bs, { dt, hpFrac: boss.hp / boss.maxHp, wardUp: P.ward > 0 }, cfg)) {
+      if (ev === 'windup') { boss.tell = cfg.windupS; toast('Big attack coming! Ward it, then punish', '#ff7a2a'); cue('bossStart'); }
+      else if (ev === 'bigAttack') bigAttack(boss);
+      else if (ev === 'exposed') {
+        if (stance === 'arcanist') bs.left += 1; // the shield-breaker keeps it open longer
+        addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 1.8, color: '#ffe08a', text: bs.parried ? 'PARRIED! EXPOSED' : 'EXPOSED ×2' });
+        if (bs.parried) toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
+        cue('crit'); ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
+      } else if (ev === 'phase') {
+        freeze(0.3); cue('bossStart');
+        for (const b of bullets) if (!b.friendly) b.life = 0;
+        addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 2.2, color: '#ff5a5a', text: `${BOSS_NAMES[boss.variant]}: PHASE ${bs.phase}` });
+        addFx({ kind: 'boom', x: boss.x, y: boss.y, life: 0.6, color: '#ff5a5a', r: 2.5 });
+        ctx.emit({ type: 'bossPhase', data: { floor, phase: bs.phase } });
+      } else if (ev === 'tide') { toast('The tide turns: the boss is tiring', '#7dff5a'); addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#7dff5a', text: 'TURNING TIDE' }); }
+    }
+  }
+  /** The telegraphed big attack: one per boss, a bit meaner each phase. */
+  function bigAttack(e: Enemy) {
+    const ph = bs.phase, spd = 4 + 0.5 * ph;
+    e.spin += 0.4;
+    switch (e.variant) {
+      case 0: ring(e.x, e.y, 20 + 4 * ph, spd, 7, e.spin); for (let k = 0; k < ph; k++) spawnEnemy('chaser', e.x + (k - 1) * 1.2, e.y + 1.4, e.room).summoned = 1; break;
+      case 1: for (let w = 0; w < 2; w++) ring(e.x, e.y, 14 + 2 * ph, spd - w, 7, e.spin + w * 0.2); break;
+      case 2: ring(e.x, e.y, 18 + 4 * ph, spd + 1, 9, e.spin); e.state = 1; e.tell = 0.6; { const a = Math.atan2(P.y - e.y, P.x - e.x); e.vx = Math.cos(a) * 8; e.vy = Math.sin(a) * 8; } break;
+      case 3: ring(e.x, e.y, 24 + 4 * ph, spd, 7, e.spin); break;
+      case 4: for (let k = 0; k < 4; k++) for (let j = 0; j < 4 + ph; j++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 3 + j * 0.8, 7); break; // bone cross
+      default: for (let w = 0; w < 3; w++) ring(e.x, e.y, 10 + 2 * ph, 2.5 + w * 1.3, 7, e.spin + w * 0.3); // frost bloom
+    }
+    addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.5, color: e.variant === 5 ? '#9fe8ff' : '#ff7a2a', r: 3 });
+    cue('explode'); freeze(0.1);
+  }
   function bossAct(e: Enemy, dt: number, d: number, ux: number, uy: number) {
+    if (bossStunned(bs) && e.state !== 1) return; // exposed or staggered: helpless
+    if (bs.cycle === 'windup') { if (d > 3) { const c = chaseDir(e); move(e, c.x * e.speed * 0.4 * dt, c.y * e.speed * 0.4 * dt, e.r); } return; }
     if (e.state === 1) {
       e.tell -= dt; move(e, e.vx * dt, e.vy * dt, e.r);
       if (e.tell <= 0) e.state = 0;
@@ -1148,18 +1201,20 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     if (d > 5) { const c = chaseDir(e); move(e, c.x * e.speed * dt, c.y * e.speed * dt, e.r); }
     e.fireCd -= dt; e.fireCd2 -= dt;
-    const enraged = e.hp < e.maxHp * 0.5;
+    const pace = 1 - 0.12 * (bs.phase - 1);
     if (e.fireCd <= 0) {
-      e.fireCd = enraged ? 1.7 : 2.3; e.spin += 0.3;
+      e.fireCd = 2.3 * pace; e.spin += 0.3;
       ring(e.x, e.y, e.variant === 0 ? 16 : 12, 3.6, 6, e.spin);
     }
     if (e.fireCd2 <= 0) {
-      e.fireCd2 = 1.5;
+      e.fireCd2 = 1.5 * pace;
       const a = Math.atan2(uy, ux);
       switch (e.variant) {
         case 1: e.spin += 0.5; for (let k = 0; k < 4; k++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 4.5, 6); break;
         case 2: if (d < 9) { e.state = 1; e.tell = 0.8; e.vx = ux * 7; e.vy = uy * 7; } break;
         case 3: if (liveInRoom(e.room).length < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
+        case 4: if (liveInRoom(e.room).length < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
+        case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break; // frost breath
         default: for (const o of [-0.3, 0, 0.3]) enemyShot(e.x, e.y, a + o, 5, 7, 0.22);
       }
     }
@@ -1202,7 +1257,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const sh = bossShield();
     const ev: EnemyView[] = [];
     for (const e of enemies) if (e.alive && (e.kind !== 'boss' || bossStarted)) ev.push({
-      id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, hp: e.hp, maxHp: e.maxHp, shielded: e.kind === 'boss' && sh.shielded,
+      id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, hp: e.hp, maxHp: e.maxHp, exposed: e.kind === 'boss' && bs.cycle === 'exposed',
       hurt: t - e.hurtT, face: P.x >= e.x ? 1 : -1, slowed: e.slowT > 0, dot: e.dotT > 0, tell: clamp(e.kind === 'brute' || e.kind === 'boss' ? e.state : e.tell, 0, 1),
       variant: e.variant, elite: e.elite, shieldFrac: e.shieldMax > 0 ? e.shield / e.shieldMax : 0,
     });
@@ -1238,7 +1293,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       curse: curse ? { kind: curse.kind, ...CURSES[curse.kind], left: Math.max(0, curse.left), total: curse.total } satisfies CurseView : null,
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
       room: current, stairsOpen: !boss.alive, frozen: freezeT > 0,
-      boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, shielded: sh.shielded, shieldLeftS: sh.leftS, nextShieldS: sh.nextS } : null,
+      boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
       stats: { roomsCleared, kills, deaths, damageDealt, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,
         powerFtp: phase === 'camp' ? DEFAULT_TARGETS.cooldown.erg : sh.shielded && erg ? ergSurge() : dirCfg().targets[dir.seg].erg },
@@ -1259,7 +1314,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const sh = bossShield();
     const act = shrines.find((s) => s.state === 'active');
     // shields and shrines are short efforts, judged on power (sprint detection is power-based too)
-    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up', source: 'power' }
+    const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: bs.cycle === 'exposed' ? 'Exposed! Sprint now' : 'Big attack: get ready', source: 'power' }
       : act?.kind === 'fury' ? { min: 3, max: 5, label: 'Shrine: Z3+', source: 'power' }
       : act?.kind === 'sprint' ? { min: 5, max: 5, label: 'Shrine: sprint!', source: 'power' }
       : act ? { min: 2, max: 2, label: 'Shrine: hold Z2' }

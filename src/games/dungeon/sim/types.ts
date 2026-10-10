@@ -4,7 +4,7 @@ import type { UpgradeId } from './meta';
 
 export type EliteMod = 'undying' | 'splitting' | 'shielded' | 'swift' | 'volatile';
 export interface EnemyView {
-  id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number; shielded: boolean;
+  id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number; exposed: boolean;
   hurt: number; face: number; slowed: boolean; dot: boolean; tell: number; // tell 0..1 = wind-up / fuse / charge
   variant: number; elite: EliteMod | null; shieldFrac: number;
 }
@@ -66,7 +66,7 @@ export interface DungeonSnapshot {
   room: number;
   stairsOpen: boolean;
   frozen: boolean;
-  boss: { active: boolean; name: string; hp: number; maxHp: number; shielded: boolean; shieldLeftS: number; nextShieldS: number } | null;
+  boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
   stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
 }

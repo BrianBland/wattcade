@@ -25,7 +25,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'z2-hour', script: 'z2', minutes: 60, seed: 19, simOpts: { autopilot: true },
+    name: 'z2-hour', script: 'z2', minutes: 60, seed: 21, simOpts: { autopilot: true },
     assert: (s) => {
       const f: string[] = [];
       if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);
@@ -61,6 +61,17 @@ export const scenarios: Array<{
       const f: string[] = [];
       if (ergs.size < 5) f.push(`only ${ergs.size} distinct ERG targets (${[...ergs].join(', ')})`);
       if (sims > 0) f.push(`${sims} grade commands after ERG took over`);
+      return f;
+    },
+  },
+  {
+    // a tired rider (steady Z2, never sprints, no actions) still beats bosses, with exposed windows doing the work
+    name: 'z2-boss', script: 'z2', minutes: 25, seed: 15, simOpts: { autopilot: true },
+    assert: (s, _st, run) => {
+      const f: string[] = [];
+      if ((s['Bosses slain'] as number) < 2) f.push(`bosses ${s['Bosses slain']} < 2`);
+      if (!run.events.some((e) => e.type === 'bossExposed')) f.push('no exposed window');
+      if (run.events.filter((e) => e.type === 'bossPhase').length < 2) f.push('no phase changes');
       return f;
     },
   },

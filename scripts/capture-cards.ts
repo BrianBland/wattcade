@@ -20,6 +20,7 @@ const SHOTS: Record<string, Shot> = {
   lighthouse: { query: `script=z2&sec=900&${ap()}`, crop: [210, 110, 680, 383] },
   towerdefense: { query: `script=sprints&sec=300&${ap()}`, crop: [152, 0, 656, 369] },
   starfighter: { query: `script=sprints&sec=200&${ap()}` },
+  gtpedal: { query: `script=sprints&sec=60&${ap()}` },
 };
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };

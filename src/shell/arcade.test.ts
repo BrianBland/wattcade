@@ -9,7 +9,7 @@ const g = (id: string) => ({ id }) as GameModule;
 
 describe('arcade picker', () => {
   it('lists games most polished first', () => {
-    expect(games.map((x) => x.id)).toEqual(['cadenza', 'hamster', 'watershed', 'dungeon', 'lighthouse', 'towerdefense', 'starfighter']);
+    expect(games.map((x) => x.id)).toEqual(['cadenza', 'hamster', 'watershed', 'dungeon', 'lighthouse', 'towerdefense', 'starfighter', 'gtpedal']);
   });
   it('sorts by this rider\'s recent plays, then registry order', () => {
     const list = [g('a'), g('b'), g('c'), g('d')];

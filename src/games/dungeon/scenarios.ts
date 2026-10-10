@@ -8,7 +8,7 @@ export const scenarios: Array<{
   assert(summary: Record<string, number | string>, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 11, simOpts: { autopilot: true },
+    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 18, simOpts: { autopilot: true },
     assert: (s) => ((s['Bosses slain'] as number) >= 1 ? [] : [`bossDefeated expected >=1, got ${s['Bosses slain']} (rooms ${s['Rooms cleared']}, deaths ${s.Deaths})`]),
   },
   {

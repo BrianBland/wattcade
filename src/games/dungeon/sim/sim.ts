@@ -4,6 +4,7 @@ import {
   ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, rollRarity, sellValue, starterWeapon, weaponScore,
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
+import { findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
@@ -18,7 +19,7 @@ interface Bullet {
   w?: Weapon; hits?: number[]; pierce: number; bounce: number; crit?: boolean; child?: boolean; ric?: number;
 }
 interface Drop extends DropView { item?: Weapon | Gear; value: number }
-interface Ctl { mx: number; my: number; dash: boolean; potion: boolean; aimAuto: boolean; aimVec: { x: number; y: number } | null }
+interface Ctl { mx: number; my: number; roll: boolean }
 interface Shrine { room: number; kind: ShrineKind; x: number; y: number; state: ShrineView['state']; progress: number; left: number; s0: number }
 
 const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; contact: number; xp: number }> = {
@@ -61,6 +62,9 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
 export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean }
 export interface DungeonSave { bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean }
 
+const ACTION_BUTTON: Record<ActionId, 'a' | 'b' | 'y' | 'z'> = { strike: 'a', ward: 'b', rally: 'y', potion: 'z' };
+const ACTION_LABEL: Record<ActionId, string> = { strike: 'Strike', ward: 'Ward', rally: 'Rally', potion: 'Potion' };
+
 export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim {
   const autopilot = !!opts?.autopilot;
   const tn = ctx.tuning;
@@ -72,7 +76,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const revsPerShot = tn.num('revsPerShot', 0.5, 0.1, 4, 0.05, 'crank revs per shot at weapon rate 1');
   const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 (x2 out of combat)');
-  const dashCooldown = tn.num('dashCooldown', 2, 0.5, 10, 0.5);
+  const strikeCd = tn.num('strikeCdS', 20, 2, 120, 1, 'Strike (A) cooldown');
+  const strikeMult = tn.num('strikeDamageMult', 6, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
+  const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
+  const wardCd = tn.num('wardCdS', 30, 2, 120, 1, 'Ward (B) cooldown');
+  const wardDur = tn.num('wardDurS', 3, 0.5, 10, 0.5, 'Ward blocks all damage for this long');
+  const rallyCd = tn.num('rallyCdS', 25, 2, 120, 1, 'Rally (Y) cooldown; only usable when a spin-up is called');
+  const rallyDur = tn.num('rallyDurS', 10, 1, 30, 1);
+  const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
+  const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'the AI rolls out of a crowd when hurt (0.3 s invulnerable); this is its cooldown');
+  const potionCd = tn.num('potionCdS', 4, 0, 30, 0.5, 'Potion (Z) cooldown');
+  const potionHeal = tn.num('potionHeal', 0.45, 0.1, 1, 0.05, 'fraction of max HP');
+  const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
   const enemyDmgScale = tn.num('enemyDamageScale', 1.3, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
@@ -94,9 +109,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const woundedGrade = tn.num('gradeWounded', 2, 0, 10, 0.5);
   const woundedFrac = tn.num('woundedHpFrac', 0.4, 0.1, 0.9, 0.05);
   const surgeGrade = tn.num('gradeBossSurge', 5, 0, 12, 0.5);
-  const aimTurn = tn.num('aimTurnRate', 2.0, 0.5, 10, 0.1, 'rad/s at full paddle');
-  const autoMove = tn.bool('autoMove', true, 'bot steers (explore, kite, dodge, stairs); D-pad overrides');
-  const autoAimIdle = tn.num('autoAimIdleS', 1.5, 0.2, 10, 0.1);
   const whirlRpm = tn.num('whirlRpm', 95, 60, 140, 1, 'Whirlwind shrine cadence floor (rpm)');
 
   const rng = () => ctx.rng();
@@ -113,13 +125,14 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   // ---------- hero ----------
   const P = {
-    x: 0, y: 0, hp: 0, maxHp: 0, potions: 3, dashCd: 0, dashT: 0, dashDx: 0, dashDy: 0,
-    invuln: 0, hurtT: -99, aim: 0, aimAuto: true, lastShotRevs: ctx.bike().crankRevs, onSwamp: false, speedMult: 1, moveAng: 0, moving: false,
+    x: 0, y: 0, hp: 0, maxHp: 0, potions: 3, ward: 0, rally: 0, lastPotionT: -99, rollCd: 0, rollT: 0, rollDx: 0, rollDy: 0,
+    invuln: 0, hurtT: -99, aim: 0, lastShotRevs: ctx.bike().crankRevs, onSwamp: false, speedMult: 1, moveAng: 0, moving: false, targetId: 0,
     level: 1, xp: 0, coins: 0, coinsEarned: 0, shots: 0,
   };
   let weapon: Weapon = starterWeapon();
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
+  const cds: Record<ActionId, Cooldown> = { strike: { left: 0, total: 1 }, ward: { left: 0, total: 1 }, rally: { left: 0, total: 1 }, potion: { left: 0, total: 1 } };
   const xpNext = (L: number) => Math.round(30 * Math.pow(1.32, L - 1));
   const gearSum = (k: keyof Gear['stats']) => SLOTS.reduce((a, s) => a + (gear[s]?.stats[k] ?? 0), 0);
   function recomputeHp(heal: boolean) {
@@ -186,7 +199,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function markSeen(r: Room) { r.seen = true; for (const n of world.adj[r.id]) world.rooms[n].seen = true; }
   buildFloor();
-  ctx.resistance.useVirtualGears(true, 'L'); // right shifters are dash/potion
+  ctx.resistance.useVirtualGears(true); // shifters are gears only; actions live on A/B/Y/Z
 
   function persist() {
     ctx.save({ bank: Math.round(bankStart + P.coinsEarned), upgrades: { ...levels }, bestFloor, runs, autoInvest: autoInvestOn } satisfies DungeonSave);
@@ -342,6 +355,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // ---------- combat ----------
   function hurtPlayer(dmg: number) {
     if (P.invuln > 0) return;
+    if (P.ward > 0) { if (t - P.hurtT > 0.25) cue('hit'); P.hurtT = t - 1; return; }
     const armor = clamp(gearSum('armor'), 0, 0.75);
     P.hp -= dmg * enemyDmgScale() * (1 - armor) * (cursed('hexed') ? 1.4 : 1);
     if (t - P.hurtT > 0.25) cue('hurt');
@@ -491,53 +505,46 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     for (const o of liveInRoom(current)) if (!b.hits!.includes(o.id) && Math.hypot(o.x - b.x, o.y - b.y) < b.w!.blast + o.r) damageEnemy(o, b.dmg * 0.6, bike, false, col);
   }
 
-  // ---------- input ----------
-  function readCtl(input: Readonly<InputState>): Ctl {
-    if (autopilot) return autopilotCtl();
-    const h = input.held, mode = ctx.profile.settings.aimMode;
-    let mx = (h.has('right') ? 1 : 0) - (h.has('left') ? 1 : 0), my = (h.has('down') ? 1 : 0) - (h.has('up') ? 1 : 0);
-    const inv = mx && my ? Math.SQRT1_2 : 1; mx *= inv; my *= inv;
-    const buttons = mode === 'buttons';
-    let aimVec: Ctl['aimVec'] = null;
-    if (buttons) {
-      // Right-hood diamond: Y up, Z left, A right, B down.
-      const ax = (h.has('a') ? 1 : 0) - (h.has('z') ? 1 : 0), ay = (h.has('b') ? 1 : 0) - (h.has('y') ? 1 : 0);
-      if (ax || ay) aimVec = { x: ax, y: ay };
-    } else if (mode === 'axes') {
-      if (Math.hypot(input.paddleL, input.paddleR) > 0.25) aimVec = { x: input.paddleL, y: input.paddleR };
+  // ---------- rider actions (A Strike, B Ward, Y Rally, Z Potion; shifters stay gears) ----------
+  const spinCalled = () => shrines.some((x) => x.state === 'active' && x.kind === 'whirl');
+  function startCd(id: ActionId, s0: number) { cds[id] = { left: s0, total: s0 }; }
+  function doStrike(bike: Readonly<BikeState>) {
+    const hit = liveInRoom(current).filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
+    if (!hit.length) { cue('deny'); return false; }
+    const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
+    for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
+    freeze(0.08); cue('explode');
+    return true;
+  }
+  function act(id: ActionId, bike: Readonly<BikeState>): boolean {
+    if (cds[id].left > 0) { cue('deny'); return false; }
+    if (id === 'strike') { if (!doStrike(bike)) return false; startCd('strike', strikeCd()); }
+    else if (id === 'ward') {
+      P.ward = wardDur(); startCd('ward', wardCd()); cue('pickup');
+      addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#7fe7ff', r: 1.4 });
+    } else if (id === 'rally') {
+      if (!spinCalled()) { cue('deny'); toast('Rally answers a called spin-up', '#8fd8ff'); return false; }
+      P.rally = rallyDur(); startCd('rally', rallyCd()); cue('reward');
+      toast('Rally! Faster attacks', '#8fd8ff');
+    } else {
+      if (P.potions <= 0 || P.hp >= P.maxHp) { cue('deny'); return false; }
+      P.potions--; P.hp = Math.min(P.maxHp, P.hp + P.maxHp * potionHeal()); P.lastPotionT = t; startCd('potion', potionCd()); cue('potion');
+      addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#ff6b8a', r: 1 });
     }
-    let ap: Ctl | null = null;
-    if (autoMove() && !mx && !my) { ap = autopilotCtl(); mx = ap.mx; my = ap.my; }
-    const aimAuto = mode === 'auto' || (mode !== 'buttons' && input.paddleIdleS > autoAimIdle() && !aimVec);
-    return {
-      mx, my, aimAuto, aimVec,
-      dash: input.pressed.has('shiftUpR'),
-      potion: input.pressed.has('shiftDnR') || (!!ap && P.hp < P.maxHp * 0.25 && P.potions > 0),
-    };
+    ctx.emit({ type: 'action', data: { id, floor } });
+    return true;
+  }
+  function riderActions(input: Readonly<InputState>, bike: Readonly<BikeState>) {
+    const p = (b: Button) => input.pressed.has(b);
+    if (p('a')) act('strike', bike);
+    if (p('b')) act('ward', bike);
+    if (p('y')) act('rally', bike);
+    if (p('z')) act('potion', bike);
+    if (shouldAutoPotion(P.hp / P.maxHp, P.potions, t - P.lastPotionT, autoPotionFrac()) && cds.potion.left <= 0) act('potion', bike);
   }
 
-  /** Tile BFS from the player to (tx,ty); returns waypoints (tile centres). */
-  function findPath(tx: number, ty: number): Array<{ x: number; y: number }> {
-    const W = world.w, sx = Math.floor(P.x), sy = Math.floor(P.y);
-    const prev = new Int32Array(W * world.h).fill(-1);
-    const start = sy * W + sx, goal = ty * W + tx;
-    prev[start] = start;
-    const q = [start];
-    for (let qi = 0; qi < q.length; qi++) {
-      const c = q[qi];
-      if (c === goal) break;
-      const cx = c % W, cy = (c - cx) / W;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = cx + dx, ny = cy + dy, ni = ny * W + nx;
-        if (nx < 0 || ny < 0 || nx >= W || ny >= world.h || prev[ni] >= 0 || walkSolid(nx, ny)) continue;
-        prev[ni] = c; q.push(ni);
-      }
-    }
-    if (prev[goal] < 0) return [];
-    const out: Array<{ x: number; y: number }> = [];
-    for (let c = goal; c !== start; c = prev[c]) out.push({ x: (c % W) + 0.5, y: Math.floor(c / W) + 0.5 });
-    return out.reverse();
-  }
+  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty);
   function navTarget(): { key: string; x: number; y: number } | null {
     if (!boss.alive) return { key: 'stairs', x: Math.floor(world.stairs.x), y: Math.floor(world.stairs.y) };
     const dist = world.rooms.map(() => -1); dist[current] = 0;
@@ -553,19 +560,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   function autopilotCtl(): Ctl {
-    let mx = 0, my = 0, dash = false;
+    let mx = 0, my = 0, roll = false;
     const near = nearestEnemy();
+    P.targetId = near?.id ?? 0;
     const room = activeRoom();
     if (near && room.locked) {
       const dx = near.x - P.x, dy = near.y - P.y, d = Math.hypot(dx, dy) || 1;
       // stand off at a comfortable fraction of weapon range (flamers fight up close)
-      const reach = clamp(weapon.range * 0.6, 1.8, 5);
-      const want = near.kind === 'bomber' || near.elite === 'volatile' ? Math.max(reach, 3) : near.kind === 'chaser' || near.kind === 'brute' ? Math.min(reach, 3.5) : reach;
+      const want = standoff(weapon.range, near);
       const s = d > want + 1 ? 1 : d < want - 1 ? -1 : 0;
       mx = (dx / d) * s; my = (dy / d) * s;
       if (s === 1) { // close in along a real path (pits/braziers may be in the way)
         const key = `fight${near.id}`;
-        if (navKey !== key || navAge > 0.75 || !navPath.length) { navPath = findPath(Math.floor(near.x), Math.floor(near.y)); navKey = key; navAge = 0; }
+        if (navKey !== key || navAge > 0.75 || !navPath.length) { navPath = pathTo(Math.floor(near.x), Math.floor(near.y)); navKey = key; navAge = 0; }
         while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
         if (navPath[0]) { const wx = navPath[0].x - P.x, wy = navPath[0].y - P.y, wn = Math.hypot(wx, wy) || 1; mx = wx / wn; my = wy / wn; }
       }
@@ -581,11 +588,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       for (const h of hazards) { const hx = h.x - P.x, hy = h.y - P.y, hd = Math.hypot(hx, hy) || 1; if (hd < h.r + 1) { mx -= hx / hd * 2; my -= hy / hd * 2; } }
       const cx = room.x0 + room.w / 2 - P.x, cy = room.y0 + room.h / 2 - P.y;
       if (!pathing && !inRoom(room, P.x, P.y, 1.6)) { mx += cx * 0.2; my += cy * 0.2; }
-      if (d < 1.4 && P.hp < P.maxHp * 0.6 && P.dashCd <= 0) { dash = true; mx = -dx / d; my = -dy / d; }
+      if (d < 1.4 && P.hp < P.maxHp * 0.6) { mx = -dx / d; my = -dy / d; roll = P.rollCd <= 0; } // roll out when hurt and crowded
     } else if (!drops.some((d) => Math.hypot(d.x - P.x, d.y - P.y) < 6)) {
       const tgt = navTarget();
       if (tgt) {
-        if (tgt.key !== navKey || navAge > 1.5 || !navPath.length) { navPath = findPath(tgt.x, tgt.y); navKey = tgt.key; navAge = 0; }
+        if (tgt.key !== navKey || navAge > 1.5 || !navPath.length) { navPath = pathTo(tgt.x, tgt.y); navKey = tgt.key; navAge = 0; }
         while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
         const wp = navPath[0];
         if (wp) { mx = wp.x - P.x; my = wp.y - P.y; }
@@ -594,7 +601,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const n = Math.hypot(mx, my);
     if (n > 1) { mx /= n; my /= n; }
     ctx.debug('autopilot', `${mx.toFixed(2)},${my.toFixed(2)} path${navPath.length} ${navKey} near${near ? near.id + '@' + near.x.toFixed(1) + ',' + near.y.toFixed(1) : '-'}`);
-    return { mx, my, dash, potion: P.hp < P.maxHp * 0.35 && P.potions > 0, aimAuto: true, aimVec: null };
+    return { mx, my, roll };
   }
 
   // ---------- camp (between runs) ----------
@@ -620,7 +627,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (row.kind === 'floor' && (p('left') || p('right'))) {
       startFloor = clamp(startFloor + (p('left') ? -1 : 1), 1, mods.maxStartFloor); cue('select'); campT = 0;
     }
-    if (p('z') || tapped) { // Z = left face button on the Ride diamond; taps select + activate
+    if (p('a') || p('z') || tapped) { // A or Z on the Ride diamond; taps select + activate
       campT = 0;
       if (row.kind === 'start') { startRun(); return; }
       if (row.kind === 'floor') { startFloor = startFloor >= mods.maxStartFloor ? 1 : startFloor + 1; cue('select'); }
@@ -729,29 +736,24 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (over) return;
     if (freezeT > 0) { freezeT -= dt; return; } // hit-stop
     t += dt; navAge += dt;
-    const ctl = readCtl(input);
+    const ctl = autopilotCtl();
+    for (const k of Object.keys(cds) as ActionId[]) cds[k].left = Math.max(0, cds[k].left - dt);
+    P.ward = Math.max(0, P.ward - dt); P.rally = Math.max(0, P.rally - dt);
+    riderActions(input, bike);
 
     // --- player movement
-    P.dashCd = Math.max(0, P.dashCd - dt);
     P.invuln = Math.max(0, P.invuln - dt);
     const tile = tileAt(world, Math.floor(P.x), Math.floor(P.y));
     P.onSwamp = tile === TILE.SWAMP;
     P.speedMult = speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
-    if (ctl.dash && P.dashCd <= 0 && P.dashT <= 0) {
-      let dx = ctl.mx, dy = ctl.my;
-      if (!dx && !dy) { dx = Math.cos(P.aim); dy = Math.sin(P.aim); }
-      const n = Math.hypot(dx, dy) || 1;
-      P.dashDx = dx / n; P.dashDy = dy / n; P.dashT = 0.15; P.dashCd = dashCooldown(); P.invuln = Math.max(P.invuln, 0.3);
-    }
-    if (ctl.potion && P.potions > 0 && P.hp < P.maxHp) {
-      P.potions--; P.hp = Math.min(P.maxHp, P.hp + P.maxHp * 0.45); cue('potion');
-      addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.6, color: '#ff6b8a', r: 1 });
-    }
     P.moving = false;
-    if (P.dashT > 0) {
-      P.dashT -= dt; P.moving = true;
-      move(P, P.dashDx * 14 * dt, P.dashDy * 14 * dt, PLAYER_R);
-    } else {
+    P.rollCd = Math.max(0, P.rollCd - dt);
+    if (ctl.roll && P.rollT <= 0) {
+      const n = Math.hypot(ctl.mx, ctl.my) || 1;
+      P.rollDx = ctl.mx / n; P.rollDy = ctl.my / n; P.rollT = 0.15; P.rollCd = rollCd(); P.invuln = Math.max(P.invuln, 0.3);
+    }
+    if (P.rollT > 0) { P.rollT -= dt; P.moving = true; move(P, P.rollDx * 14 * dt, P.rollDy * 14 * dt, PLAYER_R); }
+    else {
       const sp = baseSpeed() * P.speedMult * dt;
       if (ctl.mx || ctl.my) { move(P, ctl.mx * sp, ctl.my * sp, PLAYER_R); P.moveAng = Math.atan2(ctl.my, ctl.mx); P.moving = sp > 0; }
     }
@@ -783,23 +785,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
     // --- aim
     const target = nearestEnemy();
-    const mode = ctx.profile.settings.aimMode;
-    if (ctl.aimVec) P.aim = Math.atan2(ctl.aimVec.y, ctl.aimVec.x);
-    else if (ctl.aimAuto) {
-      if (target) {
-        const d = Math.hypot(target.x - P.x, target.y - P.y), lead = d / weapon.speed;
-        P.aim = Math.atan2(target.y + target.vy * lead - P.y, target.x + target.vx * lead - P.x);
-      } else if (ctl.mx || ctl.my) P.aim = P.moveAng;
-    } else if (mode === 'rotate' || mode === 'auto') P.aim += (input.paddleR - input.paddleL) * aimTurn() * dt;
-    P.aimAuto = ctl.aimAuto;
+    if (target) {
+      const d = Math.hypot(target.x - P.x, target.y - P.y), lead = d / weapon.speed;
+      P.aim = Math.atan2(target.y + target.vy * lead - P.y, target.x + target.vx * lead - P.x);
+    } else if (ctl.mx || ctl.my) P.aim = P.moveAng;
 
     // --- firing (only with something to shoot at, so coins/corridors stay calm)
-    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate;
+    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate / (P.rally > 0 ? rallyMult() : 1);
     if (revs < P.lastShotRevs) P.lastShotRevs = revs;
     let shots = 0;
     while (revs - P.lastShotRevs >= per && shots < 6) {
       P.lastShotRevs += per; shots++;
-      if (target || !ctl.aimAuto) fire(bike);
+      if (target) fire(bike);
     }
     if (revs - P.lastShotRevs >= per) P.lastShotRevs = revs;
 
@@ -1046,7 +1043,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const safe = world.rooms[safeRoom];
     current = safe.id;
     P.x = safe.x0 + safe.w / 2; P.y = safe.y0 + safe.h / 2;
-    recomputeHp(true); P.invuln = 2; P.dashT = 0; P.hurtT = -99;
+    recomputeHp(true); P.invuln = 2; P.rollT = 0; P.ward = 0; P.rally = 0; P.hurtT = -99;
     bullets.length = 0; hazards.length = 0; navPath = [];
     curse = null; // death lifts the curse (no bounty)
     const lost = Math.floor(P.coins * deathCoinLoss());
@@ -1074,12 +1071,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return {
       t, phase, camp: phase === 'camp' ? campView() : null, world, floor,
       player: {
-        x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: mods.potionCap, dashCd: P.dashCd, dashCdMax: dashCooldown(),
-        invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, dashing: P.dashT > 0, hurt: t - P.hurtT,
+        x: P.x, y: P.y, r: PLAYER_R, hp: P.hp, maxHp: P.maxHp, potions: P.potions, potionCap: mods.potionCap,
+        invuln: P.invuln > 0, onSwamp: P.onSwamp, speedMult: P.speedMult, moving: P.moving, rolling: P.rollT > 0, warded: P.ward > 0, rallied: P.rally > 0, hurt: t - P.hurtT,
         lives: livesT() > 0 ? livesLeft : 0, livesMax: Math.round(livesT()), level: P.level, xp: P.xp, xpNext: xpNext(P.level), coins: P.coins, bank: Math.round(bankStart + P.coinsEarned),
       },
       weapon, gear: { ...gear },
-      aim: { angle: P.aim, auto: P.aimAuto },
+      aim: { angle: P.aim },
+      ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
+      actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
+        id, button: ACTION_BUTTON[id], label: ACTION_LABEL[id], ready: readyFrac(cds[id]),
+        usable: cds[id].left <= 0 && (id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true),
+      })),
       enemies: ev, bullets: bv, drops: drops.map(({ item: _i, value: _v, ...d }) => d),
       hazards: hazards.map(({ dmg: _d, ...h }) => h),
       orbit: weapon.unique === 'orbit' && phase === 'run' ? orbitBlades() : [],
@@ -1097,14 +1099,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   function hud(): GameHud {
     if (phase === 'camp') return {
-      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'z', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
+      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
       gears: true, targetZone: { min: 1, max: 2, label: 'Warm up' },
     };
     const sh = bossShield();
-    const buttons = ctx.profile.settings.aimMode === 'buttons';
-    const aim: ControlHint[] = buttons
-      ? [{ button: 'y', label: 'Aim up' }, { button: 'z', label: 'Aim left' }, { button: 'a', label: 'Aim right' }, { button: 'b', label: 'Aim down' }]
-      : [{ button: 'paddles', label: 'Aim' }];
     const act = shrines.find((s) => s.state === 'active');
     // shields and shrines are short efforts, judged on power (sprint detection is power-based too)
     const target: GameHud['targetZone'] = sh.shielded ? { min: 4, max: 5, label: 'Sprint! Shield up', source: 'power' }
@@ -1113,11 +1111,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : curse ? 'Cursed: ride it out' : 'Heal' };
     return {
       controls: [
-        ...aim,
-        { button: 'shiftUpR', label: 'Dash', active: P.dashCd <= 0 },
-        { button: 'shiftDnR', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp },
-        { button: 'dpad', label: 'Move (optional)' },
+        { button: 'a', label: 'Strike', active: cds.strike.left <= 0 },
+        { button: 'b', label: 'Ward', active: cds.ward.left <= 0 },
+        { button: 'y', label: 'Rally', active: cds.rally.left <= 0 && spinCalled() },
+        { button: 'z', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp && cds.potion.left <= 0 },
         { button: 'shiftersL', label: 'Gear' },
+        { button: 'shiftersR', label: 'Gear' },
       ],
       gears: true, targetZone: target,
       targetCadence: act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' } : undefined,

@@ -26,3 +26,4 @@ CONTRACT-REQUESTs: none.
 
 ## Known gaps
 - Renderer verified via throwaway Playwright screenshots only. Pit visuals not screenshot-checked. Manual (non-auto-move) play not balance-tested.
+- Stances (#87, `sim/stances.ts`): D-pad left/right cycles Vanguard (flame/pellet, close, 0.6x dmg taken) / Ranger (arrow/bolt, far) / Skirmisher (star/spark, kite, +5% move) / Arcanist (orb; camp unlock `arcanist`, else orbs feed the Ranger). Each has its own weapon slot; loot fills the matching slot and `stanceDropBias` of weapon drops roll for the current stance. `stanceCdS` 8, `stanceSwapS` 1.5 (no attacks). Style bonus `styleBonus` (+10% armor/fire/move/dmg) while cadence is in the stance band (70-82 / 92-100 / 88-98 / 85-95) AND power ≥ Z2, hidden while a spin-up is called. Per-shot damage x `dmgCadenceRef`/cadence (0.8-1.5) so damage per second follows power, not cadence; parity test in `test/stances.test.ts`.

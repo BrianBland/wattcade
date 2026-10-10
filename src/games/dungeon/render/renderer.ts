@@ -1,6 +1,6 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
-import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
+import { desaturate, drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import { runLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
@@ -552,6 +552,31 @@ export function createRenderer(): GameRenderer {
         flourish: effortFlourish(zone), ready: a.ready >= 1, usable: a.usable, t: s.t, scale: r.h / 62 });
     });
     gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
+
+    // stance panel (between the weapon card and the buttons): name, D-pad hint, style chip, change readiness, AI suggestion
+    if (LY.stance.w > 120 * u) {
+      const R = LY.stance, st = s.stance, fsm = Math.round(11 * u);
+      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(R.x, R.y, R.w, R.h);
+      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(R.x, R.y, R.w, R.h);
+      gg.fillStyle = st.color; gg.font = `900 ${Math.round(15 * u)}px sans-serif`;
+      gg.fillText(st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : st.name, R.x + 10 * u, R.y + 19 * u, R.w - 60 * u);
+      gg.fillStyle = '#bbb'; gg.font = `${fsm}px sans-serif`; gg.textAlign = 'right';
+      gg.fillText('◀ D-pad ▶', R.x + R.w - 8 * u, R.y + 18 * u); gg.textAlign = 'left';
+      gg.fillText(st.role, R.x + 10 * u, R.y + 34 * u, R.w * 0.45);
+      if (!st.styleHidden) { // style chip: a hint, not a target
+        const txt = `${st.styleOn ? '✓ ' : ''}style ${st.band[0]}-${st.band[1]} rpm`, tw = gg.measureText(txt).width + 14 * u, tx = R.x + R.w - tw - 8 * u, ty = R.y + 24 * u;
+        gg.fillStyle = st.styleOn ? st.color : 'rgba(255,255,255,0.12)'; gg.fillRect(tx, ty, tw, 15 * u);
+        gg.fillStyle = st.styleOn ? '#0a0810' : '#ccc'; gg.fillText(txt, tx + 7 * u, ty + 11.5 * u);
+      }
+      // change readiness: thin fill line along the bottom (no numbers)
+      gg.fillStyle = 'rgba(255,255,255,0.12)'; gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, R.w - 16 * u, 4 * u);
+      gg.fillStyle = st.ready >= 1 ? st.color : desaturate(st.color, 0.6, 0.2); gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, (R.w - 16 * u) * Math.min(1, st.ready), 4 * u);
+      if (st.suggest) {
+        const sg = s.stance.list.find((x) => x.id === st.suggest);
+        if (sg) { gg.globalAlpha = 0.6 + 0.4 * Math.sin(s.t * 5); gg.fillStyle = sg.color; gg.font = `bold ${fsm}px sans-serif`;
+          gg.fillText(`Try ${sg.name}`, R.x + 10 * u, R.y + 48 * u, R.w * 0.6); gg.globalAlpha = 1; }
+      }
+    }
 
     // weapon + gear card (bottom-left)
     const wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;

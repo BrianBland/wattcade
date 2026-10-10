@@ -5,6 +5,7 @@ import {
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
 import { DEFAULT_ZONE_REFILL, completeCooldown, refillRate, tickCooldown } from '../../../core/cooldown';
+import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
 import { findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
@@ -60,7 +61,7 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
   return Math.hypot(px - ax - vx * k, py - ay - vy * k);
 }
 
-export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean }
+export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId }
 export interface DungeonSave { bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean }
 
 const ACTION_BUTTON: Record<ActionId, 'a' | 'b' | 'y' | 'z'> = { strike: 'a', ward: 'b', rally: 'y', potion: 'z' };
@@ -71,7 +72,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const tn = ctx.tuning;
   const baseSpeed = tn.num('baseSpeed', 4.2, 1, 10, 0.1, 'tiles/s at 90 rpm');
   const spd0 = tn.num('speedAt0rpm', 0.35, 0, 2, 0.05);
-  const spd60 = tn.num('speedAt60rpm', 0.8, 0, 2, 0.05);
+  const spd60 = tn.num('speedAt60rpm', 0.95, 0, 2, 0.05);
   const spd90 = tn.num('speedAt90rpm', 1.0, 0, 2, 0.05);
   const spd110 = tn.num('speedAt110rpm', 1.15, 0, 2, 0.05);
   const revsPerShot = tn.num('revsPerShot', 0.5, 0.1, 4, 0.05, 'crank revs per shot at weapon rate 1');
@@ -89,6 +90,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
   const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
+  const stanceCdT = tn.num('stanceCdS', 8, 0, 60, 1, 'seconds between stance changes');
+  const stanceSwapT = tn.num('stanceSwapS', 1.5, 0, 5, 0.1, 'no attacks while changing stance');
+  const styleAmt = tn.num('styleBonus', 0.1, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
+  const stanceDropBias = tn.num('stanceDropBias', 0.6, 0, 1, 0.05, 'share of weapon drops rolled for the current stance');
+  const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'shots come per crank rev; per-shot damage x ref/cadence (clamped 0.8-1.5) so damage per second follows power, not cadence (0 = off)');
   const potionHeal = tn.num('potionHeal', 0.45, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
@@ -133,6 +139,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     level: 1, xp: 0, coins: 0, coinsEarned: 0, shots: 0,
   };
   let weapon: Weapon = starterWeapon();
+  let stance: StanceId = opts?.stance ?? 'ranger';
+  const slots = {} as Record<StanceId, Weapon>;
+  function fillSlots(level: number) {
+    slots.ranger = weapon;
+    for (const id of ['vanguard', 'skirmisher', 'arcanist'] as StanceId[]) slots[id] = level > 1 ? makeWeapon(rng, level, 1, STANCES[id].starter) : makeWeapon(rng, 1, 0, STANCES[id].starter);
+    if (!stancesFor(mods.arcanist).includes(stance)) stance = 'ranger';
+    weapon = slots[stance];
+  }
+  let swapT = 0, swapTo: StanceId | null = null, stanceCd = 0, styleOn = false, suggestion: StanceId | null = null;
+  const sb = (k: string) => (styleOn && STANCES[stance].bonus === k ? 1 + styleAmt() : 1);
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
   const tapped: ActionId[] = [];
@@ -329,7 +345,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function dropItem(x: number, y: number, bump: number, uniqueMult = 1) {
     const lvl = floor + (rng() < 0.3 ? 1 : 0), rar = rollRarity(rng, bump + (rng() < mods.rarityBumpChance ? 1 : 0));
     if (rng() * 100 < uniquePct() * uniqueMult * mods.dropMult) dropAt(x, y, 'weapon', 0, makeUnique(rng, lvl + 1));
-    else if (rng() < 0.45) dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar));
+    else if (rng() < 0.45) { const st = stylesFor(stance, mods.arcanist); dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < stanceDropBias() ? st[Math.floor(rng() * st.length)] : undefined)); }
     else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
   }
   function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult)); }
@@ -343,11 +359,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     const it = d.item!;
     const col = RARITY_COLORS[it.rarity];
-    const better = 'base' in it ? it.score > weaponScore(weapon) : !gear[it.slot] || it.score > gear[it.slot]!.score;
+    const sid = 'base' in it ? stanceOfStyle(it.base, mods.arcanist) : stance;
+    const better = 'base' in it ? it.score > weaponScore(slots[sid]) : !gear[it.slot] || it.score > gear[it.slot]!.score;
     if (!better) { const v = Math.round(sellValue(it.level, Math.min(4, it.rarity) as Rarity) * mods.coinMult); addCoins(v); toast(`Sold ${it.name} +${v}c`, '#bbb'); cue('coin'); return; }
-    if ('base' in it) weapon = it; else { gear[it.slot] = it; recomputeHp(false); }
+    if ('base' in it) { slots[sid] = it; if (sid === stance && !swapTo) weapon = it; } else { gear[it.slot] = it; recomputeHp(false); }
     if (it.rarity > bestFind.rarity || (it.rarity === bestFind.rarity && it.level > bestFind.level)) bestFind = it;
-    toast(`Equipped ${it.name}`, col);
+    toast('base' in it ? `Equipped ${it.name} (${STANCES[sid].name})` : `Equipped ${it.name}`, col);
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 0.8, color: col, r: 1.4 });
     if (it.rarity === 5) {
       uniquesFound++; freeze(0.3); cue('unique');
@@ -362,7 +379,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (P.invuln > 0) return;
     if (P.ward > 0) { if (t - P.hurtT > 0.25) cue('hit'); P.hurtT = t - 1; return; }
     const armor = clamp(gearSum('armor'), 0, 0.75);
-    P.hp -= dmg * enemyDmgScale() * (1 - armor) * (cursed('hexed') ? 1.4 : 1);
+    P.hp -= dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1);
     if (t - P.hurtT > 0.25) cue('hurt');
     P.hurtT = t;
   }
@@ -437,8 +454,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return best;
   }
 
+  const cadNorm = (bike: Readonly<BikeState>) => (cadRef() > 0 ? clamp(cadRef() / Math.max(30, bike.cadence3s), 0.8, 1.5) : 1);
   const playerDmg = (bike: Readonly<BikeState>) =>
-    baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5) * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult;
+    cadNorm(bike) * sb('dmg') * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5) * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult;
   function shoot(a: number, dmg: number, sp: number, child: boolean, crit = false) {
     const w = weapon;
     bullets.push({
@@ -543,11 +561,29 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function riderActions(input: Readonly<InputState>, bike: Readonly<BikeState>) {
     const p = (b: Button) => input.pressed.has(b);
     for (const id of tapped.splice(0)) act(id, bike); // on-screen button taps
+    if (p('left') || p('right')) changeStance(p('right') ? 1 : -1);
     if (p('a')) act('strike', bike);
     if (p('b')) act('ward', bike);
     if (p('y')) act('rally', bike);
     if (p('z')) act('potion', bike);
     if (shouldAutoPotion(P.hp / P.maxHp, P.potions, t - P.lastPotionT, autoPotionFrac()) && cds.potion.left <= 0) act('potion', bike);
+  }
+
+  function changeStance(dir: number) {
+    const list = stancesFor(mods.arcanist);
+    if (stanceCd > 0 || swapTo || list.length < 2) { cue('deny'); return; }
+    const i = list.indexOf(stance), next = list[(i + dir + list.length) % list.length];
+    swapTo = next; swapT = stanceSwapT(); stanceCd = stanceCdT(); cue('equip');
+    toast(`${STANCES[next].name}: ${STANCES[next].role}`, STANCES[next].color);
+    ctx.emit({ type: 'stance', data: { stance: next, floor } });
+  }
+  function stanceTick(dt: number, bike: Readonly<BikeState>) {
+    stanceCd = Math.max(0, stanceCd - dt);
+    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; } }
+    styleOn = styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
+    const live = liveInRoom(current);
+    suggestion = suggestStance({ boss: bossStarted && boss.alive && current === boss.room, shielded: bossShield().shielded, crowd: live.length, elite: live.some((e) => !!e.elite), arcanist: mods.arcanist });
+    if (suggestion === stance || swapTo) suggestion = null;
   }
 
   const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty);
@@ -573,7 +609,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (near && room.locked) {
       const dx = near.x - P.x, dy = near.y - P.y, d = Math.hypot(dx, dy) || 1;
       // stand off at a comfortable fraction of weapon range (flamers fight up close)
-      const want = standoff(weapon.range, near);
+      const want = STANCES[stance].standoff(standoff(weapon.range, near));
       const s = d > want + 1 ? 1 : d < want - 1 ? -1 : 0;
       mx = (dx / d) * s; my = (dy / d) * s;
       if (s === 1) { // close in along a real path (pits/braziers may be in the way)
@@ -583,7 +619,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         if (navPath[0]) { const wx = navPath[0].x - P.x, wy = navPath[0].y - P.y, wn = Math.hypot(wx, wy) || 1; mx = wx / wn; my = wy / wn; }
       }
       const pathing = s === 1 && navPath.length > 0;
-      if (s === 0) { mx = -dy / d * 0.6; my = dx / d * 0.6; } // circle-strafe
+      if (s === 0) { const k = 0.25 + 0.6 * STANCES[stance].strafe; mx = -dy / d * k; my = dx / d * k; } // circle-strafe (by stance)
       for (const b of bullets) { // sidestep incoming shots (perpendicular to their path) so we can still advance
         if (b.friendly) continue;
         const bx = P.x - b.x, by = P.y - b.y, bd = Math.hypot(bx, by), bv = Math.hypot(b.vx, b.vy) || 1;
@@ -663,7 +699,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     runs++;
     livesLeft = Math.round(livesT()); over = false;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); bestFind = weapon;
+    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; stanceCd = 0;
     P.potions = mods.potionCap;
     buildFloor();
     recomputeHp(true);
@@ -695,7 +731,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     freeze(0.2); cue('reward');
     addFx({ kind: 'levelup', x: s.x, y: s.y, life: 1.5, color: SHRINES[s.kind].color, r: 3 });
     if (s.kind === 'fury') {
-      weapon = { ...weapon, plus: weapon.plus + 2 }; weapon.score = weaponScore(weapon);
+      weapon = { ...weapon, plus: weapon.plus + 2 }; weapon.score = weaponScore(weapon); slots[stance] = weapon;
       toast(`Fury! ${weapon.name} is now +${weapon.plus}`, '#ff8c2a');
     } else if (s.kind === 'whirl') {
       for (let i = 0; i < 8; i++) dropAt(s.x, s.y, 'coin', coinValue());
@@ -755,12 +791,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     P.ward = Math.max(0, P.ward - dt); P.rally = Math.max(0, P.rally - dt);
     riderActions(input, bike);
+    stanceTick(dt, bike);
 
     // --- player movement
     P.invuln = Math.max(0, P.invuln - dt);
     const tile = tileAt(world, Math.floor(P.x), Math.floor(P.y));
     P.onSwamp = tile === TILE.SWAMP;
-    P.speedMult = speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
+    P.speedMult = STANCES[stance].moveMult * sb('move') * speedCurve(bike.cadence3s) * (1 + gearSum('speed')) * mods.speedMult * (P.onSwamp ? 0.75 : 1) * (cursed('mire') ? 0.85 : 1);
     P.moving = false;
     P.rollCd = Math.max(0, P.rollCd - dt);
     if (ctl.roll && P.rollT <= 0) {
@@ -806,12 +843,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     } else if (ctl.mx || ctl.my) P.aim = P.moveAng;
 
     // --- firing (only with something to shoot at, so coins/corridors stay calm)
-    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate / (P.rally > 0 ? rallyMult() : 1);
+    const revs = bike.crankRevs, per = revsPerShot() / weapon.rate / (P.rally > 0 ? rallyMult() : 1) / sb('fire');
     if (revs < P.lastShotRevs) P.lastShotRevs = revs;
     let shots = 0;
     while (revs - P.lastShotRevs >= per && shots < 6) {
       P.lastShotRevs += per; shots++;
-      if (target) fire(bike);
+      if (target && swapT <= 0) fire(bike);
     }
     if (revs - P.lastShotRevs >= per) P.lastShotRevs = revs;
 
@@ -1092,6 +1129,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       },
       weapon, gear: { ...gear },
       aim: { angle: P.aim },
+      stance: {
+        id: stance, name: STANCES[stance].name, role: STANCES[stance].role, color: STANCES[stance].color, band: STANCES[stance].band,
+        styleOn, styleHidden: spinCalled(), swapping: swapTo, ready: stanceCd <= 0 ? 1 : 1 - stanceCd / stanceCdT(), suggest: suggestion,
+        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '' })),
+      },
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
       ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
       actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
@@ -1131,6 +1173,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         { button: 'b', label: 'Ward', active: cds.ward.left <= 0 },
         { button: 'y', label: 'Rally', active: cds.rally.left <= 0 && spinCalled() },
         { button: 'z', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp && cds.potion.left <= 0 },
+        { button: 'dpad', label: 'Stance', active: stanceCd <= 0 && !swapTo },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },
       ],
@@ -1149,7 +1192,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     summary: () => ({
       'Deepest floor': floor, 'Hero level': P.level, 'Rooms cleared': roomsCleared, Kills: kills, 'Elites slain': elitesSlain,
       'Bosses slain': bossDefeated, Deaths: deaths, 'Coins earned': Math.round(P.coinsEarned), 'Coins banked': Math.round(bankStart + P.coinsEarned),
-      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name,
+      'Best find': phase === 'run' ? bestFind.name : '-', 'Uniques found': uniquesFound, 'Curses survived': cursesSurvived, 'Final weapon': weapon.name, Stance: STANCES[stance].name,
     }),
     dispose() { if (phase === 'run') persist(); ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },
   };

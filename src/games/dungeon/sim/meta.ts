@@ -1,5 +1,5 @@
 // Roguelite meta-progression: coins are banked across runs and spent at camp on permanent upgrades.
-export type UpgradeId = 'vitality' | 'might' | 'swift' | 'regen' | 'flask' | 'fortune' | 'luck' | 'scholar' | 'delve';
+export type UpgradeId = 'vitality' | 'might' | 'swift' | 'regen' | 'flask' | 'fortune' | 'luck' | 'scholar' | 'delve' | 'arcanist';
 export interface UpgradeDef { id: UpgradeId; name: string; desc: string; max: number; base: number; growth: number }
 
 export const UPGRADES: UpgradeDef[] = [
@@ -11,6 +11,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'fortune',  name: 'Fortune',       desc: '+10% coins',                         max: 20, base: 600,  growth: 1.4 },
   { id: 'luck',     name: 'Treasure Nose', desc: '+10% item drops, better rarity',     max: 15, base: 700,  growth: 1.4 },
   { id: 'scholar',  name: 'Scholar',       desc: '+10% XP',                            max: 15, base: 500,  growth: 1.4 },
+  { id: 'arcanist', name: 'Arcanist',      desc: 'Unlock the Arcanist stance (orb staves)', max: 1, base: 2500, growth: 1 },
   { id: 'delve',    name: 'Delver',        desc: 'Start 2 floors deeper (up to best - 1)', max: 15, base: 2000, growth: 1.45 },
 ];
 
@@ -18,7 +19,7 @@ export type Levels = Partial<Record<UpgradeId, number>>;
 export const lvl = (l: Levels, id: UpgradeId) => l[id] ?? 0;
 export function upgradeCost(def: UpgradeDef, level: number): number { return Math.round(def.base * Math.pow(def.growth, level)); }
 
-export interface MetaMods { hpMult: number; dmgMult: number; speedMult: number; regen: number; potionCap: number; coinMult: number; dropMult: number; rarityBumpChance: number; xpMult: number; maxStartFloor: number }
+export interface MetaMods { hpMult: number; dmgMult: number; speedMult: number; regen: number; potionCap: number; coinMult: number; dropMult: number; rarityBumpChance: number; xpMult: number; maxStartFloor: number; arcanist: boolean }
 export function metaMods(l: Levels, bestFloor: number): MetaMods {
   return {
     hpMult: 1 + 0.08 * lvl(l, 'vitality'),
@@ -31,6 +32,7 @@ export function metaMods(l: Levels, bestFloor: number): MetaMods {
     rarityBumpChance: 0.03 * lvl(l, 'luck'),
     xpMult: 1 + 0.1 * lvl(l, 'scholar'),
     maxStartFloor: Math.max(1, Math.min(1 + 2 * lvl(l, 'delve'), bestFloor - 1)),
+    arcanist: lvl(l, 'arcanist') > 0,
   };
 }
 

@@ -41,6 +41,11 @@ export interface DungeonSnapshot {
   gear: Partial<Record<Slot, Gear>>;
   aim: { angle: number };
   /** The hero AI's intent: waypoints to its next goal (tile centres) and the enemy it is targeting (0 = none). */
+  stance: {
+    id: string; name: string; role: string; color: string; band: [number, number];
+    styleOn: boolean; styleHidden: boolean; swapping: string | null; ready: number; suggest: string | null;
+    list: Array<{ id: string; name: string; color: string; weapon: string }>;
+  };
   /** Current cooldown refill speed (x base) and the power zone driving it (1..5). */
   refill: { rate: number; zone: number };
   ai: { path: Array<{ x: number; y: number }>; targetId: number };

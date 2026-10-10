@@ -86,7 +86,7 @@ describe('hands-off input map', () => {
   });
   it('the hero walks and fights with no input, and the paddles/D-pad do not steer', () => {
     const a = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
-    const b = run([{ t: 0, press: 'left', paddleL: 1, paddleR: -1 }], 0);
+    const b = run([{ t: 0, press: 'up', paddleL: 1, paddleR: -1 }], 0);
     a.step(600); b.step(600);
     const pa = (a.sim.snapshot() as any).player, pb = (b.sim.snapshot() as any).player;
     expect(pb.x).toBeCloseTo(pa.x, 6); expect(pb.y).toBeCloseTo(pa.y, 6);

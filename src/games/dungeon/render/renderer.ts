@@ -1,5 +1,7 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
+import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
+import { runLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
@@ -83,12 +85,16 @@ export function createRenderer(): GameRenderer {
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
   let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
   const onPointer = (e: PointerEvent) => {
-    if (!canvas || !campHits.length) return;
+    if (!canvas) return;
     const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
+    const ah = actionHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
+    if (ah) { e.preventDefault(); send?.({ type: 'action', id: ah.id }); return; }
+    if (!campHits.length) return;
     const hit = campHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
+  let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
     const s = sprite(name, over, flash), gg = g!;
@@ -307,8 +313,8 @@ export function createRenderer(): GameRenderer {
       // sound cues (skip any backlog from before mount)
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
-      if (s.phase === 'camp' && s.camp) { drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
-      campHits = [];
+      if (s.phase === 'camp' && s.camp) { actionHits = []; drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
+      campHits = []; if (s.phase !== 'run') actionHits = [];
       const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
       const TS = Math.max(24, Math.round(W / TILES_ACROSS));
       gg.imageSmoothingEnabled = false;
@@ -317,8 +323,12 @@ export function createRenderer(): GameRenderer {
         bgFor = w; bg = buildBackground(w); mini = null; pillars = [];
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
-      const IB = insetCss * dpr, VH = H - IB; // VH: visible play height above the HUD
-      const cx = p.x * TS - W / 2, cy = p.y * TS - VH / 2;
+      const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
+      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the control dock (which sits above the HUD)
+      // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
+      const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
+      const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
+      const cx = fx0 * TS - W / 2, cy = fy0 * TS - VH / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
@@ -527,17 +537,24 @@ export function createRenderer(): GameRenderer {
     for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
     gg.globalAlpha = 1;
     if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L, L + 68 * u); }
-    // rider actions: one bar per action (no numbers); full = ready
-    { const aw = 120 * u, ah = 22 * u, gap = 8 * u, n = s.actions.length;
-      const ax0 = W - L - n * aw - (n - 1) * gap, ay = H - insetCss * dpr - ah - L;
-      s.actions.forEach((a, i) => {
-        const x = ax0 + i * (aw + gap);
-        bar(x, ay, aw, ah, a.ready, a.usable ? ACTION_COLOR[a.id] : '#556', `${a.button.toUpperCase()}  ${a.label}`);
-        if (a.usable) { gg.strokeStyle = ACTION_COLOR[a.id]; gg.globalAlpha = 0.5 + Math.sin(s.t * 6) * 0.3; gg.lineWidth = 2; gg.strokeRect(x - 3, ay - 3, aw + 6, ah + 6); gg.globalAlpha = 1; }
-      }); }
+    // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
+    const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length);
+    { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);
+      dg.addColorStop(0, 'rgba(7,6,11,0.55)'); dg.addColorStop(0.25, 'rgba(7,6,11,0.92)'); dg.addColorStop(1, 'rgba(7,6,11,0.97)');
+      gg.fillStyle = dg; gg.fillRect(0, LY.dock.y, W, H - LY.dock.y);
+      gg.fillStyle = 'rgba(255,216,74,0.18)'; gg.fillRect(0, LY.dock.y, W, Math.max(1, u)); }
+    actionHits = [];
+    const zone = s.refill.zone;
+    s.actions.forEach((a, i) => {
+      const r = LY.buttons[i];
+      actionHits.push({ ...r, id: a.id });
+      drawActionButton(gg, { ...r, label: a.label, glyph: a.button.toUpperCase(), fill: a.ready, readyColor: ACTION_COLOR[a.id], effortTint: effortTint(zone),
+        flourish: effortFlourish(zone), ready: a.ready >= 1, usable: a.usable, t: s.t, scale: r.h / 62 });
+    });
+    gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
 
     // weapon + gear card (bottom-left)
-    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = 280 * u, cardH = 64 * u, cx = L, cy = H - insetCss * dpr - cardH - L;
+    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
     gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
     gg.strokeStyle = wcol; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
     weaponIcon(gg, s.weapon, cx + 22 * u, cy + 22 * u, 30 * u, wcol);

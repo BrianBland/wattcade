@@ -7,7 +7,8 @@ import { BLOCK_COLORS, Blocks } from './blocks';
 import { advanceDegradation, type Degradation } from './degradation';
 import { disposeObjects } from './dispose';
 import { City } from './city';
-import { Craft } from './craft';
+import { Craft, isCraftKind } from './craft';
+import { loadout } from '../../../cosmetics/unlocks';
 import { Gauge, gaugeMarks } from './gauge';
 import { Hud } from './hud';
 import { layout } from './layout';
@@ -56,7 +57,8 @@ export class CadenzaRenderer implements GameRenderer {
     this.renderer = r;
     this.scene.background = new THREE.Color('#05040c');
     this.scene.add(this.world, this.camera);
-    this.craft = new Craft(this.color);
+    const ship = loadout(ctx.profile).ship; // the rider's equipped ship (Locker → Ships)
+    this.craft = new Craft(this.color, isCraftKind(ship) ? ship : undefined);
     this.scene.add(this.craft.group, this.craft.trailMesh);
     this.buildStreaks();
     this.post = new Post(r, this.scene, this.camera);

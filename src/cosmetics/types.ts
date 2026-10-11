@@ -1,7 +1,7 @@
 /** Cosmetic slots, in Locker order. */
-export const SLOTS = ['bike', 'hat', 'jersey', 'paint', 'pet', 'trail', 'title'] as const;
+export const SLOTS = ['bike', 'hat', 'jersey', 'paint', 'pet', 'trail', 'ship', 'title'] as const;
 export type Slot = (typeof SLOTS)[number];
-export const SLOT_NAMES: Record<Slot, string> = { bike: 'Bikes', hat: 'Helmets & hats', jersey: 'Jerseys', paint: 'Paint', pet: 'Pets', trail: 'Trails', title: 'Titles' };
+export const SLOT_NAMES: Record<Slot, string> = { bike: 'Bikes', hat: 'Helmets & hats', jersey: 'Jerseys', paint: 'Paint', pet: 'Pets', trail: 'Trails', ship: 'Ships', title: 'Titles' };
 
 /** How an item is unlocked. `pick` = one of three offered at that level (the rider chooses one). */
 export type Source = { default: true } | { level: number } | { achievement: string } | { pick: number };
@@ -24,6 +24,8 @@ export type Item =
   | (Base & { slot: 'paint'; look: PaintLook })
   | (Base & { slot: 'pet' })
   | (Base & { slot: 'trail' })
+  /** A Cadenza ship (drawn by `draw/ships.ts`, flown by the Cadenza renderer). */
+  | (Base & { slot: 'ship' })
   | (Base & { slot: 'title' });
 
 /** What the rider wears, resolved from a loadout (ids → looks). Drawing code reads only this. */

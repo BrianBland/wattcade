@@ -25,7 +25,7 @@ media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard 
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (neon cubes; mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
-`craft.ts` (lofted hull, canopy, pods, wings, fins; flash, knockback + bubble, ghost, overcharge arcs, under sputter; shockwave
+`craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
@@ -35,7 +35,7 @@ Recovery calms pulses, bloom, shake, streaks, rings (`uMotion`), no fireworks. A
 
 ## Dev / tests
 `/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,
-`script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html` = ship states + mine.
+`script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html?ship=lancer` = ship states + mine.
 `node scripts/cadenza-render-smoke.mjs` against Vite checks finite bloom, bounded GPU allocations, smooth audio.
 Scenarios: EDM set (3–5 spaced launches ≥ great), idle dropout, continuous album on casual. Gaps: Classic; iPad GPU cost; real-ride tuning.
 Rolling analysis: `extendTrack` keeps ridden geometry/blocks and the committed ride block (≥ 30 s); new sprints need a full countdown.

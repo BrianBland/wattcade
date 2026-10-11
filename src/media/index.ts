@@ -23,6 +23,6 @@ export { searchOnline, loadOnlineAudio, resolverConfig, setResolverConfig, type 
 export { mediaServerConfig, saveMediaServerConfig, subscribeMediaServer, type MediaServerConfig } from './online/config';
 export { checkMediaServer, loadAudioRange } from './online/client';
 
-export { RollingQueue, estimatedAnalysis, type RangeSource } from './online/rolling';
+export { RollingQueue, estimatedAnalysis, type RangeSource, type SeedWindow } from './online/rolling';
 export { PreviewPrefetch, isBusyError, type PartialPreview, type PreviewLoader, type PreviewState } from './online/prefetch';
 export { STREAM_BUFFER_OPTIONS } from './online/buffer';

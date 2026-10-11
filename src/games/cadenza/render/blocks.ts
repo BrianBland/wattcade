@@ -20,20 +20,21 @@ export function blockColor(color: number, out = new THREE.Color()): THREE.Color 
 /** Hazards are the only monochrome thing on the track: black glass mines with white-hot spikes. */
 const MINE_HOT = new THREE.Color('#ffffff'), MINE_DARK = new THREE.Color('#34343f');
 
-const CUBE_VS = /* glsl */ `
-attribute float aPhase;
-varying vec2 vUv; varying float vTier; varying float vDepth;
-mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0., -s, 0., 1., 0., s, 0., c); }
+// A lane-wide light bar, hovering just clear of the ribbon.
+export const LIGHT_BAR = { width: LW * 0.76, height: 0.12, depth: 0.24, hover: 0.22 } as const;
+
+const BAR_VS = /* glsl */ `
+attribute float aCollect;
+varying vec2 vUv; varying float vTier; varying float vDepth; varying float vCollect;
 void main() {
-  vUv = uv; vTier = instanceColor.r;
-  vec3 p = rotY(uTime * 1.7 + aPhase) * position;                     // spin
-  p *= 1.0 + 0.16 * uBeat;                                              // and pump on the beat
-  p.y += 0.12 * sin(uTime * 3.0 + aPhase);
-  vec4 mv = modelViewMatrix * instanceMatrix * vec4(p, 1.0); vDepth = -mv.z; gl_Position = projectionMatrix * mv;
+  vUv = uv; vTier = instanceColor.r; vCollect = aCollect;
+  // Stable footprint: orientation comes from the road frame, never a spin or bob.
+  vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  vDepth = -mv.z; gl_Position = projectionMatrix * mv;
 }`;
-const CUBE_FS = /* glsl */ `
+const BAR_FS = /* glsl */ `
 uniform float uWhite;
-varying vec2 vUv; varying float vTier; varying float vDepth;
+varying vec2 vUv; varying float vTier; varying float vDepth; varying float vCollect;
 void main() {
   float e = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
   float rim = 1.0 - smoothstep(0.03, 0.16, e);
@@ -41,8 +42,9 @@ void main() {
   // the track's accent (and its drop shimmer, as the road does); worth more = hotter and brighter
   vec3 acc = mix(uAcc, hue2rgb(fract(vDepth * 0.004 + uTime * 0.12 + vTier * 0.2)), uAcid * 0.6);
   vec3 col = mix(acc, vec3(1.0), uWhite * vTier * vTier);
-  // glassy: a dim tinted core and a saturated neon rim, so the hue survives bloom; value lifts the glow
-  vec3 c = col * (0.16 + 0.3 * core + (0.75 + 0.35 * vTier) * rim) * (0.85 + 0.3 * vTier) * (1.0 + 0.3 * uBeat);
+  // A solid luminous body with a tight bright core; pulse brightness, not geometry.
+  col = mix(col, vec3(1.0), vCollect * 0.8);
+  vec3 c = col * (0.5 + 0.55 * core + 0.3 * rim) * (0.9 + 0.3 * vTier) * (1.0 + 0.12 * uBeat * uMotion);
   gl_FragColor = vec4(mix(c, uFog, smoothstep(uNear, uFar, vDepth) * 0.9), 1.0);
 }`;
 
@@ -113,7 +115,7 @@ interface Fly { i: number; t0: number; from: THREE.Vector3 }
  * ship and drifts back past it slowly while it comes apart, however the track twists.
  */
 interface Shard {
-  pos: THREE.Vector3; vel: THREE.Vector3; rot: THREE.Euler; spin: THREE.Vector3; life: number; max: number; size: number;
+  pos: THREE.Vector3; vel: THREE.Vector3; rot: THREE.Euler; spin: THREE.Vector3; life: number; max: number; size: number; aspect: THREE.Vector3;
   track: boolean; o: number; lx: number; ly: number; vo: number; vx: number; vy: number;
 }
 /** Track shards: start drifting back at this speed (m/s), then accelerate back this hard (m/s²) as the wall gives. */
@@ -122,54 +124,61 @@ const SLOW = { v0: 3, accel: 24, life: 0.5, spread: 2, drag: 1.6 };
 /** Blocks on the track, collected blocks flying into the ship, misses shattering into shards. */
 export class Blocks {
   readonly group = new THREE.Group();
-  private cubes: THREE.InstancedMesh; private mines: THREE.InstancedMesh;
-  /** Block index → instance index in its mesh (cubes or mines). */
+  private bars: THREE.InstancedMesh; private mines: THREE.InstancedMesh;
+  /** Block index → instance index in its mesh (bars or mines). */
   private slot: Int32Array; private visible: number[];
   private shards: THREE.InstancedMesh; private pool: Shard[] = []; private free: number[] = [];
   private prev: Uint8Array; private flies: Fly[] = []; private primed = false;
-  private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private fr = newFrame();
-  private home: Float32Array; private tier = new THREE.Color(); private c = new THREE.Color();
+  private roadQ = new THREE.Quaternion(); private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private s = new THREE.Vector3(); private fr = newFrame();
+  private home: Float32Array; private homeRotation: Float32Array; private collect: THREE.InstancedBufferAttribute; private tier = new THREE.Color(); private c = new THREE.Color();
   constructor(private path: Path, fromS = 0, toS = path.track.durationS) {
     const t = path.track;
     this.visible = t.blocks.flatMap((b, k) => b.t >= fromS && b.t <= toS ? [k] : []);
-    const nMine = this.visible.filter((k) => t.blocks[k].color < 0).length, nCube = this.visible.length - nMine;
-    const cubeGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95), mineGeo = mineGeometry();
-    this.cubes = new THREE.InstancedMesh(cubeGeo, shader(CUBE_VS, CUBE_FS, { uWhite: { value: BLOCK_WHITE } }), Math.max(1, nCube));
+    const nMine = this.visible.filter((k) => t.blocks[k].color < 0).length, nBar = this.visible.length - nMine;
+    const barGeo = new THREE.BoxGeometry(LIGHT_BAR.width, LIGHT_BAR.height, LIGHT_BAR.depth), mineGeo = mineGeometry();
+    this.bars = new THREE.InstancedMesh(barGeo, shader(BAR_VS, BAR_FS, { uWhite: { value: BLOCK_WHITE } }), Math.max(1, nBar));
     this.mines = new THREE.InstancedMesh(mineGeo, mineMaterial(), Math.max(1, nMine));
-    const cubePhase = new Float32Array(Math.max(1, nCube)), minePhase = new Float32Array(Math.max(1, nMine));
+    const barCollect = new Float32Array(Math.max(1, nBar)), minePhase = new Float32Array(Math.max(1, nMine));
     this.slot = new Int32Array(t.blocks.length).fill(-1);
     this.home = new Float32Array(t.blocks.length * 3);
+    this.homeRotation = new Float32Array(t.blocks.length * 4);
     let ci = 0, mi = 0;
     this.visible.forEach((k) => {
       const b = t.blocks[k];
       const mine = b.color < 0, i = mine ? mi++ : ci++;
-      this.slot[k] = i; (mine ? minePhase : cubePhase)[i] = (k * 2.399) % 6.283;
-      path.point(path.distAt(b.t), b.lane, mine ? 1.0 : 0.75, this.fr, this.v);
+      this.slot[k] = i; if (mine) minePhase[i] = (k * 2.399) % 6.283;
+      path.point(path.distAt(b.t), b.lane, mine ? 1.0 : LIGHT_BAR.hover, this.fr, this.v);
       this.home.set([this.v.x, this.v.y, this.v.z], k * 3);
+      this.m.makeBasis(this.fr.r, this.fr.u, this.s.copy(this.fr.f).negate());
+      this.q.setFromRotationMatrix(this.m).normalize().toArray(this.homeRotation, k * 4);
       this.place(k, this.v, 1);
-      if (!mine) { const t = blockTier(b.color); this.cubes.setColorAt(i, this.tier.setRGB(t, t, t)); }
+      if (!mine) { const t = blockTier(b.color); this.bars.setColorAt(i, this.tier.setRGB(t, t, t)); }
     });
-    if (!nCube) this.cubes.setColorAt(0, this.tier.setRGB(0, 0, 0));
-    if (!nCube) this.cubes.setMatrixAt(0, this.m.makeScale(0, 0, 0));
+    if (!nBar) this.bars.setColorAt(0, this.tier.setRGB(0, 0, 0));
+    if (!nBar) this.bars.setMatrixAt(0, this.m.makeScale(0, 0, 0));
     if (!nMine) this.mines.setMatrixAt(0, this.m.makeScale(0, 0, 0));
-    cubeGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(cubePhase, 1));
+    this.collect = new THREE.InstancedBufferAttribute(barCollect, 1);
+    this.collect.setUsage(THREE.DynamicDrawUsage);
+    barGeo.setAttribute('aCollect', this.collect);
     mineGeo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(minePhase, 1));
-    this.cubes.frustumCulled = false; this.mines.frustumCulled = false;
+    this.bars.frustumCulled = false; this.mines.frustumCulled = false;
     this.prev = new Uint8Array(t.blocks.length);
     const SH = 900;
     this.shards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ toneMapped: false }), SH);
     for (let i = 0; i < SH; i++) {
-      this.pool.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), rot: new THREE.Euler(), spin: new THREE.Vector3(), life: 0, max: 1, size: 0.2, track: false, o: 0, lx: 0, ly: 0, vo: 0, vx: 0, vy: 0 });
+      this.pool.push({ pos: new THREE.Vector3(), vel: new THREE.Vector3(), rot: new THREE.Euler(), spin: new THREE.Vector3(), life: 0, max: 1, size: 0.2, aspect: new THREE.Vector3(1, 1, 1), track: false, o: 0, lx: 0, ly: 0, vo: 0, vx: 0, vy: 0 });
       this.free.push(i); this.shards.setMatrixAt(i, this.m.makeScale(0, 0, 0)); this.shards.setColorAt(i, WHITE);
     }
     this.shards.frustumCulled = false;
-    this.group.add(this.cubes, this.mines, this.shards);
+    this.group.add(this.bars, this.mines, this.shards);
   }
 
   private place(k: number, at: THREE.Vector3, scale: number) {
     if (this.slot[k] < 0) return;
-    const mesh = this.path.track.blocks[k].color < 0 ? this.mines : this.cubes;
-    mesh.setMatrixAt(this.slot[k], this.m.compose(at, this.q.identity(), this.s.set(scale, scale, scale)));
+    const mesh = this.path.track.blocks[k].color < 0 ? this.mines : this.bars;
+    if (mesh === this.bars) this.q.fromArray(this.homeRotation, k * 4);
+    else this.q.identity();
+    mesh.setMatrixAt(this.slot[k], this.m.compose(at, this.q, this.s.set(scale, scale, scale)));
   }
   private homeOf(k: number) { return this.v.set(this.home[k * 3], this.home[k * 3 + 1], this.home[k * 3 + 2]); }
 
@@ -177,7 +186,7 @@ export class Blocks {
   shatter(at: THREE.Vector3, c: THREE.Color, count: number, speed: number, push: THREE.Vector3) {
     for (let i = 0; i < count && this.free.length; i++) {
       const id = this.free.pop()!, sh = this.pool[id];
-      sh.track = false;
+      sh.track = false; sh.aspect.set(1, 1, 1);
       sh.pos.copy(at).add(this.s.set((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6));
       sh.vel.set(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).normalize().multiplyScalar(speed * (0.4 + Math.random())).add(push);
       sh.spin.set(Math.random() * 10, Math.random() * 10, Math.random() * 10); sh.rot.set(0, 0, 0);
@@ -191,7 +200,7 @@ export class Blocks {
   firework(at: THREE.Vector3, c: THREE.Color) {
     for (let i = 0; i < 46 && this.free.length; i++) {
       const id = this.free.pop()!, sh = this.pool[id];
-      sh.track = false; sh.pos.copy(at);
+      sh.track = false; sh.aspect.set(1, 1, 1); sh.pos.copy(at);
       sh.vel.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(13 + Math.random() * 5);
       sh.spin.set(Math.random() * 8, Math.random() * 8, Math.random() * 8); sh.rot.set(0, 0, 0);
       sh.max = sh.life = 1.1 + Math.random() * 0.7; sh.size = 0.35 + Math.random() * 0.3;
@@ -200,18 +209,22 @@ export class Blocks {
     if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
   }
 
-  /** A missed block cracks into a 3×3×3 of pieces against the viscous wall at the craft, then drifts back past it. */
+  /** A missed bar fractures into slim segments, scattering sideways and drifting past the ship. */
   private crumble(k: number, c: THREE.Color) {
-    const b = this.path.track.blocks[k], lx0 = b.lane * LW, ly0 = 0.75;
-    for (let gx = -1; gx <= 1; gx++) for (let gy = -1; gy <= 1; gy++) for (let gz = -1; gz <= 1; gz++) {
+    const b = this.path.track.blocks[k], lx0 = b.lane * LW;
+    const columns = 8, rows = 2, width = LIGHT_BAR.width / columns, depth = LIGHT_BAR.depth / rows;
+    for (let gx = 0; gx < columns; gx++) for (let gz = 0; gz < rows; gz++) {
       if (!this.free.length) break;
       const id = this.free.pop()!, sh = this.pool[id];
+      const x = (gx + 0.5) * width - LIGHT_BAR.width / 2, z = (gz + 0.5) * depth - LIGHT_BAR.depth / 2;
       sh.track = true;
-      sh.o = gz * 0.32; sh.lx = lx0 + gx * 0.32; sh.ly = ly0 + gy * 0.32;
+      sh.o = z; sh.lx = lx0 + x; sh.ly = LIGHT_BAR.hover;
       const out = SLOW.spread * (0.5 + Math.random());
-      sh.vx = gx * out + (Math.random() - 0.5) * 0.4; sh.vy = gy * out + Math.random() * 0.5; sh.vo = -SLOW.v0 + gz * out * 0.5;
-      sh.spin.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4); sh.rot.set(0, 0, 0);
-      sh.max = sh.life = SLOW.life * (0.75 + 0.5 * Math.random()); sh.size = 0.3;
+      sh.vx = x * out + (Math.random() - 0.5) * 0.4;
+      sh.vy = 0.4 + Math.random() * 1.2; sh.vo = -SLOW.v0 + z * out;
+      sh.spin.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6); sh.rot.set(0, 0, 0);
+      sh.max = sh.life = SLOW.life * (0.75 + 0.5 * Math.random()); sh.size = 1;
+      sh.aspect.set(width, LIGHT_BAR.height, depth);
       this.shards.setColorAt(id, c);
     }
     if (this.shards.instanceColor) this.shards.instanceColor.needsUpdate = true;
@@ -237,17 +250,19 @@ export class Blocks {
       else if (st === BLOCK.MISS) { this.crumble(k, c); this.place(k, this.v, 0); }
       else if (st === BLOCK.GREY_HIT) { this.shatter(this.homeOf(k).clone(), MINE_DARK, 40, 11, this.s.copy(fwd).multiplyScalar(speed * 0.7)); this.place(k, this.v, 0); on.greyHit(); }
       else if (st === BLOCK.GREY_DODGED) { /* it stays on the track behind you */ }
-      else if (st === BLOCK.AHEAD) this.place(k, this.homeOf(k), 1); // a restart
+      else if (st === BLOCK.AHEAD) { if (b.color >= 0) { this.collect.setX(this.slot[k], 0); this.collect.needsUpdate = true; } this.place(k, this.homeOf(k), 1); } // a restart
     }
     // collected blocks zip into the ship
     this.flies = this.flies.filter((f) => {
       const a = (now - f.t0) / 0.14;
-      if (a >= 1) { this.place(f.i, this.v, 0); const b = t.blocks[f.i]; on.absorb(blockColor(b.color, this.c)); return false; }
+      if (a >= 1) { this.collect.setX(this.slot[f.i], 0); this.collect.needsUpdate = true; this.place(f.i, this.v, 0); const b = t.blocks[f.i]; on.absorb(blockColor(b.color, this.c)); return false; }
+      this.collect.setX(this.slot[f.i], 1 - a);
+      this.collect.needsUpdate = true;
       this.v.copy(f.from).lerp(craft, a * a);
       this.place(f.i, this.v, 1 - 0.7 * a);
       return true;
     });
-    this.cubes.instanceMatrix.needsUpdate = true; this.mines.instanceMatrix.needsUpdate = true;
+    this.bars.instanceMatrix.needsUpdate = true; this.mines.instanceMatrix.needsUpdate = true;
     // shards: free ones tumble, fall and shrink; track ones ooze back past the ship, separating as they go
     let any = false;
     for (let i = 0; i < this.pool.length; i++) {
@@ -267,9 +282,14 @@ export class Blocks {
         sh.pos.addScaledVector(sh.vel, dt);
       }
       sh.rot.x += sh.spin.x * dt; sh.rot.y += sh.spin.y * dt; sh.rot.z += sh.spin.z * dt;
-      // track pieces start as a whole cube (touching) and shrink apart; free ones just shrink
+      // Track fragments start as a whole bar and shrink apart; free ones just shrink.
       const sz = sh.track ? sh.size * (age < 0.08 ? 1 : 1 - 0.75 * ((age - 0.08) / 0.92) ** 1.5) : sh.size * (1 - age);
-      this.shards.setMatrixAt(i, this.m.compose(sh.pos, this.q.setFromEuler(sh.rot), this.s.set(sz, sz, sz)));
+      this.q.setFromEuler(sh.rot);
+      if (sh.track) {
+        this.m.makeBasis(this.fr.r, this.fr.u, this.s.copy(this.fr.f).negate());
+        this.q.premultiply(this.roadQ.setFromRotationMatrix(this.m).normalize());
+      }
+      this.shards.setMatrixAt(i, this.m.compose(sh.pos, this.q, this.s.copy(sh.aspect).multiplyScalar(sz)));
     }
     if (any) this.shards.instanceMatrix.needsUpdate = true;
   }

@@ -1,4 +1,4 @@
-import type { CadenzaSnapshot, SongRecap } from '../sim/sim';
+import { MENU, type CadenzaSnapshot, type SongRecap } from '../sim/sim';
 import type { Box, Layout } from './layout';
 import { rideIndexAt } from '../sim/ride';
 
@@ -135,20 +135,22 @@ export class Hud {
       this.effortKey = ''; this.calloutUntil = 0;
       this.menu.style.display = 'flex';
       for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = 'none';
-      const m = s.menu, key = JSON.stringify(m) + accent;
+      const m = s.menu, key = JSON.stringify({ row: m.row, difficulty: m.difficulty, trainer: m.trainer, reducedFlash: m.reducedFlash });
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        this.menu.innerHTML = `<h2>CADENZA</h2>${row(MENU.difficulty, 'Difficulty', m.difficulty)}${row(MENU.trainer, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(MENU.flash, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(MENU.start, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
         this.menu.querySelectorAll<HTMLElement>('.ws-row').forEach((r) => r.addEventListener('pointerdown', (e) => {
           e.preventDefault(); e.stopPropagation();
           const i = Number(r.dataset.i);
-          if (i === 1) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
-          if (i === 2) this.send?.({ type: 'trainer' });
-          if (i === 3) this.send?.({ type: 'flash' });
-          if (i === 4 || i === 0) this.send?.({ type: 'start' });
+          if (i === MENU.difficulty) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
+          if (i === MENU.trainer) this.send?.({ type: 'trainer' });
+          if (i === MENU.flash) this.send?.({ type: 'flash' });
+          if (i === MENU.start) this.send?.({ type: 'start' });
         }));
       }
+      const ride = this.menu.querySelector<HTMLElement>(`[data-i="${MENU.start}"]`);
+      if (ride) { const label = `Ride · ${Math.ceil(m.left)}`; if (ride.textContent !== label) ride.textContent = label; }
       return;
     }
     this.menu.style.display = 'none';

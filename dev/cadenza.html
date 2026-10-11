@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Cadenza dev</title>
-<style>html,body{margin:0;height:100%;background:#000}#app{position:fixed;inset:0;overflow:hidden}#hudfake{position:fixed;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);color:#fff;font:14px system-ui;padding:8px}</style>
-</head><body><div id="app"></div><div id="hudfake"></div>
+<style>html,body{margin:0;height:100%;background:#000}#app{position:fixed;inset:0;overflow:hidden}#controls{position:fixed;bottom:12px;left:12px;right:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#cdeeff;font:13px system-ui}#controls[hidden]{display:none}#controls button,#controls a{padding:9px 14px;border:1px solid #00c5dc;border-radius:5px;background:#071923;color:#dcfbff;text-decoration:none;touch-action:none}#hudfake{position:fixed;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);color:#fff;font:14px system-ui;padding:8px}</style>
+</head><body><div id="app"></div><div id="hudfake"></div><div id="controls" hidden><button id="left" aria-label="Steer left">◀ Left</button><button id="right" aria-label="Steer right">Right ▶</button><button id="pause">Pause</button><button id="restart">Restart</button><a href="?trial=1&amp;menu=1&amp;inset=110">Setup</a><span>← → steer · simulated bike · silent visual trial</span></div>
 <script type="module" src="./cadenza.ts"></script></body></html>

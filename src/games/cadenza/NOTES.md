@@ -1,5 +1,5 @@
 # cadenza — Cadenza (SPEC §6.5)
-Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tuning). Picker first; sim reads `ctx.media.timeline` / `positionS()`. Mono only.
+Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tuning). Picker first; sim reads `ctx.media.timeline` / `positionS()`. Single ruleset; no mode selector.
 ## Sim (`sim/`, pure)
 - `track.ts` `buildTrack`: one visual zone per section (hue from the song palette + 47°/zone), speed/distance/height/heading,
   visual grade, banks, tunnels (breaks + some verses, ≤ 45 s), blocks from onsets (min gap 0.36/0.22/0.11 s, lanes 3/3/5).
@@ -19,7 +19,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   Trainer grade follows the plan (0.5% in recovery); ERG recovery 0.5 FTP. `coaching.ts`: 1.5 s off target to cue, 0.6 s to clear.
 ## Render (`render/`)
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
-arches), `blocks.ts` (glass cubes in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
+arches), `blocks.ts` (lane-aligned hovering light bars in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses fracture into slim segments against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
 `craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,

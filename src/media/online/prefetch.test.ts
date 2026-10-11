@@ -7,10 +7,10 @@ import { PreviewPrefetch } from './prefetch';
 const song = (id: string, durationS = 200, online = true): SongMeta => ({ id, source: 'youtube', title: id, artist: 'A', durationS, addedAt: 0, status: 'remote', ...(online ? { sourceUrl: `https://www.youtube.com/watch?v=${id}` } : {}) });
 const win = (d: number): SongAnalysis => ({ ...estimatedAnalysis(d), bpm: 128, key: { name: 'A minor', camelot: '8A', confidence: 0.7 }, beats: [0.5, 1, 30], sections: [{ t0: 0, t1: d, kind: 'drop', energy: 0.9 }], spec: { hz: 2, bands: 2, data: 'AAAA' } });
 function rig(o: { firstTrackWindows?: number } = {}) {
-  const calls: Array<{ id: string; start: number; dur: number; signal: AbortSignal; resolve: (a: SongAnalysis) => void; reject: (e: unknown) => void }> = [];
+  const calls: Array<{ id: string; start: number; dur: number; signal: AbortSignal; resolve: (a: SongAnalysis | { analysis: SongAnalysis; beats?: never[] }) => void; hint?: { bpm: number }; reject: (e: unknown) => void }> = [];
   const timers: Array<() => void> = []; let changes = 0;
   const pf = new PreviewPrefetch({ ...o, retryMs: 10, onChange: () => changes++, setTimer: (fn) => { timers.push(fn); return fn; }, clearTimer: () => {},
-    load: (m, start, dur, signal) => new Promise((resolve, reject) => calls.push({ id: m.id, start, dur, signal, resolve, reject })) });
+    load: (m, start, dur, signal, hint) => new Promise((resolve, reject) => calls.push({ id: m.id, start, dur, signal, resolve, reject, hint })) });
   const flush = () => new Promise((r) => setTimeout(r, 0));
   return { pf, calls, timers, flush, changes: () => changes };
 }
@@ -62,5 +62,16 @@ describe('PreviewPrefetch', () => {
     expect(calls[0].signal.aborted).toBe(true); expect(pf.get('a')).toBeUndefined(); expect(calls[1].id).toBe('b');
     pf.cancel(); expect(calls[1].signal.aborted).toBe(true); expect(pf.get('b')).toBeUndefined();
     pf.setQueue([song('c')]); expect(calls).toHaveLength(2);
+  });
+  it('keeps ride-format windows as seeds for the ride, passes the tempo hint, and skips preview-only windows', async () => {
+    const { pf, calls, flush } = rig({ firstTrackWindows: 2 });
+    pf.setQueue([song('a'), song('b')]);
+    calls[0].resolve({ analysis: win(32), beats: [] }); await flush();
+    calls[1].resolve(win(32)); await flush(); // b: preview-only (no beat features)
+    expect(calls[2].hint).toEqual({ bpm: 128 });
+    calls[2].resolve({ analysis: win(34), beats: [] }); await flush();
+    const seeds = pf.seeds();
+    expect([...seeds.keys()]).toEqual(['a']);
+    expect(seeds.get('a')!.map((w) => [w.startS, w.endS, w.bufferStartS])).toEqual([[0, 30, 0], [30, 60, 28]]);
   });
 });

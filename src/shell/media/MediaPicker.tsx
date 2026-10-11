@@ -195,10 +195,11 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     if (!ready) { toast(queued.length ? 'Waiting for analysis to finish…' : 'Add a song to the queue first'); sfx('deny'); return; }
     if (starting) return;
     stopPreview(); unlockMedia();
+    const seeds = prefetch.current?.seeds(); // reuse picker analysis in the ride (analysis only)
     prefetch.current?.cancel();
     setStarting(true);
     try {
-    if (streaming) { onStart(await rollingMediaRun(queue, mode)); return; }
+    if (streaming) { onStart(await rollingMediaRun(queue, mode, seeds)); return; }
     const items = (await Promise.all(queue.map((id) => lib.mixItem(id)))).filter((i): i is NonNullable<typeof i> => !!i);
     const plan = planMix(items, mode);
     onStart({ ids: queue, mode, items, plan, timeline: buildTimeline(plan, items) });

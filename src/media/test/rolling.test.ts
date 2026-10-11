@@ -103,3 +103,27 @@ it('starts and seeks near the end of a four-hour video with only the configured 
   expect(q.readyThrough(14340)).toBe(14400);
   q.dispose();
 });
+
+it('seeds preview analysis: coverage and beats from the start, audio still fetched, seeded windows never re-analysed', async () => {
+  const calls: number[] = [];
+  const q = new RollingQueue([item('a')], 'automix', 60, async (_, start, duration) => {
+    calls.push(start); return { buffer: buffer(duration), analysis: { ...analysis(duration), beats: [5] }, beats: [] };
+  });
+  const seeded = q.seed(0, [
+    { startS: 0, endS: 30, bufferStartS: 0, analysis: analysis(32), beats: [] },
+    { startS: 7, endS: 37, bufferStartS: 5, analysis: analysis(32), beats: [] }, // off the chunk grid: ignored
+  ]);
+  expect(seeded).toBe(1);
+  expect(q.timeline.revision).toBe(1);
+  expect(q.timeline.coverage?.[0]).toMatchObject({ t0: 0 });
+  expect(q.timeline.coverage?.[0].t1).toBeCloseTo(30);
+  const before = [...q.items[0].analysis.beats];
+  await q.prepare(0);
+  expect(calls).toEqual([0, 28]); // audio for the seeded window is still loaded for playback
+  expect(q.items[0].analysis.beats.filter((t) => t < 30)).toEqual(before.filter((t) => t < 30)); // not re-merged
+  expect(q.readyThrough(0)).toBeCloseTo(60);
+  // full-file items are never seeded
+  const full = new RollingQueue([{ ...item('f'), analysis: { ...estimatedAnalysis(180), confidence: 'full' as const } }], 'automix', 60, async () => ({ buffer: buffer(32), analysis: analysis(32) }));
+  expect(full.seed(0, [{ startS: 0, endS: 30, bufferStartS: 0, analysis: analysis(32), beats: [] }])).toBe(0);
+  q.dispose(); full.dispose();
+});

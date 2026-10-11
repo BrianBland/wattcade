@@ -335,14 +335,18 @@ function downmix(buffer: AudioBuffer): Float32Array {
   }
   return pcm;
 }
-/** Picker preview: fetch one range of a streamed song and analyze it. The decoded audio is dropped right away (analysis only). */
-export async function analyzeStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal): Promise<SongAnalysis> {
+/**
+ * Picker preview: fetch one range of a streamed song and analyze it the way the ride does (window analysis + beat
+ * features, tempo hint), so the ride can reuse it. The decoded audio is dropped right away (analysis only).
+ */
+export async function analyzeStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) {
   const data = await loadAudioRange(song, startS, durationS, mediaServerConfig(), signal);
   const pcm = downmix(await mediaEngine().ctx.decodeAudioData(data));
   if (signal.aborted) throw new Error('Preview was cancelled.');
-  return analyzeInWorker(pcm, ANALYSIS_SR, () => {});
+  return analyzeWindowInWorker(pcm, ANALYSIS_SR, hint?.bpm);
 }
-export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode): Promise<MediaRun> {
+/** `seeds`: picker-preview windows per song id, reused as already-committed analysis (audio is still fetched). */
+export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode, seeds?: Map<string, import('../media').SeedWindow[]>): Promise<MediaRun> {
   const lib = mediaLibrary(), config = mediaServerConfig(), ctx = mediaEngine().ctx;
   if (!config.enabled) throw new Error('Enable the media server on Connect first.');
   const metas = await Promise.all(ids.map((id) => lib.get(id)));
@@ -375,6 +379,7 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
     const { analysis, beats } = await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm);
     return { buffer, analysis, beats };
   });
+  if (seeds) metas.forEach((m, i) => { const w = m?.sourceUrl ? seeds.get(m.id) : undefined; if (w) rolling.seed(i, w); });
   return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };
 }
 /** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */

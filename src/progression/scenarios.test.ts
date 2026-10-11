@@ -17,15 +17,19 @@ function ride(gameId: string, scenarioName: string): Promise<{ ids: string[]; co
 }
 async function rideOnce(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
   const game = getGame(gameId)!;
-  const { scenarios } = await import(`../games/${gameId}/scenarios.ts`) as { scenarios: Array<{ name: string; script: string; minutes: number; seed: number; simOpts?: Record<string, unknown>; media?: never }> };
+  const { scenarios } = await import(`../games/${gameId}/scenarios.ts`) as { scenarios: Array<{ name: string; script: string; minutes: number; seed: number; seeds?: number[]; simOpts?: Record<string, unknown>; media?: never }> };
   const sc = scenarios.find((s) => s.name === scenarioName)!;
-  const r = runHeadless({ game, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts, media: sc.media });
-  const record: SessionRecord = {
-    id: 'h', profileId: 'x', gameId, startedAt: new Date(2026, 4, 13, 12).getTime(), durationS: 60, samples: [],
-    events: r.events, stats: r.stats, gameSummary: r.summary,
-  };
-  const res = awardSession(defaultProfile(), record);
-  return { ids: res.newAchievements.map((a) => a.id), counters: res.profile.counters ?? {} };
+  // multi-seed scenarios count as consecutive rides on one profile (tallies add up; robust to one unlucky seed)
+  let profile = defaultProfile(); const ids: string[] = [];
+  for (const [i, seed] of (sc.seeds ?? [sc.seed]).entries()) {
+    const r = runHeadless({ game, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts, media: sc.media });
+    const record: SessionRecord = {
+      id: `h${i}`, profileId: 'x', gameId, startedAt: new Date(2026, 4, 13 + i, 12).getTime(), durationS: 60, samples: [],
+      events: r.events, stats: r.stats, gameSummary: r.summary,
+    };
+    const res = awardSession(profile, record); profile = res.profile; ids.push(...res.newAchievements.map((a) => a.id));
+  }
+  return { ids, counters: profile.counters ?? {} };
 }
 const unlocked = async (gameId: string, scenarioName: string) => (await ride(gameId, scenarioName)).ids;
 /** Lifetime tallies the ride moved (they unlock over many rides, so check the counter instead). */

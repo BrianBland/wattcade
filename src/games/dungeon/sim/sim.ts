@@ -102,7 +102,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 out of combat');
   const regenCombat = tn.num('regenInCombatFrac', 0, 0, 1, 0.05, 'zone-2 regen multiplier while enemies are awake (floor 1 always 0.5)');
-  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.55, 1, 2, 0.01, 'enemy damage multiplier per floor');
+  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.45, 1, 2, 0.01, 'enemy damage multiplier per floor');
   const furyAfter = tn.num('bossFuryAfterS', 60, 20, 600, 10, 'boss damage starts climbing after this long in the fight (not on floor 1)');
   const furyRate = tn.num('bossFuryRate', 0.03, 0, 0.05, 0.001, 'extra boss-fight damage per second past bossFuryAfterS (max +150%)');
   const bossHpGrowth = tn.num('bossHpGrowth', 1.5, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
@@ -128,7 +128,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionHeal = tn.num('potionHeal', 0.38, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
-  const enemyDmgScale = tn.num('enemyDamageScale', 2.4, 0.1, 3, 0.1);
+  const enemyDmgScale = tn.num('enemyDamageScale', 1.9, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
   const enemyHpGrowth = tn.num('enemyHpGrowth', 1.32, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 4500, 100, 20000, 50, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
@@ -252,7 +252,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const cues: Array<{ name: string; id: number }> = [];
   let nextId = 1, cueId = 0;
   let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
-  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0;
+  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0, stuckStats = 0;
   let flow: Int16Array = new Int16Array(0), flowKey = -1;
 
   const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
@@ -342,15 +342,22 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const blocked = (x: number, y: number, r: number) =>
     walkSolid(Math.floor(x - r), Math.floor(y - r)) || walkSolid(Math.floor(x + r), Math.floor(y - r)) ||
     walkSolid(Math.floor(x - r), Math.floor(y + r)) || walkSolid(Math.floor(x + r), Math.floor(y + r));
-  /** Axis-separated move; when one axis is blocked, nudge toward the tile centre on the other axis so corners don't snag. */
+  /** Axis-separated move; when one axis is blocked, nudge toward the tile centre on the other axis so corners don't snag.
+   *  A body already overlapping a wall (knockback, rolls, spawn) is eased back toward its tile centre first, so it can't wedge. */
   function move(e: { x: number; y: number }, dx: number, dy: number, r: number) {
+    if (blocked(e.x, e.y, r)) {
+      const step = Math.max(Math.abs(dx), Math.abs(dy), 0.02);
+      const cx = Math.floor(e.x) + 0.5, cy = Math.floor(e.y) + 0.5;
+      if (!walkSolid(Math.floor(e.x), Math.floor(e.y))) { e.x += clamp(cx - e.x, -step, step); e.y += clamp(cy - e.y, -step, step); }
+      if (blocked(e.x, e.y, r)) return;
+    }
     if (dx && blocked(e.x + dx, e.y, r)) {
       const cy = Math.floor(e.y) + 0.5, n = clamp(cy - e.y, -Math.abs(dx), Math.abs(dx));
-      if (!dy && n && !blocked(e.x, e.y + n, r)) e.y += n;
+      if (Math.abs(dy) <= Math.abs(dx) && n && !blocked(e.x, e.y + n, r)) { e.y += n; dy = 0; }
     } else e.x += dx;
     if (dy && blocked(e.x, e.y + dy, r)) {
       const cx = Math.floor(e.x) + 0.5, n = clamp(cx - e.x, -Math.abs(dy), Math.abs(dy));
-      if (!dx && n && !blocked(e.x + n, e.y, r)) e.x += n;
+      if (Math.abs(dx) <= Math.abs(dy) && n && !blocked(e.x + n, e.y, r)) e.x += n;
     } else e.y += dy;
   }
   const inRoom = (room: Room, x: number, y: number, inset: number) =>
@@ -732,7 +739,14 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (suggestion === stance || swapTo || pick) suggestion = null;
   }
 
-  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty, { clearance: PLAYER_R + 0.05 });
+  // stuck detector: with a path but < 0.25 tiles of progress in 0.75s, follow raw tile centres (no smoothing) for a while
+  let stuckX = 0, stuckY = 0, stuckT = 0, rawUntil = -1;
+  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty, { clearance: PLAYER_R + 0.05, smooth: t >= rawUntil });
+  function stuckCheck() {
+    if (!navPath.length || P.rollT > 0) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
+    if (Math.hypot(P.x - stuckX, P.y - stuckY) > 0.25) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
+    if (t - stuckT > 0.75) { rawUntil = t + 3; navAge = 99; stuckT = t; stuckStats++; }
+  }
   function navTarget(): { key: string; x: number; y: number } | null {
     if (!boss.alive) return { key: 'stairs', x: Math.floor(world.stairs.x), y: Math.floor(world.stairs.y) };
     const dist = world.rooms.map(() => -1); dist[current] = 0;
@@ -927,7 +941,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const bike = ctx.bike(), input = ctx.input();
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
     if (hitT > 0) { hitT -= dt; return; } // hit-stop
-    t += dt; navAge += dt;
+    t += dt; navAge += dt; stuckCheck();
     const ctl = autopilotCtl();
     const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
     lastRate = rate;
@@ -1287,6 +1301,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); // summary is per session, across runs
     ctx.emit({ type: 'death', data: { room: current, floor } });
     const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked };
+    // no death spiral: dying on the floor you started on suggests a start 2 floors shallower next time (still adjustable at camp)
+    if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = Math.max(1, startFloor - 2);
     bankStart += P.coinsEarned; totals.coins += P.coinsEarned; P.coinsEarned = 0; P.coins = 0;
     P.hp = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');

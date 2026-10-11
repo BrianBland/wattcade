@@ -160,7 +160,7 @@ describe('scenarios via runHeadless', () => {
         for (const [k, v] of Object.entries(r.summary)) if (typeof v === 'number') sum[k] = (sum[k] ?? 0) + v / seeds.length;
       }
       if (sc.assertAvg) expect(sc.assertAvg(sum), JSON.stringify(sum)).toEqual([]);
-    }, sc.minutes >= 60 ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
+    }, sc.minutes >= 60 || sc.seeds ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
   }
   it('is deterministic', () => {
     const o = { game: module, script: 'z2', minutes: 3, seed: 4, simOpts: { autopilot: true } };

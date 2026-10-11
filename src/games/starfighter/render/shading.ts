@@ -5,8 +5,11 @@ import * as THREE from 'three';
  * on world position, so it stays put as instances stream and scale.
  */
 const VARYINGS = 'varying vec3 vWPos; varying vec3 vWNormal;';
+/** Bar-line light wave shared with the scenery: x = wave z position, y = strength. */
+export const sceneryWave = { value: new THREE.Vector2(-9999, 0) };
 function patch(material: THREE.MeshStandardMaterial, fragment: string, key: string) {
   material.onBeforeCompile = shader => {
+    shader.uniforms.uWave = sceneryWave;
     shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${VARYINGS}`)
       .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
         vec4 wp = vec4(transformed, 1.0);
@@ -18,7 +21,7 @@ function patch(material: THREE.MeshStandardMaterial, fragment: string, key: stri
         #endif
         vWPos = (modelMatrix * wp).xyz;`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${VARYINGS}
-      float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
+      uniform vec2 uWave; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${fragment}`);
   };
   material.customProgramCacheKey = () => key;
@@ -35,7 +38,8 @@ export function windowed(material: THREE.MeshStandardMaterial) {
       float h = shHash(cell + floor(vWPos.xz / 40.0) * 7.0), lit = step(0.6, h);
       vec3 warm = mix(vec3(1.0, 0.78, 0.45), vec3(0.55, 0.85, 1.0), step(0.85, h));
       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.45, pane * (1.0 - lit));
-      totalEmissiveRadiance += warm * pane * lit * (0.55 + 0.35 * fract(h * 13.0));
+      float wave = exp(-abs(vWPos.z - uWave.x) / 16.0) * uWave.y;
+      totalEmissiveRadiance += warm * pane * (lit * (0.55 + 0.35 * fract(h * 13.0)) + wave * 0.35);
     } else if (vWNormal.y > 0.5) {
       vec2 g = abs(fract(vWPos.xz / 3.0) - 0.5);
       diffuseColor.rgb *= 0.9 + 0.1 * step(0.46, max(g.x, g.y));

@@ -8,6 +8,7 @@ import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
 import { SquadronPost } from './post';
+import { isKitGeometry } from './kit';
 import { GROUND_SPEED } from '../sim/encounters';
 import { SECTORS } from '../sim/content';
 import { SquadronHud, bigPerfect } from './hud';
@@ -212,7 +213,7 @@ export class SfRenderer implements GameRenderer {
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.Points) { geos.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m); } });
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
-    for (const g of geos) if (!isSharedGeometry(g)) g.dispose();
+    for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
     for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects, this.beams]) pool?.dispose();
     this.combat?.dispose(); this.space?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();

@@ -66,6 +66,9 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
   return Math.hypot(px - ax - vx * k, py - ay - vy * k);
 }
 
+/** Longest hit-stop (s). Longer stops (the old 0.5 s boss intro, 0.8 s boss death) read to riders as the game freezing. */
+const HIT_STOP_MAX = 0.1;
+
 export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean }
 export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number }
 export interface DungeonSave {
@@ -238,7 +241,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let enemies: Enemy[] = [];
   let boss!: Enemy;
   let shrines: Shrine[] = [];
-  let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, freezeT = 0;
+  let current = 0, safeRoom = 0, bossStarted = false, bossT = 0, hitT = 0;
   let bs: BossState = newBoss();
   let curse: { kind: CurseKind; left: number; total: number; s0: number } | null = null, cursesSurvived = 0;
   const cursed = (k: CurseKind) => curse?.kind === k;
@@ -304,7 +307,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function addFx(f: Omit<Fx, 't0'>) { fx.push({ ...f, t0: t }); if (fx.length > MAX_FX) fx.splice(0, fx.length - MAX_FX); }
   function toast(text: string, color = '#fff') { toasts.push({ text, color, t0: t }); if (toasts.length > 5) toasts.shift(); }
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
-  function freeze(s: number) { freezeT = Math.max(freezeT, s); }
+  /** Hit-stop, capped at HIT_STOP_MAX: the sim (and so every animation) stops, so anything longer looks like a hang. */
+  function freeze(s: number) { hitT = Math.max(hitT, Math.min(s, HIT_STOP_MAX)); }
 
   // ---------- resistance (only sets on change) ----------
   const resState = new Map<string, number | null>();
@@ -988,7 +992,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
-    if (freezeT > 0) { freezeT -= dt; return; } // hit-stop
+    if (hitT > 0) { hitT -= dt; return; } // hit-stop
     t += dt; navAge += dt; stuckCheck();
     const ctl = autopilotCtl();
     const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
@@ -1407,7 +1411,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       shrines: shrines.map((s) => ({ kind: s.kind, label: SHRINES[s.kind].label, progress: s.progress, leftS: Math.max(0, s.left), state: s.state, x: s.x, y: s.y, room: s.room })),
       curse: curse ? { kind: curse.kind, ...CURSES[curse.kind], left: Math.max(0, curse.left), total: curse.total } satisfies CurseView : null,
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
-      room: current, stairsOpen: !boss.alive, frozen: freezeT > 0,
+      room: current, stairsOpen: !boss.alive, frozen: hitT > 0,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
       stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,

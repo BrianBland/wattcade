@@ -6,6 +6,8 @@ export const scenarios: Array<{
   name: string; script: string; minutes: number; seed: number;
   /** Run every seed and also check `assertAvg` on the averaged numeric summary (robust to one unlucky seed). */
   seeds?: number[]; assertAvg?(avg: Record<string, number>): string[];
+  /** Checks across all seeds' runs (for rare events where one seed may simply never get the chance). */
+  assertRuns?(runs: Run[]): string[];
   simOpts?: Record<string, unknown>;
   assert(summary: Record<string, number | string>, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
@@ -58,14 +60,19 @@ export const scenarios: Array<{
   },
   {
     // interval pacing: ambush efforts and called spin-ups happen every floor, and the cadence-follow rider answers spin-ups
-    name: 'pacing-cadence-follow', script: 'cadence-follow', minutes: 30, seed: 13, simOpts: { autopilot: true },
+    // a seed sees only 1-2 called spin-ups in 30 min, so whether one lands in a fight the hero can answer is luck: check across seeds
+    name: 'pacing-cadence-follow', script: 'cadence-follow', minutes: 30, seed: 13, seeds: [13, 3], simOpts: { autopilot: true },
     assert: (s, _st, run) => {
       const f: string[] = [];
       const amb = run.events.filter((e) => e.type === 'ambush').length, spins = run.events.filter((e) => e.type === 'spinup');
       if (amb < 2) f.push(`ambushes ${amb} < 2`);
-      if (!spins.some((e) => (e.data as { ok?: boolean }).ok)) f.push('no spin-up answered');
+      if (spins.length < 1) f.push('no spin-up called');
       if ((s['Bosses slain'] as number) < 2) f.push(`bosses ${s['Bosses slain']} < 2`);
       return f;
+    },
+    assertRuns: (runs) => {
+      const spins = runs.flatMap((r) => r.events.filter((e) => e.type === 'spinup'));
+      return spins.some((e) => (e.data as { ok?: boolean }).ok) ? [] : [`no spin-up answered in ${spins.length} called`];
     },
   },
   {

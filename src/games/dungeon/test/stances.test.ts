@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, runHeadless, SCRIPTS, testProfile, TimelineInput } from '../../../core';
+import { createGameSession, NullInput, SCRIPTS, testProfile, TimelineInput } from '../../../core';
 import { module } from '../index';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, suggestStance } from '../sim/stances';
 
@@ -43,16 +43,29 @@ describe('stance changes (D-pad)', () => {
 });
 
 describe('riding style changes how power is delivered, not how much', () => {
-  const mk = (name: string, rpm: number) => { SCRIPTS[name] = { ...SCRIPTS.z2, name, cadence: (t: number) => rpm + 2 * Math.sin(t / 5) }; };
-  mk('test-rpm76', 76); mk('test-rpm96', 96);
-  const rooms = (script: string, stance: string) => [11, 12, 13].reduce((a, seed) =>
-    a + (runHeadless({ game: module, script, minutes: 15, seed, simOpts: { autopilot: true, stance } }).summary['Rooms cleared'] as number), 0);
-  it('grind (76 rpm) vs spin (96 rpm) at the same power land within 10% for every stance, and near that stance at z2', () => {
-    for (const st of ['vanguard', 'ranger', 'skirmisher']) {
-      const base = rooms('z2', st);
-      const lo = rooms('test-rpm76', st), hi = rooms('test-rpm96', st);
-      expect(Math.abs(lo - hi) / Math.max(lo, hi), `${st} ${lo} vs ${hi}`).toBeLessThanOrEqual(0.1);
-      expect(Math.abs((lo + hi) / 2 - base) / base, `${st} vs z2 ${base}`).toBeLessThanOrEqual(0.15);
+  // Deterministic and fast: an invulnerable hero (no deaths) rides the same 40 s at 86 rpm, then splits to 76 / 86 / 96 rpm
+  // at the same power; we compare damage output per second spent firing over the next 50 s. Movement is flat over
+  // 60-90 rpm (see the cadenceSpeed test), so progress follows the same power. The long multi-seed ride version lives in
+  // test/balance.test.ts (BALANCE=1).
+  const mk = (rpm: number) => { const name = `test-split${rpm}`; SCRIPTS[name] = { ...SCRIPTS.z2, name, cadence: (t: number) => (t < 40 ? 86 : rpm) }; return name; };
+  const scripts = { 76: mk(76), 86: mk(86), 96: mk(96) } as const;
+  const dps = (rpm: 76 | 86 | 96, stance: string) => {
+    let out = 0, secs = 0;
+    for (const seed of [3, 11, 15]) {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: scripts[rpm] }, seed,
+        simOpts: { autopilot: true, skipCamp: true, invulnerable: true, stance } });
+      s.step(30 * 40); const a = (s.sim.snapshot() as any).stats;
+      s.step(30 * 50); const b = (s.sim.snapshot() as any).stats;
+      out += b.output - a.output; secs += b.fireT - a.fireT;
     }
-  }, 90_000); // 27 quarter-hour headless rides
+    expect(secs).toBeGreaterThan(30); // enough fighting in the window to measure
+    return out / secs;
+  };
+  it('grind (76 rpm) vs spin (96 rpm) at the same power deal damage within 10% for every stance', () => {
+    for (const st of ['vanguard', 'ranger', 'skirmisher']) {
+      const lo = dps(76, st), mid = dps(86, st), hi = dps(96, st);
+      expect(Math.abs(lo - hi) / Math.max(lo, hi), `${st} 76:${lo.toFixed(1)} 96:${hi.toFixed(1)}`).toBeLessThanOrEqual(0.1);
+      expect(Math.abs((lo + hi) / 2 - mid) / mid, `${st} vs 86 rpm ${mid.toFixed(1)}`).toBeLessThanOrEqual(0.1);
+    }
+  });
 });

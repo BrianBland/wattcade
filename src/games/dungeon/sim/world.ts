@@ -28,7 +28,7 @@ export interface World {
   theme: number;                      // palette index for the renderer
 }
 
-export const CELL_W = 23, CELL_H = 17, MARGIN = 2;
+export const CELL_W = 27, CELL_H = 19, MARGIN = 2;
 export const GRID_W = 5, GRID_H = 4;
 
 export function tileAt(world: World, tx: number, ty: number): number {
@@ -94,8 +94,8 @@ export function generateWorld(rng: () => number, floor = 1): World {
 
   cells.forEach(([cx, cy], id) => {
     const boss = id === bossId;
-    const rw = boss ? CELL_W - 4 : 9 + 2 * Math.floor(rng() * 5);   // odd widths 9..17
-    const rh = boss ? CELL_H - 4 : 7 + 2 * Math.floor(rng() * 4);   // 7..13
+    const rw = boss ? CELL_W - 4 : 9 + 2 * Math.floor(rng() * 7);   // odd widths 9..21
+    const rh = boss ? CELL_H - 4 : 7 + 2 * Math.floor(rng() * 5);   // 7..15
     const x0 = MARGIN + cx * CELL_W + 2 + Math.floor(rng() * (CELL_W - 4 - rw + 1));
     const y0 = MARGIN + cy * CELL_H + 2 + Math.floor(rng() * (CELL_H - 4 - rh + 1));
     const deadEnd = id !== 0 && !boss && adj[id].length === 1;

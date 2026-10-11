@@ -143,7 +143,11 @@ function cachedGrad(key: string, make: () => CanvasGradient): CanvasGradient {
 }
 const widthCache = new Map<string, number>();
 /** measureText(text).width for the context's current font, cached. */
+// Only text without digits is cached: counters and timers change every frame, so caching them filled the map with
+// strings that lived just long enough to be promoted and then cleared at 512 entries, feeding the old-space GC.
+const DIGIT = /\d/;
 function textW(g: CanvasRenderingContext2D, text: string): number {
+  if (DIGIT.test(text)) return g.measureText(text).width;
   const key = g.font + '|' + text;
   let w = widthCache.get(key);
   if (w === undefined) { if (widthCache.size > 512) widthCache.clear(); w = g.measureText(text).width; widthCache.set(key, w); }

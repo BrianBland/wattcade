@@ -1,13 +1,15 @@
 import type { SongMeta } from '../library/store';
 import type { SongAnalysis } from '../types';
-import { CHUNK_S, CONTEXT_S, estimatedAnalysis, mergeWindow } from './rolling';
+import type { BeatFeature } from '../analysis/structure';
+import { CHUNK_S, CONTEXT_S, estimatedAnalysis, mergeWindow, type SeedWindow } from './rolling';
 
 /**
- * Picker-time preview analysis for queued streamed songs (memory only; never persisted, never reused by the ride).
+ * Picker-time preview analysis for queued streamed songs (memory only; never persisted). At Start, `seeds()` hands the
+ * per-window analysis to the ride's RollingQueue (analysis only; the ride still fetches its own audio).
  * One fetch at a time; the first queued streamed track gets `firstTrackWindows`, the rest one window each.
  */
 export type PreviewState = 'waiting' | 'loading' | 'partial' | 'complete' | 'busy' | 'error';
-export interface PreviewWindow { startS: number; endS: number; bufferStartS: number; spec: SongAnalysis['spec'] }
+export interface PreviewWindow { startS: number; endS: number; bufferStartS: number; spec: SongAnalysis['spec']; /** Raw window analysis (times relative to bufferStartS) for seeding the ride. */ analysis?: SongAnalysis; beats?: BeatFeature[] }
 export interface PartialPreview {
   id: string; durationS: number; state: PreviewState;
   /** Contiguous analyzed span from 0 s. */
@@ -17,8 +19,12 @@ export interface PartialPreview {
   windows: PreviewWindow[];
   error?: string;
 }
-/** Analyze `durationS` seconds of the song starting at `startS`; times in the result are relative to `startS`. */
-export type PreviewLoader = (song: SongMeta, startS: number, durationS: number, signal: AbortSignal) => Promise<SongAnalysis>;
+/**
+ * Analyze `durationS` seconds of the song starting at `startS`; times in the result are relative to `startS`.
+ * Returning `{ analysis, beats }` (the ride's window analysis) lets the ride reuse the window; a bare analysis is preview-only.
+ */
+export type PreviewLoader = (song: SongMeta, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) =>
+  Promise<SongAnalysis | { analysis: SongAnalysis; beats?: BeatFeature[] }>;
 
 export const isBusyError = (e: unknown) => (e as { status?: number })?.status === 429 || /busy/i.test(e instanceof Error ? e.message : String(e));
 
@@ -43,6 +49,15 @@ export class PreviewPrefetch {
     this.setT = o.setTimer ?? ((fn, ms) => setTimeout(fn, ms)); this.clearT = o.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
   }
   get(id: string): PartialPreview | undefined { return this.previews.get(id); }
+  /** Reusable windows per song id (only those analysed with beat features, the ride's own format), in song order. */
+  seeds(): Map<string, SeedWindow[]> {
+    const out = new Map<string, SeedWindow[]>();
+    for (const [id, p] of this.previews) {
+      const ws = p.windows.filter((w) => w.analysis && w.beats).map((w) => ({ startS: w.startS, endS: w.endS, bufferStartS: w.bufferStartS, analysis: w.analysis!, beats: w.beats! }));
+      if (ws.length) out.set(id, ws);
+    }
+    return out;
+  }
   get active(): string | null { return this.running?.id ?? null; }
 
   /** The current queue (in order). Only streamed songs (with sourceUrl) are prefetched; removed songs are dropped from memory. */
@@ -87,11 +102,12 @@ export class PreviewPrefetch {
     const bufferStart = Math.max(0, start - CONTEXT_S), bufferEnd = Math.min(song.durationS, end + CONTEXT_S);
     const controller = new AbortController(); this.running = { id: song.id, controller };
     p.state = 'loading'; p.error = undefined; this.changed();
-    this.o.load(song, bufferStart, bufferEnd - bufferStart, controller.signal).then((a) => {
+    this.o.load(song, bufferStart, bufferEnd - bufferStart, controller.signal, p.analysis.bpm > 0 ? { bpm: p.analysis.bpm } : undefined).then((r) => {
       if (this.running?.controller !== controller || this.previews.get(song.id) !== p) return;
       this.running = null;
-      mergeWindow(p.analysis, a, bufferStart, start, end);
-      p.windows.push({ startS: start, endS: end, bufferStartS: bufferStart, spec: a.spec });
+      const a = 'analysis' in r ? r.analysis : r, beats = 'analysis' in r ? r.beats : undefined;
+      mergeWindow(p.analysis, a, bufferStart, start, end, beats);
+      p.windows.push({ startS: start, endS: end, bufferStartS: bufferStart, spec: a.spec, ...(beats ? { analysis: a, beats } : {}) });
       p.coveredS = end;
       p.state = end >= song.durationS - 1e-6 ? 'complete' : 'partial';
       this.changed(); this.pump();

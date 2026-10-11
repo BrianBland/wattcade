@@ -240,7 +240,7 @@ function shade(hex: string, f: number): string {
 
 /** Rasterise a sprite (1 canvas px per art px). Optional palette override, e.g. hero cloak colour. */
 export function sprite(name: string, over?: Pal, flash = false): HTMLCanvasElement {
-  const key = `${name}|${over ? JSON.stringify(over) : ''}|${flash}`;
+  const key = `${name}|${over ? palKey(over) : ''}|${flash}`;
   let c = cache.get(key);
   if (c) return c;
   const def = SPRITES[name];
@@ -260,8 +260,16 @@ export function sprite(name: string, over?: Pal, flash = false): HTMLCanvasEleme
   return c;
 }
 
+const palKeys = new WeakMap<Pal, string>();
+/** Cache key for a palette override (JSON.stringify per drawn sprite per frame was a steady allocation). */
+function palKey(p: Pal): string { let k = palKeys.get(p); if (k === undefined) { k = JSON.stringify(p); palKeys.set(p, k); } return k; }
+
+const heroPals = new Map<string, Pal>();
+/** Hero palette for a profile colour; the same object per colour, so its sprite cache key is computed once. */
 export function heroPalette(color: string): Pal {
-  return /^#[0-9a-f]{6}$/i.test(color) ? { c: color, d: shade(color, 0.6) } : {};
+  let p = heroPals.get(color);
+  if (!p) { p = /^#[0-9a-f]{6}$/i.test(color) ? { c: color, d: shade(color, 0.6) } : {}; heroPals.set(color, p); }
+  return p;
 }
 
 /** Soft radial glow, cached per colour; draw with 'lighter' compositing. */

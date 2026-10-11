@@ -36,17 +36,30 @@ const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263)
 /** Wall-face torches: deterministic, spaced along faces. */
 const torchAt = (x: number, y: number) => (x + y * 3) % 7 === 0 && hash(x, y) > 0.35;
 let torches: Array<{ x: number; y: number }> = [];
-function buildBackground(w: World): HTMLCanvasElement {
-  torches = [];
-  const c = document.createElement('canvas'); c.width = w.w * BT; c.height = w.h * BT;
-  const g = c.getContext('2d')!;
+const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const;
+
+/** Floor background, rasterised lazily in CHUNK x CHUNK tile pieces. Drawing a whole floor at once (~10^4 canvas calls)
+ *  took 17-31 ms, ~110 ms at 4x CPU, on the first frame of every floor; now that frame draws only the chunks in view and the
+ *  rest are filled in a few at a time on later frames (prefill). */
+const CHUNK = 8;
+/** Chunk canvases are reused across floors: dropping a floor's ~180 canvases at once made a 40-50 ms (4x CPU) major GC
+ *  about 2 s after every floor change. */
+const chunkPool: HTMLCanvasElement[] = [];
+export interface FloorBg { draw(gg: CanvasRenderingContext2D, sx: number, sy: number, sw: number, sh: number, k: number): void; prefill(budgetMs: number, fx?: number, fy?: number): void; release(): void; readonly built: number; readonly total: number }
+export function buildBackground(w: World): FloorBg {
   const th = THEMES[w.theme % THEMES.length];
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w.w || y >= w.h ? TILE.WALL : w.tiles[y * w.w + x]);
-  for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
+  torches = []; // found up front: chunks rasterise lazily, but the light map needs every torch from the first frame
+  for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) if (at(x, y) === TILE.WALL && at(x, y + 1) !== TILE.WALL && torchAt(x, y)) torches.push({ x, y });
+  const cw = Math.ceil(w.w / CHUNK), ch = Math.ceil(w.h / CHUNK);
+  const chunks: (HTMLCanvasElement | null)[] = new Array(cw * ch).fill(null);
+  let built = 0;
+  const sink = (() => { const k = document.createElement('canvas'); k.width = k.height = 1; return k.getContext('2d'); })();
+  const tile = (g: CanvasRenderingContext2D, x: number, y: number) => {
     const k = at(x, y), px = x * BT, py = y * BT, r = hash(x, y);
     if (k === TILE.WALL) {
       const below = at(x, y + 1), isW = (dx: number, dy: number) => at(x + dx, y + dy) === TILE.WALL;
-      const nearFloor = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => !isW(dx, dy));
+      const nearFloor = NEIGH8.some(([dx, dy]) => !isW(dx, dy));
       if (below !== TILE.WALL) { // wall face: shaded bricks, lit rim on top, dark foot
         g.fillStyle = th.wallFace[0]; g.fillRect(px, py, BT, BT);
         for (let row = 0; row < 4; row++) {
@@ -60,7 +73,7 @@ function buildBackground(w: World): HTMLCanvasElement {
         g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(px, py + BT - 2, BT, 2);
         if (!isW(-1, 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, 1, BT); }
         if (!isW(1, 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px + BT - 1, py, 1, BT); }
-        if (torchAt(x, y)) torches.push({ x, y });
+        if (torchAt(x, y)) { g.fillStyle = '#2a1e14'; g.fillRect(px + 7, py + 7, 2, 6); g.fillStyle = '#6b4a2a'; g.fillRect(px + 6, py + 6, 4, 2); } // torch bracket (flame drawn live)
       } else if (nearFloor) { // wall top, autotiled: rim + outline on every edge that borders open floor
         g.fillStyle = th.wallTop; g.fillRect(px, py, BT, BT);
         g.fillStyle = 'rgba(255,255,255,0.04)'; if (hash(x, y) > 0.5) g.fillRect(px + 3, py + 3, 4, 2);
@@ -70,7 +83,7 @@ function buildBackground(w: World): HTMLCanvasElement {
         if (!isW(1, 0)) { g.fillStyle = edge; g.fillRect(px + BT - 1, py, 1, BT); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(px + BT - 2, py, 1, BT); }
         for (const [dx, dy, cx2, cy2] of [[-1, -1, 0, 0], [1, -1, BT - 2, 0], [-1, 1, 0, BT - 2], [1, 1, BT - 2, BT - 2]]) if (isW(dx, 0) && isW(0, dy) && !isW(dx, dy)) { g.fillStyle = edge; g.fillRect(px + cx2, py + cy2, 2, 2); }
       }
-      continue;
+      return;
     }
     g.fillStyle = th.floor[Math.floor(r * 3)]; g.fillRect(px, py, BT, BT);
     g.fillStyle = th.grout; g.fillRect(px, py + BT - 1, BT, 1); g.fillRect(px + BT - 1, py, 1, BT);
@@ -79,12 +92,12 @@ function buildBackground(w: World): HTMLCanvasElement {
     if (k === TILE.PIT) {
       g.fillStyle = '#030206'; g.fillRect(px, py, BT, BT);
       if (at(x, y - 1) !== TILE.PIT) { g.fillStyle = th.grout; g.fillRect(px, py, BT, 3); g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(px, py + 3, BT, 3); }
-      continue;
+      return;
     }
     if (k === TILE.PILLAR) { // brazier pedestal (flame drawn live)
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(px + 8, py + 13, 7, 3, 0, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#5a5262'; g.fillRect(px + 4, py + 4, 8, 9); g.fillStyle = '#3a3442'; g.fillRect(px + 3, py + 3, 10, 3); g.fillRect(px + 4, py + 11, 8, 2);
-      continue;
+      return;
     }
     if (k === TILE.SWAMP) {
       g.fillStyle = th.swamp; g.fillRect(px, py, BT, BT);
@@ -93,16 +106,80 @@ function buildBackground(w: World): HTMLCanvasElement {
       if (r > 0.6) { g.fillStyle = 'rgba(190,255,170,0.25)'; g.fillRect(px + Math.floor(r * 37) % 12, py + Math.floor(r * 11), 2, 2); }
     }
     if (at(x, y - 1) === TILE.WALL && k !== TILE.SWAMP) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, BT, 4); } // wall shadow
-  }
-  for (const q of torches) { const px = q.x * BT, py = q.y * BT; g.fillStyle = '#2a1e14'; g.fillRect(px + 7, py + 7, 2, 6); g.fillStyle = '#6b4a2a'; g.fillRect(px + 6, py + 6, 4, 2); }
-  return c;
+  };
+  const make = (i: number) => {
+    const cx = i % cw, cy = (i / cw) | 0, c = chunkPool.pop() ?? document.createElement('canvas');
+    if (c.width !== CHUNK * BT) c.width = c.height = CHUNK * BT;
+    const g = c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.translate(-cx * CHUNK * BT, -cy * CHUNK * BT);
+    for (let y = cy * CHUNK; y < Math.min(w.h, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(w.w, (cx + 1) * CHUNK); x++) tile(g, x, y);
+    sink?.drawImage(c, 0, 0, 1, 1); // make the canvas rasterise now (inside the prefill budget), not on its first on-screen draw
+    chunks[i] = c; built++;
+    return c;
+  };
+  return {
+    get built() { return built; }, total: chunks.length,
+    /** Blit background px rect (sx,sy,sw,sh) at scale k, building any chunk in view that isn't ready. */
+    draw(gg, sx, sy, sw, sh, k) {
+      const S = CHUNK * BT;
+      for (let cy = Math.max(0, Math.floor(sy / S)); cy <= Math.min(ch - 1, Math.floor((sy + sh) / S)); cy++)
+        for (let cx = Math.max(0, Math.floor(sx / S)); cx <= Math.min(cw - 1, Math.floor((sx + sw) / S)); cx++) {
+          const c = chunks[cy * cw + cx] ?? make(cy * cw + cx);
+          const x0 = Math.round(cx * S * k), y0 = Math.round(cy * S * k); // whole-px edges: no seams between chunks
+          gg.drawImage(c, x0, y0, Math.round((cx + 1) * S * k) - x0, Math.round((cy + 1) * S * k) - y0);
+        }
+    },
+    /** Hand this floor's chunk canvases back to the pool (call once, when the floor is replaced). */
+    release() { for (let i = 0; i < chunks.length; i++) { const c = chunks[i]; if (c) { if (chunkPool.length < 400) chunkPool.push(c); chunks[i] = null; } } built = 0; },
+    /** Build not-yet-built chunks nearest background px (fx,fy) first, until budgetMs is spent. */
+    prefill(budgetMs, fx = 0, fy = 0) {
+      const t0 = performance.now(), S = CHUNK * BT;
+      while (built < chunks.length && performance.now() - t0 < budgetMs) {
+        let best = -1, bd = Infinity;
+        for (let i = 0; i < chunks.length; i++) if (!chunks[i]) { const d = Math.hypot((i % cw + 0.5) * S - fx, (((i / cw) | 0) + 0.5) * S - fy); if (d < bd) { bd = d; best = i; } }
+        make(best);
+      }
+    },
+  };
+}
+
+/** Non-ASCII glyphs the HUD draws. The first use of each one in a font triggers a system font-fallback lookup that took ~40 ms
+ *  (curse banner '☠', slim-row '✓'), so draw them once off-screen at mount, behind the intro. */
+const WARM_GLYPHS = '☠✓●◀▶·×–—…★⏱';
+function warmGlyphs() {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const g = c.getContext('2d'); if (!g) return;
+  const ascii = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 +-:%/()!?.,\'';
+  for (const f of ['', 'bold ', '900 ']) { g.font = `${f}16px sans-serif`; g.fillText(WARM_GLYPHS, 0, 8); g.measureText(WARM_GLYPHS); }
+  // first draw of text at a new size rasterises its glyphs; camp and the HUD use roughly 7-40 px
+  for (const f of ['', 'bold ']) for (let px = 7; px <= 40; px++) { g.font = `${f}${px}px sans-serif`; g.fillText(ascii, 0, 8); }
+}
+
+/** Per-frame canvas objects (gradients, TextMetrics) are Blink heap objects; making several every frame grew the
+ *  embedder heap and made V8 major GCs (with Blink tracing) take 15-100 ms at 4x CPU. Keep them, keyed by what they depend on. */
+const gradCache = new Map<string, CanvasGradient>();
+function cachedGrad(key: string, make: () => CanvasGradient): CanvasGradient {
+  let gr = gradCache.get(key);
+  if (!gr) { if (gradCache.size > 96) gradCache.clear(); gr = make(); gradCache.set(key, gr); }
+  return gr;
+}
+const widthCache = new Map<string, number>();
+/** measureText(text).width for the context's current font, cached. */
+// Digits are folded to '0' in the key: the HUD fonts use tabular (equal-width) figures, so "Lv12" and "Lv47" measure the
+// same. Caching the raw counter/timer strings filled the map with strings that lived just long enough to be promoted;
+// measuring them fresh each frame allocated a Blink TextMetrics per call that only a major GC reclaims.
+const DIGITS = /\d/g;
+function textW(g: CanvasRenderingContext2D, text: string): number {
+  const key = g.font + '|' + text.replace(DIGITS, '0');
+  let w = widthCache.get(key);
+  if (w === undefined) { if (widthCache.size > 512) widthCache.clear(); w = g.measureText(text).width; widthCache.set(key, w); }
+  return w;
 }
 
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
   let color = '#4cc9f0';
-  let bg: HTMLCanvasElement | null = null, bgFor: unknown = null;
+  let bg: FloorBg | null = null, bgFor: unknown = null;
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let lightC: HTMLCanvasElement | null = null;
@@ -291,10 +368,9 @@ export function createRenderer(): GameRenderer {
     const col = RARITY_COLORS[d.rarity];
     gg.globalCompositeOperation = 'lighter';
     if (d.rarity >= 2) { // light pillar (uniques get a tall pulsing one)
-      const hgt = TS * (d.rarity === 5 ? 4 + Math.sin(t * 6) * 0.5 : 2);
-      const gr = gg.createLinearGradient(0, y - hgt, 0, y);
-      gr.addColorStop(0, col + '00'); gr.addColorStop(1, col + '88');
-      gg.fillStyle = gr; gg.fillRect(x - TS * (d.rarity === 5 ? 0.22 : 0.12), y - hgt, TS * (d.rarity === 5 ? 0.44 : 0.24), hgt);
+      const hgt = Math.round(TS * (d.rarity === 5 ? 4 + Math.sin(t * 6) * 0.5 : 2) / 2) * 2;
+      gg.fillStyle = cachedGrad(`lp|${col}|${hgt}`, () => { const gr = gg.createLinearGradient(0, -hgt, 0, 0); gr.addColorStop(0, col + '00'); gr.addColorStop(1, col + '88'); return gr; });
+      gg.save(); gg.translate(0, y); gg.fillRect(x - TS * (d.rarity === 5 ? 0.22 : 0.12), -hgt, TS * (d.rarity === 5 ? 0.44 : 0.24), hgt); gg.restore();
     }
     glowAt(col, x, y - TS * 0.3 + bob, TS * 0.6, 0.6);
     gg.globalCompositeOperation = 'source-over';
@@ -352,6 +428,7 @@ export function createRenderer(): GameRenderer {
       container.appendChild(canvas);
       canvas.addEventListener('pointerdown', onPointer);
       g = canvas.getContext('2d');
+      warmGlyphs();
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
@@ -376,7 +453,7 @@ export function createRenderer(): GameRenderer {
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w) {
-        bgFor = w; bg = buildBackground(w); mini = null; pillars = [];
+        bgFor = w; bg?.release(); bg = buildBackground(w); mini = null; pillars = [];
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
@@ -389,8 +466,9 @@ export function createRenderer(): GameRenderer {
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
-      const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(bg!.width - sx, W / k + 1), sh = Math.min(bg!.height - sy, H / k + 1);
-      if (sw > 0 && sh > 0) gg.drawImage(bg!, sx, sy, sw, sh, sx * k, sy * k, sw * k, sh * k);
+      const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(w.w * BT - sx, W / k + 1), sh = Math.min(w.h * BT - sy, H / k + 1);
+      if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k);
+      bg!.prefill(3, sx + sw / 2, sy + sh / 2); // fill in off-screen chunks, nearest the camera first, a little each frame
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
       const y0 = Math.max(0, Math.floor(cy / TS)), y1 = Math.min(w.h, Math.ceil((cy + H) / TS));
@@ -544,9 +622,10 @@ export function createRenderer(): GameRenderer {
 
       // torch-light vignette
       const dark = s.curse?.kind === 'darkness';
-      const vg = gg.createRadialGradient(W / 2, VH / 2, TS * (dark ? 1.4 : 3.5), W / 2, VH / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
-      vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.55})`);
-      gg.fillStyle = vg; gg.fillRect(0, 0, W, H);
+      gg.fillStyle = cachedGrad(`vg|${W}|${VH}|${H}|${TS}|${dark}`, () => {
+        const vg = gg.createRadialGradient(W / 2, VH / 2, TS * (dark ? 1.4 : 3.5), W / 2, VH / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
+        vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.55})`); return vg; // light map below adds the rest
+      }); gg.fillRect(0, 0, W, H);
       if (!dark) { // light map at 1/4 res: ambient dark, holes punched by the hero, torches and braziers (flickering)
         const LW = Math.ceil(W / 4), LH = Math.ceil(H / 4);
         if (!lightC || lightC.width !== LW || lightC.height !== LH) { lightC = document.createElement('canvas'); lightC.width = LW; lightC.height = LH; }
@@ -561,27 +640,32 @@ export function createRenderer(): GameRenderer {
         gg.imageSmoothingEnabled = true; gg.drawImage(lightC, 0, 0, W, H); gg.imageSmoothingEnabled = false;
       }
       if (s.curse) { // cursed: pulsing coloured edges
-        const cv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.4, W / 2, VH / 2, Math.max(W, H) * 0.7);
-        cv.addColorStop(0, s.curse.color + '00'); cv.addColorStop(1, s.curse.color + Math.round(0x30 + 0x20 * Math.sin(t * 3)).toString(16));
-        gg.fillStyle = cv; gg.fillRect(0, 0, W, H);
+        const cc = s.curse.color, ca = (Math.round((0x30 + 0x20 * Math.sin(t * 3)) / 4) * 4).toString(16).padStart(2, '0');
+        gg.fillStyle = cachedGrad(`cv|${W}|${VH}|${H}|${cc}|${ca}`, () => {
+          const cv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.4, W / 2, VH / 2, Math.max(W, H) * 0.7);
+          cv.addColorStop(0, cc + '00'); cv.addColorStop(1, cc + ca); return cv;
+        }); gg.fillRect(0, 0, W, H);
       }
       if (p.hurt < 0.3) { // red edge pulse when hit
-        const hv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.35, W / 2, VH / 2, Math.max(W, H) * 0.65);
-        hv.addColorStop(0, 'rgba(255,0,0,0)'); hv.addColorStop(1, `rgba(255,0,0,${0.35 * (1 - p.hurt / 0.3)})`);
-        gg.fillStyle = hv; gg.fillRect(0, 0, W, H);
+        const ha = Math.round(35 * (1 - p.hurt / 0.3)) / 100;
+        gg.fillStyle = cachedGrad(`hv|${W}|${VH}|${H}|${ha}`, () => {
+          const hv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.35, W / 2, VH / 2, Math.max(W, H) * 0.65);
+          hv.addColorStop(0, 'rgba(255,0,0,0)'); hv.addColorStop(1, `rgba(255,0,0,${ha})`); return hv;
+        }); gg.fillRect(0, 0, W, H);
       }
 
       drawHud(s, W, H, bike);
     },
-    unmount() { canvas?.removeEventListener('pointerdown', onPointer); canvas?.remove(); canvas = null; g = null; bg = null; bgFor = null; mini = null; },
+    unmount() { canvas?.removeEventListener('pointerdown', onPointer); canvas?.remove(); canvas = null; g = null; bg?.release(); bg = null; bgFor = null; mini = null; },
   };
 
   function drawCamp(c: CampView, W: number, H: number, t: number) {
     const gg = g!, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25, fs = Math.round(15 * u);
     const UH = H - insetCss * dpr; // camp scene sits above the HUD; the backdrop is full-bleed
-    const bgG = gg.createRadialGradient(W / 2, UH * 0.95, 10, W / 2, UH * 0.95, Math.max(W, H) * 0.8);
-    bgG.addColorStop(0, '#3a1e10'); bgG.addColorStop(0.4, '#140c14'); bgG.addColorStop(1, '#05040a');
-    gg.fillStyle = bgG; gg.fillRect(0, 0, W, H);
+    gg.fillStyle = cachedGrad(`camp|${W}|${H}|${UH}`, () => {
+      const bgG = gg.createRadialGradient(W / 2, UH * 0.95, 10, W / 2, UH * 0.95, Math.max(W, H) * 0.8);
+      bgG.addColorStop(0, '#3a1e10'); bgG.addColorStop(0.4, '#140c14'); bgG.addColorStop(1, '#05040a'); return bgG;
+    }); gg.fillRect(0, 0, W, H);
     gg.globalCompositeOperation = 'lighter'; // campfire
     glowAt('#ff8c2a', W / 2, UH * 0.93, 140 * u * (1 + Math.sin(t * 7) * 0.06), 0.7); glowAt('#ffe08a', W / 2, UH * 0.94, 40 * u, 0.9);
     gg.globalCompositeOperation = 'source-over';
@@ -688,12 +772,12 @@ export function createRenderer(): GameRenderer {
       // weapon name (rarity colour, ellipsized to fit) then Lv/element
       const tail = ` Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`;
       const tx = R.x + R.h + 23 * u, room = R.x + R.w - 4 * u - tx;
-      gg.font = `${Math.round(10.5 * u)}px sans-serif`; const tw = gg.measureText(tail).width;
+      gg.font = `${Math.round(10.5 * u)}px sans-serif`; const tw = textW(gg, tail);
       gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
       let name = s.weapon.name; const nameRoom = Math.max(0, room - tw);
-      if (gg.measureText(name).width > nameRoom) { while (name.length > 1 && gg.measureText(name + '…').width > nameRoom) name = name.slice(0, -1); name = name.trimEnd() + '…'; }
+      if (textW(gg, name) > nameRoom) { while (name.length > 1 && textW(gg, name + '…') > nameRoom) name = name.slice(0, -1); name = name.trimEnd() + '…'; }
       gg.fillStyle = wcol; gg.fillText(name, tx, cy + 4 * u);
-      const nx = tx + gg.measureText(name).width;
+      const nx = tx + textW(gg, name);
       gg.font = `${Math.round(10.5 * u)}px sans-serif`; gg.fillStyle = '#ccc'; gg.fillText(tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
       // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
       const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);

@@ -69,6 +69,7 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
 
 /** Longest hit-stop (s). Longer stops (the old 0.5 s boss intro, 0.8 s boss death) read to riders as the game freezing. */
 const HIT_STOP_MAX = 0.1;
+const DX4 = [1, -1, 0, 0], DY4 = [0, 0, 1, -1];
 
 export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean }
 export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number }
@@ -120,6 +121,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
   const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'the AI rolls out of a crowd when hurt (0.3 s invulnerable); this is its cooldown');
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
+  const zoneRates = [1, 0, 0, 0, 0, 0];
   const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
   const stanceCommitT = tn.num('stanceCommitS', 0.4, 0.1, 2, 0.05, 'D-pad cycling is free; the stance commits this long after the last press');
@@ -176,7 +178,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const segTn = Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, {
     erg: tn.num(`erg_${k}`, DEFAULT_TARGETS[k].erg, 0.3, 1.5, 0.01, `ERG target (FTP fraction) during ${k}`),
     grade: tn.num(`grade_${k}`, DEFAULT_TARGETS[k].grade, -5, 10, 0.5, `grade offset during ${k}`) }])) as Record<Seg, { erg: () => number; grade: () => number }>;
-  const dirCfg = (): DirectorCfg => ({
+  // built at most once per tick (update() clears it): it was rebuilt several times a tick, the largest per-tick allocation
+  // and is now reused across ticks unless a tuning value actually changed (it was ~8% of all allocation)
+  let cfgMemo: DirectorCfg | null = null, cfgFresh = false;
+  const dirFns = Object.values(dirTn) as Array<() => number>, segKeys = Object.keys(DEFAULT_TARGETS) as Seg[];
+  const cfgSig = new Float64Array(dirFns.length + 2 * segKeys.length);
+  const cfgChanged = (): boolean => {
+    let ch = false, i = 0;
+    for (const f of dirFns) { const v = f(); if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
+    for (const k of segKeys) for (const v of [segTn[k].erg(), segTn[k].grade()]) { if (v !== cfgSig[i]) { cfgSig[i] = v; ch = true; } i++; }
+    return ch;
+  };
+  const dirCfg = (): DirectorCfg => { if (!cfgFresh) { cfgFresh = true; if (cfgChanged()) cfgMemo = null; } return cfgMemo ??= buildCfg(); };
+  const buildCfg = (): DirectorCfg => ({
     ...(Object.fromEntries(Object.entries(dirTn).map(([k, f]) => [k, f()])) as Omit<DirectorCfg, 'targets'>),
     targets: Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, { ...DEFAULT_TARGETS[k], erg: segTn[k].erg(), grade: segTn[k].grade() }])) as DirectorCfg['targets'],
   });
@@ -228,6 +242,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const tapped: ActionId[] = [];
   let lastRate = 1, lastSprints = ctx.bike().sprintCount;
   const cds: Record<ActionId, Cooldown> = { strike: { left: 0, total: 1 }, ward: { left: 0, total: 1 }, rally: { left: 0, total: 1 }, potion: { left: 0, total: 1 } };
+  const CD_KEYS = Object.keys(cds) as ActionId[];
   const xpNext = (L: number) => Math.round(30 * Math.pow(1.32, L - 1));
   const gearSum = (k: keyof Gear['stats']) => SLOTS.reduce((a, s) => a + (gear[s]?.stats[k] ?? 0), 0);
   function recomputeHp(heal: boolean) {
@@ -259,7 +274,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   /** Movement-flow instrumentation (headless metrics/tests; cheap counters only). */
   const fstat = { exploreT: 0, speedSum: 0, slowT: 0, wallT: 0, corridorT: 0, corridorSpeedSum: 0, offCenterT: 0, overshootT: 0 };
   let navPrev: { x: number; y: number } | null = null;
-  let flow: Int16Array = new Int16Array(0), flowKey = -1;
+  let flow: Int16Array = new Int16Array(0), flowQ = new Int32Array(0), flowKey = -1;
 
   const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
   const dmgMul = () => (floor === 1 ? floor1Ease() : Math.pow(enemyDmgGrowth(), floor - 1));
@@ -369,7 +384,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const inRoom = (room: Room, x: number, y: number, inset: number) =>
     x >= room.x0 + inset && x <= room.x0 + room.w - inset && y >= room.y0 + inset && y <= room.y0 + room.h - inset;
   const activeRoom = () => world.rooms[current];
-  const liveInRoom = (rid: number) => enemies.filter((e) => e.alive && e.room === rid && (e.kind !== 'boss' || bossStarted));
+  const isLive = (e: Enemy, rid: number) => e.alive && e.room === rid && (e.kind !== 'boss' || bossStarted);
+  const liveInRoom = (rid: number) => enemies.filter((e) => isLive(e, rid));
+  const liveCount = (rid: number) => { let n = 0; for (const e of enemies) if (isLive(e, rid)) n++; return n; };
 
   /** Room-local BFS distance field from the player, so melee enemies walk around pits and braziers. */
   function updateFlow() {
@@ -380,19 +397,22 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     flowKey = key;
     if (flow.length !== r.w * r.h) flow = new Int16Array(r.w * r.h);
     flow.fill(-1);
-    const q = [(py - r.y0) * r.w + (px - r.x0)];
+    if (flowQ.length < r.w * r.h) flowQ = new Int32Array(r.w * r.h); // BFS queue, reused (was a fresh array plus 4 pairs per cell)
+    const q = flowQ; let qn = 0;
+    q[qn++] = (py - r.y0) * r.w + (px - r.x0);
     flow[q[0]] = 0;
-    for (let i = 0; i < q.length; i++) {
+    for (let i = 0; i < qn; i++) {
       const c = q[i], cx = c % r.w, cy = (c - cx) / r.w;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = cx + dx, ny = cy + dy;
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + DX4[d], ny = cy + DY4[d];
         if (nx < 0 || ny < 0 || nx >= r.w || ny >= r.h) continue;
         const ni = ny * r.w + nx;
         if (flow[ni] >= 0 || walkSolid(r.x0 + nx, r.y0 + ny)) continue;
-        flow[ni] = flow[c] + 1; q.push(ni);
+        flow[ni] = flow[c] + 1; q[qn++] = ni;
       }
     }
   }
+  const NEIGH8: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
   function chaseDir(e: Enemy): { x: number; y: number } {
     const dx = P.x - e.x, dy = P.y - e.y, d = Math.hypot(dx, dy) || 1;
     const r = world.rooms[e.room];
@@ -402,7 +422,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const here = at(ex, ey);
     if (here <= 1) return { x: dx / d, y: dy / d };
     let best = here, bx = 0, by = 0;
-    for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    for (const [ox, oy] of NEIGH8) {
       const v = at(ex + ox, ey + oy);
       if (v < 0 || v >= best) continue;
       if (ox && oy && (at(ex + ox, ey) < 0 || at(ex, ey + oy) < 0)) continue; // no corner cutting
@@ -413,8 +433,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return { x: tx / n, y: ty / n };
   }
 
+  const curve: Array<[number, number]> = [[0, 0], [60, 0], [90, 0], [110, 0]];
   function speedCurve(c: number): number {
-    return cadenceSpeed(c, spinCalled(), [[0, spd0()], [60, spd60()], [90, spd90()], [110, spd110()]]);
+    curve[0][1] = spd0(); curve[1][1] = spd60(); curve[2][1] = spd90(); curve[3][1] = spd110();
+    return cadenceSpeed(c, spinCalled(), curve);
   }
 
 
@@ -572,8 +594,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function nearestEnemy(x = P.x, y = P.y, exclude?: number[], maxD = Infinity): Enemy | null {
     let best: Enemy | null = null, bd = maxD;
-    for (const e of liveInRoom(current)) {
-      if (exclude?.includes(e.id)) continue;
+    for (const e of enemies) {
+      if (!isLive(e, current) || exclude?.includes(e.id)) continue;
       const d = Math.hypot(e.x - x, e.y - y);
       if (d < bd) { bd = d; best = e; }
     }
@@ -837,6 +859,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     return { key: `room${r.id}`, x: r.x0 + (r.w >> 1), y: r.y0 + (r.h >> 1) };
   }
 
+  let dbgTick = 0; // the debug overlay string is rebuilt every 15 ticks (0.5 s), not every tick: it was the top per-tick allocation
   function autopilotCtl(): Ctl {
     exploring = false;
     let mx = 0, my = 0, roll = false;
@@ -880,7 +903,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
     const n = Math.hypot(mx, my);
     if (n > 1) { mx /= n; my /= n; }
-    ctx.debug('autopilot', `${mx.toFixed(2)},${my.toFixed(2)} path${navPath.length} ${navKey} near${near ? near.id + '@' + near.x.toFixed(1) + ',' + near.y.toFixed(1) : '-'}`);
+    if ((dbgTick = (dbgTick + 1) % 15) === 0) ctx.debug('autopilot', `${mx.toFixed(2)},${my.toFixed(2)} path${navPath.length} ${navKey} near${near ? near.id + '@' + near.x.toFixed(1) + ',' + near.y.toFixed(1) : '-'}`);
     return { mx, my, roll };
   }
 
@@ -1014,13 +1037,15 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // ---------- update ----------
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
+    cfgFresh = false; // tuning may change between ticks: re-check (cheaply) once per tick
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
     if (hitT > 0) { hitT -= dt; return; } // hit-stop
     t += dt; navAge += dt; stuckCheck();
     const ctl = autopilotCtl();
-    const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
+    for (let z = 0; z < 5; z++) zoneRates[z + 1] = zoneRefill[z]();
+    const rate = refillRate(bike.powerZone, zoneRates);
     lastRate = rate;
-    for (const k of Object.keys(cds) as ActionId[]) tickCooldown(cds[k], dt, rate);
+    for (const k of CD_KEYS) tickCooldown(cds[k], dt, rate);
     sprintingNow = bike.sprinting;
     tickCooldown(swCd, dt, rate); // Second Wind refills with effort too, but a sprint does not finish it
     if (bike.sprintCount > lastSprints) {
@@ -1189,7 +1214,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
 
     // --- room clear
-    if (cur.locked && liveInRoom(cur.id).length === 0 && (!cur.boss || !boss.alive)) {
+    if (cur.locked && liveCount(cur.id) === 0 && (!cur.boss || !boss.alive)) {
       cur.locked = false; cur.cleared = true; safeRoom = cur.id;
       roomsCleared++; cue('door');
       ctx.emit({ type: 'roomCleared', data: { room: cur.id, floor } });
@@ -1211,7 +1236,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     curseUpdate(dt, bike);
 
     // --- survival
-    const inCombat = cur.locked && liveInRoom(cur.id).length > 0;
+    const inCombat = cur.locked && liveCount(cur.id) > 0;
     const regen = gearSum('regen') + mods.regen * P.maxHp / 100 + (bike.effortZone === 2 && !cursed('fragile') ? regenPerS() * (P.maxHp / 100) * (inCombat ? (floor === 1 ? 0.5 : regenCombat()) : 1) : 0);
     if (P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + regen * dt);
     if (P.hp <= 0) die();
@@ -1352,8 +1377,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       switch (e.variant) {
         case 1: e.spin += 0.5; for (let k = 0; k < 4; k++) enemyShot(e.x, e.y, e.spin + k * Math.PI / 2, 4.5, 6); break;
         case 2: if (d < 9) { e.state = 1; e.tell = 0.8; e.vx = ux * 7; e.vy = uy * 7; } break;
-        case 3: if (liveInRoom(e.room).length < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
-        case 4: if (liveInRoom(e.room).length < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
+        case 3: if (liveCount(e.room) < 5) { const s = spawnEnemy(rng() < 0.5 ? 'bat' : 'bomber', e.x, e.y + 1.5, e.room); s.summoned = 1; } break;
+        case 4: if (liveCount(e.room) < 3 + bs.phase) { const s = spawnEnemy('archer', e.x + (rng() - 0.5) * 3, e.y + 1.5, e.room); s.summoned = 1; } else for (const o of [-0.2, 0.2]) enemyShot(e.x, e.y, a + o, 6, 7); break;
         case 5: for (let k = -3; k <= 3; k++) enemyShot(e.x, e.y, a + k * 0.12, 3.6, 6, 0.2); break; // frost breath
         default: for (const o of [-0.3, 0, 0.3]) enemyShot(e.x, e.y, a + o, 5, 7, 0.22);
       }

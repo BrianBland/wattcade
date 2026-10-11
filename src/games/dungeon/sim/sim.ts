@@ -6,7 +6,7 @@ import {
 } from './loot';
 import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
-import { DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
+import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
 import { cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
@@ -64,7 +64,7 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
   return Math.hypot(px - ax - vx * k, py - ay - vy * k);
 }
 
-export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean }
+export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean }
 export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number }
 export interface DungeonSave {
   ver?: number; bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean;
@@ -103,7 +103,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const furyAfter = tn.num('bossFuryAfterS', 60, 20, 600, 10, 'boss damage starts climbing after this long in the fight (not on floor 1)');
   const furyRate = tn.num('bossFuryRate', 0.03, 0, 0.05, 0.001, 'extra boss-fight damage per second past bossFuryAfterS (max +150%)');
   const bossHpGrowth = tn.num('bossHpGrowth', 1.42, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
-  const floor1Ease = tn.num('floor1Ease', 0.6, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
+  const floor1Ease = tn.num('floor1Ease', 0.5, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
   const strikeCd = tn.num('strikeCdS', 30, 2, 120, 1, 'Strike (A) cooldown');
   const strikeMult = tn.num('strikeDamageMult', 6, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
@@ -118,13 +118,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
   const stanceCdT = tn.num('stanceCdS', 8, 0, 60, 1, 'seconds between stance changes');
   const stanceSwapT = tn.num('stanceSwapS', 1.5, 0, 5, 0.1, 'no attacks while changing stance');
-  const styleAmt = tn.num('styleBonus', 0.08, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
+  const styleAmt = tn.num('styleBonus', 0.05, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
   const stanceDropBias = tn.num('stanceDropBias', 0.6, 0, 1, 0.05, 'share of weapon drops rolled for the current stance');
   const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'shots come per crank rev; per-shot damage x ref/cadence (clamped 0.8-1.5) so damage per second follows power, not cadence (0 = off)');
   const potionHeal = tn.num('potionHeal', 0.45, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
-  const enemyDmgScale = tn.num('enemyDamageScale', 1.9, 0.1, 3, 0.1);
+  const enemyDmgScale = tn.num('enemyDamageScale', 2.1, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
   const enemyHpGrowth = tn.num('enemyHpGrowth', 1.26, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 4500, 100, 20000, 50, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
@@ -146,6 +146,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
   const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
   const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
+  const sprintHeal = tn.num('sprintHealFrac', 0.25, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
+  const sprintGuard = tn.num('sprintGuard', 0.5, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
+  const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');
+  const fireS = tn.num('sprintFiredUpS', 30, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
+  const fireMult = tn.num('sprintFiredUpDmg', 1.4, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
+  const sprintSw = tn.num('sprintSecondWindS', 60, 0, 600, 10, 'a sprint takes this many seconds off the Second Wind recharge');
   const swCdT = tn.num('secondWindCdS', 540, 30, 1800, 10, 'Second Wind recharge at base rate (zone 1); 540 = about 6 min of zone 2 at the 1.5x refill');
   const swHeal = tn.num('secondWindHeal', 0.5, 0.1, 1, 0.05, 'Second Wind heals this fraction of max HP');
   const swInvuln = tn.num('secondWindInvulnS', 1, 0, 3, 0.1);
@@ -187,6 +193,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let bankStart = saved.bank ?? 0, bestFloor = saved.bestFloor ?? 1, runs = saved.runs ?? 0, autoInvestOn = saved.autoInvest ?? true;
   let mods: MetaMods = metaMods(levels, bestFloor);
   let startFloor = opts?.floor ?? mods.maxStartFloor; // defaults to the deepest unlocked start; lower it at camp
+  let sprintingNow = false, firedUpUntil = -1;
   let phase: 'camp' | 'run' = 'camp', campSel = 0, campT = 0;
   let erg = opts?.erg ?? !!saved.erg, dir: DirectorState = newFloor(true), firstFloorOfRun = true, spinGood = 0;
   let swCd: Cooldown = { left: 0, total: 0 }; let swUsedT = -99, secondWinds = 0, deepest = 1, topLevel = 1, earnedPrev = 0, lastDeath: CampView['lastDeath'];
@@ -240,7 +247,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const toasts: Toast[] = [];
   const cues: Array<{ name: string; id: number }> = [];
   let nextId = 1, cueId = 0;
-  let t = 0, kills = 0, deaths = 0, damageDealt = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
+  let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
   let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99;
   let flow: Int16Array = new Int16Array(0), flowKey = -1;
 
@@ -445,10 +452,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   /** Fury: a long boss fight gets dangerous for the hero too, racing Turning Tide. */
   function bossFury() { return bossStarted && boss.alive && floor > 1 ? clamp((bs.fightT - furyAfter()) * furyRate(), 0, 1.5) : 0; }
   function hurtPlayer(dmg: number) {
-    if (P.invuln > 0) return;
+    if (P.invuln > 0 || opts?.invulnerable) return; // invulnerable: test-only, for deterministic output checks
     if (P.ward > 0) { if (t - P.hurtT > 0.25) cue('hit'); P.hurtT = t - 1; return; }
     const armor = clamp(gearSum('armor'), 0, 0.75);
-    P.hp -= dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury());
+    P.hp -= dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury()) * (sprintingNow ? 1 - sprintGuard() : 1);
     if (t - P.hurtT > 0.25) cue('hurt');
     P.hurtT = t;
     if (P.hp <= 0 && swCd.left <= 0) secondWind();
@@ -542,7 +549,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   const cadNorm = (bike: Readonly<BikeState>) => (cadRef() > 0 ? clamp(cadRef() / Math.max(30, bike.cadence3s), 0.8, 1.5) : 1);
   const playerDmg = (bike: Readonly<BikeState>) =>
-    cadNorm(bike) * sb('dmg') * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5) * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult;
+    cadNorm(bike) * sb('dmg') * baseDamage() * clamp(bike.ftpFraction, 0.3, 2.5) * (1 + 0.06 * weapon.plus) * (1 + 0.04 * (P.level - 1) + gearSum('dmgPct')) * mods.dmgMult * (bike.sprinting || t < firedUpUntil ? fireMult() : 1);
   function shoot(a: number, dmg: number, sp: number, child: boolean, crit = false) {
     const w = weapon;
     bullets.push({
@@ -910,9 +917,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
     lastRate = rate;
     for (const k of Object.keys(cds) as ActionId[]) tickCooldown(cds[k], dt, rate);
+    sprintingNow = bike.sprinting;
     tickCooldown(swCd, dt, rate); // Second Wind refills with effort too, but a sprint does not finish it
     if (bike.sprintCount > lastSprints) {
       lastSprints = bike.sprintCount;
+      firedUpUntil = t + fireS();
+      // Second breath: a sprint pays on its own, even if no action buttons are pressed
+      if (phase === 'run' && sprintHeal() > 0 && P.hp < P.maxHp) { P.hp = Math.min(P.maxHp, P.hp + P.maxHp * sprintHeal()); toast('Second breath', '#7dff9a'); }
+      if (swCd.left > 0) swCd.left = Math.max(0, swCd.left - sprintSw());
+      if (phase === 'run' && bossStarted && boss.alive && current === boss.room && sprintBreak(bs, sprintBreakS())) {
+        toast('Sprint broke its guard! Exposed', '#ffd84a'); cue('crit'); ctx.emit({ type: 'bossExposed', data: { floor, parried: false, sprint: true } });
+      }
       if (sprintCompletes() && (Object.keys(cds) as ActionId[]).map((k) => completeCooldown(cds[k])).some(Boolean)) {
         toast('Sprint! Actions recharged', '#ffd84a'); cue('reward');
         ctx.emit({ type: 'actionsRecharged', data: { floor } });
@@ -980,8 +995,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     let shots = 0;
     while (revs - P.lastShotRevs >= per && shots < 6) {
       P.lastShotRevs += per; shots++;
-      if (target && swapT <= 0) fire(bike);
+      if (target && swapT <= 0) { fire(bike); output += playerDmg(bike) / weapon.rate; } // weapon-independent: shots scale with rate
     }
+    if (target && swapT <= 0) fightT += dt;
     if (revs - P.lastShotRevs >= per) P.lastShotRevs = revs;
 
     // --- orbiting blades (unique)
@@ -1313,7 +1329,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       fx: fx.slice(), toasts: toasts.filter((x) => t - x.t0 < 6), cues: cues.slice(),
       room: current, stairsOpen: !boss.alive, frozen: freezeT > 0,
       boss: bossStarted ? { active: boss.alive, name: BOSS_NAMES[boss.variant], hp: Math.max(0, boss.hp), maxHp: boss.maxHp, phase: bs.phase, cycle: bs.cycle, left: bs.left, fightT: bs.fightT, tide: tideBonus(bs.fightT, bossCfg()), splits: bossCfg().phaseSplits } : null,
-      stats: { roomsCleared, kills, deaths, damageDealt, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
+      stats: { roomsCleared, kills, deaths, damageDealt, output, fireT: fightT, bossDefeated, floorsCleared, elites: elitesSlain, uniques: uniquesFound, curses: cursesSurvived },
       hooks: { boss: bossStarted && boss.alive, shielded: sh.shielded, swamp: P.onSwamp, seg: dir.seg, cadence: dir.seg === 'spinup' ? dirCfg().spinRpm + 6 : 90,
         powerFtp: phase === 'camp' ? DEFAULT_TARGETS.cooldown.erg : sh.shielded && erg ? ergSurge() : dirCfg().targets[dir.seg].erg },
     };

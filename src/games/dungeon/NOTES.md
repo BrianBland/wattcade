@@ -36,7 +36,7 @@ a steady z2 rider dies about once every 25-30 min (first death ~18 min) and stal
 Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses actions (`hook-responsive` script +
 `actionBot` sim opt) clears more bosses, goes deeper and dies less. Floor 1 is eased (no deaths there in tests).
 - Zone-2 regen only works out of combat from floor 2 on (`regenInCombatFrac` 0; half on floor 1).
-- Enemy damage grows `enemyDamageGrowth` per floor (1.28), floor 1 x `floor1Ease` (0.6), base `enemyDamageScale` 1.9.
+- Enemy damage grows `enemyDamageGrowth` per floor (1.28), floor 1 x `floor1Ease` (0.5), base `enemyDamageScale` 2.1.
 - Boss HP grows `bossHpGrowth` per floor (1.42) from `bossHp` 4500 (floor 1 x0.55).
 - Boss Fury: after `bossFuryAfterS` (60 s, not floor 1) boss-fight damage climbs `bossFuryRate` (3%/s, max +150%),
   racing Turning Tide. Sprinting in Exposed windows does x2 (`bossSprintDamageMult`).
@@ -44,3 +44,12 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - Camp: Might +10%/level, Vitality +12%/level, both from 300 coins (x1.3).
 - `actionBot` (headless only): Strike on Exposed boss or 3+ enemies, Ward on late windups or low HP in a crowd,
   Rally on called spin-ups, potion under 50% HP.
+- Sprinting pays on its own (no buttons): a sprint heals 25% max HP (Second breath, `sprintHealFrac`), cuts damage
+  taken 50% while sprinting (`sprintGuard`), makes the hero Fired Up for 30 s (x1.4 damage, `sprintFiredUpS/Dmg`),
+  takes 60 s off Second Wind (`sprintSecondWindS`), and a sprint started while the boss is idle breaks its guard
+  (4 s Exposed, `bossSprintBreakS`). Before this, sprints-only did worse than z2: sprints rarely landed in Exposed
+  windows and its 0.6 FTP base did less damage than z2's 0.65 between sprints.
+- `styleBonus` 0.05 (was 0.08): the harder game amplified the Ranger's in-band edge past 10% on long rides.
+- Tests: the gating stance-parity test is deterministic (invulnerable hero, shared 40 s prefix, then 76/86/96 rpm;
+  compares weapon-normalised `stats.output / stats.fireT`). Long bot rides live in `test/balance.test.ts`
+  (`npm run test:balance`, skipped unless BALANCE=1).

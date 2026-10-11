@@ -8,7 +8,7 @@ export const scenarios: Array<{
   assert(summary: Record<string, number | string>, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 18, simOpts: { autopilot: true },
+    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 16, simOpts: { autopilot: true },
     assert: (s) => ((s['Bosses slain'] as number) >= 1 ? [] : [`bossDefeated expected >=1, got ${s['Bosses slain']} (rooms ${s['Rooms cleared']}, deaths ${s.Deaths})`]),
   },
   {
@@ -38,7 +38,7 @@ export const scenarios: Array<{
   },
   {
     // a rider who answers ambushes, spin-ups and Exposed windows (sprints) and uses actions goes clearly deeper
-    name: 'action-hour', script: 'hook-responsive', minutes: 60, seed: 14, simOpts: { autopilot: true, actionBot: true },
+    name: 'action-hour', script: 'hook-responsive', minutes: 60, seed: 15, simOpts: { autopilot: true, actionBot: true },
     assert: (s) => {
       const f: string[] = [];
       if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);

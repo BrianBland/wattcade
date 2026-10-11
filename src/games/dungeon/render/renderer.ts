@@ -100,6 +100,9 @@ export function createRenderer(): GameRenderer {
   let dpr = 1;
   let camX = NaN, camY = NaN, camT = 0, zoom = 1, camFor: unknown = null;
   let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
+  /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
+  let hudBoxes: Array<[number, number, number, number]> = [];
+  function hudBox(x: number, y: number, w: number, h: number) { if (w > 0 && h > 0) hudBoxes.push([x, y, w, h]); }
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
     const s = sprite(name, over, flash), gg = g!;
@@ -336,7 +339,7 @@ export function createRenderer(): GameRenderer {
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
-      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the control dock (which sits above the HUD)
+      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the slim stance row (which sits above the HUD)
       // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
       if (camFor !== w || !Number.isFinite(camX) || Math.hypot(fx0 - camX, fy0 - camY) > 8) { camX = fx0; camY = fy0; camFor = w; }
@@ -405,7 +408,13 @@ export function createRenderer(): GameRenderer {
       // AI intent: dotted path to the hero's next goal
       if (s.ai.path.length) {
         gg.fillStyle = 'rgba(255,255,255,0.35)';
-        s.ai.path.forEach((q, i) => { if (i % 2 === 0) { gg.beginPath(); gg.arc(q.x * TS, q.y * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); } });
+        // dots evenly spaced along the (smoothed, possibly diagonal) polyline from the hero, up to ~16 tiles
+        let ax = s.player.x, ay = s.player.y, carry = 0.6, drawn = 0;
+        for (const q of s.ai.path) {
+          const dx = q.x - ax, dy = q.y - ay, d = Math.hypot(dx, dy);
+          for (let k = carry; k < d && drawn < 27; k += 0.6, drawn++) { gg.beginPath(); gg.arc((ax + dx * k / d) * TS, (ay + dy * k / d) * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); }
+          carry = ((carry - d) % 0.6 + 0.6) % 0.6 || 0.6; ax = q.x; ay = q.y;
+        }
         const end = s.ai.path[s.ai.path.length - 1];
         gg.strokeStyle = 'rgba(255,255,255,0.5)'; gg.lineWidth = 2; gg.beginPath(); gg.arc(end.x * TS, end.y * TS, TS * 0.28, 0, Math.PI * 2); gg.stroke();
       }
@@ -540,79 +549,89 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(h * 0.75)}px sans-serif`; gg.fillText(label, x + 6, y + h * 0.78);
   }
 
+  /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   function drawHud(s: DungeonSnapshot, W: number, H: number, _bike: Readonly<BikeState>) {
+    hudBoxes = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W, H };
     const gg = g!, p = s.player, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
-    bar(L, L, 230 * u, 18 * u, p.hp / p.maxHp, p.hp < p.maxHp * 0.4 ? '#e44' : '#3c3', `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`);
-    bar(L, L + 24 * u, 230 * u, 9 * u, p.xp / p.xpNext, '#b06cff', '');
-    gg.font = `bold ${fs}px sans-serif`; gg.fillStyle = '#fff';
-    gg.fillText(`Lv ${p.level}   Floor ${s.floor}`, L, L + 50 * u);
-    gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
-    for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
-    gg.globalAlpha = 1;
-    { // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
-      const sw = p.secondWind, x0 = L, y0 = L + 58 * u, w = 92 * u, h = 13 * u, ready = sw >= 1;
-      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(x0, y0, w, h);
-      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(x0, y0, w * Math.min(1, sw), h);
-      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = 2; gg.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2); }
-      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
+    // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
+    // `hu` scales from CSS pixels, so the iPad's large device scale doesn't double it (and it clears the boss bar).
+    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 150 * hu;
+    {
+      const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
+      gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
+      gg.fillStyle = '#2a2433'; gg.fillRect(x, y, PW, 11 * hu);
+      gg.fillStyle = hpLow ? '#e44' : '#3c3'; gg.fillRect(x, y, PW * Math.max(0, Math.min(1, p.hp / p.maxHp)), 11 * hu);
+      gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(9 * hu)}px sans-serif`;
+      gg.fillText(`${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
+      gg.fillStyle = '#2a2433'; gg.fillRect(x, y + 13 * hu, PW, 3 * hu);
+      gg.fillStyle = '#b06cff'; gg.fillRect(x, y + 13 * hu, PW * Math.max(0, Math.min(1, p.xp / p.xpNext)), 3 * hu);
+      const ly = y + 28 * hu; gg.font = `bold ${Math.round(10 * hu)}px sans-serif`;
+      gg.fillStyle = '#fff'; gg.fillText(`Lv${p.level} F${s.floor}`, x, ly);
+      gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, x + 44 * hu, ly);
+      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
+      gg.globalAlpha = 1;
+      // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
+      const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
+      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(sx, sy, w, h);
+      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(sx, sy, w * Math.min(1, sw), h);
+      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
+      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(7 * hu)}px sans-serif`; gg.textAlign = 'center'; gg.fillText('2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
-    // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
-    const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length);
-    { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);
-      dg.addColorStop(0, 'rgba(7,6,11,0.55)'); dg.addColorStop(0.25, 'rgba(7,6,11,0.92)'); dg.addColorStop(1, 'rgba(7,6,11,0.97)');
-      gg.fillStyle = dg; gg.fillRect(0, LY.dock.y, W, H - LY.dock.y);
-      gg.fillStyle = 'rgba(255,216,74,0.18)'; gg.fillRect(0, LY.dock.y, W, Math.max(1, u)); }
+    // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
+    // Actions and cooldowns live on the shell's controller-overlay diamond (also the touch target).
+    const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1);
     actionHits = [];
-    const zone = s.refill.zone;
-    s.actions.forEach((a, i) => {
-      const r = LY.buttons[i];
-      actionHits.push({ ...r, id: a.id });
-      drawActionButton(gg, { ...r, label: a.label, glyph: a.button.toUpperCase(), fill: a.ready, readyColor: ACTION_COLOR[a.id], effortTint: effortTint(zone),
-        flourish: effortFlourish(zone), ready: a.ready >= 1, usable: a.usable, t: s.t, scale: r.h / 62 });
-    });
-    gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
-
-    // stance panel (between the weapon card and the buttons): name, D-pad hint, style chip, change readiness, AI suggestion
-    if (LY.stance.w > 120 * u) {
-      const R = LY.stance, st = s.stance, fsm = Math.round(11 * u);
-      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(R.x, R.y, R.w, R.h);
-      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(R.x, R.y, R.w, R.h);
-      gg.fillStyle = st.color; gg.font = `900 ${Math.round(15 * u)}px sans-serif`;
-      gg.fillText(st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : st.name, R.x + 10 * u, R.y + 19 * u, R.w - 60 * u);
-      gg.fillStyle = '#bbb'; gg.font = `${fsm}px sans-serif`; gg.textAlign = 'right';
-      gg.fillText('◀ D-pad ▶', R.x + R.w - 8 * u, R.y + 18 * u); gg.textAlign = 'left';
-      gg.fillText(st.role, R.x + 10 * u, R.y + 34 * u, R.w * 0.45);
-      if (!st.styleHidden) { // style chip: a hint, not a target
-        const txt = `${st.styleOn ? '✓ ' : ''}style ${st.band[0]}-${st.band[1]} rpm`, tw = gg.measureText(txt).width + 14 * u, tx = R.x + R.w - tw - 8 * u, ty = R.y + 24 * u;
-        gg.fillStyle = st.styleOn ? st.color : 'rgba(255,255,255,0.12)'; gg.fillRect(tx, ty, tw, 15 * u);
-        gg.fillStyle = st.styleOn ? '#0a0810' : '#ccc'; gg.fillText(txt, tx + 7 * u, ty + 11.5 * u);
-      }
-      // change readiness: thin fill line along the bottom (no numbers)
-      gg.fillStyle = 'rgba(255,255,255,0.12)'; gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, R.w - 16 * u, 4 * u);
-      gg.fillStyle = st.ready >= 1 ? st.color : desaturate(st.color, 0.6, 0.2); gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, (R.w - 16 * u) * Math.min(1, st.ready), 4 * u);
-      if (st.suggest) {
-        const sg = s.stance.list.find((x) => x.id === st.suggest);
-        if (sg) { gg.globalAlpha = 0.6 + 0.4 * Math.sin(s.t * 5); gg.fillStyle = sg.color; gg.font = `bold ${fsm}px sans-serif`;
-          gg.fillText(`Try ${sg.name}`, R.x + 10 * u, R.y + 48 * u, R.w * 0.6); gg.globalAlpha = 1; }
+    {
+      const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card, cy = R.y + R.h / 2;
+      gg.fillStyle = 'rgba(10,8,16,0.72)'; gg.fillRect(R.x, R.y, R.w, R.h); hudBox(R.x, R.y, R.w, R.h);
+      gg.strokeStyle = st.color; gg.lineWidth = Math.max(1, u); gg.strokeRect(R.x, R.y, R.w, R.h);
+      // stance badge: its colour with the initial; swapping shows the pick's colour
+      const pickC = st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.color ?? st.color : st.color;
+      gg.fillStyle = pickC; gg.fillRect(R.x + 2 * u, R.y + 2 * u, R.h - 4 * u, R.h - 4 * u);
+      gg.fillStyle = '#0a0810'; gg.font = `900 ${Math.round(13 * u)}px sans-serif`; gg.textAlign = 'center';
+      gg.fillText((st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.name ?? st.name : st.name)[0], R.x + R.h / 2, cy + 4.5 * u);
+      weaponIcon(gg, s.weapon, R.x + R.h + 11 * u, cy, 16 * u, wcol);
+      gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
+      const elem = ` ${s.weapon.element}`;
+      // weapon name (rarity colour, ellipsized to fit) then Lv/element
+      const tail = ` Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`;
+      const tx = R.x + R.h + 23 * u, room = R.x + R.w - 4 * u - tx;
+      gg.font = `${Math.round(10.5 * u)}px sans-serif`; const tw = gg.measureText(tail).width;
+      gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
+      let name = s.weapon.name; const nameRoom = Math.max(0, room - tw);
+      if (gg.measureText(name).width > nameRoom) { while (name.length > 1 && gg.measureText(name + '…').width > nameRoom) name = name.slice(0, -1); name = name.trimEnd() + '…'; }
+      gg.fillStyle = wcol; gg.fillText(name, tx, cy + 4 * u);
+      const nx = tx + gg.measureText(name).width;
+      gg.font = `${Math.round(10.5 * u)}px sans-serif`; gg.fillStyle = '#ccc'; gg.fillText(tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
+      // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
+      const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
+      const cw = (C.w - (n - 1) * 3 * u) / n;
+      others.forEach((o, k) => {
+        const x = C.x + k * (cw + 3 * u), picked = st.swapping === o.id, sug = st.suggest === o.id;
+        hudBox(x, C.y, cw, C.h);
+        gg.fillStyle = picked ? o.color : 'rgba(10,8,16,0.6)'; gg.fillRect(x, C.y, cw, C.h);
+        gg.globalAlpha = sug && !picked ? 0.6 + 0.4 * Math.sin(s.t * 5) : 1;
+        gg.strokeStyle = o.color; gg.lineWidth = sug || picked ? 2 : 1; gg.strokeRect(x, C.y, cw, C.h);
+        if (o.base) weaponIcon(gg, { base: o.base as Weapon['base'] }, x + cw * 0.36, C.y + C.h / 2, C.h * 0.55, picked ? '#0a0810' : o.color);
+        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(9 * u)}px sans-serif`; gg.textAlign = 'right';
+        gg.fillText(o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
+      });
+      // equipped gear: slot icon + item level, border/tint in the item's rarity colour
+      let gx = C.x + C.w + 6 * u;
+      for (const sl of SLOTS) {
+        const it = s.gear[sl]; if (!it) continue;
+        const gw = C.h, rc = RARITY_COLORS[it.rarity];
+        hudBox(gx, C.y, gw, C.h);
+        gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(gx, C.y, gw, C.h);
+        gg.strokeStyle = rc; gg.lineWidth = Math.max(1, u); gg.strokeRect(gx, C.y, gw, C.h);
+        gearIcon(gg, sl, gx + gw * 0.4, C.y + C.h * 0.42, C.h * 0.5, rc);
+        gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(8.5 * u)}px sans-serif`; gg.textAlign = 'right';
+        gg.fillText(String(it.level), gx + gw - 2 * u, C.y + C.h - 2.5 * u); gg.textAlign = 'left';
+        gx += gw + 3 * u;
       }
     }
-
-    // weapon + gear card (bottom-left)
-    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
-    gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
-    gg.strokeStyle = wcol; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
-    weaponIcon(gg, s.weapon, cx + 22 * u, cy + 22 * u, 30 * u, wcol);
-    gg.fillStyle = wcol; gg.font = `bold ${fs}px sans-serif`;
-    gg.fillText(`${s.weapon.name}${s.weapon.plus ? ' +' + s.weapon.plus : ''}`, cx + 44 * u, cy + 18 * u, cardW - 50 * u);
-    gg.fillStyle = '#bbb'; gg.font = `${Math.round(11 * u)}px sans-serif`;
-    gg.fillText(`Lv${s.weapon.level}  power ${Math.round(s.weapon.score)}  ×${s.weapon.count}  ${s.weapon.element}`, cx + 44 * u, cy + 34 * u);
-    SLOTS.forEach((sl, i) => {
-      const it = s.gear[sl], gx = cx + 52 * u + i * 34 * u, gy = cy + 50 * u;
-      gg.fillStyle = '#0008'; gg.fillRect(gx - 13 * u, gy - 10 * u, 26 * u, 20 * u);
-      gearIcon(gg, sl, gx, gy, 16 * u, it ? RARITY_COLORS[it.rarity] : '#444');
-    });
 
     // active shrine banner
     const act = s.shrines.find((x) => x.state === 'active');
@@ -640,15 +659,16 @@ export function createRenderer(): GameRenderer {
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // toasts
-    gg.font = `bold ${fs}px sans-serif`;
+    gg.font = `bold ${Math.round(11 * hu)}px sans-serif`;
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(tt.text, L, L + (92 + i * 20) * u); gg.fillStyle = tt.color; gg.fillText(tt.text, L, L + (92 + i * 20) * u);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(tt.text, L, L + (52 + i * 15) * hu); gg.fillStyle = tt.color; gg.fillText(tt.text, L, L + (52 + i * 15) * hu);
     });
     gg.globalAlpha = 1;
 
     // minimap with fog (top-right)
     const w = s.world, mm = Math.max(1, Math.round(MM * u * 0.8));
+    const mScale = Math.min(0.55, (110 * u) / Math.max(1, w.w * mm)); // drawn at ~half size, capped at ~110u wide
     if (!mini || mini.width !== w.w * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
     const m = mini.getContext('2d')!;
     m.clearRect(0, 0, mini.width, mini.height);
@@ -661,17 +681,18 @@ export function createRenderer(): GameRenderer {
     for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#7a6a4a'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
     const br = w.rooms.find((r) => r.boss);
     if (br?.seen) { m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; m.fillRect((w.stairs.x - 1) * mm, (w.stairs.y - 1) * mm, 2 * mm, 2 * mm); }
-    const mx0 = W - mini.width - L, my0 = L;
-    gg.fillStyle = 'rgba(0,0,0,0.6)'; gg.fillRect(mx0 - 4, my0 - 4, mini.width + 8, mini.height + 8);
-    gg.drawImage(mini, mx0, my0);
+    const mw = mini.width * mScale, mh = mini.height * mScale, mx0 = W - mw - L, my0 = L, mk = mm * mScale;
+    gg.fillStyle = 'rgba(0,0,0,0.35)'; gg.fillRect(mx0 - 3, my0 - 3, mw + 6, mh + 6); hudBox(mx0 - 3, my0 - 3, mw + 6, mh + 6);
+    gg.globalAlpha = 0.8; gg.drawImage(mini, mx0, my0, mw, mh); gg.globalAlpha = 1;
     for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
-      gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mm - 1, my0 + e.y * mm - 1, 3, 3);
+      gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mk - 1, my0 + e.y * mk - 1, 2.5 * u, 2.5 * u);
     }
-    gg.fillStyle = color; gg.fillRect(mx0 + p.x * mm - 2, my0 + p.y * mm - 2, 5, 5);
+    gg.fillStyle = color; gg.fillRect(mx0 + p.x * mk - 2 * u, my0 + p.y * mk - 2 * u, 4 * u, 4 * u);
 
     if (s.boss && s.boss.active) {
-      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L;
+      const bw0 = Math.min(W * 0.4, 420 * u), bx0 = Math.max(W / 2 - bw0 / 2, L + PW + 12 * hu), bw = Math.min(bw0, W - bx0 - L - 130 * u), bx = bx0, by = L;
       const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
+      hudBox(bx - 2, by - 2, bw + 4, 48 * u);
       bar(bx, by, bw, 18 * u, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
       gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2, 18 * u); // phase marks
       gg.textAlign = 'center'; gg.font = `bold ${Math.round(13 * u)}px sans-serif`;

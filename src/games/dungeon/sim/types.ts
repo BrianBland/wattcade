@@ -45,7 +45,7 @@ export interface DungeonSnapshot {
   stance: {
     id: string; name: string; role: string; color: string; band: [number, number];
     styleOn: boolean; styleHidden: boolean; swapping: string | null; ready: number; suggest: string | null;
-    list: Array<{ id: string; name: string; color: string; weapon: string }>;
+    list: Array<{ id: string; name: string; color: string; weapon: string; base: string; level: number; rarity: number }>;
   };
   pace: { seg: string; label: string; erg: boolean; segT: number };
   /** Current cooldown refill speed (x base) and the power zone driving it (1..5). */

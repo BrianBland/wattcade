@@ -8,7 +8,7 @@ import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, e
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
-import { cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
+import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
@@ -56,6 +56,8 @@ const CURSES: Record<CurseKind, { name: string; desc: string; color: string; dur
 };
 const CURSE_KINDS = Object.keys(CURSES) as CurseKind[];
 const PLAYER_R = 0.35, MAX_FX = 140;
+/** The hero's body against walls (slightly slimmer than its hit radius, so it fits 1-tile corridors with slack). */
+const HERO_WALL_R = 0.3;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** Distance from point p to segment a-b (swept projectile hits). */
 function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
@@ -99,16 +101,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 out of combat');
   const regenCombat = tn.num('regenInCombatFrac', 0, 0, 1, 0.05, 'zone-2 regen multiplier while enemies are awake (floor 1 always 0.5)');
-  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.28, 1, 2, 0.01, 'enemy damage multiplier per floor');
+  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.45, 1, 2, 0.01, 'enemy damage multiplier per floor');
   const furyAfter = tn.num('bossFuryAfterS', 60, 20, 600, 10, 'boss damage starts climbing after this long in the fight (not on floor 1)');
   const furyRate = tn.num('bossFuryRate', 0.03, 0, 0.05, 0.001, 'extra boss-fight damage per second past bossFuryAfterS (max +150%)');
-  const bossHpGrowth = tn.num('bossHpGrowth', 1.42, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
-  const floor1Ease = tn.num('floor1Ease', 0.5, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
+  const bossHpGrowth = tn.num('bossHpGrowth', 1.5, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
+  const floor1Ease = tn.num('floor1Ease', 0.35, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
   const strikeCd = tn.num('strikeCdS', 30, 2, 120, 1, 'Strike (A) cooldown');
-  const strikeMult = tn.num('strikeDamageMult', 6, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
+  const strikeMult = tn.num('strikeDamageMult', 4, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
   const wardCd = tn.num('wardCdS', 45, 2, 120, 1, 'Ward (B) cooldown');
-  const wardDur = tn.num('wardDurS', 3, 0.5, 10, 0.5, 'Ward blocks all damage for this long');
+  const wardDur = tn.num('wardDurS', 2, 0.5, 10, 0.5, 'Ward blocks all damage for this long');
   const rallyCd = tn.num('rallyCdS', 35, 2, 120, 1, 'Rally (Y) cooldown; only usable when a spin-up is called');
   const rallyDur = tn.num('rallyDurS', 10, 1, 30, 1);
   const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
@@ -116,17 +118,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
   const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
-  const stanceCdT = tn.num('stanceCdS', 8, 0, 60, 1, 'seconds between stance changes');
-  const stanceSwapT = tn.num('stanceSwapS', 1.5, 0, 5, 0.1, 'no attacks while changing stance');
-  const styleAmt = tn.num('styleBonus', 0.05, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
+  const stanceCommitT = tn.num('stanceCommitS', 0.4, 0.1, 2, 0.05, 'D-pad cycling is free; the stance commits this long after the last press');
+  const stanceSwapT = tn.num('stanceSwapS', 0.5, 0, 5, 0.1, 'no attacks while the committed stance swaps in');
+  const styleSettleT = tn.num('styleSettleS', 3, 0, 20, 0.5, 'a stance style bonus starts this long after the stance swaps in (no bonus from rapid swapping)');
+  const styleAmt = tn.num('styleBonus', 0.03, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
   const stanceDropBias = tn.num('stanceDropBias', 0.6, 0, 1, 0.05, 'share of weapon drops rolled for the current stance');
   const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'shots come per crank rev; per-shot damage x ref/cadence (clamped 0.8-1.5) so damage per second follows power, not cadence (0 = off)');
-  const potionHeal = tn.num('potionHeal', 0.45, 0.1, 1, 0.05, 'fraction of max HP');
+  const potionHeal = tn.num('potionHeal', 0.38, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
-  const enemyDmgScale = tn.num('enemyDamageScale', 2.1, 0.1, 3, 0.1);
+  const enemyDmgScale = tn.num('enemyDamageScale', 1.9, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
-  const enemyHpGrowth = tn.num('enemyHpGrowth', 1.26, 1, 2, 0.01, 'enemy HP multiplier per floor');
+  const enemyHpGrowth = tn.num('enemyHpGrowth', 1.32, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 4500, 100, 20000, 50, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
   const sprintMult = tn.num('bossSprintDamageMult', 2, 1, 5, 0.1, 'extra damage for sprinting (or the ERG surge) while the boss is exposed');
   const bossTn = {
@@ -146,12 +149,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
   const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
   const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
-  const sprintHeal = tn.num('sprintHealFrac', 0.25, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
-  const sprintGuard = tn.num('sprintGuard', 0.5, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
+  const sprintHeal = tn.num('sprintHealFrac', 0.45, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
+  const sprintGuard = tn.num('sprintGuard', 0.6, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
   const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');
-  const fireS = tn.num('sprintFiredUpS', 30, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
-  const fireMult = tn.num('sprintFiredUpDmg', 1.4, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
-  const sprintSw = tn.num('sprintSecondWindS', 60, 0, 600, 10, 'a sprint takes this many seconds off the Second Wind recharge');
+  const fireS = tn.num('sprintFiredUpS', 90, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
+  const fireMult = tn.num('sprintFiredUpDmg', 2, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
+  const sprintSw = tn.num('sprintSecondWindS', 120, 0, 600, 10, 'a sprint takes this many seconds off the Second Wind recharge');
   const swCdT = tn.num('secondWindCdS', 540, 30, 1800, 10, 'Second Wind recharge at base rate (zone 1); 540 = about 6 min of zone 2 at the 1.5x refill');
   const swHeal = tn.num('secondWindHeal', 0.5, 0.1, 1, 0.05, 'Second Wind heals this fraction of max HP');
   const swInvuln = tn.num('secondWindInvulnS', 1, 0, 3, 0.1);
@@ -214,7 +217,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!stancesFor(mods.arcanist).includes(stance)) stance = 'ranger';
     weapon = slots[stance];
   }
-  let swapT = 0, swapTo: StanceId | null = null, stanceCd = 0, styleOn = false, suggestion: StanceId | null = null;
+  let swapT = 0, swapTo: StanceId | null = null, pick: StanceId | null = null, pickT = 0, stanceSince = -99, styleOn = false, suggestion: StanceId | null = null;
   const sb = (k: string) => (styleOn && STANCES[stance].bonus === k ? 1 + styleAmt() : 1);
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
@@ -248,7 +251,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const cues: Array<{ name: string; id: number }> = [];
   let nextId = 1, cueId = 0;
   let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
-  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99;
+  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0, stuckStats = 0, exploring = false;
+  /** Movement-flow instrumentation (headless metrics/tests; cheap counters only). */
+  const fstat = { exploreT: 0, speedSum: 0, slowT: 0, wallT: 0, corridorT: 0, corridorSpeedSum: 0, offCenterT: 0, overshootT: 0 };
+  let navPrev: { x: number; y: number } | null = null;
   let flow: Int16Array = new Int16Array(0), flowKey = -1;
 
   const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
@@ -337,15 +343,22 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const blocked = (x: number, y: number, r: number) =>
     walkSolid(Math.floor(x - r), Math.floor(y - r)) || walkSolid(Math.floor(x + r), Math.floor(y - r)) ||
     walkSolid(Math.floor(x - r), Math.floor(y + r)) || walkSolid(Math.floor(x + r), Math.floor(y + r));
-  /** Axis-separated move; when one axis is blocked, nudge toward the tile centre on the other axis so corners don't snag. */
+  /** Axis-separated move; when one axis is blocked, nudge toward the tile centre on the other axis so corners don't snag.
+   *  A body already overlapping a wall (knockback, rolls, spawn) is eased back toward its tile centre first, so it can't wedge. */
   function move(e: { x: number; y: number }, dx: number, dy: number, r: number) {
+    if (blocked(e.x, e.y, r)) {
+      const step = Math.max(Math.abs(dx), Math.abs(dy), 0.02);
+      const cx = Math.floor(e.x) + 0.5, cy = Math.floor(e.y) + 0.5;
+      if (!walkSolid(Math.floor(e.x), Math.floor(e.y))) { e.x += clamp(cx - e.x, -step, step); e.y += clamp(cy - e.y, -step, step); }
+      if (blocked(e.x, e.y, r)) return;
+    }
     if (dx && blocked(e.x + dx, e.y, r)) {
       const cy = Math.floor(e.y) + 0.5, n = clamp(cy - e.y, -Math.abs(dx), Math.abs(dx));
-      if (!dy && n && !blocked(e.x, e.y + n, r)) e.y += n;
+      if (Math.abs(dy) <= Math.abs(dx) && n && !blocked(e.x, e.y + n, r)) { e.y += n; dy = 0; }
     } else e.x += dx;
     if (dy && blocked(e.x, e.y + dy, r)) {
       const cx = Math.floor(e.x) + 0.5, n = clamp(cx - e.x, -Math.abs(dy), Math.abs(dy));
-      if (!dx && n && !blocked(e.x + n, e.y, r)) e.x += n;
+      if (Math.abs(dx) <= Math.abs(dy) && n && !blocked(e.x + n, e.y, r)) e.x += n;
     } else e.y += dy;
   }
   const inRoom = (room: Room, x: number, y: number, inset: number) =>
@@ -675,11 +688,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   function changeStance(dir: number) {
     const list = stancesFor(mods.arcanist);
-    if (stanceCd > 0 || swapTo || list.length < 2) { cue('deny'); return; }
-    const i = list.indexOf(stance), next = list[(i + dir + list.length) % list.length];
-    swapTo = next; swapT = stanceSwapT(); stanceCd = stanceCdT(); cue('equip');
+    if (list.length < 2) { cue('deny'); return; }
+    // free cycling: each press moves the pick; nothing changes until the presses stop (a press mid-swap cancels it)
+    const from = pick ?? swapTo ?? stance, i = list.indexOf(from), next = list[(i + dir + list.length) % list.length];
+    if (swapTo) { swapTo = null; swapT = 0; }
+    pick = next; pickT = stanceCommitT(); cue('select');
     toast(`${STANCES[next].name}: ${STANCES[next].role}`, STANCES[next].color);
-    ctx.emit({ type: 'stance', data: { stance: next, floor } });
   }
   function paceTick(dt: number, bike: Readonly<BikeState>) {
     const r = activeRoom(), cfg = dirCfg();
@@ -711,15 +725,77 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
   }
   function stanceTick(dt: number, bike: Readonly<BikeState>) {
-    stanceCd = Math.max(0, stanceCd - dt);
-    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; } }
-    styleOn = styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
+    if (pick) {
+      pickT -= dt;
+      if (pickT <= 0) {
+        if (pick !== stance) { swapTo = pick; swapT = stanceSwapT(); cue('equip'); ctx.emit({ type: 'stance', data: { stance: pick, floor } }); }
+        pick = null;
+      }
+    }
+    // the swap resets the shot timer (no free shot) and restarts the style-bonus settle time
+    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; stanceSince = t; } }
+    styleOn = t - stanceSince >= styleSettleT() && styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
     const live = liveInRoom(current);
     suggestion = suggestStance({ boss: bossStarted && boss.alive && current === boss.room, shielded: bossShield().shielded, crowd: live.length, elite: live.some((e) => !!e.elite), arcanist: mods.arcanist });
-    if (suggestion === stance || swapTo) suggestion = null;
+    if (suggestion === stance || swapTo || pick) suggestion = null;
   }
 
-  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty);
+  // stuck detector: with a path but < 0.25 tiles of progress in 0.75s, follow raw tile centres (no smoothing) for a while
+  let stuckX = 0, stuckY = 0, stuckT = 0, rawUntil = -1;
+  const pathTo = (tx: number, ty: number) => (navPrev = { x: P.x, y: P.y }, findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty, { smooth: false, wallCost: 0.35 }));
+  /**
+   * Pure pursuit along the tile-centre path: steer at the farthest point up to LOOK tiles ahead that the hero's body can
+   * reach in a straight, clear line (corridor centre lines stay the target; open rooms get smooth diagonals). Eases to
+   * ~80% speed into a sharp bend so it turns cleanly instead of grinding the corner.
+   */
+  const LOOK = 1.3;
+  function pursue(): { x: number; y: number } | null {
+    if (!navPath.length) return null;
+    const r = HERO_WALL_R + 0.1;
+    let best = navPath[0], ax = P.x, ay = P.y, left = LOOK;
+    outer: for (let i = 0; i < navPath.length && left > 0; i++) {
+      const q = navPath[i], d = Math.hypot(q.x - ax, q.y - ay), steps = Math.max(1, Math.ceil(d / 0.25));
+      for (let k = 1; k <= steps; k++) {
+        const u = Math.min(1, k / steps, left / (d || 1)), px = ax + (q.x - ax) * u, py = ay + (q.y - ay) * u;
+        if (!clearLine(walkSolid, P.x, P.y, px, py, r)) break outer;
+        best = { x: px, y: py };
+        if (u * d >= left) break outer;
+      }
+      left -= d; ax = q.x; ay = q.y;
+    }
+    let vx = best.x - P.x, vy = best.y - P.y; const n = Math.hypot(vx, vy);
+    if (n < 1e-3) { vx = navPath[0].x - P.x; vy = navPath[0].y - P.y; }
+    const m = Math.hypot(vx, vy) || 1;
+    let speed = 1;
+    const a = navPath[0], b = navPath[1];
+    if (b && Math.hypot(a.x - P.x, a.y - P.y) < 0.9) { // bend coming up: slow a touch
+      const t1x = a.x - P.x, t1y = a.y - P.y, t2x = b.x - a.x, t2y = b.y - a.y;
+      const c = (t1x * t2x + t1y * t2y) / ((Math.hypot(t1x, t1y) || 1) * (Math.hypot(t2x, t2y) || 1));
+      if (c < 0.5) speed = 0.82;
+    }
+    return { x: (vx / m) * speed, y: (vy / m) * speed };
+  }
+  function flowSample(ratio: number, dt: number) {
+    fstat.exploreT += dt; fstat.speedSum += ratio * dt; if (ratio < 0.5) fstat.slowT += dt;
+    if (blocked(P.x, P.y, HERO_WALL_R + 0.03)) fstat.wallT += dt;
+    const a = navPrev, b = navPath[0];
+    if (a && b) { // overshoot: distance from the planned leg (prev waypoint -> next waypoint)
+      const vx = b.x - a.x, vy = b.y - a.y, L2 = vx * vx + vy * vy || 1, u = Math.max(0, Math.min(1, ((P.x - a.x) * vx + (P.y - a.y) * vy) / L2));
+      if (Math.hypot(P.x - a.x - u * vx, P.y - a.y - u * vy) > 0.4) fstat.overshootT += dt;
+    }
+    const tx = Math.floor(P.x), ty = Math.floor(P.y);
+    if (!world.rooms.some((r) => inRoom(r, P.x, P.y, 0))) {
+      fstat.corridorT += dt; fstat.corridorSpeedSum += ratio * dt;
+      const wallsX = walkSolid(tx - 1, ty) && walkSolid(tx + 1, ty), wallsY = walkSolid(tx, ty - 1) && walkSolid(tx, ty + 1);
+      const off = Math.max(wallsX ? Math.abs(P.x - tx - 0.5) : 0, wallsY ? Math.abs(P.y - ty - 0.5) : 0);
+      if (off > 0.2) fstat.offCenterT += dt;
+    }
+  }
+  function stuckCheck() {
+    if (!navPath.length || P.rollT > 0 || !exploring) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
+    if (Math.hypot(P.x - stuckX, P.y - stuckY) > 0.25) { stuckT = t; stuckX = P.x; stuckY = P.y; return; }
+    if (t - stuckT > 0.75) { navAge = 99; stuckT = t; stuckStats++; } // re-plan from where we are
+  }
   function navTarget(): { key: string; x: number; y: number } | null {
     if (!boss.alive) return { key: 'stairs', x: Math.floor(world.stairs.x), y: Math.floor(world.stairs.y) };
     const dist = world.rooms.map(() => -1); dist[current] = 0;
@@ -735,6 +811,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   function autopilotCtl(): Ctl {
+    exploring = false;
     let mx = 0, my = 0, roll = false;
     const near = nearestEnemy();
     P.targetId = near?.id ?? 0;
@@ -749,8 +826,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (s === 1) { // close in along a real path (pits/braziers may be in the way)
         const key = `fight${near.id}`;
         if (navKey !== key || navAge > 0.75 || !navPath.length) { navPath = pathTo(Math.floor(near.x), Math.floor(near.y)); navKey = key; navAge = 0; }
-        while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
-        if (navPath[0]) { const wx = navPath[0].x - P.x, wy = navPath[0].y - P.y, wn = Math.hypot(wx, wy) || 1; mx = wx / wn; my = wy / wn; }
+        while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPrev = navPath.shift()!;
+        const v = pursue(); if (v) { mx = v.x; my = v.y; }
       }
       const pathing = s === 1 && navPath.length > 0;
       if (s === 0) { const k = 0.25 + 0.6 * STANCES[stance].strafe; mx = -dy / d * k; my = dx / d * k; } // circle-strafe (by stance)
@@ -767,11 +844,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (d < 1.4 && P.hp < P.maxHp * 0.6) { mx = -dx / d; my = -dy / d; roll = P.rollCd <= 0; } // roll out when hurt and crowded
     } else if (!drops.some((d) => Math.hypot(d.x - P.x, d.y - P.y) < 6)) {
       const tgt = navTarget();
+      exploring = !!tgt;
       if (tgt) {
         if (tgt.key !== navKey || navAge > 1.5 || !navPath.length) { navPath = pathTo(tgt.x, tgt.y); navKey = tgt.key; navAge = 0; }
-        while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
-        const wp = navPath[0];
-        if (wp) { mx = wp.x - P.x; my = wp.y - P.y; }
+        while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPrev = navPath.shift()!;
+        const v = pursue(); if (v) { mx = v.x; my = v.y; }
       }
     }
     const n = Math.hypot(mx, my);
@@ -835,7 +912,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     runs++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; stanceCd = 0;
+    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
     P.potions = mods.potionCap;
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);
@@ -912,7 +989,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const bike = ctx.bike(), input = ctx.input();
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
     if (freezeT > 0) { freezeT -= dt; return; } // hit-stop
-    t += dt; navAge += dt;
+    t += dt; navAge += dt; stuckCheck();
     const ctl = autopilotCtl();
     const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
     lastRate = rate;
@@ -949,10 +1026,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       const n = Math.hypot(ctl.mx, ctl.my) || 1;
       P.rollDx = ctl.mx / n; P.rollDy = ctl.my / n; P.rollT = 0.15; P.rollCd = rollCd(); P.invuln = Math.max(P.invuln, 0.3);
     }
-    if (P.rollT > 0) { P.rollT -= dt; P.moving = true; move(P, P.rollDx * 14 * dt, P.rollDy * 14 * dt, PLAYER_R); }
+    if (P.rollT > 0) { P.rollT -= dt; P.moving = true; move(P, P.rollDx * 14 * dt, P.rollDy * 14 * dt, HERO_WALL_R); }
     else {
-      const sp = baseSpeed() * P.speedMult * dt;
-      if (ctl.mx || ctl.my) { move(P, ctl.mx * sp, ctl.my * sp, PLAYER_R); P.moveAng = Math.atan2(ctl.my, ctl.mx); P.moving = sp > 0; }
+      const sp = baseSpeed() * P.speedMult * dt, ox = P.x, oy = P.y;
+      if (ctl.mx || ctl.my) { move(P, ctl.mx * sp, ctl.my * sp, HERO_WALL_R); P.moveAng = Math.atan2(ctl.my, ctl.mx); P.moving = sp > 0; }
+      if (exploring && sp > 0 && phase === 'run') flowSample(Math.hypot(P.x - ox, P.y - oy) / sp, dt);
     }
 
     // --- room entry
@@ -1272,6 +1350,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     deaths++; totals.deaths++; deepest = Math.max(deepest, floor); topLevel = Math.max(topLevel, P.level); // summary is per session, across runs
     ctx.emit({ type: 'death', data: { room: current, floor } });
     const banked = P.coinsEarned; earnedPrev += banked; lastDeath = { floor, banked };
+    // no death spiral: dying on the floor you started on suggests a start 2 floors shallower next time (still adjustable at camp)
+    if (!opts?.floor && floor === startFloor && startFloor > 1) startFloor = Math.max(1, startFloor - 2);
     bankStart += P.coinsEarned; totals.coins += P.coinsEarned; P.coinsEarned = 0; P.coins = 0;
     P.hp = 0; bullets.length = 0; hazards.length = 0; navPath = []; curse = null;
     toast(`You fell on floor ${floor}. ${banked} coins banked. Back to camp.`, '#ff5a5a');
@@ -1311,8 +1391,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       aim: { angle: P.aim },
       stance: {
         id: stance, name: STANCES[stance].name, role: STANCES[stance].role, color: STANCES[stance].color, band: STANCES[stance].band,
-        styleOn, styleHidden: spinCalled(), swapping: swapTo, ready: stanceCd <= 0 ? 1 : 1 - stanceCd / stanceCdT(), suggest: suggestion,
-        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '' })),
+        styleOn, styleHidden: spinCalled(), swapping: pick ?? swapTo, ready: 1, suggest: suggestion,
+        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '', base: slots[id]?.base ?? '', level: slots[id]?.level ?? 0, rarity: slots[id]?.rarity ?? 0 })),
       },
       pace: { seg: dir.seg, label: DEFAULT_TARGETS[dir.seg].label, erg, segT: dir.segT },
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
@@ -1361,16 +1441,17 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
             cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
         }),
-        { button: 'dpad', label: 'Stance', active: stanceCd <= 0 && !swapTo },
+        { button: 'dpad', label: 'Stance', active: true },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },
       ],
       gears: !erg, targetZone: target,
-      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' } : undefined,
+      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
+        : phase === 'run' ? { min: STANCES[stance].band[0], max: STANCES[stance].band[1], label: `${STANCES[stance].name} style` } : undefined, // called targets win
     };
   }
 
-  return {
+  const api: GameSim & { navStats?: () => Record<string, number> } = {
     update, hud, inMenu, snapshot, isOver: () => false,
     receive(a: unknown) {
       const act = a as { type?: string; row?: number; id?: string };
@@ -1384,4 +1465,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }),
     dispose() { if (phase === 'run') persist(); ctx.resistance.clearAll(); ctx.resistance.useVirtualGears(false); },
   };
+  api.navStats = () => ({ ...fstat, fallbacks: stuckStats }); // headless-only movement metrics
+  return api;
 }

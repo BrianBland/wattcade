@@ -3,8 +3,8 @@ export type UpgradeId = 'vitality' | 'might' | 'regen' | 'flask' | 'fortune' | '
 export interface UpgradeDef { id: UpgradeId; name: string; desc: string; max: number; base: number; growth: number }
 
 export const UPGRADES: UpgradeDef[] = [
-  { id: 'might',    name: 'Might',         desc: '+10% damage',                        max: 30, base: 300,  growth: 1.3 },
-  { id: 'vitality', name: 'Vitality',      desc: '+12% max HP',                        max: 30, base: 300,  growth: 1.3 },
+  { id: 'might',    name: 'Might',         desc: '+15% damage',                        max: 30, base: 250,  growth: 1.28 },
+  { id: 'vitality', name: 'Vitality',      desc: '+18% max HP',                        max: 30, base: 250,  growth: 1.28 },
   { id: 'regen',    name: 'Regeneration',    desc: '+0.4% max HP/s regen in any zone',   max: 10, base: 600,  growth: 1.45 },
   { id: 'flask',    name: 'Deep Flask',    desc: '+1 potion capacity',                 max: 3,  base: 1500, growth: 2.5 },
   { id: 'fortune',  name: 'Fortune',       desc: '+10% coins',                         max: 20, base: 600,  growth: 1.4 },
@@ -21,8 +21,8 @@ export function upgradeCost(def: UpgradeDef, level: number): number { return Mat
 export interface MetaMods { hpMult: number; dmgMult: number; speedMult: number; regen: number; potionCap: number; coinMult: number; dropMult: number; rarityBumpChance: number; xpMult: number; maxStartFloor: number; arcanist: boolean }
 export function metaMods(l: Levels, bestFloor: number): MetaMods {
   return {
-    hpMult: 1 + 0.12 * lvl(l, 'vitality'),
-    dmgMult: 1 + 0.1 * lvl(l, 'might'),
+    hpMult: 1 + 0.18 * lvl(l, 'vitality'),
+    dmgMult: 1 + 0.15 * lvl(l, 'might'),
     speedMult: 1,
     regen: 0.4 * lvl(l, 'regen'),
     potionCap: 3 + lvl(l, 'flask'),

@@ -28,17 +28,43 @@ describe('stances (pure)', () => {
 });
 
 describe('stance changes (D-pad)', () => {
-  it('right switches after the swap delay, and the cooldown blocks a second change', () => {
+  const press = (times: Array<[number, 'left' | 'right']>) => new TimelineInput(times.flatMap(([t, b]) => [{ t, press: b }, { t: t + 0.05, release: b }]));
+  it('cycling is free: the stance commits 0.4 s after the last press, then a 0.5 s swap', () => {
     const s = createGameSession({ game: module, profile: testProfile(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true },
-      input: new TimelineInput([{ t: 0.5, press: 'right' }, { t: 0.55, release: 'right' }, { t: 2.5, press: 'right' }, { t: 2.55, release: 'right' }]) });
+      input: press([[0.5, 'right'], [0.7, 'right']]) }); // ranger -> skirmisher -> vanguard
     const st = () => (s.sim.snapshot() as any).stance;
     expect(st().id).toBe('ranger');
-    s.step(30); // 1.0 s: swapping
-    expect(st().swapping).toBe('skirmisher');
-    s.step(60); // 3.0 s: swapped; second press at 2.5 s was refused (8 s cooldown)
-    expect(st().id).toBe('skirmisher'); expect(st().swapping).toBeNull();
-    expect(st().ready).toBeLessThan(1);
-    expect((s.sim.snapshot() as any).weapon.base).toBe('star');
+    s.step(30); // 1.0 s: still picking, still ranger
+    expect(st().id).toBe('ranger'); expect(st().swapping).toBe('vanguard');
+    s.step(30); // 2.0 s: committed at 1.15, swapped by 1.65
+    expect(st().id).toBe('vanguard'); expect(st().swapping).toBeNull(); expect(st().ready).toBe(1);
+    expect((s.sim.snapshot() as any).weapon.base).toMatch(/flame|pellet/);
+    expect(s.finish().events.filter((e) => e.type === 'stance')).toHaveLength(1); // one swap, not two
+  });
+  it('cycling back to the current stance before it commits does nothing', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true },
+      input: press([[0.5, 'right'], [0.7, 'left']]) });
+    s.step(60);
+    expect((s.sim.snapshot() as any).stance.id).toBe('ranger');
+    expect(s.finish().events.filter((e) => e.type === 'stance')).toHaveLength(0);
+  });
+  it('rapid swapping is not an exploit: no style bonus until settled, and spamming puts out less damage than staying put', () => {
+    const run = (spam: boolean) => {
+      const times: Array<[number, 'left' | 'right']> = [];
+      if (spam) for (let t = 41; t < 100; t += 1.2) times.push([t, times.length % 2 ? 'left' : 'right']);
+      SCRIPTS['test-band96'] = { ...SCRIPTS.z2, name: 'test-band96', cadence: () => 96 }; // in the Ranger band
+      const s = createGameSession({ game: module, profile: testProfile(), fake: { script: 'test-band96' }, seed: 3, input: press(times),
+        simOpts: { autopilot: true, skipCamp: true, invulnerable: true } });
+      s.step(30 * 40); const a = (s.sim.snapshot() as any).stats.output;
+      let styled = 0;
+      for (let n = 0; n < 30 * 60; n++) { s.step(1); if ((s.sim.snapshot() as any).stance.styleOn) styled++; }
+      return { dmg: (s.sim.snapshot() as any).stats.output - a, styled, swaps: s.finish().events.filter((e) => e.type === 'stance').length };
+    };
+    const still = run(false), spam = run(true);
+    expect(spam.dmg).toBeLessThan(still.dmg);
+    expect(still.styled).toBeGreaterThan(30 * 30); // staying in band earns the bonus
+    expect(spam.swaps).toBeGreaterThan(40);
+    expect(spam.styled).toBeLessThan(30 * 2); // only the ~1.9 s before the first swap lands; never re-settles
   });
 });
 
@@ -67,5 +93,18 @@ describe('riding style changes how power is delivered, not how much', () => {
       expect(Math.abs(lo - hi) / Math.max(lo, hi), `${st} 76:${lo.toFixed(1)} 96:${hi.toFixed(1)}`).toBeLessThanOrEqual(0.1);
       expect(Math.abs((lo + hi) / 2 - mid) / mid, `${st} vs 86 rpm ${mid.toFixed(1)}`).toBeLessThanOrEqual(0.1);
     }
+  });
+});
+
+describe('stance cadence target (shell HUD)', () => {
+  it("shows the active stance's band, and a called spin-up takes priority", () => {
+    const s = createGameSession({ game: module, profile: testProfile(), fake: { script: 'z2' }, seed: 13, input: new NullInput(), simOpts: { autopilot: true, stance: 'vanguard' } });
+    s.step(30 * 5);
+    expect(s.sim.hud!().targetCadence).toMatchObject({ min: 70, max: 82, label: 'Vanguard style' });
+    let spun = false;
+    for (let n = 0; n < 30 * 1200 && !spun; n++) { s.step(1); spun = (s.sim.snapshot() as any).hooks.seg === 'spinup'; }
+    expect(spun).toBe(true);
+    expect(s.sim.hud!().targetCadence).toMatchObject({ label: 'Spin up!' });
+    expect(s.sim.hud!().targetCadence?.max).toBeUndefined();
   });
 });

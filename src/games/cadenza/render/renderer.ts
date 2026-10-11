@@ -7,11 +7,10 @@ import { Blocks } from './blocks';
 import { advanceDegradation, type Degradation } from './degradation';
 import { disposeObjects } from './dispose';
 import { City } from './city';
-import { Craft, isCraftKind } from './craft';
-import { loadout } from '../../../cosmetics/unlocks';
+import { Craft, type CraftKind } from './craft';
 import { Gauge, gaugeMarks } from './gauge';
 import { Hud } from './hud';
-import { layout } from './layout';
+import { layout, type Layout } from './layout';
 import { U } from './look';
 import { newFrame, Path } from './path';
 import { Post } from './post';
@@ -30,7 +29,8 @@ export class CadenzaRenderer implements GameRenderer {
   private camera = new THREE.PerspectiveCamera(70, 4 / 3, 0.3, 2000);
   private musicFx?: (fx: MusicFx) => void;
   private hud?: Hud; private ro?: ResizeObserver; private flash?: HTMLDivElement;
-  private size: [number, number] = [800, 600]; private insetB = 0;
+  private size: [number, number] = [800, 600]; private insetB = 0; private L?: Layout; private craftKind?: CraftKind; private wasMenu = false;
+  private q = new THREE.Quaternion(); private e = new THREE.Euler();
   private color = '#00f0ff';
   private windowBucket = -1; private track?: Track; private path?: Path; private world = new THREE.Group();
   private blocks?: Blocks; private city?: City; private craft?: Craft; private gauge?: Gauge;
@@ -57,9 +57,6 @@ export class CadenzaRenderer implements GameRenderer {
     this.renderer = r;
     this.scene.background = new THREE.Color('#05040c');
     this.scene.add(this.world, this.camera);
-    const ship = loadout(ctx.profile).ship; // the rider's equipped ship (Locker → Ships)
-    this.craft = new Craft(this.color, isCraftKind(ship) ? ship : undefined);
-    this.scene.add(this.craft.group, this.craft.trailMesh);
     this.buildStreaks();
     this.post = new Post(r, this.scene, this.camera);
     this.flash = document.createElement('div');
@@ -76,7 +73,7 @@ export class CadenzaRenderer implements GameRenderer {
     if (!this.renderer) return;
     this.renderer.setSize(w, h, false); this.post?.setSize(w, h);
     this.camera.aspect = w / h;
-    const L = layout(w, h, this.insetB);
+    const L = layout(w, h, this.insetB); this.L = L;
     this.camera.setViewOffset(w, h, 0, L.viewOffsetY, w, h);
     this.camera.updateProjectionMatrix();
     this.hud?.place(L);
@@ -119,7 +116,9 @@ export class CadenzaRenderer implements GameRenderer {
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as CadenzaSnapshot;
-    if (!this.renderer || !this.post || !this.hud || !this.craft) return;
+    if (!this.renderer || !this.post || !this.hud) return;
+    if (s.ship !== this.craftKind || !this.craft) this.setCraft(s.ship ?? 'triad');
+    if (!this.craft) return;
     const p = s.menu ? 0 : Math.max(0, s.p);
     if (Math.abs(p - this.lastP) > 3) this.camInit = false; // seeks snap the chase camera to the new road
     if (s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);
@@ -242,6 +241,9 @@ export class CadenzaRenderer implements GameRenderer {
     this.camera.position.copy(this.camPos).add(this.s.set((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh));
     this.camera.up.copy(this.camUp);
     this.camera.lookAt(this.camLook);
+    if (s.menu) this.showcase(tNow);
+    else if (this.wasMenu) this.craft.resetTrail();
+    this.wasMenu = !!s.menu; this.craft.trailMesh.visible = !s.menu;
     const fov = 70 + (drop ? 7 : 0) + (s.overdrive ? 6 : 0) + 3 * bands[0] * fx - 14 * roll + 16 * this.launchKick;
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * (roll > 0 ? 9 : 4)); this.camera.updateProjectionMatrix(); }
     this.city!.follow(this.camera, this.fr.f, tNow);
@@ -255,6 +257,23 @@ export class CadenzaRenderer implements GameRenderer {
     else if (s.recaps.length - 1 > this.lastRecap) { this.lastRecap = s.recaps.length - 1; this.hud.recap(s.recaps[this.lastRecap], tNow); }
     this.hud.update(s, `#${U.uAcc.value.getHexString()}`, tNow);
     this.post.render();
+  }
+
+  /** Build the hull for `kind` (on mount, and when the menu's ship choice changes). */
+  private setCraft(kind: CraftKind) {
+    if (this.craft) { this.scene.remove(this.craft.group, this.craft.trailMesh); disposeObjects(this.craft.group, this.craft.trailMesh); }
+    this.craft = new Craft(this.color, kind); this.craftKind = kind;
+    this.scene.add(this.craft.group, this.craft.trailMesh);
+  }
+  /** Pre-game menu: the chosen ship turns slowly in the layout's showcase box, seen a little from above. */
+  private showcase(tNow: number) {
+    const c = this.L?.showcase, [w, h] = this.size;
+    if (!c || c.w < 40 || c.h < 40) return;
+    this.camera.updateMatrixWorld();
+    this.v.set(((c.x + c.w / 2) / w) * 2 - 1, 1 - ((c.y + c.h / 2) / h) * 2, 0.5).unproject(this.camera).sub(this.camera.position).normalize();
+    const dist = 7.5 * Math.max(1, (0.4 * w) / Math.max(1, c.w), (0.32 * h) / Math.max(1, c.h));
+    this.craft!.group.position.copy(this.camera.position).addScaledVector(this.v, dist);
+    this.craft!.group.quaternion.copy(this.camera.quaternion).multiply(this.q.setFromEuler(this.e.set(0.35, tNow * 0.5, 0)));
   }
 
   private queueFireworks(t: number, n: number) {

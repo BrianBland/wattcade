@@ -10,18 +10,18 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   (other drops ride as a hold); breaks ≥25/15/12 s, handovers 36/24/20 s, 40/30/25 s rest after 150/180/210 s of work. Rests
   are trimmed around sprints, so the 3-2-1 runs at the end of a rest; rests < 8 s / work slivers < 6 s fold away.
   `effortAt`: countdown opens the ceiling to Z5 (floor unchanged); transitions judge old ∪ new band for 5 s, `band` = shown.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
+- `sim.ts`: menu (ship, difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
   judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor
   (rpm ÷ 90 in ERG) over the roll → `rateLaunch` perfect ≥ 1.15 / great ≥ 1 / good ≥ 0.85 / weak; bonus 500 × 3/2/1/0 × zone.
   `recaps` per song (score, accuracy, chain, on-target %, launches, 1 Hz strip). Cues `chain` (`isChainMilestone`), `effort`, `launch`.
-  Trainer grade follows the plan (0.5% in recovery); ERG recovery 0.5 FTP. `coaching.ts`: 1.5 s off target to cue, 0.6 s to clear.
+  Trainer grade follows the plan (0.5% in recovery); ERG recovery 0.5 FTP. `coaching.ts`: 1.5 s off target to cue, 0.6 s to clear. `ships.ts`: Triad / Lancer (`cz_sets`) / Manta (`cz_launches`; `unlockAllShips`) scale steer, catch, gray hit, recharge, launch, chain.
 ## Render (`render/`)
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (glass cubes in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
-`craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
+`craft.ts` (a hull per `sim/ships.ts` ship, < ¾ lane; menu showcase; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),

@@ -1,10 +1,10 @@
 import type { Profile } from '../../contracts';
-import { pickOptions, riderLook } from '../../cosmetics/unlocks';
+import { pickOptions, riderLook, withItem } from '../../cosmetics/unlocks';
 import { SLOT_NAMES } from '../../cosmetics/types';
 import { LAST_LEVEL } from '../../cosmetics/catalog';
 import { Btn } from '../components/Bits';
 import { KeyHints } from '../components/ui';
-import { ItemArt } from '../components/RiderAvatar';
+import { RiderAvatar } from '../components/RiderAvatar';
 import { pendingPicks, pickReward } from '../services';
 import { useMenuNav } from '../useMenuNav';
 import { play } from '../../audio/sfx';
@@ -33,7 +33,7 @@ export function RewardPick({ profile, onProfile, onDone }: { profile: Profile; o
       <div class="pick-row">
         {opts.map((it, i) => (
           <div class={`card pick-card${idx === i ? ' focused' : ''}`} onClick={() => { setIdx(i); void take(i); }}>
-            <ItemArt it={it} base={base} size="hero" />
+            <RiderAvatar look={withItem(base, it)} size="hero" />
             <div class="dim small">{SLOT_NAMES[it.slot]}</div>
             <h3>{it.name}</h3>
             {it.flavor && <div class="dim small">{it.flavor}</div>}

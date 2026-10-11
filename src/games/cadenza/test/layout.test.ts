@@ -12,6 +12,9 @@ describe('Cadenza layout keeps the HUD above the shell HUD', () => {
         expect(b.x + b.w, name).toBeLessThanOrEqual(W + 1e-6);
       }
       expect(L.UH).toBe(H - inset);
+      // the menu's ship showcase never sits under the menu panel
+      const m = L.menu, c = L.showcase;
+      expect(c.x >= m.x + m.w - 1e-6 || c.y >= m.y + m.h - 1e-6, 'showcase beside or below the menu').toBe(true);
     });
   }
 });

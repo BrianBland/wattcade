@@ -19,7 +19,6 @@ const hat = (id: string, name: string, source: Source, flavor?: string): Item =>
 const title = (id: string, name: string, source: Source): Item => ({ slot: 'title', id, name, source });
 const pet = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'pet', id, name, source, flavor });
 const trail = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'trail', id, name, source, flavor });
-const ship = (id: string, name: string, source: Source, flavor?: string): Item => ({ slot: 'ship', id, name, source, flavor });
 const jersey = (id: string, name: string, source: Source, pattern: JerseyPattern, base = 'rider', ink = '#ffffff', flavor?: string): Item =>
   ({ slot: 'jersey', id, name, source, look: { pattern, base, ink } as JerseyLook, flavor });
 const paint = (id: string, name: string, source: Source, frame: string, kind: PaintLook['kind'] = 'solid', frame2?: string): Item =>
@@ -194,11 +193,6 @@ export const ITEMS: Item[] = [
   trail('pixels', 'Pixels', A('cz_clean')),
   trail('bubbles', 'Bubbles', A('ws_delta')),
 
-  // ---------- ships (what you fly in Cadenza) ----------
-  ship('triad', 'Triad', D, 'Three bundled engines, big glowing nozzles. Built to be seen from behind.'),
-  ship('lancer', 'Lancer', A('cz_sets'), 'A long rocket with an engine at the end of each pod.'),
-  ship('manta', 'Manta', A('cz_launches'), 'A smooth flying wing with four small engines along its trailing edge.'),
-
   // ---------- titles ----------
   title('none', 'No title', D),
   title('t_captain', 'Road Captain', L(27)),
@@ -217,11 +211,13 @@ export const ITEMS: Item[] = [
   title('t_reborn', 'Reincarnated', A('hm_reincarnate')),
   title('t_landing', 'Stuck the Landing', A('cz_launch')),
   title('t_sharp', 'Sharpshooter', A('cz_sharp')),
+  title('t_encore', 'Encore', A('cz_sets')),
+  title('t_rocketeer', 'Rocketeer', A('cz_launches')),
   title('t_maestro', 'Cadence Maestro', A('ws_maestro')),
   title('t_bread', 'Breadbasket', A('ws_breadbasket')),
 ];
 
 const BY_ID = new Map(ITEMS.map((i) => [`${i.slot}:${i.id}`, i]));
 export const item = (slot: Slot, id: string): Item | undefined => BY_ID.get(`${slot}:${id}`);
-export const DEFAULTS: Record<Slot, string> = { bike: 'road', hat: 'road', jersey: 'plain', paint: 'silver', pet: 'none', trail: 'none', ship: 'triad', title: 'none' };
+export const DEFAULTS: Record<Slot, string> = { bike: 'road', hat: 'road', jersey: 'plain', paint: 'silver', pet: 'none', trail: 'none', title: 'none' };
 export const itemsIn = (slot: Slot): Item[] => ITEMS.filter((i) => i.slot === slot);

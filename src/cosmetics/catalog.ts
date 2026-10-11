@@ -219,6 +219,15 @@ export const ITEMS: Item[] = [
   title('t_sharp', 'Sharpshooter', A('cz_sharp')),
   title('t_maestro', 'Cadence Maestro', A('ws_maestro')),
   title('t_bread', 'Breadbasket', A('ws_breadbasket')),
+  title('t_curse_eater', 'Curse Eater', A('dg_curses_total')),
+  title('t_not_today', 'Not Today', A('dg_second_wind')),
+  title('t_perfect', 'Perfectly Exposed', A('dg_perfect_exposure')),
+  title('t_arsenal', 'Walking Armoury', A('dg_full_arsenal')),
+  title('t_spin_doctor', 'Spin Doctor', A('dg_spin_doctor')),
+  title('t_vanguard', 'Iron Vanguard', A('dg_master_vanguard')),
+  title('t_ranger', 'True Ranger', A('dg_master_ranger')),
+  title('t_skirmisher', 'Wind Skirmisher', A('dg_master_skirmisher')),
+  title('t_arcanist', 'Grand Arcanist', A('dg_master_arcanist')),
 ];
 
 const BY_ID = new Map(ITEMS.map((i) => [`${i.slot}:${i.id}`, i]));

@@ -201,6 +201,14 @@ describe('spectacle encounters', () => {
     }
     expect(passed).toBeGreaterThan(20); expect(vanishedNearShip).toBe(0); expect(r.snap().deaths).toBe(0);
   }, 15_000);
+  it('lancers telegraph beams a bar ahead, fire on beats, miss an on-target rider and can be cancelled by killing them', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); const fires: number[] = []; let warns = 0;
+    r.s.ctx.emit = ((ev: { type: string }) => { if (ev.type === 'beam') fires.push(r.s.ctx.media!.positionS()); if (ev.type === 'beamWarn') warns++; }) as typeof r.s.ctx.emit;
+    let longest = 0; for (let i = 0; i < 30 * 300; i++) { r.s.step(1); for (const b of r.snap().beams) longest = Math.max(longest, b.fireAt - b.warnAt); }
+    expect(fires.length).toBeGreaterThan(20); expect(warns).toBeGreaterThan(fires.length);
+    expect(fires.every(f => tl.beats.some(b => Math.abs(b - f) < 0.04))).toBe(true); expect(longest).toBeGreaterThan(1);
+    expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(r.snap().deaths).toBe(0);
+  }, 15_000);
   it('new arsenal tiers unfold on bar lines', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.arsenalPace', 10); const ups: number[] = [];
     r.s.ctx.emit = ((ev: { type: string }) => { if (ev.type === 'gunUpgrade') ups.push(r.s.ctx.media!.positionS()); }) as typeof r.s.ctx.emit;

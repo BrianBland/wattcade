@@ -1,11 +1,11 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
 import { after, clamp, createDirector, sectionLabel, sectionTarget } from './director';
 import { craftName, escortAvailable, migrateSave } from './save';
-import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, WING_OFFSETS } from './progression';
+import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, TIER_NAMES, WING_OFFSETS } from './progression';
 import { MAX_ENEMIES, MAX_BOLTS, GROUND_SPEED, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
 import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
-import type { CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
+import type { BeamView, CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
 export const H = 100, SHIP_Y = 84;
 export interface SfOpts { autopilot?: boolean; skipHangar?: boolean; craft?: CraftId; endless?: boolean; /** Harness bot that targets elite wings like an attentive rider. */ smartTarget?: boolean }
@@ -37,6 +37,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, absorbed = 0, selectedId: number | null = null;
   let lockIn = 0, volleyAge = 0, volleyAt = -99, volleys = 0, dodges = 0;
   const route = newRoute();
+  const beams: BeamView[] = [];
   let prevX = 0, grazed = 0;
   // Formation bookkeeping: an enemy resolves when it dies (kill) or passes the ship (escape).
   const squads = new Map<number, { total: number; killed: number; left: number; elite?: boolean }>();
@@ -47,6 +48,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const cruiseLine = (at: number) => Math.sin(at * 0.22) * 12 + Math.sin(at * 0.57) * 3;
   /** Next beat at or after sim time `at`, mapped through the media clock offset. */
   const phraseAfter = (at: number) => { const phrases = timeline?.phrases; if (!phrases?.length) return Infinity; const b = phrases[after(phrases, at - t + p - 1e-6)]; return b === undefined ? Infinity : b - p + t; };
+  /** Next bar line at or after sim time `at` (beat fallback without downbeats). */
+  const barAfter = (at: number) => { const d = timeline?.downbeats; if (!d?.length) return beatAfter(at); const b = d[after(d, at - t + p - 1e-6)]; return b !== undefined && b - p + t - at < 3 ? b - p + t : at; };
   const beatAfter = (at: number) => { const beats = timeline?.beats; if (!beats?.length) return at; const b = beats[after(beats, at - t + p - 1e-6)]; return b !== undefined && b - p + t - at < 0.8 ? b - p + t : at; };
   const locks: number[] = [], lasers: LaserView[] = [];
   let groundIn = 8, formations = 0, bulletsFired = 0, groundKills = 0;
@@ -95,7 +98,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     charge = 0; coverLeft = tun.coverS(); settleLeft = tun.settle();
     // Escort Nova is a shield burst: it eats every bullet for score and staggers enemies; Cruiser Nova clears them.
     if (craft === 'escort') { score += bolts.length * 10; eaten += bolts.length; }
-    bolts.length = 0;
+    bolts.length = 0; beams.length = 0;
     for (const e of enemies) if(inCombat(e)) e.hp -= e.kind === 'boss' ? 180 : craft === 'escort' ? e.maxHp * 0.6 : e.hp;
     effect('nova', x, SHIP_Y); emit('nova'); announce('Nova · escort cover, take a breather');
   };
@@ -103,7 +106,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     if (coverLeft > 0 || rejoinLeft > 0 || t < tun.start()) return;
     combo = 0; const blocked = Math.min(shield, amount); shield -= blocked; hull -= amount - blocked;
     if (hull <= 0) {
-      deaths++; rejoinLeft = tun.rejoinS(); hull = 100; shield = 100; bolts.length = 0;
+      deaths++; rejoinLeft = tun.rejoinS(); hull = 100; shield = 100; bolts.length = 0; beams.length = 0;
       for (const e of enemies) if (e.kind !== 'boss') { e.hp = -1; e.y = SHIP_Y; }
       emit('shipLost'); announce('Regrouping · easy spin, squadron returning'); persist();
     }
@@ -118,11 +121,14 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     const size = elite ? Math.min(n, 5) : n;
     if (size > 0) squads.set(formations, { total: size, killed: 0, left: size, elite });
     if (elite) eliteSide = -eliteSide;
+    // Gunner and armour formations put lancers on their flanks: they fire telegraphed beams on a bar line.
+    const lancerAt = (i: number) => !elite && (kind === 'gunner' || kind === 'armor') && size >= 4 && (i === 0 || i === size - 1);
     for (let i = 0; i < size; i++) {
       const hp = elite ? 26 : kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
       const entry = elite ? eliteEntry(i, eliteSide, eliteY) : entryFor(i,n,pattern,center);
       enemies.push({ id: ++id, kind: elite ? 'weaver' : kind, elite, x: entry.fromX, y: entry.fromY, entry, formation: formations,
-        hp, maxHp: hp, age: 0, fireAt: firesInFormation(kind, i) ? 4 + i * 0.2 : 1e9, bossStyle: 0 });
+        hp, maxHp: hp, age: 0, fireAt: firesInFormation(kind, i) && !lancerAt(i) ? 4 + i * 0.2 : 1e9, bossStyle: 0,
+        ...(lancerAt(i) ? { lancer: true, beamReadyAt: 0 } : {}) });
     }
   };
   const spawnGround = () => {
@@ -240,7 +246,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       // A new tier unfolds on the next bar line (bounded wait), so the upgrade lands with the music.
       const newLevel = arsenalTier(onTargetS, pk.arsenalCap, tun.pace());
       if (newLevel > gunLevel && tierWaitFrom < 0) tierWaitFrom = t;
-      if (newLevel > gunLevel && (music.downbeat || music.phrase || !timeline?.downbeats.length || t - tierWaitFrom > 2.5)) { tierWaitFrom = -1; gunLevel = newLevel; announce(`Arsenal ${gunLevel} · ${['', 'Pulse', 'Twin pulse', 'Spread cannons', 'Prism array', 'Full squadron', 'Nova lattice', 'Star lance', 'Supernova'][gunLevel]}`); effect('upgrade', x, SHIP_Y); emit('gunUpgrade', { level: gunLevel }); }
+      if (newLevel > gunLevel && (music.downbeat || music.phrase || !timeline?.downbeats.length || t - tierWaitFrom > 2.5)) { tierWaitFrom = -1; gunLevel = newLevel; announce(`Arsenal ${gunLevel} · ${TIER_NAMES[gunLevel]}`); effect('upgrade', x, SHIP_Y); emit('gunUpgrade', { level: gunLevel }); }
       if (!cadence && p >= cadenceLast + tun.cadenceGap() && music.phrase && music.rpm && !protectedRide && !settling) {
         cadence = { min: music.rpm - 7, max: music.rpm + 7, left: 16, progress: 0 }; cadSuccess = 0;
         cadenceLast = p; announce(`Optional spin · ${music.rpm} RPM earns rapid fire`);
@@ -399,6 +405,17 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
             }
             wall = null; e.fireAt = Math.max(e.fireAt, e.age + 1.5); emit('wall');
           }
+        } else if (e.lancer) {
+          // Lancer: warn about a bar ahead, fire on the bar line. On target, a beam that would cross the route is held back.
+          const owned = beams.find(b => b.ownerId === e.id && t < b.until);
+          e.warn = owned ? clamp((t - owned.warnAt) / Math.max(0.1, owned.fireAt - owned.warnAt), 0, 1) : 0;
+          if (!owned && inCombat(e) && (!e.entry || e.age >= e.entry.duration) && e.age >= (e.beamReadyAt ?? 0) && e.y > -15 && e.y < 40) {
+            let fireAt = barAfter(t + 1);
+            if (beams.some(b => Math.abs(b.fireAt - fireAt) < 0.05)) fireAt = beatAfter(fireAt + 0.05); // a second lancer takes the next beat
+            const safe = alert < 0.8 || [0, 0.08, 0.16, 0.24].every(d => Math.abs(routeX(route, fireAt + d) - e.x) >= ROUTE.clearance);
+            if (safe) { beams.push({ id: ++id, ownerId: e.id, x: e.x, y: e.y, warnAt: t, fireAt, until: fireAt + 0.25 }); e.beamReadyAt = e.age + (fireAt - t) + 3.5; emit('beamWarn'); }
+            else e.beamReadyAt = e.age + 0.5;
+          }
         } else e.warn = e.fireAt < 1e8 && inCombat(e) ? clamp(1 - (e.fireAt - e.age) / 0.6, 0, 1) : 0;
         // Volleys land on the beat (bounded wait), and calm sections fire less.
         if (wall?.id !== e.id && inCombat(e) && e.age >= e.fireAt && (music.beat || e.age >= e.fireAt + 0.7)) {
@@ -431,6 +448,19 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         }
       }
       for (let i = lasers.length - 1; i >= 0; i--) if (t - lasers[i].hitAt > 0.8) lasers.splice(i, 1);
+      for (let i = beams.length - 1; i >= 0; i--) {
+        const b = beams[i], owner = enemies.find(e => e.id === b.ownerId && e.hp > 0 && !e.passing);
+        // Killing a lancer during its warning cancels the beam.
+        if (!b.fired && !owner) { beams.splice(i, 1); continue; }
+        if (owner) b.y = owner.y;
+        if (!b.fired && t >= b.fireAt) {
+          b.fired = true; emit('beam');
+          const gap = Math.abs(x - b.x);
+          if (gap < 4.7) { if (alert >= 0.8) { absorbed++; effect('intercept', x, shipY); } else hurt(14); }
+          else if (gap < ROUTE.graze + 3 && alert >= 0.8) { grazed++; dodges++; score += 15; effect('graze', b.x + Math.sign(x - b.x) * 1.5, shipY); }
+        }
+        if (t > b.until + 0.3) beams.splice(i, 1);
+      }
       for (const b of bolts) {
         b.x += b.vx * dt; b.y += b.vy * dt; b.height+=(10-b.height)*(1-Math.exp(-dt*5));
         if (!b.grazed && Math.abs(b.y - shipY) < 3 && Math.abs(b.x - x) < ROUTE.graze && Math.abs(b.x - x) >= 3.5) {
@@ -468,7 +498,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         song: music.song, shipX: x, shipY, bank, dodge, hull, shield, quality, effort,
         upcoming: music.upcoming && craft === 'escort' ? { label: sectionLabel(music.upcoming.kind), left: Math.max(0, music.upcoming.at - p), watts: Math.round(sectionTarget(music.upcoming.kind) * ctx.profile.ftp * ctx.profile.settings.difficulty) } : null,
         cadence, charge, coverLeft, rejoinLeft, gunLevel, wingmen: pk.wingmen, missiles: pk.heavy,
-        score: Math.round(score), kills, salvage, combo, deaths, selectedId, locks: [...locks], lockCapacity: lockCapacity(), lockProgress: clamp(1 - lockIn / lockInterval(), 0, 1), volleyFlash: Math.max(0, 1 - (t - volleyAt) / 0.8), lasers, enemies, shots, bolts, fx,
+        score: Math.round(score), kills, salvage, combo, deaths, selectedId, locks: [...locks], lockCapacity: lockCapacity(), lockProgress: clamp(1 - lockIn / lockInterval(), 0, 1), volleyFlash: Math.max(0, 1 - (t - volleyAt) / 0.8), lasers, enemies, shots, bolts, fx, beams,
         boss: boss ? { stage: enemies.some(e=>e.parentId===boss!.id && e.hp>0) ? 'Destroy the batteries' : 'Reactor exposed', name: ['Iron Dreadnought', 'Hive Carrier', 'Twin Lancer', 'Spiral Core', 'The Maw'][boss.bossStyle], hp: boss.hp, maxHp: boss.maxHp, left: Math.max(0, tun.bossTime() - (p - bossStart)) } : null,
         bossIn: !boss && bossAt !== null ? Math.max(0, bossAt - p) : null,
         clear: { rate: clearTotal ? clearKilled / clearTotal : 0, perfects, streak: perfectStreak, last: lastClear },

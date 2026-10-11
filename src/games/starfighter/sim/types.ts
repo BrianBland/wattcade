@@ -15,6 +15,8 @@ export interface EnemyView {
   elite?: boolean; fled?: boolean;
   /** Escaped past the ship: still flying (peeling away / scrolling off-screen), no longer in combat; `resolved` = counted. */
   passing?: boolean; resolved?: boolean;
+  /** Lancers fire telegraphed beat beams instead of bullets; `beamReadyAt` is the age they may warn again. */
+  lancer?: boolean; beamReadyAt?: number;
   /** 0..1 muzzle charge shown before the enemy fires. */
   warn?: number;
   entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
@@ -23,6 +25,8 @@ export interface EnemyView {
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean }
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
+/** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
+export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run';
@@ -41,7 +45,7 @@ export interface SfSnapshot {
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];
-  enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[];
+  enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[]; beams: BeamView[];
   boss: { name: string; stage: string; hp: number; maxHp: number; left: number } | null;
   bossIn: number | null; banner: string;
   /** Ride clear rate over resolved formations, perfect formations, and the most recently resolved formation. */

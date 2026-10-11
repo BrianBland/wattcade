@@ -9,6 +9,7 @@ export const MAX_LEVEL = LEVEL_MINUTES.length;
 export const TIER_MINUTES = [0, 2, 6, 12, 20, 30, 40, 50];
 export const CRAFTS: CraftId[] = ['cruiser', 'escort'];
 export const ESCORT_UNLOCK_LEVEL = 3;
+export const TIER_NAMES = ['', 'Pulse', 'Twin pulse', 'Spread cannons', 'Prism array', 'Full squadron', 'Nova lattice', 'Star lance', 'Supernova'];
 /** Lateral offsets of wingmen beside the ship (sim and renderer agree). */
 export const WING_OFFSETS = [-10, 10, -19, 19];
 

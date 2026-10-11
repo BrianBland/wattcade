@@ -6,15 +6,15 @@ float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(
 float cloud(vec2 p){return noise(p)*0.55+noise(p*2.03)*0.28+noise(p*4.07)*0.12+noise(p*8.11)*0.05;}`;
 /** Stream spatial tiles beyond the camera: carrier → neon city → canyon waterways. */
 export function createSpace(scene: THREE.Scene) {
-  const uniforms={time:{value:0},pulse:{value:0},speed:{value:GROUND_SPEED}};
+  const uniforms={time:{value:0},pulse:{value:0},speed:{value:GROUND_SPEED},wave:{value:-9999},waveFade:{value:0}};
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
-    fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;${noise}
-    void main(){float travel=160.0-world.z+time*speed;float biome=mod(floor(travel/512.0),3.0);vec2 p=vec2(world.x,travel);float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n);float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));vec3 c;
+    fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;${noise}
+    void main(){float travel=160.0-world.z+time*speed;float biome=mod(floor(travel/512.0),3.0);vec2 p=vec2(world.x,travel);float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n);float band=exp(-abs(world.z-wave)/16.0)*waveFade;water+=vec3(0.22,0.32,0.36)*band;float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));vec3 c;
     if(biome<0.5){c=mix(vec3(0.03,0.28,0.62),vec3(0.8,0.94,1.0),smoothstep(0.32,0.72,n));if(abs(p.x)<42.0){c=vec3(0.065,0.14,0.23)+grid*0.04;float lane=step(abs(p.x),0.25)*step(0.4,fract(p.y/8.0));float edge=step(40.5,abs(p.x));c+=(lane*vec3(0.3,0.7,0.8)+edge*vec3(0.02,0.7,0.85))*(1.0+pulse*0.7);}}
     else if(biome<1.5){c=vec3(0.10,0.21,0.27)+n*0.09;if(abs(p.x)>90.0)c=water;float road=step(abs(mod(p.x+9.0,36.0)-18.0),3.0)+step(abs(mod(p.y+8.0,64.0)-32.0),4.0);c=mix(c,vec3(0.035,0.08,0.15),min(1.0,road));c+=grid*vec3(0.01,0.07,0.08);}
     else{c=mix(vec3(0.27,0.11,0.18),vec3(0.67,0.36,0.24),n);float river=abs(p.x-sin(p.y*0.016)*15.0);c=mix(water,c,smoothstep(11.0,15.0,river));c+=step(0.93,fract(n*12.0))*0.025;}
-    gl_FragColor=vec4(c,1.0);}` }));
+    c+=vec3(0.02,0.05,0.06)*band;gl_FragColor=vec4(c,1.0);}` }));
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);scene.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;scene.add(m);return m;};
@@ -31,19 +31,28 @@ export function createSpace(scene: THREE.Scene) {
   const jets=make(geometries.box,material('#d9e4ee',0.3),384);
   const bodies=make(geometries.box,material('#2d3f5c',0.5),256);
   const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),768);
+  const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),256);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),256);
   const wakes=make(geometries.box,new THREE.MeshBasicMaterial({color:'#e9fbff',transparent:true,opacity:0.55,depthWrite:false}),96);
   const wisps=make(geometries.sphere,new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:0.3,depthWrite:false}),40);
-  const pools=[stone,walls,roofs,glass,trim,domes,jets,bodies,lamps,tails,wakes,wisps],counts=new Map<THREE.InstancedMesh,number>();
-  const matrix=new THREE.Object3D();
+  const pools=[stone,walls,roofs,glass,trim,domes,jets,bodies,lamps,tails,wakes,wisps,runway],counts=new Map<THREE.InstancedMesh,number>();
+  const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
+  const setColorAt=(pool:THREE.InstancedMesh,i:number,c:THREE.Color)=>pool.setColorAt(i,c);
+  const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   const add=(pool:THREE.InstancedMesh,x:number,y:number,z:number,sx:number,sy:number,sz:number,angle=0)=>{
     const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count)return;
     matrix.position.set(x,y,z);matrix.rotation.set(0,angle,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
   };
   return {
     /** `beat`/`bar` are decaying pulses: runway dashes and window lights breathe with the bar, a touch on each beat. */
-    update(time:number,_intensity:number,_color:string,beat=0,bar=0){
+    /**
+     * `since` = seconds since the last bar line. Each bar line sends a light wave from the horizon toward the camera:
+     * it chases along the runway lights, sweeps down the window strips, and ripples across water.
+     */
+    update(time:number,_intensity:number,_color:string,beat=0,bar=0,since=9){
       uniforms.time.value=time;uniforms.pulse.value=bar*0.8+beat*0.2;
+      const waveZ=-620+since*1300,waveFade=Math.exp(-since*1.4);uniforms.wave.value=waveZ;uniforms.waveFade.value=waveFade;
+      const band=(z:number)=>Math.exp(-Math.abs(z-waveZ)/16)*waveFade;
       const wrap=(v:number,m:number)=>((v%m)+m)%m;
       glassMat.color.copy(glassBase).lerp(white,bar*0.18+beat*0.05);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();const scroll=time*GROUND_SPEED,first=Math.floor(scroll/64),fraction=scroll%64;
       for(let i=0;i<16;i++) {
@@ -51,7 +60,7 @@ export function createSpace(scene: THREE.Scene) {
         for(const side of [-1,1]) {
           if(biome===0) {
             // Runway edge lights every 8 units, and a row of parked jets the same size as the player's craft.
-            for(let k=0;k<8;k++)add(lamps,side*39.2,-5.7,z-28+k*8,0.45,0.25,0.45);
+            for(let k=0;k<8;k++){const zz=z-28+k*8;add(runway,side*39.2,-5.7,zz,0.45,0.25,0.45);setColor(runway,lightColor.copy(warm).multiplyScalar(0.45+0.9*band(zz)));}
             if(tile%2===side+1>>1)for(let j=0;j<3;j++){const zz=z-20+j*18,xx=side*33;
               add(jets,xx,-5.5,zz,1.1,0.55,4.6);add(jets,xx,-5.6,zz+0.7,5,0.18,1.6);add(jets,xx,-5.1,zz+2,0.2,1.2,0.9);}
             add(walls,side*46,-8,z,12,8,62);add(roofs,side*46,-3.5,z,12,1,62);add(glass,side*40.5,-2.8,z,0.3,0.2,61);
@@ -102,6 +111,9 @@ export function createSpace(scene: THREE.Scene) {
         if(biomeAt(zz)!==0)continue;
         add(wisps,xx,(k%4)-1,zz,size*1.3,0.3,size*1.8);
       }
+      // Window strips brighten as the wave passes them.
+      for(let i=0;i<(counts.get(glass)??0);i++){glass.getMatrixAt(i,probe);const z=probe.elements[14];setColorAt(glass,i,lightColor.setScalar(0.78+0.6*band(z)));}
+      for(const pool of [runway,glass])if(pool.instanceColor)pool.instanceColor.needsUpdate=true;
       for(const pool of pools){pool.count=counts.get(pool)??0;pool.instanceMatrix.needsUpdate=true;}
     },
     dispose(){for(const pool of pools)pool.dispose();},

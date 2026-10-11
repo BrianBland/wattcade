@@ -152,7 +152,10 @@ export class SfRenderer implements GameRenderer {
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
-      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
+      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
+        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
+      // Running lights breathe on the beat.
+      for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
       model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
@@ -190,10 +193,10 @@ export class SfRenderer implements GameRenderer {
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
-    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar);
+    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9);
     // A barely-there settle of the camera on each bar line.
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
-    this.webgl.setViewport(0, 0, this.w, this.h); this.post!.render(this.scene, this.camera, s.bar, performance.now());
+    this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
   }
   debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }

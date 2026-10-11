@@ -12,6 +12,9 @@ export function createCombat(scene: THREE.Scene) {
   };
   const trails = pool(geometries.box, '#ffffff', 512, true), cores = pool(geometries.box, '#ffffff', 512);
   const trailColor = new THREE.Color(), coreColor = new THREE.Color();
+  // Lancer beams: a dashed warning line, then a brief bright beam with a white core.
+  const dashes = pool(geometries.box, '#ffffff', 384), beamGlow = pool(geometries.box, '#ff3fd0', 24, true), beamCore = pool(geometries.box, '#ffffff', 24);
+  (beamGlow.material as THREE.MeshBasicMaterial).opacity = 0.6; const dashColor = new THREE.Color(), beamPink = new THREE.Color('#ff3fd0'), white = new THREE.Color('#ffffff');
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
   const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
@@ -46,6 +49,26 @@ export function createCombat(scene: THREE.Scene) {
         }
       }
       trails.count = cores.count = n; trails.instanceMatrix.needsUpdate = cores.instanceMatrix.needsUpdate = true;
+      let dn = 0, bn = 0;
+      for (const beam of s.beams) {
+        const end = 125, length = Math.max(1, end - beam.y);
+        if (s.t < beam.fireAt) {
+          // Warning: dashes firm up through the bar and scroll toward the ship.
+          const u = Math.min(1, Math.max(0, (s.t - beam.warnAt) / Math.max(0.1, beam.fireAt - beam.warnAt))), scroll = (s.t * 30) % 6;
+          dashColor.copy(beamPink).lerp(white, 0.15 * u);
+          for (let y = beam.y + 4 + scroll; y < end && dn < 384; y += 6) {
+            mat.position.set(beam.x, 11, y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(0.45 + u * 0.5, 0.12, 2.8); mat.updateMatrix();
+            dashes.setMatrixAt(dn, mat.matrix); dashes.setColorAt(dn++, dashColor);
+          }
+        } else if (bn < 24) {
+          const life = Math.max(0, 1 - (s.t - beam.fireAt) / 0.45);
+          mat.position.set(beam.x, 11, (beam.y + end) / 2 - 50); mat.rotation.set(0, 0, 0);
+          mat.scale.set(0.6 + 3.4 * life, 0.6, length); mat.updateMatrix(); beamGlow.setMatrixAt(bn, mat.matrix);
+          mat.scale.set(0.1 + 0.7 * life, 0.4, length); mat.updateMatrix(); beamCore.setMatrixAt(bn++, mat.matrix);
+        }
+      }
+      dashes.count = dn; beamGlow.count = beamCore.count = bn;
+      for (const p of [dashes, beamGlow, beamCore]) { p.instanceMatrix.needsUpdate = true; if (p.instanceColor) p.instanceColor.needsUpdate = true; }
       for (const p of [trails, cores]) if (p.instanceColor) p.instanceColor.needsUpdate = true;
       n = 0;
       for (const e of s.enemies) {
@@ -116,6 +139,6 @@ export function createCombat(scene: THREE.Scene) {
       sparks.count = k; sparks.instanceMatrix.needsUpdate = true;
       smoke.count=sm;smoke.instanceMatrix.needsUpdate=true;debris.count=d; flashes.count=f; debris.instanceMatrix.needsUpdate=flashes.instanceMatrix.needsUpdate=true;
     },
-    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks]) { mesh.dispose(); } },
+    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore]) { mesh.dispose(); } },
   };
 }

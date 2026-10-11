@@ -7,6 +7,8 @@ import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
 import { PET_IDS } from './draw/pets';
 import { TRAIL_IDS } from './draw/trails';
+import { SHIP_IDS, drawShip } from './draw/ships';
+import { CRAFT_KINDS } from '../games/cadenza/render/craft';
 import { drawRider } from './draw/rider';
 import { SLOTS } from './types';
 
@@ -43,6 +45,8 @@ describe('catalogue rules', () => {
     expect(new Set(itemsIn('hat').map((i) => i.id))).toEqual(new Set(Object.keys(HATS)));
     expect(new Set(itemsIn('pet').map((i) => i.id))).toEqual(new Set(['none', ...PET_IDS]));
     expect(new Set(itemsIn('trail').map((i) => i.id))).toEqual(new Set(['none', ...TRAIL_IDS]));
+    expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(SHIP_IDS));
+    expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(CRAFT_KINDS)); // Cadenza flies every ship
   });
 });
 
@@ -112,6 +116,7 @@ describe('drawing', () => {
     for (const it of ITEMS) for (const gear of [null, 'bubble', 'scuba'] as const) for (const speed of [0, 6, 12]) {
       expect(() => drawRider(g, withItem(base, it), 0.3, 12, { t: 2, speed, gear, trailer: speed > 6 }), `${it.slot}:${it.id}`).not.toThrow();
     }
+    for (const id of SHIP_IDS) expect(() => drawShip(g, id, '#ff2e93', 1.3), id).not.toThrow();
     // a runner rides in the cargo box
     expect(() => drawRider(g, { ...base, bike: 'cargo', pet: 'corgi' }, 0, 0, { t: 1, speed: 3 })).not.toThrow();
   });

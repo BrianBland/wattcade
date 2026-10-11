@@ -259,7 +259,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 
 ### §5.4b Cosmetics · `src/cosmetics/`
 
-- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
+- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, ship (what you fly in Cadenza: Triad by default; Lancer and Manta from Cadenza achievements), title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
 - **Unlocks are derived, never stored:** defaults + level rewards up to `profile.level` + one item per earned achievement + picks. So catalogue changes apply to existing riders. Stored: `profile.cosmetics.loadout` (equipped id per slot; a missing or locked id falls back to the default) and `profile.cosmetics.picks` (level → chosen id).
 - **Level track:** levels 2–50 each give one item. Every 5th level is a **pick**: choose one of three, and the other two come back in a later pick (after level 50, the passed-over items are offered three at a time every 5 levels). There's no shop or currency.
 - **Every achievement grants exactly one item** (tested).
@@ -516,7 +516,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 - **Input:** paddles (analog) or ◀▶ held = lateral position; D-pad taps snap lanes; shifters = gears; A = Shift (Classic) / B = air-brake slide (Mono, small lateral boost). Controls legend via `hud.controls`.
 - **Renderer** (`render/`, Three.js, Wipeout HD Zone look; no outrun palette):
   - A black void. The track is a flat ribbon with bright emissive edge rails, lane lines and chevron decals. The world is **two-tone** per zone (base hue plus accent, seeded from the song palette), and the hue shifts on the section's first downbeat.
-  - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft with an engine glow.
+  - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft (the rider's equipped `ship` cosmetic) with bell nozzles and exhaust beams.
   - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts (system condensed font stack for now; a self-hosted OFL font is a later polish). Song title card at each song start (with the cover palette).
   - **Reduced flashing** (profile setting): beat pulses limited to ≤ 3 full-screen flashes/s, hue jumps become 1-beat crossfades.
   - HUD insets honoured (`render/layout.ts` tested: craft, Classic grid and callouts above `H − insets.bottom`). The game's own sfx are quiet and ducked under the music.

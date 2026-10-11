@@ -60,8 +60,9 @@ describe('endurance music combat', () => {
     r.s.fakeBike!.useScript('idle'); let weakest = 1; for (let i = 0; i < 20; i++) { r.seconds(1); weakest = Math.min(weakest, r.snap().quality); } expect(weakest).toBeLessThan(0.5);
   });
   it('bosses announce then appear without imposing intervals, including without beat analysis', () => {
-    const r = rig(); r.s.tuning.set('starfighter.bossEveryS', 40); r.s.tuning.set('starfighter.bossHull', 50); r.seconds(34);
-    expect(r.snap().bossIn).toBeGreaterThan(5); expect(r.snap().boss).toBeNull(); r.seconds(10);
+    const r = rig(); r.s.tuning.set('starfighter.bossEveryS', 120); r.s.tuning.set('starfighter.bossHull', 50);
+    let announced = -1; for (let i = 0; i < 30 * 120 && announced < 0; i++) { r.s.step(1); if (r.snap().bossIn !== null) announced = r.snap().t; }
+    expect(announced).toBeGreaterThan(0); expect(r.snap().bossIn).toBeGreaterThan(0); expect(r.snap().boss).toBeNull(); r.seconds(9);
     expect(r.snap().boss).not.toBeNull(); expect(r.snap().effort.ceilingWatts).toBe(150);
     r.seconds(60); expect(Number(r.s.sim.summary().bossesDefeated)).toBeGreaterThan(0);
   });
@@ -109,21 +110,33 @@ describe('musical locks and paddle targeting', () => {
     expect(r.snap().locks.slice(0, painted.length)).toEqual(painted);
     r.s.sim.receive!({ type: 'target', direction: -1 }); r.s.step(1); expect(r.snap().selectedGroup).toBe(previous);
   });
-  it('right paddles select targets without activating Nova; left paddles still change Cruiser gears', () => {
-    const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }]);
+  it('both shifters change Cruiser gears; analog paddles retarget; B releases locks; Z snaps to an elite or flagship', () => {
+    const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }, { t: 20.5, release: 'shiftUpL' },
+      { t: 20.8, paddleR: 0.9 }, { t: 21.0, paddleR: 0 }]);
     const r = rig({}, 'z2', undefined, undefined, input); r.s.tuning.set('starfighter.novaChargeS',10); r.seconds(20);
-    const gear = r.s.ctx.bike().gear; r.seconds(1);
-    expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
-    expect(r.s.recorder.events.some(e=>e.type==='retarget')).toBe(true); expect(r.s.ctx.bike().gear).toBeGreaterThan(gear!);
+    const gear = r.s.ctx.bike().gear!; r.seconds(0.35); expect(r.s.ctx.bike().gear).toBeGreaterThan(gear);
+    const afterOne = r.s.ctx.bike().gear!; r.seconds(0.3); expect(r.s.ctx.bike().gear).toBeGreaterThan(afterOne);
+    r.seconds(1); expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
+    expect(r.s.recorder.events.filter(e => e.type === 'retarget')).toHaveLength(1);
+    // B: painted locks fire on the next beat instead of waiting for the bar.
+    const b = rig({}, 'z2', longMusic()); for (let i = 0; i < 900 && !(b.snap().locks.length >= 2 && b.snap().volleyFlash === 0); i++) b.s.step(1);
+    const volleys = Number(b.s.sim.summary().volleys); b.s.sim.receive!({ type: 'release' }); b.seconds(0.6);
+    expect(Number(b.s.sim.summary().volleys)).toBe(volleys + 1);
+    // Z: snap to an elite wing while one is crossing.
+    const z = rig({}, 'z2', longMusic()); for (let i = 0; i < 30 * 600 && !z.snap().eliteHint; i++) z.s.step(1);
+    z.s.sim.receive!({ type: 'snap' }); z.s.step(1);
+    expect(z.snap().enemies.find(e => e.id === z.snap().selectedId)?.elite).toBe(true);
   });
   it('flagship batteries expose the reactor and leave with an escaping boss', () => {
-    const r = rig(); r.s.tuning.set('starfighter.bossEveryS',40); r.s.tuning.set('starfighter.bossHull',200); r.seconds(41);
+    const r = rig(); r.s.tuning.set('starfighter.bossEveryS',120); r.s.tuning.set('starfighter.bossHull',200);
+    for (let i = 0; i < 30 * 120 && !r.snap().boss; i++) r.s.step(1); r.seconds(1);
     expect(r.snap().boss?.stage).toBe('Destroy the batteries');
     expect(r.snap().enemies.filter(e=>!!e.parentId)).toHaveLength(3);
     let exposed=false;
     for(let i=0;i<500;i++){r.seconds(0.1);exposed ||= r.snap().boss?.stage==='Reactor exposed';}
     expect(exposed).toBe(true);
-    const idle=rig({},'idle');idle.s.tuning.set('starfighter.bossEveryS',40);idle.s.tuning.set('starfighter.bossTimeoutS',30);idle.seconds(71);
+    const idle=rig({},'idle');idle.s.tuning.set('starfighter.bossEveryS',120);idle.s.tuning.set('starfighter.bossTimeoutS',30);
+    for (let i = 0; i < 30 * 120 && !idle.snap().boss; i++) idle.s.step(1); expect(idle.snap().boss).not.toBeNull(); idle.seconds(31);
     expect(idle.snap().boss).toBeNull();expect(idle.snap().enemies.some(e=>e.parentId)).toBe(false);
   });
   it('steady riding grazes past choreographed fire; idle never earns volleys or dodges', () => {

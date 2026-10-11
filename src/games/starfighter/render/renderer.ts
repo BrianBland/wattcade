@@ -24,7 +24,7 @@ export class SfRenderer implements GameRenderer {
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
   private cameraBase = new THREE.Vector3(); private post?: SquadronPost;
-  private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
+  private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
@@ -97,6 +97,7 @@ export class SfRenderer implements GameRenderer {
     const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
     if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
+    if (s.scorecard && s.scorecard.at !== this.lastScoreAt) { this.lastScoreAt = s.scorecard.at; play(s.scorecard.grade === 'S' ? 'levelup' : 'reward', { vol: 0.35 }); }
     if (!this.webgl) return;
     this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
@@ -176,7 +177,7 @@ export class SfRenderer implements GameRenderer {
     s.bolts.slice(0,640).forEach((b,i)=>{
       // Subtle beat pulse: cores swell a little, glows a little more, so the bullet field breathes with the music.
       // Walls are drawn larger so the gate reads; glows stretch along the flight direction as a short trail.
-      const big=b.wall?1.6:1, core=(1+s.beat*0.12)*big, halo=(1+s.beat*0.35)*big;
+      const big=b.wall?1.6:1, core=(1+s.beat*0.3)*big, halo=(1+s.beat*0.8)*big;
       mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,Math.atan2(b.vx,b.vy),0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
       mat.position.x-=b.vx*0.04;mat.position.z-=b.vy*0.04;mat.scale.set(1.35*halo,1,2*halo+Math.hypot(b.vx,b.vy)*0.06);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
     });

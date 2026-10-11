@@ -36,7 +36,7 @@ export function createCombat(scene: THREE.Scene) {
         const age = s.t - laser.at; if (age < 0) continue;
         const flight = Math.max(0.05, laser.hitAt - laser.at), head = Math.min(1, age / flight), tail = Math.max(0, (age - flight - 0.16) / 0.52);
         // Lasers grow with the arsenal: thin cyan, then wider white-cyan, then a gold core. Full-lock volleys burn gold.
-        const tier = laser.tier ?? 1, wide = 0.8 + tier * 0.08, core = 0.85 + tier * 0.07;
+        const tier = laser.tier ?? 1, swell = 0.8 + (laser.amp ?? 0.5) * 0.45, wide = (0.8 + tier * 0.08) * swell, core = (0.85 + tier * 0.07) * swell;
         trailColor.set(laser.heavy ? '#ff9d4d' : laser.full ? '#ffe066' : tier >= 7 ? '#5fd0ff' : tier >= 4 ? '#8fe9ff' : '#33eaff');
         coreColor.set(laser.heavy ? '#fff0c8' : laser.full ? '#ffffff' : tier >= 7 ? '#ffd34d' : tier >= 4 ? '#ffffff' : '#ddffff');
         for (let j = 0; j < 24 && n < 512; j++) {

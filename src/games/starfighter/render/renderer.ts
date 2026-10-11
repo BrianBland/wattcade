@@ -9,7 +9,6 @@ import { createSpace } from './space';
 import { createCombat } from './combat';
 import { SquadronPost } from './post';
 import { isKitGeometry } from './kit';
-import { GROUND_SPEED } from '../sim/encounters';
 import { SECTORS } from '../sim/content';
 import { SquadronHud, bigPerfect } from './hud';
 import { WING_OFFSETS } from '../sim/progression';
@@ -25,7 +24,7 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private cameraBase = new THREE.Vector3(); private post?: SquadronPost;
+  private cameraBase = new THREE.Vector3(); private turnRoll = 0; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
@@ -113,7 +112,7 @@ export class SfRenderer implements GameRenderer {
     // Showcase spot: the free side of the hangar, pulled most of the way toward the camera along the same sight line.
     const show = hangar ? new THREE.Vector3(wide ? 27 : 0, 16, wide ? 6 : 34).lerp(this.cameraBase, wide ? 0.5 : 0.22) : null;
     const hx = show ? show.x : s.shipX, hz = show ? show.z : s.shipY - 50, hy = show ? show.y : 10;
-    craft.position.set(hx, hy, hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank);
+    craft.position.set(hx, hy, hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank + this.turnRoll * 4);
     craft.scale.setScalar(hangar ? 3.1 : 1.55 + (tier - 1) * 0.055);
     if (tier > this.tierSeen) { for (let k = this.tierSeen + 1; k <= tier; k++) this.tierAt.set(k, this.tierSeen && !hangar ? s.t : -99); this.tierSeen = tier; }
     if (tier < this.tierSeen) { this.tierSeen = tier; }
@@ -196,13 +195,15 @@ export class SfRenderer implements GameRenderer {
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
-    this.starfield!.position.z = (s.t * 1.5) % 30; // The next segment's biome takes over where the ship will be when the segment changes (snapped to a tile edge).
-    const raw = s.t * GROUND_SPEED + 126 + s.segment.switchIn * GROUND_SPEED, switchTravel = Math.round((raw + 32) / 64) * 64 - 32;
+    this.starfield!.position.z = (s.t * 1.5) % 30;
+    // The world passes beneath through the ship's route pose; the next biome takes over at its frame line.
     this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,
-      { switchTravel, b0: s.segment.biome, b1: s.segment.nextBiome, seed0: s.segment.seed, seed1: s.segment.nextSeed },
+      { pose: s.world, f0: s.frames.cur, f1: s.frames.next, routeAhead: s.routeAhead },
       s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })));
-    // A barely-there settle of the camera on each bar line.
+    // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
+    this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
+    this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
   }

@@ -21,7 +21,7 @@ const biomeColor = `
     float fres=0.04+0.96*pow(1.0-max(dot(nrm,v),0.0),5.0);vec3 r=reflect(-v,nrm);
     vec3 sky=mix(uHaze0,vec3(0.32,0.58,0.92),smoothstep(0.05,0.7,r.y));
     vec3 body=mix(shallow,deep,depth)*(0.82+0.22*dot(nrm,sun))+vec3(0.02,0.12,0.12)*smoothstep(0.4,1.0,h0);
-    vec3 c=mix(body,sky,clamp(fres*1.5,0.0,0.8));float rs=max(dot(r,sun),0.0);c+=vec3(1.0,0.96,0.86)*(pow(rs,300.0)*0.9+pow(rs,30.0)*0.08);
+    vec3 c=mix(body,sky,clamp(fres*1.5,0.0,0.8));float rs=max(dot(r,sun),0.0);c+=vec3(1.0,0.96,0.86)*(pow(rs,300.0)*0.55+pow(rs,30.0)*0.07);
     float f=clamp(foam+smoothstep(0.95,1.35,h0)*0.4,0.0,1.0)*smoothstep(0.3,0.7,noise(q*0.6+vec2(t*0.3,-t*0.5)));
     return mix(c,vec3(0.86,0.93,0.97),f*0.85);}
   // Cloud sea: domain-warped density, lit by its own gradient toward the sun, bright billowing tops, deep sea in the gaps.
@@ -64,7 +64,11 @@ const biomeColor = `
   else{float swell=noise(p*vec2(0.012,0.008)+vec2(0.0,time*0.02));float caps=step(0.86,noise(p*vec2(0.35,0.14)+vec2(time*0.1,time*0.6)))*smoothstep(0.5,0.8,swell);
     c=waterShade(vec3(0.01,0.07,0.2),vec3(0.03,0.2,0.36),0.6+0.4*swell,p,wpos,1.0,caps*0.7);}
   return c;}`;
-export interface BiomeEnv { switchTravel: number; b0: number; b1: number; seed0: number; seed1: number }
+export interface Frame { x: number; z: number; h: number; s: number; biome: number; seed: number }
+/** Ship pose (route point), the current and next biome frames, and route samples ahead (world x,z pairs). */
+export interface BiomeEnv { pose: { x: number; z: number; h: number }; f0: Frame; f1: Frame; routeAhead: number[] }
+const fwdOf = (h: number) => [-Math.sin(h), -Math.cos(h)], rightOf = (h: number) => [Math.cos(h), -Math.sin(h)];
+const ISO = (b: number) => b === 1 || b === 3;
 /**
  * Seeded biomes streamed beyond the camera. Each segment (song) has a biome and seed; the next one takes over at
  * `switchTravel` (route distance, snapped to a tile edge), cross-faded in the ground shader. Tiles are generated from
@@ -72,16 +76,21 @@ export interface BiomeEnv { switchTravel: number; b0: number; b1: number; seed0:
  */
 export function createSpace(scene: THREE.Scene) {
   const uniforms={time:{value:0},pulse:{value:0},speed:{value:GROUND_SPEED},wave:{value:-9999},waveFade:{value:0},
-    uSwitch:{value:1e9},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])}};
+    uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])}};
   // Objects share the haze through scene fog (same range as the ground).
   scene.fog=new THREE.Fog(HAZE[0],380,1150);const fogTarget=new THREE.Color(HAZE[0]);
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
     fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;
-    uniform float uSwitch;uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;${noise}${biomeColor}
-    void main(){float travel=160.0-world.z+time*speed;vec2 p=vec2(world.x,travel);float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n);
-    float band=exp(-abs(world.z-wave)/16.0)*waveFade;water+=vec3(0.22,0.32,0.36)*band;float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));
-    float k=smoothstep(uSwitch-30.0,uSwitch+30.0,travel);vec3 c=k<0.999?biomeColor(uB0,uP0,p,n,water,grid,pulse,world):vec3(0.0);if(k>0.001)c=mix(c,biomeColor(uB1,uP1,p,n,water,grid,pulse,world),k);
+    uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
+    vec2 fwdV(float h){return vec2(-sin(h),-cos(h));} vec2 rightV(float h){return vec2(cos(h),-sin(h));}
+    // Biome coords: open biomes (city, ocean) use world axes; straight ones (carrier, canyon) their frame (lateral, route distance).
+    vec2 frameP(float b,vec4 F,vec2 W){if(abs(b-1.0)<0.5||b>2.5)return vec2(W.x,-W.y);vec2 d=W-F.xy;return vec2(dot(d,rightV(F.z)),dot(d,fwdV(F.z))+F.w);}
+    vec3 shadeAt(float b,vec4 P,vec2 p,float band){float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n)+vec3(0.22,0.32,0.36)*band;
+      float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));return biomeColor(b,P,p,n,water,grid,pulse,world);}
+    void main(){float ahead=34.0-world.z;vec2 W=uPose.xy+rightV(uPose.z)*world.x+fwdV(uPose.z)*ahead;
+    float band=exp(-abs(world.z-wave)/16.0)*waveFade;
+    float k=smoothstep(-30.0,30.0,dot(W-uF1.xy,fwdV(uF1.z)));vec3 c=k<0.999?shadeAt(uB0,uP0,frameP(uB0,uF0,W),band):vec3(0.0);if(k>0.001)c=mix(c,shadeAt(uB1,uP1,frameP(uB1,uF1,W),band),k);
     c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(c,1.0);}` }));
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);scene.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
@@ -117,10 +126,24 @@ export function createSpace(scene: THREE.Scene) {
   const pools=[shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
+  // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
+  // as if the frame ran straight through the ship; add() maps them through the world into the ship's local frame and
+  // drops anything that belongs to the other biome.
+  const F={ox:0,oz:0,h:0,s:0,T:0,dh:0,biome:0,pose:{x:0,z:0,h:0},f1:{x:0,z:0,h:0,s:0} as Frame,isNext:false};
+  const vWorld=(x:number,z:number):[number,number]=>{const t=F.T+34-z-F.s,[fx,fz]=fwdOf(F.h),[rx,rz]=rightOf(F.h);return [F.ox+rx*x+fx*t,F.oz+rz*x+fz*t];};
+  const wLocal=(wx:number,wz:number)=>{const dx=wx-F.pose.x,dz=wz-F.pose.z,[fx,fz]=fwdOf(F.pose.h),[rx,rz]=rightOf(F.pose.h);return [dx*rx+dz*rz,dx*fx+dz*fz];};
+  const beyondNext=(wx:number,wz:number)=>{const [fx,fz]=fwdOf(F.f1.h);return (wx-F.f1.x)*fx+(wz-F.f1.z)*fz>=0;};
   const add=(pool:THREE.InstancedMesh,x:number,y:number,z:number,sx:number,sy:number,sz:number,angle=0)=>{
     const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count)return;
-    matrix.position.set(x,y,z);matrix.rotation.set(0,angle,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
+    const [wx,wz]=vWorld(x,z);if(beyondNext(wx,wz)!==F.isNext)return;
+    const [lx,ahead]=wLocal(wx,wz);if(ahead<-220||ahead>1150||Math.abs(lx)>700)return;
+    matrix.position.set(lx,y,34-ahead);matrix.rotation.set(0,angle+F.dh,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
   };
+  /** Place at a world point (open-biome movers); `ang` is the world yaw. */
+  const addW=(pool:THREE.InstancedMesh,wx:number,y:number,wz:number,sx:number,sy:number,sz:number,ang=0)=>add(pool,wx,y,F.T+34+wz,sx,sy,sz,ang);
+  /** Route-aware city: blocks near the path ahead stay low so the ship never flies through a tower. */
+  let routePts:number[]=[];
+  const nearRoute=(wx:number,wz:number,r:number)=>{for(let i=0;i<routePts.length;i+=2){const dx=wx-routePts[i],dz=wz-routePts[i+1];if(dx*dx+dz*dz<r*r)return true;}return false;};
   const wrap=(v:number,m:number)=>((v%m)+m)%m;
   /** Drop shadow for a box of footprint w×d and height h standing at (x, z). */
   const shadow=(x:number,z:number,w:number,d:number,h:number)=>{if(h<0.5)return;const l=Math.min(14,h*0.45);add(shade,x+l*0.45,-5.96,z+l*0.55,w+l*0.35,0.02,d+l*0.6);};
@@ -144,26 +167,28 @@ export function createSpace(scene: THREE.Scene) {
     }
   };
   /** One city tile: blocks between the seeded street grid, a low-rise core under the play lane, a varied skyline beyond. */
-  const cityTile=(tile:number,z:number,P:BiomeParams)=>{
-    // The city runs out to the haze on both sides (far blocks are single massings, no shadows).
-    const {xs}=cityRoads(P,-230,230);
+  const cityTile=(tile:number,z:number,P:BiomeParams,lo:number,hi:number)=>{
+    // The city fills every direction; distant blocks are single massings, and blocks over the route stay low.
+    const {xs}=cityRoads(P,lo,hi);
     for(let b=0;b<xs.length-1;b++){
       const x0=xs[b]+3.2,x1=xs[b+1]-3.2,bw=x1-x0;if(bw<5)continue;
-      const r=mulberry(P.seed^(tile*2654435761)^(b*40503)),cx=(x0+x1)/2,core=Math.abs(cx)<40,roll=r();
-      if(Math.abs(cx)>130){for(let zz=z-30;zz<z+28;zz+=20){const h=5+r()*(r()<0.2?40:18);add(walls,cx,h/2-6,zz+10,bw-r()*4,h,17);add(roofs,cx,h-5.5,zz+10,bw-2,0.7,17.5);}continue;}
+      const r=mulberry(P.seed^(tile*2654435761)^(b*40503)),cx=(x0+x1)/2,[bwx,bwz]=vWorld(cx,z),[blx,bah]=wLocal(bwx,bwz);
+      if(bah<-200||bah>1100||Math.abs(blx)>620)continue;
+      const core=nearRoute(bwx,bwz,42+bw/2),roll=r();
+      if(!core&&(Math.abs(blx)>150||bah>650)){for(let zz=z-30;zz<z+28;zz+=20){const h=5+r()*(r()<0.2?40:18);add(walls,cx,h/2-6,zz+10,bw-r()*4,h,17);add(roofs,cx,h-5.5,zz+10,bw-2,0.7,17.5);}continue;}
       if(roll<0.12&&!core){add(grass,cx,-5.95,z,bw,0.1,58);for(let k=0;k<8;k++)add(trees,x0+r()*bw,-4.5,z-28+r()*56,1.6+r(),1.6+r()*1.5,1.6+r());continue;} // park
       if(roll<0.2){add(roofs,cx,-5.9,z,bw,0.2,56);add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);continue;} // plaza with a fountain
       let zz=z-30;
       while(zz<z+28){
         const d=Math.min(z+30-zz,8+r()*14),w=Math.max(4,Math.min(bw,6+r()*12)),x=x0+r()*(bw-w)+w/2,cz=zz+d/2;
-        const h=core?1.5+r()*4:Math.abs(cx)>90?6+r()*14:8+r()*(r()<0.15?44:24);
+        const h=core?1.5+r()*4:8+r()*(r()<0.15?44:24);
         add(walls,x,h/2-6,cz,w,h,d-1.5);add(roofs,x,h-5.5,cz,w+0.8,0.8,d-0.7);shadow(x,cz,w,d-1.5,h);
         if(!core){if(r()<0.25){add(roofs,x,h+3,cz,0.4,8,0.4);add(lamps,x,h+7,cz,0.5,0.5,0.5);}}
         else if(r()<0.5)add(trim,x,h-5,cz,w*0.7,0.12,0.4);
         zz+=d+(r()<0.3?2:0);
       }
     }
-    if(P.highway){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])add(walls,hx,-1.5,z+k,2.2,9,2.2);}
+    if(P.highway&&P.highwayX>lo&&P.highwayX<hi&&!nearRoute(...vWorld(P.highwayX,z),20)){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])add(walls,hx,-1.5,z+k,2.2,9,2.2);}
   };
   /** One canyon tile: rock clusters along the banks, mesas, an occasional arch over the river, and outposts. */
   const canyonTile=(tile:number,z:number,P:BiomeParams,scroll:number)=>{
@@ -188,51 +213,74 @@ export function createSpace(scene: THREE.Scene) {
       uniforms.time.value=time;uniforms.pulse.value=bar*0.8+beat*0.2;
       const waveZ=-620+since*1300,waveFade=Math.exp(-since*1.4);uniforms.wave.value=waveZ;uniforms.waveFade.value=waveFade;sceneryWave.value.set(waveZ,waveFade);
       const band=(z:number)=>Math.exp(-Math.abs(z-waveZ)/16)*waveFade;
-      const e=env??{switchTravel:1e9,b0:0,b1:0,seed0:1,seed1:1},k=`${e.b0}:${e.seed0}:${e.b1}:${e.seed1}`;
-      if(k!==key){key=k;params0=biomeParams(e.b0,e.seed0);params1=biomeParams(e.b1,e.seed1);}
-      uniforms.uSwitch.value=e.switchTravel;uniforms.uB0.value=e.b0;uniforms.uB1.value=e.b1;
-      uniforms.uHaze0.value.set(HAZE[e.b0]??HAZE[0]);uniforms.uHaze1.value.set(HAZE[e.b1]??HAZE[0]);
-      // Object fog follows the biome under the ship, easing across the change.
-      fogTarget.set(HAZE[(time*GROUND_SPEED+126)>=e.switchTravel?e.b1:e.b0]??HAZE[0]);(scene.fog as THREE.Fog).color.lerp(fogTarget,0.02);
+      const e:BiomeEnv=env??{pose:{x:0,z:0,h:0},f0:{x:0,z:0,h:0,s:126,biome:0,seed:1},f1:{x:0,z:-1e7,h:0,s:1e7,biome:0,seed:1},routeAhead:[]};
+      const k=`${e.f0.biome}:${e.f0.seed}:${e.f1.biome}:${e.f1.seed}`;
+      if(k!==key){key=k;params0=biomeParams(e.f0.biome,e.f0.seed);params1=biomeParams(e.f1.biome,e.f1.seed);}
+      uniforms.uB0.value=e.f0.biome;uniforms.uB1.value=e.f1.biome;
+      uniforms.uPose.value.set(e.pose.x,e.pose.z,e.pose.h,0);uniforms.uF0.value.set(e.f0.x,e.f0.z,e.f0.h,e.f0.s);uniforms.uF1.value.set(e.f1.x,e.f1.z,e.f1.h,e.f1.s);
+      uniforms.uHaze0.value.set(HAZE[e.f0.biome]??HAZE[0]);uniforms.uHaze1.value.set(HAZE[e.f1.biome]??HAZE[0]);
       uniforms.uP0.value.set(params0.u[0],params0.u[1],params0.u[2],params0.u[3]);uniforms.uP1.value.set(params1.u[0],params1.u[1],params1.u[2],params1.u[3]);
       glassMat.color.copy(glassBase).lerp(white,bar*0.12+beat*0.03);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();
-      const scroll=time*GROUND_SPEED,first=Math.floor(scroll/64),fraction=scroll%64;
-      // World-anchored position for a mover at route offset `at`: it stays put on the ground (plus its own motion) and
-      // wraps behind the camera / beyond the horizon, never in view.
-      const anchored=(at:number,span:number)=>scroll-10+wrap(at-scroll+10,span);
-      const zAt=(travel:number)=>160-(travel-scroll),envAt=(travel:number)=>travel>=e.switchTravel?{b:e.b1,P:params1}:{b:e.b0,P:params0};
-      for(let i=0;i<16;i++){
-        const tile=first+i,z=160-i*64+fraction,{b,P}=envAt(tile*64);
-        if(b===0)carrierTile(tile,z,P,band);else if(b===1)cityTile(tile,z,P);else if(b===2)canyonTile(tile,z,P,scroll);
-      }
-      // World-placed movers: wrap far beyond the horizon or behind the camera; drawn only where their biome is.
-      for(const [b,P] of [[e.b0,params0],[e.b1,params1]] as const){
-        if(b===1){const {xs}=cityRoads(P,-110,110);for(const road of xs)for(const dir of [-1,1])for(let c=0;c<24;c++){
-          // Traffic on the north-south streets: one lane each way, headlights forward, taillights back.
-          const lane=road+dir*1.4,travel=anchored(c*43+road*3.7+P.seed%97-dir*time*9,1024);if(envAt(travel).b!==1||envAt(travel).P!==P)continue;const zz=zAt(travel);
-          add(bodies,lane,-5.4,zz,1.3,0.8,2.6);add(lamps,lane,-5.2,zz+dir*1.4,1,0.25,0.15);add(tails,lane,-5.2,zz-dir*1.4,1,0.25,0.15);}
-          if(P.highway)for(let c=0;c<20;c++){const dir=c%2?1:-1,travel=anchored(c*51-dir*time*16,1024);if(envAt(travel).P!==P)continue;const zz=zAt(travel),lane=P.highwayX+dir*1.8;
-            add(bodies,lane,4,zz,1.3,0.8,2.6);add(lamps,lane,4.2,zz+dir*1.4,1,0.25,0.15);add(tails,lane,4.2,zz-dir*1.4,1,0.25,0.15);}}
+      routePts=e.routeAhead;F.pose=e.pose;F.f1=e.f1;
+      // Object fog follows the biome under the ship.
+      F.isNext=true;fogTarget.set(HAZE[beyondNext(e.pose.x,e.pose.z)?e.f1.biome:e.f0.biome]??HAZE[0]);(scene.fog as THREE.Fog).color.lerp(fogTarget,0.02);
+      // Visible region in the ship's frame (lateral, ahead) → world corners, for tile ranges.
+      const corners=[[-650,-220],[650,-220],[-650,1150],[650,1150]].map(([lx,ah])=>{const [fx,fz]=fwdOf(e.pose.h),[rx,rz]=rightOf(e.pose.h);return [e.pose.x+rx*lx+fx*ah,e.pose.z+rz*lx+fz*ah];});
+      for(const [frame,P,isNext] of [[e.f0,params0,false],[e.f1,params1,true]] as const){
+        const b=frame.biome,iso=ISO(b);
+        // Open biomes are laid out on world axes; straight ones along their frame from its origin.
+        if(iso){F.ox=0;F.oz=0;F.h=0;F.s=0;}else{F.ox=frame.x;F.oz=frame.z;F.h=frame.h;F.s=frame.s;}
+        F.isNext=isNext;F.biome=b;F.dh=F.h-e.pose.h;
+        { const [fx,fz]=fwdOf(F.h),dx=e.pose.x-F.ox,dz=e.pose.z-F.oz;F.T=dx*fx+dz*fz+F.s; }
+        // Frame-coordinate bounds of the visible region.
+        let lo=1e9,hi=-1e9,tlo=1e9,thi=-1e9;
+        for(const [wx,wz] of corners){const [fx,fz]=fwdOf(F.h),[rx,rz]=rightOf(F.h),dx=wx-F.ox,dz=wz-F.oz,lat=dx*rx+dz*rz,tr=dx*fx+dz*fz+F.s;lo=Math.min(lo,lat);hi=Math.max(hi,lat);tlo=Math.min(tlo,tr);thi=Math.max(thi,tr);}
+        if(!iso){tlo=Math.max(tlo,F.T-200);thi=Math.min(thi,F.T+1150);}
+        const scroll=F.T-126,zAt=(travel:number)=>F.T+34-travel,anchored=(at:number,span:number)=>scroll-10+wrap(at-scroll+10,span);
+        for(let tile=Math.floor(tlo/64);tile<=Math.ceil(thi/64);tile++){
+          const z=F.T+34-tile*64;
+          if(b===0)carrierTile(tile,z,P,band);else if(b===1)cityTile(tile,z,P,lo,hi);else if(b===2)canyonTile(tile,z,P,scroll);
+        }
+        if(b===1){
+          // Traffic on both street directions: indexed cars on continuous lanes (never wrap in view).
+          const {xs}=cityRoads(P,lo,hi);
+          for(const road of xs)for(const dir of [-1,1]){const lane=road+dir*1.4,v=dir*9,base=(road*37+P.seed)%43;
+            for(let c=Math.floor((tlo-base-v*time)/43);c<=Math.ceil((thi-base-v*time)/43);c++){if(Math.abs(c*7919+road)%3===0)continue;const tr=base+c*43+v*time,zz=zAt(tr);
+              add(bodies,lane,-5.4,zz,1.3,0.8,2.6);add(lamps,lane,-5.2,zz-dir*1.4,1,0.25,0.15);add(tails,lane,-5.2,zz+dir*1.4,1,0.25,0.15);}}
+          const [sy,oy]=[P.u[2],P.u[3]];
+          for(let m=Math.floor((tlo-oy)/sy);m<=Math.ceil((thi-oy)/sy);m++){const tr=oy+sy/2+m*sy;for(const dir of [-1,1]){const v=dir*9,base=(m*29+P.seed)%47;
+            for(let c=Math.floor((lo-base-v*time)/47);c<=Math.ceil((hi-base-v*time)/47);c++){if(Math.abs(c*104729+m)%3===0)continue;const x=base+c*47+v*time,zz=zAt(tr+dir*1.6);
+              add(bodies,x,-5.4,zz,2.6,0.8,1.3);add(lamps,x+dir*1.4,-5.2,zz,0.15,0.25,1);add(tails,x-dir*1.4,-5.2,zz,0.15,0.25,1);}}}
+          if(P.highway)for(const dir of [-1,1]){const v=dir*16;for(let c=Math.floor((tlo-v*time)/51);c<=Math.ceil((thi-v*time)/51);c++){const tr=c*51+v*time+(dir>0?20:0),zz=zAt(tr),lane=P.highwayX+dir*1.8;
+            add(bodies,lane,4,zz,1.3,0.8,2.6);add(lamps,lane,4.2,zz-dir*1.4,1,0.25,0.15);add(tails,lane,4.2,zz+dir*1.4,1,0.25,0.15);}}
+        }
         if(b===2)for(let c=0;c<8;c++){
           // Boats on the river, each with a white wake.
-          const travel=anchored(c*128+P.seed%211-time*5,1024);if(envAt(travel).P!==P)continue;const zz=zAt(travel),xr=riverX(travel,P)+(c%2?3:-3);
+          const travel=anchored(c*128+P.seed%211-time*5,1024),zz=zAt(travel),xr=riverX(travel,P)+(c%2?3:-3);
           add(boats,xr,-6,zz,1.3,1.3,1.3,c%3?0:Math.PI);add(wakes,xr,-5.9,zz+(c%3?3.5:-3.5),3.2,1,c%3?7:-7);}
-        if(b===3)for(let c=0;c<10;c++){
-          // The fleet: carriers, battleships and destroyers under way, with wakes.
-          const r=mulberry(P.seed^(c*977)),kind=c%5===0?0:c%2?1:2,len=[64,46,26][kind],beam=[13,9,5][kind];
-          const travel=anchored(c*210+r()*120-time*(3+r()*3),2048);if(envAt(travel).P!==P)continue;const zz=zAt(travel),xx=(r()-0.5)*180;
-          const heading=(r()-0.5)*0.25,pool=[carriers,battleships,destroyers][kind];
-          add(pool,xx,-6,zz,1,1,1,heading);shadow(xx,zz,beam,len,4);
-          add(wakes,xx-Math.sin(heading)*len*0.45,-5.9,zz+Math.cos(heading)*len*0.45,beam*1.1,1,len*0.45,heading);
-          if(kind===0)for(let j=0;j<5;j++)add(jets,xx-2+(j%2)*3,-1.5,zz-20+j*7,1.1,1.1,1.1,heading+0.6);}
-      }
-      // Ground units ride barges at sea.
-      for(const g of ground)if(envAt(scroll+160-g.z).b===3){add(barges,g.x,-6,g.z,1,1,1);add(wakes,g.x,-5.9,g.z+6.5,5,1,3);}
-      for(let w=0;w<40;w++){
-        // Cloud banks below the ship over the cloud sea, at three heights for parallax; a few drift over the deck.
-        const travel=anchored(w*67+(w%3)*23,1400),{b}=envAt(travel);if(b!==0)continue;
-        const zz=zAt(travel)+time*(w%3)*1.5,layer=w%3,xx=(w%2?1:-1)*(w%7===0?10+(w*13)%25:50+(w*29)%90),size=26+(w*17)%22;
-        add(clouds,xx,-3.5+layer*3.2,zz,size*1.6,1,size,(w*0.37)%3.14);
+        if(b===3)for(const fam of [0,1]){
+          // The fleet sails world lanes (two headings per seed); ships are indexed along lanes so none wraps in view.
+          const ang=(P.seed%628)/100+fam*2.1,dx=-Math.sin(ang),dz=-Math.cos(ang),nx=-dz,nz=dx,spacing=170,gap=360,speed=3.5+fam;
+          let j0=1e9,j1=-1e9,u0=1e9,u1=-1e9;for(const [wx,wz] of corners){const o=wx*nx+wz*nz,u=wx*dx+wz*dz;j0=Math.min(j0,o);j1=Math.max(j1,o);u0=Math.min(u0,u);u1=Math.max(u1,u);}
+          for(let j=Math.floor(j0/spacing);j<=Math.ceil(j1/spacing);j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
+            const r=mulberry(P.seed^(j*7919)^(kk*104729)^(fam*31));if(r()<0.35)continue;
+            const kind=r()<0.18?0:r()<0.5?1:2,len=[70,48,28][kind],beam=[12,8.5,4.6][kind];
+            const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o;
+            if(nearRoute(wx,wz,kind===0?34:22))continue;
+            const yaw=Math.atan2(-dx,-dz),pool=[carriers,battleships,destroyers][kind];
+            addW(pool,wx,-6,wz,1,1,1,yaw);addW(shade,wx+4,-5.96,wz+5,beam+2,0.02,len+3);
+            addW(wakes,wx-dx*len*0.45,-5.9,wz-dz*len*0.45,beam*1.1,1,len*0.45,yaw);
+            if(kind===0)for(let q=0;q<5;q++){const a=-20+q*7;addW(jets,wx+dx*a+nx*((q%2)*3-2),-1.5,wz+dz*a+nz*((q%2)*3-2),1.1,1.1,1.1,yaw+0.6);}
+          }
+        }
+        if(b===0)for(let w=0;w<40;w++){
+          // Cloud banks below the ship over the cloud sea, at three heights for parallax; a few drift over the deck.
+          const travel=anchored(w*67+(w%3)*23,1400),zz=zAt(travel)+time*(w%3)*1.5,layer=w%3,xx=(w%2?1:-1)*(w%7===0?10+(w*13)%25:50+(w*29)%90),size=26+(w*17)%22;
+          add(clouds,xx,-3.5+layer*3.2,zz,size*1.6,1,size,(w*0.37)%3.14);
+        }
+        // Ground units ride barges at sea (they are world-anchored; drawn at their local position).
+        if(b===3)for(const g of ground){const [fx,fz]=fwdOf(e.pose.h),[rx,rz]=rightOf(e.pose.h),ah=34-g.z,wx=e.pose.x+rx*g.x+fx*ah,wz=e.pose.z+rz*g.x+fz*ah;
+          addW(barges,wx,-6,wz,1,1,1,0);addW(wakes,wx,-5.9,wz+6.5,5,1,3,0);}
       }
       // Window strips brighten as the wave passes them.
       for(let i=0;i<(counts.get(glass)??0);i++){glass.getMatrixAt(i,probe);glass.setColorAt(i,lightColor.setScalar(0.6+0.25*band(probe.elements[14]))); /* stays ≤ 1: the wave reads without blooming */}

@@ -1,9 +1,7 @@
 /** Pure, seeded terrain parameters shared by the ground shader and the instanced scenery (unit-tested). */
+import { mulberry } from '../sim/rng';
+export { mulberry };
 export interface BiomeParams { seed: number; u: [number, number, number, number]; a: number; highway: boolean; highwayX: number }
-export function mulberry(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-}
 /**
  * Shader params `u` by biome — city: street spacing/offset across and along; canyon: two river frequencies and phases.
  * Other biomes ignore them.

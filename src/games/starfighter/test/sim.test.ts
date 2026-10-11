@@ -222,6 +222,23 @@ describe('spectacle encounters', () => {
     expect(fires.every(f => tl.beats.some(b => Math.abs(b - f) < 0.04))).toBe(true); expect(longest).toBeGreaterThan(1);
     expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(r.snap().deaths).toBe(0);
   }, 15_000);
+  it('the route turns gently only over open biomes, and ground units stay put in the world', () => {
+    const r = rig({}, 'z2', longMusic()); let turnedIso = false, maxRate = 0;
+    const tracked = new Map<number, { x: number; z: number }>();
+    for (let i = 0; i < 30 * 900; i++) {
+      r.s.step(1); const s = r.snap();
+      if (s.world.turn) { expect([1, 3]).toContain(s.frames.cur.biome); turnedIso = true; }
+      maxRate = Math.max(maxRate, Math.abs(s.world.turn));
+      if (i % 15) continue;
+      for (const e of s.enemies) if (e.ground && e.hp > 0) {
+        // World position recovered from the flight frame must not drift.
+        const ahead = 84 - e.y, fx = -Math.sin(s.world.h), fz = -Math.cos(s.world.h), rx = Math.cos(s.world.h), rz = -Math.sin(s.world.h);
+        const w = { x: s.world.x + rx * e.x + fx * ahead, z: s.world.z + rz * e.x + fz * ahead }, prev = tracked.get(e.id);
+        if (prev) expect(Math.hypot(prev.x - w.x, prev.z - w.z)).toBeLessThan(0.01); else tracked.set(e.id, w);
+      }
+    }
+    expect(turnedIso).toBe(true); expect(maxRate).toBeLessThan(0.1); expect(Number(r.s.sim.summary().absorbed)).toBe(0);
+  }, 30_000);
   it('new arsenal tiers unfold on bar lines', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.arsenalPace', 10); const ups: number[] = [];
     r.s.ctx.emit = ((ev: { type: string }) => { if (ev.type === 'gunUpgrade') ups.push(r.s.ctx.media!.positionS()); }) as typeof r.s.ctx.emit;

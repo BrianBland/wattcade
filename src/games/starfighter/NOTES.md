@@ -19,6 +19,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 
 ## Graphics / checks
 - Three.js perspective camera, modeled craft/flagships, streamed carrier/city/canyon terrain and instanced buildings/rocks, fixed-size laser/reticle/debris/shadow/smoke pools, route banking/ghosts. R paddles cycle priority targets; L paddles remain Cruiser gears. First flagship ~150s, then six-minute spacing; lockable batteries protect the reactor.
+- sim/route.ts (tested): `WorldRoute` arcs, `planTurns` per segment (city/ocean only, phrase-snapped). Snapshot `world`, `frames`, `routeAhead`; space.ts maps virtual frame coords → world → local in `add()` and gates by the next frame's line. sim/rng.ts `mulberry`.
 - render/terrain.ts (pure, tested): seeded `biomeParams`, `riverX`, `cityRoads` shared with the ground shader. space.ts gets `BiomeEnv` (b0/b1/seeds/switchTravel snapped to a tile edge). `GROUND_SPEED` (encounters.ts) couples sim ground units and render/space.ts scroll; vehicles/boats/wisps are world-placed and biome-gated (`biomeAt`).
 - models.ts: player parts named `tier-N` (2..8), `trim-3`, `stripe-5`; livery materials in `userData` (trim/engineGlow/white/plume) recoloured by craft level in renderer. `heavyModel` for the L7 escort. Dev `?level=N&pace=N`.
 - segments.ts: `planSegments`/`createSegmenter` (songs, mix splits at seams, committed current segment), `gradeSegment`. Breather is the last 14 s, scorecard the last 6. Amp = intensity relative to the ~60 s mean. Controls: both shifters = gears; paddles/arrows retarget; B release; Z snap.
@@ -27,7 +28,6 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - `node scripts/squadron-render-smoke.mjs` with Vite on :5199 and system Chromium checks landscape/portrait/touch and bounded allocations.
 - `/dev/squadron.html?sec=375&craft=escort` silent ground-truth timeline; `menu=1`, `unlocked=1`, `script=idle`, `inset=150`, `manual=1`.
 - Card: `CHROMIUM_PATH=/usr/bin/chromium node --import tsx scripts/capture-cards.ts --only starfighter --base http://127.0.0.1:5199`.
-- Validation: Repository tests and focused checks, typecheck/build, portrait/landscape controls/resources pass; updated card encodes as a 6s H.264 clip.
 - Real trainer feel, iPad GPU cost, nuanced craft balance and reduced-flash preferences still need real rides. Shared sound graph/mute controls; quiet lock ticks and volley whooshes. No required rapid flashing or punitive audio FX.
 
 ## Spectacle pass

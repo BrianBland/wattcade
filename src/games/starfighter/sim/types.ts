@@ -15,6 +15,8 @@ export interface EnemyView {
   elite?: boolean; fled?: boolean;
   /** Escaped past the ship: still flying (peeling away / scrolling off-screen), no longer in combat; `resolved` = counted. */
   passing?: boolean; resolved?: boolean;
+  /** Ground units are anchored to the world (they swing beneath the ship in turns). */
+  wx?: number; wz?: number;
   /** Lancers fire telegraphed beat beams instead of bullets; `beamReadyAt` is the age they may warn again. */
   lancer?: boolean; beamReadyAt?: number;
   /** 0..1 muzzle charge shown before the enemy fires. */
@@ -28,6 +30,8 @@ export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; 
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
 export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
+/** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
+export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run';
   /** Downbeat pulse (1 at a bar line, decaying), alongside `beat`. */
@@ -53,6 +57,10 @@ export interface SfSnapshot {
   /** Ride clear rate over resolved formations, perfect formations, and the most recently resolved formation. */
   clear: { rate: number; perfects: number; streak: number; last: { pct: number; perfect: boolean; at: number } | null };
   /** Current place in the ride (song or mix segment) and the next one's biome, `switchIn` sim seconds ahead. */
+  /** World pose of the ship's route point, turn rate (rad/s, + = left), biome frames, and the route ahead (world x,z). */
+  world: { x: number; z: number; h: number; turn: number; s: number };
+  frames: { cur: WorldFrame; next: WorldFrame };
+  routeAhead: number[];
   segment: { index: number; title: string; biome: number; seed: number; nextBiome: number; nextSeed: number; switchIn: number; breather: boolean };
   /** End-of-segment scorecard, shown during the breather. */
   scorecard: { title: string; grade: 'S' | 'A' | 'B' | 'C' | 'D'; score: number; clearPct: number; onTargetPct: number; perfects: number; elites: string; boss: string; at: number } | null;

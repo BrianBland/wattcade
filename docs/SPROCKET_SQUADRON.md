@@ -59,6 +59,10 @@ The ride is a sequence of places. Normally each song is one segment. A track lon
 
 Following Beat Hazard, weapons swell with the music: laser damage, pulse damage, fire rate, and laser width scale with smoothed intensity, relative to the track's level over roughly the last minute (so any genre works, and average power is unchanged). Enemy density already follows intensity. A small Amp meter sits under the arsenal chip.
 
+## Route and turns
+
+The ship follows a world route (sim/route.ts): straight legs joined by constant-curvature arcs of 30–70° (at most ~4.4°/s). Turns happen only over open biomes (city, ocean), start on phrases, and never fall within ~25 s of a segment change. Carrier and canyon stretches stay straight, and the next biome's frame starts at the switch pose. Combat (air enemies, bullets, beams, choreography) lives in the flight frame, so readability never changes in a turn. The world (ground shader, scenery, ground units) is placed through the route pose: ground units are world-anchored and swing beneath the ship. The city and ocean are laid out on world axes in every direction; blocks within ~42 units of the route ahead stay low-rise, and the fleet keeps clear of the path. Movers sit on continuous indexed lanes, so none wraps in view. The camera rolls gently into turns.
+
 ## Targeting and elites
 
 About once a minute, outside calm sections and flagship fights, an elite wing of five gold fighters with breathing gold rings crosses the far field from one flank and leaves. A HUD hint (◀ / ▶ Elite wing) points the paddle direction. Elites are only targeted when the rider selects them. Each elite kill scores more than an ordinary one; a full clear adds a bonus, 25 Nova charge, and a banner. Ignored elites never count against the clear rate. Chasing one protects the PERFECT streak for a few seconds. Measured: an attentive bot clears ~40% of elites and scores ~19% more over 30 minutes than a rider who never touches the paddles.

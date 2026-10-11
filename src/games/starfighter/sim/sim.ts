@@ -6,6 +6,8 @@ import { MAX_ENEMIES, MAX_BOLTS, GROUND_SPEED, FIRE_EVERY, eliteEntry, groupOf, 
 import { SECTORS } from './content';
 import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
 import { createSegmenter, gradeSegment, type Segment } from './segments';
+import { WorldRoute, planTurns, toLocal, toWorld } from './route';
+import { mulberry } from './rng';
 import type { BeamView, CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
 export const H = 100, SHIP_Y = 84;
@@ -40,6 +42,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const segmenter = createSegmenter(timeline, tun.bossEvery, tun.firstBoss);
   let seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
   let segBoss: 'defeated' | 'escaped' | null = null, bossDone = false, airResolved = 0, scorecard: SfSnapshot['scorecard'] = null; const grades: string[] = [];
+  // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
+  const world = new WorldRoute(), routeS = () => 126 + GROUND_SPEED * t;
+  let curFrame: SfSnapshot['frames']['cur'] = { x: 0, z: 0, h: 0, s: 126, biome: 0, seed: 1 };
   const route = newRoute();
   const beams: BeamView[] = [];
   let prevX = 0, grazed = 0;
@@ -142,7 +147,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const kind=i===1?'tank':'turret', toX=(i-1)*18+(ctx.rng()-0.5)*6;
       const hp=kind==='tank'?64:48;
       // No entry glide: ground units ride the terrain from the horizon at exactly the scroll speed.
-      enemies.push({id:++id,kind,ground:true,formation:squad,x:toX,y:-300-i*9,
+      const w=toWorld(world.pose(routeS()),toX,SHIP_Y-(-300-i*9));
+      enemies.push({id:++id,kind,ground:true,formation:squad,x:toX,y:-300-i*9,wx:w.x,wz:w.z,
         hp,maxHp:hp,age:0,fireAt:(240+i*9)/GROUND_SPEED+0.8+i*0.3,bossStyle:0});
     }
   };
@@ -300,6 +306,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         segBase = { t, onTargetS, clearKilled, clearTotal, perfects, airResolved, eliteCleared, eliteSeen };
         segBoss = null; bossDone = false; bossAt = null; scorecard = null;
         if (seg.index > 0) announce(seg.title ? `Now entering · ${seg.title}` : 'New airspace');
+        // Plan this segment's path: turns only over open city/ocean, starting on phrases.
+        const sNow = routeS(), sEnd = sNow + Math.max(0, seg.t1 - p) * GROUND_SPEED, phrases = timeline?.phrases ?? [];
+        const snap = (s: number) => { if (!phrases.length) return s; const pp = p + (s - sNow) / GROUND_SPEED, ph = phrases[after(phrases, pp - 1e-6)]; return ph === undefined ? s : sNow + (ph - p) * GROUND_SPEED; };
+        planTurns(world, sNow, sEnd, seg.biome === 1 || seg.biome === 3, mulberry(seg.seed ^ 0x7e11), snap);
+        const o = world.pose(sNow); curFrame = { ...o, s: sNow, biome: seg.biome, seed: seg.seed };
       }
       // No new enemies for the last 14 s, so the sky has emptied by the time the scorecard shows (last 6 s).
       const breather = seg.t1 - seg.t0 > 60 && p >= seg.t1 - 14;
@@ -422,6 +433,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         if (e.hp <= 0) continue;
         e.age += dt;
         const oldX=e.x, oldY=e.y;
+        if (e.ground && e.wx !== undefined) {
+          // World-anchored: follow the ground as it scrolls and swings beneath the ship.
+          const l = toLocal(world.pose(routeS()), e.wx, e.wz!); e.x = l.lx; e.y = SHIP_Y - l.ahead;
+          if (e.passing) { if (e.y > 140 || Math.abs(e.x) > 110) { e.hp = -1; e.fled = true; } continue; }
+        }
         if (e.passing) {
           // Escaped enemies peel away around the ship and leave the screen instead of vanishing beside it.
           e.y += dt * (e.ground ? GROUND_SPEED : 24 + Math.min(20, (e.y - SHIP_Y) * 0.8));
@@ -434,7 +450,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         else if(!advanceEntry(e)) {
           if (e.elite) { e.hp = -1; e.fled = true; continue; }
           if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*24;e.y=16+Math.sin((e.age-7)*0.4)*3;}
-          else {e.y+=dt*(e.ground?GROUND_SPEED:e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
+          else if(!e.ground){e.y+=dt*(e.kind==='armor'?7:10);if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
         }
         e.heading=Math.atan2(e.x-oldX,e.y-oldY);
         if (wall?.id === e.id) {
@@ -545,6 +561,10 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         boss: boss ? { stage: enemies.some(e=>e.parentId===boss!.id && e.hp>0) ? 'Destroy the batteries' : 'Reactor exposed', name: ['Iron Dreadnought', 'Hive Carrier', 'Twin Lancer', 'Spiral Core', 'The Maw'][boss.bossStyle], hp: boss.hp, maxHp: boss.maxHp, left: Math.max(0, tun.bossTime() - (p - bossStart)) } : null,
         bossIn: !boss && bossAt !== null ? Math.max(0, bossAt - p) : null,
         clear: { rate: clearTotal ? clearKilled / clearTotal : 0, perfects, streak: perfectStreak, last: lastClear },
+        ...(() => { const s = routeS(), pose = world.pose(s), cur = seg ?? segmenter.at(p).segment, next = segmenter.peek(), sw = s + Math.max(0, cur.t1 - p) * GROUND_SPEED, np = world.pose(sw);
+          const ahead: number[] = []; for (let q = s - 150; q <= s + 900; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }
+          return { world: { ...pose, turn: world.curvature(s) * GROUND_SPEED, s }, routeAhead: ahead,
+            frames: { cur: curFrame, next: { ...np, s: sw, biome: next?.biome ?? cur.biome, seed: next?.seed ?? cur.seed } } }; })(),
         segment: (() => { const cur = seg ?? segmenter.at(p).segment, next = segmenter.peek();
           return { index: cur.index, title: cur.title, biome: cur.biome, seed: cur.seed, nextBiome: next?.biome ?? cur.biome, nextSeed: next?.seed ?? cur.seed, switchIn: Math.max(0, cur.t1 - p), breather: cur.t1 - cur.t0 > 60 && p >= cur.t1 - 14 }; })(),
         scorecard,

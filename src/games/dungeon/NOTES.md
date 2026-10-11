@@ -108,3 +108,12 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - 12 seeds x 15 min explore: mean speed 94.0% -> 99.2%, corridor 94.7% -> 98.8%, < 50% speed 2.3% -> 0%,
   wall contact 4.5% -> 0.2%, overshoot 0.4% -> 0.2%, fallbacks 29 -> 7.
 - styleBonus 0.05 -> 0.03: with the hero no longer losing time, Ranger's +fire bonus at 96 rpm cleared 12.6% more rooms.
+
+## Sprites v2 (#91)
+- `render/art.ts`: flat ASCII art, 16 px actors and 32 px Bone King / Frost Wyrm, with per-frame row overrides (walk x2,
+  attack, hurt). The other four bosses use their minion art scaled x2 and re-outlined at 32 px.
+- `sprite2()` adds a 1 px outline and light/shadow ramps when rasterising (cached per frame/palette); `anim()` picks the
+  frame (walk at 7-9 fps; attack on wind-up/shot; hurt flinch). Held weapon art per weapon style, rotated to the aim.
+- Background: autotiled wall tops (edge outline + lit rim per open side, inner corners), shaded bricks, wall torches.
+- Light map at 1/4 resolution: ambient dark with holes at the hero, torches and braziers (flickering). Render cost at 2x
+  DPR on the box: median 0.8 -> 1.7-2.0 ms per frame.

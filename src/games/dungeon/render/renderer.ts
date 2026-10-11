@@ -5,7 +5,7 @@ import { runLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
-import { glow, heroPalette, sprite } from './sprites';
+import { BOSS_ART, anim, glow, heroPalette, sprite, sprite2, weaponSprite, type AnimState } from './sprites';
 
 const TILES_ACROSS = 16; // camera zoom
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
@@ -21,9 +21,7 @@ const THEMES = [
 const AURA: Array<{ c: string; a: number; r: number } | null> = [null, null,
   { c: '#5aa0ff', a: 0.35, r: 1.3 }, { c: '#40e0c0', a: 0.45, r: 1.5 }, { c: '#ff9a2a', a: 0.6, r: 1.8 }, { c: '#ff2a2a', a: 0.85, r: 2.3 }];
 const ENEMY_TINT: Record<string, string> = { chaser: '#e66', bat: '#a7f', spitter: '#5d5', archer: '#eee', brute: '#c84', bomber: '#f72', summoner: '#a5f', boss: '#c0a' };
-const BOSS_SPRITE = ['spitter', 'archer', 'brute', 'summoner', 'archer', 'spitter'];
 /** New bosses reuse a base sprite with their own palette until #91 draws them. */
-const BOSS_PAL: Record<number, Record<string, string>> = { 4: { b: '#ffd84a', B: '#b8862a', e: '#7dffea' }, 5: { l: '#e6fbff', s: '#8fd8ff', S: '#3b7fbf', e: '#0a2a4a' } };
 const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: '#ffd84a', shielded: '#66ccff', swift: '#ff5af0', volatile: '#ff7a2a' };
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
 const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
@@ -35,7 +33,11 @@ const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.0
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
+/** Wall-face torches: deterministic, spaced along faces. */
+const torchAt = (x: number, y: number) => (x + y * 3) % 7 === 0 && hash(x, y) > 0.35;
+let torches: Array<{ x: number; y: number }> = [];
 function buildBackground(w: World): HTMLCanvasElement {
+  torches = [];
   const c = document.createElement('canvas'); c.width = w.w * BT; c.height = w.h * BT;
   const g = c.getContext('2d')!;
   const th = THEMES[w.theme % THEMES.length];
@@ -43,13 +45,31 @@ function buildBackground(w: World): HTMLCanvasElement {
   for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
     const k = at(x, y), px = x * BT, py = y * BT, r = hash(x, y);
     if (k === TILE.WALL) {
-      const below = at(x, y + 1), nearFloor = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => at(x + dx, y + dy) !== TILE.WALL);
-      if (below !== TILE.WALL) { // wall face (pseudo-3D brick)
+      const below = at(x, y + 1), isW = (dx: number, dy: number) => at(x + dx, y + dy) === TILE.WALL;
+      const nearFloor = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => !isW(dx, dy));
+      if (below !== TILE.WALL) { // wall face: shaded bricks, lit rim on top, dark foot
         g.fillStyle = th.wallFace[0]; g.fillRect(px, py, BT, BT);
-        g.fillStyle = th.wallFace[1];
-        for (let row = 0; row < 4; row++) { const off = row % 2 ? 4 : 0; for (let bx = -off; bx < BT; bx += 8) g.fillRect(px + bx + 7, py + row * 4, 1, 4); g.fillRect(px, py + row * 4 + 3, BT, 1); }
-        g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(px, py + BT - 2, BT, 2);
-      } else if (nearFloor) { g.fillStyle = th.wallTop; g.fillRect(px, py, BT, BT); g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(px, py, BT, 1); }
+        for (let row = 0; row < 4; row++) {
+          const off = row % 2 ? 4 : 0;
+          for (let bx = -off; bx < BT; bx += 8) { const v = hash(x * 4 + bx, y * 4 + row); g.fillStyle = v > 0.66 ? 'rgba(255,255,255,0.07)' : v < 0.25 ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0)'; g.fillRect(px + Math.max(0, bx), py + row * 4, Math.min(7, BT - Math.max(0, bx)), 3); }
+          g.fillStyle = th.wallFace[1];
+          for (let bx = -off; bx < BT; bx += 8) g.fillRect(px + bx + 7, py + row * 4, 1, 4);
+          g.fillRect(px, py + row * 4 + 3, BT, 1);
+        }
+        g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(px, py, BT, 1);
+        g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(px, py + BT - 2, BT, 2);
+        if (!isW(-1, 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, 1, BT); }
+        if (!isW(1, 0)) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px + BT - 1, py, 1, BT); }
+        if (torchAt(x, y)) torches.push({ x, y });
+      } else if (nearFloor) { // wall top, autotiled: rim + outline on every edge that borders open floor
+        g.fillStyle = th.wallTop; g.fillRect(px, py, BT, BT);
+        g.fillStyle = 'rgba(255,255,255,0.04)'; if (hash(x, y) > 0.5) g.fillRect(px + 3, py + 3, 4, 2);
+        const rim = 'rgba(255,255,255,0.16)', edge = '#07060b';
+        if (!isW(0, -1)) { g.fillStyle = edge; g.fillRect(px, py, BT, 1); g.fillStyle = rim; g.fillRect(px, py + 1, BT, 1); }
+        if (!isW(-1, 0)) { g.fillStyle = edge; g.fillRect(px, py, 1, BT); g.fillStyle = rim; g.fillRect(px + 1, py, 1, BT); }
+        if (!isW(1, 0)) { g.fillStyle = edge; g.fillRect(px + BT - 1, py, 1, BT); g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(px + BT - 2, py, 1, BT); }
+        for (const [dx, dy, cx2, cy2] of [[-1, -1, 0, 0], [1, -1, BT - 2, 0], [-1, 1, 0, BT - 2], [1, 1, BT - 2, BT - 2]]) if (isW(dx, 0) && isW(0, dy) && !isW(dx, dy)) { g.fillStyle = edge; g.fillRect(px + cx2, py + cy2, 2, 2); }
+      }
       continue;
     }
     g.fillStyle = th.floor[Math.floor(r * 3)]; g.fillRect(px, py, BT, BT);
@@ -74,6 +94,7 @@ function buildBackground(w: World): HTMLCanvasElement {
     }
     if (at(x, y - 1) === TILE.WALL && k !== TILE.SWAMP) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, BT, 4); } // wall shadow
   }
+  for (const q of torches) { const px = q.x * BT, py = q.y * BT; g.fillStyle = '#2a1e14'; g.fillRect(px + 7, py + 7, 2, 6); g.fillStyle = '#6b4a2a'; g.fillRect(px + 6, py + 6, 4, 2); }
   return c;
 }
 
@@ -84,6 +105,7 @@ export function createRenderer(): GameRenderer {
   let bg: HTMLCanvasElement | null = null, bgFor: unknown = null;
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
+  let lightC: HTMLCanvasElement | null = null;
   let lastCue = -1;
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
@@ -112,6 +134,12 @@ export function createRenderer(): GameRenderer {
     gg.drawImage(s, -w / 2, -h, w, h);
     gg.restore();
   }
+  function drawCanvas(c: HTMLCanvasElement, x: number, y: number, ps: number, face = 1, bob = 0) {
+    const gg = g!, w = c.width * ps, h = c.height * ps;
+    gg.save(); gg.translate(Math.round(x), Math.round(y + bob)); if (face < 0) gg.scale(-1, 1);
+    gg.drawImage(c, -w / 2, -h, w, h); gg.restore();
+  }
+  const moved = new Map<number, { x: number; y: number }>();
   function shadow(x: number, y: number, rx: number) {
     const gg = g!; gg.fillStyle = 'rgba(0,0,0,0.35)';
     gg.beginPath(); gg.ellipse(x, y, rx, rx * 0.4, 0, 0, Math.PI * 2); gg.fill();
@@ -269,9 +297,15 @@ export function createRenderer(): GameRenderer {
 
   function drawEnemy(e: EnemyView, TS: number, t: number) {
     const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
-    const isBoss = e.kind === 'boss', name = isBoss ? BOSS_SPRITE[e.variant % BOSS_SPRITE.length] : e.kind, pal = isBoss ? BOSS_PAL[e.variant] : undefined;
-    const def = sprite(name);
-    const ps = (e.r * 2.4 * TS) / Math.max(def.width, def.height) * (isBoss ? 1.2 : 1);
+    const isBoss = e.kind === 'boss', ba = isBoss ? BOSS_ART[e.variant % BOSS_ART.length] : undefined;
+    const name = ba ? ba.art : e.kind, scale = ba?.scale ?? 1, pal = ba?.pal;
+    // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
+    const prev = moved.get(e.id), mv = !!prev && Math.hypot(e.x - prev.x, e.y - prev.y) > 0.004;
+    moved.set(e.id, { x: e.x, y: e.y });
+    const st: AnimState = e.hurt < 0.12 ? 'hurt' : e.tell > 0.05 ? 'attack' : mv ? 'walk' : 'idle';
+    const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
+    const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
+    const ps = (e.r * 2.4 * TS) / Math.max(def.width, def.height) * (isBoss ? 1.25 : 1.15);
     const flash = e.hurt < 0.06;
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
@@ -281,8 +315,8 @@ export function createRenderer(): GameRenderer {
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
     const sq = e.kind === 'spitter' ? 1 + Math.sin(t * 6 + e.id) * 0.08 : 1;
     gg.save(); gg.translate(x, y); gg.scale(1 / sq, sq); gg.translate(-x, -y);
-    drawSprite(name, x, y, ps, e.face, false, pal, bob);
-    if (flash) { gg.globalAlpha = 0.55; drawSprite(name, x, y, ps, e.face, true, pal, bob); gg.globalAlpha = 1; }
+    drawCanvas(def, x, y, ps, e.face, bob);
+    if (flash) { gg.globalAlpha = 0.4; drawCanvas(sprite2(name, fr.state, fr.idx, pal, true, scale), x, y, ps, e.face, bob); gg.globalAlpha = 1; }
     gg.restore();
     if (e.shieldFrac > 0) { gg.strokeStyle = `rgba(102,204,255,${0.3 + 0.6 * e.shieldFrac})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.5, 0, Math.PI * 2); gg.stroke(); }
     if (e.elite) {
@@ -293,7 +327,7 @@ export function createRenderer(): GameRenderer {
     }
     if (e.slowed) { gg.fillStyle = 'rgba(127,231,255,0.25)'; gg.fillRect(x - e.r * TS, y - e.r * TS * 2.2, e.r * TS * 2, e.r * TS * 2.2); }
     if (e.dot && Math.floor(t * 8) % 2) { gg.globalCompositeOperation = 'lighter'; glowAt('#7dff5a', x, y - e.r * TS * 1.8, TS * 0.2, 0.8); gg.globalCompositeOperation = 'source-over'; }
-    if (isBoss) { // crown
+    if (isBoss && scale === 2) { // crown (bosses drawn from minion art)
       const cy = y - def.height * ps + bob - 4, cw = TS * 0.6;
       gg.fillStyle = '#ffd84a'; gg.beginPath(); gg.moveTo(x - cw / 2, cy); gg.lineTo(x - cw / 2, cy - cw * 0.45); gg.lineTo(x - cw / 4, cy - cw * 0.2); gg.lineTo(x, cy - cw * 0.55); gg.lineTo(x + cw / 4, cy - cw * 0.2); gg.lineTo(x + cw / 2, cy - cw * 0.45); gg.lineTo(x + cw / 2, cy); gg.fill();
     } else if (e.hp < e.maxHp) {
@@ -387,6 +421,12 @@ export function createRenderer(): GameRenderer {
         glowAt('#ff8c2a', (q.x + 0.5) * TS, (q.y + 0.25) * TS, TS * 1.1 * fl, 0.35);
         glowAt('#ffe08a', (q.x + 0.5) * TS, (q.y + 0.15) * TS - TS * 0.1 * fl, TS * 0.3 * fl, 0.9);
       }
+      for (const q of torches) {
+        if (q.x < x0 - 1 || q.x > x1 || q.y < y0 - 1 || q.y > y1) continue;
+        const fl = 1 + Math.sin(t * 11 + q.x * 5) * 0.12 + Math.sin(t * 23 + q.y) * 0.06;
+        glowAt('#ff8c2a', (q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * 0.9 * fl, 0.3);
+        glowAt('#ffe08a', (q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * 0.22 * fl, 1);
+      }
       gg.globalCompositeOperation = 'source-over';
       // shrines
       for (const sh of s.shrines) {
@@ -439,18 +479,25 @@ export function createRenderer(): GameRenderer {
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
         shadow(px, py, TS * 0.32);
-        if (p.rolling) { gg.globalAlpha = 0.3; drawSprite('hero', px - Math.cos(s.aim.angle) * TS * 0.3, py, TS / 13, face, false, heroPalette(color)); gg.globalAlpha = 1; }
+        const shot = s.bullets.some((b) => b.friendly && b.age < 0.12 && Math.hypot(b.x - p.x, b.y - p.y) < 1.6);
+        const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
+        const hf = anim('hero', hst, t, 9), hs = TS / 15, hpal = heroPalette(color);
+        if (p.rolling) { gg.globalAlpha = 0.3; drawCanvas(sprite2('hero', 'walk', 0, hpal), px - Math.cos(s.aim.angle) * TS * 0.3, py, hs, face); gg.globalAlpha = 1; }
         gg.globalAlpha = p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1;
-        drawSprite('hero', px, py, TS / 13, face, false, heroPalette(color), bob);
-        if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawSprite('hero', px, py, TS / 13, face, true, undefined, bob); }
+        drawCanvas(sprite2('hero', hf.state, hf.idx, hpal), px, py, hs, face, bob);
+        if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawCanvas(sprite2('hero', hf.state, hf.idx, undefined, true), px, py, hs, face, bob); }
         gg.globalAlpha = 1;
         if (p.warded) { gg.strokeStyle = `rgba(127,231,255,${0.6 + Math.sin(t * 12) * 0.25})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(p.x * TS, p.y * TS, TS * 0.75, 0, Math.PI * 2); gg.stroke(); }
         // weapon held toward the aim
         const hx = p.x * TS, hy = p.y * TS, ca = Math.cos(s.aim.angle), sa = Math.sin(s.aim.angle), wc = RARITY_COLORS[s.weapon.rarity];
-        gg.strokeStyle = '#6b4a2a'; gg.lineWidth = Math.max(3, TS * 0.07); gg.lineCap = 'round';
-        gg.beginPath(); gg.moveTo(hx + ca * TS * 0.1, hy + sa * TS * 0.1 + bob); gg.lineTo(hx + ca * TS * 0.6, hy + sa * TS * 0.6 + bob); gg.stroke();
-        gg.globalCompositeOperation = 'lighter'; glowAt(ELEMENT_COLORS[s.weapon.element], hx + ca * TS * 0.62, hy + sa * TS * 0.62 + bob, TS * 0.25, 0.9); gg.globalCompositeOperation = 'source-over';
-        gg.fillStyle = wc; gg.beginPath(); gg.arc(hx + ca * TS * 0.62, hy + sa * TS * 0.62 + bob, TS * 0.06, 0, 7); gg.fill();
+        { // the stance's weapon (by style) in the hero's hand, rotated toward the aim
+          const ws = weaponSprite(s.weapon.base), sz = ws.width * hs * 0.9, kick = shot ? -TS * 0.06 : 0;
+          gg.save(); gg.translate(hx + ca * (TS * 0.28 + kick), hy + sa * (TS * 0.28 + kick) + bob + TS * 0.05);
+          gg.rotate(s.aim.angle + Math.PI / 4); if (ca < 0) gg.scale(1, -1);
+          gg.drawImage(ws, -sz * 0.35, -sz * 0.65, sz, sz); gg.restore();
+          gg.globalCompositeOperation = 'lighter'; glowAt(ELEMENT_COLORS[s.weapon.element], hx + ca * TS * 0.55, hy + sa * TS * 0.55 + bob, TS * (shot ? 0.32 : 0.2), shot ? 0.9 : 0.5); gg.globalCompositeOperation = 'source-over';
+          gg.fillStyle = wc; gg.fillRect(hx + ca * TS * 0.55 - 1, hy + sa * TS * 0.55 + bob - 1, 3, 3);
+        }
       } });
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
@@ -478,8 +525,21 @@ export function createRenderer(): GameRenderer {
       // torch-light vignette
       const dark = s.curse?.kind === 'darkness';
       const vg = gg.createRadialGradient(W / 2, VH / 2, TS * (dark ? 1.4 : 3.5), W / 2, VH / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
-      vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.8})`);
+      vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.55})`);
       gg.fillStyle = vg; gg.fillRect(0, 0, W, H);
+      if (!dark) { // light map at 1/4 res: ambient dark, holes punched by the hero, torches and braziers (flickering)
+        const LW = Math.ceil(W / 4), LH = Math.ceil(H / 4);
+        if (!lightC || lightC.width !== LW || lightC.height !== LH) { lightC = document.createElement('canvas'); lightC.width = LW; lightC.height = LH; }
+        const lg = lightC.getContext('2d')!, ox = Math.round(cx), oy = Math.round(cy), q4 = (v: number) => v / 4;
+        lg.globalCompositeOperation = 'source-over'; lg.clearRect(0, 0, LW, LH); lg.fillStyle = 'rgba(7,6,11,0.42)'; lg.fillRect(0, 0, LW, LH);
+        lg.globalCompositeOperation = 'destination-out';
+        const hole = (x: number, y: number, r: number, a: number) => { lg.globalAlpha = a; lg.drawImage(glow('#ffffff'), q4(x - ox - r), q4(y - oy - r), q4(2 * r), q4(2 * r)); };
+        hole(p.x * TS, p.y * TS, TS * 5, 1);
+        for (const q of torches) if (q.x >= x0 - 4 && q.x <= x1 + 4 && q.y >= y0 - 4 && q.y <= y1 + 4) hole((q.x + 0.5) * TS, (q.y + 0.6) * TS, TS * (3 + Math.sin(t * 11 + q.x * 5) * 0.2), 0.9);
+        for (const q of pillars) if (q.x >= x0 - 4 && q.x <= x1 + 4 && q.y >= y0 - 4 && q.y <= y1 + 4) hole((q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * (3.4 + Math.sin(t * 9 + q.x * 3) * 0.25), 0.9);
+        lg.globalAlpha = 1; lg.globalCompositeOperation = 'source-over';
+        gg.imageSmoothingEnabled = true; gg.drawImage(lightC, 0, 0, W, H); gg.imageSmoothingEnabled = false;
+      }
       if (s.curse) { // cursed: pulsing coloured edges
         const cv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.4, W / 2, VH / 2, Math.max(W, H) * 0.7);
         cv.addColorStop(0, s.curse.color + '00'); cv.addColorStop(1, s.curse.color + Math.round(0x30 + 0x20 * Math.sin(t * 3)).toString(16));

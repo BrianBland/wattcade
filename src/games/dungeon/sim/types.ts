@@ -32,14 +32,18 @@ export interface DungeonSnapshot {
   world: World;
   floor: number;
   player: {
-    x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number; dashCd: number; dashCdMax: number;
-    invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; dashing: boolean; hurt: number;
+    x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number;
+    invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; rolling: boolean; warded: boolean; rallied: boolean; hurt: number;
     lives: number; livesMax: number; // livesMax 0 = unlimited
     level: number; xp: number; xpNext: number; coins: number; bank: number;
   };
   weapon: Weapon;
   gear: Partial<Record<Slot, Gear>>;
-  aim: { angle: number; auto: boolean };
+  aim: { angle: number };
+  /** The hero AI's intent: waypoints to its next goal (tile centres) and the enemy it is targeting (0 = none). */
+  ai: { path: Array<{ x: number; y: number }>; targetId: number };
+  /** Rider actions in HUD order; ready 0..1 (1 = ready), usable = pressing it would do something now. */
+  actions: Array<{ id: 'strike' | 'ward' | 'rally' | 'potion'; button: 'a' | 'b' | 'y' | 'z'; label: string; ready: number; usable: boolean }>;
   enemies: EnemyView[];
   bullets: BulletView[];
   drops: DropView[];

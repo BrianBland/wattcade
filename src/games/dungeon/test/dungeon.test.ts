@@ -69,23 +69,63 @@ describe('auto-move and hud', () => {
   });
 });
 
-describe('buttons aim mode', () => {
-  const buttonsProfile = () => { const p = testProfile(); p.settings.aimMode = 'buttons'; return p; };
-  it('aims like the Ride diamond: Y up, Z left, A right, B down', () => {
-    const want: Record<string, number> = { y: -Math.PI / 2, z: Math.PI, a: 0, b: Math.PI / 2 };
-    for (const [b, ang] of Object.entries(want)) {
-      const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: b as Button }]), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
-      s.step(5);
-      expect(Math.abs(Math.cos((s.sim.snapshot() as any).aim.angle - ang) - 1), b).toBeLessThan(1e-9);
-    }
+describe('hands-off input map', () => {
+  const run = (timeline: ConstructorParameters<typeof TimelineInput>[0], steps = 5, seed = 5) => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput(timeline), fake: { script: 'z2' }, seed, simOpts: { skipCamp: true } });
+    s.step(steps);
+    return s;
+  };
+  it('all four shifters change gear and trigger no action', () => {
+    const s = run([{ t: 0.1, press: 'shiftUpR' }, { t: 0.15, release: 'shiftUpR' }, { t: 0.2, press: 'shiftUpL' }, { t: 0.25, release: 'shiftUpL' }], 15);
+    const snap = s.sim.snapshot() as any;
+    expect(s.mixer.gear).toBe(8);
+    expect(snap.actions.every((a: { ready: number }) => a.ready === 1)).toBe(true);
+    const hints = new Map(s.sim.hud!().controls!.map((c) => [c.button, c.label]));
+    expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
+    expect(hints.get('a')).toBe('Strike'); expect(hints.get('b')).toBe('Ward'); expect(hints.get('y')).toBe('Rally'); expect(hints.get('z')).toBe('Potion');
   });
-  it('dash and potion sit on the right shifters without shifting gear', () => {
-    const s = createGameSession({ game: module, profile: buttonsProfile(), input: new TimelineInput([{ t: 0, press: 'shiftUpR' }]), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
-    const gear0 = s.mixer.gear; s.step(5);
-    expect((s.sim.snapshot() as any).player.dashCd).toBeGreaterThan(0);
-    expect(s.mixer.gear).toBe(gear0);
-    const hints = new Map(s.sim.hud!().controls!.map((c) => [c.label, c.button]));
-    expect(hints.get('Dash')).toBe('shiftUpR'); expect(hints.get('Potion')).toBe('shiftDnR'); expect(hints.get('Aim right')).toBe('a');
+  it('the hero walks and fights with no input, and the paddles/D-pad do not steer', () => {
+    const a = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true } });
+    const b = run([{ t: 0, press: 'left', paddleL: 1, paddleR: -1 }], 0);
+    a.step(600); b.step(600);
+    const pa = (a.sim.snapshot() as any).player, pb = (b.sim.snapshot() as any).player;
+    expect(pb.x).toBeCloseTo(pa.x, 6); expect(pb.y).toBeCloseTo(pa.y, 6);
+    expect((a.sim.snapshot() as any).ai.path.length + (a.sim.snapshot() as any).stats.kills).toBeGreaterThan(0);
+  });
+  it('Z drinks a potion when hurt, then cools down', () => {
+    class Pad { private next = new Set<Button>(); private st = { held: new Set<Button>(), pressed: new Set<Button>(), released: new Set<Button>(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' as const };
+      press(b: Button) { this.next.add(b); }
+      beginTick() { this.st.pressed = this.next; this.next = new Set(); }
+      state() { return this.st; } }
+    const pad = new Pad();
+    const reg = new TuningRegistry({ profileId: 'potion' });
+    reg.scoped('dungeon').num('autoPotionHpFrac', 0.25, 0, 0.9, 0.05); reg.set('dungeon.autoPotionHpFrac', 0);
+    reg.scoped('dungeon').num('enemyDamageScale', 1.3, 0.1, 3, 0.1); reg.set('dungeon.enemyDamageScale', 2);
+    const s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true }, tuningRegistry: reg });
+    const snap = () => s.sim.snapshot() as any;
+    for (let i = 0; i < 30 * 600 && snap().player.hp > snap().player.maxHp * 0.7; i++) s.step(1);
+    const p0 = snap().player;
+    expect(p0.hp).toBeLessThan(p0.maxHp * 0.7);
+    pad.press('z'); s.step(1);
+    const p1 = snap().player;
+    expect(p1.potions).toBe(p0.potions - 1);
+    expect(p1.hp).toBeGreaterThan(p0.hp);
+    pad.press('z'); s.step(1); // on cooldown
+    expect(snap().player.potions).toBe(p1.potions);
+  });
+  it('Ward blocks damage and Strike needs an enemy in reach', () => {
+    const s = run([{ t: 0.1, press: 'b' }, { t: 0.15, release: 'b' }, { t: 0.2, press: 'a' }, { t: 0.25, release: 'a' }], 10);
+    const snap = s.sim.snapshot() as any;
+    const by = Object.fromEntries(snap.actions.map((a: { id: string; ready: number }) => [a.id, a.ready]));
+    expect(snap.player.warded).toBe(true);
+    expect(by.ward).toBeLessThan(0.1);
+    expect(by.strike).toBe(1); // nothing in reach at spawn, so no cooldown spent
+  });
+  it('Rally only works while a spin-up is called', () => {
+    const s = run([{ t: 0.1, press: 'y' }, { t: 0.15, release: 'y' }], 10);
+    const snap = s.sim.snapshot() as any;
+    expect(snap.player.rallied).toBe(false);
+    expect(snap.actions.find((a: { id: string }) => a.id === 'rally').usable).toBe(false);
   });
 });
 
@@ -119,7 +159,7 @@ describe('meta progression', () => {
     expect(metaMods({ delve: 1 }, 30).maxStartFloor).toBe(3);
     expect(metaMods({}, 30).maxStartFloor).toBe(1);
   });
-  it('camp: buy an upgrade, then start the run; bank persists', () => {
+  it('camp: buy an upgrade (Z or A), then start the run; bank persists', () => {
     const profile = testProfile();
     (profile.gameData as Record<string, unknown>).dungeon = { bank: 1000, upgrades: {}, bestFloor: 1, runs: 0, autoInvest: false };
     let saved: any = null;
@@ -188,6 +228,7 @@ describe('lives', () => {
     reg.scoped('dungeon').num('lives', 3, 0, 9, 1);
     reg.set('dungeon.lives', lives);
     reg.set('dungeon.enemyDamageScale', 3);
+    reg.scoped('dungeon').num('playerHp', 100, 20, 500, 10); reg.set('dungeon.playerHp', 20);
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 5, simOpts: { skipCamp: true }, tuningRegistry: reg });
     let deathsAtOver = -1;
     for (let i = 0; i < 30 * 60 * 30 && !s.sim.isOver(); i++) s.step(1);

@@ -6,6 +6,7 @@ import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
 import { glow, heroPalette, sprite } from './sprites';
 
 const TILES_ACROSS = 16; // camera zoom
+const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
 const BT = 16;           // background px per tile
 const MM = 2;            // minimap px per tile
 const THEMES = [
@@ -378,6 +379,13 @@ export function createRenderer(): GameRenderer {
         gg.strokeStyle = '#ff7a2a'; gg.lineWidth = 2; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS, 0, Math.PI * 2); gg.stroke();
       }
       for (const d of s.drops) drawDrop(d, TS, t);
+      // AI intent: dotted path to the hero's next goal
+      if (s.ai.path.length) {
+        gg.fillStyle = 'rgba(255,255,255,0.35)';
+        s.ai.path.forEach((q, i) => { if (i % 2 === 0) { gg.beginPath(); gg.arc(q.x * TS, q.y * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); } });
+        const end = s.ai.path[s.ai.path.length - 1];
+        gg.strokeStyle = 'rgba(255,255,255,0.5)'; gg.lineWidth = 2; gg.beginPath(); gg.arc(end.x * TS, end.y * TS, TS * 0.28, 0, Math.PI * 2); gg.stroke();
+      }
 
       // aura (effort zone) under the hero
       const aura = AURA[bike.effortZone];
@@ -399,11 +407,12 @@ export function createRenderer(): GameRenderer {
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
         const bob = p.moving ? -Math.abs(Math.sin(t * 10)) * TS * 0.07 : 0;
         shadow(px, py, TS * 0.32);
-        if (p.dashing) { gg.globalAlpha = 0.3; drawSprite('hero', px - Math.cos(s.aim.angle) * TS * 0.3, py, TS / 13, face, false, heroPalette(color)); gg.globalAlpha = 1; }
+        if (p.rolling) { gg.globalAlpha = 0.3; drawSprite('hero', px - Math.cos(s.aim.angle) * TS * 0.3, py, TS / 13, face, false, heroPalette(color)); gg.globalAlpha = 1; }
         gg.globalAlpha = p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1;
         drawSprite('hero', px, py, TS / 13, face, false, heroPalette(color), bob);
         if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawSprite('hero', px, py, TS / 13, face, true, undefined, bob); }
         gg.globalAlpha = 1;
+        if (p.warded) { gg.strokeStyle = `rgba(127,231,255,${0.6 + Math.sin(t * 12) * 0.25})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(p.x * TS, p.y * TS, TS * 0.75, 0, Math.PI * 2); gg.stroke(); }
         // weapon held toward the aim
         const hx = p.x * TS, hy = p.y * TS, ca = Math.cos(s.aim.angle), sa = Math.sin(s.aim.angle), wc = RARITY_COLORS[s.weapon.rarity];
         gg.strokeStyle = '#6b4a2a'; gg.lineWidth = Math.max(3, TS * 0.07); gg.lineCap = 'round';
@@ -425,11 +434,12 @@ export function createRenderer(): GameRenderer {
         gg.fill(); gg.restore();
       }
 
-      // reticle (manual aim only)
-      if (!s.aim.auto) {
-        const rx = p.x * TS + Math.cos(s.aim.angle) * TS * 1.6, ry = p.y * TS + Math.sin(s.aim.angle) * TS * 1.6;
-        gg.strokeStyle = '#fff'; gg.lineWidth = 2;
-        gg.beginPath(); gg.arc(rx, ry, 8, 0, Math.PI * 2); gg.moveTo(rx - 12, ry); gg.lineTo(rx + 12, ry); gg.moveTo(rx, ry - 12); gg.lineTo(rx, ry + 12); gg.stroke();
+      // AI intent: target marker (the path is drawn under the actors)
+      const tgt = s.ai.targetId ? s.enemies.find((e) => e.id === s.ai.targetId) : undefined;
+      if (tgt) {
+        const rx = tgt.x * TS, ry = tgt.y * TS, rr = (tgt.r + 0.35) * TS, sp = t * 2;
+        gg.strokeStyle = tgt.kind === 'boss' ? '#ff5a5a' : '#ffd84a'; gg.lineWidth = 2.5;
+        for (let i = 0; i < 4; i++) { const a = sp + (i * Math.PI) / 2; gg.beginPath(); gg.arc(rx, ry, rr, a, a + 0.8); gg.stroke(); }
       }
       gg.restore();
 
@@ -516,9 +526,15 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
     for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
     gg.globalAlpha = 1;
-    if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L + 120 * u, L + 68 * u); }
-    gg.fillStyle = p.dashCd > 0 ? '#888' : '#7fe7ff'; gg.font = `${Math.round(11 * u)}px sans-serif`;
-    gg.fillText(p.dashCd > 0 ? `dash ${p.dashCd.toFixed(1)}s` : 'dash ready', L, L + 68 * u);
+    if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L, L + 68 * u); }
+    // rider actions: one bar per action (no numbers); full = ready
+    { const aw = 120 * u, ah = 22 * u, gap = 8 * u, n = s.actions.length;
+      const ax0 = W - L - n * aw - (n - 1) * gap, ay = H - insetCss * dpr - ah - L;
+      s.actions.forEach((a, i) => {
+        const x = ax0 + i * (aw + gap);
+        bar(x, ay, aw, ah, a.ready, a.usable ? ACTION_COLOR[a.id] : '#556', `${a.button.toUpperCase()}  ${a.label}`);
+        if (a.usable) { gg.strokeStyle = ACTION_COLOR[a.id]; gg.globalAlpha = 0.5 + Math.sin(s.t * 6) * 0.3; gg.lineWidth = 2; gg.strokeRect(x - 3, ay - 3, aw + 6, ah + 6); gg.globalAlpha = 1; }
+      }); }
 
     // weapon + gear card (bottom-left)
     const wcol = RARITY_COLORS[s.weapon.rarity], cardW = 280 * u, cardH = 64 * u, cx = L, cy = H - insetCss * dpr - cardH - L;

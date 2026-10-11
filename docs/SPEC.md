@@ -367,7 +367,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
   Draw an aim reticle.
 - **Firing:** automatic, one shot every `tuning 'revsPerShot'` crank revs (default 0.5). Damage = `base × clamp(ftpFraction, 0.3, 2.5)`.
-- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Right shift up = dash (2 s cooldown), right shift down = potion (3 per run); virtual gears use the left shifters only.
+- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion (3 per run, short cooldown). All four shifters are virtual gears.
 - **Resistance** (sim mode, virtual gears enabled):
   - base effect `terrain` 1 %
   - on swamp tiles, `swamp` +4 %

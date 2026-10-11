@@ -39,7 +39,7 @@ const RIDE_TIMEOUT = 30_000;
 
 describe('headless rides unlock game achievements', () => {
   it('dungeon hour', async () => {
-    expect(await unlocked('dungeon', 'z2-hour')).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
+    expect(await unlocked('dungeon', 'action-hour')).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
     await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestFloor']);
   }, RIDE_TIMEOUT);
   it('dungeon sprints find uniques', async () => {

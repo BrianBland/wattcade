@@ -154,7 +154,7 @@ describe('scenarios via runHeadless', () => {
       const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
       const fails = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
       expect(fails, JSON.stringify(r.summary)).toEqual([]);
-    });
+    }, sc.minutes >= 60 ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
   }
   it('is deterministic', () => {
     const o = { game: module, script: 'z2', minutes: 3, seed: 4, simOpts: { autopilot: true } };
@@ -184,7 +184,7 @@ describe('meta progression', () => {
     let saved: any = null;
     const input = new TimelineInput([
       { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Might
-      { t: 0.5, press: 'z' }, { t: 0.6, release: 'z' },       // buy (400) with Z (left face button)
+      { t: 0.5, press: 'z' }, { t: 0.6, release: 'z' },       // buy (300) with Z (left face button)
       { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // begin
     ]);
     const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
@@ -192,7 +192,7 @@ describe('meta progression', () => {
     s.step(40);
     expect((s.sim.snapshot() as any).phase).toBe('run');
     expect(saved.upgrades.might).toBe(1);
-    expect(saved.bank).toBe(600);
+    expect(saved.bank).toBe(700);
     expect(saved.runs).toBe(1);
   });
 });

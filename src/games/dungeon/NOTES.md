@@ -57,3 +57,9 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   and gear pips, plus small chips for the other stances (weapon icon + weapon level; the D-pad pick fills, the AI
   suggestion pulses). The active stance's cadence band is published as `hud().targetCadence` ("<Stance> style"), shown
   by the shell's zone widget; called targets (spin-up, whirl shrine) take priority. No separate stance panel.
+- HUD compaction (#104 follow-up): no dock action buttons. The shell's controller-overlay diamond (A Strike, B Ward,
+  Y Rally, Z Potion with cooldown fills) is the only action/cooldown display and doubles as the touch target
+  (`PadKey` pointer handlers -> `input.holdTouch`), shown while the controller legend is on (default; pause menu toggle).
+  The stance card is one slim row bottom-left (stance badge + weapon icon + Lv/element, ✓ in style; other stances as
+  tiny icon+level chips). Minimap drawn at about half size (capped ~110u), translucent. Dev measurement: the renderer
+  records HUD boxes in `globalThis.__dgHud` for dev-shot's HUD-area %.

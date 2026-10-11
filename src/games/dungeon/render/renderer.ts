@@ -100,6 +100,9 @@ export function createRenderer(): GameRenderer {
   let dpr = 1;
   let camX = NaN, camY = NaN, camT = 0, zoom = 1, camFor: unknown = null;
   let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
+  /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
+  let hudBoxes: Array<[number, number, number, number]> = [];
+  function hudBox(x: number, y: number, w: number, h: number) { if (w > 0 && h > 0) hudBoxes.push([x, y, w, h]); }
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
     const s = sprite(name, over, flash), gg = g!;
@@ -336,7 +339,7 @@ export function createRenderer(): GameRenderer {
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
       const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
-      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the control dock (which sits above the HUD)
+      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the slim stance row (which sits above the HUD)
       // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
       if (camFor !== w || !Number.isFinite(camX) || Math.hypot(fx0 - camX, fy0 - camY) > 8) { camX = fx0; camY = fy0; camFor = w; }
@@ -540,10 +543,13 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(h * 0.75)}px sans-serif`; gg.fillText(label, x + 6, y + h * 0.78);
   }
 
+  /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   function drawHud(s: DungeonSnapshot, W: number, H: number, _bike: Readonly<BikeState>) {
+    hudBoxes = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W, H };
     const gg = g!, p = s.player, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
+    hudBox(L - 2, L - 2, 230 * u + 4, 74 * u);
     bar(L, L, 230 * u, 18 * u, p.hp / p.maxHp, p.hp < p.maxHp * 0.4 ? '#e44' : '#3c3', `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`);
     bar(L, L + 24 * u, 230 * u, 9 * u, p.xp / p.xpNext, '#b06cff', '');
     gg.font = `bold ${fs}px sans-serif`; gg.fillStyle = '#fff';
@@ -558,55 +564,36 @@ export function createRenderer(): GameRenderer {
       if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = 2; gg.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2); }
       gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
     }
-    // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
-    const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length, s.stance.list.length - 1);
-    { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);
-      dg.addColorStop(0, 'rgba(7,6,11,0.55)'); dg.addColorStop(0.25, 'rgba(7,6,11,0.92)'); dg.addColorStop(1, 'rgba(7,6,11,0.97)');
-      gg.fillStyle = dg; gg.fillRect(0, LY.dock.y, W, H - LY.dock.y);
-      gg.fillStyle = 'rgba(255,216,74,0.18)'; gg.fillRect(0, LY.dock.y, W, Math.max(1, u)); }
+    // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
+    // Actions and cooldowns live on the shell's controller-overlay diamond (also the touch target).
+    const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1);
     actionHits = [];
-    const zone = s.refill.zone;
-    s.actions.forEach((a, i) => {
-      const r = LY.buttons[i];
-      actionHits.push({ ...r, id: a.id });
-      drawActionButton(gg, { ...r, label: a.label, glyph: a.button.toUpperCase(), fill: a.ready, readyColor: ACTION_COLOR[a.id], effortTint: effortTint(zone),
-        flourish: effortFlourish(zone), ready: a.ready >= 1, usable: a.usable, t: s.t, scale: r.h / 62 });
-    });
-    gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
-
-    // stance card (bottom-left): the active stance and its weapon + gear; the other stances are small chips
-    // (weapon icon + weapon level). The stance's cadence band is shown by the shell's cadence target.
     {
-      const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
-      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
-      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
-      gg.fillStyle = wcol; gg.fillRect(cx, cy, 4 * u, cardH); // rarity edge
-      weaponIcon(gg, s.weapon, cx + 24 * u, cy + 24 * u, 30 * u, wcol);
-      const textW = LY.stance.x - (cx + 46 * u) - 6 * u;
-      gg.font = `900 ${Math.round(14 * u)}px sans-serif`; gg.fillStyle = st.color;
-      const head = st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : `${st.name}${st.styleOn ? ' ✓' : ''}`;
-      gg.fillText(head, cx + 46 * u, cy + 17 * u, textW);
-      gg.fillStyle = wcol; gg.font = `bold ${Math.round(12 * u)}px sans-serif`;
-      gg.fillText(`${s.weapon.name}${s.weapon.plus ? ' +' + s.weapon.plus : ''}`, cx + 46 * u, cy + 32 * u, textW);
-      gg.fillStyle = '#aaa'; gg.font = `${Math.round(10.5 * u)}px sans-serif`;
-      gg.fillText(`Lv${s.weapon.level} · pow ${Math.round(s.weapon.score)} · ×${s.weapon.count} · ${s.weapon.element}`, cx + 46 * u, cy + 46 * u, textW);
-      SLOTS.forEach((sl, k) => {
-        const it = s.gear[sl], gx = LY.stance.x + 8 * u + k * 17 * u, gy = cy + cardH - 13 * u;
-        gearIcon(gg, sl, gx, gy, 12 * u, it ? RARITY_COLORS[it.rarity] : '#444');
-      });
-      // chips: other stances in D-pad order (left of active first), the pick/suggestion highlighted
+      const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card, cy = R.y + R.h / 2;
+      gg.fillStyle = 'rgba(10,8,16,0.72)'; gg.fillRect(R.x, R.y, R.w, R.h); hudBox(R.x, R.y, R.w, R.h);
+      gg.strokeStyle = st.color; gg.lineWidth = Math.max(1, u); gg.strokeRect(R.x, R.y, R.w, R.h);
+      // stance badge: its colour with the initial; swapping shows the pick's colour
+      const pickC = st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.color ?? st.color : st.color;
+      gg.fillStyle = pickC; gg.fillRect(R.x + 2 * u, R.y + 2 * u, R.h - 4 * u, R.h - 4 * u);
+      gg.fillStyle = '#0a0810'; gg.font = `900 ${Math.round(13 * u)}px sans-serif`; gg.textAlign = 'center';
+      gg.fillText((st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.name ?? st.name : st.name)[0], R.x + R.h / 2, cy + 4.5 * u);
+      weaponIcon(gg, s.weapon, R.x + R.h + 11 * u, cy, 16 * u, wcol);
+      gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
+      const elem = ` ${s.weapon.element}`;
+      gg.fillText(`Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`, R.x + R.h + 23 * u, cy + 4 * u, R.w - R.h - 26 * u);
+      // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
       const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
-      const cw = (C.w - (n - 1) * 4 * u) / n;
+      const cw = (C.w - (n - 1) * 3 * u) / n;
       others.forEach((o, k) => {
-        const x = C.x + k * (cw + 4 * u), y = C.y, picked = st.swapping === o.id, sug = st.suggest === o.id;
-        gg.fillStyle = picked ? o.color : 'rgba(255,255,255,0.06)'; gg.fillRect(x, y, cw, C.h);
+        const x = C.x + k * (cw + 3 * u), picked = st.swapping === o.id, sug = st.suggest === o.id;
+        hudBox(x, C.y, cw, C.h);
+        gg.fillStyle = picked ? o.color : 'rgba(10,8,16,0.6)'; gg.fillRect(x, C.y, cw, C.h);
         gg.globalAlpha = sug && !picked ? 0.6 + 0.4 * Math.sin(s.t * 5) : 1;
-        gg.strokeStyle = o.color; gg.lineWidth = sug || picked ? 2 : 1; gg.strokeRect(x, y, cw, C.h);
-        if (o.base) weaponIcon(gg, { base: o.base as Weapon['base'] }, x + cw * 0.4, y + C.h * 0.45, C.h * 0.6, picked ? '#0a0810' : o.color);
-        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.textAlign = 'right';
-        gg.fillText(o.level ? String(o.level) : '–', x + cw - 3 * u, y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
+        gg.strokeStyle = o.color; gg.lineWidth = sug || picked ? 2 : 1; gg.strokeRect(x, C.y, cw, C.h);
+        if (o.base) weaponIcon(gg, { base: o.base as Weapon['base'] }, x + cw * 0.36, C.y + C.h / 2, C.h * 0.55, picked ? '#0a0810' : o.color);
+        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(9 * u)}px sans-serif`; gg.textAlign = 'right';
+        gg.fillText(o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
       });
-      // (the D-pad hint lives in the shell's controller legend)
     }
 
     // active shrine banner
@@ -644,6 +631,7 @@ export function createRenderer(): GameRenderer {
 
     // minimap with fog (top-right)
     const w = s.world, mm = Math.max(1, Math.round(MM * u * 0.8));
+    const mScale = Math.min(0.55, (110 * u) / Math.max(1, w.w * mm)); // drawn at ~half size, capped at ~110u wide
     if (!mini || mini.width !== w.w * mm) { mini = document.createElement('canvas'); mini.width = w.w * mm; mini.height = w.h * mm; }
     const m = mini.getContext('2d')!;
     m.clearRect(0, 0, mini.width, mini.height);
@@ -656,17 +644,18 @@ export function createRenderer(): GameRenderer {
     for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.DOOR && w.rooms[w.doorRoom[i]]?.seen) { m.fillStyle = '#7a6a4a'; m.fillRect((i % w.w) * mm, Math.floor(i / w.w) * mm, mm, mm); }
     const br = w.rooms.find((r) => r.boss);
     if (br?.seen) { m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; m.fillRect((w.stairs.x - 1) * mm, (w.stairs.y - 1) * mm, 2 * mm, 2 * mm); }
-    const mx0 = W - mini.width - L, my0 = L;
-    gg.fillStyle = 'rgba(0,0,0,0.6)'; gg.fillRect(mx0 - 4, my0 - 4, mini.width + 8, mini.height + 8);
-    gg.drawImage(mini, mx0, my0);
+    const mw = mini.width * mScale, mh = mini.height * mScale, mx0 = W - mw - L, my0 = L, mk = mm * mScale;
+    gg.fillStyle = 'rgba(0,0,0,0.35)'; gg.fillRect(mx0 - 3, my0 - 3, mw + 6, mh + 6); hudBox(mx0 - 3, my0 - 3, mw + 6, mh + 6);
+    gg.globalAlpha = 0.8; gg.drawImage(mini, mx0, my0, mw, mh); gg.globalAlpha = 1;
     for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
-      gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mm - 1, my0 + e.y * mm - 1, 3, 3);
+      gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mk - 1, my0 + e.y * mk - 1, 2.5 * u, 2.5 * u);
     }
-    gg.fillStyle = color; gg.fillRect(mx0 + p.x * mm - 2, my0 + p.y * mm - 2, 5, 5);
+    gg.fillStyle = color; gg.fillRect(mx0 + p.x * mk - 2 * u, my0 + p.y * mk - 2 * u, 4 * u, 4 * u);
 
     if (s.boss && s.boss.active) {
       const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L;
       const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
+      hudBox(bx - 2, by - 2, bw + 4, 48 * u);
       bar(bx, by, bw, 18 * u, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
       gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2, 18 * u); // phase marks
       gg.textAlign = 'center'; gg.font = `bold ${Math.round(13 * u)}px sans-serif`;

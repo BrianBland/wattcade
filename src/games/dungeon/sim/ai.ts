@@ -5,6 +5,9 @@ const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
 let BUF: { n: number; g: Float64Array; prev: Int32Array; stamp: Uint32Array; shut: Uint32Array; gen: number } | null = null;
 /** 8-directional A* from (sx,sy) to (tx,ty) over walkable tiles, then string-pulled (smooth: false keeps every tile).
  *  Returns waypoints (tile centres), excluding the start. */
+/** A*'s open list, reused across calls (findPath is not re-entrant): re-planning every 0.75-1.5 s made three fresh
+ *  arrays per search that lived just long enough to be promoted to old space. */
+const HEAP_I: number[] = [], HEAP_F: number[] = [], HEAP_S: number[] = [];
 export function findPath(w: number, h: number, solid: (x: number, y: number) => boolean, sx: number, sy: number, tx: number, ty: number,
   opts: { smooth?: boolean; clearance?: number; /** extra cost per orthogonal wall next to a tile (keeps paths off walls in rooms) */ wallCost?: number } = {}): Array<{ x: number; y: number }> {
   if (sx < 0 || sy < 0 || sx >= w || sy >= h || tx < 0 || ty < 0 || tx >= w || ty >= h) return [];
@@ -19,7 +22,7 @@ export function findPath(w: number, h: number, solid: (x: number, y: number) => 
   const seen = (i: number) => B.stamp[i] === gen, touch = (i: number) => { if (B.stamp[i] !== gen) { B.stamp[i] = gen; g[i] = Infinity; prev[i] = -1; } };
   const closed = { get: (i: number) => B.shut[i] === gen, set: (i: number) => { B.shut[i] = gen; } };
   touch(start); touch(goal);
-  const heapI: number[] = [], heapF: number[] = [], heapS: number[] = []; let seq = 0;
+  const heapI = HEAP_I, heapF = HEAP_F, heapS = HEAP_S; heapI.length = heapF.length = heapS.length = 0; let seq = 0; // reused open-list arrays
   const less = (a: number, b: number) => heapF[a] < heapF[b] || (heapF[a] === heapF[b] && heapS[a] < heapS[b]);
   const swap = (a: number, b: number) => { let t = heapI[a]; heapI[a] = heapI[b]; heapI[b] = t; t = heapF[a]; heapF[a] = heapF[b]; heapF[b] = t; t = heapS[a]; heapS[a] = heapS[b]; heapS[b] = t; };
   const push = (i: number, f: number) => {

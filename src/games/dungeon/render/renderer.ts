@@ -308,7 +308,7 @@ export function createRenderer(): GameRenderer {
     const name = ba ? ba.art : e.kind, scale = ba?.scale ?? 1, pal = ba?.pal;
     // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
     const prev = moved.get(e.id), mv = !!prev && Math.hypot(e.x - prev.x, e.y - prev.y) > 0.004;
-    moved.set(e.id, { x: e.x, y: e.y });
+    if (prev) { prev.x = e.x; prev.y = e.y; } else { if (moved.size > 512) moved.clear(); moved.set(e.id, { x: e.x, y: e.y }); } // reuse entries; bounded
     const st: AnimState = e.hurt < 0.12 ? 'hurt' : e.tell > 0.05 ? 'attack' : mv ? 'walk' : 'idle';
     const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
     const def = sprite2(name, fr.state, fr.idx, pal, false, scale);

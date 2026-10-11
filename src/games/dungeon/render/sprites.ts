@@ -144,6 +144,9 @@ export const SPRITES: Record<string, SpriteDef> = {
 };
 
 const cache = new Map<string, HTMLCanvasElement>();
+const palKeys2 = new WeakMap<Pal, string>();
+/** Cache key for a palette override, computed once per palette object (avoids JSON.stringify per drawn sprite per frame). */
+function pal2Key(p: Pal): string { let k = palKeys2.get(p); if (k === undefined) { k = JSON.stringify(p); palKeys2.set(p, k); } return k; }
 
 // ---------------- sprites v2 ----------------
 export type AnimState = 'idle' | 'walk' | 'attack' | 'hurt';
@@ -178,7 +181,7 @@ function ramp(hex: string, f: number): string {
  * ramp on pixels facing down-right. `scale` 2 upsizes 16 px art for bosses before outlining.
  */
 export function sprite2(name: string, state: AnimState = 'idle', idx = 0, over?: Pal, flash = false, scale = 1): HTMLCanvasElement {
-  const key = `v2|${name}|${state}|${idx}|${over ? JSON.stringify(over) : ''}|${flash}|${scale}`;
+  const key = `v2|${name}|${state}|${idx}|${over ? pal2Key(over) : ''}|${flash}|${scale}`;
   let c = cache.get(key); if (c) return c;
   const a = ART[name], pal = { ...a.pal, ...over };
   const base = frameRows(name, state, idx), rows = scale === 1 ? base : base.flatMap((r) => { const rr = [...r].map((ch) => ch.repeat(scale)).join(''); return Array(scale).fill(rr); });

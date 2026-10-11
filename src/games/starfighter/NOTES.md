@@ -29,7 +29,6 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Card: `CHROMIUM_PATH=/usr/bin/chromium node --import tsx scripts/capture-cards.ts --only starfighter --base http://127.0.0.1:5199`.
 - Validation: Repository tests and focused checks, typecheck/build, portrait/landscape controls/resources pass; updated card encodes as a 6s H.264 clip.
 - Real trainer feel, iPad GPU cost, nuanced craft balance and reduced-flash preferences still need real rides. Shared sound graph/mute controls; quiet lock ticks and volley whooshes. No required rapid flashing or punitive audio FX.
-- Future: additional riding contracts, optional manual dodges, shared confidence/commit API, improved selection and playlists. Existing media analysis/mixer reused.
 
 ## Spectacle pass
 - flight.ts: ship route is a pure schedule of holds + eased moves (start and end on beats, phrase sweeps, 8s ahead, ≤~34 u/s). `choreograph` re-aims/drops on-target shots so all miss the route by ≥5.5; under target the ship lags the route and fire is raw. Summary: `grazes`, `absorbed` (on-target hits; must stay 0).
@@ -37,5 +36,5 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Formations carry an id; clear rate = killed/resolved over finished formations (kill or pass the ship). Air formations ≥5 all killed = PERFECT (+score, callout). Walls: build/drop downbeat, ≥7s apart, gated by `choreograph(..., gate=true)`.
 - encounters.ts supplies continuous top/side entrances, combat eligibility, gunner designation, fire intervals, and readable aimed/fan/petal patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
-- Scenery tiles recycle behind/beyond the camera across carrier, neon city, and canyon stretches. No new geometry/material allocation on terrain transitions.
-- Boss weak points get spare automatic lock slots so denser escorts do not starve the flagship fight. The rider-selected priority still acquires first.
+- Scenery is regenerated per frame from (segment seed, tile) into fixed-size instance pools; no geometry/material allocation on biome changes.
+- Flagship batteries group with the flagship for targeting; auto-select prefers the flagship group during a fight.

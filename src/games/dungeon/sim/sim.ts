@@ -66,6 +66,7 @@ function segDist(px: number, py: number, ax: number, ay: number, bx: number, by:
 
 /** Longest hit-stop (s). Longer stops (the old 0.5 s boss intro, 0.8 s boss death) read to riders as the game freezing. */
 const HIT_STOP_MAX = 0.1;
+const DX4 = [1, -1, 0, 0], DY4 = [0, 0, 1, -1];
 
 export interface DungeonOpts { seed?: number; autopilot?: boolean; floor?: number; skipCamp?: boolean; stance?: StanceId; erg?: boolean; actionBot?: boolean; invulnerable?: boolean }
 export interface DungeonTotals { runs: number; deaths: number; floors: number; bosses: number; coins: number }
@@ -173,7 +174,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const segTn = Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, {
     erg: tn.num(`erg_${k}`, DEFAULT_TARGETS[k].erg, 0.3, 1.5, 0.01, `ERG target (FTP fraction) during ${k}`),
     grade: tn.num(`grade_${k}`, DEFAULT_TARGETS[k].grade, -5, 10, 0.5, `grade offset during ${k}`) }])) as Record<Seg, { erg: () => number; grade: () => number }>;
-  const dirCfg = (): DirectorCfg => ({
+  // built at most once per tick (update() clears it): it was rebuilt several times a tick, the largest per-tick allocation
+  let cfgMemo: DirectorCfg | null = null;
+  const dirCfg = (): DirectorCfg => cfgMemo ??= ({
     ...(Object.fromEntries(Object.entries(dirTn).map(([k, f]) => [k, f()])) as Omit<DirectorCfg, 'targets'>),
     targets: Object.fromEntries((Object.keys(DEFAULT_TARGETS) as Seg[]).map((k) => [k, { ...DEFAULT_TARGETS[k], erg: segTn[k].erg(), grade: segTn[k].grade() }])) as DirectorCfg['targets'],
   });
@@ -253,7 +256,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let nextId = 1, cueId = 0;
   let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
   let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0, stuckStats = 0;
-  let flow: Int16Array = new Int16Array(0), flowKey = -1;
+  let flow: Int16Array = new Int16Array(0), flowQ = new Int32Array(0), flowKey = -1;
 
   const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
   const dmgMul = () => (floor === 1 ? floor1Ease() : Math.pow(enemyDmgGrowth(), floor - 1));
@@ -374,16 +377,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     flowKey = key;
     if (flow.length !== r.w * r.h) flow = new Int16Array(r.w * r.h);
     flow.fill(-1);
-    const q = [(py - r.y0) * r.w + (px - r.x0)];
+    if (flowQ.length < r.w * r.h) flowQ = new Int32Array(r.w * r.h); // BFS queue, reused (was a fresh array plus 4 pairs per cell)
+    const q = flowQ; let qn = 0;
+    q[qn++] = (py - r.y0) * r.w + (px - r.x0);
     flow[q[0]] = 0;
-    for (let i = 0; i < q.length; i++) {
+    for (let i = 0; i < qn; i++) {
       const c = q[i], cx = c % r.w, cy = (c - cx) / r.w;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = cx + dx, ny = cy + dy;
+      for (let d = 0; d < 4; d++) {
+        const nx = cx + DX4[d], ny = cy + DY4[d];
         if (nx < 0 || ny < 0 || nx >= r.w || ny >= r.h) continue;
         const ni = ny * r.w + nx;
         if (flow[ni] >= 0 || walkSolid(r.x0 + nx, r.y0 + ny)) continue;
-        flow[ni] = flow[c] + 1; q.push(ni);
+        flow[ni] = flow[c] + 1; q[qn++] = ni;
       }
     }
   }
@@ -939,6 +944,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // ---------- update ----------
   function update(dt: Seconds) {
     const bike = ctx.bike(), input = ctx.input();
+    cfgMemo = null; // tuning may change between ticks
     if (phase === 'camp') { t += dt; campUpdate(dt, input, bike); if (erg) ergSync(dirCfg().targets.cooldown.erg); else resSync('terrain', campGrade()); return; }
     if (hitT > 0) { hitT -= dt; return; } // hit-stop
     t += dt; navAge += dt; stuckCheck();

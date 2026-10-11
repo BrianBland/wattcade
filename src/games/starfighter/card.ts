@@ -1,12 +1,9 @@
 // Arcade card: banner art + progress line (shell calls these; keep tiny, no renderer imports).
 export function progressLine(save: unknown): string | null {
-  const s = save as { best?: number; bestSector?: number; bank?: number } | undefined;
-  if (!s?.best) return null;
-  const parts = [] as string[];
-  if ((s.bestSector ?? 1) > 1) parts.push(`Sector ${s.bestSector}`);
-  parts.push(`best ${Math.round(s.best).toLocaleString()}`);
-  if (s.bank) parts.push(`${Math.round(s.bank).toLocaleString()} scrap`);
-  return parts.join(' · ');
+  const s = save as { v?: number; best?: number; legacyBest?: number; onTargetS?: number; bank?: number; bestSector?: number } | undefined;
+  if (!s) return null;
+  if (s.v === 3) return `${Math.floor((s.onTargetS ?? 0) / 60)} groove minutes · best ${Math.round(s.best ?? 0).toLocaleString()}`;
+  return s.best ? `legacy best ${Math.round(s.best).toLocaleString()}` : null;
 }
 
 /** Nebula + starfield, the ship (rider colour) and two wingmen firing at a hive boss and its drones. 230x100 units. */

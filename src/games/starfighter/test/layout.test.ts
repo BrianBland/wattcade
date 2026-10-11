@@ -1,25 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { layout } from '../render/layout';
-import { H, SHIP_Y } from '../sim/sim';
-
-describe('starfighter layout vs HUD inset', () => {
-  const sizes: Array<[number, number, number]> = [[1180, 820, 150], [820, 1180, 150], [1366, 1024, 170], [1920, 1080, 150], [800, 600, 100], [390, 844, 160]];
-  for (const [W, Hc, inset] of sizes) {
-    it(`keeps the field, ship and panels above the HUD at ${W}x${Hc}`, () => {
-      const L = layout(W, Hc, inset);
-      expect(L.UH).toBe(Hc - inset);
-      const lim = Hc - inset + 1e-6;
-      expect(L.field.y + L.field.h).toBeLessThanOrEqual(lim);
-      expect(L.oy + (SHIP_Y + 5) * L.sc).toBeLessThanOrEqual(lim);
-      expect(L.oy + H * L.sc).toBeLessThanOrEqual(lim);
-      for (const b of [L.left, L.right]) expect(b.y + b.h).toBeLessThanOrEqual(lim);
-      expect(L.field.x).toBeGreaterThanOrEqual(-1e-6);
-      expect(L.field.x + L.field.w).toBeLessThanOrEqual(W + 1e-6);
-      if (L.mode === 'top') expect(L.left.h).toBeLessThanOrEqual(L.field.y + 1e-6); // top strip never overlaps the field
+describe('Squadron foreground fits actual shell insets', () => {
+  for (const [w, h, bottom] of [[1180, 820, 150], [820, 1180, 150], [390, 844, 160], [800, 600, 100], [320, 300, 180]]) {
+    it(`${w}x${h}`, () => {
+      const l = layout(w, h, { top: 12, right: 10, bottom, left: 10 });
+      expect(l.safe.y + l.safe.h).toBeLessThanOrEqual(h - bottom);
+      expect(l.field.y + l.field.h + l.footer).toBeLessThanOrEqual(h - bottom);
+      expect(l.field.x + l.field.w).toBeLessThanOrEqual(w - 10);
+      expect(l.field.h).toBeGreaterThanOrEqual(0);
     });
   }
-  it('uses side panels in landscape and a top strip in portrait', () => {
-    expect(layout(1180, 820, 150).mode).toBe('sides');
-    expect(layout(820, 1180, 150).mode).toBe('top');
-  });
 });

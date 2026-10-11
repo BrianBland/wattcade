@@ -20,6 +20,8 @@ export interface RangeSource {
   announce?(id: string, t: number): void;
 }
 export interface WindowResult { buffer: AudioBuffer; analysis: SongAnalysis; /** Per-beat features (times relative to the buffer start). */ beats?: BeatFeature[] }
+/** A window already analysed elsewhere (picker preview), in the ride's own format; seeds analysis, never audio. */
+export interface SeedWindow { startS: number; endS: number; bufferStartS: number; analysis: SongAnalysis; beats: BeatFeature[] }
 export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) => Promise<WindowResult>;
 
 /** Honest placeholders: no invented beats or drops; only duration is known. */
@@ -135,6 +137,25 @@ export class RollingQueue implements RangeSource {
     this.timeline = { ...buildTimeline(this.plan, items), revision: 0, updateFromS: 0 };
   }
   private key(index: number, start: number) { return `${index}:${start}`; }
+  /**
+   * Reuse preview analysis (#64 PR 5): commit already-analysed windows of item `index` so coverage and structure are there
+   * from the start. Only windows on the ride's own chunk grid, before any audio, on estimated (streamed) items. Audio for
+   * those windows is still fetched for playback, but is not re-analysed (the committed analysis stays put).
+   */
+  seed(index: number, windows: readonly SeedWindow[]): number {
+    const item = this.items[index]; if (!item || item.analysis.confidence !== 'metadata') return 0;
+    let n = 0; const e = this.plan.entries.find((x) => x.index === index); if (!e) return 0;
+    for (const w of [...windows].sort((a, b) => a.startS - b.startS)) {
+      const key = this.key(index, w.startS);
+      const onGrid = Math.abs(w.startS / CHUNK_S - Math.round(w.startS / CHUNK_S)) < 1e-6 && Math.abs(w.endS - Math.min(item.analysis.durationS, w.startS + CHUNK_S)) < 0.5;
+      if (!onGrid || this.committed.has(key)) continue;
+      mergeWindow(item.analysis, w.analysis, w.bufferStartS, w.startS, w.endS, w.beats);
+      this.committed.add(key); n++;
+      const spans = this.analysed.get(index) ?? []; spans.push([w.startS, w.endS]); this.analysed.set(index, spans);
+    }
+    if (n) this.revise(Math.max(0, progTime(e.segs, Math.min(...windows.map((w) => w.startS)))));
+    return n;
+  }
   windows(e: PlanEntry): AudioWindow[] { return [...this.cache.entries()].filter(([k]) => k.startsWith(`${e.index}:`)).map(([, w]) => w).sort((a, b) => a.startS - b.startS); }
   prepare(p: number): Promise<void> {
     if (!this.alive) return Promise.reject(new Error('Media queue was closed.'));

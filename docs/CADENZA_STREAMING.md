@@ -94,8 +94,10 @@ seeking support; verify the server can supply windows faster than playback befor
 5. Open the hosted app on the iPad. On **Connect**, enable **Media server**, enter
    `https://media.YOUR_DOMAIN` and the **app access token**, leave the buffer at 180 seconds,
    and tap **Test connection**. Then launch Cadenza → **Online music**, search YouTube or
-   SoundCloud, tap **+** to enqueue songs, and start the ride. If the token is forgotten on a
-   new tab, enter it again; server URL, enabled state and buffer preference persist.
+   SoundCloud, tap **+** to enqueue songs, and start the ride. The server URL, enabled state,
+   buffer preference and access token persist across tabs and browser restarts in the same
+   browser on the same app origin. Clear the token field to forget it. Clearing browser site
+   data or using a different app URL/browser requires entering the settings again.
 
 6. Once tested, keep both processes running across restarts. Cloudflare's connector install
    command can install its system service. For the app daemon, the included

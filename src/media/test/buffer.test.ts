@@ -16,7 +16,7 @@ it('preserves supported preferences, bounds larger values and handles invalid sa
   for (const bufferS of [120, 180, 240]) {
     saveMediaServerConfig({ enabled: true, url: '/media-resolver', token: 'tab-token', bufferS });
     expect(mediaServerConfig()).toMatchObject({ bufferS, token: 'tab-token' });
-    expect(localStorage.getItem('wattcade.media.server')).not.toContain('tab-token');
+    expect(JSON.parse(localStorage.getItem('wattcade.media.server')!).token).toBe('tab-token');
   }
   for (const [saved, expected] of [[600, 240], ['invalid', 180], [0, 180]] as const) {
     localStorage.setItem('wattcade.media.server', JSON.stringify({ bufferS: saved }));

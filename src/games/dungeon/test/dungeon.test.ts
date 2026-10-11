@@ -152,14 +152,16 @@ describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
     it(sc.name, () => {
       const sum: Record<string, number> = {};
-      const seeds = sc.seeds ?? [sc.seed];
+      const seeds = sc.seeds ?? [sc.seed], runs: Parameters<NonNullable<typeof sc.assertRuns>>[0] = [];
       for (const seed of seeds) {
         const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts });
-        const fails = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
+        const run = { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events }; runs.push(run);
+        const fails = sc.assert(r.summary, r.stats, run);
         expect(fails, `seed ${seed}: ${JSON.stringify(r.summary)}`).toEqual([]);
         for (const [k, v] of Object.entries(r.summary)) if (typeof v === 'number') sum[k] = (sum[k] ?? 0) + v / seeds.length;
       }
       if (sc.assertAvg) expect(sc.assertAvg(sum), JSON.stringify(sum)).toEqual([]);
+      if (sc.assertRuns) expect(sc.assertRuns(runs)).toEqual([]);
     }, sc.minutes >= 60 || sc.seeds ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
   }
   it('is deterministic', () => {

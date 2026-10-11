@@ -80,3 +80,9 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   upgraded riders (rides 3-5 of a chain) die far less and go 2-4 floors deeper.
 - `action-hour` runs two seeds with loose per-seed bounds plus averaged bounds (`seeds` / `assertAvg` in scenarios.ts).
   The floor-8 / 12-curse achievements are checked on a fixed summary instead of a lucky ride.
+
+## Steeper depth scaling (upgraded riders still die)
+- enemyDamageGrowth 1.34→1.55, enemyHpGrowth 1.26→1.32, bossHpGrowth 1.42→1.5, enemyDamageScale 2.75→2.4,
+  floor1Ease 0.5→0.35, sprintFiredUpS 60→90, sprintFiredUpDmg 1.7→2.
+- 12 fresh seeds: 0% of rides die on floor 1 on their first run; 5-ride chains keep dying at depth (z2 ~1/ride, action bot ~0.5-0.75/ride on rides 3-5).
+- test:balance uses 12 seeds, checks floor-1 first-run deaths < 10%, and that upgraded 3rd rides still die.

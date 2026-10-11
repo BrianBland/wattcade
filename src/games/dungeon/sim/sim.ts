@@ -99,11 +99,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 out of combat');
   const regenCombat = tn.num('regenInCombatFrac', 0, 0, 1, 0.05, 'zone-2 regen multiplier while enemies are awake (floor 1 always 0.5)');
-  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.34, 1, 2, 0.01, 'enemy damage multiplier per floor');
+  const enemyDmgGrowth = tn.num('enemyDamageGrowth', 1.55, 1, 2, 0.01, 'enemy damage multiplier per floor');
   const furyAfter = tn.num('bossFuryAfterS', 60, 20, 600, 10, 'boss damage starts climbing after this long in the fight (not on floor 1)');
   const furyRate = tn.num('bossFuryRate', 0.03, 0, 0.05, 0.001, 'extra boss-fight damage per second past bossFuryAfterS (max +150%)');
-  const bossHpGrowth = tn.num('bossHpGrowth', 1.42, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
-  const floor1Ease = tn.num('floor1Ease', 0.5, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
+  const bossHpGrowth = tn.num('bossHpGrowth', 1.5, 1, 2, 0.01, 'boss HP multiplier per floor (floor 1 boss is x0.55)');
+  const floor1Ease = tn.num('floor1Ease', 0.35, 0.3, 1, 0.05, 'enemy damage multiplier on floor 1 (keeps the warm-up floor gentle)');
   const strikeCd = tn.num('strikeCdS', 30, 2, 120, 1, 'Strike (A) cooldown');
   const strikeMult = tn.num('strikeDamageMult', 4, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
@@ -125,9 +125,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionHeal = tn.num('potionHeal', 0.38, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
-  const enemyDmgScale = tn.num('enemyDamageScale', 2.75, 0.1, 3, 0.1);
+  const enemyDmgScale = tn.num('enemyDamageScale', 2.4, 0.1, 3, 0.1);
   const enemyHpMult = tn.num('enemyHpMult', 1.5, 0.2, 5, 0.1, 'base enemy HP multiplier');
-  const enemyHpGrowth = tn.num('enemyHpGrowth', 1.26, 1, 2, 0.01, 'enemy HP multiplier per floor');
+  const enemyHpGrowth = tn.num('enemyHpGrowth', 1.32, 1, 2, 0.01, 'enemy HP multiplier per floor');
   const bossHpT = tn.num('bossHp', 4500, 100, 20000, 50, 'base boss HP (x enemyHpMult, x bossHpGrowth per floor)');
   const sprintMult = tn.num('bossSprintDamageMult', 2, 1, 5, 0.1, 'extra damage for sprinting (or the ERG surge) while the boss is exposed');
   const bossTn = {
@@ -150,8 +150,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const sprintHeal = tn.num('sprintHealFrac', 0.45, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
   const sprintGuard = tn.num('sprintGuard', 0.6, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
   const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');
-  const fireS = tn.num('sprintFiredUpS', 60, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
-  const fireMult = tn.num('sprintFiredUpDmg', 1.7, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
+  const fireS = tn.num('sprintFiredUpS', 90, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
+  const fireMult = tn.num('sprintFiredUpDmg', 2, 1, 3, 0.05, 'damage multiplier while sprinting or Fired Up');
   const sprintSw = tn.num('sprintSecondWindS', 120, 0, 600, 10, 'a sprint takes this many seconds off the Second Wind recharge');
   const swCdT = tn.num('secondWindCdS', 540, 30, 1800, 10, 'Second Wind recharge at base rate (zone 1); 540 = about 6 min of zone 2 at the 1.5x refill');
   const swHeal = tn.num('secondWindHeal', 0.5, 0.1, 1, 0.05, 'Second Wind heals this fraction of max HP');

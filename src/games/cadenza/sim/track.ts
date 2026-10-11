@@ -289,7 +289,7 @@ export function extendTrack(old: Track, next: Track, fromS: number): Track {
   }
   for (const key of ['dist', 'speed', 'height', 'grade', 'curve', 'roll', 'tunnel'] as const) next[key].set(old[key].subarray(0, cut));
   const before = old.zones.filter((z) => z.t0 < at).map((z) => ({ ...z, t1: Math.min(z.t1, at) }));
-  next.zones = [...before, ...next.zones.filter((z) => z.t1 > at).map((z) => ({ ...z, t0: Math.max(z.t0, at) }))].map((z, n) => ({ ...z, n }));
+  next.zones = [...before, ...next.zones.filter((z) => z.t1 > at).map((z) => ({ ...z, t0: Math.max(z.t0, at) }))].map((z, n) => ({ ...z, n: n + 1 }));
   next.blocks = [...old.blocks.filter((b) => b.t < at), ...next.blocks.filter((b) => b.t >= at)].map((b) => ({ ...b, zone: zoneIndexAt(next, b.t) }));
   next.stunts = [...old.stunts.filter((s) => s.t0 < at), ...next.stunts.filter((s) => s.t0 >= at)].map((s) => ({ ...s, zone: zoneIndexAt(next, s.t0) }));
   next.stunts = next.stunts.filter((s) => s.kind !== 'launch' || next.rideBlocks[rideIndexAt(next.rideBlocks, s.t0)].phase === 'sprint');

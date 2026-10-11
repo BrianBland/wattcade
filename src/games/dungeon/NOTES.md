@@ -96,3 +96,15 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   to mostly-axis moves. Stuck detector: < 0.25 tiles progress in 0.75s with a path -> 3s of raw (unsmoothed) tile paths.
 - No death spiral: dying on the floor you started on lowers the default start by 2 (still adjustable at camp).
 - Retune (hero now covers more ground): enemyDamageScale 2.4->1.9, enemyDamageGrowth 1.55->1.45.
+
+## Movement flow (pure pursuit)
+- Paths are plain tile-centre A* paths with a wall-proximity cost (`wallCost` 0.35 per orthogonal wall), so they keep off
+  room walls and follow corridor centre lines. The hero steers at the farthest point up to 1.3 tiles ahead along the path
+  that its body (+0.1 margin) can reach in a clear straight line (pure pursuit), and eases to 82% speed into sharp bends.
+- The hero's wall-collision radius is 0.3 (hit radius stays 0.35) so it has slack in 1-tile corridors.
+- Stuck detector only runs while exploring and just re-plans.
+- `sim.navStats()` (headless only) reports explore time, mean speed vs max, time < 50% speed, wall contact, corridor
+  speed, corridor off-centre time, overshoot (> 0.4 tiles off the planned leg) and fallbacks; ai.test.ts gates them.
+- 12 seeds x 15 min explore: mean speed 94.0% -> 99.2%, corridor 94.7% -> 98.8%, < 50% speed 2.3% -> 0%,
+  wall contact 4.5% -> 0.2%, overshoot 0.4% -> 0.2%, fallbacks 29 -> 7.
+- styleBonus 0.05 -> 0.03: with the hero no longer losing time, Ranger's +fire bonus at 96 rpm cleared 12.6% more rooms.

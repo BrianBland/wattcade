@@ -47,3 +47,25 @@ describe('hero does not wedge in corridors', () => {
     expect(stuck / goal).toBeLessThan(0.05); // was ~26% when a body grazing a wall could wedge
   });
 });
+
+describe('hero movement flows through corridors', () => {
+  it('keeps near full speed, off the walls, without stuck fallbacks (2 seeds x 4 min, explore only)', async () => {
+    const { createGameSession, testProfile, NullInput } = await import('../../../core');
+    const { module } = await import('../index');
+    const tot: Record<string, number> = {};
+    for (const seed of [11, 13]) {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed, simOpts: { autopilot: true, skipCamp: true, invulnerable: true } });
+      s.step(30 * 240);
+      const n = (s.sim as unknown as { navStats(): Record<string, number> }).navStats();
+      for (const k in n) tot[k] = (tot[k] ?? 0) + n[k];
+    }
+    expect(tot.exploreT).toBeGreaterThan(60);
+    expect(tot.corridorT).toBeGreaterThan(20);
+    expect(tot.speedSum / tot.exploreT).toBeGreaterThan(0.95);          // mean speed vs max while pathing
+    expect(tot.corridorSpeedSum / tot.corridorT).toBeGreaterThan(0.9);  // corridor traversal speed
+    expect(tot.slowT / tot.exploreT).toBeLessThan(0.02);                // time below 50% speed
+    expect(tot.wallT / tot.exploreT).toBeLessThan(0.02);                // wall contact
+    expect(tot.overshootT / tot.exploreT).toBeLessThan(0.02);           // > 0.4 tiles off the planned leg
+    expect(tot.fallbacks).toBeLessThanOrEqual(2);                       // stuck-detector re-plans
+  });
+});

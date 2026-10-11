@@ -8,7 +8,7 @@ import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, e
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
-import { cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
+import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
@@ -147,7 +147,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const eliteBase = tn.num('eliteChance', 0.05, 0, 1, 0.01, 'elite chance on floor 1 (+1.5%/floor, max 25%)');
   const curseChance = tn.num('curseChance', 0.08, 0, 1, 0.01, 'chance per uncleared room entered (+1%/floor, max 20%)');
   const curseGrade = tn.num('gradeCurseMire', 2, 0, 8, 0.5, 'extra grade during Curse of the Mire');
-  const sprintHeal = tn.num('sprintHealFrac', 0.25, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
+  const sprintHeal = tn.num('sprintHealFrac', 0.3, 0, 1, 0.05, 'a sprint heals this fraction of max HP (Second breath)');
   const sprintGuard = tn.num('sprintGuard', 0.5, 0, 1, 0.05, 'damage taken is cut by this fraction while sprinting');
   const sprintBreakS = tn.num('bossSprintBreakS', 4, 0, 10, 0.5, 'a sprint started while the boss is idle exposes it for this long');
   const fireS = tn.num('sprintFiredUpS', 30, 0, 120, 5, 'after a sprint the hero is Fired Up for this long');
@@ -249,7 +249,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const cues: Array<{ name: string; id: number }> = [];
   let nextId = 1, cueId = 0;
   let t = 0, kills = 0, deaths = 0, damageDealt = 0, output = 0, fightT = 0, roomsCleared = 0, bossDefeated = 0, floorsCleared = 0, elitesSlain = 0, uniquesFound = 0;
-  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99;
+  let navPath: Array<{ x: number; y: number }> = [], navKey = '', navAge = 99, navChk = 0;
   let flow: Int16Array = new Int16Array(0), flowKey = -1;
 
   const hpMul = () => enemyHpMult() * Math.pow(enemyHpGrowth(), floor - 1);
@@ -728,7 +728,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (suggestion === stance || swapTo || pick) suggestion = null;
   }
 
-  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty);
+  const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty, { clearance: PLAYER_R + 0.05 });
   function navTarget(): { key: string; x: number; y: number } | null {
     if (!boss.alive) return { key: 'stairs', x: Math.floor(world.stairs.x), y: Math.floor(world.stairs.y) };
     const dist = world.rooms.map(() => -1); dist[current] = 0;
@@ -759,6 +759,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         const key = `fight${near.id}`;
         if (navKey !== key || navAge > 0.75 || !navPath.length) { navPath = pathTo(Math.floor(near.x), Math.floor(near.y)); navKey = key; navAge = 0; }
         while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
+        if (navPath[0] && navAge > 0.3 && t >= navChk && (navChk = t + 0.25) && !clearLine(walkSolid, P.x, P.y, navPath[0].x, navPath[0].y, PLAYER_R - 0.1)) { navPath = pathTo(Math.floor(near.x), Math.floor(near.y)); navAge = 0; } // pushed off the straight leg: re-plan
         if (navPath[0]) { const wx = navPath[0].x - P.x, wy = navPath[0].y - P.y, wn = Math.hypot(wx, wy) || 1; mx = wx / wn; my = wy / wn; }
       }
       const pathing = s === 1 && navPath.length > 0;
@@ -779,6 +780,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (tgt) {
         if (tgt.key !== navKey || navAge > 1.5 || !navPath.length) { navPath = pathTo(tgt.x, tgt.y); navKey = tgt.key; navAge = 0; }
         while (navPath.length > 1 && Math.hypot(navPath[0].x - P.x, navPath[0].y - P.y) < 0.45) navPath.shift();
+        if (navPath[0] && navAge > 0.3 && t >= navChk && (navChk = t + 0.25) && !clearLine(walkSolid, P.x, P.y, navPath[0].x, navPath[0].y, PLAYER_R - 0.1)) { navPath = pathTo(tgt.x, tgt.y); navAge = 0; } // pushed off the straight leg: re-plan
         const wp = navPath[0];
         if (wp) { mx = wp.x - P.x; my = wp.y - P.y; }
       }

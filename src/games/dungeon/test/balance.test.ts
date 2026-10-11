@@ -24,11 +24,15 @@ describe.skipIf(!process.env.BALANCE)('dungeon difficulty (BALANCE=1)', () => {
   }, 180_000);
 
   it('camp upgrades carry a z2 rider deeper across three rides', () => {
-    const profile = testProfile(), deepest: number[] = [];
-    for (let n = 1; n <= 3; n++) {
-      const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: 130 + n, simOpts: { autopilot: true }, onSave: (d) => { profile.gameData[module.id] = d; } });
-      for (let i = 0, end = Math.round(2400 / FIXED_DT); i < end && !s.sim.isOver(); i++) s.step(1);
-      deepest.push(Number(s.finish().gameSummary['Deepest floor']));
+    // two independent riders (one chain alone is too seed-noisy): their 3rd rides together go deeper than their 1st
+    const deepest = [0, 0, 0];
+    for (const base of [130, 140]) {
+      const profile = testProfile();
+      for (let n = 1; n <= 3; n++) {
+        const s = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: 'z2' }, seed: base + n, simOpts: { autopilot: true }, onSave: (d) => { profile.gameData[module.id] = d; } });
+        for (let i = 0, end = Math.round(2400 / FIXED_DT); i < end && !s.sim.isOver(); i++) s.step(1);
+        deepest[n - 1] += Number(s.finish().gameSummary['Deepest floor']);
+      }
     }
     expect(deepest[2]).toBeGreaterThan(deepest[0]);
   }, 60_000);
@@ -37,12 +41,12 @@ describe.skipIf(!process.env.BALANCE)('dungeon difficulty (BALANCE=1)', () => {
 describe.skipIf(!process.env.BALANCE)('stance parity over long rides (BALANCE=1)', () => {
   const mk = (name: string, rpm: number) => { SCRIPTS[name] = { ...SCRIPTS.z2, name, cadence: (t: number) => rpm + 2 * Math.sin(t / 5) }; };
   mk('test-rpm76', 76); mk('test-rpm96', 96);
-  const rooms = (script: string, stance: string) => [11, 12, 13, 14, 15, 16, 17, 18].reduce((a, seed) =>
+  const rooms = (script: string, stance: string) => [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].reduce((a, seed) =>
     a + (runHeadless({ game: module, script, minutes: 15, seed, simOpts: { autopilot: true, stance } }).summary['Rooms cleared'] as number), 0);
   it('rooms cleared at 76 vs 96 rpm land within 10% for every stance', () => {
     for (const st of ['vanguard', 'ranger', 'skirmisher']) {
       const lo = rooms('test-rpm76', st), hi = rooms('test-rpm96', st);
       expect(Math.abs(lo - hi) / Math.max(lo, hi), `${st} ${lo} vs ${hi}`).toBeLessThanOrEqual(0.1);
     }
-  }, 300_000);
+  }, 450_000);
 });

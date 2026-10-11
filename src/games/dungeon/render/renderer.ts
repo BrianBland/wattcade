@@ -408,7 +408,13 @@ export function createRenderer(): GameRenderer {
       // AI intent: dotted path to the hero's next goal
       if (s.ai.path.length) {
         gg.fillStyle = 'rgba(255,255,255,0.35)';
-        s.ai.path.forEach((q, i) => { if (i % 2 === 0) { gg.beginPath(); gg.arc(q.x * TS, q.y * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); } });
+        // dots evenly spaced along the (smoothed, possibly diagonal) polyline from the hero, up to ~16 tiles
+        let ax = s.player.x, ay = s.player.y, carry = 0.6, drawn = 0;
+        for (const q of s.ai.path) {
+          const dx = q.x - ax, dy = q.y - ay, d = Math.hypot(dx, dy);
+          for (let k = carry; k < d && drawn < 27; k += 0.6, drawn++) { gg.beginPath(); gg.arc((ax + dx * k / d) * TS, (ay + dy * k / d) * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); }
+          carry = ((carry - d) % 0.6 + 0.6) % 0.6 || 0.6; ax = q.x; ay = q.y;
+        }
         const end = s.ai.path[s.ai.path.length - 1];
         gg.strokeStyle = 'rgba(255,255,255,0.5)'; gg.lineWidth = 2; gg.beginPath(); gg.arc(end.x * TS, end.y * TS, TS * 0.28, 0, Math.PI * 2); gg.stroke();
       }

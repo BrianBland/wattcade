@@ -66,3 +66,8 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - The slim row also shows each equipped gear item (slot icon + item level, rarity-coloured border/tint). Top-left
   status panel is compact (thin HP/XP bars, one line with Lv/floor, coins, potions, Second Wind pip), scaled from CSS
   px (`hu`) so iPad's device scale doesn't double it; the boss bar starts right of it, so they no longer overlap.
+
+## Hero pathing
+- `findPath` (sim/ai.ts) is 8-directional A* (diagonals cost sqrt2, never cut a wall corner, octile heuristic, insertion-order tie-break so it stays deterministic), then string-pulled: waypoints are kept only where a straight, body-width (`PLAYER_R + 0.05`) leg is no longer clear. Scratch buffers are reused across calls.
+- If the hero is pushed off a straight leg (dodges, knockback), the sim re-plans when the next leg isn't clear (checked at most every 0.25s).
+- The path dots are resampled every 0.6 tiles along the smoothed polyline from the hero, so diagonal legs draw as diagonal dotted lines.

@@ -6,7 +6,7 @@ let BUF: { n: number; g: Float64Array; prev: Int32Array; stamp: Uint32Array; shu
 /** 8-directional A* from (sx,sy) to (tx,ty) over walkable tiles, then string-pulled (smooth: false keeps every tile).
  *  Returns waypoints (tile centres), excluding the start. */
 export function findPath(w: number, h: number, solid: (x: number, y: number) => boolean, sx: number, sy: number, tx: number, ty: number,
-  opts: { smooth?: boolean; clearance?: number } = {}): Array<{ x: number; y: number }> {
+  opts: { smooth?: boolean; clearance?: number; /** extra cost per orthogonal wall next to a tile (keeps paths off walls in rooms) */ wallCost?: number } = {}): Array<{ x: number; y: number }> {
   if (sx < 0 || sy < 0 || sx >= w || sy >= h || tx < 0 || ty < 0 || tx >= w || ty >= h) return [];
   const start = sy * w + sx, goal = ty * w + tx;
   if (start === goal) return [];
@@ -44,7 +44,8 @@ export function findPath(w: number, h: number, solid: (x: number, y: number) => 
       if (!open(nx, ny)) continue;
       if (dx && dy && (!open(cx + dx, cy) || !open(cx, cy + dy))) continue; // no corner cutting
       const ni = ny * w + nx; if (closed.get(ni)) continue; touch(ni);
-      const ng = g[c] + (dx && dy ? Math.SQRT2 : 1);
+      const wc = opts.wallCost ? opts.wallCost * ((open(nx + 1, ny) ? 0 : 1) + (open(nx - 1, ny) ? 0 : 1) + (open(nx, ny + 1) ? 0 : 1) + (open(nx, ny - 1) ? 0 : 1)) : 0;
+      const ng = g[c] + (dx && dy ? Math.SQRT2 : 1) + wc;
       if (ng < g[ni]) { g[ni] = ng; prev[ni] = c; push(ni, ng + hfn(nx, ny)); }
     }
   }

@@ -29,3 +29,21 @@ describe('hero pathfinding', () => {
     expect(findPath(g.w, g.h, g.solid, 0, 0, 4, 0)).toEqual([]);
   });
 });
+
+describe('hero does not wedge in corridors', () => {
+  it('rarely stands still while it has a path and nothing to fight or pick up', async () => {
+    const { createGameSession, testProfile, NullInput } = await import('../../../core');
+    const { module } = await import('../index');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 11, simOpts: { autopilot: true, skipCamp: true, invulnerable: true } });
+    let px = NaN, py = NaN, had = false, goal = 0, stuck = 0;
+    for (let sec = 0; sec < 240; sec++) {
+      s.step(30);
+      const sn = s.sim.snapshot() as any, p = sn.player;
+      const calm = !sn.enemies.some((e: any) => Math.hypot(e.x - p.x, e.y - p.y) < 6) && !sn.drops.some((d: any) => Math.hypot(d.x - p.x, d.y - p.y) < 6);
+      if (had && calm && sn.phase === 'run') { goal++; if (Math.hypot(p.x - px, p.y - py) < 0.5) stuck++; }
+      px = p.x; py = p.y; had = sn.ai.path.length > 0;
+    }
+    expect(goal).toBeGreaterThan(30);
+    expect(stuck / goal).toBeLessThan(0.05); // was ~26% when a body grazing a wall could wedge
+  });
+});

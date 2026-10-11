@@ -86,3 +86,13 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   floor1Ease 0.5→0.35, sprintFiredUpS 60→90, sprintFiredUpDmg 1.7→2.
 - 12 fresh seeds: 0% of rides die on floor 1 on their first run; 5-ride chains keep dying at depth (z2 ~1/ride, action bot ~0.5-0.75/ride on rides 3-5).
 - test:balance uses 12 seeds, checks floor-1 first-run deaths < 10%, and that upgraded 3rd rides still die.
+
+## Corridor wedging fix
+- Root cause: `move()` refused any step while the body's 4 corners overlapped a wall, and only nudged toward the
+  corridor centre for pure-axis moves. Smoothed (diagonal) legs left the hero grazing a wall at corridor mouths,
+  where it froze. Stuck time (1s windows with a path, nothing within 6 tiles, < 0.5 tiles moved; 12 seeds x 15 min):
+  ca077ef 0.8%, 44eaa81 26.3%, now 1.4%.
+- Fix: a body already overlapping a wall eases back to its tile centre first; the perpendicular nudge now also applies
+  to mostly-axis moves. Stuck detector: < 0.25 tiles progress in 0.75s with a path -> 3s of raw (unsmoothed) tile paths.
+- No death spiral: dying on the floor you started on lowers the default start by 2 (still adjustable at camp).
+- Retune (hero now covers more ground): enemyDamageScale 2.4->1.9, enemyDamageGrowth 1.55->1.45.

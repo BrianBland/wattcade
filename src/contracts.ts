@@ -142,6 +142,8 @@ export interface GameContext {
   clock: Clock;
   profile: Readonly<Profile>;
   bike(): Readonly<BikeState>;
+  /** Available trainer modes; variant pickers can disable an unsupported craft before launch. */
+  trainerCapabilities?(): Readonly<TrainerCapabilities> | null;
   input(): Readonly<InputState>;
   resistance: ResistanceController;
   tuning: Tuning;

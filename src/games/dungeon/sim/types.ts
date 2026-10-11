@@ -4,7 +4,7 @@ import type { UpgradeId } from './meta';
 
 export type EliteMod = 'undying' | 'splitting' | 'shielded' | 'swift' | 'volatile';
 export interface EnemyView {
-  id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number; shielded: boolean;
+  id: number; kind: EnemyKind | 'boss'; x: number; y: number; r: number; hp: number; maxHp: number; exposed: boolean;
   hurt: number; face: number; slowed: boolean; dot: boolean; tell: number; // tell 0..1 = wind-up / fuse / charge
   variant: number; elite: EliteMod | null; shieldFrac: number;
 }
@@ -22,8 +22,9 @@ export type CurseKind = 'frenzy' | 'hexed' | 'swarm' | 'darkness' | 'mire' | 'fr
 export interface CurseView { kind: CurseKind; name: string; desc: string; color: string; left: number; total: number }
 export interface CampView {
   bank: number; sel: number; autoStartS: number; autoStartLeft: number; startFloor: number; maxStartFloor: number; autoInvest: boolean;
-  rows: Array<{ kind: 'start' | 'floor' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }>;
+  rows: Array<{ kind: 'start' | 'floor' | 'upgrade' | 'auto' | 'erg'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }>;
   bestFloor: number; runs: number;
+  lastDeath?: { floor: number; banked: number }; // set when camp follows a death
 }
 export interface DungeonSnapshot {
   t: number;
@@ -34,7 +35,7 @@ export interface DungeonSnapshot {
   player: {
     x: number; y: number; r: number; hp: number; maxHp: number; potions: number; potionCap: number;
     invuln: boolean; onSwamp: boolean; speedMult: number; moving: boolean; rolling: boolean; warded: boolean; rallied: boolean; hurt: number;
-    lives: number; livesMax: number; // livesMax 0 = unlimited
+    secondWind: number; secondWindFlash: number; // Second Wind ready 0..1; flash 1->0 after it fires
     level: number; xp: number; xpNext: number; coins: number; bank: number;
   };
   weapon: Weapon;
@@ -46,6 +47,7 @@ export interface DungeonSnapshot {
     styleOn: boolean; styleHidden: boolean; swapping: string | null; ready: number; suggest: string | null;
     list: Array<{ id: string; name: string; color: string; weapon: string }>;
   };
+  pace: { seg: string; label: string; erg: boolean; segT: number };
   /** Current cooldown refill speed (x base) and the power zone driving it (1..5). */
   refill: { rate: number; zone: number };
   ai: { path: Array<{ x: number; y: number }>; targetId: number };
@@ -64,7 +66,7 @@ export interface DungeonSnapshot {
   room: number;
   stairsOpen: boolean;
   frozen: boolean;
-  boss: { active: boolean; name: string; hp: number; maxHp: number; shielded: boolean; shieldLeftS: number; nextShieldS: number } | null;
-  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
-  hooks: { boss: boolean; shielded: boolean; swamp: boolean };
+  boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
+  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; /** hero damage output while firing, normalised per weapon (sum of per-shot damage / weapon rate), and seconds spent firing */ output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
+  hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
 }

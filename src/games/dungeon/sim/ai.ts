@@ -39,3 +39,14 @@ export function shouldAutoPotion(hpFrac: number, potions: number, sinceLastPotio
 
 export type ActionId = 'strike' | 'ward' | 'rally' | 'potion';
 export { readyFrac, type Cooldown } from '../../../core/cooldown';
+
+/**
+ * Hero move speed from cadence (piecewise linear over `pts`). Normal riding (60-90 rpm) is flat, so style doesn't
+ * change the workout; cadence above 90 rpm only pays while the game calls a spin-up.
+ */
+export function cadenceSpeed(c: number, spinCalled: boolean, pts: Array<[number, number]>): number {
+  if (!spinCalled) c = Math.min(c, 90);
+  if (c <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) if (c <= pts[i][0]) { const [a, va] = pts[i - 1], [b, vb] = pts[i]; return va + ((vb - va) * (c - a)) / (b - a); }
+  return pts[pts.length - 1][1];
+}

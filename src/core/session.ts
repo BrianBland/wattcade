@@ -71,6 +71,7 @@ export function createGameSession(o: SessionOpts): GameSession {
   const ctx: GameContext = {
     clock, profile,
     bike: () => bikeStore.get(),
+    trainerCapabilities: () => dataHub.capabilities(),
     input: () => o.input.state(),
     resistance: mixer,
     tuning: tuning.scoped(o.game.id),

@@ -1,5 +1,7 @@
 # wattcade — Build Spec (v0 demo)
 
+Current Squadron rebuild: [Sprocket Squadron](SPROCKET_SQUADRON.md) supersedes the old trigger-driven Sprocket/Crank Fighter design. Shared music work is tracked in issues #64–#66.
+
 A web-based "bike arcade" for a **Zwift Ride V1 frame + Wahoo KICKR CORE + Garmin watch (HR broadcast)**, played on an **iPad in the Bluefy browser** (Web Bluetooth). Three minimal-but-working games that prove the bike↔game mechanics, plus the foundation that makes new games easy to vibecode.
 
 This file is both the product spec and the execution plan for Claude Code. **Orchestrator: read §0–§4 fully, then execute §9. Subagents: read §0–§4 and only your own section in §5–§7.**

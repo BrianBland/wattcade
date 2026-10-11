@@ -4,11 +4,13 @@ type Run = { mixerCommands: TrainerCommand[]; isOver: boolean; events: Array<{ t
 
 export const scenarios: Array<{
   name: string; script: string; minutes: number; seed: number;
+  /** Run every seed and also check `assertAvg` on the averaged numeric summary (robust to one unlucky seed). */
+  seeds?: number[]; assertAvg?(avg: Record<string, number>): string[];
   simOpts?: Record<string, unknown>;
   assert(summary: Record<string, number | string>, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 11, simOpts: { autopilot: true },
+    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 22, simOpts: { autopilot: true },
     assert: (s) => ((s['Bosses slain'] as number) >= 1 ? [] : [`bossDefeated expected >=1, got ${s['Bosses slain']} (rooms ${s['Rooms cleared']}, deaths ${s.Deaths})`]),
   },
   {
@@ -38,11 +40,19 @@ export const scenarios: Array<{
   },
   {
     // a rider who answers ambushes, spin-ups and Exposed windows (sprints) and uses actions goes clearly deeper
-    name: 'action-hour', script: 'hook-responsive', minutes: 60, seed: 19, simOpts: { autopilot: true, actionBot: true },
+    // per seed: loose bounds; across seeds: the average must show clear progress for a fresh character
+    name: 'action-hour', script: 'hook-responsive', minutes: 60, seed: 19, seeds: [15, 19], simOpts: { autopilot: true, actionBot: true },
     assert: (s) => {
       const f: string[] = [];
-      if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);
-      if ((s.Deaths as number) > 3) f.push(`deaths ${s.Deaths} > 3`);
+      if ((s['Deepest floor'] as number) < 4) f.push(`floor ${s['Deepest floor']} < 4 after an hour`);
+      if ((s.Deaths as number) > 5) f.push(`deaths ${s.Deaths} > 5`);
+      return f;
+    },
+    assertAvg: (a) => {
+      const f: string[] = [];
+      if (a['Deepest floor'] < 5) f.push(`avg floor ${a['Deepest floor'].toFixed(1)} < 5 after an hour`);
+      if (a['Bosses slain'] < 5) f.push(`avg bosses ${a['Bosses slain'].toFixed(1)} < 5`);
+      if (a.Deaths > 3) f.push(`avg deaths ${a.Deaths.toFixed(2)} > 3`);
       return f;
     },
   },

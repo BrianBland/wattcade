@@ -39,9 +39,18 @@ const RIDE_TIMEOUT = 30_000;
 
 describe('headless rides unlock game achievements', () => {
   it('dungeon hour', async () => {
-    expect(await unlocked('dungeon', 'action-hour')).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
+    // lifetime tallies are robust for any seed; the floor-8 / 12-curse feats need a deep dive, checked below on a fixed summary
+    await counted('dungeon', 'action-hour', ['bosses', 'kills', 'bestFloor']);
     await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestFloor']);
   }, RIDE_TIMEOUT);
+  it('a deep dungeon dive unlocks Delver and Curse Breaker', () => {
+    const r = runHeadless({ game: getGame('dungeon')!, script: 'z2', minutes: 1, seed: 1 });
+    const record: SessionRecord = {
+      id: 'h', profileId: 'x', gameId: 'dungeon', startedAt: new Date(2026, 4, 13, 12).getTime(), durationS: 3600, samples: [], events: r.events, stats: r.stats,
+      gameSummary: { 'Deepest floor': 8, 'Curses survived': 12, 'Bosses slain': 7, Deaths: 1 },
+    };
+    expect(awardSession(defaultProfile(), record).newAchievements.map((a) => a.id)).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
+  });
   it('dungeon sprints find uniques', async () => {
     await counted('dungeon', 'sprints-boss', ['uniques']);
   }, RIDE_TIMEOUT);

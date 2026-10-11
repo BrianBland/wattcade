@@ -151,9 +151,15 @@ describe('effort-scaled action cooldowns', () => {
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
     it(sc.name, () => {
-      const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
-      const fails = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
-      expect(fails, JSON.stringify(r.summary)).toEqual([]);
+      const sum: Record<string, number> = {};
+      const seeds = sc.seeds ?? [sc.seed];
+      for (const seed of seeds) {
+        const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts });
+        const fails = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
+        expect(fails, `seed ${seed}: ${JSON.stringify(r.summary)}`).toEqual([]);
+        for (const [k, v] of Object.entries(r.summary)) if (typeof v === 'number') sum[k] = (sum[k] ?? 0) + v / seeds.length;
+      }
+      if (sc.assertAvg) expect(sc.assertAvg(sum), JSON.stringify(sum)).toEqual([]);
     }, sc.minutes >= 60 ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
   }
   it('is deterministic', () => {
@@ -184,7 +190,7 @@ describe('meta progression', () => {
     let saved: any = null;
     const input = new TimelineInput([
       { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Might
-      { t: 0.5, press: 'z' }, { t: 0.6, release: 'z' },       // buy (300) with Z (left face button)
+      { t: 0.5, press: 'z' }, { t: 0.6, release: 'z' },       // buy (250) with Z (left face button)
       { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // begin
     ]);
     const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
@@ -192,7 +198,7 @@ describe('meta progression', () => {
     s.step(40);
     expect((s.sim.snapshot() as any).phase).toBe('run');
     expect(saved.upgrades.might).toBe(1);
-    expect(saved.bank).toBe(700);
+    expect(saved.bank).toBe(750);
     expect(saved.runs).toBe(1);
   });
 });

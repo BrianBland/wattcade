@@ -71,3 +71,12 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - `findPath` (sim/ai.ts) is 8-directional A* (diagonals cost sqrt2, never cut a wall corner, octile heuristic, insertion-order tie-break so it stays deterministic), then string-pulled: waypoints are kept only where a straight, body-width (`PLAYER_R + 0.05`) leg is no longer clear. Scratch buffers are reused across calls.
 - If the hero is pushed off a straight leg (dodges, knockback), the sim re-plans when the next leg isn't clear (checked at most every 0.25s).
 - The path dots are resampled every 0.6 tiles along the smoothed polyline from the hero, so diagonal legs draw as diagonal dotted lines.
+
+## Harder fresh characters, stronger camp (retune after diagonal pathing)
+- Knobs: enemyDamageScale 2.1→2.75, enemyDamageGrowth 1.28→1.34, potionHeal 0.45→0.38, wardDurS 3→2, strikeDamageMult 6→4,
+  sprintHealFrac 0.3→0.45, sprintGuard 0.5→0.6, sprintSecondWindS 60→120, sprintFiredUpS 30→60, sprintFiredUpDmg 1.4→1.7.
+- Camp: Might +15% dmg / Vitality +18% HP per level (were +10% / +12%), both cost 250 x1.28^lvl (were 300 x1.3^lvl).
+- Targets (12 seeds, 40 min, fresh): z2 ~2.25 deaths (every ~18 min) < sprints ~1.75 < responsive ~1.67 < action bot ~1.0;
+  upgraded riders (rides 3-5 of a chain) die far less and go 2-4 floors deeper.
+- `action-hour` runs two seeds with loose per-seed bounds plus averaged bounds (`seeds` / `assertAvg` in scenarios.ts).
+  The floor-8 / 12-curse achievements are checked on a fixed summary instead of a lucky ride.

@@ -8,11 +8,13 @@ const POS: Record<string, string> = { up: 'top', y: 'top', left: 'lft', z: 'lft'
 /** Touch/click target: holds the virtual button while the pointer is down. */
 export function PadKey({ b, held, merged, pos }: { b: PadButton; held: Held; merged?: boolean; pos?: string }) {
   const off = (e: PointerEvent) => input.releaseTouch(e.pointerId);
-  const cls = `pk${pos ? ` ${pos}` : ''}${b.mapped ? ' mapped' : ''}${merged ? ' merged' : ''}${held.has(b.id) ? ' held' : ''}${b.active ? ' active' : ''}${b.active === false ? ' off' : ''}`;
+  const cd = b.mapped ? b.cooldown : undefined, fill = cd ? Math.max(0, Math.min(1, cd.fill)) : 0;
+  const cls = `pk${pos ? ` ${pos}` : ''}${b.mapped ? ' mapped' : ''}${merged ? ' merged' : ''}${held.has(b.id) ? ' held' : ''}${b.active ? ' active' : ''}${b.active === false ? ' off' : ''}${cd ? (cd.ready ? ' cd ready' : ' cd') : ''}${cd && (cd.flourish ?? 0) > 0.6 && !cd.ready ? ' hot' : ''}`;
   return (
-    <button type="button" class={cls} style={{ '--kc': b.color } as any} disabled={!b.mapped} aria-label={b.label ?? b.id}
+    <button type="button" class={cls} style={{ '--kc': b.color, ...(cd ? { '--fill': `${fill * 100}%`, '--tint': cd.ready ? b.color : cd.tint ?? b.color } : {}) } as any} disabled={!b.mapped} aria-label={b.label ?? b.id}
       onPointerDown={(e) => { e.preventDefault(); input.holdTouch(e.pointerId, b.id); }}
       onPointerUp={off} onPointerCancel={off} onPointerLeave={off} onContextMenu={(e) => e.preventDefault()}>
+      {cd && <i class="pk-fill" aria-hidden="true" />}
       <b>{b.glyph}</b>{!merged && b.label && <span>{b.label}</span>}
     </button>
   );

@@ -4,6 +4,7 @@ import {
   ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, rollRarity, sellValue, starterWeapon, weaponScore,
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
+import { DEFAULT_ZONE_REFILL, completeCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
 import { findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
@@ -76,16 +77,18 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const revsPerShot = tn.num('revsPerShot', 0.5, 0.1, 4, 0.05, 'crank revs per shot at weapon rate 1');
   const baseDamage = tn.num('baseDamage', 10, 1, 100, 1, 'x weapon dmg x clamp(ftpFraction,0.3,2.5)');
   const regenPerS = tn.num('regenPerS', 2, 0, 20, 0.5, 'HP/s per 100 max HP in zone 2 (x2 out of combat)');
-  const strikeCd = tn.num('strikeCdS', 20, 2, 120, 1, 'Strike (A) cooldown');
+  const strikeCd = tn.num('strikeCdS', 30, 2, 120, 1, 'Strike (A) cooldown');
   const strikeMult = tn.num('strikeDamageMult', 6, 1, 30, 0.5, 'Strike damage as a multiple of one shot');
   const strikeRadius = tn.num('strikeRadius', 3.5, 1, 8, 0.25, 'tiles');
-  const wardCd = tn.num('wardCdS', 30, 2, 120, 1, 'Ward (B) cooldown');
+  const wardCd = tn.num('wardCdS', 45, 2, 120, 1, 'Ward (B) cooldown');
   const wardDur = tn.num('wardDurS', 3, 0.5, 10, 0.5, 'Ward blocks all damage for this long');
-  const rallyCd = tn.num('rallyCdS', 25, 2, 120, 1, 'Rally (Y) cooldown; only usable when a spin-up is called');
+  const rallyCd = tn.num('rallyCdS', 35, 2, 120, 1, 'Rally (Y) cooldown; only usable when a spin-up is called');
   const rallyDur = tn.num('rallyDurS', 10, 1, 30, 1);
   const rallyMult = tn.num('rallyFireMult', 1.5, 1, 3, 0.05, 'fire-rate multiplier while Rally is up');
   const rollCd = tn.num('aiRollCdS', 2, 0.5, 10, 0.5, 'the AI rolls out of a crowd when hurt (0.3 s invulnerable); this is its cooldown');
-  const potionCd = tn.num('potionCdS', 4, 0, 30, 0.5, 'Potion (Z) cooldown');
+  const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
+  const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
+  const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
   const potionHeal = tn.num('potionHeal', 0.45, 0.1, 1, 0.05, 'fraction of max HP');
   const autoPotionFrac = tn.num('autoPotionHpFrac', 0.35, 0, 0.9, 0.05, 'AI drinks below this HP fraction if the rider has not drunk in the last 10 s');
   const maxHpT = tn.num('playerHp', 100, 20, 500, 10);
@@ -132,6 +135,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   let weapon: Weapon = starterWeapon();
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
+  const tapped: ActionId[] = [];
+  let lastRate = 1, lastSprints = ctx.bike().sprintCount;
   const cds: Record<ActionId, Cooldown> = { strike: { left: 0, total: 1 }, ward: { left: 0, total: 1 }, rally: { left: 0, total: 1 }, potion: { left: 0, total: 1 } };
   const xpNext = (L: number) => Math.round(30 * Math.pow(1.32, L - 1));
   const gearSum = (k: keyof Gear['stats']) => SLOTS.reduce((a, s) => a + (gear[s]?.stats[k] ?? 0), 0);
@@ -537,6 +542,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function riderActions(input: Readonly<InputState>, bike: Readonly<BikeState>) {
     const p = (b: Button) => input.pressed.has(b);
+    for (const id of tapped.splice(0)) act(id, bike); // on-screen button taps
     if (p('a')) act('strike', bike);
     if (p('b')) act('ward', bike);
     if (p('y')) act('rally', bike);
@@ -737,7 +743,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (freezeT > 0) { freezeT -= dt; return; } // hit-stop
     t += dt; navAge += dt;
     const ctl = autopilotCtl();
-    for (const k of Object.keys(cds) as ActionId[]) cds[k].left = Math.max(0, cds[k].left - dt);
+    const rate = refillRate(bike.powerZone, [1, ...zoneRefill.map((f) => f())]);
+    lastRate = rate;
+    for (const k of Object.keys(cds) as ActionId[]) tickCooldown(cds[k], dt, rate);
+    if (bike.sprintCount > lastSprints) {
+      lastSprints = bike.sprintCount;
+      if (sprintCompletes() && (Object.keys(cds) as ActionId[]).map((k) => completeCooldown(cds[k])).some(Boolean)) {
+        toast('Sprint! Actions recharged', '#ffd84a'); cue('reward');
+        ctx.emit({ type: 'actionsRecharged', data: { floor } });
+      }
+    }
     P.ward = Math.max(0, P.ward - dt); P.rally = Math.max(0, P.rally - dt);
     riderActions(input, bike);
 
@@ -1077,6 +1092,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       },
       weapon, gear: { ...gear },
       aim: { angle: P.aim },
+      refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
       ai: { path: phase === 'run' ? navPath.slice(0, 40) : [], targetId: P.targetId },
       actions: (['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id) => ({
         id, button: ACTION_BUTTON[id], label: ACTION_LABEL[id], ready: readyFrac(cds[id]),
@@ -1111,10 +1127,11 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       : { min: 2, max: 2, label: act ? 'Shrine: hold Z2' : curse ? 'Cursed: ride it out' : 'Heal' };
     return {
       controls: [
-        { button: 'a', label: 'Strike', active: cds.strike.left <= 0 },
-        { button: 'b', label: 'Ward', active: cds.ward.left <= 0 },
-        { button: 'y', label: 'Rally', active: cds.rally.left <= 0 && spinCalled() },
-        { button: 'z', label: 'Potion', active: P.potions > 0 && P.hp < P.maxHp && cds.potion.left <= 0 },
+        ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
+          const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
+          return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
+            cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
+        }),
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },
       ],
@@ -1126,7 +1143,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   return {
     update, hud, inMenu, snapshot, isOver: () => over,
     receive(a: unknown) {
-      const act = a as { type?: string; row?: number };
+      const act = a as { type?: string; row?: number; id?: string };
+      if (act?.type === 'action' && phase === 'run' && typeof act.id === 'string' && act.id in ACTION_BUTTON && tapped.length < 4) tapped.push(act.id as ActionId);
       if (act?.type === 'campRow' && typeof act.row === 'number' && pending.length < 8) pending.push({ type: 'campRow', row: act.row });
     },
     summary: () => ({

@@ -13,3 +13,4 @@
 - HudLayer measures the panel so renderer insets reserve the larger of panel or controller height plus safe-area padding.
 - PR screenshots use deterministic HR/power targets, cadence guidance, gears, and 90 history bars.
 - Validation: TypeScript, shell/core/inset tests, build, Chromium menu taps/keyboard/shifter isolation, reading containment, and exact meter/history alignment at five viewport sizes.
+- Keys can show a game cooldown (`ControlHint.cooldown`: fill 0..1, ready, effort tint, flourish): `.pk.cd` fills bottom-to-top in the tint, stays dark until ready, glows when ready (dim if ready but `active: false`), ember edge when flourish > 0.6. Games build it with `core/cooldown.ts` (`readyFrac`, `effortTint`, `effortFlourish`).

@@ -129,6 +129,24 @@ describe('hands-off input map', () => {
   });
 });
 
+describe('effort-scaled action cooldowns', () => {
+  const wardFill = (script: string, pressAt: number, after: number) => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: pressAt, press: 'b' }, { t: pressAt + 0.05, release: 'b' }]), fake: { script }, seed: 5, simOpts: { skipCamp: true } });
+    s.step(Math.round(after * 30));
+    return (s.sim.snapshot() as any).actions.find((a: { id: string }) => a.id === 'ward').ready as number;
+  };
+  it('harder effort refills faster (zone 4 beats zone 2)', () => {
+    const z2 = wardFill('z2', 1, 21), z4 = wardFill('intervals', 1, 21); // intervals opens with 3 min at 1.05 FTP
+    expect(z2).toBeGreaterThan(0.3); expect(z2).toBeLessThan(1);
+    expect(z4).toBeGreaterThan(z2 * 1.4);
+  });
+  it('a sprint finishes every refilling action', () => {
+    // sprints: 15 s at 1.5 FTP from t=105 s; press Ward at 100 s, check at 115 s (well before it could refill)
+    expect(wardFill('sprints', 100, 115)).toBe(1);
+    expect(wardFill('z2', 100, 115)).toBeLessThan(1);
+  });
+});
+
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
     it(sc.name, () => {

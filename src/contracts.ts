@@ -157,7 +157,9 @@ export interface GameContext {
 }
 /** What a control does right now, for the shell's on-screen controller legend. */
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
-export interface ControlHint { button: ControlTarget; label: string; active?: boolean }
+/** Optional cooldown shown on the overlay key itself: fills bottom-to-top, greyed until ready, glows when ready. */
+export interface ControlCooldown { fill: number; ready: boolean; tint?: string; flourish?: number }
+export interface ControlHint { button: ControlTarget; label: string; active?: boolean; cooldown?: ControlCooldown }
 /**
  * A zone band. `source: 'power'` = judged on min(5, powerZone): use it for any effort shorter than ~2 min,
  * because HR lags 30–60 s and can't follow a sprint. Default 'effort' = effortZone (HR-aware), for long holds.

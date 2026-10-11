@@ -38,6 +38,4 @@ export function shouldAutoPotion(hpFrac: number, potions: number, sinceLastPotio
 }
 
 export type ActionId = 'strike' | 'ward' | 'rally' | 'potion';
-export interface Cooldown { left: number; total: number }
-/** Ready fraction 0..1 for a bar (1 = ready). */
-export const readyFrac = (c: Cooldown) => (c.total <= 0 ? 1 : 1 - Math.max(0, Math.min(1, c.left / c.total)));
+export { readyFrac, type Cooldown } from '../../../core/cooldown';

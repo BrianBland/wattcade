@@ -1,8 +1,5 @@
 # cadenza — Cadenza (SPEC §6.5)
-
-Music racer (formerly "Wattsurf", id `wattsurf`; `core/renames.ts` migrates saves, history and tuning). The shell opens the
-media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard position). Mono mode only (Classic = later).
-
+Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tuning). Picker first; sim reads `ctx.media.timeline` / `positionS()`. Mono only.
 ## Sim (`sim/`, pure)
 - `track.ts` `buildTrack`: one visual zone per section (hue from the song palette + 47°/zone), speed/distance/height/heading,
   visual grade, banks, tunnels (breaks + some verses, ≤ 45 s), blocks from onsets (min gap 0.36/0.22/0.11 s, lanes 3/3/5).
@@ -20,23 +17,24 @@ media picker first; the sim reads `ctx.media.timeline` and `positionS()` (heard 
   (rpm ÷ 90 in ERG) over the roll → `rateLaunch` perfect ≥ 1.15 / great ≥ 1 / good ≥ 0.85 / weak; bonus 500 × 3/2/1/0 × zone.
   `recaps` per song (score, accuracy, chain, on-target %, launches, 1 Hz strip). Cues `chain` (`isChainMilestone`), `effort`, `launch`.
   Trainer grade follows the plan (0.5% in recovery); ERG recovery 0.5 FTP. `coaching.ts`: 1.5 s off target to cue, 0.6 s to clear.
-
 ## Render (`render/`)
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (glass cubes in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
-`craft.ts` (lofted hull, canopy, pods, wings, fins; flash, knockback + bubble, ghost, overcharge arcs, under sputter; shockwave
+`craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
 `hud.ts` (callout: big instruction 3 s per effort change / 4 s Break, + a smaller line in the same style — band · watts,
 `Sprint incoming`, `Easy pedaling · Z1–2`; countdown digits pop (no sfx over the music), coaching/dropout stay up; accent text `--acc-t`), `layout.ts`.
 Recovery calms pulses, bloom, shake, streaks, rings (`uMotion`), no fireworks. AV penalty: 3 s grace, 10 s ramp, capped 0.75.
-
 ## Dev / tests
 `/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,
-`script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html` = ship states + mine.
+`script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html?ship=lancer` = ship states + mine.
 `node scripts/cadenza-render-smoke.mjs` against Vite checks finite bloom, bounded GPU allocations, smooth audio.
 Scenarios: EDM set (3–5 spaced launches ≥ great), idle dropout, continuous album on casual. Gaps: Classic; iPad GPU cost; real-ride tuning.
-Rolling analysis: `extendTrack` keeps ridden geometry/blocks and the committed ride block (≥ 30 s); new sprints need a full countdown.
+Rolling: `announcements.ts` gives effort/launch/helix/steering cues stable IDs; calls `media.announce` once within 10 s (also pre-playback snapshots).
+Revisions honor `frozenUntilS` and the local announcement horizon; legacy fallback remains. `extendTrack` keeps road/blocks and committed efforts; new sprints need a countdown.
+Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low confidence use effort-only holds/recovery. No coverage = unchanged full-file/synth plan.
+`test/rolling.test.ts`: real RollingQueue with shifting grids/sections, every announced ID/time, frozen samples, gaps/0.6.
 Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).

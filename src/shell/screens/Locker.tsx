@@ -5,7 +5,7 @@ import { isUnlocked, loadout, nextReward, riderLook, titleOf, withItem } from '.
 import { SLOTS, SLOT_NAMES, type Item } from '../../cosmetics/types';
 import { Btn } from '../components/Bits';
 import { KeyHints } from '../components/ui';
-import { RiderAvatar } from '../components/RiderAvatar';
+import { ItemArt, RiderAvatar } from '../components/RiderAvatar';
 import { equipItem, itemHint, pendingPicks } from '../services';
 import { useMenuNav } from '../useMenuNav';
 import { play } from '../../audio/sfx';
@@ -49,7 +49,7 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
       </div>
       <div class="locker-grid">
         <div class="panel locker-hero">
-          <RiderAvatar look={preview} size="hero" />
+          {focusItem?.slot === 'ship' ? <ItemArt it={focusItem} base={base} size="hero" /> : <RiderAvatar look={preview} size="hero" />}
           <h3>{profile.name}</h3>
           {title && <div class="rider-title">{title}</div>}
           {focusItem && <div class="locker-focus">
@@ -66,7 +66,7 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
               const un = isUnlocked(profile, it), on = worn[slot] === it.id, f = idx === gridStart + i;
               return (
                 <div key={it.id} class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
-                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <RiderAvatar look={withItem(base, it)} size="thumb" still lazy road={false} silhouette={!un} />}
+                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <ItemArt it={it} base={base} size="thumb" still lazy road={false} silhouette={!un} />}
                   <div class="item-name">{un ? it.name : '🔒'}</div>
                   {!un && <div class="item-hint">{itemHint(it)}</div>}
                 </div>

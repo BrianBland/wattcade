@@ -65,3 +65,12 @@ export function strikeBoss(s: BossState, cfg: BossCfg = DEFAULT_BOSS): boolean {
   if (s.cycle !== 'exposed' || s.struck) return false;
   s.struck = true; s.left += cfg.strikeBonusS; return true;
 }
+
+/** A sprint started while the boss is idle breaks its guard: a short Exposed window right now
+ *  (the next big attack is pushed back by the normal idle gap). Returns true if it broke. */
+export function sprintBreak(s: BossState, breakS: number, cfg: BossCfg = DEFAULT_BOSS): boolean {
+  if (s.cycle !== 'idle' || breakS <= 0) return false;
+  void cfg;
+  s.cycle = 'exposed'; s.cycleT = 0; s.left = breakS; s.parried = false; s.struck = false;
+  return true;
+}

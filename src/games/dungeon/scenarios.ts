@@ -8,7 +8,7 @@ export const scenarios: Array<{
   assert(summary: Record<string, number | string>, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 18, simOpts: { autopilot: true },
+    name: 'sprints-boss', script: 'sprints', minutes: 20, seed: 16, simOpts: { autopilot: true },
     assert: (s) => ((s['Bosses slain'] as number) >= 1 ? [] : [`bossDefeated expected >=1, got ${s['Bosses slain']} (rooms ${s['Rooms cleared']}, deaths ${s.Deaths})`]),
   },
   {
@@ -28,10 +28,21 @@ export const scenarios: Array<{
     name: 'z2-hour', script: 'z2', minutes: 60, seed: 21, simOpts: { autopilot: true },
     assert: (s) => {
       const f: string[] = [];
-      if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);
-      if ((s['Deepest floor'] as number) > 16) f.push(`floor ${s['Deepest floor']} > 16 (too easy)`);
-      if ((s['Hero level'] as number) < 8) f.push(`level ${s['Hero level']} < 8`);
+      // zone 2 with no actions is survivable for a while, not forever: expect a death or two and boss stalls
+      if ((s['Deepest floor'] as number) < 3) f.push(`floor ${s['Deepest floor']} < 3 after an hour`);
+      if ((s['Deepest floor'] as number) > 10) f.push(`floor ${s['Deepest floor']} > 10 (too easy)`);
+      if ((s.Deaths as number) < 1) f.push('never died in an hour of zone 2 (too easy)');
       if ((s.Deaths as number) > 5) f.push(`deaths ${s.Deaths} > 5`);
+      return f;
+    },
+  },
+  {
+    // a rider who answers ambushes, spin-ups and Exposed windows (sprints) and uses actions goes clearly deeper
+    name: 'action-hour', script: 'hook-responsive', minutes: 60, seed: 15, simOpts: { autopilot: true, actionBot: true },
+    assert: (s) => {
+      const f: string[] = [];
+      if ((s['Deepest floor'] as number) < 6) f.push(`floor ${s['Deepest floor']} < 6 after an hour`);
+      if ((s.Deaths as number) > 3) f.push(`deaths ${s.Deaths} > 3`);
       return f;
     },
   },

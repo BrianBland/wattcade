@@ -67,6 +67,6 @@ export interface DungeonSnapshot {
   stairsOpen: boolean;
   frozen: boolean;
   boss: { active: boolean; name: string; hp: number; maxHp: number; phase: 1 | 2 | 3; cycle: 'idle' | 'windup' | 'exposed' | 'stagger'; left: number; fightT: number; tide: number; splits: [number, number] } | null;
-  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
+  stats: { roomsCleared: number; kills: number; deaths: number; damageDealt: number; /** hero damage output while firing, normalised per weapon (sum of per-shot damage / weapon rate), and seconds spent firing */ output: number; fireT: number; bossDefeated: number; floorsCleared: number; elites: number; uniques: number; curses: number };
   hooks: { boss: boolean; shielded: boolean; swamp: boolean; seg: string; cadence: number; powerFtp: number };
 }

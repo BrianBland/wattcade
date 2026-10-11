@@ -19,7 +19,7 @@ const SHOTS: Record<string, Shot> = {
   dungeon: { query: `script=sprints&sec=150&seed=11&${ap()}` },
   lighthouse: { query: `script=z2&sec=900&${ap()}`, crop: [210, 110, 680, 383] },
   towerdefense: { query: `script=sprints&sec=300&${ap()}`, crop: [152, 0, 656, 369] },
-  starfighter: { query: `script=sprints&sec=200&${ap()}` },
+  starfighter: { query: `script=z2&sec=165&media=edm&${ap()}` },
 };
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -27,7 +27,7 @@ const base = arg('base') ?? 'http://localhost:5199', only = arg('only');
 const outDir = join(process.cwd(), 'public', 'cards');
 mkdirSync(outDir, { recursive: true });
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 for (const [id, shot] of Object.entries(SHOTS)) {
   if (only && only !== id) continue;
   const t0 = Date.now(), dir = mkdtempSync(join(tmpdir(), `card-${id}-`));
@@ -55,7 +55,7 @@ for (const [id, shot] of Object.entries(SHOTS)) {
   // seamless loop: play [FADE, LOOP+FADE) and cross-fade its last FADE seconds into the opening [0, FADE)
   const scale = `scale=${OUT_W}:${OUT_H}:flags=lanczos`;
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', join(dir, 'f%04d.png'), '-filter_complex',
-    `[0]${scale},split[s1][s2];[s1]trim=start=${FADE_S},setpts=PTS-STARTPTS[a];[s2]trim=end=${FADE_S},setpts=PTS-STARTPTS[b];` +
+    `[0]${scale},split[s1][s2];[s1]trim=start=${FADE_S},setpts=PTS-STARTPTS,fps=${FPS},settb=AVTB[a];[s2]trim=end=${FADE_S},setpts=PTS-STARTPTS,fps=${FPS},settb=AVTB[b];` +
     `[a][b]xfade=transition=fade:duration=${FADE_S}:offset=${LOOP_S - FADE_S},format=yuv420p[v]`,
     '-map', '[v]', '-c:v', 'libx264', '-profile:v', 'main', '-crf', '30', '-preset', 'slow', '-movflags', '+faststart', '-an', join(outDir, `${id}.mp4`)]);
   const poster = join(dir, `f${String(Math.round((shot.poster ?? 0.5) * LOOP_S * FPS) + FADE_S * FPS).padStart(4, '0')}.png`);

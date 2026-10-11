@@ -8,9 +8,10 @@ export const module: GameModule = {
   achievements,
   id: 'starfighter',
   title: 'Sprocket Squadron',
-  blurb: 'Shoot-em-up: shifters fire your left/right guns, cadence reloads, power thrusts, sprints fire the overdrive beam. Climb through sectors, beat the bosses, upgrade your ship.',
+  blurb: 'Hold the groove. Paint targets with your paddles, unleash musical laser volleys, and auto-dodge through bright carrier battles. Ride Zone 2, grow your arsenal, and break flagships.',
   progressLine, drawCard,
-  tags: ['sprint', 'intervals'],
+  tags: ['zone2', 'erg'],
+  requires: { media: ['pcm'] },
   createSim(ctx, opts) {
     return createSfSim(ctx, opts as SfOpts | undefined);
   },

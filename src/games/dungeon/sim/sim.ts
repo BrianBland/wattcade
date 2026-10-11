@@ -116,8 +116,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   const potionCd = tn.num('potionCdS', 6, 0, 30, 0.5, 'Potion (Z) cooldown');
   const zoneRefill = [1, 2, 3, 4, 5].map((z) => tn.num(`cdRefillZ${z}`, DEFAULT_ZONE_REFILL[z], 0.1, 10, 0.1, `cooldown refill speed at power zone ${z} (x base)`));
   const sprintCompletes = tn.bool('cdSprintCompletes', true, 'a detected sprint finishes every refilling action');
-  const stanceCdT = tn.num('stanceCdS', 8, 0, 60, 1, 'seconds between stance changes');
-  const stanceSwapT = tn.num('stanceSwapS', 1.5, 0, 5, 0.1, 'no attacks while changing stance');
+  const stanceCommitT = tn.num('stanceCommitS', 0.4, 0.1, 2, 0.05, 'D-pad cycling is free; the stance commits this long after the last press');
+  const stanceSwapT = tn.num('stanceSwapS', 0.5, 0, 5, 0.1, 'no attacks while the committed stance swaps in');
+  const styleSettleT = tn.num('styleSettleS', 3, 0, 20, 0.5, 'a stance style bonus starts this long after the stance swaps in (no bonus from rapid swapping)');
   const styleAmt = tn.num('styleBonus', 0.05, 0, 0.5, 0.01, 'stance style bonus in its cadence band (power must be zone 2+)');
   const stanceDropBias = tn.num('stanceDropBias', 0.6, 0, 1, 0.05, 'share of weapon drops rolled for the current stance');
   const cadRef = tn.num('dmgCadenceRef', 90, 0, 140, 1, 'shots come per crank rev; per-shot damage x ref/cadence (clamped 0.8-1.5) so damage per second follows power, not cadence (0 = off)');
@@ -214,7 +215,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!stancesFor(mods.arcanist).includes(stance)) stance = 'ranger';
     weapon = slots[stance];
   }
-  let swapT = 0, swapTo: StanceId | null = null, stanceCd = 0, styleOn = false, suggestion: StanceId | null = null;
+  let swapT = 0, swapTo: StanceId | null = null, pick: StanceId | null = null, pickT = 0, stanceSince = -99, styleOn = false, suggestion: StanceId | null = null;
   const sb = (k: string) => (styleOn && STANCES[stance].bonus === k ? 1 + styleAmt() : 1);
   const gear: Partial<Record<Slot, Gear>> = {};
   let bestFind: Weapon | Gear = weapon;
@@ -675,11 +676,12 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
 
   function changeStance(dir: number) {
     const list = stancesFor(mods.arcanist);
-    if (stanceCd > 0 || swapTo || list.length < 2) { cue('deny'); return; }
-    const i = list.indexOf(stance), next = list[(i + dir + list.length) % list.length];
-    swapTo = next; swapT = stanceSwapT(); stanceCd = stanceCdT(); cue('equip');
+    if (list.length < 2) { cue('deny'); return; }
+    // free cycling: each press moves the pick; nothing changes until the presses stop (a press mid-swap cancels it)
+    const from = pick ?? swapTo ?? stance, i = list.indexOf(from), next = list[(i + dir + list.length) % list.length];
+    if (swapTo) { swapTo = null; swapT = 0; }
+    pick = next; pickT = stanceCommitT(); cue('select');
     toast(`${STANCES[next].name}: ${STANCES[next].role}`, STANCES[next].color);
-    ctx.emit({ type: 'stance', data: { stance: next, floor } });
   }
   function paceTick(dt: number, bike: Readonly<BikeState>) {
     const r = activeRoom(), cfg = dirCfg();
@@ -711,12 +713,19 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     }
   }
   function stanceTick(dt: number, bike: Readonly<BikeState>) {
-    stanceCd = Math.max(0, stanceCd - dt);
-    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; } }
-    styleOn = styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
+    if (pick) {
+      pickT -= dt;
+      if (pickT <= 0) {
+        if (pick !== stance) { swapTo = pick; swapT = stanceSwapT(); cue('equip'); ctx.emit({ type: 'stance', data: { stance: pick, floor } }); }
+        pick = null;
+      }
+    }
+    // the swap resets the shot timer (no free shot) and restarts the style-bonus settle time
+    if (swapTo) { swapT -= dt; if (swapT <= 0) { swapT = 0; stance = swapTo; swapTo = null; weapon = slots[stance]; P.lastShotRevs = bike.crankRevs; stanceSince = t; } }
+    styleOn = t - stanceSince >= styleSettleT() && styleActive(stance, bike.cadence3s, bike.powerZone, spinCalled());
     const live = liveInRoom(current);
     suggestion = suggestStance({ boss: bossStarted && boss.alive && current === boss.room, shielded: bossShield().shielded, crowd: live.length, elite: live.some((e) => !!e.elite), arcanist: mods.arcanist });
-    if (suggestion === stance || swapTo) suggestion = null;
+    if (suggestion === stance || swapTo || pick) suggestion = null;
   }
 
   const pathTo = (tx: number, ty: number) => findPath(world.w, world.h, walkSolid, Math.floor(P.x), Math.floor(P.y), tx, ty);
@@ -835,7 +844,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     runs++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; stanceCd = 0;
+    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
     P.potions = mods.potionCap;
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);
@@ -1311,8 +1320,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       aim: { angle: P.aim },
       stance: {
         id: stance, name: STANCES[stance].name, role: STANCES[stance].role, color: STANCES[stance].color, band: STANCES[stance].band,
-        styleOn, styleHidden: spinCalled(), swapping: swapTo, ready: stanceCd <= 0 ? 1 : 1 - stanceCd / stanceCdT(), suggest: suggestion,
-        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '' })),
+        styleOn, styleHidden: spinCalled(), swapping: pick ?? swapTo, ready: 1, suggest: suggestion,
+        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '', base: slots[id]?.base ?? '', level: slots[id]?.level ?? 0, rarity: slots[id]?.rarity ?? 0 })),
       },
       pace: { seg: dir.seg, label: DEFAULT_TARGETS[dir.seg].label, erg, segT: dir.segT },
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
@@ -1361,12 +1370,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
             cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
         }),
-        { button: 'dpad', label: 'Stance', active: stanceCd <= 0 && !swapTo },
+        { button: 'dpad', label: 'Stance', active: true },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },
       ],
       gears: !erg, targetZone: target,
-      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' } : undefined,
+      targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
+        : phase === 'run' ? { min: STANCES[stance].band[0], max: STANCES[stance].band[1], label: `${STANCES[stance].name} style` } : undefined, // called targets win
     };
   }
 

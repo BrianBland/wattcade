@@ -559,7 +559,7 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
     }
     // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
-    const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length);
+    const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length, s.stance.list.length - 1);
     { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);
       dg.addColorStop(0, 'rgba(7,6,11,0.55)'); dg.addColorStop(0.25, 'rgba(7,6,11,0.92)'); dg.addColorStop(1, 'rgba(7,6,11,0.97)');
       gg.fillStyle = dg; gg.fillRect(0, LY.dock.y, W, H - LY.dock.y);
@@ -574,45 +574,40 @@ export function createRenderer(): GameRenderer {
     });
     gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
 
-    // stance panel (between the weapon card and the buttons): name, D-pad hint, style chip, change readiness, AI suggestion
-    if (LY.stance.w > 120 * u) {
-      const R = LY.stance, st = s.stance, fsm = Math.round(11 * u);
-      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(R.x, R.y, R.w, R.h);
-      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(R.x, R.y, R.w, R.h);
-      gg.fillStyle = st.color; gg.font = `900 ${Math.round(15 * u)}px sans-serif`;
-      gg.fillText(st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : st.name, R.x + 10 * u, R.y + 19 * u, R.w - 60 * u);
-      gg.fillStyle = '#bbb'; gg.font = `${fsm}px sans-serif`; gg.textAlign = 'right';
-      gg.fillText('◀ D-pad ▶', R.x + R.w - 8 * u, R.y + 18 * u); gg.textAlign = 'left';
-      gg.fillText(st.role, R.x + 10 * u, R.y + 34 * u, R.w * 0.45);
-      if (!st.styleHidden) { // style chip: a hint, not a target
-        const txt = `${st.styleOn ? '✓ ' : ''}style ${st.band[0]}-${st.band[1]} rpm`, tw = gg.measureText(txt).width + 14 * u, tx = R.x + R.w - tw - 8 * u, ty = R.y + 24 * u;
-        gg.fillStyle = st.styleOn ? st.color : 'rgba(255,255,255,0.12)'; gg.fillRect(tx, ty, tw, 15 * u);
-        gg.fillStyle = st.styleOn ? '#0a0810' : '#ccc'; gg.fillText(txt, tx + 7 * u, ty + 11.5 * u);
-      }
-      // change readiness: thin fill line along the bottom (no numbers)
-      gg.fillStyle = 'rgba(255,255,255,0.12)'; gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, R.w - 16 * u, 4 * u);
-      gg.fillStyle = st.ready >= 1 ? st.color : desaturate(st.color, 0.6, 0.2); gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, (R.w - 16 * u) * Math.min(1, st.ready), 4 * u);
-      if (st.suggest) {
-        const sg = s.stance.list.find((x) => x.id === st.suggest);
-        if (sg) { gg.globalAlpha = 0.6 + 0.4 * Math.sin(s.t * 5); gg.fillStyle = sg.color; gg.font = `bold ${fsm}px sans-serif`;
-          gg.fillText(`Try ${sg.name}`, R.x + 10 * u, R.y + 48 * u, R.w * 0.6); gg.globalAlpha = 1; }
-      }
+    // stance card (bottom-left): the active stance and its weapon + gear; the other stances are small chips
+    // (weapon icon + weapon level). The stance's cadence band is shown by the shell's cadence target.
+    {
+      const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
+      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
+      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
+      gg.fillStyle = wcol; gg.fillRect(cx, cy, 4 * u, cardH); // rarity edge
+      weaponIcon(gg, s.weapon, cx + 24 * u, cy + 24 * u, 30 * u, wcol);
+      const textW = LY.stance.x - (cx + 46 * u) - 6 * u;
+      gg.font = `900 ${Math.round(14 * u)}px sans-serif`; gg.fillStyle = st.color;
+      const head = st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : `${st.name}${st.styleOn ? ' ✓' : ''}`;
+      gg.fillText(head, cx + 46 * u, cy + 17 * u, textW);
+      gg.fillStyle = wcol; gg.font = `bold ${Math.round(12 * u)}px sans-serif`;
+      gg.fillText(`${s.weapon.name}${s.weapon.plus ? ' +' + s.weapon.plus : ''}`, cx + 46 * u, cy + 32 * u, textW);
+      gg.fillStyle = '#aaa'; gg.font = `${Math.round(10.5 * u)}px sans-serif`;
+      gg.fillText(`Lv${s.weapon.level} · pow ${Math.round(s.weapon.score)} · ×${s.weapon.count} · ${s.weapon.element}`, cx + 46 * u, cy + 46 * u, textW);
+      SLOTS.forEach((sl, k) => {
+        const it = s.gear[sl], gx = LY.stance.x + 8 * u + k * 17 * u, gy = cy + cardH - 13 * u;
+        gearIcon(gg, sl, gx, gy, 12 * u, it ? RARITY_COLORS[it.rarity] : '#444');
+      });
+      // chips: other stances in D-pad order (left of active first), the pick/suggestion highlighted
+      const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
+      const cw = (C.w - (n - 1) * 4 * u) / n;
+      others.forEach((o, k) => {
+        const x = C.x + k * (cw + 4 * u), y = C.y, picked = st.swapping === o.id, sug = st.suggest === o.id;
+        gg.fillStyle = picked ? o.color : 'rgba(255,255,255,0.06)'; gg.fillRect(x, y, cw, C.h);
+        gg.globalAlpha = sug && !picked ? 0.6 + 0.4 * Math.sin(s.t * 5) : 1;
+        gg.strokeStyle = o.color; gg.lineWidth = sug || picked ? 2 : 1; gg.strokeRect(x, y, cw, C.h);
+        if (o.base) weaponIcon(gg, { base: o.base as Weapon['base'] }, x + cw * 0.4, y + C.h * 0.45, C.h * 0.6, picked ? '#0a0810' : o.color);
+        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.textAlign = 'right';
+        gg.fillText(o.level ? String(o.level) : '–', x + cw - 3 * u, y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
+      });
+      // (the D-pad hint lives in the shell's controller legend)
     }
-
-    // weapon + gear card (bottom-left)
-    const wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
-    gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(cx, cy, cardW, cardH);
-    gg.strokeStyle = wcol; gg.lineWidth = 2; gg.strokeRect(cx, cy, cardW, cardH);
-    weaponIcon(gg, s.weapon, cx + 22 * u, cy + 22 * u, 30 * u, wcol);
-    gg.fillStyle = wcol; gg.font = `bold ${fs}px sans-serif`;
-    gg.fillText(`${s.weapon.name}${s.weapon.plus ? ' +' + s.weapon.plus : ''}`, cx + 44 * u, cy + 18 * u, cardW - 50 * u);
-    gg.fillStyle = '#bbb'; gg.font = `${Math.round(11 * u)}px sans-serif`;
-    gg.fillText(`Lv${s.weapon.level}  power ${Math.round(s.weapon.score)}  ×${s.weapon.count}  ${s.weapon.element}`, cx + 44 * u, cy + 34 * u);
-    SLOTS.forEach((sl, i) => {
-      const it = s.gear[sl], gx = cx + 52 * u + i * 34 * u, gy = cy + 50 * u;
-      gg.fillStyle = '#0008'; gg.fillRect(gx - 13 * u, gy - 10 * u, 26 * u, 20 * u);
-      gearIcon(gg, sl, gx, gy, 16 * u, it ? RARITY_COLORS[it.rarity] : '#444');
-    });
 
     // active shrine banner
     const act = s.shrines.find((x) => x.state === 'active');

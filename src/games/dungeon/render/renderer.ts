@@ -140,6 +140,12 @@ export function createRenderer(): GameRenderer {
     gg.drawImage(c, -w / 2, -h, w, h); gg.restore();
   }
   const moved = new Map<number, { x: number; y: number }>();
+  // render-only juice: coins fly to the HUD counter; a ring pulses on the hero when an action becomes ready
+  let coinSeen = new Map<number, { x: number; y: number }>();
+  const flyers: Array<{ x: number; y: number; t0: number }> = [];
+  let coinPulseT = -9, heroScr = { x: 0, y: 0 };
+  const readyPrev = new Map<string, number>();
+  const pulses: Array<{ t0: number; color: string; label: string }> = [];
   function shadow(x: number, y: number, rx: number) {
     const gg = g!; gg.fillStyle = 'rgba(0,0,0,0.35)';
     gg.beginPath(); gg.ellipse(x, y, rx, rx * 0.4, 0, 0, Math.PI * 2); gg.fill();
@@ -207,7 +213,8 @@ export function createRenderer(): GameRenderer {
     const x = f.x * TS, y = f.y * TS;
     switch (f.kind) {
       case 'text': {
-        gg.globalAlpha = 1 - k * k; gg.font = `bold ${Math.round(TS * (f.big ? 0.42 : 0.3))}px sans-serif`; gg.textAlign = 'center';
+        const pop = f.big ? 1 + 0.5 * Math.max(0, 1 - k / 0.18) : 1; // crits pop, then settle
+        gg.globalAlpha = 1 - k * k; gg.font = `bold ${Math.round(TS * (f.big ? 0.42 : 0.26) * pop)}px sans-serif`; gg.textAlign = 'center';
         gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(f.text!, x, y - k * TS * 0.7); gg.fillStyle = f.color; gg.fillText(f.text!, x, y - k * TS * 0.7);
         gg.globalAlpha = 1; gg.textAlign = 'left'; break;
       }
@@ -445,6 +452,19 @@ export function createRenderer(): GameRenderer {
         gg.strokeStyle = '#ff7a2a'; gg.lineWidth = 2; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS, 0, Math.PI * 2); gg.stroke();
       }
       for (const d of s.drops) drawDrop(d, TS, t);
+      heroScr = { x: p.x * TS - Math.round(cx), y: p.y * TS - Math.round(cy) };
+      { // coin magnet: a coin that vanished next to the hero was picked up -> fly it to the HUD counter
+        const now = new Map<number, { x: number; y: number }>();
+        for (const d of s.drops) if (d.kind === 'coin') now.set(d.id, { x: d.x, y: d.y });
+        for (const [id, q] of coinSeen) if (!now.has(id) && Math.hypot(q.x - p.x, q.y - p.y) < 2.5 && flyers.length < 24)
+          flyers.push({ x: q.x * TS - Math.round(cx), y: q.y * TS - Math.round(cy), t0: t });
+        coinSeen = now;
+      }
+      for (const a of s.actions) { // ready pulse on the frame an action finishes refilling
+        const was = readyPrev.get(a.id);
+        if (was !== undefined && was < 1 && a.ready >= 1 && pulses.length < 4) pulses.push({ t0: t, color: ACTION_COLOR[a.id] ?? '#ffd84a', label: `${a.label} ready` });
+        readyPrev.set(a.id, a.ready);
+      }
       // AI intent: dotted path to the hero's next goal
       if (s.ai.path.length) {
         gg.fillStyle = 'rgba(255,255,255,0.35)';
@@ -629,7 +649,17 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = '#b06cff'; gg.fillRect(x, y + 13 * hu, PW * Math.max(0, Math.min(1, p.xp / p.xpNext)), 3 * hu);
       const ly = y + 28 * hu; gg.font = `bold ${Math.round(10 * hu)}px sans-serif`;
       gg.fillStyle = '#fff'; gg.fillText(`Lv${p.level} F${s.floor}`, x, ly);
-      gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, x + 44 * hu, ly);
+      const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
+      if (cp > 0) { gg.save(); gg.font = `bold ${Math.round(10 * hu * (1 + 0.35 * cp))}px sans-serif`; }
+      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; gg.fillText(`● ${p.coins}`, x + 44 * hu, ly);
+      if (cp > 0) gg.restore();
+      const tx = x + 47 * hu, ty = ly - 3.5 * hu;
+      for (let i = flyers.length - 1; i >= 0; i--) {
+        const f = flyers[i], k = (s.t - f.t0) / 0.45;
+        if (k >= 1 || k < 0) { flyers.splice(i, 1); if (k >= 1) coinPulseT = s.t; continue; }
+        const e = k * k * (3 - 2 * k), fx2 = f.x + (tx - f.x) * e, fy2 = f.y + (ty - f.y) * e - Math.sin(k * Math.PI) * 40 * hu;
+        drawSprite('coin', fx2, fy2 + 3 * hu, (1.4 - 0.6 * k) * hu);
+      }
       for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
       gg.globalAlpha = 1;
       // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
@@ -710,12 +740,24 @@ export function createRenderer(): GameRenderer {
       gg.fillText(`☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
     }
     // big banners (uniques, curses)
+    let bannerRow = 0; // stack banners that overlap in time (e.g. EXPLORE straight into AMBUSH), newest lowest
     for (const f of s.fx) if (f.kind === 'banner') {
       const k2 = (s.t - f.t0) / f.life; if (k2 < 0 || k2 > 1) continue;
+      const row = bannerRow++;
       gg.globalAlpha = Math.min(1, (1 - k2) * 3); gg.textAlign = 'center';
       gg.font = `900 ${Math.round(30 * u)}px sans-serif`; gg.lineWidth = 6; gg.strokeStyle = '#000';
-      const by = H * 0.3 - Math.min(1, k2 * 6) * 10 * u;
+      const by = H * 0.3 + row * 40 * u - Math.min(1, k2 * 6) * 10 * u;
       gg.strokeText(f.text!, W / 2, by); gg.fillStyle = f.color; gg.fillText(f.text!, W / 2, by);
+      gg.globalAlpha = 1; gg.textAlign = 'left';
+    }
+    // action-ready pulses (screen space, around the hero)
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const q = pulses[i], k = (s.t - q.t0) / 0.7;
+      if (k < 0 || k > 1) { pulses.splice(i, 1); continue; }
+      gg.strokeStyle = q.color; gg.globalAlpha = 1 - k; gg.lineWidth = 3 * u;
+      gg.beginPath(); gg.arc(heroScr.x, heroScr.y, (18 + 40 * k) * u, 0, Math.PI * 2); gg.stroke();
+      gg.font = `bold ${Math.round(11 * u)}px sans-serif`; gg.textAlign = 'center'; gg.lineWidth = 3; gg.strokeStyle = '#000';
+      gg.strokeText(q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; gg.fillText(q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // toasts

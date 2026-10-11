@@ -36,6 +36,7 @@ const ENEMY_DEF: Record<EnemyKind, { hp: number; speed: number; r: number; conta
   summoner: { hp: 90, speed: 1.4, r: 0.42, contact: 5, xp: 10 },
 };
 const ELITES: EliteMod[] = ['undying', 'splitting', 'shielded', 'swift', 'volatile'];
+const SEG_BANNER: Partial<Record<string, string>> = { warmup: 'WARM UP', explore: 'EXPLORE · ZONE 2', recover: 'RECOVER', cooldown: 'COOL DOWN' };
 const BOSS_NAMES = ['Slime Monarch', 'Bone Lord', 'Ogre Warchief', 'The Lich', 'Bone King', 'Frost Wyrm'];
 export const BOSS_COUNT = BOSS_NAMES.length;
 const SHRINES: Record<ShrineKind, { label: string; window: number; color: string }> = {
@@ -301,7 +302,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
 
   // ---------- fx / sound ----------
-  function addFx(f: Omit<Fx, 't0'>) { fx.push({ ...f, t0: t }); if (fx.length > MAX_FX) fx.splice(0, fx.length - MAX_FX); }
+  function addFx(f: Omit<Fx, 't0'>): Fx { const o = { ...f, t0: t }; fx.push(o); if (fx.length > MAX_FX) fx.splice(0, fx.length - MAX_FX); return o; }
   function toast(text: string, color = '#fff') { toasts.push({ text, color, t0: t }); if (toasts.length > 5) toasts.shift(); }
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
   function freeze(s: number) { freezeT = Math.max(freezeT, s); }
@@ -464,11 +465,26 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   // ---------- combat ----------
   /** Fury: a long boss fight gets dangerous for the hero too, racing Turning Tide. */
   function bossFury() { return bossStarted && boss.alive && floor > 1 ? clamp((bs.fightT - furyAfter()) * furyRate(), 0, 1.5) : 0; }
+  /** Damage numbers: every hit shows; rapid hits on one enemy merge into one rising number (keeps the fx budget). */
+  let expWindows = 0, expStruck = 0, expHit = false, arsenalDone = false;
+  const dmgFx = new Map<number, { fx: Fx; v: number; t: number }>();
+  function dmgNumber(e: Enemy, dmg: number, crit: boolean, color: string) {
+    // keep the RNG stream identical to the old (big hits only) numbers: draw only where they drew
+    const jit = crit || dmg >= e.maxHp * 0.08 || e.kind === 'boss' ? rng() : ((e.id * 37 + Math.round(t * 30)) % 9) / 9;
+    if (dmg < 0.5) return;
+    const m = dmgFx.get(e.id);
+    if (m && !crit && t - m.t < 0.25 && fx.includes(m.fx)) { m.v += dmg; m.fx.text = String(Math.round(m.v)); m.fx.t0 = t; m.t = t; return; }
+    const f = addFx({ kind: 'text', x: e.x + (jit - 0.5) * 0.4, y: e.y - e.r - 0.2, life: crit ? 0.9 : 0.7, color: crit ? '#ffd84a' : color, text: String(Math.round(dmg)), big: crit || e.kind === 'boss' && dmg >= e.maxHp * 0.01 });
+    if (f && !crit) dmgFx.set(e.id, { fx: f, v: dmg, t }); else dmgFx.delete(e.id);
+    if (dmgFx.size > 64) dmgFx.clear();
+  }
   function hurtPlayer(dmg: number) {
     if (P.invuln > 0 || opts?.invulnerable) return; // invulnerable: test-only, for deterministic output checks
     if (P.ward > 0) { if (t - P.hurtT > 0.25) cue('hit'); P.hurtT = t - 1; return; }
     const armor = clamp(gearSum('armor'), 0, 0.75);
-    P.hp -= dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury()) * (sprintingNow ? 1 - sprintGuard() : 1);
+    const taken = dmg * enemyDmgScale() * STANCES[stance].dmgTaken / sb('armor') * (1 - armor) * (cursed('hexed') ? 1.4 : 1) * (1 + bossFury()) * (sprintingNow ? 1 - sprintGuard() : 1);
+    P.hp -= taken;
+    if (taken >= 1 && t - P.hurtT > 0.2) addFx({ kind: 'text', x: P.x + 0.3, y: P.y - 0.7, life: 0.7, color: '#ff5a6e', text: `-${Math.round(taken)}` });
     if (t - P.hurtT > 0.25) cue('hurt');
     P.hurtT = t;
     if (P.hp <= 0 && swCd.left <= 0) secondWind();
@@ -476,6 +492,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   /** Automatic last-ditch save: on a hit that would kill, heal, a moment of invulnerability, and a knockback. */
   function secondWind() {
     P.hp = Math.max(1, P.maxHp * swHeal()); P.invuln = swInvuln(); swUsedT = t; secondWinds++;
+    ctx.emit({ type: 'secondWind', data: { floor, boss: bossStarted && boss.alive && current === boss.room } });
+    addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#7dff9a', text: 'SECOND WIND' });
     swCd = startCooldown(swCdT());
     for (const e of liveInRoom(current)) {
       const dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
@@ -498,15 +516,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (e.shield > 0) { const ab = Math.min(e.shield, dmg * 0.8); e.shield -= ab; dmg -= ab; }
     const applied = Math.min(dmg, e.hp);
     e.hp -= dmg; damageDealt += applied; e.hurtT = t;
-    if (crit || dmg >= e.maxHp * 0.08 || e.kind === 'boss') {
-      addFx({ kind: 'text', x: e.x + (rng() - 0.5) * 0.4, y: e.y - e.r - 0.2, life: 0.7, color: crit ? '#ffd84a' : color, text: String(Math.round(dmg)), big: crit });
-    }
+    dmgNumber(e, dmg, crit, color);
     if (e.hp <= 0) killEnemy(e);
   }
   function killEnemy(e: Enemy) {
     e.alive = false; kills++;
     addFx({ kind: 'death', x: e.x, y: e.y, life: 0.5, color: e.kind === 'boss' ? '#cc00aa' : e.elite ? '#ff8c2a' : '#dddddd', r: e.r * 2 });
-    ctx.emit({ type: 'kill', data: { kind: e.kind, room: e.room, elite: !!e.elite } });
+    ctx.emit({ type: 'kill', data: { kind: e.kind, room: e.room, elite: !!e.elite, stance } });
     gainXp(e.xp);
     const coins = e.kind === 'boss' ? 14 : e.elite ? 4 : 1 + (rng() < 0.4 ? 1 : 0);
     for (let i = 0; i < coins; i++) dropAt(e.x, e.y, 'coin', coinValue());
@@ -517,7 +533,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       for (const b of bullets) if (!b.friendly) b.life = 0;
       addFx({ kind: 'boom', x: e.x, y: e.y, life: 0.8, color: '#c77dff', r: 4 });
       toast(`${BOSS_NAMES[e.variant]} defeated! Stairs open.`, '#ff8c2a');
-      ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor } });
+      ctx.emit({ type: 'bossDefeated', data: { timeS: Math.round(t), floor, stance, windows: expWindows, struck: expStruck } });
       return;
     }
     cue('kill');
@@ -642,6 +658,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (!hit.length) { cue('deny'); return false; }
     const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
     for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    if (hit.some((e) => e.kind === 'boss') && bs.cycle === 'exposed' && !expHit) { expHit = true; expStruck++; }
     if (hit.some((e) => e.kind === 'boss') && strikeBoss(bs, bossCfg())) toast(`Timed Strike: exposed +${bossCfg().strikeBonusS}s`, '#ffd84a');
     addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
     freeze(0.08); cue('explode');
@@ -696,10 +713,16 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     toast(`${STANCES[next].name}: ${STANCES[next].role}`, STANCES[next].color);
   }
   function paceTick(dt: number, bike: Readonly<BikeState>) {
-    const r = activeRoom(), cfg = dirCfg();
+    const r = activeRoom(), cfg = dirCfg(), seg0 = dir.seg;
     const evs = stepDirector(dir, { dt, rideMin: t / 60, inFight: r.locked && !r.cleared && !r.boss,
       bossActive: bossStarted && boss.alive && current === boss.room, bossDone: bossStarted && !boss.alive }, cfg);
     if (dir.seg === 'spinup' && bike.cadence3s >= cfg.spinRpm) spinGood += dt;
+    // segment banners for the calm segments (ambush, spin-up and boss announce themselves)
+    if (dir.seg !== seg0 && SEG_BANNER[dir.seg]) addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#8fd8ff', text: SEG_BANNER[dir.seg]! });
+    if (!arsenalDone && phase === 'run') {
+      const ids = stancesFor(mods.arcanist);
+      if (ids.every((id) => (slots[id]?.rarity ?? 0) >= 2)) { arsenalDone = true; toast('Full Arsenal: a rare+ weapon in every stance', '#ffd84a'); ctx.emit({ type: 'fullArsenal', data: { floor, stances: ids.length } }); }
+    }
     for (const ev of evs) {
       if (ev === 'ambush') {
         const n = Math.round(ambushN()) + Math.floor(floor / 3);
@@ -912,7 +935,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     runs++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); fillSlots(P.level); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
+    weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenalDone = false; bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
     P.potions = mods.potionCap;
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);
@@ -1003,7 +1026,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       if (phase === 'run' && sprintHeal() > 0 && P.hp < P.maxHp) { P.hp = Math.min(P.maxHp, P.hp + P.maxHp * sprintHeal()); toast('Second breath', '#7dff9a'); }
       if (swCd.left > 0) swCd.left = Math.max(0, swCd.left - sprintSw());
       if (phase === 'run' && bossStarted && boss.alive && current === boss.room && sprintBreak(bs, sprintBreakS())) {
-        toast('Sprint broke its guard! Exposed', '#ffd84a'); cue('crit'); ctx.emit({ type: 'bossExposed', data: { floor, parried: false, sprint: true } });
+        toast('Sprint broke its guard! Exposed', '#ffd84a'); cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: false, sprint: true } });
       }
       if (sprintCompletes() && (Object.keys(cds) as ActionId[]).map((k) => completeCooldown(cds[k])).some(Boolean)) {
         toast('Sprint! Actions recharged', '#ffd84a'); cue('reward');
@@ -1046,7 +1069,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           }
           if (!r.boss && !curse && (floor > 1 || roomsCleared >= 2) && rng() < Math.min(0.2, curseChance() + 0.01 * (floor - 1))) startCurse(bike);
           if (r.boss && !bossStarted) {
-            bossStarted = true; bossT = 0; bs = newBoss(bossCfg()); cue('bossStart'); freeze(0.5);
+            bossStarted = true; bossT = 0; bs = newBoss(bossCfg()); expWindows = 0; expStruck = 0; expHit = false; cue('bossStart'); freeze(0.5);
             addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 3, color: '#ff5a5a', text: BOSS_NAMES[boss.variant].toUpperCase() });
             addFx({ kind: 'boom', x: boss.x, y: boss.y, life: 1, color: '#c77dff', r: 5 });
             toast(`${BOSS_NAMES[boss.variant]} awakens!`, '#ff5a5a');
@@ -1279,7 +1302,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
         if (stance === 'arcanist') bs.left += 1; // the shield-breaker keeps it open longer
         addFx({ kind: 'banner', x: boss.x, y: boss.y, life: 1.8, color: '#ffe08a', text: bs.parried ? 'PARRIED! EXPOSED' : 'EXPOSED ×2' });
         if (bs.parried) toast(`Parried with Ward: exposed +${cfg.parryBonusS}s`, '#8fd8ff');
-        cue('crit'); ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
+        cue('crit'); expWindows++; expHit = false; ctx.emit({ type: 'bossExposed', data: { floor, parried: bs.parried } });
       } else if (ev === 'phase') {
         freeze(0.3); cue('bossStart');
         for (const b of bullets) if (!b.friendly) b.life = 0;

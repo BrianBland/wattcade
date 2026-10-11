@@ -549,20 +549,29 @@ export function createRenderer(): GameRenderer {
     const gg = g!, p = s.player, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
-    hudBox(L - 2, L - 2, 230 * u + 4, 74 * u);
-    bar(L, L, 230 * u, 18 * u, p.hp / p.maxHp, p.hp < p.maxHp * 0.4 ? '#e44' : '#3c3', `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`);
-    bar(L, L + 24 * u, 230 * u, 9 * u, p.xp / p.xpNext, '#b06cff', '');
-    gg.font = `bold ${fs}px sans-serif`; gg.fillStyle = '#fff';
-    gg.fillText(`Lv ${p.level}   Floor ${s.floor}`, L, L + 50 * u);
-    gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
-    for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
-    gg.globalAlpha = 1;
-    { // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
-      const sw = p.secondWind, x0 = L, y0 = L + 58 * u, w = 92 * u, h = 13 * u, ready = sw >= 1;
-      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(x0, y0, w, h);
-      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(x0, y0, w * Math.min(1, sw), h);
-      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = 2; gg.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2); }
-      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
+    // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
+    // `hu` scales from CSS pixels, so the iPad's large device scale doesn't double it (and it clears the boss bar).
+    const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 150 * hu;
+    {
+      const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
+      gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
+      gg.fillStyle = '#2a2433'; gg.fillRect(x, y, PW, 11 * hu);
+      gg.fillStyle = hpLow ? '#e44' : '#3c3'; gg.fillRect(x, y, PW * Math.max(0, Math.min(1, p.hp / p.maxHp)), 11 * hu);
+      gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(9 * hu)}px sans-serif`;
+      gg.fillText(`${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
+      gg.fillStyle = '#2a2433'; gg.fillRect(x, y + 13 * hu, PW, 3 * hu);
+      gg.fillStyle = '#b06cff'; gg.fillRect(x, y + 13 * hu, PW * Math.max(0, Math.min(1, p.xp / p.xpNext)), 3 * hu);
+      const ly = y + 28 * hu; gg.font = `bold ${Math.round(10 * hu)}px sans-serif`;
+      gg.fillStyle = '#fff'; gg.fillText(`Lv${p.level} F${s.floor}`, x, ly);
+      gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, x + 44 * hu, ly);
+      for (let k = 0; k < p.potionCap; k++) { gg.globalAlpha = k < p.potions ? 1 : 0.25; drawSprite('potion', x + 86 * hu + k * 9 * hu, ly - 3.5 * hu, 1.1 * hu); }
+      gg.globalAlpha = 1;
+      // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
+      const sw = p.secondWind, sx = x + PW - 26 * hu, sy = ly - 8 * hu, w = 26 * hu, h = 9 * hu, ready = sw >= 1;
+      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(sx, sy, w, h);
+      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(sx, sy, w * Math.min(1, sw), h);
+      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
+      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(7 * hu)}px sans-serif`; gg.textAlign = 'center'; gg.fillText('2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
     // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
     // Actions and cooldowns live on the shell's controller-overlay diamond (also the touch target).
@@ -580,7 +589,16 @@ export function createRenderer(): GameRenderer {
       weaponIcon(gg, s.weapon, R.x + R.h + 11 * u, cy, 16 * u, wcol);
       gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
       const elem = ` ${s.weapon.element}`;
-      gg.fillText(`Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`, R.x + R.h + 23 * u, cy + 4 * u, R.w - R.h - 26 * u);
+      // weapon name (rarity colour, ellipsized to fit) then Lv/element
+      const tail = ` Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`;
+      const tx = R.x + R.h + 23 * u, room = R.x + R.w - 4 * u - tx;
+      gg.font = `${Math.round(10.5 * u)}px sans-serif`; const tw = gg.measureText(tail).width;
+      gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
+      let name = s.weapon.name; const nameRoom = Math.max(0, room - tw);
+      if (gg.measureText(name).width > nameRoom) { while (name.length > 1 && gg.measureText(name + '…').width > nameRoom) name = name.slice(0, -1); name = name.trimEnd() + '…'; }
+      gg.fillStyle = wcol; gg.fillText(name, tx, cy + 4 * u);
+      const nx = tx + gg.measureText(name).width;
+      gg.font = `${Math.round(10.5 * u)}px sans-serif`; gg.fillStyle = '#ccc'; gg.fillText(tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
       // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
       const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
       const cw = (C.w - (n - 1) * 3 * u) / n;
@@ -594,6 +612,19 @@ export function createRenderer(): GameRenderer {
         gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(9 * u)}px sans-serif`; gg.textAlign = 'right';
         gg.fillText(o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
       });
+      // equipped gear: slot icon + item level, border/tint in the item's rarity colour
+      let gx = C.x + C.w + 6 * u;
+      for (const sl of SLOTS) {
+        const it = s.gear[sl]; if (!it) continue;
+        const gw = C.h, rc = RARITY_COLORS[it.rarity];
+        hudBox(gx, C.y, gw, C.h);
+        gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(gx, C.y, gw, C.h);
+        gg.strokeStyle = rc; gg.lineWidth = Math.max(1, u); gg.strokeRect(gx, C.y, gw, C.h);
+        gearIcon(gg, sl, gx + gw * 0.4, C.y + C.h * 0.42, C.h * 0.5, rc);
+        gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(8.5 * u)}px sans-serif`; gg.textAlign = 'right';
+        gg.fillText(String(it.level), gx + gw - 2 * u, C.y + C.h - 2.5 * u); gg.textAlign = 'left';
+        gx += gw + 3 * u;
+      }
     }
 
     // active shrine banner
@@ -622,10 +653,10 @@ export function createRenderer(): GameRenderer {
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // toasts
-    gg.font = `bold ${fs}px sans-serif`;
+    gg.font = `bold ${Math.round(11 * hu)}px sans-serif`;
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(tt.text, L, L + (92 + i * 20) * u); gg.fillStyle = tt.color; gg.fillText(tt.text, L, L + (92 + i * 20) * u);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(tt.text, L, L + (52 + i * 15) * hu); gg.fillStyle = tt.color; gg.fillText(tt.text, L, L + (52 + i * 15) * hu);
     });
     gg.globalAlpha = 1;
 
@@ -653,7 +684,7 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = color; gg.fillRect(mx0 + p.x * mk - 2 * u, my0 + p.y * mk - 2 * u, 4 * u, 4 * u);
 
     if (s.boss && s.boss.active) {
-      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L;
+      const bw0 = Math.min(W * 0.4, 420 * u), bx0 = Math.max(W / 2 - bw0 / 2, L + PW + 12 * hu), bw = Math.min(bw0, W - bx0 - L - 130 * u), bx = bx0, by = L;
       const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
       hudBox(bx - 2, by - 2, bw + 4, 48 * u);
       bar(bx, by, bw, 18 * u, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);

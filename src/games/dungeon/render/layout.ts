@@ -7,7 +7,7 @@ export interface RunLayout { playH: number; card: Rect; stance: Rect }
 export function runLayout(W: number, H: number, insetBottom: number, u: number, nChips = 2): RunLayout {
   const pad = 8 * u, base = H - insetBottom, h = 24 * u, chip = 30 * u, gap = 3 * u;
   const chipsW = nChips > 0 ? nChips * chip + (nChips - 1) * gap : 0;
-  const cardW = Math.min(112 * u, Math.max(0, W - 2 * pad - chipsW - gap));
+  const cardW = Math.min(200 * u, Math.max(0, W - 2 * pad - chipsW - gap));
   const y = base - pad - h;
   const card = { x: pad, y, w: cardW, h };
   const stance = { x: pad + cardW + gap, y, w: chipsW, h };

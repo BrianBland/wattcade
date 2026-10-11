@@ -63,3 +63,6 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   The stance card is one slim row bottom-left (stance badge + weapon icon + Lv/element, ✓ in style; other stances as
   tiny icon+level chips). Minimap drawn at about half size (capped ~110u), translucent. Dev measurement: the renderer
   records HUD boxes in `globalThis.__dgHud` for dev-shot's HUD-area %.
+- The slim row also shows each equipped gear item (slot icon + item level, rarity-coloured border/tint). Top-left
+  status panel is compact (thin HP/XP bars, one line with Lv/floor, coins, potions, Second Wind pip), scaled from CSS
+  px (`hu`) so iPad's device scale doesn't double it; the boss bar starts right of it, so they no longer overlap.

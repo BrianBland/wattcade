@@ -1,6 +1,6 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
-import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
+import { desaturate, drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import { runLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
@@ -21,12 +21,16 @@ const THEMES = [
 const AURA: Array<{ c: string; a: number; r: number } | null> = [null, null,
   { c: '#5aa0ff', a: 0.35, r: 1.3 }, { c: '#40e0c0', a: 0.45, r: 1.5 }, { c: '#ff9a2a', a: 0.6, r: 1.8 }, { c: '#ff2a2a', a: 0.85, r: 2.3 }];
 const ENEMY_TINT: Record<string, string> = { chaser: '#e66', bat: '#a7f', spitter: '#5d5', archer: '#eee', brute: '#c84', bomber: '#f72', summoner: '#a5f', boss: '#c0a' };
-const BOSS_SPRITE = ['spitter', 'archer', 'brute', 'summoner'];
+const BOSS_SPRITE = ['spitter', 'archer', 'brute', 'summoner', 'archer', 'spitter'];
+/** New bosses reuse a base sprite with their own palette until #91 draws them. */
+const BOSS_PAL: Record<number, Record<string, string>> = { 4: { b: '#ffd84a', B: '#b8862a', e: '#7dffea' }, 5: { l: '#e6fbff', s: '#8fd8ff', S: '#3b7fbf', e: '#0a2a4a' } };
 const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: '#ffd84a', shielded: '#66ccff', swift: '#ff5af0', volatile: '#ff7a2a' };
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
 const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
 // rate limits (s) for spammy sound cues
+/** Tile scale in arenas (boss rooms, rooms 17+ wide or 13+ tall). */
+const ARENA_ZOOM = 0.8;
 const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -94,6 +98,7 @@ export function createRenderer(): GameRenderer {
     if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
+  let camX = NaN, camY = NaN, camT = 0, zoom = 1, camFor: unknown = null;
   let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
 
   function drawSprite(name: string, x: number, y: number, ps: number, face = 1, flash = false, over?: Record<string, string>, bob = 0) {
@@ -261,7 +266,7 @@ export function createRenderer(): GameRenderer {
 
   function drawEnemy(e: EnemyView, TS: number, t: number) {
     const gg = g!, x = e.x * TS, y = e.y * TS + e.r * TS * 0.9;
-    const isBoss = e.kind === 'boss', name = isBoss ? BOSS_SPRITE[e.variant % 4] : e.kind;
+    const isBoss = e.kind === 'boss', name = isBoss ? BOSS_SPRITE[e.variant % BOSS_SPRITE.length] : e.kind, pal = isBoss ? BOSS_PAL[e.variant] : undefined;
     const def = sprite(name);
     const ps = (e.r * 2.4 * TS) / Math.max(def.width, def.height) * (isBoss ? 1.2 : 1);
     const flash = e.hurt < 0.06;
@@ -269,11 +274,12 @@ export function createRenderer(): GameRenderer {
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
-    if (e.shielded) { gg.globalCompositeOperation = 'lighter'; glowAt('#66ccff', x, y - e.r * TS, e.r * TS * 2.4, 0.7 + Math.sin(t * 6) * 0.2); gg.globalCompositeOperation = 'source-over'; }
+    if (e.exposed) { gg.strokeStyle = `rgba(255,224,138,${0.6 + 0.4 * Math.sin(t * 10)})`; gg.lineWidth = Math.max(2, TS * 0.08); gg.setLineDash([TS * 0.25, TS * 0.15]); gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.9, t * 2, t * 2 + Math.PI * 2); gg.stroke(); gg.setLineDash([]); }
+    if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
     const sq = e.kind === 'spitter' ? 1 + Math.sin(t * 6 + e.id) * 0.08 : 1;
     gg.save(); gg.translate(x, y); gg.scale(1 / sq, sq); gg.translate(-x, -y);
-    drawSprite(name, x, y, ps, e.face, false, undefined, bob);
-    if (flash) { gg.globalAlpha = 0.55; drawSprite(name, x, y, ps, e.face, true, undefined, bob); gg.globalAlpha = 1; }
+    drawSprite(name, x, y, ps, e.face, false, pal, bob);
+    if (flash) { gg.globalAlpha = 0.55; drawSprite(name, x, y, ps, e.face, true, pal, bob); gg.globalAlpha = 1; }
     gg.restore();
     if (e.shieldFrac > 0) { gg.strokeStyle = `rgba(102,204,255,${0.3 + 0.6 * e.shieldFrac})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.5, 0, Math.PI * 2); gg.stroke(); }
     if (e.elite) {
@@ -316,7 +322,13 @@ export function createRenderer(): GameRenderer {
       if (s.phase === 'camp' && s.camp) { actionHits = []; drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
       campHits = []; if (s.phase !== 'run') actionHits = [];
       const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
-      const TS = Math.max(24, Math.round(W / TILES_ACROSS));
+      // camera: smooth follow, and zoom out in arenas (boss rooms and big rooms) so the whole fight fits
+      const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
+      const here = w.rooms.find((r) => p.x >= r.x0 && p.x < r.x0 + r.w && p.y >= r.y0 && p.y < r.y0 + r.h);
+      const dtR = Math.max(0, Math.min(0.1, t - camT)); camT = t;
+      const zt = bossE || (here && (here.boss || here.w >= 17 || here.h >= 13)) ? ARENA_ZOOM : 1;
+      zoom += (zt - zoom) * Math.min(1, dtR * 2.5);
+      const TS = Math.max(20, Math.round((W / TILES_ACROSS) * zoom));
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w) {
@@ -326,9 +338,10 @@ export function createRenderer(): GameRenderer {
       const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
       const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the control dock (which sits above the HUD)
       // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
-      const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
-      const cx = fx0 * TS - W / 2, cy = fy0 * TS - VH / 2;
+      if (camFor !== w || !Number.isFinite(camX) || Math.hypot(fx0 - camX, fy0 - camY) > 8) { camX = fx0; camY = fy0; camFor = w; }
+      else { const kf = Math.min(1, dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
+      const cx = camX * TS - W / 2, cy = camY * TS - VH / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
@@ -488,6 +501,8 @@ export function createRenderer(): GameRenderer {
     gg.fillText('Camp', W / 2, 44 * u);
     gg.fillStyle = '#ccc'; gg.font = `${fs}px sans-serif`;
     gg.fillText(`Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u);
+    if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = `bold ${Math.round(fs * 0.9)}px sans-serif`;
+      gg.fillText(`You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, UH * 0.82); }
     const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
@@ -536,7 +551,13 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = '#ffd84a'; gg.fillText(`● ${p.coins}`, L + 120 * u, L + 50 * u);
     for (let i = 0; i < p.potionCap; i++) { gg.globalAlpha = i < p.potions ? 1 : 0.25; drawSprite('potion', L + 175 * u + i * 16 * u, L + 54 * u, 2 * u); }
     gg.globalAlpha = 1;
-    if (p.livesMax > 0) { gg.fillStyle = '#ff6a7a'; gg.font = `bold ${fs}px sans-serif`; gg.fillText('♥'.repeat(p.lives) + '♡'.repeat(Math.max(0, p.livesMax - p.lives)), L, L + 68 * u); }
+    { // Second Wind: a small wing pip that fills while it recharges and glows when ready (no numbers)
+      const sw = p.secondWind, x0 = L, y0 = L + 58 * u, w = 92 * u, h = 13 * u, ready = sw >= 1;
+      gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(x0, y0, w, h);
+      gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(x0, y0, w * Math.min(1, sw), h);
+      if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = 2; gg.strokeRect(x0 - 1, y0 - 1, w + 2, h + 2); }
+      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(10 * u)}px sans-serif`; gg.fillText('Second Wind', x0 + 6 * u, y0 + h - 3 * u);
+    }
     // control dock: weapon card (left) + fill-up action buttons (right), above the HUD inset
     const LY = runLayout(W, H, insetCss * dpr, u, s.actions.length);
     { const dg = gg.createLinearGradient(0, LY.dock.y, 0, LY.dock.y + LY.dock.h);
@@ -552,6 +573,31 @@ export function createRenderer(): GameRenderer {
         flourish: effortFlourish(zone), ready: a.ready >= 1, usable: a.usable, t: s.t, scale: r.h / 62 });
     });
     gg.textAlign = 'left'; gg.textBaseline = 'alphabetic';
+
+    // stance panel (between the weapon card and the buttons): name, D-pad hint, style chip, change readiness, AI suggestion
+    if (LY.stance.w > 120 * u) {
+      const R = LY.stance, st = s.stance, fsm = Math.round(11 * u);
+      gg.fillStyle = 'rgba(10,8,16,0.8)'; gg.fillRect(R.x, R.y, R.w, R.h);
+      gg.strokeStyle = st.color; gg.lineWidth = 2; gg.strokeRect(R.x, R.y, R.w, R.h);
+      gg.fillStyle = st.color; gg.font = `900 ${Math.round(15 * u)}px sans-serif`;
+      gg.fillText(st.swapping ? `→ ${s.stance.list.find((x) => x.id === st.swapping)?.name ?? ''}` : st.name, R.x + 10 * u, R.y + 19 * u, R.w - 60 * u);
+      gg.fillStyle = '#bbb'; gg.font = `${fsm}px sans-serif`; gg.textAlign = 'right';
+      gg.fillText('◀ D-pad ▶', R.x + R.w - 8 * u, R.y + 18 * u); gg.textAlign = 'left';
+      gg.fillText(st.role, R.x + 10 * u, R.y + 34 * u, R.w * 0.45);
+      if (!st.styleHidden) { // style chip: a hint, not a target
+        const txt = `${st.styleOn ? '✓ ' : ''}style ${st.band[0]}-${st.band[1]} rpm`, tw = gg.measureText(txt).width + 14 * u, tx = R.x + R.w - tw - 8 * u, ty = R.y + 24 * u;
+        gg.fillStyle = st.styleOn ? st.color : 'rgba(255,255,255,0.12)'; gg.fillRect(tx, ty, tw, 15 * u);
+        gg.fillStyle = st.styleOn ? '#0a0810' : '#ccc'; gg.fillText(txt, tx + 7 * u, ty + 11.5 * u);
+      }
+      // change readiness: thin fill line along the bottom (no numbers)
+      gg.fillStyle = 'rgba(255,255,255,0.12)'; gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, R.w - 16 * u, 4 * u);
+      gg.fillStyle = st.ready >= 1 ? st.color : desaturate(st.color, 0.6, 0.2); gg.fillRect(R.x + 8 * u, R.y + R.h - 9 * u, (R.w - 16 * u) * Math.min(1, st.ready), 4 * u);
+      if (st.suggest) {
+        const sg = s.stance.list.find((x) => x.id === st.suggest);
+        if (sg) { gg.globalAlpha = 0.6 + 0.4 * Math.sin(s.t * 5); gg.fillStyle = sg.color; gg.font = `bold ${fsm}px sans-serif`;
+          gg.fillText(`Try ${sg.name}`, R.x + 10 * u, R.y + 48 * u, R.w * 0.6); gg.globalAlpha = 1; }
+      }
+    }
 
     // weapon + gear card (bottom-left)
     const wcol = RARITY_COLORS[s.weapon.rarity], cardW = LY.card.w, cardH = LY.card.h, cx = LY.card.x, cy = LY.card.y;
@@ -571,7 +617,7 @@ export function createRenderer(): GameRenderer {
     // active shrine banner
     const act = s.shrines.find((x) => x.state === 'active');
     if (act) {
-      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L + (s.boss?.active ? 60 : 0) * u + 28 * u;
+      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L + (s.boss?.active ? 78 : 0) * u + 28 * u;
       bar(bx, by, bw, 14 * u, act.progress, SHRINE_COLORS[act.kind], '');
       gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
       gg.fillText(`${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
@@ -579,7 +625,7 @@ export function createRenderer(): GameRenderer {
     // active curse
     if (s.curse) {
       const c = s.curse, bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2;
-      const by = L + (s.boss?.active ? 60 : 0) * u + (act ? 50 : 0) * u + 28 * u;
+      const by = L + (s.boss?.active ? 78 : 0) * u + (act ? 50 : 0) * u + 28 * u;
       bar(bx, by, bw, 14 * u, c.left / c.total, c.color, '');
       gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
       gg.fillText(`☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
@@ -625,9 +671,12 @@ export function createRenderer(): GameRenderer {
 
     if (s.boss && s.boss.active) {
       const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L;
-      bar(bx, by, bw, 18 * u, s.boss.hp / s.boss.maxHp, s.boss.shielded ? '#6cf' : '#c0a', s.boss.name);
-      gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
-      gg.fillText(s.boss.shielded ? `SHIELD — SPRINT to break it! (${s.boss.shieldLeftS.toFixed(0)}s)` : `Shield in ${s.boss.nextShieldS.toFixed(0)}s`, W / 2, by + 40 * u);
+      const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
+      bar(bx, by, bw, 18 * u, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
+      gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2, 18 * u); // phase marks
+      gg.textAlign = 'center'; gg.font = `bold ${Math.round(13 * u)}px sans-serif`;
+      gg.fillStyle = exp ? '#ffe08a' : wind ? '#ff7a2a' : B.tide > 0 ? '#7dff5a' : '#ddd';
+      gg.fillText(exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack', W / 2, by + 40 * u);
       gg.textAlign = 'left';
     } else if (s.stairsOpen) {
       gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;

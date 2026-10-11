@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:balance": "BALANCE=1 vitest run src/games/dungeon/test/balance.test.ts",
     "typecheck": "tsc --noEmit -p .",
     "sim": "tsx scripts/sim.ts",
     "sim:all": "tsx scripts/sim.ts --all",

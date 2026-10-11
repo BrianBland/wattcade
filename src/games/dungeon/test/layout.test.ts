@@ -14,6 +14,9 @@ describe('run layout', () => {
       }
       const bs = L.buttons; for (let i = 1; i < bs.length; i++) expect(bs[i].x).toBeGreaterThanOrEqual(bs[i - 1].x + bs[i - 1].w);
       expect(bs[0].x).toBeGreaterThan(L.card.x + L.card.w);
+      expect(L.stance.x).toBeGreaterThanOrEqual(L.card.x + L.card.w);
+      expect(L.stance.x + L.stance.w).toBeLessThanOrEqual(bs[0].x);
+      expect(L.stance.y + L.stance.h).toBeLessThanOrEqual(H - inset + 1e-6);
     });
   }
 });

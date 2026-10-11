@@ -36,5 +36,12 @@ export const SCRIPTS: Record<string, Script> = {
   /** For games that publish a power target: rides 5 % over hooks.powerFtp (default 0.65 FTP). */
   'target-follow': mk('target-follow', 'power = hooks.powerFtp + 5 % (default 0.65 FTP)',
     (_t, e) => Number((e.hooks as { powerFtp?: number } | undefined)?.powerFtp ?? 0.6) + 0.05, { usesHooks: true }),
+  /** A rider who answers the game: ambush at 0.95 FTP, sprints (1.5 FTP) while hooks.shielded (a push window),
+   *  spins at hooks.cadence, otherwise steady 0.65 FTP. Works with any game that publishes those hooks. */
+  'hook-responsive': mk('hook-responsive', '0.65 FTP; 0.95 in hooks.seg=ambush, 1.5 while hooks.shielded; rpm = hooks.cadence (default 90)',
+    (_t, e) => { const h = (e.hooks ?? {}) as { seg?: string; shielded?: boolean }; return h.shielded ? 1.5 : h.seg === 'ambush' ? 0.95 : 0.65; }, {
+      usesHooks: true,
+      cadence: (t, e) => Number((e?.hooks as { cadence?: number } | undefined)?.cadence ?? 90) + 2 * Math.sin(t / 5),
+    }),
   mash: mk('mash', 'random 0.4..1.6 FTP, changes every 2 s', (t, e) => 0.4 + 1.2 * hash01(Math.floor(t / 2) + e.seed * 7919)),
 };

@@ -35,22 +35,31 @@ const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.0
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
-function buildBackground(w: World): HTMLCanvasElement {
-  const c = document.createElement('canvas'); c.width = w.w * BT; c.height = w.h * BT;
-  const g = c.getContext('2d')!;
+const NEIGH8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const;
+
+/** Floor background, rasterised lazily in CHUNK x CHUNK tile pieces. Drawing a whole floor at once (~10^4 canvas calls)
+ *  took 17-31 ms, ~110 ms at 4x CPU, on the first frame of every floor; now that frame draws only the chunks in view and the
+ *  rest are filled in a few at a time on later frames (prefill). */
+const CHUNK = 8;
+export interface FloorBg { draw(gg: CanvasRenderingContext2D, sx: number, sy: number, sw: number, sh: number, k: number): void; prefill(budgetMs: number, fx?: number, fy?: number): void; readonly built: number; readonly total: number }
+export function buildBackground(w: World): FloorBg {
   const th = THEMES[w.theme % THEMES.length];
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w.w || y >= w.h ? TILE.WALL : w.tiles[y * w.w + x]);
-  for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
+  const cw = Math.ceil(w.w / CHUNK), ch = Math.ceil(w.h / CHUNK);
+  const chunks: (HTMLCanvasElement | null)[] = new Array(cw * ch).fill(null);
+  let built = 0;
+  const sink = (() => { const k = document.createElement('canvas'); k.width = k.height = 1; return k.getContext('2d'); })();
+  const tile = (g: CanvasRenderingContext2D, x: number, y: number) => {
     const k = at(x, y), px = x * BT, py = y * BT, r = hash(x, y);
     if (k === TILE.WALL) {
-      const below = at(x, y + 1), nearFloor = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]].some(([dx, dy]) => at(x + dx, y + dy) !== TILE.WALL);
+      const below = at(x, y + 1), nearFloor = NEIGH8.some(([dx, dy]) => at(x + dx, y + dy) !== TILE.WALL);
       if (below !== TILE.WALL) { // wall face (pseudo-3D brick)
         g.fillStyle = th.wallFace[0]; g.fillRect(px, py, BT, BT);
         g.fillStyle = th.wallFace[1];
         for (let row = 0; row < 4; row++) { const off = row % 2 ? 4 : 0; for (let bx = -off; bx < BT; bx += 8) g.fillRect(px + bx + 7, py + row * 4, 1, 4); g.fillRect(px, py + row * 4 + 3, BT, 1); }
         g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(px, py + BT - 2, BT, 2);
       } else if (nearFloor) { g.fillStyle = th.wallTop; g.fillRect(px, py, BT, BT); g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(px, py, BT, 1); }
-      continue;
+      return;
     }
     g.fillStyle = th.floor[Math.floor(r * 3)]; g.fillRect(px, py, BT, BT);
     g.fillStyle = th.grout; g.fillRect(px, py + BT - 1, BT, 1); g.fillRect(px + BT - 1, py, 1, BT);
@@ -59,12 +68,12 @@ function buildBackground(w: World): HTMLCanvasElement {
     if (k === TILE.PIT) {
       g.fillStyle = '#030206'; g.fillRect(px, py, BT, BT);
       if (at(x, y - 1) !== TILE.PIT) { g.fillStyle = th.grout; g.fillRect(px, py, BT, 3); g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(px, py + 3, BT, 3); }
-      continue;
+      return;
     }
     if (k === TILE.PILLAR) { // brazier pedestal (flame drawn live)
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(px + 8, py + 13, 7, 3, 0, 0, Math.PI * 2); g.fill();
       g.fillStyle = '#5a5262'; g.fillRect(px + 4, py + 4, 8, 9); g.fillStyle = '#3a3442'; g.fillRect(px + 3, py + 3, 10, 3); g.fillRect(px + 4, py + 11, 8, 2);
-      continue;
+      return;
     }
     if (k === TILE.SWAMP) {
       g.fillStyle = th.swamp; g.fillRect(px, py, BT, BT);
@@ -73,15 +82,56 @@ function buildBackground(w: World): HTMLCanvasElement {
       if (r > 0.6) { g.fillStyle = 'rgba(190,255,170,0.25)'; g.fillRect(px + Math.floor(r * 37) % 12, py + Math.floor(r * 11), 2, 2); }
     }
     if (at(x, y - 1) === TILE.WALL && k !== TILE.SWAMP) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, BT, 4); } // wall shadow
-  }
-  return c;
+  };
+  const make = (i: number) => {
+    const cx = i % cw, cy = (i / cw) | 0, c = document.createElement('canvas'); c.width = c.height = CHUNK * BT;
+    const g = c.getContext('2d')!; g.translate(-cx * CHUNK * BT, -cy * CHUNK * BT);
+    for (let y = cy * CHUNK; y < Math.min(w.h, (cy + 1) * CHUNK); y++) for (let x = cx * CHUNK; x < Math.min(w.w, (cx + 1) * CHUNK); x++) tile(g, x, y);
+    sink?.drawImage(c, 0, 0, 1, 1); // make the canvas rasterise now (inside the prefill budget), not on its first on-screen draw
+    chunks[i] = c; built++;
+    return c;
+  };
+  return {
+    get built() { return built; }, total: chunks.length,
+    /** Blit background px rect (sx,sy,sw,sh) at scale k, building any chunk in view that isn't ready. */
+    draw(gg, sx, sy, sw, sh, k) {
+      const S = CHUNK * BT;
+      for (let cy = Math.max(0, Math.floor(sy / S)); cy <= Math.min(ch - 1, Math.floor((sy + sh) / S)); cy++)
+        for (let cx = Math.max(0, Math.floor(sx / S)); cx <= Math.min(cw - 1, Math.floor((sx + sw) / S)); cx++) {
+          const c = chunks[cy * cw + cx] ?? make(cy * cw + cx);
+          const x0 = Math.round(cx * S * k), y0 = Math.round(cy * S * k); // whole-px edges: no seams between chunks
+          gg.drawImage(c, x0, y0, Math.round((cx + 1) * S * k) - x0, Math.round((cy + 1) * S * k) - y0);
+        }
+    },
+    /** Build not-yet-built chunks nearest background px (fx,fy) first, until budgetMs is spent. */
+    prefill(budgetMs, fx = 0, fy = 0) {
+      const t0 = performance.now(), S = CHUNK * BT;
+      while (built < chunks.length && performance.now() - t0 < budgetMs) {
+        let best = -1, bd = Infinity;
+        for (let i = 0; i < chunks.length; i++) if (!chunks[i]) { const d = Math.hypot((i % cw + 0.5) * S - fx, (((i / cw) | 0) + 0.5) * S - fy); if (d < bd) { bd = d; best = i; } }
+        make(best);
+      }
+    },
+  };
+}
+
+/** Non-ASCII glyphs the HUD draws. The first use of each one in a font triggers a system font-fallback lookup that took ~40 ms
+ *  (curse banner '☠', slim-row '✓'), so draw them once off-screen at mount, behind the intro. */
+const WARM_GLYPHS = '☠✓●◀▶·×–—…★⏱';
+function warmGlyphs() {
+  const c = document.createElement('canvas'); c.width = c.height = 8;
+  const g = c.getContext('2d'); if (!g) return;
+  const ascii = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 +-:%/()!?.,\'';
+  for (const f of ['', 'bold ', '900 ']) { g.font = `${f}16px sans-serif`; g.fillText(WARM_GLYPHS, 0, 8); g.measureText(WARM_GLYPHS); }
+  // first draw of text at a new size rasterises its glyphs; camp and the HUD use roughly 7-40 px
+  for (const f of ['', 'bold ']) for (let px = 7; px <= 40; px++) { g.font = `${f}${px}px sans-serif`; g.fillText(ascii, 0, 8); }
 }
 
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
   let color = '#4cc9f0';
-  let bg: HTMLCanvasElement | null = null, bgFor: unknown = null;
+  let bg: FloorBg | null = null, bgFor: unknown = null;
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
   let lastCue = -1;
@@ -311,6 +361,7 @@ export function createRenderer(): GameRenderer {
       container.appendChild(canvas);
       canvas.addEventListener('pointerdown', onPointer);
       g = canvas.getContext('2d');
+      warmGlyphs();
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
@@ -348,8 +399,9 @@ export function createRenderer(): GameRenderer {
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
       const k = TS / BT;
-      const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(bg!.width - sx, W / k + 1), sh = Math.min(bg!.height - sy, H / k + 1);
-      if (sw > 0 && sh > 0) gg.drawImage(bg!, sx, sy, sw, sh, sx * k, sy * k, sw * k, sh * k);
+      const sx = Math.max(0, cx / k), sy = Math.max(0, cy / k), sw = Math.min(w.w * BT - sx, W / k + 1), sh = Math.min(w.h * BT - sy, H / k + 1);
+      if (sw > 0 && sh > 0) bg!.draw(gg, sx, sy, sw, sh, k);
+      bg!.prefill(3, sx + sw / 2, sy + sh / 2); // fill in off-screen chunks, nearest the camera first, a little each frame
       // doors, stairs, chests
       const x0 = Math.max(0, Math.floor(cx / TS)), x1 = Math.min(w.w, Math.ceil((cx + W) / TS));
       const y0 = Math.max(0, Math.floor(cy / TS)), y1 = Math.min(w.h, Math.ceil((cy + H) / TS));

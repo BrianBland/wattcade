@@ -143,12 +143,12 @@ function cachedGrad(key: string, make: () => CanvasGradient): CanvasGradient {
 }
 const widthCache = new Map<string, number>();
 /** measureText(text).width for the context's current font, cached. */
-// Only text without digits is cached: counters and timers change every frame, so caching them filled the map with
-// strings that lived just long enough to be promoted and then cleared at 512 entries, feeding the old-space GC.
-const DIGIT = /\d/;
+// Digits are folded to '0' in the key: the HUD fonts use tabular (equal-width) figures, so "Lv12" and "Lv47" measure the
+// same. Caching the raw counter/timer strings filled the map with strings that lived just long enough to be promoted;
+// measuring them fresh each frame allocated a Blink TextMetrics per call that only a major GC reclaims.
+const DIGITS = /\d/g;
 function textW(g: CanvasRenderingContext2D, text: string): number {
-  if (DIGIT.test(text)) return g.measureText(text).width;
-  const key = g.font + '|' + text;
+  const key = g.font + '|' + text.replace(DIGITS, '0');
   let w = widthCache.get(key);
   if (w === undefined) { if (widthCache.size > 512) widthCache.clear(); w = g.measureText(text).width; widthCache.set(key, w); }
   return w;

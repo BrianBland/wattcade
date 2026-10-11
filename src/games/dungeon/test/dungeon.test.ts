@@ -154,7 +154,7 @@ describe('scenarios via runHeadless', () => {
       const r = runHeadless({ game: module, script: sc.script, minutes: sc.minutes, seed: sc.seed, simOpts: sc.simOpts });
       const fails = sc.assert(r.summary, r.stats, { mixerCommands: r.mixerCommands, isOver: r.isOver, events: r.events });
       expect(fails, JSON.stringify(r.summary)).toEqual([]);
-    });
+    }, sc.minutes >= 60 ? 30_000 : undefined); // hour-long scenario rides take a few seconds on slow CI runners
   }
   it('is deterministic', () => {
     const o = { game: module, script: 'z2', minutes: 3, seed: 4, simOpts: { autopilot: true } };

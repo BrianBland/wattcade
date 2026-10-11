@@ -8,6 +8,7 @@ import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
 import { SquadronPost } from './post';
+import { GROUND_SPEED } from '../sim/encounters';
 import { SECTORS } from '../sim/content';
 import { SquadronHud, bigPerfect } from './hud';
 import { WING_OFFSETS } from '../sim/progression';
@@ -194,7 +195,11 @@ export class SfRenderer implements GameRenderer {
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
-    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9);
+    this.starfield!.position.z = (s.t * 1.5) % 30; // The next segment's biome takes over where the ship will be when the segment changes (snapped to a tile edge).
+    const raw = s.t * GROUND_SPEED + 126 + s.segment.switchIn * GROUND_SPEED, switchTravel = Math.round((raw + 32) / 64) * 64 - 32;
+    this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,
+      { switchTravel, b0: s.segment.biome, b1: s.segment.nextBiome, seed0: s.segment.seed, seed1: s.segment.nextSeed },
+      s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })));
     // A barely-there settle of the camera on each bar line.
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());

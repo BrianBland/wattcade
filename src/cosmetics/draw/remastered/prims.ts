@@ -15,14 +15,32 @@ function tone(color: string, value: number): string {
   if (short) color = '#' + [...short[1]].map(c => c + c).join('');
   return shade(color, value) + (/^#[\da-f]{8}$/i.test(color) ? color.slice(7) : '');
 }
-/** Small details stay flat and legible. Larger surfaces get a lit face and a shaded edge. */
+/** Outlined pixel materials use a small set of solid tones, never an airbrushed ramp.
+ * Lighting and staggered texture are clipped to the actual silhouette. */
 function finish(g: G, color: string, x: number, y: number, w: number, h: number) {
-  if (w * h < 3 || Math.min(w, h) < .65) { g.fillStyle = color; g.fill(); return; }
-  const light = g.createLinearGradient(x, y, x + w * .55, y + h);
-  light.addColorStop(0, tone(color, 1.3)); light.addColorStop(.38, color); light.addColorStop(1, tone(color, .64));
-  g.fillStyle = light; g.fill();
+  g.fillStyle = color; g.fill();
+  if (w * h < 3 || Math.min(w, h) < .65) return;
+  g.save(); g.clip();
+  g.fillStyle = tone(color, .68);
+  g.fillRect(x, y + h * .7, w, h * .3);
+  g.fillRect(x + w * .48, y + h * .58, w * .52, h * .12);
+  g.fillRect(x + w * .7, y + h * .48, w * .3, h * .1);
+  g.fillStyle = tone(color, 1.22);
+  g.fillRect(x, y, w * .78, h * .18);
+  g.fillRect(x, y + h * .18, w * .52, h * .1);
+  g.fillRect(x + w * .1, y + h * .28, w * .15, h * .08);
+  // Sparse pixel clusters give fur, cloth and metal a shared illustrated finish.
+  g.fillStyle = tone(color, 1.12);
+  for (let row = 0; row < Math.ceil(h / .65); row++) {
+    const v = y + row * .65;
+    for (let col = 0; col < Math.ceil(w / .75); col++) {
+      if ((col * 3 + row * 5) % 7 !== 0) continue;
+      g.fillRect(x + col * .75 + (row % 2) * .25, v, .5, .25);
+    }
+  }
+  g.restore();
   g.strokeStyle = /^#[\da-f]{8}$/i.test(color) ? OUTLINE + color.slice(7) : OUTLINE;
-  g.lineWidth = .24; g.lineJoin = 'round'; g.stroke();
+  g.lineWidth = .38; g.lineJoin = 'miter'; g.stroke();
 }
 export function poly(g: G, color: string, ...points: P[]) {
   g.save(); g.beginPath(); g.moveTo(...points[0]);
@@ -50,7 +68,9 @@ export function line(g: G, color: string, width: number, ...points: P[]) {
   if (width >= .75) { g.strokeStyle = OUTLINE; g.lineWidth = width + .22; g.stroke(); }
   g.strokeStyle = color; g.lineWidth = width; g.stroke();
   if (width >= 1.1) {
-    g.translate(0, -width * .18); g.strokeStyle = tone(color, 1.35); g.lineWidth = width * .22; g.stroke();
+    g.beginPath(); g.moveTo(points[0][0], points[0][1] - width * .18);
+    for (const p of points.slice(1)) g.lineTo(p[0], p[1] - width * .18);
+    g.strokeStyle = tone(color, 1.35); g.lineWidth = width * .22; g.stroke();
   }
   g.restore();
 }

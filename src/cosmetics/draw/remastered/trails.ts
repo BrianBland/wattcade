@@ -11,11 +11,20 @@ const hash = (i: number) => frac(Math.sin(i * 127.1 + 311.7) * 43758.5453);
  * Draws trail `id` streaming back from (x0, −4.5) in rider space. Stateless: each particle's age comes from time and
  * its index. Nothing while stopped; longer and brighter the faster you ride.
  */
+let sprite: OffscreenCanvas | HTMLCanvasElement | undefined;
 export function drawTrail(g: G, id: string, c: TrailCtx) {
   const k = Math.min(1, c.speed / 6);
   if (k <= 0.02 || id === 'none') return;
   const f = TRAILS[id]; if (!f) return;
-  g.save(); f(g, c, k); g.restore();
+  if (!sprite) {
+    if (typeof OffscreenCanvas !== 'undefined') sprite = new OffscreenCanvas(192, 96);
+    else if (typeof document !== 'undefined') { sprite = document.createElement('canvas'); sprite.width = 192; sprite.height = 96; }
+  }
+  const sg = sprite?.getContext('2d') as G | null | undefined;
+  if (!sprite || !sg) { g.save(); f(g, c, k); g.restore(); return; }
+  sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, 192, 96);
+  sg.save(); sg.scale(4, 4); sg.translate(44, 16); f(sg, { ...c, x0: 0 }, k); sg.restore();
+  g.save(); g.imageSmoothingEnabled = false; g.drawImage(sprite, c.x0 - 44, -16, 48, 24); g.restore();
 }
 
 /** Particles: `each(i, age, x, y)`; age 0 = just emitted at the wheel, 1 = gone. */
@@ -84,9 +93,8 @@ const TRAILS: Record<string, (g: G, c: TrailCtx, k: number) => void> = {
     for (let j = 0; j < 3; j++) {
       g.globalAlpha = .85 * Math.min(1, hot * 2); const l = len * (1 - j * .25), y = -4.5 + (j - 1) * .65;
       const wave = Math.sin(c.t * 18 + j) * .7;
-      const fire = g.createLinearGradient(c.x0 - l, 0, c.x0 + .6, 0);
-      fire.addColorStop(0, '#de424300'); fire.addColorStop(.5, ['#e74832', '#ff9638', '#ffd982'][j]); fire.addColorStop(1, '#fff5ce');
-      g.fillStyle = fire; g.beginPath(); g.moveTo(c.x0 + .6, y - .65);
+      g.fillStyle = ['#e74832', '#ff9638', '#ffe4a1'][j];
+      g.beginPath(); g.moveTo(c.x0 + .6, y - .65);
       g.quadraticCurveTo(c.x0 - l * .4, y - 1.2 + wave, c.x0 - l, y + wave);
       g.quadraticCurveTo(c.x0 - l * .55, y + .85 - wave, c.x0 + .6, y + .65); g.closePath(); g.fill();
     }

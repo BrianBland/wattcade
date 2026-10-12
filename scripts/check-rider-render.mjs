@@ -23,6 +23,8 @@ try {
     const { drawRider } = await import('/src/cosmetics/draw/rider.ts');
     const { riderLook, withItem } = await import('/src/cosmetics/unlocks.ts');
     const { ITEMS } = await import('/src/cosmetics/catalog.ts');
+    const { drawPet, PET_IDS, FLIERS } = await import('/src/cosmetics/draw/remastered/pets.ts');
+    const { drawTrail, TRAIL_IDS } = await import('/src/cosmetics/draw/remastered/trails.ts');
     const base = riderLook({ level: 1, achievements: [], color: '#27c5c7' });
     const c = document.createElement('canvas'); c.width = c.height = 512;
     const g = c.getContext('2d');
@@ -47,7 +49,30 @@ try {
     const legacyFrames = Array.from({ length: 16 }, (_, i) => frame(i / 16, 1, 'legacy'));
     if (new Set(legacyFrames).size !== 16) throw Error('Legacy pedal frames did not change');
     if (frame(.25, 1, 'legacy') !== frame(.25, 5, 'legacy')) throw Error('Legacy stationary crank moved');
-    return { cases, frames };
+    const petFrame = (id, speed, gait, t, sitting = false) => {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 512);
+      g.translate(256, 350); g.scale(10, 10);
+      drawPet(g, id, {t, speed, gait, color: '#27c5c7'}, sitting);
+      return c.toDataURL();
+    };
+    let petCases = 0;
+    for (const id of PET_IDS) {
+      if (petFrame(id, 6, 0, 0) === petFrame(id, 6, .9, .09)) throw Error(`${id} does not animate`);
+      for (const speed of [0, .5, 6, 10]) for (const gait of [0, 1.5, 3, 4.5]) {
+        petFrame(id, speed, gait, 2); petCases++;
+      }
+      // The hamster's ball keeps rolling; other runners tuck their legs in cargo.
+      if (!FLIERS.has(id) && id !== 'hamsterball') {
+        if (petFrame(id, 6, 0, 2, true) !== petFrame(id, 6, 2, 2, true)) throw Error(`${id} pedals in cargo`);
+        if (petFrame(id, 0, 0, 2) !== petFrame(id, 0, 2, 2)) throw Error(`${id} trots while stopped`);
+      }
+    }
+    for (const id of TRAIL_IDS) {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, 512, 512);
+      drawTrail(g, id, {t: 2, speed: 0, color: '#27c5c7', x0: 0});
+      if (g.getImageData(0, 0, 512, 512).data.some(v => v)) throw Error(`Stopped ${id} visible`);
+    }
+    return { cases, frames, petCases };
   });
   for (let i = 0; i < 16; i++) {
     writeFileSync(join(framesDir, `f${String(i).padStart(2, '0')}.png`), Buffer.from(result.frames[i].split(',')[1], 'base64'));
@@ -74,6 +99,7 @@ try {
   await page.screenshot({ path: join(out, 'player-portrait.png') });
   if (errors.length) throw Error(errors.join('\n'));
   console.log(JSON.stringify({ browserRenderCases: result.cases, artModes: ['legacy', 'rich'], distinctPedalFramesPerMode: 16,
+    petPoseCases: result.petCases, petAnimation: 'passed', cargoRest: 'passed', stoppedTrails: 'passed',
     stationaryCrank: 'passed', zeroCadence: 'passed', alternateBikeSelections: 'passed',
     portrait: 'passed', consoleErrors: errors.length }));
 } finally {

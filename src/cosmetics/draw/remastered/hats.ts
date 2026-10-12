@@ -1,3 +1,4 @@
+import { poly as flatPoly, line as flatLine, rect as flatRect } from '../prims';
 import { circle, line, oval, poly, quad, rect, shade, SKIN, TAU, type G } from './prims';
 
 /** What a hat may animate with. `color` = the rider's colour. */
@@ -57,12 +58,21 @@ function details(g: G, id: string, accent: string) {
 }
 
 const roadHelmet = (g: G, col: string, shell = '#f5f5fa') => {
-  poly(g, '#142130', [-3.4, -1.1], [-3.2, -2.4], [-1.7, -3.8], [0.8, -3.8], [2.5, -3], [3.1, -1.7], [2.3, -1], [0.4, -1.2], [-1.3, -0.8]);
-  poly(g, shell, [-2.9, -1.5], [-2.7, -2.4], [-1.4, -3.3], [0.7, -3.3], [2.1, -2.7], [2.5, -1.8], [0.3, -1.7], [-1.2, -1.3]);
-  poly(g, shade(shell, 0.75), [-2.9, -1.5], [-0.7, -2], [2.5, -1.8], [2.3, -1.3], [0.3, -1.6], [-1.2, -1.1]);
-  poly(g, col, [-2.3, -2.7], [-1.3, -3.2], [1.1, -2.9], [1.7, -2.4], [-0.6, -2.6]);
-  for (const x of [-1.8, -0.2, 1.3]) poly(g, '#233647', [x, -2.8], [x + 0.5, -2.6], [x + 0.8, -1.9], [x + 0.3, -2]);
-  line(g, '#142130', 0.35, [-1.5, -1], [-0.4, 1.4], [1.4, -1.2]);
+  // A continuous white shell, with recessed vents and a shaded lower lip.
+  // Small panels are flat so their contours do not break up the helmet silhouette.
+  flatPoly(g, '#142130', [-3.4, -1.1], [-3.5, -2.6], [-2.4, -3.8], [-.7, -4.3],
+    [1, -4.1], [2.5, -3.2], [3.2, -1.7], [2.7, -1], [.2, -1.2], [-1.4, -.8]);
+  flatPoly(g, shell, [-3, -1.6], [-3.05, -2.55], [-2.15, -3.4], [-.65, -3.85],
+    [.9, -3.65], [2.1, -2.95], [2.7, -1.7], [.15, -1.65], [-1.45, -1.25]);
+  flatPoly(g, shade(shell, .72), [-3, -1.6], [-1.4, -1.9], [.4, -1.9], [2.7, -1.7],
+    [2.45, -1.35], [.2, -1.5], [-1.45, -1.05]);
+  flatLine(g, '#fff9df', .25, [-2.25, -3.45], [-.65, -3.85], [.85, -3.65]);
+  flatPoly(g, '#233647', [-2.55, -2.85], [-1.1, -3.3], [-.6, -2.95], [-2.05, -2.55]);
+  flatPoly(g, '#233647', [-.5, -3.55], [.65, -3.35], [1.05, -2.95], [-.3, -3.15]);
+  flatPoly(g, '#233647', [1.3, -2.85], [1.7, -2.7], [2.2, -1.95], [1.7, -2.1]);
+  flatRect(g, col, -2.8, -1.85, .75, .25);
+  flatLine(g, '#142130', .35, [-1.5, -1], [-.4, 1.4], [1.4, -1.2]);
+  flatRect(g, '#788697', -.65, .9, .4, .4);
 };
 const dome = (g: G, c: string, rx = 2.7, ry = 2.2, y = -0.9) => oval(g, c, -0.2, y, rx, ry, -0.1, true);
 const brim = (g: G, c: string, x0: number, x1: number, y: number, w = 0.8) => line(g, c, w, [x0, y], [x1, y]);

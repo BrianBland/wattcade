@@ -36,6 +36,8 @@ export interface SfSnapshot {
   t: number; phase: 'hangar' | 'run';
   /** Downbeat pulse (1 at a bar line, decaying), alongside `beat`. */
   bar: number;
+  /** Beat count (changes on every beat) and current low/mid/high band energy 0..1, for music-reactive lighting. */
+  beatIndex: number; bands: [number, number, number];
   /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
   selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */

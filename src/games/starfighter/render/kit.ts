@@ -84,6 +84,11 @@ function island(): Part {
   return merge([box(5, 7, 10, 0, 3.5, 0, LIGHT), box(4, 3, 7, 0, 8.5, -0.5, LIGHT), box(5.1, 0.6, 2, 0, 5.5, -4.2, WIN), box(4.1, 0.6, 1.5, 0, 8.8, -3.6, WIN),
     cyl(0.18, 0.25, 7, 0, 13.5, 0, DARK, 6), box(3.4, 0.15, 0.6, 0, 15.5, 0, DARK), cyl(0.9, 0.9, 0.15, 0, 12.2, 1.4, DARK, 12, Math.PI / 2), box(1.2, 1.2, 1.2, 0, 10.6, 2.5, '#d8dde2')]);
 }
+/** Broadleaf tree: a trunk and a clumped canopy of lumpy blobs in varied greens (base at y = 0, ~3 units tall). */
+function tree(): Part {
+  const blob = (r: number, x: number, y: number, z: number, color: string) => { const g = new THREE.IcosahedronGeometry(r, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
+  return merge([cyl(0.12, 0.18, 1.3, 0, 0.65, 0, '#5a4330', 6), blob(0.95, 0, 1.9, 0, '#3f7d4c'), blob(0.7, 0.6, 1.6, 0.3, '#4a8f55'), blob(0.65, -0.55, 1.65, -0.25, '#36703f'), blob(0.6, 0.1, 2.5, -0.2, '#56a061')]);
+}
 /** V-shaped wake: a foam fan widening and fading behind its source (additive white via vertex colours). */
 function wake(): Part {
   const g = new THREE.BufferGeometry(), pos: number[] = [], col: number[] = [], N = 10;
@@ -104,8 +109,8 @@ function wake(): Part {
 }
 let cache: Record<string, Part> | null = null;
 export function kit() {
-  cache ??= { carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake() };
-  return cache as { carrier: Part; battleship: Part; destroyer: Part; riverBoat: Part; barge: Part; jet: Part; tractor: Part; island: Part; wake: Part };
+  cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake() };
+  return cache as { tree: Part; carrier: Part; battleship: Part; destroyer: Part; riverBoat: Part; barge: Part; jet: Part; tractor: Part; island: Part; wake: Part };
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

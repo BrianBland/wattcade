@@ -194,7 +194,7 @@ export class SfRenderer implements GameRenderer {
     // The world passes beneath through the ship's route pose; the next biome takes over at its frame line.
     this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,
       { pose: s.world, f0: s.frames.cur, f1: s.frames.next, routeAhead: s.routeAhead },
-      s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })));
+      s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })), { beatIndex: s.beatIndex, bands: s.bands });
     // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
     this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);

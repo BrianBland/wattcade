@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { geometries } from './models';
 import { GROUND_SPEED } from '../sim/encounters';
 import { biomeParams, mulberry, riverX, cityRoads, type BiomeParams } from './terrain';
-import { plated, sceneryWave, strata, windowed } from './shading';
+import { foliage, lawn, plated, sceneryMusic, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist). */
 export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf'];
@@ -48,7 +48,7 @@ const biomeColor = `
     return c+grid*0.015;}
   vec3 biomeColor(float b,vec4 P,vec2 p,float n,vec3 water,float grid,float pulse,vec3 wpos){vec3 c;
   if(b<0.5){c=abs(p.x)<42.0?flightDeck(p,grid,pulse):cloudSea(p);}
-  else if(b<1.5){float grain=noise(p*1.3)*0.04;c=vec3(0.10,0.19,0.25)+n*0.07+grain;bool harbour=abs(p.x)>240.0;if(harbour)c=waterShade(vec3(0.02,0.14,0.28),vec3(0.05,0.28,0.4),0.7,p,wpos,0.55,smoothstep(122.0,118.5,abs(p.x))*0.8);
+  else if(b<1.5){float grain=noise(p*1.3)*0.04;c=vec3(0.10,0.19,0.25)+n*0.07+grain;bool harbour=false; // the city fills every direction (turns would otherwise drift it over water)if(harbour)c=waterShade(vec3(0.02,0.14,0.28),vec3(0.05,0.28,0.4),0.7,p,wpos,0.55,smoothstep(122.0,118.5,abs(p.x))*0.8);
     float rx=abs(mod(p.x-P.y,P.x)-P.x*0.5),ry=abs(mod(p.y-P.w,P.z)-P.z*0.5),road=max(step(rx,2.6),step(ry,3.2));if(harbour)road=0.0;
     c=mix(c,vec3(0.035,0.07,0.12)+grain,road);if(!harbour)c=mix(c,vec3(0.2,0.25,0.3)+grain,(1.0-road)*max(step(rx,3.6),step(ry,4.2))); // sidewalks
     if(!harbour)c+=step(rx,2.6)*step(ry,5.5)*step(3.2,ry)*step(0.5,fract(p.x*0.9))*vec3(0.25); // crosswalks
@@ -106,10 +106,11 @@ export function createSpace(scene: THREE.Scene) {
   const glass=make(geometries.box,glassMat,2400);
   const trim=make(geometries.box,trimMat,1024);
   const domes=make(geometries.sphere,material('#3ba5ba'),160);
-  const grass=make(geometries.box,material('#2f6b4a',0.05),160);
-  const trees=make(geometries.sphere,material('#3f8f5a',0.05),640);
+  const grass=make(geometries.box,lawn(new THREE.MeshStandardMaterial({color:'#3d7a4a',metalness:0,roughness:0.95})),160);
+  const paths=make(geometries.box,new THREE.MeshStandardMaterial({color:'#9aa3a8',metalness:0,roughness:0.9}),320);
   // Kit models (vertex-coloured, plated): ships, boats, barges, parked jets, deck tractors, island towers.
   const K=kit(),kitMat=()=>plated(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.45,roughness:0.45}));
+  const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9,flatShading:true})),900);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
   const boats=make(K.riverBoat,kitMat(),24),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
@@ -123,7 +124,7 @@ export function createSpace(scene: THREE.Scene) {
   const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),1200);
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),256);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),480);
-  const pools=[shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  const pools=[shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -176,7 +177,11 @@ export function createSpace(scene: THREE.Scene) {
       if(bah<-200||bah>1100||Math.abs(blx)>620)continue;
       const core=nearRoute(bwx,bwz,42+bw/2),roll=r();
       if(!core&&(Math.abs(blx)>150||bah>650)){for(let zz=z-30;zz<z+28;zz+=20){const h=5+r()*(r()<0.2?40:18);add(walls,cx,h/2-6,zz+10,bw-r()*4,h,17);add(roofs,cx,h-5.5,zz+10,bw-2,0.7,17.5);}continue;}
-      if(roll<0.12&&!core){add(grass,cx,-5.95,z,bw,0.1,58);for(let k=0;k<8;k++)add(trees,x0+r()*bw,-4.5,z-28+r()*56,1.6+r(),1.6+r()*1.5,1.6+r());continue;} // park
+      if(roll<0.12&&!core){ // park: mown lawn, crossing paths, a pond sometimes, and clustered trees with shadows
+        add(grass,cx,-5.95,z,bw,0.1,58);add(paths,cx,-5.88,z,bw,0.04,1.6);add(paths,cx,-5.88,z,1.6,0.04,58,0);add(paths,cx,-5.88,z,1.4,0.04,Math.hypot(bw,58)*0.9,Math.atan2(bw,58));
+        if(r()<0.4)add(domes,cx+bw*0.22,-6,z-14,bw*0.18,0.15,9);
+        for(let k=0;k<14;k++){const tx=x0+1.5+r()*(bw-3),tz=z-27+r()*54,sc=1.5+r()*1.3;if(Math.abs(tx-cx)<1.6||Math.abs(tz-z)<1.4)continue;add(trees,tx,-5.9,tz,sc,sc*(0.9+r()*0.4),sc,r()*6);shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);}
+        continue;}
       if(roll<0.2){add(roofs,cx,-5.9,z,bw,0.2,56);add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);continue;} // plaza with a fountain
       let zz=z-30;
       while(zz<z+28){
@@ -209,7 +214,9 @@ export function createSpace(scene: THREE.Scene) {
      * chasing runway lights, sweeping window strips and rippling water. `env` places the next biome along the route.
      * `ground` = ground-unit positions (they ride barges at sea).
      */
-    update(time:number,_intensity:number,_color:string,beat=0,bar=0,since=9,env?:BiomeEnv,ground:Array<{x:number;z:number}>=[]){
+    update(time:number,_intensity:number,_color:string,beat=0,bar=0,since=9,env?:BiomeEnv,ground:Array<{x:number;z:number}>=[],music?:{beatIndex:number;bands:[number,number,number]}){
+      // Window lights: beat count for the flicker; band levels with a quick rise and a slower fall, like a VU meter.
+      if(music){const m=sceneryMusic.value;m.x=music.beatIndex;const fall=(c:number,v:number)=>v>c?c+(v-c)*0.5:c+(v-c)*0.08;m.y=fall(m.y,music.bands[0]);m.z=fall(m.z,music.bands[1]);m.w=fall(m.w,music.bands[2]);}
       uniforms.time.value=time;uniforms.pulse.value=bar*0.8+beat*0.2;
       const waveZ=-620+since*1300,waveFade=Math.exp(-since*1.4);uniforms.wave.value=waveZ;uniforms.waveFade.value=waveFade;sceneryWave.value.set(waveZ,waveFade);
       const band=(z:number)=>Math.exp(-Math.abs(z-waveZ)/16)*waveFade;

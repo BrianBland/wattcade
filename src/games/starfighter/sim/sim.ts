@@ -566,7 +566,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     },
     snapshot(): SfSnapshot {
       const theme = (sector - 1) % 5;
-      return { t, bar: music.barPulse, selectedGroup, eliteHint, elites: { cleared: eliteCleared, seen: eliteSeen }, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
+      const bi = timeline?.beats.length ? after(timeline.beats, p) - 1 : Math.floor(p / 0.6), bk = Math.round(p * (timeline?.hz ?? 10));
+      // Meter level per band: a quarter from the band envelope, the rest from decaying onset hits (headroom for peaks).
+      const ons = timeline?.onsets ?? [];
+      const hits = [0, 0, 0]; for (let i = Math.max(0, onsetIndex(p) - 40); i < ons.length && ons[i].t <= p; i++) { const o = ons[i], age = p - o.t; if (age <= 0.45) hits[o.band] = Math.max(hits[o.band], o.s * Math.exp(-age * 7)); }
+      const band = (j: 0 | 1 | 2) => clamp((timeline?.bands[j]?.[bk] ?? music.intensity) * 0.25 + hits[j] * 0.62, 0, 1);
+      return { t, bar: music.barPulse, beatIndex: bi, bands: [band(0), band(1), band(2)], selectedGroup, eliteHint, elites: { cleared: eliteCleared, seen: eliteSeen }, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
         crafts: Object.fromEntries(CRAFTS.map(c => { const info = craftLevel(pendingS(c)), level = levelOf(c);
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null,
             minutesToNext: tester() || info.nextAtS === null ? null : Math.max(1, Math.ceil((info.nextAtS - pendingS(c)) / 60)),
@@ -603,6 +608,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** Impact time for a volley fired now: the next beat when it is a natural flight time away. */
   function impactAt() { const nb = timeline?.beats.length ? beatAfter(t + 0.35) : t + 0.52; return nb - t <= 0.95 && nb > t + 0.3 ? nb : t + 0.52; }
   function lockInterval() { return pk.lockS * Math.pow(tun.tierLock(), gunLevel - 1); }
+  /** Index of the first onset after program time q (binary search). */
+  function onsetIndex(q: number) { const o = timeline?.onsets ?? []; let lo = 0, hi = o.length; while (lo < hi) { const m = (lo + hi) >>> 1; if (o[m].t <= q) lo = m + 1; else hi = m; } return lo; }
   function lockCapacity() { return Math.max(2, 3 + gunLevel - (craft === 'escort' ? 2 : 0)); }
   function protectedTarget() { return coverLeft > 0 || rejoinLeft > 0 ? tun.recovery() : 0.65; }
 }

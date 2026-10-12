@@ -2,8 +2,9 @@ import type { RiderLook } from '../../types';
 import { BIKES, paintAt, type BikeCtx, type BikeDef, type WheelOpts } from './bikes';
 import { drawHat, FULL_HEAD } from './hats';
 import { drawCape, drawTorso, legsOf } from './jersey';
-import { circle, joint, line, poly, rect, SKIN, TAU, type G, type P } from '../prims';
+import { circle, joint, line, poly, rect, TAU, type G, type P } from '../prims';
 import { shade } from './prims';
+import { drawArm, drawLeg, drawFace, SKIN } from './anatomy';
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
 
@@ -87,44 +88,35 @@ function wheel(c: BikeCtx, x: number, y: number, r: number, o: WheelOpts) {
 
 function bodyArt(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker', o: RiderOpts) {
   const g = c.g, t = c.t, j = look.jersey, legs = legsOf(j);
-  const hip = def.hip, lean = def.lean > .5 ? def.lean + .18 : def.lean;
-  const sh: P = [hip[0] + 8 * Math.sin(lean), hip[1] - 8 * Math.cos(lean)];
-  const hl = lean * 0.55, head: P = [sh[0] + 3.4 * Math.sin(hl) + 0.6, sh[1] - 3.4 * Math.cos(hl)];
+  const hip = def.hip;
+  // Style A has a compact, curved back and a head carried forward over the neck.
+  // The cycling torso is shorter than the old stick rig; upright/reclined bikes
+  // still use their own riding position and all hands/feet stay on the equipment.
+  const lean = def.lean > .5 ? def.lean + .28 : def.lean;
+  const length = def.lean > .5 ? 6.8 : 7.2;
+  const sh: P = [hip[0] + length * Math.sin(lean), hip[1] - length * Math.cos(lean)];
+  const head: P = [sh[0] + 1.7, sh[1] - 1.45];
   const feet = footPoints(c, def);
   const leg = (foot: P, near: boolean) => {
-    const k = joint(hip, foot, 6.4, 6.6, 1);
-    const skin = near ? SKIN : shade(SKIN, 0.68);
-    const shorts = near ? legs.thigh : shade(legs.thigh, 0.65);
-    const hem: P = [hip[0] + (k[0] - hip[0]) * 0.72, hip[1] + (k[1] - hip[1]) * 0.72];
-    limb(g, skin, hip, k, 1.8, 1.15, near);
-    limb(g, shorts, hip, hem, 2, 1.45, near);
-    limb(g, legs.shin ? (near ? legs.shin : shade(legs.shin, 0.65)) : skin, k, foot, 1.12, 0.55, near);
-    if (!legs.shin) limb(g, near ? '#edf0e6' : '#9aaab1', [k[0] + (foot[0] - k[0]) * 0.76, k[1] + (foot[1] - k[1]) * 0.76], foot, 0.65, 0.55, false);
-    poly(g, '#142130', [foot[0] - 0.8, foot[1] - 0.6], [foot[0] + 0.6, foot[1] - 0.5], [foot[0] + 1.7, foot[1] + 0.2], [foot[0] + 1.4, foot[1] + 0.65], [foot[0] - 1, foot[1] + 0.55]);
-    line(g, near ? '#59687e' : '#35465a', .3, [foot[0] - .4, foot[1] - .1], [foot[0] + .75, foot[1] + .1]);
-    rect(g, '#d1ddd7', foot[0] + .15, foot[1] - .15, .55, .25);
-    line(g, near ? '#a4b4c5' : '#617184', 0.3, [foot[0] - 0.8, foot[1] + 0.5], [foot[0] + 1.4, foot[1] + 0.5]);
+    drawLeg(g, hip, joint(hip, foot, 6.4, 6.6, 1), foot,
+      near ? legs.thigh : shade(legs.thigh,.7), legs.shin ? (near ? legs.shin : shade(legs.shin,.7)) : null, near);
   };
   if (who === 'rider') drawCape(g, j, sh, t, c.speed);
-  const farSh: P = [sh[0] + 0.5, sh[1] - 0.3], farHand: P = [def.hand[0] + 0.4, def.hand[1] - 0.4];
-  const farElbow = joint(farSh, farHand, 3.6, 3.8, -1);
-  limb(g, shade(SKIN, 0.7), farElbow, farHand, 0.7, 0.45, false);
-  limb(g, shade(j.base, 0.7), farSh, farElbow, 1, 0.7, false);
+  const farSh: P = [sh[0] + .5, sh[1] - .15], farHand: P = [def.hand[0] + .35, def.hand[1] - .35];
+  drawArm(g, farSh, joint(farSh, farHand, 3.8, 4.2, -1), farHand, shade(j.base,.72), false);
   leg(feet[1], false);
   if (who === 'rider') def.frameDraw(c);
   leg(feet[0], true);
-  // A neck connects the face to the collar rather than floating above the jersey.
-  limb(g, SKIN, sh, [head[0] - 0.6, head[1] + 1.3], 0.9, 0.8, true);
+  // Neck is part of the shoulder silhouette and tucks under the cheek.
+  poly(g, '#b9764e', [sh[0]-.35,sh[1]-1.3], [head[0]-.85,head[1]-.45],
+    [head[0]+.4,head[1]+1.55], [sh[0]+1.2,sh[1]+.85]);
+  poly(g, SKIN, [sh[0]+.25,sh[1]-1], [head[0]-.45,head[1]-.25],
+    [head[0]+.3,head[1]+1.4], [sh[0]+1,sh[1]+.25]);
   drawTorso(g, j, hip, sh, t);
-  const elbow = joint(sh, def.hand, 3.6, 3.8, -1);
-  const cuff: P = [sh[0] + (elbow[0] - sh[0]) * 0.62, sh[1] + (elbow[1] - sh[1]) * 0.62];
-  limb(g, SKIN, sh, elbow, 1.3, 0.9, true);
-  limb(g, SKIN, elbow, def.hand, 0.9, 0.55, true);
-  limb(g, j.base, sh, cuff, 1.6, 1.25, true);
-  poly(g, '#142130', [def.hand[0] - 0.6, def.hand[1] - 0.8], [def.hand[0] + 0.7, def.hand[1] - 0.4], [def.hand[0] + 0.8, def.hand[1] + 0.6], [def.hand[0] - 0.5, def.hand[1] + 0.4]);
+  drawArm(g, sh, joint(sh, def.hand, 3.8, 4.2, -1), def.hand, j.base, true);
   if (who === 'rider') def.front?.(c);
-  g.save(); g.translate(head[0], head[1]);
-  if (!FULL_HEAD.has(look.hat) || who === 'stoker') face(g);
+  g.save(); g.translate(head[0], head[1]); g.scale(.8,.8);
+  if (!FULL_HEAD.has(look.hat) || who === 'stoker') drawFace(g);
   if (who === 'stoker') drawHat(g, 'road', { t, color: look.color, speed: c.speed, crank: c.th / TAU });
   else drawHat(g, look.hat, { t, color: look.color, speed: c.speed, crank: c.th / TAU });
   if (who === 'rider' && o.gear) gear(g, o.gear, t);
@@ -148,41 +140,6 @@ function body(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker'
   bg.restore();
   c.g.save(); c.g.imageSmoothingEnabled = false;
   c.g.drawImage(rig, -24, -56, 64, 64); c.g.restore();
-}
-
-/** Tapered quadrilateral with a dark contour and one restrained lit plane. */
-function limb(g: G, color: string, a: P, b: P, wa: number, wb: number, lit: boolean) {
-  const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  const nx = -(b[1] - a[1]) / len, ny = (b[0] - a[0]) / len;
-  const mid: P = [a[0] + (b[0] - a[0]) * .42, a[1] + (b[1] - a[1]) * .42];
-  const wm = wa * .85 + wb * .15;
-  const p: P[] = [[a[0] + nx * wa, a[1] + ny * wa], [mid[0] + nx * wm, mid[1] + ny * wm],
-    [b[0] + nx * wb, b[1] + ny * wb], [b[0] - nx * wb, b[1] - ny * wb],
-    [mid[0] - nx * wm * .9, mid[1] - ny * wm * .9], [a[0] - nx * wa, a[1] - ny * wa]];
-  poly(g, shade(color, .75), ...p);
-  g.strokeStyle = '#142130'; g.lineWidth = .5; g.lineJoin = 'miter'; g.stroke();
-  if (lit) {
-    poly(g, color, p[0], p[1], p[2], [b[0] - nx * wb * .2, b[1] - ny * wb * .2], [a[0], a[1]]);
-    poly(g, shade(color, 1.22), p[0], p[1], [mid[0], mid[1]], [a[0], a[1]]);
-    // A restrained broken highlight reads as pixel shading, rather than a tube.
-    for (let i = 1; i < 5; i++) {
-      const u = i / 6;
-      rect(g, shade(color, 1.12), a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, .5, .25);
-    }
-  }
-}
-
-/** A right-facing profile: hair, ear, brow, nose and a small shaded jaw. */
-function face(g: G) {
-  poly(g, '#142130', [-2.2, -1.8], [1.6, -2], [2, -0.8], [2.8, 0.1], [2, 0.5], [1.8, 1.8], [0.5, 2.4], [-1.5, 1.4], [-2.3, 0]);
-  poly(g, SKIN, [-1.7, -1.5], [1.3, -1.6], [1.5, -0.5], [2.3, 0.1], [1.6, 0.4], [1.4, 1.6], [0.4, 1.9], [-1.2, 1]);
-  poly(g, '#bb8055', [-1.3, 0], [-0.2, 0.4], [0.5, 1.8], [-1.2, 1]);
-  poly(g, '#443128', [-2.1, -1.7], [-0.3, -1.6], [-0.8, -0.5], [-1.4, 0.6], [-2, 0]);
-  rect(g, '#e5ab73', -0.9, -0.5, 0.7, 1);
-  rect(g, '#f7d49d', .1, -.7, .65, .5);
-  rect(g, '#142130', 1, -0.7, 0.55, 0.5);
-  line(g, '#815638', .25, [1.15, 1], [1.85, 1.05]);
-  rect(g, '#f7d49d', 1.55, -.15, .5, .35);
 }
 
 /** Near and far foot positions for the bike's leg style. */

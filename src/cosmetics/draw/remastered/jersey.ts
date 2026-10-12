@@ -7,10 +7,14 @@ export function drawTorso(g: G, j: JerseyLook, hip: P, sh: P, t: number) {
   g.save();
   g.translate(hip[0], hip[1]); g.rotate(Math.atan2(sh[1] - hip[1], sh[0] - hip[0]));
   g.beginPath();
-  g.moveTo(-0.6, -1.5); g.lineTo(L * 0.38, -2.3); g.lineTo(L - 0.5, -2.1);
-  g.lineTo(L + 1, -0.7); g.lineTo(L + 0.5, 1.3); g.lineTo(L * 0.46, 1.7); g.lineTo(-0.4, 1.4);
+  g.moveTo(-1.2,-1.25);
+  g.quadraticCurveTo(L*.15,-2.5,L*.48,-2.25);
+  g.quadraticCurveTo(L*.84,-2.2,L+.25,-.9);
+  g.lineTo(L+.45,.3); g.lineTo(L-.2,1.15);
+  g.quadraticCurveTo(L*.52,1,L*.3,1.6);
+  g.lineTo(-.55,1.65); g.lineTo(-1.25,.5);
   g.closePath();
-  g.fillStyle = j.base; g.fill(); g.strokeStyle = '#142130'; g.lineWidth = 0.65; g.lineJoin = 'round'; g.stroke();
+  g.fillStyle = j.base; g.fill(); g.strokeStyle = '#142130'; g.lineWidth = .35; g.lineJoin = 'round'; g.stroke();
   g.clip();
   pattern(g, j, L, w, t);
   // Broad light/shadow planes leave the pattern visible even on the tiny rider.

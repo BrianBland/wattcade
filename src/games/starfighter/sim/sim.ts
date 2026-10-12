@@ -4,7 +4,7 @@ import { craftName, escortAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, TIER_NAMES, WING_OFFSETS } from './progression';
 import { MAX_ENEMIES, MAX_BOLTS, GROUND_SPEED, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
-import { newRoute, extendRoute, routeX, choreograph, moveActivity, ROUTE } from './flight';
+import { newRoute, extendRoute, routeX, laneX, choreograph, moveActivity, ROUTE } from './flight';
 import { createWeave } from './weave';
 import { createSegmenter, gradeSegment, type Segment } from './segments';
 import { WorldRoute, planTurns, toLocal, toWorld } from './route';
@@ -46,7 +46,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
   const world = new WorldRoute(), routeS = () => 126 + GROUND_SPEED * t;
   let curFrame: SfSnapshot['frames']['cur'] = { x: 0, z: 0, h: 0, s: 126, biome: 0, seed: 1 };
-  const route = newRoute(), weaveAt = createWeave(timeline); let pOff = 0;
+  const route = newRoute(), weaveAt = createWeave(timeline); let pOff = 0, shipV = 0, lift = 0, lastRoll = -99;
+  let roll: SfSnapshot['roll'] = null;
   // The sway is part of the route (a pure function of time), so choreographed fire is authored around it too.
   route.weave = tt => tun.weave() ? weaveAt.at(tt + pOff, moveActivity(route, tt)) * tun.weave() : 0;
   /** Lane changes start and end on swing peaks when weaving (else on beats). */
@@ -298,8 +299,21 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const alert = pedalling ? quality : 0;
       pOff = p - t; extendRoute(route, t, ctx.rng, cruiseLine, peakAfterSim, phraseAfter);
       const routeNow = routeX(route, t), routeV = (routeNow - routeX(route, t - dt)) / Math.max(dt, 1e-3);
-      const follow = alert >= 0.8 ? 14 : 0.5 + 1.2 * alert;
-      x += routeV * dt * (alert >= 0.8 ? 1 : 0) + (routeNow - x) * (1 - Math.exp(-dt * follow));
+      // On target the ship tracks the choreographed route exactly. Below target it gets sloppy: the weave runs late and
+      // smaller, a lazy wobble creeps in, and a loose spring overshoots — and fire is no longer authored to miss it.
+      const slop = clamp(1 - alert / 0.8, 0, 1), moving = moveActivity(route, t);
+      if (slop <= 0) { x += routeV * dt + (routeNow - x) * (1 - Math.exp(-dt * 14)); shipV = routeV; }
+      else {
+        const late = t - 0.22 * slop, wob = (Math.sin(t * 2.3) * 0.6 + Math.sin(t * 0.9 + 1) * 0.4) * 5 * slop;
+        const target = laneX(route, t) + (route.weave ? route.weave(late) : 0) * (1 - 0.35 * slop) + wob, k = 60, c = 2 * Math.sqrt(k) * (1 - 0.6 * slop);
+        shipV += (k * (target - x) - c * shipV) * dt; x += shipV * dt;
+      }
+      const liftOn = tun.weave() ? weaveAt.lift(p, moving) * tun.weave() : 0;
+      lift += ((liftOn * (1 - slop) + Math.sin(t * 1.3) * 0.8 * slop) - lift) * (1 - Math.exp(-dt * 12));
+      // Now and then, a barrel roll on a drop's phrase start (two beats, landing on the beat; on target only).
+      if (music.phrase && music.kind === 'drop' && slop <= 0 && t - lastRoll > 35 && tun.weave() && ((Math.sin(Math.round(p) * 12.9898) * 43758.5453) % 1 + 1) % 1 < 0.6) {
+        lastRoll = t; roll = { at: t, dur: 2 * weaveAt.beatLen(p), dir: shipV >= 0 ? -1 : 1 }; emit('barrelRoll');
+      }
       const vx = (x - prevX) / Math.max(dt, 1e-3); prevX = x;
       dodge += (clamp(Math.abs(vx) / 30, 0, 1) - dodge) * (1 - Math.exp(-dt * 4));
       shipY = SHIP_Y - dodge * 1.5;
@@ -557,7 +571,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null,
             minutesToNext: tester() || info.nextAtS === null ? null : Math.max(1, Math.ceil((info.nextAtS - pendingS(c)) / 60)),
             unlocked: c === 'cruiser' || unlockCheck(), arsenalCap: perks(c, level).arsenalCap }]; })) as SfSnapshot['crafts'],
-        heavy: pk.heavy, ace: pk.ace, amp, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
+        heavy: pk.heavy, ace: pk.ace, amp, lift, pattern: weaveAt.pattern(p), roll, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
         menuLeft: Math.max(0, 20 - menuT), sector, sectorName: SECTORS[theme].name, section: music.kind, intensity: music.intensity, beat: music.beatPulse,
         song: music.song, shipX: x, shipY, bank, dodge, hull, shield, quality, effort,
         upcoming: music.upcoming && craft === 'escort' ? { label: sectionLabel(music.upcoming.kind), left: Math.max(0, music.upcoming.at - p), watts: Math.round(sectionTarget(music.upcoming.kind) * ctx.profile.ftp * ctx.profile.settings.difficulty) } : null,

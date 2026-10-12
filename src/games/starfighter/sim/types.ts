@@ -41,6 +41,8 @@ export interface SfSnapshot {
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
   crafts: Record<CraftId, { level: number; progress: number; next: string | null; minutesToNext: number | null; unlocked: boolean; arsenalCap: number }>; tester: boolean;
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;
+  /** Visual height offset from the weave pattern, the current weave pattern, and the latest barrel roll (sim time). */
+  lift: number; pattern: string; roll: { at: number; dur: number; dir: number } | null;
   /** 0..1 smoothed music intensity: weapons swell with the track (Beat Hazard's idea), enemy density with it. */
   amp: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;

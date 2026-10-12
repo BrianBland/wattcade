@@ -112,7 +112,9 @@ export class SfRenderer implements GameRenderer {
     // Showcase spot: the free side of the hangar, pulled most of the way toward the camera along the same sight line.
     const show = hangar ? new THREE.Vector3(wide ? 27 : 0, 16, wide ? 6 : 34).lerp(this.cameraBase, wide ? 0.5 : 0.22) : null;
     const hx = show ? show.x : s.shipX, hz = show ? show.z : s.shipY - 50, hy = show ? show.y : 10;
-    craft.position.set(hx, hy, hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank + this.turnRoll * 4);
+    // Barrel roll: a full turn over two beats (smootherstep), wingmen following a beat apart.
+    const rollAt = (delay: number) => { const r = s.roll; if (!r || hangar) return 0; const u = (s.t - r.at - delay) / r.dur; if (u <= 0 || u >= 1) return 0; return r.dir * Math.PI * 2 * u * u * u * (u * (u * 6 - 15) + 10); };
+    craft.position.set(hx, hy + (hangar ? 0 : s.lift), hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank + this.turnRoll * 4 + rollAt(0));
     craft.scale.setScalar(hangar ? 3.1 : 1.55 + (tier - 1) * 0.055);
     if (tier > this.tierSeen) { for (let k = this.tierSeen + 1; k <= tier; k++) this.tierAt.set(k, this.tierSeen && !hangar ? s.t : -99); this.tierSeen = tier; }
     if (tier < this.tierSeen) { this.tierSeen = tier; }
@@ -146,7 +148,7 @@ export class SfRenderer implements GameRenderer {
       this.wings.push(wing); this.scene.add(wing);
     }
     const lift = hangar ? 2 : 1;
-    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy, hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8); });
+    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy + (hangar ? 0 : s.lift * 0.6), hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8 + rollAt((s.roll?.dur ?? 0) / 2 * (i + 1))); });
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});

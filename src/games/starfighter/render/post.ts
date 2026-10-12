@@ -17,12 +17,13 @@ const MOODS: Record<string, [number, number, number, number, number]> = {
 };
 
 /**
- * Half-resolution bloom on bright additive things (bullets, lasers, beams). It switches itself off if frames run long,
- * so a slower GPU keeps the plain render instead of dropping frames.
+ * Half-resolution bloom on bright additive things (bullets, lasers, beams). If frames keep running long it fades the bloom
+ * out over a second and then skips that pass only; the colour grade and output conversion always run, so the picture
+ * never changes colour abruptly.
  */
 export class SquadronPost {
   private composer: EffectComposer; private bloom: UnrealBloomPass;
-  private slow = 0; private last = 0; enabled = true; private gradePass: ShaderPass; private mood = [1, 1, 1, 1, 1];
+  private slow = 0; private last = 0; enabled = true; private fade = 1; private gradePass: ShaderPass; private mood = [1, 1, 1, 1, 1];
   constructor(private renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, camera));
@@ -42,9 +43,9 @@ export class SquadronPost {
   /** `pulse` lifts bloom a touch on the bar line. */
   render(scene: THREE.Scene, camera: THREE.Camera, pulse: number, now: number) {
     if (this.last) { const ms = now - this.last; this.slow = ms > 24 ? this.slow + 1 : Math.max(0, this.slow - 2); if (this.slow > 90) this.enabled = false; }
-    this.last = now;
-    if (!this.enabled) { this.renderer.render(scene, camera); return; }
-    this.bloom.strength = 0.4 + pulse * 0.1; this.composer.render();
+    this.last = now; void scene; void camera;
+    if (!this.enabled) this.fade = Math.max(0, this.fade - 1 / 30);
+    this.bloom.enabled = this.fade > 0; this.bloom.strength = (0.4 + pulse * 0.1) * this.fade; this.composer.render();
   }
   dispose() { for (const pass of this.composer.passes) pass.dispose(); this.composer.dispose(); }
 }

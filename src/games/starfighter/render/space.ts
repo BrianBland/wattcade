@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { geometries } from './models';
 import { GROUND_SPEED } from '../sim/encounters';
 import { biomeParams, mulberry, riverX, cityRoads, type BiomeParams } from './terrain';
-import { foliage, lawn, plated, sceneryMusic, sceneryWave, strata, windowed } from './shading';
+import { foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist). */
 export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf'];
@@ -97,20 +97,20 @@ export function createSpace(scene: THREE.Scene) {
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;scene.add(m);return m;};
   const stone=make(geometries.rock,strata(material('#b67565',0.15)),512);
   const rockBox=make(geometries.box,strata(material('#9c5f55',0.1)),256);
-  const walls=make(geometries.box,windowed(material('#28486a')),2400);
-  const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),2400);
+  const walls=make(geometries.box,windowed(material('#28486a')),3200);
+  const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),3200);
   // Soft drop shadows cast away from the sun (key light from -x, -z).
-  const shade=make(geometries.box,new THREE.MeshBasicMaterial({color:'#000814',transparent:true,opacity:0.28,depthWrite:false}),900);
+  const shade=make(geometries.box,new THREE.MeshBasicMaterial({color:'#000814',transparent:true,opacity:0.28,depthWrite:false}),2400);
   const glassMat=new THREE.MeshBasicMaterial({color:'#28c9ff'}),trimMat=new THREE.MeshBasicMaterial({color:'#ffbb42'});
   const glassBase=glassMat.color.clone(),trimBase=trimMat.color.clone(),white=new THREE.Color('#ffffff');
   const glass=make(geometries.box,glassMat,2400);
-  const trim=make(geometries.box,trimMat,1024);
+  const trim=make(geometries.box,trimMat,1400);
   const domes=make(geometries.sphere,material('#3ba5ba'),160);
-  const grass=make(geometries.box,lawn(new THREE.MeshStandardMaterial({color:'#3d7a4a',metalness:0,roughness:0.95})),160);
-  const paths=make(geometries.box,new THREE.MeshStandardMaterial({color:'#9aa3a8',metalness:0,roughness:0.9}),320);
+  const grass=make(geometries.box,lawn(new THREE.MeshStandardMaterial({color:'#3d7a4a',metalness:0,roughness:0.95})),240);
+  const paths=make(geometries.box,new THREE.MeshStandardMaterial({color:'#9aa3a8',metalness:0,roughness:0.9}),480);
   // Kit models (vertex-coloured, plated): ships, boats, barges, parked jets, deck tractors, island towers.
   const K=kit(),kitMat=()=>plated(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.45,roughness:0.45}));
-  const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9,flatShading:true})),900);
+  const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9,flatShading:true})),1400);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
   const boats=make(K.riverBoat,kitMat(),24),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
@@ -120,10 +120,11 @@ export function createSpace(scene: THREE.Scene) {
   // Scale anchors: familiar-sized things moving on the ground (parked jets, cars, boats, ships), regular runway lights,
   // and sparse cloud wisps between the ship and the ground, so speed and altitude read correctly.
   const jets=make(K.jet,kitMat(),240);
-  const bodies=make(geometries.box,material('#2d3f5c',0.5),480);
-  const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),1200);
-  const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),256);
-  const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),480);
+  const bodies=make(geometries.box,material('#2d3f5c',0.5),4000);
+  const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),6000);
+  const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
+  const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
+  for(const [k,v] of Object.entries({shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
   const pools=[shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
@@ -135,9 +136,10 @@ export function createSpace(scene: THREE.Scene) {
   const wLocal=(wx:number,wz:number)=>{const dx=wx-F.pose.x,dz=wz-F.pose.z,[fx,fz]=fwdOf(F.pose.h),[rx,rz]=rightOf(F.pose.h);return [dx*rx+dz*rz,dx*fx+dz*fz];};
   const beyondNext=(wx:number,wz:number)=>{const [fx,fz]=fwdOf(F.f1.h);return (wx-F.f1.x)*fx+(wz-F.f1.z)*fz>=0;};
   const add=(pool:THREE.InstancedMesh,x:number,y:number,z:number,sx:number,sy:number,sz:number,angle=0)=>{
-    const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count)return;
+    const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count){dropped++;overflowed.add(pool.name);return;}
     const [wx,wz]=vWorld(x,z);if(beyondNext(wx,wz)!==F.isNext)return;
-    const [lx,ahead]=wLocal(wx,wz);if(ahead<-220||ahead>1150||Math.abs(lx)>700)return;
+    const [lx,ahead]=wLocal(wx,wz);if(!inView(lx,ahead))return;
+    if(audit&&pool===walls)audit.push(Math.round(wx*10),Math.round(wz*10),Math.round(sy*10),Math.round(lx),Math.round(ahead));
     matrix.position.set(lx,y,34-ahead);matrix.rotation.set(0,angle+F.dh,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
   };
   /** Place at a world point (open-biome movers); `ang` is the world yaw. */
@@ -146,6 +148,12 @@ export function createSpace(scene: THREE.Scene) {
   let routePts:number[]=[];
   const nearRoute=(wx:number,wz:number,r:number)=>{for(let i=0;i<routePts.length;i+=2){const dx=wx-routePts[i],dz=wz-routePts[i+1];if(dx*dx+dz*dz<r*r)return true;}return false;};
   const wrap=(v:number,m:number)=>((v%m)+m)%m;
+  /** The camera's ground footprint: narrow under the ship, widening toward the haze (with a margin for tall objects). */
+  const inView=(lx:number,ahead:number)=>ahead>-180&&ahead<1000&&Math.abs(lx)<210+Math.max(0,ahead)*0.62;
+  /** Pool health for the dev page: instances dropped for lack of space (should stay 0), and the fullest pool. */
+  let dropped=0,peakFill=0;const overflowed=new Set<string>(),peaks=new Map<string,number>();
+  /** Dev audit (off by default): world position and height of every building drawn this frame, with its view position. */
+  let audit:number[]|null=null;
   /** Drop shadow for a box of footprint w×d and height h standing at (x, z). */
   const shadow=(x:number,z:number,w:number,d:number,h:number)=>{if(h<0.5)return;const l=Math.min(14,h*0.45);add(shade,x+l*0.45,-5.96,z+l*0.55,w+l*0.35,0.02,d+l*0.6);};
   let params0:BiomeParams=biomeParams(0,1),params1:BiomeParams=params0,key='';
@@ -169,28 +177,34 @@ export function createSpace(scene: THREE.Scene) {
   };
   /** One city tile: blocks between the seeded street grid, a low-rise core under the play lane, a varied skyline beyond. */
   const cityTile=(tile:number,z:number,P:BiomeParams,lo:number,hi:number)=>{
-    // The city fills every direction; distant blocks are single massings, and blocks over the route stay low.
+    // The city fills every direction; blocks over the route stay low. Every block's content is a pure function of
+    // (seed, tile, block): the same random draws in the same order whatever the distance or route, so nothing re-rolls
+    // or pops as the ship approaches. Distance only drops small details (antennas, shadows far away).
     const {xs}=cityRoads(P,lo,hi);
     for(let b=0;b<xs.length-1;b++){
       const x0=xs[b]+3.2,x1=xs[b+1]-3.2,bw=x1-x0;if(bw<5)continue;
-      const r=mulberry(P.seed^(tile*2654435761)^(b*40503)),cx=(x0+x1)/2,[bwx,bwz]=vWorld(cx,z),[blx,bah]=wLocal(bwx,bwz);
-      if(bah<-200||bah>1100||Math.abs(blx)>620)continue;
-      const core=nearRoute(bwx,bwz,42+bw/2),roll=r();
-      if(!core&&(Math.abs(blx)>150||bah>650)){for(let zz=z-30;zz<z+28;zz+=20){const h=5+r()*(r()<0.2?40:18);add(walls,cx,h/2-6,zz+10,bw-r()*4,h,17);add(roofs,cx,h-5.5,zz+10,bw-2,0.7,17.5);}continue;}
+      // Seed by the street's absolute index (not its position in this frame's list), so blocks keep their buildings as
+      // streets scroll in and out of range.
+      const street=Math.round((xs[b]-P.u[1]-P.u[0]/2)/P.u[0]);
+      const r=mulberry(P.seed^(tile*2654435761)^(street*40503)),cx=(x0+x1)/2,[bwx,bwz]=vWorld(cx,z),[blx,bah]=wLocal(bwx,bwz);
+      if(!inView(blx,bah))continue;
+      const core=nearRoute(bwx,bwz,42+bw/2),roll=r(),far=Math.abs(blx)>260||bah>800;
       if(roll<0.12&&!core){ // park: mown lawn, crossing paths, a pond sometimes, and clustered trees with shadows
         add(grass,cx,-5.95,z,bw,0.1,58);add(paths,cx,-5.88,z,bw,0.04,1.6);add(paths,cx,-5.88,z,1.6,0.04,58,0);add(paths,cx,-5.88,z,1.4,0.04,Math.hypot(bw,58)*0.9,Math.atan2(bw,58));
         if(r()<0.4)add(domes,cx+bw*0.22,-6,z-14,bw*0.18,0.15,9);
-        for(let k=0;k<14;k++){const tx=x0+1.5+r()*(bw-3),tz=z-27+r()*54,sc=1.5+r()*1.3;if(Math.abs(tx-cx)<1.6||Math.abs(tz-z)<1.4)continue;add(trees,tx,-5.9,tz,sc,sc*(0.9+r()*0.4),sc,r()*6);shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);}
+        for(let k=0;k<14;k++){const tx=x0+1.5+r()*(bw-3),tz=z-27+r()*54,sc=1.5+r()*1.3,sy=sc*(0.9+r()*0.4),yaw=r()*6;if(Math.abs(tx-cx)<1.6||Math.abs(tz-z)<1.4)continue;add(trees,tx,-5.9,tz,sc,sy,sc,yaw);if(!far)shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);}
         continue;}
       if(roll<0.2){add(roofs,cx,-5.9,z,bw,0.2,56);add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);continue;} // plaza with a fountain
       let zz=z-30;
       while(zz<z+28){
+        // Fixed draw order per building: footprint, height (two draws), antenna, trim, gap.
         const d=Math.min(z+30-zz,8+r()*14),w=Math.max(4,Math.min(bw,6+r()*12)),x=x0+r()*(bw-w)+w/2,cz=zz+d/2;
-        const h=core?1.5+r()*4:8+r()*(r()<0.15?44:24);
-        add(walls,x,h/2-6,cz,w,h,d-1.5);add(roofs,x,h-5.5,cz,w+0.8,0.8,d-0.7);shadow(x,cz,w,d-1.5,h);
-        if(!core){if(r()<0.25){add(roofs,x,h+3,cz,0.4,8,0.4);add(lamps,x,h+7,cz,0.5,0.5,0.5);}}
-        else if(r()<0.5)add(trim,x,h-5,cz,w*0.7,0.12,0.4);
-        zz+=d+(r()<0.3?2:0);
+        const hr=r(),tall=r()<0.15,lowH=1.5+r()*4,antenna=r()<0.25,trimmed=r()<0.5,gap=r()<0.3;
+        const h=core?lowH:8+hr*(tall?44:24);
+        add(walls,x,h/2-6,cz,w,h,d-1.5);add(roofs,x,h-5.5,cz,w+0.8,0.8,d-0.7);if(!far)shadow(x,cz,w,d-1.5,h);
+        if(!core){if(antenna&&!far){add(roofs,x,h+3,cz,0.4,8,0.4);add(lamps,x,h+7,cz,0.5,0.5,0.5);}}
+        else if(trimmed)add(trim,x,h-5,cz,w*0.7,0.12,0.4);
+        zz+=d+(gap?2:0);
       }
     }
     if(P.highway&&P.highwayX>lo&&P.highwayX<hi&&!nearRoute(...vWorld(P.highwayX,z),20)){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])add(walls,hx,-1.5,z+k,2.2,9,2.2);}
@@ -228,7 +242,7 @@ export function createSpace(scene: THREE.Scene) {
       uniforms.uHaze0.value.set(HAZE[e.f0.biome]??HAZE[0]);uniforms.uHaze1.value.set(HAZE[e.f1.biome]??HAZE[0]);
       uniforms.uP0.value.set(params0.u[0],params0.u[1],params0.u[2],params0.u[3]);uniforms.uP1.value.set(params1.u[0],params1.u[1],params1.u[2],params1.u[3]);
       glassMat.color.copy(glassBase).lerp(white,bar*0.12+beat*0.03);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();
-      routePts=e.routeAhead;F.pose=e.pose;F.f1=e.f1;
+      routePts=e.routeAhead;F.pose=e.pose;F.f1=e.f1;sceneryPose.value.set(e.pose.x,e.pose.z,e.pose.h);
       // Object fog follows the biome under the ship.
       F.isNext=true;fogTarget.set(HAZE[beyondNext(e.pose.x,e.pose.z)?e.f1.biome:e.f0.biome]??HAZE[0]);(scene.fog as THREE.Fog).color.lerp(fogTarget,0.02);
       // Visible region in the ship's frame (lateral, ahead) → world corners, for tile ranges.
@@ -292,8 +306,10 @@ export function createSpace(scene: THREE.Scene) {
       // Window strips brighten as the wave passes them.
       for(let i=0;i<(counts.get(glass)??0);i++){glass.getMatrixAt(i,probe);glass.setColorAt(i,lightColor.setScalar(0.6+0.25*band(probe.elements[14]))); /* stays ≤ 1: the wave reads without blooming */}
       for(const pool of [runway,glass])if(pool.instanceColor)pool.instanceColor.needsUpdate=true;
-      for(const pool of pools){pool.count=counts.get(pool)??0;pool.instanceMatrix.needsUpdate=true;}
+      for(const pool of pools){pool.count=counts.get(pool)??0;pool.instanceMatrix.needsUpdate=true;peakFill=Math.max(peakFill,pool.count/pool.instanceMatrix.count);peaks.set(pool.name,Math.max(peaks.get(pool.name)??0,pool.count));}
     },
+    stats(){return {dropped,peakFill:Math.round(peakFill*100)/100,overflowed:[...overflowed].join(','),peaks:[...peaks].filter(([,v])=>v>100).map(([k,v])=>k+':'+v).join(' ')};},
+    auditBuildings(on:boolean){const out=audit;audit=on?[]:null;return out;},
     dispose(){for(const pool of pools)pool.dispose();},
   };
 }

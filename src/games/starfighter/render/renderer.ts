@@ -202,7 +202,9 @@ export class SfRenderer implements GameRenderer {
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
   }
-  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }
+  /** Dev only: toggles the per-frame building audit and returns the last frame's list. */
+  debugAudit(on: boolean) { return this.space?.auditBuildings(on) ?? null; }
+  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0, ...this.space?.stats() }; }
   unmount() {
     this.observer?.disconnect(); this.overlay?.removeEventListener('click', this.controls);
     const mats = new Set<THREE.Material>(), geos = new Set<THREE.BufferGeometry>();

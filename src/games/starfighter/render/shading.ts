@@ -2,27 +2,30 @@ import * as THREE from 'three';
 /**
  * Procedural surface detail for instanced scenery, patched into MeshStandardMaterial (no textures to load):
  * lit/unlit window grids on building walls, strata bands on rock, panel seams on roofs and hulls. Everything is keyed
- * on world position, so it stays put as instances stream and scale.
+ * on true world position (the scene is drawn in the ship's moving frame; `sceneryPose` maps it back), so patterns stay
+ * fixed to their surfaces as scenery streams past and the route turns.
  */
-const VARYINGS = 'varying vec3 vWPos; varying vec3 vWNormal; varying float vH; varying float vBase; varying vec3 vOrigin;';
+const VARYINGS = 'varying vec3 vWPos; varying vec3 vWNormal; varying float vH; varying float vBase; varying vec3 vOrigin; varying float vLZ;';
 /** Bar-line light wave shared with the scenery: x = wave z position, y = strength. */
 export const sceneryWave = { value: new THREE.Vector2(-9999, 0) };
 /** Music for the lights: x = beat count, y/z/w = smoothed low/mid/high band levels. */
 export const sceneryMusic = { value: new THREE.Vector4(0, 0, 0, 0) };
+/** Ship route pose (world x, z, heading): local scene coords → world, matching render/space.ts. */
+export const sceneryPose = { value: new THREE.Vector3(0, 0, 0) };
 function patch(material: THREE.MeshStandardMaterial, fragment: string, key: string) {
   material.onBeforeCompile = shader => {
-    shader.uniforms.uWave = sceneryWave; shader.uniforms.uMusic = sceneryMusic;
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${VARYINGS}`)
+    shader.uniforms.uWave = sceneryWave; shader.uniforms.uMusic = sceneryMusic; shader.uniforms.uPose = sceneryPose;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', `#include <common>\n${VARYINGS}\nuniform vec3 uPose;\nvec3 toWorld(vec3 l){ vec2 f = vec2(-sin(uPose.z), -cos(uPose.z)), r = vec2(cos(uPose.z), -sin(uPose.z)); vec2 w = uPose.xy + r * l.x + f * (34.0 - l.z); return vec3(w.x, l.y, w.y); }\nvec3 dirToWorld(vec3 n){ vec2 f = vec2(-sin(uPose.z), -cos(uPose.z)), r = vec2(cos(uPose.z), -sin(uPose.z)); vec2 w = r * n.x - f * n.z; return normalize(vec3(w.x, n.y, w.y)); }`)
       .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
         vec4 wp = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           wp = instanceMatrix * wp;
           vWNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * objectNormal);
-          vH = length(instanceMatrix[1].xyz); vBase = instanceMatrix[3].y - vH * 0.5; vOrigin = instanceMatrix[3].xyz;
+          vH = length(instanceMatrix[1].xyz); vBase = instanceMatrix[3].y - vH * 0.5; vOrigin = toWorld((modelMatrix * instanceMatrix[3]).xyz);
         #else
           vWNormal = normalize(mat3(modelMatrix) * objectNormal); vH = 1.0; vBase = 0.0; vOrigin = vec3(0.0);
         #endif
-        vWPos = (modelMatrix * wp).xyz;`);
+        vLZ = (modelMatrix * wp).z; vWPos = toWorld((modelMatrix * wp).xyz); vWNormal = dirToWorld(vWNormal);`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${VARYINGS}
       uniform vec2 uWave; uniform vec4 uMusic; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${fragment}`);
@@ -54,7 +57,7 @@ export function windowed(material: THREE.MeshStandardMaterial) {
         warm = mix(mix(vec3(0.2, 0.95, 0.85), vec3(1.0, 0.75, 0.2), smoothstep(0.3, 0.65, frac)), vec3(1.0, 0.25, 0.55), smoothstep(0.7, 0.95, frac));
       }
       diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.45, pane * (1.0 - lit));
-      float wave = exp(-abs(vWPos.z - uWave.x) / 16.0) * uWave.y;
+      float wave = exp(-abs(vLZ - uWave.x) / 16.0) * uWave.y; // the bar-line wave travels in the ship's frame
       totalEmissiveRadiance += warm * pane * (lit * (0.55 + 0.35 * fract(h * 13.0)) + wave * 0.35);
     } else if (vWNormal.y > 0.5) {
       vec2 g = abs(fract(vWPos.xz / 3.0) - 0.5);

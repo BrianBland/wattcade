@@ -586,7 +586,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         bossIn: !boss && bossAt !== null ? Math.max(0, bossAt - p) : null,
         clear: { rate: clearTotal ? clearKilled / clearTotal : 0, perfects, streak: perfectStreak, last: lastClear },
         ...(() => { const s = routeS(), pose = world.pose(s), cur = seg ?? segmenter.at(p).segment, next = segmenter.peek(), sw = s + Math.max(0, cur.t1 - p) * GROUND_SPEED, np = world.pose(sw);
-          const ahead: number[] = []; for (let q = s - 150; q <= s + 900; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }
+          // Samples at fixed route distances (multiples of 30) from behind the camera to past the haze, so the city's
+          // "near the route" test never flickers as the ship moves.
+          const ahead: number[] = []; for (let q = Math.floor((s - 300) / 30) * 30; q <= s + 1350; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }
           return { world: { ...pose, turn: world.curvature(s) * GROUND_SPEED, s }, routeAhead: ahead,
             frames: { cur: curFrame, next: { ...np, s: sw, biome: next?.biome ?? cur.biome, seed: next?.seed ?? cur.seed } } }; })(),
         segment: (() => { const cur = seg ?? segmenter.at(p).segment, next = segmenter.peek();

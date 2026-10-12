@@ -19,7 +19,7 @@ renderer.mount(document.getElementById('app')!, { profile, send: a => session.si
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const frame = () => renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
 const api = { advance(seconds: number, render = true) { session.step(Math.round(seconds * 30)); if(render) frame(); }, snapshot: () => session.sim.snapshot(),
-  resources: () => renderer.debugResources(), position: () => session.ctx.media?.positionS() ?? 0, script: (name: string) => session.fakeBike?.useScript(name),
+  resources: () => renderer.debugResources(), audit: (on: boolean) => renderer.debugAudit(on), position: () => session.ctx.media?.positionS() ?? 0, script: (name: string) => session.fakeBike?.useScript(name),
   dispose: () => { renderer.unmount(); session.sim.dispose?.(); } };
 Object.assign(window, { __squadron: api });
 if (q.get('manual') === '1') frame(); else { let last = performance.now(); const loop = (now: number) => { session.frame(Math.min(0.1, (now - last) / 1000)); last = now; frame(); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }

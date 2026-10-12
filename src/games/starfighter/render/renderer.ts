@@ -7,6 +7,7 @@ import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, ship
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
+import { createBullets } from './bullets';
 import { SquadronPost } from './post';
 import { isKitGeometry } from './kit';
 import { SECTORS } from '../sim/content';
@@ -19,7 +20,7 @@ export class SfRenderer implements GameRenderer {
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
-  private bullets?: THREE.InstancedMesh; private bolts?: THREE.InstancedMesh; private boltGlow?: THREE.InstancedMesh; private effects?: THREE.InstancedMesh;
+  private bullets?: THREE.InstancedMesh; private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
@@ -67,8 +68,8 @@ export class SfRenderer implements GameRenderer {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#ffffff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
-    const glowMat=this.boltGlow.material as THREE.MeshBasicMaterial;glowMat.opacity=0.2;glowMat.depthWrite=false;glowMat.blending=THREE.AdditiveBlending; this.effects = makePool(geometries.ring, '#ffcc8a', 160);
+    this.bullets = makePool(geometries.box, '#ffffff', 300); this.enemyFire = createBullets(this.scene);
+    this.effects = makePool(geometries.ring, '#ffcc8a', 160);
     this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
@@ -176,15 +177,7 @@ export class SfRenderer implements GameRenderer {
     });
     if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
-    const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
-    s.bolts.slice(0,640).forEach((b,i)=>{
-      // Subtle beat pulse: cores swell a little, glows a little more, so the bullet field breathes with the music.
-      // Walls are drawn larger so the gate reads; glows stretch along the flight direction as a short trail.
-      const big=b.wall?1.6:1, core=(1+s.beat*0.3)*big, halo=(1+s.beat*0.8)*big;
-      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,Math.atan2(b.vx,b.vy),0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
-      mat.position.x-=b.vx*0.04;mat.position.z-=b.vy*0.04;mat.scale.set(1.35*halo,1,2*halo+Math.hypot(b.vx,b.vy)*0.06);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
-    });
-    for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
+    this.enemyFire!.update(s.bolts, s.beat);
     const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
@@ -217,7 +210,7 @@ export class SfRenderer implements GameRenderer {
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
-    for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects, this.beams]) pool?.dispose();
+    for (const pool of [this.bullets, this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
     this.combat?.dispose(); this.space?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();

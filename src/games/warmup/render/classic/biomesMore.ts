@@ -1,5 +1,6 @@
+// Original simple art, retained for the per-player Classic overworld mode.
 // Under the Sea, Jungle, Desert Canyon, Volcano, Snowy Pass. Same rules as biomes.ts: primitives in the low-res buffer.
-import { hash01 } from '../sim/terrain';
+import { hash01 } from '../../sim/terrain';
 import { drawMesaRange, DESERT_MESA } from './mesa';
 import { disc, noise1, rect, silhouette, tri, type BiomeLook, type G } from './paint';
 

@@ -1,9 +1,10 @@
 // Shared pixel-art painting helpers and the BiomeLook shape. Everything draws into the low-res buffer.
-import { hash01 } from '../sim/terrain';
+import { hash01, type BiomeId } from '../sim/terrain';
 
 export type G = CanvasRenderingContext2D;
 
 export interface BiomeLook {
+  art?: BiomeId | 'driveIn';
   sky: [string, string];          // top, horizon
   haze: string;                   // far backdrop colour
   ridge: string;                  // the real-terrain ridge (the road ahead, seen from afar)

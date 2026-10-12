@@ -30,6 +30,8 @@ export type Item =
 
 /** What the rider wears, resolved from a loadout (ids → looks). Drawing code reads only this. */
 export interface RiderLook {
+  /** Art style follows the rider through overworld and cosmetic previews. */
+  artMode?: import('../contracts').OverworldArtMode;
   bike: string; hat: string; jersey: JerseyLook; paint: PaintLook;
   /** Pet and trail ids ('none' = nothing). */
   pet: string; trail: string;

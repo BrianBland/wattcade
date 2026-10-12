@@ -8,6 +8,8 @@ export class GameLoop {
   paused = false;
   private acc = 0;
   constructor(private clock: SimClock, private onStep: (dt: number) => void, private effectiveScale: () => number = () => clock.timeScale) {}
+  /** Fraction toward the next simulation tick, for render-only interpolation. */
+  get interpolationAlpha(): number { return Math.max(0, Math.min(1, this.acc / FIXED_DT)); }
 
   frame(realDtS: number): number {
     if (this.paused) return 0;

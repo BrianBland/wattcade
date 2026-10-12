@@ -3,7 +3,7 @@ import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item } from './catalog';
 import { SLOTS, type Item, type RiderLook, type Slot } from './types';
 
 /** Pure unlock rules. Reads only profile fields (level, achievements, cosmetics), so renderers can use it too. */
-type P = Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'>;
+type P = Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'> & Partial<Pick<Profile, 'settings'>>;
 const key = (it: Item) => `${it.slot}:${it.id}`;
 const picksOf = (p: P): Record<string, string> => p.cosmetics?.picks ?? {};
 
@@ -66,6 +66,7 @@ export function riderLook(p: P): RiderLook {
   const look = j?.slot === 'jersey' ? j.look : { pattern: 'plain' as const, base: 'rider', ink: '#ffffff' };
   const sub = (c: string) => (c === 'rider' ? color : c);
   return {
+    artMode: p.settings?.overworldArt === 'legacy' ? 'legacy' : 'rich',
     bike: l.bike, hat: l.hat, pet: l.pet, trail: l.trail, color,
     jersey: { pattern: look.pattern, base: sub(look.base), ink: sub(look.ink) },
     paint: pt?.slot === 'paint' ? pt.look : { frame: '#d8dbe6' },

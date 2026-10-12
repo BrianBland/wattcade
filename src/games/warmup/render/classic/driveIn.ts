@@ -1,6 +1,7 @@
+// Original simple art, retained for the per-player Classic overworld mode.
 // The Drive-In biome: a desert drive-in at dusk (a lobby mode, not in the biome loop). The big screen itself is a DOM
 // <video> placed by the shell; the canvas draws the frame, poles, marquee and the glow around the screen.
-import { hash01 } from '../sim/terrain';
+import { hash01 } from '../../sim/terrain';
 import { saguaro } from './biomesMore';
 import { DUSK_MESA, drawMesaRange } from './mesa';
 import { disc, rect, tri, type BiomeLook, type G } from './paint';

@@ -5,6 +5,11 @@ import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalo
 import { choosePick, equip, isPickLevel, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
+import { HATS as CLASSIC_HATS } from './draw/classic/hats';
+import { BIKES as CLASSIC_BIKES } from './draw/classic/bikes';
+import { PET_IDS as CLASSIC_PETS } from './draw/classic/pets';
+import { TRAIL_IDS as CLASSIC_TRAILS } from './draw/classic/trails';
+import { shade as remasteredShade } from './draw/remastered/prims';
 import { PET_IDS } from './draw/pets';
 import { TRAIL_IDS } from './draw/trails';
 import { SHIP_IDS, drawShip } from './draw/ships';
@@ -15,6 +20,15 @@ import { SLOTS } from './types';
 const rider = (over: Partial<Profile> = {}): Profile => ({ ...defaultProfile('T'), color: '#ff2e93', ...over });
 
 describe('catalogue rules', () => {
+  it('has the same cosmetic drawers and attachment geometry in both art styles', () => {
+    expect(Object.keys(CLASSIC_HATS).sort()).toEqual(Object.keys(HATS).sort());
+    expect(Object.keys(CLASSIC_BIKES).sort()).toEqual(Object.keys(BIKES).sort());
+    expect([...CLASSIC_PETS].sort()).toEqual([...PET_IDS].sort());
+    expect([...CLASSIC_TRAILS].sort()).toEqual([...TRAIL_IDS].sort());
+    for (const id of Object.keys(BIKES)) for (const key of ['hip', 'hand', 'bb', 'cr', 'lean', 'legs', 'ground', 'hitch', 'stoker'] as const) {
+      expect(BIKES[id][key], `${id} ${key}`).toEqual(CLASSIC_BIKES[id][key]);
+    }
+  });
   it('ids are unique per slot and every slot default exists', () => {
     for (const s of SLOTS) {
       const ids = itemsIn(s).map((i) => i.id);
@@ -93,6 +107,12 @@ describe('unlocks', () => {
     expect(titleOf(p)).toBe('Road Captain');
     expect(withItem(look, item('bike', 'tron')!).bike).toBe('tron');
   });
+  it('carries the art mode through cosmetic previews without changing the loadout', () => {
+    const p = defaultProfile();
+    const rich = riderLook(p), legacy = riderLook({ ...p, settings: { ...p.settings, overworldArt: 'legacy' } });
+    expect(legacy).toEqual({ ...rich, artMode: 'legacy' });
+    expect(withItem(legacy, item('bike', 'tron')!).artMode).toBe('legacy');
+  });
   it('new unlocks and the next reward', () => {
     const a = rider({ level: 11 }), b = rider({ level: 12, achievements: ['leg_day'] });
     expect(newUnlocks(a, b).map((i) => i.id).sort()).toEqual(['pennyfarthing', 'viking']);
@@ -111,10 +131,14 @@ function stubContext(): CanvasRenderingContext2D {
 }
 
 describe('drawing', () => {
+  it('keeps light and shadow on animated rainbow paint', () => {
+    expect(remasteredShade('hsl(150 90% 60%)', .5)).toBe('hsl(150 90% 30%)');
+    expect(remasteredShade('hsl(150 90% 60%)', 1.5)).toBe('hsl(150 90% 80%)');
+  });
   it('every item draws without throwing, in every biome gear', () => {
     const g = stubContext(), base = riderLook(rider());
-    for (const it of ITEMS) for (const gear of [null, 'bubble', 'scuba'] as const) for (const speed of [0, 6, 12]) {
-      expect(() => drawRider(g, withItem(base, it), 0.3, 12, { t: 2, speed, gear, trailer: speed > 6 }), `${it.slot}:${it.id}`).not.toThrow();
+    for (const artMode of ['legacy', 'rich'] as const) for (const it of ITEMS) for (const gear of [null, 'bubble', 'scuba'] as const) for (const speed of [0, 6, 12]) {
+      expect(() => drawRider(g, withItem({ ...base, artMode }, it), 0.3, 12, { t: 2, speed, gear, trailer: speed > 6 }), `${it.slot}:${it.id}`).not.toThrow();
     }
     for (const id of SHIP_IDS) expect(() => drawShip(g, id, '#ff2e93', 1.3), id).not.toThrow();
     // a runner rides in the cargo box

@@ -8,3 +8,6 @@ out
 .venv-media/
 .env.local
 .cache/
+
+# Local visual review and browser validation output
+artifacts/

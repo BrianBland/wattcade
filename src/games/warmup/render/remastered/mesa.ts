@@ -1,11 +1,12 @@
 // Desert mesas and buttes for the backdrop: flat caps, vertical cliffs over talus skirts, strata, sun-side shading.
 // Shapes are a pure function of a seed (stable per world slot, no per-frame jitter); drawing uses primitives only.
-import { hash01 } from '../sim/terrain';
-import { mixColor } from './blend';
-import { rect, type G } from './paint';
+import { hash01 } from '../../sim/terrain';
+import { mixColor } from '../blend';
+import { polygon } from './scenery';
+import { rect, type G } from '../paint';
 
 export interface MesaTheme { rock: string; shade: string; strata: [string, string]; cap: string; talus: string; haze: string }
-export const DESERT_MESA: MesaTheme = { rock: '#c8784a', shade: '#7a3a2a', strata: ['#a85a32', '#e0a070'], cap: '#e6b080', talus: '#d9a070', haze: '#b9b4c8' };
+export const DESERT_MESA: MesaTheme = { rock: '#ba7257', shade: '#754755', strata: ['#9b5e50', '#d7976d'], cap: '#efbf8b', talus: '#d1996c', haze: '#bdacb8' };
 export const DUSK_MESA: MesaTheme = { rock: '#7a4258', shade: '#2a1230', strata: ['#5e2f48', '#9a5a68'], cap: '#a8687a', talus: '#8a5062', haze: '#7a4a78' };
 
 export interface MesaShape {
@@ -57,9 +58,16 @@ export function drawMesa(g: G, m: MesaShape, th: MesaTheme, x: number, base: num
   g.closePath(); g.clip();
   const x0 = x - m.halfW * 1.8, wd = m.halfW * 3.6;
   rect(g, th.rock, x0, base - m.h - 1, wd, m.h + 2);
-  m.strata.forEach((f, i) => rect(g, th.strata[i % 2], x0, base - f * m.h, wd, i % 2 ? 1 : 2));
+  m.strata.forEach((f, i) => {
+    rect(g, th.strata[i % 2], x0, base - f * m.h, wd, i % 2 ? 1 : 2);
+    rect(g, th.cap, x0, base - f * m.h - 1, wd * .55, 1);
+  });
+  for (let i = 0; i < 5; i++) {
+    const xx = x - m.halfW * .75 + hash01(i * 17 + Math.floor(m.h * 10)) * m.halfW * 1.3;
+    rect(g, th.shade, xx, base - m.h * (.3 + hash01(i * 13) * .6), 1, m.h * .16);
+  }
   rect(g, th.talus, x0, base - m.talusH, wd, m.talusH + 1);                          // scree apron
-  g.globalAlpha = 0.5; rect(g, th.shade, x + m.halfW * 0.18, base - m.h - 1, m.halfW * 1.9, m.h + 2); g.globalAlpha = 1; // shadow side
+  g.globalAlpha *= .58; polygon(g, th.shade, [[x + m.halfW * .1, base - m.h - 1], [x + m.halfW * 1.9, base - m.h - 1], [x + m.halfW * 1.9, base + 1], [x + m.halfW * .5, base + 1], [x + m.halfW * .2, base - m.talusH]]); g.globalAlpha /= .58; // fractured shadow face
   rect(g, th.cap, x - m.halfW * 1.2, base - m.h, m.halfW * 2.4, m.capH);              // sunlit flat cap
   g.globalAlpha = 0.5; rect(g, th.shade, x + m.halfW * 0.18, base - m.h, m.halfW * 1.9, m.capH); g.globalAlpha = 1;
   g.restore();

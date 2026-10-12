@@ -8,3 +8,8 @@
 - Toolbar buttons reuse the parent panel blur; card and panel glass remain.
 - Tests: frameGate.test.ts covers 60/120/144 Hz and long gaps;
   screens/ArcadeMenu.test.tsx covers sleep/tab-hide pause and wake/resume.
+
+- Remastered uses render-only interpolation between 30 Hz simulation ticks via `VisualSnapshot` and
+  `GameLoop.interpolationAlpha`. Distance, road grade and biome weights stay consistent in the displayed
+  snapshot; the original simulation snapshot still drives trainer resistance and ride recording.
+  Classic draws the original snapshot. Session changes, rewinds and missed ticks reset interpolation.

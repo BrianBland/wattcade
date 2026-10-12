@@ -125,6 +125,20 @@ describe('stores', () => {
     expect((await restored.get(a.id))!.settings.units).toBe('imperial');
     expect((await restored.get(a.id))!.weightKg).toBe(75);
   });
+  it('persists per-rider art modes through reload and backup', async () => {
+    const store = new ProfileStore('art-modes');
+    const rich = await store.create('Rich rider');
+    const simple = await store.create('Simple rider');
+    await store.update({ ...simple, settings: { ...simple.settings, overworldArt: 'legacy' } });
+    expect((await new ProfileStore('art-modes').get(simple.id))!.settings.overworldArt).toBe('legacy');
+    const restored = new ProfileStore('art-modes-restored');
+    await restored.importJson(await store.exportJson());
+    expect((await restored.get(rich.id))!.settings.overworldArt).toBe('rich');
+    expect((await restored.get(simple.id))!.settings.overworldArt).toBe('legacy');
+    const { overworldArt, ...oldSettings } = rich.settings;
+    await restored.importJson(JSON.stringify({ profiles: [{ ...rich, settings: oldSettings }] }));
+    expect((await restored.get(rich.id))!.settings.overworldArt).toBe('rich');
+  });
   it('session store keeps last 200', async () => {
     const s = new SessionStore('t3');
     for (let i = 0; i < 205; i++) await s.save(rec({ profileId: 'pp', startedAt: i, id: 'id' + i }));

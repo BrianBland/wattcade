@@ -4,7 +4,8 @@ import { craftName, escortAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, TIER_NAMES, WING_OFFSETS } from './progression';
 import { MAX_ENEMIES, MAX_BOLTS, GROUND_SPEED, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
-import { newRoute, extendRoute, routeX, choreograph, ROUTE } from './flight';
+import { newRoute, extendRoute, routeX, choreograph, moveActivity, ROUTE } from './flight';
+import { createWeave } from './weave';
 import { createSegmenter, gradeSegment, type Segment } from './segments';
 import { WorldRoute, planTurns, toLocal, toWorld } from './route';
 import { mulberry } from './rng';
@@ -25,7 +26,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     recovery: ctx.tuning.num('recoveryFtp', 0.5, 0.3, 0.56, 0.01), settle: ctx.tuning.num('ergSettleS', 6, 2, 12, 1),
     earnS: ctx.tuning.num('salvageEveryS', 12, 3, 30, 1), cadenceGap: ctx.tuning.num('cadenceGapS', 150, 60, 300, 10),
     // Playtesting: 1 unlocks every craft at max level; pace speeds up in-ride arsenal growth.
-    tester: ctx.tuning.num('testerUnlockAll', 0, 0, 1, 1), tierLock: ctx.tuning.num('tierLockScale', 0.95, 0.7, 1, 0.01), pace: ctx.tuning.num('arsenalPace', 1, 0.25, 20, 0.25),
+    tester: ctx.tuning.num('testerUnlockAll', 0, 0, 1, 1), tierLock: ctx.tuning.num('tierLockScale', 0.95, 0.7, 1, 0.01), weave: ctx.tuning.num('weave', 1, 0, 1.5, 0.05, 'Music-locked sway of the ship around its lane (0 = lane changes only)'), pace: ctx.tuning.num('arsenalPace', 1, 0.25, 20, 0.25),
   };
   const timeline: MediaTimeline | undefined = ctx.media?.timeline;
   const director = createDirector(timeline);
@@ -45,7 +46,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
   const world = new WorldRoute(), routeS = () => 126 + GROUND_SPEED * t;
   let curFrame: SfSnapshot['frames']['cur'] = { x: 0, z: 0, h: 0, s: 126, biome: 0, seed: 1 };
-  const route = newRoute();
+  const route = newRoute(), weaveAt = createWeave(timeline); let pOff = 0;
+  // The sway is part of the route (a pure function of time), so choreographed fire is authored around it too.
+  route.weave = tt => tun.weave() ? weaveAt.at(tt + pOff, moveActivity(route, tt)) * tun.weave() : 0;
+  /** Lane changes start and end on swing peaks when weaving (else on beats). */
+  const peakAfterSim = (at: number) => { if (!tun.weave()) return beatAfter(at); const q = weaveAt.peakAfter(at + pOff) - pOff; return q >= at && q - at < 2.5 ? q : beatAfter(at); };
   const beams: BeamView[] = [];
   let prevX = 0, grazed = 0;
   // Formation bookkeeping: an enemy resolves when it dies (kill) or passes the ship (escape).
@@ -291,7 +296,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       // Choreographed flight: follow the scheduled route; a sloppy pilot lags it and loses the authored misses.
       const alert = pedalling ? quality : 0;
-      extendRoute(route, t, ctx.rng, cruiseLine, beatAfter, phraseAfter);
+      pOff = p - t; extendRoute(route, t, ctx.rng, cruiseLine, peakAfterSim, phraseAfter);
       const routeNow = routeX(route, t), routeV = (routeNow - routeX(route, t - dt)) / Math.max(dt, 1e-3);
       const follow = alert >= 0.8 ? 14 : 0.5 + 1.2 * alert;
       x += routeV * dt * (alert >= 0.8 ? 1 : 0) + (routeNow - x) * (1 - Math.exp(-dt * follow));

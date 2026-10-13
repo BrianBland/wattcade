@@ -1,0 +1,1214 @@
+{
+  "partCount": 13,
+  "glowCount": 13,
+  "assembledInstanceCount": 15,
+  "tailSegmentCount": 5,
+  "greenFringePixels": 0,
+  "clippedPoses": [],
+  "opaqueLengthPx": 486,
+  "outsideParentUnderlapPixels": 0,
+  "gapJoints": [],
+  "poses": {
+    "APPENDAGES +20\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2156,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2816,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 2010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 772,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 272,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 560,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 829,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 684,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 300,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 681,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 272,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "APPENDAGES \u221220\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2156,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2816,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 2010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 573,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 211,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 333,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 478,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 684,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 300,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 211,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL +6\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2049,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2742,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1837,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 802,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 262,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 363,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 682,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 307,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 287,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 243,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 479,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 574,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 258,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL \u22126\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1957,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2677,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1935,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 803,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 256,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 363,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 671,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 294,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 287,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 245,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 466,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 569,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 262,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2156,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2816,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 2010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 756,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 269,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 629,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 900,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 684,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 300,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 713,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 269,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2156,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2816,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 2010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 523,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 196,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 329,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 491,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 684,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 300,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 417,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 196,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2008,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2706,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1790,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 810,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 262,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 363,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 676,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 308,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 238,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 476,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 575,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 261,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1907,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2637,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1904,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 802,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 262,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 363,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 662,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 289,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 294,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 248,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 465,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 571,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 258,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2008,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2706,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1790,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 760,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 271,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 629,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 900,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 676,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 308,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 238,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 476,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 711,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 276,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1907,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2637,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1904,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 528,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 200,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 329,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 491,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 662,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 289,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 294,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 248,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 465,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 417,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 201,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1907,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2637,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1904,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 750,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 271,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 629,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 900,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 662,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 289,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 294,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 248,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 465,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 716,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 271,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 2008,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 2706,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "abdomen",
+        "parent": "thorax_2",
+        "overlapPixels": 1790,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_r",
+        "parent": "abdomen",
+        "overlapPixels": 534,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_r",
+        "parent": "socket_hanging_r",
+        "overlapPixels": 202,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_r",
+        "parent": "thorax_2",
+        "overlapPixels": 329,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "wing_l",
+        "parent": "thorax_2",
+        "overlapPixels": 491,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "abdomen",
+        "overlapPixels": 676,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 308,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 238,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_04",
+        "overlapPixels": 476,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_hanging_l",
+        "parent": "abdomen",
+        "overlapPixels": 418,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_hanging_l",
+        "parent": "socket_hanging_l",
+        "overlapPixels": 197,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ]
+  },
+  "method": "Opaque parent/child contact plus an anatomy-sized pivot probe; thin tails use a 1px probe."
+}

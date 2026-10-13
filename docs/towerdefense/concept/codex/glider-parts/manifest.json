@@ -1,0 +1,429 @@
+{
+  "size": [
+    640,
+    640
+  ],
+  "centerX": 320,
+  "lengthPx": 480,
+  "light": "top",
+  "paddingPx": 6,
+  "root": "thorax_2",
+  "parts": [
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        263,
+        72
+      ],
+      "pivot": [
+        319.5,
+        187.5
+      ],
+      "parent": "thorax_1",
+      "z": 60,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "thorax_1",
+      "file": "parts/thorax_1.png",
+      "glow": "parts/thorax_1_glow.png",
+      "offset": [
+        256,
+        161
+      ],
+      "pivot": [
+        319.5,
+        238.5
+      ],
+      "parent": "thorax_2",
+      "z": 53,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "thorax_2",
+      "file": "parts/thorax_2.png",
+      "glow": "parts/thorax_2_glow.png",
+      "offset": [
+        256,
+        217
+      ],
+      "pivot": [
+        320.0,
+        269.545
+      ],
+      "parent": null,
+      "z": 52,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "abdomen",
+      "file": "parts/abdomen.png",
+      "glow": "parts/abdomen_glow.png",
+      "offset": [
+        262,
+        262
+      ],
+      "pivot": [
+        319.5,
+        296.5
+      ],
+      "parent": "thorax_2",
+      "z": 51,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "socket_hanging_r",
+      "file": "parts/socket_hanging_r.png",
+      "glow": "parts/socket_hanging_r_glow.png",
+      "offset": [
+        334,
+        282
+      ],
+      "pivot": [
+        352.5,
+        303.5
+      ],
+      "parent": "abdomen",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        365.5,
+        333.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "claw_hanging_r",
+      "file": "parts/claw_hanging_r.png",
+      "glow": "parts/claw_hanging_r_glow.png",
+      "offset": [
+        341,
+        313
+      ],
+      "pivot": [
+        365.5,
+        333.5
+      ],
+      "parent": "socket_hanging_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        366.364,
+        380.0
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "wing_r",
+      "file": "parts/wing_r.png",
+      "glow": "parts/wing_r_glow.png",
+      "offset": [
+        352,
+        135
+      ],
+      "pivot": [
+        380.5,
+        245.5
+      ],
+      "parent": "thorax_2",
+      "z": 25,
+      "group": "wing",
+      "mirror": false,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "wing_l",
+      "file": "parts/wing_l.png",
+      "glow": "parts/wing_l_glow.png",
+      "offset": [
+        41,
+        135
+      ],
+      "pivot": [
+        271.5,
+        243.5
+      ],
+      "parent": "thorax_2",
+      "z": 25,
+      "group": "wing",
+      "mirror": false,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "tail_01",
+      "file": "parts/tail_01.png",
+      "glow": "parts/tail_01_glow.png",
+      "offset": [
+        297,
+        323
+      ],
+      "pivot": [
+        322.5,
+        344.5
+      ],
+      "parent": "abdomen",
+      "z": 48,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        322.5,
+        387.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_02",
+      "file": "parts/tail_02.png",
+      "glow": "parts/tail_02_glow.png",
+      "offset": [
+        297,
+        368
+      ],
+      "pivot": [
+        322.5,
+        387.5
+      ],
+      "parent": "tail_01",
+      "z": 47,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        320.5,
+        430.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_03",
+      "file": "parts/tail_03.png",
+      "glow": "parts/tail_03_glow.png",
+      "offset": [
+        300,
+        411
+      ],
+      "pivot": [
+        320.5,
+        430.5
+      ],
+      "parent": "tail_02",
+      "z": 46,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        321.5,
+        473.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_04",
+      "file": "parts/tail_04.png",
+      "glow": "parts/tail_04_glow.png",
+      "offset": [
+        292,
+        454
+      ],
+      "pivot": [
+        321.5,
+        473.5
+      ],
+      "parent": "tail_03",
+      "z": 45,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        322.5,
+        516.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_tip",
+      "file": "parts/tail_tip.png",
+      "glow": "parts/tail_tip_glow.png",
+      "offset": [
+        292,
+        497
+      ],
+      "pivot": [
+        322.5,
+        516.5
+      ],
+      "parent": "tail_04",
+      "z": 44,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        325.455,
+        560.0
+      ],
+      "hasEmission": true
+    }
+  ],
+  "neutralGlow": false,
+  "colour": "blue",
+  "gamePreviewLengthPx": 105,
+  "referenceTransform": [
+    [
+      1.3636363636363635,
+      0.0,
+      33.63636363636368
+    ],
+    [
+      0.0,
+      1.3636363636363635,
+      50.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "visibleSource": "sheet-raw.png: original roster pixels",
+  "description": "Ribbed dart body; two independent complete shoulder-pivoted membrane wings, short hanging legs and a jointed barbed tail.",
+  "tailSegmentCount": 5,
+  "hiddenUnderlaps": [
+    {
+      "part": "thorax_1",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "head",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "abdomen",
+      "addedOpaquePixels": 61,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "socket_hanging_r",
+      "addedOpaquePixels": 45,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 5.885
+    },
+    {
+      "part": "claw_hanging_r",
+      "addedOpaquePixels": 57,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 8.371
+    },
+    {
+      "part": "wing_r",
+      "addedOpaquePixels": 117,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 9.0
+    },
+    {
+      "part": "wing_l",
+      "addedOpaquePixels": 123,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 9.0
+    },
+    {
+      "part": "tail_01",
+      "addedOpaquePixels": 8,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.75
+    },
+    {
+      "part": "tail_02",
+      "addedOpaquePixels": 16,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.762
+    },
+    {
+      "part": "tail_03",
+      "addedOpaquePixels": 13,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.753
+    },
+    {
+      "part": "tail_04",
+      "addedOpaquePixels": 16,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.753
+    },
+    {
+      "part": "tail_tip",
+      "addedOpaquePixels": 16,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.9
+    }
+  ],
+  "pivotAdjustments": [
+    {
+      "part": "claw_hanging_r",
+      "before": [
+        367.727,
+        333.636
+      ],
+      "after": [
+        365.5,
+        333.5
+      ]
+    },
+    {
+      "part": "wing_r",
+      "before": [
+        380.0,
+        249.091
+      ],
+      "after": [
+        380.5,
+        245.5
+      ]
+    }
+  ],
+  "mirror": {
+    "suffix": "_r",
+    "centerX": 320,
+    "rule": "Reflect right geometry and negate local rotation. Explicit wing_l/wing_r are independent."
+  },
+  "glowBlend": "additive RGB weighted by alpha; Stalker glow RGB is neutral white",
+  "lightingNote": "Original baked highlights retained; strict 12 oclock relighting remains approximate."
+}

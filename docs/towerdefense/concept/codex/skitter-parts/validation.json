@@ -1,0 +1,3062 @@
+{
+  "partCount": 25,
+  "glowCount": 25,
+  "assembledInstanceCount": 37,
+  "tailSegmentCount": 8,
+  "greenFringePixels": 0,
+  "clippedPoses": [],
+  "opaqueLengthPx": 488,
+  "outsideParentUnderlapPixels": 0,
+  "gapJoints": [],
+  "poses": {
+    "APPENDAGES +20\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1921,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1947,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2118,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1373,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 603,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 381,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 827,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 378,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 468,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 692,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 374,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 459,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 372,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 514,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 198,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 212,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 176,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 319,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 419,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 381,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 907,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 378,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 468,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 759,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 374,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 459,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 321,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 514,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "APPENDAGES \u221220\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1921,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1947,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2118,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1373,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 668,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 191,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 389,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 932,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 333,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 499,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 818,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 420,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 541,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 327,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 299,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 552,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 198,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 212,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 176,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 319,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 575,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 191,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 389,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 1010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 333,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 499,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 838,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 420,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 541,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 274,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 299,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 552,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL +6\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1898,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1858,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2089,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1346,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 807,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 407,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 906,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 823,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 460,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 556,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 407,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 302,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 582,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 180,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 189,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 192,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 152,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 147,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 269,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 309,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 450,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 284,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 407,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 944,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 813,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 460,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 556,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 327,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 309,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 591,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL \u22126\u00b0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1832,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1891,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2073,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1298,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 811,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 282,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 409,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 906,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 831,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 461,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 555,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 406,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 590,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 582,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 204,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 204,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 211,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 187,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 181,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 289,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 310,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 452,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 407,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 944,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 808,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 462,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 559,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 326,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 306,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 593,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1921,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1947,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2118,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1373,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 583,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 282,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 374,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 819,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 667,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 355,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 439,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 373,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 248,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 496,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 198,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 212,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 176,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 319,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 421,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 282,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 374,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 903,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 743,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 355,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 439,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 323,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 248,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 496,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1921,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1947,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2118,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1373,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 172,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 388,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 908,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 817,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 408,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 542,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 319,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 296,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 554,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 198,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 212,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 176,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 319,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 585,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 172,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 388,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 1014,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 848,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 408,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 542,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 257,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 296,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 554,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1893,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1838,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2086,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1343,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 805,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 401,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 906,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 825,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 459,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 551,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 405,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 593,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 572,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 178,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 183,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 146,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 142,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 307,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 451,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 285,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 405,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 944,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 814,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 460,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 558,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 331,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 594,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1806,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1892,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2068,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 818,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 282,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 401,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 906,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 830,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 462,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 556,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 410,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 304,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 594,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 571,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 201,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 215,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 191,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 187,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 306,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 454,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 280,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 402,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 944,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 422,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 566,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 808,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 459,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 556,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 329,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 305,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 593,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1893,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1838,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2086,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1343,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 585,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 280,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 372,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 819,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 666,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 357,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 439,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 374,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 245,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 503,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 572,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 178,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 183,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 146,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 142,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 307,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 416,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 283,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 375,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 903,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 742,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 359,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 436,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 315,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 245,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 501,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1806,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1892,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2068,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 631,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 172,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 388,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 908,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 822,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 410,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 539,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 322,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 297,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 555,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 571,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 201,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 215,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 191,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 187,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 306,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 585,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 174,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 384,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 1014,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 854,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 405,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 538,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 257,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 300,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 553,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1806,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1892,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2068,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 584,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 280,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 370,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 819,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 661,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 360,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 440,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 375,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 249,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 499,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 571,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 201,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 203,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 215,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 191,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 187,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 286,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 306,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 423,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 282,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 376,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 903,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 377,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 442,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 752,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 357,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 438,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 317,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 246,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 502,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "thorax_1",
+        "overlapPixels": 1893,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_1",
+        "parent": "thorax_2",
+        "overlapPixels": 1838,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_3",
+        "parent": "thorax_2",
+        "overlapPixels": 2086,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "thorax_4",
+        "parent": "thorax_3",
+        "overlapPixels": 1343,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_r",
+        "parent": "thorax_1",
+        "overlapPixels": 629,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_r",
+        "parent": "coxa_front_r",
+        "overlapPixels": 172,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_r",
+        "parent": "femur_front_r",
+        "overlapPixels": 385,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_r",
+        "parent": "thorax_2",
+        "overlapPixels": 908,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_r",
+        "parent": "coxa_mid_front_r",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_r",
+        "parent": "femur_mid_front_r",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_r",
+        "parent": "thorax_3",
+        "overlapPixels": 812,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_r",
+        "parent": "coxa_mid_rear_r",
+        "overlapPixels": 406,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_r",
+        "parent": "femur_mid_rear_r",
+        "overlapPixels": 541,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_r",
+        "parent": "thorax_4",
+        "overlapPixels": 322,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_r",
+        "parent": "coxa_rear_r",
+        "overlapPixels": 299,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_r",
+        "parent": "femur_rear_r",
+        "overlapPixels": 554,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_01",
+        "parent": "thorax_4",
+        "overlapPixels": 572,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_02",
+        "parent": "tail_01",
+        "overlapPixels": 178,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_03",
+        "parent": "tail_02",
+        "overlapPixels": 185,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_04",
+        "parent": "tail_03",
+        "overlapPixels": 183,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_05",
+        "parent": "tail_04",
+        "overlapPixels": 146,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_06",
+        "parent": "tail_05",
+        "overlapPixels": 142,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_07",
+        "parent": "tail_06",
+        "overlapPixels": 264,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_tip",
+        "parent": "tail_07",
+        "overlapPixels": 307,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_front_l",
+        "parent": "thorax_1",
+        "overlapPixels": 580,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_front_l",
+        "parent": "coxa_front_l",
+        "overlapPixels": 172,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_front_l",
+        "parent": "femur_front_l",
+        "overlapPixels": 389,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_front_l",
+        "parent": "thorax_2",
+        "overlapPixels": 1014,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_front_l",
+        "parent": "coxa_mid_front_l",
+        "overlapPixels": 303,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_front_l",
+        "parent": "femur_mid_front_l",
+        "overlapPixels": 486,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_mid_rear_l",
+        "parent": "thorax_3",
+        "overlapPixels": 852,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_mid_rear_l",
+        "parent": "coxa_mid_rear_l",
+        "overlapPixels": 412,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_mid_rear_l",
+        "parent": "femur_mid_rear_l",
+        "overlapPixels": 538,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "coxa_rear_l",
+        "parent": "thorax_4",
+        "overlapPixels": 255,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "femur_rear_l",
+        "parent": "coxa_rear_l",
+        "overlapPixels": 297,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "claw_rear_l",
+        "parent": "femur_rear_l",
+        "overlapPixels": 553,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ]
+  },
+  "method": "Opaque parent/child contact plus an anatomy-sized pivot probe; thin tails use a 1px probe."
+}

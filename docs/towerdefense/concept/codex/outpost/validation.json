@@ -1,0 +1,26 @@
+{
+  "status": "pass",
+  "parts": 14,
+  "rotationPoses": 432,
+  "transparentCabPoses": 36,
+  "axialSpinPhases": 6,
+  "railChargeBrightPixels": [
+    16,
+    74,
+    140,
+    207
+  ],
+  "productionBytes": 1240547,
+  "budgetBytes": 1500000,
+  "checks": [
+    "matching RGBA/glow dimensions",
+    "4px transparent padding",
+    "no green fringe",
+    "registered axle centers",
+    "parent inheritance",
+    "all-angle clipping",
+    "fixed cab stencil with spinning flywheel",
+    "sequential independent rail charge",
+    "six cable socket anchors"
+  ]
+}

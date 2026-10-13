@@ -1,0 +1,153 @@
+{
+  "size": [
+    160,
+    160
+  ],
+  "centerX": 80,
+  "root": "pad",
+  "light": "top",
+  "inGameDiameterPx": 68,
+  "padDiameterPx": 136,
+  "paddingPx": 4,
+  "angleConvention": "clockwise degrees in image coordinates; zero aims up",
+  "coordinates": "offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms",
+  "upgrades": "include every part with minLevel <= level; valid levels 1 through 5",
+  "glowBlend": "additive RGB weighted by alpha; base art remains complete without glow",
+  "anchors": {
+    "muzzle": {
+      "parent": "head",
+      "position": [
+        80,
+        51
+      ]
+    },
+    "cable": {
+      "parent": "pad",
+      "position": [
+        145,
+        80
+      ]
+    },
+    "range_center": {
+      "parent": "pad",
+      "position": [
+        80,
+        80
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "pad",
+      "file": "../parts/pad.png",
+      "glow": "../parts/pad_glow.png",
+      "offset": [
+        8,
+        16
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": null,
+      "z": 0,
+      "minLevel": 1
+    },
+    {
+      "name": "base",
+      "file": "parts/base.png",
+      "glow": "parts/base_glow.png",
+      "offset": [
+        34,
+        34
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "pad",
+      "z": 10,
+      "minLevel": 1
+    },
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        52,
+        41
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "base",
+      "z": 40,
+      "minLevel": 1
+    },
+    {
+      "name": "upgrade_l2",
+      "file": "parts/upgrade_l2.png",
+      "glow": "parts/upgrade_l2_glow.png",
+      "offset": [
+        30,
+        60
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "base",
+      "z": 20,
+      "minLevel": 2
+    },
+    {
+      "name": "upgrade_l3",
+      "file": "parts/upgrade_l3.png",
+      "glow": "parts/upgrade_l3_glow.png",
+      "offset": [
+        42,
+        30
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "head",
+      "z": 30,
+      "minLevel": 3
+    },
+    {
+      "name": "upgrade_l4",
+      "file": "parts/upgrade_l4.png",
+      "glow": "parts/upgrade_l4_glow.png",
+      "offset": [
+        38,
+        98
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "base",
+      "z": 25,
+      "minLevel": 4
+    },
+    {
+      "name": "upgrade_l5",
+      "file": "parts/upgrade_l5.png",
+      "glow": "parts/upgrade_l5_glow.png",
+      "offset": [
+        15,
+        51
+      ],
+      "pivot": [
+        80,
+        80
+      ],
+      "parent": "head",
+      "z": 35,
+      "minLevel": 5
+    }
+  ]
+}

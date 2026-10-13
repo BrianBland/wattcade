@@ -1,0 +1,31 @@
+# Tower puppets — issue 129
+
+Art generated with OpenAI image_gen.imagegen on three #00FF00 sheets.
+Pillow/NumPy slice, key, despill, resize, extract emission and render the PNG parts.
+Reference: td-towers-base.png on codex/towerdefense-concept-art (the file is absent
+from towerdefense-concept-art). Working files are based on towerdefense-concept-art.
+
+FILES.txt enumerates every production file, including this note and the inventory.
+manifest.json indexes tesla/manifest.json, mortar/manifest.json and prism/manifest.json.
+Each tower manifest follows the alien offset/pivot/parent/z convention and references
+one shared octagonal pad, with a cable socket at the right rim.
+Levels 1–5 include all parts with minLevel <= level. Head rotation is clockwise,
+zero points up. Coordinates are absolute in the 160x160 assembled rest frame.
+Inherit parent transforms before applying local rotations around pivot.
+Mortar barrel is a child of head; recoil translates it 8px along its local +y axis.
+The muzzle anchor follows the barrel; cable and range_center follow the static pad.
+L2 coils and L4 armour attach to base; L3 and L5 attach to the rotating head.
+Every base PNG has a same-size _glow.png, including clear layers for unlit parts.
+Use additive RGB weighted by alpha for emission; base art is complete alone.
+All cutouts have at least 4px transparent padding. Pad diameter 136px is 2x 68px.
+
+preview.png is rendered from these manifests and PNGs on #211d19 ground:
+L1/L3/L5 at 0/45/180 degrees for all towers, plus nine Mortar recoil poses.
+Each cell also includes the same assembly reduced to a 68px pad footprint.
+The full directory is below 1.5MB. No game code changed.
+
+Working branch: codex/td-towers-work, docs/towerdefense/concept/codex/towers/.
+Rebuild with python build.py --output PATH after installing requirements.txt there.
+Validation checks all five levels and rotations (60 poses including recoil).
+Limitations: generated metal bevels retain some depth cues; artistic fidelity and
+strict overhead lighting still need human art review. No baked ground shadows.

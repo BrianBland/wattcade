@@ -10,13 +10,13 @@ interface Manifest { size: [number, number]; centerX: number; parts: Part[]; neu
 interface Spec {
   id: string; dir: string; label: string; role: string; color: string;
   gamePx: number; gaitHz: number; stride: number; legAmp: number; bodyAmp: number; tailAmp: number;
-  flying?: boolean; tint?: boolean; lurch?: boolean;
+  flying?: boolean; tint?: boolean; thud?: boolean;
 }
 const SPECS: Spec[] = [
   { id: 'skitter', dir: 'skitter-parts', label: 'Skitter', role: 'swarm · Gatling', color: '#45d2ff', gamePx: 42, gaitHz: 2.6, stride: 70, legAmp: 1, bodyAmp: 0.8, tailAmp: 7 },
   { id: 'glider', dir: 'glider-parts', label: 'Glider', role: 'flier · Gatling', color: '#45d2ff', gamePx: 78, gaitHz: 1.1, stride: 0, legAmp: 0.4, bodyAmp: 0.5, tailAmp: 6, flying: true },
   { id: 'warrior', dir: 'warrior-parts', label: 'Warrior', role: 'brute · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.5, stride: 80, legAmp: 1, bodyAmp: 1, tailAmp: 3 },
-  { id: 'ram', dir: 'ram-parts', label: 'Ram', role: 'charger · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.4, stride: 80, legAmp: 1.5, bodyAmp: 0.5, tailAmp: 2, lurch: true },
+  { id: 'ram', dir: 'ram-parts', label: 'Ram', role: 'charger · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.4, stride: 80, legAmp: 1.5, bodyAmp: 0.5, tailAmp: 2, thud: true },
   { id: 'bulwark', dir: 'bulwark-parts', label: 'Bulwark', role: 'armoured · Rail', color: '#b97cff', gamePx: 112, gaitHz: 1.1, stride: 45, legAmp: 1.1, bodyAmp: 0.35, tailAmp: 2 },
   { id: 'broodmother', dir: 'broodmother-parts', label: 'Broodmother', role: 'carrier · Rail', color: '#b97cff', gamePx: 120, gaitHz: 1.0, stride: 55, legAmp: 0.85, bodyAmp: 0.6, tailAmp: 2 },
   { id: 'stalker', dir: 'stalker-parts', label: 'Stalker', role: 'shifting colour', color: '#ffffff', gamePx: 110, gaitHz: 1.8, stride: 85, legAmp: 1, bodyAmp: 1.2, tailAmp: 7, tint: true },
@@ -60,25 +60,31 @@ async function loadRig(spec: Spec): Promise<Rig> {
 }
 
 // ---------- travel: gait phase + distance over time ----------
-interface Travel { ph: number; dist: number; mv: number; lunge: number; dust: number }
+interface Travel { ph: number; dist: number; mv: number; lunge: number; dust: number; sway: number; step: number }
 const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
 const easeInOut = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
-const LURCH_P = 2.8, LURCH_B = 0.7;
+const THUD_STEP = 0.62, THUD_BURST = 0.42;
 function travel(s: Spec, t: number): Travel {
-  if (!s.lurch) return { ph: t * s.gaitHz, dist: t * s.gaitHz * s.stride, mv: 1, lunge: 0, dust: 0 };
-  // Ram: stands, crouches, then lurches two heavy steps forward
-  const D = s.stride * 2.6, n = Math.floor(t / LURCH_P), u = t - n * LURCH_P;
-  if (u < LURCH_B) { const k = u / LURCH_B; return { ph: n * 2 + 2 * k, dist: n * D + D * easeOut(k), mv: 1, lunge: Math.sin(Math.PI * Math.min(1, k * 1.3)), dust: k > 0.55 ? 1 - (k - 0.55) / 0.45 : 0 }; }
-  const crouch = u > LURCH_P - 0.45 ? -easeInOut((u - (LURCH_P - 0.45)) / 0.45) * 0.6 : 0;
-  const settle = u < LURCH_B + 0.35 ? (1 - (u - LURCH_B) / 0.35) : 0;
-  return { ph: n * 2 + 2, dist: (n + 1) * D, mv: 0, lunge: crouch, dust: settle * 0.6 };
+  if (!s.thud) return { ph: t * s.gaitHz, dist: t * s.gaitHz * s.stride, mv: 1, lunge: 0, dust: 0, sway: 0, step: 0 };
+  // Ram: alternating thuds. Each step, one set of legs swings fast while the body surges, then plants with a jolt.
+  // Steps start at gait phase 0.1 + n/2, where one tripod's swing window (0.4 of the cycle) begins.
+  const n = Math.floor(t / THUD_STEP), u = (t - n * THUD_STEP) / THUD_STEP;
+  const w = u < THUD_BURST ? easeInOut(u / THUD_BURST) : 1, D = s.stride * 0.6, side = n % 2 ? 1 : -1;
+  const impact = u >= THUD_BURST ? Math.exp(-(u - THUD_BURST) * THUD_STEP * 9) : 0;
+  return { ph: 0.1 + n * 0.5 + 0.5 * w, dist: n * D + D * w, mv: 1, lunge: u < THUD_BURST ? 0.5 * Math.sin(Math.PI * u / THUD_BURST) : -impact, dust: impact, sway: side * (2 * w - 1), step: n };
 }
 /** Glider wingbeat: three powered beats, then a glide. 1 = wings swept forward and fully spread. */
+const GLIDE_S = 1.6, GLIDE_POSE = 0.92;
 function flap(s: Spec, t: number): number {
-  const beat = 1 / s.gaitHz, P = beat * 3 + 1.4, u = t % P;
-  if (u >= beat * 3) return 0.92 + 0.05 * Math.sin((u - beat * 3) * TAU * 0.7);
-  const k = (u % beat) / beat;
-  return k < 0.38 ? easeOut(k / 0.38) : 1 - easeInOut((k - 0.38) / 0.62);
+  const beat = 1 / s.gaitHz, u = t % (beat * 3 + GLIDE_S);
+  if (u >= beat * 3) { // glide, then raise the wings for the next downstroke
+    const g = (u - beat * 3) / GLIDE_S, held = (x: number) => GLIDE_POSE + 0.05 * Math.sin(x * GLIDE_S * TAU * 0.7);
+    return g < 0.72 ? held(g) : held(0.72) * (1 - easeInOut((g - 0.72) / 0.28));
+  }
+  const i = Math.floor(u / beat), k = (u % beat) / beat;
+  if (k < 0.38) return easeOut(k / 0.38);
+  const up = easeInOut((k - 0.38) / 0.62);
+  return i === 2 ? 1 - (1 - GLIDE_POSE) * up : 1 - up; // the last beat settles into the glide pose
 }
 
 // ---------- posing ----------
@@ -97,10 +103,10 @@ function pose(r: Rig, p: Pose): Map<string, Xf> {
     else deg = (i < rootIdx ? -1.6 : 2.1 + Math.max(0, i - rootIdx) * 0.35) * s.bodyAmp * Math.sin(ph * TAU - lag);
     a.set(n, { deg: deg * (n.startsWith('tail') ? 1 : Math.max(mv, 0.15)) });
   });
-  if (s.lurch) { // heave: the shell stretches into the lunge and squats in the crouch
-    const root = r.body[rootIdx], k = 1 + 0.07 * tr.lunge;
-    a.set(root, { deg: a.get(root)!.deg + 3 * Math.sin(p.t * TAU * 0.4), sx: 1 - 0.03 * tr.lunge, sy: k });
-    if (r.parts.has('battering_crest')) a.set('battering_crest', { deg: 0, sx: 1 + 0.05 * Math.max(0, tr.lunge), sy: 1 + 0.05 * Math.max(0, tr.lunge) });
+  if (s.thud) { // rock toward the planted side; stretch into the surge, squash on the thud
+    const root = r.body[rootIdx], up = Math.max(0, tr.lunge), hit = Math.max(0, -tr.lunge);
+    a.set(root, { deg: a.get(root)!.deg + 4.5 * tr.sway, sx: 1 + 0.045 * hit - 0.02 * up, sy: 1 + 0.05 * up - 0.05 * hit });
+    if (r.parts.has('battering_crest')) a.set('battering_crest', { deg: -2 * tr.sway, sx: 1 + 0.04 * hit, sy: 1 + 0.04 * hit });
   }
   // walking legs: alternate front→rear, sides in antiphase
   const legAmps = [15, 12, 14, 13];
@@ -208,7 +214,7 @@ function place(g: G, r: Rig, x: number, y: number, heading: number, px: number, 
   const c = creatureCanvas(r, p), s = px / 480, cx = r.m.centerX, cy = r.cy;
   const alt = r.spec.flying ? 1 : 0, f = alt ? flap(r.spec, p.t) : 0;
   g.save(); g.translate(x, y); g.rotate(heading + Math.PI / 2); g.scale(s, s);
-  if (r.spec.lurch) { const tr = travel(r.spec, p.t); if (tr.dust > 0) dust(g, cy, tr.dust, p.t); }
+  if (r.spec.thud) { const tr = travel(r.spec, p.t); if (tr.dust > 0.05) dust(g, tr.dust, tr.step); }
   g.save(); g.filter = alt ? 'brightness(0) blur(6px)' : 'brightness(0)'; g.globalAlpha = alt ? 0.3 : 0.5;
   const sh = alt ? 80 + 25 * (1 - f) : 14; g.drawImage(c, -PAD - cx + sh * 0.6, -PAD - cy + sh); g.restore();
   const bob = alt ? 1 + 0.045 * (1 - f) : 1; // rises on the upstroke, sinks as the wings bite
@@ -216,13 +222,13 @@ function place(g: G, r: Rig, x: number, y: number, heading: number, px: number, 
   g.restore();
 }
 
-/** Dust kicked up behind a lurching Ram (creature-local pixels, heading up). */
-function dust(g: G, cy: number, a: number, t: number) {
-  const rr = rng(Math.floor(t / LURCH_P) + 5);
-  for (let i = 0; i < 9; i++) {
-    const x = (rr() - 0.5) * 300, y = 120 + rr() * 140 + (1 - a) * 60, rad = 30 + rr() * 50 + (1 - a) * 40;
+/** Dust thrown up around the Ram's planted feet on a thud (creature-local pixels, heading up). */
+function dust(g: G, a: number, step: number) {
+  const rr = rng(step * 7 + 5), side = step % 2 ? 1 : -1;
+  for (let i = 0; i < 7; i++) {
+    const x = side * (90 + rr() * 110) * (rr() < 0.75 ? 1 : -1), y = -80 + rr() * 260, rad = (25 + rr() * 35) * (1.6 - a * 0.6);
     const gr = g.createRadialGradient(x, y, 0, x, y, rad);
-    gr.addColorStop(0, `rgba(120,105,85,${0.35 * a})`); gr.addColorStop(1, 'rgba(120,105,85,0)');
+    gr.addColorStop(0, `rgba(120,105,85,${0.4 * a})`); gr.addColorStop(1, 'rgba(120,105,85,0)');
     g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
   }
 }

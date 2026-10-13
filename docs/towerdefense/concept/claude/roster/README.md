@@ -19,8 +19,8 @@ Full quality, 10 s: [aliens-parade.mp4](aliens-parade.mp4). Sizes: Skitter 42 px
 - **Legs:** chains are found from the part names (`coxa|socket` → `femur|upper|tube|foot` → `claw|scythe`). Walking legs alternate from front to rear, with the two sides half a step apart: a tripod gait for six legs, a wave gait for the Skitter's eight. Each leg swings from its socket and its claw counter-rotates so the tip stays planted.
 - **Body and tail:** body plates carry a yaw wave that travels from head to tail. Tails whip, with the swing growing toward the tip.
 - **Per species:**
-  - Glider: three powered beats, then a glide. On the downstroke the wings sweep forward to full span; on the upstroke they fold back and foreshorten. The body rises and falls with the beat, and so does its blurred shadow.
-  - Ram: stands still, crouches, then lurches two heavy steps forward. The shell stretches into the lunge and dust kicks up as it lands.
+  - Glider: three powered beats, then a glide. On the downstroke the wings sweep forward to full span; on the upstroke they fold back and foreshorten. The last beat eases into the spread glide, and the glide ends by raising the wings for the next downstroke. The body rises and falls with the beat, and so does its blurred shadow.
+  - Ram: a heavy walk of alternating thuds. One set of legs swings fast while the body surges forward, then plants with a squash and dust at the planted feet. The body rocks toward each planted side.
   - Broodmother: egg sac pulses, rear fan sways.
   - Hive Tyrant: rears up and strikes with its scythes every 2.5 s.
   - Stalker: dorsal tubes sway. Its shell and its neutral-white glow are both tinted through blue → red → purple.

@@ -172,7 +172,7 @@
       "file": "parts/upgrade_l5.png",
       "glow": "parts/upgrade_l5_glow.png",
       "offset": [
-        68,
+        49,
         48
       ],
       "pivot": [
@@ -181,7 +181,11 @@
       ],
       "parent": "base",
       "z": 35,
-      "minLevel": 5
+      "minLevel": 5,
+      "visualDetails": {
+        "additionalOrbCoils": 2,
+        "rearElectrodes": 2
+      }
     }
   ],
   "animations": {

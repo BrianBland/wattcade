@@ -18,7 +18,9 @@ Effect strips are already emissive RGBA, not body parts needing duplicate glows.
 
 Only Mortar has aim.enabled=true: rotate head about [112,112], inherit transforms.
 Its child barrel recoils 8px along local +y; the muzzle anchor follows the barrel.
-Tesla and Prism remain fixed, including all their upgrades, when aiming changes.
+Tesla/Prism remain fixed. L5 Tesla adds blue-orb coils; Mortar adds hot indicators
+and vents (glowScale=1.8). Prism L1 omits the forward winding coil; L5 power coils
+sit large center-front/small rear-right. Aiming and accepted centering are preserved.
 Their animations.passive loops for 1600ms; animations.attack is a 640ms one-shot.
 Each state defines glowGain/glowStrength/effectOpacity keys in milliseconds,
 four VFX frames, frameDurationMs, frameSize, offset, parent and additive blending.

@@ -78,7 +78,7 @@
       "glow": "parts/base_glow.png",
       "offset": [
         54,
-        63
+        62
       ],
       "pivot": [
         112,
@@ -88,15 +88,19 @@
       "z": 10,
       "minLevel": 1,
       "outlineCenter": [
-        111.80652173913043,
-        112.42643391521197
+        111.69281045751634,
+        111.57544757033247
       ],
       "outlineBounds": [
-        63.76086956521739,
-        68.60598503740648,
-        159.8521739130435,
-        156.24688279301745
-      ]
+        63.54248366013073,
+        67.61125319693093,
+        159.84313725490196,
+        155.539641943734
+      ],
+      "visualDetails": {
+        "forwardWindingCoil": false,
+        "frontConnector": "short steel/brass coupling"
+      }
     },
     {
       "name": "head",
@@ -172,8 +176,8 @@
       "file": "parts/upgrade_l5.png",
       "glow": "parts/upgrade_l5_glow.png",
       "offset": [
-        55,
-        99
+        96,
+        66
       ],
       "pivot": [
         112,
@@ -181,7 +185,21 @@
       ],
       "parent": "base",
       "z": 35,
-      "minLevel": 5
+      "minLevel": 5,
+      "visualDetails": {
+        "powerCoils": 2,
+        "placement": "large center-front, small rear-right",
+        "coilMounts": [
+          [
+            112,
+            160
+          ],
+          [
+            137,
+            98
+          ]
+        ]
+      }
     }
   ],
   "animations": {

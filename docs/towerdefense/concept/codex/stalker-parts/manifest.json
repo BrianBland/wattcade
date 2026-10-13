@@ -1,0 +1,759 @@
+{
+  "size": [
+    640,
+    640
+  ],
+  "centerX": 320,
+  "lengthPx": 480,
+  "light": "top",
+  "paddingPx": 6,
+  "root": "thorax_2",
+  "parts": [
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        264,
+        77
+      ],
+      "pivot": [
+        319.5,
+        208.5
+      ],
+      "parent": "thorax_1",
+      "z": 60,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "thorax_1",
+      "file": "parts/thorax_1.png",
+      "glow": "parts/thorax_1_glow.png",
+      "offset": [
+        265,
+        188
+      ],
+      "pivot": [
+        319.5,
+        269.5
+      ],
+      "parent": "thorax_2",
+      "z": 54,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "thorax_2",
+      "file": "parts/thorax_2.png",
+      "glow": "parts/thorax_2_glow.png",
+      "offset": [
+        271,
+        255
+      ],
+      "pivot": [
+        320.0,
+        300.903
+      ],
+      "parent": null,
+      "z": 53,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "abdomen",
+      "file": "parts/abdomen.png",
+      "glow": "parts/abdomen_glow.png",
+      "offset": [
+        272,
+        298
+      ],
+      "pivot": [
+        319.5,
+        326.5
+      ],
+      "parent": "thorax_2",
+      "z": 52,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "socket_dorsal_r",
+      "file": "parts/socket_dorsal_r.png",
+      "glow": "parts/socket_dorsal_r_glow.png",
+      "offset": [
+        337,
+        139
+      ],
+      "pivot": [
+        354.5,
+        173.5
+      ],
+      "parent": "head",
+      "z": 8,
+      "group": "tube",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        385.5,
+        152.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tube_dorsal_r",
+      "file": "parts/tube_dorsal_r.png",
+      "glow": "parts/tube_dorsal_r_glow.png",
+      "offset": [
+        365,
+        109
+      ],
+      "pivot": [
+        385.5,
+        152.5
+      ],
+      "parent": "socket_dorsal_r",
+      "z": 13,
+      "group": "tube",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        409.806,
+        121.29
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "coxa_front_r",
+      "file": "parts/coxa_front_r.png",
+      "glow": "parts/coxa_front_r_glow.png",
+      "offset": [
+        334,
+        169
+      ],
+      "pivot": [
+        356.5,
+        199.5
+      ],
+      "parent": "thorax_1",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        376.5,
+        200.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "femur_front_r",
+      "file": "parts/femur_front_r.png",
+      "glow": "parts/femur_front_r_glow.png",
+      "offset": [
+        357,
+        157
+      ],
+      "pivot": [
+        376.5,
+        200.5
+      ],
+      "parent": "coxa_front_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        411.5,
+        190.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "claw_front_r",
+      "file": "parts/claw_front_r.png",
+      "glow": "parts/claw_front_r_glow.png",
+      "offset": [
+        389,
+        157
+      ],
+      "pivot": [
+        411.5,
+        190.5
+      ],
+      "parent": "femur_front_r",
+      "z": 20,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        444.903,
+        240.0
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "coxa_mid_r",
+      "file": "parts/coxa_mid_r.png",
+      "glow": "parts/coxa_mid_r_glow.png",
+      "offset": [
+        334,
+        192
+      ],
+      "pivot": [
+        352.5,
+        222.5
+      ],
+      "parent": "thorax_1",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        385.5,
+        232.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "femur_mid_r",
+      "file": "parts/femur_mid_r.png",
+      "glow": "parts/femur_mid_r_glow.png",
+      "offset": [
+        366,
+        206
+      ],
+      "pivot": [
+        385.5,
+        232.5
+      ],
+      "parent": "coxa_mid_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        418.5,
+        279.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "claw_mid_r",
+      "file": "parts/claw_mid_r.png",
+      "glow": "parts/claw_mid_r_glow.png",
+      "offset": [
+        391,
+        251
+      ],
+      "pivot": [
+        418.5,
+        279.5
+      ],
+      "parent": "femur_mid_r",
+      "z": 20,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        420.129,
+        382.452
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "coxa_rear_r",
+      "file": "parts/coxa_rear_r.png",
+      "glow": "parts/coxa_rear_r_glow.png",
+      "offset": [
+        320,
+        274
+      ],
+      "pivot": [
+        340.5,
+        297.5
+      ],
+      "parent": "thorax_2",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        365.5,
+        329.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "femur_rear_r",
+      "file": "parts/femur_rear_r.png",
+      "glow": "parts/femur_rear_r_glow.png",
+      "offset": [
+        323,
+        301
+      ],
+      "pivot": [
+        365.5,
+        329.5
+      ],
+      "parent": "coxa_rear_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        360.5,
+        411.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "claw_rear_r",
+      "file": "parts/claw_rear_r.png",
+      "glow": "parts/claw_rear_r_glow.png",
+      "offset": [
+        340,
+        390
+      ],
+      "pivot": [
+        360.5,
+        411.5
+      ],
+      "parent": "femur_rear_r",
+      "z": 20,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        366.452,
+        457.806
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_01",
+      "file": "parts/tail_01.png",
+      "glow": "parts/tail_01_glow.png",
+      "offset": [
+        296,
+        339
+      ],
+      "pivot": [
+        318.5,
+        359.5
+      ],
+      "parent": "abdomen",
+      "z": 48,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        317.5,
+        384.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_02",
+      "file": "parts/tail_02.png",
+      "glow": "parts/tail_02_glow.png",
+      "offset": [
+        296,
+        369
+      ],
+      "pivot": [
+        317.5,
+        384.5
+      ],
+      "parent": "tail_01",
+      "z": 47,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        318.5,
+        410.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_03",
+      "file": "parts/tail_03.png",
+      "glow": "parts/tail_03_glow.png",
+      "offset": [
+        301,
+        395
+      ],
+      "pivot": [
+        318.5,
+        410.5
+      ],
+      "parent": "tail_02",
+      "z": 46,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        317.5,
+        435.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_04",
+      "file": "parts/tail_04.png",
+      "glow": "parts/tail_04_glow.png",
+      "offset": [
+        295,
+        420
+      ],
+      "pivot": [
+        317.5,
+        435.5
+      ],
+      "parent": "tail_03",
+      "z": 45,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        319.5,
+        460.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_05",
+      "file": "parts/tail_05.png",
+      "glow": "parts/tail_05_glow.png",
+      "offset": [
+        294,
+        445
+      ],
+      "pivot": [
+        319.5,
+        460.5
+      ],
+      "parent": "tail_04",
+      "z": 44,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        323.5,
+        485.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_06",
+      "file": "parts/tail_06.png",
+      "glow": "parts/tail_06_glow.png",
+      "offset": [
+        295,
+        469
+      ],
+      "pivot": [
+        323.5,
+        485.5
+      ],
+      "parent": "tail_05",
+      "z": 43,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        330.5,
+        509.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_07",
+      "file": "parts/tail_07.png",
+      "glow": "parts/tail_07_glow.png",
+      "offset": [
+        299,
+        493
+      ],
+      "pivot": [
+        330.5,
+        509.5
+      ],
+      "parent": "tail_06",
+      "z": 42,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        337.5,
+        535.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "tail_tip",
+      "file": "parts/tail_tip.png",
+      "glow": "parts/tail_tip_glow.png",
+      "offset": [
+        313,
+        521
+      ],
+      "pivot": [
+        337.5,
+        535.5
+      ],
+      "parent": "tail_07",
+      "z": 41,
+      "group": "tail",
+      "mirror": false,
+      "probeRadiusPx": 1.0,
+      "jointRadiusPx": 3.0,
+      "end": [
+        348.903,
+        556.903
+      ],
+      "hasEmission": true
+    }
+  ],
+  "neutralGlow": true,
+  "colour": "shifting",
+  "gamePreviewLengthPx": 105,
+  "referenceTransform": [
+    [
+      1.032258064516129,
+      0.0,
+      124.90322580645162
+    ],
+    [
+      0.0,
+      1.032258064516129,
+      71.74193548387098
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "visibleSource": "sheet-raw.png: original roster pixels",
+  "description": "Lean hunter with two-section dorsal tubes, three distinct three-section limb pairs and an eight-link bladed tail. Glow masks are neutral white.",
+  "tailSegmentCount": 8,
+  "hiddenUnderlaps": [
+    {
+      "part": "thorax_1",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "head",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "abdomen",
+      "addedOpaquePixels": 71,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "socket_dorsal_r",
+      "addedOpaquePixels": 71,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.74
+    },
+    {
+      "part": "tube_dorsal_r",
+      "addedOpaquePixels": 49,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 7.12
+    },
+    {
+      "part": "coxa_front_r",
+      "addedOpaquePixels": 41,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 3.604
+    },
+    {
+      "part": "femur_front_r",
+      "addedOpaquePixels": 125,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.552
+    },
+    {
+      "part": "claw_front_r",
+      "addedOpaquePixels": 43,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.749
+    },
+    {
+      "part": "coxa_mid_r",
+      "addedOpaquePixels": 36,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.207
+    },
+    {
+      "part": "femur_mid_r",
+      "addedOpaquePixels": 18,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 10.337
+    },
+    {
+      "part": "claw_mid_r",
+      "addedOpaquePixels": 50,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 18.534
+    },
+    {
+      "part": "coxa_rear_r",
+      "addedOpaquePixels": 42,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 7.309
+    },
+    {
+      "part": "femur_rear_r",
+      "addedOpaquePixels": 52,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 14.787
+    },
+    {
+      "part": "claw_rear_r",
+      "addedOpaquePixels": 38,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 8.404
+    },
+    {
+      "part": "tail_01",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.255
+    },
+    {
+      "part": "tail_02",
+      "addedOpaquePixels": 14,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.505
+    },
+    {
+      "part": "tail_03",
+      "addedOpaquePixels": 12,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.255
+    },
+    {
+      "part": "tail_04",
+      "addedOpaquePixels": 14,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.27
+    },
+    {
+      "part": "tail_05",
+      "addedOpaquePixels": 14,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.329
+    },
+    {
+      "part": "tail_06",
+      "addedOpaquePixels": 13,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.25
+    },
+    {
+      "part": "tail_07",
+      "addedOpaquePixels": 17,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.731
+    },
+    {
+      "part": "tail_tip",
+      "addedOpaquePixels": 4,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.063
+    }
+  ],
+  "pivotAdjustments": [
+    {
+      "part": "head",
+      "before": [
+        320.0,
+        206.968
+      ],
+      "after": [
+        319.5,
+        208.5
+      ]
+    },
+    {
+      "part": "coxa_front_r",
+      "before": [
+        355.097,
+        196.645
+      ],
+      "after": [
+        356.5,
+        199.5
+      ]
+    },
+    {
+      "part": "femur_front_r",
+      "before": [
+        380.903,
+        196.645
+      ],
+      "after": [
+        376.5,
+        200.5
+      ]
+    },
+    {
+      "part": "tail_tip",
+      "before": [
+        338.841,
+        533.683
+      ],
+      "after": [
+        337.5,
+        535.5
+      ]
+    }
+  ],
+  "mirror": {
+    "suffix": "_r",
+    "centerX": 320,
+    "rule": "Reflect right geometry and negate local rotation. Explicit wing_l/wing_r are independent."
+  },
+  "glowBlend": "additive RGB weighted by alpha; Stalker glow RGB is neutral white",
+  "lightingNote": "Original baked highlights retained; strict 12 oclock relighting remains approximate."
+}

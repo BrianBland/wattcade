@@ -1,0 +1,1886 @@
+{
+  "partCount": 15,
+  "glowCount": 15,
+  "assembledInstanceCount": 23,
+  "tailSegmentCount": 0,
+  "greenFringePixels": 0,
+  "clippedPoses": [],
+  "opaqueLengthPx": 482,
+  "outsideParentUnderlapPixels": 0,
+  "gapJoints": [],
+  "poses": {
+    "APPENDAGES +20\u00b0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2281,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4636,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5948,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 5169,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1488,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1432,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1083,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1599,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1116,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1822,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 648,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 678,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 592,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1452,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1083,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1879,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1116,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1620,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 648,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 679,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 592,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "APPENDAGES \u221220\u00b0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2281,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4636,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5948,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 5169,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1488,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 827,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 819,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1738,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1157,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1577,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 916,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 833,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 662,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 826,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 819,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 2071,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1157,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1372,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 916,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 820,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 662,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL +6\u00b0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2232,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4493,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5906,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5491,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4723,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1334,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1009,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1078,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1625,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1112,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1677,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 843,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 831,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 625,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1076,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1929,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1112,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1470,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 831,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 729,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 628,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "BODY / TAIL \u22126\u00b0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2250,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4481,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5880,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5571,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4740,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1342,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1008,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1076,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1632,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1111,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1674,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 829,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 828,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 621,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1008,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1074,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1935,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1112,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1472,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 842,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 730,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2281,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4636,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5948,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 5169,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1488,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1580,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1123,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1594,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1111,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1848,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 624,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 649,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 578,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1600,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1123,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1860,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1111,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1645,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 624,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 649,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 578,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+0": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2281,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4636,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5948,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 5169,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1488,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 802,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 791,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1794,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1196,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1562,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 930,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 862,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 675,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 801,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 791,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 2134,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1196,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1357,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 930,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 874,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 675,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2223,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4457,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5912,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5483,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4614,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1301,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1013,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1065,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1632,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1108,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1674,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 842,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 828,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1005,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1080,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1932,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1111,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1473,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 840,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 730,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 622,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+0, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2247,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4436,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5881,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5605,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1317,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1012,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1070,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1627,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1109,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1670,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 844,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 828,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1010,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1077,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1935,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1108,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1471,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 845,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 731,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2223,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4457,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5912,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5483,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4614,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1301,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1584,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1128,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1595,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1113,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1842,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 621,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 653,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 582,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1596,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1127,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1856,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1120,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1654,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 621,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 647,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 581,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2247,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4436,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5881,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5605,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1317,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 809,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 790,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1788,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1195,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1558,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 928,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 858,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 676,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 796,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 788,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 2132,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1193,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1357,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 931,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 870,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 676,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=+25, body/tail=-8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2247,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4436,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5881,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5605,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4623,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1317,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 1583,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 1132,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1587,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1118,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1850,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 624,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 650,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 582,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 1598,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 1122,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 1858,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1113,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1649,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 620,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 646,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 587,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ],
+    "limit appendages=-25, body/tail=+8": [
+      {
+        "joint": "head",
+        "parent": "carapace_1",
+        "overlapPixels": 2223,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_1",
+        "parent": "carapace_2",
+        "overlapPixels": 4457,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_2",
+        "parent": "carapace_3",
+        "overlapPixels": 5912,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_4",
+        "parent": "carapace_3",
+        "overlapPixels": 5483,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "carapace_5",
+        "parent": "carapace_4",
+        "overlapPixels": 4614,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "tail_plate",
+        "parent": "carapace_5",
+        "overlapPixels": 1301,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_r",
+        "parent": "carapace_1",
+        "overlapPixels": 796,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_r",
+        "parent": "socket_front_r",
+        "overlapPixels": 789,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_r",
+        "parent": "carapace_2",
+        "overlapPixels": 1787,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_r",
+        "parent": "socket_mid_front_r",
+        "overlapPixels": 1188,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_r",
+        "parent": "carapace_4",
+        "overlapPixels": 1557,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_r",
+        "parent": "socket_mid_rear_r",
+        "overlapPixels": 932,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_r",
+        "parent": "carapace_5",
+        "overlapPixels": 857,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_r",
+        "parent": "socket_rear_r",
+        "overlapPixels": 678,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_front_l",
+        "parent": "carapace_1",
+        "overlapPixels": 800,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_front_l",
+        "parent": "socket_front_l",
+        "overlapPixels": 788,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_front_l",
+        "parent": "carapace_2",
+        "overlapPixels": 2136,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_front_l",
+        "parent": "socket_mid_front_l",
+        "overlapPixels": 1196,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_mid_rear_l",
+        "parent": "carapace_4",
+        "overlapPixels": 1359,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_mid_rear_l",
+        "parent": "socket_mid_rear_l",
+        "overlapPixels": 930,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "socket_rear_l",
+        "parent": "carapace_5",
+        "overlapPixels": 874,
+        "pivotCoverage": 1.0,
+        "gap": false
+      },
+      {
+        "joint": "foot_rear_l",
+        "parent": "socket_rear_l",
+        "overlapPixels": 679,
+        "pivotCoverage": 1.0,
+        "gap": false
+      }
+    ]
+  },
+  "method": "Opaque parent/child contact plus an anatomy-sized pivot probe; thin tails use a 1px probe."
+}

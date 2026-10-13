@@ -1,0 +1,474 @@
+{
+  "size": [
+    640,
+    640
+  ],
+  "centerX": 320,
+  "lengthPx": 480,
+  "light": "top",
+  "paddingPx": 6,
+  "root": "carapace_3",
+  "parts": [
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        251,
+        71
+      ],
+      "pivot": [
+        319.5,
+        173.5
+      ],
+      "parent": "carapace_1",
+      "z": 60,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "carapace_1",
+      "file": "parts/carapace_1.png",
+      "glow": "parts/carapace_1_glow.png",
+      "offset": [
+        207,
+        148
+      ],
+      "pivot": [
+        319.5,
+        235.5
+      ],
+      "parent": "carapace_2",
+      "z": 55,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "carapace_2",
+      "file": "parts/carapace_2.png",
+      "glow": "parts/carapace_2_glow.png",
+      "offset": [
+        191,
+        207
+      ],
+      "pivot": [
+        319.5,
+        308.5
+      ],
+      "parent": "carapace_3",
+      "z": 54,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "carapace_3",
+      "file": "parts/carapace_3.png",
+      "glow": "parts/carapace_3_glow.png",
+      "offset": [
+        172,
+        272
+      ],
+      "pivot": [
+        320.0,
+        354.133
+      ],
+      "parent": null,
+      "z": 53,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "carapace_4",
+      "file": "parts/carapace_4.png",
+      "glow": "parts/carapace_4_glow.png",
+      "offset": [
+        199,
+        348
+      ],
+      "pivot": [
+        319.5,
+        394.5
+      ],
+      "parent": "carapace_3",
+      "z": 52,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "carapace_5",
+      "file": "parts/carapace_5.png",
+      "glow": "parts/carapace_5_glow.png",
+      "offset": [
+        205,
+        420
+      ],
+      "pivot": [
+        319.5,
+        467.5
+      ],
+      "parent": "carapace_4",
+      "z": 51,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "tail_plate",
+      "file": "parts/tail_plate.png",
+      "glow": "parts/tail_plate_glow.png",
+      "offset": [
+        261,
+        489
+      ],
+      "pivot": [
+        319.5,
+        519.5
+      ],
+      "parent": "carapace_5",
+      "z": 50,
+      "group": "body",
+      "mirror": true,
+      "probeRadiusPx": 2.0,
+      "jointRadiusPx": 7.0,
+      "hasEmission": true
+    },
+    {
+      "name": "socket_front_r",
+      "file": "parts/socket_front_r.png",
+      "glow": "parts/socket_front_r_glow.png",
+      "offset": [
+        353,
+        161
+      ],
+      "pivot": [
+        373.5,
+        189.5
+      ],
+      "parent": "carapace_1",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        410.5,
+        187.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "foot_front_r",
+      "file": "parts/foot_front_r.png",
+      "glow": "parts/foot_front_r_glow.png",
+      "offset": [
+        390,
+        124
+      ],
+      "pivot": [
+        410.5,
+        187.5
+      ],
+      "parent": "socket_front_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        432.0,
+        149.333
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "socket_mid_front_r",
+      "file": "parts/socket_mid_front_r.png",
+      "glow": "parts/socket_mid_front_r_glow.png",
+      "offset": [
+        391,
+        220
+      ],
+      "pivot": [
+        411.5,
+        273.5
+      ],
+      "parent": "carapace_2",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        442.5,
+        262.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "foot_mid_front_r",
+      "file": "parts/foot_mid_front_r.png",
+      "glow": "parts/foot_mid_front_r_glow.png",
+      "offset": [
+        415,
+        220
+      ],
+      "pivot": [
+        442.5,
+        262.5
+      ],
+      "parent": "socket_mid_front_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        485.333,
+        284.8
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "socket_mid_rear_r",
+      "file": "parts/socket_mid_rear_r.png",
+      "glow": "parts/socket_mid_rear_r_glow.png",
+      "offset": [
+        387,
+        336
+      ],
+      "pivot": [
+        410.5,
+        380.5
+      ],
+      "parent": "carapace_4",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        447.5,
+        377.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "foot_mid_rear_r",
+      "file": "parts/foot_mid_rear_r.png",
+      "glow": "parts/foot_mid_rear_r_glow.png",
+      "offset": [
+        427,
+        337
+      ],
+      "pivot": [
+        447.5,
+        377.5
+      ],
+      "parent": "socket_mid_rear_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        475.733,
+        411.733
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "socket_rear_r",
+      "file": "parts/socket_rear_r.png",
+      "glow": "parts/socket_rear_r_glow.png",
+      "offset": [
+        353,
+        443
+      ],
+      "pivot": [
+        375.5,
+        468.5
+      ],
+      "parent": "carapace_5",
+      "z": 10,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        421.5,
+        494.5
+      ],
+      "hasEmission": true
+    },
+    {
+      "name": "foot_rear_r",
+      "file": "parts/foot_rear_r.png",
+      "glow": "parts/foot_rear_r_glow.png",
+      "offset": [
+        399,
+        462
+      ],
+      "pivot": [
+        421.5,
+        494.5
+      ],
+      "parent": "socket_rear_r",
+      "z": 15,
+      "group": "limb",
+      "mirror": true,
+      "probeRadiusPx": 1.65,
+      "jointRadiusPx": 7.0,
+      "end": [
+        432.0,
+        529.067
+      ],
+      "hasEmission": true
+    }
+  ],
+  "neutralGlow": false,
+  "colour": "purple",
+  "gamePreviewLengthPx": 105,
+  "referenceTransform": [
+    [
+      1.0666666666666667,
+      0.0,
+      112.0
+    ],
+    [
+      0.0,
+      1.0666666666666667,
+      69.33333333333333
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "visibleSource": "sheet-raw.png: original roster pixels",
+  "description": "Domed siege shell with acid glands; four short two-section leg pairs and six flexing shell plates.",
+  "tailSegmentCount": 0,
+  "hiddenUnderlaps": [
+    {
+      "part": "carapace_2",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "carapace_1",
+      "addedOpaquePixels": 0,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "head",
+      "addedOpaquePixels": 37,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "carapace_4",
+      "addedOpaquePixels": 53,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "carapace_5",
+      "addedOpaquePixels": 34,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "tail_plate",
+      "addedOpaquePixels": 91,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 12.5
+    },
+    {
+      "part": "socket_front_r",
+      "addedOpaquePixels": 87,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.67
+    },
+    {
+      "part": "foot_front_r",
+      "addedOpaquePixels": 63,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 7.885
+    },
+    {
+      "part": "socket_mid_front_r",
+      "addedOpaquePixels": 74,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 5.921
+    },
+    {
+      "part": "foot_mid_front_r",
+      "addedOpaquePixels": 62,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 8.692
+    },
+    {
+      "part": "socket_mid_rear_r",
+      "addedOpaquePixels": 2,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.682
+    },
+    {
+      "part": "foot_mid_rear_r",
+      "addedOpaquePixels": 57,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 7.987
+    },
+    {
+      "part": "socket_rear_r",
+      "addedOpaquePixels": 82,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 9.511
+    },
+    {
+      "part": "foot_rear_r",
+      "addedOpaquePixels": 62,
+      "outsideParentPixels": 0,
+      "tongueDepthPx": 6.503
+    }
+  ],
+  "pivotAdjustments": [
+    {
+      "part": "socket_rear_r",
+      "before": [
+        375.467,
+        471.467
+      ],
+      "after": [
+        375.5,
+        468.5
+      ]
+    }
+  ],
+  "mirror": {
+    "suffix": "_r",
+    "centerX": 320,
+    "rule": "Reflect right geometry and negate local rotation. Explicit wing_l/wing_r are independent."
+  },
+  "glowBlend": "additive RGB weighted by alpha; Stalker glow RGB is neutral white",
+  "lightingNote": "Original baked highlights retained; strict 12 oclock relighting remains approximate."
+}

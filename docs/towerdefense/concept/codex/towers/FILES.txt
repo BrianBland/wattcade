@@ -4,6 +4,8 @@ animate.py
 animations/towers-rotation.gif
 animations/towers-upgrades.gif
 build.py
+compare.py
+comparison.png
 export/FILES.txt
 export/NOTES.md
 export/manifest.json
@@ -54,8 +56,13 @@ export/tesla/parts/upgrade_l5_glow.png
 generation.md
 glow-off.png
 raw/mortar-sheet-raw.png
+raw/mortar-sheet-v2-raw.png
 raw/prism-sheet-raw.png
+raw/prism-sheet-v2-raw.png
+raw/tesla-head-v2-raw.png
 raw/tesla-sheet-raw.png
+raw/tesla-sheet-v2-raw.png
 reference-towers.png
 requirements.txt
+revised-lineup.png
 validation.json

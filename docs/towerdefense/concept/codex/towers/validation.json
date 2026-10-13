@@ -1,5 +1,5 @@
 {
-  "posesChecked": 60,
+  "posesChecked": 480,
   "towers": {
     "tesla": {
       "parts": 7,
@@ -33,5 +33,5 @@
     }
   },
   "errors": [],
-  "productionBytes": 634753
+  "productionBytes": 819516
 }

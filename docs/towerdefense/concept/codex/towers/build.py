@@ -20,15 +20,15 @@ GROUND = (33, 29, 25, 255)
 RESAMPLE = Image.Resampling.LANCZOS
 # Source rectangles are explicit because generated sheets do not obey a perfect grid.
 BOXES = {
-    'tesla': [(15, 100, 420, 480), (470, 140, 770, 450),
-              (830, 125, 1090, 450), (1150, 150, 1500, 450),
-              (20, 550, 380, 840), (400, 660, 790, 900), (805, 580, 1120, 900)],
-    'mortar': [(10, 90, 425, 490), (450, 130, 790, 480),
-               (890, 110, 1040, 490), (1120, 165, 1530, 470),
-               (20, 570, 420, 810), (420, 640, 810, 910), (790, 590, 1130, 910)],
-    'prism': [(10, 100, 420, 480), (450, 145, 740, 430),
-              (760, 160, 1140, 430), (1140, 160, 1530, 400),
-              (10, 630, 415, 900), (420, 570, 780, 925)],
+    'tesla': [(375, 190, 785, 545), (865, 25, 1100, 480),
+              (1185, 125, 1530, 545), (5, 570, 425, 995),
+              (420, 625, 905, 985), (905, 560, 1120, 1010)],
+    'mortar': [(10, 65, 500, 525), (510, 100, 875, 490),
+               (910, 20, 1170, 525), (1210, 80, 1510, 510),
+               (30, 595, 415, 930), (425, 565, 835, 945), (880, 515, 1250, 985)],
+    'prism': [(0, 65, 490, 525), (505, 15, 735, 515),
+              (770, 140, 1110, 485), (1155, 120, 1530, 485),
+              (10, 530, 485, 985), (510, 515, 905, 985)],
 }
 
 
@@ -68,14 +68,22 @@ def mounted(source, dimensions, center=CENTER):
     return canvas
 
 
-def pair(source, level):
+def pair(source, level, tower):
     # Keep each pair on one layer; both components inherit the same parent.
     layouts = {
-        2: ((18, 40), [(42, 84), (118, 84)]),
-        3: ((22, 28), [(53, 48), (107, 48)]),
-        4: ((28, 30), [(53, 117), (107, 117)]),
-        5: ((18, 48), [(25, 79), (135, 79)]),
+        2: ((25, 54), [(44, 82), (116, 82)]),
+        3: ((28, 43), [(47, 111), (113, 111)]),
+        4: ((33, 47), [(30, 96), (130, 96)]),
+        5: ((19, 48), [(42, 42), (118, 42)]),
     }
+    if tower == 'prism':
+        layouts[2] = ((26, 60), [(43, 83), (117, 83)])
+        layouts[3] = ((21, 38), [(57, 114), (103, 114)])
+        layouts[5] = ((26, 42), [(33, 110), (127, 110)])
+    elif tower == 'mortar':
+        layouts[2] = ((20, 58), [(43, 80), (117, 80)])
+        layouts[3] = ((23, 32), [(56, 115), (104, 115)])
+        layouts[5] = ((26, 58), [(31, 80), (129, 80)])
     dimensions, centers = layouts[level]
     canvas = Image.new('RGBA', (SIZE, SIZE))
     mid = source.width // 2
@@ -121,37 +129,43 @@ def save_part(output, tower, name, image, parent, z, level=1):
 
 
 def build(output):
-    sheets = {t: Image.open(HERE / 'raw' / f'{t}-sheet-raw.png') for t in BOXES}
+    sheets = {t: Image.open(HERE / 'raw' / f'{t}-sheet-v2-raw.png') for t in BOXES}
     sources = {t: [key(sheet.crop(box)) for box in BOXES[t]] for t, sheet in sheets.items()}
-    pad = save_part(output, '', 'pad', mounted(sources['tesla'][0], (136, 136)), None, 0)
+    pad_source = Image.open(HERE / 'raw' / 'tesla-sheet-raw.png').crop((15, 100, 420, 480))
+    pad = save_part(output, '', 'pad', mounted(key(pad_source), (136, 136)), None, 0)
     pad['file'] = '../parts/pad.png'
     pad['glow'] = '../parts/pad_glow.png'
     for tower, parts in sources.items():
         if tower == 'tesla':
-            base, head, upgrades = parts[1], parts[2], parts[3:]
+            base, upgrades = parts[0], parts[2:]
+            # A second reference-guided generation restores the short, wide coil.
+            head = key(Image.open(HERE / 'raw' / 'tesla-head-v2-raw.png').crop((340, 190, 920, 1125)))
         elif tower == 'mortar':
             base, head, upgrades = parts[0], parts[1], parts[3:]
         else:
             base, head, upgrades = parts[0], parts[1], parts[2:]
         entries = [dict(pad)]
-        entries.append(save_part(output, tower, 'base', mounted(base, (84, 84)), 'pad', 10))
-        # The Tesla contact sticks above its sphere; locate the actual coil center.
-        head_canvas = mounted(head, (64, 64), (80, 77) if tower == 'tesla' else CENTER)
+        entries.append(save_part(output, tower, 'base', mounted(base, (106, 104), (80, 86)), 'pad', 10))
+        dimensions, center = {'tesla': ((64, 96), (80, 69)),
+                              'mortar': ((82, 80), (80, 88)),
+                              'prism': ((50, 108), (80, 66))}[tower]
+        head_canvas = mounted(head, dimensions, center)
         entries.append(save_part(output, tower, 'head', head_canvas, 'base', 40))
         for level, source in enumerate(upgrades, 2):
-            parent = 'base' if level in (2, 4) else 'head'
-            entries.append(save_part(output, tower, f'upgrade_l{level}', pair(source, level), parent,
-                                     {2: 20, 3: 30, 4: 25, 5: 35}[level], level))
-        muzzle = [80, 51 if tower == 'tesla' else 56]
+            parent = 'base' if level in (2, 4) or tower == 'prism' and level == 5 else 'head'
+            entries.append(save_part(output, tower, f'upgrade_l{level}', pair(source, level, tower), parent,
+                                     {2: 30, 3: 45, 4: 20, 5: 35}[level], level))
+        muzzle = [80, 32 if tower == 'tesla' else 17]
         muzzle_parent = 'head'
         if tower == 'mortar':
-            barrel = save_part(output, tower, 'barrel', mounted(parts[2], (18, 62), (80, 65)), 'head', 50)
+            barrel = save_part(output, tower, 'barrel', mounted(parts[2], (46, 90), (80, 64)), 'head', 50)
             barrel['pivot'] = [80, 90]
             barrel['recoil'] = {'axis': [0, 1], 'distancePx': 8}
             entries.append(barrel)
-            muzzle, muzzle_parent = [80, 34], 'barrel'
+            muzzle, muzzle_parent = [80, 32], 'barrel'
         manifest = {
-            'size': [SIZE, SIZE], 'centerX': 80, 'root': 'pad', 'light': 'top',
+            'size': [SIZE, SIZE], 'centerX': 80, 'root': 'pad', 'light': 'reference-matched',
+            'view': 'steep overhead with visible machinery depth, matching the approved concept',
             'inGameDiameterPx': 68, 'padDiameterPx': 136, 'paddingPx': 4,
             'angleConvention': 'clockwise degrees in image coordinates; zero aims up',
             'coordinates': 'offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms',
@@ -256,7 +270,7 @@ def preview(output):
 def document(output):
     (output / 'NOTES.md').write_text('''# Tower puppets — issue 129
 
-Art generated with OpenAI image_gen.imagegen on three #00FF00 sheets.
+Art regenerated with OpenAI image_gen.imagegen on three revision-2 #00FF00 sheets.
 Pillow/NumPy slice, key, despill, resize, extract emission and render the PNG parts.
 Reference: td-towers-base.png on codex/towerdefense-concept-art (the file is absent
 from towerdefense-concept-art). Working files are based on towerdefense-concept-art.
@@ -270,7 +284,8 @@ zero points up. Coordinates are absolute in the 160x160 assembled rest frame.
 Inherit parent transforms before applying local rotations around pivot.
 Mortar barrel is a child of head; recoil translates it 8px along its local +y axis.
 The muzzle anchor follows the barrel; cable and range_center follow the static pad.
-L2 coils and L4 armour attach to base; L3 and L5 attach to the rotating head.
+L2 and L4 attach to base; L3 attaches to head. L5 Prism power coils attach to base;
+Tesla electrodes and Mortar heat exchangers attach to head.
 Every base PNG has a same-size _glow.png, including clear layers for unlit parts.
 Use additive RGB weighted by alpha for emission; base art is complete alone.
 All cutouts have at least 4px transparent padding. Pad diameter 136px is 2x 68px.
@@ -282,9 +297,11 @@ The full directory is below 1.5MB. No game code changed.
 
 Working branch: codex/td-towers-work, docs/towerdefense/concept/codex/towers/.
 Rebuild with python build.py --output PATH after installing requirements.txt there.
-Validation checks all five levels and rotations (60 poses including recoil).
-Limitations: generated metal bevels retain some depth cues; artistic fidelity and
-strict overhead lighting still need human art review. No baked ground shadows.
+Validation checks all five levels and full rotations (480 poses including recoil).
+Revision 2 restores the original tall copper solenoid and sphere, open iron Mortar
+barrel, prominent faceted crystal and densely bolted-on machinery. The view follows
+the concept's steep overhead angle and visible depth, per the user's art direction;
+it is not strict orthographic. Rig rotation remains a 2D cutout transform.
 ''')
     files = sorted(str(p.relative_to(output)) for p in output.rglob('*') if p.is_file())
     if 'FILES.txt' not in files:
@@ -317,7 +334,7 @@ def verify(output):
         counts = []
         for level in range(1, 6):
             counts.append(sum(p['minLevel'] <= level for p in parts.values()))
-            for angle in (0, 45, 180):
+            for angle in range(0, 360, 15):
                 for recoil in ((0, 1) if tower == 'mortar' else (0,)):
                     pose, anchors = render(directory, level, angle, recoil)
                     assert pose.getbbox() is not None

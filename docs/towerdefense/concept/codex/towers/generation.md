@@ -1,6 +1,6 @@
 # Generation provenance
 
-Tool: OpenAI `image_gen.imagegen`. All three outputs are 1536x1024 RGB PNGs.
+Tool: OpenAI `image_gen.imagegen`. Initial and revision sheets are 1536x1024 RGB PNGs.
 Reference: `reference-towers.png`, copied unchanged from commit
 `0f5539cd5dae0a49b02402ebe09e349369bf7c52` on `codex/towerdefense-concept-art`, path
 `docs/towerdefense/concept/codex/td-towers-base.png`, blob
@@ -38,3 +38,40 @@ L2 small side-crystal pair, L3 violet focusing-lens pair. Row 2: L4 hazard armou
 pair, L5 tall violet crystal pair, empty, empty. Crystals point up.
 Output: `exec-a4c7da7d-ae48-43fb-99fc-446c2541744b.png` retained as
 `raw/prism-sheet-raw.png`.
+
+## Revision 2 — closer to the original concept
+
+User rejected the first pass as 3/10 and requested a much closer match to the
+original concept. All revision prompts referred to the actual original image,
+prioritizing its steep overhead viewpoint and visible vertical machinery, the
+large main weapon silhouettes, grey riveted steel, copper, aged brass, rust and
+soot. This intentionally follows the concept's visible depth rather than the
+initial brief's strict orthographic view. Parts remain separately rigged on green.
+
+Tesla revision: large upright solenoid/sphere rather than flat spiral disc;
+static octagonal pedestal, auxiliary copper coils, angled ribbed blue capacitors,
+grey armour segments, thin bronze electrode rods. The first revision's main head
+was too long and included auxiliary machinery, so that head was superseded.
+Output `exec-82772aea-a0fa-4f3d-84e9-173d6c9ff99e.png` is retained as
+`raw/tesla-sheet-v2-raw.png`; its base and upgrade components are used.
+
+Mortar revision: heavy near-upright iron cylinder with a visible open dark bore,
+brass reinforcement bands, soot and restrained red vents. Octagonal chassis and
+drum, hydraulic side struts, red radiator pods, grey armour and copper heat
+exchangers were generated as separate parts, avoiding the first pass's long
+thin overhead gun shape. Output `exec-81859b93-ec90-4aa9-82ae-fb9c52a15a72.png`
+is retained as `raw/mortar-sheet-v2-raw.png`.
+
+Prism revision: prominent tall violet crystal in a small dark pronged mount;
+grey octagonal base with forward copper capacitor, two smaller side crystals,
+purple focusing capacitors, grey armour, copper solenoids. L5 adds power coils
+rather than another pair of tall crystals. Output
+`exec-8b666375-4828-4859-9191-6269aea83ee1.png` is retained as
+`raw/prism-sheet-v2-raw.png`.
+
+Tesla head refinement referenced both the original and rejected long-coil
+revision. Requested one isolated head only, with stout short copper winding body
+90–100% sphere width and about one sphere diameter in height, black frame bars,
+two winding bands and a vivid electrical blue sphere, without platform or extra
+coils. Output `exec-ce5a8373-43fe-4c9d-a81f-f2e7bf43a728.png` is a 1254x1254 RGB
+PNG retained as `raw/tesla-head-v2-raw.png`. Build uses its central 580x935 crop.

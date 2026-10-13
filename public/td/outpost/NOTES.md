@@ -20,7 +20,7 @@ under `docs/towerdefense/concept/codex/outpost/`.
 Coordinates are absolute assembled rest-frame pixels; inherit parent transforms.
 Positive aim angles are clockwise, zero points up. The 520px frame provides
 rotation padding around the 440px deck footprint (2×220px game size). Render
-exactly one weapon group. Every head pivots about [246,230], as does the flywheel;
+exactly one weapon group. Every head pivots about [260,260], as does the concentric flywheel;
 heads parent to the fixed deck, not the spinning wheel. The Gatling child inherits
 aim and rolls through its six axial sprite phases, not an in-plane aim rotation.
 Use `axialSpin.frames` with the shared part offset; each has a matching frame glow.

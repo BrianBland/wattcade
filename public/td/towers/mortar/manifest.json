@@ -5,7 +5,8 @@
   ],
   "centerX": 80,
   "root": "pad",
-  "light": "top",
+  "light": "reference-matched",
+  "view": "steep overhead with visible machinery depth, matching the approved concept",
   "inGameDiameterPx": 68,
   "padDiameterPx": 136,
   "paddingPx": 4,
@@ -18,7 +19,7 @@
       "parent": "barrel",
       "position": [
         80,
-        34
+        32
       ]
     },
     "cable": {
@@ -58,8 +59,8 @@
       "file": "parts/base.png",
       "glow": "parts/base_glow.png",
       "offset": [
-        34,
-        36
+        23,
+        34
       ],
       "pivot": [
         80,
@@ -74,7 +75,7 @@
       "file": "parts/head.png",
       "glow": "parts/head_glow.png",
       "offset": [
-        44,
+        36,
         44
       ],
       "pivot": [
@@ -90,15 +91,15 @@
       "file": "parts/upgrade_l2.png",
       "glow": "parts/upgrade_l2_glow.png",
       "offset": [
-        29,
-        62
+        30,
+        47
       ],
       "pivot": [
         80,
         80
       ],
       "parent": "base",
-      "z": 20,
+      "z": 30,
       "minLevel": 2
     },
     {
@@ -106,15 +107,15 @@
       "file": "parts/upgrade_l3.png",
       "glow": "parts/upgrade_l3_glow.png",
       "offset": [
-        38,
-        30
+        43,
+        95
       ],
       "pivot": [
         80,
         80
       ],
       "parent": "head",
-      "z": 30,
+      "z": 45,
       "minLevel": 3
     },
     {
@@ -122,15 +123,15 @@
       "file": "parts/upgrade_l4.png",
       "glow": "parts/upgrade_l4_glow.png",
       "offset": [
-        38,
-        98
+        12,
+        68
       ],
       "pivot": [
         80,
         80
       ],
       "parent": "base",
-      "z": 25,
+      "z": 20,
       "minLevel": 4
     },
     {
@@ -138,8 +139,8 @@
       "file": "parts/upgrade_l5.png",
       "glow": "parts/upgrade_l5_glow.png",
       "offset": [
-        12,
-        56
+        16,
+        47
       ],
       "pivot": [
         80,
@@ -154,8 +155,8 @@
       "file": "parts/barrel.png",
       "glow": "parts/barrel_glow.png",
       "offset": [
-        67,
-        30
+        54,
+        15
       ],
       "pivot": [
         80,

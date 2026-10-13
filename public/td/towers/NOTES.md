@@ -1,6 +1,6 @@
 # Tower puppets — issue 129
 
-Art generated with OpenAI image_gen.imagegen on three #00FF00 sheets.
+Art regenerated with OpenAI image_gen.imagegen on three revision-2 #00FF00 sheets.
 Pillow/NumPy slice, key, despill, resize, extract emission and render the PNG parts.
 Reference: td-towers-base.png on codex/towerdefense-concept-art (the file is absent
 from towerdefense-concept-art). Working files are based on towerdefense-concept-art.
@@ -14,7 +14,8 @@ zero points up. Coordinates are absolute in the 160x160 assembled rest frame.
 Inherit parent transforms before applying local rotations around pivot.
 Mortar barrel is a child of head; recoil translates it 8px along its local +y axis.
 The muzzle anchor follows the barrel; cable and range_center follow the static pad.
-L2 coils and L4 armour attach to base; L3 and L5 attach to the rotating head.
+L2 and L4 attach to base; L3 attaches to head. L5 Prism power coils attach to base;
+Tesla electrodes and Mortar heat exchangers attach to head.
 Every base PNG has a same-size _glow.png, including clear layers for unlit parts.
 Use additive RGB weighted by alpha for emission; base art is complete alone.
 All cutouts have at least 4px transparent padding. Pad diameter 136px is 2x 68px.
@@ -26,6 +27,8 @@ The full directory is below 1.5MB. No game code changed.
 
 Working branch: codex/td-towers-work, docs/towerdefense/concept/codex/towers/.
 Rebuild with python build.py --output PATH after installing requirements.txt there.
-Validation checks all five levels and rotations (60 poses including recoil).
-Limitations: generated metal bevels retain some depth cues; artistic fidelity and
-strict overhead lighting still need human art review. No baked ground shadows.
+Validation checks all five levels and full rotations (480 poses including recoil).
+Revision 2 restores the original tall copper solenoid and sphere, open iron Mortar
+barrel, prominent faceted crystal and densely bolted-on machinery. The view follows
+the concept's steep overhead angle and visible depth, per the user's art direction;
+it is not strict orthographic. Rig rotation remains a 2D cutout transform.

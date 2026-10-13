@@ -17,11 +17,15 @@ GROUND = (33, 29, 25, 255)
 
 def clean_resample(image):
     """Clamp matte-channel overshoots introduced by affine/Lanczos resampling."""
-    arr = np.array(image)
+    box = image.getbbox()
+    if box is None:
+        return image
+    arr = np.array(image.crop(box))
     maximum = np.maximum(arr[..., 0], arr[..., 2]).astype(int)
     arr[..., 1] = np.minimum(arr[..., 1].astype(int), np.minimum(maximum + 3, 255))
     arr[arr[..., 3] < 2] = 0
-    return Image.fromarray(arr, 'RGBA')
+    image.paste(Image.fromarray(arr, 'RGBA'), box[:2])
+    return image
 
 
 def translation(x, y):
@@ -72,25 +76,57 @@ class Puppet:
             visit(name, left)
         return cache
 
-    def layer(self, name, left, transforms, glow=False, supersample=1):
+    def tile(self, name, left, transforms, glow=False, supersample=1, padding=0):
         p = self.parts[name]
         transform = transforms[(name, left)]
         source_to_rest = (self.mirror if left else np.eye(3)) @ translation(*p['offset'])
         scale = np.diag([supersample, supersample, 1.])
-        inverse = np.linalg.inv(scale @ transform @ source_to_rest)
         source = self.glow[name] if glow else self.base[name]
-        return clean_resample(source.transform((self.size[0] * supersample, self.size[1] * supersample),
-                                              Image.Transform.AFFINE, tuple(inverse[:2].reshape(-1)),
-                                              Image.Resampling.BICUBIC))
+        matrix = scale @ translation(padding, padding) @ transform @ source_to_rest
+        corners = matrix @ np.array([[0., source.width, source.width, 0.],
+                                     [0., 0., source.height, source.height], [1., 1., 1., 1.]])
+        width, height = ((self.size[0] + 2 * padding) * supersample,
+                         (self.size[1] + 2 * padding) * supersample)
+        x0, y0 = np.maximum(np.floor(corners[:2].min(axis=1) - 2), 0).astype(int)
+        x1, y1 = np.minimum(np.ceil(corners[:2].max(axis=1) + 2), [width, height]).astype(int)
+        if x1 <= x0 or y1 <= y0:
+            return Image.new('RGBA', (1, 1)), (0, 0)
+        inverse = np.linalg.inv(translation(-x0, -y0) @ matrix)
+        tile = source.transform((x1 - x0, y1 - y0), Image.Transform.AFFINE,
+                                tuple(inverse[:2].reshape(-1)), Image.Resampling.BICUBIC)
+        return clean_resample(tile), (int(x0), int(y0))
 
-    def render(self, limb=0., body=0., glow=True):
+    def layer(self, name, left, transforms, glow=False, supersample=1, padding=0):
+        tile, at = self.tile(name, left, transforms, glow, supersample, padding)
+        layer = Image.new('RGBA', ((self.size[0] + 2 * padding) * supersample,
+                                   (self.size[1] + 2 * padding) * supersample))
+        layer.paste(tile, at)
+        return layer
+
+    def add_emission(self, out, tile, at):
+        """Add premultiplied emission and keep the material's coverage intact."""
+        x, y = at
+        box = (x, y, x + tile.width, y + tile.height)
+        base = np.array(out.crop(box)).astype(float)
+        emission = np.array(tile).astype(float)
+        opacity = base[..., 3]
+        weight = np.divide(emission[..., 3], opacity,
+                           out=np.zeros_like(opacity), where=opacity > 0)
+        base[..., :3] = np.clip(base[..., :3] + emission[..., :3] * weight[..., None], 0., 255.)
+        base[opacity == 0] = 0
+        out.paste(Image.fromarray(np.uint8(base), 'RGBA'), at)
+
+    def render(self, limb=0., body=0., glow=True, padding=0):
         transforms = self.matrices(limb, body)
-        out = Image.new('RGBA', (self.size[0] * 2, self.size[1] * 2))
+        output_size = (self.size[0] + 2 * padding, self.size[1] + 2 * padding)
+        out = Image.new('RGBA', (output_size[0] * 2, output_size[1] * 2))
         for name, left in sorted(self.nodes, key=lambda node: self.parts[node[0]]['z']):
-            out.alpha_composite(self.layer(name, left, transforms, supersample=2))
+            tile, at = self.tile(name, left, transforms, supersample=2, padding=padding)
+            out.alpha_composite(tile, at)
             if glow:
-                out.alpha_composite(self.layer(name, left, transforms, glow=True, supersample=2))
-        return clean_resample(out.resize(self.size, Image.Resampling.LANCZOS))
+                tile, at = self.tile(name, left, transforms, glow=True, supersample=2, padding=padding)
+                self.add_emission(out, tile, at)
+        return clean_resample(out.resize(output_size, Image.Resampling.LANCZOS))
 
     def joint_checks(self, limb, body):
         transforms = self.matrices(limb, body)
@@ -110,8 +146,8 @@ class Puppet:
             union = masks[(name, left)] | masks[parent]
             overlap = np.count_nonzero(masks[(name, left)] & masks[parent])
             solid = np.count_nonzero(union & disc) / max(np.count_nonzero(disc), 1)
-            results.append(dict(joint=name.replace('_r', '_l') if left else name,
-                                parent=part['parent'].replace('_r', '_l') if parent[1] else part['parent'],
+            results.append(dict(joint=name[:-2] + '_l' if left else name,
+                                parent=part['parent'][:-2] + '_l' if parent[1] else part['parent'],
                                 overlapPixels=int(overlap), pivotCoverage=round(solid, 4),
                                 gap=bool(overlap == 0 or solid < .95)))
         return results
@@ -155,6 +191,20 @@ def run():
     ground = Image.new('RGBA', puppet.size, GROUND)
     ground.alpha_composite(assembled)
     ground.convert('RGB').save(ROOT / 'assembled-ground.png')
+    reference = Image.open(ROOT / 'reference-warrior.png').convert('RGBA')
+    mapping = np.array(puppet.manifest['referenceTransform'])
+    inverse = np.linalg.inv(mapping)
+    reference_frame = reference.transform(puppet.size, Image.Transform.AFFINE,
+                                          tuple(inverse[:2].reshape(-1)), Image.Resampling.BICUBIC)
+    comparison = Image.new('RGBA', (1280, 704), (22, 22, 20, 255))
+    comparison.alpha_composite(reference_frame, (0, 32))
+    comparison.alpha_composite(ground, (640, 32))
+    labels = ImageDraw.Draw(comparison)
+    labels.text((24, 9), 'ORIGINAL ROSTER WARRIOR', font=font(18), fill=(240, 228, 215))
+    labels.text((664, 9), '20-PART PUPPET · ORIGINAL VISIBLE ART', font=font(18), fill=(240, 228, 215))
+    labels.text((24, 678), 'Same scale and head alignment; left limbs mirrored in puppet',
+                font=font(14), fill=(163, 149, 137))
+    comparison.convert('RGB').save(ROOT / 'comparison.png')
     puppet.render(glow=False).save(ROOT / 'assembled-base.png')
     # Exactly 105/480 scaling: the 480px axial length becomes 105px in a 140px frame.
     clean_resample(assembled.resize((140, 140), Image.Resampling.LANCZOS)).save(ROOT / 'game-scale.png')
@@ -163,7 +213,11 @@ def run():
         ('LIMBS +20°', 20., 0.), ('LIMBS −20°', -20., 0.),
         ('BODY LEFT (+6° / PLATE)', 0., 6.), ('BODY RIGHT (−6° / PLATE)', 0., -6.),
     ]
-    strip = Image.new('RGBA', (2560, 704), GROUND)
+    # Diagnostic poses get extra space for extended claws. The asset/manifest
+    # rest frame remains 640x640; no pose is shrunk to hide a clipped limb.
+    pose_padding = 128
+    pose_width = puppet.size[0] + 2 * pose_padding
+    strip = Image.new('RGBA', (pose_width * 4, pose_width + 64), GROUND)
     draw = ImageDraw.Draw(strip)
     checks = {}
     rendered_fringe = 0
@@ -181,13 +235,13 @@ def run():
 
     check_render(assembled, 'rest')
     for i, (label, limb, body) in enumerate(poses):
-        pose = puppet.render(limb, body)
+        pose = puppet.render(limb, body, padding=pose_padding)
         check_render(pose, label)
-        strip.alpha_composite(pose, (640 * i, 32))
-        draw.text((640 * i + 24, 10), label, font=font(18), fill=(240, 228, 215))
-        draw.text((640 * i + 24, 678), '640×640 frame · manifest-driven assembly', font=font(14), fill=(163, 149, 137))
+        strip.alpha_composite(pose, (pose_width * i, 32))
+        draw.text((pose_width * i + 24, 10), label, font=font(18), fill=(240, 228, 215))
+        draw.text((pose_width * i + 24, pose_width + 38), '640×640 rest frame + 128px diagnostic margin', font=font(14), fill=(163, 149, 137))
         if i:
-            draw.line((640 * i, 0, 640 * i, 704), fill=(86, 70, 57), width=1)
+            draw.line((pose_width * i, 0, pose_width * i, pose_width + 64), fill=(86, 70, 57), width=1)
         checks[label] = puppet.joint_checks(limb, body)
     strip.convert('RGB').save(ROOT / 'joints-test.png')
 
@@ -197,7 +251,7 @@ def run():
                        (25., 8.), (-25., -8.), (25., -8.), (-25., 8.)]:
         label = f'limit limb={limb:+g}, body={body:+g}'
         checks[label] = puppet.joint_checks(limb, body)
-        check_render(puppet.render(limb, body), label)
+        check_render(puppet.render(limb, body, padding=pose_padding), label)
     gaps = [{**joint, 'pose': pose} for pose, joints in checks.items() for joint in joints if joint['gap']]
     assert rendered_fringe == 0, f'{rendered_fringe} green fringe pixels in rendered poses'
     assert not clipped_poses, f'Clipped poses: {clipped_poses}'
@@ -206,6 +260,8 @@ def run():
                   paddingPx=puppet.manifest['paddingPx'], greenFringePixels=rendered_fringe,
                   clippedPoses=clipped_poses, nominalAxialLengthPx=480,
                   opaqueAxialLengthPx=opaque_length, gameNominalAxialLengthPx=105,
+                  visibleArtSource=puppet.manifest['visibleSource'],
+                  outsideParentUnderlapPixels=sum(p['outsideParentPixels'] for p in puppet.manifest['hiddenUnderlaps']),
                   method='Opaque parent/child overlap plus a 3px pivot-disc coverage probe; visual review still required.',
                   gapJoints=gaps, poses=checks)
     (ROOT / 'validation.json').write_text(json.dumps(report, indent=2) + '\n')

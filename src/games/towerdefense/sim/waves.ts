@@ -45,6 +45,18 @@ export function nextBrood(history: readonly Element[], rng: () => number, o: Bro
   return pool[Math.floor(rng() * pool.length) % pool.length];
 }
 
+export interface ClearHealOpts { heal: number; speedBonus: number; waveMinS: number; waveMaxS: number; leakZero: number }
+/**
+ * Base HP restored when a wave is cleared at `elapsedS` (before its timeout) after the base took `leakDmg` that wave.
+ * A fast clear adds up to `speedBonus` (full at waveMinS, none at waveMaxS); leaks scale the whole heal down, to 0 at `leakZero` damage.
+ */
+export function clearHealFor(elapsedS: number, leakDmg: number, o: ClearHealOpts): number {
+  const span = Math.max(1e-6, o.waveMaxS - o.waveMinS);
+  const fast = Math.max(0, Math.min(1, (o.waveMaxS - elapsedS) / span));
+  const clean = o.leakZero > 0 ? Math.max(0, 1 - leakDmg / o.leakZero) : leakDmg > 0 ? 0 : 1;
+  return Math.round((o.heal + o.speedBonus * fast) * clean);
+}
+
 /** Heavy kinds of each colour and their mix within that colour. The first kind can appear in any wave. Blue is swarm only. */
 const COLOUR_KINDS: Record<Exclude<Element, 'blue'>, Array<{ kind: Kind; w: number }>> = {
   red: [{ kind: 'brute', w: 0.65 }, { kind: 'charger', w: 0.35 }],

@@ -8,7 +8,7 @@ import {
   type Element, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
-import { nextBrood, planWave, type Spawn, type WavePlan } from './waves';
+import { clearHealFor, nextBrood, planWave, type Spawn, type WavePlan } from './waves';
 import type { Banner, BroodInfo, BroodView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
@@ -97,6 +97,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const broodCover = T.num('broodCoverWaves', 4, 0, 8, 1, 'all three brood colours in every N waves (< 3 = off)');
   const bossShieldS = T.num('bossShieldCycleS', 7, 2, 30, 1);
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
+  const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
+  const leakHealZero = T.num('leakHealZero', 15, 0, 200, 1, 'base damage taken in a wave that cancels its clear heal (scaled down linearly; 0 = any leak cancels it)');
   // dynamo: towers, overdrive, surges, economy
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
   const towerMaxBoost = T.num('towerMaxBoost', 1.6, 1, 3, 0.1, 'cap on tower speed from extra watts');
@@ -152,7 +154,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let spin: SpinView | null = null, overclock = 0;
   let scrap = 0, partsRun = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
-  let over = false, autoBuildT = 0;
+  let over = false, autoBuildT = 0, leakDmg = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
@@ -292,9 +294,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     save.totals.waves++;
     const p = Math.round(partsForWave(wave) * partsScale()); partsRun += p; bank += p;
     const bonus = gainScrap(10 + wave * 2 + (early ? 10 : 0));
-    if (early) baseHp = Math.min(baseMaxHp, baseHp + clearHeal());
-    ctx.emit({ type: 'waveCleared', data: { wave } });
-    say(`Wave ${wave} cleared`, `+${bonus} scrap · +${p} parts${early ? ` · base +${clearHeal()} HP` : ''}`, '#7dffb0');
+    const heal = early ? clearHealFor(waveElapsed, leakDmg, { heal: clearHeal(), speedBonus: speedHeal(), waveMinS: waveMin(), waveMaxS: waveMax(), leakZero: leakHealZero() }) : 0;
+    baseHp = Math.min(baseMaxHp, baseHp + heal);
+    ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg } });
+    say(`Wave ${wave} cleared`, `+${bonus} scrap · +${p} parts${heal ? ` · base +${heal} HP${leakDmg === 0 ? ' (clean)' : ''}` : ''}`, '#7dffb0');
+    leakDmg = 0;
     cue('waveClear');
     wave++;
     persist();
@@ -749,7 +753,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       }
       if (e.d >= e.len - BASE_R) {
         e.dead = true;
-        baseHp -= e.dmg; baseHurt = 0;
+        baseHp -= e.dmg; baseHurt = 0; leakDmg += e.dmg;
         addFx({ kind: 'baseHit', life: 0.5, dmg: e.dmg });
         cue(e.dmg >= 5 ? 'baseHitHeavy' : 'baseHit');
         ctx.emit({ type: 'baseHit', data: { dmg: e.dmg, kind: e.kind } });

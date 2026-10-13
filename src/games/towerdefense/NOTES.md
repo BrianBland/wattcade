@@ -18,7 +18,7 @@ CONTRACT-REQUESTs: none.
 - Power Surge every 3 waves from wave 3: 15 s at `min(5, powerZone)` >= 4 within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Short effort, so judged on power (SPEC short-effort rule); `targetZone.source: 'power'` (also on the Rail band). `hooks.storm`/`hooks.surge` set while active.
 - Spin-up (cadence drill) every 3 waves from wave 4: 15 s at >= 95 rpm (`cadence3s`) within 40 s -> Gatling Overclock (double fire rate) for 30 s + scrap. Sets `GameHud.targetCadence`. Fake scripts never reach 95 rpm, so tests drive it with manual cadence.
 - Reactor cores (lives, `cores` default 3; 0 = unlimited): losing the base clears the field and rebuilds it; the last core ends the run (`isOver`).
-- Waves end early (heal) when the field is clear after `waveMinS` (the drone stream stops once the wave has sent everything and `waveMinS` has passed), else at `waveMaxS` (60 s). Boss waves use the same brood rules until #125.
+- Waves end early when the field is clear after `waveMinS` (the drone stream stops once the wave has sent everything and `waveMinS` has passed), else at `waveMaxS` (60 s). An early clear heals `earlyClearHeal` + up to `speedClearHeal` for speed, scaled down by the base damage leaked that wave (0 at `leakHealZero`; `clearHealFor` in waves.ts). Boss waves use the same brood rules until #125.
 
 ## Controls (bike-first)
 - Z rail, paddles aim (A/B/Y unbound until #120) (auto-aim after 1.5 s idle, prefers the priority lane), D-pad left/right = priority lane, up = all lanes, down = workshop.
@@ -27,7 +27,7 @@ CONTRACT-REQUESTs: none.
 
 ## Progression / save
 - `{ v: 2, bestWave, bank, upgrades, runs, autoInvest, totals }`; parts bank on every wave clear and boss kill, persisted then, at game over and on dispose.
-- Balance (autopilot, FTP 200, fresh save, seed 1): 20 min z2 = 24 waves, ~23 trainer-mode changes (was 208), towers ~72% of kills (was 93%); sprints/intervals ~24-25 waves; 30 min z2 = 35 waves; idle with 1 core falls at ~4 min (wave 3).
+- Balance (autopilot, FTP 200, fresh save, seed 1): 20 min z2 = 24 waves, ~23 trainer-mode changes (was 208), towers ~72% of kills (was 93%); sprints/intervals ~24-25 waves; 30 min z2 = 35 waves; idle with 1 core falls at ~3:50 (wave 3, no heals).
 
 ## Testing
 `npx vitest run src/games/towerdefense`: scenarios (sprints, brood-z2 (mode changes <= waves, mixer modes = announced), idle, idle-cores, intervals, z2-economy, surge-ready), brood planner (runs, cover, share, determinism), lull/ramp, spin-up/surge targets, geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.

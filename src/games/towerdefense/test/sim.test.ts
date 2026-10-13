@@ -5,7 +5,7 @@ import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
 import { BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KIND_FROM, KINDS, PADS, TOWERS, laneAt, laneLength, towerBuildCost, type Element } from '../sim/defs';
-import { nextBrood, planWave, waveCounts, type WaveOpts } from '../sim/waves';
+import { clearHealFor, nextBrood, planWave, waveCounts, type WaveOpts } from '../sim/waves';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { readSave } from '../sim/sim';
 import type { TdSnapshot } from '../sim/types';
@@ -76,6 +76,29 @@ describe('brood planner', () => {
       if (brood === 'blue') { expect(heavies.length).toBe(Math.max(main, slots) - main); expect(swarm).toBeGreaterThanOrEqual(main * 5); }
       else expect(heavies.filter((s) => KINDS[s.kind].color === brood).length).toBe(main);
     }
+  });
+});
+
+describe('clear heal', () => {
+  const o = { heal: 14, speedBonus: 12, waveMinS: 25, waveMaxS: 60, leakZero: 15 };
+  it('a clean clear heals more the faster it is', () => {
+    expect(clearHealFor(25, 0, o)).toBe(26);
+    expect(clearHealFor(42.5, 0, o)).toBe(20);
+    expect(clearHealFor(59, 0, o)).toBe(14);
+  });
+  it('leaks scale the heal down to nothing', () => {
+    expect(clearHealFor(25, 1, o)).toBe(24);
+    expect(clearHealFor(25, 7.5, o)).toBe(13);
+    expect(clearHealFor(25, 15, o)).toBe(0);
+    expect(clearHealFor(25, 40, o)).toBe(0);
+    expect(clearHealFor(25, 1, { ...o, leakZero: 0 })).toBe(0); // 0 = any leak cancels it
+    expect(clearHealFor(25, 0, { ...o, leakZero: 0 })).toBe(26);
+  });
+  it('a rider who stops pedalling gets no heal from leaked waves', () => {
+    const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 } });
+    const cleared = r.events.filter((e) => e.type === 'waveCleared');
+    expect(cleared.length).toBeGreaterThan(0);
+    for (const e of cleared) { expect(Number(e.data?.leakDmg)).toBeGreaterThan(0); expect(e.data?.heal).toBe(0); }
   });
 });
 

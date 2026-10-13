@@ -1,5 +1,8 @@
 FILES.txt
 NOTES.md
+animate.py
+animations/towers-rotation.gif
+animations/towers-upgrades.gif
 build.py
 export/FILES.txt
 export/NOTES.md

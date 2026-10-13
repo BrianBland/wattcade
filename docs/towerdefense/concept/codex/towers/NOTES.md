@@ -18,6 +18,9 @@ requirements.txt: Pillow and NumPy; no runtime/game dependencies were added.
 validation.json: all 60 L1–L5 poses checked, padding, emission canvases, parent graph,
 cumulative visible upgrades, static anchors, 8px rotating Mortar recoil and size budget.
 glow-off.png: L5/45-degree assemblies with emissive overlays disabled.
+animate.py: manifest-only animated previews; run python animate.py to reproduce.
+animations/towers-rotation.gif: L1/L3/L5 heads rotate; Mortar barrels recoil.
+animations/towers-upgrades.gif: cumulative L1–L5 additions at 45 degrees, with recoil.
 export/: exact production folder; its NOTES.md and FILES.txt describe every export.
 export/preview.png: 36 requested poses and reduced 68px-footprint views on #211d19.
 

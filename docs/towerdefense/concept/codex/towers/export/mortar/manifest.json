@@ -181,7 +181,12 @@
       ],
       "parent": "head",
       "z": 35,
-      "minLevel": 5
+      "minLevel": 5,
+      "visualDetails": {
+        "redIndicators": 4,
+        "hotVentPods": 2
+      },
+      "glowScale": 1.8
     },
     {
       "name": "barrel",

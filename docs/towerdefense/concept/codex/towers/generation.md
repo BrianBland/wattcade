@@ -112,3 +112,34 @@ The exact source outline bounds are recorded in build.py; transformed bounds
 and outlineCenter are exported in the corresponding manifest parts. alignment.png
 shows the actual pad/base cutouts without heads, with a second row of outline
 bounds and centerlines for direct inspection.
+
+## Final-detail art revision
+
+User requested more Tesla L5 coils/arcing orbs, more Mortar L5 heat/glow, one
+fewer Prism L1 coil and Prism L5 power-coil placement closer to the concept.
+The accepted outline centering and fixed Tesla/Prism behavior remain intact.
+
+Tesla: requested two separate auxiliary copper solenoids with blue glass arc
+orbs, black steel caps, brass mounting feet, steep overhead view, no platforms
+or connecting cables, on 1536x1024 green. The output
+exec-fa37dd4e-58bd-4308-90fe-1389f662c584.png is retained as
+raw/tesla-l5-orb-coils-raw.png; its two assemblies augment the original L5
+electrode pair. Long exterior arcs are cropped to fit the actual rig envelope;
+the retained generated VFX supplies changing discharge paths.
+
+Mortar: requested a 4x2 green detail sheet, top row four red glass indicator
+domes on riveted diamond plates, lower row two red-orange hot cooling vent
+housings, remaining cells empty. Output
+exec-82d1dd1b-1ce1-44e4-8f37-48e0da902a7f.png is retained as
+raw/mortar-l5-hot-details-raw.png. Details join the existing L5 heat exchangers
+and share its matched emissive canvas; L5 emission is scaled by 1.8.
+
+Prism: local edit of the original v2 parts sheet, removing only the orange
+front winding coil in the first base cell and restoring a compact steel/brass
+coupling with underlying riveted plate. Requested preservation of all outlines,
+framing, side struts and other cells. Output
+exec-3b1ba102-6cfe-42f1-86ce-331b9dab8d7d.png is retained as
+raw/prism-base-v3-raw.png. Only its first base cell is used; all other parts
+still use their approved source. Existing L5 copper-coil cutouts move to one
+large center-front coil and one smaller rear-right coil behind the crystal.
+No replacement coil art was procedurally drawn.

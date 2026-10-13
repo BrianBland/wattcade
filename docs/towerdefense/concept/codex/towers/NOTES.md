@@ -4,8 +4,10 @@ Generating tool: OpenAI image_gen.imagegen, guided by reference-towers.png.
 All raw sheets use #00FF00; every pose/GIF is rendered from exported manifests.
 FILES.txt enumerates every actual file in this folder and export/.
 raw/*-sheet-raw.png: retained first-pass sheets; Tesla supplies the shared pad.
-raw/*-sheet-v2-raw.png: revised bases, heads, barrel and cumulative upgrade pieces.
+raw/*-sheet-v2-raw.png and raw/prism-base-v3-raw.png: revised body/upgrade art.
 raw/tesla-head-v2-raw.png: refined short, wide solenoid and sphere.
+raw/tesla-l5-orb-coils-raw.png: two additional copper coils with blue arcing orbs.
+raw/mortar-l5-hot-details-raw.png: four red indicators and two hot vent housings.
 raw/tesla-effects-raw.png and raw/prism-effects-raw.png: generated electrical and
 crystalline passive/attack VFX, four frames per state. No machinery in those sheets.
 reference-towers.png: original copied unchanged from codex/towerdefense-concept-art,
@@ -31,7 +33,8 @@ each pose includes a 68px-footprint reduction. FX strips live in export/*/effect
 
 Rebuild: python -B build.py --output /workspace/wattcade/public/td/towers
 Recheck: add --verify-only. The 224px rest frame has transparent headroom;
-136px pad remains 2x 68px. Pad/subplatform outlines and weapon mounts share [112,112].
+136px pad remains 2x 68px; outline/mount centering is preserved. Prism L1 loses
+one forward winding; L5 coils sit center-front and rear-right, matching concept.
 Only Mortar has aiming enabled; Tesla/Prism body parts and upgrades remain fixed.
 The concept's steep overhead depth is retained, rather than strict orthographic.
 No baked ground shadows. Passive loops 1600ms; attack is a 640ms one-shot.

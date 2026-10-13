@@ -113,7 +113,7 @@ def pair(source, level, tower):
     if tower == 'prism':
         layouts[2] = ((26, 60), [(76, 127), (148, 127)])
         layouts[3] = ((21, 38), [(88, 142), (136, 142)])
-        layouts[5] = ((26, 42), [(67, 142), (157, 142)])
+        layouts[5] = ((34, 60), [(112, 160), (137, 98)])
     elif tower == 'mortar':
         layouts[2] = ((20, 58), [(78, 130), (146, 130)])
         layouts[3] = ((23, 32), [(88, 143), (136, 143)])
@@ -123,11 +123,31 @@ def pair(source, level, tower):
     mid = source.width // 2
     for box, center in zip([(0, 0, mid, source.height), (mid, 0, source.width, source.height)], centers):
         component = trimmed(source.crop(box))
+        size = (18, 30) if tower == 'prism' and level == 5 and center == (137, 98) else dimensions
         if level == 4:
-            layer = mounted(component, dimensions, center)
+            layer = mounted(component, size, center)
         else:
-            layer, _ = socket_mounted(component, dimensions, (component.width / 2, component.height * 0.92), center)
+            layer, _ = socket_mounted(component, size, (component.width / 2, component.height * 0.92), center)
         canvas.alpha_composite(layer)
+    return canvas
+
+
+def l5_details(canvas, tower):
+    """Add generated reference-specific details to the existing cumulative L5 layer."""
+    if tower == 'tesla':
+        sheet = Image.open(HERE / 'raw' / 'tesla-l5-orb-coils-raw.png')
+        for box, socket, target in [((285, 175, 620, 910), (159, 625), (66, 128)),
+                                    ((930, 175, 1255, 910), (158, 625), (158, 128))]:
+            layer, _ = socket_mounted(key(sheet.crop(box)), (27, 76), socket, target)
+            canvas.alpha_composite(layer)
+    elif tower == 'mortar':
+        sheet = Image.open(HERE / 'raw' / 'mortar-l5-hot-details-raw.png')
+        for i, target in enumerate(((84, 82), (140, 82), (86, 141), (138, 141))):
+            piece = key(sheet.crop((i * 384, 55, (i + 1) * 384, 400)))
+            canvas.alpha_composite(mounted(piece, (14, 14), target))
+        for box, target in [((60, 430, 350, 925), (73, 116)),
+                             ((420, 430, 715, 925), (151, 116))]:
+            canvas.alpha_composite(mounted(key(sheet.crop(box)), (12, 22), target))
     return canvas
 
 
@@ -224,6 +244,8 @@ def build(output):
             base, head, upgrades = parts[0], parts[1], parts[3:]
         else:
             base, head, upgrades = parts[0], parts[1], parts[2:]
+            # Edited source removes only the forward winding coil at L1.
+            base = key(Image.open(HERE / 'raw' / 'prism-base-v3-raw.png').crop(BOXES['prism'][0]))
         entries = [dict(pad)]
         base_bounds = {'tesla': (45, 32, 355, 332), 'mortar': (41, 23, 449, 438),
                        'prism': (42, 38, 459, 420)}[tower]
@@ -231,6 +253,8 @@ def build(output):
         base_part = save_part(output, tower, 'base', base_canvas, 'pad', 10)
         base_part['outlineCenter'] = outline_center
         base_part['outlineBounds'] = bounds
+        if tower == 'prism':
+            base_part['visualDetails'] = {'forwardWindingCoil': False, 'frontConnector': 'short steel/brass coupling'}
         entries.append(base_part)
         dimensions, head_socket = {'tesla': ((64, 96), (290, 870)),
                                    'mortar': ((82, 80), (183, 150)),
@@ -242,8 +266,20 @@ def build(output):
         entries.append(head_part)
         for level, source in enumerate(upgrades, 2):
             parent = 'base' if tower != 'mortar' or level in (2, 4) else 'head'
-            entries.append(save_part(output, tower, f'upgrade_l{level}', pair(source, level, tower), parent,
-                                     {2: 30, 3: 45, 4: 20, 5: 35}[level], level))
+            layer = pair(source, level, tower)
+            if level == 5:
+                layer = l5_details(layer, tower)
+            part = save_part(output, tower, f'upgrade_l{level}', layer, parent,
+                             {2: 30, 3: 45, 4: 20, 5: 35}[level], level)
+            if level == 5 and tower == 'tesla':
+                part['visualDetails'] = {'additionalOrbCoils': 2, 'rearElectrodes': 2}
+            elif level == 5 and tower == 'mortar':
+                part['visualDetails'] = {'redIndicators': 4, 'hotVentPods': 2}
+                part['glowScale'] = 1.8
+            elif level == 5:
+                part['visualDetails'] = {'powerCoils': 2, 'placement': 'large center-front, small rear-right',
+                                         'coilMounts': [[112, 160], [137, 98]]}
+            entries.append(part)
         muzzle = [112, 44 if tower == 'tesla' else 18]
         muzzle_parent = 'head'
         if tower == 'mortar':
@@ -378,7 +414,7 @@ def render(directory, level, angle, recoil=0, glows=True, state=None, time_ms=0)
                 layer.paste(Image.fromarray(pixels), box[:2])
         canvas.alpha_composite(layer)
         if glows:
-            canvas = additive(canvas, glow, strength)
+            canvas = additive(canvas, glow, strength * p.get('glowScale', 1))
     if animation:
         effect = animation['effect']
         frame = min(effect['frames'] - 1, int(phase / animation['frameDurationMs']) % effect['frames'])
@@ -471,7 +507,9 @@ Effect strips are already emissive RGBA, not body parts needing duplicate glows.
 
 Only Mortar has aim.enabled=true: rotate head about [112,112], inherit transforms.
 Its child barrel recoils 8px along local +y; the muzzle anchor follows the barrel.
-Tesla and Prism remain fixed, including all their upgrades, when aiming changes.
+Tesla/Prism remain fixed. L5 Tesla adds blue-orb coils; Mortar adds hot indicators
+and vents (glowScale=1.8). Prism L1 omits the forward winding coil; L5 power coils
+sit large center-front/small rear-right. Aiming and accepted centering are preserved.
 Their animations.passive loops for 1600ms; animations.attack is a 640ms one-shot.
 Each state defines glowGain/glowStrength/effectOpacity keys in milliseconds,
 four VFX frames, frameDurationMs, frameSize, offset, parent and additive blending.
@@ -528,6 +566,24 @@ def verify(output):
         counts = []
         assert np.allclose(parts['base']['outlineCenter'], parts['pad']['outlineCenter'], atol=1), 'Subplatform is not concentric'
         report['platformPairsChecked'] += 1
+        l5 = parts['upgrade_l5']
+        image = Image.new('RGBA', (SIZE, SIZE))
+        image.alpha_composite(read_png(str(directory / l5['file'])), tuple(l5['offset']))
+        if tower == 'tesla':
+            assert l5['visualDetails']['additionalOrbCoils'] == 2
+            for box in ((50, 50, 82, 105), (142, 50, 174, 105)):
+                pixels = np.asarray(image.crop(box)).astype(int)
+                r, g, b, a = pixels.transpose(2, 0, 1)
+                assert np.count_nonzero((a > 100) & (b > 130) & (b > r * 1.3) & (b > g * 1.08)) > 15, 'L5 blue orb is missing'
+        elif tower == 'mortar':
+            assert l5['visualDetails']['redIndicators'] == 4
+            for x, y in ((84, 82), (140, 82), (86, 141), (138, 141)):
+                pixels = np.asarray(image.crop((x - 7, y - 7, x + 8, y + 8))).astype(int)
+                r, g, b, a = pixels.transpose(2, 0, 1)
+                assert np.count_nonzero((a > 100) & (r > 160) & (r > g * 1.7) & (r > b * 2)) > 4, 'L5 hot indicator is missing'
+        else:
+            assert parts['base']['visualDetails']['forwardWindingCoil'] is False
+            assert l5['visualDetails']['coilMounts'] == [[112, 160], [137, 98]]
         for level in range(1, 6):
             counts.append(sum(p['minLevel'] <= level for p in parts.values()))
             for angle in range(0, 360, 15):

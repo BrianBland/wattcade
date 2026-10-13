@@ -28,26 +28,27 @@ def main():
     args = parser.parse_args()
     reference = Image.open(HERE / 'reference-towers.png').convert('RGBA')
     columns = ['ORIGINAL CONCEPT'] + (['FIRST PASS'] if args.previous else []) + ['REVISED PUPPET']
-    sheet = Image.new('RGBA', (len(columns) * 330 + 110, 60 + 6 * 285), GROUND)
+    row_height = 370
+    sheet = Image.new('RGBA', (len(columns) * 330 + 110, 60 + 6 * row_height), GROUND)
     draw = ImageDraw.Draw(sheet)
     font = ImageFont.load_default(size=17)
     for col, text in enumerate(columns):
         draw.text((110 + col * 330 + 55, 16), text, font=font, fill='#e6daca')
     for row, ((tower, level), crop) in enumerate(CONCEPT_CROPS.items()):
-        y = 60 + row * 285
+        y = 60 + row * row_height
         draw.text((8, y + 115), f'{tower.upper()}\nL{level}', font=font, fill='#e6daca')
         concept = reference.crop(crop)
-        concept.thumbnail((310, 260), Image.Resampling.LANCZOS)
-        sheet.alpha_composite(concept, (110 + (330 - concept.width) // 2, y + (260 - concept.height) // 2))
+        concept.thumbnail((310, 320), Image.Resampling.LANCZOS)
+        sheet.alpha_composite(concept, (110 + (330 - concept.width) // 2, y + (336 - concept.height) // 2))
         dirs = ([args.previous] if args.previous else []) + [HERE / 'export']
         for col, directory in enumerate(dirs, 1):
             pose, _ = render(directory / tower, level, 0)
             manifest = json.loads((directory / tower / 'manifest.json').read_text())
             cx, cy = manifest['anchors']['range_center']['position']
             pose = pose.crop((cx - 80, cy - 112, cx + 80, cy + 80))
-            pose.thumbnail((260, 260), Image.Resampling.LANCZOS)
+            pose = pose.resize((280, 336), Image.Resampling.LANCZOS)
             sheet.alpha_composite(pose,
-                                  (110 + col * 330 + 35, y))
+                                  (110 + col * 330 + 25, y))
     sheet.convert('RGB').save(HERE / 'comparison.png', optimize=True)
     lineup = Image.new('RGBA', (1000, 690), GROUND)
     labels = ImageDraw.Draw(lineup)

@@ -63,13 +63,16 @@ export/tesla/parts/upgrade_l5.png
 export/tesla/parts/upgrade_l5_glow.png
 generation.md
 glow-off.png
+raw/mortar-l5-hot-details-raw.png
 raw/mortar-sheet-raw.png
 raw/mortar-sheet-v2-raw.png
+raw/prism-base-v3-raw.png
 raw/prism-effects-raw.png
 raw/prism-sheet-raw.png
 raw/prism-sheet-v2-raw.png
 raw/tesla-effects-raw.png
 raw/tesla-head-v2-raw.png
+raw/tesla-l5-orb-coils-raw.png
 raw/tesla-sheet-raw.png
 raw/tesla-sheet-v2-raw.png
 reference-towers.png

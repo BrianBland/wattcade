@@ -98,6 +98,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const bossShieldS = T.num('bossShieldCycleS', 7, 2, 30, 1);
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
+  const stallMult = T.num('stallDamageMult', 2, 1, 5, 0.1, 'leaks hit this much harder while the dynamo is stalled (shields down)');
+  const stallGrace = T.num('stallGraceS', 3, 0, 15, 0.5, 'seconds under 15 rpm before the dynamo stalls (brief coasting is free)');
   const leakHealZero = T.num('leakHealZero', 15, 0, 200, 1, 'base damage taken in a wave that cancels its clear heal (scaled down linearly; 0 = any leak cancels it)');
   // dynamo: towers, overdrive, surges, economy
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
@@ -154,7 +156,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let spin: SpinView | null = null, overclock = 0;
   let scrap = 0, partsRun = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
-  let over = false, autoBuildT = 0, leakDmg = 0;
+  let over = false, autoBuildT = 0, leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
@@ -331,6 +333,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     cue('swap');
     ctx.emit({ type: 'weaponSwitched', data: { weapon: w } });
   }
+  const stalled = () => phase === 'run' && stallT >= stallGrace();
   const odMult = () => (overdrive ? overdriveMult() : 1);
 
   function fireRail(n: number) {
@@ -640,6 +643,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     // --- dynamo: grid power, overdrive, rail charge
     grid = clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
     if (bike.cadence3s < 15) grid = 0;
+    // a stalled dynamo drops the base's shields: leaks hit harder until the rider pedals again
+    const wasStalled = stalled();
+    stallT = bike.cadence3s < 15 ? stallT + dt : 0;
+    if (stalled() && !wasStalled) { say('Dynamo stalled!', `Shields down: leaks hit x${+stallMult().toFixed(1)} · pedal!`, '#ff6a5a', true); cue('alarm'); }
     const wasOd = overdrive;
     overdrive = bike.sprinting;
     if (overdrive) stats.overdriveS += dt;
@@ -753,10 +760,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       }
       if (e.d >= e.len - BASE_R) {
         e.dead = true;
-        baseHp -= e.dmg; baseHurt = 0; leakDmg += e.dmg;
-        addFx({ kind: 'baseHit', life: 0.5, dmg: e.dmg });
-        cue(e.dmg >= 5 ? 'baseHitHeavy' : 'baseHit');
-        ctx.emit({ type: 'baseHit', data: { dmg: e.dmg, kind: e.kind } });
+        const dmg = e.dmg * (stalled() ? stallMult() : 1);
+        baseHp -= dmg; baseHurt = 0; leakDmg += dmg;
+        addFx({ kind: 'baseHit', life: 0.5, dmg });
+        cue(dmg >= 5 ? 'baseHitHeavy' : 'baseHit');
+        ctx.emit({ type: 'baseHit', data: { dmg, kind: e.kind } });
       }
     }
     baseHurt += dt;
@@ -891,7 +899,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         aimAngle: aim, autoAim, lane, targetId,
         railCharges, railMaxCharges: railCap(), railProgress: Math.min(1, railProgress), railCharging, zHold, railDumpHoldS: railDumpHold(),
         flaming, flameRange: flameRange(), flameHalfAngle: flameHalf(), flamePower, laserId,
-        grid, overdrive, surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
+        grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap, partsRun, bank: Math.round(bank),
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight })),

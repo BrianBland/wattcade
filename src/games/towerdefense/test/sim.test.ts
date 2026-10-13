@@ -94,6 +94,20 @@ describe('clear heal', () => {
     expect(clearHealFor(25, 1, { ...o, leakZero: 0 })).toBe(0); // 0 = any leak cancels it
     expect(clearHealFor(25, 0, { ...o, leakZero: 0 })).toBe(26);
   });
+  it('the dynamo stalls after stallGraceS under 15 rpm; leaks then hit x2', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    s.step(30 * 10);
+    expect(snap(s).stalled).toBe(false);
+    s.fakeBike!.useScript(null); s.fakeBike!.manual.cadence = 0; s.fakeBike!.manual.power = 0;
+    let n = 0;
+    while (snap(s).stalled === false && n++ < 30 * 20) s.step(1);
+    expect(n / 30).toBeGreaterThan(3); // cadence3s decays first, then the 3 s grace
+    expect(n / 30).toBeLessThan(10);
+    s.step(30 * 60);
+    const hits = s.finish().events.filter((e) => e.type === 'baseHit').map((e) => Number(e.data?.dmg));
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((d) => d === 2 || d >= 8)).toBe(true); // drones/darts 1 -> 2, heavies x2
+  });
   it('a rider who stops pedalling gets no heal from leaked waves', () => {
     const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 } });
     const cleared = r.events.filter((e) => e.type === 'waveCleared');

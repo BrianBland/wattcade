@@ -13,6 +13,7 @@ CONTRACT-REQUESTs: none.
 - Brood waves (#119): each wave is one colour; the turret mounts its weapon for the whole wave (no manual or per-enemy switching): Gatling = sim +1% (bullets per crank rev), Flamer = resistance 35% (dps per watt), Railgun = ERG 0.95 FTP (laser). Rail charges still build at >= 0.75 FTP in any wave (max 3; Z tap = 1, hold 0.5 s = all).
 - Lull (`lullS` 15 s) before every wave, wave 1 included: no spawns, brood card + countdown (`snapshot.brood`, `nextBrood` for the forecast). The weapon and its trainer mode switch at the lull's start at a recovery value (`lull*`), ramping to full over the last `rampS` (6 s). Event `broodAnnounced`; `waveStart` fires when the lull ends.
 - Enemies: mini/dart (blue swarm; no blue heavies), brute/charger (red, chargers sprint the last half), bastion/carrier (purple, carriers drop minis), prism (cycles colour every 4 s from wave 12), Goliath boss (gold, shield cycles; escorts at 66/33% HP). Right colour x1.5, wrong x0.25.
+- Stall: under 15 rpm for `stallGraceS` (3 s) the dynamo stalls (`snapshot.stalled`, banner): shields down, leaks hit x`stallDamageMult` (2).
 - Dynamo: towers fire at `ftpFraction / towerNominalFtp` speed (0.65 FTP = 100%, cap 160%, 0 under 15 rpm). Sprinting = Overdrive (x1.5 damage + tower speed).
 - Towers: Tesla (chain, blue), Mortar (splash shells, red), Prism Lens (beam at the toughest, purple); Lv 1-5. Scrap from kills/waves buys, upgrades, sells (50%) and repairs the base.
 - Power Surge every 3 waves from wave 3: 15 s at `min(5, powerZone)` >= 4 within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Short effort, so judged on power (SPEC short-effort rule); `targetZone.source: 'power'` (also on the Rail band). `hooks.storm`/`hooks.surge` set while active.
@@ -27,7 +28,7 @@ CONTRACT-REQUESTs: none.
 
 ## Progression / save
 - `{ v: 2, bestWave, bank, upgrades, runs, autoInvest, totals }`; parts bank on every wave clear and boss kill, persisted then, at game over and on dispose.
-- Balance (autopilot, FTP 200, fresh save, seed 1): 20 min z2 = 24 waves, ~23 trainer-mode changes (was 208), towers ~72% of kills (was 93%); sprints/intervals ~24-25 waves; 30 min z2 = 35 waves; idle with 1 core falls at ~3:50 (wave 3, no heals).
+- Balance (autopilot, FTP 200, fresh save, seed 1): 20 min z2 = 24 waves, ~23 trainer-mode changes (was 208), towers ~72% of kills (was 93%); sprints/intervals ~24-25 waves; 30 min z2 = 35 waves; idle with 1 core falls at ~1:40 (wave 2: stalled, no heals).
 
 ## Testing
 `npx vitest run src/games/towerdefense`: scenarios (sprints, brood-z2 (mode changes <= waves, mixer modes = announced), idle, idle-cores, intervals, z2-economy, surge-ready), brood planner (runs, cover, share, determinism), lull/ramp, spin-up/surge targets, geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.

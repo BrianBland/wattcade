@@ -50,7 +50,7 @@ export interface TdSnapshot {
   aimAngle: number; autoAim: boolean; lane: number; targetId: number;
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   flaming: boolean; flameRange: number; flameHalfAngle: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;
-  grid: number; overdrive: boolean;
+  grid: number; overdrive: boolean; /** dynamo stalled (rider stopped): shields down, leaks hit harder */ stalled: boolean;
   surge: SurgeView | null;
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;

@@ -38,12 +38,14 @@ export const scenarios: Array<{
     },
   },
   {
-    // one reactor core: a rider who stops pedalling loses the base fast (about 4 min, with the 15 s lulls)
+    // one reactor core: a rider who stops pedalling stalls the dynamo (shields down) and loses the base in wave 2
     name: 'idle', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!run.isOver) f.push('base should be destroyed (isOver)');
-      if (!(n(s, 'wavesSurvived') <= 3)) f.push(`wavesSurvived ${s.wavesSurvived} > 3`);
+      if (!(n(s, 'wavesSurvived') <= 2)) f.push(`wavesSurvived ${s.wavesSurvived} > 2`);
+      const over = run.events.find((e) => e.type === 'gameOver');
+      if (!over || over.t > 150) f.push(`base fell at ${over ? Math.round(over.t) : '-'} s, want <= 150 s`);
       if (n(s, 'towerKills') !== 0) f.push(`unpowered towers killed ${s.towerKills}`);
       return f;
     },

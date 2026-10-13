@@ -79,7 +79,7 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
     for (let i = 0; i < s.railMaxCharges; i++) { g.fillStyle = i < s.railCharges ? COL.purple : 'rgba(255,255,255,0.1)'; g.beginPath(); g.arc(x + pr + i * pr * 2.6, y + pr, pr, 0, TAU); g.fill(); }
     hits.push({ x, y: y - 4 * u, w: s.railMaxCharges * pr * 2.6, h: pr * 2 + 8 * u, action: { type: 'rail' } });
     const bx = x + s.railMaxCharges * pr * 2.6 + 8 * u;
-    label(g, `TOWERS ${Math.round(s.grid * 100)}%${s.overdrive ? ' · OVERDRIVE' : ''}`, bx, y + pr * 0.4, 10 * u, s.overdrive ? '#ffb050' : undefined);
+    label(g, `TOWERS ${Math.round(s.grid * 100)}%${s.stalled ? ' · STALLED' : s.overdrive ? ' · OVERDRIVE' : ''}`, bx, y + pr * 0.4, 10 * u, s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : undefined);
     bar(g, bx, y + pr + 2 * u, x + w - bx, 5 * u, s.grid / 1.6, s.overdrive ? '#ff9a2a' : '#7df9ff');
     return hits;
   }
@@ -125,8 +125,8 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
   g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillRect(x + w / 1.6, y - 2 * u, 2, 16 * u);
   y += 30 * u;
   font(g, 22 * u, 800); g.fillStyle = gc; g.fillText(`${Math.round(s.grid * 100)}%`, x, y);
-  font(g, 11 * u, 600); g.fillStyle = s.overdrive ? '#ffb050' : 'rgba(200,215,240,0.55)';
-  g.fillText(s.overdrive ? `OVERDRIVE!` : 'Sprint = Overdrive', x + 66 * u, y - 3 * u);
+  font(g, 11 * u, s.stalled ? 800 : 600); g.fillStyle = s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : 'rgba(200,215,240,0.55)';
+  g.fillText(s.stalled ? 'STALLED · shields down' : s.overdrive ? `OVERDRIVE!` : 'Sprint = Overdrive', x + 66 * u, y - 3 * u);
   y += 22 * u;
   // --- scrap
   if (y + 40 * u <= b.y + b.h) {

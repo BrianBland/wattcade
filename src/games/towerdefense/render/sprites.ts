@@ -62,6 +62,16 @@ export function drawEnemy(g: CanvasRenderingContext2D, e: EnemyView, x: number, 
       glowAt(g, c, -r * 1.1, 0, r * 0.9, 0.6);
       break;
     }
+    case 'stinger': { // swept-wing hunter with a tail barb
+      g.rotate(heading);
+      const beat = Math.sin(t * 14 + e.id) * 0.18;
+      g.fillStyle = d;
+      for (const sy of [-1, 1]) { g.beginPath(); g.moveTo(r * 0.3, 0); g.lineTo(-r * 0.6, sy * r * (1.25 + beat)); g.lineTo(-r * 0.2, sy * r * 0.2); g.closePath(); g.fill(); }
+      g.fillStyle = c; g.beginPath(); g.ellipse(0, 0, r * 0.95, r * 0.45, 0, 0, TAU); g.fill();
+      g.strokeStyle = l; g.lineWidth = Math.max(1, r * 0.16); g.beginPath(); g.moveTo(-r * 0.8, 0); g.quadraticCurveTo(-r * 1.5, r * 0.4 * Math.sin(t * 5 + e.id), -r * 1.7, 0); g.stroke();
+      g.fillStyle = '#fff6c0'; for (const sy of [-1, 1]) { g.beginPath(); g.arc(r * 0.6, sy * r * 0.18, r * 0.11, 0, TAU); g.fill(); }
+      break;
+    }
     case 'brute': { // hulking block with horns and eyes
       g.fillStyle = d; g.beginPath(); g.roundRect(-r, -r * 0.85, r * 2, r * 1.75, r * 0.45); g.fill();
       g.fillStyle = c; g.beginPath(); g.roundRect(-r * 0.86, -r * 0.8, r * 1.72, r * 1.45, r * 0.4); g.fill();

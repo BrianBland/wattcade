@@ -4,8 +4,8 @@ import type { InputState, Profile } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
-import { BASE_X, BASE_Y, KIND_FROM, KINDS, PADS, TOWERS, laneAt, laneLength, towerBuildCost } from '../sim/defs';
-import { planWave, waveCounts } from '../sim/waves';
+import { BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KIND_FROM, KINDS, PADS, TOWERS, laneAt, laneLength, towerBuildCost, type Element } from '../sim/defs';
+import { nextBrood, planWave, waveCounts, type WaveOpts } from '../sim/waves';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { readSave } from '../sim/sim';
 import type { TdSnapshot } from '../sim/types';
@@ -37,11 +37,51 @@ describe('field geometry', () => {
   });
 });
 
+const WO: WaveOpts = { spawnWindowS: 20, countScale: 1, brood: 'red', broodShare: 0.8 };
+const BROOD = { maxRun: 2, coverWaves: 4 };
+function broodSeq(seed: number, n: number): Element[] {
+  const rng = makeRng(seed), out: Element[] = [];
+  for (let i = 0; i < n; i++) out.push(nextBrood(out, rng, BROOD));
+  return out;
+}
+
+describe('brood planner', () => {
+  it('never runs a colour 3 times and has all three in every 4 waves', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const seq = broodSeq(seed, 300);
+      for (let i = 2; i < seq.length; i++) expect(seq[i] === seq[i - 1] && seq[i] === seq[i - 2]).toBe(false);
+      for (let i = 3; i < seq.length; i++) expect(new Set(seq.slice(i - 3, i + 1)).size).toBe(3);
+    }
+  });
+  it('is a mix, deterministic per seed', () => {
+    expect(broodSeq(7, 50)).toEqual(broodSeq(7, 50));
+    expect(broodSeq(7, 50)).not.toEqual(broodSeq(8, 50));
+    const seq = broodSeq(3, 600);
+    for (const c of ELEMENTS) expect(seq.filter((x) => x === c).length).toBeGreaterThan(150);
+  });
+  it('honours other tunings (runs of 1, cover off)', () => {
+    const rng = makeRng(2), seq: Element[] = [];
+    for (let i = 0; i < 200; i++) seq.push(nextBrood(seq, rng, { maxRun: 1, coverWaves: 0 }));
+    for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
+  });
+  it('about 80% of a wave\'s heavies are the brood colour; blue broods get blue heavies', () => {
+    for (const brood of ELEMENTS) for (let w = 1; w <= 40; w++) {
+      const p = planWave(w, makeRng(w * 7), { ...WO, brood });
+      expect(p.brood).toBe(brood);
+      const coloured = p.spawns.filter((s) => KINDS[s.kind].heavy && s.kind !== 'prism' && s.kind !== 'boss');
+      const main = coloured.filter((s) => KINDS[s.kind].color === brood).length;
+      expect(main).toBe(Math.max(1, Math.round(waveCounts(w).heavies * 0.8)));
+      if (coloured.length >= 10) expect(main / coloured.length).toBeGreaterThanOrEqual(0.75);
+    }
+  });
+});
+
 describe('waves', () => {
   it('kinds only appear from their first wave, bosses every 5', () => {
     for (let w = 1; w <= 30; w++) {
-      const p = planWave(w, makeRng(w), { spawnWindowS: 20, countScale: 1 });
-      for (const s of p.spawns) expect(w).toBeGreaterThanOrEqual(KIND_FROM[s.kind]);
+      const p = planWave(w, makeRng(w), WO);
+      // a brood's first kind (brute, bastion, stinger) may lead any wave; the rest wait for their wave
+      for (const s of p.spawns) if (!['brute', 'armor', 'stinger'].includes(s.kind)) expect(w).toBeGreaterThanOrEqual(KIND_FROM[s.kind]);
       expect(p.boss).toBe(w % 5 === 0);
       expect(p.spawns.filter((s) => s.kind === 'boss').length).toBe(w % 5 === 0 ? 1 : 0);
       // forecast counts every spawn once, in its lane
@@ -51,10 +91,9 @@ describe('waves', () => {
     }
   });
   it('is deterministic per rng and grows with the wave', () => {
-    const a = planWave(9, makeRng(4), { spawnWindowS: 20, countScale: 1 }), b = planWave(9, makeRng(4), { spawnWindowS: 20, countScale: 1 });
+    const a = planWave(9, makeRng(4), WO), b = planWave(9, makeRng(4), WO);
     expect(a).toEqual(b);
-    const heavy = (w: number) => Object.entries(waveCounts(w)).reduce((n, [k, c]) => n + (KINDS[k as keyof typeof KINDS].heavy ? c ?? 0 : 0), 0);
-    expect(heavy(20)).toBeGreaterThan(heavy(4));
+    expect(waveCounts(20).heavies).toBeGreaterThan(waveCounts(4).heavies);
   });
 });
 
@@ -107,9 +146,55 @@ describe('garage meta', () => {
   });
   it('first run skips the garage; intro shows play controls', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
-    expect(s.sim.hud!().controls!.map((c) => c.label)).toContain('Gatling'); // before the first update (game intro)
+    expect(s.sim.hud!().controls!.map((c) => c.label)).toContain('Fire rail (hold = all)'); // before the first update (game intro)
     s.step(1);
     expect(snap(s).phase).toBe('run');
+  });
+});
+
+describe('brood waves', () => {
+  const weaponEffect = (s: ReturnType<typeof createGameSession>) => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
+  it('each wave opens with a lull: card + countdown in the snapshot, no spawns, then the wave', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    s.step(30);
+    const b = snap(s).brood;
+    expect(b.wave).toBe(1);
+    expect(b.countdownS).toBeGreaterThan(13); expect(b.countdownS).toBeLessThan(15);
+    expect(b.weapon).toBe(ELEMENT_WEAPON[b.color]);
+    expect(snap(s).weapon).toBe(b.weapon);
+    expect(b.cue.length).toBeGreaterThan(4);
+    expect(snap(s).nextBrood?.wave).toBe(2);
+    expect(snap(s).enemies).toHaveLength(0);
+    s.step(30 * 15);
+    expect(snap(s).brood.countdownS).toBe(0);
+    s.step(30 * 10);
+    expect(snap(s).enemies.length).toBeGreaterThan(0);
+    const evs = s.finish().events.map((e) => e.type);
+    expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
+  });
+  it('the next weapon\'s trainer setting eases in over the last rampS of the lull', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    s.step(30 * 2);
+    const b = snap(s).brood;
+    const val = () => { const e = weaponEffect(s); return e.gradePct ?? e.levelPct ?? e.ftpFraction ?? NaN; };
+    const mode = { gatling: 'sim', flame: 'resistance', rail: 'erg' }[b.weapon];
+    const [lullV, fullV] = { gatling: [0, 1], flame: [10, 35], rail: [0.5, 0.95] }[b.weapon];
+    expect(weaponEffect(s).mode).toBe(mode);
+    expect(val()).toBeCloseTo(lullV); // recovery, early in the lull
+    s.step(30 * 10); // 3 s into the 6 s ramp
+    expect(val()).toBeGreaterThan(lullV); expect(val()).toBeLessThan(fullV);
+    s.step(30 * 4);
+    expect(val()).toBeCloseTo(fullV);
+    expect(weaponEffect(s).mode).toBe(mode);
+  });
+  it('weapon buttons and weapon taps no longer switch weapons', () => {
+    const input = new TimelineInput([{ t: 1, press: 'a' }, { t: 1.1, release: 'a' }, { t: 2, press: 'b' }, { t: 2.1, release: 'b' }, { t: 3, press: 'y' }, { t: 3.1, release: 'y' }]);
+    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    s.step(10);
+    const w = snap(s).weapon;
+    s.sim.receive!({ type: 'weapon', w: w === 'rail' ? 'gatling' : 'rail' });
+    s.step(30 * 5);
+    expect(snap(s).weapon).toBe(w);
   });
 });
 

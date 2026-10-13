@@ -9,6 +9,8 @@ export interface TdLayout {
   /** workshop panel (wide: replaces the right panel's lower half; narrow: over the top of the field) */
   workshop: Box;
   banner: { x: number; y: number; w: number };
+  /** brood card shown during the lull (inside the field, under the banner) */
+  brood: Box;
   garage: Box;
   /** UI scale (1 = designed for a ~768 px tall surface) */ u: number;
 }
@@ -38,8 +40,10 @@ export function layout(W: number, H: number, insetB: number): TdLayout {
     workshop = { x: Math.round((W - ww) / 2), y: field.y + pad, w: Math.round(ww), h: wh };
   }
   const gw = Math.min(W - 2 * pad, 620 * u), gh = UH - 2 * pad;
+  const bw = Math.round(Math.min(field.s * 0.92, 460 * u)), bh = Math.round(Math.min(field.s * 0.3, 104 * u));
+  const brood = { x: Math.round(field.x + (field.s - bw) / 2), y: Math.round(field.y + field.s * 0.4), w: bw, h: bh };
   return {
-    UH, wide, field, left, right, workshop, u,
+    UH, wide, field, left, right, workshop, u, brood,
     banner: { x: field.x + field.s / 2, y: field.y + field.s * 0.3, w: field.s },
     garage: { x: Math.round((W - gw) / 2), y: pad, w: Math.round(gw), h: gh },
   };

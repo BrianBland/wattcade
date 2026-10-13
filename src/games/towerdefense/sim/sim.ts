@@ -4,12 +4,12 @@
 import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import {
   AIM_LIMIT, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LANE_NAMES, LEVEL_DMG, LEVEL_RANGE, PADS,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
   type Element, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
-import { planWave, type Spawn, type WavePlan } from './waves';
-import type { Banner, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import { nextBrood, planWave, type Spawn, type WavePlan } from './waves';
+import type { Banner, BroodInfo, BroodView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
@@ -70,7 +70,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
   const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
   const railLaserDps = T.num('railLaserDps', 12, 0, 100, 1, 'targeting laser dps while Rail is selected (x ftpFraction / 0.95, max x1.5)');
-  const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1);
+  const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
   const aimRate = T.num('aimTurnRate', 1.2, 0.3, 6, 0.1, 'rad/s at full paddle');
   const autoAimDelay = T.num('autoAimIdleS', 1.5, 0.2, 5, 0.1);
   const goodMult = T.num('goodMult', 1.5, 1, 3, 0.1);
@@ -86,7 +86,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const waveMin = T.num('waveMinS', 25, 5, 120, 1);
   const waveMax = T.num('waveMaxS', 60, 15, 240, 1);
   const spawnWindow = T.num('heavySpawnWindowS', 20, 3, 60, 1);
-  const lullS = T.num('lullS', 4, 0, 20, 1, 'quiet seconds after a wave is cleared');
+  const lullS = T.num('lullS', 15, 0, 60, 1, 'recovery lull before each wave: brood card, countdown, no new spawns');
+  const rampS = T.num('rampS', 6, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
+  const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
+  const lullLevel = T.num('lullLevelPct', 10, 0, 100, 1, 'resistance level early in the lull (Flamer brood next)');
+  const lullFtp = T.num('lullFtpFraction', 0.5, 0.3, 1, 0.05, 'ERG target early in the lull (Railgun brood next)');
+  const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
+  const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
+  const broodCover = T.num('broodCoverWaves', 4, 0, 8, 1, 'all three brood colours in every N waves (< 3 = off)');
   const bossShieldS = T.num('bossShieldCycleS', 7, 2, 30, 1);
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   // dynamo: towers, overdrive, surges, economy
@@ -144,7 +151,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let spin: SpinView | null = null, overclock = 0;
   let scrap = 0, partsRun = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
-  let over = false, lastAutoSwitch = -99, autoBuildT = 0;
+  let over = false, autoBuildT = 0;
+  const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
@@ -157,12 +165,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (fx.length > 160) fx.splice(0, fx.length - 160);
   }
   function say(text: string, sub = '', color = '#ffffff', big = false) { banner = { text, sub, color, t0: t, big }; }
-  function resSync() {
-    if (weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: gatlingGrade() });
-    else if (weapon === 'flame') ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: flameLevel() });
-    else ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: railFtp() });
+  /** The weapon's trainer setting, eased from the lull's recovery value early in the lull to full over the last `rampS`. */
+  function trainerSync() {
+    const ramp = rampS();
+    const k = phase !== 'run' ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
+    const mix = (a: number, b: number) => a + (b - a) * k;
+    if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade()) });
+    else if (weapon === 'flame') ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: mix(lullLevel(), flameLevel()) });
+    else ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: mix(lullFtp(), railFtp()) });
   }
-  resSync();
+  trainerSync();
   const railCap = () => railMax() + mods.railExtra;
   const towerCostMult = () => mods.towerCostMult;
   const repairCost = () => 30 + wave * 3;
@@ -239,12 +251,25 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   // ---------- waves ----------
-  const waveOpts = () => ({ spawnWindowS: spawnWindow(), countScale: countScale() });
+  function planFor(w: number): WavePlan {
+    const brood = nextBrood(broods, ctx.rng, { maxRun: broodMaxRun(), coverWaves: broodCover() });
+    broods.push(brood);
+    return planWave(w, ctx.rng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare() });
+  }
+  /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
-    plan = fresh ? planWave(wave, ctx.rng, waveOpts()) : nextPlan;
-    nextPlan = planWave(wave + 1, ctx.rng, waveOpts());
+    plan = fresh ? planFor(wave) : nextPlan;
+    nextPlan = planFor(wave + 1);
     waveElapsed = 0;
     schedule = plan.spawns.map((s) => ({ ...s }));
+    lull = lullS();
+    const b = broodInfo(plan);
+    selectWeapon(b.weapon);
+    ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
+    if (lull <= 0) beginWave();
+  }
+  /** The lull is over: spawns start. */
+  function beginWave() {
     ctx.emit({ type: 'waveStart', data: { wave } });
     if (!plan.boss) say(`Wave ${wave}`, `Heaviest push: ${LANE_NAMES[plan.mainLane]} lane`, '#cfe3ff');
     cue('waveStart');
@@ -271,7 +296,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     say(`Wave ${wave} cleared`, `+${bonus} scrap · +${p} parts${early ? ` · base +${clearHeal()} HP` : ''}`, '#7dffb0');
     cue('waveClear');
     wave++;
-    lull = early ? lullS() : 0;
     persist();
     startWave(false);
   }
@@ -289,10 +313,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   // ---------- weapons ----------
+  function broodInfo(p: WavePlan): BroodInfo {
+    const weapon = ELEMENT_WEAPON[p.brood];
+    if (weapon === 'gatling') return { wave: p.wave, color: p.brood, weapon, mode: 'sim', setting: `sim ${+gatlingGrade().toFixed(1)}% grade`, cue: 'spin fast · 90+ rpm' };
+    if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(flameLevel())}%`, cue: 'grind 70–80 rpm' };
+    return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
+  }
+  /** Mounts the brood's weapon (once per wave, at the start of its lull). */
   function selectWeapon(w: Weapon) {
     if (w === weapon || over) return;
     weapon = w; swapTotal = swapLeft = swapS() * mods.swapMult; revAcc = 0;
-    resSync();
     cue('swap');
     ctx.emit({ type: 'weaponSwitched', data: { weapon: w } });
   }
@@ -337,21 +367,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return pick((e) => inLane(e) && elementOf(e) === el && e.dist <= reach)
       ?? pick((e) => elementOf(e) === el && e.dist <= reach)
       ?? pick(inLane) ?? pick(() => true);
-  }
-
-  function chooseAutopilotWeapon(): Weapon | null {
-    const threat: Record<Element, number> = { blue: 0, red: 0, purple: 0 };
-    let any = false;
-    for (const e of enemies) {
-      if (e.dead) continue;
-      any = true;
-      const close = clamp(1 - e.dist / 95, 0, 1);
-      threat[elementOf(e)] += e.dmg * close * close * (KINDS[e.kind].heavy ? 1.5 : 1);
-    }
-    if (!any) return null;
-    let best: Element = 'blue';
-    for (const el of ELEMENTS) if (threat[el] > threat[best]) best = el;
-    return ELEMENT_WEAPON[best];
   }
 
   // ---------- towers ----------
@@ -571,14 +586,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       }
       else if (a.type === 'row' && workshop && typeof a.row === 'number') { workshop.idle = 0; workshopAct(a.row); }
       else if (a.type === 'close') workshop = null;
-      else if (a.type === 'weapon' && (a.w === 'gatling' || a.w === 'flame' || a.w === 'rail')) selectWeapon(a.w);
       else if (a.type === 'rail') fireRail(1);
     }
 
     // --- buttons
     if (autopilot) {
-      const w = chooseAutopilotWeapon();
-      if (w && w !== weapon && swapLeft <= 0 && t - lastAutoSwitch >= 2.5) { selectWeapon(w); lastAutoSwitch = t; }
       if (railCharges >= railCap() && enemies.some((e) => !e.dead && e.dist < 75)) fireRail(railCharges);
       else if (weapon === 'rail' && swapLeft <= 0 && railCharges > 0) {
         const tg = nearestInCone(aim, 0.05);
@@ -601,9 +613,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (p('a')) workshopAct();
       if (p('b') || workshop.idle >= WORKSHOP_IDLE_S) { workshop = null; cue('uiClose'); }
     } else {
-      if (p('a')) selectWeapon('gatling');
-      if (p('b')) selectWeapon('flame');
-      if (p('y')) selectWeapon('rail');
       if (p('left')) { lane = lane < 0 ? 0 : Math.max(0, lane - 1); cue('select'); }
       if (p('right')) { lane = lane < 0 ? 2 : Math.min(2, lane + 1); cue('select'); }
       if (p('up')) { lane = lane < 0 ? 1 : -1; cue('select'); }
@@ -751,23 +760,22 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
     // --- spawning
     if (grace > 0) grace = Math.max(0, grace - dt);
+    else if (lull > 0) { lull = Math.max(0, lull - dt); if (lull === 0) beginWave(); }
     else {
       waveElapsed += dt;
-      if (lull > 0) lull = Math.max(0, lull - dt);
-      else {
-        miniTimer -= dt;
-        if (miniTimer <= 0) {
-          spawn('mini', Math.floor(ctx.rng() * 3) % 3);
-          miniTimer = (miniInterval() / (1 + 0.04 * (wave - 1))) * (0.7 + ctx.rng() * 0.6);
-        }
+      miniTimer -= dt;
+      if (miniTimer <= 0) {
+        spawn('mini', Math.floor(ctx.rng() * 3) % 3);
+        miniTimer = (miniInterval() / (1 + 0.04 * (wave - 1))) * (0.7 + ctx.rng() * 0.6);
       }
       while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.lane); }
-      if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
     }
+    if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
+    trainerSync();
 
     // --- waves
     const heavyAlive = enemies.some((e) => KINDS[e.kind].heavy);
-    if (baseHp > 0 && ((waveElapsed >= waveMin() && !heavyAlive && schedule.length === 0) || waveElapsed >= waveMax())) clearWave(waveElapsed < waveMax());
+    if (baseHp > 0 && lull <= 0 && ((waveElapsed >= waveMin() && !heavyAlive && schedule.length === 0) || waveElapsed >= waveMax())) clearWave(waveElapsed < waveMax());
 
     if (baseHp <= 0) {
       if (coresMax === 0 || cores > 1) loseCore();
@@ -818,9 +826,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   // ---------- views ----------
   const playControls = (): ControlHint[] => [
-    { button: 'a', label: 'Gatling', active: weapon === 'gatling' },
-    { button: 'b', label: 'Flame', active: weapon === 'flame' },
-    { button: 'y', label: 'Rail', active: weapon === 'rail' },
     { button: 'z', label: 'Fire rail (hold = all)' },
     { button: 'dpad', label: '◀▶ lane · ▲ all · ▼ workshop' },
     { button: 'paddles', label: 'Aim' },
@@ -833,6 +838,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       element: el, gold: e.kind === 'boss', hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, charging: e.charging,
       shiftIn: si, next: shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
     };
+  }
+  function broodView(): BroodView {
+    const b = plan ? broodInfo(plan) : { wave, color: WEAPON_ELEMENT[weapon], weapon, mode: 'sim' as const, setting: '', cue: '' };
+    return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullS(), rampS: rampS() };
   }
   function garageView(): GarageView {
     return { bank: Math.round(bank), sel: garageSel, rows: garageRows(), startWave: fromWave, maxStartWave: mods.maxStartWave, autoLeft: GARAGE_AUTOSTART_S - garageT, autoS: GARAGE_AUTOSTART_S, autoInvest: autoInvestOn, bestWave: save.bestWave, runs: save.runs };
@@ -856,6 +865,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       };
       const tz: GameHud['targetZone'] = surge?.state === 'active'
         ? { min: clamp(surge.zone, 1, 5) as 1 | 2 | 3 | 4 | 5, max: 5, label: 'Power surge!', source: 'power' }
+        : lull > rampS() ? { min: 1, max: 2, label: `Recover · ${WEAPON_NAME[weapon]} next` }
         : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3, label: 'Power the towers' };
       const targetCadence: GameHud['targetCadence'] = spin?.state === 'active' ? { min: spin.rpm, label: 'Spin up the Gatling' } : undefined;
       if (workshop) return {
@@ -869,6 +879,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         t, phase, garage: phase === 'garage' ? garageView() : null,
         wave, waveElapsed, waveMaxS: waveMax(), wavesSurvived, lull, grace,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, mainLane: nextPlan.mainLane, lanes: nextPlan.lanes } : { wave: 1, boss: false, mainLane: 1, lanes: [] },
+        brood: broodView(), nextBrood: nextPlan ? broodInfo(nextPlan) : null,
         baseHp, baseMaxHp, cores, coresMax, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, autoAim, lane, targetId,

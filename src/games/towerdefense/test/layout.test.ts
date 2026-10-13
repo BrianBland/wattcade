@@ -11,13 +11,14 @@ describe('Dynamo Defense layout vs HUD inset', () => {
       const L = layout(W, H, inset);
       const limit = Math.max(220, H - inset) + 0.5;
       const field = { x: L.field.x, y: L.field.y, w: L.field.s, h: L.field.s };
-      for (const [name, b] of Object.entries({ field, left: L.left, right: L.right, workshop: L.workshop, garage: L.garage })) {
+      for (const [name, b] of Object.entries({ field, left: L.left, right: L.right, workshop: L.workshop, garage: L.garage, brood: L.brood })) {
         expect(bottom(b), name).toBeLessThanOrEqual(limit);
         expect(b.y, name).toBeGreaterThanOrEqual(0);
         expect(b.x, name).toBeGreaterThanOrEqual(0);
         expect(b.x + b.w, name).toBeLessThanOrEqual(W + 0.5);
       }
       expect(L.banner.y).toBeLessThan(limit);
+      expect(L.brood.y + L.brood.h, 'brood card inside the field').toBeLessThanOrEqual(L.field.y + L.field.s + 0.5);
       if (L.wide) { expect(overlaps(field, L.left)).toBe(false); expect(overlaps(field, L.right)).toBe(false); }
       else { expect(overlaps(field, L.left)).toBe(false); expect(overlaps(field, L.right)).toBe(false); }
     });

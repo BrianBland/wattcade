@@ -8,8 +8,9 @@ codex/td-towers-work is based on towerdefense-concept-art.
 FILES.txt enumerates every actual production file, including this note.
 manifest.json indexes one manifest each for Tesla, Mortar and Prism.
 Offsets, pivots, mountPosition and anchors use the 224x224 assembled rest frame.
-The pad and main mounting points share [112,112]; placement uses source sockets,
-not image bounding-box centers. The 136px pad remains 2x a 68px game footprint.
+Pad/subplatform outline centers and weapon mounts share [112,112]. Center the
+octagonal bodies by outlineBounds, excluding sockets and side fittings; anchor
+weapons by their feet. The 136px pad remains 2x a 68px game footprint.
 Four clear pixels pad every part and every effect frame.
 Include all parts with minLevel <= level; upgrades are cumulative through L5.
 Every part has a same-canvas _glow.png; unlit parts have clear emissive layers.
@@ -30,7 +31,7 @@ preview.png is rendered from the actual manifests and PNGs on #211d19:
 L1/L3/L5 passive, glow peak and attack for Tesla/Prism; 0/45/180-degree Mortar
 and matching recoil poses. Each cell includes a 68px-footprint reduction.
 Working files include passive/attack GIFs and their same-time comparison.
-Validation covers 480 aiming/recoil poses, 300 animation samples, socket centering,
+Validation covers 480 aiming/recoil poses, 300 animation samples, concentric outlines,
 fixed-rig invariance, glow/effect canvases, visible upgrades, clipping and budget.
 The full production directory is below 1.5MB. No game code changed.
 The concept's steep overhead depth is retained; only Mortar uses 2D aiming rotation.

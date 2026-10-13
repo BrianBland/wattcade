@@ -71,7 +71,7 @@ def mounted(source, dimensions, center=CENTER):
 
 
 def socket_mounted(source, dimensions, socket, target=CENTER):
-    """Place an anatomical socket, not the image rectangle, at the pad center."""
+    """Register an authored source point without letting attachments skew it."""
     box = source.getbbox()
     assert box is not None
     source = source.crop(box)
@@ -85,6 +85,21 @@ def socket_mounted(source, dimensions, socket, target=CENTER):
     canvas.alpha_composite(source.resize(size, RESAMPLE), origin)
     actual = [origin[0] + anchor[0], origin[1] + anchor[1]]
     return canvas, actual
+
+
+def outline_mounted(source, dimensions, bounds):
+    """Center the octagonal body, excluding nozzles, struts and forward fittings."""
+    source_center = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
+    canvas, actual = socket_mounted(source, dimensions, source_center)
+    box = source.getbbox()
+    width, height = box[2] - box[0], box[3] - box[1]
+    scale = min(dimensions[0] / width, dimensions[1] / height)
+    sx, sy = max(1, round(width * scale)) / width, max(1, round(height * scale)) / height
+    mapped_bounds = [actual[0] + (bounds[0] - source_center[0]) * sx,
+                     actual[1] + (bounds[1] - source_center[1]) * sy,
+                     actual[0] + (bounds[2] - source_center[0]) * sx,
+                     actual[1] + (bounds[3] - source_center[1]) * sy]
+    return canvas, actual, mapped_bounds
 
 
 def pair(source, level, tower):
@@ -194,7 +209,10 @@ def build(output):
     sheets = {t: Image.open(HERE / 'raw' / f'{t}-sheet-v2-raw.png') for t in BOXES}
     sources = {t: [key(sheet.crop(box)) for box in BOXES[t]] for t, sheet in sheets.items()}
     pad_source = Image.open(HERE / 'raw' / 'tesla-sheet-raw.png').crop((15, 100, 420, 480))
-    pad = save_part(output, '', 'pad', mounted(key(pad_source), (136, 136)), None, 0)
+    pad_canvas, outline_center, bounds = outline_mounted(key(pad_source), (136, 136), (37, 30, 356, 359))
+    pad = save_part(output, '', 'pad', pad_canvas, None, 0)
+    pad['outlineCenter'] = outline_center
+    pad['outlineBounds'] = bounds
     pad['file'] = '../parts/pad.png'
     pad['glow'] = '../parts/pad_glow.png'
     for tower, parts in sources.items():
@@ -207,10 +225,12 @@ def build(output):
         else:
             base, head, upgrades = parts[0], parts[1], parts[2:]
         entries = [dict(pad)]
-        base_socket = {'tesla': (200, 128), 'mortar': (243, 201), 'prism': (250, 179)}[tower]
-        base_canvas, mount = socket_mounted(base, (106, 104), base_socket)
+        base_bounds = {'tesla': (45, 32, 355, 332), 'mortar': (41, 23, 449, 438),
+                       'prism': (42, 38, 459, 420)}[tower]
+        base_canvas, outline_center, bounds = outline_mounted(base, (106, 104), base_bounds)
         base_part = save_part(output, tower, 'base', base_canvas, 'pad', 10)
-        base_part['mountPosition'] = mount
+        base_part['outlineCenter'] = outline_center
+        base_part['outlineBounds'] = bounds
         entries.append(base_part)
         dimensions, head_socket = {'tesla': ((64, 96), (290, 870)),
                                    'mortar': ((82, 80), (183, 150)),
@@ -406,6 +426,28 @@ def preview(output):
     for i, tower in enumerate(BOXES):
         neutral.alpha_composite(render(output / tower, 5, 45, glows=False)[0], (i * SIZE, 0))
     neutral.convert('RGB').save(HERE / 'glow-off.png', optimize=True)
+    alignment = Image.new('RGBA', (840, 590), GROUND)
+    draw = ImageDraw.Draw(alignment)
+    for col, tower in enumerate(BOXES):
+        directory = output / tower
+        manifest = read_manifest(str(directory / 'manifest.json'))
+        for row in range(2):
+            x, y = 100 + col * 240, 40 + row * 270
+            draw.text((x + 72, y - 24), tower.upper(), font=font, fill='#e6daca')
+            for part in manifest['parts']:
+                if part['name'] in ('pad', 'base'):
+                    alignment.alpha_composite(read_png(str(directory / part['file'])),
+                                              (x + part['offset'][0], y + part['offset'][1]))
+                    if row:
+                        box = part['outlineBounds']
+                        draw.rectangle((x + box[0], y + box[1], x + box[2], y + box[3]),
+                                       outline='#55caca' if part['name'] == 'pad' else '#efbf66')
+            if row:
+                draw.line((x + CENTER[0], y + 30, x + CENTER[0], y + 196), fill='#ffffff')
+                draw.line((x + 30, y + CENTER[1], x + 196, y + CENTER[1]), fill='#ffffff')
+        draw.text((10, 135), 'EXPOSED', font=font, fill='#e6daca')
+        draw.text((10, 405), 'GUIDES', font=font, fill='#e6daca')
+    alignment.convert('RGB').save(HERE / 'alignment.png', optimize=True)
 
 
 def document(output):
@@ -419,8 +461,9 @@ codex/td-towers-work is based on towerdefense-concept-art.
 FILES.txt enumerates every actual production file, including this note.
 manifest.json indexes one manifest each for Tesla, Mortar and Prism.
 Offsets, pivots, mountPosition and anchors use the 224x224 assembled rest frame.
-The pad and main mounting points share [112,112]; placement uses source sockets,
-not image bounding-box centers. The 136px pad remains 2x a 68px game footprint.
+Pad/subplatform outline centers and weapon mounts share [112,112]. Center the
+octagonal bodies by outlineBounds, excluding sockets and side fittings; anchor
+weapons by their feet. The 136px pad remains 2x a 68px game footprint.
 Four clear pixels pad every part and every effect frame.
 Include all parts with minLevel <= level; upgrades are cumulative through L5.
 Every part has a same-canvas _glow.png; unlit parts have clear emissive layers.
@@ -441,7 +484,7 @@ preview.png is rendered from the actual manifests and PNGs on #211d19:
 L1/L3/L5 passive, glow peak and attack for Tesla/Prism; 0/45/180-degree Mortar
 and matching recoil poses. Each cell includes a 68px-footprint reduction.
 Working files include passive/attack GIFs and their same-time comparison.
-Validation covers 480 aiming/recoil poses, 300 animation samples, socket centering,
+Validation covers 480 aiming/recoil poses, 300 animation samples, concentric outlines,
 fixed-rig invariance, glow/effect canvases, visible upgrades, clipping and budget.
 The full production directory is below 1.5MB. No game code changed.
 The concept's steep overhead depth is retained; only Mortar uses 2D aiming rotation.
@@ -455,7 +498,7 @@ Rebuild with python -B build.py --output PATH in the working folder.
 
 def verify(output):
     registry = json.loads((output / 'manifest.json').read_text())
-    report = {'posesChecked': 0, 'animationFramesChecked': 0, 'towers': {}, 'errors': []}
+    report = {'posesChecked': 0, 'animationFramesChecked': 0, 'platformPairsChecked': 0, 'towers': {}, 'errors': []}
     for tower, path in registry['towers'].items():
         directory = (output / path).parent
         manifest = json.loads((directory / 'manifest.json').read_text())
@@ -467,6 +510,11 @@ def verify(output):
             assert len(p['offset']) == len(p['pivot']) == 2
             if 'mountPosition' in p:
                 assert np.allclose(p['mountPosition'], CENTER, atol=0.51), 'Socket is off center'
+            if 'outlineBounds' in p:
+                x0, y0, x1, y1 = p['outlineBounds']
+                center = [(x0 + x1) / 2, (y0 + y1) / 2]
+                assert np.allclose(center, p['outlineCenter'])
+                assert np.allclose(center, CENTER, atol=0.51), 'Octagonal outline is off center'
             base = Image.open(directory / p['file']).convert('RGBA')
             glow = Image.open(directory / p['glow']).convert('RGBA')
             assert base.size == glow.size
@@ -478,6 +526,8 @@ def verify(output):
             assert not np.any((pixels[..., 3] > 0) & (pixels[..., 1] > np.maximum(pixels[..., 0], pixels[..., 2]) + 4))
             assert np.all(np.asarray(glow)[..., 3] <= alpha)
         counts = []
+        assert np.allclose(parts['base']['outlineCenter'], parts['pad']['outlineCenter'], atol=1), 'Subplatform is not concentric'
+        report['platformPairsChecked'] += 1
         for level in range(1, 6):
             counts.append(sum(p['minLevel'] <= level for p in parts.values()))
             for angle in range(0, 360, 15):

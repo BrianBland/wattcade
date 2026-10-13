@@ -1,5 +1,6 @@
 FILES.txt
 NOTES.md
+alignment.png
 animate.py
 animations/towers-attack.gif
 animations/towers-behavior.gif

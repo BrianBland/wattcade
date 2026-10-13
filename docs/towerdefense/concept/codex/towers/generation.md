@@ -100,3 +100,15 @@ exec-81a22a3e-8edc-469d-b148-0102c53ee61e.png is retained as raw/prism-effects-r
 The effect strips preserve source cell origins for stable registration. Body
 glow is time-keyed from the exported emissive masks; generated effects use
 premultiplied additive compositing. No procedural replacement arc art is drawn.
+
+## Concentric subplatform correction
+
+No new art was generated or retouched. The user identified that static base
+plates were still offset even after their sockets were aligned. Main pad and
+subplatform placement now registers the center of authored octagonal outline
+bounds, excluding asymmetrical nozzles, forward fittings and sockets. Weapon
+feet retain their centered attachment points; animation behavior is unchanged.
+The exact source outline bounds are recorded in build.py; transformed bounds
+and outlineCenter are exported in the corresponding manifest parts. alignment.png
+shows the actual pad/base cutouts without heads, with a second row of outline
+bounds and centerlines for direct inspection.

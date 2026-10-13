@@ -11,10 +11,10 @@ crystalline passive/attack VFX, four frames per state. No machinery in those she
 reference-towers.png: original copied unchanged from codex/towerdefense-concept-art,
 docs/towerdefense/concept/codex/td-towers-base.png; absent from towerdefense-concept-art.
 generation.md records source provenance and instructions for every raw sheet.
-build.py: key/despill/crop, anatomical socket placement, parts/glow/VFX export,
+build.py: key/despill/crop, octagonal outline and weapon socket placement, PNG export,
 manifest-driven aiming, recoil, time-keyed emission and additive-effect rendering.
 requirements.txt: Pillow/NumPy; no runtime game dependencies or game changes.
-validation.json: 480 aiming/recoil poses plus 300 animation samples; centered sockets,
+validation.json: 480 aiming/recoil poses plus 300 animation samples; concentric outlines,
 fixed Tesla/Prism geometry, frame padding, upgrades, clipping, anchors and size budget.
 glow-off.png: L5 rigs without emission (only Mortar aims to 45 degrees).
 animate.py: reproduce GIFs with python -B animate.py.
@@ -24,14 +24,14 @@ animations/towers-behavior.gif: same-time L5 passive versus attack comparison.
 animations/towers-rotation.gif: compatibility copy of towers-attack.gif.
 animations/towers-upgrades.gif: cumulative L1–L5 upgrades with corrected behavior.
 compare.py/comparison.png: original concept, first pass and current centered rigs.
-revised-lineup.png: current L1/L5 rigs at rest.
+revised-lineup.png: current L1/L5 rigs at rest. alignment.png exposes pad/base outlines.
 export/: exact production folder, with its own NOTES.md and FILES.txt inventory.
 export/preview.png: passive/peak/attack states for Tesla/Prism; Mortar angles/recoil;
 each pose includes a 68px-footprint reduction. FX strips live in export/*/effects/.
 
 Rebuild: python -B build.py --output /workspace/wattcade/public/td/towers
 Recheck: add --verify-only. The 224px rest frame has transparent headroom;
-136px pad diameter remains 2x 68px. All main sockets coincide with pad [112,112].
+136px pad remains 2x 68px. Pad/subplatform outlines and weapon mounts share [112,112].
 Only Mortar has aiming enabled; Tesla/Prism body parts and upgrades remain fixed.
 The concept's steep overhead depth is retained, rather than strict orthographic.
 No baked ground shadows. Passive loops 1600ms; attack is a 640ms one-shot.

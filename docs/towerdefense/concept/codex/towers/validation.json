@@ -1,5 +1,6 @@
 {
   "posesChecked": 480,
+  "animationFramesChecked": 300,
   "towers": {
     "tesla": {
       "parts": 7,
@@ -33,5 +34,5 @@
     }
   },
   "errors": [],
-  "productionBytes": 819516
+  "productionBytes": 961705
 }

@@ -19,6 +19,8 @@ mortar/parts/upgrade_l5_glow.png
 parts/pad.png
 parts/pad_glow.png
 preview.png
+prism/effects/attack.png
+prism/effects/passive.png
 prism/manifest.json
 prism/parts/base.png
 prism/parts/base_glow.png
@@ -32,6 +34,8 @@ prism/parts/upgrade_l4.png
 prism/parts/upgrade_l4_glow.png
 prism/parts/upgrade_l5.png
 prism/parts/upgrade_l5_glow.png
+tesla/effects/attack.png
+tesla/effects/passive.png
 tesla/manifest.json
 tesla/parts/base.png
 tesla/parts/base_glow.png

@@ -4,6 +4,7 @@ python -B compare.py --previous /tmp/tower-v1/docs/towerdefense/concept/codex/to
 The previous export is optional; it can be recovered from git commit d387e13.
 """
 import argparse
+import json
 from pathlib import Path
 import sys
 
@@ -41,7 +42,11 @@ def main():
         dirs = ([args.previous] if args.previous else []) + [HERE / 'export']
         for col, directory in enumerate(dirs, 1):
             pose, _ = render(directory / tower, level, 0)
-            sheet.alpha_composite(pose.resize((260, 260), Image.Resampling.LANCZOS),
+            manifest = json.loads((directory / tower / 'manifest.json').read_text())
+            cx, cy = manifest['anchors']['range_center']['position']
+            pose = pose.crop((cx - 80, cy - 112, cx + 80, cy + 80))
+            pose.thumbnail((260, 260), Image.Resampling.LANCZOS)
+            sheet.alpha_composite(pose,
                                   (110 + col * 330 + 35, y))
     sheet.convert('RGB').save(HERE / 'comparison.png', optimize=True)
     lineup = Image.new('RGBA', (1000, 690), GROUND)
@@ -51,7 +56,8 @@ def main():
             x, y = 20 + col * 325, 15 + row * 340
             labels.text((x + 110, y), f'{tower.upper()} L{level}', font=font, fill='#e6daca')
             pose, _ = render(HERE / 'export' / tower, level, 0)
-            lineup.alpha_composite(pose.resize((310, 310), Image.Resampling.LANCZOS), (x, y + 25))
+            pose = pose.crop((32, 0, 192, 192))
+            lineup.alpha_composite(pose.resize((260, 312), Image.Resampling.LANCZOS), (x + 25, y + 25))
     lineup.convert('RGB').save(HERE / 'revised-lineup.png', optimize=True)
     print(HERE / 'comparison.png')
 

@@ -1,11 +1,19 @@
 {
   "size": [
-    160,
-    160
+    224,
+    224
   ],
-  "centerX": 80,
+  "centerX": 112,
   "root": "pad",
   "light": "reference-matched",
+  "mountCenter": [
+    112,
+    112
+  ],
+  "aim": {
+    "enabled": true,
+    "part": "head"
+  },
   "view": "steep overhead with visible machinery depth, matching the approved concept",
   "inGameDiameterPx": 68,
   "padDiameterPx": 136,
@@ -18,22 +26,22 @@
     "muzzle": {
       "parent": "barrel",
       "position": [
-        80,
-        32
+        112,
+        46
       ]
     },
     "cable": {
       "parent": "pad",
       "position": [
-        145,
-        80
+        177,
+        112
       ]
     },
     "range_center": {
       "parent": "pad",
       "position": [
-        80,
-        80
+        112,
+        112
       ]
     }
   },
@@ -43,12 +51,12 @@
       "file": "../parts/pad.png",
       "glow": "../parts/pad_glow.png",
       "offset": [
-        8,
-        16
+        40,
+        48
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": null,
       "z": 0,
@@ -59,44 +67,53 @@
       "file": "parts/base.png",
       "glow": "parts/base_glow.png",
       "offset": [
-        23,
-        34
+        56,
+        67
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "pad",
       "z": 10,
-      "minLevel": 1
+      "minLevel": 1,
+      "mountPosition": [
+        112.09012875536482,
+        111.81710213776722
+      ]
     },
     {
       "name": "head",
       "file": "parts/head.png",
       "glow": "parts/head_glow.png",
       "offset": [
-        36,
-        44
+        67,
+        78
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "base",
       "z": 40,
-      "minLevel": 1
+      "minLevel": 1,
+      "mountPosition": [
+        111.73684210526315,
+        111.58579881656804
+      ],
+      "aims": true
     },
     {
       "name": "upgrade_l2",
       "file": "parts/upgrade_l2.png",
       "glow": "parts/upgrade_l2_glow.png",
       "offset": [
-        30,
-        47
+        65,
+        73
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "base",
       "z": 30,
@@ -107,12 +124,12 @@
       "file": "parts/upgrade_l3.png",
       "glow": "parts/upgrade_l3_glow.png",
       "offset": [
-        43,
-        95
+        75,
+        110
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "head",
       "z": 45,
@@ -123,12 +140,12 @@
       "file": "parts/upgrade_l4.png",
       "glow": "parts/upgrade_l4_glow.png",
       "offset": [
-        12,
-        68
+        48,
+        96
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "base",
       "z": 20,
@@ -139,12 +156,12 @@
       "file": "parts/upgrade_l5.png",
       "glow": "parts/upgrade_l5_glow.png",
       "offset": [
-        16,
-        47
+        50,
+        70
       ],
       "pivot": [
-        80,
-        80
+        112,
+        112
       ],
       "parent": "head",
       "z": 35,
@@ -155,16 +172,20 @@
       "file": "parts/barrel.png",
       "glow": "parts/barrel_glow.png",
       "offset": [
-        54,
-        15
+        87,
+        25
       ],
       "pivot": [
-        80,
-        90
+        112,
+        112
       ],
       "parent": "head",
       "z": 50,
       "minLevel": 1,
+      "mountPosition": [
+        112.10619469026548,
+        111.61640798226163
+      ],
       "recoil": {
         "axis": [
           0,

@@ -1,35 +1,37 @@
 # Tower working files — issue 129
 
-Generating tool: OpenAI image_gen.imagegen (reference-guided generation).
-First-pass and revision-2 RGB sheets were generated on #00FF00 for chroma keying.
-No new assembled poses were generated; build.py renders every preview from manifests.
-
-FILES.txt enumerates every actual file produced in this folder and export/.
+Generating tool: OpenAI image_gen.imagegen, guided by reference-towers.png.
+All raw sheets use #00FF00; every pose/GIF is rendered from exported manifests.
+FILES.txt enumerates every actual file in this folder and export/.
 raw/*-sheet-raw.png: retained first-pass sheets; Tesla supplies the shared pad.
-raw/*-sheet-v2-raw.png: regenerated base/head/barrel/upgrade parts per user feedback.
-raw/tesla-head-v2-raw.png: separately refined short, wide solenoid and blue sphere.
-reference-towers.png: unchanged approved reference copied from
-codex/towerdefense-concept-art:docs/towerdefense/concept/codex/td-towers-base.png.
-That reference is absent from towerdefense-concept-art; this work branches from it.
-generation.md records the reference and the instructions used for the three sheets.
-build.py: explicit source crops, matte removal, despill, fit without distortion,
-paired upgrade placement, emissive extraction, manifest export and affine renderer.
-requirements.txt: Pillow and NumPy; no runtime/game dependencies were added.
-validation.json: all 480 L1–L5 poses checked, padding, emission canvases, parent graph,
-cumulative visible upgrades, static anchors, 8px rotating Mortar recoil and size budget.
-glow-off.png: L5/45-degree assemblies with emissive overlays disabled.
-animate.py: manifest-only animated previews; run python animate.py to reproduce.
-animations/towers-rotation.gif: L1/L3/L5 heads rotate; Mortar barrels recoil.
-animations/towers-upgrades.gif: cumulative L1–L5 additions at 45 degrees, with recoil.
-compare.py and comparison.png: original concept, rejected first pass and revised rigs.
-revised-lineup.png: revised L1 and L5 rigs at zero degrees for all three towers.
-export/: exact production folder; its NOTES.md and FILES.txt describe every export.
-export/preview.png: 36 requested poses and reduced 68px-footprint views on #211d19.
+raw/*-sheet-v2-raw.png: revised bases, heads, barrel and cumulative upgrade pieces.
+raw/tesla-head-v2-raw.png: refined short, wide solenoid and sphere.
+raw/tesla-effects-raw.png and raw/prism-effects-raw.png: generated electrical and
+crystalline passive/attack VFX, four frames per state. No machinery in those sheets.
+reference-towers.png: original copied unchanged from codex/towerdefense-concept-art,
+docs/towerdefense/concept/codex/td-towers-base.png; absent from towerdefense-concept-art.
+generation.md records source provenance and instructions for every raw sheet.
+build.py: key/despill/crop, anatomical socket placement, parts/glow/VFX export,
+manifest-driven aiming, recoil, time-keyed emission and additive-effect rendering.
+requirements.txt: Pillow/NumPy; no runtime game dependencies or game changes.
+validation.json: 480 aiming/recoil poses plus 300 animation samples; centered sockets,
+fixed Tesla/Prism geometry, frame padding, upgrades, clipping, anchors and size budget.
+glow-off.png: L5 rigs without emission (only Mortar aims to 45 degrees).
+animate.py: reproduce GIFs with python -B animate.py.
+animations/towers-passive.gif: L1/L3/L5 restrained pulse and sparks; Mortar rests.
+animations/towers-attack.gif: Tesla/Prism discharge; Mortar alone aims and recoils.
+animations/towers-behavior.gif: same-time L5 passive versus attack comparison.
+animations/towers-rotation.gif: compatibility copy of towers-attack.gif.
+animations/towers-upgrades.gif: cumulative L1–L5 upgrades with corrected behavior.
+compare.py/comparison.png: original concept, first pass and current centered rigs.
+revised-lineup.png: current L1/L5 rigs at rest.
+export/: exact production folder, with its own NOTES.md and FILES.txt inventory.
+export/preview.png: passive/peak/attack states for Tesla/Prism; Mortar angles/recoil;
+each pose includes a 68px-footprint reduction. FX strips live in export/*/effects/.
 
-Rebuild: python build.py --output /workspace/wattcade/public/td/towers
-Recheck: python build.py --output /workspace/wattcade/public/td/towers --verify-only
-Production contains only PNG assets, manifests, preview and documentation.
-The pad is shared by all towers. Every part has a matching glow canvas, even unlit ones.
-Head children rotate; the Mortar barrel recoils in that rotated coordinate frame.
-Revision 2 follows the concept's steep overhead view with visible machinery depth
-per the user's request; it is not strict orthographic. No baked ground shadows.
+Rebuild: python -B build.py --output /workspace/wattcade/public/td/towers
+Recheck: add --verify-only. The 224px rest frame has transparent headroom;
+136px pad diameter remains 2x 68px. All main sockets coincide with pad [112,112].
+Only Mortar has aiming enabled; Tesla/Prism body parts and upgrades remain fixed.
+The concept's steep overhead depth is retained, rather than strict orthographic.
+No baked ground shadows. Passive loops 1600ms; attack is a 640ms one-shot.

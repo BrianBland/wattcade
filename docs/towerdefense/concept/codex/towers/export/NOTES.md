@@ -1,34 +1,37 @@
 # Tower puppets — issue 129
 
-Art regenerated with OpenAI image_gen.imagegen on three revision-2 #00FF00 sheets.
-Pillow/NumPy slice, key, despill, resize, extract emission and render the PNG parts.
-Reference: td-towers-base.png on codex/towerdefense-concept-art (the file is absent
-from towerdefense-concept-art). Working files are based on towerdefense-concept-art.
+Art generated with OpenAI image_gen.imagegen on retained #00FF00 sheets.
+Pillow/NumPy key, despill, resize, extract emission and render the exported assets.
+Reference: td-towers-base.png on codex/towerdefense-concept-art; working branch
+codex/td-towers-work is based on towerdefense-concept-art.
 
-FILES.txt enumerates every production file, including this note and the inventory.
-manifest.json indexes tesla/manifest.json, mortar/manifest.json and prism/manifest.json.
-Each tower manifest follows the alien offset/pivot/parent/z convention and references
-one shared octagonal pad, with a cable socket at the right rim.
-Levels 1–5 include all parts with minLevel <= level. Head rotation is clockwise,
-zero points up. Coordinates are absolute in the 160x160 assembled rest frame.
-Inherit parent transforms before applying local rotations around pivot.
-Mortar barrel is a child of head; recoil translates it 8px along its local +y axis.
-The muzzle anchor follows the barrel; cable and range_center follow the static pad.
-L2 and L4 attach to base; L3 attaches to head. L5 Prism power coils attach to base;
-Tesla electrodes and Mortar heat exchangers attach to head.
-Every base PNG has a same-size _glow.png, including clear layers for unlit parts.
-Use additive RGB weighted by alpha for emission; base art is complete alone.
-All cutouts have at least 4px transparent padding. Pad diameter 136px is 2x 68px.
+FILES.txt enumerates every actual production file, including this note.
+manifest.json indexes one manifest each for Tesla, Mortar and Prism.
+Offsets, pivots, mountPosition and anchors use the 224x224 assembled rest frame.
+The pad and main mounting points share [112,112]; placement uses source sockets,
+not image bounding-box centers. The 136px pad remains 2x a 68px game footprint.
+Four clear pixels pad every part and every effect frame.
+Include all parts with minLevel <= level; upgrades are cumulative through L5.
+Every part has a same-canvas _glow.png; unlit parts have clear emissive layers.
+Effect strips are already emissive RGBA, not body parts needing duplicate glows.
 
-preview.png is rendered from these manifests and PNGs on #211d19 ground:
-L1/L3/L5 at 0/45/180 degrees for all towers, plus nine Mortar recoil poses.
-Each cell also includes the same assembly reduced to a 68px pad footprint.
-The full directory is below 1.5MB. No game code changed.
+Only Mortar has aim.enabled=true: rotate head about [112,112], inherit transforms.
+Its child barrel recoils 8px along local +y; the muzzle anchor follows the barrel.
+Tesla and Prism remain fixed, including all their upgrades, when aiming changes.
+Their animations.passive loops for 1600ms; animations.attack is a 640ms one-shot.
+Each state defines glowGain/glowStrength/effectOpacity keys in milliseconds,
+four VFX frames, frameDurationMs, frameSize, offset, parent and additive blending.
+Passively breathe the emissive pixels and add sparse sparks; attack charges,
+brightens and forks through the generated electrical/crystal effect frames.
+Use premultiplied additive RGB for effects; do not recolor non-emissive steel.
+Cable and range_center anchors are fixed on pad; all coordinates are rest-frame.
 
-Working branch: codex/td-towers-work, docs/towerdefense/concept/codex/towers/.
-Rebuild with python build.py --output PATH after installing requirements.txt there.
-Validation checks all five levels and full rotations (480 poses including recoil).
-Revision 2 restores the original tall copper solenoid and sphere, open iron Mortar
-barrel, prominent faceted crystal and densely bolted-on machinery. The view follows
-the concept's steep overhead angle and visible depth, per the user's art direction;
-it is not strict orthographic. Rig rotation remains a 2D cutout transform.
+preview.png is rendered from the actual manifests and PNGs on #211d19:
+L1/L3/L5 passive, glow peak and attack for Tesla/Prism; 0/45/180-degree Mortar
+and matching recoil poses. Each cell includes a 68px-footprint reduction.
+Working files include passive/attack GIFs and their same-time comparison.
+Validation covers 480 aiming/recoil poses, 300 animation samples, socket centering,
+fixed-rig invariance, glow/effect canvases, visible upgrades, clipping and budget.
+The full production directory is below 1.5MB. No game code changed.
+The concept's steep overhead depth is retained; only Mortar uses 2D aiming rotation.
+Rebuild with python -B build.py --output PATH in the working folder.

@@ -75,3 +75,28 @@ revision. Requested one isolated head only, with stout short copper winding body
 two winding bands and a vivid electrical blue sphere, without platform or extra
 coils. Output `exec-ce5a8373-43fe-4c9d-a81f-f2e7bf43a728.png` is a 1254x1254 RGB
 PNG retained as `raw/tesla-head-v2-raw.png`. Build uses its central 580x935 crop.
+
+## Centered mounts and passive/attack VFX
+
+The user requested platform centering and aiming only for Mortar. Main weapons
+are now placed using anatomical socket coordinates in the retained source crops,
+not centered image rectangles. Transparent frame headroom avoids shrinking them.
+Tesla and Prism remain fixed; no new body art was generated for this change.
+
+Tesla effects used the original reference and requested a four-column/two-row
+1536x1024 green sheet containing only fine white-core electric-blue arcs. Row1
+has four sparse passive patterns around an empty sphere center; row2 has four
+charging/discharge/decay patterns branching toward imaginary side electrodes.
+No machinery, solid glow disks, background, labels or ground shadows. Output
+exec-491e95dd-67a2-4a43-9a8c-29461315f887.png is retained as raw/tesla-effects-raw.png.
+
+Prism effects used the same reference and grid, requesting violet/magenta wisps,
+sharp lilac sparks and narrow tip flares around an invisible tall central crystal.
+Row1 has four restrained passive patterns; row2 has charge, forked discharge and
+decay patterns linking imaginary side crystals. No solid crystals, machinery,
+opaque bloom discs, labels, backgrounds or ground. Output
+exec-81a22a3e-8edc-469d-b148-0102c53ee61e.png is retained as raw/prism-effects-raw.png.
+
+The effect strips preserve source cell origins for stable registration. Body
+glow is time-keyed from the exported emissive masks; generated effects use
+premultiplied additive compositing. No procedural replacement arc art is drawn.

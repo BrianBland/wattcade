@@ -234,7 +234,7 @@
       "rotation": {
         "axis": "z",
         "continuous": true,
-        "degreesPerSecond": 90
+        "degreesPerSecond": 120
       }
     },
     {

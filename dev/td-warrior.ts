@@ -1,75 +1,98 @@
-// Hybrid sprite spike: Codex's generated Warrior cut into parts (body + 3 leg pairs, femur/claw), rigged and walked in code.
+// Segmented Warrior puppet: Codex's 20-part Warrior (docs/towerdefense/concept/codex/warrior-parts) driven by its
+// manifest and walked in code: tripod gait, planted claw tips, travelling body-plate wave, additive glow pulse.
 //   /dev/td-warrior.html?t=0
 export {};
 type G = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
-const BASE = '/docs/towerdefense/concept/claude/hybrid/parts/';
-const names = ['body', 'femur-front', 'claw-front', 'femur-mid', 'claw-mid', 'femur-rear', 'claw-rear'] as const;
-const img: Record<string, HTMLImageElement> = {};
-await Promise.all(names.map((n) => new Promise<void>((res, rej) => { const i = new Image(); i.onload = () => res(); i.onerror = rej; i.src = BASE + n + '.png'; img[n] = i; })));
+const BASE = '/docs/towerdefense/concept/codex/warrior-parts/';
+interface Part { name: string; file: string; glow: string; offset: [number, number]; pivot: [number, number]; parent: string | null; z: number }
+const manifest = await (await fetch(BASE + 'manifest.json')).json() as { size: [number, number]; centerX: number; parts: Part[] };
+const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = BASE + src; });
+const parts = new Map(manifest.parts.map((p) => [p.name, p]));
+const img = new Map<string, HTMLImageElement>(), glowImg = new Map<string, HTMLImageElement>();
+await Promise.all(manifest.parts.map(async (p) => { img.set(p.name, await load(p.file)); glowImg.set(p.name, await load(p.glow)); }));
 
-// Source-sheet pivots (400x380 cell, body centre x = 190, facing up).
-const CX = 190;
-const LEGS = [
-  { id: 'rear', hip: [230, 250], knee: [283, 262], amp: 0.2 },
-  { id: 'mid', hip: [232, 203], knee: [307, 180], amp: 0.17 },
-  { id: 'front', hip: [226, 140], knee: [292, 78], amp: 0.22 },
-] as const;
-const PAD = 70, OW = 400 + PAD * 2, OH = 380 + PAD * 2;
-
-function rotAbout(g: G, x: number, y: number, a: number) { g.translate(x, y); g.rotate(a); g.translate(-x, -y); }
+const CX = manifest.centerX, CY = 330;
+const PAD = 140, OW = manifest.size[0] + PAD * 2, OH = manifest.size[1] + PAD * 2;
+const MIRROR = new DOMMatrix([-1, 0, 0, 1, 2 * CX, 0]);
+const PLATES = ['head', 'thorax_1', 'thorax_2', 'thorax_3', 'abdomen_1', 'abdomen_2', 'abdomen_3', 'abdomen_4', 'abdomen_5', 'tail_tip'];
+const LEGS = [{ id: 'front', amp: 15 }, { id: 'mid', amp: 12 }, { id: 'rear', amp: 14 }] as const;
 
 interface Pose { t: number; gaitHz: number; dying?: number /* 0..1 */ }
-/** Draws one warrior into an offscreen canvas (source pixels, padded). */
-function warriorCanvas(p: Pose): HTMLCanvasElement {
+/** Local joint angle (degrees, clockwise) for every part; `_l` keys are the mirrored left side, in mirrored space. */
+function angles(p: Pose): Map<string, number> {
+  const a = new Map<string, number>(), ph = p.t * p.gaitHz, d = p.dying ?? 0, live = 1 - d;
+  const ease = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+  // body: a yaw wave that travels from head to tail, one cycle per stride; plates further back swing more
+  PLATES.forEach((n, i) => {
+    const back = Math.max(0, i - 2);
+    a.set(n, live * (n === 'thorax_2' ? 2.2 * Math.sin(ph * TAU) : (i < 2 ? -1.6 : 2.1 + back * 0.35) * Math.sin(ph * TAU - i * 0.55)) + d * (i - 2) * 2.5);
+  });
+  for (const side of ['r', 'l'] as const) {
+    LEGS.forEach((L, i) => {
+      const off = ((i + (side === 'r' ? 0 : 1)) % 2) * 0.5; // tripod: R-front, L-mid, R-rear together
+      const f = (ph + off) % 1, stance = f < 0.6, k = stance ? f / 0.6 : (f - 0.6) / 0.4;
+      const swing = stance ? -L.amp + 2 * L.amp * k : L.amp - 2 * L.amp * ease(k); // forward (−) → back (+)
+      const lift = stance ? 0 : Math.sin(Math.PI * k);
+      a.set(`coxa_${L.id}_${side}`, live * swing * 0.6 + d * -10);
+      a.set(`femur_${L.id}_${side}`, live * (swing * 0.4 - lift * 9) + d * -25); // femur raises (folds in) on the swing
+      a.set(`claw_${L.id}_${side}`, live * (-swing * 0.55 + lift * 14) + d * 55); // counter-rotate to plant the tip; curl when dying
+    });
+    a.set(`mandible_${side}`, live * (6 * Math.sin(ph * TAU * 0.5 + (side === 'l' ? 0.4 : 0))) - d * 15);
+  }
+  return a;
+}
+/** World matrix for a part instance (left instances reflect their limb chain about the centre line). */
+function matrices(ang: Map<string, number>): Map<string, DOMMatrix> {
+  const out = new Map<string, DOMMatrix>();
+  const visit = (name: string, side: 'r' | 'l' | ''): DOMMatrix => {
+    const key = side ? `${name}#${side}` : name;
+    const hit = out.get(key); if (hit) return hit;
+    const p = parts.get(name)!, paired = name.endsWith('_r');
+    const parentIsPaired = !!p.parent?.endsWith('_r');
+    let m = p.parent ? visit(p.parent, parentIsPaired ? side : '') : new DOMMatrix();
+    if (paired && side === 'l' && !parentIsPaired) m = m.multiply(MIRROR); // enter mirrored space at the chain's root
+    const angKey = paired ? name.replace(/_r$/, `_${side}`) : name;
+    const deg = ang.get(angKey) ?? 0;
+    m = m.translate(p.pivot[0], p.pivot[1]).rotate(deg).translate(-p.pivot[0], -p.pivot[1]);
+    out.set(key, m); return m;
+  };
+  for (const p of manifest.parts) { if (p.name.endsWith('_r')) { visit(p.name, 'r'); visit(p.name, 'l'); } else visit(p.name, ''); }
+  return out;
+}
+/** Draws one warrior into an offscreen canvas (assembled-frame pixels, padded). */
+function warriorCanvas(p: Pose, glow = 1): HTMLCanvasElement {
   const c = document.createElement('canvas'); c.width = OW; c.height = OH;
   const g = c.getContext('2d')!;
-  g.translate(PAD, PAD);
-  const ph = p.t * p.gaitHz, d = p.dying ?? 0;
-  // body sway / bob
-  const sway = Math.sin(ph * TAU) * 0.025 * (1 - d), bob = 1 + Math.sin(ph * TAU * 2) * 0.012 * (1 - d);
-  g.translate(CX, 200); g.rotate(sway); g.scale(bob, bob); g.translate(-CX, -200);
-  for (const side of [-1, 1]) {
-    g.save();
-    if (side < 0) { g.translate(CX * 2, 0); g.scale(-1, 1); }
-    LEGS.forEach((L, i) => {
-      // alternating tripod: R-front, L-mid, R-rear together
-      const off = ((i + (side > 0 ? 0 : 1)) % 2) * 0.5;
-      const f = (ph + off) % 1, stance = f < 0.62, k = stance ? f / 0.62 : (f - 0.62) / 0.38;
-      const ease = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
-      let a = stance ? -L.amp + 2 * L.amp * k : L.amp - 2 * L.amp * ease(k); // forward (−) to back (+)
-      let claw = stance ? -a * 0.55 : -a * 0.3 - Math.sin(Math.PI * k) * 0.28; // planted tip; lift + flex on swing
-      const lift = stance ? 1 : 1 + Math.sin(Math.PI * k) * 0.06;
-      a *= 1 - d; claw = claw * (1 - d) + d * 0.9; // curl up when dying
-      g.save();
-      rotAbout(g, L.hip[0], L.hip[1], a);
-      g.translate(L.hip[0], L.hip[1]); g.scale(lift, lift); g.translate(-L.hip[0], -L.hip[1]);
-      g.drawImage(img[`femur-${L.id}`], 0, 0);
-      rotAbout(g, L.knee[0], L.knee[1], claw);
-      g.drawImage(img[`claw-${L.id}`], 0, 0);
-      g.restore();
-    });
-    g.restore();
+  const M = matrices(angles(p));
+  const order = [...M.keys()].sort((a, b) => parts.get(a.split('#')[0])!.z - parts.get(b.split('#')[0])!.z);
+  const base = new DOMMatrix().translate(PAD, PAD);
+  for (const pass of ['base', 'glow'] as const) {
+    if (pass === 'glow') { g.globalCompositeOperation = 'lighter'; g.globalAlpha = glow; }
+    for (const key of order) {
+      const name = key.split('#')[0], pt = parts.get(name)!;
+      g.setTransform(base.multiply(M.get(key)!));
+      g.drawImage((pass === 'base' ? img : glowImg).get(name)!, pt.offset[0], pt.offset[1]);
+    }
   }
-  g.drawImage(img.body, 0, 0);
   return c;
 }
 
 /** Puts a warrior on the main canvas centred at (x, y), facing `heading` (radians, 0 = +x), source scale `s`. */
 function place(g: G, x: number, y: number, heading: number, s: number, p: Pose, flash = 0) {
-  const w = warriorCanvas(p);
   const d = p.dying ?? 0;
+  const pulse = (0.88 + 0.12 * Math.sin(p.t * TAU * 1.3)) * (1 - d);
+  const w = warriorCanvas(p, pulse);
   g.save(); g.translate(x, y); g.rotate(heading + Math.PI / 2 + d * 2.6); g.scale(s * (1 - d * 0.12), s * (1 - d * 0.12));
-  // shadow
-  g.save(); g.filter = 'brightness(0)'; g.globalAlpha = 0.5; g.drawImage(w, -PAD - CX + 10, -PAD - 215 + 16); g.restore();
+  g.save(); g.filter = 'brightness(0)'; g.globalAlpha = 0.5; g.drawImage(w, -PAD - CX + 12, -PAD - CY + 20); g.restore();
   if (d > 0) g.filter = `brightness(${1 - d * 0.6}) sepia(${d * 0.7})`;
-  g.drawImage(w, -PAD - CX, -PAD - 215);
+  g.drawImage(w, -PAD - CX, -PAD - CY);
   g.filter = 'none';
   if (flash > 0) {
     const f = document.createElement('canvas'); f.width = w.width; f.height = w.height;
     const fg = f.getContext('2d')!; fg.drawImage(w, 0, 0); fg.globalCompositeOperation = 'source-atop';
     fg.fillStyle = `rgba(255,236,210,${flash})`; fg.fillRect(0, 0, f.width, f.height);
-    g.drawImage(f, -PAD - CX, -PAD - 215);
+    g.drawImage(f, -PAD - CX, -PAD - CY);
   }
   g.restore();
 }
@@ -122,9 +145,9 @@ const g = cv.getContext('2d')!;
 const tileL = groundTile(SPLIT, 720, 3), tileR = groundTile(W - SPLIT, 720, 5);
 
 const GAIT = 1.5;           // steps cycles / s
-const CLOSE = 1.35;         // close-up scale
-const GAME = 0.3;           // game scale (~105 px long)
-const STRIDE = 55;          // source px travelled per gait cycle
+const CLOSE = 1.12;         // close-up scale
+const GAME = 0.22;          // game scale (~105 px long)
+const STRIDE = 80;          // source px travelled per gait cycle
 const SQUAD = [0, 150, 290, 430];
 const DIE_AT = 3.6, HURT_FROM = 2.2;
 
@@ -133,7 +156,7 @@ function draw(t: number) {
   g.save(); g.beginPath(); g.rect(0, 0, SPLIT, H); g.clip();
   const scroll = (t * GAIT * STRIDE * CLOSE) % 720;
   g.drawImage(tileL, 0, scroll - 720); g.drawImage(tileL, 0, scroll);
-  place(g, SPLIT / 2, H / 2 + 20, -Math.PI / 2, CLOSE, { t, gaitHz: GAIT });
+  place(g, SPLIT / 2, H / 2 + 10, -Math.PI / 2, CLOSE, { t, gaitHz: GAIT });
   const v = g.createRadialGradient(SPLIT / 2, H / 2, 200, SPLIT / 2, H / 2, 520); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)');
   g.fillStyle = v; g.fillRect(0, 0, SPLIT, H);
   g.restore();
@@ -167,7 +190,7 @@ function draw(t: number) {
   // divider + labels
   g.fillStyle = '#d9a417'; g.fillRect(SPLIT - 2, 0, 4, H);
   g.font = '700 18px system-ui, sans-serif'; g.fillStyle = 'rgba(232,222,208,0.85)';
-  g.fillText('Codex Warrior cut into 7 parts · legs rigged in code', 18, 30);
+  g.fillText('Codex 20-part Warrior · rigged from its manifest', 18, 30);
   g.fillText('Game scale (~105 px) · hurt flash · death', SPLIT + 18, 30);
 }
 draw(Number(new URLSearchParams(location.search).get('t') ?? 0));

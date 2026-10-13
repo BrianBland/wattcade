@@ -15,8 +15,8 @@
   "coordinates": "offset, pivot, and anchors are absolute assembled rest-frame pixels; children inherit parent transforms",
   "weaponSelection": "exactly one of gatling/flamer/rail; only selected weapon parts render",
   "hubCenter": [
-    246,
-    230
+    260,
+    260
   ],
   "aim": {
     "parts": [
@@ -129,39 +129,39 @@
     "muzzle_gatling": {
       "parent": "gatling_barrels",
       "position": [
-        246,
-        75
+        260,
+        105
       ]
     },
     "muzzle_flamer": {
       "parent": "head_flamer",
       "position": [
-        246,
-        106
+        260,
+        136
       ],
       "positions": [
         [
-          224,
-          106
+          238,
+          136
         ],
         [
-          267,
-          106
+          281,
+          136
         ]
       ]
     },
     "muzzle_rail": {
       "parent": "head_rail",
       "position": [
-        246,
-        94
+        260,
+        124
       ]
     },
     "range_center": {
       "parent": "deck",
       "position": [
-        246,
-        230
+        260,
+        260
       ]
     }
   },
@@ -204,37 +204,37 @@
       "file": "parts/flywheel.png",
       "glow": "parts/flywheel_glow.png",
       "offset": [
-        94,
-        79
+        124,
+        125
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "deck",
       "z": 20,
       "registration": {
         "scale": [
-          0.44972067039106145,
-          0.45
+          0.3994413407821229,
+          0.4
         ],
         "origin": [
-          91,
-          56
+          122,
+          105
         ],
         "sourcePivot": [
           345,
           387
         ],
         "registeredPivot": [
-          246.1536312849162,
-          230.15
+          259.8072625698324,
+          259.8
         ]
       },
       "rotation": {
         "axis": "z",
         "continuous": true,
-        "degreesPerSecond": 90
+        "degreesPerSecond": 120
       }
     },
     {
@@ -308,19 +308,19 @@
       "file": "parts/belt.png",
       "glow": "parts/belt_glow.png",
       "offset": [
-        168,
-        155
+        188,
+        192
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "deck",
       "z": 10,
       "drive": {
         "flywheelAxle": [
-          246,
-          230
+          260,
+          260
         ],
         "generatorAxle": [
           413,
@@ -333,12 +333,12 @@
       "file": "parts/head_gatling.png",
       "glow": "parts/head_gatling_glow.png",
       "offset": [
-        172,
-        134
+        186,
+        164
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "deck",
       "z": 60,
@@ -350,16 +350,16 @@
           0.2703296703296703
         ],
         "origin": [
-          173,
-          133
+          187,
+          163
         ],
         "sourcePivot": [
           270,
           359
         ],
         "registeredPivot": [
-          246.125,
-          230.04835164835163
+          260.125,
+          260.0483516483516
         ]
       }
     },
@@ -368,12 +368,12 @@
       "file": "parts/head_flamer.png",
       "glow": "parts/head_flamer_glow.png",
       "offset": [
-        182,
-        90
+        196,
+        120
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "deck",
       "z": 60,
@@ -385,16 +385,16 @@
           0.3207207207207207
         ],
         "origin": [
-          183,
-          90
+          197,
+          120
         ],
         "sourcePivot": [
           196,
           435
         ],
         "registeredPivot": [
-          245.8144578313253,
-          229.51351351351352
+          259.8144578313253,
+          259.51351351351354
         ]
       }
     },
@@ -403,12 +403,12 @@
       "file": "parts/head_rail.png",
       "glow": "parts/head_rail_glow.png",
       "offset": [
-        191,
-        85
+        205,
+        115
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "deck",
       "z": 60,
@@ -420,16 +420,16 @@
           0.32068965517241377
         ],
         "origin": [
-          192,
-          84
+          206,
+          114
         ],
         "sourcePivot": [
           167,
           455
         ],
         "registeredPivot": [
-          245.53823529411767,
-          229.91379310344826
+          259.53823529411767,
+          259.91379310344826
         ]
       }
     },
@@ -438,12 +438,12 @@
       "file": "parts/rail_cap_1.png",
       "glow": "parts/rail_cap_1_glow.png",
       "offset": [
-        229,
-        121
+        243,
+        151
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "head_rail",
       "z": 65,
@@ -456,12 +456,12 @@
       "file": "parts/rail_cap_2.png",
       "glow": "parts/rail_cap_2_glow.png",
       "offset": [
-        229,
-        147
+        243,
+        177
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "head_rail",
       "z": 65,
@@ -474,12 +474,12 @@
       "file": "parts/rail_cap_3.png",
       "glow": "parts/rail_cap_3_glow.png",
       "offset": [
-        230,
-        173
+        244,
+        203
       ],
       "pivot": [
-        246,
-        230
+        260,
+        260
       ],
       "parent": "head_rail",
       "z": 65,
@@ -492,12 +492,12 @@
       "file": "parts/gatling_barrels.png",
       "glow": "parts/gatling_barrels_glow.png",
       "offset": [
-        225,
-        66
+        239,
+        96
       ],
       "pivot": [
-        246,
-        161
+        260,
+        191
       ],
       "parent": "head_gatling",
       "z": 70,
@@ -509,8 +509,8 @@
           0
         ],
         "axisOrigin": [
-          246,
-          161
+          260,
+          191
         ],
         "mode": "spriteFrames",
         "periodDegrees": 72,

@@ -35,7 +35,7 @@ def main(out):
         label(d, (24, 18), 'DYNAMO  /  LIVE MECHANICAL STATES', 23, '#eee1c5')
         for col, weapon in enumerate(('gatling', 'flamer', 'rail')):
             angle = 60 * math.sin(t * 2*math.pi/3)
-            im = render(out, weapon=weapon, angle=angle, wheel_angle=t*90,
+            im = render(out, weapon=weapon, angle=angle, wheel_angle=t*120,
                         charge=(i//5)%4, spin_frame=i%6)
             page.alpha_composite(im.resize((355, 355), LANCZOS), (col*370+7, 70))
             label(d, (col*370+21, 50), weapon.upper(), 17)
@@ -48,9 +48,9 @@ def main(out):
         page = Image.new('RGBA', (650, 610), GROUND)
         d = ImageDraw.Draw(page)
         label(d, (22, 20), 'GATLING  /  AXIAL BARREL ROLL', 24, '#eee1c5')
-        im = render(out, weapon='gatling', spin_frame=phase, wheel_angle=i*4.5)
+        im = render(out, weapon='gatling', spin_frame=phase, wheel_angle=0)
         page.alpha_composite(im, (0, 75))
-        detail = im.crop((225, 65, 267, 182))
+        detail = im.crop((HUB[0]-21, HUB[1]-165, HUB[0]+21, HUB[1]-48))
         page.alpha_composite(detail.resize((105, 292), LANCZOS), (533, 126))
         label(d, (527, 438), 'Detail 2.5×', 13)
         frames.append(page)

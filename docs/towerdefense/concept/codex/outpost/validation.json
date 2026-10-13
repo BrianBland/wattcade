@@ -4,13 +4,14 @@
   "rotationPoses": 432,
   "transparentCabPoses": 36,
   "axialSpinPhases": 6,
+  "closedMechanicalCycles": 3,
   "railChargeBrightPixels": [
     16,
     74,
     140,
     207
   ],
-  "productionBytes": 1240547,
+  "productionBytes": 1183670,
   "budgetBytes": 1500000,
   "checks": [
     "matching RGBA/glow dimensions",
@@ -21,6 +22,8 @@
     "all-angle clipping",
     "fixed cab stencil with spinning flywheel",
     "sequential independent rail charge",
-    "six cable socket anchors"
+    "six cable socket anchors",
+    "concentric deck/wheel/head pivots",
+    "pixel-identical loop closure"
   ]
 }

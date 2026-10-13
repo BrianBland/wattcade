@@ -21,6 +21,7 @@ Art generation: OpenAI `image_gen.imagegen`; build/render: Python, Pillow, NumPy
 - `rig-check.png`: six measured sockets, hub pivot, cab insert and aiming muzzle.
 - `animations/outpost-mechanics.gif`: independent wheel spin, ±60° aim,
   Gatling axial sprite phases and sequential rail charges; 60 frames, 3 seconds.
+  Wheel completes one full turn per loop; aim, roll and charge also close their cycles.
 - `animations/gatling-roll.gif`: axial roll close-up; 24 frames, 1.2 seconds.
 - `validation.json`: actual checks, pose counts and production byte budget.
 - `export/`: exact production folder, including its NOTES and inventory.
@@ -38,7 +39,7 @@ python -B build.py --output export --verify-only
 The 520px rest canvas includes transparent rotation headroom. Deck/socket extent
 is 440px, twice the specified 220px game footprint. Every part has a matching
 RGBA emissive canvas and at least four clear pixels around its bounds. Weapon
-heads share the flywheel axle [246,230] but parent to the fixed deck, so spinning
+heads share the concentric flywheel/hazard-ring axle [260,260] but parent to the fixed deck, so spinning
 the wheel never drags a weapon, cab or generator. The wheel is registered by its
 actual axle rather than its bounding box. Belt pulleys connect the hub and
 generator's lower shaft. Six cable anchors sit in the socket mouths.

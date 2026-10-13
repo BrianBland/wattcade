@@ -14,7 +14,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent
 SIZE = 520
-HUB = (246, 230)
+HUB = (260, 260)
+BARREL_AXLE = (HUB[0], HUB[1] - 69)
 GROUND = (33, 29, 25, 255)
 LANCZOS = Image.Resampling.LANCZOS
 FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
@@ -68,11 +69,11 @@ def colored_glow(im, kind):
         mask = ((b > 150) & (b > r * 1.25) & (g > 100)).astype(float)
         mask = np.maximum(mask, ((r > 230) & (g > 100) & (b < 90)).astype(float))
         yy, xx = np.indices(r.shape)
-        mask *= (yy < 155) & (abs(xx - HUB[0]) < 13)
+        mask *= (yy < HUB[1] - 75) & (abs(xx - HUB[0]) < 13)
     else:
         yy, xx = np.indices(r.shape)
         radius = np.hypot(xx - HUB[0], yy - HUB[1])
-        mask = ((r > 210) & (g > 155) & (b > 80) & (radius > 132) & (radius < 146)) * .55
+        mask = ((r > 210) & (g > 155) & (b > 80) & (radius > 118) & (radius < 130)) * .55
     return emission(im, mask)
 
 def export_pair(out, name, base, glow, pivot, parent, z, **extra):
@@ -109,9 +110,9 @@ def build(out):
     deck, reg = place(source(raw, (0, 0, 815, 1024)), .567, (410, 490), (260, 260))
     # Centers are measured from the ring/axle, excluding asymmetric rim sockets.
     put('deck', deck, blank(), (260, 260), None, 0, registration=reg)
-    wheel, reg = place(source(raw, (820, 100, 1536, 900)), .45, (345, 387), HUB)
+    wheel, reg = place(source(raw, (820, 100, 1536, 900)), .4, (345, 387), HUB)
     put('flywheel', wheel, colored_glow(wheel, 'rim'), HUB, 'deck', 20,
-        registration=reg, rotation={'axis': 'z', 'continuous': True, 'degreesPerSecond': 90})
+        registration=reg, rotation={'axis': 'z', 'continuous': True, 'degreesPerSecond': 120})
     machinery = 'machinery-sheet-raw.png'
     cab_source = source('cab-v2-sheet-raw.png', (0, 0, 1254, 1254))
     cab, cab_reg = place(cab_source, .13, (627, 635), (337, 357))
@@ -131,8 +132,8 @@ def build(out):
     gen, reg = place(source(machinery, (715, 50, 1090, 910)), .18, (183, 426), (421, 322))
     put('generator', gen, colored_glow(gen, 'generator'), (421, 322), 'deck', 40,
         registration=reg)
-    belt, reg = place(source(machinery, (1140, 110, 1525, 860)), .55, (166, 160), HUB)
-    belt = belt.rotate(43, Image.Resampling.BICUBIC, center=HUB)
+    belt, reg = place(source(machinery, (1140, 110, 1525, 860)), .5, (166, 160), HUB)
+    belt = belt.rotate(47, Image.Resampling.BICUBIC, center=HUB)
     put('belt', belt, blank(), HUB, 'deck', 10,
         drive={'flywheelAxle': list(HUB), 'generatorAxle': [413, 392]})
     weapons = 'weapons-sheet-raw.png'
@@ -170,7 +171,7 @@ def build(out):
     spin_frames = []
     for i, cx in enumerate(spin_centers):
         frame, reg = place(source(spin_sheet, (i*256, 0, (i+1)*256, 1024)),
-                           .13, (cx-i*256, 829), (246, 161))
+                           .13, (cx-i*256, 829), BARREL_AXLE)
         spin_frames.append(frame)
     union = np.maximum.reduce([np.array(f)[..., 3] for f in spin_frames])
     bbox = Image.fromarray(union).getbbox()
@@ -190,9 +191,9 @@ def build(out):
         frame_glows.append('parts/' + stem + '_glow.png')
     barrel_part = {'name': 'gatling_barrels', 'file': frame_files[0],
                   'glow': frame_glows[0], 'offset': list(bbox[:2]),
-                  'pivot': [246, 161], 'parent': 'head_gatling', 'z': 70,
+                  'pivot': list(BARREL_AXLE), 'parent': 'head_gatling', 'z': 70,
                   'weapon': 'gatling',
-                  'axialSpin': {'axis': [0, -1, 0], 'axisOrigin': [246, 161],
+                  'axialSpin': {'axis': [0, -1, 0], 'axisOrigin': list(BARREL_AXLE),
                       'mode': 'spriteFrames', 'periodDegrees': 72,
                       'frameDurationMs': 50, 'frames': frame_files,
                       'frameGlows': frame_glows, 'phaseDegrees': [0, 12, 24, 36, 48, 60]}}
@@ -215,10 +216,10 @@ def build(out):
                        'riderPlacement': {'source': 'src/cosmetics/draw/rider.ts',
                             'scale': 1.7, 'ground': [window[0]+window[2]/2,
                                                      window[1]+window[3]-2]}},
-        'muzzle_gatling': {'parent': 'gatling_barrels', 'position': [246, 75]},
-        'muzzle_flamer': {'parent': 'head_flamer', 'position': [246, 106],
-                          'positions': [[224, 106], [267, 106]]},
-        'muzzle_rail': {'parent': 'head_rail', 'position': [246, 94]},
+        'muzzle_gatling': {'parent': 'gatling_barrels', 'position': [HUB[0], HUB[1]-155]},
+        'muzzle_flamer': {'parent': 'head_flamer', 'position': [HUB[0], HUB[1]-124],
+                          'positions': [[HUB[0]-22, HUB[1]-124], [HUB[0]+21, HUB[1]-124]]},
+        'muzzle_rail': {'parent': 'head_rail', 'position': [HUB[0], HUB[1]-136]},
         'range_center': {'parent': 'deck', 'position': list(HUB)}
     })
     manifest = {
@@ -242,6 +243,7 @@ def build(out):
     return manifest
 
 def rotation(angle, pivot):
+    angle = round(angle % 360, 10) % 360
     a = math.radians(angle); c, s = math.cos(a), math.sin(a)
     x, y = pivot
     return np.array([[c, -s, x - c*x + s*y], [s, c, y - s*x - c*y], [0, 0, 1.]])
@@ -374,6 +376,7 @@ def verify(out):
     assert required == set(parts)
     assert parts['gatling_barrels']['parent'] == 'head_gatling'
     assert parts['flywheel']['pivot'] == list(HUB)
+    assert parts['deck']['pivot'] == list(HUB)
     assert all(parts['head_' + w]['pivot'] == list(HUB) for w in ('gatling', 'flamer', 'rail'))
     assert not any(p['parent'] == 'flywheel' for p in parts.values())
     assert len([a for a in m['anchors'] if a.startswith('cable_')]) == 6
@@ -424,16 +427,22 @@ def verify(out):
         im = np.array(render(out, weapon='rail', charge=n))
         charge_pixels.append(int(((im[..., 2].astype(float) > im[..., 1]*1.4) & (im[..., 2] > 170)).sum()))
     assert all(a < b for a, b in zip(charge_pixels, charge_pixels[1:])), charge_pixels
+    for weapon in ('gatling', 'flamer', 'rail'):
+        first = render(out, weapon, 0, 0, charge=0, spin_frame=0)
+        cycle = render(out, weapon, -1e-14, 360, charge=0, spin_frame=60)
+        assert first.tobytes() == cycle.tobytes()
     budget = sum(f.stat().st_size for f in out.rglob('*') if f.is_file())
     assert budget < 1_500_000, budget
     result = {'status': 'pass', 'parts': len(parts), 'rotationPoses': poses,
               'transparentCabPoses': 36, 'axialSpinPhases': 6,
+              'closedMechanicalCycles': 3,
               'railChargeBrightPixels': charge_pixels,
               'productionBytes': budget, 'budgetBytes': 1_500_000,
               'checks': ['matching RGBA/glow dimensions', '4px transparent padding',
                          'no green fringe', 'registered axle centers', 'parent inheritance',
                          'all-angle clipping', 'fixed cab stencil with spinning flywheel',
                          'sequential independent rail charge', 'six cable socket anchors']}
+    result['checks'] += ['concentric deck/wheel/head pivots', 'pixel-identical loop closure']
     (HERE / 'validation.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 

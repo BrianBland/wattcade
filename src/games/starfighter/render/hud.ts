@@ -1,4 +1,5 @@
 import type { SfSnapshot } from '../sim/types';
+import { TIER_NAMES } from '../sim/progression';
 import { craftName } from '../sim/save';
 import type { layout } from './layout';
 
@@ -7,25 +8,34 @@ import type { layout } from './layout';
  * Watts, zone and controller hints belong to the shell HUD; this only shows what the game adds.
  */
 const CSS = `
-.sq-hud { position:absolute; inset:0; pointer-events:none; color:var(--fg,#e9e6ff); text-shadow:0 1px 3px #000, 0 0 2px #000; }
+.sq-hud { position:absolute; inset:0; pointer-events:none; color:var(--fg,#e9e6ff); text-shadow:0 1px 2px #000, 0 0 6px #000c; }
+/* Soft dark fades behind the top corners keep text legible without boxes. */
+.sq-hud::before { content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 340px 150px at 0% 0%,#07060f99,transparent 70%),radial-gradient(ellipse 380px 150px at 100% 0%,#07060f99,transparent 70%); }
 .sq-box { position:absolute; box-sizing:border-box; }
 .sq-top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .sq-title { min-width:0; flex:1; }
-.sq-title b, .sq-title span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sq-title span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sq-chip { display:inline-flex; align-items:baseline; gap:8px; }
+.sq-chip b { color:var(--neon,#00f0ff); font:900 13px system-ui; letter-spacing:1.5px; text-transform:uppercase; }
+.sq-chip span { font:700 12px system-ui; color:#d8d4f5; }
 .sq-title b { display:block; font-size:clamp(15px,2vw,20px); font-weight:900; font-style:italic; letter-spacing:3px; text-transform:uppercase; color:var(--neon,#00f0ff); text-shadow:0 0 14px #00f0ff88, 0 2px 0 #000; }
 .sq-title span { font:800 12px system-ui; letter-spacing:2px; text-transform:uppercase; color:var(--dim,#a29dcc); }
 .sq-stats { flex:none; display:flex; gap:clamp(12px,2.4vw,26px); justify-content:flex-end; text-align:right; }
-.sq-stat b { display:block; font-size:clamp(20px,3vw,30px); font-weight:900; font-style:italic; letter-spacing:1px; font-variant-numeric:tabular-nums; line-height:1.05; text-shadow:0 0 12px var(--acc,#00f0ff), 0 2px 0 #000; }
-.sq-stat span { font:800 11px system-ui; letter-spacing:2px; text-transform:uppercase; color:var(--dim,#a29dcc); }
+.sq-stat b { display:block; font:900 clamp(18px,2.6vw,26px) system-ui; color:#fff; letter-spacing:0.5px; font-variant-numeric:tabular-nums; line-height:1.05; }
+.sq-stat b em { font-style:normal; color:var(--acc,#00f0ff); }
+.sq-stat span { font:800 10px system-ui; letter-spacing:1.5px; text-transform:uppercase; color:#cfcaf3; }
 .sq-locks i { display:inline-block; width:9px; height:9px; margin-left:4px; border-radius:50%; border:2px solid #fff36b; vertical-align:middle; }
 .sq-locks i.on { background:#fff36b; box-shadow:0 0 8px #fff36b; }
 .sq-status { text-align:center; font:800 13px system-ui; letter-spacing:2px; text-transform:uppercase; }
+.sq-status > span { display:inline-block; padding:2px 14px; background:linear-gradient(90deg,transparent,#07060f99 20%,#07060f99 80%,transparent); }
+.sq-status .sq-elite { display:inline-block; padding:2px 14px; background:linear-gradient(90deg,transparent,#07060f99 20%,#07060f99 80%,transparent); }
 .sq-elite { margin-top:4px; color:#ffd34d; font:900 italic 13px system-ui; letter-spacing:3px; text-shadow:0 0 calc(4px + var(--b,0) * 10px) #ffd34d, 0 1px 2px #000; }
 .sq-status.warn { color:var(--warn,#ffb020); }
 .sq-bar { height:10px; margin:6px auto 0; max-width:360px; border:2px solid var(--pink,#ff2bd6); border-radius:3px; background:#0009; transform:skewX(-20deg); overflow:hidden; }
 .sq-bar i { display:block; height:100%; background:linear-gradient(90deg,var(--pink,#ff2bd6),#fff); transition:width .2s; }
 .sq-callout { text-align:center; opacity:0; transform:scale(.9); transition:opacity .3s, transform .3s; }
 .sq-callout.on { opacity:1; transform:none; }
+.sq-callout > div { display:inline-block; padding:14px 26px; border-radius:22px; background:radial-gradient(ellipse at center,#07060fb0 0%,#07060f70 60%,transparent 100%); }
 .sq-callout b { display:block; font-size:clamp(34px,6vw,58px); font-weight:900; font-style:italic; letter-spacing:6px; text-transform:uppercase; color:#fff; line-height:1; text-shadow:0 0 22px var(--acc,#ff2bd6), 0 0 4px var(--acc,#ff2bd6), 0 3px 0 #000; }
 .sq-callout span { display:block; margin-top:6px; font:900 clamp(13px,1.8vw,18px) system-ui; letter-spacing:4px; text-transform:uppercase; color:var(--acc,#ff2bd6); }
 .sq-foot { display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
@@ -54,9 +64,19 @@ const CSS = `
 .sq-lvl { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font:800 12px system-ui; letter-spacing:1px; text-transform:uppercase; }
 .sq-lvl .bar { flex:1; height:8px; }
 .sq-next { font-size:12px; color:var(--dim,#a29dcc); }
-.sq-pop { display:block; margin-top:4px; font:900 italic 13px system-ui; letter-spacing:2px; text-transform:uppercase; color:#fff36b; text-shadow:0 0 10px #fff36b; opacity:0; transition:opacity .2s; }
+.sq-locks { position:relative; }
+.sq-pop { position:absolute; right:0; top:100%; margin-top:6px; white-space:nowrap; font:900 italic 13px system-ui; letter-spacing:2px; text-transform:uppercase; color:#fff36b; text-shadow:0 0 10px #fff36b; opacity:0; transition:opacity .2s; }
 .sq-pop.on { opacity:1; }
 .sq-tester { display:inline-block; margin-bottom:8px; }
+.sq-amp { display:inline-block; width:64px; height:6px; margin-left:4px; border-radius:3px; background:#ffffff22; overflow:hidden; vertical-align:middle; }
+.sq-amp i { display:block; height:100%; background:linear-gradient(90deg,var(--neon,#00f0ff),var(--pink,#ff2bd6)); }
+.sq-score { text-align:center; opacity:0; transform:translateY(10px) scale(.96); transition:opacity .35s, transform .35s; }
+.sq-score.on { opacity:1; transform:none; }
+.sq-score > div { display:inline-grid; grid-template-columns:auto auto; gap:2px 18px; align-items:center; padding:16px 26px; border-radius:20px; background:radial-gradient(ellipse at center,#07060fd0 0%,#07060fa0 65%,#07060f40 100%); }
+.sq-score .g { grid-row:span 6; font:900 italic clamp(64px,10vw,104px)/1 system-ui; color:var(--gc); text-shadow:0 0 26px var(--gc), 0 3px 0 #000; padding-right:6px; }
+.sq-score h4 { margin:0 0 4px; font:900 13px system-ui; letter-spacing:3px; text-transform:uppercase; color:var(--dim,#a29dcc); text-align:left; max-width:260px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.sq-score .r { display:flex; justify-content:space-between; gap:18px; font:800 13px system-ui; letter-spacing:1px; text-transform:uppercase; color:#cfcaf3; min-width:200px; }
+.sq-score .r b { color:#fff; font-variant-numeric:tabular-nums; }
 .sq-menu .hint { margin:12px 0 0; font-size:13px; color:var(--dim,#a29dcc); }
 .sq-hud.hangar > .sq-box { visibility:hidden; }
 @media (max-width: 560px) { .sq-title b { font-size:13px; letter-spacing:2px; } .sq-title span { font-size:10px; letter-spacing:1px; display:block; } .sq-stats { gap:10px; } .sq-stat b { font-size:18px; } .sq-stat span { font-size:9px; letter-spacing:1px; } .sq-locks div, .sq-long { display:none; } .sq-shield { min-width:0; } .sq-shield .sq-bar { width:90px; } }
@@ -70,7 +90,7 @@ const STATUS: Record<SfSnapshot['effort']['status'], string> = {
 export class SquadronHud {
   readonly root = document.createElement('div');
   private top = this.box('sq-top'); private title = this.part(this.top, 'sq-title'); private stats = this.part(this.top, 'sq-stats'); private status = this.box('sq-status');
-  private callout = this.box('sq-callout'); private foot = this.box('sq-foot'); readonly menu = document.createElement('div');
+  private callout = this.box('sq-callout'); private score = this.box('sq-score'); private foot = this.box('sq-foot'); readonly menu = document.createElement('div');
   private shield!: HTMLElement; private song!: HTMLElement; private nova!: HTMLButtonElement;
   private menuKey = ''; private callUntil = 0; private lastClearAt = -1; private lastBanner = '';
 
@@ -93,25 +113,30 @@ export class SquadronHud {
     place(this.top, safe.x + pad, safe.y + 12, safe.w - pad * 2);
     place(this.status, safe.x + pad, safe.y + l.header - 4, safe.w - pad * 2);
     place(this.callout, safe.x + pad, safe.y + safe.h * 0.34, safe.w - pad * 2);
+    place(this.score, safe.x + pad, safe.y + safe.h * 0.26, safe.w - pad * 2);
     place(this.foot, safe.x + pad, safe.y + safe.h - l.footer + 8, safe.w - pad * 2, l.footer - 16);
     place(this.menu, safe.x, safe.y, safe.w, safe.h);
     const wide = safe.w > safe.h * 1.1; this.menu.classList.toggle('wide', wide); this.menu.classList.toggle('tall', !wide);
   }
 
   update(s: SfSnapshot) {
-    this.title.innerHTML = `<b>Sprocket Squadron</b><span>${craftName(s.craft)} Lv ${s.crafts[s.craft].level} · Arsenal ${s.gunLevel}${s.tester ? ' · Tester' : ''}</span>`;
+    // No title during play: just the arsenal tier (and a tester tag), small, on a legible chip.
+    this.title.innerHTML = `<span class="sq-chip"><b>Arsenal ${s.gunLevel}</b><span>${TIER_NAMES[s.gunLevel]}${s.tester ? ' · Tester' : ''}</span></span>`
+      + `<div class="sq-chip" style="display:flex;margin-top:4px"><span>Amp</span><span class="sq-amp"><i style="width:${Math.round((0.15 + s.amp * 0.85) * (0.9 + s.beat * 0.1) * 100)}%"></i></span></div>`;
+    this.renderScore(s);
     const pips = Array.from({ length: s.lockCapacity }, (_, i) => `<i class="${i < s.locks.length ? 'on' : ''}"></i>`).join('');
     this.stats.innerHTML = `<div class="sq-stat"><b>${s.score.toLocaleString()}</b><span>Score</span></div>`
-      + `<div class="sq-stat" style="--acc:#b6ff3b"><b>${Math.round(s.clear.rate * 100)}%</b><span>Cleared</span></div>`
-      + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b>${s.locks.length}</b><span>Locks</span><div>${pips}</div>`
+      + `<div class="sq-stat" style="--acc:#b6ff3b"><b><em>${Math.round(s.clear.rate * 100)}%</em></b><span>Cleared</span></div>`
+      + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b><em>${s.locks.length}</em>/${s.lockCapacity}</b><span>Locks</span><div>${pips}</div>`
       + `<em class="sq-pop${s.fullLock > 0 ? ' on' : ''}">Full lock</em><em class="sq-pop${s.clear.streak > 1 && s.clear.last?.perfect && s.t - s.clear.last.at < 3 ? ' on' : ''}">Perfect ×${s.clear.streak}</em></div>`;
     const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6;
     this.status.classList.toggle('warn', warn);
     this.status.innerHTML = s.boss
-      ? `${s.boss.name} · ${s.boss.stage} · ${Math.ceil(s.boss.left)}s<div class="sq-bar"><i style="width:${Math.max(0, s.boss.hp / s.boss.maxHp * 100)}%"></i></div>`
+      ? `<span>${s.boss.name} · ${s.boss.stage} · ${Math.ceil(s.boss.left)}s</span><div class="sq-bar"><i style="width:${Math.max(0, s.boss.hp / s.boss.maxHp * 100)}%"></i></div>`
       : s.bossIn !== null ? `Flagship inbound · ${Math.ceil(s.bossIn)}s`
       : s.upcoming ? `${s.upcoming.label} · ${s.upcoming.watts} W in ${Math.ceil(s.upcoming.left)}s`
       : s.cadence ? `Optional spin · ${s.cadence.min}–${s.cadence.max} RPM` : STATUS[s.effort.status];
+    if (!s.boss && this.status.innerHTML) this.status.innerHTML = `<span>${this.status.innerHTML}</span>`;
     if (s.eliteHint) this.status.insertAdjacentHTML('beforeend', `<div class="sq-elite" style="--b:${s.beat.toFixed(2)}">${s.eliteHint < 0 ? '◀ Elite wing' : 'Elite wing ▶'}</div>`);
     // Callouts: perfect formations take priority over banners.
     const last = s.clear.last;
@@ -137,9 +162,21 @@ export class SquadronHud {
     this.nova.disabled = !ready; this.nova.classList.toggle('ready', ready);
     this.renderMenu(s);
   }
+  private scoreAt = -1;
+  /** End-of-segment scorecard: big letter grade with the numbers behind it, during the breather. */
+  private renderScore(s: SfSnapshot) {
+    const c = s.scorecard, on = !!c && s.t - c.at < 7.5;
+    this.score.classList.toggle('on', on);
+    if (!c || c.at === this.scoreAt) return;
+    this.scoreAt = c.at;
+    const color = { S: '#ffd34d', A: '#b6ff3b', B: '#00f0ff', C: '#ffb020', D: '#9aa0b4' }[c.grade];
+    const row = (k: string, v: string) => `<div class="r"><span>${k}</span><b>${v}</b></div>`;
+    this.score.innerHTML = `<div style="--gc:${color}"><span class="g">${c.grade}</span><h4>${escapeHtml(c.title)}</h4>`
+      + row('Cleared', `${c.clearPct}%`) + row('On target', `${c.onTargetPct}%`) + row('Perfect wings', String(c.perfects)) + row('Elites', c.elites) + row('Flagship', c.boss) + `</div>`;
+  }
   private call(head: string, sub: string, color: string, t: number, dur: number) {
     this.callout.style.setProperty('--acc', color);
-    this.callout.innerHTML = `<b>${escapeHtml(head)}</b>${sub ? `<span>${escapeHtml(sub)}</span>` : ''}`;
+    this.callout.innerHTML = `<div><b>${escapeHtml(head)}</b>${sub ? `<span>${escapeHtml(sub)}</span>` : ''}</div>`;
     this.callUntil = t + dur;
   }
   private renderMenu(s: SfSnapshot) {

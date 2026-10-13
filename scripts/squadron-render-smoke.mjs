@@ -30,6 +30,7 @@ try {
     const before = await page.evaluate(() => window.__squadron.resources());
     for (let i = 0; i < 40; i++) await page.evaluate(() => window.__squadron.advance(3));
     const after = await page.evaluate(() => window.__squadron.resources());
+    assert.equal(after.dropped ?? 0, 0, `scenery pool overflow: ${JSON.stringify(after)}`);
     assert.ok(after.geometries <= before.geometries + 16 && after.geometries <= 80, JSON.stringify({ before, after }));
     assert.ok(after.programs <= before.programs + 2, JSON.stringify({ before, after }));
     // Static enemy templates can warm up once; repeated spawning must remain bounded.
@@ -40,6 +41,25 @@ try {
     assert.deepEqual(errors, []); await page.evaluate(() => window.__squadron.dispose());
     assert.equal(await page.locator('canvas').count(), 0);
     console.log(`${name}: controls, bounded resources, clean console (${JSON.stringify(after)})`); await page.close();
+  }
+  // Scenery stability: across a city stretch that includes a turn, no building may appear, vanish or change height
+  // well inside the view, and no instance pool may overflow.
+  {
+    const page = await browser.newPage({ viewport: { width: 640, height: 400 } });
+    await page.goto(`${base}/dev/squadron.html?manual=1&inset=0&sec=185`); await page.waitForFunction(() => window.__squadron);
+    const r = await page.evaluate(() => {
+      const A = window.__squadron; A.audit(true); A.advance(1 / 30); let prev = null, pops = 0, turned = 0;
+      for (let i = 0; i < 30 * 20; i++) {
+        A.advance(1 / 30); const list = A.audit(true), cur = new Map(), inner = [];
+        if (A.snapshot().world.turn) turned++;
+        for (let k = 0; k < list.length; k += 5) { const key = list[k] + ',' + list[k + 1]; cur.set(key, list[k + 2]); if (list[k + 4] > 80 && list[k + 4] < 600 && Math.abs(list[k + 3]) < 180) inner.push(key); }
+        if (prev) for (const key of inner) if (prev.get(key) !== cur.get(key)) pops++;
+        prev = cur;
+      }
+      return { pops, turned, ...A.resources() };
+    });
+    assert.equal(r.pops, 0, JSON.stringify(r)); assert.equal(r.dropped, 0, JSON.stringify(r)); assert.ok(r.turned > 0, 'audit window should include a turn');
+    console.log(`scenery: stable through a turn (${r.turned} turning frames), no pool overflow (peak fill ${r.peakFill})`); await page.close();
   }
 } finally { await browser.close(); }
 console.log(`Screenshots: ${output}`);

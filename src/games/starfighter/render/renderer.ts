@@ -7,7 +7,9 @@ import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, ship
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
+import { createBullets } from './bullets';
 import { SquadronPost } from './post';
+import { isKitGeometry } from './kit';
 import { SECTORS } from '../sim/content';
 import { SquadronHud, bigPerfect } from './hud';
 import { WING_OFFSETS } from '../sim/progression';
@@ -18,13 +20,13 @@ export class SfRenderer implements GameRenderer {
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
-  private bullets?: THREE.InstancedMesh; private bolts?: THREE.InstancedMesh; private boltGlow?: THREE.InstancedMesh; private effects?: THREE.InstancedMesh;
+  private bullets?: THREE.InstancedMesh; private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private cameraBase = new THREE.Vector3(); private post?: SquadronPost;
-  private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
+  private cameraBase = new THREE.Vector3(); private turnRoll = 0; private post?: SquadronPost;
+  private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
@@ -66,8 +68,8 @@ export class SfRenderer implements GameRenderer {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#ffffff', 300); this.bolts = makePool(geometries.sphere, '#ffffff', 640); this.boltGlow = makePool(geometries.sphere, '#ff35c7', 640);
-    const glowMat=this.boltGlow.material as THREE.MeshBasicMaterial;glowMat.opacity=0.2;glowMat.depthWrite=false;glowMat.blending=THREE.AdditiveBlending; this.effects = makePool(geometries.ring, '#ffcc8a', 160);
+    this.bullets = makePool(geometries.box, '#ffffff', 300); this.enemyFire = createBullets(this.scene);
+    this.effects = makePool(geometries.ring, '#ffcc8a', 160);
     this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
@@ -97,6 +99,7 @@ export class SfRenderer implements GameRenderer {
     const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
     if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
+    if (s.scorecard && s.scorecard.at !== this.lastScoreAt) { this.lastScoreAt = s.scorecard.at; play(s.scorecard.grade === 'S' ? 'levelup' : 'reward', { vol: 0.35 }); }
     if (!this.webgl) return;
     this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
@@ -110,7 +113,9 @@ export class SfRenderer implements GameRenderer {
     // Showcase spot: the free side of the hangar, pulled most of the way toward the camera along the same sight line.
     const show = hangar ? new THREE.Vector3(wide ? 27 : 0, 16, wide ? 6 : 34).lerp(this.cameraBase, wide ? 0.5 : 0.22) : null;
     const hx = show ? show.x : s.shipX, hz = show ? show.z : s.shipY - 50, hy = show ? show.y : 10;
-    craft.position.set(hx, hy, hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank);
+    // Barrel roll: a full turn over two beats (smootherstep), wingmen following a beat apart.
+    const rollAt = (delay: number) => { const r = s.roll; if (!r || hangar) return 0; const u = (s.t - r.at - delay) / r.dur; if (u <= 0 || u >= 1) return 0; return r.dir * Math.PI * 2 * u * u * u * (u * (u * 6 - 15) + 10); };
+    craft.position.set(hx, hy + (hangar ? 0 : s.lift), hz); craft.rotation.set(hangar ? 0.5 : 0, hangar ? spin * 0.45 : 0, hangar ? 0 : s.bank + this.turnRoll * 4 + rollAt(0));
     craft.scale.setScalar(hangar ? 3.1 : 1.55 + (tier - 1) * 0.055);
     if (tier > this.tierSeen) { for (let k = this.tierSeen + 1; k <= tier; k++) this.tierAt.set(k, this.tierSeen && !hangar ? s.t : -99); this.tierSeen = tier; }
     if (tier < this.tierSeen) { this.tierSeen = tier; }
@@ -144,7 +149,7 @@ export class SfRenderer implements GameRenderer {
       this.wings.push(wing); this.scene.add(wing);
     }
     const lift = hangar ? 2 : 1;
-    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy, hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8); });
+    this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy + (hangar ? 0 : s.lift * 0.6), hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8 + rollAt((s.roll?.dur ?? 0) / 2 * (i + 1))); });
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
@@ -152,7 +157,10 @@ export class SfRenderer implements GameRenderer {
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
-      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model); }
+      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
+        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
+      // Running lights breathe on the beat.
+      for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
       model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
@@ -169,15 +177,7 @@ export class SfRenderer implements GameRenderer {
     });
     if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
-    const pink=new THREE.Color('#ff45c9'),amber=new THREE.Color('#ffd24f');
-    s.bolts.slice(0,640).forEach((b,i)=>{
-      // Subtle beat pulse: cores swell a little, glows a little more, so the bullet field breathes with the music.
-      // Walls are drawn larger so the gate reads; glows stretch along the flight direction as a short trail.
-      const big=b.wall?1.6:1, core=(1+s.beat*0.12)*big, halo=(1+s.beat*0.35)*big;
-      mat.position.set(b.x,b.height,b.y-50);mat.rotation.set(0,Math.atan2(b.vx,b.vy),0);mat.scale.set(0.85*core,0.55*core,1.2*core);mat.updateMatrix();this.bolts!.setMatrixAt(i,mat.matrix);this.bolts!.setColorAt(i,b.kind==='amber'?amber:pink);
-      mat.position.x-=b.vx*0.04;mat.position.z-=b.vy*0.04;mat.scale.set(1.35*halo,1,2*halo+Math.hypot(b.vx,b.vy)*0.06);mat.updateMatrix();this.boltGlow!.setMatrixAt(i,mat.matrix);this.boltGlow!.setColorAt(i,b.kind==='amber'?amber:pink);
-    });
-    for(const pool of [this.bolts!,this.boltGlow!]) {pool.count=Math.min(640,s.bolts.length);pool.instanceMatrix.needsUpdate=true;if(pool.instanceColor)pool.instanceColor.needsUpdate=true;}
+    this.enemyFire!.update(s.bolts, s.beat);
     const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
@@ -190,21 +190,29 @@ export class SfRenderer implements GameRenderer {
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
-    this.starfield!.position.z = (s.t * 1.5) % 30; this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar);
-    // A barely-there settle of the camera on each bar line.
+    this.starfield!.position.z = (s.t * 1.5) % 30;
+    // The world passes beneath through the ship's route pose; the next biome takes over at its frame line.
+    this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,
+      { pose: s.world, f0: s.frames.cur, f1: s.frames.next, routeAhead: s.routeAhead },
+      s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })), { beatIndex: s.beatIndex, bands: s.bands });
+    // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
+    this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
-    this.webgl.setViewport(0, 0, this.w, this.h); this.post!.render(this.scene, this.camera, s.bar, performance.now());
+    this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
+    this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
   }
-  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0 }; }
+  /** Dev only: toggles the per-frame building audit and returns the last frame's list. */
+  debugAudit(on: boolean) { return this.space?.auditBuildings(on) ?? null; }
+  debugResources() { return { ...this.webgl?.info.memory, programs: this.webgl?.info.programs?.length ?? 0, enemies: this.enemies.size, drawCalls: this.webgl?.info.render.calls??0, ...this.space?.stats() }; }
   unmount() {
     this.observer?.disconnect(); this.overlay?.removeEventListener('click', this.controls);
     const mats = new Set<THREE.Material>(), geos = new Set<THREE.BufferGeometry>();
     this.scene.traverse(o => { if (o instanceof THREE.Mesh || o instanceof THREE.Points) { geos.add(o.geometry); for (const m of Array.isArray(o.material) ? o.material : [o.material]) mats.add(m); } });
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
-    for (const g of geos) if (!isSharedGeometry(g)) g.dispose();
-    for (const pool of [this.bullets, this.bolts, this.boltGlow, this.effects, this.beams]) pool?.dispose();
+    for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
+    for (const pool of [this.bullets, this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
     this.combat?.dispose(); this.space?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();

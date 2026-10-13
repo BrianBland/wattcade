@@ -5,12 +5,20 @@ import { clamp } from './director';
  * never needs to react, and never jitters.
  */
 export interface Move { start: number; end: number; from: number; to: number }
-export interface Route { moves: Move[]; field: number }
+/** `weave` (optional) adds a music-locked sway on top of the planned lanes; it must be a pure function of time. */
+export interface Route { moves: Move[]; field: number; weave?: (t: number) => number }
 export interface Shot { vx: number; vy: number }
-export const ROUTE = { field: 30, speed: 22, minMove: 8, maxMove: 26, holdMin: 0.5, holdMax: 1.9, ahead: 8, clearance: 5.5, graze: 9 };
+export const ROUTE = { field: 30, speed: 22, minMove: 8, maxMove: 26, holdMin: 1.2, holdMax: 3.4, ahead: 8, clearance: 5.5, graze: 9 };
 export const newRoute = (x = 0, t = 0): Route => ({ moves: [{ start: t, end: t, from: x, to: x }], field: ROUTE.field });
 const ease = (u: number) => u * u * u * (u * (u * 6 - 15) + 10);
-export function routeX(r: Route, t: number): number {
+export function routeX(r: Route, t: number): number { return laneX(r, t) + (r.weave ? r.weave(t) : 0); }
+/** 0..1: how much a lane change is under way at t (a smooth bump over each move). */
+export function moveActivity(r: Route, t: number): number {
+  for (const m of r.moves) if (t > m.start && t < m.end && m.end > m.start) { const u = (t - m.start) / (m.end - m.start), b = Math.sin(Math.PI * u); return b * b; }
+  return 0;
+}
+/** Planned lane position (without the weave). */
+export function laneX(r: Route, t: number): number {
   let m = r.moves[0];
   for (const move of r.moves) { if (move.start <= t) m = move; else break; }
   if (t >= m.end) return m.to;

@@ -4,6 +4,7 @@ import { drawHat, FULL_HEAD } from './hats';
 import { drawCape, drawTorso, legsOf } from './jersey';
 import { circle, joint, line, poly, rect, TAU, type G, type P } from '../prims';
 import { shade } from './prims';
+import { finishPixels, pixelWires } from './pixel';
 import { drawArm, drawLeg, drawFace, SKIN } from './anatomy';
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
@@ -77,11 +78,12 @@ function wheel(c: BikeCtx, x: number, y: number, r: number, o: WheelOpts) {
   if (o.knobby) for (let i = 0; i < 12; i++) { const a = c.spin + (i * TAU) / 12; circle(g, '#1b1b22', x + Math.cos(a) * (r + tyre * 0.45), y + Math.sin(a) * (r + tyre * 0.45), 0.35); }
   g.strokeStyle = '#485568'; g.lineWidth = .24; g.beginPath(); g.arc(x, y, r + tyre * .2, Math.PI * 1.05, Math.PI * 1.8); g.stroke();
   const n = o.spokes ?? 6;
-  g.strokeStyle = '#8093a4'; g.lineWidth = 0.3;
+  const spokes: Array<[P,P]> = [];
   for (let i = 0; i < n; i++) {
-    const a = c.spin + (i * Math.PI) / n;
-    g.beginPath(); g.moveTo(x - Math.cos(a) * r, y - Math.sin(a) * r); g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); g.stroke();
+    const a = c.spin + (i * Math.PI) / n, radius = r-tyre*.6;
+    spokes.push([[x-Math.cos(a)*radius,y-Math.sin(a)*radius],[x+Math.cos(a)*radius,y+Math.sin(a)*radius]]);
   }
+  pixelWires(g,'#647483',spokes);
   g.strokeStyle = '#bac9cf'; g.lineWidth = .28; g.beginPath(); g.arc(x, y, r - tyre * .6, 0, TAU); g.stroke();
   circle(g, '#263747', x, y, .58); circle(g, '#d8e3dd', x - .1, y - .1, .22);
 }
@@ -124,20 +126,21 @@ function bodyArt(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stok
   if (who === 'rider') def.over?.(c);
 }
 
-/** Four sprite pixels per rig unit retain the detail of Style A. Nearest sampling
+/** Six sprite pixels per rig unit retain the detail of Style A. Nearest sampling
  * keeps the outlined pixels visible in previews; world positioning stays fractional. */
 let rig: OffscreenCanvas | HTMLCanvasElement | undefined;
 function body(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker', o: RiderOpts) {
   if (!rig) {
-    if (typeof OffscreenCanvas !== 'undefined') rig = new OffscreenCanvas(256, 256);
-    else if (typeof document !== 'undefined') { rig = document.createElement('canvas'); rig.width = 256; rig.height = 256; }
+    if (typeof OffscreenCanvas !== 'undefined') rig = new OffscreenCanvas(384, 384);
+    else if (typeof document !== 'undefined') { rig = document.createElement('canvas'); rig.width = 384; rig.height = 384; }
   }
-  const bg = rig?.getContext('2d') as G | null | undefined;
+  const bg = rig?.getContext('2d', { willReadFrequently: true }) as G | null | undefined;
   if (!bg || !rig) { bodyArt(c, look, def, who, o); return; }
-  bg.setTransform(1, 0, 0, 1, 0, 0); bg.clearRect(0, 0, 256, 256);
-  bg.save(); bg.scale(4, 4); bg.translate(24, 56);
+  bg.setTransform(1, 0, 0, 1, 0, 0); bg.clearRect(0, 0, 384, 384);
+  bg.save(); bg.scale(6, 6); bg.translate(24, 56);
   bodyArt(bikeCtx(bg, look, c.th / TAU, c.spin * 0.34, c.t, c.speed), look, def, who, o);
   bg.restore();
+  finishPixels(bg,384, o.gear === 'bubble' || look.hat === 'bubble' || look.bike === 'ufo' || look.bike === 'velomobile');
   c.g.save(); c.g.imageSmoothingEnabled = false;
   c.g.drawImage(rig, -24, -56, 64, 64); c.g.restore();
 }

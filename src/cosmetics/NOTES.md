@@ -10,7 +10,7 @@ Both visual styles support the same permanent catalog IDs, loadouts, unlocks and
 - `draw/remastered/`: outlined rider, material-lit hats/bikes, woven and stitched jerseys, articulated pets and layered trails. Its material helpers preserve glass transparency and keep tiny details legible.
 - `draw/prims.ts`: common geometry, inverse kinematics, colors and types. Ships remain Cadenza art and are unaffected by the overworld setting.
 
-The Remastered rig rasterizes at four pixels per logical unit on a reused 256 × 256 surface. Its world footprint and pedal/hand joints are unchanged. Pets, trails and the projector trailer stay outside that surface so effects cannot be clipped.
+The Remastered rig rasterizes at six pixels per logical unit on a reused 384 × 384 surface. Cloth and skin use seven-tone pixel clusters rather than broad polygon highlights. Solid artwork has a hard alpha edge; glass keeps its transparency. Material patches use a bounded cache. Its world footprint and pedal/hand joints are unchanged. Pets, trails and the projector trailer stay outside that surface so effects cannot be clipped.
 
 ## Adding or changing cosmetics
 

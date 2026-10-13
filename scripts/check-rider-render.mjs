@@ -43,6 +43,11 @@ try {
       drawRider(g, { ...base, artMode }, phase, 3, { t, speed: 0 });
       return c.toDataURL();
     };
+    frame(.25);
+    const solid = g.getImageData(0,0,512,512).data;
+    for (let i = 3; i < solid.length; i += 4) {
+      if (solid[i] !== 0 && solid[i] !== 255) throw Error('Solid Remastered rider has a soft alpha fringe');
+    }
     const frames = Array.from({ length: 16 }, (_, i) => frame(i / 16));
     if (new Set(frames).size !== 16) throw Error('Pedal frames did not change');
     if (frame(.25, 1) !== frame(.25, 5)) throw Error('Stationary crank moved with wall clock');
@@ -100,7 +105,7 @@ try {
   if (errors.length) throw Error(errors.join('\n'));
   console.log(JSON.stringify({ browserRenderCases: result.cases, artModes: ['legacy', 'rich'], distinctPedalFramesPerMode: 16,
     petPoseCases: result.petCases, petAnimation: 'passed', cargoRest: 'passed', stoppedTrails: 'passed',
-    stationaryCrank: 'passed', zeroCadence: 'passed', alternateBikeSelections: 'passed',
+    solidPixelCutout: 'passed', stationaryCrank: 'passed', zeroCadence: 'passed', alternateBikeSelections: 'passed',
     portrait: 'passed', consoleErrors: errors.length }));
 } finally {
   await browser.close();

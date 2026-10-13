@@ -1,3 +1,4 @@
+import { pixelCloth } from './pixel';
 import type { JerseyLook } from '../../types';
 import { circle, line, poly, quad, shade, TAU, type G, type P } from '../prims';
 
@@ -14,22 +15,13 @@ export function drawTorso(g: G, j: JerseyLook, hip: P, sh: P, t: number) {
   g.quadraticCurveTo(L*.52,1,L*.3,1.6);
   g.lineTo(-.55,1.65); g.lineTo(-1.25,.5);
   g.closePath();
-  g.fillStyle = j.base; g.fill(); g.strokeStyle = '#142130'; g.lineWidth = .35; g.lineJoin = 'round'; g.stroke();
+  g.fillStyle = j.base; g.fill(); g.strokeStyle = '#101827'; g.lineWidth = .6; g.lineJoin = 'round'; g.stroke();
   g.clip();
-  pattern(g, j, L, w, t);
-  // Broad light/shadow planes leave the pattern visible even on the tiny rider.
-  g.globalAlpha *= 0.3;
-  poly(g, shade(j.base, 1.7), [-1, -2.4], [L, -2.4], [L * 0.7, -1.2], [1, -0.9]);
-  poly(g, '#142130', [-1, 0.7], [L, 0.7], [L, 2.5], [-1, 2.5]);
-  g.globalAlpha /= .3;
-  // Fold planes and staggered stitch clusters follow the outlined pixel concept.
-  g.globalAlpha *= .22;
-  poly(g, '#fff4d5', [L * .25, -2.1], [L * .75, -1.9], [L * .62, -.9], [L * .35, -.65]);
-  poly(g, '#10223c', [.2, .25], [L * .4, -.2], [L * .6, .55], [L * .35, 1.5], [-.5, 1.25]);
-  g.globalAlpha /= .22;
-  g.fillStyle = '#fff4dd40';
-  for (let u = .5, i = 0; u < L; u += .5, i++) for (let v = -1.6, k = 0; v < 1.3; v += .5, k++) {
-    if ((i * 3 + k * 5) % 9 === 0) g.fillRect(u, v, .45, .25);
+  pixelCloth(g,j.base,L,w);
+  pattern(g,j,L,w,t);
+  // Patterned jerseys keep their ink, with the same small cloth clusters on top.
+  if (j.pattern !== 'plain') {
+    g.globalAlpha *= .16; pixelCloth(g,j.base,L,w); g.globalAlpha /= .16;
   }
   line(g, shade(j.base, .55), .2, [-.2, .9], [L * .45, 1.25], [L - .5, .85]);
   line(g, '#fff2d577', .16, [L - .4, -1.75], [L + .35, -.75]);

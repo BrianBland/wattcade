@@ -5,8 +5,8 @@ All raw sheets use #00FF00; every pose/GIF is rendered from exported manifests.
 FILES.txt enumerates every actual file in this folder and export/.
 raw/*-sheet-raw.png: retained first-pass sheets; Tesla supplies the shared pad.
 raw/*-sheet-v2-raw.png and raw/prism-base-v3-raw.png: revised body/upgrade art.
-raw/tesla-head-v2-raw.png: refined short, wide solenoid and sphere.
-raw/tesla-l5-orb-coils-raw.png: two additional copper coils with blue arcing orbs.
+raw/tesla-head*-raw.png: short solenoid; electrical revision has dark metal/white arcs.
+raw/tesla-l5*-raw.png and tesla-extra-aux-coils-raw.png: arcing auxiliary coils.
 raw/mortar-l5-hot-details-raw.png: four red indicators and two hot vent housings.
 raw/tesla-effects-raw.png and raw/prism-effects-raw.png: generated electrical and
 crystalline passive/attack VFX, four frames per state. No machinery in those sheets.
@@ -20,13 +20,13 @@ validation.json: 480 aiming/recoil poses plus 300 animation samples; concentric 
 fixed Tesla/Prism geometry, frame padding, upgrades, clipping, anchors and size budget.
 glow-off.png: L5 rigs without emission (only Mortar aims to 45 degrees).
 animate.py: reproduce GIFs with python -B animate.py.
-animations/towers-passive.gif: L1/L3/L5 restrained pulse and sparks; Mortar rests.
+animations/towers-passive.gif: L1/L3/L5 Tesla crackle/Prism pulse; Mortar rests.
 animations/towers-attack.gif: Tesla/Prism discharge; Mortar alone aims and recoils.
 animations/towers-behavior.gif: same-time L5 passive versus attack comparison.
 animations/towers-rotation.gif: compatibility copy of towers-attack.gif.
 animations/towers-upgrades.gif: cumulative L1–L5 upgrades with corrected behavior.
 compare.py/comparison.png: original concept, first pass and current centered rigs.
-revised-lineup.png: current L1/L5 rigs at rest. alignment.png exposes pad/base outlines.
+revised-lineup.png: L1/L5; tesla-levels.png/animations/tesla-electrical.gif: L1–L5.
 export/: exact production folder, with its own NOTES.md and FILES.txt inventory.
 export/preview.png: passive/peak/attack states for Tesla/Prism; Mortar angles/recoil;
 each pose includes a 68px-footprint reduction. FX strips live in export/*/effects/.

@@ -12,7 +12,7 @@ import shutil
 from functools import lru_cache
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 HERE = Path(__file__).resolve().parent
 SIZE = 224
@@ -132,10 +132,19 @@ def pair(source, level, tower):
     return canvas
 
 
+def tesla_aux_details(canvas):
+    sheet = Image.open(HERE / 'raw' / 'tesla-extra-aux-coils-raw.png')
+    for box, socket, target in [((265, 175, 610, 900), (170, 645), (85, 100)),
+                                ((930, 175, 1270, 900), (170, 645), (139, 100))]:
+        layer, _ = socket_mounted(key(sheet.crop(box)), (20, 44), socket, target)
+        canvas.alpha_composite(layer)
+    return canvas
+
+
 def l5_details(canvas, tower):
     """Add generated reference-specific details to the existing cumulative L5 layer."""
     if tower == 'tesla':
-        sheet = Image.open(HERE / 'raw' / 'tesla-l5-orb-coils-raw.png')
+        sheet = Image.open(HERE / 'raw' / 'tesla-l5-electrical-coils-raw.png')
         for box, socket, target in [((285, 175, 620, 910), (159, 625), (66, 128)),
                                     ((930, 175, 1255, 910), (158, 625), (158, 128))]:
             layer, _ = socket_mounted(key(sheet.crop(box)), (27, 76), socket, target)
@@ -157,7 +166,9 @@ def emission(image, tower):
     r, g, b = rgb.transpose(2, 0, 1)
     if tower == 'tesla':
         mask = (b > 100) & (b > r * 1.3) & (b > g * 1.08)
-        mask |= (r > 180) & (g > 65) & (g < r * 0.65) & (b < g * 0.6)
+        # White arc cores next to blue discharge glow; copper is non-emissive.
+        vicinity = np.asarray(Image.fromarray(np.uint8(mask) * 255).filter(ImageFilter.MaxFilter(5))) > 0
+        mask |= vicinity & (r > 175) & (g > 175) & (b > 190)
     elif tower == 'mortar':
         mask = (r > 165) & (r > g * 1.7) & (r > b * 2)
     elif tower == 'prism':
@@ -222,6 +233,18 @@ def animation_assets(output, tower):
                              'glowStrength': [[0, 0.1], [160, 0.3], [240, 0.9], [400, 0.5], [640, 0.06]],
                              'effectOpacity': [[0, 0.1], [160, 0.5], [240, 1], [400, 0.7], [640, 0]],
                              'effect': descriptor}
+    if tower == 'tesla':
+        states['passive'].update({
+            'frameDurationMs': 120,
+            'glowGain': [[0, .85], [240, 1.1], [400, .85], [880, 1.15], [1040, .85], [1600, .85]],
+            'glowStrength': [[0, .08], [240, .28], [400, .08], [880, .25], [1040, .08], [1600, .08]],
+            'effectOpacity': [[0, .35], [240, .6], [400, .35], [880, .55], [1040, .35], [1600, .35]],
+        })
+        states['attack'].update({
+            'glowGain': [[0, .85], [160, 1.05], [240, 1.15], [400, 1.05], [640, .85]],
+            'glowStrength': [[0, .1], [160, .3], [240, .6], [400, .3], [640, .08]],
+            'effectOpacity': [[0, .35], [160, .85], [240, 1], [400, .85], [640, 0]],
+        })
     return states
 
 
@@ -239,7 +262,7 @@ def build(output):
         if tower == 'tesla':
             base, upgrades = parts[0], parts[2:]
             # A second reference-guided generation restores the short, wide coil.
-            head = key(Image.open(HERE / 'raw' / 'tesla-head-v2-raw.png').crop((340, 190, 920, 1125)))
+            head = key(Image.open(HERE / 'raw' / 'tesla-head-electrical-raw.png').crop((340, 190, 920, 1125)))
         elif tower == 'mortar':
             base, head, upgrades = parts[0], parts[1], parts[3:]
         else:
@@ -267,12 +290,16 @@ def build(output):
         for level, source in enumerate(upgrades, 2):
             parent = 'base' if tower != 'mortar' or level in (2, 4) else 'head'
             layer = pair(source, level, tower)
+            if level == 3 and tower == 'tesla':
+                layer = tesla_aux_details(layer)
             if level == 5:
                 layer = l5_details(layer, tower)
             part = save_part(output, tower, f'upgrade_l{level}', layer, parent,
                              {2: 30, 3: 45, 4: 20, 5: 35}[level], level)
             if level == 5 and tower == 'tesla':
                 part['visualDetails'] = {'additionalOrbCoils': 2, 'rearElectrodes': 2}
+            elif level == 3 and tower == 'tesla':
+                part['visualDetails'] = {'additionalAuxiliaryCoils': 2}
             elif level == 5 and tower == 'mortar':
                 part['visualDetails'] = {'redIndicators': 4, 'hotVentPods': 2}
                 part['glowScale'] = 1.8
@@ -507,14 +534,14 @@ Effect strips are already emissive RGBA, not body parts needing duplicate glows.
 
 Only Mortar has aim.enabled=true: rotate head about [112,112], inherit transforms.
 Its child barrel recoils 8px along local +y; the muzzle anchor follows the barrel.
-Tesla/Prism remain fixed. L5 Tesla adds blue-orb coils; Mortar adds hot indicators
-and vents (glowScale=1.8). Prism L1 omits the forward winding coil; L5 power coils
+Tesla/Prism remain fixed. Tesla L3 adds auxiliary coils, L5 adds arcing metal orbs;
+Mortar adds hot indicators/vents (glowScale=1.8). Prism L1 omits a winding; L5 coils
 sit large center-front/small rear-right. Aiming and accepted centering are preserved.
 Their animations.passive loops for 1600ms; animations.attack is a 640ms one-shot.
 Each state defines glowGain/glowStrength/effectOpacity keys in milliseconds,
 four VFX frames, frameDurationMs, frameSize, offset, parent and additive blending.
-Passively breathe the emissive pixels and add sparse sparks; attack charges,
-brightens and forks through the generated electrical/crystal effect frames.
+Tesla crackles with high-contrast blue-white arcs; copper is non-emissive. Prism
+breathes; attacks brighten and fork through generated electrical/crystal frames.
 Use premultiplied additive RGB for effects; do not recolor non-emissive steel.
 Cable and range_center anchors are fixed on pad; all coordinates are rest-frame.
 

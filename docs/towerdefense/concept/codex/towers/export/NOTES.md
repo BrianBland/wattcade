@@ -18,14 +18,14 @@ Effect strips are already emissive RGBA, not body parts needing duplicate glows.
 
 Only Mortar has aim.enabled=true: rotate head about [112,112], inherit transforms.
 Its child barrel recoils 8px along local +y; the muzzle anchor follows the barrel.
-Tesla/Prism remain fixed. L5 Tesla adds blue-orb coils; Mortar adds hot indicators
-and vents (glowScale=1.8). Prism L1 omits the forward winding coil; L5 power coils
+Tesla/Prism remain fixed. Tesla L3 adds auxiliary coils, L5 adds arcing metal orbs;
+Mortar adds hot indicators/vents (glowScale=1.8). Prism L1 omits a winding; L5 coils
 sit large center-front/small rear-right. Aiming and accepted centering are preserved.
 Their animations.passive loops for 1600ms; animations.attack is a 640ms one-shot.
 Each state defines glowGain/glowStrength/effectOpacity keys in milliseconds,
 four VFX frames, frameDurationMs, frameSize, offset, parent and additive blending.
-Passively breathe the emissive pixels and add sparse sparks; attack charges,
-brightens and forks through the generated electrical/crystal effect frames.
+Tesla crackles with high-contrast blue-white arcs; copper is non-emissive. Prism
+breathes; attacks brighten and fork through generated electrical/crystal frames.
 Use premultiplied additive RGB for effects; do not recolor non-emissive steel.
 Cable and range_center anchors are fixed on pad; all coordinates are rest-frame.
 

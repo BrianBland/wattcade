@@ -143,3 +143,23 @@ raw/prism-base-v3-raw.png. Only its first base cell is used; all other parts
 still use their approved source. Existing L5 copper-coil cutouts move to one
 large center-front coil and one smaller rear-right coil behind the crystal.
 No replacement coil art was procedurally drawn.
+
+## Tesla electrical contrast revision
+
+User requested greater electrical contrast at all levels, stronger arcing and
+more auxiliary coils, with an electrical rather than mystical appearance.
+Three imagegen outputs retain their green matte and complete generated originals:
+- exec-9b35ccea-3649-4e86-8030-5ce8c817d8eb.png → raw/tesla-head-electrical-raw.png:
+  edit the accepted head in place, preserving geometry/copper/steel/feet; replace
+  luminous blue glass with dark conductive chrome and sharp blue-white arc channels.
+- exec-decb4d1d-973b-4fca-9f62-0e4268dcb613.png → raw/tesla-l5-electrical-coils-raw.png:
+  same metal-terminal/white-core discharge edit on the accepted L5 orb-coil pair.
+- exec-d6ec37a6-de80-46f9-90d2-d9b4889d501a.png → raw/tesla-extra-aux-coils-raw.png:
+  generate two isolated compact auxiliary copper solenoids, black ribbed ceramic,
+  silver/dark ball terminals and localized blue-white crackle, matching the view.
+
+The head edit supplies contrast at every level. The new small pair is cumulative
+from L3; L5 also retains the two larger orb coils and rear electrodes. Copper is
+removed from Tesla emission masks; white arc cores adjoining blue discharge are
+included. Tesla-only timing uses sharper 120ms passive frames and stronger arc
+opacity, with less uniform attack washout. Prism/Mortar exports remain identical.

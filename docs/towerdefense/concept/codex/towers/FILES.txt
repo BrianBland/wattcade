@@ -2,6 +2,7 @@ FILES.txt
 NOTES.md
 alignment.png
 animate.py
+animations/tesla-electrical.gif
 animations/towers-attack.gif
 animations/towers-behavior.gif
 animations/towers-passive.gif
@@ -71,11 +72,15 @@ raw/prism-effects-raw.png
 raw/prism-sheet-raw.png
 raw/prism-sheet-v2-raw.png
 raw/tesla-effects-raw.png
+raw/tesla-extra-aux-coils-raw.png
+raw/tesla-head-electrical-raw.png
 raw/tesla-head-v2-raw.png
+raw/tesla-l5-electrical-coils-raw.png
 raw/tesla-l5-orb-coils-raw.png
 raw/tesla-sheet-raw.png
 raw/tesla-sheet-v2-raw.png
 reference-towers.png
 requirements.txt
 revised-lineup.png
+tesla-levels.png
 validation.json

@@ -74,6 +74,20 @@ def behavior(t):
     return image.convert('RGB')
 
 
+def tesla_levels(t=0, mode='passive'):
+    image = Image.new('RGBA', (1120, 260), GROUND)
+    draw = ImageDraw.Draw(image)
+    phase_ms = (t % 1.2) * 1000
+    state = 'attack' if mode == 'attack' and phase_ms < 640 else 'passive'
+    for level in range(1, 6):
+        x = (level - 1) * 224
+        draw.text((x + 80, 8), f'TESLA L{level}', font=FONT, fill='#e6daca')
+        pose, _ = render(HERE / 'export' / 'tesla', level, 0, state=state,
+                         time_ms=phase_ms if state == 'attack' else t * 1000)
+        image.alpha_composite(pose, (x, 30))
+    return image.convert('RGB')
+
+
 def main():
     OUT.mkdir(exist_ok=True)
     passive = [canvas((1, 3, 5), 0, i * 0.08, 'passive') for i in range(75)]
@@ -85,6 +99,8 @@ def main():
     save([behavior(i * 0.08) for i in range(75)], 'towers-behavior.gif')
     upgrades = [canvas((min(5, i // 12 + 1),), 30, i * 0.08, 'attack') for i in range(75)]
     save(upgrades, 'towers-upgrades.gif')
+    tesla_levels().save(HERE / 'tesla-levels.png', optimize=True)
+    save([tesla_levels(i * .08, 'attack') for i in range(75)], 'tesla-electrical.gif')
 
 
 if __name__ == '__main__':

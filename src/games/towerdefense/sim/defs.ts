@@ -1,7 +1,7 @@
 // Dynamo Defense catalogues and field geometry. Pure data + math; no DOM, no rng.
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
-export type Kind = 'mini' | 'dart' | 'stinger' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
+export type Kind = 'mini' | 'dart' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
 export type TowerKind = 'tesla' | 'mortar' | 'lens';
 
 export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
@@ -19,7 +19,6 @@ export interface KindDef {
 export const KINDS: Record<Kind, KindDef> = {
   mini:    { name: 'Swarm drone', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
   dart:    { name: 'Dart',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
-  stinger: { name: 'Stinger',     hp: 55,  speed: 4.0, dmg: 4,  color: 'blue',   radius: 2.3, scrap: 5,  heavy: true },
   brute:   { name: 'Brute',       hp: 70,  speed: 3.5, dmg: 5,  color: 'red',    radius: 2.7, scrap: 5,  heavy: true },
   charger: { name: 'Charger',     hp: 55,  speed: 2.8, dmg: 6,  color: 'red',    radius: 2.4, scrap: 6,  heavy: true },
   armor:   { name: 'Bastion',     hp: 95,  speed: 2.3, dmg: 8,  color: 'purple', radius: 3.2, scrap: 8,  heavy: true },
@@ -28,7 +27,7 @@ export const KINDS: Record<Kind, KindDef> = {
   boss:    { name: 'Goliath',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
 };
 /** First wave each kind can appear in. */
-export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, stinger: 1, brute: 1, charger: 6, armor: 2, carrier: 9, prism: 12, boss: 5 };
+export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, brute: 1, charger: 6, armor: 2, carrier: 9, prism: 12, boss: 5 };
 
 export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string }
 export const TOWERS: Record<TowerKind, TowerDef> = {

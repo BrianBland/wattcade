@@ -37,7 +37,7 @@ describe('field geometry', () => {
   });
 });
 
-const WO: WaveOpts = { spawnWindowS: 20, countScale: 1, brood: 'red', broodShare: 0.8 };
+const WO: WaveOpts = { spawnWindowS: 20, countScale: 1, brood: 'red', broodShare: 0.8, swarmPack: 5 };
 const BROOD = { maxRun: 2, coverWaves: 4 };
 function broodSeq(seed: number, n: number): Element[] {
   const rng = makeRng(seed), out: Element[] = [];
@@ -64,14 +64,17 @@ describe('brood planner', () => {
     for (let i = 0; i < 200; i++) seq.push(nextBrood(seq, rng, { maxRun: 1, coverWaves: 0 }));
     for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
   });
-  it('about 80% of a wave\'s heavies are the brood colour; blue broods get blue heavies', () => {
+  it('about 80% of a wave\'s slots are the brood colour; blue slots are swarm packs', () => {
     for (const brood of ELEMENTS) for (let w = 1; w <= 40; w++) {
       const p = planWave(w, makeRng(w * 7), { ...WO, brood });
       expect(p.brood).toBe(brood);
-      const coloured = p.spawns.filter((s) => KINDS[s.kind].heavy && s.kind !== 'prism' && s.kind !== 'boss');
-      const main = coloured.filter((s) => KINDS[s.kind].color === brood).length;
-      expect(main).toBe(Math.max(1, Math.round(waveCounts(w).heavies * 0.8)));
-      if (coloured.length >= 10) expect(main / coloured.length).toBeGreaterThanOrEqual(0.75);
+      const slots = waveCounts(w).heavies, main = Math.max(1, Math.round(slots * 0.8));
+      const heavies = p.spawns.filter((s) => KINDS[s.kind].heavy && s.kind !== 'prism' && s.kind !== 'boss');
+      const c = waveCounts(w), dartPacks = Math.ceil(c.dart / 4) * 4;
+      const swarm = p.spawns.length - heavies.length - dartPacks - c.prism - c.boss;
+      expect(heavies.length + swarm / 5).toBe(Math.max(main, slots)); // every slot is one heavy or one pack of 5
+      if (brood === 'blue') { expect(heavies.length).toBe(Math.max(main, slots) - main); expect(swarm).toBeGreaterThanOrEqual(main * 5); }
+      else expect(heavies.filter((s) => KINDS[s.kind].color === brood).length).toBe(main);
     }
   });
 });
@@ -80,8 +83,8 @@ describe('waves', () => {
   it('kinds only appear from their first wave, bosses every 5', () => {
     for (let w = 1; w <= 30; w++) {
       const p = planWave(w, makeRng(w), WO);
-      // a brood's first kind (brute, bastion, stinger) may lead any wave; the rest wait for their wave
-      for (const s of p.spawns) if (!['brute', 'armor', 'stinger'].includes(s.kind)) expect(w).toBeGreaterThanOrEqual(KIND_FROM[s.kind]);
+      // a brood's first kind (brute, bastion) may lead any wave; the rest wait for their wave
+      for (const s of p.spawns) if (!['brute', 'armor'].includes(s.kind)) expect(w).toBeGreaterThanOrEqual(KIND_FROM[s.kind]);
       expect(p.boss).toBe(w % 5 === 0);
       expect(p.spawns.filter((s) => s.kind === 'boss').length).toBe(w % 5 === 0 ? 1 : 0);
       // forecast counts every spawn once, in its lane

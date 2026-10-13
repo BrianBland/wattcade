@@ -12,8 +12,10 @@ export interface WavePlan {
 export interface WaveOpts {
   spawnWindowS: number; countScale: number;
   brood: Element;
-  /** Share of the wave's heavies that are the brood colour (the rest are off-colour, for the towers). */
+  /** Share of the wave's slots that are the brood colour (the rest are off-colour, for the towers). */
   broodShare: number;
+  /** Blue has no heavies: each blue slot is a swarm pack of this many darts or drones down one lane. */
+  swarmPack: number;
 }
 export interface BroodOrderOpts {
   /** No colour more than this many waves in a row. */
@@ -43,20 +45,19 @@ export function nextBrood(history: readonly Element[], rng: () => number, o: Bro
   return pool[Math.floor(rng() * pool.length) % pool.length];
 }
 
-/** Heavy kinds of each colour and their mix within that colour. The first kind can appear in any wave. */
-const COLOUR_KINDS: Record<Element, Array<{ kind: Kind; w: number }>> = {
-  blue: [{ kind: 'stinger', w: 1 }],
+/** Heavy kinds of each colour and their mix within that colour. The first kind can appear in any wave. Blue is swarm only. */
+const COLOUR_KINDS: Record<Exclude<Element, 'blue'>, Array<{ kind: Kind; w: number }>> = {
   red: [{ kind: 'brute', w: 0.65 }, { kind: 'charger', w: 0.35 }],
   purple: [{ kind: 'armor', w: 0.7 }, { kind: 'carrier', w: 0.3 }],
 };
-function pickKind(el: Element, w: number, rng: () => number): Kind {
+function pickKind(el: Exclude<Element, 'blue'>, w: number, rng: () => number): Kind {
   const ks = COLOUR_KINDS[el].filter((k, i) => i === 0 || w >= KIND_FROM[k.kind]);
   let r = rng() * ks.reduce((s, k) => s + k.w, 0);
   for (const k of ks) { r -= k.w; if (r <= 0) return k.kind; }
   return ks[ks.length - 1].kind;
 }
 
-/** How many of each kind wave `w` sends before brood colouring: `heavies` = coloured heavies, plus darts, prisms, boss. */
+/** What wave `w` sends before brood colouring: `heavies` = colour slots (a heavy, or a swarm pack if blue), plus darts, prisms, boss. */
 export function waveCounts(w: number, countScale = 1): { heavies: number; dart: number; prism: number; boss: number } {
   const boss = w % 5 === 0;
   const k = (boss ? 0.6 : 1) * countScale;
@@ -85,9 +86,14 @@ export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
   }
   const main = Math.max(1, Math.round(counts.heavies * o.broodShare));
   const off = ELEMENTS.filter((c) => c !== o.brood);
+  const pack = Math.max(1, Math.round(o.swarmPack));
   for (let i = 0; i < Math.max(main, counts.heavies); i++) {
     const el = i < main ? o.brood : off[Math.floor(rng() * 2) % 2];
-    spawns.push({ at: 1 + rng() * window, kind: pickKind(el, w, rng), lane: pickLane() });
+    const at = 1 + rng() * window, lane = pickLane();
+    if (el === 'blue') { // a swarm pack: darts once they're unlocked, else drones
+      const kind: Kind = w >= KIND_FROM.dart && rng() < 0.5 ? 'dart' : 'mini';
+      for (let k = 0; k < pack; k++) spawns.push({ at: at + k * 0.35, kind, lane });
+    } else spawns.push({ at, kind: pickKind(el, w, rng), lane });
   }
   for (let i = 0; i < counts.prism; i++) spawns.push({ at: 1 + rng() * window, kind: 'prism', lane: pickLane() });
   spawns.sort((a, b) => a.at - b.at);

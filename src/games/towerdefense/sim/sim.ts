@@ -93,6 +93,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const lullFtp = T.num('lullFtpFraction', 0.5, 0.3, 1, 0.05, 'ERG target early in the lull (Railgun brood next)');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
+  const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');
   const broodCover = T.num('broodCoverWaves', 4, 0, 8, 1, 'all three brood colours in every N waves (< 3 = off)');
   const bossShieldS = T.num('bossShieldCycleS', 7, 2, 30, 1);
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
@@ -254,7 +255,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function planFor(w: number): WavePlan {
     const brood = nextBrood(broods, ctx.rng, { maxRun: broodMaxRun(), coverWaves: broodCover() });
     broods.push(brood);
-    return planWave(w, ctx.rng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare() });
+    return planWave(w, ctx.rng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack() });
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
@@ -763,7 +764,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else if (lull > 0) { lull = Math.max(0, lull - dt); if (lull === 0) beginWave(); }
     else {
       waveElapsed += dt;
-      miniTimer -= dt;
+      // the drone stream runs until the wave has sent everything and waveMinS has passed, so the field can clear
+      if (schedule.length || waveElapsed < waveMin()) miniTimer -= dt;
       if (miniTimer <= 0) {
         spawn('mini', Math.floor(ctx.rng() * 3) % 3);
         miniTimer = (miniInterval() / (1 + 0.04 * (wave - 1))) * (0.7 + ctx.rng() * 0.6);
@@ -774,8 +776,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     trainerSync();
 
     // --- waves
-    const heavyAlive = enemies.some((e) => KINDS[e.kind].heavy);
-    if (baseHp > 0 && lull <= 0 && ((waveElapsed >= waveMin() && !heavyAlive && schedule.length === 0) || waveElapsed >= waveMax())) clearWave(waveElapsed < waveMax());
+    // a wave ends when the field is clear (after waveMinS), or at waveMaxS
+    if (baseHp > 0 && lull <= 0 && ((waveElapsed >= waveMin() && enemies.length === 0 && schedule.length === 0) || waveElapsed >= waveMax())) clearWave(waveElapsed < waveMax());
 
     if (baseHp <= 0) {
       if (coresMax === 0 || cores > 1) loseCore();

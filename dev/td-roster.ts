@@ -10,13 +10,13 @@ interface Manifest { size: [number, number]; centerX: number; parts: Part[]; neu
 interface Spec {
   id: string; dir: string; label: string; role: string; color: string;
   gamePx: number; gaitHz: number; stride: number; legAmp: number; bodyAmp: number; tailAmp: number;
-  flying?: boolean; tint?: boolean;
+  flying?: boolean; tint?: boolean; lurch?: boolean;
 }
 const SPECS: Spec[] = [
   { id: 'skitter', dir: 'skitter-parts', label: 'Skitter', role: 'swarm · Gatling', color: '#45d2ff', gamePx: 42, gaitHz: 2.6, stride: 70, legAmp: 1, bodyAmp: 0.8, tailAmp: 7 },
-  { id: 'glider', dir: 'glider-parts', label: 'Glider', role: 'flier · Gatling', color: '#45d2ff', gamePx: 78, gaitHz: 2.4, stride: 0, legAmp: 0.4, bodyAmp: 0.5, tailAmp: 6, flying: true },
+  { id: 'glider', dir: 'glider-parts', label: 'Glider', role: 'flier · Gatling', color: '#45d2ff', gamePx: 78, gaitHz: 1.1, stride: 0, legAmp: 0.4, bodyAmp: 0.5, tailAmp: 6, flying: true },
   { id: 'warrior', dir: 'warrior-parts', label: 'Warrior', role: 'brute · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.5, stride: 80, legAmp: 1, bodyAmp: 1, tailAmp: 3 },
-  { id: 'ram', dir: 'ram-parts', label: 'Ram', role: 'charger · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.4, stride: 80, legAmp: 0.9, bodyAmp: 0.5, tailAmp: 2 },
+  { id: 'ram', dir: 'ram-parts', label: 'Ram', role: 'charger · Flamer', color: '#ff6a2a', gamePx: 105, gaitHz: 1.4, stride: 80, legAmp: 1.5, bodyAmp: 0.5, tailAmp: 2, lurch: true },
   { id: 'bulwark', dir: 'bulwark-parts', label: 'Bulwark', role: 'armoured · Rail', color: '#b97cff', gamePx: 112, gaitHz: 1.1, stride: 45, legAmp: 1.1, bodyAmp: 0.35, tailAmp: 2 },
   { id: 'broodmother', dir: 'broodmother-parts', label: 'Broodmother', role: 'carrier · Rail', color: '#b97cff', gamePx: 120, gaitHz: 1.0, stride: 55, legAmp: 0.85, bodyAmp: 0.6, tailAmp: 2 },
   { id: 'stalker', dir: 'stalker-parts', label: 'Stalker', role: 'shifting colour', color: '#ffffff', gamePx: 110, gaitHz: 1.8, stride: 85, legAmp: 1, bodyAmp: 1.2, tailAmp: 7, tint: true },
@@ -59,11 +59,33 @@ async function loadRig(spec: Spec): Promise<Rig> {
   return { spec, m, parts, img, glow, body, tails: body.filter((n) => n.startsWith('tail')), walking, special: legs.filter((l) => !WALK.has(l.group)), cy: (Math.min(...ys) + Math.max(...ys)) / 2 };
 }
 
+// ---------- travel: gait phase + distance over time ----------
+interface Travel { ph: number; dist: number; mv: number; lunge: number; dust: number }
+const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+const easeInOut = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
+const LURCH_P = 2.8, LURCH_B = 0.7;
+function travel(s: Spec, t: number): Travel {
+  if (!s.lurch) return { ph: t * s.gaitHz, dist: t * s.gaitHz * s.stride, mv: 1, lunge: 0, dust: 0 };
+  // Ram: stands, crouches, then lurches two heavy steps forward
+  const D = s.stride * 2.6, n = Math.floor(t / LURCH_P), u = t - n * LURCH_P;
+  if (u < LURCH_B) { const k = u / LURCH_B; return { ph: n * 2 + 2 * k, dist: n * D + D * easeOut(k), mv: 1, lunge: Math.sin(Math.PI * Math.min(1, k * 1.3)), dust: k > 0.55 ? 1 - (k - 0.55) / 0.45 : 0 }; }
+  const crouch = u > LURCH_P - 0.45 ? -easeInOut((u - (LURCH_P - 0.45)) / 0.45) * 0.6 : 0;
+  const settle = u < LURCH_B + 0.35 ? (1 - (u - LURCH_B) / 0.35) : 0;
+  return { ph: n * 2 + 2, dist: (n + 1) * D, mv: 0, lunge: crouch, dust: settle * 0.6 };
+}
+/** Glider wingbeat: three powered beats, then a glide. 1 = wings swept forward and fully spread. */
+function flap(s: Spec, t: number): number {
+  const beat = 1 / s.gaitHz, P = beat * 3 + 1.4, u = t % P;
+  if (u >= beat * 3) return 0.92 + 0.05 * Math.sin((u - beat * 3) * TAU * 0.7);
+  const k = (u % beat) / beat;
+  return k < 0.38 ? easeOut(k / 0.38) : 1 - easeInOut((k - 0.38) / 0.62);
+}
+
 // ---------- posing ----------
 interface Pose { t: number; speed?: number /* 0 = idle */ }
 interface Xf { deg: number; sx?: number; sy?: number }
 function pose(r: Rig, p: Pose): Map<string, Xf> {
-  const s = r.spec, a = new Map<string, Xf>(), ph = p.t * s.gaitHz, mv = p.speed ?? 1;
+  const s = r.spec, a = new Map<string, Xf>(), tr = travel(s, p.t), ph = tr.ph, mv = (p.speed ?? 1) * tr.mv;
   const ease = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
   // body: yaw wave from head to tail; the tail whips with growing amplitude
   const rootIdx = r.body.indexOf(r.m.parts.find((q) => q.parent === null)!.name);
@@ -73,8 +95,13 @@ function pose(r: Rig, p: Pose): Map<string, Xf> {
     if (i === rootIdx) deg = 2.2 * s.bodyAmp * Math.sin(ph * TAU);
     else if (n.startsWith('tail')) { const k = r.tails.indexOf(n) + 1; deg = (s.tailAmp * (0.5 + k * 0.18)) * Math.sin(ph * TAU * (s.flying ? 0.5 : 1) - k * 0.75); }
     else deg = (i < rootIdx ? -1.6 : 2.1 + Math.max(0, i - rootIdx) * 0.35) * s.bodyAmp * Math.sin(ph * TAU - lag);
-    a.set(n, { deg: deg * (n.startsWith('tail') ? 1 : mv) });
+    a.set(n, { deg: deg * (n.startsWith('tail') ? 1 : Math.max(mv, 0.15)) });
   });
+  if (s.lurch) { // heave: the shell stretches into the lunge and squats in the crouch
+    const root = r.body[rootIdx], k = 1 + 0.07 * tr.lunge;
+    a.set(root, { deg: a.get(root)!.deg + 3 * Math.sin(p.t * TAU * 0.4), sx: 1 - 0.03 * tr.lunge, sy: k });
+    if (r.parts.has('battering_crest')) a.set('battering_crest', { deg: 0, sx: 1 + 0.05 * Math.max(0, tr.lunge), sy: 1 + 0.05 * Math.max(0, tr.lunge) });
+  }
   // walking legs: alternate front→rear, sides in antiphase
   const legAmps = [15, 12, 14, 13];
   for (const side of ['r', 'l'] as const) {
@@ -111,10 +138,10 @@ function pose(r: Rig, p: Pose): Map<string, Xf> {
     a.set(`mandible_${side}`, { deg: 6 * Math.sin(ph * TAU * 0.5 + (side === 'l' ? 0.4 : 0)) });
   }
   // flapping wings: foreshorten across the span (top-down flap) with a little sweep
-  if (s.flying) {
-    const fl = Math.sin(p.t * TAU * s.gaitHz);
-    a.set('wing_r', { deg: 6 * fl, sx: 0.62 + 0.38 * (0.5 + 0.5 * fl) });
-    a.set('wing_l', { deg: -6 * fl, sx: 0.62 + 0.38 * (0.5 + 0.5 * fl) });
+  if (s.flying) { // sweeping beat: folded back + foreshortened on the upstroke, forward + full span on the downstroke
+    const f = flap(s, p.t), sweep = 26 - 40 * f, span = 0.42 + 0.63 * f, chord = 0.86 + 0.14 * f;
+    a.set('wing_r', { deg: sweep, sx: span, sy: chord });
+    a.set('wing_l', { deg: -sweep, sx: span, sy: chord });
   }
   if (r.parts.has('egg_sac')) { const k = 1 + 0.035 * Math.sin(p.t * TAU * 0.9); a.set('egg_sac', { deg: 0, sx: k, sy: k }); }
   if (r.parts.has('posterior_fan')) a.set('posterior_fan', { deg: 5 * Math.sin(p.t * TAU * 0.7) });
@@ -127,16 +154,20 @@ function matrices(r: Rig, ang: Map<string, Xf>): Map<string, DOMMatrix> {
   const visit = (name: string, side: 'r' | 'l' | ''): DOMMatrix => {
     const key = side ? `${name}#${side}` : name;
     const hit = out.get(key); if (hit) return hit;
-    const p = r.parts.get(name)!, paired = name.endsWith('_r'), parentPaired = !!p.parent?.endsWith('_r');
+    const p = r.parts.get(name)!, paired = name.endsWith('_r') && !explicitPair(r, name), parentPaired = !!p.parent?.endsWith('_r') && !explicitPair(r, p.parent!);
     let m = p.parent ? visit(p.parent, parentPaired ? side : '') : new DOMMatrix();
     if (paired && side === 'l' && !parentPaired) m = m.multiply(MIRROR);
     const x = ang.get(paired ? name.replace(/_r$/, `_${side}`) : name) ?? { deg: 0 };
     m = m.translate(p.pivot[0], p.pivot[1]).rotate(x.deg).scale(x.sx ?? 1, x.sy ?? 1).translate(-p.pivot[0], -p.pivot[1]);
     out.set(key, m); return m;
   };
-  for (const p of r.m.parts) { if (p.name.endsWith('_r')) { visit(p.name, 'r'); visit(p.name, 'l'); } else visit(p.name, ''); }
+  for (const p of r.m.parts) {
+    if (p.name.endsWith('_r') && !explicitPair(r, p.name)) { visit(p.name, 'r'); visit(p.name, 'l'); } else visit(p.name, '');
+  }
   return out;
 }
+/** Parts like wing_r that ship with an explicit wing_l are drawn as-is, not mirrored. */
+const explicitPair = (r: Rig, name: string) => r.parts.has(name.replace(/_r$/, '_l'));
 
 const PAD = 160;
 /** One creature, drawn into an offscreen canvas in manifest-frame pixels (padded). */
@@ -156,13 +187,15 @@ function creatureCanvas(r: Rig, p: Pose): HTMLCanvasElement {
   };
   draw(g, r.img);
   const pulse = 0.88 + 0.12 * Math.sin(p.t * TAU * 1.3);
-  if (r.spec.tint) { // neutral-white glow, tinted through the brood colours
+  if (r.spec.tint) { // neutral-white glow and an iridescent shell, both tinted through the brood colours
+    const hues = ['#45d2ff', '#ff6a2a', '#b97cff'], u = (p.t / 2) % 3, i = Math.floor(u), f = u - i;
+    const col = mix(hues[i], hues[(i + 1) % 3], f < 0.7 ? 0 : easeInOut((f - 0.7) / 0.3));
+    g.globalCompositeOperation = 'source-atop'; g.globalAlpha = 0.34; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height);
+    g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
     const gl = document.createElement('canvas'); gl.width = c.width; gl.height = c.height;
     const gg = gl.getContext('2d')!; draw(gg, r.glow);
-    const hues = ['#45d2ff', '#ff6a2a', '#b97cff'], u = (p.t / 2) % 3, i = Math.floor(u), f = u - i;
-    gg.globalCompositeOperation = 'source-atop'; gg.globalAlpha = 0.85;
-    gg.fillStyle = mix(hues[i], hues[(i + 1) % 3], f < 0.8 ? 0 : (f - 0.8) / 0.2); gg.fillRect(0, 0, gl.width, gl.height);
-    g.globalCompositeOperation = 'lighter'; g.globalAlpha = pulse; g.drawImage(gl, 0, 0);
+    gg.globalCompositeOperation = 'source-atop'; gg.globalAlpha = 0.9; gg.fillStyle = col; gg.fillRect(0, 0, gl.width, gl.height);
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = 1; g.drawImage(gl, 0, 0); g.globalAlpha = 0.6 * pulse; g.drawImage(gl, 0, 0);
   } else { g.globalCompositeOperation = 'lighter'; g.globalAlpha = pulse; draw(g, r.glow); }
   return c;
 }
@@ -173,13 +206,25 @@ function mix(a: string, b: string, f: number) {
 /** Places a creature centred at (x, y), heading in radians (0 = +x), scaled so its 480 px manifest length is `px` long. */
 function place(g: G, r: Rig, x: number, y: number, heading: number, px: number, p: Pose) {
   const c = creatureCanvas(r, p), s = px / 480, cx = r.m.centerX, cy = r.cy;
-  const alt = r.spec.flying ? 1 : 0;
+  const alt = r.spec.flying ? 1 : 0, f = alt ? flap(r.spec, p.t) : 0;
   g.save(); g.translate(x, y); g.rotate(heading + Math.PI / 2); g.scale(s, s);
-  g.save(); g.filter = alt ? 'brightness(0) blur(6px)' : 'brightness(0)'; g.globalAlpha = alt ? 0.32 : 0.5;
-  const sh = alt ? 90 : 14; g.drawImage(c, -PAD - cx + sh * 0.6, -PAD - cy + sh); g.restore();
-  const bob = alt ? 1 + 0.02 * Math.sin(p.t * TAU * r.spec.gaitHz) : 1;
+  if (r.spec.lurch) { const tr = travel(r.spec, p.t); if (tr.dust > 0) dust(g, cy, tr.dust, p.t); }
+  g.save(); g.filter = alt ? 'brightness(0) blur(6px)' : 'brightness(0)'; g.globalAlpha = alt ? 0.3 : 0.5;
+  const sh = alt ? 80 + 25 * (1 - f) : 14; g.drawImage(c, -PAD - cx + sh * 0.6, -PAD - cy + sh); g.restore();
+  const bob = alt ? 1 + 0.045 * (1 - f) : 1; // rises on the upstroke, sinks as the wings bite
   g.scale(bob, bob); g.drawImage(c, -PAD - cx, -PAD - cy);
   g.restore();
+}
+
+/** Dust kicked up behind a lurching Ram (creature-local pixels, heading up). */
+function dust(g: G, cy: number, a: number, t: number) {
+  const rr = rng(Math.floor(t / LURCH_P) + 5);
+  for (let i = 0; i < 9; i++) {
+    const x = (rr() - 0.5) * 300, y = 120 + rr() * 140 + (1 - a) * 60, rad = 30 + rr() * 50 + (1 - a) * 40;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    gr.addColorStop(0, `rgba(120,105,85,${0.35 * a})`); gr.addColorStop(1, 'rgba(120,105,85,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, rad, 0, TAU); g.fill();
+  }
 }
 
 // ---------- scene helpers ----------
@@ -219,7 +264,7 @@ function grid(t: number) {
   rigs.forEach((r, i) => {
     const x0 = (i % 4) * cw, y0 = Math.floor(i / 4) * ch;
     g.save(); g.beginPath(); g.rect(x0, y0, cw, ch); g.clip();
-    const scale = 230 / 480, scroll = r.spec.flying ? (t * 160) % ch : (t * r.spec.gaitHz * r.spec.stride * scale) % ch;
+    const scale = 230 / 480, scroll = r.spec.flying ? (t * 110) % ch : (travel(r.spec, t + i * 0.13).dist * scale) % ch;
     g.drawImage(tile, x0, y0 + scroll - ch); g.drawImage(tile, x0, y0 + scroll);
     place(g, r, x0 + cw / 2, y0 + ch / 2 - 18, -Math.PI / 2, 230, { t: t + i * 0.13 });
     g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(x0, y0 + ch - 50, cw, 50);
@@ -278,12 +323,12 @@ function parade(t: number) {
   ];
   const flying: Array<[number, number, number]> = [[1, 0.0, 380], [1, 0.35, 520]];
   for (const [ri, li, d0, lat] of troops) {
-    const r = rigs[ri], sp = r.spec.gaitHz * r.spec.stride * (r.spec.gamePx / 480);
-    const { p, a } = laneAt(li, d0 + t * sp);
-    place(g, r, p[0] - Math.sin(a) * lat, p[1] + Math.cos(a) * lat, a, r.spec.gamePx, { t: t + ri * 0.21 + d0 * 0.01 });
+    const r = rigs[ri], tt = t + ri * 0.21 + d0 * 0.01;
+    const { p, a } = laneAt(li, d0 + (travel(r.spec, tt).dist - travel(r.spec, ri * 0.21 + d0 * 0.01).dist) * (r.spec.gamePx / 480));
+    place(g, r, p[0] - Math.sin(a) * lat, p[1] + Math.cos(a) * lat, a, r.spec.gamePx, { t: tt });
   }
   for (const [ri, off, xx] of flying) { // gliders fly straight over the rock
-    const y = ((t * 110 + off * 900) % 900) - 90;
+    const y = ((t * 75 + off * 900) % 900) - 90;
     place(g, rigs[ri], xx + 140 * Math.sin(t * 0.8 + off * 6), y, Math.PI / 2 + 0.25 * Math.cos(t * 0.8 + off * 6), rigs[ri].spec.gamePx, { t: t + off });
   }
   g.font = '700 18px system-ui, sans-serif'; g.fillStyle = 'rgba(232,222,208,0.85)'; g.fillText('Game scale: Skitter 42 px · Warrior 105 px · Hive Tyrant 185 px', 18, 30);

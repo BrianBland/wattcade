@@ -1,0 +1,40 @@
+{
+  "sourceCommit": "90700e8",
+  "manifestSha256": "a478cf0cadead606e45a9258d33839eb938683e83ba30a3034953e0798dac2ad",
+  "manifestUnchanged": true,
+  "partCanvasesUnchanged": true,
+  "polishedWingPixels": {
+    "wing_l": 3244,
+    "wing_r": 2668
+  },
+  "horns": {
+    "count": 2,
+    "method": "Generated polished horn duplicated and mirrored into head layer; original protruding horn removed from both overlapping head/body layers.",
+    "anchorRight": [
+      345,
+      162
+    ],
+    "scale": [
+      0.4,
+      0.46
+    ],
+    "bothAttachedTo": "head",
+    "filePixels": 918
+  },
+  "canvasChecks": 26,
+  "scriptedJointChecks": 168,
+  "gapJoints": [],
+  "clippedPoses": [],
+  "greenFringePixels": 0,
+  "preview": {
+    "deviceScaleFactor": 2,
+    "nominalLengthPx": 45,
+    "surfaces": [
+      "tan floor",
+      "dark rock"
+    ],
+    "aids": {},
+    "pageErrors": []
+  },
+  "skitterArtUnchanged": true
+}

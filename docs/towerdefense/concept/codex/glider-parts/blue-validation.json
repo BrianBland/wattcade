@@ -142,5 +142,7 @@
     "glowOffAlsoChecked": true,
     "pageErrors": []
   },
-  "skitterArtUnchanged": true
+  "skitterArtUnchanged": true,
+  "historicalPass": true,
+  "supersededBy": "polish-validation.json"
 }

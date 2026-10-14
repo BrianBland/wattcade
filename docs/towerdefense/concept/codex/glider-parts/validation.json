@@ -13,7 +13,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2156,
+        "overlapPixels": 1647,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -113,7 +113,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2156,
+        "overlapPixels": 1647,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -213,7 +213,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2049,
+        "overlapPixels": 1611,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -313,7 +313,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 1957,
+        "overlapPixels": 1635,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -413,7 +413,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2156,
+        "overlapPixels": 1647,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -513,7 +513,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2156,
+        "overlapPixels": 1647,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -613,7 +613,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2008,
+        "overlapPixels": 1605,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -713,7 +713,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 1907,
+        "overlapPixels": 1636,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -813,7 +813,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2008,
+        "overlapPixels": 1605,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -913,7 +913,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 1907,
+        "overlapPixels": 1636,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1013,7 +1013,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 1907,
+        "overlapPixels": 1636,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1113,7 +1113,7 @@
       {
         "joint": "head",
         "parent": "thorax_1",
-        "overlapPixels": 2008,
+        "overlapPixels": 1605,
         "pivotCoverage": 1.0,
         "gap": false
       },

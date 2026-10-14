@@ -9,7 +9,7 @@ Shared captures: `../skitter-parts/preview-aids-2x.png`, `../skitter-parts/previ
 Repaint: extract pristine folder at `88ffc23`, then run `../skitter-parts/retone-blue.cjs <species> <pristine-folder>` with Node. Run existing `render.py`, shared `blue-previews.py`, then `verify-blue.cjs` with the same inputs. Do not run old `build.py`: it restores original dark roster art.
 Capture: `node ../skitter-parts/capture-preview.mjs` with Vite running; requires existing playwright-core and `/usr/bin/chromium`.
 
-Shared preview captures refreshed for Glider’s original-body, saturated-blue-wing pass; Skitter pixels and rig are unchanged. Shared `blue-previews.py` now labels that Glider treatment correctly.
+Shared preview captures refreshed for Glider’s blue-wing polish and paired horns; Skitter pixels and rig are unchanged. Shared `blue-previews.py` now labels that Glider treatment correctly.
 
 ## Files actually produced or refreshed in this folder
 - `assembled-base.png`; `assembled-ground.png`; `assembled.png`

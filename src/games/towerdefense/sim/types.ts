@@ -28,18 +28,29 @@ export interface GarageView { bank: number; sel: number; rows: GarageRow[]; star
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
+export type TrainerMode = 'sim' | 'resistance' | 'erg';
+/** A wave's brood: its main colour, the turret weapon it calls for, and that weapon's trainer mode. */
+export interface BroodInfo {
+  wave: number; color: Element; weapon: Weapon; mode: TrainerMode;
+  /** trainer setting, e.g. 'resistance 35%' */ setting: string;
+  /** one-line riding cue, e.g. 'grind 70–80 rpm' */ cue: string;
+}
+/** The current (or, during the lull, the coming) wave's brood; `countdownS` = lull seconds left (0 once the wave is on). */
+export interface BroodView extends BroodInfo { countdownS: number; lullS: number; rampS: number }
 export type LaneForecast = Record<Element | 'gold' | 'prism', number>;
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number; grace: number;
   forecast: { wave: number; boss: boolean; mainLane: number; lanes: LaneForecast[] };
+  brood: BroodView; nextBrood: BroodInfo | null;
   baseHp: number; baseMaxHp: number; cores: number; coresMax: number; baseHurt: number;
+  /** read-only: follows `brood.weapon` */
   weapon: Weapon; swapLeft: number; swapS: number;
   aimAngle: number; autoAim: boolean; lane: number; targetId: number;
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   flaming: boolean; flameRange: number; flameHalfAngle: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;
-  grid: number; overdrive: boolean;
+  grid: number; overdrive: boolean; /** dynamo stalled (rider stopped): shields down, leaks hit harder */ stalled: boolean;
   surge: SurgeView | null;
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;

@@ -19,12 +19,33 @@ export const scenarios: Array<{
     },
   },
   {
-    // one reactor core: a rider who stops pedalling loses the base fast
+    // brood waves: the trainer changes mode at most once per wave, always to the announced weapon's mode
+    name: 'brood-z2', script: 'z2', minutes: 20, seed: 1, simOpts: { autopilot: true },
+    assert(s, _stats, run) {
+      const f: string[] = [];
+      const collapse = (xs: string[]) => xs.filter((x, i) => i === 0 || x !== xs[i - 1]);
+      const modes = collapse(run.mixerCommands.map((c) => c.mode));
+      const announced = run.events.filter((e) => e.type === 'broodAnnounced');
+      const waves = run.events.filter((e) => e.type === 'waveStart').length;
+      const ann = collapse(announced.map((e) => String(e.data?.mode)));
+      if (modes.length - 1 > announced.length) f.push(`${modes.length - 1} trainer-mode changes for ${announced.length} waves`);
+      // the garage/neutral 'sim' may lead before the first brood's mode
+      if (modes.join() !== ann.join() && modes.join() !== ['sim', ...ann].join()) f.push(`mixer modes ${modes.join()} != announced ${ann.join()}`);
+      if (!(waves >= 15)) f.push(`only ${waves} waves started`);
+      for (const k of ['kills_blue', 'kills_red', 'kills_purple']) if (!(n(s, k) > 50)) f.push(`${k} ${s[k]} <= 50`);
+      if (!(n(s, 'towerKills') >= 300)) f.push(`towerKills ${s.towerKills} < 300 (off-colour aliens are the towers' job)`);
+      return f;
+    },
+  },
+  {
+    // one reactor core: a rider who stops pedalling stalls the dynamo (shields down) and loses the base in wave 2
     name: 'idle', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!run.isOver) f.push('base should be destroyed (isOver)');
       if (!(n(s, 'wavesSurvived') <= 2)) f.push(`wavesSurvived ${s.wavesSurvived} > 2`);
+      const over = run.events.find((e) => e.type === 'gameOver');
+      if (!over || over.t > 150) f.push(`base fell at ${over ? Math.round(over.t) : '-'} s, want <= 150 s`);
       if (n(s, 'towerKills') !== 0) f.push(`unpowered towers killed ${s.towerKills}`);
       return f;
     },
@@ -69,8 +90,8 @@ export const scenarios: Array<{
     },
   },
   {
-    // storm-ready answers hooks.storm (set while a Power Surge is active) with 0.95 FTP
-    name: 'surge-ready', script: 'storm-ready', minutes: 30, seed: 1, simOpts: { autopilot: true },
+    // storm-ready answers hooks.storm (set while a Power Surge is active) with 0.95 FTP; 40 min reaches wave 40 (td_wave25) with the 15 s lulls
+    name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'surgesWon') >= 6)) f.push(`surgesWon ${s.surgesWon} < 6`);

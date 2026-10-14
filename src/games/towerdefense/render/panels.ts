@@ -1,6 +1,6 @@
 // Canvas HUD panels for Dynamo Defense: weapons / rail / dynamo (left), wave / base / forecast (right),
 // workshop, garage, banners. Each draw fn returns tap regions.
-import { LANE_NAMES, PADS, TOWERS, WEAPONS, WEAPON_BUTTON, type Weapon } from '../sim/defs';
+import { LANE_NAMES, PADS, TOWERS, WEAPONS, type Weapon } from '../sim/defs';
 import type { TdSnapshot, WorkshopView, GarageView } from '../sim/types';
 import { COL, TOWER_ICON_COLOR, WEAPON_COLOR } from './sprites';
 import type { Box } from './layout';
@@ -33,14 +33,16 @@ function label(g: CanvasRenderingContext2D, s: string, x: number, y: number, px:
 const ZONE_FTP: Record<number, number> = { 2: 56, 3: 76, 4: 91, 5: 106 };
 const MODE: Record<Weapon, string> = { gatling: 'SIM', flame: 'RES', rail: 'ERG' };
 const TIPS = [
-  'Match colors: blue = Gatling, red = Flamer, purple = Rail.',
+  'Each wave is one brood color: the turret mounts the matching weapon.',
+  'Off-color aliens are the towers\' job: build all three kinds.',
   'Towers run on your watts: 65% FTP = full speed.',
   'Press ▼ to open the workshop and build towers.',
   'Hold Z to fire every rail charge in a spread.',
   'Sprint for Overdrive: x1.5 damage and tower speed.',
   'Power Surge: ride the asked zone to fire an EMP.',
-  'Gold bosses shift shield color; swap to match.',
+  'Gold bosses shift shield color; towers cover the other colors.',
   'Clear a wave early to repair the base.',
+  'The lull between waves is your recovery: ease off.',
   'Prisms change color every 4 s: watch the outline.',
   'Spin-up: high cadence in an easy effort overclocks the Gatling.',
   'Parts bank between runs; spend them in the Garage.',
@@ -68,35 +70,33 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
       const cx = x + i * (cw + 6 * u), act = s.weapon === wp;
       g.fillStyle = act ? WEAPON_COLOR[wp] + '33' : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(cx, y, cw, ch, 6 * u); g.fill();
       if (act) { g.strokeStyle = WEAPON_COLOR[wp]; g.lineWidth = 2; g.beginPath(); g.roundRect(cx + 1, y + 1, cw - 2, ch - 2, 6 * u); g.stroke(); }
-      btnGlyph(g, WEAPON_BUTTON[wp], cx + ch * 0.45, y + ch / 2, ch * 0.28);
-      font(g, Math.min(12 * u, cw / 7), 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.6)'; g.fillText(WEAPON_NAME[wp], cx + ch * 0.85, y + ch / 2 + 4 * u);
+      g.fillStyle = WEAPON_COLOR[wp]; g.globalAlpha = act ? 1 : 0.4; g.beginPath(); g.arc(cx + ch * 0.4, y + ch / 2, ch * 0.16, 0, TAU); g.fill(); g.globalAlpha = 1;
+      font(g, Math.min(12 * u, cw / 7), 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.45)'; g.fillText(WEAPON_NAME[wp], cx + ch * 0.75, y + ch / 2 + 4 * u);
       if (act && s.swapLeft > 0) bar(g, cx + 4 * u, y + ch - 5 * u, cw - 8 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
-      hits.push({ x: cx, y, w: cw, h: ch, action: { type: 'weapon', w: wp } });
     });
     y += ch + 8 * u;
     const pr = 6 * u;
     for (let i = 0; i < s.railMaxCharges; i++) { g.fillStyle = i < s.railCharges ? COL.purple : 'rgba(255,255,255,0.1)'; g.beginPath(); g.arc(x + pr + i * pr * 2.6, y + pr, pr, 0, TAU); g.fill(); }
     hits.push({ x, y: y - 4 * u, w: s.railMaxCharges * pr * 2.6, h: pr * 2 + 8 * u, action: { type: 'rail' } });
     const bx = x + s.railMaxCharges * pr * 2.6 + 8 * u;
-    label(g, `TOWERS ${Math.round(s.grid * 100)}%${s.overdrive ? ' · OVERDRIVE' : ''}`, bx, y + pr * 0.4, 10 * u, s.overdrive ? '#ffb050' : undefined);
+    label(g, `TOWERS ${Math.round(s.grid * 100)}%${s.stalled ? ' · STALLED' : s.overdrive ? ' · OVERDRIVE' : ''}`, bx, y + pr * 0.4, 10 * u, s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : undefined);
     bar(g, bx, y + pr + 2 * u, x + w - bx, 5 * u, s.grid / 1.6, s.overdrive ? '#ff9a2a' : '#7df9ff');
     return hits;
   }
   // --- weapons
-  label(g, 'WEAPONS', x, y + 10 * u, 11 * u); y += 18 * u;
+  label(g, 'WEAPON · SET BY THE BROOD', x, y + 10 * u, 11 * u); y += 18 * u;
   const rh = 40 * u;
   for (const wp of WEAPONS) {
     const act = s.weapon === wp, c = WEAPON_COLOR[wp];
     g.fillStyle = act ? c + '2a' : 'rgba(255,255,255,0.03)'; g.beginPath(); g.roundRect(x, y, w, rh, 8 * u); g.fill();
     if (act) { g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, rh - 2, 8 * u); g.stroke(); }
-    btnGlyph(g, WEAPON_BUTTON[wp], x + 18 * u, y + rh / 2, 11 * u);
-    font(g, 15 * u, 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.75)'; g.fillText(WEAPON_NAME[wp], x + 36 * u, y + 18 * u);
+    g.fillStyle = c; g.globalAlpha = act ? 1 : 0.4; g.beginPath(); g.arc(x + 18 * u, y + rh / 2, 7 * u, 0, TAU); g.fill(); g.globalAlpha = 1;
+    font(g, 15 * u, 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.5)'; g.fillText(WEAPON_NAME[wp], x + 36 * u, y + 18 * u);
     const oc = wp === 'gatling' && s.overclock > 0;
     font(g, 10.5 * u, oc ? 800 : 600); g.fillStyle = oc ? '#8fd8ff' : 'rgba(200,215,240,0.55)';
     g.fillText(oc ? `OVERCLOCKED x2 · ${Math.ceil(s.overclock)}s` : WEAPON_HINT[wp], x + 36 * u, y + 32 * u);
     font(g, 10 * u, 800); g.fillStyle = c; g.textAlign = 'right'; g.fillText(`${MODE[wp]} ${modeVal[wp]}`, x + w - 8 * u, y + 18 * u); g.textAlign = 'left';
     if (act && s.swapLeft > 0) bar(g, x + 36 * u, y + rh - 6 * u, w - 44 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
-    hits.push({ x, y, w, h: rh, action: { type: 'weapon', w: wp } });
     y += rh + 5 * u;
   }
   y += 8 * u;
@@ -125,8 +125,8 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
   g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillRect(x + w / 1.6, y - 2 * u, 2, 16 * u);
   y += 30 * u;
   font(g, 22 * u, 800); g.fillStyle = gc; g.fillText(`${Math.round(s.grid * 100)}%`, x, y);
-  font(g, 11 * u, 600); g.fillStyle = s.overdrive ? '#ffb050' : 'rgba(200,215,240,0.55)';
-  g.fillText(s.overdrive ? `OVERDRIVE!` : 'Sprint = Overdrive', x + 66 * u, y - 3 * u);
+  font(g, 11 * u, s.stalled ? 800 : 600); g.fillStyle = s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : 'rgba(200,215,240,0.55)';
+  g.fillText(s.stalled ? 'STALLED · shields down' : s.overdrive ? `OVERDRIVE!` : 'Sprint = Overdrive', x + 66 * u, y - 3 * u);
   y += 22 * u;
   // --- scrap
   if (y + 40 * u <= b.y + b.h) {
@@ -169,7 +169,7 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     y += 16 * u;
     if (s.spin?.state === 'active') { label(g, `SPIN ${s.spin.rpm}+ rpm ${Math.ceil(s.spin.leftS)}s`, x, y + 9 * u, 11 * u, '#8fd8ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.spin.held / s.spin.needS, '#8fd8ff'); }
     else if (s.surge?.state === 'active') { label(g, `SURGE ≥${ZONE_FTP[s.surge.zone] ?? 91}% FTP ${Math.ceil(s.surge.leftS)}s`, x, y + 9 * u, 11 * u, '#7df9ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.surge.progress, '#7df9ff'); }
-    else { label(g, `NEXT ${s.forecast.boss ? 'BOSS' : `W${s.forecast.wave}`}: ${LANE_NAMES[s.forecast.mainLane]} heavy · ▼ workshop`, x, y + 9 * u, 10 * u); }
+    else if (s.nextBrood) { label(g, `NEXT ${s.forecast.boss ? 'BOSS' : `W${s.forecast.wave}`}: ${s.nextBrood.color.toUpperCase()} → ${WEAPON_NAME[s.nextBrood.weapon]} · ${LANE_NAMES[s.forecast.mainLane]}`, x, y + 9 * u, 10 * u, COL[s.nextBrood.color]); }
     hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: { type: 'pad', pad: -1 } });
     return hits;
   }
@@ -215,7 +215,8 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
   // --- forecast (hidden under the workshop when it is open)
   const bottom = workshopBox ? workshopBox.y - 8 * u : b.y + b.h - p;
   if (y + 70 * u <= bottom) {
-    label(g, `NEXT · WAVE ${s.forecast.wave}${s.forecast.boss ? ' · BOSS' : ''}`, x, y + 10 * u, 11 * u, s.forecast.boss ? '#ffd24a' : undefined); y += 18 * u;
+    const nb = s.nextBrood;
+    label(g, `NEXT · W${s.forecast.wave}${s.forecast.boss ? ' BOSS' : ''}${nb ? ` · ${nb.color.toUpperCase()} → ${WEAPON_NAME[nb.weapon]}` : ''}`, x, y + 10 * u, 11 * u, s.forecast.boss ? '#ffd24a' : nb ? COL[nb.color] : undefined); y += 18 * u;
     const cw = (w - 12 * u) / 3;
     s.forecast.lanes.forEach((ln, i) => {
       const cx = x + i * (cw + 6 * u), main = i === s.forecast.mainLane;
@@ -236,11 +237,10 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
   const legendH = 4 * 17 * u + 16 * u;
   if (!workshopBox && y + legendH + 44 * u <= b.y + b.h - p) {
     label(g, 'WEAKNESSES', x, y + 10 * u, 11 * u); y += 22 * u;
-    const rows: Array<[string, string, string]> = [[COL.blue, 'a', 'Swarm, darts → Gatling'], [COL.red, 'b', 'Brutes, chargers → Flamer'], [COL.purple, 'y', 'Bastions, carriers → Rail'], [COL.gold, '', 'Boss: match its shield']];
-    for (const [c, btn, txt] of rows) {
+    const rows: Array<[string, string]> = [[COL.blue, 'Blue → Gatling · Tesla'], [COL.red, 'Red → Flamer · Mortar'], [COL.purple, 'Purple → Rail · Lens'], [COL.gold, 'Boss: shield shifts color']];
+    for (const [c, txt] of rows) {
       g.fillStyle = c; g.beginPath(); g.arc(x + 6 * u, y, 5 * u, 0, TAU); g.fill();
       font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)'; g.fillText(txt, x + 18 * u, y + 4 * u);
-      if (btn) btnGlyph(g, btn, x + w - 8 * u, y, 7 * u);
       y += 17 * u;
     }
   }
@@ -329,6 +329,30 @@ export function drawGarage(g: CanvasRenderingContext2D, gv: GarageView, b: Box, 
   });
   void t;
   return hits;
+}
+
+/** The lull's brood card: which colour is coming, the weapon and trainer setting it brings, a riding cue and the countdown. */
+export function drawBroodCard(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number) {
+  const bd = s.brood;
+  if (s.phase !== 'run' || s.over || bd.countdownS <= 0) return;
+  const c = COL[bd.color], sc = Math.min(u, b.h / 104);
+  g.save(); g.globalAlpha = Math.min(1, (bd.lullS - bd.countdownS) / 0.3 + 0.001, bd.countdownS / 0.3);
+  panel(g, b, 12 * sc, c);
+  const p = 12 * sc, x = b.x + p, w = b.w - 2 * p;
+  const head = `WAVE ${bd.wave} · ${bd.color.toUpperCase()} BROOD · ${WEAPON_NAME[bd.weapon]}`;
+  font(g, Math.min(18 * sc, (w * 0.78) / Math.max(10, head.length * 0.6)), 900); g.fillStyle = c; g.fillText(head, x, b.y + p + 15 * sc);
+  font(g, 13 * sc, 700); g.fillStyle = '#e6eeff'; g.fillText(bd.setting, x, b.y + p + 36 * sc);
+  font(g, 13 * sc, 600); g.fillStyle = 'rgba(220,235,255,0.75)'; g.fillText(bd.cue, x, b.y + p + 54 * sc);
+  // countdown: big number, and a bar whose last stretch (the trainer ramp) is marked
+  const n = Math.ceil(bd.countdownS), ramping = bd.countdownS <= bd.rampS;
+  font(g, 34 * sc, 900); g.textAlign = 'right'; g.fillStyle = ramping ? c : '#fff';
+  g.fillText(`${n}`, x + w, b.y + p + 34 * sc * (1 + (ramping ? 0.04 * Math.sin(t * 10) : 0)));
+  font(g, 10 * sc, 700); g.fillStyle = 'rgba(200,215,240,0.6)'; g.fillText(ramping ? 'RAMPING IN' : 'RECOVER', x + w, b.y + p + 52 * sc); g.textAlign = 'left';
+  const by = b.y + b.h - p - 6 * sc, frac = 1 - bd.countdownS / Math.max(0.01, bd.lullS);
+  bar(g, x, by, w, 6 * sc, frac, c);
+  const rx = x + w * (1 - Math.min(1, bd.rampS / Math.max(0.01, bd.lullS)));
+  g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillRect(rx, by - 2 * sc, 2, 10 * sc);
+  g.restore();
 }
 
 export function drawBanner(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, w: number, u: number) {

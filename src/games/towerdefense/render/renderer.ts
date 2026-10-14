@@ -5,7 +5,7 @@ import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyl
 import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
-import { drawBanner, drawGarage, drawLeft, drawRight, drawWorkshop, type Hit } from './panels';
+import { drawBanner, drawBroodCard, drawGarage, drawLeft, drawRight, drawWorkshop, type Hit } from './panels';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -310,6 +310,7 @@ export class TdRenderer implements GameRenderer {
 
     // foreground UI (never under the HUD band)
     if (s.phase === 'run') {
+      drawBroodCard(g, s, L.brood, L.u, t);
       drawBanner(g, s, L.banner.x, L.banner.y, L.banner.w, L.u);
       this.hits.push(...drawLeft(g, s, L.left, L.u, t, !L.wide, MODE_VAL));
       const ws = s.workshop ? L.workshop : null;

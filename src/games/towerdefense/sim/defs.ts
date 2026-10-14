@@ -8,7 +8,7 @@ export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
 export const WEAPONS: Weapon[] = ['gatling', 'flame', 'rail'];
 export const WEAPON_ELEMENT: Record<Weapon, Element> = { gatling: 'blue', flame: 'red', rail: 'purple' };
 export const ELEMENT_WEAPON: Record<Element, Weapon> = { blue: 'gatling', red: 'flame', purple: 'rail' };
-export const WEAPON_BUTTON: Record<Weapon, 'a' | 'b' | 'y'> = { gatling: 'a', flame: 'b', rail: 'y' };
+export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Flamer', rail: 'Railgun' };
 
 /** color: fixed element, 'gold' = boss (shield cycles), 'prism' = cycles on its own. */
 export interface KindDef {

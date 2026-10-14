@@ -2,21 +2,23 @@ import type { BikeState } from '../../../contracts';
 import { BASE_X, BASE_Y, laneAt, laneLength, PADS } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
-import { along, boundedLights, cableRoute, inTrench, pulsePosition, strokeTimes, trenchStrip, type Point } from './battlefieldMath';
+import { along, boundedLights, cableRoute, pulsePosition, strokeTimes, trenchStrip, type Point } from './battlefieldMath';
 import { COL, glowAt } from './sprites';
+import { loadImage, loadManifest } from './assets';
 interface Overlay { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; size: number[] }
 interface Light extends Point { r: number; color: string; strength: number }
 const TAU = Math.PI * 2;
 export class Battlefield {
   background: HTMLImageElement;
+  readonly loaded: Promise<void>;
   private parts = new Map<string, { p: Overlay; image: HTMLImageElement; glow?: HTMLImageElement }>();
+  private eggs: HTMLImageElement | null = null;
   private tinted = new Map<string, HTMLCanvasElement>();
   private strips = [0, 1, 2].map(l => trenchStrip(l));
   private cables = PADS.map(p => {
     const route = cableRoute(p.id), samples = Array.from({ length: 121 }, (_, i) => along(route, i / 120));
-    const visible = samples.map(p => !inTrench(p));
     const length = route.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - route[i].x, p.y - route[i].y), 0);
-    return { route, samples, visible, length };
+    return { route, samples, length };
   });
   private revs: number | null = null;
   private pulseT = 0;
@@ -27,13 +29,19 @@ export class Battlefield {
   private darkness: HTMLCanvasElement | null = null;
   private lightKey = '';
   constructor(base: string, onBackground: () => void) {
-    this.background = new Image(); this.background.onload = onBackground; this.background.src = `${base}td/environment/background.webp`;
-    fetch(`${base}td/environment/manifest.json`).then(r => r.json()).then((m: { parts: Overlay[] }) => {
-      for (const p of m.parts) { const image = new Image(); image.onload = onBackground; image.src = `${base}td/environment/${p.file}`; const glow = p.glow ? new Image() : undefined;
-        if (glow) glow.src = `${base}td/environment/${p.glow}`;
-        this.parts.set(p.name, { p, image, glow }); }
-    }).catch(() => {});
+    this.background = new Image();
+    const background = loadImage(`${base}td/environment/background.webp`, this.background).then(() => onBackground());
+    const overlays = loadManifest<{parts: Overlay[]}>(`${base}td/environment/manifest.json`).then(async m => {
+      await Promise.all(m.parts.map(async p => {
+        const [image, glow] = await Promise.all([loadImage(`${base}td/environment/${p.file}`), p.glow ? loadImage(`${base}td/environment/${p.glow}`) : undefined]);
+        this.parts.set(p.name, {p,image,glow});
+      }));
+      onBackground();
+    });
+    const eggs = loadImage(`${base}td/aliens/broodmother/egg_sac.webp`).then(image => { this.eggs = image; });
+    this.loaded = Promise.all([background,overlays,eggs]).then(() => {});
   }
+
   get ready() { return this.background.complete && this.background.naturalWidth > 0; }
   paint(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
     if (!this.ready) return false;
@@ -73,7 +81,21 @@ export class Battlefield {
     if (s.wave !== this.wave || s.t < this.lastT) { this.wave = s.wave; this.char.clear(); this.pulses = []; this.revs = null; }
     this.lastT = s.t;
     for (let lane = 0; lane < 3; lane++) {
-      const spawn = laneAt(lane, 4); this.overlay(g, v, `burrow_${lane + 1}`, spawn.x, spawn.y, 12, 0, COL[s.brood.color]);
+      // A colony at the entry, not an isolated portal dropped into the walking floor.
+      const spawn = laneAt(lane, 2), rotation = Math.atan2(-spawn.nx, spawn.ny);
+      for (let i = 0; i < 7; i++) {
+        const a=i/7*TAU, radius=i===0?0:6.5;
+        g.save(); g.globalAlpha=0.8;
+        this.overlay(g,v,`creep_${i%6+1}`,spawn.x+Math.cos(a)*radius,spawn.y+Math.sin(a)*radius,11+(i%3),a+rotation,COL[s.brood.color]);
+        g.restore();
+      }
+      this.overlay(g,v,`burrow_${lane+1}`,spawn.x,spawn.y,8,rotation,COL[s.brood.color]);
+      if (this.eggs) for (const side of [-1,1]) {
+        const x=spawn.x+spawn.nx*side*7, y=spawn.y+spawn.ny*side*7;
+        g.save(); g.translate(v.X(x),v.Y(y)); g.rotate(rotation+side*0.4);
+        const width=6.4*v.k, height=width*this.eggs.naturalHeight/this.eggs.naturalWidth;
+        g.drawImage(this.eggs,-width/2,-height/2,width,height); g.restore();
+      }
       if (s.phase !== 'run' || s.lull > 0 || s.over) continue;
       const advance = Math.min(0.92, s.waveElapsed / Math.max(1, s.waveMaxS) * 1.15);
       // Clip organic decals to the actual floor so shoulders retain their painted texture.
@@ -101,15 +123,14 @@ export class Battlefield {
     g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
     for (const tw of s.towers) {
       const c = this.cables[tw.pad];
-      // The cable is buried whenever it crosses a route; no raised hose across a walking floor.
+      // Machinery covers the ends naturally; the entire cable remains connected, including its pulses.
       for (const [color, width] of [['#0b0e12', 1.1], ['#737475', 0.56], ['#2b393d', 0.3]] as const) {
         g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * v.k); g.beginPath();
-        c.samples.forEach((p, i) => { if (!c.visible[i] || i === 0 || !c.visible[i - 1]) g.moveTo(v.X(p.x), v.Y(p.y)); else g.lineTo(v.X(p.x), v.Y(p.y)); }); g.stroke();
+        c.samples.forEach((p, i) => { if (i === 0) g.moveTo(v.X(p.x), v.Y(p.y)); else g.lineTo(v.X(p.x), v.Y(p.y)); }); g.stroke();
       }
       for (const t of this.pulses) {
         const fraction = pulsePosition(s.t - t, c.length); if (fraction === null) continue;
-        const p = along(c.route, fraction), index = Math.min(120, Math.round(fraction * 120));
-        if (!c.visible[index]) continue;
+        const p = along(c.route, fraction);
         glowAt(g, '#75edff', v.X(p.x), v.Y(p.y), 1.6 * v.k, 0.7);
         g.fillStyle = '#b8faff'; g.beginPath(); g.arc(v.X(p.x), v.Y(p.y), 0.4 * v.k, 0, TAU); g.fill();
       }

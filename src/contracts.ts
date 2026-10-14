@@ -193,6 +193,8 @@ export interface GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void }): void; // send -> GameSim.receive
   /** Called after mount and whenever the HUD size changes. */
   setInsets?(insets: Insets): void;
+  /** Await after mount before advancing the simulation or countdown. */
+  ready?(): Promise<void>;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
   /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the shell's

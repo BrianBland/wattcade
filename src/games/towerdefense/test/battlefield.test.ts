@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PADS, TOWERS, laneAt, laneLength, lanePolyline } from '../sim/defs';
-import { LIGHT_BUDGET, along, boundedLights, cableRoute, pulsePosition, strokeCrossings, strokeTimes, TOWER_CABLE_X, trenchStrip } from '../render/battlefieldMath';
+import { LIGHT_BUDGET, along, boundedLights, cableRoute, pulsePosition, strokeCrossings, strokeTimes, TOWER_CABLE_X, laneXAtY, trenchStrip } from '../render/battlefieldMath';
 import { layout } from '../render/layout';
 const map = JSON.parse(readFileSync('public/td/environment/map-layout.json', 'utf8'));
 describe('painted battlefield registration', () => {
@@ -49,7 +49,7 @@ describe('painted battlefield registration', () => {
     }
   });
 });
-describe('pedal strokes and buried cable pulses', () => {
+describe('pedal strokes and connected cable pulses', () => {
   it('emits once at each half revolution, with no pulses when cadence stops or resets', () => {
     expect(strokeCrossings(10.1,10.4)).toBe(0);
     expect(strokeCrossings(10.4,10.5)).toBe(1);
@@ -67,8 +67,27 @@ describe('pedal strokes and buried cable pulses', () => {
     expect(pulsePosition(1,55)).toBe(1);
     expect(pulsePosition(1.01,55)).toBeNull();
     expect(pulsePosition(-1,55)).toBeNull();
-    for(const p of PADS) { const route=cableRoute(p.id); expect(along(route,1)).toEqual({x:p.x+TOWER_CABLE_X,y:p.y}); }
+    for(const p of PADS) { const route=cableRoute(p.id); expect(along(route,1)).toEqual({x:p.x,y:p.y}); expect(route[0]).toEqual({x:50,y:90}); expect(route.some(q=>q.x===p.x+TOWER_CABLE_X&&q.y===p.y)).toBe(true); }
     expect(along([{x:0,y:0},{x:10,y:0},{x:10,y:30}],0.5)).toEqual({x:10,y:10});
+  });
+});
+describe('cables through inner plateau corridors', () => {
+  it('inner cables stay between lane centrelines, including their smoothed bends', () => {
+    for(const id of [1,2,3,5]) {
+      const left=id===1||id===3?0:1, p=PADS[id];
+      for(const q of cableRoute(id)) {
+        if(q.y>86 || q.y<p.y)continue;
+        expect(q.x).toBeGreaterThan(laneXAtY(left,q.y));
+        expect(q.x).toBeLessThan(laneXAtY(left+1,q.y));
+      }
+    }
+  });
+  it('outer routes stay on the outside of their lane after leaving the shared outpost apron', () => {
+    for(const id of [0,4]) for(const q of cableRoute(id)) {
+      if(Math.hypot(q.x-50,q.y-90)<18)continue;
+      if(id===0)expect(q.x).toBeLessThan(laneXAtY(0,q.y));
+      else expect(q.x).toBeGreaterThan(laneXAtY(2,q.y));
+    }
   });
 });
 describe('light-map budget', () => {

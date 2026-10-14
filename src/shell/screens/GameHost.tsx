@@ -40,6 +40,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [help, setHelp] = useState(false);
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const loadingRef = useRef(true);
   const [musicWait, setMusicWait] = useState('');
   const musicWaitRef = useRef('');
   const [phase, setPhaseState] = useState<Phase>('intro');
@@ -60,6 +62,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
 
   const setPause = (p: boolean) => {
+    if (loadingRef.current) return;
     if (!canPause(phaseRef.current)) return;
     pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
@@ -68,6 +71,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   };
   /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
   const startCount = () => {
+    if (loadingRef.current) return;
     const to = startTarget(phaseRef.current, !!sessionRef.current?.sim.inMenu?.());
     if (to === 'menu') setPhase('menu');
     else if (to === 'count') { timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); }
@@ -89,6 +93,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   };
 
   useEffect(() => {
+    loadingRef.current = true; setLoading(true); setError('');
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
@@ -128,6 +133,11 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);
         if (probe.current) ro.observe(probe.current);
+        await renderer.ready?.();
+        if (disposed) return;
+        session.idle(0); // discard presses made while loading before exposing game controls
+        renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
+        loadingRef.current = false; setLoading(false);
         let last = performance.now();
         const T = timers.current;
         const loop = (now: number) => {
@@ -192,7 +202,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           raf = requestAnimationFrame(loop);
         };
         raf = requestAnimationFrame(loop);
-      } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+      } catch (e) { if (!disposed) { setLoading(false); setError(e instanceof Error ? e.message : String(e)); } }
     })();
     return () => {
       disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
@@ -206,10 +216,16 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     <div class="game-host">
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
+      {loading && !error && <div class="game-loading" role="status" aria-busy="true">
+        <div class="game-loading-ring" />
+        <h2>Preparing {game.title}</h2>
+        <p>Your ride starts when the scene is ready.</p>
+        <button class="btn" onClick={() => leave(onAbandon)}>Back</button>
+      </div>}
       {musicWait && <div role="status" class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}</div>}
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={() => leave(onAbandon)}>Back</button></div>}
-      {session && <HudLayer session={session} profile={profile} paused={paused || phase === 'intro'} legendOn={legendOn} fake={isFake()} />}
-      {session && (phase === 'intro' || count != null) && (
+      {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro'} legendOn={legendOn} fake={isFake()} />}
+      {session && !loading && !error && (phase === 'intro' || count != null) && (
         <GameIntro game={game} hud={hud} profile={profile} mode="pre" count={phase === 'intro' ? null : count} autoLeft={autoLeft}
           onStart={startCount} onBack={() => leave(onAbandon)} />
       )}

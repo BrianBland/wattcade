@@ -5,7 +5,8 @@ import type { EnemyView, Fx, TdSnapshot } from '../../sim/types';
 import { COL } from '../sprites';
 import { DEATH_FRAMES, FrameCache, LiveCanvas, loadPuppets, type Frame } from './puppets';
 import { thud } from './rig';
-import { SPECIES_OF_KIND, alienLengthUnits, type SpeciesId } from './species';
+import { loadImage } from '../assets';
+import { SPECIES_LIST, SPECIES_OF_KIND, alienLengthUnits, type SpeciesId } from './species';
 import { SPLAT_FADE_S, advanceTrack, newTrack, type Track } from './track';
 
 type G = CanvasRenderingContext2D;
@@ -29,12 +30,29 @@ export class AlienLayer {
   private haloSprites = new Map<string, HTMLCanvasElement>();
   private lastFx = -1; private wave = -1; private lull = false; private sizeKey = '';
   failed = false;
+  readonly loaded: Promise<void> = Promise.resolve();
 
   constructor(base: string) {
     if (typeof Image === 'undefined' || typeof fetch === 'undefined') { this.failed = true; return; } // no DOM (tests)
-    loadPuppets(base).then((p) => { this.cache = new FrameCache(p); }).catch(() => { this.failed = true; });
-    for (let i = 1; i <= 6; i++) { const im = new Image(); im.src = `${base}td/environment/parts/splat_${i}.png`; this.splatSrc.push(im); }
+    this.loaded = Promise.all([
+      loadPuppets(base).then(p => { this.cache = new FrameCache(p); }),
+      Promise.all(Array.from({length:6},(_,i)=>loadImage(`${base}td/environment/parts/splat_${i+1}.png`))).then(images => { this.splatSrc = images; }),
+    ]).then(() => {}).catch(error => { this.failed = true; throw error; });
   }
+  /** Bake the initial poses while the shell holds the simulation on its loading screen. */
+  async prepare(v: View, cancelled = () => false) {
+    await this.loaded;
+    const cache = this.cache!;
+    this.sizeKey = `${Math.round(v.k * 100)}|${v.dpr}`; cache.clear();
+    for (const sp of SPECIES_LIST) {
+      const def=KINDS[sp.kind], length=alienLengthUnits(def.radius,sp)*v.k*v.dpr;
+      const colors = sp.tint ? ['blue','red','purple'] as const : [sp.kind === 'boss' ? 'gold' : def.color] as Array<Element|'gold'>;
+      for (const color of colors) cache.get(sp.id,length,COL[color],sp.tint?COL[color]:undefined);
+    }
+    while (cache.pending && !cancelled()) { cache.pump(); await new Promise<void>(resolve => setTimeout(resolve,0)); }
+    if (cancelled()) cache.clear();
+  }
+
   get ready() { return !!this.cache; }
   get pendingFrames() { return this.cache?.pending ?? 0; }
 

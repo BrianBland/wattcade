@@ -28,6 +28,7 @@ const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) 
 
 export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
+  private mounted = false;
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
   private insetB = 0;
@@ -51,6 +52,7 @@ export class TdRenderer implements GameRenderer {
   private onPointer = (e: PointerEvent) => this.tap(e);
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+    this.mounted = true;
     this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
@@ -66,6 +68,16 @@ export class TdRenderer implements GameRenderer {
     this.canvas.addEventListener('pointerdown', this.onPointer);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
+  async ready() {
+    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded]);
+    if (!this.mounted) return;
+    let scale: number;
+    do {
+      scale = this.k; this.view.k = scale; this.view.dpr = this.dpr;
+      await this.aliens!.prepare(this.view, () => !this.mounted);
+    } while (this.mounted && this.k !== scale);
+    this.bg = null;
+  }
   resize(w: number, h: number) {
     this.W = Math.max(1, w); this.H = Math.max(1, h);
     if (!this.canvas) return;
@@ -74,6 +86,7 @@ export class TdRenderer implements GameRenderer {
   }
   setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
   unmount() {
+    this.mounted = false;
     this.canvas?.removeEventListener('pointerdown', this.onPointer);
     this.canvas?.remove();
     stopAmbient();

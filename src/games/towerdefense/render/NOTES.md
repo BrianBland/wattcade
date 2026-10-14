@@ -8,17 +8,21 @@
 - All pads clear floor/shoulder geometry and all level-one tower kinds reach their assigned lane.
 - Compact corner/top controls expose the landscape field; padded outpost art remains above HUD insets.
 - Environment overlays use manifest pivots; creep advances along clipped floors and the Flamer leaves char.
+- Entry colonies combine creep beds, smaller burrows and Broodmother egg clusters from the same puppet kit.
 - Creep/burrow emissions take the brood colour while their material images retain their original palette.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.
-- Six smooth conduits use distinct manifest deck sockets and the actual tower cable anchor.
-- Floor crossings are buried. Pulse launches interpolate every half crank revolution; travel uses elapsed seconds.
+- Six continuous conduits start beneath the turret and finish beneath tower pads, via their cable anchors.
+- Inner conduits follow the gaps between lane curves; outer conduits go around the battlefield. No hidden breaks.
+- Pulse launches interpolate every half crank revolution; travel uses elapsed seconds.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
 - Towers: level parts, fixed Tesla/Prism heads, manifest effect timing, aimed Mortar and barrel recoil.
 - Ground lighting before actors preserves silhouette contrast; cached quarter-resolution ambient darkness
   changes only with layout/structures. Transient additive lights are capped at 32 sources.
 - Machinery/alien assets load at mount, so renderer construction remains safe in the Node inset checks.
-- Alien frame sets bake one pose per render, round-robin, publishing rest poses first.
+- The loading screen holds simulation/countdown until all manifests, images and glows decode and initial poses bake.
+- Asset failure offers Back; leaving cancels pose preparation and prevents a late gameplay loop.
+- Alien frame sets bake incrementally, round-robin; future resize poses still publish rest poses first.
 - Live boss outlines reuse canvases and unchanged sampled poses; its independent scythe strike remains.
 - Five-seed 30-minute Zone 2 sweep: towerDamageMult 0.9 yields 42.5–49.2% turret damage,
   34 waves survived and 6–7 bosses killed. Existing 40–60% share targets are retained.

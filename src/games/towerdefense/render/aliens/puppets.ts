@@ -2,18 +2,16 @@
 // Walk cycles, strike and death poses are rendered once per species / on-screen size / tint into small canvases at
 // device resolution (with the soft brood-colour outline baked in), so each alien costs one drawImage per frame.
 import { buildRig, flapPeriod, matrices, mul, pose, scale, translate, type Affine, type AlienManifest, type PoseIn, type Rig } from './rig';
+import { loadImage as loadImg, loadManifest } from '../assets';
 import { OUTLINE_ALPHA, SPECIES_LIST, type Species, type SpeciesId } from './species';
 
 export interface Puppet { species: Species; rig: Rig; img: Map<string, HTMLImageElement>; glow: Map<string, HTMLImageElement> }
 
-const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => {
-  const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(`load ${src}`)); i.src = src;
-});
 export async function loadPuppets(base: string): Promise<Map<SpeciesId, Puppet>> {
   const out = new Map<SpeciesId, Puppet>();
   await Promise.all(SPECIES_LIST.map(async (s) => {
     const dir = `${base}td/aliens/${s.id}/`;
-    const m = await (await fetch(dir + 'manifest.json')).json() as AlienManifest;
+    const m = await loadManifest<AlienManifest>(dir + 'manifest.json');
     const img = new Map<string, HTMLImageElement>(), glow = new Map<string, HTMLImageElement>();
     await Promise.all(m.parts.map(async (p) => { img.set(p.name, await loadImg(dir + p.file)); glow.set(p.name, await loadImg(dir + p.glow)); }));
     out.set(s.id, { species: s, rig: buildRig(m), img, glow });

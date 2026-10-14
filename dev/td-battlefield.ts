@@ -11,6 +11,7 @@ session.step(Math.round(Number(q.get('sec') ?? 700) * 30));
 const renderer = await module.loadRenderer();
 const inset = Number(q.get('inset') ?? 110);
 renderer.mount(document.getElementById('app')!, { profile, send: a => session.sim.receive?.(a), insets: { top: 0, left: 0, right: 0, bottom: inset } });
+await renderer.ready?.();
 const hud = document.getElementById('hud')!; hud.style.height = `${inset}px`; hud.textContent = inset ? `Shell HUD inset · ${inset}px` : '';
 const stress = Math.max(0, Math.min(200, Number(q.get('stress') ?? 0)));
 const kinds = Object.keys(KINDS) as Kind[];

@@ -1,4 +1,4 @@
-import { BASE_X, BASE_Y, PADS, laneAt, laneLength } from '../sim/defs';
+import { BASE_X, BASE_Y, PADS, laneAt, laneLength, lanePolyline } from '../sim/defs';
 export interface Point { x: number; y: number }
 export const LIGHT_BUDGET = 32;
 export function trenchStrip(lane: number, halfWidth = 6.5, steps = 80) {
@@ -30,20 +30,39 @@ export function along(points: Point[], fraction: number): Point {
   }
   return points[points.length - 1];
 }
-/** Canonical deck sockets, assigned uniquely to stable pad ids. Coordinates from the outpost manifest. */
-const SOCKETS = [[62.01,257.75],[143.64,416.62],[380.03,94.34],[143.07,94.34],[457.69,256.61],[381.73,417.18]];
 export const TOWER_CABLE_X = 65 * 8.4 / 136;
-/** Smooth armoured conduits; any floor crossings are buried by the renderer. */
+/** The painted lane curves are monotonic in y, so interpolate their x at a shared height. */
+export function laneXAtY(lane: number, y: number): number {
+  const points = lanePolyline(lane, 1);
+  for (let i = 1; i < points.length; i++) if (y <= points[i].y) {
+    const a = points[i - 1], b = points[i], f = Math.max(0, (y - a.y) / (b.y - a.y));
+    return a.x + (b.x - a.x) * f;
+  }
+  return points[points.length - 1].x;
+}
+/** Continuous cables start under the turret and finish under the tower pad, never at its outer edge. */
 export function cableRoute(pad: number): Point[] {
-  const p = PADS[pad], socket = SOCKETS[pad];
-  const a = { x: BASE_X + (socket[0] - 260) * 22 / 440, y: BASE_Y + (socket[1] - 260) * 22 / 440 };
-  const dx = a.x - BASE_X, dy = a.y - BASE_Y, length = Math.hypot(dx,dy);
-  const b = { x: a.x + dx / length * 12, y: a.y + dy / length * 12 };
-  const d = { x: p.x + TOWER_CABLE_X, y: p.y }, c = { x: d.x + 8, y: d.y + 10 };
-  return Array.from({length:97},(_,i)=>{
-    const t=i/96,u=1-t;
-    return {x:u*u*u*a.x+3*u*u*t*b.x+3*u*t*t*c.x+t*t*t*d.x,y:u*u*u*a.y+3*u*u*t*b.y+3*u*t*t*c.y+t*t*t*d.y};
-  });
+  const p = PADS[pad], points: Point[] = [{ x: BASE_X, y: BASE_Y }];
+  if (pad === 0) points.push({x:31,y:88},{x:16,y:79},{x:11,y:67},{x:13,y:60});
+  else if (pad === 4) points.push({x:69,y:91},{x:87,y:83},{x:98,y:72},{x:98,y:64});
+  else {
+    // Both inner plateaus: follow the middle of the gap, not a straight shortcut across a lane.
+    const left = pad === 1 || pad === 3 ? 0 : 1;
+    for (let y = 86; y > p.y + 5; y -= 4) points.push({x:(laneXAtY(left,y)+laneXAtY(left+1,y))/2,y});
+    const y = p.y + 5; points.push({x:(laneXAtY(left,y)+laneXAtY(left+1,y))/2,y});
+  }
+  points.push({x:p.x+TOWER_CABLE_X,y:p.y},{x:p.x,y:p.y});
+  // Catmull–Rom interpolation rounds the route without cutting across the corridor in big arcs.
+  const route: Point[] = [];
+  for(let i=0;i<points.length-1;i++) {
+    const a=points[Math.max(0,i-1)],b=points[i],c=points[i+1],d=points[Math.min(points.length-1,i+2)];
+    for(let j=0;j<12;j++) {
+      const t=j/12,t2=t*t,t3=t2*t;
+      const axis=(k:'x'|'y')=>0.5*(2*b[k]+(-a[k]+c[k])*t+(2*a[k]-5*b[k]+4*c[k]-d[k])*t2+(-a[k]+3*b[k]-3*c[k]+d[k])*t3);
+      route.push({x:axis('x'),y:axis('y')});
+    }
+  }
+  route.push(points[points.length-1]); return route;
 }
 export function inTrench(p: Point): boolean {
   for (let l = 0; l < 3; l++) for (let i = 0; i <= 80; i++) {

@@ -1,0 +1,24 @@
+{
+  "deviceScaleFactor": 2,
+  "candidateBounds": [
+    76,
+    58,
+    563,
+    579
+  ],
+  "nominalLengthsPx": [
+    28,
+    35,
+    45
+  ],
+  "creaturesPerSwarm": 16,
+  "rows": [
+    "tan floor",
+    "dark rock"
+  ],
+  "rendererAids": {},
+  "candidateIsUnsegmented": true,
+  "previewMotion": "Whole sprites translate; no articulated gait",
+  "background": "/td/environment/background.webp",
+  "errors": []
+}

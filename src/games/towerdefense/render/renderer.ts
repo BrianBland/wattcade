@@ -42,7 +42,7 @@ export class TdRenderer implements GameRenderer {
   private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
-  private aliens = new AlienLayer(import.meta.env.BASE_URL);
+  private aliens: AlienLayer | null = null;
   private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
 
@@ -51,6 +51,7 @@ export class TdRenderer implements GameRenderer {
     this.color = ctx.profile.color || this.color;
     this.send = ctx.send;
     this.dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
+    this.aliens ??= new AlienLayer(import.meta.env.BASE_URL);
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0a0e16;touch-action:none';
     container.appendChild(this.canvas);
@@ -286,8 +287,8 @@ export class TdRenderer implements GameRenderer {
     if (s.phase === 'run') {
       this.drawLanes(g, s, t);
       this.view.k = k; this.view.dpr = this.dpr;
-      this.aliens.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
-      this.aliens.drawGround(g, this.view, t);
+      this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
+      this.aliens?.drawGround(g, this.view, t);
       this.drawCables(g, s, t);
       this.drawPads(g, s, t);
       for (const tw of s.towers) { const p = PADS[tw.pad]; drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
@@ -298,7 +299,8 @@ export class TdRenderer implements GameRenderer {
       const reach = s.weapon === 'flame' ? s.flameRange : 100;
       g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
       // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
-      if (this.aliens.ready) this.aliens.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
+      const puppets = this.aliens?.ready ? this.aliens : null;
+      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
       const live = new Set<number>();
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
@@ -307,7 +309,7 @@ export class TdRenderer implements GameRenderer {
         let h = prev?.h ?? Math.atan2(by - y, bx - x);
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
-        if (!this.aliens.ready) drawEnemy(g, e, x, y, k, h, t);
+        if (!puppets) drawEnemy(g, e, x, y, k, h, t);
         if (e.id === s.targetId) this.reticle(g, e, x, y, t);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);

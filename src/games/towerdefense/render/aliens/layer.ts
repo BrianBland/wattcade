@@ -30,6 +30,7 @@ export class AlienLayer {
   failed = false;
 
   constructor(base: string) {
+    if (typeof Image === 'undefined' || typeof fetch === 'undefined') { this.failed = true; return; } // no DOM (tests)
     loadPuppets(base).then((p) => { this.cache = new FrameCache(p); }).catch(() => { this.failed = true; });
     for (let i = 1; i <= 6; i++) { const im = new Image(); im.src = `${base}td/environment/parts/splat_${i}.png`; this.splatSrc.push(im); }
   }

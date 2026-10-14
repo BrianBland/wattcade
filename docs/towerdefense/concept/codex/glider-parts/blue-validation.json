@@ -1,0 +1,146 @@
+{
+  "source": "Original roster-derived parts at88ffc23",
+  "material": "Saturated electric/royal blue membranes, original dark body and bone textures",
+  "manifestSha256": "a478cf0cadead606e45a9258d33839eb938683e83ba30a3034953e0798dac2ad",
+  "manifestUnchanged": true,
+  "partCanvasesUnchanged": true,
+  "originalBodyAndGlowRestored": true,
+  "wingMasksSource": "5cf88db",
+  "paintRegistration": {
+    "originalBounds": [
+      48,
+      80,
+      595,
+      565
+    ],
+    "paintBounds": [
+      35,
+      60,
+      1215,
+      1142
+    ]
+  },
+  "parts": [
+    {
+      "name": "head",
+      "originalPixels": true,
+      "canvas": [
+        137,
+        144
+      ]
+    },
+    {
+      "name": "thorax_1",
+      "originalPixels": true,
+      "canvas": [
+        145,
+        106
+      ]
+    },
+    {
+      "name": "thorax_2",
+      "originalPixels": true,
+      "canvas": [
+        141,
+        93
+      ]
+    },
+    {
+      "name": "abdomen",
+      "originalPixels": true,
+      "canvas": [
+        129,
+        106
+      ]
+    },
+    {
+      "name": "socket_hanging_r",
+      "originalPixels": true,
+      "canvas": [
+        43,
+        66
+      ]
+    },
+    {
+      "name": "claw_hanging_r",
+      "originalPixels": true,
+      "canvas": [
+        41,
+        86
+      ]
+    },
+    {
+      "name": "wing_r",
+      "canvas": [
+        251,
+        414
+      ],
+      "blueMembranePixels": 26237
+    },
+    {
+      "name": "wing_l",
+      "canvas": [
+        252,
+        401
+      ],
+      "blueMembranePixels": 24540
+    },
+    {
+      "name": "tail_01",
+      "originalPixels": true,
+      "canvas": [
+        47,
+        76
+      ]
+    },
+    {
+      "name": "tail_02",
+      "originalPixels": true,
+      "canvas": [
+        46,
+        73
+      ]
+    },
+    {
+      "name": "tail_03",
+      "originalPixels": true,
+      "canvas": [
+        43,
+        73
+      ]
+    },
+    {
+      "name": "tail_04",
+      "originalPixels": true,
+      "canvas": [
+        56,
+        74
+      ]
+    },
+    {
+      "name": "tail_tip",
+      "originalPixels": true,
+      "canvas": [
+        56,
+        76
+      ]
+    }
+  ],
+  "canvasChecks": 26,
+  "scriptedJointChecks": 168,
+  "gapJoints": [],
+  "clippedPoses": [],
+  "greenFringePixels": 0,
+  "preview": {
+    "deviceScaleFactor": 2,
+    "nominalLengthPx": 45,
+    "surfaces": [
+      "tan floor",
+      "dark rock"
+    ],
+    "aids": {},
+    "glowOffAlsoChecked": true,
+    "pageErrors": []
+  },
+  "skitterArtUnchanged": true
+}

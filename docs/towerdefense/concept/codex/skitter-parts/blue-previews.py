@@ -14,7 +14,7 @@ for species in ['skitter', 'glider']:
     comparison.paste(Image.open(directory / 'assembled-ground.png'), (640, 32))
     d = ImageDraw.Draw(comparison)
     d.text((20, 8), species.upper() + ' · ORIGINAL DARK ROSTER', font=font(18), fill=(240, 228, 215))
-    d.text((660, 8), 'STEEL-BLUE CRYSTAL · SAME RIG', font=font(18), fill=(240, 228, 215))
+    d.text((660, 8), 'SATURATED BLUE WINGS · ORIGINAL BODY' if species == 'glider' else 'STEEL-BLUE CRYSTAL · SAME RIG', font=font(18), fill=(240, 228, 215))
     d.text((20, 676), 'Repainted pixels; every manifest field and native part canvas retained.', font=font(14), fill=(163, 149, 137))
     comparison.save(directory / 'comparison.png')
     # Actual nominal 45px game length; the part frame includes transparent margins.

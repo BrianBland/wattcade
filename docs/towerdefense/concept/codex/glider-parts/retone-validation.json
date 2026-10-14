@@ -165,5 +165,7 @@
     "baseOnlyAlsoCaptured": true,
     "backgroundSource": "PR #138 public/td/environment/background.webp"
   },
-  "wingTreatment": "Continuous crystal panels with fine fractures; scattered perforations filled; one trailing-edge chip per wing. Bone fingers retained."
+  "wingTreatment": "Continuous crystal panels with fine fractures; scattered perforations filled; one trailing-edge chip per wing. Bone fingers retained.",
+  "historicalPass": true,
+  "supersededBy": "blue-validation.json"
 }

@@ -48,14 +48,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 560,
+        "overlapPixels": 566,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 829,
+        "overlapPixels": 851,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -148,14 +148,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 333,
+        "overlapPixels": 341,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 478,
+        "overlapPixels": 489,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -448,14 +448,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 629,
+        "overlapPixels": 634,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 900,
+        "overlapPixels": 918,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -548,14 +548,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 329,
+        "overlapPixels": 334,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 492,
+        "overlapPixels": 502,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -848,14 +848,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 629,
+        "overlapPixels": 634,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 900,
+        "overlapPixels": 918,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -948,14 +948,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 329,
+        "overlapPixels": 334,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 492,
+        "overlapPixels": 502,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1048,14 +1048,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 629,
+        "overlapPixels": 634,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 900,
+        "overlapPixels": 918,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1148,14 +1148,14 @@
       {
         "joint": "wing_r",
         "parent": "thorax_2",
-        "overlapPixels": 329,
+        "overlapPixels": 334,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 492,
+        "overlapPixels": 502,
         "pivotCoverage": 1.0,
         "gap": false
       },

@@ -61,5 +61,7 @@
   "clippedPoses": [],
   "greenFringePixels": 0,
   "previewDeviceScaleFactor": 2,
-  "gliderGameSizePx": 45
+  "gliderGameSizePx": 45,
+  "historicalPass": true,
+  "supersededBy": "blue-validation.json"
 }

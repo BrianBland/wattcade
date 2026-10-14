@@ -16,3 +16,10 @@ To run it, the PR assets need to be under `public/td/`. Cables are a straight pl
 | `C-full-1.6.jpg` | full-height | ×1.6 | 99 / 51 / 191 px (too big for the trenches) |
 
 `D-crop-device-pixels.jpg` is a crop of D at actual device pixels.
+
+## Visibility variants (`visibility-variants.jpg`)
+Pixel mock-ups of Codex's painted map (`&floor=dark`, `&rock=calm` on the integration page), full-height field, aliens ×1.25:
+- **V1 as is:** the mid-brown floors give dark-shelled aliens strong silhouettes. Busy plateau rubble hides fliers and competes with the towers.
+- **V2 dark floor:** worse. Dark chitin merges into the floor and only the glows survive.
+- **V3 calm rock:** best. The floors keep their contrast and the plateaus stop competing.
+- **V4 both:** muddy everywhere.

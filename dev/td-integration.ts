@@ -8,6 +8,8 @@ import { SPECS, loadRig, place, type G } from './td-rig';
 const q = new URLSearchParams(location.search);
 const W = Number(q.get('w') ?? 1366), H = Number(q.get('h') ?? 1024), INSET = Number(q.get('inset') ?? 120);
 const PANELS = q.get('panels') !== '0', ALIEN = Number(q.get('alien') ?? 1), DPR = window.devicePixelRatio || 1;
+// Background mock-ups: floor=dark darkens the brown trench floors; rock=calm flattens plateau rubble contrast.
+const FLOOR = q.get('floor') ?? '', ROCK = q.get('rock') ?? '';
 const TD = '/td/';
 const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
 const json = async <T>(src: string) => (await fetch(src)).json() as Promise<T>;
@@ -44,6 +46,25 @@ const [bg, layoutJson, outpost, towers, rigs] = await Promise.all([
   Promise.all(SPECS.map(loadRig)),
 ]);
 
+function treatBackground(img: HTMLImageElement): CanvasImageSource {
+  if (!FLOOR && !ROCK) return img;
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d')!; x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height), a = d.data;
+  for (let i = 0; i < a.length; i += 4) {
+    const r = a[i], gg = a[i + 1], b = a[i + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), lum = (r * 0.3 + gg * 0.59 + b * 0.11) / 255;
+    const sat = mx ? (mx - mn) / mx : 0, floor = r > gg && gg > b ? Math.min(1, Math.max(0, (sat - 0.22) / 0.15)) * Math.min(1, Math.max(0, (lum - 0.22) / 0.12)) : 0;
+    let f = 1, keepSat = 1;
+    if (FLOOR === 'dark') { f = 1 - 0.55 * floor; keepSat = 1 - 0.45 * floor; }
+    const rockW = 1 - floor;
+    let R = r, G = gg, B = b;
+    if (ROCK === 'calm' && rockW > 0) { const m = 52; R = r + (m - r) * 0.55 * rockW; G = gg + (m * 0.92 - gg) * 0.55 * rockW; B = b + (m * 0.82 - b) * 0.55 * rockW; }
+    const gray = R * 0.3 + G * 0.59 + B * 0.11;
+    a[i] = (gray + (R - gray) * keepSat) * f; a[i + 1] = (gray + (G - gray) * keepSat) * f; a[i + 2] = (gray + (B - gray) * keepSat) * f;
+  }
+  x.putImageData(d, 0, 0); return c;
+}
+const bgImg = treatBackground(bg);
 const cv = document.getElementById('c') as HTMLCanvasElement;
 cv.width = W * DPR; cv.height = H * DPR; cv.style.width = `${W}px`; cv.style.height = `${H}px`;
 const g = cv.getContext('2d')!;
@@ -66,7 +87,7 @@ function draw(t: number) {
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
   g.fillStyle = '#1b1814'; g.fillRect(0, 0, W, H);
   const is = field.s / layoutJson.field.size;
-  g.drawImage(bg, field.x - layoutJson.field.x * is, field.y - layoutJson.field.y * is, bg.width * is, bg.height * is);
+  g.drawImage(bgImg, field.x - layoutJson.field.x * is, field.y - layoutJson.field.y * is, bg.width * is, bg.height * is);
   // outpost: 22-unit footprint, flamer head this wave
   const op = layoutJson.outpost, ds = (op.footprintRadius * 2 * k) / 440;
   const obase = new DOMMatrix().translate(X(op.position[0]), Y(op.position[1])).scale(ds).translate(-260, -260);

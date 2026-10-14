@@ -1,36 +1,38 @@
-# Dynamo Defense environment — issue 131
+# Dynamo Defense painted battlefield — issue 131
 
-Art tool: OpenAI image_gen.imagegen, guided by the original battlefield and
-td-towers-base concepts and issue 129's accepted tower material treatment.
-Processing/proofs: Python, Pillow and NumPy; sources and build.py are on
-codex/td-environment-work, docs/towerdefense/concept/codex/environment/.
-FILES.txt lists every production file; SHA256SUMS.txt records their content.
+Art: OpenAI image_gen.imagegen, guided by the approved trench-mockup.png.
+The user approved replacing tiled terrain with one cohesive painted fixed map.
+Processing/proofs: Pillow/NumPy; no contrast or darkness flattening of terrain.
+Work: codex/td-environment-work, docs/towerdefense/concept/codex/environment/.
+FILES.txt enumerates every production file; SHA256SUMS.txt hashes them.
 
-manifest.json: 33 independent pieces; canonical 512×512 registration frame;
-offset/pivot/parent/z, per-part sizes, tile/strip repeats and 3 spawn anchors.
-parts/ground_1..3.png: three calm dark alien-rock tiles, each 512×512.
-parts/trench_floor.png: 512×512 packed rubble/dirt, slightly lighter than ground.
-parts/trench_lip.png and trench_lip_fractured.png: 512×96 geological cut banks,
-seamless along x, with transparent y edges; top = outer ground, bottom = floor.
-These are excavated lanes following the user's clarification, not retaining
-walls. Steel shoring is intentionally omitted; barriers are independent props.
-parts/creep_1..6.png: purple-black branching hive growth with pustule emission.
-parts/burrow_1..3.png: dark hive openings and individually registered spawn points.
-parts/splat_1..6.png: exactly neutral grey acid/ichor masters for brood tinting.
-parts/props_*.png: 12 rock, crate, barrel, barrier, sandbag, junction and vent props.
-Every part has a same-size *_glow.png; non-emissive terrain/props use clear masks.
-Organic masks isolate purple emission; splat masks are neutral white emission.
-Decals/props have ≥4px clear padding and their visual alpha centroids at pivot.
+background.webp: opaque 1536×1024 rock plateaus and sunken dirt trenches,
+full original resolution, WebP quality 92. Geological shading and ambient
+occlusion are intrinsic to the landscape. No baked creatures, machinery,
+cables, luminous creep, splats, industrial props or weapon effects.
+map-layout.json: registered world field, three fixed lane curves, outpost
+center and six plateau pads. Left/center curves retain sim/defs.ts; the right
+curve is traced to the painted floor. Original coordinates are included.
+MAP_INTEGRATION.md documents the required shared lane/pad integration changes.
+Game code is unchanged; this artwork is not yet integrated into gameplay.
+manifest.json: schema v2; fixed background plus 27 independent overlay pieces.
+Old tile/lip PNGs are removed from production; rejected v1 is archived on work.
 
-preview.png is scripted from this manifest and these decoded PNGs on #211d19:
-three 3×3 ground repeats, both banks bent into S-curves, all organic decals,
-all splats in neutral/blue/red/purple/gold, all props, and glow-off examples.
-The generated scenic mockup is retained only on the working branch, separately
-from this asset proof. It illustrates the excavation direction, not gameplay.
+parts/creep_1..6.png: veined purple-black growth and independent emission.
+parts/burrow_1..3.png: independently placed hive mouths.
+parts/splat_1..6.png: neutral-grey masters for blue/red/purple/gold tinting.
+parts/props_*.png: 12 rock, crate, barrel, barrier, sandbag, junction, vent props.
+Every piece has a same-size *_glow.png; non-emissive props have clear masks.
+Offsets/visual-center pivots use an independent canonical 512×512 frame.
 
-Validation checks exact opposite-edge equality, source-crop completeness,
-alpha/glow registration, clear padding, no green fringe, centroids, neutrality,
-24 brood-tint samples, all PNG decoding and the <1.5MB production budget.
-Assets have overhead material relief matching the concept; geological bank
-faces and barrel rims show depth, so they are not a flat mathematical projection.
-No cast ground shadows are authored. Game code is unchanged; integration is later.
+preview.png: scripted scene from exported terrain/layout/overlays and actual
+accepted #129/#130 rig references: three built towers on plateau, the original
+Warrior and illustrative cables. Full-color full-size proof is on work.
+overlays-preview.png: all 27 pieces, neutral splats, all four brood tints,
+and glow-off examples. Both are review images, not runtime backgrounds.
+Tower/outpost/Warrior reference assets are not bundled production assets.
+
+Validation: full-resolution decode/detail, compression fidelity, fixed curves,
+all six full pad footprints beyond banks, terrain support along all paths,
+alpha/glow registration, tinting, source completeness, padding, no green fringe,
+complete inventories, checksums and the <1.5MB production budget.

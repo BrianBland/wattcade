@@ -1,7 +1,11 @@
 FILES.txt
+MAP_INTEGRATION.md
 NOTES.md
 SHA256SUMS.txt
+background.webp
 manifest.json
+map-layout.json
+overlays-preview.png
 parts/burrow_1.png
 parts/burrow_1_glow.png
 parts/burrow_2.png
@@ -20,12 +24,6 @@ parts/creep_5.png
 parts/creep_5_glow.png
 parts/creep_6.png
 parts/creep_6_glow.png
-parts/ground_1.png
-parts/ground_1_glow.png
-parts/ground_2.png
-parts/ground_2_glow.png
-parts/ground_3.png
-parts/ground_3_glow.png
 parts/props_ammo_crate.png
 parts/props_ammo_crate_glow.png
 parts/props_barrel.png
@@ -62,10 +60,4 @@ parts/splat_5.png
 parts/splat_5_glow.png
 parts/splat_6.png
 parts/splat_6_glow.png
-parts/trench_floor.png
-parts/trench_floor_glow.png
-parts/trench_lip.png
-parts/trench_lip_fractured.png
-parts/trench_lip_fractured_glow.png
-parts/trench_lip_glow.png
 preview.png

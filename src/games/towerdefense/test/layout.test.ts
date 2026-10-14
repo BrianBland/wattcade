@@ -19,11 +19,11 @@ describe('Dynamo Defense layout vs HUD inset', () => {
       }
       expect(L.banner.y).toBeLessThan(limit);
       expect(L.brood.y + L.brood.h, 'brood card inside the field').toBeLessThanOrEqual(L.field.y + L.field.s + 0.5);
-      if (L.wide) { expect(overlaps(field, L.left)).toBe(false); expect(overlaps(field, L.right)).toBe(false); }
+      if (L.wide) { expect(L.left.h).toBeLessThan(L.UH * 0.25); expect(L.right.h).toBeLessThan(L.UH * 0.25); }
       else { expect(overlaps(field, L.left)).toBe(false); expect(overlaps(field, L.right)).toBe(false); }
     });
   }
-  it('landscape iPad puts panels beside a large field', () => {
+  it('landscape iPad exposes a full-height field with compact corner controls', () => {
     const L = layout(1180, 820, 110);
     expect(L.wide).toBe(true);
     expect(L.field.s).toBeGreaterThan(550);

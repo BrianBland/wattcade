@@ -6,12 +6,12 @@ import { COL } from '../sprites';
 import { DEATH_FRAMES, FrameCache, LiveCanvas, loadPuppets, type Frame } from './puppets';
 import { thud } from './rig';
 import { SPECIES_OF_KIND, alienLengthUnits, type SpeciesId } from './species';
-import { CORPSE_S, SPLAT_FADE_S, advanceTrack, newTrack, type Track } from './track';
+import { SPLAT_FADE_S, advanceTrack, newTrack, type Track } from './track';
 
 type G = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
 const DEATH_S = 0.45;
-interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: number; tint?: string; outline: string; len: number; life: number }
+interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: number; tint?: string; outline: string; len: number; fadeAt?: number }
 interface Splat { x: number; y: number; rot: number; size: number; img: HTMLCanvasElement; t0: number; wave: number; fadeAt?: number }
 
 /** Field → screen mapping supplied by the renderer each frame. */
@@ -26,7 +26,8 @@ export class AlienLayer {
   private splatSrc: HTMLImageElement[] = [];
   private splatTinted = new Map<string, HTMLCanvasElement>();
   private shadowSprite: HTMLCanvasElement | null = null;
-  private lastFx = -1; private wave = -1; private sizeKey = '';
+  private haloSprites = new Map<string, HTMLCanvasElement>();
+  private lastFx = -1; private wave = -1; private lull = false; private sizeKey = '';
   failed = false;
 
   constructor(base: string) {
@@ -43,7 +44,8 @@ export class AlienLayer {
     const sk = `${Math.round(v.k * 100)}|${v.dpr}`;
     if (sk !== this.sizeKey) { this.sizeKey = sk; this.cache.clear(); }
     this.cache.pump();
-    if (s.wave !== this.wave) { for (const sp of this.splats) sp.fadeAt ??= s.t; this.wave = s.wave; }
+    if (s.wave !== this.wave || (!this.lull && s.lull > 0)) { for (const c of this.corpses) c.fadeAt ??= s.t; for (const sp of this.splats) sp.fadeAt ??= s.t; this.wave = s.wave; }
+    this.lull = s.lull > 0;
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id);
@@ -59,14 +61,15 @@ export class AlienLayer {
       if (f.kind !== 'death' || firstPass) continue; // don't replay history on mount
       const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(KINDS[f.ekind].radius, sp);
       const h = this.tracks.get(f.eid)?.h ?? Math.atan2(90 - f.y, 50 - f.x);
-      this.corpses.push({ species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint: sp.tint ? COL[f.color] : undefined, outline: COL[f.color], len, life: CORPSE_S * (f.big ? 1.6 : 1) });
+      this.corpses.push({ species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint: sp.tint ? COL[f.color] : undefined, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined });
       this.addSplat(f.x, f.y, len, f.color, f.eid, s.t);
       if (f.fire && f.color === 'red') onFireBurst(v.X(f.x), v.Y(f.y), len * v.k);
     }
     if (firstPass) this.lastFx = Math.max(this.lastFx, 0);
     for (const id of this.tracks.keys()) if (!live.has(id)) this.tracks.delete(id);
-    this.corpses = this.corpses.filter((c) => s.t - c.t0 < c.life && s.t >= c.t0);
+    this.corpses = this.corpses.filter((c) => (c.fadeAt == null || s.t - c.fadeAt < SPLAT_FADE_S) && s.t >= c.t0);
     this.splats = this.splats.filter((sp) => sp.fadeAt == null || s.t - sp.fadeAt < SPLAT_FADE_S);
+    if (this.corpses.length > 160) this.corpses.splice(0, this.corpses.length - 160);
     if (this.splats.length > 160) this.splats.splice(0, this.splats.length - 160);
   }
 
@@ -82,7 +85,7 @@ export class AlienLayer {
       g.globalCompositeOperation = 'destination-in'; g.drawImage(src, 0, 0);
       this.splatTinted.set(key, img);
     }
-    this.splats.push({ x, y, rot: (seed * 2.399) % TAU, size: len * 1.1, img, t0: t, wave: this.wave });
+    this.splats.push({ x, y, rot: (seed * 2.399) % TAU, size: len * 1.1, img, t0: t, wave: this.wave, fadeAt: this.lull ? t : undefined });
   }
 
   /** Splats, under everything else on the field. */
@@ -102,7 +105,7 @@ export class AlienLayer {
       const set = cache.get(c.species, c.len * v.k * v.dpr, c.outline, c.tint); if (!set) continue;
       const age = t - c.t0, k = Math.min(1, age / DEATH_S), i = Math.floor(k * DEATH_FRAMES);
       const fr = i < DEATH_FRAMES ? set.death[i] : set.corpse;
-      this.blit(g, fr, v.X(c.x), v.Y(c.y), c.h + k * 0.5, v.dpr, Math.min(1, (c.life - age) / 1.2), 1 - k * 0.12);
+      this.blit(g, fr, v.X(c.x), v.Y(c.y), c.h + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12);
     }
     for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
@@ -126,12 +129,28 @@ export class AlienLayer {
       x += Math.cos(tr.h) * lead; y += Math.sin(tr.h) * lead;
     }
     this.shadow(g, x, y, lenU * v.k, !!sp.flying, tr.h);
+    this.halo(g, x, y, lenU * v.k, e.gold ? COL.gold : COL[e.element], e.kind === 'boss');
     const lift = sp.flying ? 1.04 : 1;
     this.blit(g, fr, x, y, tr.h, v.dpr, 1, lift);
     if (e.hurt > 0.05) { // hit flash: add the frame onto itself
       g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, tr.h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
     }
     return true;
+  }
+
+  /** Warcraft-style ground aura: identifies the brood without flattening the textured puppet. */
+  private halo(g: G, x: number, y: number, len: number, color: string, boss: boolean) {
+    let sprite = this.haloSprites.get(color);
+    if (!sprite) {
+      sprite = document.createElement('canvas'); sprite.width = 128; sprite.height = 64;
+      const c = sprite.getContext('2d')!; c.scale(1, 0.5);
+      const gradient = c.createRadialGradient(64, 64, 4, 64, 64, 60);
+      gradient.addColorStop(0, color + '00'); gradient.addColorStop(0.45, color + '16');
+      gradient.addColorStop(0.7, color + '58'); gradient.addColorStop(1, color + '00');
+      c.fillStyle = gradient; c.fillRect(0, 0, 128, 128); this.haloSprites.set(color, sprite);
+    }
+    g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = boss ? 0.85 : 0.6;
+    const w = len * 1.35; g.drawImage(sprite, x - w / 2, y - w / 4, w, w / 2); g.restore();
   }
 
   private blit(g: G, fr: Frame, x: number, y: number, h: number, dpr: number, alpha: number, sc = 1) {

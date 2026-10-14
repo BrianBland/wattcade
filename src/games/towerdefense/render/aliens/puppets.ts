@@ -53,11 +53,13 @@ export function compose(g: CanvasRenderingContext2D, P: Puppet, pin: PoseIn, bas
 }
 
 /** Wraps a composed creature in a soft outline of `color` (the silhouette offset in 8 directions underneath). */
-export function outlined(c: HTMLCanvasElement, color: string, px: number, alpha = OUTLINE_ALPHA): HTMLCanvasElement {
+export function outlined(c: HTMLCanvasElement, color: string, px: number, alpha = OUTLINE_ALPHA, buffers?: { sil: HTMLCanvasElement; out: HTMLCanvasElement }): HTMLCanvasElement {
   if (alpha <= 0) return c;
-  const sil = canvas(c.width, c.height), sg = sil.getContext('2d')!;
+  const sil = buffers?.sil ?? canvas(c.width, c.height), sg = sil.getContext('2d')!;
+  sg.globalCompositeOperation = 'source-over'; sg.clearRect(0, 0, sil.width, sil.height);
   sg.drawImage(c, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = color; sg.fillRect(0, 0, c.width, c.height);
-  const out = canvas(c.width, c.height), og = out.getContext('2d')!;
+  const out = buffers?.out ?? canvas(c.width, c.height), og = out.getContext('2d')!;
+  og.clearRect(0, 0, out.width, out.height);
   og.globalAlpha = alpha;
   for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; og.drawImage(sil, Math.cos(a) * px, Math.sin(a) * px); }
   og.globalAlpha = 1; og.drawImage(c, 0, 0);
@@ -68,8 +70,8 @@ export interface Frame { c: HTMLCanvasElement; /** creature centre within c, dev
 export interface FrameSet { walk: Frame[]; attack: Frame[]; death: Frame[]; corpse: Frame; /** device px per manifest px */ s: number }
 export const WALK_FRAMES = 12, THUD_FRAMES = 16, FLAP_FRAMES = 32, ATTACK_FRAMES = 3, DEATH_FRAMES = 5;
 
-/** Pre-renders one frame set. `lengthDev` = head-to-tail length in device pixels. */
-export function buildFrames(P: Puppet, lengthDev: number, outline: string, tint?: string): FrameSet {
+/** Incremental frame baking. A rest pose is published first, then one pose per pump replaces its placeholders. */
+function* frameSteps(P: Puppet, lengthDev: number, outline: string, tint?: string): Generator<FrameSet> {
   const m = P.rig.m, s = lengthDev / m.lengthPx, pad = Math.max(m.size[0], m.size[1]) * 0.22 * s;
   const W = m.size[0] * s + pad * 2, H = m.size[1] * s + pad * 2, base = mul(translate(pad, pad), scale(s, s));
   const ax = pad + m.centerX * s, ay = pad + m.centerY * s, line = Math.max(1, lengthDev / 90);
@@ -80,43 +82,61 @@ export function buildFrames(P: Puppet, lengthDev: number, outline: string, tint?
     return { c: dark ? c : outlined(c, outline, line), ax, ay };
   };
   const n = P.species.flying ? FLAP_FRAMES : P.species.thud ? THUD_FRAMES : WALK_FRAMES;
-  return {
-    s,
-    walk: Array.from({ length: n }, (_, i) => frame({ phase: i / n })),
-    attack: Array.from({ length: ATTACK_FRAMES }, (_, i) => frame({ phase: 0, attack: (i + 1) / ATTACK_FRAMES })),
-    death: Array.from({ length: DEATH_FRAMES }, (_, i) => frame({ phase: 0, dying: (i + 1) / DEATH_FRAMES })),
-    corpse: frame({ phase: 0, dying: 1 }, 0.55),
-  };
+  const rest = frame({ phase: 0 });
+  const set: FrameSet = { s, walk: Array(n).fill(rest), attack: Array(ATTACK_FRAMES).fill(rest), death: Array(DEATH_FRAMES).fill(rest), corpse: rest };
+  yield set;
+  for (let i = 1; i < n; i++) { set.walk[i] = frame({ phase: i / n }); yield set; }
+  for (let i = 0; i < ATTACK_FRAMES; i++) { set.attack[i] = frame({ phase: 0, attack: (i + 1) / ATTACK_FRAMES }); yield set; }
+  for (let i = 0; i < DEATH_FRAMES; i++) { set.death[i] = frame({ phase: 0, dying: (i + 1) / DEATH_FRAMES }); yield set; }
+  set.corpse = frame({ phase: 0, dying: 1 }, 0.55); yield set;
+}
+/** Synchronous baking for offline callers. The game uses the incremental queue below. */
+export function buildFrames(P: Puppet, lengthDev: number, outline: string, tint?: string): FrameSet {
+  let set!: FrameSet; for (const step of frameSteps(P, lengthDev, outline, tint)) set = step; return set;
 }
 
-/** Frame sets keyed by species / size / tint, built lazily, at most one set per `pump()` so a wave never hitches. */
+/** Round-robin baking: one pose per rendered frame, so multiple species get a rest pose promptly. */
 export class FrameCache {
   private sets = new Map<string, FrameSet>();
-  private queue: Array<{ key: string; build: () => FrameSet }> = [];
-  constructor(private puppets: Map<SpeciesId, Puppet>) {}
+  private queue: Array<{ key: string; steps: Generator<FrameSet> }> = [];
+  constructor(private puppets: Map<SpeciesId, Puppet>, private createSteps = frameSteps) {}
   get(id: SpeciesId, lengthDev: number, outline: string, tint?: string): FrameSet | null {
     const key = `${id}|${Math.round(lengthDev)}|${outline}|${tint ?? ''}`;
     const hit = this.sets.get(key); if (hit) return hit;
-    if (!this.queue.some((q) => q.key === key)) this.queue.push({ key, build: () => buildFrames(this.puppets.get(id)!, lengthDev, outline, tint) });
+    if (!this.queue.some((q) => q.key === key)) this.queue.push({ key, steps: this.createSteps(this.puppets.get(id)!, lengthDev, outline, tint) });
     return null;
   }
-  /** Builds the next queued set (call once per rendered frame). */
-  pump() { const q = this.queue.shift(); if (q) this.sets.set(q.key, q.build()); }
+  pump() {
+    const q = this.queue.shift(); if (!q) return;
+    const step = q.steps.next();
+    if (!step.done) { this.sets.set(q.key, step.value); this.queue.push(q); }
+  }
   clear() { this.sets.clear(); this.queue = []; }
   get pending() { return this.queue.length; }
   puppet(id: SpeciesId) { return this.puppets.get(id)!; }
 }
 
-/** Live composition for a single on-screen creature (the boss), redrawn every frame into a reusable canvas. */
+/** Live composition for one boss, reusing canvases and only redrawing when its sampled pose changes. */
 export class LiveCanvas {
   private c: HTMLCanvasElement | null = null;
+  private buffers: { sil: HTMLCanvasElement; out: HTMLCanvasElement } | undefined;
+  private lastKey = '';
+  private lastFrame: Frame | null = null;
   draw(P: Puppet, lengthDev: number, pin: PoseIn, outline: string): Frame {
     const m = P.rig.m, s = lengthDev / m.lengthPx, pad = Math.max(m.size[0], m.size[1]) * 0.22 * s;
     const W = Math.ceil(m.size[0] * s + pad * 2), H = Math.ceil(m.size[1] * s + pad * 2);
-    if (!this.c || this.c.width !== W || this.c.height !== H) this.c = canvas(W, H);
+    if (!this.c || this.c.width !== W || this.c.height !== H) { this.c = canvas(W, H); this.buffers = { sil: canvas(W, H), out: canvas(W, H) }; }
+    // Match the cached puppets' pose cadence; position and heading still interpolate every frame.
+    const phase = Math.floor(((pin.phase % 1) + 1) % 1 * 16) / 16;
+    const attack = Math.round((pin.attack ?? 0) * 5) / 5;
+    const strike = Math.floor(((pin.t ?? 0) % 2.5) / 2.5 * 32) / 32 * 2.5;
+    const key = `${W}|${H}|${outline}|${phase}|${attack}|${strike}`;
+    if (key === this.lastKey && this.lastFrame) return this.lastFrame;
+    this.lastKey = key;
     const g = this.c.getContext('2d')!; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
-    compose(g, P, pin, mul(translate(pad, pad), scale(s, s)));
-    return { c: outlined(this.c, outline, Math.max(1, lengthDev / 90)), ax: pad + m.centerX * s, ay: pad + m.centerY * s };
+    compose(g, P, { ...pin, phase, attack, t: strike }, mul(translate(pad, pad), scale(s, s)));
+    this.lastFrame = { c: outlined(this.c, outline, Math.max(1, lengthDev / 90), OUTLINE_ALPHA, this.buffers), ax: pad + m.centerX * s, ay: pad + m.centerY * s };
+    return this.lastFrame;
   }
 }
 

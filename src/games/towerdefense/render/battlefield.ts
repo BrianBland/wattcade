@@ -1,0 +1,152 @@
+import type { BikeState } from '../../../contracts';
+import { BASE_X, BASE_Y, laneAt, laneLength, PADS } from '../sim/defs';
+import type { TdSnapshot } from '../sim/types';
+import type { View } from './aliens/layer';
+import { along, boundedLights, cableRoute, inTrench, pulsePosition, strokeTimes, trenchStrip, type Point } from './battlefieldMath';
+import { COL, glowAt } from './sprites';
+interface Overlay { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; size: number[] }
+interface Light extends Point { r: number; color: string; strength: number }
+const TAU = Math.PI * 2;
+export class Battlefield {
+  background: HTMLImageElement;
+  private parts = new Map<string, { p: Overlay; image: HTMLImageElement; glow?: HTMLImageElement }>();
+  private tinted = new Map<string, HTMLCanvasElement>();
+  private strips = [0, 1, 2].map(l => trenchStrip(l));
+  private cables = PADS.map(p => {
+    const route = cableRoute(p.id), samples = Array.from({ length: 121 }, (_, i) => along(route, i / 120));
+    const visible = samples.map(p => !inTrench(p));
+    const length = route.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - route[i].x, p.y - route[i].y), 0);
+    return { route, samples, visible, length };
+  });
+  private revs: number | null = null;
+  private pulseT = 0;
+  private pulses: number[] = [];
+  private wave = -1;
+  private char = new Set<string>();
+  private lastT = -1;
+  private darkness: HTMLCanvasElement | null = null;
+  private lightKey = '';
+  constructor(base: string, onBackground: () => void) {
+    this.background = new Image(); this.background.onload = onBackground; this.background.src = `${base}td/environment/background.webp`;
+    fetch(`${base}td/environment/manifest.json`).then(r => r.json()).then((m: { parts: Overlay[] }) => {
+      for (const p of m.parts) { const image = new Image(); image.onload = onBackground; image.src = `${base}td/environment/${p.file}`; const glow = p.glow ? new Image() : undefined;
+        if (glow) glow.src = `${base}td/environment/${p.glow}`;
+        this.parts.set(p.name, { p, image, glow }); }
+    }).catch(() => {});
+  }
+  get ready() { return this.background.complete && this.background.naturalWidth > 0; }
+  paint(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
+    if (!this.ready) return false;
+    // Extend the terrain's edge colours full-bleed, then register the full painting exactly.
+    g.fillStyle = '#211d19'; g.fillRect(0, 0, W, H);
+    const scale = v.k / 9;
+    const x = v.X(0) - 318 * scale, y = v.Y(0) - 32 * scale, w = 1536 * scale, h = 1024 * scale;
+    // Mirror the outer terrain at its native scale; never stretch rock texture into streaks.
+    if (y > 0) { g.save(); g.translate(x, y); g.scale(scale, -scale); g.drawImage(this.background, 0, 0); g.restore(); }
+    if (y + h < H) { g.save(); g.translate(x, y + h); g.scale(scale, -scale); g.drawImage(this.background, 0, -1024); g.restore(); }
+    if (x > 0) { g.save(); g.translate(x, y); g.scale(-scale, scale); g.drawImage(this.background, 0, 0); g.restore(); }
+    if (x + w < W) { g.save(); g.translate(x + w, y); g.scale(-scale, scale); g.drawImage(this.background, -1536, 0); g.restore(); }
+    g.drawImage(this.background, x, y, w, h);
+    const fog = g.createLinearGradient(0, 0, 0, Math.max(1, y + 12 * v.k));
+    fog.addColorStop(0, 'rgba(7,10,17,0.8)'); fog.addColorStop(1, 'rgba(7,10,17,0)');
+    g.fillStyle = fog; g.fillRect(0, 0, W, Math.max(0, y + 12 * v.k));
+    for (const [name, x, y, size] of [['props_crate', 34, 88, 4], ['props_coolant_barrel', 65, 86, 4], ['props_sandbags_curve', 49, 76, 8]] as const) this.overlay(g, v, name, x, y, size);
+    return true;
+  }
+  private overlay(g: CanvasRenderingContext2D, v: View, name: string, x: number, y: number, width: number, rotation = 0, color?: string) {
+    const part = this.parts.get(name); if (!part?.image.complete || !part.image.naturalWidth) return;
+    const { p, image } = part, scale = width * v.k / p.size[0];
+    g.save(); g.translate(v.X(x), v.Y(y)); g.rotate(rotation); g.scale(scale, scale);
+    g.drawImage(image, p.offset[0] - p.pivot[0], p.offset[1] - p.pivot[1]);
+    if (color && part.glow?.complete && part.glow.naturalWidth) {
+      const key = `${name}|${color}`;
+      let tinted = this.tinted.get(key);
+      if (!tinted) {
+        tinted = document.createElement('canvas'); tinted.width = part.glow.naturalWidth; tinted.height = part.glow.naturalHeight;
+        const c = tinted.getContext('2d')!; c.drawImage(part.glow, 0, 0); c.globalCompositeOperation = 'source-in'; c.fillStyle = color; c.fillRect(0, 0, tinted.width, tinted.height); this.tinted.set(key, tinted);
+      }
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha *= 0.18; g.drawImage(tinted, p.offset[0] - p.pivot[0], p.offset[1] - p.pivot[1]);
+    }
+    g.restore();
+  }
+  ground(g: CanvasRenderingContext2D, v: View, s: TdSnapshot) {
+    if (s.wave !== this.wave || s.t < this.lastT) { this.wave = s.wave; this.char.clear(); this.pulses = []; this.revs = null; }
+    this.lastT = s.t;
+    for (let lane = 0; lane < 3; lane++) {
+      const spawn = laneAt(lane, 4); this.overlay(g, v, `burrow_${lane + 1}`, spawn.x, spawn.y, 12, 0, COL[s.brood.color]);
+      if (s.phase !== 'run' || s.lull > 0 || s.over) continue;
+      const advance = Math.min(0.92, s.waveElapsed / Math.max(1, s.waveMaxS) * 1.15);
+      // Clip organic decals to the actual floor so shoulders retain their painted texture.
+      g.save(); const strip = this.strips[lane]; g.beginPath(); strip.forEach((p, i) => i ? g.lineTo(v.X(p.x), v.Y(p.y)) : g.moveTo(v.X(p.x), v.Y(p.y))); g.closePath(); g.clip();
+      for (let i = 0; i < 16; i++) {
+        if ((i + 0.5) / 16 > advance) break;
+        const p = laneAt(lane, laneLength(lane) * (i + 0.5) / 16), key = `${lane}:${i}`;
+        const a = Math.atan2(p.x - BASE_X, BASE_Y - p.y);
+        let da = a - s.aimAngle; while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+        if (s.flaming && Math.hypot(p.x - BASE_X, p.y - BASE_Y) < s.flameRange && Math.abs(da) < s.flameHalfAngle + 0.08) this.char.add(key);
+        if (this.char.has(key)) {
+          g.fillStyle = 'rgba(15,12,10,0.6)'; g.beginPath(); g.ellipse(v.X(p.x), v.Y(p.y), 4.8 * v.k, 3 * v.k, Math.atan2(-p.nx, p.ny), 0, TAU); g.fill();
+        } else {
+          g.globalAlpha = 0.65; this.overlay(g, v, `creep_${i % 6 + 1}`, p.x, p.y, 9, Math.atan2(-p.nx, p.ny), COL[s.brood.color]); g.globalAlpha = 1;
+        }
+      }
+      g.restore();
+    }
+  }
+  wiring(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
+    if (this.revs !== null) this.pulses.push(...strokeTimes(this.revs, bike.crankRevs, this.pulseT, s.t));
+    this.pulseT = s.t;
+    this.revs = bike.crankRevs;
+    this.pulses = this.pulses.filter(t => s.t - t <= 3).slice(-12);
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const tw of s.towers) {
+      const c = this.cables[tw.pad];
+      // The cable is buried whenever it crosses a route; no raised hose across a walking floor.
+      for (const [color, width] of [['#0b0e12', 1.1], ['#737475', 0.56], ['#2b393d', 0.3]] as const) {
+        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * v.k); g.beginPath();
+        c.samples.forEach((p, i) => { if (!c.visible[i] || i === 0 || !c.visible[i - 1]) g.moveTo(v.X(p.x), v.Y(p.y)); else g.lineTo(v.X(p.x), v.Y(p.y)); }); g.stroke();
+      }
+      for (const t of this.pulses) {
+        const fraction = pulsePosition(s.t - t, c.length); if (fraction === null) continue;
+        const p = along(c.route, fraction), index = Math.min(120, Math.round(fraction * 120));
+        if (!c.visible[index]) continue;
+        glowAt(g, '#75edff', v.X(p.x), v.Y(p.y), 1.6 * v.k, 0.7);
+        g.fillStyle = '#b8faff'; g.beginPath(); g.arc(v.X(p.x), v.Y(p.y), 0.4 * v.k, 0, TAU); g.fill();
+      }
+    }
+    g.restore();
+  }
+  lighting(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, W: number, H: number) {
+    const lights: Light[] = [{ x: BASE_X, y: BASE_Y, r: 16, color: '#71e8ff', strength: 0.22 }];
+    for (const tw of s.towers) { const p = PADS[tw.pad]; lights.push({ x: p.x, y: p.y, r: 8, color: COL[tw.kind === 'tesla' ? 'blue' : tw.kind === 'mortar' ? 'red' : 'purple'], strength: 0.14 }); }
+    const ambientCount = lights.length;
+    if (s.flaming) for (let i = 1; i <= 3; i++) lights.push({ x: BASE_X + Math.sin(s.aimAngle) * s.flameRange * i / 4, y: BASE_Y - Math.cos(s.aimAngle) * s.flameRange * i / 4, r: 10, color: '#ff9449', strength: 0.25 });
+    for (const f of s.fx) {
+      const strength = Math.max(0, 1 - (s.t - f.t0) / f.life) * 0.3; if (!strength || s.t < f.t0) continue;
+      if (f.kind === 'tracer') lights.push({ x: f.x0, y: f.y0, r: 7, color: '#9bdcff', strength });
+      else if (f.kind === 'boom' || f.kind === 'burst') lights.push({ x: f.x, y: f.y, r: Math.max(7, f.r * 1.5), color: '#ff9b50', strength });
+      else if (f.kind === 'zap') for (const p of f.pts) lights.push({ ...p, r: 7, color: '#7cecff', strength });
+      else if (f.kind === 'lens') lights.push({ x: f.x1, y: f.y1, r: 9, color: '#c694ff', strength });
+      else if (f.kind === 'beam') for (let i = 1; i <= 4; i++) lights.push({ x: BASE_X + Math.sin(f.angle) * i * 22, y: BASE_Y - Math.cos(f.angle) * i * 22, r: 12, color: '#be91ff', strength });
+    }
+    const selected = boundedLights(lights);
+    // Cache the punched ambient map until structures or layout change. Transient weapon light
+    // uses additive sprites below, keeping dynamic canvas uploads out of the per-frame path.
+    const w = Math.max(1, Math.ceil(W / 4)), h = Math.max(1, Math.ceil(H / 4));
+    const key = `${w}|${h}|${v.k}|${v.X(0)}|${v.Y(0)}|${s.towers.map(t => t.pad).join(',')}`;
+    if (!this.darkness) this.darkness = document.createElement('canvas');
+    if (key !== this.lightKey) {
+      this.lightKey = key; this.darkness.width = w; this.darkness.height = h;
+      const d = this.darkness.getContext('2d')!;
+      d.fillStyle = 'rgba(6,9,18,0.28)'; d.fillRect(0, 0, w, h); d.globalCompositeOperation = 'destination-out';
+      for (const light of selected.slice(0, ambientCount)) {
+        const x = v.X(light.x) / 4, y = v.Y(light.y) / 4, r = light.r * v.k / 4;
+        const gradient = d.createRadialGradient(x, y, 0, x, y, r); gradient.addColorStop(0, 'rgba(0,0,0,0.9)'); gradient.addColorStop(1, 'rgba(0,0,0,0)');
+        d.fillStyle = gradient; d.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      d.globalCompositeOperation = 'source-over';
+    }
+    g.drawImage(this.darkness, 0, 0, W, H);
+    g.save(); g.globalCompositeOperation = 'lighter'; for (const light of selected) glowAt(g, light.color, v.X(light.x), v.Y(light.y), light.r * v.k, light.strength); g.restore();
+  }
+}

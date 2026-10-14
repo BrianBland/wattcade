@@ -72,7 +72,7 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
       if (act && s.swapLeft > 0) bar(g, cx + 4 * u, y + ch - 5 * u, cw - 8 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
     });
     y += ch + 8 * u;
-    const pr = 6 * u;
+    const pr = Math.min(6 * u, w / (s.railMaxCharges * 2.6 + 18));
     for (let i = 0; i < s.railMaxCharges; i++) { g.fillStyle = i < s.railCharges ? COL.purple : 'rgba(255,255,255,0.1)'; g.beginPath(); g.arc(x + pr + i * pr * 2.6, y + pr, pr, 0, TAU); g.fill(); }
     hits.push({ x, y: y - 4 * u, w: s.railMaxCharges * pr * 2.6, h: pr * 2 + 8 * u, action: { type: 'rail' } });
     const bx = x + s.railMaxCharges * pr * 2.6 + 8 * u;
@@ -167,7 +167,7 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     const boss = s.boss, e = s.effort;
     if (boss) label(g, bossLine(s), x, y + 9 * u, 10 * u, boss.exposed ? '#7dffb0' : '#ffd24a');
     else if (e) label(g, effortLine(s), x, y + 9 * u, 10 * u, '#7df9ff');
-    else { label(g, s.nextBrood ? `NEXT: ${matchupCopy(s, s.nextBrood.color)}` : '▼ Workshop', x, y + 9 * u, 9 * u); }
+    else { label(g, s.nextBrood ? `NEXT W${s.nextBrood.wave} · ${WEAPON_NAME[s.nextBrood.weapon]}` : '▼ Workshop', x, y + 9 * u, 9 * u); }
     hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: { type: 'pad', pad: -1 } });
     return hits;
   }

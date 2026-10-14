@@ -26,3 +26,6 @@ Pixel mock-ups of Codex's painted map (`&floor=dark`, `&rock=calm` on the integr
 
 ## Blue brood readability (`blue-readability.jpg`, `dev/td-aids.html`)
 Skitters and Gliders on a real path floor (top) and a plateau (bottom) of the painted map, at iPad Pro game scale. As is, they read as dark scribbles on both, because their shells are near-black with thin cyan lines. A 35% brood-colour shell tint plus a soft 1 px brood-colour outline fixes it without hiding detail; a 1.3× Skitter adds mass. The strong 1.5 px outline turns them into flat stickers.
+
+## Floor value with re-toned blues (`floor-variants.jpg`)
+Tan, mid (about 30% darker) and dark (about 55% darker) path floors. The blue brood has a simulated lighter re-tone (`bluetint=0.5`); the bottom row adds a soft 1 px brood-colour outline to every alien (`rim=0.45`). Without the outline, the reds go murky on darker floors. With it, every brood reads on every floor. Mid keeps the moody look and still separates the paths from the charcoal plateaus.

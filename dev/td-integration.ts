@@ -3,13 +3,15 @@
 // Needs the PR assets under public/td/ (towers, outpost, environment).
 import { layout } from '../src/games/towerdefense/render/layout';
 import { KINDS, type Kind } from '../src/games/towerdefense/sim/defs';
-import { SPECS, loadRig, place, type G } from './td-rig';
+import { SPECS, loadRig, place, type Aids, type G } from './td-rig';
 
 const q = new URLSearchParams(location.search);
 const W = Number(q.get('w') ?? 1366), H = Number(q.get('h') ?? 1024), INSET = Number(q.get('inset') ?? 120);
 const PANELS = q.get('panels') !== '0', ALIEN = Number(q.get('alien') ?? 1), DPR = window.devicePixelRatio || 1;
 // Background mock-ups: floor=dark darkens the brown trench floors; rock=calm flattens plateau rubble contrast.
 const FLOOR = q.get('floor') ?? '', ROCK = q.get('rock') ?? '';
+// bluetint simulates Codex's lighter crystal re-tone of the blue brood; rim = soft brood-colour outline on every alien.
+const BLUE_TINT = Number(q.get('bluetint') ?? 0), RIM = Number(q.get('rim') ?? 0);
 const TD = '/td/';
 const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
 const json = async <T>(src: string) => (await fetch(src)).json() as Promise<T>;
@@ -55,7 +57,7 @@ function treatBackground(img: HTMLImageElement): CanvasImageSource {
     const r = a[i], gg = a[i + 1], b = a[i + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), lum = (r * 0.3 + gg * 0.59 + b * 0.11) / 255;
     const sat = mx ? (mx - mn) / mx : 0, floor = r > gg && gg > b ? Math.min(1, Math.max(0, (sat - 0.22) / 0.15)) * Math.min(1, Math.max(0, (lum - 0.22) / 0.12)) : 0;
     let f = 1, keepSat = 1;
-    if (FLOOR === 'dark') { f = 1 - 0.55 * floor; keepSat = 1 - 0.45 * floor; }
+    if (FLOOR === 'dark') { f = 1 - 0.55 * floor; keepSat = 1 - 0.45 * floor; } else if (FLOOR === 'mid') { f = 1 - 0.32 * floor; keepSat = 1 - 0.3 * floor; }
     const rockW = 1 - floor;
     let R = r, G = gg, B = b;
     if (ROCK === 'calm' && rockW > 0) { const m = 52; R = r + (m - r) * 0.55 * rockW; G = gg + (m * 0.92 - gg) * 0.55 * rockW; B = b + (m * 0.82 - b) * 0.55 * rockW; }
@@ -83,6 +85,10 @@ const SPEC_OF: Record<Kind, string> = { mini: 'skitter', dart: 'glider', brute: 
 /** On-screen body length for a sim kind: legs and tail reach ~2.6 collision radii. */
 const alienPx = (kind: Kind) => KINDS[kind].radius * 2.6 * k * ALIEN;
 
+function aidsFor(id: string): Aids {
+  const blue = id === 'skitter' || id === 'glider';
+  return { tint: blue ? BLUE_TINT : 0, rim: RIM, rimPx: 1 };
+}
 function draw(t: number) {
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
   g.fillStyle = '#1b1814'; g.fillRect(0, 0, W, H);
@@ -110,11 +116,11 @@ function draw(t: number) {
   ];
   for (const [kind, li, u, lat] of troops) {
     const r = rigs.find((x) => x.spec.id === SPEC_OF[kind])!, { p, a } = laneAt(li, u);
-    place(g, r, X(p[0]) - Math.sin(a) * lat * k, Y(p[1]) + Math.cos(a) * lat * k, a, alienPx(kind), { t: t + u * 7 });
+    place(g, r, X(p[0]) - Math.sin(a) * lat * k, Y(p[1]) + Math.cos(a) * lat * k, a, alienPx(kind) * (kind === 'mini' ? 1.3 : 1), { t: t + u * 7 }, aidsFor(r.spec.id));
   }
   const gl = rigs.find((x) => x.spec.id === 'glider')!;
-  place(g, gl, X(58), Y(28), Math.PI / 2 + 0.3, alienPx('dart') * 1.15, { t });
-  place(g, gl, X(26), Y(40), Math.PI / 2 - 0.2, alienPx('dart') * 1.15, { t: t + 1 });
+  place(g, gl, X(58), Y(28), Math.PI / 2 + 0.3, alienPx('dart') * 1.15, { t }, aidsFor('glider'));
+  place(g, gl, X(26), Y(40), Math.PI / 2 - 0.2, alienPx('dart') * 1.15, { t: t + 1 }, aidsFor('glider'));
   // current panels + shell HUD band
   if (PANELS && L.wide) for (const b of [L.left, L.right]) { g.fillStyle = 'rgba(12,14,20,0.82)'; g.fillRect(b.x, b.y, b.w, b.h); }
   g.fillStyle = 'rgba(8,10,14,0.88)'; g.fillRect(0, H - INSET, W, INSET);

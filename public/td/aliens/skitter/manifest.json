@@ -1,0 +1,390 @@
+{
+ "id": "skitter",
+ "kind": "mini",
+ "source": "skitter-parts",
+ "scale": 0.27,
+ "size": [
+  172.8,
+  172.8
+ ],
+ "centerX": 86.4,
+ "centerY": 87.885,
+ "lengthPx": 129.6,
+ "root": "thorax_2",
+ "parts": [
+  {
+   "name": "head",
+   "file": "head.webp",
+   "glow": "head_glow.webp",
+   "offset": [
+    65.61,
+    19.71
+   ],
+   "pivot": [
+    86.265,
+    53.865
+   ],
+   "parent": "thorax_1",
+   "z": 60,
+   "w": 42.39,
+   "h": 42.93
+  },
+  {
+   "name": "thorax_1",
+   "file": "thorax_1.webp",
+   "glow": "thorax_1_glow.webp",
+   "offset": [
+    61.56,
+    48.87
+   ],
+   "pivot": [
+    85.725,
+    71.145
+   ],
+   "parent": "thorax_2",
+   "z": 54,
+   "w": 49.68,
+   "h": 31.05
+  },
+  {
+   "name": "thorax_2",
+   "file": "thorax_2.webp",
+   "glow": "thorax_2_glow.webp",
+   "offset": [
+    64.26,
+    65.34
+   ],
+   "pivot": [
+    86.4,
+    80.938
+   ],
+   "parent": null,
+   "z": 53,
+   "w": 43.74,
+   "h": 29.16
+  },
+  {
+   "name": "thorax_3",
+   "file": "thorax_3.webp",
+   "glow": "thorax_3_glow.webp",
+   "offset": [
+    64.26,
+    82.35
+   ],
+   "pivot": [
+    86.265,
+    92.475
+   ],
+   "parent": "thorax_2",
+   "z": 52,
+   "w": 41.58,
+   "h": 25.65
+  },
+  {
+   "name": "thorax_4",
+   "file": "thorax_4.webp",
+   "glow": "thorax_4_glow.webp",
+   "offset": [
+    64.26,
+    95.58
+   ],
+   "pivot": [
+    86.535,
+    106.245
+   ],
+   "parent": "thorax_3",
+   "z": 51,
+   "w": 38.88,
+   "h": 20.25
+  },
+  {
+   "name": "coxa_front_r",
+   "file": "coxa_front_r.webp",
+   "glow": "coxa_front_r_glow.webp",
+   "offset": [
+    95.58,
+    43.47
+   ],
+   "pivot": [
+    101.385,
+    54.945
+   ],
+   "parent": "thorax_1",
+   "z": 10,
+   "w": 23.49,
+   "h": 20.79
+  },
+  {
+   "name": "femur_front_r",
+   "file": "femur_front_r.webp",
+   "glow": "femur_front_r_glow.webp",
+   "offset": [
+    101.52,
+    29.43
+   ],
+   "pivot": [
+    109.485,
+    52.785
+   ],
+   "parent": "coxa_front_r",
+   "z": 15,
+   "w": 27.81,
+   "h": 34.83
+  },
+  {
+   "name": "claw_front_r",
+   "file": "claw_front_r.webp",
+   "glow": "claw_front_r_glow.webp",
+   "offset": [
+    112.32,
+    29.43
+   ],
+   "pivot": [
+    120.555,
+    38.745
+   ],
+   "parent": "femur_front_r",
+   "z": 20,
+   "w": 26.19,
+   "h": 29.16
+  },
+  {
+   "name": "coxa_mid_front_r",
+   "file": "coxa_mid_front_r.webp",
+   "glow": "coxa_mid_front_r_glow.webp",
+   "offset": [
+    95.31,
+    63.18
+   ],
+   "pivot": [
+    101.925,
+    78.705
+   ],
+   "parent": "thorax_2",
+   "z": 10,
+   "w": 21.06,
+   "h": 20.52
+  },
+  {
+   "name": "femur_mid_front_r",
+   "file": "femur_mid_front_r.webp",
+   "glow": "femur_mid_front_r_glow.webp",
+   "offset": [
+    101.25,
+    55.08
+   ],
+   "pivot": [
+    110.835,
+    74.925
+   ],
+   "parent": "coxa_mid_front_r",
+   "z": 15,
+   "w": 34.56,
+   "h": 27.54
+  },
+  {
+   "name": "claw_mid_front_r",
+   "file": "claw_mid_front_r.webp",
+   "glow": "claw_mid_front_r_glow.webp",
+   "offset": [
+    115.56,
+    55.08
+   ],
+   "pivot": [
+    125.955,
+    65.745
+   ],
+   "parent": "femur_mid_front_r",
+   "z": 20,
+   "w": 33.48,
+   "h": 34.29
+  },
+  {
+   "name": "coxa_mid_rear_r",
+   "file": "coxa_mid_rear_r.webp",
+   "glow": "coxa_mid_rear_r_glow.webp",
+   "offset": [
+    95.04,
+    79.11
+   ],
+   "pivot": [
+    101.655,
+    92.475
+   ],
+   "parent": "thorax_3",
+   "z": 10,
+   "w": 19.98,
+   "h": 22.41
+  },
+  {
+   "name": "femur_mid_rear_r",
+   "file": "femur_mid_rear_r.webp",
+   "glow": "femur_mid_rear_r_glow.webp",
+   "offset": [
+    103.14,
+    79.11
+   ],
+   "pivot": [
+    110.835,
+    89.775
+   ],
+   "parent": "coxa_mid_rear_r",
+   "z": 15,
+   "w": 32.4,
+   "h": 22.14
+  },
+  {
+   "name": "claw_mid_rear_r",
+   "file": "claw_mid_rear_r.webp",
+   "glow": "claw_mid_rear_r_glow.webp",
+   "offset": [
+    116.91,
+    83.16
+   ],
+   "pivot": [
+    126.765,
+    91.395
+   ],
+   "parent": "femur_mid_rear_r",
+   "z": 20,
+   "w": 23.22,
+   "h": 36.45
+  },
+  {
+   "name": "coxa_rear_r",
+   "file": "coxa_rear_r.webp",
+   "glow": "coxa_rear_r_glow.webp",
+   "offset": [
+    90.45,
+    95.31
+   ],
+   "pivot": [
+    97.065,
+    102.735
+   ],
+   "parent": "thorax_4",
+   "z": 10,
+   "w": 22.14,
+   "h": 20.52
+  },
+  {
+   "name": "femur_rear_r",
+   "file": "femur_rear_r.webp",
+   "glow": "femur_rear_r_glow.webp",
+   "offset": [
+    94.23,
+    97.47
+   ],
+   "pivot": [
+    105.975,
+    107.325
+   ],
+   "parent": "coxa_rear_r",
+   "z": 15,
+   "w": 30.78,
+   "h": 21.06
+  },
+  {
+   "name": "claw_rear_r",
+   "file": "claw_rear_r.webp",
+   "glow": "claw_rear_r_glow.webp",
+   "offset": [
+    107.19,
+    100.71
+   ],
+   "pivot": [
+    114.075,
+    114.075
+   ],
+   "parent": "femur_rear_r",
+   "z": 20,
+   "w": 17.82,
+   "h": 34.02
+  },
+  {
+   "name": "tail_01",
+   "file": "tail_01.webp",
+   "glow": "tail_01_glow.webp",
+   "offset": [
+    74.52,
+    107.46
+   ],
+   "pivot": [
+    86.265,
+    112.725
+   ],
+   "parent": "thorax_4",
+   "z": 48,
+   "w": 24.03,
+   "h": 15.39
+  },
+  {
+   "name": "tail_02",
+   "file": "tail_02.webp",
+   "glow": "tail_02_glow.webp",
+   "offset": [
+    76.41,
+    115.29
+   ],
+   "pivot": [
+    86.265,
+    120.285
+   ],
+   "parent": "tail_01",
+   "z": 47,
+   "w": 19.98,
+   "h": 13.77
+  },
+  {
+   "name": "tail_03",
+   "file": "tail_03.webp",
+   "glow": "tail_03_glow.webp",
+   "offset": [
+    76.95,
+    121.5
+   ],
+   "pivot": [
+    86.265,
+    126.495
+   ],
+   "parent": "tail_02",
+   "z": 46,
+   "w": 18.9,
+   "h": 13.23
+  },
+  {
+   "name": "tail_04",
+   "file": "tail_04.webp",
+   "glow": "tail_04_glow.webp",
+   "offset": [
+    76.95,
+    127.44
+   ],
+   "pivot": [
+    86.265,
+    132.165
+   ],
+   "parent": "tail_03",
+   "z": 45,
+   "w": 18.9,
+   "h": 12.42
+  },
+  {
+   "name": "tail_tip",
+   "file": "tail_tip.webp",
+   "glow": "tail_tip_glow.webp",
+   "offset": [
+    77.22,
+    129.87
+   ],
+   "pivot": [
+    86.265,
+    137.025
+   ],
+   "parent": "tail_04",
+   "z": 44,
+   "w": 18.36,
+   "h": 23.22
+  }
+ ]
+}

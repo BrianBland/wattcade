@@ -1,0 +1,271 @@
+{
+ "id": "bulwark",
+ "kind": "armor",
+ "source": "bulwark-parts",
+ "scale": 0.47,
+ "size": [
+  300.8,
+  300.8
+ ],
+ "centerX": 150.4,
+ "centerY": 162.855,
+ "lengthPx": 225.6,
+ "root": "carapace_3",
+ "parts": [
+  {
+   "name": "head",
+   "file": "head.webp",
+   "glow": "head_glow.webp",
+   "offset": [
+    117.97,
+    33.37
+   ],
+   "pivot": [
+    150.165,
+    81.545
+   ],
+   "parent": "carapace_1",
+   "z": 60,
+   "w": 64.39,
+   "h": 60.16
+  },
+  {
+   "name": "carapace_1",
+   "file": "carapace_1.webp",
+   "glow": "carapace_1_glow.webp",
+   "offset": [
+    97.29,
+    69.56
+   ],
+   "pivot": [
+    150.165,
+    110.685
+   ],
+   "parent": "carapace_2",
+   "z": 55,
+   "w": 105.28,
+   "h": 55.46
+  },
+  {
+   "name": "carapace_2",
+   "file": "carapace_2.webp",
+   "glow": "carapace_2_glow.webp",
+   "offset": [
+    89.77,
+    97.29
+   ],
+   "pivot": [
+    150.165,
+    144.995
+   ],
+   "parent": "carapace_3",
+   "z": 54,
+   "w": 122.2,
+   "h": 62.51
+  },
+  {
+   "name": "carapace_3",
+   "file": "carapace_3.webp",
+   "glow": "carapace_3_glow.webp",
+   "offset": [
+    80.84,
+    127.84
+   ],
+   "pivot": [
+    150.4,
+    166.443
+   ],
+   "parent": null,
+   "z": 53,
+   "w": 144.29,
+   "h": 66.74
+  },
+  {
+   "name": "carapace_4",
+   "file": "carapace_4.webp",
+   "glow": "carapace_4_glow.webp",
+   "offset": [
+    93.53,
+    163.56
+   ],
+   "pivot": [
+    150.165,
+    185.415
+   ],
+   "parent": "carapace_3",
+   "z": 52,
+   "w": 114.68,
+   "h": 65.33
+  },
+  {
+   "name": "carapace_5",
+   "file": "carapace_5.webp",
+   "glow": "carapace_5_glow.webp",
+   "offset": [
+    96.35,
+    197.4
+   ],
+   "pivot": [
+    150.165,
+    219.725
+   ],
+   "parent": "carapace_4",
+   "z": 51,
+   "w": 108.1,
+   "h": 54.99
+  },
+  {
+   "name": "tail_plate",
+   "file": "tail_plate.webp",
+   "glow": "tail_plate_glow.webp",
+   "offset": [
+    122.67,
+    229.83
+   ],
+   "pivot": [
+    150.165,
+    244.165
+   ],
+   "parent": "carapace_5",
+   "z": 50,
+   "w": 57.81,
+   "h": 36.66
+  },
+  {
+   "name": "socket_front_r",
+   "file": "socket_front_r.webp",
+   "glow": "socket_front_r_glow.webp",
+   "offset": [
+    165.91,
+    75.67
+   ],
+   "pivot": [
+    175.545,
+    89.065
+   ],
+   "parent": "carapace_1",
+   "z": 10,
+   "w": 45.12,
+   "h": 31.96
+  },
+  {
+   "name": "foot_front_r",
+   "file": "foot_front_r.webp",
+   "glow": "foot_front_r_glow.webp",
+   "offset": [
+    183.3,
+    58.28
+   ],
+   "pivot": [
+    192.935,
+    88.125
+   ],
+   "parent": "socket_front_r",
+   "z": 15,
+   "w": 35.72,
+   "h": 49.35
+  },
+  {
+   "name": "socket_mid_front_r",
+   "file": "socket_mid_front_r.webp",
+   "glow": "socket_mid_front_r_glow.webp",
+   "offset": [
+    183.77,
+    103.4
+   ],
+   "pivot": [
+    193.405,
+    128.545
+   ],
+   "parent": "carapace_2",
+   "z": 10,
+   "w": 36.19,
+   "h": 41.83
+  },
+  {
+   "name": "foot_mid_front_r",
+   "file": "foot_mid_front_r.webp",
+   "glow": "foot_mid_front_r_glow.webp",
+   "offset": [
+    195.05,
+    103.4
+   ],
+   "pivot": [
+    207.975,
+    123.375
+   ],
+   "parent": "socket_mid_front_r",
+   "z": 15,
+   "w": 39.95,
+   "h": 42.3
+  },
+  {
+   "name": "socket_mid_rear_r",
+   "file": "socket_mid_rear_r.webp",
+   "glow": "socket_mid_rear_r_glow.webp",
+   "offset": [
+    181.89,
+    157.92
+   ],
+   "pivot": [
+    192.935,
+    178.835
+   ],
+   "parent": "carapace_4",
+   "z": 10,
+   "w": 44.18,
+   "h": 39.95
+  },
+  {
+   "name": "foot_mid_rear_r",
+   "file": "foot_mid_rear_r.webp",
+   "glow": "foot_mid_rear_r_glow.webp",
+   "offset": [
+    200.69,
+    158.39
+   ],
+   "pivot": [
+    210.325,
+    177.425
+   ],
+   "parent": "socket_mid_rear_r",
+   "z": 15,
+   "w": 36.19,
+   "h": 49.82
+  },
+  {
+   "name": "socket_rear_r",
+   "file": "socket_rear_r.webp",
+   "glow": "socket_rear_r_glow.webp",
+   "offset": [
+    165.91,
+    208.21
+   ],
+   "pivot": [
+    176.485,
+    220.195
+   ],
+   "parent": "carapace_5",
+   "z": 10,
+   "w": 47,
+   "h": 34.31
+  },
+  {
+   "name": "foot_rear_r",
+   "file": "foot_rear_r.webp",
+   "glow": "foot_rear_r_glow.webp",
+   "offset": [
+    187.53,
+    217.14
+   ],
+   "pivot": [
+    198.105,
+    232.415
+   ],
+   "parent": "socket_rear_r",
+   "z": 15,
+   "w": 29.14,
+   "h": 43.71
+  }
+ ]
+}

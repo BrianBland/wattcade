@@ -19,7 +19,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
-  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean }
+  /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */
+  | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean }
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }
   | { id: number; t0: number; life: number; kind: 'emp' }
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };

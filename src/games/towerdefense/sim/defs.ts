@@ -39,14 +39,14 @@ export interface KindDef {
 }
 // speed in field units / s (lanes are ~110-125 units long)
 export const KINDS: Record<Kind, KindDef> = {
-  mini:    { name: 'Swarm drone', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
-  dart:    { name: 'Dart',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
-  brute:   { name: 'Brute',       hp: 70,  speed: 3.5, dmg: 5,  color: 'red',    radius: 2.7, scrap: 5,  heavy: true },
-  charger: { name: 'Charger',     hp: 55,  speed: 2.8, dmg: 6,  color: 'red',    radius: 2.4, scrap: 6,  heavy: true },
-  armor:   { name: 'Bastion',     hp: 95,  speed: 2.3, dmg: 8,  color: 'purple', radius: 3.2, scrap: 8,  heavy: true },
-  carrier: { name: 'Carrier',     hp: 150, speed: 1.9, dmg: 10, color: 'purple', radius: 3.6, scrap: 12, heavy: true },
-  prism:   { name: 'Prism',       hp: 90,  speed: 3.0, dmg: 6,  color: 'prism',  radius: 2.6, scrap: 10, heavy: true },
-  boss:    { name: 'Goliath',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
+  mini:    { name: 'Skitter', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
+  dart:    { name: 'Glider',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
+  brute:   { name: 'Warrior',       hp: 70,  speed: 3.5, dmg: 5,  color: 'red',    radius: 2.7, scrap: 5,  heavy: true },
+  charger: { name: 'Ram',     hp: 55,  speed: 2.8, dmg: 6,  color: 'red',    radius: 2.4, scrap: 6,  heavy: true },
+  armor:   { name: 'Bulwark',     hp: 95,  speed: 2.3, dmg: 8,  color: 'purple', radius: 3.2, scrap: 8,  heavy: true },
+  carrier: { name: 'Broodmother',     hp: 150, speed: 1.9, dmg: 10, color: 'purple', radius: 3.6, scrap: 12, heavy: true },
+  prism:   { name: 'Stalker',       hp: 90,  speed: 3.0, dmg: 6,  color: 'prism',  radius: 2.6, scrap: 10, heavy: true },
+  boss:    { name: 'Hive Tyrant',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
 };
 /** First wave each kind can appear in. */
 export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, brute: 1, charger: 6, armor: 2, carrier: 9, prism: 12, boss: 5 };

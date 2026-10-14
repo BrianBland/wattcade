@@ -1,58 +1,78 @@
-# Painted map integration
+# Painted battlefield integration
 
-The user approved a fixed painted landscape following trench-mockup.png.
-This supersedes the old ground-tile/lip-strip design in #131/#133.
-This PR supplies art and geometry; it does not change game code.
+This is one fixed painted map. Routes are level worn earth/rock with low rubble shoulders.
+The owner returned to the richer original material direction. No procedural map assembly or variable layouts.
+The production PR changes assets and geometry data only, not game code.
 
-## Registered coordinates
+## Registration (unchanged)
 
-background.webp is 1536×1024. Its 100×100 world field occupies image
-rectangle [318,32,900,900]. Outpost [50,90] maps to image [768,842].
-For a renderer field origin (fieldX,fieldY) and square size fieldSize:
+background.webp: 1536×1024; field image rectangle [318,32,900,900],
+100×100 field units. Outpost [50,90] maps to image [768,842].
 
     imageScale = fieldSize / 900
     imageX = fieldX - 318 * imageScale
     imageY = fieldY - 32 * imageScale
-    draw image at (imageX,imageY), size (1536,1024) * imageScale
+    drawImage(background, imageX, imageY, 1536*imageScale, 1024*imageScale)
     actorX = fieldX + worldX * fieldSize / 100
     actorY = fieldY + worldY * fieldSize / 100
 
-Terrain and actors must share this transform. Do not independently cover-scale
-terrain while preserving the old actor transform. The portrait proof crops the
-same image at x318..1218. Outer viewport space can use a rock-colored backdrop.
-The side spawns intentionally begin outside the world field.
+Terrain and actors share this transform. The side spawns start outside the field.
 
-## Adopt lanes and pads together
+## Adopt map-layout.json in the shared simulation/renderer definitions
 
-Left/center control points exactly retain current sim/defs.ts. The right-hand
-lane follows the authored brown floor with controls:
-[103,16], [84,18], [87,66], [50,90]. Its original controls are retained in
-previousControls. This minor path revision keeps creatures off the cut face.
-Update the shared lane table when integrating this map, not only render geometry.
+All three curves exactly retain the previous #138 map-layout.json controls.
+Left: [-3,16],[28,18],[18,66],[50,90].
+Centre: [50,-3],[34,28],[66,52],[50,90].
+Right: [103,16],[84,18],[87,66],[50,90].
+The earlier simulation right controls remain in previousControls for reference.
+Do not trace or refit these curves. floorWidth=13 (6.5 either side), bankWidth=1.25
+per side. The shared apron has an 11-unit radius at [50,90].
 
-Existing PADS are eight units off lane centers, too close to the richer banks.
-map-layout.json supplies all six new positions, original positions, stable ids,
-lane assignments and near/far flags. Apply them in the shared sim/render pad
-source so targeting, build selection, auto-crew, cables and art stay aligned.
-Each 4.2-unit-radius footprint has >=1 unit of clearance beyond the intended
-bank extent (floor half-width 4 + bank width 2), and pad centers are >=17 units
-from the outpost. Numeric clearance and whole-footprint rock-top material checks accompany
-registration.png/all-six-pads.png; material support is measured on the retained
-source PNG and codec fidelity is verified separately.
-Painted rim shapes vary organically; review the actual assembly as well.
+Six plateau pads, radius4.2, stable ids and lane assignments, one near and one
+far per lane. Each centre is 13–16 units from its assigned curve and at least
+12.95 from every curve: floor half-width6.5 + shoulder1.25 + pad4.2 + clearance1.
+All centres are at least17 units from the outpost. previousPosition is preserved
+unchanged; archive/map-layout-deep-v2.json on the working branch also retains
+the immediately preceding painted-map placements. Apply lanes/pads together
+so targeting, selection, movement and art agree. Integration remains #133.
 
-## Separate layers and proofs
+## Layers (unchanged)
 
-The background contains only terrain and its intrinsic geological shading.
-Actors, machinery, cables, emission, creep, burrows, splats and props remain
-separate. Existing tower/outpost PRs supply machinery; this folder supplies
-27 overlays. The preview uses those exact exported rigs and the original Warrior.
-Its illustrative cables belong to the proof renderer, not a new cable asset kit.
+Background is opaque terrain only. Towers, outpost, aliens, cables, creep,
+burrows, splats, props and emissions stay separate. All 54 overlay PNGs are
+byte-identical to the preceding #138 delivery. manifest.json.size is the
+canonical 512×512 overlay frame; background.size is the separate full image.
+Place each overlay by its pivot and offset; glow uses alpha-weighted additive
+RGB once. Neutral splats multiply by brood RGB. Props have clear glow masks.
 
-manifest.json.size is the canonical 512×512 overlay registration frame;
-background.size is the separate painted image. Place each overlay pivot at its
-world position, preserving its offset relative to that pivot. Purple organic
-emission and neutral white splat emission remain independently controllable.
+## Real-puppet proof and cabling handoff
 
-preview.png is a reduced scene proof; overlays-preview.png shows all overlays
-and brood tints. Neither is a runtime background or a claim of integration.
+Current proof: mockups/curved-wiring/real-sprites.png on the working branch.
+It uses the unchanged original-style painting, actual alien rigs, PR135 tower
+and PR136 outpost exports at1366×1024CSS,deviceScale2. Eight alien species,
+all six towers and the outpost use their real sim-derived/manifest sizes.
+The proof renderer connects each tower to a unique cable_1..6 deck socket,
+using actual transformed anchor positions. Armoured texture follows curved
+routes with return hoses; short floor crossings are buried with flush covers.
+Wiring draws beneath all actors and machinery, never through the flywheel.
+
+Cabling is renderer-owned review work, not baked into background.webp and not
+a new production cable kit. Source texture, route/capture scripts, actual
+endpoints and hashes are in mockups/curved-wiring/. Path/pad data unchanged by
+that exploration. The sharp tactical waypoint study is not adopted.
+
+preview.png is a reduced current curved-wiring proof from the source painting;
+overlays-preview.png shows the unchanged kit and brood tints. Neither is a
+runtime background. Earlier proofs/ screenshots and384 Warrior gait poses
+belong to the rejected smooth-floor painting; they do not certify this source.
+
+terrain-measurements.json reports decoded meanRGB, Rec.709-weighted encoded
+sRGB display value and linear relative luminance separately. Masks cover the
+registered field and apron, excluding shoulders. The owner returned to richer
+textured materials: neutral stones and warm industrial ruins make old hue,
+colour-target and calm-plateau checks diagnostic rather than compliance claims.
+Numeric geometry, centreline support, codec fidelity and overlay checks remain.
+Final proof captures: proofs/current/, all three exact requested iPad URLs and
+384 maximum-offset Warrior poses. No solid pixels outside13-unit geometry;
+99.9577% of sampled footprint pixels are warm dirt; neutral stones explain the
+remaining0.0423%. Source hashes and zero browser errors are recorded in JSON.

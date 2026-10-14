@@ -49,8 +49,8 @@
         ]
       ],
       "requiresSimChange": false,
-      "floorWidth": 8,
-      "bankWidth": 2
+      "floorWidth": 13,
+      "bankWidth": 1.25
     },
     {
       "id": 1,
@@ -91,8 +91,8 @@
         ]
       ],
       "requiresSimChange": false,
-      "floorWidth": 8,
-      "bankWidth": 2
+      "floorWidth": 13,
+      "bankWidth": 1.25
     },
     {
       "id": 2,
@@ -133,8 +133,8 @@
         ]
       ],
       "requiresSimChange": true,
-      "floorWidth": 8,
-      "bankWidth": 2
+      "floorWidth": 13,
+      "bankWidth": 1.25
     }
   ],
   "pads": [
@@ -151,7 +151,7 @@
         54.82606352387674
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9168,
+      "laneDistance": 13.445,
       "minimumLaneDistance": 13.445
     },
     {
@@ -159,48 +159,48 @@
       "lane": 0,
       "near": true,
       "position": [
-        40.5,
-        52.0
+        39.0,
+        50.5
       ],
       "previousPosition": [
         42.743654722393906,
         70.31134344139183
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9193,
-      "minimumLaneDistance": 11.999
+      "laneDistance": 13.044,
+      "minimumLaneDistance": 13.044
     },
     {
       "id": 2,
       "lane": 1,
       "near": false,
       "position": [
-        67.0,
-        19.0
+        59.0,
+        22.5
       ],
       "previousPosition": [
         54.052978149102486,
         23.512997296712996
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9177,
-      "minimumLaneDistance": 21.443
+      "laneDistance": 13.045,
+      "minimumLaneDistance": 13.045
     },
     {
       "id": 3,
       "lane": 1,
-      "near": false,
+      "near": true,
       "position": [
-        36.5,
-        35.5
+        36.0,
+        40.5
       ],
       "previousPosition": [
         45.101119704947436,
         54.25236281511286
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9191,
-      "minimumLaneDistance": 11.664
+      "laneDistance": 13.408,
+      "minimumLaneDistance": 13.408
     },
     {
       "id": 4,
@@ -208,31 +208,31 @@
       "near": false,
       "position": [
         90.5,
-        62.0
+        61.5
       ],
       "previousPosition": [
         81.81596067806606,
         54.82606352387659
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9237,
-      "minimumLaneDistance": 13.6
+      "laneDistance": 13.383,
+      "minimumLaneDistance": 13.383
     },
     {
       "id": 5,
       "lane": 2,
       "near": true,
       "position": [
-        70.0,
-        42.5
+        66.0,
+        51.5
       ],
       "previousPosition": [
         57.25634527760609,
         70.31134344139186
       ],
       "footprintRadius": 4.2,
-      "rockTopSupport": 0.9162,
-      "minimumLaneDistance": 13.1
+      "laneDistance": 13.021,
+      "minimumLaneDistance": 13.021
     }
   ],
   "outpost": {

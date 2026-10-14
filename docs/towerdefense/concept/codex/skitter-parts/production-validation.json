@@ -1,0 +1,22 @@
+{
+  "approvedCandidateSha256": "b0facbb851c2409355ff2f23ee424880dbee14c9951fbbbe9e009f742120fce6",
+  "sourcePixelsUsed": true,
+  "newArtGenerated": false,
+  "sourceParts": 22,
+  "glowLayers": 22,
+  "assembledInstances": 34,
+  "logicalLegs": 8,
+  "sectionsPerLeg": 3,
+  "tailLinks": 5,
+  "root": "thorax_2",
+  "blueBasePixels": 43452,
+  "emissivePixels": 29312,
+  "scriptedContacts": 396,
+  "gapJoints": [],
+  "greenFringePixels": 0,
+  "clippedPoses": [],
+  "sourceLightingRetained": true,
+  "leftLegsMirroredAsRequired": true,
+  "gameCodeChanged": false,
+  "gliderPuppetChanged": false
+}

@@ -1,0 +1,68 @@
+{
+  "pages": [
+    "dev/td-roster.html?view=grid",
+    "dev/td-aids.html",
+    "dev/td-integration.html?panels=0&alien=1.25&rim=0"
+  ],
+  "gait": {
+    "groups": [
+      {
+        "group": "front",
+        "chain": [
+          "coxa_front_r",
+          "femur_front_r",
+          "claw_front_r"
+        ]
+      },
+      {
+        "group": "mid_front",
+        "chain": [
+          "coxa_mid_front_r",
+          "femur_mid_front_r",
+          "claw_mid_front_r"
+        ]
+      },
+      {
+        "group": "mid_rear",
+        "chain": [
+          "coxa_mid_rear_r",
+          "femur_mid_rear_r",
+          "claw_mid_rear_r"
+        ]
+      },
+      {
+        "group": "rear",
+        "chain": [
+          "coxa_rear_r",
+          "femur_rear_r",
+          "claw_rear_r"
+        ]
+      }
+    ],
+    "logicalLegCount": 8,
+    "tailLinks": [
+      "tail_01",
+      "tail_02",
+      "tail_03",
+      "tail_04",
+      "tail_tip"
+    ],
+    "root": "thorax_2",
+    "gaitHz": 2.6,
+    "source": "Unmodified dev/td-rig.ts",
+    "deviceScaleFactor": 2
+  },
+  "frames": [
+    0,
+    0.04807692307692307,
+    0.09615384615384615,
+    0.14423076923076922,
+    0.1923076923076923,
+    0.24038461538461536,
+    0.28846153846153844,
+    0.3365384615384615
+  ],
+  "integrationFooterObservedSkitterPx": 40,
+  "supplementalSkitterPx": 52,
+  "errors": []
+}

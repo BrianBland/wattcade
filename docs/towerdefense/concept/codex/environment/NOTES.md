@@ -23,7 +23,8 @@ mockups/original-direction/NOTES.md; mockups/tactical-layout/NOTES.md;
 mockups/curved-wiring/NOTES.md. Every actual nested file appears in FILES.txt.
 raw/battlefield-shallow-v5-raw.png throughv8 are rejected smooth-floor studies.
 proofs/ contains prior smooth-floor captures and384-pose offset measurement;
-these do not certify the final restored original-style textured terrain.
+proofs/current/ contains the final exported-map captures and384-pose check;
+zero pixels outside13-unit envelope;0.0423% sample neutral stones.
 archive/deep-v2/ retains earlier deep-trench scene proofs and original script.
 archive/map-layout-deep-v2.json retains prior pad placements for comparison.
 Original concepts, accepted rigs, raw green sheets and archive/v1 stay retained.

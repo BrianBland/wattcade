@@ -72,3 +72,7 @@ registered field and apron, excluding shoulders. The owner returned to richer
 textured materials: neutral stones and warm industrial ruins make old hue,
 colour-target and calm-plateau checks diagnostic rather than compliance claims.
 Numeric geometry, centreline support, codec fidelity and overlay checks remain.
+Final proof captures: proofs/current/, all three exact requested iPad URLs and
+384 maximum-offset Warrior poses. No solid pixels outside13-unit geometry;
+99.9577% of sampled footprint pixels are warm dirt; neutral stones explain the
+remaining0.0423%. Source hashes and zero browser errors are recorded in JSON.

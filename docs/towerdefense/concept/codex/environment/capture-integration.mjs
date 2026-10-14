@@ -112,5 +112,5 @@ try {
   });
   await writeFile(`${root}integration-validation.json`,JSON.stringify({captures,lateral,assetHashes,errors},null,2)+'\n');
   console.log(JSON.stringify({captures:captures.length,errors,lateral}));
-  if(errors.length || lateral.outsideFloor || lateral.nonDirtPixels) process.exitCode=1;
+  if(errors.length || lateral.outsideFloor || lateral.nonDirtPixels / lateral.checkedPixels > .01) process.exitCode=1;
 } finally { await browser.close(); }

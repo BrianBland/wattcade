@@ -31,6 +31,7 @@ Working branch: codex/td-environment-work, folder
 measure.py/terrain-measurements.json: geometry-masked actual decodedRGB/value.
 mockups/curved-wiring/: six actual socket connections and textured curved feeds.
 The cables are a local proof renderer, not baked scenery or production cable assets.
-Earlier smooth-floor tests remain historical and do not certify this new painting.
+proofs/current/: three exact iPad URL captures and384 Warrior offset poses.
+No solid pixels exceed the13-unit envelope;0.0423% sample neutral floor stones.
 MAP_INTEGRATION.md describes required shared lane/pad adoption under #133.
 No live gameplay integration or actual hardware-browser test is claimed.

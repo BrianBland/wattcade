@@ -6,6 +6,7 @@ import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
 import { drawBanner, drawBroodCard, drawGarage, drawLeft, drawRight, drawWorkshop, type Hit } from './panels';
+import { AlienLayer, type View } from './aliens/layer';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -40,6 +41,9 @@ export class TdRenderer implements GameRenderer {
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
   private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
+  /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
+  private aliens = new AlienLayer(import.meta.env.BASE_URL);
+  private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
@@ -159,6 +163,15 @@ export class TdRenderer implements GameRenderer {
       this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: life * (0.5 + Math.random() * 0.7), size: size * (0.5 + Math.random()), color, kind: 'spark' });
     }
   }
+  /** A fuel-blooded red alien killed by fire bursts into flame. */
+  private fireBurst(x: number, y: number, size: number) {
+    for (let i = 0; i < 14 && this.particles.length < 600; i++) {
+      const a = Math.random() * TAU, v = size * (1.2 + Math.random() * 2.2);
+      this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.35 + Math.random() * 0.25, size: size * 0.18, color: '', kind: 'flame' });
+    }
+    this.ring(x, y, '#ffb050', size * 0.2, size * 0.9, 0.35);
+    this.shake = Math.max(this.shake, 0.3);
+  }
   private ring(x: number, y: number, color: string, r0: number, grow: number, life: number) {
     this.particles.push({ x, y, vx: 0, vy: 0, age: 0, life, size: r0, grow, color, kind: 'ring' });
   }
@@ -272,6 +285,9 @@ export class TdRenderer implements GameRenderer {
     const bx = this.X(BASE_X), by = this.Y(BASE_Y);
     if (s.phase === 'run') {
       this.drawLanes(g, s, t);
+      this.view.k = k; this.view.dpr = this.dpr;
+      this.aliens.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
+      this.aliens.drawGround(g, this.view, t);
       this.drawCables(g, s, t);
       this.drawPads(g, s, t);
       for (const tw of s.towers) { const p = PADS[tw.pad]; drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
@@ -281,17 +297,17 @@ export class TdRenderer implements GameRenderer {
       g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k);
       const reach = s.weapon === 'flame' ? s.flameRange : 100;
       g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
-      // enemies, back to front
+      // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
+      if (this.aliens.ready) this.aliens.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
       const live = new Set<number>();
-      const es = [...s.enemies].sort((a, b) => a.y - b.y);
-      for (const e of es) {
+      for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
         const x = this.X(e.x), y = this.Y(e.y);
         const prev = this.heading.get(e.id);
         let h = prev?.h ?? Math.atan2(by - y, bx - x);
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
-        drawEnemy(g, e, x, y, k, h, t);
+        if (!this.aliens.ready) drawEnemy(g, e, x, y, k, h, t);
         if (e.id === s.targetId) this.reticle(g, e, x, y, t);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);

@@ -41,6 +41,7 @@ interface Enemy {
   id: number; kind: Kind; lane: number; d: number; len: number; off: number; phase: number;
   x: number; y: number; angle: number; dist: number;
   hp: number; maxHp: number; speed: number; dmg: number; dead: boolean; hurt: number;
+  /** element of the last hit (for death effects: a fire kill bursts a red alien) */ lastEl: Element | null;
   spawnT: number; charging: boolean; boss: BossState | null;
 }
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
@@ -250,7 +251,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const e: Enemy = {
       id: nextId++, kind, lane: laneIdx, d, len: laneLength(laneIdx), off: (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : 4.5),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
-      hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0,
+      hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null,
       spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(phaseColors.slice()) : null,
     };
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
@@ -269,7 +270,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const damage = Math.min(Math.max(0, e.hp - floor), base * mult * exposure);
     dealt[src] += damage; // effective damage, including ignition; no overkill or damage through phase gates
     e.hp -= damage;
-    e.hurt = 0.12;
+    e.hurt = 0.12; e.lastEl = el;
     if (e.hp <= 0) {
       kill(e, src);
       if (el === 'red' && element === 'red') ignite(e, src, chain ?? { id: ++ignitionChainId, bursts: 0 });
@@ -291,7 +292,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     e.dead = true;
     const def = KINDS[e.kind];
     const key = e.kind === 'boss' ? 'gold' : elementOf(e);
-    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy });
+    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: src !== 'core' && e.lastEl === 'red' });
     if (src === 'core') return; // swept away by a core blast: no credit
     kills[key]++;
     if (src === 'tower') stats.towerKills++;

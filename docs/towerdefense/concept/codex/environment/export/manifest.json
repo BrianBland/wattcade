@@ -1,0 +1,903 @@
+{
+  "schemaVersion": 1,
+  "size": [
+    512,
+    512
+  ],
+  "centerX": 256,
+  "light": "top",
+  "view": "overhead; concept-matched material relief",
+  "coordinates": "offset and pivot are absolute canonical 512x512 frame pixels; place each independent part by pivot at its world position",
+  "paddingPx": 6,
+  "scale": 2,
+  "groundColor": "#211d19",
+  "glowBlend": "additive RGB weighted by alpha; never multiply alpha twice",
+  "tint": "splat base: multiply neutral RGB by brood RGB / 255; glow: white RGB multiplied by brood RGB / 255",
+  "anchors": {
+    "spawn_1": {
+      "parent": "burrow_1",
+      "position": [
+        256,
+        256
+      ]
+    },
+    "spawn_2": {
+      "parent": "burrow_2",
+      "position": [
+        256,
+        256
+      ]
+    },
+    "spawn_3": {
+      "parent": "burrow_3",
+      "position": [
+        256,
+        256
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "ground_1",
+      "file": "parts/ground_1.png",
+      "glow": "parts/ground_1_glow.png",
+      "size": [
+        512,
+        512
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 0,
+      "category": "terrain",
+      "inGameSize": [
+        256.0,
+        256.0
+      ],
+      "tile": true,
+      "repeatX": true,
+      "repeatY": true
+    },
+    {
+      "name": "ground_2",
+      "file": "parts/ground_2.png",
+      "glow": "parts/ground_2_glow.png",
+      "size": [
+        512,
+        512
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 0,
+      "category": "terrain",
+      "inGameSize": [
+        256.0,
+        256.0
+      ],
+      "tile": true,
+      "repeatX": true,
+      "repeatY": true
+    },
+    {
+      "name": "ground_3",
+      "file": "parts/ground_3.png",
+      "glow": "parts/ground_3_glow.png",
+      "size": [
+        512,
+        512
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 0,
+      "category": "terrain",
+      "inGameSize": [
+        256.0,
+        256.0
+      ],
+      "tile": true,
+      "repeatX": true,
+      "repeatY": true
+    },
+    {
+      "name": "trench_floor",
+      "file": "parts/trench_floor.png",
+      "glow": "parts/trench_floor_glow.png",
+      "size": [
+        512,
+        512
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 0,
+      "category": "terrain",
+      "inGameSize": [
+        256.0,
+        256.0
+      ],
+      "tile": true,
+      "repeatX": true,
+      "repeatY": true
+    },
+    {
+      "name": "trench_lip",
+      "file": "parts/trench_lip.png",
+      "glow": "parts/trench_lip_glow.png",
+      "size": [
+        512,
+        96
+      ],
+      "offset": [
+        0.0,
+        208.0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 10,
+      "category": "lip",
+      "inGameSize": [
+        256.0,
+        48.0
+      ],
+      "strip": true,
+      "repeatX": true,
+      "repeatY": false,
+      "paddingAxes": [
+        "y"
+      ],
+      "curve": {
+        "axis": "x",
+        "centerlineY": 48,
+        "topEdge": "outer ground",
+        "bottomEdge": "inner floor",
+        "recommendedWidthPx": 24,
+        "repeatLengthPx": 256
+      }
+    },
+    {
+      "name": "trench_lip_fractured",
+      "file": "parts/trench_lip_fractured.png",
+      "glow": "parts/trench_lip_fractured_glow.png",
+      "size": [
+        512,
+        96
+      ],
+      "offset": [
+        0.0,
+        208.0
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 10,
+      "category": "lip",
+      "inGameSize": [
+        256.0,
+        48.0
+      ],
+      "strip": true,
+      "repeatX": true,
+      "repeatY": false,
+      "paddingAxes": [
+        "y"
+      ],
+      "curve": {
+        "axis": "x",
+        "centerlineY": 48,
+        "topEdge": "outer ground",
+        "bottomEdge": "inner floor",
+        "recommendedWidthPx": 24,
+        "repeatLengthPx": 256
+      }
+    },
+    {
+      "name": "creep_1",
+      "file": "parts/creep_1.png",
+      "glow": "parts/creep_1_glow.png",
+      "size": [
+        268,
+        209
+      ],
+      "offset": [
+        120.7356,
+        153.1236
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        134.0,
+        104.5
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "creep_2",
+      "file": "parts/creep_2.png",
+      "glow": "parts/creep_2_glow.png",
+      "size": [
+        268,
+        148
+      ],
+      "offset": [
+        122.3749,
+        180.4138
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        134.0,
+        74.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "creep_3",
+      "file": "parts/creep_3.png",
+      "glow": "parts/creep_3_glow.png",
+      "size": [
+        268,
+        208
+      ],
+      "offset": [
+        113.9065,
+        144.0372
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        134.0,
+        104.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "creep_4",
+      "file": "parts/creep_4.png",
+      "glow": "parts/creep_4_glow.png",
+      "size": [
+        268,
+        155
+      ],
+      "offset": [
+        126.3293,
+        187.0401
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        134.0,
+        77.5
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "creep_5",
+      "file": "parts/creep_5.png",
+      "glow": "parts/creep_5_glow.png",
+      "size": [
+        146,
+        212
+      ],
+      "offset": [
+        183.9034,
+        148.1241
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        73.0,
+        106.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "creep_6",
+      "file": "parts/creep_6.png",
+      "glow": "parts/creep_6_glow.png",
+      "size": [
+        268,
+        138
+      ],
+      "offset": [
+        122.0904,
+        190.5695
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        134.0,
+        69.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "burrow_1",
+      "file": "parts/burrow_1.png",
+      "glow": "parts/burrow_1_glow.png",
+      "size": [
+        252,
+        213
+      ],
+      "offset": [
+        129.2776,
+        151.3561
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        126.0,
+        106.5
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "burrow_2",
+      "file": "parts/burrow_2.png",
+      "glow": "parts/burrow_2_glow.png",
+      "size": [
+        246,
+        232
+      ],
+      "offset": [
+        131.9991,
+        143.2562
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        123.0,
+        116.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "burrow_3",
+      "file": "parts/burrow_3.png",
+      "glow": "parts/burrow_3_glow.png",
+      "size": [
+        252,
+        194
+      ],
+      "offset": [
+        130.3979,
+        162.6202
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 20,
+      "category": "organic",
+      "inGameSize": [
+        126.0,
+        97.0
+      ],
+      "tintable": false,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_1",
+      "file": "parts/splat_1.png",
+      "glow": "parts/splat_1_glow.png",
+      "size": [
+        155,
+        160
+      ],
+      "offset": [
+        179.5662,
+        175.709
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        77.5,
+        80.0
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_2",
+      "file": "parts/splat_2.png",
+      "glow": "parts/splat_2_glow.png",
+      "size": [
+        172,
+        107
+      ],
+      "offset": [
+        195.513,
+        204.386
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        86.0,
+        53.5
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_3",
+      "file": "parts/splat_3.png",
+      "glow": "parts/splat_3_glow.png",
+      "size": [
+        172,
+        146
+      ],
+      "offset": [
+        166.7805,
+        179.3842
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        86.0,
+        73.0
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_4",
+      "file": "parts/splat_4.png",
+      "glow": "parts/splat_4_glow.png",
+      "size": [
+        162,
+        160
+      ],
+      "offset": [
+        174.8336,
+        178.1684
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        81.0,
+        80.0
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_5",
+      "file": "parts/splat_5.png",
+      "glow": "parts/splat_5_glow.png",
+      "size": [
+        83,
+        160
+      ],
+      "offset": [
+        217.6316,
+        177.8385
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        41.5,
+        80.0
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "splat_6",
+      "file": "parts/splat_6.png",
+      "glow": "parts/splat_6_glow.png",
+      "size": [
+        160,
+        160
+      ],
+      "offset": [
+        177.7292,
+        177.0615
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 30,
+      "category": "splat",
+      "inGameSize": [
+        80.0,
+        80.0
+      ],
+      "tintable": true,
+      "glowTintable": true
+    },
+    {
+      "name": "props_boulder",
+      "file": "parts/props_boulder.png",
+      "glow": "parts/props_boulder_glow.png",
+      "size": [
+        170,
+        140
+      ],
+      "offset": [
+        170.4288,
+        185.6543
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        85.0,
+        70.0
+      ]
+    },
+    {
+      "name": "props_boulder_split",
+      "file": "parts/props_boulder_split.png",
+      "glow": "parts/props_boulder_split_glow.png",
+      "size": [
+        157,
+        140
+      ],
+      "offset": [
+        174.4527,
+        182.5567
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        78.5,
+        70.0
+      ]
+    },
+    {
+      "name": "props_crate",
+      "file": "parts/props_crate.png",
+      "glow": "parts/props_crate_glow.png",
+      "size": [
+        132,
+        140
+      ],
+      "offset": [
+        190.3708,
+        186.7536
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        66.0,
+        70.0
+      ]
+    },
+    {
+      "name": "props_ammo_crate",
+      "file": "parts/props_ammo_crate.png",
+      "glow": "parts/props_ammo_crate_glow.png",
+      "size": [
+        172,
+        86
+      ],
+      "offset": [
+        170.5868,
+        214.4856
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        43.0
+      ]
+    },
+    {
+      "name": "props_barrel",
+      "file": "parts/props_barrel.png",
+      "glow": "parts/props_barrel_glow.png",
+      "size": [
+        125,
+        140
+      ],
+      "offset": [
+        193.9303,
+        186.6514
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        62.5,
+        70.0
+      ]
+    },
+    {
+      "name": "props_coolant_barrel",
+      "file": "parts/props_coolant_barrel.png",
+      "glow": "parts/props_coolant_barrel_glow.png",
+      "size": [
+        129,
+        140
+      ],
+      "offset": [
+        191.6362,
+        186.661
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        64.5,
+        70.0
+      ]
+    },
+    {
+      "name": "props_barrier",
+      "file": "parts/props_barrier.png",
+      "glow": "parts/props_barrier_glow.png",
+      "size": [
+        172,
+        77
+      ],
+      "offset": [
+        170.2808,
+        219.003
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        38.5
+      ]
+    },
+    {
+      "name": "props_barrier_broken",
+      "file": "parts/props_barrier_broken.png",
+      "glow": "parts/props_barrier_broken_glow.png",
+      "size": [
+        172,
+        90
+      ],
+      "offset": [
+        170.7475,
+        211.7944
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        45.0
+      ]
+    },
+    {
+      "name": "props_sandbags_curve",
+      "file": "parts/props_sandbags_curve.png",
+      "glow": "parts/props_sandbags_curve_glow.png",
+      "size": [
+        172,
+        95
+      ],
+      "offset": [
+        170.3921,
+        207.1708
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        47.5
+      ]
+    },
+    {
+      "name": "props_sandbags_straight",
+      "file": "parts/props_sandbags_straight.png",
+      "glow": "parts/props_sandbags_straight_glow.png",
+      "size": [
+        172,
+        81
+      ],
+      "offset": [
+        169.4434,
+        216.413
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        40.5
+      ]
+    },
+    {
+      "name": "props_junction",
+      "file": "parts/props_junction.png",
+      "glow": "parts/props_junction_glow.png",
+      "size": [
+        144,
+        140
+      ],
+      "offset": [
+        184.5446,
+        185.7174
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        72.0,
+        70.0
+      ]
+    },
+    {
+      "name": "props_vent",
+      "file": "parts/props_vent.png",
+      "glow": "parts/props_vent_glow.png",
+      "size": [
+        172,
+        114
+      ],
+      "offset": [
+        170.4875,
+        199.4986
+      ],
+      "pivot": [
+        256,
+        256
+      ],
+      "parent": null,
+      "z": 40,
+      "category": "prop",
+      "inGameSize": [
+        86.0,
+        57.0
+      ]
+    }
+  ]
+}

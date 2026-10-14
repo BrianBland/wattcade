@@ -1,0 +1,358 @@
+{
+  "parts": 33,
+  "rgbaPairs": 33,
+  "productionBytes": 942491,
+  "budgetBytes": 1500000,
+  "exactPeriodicTiles": 4,
+  "exactPeriodicStrips": 2,
+  "tintSamples": 24,
+  "sourceTool": "OpenAI image_gen.imagegen",
+  "partsChecked": [
+    {
+      "name": "ground_1",
+      "size": [
+        512,
+        512
+      ],
+      "seam": {
+        "xMaxDelta": 0,
+        "yMaxDelta": 0
+      },
+      "baseBytes": 59140,
+      "glowBytes": 614
+    },
+    {
+      "name": "ground_2",
+      "size": [
+        512,
+        512
+      ],
+      "seam": {
+        "xMaxDelta": 0,
+        "yMaxDelta": 0
+      },
+      "baseBytes": 60510,
+      "glowBytes": 614
+    },
+    {
+      "name": "ground_3",
+      "size": [
+        512,
+        512
+      ],
+      "seam": {
+        "xMaxDelta": 0,
+        "yMaxDelta": 0
+      },
+      "baseBytes": 60918,
+      "glowBytes": 614
+    },
+    {
+      "name": "trench_floor",
+      "size": [
+        512,
+        512
+      ],
+      "seam": {
+        "xMaxDelta": 0,
+        "yMaxDelta": 0
+      },
+      "baseBytes": 67296,
+      "glowBytes": 614
+    },
+    {
+      "name": "trench_lip",
+      "size": [
+        512,
+        96
+      ],
+      "seam": {
+        "xMaxDelta": 0
+      },
+      "baseBytes": 20298,
+      "glowBytes": 407
+    },
+    {
+      "name": "trench_lip_fractured",
+      "size": [
+        512,
+        96
+      ],
+      "seam": {
+        "xMaxDelta": 0
+      },
+      "baseBytes": 20863,
+      "glowBytes": 407
+    },
+    {
+      "name": "creep_1",
+      "size": [
+        268,
+        209
+      ],
+      "seam": {},
+      "baseBytes": 15570,
+      "glowBytes": 5911
+    },
+    {
+      "name": "creep_2",
+      "size": [
+        268,
+        148
+      ],
+      "seam": {},
+      "baseBytes": 10687,
+      "glowBytes": 4390
+    },
+    {
+      "name": "creep_3",
+      "size": [
+        268,
+        208
+      ],
+      "seam": {},
+      "baseBytes": 13924,
+      "glowBytes": 6140
+    },
+    {
+      "name": "creep_4",
+      "size": [
+        268,
+        155
+      ],
+      "seam": {},
+      "baseBytes": 10510,
+      "glowBytes": 4317
+    },
+    {
+      "name": "creep_5",
+      "size": [
+        146,
+        212
+      ],
+      "seam": {},
+      "baseBytes": 9739,
+      "glowBytes": 3819
+    },
+    {
+      "name": "creep_6",
+      "size": [
+        268,
+        138
+      ],
+      "seam": {},
+      "baseBytes": 10654,
+      "glowBytes": 3918
+    },
+    {
+      "name": "burrow_1",
+      "size": [
+        252,
+        213
+      ],
+      "seam": {},
+      "baseBytes": 15703,
+      "glowBytes": 5293
+    },
+    {
+      "name": "burrow_2",
+      "size": [
+        246,
+        232
+      ],
+      "seam": {},
+      "baseBytes": 17045,
+      "glowBytes": 6119
+    },
+    {
+      "name": "burrow_3",
+      "size": [
+        252,
+        194
+      ],
+      "seam": {},
+      "baseBytes": 14598,
+      "glowBytes": 4979
+    },
+    {
+      "name": "splat_1",
+      "size": [
+        155,
+        160
+      ],
+      "seam": {},
+      "baseBytes": 7805,
+      "glowBytes": 3069
+    },
+    {
+      "name": "splat_2",
+      "size": [
+        172,
+        107
+      ],
+      "seam": {},
+      "baseBytes": 5949,
+      "glowBytes": 2165
+    },
+    {
+      "name": "splat_3",
+      "size": [
+        172,
+        146
+      ],
+      "seam": {},
+      "baseBytes": 7313,
+      "glowBytes": 2826
+    },
+    {
+      "name": "splat_4",
+      "size": [
+        162,
+        160
+      ],
+      "seam": {},
+      "baseBytes": 7424,
+      "glowBytes": 2176
+    },
+    {
+      "name": "splat_5",
+      "size": [
+        83,
+        160
+      ],
+      "seam": {},
+      "baseBytes": 4865,
+      "glowBytes": 1633
+    },
+    {
+      "name": "splat_6",
+      "size": [
+        160,
+        160
+      ],
+      "seam": {},
+      "baseBytes": 8883,
+      "glowBytes": 3019
+    },
+    {
+      "name": "props_boulder",
+      "size": [
+        170,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 10176,
+      "glowBytes": 383
+    },
+    {
+      "name": "props_boulder_split",
+      "size": [
+        157,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 8881,
+      "glowBytes": 381
+    },
+    {
+      "name": "props_crate",
+      "size": [
+        132,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 9815,
+      "glowBytes": 378
+    },
+    {
+      "name": "props_ammo_crate",
+      "size": [
+        172,
+        86
+      ],
+      "seam": {},
+      "baseBytes": 7078,
+      "glowBytes": 374
+    },
+    {
+      "name": "props_barrel",
+      "size": [
+        125,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 8260,
+      "glowBytes": 377
+    },
+    {
+      "name": "props_coolant_barrel",
+      "size": [
+        129,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 8697,
+      "glowBytes": 378
+    },
+    {
+      "name": "props_barrier",
+      "size": [
+        172,
+        77
+      ],
+      "seam": {},
+      "baseBytes": 5269,
+      "glowBytes": 373
+    },
+    {
+      "name": "props_barrier_broken",
+      "size": [
+        172,
+        90
+      ],
+      "seam": {},
+      "baseBytes": 6405,
+      "glowBytes": 375
+    },
+    {
+      "name": "props_sandbags_curve",
+      "size": [
+        172,
+        95
+      ],
+      "seam": {},
+      "baseBytes": 5838,
+      "glowBytes": 376
+    },
+    {
+      "name": "props_sandbags_straight",
+      "size": [
+        172,
+        81
+      ],
+      "seam": {},
+      "baseBytes": 6473,
+      "glowBytes": 373
+    },
+    {
+      "name": "props_junction",
+      "size": [
+        144,
+        140
+      ],
+      "seam": {},
+      "baseBytes": 6426,
+      "glowBytes": 380
+    },
+    {
+      "name": "props_vent",
+      "size": [
+        172,
+        114
+      ],
+      "seam": {},
+      "baseBytes": 9281,
+      "glowBytes": 379
+    }
+  ]
+}

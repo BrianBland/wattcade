@@ -34,3 +34,10 @@ Tan, mid (about 30% darker) and dark (about 55% darker) path floors. The blue br
 - `retoned-blues-on-map.jpg`: Codex's re-toned Skitter and Glider puppets on the tan floor, the mid floor, and the mid floor with a soft outline, with no tint. Both now read without aids.
 - `roster-with-retoned-blues.jpg`: all eight animated.
 - `blue-candidates-vs-puppets.jpg`: left to right, the compact Skitter candidate (unrigged), the re-toned Skitter puppet, the Glider candidate (unrigged), and the re-toned Glider puppet.
+
+## New map (#138 at e89beed) with all eight aliens (Oct 14)
+- `map-with-aliens.gif` / `.mp4`: aliens walking the painted routes at their sim speeds. Full-height field, ×1.25, Skitter ×1.3, soft outline 0.25 (`&move=1`).
+- `new-map-full-1.25.jpg`, `new-map-current-layout.jpg`: stills in the two layouts.
+- `new-map-outline-compare.jpg`: no outline vs 0.45. Every brood now reads without it, so 0.25 or off is enough.
+
+Routes are 13 units wide and every alien fits on the floor. The registration matches the sim lanes, including the revised right lane.

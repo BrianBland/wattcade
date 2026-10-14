@@ -11,7 +11,7 @@ const PANELS = q.get('panels') !== '0', ALIEN = Number(q.get('alien') ?? 1), DPR
 // Background mock-ups: floor=dark darkens the brown trench floors; rock=calm flattens plateau rubble contrast.
 const FLOOR = q.get('floor') ?? '', ROCK = q.get('rock') ?? '';
 // bluetint simulates Codex's lighter crystal re-tone of the blue brood; rim = soft brood-colour outline on every alien.
-const BLUE_TINT = Number(q.get('bluetint') ?? 0), RIM = Number(q.get('rim') ?? 0);
+const BLUE_TINT = Number(q.get('bluetint') ?? 0), RIM = Number(q.get('rim') ?? 0), MOVE = q.get('move') === '1';
 const TD = '/td/';
 const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
 const json = async <T>(src: string) => (await fetch(src)).json() as Promise<T>;
@@ -115,7 +115,8 @@ function draw(t: number) {
     ['charger', 2, 0.25, 0], ['brute', 2, 0.42, -0.6], ['boss', 2, 0.64, 0],
   ];
   for (const [kind, li, u, lat] of troops) {
-    const r = rigs.find((x) => x.spec.id === SPEC_OF[kind])!, { p, a } = laneAt(li, u);
+    const uu = MOVE ? (u + t * KINDS[kind].speed / 115) % 1 : u; // advance along the lane at sim speed (lanes are ~110-125 units)
+    const r = rigs.find((x) => x.spec.id === SPEC_OF[kind])!, { p, a } = laneAt(li, uu);
     place(g, r, X(p[0]) - Math.sin(a) * lat * k, Y(p[1]) + Math.cos(a) * lat * k, a, alienPx(kind) * (kind === 'mini' ? 1.3 : 1), { t: t + u * 7 }, aidsFor(r.spec.id));
   }
   const gl = rigs.find((x) => x.spec.id === 'glider')!;

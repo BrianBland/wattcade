@@ -8,9 +8,31 @@ export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
 export const WEAPONS: Weapon[] = ['gatling', 'flame', 'rail'];
 export const WEAPON_ELEMENT: Record<Weapon, Element> = { gatling: 'blue', flame: 'red', rail: 'purple' };
 export const ELEMENT_WEAPON: Record<Element, Weapon> = { blue: 'gatling', red: 'flame', purple: 'rail' };
+export type Matchup = Record<Weapon, Record<Element, number>>;
+/** Crystal shatters under bullets, fuel bladders ignite, sealed plates need piercing. */
+export const MATCHUP: Matchup = {
+  gatling: { blue: 1.5, red: 1, purple: 0.5 },
+  flame: { blue: 0.5, red: 1.5, purple: 1 },
+  rail: { blue: 1, red: 0.5, purple: 1.5 },
+};
+export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', mortar: 'flame', lens: 'rail' };
+export const BROOD_STORY: Record<Element, string> = {
+  blue: 'crystal chitin · bullets shatter it',
+  red: 'fuel-blooded · fire bursts the bladders',
+  purple: 'sealed plates · rail pierces them',
+};
+
+/** Cover the largest off-colour push with a strong tower; never suggest resistance to that push. */
+export function suggestedTower(counts: Record<Element, number>, brood: Element, matrix: Matchup = MATCHUP): TowerKind {
+  const off = ELEMENTS.filter((e) => e !== brood);
+  const target = off.reduce((a, b) => counts[b] > counts[a] ? b : a);
+  const safe = TOWER_KINDS.filter((k) => matrix[TOWER_WEAPON[k]][target] >= 1);
+  return (safe.length ? safe : TOWER_KINDS).reduce((a, b) =>
+    matrix[TOWER_WEAPON[b]][target] > matrix[TOWER_WEAPON[a]][target] ? b : a);
+}
 export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Flamer', rail: 'Railgun' };
 
-/** color: fixed element, 'gold' = boss (shield cycles), 'prism' = cycles on its own. */
+/** color: fixed element, 'gold' = boss (announced phases), 'prism' = cycles on its own. */
 export interface KindDef {
   name: string; hp: number; speed: number; dmg: number; color: Element | 'gold' | 'prism';
   radius: number; scrap: number; heavy: boolean;

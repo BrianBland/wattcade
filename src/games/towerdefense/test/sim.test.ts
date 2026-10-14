@@ -94,7 +94,7 @@ describe('clear heal', () => {
     expect(clearHealFor(25, 1, { ...o, leakZero: 0 })).toBe(0); // 0 = any leak cancels it
     expect(clearHealFor(25, 0, { ...o, leakZero: 0 })).toBe(26);
   });
-  it('the dynamo stalls after stallGraceS under 15 rpm; leaks then hit x2', () => {
+  it('the dynamo stalls after stallGraceS under 15 rpm; leaks then hit x2.2', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
     s.step(30 * 10);
     expect(snap(s).stalled).toBe(false);
@@ -106,7 +106,7 @@ describe('clear heal', () => {
     s.step(30 * 60);
     const hits = s.finish().events.filter((e) => e.type === 'baseHit').map((e) => Number(e.data?.dmg));
     expect(hits.length).toBeGreaterThan(0);
-    expect(hits.every((d) => d === 2 || d >= 8)).toBe(true); // drones/darts 1 -> 2, heavies x2
+    expect(hits.every((d) => d === 2.2 || d >= 8.8)).toBe(true); // drones/darts 1 -> 2.2, heavies x2.2
   });
   it('a rider who stops pedalling gets no heal from leaked waves', () => {
     const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 } });
@@ -239,32 +239,39 @@ describe('brood waves', () => {
 });
 
 describe('effort targets', () => {
-  // step until a challenge starts, then ride it with fixed manual cadence/power
-  function ride(kind: 'spin' | 'surge', cadence: number, power: number) {
+  function ride(kind: 'spin' | 'grind' | 'hold', cadence: number, power: number) {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { autopilot: true } });
     let n = 0;
-    while (!snap(s)[kind] && n++ < 30 * 60 * 10) s.step(1);
-    expect(snap(s)[kind]?.state).toBe('active');
+    while (!(snap(s).effort?.kind === kind && snap(s).effort?.state === 'active') && n++ < 30 * 60 * 15) s.step(1);
+    const call = snap(s).effort!;
+    expect(call.kind).toBe(kind); expect(call.state).toBe('active');
     const hud = s.sim.hud!();
     s.fakeBike!.useScript(null); s.fakeBike!.manual.cadence = cadence; s.fakeBike!.manual.power = power;
-    s.step(30 * 50);
-    return { s, hud, sum: s.sim.summary() };
+    while (snap(s).effort?.state === 'active') s.step(1);
+    return { s, hud, call, result: snap(s).effort!, sum: s.sim.summary() };
   }
-  it('Spin-up is a cadence drill: 100 rpm overclocks the Gatling', () => {
-    const { s, hud, sum } = ride('spin', 100, 130);
-    expect(hud.targetCadence).toEqual({ min: 95, label: 'Spin up the Gatling' });
-    expect(sum.spinsWon).toBe(1);
-    expect(Number(sum.overclockSeconds)).toBeGreaterThan(0);
-    expect(s.sim.hud!().targetCadence).toBeUndefined();
+  it('Spin-up follows Gatling and rewards an achievable cadence target with Overclock', () => {
+    const { s, hud, call, result, sum } = ride('spin', 100, 130);
+    expect(hud.targetCadence).toEqual({ min: call.minRpm, label: 'Spin up the Gatling' });
+    expect(call.minRpm).toBeGreaterThanOrEqual(80); expect(call.minRpm).toBeLessThan(95);
+    expect(result.state).toBe('won'); expect(sum.spinsWon).toBeGreaterThanOrEqual(1);
+    expect(snap(s).overclock).toBeGreaterThan(0);
   });
   it('Spin-up is missed at 80 rpm', () => {
-    const { sum } = ride('spin', 80, 130);
-    expect(sum).toMatchObject({ spinsWon: 0, spinsFailed: 1 });
+    expect(ride('spin', 80, 130).result.state).toBe('failed');
   });
-  it('surges are short efforts judged on power, and say so to the HUD', () => {
-    const { hud, sum } = ride('surge', 90, 200); // 1.0 FTP = power Z4 straight away, whatever HR does
-    expect(hud.targetZone).toMatchObject({ min: 4, max: 5, source: 'power' });
-    expect(sum.surgesWon).toBe(1);
+  it('Grind is a power-judged low-cadence call in a Flamer wave', () => {
+    const { hud, call, result } = ride('grind', 70, 130);
+    expect(hud.targetZone).toMatchObject({ min: 2, max: 5, source: 'power' });
+    expect(hud.targetCadence).toMatchObject({ min: 45, max: call.maxRpm });
+    expect(result.state).toBe('won');
+    expect(ride('grind', 100, 130).result.state).toBe('failed');
+  });
+  it('Hold supplies a Zone 2 ERG target and rewards staying in its band', () => {
+    const { hud, result, call } = ride('hold', 90, 130);
+    expect(hud.targetZone?.source).toBe('power');
+    expect(call.targetFtp).toBeGreaterThanOrEqual(0.56); expect(call.targetFtp).toBeLessThanOrEqual(0.75);
+    expect(result.state).toBe('won');
   });
 });
 

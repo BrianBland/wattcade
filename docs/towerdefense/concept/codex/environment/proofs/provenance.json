@@ -1,0 +1,14 @@
+{
+  "gitHeads": {
+    "integrationBranch": "30cca91be33605b92b62d5188640c6d8827856ff",
+    "towersPR135": "d1bfc4be53b97a4567fefaf940add6842ad17331",
+    "outpostPR136": "19145ba17c035e8376dcbe0849093db02cd58f07",
+    "previousEnvironmentPR138": "59a74beaf2b4b6ef9c47ca1e13763b607ac174a6"
+  },
+  "assetFileMatches": {
+    "towers": 51,
+    "outpost": 43
+  },
+  "integrationCode": "unmodified dev/td-integration.html, dev/td-integration.ts and dev/td-rig.ts",
+  "sourcePainting": "raw/battlefield-shallow-v7-raw.png"
+}

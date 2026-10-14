@@ -1,25 +1,63 @@
 {
+  "terrainValues": {
+    "mask": "geometry guide within registered 900\u00d7900 field; includes shared apron; excludes rubble shoulders",
+    "luminance": "Rec.709 weighted encoded sRGB / 255 (display value); linear relative luminance also reported",
+    "floor": {
+      "pixels": 285509,
+      "averageRGB": [
+        113.758,
+        83.19,
+        57.77
+      ],
+      "displayLuminancePercent": 34.452,
+      "linearRelativeLuminancePercent": 10.665,
+      "valueStdDev": 18.991,
+      "meanChannelSpread": 55.989,
+      "previousUmberTargetRGB": [
+        110,
+        80,
+        58
+      ],
+      "warmMaterialSupport": 0.99867
+    },
+    "plateau": {
+      "pixels": 477414,
+      "averageRGB": [
+        49.847,
+        43.542,
+        39.34
+      ],
+      "displayLuminancePercent": 17.482,
+      "linearRelativeLuminancePercent": 3.73,
+      "valueStdDev": 29.238,
+      "meanChannelSpread": 10.872,
+      "previousDisplayValueLimitPercent": 22,
+      "measurementIncludes": "warm industrial wreckage and weathered rock in the restored original-style scene",
+      "contrastRatioVsPrevious": 0.893,
+      "fineDetailRatioVsPrevious": 0.999
+    }
+  },
   "parts": 27,
   "rgbaPairs": 27,
-  "productionBytes": 1345866,
+  "productionBytes": 1406783,
   "budgetBytes": 1500000,
   "paintedBackground": "background.webp",
   "backgroundQuality": 92,
   "fixedLanes": 3,
   "plateauPads": 6,
-  "backgroundRgbPsnr": 40.308,
+  "backgroundRgbPsnr": 39.964,
   "paintedFloorSupport": [
-    0.95,
-    0.92,
-    0.99
+    1.0,
+    1.0,
+    1.0
   ],
-  "fullPlatformRockTopSupport": [
-    0.9168,
-    0.9193,
-    0.9177,
-    0.9191,
-    0.9237,
-    0.9162
+  "platformNeutralMaterialFraction": [
+    0.7534,
+    0.9146,
+    0.9106,
+    0.9717,
+    0.6363,
+    0.9677
   ],
   "platformSupportMeasuredOn": "retained full-resolution source PNG",
   "tintSamples": 24,

@@ -1,0 +1,128 @@
+{
+  "captures": [
+    {
+      "file": "proofs/current/ipad-full-rim.png",
+      "url": "http://127.0.0.1:5174/dev/td-integration.html?panels=0&alien=1.25&bluetint=0.5&rim=0.45",
+      "viewport": [
+        1366,
+        1024
+      ],
+      "deviceScaleFactor": 2,
+      "pixels": [
+        2732,
+        2048
+      ]
+    },
+    {
+      "file": "proofs/current/ipad-full-no-rim.png",
+      "url": "http://127.0.0.1:5174/dev/td-integration.html?panels=0&alien=1.25&bluetint=0.5&rim=0",
+      "viewport": [
+        1366,
+        1024
+      ],
+      "deviceScaleFactor": 2,
+      "pixels": [
+        2732,
+        2048
+      ]
+    },
+    {
+      "file": "proofs/current/ipad-panels-rim.png",
+      "url": "http://127.0.0.1:5174/dev/td-integration.html?panels=1&alien=1.25&bluetint=0.5&rim=0.45",
+      "viewport": [
+        1366,
+        1024
+      ],
+      "deviceScaleFactor": 2,
+      "pixels": [
+        2732,
+        2048
+      ]
+    }
+  ],
+  "lateral": {
+    "rig": "warrior-parts",
+    "sizeFrom": "KINDS.brute.radius × 2.6 × 1.25",
+    "bodyLengthCssPixels": 77.571,
+    "phaseSamples": 16,
+    "parameterSamples": [
+      0.25,
+      0.4,
+      0.55,
+      0.7
+    ],
+    "poses": 384,
+    "alphaThreshold": 192,
+    "excludes": "faint glow, shadow and antialias fringe",
+    "maxCentrelineDistance": 6.281911645243475,
+    "minimumFloorMargin": 0.21808835475652533,
+    "checkedPixels": 3115894,
+    "outsideFloor": 0,
+    "nonDirtPixels": 1318,
+    "cases": [
+      {
+        "lane": 0,
+        "lateralOffset": -2.25,
+        "poses": 64,
+        "solidPixels": 519419,
+        "maxCentrelineDistance": 6.245917234999332,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 59
+      },
+      {
+        "lane": 0,
+        "lateralOffset": 2.25,
+        "poses": 64,
+        "solidPixels": 519419,
+        "maxCentrelineDistance": 6.251582379205283,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 368
+      },
+      {
+        "lane": 1,
+        "lateralOffset": -2.25,
+        "poses": 64,
+        "solidPixels": 519258,
+        "maxCentrelineDistance": 6.206520388836793,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 174
+      },
+      {
+        "lane": 1,
+        "lateralOffset": 2.25,
+        "poses": 64,
+        "solidPixels": 519258,
+        "maxCentrelineDistance": 6.267866357096012,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 256
+      },
+      {
+        "lane": 2,
+        "lateralOffset": -2.25,
+        "poses": 64,
+        "solidPixels": 519270,
+        "maxCentrelineDistance": 6.193868779574337,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 306
+      },
+      {
+        "lane": 2,
+        "lateralOffset": 2.25,
+        "poses": 64,
+        "solidPixels": 519270,
+        "maxCentrelineDistance": 6.281911645243475,
+        "outside13UnitFloor": 0,
+        "nonWarmFloorPixels": 155
+      }
+    ]
+  },
+  "assetHashes": {
+    "/td/environment/background.webp": "d0602a8170ff33f2912e3397a29dde5d43a20426e53457d844891816d0125fcc",
+    "/td/environment/map-layout.json": "30fb554248a3bd75b81d12fc5a0a46d8bae97773929fd4e80b8601d7368f1ccc",
+    "/td/towers/tesla/manifest.json": "ddf3b63b5a37f3bfb089aa62cbf0964b30ab7f3906d7d0cae9dabfcef71a1034",
+    "/td/towers/mortar/manifest.json": "fe5752f7b21195173196ed35bb100dc060c2b4924403a61a75eca8515f8a7b2b",
+    "/td/towers/prism/manifest.json": "ea58aaebb53d72e87cfbbe72dbe8f48a11858599de3fa2a96ff2090381d4333a",
+    "/td/outpost/manifest.json": "cbd45222e80b378ef3e24d665733b96baf4296f7170217c780bd4a8ad7b91ccc"
+  },
+  "errors": []
+}

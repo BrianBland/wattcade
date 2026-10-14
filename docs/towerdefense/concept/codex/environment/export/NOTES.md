@@ -1,38 +1,36 @@
-# Dynamo Defense painted battlefield — issue 131
+# Dynamo Defense environment — curved original-style revision of PR138
 
-Art: OpenAI image_gen.imagegen, guided by the approved trench-mockup.png.
-The user approved replacing tiled terrain with one cohesive painted fixed map.
-Processing/proofs: Pillow/NumPy; no contrast or darkness flattening of terrain.
-Work: codex/td-environment-work, docs/towerdefense/concept/codex/environment/.
-FILES.txt enumerates every production file; SHA256SUMS.txt hashes them.
+Terrain generated/edited with OpenAI image_gen.imagegen; WebP export with Pillow.
+Fixed1536×1024 painting; registered field [318,32,900,900]. Game code unchanged.
+13-unit route envelopes; low1.25-unit shoulders; level worn dirt/rock routes.
+Original-style detailed basalt and worn industrial remnants; shared apron and six pads.
+All three curves and previousPosition fields retained from the preceding map.
 
-background.webp: opaque 1536×1024 rock plateaus and sunken dirt trenches,
-full original resolution, WebP quality 92. Geological shading and ambient
-occlusion are intrinsic to the landscape. No baked creatures, machinery,
-cables, luminous creep, splats, industrial props or weapon effects.
-map-layout.json: registered world field, three fixed lane curves, outpost
-center and six plateau pads. Left/center curves retain sim/defs.ts; the right
-curve is traced to the painted floor. Original coordinates are included.
-MAP_INTEGRATION.md documents the required shared lane/pad integration changes.
-Game code is unchanged; this artwork is not yet integrated into gameplay.
-manifest.json: schema v2; fixed background plus 27 independent overlay pieces.
-Old tile/lip PNGs are removed from production; rejected v1 is archived on work.
 
-parts/creep_1..6.png: veined purple-black growth and independent emission.
-parts/burrow_1..3.png: independently placed hive mouths.
-parts/splat_1..6.png: neutral-grey masters for blue/red/purple/gold tinting.
-parts/props_*.png: 12 rock, crate, barrel, barrier, sandbag, junction, vent props.
-Every piece has a same-size *_glow.png; non-emissive props have clear masks.
-Offsets/visual-center pivots use an independent canonical 512×512 frame.
+Files produced/updated in this revision (exact names):
+background.webp; map-layout.json; MAP_INTEGRATION.md; NOTES.md; preview.png;
+FILES.txt; SHA256SUMS.txt. All other files are retained byte-for-byte:
+manifest.json, overlays-preview.png and54 PNGs in parts/.
+FILES.txt is the exact complete63-file production inventory; SHA256SUMS.txt
+hashes every other file (including FILES.txt). No obsolete terrain tiles/strips.
 
-preview.png: scripted scene from exported terrain/layout/overlays and actual
-accepted #129/#130 rig references: three built towers on plateau, the original
-Warrior and illustrative cables. Full-color full-size proof is on work.
-overlays-preview.png: all 27 pieces, neutral splats, all four brood tints,
-and glow-off examples. Both are review images, not runtime backgrounds.
-Tower/outpost/Warrior reference assets are not bundled production assets.
+preview.png: reduced real-puppet curved-wiring mockup of the source painting,
+#135 tower and #136 outpost exports, and all eight actual alien rigs at sim size.
+Full2732×2048 proofs and cabling source/render scripts live on the working branch.
+overlays-preview.png: all27 retained pieces, neutral splats, four brood tints,
+glow-off examples. Both are review images; background has no actors/effects.
 
-Validation: full-resolution decode/detail, compression fidelity, fixed curves,
-all six full pad footprints beyond banks, terrain support along all paths,
-alpha/glow registration, tinting, source completeness, padding, no green fringe,
-complete inventories, checksums and the <1.5MB production budget.
+Retained overlays: creep_1–6, burrow_1–3, splat_1–6; props_boulder,
+props_boulder_split, props_crate, props_ammo_crate, props_barrel,
+props_coolant_barrel, props_barrier, props_barrier_broken, props_sandbags_curve,
+props_sandbags_straight, props_junction, props_vent. Each has its matching
+_glow.png; all offsets, pivots, alpha and emission layering are unchanged.
+
+Working branch: codex/td-environment-work, folder
+ docs/towerdefense/concept/codex/environment/.
+measure.py/terrain-measurements.json: geometry-masked actual decodedRGB/value.
+mockups/curved-wiring/: six actual socket connections and textured curved feeds.
+The cables are a local proof renderer, not baked scenery or production cable assets.
+Earlier smooth-floor tests remain historical and do not certify this new painting.
+MAP_INTEGRATION.md describes required shared lane/pad adoption under #133.
+No live gameplay integration or actual hardware-browser test is claimed.

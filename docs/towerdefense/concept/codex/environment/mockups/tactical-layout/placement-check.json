@@ -1,0 +1,181 @@
+{
+  "padClearance": [
+    {
+      "id": 0,
+      "laneDistances": [
+        13.0,
+        45.0,
+        75.21303078589507
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          54.19,
+          0.0,
+          0.0
+        ],
+        "mortar": [
+          67.58,
+          0.0,
+          0.0
+        ],
+        "lens": [
+          76.03,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "laneDistances": [
+        13.0,
+        19.0,
+        36.35792728421815
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          61.18,
+          29.33,
+          0.0
+        ],
+        "mortar": [
+          88.98,
+          61.12,
+          0.0
+        ],
+        "lens": [
+          97.87,
+          70.66,
+          33.89
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "laneDistances": [
+        46.0,
+        14.0,
+        18.0
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          0.0,
+          38.93,
+          26.34
+        ],
+        "mortar": [
+          0.0,
+          56.17,
+          53.84
+        ],
+        "lens": [
+          0.0,
+          64.72,
+          66.13
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "laneDistances": [
+        18.0,
+        14.0,
+        39.05124837953327
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          31.74,
+          38.93,
+          0.0
+        ],
+        "mortar": [
+          85.63,
+          66.31,
+          0.0
+        ],
+        "lens": [
+          110.42,
+          83.41,
+          19.79
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "laneDistances": [
+        75.21303078589507,
+        45.0,
+        13.0
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          0.0,
+          0.0,
+          54.19
+        ],
+        "mortar": [
+          0.0,
+          0.0,
+          67.58
+        ],
+        "lens": [
+          0.0,
+          0.0,
+          76.03
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "laneDistances": [
+        36.35792728421815,
+        19.0,
+        13.0
+      ],
+      "coverageAtBaseRanges": {
+        "tesla": [
+          0.0,
+          29.33,
+          61.18
+        ],
+        "mortar": [
+          0.0,
+          61.12,
+          88.98
+        ],
+        "lens": [
+          33.89,
+          70.66,
+          97.87
+        ]
+      }
+    }
+  ],
+  "laneLengths": [
+    120.87,
+    93.0,
+    120.87
+  ],
+  "coverageMethod": "uniform arc-length sampling at0.05unit; base ranges from sim/defs.ts; not a balance simulation",
+  "ownLaneCoverageAtRange24": {
+    "previousCubicLayout": [
+      39.28,
+      41.52,
+      45.08,
+      39.2,
+      38.17,
+      42.48
+    ],
+    "newTacticalLayout": [
+      54.19,
+      61.18,
+      38.93,
+      38.93,
+      54.19,
+      61.18
+    ],
+    "previousSum": 245.73,
+    "newSum": 308.6,
+    "note": "Sum counts overlapping coverage separately; geometric firing opportunity, not balance or time-to-kill proof."
+  }
+}

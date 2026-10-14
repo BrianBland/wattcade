@@ -72,47 +72,43 @@ def make():
     candidates = [np.array([x, y], dtype=float) for y in np.arange(19, 79, .5)
                   for x in np.arange(11, 95, .5)]
     valid = [(p, min(distance(p, c) for c in curves)) for p in candidates]
-    valid = [(p, d) for p, d in valid if d >= 11.2 and np.linalg.norm(p-[50, 90]) >= 17]
-    coverage = plateau_coverage(Image.open(HERE/'raw/battlefield-painted-v4-raw.png'))
-    valid = [(p, d) for p, d in valid if coverage[round(pixel(p)[1]), round(pixel(p)[0])] >= .915]
+    valid = [(p, d) for p, d in valid if d >= 12.95 and np.linalg.norm(p-[50, 90]) >= 17]
     for i, (lane, f, side) in enumerate(specs):
         p, normal = lane_at(CONTROLS[lane], f)
         previous, old_normal = lane_at(CURRENT_CONTROLS[lane], f)
         old = previous+old_normal*side*8
         wanted = p+normal*side*13
         choices = [(np.linalg.norm(q-wanted), q, d) for q, d in valid
+                   if 13 <= distance(q, curves[lane]) <= 16
                    if all(np.linalg.norm(q-np.array(v['position'])) >= 10 for v in pads)]
         _, q, d = min(choices, key=lambda v: v[0])
-        pads.append(dict(id=i, lane=lane, near=f > .6, position=q.tolist(),
+        pads.append(dict(id=i, lane=lane, near=bool(i % 2), position=q.tolist(),
                          previousPosition=old.tolist(), footprintRadius=4.2,
-                         rockTopSupport=round(float(coverage[round(pixel(q)[1]), round(pixel(q)[0])]), 4),
+                         laneDistance=round(float(distance(q, curves[lane])), 3),
                          minimumLaneDistance=round(float(d), 3)))
     data = dict(size=list(SIZE), field=FRAME, lanes=[dict(id=i, controls=c,
                 previousControls=CURRENT_CONTROLS[i], requiresSimChange=i == 2,
-                floorWidth=8, bankWidth=2) for i, c in enumerate(CONTROLS)],
+                floorWidth=13, bankWidth=1.25) for i, c in enumerate(CONTROLS)],
                 pads=pads, outpost=dict(position=[50, 90], footprintRadius=11),
                 integration='Left/center lane controls retain current sim/defs.ts. Right lane '
                             'controls are registered to its painted floor. Adopt these controls '
                             'and plateau pad positions together during renderer integration; '
                             'no simulation code changed in this asset PR.')
     (HERE/'map-layout.json').write_text(json.dumps(data, indent=2)+'\n')
-    guide = Image.new('RGB', SIZE, '#303036')
+    guide = Image.new('RGB', SIZE, (49, 49, 51))
     g = ImageDraw.Draw(guide)
-    for c in curves:
-        tangent = c[1]-c[0]
-        extended = np.vstack([c[0]-tangent/np.linalg.norm(tangent)*80, c])
-        tangents = np.gradient(extended, axis=0)
-        normals = np.stack([-tangents[:, 1], tangents[:, 0]], axis=1)
-        normals /= np.linalg.norm(normals, axis=1)[:, None]
-        for width, color in [(12, '#756651'), (8, '#b8a084')]:
+    for width, color in [(15.5, '#55504a'), (13, '#6e503a')]:
+        for c in curves:
+            tangent = c[1]-c[0]
+            extended = np.vstack([c[0]-tangent/np.linalg.norm(tangent)*80, c])
+            tangents = np.gradient(extended, axis=0)
+            normals = np.stack([-tangents[:, 1], tangents[:, 0]], axis=1)
+            normals /= np.linalg.norm(normals, axis=1)[:, None]
             left = extended+normals*width/2
             right = extended-normals*width/2
             g.polygon([pixel(v) for v in np.vstack([left, right[::-1]])], fill=color)
-    for pad in pads:
-        x, y = pixel(pad['position']); r = 4.5*FRAME['size']/100
-        g.ellipse((x-r, y-r, x+r, y+r), fill='#6d6d70', outline='#deddd8', width=2)
     x, y = pixel([50, 90]); r = 11*FRAME['size']/100
-    g.ellipse((x-r, y-r, x+r, y+r), fill='#898479')
+    g.ellipse((x-r, y-r, x+r, y+r), fill='#6e503a')
     guide.save(HERE/'map-layout-guide.png')
     print(json.dumps(pads))
 

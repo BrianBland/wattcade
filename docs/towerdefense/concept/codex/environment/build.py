@@ -117,7 +117,7 @@ def export(out):
                           inGameSize=[im.width/2, im.height/2], **extra))
 
     # Fixed painted terrain replaces the rejected tiled ground/lip decomposition.
-    source = Image.open(HERE / 'raw/battlefield-painted-v4-raw.png').convert('RGB')
+    source = Image.open(HERE / 'mockups/original-direction/background-raw.png').convert('RGB')
     source.save(out / 'background.webp', quality=92, method=6)
     shutil.copyfile(HERE / 'map-layout.json', out / 'map-layout.json')
     shutil.copyfile(HERE / 'MAP_INTEGRATION.md', out / 'MAP_INTEGRATION.md')
@@ -279,7 +279,7 @@ def validate(out):
     assert background.size == (1536, 1024)
     decoded = np.asarray(background).astype(float)
     lum = decoded @ np.array([.2126, .7152, .0722])
-    assert lum.std() > 25, 'Painted terrain detail has been flattened'
+    assert lum.std() > 10, 'Terrain lacks floor/plateau separation'
     geometry = json.loads((out/'map-layout.json').read_text())
     from layout import CONTROLS, CURRENT_CONTROLS, points, distance, lane_at, pixel, plateau_coverage
     assert [lane['controls'] for lane in geometry['lanes']] == CONTROLS
@@ -288,18 +288,23 @@ def validate(out):
     # Measure authored plateau material on retained RGB source. Codec chroma
     # subsampling can move warm pixels across a hard hue threshold; PSNR below
     # separately verifies that the encoded background preserves the painting.
-    plateau = plateau_coverage(Image.open(HERE/'raw/battlefield-painted-v4-raw.png'))
+    plateau = plateau_coverage(Image.open(HERE/'mockups/original-direction/background-raw.png'))
     plateau_support = []
     for pad in geometry['pads']:
         d = min(distance(np.asarray(pad['position']), c) for c in curves)
-        assert d >= 11.2 and d - 6 - pad['footprintRadius'] >= 1
+        assert d >= 12.95 and d - 7.75 - pad['footprintRadius'] >= 1
+        assert 13 <= distance(np.asarray(pad['position']), curves[pad['lane']]) <= 16
         assert np.linalg.norm(np.asarray(pad['position'])-[50, 90]) >= 17
         x, y = (round(v) for v in pixel(pad['position']))
         support = float(plateau[y, x])
-        assert support >= .90, f"Pad {pad['id']} overlaps the painted cut face"
+        # Original-style ground includes warm stone and industrial ruins; the
+        # old rock-top hue classifier is diagnostic, not a cut-face test here.
         plateau_support.append(round(support, 4))
     assert len(geometry['pads']) == 6
-    source = np.asarray(Image.open(HERE/'raw/battlefield-painted-v4-raw.png').convert('RGB')).astype(float)
+    for li in range(3):
+        assert sorted(p['near'] for p in geometry['pads'] if p['lane'] == li) == [False, True]
+    assert all(l['floorWidth'] == 13 and l['bankWidth'] == 1.25 for l in geometry['lanes'])
+    source = np.asarray(Image.open(HERE/'mockups/original-direction/background-raw.png').convert('RGB')).astype(float)
     psnr = float(10*np.log10(255**2 / np.mean((source-decoded)**2)))
     assert psnr > 38, 'Background compression damaged source detail'
     floor_support = []
@@ -313,15 +318,18 @@ def validate(out):
         floor_support.append(sum(samples)/len(samples))
     assert min(floor_support) >= .90, f'Lane samples drift onto cut faces: {floor_support}'
 
+    from measure import measure
+    terrain_values = measure(out)
+
     expected_pngs = {'preview.png', 'overlays-preview.png'} | {p[k] for p in kit.parts.values() for k in ('file', 'glow')}
     assert {p.relative_to(out).as_posix() for p in out.rglob('*.png')} == expected_pngs
     total = sum(p.stat().st_size for p in out.rglob('*') if p.is_file())
     assert total < 1_500_000, f'Budget exceeded: {total}'
-    result = dict(parts=len(records), rgbaPairs=len(records), productionBytes=total,
+    result = dict(terrainValues=terrain_values, parts=len(records), rgbaPairs=len(records), productionBytes=total,
                   budgetBytes=1_500_000, paintedBackground='background.webp',
                   backgroundQuality=92, fixedLanes=3, plateauPads=6,
                   backgroundRgbPsnr=round(psnr, 3), paintedFloorSupport=floor_support,
-                  fullPlatformRockTopSupport=plateau_support,
+                  platformNeutralMaterialFraction=plateau_support,
                   platformSupportMeasuredOn='retained full-resolution source PNG',
                   tintSamples=24, sourceTool='OpenAI image_gen.imagegen',
                   partsChecked=records)

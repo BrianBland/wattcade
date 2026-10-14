@@ -1,0 +1,35 @@
+{
+  "screenshots": [
+    {
+      "name": "real-sprites",
+      "url": "http://127.0.0.1:5174/dev/td-integration.html?panels=0&alien=1.25&bluetint=0&rim=0",
+      "viewport": [
+        1366,
+        1024
+      ],
+      "deviceScaleFactor": 2,
+      "pixels": [
+        2732,
+        2048
+      ]
+    },
+    {
+      "name": "readability-aids",
+      "url": "http://127.0.0.1:5174/dev/td-integration.html?panels=0&alien=1.25&bluetint=0.5&rim=0.45",
+      "viewport": [
+        1366,
+        1024
+      ],
+      "deviceScaleFactor": 2,
+      "pixels": [
+        2732,
+        2048
+      ]
+    }
+  ],
+  "errors": [],
+  "sourceSHA256": "729d1ea87845ae0bc868fe48775115a398b75f111dc86ff31cc3d14379f2c358",
+  "sprites": "Actual unchanged tower/outpost exports and all8 animated alien rigs from towerdefense-concept-art integration page",
+  "geometry": "Existing map-layout.json curve controls, 13-unit clear paths and six plateau pad positions; level ground art hypothesis only",
+  "status": "Direction mockup; production/PR not updated"
+}

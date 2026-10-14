@@ -1,38 +1,39 @@
-# Painted battlefield working files — issue 131 revision
+# Painted battlefield — current curved original-style delivery
 
-Art: OpenAI image_gen.imagegen, guided by the approved trench-mockup.png.
-User rejected flattened modular terrain and approved one painted fixed map.
-Left/center lanes stay fixed; the right lane is traced to its painted floor.
-Six full tower footprints move onto rock plateaus with bank clearance.
-FILES.txt lists every actual file; SHA256SUMS.txt records hashes.
+Art: OpenAI image_gen.imagegen; exact working inventory in FILES.txt and
+SHA256SUMS.txt. The owner rejected the smooth terrain, explored sharper routes,
+then restored the preceding curved original-style scene with rich cabling.
 
-raw/battlefield-painted-v2-raw.png: whole clean terrain guided by lane layout.
-raw/battlefield-painted-v3-raw.png: plateau mounting-site refinement.
-raw/battlefield-painted-v4-raw.png: right-floor correction; production source.
-raw/*-sheet-raw.png and organic-sheet-v2-raw.png: all six retained green sheets.
-Current overlay cutouts still use organic v2, splats and props sheets.
-trench-mockup.png: approved scenic direction; not the runtime background.
-map-layout-guide.png: final scripted geometry guide, not generated art.
-layout.py/map-layout.json: registered field, fixed curves and plateau pads.
-registration.png: final painted terrain with movement/footprint guides.
-build.py: full-resolution export, overlay preparation, validation, inventories.
-scene.py: compose real accepted rigs, cables, actors and exported terrain.
-MAP_INTEGRATION.md: transforms and required later shared sim/renderer changes.
-production-NOTES.md: copied into the production export's NOTES.md.
-requirements.txt: Pillow/NumPy; proofs also use system DejaVu Sans.
-generation.md: actual prompts/output provenance, including this revision.
-references/: original concepts/Warrior, accepted tower lineup, read-only tower
-and outpost export PNGs and their original render scripts for honest assembly.
-battlefield-assembled.png: full-color 1536×1024 proof with three built towers.
-all-six-pads.png: same map with all six towers built on plateau.
-portrait.png: crop of the same map retaining tower/outpost footprints.
-game-scale.png: reduced assembly; comparison.png: approved vs delivered.
-overlays-full.png: every independent overlay/tint and glow-off example.
-export/: exact production copy, with its own notes and inventories.
-validation.json: actual map, pad, overlay, tint, fidelity and budget checks.
-archive/: rejected v1 and initial geometry/registration proofs for history.
+Current production source: mockups/original-direction/background-raw.png.
+Current review proof: mockups/curved-wiring/real-sprites.png, actual unchanged
+alien/tower/outpost rigs at1366×1024CSS@2x. Cabling uses six actual sockets,
+textured armoured feeds, curved routing and buried short lane crossings.
+Cable texture and proof renderer remain working files, not baked terrain.
+No straight-line tactical routes adopted. All three cubic controls retained.
+
+Current produced/updated files:
+build.py; scene.py; layout.py; map-layout.json; map-layout-guide.png;
+measure.py; terrain-measurements.json; validation.json; MAP_INTEGRATION.md;
+production-NOTES.md; NOTES.md; generation.md; FILES.txt; SHA256SUMS.txt.
+export/background.webp; export/map-layout.json; export/MAP_INTEGRATION.md;
+export/NOTES.md; export/preview.png; export/FILES.txt; export/SHA256SUMS.txt.
+
+Exact exploration artifacts and generation provenance are itemized separately:
+mockups/original-direction/NOTES.md; mockups/tactical-layout/NOTES.md;
+mockups/curved-wiring/NOTES.md. Every actual nested file appears in FILES.txt.
+raw/battlefield-shallow-v5-raw.png throughv8 are rejected smooth-floor studies.
+proofs/ contains prior smooth-floor captures and384-pose offset measurement;
+these do not certify the final restored original-style textured terrain.
+archive/deep-v2/ retains earlier deep-trench scene proofs and original script.
+archive/map-layout-deep-v2.json retains prior pad placements for comparison.
+Original concepts, accepted rigs, raw green sheets and archive/v1 stay retained.
+
+Measurements use geometric masks on decoded WebP. Old smooth-floor RGB/value
+and rock-top hue limits are reported as diagnostics, not current pass claims:
+textured dirt contains neutral stones; industrial wreckage warms rocky regions.
+Numeric pad clearance, curve identity, centreline floor support, fidelity,
+all54 retained overlay PNGs, tint/glow registration and1.5MB budget are checked.
+Production game code is unchanged. Renderer adoption remains #133.
 
 Rebuild: python -B layout.py; python -B build.py --output /workspace/wattcade/public/td/environment
-Verify: same build.py command with --verify-only. No game code changes.
-Integration must adopt right-lane controls and plateau pads in map-layout.json.
-Painted cut-face shading is intentional. Actors/effects remain separate.
+Verify: same build.py command with --verify-only. Cable mockup: mockups/curved-wiring/capture.mjs

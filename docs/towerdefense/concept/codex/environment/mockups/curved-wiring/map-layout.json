@@ -1,0 +1,246 @@
+{
+  "size": [
+    1536,
+    1024
+  ],
+  "field": {
+    "x": 318,
+    "y": 32,
+    "size": 900,
+    "units": 100
+  },
+  "lanes": [
+    {
+      "id": 0,
+      "controls": [
+        [
+          -3,
+          16
+        ],
+        [
+          28,
+          18
+        ],
+        [
+          18,
+          66
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "previousControls": [
+        [
+          -3,
+          16
+        ],
+        [
+          28,
+          18
+        ],
+        [
+          18,
+          66
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "requiresSimChange": false,
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    },
+    {
+      "id": 1,
+      "controls": [
+        [
+          50,
+          -3
+        ],
+        [
+          34,
+          28
+        ],
+        [
+          66,
+          52
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "previousControls": [
+        [
+          50,
+          -3
+        ],
+        [
+          34,
+          28
+        ],
+        [
+          66,
+          52
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "requiresSimChange": false,
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    },
+    {
+      "id": 2,
+      "controls": [
+        [
+          103,
+          16
+        ],
+        [
+          84,
+          18
+        ],
+        [
+          87,
+          66
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "previousControls": [
+        [
+          103,
+          16
+        ],
+        [
+          72,
+          18
+        ],
+        [
+          82,
+          66
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "requiresSimChange": true,
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    }
+  ],
+  "pads": [
+    {
+      "id": 0,
+      "lane": 0,
+      "near": false,
+      "position": [
+        13.0,
+        56.5
+      ],
+      "previousPosition": [
+        18.184039321933994,
+        54.82606352387674
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.445,
+      "minimumLaneDistance": 13.445
+    },
+    {
+      "id": 1,
+      "lane": 0,
+      "near": true,
+      "position": [
+        39.0,
+        50.5
+      ],
+      "previousPosition": [
+        42.743654722393906,
+        70.31134344139183
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.044,
+      "minimumLaneDistance": 13.044
+    },
+    {
+      "id": 2,
+      "lane": 1,
+      "near": false,
+      "position": [
+        59.0,
+        22.5
+      ],
+      "previousPosition": [
+        54.052978149102486,
+        23.512997296712996
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.045,
+      "minimumLaneDistance": 13.045
+    },
+    {
+      "id": 3,
+      "lane": 1,
+      "near": true,
+      "position": [
+        36.0,
+        40.5
+      ],
+      "previousPosition": [
+        45.101119704947436,
+        54.25236281511286
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.408,
+      "minimumLaneDistance": 13.408
+    },
+    {
+      "id": 4,
+      "lane": 2,
+      "near": false,
+      "position": [
+        90.5,
+        61.5
+      ],
+      "previousPosition": [
+        81.81596067806606,
+        54.82606352387659
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.383,
+      "minimumLaneDistance": 13.383
+    },
+    {
+      "id": 5,
+      "lane": 2,
+      "near": true,
+      "position": [
+        66.0,
+        51.5
+      ],
+      "previousPosition": [
+        57.25634527760609,
+        70.31134344139186
+      ],
+      "footprintRadius": 4.2,
+      "laneDistance": 13.021,
+      "minimumLaneDistance": 13.021
+    }
+  ],
+  "outpost": {
+    "position": [
+      50,
+      90
+    ],
+    "footprintRadius": 11
+  },
+  "integration": "Left/center lane controls retain current sim/defs.ts. Right lane controls are registered to its painted floor. Adopt these controls and plateau pad positions together during renderer integration; no simulation code changed in this asset PR."
+}

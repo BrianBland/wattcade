@@ -1,0 +1,38 @@
+{
+  "mask": "geometry guide within registered 900\u00d7900 field; includes shared apron; excludes rubble shoulders",
+  "luminance": "Rec.709 weighted encoded sRGB / 255 (display value); linear relative luminance also reported",
+  "floor": {
+    "pixels": 285509,
+    "averageRGB": [
+      113.758,
+      83.19,
+      57.77
+    ],
+    "displayLuminancePercent": 34.452,
+    "linearRelativeLuminancePercent": 10.665,
+    "valueStdDev": 18.991,
+    "meanChannelSpread": 55.989,
+    "previousUmberTargetRGB": [
+      110,
+      80,
+      58
+    ],
+    "warmMaterialSupport": 0.99867
+  },
+  "plateau": {
+    "pixels": 477414,
+    "averageRGB": [
+      49.847,
+      43.542,
+      39.34
+    ],
+    "displayLuminancePercent": 17.482,
+    "linearRelativeLuminancePercent": 3.73,
+    "valueStdDev": 29.238,
+    "meanChannelSpread": 10.872,
+    "previousDisplayValueLimitPercent": 22,
+    "measurementIncludes": "warm industrial wreckage and weathered rock in the restored original-style scene",
+    "contrastRatioVsPrevious": 0.893,
+    "fineDetailRatioVsPrevious": 0.999
+  }
+}

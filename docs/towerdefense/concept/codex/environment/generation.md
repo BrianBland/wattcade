@@ -132,3 +132,64 @@ six footprints. Portrait uses the same registered map. The reference comparison
 uses the actual approved trench-mockup.png and actual assembled delivery, not
 newly generated substitute scenes. Overlay proof enumerates all retained 27
 pieces and every required brood tint. Archived v1 exports are not live assets.
+
+
+## Shallow-path iPad integration revision
+
+The latest owner request supersedes deep cut faces and busy plateaus. Source
+references D-full-1.25.jpg, visibility-variants.jpg and floor-variants.jpg are
+copied unchanged from towerdefense-concept-art30cca91 into references/integration/.
+All three existing curve controls are preserved; no new tracing or fitting.
+layout.py draws a13-unit floor plus1.25-unit shoulder per side and wider apron,
+using targetRGB110,80,58 against neutralRGB49,49,51. This is geometry guidance,
+not a runtime schematic. Image generation textures it into continuous terrain.
+
+- exec-98a8b458-9977-4233-9d17-04921e071b36.png → raw/battlefield-shallow-v5-raw.png.
+  References: exact new map-layout-guide and old v4. Requested13-unit smooth
+  packed umber floors, shallow low rubble edges, removal of all vertical cliff
+  faces, darker neutral broad plateaus and half the detail. No actors/objects.
+- exec-8896df31-0125-45af-8137-b6f5d2908a71.png → raw/battlefield-shallow-v6-raw.png.
+  References: v5 and guide. Requested less orange floors at110,80,58, broad quiet
+  charcoal slate masses and another half reduction in fine chipping/contrast.
+- exec-d89e5d4a-5fb8-476b-b44f-0056250f4527.png → raw/battlefield-shallow-v7-raw.png.
+  References: v6 and guide. Requested lighter floor by approximatelyRGB+9,+8,+7
+  to avoid undershooting the owner's warm umber target, preserving all geometry.
+  This is the production source. Decoded floor mean114,86,63; plateau52,49,48.
+- exec-27b23583-83f6-4b54-934c-cfa0fd01ce01.png → raw/battlefield-shallow-v8-raw.png.
+  Reference: v7. Requested tiny floor correctionRGB-4,-6,-5. The model instead
+  produced mean101,72,51, darker than intended, so this is NOT exported.
+
+Raw sources remain unchanged. No scripted terrain recolouring, repainting or
+boundary warping is applied. Production is the full v7 RGB painting encoded
+WebP92. The model does not guarantee exact RGB: actual measured decoded values
+and geometry-masked material support are reported, rather than intended values.
+The RGB target110,80,58 is33.3% under Rec.709 encoded-sRGB weighting; the delivered
+floor is35.3%, on the lighter side, rather than the rejected near-dark floor.
+Linear relative luminance is reported separately and is not display value.
+
+capture-integration.mjs uses the actual unmodified dev/td-integration.html and
+td-rig.ts from towerdefense-concept-art30cca91. All requested screenshots use
+real alien rigs, exact viewport1366×1024 atdeviceScale2 and actual served PR
+assets, with no floor/rock mock-up recolouring. All tower/outpost asset files
+match fetched PR135/136 heads byte-for-byte (51 and43 files respectively).
+The extra scripted proof places real Warriors at±2.25 on all three paths and
+measures384 gait poses. Measurement excludes faint shadow/glow/antialias and
+checks both mathematical floor bounds and actual warm earth pixels. Served
+asset hashes and browser errors are recorded with captures. preview.png is a
+reduced real-puppet capture. Earlier schematic/Warrior-only scene proofs and
+their original scene.py are archived under archive/deep-v2, not shown as current.
+
+
+## Final pushed direction
+
+The owner rejected the smooth-floor style, explored original-style textured
+terrain and tactical angular routes, then explicitly restored the curved map
+and authorized pushing it. Current production source is
+mockups/original-direction/background-raw.png (exec-66623461 refinement),
+not raw/battlefield-shallow-v7-raw.png. The current scripted preview is the
+real-rig curved-wiring mockup. Each mockups/*/NOTES.md inventories every local
+artifact and generation provenance; the tactical route experiment is retained
+only as history. Cabling remains renderer-owned proof work, not baked scenery.
+Historical smooth-floor colour/hue tests are diagnostic for this restored
+material direction; measurements report actual values without claiming the
+earlier smooth-floor targets are met.

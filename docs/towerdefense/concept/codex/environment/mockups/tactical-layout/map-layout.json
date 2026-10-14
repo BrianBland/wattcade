@@ -1,0 +1,161 @@
+{
+  "size": [
+    1536,
+    1024
+  ],
+  "field": {
+    "x": 318,
+    "y": 32,
+    "size": 900,
+    "units": 100
+  },
+  "lanes": [
+    {
+      "id": 0,
+      "waypoints": [
+        [
+          -3,
+          15
+        ],
+        [
+          18,
+          15
+        ],
+        [
+          18,
+          72
+        ],
+        [
+          34,
+          72
+        ],
+        [
+          34,
+          80
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    },
+    {
+      "id": 1,
+      "waypoints": [
+        [
+          50,
+          -3
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    },
+    {
+      "id": 2,
+      "waypoints": [
+        [
+          103,
+          15
+        ],
+        [
+          82,
+          15
+        ],
+        [
+          82,
+          72
+        ],
+        [
+          66,
+          72
+        ],
+        [
+          66,
+          80
+        ],
+        [
+          50,
+          90
+        ]
+      ],
+      "floorWidth": 13,
+      "bankWidth": 1.25
+    }
+  ],
+  "pads": [
+    {
+      "id": 0,
+      "lane": 0,
+      "near": false,
+      "position": [
+        5,
+        28
+      ],
+      "footprintRadius": 4.2
+    },
+    {
+      "id": 1,
+      "lane": 0,
+      "near": true,
+      "position": [
+        31,
+        59
+      ],
+      "footprintRadius": 4.2
+    },
+    {
+      "id": 2,
+      "lane": 1,
+      "near": false,
+      "position": [
+        64,
+        20
+      ],
+      "footprintRadius": 4.2
+    },
+    {
+      "id": 3,
+      "lane": 1,
+      "near": true,
+      "position": [
+        36,
+        47
+      ],
+      "footprintRadius": 4.2
+    },
+    {
+      "id": 4,
+      "lane": 2,
+      "near": false,
+      "position": [
+        95,
+        28
+      ],
+      "footprintRadius": 4.2
+    },
+    {
+      "id": 5,
+      "lane": 2,
+      "near": true,
+      "position": [
+        69,
+        59
+      ],
+      "footprintRadius": 4.2
+    }
+  ],
+  "outpost": {
+    "position": [
+      50,
+      90
+    ],
+    "footprintRadius": 11
+  },
+  "integration": "Tactical direction mockup only. Waypoints replace cubic controls; movement should round turns inside the wide corridor and interpolate heading. No sim code changed."
+}

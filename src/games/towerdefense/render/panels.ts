@@ -1,13 +1,12 @@
 // Canvas HUD panels for Dynamo Defense: weapons / rail / dynamo (left), wave / base / forecast (right),
 // workshop, garage, banners. Each draw fn returns tap regions.
-import { LANE_NAMES, PADS, TOWERS, WEAPONS, type Weapon } from '../sim/defs';
+import { BROOD_STORY, WEAPONS, WEAPON_NAME, type Element, LANE_NAMES, PADS, TOWERS, type Weapon } from '../sim/defs';
 import type { TdSnapshot, WorkshopView, GarageView } from '../sim/types';
 import { COL, TOWER_ICON_COLOR, WEAPON_COLOR } from './sprites';
 import type { Box } from './layout';
 
 export interface Hit { x: number; y: number; w: number; h: number; action: unknown }
 const TAU = Math.PI * 2;
-const WEAPON_NAME: Record<Weapon, string> = { gatling: 'GATLING', flame: 'FLAMER', rail: 'RAILGUN' };
 const WEAPON_HINT: Record<Weapon, string> = { gatling: 'fires with your cadence', flame: 'burns with your watts', rail: 'laser + stored charges' };
 const BTN_COLOR: Record<string, string> = { a: '#3fd07a', b: '#ff5a5a', y: '#ffd24a', z: '#5ab0ff' };
 
@@ -29,8 +28,6 @@ export function btnGlyph(g: CanvasRenderingContext2D, b: string, x: number, y: n
 function label(g: CanvasRenderingContext2D, s: string, x: number, y: number, px: number, color = 'rgba(200,215,240,0.6)') {
   font(g, px, 700); g.fillStyle = color; g.fillText(s, x, y);
 }
-/** Lower bound of each Coggan power zone (% FTP); surges count power zone, not the HR-led effort zone. */
-const ZONE_FTP: Record<number, number> = { 2: 56, 3: 76, 4: 91, 5: 106 };
 const MODE: Record<Weapon, string> = { gatling: 'SIM', flame: 'RES', rail: 'ERG' };
 const TIPS = [
   'Each wave is one brood color: the turret mounts the matching weapon.',
@@ -39,11 +36,11 @@ const TIPS = [
   'Press ▼ to open the workshop and build towers.',
   'Hold Z to fire every rail charge in a spread.',
   'Sprint for Overdrive: x1.5 damage and tower speed.',
-  'Power Surge: ride the asked zone to fire an EMP.',
-  'Gold bosses shift shield color; towers cover the other colors.',
+  'Spin calls reward Overclock; grind and hold calls reward an EMP.',
+  'Boss phases announce the next weapon. Sprint when Exposed.',
   'Clear a wave early to repair the base.',
   'The lull between waves is your recovery: ease off.',
-  'Prisms change color every 4 s: watch the outline.',
+  'Red brood is fuel-blooded: fire kills can ignite nearby reds.',
   'Spin-up: high cadence in an easy effort overclocks the Gatling.',
   'Parts bank between runs; spend them in the Garage.',
 ];
@@ -167,9 +164,10 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     bar(g, x, y, w * 0.7, 8 * u, hpF, hpC);
     for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + w * 0.75 + i * 12 * u, y + 4 * u, 4 * u, 0, TAU); g.fill(); }
     y += 16 * u;
-    if (s.spin?.state === 'active') { label(g, `SPIN ${s.spin.rpm}+ rpm ${Math.ceil(s.spin.leftS)}s`, x, y + 9 * u, 11 * u, '#8fd8ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.spin.held / s.spin.needS, '#8fd8ff'); }
-    else if (s.surge?.state === 'active') { label(g, `SURGE ≥${ZONE_FTP[s.surge.zone] ?? 91}% FTP ${Math.ceil(s.surge.leftS)}s`, x, y + 9 * u, 11 * u, '#7df9ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.surge.progress, '#7df9ff'); }
-    else if (s.nextBrood) { label(g, `NEXT ${s.forecast.boss ? 'BOSS' : `W${s.forecast.wave}`}: ${s.nextBrood.color.toUpperCase()} → ${WEAPON_NAME[s.nextBrood.weapon]} · ${LANE_NAMES[s.forecast.mainLane]}`, x, y + 9 * u, 10 * u, COL[s.nextBrood.color]); }
+    const boss = s.boss, e = s.effort;
+    if (boss) label(g, bossLine(s), x, y + 9 * u, 10 * u, boss.exposed ? '#7dffb0' : '#ffd24a');
+    else if (e) label(g, effortLine(s), x, y + 9 * u, 10 * u, '#7df9ff');
+    else { label(g, s.nextBrood ? `NEXT: ${matchupCopy(s, s.nextBrood.color)}` : '▼ Workshop', x, y + 9 * u, 9 * u); }
     hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: { type: 'pad', pad: -1 } });
     return hits;
   }
@@ -188,35 +186,24 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
   bar(g, x, y, w, 12 * u, hpF, hpC);
   font(g, 10 * u, 800); g.fillStyle = '#0b0f17'; g.fillText(`${Math.ceil(s.baseHp)} / ${Math.round(s.baseMaxHp)}`, x + 6 * u, y + 9.5 * u);
   y += 26 * u;
-  // --- surge
-  if (s.surge) {
-    const sv = s.surge, act = sv.state === 'active', c = act ? '#7df9ff' : sv.state === 'won' ? '#7dffb0' : '#ff7a5a';
-    const bh = 58 * u;
-    g.fillStyle = act ? `rgba(60,200,255,${0.12 + 0.06 * Math.sin(t * 6)})` : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(x, y, w, bh, 8 * u); g.fill();
-    g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, bh - 2, 8 * u); g.stroke();
-    font(g, 14 * u, 800); g.fillStyle = c; g.fillText(act ? 'POWER SURGE' : sv.state === 'won' ? 'SURGE WON' : 'SURGE MISSED', x + 10 * u, y + 20 * u);
-    font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)';
-    g.fillText(act ? `≥${ZONE_FTP[sv.zone] ?? 91}% FTP for ${Math.ceil(sv.needS * (1 - sv.progress))}s more · ${Math.ceil(sv.leftS)}s left` : sv.state === 'won' ? 'EMP fired' : 'Next time!', x + 10 * u, y + 36 * u);
-    bar(g, x + 10 * u, y + 44 * u, w - 20 * u, 6 * u, sv.progress, c);
-    y += bh + 10 * u;
-  }
-  // --- spin-up (cadence drill)
-  if (s.spin) {
-    const sv = s.spin, act = sv.state === 'active', c = act ? '#8fd8ff' : sv.state === 'won' ? '#7dffb0' : '#ff7a5a';
-    const bh = 58 * u, f = Math.min(1, sv.held / sv.needS);
-    g.fillStyle = act ? `rgba(120,200,255,${0.1 + 0.05 * Math.sin(t * 8)})` : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(x, y, w, bh, 8 * u); g.fill();
-    g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, bh - 2, 8 * u); g.stroke();
-    font(g, 14 * u, 800); g.fillStyle = c; g.fillText(act ? 'SPIN UP' : sv.state === 'won' ? 'OVERCLOCKED' : 'SPIN-UP MISSED', x + 10 * u, y + 20 * u);
-    font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)';
-    g.fillText(act ? `${sv.rpm}+ rpm for ${Math.ceil(sv.needS - sv.held)}s more · ${Math.ceil(sv.leftS)}s left` : sv.state === 'won' ? 'Gatling fires x2' : 'Next time!', x + 10 * u, y + 36 * u);
-    bar(g, x + 10 * u, y + 44 * u, w - 20 * u, 6 * u, f, c);
-    y += bh + 10 * u;
+  // Called effort and boss ladder: persistent countdowns stay readable after a banner fades.
+  if (s.boss || s.effort) {
+    const text = s.boss ? bossLine(s) : effortLine(s);
+    label(g, text, x, y + 10 * u, Math.min(12 * u, w / Math.max(8, text.length * 0.6)), s.boss?.exposed ? '#7dffb0' : '#7df9ff');
+    y += 20 * u;
+    if (s.effort) {
+      const e = s.effort;
+      const cue = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
+      label(g, cue, x, y + 10 * u, 11 * u); y += 18 * u;
+      bar(g, x, y, w, 6 * u, e.heldS / e.needS, '#7df9ff'); y += 16 * u;
+    }
   }
   // --- forecast (hidden under the workshop when it is open)
   const bottom = workshopBox ? workshopBox.y - 8 * u : b.y + b.h - p;
-  if (y + 70 * u <= bottom) {
+  if (y + 94 * u <= bottom) {
     const nb = s.nextBrood;
-    label(g, `NEXT · W${s.forecast.wave}${s.forecast.boss ? ' BOSS' : ''}${nb ? ` · ${nb.color.toUpperCase()} → ${WEAPON_NAME[nb.weapon]}` : ''}`, x, y + 10 * u, 11 * u, s.forecast.boss ? '#ffd24a' : nb ? COL[nb.color] : undefined); y += 18 * u;
+    label(g, `NEXT · W${s.forecast.wave}${s.forecast.boss ? ' BOSS' : ''}`, x, y + 10 * u, 11 * u, s.forecast.boss ? '#ffd24a' : nb ? COL[nb.color] : undefined); y += 18 * u;
+    if (nb) { const text = matchupCopy(s, nb.color); label(g, text, x, y + 10 * u, Math.min(10 * u, w / (text.length * 0.6))); y += 18 * u; }
     const cw = (w - 12 * u) / 3;
     s.forecast.lanes.forEach((ln, i) => {
       const cx = x + i * (cw + 6 * u), main = i === s.forecast.mainLane;
@@ -237,10 +224,11 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
   const legendH = 4 * 17 * u + 16 * u;
   if (!workshopBox && y + legendH + 44 * u <= b.y + b.h - p) {
     label(g, 'WEAKNESSES', x, y + 10 * u, 11 * u); y += 22 * u;
-    const rows: Array<[string, string]> = [[COL.blue, 'Blue → Gatling · Tesla'], [COL.red, 'Red → Flamer · Mortar'], [COL.purple, 'Purple → Rail · Lens'], [COL.gold, 'Boss: shield shifts color']];
+    const rows: Array<[string, string]> = (['blue', 'red', 'purple'] as const).map((e) => [COL[e], matchupCopy(s, e)]);
+    rows.push([COL.gold, 'Boss: phase colour uses the matrix']);
     for (const [c, txt] of rows) {
       g.fillStyle = c; g.beginPath(); g.arc(x + 6 * u, y, 5 * u, 0, TAU); g.fill();
-      font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.8)'; g.fillText(txt, x + 18 * u, y + 4 * u);
+      font(g, Math.min(10 * u, (w - 18 * u) / (txt.length * 0.6)), 600); g.fillStyle = 'rgba(220,235,255,0.8)'; g.fillText(txt, x + 18 * u, y + 4 * u);
       y += 17 * u;
     }
   }
@@ -339,10 +327,12 @@ export function drawBroodCard(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box
   g.save(); g.globalAlpha = Math.min(1, (bd.lullS - bd.countdownS) / 0.3 + 0.001, bd.countdownS / 0.3);
   panel(g, b, 12 * sc, c);
   const p = 12 * sc, x = b.x + p, w = b.w - 2 * p;
-  const head = `WAVE ${bd.wave} · ${bd.color.toUpperCase()} BROOD · ${WEAPON_NAME[bd.weapon]}`;
+  const head = `WAVE ${bd.wave} · ${s.boss ? 'BOSS · ' : ''}${matchupCopy(s, bd.color)}`;
   font(g, Math.min(18 * sc, (w * 0.78) / Math.max(10, head.length * 0.6)), 900); g.fillStyle = c; g.fillText(head, x, b.y + p + 15 * sc);
   font(g, 13 * sc, 700); g.fillStyle = '#e6eeff'; g.fillText(bd.setting, x, b.y + p + 36 * sc);
   font(g, 13 * sc, 600); g.fillStyle = 'rgba(220,235,255,0.75)'; g.fillText(bd.cue, x, b.y + p + 54 * sc);
+  const story = s.boss ? 'Announced phases · sprint during Exposed' : BROOD_STORY[bd.color];
+  font(g, 10 * sc, 600); g.fillText(story, x, b.y + p + 70 * sc);
   // countdown: big number, and a bar whose last stretch (the trainer ramp) is marked
   const n = Math.ceil(bd.countdownS), ramping = bd.countdownS <= bd.rampS;
   font(g, 34 * sc, 900); g.textAlign = 'right'; g.fillStyle = ramping ? c : '#fff';
@@ -368,4 +358,19 @@ export function drawBanner(g: CanvasRenderingContext2D, s: TdSnapshot, x: number
   g.fillStyle = bn.color; g.fillText(bn.text.toUpperCase(), 0, 0);
   if (bn.sub) { font(g, Math.min(15 * u, w / Math.max(10, bn.sub.length * 0.55)), 700); g.lineWidth = 4; g.strokeText(bn.sub, 0, size * 0.75); g.fillStyle = 'rgba(235,242,255,0.92)'; g.fillText(bn.sub, 0, size * 0.75); }
   g.restore(); g.textAlign = 'left';
+}
+
+export function matchupCopy(s: Pick<TdSnapshot, 'matchup'>, element: Element): string {
+  const strong = WEAPONS.reduce((a, b) => s.matchup[b][element] > s.matchup[a][element] ? b : a);
+  const resisted = WEAPONS.reduce((a, b) => s.matchup[b][element] < s.matchup[a][element] ? b : a);
+  return `${element.toUpperCase()} BROOD · ${WEAPON_NAME[strong].toUpperCase()} ✓ · ${WEAPON_NAME[resisted].toUpperCase()} ✗`;
+}
+function bossLine(s: TdSnapshot): string {
+  const b = s.boss!;
+  const push = b.weapon === 'rail' ? b.sprintBoost ? 'ERG PUSH' : 'HOLD A: SPRINT' : 'SPRINT ×1.5';
+  return b.next ? `PHASE ${b.phase + 1}: ${b.next.toUpperCase()} IN ${Math.ceil(b.countdownS)}s` : b.exposed ? `EXPOSED ${Math.ceil(b.windowLeftS)}s · ${push}` : b.telegraph ? `SPRINT IN ${Math.ceil(b.windowLeftS)}s${b.weapon === 'rail' ? ' · HOLD A' : ''}` : `BOSS PHASE ${b.phase}/${b.phaseCount} · ${WEAPON_NAME[b.weapon]}`;
+}
+function effortLine(s: TdSnapshot): string {
+  const e = s.effort!;
+  return e.state === 'announced' ? `${e.kind.toUpperCase()} IN ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind.toUpperCase()} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s MORE · ${Math.ceil(e.leftS)}s LEFT` : `${e.kind.toUpperCase()} ${e.state.toUpperCase()}`;
 }

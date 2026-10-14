@@ -417,20 +417,21 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ### §6.3 Agent H — "Dynamo Defense" (tower defense, 2D Canvas) · owns `src/games/towerdefense/`
 
-- **Map:** a base at the bottom center, 3 lanes (left, center, right) converging on it, and a turret on the base. Enemies are **color-coded by weakness**. The right element does ×1.5 damage; the wrong one ×0.25.
-  - **Blue swarm minis:** many, low HP. Weak to Gatling.
-  - **Red brutes.** Weak to Flame.
-  - **Purple armored:** slow, high HP. Weak to Rail.
-  - **Gold boss** every 5 waves: its shield color cycles, so you must switch weapons.
+- **Map:** a base at the bottom center, 3 lanes (left, center, right) converging on it, and a turret on the base. Enemies use a strong/neutral/resisted matrix: Gatling/Tesla vs blue/red/purple = ×1.5/×1/×0.5; Flamer/Mortar = ×0.5/×1.5/×1; Rail/Prism = ×1/×0.5/×1.5. All nine cells are tunable.
+  - **Blue swarm minis:** many, low HP, crystalline bioluminescent chitin. Strong: Gatling; resisted: fire.
+  - **Red brutes:** fuel-blooded; fire bursts their volatile bladders and can ignite nearby reds in a capped chain. Strong: Flamer; resisted: Rail.
+  - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
+  - **Gold boss** every 5 waves: 2–3 HP-gated phases automatically change weapon and trainer mode after an announced countdown. Current phase colour uses the matrix. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold A during a Rail opening optionally raises its ERG target to permit a power sprint, preserving the mode. Keeps the Goliath art.
 
   The stream of minis is continuous; heavier enemies arrive in waves.
-- **Weapons** (switch: A = Gatling, B = Flame, Y = Rail; 1.5 s swap; each weapon owns a resistance effect, so all three trainer modes are exercised):
+- **Weapons** (follow the announced brood or boss phase automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):
   - **Gatling** (blue): sim mode, effect `weapon` +1 % grade (low, spinny). Fires one bullet per `tuning 'gatlingRevsPerShot'` (default 0.25) crank revs.
   - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
   - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).
 - **Aim:** the turret always aims itself (no `aimMode`): the lead alien of the wave's colour on the most threatened lane. Paddles or D-pad left/right nudge it toward a lane for a few seconds (optional). All four shifters are virtual gears. Draw the aim line and a target marker.
 - **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, railChargesFired, baseHpLeft.
-- **Scenarios** (autopilot opt: picks the correct weapon for the nearest threat and fires rail at 3 charges):
+- **Workout rhythm:** optional spin, grind-at-power and ERG hold calls follow Gatling, Flamer and Rail waves. Calls arrive every 2–3 waves with a countdown, after recovery ends; targets adapt to recent riding. Spin rewards Overclock, grind/hold reward EMP, with scrap bonuses. Bosses use their own Exposed sprint calls.
+- **Scenarios** (autopilot opt: builds towers and fires rail at 3 charges):
   - `sprints`, 20 min → wavesSurvived ≥ 8
   - `idle`, 5 min → base destroyed (isOver) with wavesSurvived ≤ 2
   - `intervals`, 20 min → all three weapons used ≥ 60 s and mixer commands include all of sim, erg, and resistance

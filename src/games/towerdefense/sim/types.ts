@@ -1,13 +1,15 @@
 // Snapshot view-model shared by the sim, renderer and tests. Plain data only.
-import type { Element, Kind, TowerKind, Weapon } from './defs';
+import type { Element, Kind, Matchup, TowerKind, Weapon } from './defs';
 import type { UpgradeId } from './meta';
+import type { EffortView } from './efforts';
 
 export interface EnemyView {
   id: number; kind: Kind; lane: number; x: number; y: number; angle: number; dist: number; radius: number;
-  /** Current weakness: fixed colour, a prism's current colour, or a boss's shield colour. */
+  /** Current element: fixed colour, a prism's current colour, or a boss's phase colour. */
   element: Element; gold: boolean; hp: number; maxHp: number; hurt: number;
   charging: boolean; /** seconds until a boss / prism changes colour, and the colour it changes to */
   shiftIn: number; next: Element | null; progress: number;
+  bossPhase: number; telegraph: boolean; exposed: boolean; staggerS: number;
 }
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
@@ -15,6 +17,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }> }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number }
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
+  | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number }
+  | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
   | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean }
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }
   | { id: number; t0: number; life: number; kind: 'emp' }
@@ -38,12 +42,20 @@ export interface BroodInfo {
 /** The current (or, during the lull, the coming) wave's brood; `countdownS` = lull seconds left (0 once the wave is on). */
 export interface BroodView extends BroodInfo { countdownS: number; lullS: number; rampS: number }
 export type LaneForecast = Record<Element | 'gold' | 'prism', number>;
+export interface BossView {
+  id: number; phase: number; phaseCount: number; color: Element; weapon: Weapon;
+  next: Element | null; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
+  /** Optional hold-A ERG push, preserving the phase's trainer mode. */
+  sprintBoost: boolean;
+}
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number; grace: number;
   forecast: { wave: number; boss: boolean; mainLane: number; lanes: LaneForecast[] };
   brood: BroodView; nextBrood: BroodInfo | null;
+  boss: BossView | null; matchup: Matchup;
+  effort: EffortView | null;
   baseHp: number; baseMaxHp: number; cores: number; coresMax: number; baseHurt: number;
   /** read-only: follows `brood.weapon` */
   weapon: Weapon; swapLeft: number; swapS: number;
@@ -61,5 +73,5 @@ export interface TdSnapshot {
   cues: Array<{ name: string; id: number }>;
   over: boolean; bestWave: number;
   kills: Record<string, number>;
-  hooks: { storm: boolean; surge: boolean };
+  hooks: { storm: boolean; surge: boolean; cadence?: number; powerFtp?: number; shielded: boolean };
 }

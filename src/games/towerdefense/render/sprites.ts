@@ -106,15 +106,19 @@ export function drawEnemy(g: CanvasRenderingContext2D, e: EnemyView, x: number, 
       g.fillStyle = l; poly(g, 4, r * 0.42, -spin * 1.5); g.fill();
       break;
     }
-    case 'boss': { // gold core in a segmented shield of the current weakness colour
-      const sc = COL[e.element];
+    case 'boss': { // Goliath art stays; the phase colour drives the segmented armour
+      const sc = e.exposed ? '#7dffb0' : COL[e.element];
+      if (e.telegraph || e.exposed) {
+        g.strokeStyle = sc; g.lineWidth = Math.max(2, r * 0.15); g.globalAlpha = e.exposed ? 0.9 : 0.4 + 0.4 * Math.sin(t * 16);
+        g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.stroke(); g.globalAlpha = 1;
+      }
       glowAt(g, sc, 0, 0, r * 2.4, 0.35);
       g.fillStyle = '#3a2e10'; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
       g.fillStyle = COL.gold; g.beginPath(); g.arc(0, 0, r * 0.78, 0, TAU); g.fill();
       g.fillStyle = '#fff2b0'; g.beginPath(); g.arc(0, 0, r * 0.32 + Math.sin(t * 5) * r * 0.05, 0, TAU); g.fill();
       g.lineWidth = Math.max(2, r * 0.22); g.strokeStyle = sc;
       for (let i = 0; i < 6; i++) { const a = t * 0.8 + (i / 6) * TAU; g.beginPath(); g.arc(0, 0, r * 1.3, a, a + TAU / 9); g.stroke(); }
-      if (e.next && e.shiftIn < 1.5) { // telegraph the next shield colour
+      if (e.next && e.shiftIn < 1.5) { // announce the next phase colour
         g.strokeStyle = COL[e.next]; g.globalAlpha = 0.4 + 0.4 * Math.sin(t * 18); g.lineWidth = Math.max(1.5, r * 0.12);
         g.beginPath(); g.arc(0, 0, r * 1.62, 0, TAU); g.stroke(); g.globalAlpha = 1;
       }

@@ -38,6 +38,7 @@ export class TdRenderer implements GameRenderer {
   private heading = new Map<number, { x: number; y: number; h: number }>();
   private laneShown = { lane: -2, at: -99 };
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
+  private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
   private onPointer = (e: PointerEvent) => this.tap(e);
 
@@ -195,7 +196,7 @@ export class TdRenderer implements GameRenderer {
   }
 
   /** New sim fx (by id) become particles / shake / flashes once. */
-  private consumeFx(s: TdSnapshot) {
+  private consumeFx(s: TdSnapshot, allowHitStop: boolean) {
     const k = this.k;
     for (const f of s.fx) {
       if (f.id <= this.lastFx) continue;
@@ -205,7 +206,9 @@ export class TdRenderer implements GameRenderer {
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
-      } else if (f.kind === 'boom') {
+      } else if (f.kind === 'hitStop') {
+        if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
+      } else if (f.kind === 'boom' || f.kind === 'burst') {
         const x = this.X(f.x), y = this.Y(f.y);
         this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
         this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
@@ -244,13 +247,15 @@ export class TdRenderer implements GameRenderer {
     this.snap = s;
     if (!this.L) this.relayout();
     const g = this.g, k = this.k, L = this.L;
+    const firstFrame = this.lastT < 0;
     const dt = this.lastT < 0 ? 0 : Math.max(0, Math.min(0.1, s.t - this.lastT));
     const realDt = 1 / 60;
     this.lastT = s.t; this.wall += realDt;
     const t = s.t;
     if (!this.bg) this.bg = this.buildBg();
     this.playCues(s);
-    this.consumeFx(s);
+    this.consumeFx(s, !firstFrame);
+    if (performance.now() < this.hitStopUntil) return;
     setAmbient('td-flame', s.flaming ? 0.06 + 0.1 * Math.min(1, s.flamePower) : 0, 700, 0.6);
     setAmbient('td-hum', s.phase === 'run' && !s.over ? 0.015 + 0.03 * Math.min(1.6, s.grid) : 0, 110 + 60 * s.grid, 3);
 
@@ -478,7 +483,8 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
         g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, x1, y1, 3 * k, life);
-      } else if (f.kind === 'boom') {
+
+      } else if (f.kind === 'boom' || f.kind === 'burst') {
         glowAt(g, '#ff7a2a', this.X(f.x), this.Y(f.y), f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
       }
     }

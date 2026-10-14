@@ -47,7 +47,8 @@ export interface TdSnapshot {
   baseHp: number; baseMaxHp: number; cores: number; coresMax: number; baseHurt: number;
   /** read-only: follows `brood.weapon` */
   weapon: Weapon; swapLeft: number; swapS: number;
-  aimAngle: number; autoAim: boolean; lane: number; targetId: number;
+  /** the turret always aims itself; `nudge` = the rider's decaying lane bias (k 1 → 0), null when none */
+  aimAngle: number; targetId: number; nudge: { lane: number; k: number } | null;
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   flaming: boolean; flameRange: number; flameHalfAngle: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;
   grid: number; overdrive: boolean; /** dynamo stalled (rider stopped): shields down, leaks hit harder */ stalled: boolean;

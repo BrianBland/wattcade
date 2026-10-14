@@ -31,9 +31,9 @@ export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, brute: 1, cha
 
 export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string }
 export const TOWERS: Record<TowerKind, TowerDef> = {
-  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 6,  desc: 'Chain lightning (3 targets)' },
-  mortar: { name: 'Mortar',      element: 'red',    cost: 80,  range: 36, period: 2.4, dmg: 26, desc: 'Lobbed shells, splash damage' },
-  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 48, desc: 'Charged beam at the toughest' },
+  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)' },
+  mortar: { name: 'Mortar',      element: 'red',    cost: 80,  range: 36, period: 2.4, dmg: 9, desc: 'Lobbed shells, splash damage' },
+  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest' },
 };
 export const TOWER_KINDS: TowerKind[] = ['tesla', 'mortar', 'lens'];
 export const TOWER_MAX_LEVEL = 5;

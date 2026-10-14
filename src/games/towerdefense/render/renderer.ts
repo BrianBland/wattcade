@@ -272,7 +272,7 @@ export class TdRenderer implements GameRenderer {
       for (const tw of s.towers) { const p = PADS[tw.pad]; drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
       // aim line
       const ac = WEAPON_COLOR[s.weapon];
-      g.strokeStyle = ac; g.globalAlpha = s.autoAim ? 0.35 : 0.7; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
+      g.strokeStyle = ac; g.globalAlpha = 0.5; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
       g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k);
       const reach = s.weapon === 'flame' ? s.flameRange : 100;
       g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
@@ -338,9 +338,9 @@ export class TdRenderer implements GameRenderer {
     const k = this.k;
     for (let l = 0; l < 3; l++) {
       const pts = lanePolyline(l, 4);
-      const focus = s.lane === l || s.lane < 0;
-      if (s.phase === 'run' && focus && s.lane >= 0) {
-        g.strokeStyle = 'rgba(160,200,255,0.07)'; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
+      const nk = s.nudge?.lane === l ? s.nudge.k : 0;
+      if (s.phase === 'run' && nk > 0) {
+        g.strokeStyle = `rgba(160,200,255,${(0.04 + 0.08 * nk).toFixed(3)})`; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
         g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y)))); g.stroke();
       }
       // flowing chevrons toward the base
@@ -358,12 +358,13 @@ export class TdRenderer implements GameRenderer {
       const gc = boss ? COL.gold : next ? '#ff8a6a' : '#5a7090';
       glowAt(g, gc, gx, gy, (4 + Math.sin(t * 3 + l) * 0.6) * k, 0.45);
       g.strokeStyle = gc; g.lineWidth = Math.max(1, k * 0.4); g.beginPath(); g.arc(gx, gy, 2.6 * k, t * 2, t * 2 + Math.PI * 1.4); g.stroke();
-      if (this.laneShown.lane !== s.lane) this.laneShown = { lane: s.lane, at: this.wall };
+      const nl = s.nudge?.lane ?? -1;
+      if (this.laneShown.lane !== nl) this.laneShown = { lane: nl, at: this.wall };
       const since = this.wall - this.laneShown.at;
-      if (s.phase === 'run' && (s.lane === l || s.lane < 0) && since < 2 && this.laneShown.at > 0.5) {
+      if (s.phase === 'run' && nl === l && since < 2 && this.laneShown.at > 0.5) {
         g.globalAlpha = Math.min(1, (2 - since) * 2);
         g.font = `800 ${Math.max(10, Math.round(2.6 * k))}px system-ui, sans-serif`; g.textAlign = 'center';
-        g.fillStyle = 'rgba(200,225,255,0.85)'; g.fillText(s.lane < 0 ? 'ALL LANES' : `${LANE_NAMES[l].toUpperCase()} · PRIORITY`, gx, gy + 7 * k); g.textAlign = 'left';
+        g.fillStyle = 'rgba(200,225,255,0.85)'; g.fillText(`${LANE_NAMES[l].toUpperCase()} · NUDGE`, gx, gy + 7 * k); g.textAlign = 'left';
         g.globalAlpha = 1;
       }
     }

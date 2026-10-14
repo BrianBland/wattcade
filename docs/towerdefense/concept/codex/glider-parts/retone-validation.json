@@ -149,7 +149,6 @@
   ],
   "manifestSha256": "a478cf0cadead606e45a9258d33839eb938683e83ba30a3034953e0798dac2ad",
   "canvasChecks": 26,
-  "preservedWingHolePixels": 140464,
   "scriptedJointChecks": 168,
   "gapJoints": [],
   "clippedPoses": [],
@@ -165,5 +164,6 @@
     "rendererAids": {},
     "baseOnlyAlsoCaptured": true,
     "backgroundSource": "PR #138 public/td/environment/background.webp"
-  }
+  },
+  "wingTreatment": "Continuous crystal panels with fine fractures; scattered perforations filled; one trailing-edge chip per wing. Bone fingers retained."
 }

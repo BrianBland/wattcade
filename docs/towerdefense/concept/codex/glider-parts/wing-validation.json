@@ -1,0 +1,65 @@
+{
+  "sourceCommit": "191b5e3",
+  "manifestSha256": "a478cf0cadead606e45a9258d33839eb938683e83ba30a3034953e0798dac2ad",
+  "manifestUnchanged": true,
+  "canvasesUnchanged": true,
+  "nonWingPartsUnchanged": true,
+  "wings": [
+    {
+      "name": "wing_r",
+      "canvas": [
+        251,
+        414
+      ],
+      "filledPerforations": 38,
+      "filledPerforationPixels": 2472,
+      "membranePixelsRepainted": 26317,
+      "edgeChipPixels": 80,
+      "edgeChipTriangle": [
+        [
+          185,
+          249
+        ],
+        [
+          167,
+          258
+        ],
+        [
+          169,
+          272
+        ]
+      ]
+    },
+    {
+      "name": "wing_l",
+      "canvas": [
+        252,
+        401
+      ],
+      "filledPerforations": 31,
+      "filledPerforationPixels": 2077,
+      "membranePixelsRepainted": 24662,
+      "edgeChipPixels": 122,
+      "edgeChipTriangle": [
+        [
+          62,
+          249
+        ],
+        [
+          80,
+          258
+        ],
+        [
+          78,
+          272
+        ]
+      ]
+    }
+  ],
+  "scriptedJointChecks": 168,
+  "gapJoints": [],
+  "clippedPoses": [],
+  "greenFringePixels": 0,
+  "previewDeviceScaleFactor": 2,
+  "gliderGameSizePx": 45
+}

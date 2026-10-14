@@ -6,6 +6,7 @@ import { plotYaw, SHORE_KINDS } from './buildings';
 import type { Seg, Terrain } from './world';
 import { lam, mergeStatic, mulberry, pick, softTexture } from './util';
 import type { Season } from '../sim/extras';
+import { PointCloud } from '../../../gfx/points';
 
 const FLOWER_COLS = [0xff6fa8, 0xffd23f, 0xffffff, 0xb07cff, 0xff5a4f, 0xff9f43, 0x6cb4ff, 0xffb3e6];
 const WILD_COLS = [0xffffff, 0xfff27a, 0xd9b8ff, 0xffc2dd, 0xfff6c8];
@@ -46,7 +47,7 @@ export class Life {
   private gulls: Array<{ g: THREE.Group; l: THREE.Object3D; r: THREE.Object3D; ph: number; rad: number; h: number; cx: number; cz: number; sp: number }> = [];
   private flies: Array<{ g: THREE.Group; l: THREE.Mesh; r: THREE.Mesh; cx: number; cz: number; ph: number; y: number }> = [];
   private washing: THREE.Mesh[] = [];
-  private smoke: THREE.Points;
+  private smoke: PointCloud;
   private buildings: Array<string | null> = []; private levels: number[] = []; private islet = false;
   private season: Season = 'spring';
   /** Recolour trees, grass and flowers for the season (rebuilds the decor next frame). */
@@ -75,8 +76,7 @@ export class Life {
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
     sg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(N * 4), 4));
-    this.smoke = new THREE.Points(sg, new THREE.PointsMaterial({ size: 1.6, map: softTexture(64, 0.2), vertexColors: true, transparent: true, depthWrite: false }));
-    this.smoke.frustumCulled = false;
+    this.smoke = new PointCloud(sg, { size: 1.6, map: softTexture(64, 0.2), vertexColors: true, transparent: true, depthWrite: false });
     this.group.add(this.smoke);
     this.makeGulls();
   }
@@ -505,8 +505,8 @@ export class Life {
 
   private updateSmoke(f: LifeFrame) {
     const src = f.smokeExtra; // chimneys and steamer funnels, in world space
-    const pos = this.smoke.geometry.attributes.position as THREE.BufferAttribute;
-    const col = this.smoke.geometry.attributes.color as THREE.BufferAttribute;
+    const pos = this.smoke.cloud.attributes.position as THREE.BufferAttribute;
+    const col = this.smoke.cloud.attributes.color as THREE.BufferAttribute;
     const per = 8, N = pos.count;
     const grey = 0.85 - f.night * 0.5;
     for (let i = 0; i < N; i++) {

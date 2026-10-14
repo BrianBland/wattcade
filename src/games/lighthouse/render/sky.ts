@@ -1,5 +1,9 @@
 // Sky dome, sun/moon, stars, clouds, fog banks, rain and lightning.
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { abs, clamp, length, mix, mod, normalize, pow, positionLocal, smoothstep, uniform, vec3, vec4 } from 'three/tsl';
+import type { Node, UniformNode } from 'three/webgpu';
+import { raw } from '../../../gfx/tsl';
+import { PointCloud } from '../../../gfx/points';
 import { mulberry, softTexture } from './util';
 
 export interface SkyState { t: number; dt: number; day: number; fog: number; storm: number; warn: number; lightningAge: number; camTarget: THREE.Vector3; rainbow?: number;
@@ -22,24 +26,22 @@ const tmpC = new THREE.Color();
 
 export class Sky {
   readonly group = new THREE.Group();
-  private dome: THREE.Mesh; private uni: { top: { value: THREE.Color }; hor: { value: THREE.Color } };
-  private sun: THREE.Sprite; private moon: THREE.Sprite; private stars: THREE.Points;
+  private dome: THREE.Mesh; private uni: { top: UniformNode<'color', THREE.Color>; hor: UniformNode<'color', THREE.Color> };
+  private sun: THREE.Sprite; private moon: THREE.Sprite; private stars: PointCloud;
   private clouds: Array<{ g: THREE.Group; speed: number; x0: number }> = [];
   private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
   private banks: Array<{ s: THREE.Sprite; x0: number; z: number; sp: number }> = [];
   private rain: THREE.LineSegments; private rainPos: Float32Array;
   private bolt: THREE.Line; private lastLightning = 99;
-  private rainbow: THREE.Mesh; private rainbowOp = { value: 0 };
-  private snow: THREE.Points; private snowPos: Float32Array; private cloudT = 0;
+  private rainbow: THREE.Mesh; private rainbowOp = uniform(0);
+  private snow: PointCloud; private snowPos: Float32Array; private cloudT = 0;
   private out: SkyOut = { night: 0, horizon: new THREE.Color(), sunDir: new THREE.Vector3(), sunColor: new THREE.Color(), sunI: 1, flash: 0 };
 
   constructor() {
-    this.uni = { top: { value: new THREE.Color() }, hor: { value: new THREE.Color() } };
-    this.dome = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 12), new THREE.ShaderMaterial({
-      uniforms: this.uni, side: THREE.BackSide, depthWrite: false, fog: false,
-      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 hor; varying vec3 vP; void main(){ float h = clamp(vP.y, 0.0, 1.0); gl_FragColor = vec4(mix(hor, top, pow(h, 0.55)), 1.0); }',
-    }));
+    this.uni = { top: uniform(new THREE.Color()), hor: uniform(new THREE.Color()) };
+    const domeMat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
+    domeMat.colorNode = raw(mix(this.uni.hor, this.uni.top, pow(clamp(normalize(positionLocal).y, 0, 1), 0.55)));
+    this.dome = new THREE.Mesh(new THREE.SphereGeometry(600, 24, 12), domeMat);
     this.dome.renderOrder = -10; this.group.add(this.dome);
     const tex = softTexture(128, 0.35);
     this.sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xfff1c0, fog: false, depthWrite: false, transparent: true }));
@@ -53,7 +55,7 @@ export class Sky {
       sp.set([Math.cos(a) * Math.cos(e) * 560, Math.sin(e) * 560, Math.sin(a) * Math.cos(e) * 560], i * 3);
     }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false }));
+    this.stars = new PointCloud(sg, { color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false });
     this.group.add(this.stars);
     // clouds: clusters of flattened icospheres drifting overhead
     const puff = new THREE.IcosahedronGeometry(1, 0);
@@ -91,18 +93,15 @@ export class Sky {
     const SN = 900; this.snowPos = new Float32Array(SN * 3);
     for (let i = 0; i < SN; i++) this.snowPos.set([r() * 160 - 80, r() * 50, r() * 120 - 40], i * 3);
     const sng = new THREE.BufferGeometry(); sng.setAttribute('position', new THREE.BufferAttribute(this.snowPos, 3));
-    this.snow = new THREE.Points(sng, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, map: softTexture(32, 0.4), transparent: true, opacity: 0, depthWrite: false }));
+    this.snow = new PointCloud(sng, { color: 0xffffff, size: 0.35, map: softTexture(32, 0.4), transparent: true, opacity: 0, depthWrite: false });
     this.snow.frustumCulled = false; this.snow.visible = false; this.group.add(this.snow);
     // rainbow after a weathered storm: a half ring far beyond the island, bands from violet (inside) to red (outside)
-    this.rainbow = new THREE.Mesh(new THREE.RingGeometry(110, 124, 96, 1, 0, Math.PI), new THREE.ShaderMaterial({
-      uniforms: { op: this.rainbowOp }, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
-      vertexShader: 'varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `uniform float op; varying vec2 vP;
-        vec3 hue(float h){ return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
-        void main(){ float k = (length(vP) - 110.0) / 14.0;
-          float a = op * smoothstep(0.0, 0.18, k) * (1.0 - smoothstep(0.82, 1.0, k)) * smoothstep(92.0, 112.0, vP.y);
-          gl_FragColor = vec4(hue(mix(0.78, 0.0, k)) * a * 0.36, 1.0); }`,
-    }));
+    const rbMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    const vP = positionLocal.xy, k = length(vP).sub(110).div(14);
+    const hue = (h: Node<'float'>) => clamp(abs(mod(vec3(h.mul(6)).add(vec3(0, 4, 2)), 6).sub(3)).sub(1), 0, 1);
+    const a = this.rainbowOp.mul(smoothstep(0, 0.18, k)).mul(smoothstep(0.82, 1, k).oneMinus()).mul(smoothstep(92, 112, vP.y));
+    rbMat.colorNode = vec4(raw(hue(mix(0.78, 0, k)).mul(a).mul(0.36)), 1);
+    this.rainbow = new THREE.Mesh(new THREE.RingGeometry(110, 124, 96, 1, 0, Math.PI), rbMat);
     this.rainbow.position.set(10, -92, -230); // low over the far sea; the feet meet the water
     this.rainbow.renderOrder = -9; this.rainbow.visible = false; this.group.add(this.rainbow);
   }
@@ -141,7 +140,7 @@ export class Sky {
     (this.sun.material as THREE.SpriteMaterial).color.copy(P.sunNoon).lerp(P.sunLow, gold);
     this.moon.position.set(Math.sin(ang), -elev, -0.6).normalize().multiplyScalar(520);
     (this.moon.material as THREE.SpriteMaterial).opacity = o.night * (1 - st * 0.9) * (1 - s.fog * 0.5);
-    (this.stars.material as THREE.PointsMaterial).opacity = o.night * (1 - st) * (1 - s.fog * 0.8);
+    this.stars.material.opacity = o.night * (1 - st) * (1 - s.fog * 0.8);
     o.sunColor.copy(P.lightNoon).lerp(P.lightLow, gold);
     o.sunI = Math.max(0, Math.min(1, (elev + 0.05) * 4)) * (1 - st * 0.75) * (1 - overcast * 0.6) * (1 + sunny * 0.1);
     // clouds (integrate the speed so a change of wind doesn't jump them)
@@ -165,7 +164,7 @@ export class Sky {
     const rainOn = Math.max(0, s.storm - 0.15, shower * 0.3);
     // snow
     const snowOn = snowy * (1 - st);
-    (this.snow.material as THREE.PointsMaterial).opacity = snowOn * 0.9;
+    this.snow.material.opacity = snowOn * 0.9;
     this.snow.visible = snowOn > 0.02;
     if (this.snow.visible) {
       const p = this.snowPos, fall = 2.4 * s.dt;
@@ -174,7 +173,7 @@ export class Sky {
         if (p[i + 1] < 0) { p[i + 1] += 50; p[i] = ((p[i] + 80) % 160 + 160) % 160 - 80; }
       }
       this.snow.position.set(s.camTarget.x, 0, s.camTarget.z - 20);
-      (this.snow.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+      this.snow.cloud.attributes.position.needsUpdate = true;
     }
     (this.rain.material as THREE.LineBasicMaterial).opacity = Math.min(0.55, rainOn);
     this.rain.visible = rainOn > 0;

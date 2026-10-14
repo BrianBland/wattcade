@@ -1,89 +1,30 @@
 {
-  "parts": 33,
-  "rgbaPairs": 33,
-  "productionBytes": 942491,
+  "parts": 27,
+  "rgbaPairs": 27,
+  "productionBytes": 1345866,
   "budgetBytes": 1500000,
-  "exactPeriodicTiles": 4,
-  "exactPeriodicStrips": 2,
+  "paintedBackground": "background.webp",
+  "backgroundQuality": 92,
+  "fixedLanes": 3,
+  "plateauPads": 6,
+  "backgroundRgbPsnr": 40.308,
+  "paintedFloorSupport": [
+    0.95,
+    0.92,
+    0.99
+  ],
+  "fullPlatformRockTopSupport": [
+    0.9168,
+    0.9193,
+    0.9177,
+    0.9191,
+    0.9237,
+    0.9162
+  ],
+  "platformSupportMeasuredOn": "retained full-resolution source PNG",
   "tintSamples": 24,
   "sourceTool": "OpenAI image_gen.imagegen",
   "partsChecked": [
-    {
-      "name": "ground_1",
-      "size": [
-        512,
-        512
-      ],
-      "seam": {
-        "xMaxDelta": 0,
-        "yMaxDelta": 0
-      },
-      "baseBytes": 59140,
-      "glowBytes": 614
-    },
-    {
-      "name": "ground_2",
-      "size": [
-        512,
-        512
-      ],
-      "seam": {
-        "xMaxDelta": 0,
-        "yMaxDelta": 0
-      },
-      "baseBytes": 60510,
-      "glowBytes": 614
-    },
-    {
-      "name": "ground_3",
-      "size": [
-        512,
-        512
-      ],
-      "seam": {
-        "xMaxDelta": 0,
-        "yMaxDelta": 0
-      },
-      "baseBytes": 60918,
-      "glowBytes": 614
-    },
-    {
-      "name": "trench_floor",
-      "size": [
-        512,
-        512
-      ],
-      "seam": {
-        "xMaxDelta": 0,
-        "yMaxDelta": 0
-      },
-      "baseBytes": 67296,
-      "glowBytes": 614
-    },
-    {
-      "name": "trench_lip",
-      "size": [
-        512,
-        96
-      ],
-      "seam": {
-        "xMaxDelta": 0
-      },
-      "baseBytes": 20298,
-      "glowBytes": 407
-    },
-    {
-      "name": "trench_lip_fractured",
-      "size": [
-        512,
-        96
-      ],
-      "seam": {
-        "xMaxDelta": 0
-      },
-      "baseBytes": 20863,
-      "glowBytes": 407
-    },
     {
       "name": "creep_1",
       "size": [

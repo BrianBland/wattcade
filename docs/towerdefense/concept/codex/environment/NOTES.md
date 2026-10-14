@@ -1,36 +1,38 @@
-# Environment working files — issue 131
+# Painted battlefield working files — issue 131 revision
 
-Tool: OpenAI image_gen.imagegen; processing and manifest proofs: Pillow/NumPy.
-Original battlefield/tower concepts and accepted issue 129 towers guide material.
-The user clarified that lanes must be carved out of ground, not bordered by walls.
-trench-mockup.png is the generated scene illustrating that excavation direction.
-It is not the scripted production preview and does not claim game integration.
+Art: OpenAI image_gen.imagegen, guided by the approved trench-mockup.png.
+User rejected flattened modular terrain and approved one painted fixed map.
+Left/center lanes stay fixed; the right lane is traced to its painted floor.
+Six full tower footprints move onto rock plateaus with bank clearance.
+FILES.txt lists every actual file; SHA256SUMS.txt records hashes.
 
-FILES.txt enumerates every actual file; SHA256SUMS.txt records content hashes.
-raw/props-sheet-raw.png: 12 worn industrial/rock/canvas props on green.
-raw/organic-sheet-raw.png: retained first pass; not used by the exporter.
-raw/organic-sheet-v2-raw.png: corrected margins, six growth patches, three burrows.
-raw/splat-sheet-raw.png: six distinct neutral-grey liquid splash masters on green.
-raw/terrain-sheet-raw.png: three ground textures, floor, unused wall-like lips.
-raw/cut-banks-sheet-raw.png: six geological incision strips; first and third used.
-All six raw source sheets retain their original #00FF00 matte and resolution.
-references/: unchanged original battlefield/towers, accepted tower lineup,
-and the actual Warrior cutout used to assess game-scale readability.
-generation.md records prompts, source paths, imagegen output names and decisions.
-build.py exports, validates and renders entirely from manifest/assets.
-requirements.txt pins Pillow/NumPy; proofs also need system DejaVu Sans fonts.
-production-NOTES.md is copied to the production export's NOTES.md.
-export/ is an exact copy of public/td/environment/, including its own inventory.
-preview-full.png: lossless full-color version of the scripted production proof.
-ground-tiling.png: three actual 3×3 periodic ground renders.
-trench-s-curve.png: source floor and cut-bank strip warped with arc-length UVs.
-game-scale.png: actual Warrior cutout at 105px on three manifest-rendered lanes.
-comparison.png: original battlefield, exported terrain, accepted towers and props.
-validation.json records 33 pairs, seams, tint samples, dimensions and byte budget.
+raw/battlefield-painted-v2-raw.png: whole clean terrain guided by lane layout.
+raw/battlefield-painted-v3-raw.png: plateau mounting-site refinement.
+raw/battlefield-painted-v4-raw.png: right-floor correction; production source.
+raw/*-sheet-raw.png and organic-sheet-v2-raw.png: all six retained green sheets.
+Current overlay cutouts still use organic v2, splats and props sheets.
+trench-mockup.png: approved scenic direction; not the runtime background.
+map-layout-guide.png: final scripted geometry guide, not generated art.
+layout.py/map-layout.json: registered field, fixed curves and plateau pads.
+registration.png: final painted terrain with movement/footprint guides.
+build.py: full-resolution export, overlay preparation, validation, inventories.
+scene.py: compose real accepted rigs, cables, actors and exported terrain.
+MAP_INTEGRATION.md: transforms and required later shared sim/renderer changes.
+production-NOTES.md: copied into the production export's NOTES.md.
+requirements.txt: Pillow/NumPy; proofs also use system DejaVu Sans.
+generation.md: actual prompts/output provenance, including this revision.
+references/: original concepts/Warrior, accepted tower lineup, read-only tower
+and outpost export PNGs and their original render scripts for honest assembly.
+battlefield-assembled.png: full-color 1536×1024 proof with three built towers.
+all-six-pads.png: same map with all six towers built on plateau.
+portrait.png: crop of the same map retaining tower/outpost footprints.
+game-scale.png: reduced assembly; comparison.png: approved vs delivered.
+overlays-full.png: every independent overlay/tint and glow-off example.
+export/: exact production copy, with its own notes and inventories.
+validation.json: actual map, pad, overlay, tint, fidelity and budget checks.
+archive/: rejected v1 and initial geometry/registration proofs for history.
 
-Rebuild: python -B build.py --output /workspace/wattcade/public/td/environment
-Recheck: same command with --verify-only. No game sources are read or changed.
-No emissive features were invented for terrain or metal: their masks are empty.
-Natural cut banks supersede the brief's occasional steel shoring per user request.
-Depth relief follows the concept; visible cut faces are not a flat mathematical
-projection. No cast ground shadows. Bank orientation/repeat rules are in manifest.
+Rebuild: python -B layout.py; python -B build.py --output /workspace/wattcade/public/td/environment
+Verify: same build.py command with --verify-only. No game code changes.
+Integration must adopt right-lane controls and plateau pads in map-layout.json.
+Painted cut-face shading is intentional. Actors/effects remain separate.

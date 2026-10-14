@@ -1,5 +1,8 @@
 # Source provenance and generation decisions
 
+Current production is the painted fixed-map revision described at the end.
+The initial export/tiling description below is historical v1, now archived.
+
 All generated images use OpenAI `image_gen.imagegen`. Raw cutout sheets are
 1536×1024 RGB PNGs. Their flat #00FF00 matte is retained unchanged. The separate
 1536×1024 scenic trench mockup uses a painted battlefield background.
@@ -79,3 +82,53 @@ The 2D assets retain original-style overhead relief; cut-bank faces and barrel
 rims are visible. This is documented rather than described as mathematically flat
 orthographic projection. No game code, fresh generated production previews,
 unproduced assets, or renderer integration are claimed.
+
+
+## Painted fixed-map revision — user-approved architecture
+
+The user rejected the flattened production terrain as bland and approved using
+one cohesive painted terrain background matching trench-mockup.png. They also
+requested towers on top of the plateau, rather than within trenches. The raw
+PNG paintings are retained without color flattening; production encodes the full
+1536×1024 image as WebP quality 92. Independent overlays remain unchanged.
+
+- exec-bf55665a-4027-4c99-9cb8-a3a3f3e5fa36.png → raw/battlefield-painted-v2-raw.png.
+  References: initial geometry guide (retained in archive/map-layout-guide-initial.png)
+  and trench-mockup.png. Requested exact guide lane composition with the mockup's
+  rich fractured basalt, eroded geological cut faces, brown recessed floors,
+  loose spoil and six empty plateau placement sites. No actors, outpost, towers,
+  cables, lights, organic growth or industrial props in the painting.
+- exec-138eb409-590d-4d75-879f-db5b14ea414d.png → raw/battlefield-painted-v3-raw.png.
+  References: v2 and the initial guide. Local request to level six plateau
+  mounting patches at their given pixel centers, preserving all trenches,
+  material texture, geological depth and global composition.
+- exec-24d6fa4f-7bd0-453e-be6b-e8c3a35aa1e6.png → raw/battlefield-painted-v4-raw.png.
+  References: v3, initial guide and initial cyan registration overlay (retained
+  as archive/registration-before-path-trace.png). Requested right-floor
+  registration correction only, continuous packed brown navigable floor,
+  preserved left/center trenches and all material style. This is exported.
+
+The image model does not enforce pixel-exact geometry. Rather than claiming it
+followed every guide exactly, the final right-floor centerline was measured from
+brown floor support and fit to a cubic with fixed spawn/base endpoints. The final
+rounded controls [103,16],[84,18],[87,66],[50,90] follow the authored floor.
+Left/center retain existing game controls. Both original and revised right
+controls are exported for the future integration; no game code was changed.
+Final plateau pad positions are selected with full-footprint bank clearance
+and >=91.5% rock-top material support on the retained source painting,
+not merely centered somewhere near a trench. The integration handoff documents
+applying lane/pad changes together in the shared simulation/render definition.
+
+Final map-layout-guide.png and registration.png are scripted final geometry
+proofs; they are not generated terrain. scene.py renders the actual decoded
+background and overlay manifest with accepted tower and outpost export references
+copied unchanged from codex/td-towers-work and codex/td-outpost-work, plus their
+unchanged original rendering scripts. The original Warrior stays a reference.
+These external rigs are review-only and not new production machinery assets.
+Proof cables are drawn in the script and are not bundled cable art assets.
+
+Primary assembled proof shows three built towers. all-six-pads.png verifies all
+six footprints. Portrait uses the same registered map. The reference comparison
+uses the actual approved trench-mockup.png and actual assembled delivery, not
+newly generated substitute scenes. Overlay proof enumerates all retained 27
+pieces and every required brood tint. Archived v1 exports are not live assets.

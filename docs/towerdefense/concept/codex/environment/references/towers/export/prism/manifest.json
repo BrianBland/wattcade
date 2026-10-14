@@ -1,0 +1,353 @@
+{
+  "size": [
+    224,
+    224
+  ],
+  "centerX": 112,
+  "root": "pad",
+  "light": "reference-matched",
+  "mountCenter": [
+    112,
+    112
+  ],
+  "aim": {
+    "enabled": false,
+    "part": "head"
+  },
+  "view": "steep overhead with visible machinery depth, matching the approved concept",
+  "inGameDiameterPx": 68,
+  "padDiameterPx": 136,
+  "paddingPx": 4,
+  "angleConvention": "clockwise degrees in image coordinates; zero aims up",
+  "coordinates": "offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms",
+  "upgrades": "include every part with minLevel <= level; valid levels 1 through 5",
+  "glowBlend": "additive RGB weighted by alpha; base art remains complete without glow",
+  "anchors": {
+    "muzzle": {
+      "parent": "head",
+      "position": [
+        112,
+        18
+      ]
+    },
+    "cable": {
+      "parent": "pad",
+      "position": [
+        177,
+        112
+      ]
+    },
+    "range_center": {
+      "parent": "pad",
+      "position": [
+        112,
+        112
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "pad",
+      "file": "../parts/pad.png",
+      "glow": "../parts/pad_glow.png",
+      "offset": [
+        43,
+        49
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": null,
+      "z": 0,
+      "minLevel": 1,
+      "outlineCenter": [
+        112.15926892950391,
+        112.32185628742515
+      ],
+      "outlineBounds": [
+        55.52219321148824,
+        53.712574850299404,
+        168.79634464751956,
+        170.9311377245509
+      ]
+    },
+    {
+      "name": "base",
+      "file": "parts/base.png",
+      "glow": "parts/base_glow.png",
+      "offset": [
+        54,
+        62
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "pad",
+      "z": 10,
+      "minLevel": 1,
+      "outlineCenter": [
+        111.69281045751634,
+        111.57544757033247
+      ],
+      "outlineBounds": [
+        63.54248366013073,
+        67.61125319693093,
+        159.84313725490196,
+        155.539641943734
+      ],
+      "visualDetails": {
+        "forwardWindingCoil": false,
+        "frontConnector": "short steel/brass coupling"
+      }
+    },
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        83,
+        9
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 40,
+      "minLevel": 1,
+      "mountPosition": [
+        111.64285714285714,
+        112.49234135667396
+      ],
+      "aims": false
+    },
+    {
+      "name": "upgrade_l2",
+      "file": "parts/upgrade_l2.png",
+      "glow": "parts/upgrade_l2_glow.png",
+      "offset": [
+        60,
+        68
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 30,
+      "minLevel": 2
+    },
+    {
+      "name": "upgrade_l3",
+      "file": "parts/upgrade_l3.png",
+      "glow": "parts/upgrade_l3_glow.png",
+      "offset": [
+        76,
+        103
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 45,
+      "minLevel": 3
+    },
+    {
+      "name": "upgrade_l4",
+      "file": "parts/upgrade_l4.png",
+      "glow": "parts/upgrade_l4_glow.png",
+      "offset": [
+        48,
+        96
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 20,
+      "minLevel": 4
+    },
+    {
+      "name": "upgrade_l5",
+      "file": "parts/upgrade_l5.png",
+      "glow": "parts/upgrade_l5_glow.png",
+      "offset": [
+        96,
+        66
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 35,
+      "minLevel": 5,
+      "visualDetails": {
+        "powerCoils": 2,
+        "placement": "large center-front, small rear-right",
+        "coilMounts": [
+          [
+            112,
+            160
+          ],
+          [
+            137,
+            98
+          ]
+        ]
+      }
+    }
+  ],
+  "animations": {
+    "passive": {
+      "durationMs": 1600,
+      "loop": true,
+      "frameDurationMs": 200,
+      "glowGain": [
+        [
+          0,
+          0.65
+        ],
+        [
+          800,
+          0.9
+        ],
+        [
+          1600,
+          0.65
+        ]
+      ],
+      "glowStrength": [
+        [
+          0,
+          0.06
+        ],
+        [
+          800,
+          0.18
+        ],
+        [
+          1600,
+          0.06
+        ]
+      ],
+      "effectOpacity": [
+        [
+          0,
+          0.12
+        ],
+        [
+          800,
+          0.28
+        ],
+        [
+          1600,
+          0.12
+        ]
+      ],
+      "effect": {
+        "file": "effects/passive.png",
+        "frames": 4,
+        "frameSize": [
+          112,
+          112
+        ],
+        "offset": [
+          56.0,
+          4.0
+        ],
+        "parent": "head",
+        "blend": "additive"
+      }
+    },
+    "attack": {
+      "durationMs": 640,
+      "loop": false,
+      "frameDurationMs": 160,
+      "glowGain": [
+        [
+          0,
+          0.75
+        ],
+        [
+          160,
+          1.05
+        ],
+        [
+          240,
+          1.35
+        ],
+        [
+          400,
+          1.15
+        ],
+        [
+          640,
+          0.65
+        ]
+      ],
+      "glowStrength": [
+        [
+          0,
+          0.1
+        ],
+        [
+          160,
+          0.3
+        ],
+        [
+          240,
+          0.9
+        ],
+        [
+          400,
+          0.5
+        ],
+        [
+          640,
+          0.06
+        ]
+      ],
+      "effectOpacity": [
+        [
+          0,
+          0.1
+        ],
+        [
+          160,
+          0.5
+        ],
+        [
+          240,
+          1
+        ],
+        [
+          400,
+          0.7
+        ],
+        [
+          640,
+          0
+        ]
+      ],
+      "effect": {
+        "file": "effects/attack.png",
+        "frames": 4,
+        "frameSize": [
+          112,
+          112
+        ],
+        "offset": [
+          56.0,
+          4.0
+        ],
+        "parent": "head",
+        "blend": "additive"
+      }
+    }
+  }
+}

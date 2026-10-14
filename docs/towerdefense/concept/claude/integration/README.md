@@ -29,3 +29,8 @@ Skitters and Gliders on a real path floor (top) and a plateau (bottom) of the pa
 
 ## Floor value with re-toned blues (`floor-variants.jpg`)
 Tan, mid (about 30% darker) and dark (about 55% darker) path floors. The blue brood has a simulated lighter re-tone (`bluetint=0.5`); the bottom row adds a soft 1 px brood-colour outline to every alien (`rim=0.45`). Without the outline, the reds go murky on darker floors. With it, every brood reads on every floor. Mid keeps the moody look and still separates the paths from the charcoal plateaus.
+
+## Re-toned blue brood (Oct 13)
+- `retoned-blues-on-map.jpg`: Codex's re-toned Skitter and Glider puppets on the tan floor, the mid floor, and the mid floor with a soft outline, with no tint. Both now read without aids.
+- `roster-with-retoned-blues.jpg`: all eight animated.
+- `blue-candidates-vs-puppets.jpg`: left to right, the compact Skitter candidate (unrigged), the re-toned Skitter puppet, the Glider candidate (unrigged), and the re-toned Glider puppet.

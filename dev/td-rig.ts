@@ -208,15 +208,36 @@ function mix(a: string, b: string, f: number) {
   return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * f)).join(',')})`;
 }
 /** Places a creature centred at (x, y), heading in radians (0 = +x), scaled so its 480 px manifest length is `px` long. */
-export function place(g: G, r: Rig, x: number, y: number, heading: number, px: number, p: Pose) {
-  const c = creatureCanvas(r, p), s = px / 480, cx = r.m.centerX, cy = r.cy;
+/** Optional readability aids (0..1 strengths), drawn in the brood colour. */
+export interface Aids { tint?: number; underglow?: number; rim?: number; rimPx?: number }
+function silhouette(c: HTMLCanvasElement, color: string): HTMLCanvasElement {
+  const o = document.createElement('canvas'); o.width = c.width; o.height = c.height;
+  const x = o.getContext('2d')!; x.drawImage(c, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, o.width, o.height);
+  return o;
+}
+export function place(g: G, r: Rig, x: number, y: number, heading: number, px: number, p: Pose, aids: Aids = {}) {
+  let c = creatureCanvas(r, p);
+  const s = px / 480, cx = r.m.centerX, cy = r.cy, col = r.spec.color;
+  if (aids.tint) { const t = document.createElement('canvas'); t.width = c.width; t.height = c.height; const tg = t.getContext('2d')!; tg.drawImage(c, 0, 0); tg.globalCompositeOperation = 'source-atop'; tg.globalAlpha = aids.tint; tg.fillStyle = col; tg.fillRect(0, 0, t.width, t.height); c = t; }
   const alt = r.spec.flying ? 1 : 0, f = alt ? flap(r.spec, p.t) : 0;
   g.save(); g.translate(x, y); g.rotate(heading + Math.PI / 2); g.scale(s, s);
   if (r.spec.thud) { const tr = travel(r.spec, p.t); if (tr.dust > 0.05) dust(g, tr.dust, tr.step); }
+  if (aids.underglow) { // brood-coloured light pooled on the ground beneath
+    const gx = alt ? 50 : 0, gy = (alt ? 80 : 0), R = 300;
+    const gr = g.createRadialGradient(gx, gy, 0, gx, gy, R); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.45 * aids.underglow; g.fillStyle = gr; g.beginPath(); g.ellipse(gx, gy, R, R * 1.1, 0, 0, TAU); g.fill(); g.restore();
+  }
   g.save(); g.filter = alt ? 'brightness(0) blur(6px)' : 'brightness(0)'; g.globalAlpha = alt ? 0.3 : 0.5;
   const sh = alt ? 80 + 25 * (1 - f) : 14; g.drawImage(c, -PAD - cx + sh * 0.6, -PAD - cy + sh); g.restore();
   const bob = alt ? 1 + 0.045 * (1 - f) : 1; // rises on the upstroke, sinks as the wings bite
-  g.scale(bob, bob); g.drawImage(c, -PAD - cx, -PAD - cy);
+  g.scale(bob, bob);
+  if (aids.rim) { // a thin bright outline: the silhouette offset in 8 directions by ~1.5 screen px
+    const sil = silhouette(c, col), o = (aids.rimPx ?? 1.5) / (s * bob);
+    g.save(); g.globalAlpha = aids.rim;
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; g.drawImage(sil, -PAD - cx + Math.cos(a) * o, -PAD - cy + Math.sin(a) * o); }
+    g.restore();
+  }
+  g.drawImage(c, -PAD - cx, -PAD - cy);
   g.restore();
 }
 

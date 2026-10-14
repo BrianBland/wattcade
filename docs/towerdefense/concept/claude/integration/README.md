@@ -23,3 +23,6 @@ Pixel mock-ups of Codex's painted map (`&floor=dark`, `&rock=calm` on the integr
 - **V2 dark floor:** worse. Dark chitin merges into the floor and only the glows survive.
 - **V3 calm rock:** best. The floors keep their contrast and the plateaus stop competing.
 - **V4 both:** muddy everywhere.
+
+## Blue brood readability (`blue-readability.jpg`, `dev/td-aids.html`)
+Skitters and Gliders on a real path floor (top) and a plateau (bottom) of the painted map, at iPad Pro game scale. As is, they read as dark scribbles on both, because their shells are near-black with thin cyan lines. A 35% brood-colour shell tint plus a soft 1 px brood-colour outline fixes it without hiding detail; a 1.3× Skitter adds mass. The strong 1.5 px outline turns them into flat stickers.

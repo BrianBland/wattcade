@@ -76,10 +76,14 @@ export const scenarios: Array<{
     },
   },
   {
-    // steady zone 2 for half an hour: the economy builds every pad and the towers do real work
+    // steady zone 2 for half an hour: the economy builds every pad, and the hands-off turret and the towers share the work
+    // (effective damage, not kills: a kill count is mostly swarm drones and says little about who stops the heavies)
     name: 'z2-economy', script: 'z2', minutes: 30, seed: 1, simOpts: { autopilot: true },
     assert(s) {
       const f: string[] = [];
+      const total = n(s, 'turretDamage') + n(s, 'towerDamage') + n(s, 'empDamage');
+      const share = n(s, 'turretDamage') / total;
+      if (!(share >= 0.4 && share <= 0.6)) f.push(`turret damage share ${share.toFixed(2)} outside 0.40–0.60 (towerDamage ${s.towerDamage} of ${total})`);
       if (!(n(s, 'wavesSurvived') >= 20)) f.push(`wavesSurvived ${s.wavesSurvived} < 20`);
       if (!(n(s, 'towersBuilt') >= 6)) f.push(`towersBuilt ${s.towersBuilt} < 6`);
       if (!(n(s, 'towerUpgrades') >= 6)) f.push(`towerUpgrades ${s.towerUpgrades} < 6`);

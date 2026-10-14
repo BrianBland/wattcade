@@ -295,11 +295,11 @@ describe('workshop', () => {
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true } });
-      s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 60);
-      return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills) };
+      s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 180);
+      return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills), fired: snap(s).towers[0]?.firedAt > 0 };
     };
-    expect(run('idle')).toEqual({ towers: 1, kills: 0 });
-    expect(run('z2').kills).toBeGreaterThan(0);
+    expect(run('idle')).toEqual({ towers: 1, kills: 0, fired: false });
+    expect(run('z2').fired).toBe(true); // early waves the turret takes most kills; the tower still fires
   });
   it('tower stats are sane', () => {
     for (const t of Object.values(TOWERS)) { expect(t.range).toBeGreaterThan(15); expect(t.cost).toBeGreaterThan(0); }

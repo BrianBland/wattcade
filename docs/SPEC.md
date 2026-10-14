@@ -428,7 +428,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Gatling** (blue): sim mode, effect `weapon` +1 % grade (low, spinny). Fires one bullet per `tuning 'gatlingRevsPerShot'` (default 0.25) crank revs.
   - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
   - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).
-- **Aim:** paddles rotate the aim (per `aimMode`). When paddles are idle for > 1.5 s, auto-aim picks the nearest enemy in the **priority lane** (D-pad left/right picks the lane) that the current weapon beats. Draw the aim line.
+- **Aim:** the turret always aims itself (no `aimMode`): the lead alien of the wave's colour on the most threatened lane. Paddles or D-pad left/right nudge it toward a lane for a few seconds (optional). All four shifters are virtual gears. Draw the aim line and a target marker.
 - **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, railChargesFired, baseHpLeft.
 - **Scenarios** (autopilot opt: picks the correct weapon for the nearest threat and fires rail at 3 charges):
   - `sprints`, 20 min → wavesSurvived ≥ 8

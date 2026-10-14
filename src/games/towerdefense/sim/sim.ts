@@ -8,6 +8,7 @@ import {
   type Element, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
+import { chooseTarget, type Nudge, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, type Spawn, type WavePlan } from './waves';
 import type { Banner, BroodInfo, BroodView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
@@ -56,10 +57,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const T = ctx.tuning;
   // weapons (spec)
   const gatlingRevs = T.num('gatlingRevsPerShot', 0.25, 0.05, 2, 0.05, 'crank revs per Gatling bullet');
-  const gatlingDmg = T.num('gatlingDamage', 6, 0.5, 20, 0.5);
+  const gatlingDmg = T.num('gatlingDamage', 30, 0.5, 60, 0.5);
   const gatlingGrade = T.num('gatlingGradePct', 1, 0, 6, 0.5, 'sim-mode grade while Gatling selected');
   const flameLevel = T.num('flameLevelPct', 35, 0, 100, 1, 'resistance level while Flame selected');
-  const flameDpw = T.num('flameDpsPerWatt', 0.3, 0.02, 1, 0.01, 'flame dps per watt (power3s)');
+  const flameDpw = T.num('flameDpsPerWatt', 1.5, 0.02, 3, 0.01, 'flame dps per watt (power3s)');
   const flameRange = T.num('flameRange', 45, 10, 90, 1);
   const flameHalf = T.num('flameHalfAngle', 0.3, 0.1, 1, 0.05);
   const railFtp = T.num('railFtpFraction', 0.95, 0.5, 1.3, 0.01, 'ERG target while Rail selected');
@@ -69,10 +70,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railDmg = T.num('railDamage', 110, 10, 1000, 5);
   const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
   const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
-  const railLaserDps = T.num('railLaserDps', 12, 0, 100, 1, 'targeting laser dps while Rail is selected (x ftpFraction / 0.95, max x1.5)');
+  const railLaserDps = T.num('railLaserDps', 140, 0, 300, 1, 'targeting laser dps while Rail is selected (x ftpFraction / 0.95, max x1.5)');
   const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
-  const aimRate = T.num('aimTurnRate', 1.2, 0.3, 6, 0.1, 'rad/s at full paddle');
-  const autoAimDelay = T.num('autoAimIdleS', 1.5, 0.2, 5, 0.1);
+  const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
+  const nudgeS = T.num('nudgeS', 6, 1, 30, 0.5, 'seconds a lane nudge (paddles / D-pad left-right) lasts, decaying');
+  const nudgeBias = T.num('nudgeBias', 4, 0, 20, 0.5, 'nudged lane threat x (1 + bias x remaining nudge)');
+  const targetStick = T.num('targetStick', 0.6, 0, 1, 0.05, 'keep the current target while its lane threat >= this x the top lane');
   const goodMult = T.num('goodMult', 1.5, 1, 3, 0.1);
   const badMult = T.num('badMult', 0.25, 0, 1, 0.05);
   // base, waves
@@ -104,6 +107,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // dynamo: towers, overdrive, surges, economy
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
   const towerMaxBoost = T.num('towerMaxBoost', 1.6, 1, 3, 0.1, 'cap on tower speed from extra watts');
+  const towerDmgT = T.num('towerDamageMult', 1, 0.1, 5, 0.05, 'all tower damage x (turret vs tower damage share)');
+  const teslaChain = T.num('teslaChain', 3, 1, 10, 1, 'Tesla chain targets at Lv 1');
+  const teslaChainPerLv = T.num('teslaChainPerLevel', 0.5, 0, 2, 0.25, 'extra Tesla chain targets per level (floored)');
+  const towerCostT = T.num('towerCostMult', 1, 0.2, 5, 0.05, 'all tower build/upgrade costs x');
   const overdriveMult = T.num('overdriveMult', 1.5, 1, 3, 0.1, 'damage / tower speed while sprinting');
   const surgeEvery = T.num('surgeEveryWaves', 3, 1, 20, 1, 'a Power Surge challenge every N waves');
   const surgeNeed = T.num('surgeNeedS', 15, 3, 120, 1, 'seconds at the surge zone needed');
@@ -140,7 +147,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let banner: Banner | null = null;
   let weapon: Weapon = 'gatling';
   let swapLeft = 0, swapTotal = 1;
-  let aim = 0, autoAim = true, lane = 1, targetId = 0;
+  let aim = 0, targetId = 0, nudgeLane = -1, nudgeLeft = 0;
   let baseMaxHp = baseHpMax(), baseHp = baseMaxHp, baseHurt = 99;
   const coresMax = Math.round(opts?.cores ?? coresT());
   let cores = coresMax;
@@ -160,8 +167,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
+  const dealt = { player: 0, tower: 0, emp: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
-  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, coresLost: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0 };
+  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, coresLost: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0 };
 
   // ---------- helpers ----------
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
@@ -180,8 +188,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: mix(lullFtp(), railFtp()) });
   }
   trainerSync();
+  ctx.resistance.useVirtualGears(true); // all four shifters are gears (sim mode only); no game action reads a shifter
   const railCap = () => railMax() + mods.railExtra;
-  const towerCostMult = () => mods.towerCostMult;
+  const towerCostMult = () => mods.towerCostMult * towerCostT();
   const repairCost = () => 30 + wave * 3;
   const gainScrap = (n: number) => { const v = Math.max(0, Math.round(n * mods.scrapMult * scrapScale())); scrap += v; stats.scrapEarned += v; return v; };
 
@@ -223,6 +232,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function hit(e: Enemy, base: number, el: Element | null, src: 'player' | 'tower' | 'emp' = 'player') {
     if (e.dead) return;
     const mult = el == null ? 1 : elementOf(e) === el ? goodMult() : badMult();
+    dealt[src] += Math.min(Math.max(0, e.hp), base * mult); // effective damage (no overkill), for the turret vs tower share
     e.hp -= base * mult;
     e.hurt = 0.12;
     if (e.hp <= 0) kill(e, src);
@@ -236,6 +246,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (src === 'core') return; // swept away by a core blast: no credit
     kills[key]++;
     if (src === 'tower') stats.towerKills++;
+    if (src === 'player') stats.turretKills++;
     if (src === 'emp') stats.empKills++;
     const got = gainScrap(def.scrap);
     if (def.heavy) {
@@ -363,18 +374,18 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return best;
   }
 
-  function pickAutoTarget(w: Weapon, laneSel: number): Enemy | null {
-    const el = WEAPON_ELEMENT[w];
-    const reach = w === 'flame' ? flameRange() * 1.4 : 999;
-    const pick = (f: (e: Enemy) => boolean) => {
-      let best: Enemy | null = null;
-      for (const e of enemies) if (!e.dead && e.dist < 96 && Math.abs(e.angle) <= AIM_LIMIT && f(e) && (!best || e.dist < best.dist)) best = e;
-      return best;
-    };
-    const inLane = (e: Enemy) => laneSel < 0 || e.lane === laneSel;
-    return pick((e) => inLane(e) && elementOf(e) === el && e.dist <= reach)
-      ?? pick((e) => elementOf(e) === el && e.dist <= reach)
-      ?? pick(inLane) ?? pick(() => true);
+  const nudge = (): Nudge | null => (nudgeLeft > 0 && nudgeLane >= 0 ? { lane: nudgeLane, k: nudgeLeft / nudgeS() } : null);
+  function setNudge(l: number) { if (l !== nudgeLane || nudgeLeft < nudgeS() - 0.5) cue('select'); nudgeLane = l; nudgeLeft = nudgeS(); }
+  /** The turret always aims itself (#120): brood-colour lead alien on the most threatened lane, biased by a nudge. */
+  function autoTarget(): Enemy | null {
+    const cands: TargetCand[] = enemies.filter((e) => !e.dead).map((e) => ({
+      id: e.id, lane: e.lane, element: elementOf(e), progress: e.d / e.len, dist: e.dist, angle: e.angle, dmg: e.dmg,
+    }));
+    const id = chooseTarget(cands, {
+      element: WEAPON_ELEMENT[weapon], reach: weapon === 'flame' ? flameRange() * 1.4 : 999,
+      nudge: nudge(), nudgeBias: nudgeBias(), current: targetId, stick: targetStick(),
+    });
+    return id ? enemies.find((e) => e.id === id) ?? null : null;
   }
 
   // ---------- towers ----------
@@ -386,7 +397,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const rate = grid * odMult();
     for (const tw of towers) {
       if (!tw) continue;
-      const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1];
+      const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
       tw.cd = Math.max(-0.01, tw.cd - dt * rate);
       if (tw.cd > 0 || rate <= 0) continue;
       let target: Enemy | null = null;
@@ -402,7 +413,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         const pts = [{ x: p.x, y: p.y - 3 }];
         const hitSet = new Set<number>();
         let cur: Enemy | null = target, k = 1;
-        for (let i = 0; i < 3 + (tw.level - 1) && cur; i++) {
+        for (let i = 0, n = Math.round(teslaChain()) + Math.floor(teslaChainPerLv() * (tw.level - 1)); i < n && cur; i++) {
           pts.push({ x: cur.x, y: cur.y }); hitSet.add(cur.id);
           hit(cur, dmg * k, 'blue', 'tower'); k *= 0.8;
           let nxt: Enemy | null = null, nd = 14;
@@ -494,7 +505,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function openWorkshop(pad?: number) {
     let p = pad ?? -1;
-    if (p < 0) p = PAD_ORDER.find((i) => i < 6 && !towers[i] && (lane < 0 || PADS[i].lane === lane)) ?? PAD_ORDER.find((i) => i < 6 && !towers[i]) ?? PAD_ORDER[0];
+    if (p < 0) p = PAD_ORDER.find((i) => i < 6 && !towers[i] && (nudgeLane < 0 || PADS[i].lane === nudgeLane)) ?? PAD_ORDER.find((i) => i < 6 && !towers[i]) ?? PAD_ORDER[0];
     workshop = { pad: p, row: p < 6 && !towers[p] ? suggestTower(p) : 0, idle: 0 };
     cue('uiOpen');
   }
@@ -621,11 +632,17 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (p('a')) workshopAct();
       if (p('b') || workshop.idle >= WORKSHOP_IDLE_S) { workshop = null; cue('uiClose'); }
     } else {
-      if (p('left')) { lane = lane < 0 ? 0 : Math.max(0, lane - 1); cue('select'); }
-      if (p('right')) { lane = lane < 0 ? 2 : Math.min(2, lane + 1); cue('select'); }
-      if (p('up')) { lane = lane < 0 ? 1 : -1; cue('select'); }
+      // D-pad left/right nudges targeting toward a lane (steps from the nudged lane while one is active); up cancels
+      const cur = nudgeLeft > 0 ? nudgeLane : -1;
+      if (p('left')) setNudge(cur < 0 ? 0 : Math.max(0, cur - 1));
+      if (p('right')) setNudge(cur < 0 ? 2 : Math.min(2, cur + 1));
+      if (p('up') && cur >= 0) { nudgeLeft = 0; cue('select'); }
       if (p('down')) openWorkshop();
     }
+    // paddles nudge too (left paddle = left lane, right paddle = right lane); held = refreshed
+    const pd = inp.paddleR - inp.paddleL;
+    if (!autopilot && Math.abs(pd) >= 0.5) setNudge(pd < 0 ? 0 : 2);
+    else nudgeLeft = Math.max(0, nudgeLeft - dt);
     if (!autopilot) { // Z fires the rail from any weapon, even with the workshop open
       if (p('z')) { zDown = true; zHold = 0; zDumped = false; }
       if (zDown && inp.held.has('z')) {
@@ -698,22 +715,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     } else if (spin && t - spin.t0 > 4) spin = null;
     if (overclock > 0) { overclock = Math.max(0, overclock - dt); stats.overclockS += dt; }
 
-    // --- aim
-    const mode = ctx.profile.settings?.aimMode;
-    const pad = Math.max(-1, Math.min(1, inp.paddleR - inp.paddleL));
-    const paddlesActive = !autopilot && mode !== 'buttons' && inp.paddleIdleS <= autoAimDelay();
-    autoAim = !paddlesActive;
-    if (paddlesActive && mode === 'axes') aim = clamp(Math.atan2(inp.paddleL, Math.max(inp.paddleR, 0.2)), -AIM_LIMIT, AIM_LIMIT);
-    else if (paddlesActive) aim = clamp(aim + pad * aimRate() * dt, -AIM_LIMIT, AIM_LIMIT);
-    else {
-      const tgt = pickAutoTarget(weapon, autopilot ? -1 : lane);
-      targetId = tgt?.id ?? 0;
-      if (tgt) {
-        const d = tgt.angle - aim, step = 6 * dt;
-        aim = Math.abs(d) <= step ? tgt.angle : aim + Math.sign(d) * step;
-      }
+    // --- aim: always automatic
+    const tgt = autoTarget();
+    targetId = tgt?.id ?? 0;
+    if (tgt) {
+      const d = tgt.angle - aim, step = turnRate() * dt;
+      aim = Math.abs(d) <= step ? tgt.angle : aim + Math.sign(d) * step;
     }
-    if (paddlesActive) targetId = 0;
 
     // --- firing
     flaming = false; flamePower = 0;
@@ -839,10 +847,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function bankKills() { const k = kills.blue + kills.red + kills.purple + kills.gold; save.totals.kills += k - killsBanked; killsBanked = k; }
 
   // ---------- views ----------
+  /** Shifters are always gears (they only change the trainer in the Gatling's sim mode). */
+  const gearHints = (): ControlHint[] => [{ button: 'shiftersL', label: 'Gear', active: gearsLive() }, { button: 'shiftersR', label: 'Gear', active: gearsLive() }];
+  const gearsLive = () => phase !== 'run' || weapon === 'gatling';
   const playControls = (): ControlHint[] => [
     { button: 'z', label: 'Fire rail (hold = all)' },
-    { button: 'dpad', label: '◀▶ lane · ▲ all · ▼ workshop' },
-    { button: 'paddles', label: 'Aim' },
+    { button: 'dpad', label: '◀▶ nudge lane · ▼ workshop' },
+    { button: 'paddles', label: 'Nudge lane' },
+    ...gearHints(),
   ];
   function enemyView(e: Enemy): EnemyView {
     const el = elementOf(e), si = shiftIn(e);
@@ -874,8 +886,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     hud(): GameHud {
       if (started && phase === 'garage') return {
-        gears: false, targetZone: { min: 2, max: 2, label: 'Warm up' },
-        controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start' }, { button: 'b', label: 'Start run' }],
+        gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
+        controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start' }, { button: 'b', label: 'Start run' }, ...gearHints()],
       };
       const tz: GameHud['targetZone'] = surge?.state === 'active'
         ? { min: clamp(surge.zone, 1, 5) as 1 | 2 | 3 | 4 | 5, max: 5, label: 'Power surge!', source: 'power' }
@@ -883,10 +895,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3, label: 'Power the towers' };
       const targetCadence: GameHud['targetCadence'] = spin?.state === 'active' ? { min: spin.rpm, label: 'Spin up the Gatling' } : undefined;
       if (workshop) return {
-        gears: false, targetZone: tz, targetCadence,
-        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'z', label: 'Fire rail' }, { button: 'paddles', label: 'Aim' }],
+        gears: gearsLive(), targetZone: tz, targetCadence,
+        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'z', label: 'Fire rail' }, { button: 'paddles', label: 'Nudge lane' }, ...gearHints()],
       };
-      return { gears: false, targetZone: tz, targetCadence, controls: playControls() };
+      return { gears: gearsLive(), targetZone: tz, targetCadence, controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -896,7 +908,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         brood: broodView(), nextBrood: nextPlan ? broodInfo(nextPlan) : null,
         baseHp, baseMaxHp, cores, coresMax, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
-        aimAngle: aim, autoAim, lane, targetId,
+        aimAngle: aim, targetId, nudge: nudge(),
         railCharges, railMaxCharges: railCap(), railProgress: Math.min(1, railProgress), railCharging, zHold, railDumpHoldS: railDumpHold(),
         flaming, flameRange: flameRange(), flameHalfAngle: flameHalf(), flamePower, laserId,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
@@ -919,7 +931,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         weaponSeconds_rail: Math.round(weaponSeconds.rail),
         railChargesFired: railFired,
         baseHpLeft: Math.round(baseHp),
-        towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills,
+        towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills, turretKills: stats.turretKills, empKills: stats.empKills,
+        turretDamage: Math.round(dealt.player), towerDamage: Math.round(dealt.tower), empDamage: Math.round(dealt.emp),
         scrapEarned: stats.scrapEarned, partsEarned: partsRun,
         surgesWon: stats.surgesWon, surgesFailed: stats.surgesFailed,
         spinsWon: stats.spinsWon, spinsFailed: stats.spinsFailed, overclockSeconds: Math.round(stats.overclockS),

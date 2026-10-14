@@ -1,0 +1,17 @@
+{
+  "deviceScaleFactor": 2,
+  "candidateBounds": [
+    30,
+    40,
+    610,
+    599
+  ],
+  "nominalLengthsPx": [
+    45,
+    140
+  ],
+  "rendererAids": {},
+  "candidateIsUnsegmented": true,
+  "background": "/td/environment/background.webp",
+  "errors": []
+}

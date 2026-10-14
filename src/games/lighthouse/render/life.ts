@@ -58,7 +58,7 @@ export class Life {
     this.terrain = terrain;
     const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, shadow = false) => {
       const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.castShadow = shadow; m.receiveShadow = true;
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(m); return m;
+      this.group.add(m); return m; // static usage: rebuilt only when the decor changes (WebGPU re-uploads DynamicDraw buffers every frame)
     };
     const white = () => new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
     this.flowers = inst(new THREE.IcosahedronGeometry(0.14, 0), white(), 3500);

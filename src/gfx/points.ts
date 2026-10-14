@@ -1,7 +1,7 @@
 // Sized point clouds for WebGPURenderer. WebGPU draws THREE.Points at 1 px, so each point is an instanced sprite quad
 // (PointsNodeMaterial) instead. Callers keep writing positions/colours into `cloud.attributes` and set needsUpdate.
 import * as THREE from 'three/webgpu';
-import { float, instancedDynamicBufferAttribute, materialColor, texture, vec4 } from 'three/tsl';
+import { float, instancedBufferAttribute, materialColor, texture, vec4 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 
 export interface PointCloudParams {
@@ -12,10 +12,13 @@ export interface PointCloudParams {
   vertexColors?: boolean;
 }
 
-/** Swap a geometry attribute for an interleaved one over the same array, so `needsUpdate` reaches the instanced node. */
+/**
+ * Swap a geometry attribute for an interleaved one over the same array, so `needsUpdate` reaches the instanced node.
+ * Static usage on purpose: three re-uploads DynamicDraw buffers every frame; static ones only when the version bumps.
+ */
 function shareAttr(geo: THREE.BufferGeometry, name: string): THREE.InstancedInterleavedBuffer {
   const a = geo.getAttribute(name) as THREE.BufferAttribute;
-  const buf = new THREE.InstancedInterleavedBuffer(a.array as Float32Array, a.itemSize, 1).setUsage(THREE.DynamicDrawUsage);
+  const buf = new THREE.InstancedInterleavedBuffer(a.array as Float32Array, a.itemSize, 1);
   geo.setAttribute(name, new THREE.InterleavedBufferAttribute(buf, a.itemSize, 0));
   return buf;
 }
@@ -33,11 +36,11 @@ export class PointCloud extends THREE.Sprite {
       blending: p.blending ?? THREE.NormalBlending, fog: p.fog ?? true,
     });
     m.alphaToCoverage = false; // blend like the old gl points did
-    m.positionNode = instancedDynamicBufferAttribute(pos, 'vec3');
+    m.positionNode = instancedBufferAttribute(pos, 'vec3');
     if (p.vertexColors) {
       // materialColor is vec3 (vec4 only with a map), so build rgb and alpha explicitly
       const n = geo.getAttribute('color').itemSize, buf = shareAttr(geo, 'color');
-      const c = n === 4 ? instancedDynamicBufferAttribute(buf, 'vec4') as Node<'vec4'> : vec4(instancedDynamicBufferAttribute(buf, 'vec3') as Node<'vec3'>, 1);
+      const c = n === 4 ? instancedBufferAttribute(buf, 'vec4') as Node<'vec4'> : vec4(instancedBufferAttribute(buf, 'vec3') as Node<'vec3'>, 1);
       const mapA = p.map ? texture(p.map).a : float(1);
       m.colorNode = vec4(materialColor.rgb.mul(c.rgb), mapA.mul(c.a));
     }

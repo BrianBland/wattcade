@@ -68,7 +68,7 @@ export class LighthouseRenderer implements GameRenderer {
   private color = '#d64545';
   private send?: (a: unknown) => void;
   private lastCue = -1; private lastT = -1; private beamAngle = 0; private nextGull = 8;
-  private aspect = 4 / 3;
+  private aspect = 4 / 3; private shadowFrame = 0;
   private insetB = 0; private size: [number, number] = [800, 600];
   private ray = new THREE.Raycaster();
   private onDown = (e: PointerEvent) => this.pick(e);
@@ -87,7 +87,7 @@ export class LighthouseRenderer implements GameRenderer {
 
     const s = this.scene;
     s.fog = new THREE.FogExp2(0xcfe9f7, 0.006);
-    this.sun.castShadow = true;
+    this.sun.castShadow = true; this.sun.shadow.autoUpdate = false;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -48; sc.right = 48; sc.top = 36; sc.bottom = -36; sc.near = 1; sc.far = 220;
     this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.04;
@@ -533,6 +533,8 @@ export class LighthouseRenderer implements GameRenderer {
     this.hud?.update(s);
     this.lastT = s.t;
     if (!this.gfx?.ready) return;
+    // The shadow pass is ~a quarter of the frame; redraw it every other frame (the sun and ships move slowly)
+    this.sun.shadow.needsUpdate = (this.shadowFrame++ & 1) === 0;
     this.renderer.render(this.scene, this.camera);
     if (rc && !rc.shot && rt >= rc.shotAt) this.takePostcard(rc, s);
   }

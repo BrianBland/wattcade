@@ -22,9 +22,14 @@ CONTRACT-REQUESTs: none.
 - `ShaderMaterial` -> `Mesh*NodeMaterial` with `colorNode`/`positionNode` built from `three/tsl`; `onBeforeCompile` -> the
   same nodes on the matching node material. Node materials default to `fog: true` (ShaderMaterial defaulted to false).
   Raw-GLSL colours (no colorspace chunk) need `raw()`; patched built-ins (Phong/Lambert onBeforeCompile) don't.
+- `DynamicDrawUsage` means "re-upload the whole buffer every frame" on WebGPURenderer (WebGLRenderer treated it as a hint).
+  Use it only for buffers rewritten every frame; Lighthouse's flower/grass matrices were costing 365 KB/frame.
 - `THREE.Points` -> `PointCloud`. `EffectComposer` passes -> `RenderPipeline` + TSL passes (`three/addons/tsl/display/*`).
 
-## Measured (Lighthouse, 1024x768, z2 min 20)
-- Radeon 8060S, uncapped: WebGLRenderer 1016 fps (0.77 ms CPU in render) vs WebGPU 700 fps (1.18 ms) / WebGL2 backend 691.
-  three's node renderer costs ~1.7x the JS per draw (~300 draws). Whether the iPad gains depends on it being GPU-bound.
+## Measured (Lighthouse, 1024x768, z2 min 20, Radeon 8060S, uncapped; ms = CPU in render())
+- Port as first landed: WebGLRenderer 0.77 ms vs WebGPU 1.18 ms. After removing per-frame waste (static upload usage,
+  one scene-graph update per frame, merged clouds, hidden empty fog banks, shadow map every other frame): WebGPU 0.86 ms,
+  WebGL2 backend 0.93 ms; WebGLRenderer with the same fixes 0.69 ms. The rest is three's per-draw overhead (~3 us/draw).
+- Static `BundleGroup`s (terrain/scenery/buildings) measured 0.73-0.77 ms, but they freeze material changes (window
+  colours at dusk) and need `needsUpdate` on every building change, so they're not used yet.
 - Renderer chunk grows ~0.8 MB (237 kB gzip) for three/webgpu; the shell bundle is unchanged.

@@ -86,14 +86,18 @@ export function createGfx(opts: { antialias?: boolean; alpha?: boolean; blend?: 
   const backend = (): GfxBackend => (!ready ? 'pending' : (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'webgpu' : 'webgl2');
   const gfx: Gfx = { renderer, get ready() { return ready; }, backend };
   // count frames for the overlay without touching each game's render loop
-  // (shadow maps call render() from inside render(), so only the outermost call is a frame)
+  // shadow maps call render() from inside render(), so only the outermost call is a frame
   const render = renderer.render.bind(renderer);
   let depth = 0;
   renderer.render = ((scene, camera) => {
     if (!ready) return;
-    if (depth === 0) noteFrame(performance.now() / 1000);
+    if (depth > 0) return render(scene, camera);
+    noteFrame(performance.now() / 1000);
+    // Update world matrices once; otherwise the shadow pass's nested render() walks the whole scene graph again.
+    const auto = scene.matrixWorldAutoUpdate;
+    if (auto) { scene.updateMatrixWorld(); scene.matrixWorldAutoUpdate = false; }
     depth++;
-    try { return render(scene, camera); } finally { depth--; }
+    try { return render(scene, camera); } finally { depth--; scene.matrixWorldAutoUpdate = auto; }
   }) as typeof renderer.render;
   let disposed = false;
   const dispose = renderer.dispose.bind(renderer);

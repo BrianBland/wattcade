@@ -4,6 +4,7 @@ import { abs, clamp, length, mix, mod, normalize, pow, positionLocal, smoothstep
 import type { Node, UniformNode } from 'three/webgpu';
 import { raw } from '../../../gfx/tsl';
 import { PointCloud } from '../../../gfx/points';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { mulberry, softTexture } from './util';
 
 export interface SkyState { t: number; dt: number; day: number; fog: number; storm: number; warn: number; lightningAge: number; camTarget: THREE.Vector3; rainbow?: number;
@@ -60,15 +61,16 @@ export class Sky {
     // clouds: clusters of flattened icospheres drifting overhead
     const puff = new THREE.IcosahedronGeometry(1, 0);
     for (let i = 0; i < 16; i++) {
-      const g = new THREE.Group();
+      // one merged mesh per cluster: a cloud is one draw call, not 4-7
+      const g = new THREE.Group(), parts: THREE.BufferGeometry[] = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
       const n = 4 + Math.floor(r() * 4);
       for (let k = 0; k < n; k++) {
-        const m = new THREE.Mesh(puff, this.cloudMat);
         const s = 4 + r() * 5;
-        m.scale.set(s * 1.4, s * 0.6, s);
-        m.position.set((k - n / 2) * 5 + r() * 3, r() * 2, r() * 6 - 3);
-        g.add(m);
+        m4.compose(new THREE.Vector3((k - n / 2) * 5 + r() * 3, r() * 2, r() * 6 - 3), q, new THREE.Vector3(s * 1.4, s * 0.6, s));
+        parts.push(puff.clone().applyMatrix4(m4));
       }
+      g.add(new THREE.Mesh(mergeGeometries(parts), this.cloudMat));
+      for (const p of parts) p.dispose();
       g.position.set(0, 55 + r() * 30, -160 + r() * 220);
       this.group.add(g);
       this.clouds.push({ g, speed: 1.2 + r() * 1.5, x0: -300 + r() * 600 });
@@ -159,6 +161,7 @@ export class Sky {
       b.s.position.set(x, 2 + s.fog * 4, b.z);
       const m = b.s.material as THREE.SpriteMaterial;
       m.opacity = Math.max(0, s.fog - 0.25) * 0.9; m.color.copy(hor).lerp(P.white, 0.25 * (1 - o.night));
+      b.s.visible = m.opacity > 0.003; // fully transparent sprites still cost a draw
     }
     // rain
     const rainOn = Math.max(0, s.storm - 0.15, shower * 0.3);

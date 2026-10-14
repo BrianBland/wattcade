@@ -141,4 +141,17 @@ export const scenarios: Array<{
       return f;
     },
   })),
+  {
+    // Award-plumbing fixture: explicit actions and unlimited rebuilds reach the deep-wave achievement.
+    // Natural survival and damage share remain covered by the passive scenarios and four-seed comparisons.
+    name: 'surge-ready-deep', script: 'hook-responsive', minutes: 40, seed: 1,
+    simOpts: { autopilot: true, actionBot: true, cores: 0 },
+    assert(s, _stats, run) {
+      const f: string[] = [];
+      if (!(n(s, 'wavesSurvived') >= 40)) f.push(`wavesSurvived ${s.wavesSurvived} < 40`);
+      if (!(n(s, 'surgesWon') >= 6) || n(s, 'surgesFailed') !== 0) f.push('deep rider did not answer the surges');
+      if (!run.events.some(e => e.type === 'action')) f.push('deep rider never used combat actions');
+      return f;
+    },
+  },
 ];

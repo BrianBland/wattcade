@@ -27,6 +27,7 @@ CONTRACT-REQUESTs: none.
 ## Saves and balance
 - Save v2 adds `autoCrew` independently of Garage `autoInvest`; missing fields default ON, explicit OFF survives reload. Preserve this field when #121 introduces v3. Cores/failure/Garage still use the pre-#121 rules.
 - `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
+- The `surge-ready-deep` achievement fixture explicitly uses `actionBot` and unlimited rebuilds to reach wave 40; passive survival remains measured separately. Achievement thresholds are unchanged.
 - Before #140 rebase: fresh profile, FTP 200, 30 min z2, seeds 1–4: passive = 27–30 cleared waves, active = 31–33; all six pads and 24 upgrades in both. Passive turret damage share 42–43% remains inside #120's 40–60% band. No tower damage/cost buffs were made.
 - Previous autopilot = 32–33 waves, but included automatic Rail volleys. The new passive ride takes losses earlier; final tower progress matches, while survival is not identical. Further failure/effort/boss balancing belongs with #121/#124/#125.
 

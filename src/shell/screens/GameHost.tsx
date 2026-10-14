@@ -64,7 +64,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
     if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
-    if (p) { s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
+    if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
   /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
   const startCount = () => {

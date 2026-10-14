@@ -77,7 +77,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { autopilot: true },
+    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { autopilot: true, actionBot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       for (const w of ['gatling', 'flame', 'rail']) {

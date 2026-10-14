@@ -69,12 +69,14 @@ describe('input map (#120)', () => {
     const hints = new Map(hud.controls!.map((c) => [c.button, c.label]));
     expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
     expect(hints.get('paddles')).toBe('Nudge lane');
-    for (const k of ['a', 'b', 'y'] as const) expect(hints.has(k)).toBe(false); // freed for #122
+    expect(hints.get('a')).toBe('Workshop');
+    expect(hints.get('b')).toBe('Overcharge'); expect(hints.get('y')).toBe('Slow field');
   });
-  it('A / B / Y do nothing in play', () => {
+  it('A opens construction and B closes without firing a combat action', () => {
     const pad = new Pad(), ref = session(new Pad()), s = session(pad);
     s.step(30 * 30); ref.step(30 * 30);
-    for (const b of ['a', 'b', 'y'] as Button[]) { pad.press(b); s.step(1); ref.step(1); }
+    pad.press('a'); s.step(1); ref.step(1); expect(snap(s).workshop).not.toBeNull();
+    pad.press('b'); s.step(1); ref.step(1);
     s.step(30 * 20); ref.step(30 * 20);
     const a = snap(s), b = snap(ref);
     expect(a.workshop).toBe(null);

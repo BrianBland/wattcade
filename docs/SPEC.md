@@ -421,7 +421,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Blue swarm minis:** many, low HP, crystalline bioluminescent chitin. Strong: Gatling; resisted: fire.
   - **Red brutes:** fuel-blooded; fire bursts their volatile bladders and can ignite nearby reds in a capped chain. Strong: Flamer; resisted: Rail.
   - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
-  - **Gold boss** every 5 waves: 2–3 HP-gated phases automatically change weapon and trainer mode after an announced countdown. Current phase colour uses the matrix. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold A during a Rail opening optionally raises its ERG target to permit a power sprint, preserving the mode. Keeps the Goliath art.
+  - **Gold boss** every 5 waves: 2–3 HP-gated phases automatically change weapon and trainer mode after an announced countdown. Current phase colour uses the matrix. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold D-pad Up or the touch Sprint boost target during a Rail opening to raise its ERG target for a power sprint, preserving the mode; A stays construction. Keeps the Goliath art.
 
   The stream of minis is continuous; heavier enemies arrive in waves.
 - **Weapons** (follow the announced brood or boss phase automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):

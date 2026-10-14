@@ -91,7 +91,7 @@ describe('boss ladder', () => {
     expect(advanceBoss(b, 12, 1, timing)).toContain('telegraph');
     expect(advanceBoss(b, 3, 1, timing)).toContain('exposed');
   });
-  it('an optional hold-A push makes a Rail opening sprintable without changing trainer mode', () => {
+  it('an optional hold-Up push makes a Rail opening sprintable without changing trainer mode; A stays construction', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
@@ -103,14 +103,15 @@ describe('boss ladder', () => {
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
     expect(effect().ftpFraction).toBe(0.95);
-    expect(s.sim.hud!().controls!.some((c) => c.button === 'a')).toBe(true);
-    held.add('a'); s.step(1);
+    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Workshop');
+    held.add('a'); s.step(1); expect(effect().ftpFraction).toBe(0.95); held.delete('a');
+    held.add('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(1.35);
     expect(snapshot(s).boss?.sprintBoost).toBe(true);
     let sprinted = false;
     for (let i = 0; i < 30 * 7; i++) { s.step(1); sprinted ||= Boolean(snapshot(s).boss?.exposed && s.ctx.bike().sprinting); }
     expect(sprinted).toBe(true);
-    held.delete('a'); s.step(1);
+    held.delete('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(0.95);
     expect(snapshot(s).boss?.sprintBoost).toBe(false);
   });

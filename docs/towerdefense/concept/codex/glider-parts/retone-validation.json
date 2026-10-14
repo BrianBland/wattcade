@@ -1,0 +1,169 @@
+{
+  "species": "glider",
+  "manifestUnchanged": true,
+  "sourceCommit": "88ffc23",
+  "parts": [
+    {
+      "name": "head",
+      "canvas": [
+        137,
+        144
+      ],
+      "sourceOpaquePixels": 7893,
+      "retoneOpaquePixels": 7893,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_1",
+      "canvas": [
+        145,
+        106
+      ],
+      "sourceOpaquePixels": 7132,
+      "retoneOpaquePixels": 7132,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_2",
+      "canvas": [
+        141,
+        93
+      ],
+      "sourceOpaquePixels": 7501,
+      "retoneOpaquePixels": 7501,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "abdomen",
+      "canvas": [
+        129,
+        106
+      ],
+      "sourceOpaquePixels": 5684,
+      "retoneOpaquePixels": 5684,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "socket_hanging_r",
+      "canvas": [
+        43,
+        66
+      ],
+      "sourceOpaquePixels": 851,
+      "retoneOpaquePixels": 851,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "claw_hanging_r",
+      "canvas": [
+        41,
+        86
+      ],
+      "sourceOpaquePixels": 851,
+      "retoneOpaquePixels": 851,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "wing_r",
+      "canvas": [
+        251,
+        414
+      ],
+      "sourceOpaquePixels": 29193,
+      "retoneOpaquePixels": 29193,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "wing_l",
+      "canvas": [
+        252,
+        401
+      ],
+      "sourceOpaquePixels": 28815,
+      "retoneOpaquePixels": 28815,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_01",
+      "canvas": [
+        47,
+        76
+      ],
+      "sourceOpaquePixels": 1467,
+      "retoneOpaquePixels": 1467,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_02",
+      "canvas": [
+        46,
+        73
+      ],
+      "sourceOpaquePixels": 1371,
+      "retoneOpaquePixels": 1371,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_03",
+      "canvas": [
+        43,
+        73
+      ],
+      "sourceOpaquePixels": 1244,
+      "retoneOpaquePixels": 1244,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_04",
+      "canvas": [
+        56,
+        74
+      ],
+      "sourceOpaquePixels": 1683,
+      "retoneOpaquePixels": 1683,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_tip",
+      "canvas": [
+        56,
+        76
+      ],
+      "sourceOpaquePixels": 1556,
+      "retoneOpaquePixels": 1556,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    }
+  ],
+  "manifestSha256": "a478cf0cadead606e45a9258d33839eb938683e83ba30a3034953e0798dac2ad",
+  "canvasChecks": 26,
+  "preservedWingHolePixels": 140464,
+  "scriptedJointChecks": 168,
+  "gapJoints": [],
+  "clippedPoses": [],
+  "greenFringePixels": 0,
+  "preview": {
+    "deviceScaleFactor": 2,
+    "skitterNominalPx": [
+      40,
+      45,
+      50
+    ],
+    "gliderNominalPx": 45,
+    "rendererAids": {},
+    "baseOnlyAlsoCaptured": true,
+    "backgroundSource": "PR #138 public/td/environment/background.webp"
+  }
+}

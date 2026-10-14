@@ -1,0 +1,301 @@
+{
+  "species": "skitter",
+  "manifestUnchanged": true,
+  "sourceCommit": "88ffc23",
+  "parts": [
+    {
+      "name": "head",
+      "canvas": [
+        116,
+        141
+      ],
+      "sourceOpaquePixels": 6120,
+      "retoneOpaquePixels": 6120,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_1",
+      "canvas": [
+        134,
+        85
+      ],
+      "sourceOpaquePixels": 5428,
+      "retoneOpaquePixels": 5428,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_2",
+      "canvas": [
+        135,
+        80
+      ],
+      "sourceOpaquePixels": 5610,
+      "retoneOpaquePixels": 5610,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_3",
+      "canvas": [
+        134,
+        78
+      ],
+      "sourceOpaquePixels": 5293,
+      "retoneOpaquePixels": 5293,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "thorax_4",
+      "canvas": [
+        118,
+        72
+      ],
+      "sourceOpaquePixels": 2676,
+      "retoneOpaquePixels": 2676,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "coxa_front_r",
+      "canvas": [
+        77,
+        65
+      ],
+      "sourceOpaquePixels": 1140,
+      "retoneOpaquePixels": 1775,
+      "areaRatio": 1.557,
+      "legWidthOnly": true
+    },
+    {
+      "name": "femur_front_r",
+      "canvas": [
+        94,
+        89
+      ],
+      "sourceOpaquePixels": 1332,
+      "retoneOpaquePixels": 1943,
+      "areaRatio": 1.459,
+      "legWidthOnly": true
+    },
+    {
+      "name": "claw_front_r",
+      "canvas": [
+        63,
+        55
+      ],
+      "sourceOpaquePixels": 869,
+      "retoneOpaquePixels": 1247,
+      "areaRatio": 1.435,
+      "legWidthOnly": true
+    },
+    {
+      "name": "coxa_mid_front_r",
+      "canvas": [
+        82,
+        69
+      ],
+      "sourceOpaquePixels": 1640,
+      "retoneOpaquePixels": 2247,
+      "areaRatio": 1.37,
+      "legWidthOnly": true
+    },
+    {
+      "name": "femur_mid_front_r",
+      "canvas": [
+        124,
+        66
+      ],
+      "sourceOpaquePixels": 1977,
+      "retoneOpaquePixels": 2725,
+      "areaRatio": 1.378,
+      "legWidthOnly": true
+    },
+    {
+      "name": "claw_mid_front_r",
+      "canvas": [
+        106,
+        104
+      ],
+      "sourceOpaquePixels": 1757,
+      "retoneOpaquePixels": 2609,
+      "areaRatio": 1.485,
+      "legWidthOnly": true
+    },
+    {
+      "name": "coxa_mid_rear_r",
+      "canvas": [
+        91,
+        65
+      ],
+      "sourceOpaquePixels": 1547,
+      "retoneOpaquePixels": 2238,
+      "areaRatio": 1.447,
+      "legWidthOnly": true
+    },
+    {
+      "name": "femur_mid_rear_r",
+      "canvas": [
+        124,
+        76
+      ],
+      "sourceOpaquePixels": 2313,
+      "retoneOpaquePixels": 3191,
+      "areaRatio": 1.38,
+      "legWidthOnly": true
+    },
+    {
+      "name": "claw_mid_rear_r",
+      "canvas": [
+        63,
+        118
+      ],
+      "sourceOpaquePixels": 1534,
+      "retoneOpaquePixels": 2220,
+      "areaRatio": 1.447,
+      "legWidthOnly": true
+    },
+    {
+      "name": "coxa_rear_r",
+      "canvas": [
+        90,
+        72
+      ],
+      "sourceOpaquePixels": 1004,
+      "retoneOpaquePixels": 1564,
+      "areaRatio": 1.558,
+      "legWidthOnly": true
+    },
+    {
+      "name": "femur_rear_r",
+      "canvas": [
+        77,
+        90
+      ],
+      "sourceOpaquePixels": 1527,
+      "retoneOpaquePixels": 2185,
+      "areaRatio": 1.431,
+      "legWidthOnly": true
+    },
+    {
+      "name": "claw_rear_r",
+      "canvas": [
+        46,
+        120
+      ],
+      "sourceOpaquePixels": 1531,
+      "retoneOpaquePixels": 2167,
+      "areaRatio": 1.415,
+      "legWidthOnly": true
+    },
+    {
+      "name": "tail_01",
+      "canvas": [
+        51,
+        62
+      ],
+      "sourceOpaquePixels": 1149,
+      "retoneOpaquePixels": 1149,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_02",
+      "canvas": [
+        41,
+        57
+      ],
+      "sourceOpaquePixels": 845,
+      "retoneOpaquePixels": 845,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_03",
+      "canvas": [
+        42,
+        57
+      ],
+      "sourceOpaquePixels": 845,
+      "retoneOpaquePixels": 845,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_04",
+      "canvas": [
+        41,
+        60
+      ],
+      "sourceOpaquePixels": 804,
+      "retoneOpaquePixels": 804,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_05",
+      "canvas": [
+        43,
+        55
+      ],
+      "sourceOpaquePixels": 772,
+      "retoneOpaquePixels": 772,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_06",
+      "canvas": [
+        48,
+        55
+      ],
+      "sourceOpaquePixels": 949,
+      "retoneOpaquePixels": 949,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_07",
+      "canvas": [
+        60,
+        58
+      ],
+      "sourceOpaquePixels": 1337,
+      "retoneOpaquePixels": 1337,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    },
+    {
+      "name": "tail_tip",
+      "canvas": [
+        55,
+        62
+      ],
+      "sourceOpaquePixels": 930,
+      "retoneOpaquePixels": 930,
+      "areaRatio": 1,
+      "legWidthOnly": false
+    }
+  ],
+  "manifestSha256": "0ce8f283feb15848ebf6c2549eb8f3501d354252023df41ad14af58e6cec011e",
+  "canvasChecks": 50,
+  "preservedWingHolePixels": 0,
+  "scriptedJointChecks": 432,
+  "gapJoints": [],
+  "clippedPoses": [],
+  "greenFringePixels": 0,
+  "preview": {
+    "deviceScaleFactor": 2,
+    "skitterNominalPx": [
+      40,
+      45,
+      50
+    ],
+    "gliderNominalPx": 45,
+    "rendererAids": {},
+    "baseOnlyAlsoCaptured": true,
+    "backgroundSource": "PR #138 public/td/environment/background.webp"
+  }
+}

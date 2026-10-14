@@ -41,84 +41,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 603,
+        "overlapPixels": 904,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 285,
+        "overlapPixels": 446,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 381,
+        "overlapPixels": 623,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 827,
+        "overlapPixels": 984,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 378,
+        "overlapPixels": 582,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 468,
+        "overlapPixels": 718,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 692,
+        "overlapPixels": 923,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 374,
+        "overlapPixels": 583,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 459,
+        "overlapPixels": 695,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 372,
+        "overlapPixels": 526,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 255,
+        "overlapPixels": 428,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 514,
+        "overlapPixels": 743,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -181,84 +181,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 419,
+        "overlapPixels": 703,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 285,
+        "overlapPixels": 446,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 381,
+        "overlapPixels": 623,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 907,
+        "overlapPixels": 1094,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 378,
+        "overlapPixels": 582,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 468,
+        "overlapPixels": 718,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 759,
+        "overlapPixels": 1008,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 374,
+        "overlapPixels": 583,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 459,
+        "overlapPixels": 695,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 321,
+        "overlapPixels": 494,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 255,
+        "overlapPixels": 428,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 514,
+        "overlapPixels": 743,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -295,84 +295,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 668,
+        "overlapPixels": 1011,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 191,
+        "overlapPixels": 304,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 389,
+        "overlapPixels": 622,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 932,
+        "overlapPixels": 1163,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 333,
+        "overlapPixels": 540,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 499,
+        "overlapPixels": 741,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 818,
+        "overlapPixels": 1104,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 420,
+        "overlapPixels": 642,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 541,
+        "overlapPixels": 812,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 327,
+        "overlapPixels": 488,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 299,
+        "overlapPixels": 499,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 552,
+        "overlapPixels": 795,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -435,84 +435,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 575,
+        "overlapPixels": 867,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 191,
+        "overlapPixels": 304,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 389,
+        "overlapPixels": 622,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 1010,
+        "overlapPixels": 1255,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 333,
+        "overlapPixels": 540,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 499,
+        "overlapPixels": 741,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 838,
+        "overlapPixels": 1143,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 420,
+        "overlapPixels": 642,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 541,
+        "overlapPixels": 812,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 274,
+        "overlapPixels": 450,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 299,
+        "overlapPixels": 499,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 552,
+        "overlapPixels": 795,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -549,84 +549,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 807,
+        "overlapPixels": 1047,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 285,
+        "overlapPixels": 428,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 407,
+        "overlapPixels": 631,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 906,
+        "overlapPixels": 1073,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 823,
+        "overlapPixels": 1012,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 460,
+        "overlapPixels": 654,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 556,
+        "overlapPixels": 789,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 407,
+        "overlapPixels": 561,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 302,
+        "overlapPixels": 484,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 595,
+        "overlapPixels": 794,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -689,84 +689,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 450,
+        "overlapPixels": 737,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 284,
+        "overlapPixels": 423,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 407,
+        "overlapPixels": 619,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 944,
+        "overlapPixels": 1139,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 813,
+        "overlapPixels": 1076,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 460,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 556,
+        "overlapPixels": 795,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 327,
+        "overlapPixels": 499,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 309,
+        "overlapPixels": 485,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 591,
+        "overlapPixels": 793,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -803,84 +803,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 811,
+        "overlapPixels": 1050,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 282,
+        "overlapPixels": 423,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 409,
+        "overlapPixels": 620,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 906,
+        "overlapPixels": 1073,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 831,
+        "overlapPixels": 1015,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 461,
+        "overlapPixels": 651,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 555,
+        "overlapPixels": 791,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 406,
+        "overlapPixels": 555,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 305,
+        "overlapPixels": 484,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 590,
+        "overlapPixels": 790,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -943,84 +943,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 452,
+        "overlapPixels": 734,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 285,
+        "overlapPixels": 425,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 407,
+        "overlapPixels": 626,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 944,
+        "overlapPixels": 1139,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 808,
+        "overlapPixels": 1074,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 462,
+        "overlapPixels": 650,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 559,
+        "overlapPixels": 786,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 326,
+        "overlapPixels": 499,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 306,
+        "overlapPixels": 488,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 593,
+        "overlapPixels": 801,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -1057,84 +1057,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 583,
+        "overlapPixels": 874,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 282,
+        "overlapPixels": 449,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 374,
+        "overlapPixels": 619,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 819,
+        "overlapPixels": 981,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 667,
+        "overlapPixels": 891,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 355,
+        "overlapPixels": 568,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 439,
+        "overlapPixels": 681,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 373,
+        "overlapPixels": 519,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 248,
+        "overlapPixels": 412,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 496,
+        "overlapPixels": 730,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1197,84 +1197,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 421,
+        "overlapPixels": 730,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 282,
+        "overlapPixels": 449,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 374,
+        "overlapPixels": 619,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 903,
+        "overlapPixels": 1095,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 743,
+        "overlapPixels": 990,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 355,
+        "overlapPixels": 568,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 439,
+        "overlapPixels": 681,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 323,
+        "overlapPixels": 491,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 248,
+        "overlapPixels": 412,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 496,
+        "overlapPixels": 730,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -1311,84 +1311,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 627,
+        "overlapPixels": 979,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 172,
+        "overlapPixels": 276,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 388,
+        "overlapPixels": 611,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 908,
+        "overlapPixels": 1134,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 817,
+        "overlapPixels": 1117,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 408,
+        "overlapPixels": 632,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 542,
+        "overlapPixels": 810,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 319,
+        "overlapPixels": 475,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 296,
+        "overlapPixels": 496,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 554,
+        "overlapPixels": 784,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1451,84 +1451,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 585,
+        "overlapPixels": 878,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 172,
+        "overlapPixels": 276,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 388,
+        "overlapPixels": 611,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 1014,
+        "overlapPixels": 1264,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 848,
+        "overlapPixels": 1167,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 408,
+        "overlapPixels": 632,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 542,
+        "overlapPixels": 810,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 257,
+        "overlapPixels": 434,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 296,
+        "overlapPixels": 496,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 554,
+        "overlapPixels": 784,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -1565,84 +1565,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 805,
+        "overlapPixels": 1048,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 286,
+        "overlapPixels": 423,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 401,
+        "overlapPixels": 623,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 906,
+        "overlapPixels": 1073,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 825,
+        "overlapPixels": 1018,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 459,
+        "overlapPixels": 653,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 551,
+        "overlapPixels": 792,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 405,
+        "overlapPixels": 557,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 305,
+        "overlapPixels": 486,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 593,
+        "overlapPixels": 795,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1705,84 +1705,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 451,
+        "overlapPixels": 732,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 285,
+        "overlapPixels": 425,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 405,
+        "overlapPixels": 627,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 944,
+        "overlapPixels": 1139,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 814,
+        "overlapPixels": 1079,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 460,
+        "overlapPixels": 648,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 558,
+        "overlapPixels": 791,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 331,
+        "overlapPixels": 503,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 305,
+        "overlapPixels": 490,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 594,
+        "overlapPixels": 792,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -1819,84 +1819,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 818,
+        "overlapPixels": 1050,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 282,
+        "overlapPixels": 427,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 401,
+        "overlapPixels": 627,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 906,
+        "overlapPixels": 1073,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 830,
+        "overlapPixels": 1014,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 462,
+        "overlapPixels": 649,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 556,
+        "overlapPixels": 794,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 410,
+        "overlapPixels": 554,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 304,
+        "overlapPixels": 485,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 594,
+        "overlapPixels": 798,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1959,84 +1959,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 454,
+        "overlapPixels": 735,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 280,
+        "overlapPixels": 425,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 402,
+        "overlapPixels": 623,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 944,
+        "overlapPixels": 1139,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 422,
+        "overlapPixels": 655,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 566,
+        "overlapPixels": 765,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 808,
+        "overlapPixels": 1078,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 459,
+        "overlapPixels": 652,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 556,
+        "overlapPixels": 790,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 329,
+        "overlapPixels": 501,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 305,
+        "overlapPixels": 492,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 593,
+        "overlapPixels": 798,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -2073,84 +2073,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 585,
+        "overlapPixels": 881,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 280,
+        "overlapPixels": 451,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 372,
+        "overlapPixels": 616,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 819,
+        "overlapPixels": 981,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 666,
+        "overlapPixels": 885,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 357,
+        "overlapPixels": 566,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 439,
+        "overlapPixels": 683,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 374,
+        "overlapPixels": 527,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 245,
+        "overlapPixels": 417,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 503,
+        "overlapPixels": 736,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -2213,84 +2213,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 416,
+        "overlapPixels": 730,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 283,
+        "overlapPixels": 447,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 375,
+        "overlapPixels": 620,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 903,
+        "overlapPixels": 1095,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 742,
+        "overlapPixels": 987,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 359,
+        "overlapPixels": 571,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 436,
+        "overlapPixels": 688,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 315,
+        "overlapPixels": 484,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 245,
+        "overlapPixels": 418,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 501,
+        "overlapPixels": 731,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -2327,84 +2327,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 631,
+        "overlapPixels": 982,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 172,
+        "overlapPixels": 283,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 388,
+        "overlapPixels": 613,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 908,
+        "overlapPixels": 1134,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 822,
+        "overlapPixels": 1128,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 410,
+        "overlapPixels": 632,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 539,
+        "overlapPixels": 810,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 322,
+        "overlapPixels": 480,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 297,
+        "overlapPixels": 498,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 555,
+        "overlapPixels": 788,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -2467,84 +2467,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 585,
+        "overlapPixels": 880,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 174,
+        "overlapPixels": 279,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 384,
+        "overlapPixels": 615,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 1014,
+        "overlapPixels": 1264,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 854,
+        "overlapPixels": 1171,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 405,
+        "overlapPixels": 635,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 538,
+        "overlapPixels": 809,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 257,
+        "overlapPixels": 428,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 300,
+        "overlapPixels": 497,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 553,
+        "overlapPixels": 776,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -2581,84 +2581,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 584,
+        "overlapPixels": 878,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 280,
+        "overlapPixels": 446,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 370,
+        "overlapPixels": 617,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 819,
+        "overlapPixels": 981,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 661,
+        "overlapPixels": 885,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 360,
+        "overlapPixels": 566,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 440,
+        "overlapPixels": 687,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 375,
+        "overlapPixels": 519,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 249,
+        "overlapPixels": 414,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 499,
+        "overlapPixels": 732,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -2721,84 +2721,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 423,
+        "overlapPixels": 732,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 282,
+        "overlapPixels": 449,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 376,
+        "overlapPixels": 621,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 903,
+        "overlapPixels": 1095,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 377,
+        "overlapPixels": 578,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 442,
+        "overlapPixels": 700,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 752,
+        "overlapPixels": 992,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 357,
+        "overlapPixels": 565,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 438,
+        "overlapPixels": 683,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 317,
+        "overlapPixels": 480,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 246,
+        "overlapPixels": 419,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 502,
+        "overlapPixels": 731,
         "pivotCoverage": 1.0,
         "gap": false
       }
@@ -2835,84 +2835,84 @@
       {
         "joint": "coxa_front_r",
         "parent": "thorax_1",
-        "overlapPixels": 629,
+        "overlapPixels": 984,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_r",
         "parent": "coxa_front_r",
-        "overlapPixels": 172,
+        "overlapPixels": 281,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_r",
         "parent": "femur_front_r",
-        "overlapPixels": 385,
+        "overlapPixels": 616,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_r",
         "parent": "thorax_2",
-        "overlapPixels": 908,
+        "overlapPixels": 1134,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_r",
         "parent": "coxa_mid_front_r",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_r",
         "parent": "femur_mid_front_r",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_r",
         "parent": "thorax_3",
-        "overlapPixels": 812,
+        "overlapPixels": 1118,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_r",
         "parent": "coxa_mid_rear_r",
-        "overlapPixels": 406,
+        "overlapPixels": 635,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_r",
         "parent": "femur_mid_rear_r",
-        "overlapPixels": 541,
+        "overlapPixels": 809,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_r",
         "parent": "thorax_4",
-        "overlapPixels": 322,
+        "overlapPixels": 483,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_r",
         "parent": "coxa_rear_r",
-        "overlapPixels": 299,
+        "overlapPixels": 501,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_r",
         "parent": "femur_rear_r",
-        "overlapPixels": 554,
+        "overlapPixels": 788,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -2975,84 +2975,84 @@
       {
         "joint": "coxa_front_l",
         "parent": "thorax_1",
-        "overlapPixels": 580,
+        "overlapPixels": 871,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_front_l",
         "parent": "coxa_front_l",
-        "overlapPixels": 172,
+        "overlapPixels": 281,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_front_l",
         "parent": "femur_front_l",
-        "overlapPixels": 389,
+        "overlapPixels": 617,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_front_l",
         "parent": "thorax_2",
-        "overlapPixels": 1014,
+        "overlapPixels": 1264,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_front_l",
         "parent": "coxa_mid_front_l",
-        "overlapPixels": 303,
+        "overlapPixels": 510,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_front_l",
         "parent": "femur_mid_front_l",
-        "overlapPixels": 486,
+        "overlapPixels": 713,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_mid_rear_l",
         "parent": "thorax_3",
-        "overlapPixels": 852,
+        "overlapPixels": 1169,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_mid_rear_l",
         "parent": "coxa_mid_rear_l",
-        "overlapPixels": 412,
+        "overlapPixels": 633,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_mid_rear_l",
         "parent": "femur_mid_rear_l",
-        "overlapPixels": 538,
+        "overlapPixels": 810,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "coxa_rear_l",
         "parent": "thorax_4",
-        "overlapPixels": 255,
+        "overlapPixels": 439,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "femur_rear_l",
         "parent": "coxa_rear_l",
-        "overlapPixels": 297,
+        "overlapPixels": 494,
         "pivotCoverage": 1.0,
         "gap": false
       },
       {
         "joint": "claw_rear_l",
         "parent": "femur_rear_l",
-        "overlapPixels": 553,
+        "overlapPixels": 789,
         "pivotCoverage": 1.0,
         "gap": false
       }

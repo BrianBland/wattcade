@@ -555,7 +555,7 @@
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 491,
+        "overlapPixels": 492,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -955,7 +955,7 @@
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 491,
+        "overlapPixels": 492,
         "pivotCoverage": 1.0,
         "gap": false
       },
@@ -1155,7 +1155,7 @@
       {
         "joint": "wing_l",
         "parent": "thorax_2",
-        "overlapPixels": 491,
+        "overlapPixels": 492,
         "pivotCoverage": 1.0,
         "gap": false
       },

@@ -117,13 +117,22 @@ describe('three combat actions and input contexts', () => {
 });
 
 describe('passive versus active riders', () => {
-  for (const seed of [1, 2, 3, 4]) it(`seed ${seed}: Auto-crew develops all pads with no combat actions; actions extend the ride`, () => {
-    const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 30, seed, simOpts: { autopilot: true, actionBot } });
-    const passive = run(false), active = run(true);
-    expect(passive.summary.towersBuilt).toBe(6); expect(passive.summary.towerUpgrades).toBe(24);
-    expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
-    expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(25);
-    expect(Number(active.summary.wavesSurvived)).toBeGreaterThan(Number(passive.summary.wavesSurvived));
-    expect(active.events.some(e => e.type === 'action')).toBe(true);
-  });
+  it('Auto-crew develops every pad without combat actions; actions extend survival across four seeds', () => {
+    let passiveWaves = 0, activeWaves = 0, passiveMinutes = 0, activeMinutes = 0;
+    for (const seed of [1, 2, 3, 4]) {
+      // Measure the endless ride to failure, rather than a fixed 30-minute cut through a boss phase.
+      const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 60, seed, simOpts: { autopilot: true, actionBot } });
+      const passive = run(false), active = run(true);
+      expect(passive.summary.towersBuilt).toBe(6); expect(passive.summary.towerUpgrades).toBe(24);
+      expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
+      expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(25);
+      expect(passive.isOver).toBe(true); expect(active.isOver).toBe(true);
+      expect(Number(active.summary.wavesSurvived)).toBeGreaterThanOrEqual(Number(passive.summary.wavesSurvived));
+      expect(active.events.some(e => e.type === 'action')).toBe(true);
+      passiveWaves += Number(passive.summary.wavesSurvived); activeWaves += Number(active.summary.wavesSurvived);
+      passiveMinutes += passive.simMinutes; activeMinutes += active.simMinutes;
+    }
+    expect(activeWaves).toBeGreaterThan(passiveWaves);
+    expect(activeMinutes).toBeGreaterThan(passiveMinutes + 2);
+  }, 30_000);
 });

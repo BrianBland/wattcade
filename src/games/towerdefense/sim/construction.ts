@@ -12,6 +12,8 @@ export interface ConstructionState {
   wave: number; brood: Element; lanes: readonly LaneForecast[]; towers: readonly CrewTower[];
   scrap: number; costMult: number; baseHp: number; baseMaxHp: number; repairCost: number;
   matchup?: Matchup;
+  /** Optional restriction for the workshop's highlighted pad; same recommendation rules. */
+  pad?: number;
 }
 
 export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
@@ -20,6 +22,7 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
   };
   const candidates: Array<{ suggestion: BuildSuggestion; score: number }> = [];
   for (const p of PADS) {
+    if (s.pad != null && p.id !== s.pad) continue;
     const existing = s.towers.find(t => t.pad === p.id);
     for (const kind of existing ? [existing.kind] : TOWER_KINDS) {
       if (existing && existing.level >= TOWER_MAX_LEVEL) continue;

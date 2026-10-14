@@ -138,6 +138,26 @@ describe('boss ladder', () => {
     };
     expect(ride(true)).toBeLessThan(ride(false) - 0.2);
   });
+  it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
+    const s = createGameSession({ game: module,
+      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false, cores: 0 } });
+    s.tuning.set('towerdefense.railLaserDps', 1);
+    for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
+    expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);
+    const effect = () => s.mixer.debug().activeEffects.find(e => e.id === 'weapon')!;
+    const epoch = snapshot(s).inputEpoch;
+    s.sim.receive!({ type: 'boostDown', pointer: 1, epoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
+    s.sim.receive!({ type: 'boostDown', pointer: 2, epoch }); s.sim.receive!({ type: 'boostUp', pointer: 1, epoch }); s.step(1);
+    expect(effect().ftpFraction).toBe(1.35);
+    s.sim.receive!({ type: 'boostUp', pointer: 2, epoch }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
+    s.sim.receive!({ type: 'construct' }); s.step(1); expect(snapshot(s).workshop).not.toBeNull(); expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'close' }); s.step(1); s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
+    expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'boostDown', pointer: 4, epoch: snapshot(s).inputEpoch }); s.step(1);
+    s.sim.receive!({ type: 'inputCancel' }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
+  });
 });
 
 describe('called-effort scheduler', () => {

@@ -79,4 +79,25 @@ try {
   assert.equal(await page.evaluate(() => window.__td.snapshot().railCharges), 3);
   console.log('Rail: captured hold dumps all; dragging away cancels without a follow-up shot');
   await page.evaluate(() => window.__td.dispose()); await page.close();
+  const boss = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
+  await boss.goto(`${base}/dev/towerdefense.html?manual=1&inset=140&crew=0&boss=1&seed=2`);
+  await boss.waitForFunction(() => window.__td);
+  await boss.evaluate(() => { for (let i = 0; i < 30 * 40 && !window.__td.snapshot().boss?.telegraph; i++) window.__td.advance(1 / 30); });
+  assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.weapon), 'rail');
+  const boost = await boss.evaluate(() => window.__td.ui().layout.dock.workshop);
+  await boss.mouse.move(boost.x + boost.w / 2, boost.y + boost.h / 2); await boss.mouse.down();
+  await boss.evaluate(() => window.__td.advance(1 / 30));
+  assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.sprintBoost), true);
+  await boss.evaluate(() => window.__td.advance(0.35));
+  await boss.screenshot({ path: `${output}/boss-sprint-boost.png` });
+  await boss.mouse.up(); await boss.evaluate(() => window.__td.advance(1 / 30));
+  assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.sprintBoost), false);
+  await boss.keyboard.down('ArrowUp'); await boss.evaluate(() => window.__td.advance(1 / 30));
+  assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.sprintBoost), true);
+  await boss.keyboard.press('l'); await boss.evaluate(() => window.__td.advance(1 / 30));
+  assert.ok(await boss.evaluate(() => window.__td.snapshot().workshop));
+  assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.sprintBoost), false);
+  await boss.keyboard.up('ArrowUp');
+  console.log('Boss opening: touch and hold-Up share the ERG boost; A opens construction and cancels it');
+  await boss.evaluate(() => window.__td.dispose()); await boss.close();
 } finally { await browser.close(); }

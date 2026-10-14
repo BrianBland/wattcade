@@ -3,7 +3,7 @@ import { createGameSession, NullInput, testProfile, TimelineInput } from '../../
 import { module } from '../index';
 import { readSave } from '../sim/sim';
 import { suggestBuild, type ConstructionState } from '../sim/construction';
-import { PADS, towerUpgradeCost } from '../sim/defs';
+import { MATCHUP, PADS, towerUpgradeCost } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 
 const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
@@ -17,6 +17,10 @@ function session(input = new TimelineInput(), extra: Record<string, unknown> = {
 }
 
 describe('crew recommendation', () => {
+  it('follows live matchup overrides and excludes towers resisted by the off-colour push', () => {
+    const matchup = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
+    expect(suggestBuild(state({ matchup }))?.tower).toBe('tesla');
+  });
   it('covers the threatened lane’s off-colour heavies, without spending beyond scrap', () => {
     const s = state({ scrap: 80 }), a = suggestBuild(s)!;
     expect(a.tower).toBe('mortar'); expect(PADS[a.pad].lane).toBe(1); expect(a.cost).toBeLessThanOrEqual(s.scrap);

@@ -429,9 +429,11 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
   - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).
 - **Aim:** the turret always aims itself (no `aimMode`): the lead alien of the wave's colour on the most threatened lane. Paddles or D-pad left/right nudge it toward a lane for a few seconds (optional). All four shifters are virtual gears. Draw the aim line and a target marker.
+- **Construction:** A accepts the lull's quoted build/upgrade work order, otherwise opens the workshop; D-pad Down also opens it. Touch pads/base open the same menu. Left/right chooses pad/base, up/down chooses an option, A confirms and B closes. Build, upgrade, sell, scrap-funded repair and the saved Auto-crew toggle are available to both inputs. Auto-crew defaults on and accepts one order per lull; a successful manual purchase consumes that order.
+- **Combat actions:** B Overcharge (tower fire rate ×1.5 for 10 s), Y Slow field (most threatened lane moves 40% slower for 8 s), Z Rail. The two cooldowns refill faster with power-zone effort; a sprint edge finishes them without granting rail stock. All parameters are tunable. Combat actions are disabled in construction, and menu/pause/cancel discards held gestures.
 - **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, railChargesFired, baseHpLeft.
 - **Workout rhythm:** optional spin, grind-at-power and ERG hold calls follow Gatling, Flamer and Rail waves. Calls arrive every 2–3 waves with a countdown, after recovery ends; targets adapt to recent riding. Spin rewards Overclock, grind/hold reward EMP, with scrap bonuses. Bosses use their own Exposed sprint calls.
-- **Scenarios** (autopilot opt: builds towers and fires rail at 3 charges):
+- **Scenarios** (`Auto-crew` develops towers; combat actions require explicit `actionBot`, independently of `autopilot`):
   - `sprints`, 20 min → wavesSurvived ≥ 8
   - `idle`, 5 min → base destroyed (isOver) with wavesSurvived ≤ 2
   - `intervals`, 20 min → all three weapons used ≥ 60 s and mixer commands include all of sim, erg, and resistance

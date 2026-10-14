@@ -367,8 +367,8 @@ export function matchupCopy(s: Pick<TdSnapshot, 'matchup'>, element: Element): s
 }
 function bossLine(s: TdSnapshot): string {
   const b = s.boss!;
-  const push = b.weapon === 'rail' ? b.sprintBoost ? 'ERG PUSH' : 'HOLD A: SPRINT' : 'SPRINT ×1.5';
-  return b.next ? `PHASE ${b.phase + 1}: ${b.next.toUpperCase()} IN ${Math.ceil(b.countdownS)}s` : b.exposed ? `EXPOSED ${Math.ceil(b.windowLeftS)}s · ${push}` : b.telegraph ? `SPRINT IN ${Math.ceil(b.windowLeftS)}s${b.weapon === 'rail' ? ' · HOLD A' : ''}` : `BOSS PHASE ${b.phase}/${b.phaseCount} · ${WEAPON_NAME[b.weapon]}`;
+  const push = b.weapon === 'rail' ? b.sprintBoost ? 'ERG PUSH' : 'HOLD ▲: SPRINT' : 'SPRINT ×1.5';
+  return b.next ? `PHASE ${b.phase + 1}: ${b.next.toUpperCase()} IN ${Math.ceil(b.countdownS)}s` : b.exposed ? `EXPOSED ${Math.ceil(b.windowLeftS)}s · ${push}` : b.telegraph ? `SPRINT IN ${Math.ceil(b.windowLeftS)}s${b.weapon === 'rail' ? b.sprintBoost ? ' · ERG PUSH' : ' · HOLD ▲' : ''}` : `BOSS PHASE ${b.phase}/${b.phaseCount} · ${WEAPON_NAME[b.weapon]}`;
 }
 function effortLine(s: TdSnapshot): string {
   const e = s.effort!;

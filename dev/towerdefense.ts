@@ -9,8 +9,10 @@ import { PADS } from '../src/games/towerdefense/sim/defs';
 
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const input = new InputHub(), offKeys = input.attachKeyboard(window);
-const session = createGameSession({ game: module, profile: testProfile(), input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
+const profile = testProfile(q.get('boss') === '1' ? { gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } } : {});
+const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
   simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1' } });
+if (q.get('boss') === '1') session.tuning.set('towerdefense.railLaserDps', 1); // keep the demo's first opening available for input checks
 session.step(Math.max(1, Math.round(Number(q.get('sec') ?? 0) * 30)));
 const r = await module.loadRenderer(), app = document.getElementById('app')!;
 r.mount(app, { profile: session.ctx.profile, send: a => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 } });

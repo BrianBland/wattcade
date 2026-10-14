@@ -113,7 +113,7 @@ export const scenarios: Array<{
     name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!(n(s, 'surgesWon') >= 6)) f.push(`surgesWon ${s.surgesWon} < 6`);
+      if (!(n(s, 'callsWon') >= 6)) f.push(`callsWon ${s.callsWon} < 6`);
       if (!(n(s, 'callsWon') / Math.max(1, n(s, 'callsWon') + n(s, 'callsFailed')) >= 0.5)) f.push('passive endurance rider won fewer than half the calls');
       if (!run.events.some((e) => e.type === 'surgeWon')) f.push('no surgeWon event');
       return f;

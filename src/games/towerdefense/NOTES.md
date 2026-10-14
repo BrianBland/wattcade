@@ -9,7 +9,6 @@ CONTRACT-REQUESTs: none.
 - `sim/construction.ts`: pure, affordable build/upgrade/repair recommendation, weighted by off-colour danger, live matchups and existing coverage; resisted choices are excluded. Upgrade orders quote the final level and total cost, including multiple levels when funded.
 - `sim/types.ts`: additive snapshot fields `actions`, `refill`, `slowLane`, `suggestion`, `constructionDone`, `autoCrew`, `inputEpoch`; workshop adds `revision`. These are the sim/renderer seam for #126.
 - `render/layout.ts` reserves the action dock above the actual HUD inset; `render/construction.ts` draws the dock and shared radial workshop (two-column fallback on short screens). `renderer.ts` owns pointer capture/cancel; sims import no render code.
-
 - `render/aliens/` (#132): cut-out puppets with distance-based gaits, cached device-pixel frames, live boss poses, husks, brood splats and fire bursts; vector enemies remain the loading fallback. Assets: `public/td/aliens/`, packed by `scripts/td-pack-aliens.ts`.
 
 ## Play and controls (#119, #120, #122, #123)
@@ -27,12 +26,12 @@ CONTRACT-REQUESTs: none.
 ## Saves and balance
 - Save v2 adds `autoCrew` independently of Garage `autoInvest`; missing fields default ON, explicit OFF survives reload. Preserve this field when #121 introduces v3. Cores/failure/Garage still use the pre-#121 rules.
 - `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
-- The `surge-ready-deep` achievement fixture explicitly uses `actionBot` and unlimited rebuilds to reach wave 40; passive survival remains measured separately. Achievement thresholds are unchanged.
-- Before #140 rebase: fresh profile, FTP 200, 30 min z2, seeds 1–4: passive = 27–30 cleared waves, active = 31–33; all six pads and 24 upgrades in both. Passive turret damage share 42–43% remains inside #120's 40–60% band. No tower damage/cost buffs were made.
-- Previous autopilot = 32–33 waves, but included automatic Rail volleys. The new passive ride takes losses earlier; final tower progress matches, while survival is not identical. Further failure/effort/boss balancing belongs with #121/#124/#125.
+- The `surge-ready-deep` achievement fixture explicitly uses `actionBot`, hook-responsive riding and unlimited rebuilds to reach wave 40; passive survival remains measured separately. Achievement thresholds are unchanged.
+- With #140, fresh profile, FTP 200, 30 min z2, seeds 1–4: passive = 34 cleared waves in every seed, active = 33–35; all six pads and 24 upgrades in both. Passive turret damage share 41–47% remains inside #120's 40–60% band. No tower damage/cost buffs were made.
+- Survival to failure (same four seeds): passive averages 37.5 waves / 34.0 min, active 39.0 waves / 35.7 min. Compare complete runs because a fixed 30-minute cutoff can fall within a boss phase. Cores/failure follow pre-#121 rules.
 
 ## Verification and device check
 - `npx tsc --noEmit -p .`; `npx vitest run src/games/towerdefense` covers action effects/refill/sprint edges, commander/crew saves, stale/double purchases, mixed input, held Rail cancellation, layout/insets and four-seed passive/active scenarios.
 - `npm run dev -- --port 5199`, then `node scripts/towerdefense-render-smoke.mjs`: real browser taps, mixed upgrades, sell/repair/crew, Rail holds/cancel, landscape/portrait/phone/short screenshots in `/tmp/towerdefense-smoke`.
-- Interactive harness: `/dev/towerdefense.html?inset=140&crew=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks.
+- Interactive harness: `/dev/towerdefense.html?inset=140&crew=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=2` starts a control demo at wave 5 with a reduced Rail laser.
 - Real iPad/Bluefy and Ride hardware remain unverified: check seated thumb reach on the dock/radial targets, action response at 1x, simultaneous touch/controller input, release/cancel, portrait rotation and the real HUD band. Sounds need an ear check.

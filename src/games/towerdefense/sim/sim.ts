@@ -6,7 +6,7 @@ import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refil
 import { suggestBuild, type BuildSuggestion } from './construction';
 import {
   AIM_LIMIT, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LANE_NAMES, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, suggestedTower, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { advanceBoss, bossColors, bossHpFloor, createBossState, type BossState } from './boss';
@@ -198,6 +198,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let boostBlocked = false;
   let inputEpoch = 0, workshopRevision = 0, railBlocked = false, discardEdges = false;
   let overchargeLeft = 0, slowLeft = 0, slowLane = -1, lastSprint = false;
+  let currentRefill = 1;
   const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
   let constructionDone = false;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
@@ -652,9 +653,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** Next-wave off-colour aliens are the towers' job. Suggestions follow the live matchup tunables. */
   function suggestTower(pad: number): number {
-    const ln = nextPlan.lanes[PADS[pad].lane];
-    const counts = Object.fromEntries(ELEMENTS.map((e) => [e, ln[e] + ln.prism / 3 + ln.gold])) as Record<Element, number>;
-    return TOWER_KINDS.indexOf(suggestedTower(counts, nextPlan.brood, matchup()));
+    const suggestion = recommendation(pad);
+    return suggestion?.tower ? TOWER_KINDS.indexOf(suggestion.tower)
+      : Math.max(0, TOWER_KINDS.findIndex(k => towerBuildCost(k, towerCostMult()) <= scrap));
   }
   function openWorkshop(pad?: number) {
     let p = pad ?? -1;
@@ -683,13 +684,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     workshop.row = clamp(workshop.row, 0, workshopRows(workshop.pad).length - 1);
   }
 
-  function recommendation(): BuildSuggestion | null {
+  function recommendation(pad?: number): BuildSuggestion | null {
     if (!plan) return null;
     // `plan` is the announced incoming wave during the lull. `nextPlan` is one wave later.
     const coming = lull > 0 ? plan : nextPlan;
     return suggestBuild({ wave: coming.wave, brood: coming.brood, lanes: coming.lanes,
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(),
-      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup() });
+      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad });
   }
   function acceptSuggestion(claim?: unknown) {
     if (lull <= 0 || constructionDone) return;
@@ -885,6 +886,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     grid = bike.cadence3s < 15 ? 0 : clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
     overchargeLeft = Math.max(0, overchargeLeft - dt); slowLeft = Math.max(0, slowLeft - dt);
     const refill = refillRate(Math.min(5, bike.powerZone));
+    currentRefill = refill;
     tickCooldown(cooldowns.overcharge, dt, refill); tickCooldown(cooldowns.slow, dt, refill);
     if (bike.sprinting && !lastSprint && sprintCompletes()) { completeCooldown(cooldowns.overcharge); completeCooldown(cooldowns.slow); }
     lastSprint = bike.sprinting;
@@ -1195,7 +1197,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap, partsRun, bank: Math.round(bank),
         autoCrew: autoCrewOn, suggestion: phase === 'run' && lull > 0 && !constructionDone ? recommendation() : null, constructionDone,
-        actions: actionViews(), refill: refillRate(Math.min(5, ctx.bike().powerZone)), slowLane: slowLeft > 0 ? slowLane : -1, inputEpoch,
+        actions: actionViews(), refill: currentRefill, slowLane: slowLeft > 0 ? slowLane : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight })),
         workshop: workshopView(),

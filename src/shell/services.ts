@@ -7,7 +7,8 @@ import type { SongAnalysis, SongMeta } from '../media';
 import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
 import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, analyzeWindowInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
-import { createGameSession, DataHub, SCRIPTS } from '../core';
+import { createGameSession, DataHub, SCRIPTS, type GameSession } from '../core';
+import { SaveReadError } from '../core/saveSchema';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
 import { getGame, lobbyGame } from '../games/registry';
@@ -15,6 +16,8 @@ import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosm
 import type { Item, Slot } from '../cosmetics/types';
 import { readSavedSetup, rememberDevices, resolveSavedSetup } from './savedSetup';
 import { discoverSavedDevice } from './savedDiscovery';
+import { GameSaveQueue } from './saveQueue';
+import { toast } from './components/Toasts';
 import { bluetoothLog, bluetoothLogText, bluetoothError, ConnectionCancelled, type ConnectionOptions } from '../devices/bluetooth/lifecycle';
 import { getDriveIn } from './drivein/store';
 import { ridesByGame, type GameRides } from './arcade';
@@ -30,18 +33,22 @@ const any = <T = any>(x: unknown) => x as T;
 
 export const input = new InputHub({ debounceMs: 90 });
 export const dataHub = new DataHub();
-const profileStore: any = new ProfileStore();
+const profileStore = new ProfileStore();
 const sessionStore: any = new SessionStore();
+export const saveFailureMessage = (error: unknown): string => error instanceof SaveReadError ? error.message
+  : "Couldn't save your ride. Your progress is kept in this tab; keep it open and retry.";
+const gameSaves = new GameSaveQueue((p, g, d, schema) => profileStore.updateGameData(p, g, d, schema),
+  (error) => toast(saveFailureMessage(error)));
 
 // ---------- profiles ----------
 export const listProfiles = (): Promise<Profile[]> => profileStore.list();
-export const saveProfile = async (p: Profile): Promise<void> => { await profileStore.update(p); };
-export const deleteProfile = (id: string): Promise<void> => profileStore.delete(id);
+export const saveProfile = (p: Profile): Promise<Profile> => profileStore.update(p);
+export const deleteProfile = (id: string): Promise<void> => { gameSaves.discard(id); return profileStore.delete(id); };
 export async function createProfile(name: string): Promise<Profile> {
   return profileStore.create(name);
 }
-export const exportBackup = (): Promise<string> => profileStore.exportJson();
-export const importBackup = async (json: string): Promise<void> => { await profileStore.importJson(json); };
+export const exportBackup = async (): Promise<string> => { await gameSaves.flush(); return profileStore.exportJson(); };
+export const importBackup = async (json: string): Promise<void> => { await gameSaves.flush(); await profileStore.importJson(json); };
 /** This rider's ride count / time / kJ per game, from saved sessions (for the arcade picker). */
 export async function gameRides(profileId: string): Promise<Record<string, GameRides>> {
   try { return ridesByGame(await sessionStore.list(profileId)); } catch { return {}; }
@@ -283,17 +290,21 @@ const anyReal = () => Object.keys(devices).length > 0;
 // ---------- sessions ----------
 let active: any = null;
 let activeGameId = '';
+let pendingFinish: { session: GameSession; record: SessionRecord; profile: Profile } | null = null;
+let finishInFlight: ReturnType<typeof creditRecord> | null = null;
 export const activeSession = (): SessionLike | null => active;
 /** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
 const current = (): any => active ?? lobby;
 
 export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline; announce?(id: string, t: number): void }): SessionLike {
+  if (pendingFinish) throw new Error('Save the current ride before starting another game.');
   input.applySettings(profile.settings); debugState.timeScale = 1;
   const useFake = fakeMode || !anyReal();
   activeGameId = game.id;
   active = createGameSession({
     game, profile, input, dataHub: useFake ? undefined : dataHub,
-    fake: useFake ? { script: fakeScript } : false, onSave, media,
+    fake: useFake ? { script: fakeScript } : false, media,
+    onSave: (data) => { gameSaves.enqueue(profile.id, game.id, data, game.save); onSave(data); },
   });
   return active;
 }
@@ -384,13 +395,34 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
 }
 /** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */
 export function unlockMedia(): void { try { mediaEngine().unlock(); } catch { /* no Web Audio */ } }
-export async function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
-  const record: SessionRecord = active.finish();
-  active.mixer?.panic?.(true); active = null;
-  return creditRecord(profile, record);
+export function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
+  if (finishInFlight) return finishInFlight;
+  if (!active) return Promise.reject(new Error('No game session to finish'));
+  if (!pendingFinish) {
+    const session: GameSession = active;
+    const record = session.finish();
+    session.mixer.panic(true);
+    const data = session.saveData();
+    pendingFinish = { session, record, profile: { ...profile, gameData: { ...profile.gameData,
+      ...(data === undefined ? {} : { [record.gameId]: data }) } } };
+  }
+  const pending = pendingFinish;
+  finishInFlight = creditRecord(pending.profile, pending.record).then((result) => {
+    if (active === pending.session) active = null;
+    pendingFinish = null;
+    return result;
+  }).finally(() => { finishInFlight = null; });
+  return finishInFlight;
 }
-/** Drop the running game session without saving (left from its intro, before riding). */
+/** Drop the running game session without saving (left from its intro, or a finish the rider gave up on). */
 export function abandonSession(): void {
+  if (pendingFinish) {
+    const dropped = pendingFinish;
+    if (active === dropped.session) active = null;
+    pendingFinish = null;
+    gameSaves.drop(dropped.profile.id, dropped.record.gameId);
+    return;
+  }
   if (!active) return;
   active.finish(); active.mixer?.panic?.(true); active = null;
 }
@@ -409,10 +441,11 @@ export function previewAward(profile: Profile): { xp: number; level: number; ach
 }
 /** Save a finished record and apply XP / achievements to `profile`. */
 async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
+  await gameSaves.flush();
   await sessionStore.save(record);
   const r: any = awardSession(profile, record);
   const next: Profile = r.profile ?? profile;
-  await saveProfile(next);
+  const saved = await saveProfile(next);
   const award: AwardView = {
     xpGained: r.xpGained ?? 0,
     levelBefore: profile.level, levelAfter: next.level,
@@ -420,7 +453,7 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
     newItems: newUnlocks(profile, next).map((it) => ({ slot: it.slot, id: it.id, name: it.name })),
     picks: pendingPicks(next).length,
   };
-  return { record, award, profile: next };
+  return { record, award, profile: saved };
 }
 
 // ---------- warm-up lobby (the ride behind the menus) ----------

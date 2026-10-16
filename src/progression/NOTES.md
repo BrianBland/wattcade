@@ -2,7 +2,7 @@
 
 Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSession`, `updateCounters`, `defaultProfile(name?)`, `defaultSettings()`, `levelForXp`, `xpForLevel`, `ACHIEVEMENTS`, `ACHIEVEMENT_GAME` (id → game), `CORE_ACHIEVEMENTS`, `achievementValue`, `achievementProgress`.
 
-- `ProfileStore(dbName?)`: `list/get/create(name, init?)/update/delete/getLastProfileId/setLastProfileId/exportJson/importJson` (import merges by id, returns count). Settings are merged over defaults on read.
+- `ProfileStore(dbName?)`: `list/get/create(name, init?)/update/updateGameData/delete/getLastProfileId/setLastProfileId/exportJson/importJson` (import merges by id, returns count). Settings are merged over defaults on read. `update` edits shared data while retaining stored game modules/progression metadata; `updateGameData(profileId, gameId, data, schema?)` atomically replaces one detached module, preserving other games/settings; the shell supplies the reader to refuse overwriting a module another tab upgraded. Deleted players cannot be recreated by module writes.
 - `SessionStore(dbName?)`: `save(record)`, `list(profileId, limit?)` newest first, `clear`; keeps last 200 per profile.
 - `awardSession(profile, record) -> { profile, xpGained, baseXp, levelUps: number[], newAchievements: {id,name,bonusXp}[] }` (pure; does not mutate input; caller persists).
 - XP = round(kJ) + 2*activeMin (samples with cadence>20 at 1 Hz) + round(zone2 min) + 5*sprints + achievement bonuses. Zone 2 = `stats.zoneSeconds[1]` (index 0 = zone 1).

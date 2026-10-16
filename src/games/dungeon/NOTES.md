@@ -128,3 +128,5 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
   segment banners (warm-up, explore, recover, cool-down) that stack with others, SECOND WIND banner, coins fly to the
   HUD counter (which pulses), and a ring + "<action> ready" pulse on the hero when an action finishes refilling.
 - Damage numbers draw from the RNG exactly where the old big-hit numbers did, so seeds and balance are unchanged.
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

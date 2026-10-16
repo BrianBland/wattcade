@@ -38,3 +38,5 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
 - Scenery is regenerated per frame from (segment seed, tile) into fixed-size instance pools; no geometry/material allocation on biome changes.
 - Flagship batteries group with the flagship for targeting; auto-select prefers the flagship group during a fight.
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

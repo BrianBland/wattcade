@@ -208,6 +208,8 @@ export interface GameRenderer {
 }
 export interface GameModule {
   id: string; title: string; blurb: string;
+  /** Pure, game-owned validation and migrations. Unsupported saves must throw without replacing the payload. */
+  save?: GameSaveSchema;
   tags: Array<'zone2' | 'sprint' | 'intervals' | 'erg'>;
   /** Optional: trainer features the game can't run without. The arcade blocks it when a connected trainer lacks them (the fake bike has all). */
   requires?: { erg?: boolean; media?: MediaNeed[] };
@@ -221,6 +223,13 @@ export interface GameModule {
   achievements?: AchievementDef[];
   /** Optional: a small preview of what this game makes of a queue (track profile, effort), drawn in the media picker. Pure Canvas 2D. */
   mediaPreview?(g: CanvasRenderingContext2D, w: number, h: number, timeline: MediaTimeline, profile: Readonly<Profile>): void;
+}
+
+export interface GameSaveSchema<T = unknown> {
+  readonly version: number;
+  readonly versionKey: string;
+  /** Return a detached current save, or throw for invalid/unsupported data. Undefined means a new rider. */
+  read(raw: unknown): T;
 }
 
 // ===== Media (music/video; see SPEC §5.6) =====

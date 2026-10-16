@@ -126,7 +126,7 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 4. **Resistance:** call `ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: 2 })`. Re-setting the same id replaces it, and `ttl` auto-expires it. Use `ctx.resistance.useVirtualGears(true)` to let the shifters change gear.
 5. **Events and saves:**
    - `ctx.emit({ type: 'bossDefeated' })` feeds the session log and achievements (see `src/progression`).
-   - `ctx.save(data)` / `ctx.load()` persist per-profile game data.
+   - `ctx.save(data)` / `ctx.load()` persist per-profile game data. Each arcade game registers a pure `GameModule.save` reader in its own `sim/save.ts`: runtime validation, independent versions and explicit migrations. Unsupported or malformed saves remain intact and block launch. Checkpoints update only their game module; failed writes are retained for retry. Finishing a ride waits for its final checkpoint before awarding XP. The backup envelope version describes the export format only.
 6. **Scenarios:** in `scenarios.ts`, export `scenarios = [{ name, script, minutes, seed, simOpts, assert(summary, stats, run) }]`. Then `npm run sim:all` checks your balance headlessly, and an `autopilot` flag in `simOpts` lets the sim steer itself.
 7. **Register** the module in `src/games/registry.ts` (its position there is the picker's tie-break order).
 8. **Card clip:** add a shot to `SHOTS` in `scripts/capture-cards.ts` (script, how far to fast-forward, crop) and run `npm run capture:cards -- --only mygame`. `src/shell/arcade.test.ts` checks every game has `public/cards/<id>.mp4` + `.webp`.

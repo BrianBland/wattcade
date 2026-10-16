@@ -245,6 +245,8 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 ### §5.4 Agent D — Progression · owns `src/progression/`
 
 - `ProfileStore` (idb-keyval): list/create/update/delete, `lastProfileId`, and JSON export/import (a backup, since Bluefy storage can be cleared). Default settings as in §3.
+- `ProfileStore.updateGameData(profileId, gameId, payload, schema?)` writes one game slot. The shell supplies that game's reader and re-reads the stored slot inside the transaction, so a newer tab's save is not overwritten. Shared profile edits keep the latest stored `gameData`. The shell queues checkpoints per game; a failed write stays queued until it succeeds or the rider leaves. Quit waits for the queue, then awards XP. A failed finish can be retried, or abandoned from the menu. Export flushes checkpoints first. The backup envelope version describes the export format only.
+- Saves are per game: `profile.gameData[gameId]` holds that game's payload, and each game owns its version and migrations through `GameModule.save`. A missing version is that game's oldest supported save, not a guess at the current one. Missing fields may take game-owned defaults. Wrong types, bad bounds, a newer version, or a missing migration block launch and leave the stored payload alone.
 - `SessionStore`: save a `SessionRecord`; keep the last 200 per profile.
 - `awardSession(profile, record) → { profile', xpGained, levelUps, newAchievements }`:
   - XP = `round(kJ) + 2 × activeMinutes + 1 × minutes in effortZone 2 + 5 × sprints` + achievement bonuses.

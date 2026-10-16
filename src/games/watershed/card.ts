@@ -1,5 +1,5 @@
 // Arcade card: banner art + progress line (shell calls these; keep tiny, no renderer imports).
-export interface WatershedSave { rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number; bestScore?: number; lastLength?: number }
+export interface WatershedSave { v?: 1; rides?: number; bestCarved?: number; bestDelta?: number; bestSalmon?: number; bestScore?: number; lastLength?: number }
 
 export function progressLine(save: unknown): string | null {
   const s = save as WatershedSave | undefined;

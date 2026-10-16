@@ -8,6 +8,7 @@ import { Announcements } from './announcements';
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
 export interface CadenzaSave {
+  v?: 1;
   plays?: number; sets?: number; bestScore?: number; best?: Record<string, number>;
   lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle;
 }

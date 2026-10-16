@@ -1,6 +1,5 @@
 # core (Agent C)
 CONTRACT-REQUEST: none.
-
 ## API (`src/core/index.ts`)
 makeRng, SimClock, TuningRegistry, BikeStateStore, ResistanceMixer, DataHub, GameLoop, FakeBike, FakeTrainer,
 SCRIPTS, SessionRecorder, InputSource, TimelineInput/NullInput (local scripted input for headless),
@@ -8,7 +7,7 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
 
 - `createGameSession` per CLAUDE.md. Extras: optional `tuningRegistry` opt; session also exposes `dataHub`, `clock`, `loop`, `commands` (all mixer commands sent).
   Fake bike is on when `fake` is truthy, or when `fake` is undefined and no `dataHub` was passed. `fake:false` = real devices only.
-  `pause()` = loop pause + mixer.panic(true) (sends sim/0 immediately); `resume()` reverses.
+  `pause()` = loop pause + mixer panic; `resume()` reverses. `finish()` disposes once, pauses, and reuses one record on retry; `saveData()` returns the final detached checkpoint.
 - Step order: clock.advance -> input.beginTick -> fakeBike.tick -> bikeStore.tick -> mixer.tick -> sim.update -> recorder.tick.
 - `frame()` timeScale is forced to 1x when `dataHub.hasRealDevices()` (trainer/hr/controller flags; fake does not count).
 - DataHub: `new DataHub(store?)`, `.store`, `attachTrainer/attachHr/attachController(dev, {setControllerState})` (each returns detach),
@@ -34,10 +33,8 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
 `npm run sim -- --game X --script Y --minutes N --seed S [--autopilot]` prints one JSON line (full mixerCommands).
 `npm run sim:all` loads `src/games/<id>/scenarios.ts` for each registry game (missing -> skipped, note on stderr), prints one JSON line per
 scenario (mixerCommands/events as counts, plus ok/failures), exits 1 on failure. `runAll()` is exported for tests.
-
 ## Tests
 `npx vitest run src/core` (zones, crank revs, sprints, mixer, TTL, ERG convergence, determinism, headless, tuning, loop).
 
-## Gaps
-No DataHub unit tests with real device mocks beyond fake; ControllerDevice adapter untested. No FIT export.
+- Saves: `GameModule.save` readers run before attaching devices/creating sims and on every save; load/saveData return detached payloads. `saveSchema.ts` is pure: explicit local migrations, numeric/enum/shape validation, and preservation of unsupported saves.
 - `cooldown.ts` (pure, sim-safe): effort-scaled cooldowns — `refillRate(powerZone)` (Z1 = 1x up to Z5 = 3.2x), `startCooldown`/`tickCooldown`/`completeCooldown` (e.g. on a sprint)/`readyFrac`. Draw with `games/kit/actionButton.ts`.

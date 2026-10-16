@@ -78,12 +78,16 @@ describe('build mode (bike-friendly)', () => {
 });
 
 describe('saves and growth', () => {
-  it('discards saves from the old 14-plot layout', () => {
-    const p = testProfile();
-    (p.gameData as Record<string, unknown>).lighthouse = { buildings: ['cottage', 'pier'], coin: 999, timber: 999, shipsDockedTotal: 3, stormsWeatheredTotal: 1 };
-    const s = createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
-    expect(snap(s).coin).toBe(20);
-    expect((snap(s).buildings as unknown[]).every((b) => b === null)).toBe(true);
+  it('loads a current town that has no version marker, and blocks the retired short layout', () => {
+    const current = testProfile();
+    (current.gameData as Record<string, unknown>).lighthouse = { buildings: PLOTS.map(() => null), coin: 40, timber: 12, shipsDockedTotal: 3 };
+    const s = createGameSession({ game: module, profile: current, input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
+    expect(snap(s).coin).toBe(40);
+    const retired = testProfile();
+    (retired.gameData as Record<string, unknown>).lighthouse = { buildings: ['cottage', 'pier'], coin: 999, timber: 999, shipsDockedTotal: 3, stormsWeatheredTotal: 1 };
+    const before = structuredClone(retired.gameData.lighthouse);
+    expect(() => createGameSession({ game: module, profile: retired, input: new NullInput(), fake: { script: 'z2' }, seed: 1 })).toThrow('unsupported');
+    expect(retired.gameData.lighthouse).toEqual(before);
   });
 
   it('greenery and island bloom grow only while riding in zone', () => {

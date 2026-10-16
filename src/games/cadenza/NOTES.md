@@ -38,3 +38,5 @@ Revisions honor `frozenUntilS` and the local announcement horizon; legacy fallba
 Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low confidence use effort-only holds/recovery. No coverage = unchanged full-file/synth plan.
 `test/rolling.test.ts`: real RollingQueue with shifting grids/sections, every announced ID/time, frozen samples, gaps/0.6.
 Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

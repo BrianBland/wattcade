@@ -20,6 +20,18 @@ describe('editor fields', () => {
     expect(adjustField(f('name'), testProfile(), 1)).toBeNull();
     expect(activateField(f('name'), testProfile())).toBeNull();
   });
+  it('saves independent art choices without changing rider equipment or settings', () => {
+    const a = testProfile(), b = testProfile();
+    const legacy = activateField(f('overworldArt'), a)!;
+    expect(legacy.settings.overworldArt).toBe('legacy');
+    expect(legacy.cosmetics).toEqual(a.cosmetics);
+    expect(legacy.settings.units).toBe(a.settings.units);
+    const field = f('overworldArt');
+    if (field.kind !== 'choice') throw new Error('Expected art choice');
+    expect(field.get(b)).toBe('rich');
+    expect(activateField(f('overworldArt'), legacy)!.settings.overworldArt).toBe('rich');
+    expect(a.settings.overworldArt).toBeUndefined();
+  });
 });
 
 

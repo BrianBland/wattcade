@@ -37,7 +37,7 @@ const MAX_PX = 640;
  * sized itself from `clientWidth` grew the column, which grew the canvas, and froze the Locker.
  */
 export function RiderAvatar({ profile, look, ship, size = 'big', still, lazy = false, road = true, silhouette, class: cls = '' }: {
-  profile?: Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'>; look?: RiderLook; ship?: string;
+  profile?: Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'> & Partial<Pick<Profile, 'settings'>>; look?: RiderLook; ship?: string;
   size?: 'small' | 'big' | 'hero' | 'thumb'; still?: boolean; lazy?: boolean; road?: boolean; silhouette?: boolean; class?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);

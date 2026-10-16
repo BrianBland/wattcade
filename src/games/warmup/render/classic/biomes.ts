@@ -1,6 +1,7 @@
+// Original simple art, retained for the per-player Classic overworld mode.
 // What each biome looks like. Everything is drawn with primitives into a low-res buffer, so it reads as pixel art.
 // Props are picked per world slot from a hash, so the same spot always holds the same tree.
-import type { BiomeId } from '../sim/terrain';
+import type { BiomeId } from '../../sim/terrain';
 import { disc, rect, silhouette, tri, type BiomeLook, type G } from './paint';
 import { MORE_LOOKS } from './biomesMore';
 export { noise1, type G, type BiomeLook } from './paint';

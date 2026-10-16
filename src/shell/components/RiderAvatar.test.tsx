@@ -4,6 +4,7 @@ import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { RiderAvatar } from './RiderAvatar';
 import { drawRider } from '../../cosmetics/draw/rider';
+import { testProfile } from '../../core';
 
 vi.mock('../../cosmetics/draw/rider', () => ({ drawRider: vi.fn() }));
 
@@ -43,6 +44,15 @@ afterEach(() => {
 function visible(index: number, isIntersecting: boolean) {
   intersections[index].callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
+
+it('refreshes cosmetic previews when the player changes art mode', () => {
+  const p = testProfile();
+  act(() => render(<RiderAvatar profile={p} still road={false} />, host));
+  expect(vi.mocked(drawRider).mock.lastCall?.[1].artMode).toBe('rich');
+  act(() => render(<RiderAvatar profile={{ ...p, settings: { ...p.settings, overworldArt: 'legacy' } }} still road={false} />, host));
+  expect(vi.mocked(drawRider).mock.lastCall?.[1].artMode).toBe('legacy');
+  expect(drawRider).toHaveBeenCalledTimes(2);
+});
 
 it('allocates and draws lazy thumbnails only when visible, without duplicate resize paints', () => {
   act(() => render(<RiderAvatar still lazy road={false} />, host));

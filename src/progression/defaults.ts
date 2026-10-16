@@ -4,6 +4,7 @@ import { RULES_VERSION } from './levels';
 export function defaultSettings(): ProfileSettings {
   return {
     units: 'imperial',
+    overworldArt: 'rich',
     difficulty: 1.0,
     zoneSource: 'auto',
     aimMode: 'rotate',

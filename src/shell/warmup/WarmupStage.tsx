@@ -1,4 +1,6 @@
 import { FrameGate } from './frameGate';
+import { VisualSnapshot } from './visualSnapshot';
+import type { WarmupSnapshot } from '../../games/warmup/sim/sim';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameRenderer, Insets, Profile, SessionRecord } from '../../contracts';
 import type { SessionLike } from '../types';
@@ -39,6 +41,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
   const [devKey, setDevKey] = useState(deviceKey);
   const [autoSaves, setAutoSaves] = useState(0);
   const cb = useRef({ onSession, onRideEnded }); cb.current = { onSession, onRideEnded };
+  const remastered = useRef(true); remastered.current = profile?.settings.overworldArt !== 'legacy';
   const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
 
   useEffect(() => subscribeDevices(() => setDevKey(deviceKey())), []);
@@ -54,7 +57,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     };
   }, [profile?.id, devKey, restartKey, autoSaves]);
 
-  // renderer (remounted per rider, and when their look changes in the Locker)
+  // Remount on equipment or art-mode changes; the ride lifecycle above keeps its distance and credit.
   const lookKey = profile ? JSON.stringify(riderLook(profile)) : '';
   useEffect(() => {
     let disposed = false;
@@ -85,6 +88,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 };
     let raf = 0, last = performance.now(), still = 0, sinceCheck = 0, sentTo: unknown = null, sentOn = false;
     const draws = new FrameGate(60);
+    const visual = new VisualSnapshot();
     let drawDt = 0;
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - last) / 1000); last = now;
@@ -96,7 +100,9 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
         if (s !== sentTo || on !== sentOn) { sentTo = s; sentOn = on; s.sim.receive?.({ type: 'driveIn', on }); } // the scenery blends in / out
         drawDt += dt;
         if (document.visibilityState !== 'hidden' && draws.ready(now)) {
-          const snap = s.sim.snapshot();
+          const raw = s.sim.snapshot() as WarmupSnapshot;
+          const smooth = visual.sample(raw, s.loop?.interpolationAlpha ?? 1, s);
+          const snap = remastered.current ? smooth : raw;
           const { w, h, inset } = size.current;
           // the DOM video and the canvas frame share one rect, computed before the canvas draws
           renderer.current?.setScreen?.(driveIn.current?.tick(Math.min(0.25, drawDt), w, h, inset, (snap as { driveIn?: number }).driveIn ?? 0) ?? null);

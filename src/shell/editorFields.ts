@@ -21,6 +21,7 @@ const AIM_OPTS: Opt<AimMode> = [{ value: 'rotate', label: 'Rotate (paddles)' }, 
 export const EDITOR_FIELDS: FieldDef[] = [
   { id: 'name', label: 'Name', kind: 'text' },
   { id: 'color', label: 'Color', kind: 'color' },
+  { id: 'overworldArt', label: 'Visual style', kind: 'choice', options: [{ value: 'rich', label: 'Remastered' }, { value: 'legacy', label: 'Classic' }], hint: 'Player, scenery and cosmetic previews; saved for this rider', get: (p) => p.settings.overworldArt === 'legacy' ? 'legacy' : 'rich', set: (p, v) => ({ ...p, settings: { ...p.settings, overworldArt: v === 'legacy' ? 'legacy' : 'rich' } }) },
   { id: 'units', label: 'Units', kind: 'choice', options: [{ value: 'imperial', label: 'Imperial (lb, mi)' }, { value: 'metric', label: 'Metric (kg, km)' }], get: unitsFor, set: (p, v) => ({ ...p, settings: { ...p.settings, units: v === 'metric' ? 'metric' : 'imperial' } }) },
   { id: 'ftp', label: 'FTP', kind: 'num', step: 5, min: 50, max: 600, unit: 'W', get: (p) => p.ftp, set: (p, v) => ({ ...p, ftp: v }) },
   { id: 'maxHr', label: 'Max HR', kind: 'num', step: 1, min: 100, max: 230, unit: 'bpm', get: (p) => p.maxHr, set: (p, v) => ({ ...p, maxHr: v }) },

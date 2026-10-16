@@ -1,16 +1,20 @@
+import { LOOKS as CLASSIC_LOOKS } from './classic/biomes';
+import { DRIVE_IN as CLASSIC_DRIVE_IN, drawScreenFrame as drawClassicScreenFrame, drawProjectorBeam as drawClassicProjectorBeam } from './classic/driveIn';
+import { backdrop as detailedBackdrop, coverArt, loadSceneArt, prop, sceneArtReady, surfaceTexture } from './remastered/art';
 import { unitsFor, formatSpeed, formatDistance, formatElevation, formatUpcoming } from '../../../units';
 import type { UnitSystem } from '../../../contracts';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { WarmupSnapshot } from '../sim/sim';
 import { BIOME_NAMES, biomeAt, biomeOfSeg, biomeWeights, hash01, makeTerrain, type Terrain } from '../sim/terrain';
-import { LOOKS, noise1, type BiomeLook, type G } from './biomes';
+import { LOOKS, noise1, type BiomeLook, type G } from './remastered/biomes';
 import { drawRider, lensFor } from '../../../cosmetics/draw/rider';
 import { riderLook } from '../../../cosmetics/unlocks';
 import type { RiderLook } from '../../../cosmetics/types';
+import { contactShadow } from './remastered/scenery';
 import { daylight } from './daylight';
 import { blendColors, layerAlphas, mixColor } from './blend';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
-import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
+import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './remastered/driveIn';
 import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
 import { Soundscape, speedFactor, type SceneId } from './soundscape';
 import { ambientDucked, play, setAmbient, stopAmbient } from '../../../audio/sfx';
@@ -22,7 +26,7 @@ const PPM = 9;            // low-res px per metre along the road
 const RIDGE_M_PER_PX = 4;
 const wrap = (x: number, span: number) => ((x % span) + span) % span; // the far ridge shows the same road, zoomed out
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.35, BACK_PARALLAX = 0.05;
-const MID_SLOT = 15, FORE_SLOT = 9;
+const MID_SLOT = 30, FORE_SLOT = 9;
 
 interface Actor { kind: BiomeLook['actor']; x: number; y: number; vx: number; vy: number; t0: number; seed: number; beamAt: number; color: string; leaveAt: number }
 const PARROTS = ['#e74c3c', '#3b82ff', '#ffd23b', '#2de26a'];
@@ -36,6 +40,9 @@ type Scene = Array<[BiomeLook, number]>;
 
 /** Side-scrolling pixel scenery. Draws a low-res buffer, upscales it crisply, then overlays text at full resolution. */
 export class WarmupRenderer implements GameRenderer {
+  private rich = true;
+  private raster = 2;
+  private artReady() { return this.rich && sceneArtReady(); }
   private units: UnitSystem = 'imperial';
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
@@ -57,6 +64,9 @@ export class WarmupRenderer implements GameRenderer {
   private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+    this.rich = ctx.profile.settings?.overworldArt !== 'legacy';
+    this.raster = this.rich ? 2 : 1;
+    if (this.rich) void loadSceneArt().catch(() => { /* Procedural scenery remains available if an asset fails. */ });
     this.units = unitsFor(ctx.profile);
     this.color = ctx.profile.color;
     this.look = riderLook({ ...ctx.profile, level: ctx.profile.level ?? 1, achievements: ctx.profile.achievements ?? [] }); // the guest lobby passes a bare { color }
@@ -66,7 +76,7 @@ export class WarmupRenderer implements GameRenderer {
     container.appendChild(this.canvas);
     this.g = this.canvas.getContext('2d')!;
     this.buf = document.createElement('canvas');
-    this.b = this.buf.getContext('2d')!;
+    this.b = this.buf.getContext('2d', { alpha: false })!;
     this.scratch = document.createElement('canvas');
     this.sg = this.scratch.getContext('2d')!;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
@@ -79,7 +89,8 @@ export class WarmupRenderer implements GameRenderer {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr);
     this.px = Math.max(2, Math.floor(this.canvas.height / 230));
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
-    this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
+    this.buf.width = this.scratch.width = this.LW * this.raster; this.buf.height = this.scratch.height = this.LH * this.raster;
+    this.b.setTransform(this.raster, 0, 0, this.raster, 0, 0); this.sg.setTransform(this.raster, 0, 0, this.raster, 0, 0);
   }
   unmount() { this.canvas?.remove(); stopAmbient(); }
 
@@ -90,17 +101,22 @@ export class WarmupRenderer implements GameRenderer {
   }
 
   /** Draw one layer for every biome in the scene. In a dissolve each biome's layer goes to the scratch buffer first, so the layer blends as a whole. */
-  private layer(scene: Scene, draw: (look: BiomeLook, g: G) => void) {
+  private layer(scene: Scene, draw: (look: BiomeLook, g: G) => void, top = 0) {
     if (scene.length === 1) { draw(scene[0][0], this.b); return; }
     const alphas = layerAlphas(scene.map(([, w]) => w));
+    const sy = Math.max(0, Math.min(this.scratch.height - 1, Math.floor(top * this.raster)));
+    const sh = this.scratch.height - sy;
     scene.forEach(([look], i) => {
-      this.sg.clearRect(0, 0, this.LW, this.LH);
+      this.sg.clearRect(0, sy / this.raster, this.LW, sh / this.raster);
       draw(look, this.sg);
-      this.b.globalAlpha = alphas[i]; this.b.drawImage(this.scratch, 0, 0); this.b.globalAlpha = 1;
+      this.b.globalAlpha = alphas[i]; this.b.drawImage(this.scratch, 0, sy, this.scratch.width, sh, 0, sy / this.raster, this.LW, sh / this.raster); this.b.globalAlpha = 1;
     });
   }
 
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
+    const looks = this.rich ? LOOKS : CLASSIC_LOOKS;
+    const driveInLook = this.rich ? DRIVE_IN : CLASSIC_DRIVE_IN;
+    const midSlot = this.rich ? MID_SLOT : 15;
     const s = snapshot as WarmupSnapshot;
     if (!s || typeof s.d !== 'number') return;
     const now = performance.now() / 1000;
@@ -112,10 +128,10 @@ export class WarmupRenderer implements GameRenderer {
     const di = s.driveIn ?? 0;
     // what the scene is made of right now: the biome pair being dissolved (by position) and the Drive-In (by time)
     const scene: Scene = [];
-    for (const [id, w] of biomeWeights({ cur: s.from, next: s.to, mix: s.mix })) if (w * (1 - di) > 0.002) scene.push([LOOKS[id], w * (1 - di)]);
-    if (di > 0.002) scene.push([DRIVE_IN, di]);
+    for (const [id, w] of biomeWeights({ cur: s.from, next: s.to, mix: s.mix })) if (w * (1 - di) > 0.002) scene.push([looks[id], w * (1 - di)]);
+    if (di > 0.002) scene.push([driveInLook, di]);
     const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
-    const dom = di > 0.5 ? DRIVE_IN : LOOKS[s.biome];
+    const dom = di > 0.5 ? driveInLook : looks[s.biome];
     const RX = Math.round(W * 0.3), roadY0 = Math.round(UH * 0.8);
     const elevation = terr.elev(s.d);
     const roadY = (dd: number) => roadY0 - (terr.elev(dd) - elevation) * vscale;
@@ -129,10 +145,10 @@ export class WarmupRenderer implements GameRenderer {
     };
     const band = (dd: number, k: 'mid' | 'ground' | 'groundDark' | 'road' | 'roadEdge') => {
       const b = biome(dd);
-      const c = mixColor(LOOKS[b.cur][k], LOOKS[b.next][k], b.mix);
-      return di > 0 ? mixColor(c, DRIVE_IN[k], di) : c;
+      const c = b.mix === 0 ? looks[b.cur][k] : mixColor(looks[b.cur][k], looks[b.next][k], b.mix);
+      return di > 0 ? mixColor(c, driveInLook[k], di) : c;
     };
-    const roadKindAt = (dd: number) => { if (di > 0.5) return DRIVE_IN.roadKind; const b = biome(dd); return LOOKS[b.mix < 0.5 ? b.cur : b.next].roadKind; };
+    const roadKindAt = (dd: number) => { if (di > 0.5) return driveInLook.roadKind; const b = biome(dd); return looks[b.mix < 0.5 ? b.cur : b.next].roadKind; };
     this.texts = [];
 
     if (s.biome !== this.lastBiome) { if (this.lastBiome) { this.titleAt = t; this.title = BIOME_NAMES[s.biome]; } this.lastBiome = s.biome; }
@@ -157,36 +173,34 @@ export class WarmupRenderer implements GameRenderer {
       }
       g.globalAlpha = 1;
     }
-    for (const [l, w] of scene) { g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1); if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); }
+    for (const [l, w] of scene) {
+      g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1);
+      if (g.globalAlpha > 0.01) {
+        if (l.outdoor && this.artReady()) this.sun(g, W * (l.art === 'seaside' ? .18 : l.art === 'desert' ? .25 : .82), 24, glow);
+        else l.celestial(g, W, UH, t);
+      }
+    }
     g.globalAlpha = night; if (night > 0.02) { g.fillStyle = '#f4f1dc'; g.beginPath(); g.arc(W * 0.8, 24, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0a0f2a'; g.beginPath(); g.arc(W * 0.8 + 3, 22, 6, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
-    const clouds = wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)) * (1 - night * 0.92);
+    const clouds = wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' && (!this.rich || l.particles !== 'ash') ? 1 : 0)) * (1 - night * 0.92);
     if (clouds > 0.02) this.clouds(g, W, UH, t, s.d, clouds);
 
     // ---- distant backdrop ----
     const backY = Math.round(UH * 0.5), bu = s.d * PPM * BACK_PARALLAX;
-    this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, bu, t));
+    if (!this.artReady()) this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, bu, t));
 
     // ---- the real road, seen from afar (rolling ridge) ----
     const ridgeBase = Math.round(UH * 0.6), ridgeV = Math.max(0.6, s.hill * s.exaggeration * 0.7);
     const ridgeAt = (x: number) => { const uu = s.d + (x - RX) * RIDGE_M_PER_PX; return ridgeBase - (terr.elev(uu) - elevation) * ridgeV; };
-    g.fillStyle = blendColors(scene.map(([l, w]) => [l.ridge, w] as const));
-    g.beginPath(); g.moveTo(0, H);
-    const ridge = this.ridge;
-    for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x); ridge[x / 2] = y; g.lineTo(x, y); }
-    g.lineTo(W, H); g.closePath(); g.fill();
-    g.strokeStyle = '#ffffff40'; g.lineWidth = 1; g.beginPath();
-    for (let x = 0; x <= W; x += 2) { const y = ridge[x / 2] + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
-    g.stroke();
-
-    // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----
-    let screenBuf: BufRect | null = null;
-    if (di > 0.01 && this.screen) {
-      const k = this.dpr / this.px, r = this.screen;
-      screenBuf = { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k };
-      g.globalAlpha = di; drawScreenFrame(g, screenBuf, Math.round(UH * 0.7), t); g.globalAlpha = 1;
-      const fade = Math.min(1, di * 2);
-      this.texts.push({ s: 'WATTCADE DRIVE-IN', x: screenBuf.x + screenBuf.w / 2, y: screenBuf.y - 9, size: Math.max(4, Math.min(8, screenBuf.w / 70)), color: '#ff7ae8', align: 'center', alpha: fade * (0.85 + 0.15 * Math.sin(t * 9) * (Math.sin(t * 0.7) > 0.8 ? 1 : 0)), glow: '#ff2bd6' });
+    if (!this.artReady()) {
+      g.fillStyle = blendColors(scene.map(([l, w]) => [l.ridge, w] as const));
+      g.beginPath(); g.moveTo(0, H);
+      const ridge = this.ridge;
+      for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x); ridge[x / 2] = y; g.lineTo(x, y); }
+      g.lineTo(W, H); g.closePath(); g.fill();
+      g.strokeStyle = '#ffffff40'; g.lineWidth = 1; g.beginPath();
+      for (let x = 0; x <= W; x += 2) { const y = ridge[x / 2] + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
+      g.stroke();
     }
 
     // ---- mid layer: ground band + props ----
@@ -197,30 +211,86 @@ export class WarmupRenderer implements GameRenderer {
       g.fillStyle = band(lx / (PPM * MID_PARALLAX), 'mid');
       const y = Math.round(midY(lx)); g.fillRect(x, y, 2, H - y);
     }
-    const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
+    const k0 = Math.floor((mu - RX - 90) / midSlot), k1 = Math.ceil((mu - RX + W + 90) / midSlot);
+    // Compose the entire scenery plane once per biome, then dissolve the plane as a whole.
     this.layer(scene, (l, gg) => {
-      for (let k = k0; k <= k1; k++) {
-        const lx = k * MID_SLOT + (hash01(k * 17 + 3) - 0.5) * 8;
-        l.midProp(gg, hash01(k * 31 + 5), Math.round(lx - mu + RX), Math.round(midY(lx)) + 1, t);
+      if (this.artReady() && l.art) {
+        gg.save(); gg.beginPath(); gg.moveTo(0, 0); gg.lineTo(W, 0);
+        for (let x = W; x >= 0; x -= 2) gg.lineTo(x, midY(x + mu - RX));
+        gg.lineTo(0, midY(mu - RX)); gg.closePath(); gg.clip();
+        detailedBackdrop(gg, l.art, W, UH * .735, bu * .85, UH * .48); gg.restore();
+        gg.save(); gg.beginPath(); gg.moveTo(0, H);
+        for (let x = 0; x <= W; x += 3) gg.lineTo(x, midY(x + mu - RX));
+        gg.lineTo(W, H); gg.closePath(); gg.clip();
+        surfaceTexture(gg, l.art, W, H, mu - RX, .48); gg.restore();
       }
-    });
+      for (let k = k0; k <= k1; k++) {
+        const lx = k * midSlot + (hash01(k * 17 + 3) - 0.5) * 8;
+        l.midProp(gg, hash01(k * 31 + 5), this.rich ? lx - mu + RX : Math.round(lx - mu + RX), this.rich ? midY(lx) + 1 : Math.round(midY(lx)) + 1, t);
+      }
+    }, Math.min(UH * .25 - 2, midBase - 112));
+    // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----
+    let screenBuf: BufRect | null = null;
+    if (di > 0.01 && this.screen) {
+      const k = this.dpr / this.px, r = this.screen;
+      screenBuf = { x: r.x * k, y: r.y * k, w: r.w * k, h: r.h * k };
+      g.globalAlpha = di; (this.rich ? drawScreenFrame : drawClassicScreenFrame)(g, screenBuf, Math.round(UH * 0.7), t); g.globalAlpha = 1;
+      const fade = Math.min(1, di * 2);
+      this.texts.push({ s: 'WATTCADE DRIVE-IN', x: screenBuf.x + screenBuf.w / 2, y: screenBuf.y - 9, size: Math.max(4, Math.min(8, screenBuf.w / 70)), color: '#ff7ae8', align: 'center', alpha: fade * (0.85 + 0.15 * Math.sin(t * 9) * (Math.sin(t * 0.7) > 0.8 ? 1 : 0)), glow: '#ff2bd6' });
+    }
+
     const weedW = wsum((l) => (l.weeds ? 1 : 0));
     this.updateWeeds(t, s, W, weedW);
     const weedAtLane = (lane: WeedLane) => this.drawWeeds(g, lane, t, s, RX, roadY, midY, weedW);
     weedAtLane('far');
 
     // ---- road + near ground ----
-    for (let x = 0; x < W; x++) {
+    let roadTop = H;
+    // Remastered samples at the raster's half-unit spacing and keeps fractional heights.
+    const roadStep = this.rich ? .5 : 1;
+    for (let x = 0; x < W; x += roadStep) {
       const dd = s.d + (x - RX) / PPM;
-      const y = Math.round(roadY(dd)), kind = roadKindAt(dd), edge = band(dd, 'roadEdge');
-      g.fillStyle = band(dd, 'ground'); g.fillRect(x, y + 6, 1, H - y);
-      if (hash01(Math.floor(dd * 3) * 7) < 0.25) { g.fillStyle = band(dd, 'groundDark'); g.fillRect(x, y + 8 + Math.floor(hash01(Math.floor(dd * 3)) * 20), 1, 1); }
-      g.fillStyle = band(dd, 'road'); g.fillRect(x, y, 1, 5);
-      g.fillStyle = edge; g.fillRect(x, y + 5, 1, 1);
-      if (kind === 'asphalt' && Math.floor(dd / 1.5) % 2 === 0) { g.fillStyle = '#f0e6a0'; g.fillRect(x, y + 2, 1, 1); }
-      else if (kind === 'planks' && ((dd % 0.8) + 0.8) % 0.8 < 1 / PPM) { g.fillStyle = edge; g.fillRect(x, y, 1, 5); }
-      else if (kind === 'dust' && hash01(Math.floor(dd * PPM)) < 0.2) { g.fillStyle = edge; g.fillRect(x, y + 1 + Math.floor(hash01(x + Math.floor(dd)) * 3), 1, 1); }
+      const y = this.rich ? roadY(dd) : Math.round(roadY(dd)), kind = roadKindAt(dd), edge = band(dd, 'roadEdge');
+      roadTop = Math.min(roadTop, y);
+      g.fillStyle = band(dd, 'ground'); g.fillRect(x, y + 6, roadStep, H - y);
+      const grain = Math.floor(dd * 3);
+      if (hash01(grain * 7) < .28) {
+        g.fillStyle = band(dd, 'groundDark');
+        g.fillRect(x, y + 8 + Math.floor(hash01(grain) * 22), 2, 1);
+      }
+      // A thin lit verge and short world-anchored marks give the ground a surface.
+      if (this.rich) {
+        g.fillStyle = '#f4ebcf18'; g.fillRect(x, y + 6, roadStep, 1);
+        if (hash01(grain * 11 + 2) < .16) { g.fillStyle = '#f4ebcf20'; g.fillRect(x, y + 11 + Math.floor(hash01(grain + 19) * 25), 2, 1); }
+      }
+      g.fillStyle = band(dd, 'road'); g.fillRect(x, y, roadStep, 5);
+      // Fine mineral/asphalt grain replaces the flat ribbon without altering road geometry.
+      const roadSeed = Math.floor(dd * PPM * 2);
+      if (this.rich && hash01(roadSeed * 23) < .42) {
+        g.fillStyle = hash01(roadSeed * 47) < .5 ? '#fff5d51c' : '#10182428';
+        g.fillRect(x, y + .5 + hash01(roadSeed * 59) * 3.5, .5, .5);
+      }
+      if (this.rich) { g.fillStyle = '#fff2d529'; g.fillRect(x, y, roadStep, 1); }
+      g.fillStyle = edge; g.fillRect(x, y + 5, roadStep, 1);
+      if (kind === 'asphalt' && Math.floor(dd / 1.5) % 2 === 0) { g.fillStyle = '#f0e6a0'; g.fillRect(x, y + 2, roadStep, 1); }
+      else if (kind === 'planks' && ((dd % 0.8) + 0.8) % 0.8 < 1 / PPM) { g.fillStyle = edge; g.fillRect(x, y, roadStep, 5); }
+      else if (kind === 'dust' && hash01(Math.floor(dd * PPM)) < 0.2) { g.fillStyle = edge; g.fillRect(x, y + 1 + Math.floor(hash01(Math.floor(dd * PPM) * 17) * 3), roadStep, 1); }
     }
+
+    if (this.artReady()) this.layer(scene, (l, gg) => {
+      if (!l.art) return;
+      gg.save(); gg.beginPath(); gg.moveTo(0, H);
+      for (let x = 0; x <= W; x += 2) gg.lineTo(x, roadY(s.d + (x - RX) / PPM) + 6);
+      gg.lineTo(W, H); gg.closePath(); gg.clip();
+      surfaceTexture(gg, l.art, W, H, s.d * PPM * FORE_PARALLAX - RX, .67); gg.restore();
+      // Roadside cover belongs to this ground plane, with the same dissolve.
+      const groundArt = coverArt[l.art], scroll = s.d * PPM * .8;
+      for (let k = Math.floor(scroll / 16) - 1; k <= Math.ceil((scroll + W) / 16) + 1; k++) {
+        const h = hash01(k * 71 + 13), x = k * 16 - scroll + (h - .5) * 11, dd = s.d + (x - RX) / PPM;
+        const ht = l.art === 'moon' || l.art === 'volcano' ? 3 + h * 5 : 5 + h * 5;
+        prop(gg, groundArt, x, roadY(dd) - 2, ht, h > .5, Math.floor(h * 7));
+      }
+    }, roadTop - 16);
 
     // ---- gateway landmarks at the biome boundaries (centre of each dissolve) ----
     const kb = Math.round(s.d / biomeM);
@@ -243,10 +313,11 @@ export class WarmupRenderer implements GameRenderer {
       const c = Math.cos(-Math.atan(slope)), sn = Math.sin(-Math.atan(slope));
       g.globalAlpha = Math.min(1, (di - 0.5) * 2);
       const lens = lensFor(look.bike);
-      drawProjectorBeam(g, RX + lens[0] * c - lens[1] * sn, roadY0 + bob + lens[0] * sn + lens[1] * c, screenBuf, t);
+      (this.rich ? drawProjectorBeam : drawClassicProjectorBeam)(g, RX + lens[0] * c - lens[1] * sn, roadY0 + bob + lens[0] * sn + lens[1] * c, screenBuf, t);
       g.globalAlpha = 1;
     }
     g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
+    if (this.rich) contactShadow(g, 0, 1, 10, '#131c2c45');
     if (lights > 0.3) { // headlight
       g.fillStyle = `rgba(255,244,200,${0.18 * lights})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
     }
@@ -258,11 +329,23 @@ export class WarmupRenderer implements GameRenderer {
     const fu = s.d * PPM * FORE_PARALLAX;
     const f0 = Math.floor((fu - RX - 10) / FORE_SLOT), f1 = Math.ceil((fu - RX + W + 10) / FORE_SLOT);
     this.layer(scene, (l, gg) => {
-      for (let k = f0; k <= f1; k++) {
+      if (!this.artReady()) for (let k = f0; k <= f1; k++) {
         const lx = k * FORE_SLOT, x = lx - fu + RX, dd = s.d + (x - RX) / PPM;
         l.foreProp(gg, hash01(k * 13 + 9), Math.round(x), Math.round(roadY(dd) + 10 + hash01(k * 5) * 12));
       }
-    });
+      if (!this.artReady() || !l.art) return;
+      const art = coverArt[l.art], scroll = s.d * PPM * FORE_PARALLAX;
+      for (let row = 0; row < 4; row++) {
+        const spacing = 15 + row * 3, offset = row * 7;
+        for (let k = Math.floor((scroll - RX) / spacing) - 2; k <= Math.ceil((scroll - RX + W) / spacing) + 2; k++) {
+          const seed = k * 53 + row * 131, h = hash01(seed), x = k * spacing - scroll + RX + offset + (hash01(seed + 401) - .5) * spacing;
+          const dd = s.d + (x - RX) / PPM, ht = 4 + hash01(seed + 809) * (9 + row * 3);
+          const y = roadY(dd) + 14 + row * 8 + (hash01(seed + 1213) - .5) * 24;
+          const density = l.art === 'moon' || l.art === 'volcano' ? .3 : .5 + noise1(k / 4 + row, 81) * .4;
+          if (y - ht > roadY(dd) + 6 && y - ht < H && h < density) prop(gg, art, x, y, ht, hash01(seed + 1637) > .5, Math.floor(hash01(seed + 2011) * 3));
+        }
+      }
+    }, roadTop + 4);
 
     this.particles(g, W, H, t, s, scene, night);
     this.updateActors(g, W, UH, t, dt, s, dom);
@@ -273,7 +356,7 @@ export class WarmupRenderer implements GameRenderer {
 
     // ---- blit + full-res overlay ----
     const m = this.g;
-    m.imageSmoothingEnabled = false;
+    m.imageSmoothingEnabled = this.rich;
     m.drawImage(this.buf, 0, 0, W * this.px, H * this.px);
     this.overlay(s, RX, roadY0, UH, t);
   }
@@ -319,6 +402,21 @@ export class WarmupRenderer implements GameRenderer {
   }
 
   private clouds(g: G, W: number, UH: number, t: number, d: number, alpha: number) {
+    if (!this.rich) { this.classicClouds(g, W, UH, t, d, alpha); return; }
+    g.globalAlpha = alpha * 0.9; g.fillStyle = '#ffffff';
+    for (let i = 0; i < 6; i++) {
+      const span = W + 80, sp = 2 + hash01(i * 9) * 4;
+      const x = ((hash01(i * 7) * span - t * sp - d * PPM * 0.02 * (1 + i * 0.2)) % span + span) % span - 40;
+      const y = 10 + hash01(i * 11) * UH * 0.3, w = 14 + hash01(i * 13) * 18;
+      if (this.rich && prop(g, 'cloud', x + w / 2, y + 4, 10 + hash01(i * 13) * 12, i % 2 === 1)) continue;
+      g.fillStyle = '#b9d2d7'; g.fillRect(Math.round(x), Math.round(y + 2), Math.round(w), 3);
+      g.fillStyle = '#f4f2e5'; g.fillRect(Math.round(x), Math.round(y), Math.round(w), 3); g.fillRect(Math.round(x + 4), Math.round(y - 3), Math.round(w * 0.5), 3);
+      g.fillRect(Math.round(x + w * 0.45), Math.round(y - 5), Math.round(w * 0.3), 5);
+    }
+    g.globalAlpha = 1;
+  }
+
+  private classicClouds(g: G, W: number, UH: number, t: number, d: number, alpha: number) {
     g.globalAlpha = alpha * 0.9; g.fillStyle = '#ffffff';
     for (let i = 0; i < 6; i++) {
       const span = W + 80, sp = 2 + hash01(i * 9) * 4;
@@ -328,6 +426,16 @@ export class WarmupRenderer implements GameRenderer {
       g.fillRect(Math.round(x + w * 0.45), Math.round(y - 5), Math.round(w * 0.3), 5);
     }
     g.globalAlpha = 1;
+  }
+
+
+  private sun(g: G, x: number, y: number, glow: number) {
+    const halo = g.createRadialGradient(x, y, 3, x, y, 33);
+    halo.addColorStop(0, '#fff7ce66'); halo.addColorStop(.35, '#ffe6ab28'); halo.addColorStop(1, '#ffdb8b00');
+    g.fillStyle = halo; g.fillRect(x - 33, y - 33, 66, 66);
+    const core = g.createRadialGradient(x - 2, y - 3, 1, x, y, 8);
+    core.addColorStop(0, '#fffce8'); core.addColorStop(.7, '#fff1b9'); core.addColorStop(1, glow > .2 ? '#ffcb87' : '#ffe399');
+    g.fillStyle = core; g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.fill();
   }
 
   /** Flyers / swimmers for the current biome; spawned in small groups from either side. */

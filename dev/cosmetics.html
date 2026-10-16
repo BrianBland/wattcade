@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wattcade cosmetics</title>
+<style>body{margin:0;background:#142232;color:#e8ede9;font:15px system-ui}main{max-width:1200px;margin:auto;padding:24px}h1{margin:0}p{color:#aabccc}label{display:inline-flex;gap:8px;align-items:center;margin:16px 20px 16px 0}input,select{background:#263d52;color:#fff;border:1px solid #678095;padding:5px}#gallery{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}figure{margin:0;background:#203448;border:1px solid #4c6375;border-radius:8px;overflow:hidden}canvas{display:block;width:100%;height:170px}figcaption{padding:10px;font-size:13px}@media(max-width:800px){#gallery{grid-template-columns:repeat(3,1fr)}}@media(max-width:500px){#gallery{grid-template-columns:repeat(2,1fr)}}</style></head>
+<body><main><h1>Wattcade cosmetics</h1><p>Classic and Remastered · real cosmetic drawings · no saved-profile changes</p>
+<label>Style <select id="style"><option value="rich">Remastered</option><option value="legacy">Classic</option></select></label>
+<label>Collection <select id="slot"></select></label><label>Color <input id="color" type="color" value="#27c5c7"></label>
+<label>Speed <input id="speed" type="range" min="0" max="12" step="1" value="6"></label><label>Cadence <input id="cadence" type="range" min="0" max="120" step="5" value="75"></label>
+<label><input id="freeze" type="checkbox">Freeze</label><div id="gallery"></div></main><script type="module" src="./cosmetics.ts"></script></body></html>

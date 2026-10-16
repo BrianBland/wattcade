@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { blendColors, layerAlphas, mixColor, rgb } from '../render/blend';
-import { makeMesa, mesaSlot, mesaThemeAt, DESERT_MESA } from '../render/mesa';
+import { makeMesa, mesaSlot, mesaThemeAt, DESERT_MESA } from '../render/remastered/mesa';
 import { hop, makeWeed, weedAt, weedGone } from '../render/tumbleweed';
 import { SOUNDSCAPE, Soundscape, speedFactor } from '../render/soundscape';
 import { makeRng } from '../../../core/rng';

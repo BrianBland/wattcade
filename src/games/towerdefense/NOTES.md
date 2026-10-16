@@ -27,9 +27,9 @@ CONTRACT-REQUESTs: none.
 - ◀▶/paddles nudge a lane for 6 s; ▲ clears it. Turret aim and weapon choice remain automatic. Repair remains a scrap purchase; cooldown Field Repair is deferred by owner choice.
 
 ## Saves and balance
-- Save v2 adds `autoCrew` independently of Garage `autoInvest`; missing fields default ON, explicit OFF survives reload. Preserve this field when #121 introduces v3. Cores/failure/Garage still use the pre-#121 rules.
+- Save v3 (`readSave` in `sim/sim.ts`) keeps bank, upgrades, best wave and Auto-crew from legacy and v2 saves, and drops core fields. A fall or bail banks parts already earned and returns to the Garage; `isOver()` stays false. The shell pause menu offers **Return to Garage · bank parts** during a run.
 - `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
-- The `surge-ready-deep` achievement fixture explicitly uses `actionBot`, hook-responsive riding and unlimited rebuilds to reach wave 40; passive survival remains measured separately. Achievement thresholds are unchanged.
+- The `surge-ready-deep` achievement fixture uses `actionBot`, hook-responsive riding and a reinforced base (`simOpts.baseHp`) to reach wave 40. `wavesSurvived` is the best single run, so a later fall does not erase it. Passive survival remains measured separately.
 - With #140, fresh profile, FTP 200, 30 min z2, seeds 1–4: passive = 34 cleared waves in every seed, active = 33–35; all six pads and 24 upgrades in both. Passive turret damage share 41–47% remains inside #120's 40–60% band. No tower damage/cost buffs were made.
 - Survival to failure (same four seeds): passive averages 37.5 waves / 34.0 min, active 39.0 waves / 35.7 min. Compare complete runs because a fixed 30-minute cutoff can fall within a boss phase. Cores/failure follow pre-#121 rules.
 

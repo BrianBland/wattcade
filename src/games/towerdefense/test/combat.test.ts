@@ -96,7 +96,7 @@ describe('boss ladder', () => {
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
       profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
-      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, cores: 0 } });
+      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
     for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
@@ -120,7 +120,7 @@ describe('boss ladder', () => {
       const events: Array<GameEvent & { t: number }> = [];
       const s = createGameSession({ game: module,
         profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
-        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true, cores: 0 }, onEmit: (e) => events.push(e) });
+        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true }, onEmit: (e) => events.push(e) });
       // Hold watts and cadence identical to isolate the sprint bonus from extra fire rate / watts.
       const bike = s.ctx.bike;
       s.ctx.bike = () => ({ ...bike(), sprinting: sprint && Boolean(snapshot(s).boss?.exposed) });
@@ -141,7 +141,7 @@ describe('boss ladder', () => {
   it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
     const s = createGameSession({ game: module,
       profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false, cores: 0 } });
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false } });
     s.tuning.set('towerdefense.railLaserDps', 1);
     for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);

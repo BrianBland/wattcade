@@ -109,7 +109,7 @@ describe('clear heal', () => {
     expect(hits.every((d) => d === 2.2 || d >= 8.8)).toBe(true); // drones/darts 1 -> 2.2, heavies x2.2
   });
   it('a rider who stops pedalling gets no heal from leaked waves', () => {
-    const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 } });
+    const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true } });
     const cleared = r.events.filter((e) => e.type === 'waveCleared');
     expect(cleared.length).toBeGreaterThan(0);
     for (const e of cleared) { expect(Number(e.data?.leakDmg)).toBeGreaterThan(0); expect(e.data?.heal).toBe(0); }
@@ -150,7 +150,7 @@ describe('garage meta', () => {
   });
   it('reads old saves and shows progress', () => {
     const s = readSave({ bestWave: 9 });
-    expect(s).toMatchObject({ v: 2, bestWave: 9, bank: 0, runs: 0 });
+    expect(s).toMatchObject({ v: 3, bestWave: 9, bank: 0, runs: 0 });
     expect(progressLine({ bestWave: 9 })).toBe('Best: wave 9');
     expect(progressLine({ bestWave: 12, bank: 340 })).toBe('Best: wave 12 · 340 parts');
     expect(progressLine(undefined)).toBeNull();
@@ -182,6 +182,7 @@ describe('garage meta', () => {
     expect(snap(s).wave).toBe(7); // 1 + 2 x 3
     s.step(30 * 60 * 4);
     expect(snap(s).wave).toBeGreaterThan(9);
+    expect(s.sim.isOver()).toBe(false);
     expect(saved.bestWave).toBe(Math.max(12, snap(s).wave - 1));
   });
   it('first run skips the garage; intro shows play controls', () => {
@@ -302,6 +303,7 @@ describe('workshop', () => {
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true, autoCrew: false } });
+      s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
       s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 180);
       return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills), fired: snap(s).towers[0]?.firedAt > 0 };
     };

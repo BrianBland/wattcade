@@ -19,7 +19,7 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   swap: { s: 'swap' }, kill: { s: 'kill', gap: 0.05, vol: 0.8 }, bossStart: { s: 'bossStart' }, bossDie: { s: 'bossDie' },
   build: { s: 'build' }, upgrade: { s: 'upgrade' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
   select: { s: 'uiMove' }, uiOpen: { s: 'uiSelect' }, uiClose: { s: 'uiBack' }, waveStart: { s: 'siren', vol: 0.8 }, waveClear: { s: 'chime' },
-  baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, coreLost: { s: 'lampOut' },
+  baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, baseFell: { s: 'lampOut' },
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
 
@@ -404,12 +404,12 @@ export class TdRenderer implements GameRenderer {
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
         weapon: s.weapon, aim: s.aimAngle, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle, overdrive: s.overdrive,
-        railCharge: s.railCharges / Math.max(1, s.railMaxCharges), cores: s.cores, coresMax: s.coresMax, flaming: s.flaming,
+        railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
     } else {
       this.drawLanes(g, s, t);
       this.drawPads(g, s, t);
-      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, cores: s.cores, coresMax: s.coresMax, flaming: false });
+      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
     this.stepParticles(realDt);
     g.restore();

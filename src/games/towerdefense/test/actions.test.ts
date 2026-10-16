@@ -17,8 +17,9 @@ const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as Td
 const action = (s: ReturnType<typeof createGameSession>, id: ActionId) => snap(s).actions.find(a => a.id === id)!;
 function rig() {
   const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1,
-    simOpts: { skipGarage: true, autoCrew: false, cores: 0 } });
+    simOpts: { skipGarage: true, autoCrew: false } });
   s.tuning.set('towerdefense.startScrap', 1000);
+  s.tuning.set('towerdefense.baseHp', 1000); // isolate input behavior from falling mid-gesture
   s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railLaserDps', 0);
   s.tuning.set('towerdefense.towerDamageMult', 0.1);
   s.step(1); s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(1);
@@ -120,17 +121,21 @@ describe('passive versus active riders', () => {
   it('Auto-crew develops every pad without combat actions; actions extend survival across four seeds', () => {
     let passiveWaves = 0, activeWaves = 0, passiveMinutes = 0, activeMinutes = 0;
     for (const seed of [1, 2, 3, 4]) {
-      // Measure the endless ride to failure, rather than a fixed 30-minute cut through a boss phase.
+      // Compare the first run; later runs keep the ride open and bank more towers and upgrades.
       const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 60, seed, simOpts: { autopilot: true, actionBot } });
       const passive = run(false), active = run(true);
-      expect(passive.summary.towersBuilt).toBe(6); expect(passive.summary.towerUpgrades).toBe(24);
+      const firstEnd = (r: typeof passive) => r.events.find(e => e.type === 'runEnded' && e.data?.reason === 'fell')!;
+      const passiveEnd = firstEnd(passive), activeEnd = firstEnd(active);
+      expect(passiveEnd).toBeDefined(); expect(activeEnd).toBeDefined();
+      expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t)).toHaveLength(6);
+      expect(Number(passive.summary.towerUpgrades)).toBeGreaterThanOrEqual(24);
       expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
       expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(25);
-      expect(passive.isOver).toBe(true); expect(active.isOver).toBe(true);
-      expect(Number(active.summary.wavesSurvived)).toBeGreaterThanOrEqual(Number(passive.summary.wavesSurvived));
+      expect(passive.isOver).toBe(false); expect(active.isOver).toBe(false);
+      expect(Number(activeEnd.data?.wavesSurvived)).toBeGreaterThanOrEqual(Number(passiveEnd.data?.wavesSurvived));
       expect(active.events.some(e => e.type === 'action')).toBe(true);
-      passiveWaves += Number(passive.summary.wavesSurvived); activeWaves += Number(active.summary.wavesSurvived);
-      passiveMinutes += passive.simMinutes; activeMinutes += active.simMinutes;
+      passiveWaves += Number(passiveEnd.data?.wavesSurvived); activeWaves += Number(activeEnd.data?.wavesSurvived);
+      passiveMinutes += passiveEnd.t / 60; activeMinutes += activeEnd.t / 60;
     }
     expect(activeWaves).toBeGreaterThan(passiveWaves);
     expect(activeMinutes).toBeGreaterThan(passiveMinutes + 2);

@@ -53,26 +53,27 @@ export const scenarios: Array<{
     },
   },
   {
-    // one reactor core: a rider who stops pedalling stalls the dynamo (shields down) and loses the base in wave 2
-    name: 'idle', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 },
+    name: 'idle-falls', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!run.isOver) f.push('base should be destroyed (isOver)');
-      if (!(n(s, 'wavesSurvived') <= 2)) f.push(`wavesSurvived ${s.wavesSurvived} > 2`);
-      const over = run.events.find((e) => e.type === 'gameOver');
-      if (!over || over.t > 150) f.push(`base fell at ${over ? Math.round(over.t) : '-'} s, want <= 150 s`);
+      if (run.isOver) f.push('falling should keep the session open');
+      const falls = run.events.filter((e) => e.type === 'runEnded' && e.data?.reason === 'fell');
+      if (falls.length !== 1) f.push(`expected one fall, got ${falls.length}`);
+      if (!(Number(falls[0]?.data?.wave) <= 2)) f.push('idle base did not fall by wave 2');
+      if (!(n(s, 'runs') === 1 && n(s, 'runsFallen') === 1)) f.push('summary should include the fallen run');
+      if (!(n(s, 'partsEarned') > 0)) f.push('a fallen run should bank the parts it earned');
       if (n(s, 'towerKills') !== 0) f.push(`unpowered towers killed ${s.towerKills}`);
       return f;
     },
   },
   {
-    // default cores: each core loss rebuilds the base; the last one ends the run
-    name: 'idle-cores', script: 'idle', minutes: 15, seed: 1, simOpts: { autopilot: true },
+    name: 'endless-restart', script: 'z2', minutes: 45, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!run.isOver) f.push('base should be destroyed (isOver)');
-      if (n(s, 'coresLost') !== 2) f.push(`coresLost ${s.coresLost} != 2`);
-      if (run.events.filter((e) => e.type === 'coreLost').length !== 2) f.push('expected 2 coreLost events');
+      if (run.isOver) f.push('falling should keep the session open');
+      if (!(n(s, 'runs') >= 2 && n(s, 'runsFallen') >= 1)) f.push('expected a fall and a second run');
+      const end = run.events.findIndex((e) => e.type === 'runEnded');
+      if (end < 0 || !run.events.slice(end + 1).some((e) => e.type === 'waveStart')) f.push('no waves after returning to the Garage');
       return f;
     },
   },
@@ -133,19 +134,19 @@ export const scenarios: Array<{
       for (let i = 0; i < calls.length; i++) {
         const e = calls[i], wave = Number(e.data?.wave);
         if (wave % 5 === 0) f.push('ordinary call in boss ladder');
-        if (i > 0 && wave - Number(calls[i - 1].data?.wave) < 2) f.push('back-to-back calls');
+        if (i > 0 && !run.events.some((x) => x.type === 'runEnded' && x.t > calls[i - 1].t && x.t < e.t) && wave - Number(calls[i - 1].data?.wave) < 2) f.push('back-to-back calls');
         if (({ gatling: 'spin', flame: 'grind', rail: 'hold' } as Record<string, string>)[String(e.data?.weapon)] !== e.data?.kind) f.push('call mismatched weapon');
-        const start = run.events.find((x) => x.type === 'waveStart' && x.data?.wave === wave);
+        const start = run.events.filter((x) => x.type === 'waveStart' && x.data?.wave === wave && x.t <= e.t).at(-1);
         if (!start || e.t < start.t) f.push('call announced during recovery');
       }
       return f;
     },
   })),
   {
-    // Award-plumbing fixture: explicit actions and unlimited rebuilds reach the deep-wave achievement.
+    // Award-plumbing fixture: explicit actions and a reinforced base reach the deep-wave achievement.
     // Natural survival and damage share remain covered by the passive scenarios and four-seed comparisons.
     name: 'surge-ready-deep', script: 'hook-responsive', minutes: 40, seed: 1,
-    simOpts: { autopilot: true, actionBot: true, cores: 0 },
+    simOpts: { autopilot: true, actionBot: true, baseHp: 1000 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'wavesSurvived') >= 40)) f.push(`wavesSurvived ${s.wavesSurvived} < 40`);

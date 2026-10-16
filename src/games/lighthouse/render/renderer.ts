@@ -1,5 +1,5 @@
 // Keeper's Light renderer: low-poly island in three.js, plus a DOM HUD. Reads only the sim snapshot.
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
 import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
@@ -18,6 +18,7 @@ import { Decor } from './decor';
 import { HUBS } from './life';
 import { IslandMusic } from './music';
 import { addToAlbum, loadAlbum, popSchedule, postcardLines, snapshot } from './postcard';
+import { createGfx, type Gfx } from '../../../gfx/renderer';
 import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
 const VISIT: Record<string, true> = { circus: true, royal: true, research: true };
@@ -37,7 +38,7 @@ function bezier(p: THREE.Vector3[], t: number, out: THREE.Vector3) {
 interface ShipObj { m: ShipModel; kind: string; crates?: THREE.Group; fx?: boolean; flashAt?: number }
 
 export class LighthouseRenderer implements GameRenderer {
-  private renderer?: THREE.WebGLRenderer;
+  private renderer?: THREE.WebGPURenderer; private gfx?: Gfx;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(42, 4 / 3, 0.5, 1400);
   private camPos = V(0, 40, 80); private camTgt = V(0, 2, 4);
@@ -67,7 +68,7 @@ export class LighthouseRenderer implements GameRenderer {
   private color = '#d64545';
   private send?: (a: unknown) => void;
   private lastCue = -1; private lastT = -1; private beamAngle = 0; private nextGull = 8;
-  private aspect = 4 / 3;
+  private aspect = 4 / 3; private shadowFrame = 0;
   private insetB = 0; private size: [number, number] = [800, 600];
   private ray = new THREE.Raycaster();
   private onDown = (e: PointerEvent) => this.pick(e);
@@ -76,7 +77,7 @@ export class LighthouseRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
     this.insetB = ctx.insets?.bottom ?? 0;
     this.container = container; this.color = ctx.profile.color; this.send = ctx.send;
-    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.gfx = createGfx(); const r = this.gfx.renderer;
     r.setPixelRatio(Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
@@ -86,7 +87,7 @@ export class LighthouseRenderer implements GameRenderer {
 
     const s = this.scene;
     s.fog = new THREE.FogExp2(0xcfe9f7, 0.006);
-    this.sun.castShadow = true;
+    this.sun.castShadow = true; this.sun.shadow.autoUpdate = false;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera; sc.left = -48; sc.right = 48; sc.top = 36; sc.bottom = -36; sc.near = 1; sc.far = 220;
     this.sun.shadow.bias = -0.0008; this.sun.shadow.normalBias = 0.04;
@@ -531,6 +532,9 @@ export class LighthouseRenderer implements GameRenderer {
     else this.sounds(s, storm, sky.night);
     this.hud?.update(s);
     this.lastT = s.t;
+    if (!this.gfx?.ready) return;
+    // The shadow pass is ~a quarter of the frame; redraw it every other frame (the sun and ships move slowly)
+    this.sun.shadow.needsUpdate = (this.shadowFrame++ & 1) === 0;
     this.renderer.render(this.scene, this.camera);
     if (rc && !rc.shot && rt >= rc.shotAt) this.takePostcard(rc, s);
   }

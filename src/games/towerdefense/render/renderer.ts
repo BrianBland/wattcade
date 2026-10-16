@@ -51,6 +51,9 @@ export class TdRenderer implements GameRenderer {
   /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
   private odBlend = 0;
   private hitFx = new HitFeedback();
+  /** boss arrival name card start (wall clock) and wave; Exposed window bookkeeping for the first-hit slow-down */
+  private intro = { at: -99, wave: 0 };
+  private exposedWindow = { open: false, since: 0, slowed: false };
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
@@ -335,9 +338,16 @@ export class TdRenderer implements GameRenderer {
       if (f.kind === 'death') {
         const c = COL[f.color], x = this.X(f.x), y = this.Y(f.y);
         if (allowHitStop && !f.big) play('chitinCrunch', { minGapS: 0.05, vol: 0.7, pitch: 0.85 + Math.random() * 0.3 });
-        this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
+        this.burst(x, y, c, f.big ? (this.aliens?.ready ? 10 : 26) : 8, (f.big ? 40 : 26) * k, (f.big && !this.aliens?.ready ? 1 : 0.6) * k, f.big ? 0.6 : 0.45); // puppets: gibs carry heavy deaths
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
-        if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
+        if (f.color === 'gold') { // the Hive Tyrant comes apart in a gold shard shower
+          this.shake = Math.max(this.shake, 1.2); this.flash = { color: COL.gold, a: 0.5 };
+          for (let i = 0; i < 46 && this.particles.length < 600; i++) {
+            const a = Math.random() * TAU, v = (20 + Math.random() * 50) * k;
+            this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.8 + Math.random() * 0.8, size: (0.6 + Math.random() * 0.8) * k, color: Math.random() < 0.6 ? COL.gold : '#fff2b0', kind: 'shard', rot: a, spin: (Math.random() - 0.5) * 16 });
+          }
+          this.ring(x, y, COL.gold, 3 * k, 40 * k, 0.8);
+        }
       } else if (f.kind === 'payoff') {
         if (!allowHitStop) continue;
         const st = PAYOFF_STYLE[f.effort], x = this.X(BASE_X), y = this.Y(BASE_Y);
@@ -346,6 +356,9 @@ export class TdRenderer implements GameRenderer {
           this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
           this.aliens?.flinch(s.t); play('payoffSting');
         } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
+      } else if (f.kind === 'bossIntro') {
+        if (!allowHitStop) continue;
+        this.intro = { at: this.wall, wave: f.wave }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
@@ -400,6 +413,11 @@ export class TdRenderer implements GameRenderer {
     this.playCues(s);
     this.consumeFx(s, !firstFrame);
     if (s.phase === 'run') { for (const h of this.hitFx.hits(s.enemies, s.t)) this.hitFeedback(h); for (const c of this.hitFx.callouts(s.fx, s.t)) this.callout(c); }
+    { // Exposed window: the first hit on the boss lands in slow motion (one short freeze, capped like hit-stop)
+      const b = s.enemies.find((e) => e.kind === 'boss'), w = this.exposedWindow;
+      if (b?.exposed && !w.open) { w.open = true; w.since = s.t; w.slowed = false; } else if (!b?.exposed) w.open = false;
+      if (b && w.open && !w.slowed && b.hitT >= w.since && b.hitT > 0 && !firstFrame) { w.slowed = true; this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + 100); this.flash = { color: COL.gold, a: Math.max(this.flash.a, 0.18) }; }
+    }
     this.dynamo.update({
       active: s.phase === 'run' && !s.over, cadence: bike.cadence3s, ftpFraction: bike.ftpFraction, crankRevs: bike.crankRevs, overdrive: s.overdrive,
       weapon: s.weapon, gatlingFiring: s.fx.reduce((n, f) => n + (f.kind === 'tracer' && t - f.t0 < 0.2 ? 1 : 0), 0),
@@ -440,6 +458,7 @@ export class TdRenderer implements GameRenderer {
       // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
       const puppets = this.aliens?.ready ? this.aliens : null;
       if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
+      puppets?.drawGibs(g, this.view, t);
       const live = new Set<number>();
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
@@ -488,6 +507,21 @@ export class TdRenderer implements GameRenderer {
       if (s.workshop) this.hits.push(...drawConstruction(g, s, L, this.W));
     }
 
+    { // boss arrival name card: slams in, holds, fades (2.8 s), centred where the event banner sits
+      const age = this.wall - this.intro.at;
+      if (s.phase === 'run' && age >= 0 && age < 2.8) {
+        const k2 = Math.min(1, age / 0.25), a = age < 2.2 ? 1 : 1 - (age - 2.2) / 0.6, scale = 1.35 - 0.35 * (1 - Math.pow(1 - k2, 3));
+        const size = Math.round(Math.min(this.W * 0.075, 64 * L.u)), y = L.banner.y;
+        g.save(); g.globalAlpha = a * k2; g.translate(this.W / 2, y); g.scale(scale, scale); g.textAlign = 'center';
+        g.font = `900 ${size}px system-ui, sans-serif`; g.lineWidth = Math.max(4, size * 0.12); g.strokeStyle = 'rgba(20,12,0,0.85)';
+        const title = 'H I V E   T Y R A N T';
+        g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL.gold);
+        g.fillStyle = gr; g.fillText(title, 0, 0);
+        g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,236,190,0.9)'; g.lineWidth = 3;
+        const sub = `Wave ${this.intro.wave} boss · announced phases · sprint when Exposed`;
+        g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
+      }
+    }
     // full-screen flashes
     if (this.flash.a > 0) {
       g.globalAlpha = this.flash.a; g.fillStyle = this.flash.color; g.fillRect(0, 0, this.W, this.H); g.globalAlpha = 1;

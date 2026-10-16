@@ -23,10 +23,11 @@ const canvas = (w: number, h: number) => { const c = document.createElement('can
 const setT = (g: CanvasRenderingContext2D, m: Affine) => g.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
 
 /** Draws a posed puppet with `base` mapping manifest pixels to the canvas. `tint` recolours shell (lightly) and glow. */
-export function compose(g: CanvasRenderingContext2D, P: Puppet, pin: PoseIn, base: Affine, tint?: string, glowAlpha = 0.9) {
+export function compose(g: CanvasRenderingContext2D, P: Puppet, pin: PoseIn, base: Affine, tint?: string, glowAlpha = 0.9, skip?: ReadonlySet<string>) {
   const M = matrices(P.rig, pose(P.rig, P.species, pin));
   const pass = (gg: CanvasRenderingContext2D, which: Map<string, HTMLImageElement>) => {
     for (const key of P.rig.order) {
+      if (skip?.has(key)) continue;
       const name = key.split('#')[0], pt = P.rig.parts.get(name)!;
       setT(gg, mul(base, M.get(key)!)); gg.drawImage(which.get(name)!, pt.offset[0], pt.offset[1], pt.w, pt.h);
     }
@@ -91,6 +92,15 @@ function* frameSteps(P: Puppet, lengthDev: number, outline: string, tint?: strin
 /** Synchronous baking for offline callers. The game uses the incremental queue below. */
 export function buildFrames(P: Puppet, lengthDev: number, outline: string, tint?: string): FrameSet {
   let set!: FrameSet; for (const step of frameSteps(P, lengthDev, outline, tint)) set = step; return set;
+}
+
+/** A one-off darkened husk without the parts that flew off as gibs (heavy deaths are rare, so composing once is cheap). */
+export function husk(P: Puppet, lengthDev: number, pin: PoseIn, skip: ReadonlySet<string>, tint?: string): Frame {
+  const m = P.rig.m, s = lengthDev / m.lengthPx, pad = Math.max(m.size[0], m.size[1]) * 0.22 * s;
+  const c = canvas(m.size[0] * s + pad * 2, m.size[1] * s + pad * 2), g = c.getContext('2d')!;
+  compose(g, P, pin, mul(translate(pad, pad), scale(s, s)), tint, 0.3, skip);
+  g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(14,10,8,0.55)'; g.fillRect(0, 0, c.width, c.height);
+  return { c, ax: pad + m.centerX * s, ay: pad + m.centerY * s };
 }
 
 /** Round-robin baking: one pose per rendered frame, so multiple species get a rest pose promptly. */

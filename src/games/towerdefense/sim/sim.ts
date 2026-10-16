@@ -148,6 +148,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const callPowerRatio = T.num('callPowerRatio', 0.95, 0.8, 1.2, 0.01);
   const callHoldBand = T.num('callHoldBand', 0.08, 0.03, 0.2, 0.01);
   const overclockS = T.num('overclockS', 30, 5, 120, 5, 'Gatling Overclock (double fire rate) after a Spin-up');
+  const spotlessBase = T.num('spotlessBonus', 5, 0, 200, 1, 'scrap for a wave with no base damage (plus spotlessPerWave × wave)');
+  const spotlessPerWave = T.num('spotlessPerWave', 1, 0, 20, 0.5);
   const payoffHitStop = T.num('payoffHitStopS', 0.08, 0, 0.1, 0.01, 'freeze when a called effort is won');
   const empDmg = T.num('empDamage', 90, 0, 1000, 5, 'EMP damage to every enemy when a surge is won');
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
@@ -214,6 +216,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let bestRunWaves = 0, wavesCleared = 0, runSurges = 0, bestRunSurges = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
   let leakDmg = 0, stallT = 0;
+  /** this wave's kills and the scrap they paid (already credited), for the wave-end tally */
+  let waveKills = 0, waveSalvage = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
@@ -326,6 +330,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (src === 'player') stats.turretKills++;
     if (src === 'emp') stats.empKills++;
     const got = gainScrap(def.scrap);
+    waveKills++; waveSalvage += got;
     if (def.heavy) {
       stats.heavyKills++;
       addFx({ kind: 'text', life: 1, x: e.x, y: e.y - 3, text: `+${got}`, color: '#ffd24a' });
@@ -461,6 +466,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     save.totals.waves++;
     const p = Math.round(partsForWave(wave) * partsScale()); partsRun += p; partsEarned += p; bank += p;
     const bonus = gainScrap(10 + wave * 2 + (early ? 10 : 0));
+    const spotless = leakDmg === 0, spotBonus = spotless ? gainScrap(spotlessBase() + wave * spotlessPerWave()) : 0;
+    addFx({ kind: 'waveTally', life: 3, wave, kills: waveKills, salvage: waveSalvage, bonus, spotless, spotlessBonus: spotBonus });
+    if (spotless) ctx.emit({ type: 'waveSpotless', data: { wave } });
+    waveKills = 0; waveSalvage = 0;
     const heal = early ? clearHealFor(waveElapsed, leakDmg, { heal: clearHeal(), speedBonus: speedHeal(), waveMinS: waveMin(), waveMaxS: waveMax(), leakZero: leakHealZero() }) : 0;
     baseHp = Math.min(baseMaxHp, baseHp + heal);
     ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg } });
@@ -798,7 +807,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     Object.assign(cooldowns.overcharge, startCooldown(0));
     Object.assign(cooldowns.slow, startCooldown(0));
     constructionDone = false; nudgeLane = -1; nudgeLeft = 0;
-    leakDmg = 0; stallT = 0; escorts.length = 0;
+    leakDmg = 0; stallT = 0; escorts.length = 0; waveKills = 0; waveSalvage = 0;
   }
   function startRun() {
     if (autoInvestOn || autopilot) { const r = autoInvest(bank, levels); bank = r.bank; mods = metaMods(levels, save.bestWave); }

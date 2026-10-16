@@ -30,6 +30,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
   /** the boss arrives: the renderer plays its name card (the HUD banner stays quiet meanwhile) */
   | { id: number; t0: number; life: number; kind: 'bossIntro'; wave: number }
+  /** a wave was cleared: its kills, the scrap they paid during the wave, the clear bonus and the Spotless bonus (no base damage) */
+  | { id: number; t0: number; life: number; kind: 'waveTally'; wave: number; kills: number; salvage: number; bonus: number; spotless: boolean; spotlessBonus: number }
   /** a called effort resolved: won = set-piece payoff, lost = a quiet 'missed' note */
   | { id: number; t0: number; life: number; kind: 'payoff'; effort: EffortKind; won: boolean }
   /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */

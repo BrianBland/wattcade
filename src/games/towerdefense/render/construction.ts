@@ -6,12 +6,13 @@ import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionBu
 import type { Hit } from './panels';
 
 function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string, selected = false, enabled = true) {
+  const css = getComputedStyle(g.canvas);
   g.save(); g.globalAlpha = enabled ? 1 : 0.5;
-  g.fillStyle = selected ? '#394b34' : '#15202e'; g.strokeStyle = selected ? '#c0f07a' : '#5c7187';
+  g.fillStyle = css.getPropertyValue('--panel-solid'); g.strokeStyle = css.getPropertyValue(selected ? '--neon' : '--glass-line');
   g.lineWidth = selected ? 2 : 1; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 8); g.fill(); g.stroke();
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = 'bold 13px system-ui'; g.fillStyle = '#f6f9ff'; g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
-  if (sub) { g.font = '11px system-ui'; g.fillStyle = '#bac9d6'; g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
+  g.font = `bold 13px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--fg'); g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
+  if (sub) { g.font = `11px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--dim'); g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
   g.restore();
 }
 
@@ -57,10 +58,11 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   const ws = s.workshop!;
   const p = ws.pad < 6 ? PADS[ws.pad] : { x: 50, y: 90, lane: -1, near: false };
   const r = radialLayout(W, L.UH, { x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 }, ws.rows.length);
-  g.save(); g.fillStyle = 'rgba(4,9,16,0.96)'; g.beginPath(); g.roundRect(r.body.x - 4, r.body.y - 4, r.body.w + 8, r.body.h + 8, 12); g.fill();
-  g.fillStyle = '#f5d67a'; g.font = 'bold 13px system-ui'; g.textAlign = 'center';
+  const css = getComputedStyle(g.canvas);
+  g.save(); g.fillStyle = css.getPropertyValue('--panel-solid'); g.beginPath(); g.roundRect(r.body.x - 4, r.body.y - 4, r.body.w + 8, r.body.h + 8, 12); g.fill();
+  g.fillStyle = css.getPropertyValue('--neon'); g.font = `bold 13px ${css.fontFamily}`; g.textAlign = 'center';
   g.fillText(ws.pad < 6 ? `${LANE_NAMES[p.lane]} ${p.near ? 'Near' : 'Far'} · ${s.scrap} scrap` : `Base · ${s.scrap} scrap`, r.body.x + r.body.w / 2, r.body.y + 19);
-  g.font = '11px system-ui'; g.fillStyle = '#aabdd0'; g.fillText('◀▶ pad · ▲▼ option · A confirm', r.body.x + r.body.w / 2, r.body.y + 36);
+  g.font = `11px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--dim'); g.fillText('◀▶ pad · ▲▼ option · A confirm', r.body.x + r.body.w / 2, r.body.y + 36);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {

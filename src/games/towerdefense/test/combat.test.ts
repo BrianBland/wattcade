@@ -103,7 +103,7 @@ describe('boss ladder', () => {
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
     expect(effect().ftpFraction).toBe(0.95);
-    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Workshop');
+    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Construction');
     held.add('a'); s.step(1); expect(effect().ftpFraction).toBe(0.95); held.delete('a');
     held.add('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(1.35);

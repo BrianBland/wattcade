@@ -16,13 +16,13 @@ export interface TdLayout {
   /** UI scale (1 = designed for a ~768 px tall surface) */ u: number;
 }
 
-export function layout(W: number, H: number, insetB: number): TdLayout {
+export function layout(W: number, H: number, insetB: number, hudControls = false): TdLayout {
   const UH = Math.max(0, H - Math.max(0, insetB));
   const u = Math.max(0.7, Math.min(1.5, Math.min(W, UH) / 640));
   const pad = Math.round(10 * u);
   const gap = 6, actionH = Math.min(62, Math.max(44, UH * 0.1)), buildH = 44;
   const dockTop = UH - pad - actionH - gap - buildH;
-  const contentH = dockTop - pad;
+  const contentH = hudControls ? UH : dockTop - pad;
   const workshopW = Math.min(140, W * 0.3), buildW = W - 2 * pad - gap - workshopW;
   const aw = (W - 2 * pad - 2 * gap) / 3;
   const dock = {

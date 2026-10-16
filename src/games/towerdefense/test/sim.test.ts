@@ -186,7 +186,7 @@ describe('garage meta', () => {
   });
   it('first run skips the garage; intro shows play controls', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
-    expect(s.sim.hud!().controls!.map((c) => c.label)).toContain('Fire rail (hold = all)'); // before the first update (game intro)
+    expect(s.sim.hud!().controls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
     s.step(1);
     expect(snap(s).phase).toBe('run');
   });

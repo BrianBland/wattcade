@@ -69,7 +69,7 @@ describe('input map (#120)', () => {
     const hints = new Map(hud.controls!.map((c) => [c.button, c.label]));
     expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
     expect(hints.get('paddles')).toBe('Nudge lane');
-    expect(hints.get('a')).toBe('Workshop');
+    expect(hints.get('a')).toBe('Construction');
     expect(hints.get('b')).toBe('Overcharge'); expect(hints.get('y')).toBe('Slow field');
   });
   it('A opens construction and B closes without firing a combat action', () => {

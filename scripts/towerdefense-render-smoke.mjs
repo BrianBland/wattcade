@@ -9,7 +9,7 @@ try {
   for (const [name, width, height] of [['landscape', 1180, 820], ['portrait', 820, 1180], ['phone', 390, 844], ['short', 844, 390]]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: true }), errors = [];
     page.on('pageerror', e => errors.push(e.message));
-    await page.goto(`${base}/dev/towerdefense.html?manual=1&inset=140&crew=0&sec=1`);
+    await page.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&crew=0&sec=1`);
     await page.waitForFunction(() => window.__td);
     const advance = seconds => page.evaluate(s => window.__td.advance(s), seconds);
     const snapshot = () => page.evaluate(() => window.__td.snapshot());
@@ -55,7 +55,7 @@ try {
     await page.close();
   }
   const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
-  await page.goto(`${base}/dev/towerdefense.html?manual=1&inset=140&sec=120&script=intervals&seed=3`);
+  await page.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&sec=120&script=intervals&seed=3`);
   await page.waitForFunction(() => window.__td);
   const recharge = async () => {
     for (let i = 0; i < 60 && await page.evaluate(() => window.__td.snapshot().railCharges < 3); i++) await page.evaluate(() => window.__td.advance(10));
@@ -80,7 +80,7 @@ try {
   console.log('Rail: captured hold dumps all; dragging away cancels without a follow-up shot');
   await page.evaluate(() => window.__td.dispose()); await page.close();
   const boss = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
-  await boss.goto(`${base}/dev/towerdefense.html?manual=1&inset=140&crew=0&boss=1&seed=2`);
+  await boss.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&crew=0&boss=1&seed=2`);
   await boss.waitForFunction(() => window.__td);
   await boss.evaluate(() => { for (let i = 0; i < 30 * 40 && !window.__td.snapshot().boss?.telegraph; i++) window.__td.advance(1 / 30); });
   assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.weapon), 'rail');

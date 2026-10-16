@@ -150,7 +150,7 @@ export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: 
 }
 
 /** Right panel: wave, base, surge, next-wave forecast (or the workshop when open, drawn separately). */
-export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number, compact: boolean, workshopBox: Box | null): Hit[] {
+export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number, compact: boolean, workshopBox: Box | null, workshopButton = true): Hit[] {
   const hits: Hit[] = [];
   panel(g, b, 10 * u);
   const p = 10 * u, x = b.x + p, w = b.w - 2 * p;
@@ -232,7 +232,7 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
       y += 17 * u;
     }
   }
-  if (!workshopBox && y + 24 * u <= b.y + b.h) {
+  if (workshopButton && !workshopBox && y + 24 * u <= b.y + b.h) {
     const hb = { x, y: b.y + b.h - p - 30 * u, w, h: 30 * u };
     g.fillStyle = 'rgba(255,210,74,0.1)'; g.beginPath(); g.roundRect(hb.x, hb.y, hb.w, hb.h, 6 * u); g.fill();
     font(g, 12 * u, 700); g.fillStyle = '#ffd24a'; g.fillText(`▼ Workshop · ${s.scrap} scrap`, hb.x + 10 * u, hb.y + 19 * u);
@@ -331,8 +331,9 @@ export function drawBroodCard(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box
   font(g, Math.min(18 * sc, (w * 0.78) / Math.max(10, head.length * 0.6)), 900); g.fillStyle = c; g.fillText(head, x, b.y + p + 15 * sc);
   font(g, 13 * sc, 700); g.fillStyle = '#e6eeff'; g.fillText(bd.setting, x, b.y + p + 36 * sc);
   font(g, 13 * sc, 600); g.fillStyle = 'rgba(220,235,255,0.75)'; g.fillText(bd.cue, x, b.y + p + 54 * sc);
-  const story = s.boss ? 'Announced phases · sprint during Exposed' : BROOD_STORY[bd.color];
-  font(g, 10 * sc, 600); g.fillText(story, x, b.y + p + 70 * sc);
+  const story = s.suggestion ? `A · ${s.suggestion.label} · ${s.suggestion.cost} scrap · ${s.autoCrew ? 'Auto-crew ON' : 'tap to accept'}`
+    : s.boss ? 'Announced phases · sprint during Exposed' : BROOD_STORY[bd.color];
+  font(g, 10 * sc, 600); g.fillText(story, x, b.y + p + 70 * sc, w);
   // countdown: big number, and a bar whose last stretch (the trainer ramp) is marked
   const n = Math.ceil(bd.countdownS), ramping = bd.countdownS <= bd.rampS;
   font(g, 34 * sc, 900); g.textAlign = 'right'; g.fillStyle = ramping ? c : '#fff';

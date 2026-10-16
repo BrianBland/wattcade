@@ -62,7 +62,9 @@ export class TdRenderer implements GameRenderer {
     if (px < b.x || px > b.x + b.w || py < b.y || py > b.y + b.h) this.releaseHold(e.pointerId, true);
   };
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+  private hudControls = false;
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
+    this.hudControls = !!ctx.hudControls;
     this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color || this.color;
     this.send = ctx.send;
@@ -100,7 +102,7 @@ export class TdRenderer implements GameRenderer {
     this.canvas?.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB); this.bg = null; }
+  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.bg = null; }
 
   // ---------- coordinates ----------
   private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
@@ -388,8 +390,8 @@ export class TdRenderer implements GameRenderer {
       drawBanner(g, s, L.banner.x, L.banner.y, L.banner.w, L.u);
       const compact = !L.wide || L.left.h < 520 * L.u;
       drawLeft(g, s, L.left, L.u, t, compact, MODE_VAL);
-      this.hits.push(...drawRight(g, s, L.right, L.u, t, compact, null));
-      this.hits.push(...drawDock(g, s, L, bike.powerZone));
+      this.hits.push(...drawRight(g, s, L.right, L.u, t, compact, null, !this.hudControls));
+      if (!this.hudControls) this.hits.push(...drawDock(g, s, L, bike.powerZone));
       if (s.workshop) this.hits.push(...drawConstruction(g, s, L, this.W));
     } else if (s.garage) {
       this.hits.push(...drawGarage(g, s.garage, L.garage, L.u, t));

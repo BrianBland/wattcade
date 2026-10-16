@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { render } from 'preact';
-import { Hood } from './Pad';
+import { act } from 'preact/test-utils';
+import { Hood, PadKey } from './Pad';
 import { buildPad } from './padModel';
 import { input } from '../services';
 
@@ -20,6 +21,25 @@ it('renders the right hood and holds buttons while pressed', () => {
   keys[2].dispatchEvent(ev('pointerup'));
   input.beginTick(0.03);
   expect(input.state().held.has('a')).toBe(false);
+});
+
+it('cancels semantic holds on pointer cancellation, lost capture, blur and pause without firing on release', () => {
+  const el = document.createElement('div'), send = vi.fn();
+  const b = buildPad([{ button: 'z', label: 'Rail', touch: { down: { type: 'railDown', epoch: 4 }, up: { type: 'railUp', epoch: 4 }, cancel: { type: 'railCancel', epoch: 4 } } }], false).right.stick.buttons.find(b => b.id === 'z')!;
+  const ev = (type: string) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'pointerId', { value: 17 }); return e; };
+  const show = (disabled = false) => act(() => render(<PadKey b={b} held={new Set()} send={send} disabled={disabled} />, el));
+  try {
+    show();
+    for (const cancel of ['pointercancel', 'lostpointercapture', 'blur', 'pause']) {
+      const key = el.querySelector('button')!;
+      act(() => { key.dispatchEvent(ev('pointerdown')); });
+      if (cancel === 'pause') show(true);
+      else act(() => { (cancel === 'blur' ? window : key).dispatchEvent(ev(cancel)); });
+      expect(send).toHaveBeenLastCalledWith({ type: 'railCancel', epoch: 4, pointer: 17 });
+      act(() => { key.dispatchEvent(ev('pointerup')); });
+      expect(send.mock.calls.some(([a]) => a.type === 'railUp')).toBe(false);
+    }
+  } finally { act(() => render(null, el)); }
 });
 
 it('shows current gear above assigned shifters and shifts through touch input', () => {

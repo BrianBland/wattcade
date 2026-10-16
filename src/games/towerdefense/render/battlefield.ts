@@ -45,16 +45,25 @@ export class Battlefield {
   get ready() { return this.background.complete && this.background.naturalWidth > 0; }
   paint(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
     if (!this.ready) return false;
-    // Extend the terrain's edge colours full-bleed, then register the full painting exactly.
-    g.fillStyle = '#211d19'; g.fillRect(0, 0, W, H);
+    // Draw the registered map once. Portrait/HUD margins are atmosphere, never copies of lanes.
+    const night = '#0d1118';
+    g.fillStyle = night; g.fillRect(0, 0, W, H);
     const scale = v.k / 9;
     const x = v.X(0) - 318 * scale, y = v.Y(0) - 32 * scale, w = 1536 * scale, h = 1024 * scale;
-    // Mirror the outer terrain at its native scale; never stretch rock texture into streaks.
-    if (y > 0) { g.save(); g.translate(x, y); g.scale(scale, -scale); g.drawImage(this.background, 0, 0); g.restore(); }
-    if (y + h < H) { g.save(); g.translate(x, y + h); g.scale(scale, -scale); g.drawImage(this.background, 0, -1024); g.restore(); }
-    if (x > 0) { g.save(); g.translate(x, y); g.scale(-scale, scale); g.drawImage(this.background, 0, 0); g.restore(); }
-    if (x + w < W) { g.save(); g.translate(x + w, y); g.scale(-scale, scale); g.drawImage(this.background, -1536, 0); g.restore(); }
     g.drawImage(this.background, x, y, w, h);
+    // Feather only the painting's perimeter; keep the playable field and turret crisp.
+    // These strips also cover partially offscreen edges without changing world registration.
+    const feather = 6 * v.k;
+    for (const [x0, y0, x1, y1, rx, ry, rw, rh] of [
+      [x, y, x, y + feather, x, y, w, feather],
+      [x, y + h, x, y + h - feather, x, y + h - feather, w, feather],
+      [x, y, x + feather, y, x, y, feather, h],
+      [x + w, y, x + w - feather, y, x + w - feather, y, feather, h],
+    ]) {
+      const edge = g.createLinearGradient(x0, y0, x1, y1);
+      edge.addColorStop(0, night); edge.addColorStop(1, 'rgba(13,17,24,0)');
+      g.fillStyle = edge; g.fillRect(rx, ry, rw, rh);
+    }
     const fog = g.createLinearGradient(0, 0, 0, Math.max(1, y + 12 * v.k));
     fog.addColorStop(0, 'rgba(7,10,17,0.8)'); fog.addColorStop(1, 'rgba(7,10,17,0)');
     g.fillStyle = fog; g.fillRect(0, 0, W, Math.max(0, y + 12 * v.k));

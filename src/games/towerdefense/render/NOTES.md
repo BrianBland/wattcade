@@ -2,7 +2,7 @@
 
 - Art direction: retain the textured painted terrain, brass/steel machinery and all eight cut-out alien rigs.
 - Brood outlines plus cached ground auras separate aliens from the terrain; bosses use a stronger gold aura.
-- No repaint or simplified terrain. Outer rocky margins mirror at native scale, with atmospheric fog.
+- The registered painting draws once; its perimeter fades into atmospheric portrait/HUD margins without reflections.
 - The painting and all actors share the MAP_INTEGRATION.md registration and field-unit sizing.
 - Exact right-lane controls and plateau pads adopted together in sim/defs.ts.
 - All pads clear floor/shoulder geometry and all level-one tower kinds reach their assigned lane.

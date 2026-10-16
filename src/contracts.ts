@@ -159,7 +159,9 @@ export interface GameContext {
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
 /** Optional cooldown shown on the overlay key itself: fills bottom-to-top, greyed until ready, glows when ready. */
 export interface ControlCooldown { fill: number; ready: boolean; tint?: string; flourish?: number }
-export interface ControlHint { button: ControlTarget; label: string; active?: boolean; cooldown?: ControlCooldown }
+/** Optional semantic pointer commands for held actions. The HUD adds `pointer` and preserves the down-time quote/epoch through release or cancel. */
+export interface ControlTouch { down: Record<string, unknown>; up?: Record<string, unknown>; cancel?: Record<string, unknown> }
+export interface ControlHint { button: ControlTarget; label: string; active?: boolean; cooldown?: ControlCooldown; touch?: ControlTouch }
 /**
  * A zone band. `source: 'power'` = judged on min(5, powerZone): use it for any effort shorter than ~2 min,
  * because HR lags 30–60 s and can't follow a sprint. Default 'effort' = effortZone (HR-aware), for long holds.
@@ -172,6 +174,8 @@ export interface GameHud {
   targetZone?: ZoneTarget;         // zone band the game wants now
   targetCadence?: CadenceTarget;   // cadence band the game wants now (shown next to the rpm readout)
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
+  /** Primary touch buttons to show in the HUD when the controller legend is hidden; uses the same controls and cooldowns. */
+  touchControls?: Button[];
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }
 export interface GameSim {
@@ -190,7 +194,7 @@ export interface GameSim {
 export interface Insets { top: number; right: number; bottom: number; left: number }
 export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface GameRenderer {
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void }): void; // send -> GameSim.receive
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void; hudControls?: boolean }): void; // send -> GameSim.receive
   /** Called after mount and whenever the HUD size changes. */
   setInsets?(insets: Insets): void;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;

@@ -2,6 +2,10 @@
 import type { Element, Kind, Matchup, TowerKind, Weapon } from './defs';
 import type { UpgradeId } from './meta';
 import type { EffortView } from './efforts';
+import type { BuildSuggestion } from './construction';
+
+export type ActionId = 'rail' | 'overcharge' | 'slow';
+export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number }
 
 export interface EnemyView {
   id: number; kind: Kind; lane: number; x: number; y: number; angle: number; dist: number; radius: number;
@@ -26,8 +30,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };
 export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
-export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
-export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number }
+export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair' | 'crew'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
+export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 export interface GarageRow { kind: 'start' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
 export interface GarageView { bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
@@ -46,7 +50,7 @@ export type LaneForecast = Record<Element | 'gold' | 'prism', number>;
 export interface BossView {
   id: number; phase: number; phaseCount: number; color: Element; weapon: Weapon;
   next: Element | null; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
-  /** Optional hold-A ERG push, preserving the phase's trainer mode. */
+  /** Optional hold-Up / touch ERG push, preserving the phase's trainer mode; A stays construction. */
   sprintBoost: boolean;
 }
 
@@ -69,6 +73,10 @@ export interface TdSnapshot {
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;
   scrap: number; partsRun: number; bank: number;
+  autoCrew: boolean; suggestion: BuildSuggestion | null; constructionDone: boolean;
+  actions: ActionView[]; refill: number; slowLane: number;
+  /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */
+  inputEpoch: number;
   towers: TowerView[]; shells: ShellView[]; workshop: WorkshopView | null;
   enemies: EnemyView[]; fx: Fx[]; banner: Banner | null;
   cues: Array<{ name: string; id: number }>;

@@ -2,9 +2,11 @@
 // Your pedalling is the base's dynamo: crank revs feed the Gatling, watts feed the Flame and the towers,
 // sustained threshold power charges the Railgun, sprints trigger Overdrive and Power Surges fire an EMP.
 import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
+import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refillRate, startCooldown, tickCooldown } from '../../../core/cooldown';
+import { suggestBuild, type BuildSuggestion } from './construction';
 import {
   AIM_LIMIT, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LANE_NAMES, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, suggestedTower, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, laneAt, laneLength, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { advanceBoss, bossColors, bossHpFloor, createBossState, type BossState } from './boss';
@@ -12,20 +14,23 @@ import { effortMet, scheduleCall, type EffortView } from './efforts';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
 import { chooseTarget, type Nudge, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, type Spawn, type WavePlan } from './waves';
-import type { Banner, BossView, BroodInfo, BroodView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
 
 export interface TdOpts {
   autopilot?: boolean;
+  /** Headless actions are separate from Auto-crew; default off, as for a passive rider. */
+  actionBot?: boolean;
+  autoCrew?: boolean;
   /** Go straight into a run (tests); the garage is also skipped on a rider's first run and under autopilot. */
   skipGarage?: boolean;
   /** Override the `cores` tunable (lives). */
   cores?: number;
 }
 export interface TdSave {
-  v: 2; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean;
+  v: 2; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
   totals: { waves: number; kills: number; bosses: number; towers: number; surges: number };
 }
 export function readSave(raw: unknown): TdSave {
@@ -33,6 +38,7 @@ export function readSave(raw: unknown): TdSave {
   return {
     v: 2, bestWave: s.bestWave ?? 0, bank: s.bank ?? 0, upgrades: { ...(s.upgrades ?? {}) }, runs: s.runs ?? 0,
     autoInvest: s.autoInvest ?? false,
+    autoCrew: typeof s.autoCrew === 'boolean' ? s.autoCrew : true,
     totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, ...(s.totals ?? {}) },
   };
 }
@@ -115,7 +121,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const exposedS = T.num('bossExposedS', 5, 1, 10, 0.5);
   const exposedMult = T.num('bossExposedMult', 2, 1, 4, 0.1);
   const exposedSprintMult = T.num('bossExposedSprintMult', 1.5, 1, 3, 0.1);
-  const bossSprintFtp = T.num('bossSprintFtp', 1.35, 1.2, 1.6, 0.05, 'optional hold-A ERG push during a Rail boss opening');
+  const bossSprintFtp = T.num('bossSprintFtp', 1.35, 1.2, 1.6, 0.05, 'optional hold-Up ERG push during a Rail boss opening');
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
   const stallMult = T.num('stallDamageMult', 2.2, 1, 5, 0.1, 'leaks hit this much harder while the dynamo is stalled (shields down)');
@@ -143,6 +149,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
   const scrapScale = T.num('scrapMult', 1, 0.2, 5, 0.1);
   const partsScale = T.num('partsMult', 1, 0.2, 5, 0.1, 'garage parts earned multiplier');
+  const overchargeS = T.num('overchargeS', 10, 1, 30, 1);
+  const overchargeMult = T.num('overchargeMult', 1.5, 1, 3, 0.1, 'tower fire-rate multiplier; stacks with sprint Overdrive');
+  const overchargeCd = T.num('overchargeCooldownS', 60, 5, 180, 5);
+  const slowS = T.num('slowS', 8, 1, 30, 1);
+  const slowFraction = T.num('slowFraction', 0.4, 0, 0.9, 0.05, 'fraction of movement speed removed on the most threatened lane');
+  const slowCd = T.num('slowCooldownS', 50, 5, 180, 5);
+  const sprintCompletes = T.bool('cdSprintCompletes', true, 'a sprint edge completes Overcharge and Slow cooldowns (not rail stock)');
 
   const save = readSave(ctx.load<unknown>());
   const autopilot = !!opts?.autopilot;
@@ -150,6 +163,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let bank = save.bank;
   let mods: MetaMods = metaMods(levels, save.bestWave);
   let autoInvestOn = save.autoInvest;
+  let autoCrewOn = opts?.autoCrew ?? save.autoCrew;
   let fromWave = mods.maxStartWave;
 
   let phase: 'garage' | 'run' = 'garage';
@@ -179,6 +193,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let revAcc = 0, lastRevs = 0;
   let railCharges = 0, railProgress = 0, railFired = 0, railCharging = false;
   let zHold = 0, zDown = false, zDumped = false;
+  const railPointers = new Set<number>();
+  const boostPointers = new Set<number>();
+  let boostBlocked = false;
+  let inputEpoch = 0, workshopRevision = 0, railBlocked = false, discardEdges = false;
+  let overchargeLeft = 0, slowLeft = 0, slowLane = -1, lastSprint = false;
+  let currentRefill = 1;
+  const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
+  let constructionDone = false;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
   let surge: SurgeView | null = null;
   let spin: SpinView | null = null, overclock = 0;
@@ -188,7 +210,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const calls = { started: 0, won: 0, failed: 0 };
   let scrap = 0, partsRun = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
-  let over = false, autoBuildT = 0, leakDmg = 0, stallT = 0;
+  let over = false, leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
@@ -325,6 +347,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
+    constructionDone = false;
     plan = fresh ? planFor(wave) : nextPlan;
     nextPlan = planFor(wave + 1);
     waveElapsed = 0;
@@ -521,7 +544,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return Math.hypot(e.x - p.x, e.y - p.y) <= r + radiusOf(e);
   }
   function updateTowers(dt: number) {
-    const rate = grid * odMult();
+    const rate = grid * odMult() * (overchargeLeft > 0 ? overchargeMult() : 1);
     for (const tw of towers) {
       if (!tw) continue;
       const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
@@ -555,7 +578,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         cue('zap');
       } else if (tw.kind === 'mortar') {
         const flight = 0.9;
-        const ahead = laneAt(target.lane, target.d + target.speed * flight * (target.charging ? 2.6 : 1));
+        const ahead = laneAt(target.lane, target.d + travelSpeed(target) * flight);
         shells.push({ x0: p.x, y0: p.y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg, r: 7 + tw.level });
         cue('mortar');
       } else {
@@ -573,6 +596,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       }
     }
     shells = shells.filter((s) => s.t < s.flight);
+  }
+  function travelSpeed(e: Enemy) {
+    return e.speed * (e.charging ? 2.6 : 1) * (slowLeft > 0 && e.lane === slowLane ? 1 - slowFraction() : 1)
+      * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1);
   }
 
   function build(pad: number, kind: TowerKind): boolean {
@@ -608,62 +635,105 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   function workshopRows(pad: number): WorkshopRow[] {
-    if (pad === 6) return [{ kind: 'repair', label: 'Repair base', desc: `+${REPAIR_HP} HP`, cost: repairCost(), affordable: scrap >= repairCost() && baseHp < baseMaxHp }];
+    const crew: WorkshopRow = { kind: 'crew', label: `Auto-crew: ${autoCrewOn ? 'ON' : 'OFF'}`, desc: 'Build the suggestion at the end of each lull', cost: 0, affordable: true };
+    if (pad === 6) return [{ kind: 'repair', label: 'Repair base', desc: `+${REPAIR_HP} HP`, cost: repairCost(), affordable: scrap >= repairCost() && baseHp < baseMaxHp }, crew];
     const tw = towers[pad];
-    if (!tw) return TOWER_KINDS.map((k) => {
+    if (!tw) return [...TOWER_KINDS.map((k): WorkshopRow => {
       const c = towerBuildCost(k, towerCostMult());
       return { kind: 'build', tower: k, label: TOWERS[k].name, desc: TOWERS[k].desc, cost: c, affordable: scrap >= c };
-    });
+    }), crew];
     const rows: WorkshopRow[] = [];
     if (tw.level < TOWER_MAX_LEVEL) {
       const c = towerUpgradeCost(tw.kind, tw.level, towerCostMult());
       rows.push({ kind: 'upgrade', tower: tw.kind, label: `Upgrade to Lv ${tw.level + 1}`, desc: `x${(LEVEL_DMG[tw.level] / LEVEL_DMG[tw.level - 1]).toFixed(1)} damage, more range`, cost: c, affordable: scrap >= c });
     }
     rows.push({ kind: 'sell', tower: tw.kind, label: 'Scrap it', desc: 'Refund half', cost: 0, affordable: true });
+    rows.push(crew);
     return rows;
   }
   /** Next-wave off-colour aliens are the towers' job. Suggestions follow the live matchup tunables. */
   function suggestTower(pad: number): number {
-    const ln = nextPlan.lanes[PADS[pad].lane];
-    const counts = Object.fromEntries(ELEMENTS.map((e) => [e, ln[e] + ln.prism / 3 + ln.gold])) as Record<Element, number>;
-    return TOWER_KINDS.indexOf(suggestedTower(counts, nextPlan.brood, matchup()));
+    const suggestion = recommendation(pad);
+    return suggestion?.tower ? TOWER_KINDS.indexOf(suggestion.tower)
+      : Math.max(0, TOWER_KINDS.findIndex(k => towerBuildCost(k, towerCostMult()) <= scrap));
   }
   function openWorkshop(pad?: number) {
     let p = pad ?? -1;
-    if (p < 0) p = PAD_ORDER.find((i) => i < 6 && !towers[i] && (nudgeLane < 0 || PADS[i].lane === nudgeLane)) ?? PAD_ORDER.find((i) => i < 6 && !towers[i]) ?? PAD_ORDER[0];
+    if (p < 0) p = recommendation()?.pad ?? PAD_ORDER.find((i) => i < 6 && !towers[i]) ?? PAD_ORDER[0];
     workshop = { pad: p, row: p < 6 && !towers[p] ? suggestTower(p) : 0, idle: 0 };
+    workshopRevision++; inputEpoch++; cancelHolds();
     cue('uiOpen');
+  }
+  function closeWorkshop() {
+    if (!workshop) return;
+    workshop = null; workshopRevision++; inputEpoch++; cancelHolds(); cue('uiClose');
   }
   function workshopAct(row?: number) {
     if (!workshop) return;
     const rows = workshopRows(workshop.pad);
     if (row != null) workshop.row = clamp(row, 0, rows.length - 1);
     const r = rows[workshop.row]; if (!r) return;
-    if (r.kind === 'build') build(workshop.pad, r.tower!);
-    else if (r.kind === 'upgrade') upgrade(workshop.pad);
+    let purchased = false;
+    if (r.kind === 'build') purchased = build(workshop.pad, r.tower!);
+    else if (r.kind === 'upgrade') purchased = upgrade(workshop.pad);
     else if (r.kind === 'sell') sell(workshop.pad);
-    else repair();
+    else if (r.kind === 'crew') { autoCrewOn = !autoCrewOn; persist(); cue('select'); }
+    else purchased = repair();
+    if (purchased && lull > 0) constructionDone = true;
+    workshopRevision++;
     workshop.row = clamp(workshop.row, 0, workshopRows(workshop.pad).length - 1);
   }
 
-  function autoBuild() {
-    if (baseHp < baseMaxHp * 0.4 && scrap >= repairCost()) { repair(); return; }
-    const empty = PAD_ORDER.filter((i) => i < 6 && !towers[i]);
-    if (empty.length) {
-      // nearest-to-base pads in the heaviest lanes first
-      empty.sort((a, b) => (PADS[b].near ? 1 : 0) - (PADS[a].near ? 1 : 0) || (PADS[b].lane === nextPlan.mainLane ? 1 : 0) - (PADS[a].lane === nextPlan.mainLane ? 1 : 0));
-      const pad = empty[0], kind = TOWER_KINDS[suggestTower(pad)];
-      if (scrap >= towerBuildCost(kind, towerCostMult())) build(pad, kind);
-      return;
+  function recommendation(pad?: number): BuildSuggestion | null {
+    if (!plan) return null;
+    // `plan` is the announced incoming wave during the lull. `nextPlan` is one wave later.
+    const coming = lull > 0 ? plan : nextPlan;
+    return suggestBuild({ wave: coming.wave, brood: coming.brood, lanes: coming.lanes,
+      towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(),
+      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad });
+  }
+  function acceptSuggestion(claim?: unknown) {
+    if (lull <= 0 || constructionDone) return;
+    const s = recommendation();
+    if (!s) return;
+    // Match the exact operation displayed by the renderer; never replace a stale claim with a different purchase.
+    if (claim != null) {
+      const c = claim as Partial<BuildSuggestion>;
+      if (c.wave !== s.wave || c.kind !== s.kind || c.pad !== s.pad || c.tower !== s.tower || c.level !== s.level || c.targetLevel !== s.targetLevel || c.cost !== s.cost) { cue('deny'); return; }
     }
-    let best = -1, bestCost = Infinity;
-    towers.forEach((tw, i) => {
-      if (!tw || tw.level >= TOWER_MAX_LEVEL) return;
-      const c = towerUpgradeCost(tw.kind, tw.level, towerCostMult());
-      if (c < bestCost) { best = i; bestCost = c; }
-    });
-    if (best >= 0 && scrap >= bestCost) upgrade(best);
-    else if (best < 0 && baseHp < baseMaxHp * 0.8 && scrap >= repairCost()) repair();
+    let ok = false;
+    if (s.kind === 'repair') ok = repair();
+    else if (s.kind === 'build') ok = build(s.pad, s.tower!);
+    else if (scrap >= s.cost) {
+      while (towers[s.pad]!.level < s.targetLevel) { if (!upgrade(s.pad)) break; ok = true; }
+    }
+    if (ok) constructionDone = true;
+  }
+  function cancelRail() {
+    railPointers.clear(); zDown = false; zHold = 0; zDumped = false;
+    railBlocked = true;
+  }
+  function cancelBoost() { boostPointers.clear(); boostBlocked = true; }
+  function cancelHolds() { cancelRail(); cancelBoost(); }
+  function boostAvailable() {
+    return phase === 'run' && !over && !workshop && weapon === 'rail' &&
+      enemies.some(e => !e.dead && e.boss && !e.boss.pending && (e.boss.telegraph || e.boss.exposed));
+  }
+  function useAction(id: ActionId) {
+    if (phase !== 'run' || over || workshop) return;
+    if (id === 'rail') { fireRail(1); return; }
+    if (!isReady(cooldowns[id])) return;
+    if (id === 'overcharge') {
+      if (!towers.some(Boolean) || grid <= 0 || !enemies.some(e => !e.dead)) return;
+      overchargeLeft = overchargeS(); Object.assign(cooldowns.overcharge, startCooldown(overchargeCd())); cue('overdrive');
+    } else {
+      const threats = [0, 0, 0];
+      for (const e of enemies) if (!e.dead) threats[e.lane] += e.dmg * (0.3 + e.d / e.len) ** 2;
+      if (!threats.some(v => v > 0)) return;
+      slowLane = threats.indexOf(Math.max(...threats)); slowLeft = slowS();
+      Object.assign(cooldowns.slow, startCooldown(slowCd())); cue('surge');
+    }
+    ctx.emit({ type: 'action', data: { id, wave, ...(id === 'slow' ? { lane: slowLane } : {}) } });
   }
 
   // ---------- garage ----------
@@ -760,60 +830,96 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const bike = ctx.bike();
     const p = (b: Button) => inp.pressed.has(b);
 
-    // UI actions from the renderer (taps)
-    for (const a of pending.splice(0)) {
-      if (a.type === 'pad' && typeof a.pad === 'number' && a.pad >= -1 && a.pad <= 6) {
-        if (workshop && (workshop.pad === a.pad || a.pad === -1)) workshop = null; else openWorkshop(a.pad < 0 ? undefined : a.pad);
-      }
-      else if (a.type === 'row' && workshop && typeof a.row === 'number') { workshop.idle = 0; workshopAct(a.row); }
-      else if (a.type === 'close') workshop = null;
-      else if (a.type === 'rail') fireRail(1);
+    const epoch = inputEpoch, hadWorkshop = !!workshop;
+    const commands = pending.splice(0);
+    // Both adapters enter this queue. One command owns a purchase per tick.
+    if (p('a')) commands.push({ type: hadWorkshop ? 'confirm' : 'construct', epoch });
+    if (p('b')) commands.push(hadWorkshop ? { type: 'close', epoch } : { type: 'action', id: 'overcharge', epoch });
+    if (p('y')) commands.push({ type: 'action', id: 'slow', epoch });
+    if (p('down') && !hadWorkshop) commands.push({ type: 'pad', pad: -1, epoch });
+    let menuHandled = hadWorkshop, purchased = false;
+    for (const a of commands) {
+      if (a.epoch != null && a.epoch !== inputEpoch) continue;
+      if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= 6) {
+        menuHandled = true;
+        if (workshop && workshop.pad === a.pad) closeWorkshop();
+        else openWorkshop((a.pad as number) < 0 ? undefined : a.pad as number);
+      } else if (a.type === 'close') { menuHandled = true; closeWorkshop(); }
+      else if ((a.type === 'row' || a.type === 'confirm') && workshop && !purchased) {
+        if (a.revision != null && a.revision !== workshopRevision) continue;
+        if (a.pad != null && a.pad !== workshop.pad) continue;
+        if (a.type === 'row' && (!Number.isInteger(a.row) || (a.row as number) < 0 || (a.row as number) >= workshopRows(workshop.pad).length)) continue;
+        workshop.idle = 0; workshopAct(a.type === 'row' ? a.row as number : undefined);
+        menuHandled = true; purchased = true;
+      } else if (a.type === 'construct' && !workshop && !purchased) {
+        purchased = true;
+        if (lull > 0 && !constructionDone && recommendation()) acceptSuggestion(a.suggestion);
+        else if (a.suggestion == null) { openWorkshop(); menuHandled = true; }
+      } else if (a.type === 'railCancel' || a.type === 'inputCancel') { cancelRail(); menuHandled = true; }
     }
-
-    // --- buttons
-    if (autopilot) {
-      if (railCharges >= railCap() && enemies.some((e) => !e.dead && e.dist < 75)) fireRail(railCharges);
-      else if (weapon === 'rail' && swapLeft <= 0 && railCharges > 0) {
-        const tg = nearestInCone(aim, 0.05);
-        if (tg && tg.dist < 70 && elementOf(tg) === 'purple' && KINDS[tg.kind].heavy) fireRail(1);
-      }
-      autoBuildT += dt;
-      if (autoBuildT >= 1.5) { autoBuildT = 0; autoBuild(); }
-    } else if (workshop) {
-      const rows = workshopRows(workshop.pad);
+    // Navigation consumes the D-pad while the shared construction menu is open.
+    if (hadWorkshop && workshop) {
       workshop.idle += dt;
       if (inp.pressed.size) workshop.idle = 0;
       if (p('left') || p('right')) {
         const i = PAD_ORDER.indexOf(workshop.pad), n = PAD_ORDER.length;
         workshop.pad = PAD_ORDER[(i + (p('left') ? n - 1 : 1)) % n];
         workshop.row = workshop.pad < 6 && !towers[workshop.pad] ? suggestTower(workshop.pad) : 0;
+        workshopRevision++;
         cue('select');
       }
-      if (p('up')) { workshop.row = (workshop.row + rows.length - 1) % rows.length; cue('select'); }
-      if (p('down')) { workshop.row = (workshop.row + 1) % rows.length; cue('select'); }
-      if (p('a')) workshopAct();
-      if (p('b') || workshop.idle >= WORKSHOP_IDLE_S) { workshop = null; cue('uiClose'); }
-    } else {
+      const count = workshopRows(workshop.pad).length;
+      if (p('up')) { workshop.row = (workshop.row + count - 1) % count; workshopRevision++; cue('select'); }
+      if (p('down')) { workshop.row = (workshop.row + 1) % count; workshopRevision++; cue('select'); }
+      if (workshop.idle >= WORKSHOP_IDLE_S) closeWorkshop();
+    } else if (!menuHandled) {
       // D-pad left/right nudges targeting toward a lane (steps from the nudged lane while one is active); up cancels
       const cur = nudgeLeft > 0 ? nudgeLane : -1;
       if (p('left')) setNudge(cur < 0 ? 0 : Math.max(0, cur - 1));
       if (p('right')) setNudge(cur < 0 ? 2 : Math.min(2, cur + 1));
       if (p('up') && cur >= 0) { nudgeLeft = 0; cue('select'); }
-      if (p('down')) openWorkshop();
     }
     // paddles nudge too (left paddle = left lane, right paddle = right lane); held = refreshed
     const pd = inp.paddleR - inp.paddleL;
     if (!autopilot && Math.abs(pd) >= 0.5) setNudge(pd < 0 ? 0 : 2);
     else nudgeLeft = Math.max(0, nudgeLeft - dt);
-    if (!autopilot) { // Z fires the rail from any weapon, even with the workshop open
-      if (p('z')) { zDown = true; zHold = 0; zDumped = false; }
-      if (zDown && inp.held.has('z')) {
+    grid = bike.cadence3s < 15 ? 0 : clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
+    overchargeLeft = Math.max(0, overchargeLeft - dt); slowLeft = Math.max(0, slowLeft - dt);
+    const refill = refillRate(Math.min(5, bike.powerZone));
+    currentRefill = refill;
+    tickCooldown(cooldowns.overcharge, dt, refill); tickCooldown(cooldowns.slow, dt, refill);
+    if (bike.sprinting && !lastSprint && sprintCompletes()) { completeCooldown(cooldowns.overcharge); completeCooldown(cooldowns.slow); }
+    lastSprint = bike.sprinting;
+
+    if (!inp.held.has('z') && !p('z')) railBlocked = false;
+    if (!inp.held.has('up')) boostBlocked = false;
+    if (!menuHandled && !workshop) {
+      const used = new Set<ActionId>();
+      for (const a of commands) {
+        if (a.epoch != null && a.epoch !== inputEpoch) continue;
+        const id = a.type === 'rail' ? 'rail' : a.id;
+        if ((a.type === 'action' || a.type === 'rail') && (id === 'rail' || id === 'overcharge' || id === 'slow') && !used.has(id)) {
+          useAction(id); used.add(id);
+        } else if (a.type === 'railDown' && Number.isInteger(a.pointer) && !railBlocked) {
+          railPointers.add(a.pointer as number);
+          if (!zDown) { zDown = true; zHold = 0; zDumped = false; }
+        } else if (a.type === 'railUp' && Number.isInteger(a.pointer)) railPointers.delete(a.pointer as number);
+        else if (a.type === 'boostDown' && Number.isInteger(a.pointer) && boostAvailable()) boostPointers.add(a.pointer as number);
+        else if (a.type === 'boostUp' && Number.isInteger(a.pointer)) boostPointers.delete(a.pointer as number);
+      }
+      if (p('z') && !railBlocked && !zDown) { zDown = true; zHold = 0; zDumped = false; }
+      if (zDown && (railPointers.size > 0 || inp.held.has('z'))) {
         zHold += dt;
         if (!zDumped && zHold >= railDumpHold()) { zDumped = true; fireRail(railCharges); }
       }
-      if (zDown && (inp.released.has('z') || !inp.held.has('z'))) {
+      if (zDown && railPointers.size === 0 && !inp.held.has('z')) {
         if (!zDumped) fireRail(1);
         zDown = false; zHold = 0;
+      }
+      if (opts?.actionBot && lull <= 0) {
+        if (railCharges >= railCap() && enemies.some(e => !e.dead && e.dist < 75)) fireRail(railCharges);
+        if (overchargeLeft <= 0 && enemies.filter(e => !e.dead).length >= 6) useAction('overcharge');
+        if (slowLeft <= 0 && enemies.some(e => !e.dead && e.d / e.len > 0.65)) useAction('slow');
       }
     }
     if (swapLeft > 0) swapLeft = Math.max(0, swapLeft - dt);
@@ -850,6 +956,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
 
     updateBosses(dt);
+    if (!boostAvailable()) { boostPointers.clear(); boostBlocked = inp.held.has('up'); }
 
     // --- firing
     flaming = false; flamePower = 0;
@@ -887,7 +994,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (e.dead) continue;
       e.hurt = Math.max(0, e.hurt - dt);
       e.charging = e.kind === 'charger' && e.d / e.len > 0.5;
-      e.d += e.speed * (e.charging ? 2.6 : 1) * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1) * dt;
+      e.d += travelSpeed(e) * dt;
       place(e);
       if (e.kind === 'carrier') { e.spawnT -= dt; if (e.spawnT <= 0) { e.spawnT = 6; spawnAt('mini', e, 1.5); spawnAt('mini', e, -1.5); } }
       if (e.d >= e.len - BASE_R) {
@@ -905,7 +1012,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
     // --- spawning
     if (grace > 0) grace = Math.max(0, grace - dt);
-    else if (lull > 0) { lull = Math.max(0, lull - dt); if (lull === 0) beginWave(); }
+    else if (lull > 0) {
+      if (lull <= dt && autoCrewOn && !workshop) acceptSuggestion();
+      lull = Math.max(0, lull - dt); if (lull === 0) beginWave();
+    }
     else {
       waveElapsed += dt;
       // the drone stream runs until the wave has sent everything and waveMinS has passed, so the field can clear
@@ -942,7 +1052,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (opts?.skipGarage || autopilot || save.runs === 0) startRun();
     }
     t += dt;
-    const inp = ctx.input();
+    const rawInput = ctx.input();
+    const inp = discardEdges ? { ...rawInput, pressed: new Set<Button>(), released: new Set<Button>() } : rawInput;
+    discardEdges = false;
     if (phase === 'garage') garageUpdate(dt, inp);
     else runUpdate(dt, inp);
     fx = fx.filter((f) => t - f.t0 < f.life);
@@ -964,6 +1076,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     save.bank = Math.round(bank);
     save.upgrades = levels;
     save.autoInvest = autoInvestOn;
+    save.autoCrew = autoCrewOn;
     ctx.save({ ...save, totals: { ...save.totals }, upgrades: { ...levels } });
   }
   const bestWave = () => Math.max(save.bestWave, phase === 'run' ? wave - 1 : 0);
@@ -974,14 +1087,26 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** Shifters are always gears (they only change the trainer in the Gatling's sim mode). */
   const gearHints = (): ControlHint[] => [{ button: 'shiftersL', label: 'Gear', active: gearsLive() }, { button: 'shiftersR', label: 'Gear', active: gearsLive() }];
   const gearsLive = () => phase !== 'run' || weapon === 'gatling';
-  const playControls = (): ControlHint[] => [
-    ...(weapon === 'rail' && (bossView()?.telegraph || bossView()?.exposed)
-      ? [{ button: 'a' as const, label: 'Sprint boost (hold)', active: bossView()?.sprintBoost }] : []),
-    { button: 'z', label: 'Fire rail (hold = all)' },
-    { button: 'dpad', label: '◀▶ nudge lane · ▼ workshop' },
-    { button: 'paddles', label: 'Nudge lane' },
-    ...gearHints(),
-  ];
+  const heldTouch = (kind: 'rail' | 'boost'): ControlHint['touch'] => ({
+    down: { type: `${kind}Down`, epoch: inputEpoch }, up: { type: `${kind}Up`, epoch: inputEpoch }, cancel: { type: `${kind}Cancel`, epoch: inputEpoch },
+  });
+  const playControls = (): ControlHint[] => {
+    const suggestion = lull > 0 && !constructionDone ? recommendation() : null;
+    const order = suggestion?.tower ? `${({ tesla: 'Tesla', mortar: 'Mortar', lens: 'Lens' })[suggestion.tower]} Lv${suggestion.targetLevel}` : 'Repair';
+    return [
+      { button: 'a', label: suggestion ? `${order} · ${suggestion.cost} scrap` : 'Construction',
+        touch: { down: { type: 'construct', epoch: inputEpoch, ...(suggestion ? { suggestion } : {}) } } },
+      ...actionViews().map((a): ControlHint => ({ button: a.id === 'rail' ? 'z' : a.id === 'overcharge' ? 'b' : 'y',
+        label: a.id === 'rail' ? `Rail ${railCharges}/${railCap()} (hold = all)` : `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`, active: a.usable,
+        ...(a.id === 'rail' ? { touch: heldTouch('rail') } : {}),
+        cooldown: { fill: a.fill, ready: a.ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } })),
+      { button: 'left', label: 'Nudge lane' }, { button: 'right', label: 'Nudge lane' },
+      { button: 'up', label: boostAvailable() ? 'Sprint boost (hold)' : 'Clear lane nudge',
+        ...(boostAvailable() ? { active: bossView()?.sprintBoost, touch: heldTouch('boost') } : {}) },
+      { button: 'down', label: 'Workshop' },
+      { button: 'paddles', label: 'Nudge lane' }, ...gearHints(),
+    ];
+  };
   function enemyView(e: Enemy): EnemyView {
     const el = elementOf(e), si = shiftIn(e);
     const shifting = e.kind === 'boss' || e.kind === 'prism';
@@ -999,7 +1124,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       return { id: e.id, phase: b.phase + 1, phaseCount: b.colors.length, color, weapon: ELEMENT_WEAPON[color],
         next: b.pending ? b.colors[b.phase + 1] : null, countdownS: b.countdownS,
         telegraph: b.telegraph && !b.pending, exposed: b.exposed && !b.pending, windowLeftS: b.windowLeftS,
-        sprintBoost: weapon === 'rail' && !b.pending && (b.telegraph || b.exposed) && !workshop && ctx.input().held.has('a') };
+        sprintBoost: weapon === 'rail' && !b.pending && (b.telegraph || b.exposed) && !workshop &&
+          ((!boostBlocked && ctx.input().held.has('up')) || boostPointers.size > 0) };
     }
     if (plan?.boss && (lull > 0 || schedule.some((s) => s.kind === 'boss'))) {
       return { id: 0, phase: 1, phaseCount: phaseColors.length, color: plan.brood, weapon: ELEMENT_WEAPON[plan.brood],
@@ -1016,7 +1142,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function workshopView(): WorkshopView | null {
     if (!workshop) return null;
-    return { pad: workshop.pad, row: workshop.row, rows: workshopRows(workshop.pad), idleLeft: WORKSHOP_IDLE_S - workshop.idle };
+    return { pad: workshop.pad, row: workshop.row, rows: workshopRows(workshop.pad), idleLeft: WORKSHOP_IDLE_S - workshop.idle, revision: workshopRevision };
+  }
+  function actionViews(): ActionView[] {
+    const live = phase === 'run' && !over && !workshop;
+    return [
+      { id: 'overcharge', fill: readyFrac(cooldowns.overcharge), ready: isReady(cooldowns.overcharge), usable: live && grid > 0 && towers.some(Boolean) && enemies.some(e => !e.dead), activeS: overchargeLeft },
+      { id: 'slow', fill: readyFrac(cooldowns.slow), ready: isReady(cooldowns.slow), usable: live && enemies.some(e => !e.dead), activeS: slowLeft },
+      { id: 'rail', fill: railCharges >= railCap() ? 1 : Math.min(1, railProgress), ready: railCharges > 0, usable: live && railCharges > 0, activeS: 0 },
+    ];
   }
 
   return {
@@ -1024,7 +1158,18 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     isOver: () => over,
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
-      if (a && typeof a.type === 'string' && pending.length < 8) pending.push(a as { type: string });
+      if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
+      if (a?.type === 'boostCancel') {
+        cancelBoost();
+        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].type === 'boostDown' || pending[i].type === 'boostUp') pending.splice(i, 1);
+        return;
+      }
+      if (a?.type === 'railCancel') {
+        cancelRail();
+        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].type === 'railDown' || pending[i].type === 'railUp') pending.splice(i, 1);
+        return;
+      }
+      if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
       if (started && phase === 'garage') return {
@@ -1041,10 +1186,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3, label: 'Power the towers' };
       const targetCadence: GameHud['targetCadence'] = call?.kind === 'spin' ? { min: call.minRpm, label: 'Spin up the Gatling' } : call?.kind === 'grind' ? { min: call.minRpm, max: call.maxRpm, label: 'Grind at power' } : undefined;
       if (workshop) return {
-        gears: gearsLive(), targetZone: tz, targetCadence,
-        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'z', label: 'Fire rail' }, { button: 'paddles', label: 'Nudge lane' }, ...gearHints()],
+        gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'b'],
+        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'paddles', label: 'Nudge lane' }, ...gearHints()],
       };
-      return { gears: gearsLive(), targetZone: tz, targetCadence, controls: playControls() };
+      return { gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'down', ...(boostAvailable() ? ['up' as const] : []), 'b', 'y', 'z'], controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -1060,6 +1205,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         flaming, flameRange: flameRange(), flameHalfAngle: flameHalf(), flamePower, laserId,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap, partsRun, bank: Math.round(bank),
+        autoCrew: autoCrewOn, suggestion: phase === 'run' && lull > 0 && !constructionDone ? recommendation() : null, constructionDone,
+        actions: actionViews(), refill: currentRefill, slowLane: slowLeft > 0 ? slowLane : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight })),
         workshop: workshopView(),

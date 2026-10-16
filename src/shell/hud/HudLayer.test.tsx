@@ -2,7 +2,7 @@
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { expect, it, vi } from 'vitest';
-import type { BikeState, Profile } from '../../contracts';
+import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { input } from '../services';
 import { HudLayer } from './HudLayer';
@@ -36,4 +36,35 @@ it('opens the menu from the center hit target while shifters remain independent'
     act(() => render(null, el));
     system.mockRestore(); vi.unstubAllGlobals(); vi.useRealTimers();
   }
+});
+
+it('uses one set of filled controls in either the legend or the HUD blocks, and cancels a hold on switching', () => {
+  vi.useFakeTimers(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const el = document.createElement('div'), receive = vi.fn();
+  const bike = { power3s: 210, ftpFraction: .84, hr5s: 145, cadence3s: 80, activeSeconds: 754, gear: 8 } as BikeState;
+  const hud: GameHud = { touchControls: ['a', 'down', 'b', 'y', 'z'], controls: [
+    { button: 'a', label: 'Construction' }, { button: 'down', label: 'Workshop' },
+    { button: 'b', label: 'Overcharge', cooldown: { fill: .4, ready: false, tint: '#ffd23b' } },
+    { button: 'y', label: 'Slow field' }, { button: 'z', label: 'Rail', cooldown: { fill: 1, ready: true },
+      touch: { down: { type: 'railDown', epoch: 7 }, up: { type: 'railUp', epoch: 7 }, cancel: { type: 'railCancel', epoch: 7 } } },
+  ] };
+  const session = { ctx: { bike: () => bike }, sim: { hud: () => hud, receive } } as unknown as SessionLike;
+  const profile = { ftp: 250, maxHr: 190, settings: { zoneSource: 'auto' } } as Profile;
+  const show = (legendOn: boolean, paused = false) => act(() => render(<HudLayer session={session} profile={profile} paused={paused} legendOn={legendOn} />, el));
+  try {
+    show(true); act(() => { vi.advanceTimersByTime(100); });
+    expect(el.querySelectorAll('.hood')).toHaveLength(2); expect(el.querySelector('.hud-actions')).toBeNull();
+    expect(el.querySelector('[data-control="b"] .pk-fill')).not.toBeNull();
+    show(false);
+    expect(el.querySelector('.hood')).toBeNull(); expect(el.querySelectorAll('.hud-actions .block')).toHaveLength(5);
+    expect(el.querySelector('[data-control="b"]')?.getAttribute('style')).toContain('--fill: 40%');
+    const rail = el.querySelector('[data-control="z"]')!;
+    const down = new Event('pointerdown', { bubbles: true, cancelable: true }); Object.defineProperty(down, 'pointerId', { value: 23 });
+    act(() => { rail.dispatchEvent(down); });
+    expect(receive).toHaveBeenLastCalledWith({ type: 'railDown', epoch: 7, pointer: 23 });
+    show(true);
+    expect(receive).toHaveBeenLastCalledWith({ type: 'railCancel', epoch: 7, pointer: 23 });
+    expect(receive.mock.calls.some(([a]) => a.type === 'railUp')).toBe(false);
+    show(false, true); expect([...el.querySelectorAll<HTMLButtonElement>('.hud-actions button')].every(b => b.disabled)).toBe(true);
+  } finally { act(() => render(null, el)); vi.unstubAllGlobals(); vi.useRealTimers(); }
 });

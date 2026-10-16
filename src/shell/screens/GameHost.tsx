@@ -64,7 +64,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
     if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
-    if (p) { s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
+    if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
   /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
   const startCount = () => {
@@ -122,7 +122,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         if (disposed) { renderer.unmount(); return; }
         const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx });
+        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
         renderer.setInsets?.(readInsets());
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });

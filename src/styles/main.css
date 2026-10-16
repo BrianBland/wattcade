@@ -222,6 +222,14 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-clock b { font-size: 14px; }
 }
 
+/* Distribute desktop instruments evenly, with full-width zone and history tracks. */
+@media (min-width: 701px) and (orientation: landscape) {
+  .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(5, max-content); justify-content: space-between; }
+  .zw-icon { display: none; }
+  .zw-bar { margin: 0; }
+  .zw-label-track, .zw-history { margin: 0; }
+}
+
 /* Compact instruments stay inside the controller-height envelope in portrait. */
 @media (max-width: 700px), (orientation: portrait) {
   :root { --k: clamp(32px, 10vw, 56px); }

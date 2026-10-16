@@ -30,3 +30,4 @@
 - stress=150 uses swarm-heavy mixed species plus one boss; weapon=flame/rail and damage=1 exercise effects.
 - Checks: typecheck, towerdefense/inset Vitest tests, production build, browser captures across orientations.
 - Real iPad/Bluefy frame-rate validation remains a hardware check; Chromium timings are not an iPad claim.
+- Merge #141: retain shared HUD actions/radial construction; reserve the fallback dock only without shell controls.

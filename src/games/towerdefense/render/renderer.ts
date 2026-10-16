@@ -5,7 +5,8 @@ import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyl
 import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
-import { drawBanner, drawBroodCard, drawGarage, drawLeft, drawRight, drawWorkshop, type Hit } from './panels';
+import { drawBanner, drawBroodCard, drawGarage, drawLeft, drawRight, type Hit } from './panels';
+import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
@@ -50,9 +51,26 @@ export class TdRenderer implements GameRenderer {
   private machinery!: Machinery;
   private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
+  private heldPointers = new Map<number, { epoch: number; kind: 'rail' | 'boost' }>();
+  private onUp = (e: PointerEvent) => this.releaseHold(e.pointerId, false);
+  private onCancel = (e: PointerEvent) => this.releaseHold(e.pointerId, true);
+  private onBlur = () => {
+    for (const id of [...this.heldPointers.keys()]) this.releaseHold(id, true);
+    this.send?.({ type: 'railCancel' }); this.send?.({ type: 'boostCancel' });
+  };
+  private onVisibility = () => { if (document.hidden) this.onBlur(); };
+  private onMove = (e: PointerEvent) => {
+    if (!this.heldPointers.has(e.pointerId)) return;
+    const r = this.canvas.getBoundingClientRect();
+    const px = (e.clientX - r.left) * this.W / r.width, py = (e.clientY - r.top) * this.H / r.height;
+    const b = this.heldPointers.get(e.pointerId)!.kind === 'boost' ? this.L.dock.workshop : this.L.dock.actions[2];
+    if (px < b.x || px > b.x + b.w || py < b.y || py > b.y + b.h) this.releaseHold(e.pointerId, true);
+  };
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+  private hudControls = false;
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
     this.mounted = true;
+    this.hudControls = !!ctx.hudControls;
     this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
@@ -66,6 +84,12 @@ export class TdRenderer implements GameRenderer {
     container.appendChild(this.canvas);
     this.g = this.canvas.getContext('2d')!;
     this.canvas.addEventListener('pointerdown', this.onPointer);
+    this.canvas.addEventListener('pointerup', this.onUp);
+    this.canvas.addEventListener('pointercancel', this.onCancel);
+    this.canvas.addEventListener('lostpointercapture', this.onCancel);
+    this.canvas.addEventListener('pointermove', this.onMove);
+    window.addEventListener('blur', this.onBlur);
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   async ready() {
@@ -79,6 +103,7 @@ export class TdRenderer implements GameRenderer {
     this.bg = null;
   }
   resize(w: number, h: number) {
+    for (const id of [...this.heldPointers.keys()]) this.releaseHold(id, true);
     this.W = Math.max(1, w); this.H = Math.max(1, h);
     if (!this.canvas) return;
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
@@ -87,11 +112,17 @@ export class TdRenderer implements GameRenderer {
   setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
   unmount() {
     this.mounted = false;
+    this.onBlur(); window.removeEventListener('blur', this.onBlur);
+    document.removeEventListener('visibilitychange', this.onVisibility);
     this.canvas?.removeEventListener('pointerdown', this.onPointer);
+    this.canvas?.removeEventListener('pointerup', this.onUp);
+    this.canvas?.removeEventListener('pointercancel', this.onCancel);
+    this.canvas?.removeEventListener('lostpointercapture', this.onCancel);
+    this.canvas?.removeEventListener('pointermove', this.onMove);
     this.canvas?.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB); this.bg = null; }
+  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.bg = null; }
 
   // ---------- coordinates ----------
   private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
@@ -104,12 +135,32 @@ export class TdRenderer implements GameRenderer {
     const px = (e.clientX - r.left) * (this.W / r.width), py = (e.clientY - r.top) * (this.H / r.height);
     for (let i = this.hits.length - 1; i >= 0; i--) {
       const h = this.hits[i];
-      if (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) { e.preventDefault(); if (h.action) this.send?.(h.action); return; }
+      if (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) {
+        e.preventDefault();
+        const a = h.action as { type?: string; epoch?: number } | null;
+        if (a?.type === 'railHold' || a?.type === 'boostHold') {
+          const kind = a.type === 'railHold' ? 'rail' : 'boost';
+          this.heldPointers.set(e.pointerId, { epoch: a.epoch!, kind });
+          this.canvas.setPointerCapture?.(e.pointerId);
+          this.send?.({ type: `${kind}Down`, pointer: e.pointerId, epoch: a.epoch });
+        } else if (h.action) this.send?.(h.action);
+        return;
+      }
     }
-    const s = this.snap; if (!s || s.phase !== 'run') return;
+    const s = this.snap; if (!s || s.phase !== 'run' || s.over || py > this.L.UH) return;
     const fx = (px - this.L.field.x) / this.k, fy = (py - this.L.field.y) / this.k;
-    for (const p of PADS) if (Math.hypot(fx - p.x, fy - p.y) < 5.5) { e.preventDefault(); this.send?.({ type: 'pad', pad: p.id }); return; }
-    if (Math.hypot(fx - BASE_X, fy - BASE_Y) < 8) { e.preventDefault(); this.send?.({ type: 'pad', pad: 6 }); }
+    const targets = [...PADS, { id: 6, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(fx - p.x, fy - p.y) }))
+      .sort((a, b) => a.distance - b.distance);
+    const closest = targets[0];
+    if (closest.distance < Math.max(closest.id === 6 ? 8 : 5.5, 22 / this.k)) {
+      e.preventDefault(); this.send?.({ type: 'pad', pad: closest.id, epoch: s.inputEpoch });
+    }
+  }
+  private releaseHold(id: number, cancel: boolean) {
+    const pointer = this.heldPointers.get(id); if (!pointer) return;
+    this.heldPointers.delete(id);
+    this.send?.({ type: `${pointer.kind}${cancel ? 'Cancel' : 'Up'}`, pointer: id, epoch: pointer.epoch });
+    if (this.canvas.hasPointerCapture?.(id)) this.canvas.releasePointerCapture(id);
   }
 
   // ---------- background (cached per size) ----------
@@ -280,6 +331,8 @@ export class TdRenderer implements GameRenderer {
   // ---------- frame ----------
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as TdSnapshot;
+    for (const [id, pointer] of this.heldPointers) if (s.inputEpoch !== pointer.epoch || s.phase !== 'run' || s.over ||
+      (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (!this.L) this.relayout();
     const g = this.g, k = this.k, L = this.L;
@@ -361,10 +414,11 @@ export class TdRenderer implements GameRenderer {
     if (s.phase === 'run') {
       drawBroodCard(g, s, L.brood, L.u, t);
       drawBanner(g, s, L.banner.x, L.banner.y, L.banner.w, L.u);
-      this.hits.push(...drawLeft(g, s, L.left, L.u, t, true, MODE_VAL));
-      const ws = s.workshop ? L.workshop : null;
-      this.hits.push(...drawRight(g, s, L.right, L.u, t, true, ws));
-      if (s.workshop && ws) this.hits.push(...drawWorkshop(g, s, s.workshop, ws, L.u));
+      const compact = true;
+      drawLeft(g, s, L.left, L.u, t, compact, MODE_VAL);
+      this.hits.push(...drawRight(g, s, L.right, L.u, t, compact, null, !this.hudControls));
+      if (!this.hudControls) this.hits.push(...drawDock(g, s, L, bike.powerZone));
+      if (s.workshop) this.hits.push(...drawConstruction(g, s, L, this.W));
     } else if (s.garage) {
       this.hits.push(...drawGarage(g, s.garage, L.garage, L.u, t));
     }
@@ -387,6 +441,11 @@ export class TdRenderer implements GameRenderer {
     const k = this.k;
     for (let l = 0; l < 3; l++) {
       const pts = lanePolyline(l, 4);
+      if (s.slowLane === l) {
+        g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.35 + 0.1 * Math.sin(t * 4); g.lineWidth = 7 * k;
+        g.setLineDash([3 * k, 2 * k]); g.beginPath();
+        pts.forEach((p, i) => i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y))); g.stroke(); g.restore();
+      }
       const nk = s.nudge?.lane === l ? s.nudge.k : 0;
       if (s.phase === 'run' && nk > 0) {
         g.strokeStyle = `rgba(160,200,255,${(0.04 + 0.08 * nk).toFixed(3)})`; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';

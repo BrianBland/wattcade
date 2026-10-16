@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BikeState, GameHud, Profile } from '../../contracts';
 import type { SessionLike } from '../types';
 import { input } from '../services';
-import { Hood } from './Pad';
-import { buildPad } from './padModel';
+import { Hood, PadKey } from './Pad';
+import { buildPad, type PadButton } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
 
@@ -22,16 +22,16 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   menu?: () => { label: string; onClick: () => void; dim?: boolean };
 }) {
   const [f, setF] = useState<Frame | null>(null);
-  const center = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   // Keep renderer insets in sync when target copy or narrow screens grow the panel.
   useEffect(() => {
-    const el = center.current;
+    const el = root.current;
     if (!el) return;
-    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${el.getBoundingClientRect().height}px`);
+    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${Math.max(0, ...[...el.children].map(c => c.getBoundingClientRect().height))}px`);
     const observer = new ResizeObserver(measure);
-    observer.observe(el); measure();
+    for (const child of el.children) observer.observe(child); measure();
     return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); };
-  }, [!!f]);
+  }, [!!f, legendOn, f?.hud.touchControls?.join(), f?.hud.gears]);
   const hist = useRef(rideHistory);
   const last = useRef({ t: performance.now() });
   useEffect(() => {
@@ -52,14 +52,26 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   const gears = !!f.hud.gears;
   const pad = buildPad(f.hud.controls ?? [], gears);
   const mb = menu?.();
+  const send = (a: unknown) => session.sim.receive?.(a);
+  const primary = f.hud.touchControls ?? [];
+  const buttons = [...pad.left.stick.buttons, ...pad.right.stick.buttons];
+  const touchSide = (side: 'L' | 'R') => {
+    const selected = primary.map(id => buttons.find(b => b.id === id)).filter((b): b is PadButton => !!b?.mapped)
+      .filter(b => side === 'R' ? ['b', 'y', 'z'].includes(b.id) : !['b', 'y', 'z'].includes(b.id));
+    return selected.length > 0 && <div class="hud-actions" role="group" aria-label={`${side === 'L' ? 'Left' : 'Right'} touch controls`}>
+      {selected.map(b => <PadKey key={b.id} b={b} held={f.held} send={send} disabled={paused} block />)}
+    </div>;
+  };
   return (
-    <div class={`hud${legendOn ? '' : ' no-pad'}`}>
-      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} gear={f.bike.gear} />}
-      <div class="hud-center" ref={center}>
+    <div ref={root} class={`hud${legendOn ? '' : ' no-pad'}`} key={legendOn ? 'controller' : 'touch'}>
+      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} gear={f.bike.gear} send={send} disabled={paused} />}
+      {!legendOn && touchSide('L')}
+      <div class="hud-center">
         <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={mb?.onClick ?? (() => input.system('pause'))} />
         <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears} />
       </div>
-      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} />}
+      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} send={send} disabled={paused} />}
+      {!legendOn && touchSide('R')}
     </div>
   );
 }

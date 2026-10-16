@@ -186,7 +186,7 @@ describe('garage meta', () => {
   });
   it('first run skips the garage; intro shows play controls', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
-    expect(s.sim.hud!().controls!.map((c) => c.label)).toContain('Fire rail (hold = all)'); // before the first update (game intro)
+    expect(s.sim.hud!().controls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
     s.step(1);
     expect(snap(s).phase).toBe('run');
   });
@@ -286,7 +286,7 @@ describe('workshop', () => {
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
     expect(ws.pad).toBeLessThan(6);
-    expect(ws.rows.map((r) => r.tower)).toEqual(['tesla', 'mortar', 'lens']);
+    expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'mortar', 'lens']);
     expect(s.sim.hud!().controls!.some((c) => c.label === 'Build / upgrade')).toBe(true);
     // pick the tesla row by tap, then build it
     const scrap0 = snap(s).scrap;
@@ -295,13 +295,13 @@ describe('workshop', () => {
     expect(snap(s).towers[0].kind).toBe('tesla');
     expect(snap(s).scrap).toBeLessThanOrEqual(scrap0 - towerBuildCost('tesla') + 2);
     // the built pad now offers an upgrade and a refund
-    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell']);
+    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell', 'crew']);
     s.sim.receive!({ type: 'close' }); s.step(1);
     expect(snap(s).workshop).toBeNull();
   });
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true } });
+      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true, autoCrew: false } });
       s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 180);
       return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills), fired: snap(s).towers[0]?.firedAt > 0 };
     };

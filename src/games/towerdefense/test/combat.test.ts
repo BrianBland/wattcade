@@ -91,7 +91,7 @@ describe('boss ladder', () => {
     expect(advanceBoss(b, 12, 1, timing)).toContain('telegraph');
     expect(advanceBoss(b, 3, 1, timing)).toContain('exposed');
   });
-  it('an optional hold-A push makes a Rail opening sprintable without changing trainer mode', () => {
+  it('an optional hold-Up push makes a Rail opening sprintable without changing trainer mode; A stays construction', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
@@ -103,14 +103,15 @@ describe('boss ladder', () => {
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
     expect(effect().ftpFraction).toBe(0.95);
-    expect(s.sim.hud!().controls!.some((c) => c.button === 'a')).toBe(true);
-    held.add('a'); s.step(1);
+    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Construction');
+    held.add('a'); s.step(1); expect(effect().ftpFraction).toBe(0.95); held.delete('a');
+    held.add('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(1.35);
     expect(snapshot(s).boss?.sprintBoost).toBe(true);
     let sprinted = false;
     for (let i = 0; i < 30 * 7; i++) { s.step(1); sprinted ||= Boolean(snapshot(s).boss?.exposed && s.ctx.bike().sprinting); }
     expect(sprinted).toBe(true);
-    held.delete('a'); s.step(1);
+    held.delete('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(0.95);
     expect(snapshot(s).boss?.sprintBoost).toBe(false);
   });
@@ -136,6 +137,26 @@ describe('boss ladder', () => {
       return events.find((e) => e.type === 'bossKilled')!.t;
     };
     expect(ride(true)).toBeLessThan(ride(false) - 0.2);
+  });
+  it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
+    const s = createGameSession({ game: module,
+      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false, cores: 0 } });
+    s.tuning.set('towerdefense.railLaserDps', 1);
+    for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
+    expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);
+    const effect = () => s.mixer.debug().activeEffects.find(e => e.id === 'weapon')!;
+    const epoch = snapshot(s).inputEpoch;
+    s.sim.receive!({ type: 'boostDown', pointer: 1, epoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
+    s.sim.receive!({ type: 'boostDown', pointer: 2, epoch }); s.sim.receive!({ type: 'boostUp', pointer: 1, epoch }); s.step(1);
+    expect(effect().ftpFraction).toBe(1.35);
+    s.sim.receive!({ type: 'boostUp', pointer: 2, epoch }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
+    s.sim.receive!({ type: 'construct' }); s.step(1); expect(snapshot(s).workshop).not.toBeNull(); expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'close' }); s.step(1); s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
+    expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'boostDown', pointer: 4, epoch: snapshot(s).inputEpoch }); s.step(1);
+    s.sim.receive!({ type: 'inputCancel' }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
   });
 });
 

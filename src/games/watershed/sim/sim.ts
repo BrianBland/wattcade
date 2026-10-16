@@ -352,7 +352,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       ctx.debug('watershed.carved', Math.round(carved)); ctx.debug('watershed.delta', Math.round(delta));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length' }, { button: 'a', label: 'Start' }] };
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length', shortLabel: 'Length' }, { button: 'a', label: 'Start' }] };
       const b = planAt(t, scale, plan).block;
       const fish = salmon.active;
       const label = { grind: 'Grind', spin: 'Spin', steady: b.phase === 'evaporate' ? 'Spin' : 'Steady', salmon: salmon.needLeap ? 'Leap: 95+' : 'Swim', free: 'Easy' }[b.style];
@@ -360,9 +360,9 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
         controls: [
-          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Move the spring' },
+          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Move the spring', shortLabel: 'Steer' },
           { button: 'dpad', label: '◀▶ Steer' }, { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' },
-          { button: 'a', label: BOOST_LABEL[b.phase], active: boostCd <= 0 }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow' },
+          { button: 'a', label: BOOST_LABEL[b.phase], shortLabel: b.phase === 'evaporate' ? 'Heat' : b.phase === 'rain' ? 'Burst' : BOOST_LABEL[b.phase], active: boostCd <= 0 }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow', shortLabel: view === 'follow' ? 'Map' : 'Follow' },
         ],
       };
     },

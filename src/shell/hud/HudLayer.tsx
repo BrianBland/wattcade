@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { BikeState, GameHud, Profile } from '../../contracts';
+import type { BikeState, GameHud, Profile, TrainerCommand } from '../../contracts';
 import type { SessionLike } from '../types';
 import { input } from '../services';
 import { Hood, PadKey } from './Pad';
@@ -7,7 +7,7 @@ import { buildPad, type PadButton } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
 
-interface Frame { bike: BikeState; hud: GameHud; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[] }
+interface Frame { bike: BikeState; hud: GameHud; command?: TrainerCommand | null; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[] }
 
 /** One ride history for every HUD (lobby -> game -> lobby), so the chart doesn't reset between screens. */
 const rideHistory = new History();
@@ -44,13 +44,14 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
       const now = performance.now(); const dt = (now - last.current.t) / 1000; last.current.t = now;
       if (!paused) hist.current.push(dt, bike.power3s, bike.hr5s, pos.zone);
       const st = input.state();
-      setF({ bike, hud, held: st.held, paddles: [st.paddleL, st.paddleR], view: { pos, source }, bars: hist.current.bars.slice() });
+      setF({ bike, hud, command: session.mixer?.command, held: st.held, paddles: [st.paddleL, st.paddleR], view: { pos, source }, bars: hist.current.bars.slice() });
     }, 100);
     return () => clearInterval(id);
   }, [session, paused]);
   if (!f) return null;
   const gears = !!f.hud.gears;
   const pad = buildPad(f.hud.controls ?? [], gears);
+  const gearShift = [pad.left.shift, pad.right.shift].find(shift => shift?.gears);
   const mb = menu?.();
   const send = (a: unknown) => session.sim.receive?.(a);
   const primary = f.hud.touchControls ?? [];
@@ -64,13 +65,14 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   };
   return (
     <div ref={root} class={`hud${legendOn ? '' : ' no-pad'}`} key={legendOn ? 'controller' : 'touch'}>
-      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} gear={f.bike.gear} send={send} disabled={paused} />}
+      {legendOn && <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} send={send} disabled={paused} />}
       {!legendOn && touchSide('L')}
       <div class="hud-center">
         <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={mb?.onClick ?? (() => input.system('pause'))} />
-        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears} />
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears} command={f.command}
+          gearControls={gears && gearShift?.buttons.slice().reverse().map(b => <PadKey key={b.id} b={{ ...b, label: b.glyph === '+' ? 'Gear up' : 'Gear down' }} held={f.held} send={send} disabled={paused} merged />)} />
       </div>
-      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} send={send} disabled={paused} />}
+      {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} send={send} disabled={paused} />}
       {!legendOn && touchSide('R')}
     </div>
   );

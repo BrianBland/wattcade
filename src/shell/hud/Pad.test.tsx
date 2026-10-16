@@ -13,6 +13,9 @@ it('renders the right hood and holds buttons while pressed', () => {
   const keys = [...el.querySelectorAll<HTMLButtonElement>('.pc.face .pk')];
   expect(keys.map((k) => k.disabled)).toEqual([true, true, false, true]); // y z a b
   expect(keys[2].className).toContain('held');
+  expect(keys[2].textContent).toBe('Fire');
+  expect(keys[2].getAttribute('aria-label')).toBe('Fire');
+  expect(keys[0].textContent).toBe('Y'); // unmapped keys retain the subdued physical reference
   expect(el.textContent).toContain('Dash');
   const ev = (type: string) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'pointerId', { value: 7 }); return e; };
   keys[2].dispatchEvent(ev('pointerdown'));
@@ -21,6 +24,11 @@ it('renders the right hood and holds buttons while pressed', () => {
   keys[2].dispatchEvent(ev('pointerup'));
   input.beginTick(0.03);
   expect(input.state().held.has('a')).toBe(false);
+  const shared = buildPad(['a', 'b', 'y', 'z'].map(button => ({ button: button as 'a' | 'b' | 'y' | 'z', label: 'Release charged shot', shortLabel: 'Fire' })), false);
+  render(<Hood side="R" model={shared.right} held={new Set()} paddle={0} />, el);
+  expect([...el.querySelectorAll('.pc.face button')].map(key => key.textContent)).toEqual(['Fire', 'Fire', 'Fire', 'Fire']);
+  expect([...el.querySelectorAll('.pc.face button')].every(key => key.getAttribute('aria-label') === 'Release charged shot')).toBe(true);
+  render(null, el);
 });
 
 it('cancels semantic holds on pointer cancellation, lost capture, blur and pause without firing on release', () => {
@@ -42,22 +50,13 @@ it('cancels semantic holds on pointer cancellation, lost capture, blur and pause
   } finally { act(() => render(null, el)); }
 });
 
-it('shows current gear above assigned shifters and shifts through touch input', () => {
+it('omits duplicate gear shifters while preserving game-specific shifter actions', () => {
   const pad = buildPad([], true);
   const el = document.createElement('div');
-  render(<Hood side="L" model={pad.left} held={new Set()} paddle={0} gear={8} />, el);
-  expect(el.querySelector('.pc.shift')?.firstElementChild?.textContent).toBe('Gear 8');
-  const up = el.querySelector<HTMLButtonElement>('[aria-label="shiftUpL"]')!;
-  expect(up.disabled).toBe(false);
-  const ev = (type: string) => { const e = new Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(e, 'pointerId', { value: 19 }); return e; };
-  up.dispatchEvent(ev('pointerdown'));
-  input.beginTick(.03);
-  expect(input.state().held.has('shiftUpL')).toBe(true);
-  up.dispatchEvent(ev('pointerup'));
-  input.beginTick(.03);
-  expect(input.state().held.has('shiftUpL')).toBe(false);
+  render(<Hood side="L" model={pad.left} held={new Set()} paddle={0} />, el);
+  expect(el.querySelector('.pc.shift')).toBeNull();
   const dungeon = buildPad([{ button: 'shiftUpR', label: 'Dash' }, { button: 'shiftDnR', label: 'Potion' }], true);
-  render(<Hood side="R" model={dungeon.right} held={new Set()} paddle={0} gear={8} />, el);
+  render(<Hood side="R" model={dungeon.right} held={new Set()} paddle={0} />, el);
   expect(el.querySelector('.pc-gear')).toBeNull();
   expect(el.textContent).toContain('Dash');
 });
@@ -78,19 +77,25 @@ it('removes unused peripheral controls while retaining assigned paddles and acti
 
 it('draws a game cooldown on the key: partial fill tinted by effort, then a ready glow', () => {
   const pad = buildPad([
-    { button: 'a', label: 'Strike', cooldown: { fill: 0.4, ready: false, tint: '#ffd23b', flourish: 0.75 } },
+    { button: 'a', label: 'Strike the enemy', shortLabel: 'Strike', cooldown: { fill: 0.4, ready: false, tint: '#ffd23b', flourish: 0.75 } },
     { button: 'b', label: 'Ward', active: true, cooldown: { fill: 1, ready: true } },
     { button: 'y', label: 'Rally' },
   ], false);
   const el = document.createElement('div');
   render(<Hood side="R" model={pad.right} held={new Set()} paddle={0} />, el);
   const k = (l: string) => el.querySelector<HTMLButtonElement>(`[aria-label="${l}"]`)!;
-  expect(k('Strike').className).toMatch(/\bcd\b/); expect(k('Strike').className).not.toMatch(/\bready\b/);
-  expect(k('Strike').className).toContain('hot');
-  expect(k('Strike').style.getPropertyValue('--fill')).toBe('40%');
-  expect(k('Strike').style.getPropertyValue('--tint')).toBe('#ffd23b');
-  expect(k('Strike').querySelector('.pk-fill')).not.toBeNull();
+  expect(k('Strike the enemy').className).toMatch(/\bcd\b/); expect(k('Strike the enemy').className).not.toMatch(/\bready\b/);
+  expect(k('Strike the enemy').className).toContain('hot');
+  expect(k('Strike the enemy').style.getPropertyValue('--fill')).toBe('40%');
+  expect(k('Strike the enemy').style.getPropertyValue('--tint')).toBe('#ffd23b');
+  expect(k('Strike the enemy').querySelector('.pk-fill')).not.toBeNull();
+  expect(k('Strike the enemy').textContent).toBe('Strike');
+  expect(k('Strike the enemy').title).toBe('Strike the enemy');
   expect(k('Ward').className).toMatch(/\bcd ready\b/);
   expect(k('Rally').className).not.toMatch(/\bcd\b/);
   expect(k('Rally').querySelector('.pk-fill')).toBeNull();
+  render(<PadKey b={pad.right.stick.buttons.find(b => b.id === 'a')!} held={new Set()} block />, el);
+  expect(el.querySelector('button')?.textContent).toBe('Strike');
+  expect(el.querySelector('button')?.getAttribute('aria-label')).toBe('Strike the enemy');
+  render(null, el);
 });

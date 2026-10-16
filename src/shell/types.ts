@@ -1,4 +1,4 @@
-import type { Button, GameHud, BikeState, GameModule, MediaTimeline, Profile, SessionRecord } from '../contracts';
+import type { Button, GameHud, BikeState, GameModule, MediaTimeline, Profile, SessionRecord, TrainerCommand } from '../contracts';
 import type { MixItem, MixPlan, QueueMode } from '../media';
 
 export type DeviceKind = 'trainer' | 'controller' | 'hr';
@@ -27,7 +27,7 @@ export interface SessionLike {
   /** Advance bike/devices/mixer without the sim (intros); returns presses. */
   idle(realDtS: number): ReadonlySet<Button>;
   pause(): void; resume(): void;
-  mixer?: { rampIn(seconds?: number): void };
+  mixer?: { rampIn(seconds?: number): void; readonly command?: TrainerCommand | null };
   finish(): SessionRecord;
   ctx: { bike(): Readonly<BikeState>; debug?(key: string, value: number | string | boolean): void };
   media?: { positionS(): number; setTrim(trim: number | null): void };

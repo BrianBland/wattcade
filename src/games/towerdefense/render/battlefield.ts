@@ -3,6 +3,7 @@ import { BASE_X, BASE_Y, laneAt, laneLength, PADS } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
 import { along, boundedLights, cableRoute, pulsePosition, strokeTimes, trenchStrip, type Point } from './battlefieldMath';
+import { cableHeat } from './overdrive';
 import { COL, glowAt } from './sprites';
 import { loadImage, loadManifest } from './assets';
 interface Overlay { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; size: number[] }
@@ -124,7 +125,9 @@ export class Battlefield {
       g.restore();
     }
   }
-  wiring(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
+  /** `heat` 0..1: Overdrive turns the cables white-hot and speeds up their pulses. */
+  wiring(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>, heat = 0) {
+    const H = cableHeat(heat);
     if (this.revs !== null) this.pulses.push(...strokeTimes(this.revs, bike.crankRevs, this.pulseT, s.t));
     this.pulseT = s.t;
     this.revs = bike.crankRevs;
@@ -133,15 +136,16 @@ export class Battlefield {
     for (const tw of s.towers) {
       const c = this.cables[tw.pad];
       // Machinery covers the ends naturally; the entire cable remains connected, including its pulses.
-      for (const [color, width] of [['#0b0e12', 1.1], ['#737475', 0.56], ['#2b393d', 0.3]] as const) {
-        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * v.k); g.beginPath();
-        c.samples.forEach((p, i) => { if (i === 0) g.moveTo(v.X(p.x), v.Y(p.y)); else g.lineTo(v.X(p.x), v.Y(p.y)); }); g.stroke();
+      const path = () => { g.beginPath(); c.samples.forEach((p, i) => { if (i === 0) g.moveTo(v.X(p.x), v.Y(p.y)); else g.lineTo(v.X(p.x), v.Y(p.y)); }); };
+      if (H.glow) { g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = H.glow.alpha; g.strokeStyle = H.glow.color; g.lineWidth = H.glow.width * v.k; path(); g.stroke(); g.restore(); }
+      for (const [color, width] of [['#0b0e12', 1.1], [H.sheath, 0.56], [H.core, 0.3]] as const) {
+        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * v.k); path(); g.stroke();
       }
       for (const t of this.pulses) {
-        const fraction = pulsePosition(s.t - t, c.length); if (fraction === null) continue;
+        const fraction = pulsePosition((s.t - t) * H.pulseSpeed, c.length); if (fraction === null) continue;
         const p = along(c.route, fraction);
-        glowAt(g, '#75edff', v.X(p.x), v.Y(p.y), 1.6 * v.k, 0.7);
-        g.fillStyle = '#b8faff'; g.beginPath(); g.arc(v.X(p.x), v.Y(p.y), 0.4 * v.k, 0, TAU); g.fill();
+        glowAt(g, H.pulseColor, v.X(p.x), v.Y(p.y), 1.6 * v.k * H.pulseSize, 0.7);
+        g.fillStyle = heat > 0.3 ? '#ffffff' : '#b8faff'; g.beginPath(); g.arc(v.X(p.x), v.Y(p.y), 0.4 * v.k * H.pulseSize, 0, TAU); g.fill();
       }
     }
     g.restore();

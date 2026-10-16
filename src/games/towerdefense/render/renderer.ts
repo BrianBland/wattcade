@@ -11,6 +11,7 @@ import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
 import { DynamoSound } from './dynamoSound';
+import { PAYOFF_STYLE, shimmerBands, stepBlend } from './overdrive';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -46,6 +47,8 @@ export class TdRenderer implements GameRenderer {
   private laneShown = { lane: -2, at: -99 };
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
   private hitStopUntil = 0;
+  /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
+  private odBlend = 0;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
@@ -300,6 +303,14 @@ export class TdRenderer implements GameRenderer {
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
+      } else if (f.kind === 'payoff') {
+        if (!allowHitStop) continue;
+        const st = PAYOFF_STYLE[f.effort], x = this.X(BASE_X), y = this.Y(BASE_Y);
+        if (f.won) {
+          this.ring(x, y, st.color, 4 * k, 110 * k, 0.9); this.ring(x, y, '#ffffff', 3 * k, 80 * k, 0.6);
+          this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
+          this.aliens?.flinch(s.t); play('payoffSting');
+        } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
@@ -380,7 +391,8 @@ export class TdRenderer implements GameRenderer {
       this.view.k = k; this.view.dpr = this.dpr;
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
-      this.battlefield.wiring(g, this.view, s, bike);
+      this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
+      this.battlefield.wiring(g, this.view, s, bike, this.odBlend);
       this.drawPads(g, s, t);
       for (const tw of s.towers) { const p = PADS[tw.pad]; if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
       // aim line
@@ -414,6 +426,13 @@ export class TdRenderer implements GameRenderer {
         weapon: s.weapon, aim: s.aimAngle, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle, overdrive: s.overdrive,
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
+      if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
+        const mx = bx + Math.sin(s.aimAngle) * 9 * k, my = by - Math.cos(s.aimAngle) * 9 * k, fl = 0.75 + 0.25 * Math.sin(t * 37);
+        g.globalCompositeOperation = 'lighter';
+        glowAt(g, '#ff8a2a', mx, my, (5 + 4 * muzzle) * k * this.odBlend, 0.55 * fl);
+        glowAt(g, '#fff4d0', mx, my, (2 + 2 * muzzle) * k * this.odBlend, 0.8 * fl);
+        g.globalCompositeOperation = 'source-over';
+      }
     } else {
       this.drawLanes(g, s, t);
       this.drawPads(g, s, t);
@@ -421,6 +440,11 @@ export class TdRenderer implements GameRenderer {
     }
     this.stepParticles(realDt);
     g.restore();
+    if (s.phase === 'run') for (const b of shimmerBands(this.wall, this.W, L.UH, this.odBlend)) { // heat haze at the edges
+      const gr = b.x === 0 ? g.createLinearGradient(0, 0, b.w, 0) : b.y === 0 ? g.createLinearGradient(0, 0, 0, b.h) : g.createLinearGradient(b.x + b.w, 0, b.x, 0);
+      gr.addColorStop(0, `rgba(255,140,50,${b.alpha})`); gr.addColorStop(1, 'rgba(255,140,50,0)');
+      g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.fillRect(b.x, b.y, b.w, Math.min(b.h, L.UH - b.y)); g.globalCompositeOperation = 'source-over';
+    }
 
     // foreground UI (never under the HUD band)
     if (s.phase === 'run') {
@@ -511,16 +535,16 @@ export class TdRenderer implements GameRenderer {
 
   private drawFlame(g: CanvasRenderingContext2D, s: TdSnapshot, bx: number, by: number, dt: number) {
     if (!s.flaming) return;
-    const k = this.k, a = s.aimAngle, n = Math.round((2 + 4 * Math.min(1.5, s.flamePower)) * Math.max(1, dt * 60));
+    const k = this.k, a = s.aimAngle, od = this.odBlend, n = Math.round((2 + 4 * Math.min(1.5, s.flamePower)) * (1 + 0.6 * od) * Math.max(1, dt * 60));
     const mx = bx + Math.sin(a) * 9 * k, my = by - Math.cos(a) * 9 * k;
     for (let i = 0; i < n && this.particles.length < 600; i++) {
       // exp(-3t) damping over ~0.45 s travels ~v/4: spread the puffs along the whole cone
       const sa = a + (Math.random() - 0.5) * 2 * s.flameHalfAngle * 0.85, v = s.flameRange * k * (1.6 + Math.random() * 2.6);
-      this.particles.push({ x: mx, y: my, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.38 + Math.random() * 0.12, size: 1.3 * k, color: '', kind: 'flame' });
+      this.particles.push({ x: mx, y: my, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.38 + Math.random() * 0.12, size: 1.3 * k * (1 + 0.4 * od), color: '', kind: 'flame' });
     }
     g.globalCompositeOperation = 'lighter';
     const gr = g.createRadialGradient(mx, my, 0, mx, my, s.flameRange * k);
-    gr.addColorStop(0, 'rgba(255,170,80,0.28)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
+    gr.addColorStop(0, `rgba(255,${170 + 60 * od},${80 + 100 * od},${0.28 + 0.17 * od})`); gr.addColorStop(1, 'rgba(255,60,20,0)');
     g.fillStyle = gr; g.beginPath(); g.moveTo(mx, my);
     g.arc(bx, by, s.flameRange * k, a - Math.PI / 2 - s.flameHalfAngle, a - Math.PI / 2 + s.flameHalfAngle); g.closePath(); g.fill();
     g.globalCompositeOperation = 'source-over';

@@ -5,6 +5,7 @@ import type { EnemyView, Fx, TdSnapshot } from '../../sim/types';
 import { COL } from '../sprites';
 import { DEATH_FRAMES, FrameCache, LiveCanvas, loadPuppets, type Frame } from './puppets';
 import { thud } from './rig';
+import { flinchAt } from '../overdrive';
 import { loadImage } from '../assets';
 import { SPECIES_LIST, SPECIES_OF_KIND, alienLengthUnits, type SpeciesId } from './species';
 import { SPLAT_FADE_S, advanceTrack, newTrack, type Track } from './track';
@@ -29,6 +30,7 @@ export class AlienLayer {
   private shadowSprite: HTMLCanvasElement | null = null;
   private haloSprites = new Map<string, HTMLCanvasElement>();
   private lastFx = -1; private wave = -1; private lull = false; private sizeKey = '';
+  private flinchT = -99;
   failed = false;
   readonly loaded: Promise<void> = Promise.resolve();
 
@@ -54,6 +56,8 @@ export class AlienLayer {
   }
 
   get ready() { return !!this.cache; }
+  /** Every live alien recoils (a called-effort payoff). */
+  flinch(t: number) { this.flinchT = t; }
   get pendingFrames() { return this.cache?.pending ?? 0; }
 
   /** Per-frame bookkeeping: gait, deaths → husks + splats, wave-end cleanup, and one cached frame set built. */
@@ -148,10 +152,12 @@ export class AlienLayer {
     }
     this.shadow(g, x, y, lenU * v.k, !!sp.flying, tr.h);
     this.halo(g, x, y, lenU * v.k, e.gold ? COL.gold : COL[e.element], e.kind === 'boss');
-    const lift = sp.flying ? 1.04 : 1;
-    this.blit(g, fr, x, y, tr.h, v.dpr, 1, lift);
+    const fk = flinchAt(t - this.flinchT); // payoff recoil: pushed back, puffed up, twisted
+    x -= Math.cos(tr.h) * fk * lenU * 0.25 * v.k; y -= Math.sin(tr.h) * fk * lenU * 0.25 * v.k;
+    const lift = (sp.flying ? 1.04 : 1) * (1 + 0.14 * fk), h = tr.h + fk * 0.35 * Math.sin(e.id * 2.3);
+    this.blit(g, fr, x, y, h, v.dpr, 1, lift);
     if (e.hurt > 0.05) { // hit flash: add the frame onto itself
-      g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, tr.h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
+      g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
     }
     return true;
   }

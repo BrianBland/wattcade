@@ -14,7 +14,7 @@ export type SfxName =
   | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
   | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic'
   | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin'
-  | 'teslaCrack' | 'mortarThump' | 'prismBeam' | 'railShot' | 'chitinCrunch' | 'chitinCrunchBig' | 'rivetBuild' | 'boltOn' | 'hiveHorn' | 'waveClearTd' | 'clank' | 'ignite';
+  | 'teslaCrack' | 'mortarThump' | 'prismBeam' | 'railShot' | 'chitinCrunch' | 'chitinCrunchBig' | 'rivetBuild' | 'boltOn' | 'hiveHorn' | 'waveClearTd' | 'clank' | 'ignite' | 'payoffSting';
 
 /** `atk`: fade-in seconds (swells); `vib`: frequency modulation (FM chirps, warbles) as LFO Hz and depth in Hz; noise `f1` sweeps its filter. */
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number; atk?: number; vib?: { hz: number; depth: number } }
@@ -128,6 +128,7 @@ const R: Record<SfxName, Tone[]> = {
   hiveHorn: [{ type: 'sawtooth', f0: 73, f1: 69, dur: 1.4, vol: 0.14, atk: 0.25, vib: { hz: 5, depth: 2 } }, { type: 'sawtooth', f0: 110, f1: 104, dur: 1.4, vol: 0.08, atk: 0.25 }, { type: 'noise', f0: 260, dur: 1.2, vol: 0.06, q: 2, atk: 0.3 }, { type: 'triangle', f0: 1400, f1: 900, dur: 0.6, vol: 0.02, delay: 0.5, vib: { hz: 22, depth: 120 } }],
   waveClearTd: [{ type: 'noise', f0: 1200, f1: 200, dur: 0.5, vol: 0.05, q: 0.6 }, ...[523, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.3, vol: 0.09, delay: 0.05 + i * 0.08 })), { type: 'sine', f0: 1568, dur: 0.6, vol: 0.04, delay: 0.4 }],
   clank: [{ type: 'square', f0: 1900, f1: 1400, dur: 0.05, vol: 0.05 }, { type: 'noise', f0: 4200, dur: 0.04, vol: 0.06, q: 5 }, { type: 'triangle', f0: 2800, f1: 2500, dur: 0.18, vol: 0.025, delay: 0.01 }],
+  payoffSting: [{ type: 'sine', f0: 55, f1: 30, dur: 0.6, vol: 0.32 }, { type: 'noise', f0: 300, f1: 2400, dur: 0.35, vol: 0.12, q: 0.6 }, ...[523, 784, 1047, 1568].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.45 - i * 0.05, vol: 0.09, delay: 0.06 + i * 0.05 })), { type: 'sawtooth', f0: 262, f1: 523, dur: 0.3, vol: 0.05, delay: 0.05 }],
   ignite: [{ type: 'noise', f0: 600, f1: 2200, dur: 0.18, vol: 0.14, q: 0.7, atk: 0.04 }, { type: 'noise', f0: 300, f1: 120, dur: 0.45, vol: 0.1, q: 0.6, delay: 0.1 }, { type: 'sine', f0: 90, f1: 50, dur: 0.3, vol: 0.12 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };

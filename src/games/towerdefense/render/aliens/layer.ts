@@ -3,8 +3,9 @@
 import { BASE_X, BASE_Y, KINDS, type Element } from '../../sim/defs';
 import type { EnemyView, Fx, TdSnapshot } from '../../sim/types';
 import { COL } from '../sprites';
-import { DEATH_FRAMES, FrameCache, LiveCanvas, loadPuppets, type Frame } from './puppets';
-import { thud } from './rig';
+import { DEATH_FRAMES, FrameCache, LiveCanvas, husk, loadPuppets, type Frame } from './puppets';
+import { matrices, pose, thud } from './rig';
+import { MAX_GIBS, gibAlpha, launchGibs, pickGibs, stepGib, type Gib } from './gibs';
 import { flinchAt } from '../overdrive';
 import { loadImage } from '../assets';
 import { SPECIES_LIST, SPECIES_OF_KIND, alienLengthUnits, type SpeciesId } from './species';
@@ -13,7 +14,8 @@ import { SPLAT_FADE_S, advanceTrack, newTrack, type Track } from './track';
 type G = CanvasRenderingContext2D;
 const TAU = Math.PI * 2;
 const DEATH_S = 0.45;
-interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: number; tint?: string; outline: string; len: number; fadeAt?: number }
+interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: number; tint?: string; outline: string; len: number; fadeAt?: number;
+  /** a gibbed heavy's husk (missing its flown-off parts), composed once at `huskLen` device px */ husk?: Frame; huskLen?: number; boss?: boolean }
 interface Splat { x: number; y: number; rot: number; size: number; img: HTMLCanvasElement; t0: number; wave: number; fadeAt?: number }
 
 /**
@@ -34,6 +36,7 @@ export class AlienLayer {
   private haloSprites = new Map<string, HTMLCanvasElement>();
   private lastFx = -1; private wave = -1; private lull = false; private sizeKey = '';
   private flinchT = -99;
+  private gibs: Array<{ species: SpeciesId; gib: Gib }> = [];
   failed = false;
   readonly loaded: Promise<void> = Promise.resolve();
 
@@ -85,12 +88,21 @@ export class AlienLayer {
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind !== 'death' || firstPass) continue; // don't replay history on mount
       const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(KINDS[f.ekind].radius, sp);
-      const h = this.tracks.get(f.eid)?.h ?? Math.atan2(BASE_Y - f.y, BASE_X - f.x);
-      this.corpses.push({ species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint: sp.tint ? COL[f.color] : undefined, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined });
+      const tr = this.tracks.get(f.eid), h = tr?.h ?? Math.atan2(BASE_Y - f.y, BASE_X - f.x), tint = sp.tint ? COL[f.color] : undefined;
+      const corpse: Corpse = { species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined, boss: f.ekind === 'boss' };
+      if (KINDS[f.ekind].heavy && tr) { // heavy deaths come apart: some real parts fly off, the husk is drawn without them
+        const P = this.cache.puppet(sp.id), boss = f.ekind === 'boss', pin = { phase: tr.cycles, attack: tr.attack };
+        const keys = pickGibs(P.rig, f.eid, 3 + (f.eid % 4), boss);
+        for (const gib of launchGibs(P.rig, matrices(P.rig, pose(P.rig, sp, pin)), keys, f.x, f.y, h, len, s.t, f.eid, boss)) this.gibs.push({ species: sp.id, gib });
+        if (this.gibs.length > MAX_GIBS) this.gibs.splice(0, this.gibs.length - MAX_GIBS);
+        corpse.huskLen = len * v.k * v.dpr; corpse.husk = husk(P, corpse.huskLen, { ...pin, dying: 0.5 }, new Set(keys), tint);
+      }
+      this.corpses.push(corpse);
       this.addSplat(f.x, f.y, len, f.color, f.eid, s.t);
       if (f.fire && f.color === 'red') { const q = v.P(f.x, f.y); onFireBurst(q.x, q.y, len * v.k); }
     }
     if (firstPass) this.lastFx = Math.max(this.lastFx, 0);
+    this.gibs = this.gibs.filter(({ gib }) => stepGib(gib, s.t, dt));
     for (const id of this.tracks.keys()) if (!live.has(id)) this.tracks.delete(id);
     this.corpses = this.corpses.filter((c) => (c.fadeAt == null || s.t - c.fadeAt < SPLAT_FADE_S) && s.t >= c.t0);
     this.splats = this.splats.filter((sp) => sp.fadeAt == null || s.t - sp.fadeAt < SPLAT_FADE_S);
@@ -127,11 +139,13 @@ export class AlienLayer {
   draw(g: G, s: TdSnapshot, v: View, t: number, fallback: (e: EnemyView, h: number) => void) {
     const cache = this.cache; if (!cache) return;
     for (const c of this.corpses) {
+      const age = t - c.t0, k = Math.min(1, age / DEATH_S), fade = c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S);
+      if (c.husk) { const q = v.P(c.x, c.y); this.blit(g, c.husk, q.x, q.y, c.h + v.rot + k * 0.3, v.dpr, fade * (c.boss ? Math.max(0, 1 - age / 1.5) : 1), (c.len * v.k * v.dpr) / c.huskLen! * (1 - k * 0.08)); continue; }
       const set = cache.get(c.species, c.len * v.k * v.dpr, c.outline, c.tint); if (!set) continue;
-      const age = t - c.t0, k = Math.min(1, age / DEATH_S), i = Math.floor(k * DEATH_FRAMES);
+      const i = Math.floor(k * DEATH_FRAMES);
       const fr = i < DEATH_FRAMES ? set.death[i] : set.corpse;
       const q = v.P(c.x, c.y);
-      this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12);
+      this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, fade, 1 - k * 0.12);
     }
     for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
@@ -139,11 +153,29 @@ export class AlienLayer {
     }
   }
 
+  /** Flying gibs, drawn above the living: each real part tumbles, bounces and casts a shadow on the ground. */
+  drawGibs(g: G, v: View, t: number) {
+    const cache = this.cache; if (!cache || !this.gibs.length) return;
+    for (const { species, gib } of this.gibs) {
+      const P = cache.puppet(species), part = P.rig.parts.get(gib.part); if (!part) continue;
+      const a = gibAlpha(gib, t), sc = gib.scale * v.k, { x, y } = v.P(gib.x, gib.y), lift = gib.z * v.k;
+      const w = part.w * sc, h = part.h * sc;
+      const sr = Math.min(w, h) * 0.5 + Math.max(w, h) * 0.12; // a small soft spot under the part, not its whole outline
+      g.save(); g.globalAlpha = a * 0.28 / (1 + gib.z * 0.25); g.fillStyle = '#000';
+      g.beginPath(); g.ellipse(x + lift * 0.3, y + lift * 0.2, sr, sr * 0.6, 0, 0, TAU); g.fill(); g.restore();
+      g.save(); g.globalAlpha = a; g.translate(x, y - lift); g.rotate(gib.rot + v.rot); if (gib.flip) g.scale(-1, 1);
+      g.drawImage(P.img.get(gib.part)!, -w / 2, -h / 2, w, h);
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = a * 0.6; g.drawImage(P.glow.get(gib.part)!, -w / 2, -h / 2, w, h);
+      g.restore();
+    }
+  }
+
   private drawOne(g: G, e: EnemyView, tr: Track, v: View, t: number): boolean {
     const sp = SPECIES_OF_KIND[e.kind], cache = this.cache!, lenU = alienLengthUnits(e.radius, sp), lenDev = lenU * v.k * v.dpr;
     const outline = COL[e.element], tint = sp.tint ? COL[e.element] : undefined;
     let fr: Frame;
-    if (sp.live) fr = this.live.draw(cache.puppet(sp.id), lenDev, { phase: tr.cycles, attack: tr.attack, t }, outline);
+    const stagger = Math.min(1, e.staggerS / 0.4); // a phase change: the boss buckles
+    if (sp.live) fr = this.live.draw(cache.puppet(sp.id), lenDev, { phase: tr.cycles, attack: tr.attack, t, dying: 0.3 * stagger }, outline);
     else {
       const set = cache.get(sp.id, lenDev, outline, tint); if (!set) return false;
       if (tr.attack > 0.15) fr = set.attack[Math.min(set.attack.length - 1, Math.floor(tr.attack * set.attack.length))];
@@ -157,9 +189,12 @@ export class AlienLayer {
     }
     this.shadow(g, x, y, lenU * v.k, !!sp.flying, h);
     this.halo(g, x, y, lenU * v.k, e.gold ? COL.gold : COL[e.element], e.kind === 'boss');
+    if (e.exposed) { // Exposed window: a pulsing gold glow says 'hit it now'
+      g.save(); g.globalCompositeOperation = 'lighter'; this.halo(g, x, y, lenU * v.k * (1.25 + 0.12 * Math.sin(t * 9)), COL.gold, true); this.halo(g, x, y, lenU * v.k * 0.9, '#fff2b0', true); g.restore();
+    }
     const fk = flinchAt(t - this.flinchT); // payoff recoil: pushed back, puffed up, twisted
     x -= Math.cos(h) * fk * lenU * 0.25 * v.k; y -= Math.sin(h) * fk * lenU * 0.25 * v.k;
-    const lift = (sp.flying ? 1.04 : 1) * (1 + 0.14 * fk), hf = h + fk * 0.35 * Math.sin(e.id * 2.3);
+    const lift = (sp.flying ? 1.04 : 1) * (1 + 0.14 * fk), hf = h + fk * 0.35 * Math.sin(e.id * 2.3) + stagger * 0.08 * Math.sin(t * 40);
     this.blit(g, fr, x, y, hf, v.dpr, 1, lift);
     if (e.hurt > 0.05) { // hit flash: add the frame onto itself
       g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, hf, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';

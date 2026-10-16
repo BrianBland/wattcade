@@ -15,7 +15,7 @@ import { effortMet, scheduleCall, type EffortView } from './efforts';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan } from './waves';
-import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
@@ -52,6 +52,7 @@ interface Enemy {
   x: number; y: number; angle: number; dist: number;
   hp: number; maxHp: number; speed: number; dmg: number; dead: boolean; hurt: number;
   /** element of the last hit (for death effects: a fire kill bursts a red alien) */ lastEl: Element | null;
+  /** last hit for renderer feedback: time, matchup class, damage dealt that tick */ hitT: number; hitCls: HitClass; hitDmg: number;
   spawnT: number; charging: boolean; boss: BossState | null;
 }
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
@@ -295,7 +296,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const e: Enemy = {
       id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : 4.5),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
-      hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null,
+      hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
       spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(phaseColors.slice()) : null,
     };
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
@@ -315,6 +316,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     dealt[src] += damage; // effective damage, including ignition; no overkill or damage through phase gates
     e.hp -= damage;
     e.hurt = 0.12; e.lastEl = el;
+    const cls: HitClass = mult > 1.001 ? 'strong' : mult < 0.999 ? 'resisted' : 'neutral';
+    if (e.hitT === t) { e.hitDmg += damage; if (cls !== 'neutral') e.hitCls = cls; } else { e.hitT = t; e.hitDmg = damage; e.hitCls = cls; }
     if (e.hp <= 0) {
       kill(e, src);
       if (el === 'red' && element === 'red') ignite(e, src, chain ?? { id: ++ignitionChainId, bursts: 0 });
@@ -325,7 +328,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     chain.bursts++;
     stats.ignitionBursts++;
     const r = ignitionRadius();
-    addFx({ kind: 'burst', life: 0.5, x: e.x, y: e.y, r });
+    addFx({ kind: 'burst', life: 0.5, x: e.x, y: e.y, r, chain: chain.id, ordinal: chain.bursts });
     ctx.emit({ type: 'burst', data: { wave, x: e.x, y: e.y, radius: r, chain: chain.id, ordinal: chain.bursts, source: src } });
     for (const other of enemies) if (!other.dead && elementOf(other) === 'red' && Math.hypot(other.x - e.x, other.y - e.y) <= r) {
       hit(other, ignitionDamage(), 'red', src, chain);
@@ -1213,6 +1216,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       element: el, gold: e.kind === 'boss', hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, charging: e.charging,
       shiftIn: si, next: e.boss ? (e.boss.pending ? e.boss.colors[e.boss.phase + 1] : null) : shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
       bossPhase: e.boss ? e.boss.phase + 1 : 0, telegraph: !!e.boss?.telegraph && !e.boss?.pending, exposed: !!e.boss?.exposed && !e.boss?.pending, staggerS: e.boss?.staggerS ?? 0,
+      hitT: e.hitT, hitCls: e.hitCls, hitDmg: e.hitDmg,
     };
   }
   function bossView(): BossView | null {

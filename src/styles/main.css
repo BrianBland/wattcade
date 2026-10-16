@@ -139,7 +139,12 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-label-track { display: flex; margin-left: 35px; margin-right: 3px; }
 .zw-label { max-width: 100%; font: 700 11px/1.2 system-ui; margin-top: 3px; overflow-wrap: anywhere; }
 .zw-cad-guide { padding-left: 22px; display: block; font: 600 10px/1.3 system-ui; font-style: normal; margin-top: 4px; white-space: nowrap; }
-.zw-unit, .zw-gear-controls { display: none; }
+.zw-unit { display: none; }
+.zw-gear { display: flex; align-items: center; gap: 4px; }
+.zw-trainer { align-self: center; font-size: 13px; font-weight: 700; color: #d4b6ff; white-space: nowrap; }
+.zw-gear-controls { display: flex; gap: 3px; position: relative; z-index: 2; pointer-events: auto; }
+.zw-gear-controls .pk { width: 28px; height: 28px; border-radius: 8px; }
+.zw-gear-controls .pk b { font-size: 18px; }
 .zw-cad.ok { color: #2de26a; }
 .zw-cad.low, .zw-cad.high { color: #ffd23b; }
 .zw-history { margin-left: 35px; margin-right: 3px; }
@@ -161,6 +166,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .pk { --kc: #8a84b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: var(--k); height: var(--k); padding: 0; color: #657086; background: #ffffff03; border: 1px solid #ffffff12; border-radius: 50%; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .pk b { font: 800 calc(var(--k) * .36)/1 system-ui; }
 .pk span { font: 700 10px/1 system-ui; color: #dce1ed; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk.action-label { padding: 2px; }
+.pk.action-label span, .pc-grid .pk.action-label span { font-size: clamp(9px, calc(var(--k) * .23), 13px); line-height: 1; white-space: normal; overflow-wrap: anywhere; text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .pk.mapped { color: color-mix(in srgb, var(--kc) 65%, white); border-color: color-mix(in srgb, var(--kc) 45%, #ffffff16); background: color-mix(in srgb, var(--kc) 9%, #101322); }
 .pk.off { opacity: .45; }
 .pk.active { box-shadow: inset 0 0 0 2px var(--neon); }
@@ -196,8 +203,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .hud-actions .pk.block { position: relative; width: 100%; height: 46px; min-height: 44px; border-radius: 10px; flex-direction: row; gap: 8px; padding: 4px 8px; }
 .hud-actions .pk.block b { font-size: 20px; flex: none; }
 .hud-actions .pk.block span { font-size: 11px; line-height: 1.15; white-space: normal; text-align: left; overflow-wrap: anywhere; }
-.pc .pc-gear { color: #aeb8cd; font-size: 11px; white-space: nowrap; }
-.pc-gear strong { color: #e9ddff; font-size: 14px; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) {
   .zw-nums b { font-size: 18px; }
   .zw-nums, .has-gears .zw-nums { gap: 4px; }
@@ -223,7 +228,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .hud { gap: 6px; padding-left: 4px; padding-right: 4px; }
   .hood { flex: none; flex-direction: column; gap: 4px; }
   .pc-grid { min-height: 100px; }
-  .hood .pp, .hood .shift:has(.pc-gear) { display: none; }
+  .hood .pp { display: none; }
   /* Keep game-specific shifter actions, rather than silently removing inputs. */
   .hood .shift { order: -1; }
   .hood .shift .pc-btns { flex-direction: row; }
@@ -247,11 +252,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-clock b { font-size: clamp(12px, 3.3vw, 20px); }
   .zw-clock .zw-metric-icon { display: none; }
   .zw-gear { grid-column: 2 / 4; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+  .zw-trainer { grid-column: 2 / 4; text-align: right; font-size: clamp(10px, 2.8vw, 15px); letter-spacing: -.3px; }
   .zw-gear b { font-size: 16px; }
   .zw-gear .zw-metric-icon { width: 12px; height: 12px; }
-  .zw-gear-controls { display: flex; gap: 3px; position: relative; z-index: 2; pointer-events: auto; }
-  .zw-gear-controls .pk { width: 28px; height: 28px; border-radius: 8px; }
-  .zw-gear-controls .pk b { font-size: 18px; }
   .zw-icon { width: 12px; height: 16px; }
   .zw-meter { gap: 3px; }
   .zw-bar { margin: 0 2px; }

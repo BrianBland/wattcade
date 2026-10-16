@@ -27,7 +27,8 @@ export function PadKey({ b, held, merged, pos, send, disabled = false, block = f
   // Cancel a captured hold when a menu, pause or another control mapping replaces it.
   useEffect(() => { cancelAll(); }, [disabled, b.mapped, b.id, b.touch?.down.epoch, b.touch?.down.type]);
   const cd = b.mapped ? b.cooldown : undefined, fill = cd ? Math.max(0, Math.min(1, cd.fill)) : 0;
-  const cls = `pk${block ? ' block' : ''}${pos ? ` ${pos}` : ''}${b.mapped ? ' mapped' : ''}${merged ? ' merged' : ''}${held.has(b.id) || pressed ? ' held' : ''}${b.active ? ' active' : ''}${b.active === false ? ' off' : ''}${cd ? (cd.ready ? ' cd ready' : ' cd') : ''}${cd && (cd.flourish ?? 0) > 0.6 && !cd.ready ? ' hot' : ''}`;
+  const actionOnly = b.mapped && !!b.label && ['a', 'b', 'y', 'z'].includes(b.id);
+  const cls = `pk${block ? ' block' : ''}${actionOnly ? ' action-label' : ''}${pos ? ` ${pos}` : ''}${b.mapped ? ' mapped' : ''}${merged ? ' merged' : ''}${held.has(b.id) || pressed ? ' held' : ''}${b.active ? ' active' : ''}${b.active === false ? ' off' : ''}${cd ? (cd.ready ? ' cd ready' : ' cd') : ''}${cd && (cd.flourish ?? 0) > 0.6 && !cd.ready ? ' hot' : ''}`;
   return (
     <button type="button" data-control={b.id} class={cls} style={{ '--kc': b.color, ...(cd ? { '--fill': `${fill * 100}%`, '--tint': cd.ready ? b.color : cd.tint ?? b.color } : {}) } as any} disabled={!b.mapped || disabled} aria-label={b.label ?? b.id} title={b.label}
       onPointerDown={(e) => {
@@ -41,25 +42,24 @@ export function PadKey({ b, held, merged, pos, send, disabled = false, block = f
       onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) release(e.pointerId, true); }}
       onContextMenu={(e) => e.preventDefault()}>
       {cd && <i class="pk-fill" aria-hidden="true" />}
-      <b>{b.glyph}</b>{!merged && b.label && <span>{b.label}</span>}
+      {!actionOnly && <b>{b.glyph}</b>}{(actionOnly || !merged) && b.label && <span>{b.label}</span>}
     </button>
   );
 }
 
-function Group({ c, held, gear, send, disabled }: { c: Cluster; held: Held; gear?: number; send?: (a: unknown) => void; disabled?: boolean }) {
+function Group({ c, held, send, disabled }: { c: Cluster; held: Held; send?: (a: unknown) => void; disabled?: boolean }) {
   if (c.kind === 'shift') {
     return (
       <div class={`pc shift${c.mapped ? '' : ' unused'}`}>
-        {c.gears && <small class="pc-gear">Gear <strong>{gear ?? '—'}</strong></small>}
-        <div class="pc-btns">{c.buttons.map((b) => <PadKey key={b.id} b={b} held={held} send={send} disabled={disabled} merged={!!c.label && !c.gears} />)}</div>
-        {c.label && !c.gears && <small>{c.label}</small>}
+        <div class="pc-btns">{c.buttons.map((b) => <PadKey key={b.id} b={b} held={held} send={send} disabled={disabled} merged={!!c.label} />)}</div>
+        {c.label && <small>{c.label}</small>}
       </div>
     );
   }
   return (
     <div class={`pc ${c.kind}${c.mapped ? '' : ' unused'}`}>
-      <div class="pc-grid">{c.buttons.map((b) => <PadKey key={b.id} b={b} held={held} send={send} disabled={disabled} merged={!!c.label} pos={POS[b.id]} />)}</div>
-      {c.label && <div class="pc-label">{c.label}</div>}
+      <div class="pc-grid">{c.buttons.map((b) => <PadKey key={b.id} b={c.kind === 'face' ? { ...b, label: b.label ?? c.label } : b} held={held} send={send} disabled={disabled} merged={c.kind !== 'face' && !!c.label} pos={POS[b.id]} />)}</div>
+      {c.kind !== 'face' && c.label && <div class="pc-label">{c.label}</div>}
     </div>
   );
 }
@@ -76,9 +76,9 @@ function Paddle({ model, v }: { model: HoodModel['paddle']; v: number }) {
 }
 
 /** One hood, laid out outer→inner like the controller: left = paddle, shifters, D-pad; right = face buttons, shifters, paddle. */
-export function Hood({ side, model, held, paddle, gear, send, disabled }: { side: 'L' | 'R'; model: HoodModel; held: Held; paddle: number; gear?: number; send?: (a: unknown) => void; disabled?: boolean }) {
+export function Hood({ side, model, held, paddle, send, disabled }: { side: 'L' | 'R'; model: HoodModel; held: Held; paddle: number; send?: (a: unknown) => void; disabled?: boolean }) {
   const pad = model.paddle.mapped && <Paddle model={model.paddle} v={paddle} />;
-  const shift = model.shift?.mapped && <Group c={model.shift} held={held} send={send} disabled={disabled} gear={gear} />;
+  const shift = model.shift?.mapped && !model.shift.gears && <Group c={model.shift} held={held} send={send} disabled={disabled} />;
   const stick = <Group c={model.stick} held={held} send={send} disabled={disabled} />;
   return side === 'L'
     ? <div class="hood left" role="group" aria-label="Left controller">{pad}{shift}{stick}</div>

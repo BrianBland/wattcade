@@ -1,10 +1,35 @@
 // @vitest-environment jsdom
 import { render } from 'preact';
 import { expect, it } from 'vitest';
-import type { BikeState } from '../../contracts';
+import type { BikeState, TrainerCommand } from '../../contracts';
 import { ZoneWidget } from './ZoneWidget';
 
 const bike = { power3s: 210, ftpFraction: .84, hr5s: 145, cadence3s: 80, activeSeconds: 754, gear: 8 } as BikeState;
+
+it('shows commanded trainer targets instead of an inactive gear, without confusing target and actual power', () => {
+  const el = document.createElement('div');
+  const connected = { ...bike, connected: { trainer: true, fake: false, controller: false, hr: true } };
+  const show = (command: TrainerCommand | null, b = connected, gears = false) => render(<ZoneWidget bike={b} ftp={250} view={{ source: 'power', pos: { zone: 3, within: .5, pos: .5 } }} command={command} gears={gears} bars={[]} />, el);
+  for (const [command, label] of [
+    [{ mode: 'erg', watts: 173 }, 'ERG 173 W'],
+    [{ mode: 'resistance', levelPct: 37.4 }, 'RES 37%'],
+    [{ mode: 'sim', gradePct: -2.6 }, 'SIM -2.6%'],
+    [{ mode: 'sim', gradePct: 4.3 }, 'SIM +4.3%'],
+    [{ mode: 'none' }, 'Idle'],
+    [null, 'Idle'],
+  ] as Array<[TrainerCommand | null, string]>) {
+    show(command);
+    expect(el.querySelector('.zw-trainer')?.textContent).toBe(label);
+    expect(el.querySelector('.zw-gear')).toBeNull();
+    expect(el.querySelector('[aria-label="210 watts"]')).not.toBeNull();
+  }
+  show({ mode: 'erg', watts: 173 }, { ...connected, connected: { ...connected.connected, trainer: false } });
+  expect(el.querySelector('.zw-trainer')?.textContent).toBe('Offline');
+  show({ mode: 'erg', watts: 173 }, connected, true);
+  expect(el.querySelector('.zw-trainer')).toBeNull();
+  expect(el.querySelector('[aria-label="Gear 8"]')).not.toBeNull();
+  render(null, el);
+});
 
 it('identifies the active metric, target band and position independently of color', () => {
   const el = document.createElement('div');

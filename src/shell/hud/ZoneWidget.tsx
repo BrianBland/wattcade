@@ -1,6 +1,6 @@
 import { formatDuration } from '../format';
 import type { ComponentChildren } from 'preact';
-import type { BikeState, GameHud } from '../../contracts';
+import type { BikeState, GameHud, TrainerCommand } from '../../contracts';
 import { type Bar, type ZonePos, ZONE_COLORS, cadenceRange, cadenceStatus, zoneFloorWatts } from './zoneMath';
 
 // Anchor low targets at their start and high targets at their end to keep text inside the meter.
@@ -22,9 +22,15 @@ function MetricIcon({ source }: { source: 'power' | 'hr' | 'cadence' | 'clock' |
   </svg>;
 }
 
-export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls }: {
-  gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
+export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls, command }: {
+  command?: TrainerCommand | null; gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
 }) {
+  // The mixer's last issued command includes difficulty, safety caps and ramps; it is not trainer feedback.
+  const trainer = bike.connected && !bike.connected.trainer && !bike.connected.fake ? 'Offline'
+    : command?.mode === 'erg' ? `ERG ${Math.round(command.watts)} W`
+    : command?.mode === 'resistance' ? `RES ${Math.round(command.levelPct)}%`
+    : command?.mode === 'sim' ? `SIM ${command.gradePct > 0 ? '+' : ''}${command.gradePct.toFixed(1)}%`
+    : 'Idle';
   const maxP = Math.max(1.6 * ftp, 100, ...bars.map((b) => b.power));
   const hrs = bars.map((b) => b.hr).filter((h): h is number => h != null);
   const hrMin = Math.min(...hrs, 200), hrMax = Math.max(...hrs, 40);
@@ -37,7 +43,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
   const range = target ? (target.min === target.max ? `Z${target.min}` : `Z${target.min}–${target.max}`) : 'Zones';
   const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
   return (
-    <div class={`zw${gears ? ' has-gears' : ''}`}>
+    <div class="zw has-gears">
       <div class="zw-main">
         <div class={`zw-zone ${view.source}`}>
           <div class="zw-meter">
@@ -61,6 +67,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
           </div>
           <div class="zw-clock"><div class="zw-reading" aria-label={`Ride time ${formatDuration(bike.activeSeconds)}`} title="Ride time (pedalling)"><MetricIcon source="clock" /><b>{formatDuration(bike.activeSeconds)}</b></div></div>
           {gears && <div class="zw-gear"><div class="zw-reading" aria-label={`Gear ${bike.gear}`} title="Current virtual gear"><MetricIcon source="gear" /><b>{bike.gear}</b></div>{gearControls && <div class="zw-gear-controls">{gearControls}</div>}</div>}
+          {!gears && <div class="zw-trainer" aria-label={`Trainer ${trainer}`} title="Trainer: last commanded target (not measured output)">{trainer}</div>}
         </div>
       </div>
       <div class="zw-history">

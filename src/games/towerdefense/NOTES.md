@@ -12,6 +12,8 @@ CONTRACT-REQUESTs: none.
 - HUD (#126): `render/panels.ts` uses shared CSS tokens, glass panels and inherited font for wave/progress, HP/cores, scrap, current brood/mode and next forecast. No weapon list or duplicate power/controller HUD. Recovery replaces the forecast with a countdown/recover-or-ramp cue in the same brood strip, including while the workshop is open; no centered recovery card. Layout tests cover shell and standalone modes vs insets.
 - `render/aliens/` (#132): cut-out puppets with distance-based gaits, cached device-pixel frames, live boss poses, husks, brood splats and fire bursts; vector enemies remain the loading fallback. Assets: `public/td/aliens/`, packed by `scripts/td-pack-aliens.ts`.
 
+- Painted battlefield, animated machinery, connected conduits, hive entries, loading gate and portrait margins: `render/NOTES.md`.
+
 ## Play and controls (#119, #120, #122, #123)
 - Every wave has one brood/weapon/trainer mode. Its 15 s lull announces the coming wave and ramps the trainer over the last 6 s. During that lull `brood` is the incoming wave; `nextBrood` is one wave further ahead.
 - A accepts the displayed work order during a lull, otherwise opens construction. ▼ always opens the full workshop. It never auto-opens.

@@ -12,6 +12,7 @@ try {
       page.on('pageerror', e => errors.push(e.message));
       page.on('response', r => { if (r.url().includes('/td/aliens/') && r.status() !== 200) badAssets.push(r.url()); });
       await page.goto(`${base}/dev/towerdefense.html?manual=1&crew=0&sec=1&legend=${legend}`, { waitUntil: 'networkidle' });
+      await page.waitForFunction(() => window.__td, null, { timeout: 120000 });
       await page.waitForSelector('.hud');
       const advance = seconds => page.evaluate(s => window.__td.advance(s), seconds);
       const snapshot = () => page.evaluate(() => window.__td.snapshot());
@@ -61,6 +62,7 @@ try {
   }
   const quotePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await quotePage.goto(`${base}/dev/towerdefense.html?manual=1&sec=132&script=intervals&seed=3&legend=0`, { waitUntil: 'networkidle' });
+  await quotePage.waitForFunction(() => window.__td, null, { timeout: 120000 });
   await quotePage.waitForSelector('.hud');
   const quote = await quotePage.locator('[data-control="a"]').evaluate(b => ({ label: b.textContent,
     height: b.querySelector('span').clientHeight, content: b.querySelector('span').scrollHeight, cost: window.__td.snapshot().suggestion.cost }));
@@ -69,6 +71,7 @@ try {
   for (const legend of [1, 0]) {
     const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
     await page.goto(`${base}/dev/towerdefense.html?manual=1&sec=120&script=intervals&seed=3&legend=${legend}`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__td, null, { timeout: 120000 });
     await page.waitForSelector('.hud');
     const snapshot = () => page.evaluate(() => window.__td.snapshot());
     const advance = seconds => page.evaluate(s => window.__td.advance(s), seconds);
@@ -84,6 +87,7 @@ try {
   for (const legend of [1, 0]) {
     const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
     await page.goto(`${base}/dev/towerdefense.html?manual=1&crew=0&boss=1&seed=2&legend=${legend}`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.__td, null, { timeout: 120000 });
     await page.waitForSelector('.hud');
     await page.evaluate(() => { for (let i = 0; i < 1200 && !window.__td.snapshot().boss?.telegraph; i++) window.__td.advance(1 / 30); });
     await page.waitForTimeout(180);

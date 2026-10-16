@@ -30,6 +30,8 @@ document.getElementById('inset')!.hidden = useHud || inset <= 0;
 renderHud();
 const observer = new ResizeObserver(resize); if (useHud) observer.observe(probe);
 window.addEventListener('resize', resize); resize();
+await r.ready?.();
+paint();
 let raf = 0;
 if (q.get('manual') !== '1') {
   let last = performance.now();

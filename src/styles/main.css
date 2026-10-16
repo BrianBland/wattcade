@@ -473,3 +473,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .mp-qrow .mp-title b, .mp-row .mp-title b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-qrow .mp-title .mp-chip { display: inline-flex; margin: 2px 0 0; }
 .mp-qremove { padding-left: 8px; padding-right: 8px; }
+
+.game-loading { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at center, #1b2635, #090e16 75%); color: #e6eff9; text-align: center; padding: 24px; }
+.game-loading h2, .game-loading p { margin: 0; }
+.game-loading p { color: #a9bbce; }
+.game-loading-ring { width: 44px; height: 44px; border: 3px solid #26465d; border-top-color: #75edff; border-radius: 50%; animation: game-loading-spin 1s linear infinite; }
+@keyframes game-loading-spin { to { transform: rotate(360deg); } }

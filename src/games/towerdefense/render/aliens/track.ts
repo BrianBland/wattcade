@@ -4,8 +4,8 @@ import type { EnemyView } from '../../sim/types';
 import { flapPeriod } from './rig';
 import type { Species } from './species';
 
-/** Seconds a husk stays (heavies x1.6), and the fade of last wave's splats. */
-export const CORPSE_S = 4, SPLAT_FADE_S = 1.5;
+/** Husks and splats persist through the wave, then fade together. */
+export const SPLAT_FADE_S = 1.5;
 /** Progress along the lane at which an alien rears up to strike the base. */
 export const STRIKE_FROM = 0.93;
 

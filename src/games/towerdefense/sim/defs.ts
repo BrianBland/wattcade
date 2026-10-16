@@ -75,7 +75,7 @@ type P = { x: number; y: number };
 const LANE_CTRL: Array<[P, P, P, P]> = [
   [{ x: -3, y: 16 }, { x: 28, y: 18 }, { x: 18, y: 66 }, { x: BASE_X, y: BASE_Y }],
   [{ x: 50, y: -3 }, { x: 34, y: 28 }, { x: 66, y: 52 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 103, y: 16 }, { x: 72, y: 18 }, { x: 82, y: 66 }, { x: BASE_X, y: BASE_Y }],
+  [{ x: 103, y: 16 }, { x: 84, y: 18 }, { x: 87, y: 66 }, { x: BASE_X, y: BASE_Y }],
 ];
 export const LANE_NAMES = ['Left', 'Center', 'Right'];
 const SAMPLES = 160;
@@ -114,14 +114,47 @@ export const AIM_LIMIT = 1.45;
 
 /** Six build pads: two beside each lane (near / far), on the lane's outer side. */
 export interface Pad { id: number; lane: number; x: number; y: number; near: boolean }
-export const PADS: Pad[] = (() => {
-  const out: Pad[] = [];
-  const spec: Array<[number, number, number]> = [ // lane, fraction along, side (+1 = walker's left)
-    [0, 0.52, -1], [0, 0.78, 1], [1, 0.3, 1], [1, 0.6, -1], [2, 0.52, 1], [2, 0.78, -1],
-  ];
-  spec.forEach(([lane, f, side], i) => {
-    const p = laneAt(lane, laneLength(lane) * f);
-    out.push({ id: i, lane, x: p.x + p.nx * side * 8, y: p.y + p.ny * side * 8, near: f > 0.6 });
-  });
-  return out;
-})();
+export const PADS: Pad[] = [
+  {
+    "id": 0,
+    "lane": 0,
+    "x": 13.0,
+    "y": 56.5,
+    "near": false
+  },
+  {
+    "id": 1,
+    "lane": 0,
+    "x": 39.0,
+    "y": 50.5,
+    "near": true
+  },
+  {
+    "id": 2,
+    "lane": 1,
+    "x": 59.0,
+    "y": 22.5,
+    "near": false
+  },
+  {
+    "id": 3,
+    "lane": 1,
+    "x": 36.0,
+    "y": 40.5,
+    "near": true
+  },
+  {
+    "id": 4,
+    "lane": 2,
+    "x": 90.5,
+    "y": 61.5,
+    "near": false
+  },
+  {
+    "id": 5,
+    "lane": 2,
+    "x": 66.0,
+    "y": 51.5,
+    "near": true
+  }
+];

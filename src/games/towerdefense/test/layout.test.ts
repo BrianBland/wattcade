@@ -18,6 +18,7 @@ describe('Dynamo Defense layout vs HUD inset', () => {
         expect(b.x, name).toBeGreaterThanOrEqual(0);
         expect(b.x + b.w, name).toBeLessThanOrEqual(W + 0.5);
       }
+      expect(L.field.y + L.field.s * 1.03, 'padded outpost above HUD or fallback dock').toBeLessThanOrEqual(hudControls ? limit : L.dock.construct.y);
       if (hudControls) expect(L.field.s).toBeGreaterThanOrEqual(layout(W, H, inset).field.s);
       expect(L.banner.y).toBeLessThan(limit);
       for (const a of hudControls ? [] : L.dock.actions) { expect(a.h).toBeGreaterThanOrEqual(44); expect(overlaps(field, a)).toBe(false); }
@@ -31,7 +32,7 @@ describe('Dynamo Defense layout vs HUD inset', () => {
           for (const b of [...r.options, r.close]) expect(b.h).toBeGreaterThanOrEqual(44);
         }
       }
-      expect(L.brood.y + L.brood.h, 'brood card inside the field').toBeLessThanOrEqual(L.field.y + L.field.s + 0.5);
+      expect(L.brood.y + L.brood.h, 'announcement above HUD or fallback dock').toBeLessThanOrEqual(hudControls ? limit : L.dock.construct.y);
       for (const b of [L.status, L.current, ...(!hudControls ? [L.dock.construct, ...L.dock.actions] : [])]) {
         expect(overlaps(field, b), 'map does not overlap HUD').toBe(false);
         expect(overlaps(L.brood, b), 'announcement does not overlap HUD').toBe(false);

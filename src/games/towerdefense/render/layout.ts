@@ -30,8 +30,8 @@ export function layout(W: number, H: number, insetB: number, hudControls = false
   const current = { x: pad, y: status.y + status.h + pad, w: W - 2 * pad, h: currentH };
   const top = current.y + current.h + pad;
   const available = Math.max(0, (hudControls ? UH : dockTop) - pad - top);
-  const s = Math.min(W - 2 * pad, available);
-  const field = { x: (W - s) / 2, y: top + (available - s) / 2, s };
+  const s = Math.min(W - 2 * pad, available / 1.04);
+  const field = { x: (W - s) / 2, y: top + (available - s * 1.04) / 2, s };
   // Announcements and menus share the free center region, never the status or dock.
   const bw = Math.min(W - 2 * pad, 520), bh = Math.min(available, 280);
   const brood = { x: (W - bw) / 2, y: top + (available - bh) / 2, w: bw, h: bh };

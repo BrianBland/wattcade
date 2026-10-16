@@ -51,6 +51,7 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   if (!f) return null;
   const gears = !!f.hud.gears;
   const pad = buildPad(f.hud.controls ?? [], gears);
+  const gearShift = [pad.left.shift, pad.right.shift].find(shift => shift?.gears);
   const mb = menu?.();
   const send = (a: unknown) => session.sim.receive?.(a);
   const primary = f.hud.touchControls ?? [];
@@ -68,8 +69,8 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
       {!legendOn && touchSide('L')}
       <div class="hud-center">
         <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={mb?.onClick ?? (() => input.system('pause'))} />
-        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears}
-          gearControls={gears && pad.left.shift?.buttons.slice().reverse().map(b => <PadKey key={b.id} b={{ ...b, label: b.glyph === '+' ? 'Gear up' : 'Gear down' }} held={f.held} send={send} disabled={paused} merged />)} />
+        <ZoneWidget ftp={profile.ftp} fake={fake} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={!!gearShift}
+          gearControls={gearShift?.buttons.slice().reverse().map(b => <PadKey key={b.id} b={{ ...b, label: b.glyph === '+' ? 'Gear up' : 'Gear down' }} held={f.held} send={send} disabled={paused || !gears} merged />)} />
       </div>
       {legendOn && <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} gear={f.bike.gear} send={send} disabled={paused} />}
       {!legendOn && touchSide('R')}

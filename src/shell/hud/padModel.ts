@@ -32,6 +32,10 @@ export function buildPad(controls: ControlHint[], gears: boolean): PadModel {
   const paddle = { label: hints.get('paddles')?.label, mapped: hints.has('paddles') };
   const shift = (side: 'L' | 'R'): Cluster | null => {
     const c = cluster('shift', [[`shiftUp${side}`, '+'], [`shiftDn${side}`, '−']] as Def, hints, `shifters${side}`);
+    // A gear assignment stays a gear assignment while ERG or a game phase disables shifting.
+    if (!gears && /^gears?$/i.test(c.label ?? '')) {
+      return { ...c, gears: true, buttons: c.buttons.map(b => ({ ...b, active: false })) };
+    }
     if (gears && (side === 'L' || !c.mapped || /gear/i.test(c.label ?? '') || c.buttons.filter((b) => b.mapped).every((b) => /gear/i.test(b.label ?? '')))) {
       return { ...c, gears: true, label: 'Gear', mapped: true, buttons: c.buttons.map((b) => ({ ...b, mapped: true, label: undefined, active: undefined })) };
     }

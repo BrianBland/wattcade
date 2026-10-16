@@ -13,7 +13,8 @@ it('opens the menu from the center hit target while shifters remain independent'
   const system = vi.spyOn(input, 'system');
   const el = document.createElement('div');
   const bike = { power3s: 210, ftpFraction: .84, hr5s: 145, cadence3s: 80, activeSeconds: 754, gear: 8 } as BikeState;
-  const session = { ctx: { bike: () => bike }, sim: { hud: () => ({ gears: true }) } } as unknown as SessionLike;
+  const hud: GameHud = { gears: true, controls: [{ button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gear' }] };
+  const session = { ctx: { bike: () => bike }, sim: { hud: () => hud } } as unknown as SessionLike;
   const profile = { ftp: 250, maxHr: 190, settings: { zoneSource: 'auto' } } as Profile;
   try {
     act(() => render(<HudLayer session={session} profile={profile} paused={false} legendOn />, el));
@@ -25,6 +26,17 @@ it('opens the menu from the center hit target while shifters remain independent'
     Object.defineProperty(down, 'pointerId', { value: 51 });
     act(() => { compactShift.dispatchEvent(down); input.beginTick(.1); });
     expect(input.state().held.has('shiftUpL')).toBe(true);
+    // ERG / inactive-gear phases retain one compact pair, but cancel a held shift.
+    hud.gears = false;
+    act(() => { vi.advanceTimersByTime(100); });
+    act(() => input.beginTick(.1));
+    expect(el.querySelector('[aria-label="Gear 8"]')).not.toBeNull();
+    expect(el.querySelectorAll('.zw-gear-controls button')).toHaveLength(2);
+    expect(el.querySelector<HTMLButtonElement>('[aria-label="Gear up"]')!.disabled).toBe(true);
+    expect(input.state().held.has('shiftUpL')).toBe(false);
+    hud.gears = true;
+    act(() => { vi.advanceTimersByTime(100); });
+    expect(el.querySelector<HTMLButtonElement>('[aria-label="Gear up"]')!.disabled).toBe(false);
     act(() => render(<HudLayer session={session} profile={profile} paused legendOn />, el));
     act(() => input.beginTick(.1));
     expect(el.querySelector<HTMLButtonElement>('[aria-label="Gear up"]')!.disabled).toBe(true);

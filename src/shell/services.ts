@@ -35,7 +35,9 @@ const sessionStore: any = new SessionStore();
 
 // ---------- profiles ----------
 export const listProfiles = (): Promise<Profile[]> => profileStore.list();
-export const saveProfile = async (p: Profile): Promise<void> => { await profileStore.update(p); };
+export const saveProfile = (p: Profile): Promise<Profile> => profileStore.update(p);
+export const awardProfile = (p: Profile): Promise<Profile> => profileStore.award(p);
+export const saveGameData = (profileId: string, gameId: string, data: unknown): Promise<void> => profileStore.updateGameData(profileId, gameId, data);
 export const deleteProfile = (id: string): Promise<void> => profileStore.delete(id);
 export async function createProfile(name: string): Promise<Profile> {
   return profileStore.create(name);
@@ -410,9 +412,12 @@ export function previewAward(profile: Profile): { xp: number; level: number; ach
 /** Save a finished record and apply XP / achievements to `profile`. */
 async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   await sessionStore.save(record);
-  const r: any = awardSession(profile, record);
-  const next: Profile = r.profile ?? profile;
-  await saveProfile(next);
+  // A checkpoint may have committed after this snapshot. Award against the stored game slots.
+  const stored = await profileStore.get(profile.id);
+  const current = stored ? { ...profile, gameData: stored.gameData } : profile;
+  const r: any = awardSession(current, record);
+  const next: Profile = r.profile ?? current;
+  const saved = await awardProfile(next);
   const award: AwardView = {
     xpGained: r.xpGained ?? 0,
     levelBefore: profile.level, levelAfter: next.level,
@@ -420,7 +425,7 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
     newItems: newUnlocks(profile, next).map((it) => ({ slot: it.slot, id: it.id, name: it.name })),
     picks: pendingPicks(next).length,
   };
-  return { record, award, profile: next };
+  return { record, award, profile: saved };
 }
 
 // ---------- warm-up lobby (the ride behind the menus) ----------

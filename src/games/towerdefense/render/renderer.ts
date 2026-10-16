@@ -12,6 +12,7 @@ import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
 import { DynamoSound } from './dynamoSound';
 import { PAYOFF_STYLE, shimmerBands, stepBlend } from './overdrive';
+import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -25,7 +26,7 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
 
-interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text'; text?: string; grow?: number }
+interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text' | 'shard' | 'streak'; text?: string; grow?: number; rot?: number; spin?: number; key?: string }
 const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 export class TdRenderer implements GameRenderer {
@@ -49,6 +50,7 @@ export class TdRenderer implements GameRenderer {
   private hitStopUntil = 0;
   /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
   private odBlend = 0;
+  private hitFx = new HitFeedback();
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
@@ -245,6 +247,32 @@ export class TdRenderer implements GameRenderer {
       this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: life * (0.5 + Math.random() * 0.7), size: size * (0.5 + Math.random()), color, kind: 'spark' });
     }
   }
+  /** Hit feedback by matchup: strong = a brood-coloured spray, resisted = grey sparks, a ricochet streak and a clank. */
+  private hitFeedback(h: HitEvent) {
+    const k = this.k, x = this.X(h.x), y = this.Y(h.y), room = () => this.particles.length < 600;
+    if (h.cls === 'strong') {
+      if (h.element === 'blue') for (let i = 0; i < 5 && room(); i++) { // crystal shards
+        const a = Math.random() * TAU, v = (14 + Math.random() * 22) * k;
+        this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.35 + Math.random() * 0.2, size: (0.5 + Math.random() * 0.5) * k, color: Math.random() < 0.5 ? '#bfefff' : COL.blue, kind: 'shard', rot: a, spin: (Math.random() - 0.5) * 20 });
+      } else if (h.element === 'red') { // fuel burst
+        for (let i = 0; i < 3 && room(); i++) { const a = Math.random() * TAU, v = (6 + Math.random() * 10) * k; this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.3, size: 1.1 * k, color: '', kind: 'flame' }); }
+      } else { // armour plate chips
+        for (let i = 0; i < 4 && room(); i++) { const a = Math.random() * TAU, v = (10 + Math.random() * 16) * k; this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.4, size: (0.6 + Math.random() * 0.4) * k, color: Math.random() < 0.5 ? '#3d2a5c' : COL.purple, kind: 'shard', rot: a, spin: (Math.random() - 0.5) * 14 }); }
+      }
+    } else if (h.cls === 'resisted') {
+      this.burst(x, y, '#c8ccd2', 3, 24 * k, 0.35 * k, 0.22);
+      if (room()) { const a = Math.random() * TAU, v = 60 * k; this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.16, size: 2.2 * k, color: '#eef2f6', kind: 'streak' }); }
+      play('clank', { minGapS: 0.07, vol: 0.55, pitch: 0.9 + Math.random() * 0.2 });
+    }
+    if (h.big && h.dmg >= 1) this.particles.push({ x: x + (Math.random() - 0.5) * 2 * k, y: y - 3 * k, vx: 0, vy: -14 * k, age: 0, life: 0.6, size: Math.max(11, 2.2 * k), color: h.cls === 'strong' ? '#ffe9a8' : h.cls === 'resisted' ? '#b8bcc4' : '#ffffff', kind: 'text', text: `${Math.round(h.dmg)}` });
+  }
+  /** Chain / multikill callouts: one text per key, updated in place as a chain counts up. */
+  private callout(c: Callout) {
+    const k = this.k, size = Math.max(14, 3.2 * k * c.size);
+    const p = this.particles.find((q) => q.key === c.key);
+    if (p) { p.text = c.text; p.age = Math.min(p.age, 0.2); p.size = size; return; }
+    this.particles.push({ x: this.X(c.x), y: this.Y(c.y), vx: 0, vy: -4 * k, age: 0, life: 1.6, size, color: c.color, kind: 'text', text: c.text, key: c.key });
+  }
   /** A fuel-blooded red alien killed by fire bursts into flame. */
   private fireBurst(x: number, y: number, size: number) {
     for (let i = 0; i < 14 && this.particles.length < 600; i++) {
@@ -260,7 +288,7 @@ export class TdRenderer implements GameRenderer {
   private stepParticles(dt: number) {
     for (const p of this.particles) {
       p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt;
-      if (p.kind === 'spark') { const d = Math.exp(-5 * dt); p.vx *= d; p.vy *= d; }
+      if (p.kind === 'spark' || p.kind === 'shard') { const d = Math.exp(-5 * dt); p.vx *= d; p.vy *= d; }
       else if (p.kind === 'flame') { const d = Math.exp(-3 * dt); p.vx *= d; p.vy *= d; p.size *= 1 + dt * 1.6; }
       else if (p.kind === 'smoke') { p.vy -= 8 * dt; p.size *= 1 + dt * 1.2; }
       else if (p.kind === 'text') p.vy *= 0.94;
@@ -273,6 +301,13 @@ export class TdRenderer implements GameRenderer {
       if (p.kind === 'ring') {
         g.strokeStyle = p.color; g.globalAlpha = f * 0.9; g.lineWidth = Math.max(1.5, 3 * f * this.k * 0.4);
         g.beginPath(); g.arc(p.x, p.y, p.size + (p.grow ?? 0) * (p.age / p.life), 0, TAU); g.stroke(); g.globalAlpha = 1;
+      } else if (p.kind === 'shard') {
+        g.save(); g.translate(p.x, p.y); g.rotate((p.rot ?? 0) + (p.spin ?? 0) * p.age); g.globalAlpha = f; g.fillStyle = p.color;
+        g.beginPath(); g.moveTo(p.size * 1.4, 0); g.lineTo(-p.size, p.size * 0.7); g.lineTo(-p.size * 0.6, -p.size * 0.6); g.closePath(); g.fill(); g.restore();
+      } else if (p.kind === 'streak') {
+        const sp = Math.hypot(p.vx, p.vy) || 1;
+        g.strokeStyle = p.color; g.globalAlpha = f; g.lineWidth = Math.max(1, 0.25 * this.k); g.lineCap = 'round';
+        g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx / sp * p.size * 3, p.y - p.vy / sp * p.size * 3); g.stroke(); g.globalAlpha = 1;
       } else if (p.kind === 'smoke') {
         g.fillStyle = `rgba(40,40,48,${0.35 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill();
       } else if (p.kind === 'text') {
@@ -364,6 +399,7 @@ export class TdRenderer implements GameRenderer {
     if (!this.bg) this.bg = this.buildBg();
     this.playCues(s);
     this.consumeFx(s, !firstFrame);
+    if (s.phase === 'run') { for (const h of this.hitFx.hits(s.enemies, s.t)) this.hitFeedback(h); for (const c of this.hitFx.callouts(s.fx, s.t)) this.callout(c); }
     this.dynamo.update({
       active: s.phase === 'run' && !s.over, cadence: bike.cadence3s, ftpFraction: bike.ftpFraction, crankRevs: bike.crankRevs, overdrive: s.overdrive,
       weapon: s.weapon, gatlingFiring: s.fx.reduce((n, f) => n + (f.kind === 'tracer' && t - f.t0 < 0.2 ? 1 : 0), 0),

@@ -190,6 +190,11 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .hud-menu-hit { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; pointer-events: auto; touch-action: manipulation; }
 .hud-menu-hit:focus-visible { outline: 2px solid var(--neon); outline-offset: 3px; }
 .hud-center:has(.hud-menu-hit:hover) { border-color: #ffffff50; }
+/* Primary actions reuse the same HUD band when the controller hoods are hidden. */
+.hud-actions { flex: 1 1 180px; max-width: 260px; min-width: 76px; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; }
+.hud-actions .pk.block { position: relative; width: 100%; height: 46px; min-height: 44px; border-radius: 10px; flex-direction: row; gap: 8px; padding: 4px 8px; }
+.hud-actions .pk.block b { font-size: 20px; flex: none; }
+.hud-actions .pk.block span { font-size: 11px; line-height: 1.15; white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .pc .pc-gear { color: #aeb8cd; font-size: 11px; white-space: nowrap; }
 .pc-gear strong { color: #e9ddff; font-size: 14px; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) {
@@ -202,6 +207,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 }
 @media (max-width: 700px) {
   .hud { gap: 4px; padding-left: 4px; padding-right: 4px; }
+  .hud-actions .pk.block { flex-direction: column; height: 54px; gap: 2px; padding: 3px; }
+  .hud-actions .pk.block b { font-size: 14px; }
+  .hud-actions .pk.block span { font-size: 10px; text-align: center; }
   .hood { gap: 3px; }
   .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .zw-ftp, .zw-cad-guide { padding-left: 17px; }
@@ -465,3 +473,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .mp-qrow .mp-title b, .mp-row .mp-title b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mp-qrow .mp-title .mp-chip { display: inline-flex; margin: 2px 0 0; }
 .mp-qremove { padding-left: 8px; padding-right: 8px; }
+
+.game-loading { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: radial-gradient(ellipse at center, #1b2635, #090e16 75%); color: #e6eff9; text-align: center; padding: 24px; }
+.game-loading h2, .game-loading p { margin: 0; }
+.game-loading p { color: #a9bbce; }
+.game-loading-ring { width: 44px; height: 44px; border: 3px solid #26465d; border-top-color: #75edff; border-radius: 50%; animation: game-loading-spin 1s linear infinite; }
+@keyframes game-loading-spin { to { transform: rotate(360deg); } }

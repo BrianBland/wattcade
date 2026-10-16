@@ -8,32 +8,49 @@ export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
 export const WEAPONS: Weapon[] = ['gatling', 'flame', 'rail'];
 export const WEAPON_ELEMENT: Record<Weapon, Element> = { gatling: 'blue', flame: 'red', rail: 'purple' };
 export const ELEMENT_WEAPON: Record<Element, Weapon> = { blue: 'gatling', red: 'flame', purple: 'rail' };
-export const WEAPON_BUTTON: Record<Weapon, 'a' | 'b' | 'y'> = { gatling: 'a', flame: 'b', rail: 'y' };
+export type Matchup = Record<Weapon, Record<Element, number>>;
+/** Crystal shatters under bullets, fuel bladders ignite, sealed plates need piercing. */
+export const MATCHUP: Matchup = {
+  gatling: { blue: 1.5, red: 1, purple: 0.5 },
+  flame: { blue: 0.5, red: 1.5, purple: 1 },
+  rail: { blue: 1, red: 0.5, purple: 1.5 },
+};
+export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', mortar: 'flame', lens: 'rail' };
 
-/** color: fixed element, 'gold' = boss (shield cycles), 'prism' = cycles on its own. */
+/** Cover the largest off-colour push with a strong tower; never suggest resistance to that push. */
+export function suggestedTower(counts: Record<Element, number>, brood: Element, matrix: Matchup = MATCHUP): TowerKind {
+  const off = ELEMENTS.filter((e) => e !== brood);
+  const target = off.reduce((a, b) => counts[b] > counts[a] ? b : a);
+  const safe = TOWER_KINDS.filter((k) => matrix[TOWER_WEAPON[k]][target] >= 1);
+  return (safe.length ? safe : TOWER_KINDS).reduce((a, b) =>
+    matrix[TOWER_WEAPON[b]][target] > matrix[TOWER_WEAPON[a]][target] ? b : a);
+}
+export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Flamer', rail: 'Railgun' };
+
+/** color: fixed element, 'gold' = boss (announced phases), 'prism' = cycles on its own. */
 export interface KindDef {
   name: string; hp: number; speed: number; dmg: number; color: Element | 'gold' | 'prism';
   radius: number; scrap: number; heavy: boolean;
 }
 // speed in field units / s (lanes are ~110-125 units long)
 export const KINDS: Record<Kind, KindDef> = {
-  mini:    { name: 'Swarm drone', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
-  dart:    { name: 'Dart',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
-  brute:   { name: 'Brute',       hp: 70,  speed: 3.5, dmg: 5,  color: 'red',    radius: 2.7, scrap: 5,  heavy: true },
-  charger: { name: 'Charger',     hp: 55,  speed: 2.8, dmg: 6,  color: 'red',    radius: 2.4, scrap: 6,  heavy: true },
-  armor:   { name: 'Bastion',     hp: 95,  speed: 2.3, dmg: 8,  color: 'purple', radius: 3.2, scrap: 8,  heavy: true },
-  carrier: { name: 'Carrier',     hp: 150, speed: 1.9, dmg: 10, color: 'purple', radius: 3.6, scrap: 12, heavy: true },
-  prism:   { name: 'Prism',       hp: 90,  speed: 3.0, dmg: 6,  color: 'prism',  radius: 2.6, scrap: 10, heavy: true },
-  boss:    { name: 'Goliath',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
+  mini:    { name: 'Skitter', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
+  dart:    { name: 'Glider',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
+  brute:   { name: 'Warrior',       hp: 70,  speed: 3.5, dmg: 5,  color: 'red',    radius: 2.7, scrap: 5,  heavy: true },
+  charger: { name: 'Ram',     hp: 55,  speed: 2.8, dmg: 6,  color: 'red',    radius: 2.4, scrap: 6,  heavy: true },
+  armor:   { name: 'Bulwark',     hp: 95,  speed: 2.3, dmg: 8,  color: 'purple', radius: 3.2, scrap: 8,  heavy: true },
+  carrier: { name: 'Broodmother',     hp: 150, speed: 1.9, dmg: 10, color: 'purple', radius: 3.6, scrap: 12, heavy: true },
+  prism:   { name: 'Stalker',       hp: 90,  speed: 3.0, dmg: 6,  color: 'prism',  radius: 2.6, scrap: 10, heavy: true },
+  boss:    { name: 'Hive Tyrant',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
 };
 /** First wave each kind can appear in. */
 export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, brute: 1, charger: 6, armor: 2, carrier: 9, prism: 12, boss: 5 };
 
 export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string }
 export const TOWERS: Record<TowerKind, TowerDef> = {
-  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 6,  desc: 'Chain lightning (3 targets)' },
-  mortar: { name: 'Mortar',      element: 'red',    cost: 80,  range: 36, period: 2.4, dmg: 26, desc: 'Lobbed shells, splash damage' },
-  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 48, desc: 'Charged beam at the toughest' },
+  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)' },
+  mortar: { name: 'Mortar',      element: 'red',    cost: 80,  range: 36, period: 2.4, dmg: 9, desc: 'Lobbed shells, splash damage' },
+  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest' },
 };
 export const TOWER_KINDS: TowerKind[] = ['tesla', 'mortar', 'lens'];
 export const TOWER_MAX_LEVEL = 5;
@@ -58,7 +75,7 @@ type P = { x: number; y: number };
 const LANE_CTRL: Array<[P, P, P, P]> = [
   [{ x: -3, y: 16 }, { x: 28, y: 18 }, { x: 18, y: 66 }, { x: BASE_X, y: BASE_Y }],
   [{ x: 50, y: -3 }, { x: 34, y: 28 }, { x: 66, y: 52 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 103, y: 16 }, { x: 72, y: 18 }, { x: 82, y: 66 }, { x: BASE_X, y: BASE_Y }],
+  [{ x: 103, y: 16 }, { x: 84, y: 18 }, { x: 87, y: 66 }, { x: BASE_X, y: BASE_Y }],
 ];
 export const LANE_NAMES = ['Left', 'Center', 'Right'];
 const SAMPLES = 160;
@@ -97,14 +114,47 @@ export const AIM_LIMIT = 1.45;
 
 /** Six build pads: two beside each lane (near / far), on the lane's outer side. */
 export interface Pad { id: number; lane: number; x: number; y: number; near: boolean }
-export const PADS: Pad[] = (() => {
-  const out: Pad[] = [];
-  const spec: Array<[number, number, number]> = [ // lane, fraction along, side (+1 = walker's left)
-    [0, 0.52, -1], [0, 0.78, 1], [1, 0.3, 1], [1, 0.6, -1], [2, 0.52, 1], [2, 0.78, -1],
-  ];
-  spec.forEach(([lane, f, side], i) => {
-    const p = laneAt(lane, laneLength(lane) * f);
-    out.push({ id: i, lane, x: p.x + p.nx * side * 8, y: p.y + p.ny * side * 8, near: f > 0.6 });
-  });
-  return out;
-})();
+export const PADS: Pad[] = [
+  {
+    "id": 0,
+    "lane": 0,
+    "x": 13.0,
+    "y": 56.5,
+    "near": false
+  },
+  {
+    "id": 1,
+    "lane": 0,
+    "x": 39.0,
+    "y": 50.5,
+    "near": true
+  },
+  {
+    "id": 2,
+    "lane": 1,
+    "x": 59.0,
+    "y": 22.5,
+    "near": false
+  },
+  {
+    "id": 3,
+    "lane": 1,
+    "x": 36.0,
+    "y": 40.5,
+    "near": true
+  },
+  {
+    "id": 4,
+    "lane": 2,
+    "x": 90.5,
+    "y": 61.5,
+    "near": false
+  },
+  {
+    "id": 5,
+    "lane": 2,
+    "x": 66.0,
+    "y": 51.5,
+    "near": true
+  }
+];

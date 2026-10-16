@@ -17,12 +17,12 @@ function ride(gameId: string, scenarioName: string): Promise<{ ids: string[]; co
 }
 async function rideOnce(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
   const game = getGame(gameId)!;
-  const { scenarios } = await import(`../games/${gameId}/scenarios.ts`) as { scenarios: Array<{ name: string; script: string; minutes: number; seed: number; seeds?: number[]; simOpts?: Record<string, unknown>; media?: never }> };
+  const { scenarios } = await import(`../games/${gameId}/scenarios.ts`) as { scenarios: Array<{ name: string; script: string; minutes: number; seed: number; seeds?: number[]; simOpts?: Record<string, unknown>; tuning?: Record<string, number | boolean | string>; media?: never }> };
   const sc = scenarios.find((s) => s.name === scenarioName)!;
   // multi-seed scenarios count as consecutive rides on one profile (tallies add up; robust to one unlucky seed)
   let profile = defaultProfile(); const ids: string[] = [];
   for (const [i, seed] of (sc.seeds ?? [sc.seed]).entries()) {
-    const r = runHeadless({ game, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts, media: sc.media });
+    const r = runHeadless({ game, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts, tuning: sc.tuning, media: sc.media });
     const record: SessionRecord = {
       id: `h${i}`, profileId: 'x', gameId, startedAt: new Date(2026, 4, 13 + i, 12).getTime(), durationS: 60, samples: [],
       events: r.events, stats: r.stats, gameSummary: r.summary,
@@ -62,8 +62,9 @@ describe('headless rides unlock game achievements', () => {
     await counted('lighthouse', 'storm-ready', ['storms', 'docked', 'windups']);
   }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
-    expect(await unlocked('towerdefense', 'surge-ready')).toEqual(expect.arrayContaining(['td_wave10', 'td_wave25']));
-    await counted('towerdefense', 'surge-ready', ['bosses', 'kills']);
+    // Deep fixture opts into combat actions and a reinforced base; survival is tested by the game's passive scenarios.
+    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_wave10', 'td_wave25']));
+    await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills']);
   }, RIDE_TIMEOUT);
   it('sprocket squadron', async () => {
     expect(await unlocked('starfighter', 'z2-half-hour')).toContain('sf_maw');

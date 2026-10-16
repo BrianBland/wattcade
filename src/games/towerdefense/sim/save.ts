@@ -3,7 +3,7 @@ import { defineSaveSchema, saveBoolean, saveLevels, saveNumber, saveObject } fro
 import { UPGRADES, type Levels } from './meta';
 
 export interface TdSave {
-  v: 3; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean;
+  v: 3; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
   totals: { waves: number; kills: number; bosses: number; towers: number; surges: number; runsFallen: number; runsBailed: number };
 }
 
@@ -23,6 +23,7 @@ export const saveSchema = defineSaveSchema<TdSave>({
     const totals = saveObject(s.totals, 'totals');
     return {
       ...s, v: 3, bestWave: saveNumber(s.bestWave, 0, 'best wave'), bank: saveNumber(s.bank, 0, 'bank'),
+      autoCrew: saveBoolean(s.autoCrew, true, 'auto-crew'),
       upgrades, runs: saveNumber(s.runs, 0, 'runs'), autoInvest: saveBoolean(s.autoInvest, false, 'auto-invest'),
       totals: {
         ...totals,

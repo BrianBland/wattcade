@@ -16,6 +16,16 @@ function ride(script = 'z2') {
 }
 
 describe('endless runs', () => {
+  it('clears a boss announcement when bailing during its recovery lull', () => {
+    const profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } });
+    const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true } });
+    s.step(1);
+    expect((s.sim.snapshot() as TdSnapshot).boss).not.toBeNull();
+    s.sim.receive!({ type: 'bail' }); s.step(1);
+    expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, effort: null, lull: 0, swapLeft: 0 });
+    s.finish();
+  });
+
   it('idle falls by wave 2, banks parts, stays in the Garage, then can start again', () => {
     const { s, snap, saved } = ride('idle');
     let steps = 0;
@@ -30,7 +40,7 @@ describe('endless runs', () => {
     expect(snap().phase).toBe('garage');
     expect(saved().runs).toBe(1);
     s.sim.receive!({ type: 'garageRow', row: 0 }); s.step(1);
-    expect(snap()).toMatchObject({ phase: 'run', wave: 1, baseHp: 70, partsRun: 0 });
+    expect(snap()).toMatchObject({ phase: 'run', wave: 1, baseHp: 100, partsRun: 0 });
     expect(saved().runs).toBe(2);
     expect(s.finish().events.filter((e) => e.type === 'runEnded')).toMatchObject([{ data: { reason: 'fell' } }]);
   });
@@ -52,7 +62,7 @@ describe('endless runs', () => {
     s.step(1);
     expect(s.mixer.debug().activeEffects).toContainEqual(expect.objectContaining({ id: 'weapon', mode: 'sim', gradePct: 0 }));
     s.sim.receive!({ type: 'garageRow', row: 0 }); s.step(1);
-    expect(snap()).toMatchObject({ phase: 'run', baseHp: 70, partsRun: 0, railCharges: 0, towers: [], enemies: [], waveElapsed: 0 });
+    expect(snap()).toMatchObject({ phase: 'run', baseHp: 100, partsRun: 0, railCharges: 0, towers: [], enemies: [], waveElapsed: 0 });
     expect(s.sim.summary()).toMatchObject({ runs: 2, runsBailed: 1, partsEarned: parts });
     const before = structuredClone(saved());
     const record = s.finish();

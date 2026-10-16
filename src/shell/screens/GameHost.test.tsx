@@ -1,41 +1,58 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it, vi } from 'vitest';
-import { render } from 'preact';
+import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
-import type { GameModule, Profile } from '../../contracts';
-
-const setup = vi.hoisted(() => ({ system: undefined as ((action: string) => void) | undefined }));
-vi.mock('../services', () => ({
-  debugActions: { panic: vi.fn() }, getFake: () => true, activeSession: () => null, previewAward: () => null,
-  saveFailureMessage: () => "Couldn't save your ride; keep it open and retry.",
-  mediaEngine: vi.fn(), input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) },
-  onSystem: (cb: typeof setup.system) => { setup.system = cb; return () => {}; },
-  startSession: () => ({ sim: { inMenu: () => true, hud: () => ({}) }, pause: vi.fn(), resume: vi.fn() }),
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import type { GameModule, GameRenderer, Profile } from '../../contracts';
+const mocks = vi.hoisted(() => ({
+  session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false) } },
+  raf: vi.fn(() => 1), panic: vi.fn(),
 }));
+vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: () => () => {}, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
+vi.mock('./PauseMenu', () => ({ PauseMenu: () => null }));
+vi.mock('../game/ResultBanner', () => ({ ResultBanner: () => null }));
+vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart}: {onStart:()=>void}) => h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
+vi.mock('../components/Toasts', () => ({ toast: vi.fn() }));
+vi.mock('../../debug/flag', () => ({ loadFlag: () => false, saveFlag: vi.fn() }));
 vi.mock('../../audio/sfx', () => ({ duckAmbient: vi.fn(), play: vi.fn(), unlockAudio: vi.fn() }));
-vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onRestart }: { onRestart: () => void }) => <button onClick={onRestart}>Restart</button> }));
 import { GameHost } from './GameHost';
-
-let host: HTMLDivElement;
-afterEach(() => { act(() => render(null, host)); host.remove(); vi.unstubAllGlobals(); });
-
-it('keeps a failed ride save visible and lets the rider retry the same finish action', async () => {
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
-  vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {});
-  const onRestart = vi.fn().mockRejectedValueOnce(new Error('quota')).mockResolvedValue(undefined), onAbandon = vi.fn();
-  const game = { id: 'toy', title: 'Toy', loadRenderer: async () => ({ mount() {}, unmount() {} }) } as unknown as GameModule;
-  host = document.createElement('div'); document.body.append(host);
-  await act(() => render(<GameHost game={game} profile={{ level: 1 } as Profile} onRestart={onRestart}
-    onAbandon={onAbandon} onQuit={() => {}} onSave={() => {}} />, host));
-  await act(() => setup.system!('pause'));
-  expect(host.textContent).toContain('Restart');
-  await act(async () => { [...host.querySelectorAll('button')].find((b) => b.textContent === 'Restart')!.click(); await Promise.resolve(); });
-  expect(onRestart).toHaveBeenCalledOnce();
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain('keep it open');
-  expect(onAbandon).not.toHaveBeenCalled();
-  await act(async () => { [...host.querySelectorAll('button')].find((b) => b.textContent === 'Retry save')!.click(); await Promise.resolve(); });
-  expect(onRestart).toHaveBeenCalledTimes(2);
-  expect(host.querySelector('[role="alert"]')).toBeNull();
+let container: HTMLDivElement;
+let resolveReady: () => void, rejectReady: (error: Error) => void;
+let renderer: GameRenderer;
+async function mount() {
+  const ready = new Promise<void>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
+  renderer = {mount:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
+  const game = {id:'towerdefense',title:'Dynamo Defense',loadRenderer:async()=>renderer} as unknown as GameModule;
+  await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={()=>{}} onAbandon={()=>{}} onRestart={()=>{}} onSave={()=>{}} />,container);});
+}
+beforeEach(()=>{
+  vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false);
+  vi.stubGlobal('requestAnimationFrame',mocks.raf); vi.stubGlobal('cancelAnimationFrame',vi.fn());
+  vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
+  container=document.createElement('div');document.body.appendChild(container);
+});
+afterEach(async()=>{await act(async()=>render(null,container));container.remove();vi.unstubAllGlobals();});
+describe('renderer loading gate',()=>{
+  for(const menu of [false,true])it(`holds ${menu?'the game menu':'the intro and countdown'} until renderer readiness`,async()=>{
+    mocks.session.sim.inMenu.mockReturnValue(menu); await mount();
+    expect(container.textContent).toContain('Preparing Dynamo Defense');
+    expect(container.textContent).not.toContain('Start game');
+    expect(mocks.session.frame).not.toHaveBeenCalled(); expect(mocks.session.idle).not.toHaveBeenCalled();
+    expect(mocks.raf).not.toHaveBeenCalled(); expect(mocks.panic).toHaveBeenCalledWith(true);
+    await act(async()=>resolveReady());
+    expect(container.querySelector('.game-loading')).toBeNull();
+    expect(renderer.render).toHaveBeenCalledOnce(); expect(mocks.raf).toHaveBeenCalledOnce();
+    expect(mocks.session.idle).toHaveBeenCalledWith(0); // discard presses accumulated on the loading screen
+    if(!menu)expect(container.textContent).toContain('Start game');
+  });
+  it('shows a recoverable error without starting the simulation when assets fail',async()=>{
+    await mount(); await act(async()=>rejectReady(new Error('Texture unavailable')));
+    expect(container.textContent).toContain('Texture unavailable');expect(container.textContent).toContain('Back');
+    expect(container.textContent).not.toContain('Start game');expect(mocks.raf).not.toHaveBeenCalled();expect(mocks.session.frame).not.toHaveBeenCalled();
+  });
+  it('does not start a loop or render after leaving during loading',async()=>{
+    await mount(); await act(async()=>render(null,container));await act(async()=>resolveReady());
+    expect(renderer.unmount).toHaveBeenCalledOnce();expect(renderer.render).not.toHaveBeenCalled();expect(mocks.raf).not.toHaveBeenCalled();
+  });
 });

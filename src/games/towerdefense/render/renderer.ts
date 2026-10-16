@@ -1,11 +1,15 @@
 // Dynamo Defense renderer (Canvas 2D). Loaded via dynamic import; reads TdSnapshot only.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
-import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline, type Weapon } from '../sim/defs';
+import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline } from '../sim/defs';
 import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
-import { drawBanner, drawGarage, drawLeft, drawRight, drawWorkshop, type Hit } from './panels';
+import { TdHud, type Hit } from './panels';
+import { drawConstruction, drawDock } from './construction';
+import { AlienLayer, type View } from './aliens/layer';
+import { Battlefield } from './battlefield';
+import { Machinery } from './machinery';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -18,13 +22,13 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, baseFell: { s: 'lampOut' },
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
-const MODE_VAL: Record<Weapon, string> = { gatling: '+1%', flame: '35%', rail: '95%' };
 
 interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text'; text?: string; grow?: number }
 const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
+  private mounted = false;
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
   private insetB = 0;
@@ -33,27 +37,75 @@ export class TdRenderer implements GameRenderer {
   private bg: HTMLCanvasElement | null = null;
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
+  private hud!: TdHud;
   private particles: Particle[] = [];
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
   private laneShown = { lane: -2, at: -99 };
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
+  private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
+  /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
+  private aliens: AlienLayer | null = null;
+  private battlefield!: Battlefield;
+  private machinery!: Machinery;
+  private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
+  private heldPointers = new Map<number, { epoch: number; kind: 'rail' | 'boost' }>();
+  private onUp = (e: PointerEvent) => this.releaseHold(e.pointerId, false);
+  private onCancel = (e: PointerEvent) => this.releaseHold(e.pointerId, true);
+  private onBlur = () => {
+    for (const id of [...this.heldPointers.keys()]) this.releaseHold(id, true);
+    this.send?.({ type: 'railCancel' }); this.send?.({ type: 'boostCancel' });
+  };
+  private onVisibility = () => { if (document.hidden) this.onBlur(); };
+  private onMove = (e: PointerEvent) => {
+    if (!this.heldPointers.has(e.pointerId)) return;
+    const r = this.canvas.getBoundingClientRect();
+    const px = (e.clientX - r.left) * this.W / r.width, py = (e.clientY - r.top) * this.H / r.height;
+    const b = this.heldPointers.get(e.pointerId)!.kind === 'boost' ? this.L.dock.workshop : this.L.dock.actions[2];
+    if (px < b.x || px > b.x + b.w || py < b.y || py > b.y + b.h) this.releaseHold(e.pointerId, true);
+  };
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+  private hudControls = false;
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
+    this.mounted = true;
+    this.hudControls = !!ctx.hudControls;
     this.insetB = ctx.insets?.bottom ?? 0;
     this.color = ctx.profile.color || this.color;
+    this.aliens = new AlienLayer(import.meta.env.BASE_URL);
+    this.battlefield = new Battlefield(import.meta.env.BASE_URL, () => { this.bg = null; });
+    this.machinery = new Machinery(import.meta.env.BASE_URL);
+    this.machinery.profile = ctx.profile;
     this.send = ctx.send;
     this.dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0a0e16;touch-action:none';
     container.appendChild(this.canvas);
+    this.hud = new TdHud(ctx.send);
+    container.appendChild(this.hud.root);
     this.g = this.canvas.getContext('2d')!;
     this.canvas.addEventListener('pointerdown', this.onPointer);
+    this.canvas.addEventListener('pointerup', this.onUp);
+    this.canvas.addEventListener('pointercancel', this.onCancel);
+    this.canvas.addEventListener('lostpointercapture', this.onCancel);
+    this.canvas.addEventListener('pointermove', this.onMove);
+    window.addEventListener('blur', this.onBlur);
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
+  async ready() {
+    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded]);
+    if (!this.mounted) return;
+    let scale: number;
+    do {
+      scale = this.k; this.view.k = scale; this.view.dpr = this.dpr;
+      await this.aliens!.prepare(this.view, () => !this.mounted);
+    } while (this.mounted && this.k !== scale);
+    this.bg = null;
+  }
   resize(w: number, h: number) {
+    for (const id of [...this.heldPointers.keys()]) this.releaseHold(id, true);
     this.W = Math.max(1, w); this.H = Math.max(1, h);
     if (!this.canvas) return;
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
@@ -61,11 +113,19 @@ export class TdRenderer implements GameRenderer {
   }
   setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
   unmount() {
+    this.mounted = false;
+    this.onBlur(); window.removeEventListener('blur', this.onBlur);
+    document.removeEventListener('visibilitychange', this.onVisibility);
     this.canvas?.removeEventListener('pointerdown', this.onPointer);
+    this.canvas?.removeEventListener('pointerup', this.onUp);
+    this.canvas?.removeEventListener('pointercancel', this.onCancel);
+    this.canvas?.removeEventListener('lostpointercapture', this.onCancel);
+    this.canvas?.removeEventListener('pointermove', this.onMove);
     this.canvas?.remove();
+    this.hud?.root.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB); this.bg = null; }
+  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; }
 
   // ---------- coordinates ----------
   private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
@@ -78,18 +138,40 @@ export class TdRenderer implements GameRenderer {
     const px = (e.clientX - r.left) * (this.W / r.width), py = (e.clientY - r.top) * (this.H / r.height);
     for (let i = this.hits.length - 1; i >= 0; i--) {
       const h = this.hits[i];
-      if (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) { e.preventDefault(); if (h.action) this.send?.(h.action); return; }
+      if (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) {
+        e.preventDefault();
+        const a = h.action as { type?: string; epoch?: number } | null;
+        if (a?.type === 'railHold' || a?.type === 'boostHold') {
+          const kind = a.type === 'railHold' ? 'rail' : 'boost';
+          this.heldPointers.set(e.pointerId, { epoch: a.epoch!, kind });
+          this.canvas.setPointerCapture?.(e.pointerId);
+          this.send?.({ type: `${kind}Down`, pointer: e.pointerId, epoch: a.epoch });
+        } else if (h.action) this.send?.(h.action);
+        return;
+      }
     }
-    const s = this.snap; if (!s || s.phase !== 'run') return;
+    const s = this.snap; if (!s || s.phase !== 'run' || s.over || py > this.L.UH) return;
     const fx = (px - this.L.field.x) / this.k, fy = (py - this.L.field.y) / this.k;
-    for (const p of PADS) if (Math.hypot(fx - p.x, fy - p.y) < 5.5) { e.preventDefault(); this.send?.({ type: 'pad', pad: p.id }); return; }
-    if (Math.hypot(fx - BASE_X, fy - BASE_Y) < 8) { e.preventDefault(); this.send?.({ type: 'pad', pad: 6 }); }
+    const targets = [...PADS, { id: 6, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(fx - p.x, fy - p.y) }))
+      .sort((a, b) => a.distance - b.distance);
+    const closest = targets[0];
+    if (closest.distance < Math.max(closest.id === 6 ? 8 : 5.5, 22 / this.k)) {
+      e.preventDefault(); this.send?.({ type: 'pad', pad: closest.id, epoch: s.inputEpoch });
+    }
+  }
+  private releaseHold(id: number, cancel: boolean) {
+    const pointer = this.heldPointers.get(id); if (!pointer) return;
+    this.heldPointers.delete(id);
+    this.send?.({ type: `${pointer.kind}${cancel ? 'Cancel' : 'Up'}`, pointer: id, epoch: pointer.epoch });
+    if (this.canvas.hasPointerCapture?.(id)) this.canvas.releasePointerCapture(id);
   }
 
   // ---------- background (cached per size) ----------
   private buildBg(): HTMLCanvasElement {
     const c = document.createElement('canvas'); c.width = this.canvas.width; c.height = this.canvas.height;
     const g = c.getContext('2d')!; g.scale(this.dpr, this.dpr);
+    this.view.k = this.k; this.view.dpr = this.dpr;
+    if (this.battlefield.paint(g, this.view, this.W, this.H)) return c;
     const W = this.W, H = this.H, k = this.k, cx = this.X(50), cy = this.Y(55);
     const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
     gr.addColorStop(0, '#1a2332'); gr.addColorStop(0.6, '#111824'); gr.addColorStop(1, '#070a10');
@@ -158,6 +240,15 @@ export class TdRenderer implements GameRenderer {
       this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: life * (0.5 + Math.random() * 0.7), size: size * (0.5 + Math.random()), color, kind: 'spark' });
     }
   }
+  /** A fuel-blooded red alien killed by fire bursts into flame. */
+  private fireBurst(x: number, y: number, size: number) {
+    for (let i = 0; i < 14 && this.particles.length < 600; i++) {
+      const a = Math.random() * TAU, v = size * (1.2 + Math.random() * 2.2);
+      this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: 0.35 + Math.random() * 0.25, size: size * 0.18, color: '', kind: 'flame' });
+    }
+    this.ring(x, y, '#ffb050', size * 0.2, size * 0.9, 0.35);
+    this.shake = Math.max(this.shake, 0.3);
+  }
   private ring(x: number, y: number, color: string, r0: number, grow: number, life: number) {
     this.particles.push({ x, y, vx: 0, vy: 0, age: 0, life, size: r0, grow, color, kind: 'ring' });
   }
@@ -195,7 +286,7 @@ export class TdRenderer implements GameRenderer {
   }
 
   /** New sim fx (by id) become particles / shake / flashes once. */
-  private consumeFx(s: TdSnapshot) {
+  private consumeFx(s: TdSnapshot, allowHitStop: boolean) {
     const k = this.k;
     for (const f of s.fx) {
       if (f.id <= this.lastFx) continue;
@@ -205,7 +296,9 @@ export class TdRenderer implements GameRenderer {
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
-      } else if (f.kind === 'boom') {
+      } else if (f.kind === 'hitStop') {
+        if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
+      } else if (f.kind === 'boom' || f.kind === 'burst') {
         const x = this.X(f.x), y = this.Y(f.y);
         this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
         this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
@@ -241,16 +334,21 @@ export class TdRenderer implements GameRenderer {
   // ---------- frame ----------
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as TdSnapshot;
+    for (const [id, pointer] of this.heldPointers) if (s.inputEpoch !== pointer.epoch || s.phase !== 'run' || s.over ||
+      (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (!this.L) this.relayout();
+    this.hud.render(s, this.L, this.W);
     const g = this.g, k = this.k, L = this.L;
+    const firstFrame = this.lastT < 0;
     const dt = this.lastT < 0 ? 0 : Math.max(0, Math.min(0.1, s.t - this.lastT));
     const realDt = 1 / 60;
     this.lastT = s.t; this.wall += realDt;
     const t = s.t;
     if (!this.bg) this.bg = this.buildBg();
     this.playCues(s);
-    this.consumeFx(s);
+    this.consumeFx(s, !firstFrame);
+    if (performance.now() < this.hitStopUntil) return;
     setAmbient('td-flame', s.flaming ? 0.06 + 0.1 * Math.min(1, s.flamePower) : 0, 700, 0.6);
     setAmbient('td-hum', s.phase === 'run' && !s.over ? 0.015 + 0.03 * Math.min(1.6, s.grid) : 0, 110 + 60 * s.grid, 3);
 
@@ -265,28 +363,36 @@ export class TdRenderer implements GameRenderer {
     g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
 
     const bx = this.X(BASE_X), by = this.Y(BASE_Y);
+    this.view.k = k; this.view.dpr = this.dpr;
+    this.battlefield.ground(g, this.view, s);
+    // Shade and light the ground before actors: coloured silhouettes retain their contrast.
+    this.battlefield.lighting(g, this.view, s, this.W, this.H);
     if (s.phase === 'run') {
       this.drawLanes(g, s, t);
-      this.drawCables(g, s, t);
+      this.view.k = k; this.view.dpr = this.dpr;
+      this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
+      this.aliens?.drawGround(g, this.view, t);
+      this.battlefield.wiring(g, this.view, s, bike);
       this.drawPads(g, s, t);
-      for (const tw of s.towers) { const p = PADS[tw.pad]; drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
+      for (const tw of s.towers) { const p = PADS[tw.pad]; if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
       // aim line
       const ac = WEAPON_COLOR[s.weapon];
-      g.strokeStyle = ac; g.globalAlpha = s.autoAim ? 0.35 : 0.7; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
+      g.strokeStyle = ac; g.globalAlpha = s.targetId ? 0.18 : 0; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
       g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k);
       const reach = s.weapon === 'flame' ? s.flameRange : 100;
       g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
-      // enemies, back to front
+      // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
+      const puppets = this.aliens?.ready ? this.aliens : null;
+      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
       const live = new Set<number>();
-      const es = [...s.enemies].sort((a, b) => a.y - b.y);
-      for (const e of es) {
+      for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
         const x = this.X(e.x), y = this.Y(e.y);
         const prev = this.heading.get(e.id);
         let h = prev?.h ?? Math.atan2(by - y, bx - x);
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
-        drawEnemy(g, e, x, y, k, h, t);
+        if (!puppets) drawEnemy(g, e, x, y, k, h, t);
         if (e.id === s.targetId) this.reticle(g, e, x, y, t);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
@@ -295,7 +401,7 @@ export class TdRenderer implements GameRenderer {
       this.drawFx(g, s, bx, by, t);
       this.drawParticles(g);
       const muzzle = s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0;
-      drawBase(g, {
+      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
         weapon: s.weapon, aim: s.aimAngle, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle, overdrive: s.overdrive,
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
@@ -303,20 +409,15 @@ export class TdRenderer implements GameRenderer {
     } else {
       this.drawLanes(g, s, t);
       this.drawPads(g, s, t);
-      drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
+      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
     this.stepParticles(realDt);
     g.restore();
 
     // foreground UI (never under the HUD band)
     if (s.phase === 'run') {
-      drawBanner(g, s, L.banner.x, L.banner.y, L.banner.w, L.u);
-      this.hits.push(...drawLeft(g, s, L.left, L.u, t, !L.wide, MODE_VAL));
-      const ws = s.workshop ? L.workshop : null;
-      this.hits.push(...drawRight(g, s, L.right, L.u, t, !L.wide, ws));
-      if (s.workshop && ws) this.hits.push(...drawWorkshop(g, s, s.workshop, ws, L.u));
-    } else if (s.garage) {
-      this.hits.push(...drawGarage(g, s.garage, L.garage, L.u, t));
+      if (!this.hudControls) this.hits.push(...drawDock(g, s, L, bike.powerZone));
+      if (s.workshop) this.hits.push(...drawConstruction(g, s, L, this.W));
     }
 
     // full-screen flashes
@@ -337,48 +438,26 @@ export class TdRenderer implements GameRenderer {
     const k = this.k;
     for (let l = 0; l < 3; l++) {
       const pts = lanePolyline(l, 4);
-      const focus = s.lane === l || s.lane < 0;
-      if (s.phase === 'run' && focus && s.lane >= 0) {
-        g.strokeStyle = 'rgba(160,200,255,0.07)'; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
+      if (s.slowLane === l) {
+        g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.35 + 0.1 * Math.sin(t * 4); g.lineWidth = 7 * k;
+        g.setLineDash([3 * k, 2 * k]); g.beginPath();
+        pts.forEach((p, i) => i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y))); g.stroke(); g.restore();
+      }
+      const nk = s.nudge?.lane === l ? s.nudge.k : 0;
+      if (s.phase === 'run' && nk > 0) {
+        g.strokeStyle = `rgba(160,200,255,${(0.04 + 0.08 * nk).toFixed(3)})`; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
         g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y)))); g.stroke();
       }
-      // flowing chevrons toward the base
-      g.fillStyle = 'rgba(255,210,74,0.12)';
-      for (let i = 0; i < pts.length - 1; i += 3) {
-        const a = pts[i], b = pts[i + 1], ph = (t * 0.8 + i * 0.13) % 1;
-        if (ph > 0.5) continue;
-        const ang = Math.atan2(this.Y(b.y) - this.Y(a.y), this.X(b.x) - this.X(a.x));
-        g.save(); g.translate(this.X(a.x), this.Y(a.y)); g.rotate(ang);
-        g.beginPath(); g.moveTo(1 * k, 0); g.lineTo(-0.6 * k, 1 * k); g.lineTo(-0.6 * k, -1 * k); g.closePath(); g.fill(); g.restore();
-      }
-      // spawn gate
+      // Painted burrows carry spawn identity; keep guidance subtle and temporary.
       const sp = pts[Math.min(3, pts.length - 1)], gx = this.X(Math.max(3, Math.min(97, sp.x))), gy = this.Y(Math.max(3, sp.y));
-      const next = s.phase === 'run' && s.forecast.mainLane === l, boss = next && s.forecast.boss;
-      const gc = boss ? COL.gold : next ? '#ff8a6a' : '#5a7090';
-      glowAt(g, gc, gx, gy, (4 + Math.sin(t * 3 + l) * 0.6) * k, 0.45);
-      g.strokeStyle = gc; g.lineWidth = Math.max(1, k * 0.4); g.beginPath(); g.arc(gx, gy, 2.6 * k, t * 2, t * 2 + Math.PI * 1.4); g.stroke();
-      if (this.laneShown.lane !== s.lane) this.laneShown = { lane: s.lane, at: this.wall };
+      const nl = s.nudge?.lane ?? -1;
+      if (this.laneShown.lane !== nl) this.laneShown = { lane: nl, at: this.wall };
       const since = this.wall - this.laneShown.at;
-      if (s.phase === 'run' && (s.lane === l || s.lane < 0) && since < 2 && this.laneShown.at > 0.5) {
+      if (s.phase === 'run' && nl === l && since < 2 && this.laneShown.at > 0.5) {
         g.globalAlpha = Math.min(1, (2 - since) * 2);
         g.font = `800 ${Math.max(10, Math.round(2.6 * k))}px system-ui, sans-serif`; g.textAlign = 'center';
-        g.fillStyle = 'rgba(200,225,255,0.85)'; g.fillText(s.lane < 0 ? 'ALL LANES' : `${LANE_NAMES[l].toUpperCase()} · PRIORITY`, gx, gy + 7 * k); g.textAlign = 'left';
+        g.fillStyle = 'rgba(200,225,255,0.85)'; g.fillText(`${LANE_NAMES[l].toUpperCase()} · NUDGE`, gx, gy + 7 * k); g.textAlign = 'left';
         g.globalAlpha = 1;
-      }
-    }
-  }
-
-  private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
-    const k = this.k, bx = this.X(BASE_X), by = this.Y(BASE_Y);
-    for (const tw of s.towers) {
-      const p = PADS[tw.pad], x = this.X(p.x), y = this.Y(p.y);
-      g.strokeStyle = '#0c1018'; g.lineWidth = Math.max(2, k * 0.9);
-      g.beginPath(); g.moveTo(bx, by); g.quadraticCurveTo((bx + x) / 2, Math.max(by, y) + 4 * k, x, y); g.stroke();
-      if (s.grid > 0.05) {
-        g.strokeStyle = this.color; g.globalAlpha = 0.25 + 0.35 * Math.min(1, s.grid); g.lineWidth = Math.max(1, k * 0.4);
-        g.setLineDash([1.5 * k, 3 * k]); g.lineDashOffset = -t * 12 * k * s.grid;
-        g.beginPath(); g.moveTo(bx, by); g.quadraticCurveTo((bx + x) / 2, Math.max(by, y) + 4 * k, x, y); g.stroke();
-        g.setLineDash([]); g.lineDashOffset = 0; g.globalAlpha = 1;
       }
     }
   }
@@ -476,7 +555,8 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
         g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, x1, y1, 3 * k, life);
-      } else if (f.kind === 'boom') {
+
+      } else if (f.kind === 'boom' || f.kind === 'burst') {
         glowAt(g, '#ff7a2a', this.X(f.x), this.Y(f.y), f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
       }
     }

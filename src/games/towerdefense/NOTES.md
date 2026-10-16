@@ -1,35 +1,40 @@
 # Dynamo Defense (towerdefense)
 
-CONTRACT-REQUESTs: none.
+## Endless runs and saves
+- Falling or pause-menu bail banks every part and returns to Garage; the ride stays open. Garage has a six-second breather and 30-second pedalling auto-start.
+- Game-local `sim/save.ts` validates v3 and migrates legacy/v2; bank, upgrades, best wave and crew preference survive, cores are retired. Each run clears combat/action/effort state; ride totals accumulate.
 
-## Layout
-- `sim/defs.ts` (pure): enemy kinds, towers + level tables, 3 curved Bézier lanes (`laneAt` arc-length lookup), 6 build pads, base geometry. Aim angle 0 = up from the base.
-- `sim/waves.ts` (pure, rng passed in): `planWave` heavies per wave, lane bias (main lane, second front from wave 8), dart packs, boss every 5; per-lane colour counts feed the next-wave forecast.
-- `sim/meta.ts`: Garage upgrades (cost = base x growth^level), `metaMods`, `autoInvest`, `partsForWave`.
-- `sim/sim.ts`: `createTdSim(ctx, { autopilot?, skipGarage? })`, `sim/save.ts` owns `readSave` (legacy/v2 → game-local v3). `sim/types.ts`: `TdSnapshot` view-model.
-- `render/`: `layout.ts` (pure; wide = side panels, narrow = top bar; tested vs insets), `renderer.ts` (cached background, particles, fx, shake/flash, cues -> `audio/sfx`, ambient flame/hum, taps), `sprites.ts` (procedural enemies, towers, dynamo base + turret), `panels.ts` (weapons/rail/dynamo, wave/base/surge/forecast/legend, workshop, garage, banners).
+## Seams
+- `sim/defs.ts`: enemies, towers/levels, three curved lanes and six pads; `waves.ts`: seeded brood order, off-colour packs, forecasts, clear healing.
+- `sim/boss.ts` and `sim/efforts.ts` retain #140’s HP-gated boss ladder, stagger/Exposed timing, and seeded spin/grind/hold calls. Live matchups and fuel-blooded ignition retain turret/tower attribution.
+- `sim/targeting.ts`: automatic targeting, threat and decaying optional lane nudges. All shifters stay virtual gears; `aimMode` is ignored.
+- `sim/construction.ts`: pure, affordable build/upgrade/repair recommendation, weighted by off-colour danger, live matchups and existing coverage; resisted choices are excluded. Upgrade orders quote the final level and total cost, including multiple levels when funded.
+- `sim/types.ts`: additive snapshot fields `actions`, `refill`, `slowLane`, `suggestion`, `constructionDone`, `autoCrew`, `inputEpoch`; workshop adds `revision`. These are the sim/renderer seam for #126.
+- The shell owns filled action controls in its existing HUD band: controller keys when legends are on, compact blocks when off. `render/layout.ts` reclaims the canvas dock space under `mount.hudControls`; bare renderers retain a fallback dock. The radial workshop stays above the actual inset.
+- HUD (#126): `render/panels.ts` uses shared CSS tokens, glass panels and inherited font for wave/progress, HP, scrap, current brood/mode and next forecast. No weapon list or duplicate power/controller HUD. Recovery replaces the forecast with a countdown/recover-or-ramp cue in the same brood strip, including while the workshop is open; no centered recovery card. Layout tests cover shell and standalone modes vs insets.
+- `render/aliens/` (#132): cut-out puppets with distance-based gaits, cached device-pixel frames, live boss poses, husks, brood splats and fire bursts; vector enemies remain the loading fallback. Assets: `public/td/aliens/`, packed by `scripts/td-pack-aliens.ts`.
+- Painted battlefield, animated machinery, connected conduits, hive entries, loading gate and portrait margins: `render/NOTES.md`.
 
-## Rules (all numbers are `towerdefense.*` tunables)
-- Weapons per spec: Gatling = sim +1% (bullets per crank rev), Flamer = resistance 35% (dps per watt), Rail = ERG 0.95 FTP (charges at >= 0.75 FTP from any weapon, max 3; Z tap = 1, hold 0.5 s = all) plus a weak targeting laser while selected.
-- Enemies: mini/dart (blue), brute/charger (red, chargers sprint the last half), bastion/carrier (purple, carriers drop minis), prism (cycles colour every 4 s from wave 12), Goliath boss (gold, shield cycles; escorts at 66/33% HP). Right colour x1.5, wrong x0.25.
-- Dynamo: towers fire at `ftpFraction / towerNominalFtp` speed (0.65 FTP = 100%, cap 160%, 0 under 15 rpm). Sprinting = Overdrive (x1.5 damage + tower speed).
-- Towers: Tesla (chain, blue), Mortar (splash shells, red), Prism Lens (beam at the toughest, purple); Lv 1-5. Scrap from kills/waves buys, upgrades, sells (50%) and repairs the base.
-- Power Surge every 3 waves from wave 3: 15 s at `min(5, powerZone)` >= 4 within 45 s fires an EMP (kills small fry, damages heavies), +scrap, +1 rail charge. Short effort, so judged on power (SPEC short-effort rule); `targetZone.source: 'power'` (also on the Rail band). `hooks.storm`/`hooks.surge` set while active.
-- Spin-up (cadence drill) every 3 waves from wave 4: 15 s at >= 95 rpm (`cadence3s`) within 40 s -> Gatling Overclock (double fire rate) for 30 s + scrap. Sets `GameHud.targetCadence`. Fake scripts never reach 95 rpm, so tests drive it with manual cadence.
-- Endless roguelite runs (#121): base HP 70; falling or Pause → Return to Garage banks all parts, clears combat, emits `runEnded{reason: fell|bail}` and returns to Garage; `isOver()` stays false. All core tunables/options/pips removed.
-- Waves end early (heal) when heavies are dead after `waveMinS`, else at `waveMaxS` (60 s).
+## Play and controls (#119, #120, #122, #123)
+- Every wave has one brood/weapon/trainer mode. Its 15 s lull announces the coming wave and ramps the trainer over the last 6 s. During that lull `brood` is the incoming wave; `nextBrood` is one wave further ahead.
+- A accepts the displayed work order during a lull, otherwise opens construction. ▼ always opens the full workshop. It never auto-opens.
+- Auto-crew defaults ON and accepts one order at the lull's end. Commander mode OFF requires one acceptance per lull. A successful manual build/upgrade/repair consumes that lull's crew order; an open workshop prevents automatic spending. Overrides remain available throughout combat.
+- Workshop: ◀▶ pads/base, ▲▼ option, A confirm, B close (10 s idle timeout). Tap pads/base to open, then tap build/upgrade/sell/repair or the saved Auto-crew toggle. Touch and controller share selection and purchase state.
+- B Overcharge: towers fire x1.5 for 10 s; 60 s base cooldown. Y Slow field: most threatened lane moves 40% slower for 8 s; 50 s base cooldown. They are optional; unusable actions consume nothing.
+- Hold ▲ (or the HUD’s Sprint boost touch key) during a Rail boss telegraph/opening for the optional ERG push. A remains construction; menu/pause/cancel clears both gesture types.
+- Z Rail: tap = one stored charge, hold 0.5 s = all. Touch and controller share a gesture; cancel/drag away/lost capture/blur/pause/menu changes discard it. Stock still requires >= 0.75 FTP (20 s nominal, max 3), independent of cooldown refill.
+- Overcharge/Slow use shared `core/cooldown.ts` refill at `min(5, powerZone)` and shared fill-up buttons. A sprint edge completes those cooldowns once, without creating rail stock. Every action parameter is a `towerdefense.*` tunable. Overcharge stacks with sprint Overdrive's tower-speed multiplier.
+- Combat inputs are consumed while construction is open. Stale menu revisions/epochs/quotes and same-tick touch/controller duplicates cannot buy twice. The shell sends `inputCancel` on pause to discard queued input and resume edges.
+- ◀▶/paddles nudge a lane for 6 s; ▲ clears it. Turret aim and weapon choice remain automatic. Repair remains a scrap purchase; cooldown Field Repair is deferred by owner choice.
 
-## Controls (bike-first)
-- A/B/Y weapons, Z rail, paddles aim (auto-aim after 1.5 s idle, prefers the priority lane), D-pad left/right = priority lane, up = all lanes, down = workshop.
-- Workshop: left/right = pad (6 pads + base repair), up/down = option (preset to the tower the lane's next push needs), A = build/upgrade, B = close (auto-closes after 10 s). Taps: pads, base, rows, weapon cards, rail pips.
-- Garage (skipped initially for new riders/autopilot; always shown after fall/bail): up/down + A buys, left/right sets start wave, B starts; auto-starts after `garageAutostartS` (30 s) above `garageCadenceRpm` (30 rpm); `garageBreatherS` (6 s) delays auto-start after a return. Manual start still works during the breather. Garage trainer effect = neutral sim grade.
+## Saves and balance
+- Save v3 keeps `autoCrew` independently of Garage `autoInvest`; missing crew preference defaults ON and explicit OFF survives migration/reload.
+- `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
+- The `surge-ready-deep` achievement fixture explicitly uses `actionBot`, hook-responsive riding and a reinforced-base tuning override to reach wave 40; passive survival remains measured separately. Achievement thresholds are unchanged.
 
-## Progression / save
-- Game-owned `{ v: 3, bestWave, bank, upgrades, runs, autoInvest, totals }`; totals add runsFallen/runsBailed; v2 core fields dropped without losing progress. Registers GameModule.save; shared pure reader validates types/bounds/upgrades, explicitly migrates v1→v2→v3, and blocks newer/invalid saves intact. All arcade games own independent readers; no global save bump. Parts bank/persist on wave clears and boss kills, at fall/bail and on dispose; no duplicate credit.
-- Reset all run-only combat state on restart; retain ride totals. Summary: runs/runsFallen/runsBailed/partsEarned/wavesCleared across the ride, wavesSurvived and bestRunSurges = best single run (achievements cannot combine runs). Z2 autopilot seed 1 falls at wave 51 around 40 min and starts again.
-
-## Testing
-`npx vitest run src/games/towerdefense`: scenarios (sprints, idle-falls, endless-restart, intervals, z2-economy, surge-ready), v2→v3 migration, fall/bail banking, duplicate bail/dispose, fresh restart, breather/auto-start, other-game preservation, spin-up/surge targets, geometry, waves, garage purchase via TimelineInput, workshop flow, power-gated towers, rail cap/dump, layout vs insets.
-
-## Known gaps
-Renderer checked with throwaway Playwright screenshots (landscape/portrait/phone), not yet on a real iPad; sounds untested by ear. Manual (non-autopilot) play not balance-tested.
+## Verification and device check
+- `npx tsc --noEmit -p .`; `npx vitest run src/games/towerdefense` covers action effects/refill/sprint edges, commander/crew saves, stale/double purchases, mixed input, held Rail cancellation, layout/insets and four-seed passive/active scenarios.
+- `npm run dev -- --port 5203`, then `node scripts/towerdefense-hud-smoke.mjs`: both HUD modes at landscape/portrait/phone/short sizes, mixed upgrades, fills, Rail holds/cancel/toggle and boss boost; screenshots in `/tmp/towerdefense-hud`. The renderer smoke separately covers the no-shell fallback.
+- Interactive harness: `/dev/towerdefense.html?crew=0&legend=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=2` starts a control demo at wave 5 with a reduced Rail laser.
+- Prior #126 visual checks: 2x touch-enabled Chromium captures at 1180×820, 820×1180 and 390×844 for combat/recovery/workshop, with real `HudLayer`; DOM bounds/overflow and clear recovery map checked. Recorded a manual recovery build with the countdown visible. Shared HUD smoke covers both legends, actions, upgrades and held-input cancellation; typecheck, build and 167 targeted tests pass.
+- Real iPad/Bluefy and Ride hardware remain unverified: check seated thumb reach on the dock/radial targets, action response at 1x, simultaneous touch/controller input, release/cancel, portrait rotation and the real HUD band. Sounds need an ear check.

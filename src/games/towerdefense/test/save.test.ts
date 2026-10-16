@@ -4,14 +4,14 @@ import { readSave } from '../sim/save';
 describe('Dynamo Defense save migrations', () => {
   it('migrates v2 without losing progress and drops retired core fields', () => {
     const raw = {
-      v: 2, bank: 4321, bestWave: 24, upgrades: { plating: 3, headstart: 4 }, runs: 9, autoInvest: true,
+      v: 2, bank: 4321, bestWave: 24, upgrades: { plating: 3, headstart: 4 }, runs: 9, autoInvest: true, autoCrew: false,
       cores: 2, coresMax: 3,
       totals: { waves: 88, kills: 901, bosses: 12, towers: 31, surges: 17, coresLost: 8 },
     };
     const before = structuredClone(raw);
     const migrated = readSave(raw);
     expect(migrated).toEqual({
-      v: 3, bank: 4321, bestWave: 24, upgrades: { plating: 3, headstart: 4 }, runs: 9, autoInvest: true,
+      v: 3, bank: 4321, bestWave: 24, upgrades: { plating: 3, headstart: 4 }, runs: 9, autoInvest: true, autoCrew: false,
       totals: { waves: 88, kills: 901, bosses: 12, towers: 31, surges: 17, runsFallen: 0, runsBailed: 0 },
     });
     migrated.upgrades.plating = 4;
@@ -38,7 +38,7 @@ describe('Dynamo Defense save migrations', () => {
   it.each([
     [], 'bad', 42, { v: '3' }, { v: 0 }, { v: 3.5 },
     { bank: 'oops' }, { bank: NaN }, { bank: Infinity }, { bank: -1 }, { bank: 1.5 },
-    { runs: -5 }, { bestWave: Number.MAX_SAFE_INTEGER + 1 }, { autoInvest: 'yes' },
+    { runs: -5 }, { bestWave: Number.MAX_SAFE_INTEGER + 1 }, { autoInvest: 'yes' }, { autoCrew: 'yes' },
     { upgrades: [] }, { upgrades: null }, { totals: null }, { upgrades: { plating: 10000 } }, { upgrades: { capacity: 3 } },
     { upgrades: { plating: 1.2 } }, { upgrades: { unknown: 1 } }, { totals: { kills: -1 } },
   ])('rejects invalid save data %j', (raw) => {

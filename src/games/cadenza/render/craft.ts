@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries, toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { SHIP_IDS, type ShipId } from '../sim/ships';
 
 function glowTexture(): THREE.Texture {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -65,10 +66,9 @@ const round = (w: number, h: number): Array<[number, number]> => Array.from({ le
 type Sec = [number, number, number, number?, number?];
 const at = (secs: Sec[], x: number, y: number): Sec[] => secs.map(([z, w, h]) => [z, w, h, x, y]);
 
-/** Hull ids double as the `ship` cosmetic ids (src/cosmetics/catalog.ts). */
-export const CRAFT_KINDS = ['triad', 'lancer', 'manta'] as const;
-export type CraftKind = (typeof CRAFT_KINDS)[number];
-export const isCraftKind = (id: unknown): id is CraftKind => (CRAFT_KINDS as readonly unknown[]).includes(id);
+/** One hull per ship in the sim's table (sim/ships.ts: names, playstyles, unlocks). */
+export const CRAFT_KINDS = SHIP_IDS;
+export type CraftKind = ShipId;
 /** One engine as the ship's effects see it: nozzle centre, lip radius and lip z. */
 export type Engine = [x: number, y: number, r: number, z: number];
 interface Parts { hull: THREE.BufferGeometry[]; glow: THREE.BufferGeometry[]; cores: THREE.BufferGeometry[]; throats: THREE.BufferGeometry[]; trim: THREE.BufferGeometry[]; engines: Engine[] }
@@ -245,6 +245,8 @@ export class Craft {
     this.trail.frustumCulled = false;
   }
   get trailMesh() { return this.trail; }
+  /** Restart the ribbons from wherever the craft is next (after it was shown somewhere else, e.g. the menu showcase). */
+  resetTrail() { this.trailInit = false; }
 
   absorb(c: THREE.Color) { this.flashC.copy(c); this.flash = 1; this.kick = Math.min(1.6, this.kick + 0.5); }
   greyHit() { this.hurt = 1; this.knock = 1; }

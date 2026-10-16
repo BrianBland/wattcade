@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import type { CadenzaSnapshot } from '../sim/sim';
+import { MENU, type CadenzaSnapshot } from '../sim/sim';
 import { Hud } from '../render/hud';
 import { rideTimeline } from './fixtures';
 
@@ -57,7 +57,7 @@ it('starts the ride from the touch menu', () => {
   const hud = new Hud(document.body);
   hud.setSend((a) => s.sim.receive?.(a));
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 0);
-  const row = document.querySelector('[data-i="4"]')!;
+  const row = document.querySelector(`[data-i="${MENU.start}"]`)!;
   expect(row.textContent).toContain('Ride');
   row.dispatchEvent(new Event('pointerdown', { bubbles: true })); s.step(1);
   expect((s.sim.snapshot() as CadenzaSnapshot).menu).toBeNull();

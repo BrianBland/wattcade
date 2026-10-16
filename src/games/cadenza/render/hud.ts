@@ -1,6 +1,8 @@
 import type { CadenzaSnapshot, SongRecap } from '../sim/sim';
 import type { Box, Layout } from './layout';
 import { rideIndexAt } from '../sim/ride';
+import { MENU } from '../sim/sim';
+import { SHIPS } from '../sim/ships';
 
 /** Wipeout-flavoured DOM HUD: score, target card, shield, now playing, coaching callout + countdown, launch meter, recaps, pre-game menu. */
 const CSS = `
@@ -32,6 +34,8 @@ const CSS = `
 .ws-row.go { justify-content:center; background:var(--acc); color:#000; font-size:20px; }
 .ws-row.go.f { box-shadow:0 0 20px var(--acc); border-color:#fff; }
 .ws-menu small { font:600 12px system-ui; text-transform:none; opacity:.7; text-align:center; }
+.ws-ship { margin:-4px 12px 2px; font:600 13px system-ui; letter-spacing:.3px; text-transform:none; opacity:.85; }
+.ws-lock { margin:0 12px; font:600 12px system-ui; letter-spacing:.3px; text-transform:none; opacity:.55; }
 .ws-pop { position:absolute; left:0; top:100%; font-size:26px; font-weight:900; font-style:italic; letter-spacing:3px; white-space:nowrap; color:#fff; text-shadow:0 0 16px var(--acc), 0 2px 0 #000; opacity:0; transform:translateY(6px) scale(.8); transition:opacity .25s, transform .25s; }
 .ws-pop.on { opacity:1; transform:none; } .ws-pop.bad { color:#9aa0b4; text-shadow:0 2px 0 #000; }
 .ws-launch { text-align:center; opacity:0; transition:opacity .2s; }
@@ -135,18 +139,23 @@ export class Hud {
       this.effortKey = ''; this.calloutUntil = 0;
       this.menu.style.display = 'flex';
       for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = 'none';
-      const m = s.menu, key = JSON.stringify(m) + accent;
+      const m = s.menu, key = JSON.stringify(m) + s.ship + accent;
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        const sh = SHIPS[s.ship], locked = m.locked.map((id) => `<div class="ws-lock">🔒 ${SHIPS[id].name} · ${SHIPS[id].style}: ${SHIPS[id].unlock?.hint ?? ''}</div>`).join('');
+        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === MENU.mode ? ' f' : ''}" data-i="${MENU.mode}">Mode<em>Mono</em></div>`
+          + (m.ships.length > 1 ? row(MENU.ship, 'Ship', `${sh.name} · ${sh.style}`) : `<div class="ws-row${m.row === MENU.ship ? ' f' : ''}" data-i="${MENU.ship}">Ship<em>${sh.name} · ${sh.style}</em></div>`)
+          + `<div class="ws-ship">${sh.blurb}</div>${locked}`
+          + `${row(MENU.difficulty, 'Difficulty', m.difficulty)}${row(MENU.trainer, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(MENU.flash, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(MENU.start, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
         this.menu.querySelectorAll<HTMLElement>('.ws-row').forEach((r) => r.addEventListener('pointerdown', (e) => {
           e.preventDefault(); e.stopPropagation();
           const i = Number(r.dataset.i);
-          if (i === 1) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
-          if (i === 2) this.send?.({ type: 'trainer' });
-          if (i === 3) this.send?.({ type: 'flash' });
-          if (i === 4 || i === 0) this.send?.({ type: 'start' });
+          if (i === MENU.ship && m.ships.length > 1) this.send?.({ type: 'ship', value: m.ships[(m.ships.indexOf(s.ship) + 1) % m.ships.length] });
+          if (i === MENU.difficulty) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
+          if (i === MENU.trainer) this.send?.({ type: 'trainer' });
+          if (i === MENU.flash) this.send?.({ type: 'flash' });
+          if (i === MENU.start || i === MENU.mode) this.send?.({ type: 'start' });
         }));
       }
       return;

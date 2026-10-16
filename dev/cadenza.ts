@@ -1,5 +1,6 @@
 // Dev harness: Cadenza on the fake bike with a synth queue (no audio), without the shell.
 //   /dev/cadenza.html?script=target-follow&style=edm&songs=2&sec=40&autopilot=1&inset=120&speed=1&menu=1&diff=pro
+//   (&ships=all unlocks every ship; &ship=lancer picks one)
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { synthTimeline } from '../src/media/synth/queue';
@@ -9,15 +10,16 @@ const q = new URLSearchParams(location.search);
 const inset = Number(q.get('inset') ?? 120), speed = Number(q.get('speed') ?? 1);
 const hub = new InputHub(); hub.attachKeyboard(window);
 const timeline = synthTimeline({ style: (q.get('style') ?? 'edm') as 'edm', songs: Number(q.get('songs') ?? 2), seed: Number(q.get('seed') ?? 1), mix: 'automix' });
+const profile = testProfile(q.get('ships') === 'all' ? { achievements: ['cz_sets', 'cz_launches'] } : {});
 const session = createGameSession({
-  game: module, profile: testProfile(), input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
-  media: { timeline }, simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },
+  game: module, profile, input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
+  media: { timeline }, simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('ship') ? { ship: q.get('ship') } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;
 bar.style.height = `${inset}px`;
 const r = await module.loadRenderer();
-r.mount(app, { profile: testProfile(), send: (a) => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 } });
+r.mount(app, { profile, send: (a) => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 } });
 let last = performance.now();
 const loop = (now: number) => {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;

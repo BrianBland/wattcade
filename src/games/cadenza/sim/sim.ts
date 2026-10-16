@@ -4,12 +4,13 @@ import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZO
 import { rideIndexAt } from './ride';
 import { advanceCoaching, freshCoaching, type Direction } from './coaching';
 import { Announcements } from './announcements';
+import { SHIP_IDS, SHIPS, isShipId, shipUnlocked, type ShipId } from './ships';
 
 export type TrainerStyle = 'grade' | 'erg';
-export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
+export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle; ship?: ShipId }
 export interface CadenzaSave {
   plays?: number; sets?: number; bestScore?: number; best?: Record<string, number>;
-  lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle;
+  lastDifficulty?: Difficulty; lastMode?: Mode; reducedFlash?: boolean; trainer?: TrainerStyle; ship?: ShipId;
 }
 /** One finished song's recap. `strip` = effort per second: 0 on target, 1 under, 2 over, 3 recovering (no target). */
 export interface SongRecap {
@@ -30,7 +31,11 @@ export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >=
 
 export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
-  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
+  menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number;
+    /** Ships the rider can pick (in order); the locked ones are shown with how to unlock them. */
+    ships: ShipId[]; locked: ShipId[] } | null;
+  /** The ship being flown (or previewed in the menu). */
+  ship: ShipId;
   track: Track; blockState: Uint8Array; x: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
@@ -52,8 +57,8 @@ export interface CadenzaSnapshot {
   hooks: { powerFtp: number };
 }
 
-const MENU_ROWS = 5; // mode, difficulty, trainer, reduced flashing, start
-export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, start: 4 } as const;
+const MENU_ROWS = 6; // mode, ship, difficulty, trainer, reduced flashing, start
+export const MENU = { mode: 0, ship: 1, difficulty: 2, trainer: 3, flash: 4, start: 5 } as const;
 const MENU_AUTO_S = 25;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const FIXED = 1 / 30;
@@ -75,6 +80,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     hitWindow: t.num('hitWindow', 0.55, 0.3, 1, 0.05, 'Lateral catch radius (lanes)'),
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
+    allShips: t.num('unlockAllShips', 0, 0, 1, 1, 'Playtesting: 1 = every ship selectable'),
   };
   const save: CadenzaSave = { ...(ctx.load<CadenzaSave>() ?? {}) };
   const seed = opts.seed ?? 1;
@@ -83,6 +89,12 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let mode: Mode = 'mono'; // classic arrives in a later phase
   let reducedFlash = !!save.reducedFlash;
   let trainer: TrainerStyle = opts.trainer ?? save.trainer ?? 'grade';
+  const achieved = ctx.profile.achievements ?? [];
+  const pickable = () => SHIP_IDS.filter((id) => shipUnlocked(id, achieved, tun.allShips() >= 1));
+  // Saved choice first; riders who equipped a ship in the old Locker slot keep it.
+  const wanted = opts.ship ?? save.ship ?? ctx.profile.cosmetics?.loadout?.ship;
+  let ship: ShipId = isShipId(wanted) && (opts.ship || pickable().includes(wanted)) ? wanted : 'triad';
+  const def = () => SHIPS[ship];
   let menu = opts.menu !== false && !opts.autopilot && !opts.difficulty;
   let menuRow: number = MENU.start, menuT = 0;
   let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
@@ -121,14 +133,15 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   };
   const position = () => (ctx.media ? ctx.media.positionS() : ownP);
   const half = () => (track.lanes - 1) / 2;
-  const mult = () => (dropoutLeft >= 0 ? 1 : Math.min(4, 1 + Math.floor(chain / 8) * 0.5)) * (overdrive ? 2 : 1);
+  const mult = () => (dropoutLeft >= 0 ? 1 : Math.min(4, 1 + Math.floor(chain / def().chainStep) * 0.5)) * (overdrive ? 2 : 1);
+  const catchR = () => tun.hitWindow() * def().catch;
 
   const startRide = () => {
     menu = false;
     track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
     announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
-    save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; ctx.save(save);
+    save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; save.ship = ship; ctx.save(save);
     ctx.resistance.useVirtualGears(true);
   };
   if (!menu) startRide();
@@ -150,7 +163,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       let want = laneTarget;
       const nextColour = track.blocks.slice(nextBlock, nextBlock + 8).find((b) => b.color >= 0 && b.t < p + 1.5);
       if (nextColour) want = nextColour.lane;
-      if (nb && nb.color < 0 && nb.t < p + 0.6 && Math.abs(nb.lane - (nb.t - p < 0.15 ? x : want)) <= tun.hitWindow()) {
+      if (nb && nb.color < 0 && nb.t < p + 0.6 && Math.abs(nb.lane - (nb.t - p < 0.15 ? x : want)) <= catchR()) {
         const away = [nb.lane - 1, nb.lane + 1].filter((l) => l >= -h && l <= h);
         want = away.sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
       }
@@ -190,6 +203,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     if (inp.pressed.has('down')) menuRow = (menuRow + 1) % MENU_ROWS;
     const dir = (inp.pressed.has('right') || inp.pressed.has('shiftUpR') ? 1 : 0) - (inp.pressed.has('left') || inp.pressed.has('shiftUpL') ? 1 : 0);
     const change = (row: number, d: number) => {
+      if (row === MENU.ship) { const ids = pickable(); ship = ids[(ids.indexOf(ship) + d + ids.length) % ids.length]; }
       if (row === MENU.difficulty) difficulty = DIFFICULTIES[(DIFFICULTIES.indexOf(difficulty) + d + 3) % 3];
       if (row === MENU.trainer) trainer = trainer === 'grade' ? 'erg' : 'grade';
       if (row === MENU.flash) reducedFlash = !reducedFlash;
@@ -199,6 +213,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     if (inp.pressed.has('a')) { if (menuRow === MENU.start || menuRow === MENU.mode) go = true; else change(menuRow, 1); }
     for (const a of actions.splice(0)) {
       if (a.type === 'difficulty' && DIFFICULTIES.includes(a.value as Difficulty)) difficulty = a.value as Difficulty;
+      if (a.type === 'ship' && isShipId(a.value) && pickable().includes(a.value)) ship = a.value;
       if (a.type === 'trainer') trainer = trainer === 'grade' ? 'erg' : 'grade';
       if (a.type === 'flash') reducedFlash = !reducedFlash;
       if (a.type === 'start') go = true;
@@ -272,7 +287,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (launchActive) { launchSum += (erg ? bike.cadence3s / 90 : ftp / Math.max(0.3, e.floorFtp)) * dt; launchT += dt; }
       if (L && p >= L.t1) {
         const ratio = launchT > 0 ? launchSum / launchT : 0, rt = rateLaunch(ratio), z = track.zones[L.zone];
-        const bonus = dropoutLeft >= 0 ? 0 : Math.round(500 * rt.x * (1 + 0.1 * (z.n - 1)));
+        const bonus = dropoutLeft >= 0 ? 0 : Math.round(500 * rt.x * (1 + 0.1 * (z.n - 1)) * def().launchBonus);
         score += bonus; launches++; launchBonus += bonus; if (rt.r === 'perfect') perfectLaunches++;
         launchResult = { rating: rt.r, bonus, ratio, at: p };
         cue('launch', { rating: rt.r, bonus, ratio: Math.round(ratio * 100) / 100 }); song.launches.push(rt.r);
@@ -288,7 +303,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (dropoutLeft >= 0) {
         dropoutLeft = ok ? dropoutLeft - dt : tun.rebootS();
         if (dropoutLeft <= 0) { dropoutLeft = -1; shield = 50; cue('reboot'); }
-      } else if (ok) shield = Math.min(100, shield + tun.recharge() * dt);
+      } else if (ok) shield = Math.min(100, shield + tun.recharge() * def().recharge * dt);
       else if (underS > tun.underGrace() && p > START_GRACE_S) {
         shield -= tun.underDrain() * Math.max(0.35, under) * dt; underDrainS += dt;
         if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cue('dropout'); }
@@ -306,13 +321,14 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       // steering
       steer();
       const h = half();
-      x += clamp(laneTarget - x, -tun.steer() * dt, tun.steer() * dt);
+      const rate = tun.steer() * def().steer;
+      x += clamp(laneTarget - x, -rate * dt, rate * dt);
       x = clamp(x, -h, h);
 
       // blocks reaching the craft
       while (nextBlock < track.blocks.length && track.blocks[nextBlock].t <= p) {
         const b = track.blocks[nextBlock];
-        const caught = Math.abs(b.lane - x) <= tun.hitWindow();
+        const caught = Math.abs(b.lane - x) <= catchR();
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {
@@ -325,7 +341,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
           if (chain >= 25) cue('chainBreak', { n: chain }, false);
           greysHit++; chain = 0; zoneClean = false; blockState[nextBlock] = BLOCK.GREY_HIT; cue('grey', undefined, false);
           if (dropoutLeft < 0) {
-            shield -= tun.greyHit();
+            shield -= tun.greyHit() * def().greyDamage;
             if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cue('dropout'); }
           }
         } else { greysDodged++; blockState[nextBlock] = BLOCK.GREY_DODGED; }
@@ -362,7 +378,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {
         p, durationS: track.durationS, started, done,
-        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
+        menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT), ships: pickable(), locked: SHIP_IDS.filter((id) => !pickable().includes(id)) } : null,
+        ship,
         track, blockState, x, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
         launch: launchActive
@@ -393,7 +410,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         score, collected, missed, accuracyPct: total ? Math.round((100 * collected) / total) : 0, maxChain,
         greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS), underDrainS: Math.round(underDrainS),
         launches, perfectLaunches, launchBonus,
-        zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer,
+        zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer, ship,
       };
     },
   };

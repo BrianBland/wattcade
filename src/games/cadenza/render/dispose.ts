@@ -11,8 +11,7 @@ export function disposeObjects(...roots: THREE.Object3D[]): void {
   });
   for (const g of geometries) g.dispose();
   for (const m of materials) {
-    const map = (m as THREE.MeshBasicMaterial).map;
-    if (map) textures.add(map);
+    for (const t of [(m as THREE.MeshBasicMaterial).map, (m as THREE.MeshBasicMaterial).alphaMap]) if (t) textures.add(t);
     m.dispose();
   }
   for (const texture of textures) texture.dispose();

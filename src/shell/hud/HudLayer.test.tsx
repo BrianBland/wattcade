@@ -20,7 +20,15 @@ it('opens the menu from the center hit target while shifters remain independent'
     act(() => { vi.advanceTimersByTime(100); });
     const hit = el.querySelector<HTMLButtonElement>('.hud-menu-hit')!;
     expect(hit.getAttribute('aria-label')).toBe('Open game menu');
-    expect(el.querySelectorAll('.hud-center button')).toHaveLength(1);
+    const compactShift = el.querySelector<HTMLButtonElement>('[aria-label="Gear up"]')!;
+    const down = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(down, 'pointerId', { value: 51 });
+    act(() => { compactShift.dispatchEvent(down); input.beginTick(.1); });
+    expect(input.state().held.has('shiftUpL')).toBe(true);
+    act(() => render(<HudLayer session={session} profile={profile} paused legendOn />, el));
+    act(() => input.beginTick(.1));
+    expect(el.querySelector<HTMLButtonElement>('[aria-label="Gear up"]')!.disabled).toBe(true);
+    expect(input.state().held.has('shiftUpL')).toBe(false);
     expect(el.querySelectorAll('.pc-gear')).toHaveLength(2);
     const shift = el.querySelector<HTMLButtonElement>('[aria-label="shiftUpL"]')!;
     act(() => shift.click());

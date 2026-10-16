@@ -139,6 +139,7 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-label-track { display: flex; margin-left: 35px; margin-right: 3px; }
 .zw-label { max-width: 100%; font: 700 11px/1.2 system-ui; margin-top: 3px; overflow-wrap: anywhere; }
 .zw-cad-guide { padding-left: 22px; display: block; font: 600 10px/1.3 system-ui; font-style: normal; margin-top: 4px; white-space: nowrap; }
+.zw-unit, .zw-gear-controls { display: none; }
 .zw-cad.ok { color: #2de26a; }
 .zw-cad.low, .zw-cad.high { color: #ffd23b; }
 .zw-history { margin-left: 35px; margin-right: 3px; }
@@ -214,6 +215,50 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .zw-ftp, .zw-cad-guide { padding-left: 17px; }
   .zw-clock b { font-size: 14px; }
+}
+
+/* Compact instruments stay inside the controller-height envelope in portrait. */
+@media (max-width: 700px), (orientation: portrait) {
+  :root { --k: clamp(32px, 10vw, 56px); }
+  .hud { gap: 6px; padding-left: 4px; padding-right: 4px; }
+  .hood { flex: none; flex-direction: column; gap: 4px; }
+  .pc-grid { min-height: 100px; }
+  .hood .pp, .hood .shift:has(.pc-gear) { display: none; }
+  /* Keep game-specific shifter actions, rather than silently removing inputs. */
+  .hood .shift { order: -1; }
+  .hood .shift .pc-btns { flex-direction: row; }
+  .hood .shift .pk { width: var(--k); height: 32px; border-radius: 8px; }
+  .hood .shift .pk span { font-size: 9px; }
+  .pc-grid .pk span { font-size: 9px; }
+  .pc-label { font-size: 10px; }
+  .hud-center { padding: 4px 6px; border-radius: 12px; }
+  .zw-history, .zw-ftp, .zw-fake, .zw-label-track { display: none; }
+  .zw-main { gap: 8px; }
+  .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 3px; }
+  .zw-nums b { font-size: clamp(15px, 4.6vw, 24px); letter-spacing: -.5px; }
+  .zw-nums > div:nth-child(-n+3) .zw-reading { justify-content: center; gap: 1px; }
+  .zw-nums > div:nth-child(-n+3) .zw-metric-icon { width: clamp(9px, 2.6vw, 14px); height: clamp(9px, 2.6vw, 14px); }
+  .zw-unit, .zw-cad-guide { display: block; padding: 0; margin-top: 3px; text-align: center; font-size: clamp(9px, 2.3vw, 11px); line-height: 1; white-space: nowrap; }
+  .zw-cad-guide { letter-spacing: -.3px; }
+  .zw-unit { color: var(--dim); }
+  .zw-clock { grid-column: 1 / -1; }
+  .has-gears .zw-clock { grid-column: 1; }
+  .zw-clock .zw-reading { height: 28px; }
+  .zw-clock b { font-size: clamp(12px, 3.3vw, 20px); }
+  .zw-clock .zw-metric-icon { display: none; }
+  .zw-gear { grid-column: 2 / 4; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+  .zw-gear b { font-size: 16px; }
+  .zw-gear .zw-metric-icon { width: 12px; height: 12px; }
+  .zw-gear-controls { display: flex; gap: 3px; position: relative; z-index: 2; pointer-events: auto; }
+  .zw-gear-controls .pk { width: 28px; height: 28px; border-radius: 8px; }
+  .zw-gear-controls .pk b { font-size: 18px; }
+  .zw-icon { width: 12px; height: 16px; }
+  .zw-meter { gap: 3px; }
+  .zw-bar { margin: 0 2px; }
+  .zw-bar > i { font-size: 8px; }
+  .zw-bar > i.outside { opacity: .6; color: #fff; text-shadow: 0 1px 1px #000; }
+  .hud-actions { flex: 0 0 56px; min-width: 0; }
+  .hud-actions .pk.block { height: 56px; }
 }
 
 /* warm-up stage: the ride behind every menu; screens float above it and fade out when idle */

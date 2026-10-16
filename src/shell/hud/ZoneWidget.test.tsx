@@ -42,3 +42,20 @@ it('does not imply a current HR zone while the sensor is missing', () => {
   expect(el.querySelector('.zw-icon')?.getAttribute('aria-label')).toContain('Waiting for HR');
   expect(el.querySelector('.zw-marker')).toBeNull();
 });
+
+it('replaces the cadence unit with directional target guidance without hiding the current cadence', () => {
+  const el = document.createElement('div');
+  const show = (rpm: number, target?: { min: number; max: number }) => render(<ZoneWidget bike={{ ...bike, cadence3s: rpm }} ftp={250} view={{ source: 'power', pos: { zone: 3, within: .5, pos: .5 } }} cadenceTarget={target} bars={[]} />, el);
+  show(88);
+  expect(el.querySelector('.zw-cad .zw-unit')?.textContent).toBe('rpm');
+  for (const [rpm, text, status] of [[88, '↑ 90–100', 'low'], [90, '90–100', 'ok'], [100, '90–100', 'ok'], [101, '↓ 90–100', 'high']] as const) {
+    show(rpm, { min: 90, max: 100 });
+    expect(el.querySelector('.zw-cad .zw-unit')).toBeNull();
+    expect(el.querySelector('.zw-cad b')?.textContent).toBe(String(rpm));
+    expect(el.querySelector('.zw-cad-guide')?.textContent).toBe(text);
+    expect(el.querySelector('.zw-cad')?.classList.contains(status)).toBe(true);
+  }
+  show(88);
+  expect(el.querySelector('.zw-cad-guide')).toBeNull();
+  expect(el.querySelector('.zw-cad .zw-unit')?.textContent).toBe('rpm');
+});

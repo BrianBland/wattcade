@@ -147,6 +147,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const callPowerRatio = T.num('callPowerRatio', 0.95, 0.8, 1.2, 0.01);
   const callHoldBand = T.num('callHoldBand', 0.08, 0.03, 0.2, 0.01);
   const overclockS = T.num('overclockS', 30, 5, 120, 5, 'Gatling Overclock (double fire rate) after a Spin-up');
+  const payoffHitStop = T.num('payoffHitStopS', 0.08, 0, 0.1, 0.01, 'freeze when a called effort is won');
   const empDmg = T.num('empDamage', 90, 0, 1000, 5, 'EMP damage to every enemy when a surge is won');
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
   const scrapScale = T.num('scrapMult', 1, 0.2, 5, 0.1);
@@ -392,6 +393,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     e.state = won ? 'won' : 'failed'; effortEndedAt = t;
     if (won) calls.won++; else calls.failed++;
     ctx.emit({ type: won ? 'effortWon' : 'effortFailed', data: { wave: e.wave, kind: e.kind } });
+    addFx({ kind: 'payoff', life: 1.4, effort: e.kind, won });
+    if (won) addFx({ kind: 'hitStop', life: 0.1, seconds: payoffHitStop() });
     if (e.kind === 'spin') {
       if (won) {
         stats.spinsWon++; overclock = overclockS();

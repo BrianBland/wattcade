@@ -1,7 +1,7 @@
 // Snapshot view-model shared by the sim, renderer and tests. Plain data only.
 import type { Element, Kind, Matchup, TowerKind, Weapon } from './defs';
 import type { UpgradeId } from './meta';
-import type { EffortView } from './efforts';
+import type { EffortKind, EffortView } from './efforts';
 import type { BuildSuggestion } from './construction';
 
 export type ActionId = 'rail' | 'overcharge' | 'slow';
@@ -23,6 +23,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
+  /** a called effort resolved: won = set-piece payoff, lost = a quiet 'missed' note */
+  | { id: number; t0: number; life: number; kind: 'payoff'; effort: EffortKind; won: boolean }
   /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */
   | { id: number; t0: number; life: number; kind: 'death'; x: number; y: number; color: Element | 'gold'; big: boolean; eid: number; ekind: Kind; fire: boolean }
   | { id: number; t0: number; life: number; kind: 'text'; x: number; y: number; text: string; color: string }

@@ -1,6 +1,6 @@
 // Dynamo Defense renderer (Canvas 2D). Loaded via dynamic import; reads TdSnapshot only.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
-import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
+import { play, stopAmbient, type SfxName } from '../../../audio/sfx';
 import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline } from '../sim/defs';
 import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
@@ -10,15 +10,16 @@ import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
+import { DynamoSound } from './dynamoSound';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
 const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: number }> = {
-  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'zap', gap: 0.08, vol: 0.6 }, mortar: { s: 'shootHeavy', gap: 0.12, vol: 0.7 },
-  explode: { s: 'explode', gap: 0.12, vol: 0.55 }, lens: { s: 'lens', gap: 0.1 }, rail: { s: 'rail' }, railReady: { s: 'railReady' },
-  swap: { s: 'swap' }, kill: { s: 'kill', gap: 0.05, vol: 0.8 }, bossStart: { s: 'bossStart' }, bossDie: { s: 'bossDie' },
-  build: { s: 'build' }, upgrade: { s: 'upgrade' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
-  select: { s: 'uiMove' }, uiOpen: { s: 'uiSelect' }, uiClose: { s: 'uiBack' }, waveStart: { s: 'siren', vol: 0.8 }, waveClear: { s: 'chime' },
+  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'teslaCrack', gap: 0.08, vol: 0.7 }, mortar: { s: 'mortarThump', gap: 0.12, vol: 0.8 },
+  explode: { s: 'explode', gap: 0.12, vol: 0.55 }, lens: { s: 'prismBeam', gap: 0.1 }, rail: { s: 'railShot' }, railReady: { s: 'railReady' },
+  swap: { s: 'swap' }, kill: { s: 'chitinCrunchBig', gap: 0.05, vol: 0.9 }, bossStart: { s: 'bossStart' }, bossDie: { s: 'bossDie' },
+  build: { s: 'rivetBuild' }, upgrade: { s: 'boltOn' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
+  select: { s: 'uiMove' }, uiOpen: { s: 'uiSelect' }, uiClose: { s: 'uiBack' }, waveStart: { s: 'hiveHorn' }, waveClear: { s: 'waveClearTd' },
   baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, baseFell: { s: 'lampOut' },
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
@@ -38,6 +39,7 @@ export class TdRenderer implements GameRenderer {
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
   private hud!: TdHud;
+  private dynamo = new DynamoSound();
   private particles: Particle[] = [];
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
@@ -123,7 +125,7 @@ export class TdRenderer implements GameRenderer {
     this.canvas?.removeEventListener('pointermove', this.onMove);
     this.canvas?.remove();
     this.hud?.root.remove();
-    stopAmbient();
+    stopAmbient(); this.dynamo.stop();
   }
   private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; }
 
@@ -291,8 +293,10 @@ export class TdRenderer implements GameRenderer {
     for (const f of s.fx) {
       if (f.id <= this.lastFx) continue;
       this.lastFx = Math.max(this.lastFx, f.id);
+      if (f.kind === 'burst' && allowHitStop) play('ignite', { minGapS: 0.08, vol: 0.8 });
       if (f.kind === 'death') {
         const c = COL[f.color], x = this.X(f.x), y = this.Y(f.y);
+        if (allowHitStop && !f.big) play('chitinCrunch', { minGapS: 0.05, vol: 0.7, pitch: 0.85 + Math.random() * 0.3 });
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
@@ -328,6 +332,7 @@ export class TdRenderer implements GameRenderer {
       if (c.id <= this.lastCue) continue;
       this.lastCue = c.id;
       const m = CUES[c.name]; if (m) play(m.s, { minGapS: m.gap, vol: m.vol, pitch: m.pitch });
+      this.dynamo.cue(c.name);
     }
   }
 
@@ -348,9 +353,12 @@ export class TdRenderer implements GameRenderer {
     if (!this.bg) this.bg = this.buildBg();
     this.playCues(s);
     this.consumeFx(s, !firstFrame);
+    this.dynamo.update({
+      active: s.phase === 'run' && !s.over, cadence: bike.cadence3s, ftpFraction: bike.ftpFraction, crankRevs: bike.crankRevs, overdrive: s.overdrive,
+      weapon: s.weapon, gatlingFiring: s.fx.reduce((n, f) => n + (f.kind === 'tracer' && t - f.t0 < 0.2 ? 1 : 0), 0),
+      flaming: s.flaming, flamePower: s.flamePower, railCharging: s.railCharging, railProgress: s.railProgress, railFull: s.railCharges >= s.railMaxCharges,
+    }, s.t, realDt);
     if (performance.now() < this.hitStopUntil) return;
-    setAmbient('td-flame', s.flaming ? 0.06 + 0.1 * Math.min(1, s.flamePower) : 0, 700, 0.6);
-    setAmbient('td-hum', s.phase === 'run' && !s.over ? 0.015 + 0.03 * Math.min(1.6, s.grid) : 0, 110 + 60 * s.grid, 3);
 
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.drawImage(this.bg, 0, 0);

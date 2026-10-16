@@ -10,9 +10,8 @@ CONTRACT-REQUESTs: none.
 - `sim/types.ts`: additive snapshot fields `actions`, `refill`, `slowLane`, `suggestion`, `constructionDone`, `autoCrew`, `inputEpoch`; workshop adds `revision`. These are the sim/renderer seam for #126.
 - The shell owns filled action controls in its existing HUD band: controller keys when legends are on, compact blocks when off. `render/layout.ts` reclaims the canvas dock space under `mount.hudControls`; bare renderers retain a fallback dock. The radial workshop stays above the actual inset.
 - HUD (#126): `render/panels.ts` uses shared CSS tokens, glass panels and inherited font for wave/progress, HP/cores, scrap, current brood/mode and next forecast. No weapon list or duplicate power/controller HUD. Recovery replaces the forecast with a countdown/recover-or-ramp cue in the same brood strip, including while the workshop is open; no centered recovery card. Layout tests cover shell and standalone modes vs insets.
-- `render/aliens/` (#132): cut-out puppets with distance-based gaits, cached device-pixel frames, live boss poses, husks, brood splats and fire bursts; vector enemies remain the loading fallback. Assets: `public/td/aliens/`, packed by `scripts/td-pack-aliens.ts`.
-
-- Painted battlefield, animated machinery, connected conduits, hive entries, loading gate and portrait margins: `render/NOTES.md`.
+- `render/aliens/` (#132): cut-out puppets with distance-based gaits, cached device-pixel frames, live boss poses, husks, brood splats and fire bursts; vector enemies remain the loading fallback. Assets: `public/td/aliens/`, packed by `scripts/td-pack-aliens.ts`. Battlefield, machinery, conduits, hive entries, loading gate, portrait margins: `render/NOTES.md`.
+- Sound (#150): `render/dynamoSound.ts` maps cadence, power and weapon to glided synth layers (`src/audio/voices.ts`): hum on cadence with a per-stroke swell, growl/sub on power, Gatling whine, flame roar on watts, rail whine, octave-up Overdrive. TD one-shots are new `sfx.ts` recipes. Demo `dev/td-sound.html`.
 
 ## Play and controls (#119, #120, #122, #123)
 - Every wave has one brood/weapon/trainer mode. Its 15 s lull announces the coming wave and ramps the trainer over the last 6 s. During that lull `brood` is the incoming wave; `nextBrood` is one wave further ahead.

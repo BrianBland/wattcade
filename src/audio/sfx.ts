@@ -13,7 +13,8 @@ export type SfxName =
   | 'count' | 'go' | 'gameOver' | 'milestone'
   | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
   | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic'
-  | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin';
+  | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin'
+  | 'teslaCrack' | 'mortarThump' | 'prismBeam' | 'railShot' | 'chitinCrunch' | 'chitinCrunchBig' | 'rivetBuild' | 'boltOn' | 'hiveHorn' | 'waveClearTd' | 'clank' | 'ignite';
 
 /** `atk`: fade-in seconds (swells); `vib`: frequency modulation (FM chirps, warbles) as LFO Hz and depth in Hz; noise `f1` sweeps its filter. */
 interface Tone { type: OscillatorType | 'noise'; f0: number; f1?: number; dur: number; vol: number; delay?: number; q?: number; atk?: number; vib?: { hz: number; depth: number } }
@@ -111,6 +112,23 @@ const R: Record<SfxName, Tone[]> = {
   giggle: [0, 0.09, 0.18, 0.27, 0.36].map((d, i) => ({ type: 'sine' as const, f0: 1250 - i * 60, f1: 1050 - i * 60, dur: 0.07, vol: 0.03, delay: d })),
   baa: [{ type: 'sawtooth', f0: 330, f1: 300, dur: 0.6, vol: 0.022, atk: 0.04, vib: { hz: 9, depth: 18 } }, { type: 'sawtooth', f0: 660, f1: 600, dur: 0.55, vol: 0.008, atk: 0.04, vib: { hz: 9, depth: 30 } }],
   puffin: [{ type: 'sawtooth', f0: 140, f1: 110, dur: 0.5, vol: 0.03, atk: 0.05, vib: { hz: 24, depth: 20 } }, { type: 'sawtooth', f0: 150, f1: 120, dur: 0.4, vol: 0.025, delay: 0.55, vib: { hz: 22, depth: 18 } }],
+  // Dynamo Defense (layered synth: a transient, a body and a tail per sound)
+  teslaCrack: [{ type: 'noise', f0: 5200, f1: 2600, dur: 0.06, vol: 0.12, q: 0.6 }, { type: 'sawtooth', f0: 2600, f1: 380, dur: 0.11, vol: 0.06, vib: { hz: 90, depth: 500 } }, { type: 'noise', f0: 1600, dur: 0.18, vol: 0.04, q: 3, delay: 0.02 }],
+  mortarThump: [{ type: 'sine', f0: 120, f1: 45, dur: 0.22, vol: 0.32 }, { type: 'noise', f0: 380, dur: 0.12, vol: 0.18, q: 0.7 }, { type: 'sine', f0: 1500, f1: 650, dur: 0.45, vol: 0.02, delay: 0.12, atk: 0.1 }],
+  prismBeam: [{ type: 'sine', f0: 880, f1: 1760, dur: 0.12, vol: 0.06, atk: 0.04 }, { type: 'triangle', f0: 1320, f1: 990, dur: 0.35, vol: 0.06, delay: 0.08, vib: { hz: 30, depth: 40 } }, { type: 'sine', f0: 440, dur: 0.4, vol: 0.05, delay: 0.08 }],
+  railShot: [{ type: 'noise', f0: 6000, dur: 0.05, vol: 0.2, q: 0.4 }, { type: 'sawtooth', f0: 3200, f1: 90, dur: 0.38, vol: 0.14 }, { type: 'sine', f0: 70, f1: 32, dur: 0.6, vol: 0.38 }, { type: 'noise', f0: 900, f1: 200, dur: 0.7, vol: 0.12, q: 0.5, delay: 0.04 }],
+  chitinCrunch: [{ type: 'noise', f0: 2400, f1: 900, dur: 0.07, vol: 0.09, q: 2.2 }, { type: 'square', f0: 240, f1: 110, dur: 0.05, vol: 0.04, delay: 0.01 }],
+  chitinCrunchBig: [{ type: 'noise', f0: 1800, f1: 500, dur: 0.16, vol: 0.16, q: 1.8 }, { type: 'noise', f0: 3200, dur: 0.05, vol: 0.08, q: 3, delay: 0.06 }, { type: 'sine', f0: 140, f1: 55, dur: 0.25, vol: 0.18 }, { type: 'noise', f0: 600, f1: 250, dur: 0.35, vol: 0.06, q: 0.8, delay: 0.08 }],
+  rivetBuild: [
+    ...[0, 0.11, 0.22, 0.36].map((d, i) => ({ type: 'noise' as const, f0: 2600 - i * 200, dur: 0.035, vol: 0.14, delay: d, q: 4 })),
+    ...[0, 0.11, 0.22, 0.36].map((d) => ({ type: 'square' as const, f0: 180, f1: 120, dur: 0.04, vol: 0.05, delay: d })),
+    { type: 'sine', f0: 90, f1: 60, dur: 0.3, vol: 0.2, delay: 0.46 }, { type: 'triangle', f0: 523, dur: 0.12, vol: 0.08, delay: 0.5 }, { type: 'triangle', f0: 784, dur: 0.22, vol: 0.08, delay: 0.6 },
+  ],
+  boltOn: [{ type: 'noise', f0: 900, f1: 300, dur: 0.18, vol: 0.12, q: 1, atk: 0.12 }, { type: 'square', f0: 200, f1: 95, dur: 0.08, vol: 0.1, delay: 0.18 }, { type: 'noise', f0: 3000, dur: 0.06, vol: 0.12, q: 3, delay: 0.18 }, { type: 'sine', f0: 110, f1: 70, dur: 0.25, vol: 0.18, delay: 0.18 }, ...[659, 880, 1175].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.16, vol: 0.07, delay: 0.32 + i * 0.07 }))],
+  hiveHorn: [{ type: 'sawtooth', f0: 73, f1: 69, dur: 1.4, vol: 0.14, atk: 0.25, vib: { hz: 5, depth: 2 } }, { type: 'sawtooth', f0: 110, f1: 104, dur: 1.4, vol: 0.08, atk: 0.25 }, { type: 'noise', f0: 260, dur: 1.2, vol: 0.06, q: 2, atk: 0.3 }, { type: 'triangle', f0: 1400, f1: 900, dur: 0.6, vol: 0.02, delay: 0.5, vib: { hz: 22, depth: 120 } }],
+  waveClearTd: [{ type: 'noise', f0: 1200, f1: 200, dur: 0.5, vol: 0.05, q: 0.6 }, ...[523, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: 0.3, vol: 0.09, delay: 0.05 + i * 0.08 })), { type: 'sine', f0: 1568, dur: 0.6, vol: 0.04, delay: 0.4 }],
+  clank: [{ type: 'square', f0: 1900, f1: 1400, dur: 0.05, vol: 0.05 }, { type: 'noise', f0: 4200, dur: 0.04, vol: 0.06, q: 5 }, { type: 'triangle', f0: 2800, f1: 2500, dur: 0.18, vol: 0.025, delay: 0.01 }],
+  ignite: [{ type: 'noise', f0: 600, f1: 2200, dur: 0.18, vol: 0.14, q: 0.7, atk: 0.04 }, { type: 'noise', f0: 300, f1: 120, dur: 0.45, vol: 0.1, q: 0.6, delay: 0.1 }, { type: 'sine', f0: 90, f1: 50, dur: 0.3, vol: 0.12 }],
   curse: [{ type: 'sawtooth', f0: 220, f1: 110, dur: 0.9, vol: 0.18 }, { type: 'sawtooth', f0: 233, f1: 116, dur: 0.9, vol: 0.18 }, { type: 'noise', f0: 300, dur: 0.6, vol: 0.12 }],
 };
 
@@ -136,6 +154,12 @@ function ctx(): AudioContext | null {
 export function audioOut(): { ctx: AudioContext; out: AudioNode; ducked: boolean } | null {
   const c = ctx(); if (!c || !master || !enabled || c.state !== 'running') return null;
   return { ctx: c, out: master, ducked: duckers.size > 0 };
+}
+
+/** Raw graph for in-house synth modules (voices.ts): null when sound is off, locked, or there is no WebAudio. */
+export function sfxGraph(): { ctx: AudioContext; out: AudioNode; noise: AudioBuffer } | null {
+  const c = ctx(); if (!c || !master || !noise || !enabled || c.state !== 'running') return null;
+  return { ctx: c, out: master, noise };
 }
 
 /** Call from any user gesture (iOS needs it before audio can start). */

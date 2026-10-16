@@ -62,7 +62,7 @@ describe('headless rides unlock game achievements', () => {
     await counted('lighthouse', 'storm-ready', ['storms', 'docked', 'windups']);
   }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
-    // Deep fixture opts into combat actions and unlimited rebuilds; survival is tested by the game's passive scenarios.
+    // Deep fixture opts into combat actions and a reinforced base; survival is tested by the game's passive scenarios.
     expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_wave10', 'td_wave25']));
     await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills']);
   }, RIDE_TIMEOUT);

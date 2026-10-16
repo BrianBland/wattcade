@@ -6,7 +6,7 @@ import { BASE_X, BASE_Y, KINDS, WEAPON_ELEMENT, laneAt, laneLength, type Kind, t
 import type { EnemyView, TdSnapshot } from '../src/games/towerdefense/sim/types';
 const q = new URLSearchParams(location.search);
 const profile = testProfile({ color: '#4cc9f0' });
-const session = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'sprints' }, seed: Number(q.get('seed') ?? 1), simOpts: { autopilot: true, cores: 0 } });
+const session = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'sprints' }, seed: Number(q.get('seed') ?? 1), simOpts: { autopilot: true } });
 session.step(Math.round(Number(q.get('sec') ?? 700) * 30));
 const renderer = await module.loadRenderer();
 const inset = Number(q.get('inset') ?? 110);
@@ -28,7 +28,7 @@ function snapshot(): TdSnapshot {
       element: def.color === 'blue' || def.color === 'red' || def.color === 'purple' ? def.color : 'purple', gold: kind === 'boss', hp: def.hp, maxHp: def.hp, hurt: 0, charging: false, shiftIn: 5, next: null, progress, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0 };
   });
   const weapon = (q.get('weapon') ?? 'gatling') as Weapon;
-  return { ...s, wave: 15, lull: 0, grace: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 36, flameHalfAngle: 0.22, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
+  return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 36, flameHalfAngle: 0.22, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
     baseHp: q.has('damage') ? 20 : s.baseMaxHp, grid: 1.1, brood: { ...s.brood, weapon, color: WEAPON_ELEMENT[weapon], countdownS: 0 },
     towers: s.towers.map((tw,i)=>({...tw, kind: (['tesla','mortar','lens'] as const)[i%3], level: 3+i%3, firedAt: s.t - ((s.t+i*0.17)%1.6) })), fx: [] };
 }

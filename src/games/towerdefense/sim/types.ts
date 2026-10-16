@@ -33,7 +33,7 @@ export interface TowerView { pad: number; kind: TowerKind; level: number; angle:
 export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair' | 'crew'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 export interface GarageRow { kind: 'start' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
-export interface GarageView { bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
+export interface GarageView { breatherLeft: number; bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
@@ -56,12 +56,12 @@ export interface BossView {
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
-  wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number; grace: number;
+  wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;
   forecast: { wave: number; boss: boolean; mainLane: number; lanes: LaneForecast[] };
   brood: BroodView; nextBrood: BroodInfo | null;
   boss: BossView | null; matchup: Matchup;
   effort: EffortView | null;
-  baseHp: number; baseMaxHp: number; cores: number; coresMax: number; baseHurt: number;
+  baseHp: number; baseMaxHp: number; baseHurt: number;
   /** read-only: follows `brood.weapon` */
   weapon: Weapon; swapLeft: number; swapS: number;
   /** the turret always aims itself; `nudge` = the rider's decaying lane bias (k 1 → 0), null when none */

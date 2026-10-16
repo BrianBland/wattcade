@@ -21,25 +21,27 @@ export type { TdSnapshot } from './types';
 
 export interface TdOpts {
   autopilot?: boolean;
-  /** Headless actions are separate from Auto-crew; default off, as for a passive rider. */
+  /** Headless actions are separate from Auto-crew; default off. */
   actionBot?: boolean;
   autoCrew?: boolean;
-  /** Go straight into a run (tests); the garage is also skipped on a rider's first run and under autopilot. */
+  /** Go straight into the first run (tests); also done for new riders and autopilot. Later runs always use the Garage. */
   skipGarage?: boolean;
-  /** Override the `cores` tunable (lives). */
-  cores?: number;
+  /** Override the `baseHp` tunable (the deep-wave fixture reinforces the base). */
+  baseHp?: number;
 }
 export interface TdSave {
-  v: 2; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
-  totals: { waves: number; kills: number; bosses: number; towers: number; surges: number };
+  v: 3; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
+  totals: { waves: number; kills: number; bosses: number; towers: number; surges: number; runsFallen: number; runsBailed: number };
 }
+/** Read legacy best-wave-only, v2 and v3 saves. Retired core fields are dropped; missing totals start at zero. */
 export function readSave(raw: unknown): TdSave {
-  const s = (raw ?? {}) as Partial<TdSave>;
+  const s = (raw ?? {}) as Partial<TdSave> & { totals?: Partial<TdSave['totals']> & { coresLost?: number } };
+  const { coresLost: _coresLost, ...totals } = s.totals ?? {};
   return {
-    v: 2, bestWave: s.bestWave ?? 0, bank: s.bank ?? 0, upgrades: { ...(s.upgrades ?? {}) }, runs: s.runs ?? 0,
+    v: 3, bestWave: s.bestWave ?? 0, bank: s.bank ?? 0, upgrades: { ...(s.upgrades ?? {}) }, runs: s.runs ?? 0,
     autoInvest: s.autoInvest ?? false,
     autoCrew: typeof s.autoCrew === 'boolean' ? s.autoCrew : true,
-    totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, ...(s.totals ?? {}) },
+    totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, runsFallen: 0, runsBailed: 0, ...totals },
   };
 }
 
@@ -53,7 +55,6 @@ interface Enemy {
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
 interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number }
 
-const GARAGE_AUTOSTART_S = 30;
 const WORKSHOP_IDLE_S = 10;
 const REPAIR_HP = 25;
 /** Pads in screen order (left to right), then the base (index 6 = repair). */
@@ -95,9 +96,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const ignitionDamage = T.num('ignitionDamage', 20, 0, 100, 1);
   const ignitionCap = T.num('ignitionChainCap', 3, 0, 8, 1, 'maximum bursts in one ignition chain, including its first kill');
   // base, waves
-  const baseHpMax = T.num('baseHp', 100, 10, 1000, 5);
-  const coresT = T.num('cores', 3, 0, 9, 1, 'reactor cores (lives): 0 = unlimited, 1 = one base');
-  const coreGrace = T.num('coreGraceS', 6, 0, 30, 1, 'seconds without spawns after a core is lost');
+  const baseHpMax = () => opts?.baseHp ?? T.num('baseHp', 100, 10, 1000, 5)();
+  const garageAutostart = T.num('garageAutostartS', 30, 5, 120, 1, 'pedalling seconds before a run auto-starts');
+  const garageCadence = T.num('garageCadenceRpm', 30, 15, 90, 1, 'cadence needed for Garage auto-start');
+  const garageBreatherS = T.num('garageBreatherS', 6, 0, 30, 1, 'breather before the next auto-start countdown');
   const hpScale = T.num('hpScalePerWave', 0.06, 0, 1, 0.01);
   const hpScale2 = T.num('hpScaleQuad', 0.002, 0, 0.05, 0.001, 'extra HP per wave^2');
   const countScale = T.num('waveCountScale', 1, 0.3, 3, 0.1, 'heavy enemies per wave multiplier');
@@ -168,7 +170,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   let phase: 'garage' | 'run' = 'garage';
   let started = false;
-  let garageSel = 0, garageT = 0;
+  let garageSel = 0, garageT = 0, garageBreather = 0;
   let t = 0, nextId = 1, fxId = 0, cueId = 0;
   let enemies: Enemy[] = [];
   const spawned: Enemy[] = [];
@@ -181,9 +183,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let swapLeft = 0, swapTotal = 1;
   let aim = 0, targetId = 0, nudgeLane = -1, nudgeLeft = 0;
   let baseMaxHp = baseHpMax(), baseHp = baseMaxHp, baseHurt = 99;
-  const coresMax = Math.round(opts?.cores ?? coresT());
-  let cores = coresMax;
-  let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0, grace = 0;
+  let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0;
   let plan: WavePlan, nextPlan: WavePlan;
   let schedule: Spawn[] = [];
   let miniTimer = 2;
@@ -208,15 +208,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let effortEndedAt = 0, recentCadence = 90, recentFtp = 0.65;
   const callSchedule = { nextWave: 2, lastWave: 0 };
   const calls = { started: 0, won: 0, failed: 0 };
-  let scrap = 0, partsRun = 0;
+  let scrap = 0, partsRun = 0, partsEarned = 0;
+  let bestRunWaves = 0, wavesCleared = 0, runSurges = 0, bestRunSurges = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
-  let over = false, leakDmg = 0, stallT = 0;
+  let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const dealt = { player: 0, tower: 0, emp: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
-  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, coresLost: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0 };
+  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0 };
 
   // ---------- helpers ----------
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
@@ -227,6 +228,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function say(text: string, sub = '', color = '#ffffff', big = false) { banner = { text, sub, color, t0: t, big }; }
   /** The weapon's trainer setting, eased from the lull's recovery value early in the lull to full over the last `rampS`. */
   function trainerSync() {
+    if (phase === 'garage') { ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
     const ramp = rampS();
     const k = phase !== 'run' ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
     const mix = (a: number, b: number) => a + (b - a) * k;
@@ -310,12 +312,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
   }
 
-  function kill(e: Enemy, src: 'player' | 'tower' | 'emp' | 'core') {
+  function kill(e: Enemy, src: 'player' | 'tower' | 'emp') {
     e.dead = true;
     const def = KINDS[e.kind];
     const key = e.kind === 'boss' ? 'gold' : elementOf(e);
-    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: src !== 'core' && e.lastEl === 'red' });
-    if (src === 'core') return; // swept away by a core blast: no credit
+    addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: e.lastEl === 'red' });
     kills[key]++;
     if (src === 'tower') stats.towerKills++;
     if (src === 'player') stats.turretKills++;
@@ -329,10 +330,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (e.kind === 'carrier') for (let i = 0; i < 3; i++) spawnAt('mini', e, (i - 1) * 2.5);
     if (e.kind === 'boss') {
       stats.bosses++; save.totals.bosses++;
-      const p = Math.round((30 + wave * 2) * partsScale()); partsRun += p; bank += p;
+      const p = Math.round((30 + wave * 2) * partsScale()); partsRun += p; partsEarned += p; bank += p;
       say(`${def.name} destroyed!`, `+${got} scrap · +${p} parts`, '#ffd24a', true);
       ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.colors.length ?? 0 } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
+      persist();
     } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave } });
   }
   function spawnAt(kind: Kind, from: Enemy, dOff: number) {
@@ -399,7 +401,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       ctx.emit({ type: won ? 'spinWon' : 'spinFailed', data: { wave: e.wave } });
     } else {
       if (won) {
-        stats.surgesWon++; save.totals.surges++;
+        stats.surgesWon++; runSurges++; bestRunSurges = Math.max(bestRunSurges, runSurges); save.totals.surges++;
         addFx({ kind: 'emp', life: 1.2 });
         for (const alien of enemies) if (!alien.dead) hit(alien, KINDS[alien.kind].heavy ? empDmg() : 9999, null, 'emp');
         const b = gainScrap(20 + wave * 2);
@@ -449,9 +451,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       e.dead = true; ctx.emit({ type: 'bossEscaped', data: { wave } });
     }
     enemies = enemies.filter((e) => !e.dead);
-    wavesSurvived++;
+    wavesSurvived++; wavesCleared++; bestRunWaves = Math.max(bestRunWaves, wavesSurvived);
     save.totals.waves++;
-    const p = Math.round(partsForWave(wave) * partsScale()); partsRun += p; bank += p;
+    const p = Math.round(partsForWave(wave) * partsScale()); partsRun += p; partsEarned += p; bank += p;
     const bonus = gainScrap(10 + wave * 2 + (early ? 10 : 0));
     const heal = early ? clearHealFor(waveElapsed, leakDmg, { heal: clearHeal(), speedBonus: speedHeal(), waveMinS: waveMin(), waveMaxS: waveMax(), leakZero: leakHealZero() }) : 0;
     baseHp = Math.min(baseMaxHp, baseHp + heal);
@@ -464,16 +466,25 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     startWave(false);
   }
 
-  function loseCore() {
-    for (const e of enemies) if (!e.dead) kill(e, 'core');
-    for (const e of spawned) if (!e.dead) kill(e, 'core');
-    shells = []; escorts.length = 0;
-    addFx({ kind: 'emp', life: 1.2 });
-    cores--; stats.coresLost++;
-    baseHp = baseMaxHp; grace = coreGrace();
-    ctx.emit({ type: 'coreLost', data: { wave, coresLeft: cores } });
-    say('Reactor core lost!', coresMax > 0 ? `${cores} core${cores === 1 ? '' : 's'} left · base rebuilt` : 'Base rebuilt', '#ff6a5a', true);
-    cue('coreLost');
+  function endRun(reason: 'bail' | 'fell') {
+    if (phase !== 'run') return;
+    if (reason === 'fell') { stats.runsFallen++; save.totals.runsFallen++; }
+    else { stats.runsBailed++; save.totals.runsBailed++; }
+    // Parts already enter the bank as earned; ending a run never adds them a second time.
+    persist();
+    ctx.emit({ type: 'runEnded', data: { reason, wave, wavesSurvived, parts: partsRun } });
+    lull = 0; swapLeft = 0; plan = undefined!;
+    phase = 'garage'; garageSel = 0; garageT = 0; garageBreather = garageBreatherS();
+    enemies = []; spawned.length = 0; shells = []; schedule = []; fx = [];
+    towers.fill(null); workshop = null; pending.length = 0;
+    surge = null; spin = null; overclock = 0; effort = null; escorts.length = 0;
+    grid = 0; overdrive = false; flaming = false; flamePower = 0; laserId = 0; targetId = 0;
+    railCharges = 0; railProgress = 0; railCharging = false; zDown = false; zHold = 0; zDumped = false;
+    mods = metaMods(levels, save.bestWave); fromWave = Math.min(fromWave, mods.maxStartWave);
+    resetCombat();
+    trainerSync();
+    say(reason === 'fell' ? 'Base fell · back to the Garage' : 'Back to the Garage', `${partsRun} parts banked · take a breather`, '#ffd24a', true);
+    cue(reason === 'fell' ? 'baseFell' : 'uiClose');
   }
 
   // ---------- weapons ----------
@@ -485,7 +496,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** Mounts the brood's weapon (once per wave, at the start of its lull). */
   function selectWeapon(w: Weapon) {
-    if (w === weapon || over) return;
+    if (w === weapon || phase !== 'run') return;
     weapon = w; swapTotal = swapLeft = swapS() * mods.swapMult; revAcc = 0;
     cue('swap');
     ctx.emit({ type: 'weaponSwitched', data: { weapon: w, wave } });
@@ -716,11 +727,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function cancelBoost() { boostPointers.clear(); boostBlocked = true; }
   function cancelHolds() { cancelRail(); cancelBoost(); }
   function boostAvailable() {
-    return phase === 'run' && !over && !workshop && weapon === 'rail' &&
+    return phase === 'run' && !workshop && weapon === 'rail' &&
       enemies.some(e => !e.dead && e.boss && !e.boss.pending && (e.boss.telegraph || e.boss.exposed));
   }
   function useAction(id: ActionId) {
-    if (phase !== 'run' || over || workshop) return;
+    if (phase !== 'run' || workshop) return;
     if (id === 'rail') { fireRail(1); return; }
     if (!isReady(cooldowns[id])) return;
     if (id === 'overcharge') {
@@ -771,14 +782,36 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         } else cue('deny');
       }
     }
-    if (ctx.bike().cadence3s > 30) garageT += dt;
-    if (garageT >= GARAGE_AUTOSTART_S) startRun();
+    if (garageBreather > 0) garageBreather = Math.max(0, garageBreather - dt);
+    else if (ctx.bike().cadence3s > garageCadence()) garageT += dt;
+    if (garageT >= garageAutostart()) startRun();
+  }
+  function resetCombat() {
+    cancelHolds(); inputEpoch++; workshopRevision++; discardEdges = true;
+    overchargeLeft = 0; slowLeft = 0; slowLane = -1; lastSprint = false; currentRefill = 1;
+    Object.assign(cooldowns.overcharge, startCooldown(0));
+    Object.assign(cooldowns.slow, startCooldown(0));
+    constructionDone = false; nudgeLane = -1; nudgeLeft = 0;
+    leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
     if (autoInvestOn || autopilot) { const r = autoInvest(bank, levels); bank = r.bank; mods = metaMods(levels, save.bestWave); }
     if (autopilot) fromWave = mods.maxStartWave;
     phase = 'run';
-    save.runs++;
+    save.runs++; stats.runs++;
+    garageT = 0; garageBreather = 0;
+    enemies = []; spawned.length = 0; shells = []; schedule = []; fx = []; towers.fill(null);
+    workshop = null; banner = null;
+    weapon = 'gatling'; swapLeft = 0; swapTotal = 1; aim = 0; targetId = 0;
+    revAcc = 0; railCharges = 0; railProgress = 0; railCharging = false;
+    zDown = false; zHold = 0; zDumped = false;
+    surge = null; effort = null; spin = null; overclock = 0;
+    flaming = false; flamePower = 0; grid = 0; overdrive = false; laserId = 0;
+    wavesSurvived = 0; runSurges = 0; partsRun = 0; waveElapsed = 0; lull = 0; miniTimer = 2;
+    baseHurt = 99;
+    resetCombat();
+    callSchedule.nextWave = 2; callSchedule.lastWave = 0;
+    trainerSync();
     baseMaxHp = baseHpMax() * mods.hpMult; baseHp = baseMaxHp;
     wave = clamp(fromWave, 1, mods.maxStartWave);
     scrap = Math.round(startScrapT() + mods.startScrap + (wave - 1) * 35);
@@ -820,7 +853,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     while (escorts.length && escorts[0].at <= t) {
       const escort = escorts.shift()!;
-      // A dying boss still sent these escorts; changing waves or losing a core cancels them.
+      // A dying boss still sent these escorts; changing waves or ending a run cancels them.
       spawnAt('mini', escort.from, escort.offset);
     }
   }
@@ -839,6 +872,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (p('down') && !hadWorkshop) commands.push({ type: 'pad', pad: -1, epoch });
     let menuHandled = hadWorkshop, purchased = false;
     for (const a of commands) {
+      if (a.type === 'bail') { endRun('bail'); return; }
       if (a.epoch != null && a.epoch !== inputEpoch) continue;
       if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= 6) {
         menuHandled = true;
@@ -1011,8 +1045,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     enemies = enemies.filter((e) => !e.dead);
 
     // --- spawning
-    if (grace > 0) grace = Math.max(0, grace - dt);
-    else if (lull > 0) {
+    if (lull > 0) {
       if (lull <= dt && autoCrewOn && !workshop) acceptSuggestion();
       lull = Math.max(0, lull - dt); if (lull === 0) beginWave();
     }
@@ -1033,20 +1066,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     // a wave ends when the field is clear (after waveMinS), or at waveMaxS
     if (baseHp > 0 && lull <= 0 && ((waveElapsed >= waveMin() && enemies.length === 0 && schedule.length === 0 && escorts.length === 0) || waveElapsed >= waveMax())) clearWave(waveElapsed < waveMax());
 
-    if (baseHp <= 0) {
-      if (coresMax === 0 || cores > 1) loseCore();
-      else {
-        baseHp = 0; over = true; cores = 0;
-        say('Base destroyed', `${wavesSurvived} waves survived`, '#ff6a5a', true);
-        cue('gameOver');
-        ctx.emit({ type: 'gameOver', data: { wavesSurvived } });
-        persist();
-      }
-    }
+    if (baseHp <= 0) { baseHp = 0; endRun('fell'); }
   }
 
   function update(dt: Seconds) {
-    if (over) return;
     if (!started) {
       started = true; lastRevs = ctx.bike().crankRevs;
       if (opts?.skipGarage || autopilot || save.runs === 0) startRun();
@@ -1063,7 +1086,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     ctx.debug('phase', phase);
     ctx.debug('wave', wave);
     ctx.debug('baseHp', Math.round(baseHp));
-    ctx.debug('cores', cores);
     ctx.debug('scrap', scrap);
     ctx.debug('grid', +grid.toFixed(2));
     ctx.debug('railCharges', railCharges);
@@ -1118,6 +1140,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     };
   }
   function bossView(): BossView | null {
+    if (phase !== 'run') return null;
     const e = enemies.find((e) => !e.dead && e.boss);
     if (e?.boss) {
       const b = e.boss, color = elementOf(e);
@@ -1138,14 +1161,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullS(), rampS: rampS() };
   }
   function garageView(): GarageView {
-    return { bank: Math.round(bank), sel: garageSel, rows: garageRows(), startWave: fromWave, maxStartWave: mods.maxStartWave, autoLeft: GARAGE_AUTOSTART_S - garageT, autoS: GARAGE_AUTOSTART_S, autoInvest: autoInvestOn, bestWave: save.bestWave, runs: save.runs };
+    return { breatherLeft: garageBreather, bank: Math.round(bank), sel: garageSel, rows: garageRows(), startWave: fromWave, maxStartWave: mods.maxStartWave, autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), autoInvest: autoInvestOn, bestWave: save.bestWave, runs: save.runs };
   }
   function workshopView(): WorkshopView | null {
     if (!workshop) return null;
     return { pad: workshop.pad, row: workshop.row, rows: workshopRows(workshop.pad), idleLeft: WORKSHOP_IDLE_S - workshop.idle, revision: workshopRevision };
   }
   function actionViews(): ActionView[] {
-    const live = phase === 'run' && !over && !workshop;
+    const live = phase === 'run' && !workshop;
     return [
       { id: 'overcharge', fill: readyFrac(cooldowns.overcharge), ready: isReady(cooldowns.overcharge), usable: live && grid > 0 && towers.some(Boolean) && enemies.some(e => !e.dead), activeS: overchargeLeft },
       { id: 'slow', fill: readyFrac(cooldowns.slow), ready: isReady(cooldowns.slow), usable: live && enemies.some(e => !e.dead), activeS: slowLeft },
@@ -1155,7 +1178,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   return {
     update,
-    isOver: () => over,
+    isOver: () => false,
+    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
       if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
@@ -1172,7 +1196,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
-      if (started && phase === 'garage') return {
+      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0))) return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start' }, { button: 'b', label: 'Start run' }, ...gearHints()],
       };
@@ -1194,11 +1218,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     snapshot(): TdSnapshot {
       return {
         t, phase, garage: phase === 'garage' ? garageView() : null,
-        wave, waveElapsed, waveMaxS: waveMax(), wavesSurvived, lull, grace,
+        wave, waveElapsed, waveMaxS: waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, mainLane: nextPlan.mainLane, lanes: nextPlan.lanes } : { wave: 1, boss: false, mainLane: 1, lanes: [] },
         boss: bossView(), matchup: matchup(), effort: effort ? { ...effort } : null,
         brood: broodView(), nextBrood: nextPlan ? broodInfo(nextPlan) : null,
-        baseHp, baseMaxHp, cores, coresMax, baseHurt,
+        baseHp, baseMaxHp, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, targetId, nudge: nudge(),
         railCharges, railMaxCharges: railCap(), railProgress: Math.min(1, railProgress), railCharging, zHold, railDumpHoldS: railDumpHold(),
@@ -1212,7 +1236,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         workshop: workshopView(),
         enemies: enemies.map(enemyView), fx: fx.slice(), banner,
         cues: cues.slice(),
-        over, bestWave: bestWave(), kills: { ...kills },
+        over: false, bestWave: bestWave(), kills: { ...kills },
         hooks: { storm: false, surge: effort?.state === 'active',
           cadence: effort && (effort.state === 'active' || effort.state === 'announced') ? effort.kind === 'grind' ? (effort.minRpm + effort.maxRpm) / 2 : effort.kind === 'spin' ? effort.minRpm + 3 : undefined : undefined,
           powerFtp: effort?.targetFtp, shielded: bossView()?.exposed ?? false },
@@ -1220,7 +1244,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     summary() {
       return {
-        wavesSurvived,
+        wavesSurvived: bestRunWaves, wavesCleared, runs: stats.runs, runsFallen: stats.runsFallen, runsBailed: stats.runsBailed,
         kills_blue: kills.blue, kills_red: kills.red, kills_purple: kills.purple, kills_gold: kills.gold,
         weaponSeconds_gatling: Math.round(weaponSeconds.gatling),
         weaponSeconds_flame: Math.round(weaponSeconds.flame),
@@ -1229,15 +1253,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         baseHpLeft: Math.round(baseHp),
         towersBuilt: stats.towersBuilt, towerUpgrades: stats.towerUpgrades, towerKills: stats.towerKills, turretKills: stats.turretKills, empKills: stats.empKills,
         turretDamage: Math.round(dealt.player), towerDamage: Math.round(dealt.tower), empDamage: Math.round(dealt.emp),
-        scrapEarned: stats.scrapEarned, partsEarned: partsRun,
+        scrapEarned: stats.scrapEarned, partsEarned,
         surgesWon: stats.surgesWon, surgesFailed: stats.surgesFailed,
         spinsWon: stats.spinsWon, spinsFailed: stats.spinsFailed, overclockSeconds: Math.round(stats.overclockS),
         callsStarted: calls.started, callsWon: calls.won, callsFailed: calls.failed,
         ignitionBursts: stats.ignitionBursts,
-        bossesKilled: stats.bosses, coresLost: stats.coresLost,
+        bossesKilled: stats.bosses, bestRunSurges,
         overdriveSeconds: Math.round(stats.overdriveS),
       };
     },
-    dispose() { if (phase === 'run') persist(); },
+    dispose() { persist(); },
   };
 }

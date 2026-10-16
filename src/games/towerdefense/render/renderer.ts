@@ -14,6 +14,7 @@ import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
 import { along, cableRoutes, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
+import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -50,6 +51,8 @@ export class TdRenderer implements GameRenderer {
   /** Power pulses: sim time of each pedal half-stroke still travelling down the cables. */
   private pulses: number[] = []; private pulseRevs: number | null = null;
   private hitStopUntil = 0;
+  /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
+  private odBlend = 0;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
@@ -274,6 +277,14 @@ export class TdRenderer implements GameRenderer {
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
+      } else if (f.kind === 'payoff') {
+        if (!allowHitStop) continue;
+        const st = PAYOFF_STYLE[f.effort], { x, y } = this.P(BASE_X, BASE_Y);
+        if (f.won) {
+          this.ring(x, y, st.color, 4 * k, 110 * k, 0.9); this.ring(x, y, '#ffffff', 3 * k, 80 * k, 0.6);
+          this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
+          this.aliens?.flinch(s.t); play('payoffSting');
+        } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
@@ -356,6 +367,7 @@ export class TdRenderer implements GameRenderer {
       this.drawBurns(g, s, t);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
+      this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
       this.drawPads(g, s, t);
       for (const tw of s.towers) {
         const p = this.P(PADS[tw.pad].x, PADS[tw.pad].y);
@@ -393,12 +405,24 @@ export class TdRenderer implements GameRenderer {
       });
       // Fireballs arc over everything, from the launcher.
       this.drawShells(g, s, muzzle);
+      if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
+        const shot = s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0, fl = 0.75 + 0.25 * Math.sin(t * 37);
+        g.globalCompositeOperation = 'lighter';
+        glowAt(g, '#ff8a2a', muzzle.x, muzzle.y, (5 + 4 * shot) * k * this.odBlend, 0.55 * fl);
+        glowAt(g, '#fff4d0', muzzle.x, muzzle.y, (2 + 2 * shot) * k * this.odBlend, 0.8 * fl);
+        g.globalCompositeOperation = 'source-over';
+      }
     } else {
       this.drawPads(g, s, t);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6 + rot, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
     this.stepParticles(realDt);
     g.restore();
+    if (s.phase === 'run') for (const b of shimmerBands(this.wall, this.W, L.UH, this.odBlend)) { // heat haze at the edges
+      const gr = b.x === 0 ? g.createLinearGradient(0, 0, b.w, 0) : b.y === 0 ? g.createLinearGradient(0, 0, 0, b.h) : g.createLinearGradient(b.x + b.w, 0, b.x, 0);
+      gr.addColorStop(0, `rgba(255,140,50,${b.alpha})`); gr.addColorStop(1, 'rgba(255,140,50,0)');
+      g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.fillRect(b.x, b.y, b.w, Math.min(b.h, L.UH - b.y)); g.globalCompositeOperation = 'source-over';
+    }
 
     // foreground UI (never under the HUD band)
     if (s.phase === 'run') {
@@ -425,7 +449,8 @@ export class TdRenderer implements GameRenderer {
    * half-stroke sends a pulse down each one while the dynamo is live.
    */
   private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, bike: Readonly<BikeState>) {
-    const k = this.k, speed = 55;
+    // Overdrive (odBlend) turns the cables white-hot and speeds up their pulses.
+    const k = this.k, speed = 55, H = cableHeat(this.odBlend);
     const n = this.pulseRevs === null ? 0 : strokeCrossings(this.pulseRevs, bike.crankRevs);
     this.pulseRevs = bike.crankRevs;
     if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
@@ -436,14 +461,15 @@ export class TdRenderer implements GameRenderer {
     for (const tw of s.towers) {
       const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
       const path = () => { g.beginPath(); c.pts.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
-      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], ['#6d6f72', 0.56], ['#2b393d', 0.3]] as const) {
+      if (H.glow) { g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha = H.glow.alpha; g.strokeStyle = H.glow.color; g.lineWidth = H.glow.width * k; path(); g.stroke(); g.restore(); }
+      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], [H.sheath, 0.56], [H.core, 0.3]] as const) {
         g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * k); path(); g.stroke();
       }
       g.globalCompositeOperation = 'lighter';
       for (const t0 of this.pulses) {
-        const f = (s.t - t0) * speed / c.length; if (f > 1) continue;
+        const f = (s.t - t0) * speed * H.pulseSpeed / c.length; if (f > 1) continue;
         const p = along(c.pts, c.length, f), q = this.P(p.x, p.y);
-        glowAt(g, '#75edff', q.x, q.y, 1.6 * k, 0.6 * Math.min(1, s.grid));
+        glowAt(g, H.pulseColor, q.x, q.y, 1.6 * k * H.pulseSize, 0.6 * Math.min(1, s.grid + this.odBlend));
       }
       g.globalCompositeOperation = 'source-over';
     }

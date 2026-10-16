@@ -59,6 +59,8 @@ export class AlienLayer {
   }
 
   get ready() { return !!this.cache; }
+  /** Field positions of this round's husks (newest first), where the wave-end salvage glints rise from. */
+  huskPoints(max = 40): Array<{ x: number; y: number }> { return this.corpses.slice(-max).reverse().map((c) => ({ x: c.x, y: c.y })); }
   /** Every live alien recoils (a called-effort payoff). */
   flinch(t: number) { this.flinchT = t; }
   get pendingFrames() { return this.cache?.pending ?? 0; }

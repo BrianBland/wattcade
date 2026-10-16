@@ -13,6 +13,7 @@ import { Machinery } from './machinery';
 import { DynamoSound } from './dynamoSound';
 import { PAYOFF_STYLE, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
+import { CARD_S, cardAlpha, glintAt, landedValue, planGlints, sweepEnd, sweepHead, type Glint } from './salvage';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -54,6 +55,8 @@ export class TdRenderer implements GameRenderer {
   /** boss arrival name card start (wall clock) and wave; Exposed window bookkeeping for the first-hit slow-down */
   private intro = { at: -99, wave: 0 };
   private exposedWindow = { open: false, since: 0, slowed: false };
+  /** wave-end salvage sweep (wall clock), skippable with any press */
+  private tally: { at: number; f: Extract<TdSnapshot['fx'][number], { kind: 'waveTally' }>; glints: Glint[]; skippedAt: number; landed: number } | null = null;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
@@ -276,6 +279,64 @@ export class TdRenderer implements GameRenderer {
     if (p) { p.text = c.text; p.age = Math.min(p.age, 0.2); p.size = size; return; }
     this.particles.push({ x: this.X(c.x), y: this.Y(c.y), vx: 0, vy: -4 * k, age: 0, life: 1.6, size, color: c.color, kind: 'text', text: c.text, key: c.key });
   }
+  /** Wave-end sweep on the field: light runs down the trenches, then salvage glints rise from the husks into the outpost. */
+  private drawSalvage(g: CanvasRenderingContext2D, input: Readonly<InputState>) {
+    const T = this.tally!, age = this.wall - T.at, k = this.k;
+    if (input.pressed.size && T.skippedAt === Infinity) T.skippedAt = age;
+    if (age > Math.max(CARD_S, sweepEnd(T.glints)) + 0.5) { this.tally = null; return; }
+    if (T.skippedAt !== Infinity) return;
+    const head = sweepHead(age);
+    if (head !== null) {
+      g.save(); g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
+      for (let l = 0; l < 3; l++) {
+        const pts = lanePolyline(l, 2), n = pts.length, i1 = Math.floor(head * (n - 1)), i0 = Math.max(0, i1 - Math.round(n * 0.18));
+        for (let i = i0; i < i1; i++) {
+          const a = (i - i0) / Math.max(1, i1 - i0);
+          g.strokeStyle = `rgba(255,236,170,${0.35 * a})`; g.lineWidth = (3 + 5 * a) * k;
+          g.beginPath(); g.moveTo(this.X(pts[i].x), this.Y(pts[i].y)); g.lineTo(this.X(pts[i + 1].x), this.Y(pts[i + 1].y)); g.stroke();
+        }
+      }
+      g.restore();
+    }
+    const to = { x: BASE_X, y: BASE_Y - 3 };
+    let landed = 0;
+    g.save(); g.globalCompositeOperation = 'lighter';
+    for (const gl of T.glints) {
+      const p = glintAt(gl, to, age); if (!p) continue;
+      if (p.landed) { landed++; continue; }
+      const x = this.X(p.x), y = this.Y(p.y) - p.lift * k;
+      glowAt(g, '#ffd24a', x, y, 2.4 * k, 0.8); glowAt(g, '#fff6d6', x, y, 0.9 * k, 1);
+    }
+    g.restore();
+    if (landed > T.landed) { T.landed = landed; play('countTick', { minGapS: 0.03, vol: 1.4, pitch: 0.9 + 0.3 * (landed / T.glints.length) }); }
+  }
+  /** Tally card: kills, salvage counting up as glints land, clear bonus, and the SPOTLESS stamp. */
+  private drawTallyCard(g: CanvasRenderingContext2D, L: TdLayout) {
+    const T = this.tally!, age = this.wall - T.at, a = cardAlpha(age, T.skippedAt); if (a <= 0) return;
+    const u = L.u, w = Math.round(Math.min(this.W - 40, 380 * u)), h = Math.round(118 * u), x = Math.round((this.W - w) / 2), y = Math.round(Math.max(12 * u, L.banner.y - h - 40 * u));
+    const salvage = T.skippedAt === Infinity ? Math.round(landedValue(T.glints, { x: BASE_X, y: BASE_Y - 3 }, age)) : T.f.salvage;
+    g.save(); g.globalAlpha = a;
+    g.fillStyle = 'rgba(14,16,22,0.82)'; g.strokeStyle = 'rgba(255,210,74,0.55)'; g.lineWidth = 2;
+    g.beginPath(); g.roundRect(x, y, w, h, 12 * u); g.fill(); g.stroke();
+    g.textAlign = 'left'; g.fillStyle = '#7dffb0'; g.font = `800 ${Math.round(22 * u)}px system-ui, sans-serif`;
+    g.fillText(`WAVE ${T.f.wave} CLEARED`, x + 18 * u, y + 32 * u);
+    const row = (label: string, value: string, i: number, color = '#e8ded0') => {
+      const ry = y + (58 + i * 22) * u;
+      g.font = `600 ${Math.round(15 * u)}px system-ui, sans-serif`; g.fillStyle = 'rgba(232,222,208,0.75)'; g.fillText(label, x + 18 * u, ry);
+      g.textAlign = 'right'; g.fillStyle = color; g.font = `800 ${Math.round(16 * u)}px system-ui, sans-serif`; g.fillText(value, x + w * 0.62, ry); g.textAlign = 'left';
+    };
+    row('Kills', `${T.f.kills}`, 0); row('Salvage', `+${salvage}`, 1, '#ffd24a'); row('Clear bonus', `+${T.f.bonus}`, 2, '#ffd24a');
+    if (T.f.spotless) { // a rubber stamp that thumps in after the rows
+      const sa = Math.min(1, Math.max(0, (age - 0.6) / 0.12)), sc = 1.6 - 0.6 * sa;
+      if (sa > 0) {
+        g.save(); g.translate(x + w * 0.82, y + h * 0.58); g.rotate(-0.22); g.scale(sc, sc); g.globalAlpha = a * sa;
+        g.strokeStyle = '#ffd24a'; g.lineWidth = 3 * u; g.strokeRect(-58 * u, -20 * u, 116 * u, 40 * u);
+        g.textAlign = 'center'; g.fillStyle = '#ffd24a'; g.font = `900 ${Math.round(18 * u)}px system-ui, sans-serif`; g.fillText('SPOTLESS', 0, 0);
+        g.font = `700 ${Math.round(11 * u)}px system-ui, sans-serif`; g.fillText(`+${T.f.spotlessBonus} scrap`, 0, 14 * u); g.restore();
+      }
+    }
+    g.restore();
+  }
   /** A fuel-blooded red alien killed by fire bursts into flame. */
   private fireBurst(x: number, y: number, size: number) {
     for (let i = 0; i < 14 && this.particles.length < 600; i++) {
@@ -356,6 +417,11 @@ export class TdRenderer implements GameRenderer {
           this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
           this.aliens?.flinch(s.t); play('payoffSting');
         } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
+      } else if (f.kind === 'waveTally') {
+        if (!allowHitStop) continue;
+        const husks = this.aliens?.huskPoints() ?? [];
+        this.tally = { at: this.wall, f, glints: planGlints(husks, f.kills, f.salvage, { x: 50, y: 40 }), skippedAt: Infinity, landed: 0 };
+        if (f.spotless) play('milestone', { vol: 0.8 });
       } else if (f.kind === 'bossIntro') {
         if (!allowHitStop) continue;
         this.intro = { at: this.wall, wave: f.wave }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
@@ -396,7 +462,7 @@ export class TdRenderer implements GameRenderer {
   }
 
   // ---------- frame ----------
-  render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
+  render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
     const s = snapshot as TdSnapshot;
     for (const [id, pointer] of this.heldPointers) if (s.inputEpoch !== pointer.epoch || s.phase !== 'run' || s.over ||
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
@@ -493,6 +559,7 @@ export class TdRenderer implements GameRenderer {
       this.drawPads(g, s, t);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
+    if (this.tally) this.drawSalvage(g, input);
     this.stepParticles(realDt);
     g.restore();
     if (s.phase === 'run') for (const b of shimmerBands(this.wall, this.W, L.UH, this.odBlend)) { // heat haze at the edges
@@ -522,6 +589,7 @@ export class TdRenderer implements GameRenderer {
         g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
       }
     }
+    if (this.tally && s.phase === 'run') this.drawTallyCard(g, L);
     // full-screen flashes
     if (this.flash.a > 0) {
       g.globalAlpha = this.flash.a; g.fillStyle = this.flash.color; g.fillRect(0, 0, this.W, this.H); g.globalAlpha = 1;

@@ -1,4 +1,4 @@
-import { createStore, get, set, del, keys, getMany, type UseStore } from 'idb-keyval';
+import { createStore, get, set, update as updateValue, del, keys, getMany, type UseStore } from 'idb-keyval';
 import type { Profile, SessionRecord } from '../contracts';
 import { defaultProfile, defaultSettings } from './defaults';
 import { migrateProfile, migrateSessionRecord } from '../core/renames';
@@ -32,6 +32,30 @@ export class ProfileStore {
   async update(p: Profile): Promise<Profile> {
     await set(p.id, p, this.store);
     return p;
+  }
+  /**
+   * Apply XP, achievements, and cosmetics without touching game saves.
+   * A checkpoint may have landed after the snapshot this award was computed from.
+   */
+  async award(p: Profile): Promise<Profile> {
+    let saved!: Profile;
+    await updateValue<Profile>(p.id, (current) => {
+      const stored = current ? this.norm(current).gameData : {};
+      const games = Object.fromEntries(Object.entries(stored).filter(([id]) => !id.startsWith('_')));
+      const progression = { ...stored, ...p.gameData };
+      const kept = Object.fromEntries(Object.entries(progression).filter(([id]) => id.startsWith('_')));
+      saved = { ...p, gameData: { ...games, ...kept } };
+      return saved;
+    }, this.store);
+    return saved;
+  }
+  /** Replace one game's save without rewriting XP, settings, or any other game. */
+  async updateGameData(profileId: string, gameId: string, data: unknown): Promise<void> {
+    if (!gameId || gameId.startsWith('_')) throw new Error('Invalid game id');
+    await updateValue<Profile>(profileId, (current) => {
+      if (!current) throw new Error('The player profile no longer exists');
+      return { ...current, gameData: { ...current.gameData, [gameId]: structuredClone(data) } };
+    }, this.store);
   }
   async delete(id: string): Promise<void> {
     await del(id, this.store);

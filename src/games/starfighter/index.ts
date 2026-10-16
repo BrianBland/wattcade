@@ -2,9 +2,11 @@ import type { GameModule } from '../../contracts';
 import { achievements } from './achievements';
 import { createSfSim, type SfOpts } from './sim/sim';
 import { drawCard, progressLine } from './card';
+import { saveSchema } from './sim/save';
 
 // id stays 'starfighter' so existing saves (best score) carry over after the rename from "Crank Fighter".
 export const module: GameModule = {
+  save: saveSchema,
   achievements,
   id: 'starfighter',
   title: 'Sprocket Squadron',

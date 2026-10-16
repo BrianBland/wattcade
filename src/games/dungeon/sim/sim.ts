@@ -1,3 +1,4 @@
+import { SAVE_VER, migrateSave } from './save';
 import type { BikeState, Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { generateWorld, tileAt, TILE, type EnemyKind, type Room, type ShrineKind, type World } from './world';
 import {
@@ -9,7 +10,7 @@ import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, typ
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
-import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
+import { UPGRADES, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
 
 interface Enemy {
@@ -77,19 +78,7 @@ export interface DungeonSave {
   ver?: number; bank?: number; upgrades?: Levels; bestFloor?: number; runs?: number; autoInvest?: boolean;
   stance?: StanceId; stancesUnlocked?: StanceId[]; totals?: DungeonTotals; erg?: boolean;
 }
-export const SAVE_VER = 2;
-/** Upgrade an old save in place: v1 -> v2 refunds retired upgrades (Swiftness) as coins and adds totals. Pure. */
-export function migrateSave(s: DungeonSave | null | undefined): DungeonSave {
-  const out: DungeonSave = { ...(s ?? {}) };
-  out.upgrades = { ...(out.upgrades ?? {}) };
-  if ((out.ver ?? 1) < 2) {
-    const ups = out.upgrades as Record<string, number>;
-    for (const [id, def] of Object.entries(RETIRED)) if (ups[id]) { out.bank = (out.bank ?? 0) + spentOn(def, ups[id]); delete ups[id]; }
-    out.totals = out.totals ?? { runs: out.runs ?? 0, deaths: 0, floors: 0, bosses: 0, coins: 0 };
-  }
-  out.ver = SAVE_VER;
-  return out;
-}
+export { SAVE_VER, migrateSave } from './save';
 
 const ACTION_BUTTON: Record<ActionId, 'a' | 'b' | 'y' | 'z'> = { strike: 'a', ward: 'b', rally: 'y', potion: 'z' };
 const ACTION_LABEL: Record<ActionId, string> = { strike: 'Strike', ward: 'Ward', rally: 'Rally', potion: 'Potion' };

@@ -2,8 +2,10 @@ import type { GameModule } from '../../contracts';
 import { achievements } from './achievements';
 import { createLighthouseSim, type SimOpts } from './sim/sim';
 import { drawCard, progressLine } from './card';
+import { saveSchema } from './sim/save';
 
 export const module: GameModule = {
+  save: saveSchema,
   achievements,
   id: 'lighthouse',
   title: "Keeper's Light",

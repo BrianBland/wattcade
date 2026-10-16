@@ -1,3 +1,4 @@
+import type { LighthouseSave as Saved } from './save';
 // Keeper's Light sim. Pure logic: no DOM, no three. Deterministic (ctx.rng / ctx.clock only).
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { HARBOUR, PLOTS, PLOT_COUNT, type DistrictId } from './layout';
@@ -41,11 +42,6 @@ export const VIEW_COUNT = 3;
 export const LIGHTHOUSE_PLOT = -1;
 
 export interface SimOpts { seed?: number; autopilot?: boolean }
-interface Saved {
-  v: 2; buildings: Array<BuildingType | null>; levels?: number[]; grow: number[]; coin: number; timber: number; meadow: number; lens?: number;
-  shipsDockedTotal: number; stormsWeatheredTotal: number;
-  open?: DistrictId[]; rides?: number; decor?: Partial<Record<DecorId, number>>; gifts?: GiftId[]; festivals?: number;
-}
 
 export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const tn = ctx.tuning;
@@ -109,7 +105,7 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const whaleEvery = tn.num('whaleEveryS', 600, 60, 3600, 10, 'Min seconds between whale visits (only during a Steady Light streak)');
 
   const raw = ctx.load<Saved>();
-  const saved = raw && raw.v === 2 ? raw : undefined; // older saves are discarded
+  const saved = raw && raw.v === 2 ? raw : undefined; // the session reader has validated the payload
   const buildings: Array<BuildingType | null> = Array.from({ length: PLOT_COUNT }, (_, i) => saved?.buildings?.[i] ?? null);
   const levels: number[] = buildings.map((b, i) => (b ? Math.min(maxLevel(b), Math.max(1, saved?.levels?.[i] ?? 1)) : 0));
   const grow: number[] = Array.from({ length: PLOT_COUNT }, (_, i) => saved?.grow?.[i] ?? 0);

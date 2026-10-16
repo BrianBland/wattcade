@@ -165,7 +165,6 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     y += 24 * u;
     bar(g, x, y, w, 4 * u, s.waveElapsed / s.waveMaxS, '#5ab0ff'); y += 10 * u;
     bar(g, x, y, w * 0.7, 8 * u, hpF, hpC);
-    for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + w * 0.75 + i * 12 * u, y + 4 * u, 4 * u, 0, TAU); g.fill(); }
     y += 16 * u;
     if (s.spin?.state === 'active') { label(g, `SPIN ${s.spin.rpm}+ rpm ${Math.ceil(s.spin.leftS)}s`, x, y + 9 * u, 11 * u, '#8fd8ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.spin.held / s.spin.needS, '#8fd8ff'); }
     else if (s.surge?.state === 'active') { label(g, `SURGE ≥${ZONE_FTP[s.surge.zone] ?? 91}% FTP ${Math.ceil(s.surge.leftS)}s`, x, y + 9 * u, 11 * u, '#7df9ff'); bar(g, x + w * 0.5, y + 3 * u, w * 0.5, 6 * u, s.surge.progress, '#7df9ff'); }
@@ -174,7 +173,7 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
     return hits;
   }
   // --- wave
-  label(g, s.grace > 0 ? 'REBUILDING…' : s.lull > 0 ? 'LULL' : 'WAVE', x, y + 10 * u, 11 * u); y += 14 * u;
+  label(g, s.lull > 0 ? 'LULL' : 'WAVE', x, y + 10 * u, 11 * u); y += 14 * u;
   font(g, 34 * u, 800); g.fillStyle = '#fff'; g.fillText(`${s.wave}`, x, y + 30 * u);
   font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.6)'; g.textAlign = 'right';
   g.fillText(`survived ${s.wavesSurvived} · best ${s.bestWave}`, x + w, y + 14 * u); g.textAlign = 'left';
@@ -182,8 +181,6 @@ export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u:
   bar(g, x, y, w, 5 * u, s.waveElapsed / s.waveMaxS, '#5ab0ff'); y += 16 * u;
   // --- base
   label(g, 'BASE', x, y + 10 * u, 11 * u);
-  for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; poly4(g, x + w - 6 * u - i * 15 * u, y + 6 * u, 6 * u); }
-  if (s.coresMax > 0) { font(g, 10 * u, 600); g.fillStyle = 'rgba(200,215,240,0.55)'; g.textAlign = 'right'; g.fillText('cores', x + w - 6 * u - s.coresMax * 15 * u, y + 10 * u); g.textAlign = 'left'; }
   y += 18 * u;
   bar(g, x, y, w, 12 * u, hpF, hpC);
   font(g, 10 * u, 800); g.fillStyle = '#0b0f17'; g.fillText(`${Math.ceil(s.baseHp)} / ${Math.round(s.baseMaxHp)}`, x + 6 * u, y + 9.5 * u);
@@ -303,7 +300,7 @@ export function drawGarage(g: CanvasRenderingContext2D, gv: GarageView, b: Box, 
   // auto-start bar
   bar(g, x, y, w, 6 * u, 1 - gv.autoLeft / gv.autoS, '#7dffb0');
   font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.65)';
-  g.fillText(`Keep pedaling: the run starts in ${Math.max(0, Math.ceil(gv.autoLeft))}s · ▲▼ choose · A buy · B start now`, x, y + 22 * u);
+  g.fillText(gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s · B start now` : `Keep pedaling: the run starts in ${Math.max(0, Math.ceil(gv.autoLeft))}s · ▲▼ choose · A buy · B start now`, x, y + 22 * u);
   y += 34 * u;
   const rh = Math.max(30 * u, Math.min(44 * u, (b.y + b.h - p - y) / gv.rows.length - 4 * u));
   const fit = Math.max(3, Math.floor((b.y + b.h - p - y) / (rh + 4 * u)));

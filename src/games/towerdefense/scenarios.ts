@@ -19,24 +19,26 @@ export const scenarios: Array<{
     },
   },
   {
-    // one reactor core: a rider who stops pedalling loses the base fast
-    name: 'idle', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true, cores: 1 },
+    name: 'idle-falls', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!run.isOver) f.push('base should be destroyed (isOver)');
-      if (!(n(s, 'wavesSurvived') <= 2)) f.push(`wavesSurvived ${s.wavesSurvived} > 2`);
+      if (run.isOver) f.push('falling should keep the session open');
+      const falls = run.events.filter((e) => e.type === 'runEnded' && e.data?.reason === 'fell');
+      if (falls.length !== 1) f.push(`expected one fall, got ${falls.length}`);
+      if (!(Number(falls[0]?.data?.wave) <= 2)) f.push('idle base did not fall by wave 2');
+      if (!(n(s, 'runs') === 1 && n(s, 'runsFallen') === 1)) f.push('summary should include the fallen run');
       if (n(s, 'towerKills') !== 0) f.push(`unpowered towers killed ${s.towerKills}`);
       return f;
     },
   },
   {
-    // default cores: each core loss rebuilds the base; the last one ends the run
-    name: 'idle-cores', script: 'idle', minutes: 15, seed: 1, simOpts: { autopilot: true },
+    name: 'endless-restart', script: 'z2', minutes: 45, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!run.isOver) f.push('base should be destroyed (isOver)');
-      if (n(s, 'coresLost') !== 2) f.push(`coresLost ${s.coresLost} != 2`);
-      if (run.events.filter((e) => e.type === 'coreLost').length !== 2) f.push('expected 2 coreLost events');
+      if (run.isOver) f.push('falling should keep the session open');
+      if (!(n(s, 'runs') >= 2 && n(s, 'runsFallen') >= 1)) f.push('expected a fall and a second run');
+      const end = run.events.findIndex((e) => e.type === 'runEnded');
+      if (end < 0 || !run.events.slice(end + 1).some((e) => e.type === 'waveStart')) f.push('no waves after returning to the Garage');
       return f;
     },
   },

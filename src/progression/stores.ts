@@ -1,5 +1,5 @@
-import { createStore, get, set, del, keys, getMany, type UseStore } from 'idb-keyval';
-import type { Profile, SessionRecord } from '../contracts';
+import { createStore, get, set, update as updateValue, del, keys, getMany, type UseStore } from 'idb-keyval';
+import type { GameSaveSchema, Profile, SessionRecord } from '../contracts';
 import { defaultProfile, defaultSettings } from './defaults';
 import { migrateProfile, migrateSessionRecord } from '../core/renames';
 import { rebalanceProfile } from './rebalance';
@@ -30,8 +30,24 @@ export class ProfileStore {
     return p;
   }
   async update(p: Profile): Promise<Profile> {
-    await set(p.id, p, this.store);
-    return p;
+    let saved!: Profile;
+    // Editing shared profile data must not restore stale game checkpoints from the editor/award snapshot.
+    await updateValue<Profile>(p.id, (current) => {
+      saved = { ...p, gameData: { ...p.gameData, ...(current ? this.norm(current).gameData : {}) } };
+      return saved;
+    }, this.store);
+    return saved;
+  }
+  /** Atomically replace one game payload while preserving every other game and shared profile field. */
+  async updateGameData(profileId: string, gameId: string, data: unknown, schema?: GameSaveSchema): Promise<void> {
+    if (!gameId || gameId.startsWith('_')) throw new Error('Invalid game id');
+    const payload = schema ? schema.read(data) : structuredClone(data);
+    await updateValue<Profile>(profileId, (current) => {
+      if (!current) throw new Error('The player profile no longer exists');
+      // A newer client may have upgraded this game after the current session loaded it.
+      if (schema) schema.read(current.gameData[gameId]);
+      return { ...current, gameData: { ...current.gameData, [gameId]: payload } };
+    }, this.store);
   }
   async delete(id: string): Promise<void> {
     await del(id, this.store);

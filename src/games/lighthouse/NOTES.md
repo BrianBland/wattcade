@@ -39,3 +39,5 @@ CONTRACT-REQUESTs: none.
 
 ## Known gaps
 - Renderer checked with throwaway Playwright screenshots, not on a real iPad; sounds and music untested by ear. Decor absorbs ~2.5k coin; after that coin still piles up. 
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

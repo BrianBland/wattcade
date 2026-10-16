@@ -31,3 +31,5 @@ Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectiv
 ## Gaps / next
 - Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
   on iPad. Not built: story-mode levels (SPEC §6.4 "Later").
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

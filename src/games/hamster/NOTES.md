@@ -36,3 +36,5 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - No new sfx: it reuses `src/audio/sfx.ts` names.
 
 - HUD insets: `render/layout.ts` lays scene + panel out above `insets.bottom` (tested); the last pixel rows are stretched under the HUD band so backgrounds stay full-bleed.
+
+Save boundary: `sim/save.ts` registers an independent GameModule.save reader: detached payloads, runtime validation and preservation of unsupported newer saves. Shell commits the final checkpoint before awarding XP; failed writes remain retryable.

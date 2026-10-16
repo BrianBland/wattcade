@@ -38,12 +38,16 @@ export interface GameSession {
    *  Returns every button pressed during the steps taken. */
   idle(realDtS: number): ReadonlySet<Button>;
   finish(): SessionRecord; debugValues(): Record<string, number | string | boolean>;
+  /** Latest detached game checkpoint, including any final save made by dispose(). */
+  saveData(): unknown;
   media?: SessionMedia;
 }
 
 export function createGameSession(o: SessionOpts): GameSession {
   const seed = o.seed ?? 1;
   const profile = o.profile;
+  // Read before attaching devices or constructing a sim; invalid/newer saves stay untouched.
+  let saved: unknown = o.game.save ? o.game.save.read(profile.gameData[o.game.id]) : structuredClone(profile.gameData[o.game.id]);
   const tuning = o.tuningRegistry ?? new TuningRegistry({ profileId: profile.id });
   const clock = new SimClock();
   const dataHub = o.dataHub ?? new DataHub();
@@ -66,7 +70,6 @@ export function createGameSession(o: SessionOpts): GameSession {
     dataHub.attachHr(fakeBike.hr, { fake: true });
   }
 
-  let saved: unknown = profile.gameData[o.game.id];
   let mediaPos = 0, mediaStarted = false, mediaTrim: number | null = null;
   const ctx: GameContext = {
     clock, profile,
@@ -78,8 +81,8 @@ export function createGameSession(o: SessionOpts): GameSession {
     rng: makeRng(seed),
     emit: (e) => { const t = clock.now(); recorder.event(t, e); o.onEmit?.({ t, ...e }); },
     debug: (k, v) => { dbg[k] = v; },
-    save: (d) => { saved = d; o.onSave?.(d); },
-    load: <T,>() => saved as T | undefined,
+    save: (d) => { saved = o.game.save ? o.game.save.read(d) : structuredClone(d); o.onSave?.(structuredClone(saved)); },
+    load: <T,>() => structuredClone(saved) as T | undefined,
     ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, ...(o.media.announce ? { announce: o.media.announce } : {}) } } : {}),
   };
   const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
@@ -119,19 +122,24 @@ export function createGameSession(o: SessionOpts): GameSession {
   };
 
   const loop = new GameLoop(clock, stepOnce, () => (mediaTrim !== null ? mediaTrim : dataHub.hasRealDevices() ? 1 : clock.timeScale));
+  let finished: SessionRecord | undefined;
 
   return {
     ctx, sim, mixer, bikeStore, tuning, recorder, fakeBike, dataHub, clock, loop, commands,
-    frame: (dt) => { loop.frame(dt); },
-    step: (n) => loop.step(n),
+    frame: (dt) => { if (!finished) loop.frame(dt); },
+    step: (n) => { if (!finished) loop.step(n); },
     idle,
     pause: () => { loop.pause(); mixer.panic(true); },
-    resume: () => { mixer.panic(false); loop.resume(); },
+    resume: () => { if (!finished) { mixer.panic(false); loop.resume(); } },
     finish: () => {
+      if (finished) return finished;
       const summary = sim.summary();
       sim.dispose?.();
-      return recorder.finish({ profileId: profile.id, gameId: o.game.id, startedAt, gameSummary: summary });
+      loop.pause();
+      finished = recorder.finish({ profileId: profile.id, gameId: o.game.id, startedAt, gameSummary: summary });
+      return finished;
     },
+    saveData: () => structuredClone(saved),
     ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, setTrim: (k: number | null) => { mediaTrim = k; } } } : {}),
     debugValues: () => ({
       ...dbg, ...(o.media ? { 'media.pos': +mediaPos.toFixed(2), 'media.trim': mediaTrim ?? 'free' } : {}), 'core.t': +clock.now().toFixed(2), 'core.mode': bikeStore.get().trainerMode,

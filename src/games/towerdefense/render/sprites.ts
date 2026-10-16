@@ -171,7 +171,7 @@ export function drawTower(g: CanvasRenderingContext2D, tw: TowerView, x: number,
 /** Dynamo base + turret. `spin` = coil rotation (radians), `swapK` 0..1 barrel deployed. */
 export function drawBase(g: CanvasRenderingContext2D, o: {
   x: number; y: number; k: number; t: number; spin: number; grid: number; color: string; hpFrac: number; hurt: number;
-  weapon: Weapon; aim: number; swapK: number; muzzle: number; overdrive: boolean; railCharge: number; cores: number; coresMax: number; flaming: boolean;
+  weapon: Weapon; aim: number; swapK: number; muzzle: number; overdrive: boolean; railCharge: number; flaming: boolean;
 }) {
   const { x, y, k, t } = o, R = 6 * k;
   g.save(); g.translate(x, y);
@@ -190,12 +190,6 @@ export function drawBase(g: CanvasRenderingContext2D, o: {
   }
   g.fillStyle = '#2a3242'; g.beginPath(); g.arc(0, 0, R * 0.62, 0, TAU); g.fill();
   g.fillStyle = o.color; g.globalAlpha = 0.5 + 0.5 * Math.min(1, o.grid); g.beginPath(); g.arc(0, 0, R * 0.4, 0, TAU); g.fill(); g.globalAlpha = 1;
-  // reactor cores
-  for (let i = 0; i < o.coresMax; i++) { // pips in a short arc under the base
-    const a = Math.PI / 2 + (i - (o.coresMax - 1) / 2) * 0.32;
-    g.fillStyle = i < o.cores ? '#7df9ff' : '#2a3242';
-    g.beginPath(); g.arc(Math.cos(a) * R * 1.42, Math.sin(a) * R * 1.42, Math.max(2, k * 0.8), 0, TAU); g.fill();
-  }
   // turret
   g.rotate(o.aim);
   const wc = WEAPON_COLOR[o.weapon], ext = o.swapK;

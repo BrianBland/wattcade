@@ -71,7 +71,7 @@ describe('garage meta', () => {
   });
   it('reads old saves and shows progress', () => {
     const s = readSave({ bestWave: 9 });
-    expect(s).toMatchObject({ v: 2, bestWave: 9, bank: 0, runs: 0 });
+    expect(s).toMatchObject({ v: 3, bestWave: 9, bank: 0, runs: 0 });
     expect(progressLine({ bestWave: 9 })).toBe('Best: wave 9');
     expect(progressLine({ bestWave: 12, bank: 340 })).toBe('Best: wave 12 · 340 parts');
     expect(progressLine(undefined)).toBeNull();
@@ -92,7 +92,7 @@ describe('garage meta', () => {
     expect(saved.upgrades.plating).toBe(1);
     expect(saved.bank).toBe(380);
     expect(snap(s).phase).toBe('run');
-    expect(snap(s).baseMaxHp).toBeCloseTo(110);
+    expect(snap(s).baseMaxHp).toBeCloseTo(77);
     expect(saved.runs).toBe(2);
   });
   it('best wave counts from a Forward Base start', () => {
@@ -102,7 +102,8 @@ describe('garage meta', () => {
     s.step(30);
     expect(snap(s).wave).toBe(7); // 1 + 2 x 3
     s.step(30 * 60 * 4);
-    expect(snap(s).wave).toBeGreaterThan(9);
+    expect(s.sim.summary().runsFallen).toBeGreaterThan(0);
+    expect(s.sim.isOver()).toBe(false);
     expect(saved.bestWave).toBe(Math.max(12, snap(s).wave - 1));
   });
   it('first run skips the garage; intro shows play controls', () => {

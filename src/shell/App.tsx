@@ -141,8 +141,8 @@ export function App() {
     case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
-        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
-        onSave={(d) => { const cur = profileRef.current; if (!cur) return; const p = { ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }; setProfile(p); void saveProfile(p); }} />; break;
+        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => restartGame(screen.game, screen.media)}
+        onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); }} />; break;
     case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
   }
   const inGame = screen.name === 'game';

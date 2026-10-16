@@ -7,13 +7,13 @@ import { setSoundEnabled, soundEnabled } from '../../audio/sfx';
 
 const clampDiff = (v: number) => Math.min(1.5, Math.max(0.5, +v.toFixed(2)));
 
-export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLegend, initial = 0, quitLabel = 'Finish ride' }: { initial?: number; quitLabel?: string; legendOn: boolean; onLegend: (v: boolean) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLegend, initial = 0, quitLabel = 'Finish ride', gameActions = [] }: { gameActions?: Array<{ label: string; onSelect: () => void }>; initial?: number; quitLabel?: string; legendOn: boolean; onLegend: (v: boolean) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
   const [diff, setDiff] = useState(getDifficulty);
   const setD = (v: number) => { const c = clampDiff(v); setDiff(c); debugActions.setDifficulty(c); };
   const [sound, setSound] = useState(soundEnabled());
   const toggleSound = () => { setSoundEnabled(!sound); setSound(!sound); };
-  const actions = [onResume, () => setD(diff + 0.05), () => onLegend(!legendOn), toggleSound, onHelp, onRestart, onQuit];
-  const [idx, setIdx] = useMenuNav(actions.length, [1, 1, 1, 1, 3], (i) => actions[i](), onResume, true, {
+  const actions = [onResume, () => setD(diff + 0.05), () => onLegend(!legendOn), toggleSound, onHelp, onRestart, onQuit, ...gameActions.map((a) => a.onSelect)];
+  const [idx, setIdx] = useMenuNav(actions.length, [1, 1, 1, 1, 3, ...gameActions.map(() => 1)], (i) => actions[i](), onResume, true, {
     initial,
     onAdjust: (i, d) => {
       if (i === 1) { setD(diff + d * 0.05); return true; }
@@ -39,6 +39,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, legendOn, onLeg
           <Btn focused={idx === 5} onClick={onRestart}>↻ Restart</Btn>
           <Btn focused={idx === 6} onClick={onQuit}>{quitLabel}</Btn>
         </div>
+        {gameActions.map((a, i) => <Btn key={a.label} focused={idx === 7 + i} onClick={a.onSelect}>{a.label}</Btn>)}
         <KeyHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
       </div>
     </div>

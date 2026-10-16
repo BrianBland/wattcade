@@ -2,8 +2,10 @@ import type { GameModule } from '../../contracts';
 import { achievements } from './achievements';
 import { createCadenzaSim, type CadenzaOpts } from './sim/sim';
 import { drawCard, mediaPreview, progressLine } from './card';
+import { saveSchema } from './sim/save';
 
 export const module: GameModule = {
+  save: saveSchema,
   achievements,
   id: 'cadenza',
   title: 'Cadenza',

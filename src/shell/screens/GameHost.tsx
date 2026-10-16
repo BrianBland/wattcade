@@ -3,7 +3,7 @@ import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../c
 import type { MediaRun, SessionLike } from '../types';
 import { ProgramSync } from '../../media/clock';
 import { canPause, openingPhase, startTarget } from '../countGate';
-import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
+import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, saveFailureMessage, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
 import { loadFlag, saveFlag } from '../../debug/flag';
@@ -30,7 +30,7 @@ const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
  * play (pause menu, mid-ride toasts) -> a short result banner -> onQuit (summary).
  */
 export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, onSave }: {
-  game: GameModule; profile: Profile; media?: MediaRun; onQuit: () => void; onAbandon: () => void; onRestart: () => void; onSave: (d: unknown) => void;
+  game: GameModule; profile: Profile; media?: MediaRun; onQuit: () => void | Promise<void>; onAbandon: () => void | Promise<void>; onRestart: () => void | Promise<void>; onSave: (d: unknown) => void;
 }) {
   // music games: one player for the queue; the sim is locked to it during play (ProgramSync), the session idles while it buffers
   const music = useRef<{ engine: ReturnType<typeof mediaEngine>; sync: ProgramSync } | null>(null);
@@ -40,6 +40,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [help, setHelp] = useState(false);
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
+  const [leaveError, setLeaveError] = useState('');
+  const retryLeave = useRef<(() => void | Promise<void>) | null>(null);
   const [musicWait, setMusicWait] = useState('');
   const musicWaitRef = useRef('');
   const [phase, setPhaseState] = useState<Phase>('intro');
@@ -56,7 +58,13 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const rendererRef = useRef<GameRenderer | null>(null);
   const [recap, setRecap] = useState(false);
   const left = useRef(false); // leaving (quit/abandon) happens once
-  const leave = (fn: () => void) => { if (left.current) return; left.current = true; fn(); };
+  const leave = async (fn: () => void | Promise<void>) => {
+    if (left.current) return;
+    left.current = true; setLeaveError(''); retryLeave.current = fn;
+    try { await fn(); } catch (error) {
+      left.current = false; setLeaveError(saveFailureMessage(error));
+    }
+  };
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
 
   const setPause = (p: boolean) => {
@@ -143,7 +151,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             T.intro += dt;
             const l = Math.ceil(Math.max(0, INTRO_AUTO_S - T.intro)); if (l !== T.left) { T.left = l; setAutoLeft(l); }
             if (p.has('a') || T.intro >= INTRO_AUTO_S) startCount();
-            else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
+            else if (p.has('b')) { void leave(cb.current.onAbandon); return; }
           } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), count down once it's dismissed
             if (!pausedRef.current) {
               session.frame(dt);
@@ -186,7 +194,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             const e = endingStep(T.ending, T.hold, p.has('a'), RESULT_S);
             T.hold = e.holdS;
             if (wasRecap && e.show === 'banner') { setRecap(false); play('reward'); }
-            if (e.leave) { disposed = true; leave(cb.current.onQuit); return; }
+            if (e.leave) { void leave(cb.current.onQuit); return; }
           }
           renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
           raf = requestAnimationFrame(loop);
@@ -208,6 +216,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       <div class="hud-probe" ref={probe} />
       {musicWait && <div role="status" class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}</div>}
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={() => leave(onAbandon)}>Back</button></div>}
+      {leaveError && <div role="alert" class="modal" style={{ position: 'absolute', top: '20%', left: '10%', right: '10%', zIndex: 15 }}>
+        <p>{leaveError}</p>
+        <button class="btn" onClick={() => { if (retryLeave.current) void leave(retryLeave.current); }}>Retry save</button>
+      </div>}
       {session && <HudLayer session={session} profile={profile} paused={paused || phase === 'intro'} legendOn={legendOn} fake={isFake()} />}
       {session && (phase === 'intro' || count != null) && (
         <GameIntro game={game} hud={hud} profile={profile} mode="pre" count={phase === 'intro' ? null : count} autoLeft={autoLeft}
@@ -216,7 +228,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       {paused && help && session && <IntroHelp game={game} hud={hud} profile={profile} onClose={() => setHelp(false)} />}
       {paused && !help && (
         <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
-          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
+          gameActions={phase === 'play' ? session?.sim.pauseActions?.().map((a) => ({ label: a.label, onSelect: () => {
+            session.sim.receive?.(a.action); setPause(false);
+          } })) : undefined}
+          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={() => { void leave(onRestart); }}
           {...(phase === 'menu' ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) } : { onQuit: () => toEnding(false) })} />
       )}
       {phase === 'ending' && ending && !recap && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}

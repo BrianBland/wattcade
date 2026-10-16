@@ -78,12 +78,12 @@ describe('build mode (bike-friendly)', () => {
 });
 
 describe('saves and growth', () => {
-  it('discards saves from the old 14-plot layout', () => {
+  it('preserves saves from the old layout and blocks loading until there is a migration', () => {
     const p = testProfile();
     (p.gameData as Record<string, unknown>).lighthouse = { buildings: ['cottage', 'pier'], coin: 999, timber: 999, shipsDockedTotal: 3, stormsWeatheredTotal: 1 };
-    const s = createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1 });
-    expect(snap(s).coin).toBe(20);
-    expect((snap(s).buildings as unknown[]).every((b) => b === null)).toBe(true);
+    const before = structuredClone(p.gameData.lighthouse);
+    expect(() => createGameSession({ game: module, profile: p, input: new NullInput(), fake: { script: 'z2' }, seed: 1 })).toThrow('unsupported');
+    expect(p.gameData.lighthouse).toEqual(before);
   });
 
   it('greenery and island bloom grow only while riding in zone', () => {

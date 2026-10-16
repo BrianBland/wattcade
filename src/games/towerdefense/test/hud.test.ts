@@ -18,16 +18,24 @@ it('announces the incoming brood through recovery, then leaves combat controls t
   };
   try {
     session.step(3 * 30);
-    const s = draw(), card = hud.root.querySelector<HTMLElement>('.td-call')!;
-    expect(card.hidden).toBe(false);
-    expect(card.textContent).toContain(`Wave ${s.brood.wave} incoming`);
-    expect(card.textContent).toContain(`${s.brood.color} brood`);
-    expect(card.textContent).toContain(`${Math.ceil(s.brood.countdownS)}s`);
-    expect(hud.root.querySelector('.td-next')?.textContent).toBe(`Next: ${s.nextBrood!.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood!.weapon]}`);
+    const s = draw(), strip = hud.root.querySelector<HTMLElement>('.td-current')!;
+    expect(strip.hidden).toBe(false);
+    expect(strip.textContent).toContain(`W${s.brood.wave}`);
+    expect(strip.textContent).toContain(`${s.brood.color} brood`);
+    expect(strip.textContent).toContain(`${Math.ceil(s.brood.countdownS)}s`);
+    expect(hud.root.querySelector('.td-call')).toBeNull();
+    expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
+    session.sim.receive!({ type: 'pad', pad: 1, epoch: s.inputEpoch });
+    session.step(1);
+    expect(draw().workshop).toBeTruthy();
+    expect(strip.hidden).toBe(false);
+    expect(strip.querySelector('.td-count')).not.toBeNull();
+    expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
     session.step(15 * 30);
-    draw();
-    expect(card.hidden).toBe(true);
-    expect(hud.root.querySelector('.td-current')?.textContent).toContain(WEAPON_NAME[s.brood.weapon]);
+    const combat = draw();
+    expect(strip.querySelector('.td-count')).toBeNull();
+    expect(strip.textContent).toContain(WEAPON_NAME[combat.brood.weapon]);
+    expect(hud.root.querySelector('.td-next')?.textContent).toBe(`Next: ${combat.nextBrood!.color.toUpperCase()} BROOD → ${WEAPON_NAME[combat.nextBrood!.weapon]}`);
     expect(hud.root.querySelectorAll('button')).toHaveLength(0);
   } finally {
     hud.root.remove(); session.sim.dispose?.();

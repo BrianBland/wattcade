@@ -16,11 +16,6 @@ export const MATCHUP: Matchup = {
   rail: { blue: 1, red: 0.5, purple: 1.5 },
 };
 export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', mortar: 'flame', lens: 'rail' };
-export const BROOD_STORY: Record<Element, string> = {
-  blue: 'crystal chitin · bullets shatter it',
-  red: 'fuel-blooded · fire bursts the bladders',
-  purple: 'sealed plates · rail pierces them',
-};
 
 /** Cover the largest off-colour push with a strong tower; never suggest resistance to that push. */
 export function suggestedTower(counts: Record<Element, number>, brood: Element, matrix: Matchup = MATCHUP): TowerKind {

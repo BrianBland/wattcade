@@ -1,5 +1,5 @@
 // DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
-import { BROOD_STORY, WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
+import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
 
@@ -24,12 +24,9 @@ const CSS = `
 .td-current b { color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; }
 .td-current small { display:block; margin-top:3px; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
-.td-call { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; border-color:var(--brood); box-shadow:0 0 30px color-mix(in srgb,var(--brood) 20%,transparent); overflow:auto; }
-.td-call h2 { margin:0; font-size:clamp(28px,3.4vw,40px); line-height:1.1; font-style:italic; color:var(--brood); text-transform:uppercase; }
-.td-call p { margin:0; font-size:18px; }
-.td-count { font-size:42px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
-.td-call .bar { width:90%; height:6px; flex-shrink:0; }
-.td-call .bar > i { background:var(--brood); }
+.td-hud .td-current.incoming { padding:8px 16px; }
+.td-current.incoming .td-brood b { font-size:28px; line-height:1; }
+.td-count { display:block; color:var(--brood); font-size:28px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
 .td-event { display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:center; text-shadow:0 2px 4px var(--bg); overflow:auto; }
 .td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
 .td-event span { font-size:18px; }
@@ -45,11 +42,9 @@ const CSS = `
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
 .td-hud[data-narrow=true] .td-status { gap:12px; }
 .td-hud[data-narrow=true] .panel { padding:8px 12px; }
-.td-hud[data-short=true] .td-call { gap:3px; }
-.td-hud[data-short=true] .td-call h2 { font-size:28px; }
-.td-hud[data-short=true] .td-call p { font-size:14px; }
-.td-hud[data-short=true] .td-call small,.td-hud[data-short=true] .td-call .bar { display:none; }
-.td-hud[data-short=true] .td-count { font-size:28px; }
+.td-hud[data-narrow=true] .td-current.incoming { flex-direction:row; align-items:center; }
+.td-hud[data-narrow=true] .td-current.incoming .td-brood b { font-size:18px; }
+.td-hud[data-narrow=true] .td-current.incoming .td-next { text-align:right; }
 `;
 
 const color = (e: Element) => ({ blue: 'var(--neon)', red: 'var(--bad)', purple: 'var(--pink)' })[e];
@@ -60,7 +55,6 @@ export class TdHud {
   readonly root = document.createElement('div');
   private status = this.box('td-status panel');
   private current = this.box('td-current panel');
-  private call = this.box('td-call panel');
   private event = this.box('td-event');
   private menu = this.box('td-menu panel');
   private markup = new WeakMap<HTMLElement, string>();
@@ -91,8 +85,8 @@ export class TdHud {
     el.scrollTop = scroll;
   }
   resize(L: TdLayout, W: number) {
-    this.root.dataset.narrow = String(W < 560); this.root.dataset.short = String(L.UH < 400);
-    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.call, L.brood], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
+    this.root.dataset.narrow = String(W < 560);
+    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
   }
   render(s: TdSnapshot, L: TdLayout, W: number) {
     this.resize(L, W);
@@ -101,10 +95,12 @@ export class TdHud {
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
     this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE · ${s.cores} CORES</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
-    this.html(this.current, `<div><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood'}</div>`);
-    this.call.hidden = !run || s.over || bd.countdownS <= 0 || !!s.workshop;
-    this.call.style.setProperty('--brood', color(bd.color));
-    this.html(this.call, `<small>Wave ${bd.wave} incoming${s.forecast.boss ? ' · Boss' : ''}</small><h2>${bd.color} brood</h2><p>${WEAPON_NAME[bd.weapon]} · ${esc(bd.setting)}</p><p>${esc(bd.cue)}</p><small>${BROOD_STORY[bd.color]}</small><div class="td-count">${Math.ceil(bd.countdownS)}<span style="font-size:18px">s</span></div><small>${bd.countdownS <= bd.rampS ? 'Ramping in · get ready' : 'Recover · easy spin'}</small><div class="bar"><i style="width:${pct(1 - bd.countdownS / bd.lullS)}"></i></div>`);
+    const incoming = bd.countdownS > 0;
+    this.current.classList.toggle('incoming', incoming);
+    const forecast = incoming
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave}${s.forecast.boss ? ' Boss' : ''} · ${bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
+      : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
+    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
@@ -115,7 +111,7 @@ export class TdHud {
       sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
     }
     if (!headline && bn && s.t - bn.t0 < 4) { headline = bn.text; sub = bn.sub; }
-    this.event.hidden = !run || !this.call.hidden || !!s.workshop || !headline;
+    this.event.hidden = !run || incoming || !!s.workshop || !headline;
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
     this.menu.hidden = !s.garage;
     if (s.garage) {

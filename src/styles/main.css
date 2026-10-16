@@ -166,7 +166,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .pk { --kc: #8a84b8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: var(--k); height: var(--k); padding: 0; color: #657086; background: #ffffff03; border: 1px solid #ffffff12; border-radius: 50%; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .pk b { font: 800 calc(var(--k) * .36)/1 system-ui; }
 .pk span { font: 700 10px/1 system-ui; color: #dce1ed; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pk.action-label { padding: 2px; }
 .pk.action-label span, .pc-grid .pk.action-label span { font-size: clamp(9px, calc(var(--k) * .23), 13px); line-height: 1; white-space: normal; overflow-wrap: anywhere; text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .pk.mapped { color: color-mix(in srgb, var(--kc) 65%, white); border-color: color-mix(in srgb, var(--kc) 45%, #ffffff16); background: color-mix(in srgb, var(--kc) 9%, #101322); }
 .pk.off { opacity: .45; }
@@ -224,7 +223,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 
 /* Distribute desktop instruments evenly, with full-width zone and history tracks. */
 @media (min-width: 701px) and (orientation: landscape) {
-  .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(5, max-content); justify-content: space-between; }
+  .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(5, max-content); justify-content: space-between; align-items: start; }
+  .zw-nums > div > .zw-reading, .zw-gear, .zw-trainer { min-height: 28px; }
+  .zw-trainer { align-self: start; display: flex; align-items: center; }
   .zw-icon { display: none; }
   .zw-bar { margin: 0; }
   .zw-label-track, .zw-history { margin: 0; }

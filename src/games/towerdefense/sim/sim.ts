@@ -1092,19 +1092,21 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   });
   const playControls = (): ControlHint[] => {
     const suggestion = lull > 0 && !constructionDone ? recommendation() : null;
-    const order = suggestion?.tower ? `${({ tesla: 'Tesla', mortar: 'Mortar', lens: 'Lens' })[suggestion.tower]} Lv${suggestion.targetLevel}` : 'Repair';
+    const build = suggestion?.tower ? ({ tesla: 'Tesla', mortar: 'Mortar', lens: 'Lens' })[suggestion.tower] : 'Repair';
+    const order = suggestion?.tower ? `${build} Lv${suggestion.targetLevel}` : build;
     return [
-      { button: 'a', label: suggestion ? `${order} · ${suggestion.cost} scrap` : 'Construction',
+      { button: 'a', label: suggestion ? `${order} · ${suggestion.cost} scrap` : 'Construction', shortLabel: suggestion ? build : 'Build',
         touch: { down: { type: 'construct', epoch: inputEpoch, ...(suggestion ? { suggestion } : {}) } } },
       ...actionViews().map((a): ControlHint => ({ button: a.id === 'rail' ? 'z' : a.id === 'overcharge' ? 'b' : 'y',
-        label: a.id === 'rail' ? `Rail ${railCharges}/${railCap()} (hold = all)` : `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`, active: a.usable,
+        label: a.id === 'rail' ? `Rail ${railCharges}/${railCap()} (hold = all)` : `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`,
+        shortLabel: a.id === 'rail' ? `Rail ${railCharges}/${railCap()}` : a.id === 'overcharge' ? 'Boost' : 'Slow', active: a.usable,
         ...(a.id === 'rail' ? { touch: heldTouch('rail') } : {}),
         cooldown: { fill: a.fill, ready: a.ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } })),
-      { button: 'left', label: 'Nudge lane' }, { button: 'right', label: 'Nudge lane' },
-      { button: 'up', label: boostAvailable() ? 'Sprint boost (hold)' : 'Clear lane nudge',
+      { button: 'left', label: 'Nudge lane', shortLabel: 'Lane' }, { button: 'right', label: 'Nudge lane', shortLabel: 'Lane' },
+      { button: 'up', label: boostAvailable() ? 'Sprint boost (hold)' : 'Clear lane nudge', shortLabel: boostAvailable() ? 'Boost' : 'Clear',
         ...(boostAvailable() ? { active: bossView()?.sprintBoost, touch: heldTouch('boost') } : {}) },
-      { button: 'down', label: 'Workshop' },
-      { button: 'paddles', label: 'Nudge lane' }, ...gearHints(),
+      { button: 'down', label: 'Workshop', shortLabel: 'Shop' },
+      { button: 'paddles', label: 'Nudge lane', shortLabel: 'Lane' }, ...gearHints(),
     ];
   };
   function enemyView(e: Enemy): EnemyView {
@@ -1174,7 +1176,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     hud(): GameHud {
       if (started && phase === 'garage') return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
-        controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start' }, { button: 'b', label: 'Start run' }, ...gearHints()],
+        controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start', shortLabel: 'Buy' }, { button: 'b', label: 'Start run', shortLabel: 'Start' }, ...gearHints()],
       };
       const boss = bossView();
       const call = effort && (effort.state === 'active' || effort.state === 'announced') ? effort : null;
@@ -1187,7 +1189,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const targetCadence: GameHud['targetCadence'] = call?.kind === 'spin' ? { min: call.minRpm, label: 'Spin up the Gatling' } : call?.kind === 'grind' ? { min: call.minRpm, max: call.maxRpm, label: 'Grind at power' } : undefined;
       if (workshop) return {
         gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'b'],
-        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option' }, { button: 'a', label: 'Build / upgrade' }, { button: 'b', label: 'Close' }, { button: 'paddles', label: 'Nudge lane' }, ...gearHints()],
+        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade', shortLabel: 'Build' }, { button: 'b', label: 'Close' }, { button: 'paddles', label: 'Nudge lane', shortLabel: 'Lane' }, ...gearHints()],
       };
       return { gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'down', ...(boostAvailable() ? ['up' as const] : []), 'b', 'y', 'z'], controls: playControls() };
     },

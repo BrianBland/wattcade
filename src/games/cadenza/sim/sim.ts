@@ -346,7 +346,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       ctx.debug('ws.p', +p.toFixed(2)); ctx.debug('ws.zone', `${z.n} ${z.kind}`); ctx.debug('ws.shield', Math.round(shield));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start' }] };
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start', shortLabel: 'Start' }] };
       const e = lastEffort, erg = trainer === 'erg';
       return {
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,

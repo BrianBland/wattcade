@@ -42,7 +42,7 @@ export function PadKey({ b, held, merged, pos, send, disabled = false, block = f
       onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) release(e.pointerId, true); }}
       onContextMenu={(e) => e.preventDefault()}>
       {cd && <i class="pk-fill" aria-hidden="true" />}
-      {!actionOnly && <b>{b.glyph}</b>}{(actionOnly || !merged) && b.label && <span>{b.label}</span>}
+      {!actionOnly && <b>{b.glyph}</b>}{(actionOnly || !merged) && b.label && <span>{b.shortLabel ?? b.label}</span>}
     </button>
   );
 }
@@ -52,14 +52,14 @@ function Group({ c, held, send, disabled }: { c: Cluster; held: Held; send?: (a:
     return (
       <div class={`pc shift${c.mapped ? '' : ' unused'}`}>
         <div class="pc-btns">{c.buttons.map((b) => <PadKey key={b.id} b={b} held={held} send={send} disabled={disabled} merged={!!c.label} />)}</div>
-        {c.label && <small>{c.label}</small>}
+        {c.label && <small title={c.label}>{c.shortLabel ?? c.label}</small>}
       </div>
     );
   }
   return (
     <div class={`pc ${c.kind}${c.mapped ? '' : ' unused'}`}>
       <div class="pc-grid">{c.buttons.map((b) => <PadKey key={b.id} b={c.kind === 'face' ? { ...b, label: b.label ?? c.label } : b} held={held} send={send} disabled={disabled} merged={c.kind !== 'face' && !!c.label} pos={POS[b.id]} />)}</div>
-      {c.kind !== 'face' && c.label && <div class="pc-label">{c.label}</div>}
+      {c.kind !== 'face' && c.label && <div class="pc-label" title={c.label}>{c.shortLabel ?? c.label}</div>}
     </div>
   );
 }
@@ -70,7 +70,7 @@ function Paddle({ model, v }: { model: HoodModel['paddle']; v: number }) {
   return (
     <div class={`pp${model.mapped ? ' mapped' : ''}`} title={model.label}>
       <div class="pp-track"><i style={{ height: `${h}%`, [v >= 0 ? 'bottom' : 'top']: '50%' }} /></div>
-      <small>{model.label ?? ''}</small>
+      <small>{model.shortLabel ?? model.label ?? ''}</small>
     </div>
   );
 }

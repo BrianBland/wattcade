@@ -1475,7 +1475,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   }
   function hud(): GameHud {
     if (phase === 'camp') return {
-      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select' }, { button: 'b', label: 'Begin descent' }],
+      controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select', shortLabel: 'Select' }, { button: 'b', label: 'Begin descent', shortLabel: 'Start' }],
       gears: !erg, targetZone: { min: 1, max: 2, label: deaths ? 'Cool down' : 'Warm up' },
     };
     const sh = bossShield();

@@ -24,9 +24,10 @@ it('renders the right hood and holds buttons while pressed', () => {
   keys[2].dispatchEvent(ev('pointerup'));
   input.beginTick(0.03);
   expect(input.state().held.has('a')).toBe(false);
-  const shared = buildPad(['a', 'b', 'y', 'z'].map(button => ({ button: button as 'a' | 'b' | 'y' | 'z', label: 'Fire' })), false);
+  const shared = buildPad(['a', 'b', 'y', 'z'].map(button => ({ button: button as 'a' | 'b' | 'y' | 'z', label: 'Release charged shot', shortLabel: 'Fire' })), false);
   render(<Hood side="R" model={shared.right} held={new Set()} paddle={0} />, el);
   expect([...el.querySelectorAll('.pc.face button')].map(key => key.textContent)).toEqual(['Fire', 'Fire', 'Fire', 'Fire']);
+  expect([...el.querySelectorAll('.pc.face button')].every(key => key.getAttribute('aria-label') === 'Release charged shot')).toBe(true);
   render(null, el);
 });
 
@@ -76,20 +77,25 @@ it('removes unused peripheral controls while retaining assigned paddles and acti
 
 it('draws a game cooldown on the key: partial fill tinted by effort, then a ready glow', () => {
   const pad = buildPad([
-    { button: 'a', label: 'Strike', cooldown: { fill: 0.4, ready: false, tint: '#ffd23b', flourish: 0.75 } },
+    { button: 'a', label: 'Strike the enemy', shortLabel: 'Strike', cooldown: { fill: 0.4, ready: false, tint: '#ffd23b', flourish: 0.75 } },
     { button: 'b', label: 'Ward', active: true, cooldown: { fill: 1, ready: true } },
     { button: 'y', label: 'Rally' },
   ], false);
   const el = document.createElement('div');
   render(<Hood side="R" model={pad.right} held={new Set()} paddle={0} />, el);
   const k = (l: string) => el.querySelector<HTMLButtonElement>(`[aria-label="${l}"]`)!;
-  expect(k('Strike').className).toMatch(/\bcd\b/); expect(k('Strike').className).not.toMatch(/\bready\b/);
-  expect(k('Strike').className).toContain('hot');
-  expect(k('Strike').style.getPropertyValue('--fill')).toBe('40%');
-  expect(k('Strike').style.getPropertyValue('--tint')).toBe('#ffd23b');
-  expect(k('Strike').querySelector('.pk-fill')).not.toBeNull();
-  expect(k('Strike').textContent).toBe('Strike');
+  expect(k('Strike the enemy').className).toMatch(/\bcd\b/); expect(k('Strike the enemy').className).not.toMatch(/\bready\b/);
+  expect(k('Strike the enemy').className).toContain('hot');
+  expect(k('Strike the enemy').style.getPropertyValue('--fill')).toBe('40%');
+  expect(k('Strike the enemy').style.getPropertyValue('--tint')).toBe('#ffd23b');
+  expect(k('Strike the enemy').querySelector('.pk-fill')).not.toBeNull();
+  expect(k('Strike the enemy').textContent).toBe('Strike');
+  expect(k('Strike the enemy').title).toBe('Strike the enemy');
   expect(k('Ward').className).toMatch(/\bcd ready\b/);
   expect(k('Rally').className).not.toMatch(/\bcd\b/);
   expect(k('Rally').querySelector('.pk-fill')).toBeNull();
+  render(<PadKey b={pad.right.stick.buttons.find(b => b.id === 'a')!} held={new Set()} block />, el);
+  expect(el.querySelector('button')?.textContent).toBe('Strike');
+  expect(el.querySelector('button')?.getAttribute('aria-label')).toBe('Strike the enemy');
+  render(null, el);
 });

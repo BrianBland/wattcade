@@ -12,7 +12,7 @@ describe('Dynamo Defense layout vs HUD inset', () => {
       const L = layout(W, H, inset, hudControls);
       const limit = H - inset + 0.5;
       const field = { x: L.field.x, y: L.field.y, w: L.field.s, h: L.field.s };
-      for (const [name, b] of Object.entries({ field, left: L.left, right: L.right, workshop: L.workshop, garage: L.garage, brood: L.brood, ...(!hudControls ? { construct: L.dock.construct, workshopButton: L.dock.workshop, ...Object.fromEntries(L.dock.actions.map((b, i) => [`action${i}`, b])) } : {}) })) {
+      for (const [name, b] of Object.entries({ field, status: L.status, current: L.current, workshop: L.workshop, garage: L.garage, brood: L.brood, ...(!hudControls ? { construct: L.dock.construct, workshopButton: L.dock.workshop, ...Object.fromEntries(L.dock.actions.map((b, i) => [`action${i}`, b])) } : {}) })) {
         expect(bottom(b), name).toBeLessThanOrEqual(limit);
         expect(b.y, name).toBeGreaterThanOrEqual(0);
         expect(b.x, name).toBeGreaterThanOrEqual(0);
@@ -32,14 +32,19 @@ describe('Dynamo Defense layout vs HUD inset', () => {
           for (const b of [...r.options, r.close]) expect(b.h).toBeGreaterThanOrEqual(44);
         }
       }
-      expect(L.brood.y + L.brood.h, 'brood card inside the field').toBeLessThanOrEqual(L.field.y + L.field.s + 0.5);
-      if (L.wide) { expect(L.left.h).toBeLessThan(L.UH * 0.25); expect(L.right.h).toBeLessThan(L.UH * 0.25); }
-      else { expect(overlaps(field, L.left)).toBe(false); expect(overlaps(field, L.right)).toBe(false); }
+      expect(L.brood.y + L.brood.h, 'announcement above HUD or fallback dock').toBeLessThanOrEqual(hudControls ? limit : L.dock.construct.y);
+      for (const b of [L.status, L.current, ...(!hudControls ? [L.dock.construct, ...L.dock.actions] : [])]) {
+        expect(overlaps(field, b), 'map does not overlap HUD').toBe(false);
+        expect(overlaps(L.brood, b), 'announcement does not overlap HUD').toBe(false);
+      }
+      expect(overlaps(L.status, L.current)).toBe(false);
     });
   }
-  it('landscape iPad exposes a full-height field with compact corner controls', () => {
+  it('landscape iPad reclaims dock space when using shared HUD controls', () => {
     const L = layout(1180, 820, 110, true);
     expect(L.wide).toBe(true);
-    expect(L.field.s).toBeGreaterThan(550);
+    expect(L.field.s).toBeGreaterThan(500);
+    expect(L.brood.h).toBeGreaterThanOrEqual(280);
+    expect(L.field.s).toBeGreaterThan(layout(1180, 820, 110, false).field.s);
   });
 });

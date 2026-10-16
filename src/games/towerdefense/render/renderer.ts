@@ -1,11 +1,11 @@
 // Dynamo Defense renderer (Canvas 2D). Loaded via dynamic import; reads TdSnapshot only.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
-import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline, type Weapon } from '../sim/defs';
+import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline } from '../sim/defs';
 import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
-import { drawBanner, drawBroodCard, drawGarage, drawLeft, drawRight, type Hit } from './panels';
+import { TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
@@ -22,7 +22,6 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
   baseHit: { s: 'hurt', gap: 0.15, vol: 0.5 }, baseHitHeavy: { s: 'hurt', gap: 0.15, vol: 1, pitch: 0.8 }, coreLost: { s: 'lampOut' },
   surge: { s: 'surge' }, emp: { s: 'emp' }, overdrive: { s: 'overdrive' }, spin: { s: 'chime' }, overclock: { s: 'overdrive', pitch: 1.5 }, alarm: { s: 'alarm' }, go: { s: 'go' }, gameOver: { s: 'gameOver' },
 };
-const MODE_VAL: Record<Weapon, string> = { gatling: '+1%', flame: '35%', rail: '95%' };
 
 interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text'; text?: string; grow?: number }
 const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -38,6 +37,7 @@ export class TdRenderer implements GameRenderer {
   private bg: HTMLCanvasElement | null = null;
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
+  private hud!: TdHud;
   private particles: Particle[] = [];
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
@@ -82,6 +82,8 @@ export class TdRenderer implements GameRenderer {
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0a0e16;touch-action:none';
     container.appendChild(this.canvas);
+    this.hud = new TdHud(ctx.send);
+    container.appendChild(this.hud.root);
     this.g = this.canvas.getContext('2d')!;
     this.canvas.addEventListener('pointerdown', this.onPointer);
     this.canvas.addEventListener('pointerup', this.onUp);
@@ -120,9 +122,10 @@ export class TdRenderer implements GameRenderer {
     this.canvas?.removeEventListener('lostpointercapture', this.onCancel);
     this.canvas?.removeEventListener('pointermove', this.onMove);
     this.canvas?.remove();
+    this.hud?.root.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.bg = null; }
+  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; }
 
   // ---------- coordinates ----------
   private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
@@ -335,6 +338,7 @@ export class TdRenderer implements GameRenderer {
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (!this.L) this.relayout();
+    this.hud.render(s, this.L, this.W);
     const g = this.g, k = this.k, L = this.L;
     const firstFrame = this.lastT < 0;
     const dt = this.lastT < 0 ? 0 : Math.max(0, Math.min(0.1, s.t - this.lastT));
@@ -412,15 +416,8 @@ export class TdRenderer implements GameRenderer {
 
     // foreground UI (never under the HUD band)
     if (s.phase === 'run') {
-      drawBroodCard(g, s, L.brood, L.u, t);
-      drawBanner(g, s, L.banner.x, L.banner.y, L.banner.w, L.u);
-      const compact = true;
-      drawLeft(g, s, L.left, L.u, t, compact, MODE_VAL);
-      this.hits.push(...drawRight(g, s, L.right, L.u, t, compact, null, !this.hudControls));
       if (!this.hudControls) this.hits.push(...drawDock(g, s, L, bike.powerZone));
       if (s.workshop) this.hits.push(...drawConstruction(g, s, L, this.W));
-    } else if (s.garage) {
-      this.hits.push(...drawGarage(g, s.garage, L.garage, L.u, t));
     }
 
     // full-screen flashes

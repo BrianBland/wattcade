@@ -1,377 +1,130 @@
-// Canvas HUD panels for Dynamo Defense: weapons / rail / dynamo (left), wave / base / forecast (right),
-// workshop, garage, banners. Each draw fn returns tap regions.
-import { BROOD_STORY, WEAPONS, WEAPON_NAME, type Element, LANE_NAMES, PADS, TOWERS, type Weapon } from '../sim/defs';
-import type { TdSnapshot, WorkshopView, GarageView } from '../sim/types';
-import { COL, TOWER_ICON_COLOR, WEAPON_COLOR } from './sprites';
-import type { Box } from './layout';
+// DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
+import type { TdSnapshot } from '../sim/types';
+import type { Box, TdLayout } from './layout';
 
-export interface Hit { x: number; y: number; w: number; h: number; action: unknown }
-const TAU = Math.PI * 2;
-const WEAPON_HINT: Record<Weapon, string> = { gatling: 'fires with your cadence', flame: 'burns with your watts', rail: 'laser + stored charges' };
-const BTN_COLOR: Record<string, string> = { a: '#3fd07a', b: '#ff5a5a', y: '#ffd24a', z: '#5ab0ff' };
+export interface Hit extends Box { action: unknown }
 
-function font(g: CanvasRenderingContext2D, px: number, weight = 600) { g.font = `${weight} ${Math.round(px)}px system-ui, -apple-system, "Segoe UI", sans-serif`; }
-function panel(g: CanvasRenderingContext2D, b: Box, r: number, accent?: string) {
-  g.fillStyle = 'rgba(10,14,22,0.78)'; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, r); g.fill();
-  g.strokeStyle = accent ?? 'rgba(120,150,200,0.18)'; g.lineWidth = accent ? 2 : 1; g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, r); g.stroke();
-}
-function bar(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, f: number, color: string, back = 'rgba(255,255,255,0.08)') {
-  g.fillStyle = back; g.beginPath(); g.roundRect(x, y, w, h, h / 2); g.fill();
-  if (f > 0) { g.fillStyle = color; g.beginPath(); g.roundRect(x, y, Math.max(h, w * Math.min(1, f)), h, h / 2); g.fill(); }
-}
-export function btnGlyph(g: CanvasRenderingContext2D, b: string, x: number, y: number, r: number) {
-  g.fillStyle = BTN_COLOR[b] ?? '#8894aa'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-  g.fillStyle = '#0b0f17'; font(g, r * 1.25, 800); g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText(b.toUpperCase(), x, y + r * 0.05);
-  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
-}
-function label(g: CanvasRenderingContext2D, s: string, x: number, y: number, px: number, color = 'rgba(200,215,240,0.6)') {
-  font(g, px, 700); g.fillStyle = color; g.fillText(s, x, y);
-}
-const MODE: Record<Weapon, string> = { gatling: 'SIM', flame: 'RES', rail: 'ERG' };
-const TIPS = [
-  'Each wave is one brood color: the turret mounts the matching weapon.',
-  'Off-color aliens are the towers\' job: build all three kinds.',
-  'Towers run on your watts: 65% FTP = full speed.',
-  'Press ▼ to open the workshop and build towers.',
-  'Hold Z to fire every rail charge in a spread.',
-  'Sprint for Overdrive: x1.5 damage and tower speed.',
-  'Spin calls reward Overclock; grind and hold calls reward an EMP.',
-  'Boss phases announce the next weapon. Sprint when Exposed.',
-  'Clear a wave early to repair the base.',
-  'The lull between waves is your recovery: ease off.',
-  'Red brood is fuel-blooded: fire kills can ignite nearby reds.',
-  'Spin-up: high cadence in an easy effort overclocks the Gatling.',
-  'Parts bank between runs; spend them in the Garage.',
-];
-function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number, maxLines = 3): number {
-  const words = text.split(' '); let line = '', n = 0;
-  for (const wd of words) {
-    const tryLine = line ? `${line} ${wd}` : wd;
-    if (g.measureText(tryLine).width > w && line) { g.fillText(line, x, y + n * lh); line = wd; if (++n >= maxLines) return n; } else line = tryLine;
-  }
-  if (line) { g.fillText(line, x, y + n * lh); n++; }
-  return n;
-}
+const CSS = `
+.td-hud { position:absolute; inset:0; pointer-events:none; color:var(--fg); font:inherit; }
+.td-hud [hidden] { display:none!important; }
+.td-box { position:absolute; box-sizing:border-box; }
+.td-hud .panel { padding:10px 16px; }
+.td-status { display:grid; grid-template-columns:1fr 1fr auto; gap:18px; align-items:center; }
+.td-hud small { color:var(--dim); font-size:12px; letter-spacing:1px; text-transform:uppercase; }
+.td-stat { min-width:0; }
+.td-stat b { font-size:clamp(18px,2.5vw,26px); font-weight:900; font-style:italic; font-variant-numeric:tabular-nums; }
+.td-stat small { margin-left:8px; }
+.td-stat .bar { height:5px; margin-top:5px; }
+.td-hud .bar > i { transition:none; }
+.td-hp .bar > i { background:var(--lime); }
+.td-hp.low .bar > i { background:var(--bad); }
+.td-scrap { text-align:right; color:var(--warn); }
+.td-current { display:flex; gap:16px; justify-content:space-between; align-items:center; }
+.td-current b { color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; }
+.td-current small { display:block; margin-top:3px; }
+.td-next { color:var(--dim); font-size:15px; text-align:right; }
+.td-hud .td-current.incoming { padding:8px 16px; }
+.td-current.incoming .td-brood b { font-size:28px; line-height:1; }
+.td-count { display:block; color:var(--brood); font-size:28px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
+.td-event { display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:center; text-shadow:0 2px 4px var(--bg); overflow:auto; }
+.td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
+.td-event span { font-size:18px; }
+.td-menu { pointer-events:auto; overflow:auto; display:flex; flex-direction:column; gap:8px; overscroll-behavior:contain; }
+.td-menu header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.td-menu h2 { margin:0; color:var(--neon); font-size:28px; font-style:italic; }
+.td-menu p { margin:0; color:var(--dim); }
+.td-menu .btn { flex-shrink:0; width:100%; text-align:left; display:flex; justify-content:space-between; padding:8px 12px; font-size:16px; }
+.td-menu .btn small { display:block; font-size:12px; text-transform:none; letter-spacing:0; }
+.td-menu .selected { border-color:var(--neon); }
+.td-hud[data-narrow=true] .td-current { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
+.td-hud[data-narrow=true] .td-next { text-align:left; font-size:14px; }
+.td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
+.td-hud[data-narrow=true] .td-status { gap:12px; }
+.td-hud[data-narrow=true] .panel { padding:8px 12px; }
+.td-hud[data-narrow=true] .td-current.incoming { flex-direction:row; align-items:center; }
+.td-hud[data-narrow=true] .td-current.incoming .td-brood b { font-size:18px; }
+.td-hud[data-narrow=true] .td-current.incoming .td-next { text-align:right; }
+`;
 
-/** Left panel: weapons, railgun, dynamo, scrap. */
-export function drawLeft(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number, compact: boolean, modeVal: Record<Weapon, string>): Hit[] {
-  const hits: Hit[] = [];
-  panel(g, b, 10 * u);
-  const p = 10 * u, x = b.x + p, w = b.w - 2 * p;
-  let y = b.y + p;
-  if (compact) {
-    // one row of weapon chips, then rail pips + tower power bar
-    const cw = (w - 2 * 6 * u) / 3, ch = Math.min(34 * u, b.h * 0.4);
-    WEAPONS.forEach((wp, i) => {
-      const cx = x + i * (cw + 6 * u), act = s.weapon === wp;
-      g.fillStyle = act ? WEAPON_COLOR[wp] + '33' : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(cx, y, cw, ch, 6 * u); g.fill();
-      if (act) { g.strokeStyle = WEAPON_COLOR[wp]; g.lineWidth = 2; g.beginPath(); g.roundRect(cx + 1, y + 1, cw - 2, ch - 2, 6 * u); g.stroke(); }
-      g.fillStyle = WEAPON_COLOR[wp]; g.globalAlpha = act ? 1 : 0.4; g.beginPath(); g.arc(cx + ch * 0.4, y + ch / 2, ch * 0.16, 0, TAU); g.fill(); g.globalAlpha = 1;
-      font(g, Math.min(12 * u, cw / 7), 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.45)'; g.fillText(WEAPON_NAME[wp], cx + ch * 0.75, y + ch / 2 + 4 * u);
-      if (act && s.swapLeft > 0) bar(g, cx + 4 * u, y + ch - 5 * u, cw - 8 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
+const color = (e: Element) => ({ blue: 'var(--neon)', red: 'var(--bad)', purple: 'var(--pink)' })[e];
+// Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
+const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+export class TdHud {
+  readonly root = document.createElement('div');
+  private status = this.box('td-status panel');
+  private current = this.box('td-current panel');
+  private event = this.box('td-event');
+  private menu = this.box('td-menu panel');
+  private markup = new WeakMap<HTMLElement, string>();
+
+  constructor(private send?: (a: unknown) => void) {
+    this.root.className = 'td-hud';
+    const style = document.createElement('style'); style.textContent = CSS; this.root.append(style);
+    this.root.addEventListener('click', e => {
+      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-command]');
+      if (!button || button.disabled) return;
+      const index = Number(button.dataset.index);
+      if (button.dataset.command === 'garageRow') this.send?.({ type: 'garageRow', row: index });
     });
-    y += ch + 8 * u;
-    const pr = Math.min(6 * u, w / (s.railMaxCharges * 2.6 + 18));
-    for (let i = 0; i < s.railMaxCharges; i++) { g.fillStyle = i < s.railCharges ? COL.purple : 'rgba(255,255,255,0.1)'; g.beginPath(); g.arc(x + pr + i * pr * 2.6, y + pr, pr, 0, TAU); g.fill(); }
-    hits.push({ x, y: y - 4 * u, w: s.railMaxCharges * pr * 2.6, h: pr * 2 + 8 * u, action: { type: 'rail' } });
-    const bx = x + s.railMaxCharges * pr * 2.6 + 8 * u;
-    label(g, `TOWERS ${Math.round(s.grid * 100)}%${s.stalled ? ' · STALLED' : s.overdrive ? ' · OVERDRIVE' : ''}`, bx, y + pr * 0.4, 10 * u, s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : undefined);
-    bar(g, bx, y + pr + 2 * u, x + w - bx, 5 * u, s.grid / 1.6, s.overdrive ? '#ff9a2a' : '#7df9ff');
-    return hits;
   }
-  // --- weapons
-  label(g, 'WEAPON · SET BY THE BROOD', x, y + 10 * u, 11 * u); y += 18 * u;
-  const rh = 40 * u;
-  for (const wp of WEAPONS) {
-    const act = s.weapon === wp, c = WEAPON_COLOR[wp];
-    g.fillStyle = act ? c + '2a' : 'rgba(255,255,255,0.03)'; g.beginPath(); g.roundRect(x, y, w, rh, 8 * u); g.fill();
-    if (act) { g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, rh - 2, 8 * u); g.stroke(); }
-    g.fillStyle = c; g.globalAlpha = act ? 1 : 0.4; g.beginPath(); g.arc(x + 18 * u, y + rh / 2, 7 * u, 0, TAU); g.fill(); g.globalAlpha = 1;
-    font(g, 15 * u, 800); g.fillStyle = act ? '#fff' : 'rgba(220,230,250,0.5)'; g.fillText(WEAPON_NAME[wp], x + 36 * u, y + 18 * u);
-    const oc = wp === 'gatling' && s.overclock > 0;
-    font(g, 10.5 * u, oc ? 800 : 600); g.fillStyle = oc ? '#8fd8ff' : 'rgba(200,215,240,0.55)';
-    g.fillText(oc ? `OVERCLOCKED x2 · ${Math.ceil(s.overclock)}s` : WEAPON_HINT[wp], x + 36 * u, y + 32 * u);
-    font(g, 10 * u, 800); g.fillStyle = c; g.textAlign = 'right'; g.fillText(`${MODE[wp]} ${modeVal[wp]}`, x + w - 8 * u, y + 18 * u); g.textAlign = 'left';
-    if (act && s.swapLeft > 0) bar(g, x + 36 * u, y + rh - 6 * u, w - 44 * u, 3 * u, 1 - s.swapLeft / s.swapS, '#ffd24a');
-    y += rh + 5 * u;
-  }
-  y += 8 * u;
-  // --- railgun
-  label(g, 'RAILGUN CHARGES', x, y + 10 * u, 11 * u); y += 18 * u;
-  const pr = 9 * u;
-  for (let i = 0; i < s.railMaxCharges; i++) {
-    const cx = x + pr + i * pr * 2.5, cy = y + pr, full = i < s.railCharges;
-    g.fillStyle = full ? COL.purple : 'rgba(255,255,255,0.08)'; g.beginPath(); g.arc(cx, cy, pr, 0, TAU); g.fill();
-    if (full) { g.fillStyle = '#efe0ff'; g.beginPath(); g.arc(cx, cy, pr * 0.4, 0, TAU); g.fill(); }
-    else if (i === s.railCharges) { g.strokeStyle = COL.purple; g.lineWidth = 3 * u; g.beginPath(); g.arc(cx, cy, pr - 1.5 * u, -Math.PI / 2, -Math.PI / 2 + TAU * s.railProgress); g.stroke(); }
-  }
-  hits.push({ x, y, w: s.railMaxCharges * pr * 2.5, h: pr * 2, action: { type: 'rail' } });
-  btnGlyph(g, 'z', x + w - 10 * u, y + pr, 9 * u);
-  y += pr * 2 + 14 * u;
-  const full = s.railCharges >= s.railMaxCharges;
-  font(g, 11 * u, 600);
-  g.fillStyle = full ? '#e6d0ff' : s.railCharging ? '#7dffb0' : 'rgba(200,215,240,0.55)';
-  g.fillText(full ? 'Full! Tap Z = 1 · hold Z = all' : s.railCharging ? 'Charging…' : 'Charges at ≥ 75% FTP', x, y);
-  if (s.zHold > 0) bar(g, x, y + 5 * u, w, 3 * u, s.zHold / s.railDumpHoldS, COL.purple);
-  y += 20 * u;
-  // --- dynamo
-  label(g, 'DYNAMO · TOWER POWER', x, y + 10 * u, 11 * u); y += 18 * u;
-  const gf = s.grid / 1.6, gc = s.overdrive ? '#ff9a2a' : s.grid >= 1 ? '#7df9ff' : s.grid > 0.5 ? '#5ab0ff' : '#ff7a5a';
-  bar(g, x, y, w, 12 * u, gf, gc);
-  g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillRect(x + w / 1.6, y - 2 * u, 2, 16 * u);
-  y += 30 * u;
-  font(g, 22 * u, 800); g.fillStyle = gc; g.fillText(`${Math.round(s.grid * 100)}%`, x, y);
-  font(g, 11 * u, s.stalled ? 800 : 600); g.fillStyle = s.stalled ? '#ff6a5a' : s.overdrive ? '#ffb050' : 'rgba(200,215,240,0.55)';
-  g.fillText(s.stalled ? 'STALLED · shields down' : s.overdrive ? `OVERDRIVE!` : 'Sprint = Overdrive', x + 66 * u, y - 3 * u);
-  y += 22 * u;
-  // --- scrap
-  if (y + 40 * u <= b.y + b.h) {
-    label(g, 'SCRAP', x, y + 10 * u, 11 * u);
-    font(g, 26 * u, 800); g.fillStyle = '#ffd24a'; g.fillText(`${s.scrap}`, x, y + 38 * u);
-    font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.55)'; g.fillText(`+${s.partsRun} parts this run`, x + w * 0.45, y + 34 * u);
-    y += 54 * u;
-  }
-  // --- this run + a rotating tip, if there is room
-  if (y + 46 * u <= b.y + b.h - 60 * u) {
-    label(g, 'THIS RUN', x, y + 10 * u, 11 * u); y += 22 * u;
-    const kc: Array<[string, number]> = [[COL.blue, s.kills.blue], [COL.red, s.kills.red], [COL.purple, s.kills.purple], [COL.gold, s.kills.gold]];
-    let kx = x;
-    for (const [c, n] of kc) { g.fillStyle = c; g.beginPath(); g.arc(kx + 5 * u, y - 4 * u, 5 * u, 0, TAU); g.fill(); font(g, 12 * u, 800); g.fillStyle = '#e6eeff'; g.fillText(`${n}`, kx + 13 * u, y); kx += Math.max(44 * u, g.measureText(`${n}`).width + 24 * u); }
-    y += 18 * u;
-    font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.6)'; g.fillText(`${s.towers.length} towers · ${s.wavesSurvived} waves`, x, y);
-  }
-  const tipY = b.y + b.h - p - 30 * u;
-  if (tipY > y + 12 * u) {
-    font(g, 11 * u, 600); g.fillStyle = 'rgba(255,210,74,0.75)';
-    wrap(g, `Tip: ${TIPS[Math.floor(t / 9) % TIPS.length]}`, x, tipY, w, 14 * u, 3);
-  }
-  return hits;
-}
 
-/** Right panel: wave, base, surge, next-wave forecast (or the workshop when open, drawn separately). */
-export function drawRight(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number, compact: boolean, workshopBox: Box | null, workshopButton = true): Hit[] {
-  const hits: Hit[] = [];
-  panel(g, b, 10 * u);
-  const p = 10 * u, x = b.x + p, w = b.w - 2 * p;
-  let y = b.y + p;
-  const hpF = s.baseHp / s.baseMaxHp, hpC = hpF > 0.5 ? '#7dffb0' : hpF > 0.25 ? '#ffd24a' : '#ff5a3c';
-  if (compact) {
-    font(g, 18 * u, 800); g.fillStyle = '#fff'; g.fillText(`WAVE ${s.wave}`, x, y + 16 * u);
-    font(g, 13 * u, 800); g.fillStyle = '#ffd24a'; g.textAlign = 'right'; g.fillText(`${s.scrap} scrap`, x + w, y + 15 * u); g.textAlign = 'left';
-    y += 24 * u;
-    bar(g, x, y, w, 4 * u, s.waveElapsed / s.waveMaxS, '#5ab0ff'); y += 10 * u;
-    bar(g, x, y, w * 0.7, 8 * u, hpF, hpC);
-    for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; g.beginPath(); g.arc(x + w * 0.75 + i * 12 * u, y + 4 * u, 4 * u, 0, TAU); g.fill(); }
-    y += 16 * u;
-    const boss = s.boss, e = s.effort;
-    if (boss) label(g, bossLine(s), x, y + 9 * u, 10 * u, boss.exposed ? '#7dffb0' : '#ffd24a');
-    else if (e) label(g, effortLine(s), x, y + 9 * u, 10 * u, '#7df9ff');
-    else { label(g, s.nextBrood ? `NEXT W${s.nextBrood.wave} · ${WEAPON_NAME[s.nextBrood.weapon]}` : '▼ Workshop', x, y + 9 * u, 9 * u); }
-    hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: { type: 'pad', pad: -1 } });
-    return hits;
+  private box(className: string) {
+    const el = document.createElement('div'); el.className = `td-box ${className}`; this.root.append(el); return el;
   }
-  // --- wave
-  label(g, s.grace > 0 ? 'REBUILDING…' : s.lull > 0 ? 'LULL' : 'WAVE', x, y + 10 * u, 11 * u); y += 14 * u;
-  font(g, 34 * u, 800); g.fillStyle = '#fff'; g.fillText(`${s.wave}`, x, y + 30 * u);
-  font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.6)'; g.textAlign = 'right';
-  g.fillText(`survived ${s.wavesSurvived} · best ${s.bestWave}`, x + w, y + 14 * u); g.textAlign = 'left';
-  y += 38 * u;
-  bar(g, x, y, w, 5 * u, s.waveElapsed / s.waveMaxS, '#5ab0ff'); y += 16 * u;
-  // --- base
-  label(g, 'BASE', x, y + 10 * u, 11 * u);
-  for (let i = 0; i < s.coresMax; i++) { g.fillStyle = i < s.cores ? '#7df9ff' : 'rgba(255,255,255,0.12)'; poly4(g, x + w - 6 * u - i * 15 * u, y + 6 * u, 6 * u); }
-  if (s.coresMax > 0) { font(g, 10 * u, 600); g.fillStyle = 'rgba(200,215,240,0.55)'; g.textAlign = 'right'; g.fillText('cores', x + w - 6 * u - s.coresMax * 15 * u, y + 10 * u); g.textAlign = 'left'; }
-  y += 18 * u;
-  bar(g, x, y, w, 12 * u, hpF, hpC);
-  font(g, 10 * u, 800); g.fillStyle = '#0b0f17'; g.fillText(`${Math.ceil(s.baseHp)} / ${Math.round(s.baseMaxHp)}`, x + 6 * u, y + 9.5 * u);
-  y += 26 * u;
-  // Called effort and boss ladder: persistent countdowns stay readable after a banner fades.
-  if (s.boss || s.effort) {
-    const text = s.boss ? bossLine(s) : effortLine(s);
-    label(g, text, x, y + 10 * u, Math.min(12 * u, w / Math.max(8, text.length * 0.6)), s.boss?.exposed ? '#7dffb0' : '#7df9ff');
-    y += 20 * u;
-    if (s.effort) {
-      const e = s.effort;
-      const cue = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
-      label(g, cue, x, y + 10 * u, 11 * u); y += 18 * u;
-      bar(g, x, y, w, 6 * u, e.heldS / e.needS, '#7df9ff'); y += 16 * u;
+  private place(el: HTMLElement, b: Box) {
+    Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
+  }
+  private html(el: HTMLElement, html: string) {
+    if (this.markup.get(el) === html) return;
+    const focused = el.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset : null;
+    const scroll = el.scrollTop;
+    el.innerHTML = html; this.markup.set(el, html);
+    if (focused?.command) el.querySelector<HTMLElement>(`[data-command="${focused.command}"]${focused.index === undefined ? '' : `[data-index="${focused.index}"]`}`)?.focus({ preventScroll: true });
+    el.scrollTop = scroll;
+  }
+  resize(L: TdLayout, W: number) {
+    this.root.dataset.narrow = String(W < 560);
+    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
+  }
+  render(s: TdSnapshot, L: TdLayout, W: number) {
+    this.resize(L, W);
+    const run = s.phase === 'run', bd = s.brood;
+    for (const el of [this.status, this.current]) el.hidden = !run;
+    const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
+    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE · ${s.cores} CORES</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    this.current.style.setProperty('--brood', color(bd.color));
+    const incoming = bd.countdownS > 0;
+    this.current.classList.toggle('incoming', incoming);
+    const forecast = incoming
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave}${s.forecast.boss ? ' Boss' : ''} · ${bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
+      : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
+    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
+    const e = s.effort, boss = s.boss, bn = s.banner;
+    let headline = '', sub = '';
+    if (boss) {
+      headline = boss.next ? `${boss.next} in ${Math.ceil(boss.countdownS)}s` : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
+      sub = boss.next ? 'Weapon changes after the countdown' : boss.weapon === 'rail' ? 'Hold ▲ for ERG sprint' : 'Sprint for ×1.5 damage';
+    } else if (e) {
+      headline = e.state === 'announced' ? `${e.kind} in ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s more · ${Math.ceil(e.leftS)}s left` : `${e.kind} ${e.state}`;
+      sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;
+    }
+    if (!headline && bn && s.t - bn.t0 < 4) { headline = bn.text; sub = bn.sub; }
+    this.event.hidden = !run || incoming || !!s.workshop || !headline;
+    this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
+    this.menu.hidden = !s.garage;
+    if (s.garage) {
+      const gv = s.garage;
+      const previous = this.menu.querySelector<HTMLElement>('.selected')?.dataset.index;
+      this.html(this.menu, `<header><h2>Garage</h2><b>${gv.bank} parts</b></header><p>Best wave ${gv.bestWave} · Run ${gv.runs + 1}</p><small>Pedal to start in ${Math.ceil(gv.autoLeft)}s · ▲▼ choose · A buy · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}`);
+      if (previous !== String(gv.sel)) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }
-  // --- forecast (hidden under the workshop when it is open)
-  const bottom = workshopBox ? workshopBox.y - 8 * u : b.y + b.h - p;
-  if (y + 94 * u <= bottom) {
-    const nb = s.nextBrood;
-    label(g, `NEXT · W${s.forecast.wave}${s.forecast.boss ? ' BOSS' : ''}`, x, y + 10 * u, 11 * u, s.forecast.boss ? '#ffd24a' : nb ? COL[nb.color] : undefined); y += 18 * u;
-    if (nb) { const text = matchupCopy(s, nb.color); label(g, text, x, y + 10 * u, Math.min(10 * u, w / (text.length * 0.6))); y += 18 * u; }
-    const cw = (w - 12 * u) / 3;
-    s.forecast.lanes.forEach((ln, i) => {
-      const cx = x + i * (cw + 6 * u), main = i === s.forecast.mainLane;
-      g.fillStyle = main ? 'rgba(255,120,90,0.12)' : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(cx, y, cw, 50 * u, 6 * u); g.fill();
-      font(g, 10 * u, 800); g.fillStyle = main ? '#ffb09a' : 'rgba(200,215,240,0.6)'; g.fillText(LANE_NAMES[i].toUpperCase(), cx + 6 * u, y + 13 * u);
-      let dy = y + 26 * u, dx = cx + 9 * u;
-      for (const key of ['red', 'purple', 'blue', 'prism', 'gold'] as const) {
-        const n = ln[key]; if (!n) continue;
-        g.fillStyle = key === 'prism' ? COL.purple : COL[key]; g.beginPath(); g.arc(dx, dy, 4 * u, 0, TAU); g.fill();
-        if (key === 'prism') { g.fillStyle = COL.blue; g.beginPath(); g.arc(dx, dy, 4 * u, 0, Math.PI); g.fill(); }
-        font(g, 10 * u, 800); g.fillStyle = '#dfe8ff'; g.fillText(`${n}`, dx + 6 * u, dy + 3.5 * u);
-        dx += 26 * u; if (dx > cx + cw - 16 * u) { dx = cx + 9 * u; dy += 14 * u; }
-      }
-    });
-    y += 58 * u;
-  }
-  // colour -> weapon legend
-  const legendH = 4 * 17 * u + 16 * u;
-  if (!workshopBox && y + legendH + 44 * u <= b.y + b.h - p) {
-    label(g, 'WEAKNESSES', x, y + 10 * u, 11 * u); y += 22 * u;
-    const rows: Array<[string, string]> = (['blue', 'red', 'purple'] as const).map((e) => [COL[e], matchupCopy(s, e)]);
-    rows.push([COL.gold, 'Boss: phase colour uses the matrix']);
-    for (const [c, txt] of rows) {
-      g.fillStyle = c; g.beginPath(); g.arc(x + 6 * u, y, 5 * u, 0, TAU); g.fill();
-      font(g, Math.min(10 * u, (w - 18 * u) / (txt.length * 0.6)), 600); g.fillStyle = 'rgba(220,235,255,0.8)'; g.fillText(txt, x + 18 * u, y + 4 * u);
-      y += 17 * u;
-    }
-  }
-  if (workshopButton && !workshopBox && y + 24 * u <= b.y + b.h) {
-    const hb = { x, y: b.y + b.h - p - 30 * u, w, h: 30 * u };
-    g.fillStyle = 'rgba(255,210,74,0.1)'; g.beginPath(); g.roundRect(hb.x, hb.y, hb.w, hb.h, 6 * u); g.fill();
-    font(g, 12 * u, 700); g.fillStyle = '#ffd24a'; g.fillText(`▼ Workshop · ${s.scrap} scrap`, hb.x + 10 * u, hb.y + 19 * u);
-    hits.push({ ...hb, action: { type: 'pad', pad: -1 } });
-  }
-  return hits;
-}
-function poly4(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
-  g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath(); g.fill();
-}
-
-export function drawWorkshop(g: CanvasRenderingContext2D, s: TdSnapshot, ws: WorkshopView, b: Box, u: number): Hit[] {
-  const hits: Hit[] = [];
-  panel(g, b, 10 * u, '#ffd24a88');
-  const p = 10 * u, x = b.x + p, w = b.w - 2 * p;
-  let y = b.y + p;
-  const pad = ws.pad < 6 ? PADS[ws.pad] : null;
-  font(g, 14 * u, 800); g.fillStyle = '#ffd24a'; g.fillText('WORKSHOP', x, y + 13 * u);
-  font(g, 12 * u, 800); g.textAlign = 'right'; g.fillText(`${s.scrap} scrap`, x + w, y + 13 * u); g.textAlign = 'left';
-  y += 20 * u;
-  const tw = pad ? s.towers.find((q) => q.pad === ws.pad) : null;
-  font(g, 11 * u, 600); g.fillStyle = 'rgba(220,235,255,0.75)';
-  g.fillText(pad ? `${LANE_NAMES[pad.lane]} lane · ${pad.near ? 'near' : 'far'} pad${tw ? ` · ${TOWERS[tw.kind].name} Lv ${tw.level}` : ' · empty'}` : 'Dynamo base', x, y + 10 * u);
-  y += 18 * u;
-  const footer = 18 * u, rh = Math.max(26 * u, Math.min(42 * u, (b.y + b.h - p - footer - y) / Math.max(3, ws.rows.length) - 4 * u));
-  ws.rows.forEach((r, i) => {
-    const sel = i === ws.row, c = r.tower ? TOWER_ICON_COLOR[r.tower] : '#7dffb0';
-    g.fillStyle = sel ? 'rgba(255,210,74,0.16)' : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(x, y, w, rh, 7 * u); g.fill();
-    if (sel) { g.strokeStyle = '#ffd24a'; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, rh - 2, 7 * u); g.stroke(); }
-    g.fillStyle = c; g.beginPath(); g.arc(x + 12 * u, y + rh / 2, 5 * u, 0, TAU); g.fill();
-    g.globalAlpha = r.affordable ? 1 : 0.45;
-    font(g, 13 * u, 800); g.fillStyle = '#fff'; g.fillText(r.label, x + 24 * u, y + rh / 2 - (rh > 34 * u ? 2 * u : -4 * u));
-    if (rh > 34 * u) { font(g, 10 * u, 600); g.fillStyle = 'rgba(200,215,240,0.65)'; g.fillText(r.desc, x + 24 * u, y + rh / 2 + 12 * u); }
-    if (r.cost) { font(g, 12 * u, 800); g.fillStyle = r.affordable ? '#ffd24a' : '#ff8a7a'; g.textAlign = 'right'; g.fillText(`${r.cost}`, x + w - 8 * u, y + rh / 2 + 4 * u); g.textAlign = 'left'; }
-    g.globalAlpha = 1;
-    hits.push({ x, y, w, h: rh, action: { type: 'row', row: i } });
-    y += rh + 4 * u;
-  });
-  font(g, 10 * u, 600); g.fillStyle = 'rgba(200,215,240,0.55)';
-  g.fillText(`◀▶ pad · ▲▼ option · A build · B close (${Math.ceil(ws.idleLeft)})`, x, b.y + b.h - p);
-  hits.push({ x: b.x, y: b.y, w: b.w, h: b.h, action: null }); // swallow taps on the panel body
-  return hits;
-}
-
-export function drawGarage(g: CanvasRenderingContext2D, gv: GarageView, b: Box, u: number, t: number): Hit[] {
-  const hits: Hit[] = [];
-  g.fillStyle = 'rgba(4,6,12,0.6)'; g.fillRect(0, 0, g.canvas.width, g.canvas.height);
-  panel(g, b, 14 * u, '#ffd24a66');
-  const p = 18 * u, x = b.x + p, w = b.w - 2 * p;
-  let y = b.y + p;
-  font(g, 26 * u, 800); g.fillStyle = '#ffd24a'; g.fillText('GARAGE', x, y + 24 * u);
-  font(g, 12 * u, 600); g.fillStyle = 'rgba(220,235,255,0.7)';
-  g.fillText(`Best wave ${gv.bestWave} · run ${gv.runs + 1}`, x + 130 * u, y + 22 * u);
-  font(g, 20 * u, 800); g.fillStyle = '#ffe9a0'; g.textAlign = 'right'; g.fillText(`${gv.bank} parts`, x + w, y + 24 * u); g.textAlign = 'left';
-  y += 40 * u;
-  // auto-start bar
-  bar(g, x, y, w, 6 * u, 1 - gv.autoLeft / gv.autoS, '#7dffb0');
-  font(g, 11 * u, 600); g.fillStyle = 'rgba(200,215,240,0.65)';
-  g.fillText(`Keep pedaling: the run starts in ${Math.max(0, Math.ceil(gv.autoLeft))}s · ▲▼ choose · A buy · B start now`, x, y + 22 * u);
-  y += 34 * u;
-  const rh = Math.max(30 * u, Math.min(44 * u, (b.y + b.h - p - y) / gv.rows.length - 4 * u));
-  const fit = Math.max(3, Math.floor((b.y + b.h - p - y) / (rh + 4 * u)));
-  const first = Math.max(0, Math.min(gv.rows.length - fit, gv.sel - Math.floor(fit / 2)));
-  gv.rows.slice(first, first + fit).forEach((r, j) => {
-    const i = first + j, sel = i === gv.sel;
-    g.fillStyle = sel ? 'rgba(255,210,74,0.16)' : 'rgba(255,255,255,0.04)'; g.beginPath(); g.roundRect(x, y, w, rh, 8 * u); g.fill();
-    if (sel) { g.strokeStyle = '#ffd24a'; g.lineWidth = 2; g.beginPath(); g.roundRect(x + 1, y + 1, w - 2, rh - 2, 8 * u); g.stroke(); }
-    const dim = r.kind === 'upgrade' && !r.affordable;
-    g.globalAlpha = dim ? 0.55 : 1;
-    font(g, 14 * u, 800); g.fillStyle = r.kind === 'start' ? '#7dffb0' : '#fff'; g.fillText(r.name, x + 12 * u, y + rh / 2 - 1 * u);
-    font(g, 10.5 * u, 600); g.fillStyle = 'rgba(200,215,240,0.65)'; g.fillText(r.desc, x + 12 * u, y + rh / 2 + 12 * u);
-    if (r.kind === 'upgrade') {
-      const pips = Math.min(r.max ?? 0, 20), pw = Math.min(8 * u, (w * 0.32) / Math.max(1, pips));
-      for (let k = 0; k < pips; k++) { g.fillStyle = k < (r.level ?? 0) ? '#ffd24a' : 'rgba(255,255,255,0.12)'; g.fillRect(x + w * 0.5 + k * pw, y + rh / 2 - 3 * u, pw - 2, 6 * u); }
-      font(g, 13 * u, 800); g.textAlign = 'right';
-      g.fillStyle = r.cost == null ? '#7dffb0' : r.affordable ? '#ffe9a0' : '#ff8a7a';
-      g.fillText(r.cost == null ? 'MAX' : `${r.cost}`, x + w - 10 * u, y + rh / 2 + 5 * u); g.textAlign = 'left';
-    }
-    g.globalAlpha = 1;
-    hits.push({ x, y, w, h: rh, action: { type: 'garageRow', row: i } });
-    y += rh + 4 * u;
-  });
-  void t;
-  return hits;
-}
-
-/** The lull's brood card: which colour is coming, the weapon and trainer setting it brings, a riding cue and the countdown. */
-export function drawBroodCard(g: CanvasRenderingContext2D, s: TdSnapshot, b: Box, u: number, t: number) {
-  const bd = s.brood;
-  if (s.phase !== 'run' || s.over || bd.countdownS <= 0) return;
-  const c = COL[bd.color], sc = Math.min(u, b.h / 104);
-  g.save(); g.globalAlpha = Math.min(1, (bd.lullS - bd.countdownS) / 0.3 + 0.001, bd.countdownS / 0.3);
-  panel(g, b, 12 * sc, c);
-  const p = 12 * sc, x = b.x + p, w = b.w - 2 * p;
-  const head = `WAVE ${bd.wave} · ${s.boss ? 'BOSS · ' : ''}${matchupCopy(s, bd.color)}`;
-  font(g, Math.min(18 * sc, (w * 0.78) / Math.max(10, head.length * 0.6)), 900); g.fillStyle = c; g.fillText(head, x, b.y + p + 15 * sc);
-  font(g, 13 * sc, 700); g.fillStyle = '#e6eeff'; g.fillText(bd.setting, x, b.y + p + 36 * sc);
-  font(g, 13 * sc, 600); g.fillStyle = 'rgba(220,235,255,0.75)'; g.fillText(bd.cue, x, b.y + p + 54 * sc);
-  const story = s.suggestion ? `A · ${s.suggestion.label} · ${s.suggestion.cost} scrap · ${s.autoCrew ? 'Auto-crew ON' : 'tap to accept'}`
-    : s.boss ? 'Announced phases · sprint during Exposed' : BROOD_STORY[bd.color];
-  font(g, 10 * sc, 600); g.fillText(story, x, b.y + p + 70 * sc, w);
-  // countdown: big number, and a bar whose last stretch (the trainer ramp) is marked
-  const n = Math.ceil(bd.countdownS), ramping = bd.countdownS <= bd.rampS;
-  font(g, 34 * sc, 900); g.textAlign = 'right'; g.fillStyle = ramping ? c : '#fff';
-  g.fillText(`${n}`, x + w, b.y + p + 34 * sc * (1 + (ramping ? 0.04 * Math.sin(t * 10) : 0)));
-  font(g, 10 * sc, 700); g.fillStyle = 'rgba(200,215,240,0.6)'; g.fillText(ramping ? 'RAMPING IN' : 'RECOVER', x + w, b.y + p + 52 * sc); g.textAlign = 'left';
-  const by = b.y + b.h - p - 6 * sc, frac = 1 - bd.countdownS / Math.max(0.01, bd.lullS);
-  bar(g, x, by, w, 6 * sc, frac, c);
-  const rx = x + w * (1 - Math.min(1, bd.rampS / Math.max(0.01, bd.lullS)));
-  g.fillStyle = 'rgba(255,255,255,0.7)'; g.fillRect(rx, by - 2 * sc, 2, 10 * sc);
-  g.restore();
-}
-
-export function drawBanner(g: CanvasRenderingContext2D, s: TdSnapshot, x: number, y: number, w: number, u: number) {
-  const bn = s.banner; if (!bn) return;
-  const age = s.t - bn.t0, a = Math.min(1, age / 0.2) * Math.min(1, (4 - age) / 0.6);
-  if (a <= 0) return;
-  const pop = 1 + Math.max(0, 0.25 - age) * 1.2;
-  g.save(); g.globalAlpha = a; g.translate(x, y); g.scale(pop, pop);
-  g.textAlign = 'center';
-  const size = Math.min(w / Math.max(6, bn.text.length * 0.62), (bn.big ? 44 : 32) * u);
-  font(g, size, 900);
-  g.lineWidth = Math.max(3, size * 0.14); g.strokeStyle = 'rgba(0,0,0,0.75)'; g.strokeText(bn.text.toUpperCase(), 0, 0);
-  g.fillStyle = bn.color; g.fillText(bn.text.toUpperCase(), 0, 0);
-  if (bn.sub) { font(g, Math.min(15 * u, w / Math.max(10, bn.sub.length * 0.55)), 700); g.lineWidth = 4; g.strokeText(bn.sub, 0, size * 0.75); g.fillStyle = 'rgba(235,242,255,0.92)'; g.fillText(bn.sub, 0, size * 0.75); }
-  g.restore(); g.textAlign = 'left';
 }
 
 export function matchupCopy(s: Pick<TdSnapshot, 'matchup'>, element: Element): string {
   const strong = WEAPONS.reduce((a, b) => s.matchup[b][element] > s.matchup[a][element] ? b : a);
   const resisted = WEAPONS.reduce((a, b) => s.matchup[b][element] < s.matchup[a][element] ? b : a);
   return `${element.toUpperCase()} BROOD · ${WEAPON_NAME[strong].toUpperCase()} ✓ · ${WEAPON_NAME[resisted].toUpperCase()} ✗`;
-}
-function bossLine(s: TdSnapshot): string {
-  const b = s.boss!;
-  const push = b.weapon === 'rail' ? b.sprintBoost ? 'ERG PUSH' : 'HOLD ▲: SPRINT' : 'SPRINT ×1.5';
-  return b.next ? `PHASE ${b.phase + 1}: ${b.next.toUpperCase()} IN ${Math.ceil(b.countdownS)}s` : b.exposed ? `EXPOSED ${Math.ceil(b.windowLeftS)}s · ${push}` : b.telegraph ? `SPRINT IN ${Math.ceil(b.windowLeftS)}s${b.weapon === 'rail' ? b.sprintBoost ? ' · ERG PUSH' : ' · HOLD ▲' : ''}` : `BOSS PHASE ${b.phase}/${b.phaseCount} · ${WEAPON_NAME[b.weapon]}`;
-}
-function effortLine(s: TdSnapshot): string {
-  const e = s.effort!;
-  return e.state === 'announced' ? `${e.kind.toUpperCase()} IN ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind.toUpperCase()} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s MORE · ${Math.ceil(e.leftS)}s LEFT` : `${e.kind.toUpperCase()} ${e.state.toUpperCase()}`;
 }

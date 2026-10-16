@@ -6,7 +6,7 @@
 - The painting and all actors share the MAP_INTEGRATION.md registration and field-unit sizing.
 - Exact right-lane controls and plateau pads adopted together in sim/defs.ts.
 - All pads clear floor/shoulder geometry and all level-one tower kinds reach their assigned lane.
-- Compact corner/top controls expose the landscape field; padded outpost art remains above HUD insets.
+- DOM status/current-brood rows reserve space above the field; padded outpost art remains above HUD insets.
 - Environment overlays use manifest pivots; creep advances along clipped floors and the Flamer leaves char.
 - Entry colonies combine creep beds, smaller burrows and Broodmother egg clusters from the same puppet kit.
 - Creep/burrow emissions take the brood colour while their material images retain their original palette.
@@ -31,3 +31,4 @@
 - Checks: typecheck, towerdefense/inset Vitest tests, production build, browser captures across orientations.
 - Real iPad/Bluefy frame-rate validation remains a hardware check; Chromium timings are not an iPad claim.
 - Merge #141: retain shared HUD actions/radial construction; reserve the fallback dock only without shell controls.
+- Merge #143: adopt DOM status/announcements while retaining painted registration and padded outpost clearance.

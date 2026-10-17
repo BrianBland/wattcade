@@ -15,7 +15,8 @@ import { HUD_LAYOUT_EVENT, readHudInsets } from '../src/shell/hud/insets';
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const offKeys = input.attachKeyboard(window), useHud = q.get('canvas') !== '1';
 let legendOn = q.get('legend') !== '0';
-const profile = testProfile(q.get('boss') === '1' ? { gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } } : {});
+// Forward Base caps the start at bestWave - 2: wave 4 is the first boss in the five-wave set.
+const profile = testProfile(q.get('boss') === '1' ? { gameData: { towerdefense: { v: 2, runs: 1, bestWave: 6, upgrades: { headstart: 2 } } } } : {});
 const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
   simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1' } });
 if (q.get('boss') === '1') session.tuning.set('towerdefense.railLaserDps', 1); // keep the demo's first opening available for input checks

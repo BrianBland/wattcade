@@ -19,15 +19,22 @@ try {
     // A touch accepts the suggestion. No synthesized click may buy a second tower or open a menu.
     await clickBox((await ui()).layout.dock.construct);
     let s = await snapshot(); assert.equal(s.towers.length, 1); assert.equal(s.workshop, null);
-    const pad = s.towers[0].pad;
-    await advance(120);
+    const pad = s.towers[0].pad, initialLevel = s.towers[0].level;
+    const upgradeCost = await page.evaluate(async () => {
+      const { towerUpgradeCost } = await import('/src/games/towerdefense/sim/defs.ts');
+      const tower = window.__td.snapshot().towers[0];
+      return towerUpgradeCost(tower.kind, tower.level);
+    });
+    // Longer work waves accrue scrap later than the retired pacing; wait for the actual quote.
+    for (let i = 0; i < 60 && (await snapshot()).scrap < upgradeCost; i++) await advance(5);
+    assert.ok((await snapshot()).scrap >= upgradeCost, 'rider earned the quoted upgrade');
     // Tap a world tower, then confirm the upgrade on the controller.
     const world = (await ui()).pads.find(p => p.id === pad);
     await page.touchscreen.tap(world.x, world.y); await advance(1 / 30);
     s = await snapshot(); assert.equal(s.workshop.pad, pad);
     await page.screenshot({ path: `${output}/${name}-workshop.png` });
     await page.keyboard.press('l'); await advance(1 / 30);
-    s = await snapshot(); assert.equal(s.towers.find(t => t.pad === pad).level, 2);
+    s = await snapshot(); assert.equal(s.towers.find(t => t.pad === pad).level, initialLevel + 1);
     await page.keyboard.press('k'); await advance(1 / 30); assert.equal((await snapshot()).workshop, null);
     assert.equal((await snapshot()).actions.find(a => a.id === 'overcharge').activeS, 0);
     // Controller opens construction; touch toggles crew and sells the selected tower.
@@ -45,8 +52,8 @@ try {
     await clickBox((await ui()).menu.close);
     assert.equal((await snapshot()).workshop, null);
     // Repair is reachable by tapping the base.
-    const base = (await ui()).base;
-    await page.touchscreen.tap(base.x, base.y); await advance(1 / 30);
+    const basePoint = (await ui()).base;
+    await page.touchscreen.tap(basePoint.x, basePoint.y); await advance(1 / 30);
     assert.equal((await snapshot()).workshop.rows[0].kind, 'repair');
     await clickBox((await ui()).menu.close);
     assert.deepEqual(errors, []); await page.evaluate(() => window.__td.dispose());
@@ -82,7 +89,13 @@ try {
   const boss = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
   await boss.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&crew=0&boss=1&seed=2`);
   await boss.waitForFunction(() => window.__td);
-  await boss.evaluate(() => { for (let i = 0; i < 30 * 40 && !window.__td.snapshot().boss?.telegraph; i++) window.__td.advance(1 / 30); });
+  await boss.evaluate(() => {
+    for (let i = 0; i < 1800; i++) {
+      const b = window.__td.snapshot().boss;
+      if (b?.weapon === 'rail' && b.telegraph) break;
+      window.__td.advance(0.1);
+    }
+  });
   assert.equal(await boss.evaluate(() => window.__td.snapshot().boss?.weapon), 'rail');
   const boost = await boss.evaluate(() => window.__td.ui().layout.dock.workshop);
   await boss.mouse.move(boost.x + boost.w / 2, boost.y + boost.h / 2); await boss.mouse.down();

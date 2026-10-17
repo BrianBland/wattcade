@@ -43,13 +43,12 @@ export function laneXAtY(lane: number, y: number): number {
 /** Continuous cables start under the turret and finish under the tower pad, never at its outer edge. */
 export function cableRoute(pad: number): Point[] {
   const p = PADS[pad], points: Point[] = [{ x: BASE_X, y: BASE_Y }];
-  if (pad === 0) points.push({x:31,y:88},{x:16,y:79},{x:11,y:67},{x:13,y:60});
-  else if (pad === 4) points.push({x:69,y:91},{x:87,y:83},{x:98,y:72},{x:98,y:64});
-  else {
-    // Both inner plateaus: follow the middle of the gap, not a straight shortcut across a lane.
-    const left = pad === 1 || pad === 3 ? 0 : 1;
-    for (let y = 86; y > p.y + 5; y -= 4) points.push({x:(laneXAtY(left,y)+laneXAtY(left+1,y))/2,y});
-    const y = p.y + 5; points.push({x:(laneXAtY(left,y)+laneXAtY(left+1,y))/2,y});
+  // Walk the outside of the pad's own lane, so the cable stays off the road however the lanes curve.
+  const lane = p.lane, steps = 24;
+  for (let i = 1; i < steps; i++) {
+    const q = laneAt(lane, laneLength(lane) * (1 - i / steps));
+    const away = Math.sign((q.x - BASE_X) * q.nx + (q.y - BASE_Y) * q.ny) || 1;
+    points.push({ x: q.x + q.nx * 14 * away, y: q.y + q.ny * 14 * away });
   }
   points.push({x:p.x+TOWER_CABLE_X,y:p.y},{x:p.x,y:p.y});
   // Catmull–Rom interpolation rounds the route without cutting across the corridor in big arcs.

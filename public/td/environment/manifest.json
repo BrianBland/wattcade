@@ -14,8 +14,8 @@
   "background": {
     "file": "background.webp",
     "size": [
-      1536,
-      1024
+      2304,
+      1408
     ],
     "layout": "map-layout.json",
     "tile": false,

@@ -12,6 +12,7 @@ function ride(script = 'z2') {
     onSave: (data) => { saved = data as TdSave; profile.gameData.towerdefense = data; } });
   const snap = () => s.sim.snapshot() as TdSnapshot;
   s.step(1);
+  s.sim.receive!({ type: 'garageRow', row: 0 }); s.step(1); // a live ride opens in the Garage; the shell countdown follows Start run
   return { s, snap, saved: () => saved!, profile, other };
 }
 

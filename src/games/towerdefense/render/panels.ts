@@ -31,6 +31,8 @@ const CSS = `
 .td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
 .td-event span { font-size:18px; }
 .td-menu { pointer-events:auto; overflow:auto; display:flex; flex-direction:column; gap:8px; overscroll-behavior:contain; }
+.td-menu .rows { display:grid; grid-template-columns:1fr; gap:8px; align-content:start; }
+.td-hud[data-wide=true] .td-menu .rows { grid-template-columns:1fr 1fr; }
 .td-menu header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .td-menu h2 { margin:0; color:var(--neon); font-size:28px; font-style:italic; }
 .td-menu p { margin:0; color:var(--dim); }
@@ -86,6 +88,7 @@ export class TdHud {
   }
   resize(L: TdLayout, W: number) {
     this.root.dataset.narrow = String(W < 560);
+    this.root.dataset.wide = String(L.wide);
     for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
   }
   render(s: TdSnapshot, L: TdLayout, W: number) {
@@ -117,7 +120,7 @@ export class TdHud {
     if (s.garage) {
       const gv = s.garage;
       const previous = this.menu.querySelector<HTMLElement>('.selected')?.dataset.index;
-      this.html(this.menu, `<header><h2>Garage</h2><b>${gv.bank} parts</b></header><p>Best wave ${gv.bestWave} · Run ${gv.runs + 1}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A buy · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}`);
+      this.html(this.menu, `<header><h2>Garage</h2><b>${gv.bank} parts</b></header><p>Best wave ${gv.bestWave} · Run ${gv.runs + 1}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A buy · B start</small><div class="rows">${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}</div>`);
       if (previous !== String(gv.sel)) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }

@@ -1,7 +1,7 @@
 # Dynamo Defense environment — curved original-style revision of PR138
 
 Terrain generated/edited with OpenAI image_gen.imagegen; WebP export with Pillow.
-Fixed1536×1024 painting; registered field [318,32,900,900]. Game code unchanged.
+2304×1408 painting: the original 1536×1024 field is unchanged at image (384, 384), field rect [702, 416, 900, 900]. Added ground behind the spawn mouths is hive territory; no roads or base are painted there. The outpost stays a renderer puppet.
 13-unit route envelopes; low1.25-unit shoulders; level worn dirt/rock routes.
 Original-style detailed basalt and worn industrial remnants; shared apron and six pads.
 All three curves and previousPosition fields retained from the preceding map.

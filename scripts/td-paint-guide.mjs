@@ -4,10 +4,11 @@
 //          docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png   (real sprites on the flat guide)
 // For each public/td/environment/road/{portrait,landscape}.webp that exists:
 //          <orientation>-check.png       the game's road edges, pads and apron over the painting
+//          <orientation>-clearings.json  each painted clearing's offset from its pad and radius, in world units
 //          <orientation>-mock.png        the game's real outpost, towers and aliens over the painting, sim size
 //          <orientation>-mock-zoom.png   the same at about in-game iPad resolution, cropped to the lower field
 //          <orientation>-hud-<device>.png the painting and sprites under the real status rows and shell HUD
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const base = process.env.TOWERDEFENSE_BASE ?? 'http://127.0.0.1:5203';
@@ -26,6 +27,12 @@ const shoot = async (file, query, long, zoom = false) => {
     clip = { x: Math.max(0, Math.min(w - size, f.x - size / 2)), y: Math.max(0, Math.min(h - size, f.y - size / 2)), width: size, height: size };
   }
   await page.screenshot({ path: `${out}/${file}`, clip });
+  const clearings = await page.evaluate(() => document.body.dataset.clearings);
+  if (clearings && !query.includes('mock')) {
+    const o = query.includes('landscape') ? 'landscape' : 'portrait', list = JSON.parse(clearings);
+    writeFileSync(`${out}/${o}-clearings.json`, JSON.stringify(list, null, 1) + '\n');
+    for (const c of list) console.log(`  clearing ${c.pad}: off by ${c.off} units (dx ${c.dx}, dy ${c.dy}), radius ${c.r}${c.off > 0.3 || Math.abs(c.r - 4.8) > 0.4 ? '  <- fix' : ''}`);
+  }
   await page.close();
   console.log(`${out}/${file}`);
 };

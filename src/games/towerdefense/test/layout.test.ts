@@ -16,7 +16,7 @@ describe('Dynamo Defense layout vs HUD inset', () => {
       const L = layout(W, H, inset, hudControls);
       const limit = H - inset + 0.5;
       const field = fieldRect(L.field);
-      for (const [name, b] of Object.entries({ field, status: L.status, current: L.current, workshop: L.workshop, garage: L.garage, brood: L.brood, ...(!hudControls ? { construct: L.dock.construct, workshopButton: L.dock.workshop, ...Object.fromEntries(L.dock.actions.map((b, i) => [`action${i}`, b])) } : {}) })) {
+      for (const [name, b] of Object.entries({ field, status: L.status, current: L.current, workshop: L.workshop, garage: L.garage, brood: L.brood, ...(L.objective ? { objective: L.objective } : {}), ...(!hudControls ? { construct: L.dock.construct, workshopButton: L.dock.workshop, ...Object.fromEntries(L.dock.actions.map((b, i) => [`action${i}`, b])) } : {}) })) {
         expect(bottom(b), name).toBeLessThanOrEqual(limit);
         expect(b.y, name).toBeGreaterThanOrEqual(0);
         expect(b.x, name).toBeGreaterThanOrEqual(0);
@@ -37,14 +37,14 @@ describe('Dynamo Defense layout vs HUD inset', () => {
         }
       }
       expect(L.brood.y + L.brood.h, 'announcement above HUD or fallback dock').toBeLessThanOrEqual(hudControls ? limit : L.dock.construct.y);
-      for (const b of [L.status, L.current, ...(!hudControls ? [L.dock.construct, ...L.dock.actions] : [])]) {
+      for (const b of [L.status, L.current, ...(L.objective ? [L.objective] : []), ...(!hudControls ? [L.dock.construct, ...L.dock.actions] : [])]) {
         expect(overlaps(field, b), 'map does not overlap HUD').toBe(false);
         expect(overlaps(L.brood, b), 'announcement does not overlap HUD').toBe(false);
       }
       expect(overlaps(L.status, L.current)).toBe(false);
     });
   }
-  it('landscape iPad stacks the status rows in a left column and turns the field, turret left', () => {
+  it('landscape iPad keeps status in a left column and turns the field, turret left', () => {
     const L = layout(1180, 820, 168, true);
     expect(L.wide && L.column && L.field.turned).toBe(true);
     expect(L.status.x + L.status.w).toBeLessThanOrEqual(fieldRect(L.field).x);
@@ -56,6 +56,17 @@ describe('Dynamo Defense layout vs HUD inset', () => {
     expect(P.field.y + (BASE_Y + TURRET_R) * P.field.k).toBeCloseTo(fieldRect(P.field).y + fieldRect(P.field).h); // turret just above the HUD
     expect(BASE_X).toBe(40);
   });
+  it('balances tablet landscape with brood/forecast at lower left above either control layout', () => {
+    for (const [W, H] of [[1180, 820], [1366, 1024], [1024, 768]]) for (const inset of [90, 160]) for (const controls of [false, true]) {
+      const L = layout(W, H, inset, controls);
+      const controlTop = controls ? L.UH : L.dock.construct.y;
+      expect(L.status.y).toBe(12);
+      expect(L.current.y).toBeGreaterThan(L.UH / 2);
+      expect(bottom(L.current)).toBe(controlTop - 12);
+      expect(L.current.x + L.current.w).toBeLessThan(fieldRect(L.field).x);
+      expect(overlaps(L.status, L.current)).toBe(false);
+    }
+  });
   it('uses the empty strip above a compact HUD without changing legacy inset layout', () => {
     const legacy = layout(820, 1180, 188, true);
     const inset: Insets = { top: 0, right: 0, left: 0, bottom: 188, occlusions: [{ x: 8, y: 1075, w: 804, h: 101 }] };
@@ -64,6 +75,18 @@ describe('Dynamo Defense layout vs HUD inset', () => {
     expect(shaped.field.k).toBeGreaterThan(legacy.field.k);
     expect(fieldClearsHud(shaped.field, inset.occlusions!)).toBe(true);
     expect(layout(820, 1180, { ...inset, occlusions: undefined }, true)).toEqual(legacy);
+  });
+  it('fits the objective card between the landscape panels and uses field announcements on compact screens', () => {
+    for (const [W, H] of [[1180, 820], [1366, 1024], [1024, 768]]) {
+      const L = layout(W, H, 160, true), card = L.objective!;
+      expect(card).not.toBeNull();
+      expect(card.y).toBeGreaterThan(bottom(L.status));
+      expect(bottom(card)).toBeLessThan(L.current.y);
+      expect(overlaps(card, fieldRect(L.field))).toBe(false);
+      expect(card.h).toBeGreaterThanOrEqual(240);
+    }
+    expect(layout(844, 390, 158, true).objective).toBeNull();
+    expect(layout(820, 1180, 188, true).objective).toBeNull();
   });
   it('keeps short landscape status in a column so it leaves room for the turned road', () => {
     const L = layout(844, 390, 158, true);
@@ -82,7 +105,7 @@ describe('Dynamo Defense layout vs HUD inset', () => {
     const L = layout(W, H, inset, true);
     expect(L.field.k).toBeGreaterThanOrEqual(layout(W, H, h, true).field.k);
     expect(fieldClearsHud(L.field, inset.occlusions!)).toBe(true);
-    for (const b of [L.status, L.current, L.garage, L.workshop, L.brood]) {
+    for (const b of [L.status, L.current, L.garage, L.workshop, L.brood, ...(L.objective ? [L.objective] : [])]) {
       expect(inset.occlusions!.some(hood => overlaps(b, hood))).toBe(false);
     }
   });

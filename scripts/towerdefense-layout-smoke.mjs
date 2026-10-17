@@ -25,9 +25,9 @@ try {
         const fallback = layout(innerWidth, innerHeight, inset.bottom, true);
         return { clear: fieldClearsHud(L.field, inset.occlusions), scale: L.field.k, oldScale: fallback.field.k,
           reserved: inset.bottom, covered: innerHeight - L.UH, base: toWorld(L.field, window.__td.ui().base),
-          uiClear: [L.status, L.current, L.workshop, L.brood, L.garage].every(b => inset.occlusions.every(h =>
+          uiClear: [L.status, L.current, L.workshop, L.brood, L.garage, ...(L.objective ? [L.objective] : [])].every(b => inset.occlusions.every(h =>
             b.x + b.w <= h.x || h.x + h.w <= b.x || b.y + b.h <= h.y || h.y + h.h <= b.y)),
-          panels: [...document.querySelectorAll('.td-status, .td-current')].map(el => ({
+          panels: [...document.querySelectorAll('.td-status, .td-current, .td-objective:not([hidden])')].map(el => ({
             contained: el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1,
             scrollable: getComputedStyle(el).overflowY === 'auto',
           })),

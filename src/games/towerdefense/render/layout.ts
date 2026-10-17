@@ -6,10 +6,12 @@ import { fieldRect, toScreen, type FieldView } from './fieldView';
 export interface Box { x: number; y: number; w: number; h: number }
 export interface TdLayout {
   UH: number; wide: boolean; u: number;
-  /** Status rows stacked in a left column (landscape), so the field gets the full height. */
+  /** Landscape status stays at upper left, with brood/forecast above the controls at lower left. */
   column: boolean;
   field: FieldView;
   status: Box; current: Box; workshop: Box; brood: Box; garage: Box;
+  /** Persistent landscape objective/crew card; compact screens keep the transient field announcements. */
+  objective: Box | null;
   /** Standalone renderer fallback only; the shell supplies controls in normal play. */
   dock: { construct: Box; workshop: Box; actions: Box[] };
   banner: { x: number; y: number; w: number };
@@ -39,10 +41,12 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
   const bottom = hudControls ? UH : dockTop;
   let status: Box, current: Box, area: Box;
   if (column) {
-    // Landscape: status rows stack behind the turret; the field runs from them to the right edge.
+    // Balance the landscape column between the top status and lower brood/forecast.
+    // The field keeps its full height to the right; short screens naturally close the gap.
     const colW = Math.round(Math.max(220, Math.min(300, W * 0.24)));
     status = { x: pad, y: pad, w: colW, h: Math.min(150, (bottom - 3 * pad) * 0.45) };
-    current = { x: pad, y: status.y + status.h + pad, w: colW, h: Math.min(190, bottom - 3 * pad - status.h) };
+    const currentH = Math.min(154, bottom - 3 * pad - status.h);
+    current = { x: pad, y: bottom - pad - currentH, w: colW, h: currentH };
     area = { x: 2 * pad + colW, y: pad, w: Math.max(0, W - 3 * pad - colW), h: Math.max(0, bottom - 2 * pad) };
   } else {
     const statusH = Math.min(short ? 48 : 64, UH * 0.19);
@@ -80,8 +84,12 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
   const ww = Math.min(area.w, 480);
   const workshop = { x: area.x + (area.w - ww) / 2, y: area.y, w: ww, h: area.h };
   const gw = Math.min(W - 2 * pad, 620 * u);
+  const objectiveH = current.y - status.y - status.h - 2 * pad;
+  const objective = column && objectiveH >= 240
+    ? { x: status.x, y: status.y + status.h + pad, w: status.w, h: objectiveH }
+    : null;
   return {
-    UH, wide, u, column, field, status, current, dock, workshop, brood,
+    UH, wide, u, column, field, status, current, dock, workshop, brood, objective,
     banner: { x: area.x + area.w / 2, y: area.y + area.h / 2, w: area.w },
     garage: { x: (W - gw) / 2, y: pad, w: gw, h: Math.max(0, UH - 2 * pad) },
   };

@@ -1,0 +1,327 @@
+[
+  {
+    "name": "portrait",
+    "turned": false,
+    "checks": [
+      {
+        "level": 1,
+        "expected": {
+          "x": 340.5272503474629,
+          "y": 291.346344111797
+        },
+        "actual": {
+          "x": 340.5272503474628,
+          "y": 291.34634411179695
+        },
+        "effectTip": {
+          "x": 340.52725886623216,
+          "y": 291.34634351977564
+        },
+        "expectedOffset": [
+          100,
+          50
+        ],
+        "drawnOffset": [
+          100,
+          50
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 2,
+        "expected": {
+          "x": 595.5230267509734,
+          "y": 279.3207505085748
+        },
+        "actual": {
+          "x": 595.5230267509734,
+          "y": 279.32075050857475
+        },
+        "effectTip": {
+          "x": 595.523045587892,
+          "y": 279.32075938309185
+        },
+        "expectedOffset": [
+          100,
+          50
+        ],
+        "drawnOffset": [
+          100,
+          50
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 3,
+        "expected": {
+          "x": 529.3204816930853,
+          "y": 494.04805898405164
+        },
+        "actual": {
+          "x": 529.3204816930854,
+          "y": 494.04805898405164
+        },
+        "effectTip": {
+          "x": 529.3204833512373,
+          "y": 494.0480489711125
+        },
+        "expectedOffset": [
+          100,
+          37
+        ],
+        "drawnOffset": [
+          100,
+          37
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 4,
+        "expected": {
+          "x": 202.42219448080954,
+          "y": 506.6185092301871
+        },
+        "actual": {
+          "x": 202.4221944808096,
+          "y": 506.61850923018716
+        },
+        "effectTip": {
+          "x": 202.42219931923248,
+          "y": 506.6185191888727
+        },
+        "expectedOffset": [
+          100,
+          37
+        ],
+        "drawnOffset": [
+          100,
+          37
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 5,
+        "expected": {
+          "x": 335.58948941877617,
+          "y": 706.0925585874393
+        },
+        "actual": {
+          "x": 335.5894894187761,
+          "y": 706.0925585874394
+        },
+        "effectTip": {
+          "x": 335.5894955609043,
+          "y": 706.0925681545937
+        },
+        "expectedOffset": [
+          100,
+          30
+        ],
+        "drawnOffset": [
+          100,
+          30
+        ],
+        "coneAtTip": true
+      }
+    ],
+    "effectCount": 5,
+    "headFiles": [
+      "parts/head.png",
+      "parts/head_glow.png",
+      "parts/nozzle.png",
+      "parts/nozzle_glow.png",
+      "effects/attack.png",
+      "parts/upgrade_l3.png",
+      "parts/upgrade_l3_glow.png",
+      "parts/nozzle_l3.png",
+      "parts/nozzle_l3_glow.png",
+      "parts/upgrade_l5.png",
+      "parts/upgrade_l5_glow.png",
+      "parts/nozzle_l5.png",
+      "parts/nozzle_l5_glow.png"
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "name": "landscape",
+    "turned": true,
+    "checks": [
+      {
+        "level": 1,
+        "expected": {
+          "x": 913.5732650596193,
+          "y": 227.42764667514825
+        },
+        "actual": {
+          "x": 913.5732650596193,
+          "y": 227.4276466751482
+        },
+        "effectTip": {
+          "x": 913.5732593043228,
+          "y": 227.42764172533336
+        },
+        "expectedOffset": [
+          100,
+          50
+        ],
+        "drawnOffset": [
+          100,
+          50
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 2,
+        "expected": {
+          "x": 924.9237078826748,
+          "y": 468.10724018919694
+        },
+        "actual": {
+          "x": 924.9237078826749,
+          "y": 468.10724018919694
+        },
+        "effectTip": {
+          "x": 924.9236789433564,
+          "y": 468.10724395864986
+        },
+        "expectedOffset": [
+          100,
+          50
+        ],
+        "drawnOffset": [
+          100,
+          50
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 3,
+        "expected": {
+          "x": 722.2517968057506,
+          "y": 405.6214929393509
+        },
+        "actual": {
+          "x": 722.2517968057506,
+          "y": 405.62149293935096
+        },
+        "effectTip": {
+          "x": 722.2518266686898,
+          "y": 405.62148770192744
+        },
+        "expectedOffset": [
+          100,
+          37
+        ],
+        "drawnOffset": [
+          100,
+          37
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 4,
+        "expected": {
+          "x": 710.3870871301641,
+          "y": 97.07619859616935
+        },
+        "actual": {
+          "x": 710.387087130164,
+          "y": 97.0761985961694
+        },
+        "effectTip": {
+          "x": 710.3870670686866,
+          "y": 97.07620408292834
+        },
+        "expectedOffset": [
+          100,
+          37
+        ],
+        "drawnOffset": [
+          100,
+          37
+        ],
+        "coneAtTip": true
+      },
+      {
+        "level": 5,
+        "expected": {
+          "x": 522.1120741356984,
+          "y": 222.76710558718418
+        },
+        "actual": {
+          "x": 522.1120741356984,
+          "y": 222.76710558718412
+        },
+        "effectTip": {
+          "x": 522.1120704834719,
+          "y": 222.76709866846124
+        },
+        "expectedOffset": [
+          100,
+          30
+        ],
+        "drawnOffset": [
+          100,
+          30
+        ],
+        "coneAtTip": true
+      }
+    ],
+    "effectCount": 5,
+    "headFiles": [
+      "parts/head.png",
+      "parts/head_glow.png",
+      "parts/nozzle.png",
+      "parts/nozzle_glow.png",
+      "effects/attack.png",
+      "parts/upgrade_l3.png",
+      "parts/upgrade_l3_glow.png",
+      "parts/nozzle_l3.png",
+      "parts/nozzle_l3_glow.png",
+      "parts/upgrade_l5.png",
+      "parts/upgrade_l5_glow.png",
+      "parts/nozzle_l5.png",
+      "parts/nozzle_l5_glow.png"
+    ],
+    "errors": [],
+    "failed": []
+  },
+  {
+    "hudMode": "touch",
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 502,
+      "w": 283,
+      "h": 154
+    },
+    "limit": 668,
+    "contained": true
+  },
+  {
+    "hudMode": "controller",
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 491.84375,
+      "w": 283,
+      "h": 154
+    },
+    "limit": 657.84375,
+    "contained": true
+  },
+  {
+    "missingAssetRejects": true
+  }
+]

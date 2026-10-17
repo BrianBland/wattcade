@@ -2,8 +2,8 @@
   "version": 2,
   "towers": {
     "tesla": "tesla/manifest.json",
-    "mortar": "mortar/manifest.json",
-    "prism": "prism/manifest.json"
+    "prism": "prism/manifest.json",
+    "flamer": "flamer/manifest.json"
   },
   "sharedPad": "parts/pad.png",
   "preview": "preview.png"

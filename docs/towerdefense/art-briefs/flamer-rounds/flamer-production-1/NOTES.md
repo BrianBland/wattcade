@@ -1,0 +1,14 @@
+# Selected A — production round
+- Owner selected Round 2 A: “I like A”; approved pixels exported without repainting.
+- L1 remains spare; L3/L5 cumulatively add the approved shielding, supplies and gauges.
+- Original shared pad, Mortar base and L2/L4 base fittings are referenced unchanged.
+- New head/tip layers and same-canvas orange-only emission all retain four clear pixels.
+- Head aims at [112,112]; only nozzle and its cumulative tip children pulse 2.5px local +y.
+- Tier muzzles: L1/L2 [112,64], L3/L4 [112,51], L5 [112,44], parent nozzle.
+- Effect offsetsByLevel register local [12,14] to the selected muzzle and inherit nozzle motion.
+- Four-frame pilot/short flare strips transform extracted approved hot-tip pixels; no new art.
+- No long flames, smoke or cone are baked; runtime draws the ground-only cone.
+- Generated local proof shows every L1/L3/L5 passive/attack at 0°/45°/180°, full frame and 68px pad.
+- Cumulative overlays were inspected for duplicate supplies; final silhouette retains A progression.
+- build.py reproduces the assets, previews, inventory, checksums and validation.json.
+- Live checks cover L1–L5 tip/flare/cone registration, failed-art loading and both orientations; HUD captures show the lower-left forecast.

@@ -6,6 +6,16 @@ export interface RigPart {
 export type Pose = [number, number, number, number, number, number];
 export interface RigMotion { angle: number; revs: number; age: number }
 
+/** Tier coordinates inherit through the levels between upgrades (L2 uses L1, L4 uses L3). */
+export function levelPosition(position: number[], positionsByLevel: Record<string, number[]> | undefined, level: number): number[] {
+  let selected = position, unlocked = 0;
+  for (const [key, value] of Object.entries(positionsByLevel ?? {})) {
+    const tier = Number(key);
+    if (tier <= level && tier > unlocked) { selected = value; unlocked = tier; }
+  }
+  return selected;
+}
+
 function multiply(a: Pose, b: Pose): Pose {
   return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1],
     a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3],

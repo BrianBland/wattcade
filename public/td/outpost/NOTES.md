@@ -1,42 +1,32 @@
-# Dynamo outpost assets — issue 130
+# Dynamo outpost assets
 
-Generated with OpenAI `image_gen.imagegen`, guided by the approved original
-`td-towers-base.png` and the accepted issue 129 tower material/registration work.
-Python/Pillow/NumPy keyed the retained #00FF00 sheets, registered machinery axles,
-extracted emission and rendered every preview from this manifest. No game code
-changes. Working originals/scripts/full previews are on `codex/td-outpost-work`
-under `docs/towerdefense/concept/codex/outpost/`.
+The original kit was generated with image_gen from the approved tower material references.
+Round-1 fireball head approved by owner on 2026-10-17 ("Fireball turret lgtm").
+The new `head_flamer` production part is a lossless crop of the approved generated concept;
+its same-canvas emission mask contains only the ember/nozzle interior. Steel/brass do not glow.
+All other parts, their offsets/pivots and image pixels are unchanged.
+Source, rebuild script, 0°/±60° emission proofs and 480-pose validation:
+`docs/towerdefense/art-briefs/flamer-rounds/fireball-production-1/`.
 
-`FILES.txt` lists every actual file in this production set:
-- `manifest.json`: 14 parts, parent/pivot/offset/z, weapon selection, six sockets,
-  three weapon muzzles, rider-window rectangle, aim/roll/charge/damage controls.
-- `parts/*.png`: all transparent parts, six Gatling barrel phases and their
-  matching `_glow.png` canvases. Four pixels of transparent padding per canvas.
-- `masks/cab_window.png`: fixed destination-out stencil for the real empty window.
-- `preview.png`: all 18 requested states on #211d19, manifest-rendered. Includes
-  flywheel 0°/30°, each head at 0°/±60°, rail 0–3 charges, both damage stages and
-  the empty window with rider-sized placeholder; all at an exact 220px deck size.
+`FILES.txt` lists all production files; `SHA256SUMS.txt` hashes every other file.
+`manifest.json` retains 14 parts, the fixed 520×520 frame, parent/z order and weapon selection.
+Every weapon pivots about [260,260]; zero aims up, positive angles turn clockwise.
+The 440px deck is shown at 220px in the production preview (2× game art).
+`head_flamer` is the Fireball launcher; its single `muzzle_flamer` is [260,148].
+The naming remains compatible with the runtime weapon group and existing saves.
+The launcher crop has four clear pixels of padding; its pivot and z-order are unchanged.
+All other muzzle/cable/range anchors retain their original positions.
 
-Coordinates are absolute assembled rest-frame pixels; inherit parent transforms.
-Positive aim angles are clockwise, zero points up. The 520px frame provides
-rotation padding around the 440px deck footprint (2×220px game size). Render
-exactly one weapon group. Every head pivots about [260,260], as does the concentric flywheel;
-heads parent to the fixed deck, not the spinning wheel. The Gatling child inherits
-aim and rolls through its six axial sprite phases, not an in-plane aim rotation.
-Use `axialSpin.frames` with the shared part offset; each has a matching frame glow.
-These are illustrated roll phases, not exact mesh projection; collar highlights
-vary slightly. Repeating five-barrel orientation is 72°; six phases at 50ms each.
+Heads parent to the fixed deck, independently of the crank-driven flywheel.
+The Gatling child rolls through six illustrated axial phases (50ms each), not in-plane aim.
+Each phase and body part has a same-canvas glow; rail caps are intentionally glow-only.
+Draw cap N when charge >= N; damage stages are cumulative.
+The fixed cab window uses `masks/cab_window.png` at z44 before cab z45.
+Clip the runtime rider to [300,321,76,47], ground [338,366], scale 1.7.
+The window mask and cab never inherit flywheel rotation.
 
-Rail cap parts are glow-only with intentionally clear base files. Display cap N
-when charge >= N; blend their glows additively. All other base art remains complete
-when glows are disabled. Damage stages are cumulative. For the cab, apply the
-window stencil at z44, draw the runtime rider in its 76×47px safe rectangle and
-then draw the cab at z45. The manifest suggests placement for the existing side-on
-`drawRider`; clip rider cosmetics to the window. The stencil must stay fixed as
-the wheel spins. Do not attach its aperture to the flywheel's rotation.
-
-Light is overhead; the approved concept's small bevel depth and nozzle mouths
-are retained. No ground/shadow/background pixels are baked into parts. Production
-preview is resized and palette-compressed for the <1.5MB total folder budget;
-individual art retains full RGBA detail. Full-size proofs and rebuild/check scripts
-are retained with the originals. Runtime integration is outside this art issue.
+`preview.png` retains all 18 production states. Only its three Fireball cells were rebuilt;
+all other decoded preview pixels are identical to the preceding preview.
+All base art remains complete with emission disabled; light comes from the frame's top.
+No ground, shadows or long flames are baked into the parts.
+The complete production kit remains below 1.5 MB.

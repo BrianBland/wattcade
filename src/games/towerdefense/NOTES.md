@@ -22,7 +22,7 @@ CONTRACT-REQUESTs: none.
 - Z Rail: tap = one stored charge, hold 0.5 s = all. Touch and controller share a gesture; cancel/drag away/lost capture/blur/pause/menu changes discard it. Stock still requires >= 0.75 FTP (20 s nominal, max 3), independent of cooldown refill.
 - Overcharge/Slow use shared `core/cooldown.ts` refill at `min(5, powerZone)` and shared fill-up buttons. A sprint edge completes those cooldowns once, without creating rail stock. Every action parameter is a `towerdefense.*` tunable. Overcharge stacks with sprint Overdrive's tower-speed multiplier.
 - Combat inputs are consumed while construction is open. Stale menu revisions/epochs/quotes and same-tick touch/controller duplicates cannot buy twice. The shell sends `inputCancel` on pause to discard queued input and resume edges.
-- Flamer lobs fireballs (burst + burning road, `burnShare`); the Flame Tower (replaces the Mortar; Mortar art stands in) is a short ground-only cone. ◀▶/paddles step the target lock; ▲ releases it. Repair remains a scrap purchase; cooldown Field Repair is deferred by owner choice.
+- Flamer lobs fireballs (burst + burning road, `burnShare`); the Flame Tower uses approved compact-burner art and a short ground-only cone. ◀▶/paddles step the target lock; ▲ releases it. Repair remains a scrap purchase; cooldown Field Repair is deferred by owner choice.
 
 ## Saves and balance
 - Save v3 (`readSave` in `sim/sim.ts`) keeps bank, upgrades, best wave and Auto-crew from legacy and v2 saves, and drops core fields. A fall or bail banks parts already earned and returns to the Garage; `isOver()` stays false. The shell pause menu offers **Return to Garage · bank parts** during a run.

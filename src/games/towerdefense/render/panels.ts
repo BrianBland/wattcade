@@ -2,6 +2,7 @@
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
+import { crewStatus, rideObjective } from './objectives';
 
 export interface Hit extends Box { action: unknown }
 
@@ -30,6 +31,21 @@ const CSS = `
 .td-event { display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:center; text-shadow:0 2px 4px var(--bg); overflow:auto; }
 .td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
 .td-event span { font-size:18px; }
+.td-objective { display:flex; flex-direction:column; gap:12px; overflow:auto; pointer-events:auto; overscroll-behavior:contain; }
+.td-objective-main { flex:1; display:flex; flex-direction:column; justify-content:center; gap:10px; }
+.td-objective h3 { margin:0; color:var(--neon); font-size:24px; line-height:1.15; font-style:italic; text-transform:uppercase; }
+.td-objective p { margin:0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
+.td-objective-detail { color:var(--dim); }
+.td-objective .bar { height:6px; }
+.td-crew { border-top:1px solid var(--line); padding-top:12px; }
+.td-crew b { display:block; margin-bottom:5px; font-size:14px; }
+.td-crew p { color:var(--dim); font-size:13px; }
+.td-hud[data-objective-compact=true] .td-objective { gap:8px; }
+.td-hud[data-objective-compact=true] .td-objective-main { gap:6px; }
+.td-hud[data-objective-compact=true] .td-objective h3 { font-size:20px; }
+.td-hud[data-objective-compact=true] .td-objective p { font-size:13px; }
+.td-hud[data-objective-compact=true] .td-crew { padding-top:8px; }
+.td-hud[data-objective-compact=true] .td-crew p { font-size:12px; }
 .td-menu { pointer-events:auto; overflow:auto; display:flex; flex-direction:column; gap:8px; overscroll-behavior:contain; }
 .td-menu header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .td-menu h2 { margin:0; color:var(--neon); font-size:28px; font-style:italic; }
@@ -71,6 +87,7 @@ export class TdHud {
   private status = this.box('td-status panel');
   private current = this.box('td-current panel');
   private event = this.box('td-event');
+  private objective = this.box('td-objective panel');
   private menu = this.box('td-menu panel');
   private markup = new WeakMap<HTMLElement, string>();
 
@@ -103,7 +120,9 @@ export class TdHud {
     this.root.dataset.narrow = String(W < 560);
     this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
+    this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
     for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
+    if (L.objective) this.place(this.objective, L.objective);
   }
   render(s: TdSnapshot, L: TdLayout, W: number) {
     this.resize(L, W);
@@ -129,8 +148,13 @@ export class TdHud {
     }
     const intro = s.fx.some((f) => f.kind === 'bossIntro' && s.t - f.t0 < f.life); // the canvas name card owns this moment
     if (!headline && bn && s.t - bn.t0 < 4 && !intro) { headline = bn.text; sub = bn.sub; }
-    this.event.hidden = !run || incoming || !!s.workshop || !headline;
+    this.event.hidden = !!L.objective || !run || incoming || !!s.workshop || !headline;
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
+    this.objective.hidden = !L.objective || !run || !!s.workshop;
+    if (L.objective) {
+      const o = rideObjective(s), crew = crewStatus(s);
+      this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div><div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
+    }
     this.menu.hidden = !s.garage;
     if (s.garage) {
       const gv = s.garage;

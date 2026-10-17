@@ -35,7 +35,11 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
   const candidates: Array<{ suggestion: BuildSuggestion; score: number }> = [];
   const c = s.counts;
   const off = ELEMENTS.filter(e => e !== s.brood);
-  const count = (e: Element) => c[e] + c.prism / 3 + c.gold + (e === 'blue' ? 3 : 0);
+  const severity = { blue: 1, red: 5, purple: 8 };
+  // Use the same leak-danger weights for the resistance filter and the scores.
+  // Raw swarm counts can otherwise exclude the ground-only Flamethrower before
+  // the score sees a smaller but much more dangerous off-colour red push.
+  const count = (e: Element) => c[e] * severity[e] + c.prism * 2 + c.gold * 10 + (e === 'blue' ? 3 : 0);
   const target = off.reduce((a, b) => count(b) > count(a) ? b : a);
   for (const p of PADS) {
     if (s.pad != null && p.id !== s.pad) continue;
@@ -48,27 +52,30 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
       // The turret handles the brood; towers cover the other colours, including the blue stream and its Gliders.
       // Counts alone overvalue the swarm, so heavies are weighted by their base damage. Ground-only towers can't
       // answer the Gliders. Existing same-colour towers discount more of the same.
-      const severity = { blue: 1, red: 5, purple: 8 }[el];
       const air = TOWERS[kind].air ? c.air * 0.5 : 0;
-      const demand = (c[el] * severity + c.prism * 2 + c.gold * 10 + (el === 'blue' ? 3 : 0) + air) * (el === s.brood ? 0.25 : 1) * row[target];
+      const demand = (c[el] * severity[el] + c.prism * 2 + c.gold * 10 + (el === 'blue' ? 3 : 0) + air) * (el === s.brood ? 0.25 : 1) * row[target];
       const coverage = s.towers.filter(t => TOWERS[t.kind].element === el).reduce((n, t) => n + LEVEL_DMG[t.level - 1] * 0.6, 0);
       const best = Math.max(...PAD_COVER[kind]), placement = 0.4 + 0.6 * PAD_COVER[kind][p.id] / Math.max(1, best);
       let cost = existing ? 0 : towerBuildCost(kind, s.costMult), targetLevel = existing?.level ?? 1;
       // A work order may fund several upgrade levels. Its complete cost and final level are
       // shown before acceptance, keeping one press per lull comparable to the old crew economy.
-      if (existing) while (targetLevel < TOWER_MAX_LEVEL) {
+      while (targetLevel < TOWER_MAX_LEVEL) {
         const next = towerUpgradeCost(kind, targetLevel, s.costMult);
         if (cost + next > s.scrap) break;
         cost += next; targetLevel++;
       }
       if (existing && targetLevel === existing.level) continue;
       if (cost > s.scrap) continue;
+      // Rank a new pad's basic coverage independently of its funded levels. Otherwise
+      // bundling can make an empty pad look less economical than an existing upgrade
+      // and postpone filling the field. The accepted quote still pays every level.
       const gain = existing ? LEVEL_DMG[targetLevel - 1] - LEVEL_DMG[existing.level - 1] : 1;
-      const score = (demand + 0.15) / (1 + coverage) * gain / Math.max(1, cost) * placement;
+      const rankedCost = existing ? cost : towerBuildCost(kind, s.costMult);
+      const score = (demand + 0.15) / (1 + coverage) * gain / Math.max(1, rankedCost) * placement;
       candidates.push({ score, suggestion: {
         wave: s.wave, kind: existing ? 'upgrade' : 'build', pad: p.id, tower: kind,
         level: existing?.level ?? 0, targetLevel, cost,
-        label: `${existing ? `Upgrade ${TOWERS[kind].name} to Lv ${targetLevel}` : TOWERS[kind].name} · ${p.name}`,
+        label: `${existing ? `Upgrade ${TOWERS[kind].name} to Lv ${targetLevel}` : `${TOWERS[kind].name}${targetLevel > 1 ? ` · Lv ${targetLevel}` : ''}`} · ${p.name}`,
       } });
     }
   }

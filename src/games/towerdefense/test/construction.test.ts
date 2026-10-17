@@ -29,6 +29,12 @@ describe('crew recommendation', () => {
     expect(suggestBuild(state({ scrap: 59 }))).toBeNull();
     expect(suggestBuild(s)).toEqual(a);
   });
+  it('values dangerous off-colour reds before excluding the Flamethrower against a larger blue swarm', () => {
+    const s = state({ brood: 'purple', counts: { ...forecast(), red: 10, blue: 30, air: 30 }, scrap: 80 });
+    expect(suggestBuild(s)?.tower).toBe('flamer');
+    // A genuinely blue-dominated push still gets anti-air coverage.
+    expect(suggestBuild({ ...s, counts: { ...s.counts, red: 1 } })?.tower).toBe('tesla');
+  });
   it('uses existing coverage and ranks upgrades as well as empty pads', () => {
     const towers = PADS.map(p => ({ pad: p.id, kind: 'flamer' as const, level: 1 }));
     const a = suggestBuild(state({ towers, scrap: 112 }))!;
@@ -41,9 +47,34 @@ describe('crew recommendation', () => {
     expect(a.targetLevel).toBe(3); expect(a.cost).toBe(towerUpgradeCost('tesla', 1) + towerUpgradeCost('tesla', 2));
     expect(suggestBuild(state({ baseHp: 20 }))?.kind).toBe('repair');
   });
+  it('funds new towers at useful levels in one quoted order instead of hoarding the bank', () => {
+    const s = state({ scrap: 1000 });
+    const order = suggestBuild(s)!;
+    expect(order.kind).toBe('build');
+    expect(order.targetLevel).toBeGreaterThan(2);
+    expect(order.cost).toBeLessThanOrEqual(s.scrap);
+    expect(order.label).toContain(`Lv ${order.targetLevel}`);
+    expect(suggestBuild({ ...s, scrap: 80 })?.targetLevel).toBe(1);
+  });
 });
 
 describe('construction input and persistence', () => {
+  it('executes a funded build and every quoted level once, charging the displayed total', () => {
+    const s = session();
+    s.tuning.set('towerdefense.startScrap', 1000); s.step(1);
+    const before = snap(s), suggestion = before.suggestion!;
+    expect(suggestion.targetLevel).toBeGreaterThan(1);
+    s.sim.receive!({ type: 'construct', suggestion: { ...suggestion, targetLevel: 1 } }); s.step(1);
+    expect(snap(s).towers).toHaveLength(0);
+    expect(snap(s).scrap).toBe(before.scrap);
+    s.sim.receive!({ type: 'construct', suggestion });
+    s.sim.receive!({ type: 'construct', suggestion }); s.step(1);
+    const after = snap(s);
+    expect(after.towers).toHaveLength(1);
+    expect(after.towers[0]).toMatchObject({ pad: suggestion.pad, kind: suggestion.tower, level: suggestion.targetLevel });
+    expect(after.scrap).toBe(before.scrap - suggestion.cost);
+    expect(after.constructionDone).toBe(true);
+  });
   it('migrates old saves additively and preserves an explicit Commander choice', () => {
     expect(readSave({ bestWave: 10, bank: 420, autoInvest: true })).toMatchObject({ bestWave: 10, bank: 420, autoInvest: true, autoCrew: true });
     expect(readSave({ v: 2, autoCrew: false }).autoCrew).toBe(false);

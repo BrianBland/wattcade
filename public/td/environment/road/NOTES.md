@@ -12,7 +12,7 @@ Registration comes from src/games/towerdefense/sim/road.ts (unchanged):
 - Production registration uses long=3840: { x: (p.x + 40) * 16, y: (p.y + 60) * 16 }.
 - The entire image is terrain overflow; the safe field is world x=0..80, y=0..112.
 
-Round 1 used image generation from portrait-guide.png with background.webp as the material reference.
+Round 1 used image generation from portrait-guide.png with the previous painting as the material reference.
 Round 2 edited round 1's painting against the updated guide, preserving its layout and landmarks.
 It extends hive creep into the upper field, tightens clearings to ~31 px and removes the trail past the apron.
 Round 3 locally translated round 2's existing clearing textures/rims with ImageMagick to fix measured centring.
@@ -23,4 +23,5 @@ Upscaled with ImageMagick: convert painting.png -filter Lanczos -resize 2560x384
 Reviewed using npm run dev -- --port 5203 --host 127.0.0.1, then node scripts/td-paint-guide.mjs.
 The check follows the fixed road/shoulders; the empty clearings/apron and all three HUD previews were reviewed.
 See each round's NOTES.md for its readability review and pending owner feedback.
-Existing background.webp and runtime source remain unchanged; runtime switchover is separate.
+The previous painting and sprite preview remain unchanged in docs/towerdefense/art-reference/environment/.
+Runtime uses these single-road paintings; landscape currently falls back to the turned portrait.

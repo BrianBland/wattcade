@@ -12,8 +12,8 @@ approves the portrait.
 | `docs/towerdefense/paint-guide/portrait-guide.png` | 1024×1536 flat-colour layout guide, portrait |
 | `docs/towerdefense/paint-guide/landscape-guide.png` | 1536×1024 guide, the same world turned 90°: turret left, hive right |
 | `docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png` | the guides with the game's real outpost, towers and aliens at true size, for scale |
-| `public/td/environment/background.webp` | the previous painting: the **material and style reference** |
-| `public/td/environment/preview.png` | the previous painting with the real turret, towers and aliens on it |
+| `docs/towerdefense/art-reference/environment/background.webp` | the previous painting: the **material and style reference** |
+| `docs/towerdefense/art-reference/environment/preview.png` | the previous painting with the real turret, towers and aliens on it |
 | `public/td/outpost/preview.png`, `public/td/towers/preview.png` | machinery the painting must sit under |
 | `src/games/towerdefense/sim/road.ts` | the geometry the guides are drawn from (read only) |
 | `docs/towerdefense/sketches/d-port.png`, `d-land.png` | gameplay sketches with the HUD, for context |
@@ -137,7 +137,7 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
 ## Do not
 
 - Edit anything under `src/`, including `road.ts`. If the layout seems impossible to paint well, explain why in NOTES.md.
-- Replace or delete `public/td/environment/background.webp` or other existing assets. The game switches over separately.
+- Replace or delete the archived material references or other existing assets. Runtime switchover and obsolete production asset cleanup happen separately.
 - Add runtime dependencies.
 
 ## Done means

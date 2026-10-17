@@ -8,6 +8,8 @@ import type { WaveRole } from './waves';
 export type ActionId = 'rail' | 'overcharge' | 'slow';
 export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number }
 
+/** How a hit landed under the matchup matrix. */
+export type HitClass = 'strong' | 'neutral' | 'resisted';
 export interface EnemyView {
   /** `route`: -1 on the road, else the Glider flight it follows; `flying` = route >= 0 */
   id: number; kind: Kind; route: number; flying: boolean; x: number; y: number; angle: number; dist: number; radius: number;
@@ -16,6 +18,8 @@ export interface EnemyView {
   charging: boolean; /** seconds until a boss / prism changes colour, and the colour it changes to */
   shiftIn: number; next: Element | null; progress: number;
   bossPhase: number; telegraph: boolean; exposed: boolean; staggerS: number;
+  /** last hit (sim time), its matchup class and the damage dealt that tick: renderer hit feedback */
+  hitT: number; hitCls: HitClass; hitDmg: number;
 }
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
@@ -23,7 +27,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }> }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number }
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
-  | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number }
+  /** an ignition burst; `chain` groups bursts from one fire kill, `ordinal` counts them (1, 2, …) */
+  | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number; chain: number; ordinal: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
   /** a called effort resolved: won = set-piece payoff, lost = a quiet 'missed' note */
   | { id: number; t0: number; life: number; kind: 'payoff'; effort: EffortKind; won: boolean }

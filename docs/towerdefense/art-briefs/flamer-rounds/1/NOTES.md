@@ -12,3 +12,4 @@
 - Generated source sheets are retained; render-concepts.py reproduces masks and final comparisons.
 - These are concept composites, not final keyed production parts, glows, rigs or effect strips.
 - No production files, gameplay files, offsets, pivots or existing art were changed.
+- Large generated/reference sources for render-concepts.py are archived on branch `archive/td-single-road-history`.

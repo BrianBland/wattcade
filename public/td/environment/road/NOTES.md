@@ -3,7 +3,7 @@
 - portrait.webp: 2560×3840, 1,203,140 bytes, WebP quality 85; portrait round 3, awaiting owner feedback.
 - Current painting: docs/towerdefense/paint-guide/rounds/portrait-3/painting.png, 1024×1536.
 - Round 3 contains a byte-identical portrait.webp and all 11 review outputs, including clearing measurements and HUD captures.
-- Rounds 1 and 2 remain archived in docs/towerdefense/paint-guide/rounds/.
+- Rounds 1 and 2 and every round's review images are archived on branch `archive/td-single-road-history`.
 - Landscape has not been painted; it requires the owner's explicit "portrait approved" first.
 
 Registration comes from src/games/towerdefense/sim/road.ts (unchanged):

@@ -13,3 +13,4 @@
 - Archived all 11 script outputs, including the measurements, guides, sprite mocks and three HUD images.
 - Painting 1024×1536; Lanczos 2.5× to 2560×3840, WebP quality 85; typecheck and all 160 tower-defense tests pass.
 - No remaining measurement flags; stopped for feedback without starting landscape.
+- Review images (check, mocks, HUD captures) regenerate with `node scripts/td-paint-guide.mjs`; the originals are archived on branch `archive/td-single-road-history`.

@@ -6,6 +6,7 @@
 //          <orientation>-check.png       the game's road edges, pads and apron over the painting
 //          <orientation>-mock.png        the game's real outpost, towers and aliens over the painting, sim size
 //          <orientation>-mock-zoom.png   the same at about in-game iPad resolution, cropped to the lower field
+//          <orientation>-hud-<device>.png the painting and sprites under the real status rows and shell HUD
 import { existsSync, mkdirSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
@@ -37,5 +38,17 @@ try {
     await shoot(`${o}-check.png`, check, 1536);
     await shoot(`${o}-mock.png`, `${check}&mock=1`, 1536);
     await shoot(`${o}-mock-zoom.png`, `${check}&mock=1`, 3072, true);
+    const devices = o === 'portrait' ? [['ipad', 820, 1180], ['ipad-pro', 1024, 1366], ['phone', 390, 844]] : [['ipad', 1180, 820], ['ipad-pro', 1366, 1024]];
+    for (const [device, w, h] of devices) {
+      const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2, hasTouch: true });
+      const errors = []; page.on('pageerror', e => errors.push(e));
+      await page.goto(`${base}/dev/towerdefense.html?manual=1&sec=8&crew=0&legend=0&compose=/td/environment/road/${o}.webp`, { waitUntil: 'networkidle' });
+      await page.waitForSelector('body[data-compose]', { timeout: 120000 });
+      if (errors.length) throw errors[0];
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `${out}/${o}-hud-${device}.png` });
+      await page.close();
+      console.log(`${out}/${o}-hud-${device}.png`);
+    }
   }
 } finally { await browser.close(); }

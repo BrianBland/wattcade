@@ -32,6 +32,18 @@ const observer = new ResizeObserver(resize); if (useHud) observer.observe(probe)
 window.addEventListener('resize', resize); resize();
 await r.ready?.();
 paint();
+// ?compose=/path/painting.webp: hide the game canvas and show the single-road painting with real sprites under the
+// real status rows and shell HUD, laid out as the new field will be.
+const composeBg = q.get('compose');
+if (composeBg) {
+  const { drawCompose } = await import('./td-paint-guide');
+  const gameCanvas = app.querySelector('canvas')!; gameCanvas.style.opacity = '0';
+  const own = document.createElement('canvas'); own.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  app.prepend(own);
+  const L = layout(innerWidth, innerHeight, hudInset(), useHud);
+  const k = await drawCompose(own, composeBg, innerWidth, innerHeight, L.current.y + L.current.h + 12, L.UH, Math.min(2, devicePixelRatio || 1), innerWidth > innerHeight, composeBg.includes('landscape') ? 'landscape' : 'portrait');
+  document.body.dataset.compose = JSON.stringify({ k, hud: hudInset(), top: L.current.y + L.current.h + 12 });
+}
 let raf = 0;
 if (q.get('manual') !== '1') {
   let last = performance.now();

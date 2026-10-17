@@ -45,8 +45,8 @@ try {
     await clickBox((await ui()).menu.close);
     assert.equal((await snapshot()).workshop, null);
     // Repair is reachable by tapping the base.
-    const L = (await ui()).layout;
-    await page.touchscreen.tap(L.field.x + 0.5 * L.field.s, L.field.y + 0.9 * L.field.s); await advance(1 / 30);
+    const base = (await ui()).base;
+    await page.touchscreen.tap(base.x, base.y); await advance(1 / 30);
     assert.equal((await snapshot()).workshop.rows[0].kind, 'repair');
     await clickBox((await ui()).menu.close);
     assert.deepEqual(errors, []); await page.evaluate(() => window.__td.dispose());

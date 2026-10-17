@@ -6,11 +6,11 @@ import type { View } from './aliens/layer';
 import { BASE_X, BASE_Y, PADS } from '../sim/defs';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
+import { partPose, posedPoint } from './puppetPose';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
-interface Animation { durationMs: number; frameDurationMs: number; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[] } }
+interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; parent?: string } }
 interface Anchor { parent: string; position: number[] }
 interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
-const TAU = Math.PI * 2;
 function curve(keys: number[][], ms: number) {
   for (let i = 1; i < keys.length; i++) if (ms <= keys[i][0]) { const a = keys[i - 1], b = keys[i]; return a[1] + (b[1] - a[1]) * (ms - a[0]) / (b[0] - a[0]); }
   return keys[keys.length - 1][1];
@@ -41,44 +41,44 @@ class Puppet {
    * Where a manifest anchor (e.g. `muzzle_gatling`) lands on screen for a puppet drawn at (x, y) with `scale` and aim
    * `angle`: anchors on aiming parts turn with the aim pivot, exactly as draw() turns those parts. Null if absent.
    */
-  anchor(name: string, x: number, y: number, scale: number, angle: number): { x: number; y: number } | null {
+  anchor(name: string, x: number, y: number, scale: number, angle: number, age = 99): { x: number; y: number } | null {
     const m = this.m, a = m?.anchors?.[name]; if (!m || !a) return null;
-    const part = m.parts.find(p => p.name === a.parent);
-    const aims = (p: Part | undefined): boolean => !!p && (!!p.aims || aims(m.parts.find(q => q.name === p.parent)));
     const [cx, cy] = [m.size[0] / 2, m.size[1] / 2];
-    let [px, py] = a.position;
-    if (aims(part)) {
-      const [ox, oy] = m.parts.find(q => q.aims)?.pivot ?? [cx, cy], dx = px - ox, dy = py - oy, c = Math.cos(angle), sn = Math.sin(angle);
-      px = ox + dx * c - dy * sn; py = oy + dx * sn + dy * c;
-    }
+    const { x: px, y: py } = posedPoint(partPose(m.parts, a.parent, { angle, age, revs: 0 }), a.position);
     return { x: x + (px - cx) * scale, y: y + (py - cy) * scale };
   }
   draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void }) {
     const m = this.m; if (!m) return false;
     g.save(); g.translate(x, y); g.scale(scale, scale); g.translate(-m.size[0] / 2, -m.size[1] / 2);
-    const aim = (p: Part): boolean => !!p.aims || !!p.parent && aim(m.parts.find(q => q.name === p.parent)!);
+    const attack = !!m.animations && opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
+    const animation = m.animations?.[attack ? 'attack' : 'passive'];
+    const ms = animation ? (attack ? opts.age * 1000 : opts.t * 1000 % animation.durationMs) : 0;
     let riderDrawn = false;
     for (const p of m.parts) {
       if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
       if (p.z >= 44 && opts.rider && !riderDrawn) { opts.rider(); riderDrawn = true; }
       g.save();
-      if (aim(p)) { const pivot = m.parts.find(q => q.aims)?.pivot ?? p.pivot; g.translate(pivot[0], pivot[1]); g.rotate(opts.angle); g.translate(-pivot[0], -pivot[1]); }
-      if (p.name === 'flywheel') { g.translate(p.pivot[0], p.pivot[1]); g.rotate(opts.revs * TAU); g.translate(-p.pivot[0], -p.pivot[1]); }
-      if (p.recoil) g.translate(0, p.recoil.distancePx * Math.max(0, 1 - opts.age / 0.3));
+      g.transform(...partPose(m.parts, p.name, opts));
       const phase = p.axialSpin ? Math.floor(((opts.revs * 5 % 1) + 1) % 1 * p.axialSpin.frames.length) : 0;
       const file = p.axialSpin?.frames[phase] ?? p.file, glow = p.axialSpin?.frameGlows[phase] ?? p.glow;
       if (!p.emissiveOnly) {
         if (p.name === 'cab' && this.cab) g.drawImage(this.cab, 0, 0);
         else g.drawImage(this.images.get(file)!, p.offset[0], p.offset[1]);
       }
-      if (glow) { g.globalCompositeOperation = 'lighter'; g.globalAlpha *= Math.min(0.6, 0.15 + opts.grid * 0.25); g.drawImage(this.images.get(glow)!, p.offset[0], p.offset[1]); }
+      if (glow) {
+        g.globalCompositeOperation = 'lighter';
+        const gain = animation?.glowGain ? curve(animation.glowGain, ms) : 1;
+        const strength = animation?.glowStrength ? curve(animation.glowStrength, ms) : 1;
+        g.globalAlpha *= Math.min(0.6, (0.15 + opts.grid * 0.25) * gain * strength);
+        g.drawImage(this.images.get(glow)!, p.offset[0], p.offset[1]);
+      }
       g.restore();
     }
-    if (m.animations) {
-      const attack = opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
-      const a = attack ? m.animations.attack : m.animations.passive, ms = attack ? opts.age * 1000 : opts.t * 1000 % a.durationMs;
+    if (animation) {
+      const a = animation;
       const e = a.effect, f = Math.floor(ms / a.frameDurationMs) % e.frames;
       g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha *= curve(a.effectOpacity, ms) * Math.min(1, opts.grid);
+      g.transform(...partPose(m.parts, e.parent, opts));
       g.drawImage(this.images.get(e.file)!, f * e.frameSize[0], 0, e.frameSize[0], e.frameSize[1], e.offset[0], e.offset[1], e.frameSize[0], e.frameSize[1]); g.restore();
     }
     g.restore(); return true;
@@ -102,12 +102,14 @@ export class Machinery {
   /** Towers stay upright on screen; only their aim turns with the field. */
   tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot) {
     const p = PADS[tw.pad], at = v.P(p.x, p.y);
-    return this.puppet(tw.kind).draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: tw.kind === 'flamer' ? 99 : s.t - tw.firedAt, t: s.t });
+    const puppet = this.puppet(tw.kind);
+    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: puppet === this.mortar ? 99 : s.t - tw.firedAt, t: s.t });
   }
   /** Screen position of a tower's nozzle or muzzle: its manifest anchor, else a point just ahead of the pad. */
-  towerMuzzle(tw: TowerView, v: View) {
+  towerMuzzle(tw: TowerView, v: View, t = tw.firedAt + 99) {
     const p = PADS[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
-    return this.puppet(tw.kind).anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
+    const puppet = this.puppet(tw.kind), age = puppet === this.mortar ? 99 : t - tw.firedAt;
+    return puppet.anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a, age) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
   }
   /** Screen position of the outpost's current weapon muzzle, from its manifest anchor. */
   muzzle(v: View, s: TdSnapshot) {

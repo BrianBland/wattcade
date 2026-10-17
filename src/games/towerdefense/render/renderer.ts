@@ -445,7 +445,7 @@ export class TdRenderer implements GameRenderer {
     const k = this.k;
     for (const tw of s.towers) {
       if (tw.kind !== 'flamer' || t - tw.firedAt > 0.3 || s.grid <= 0) continue;
-      const m = this.machinery.towerMuzzle(tw as TowerView, this.view), a = tw.angle + this.view.rot;
+      const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot;
       const range = TOWERS.flamer.range * LEVEL_RANGE[tw.level - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
       g.save(); g.globalCompositeOperation = 'lighter';
       const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);

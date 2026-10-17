@@ -16,6 +16,7 @@ import { along, cableRoutes, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
 import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
+import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -55,6 +56,11 @@ export class TdRenderer implements GameRenderer {
   /** 0..1 smoothed Overdrive (sprinting) for cable heat, flame, muzzle and edge shimmer */
   private odBlend = 0;
   private hitFx = new HitFeedback();
+  /** per pad: the tower's last seen level and when (sim time, so pauses freeze it) its build/upgrade drop started; landing dust fired? */
+  private drops = new Map<number, { kind: string; level: number; from: number; at: number; built: boolean; landed: number }>();
+  private alarmAt = -99; private ventAt = 0;
+  /** base-damage sparks and steam: drawn after the outpost, which would otherwise cover them */
+  private baseFx: Particle[] = [];
   /** boss arrival name card start (wall clock) and wave; Exposed window bookkeeping for the first-hit slow-down */
   private intro = { at: -99, wave: 0 };
   private exposedWindow = { open: false, since: 0, slowed: false };
@@ -250,6 +256,67 @@ export class TdRenderer implements GameRenderer {
     if (p) { p.text = c.text; p.age = Math.min(p.age, 0.2); p.size = size; return; }
     this.particles.push({ ...this.P(c.x, c.y), vx: 0, vy: -4 * k, age: 0, life: 1.6, size, color: c.color, kind: 'text', text: c.text, key: c.key });
   }
+  /** Notices builds and upgrades (renderer-side, by level change) and fires the landing dust once each part lands. */
+  private trackDrops(s: TdSnapshot, firstFrame: boolean) {
+    const live = new Set<number>(), k = this.k;
+    for (const tw of s.towers) {
+      live.add(tw.pad);
+      const d = this.drops.get(tw.pad);
+      if (!d || d.kind !== tw.kind) this.drops.set(tw.pad, { kind: tw.kind, level: tw.level, from: 0, at: firstFrame ? -99 : s.t, built: true, landed: 0 });
+      else if (tw.level > d.level) Object.assign(d, { from: d.level, level: tw.level, at: s.t, built: false, landed: 0 });
+      const dd = this.drops.get(tw.pad)!, age = s.t - dd.at, landings = dd.built ? [FALL_S, HEAD_DELAY_S + FALL_S] : [FALL_S];
+      while (dd.landed < landings.length && age >= landings[dd.landed]) { // thump: dust puff, ring, a little shake
+        dd.landed++;
+        if (age > landings[dd.landed - 1] + 0.2) continue; // stale (e.g. on mount)
+        const p = PADS[tw.pad], { x, y } = this.P(p.x, p.y);
+        for (let i = 0; i < 7; i++) { const a = Math.random() * TAU; this.particles.push({ x: x + Math.cos(a) * 3 * k, y: y + Math.sin(a) * 2 * k, vx: Math.cos(a) * 9 * k, vy: Math.sin(a) * 5 * k - 2 * k, age: 0, life: 0.7, size: 1.6 * k, color: '', kind: 'smoke' }); }
+        this.ring(x, y, 'rgba(255,230,190,0.35)', 2.5 * k, 5 * k, 0.25); this.shake = Math.max(this.shake, 0.18);
+      }
+    }
+    for (const pad of this.drops.keys()) if (!live.has(pad)) this.drops.delete(pad);
+  }
+  /** Five small diamonds under a tower, filled to its level; the newest flashes after an upgrade. */
+  private levelPips(g: CanvasRenderingContext2D, level: number, x: number, y: number, flash: number) {
+    const k = this.k, r = 0.58 * k, gap = 1.45 * k;
+    for (let i = 0; i < 5; i++) {
+      const px = x + (i - 2) * gap, on = i < level;
+      g.fillStyle = on ? '#ffd24a' : 'rgba(255,255,255,0.18)'; g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(px, y - r); g.lineTo(px + r, y); g.lineTo(px, y + r); g.lineTo(px - r, y); g.closePath(); g.fill(); g.stroke();
+      if (on && i === level - 1 && flash > 0) { g.globalCompositeOperation = 'lighter'; glowAt(g, '#ffe27a', px, y, 2.2 * k, flash); g.globalCompositeOperation = 'source-over'; }
+    }
+  }
+  /** Base damage: sparks from the deck edge (< 75%), steam from the generator (< 50%), warning lights and an alarm (< 25%). */
+  private baseDamage(g: CanvasRenderingContext2D, s: TdSnapshot, bx: number, by: number) {
+    if (s.over) return;
+    const st = damageState(s.baseHp / s.baseMaxHp), k = this.k;
+    const fx = this.baseFx, dt = 1 / 60;
+    if (st.sparks && fx.length < 80 && Math.random() < (st.steam ? 0.35 : 0.15)) { // a short fizz somewhere on the rim
+      const a = Math.random() * TAU, x = bx + Math.cos(a) * 9.5 * k, y = by + Math.sin(a) * 9.5 * k;
+      for (let i = 0; i < 4; i++) { const b = a + (Math.random() - 0.5) * 1.6, v = (8 + Math.random() * 16) * k; fx.push({ x, y, vx: Math.cos(b) * v, vy: Math.sin(b) * v, age: 0, life: 0.3, size: 0.32 * k, color: Math.random() < 0.5 ? '#ffd08a' : '#ffffff', kind: 'spark' }); }
+    }
+    if (st.steam && this.wall - this.ventAt > 0.12 && fx.length < 80) { // the generator vents
+      this.ventAt = this.wall; const gx = bx + 8 * k, gy = by + 3 * k;
+      fx.push({ x: gx, y: gy, vx: (Math.random() - 0.3) * 4 * k, vy: -(6 + Math.random() * 5) * k, age: 0, life: 1.1, size: 1.4 * k, color: 'steam', kind: 'smoke' });
+    }
+    for (const p of fx) { p.age += dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.kind === 'smoke') { p.vy -= 8 * dt; p.size *= 1 + dt * 1.2; } else { const d = Math.exp(-5 * dt); p.vx *= d; p.vy *= d; } }
+    this.baseFx = fx.filter((p) => p.age < p.life);
+    for (const p of this.baseFx) {
+      const f = 1 - p.age / p.life;
+      if (p.kind === 'smoke') { g.fillStyle = `rgba(225,230,236,${0.32 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill(); }
+      else { g.fillStyle = p.color; g.globalAlpha = f; g.beginPath(); g.arc(p.x, p.y, p.size * f + 0.5, 0, TAU); g.fill(); g.globalAlpha = 1; }
+    }
+    if (st.lights) { // two rotating amber beacons on the deck rim, and the alarm
+      g.save(); g.globalCompositeOperation = 'lighter';
+      for (const side of [-1, 1]) {
+        const lx = bx + side * 10 * k, ly = by - 3 * k, a = this.wall * 5 + (side > 0 ? Math.PI : 0);
+        const gr = g.createRadialGradient(lx, ly, 0, lx, ly, 14 * k); gr.addColorStop(0, 'rgba(255,150,40,0.55)'); gr.addColorStop(1, 'rgba(255,90,20,0)');
+        g.fillStyle = gr; g.beginPath(); g.moveTo(lx, ly); g.arc(lx, ly, 14 * k, a - 0.35, a + 0.35); g.closePath(); g.fill();
+        glowAt(g, '#ff9a3a', lx, ly, 1.6 * k, 0.9);
+      }
+      g.restore();
+      if (this.wall - this.alarmAt > ALARM_EVERY_S) { this.alarmAt = this.wall; play('alarm', { vol: 0.4 }); }
+    }
+  }
   /** A fuel-blooded red alien killed by fire bursts into flame. */
   private fireBurst(x: number, y: number, size: number) {
     for (let i = 0; i < 14 && this.particles.length < 600; i++) {
@@ -286,7 +353,7 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = p.color; g.globalAlpha = f; g.lineWidth = Math.max(1, 0.25 * this.k); g.lineCap = 'round';
         g.beginPath(); g.moveTo(p.x, p.y); g.lineTo(p.x - p.vx / sp * p.size * 3, p.y - p.vy / sp * p.size * 3); g.stroke(); g.globalAlpha = 1;
       } else if (p.kind === 'smoke') {
-        g.fillStyle = `rgba(40,40,48,${0.35 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill();
+        g.fillStyle = p.color === 'steam' ? `rgba(225,230,236,${0.3 * f})` : `rgba(40,40,48,${0.35 * f})`; g.beginPath(); g.arc(p.x, p.y, p.size, 0, TAU); g.fill();
       } else if (p.kind === 'text') {
         g.globalAlpha = Math.min(1, f * 2); g.font = `800 ${Math.round(p.size)}px system-ui, sans-serif`; g.textAlign = 'center';
         g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.7)'; g.strokeText(p.text ?? '', p.x, p.y); g.fillStyle = p.color; g.fillText(p.text ?? '', p.x, p.y);
@@ -423,10 +490,13 @@ export class TdRenderer implements GameRenderer {
       this.aliens?.drawGround(g, this.view, t);
       this.odBlend = stepBlend(this.odBlend, s.overdrive && !s.over, realDt);
       this.drawPads(g, s, t);
+      this.trackDrops(s, firstFrame);
       for (const tw of s.towers) {
-        const p = this.P(PADS[tw.pad].x, PADS[tw.pad].y);
+        const p = this.P(PADS[tw.pad].x, PADS[tw.pad].y), d = this.drops.get(tw.pad)!, age = s.t - d.at;
+        const drop = dropDone(age, d.built ? HEAD_DELAY_S : 0) ? undefined : { level: d.level, from: d.from, built: d.built, age };
         this.contactShadow(g, p.x, p.y, k);
-        if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
+        if (!this.machinery.tower(g, tw, this.view, s, drop)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
+        this.levelPips(g, tw.level, p.x, p.y + 5.1 * k, d.built ? 0 : pipFlash(age));
       }
       this.drawTowerFlames(g, s, t, dt);
       // aim line, from the muzzle along the turret's screen heading
@@ -458,6 +528,7 @@ export class TdRenderer implements GameRenderer {
         weapon: s.weapon, aim, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle: s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0, overdrive: s.overdrive,
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
+      this.baseDamage(g, s, bx, by);
       // Fireballs arc over everything, from the launcher.
       this.drawShells(g, s, muzzle);
       if (this.odBlend > 0.02) { // Overdrive: a white-hot muzzle that flares with each shot
@@ -506,7 +577,7 @@ export class TdRenderer implements GameRenderer {
       this.flash.a = Math.max(0, this.flash.a - realDt * 1.6);
     }
     if (s.baseHp / s.baseMaxHp < 0.25 && s.phase === 'run' && !s.over) { // low-HP vignette pulse
-      const a = 0.18 + 0.12 * Math.sin(this.wall * 6);
+      const a = 0.1 + 0.06 * Math.sin(this.wall * 6); // subtler now that the base shows its own damage
       const vg = g.createRadialGradient(this.W / 2, L.UH / 2, Math.min(this.W, L.UH) * 0.35, this.W / 2, L.UH / 2, Math.max(this.W, L.UH) * 0.75);
       vg.addColorStop(0, 'rgba(255,40,30,0)'); vg.addColorStop(1, `rgba(255,40,30,${a})`);
       g.fillStyle = vg; g.fillRect(0, 0, this.W, this.H);

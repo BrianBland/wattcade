@@ -7,6 +7,7 @@ import { BASE_X, BASE_Y, PADS } from '../sim/defs';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
 import { partPose, posedPoint } from './puppetPose';
+import { dropPose, dropsFor } from './structureFx';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
 interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; parent?: string } }
 interface Anchor { parent: string; position: number[] }
@@ -47,7 +48,8 @@ class Puppet {
     const { x: px, y: py } = posedPoint(partPose(m.parts, a.parent, { angle, age, revs: 0 }), a.position);
     return { x: x + (px - cx) * scale, y: y + (py - cy) * scale };
   }
-  draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void }) {
+  /** `drop`: parts animating in (a build or an upgrade to `level`), `age` seconds after it happened. */
+  draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void; drop?: { level: number; from: number; built: boolean; age: number } }) {
     const m = this.m; if (!m) return false;
     g.save(); g.translate(x, y); g.scale(scale, scale); g.translate(-m.size[0] / 2, -m.size[1] / 2);
     const attack = !!m.animations && opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
@@ -58,6 +60,14 @@ class Puppet {
       if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
       if (p.z >= 44 && opts.rider && !riderDrawn) { opts.rider(); riderDrawn = true; }
       g.save();
+      if (opts.drop) { // falls in from above, then squashes on landing (about the part's pivot)
+        const d = dropsFor(p, opts.drop.level, opts.drop.built, opts.drop.from);
+        if (d.drops) {
+          const dp = dropPose(opts.drop.age, d.delay);
+          if (!dp.visible) { g.restore(); continue; }
+          g.translate(0, -dp.lift); g.translate(p.pivot[0], p.pivot[1]); g.scale(1 + (1 - dp.sy) * 0.5, dp.sy); g.translate(-p.pivot[0], -p.pivot[1]);
+        }
+      }
       g.transform(...partPose(m.parts, p.name, opts));
       const phase = p.axialSpin ? Math.floor(((opts.revs * 5 % 1) + 1) % 1 * p.axialSpin.frames.length) : 0;
       const file = p.axialSpin?.frames[phase] ?? p.file, glow = p.axialSpin?.frameGlows[phase] ?? p.glow;
@@ -100,10 +110,10 @@ export class Machinery {
   }
   private puppet(kind: TowerView['kind']) { return kind === 'flamer' ? (this.flamer.m ? this.flamer : this.mortar) : this.towers[kind]; }
   /** Towers stay upright on screen; only their aim turns with the field. */
-  tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot) {
+  tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot, drop?: { level: number; from: number; built: boolean; age: number }) {
     const p = PADS[tw.pad], at = v.P(p.x, p.y);
     const puppet = this.puppet(tw.kind);
-    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: puppet === this.mortar ? 99 : s.t - tw.firedAt, t: s.t });
+    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: puppet === this.mortar ? 99 : s.t - tw.firedAt, t: s.t, drop });
   }
   /** Screen position of a tower's nozzle or muzzle: its manifest anchor, else a point just ahead of the pad. */
   towerMuzzle(tw: TowerView, v: View, t = tw.firedAt + 99) {

@@ -1,6 +1,8 @@
 // Single-road layout sketches for Dynamo Defense. Plain vectors over the real status rows and the
 // measured shell HUD band, in whatever viewport the page has. ?v=A|B|C picks a variant; ?hud=px overrides.
 // ?side=0 keeps landscape status rows on top; ?flame=cone|range|lob; ?lock=1 shows a paddle-stepped target lock.
+import { FLYER_SPAWNS, ROAD_PADS, ROAD_WAYPOINTS, SPAWN_Y, splineLine } from '../src/games/towerdefense/sim/road';
+import { drawGuide } from './td-paint-guide';
 type P = { x: number; y: number };
 interface Variant { name: string; note: string; road: P[]; pads: P[]; flyers: P[]; smooth?: boolean }
 
@@ -15,9 +17,9 @@ const SPEED = { Skitter: 4.6, Ram: 2.8, Glider: 8.5 };
 const VARIANTS: Record<string, Variant> = {
   D: {
     name: 'D · Organic serpentine', note: 'Three uneven crossings on a spline; pockets of different sizes give pads different jobs.', smooth: true,
-    road: [{ x: 66, y: -10 }, { x: 63, y: 2 }, { x: 44, y: 9 }, { x: 22, y: 5 }, { x: 9, y: 17 }, { x: 16, y: 32 }, { x: 40, y: 36 }, { x: 62, y: 38 }, { x: 72, y: 50 }, { x: 62, y: 62 }, { x: 38, y: 60 }, { x: 18, y: 64 }, { x: 12, y: 78 }, { x: 24, y: 88 }, TURRET],
-    pads: [{ x: 32, y: 21 }, { x: 66, y: 20 }, { x: 54, y: 50 }, { x: 7, y: 48 }, { x: 32, y: 76 }, { x: 56, y: 79 }, { x: 30, y: 48 }, { x: 10, y: 97 }],
-    flyers: [{ x: 6, y: -6 }, { x: 40, y: -6 }, { x: 74, y: -6 }],
+    road: [...ROAD_WAYPOINTS],
+    pads: [...ROAD_PADS],
+    flyers: [...FLYER_SPAWNS],
   },
   A: {
     name: 'A · Serpentine', note: 'Three full-width legs. Longest road; every gap holds a row of pads.',
@@ -39,24 +41,6 @@ const VARIANTS: Record<string, Variant> = {
   },
 };
 
-/** Centripetal Catmull-Rom through every waypoint, sampled about every half unit. */
-function splineLine(pts: P[]): P[] {
-  const out: P[] = [pts[0]];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
-    const d = (a: P, b: P) => Math.max(1e-3, Math.sqrt(Math.hypot(b.x - a.x, b.y - a.y)));
-    const t0 = 0, t1 = t0 + d(p0, p1), t2 = t1 + d(p1, p2), t3 = t2 + d(p2, p3);
-    const n = Math.max(2, Math.ceil(Math.hypot(p2.x - p1.x, p2.y - p1.y) * 2));
-    for (let j = 1; j <= n; j++) {
-      const t = t1 + (t2 - t1) * j / n;
-      const L = (a: P, b: P, ta: number, tb: number) => ({ x: ((tb - t) * a.x + (t - ta) * b.x) / (tb - ta), y: ((tb - t) * a.y + (t - ta) * b.y) / (tb - ta) });
-      const a1 = L(p0, p1, t0, t1), a2 = L(p1, p2, t1, t2), a3 = L(p2, p3, t2, t3);
-      const b1 = L(a1, a2, t0, t2), b2 = L(a2, a3, t1, t3);
-      out.push(L(b1, b2, t1, t2));
-    }
-  }
-  return out;
-}
 /** Waypoints with quadratic fillets at each interior corner, sampled about every half unit. */
 function roadLine(pts: P[]): P[] {
   const out: P[] = [pts[0]];
@@ -76,7 +60,7 @@ function roadLine(pts: P[]): P[] {
 }
 const length = (l: P[]) => l.slice(1).reduce((s, p, i) => s + Math.hypot(p.x - l[i].x, p.y - l[i].y), 0);
 /** Distance along the road, ending where it enters the turret deck. */
-function walked(l: P[]) { let s = 0; for (let i = 1; i < l.length; i++) { if (Math.hypot(l[i].x - TURRET.x, l[i].y - TURRET.y) < TURRET_R) break; s += Math.hypot(l[i].x - l[i - 1].x, l[i].y - l[i - 1].y); } return s; }
+function walked(l: P[]) { let s = 0; for (let i = 1; i < l.length; i++) { if (l[i].y < SPAWN_Y) continue; if (Math.hypot(l[i].x - TURRET.x, l[i].y - TURRET.y) < TURRET_R) break; s += Math.hypot(l[i].x - l[i - 1].x, l[i].y - l[i - 1].y); } return s; }
 const nearest = (l: P[], p: P) => Math.min(...l.map(q => Math.hypot(q.x - p.x, q.y - p.y)));
 /** Road length inside a ring, a rough measure of how much of the road a pad covers. */
 const covered = (l: P[], p: P, r: number) => l.slice(1).reduce((s, q, i) => s + (Math.hypot(q.x - p.x, q.y - p.y) < r && q.y > -2 && Math.hypot(q.x - TURRET.x, q.y - TURRET.y) > TURRET_R ? Math.hypot(q.x - l[i].x, q.y - l[i].y) : 0), 0);
@@ -237,5 +221,7 @@ function draw() {
     g.fillText(i === 2 ? `${n} · ${notes[3]}` : n, nx, pos);
   });
 }
-addEventListener('resize', draw); draw();
+const guide = q.get('guide');
+if (guide === 'portrait' || guide === 'landscape') void drawGuide(canvas, guide, q.get('check'), Number(q.get('long') ?? 1536));
+else { addEventListener('resize', draw); draw(); }
 export {};

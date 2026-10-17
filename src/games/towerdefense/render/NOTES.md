@@ -1,20 +1,21 @@
 # Battlefield integration (#133), on PR #139
 - Art direction: retain the textured painted terrain, brass/steel machinery and all eight cut-out alien rigs.
 - Brood outlines plus cached ground auras separate aliens from the terrain; bosses use a stronger gold aura.
-- The registered painting draws once; its perimeter fades into atmospheric portrait/HUD margins without reflections.
-- The painting and all actors share the MAP_INTEGRATION.md registration and field-unit sizing.
+- The registered painting draws once, full bleed behind the HUD; runtime uses the single-road `PAINT_BOXES` registration.
+- Old three-lane material references live in `docs/towerdefense/art-reference/environment/`, outside shipped assets.
 - Single road: `fieldView.ts` is the one world↔screen transform (uniform scale; landscape turned 90°, turret left). Sprites stay upright; aims add `view.rot`.
 - Ground: `td/environment/road/{portrait,landscape}.webp` via `PAINT_BOXES`; landscape falls back to the turned portrait painting, then vector ground.
-- DOM status/current-brood rows reserve space above the field; padded outpost art remains above HUD insets.
-- Environment overlays use manifest pivots; creep advances along clipped floors and the Flamer leaves char.
-- Entry colonies combine creep beds, smaller burrows and Broodmother egg clusters from the same puppet kit.
-- Creep/burrow emissions take the brood colour while their material images retain their original palette.
+- DOM status/current-brood rows reserve space above the field or in a landscape left column.
+- Fireballs lob from the outpost's manifest muzzle and leave burning ground; flyers pass over the fire.
+- Flamethrower cones start at the tower's manifest muzzle, with particles and a short ground-only cone.
+- The hive mouth breathes in the incoming brood colour; brood-tinted splats remain independent of the painting.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.
-- Cables are removed for now (lane-routed; would cross the road). Muzzles come from outpost manifest anchors; towers get contact shadows.
-- Pulse launches interpolate every half crank revolution; travel uses elapsed seconds.
+- Power cables (`cables.ts`): grid-routed from under the deck to each pad, never across the road (only pad 2 feeds through pad 6); a pulse per pedal half-stroke. Muzzles come from outpost manifest anchors; towers get contact shadows.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
-- Towers: level parts, fixed Tesla/Prism heads, manifest effect timing, aimed Mortar (Flame Tower stand-in) and barrel recoil.
+- Towers: cumulative level parts and manifest effect timing; the Mortar stands in until flamethrower concepts are approved.
+- Part pixels, nozzle flare strips and muzzle anchors share parent aim/recoil transforms (`puppetPose.ts`).
+- Frame emission follows manifest animation keys; fixed sockets and cab do not inherit flywheel motion.
 - Ground lighting before actors preserves silhouette contrast; cached quarter-resolution ambient darkness
   changes only with layout/structures. Transient additive lights are capped at 32 sources.
 - Machinery/alien assets load at mount, so renderer construction remains safe in the Node inset checks.
@@ -22,8 +23,7 @@
 - Asset failure offers Back; leaving cancels pose preparation and prevents a late gameplay loop.
 - Alien frame sets bake incrementally, round-robin; future resize poses still publish rest poses first.
 - Live boss outlines reuse canvases and unchanged sampled poses; its independent scythe strike remains.
-- Five-seed 30-minute Zone 2 sweep: towerDamageMult 0.9 yields 42.5–49.2% turret damage,
-  34 waves survived and 6–7 bosses killed. Existing 40–60% share targets are retained.
+- Balance measurements belong to the single-road first-run sweep, rather than the retired three-lane baseline.
 - Review harness: dev/td-battlefield.html?sec=619&inset=110; manual=1 exposes __advance(ms).
 - stress=150 uses swarm-heavy mixed species plus one boss; weapon=flame/rail and damage=1 exercise effects.
 - Checks: typecheck, towerdefense/inset Vitest tests, production build, browser captures across orientations.

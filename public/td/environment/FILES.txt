@@ -1,10 +1,7 @@
 FILES.txt
-MAP_INTEGRATION.md
 NOTES.md
 SHA256SUMS.txt
-background.webp
 manifest.json
-map-layout.json
 overlays-preview.png
 parts/burrow_1.png
 parts/burrow_1_glow.png
@@ -60,4 +57,5 @@ parts/splat_5.png
 parts/splat_5_glow.png
 parts/splat_6.png
 parts/splat_6_glow.png
-preview.png
+road/NOTES.md
+road/portrait.webp

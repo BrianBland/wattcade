@@ -3,6 +3,7 @@
 // td-sketch.html?guide=portrait&check=/path/to.webp   the painting with the sim's road, pads and apron on top
 // ...&mock=1                                           the painting (or guide) with the game's real sprites instead
 import type { BikeState } from '../src/contracts';
+import { toScreen, type FieldView } from '../src/games/towerdefense/render/fieldView';
 import { KINDS, type Element, type Kind, type TowerKind } from '../src/games/towerdefense/sim/defs';
 import type { EnemyView, TdSnapshot } from '../src/games/towerdefense/sim/types';
 import { AlienLayer, type View } from '../src/games/towerdefense/render/aliens/layer';
@@ -127,7 +128,7 @@ export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k
     const f = px(from), e = enemies.reduce((best, q) => Math.hypot(q.x - f.x, q.y - f.y) < Math.hypot(best.x - f.x, best.y - f.y) ? q : best);
     return Math.atan2(e.x - f.x, f.y - e.y);
   };
-  const s = { t: 0.5, grid: 1, weapon: 'gatling', aimAngle: aimAt(TURRET), fx: [], baseHp: 100, baseMaxHp: 100, railCharges: 0, railMaxCharges: 3, railProgress: 0 } as unknown as TdSnapshot;
+  const s = { t: 0.5, grid: 1, weapon: 'gatling', aimAngle: aimAt(TURRET), fx: [], shells: [], baseHp: 100, baseMaxHp: 100, railCharges: 0, railMaxCharges: 3, railProgress: 0 } as unknown as TdSnapshot;
   g.save();
   ROAD_PADS.forEach((p, i) => {
     if (towers.some(t => t[0] === i)) return;
@@ -141,20 +142,15 @@ export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k
 }
 
 /**
- * A painting composed into a live viewport: the field fits between the status rows (`top`) and the HUD (`bottom`)
- * the way the single-road layout will, the painting's overflow fills the rest, and the real sprites sit on top.
- * Landscape turns the field (turret left, hive right). A portrait painting in a landscape viewport is turned with
- * it, so its light falls sideways: fine for checking layout, not lighting.
+ * A painting with review sprites under the real status rows and shell HUD. Use the renderer's field transform so
+ * road/pad registration, scale, overflow and the landscape status column match actual play exactly.
+ * A portrait painting in landscape turns with the field: useful for layout review, with sideways lighting.
  */
-export async function drawCompose(canvas: HTMLCanvasElement, bg: string, W: number, H: number, top: number, bottom: number, dpr: number, turned: boolean, painting: PaintOrientation) {
-  const rotate = turned;
+export async function drawCompose(canvas: HTMLCanvasElement, bg: string, W: number, H: number, field: FieldView, dpr: number, painting: PaintOrientation) {
+  const { k, turned: rotate } = field;
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   const g = canvas.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const pad = 12, area = { x: pad, y: top, w: W - 2 * pad, h: bottom - pad - top };
-  const k = rotate ? Math.min(area.h / FIELD_W, area.w / FIELD_H) : Math.min(area.w / FIELD_W, area.h / FIELD_H);
-  const ox = rotate ? area.x : area.x + (area.w - FIELD_W * k) / 2;
-  const oy = rotate ? area.y + (area.h - FIELD_W * k) / 2 : area.y + area.h - FIELD_H * k;
-  const P = (p: Pt) => rotate ? { x: ox + (FIELD_H - p.y) * k, y: oy + p.x * k } : { x: ox + p.x * k, y: oy + p.y * k };
+  const P = (p: Pt) => toScreen(field, p);
   const img = new Image(); img.src = bg; await img.decode();
   const { x0, y0, x1, y1 } = PAINT_BOXES[painting], a = P({ x: x0, y: y0 }), b = P({ x: x1, y: y1 });
   g.fillStyle = '#0a0e16'; g.fillRect(0, 0, W, H);

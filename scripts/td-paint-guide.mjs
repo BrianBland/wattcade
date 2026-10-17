@@ -1,5 +1,6 @@
 // Writes the single-road paint guides, and review images for any finished paintings.
 //   npm run dev -- --port 5203 &   then   node scripts/td-paint-guide.mjs
+// Set TD_PAINT_GUIDE_OUT=/tmp/td-review to keep validation separate from approved art history.
 // Always:  docs/towerdefense/paint-guide/{portrait,landscape}-guide.png
 //          docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png   (real sprites on the flat guide)
 // For each public/td/environment/road/{portrait,landscape}.webp that exists:
@@ -12,7 +13,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
 const base = process.env.TOWERDEFENSE_BASE ?? 'http://127.0.0.1:5203';
-const out = 'docs/towerdefense/paint-guide'; mkdirSync(out, { recursive: true });
+const out = process.env.TD_PAINT_GUIDE_OUT ?? 'docs/towerdefense/paint-guide'; mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] });
 const shoot = async (file, query, long, zoom = false) => {
   const s = long / 1536, [w, h] = query.includes('portrait') ? [1024 * s, 1536 * s] : [1536 * s, 1024 * s];

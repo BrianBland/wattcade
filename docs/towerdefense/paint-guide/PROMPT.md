@@ -41,9 +41,9 @@ portrait production pixels and round history. This authorizes a landscape review
 | `docs/towerdefense/paint-guide/portrait-guide.png` | 1024×1536 flat-colour layout guide, portrait |
 | `docs/towerdefense/paint-guide/landscape-guide.png` | 1536×1024 guide, the same world turned 90°: turret left, hive right |
 | `docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png` | the guides with the game's real outpost, towers and aliens at true size, for scale |
-| `docs/towerdefense/art-reference/environment/background.webp` | the archived previous painting: the **material and style reference** (on #166) |
-| `docs/towerdefense/art-reference/environment/preview.png` | the previous painting with the real turret, towers and aliens on it (on #166) |
-| `docs/towerdefense/paint-guide/rounds/portrait-3/painting.png` | the fixed portrait reference from #164, included on #166 |
+| `docs/towerdefense/art-reference/environment/background.webp` | the archived previous painting: the **material and style reference** |
+| `docs/towerdefense/art-reference/environment/preview.png` | the previous painting with the real turret, towers and aliens on it |
+| `docs/towerdefense/paint-guide/rounds/portrait-3/painting.png` | the fixed portrait reference from #164 |
 | `public/td/outpost/preview.png`, `public/td/towers/preview.png` | machinery the painting must sit under |
 | `src/games/towerdefense/sim/road.ts` | the geometry the guides are drawn from (read only) |
 | `docs/towerdefense/sketches/d-port.png`, `d-land.png` | gameplay sketches with the HUD, for context |

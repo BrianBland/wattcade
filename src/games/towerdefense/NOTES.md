@@ -1,12 +1,11 @@
 # Dynamo Defense (towerdefense)
-
 CONTRACT-REQUESTs: none.
 
 ## Seams
 - Single road (#163): `sim/road.ts` is the one geometry source (spline road from the hive mouth, 8 pads, Glider flight spawns, paint boxes); `sim/defs.ts` derives `roadAt`/`flightAt`/`PADS`/`BASE_PAD`. Gliders fly straight to the turret. `waves.ts`: sets of 3 work waves, a boss, an easy wave; brood order, packs, forecast counts, clear healing.
 - `sim/boss.ts` and `sim/efforts.ts` retain #140’s HP-gated boss ladder, stagger/Exposed timing, and seeded spin/grind/hold calls. Live matchups and fuel-blooded ignition retain turret/tower attribution.
 - `sim/targeting.ts`: soonest-arriving brood-colour target; ◀▶/paddles step a decaying lock closer/further along the queue. Turret reach `turretRange` 75 (Flamer: `flameRange`, ground only) leaves the upper road to towers. Shifters stay virtual gears.
-- `sim/construction.ts`: pure, affordable build/upgrade/repair recommendation, weighted by off-colour danger, live matchups and existing coverage; resisted choices are excluded. Upgrade orders quote the final level and total cost, including multiple levels when funded.
+- `sim/construction.ts`: affordable build/upgrade/repair orders use off-colour leak danger consistently for resistance filtering and scoring. Build and upgrade orders quote/pay all funded levels; new-pad ranking keeps basic coverage economical. Manual workshop builds remain Lv 1.
 - `sim/types.ts`: additive snapshot fields `actions`, `refill`, `slowFrom`, `set`, `lock`, `burns`, `suggestion`, `constructionDone`, `autoCrew`, `inputEpoch`; workshop adds `revision`. These are the sim/renderer seam for #126.
 - The shell owns filled action controls in its existing HUD band: controller keys when legends are on, compact blocks when off. `render/layout.ts` reclaims the canvas dock space under `mount.hudControls`; bare renderers retain a fallback dock. The radial workshop stays above the actual inset.
 - HUD (#126): `render/panels.ts` uses shared CSS tokens, glass panels and inherited font for wave/progress, HP/cores, scrap, current brood/mode and next forecast. No weapon list or duplicate power/controller HUD. Recovery replaces the forecast with a countdown/recover-or-ramp cue in the same brood strip, including while the workshop is open; no centered recovery card. Layout tests cover shell and standalone modes vs insets.
@@ -14,7 +13,7 @@ CONTRACT-REQUESTs: none.
 - Painted battlefield, animated machinery, connected conduits, hive entries, loading gate and portrait margins: `render/NOTES.md`.
 
 ## Play and controls (#119, #120, #122, #123)
-- Every wave has one brood/weapon/trainer mode. Its 15 s lull announces the coming wave and ramps the trainer over the last 6 s. During that lull `brood` is the incoming wave; `nextBrood` is one wave further ahead.
+- Every wave has one brood/weapon/trainer mode. Its 45 s lull announces the coming wave and ramps the trainer over the last 8 s. Easy waves and their incoming lulls stay at recovery settings; their cards say recover. `brood` is incoming; `nextBrood` is one wave further ahead.
 - A accepts the displayed work order during a lull, otherwise opens construction. ▼ always opens the full workshop. It never auto-opens.
 - Auto-crew defaults ON and accepts one order at the lull's end. Commander mode OFF requires one acceptance per lull. A successful manual build/upgrade/repair consumes that lull's crew order; an open workshop prevents automatic spending. Overrides remain available throughout combat.
 - Workshop: ◀▶ pads/base, ▲▼ option, A confirm, B close (10 s idle timeout). Tap pads/base to open, then tap build/upgrade/sell/repair or the saved Auto-crew toggle. Touch and controller share selection and purchase state.
@@ -28,13 +27,14 @@ CONTRACT-REQUESTs: none.
 ## Saves and balance
 - Save v3 (`readSave` in `sim/sim.ts`) keeps bank, upgrades, best wave and Auto-crew from legacy and v2 saves, and drops core fields. A fall or bail banks parts already earned and returns to the Garage; `isOver()` stays false. The shell pause menu offers **Return to Garage · bank parts** during a run.
 - `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
-- The `surge-ready-deep` achievement fixture uses `actionBot`, hook-responsive riding and a reinforced base (`simOpts.baseHp`) to reach wave 40. `wavesSurvived` is the best single run, so a later fall does not erase it. Passive survival remains measured separately.
+- The `surge-ready-deep` achievement fixture uses `actionBot`, hook-responsive riding and a reinforced base (`simOpts.baseHp`) to reach 15 waves in 40 min. `wavesSurvived` is the best single run, so a later fall does not erase it. Passive survival remains measured separately.
 - Waves are ~2 min work intervals with a 45 s lull (`waveMinS` 90, `waveMaxS` 150, `easyWaveS` 120); one called effort per work wave. HP and counts were rescaled for ~12 waves per 30 min; achievements rescaled (8/15/22 waves, 10 bosses, 8 spotless, 10 surges).
-- FTP 200 z2, seeds 1–4, `towerDamageMult` 1.1: passive falls at 29–34 min (w10–12), active 32–58 min; full-run turret share 49–56%. Survival is sensitive near this point (1.15–1.25 gave 28–64 min); needs a dedicated balance pass.
+- Balance: wave planning and swarm pacing have independent seeded RNG streams, so combat/ignition no longer reroll future broods. Funded new builds avoid the Lv-1 hoarding bottleneck; `towerDamageMult` 0.85 restores endurance pacing. Reproduce first-run seed sweeps with `node --import tsx scripts/td-balance.ts`; methods, metrics and limits: [balance report](../../../docs/towerdefense/BALANCE.md).
 
 ## Verification and device check
+- Shaped HUD coverage grows the field into clear space between hoods while keeping road sprites, towers, gliders and turret clear; menus keep the conservative band. `node scripts/towerdefense-layout-smoke.mjs` verifies actual geometry in four sizes/both modes; screenshots `/tmp/towerdefense-layout`. Short landscape uses a status column at usable height ≥200px.
 - `npx tsc --noEmit -p .`; `npx vitest run src/games/towerdefense` covers action effects/refill/sprint edges, commander/crew saves, stale/double purchases, mixed input, held Rail cancellation, layout/insets and four-seed passive/active scenarios.
 - `npm run dev -- --port 5203`, then `node scripts/towerdefense-hud-smoke.mjs`: both HUD modes at landscape/portrait/phone/short sizes, mixed upgrades, fills, Rail holds/cancel/toggle and boss boost; screenshots in `/tmp/towerdefense-hud`. The renderer smoke separately covers the no-shell fallback.
-- Interactive harness: `/dev/towerdefense.html?crew=0&legend=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=2` starts a control demo at wave 5 with a reduced Rail laser.
+- Interactive harness: `/dev/towerdefense.html?crew=0&legend=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=3` starts the wave 4 boss with a reduced Rail laser.
 - #126 visual checks: 2x touch-enabled Chromium captures at 1180×820, 820×1180 and 390×844 for combat/recovery/workshop, with real `HudLayer`; DOM bounds/overflow and clear recovery map checked. Recorded a manual recovery build with the countdown visible. Shared HUD smoke covers both legends, actions, upgrades and held-input cancellation; typecheck, build and 167 targeted tests pass.
 - Real iPad/Bluefy and Ride hardware remain unverified: check seated thumb reach on the dock/radial targets, action response at 1x, simultaneous touch/controller input, release/cancel, portrait rotation and the real HUD band. Sounds need an ear check.

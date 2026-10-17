@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { layout, type Box } from '../render/layout';
+import { fieldClearsHud, layout, type Box } from '../render/layout';
 import { radialLayout } from '../render/construction';
 import { fieldRect } from '../render/fieldView';
 import { BASE_X, BASE_Y } from '../sim/defs';
 import { TURRET_R } from '../sim/road';
+import type { Insets } from '../../../contracts';
 
 const bottom = (b: Box) => b.y + b.h;
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
@@ -54,5 +55,35 @@ describe('Dynamo Defense layout vs HUD inset', () => {
     expect(P.field.turned).toBe(false); expect(P.column).toBe(false);
     expect(P.field.y + (BASE_Y + TURRET_R) * P.field.k).toBeCloseTo(fieldRect(P.field).y + fieldRect(P.field).h); // turret just above the HUD
     expect(BASE_X).toBe(40);
+  });
+  it('uses the empty strip above a compact HUD without changing legacy inset layout', () => {
+    const legacy = layout(820, 1180, 188, true);
+    const inset: Insets = { top: 0, right: 0, left: 0, bottom: 188, occlusions: [{ x: 8, y: 1075, w: 804, h: 101 }] };
+    const shaped = layout(820, 1180, inset, true);
+    expect(shaped.UH - legacy.UH).toBe(83);
+    expect(shaped.field.k).toBeGreaterThan(legacy.field.k);
+    expect(fieldClearsHud(shaped.field, inset.occlusions!)).toBe(true);
+    expect(layout(820, 1180, { ...inset, occlusions: undefined }, true)).toEqual(legacy);
+  });
+  it('keeps short landscape status in a column so it leaves room for the turned road', () => {
+    const L = layout(844, 390, 158, true);
+    expect(L.column).toBe(true);
+    expect(L.field.k).toBeGreaterThan(2.7);
+    const minimum = layout(844, 390, 190, true);
+    expect(minimum.column).toBe(true);
+    expect(bottom(minimum.current)).toBeLessThan(minimum.UH);
+  });
+  for (const [W, H] of sizes) it(`${W}x${H}: protects combat sprites and menus around tall hoods`, () => {
+    const h = Math.min(188, H * .3), side = Math.min(160, W * .2);
+    const inset: Insets = { top: 0, right: 0, left: 0, bottom: h, occlusions: [
+      { x: 4, y: H - h, w: side, h }, { x: side + 10, y: H - h + 75, w: W - 2 * side - 20, h: h - 79 },
+      { x: W - side - 4, y: H - h, w: side, h },
+    ] };
+    const L = layout(W, H, inset, true);
+    expect(L.field.k).toBeGreaterThanOrEqual(layout(W, H, h, true).field.k);
+    expect(fieldClearsHud(L.field, inset.occlusions!)).toBe(true);
+    for (const b of [L.status, L.current, L.garage, L.workshop, L.brood]) {
+      expect(inset.occlusions!.some(hood => overlaps(b, hood))).toBe(false);
+    }
   });
 });

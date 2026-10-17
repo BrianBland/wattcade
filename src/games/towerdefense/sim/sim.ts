@@ -3,6 +3,7 @@
 // sustained threshold power charges the Railgun, sprints trigger Overdrive and Power Surges fire an EMP.
 import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refillRate, startCooldown, tickCooldown } from '../../../core/cooldown';
+import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import {
   AIM_LIMIT, BASE_PAD, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS, ROAD_LENGTH,
@@ -68,14 +69,18 @@ type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) 
 
 export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapshot(): TdSnapshot } {
   const T = ctx.tuning;
+  // Combat (especially ignition chains) consumes a variable number of random draws.
+  // Keep future broods, packs and swarm intervals stable when damage or rider actions change.
+  const waveRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
+  const swarmRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
   // weapons (spec)
   const gatlingRevs = T.num('gatlingRevsPerShot', 0.25, 0.05, 2, 0.05, 'crank revs per Gatling bullet');
   const gatlingDmg = T.num('gatlingDamage', 30, 0.5, 60, 0.5);
   const gatlingGrade = T.num('gatlingGradePct', 1, 0, 6, 0.5, 'sim-mode grade while Gatling selected');
-  const flameLevel = T.num('flameLevelPct', 35, 0, 100, 1, 'resistance level while Flame selected');
-  const flameDpw = T.num('flameDpsPerWatt', 1.5, 0.02, 3, 0.01, 'Flamer damage per second per watt (power3s), split between fireball impact and burning ground');
-  const flameRange = T.num('flameRange', 70, 10, 120, 1, 'how far the Flamer lobs fireballs');
-  const fireballPeriod = T.num('fireballPeriodS', 0.7, 0.2, 3, 0.05, 'seconds between Flamer fireballs');
+  const flameLevel = T.num('flameLevelPct', 35, 0, 100, 1, 'resistance level while Fireball selected');
+  const flameDpw = T.num('flameDpsPerWatt', 1.5, 0.02, 3, 0.01, 'Fireball damage per second per watt (power3s), split between fireball impact and burning ground');
+  const flameRange = T.num('flameRange', 70, 10, 120, 1, 'how far the Fireball turret lobs fireballs');
+  const fireballPeriod = T.num('fireballPeriodS', 0.7, 0.2, 3, 0.05, 'seconds between Fireball shots');
   const fireballFlight = T.num('fireballFlightS', 0.8, 0.2, 3, 0.05);
   const fireballRadius = T.num('fireballRadius', 6, 2, 15, 0.5, 'fireball burst and burning-ground radius');
   const burnS = T.num('burnS', 4, 0.5, 15, 0.5, 'seconds a fireball\'s ground keeps burning');
@@ -118,7 +123,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each wave: brood card, countdown, no new spawns');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
   const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
-  const lullLevel = T.num('lullLevelPct', 10, 0, 100, 1, 'resistance level early in the lull (Flamer brood next)');
+  const lullLevel = T.num('lullLevelPct', 10, 0, 100, 1, 'resistance level early in the lull (Fireball brood next)');
   const lullFtp = T.num('lullFtpFraction', 0.5, 0.3, 1, 0.05, 'ERG target early in the lull (Railgun brood next)');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
@@ -140,7 +145,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // dynamo: towers, overdrive, surges, economy
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
   const towerMaxBoost = T.num('towerMaxBoost', 1.6, 1, 3, 0.1, 'cap on tower speed from extra watts');
-  const towerDmgT = T.num('towerDamageMult', 1.1, 0.1, 5, 0.05, 'all tower damage x (turret vs tower damage share)');
+  const towerDmgT = T.num('towerDamageMult', 0.85, 0.1, 5, 0.05, 'all tower damage x (turret vs tower damage share)');
   const teslaChain = T.num('teslaChain', 3, 1, 10, 1, 'Tesla chain targets at Lv 1');
   const teslaChainPerLv = T.num('teslaChainPerLevel', 0.5, 0, 2, 0.25, 'extra Tesla chain targets per level (floored)');
   const towerCostT = T.num('towerCostMult', 1, 0.2, 5, 0.05, 'all tower build/upgrade costs x');
@@ -241,8 +246,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function trainerSync() {
     if (phase === 'garage') { ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
     const ramp = rampS();
-    // The easy wave that closes a set is ridden at recovery effort; its lull ramps toward the next set's first wave.
-    const easy = plan?.role === 'easy' && lull <= 0;
+    // An easy wave and its incoming lull stay at recovery effort. The following
+    // work wave ramps toward its own setting during that work wave's lull.
+    const easy = plan?.role === 'easy';
     const k = phase !== 'run' || easy ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
     const mix = (a: number, b: number) => a + (b - a) * k;
     if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade()) });
@@ -357,9 +363,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   // ---------- waves ----------
   function planFor(w: number): WavePlan {
-    const brood = nextBrood(broods, ctx.rng, { maxRun: waveRole(w) === 'boss' ? 1 : broodMaxRun(), coverWaves: broodCover() });
+    const brood = nextBrood(broods, waveRng, { maxRun: waveRole(w) === 'boss' ? 1 : broodMaxRun(), coverWaves: broodCover() });
     broods.push(brood);
-    return planWave(w, ctx.rng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack() });
+    return planWave(w, waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack() });
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
@@ -506,6 +512,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // ---------- weapons ----------
   function broodInfo(p: WavePlan): BroodInfo {
     const weapon = ELEMENT_WEAPON[p.brood];
+    if (p.role === 'easy') return {
+      wave: p.wave, color: p.brood, weapon,
+      mode: weapon === 'gatling' ? 'sim' : weapon === 'flame' ? 'resistance' : 'erg',
+      setting: weapon === 'gatling' ? `sim ${+lullGrade().toFixed(1)}% grade`
+        : weapon === 'flame' ? `resistance ${Math.round(lullLevel())}%` : `ERG ${Math.round(lullFtp() * 100)}% FTP`,
+      cue: 'ride easy · recover',
+    };
     if (weapon === 'gatling') return { wave: p.wave, color: p.brood, weapon, mode: 'sim', setting: `sim ${+gatlingGrade().toFixed(1)}% grade`, cue: 'spin fast · 90+ rpm' };
     if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(flameLevel())}%`, cue: 'grind 70–80 rpm' };
     return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
@@ -758,7 +771,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     let ok = false;
     if (s.kind === 'repair') ok = repair();
-    else if (s.kind === 'build') ok = build(s.pad, s.tower!);
+    else if (s.kind === 'build') {
+      ok = build(s.pad, s.tower!);
+      if (ok) while (towers[s.pad]!.level < s.targetLevel) { if (!upgrade(s.pad)) break; }
+    }
     else if (scrap >= s.cost) {
       while (towers[s.pad]!.level < s.targetLevel) { if (!upgrade(s.pad)) break; ok = true; }
     }
@@ -1106,7 +1122,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (schedule.length || waveElapsed < (easy ? easyWaveS() - 30 : waveMin() - 40)) miniTimer -= dt;
       if (miniTimer <= 0) {
         spawn('mini', -1);
-        miniTimer = (miniInterval() / (1 + 0.1 * (wave - 1))) * (0.7 + ctx.rng() * 0.6) * (easy ? 2 : 1);
+        miniTimer = (miniInterval() / (1 + 0.1 * (wave - 1))) * (0.7 + swarmRng() * 0.6) * (easy ? 2 : 1);
       }
       while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route); }
     }
@@ -1169,7 +1185,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   });
   const playControls = (): ControlHint[] => {
     const suggestion = lull > 0 && !constructionDone ? recommendation() : null;
-    const build = suggestion?.tower ? ({ tesla: 'Tesla', flamer: 'Flamer', lens: 'Lens' })[suggestion.tower] : 'Repair';
+    const build = suggestion?.tower ? ({ tesla: 'Tesla', flamer: 'Flame', lens: 'Lens' })[suggestion.tower] : 'Repair';
     const order = suggestion?.tower ? `${build} Lv${suggestion.targetLevel}` : build;
     return [
       { button: 'a', label: suggestion ? `${order} · ${suggestion.cost} scrap` : 'Construction', shortLabel: suggestion ? build : 'Build',

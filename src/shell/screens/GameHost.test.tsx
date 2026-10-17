@@ -17,12 +17,13 @@ vi.mock('../components/Toasts', () => ({ toast: vi.fn() }));
 vi.mock('../../debug/flag', () => ({ loadFlag: () => false, saveFlag: vi.fn() }));
 vi.mock('../../audio/sfx', () => ({ duckAmbient: vi.fn(), play: vi.fn(), unlockAudio: vi.fn() }));
 import { GameHost } from './GameHost';
+import { HUD_LAYOUT_EVENT } from '../hud/insets';
 let container: HTMLDivElement;
 let resolveReady: () => void, rejectReady: (error: Error) => void;
 let renderer: GameRenderer;
 async function mount() {
   const ready = new Promise<void>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
-  renderer = {mount:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
+  renderer = {mount:vi.fn(),setInsets:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
   const game = {id:'towerdefense',title:'Dynamo Defense',loadRenderer:async()=>renderer} as unknown as GameModule;
   await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={()=>{}} onAbandon={()=>{}} onRestart={()=>{}} onSave={()=>{}} />,container);});
 }
@@ -34,6 +35,20 @@ beforeEach(()=>{
 });
 afterEach(async()=>{await act(async()=>render(null,container));container.remove();vi.unstubAllGlobals();});
 describe('renderer loading gate',()=>{
+  it('updates actual HUD shape when content or legend changes inside the same reserved band',async()=>{
+    await mount();
+    const surface = container.querySelector<HTMLElement>('.mount')!, probe = container.querySelector<HTMLElement>('.hud-probe')!;
+    const hud = document.createElement('div'); hud.className='hud';
+    const panel = document.createElement('div'); hud.append(panel); container.append(hud);
+    Object.defineProperty(probe,'offsetHeight',{value:188});
+    const rect = (y:number,h:number) => ({x:0,y,left:0,top:y,right:820,bottom:y+h,width:820,height:h,toJSON(){}});
+    vi.spyOn(surface,'getBoundingClientRect').mockReturnValue(rect(0,1180));
+    const panelBounds = vi.spyOn(panel,'getBoundingClientRect').mockReturnValue(rect(1075,101));
+    window.dispatchEvent(new Event(HUD_LAYOUT_EVENT));
+    expect(renderer.setInsets).toHaveBeenLastCalledWith({top:0,right:0,left:0,bottom:188,occlusions:[{x:0,y:1075,w:820,h:101}]});
+    panelBounds.mockReturnValue(rect(992,184)); window.dispatchEvent(new Event(HUD_LAYOUT_EVENT));
+    expect(renderer.setInsets).toHaveBeenLastCalledWith({top:0,right:0,left:0,bottom:188,occlusions:[{x:0,y:992,w:820,h:184}]});
+  });
   for(const menu of [false,true])it(`holds ${menu?'the game menu':'the intro and countdown'} until renderer readiness`,async()=>{
     mocks.session.sim.inMenu.mockReturnValue(menu); await mount();
     expect(container.textContent).toContain('Preparing Dynamo Defense');

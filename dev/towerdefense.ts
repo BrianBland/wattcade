@@ -8,7 +8,8 @@ import { module } from '../src/games/towerdefense';
 import type { TdSnapshot } from '../src/games/towerdefense/sim/types';
 import { layout } from '../src/games/towerdefense/render/layout';
 import { radialLayout } from '../src/games/towerdefense/render/construction';
-import { PADS } from '../src/games/towerdefense/sim/defs';
+import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../src/games/towerdefense/sim/defs';
+import { toScreen } from '../src/games/towerdefense/render/fieldView';
 
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const offKeys = input.attachKeyboard(window), useHud = q.get('canvas') !== '1';
@@ -32,6 +33,18 @@ const observer = new ResizeObserver(resize); if (useHud) observer.observe(probe)
 window.addEventListener('resize', resize); resize();
 await r.ready?.();
 paint();
+// ?compose=/path/painting.webp: hide the game canvas and show the single-road painting with real sprites under the
+// real status rows and shell HUD, laid out as the new field will be.
+const composeBg = q.get('compose');
+if (composeBg) {
+  const { drawCompose } = await import('./td-paint-guide');
+  const gameCanvas = app.querySelector('canvas')!; gameCanvas.style.opacity = '0';
+  const own = document.createElement('canvas'); own.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  app.prepend(own);
+  const L = layout(innerWidth, innerHeight, hudInset(), useHud);
+  const k = await drawCompose(own, composeBg, innerWidth, innerHeight, L.current.y + L.current.h + 12, L.UH, Math.min(2, devicePixelRatio || 1), innerWidth > innerHeight, composeBg.includes('landscape') ? 'landscape' : 'portrait');
+  document.body.dataset.compose = JSON.stringify({ k, hud: hudInset(), top: L.current.y + L.current.h + 12 });
+}
 let raf = 0;
 if (q.get('manual') !== '1') {
   let last = performance.now();
@@ -44,10 +57,10 @@ window.__td = {
   send: (a: unknown) => { session.sim.receive?.(a); },
   ui: () => {
     const L = layout(innerWidth, innerHeight, hudInset(), useHud), s = session.sim.snapshot() as TdSnapshot, ws = s.workshop;
-    const p = ws?.pad == null || ws.pad === 6 ? { x: 50, y: 90 } : PADS[ws.pad];
+    const p = ws?.pad == null || ws.pad === BASE_PAD ? { x: BASE_X, y: BASE_Y } : PADS[ws.pad];
     return { layout: L,
-      pads: PADS.map(p => ({ id: p.id, x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 })),
-      menu: ws ? radialLayout(innerWidth, L.UH, { x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 }, ws.rows.length) : null };
+      pads: PADS.map(p => ({ id: p.id, ...toScreen(L.field, p) })),
+      menu: ws ? radialLayout(innerWidth, L.UH, toScreen(L.field, p), ws.rows.length) : null };
   },
   legend: (on: boolean) => { legendOn = on; renderHud(); },
   events: () => session.finish().events,

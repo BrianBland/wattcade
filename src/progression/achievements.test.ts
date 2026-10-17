@@ -82,11 +82,11 @@ describe('achievement catalogue', () => {
 describe('counters and goals', () => {
   it('max keeps the best, with progress', () => {
     let p = defaultProfile();
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 14 } })).profile;
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 4 } })).profile;
-    expect(p.counters!['towerdefense.bestWave']).toBe(14);
-    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.7, label: 'Best 14/20 waves' });
-    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 24 } }));
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 6 } })).profile;
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 2 } })).profile;
+    expect(p.counters!['towerdefense.bestWave']).toBe(6);
+    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.75, label: 'Best 6/8 waves' });
+    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 12 } }));
     expect(ids(r)).toContain('td_wave10');
     expect(ids(r)).not.toContain('td_wave25');
   });

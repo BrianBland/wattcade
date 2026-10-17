@@ -1,20 +1,33 @@
 // Wave composition. Pure: everything random comes from the `rng` argument.
 import { ELEMENTS, KIND_FROM, KINDS, type Element, type Kind } from './defs';
 
-export interface Spawn { at: number; kind: Kind; lane: number }
+/** `route`: -1 walks the road; 0..2 is a Glider flight from that FLYER_SPAWNS point. */
+export interface Spawn { at: number; kind: Kind; route: number }
+/**
+ * Waves come in sets of five, like workout intervals: three work waves, a boss wave, then an easy recovery wave
+ * (a light stream at recovery effort) before the next set.
+ */
+export type WaveRole = 'work' | 'boss' | 'easy';
+export const SET_LENGTH = 5;
+export function waveRole(w: number): WaveRole {
+  const pos = (w - 1) % SET_LENGTH;
+  return pos === 3 ? 'boss' : pos === 4 ? 'easy' : 'work';
+}
+/** 1-based set number and position in it, for announcements. */
+export const setOf = (w: number) => ({ set: Math.floor((w - 1) / SET_LENGTH) + 1, pos: (w - 1) % SET_LENGTH + 1 });
 export interface WavePlan {
-  wave: number; boss: boolean; mainLane: number; spawns: Spawn[];
+  wave: number; boss: boolean; role: WaveRole; spawns: Spawn[];
   /** The wave's main colour: most of its heavies, and the turret's weapon for the whole wave. */
   brood: Element;
-  /** Heavy count per lane per colour (gold = boss, prism = shifting) for the forecast panel. */
-  lanes: Array<Record<Element | 'gold' | 'prism', number>>;
+  /** Count per colour (gold = boss, prism = shifting) for the forecast panel; `air` = Gliders among the blue. */
+  counts: Record<Element | 'gold' | 'prism', number> & { air: number };
 }
 export interface WaveOpts {
   spawnWindowS: number; countScale: number;
   brood: Element;
   /** Share of the wave's slots that are the brood colour (the rest are off-colour, for the towers). */
   broodShare: number;
-  /** Blue has no heavies: each blue slot is a swarm pack of this many darts or drones down one lane. */
+  /** Blue has no heavies: each blue slot is a swarm pack of this many darts or drones. */
   swarmPack: number;
 }
 export interface BroodOrderOpts {
@@ -69,47 +82,43 @@ function pickKind(el: Exclude<Element, 'blue'>, w: number, rng: () => number): K
   return ks[ks.length - 1].kind;
 }
 
-/** What wave `w` sends before brood colouring: `heavies` = colour slots (a heavy, or a swarm pack if blue), plus darts, prisms, boss. */
+/**
+ * What wave `w` sends before brood colouring: `heavies` = colour slots (a heavy, or a swarm pack if blue), plus
+ * Glider packs, prisms and the boss. Waves are long work intervals, so a wave carries several old waves' worth.
+ */
 export function waveCounts(w: number, countScale = 1): { heavies: number; dart: number; prism: number; boss: number } {
-  const boss = w % 5 === 0;
-  const k = (boss ? 0.6 : 1) * countScale;
+  const role = waveRole(w), boss = role === 'boss';
+  const k = (boss ? 0.6 : role === 'easy' ? 0.25 : 1) * countScale;
   const n = (from: Kind, f: number) => (w >= KIND_FROM[from] ? Math.max(0, Math.round(f * k)) : 0);
-  // the pre-brood mix of brutes, bastions, chargers and carriers, now recoloured by the brood
-  const heavies = n('brute', 2 + w * 0.8) + n('armor', 1 + Math.floor(w / 4)) + n('charger', Math.floor((w - 3) / 3)) + n('carrier', Math.floor((w - 5) / 4));
-  return { heavies, dart: n('dart', 4 * Math.floor((w - 1) / 3)), prism: n('prism', Math.floor((w - 8) / 3)), boss: boss ? 1 : 0 };
+  // the pre-brood mix of brutes, bastions, chargers and carriers, recoloured by the brood
+  const heavies = n('brute', 5 + w * 2.4) + n('armor', 2 + w * 0.8) + n('charger', 1 + w * 0.7) + n('carrier', w * 0.4);
+  return { heavies: Math.max(1, heavies), dart: n('dart', 4 * Math.ceil(w * 0.7)), prism: n('prism', 1 + (w - 6) * 0.5), boss: boss ? 1 : 0 };
 }
 
 export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
-  const mainLane = Math.floor(rng() * 3) % 3;
-  const second = w >= 8 ? (mainLane + 1 + (rng() < 0.5 ? 0 : 1)) % 3 : -1;
-  const pickLane = () => {
-    const r = rng();
-    if (r < (second >= 0 ? 0.45 : 0.6)) return mainLane;
-    if (second >= 0 && r < 0.75) return second;
-    return Math.floor(rng() * 3) % 3;
-  };
-  const window = o.spawnWindowS + Math.min(10, w * 0.25);
+  const route = () => Math.floor(rng() * 3) % 3;
+  const window = o.spawnWindowS;
   const spawns: Spawn[] = [];
   const counts = waveCounts(w, o.countScale);
-  if (counts.boss) spawns.push({ at: 3, kind: 'boss', lane: mainLane });
-  for (let p = 0; p < counts.dart / 4; p++) { // darts come in packs of 4 down one lane
-    const at = 2 + rng() * window, lane = pickLane();
-    for (let i = 0; i < 4; i++) spawns.push({ at: at + i * 0.35, kind: 'dart', lane });
+  if (counts.boss) spawns.push({ at: 3, kind: 'boss', route: -1 });
+  for (let p = 0; p < counts.dart / 4; p++) { // Gliders come in packs of 4 along one flight route
+    const at = 2 + rng() * window, r = route();
+    for (let i = 0; i < 4; i++) spawns.push({ at: at + i * 0.35, kind: 'dart', route: r });
   }
   const main = Math.max(1, Math.round(counts.heavies * o.broodShare));
   const off = ELEMENTS.filter((c) => c !== o.brood);
   const pack = Math.max(1, Math.round(o.swarmPack));
   for (let i = 0; i < Math.max(main, counts.heavies); i++) {
     const el = i < main ? o.brood : off[Math.floor(rng() * 2) % 2];
-    const at = 1 + rng() * window, lane = pickLane();
-    if (el === 'blue') { // a swarm pack: darts once they're unlocked, else drones
-      const kind: Kind = w >= KIND_FROM.dart && rng() < 0.5 ? 'dart' : 'mini';
-      for (let k = 0; k < pack; k++) spawns.push({ at: at + k * 0.35, kind, lane });
-    } else spawns.push({ at, kind: pickKind(el, w, rng), lane });
+    const at = 1 + rng() * window;
+    if (el === 'blue') { // a swarm pack: Gliders once they're unlocked, else drones on the road
+      const air = w >= KIND_FROM.dart && rng() < 0.5, r = air ? route() : -1;
+      for (let k = 0; k < pack; k++) spawns.push({ at: at + k * 0.35, kind: air ? 'dart' : 'mini', route: r });
+    } else spawns.push({ at, kind: pickKind(el, w, rng), route: -1 });
   }
-  for (let i = 0; i < counts.prism; i++) spawns.push({ at: 1 + rng() * window, kind: 'prism', lane: pickLane() });
+  for (let i = 0; i < counts.prism; i++) spawns.push({ at: 1 + rng() * window, kind: 'prism', route: -1 });
   spawns.sort((a, b) => a.at - b.at);
-  const lanes = [0, 1, 2].map(() => ({ blue: 0, red: 0, purple: 0, gold: 0, prism: 0 }));
-  for (const s of spawns) lanes[s.lane][KINDS[s.kind].color]++;
-  return { wave: w, boss: counts.boss > 0, mainLane, spawns, brood: o.brood, lanes };
+  const tally = { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 };
+  for (const s of spawns) { tally[KINDS[s.kind].color]++; if (s.route >= 0) tally.air++; }
+  return { wave: w, boss: counts.boss > 0, role: waveRole(w), spawns, brood: o.brood, counts: tally };
 }

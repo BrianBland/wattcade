@@ -4,8 +4,8 @@ import type { InputState, Profile } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
-import { BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KIND_FROM, KINDS, PADS, TOWERS, laneAt, laneLength, towerBuildCost, type Element } from '../sim/defs';
-import { clearHealFor, nextBrood, planWave, waveCounts, type WaveOpts } from '../sim/waves';
+import { BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, roadAt, towerBuildCost, type Element } from '../sim/defs';
+import { clearHealFor, nextBrood, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { readSave } from '../sim/sim';
 import type { TdSnapshot } from '../sim/types';
@@ -22,18 +22,23 @@ describe('scenarios via runHeadless', () => {
 });
 
 describe('field geometry', () => {
-  it('lanes run from off the top/sides to the base', () => {
-    for (let l = 0; l < 3; l++) {
-      const a = laneAt(l, 0), b = laneAt(l, laneLength(l));
-      expect(a.y < 20 || a.x < 0 || a.x > 100).toBe(true);
-      expect(Math.hypot(b.x - BASE_X, b.y - BASE_Y)).toBeLessThan(1e-6);
-      expect(laneLength(l)).toBeGreaterThan(80);
+  it('the road runs from the spawn edge to the base; Gliders fly straight from the spawn edge', () => {
+    const a = roadAt(0), b = roadAt(ROAD_LENGTH);
+    expect(a.y).toBeLessThanOrEqual(0);
+    expect(Math.hypot(b.x - BASE_X, b.y - BASE_Y)).toBeLessThan(1e-6);
+    expect(ROAD_LENGTH).toBeGreaterThan(220);
+    for (let r = 0; r < 3; r++) {
+      expect(flightAt(r, 0).y).toBeLessThan(0);
+      const end = flightAt(r, flightLength(r));
+      expect(Math.hypot(end.x - BASE_X, end.y - BASE_Y)).toBeLessThan(1e-6);
+      expect(flightLength(r)).toBeLessThan(ROAD_LENGTH / 2);
     }
   });
-  it('six pads inside the field, well apart', () => {
-    expect(PADS).toHaveLength(6);
-    for (const p of PADS) { expect(p.x).toBeGreaterThan(5); expect(p.x).toBeLessThan(95); expect(p.y).toBeGreaterThan(5); expect(p.y).toBeLessThan(85); }
+  it('eight pads inside the field, well apart, in road order by their stretch', () => {
+    expect(PADS).toHaveLength(8);
+    for (const p of PADS) { expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(FIELD_W); expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(FIELD_H); expect(p.name).toBeTruthy(); }
     for (const a of PADS) for (const b of PADS) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(9);
+    expect(PADS.find((p) => p.id === 1)!.s).toBeLessThan(PADS.find((p) => p.id === 7)!.s); // spawn ridge before turret flank
   });
 });
 
@@ -103,13 +108,14 @@ describe('clear heal', () => {
     while (snap(s).stalled === false && n++ < 30 * 20) s.step(1);
     expect(n / 30).toBeGreaterThan(3); // cadence3s decays first, then the 3 s grace
     expect(n / 30).toBeLessThan(10);
-    s.step(30 * 60);
+    s.step(30 * 150); // the lull, then the walk down the road
     const hits = s.finish().events.filter((e) => e.type === 'baseHit').map((e) => Number(e.data?.dmg));
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((d) => d === 2.2 || d >= 8.8)).toBe(true); // drones/darts 1 -> 2.2, heavies x2.2
   });
   it('a rider who stops pedalling gets no heal from leaked waves', () => {
-    const r = runHeadless({ game: module, script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true } });
+    // a reinforced base outlasts the long first wave, which then times out with its leaks
+    const r = runHeadless({ game: module, script: 'idle', minutes: 8, seed: 1, simOpts: { autopilot: true, baseHp: 1000 } });
     const cleared = r.events.filter((e) => e.type === 'waveCleared');
     expect(cleared.length).toBeGreaterThan(0);
     for (const e of cleared) { expect(Number(e.data?.leakDmg)).toBeGreaterThan(0); expect(e.data?.heal).toBe(0); }
@@ -117,18 +123,23 @@ describe('clear heal', () => {
 });
 
 describe('waves', () => {
-  it('kinds only appear from their first wave, bosses every 5', () => {
+  it('kinds only appear from their first wave; sets are three work waves, a boss, then an easy wave', () => {
+    expect([1, 2, 3, 4, 5, 6, 9, 10].map(waveRole)).toEqual(['work', 'work', 'work', 'boss', 'easy', 'work', 'boss', 'easy']);
     for (let w = 1; w <= 30; w++) {
       const p = planWave(w, makeRng(w), WO);
       // a brood's first kind (brute, bastion) may lead any wave; the rest wait for their wave
       for (const s of p.spawns) if (!['brute', 'armor'].includes(s.kind)) expect(w).toBeGreaterThanOrEqual(KIND_FROM[s.kind]);
-      expect(p.boss).toBe(w % 5 === 0);
-      expect(p.spawns.filter((s) => s.kind === 'boss').length).toBe(w % 5 === 0 ? 1 : 0);
-      // forecast counts every spawn once, in its lane
-      const total = p.lanes.reduce((n, l) => n + l.blue + l.red + l.purple + l.gold + l.prism, 0);
-      expect(total).toBe(p.spawns.length);
+      expect(p.boss).toBe(waveRole(w) === 'boss');
+      expect(p.spawns.filter((s) => s.kind === 'boss').length).toBe(waveRole(w) === 'boss' ? 1 : 0);
+      // the forecast counts every spawn once; only Gliders fly
+      const c = p.counts;
+      expect(c.blue + c.red + c.purple + c.gold + c.prism).toBe(p.spawns.length);
+      expect(c.air).toBe(p.spawns.filter((s) => s.route >= 0).length);
+      for (const s of p.spawns) expect(s.route >= 0).toBe(s.kind === 'dart');
       for (let i = 1; i < p.spawns.length; i++) expect(p.spawns[i].at).toBeGreaterThanOrEqual(p.spawns[i - 1].at);
     }
+    // the easy wave is a light one
+    expect(planWave(5, makeRng(5), WO).spawns.length).toBeLessThan(planWave(3, makeRng(3), WO).spawns.length);
   });
   it('is deterministic per rng and grows with the wave', () => {
     const a = planWave(9, makeRng(4), WO), b = planWave(9, makeRng(4), WO);
@@ -180,8 +191,8 @@ describe('garage meta', () => {
     const s = createGameSession({ game: module, profile, input: new TimelineInput([{ t: 0.2, press: 'b' }]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
     s.step(30);
     expect(snap(s).wave).toBe(7); // 1 + 2 x 3
-    s.step(30 * 60 * 4);
-    expect(snap(s).wave).toBeGreaterThan(9);
+    s.step(30 * 60 * 8);
+    expect(snap(s).wave).toBeGreaterThanOrEqual(9);
     expect(s.sim.isOver()).toBe(false);
     expect(saved.bestWave).toBe(Math.max(12, snap(s).wave - 1));
   });
@@ -200,16 +211,17 @@ describe('brood waves', () => {
     s.step(30);
     const b = snap(s).brood;
     expect(b.wave).toBe(1);
-    expect(b.countdownS).toBeGreaterThan(13); expect(b.countdownS).toBeLessThan(15);
+    expect(b.countdownS).toBeGreaterThan(43); expect(b.countdownS).toBeLessThan(45);
     expect(b.weapon).toBe(ELEMENT_WEAPON[b.color]);
     expect(snap(s).weapon).toBe(b.weapon);
     expect(b.cue.length).toBeGreaterThan(4);
     expect(snap(s).nextBrood?.wave).toBe(2);
     expect(snap(s).enemies).toHaveLength(0);
-    s.step(30 * 15);
+    s.step(30 * 45);
     expect(snap(s).brood.countdownS).toBe(0);
-    s.step(30 * 10);
-    expect(snap(s).enemies.length).toBeGreaterThan(0);
+    let seen = 0; // the turret can drop a lone drone within a second of its spawn, so watch every frame
+    for (let i = 0; i < 30 * 10; i++) { s.step(1); seen = Math.max(seen, snap(s).enemies.length); }
+    expect(seen).toBeGreaterThan(0);
     const evs = s.finish().events.map((e) => e.type);
     expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
   });
@@ -222,9 +234,9 @@ describe('brood waves', () => {
     const [lullV, fullV] = { gatling: [0, 1], flame: [10, 35], rail: [0.5, 0.95] }[b.weapon];
     expect(weaponEffect(s).mode).toBe(mode);
     expect(val()).toBeCloseTo(lullV); // recovery, early in the lull
-    s.step(30 * 10); // 3 s into the 6 s ramp
+    s.step(30 * 38); // 3 s into the 8 s ramp at the end of the 45 s lull
     expect(val()).toBeGreaterThan(lullV); expect(val()).toBeLessThan(fullV);
-    s.step(30 * 4);
+    s.step(30 * 5);
     expect(val()).toBeCloseTo(fullV);
     expect(weaponEffect(s).mode).toBe(mode);
   });
@@ -243,7 +255,7 @@ describe('effort targets', () => {
   function ride(kind: 'spin' | 'grind' | 'hold', cadence: number, power: number) {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { autopilot: true } });
     let n = 0;
-    while (!(snap(s).effort?.kind === kind && snap(s).effort?.state === 'active') && n++ < 30 * 60 * 15) s.step(1);
+    while (!(snap(s).effort?.kind === kind && snap(s).effort?.state === 'active') && n++ < 30 * 60 * 45) s.step(1);
     const call = snap(s).effort!;
     expect(call.kind).toBe(kind); expect(call.state).toBe('active');
     const hud = s.sim.hud!();
@@ -286,8 +298,8 @@ describe('workshop', () => {
     s.step(20);
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
-    expect(ws.pad).toBeLessThan(6);
-    expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'mortar', 'lens']);
+    expect(ws.pad).toBeLessThan(PADS.length);
+    expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'flamer', 'lens']);
     expect(s.sim.hud!().controls!.some((c) => c.label === 'Build / upgrade')).toBe(true);
     // pick the tesla row by tap, then build it
     const scrap0 = snap(s).scrap;
@@ -304,6 +316,8 @@ describe('workshop', () => {
     const run = (script: string) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true, autoCrew: false } });
       s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
+      // a weak turret leaves the aliens to the tower: at full strength it kills the early stream before it arrives
+      s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railLaserDps', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
       s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 180);
       return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills), fired: snap(s).towers[0]?.firedAt > 0 };
     };
@@ -311,7 +325,8 @@ describe('workshop', () => {
     expect(run('z2').fired).toBe(true); // early waves the turret takes most kills; the tower still fires
   });
   it('tower stats are sane', () => {
-    for (const t of Object.values(TOWERS)) { expect(t.range).toBeGreaterThan(15); expect(t.cost).toBeGreaterThan(0); }
+    for (const t of Object.values(TOWERS)) { expect(t.range).toBeGreaterThanOrEqual(12); expect(t.cost).toBeGreaterThan(0); }
+    expect(TOWERS.flamer.air).toBe(false); expect(TOWERS.tesla.air && TOWERS.lens.air).toBe(true);
   });
 });
 

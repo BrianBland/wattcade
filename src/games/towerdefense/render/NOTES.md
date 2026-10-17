@@ -1,22 +1,20 @@
 # Battlefield integration (#133), on PR #139
-
 - Art direction: retain the textured painted terrain, brass/steel machinery and all eight cut-out alien rigs.
 - Brood outlines plus cached ground auras separate aliens from the terrain; bosses use a stronger gold aura.
 - The registered painting draws once; its perimeter fades into atmospheric portrait/HUD margins without reflections.
 - The painting and all actors share the MAP_INTEGRATION.md registration and field-unit sizing.
-- Exact right-lane controls and plateau pads adopted together in sim/defs.ts.
-- All pads clear floor/shoulder geometry and all level-one tower kinds reach their assigned lane.
+- Single road: `fieldView.ts` is the one world↔screen transform (uniform scale; landscape turned 90°, turret left). Sprites stay upright; aims add `view.rot`.
+- Ground: `td/environment/road/{portrait,landscape}.webp` via `PAINT_BOXES`; landscape falls back to the turned portrait painting, then vector ground.
 - DOM status/current-brood rows reserve space above the field; padded outpost art remains above HUD insets.
 - Environment overlays use manifest pivots; creep advances along clipped floors and the Flamer leaves char.
 - Entry colonies combine creep beds, smaller burrows and Broodmother egg clusters from the same puppet kit.
 - Creep/burrow emissions take the brood colour while their material images retain their original palette.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.
-- Six continuous conduits start beneath the turret and finish beneath tower pads, via their cable anchors.
-- Inner conduits follow the gaps between lane curves; outer conduits go around the battlefield. No hidden breaks.
+- Cables are removed for now (lane-routed; would cross the road). Muzzles come from outpost manifest anchors; towers get contact shadows.
 - Pulse launches interpolate every half crank revolution; travel uses elapsed seconds.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
-- Towers: level parts, fixed Tesla/Prism heads, manifest effect timing, aimed Mortar and barrel recoil.
+- Towers: level parts, fixed Tesla/Prism heads, manifest effect timing, aimed Mortar (Flame Tower stand-in) and barrel recoil.
 - Ground lighting before actors preserves silhouette contrast; cached quarter-resolution ambient darkness
   changes only with layout/structures. Transient additive lights are capped at 32 sources.
 - Machinery/alien assets load at mount, so renderer construction remains safe in the Node inset checks.

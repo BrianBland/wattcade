@@ -17,14 +17,14 @@ function ride(script = 'z2') {
 
 describe('endless runs', () => {
   it('clears a boss announcement when bailing during its recovery lull or an active phase', () => {
-    const profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } });
+    const profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } });
     const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true } });
     s.step(1);
     expect((s.sim.snapshot() as TdSnapshot).boss).not.toBeNull();
     s.sim.receive!({ type: 'bail' }); s.step(1);
     expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, effort: null, lull: 0, swapLeft: 0 });
     s.sim.receive!({ type: 'garageRow', row: 0 }); s.step(1);
-    for (let i = 0; i < 30 * 90 && (s.sim.snapshot() as TdSnapshot).phase === 'run' && !(s.sim.snapshot() as TdSnapshot).boss; i++) s.step(1);
+    for (let i = 0; i < 30 * 120 && (s.sim.snapshot() as TdSnapshot).phase === 'run' && !(s.sim.snapshot() as TdSnapshot).boss; i++) s.step(1);
     expect((s.sim.snapshot() as TdSnapshot).boss).not.toBeNull();
     s.sim.receive!({ type: 'bail' }); s.step(1);
     expect(s.sim.snapshot()).toMatchObject({ phase: 'garage', boss: null, effort: null });
@@ -52,7 +52,7 @@ describe('endless runs', () => {
 
   it('bails mid-wave once, preserves parts and other game saves, and resets combat on restart', () => {
     const { s, snap, saved, profile, other } = ride();
-    s.step(30 * 70);
+    s.step(30 * 170); // past the first wave's 45 s lull and its 90 s interval
     expect(snap().phase).toBe('run');
     expect(snap().partsRun).toBeGreaterThan(0);
     const parts = snap().partsRun, bank = snap().bank, kills = saved().totals.kills;

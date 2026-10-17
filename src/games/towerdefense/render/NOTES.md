@@ -10,7 +10,7 @@
 - Flamethrower cones start at the tower's manifest muzzle, with particles and a short ground-only cone.
 - The hive mouth breathes in the incoming brood colour; brood-tinted splats remain independent of the painting.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.
-- Cables are removed for now (lane-routed; would cross the road). Muzzles come from outpost manifest anchors; towers get contact shadows.
+- Power cables (`cables.ts`): grid-routed from under the deck to each pad, never across the road (only pad 2 feeds through pad 6); a pulse per pedal half-stroke. Muzzles come from outpost manifest anchors; towers get contact shadows.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
 - Towers: cumulative level parts and manifest effect timing; the Mortar stands in until flamethrower concepts are approved.

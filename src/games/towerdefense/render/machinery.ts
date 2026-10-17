@@ -75,22 +75,26 @@ export class Machinery {
   constructor(base: string) { this.outpost = new Puppet(base, 'outpost'); this.towers = { tesla: new Puppet(base, 'towers/tesla'), mortar: new Puppet(base, 'towers/mortar'), lens: new Puppet(base, 'towers/prism') }; this.loaded = Promise.all([this.outpost.loaded, ...Object.values(this.towers).map(p => p.loaded)]).then(() => {}); }
   tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot) {
     const p = PADS[tw.pad], puppet = this.towers[tw.kind];
-    const ready = puppet.draw(g, v.X(p.x), v.Y(p.y), 8.4 * v.k / 136, { angle: tw.angle, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t });
+    const at = v.P?.(p.x, p.y) ?? { x: v.X(p.x), y: v.Y(p.y) };
+    const ready = puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: (v.face?.(tw.angle) ?? tw.angle), revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t });
     const age = s.t - tw.firedAt;
-    if (ready && tw.kind === 'mortar' && age >= 0 && age < 0.16) glowAt(g, '#ffc38b', v.X(p.x + Math.sin(tw.angle) * 4), v.Y(p.y - Math.cos(tw.angle) * 4), 1.8 * v.k, 0.7 * (1 - age / 0.16));
+    if (ready && tw.kind === 'mortar' && age >= 0 && age < 0.16) { const m = v.P?.(p.x + Math.sin(tw.angle) * 4, p.y - Math.cos(tw.angle) * 4) ?? { x: v.X(p.x), y: v.Y(p.y) }; glowAt(g, '#ffc38b', m.x, m.y, 1.8 * v.k, 0.7 * (1 - age / 0.16)); }
     return ready;
   }
   base(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
     const look = this.profile ? riderLook(this.profile) : null;
-    const ready = this.outpost.draw(g, v.X(BASE_X), v.Y(BASE_Y), 22 * v.k / 440, {
-      angle: s.aimAngle, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
+    const base = v.P?.(BASE_X, BASE_Y) ?? { x: v.X(BASE_X), y: v.Y(BASE_Y) };
+    // Landscape stretches world-y, so the turret has to grow with the field width or it stops covering the road ends.
+    const span = v.P ? Math.hypot(v.P(50, 80).x - v.P(50, 90).x, v.P(50, 80).y - v.P(50, 90).y) : 10 * v.k;
+    const ready = this.outpost.draw(g, base.x, base.y, Math.max(22 * v.k, span * 2.4) / 440, {
+      angle: v.face?.(s.aimAngle) ?? s.aimAngle, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
       charge: Math.floor(3 * (s.railCharges + s.railProgress) / Math.max(1, s.railMaxCharges)), damage: s.baseHp / s.baseMaxHp < 0.25 ? 2 : s.baseHp / s.baseMaxHp < 0.5 ? 1 : 0, age: 99, t: s.t,
       rider: look ? () => { g.save(); g.beginPath(); g.rect(300, 321, 76, 47); g.clip(); g.translate(338, 366); g.scale(1.7, 1.7); drawRider(g, look, bike.crankRevs, 0, { t: s.t }); g.restore(); } : undefined,
     });
     const muzzle = s.fx.some(f => ((f.kind === 'tracer' && f.x0 === BASE_X && f.y0 === BASE_Y) || f.kind === 'beam') && s.t - f.t0 < 0.08);
     if (ready && muzzle) {
       const reach = s.weapon === 'gatling' ? 7.75 : 6.8;
-      glowAt(g, WEAPON_COLOR[s.weapon], v.X(BASE_X + Math.sin(s.aimAngle) * reach), v.Y(BASE_Y - Math.cos(s.aimAngle) * reach), 2.5 * v.k, 0.8);
+      { const m = v.P?.(BASE_X + Math.sin(s.aimAngle) * reach, BASE_Y - Math.cos(s.aimAngle) * reach) ?? base; glowAt(g, WEAPON_COLOR[s.weapon], m.x, m.y, 2.5 * v.k, 0.8); }
     }
     return ready;
   }

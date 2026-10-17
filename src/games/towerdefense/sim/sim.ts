@@ -24,7 +24,7 @@ export interface TdOpts {
   /** Headless actions are separate from Auto-crew; default off. */
   actionBot?: boolean;
   autoCrew?: boolean;
-  /** Go straight into the first run (tests); also done for new riders and autopilot. Later runs always use the Garage. */
+  /** Go straight into the first run (tests and autopilot). A live ride always opens in the Garage, before the shell countdown. */
   skipGarage?: boolean;
   /** Override the `baseHp` tunable (the deep-wave fixture reinforces the base). */
   baseHp?: number;
@@ -1072,7 +1072,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function update(dt: Seconds) {
     if (!started) {
       started = true; lastRevs = ctx.bike().crankRevs;
-      if (opts?.skipGarage || autopilot || save.runs === 0) startRun();
+      if (opts?.skipGarage || autopilot) startRun();
     }
     t += dt;
     const rawInput = ctx.input();
@@ -1181,7 +1181,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   return {
     update,
     isOver: () => false,
-    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
+    inMenu: () => phase === 'garage',
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
       if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
@@ -1198,7 +1198,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
-      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0))) return {
+      if (phase === 'garage') return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start', shortLabel: 'Buy' }, { button: 'b', label: 'Start run', shortLabel: 'Start' }, ...gearHints()],
       };

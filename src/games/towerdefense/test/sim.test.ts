@@ -185,11 +185,16 @@ describe('garage meta', () => {
     expect(s.sim.isOver()).toBe(false);
     expect(saved.bestWave).toBe(Math.max(12, snap(s).wave - 1));
   });
-  it('first run skips the garage; intro shows play controls', () => {
+  it('a first ride opens in the Garage, then the run starts after the menu', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
-    expect(s.sim.hud!().controls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
+    expect(s.sim.inMenu?.()).toBe(true);
+    expect(snap(s).phase).toBe('garage');
+    expect(s.sim.hud!().controls!.some((c) => c.label === 'Buy / start')).toBe(true);
     s.step(1);
+    expect(snap(s).phase).toBe('garage');
+    s.sim.receive!({ type: 'garageRow', row: 0 }); s.step(1);
     expect(snap(s).phase).toBe('run');
+    expect(s.sim.inMenu?.()).toBe(false);
   });
 });
 

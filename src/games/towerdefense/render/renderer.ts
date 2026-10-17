@@ -24,7 +24,6 @@ const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: num
 };
 
 interface Particle { x: number; y: number; vx: number; vy: number; age: number; life: number; size: number; color: string; kind: 'spark' | 'flame' | 'smoke' | 'ring' | 'text'; text?: string; grow?: number }
-const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
@@ -35,6 +34,7 @@ export class TdRenderer implements GameRenderer {
   private W = 800; private H = 600; private dpr = 1;
   private L!: TdLayout;
   private bg: HTMLCanvasElement | null = null;
+  private bgReady = false;
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
   private hud!: TdHud;
@@ -49,7 +49,7 @@ export class TdRenderer implements GameRenderer {
   private aliens: AlienLayer | null = null;
   private battlefield!: Battlefield;
   private machinery!: Machinery;
-  private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
+  private view: View = { X: (x) => this.world(x, 0).x, Y: (y) => this.world(0, y).y, P: (x, y) => this.world(x, y), face: (a) => this.face(a), k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
   private heldPointers = new Map<number, { epoch: number; kind: 'rail' | 'boost' }>();
   private onUp = (e: PointerEvent) => this.releaseHold(e.pointerId, false);
@@ -125,11 +125,28 @@ export class TdRenderer implements GameRenderer {
     this.hud?.root.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; }
+  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; this.bgReady = false; }
 
   // ---------- coordinates ----------
-  private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
-  private Y(y: number) { return this.L.field.y + y * this.L.field.s / FIELD; }
+  /**
+   * Landscape turns the field 90° clockwise: the turret (world 50, 90) lands on the far left, vertically
+   * centered, and the hive runs off the right edge. Facing turns with it. Portrait is unchanged.
+   */
+  private world(x: number, y: number): { x: number; y: number } {
+    const s = this.L.field.s / FIELD;
+    // Landscape stretches world-y so the hive meets the right edge, and starts world-x below the
+    // status rows so the top lane is not covered by them.
+    const sx = this.L.wide ? (this.L.field.w ?? this.L.field.s) / FIELD : s;
+    const drop = this.L.field.drop ?? 0;
+    const sy = this.L.field.sy ?? s;
+    return this.L.wide
+      ? { x: this.L.field.x + (this.L.field.w ?? this.L.field.s) - y * sx, y: this.L.field.y + drop + x * sy }
+      : { x: this.L.field.x + x * s, y: this.L.field.y + y * s };
+  }
+  private face(angle: number) { return this.L.wide ? angle + Math.PI / 2 : angle; }
+  private X(x: number) { return this.world(x, 0).x; }
+  private Y(y: number) { return this.world(0, y).y; }
+  private P(x: number, y: number) { return this.world(x, y); }
   private get k() { return this.L.field.s / FIELD; }
 
   // ---------- taps ----------
@@ -151,7 +168,11 @@ export class TdRenderer implements GameRenderer {
       }
     }
     const s = this.snap; if (!s || s.phase !== 'run' || s.over || py > this.L.UH) return;
-    const fx = (px - this.L.field.x) / this.k, fy = (py - this.L.field.y) / this.k;
+    const span = this.L.wide ? (this.L.field.w ?? this.L.field.s) : this.L.field.s;
+    const drop = this.L.field.drop ?? 0;
+    const fx0 = (px - this.L.field.x) / (span / FIELD);
+    const fy0 = (py - this.L.field.y - drop) / (this.L.field.sy ?? this.k);
+    const fx = this.L.wide ? fy0 : fx0, fy = this.L.wide ? (FIELD - fx0) : fy0;
     const targets = [...PADS, { id: 6, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(fx - p.x, fy - p.y) }))
       .sort((a, b) => a.distance - b.distance);
     const closest = targets[0];
@@ -171,62 +192,9 @@ export class TdRenderer implements GameRenderer {
     const c = document.createElement('canvas'); c.width = this.canvas.width; c.height = this.canvas.height;
     const g = c.getContext('2d')!; g.scale(this.dpr, this.dpr);
     this.view.k = this.k; this.view.dpr = this.dpr;
-    if (this.battlefield.paint(g, this.view, this.W, this.H)) return c;
-    const W = this.W, H = this.H, k = this.k, cx = this.X(50), cy = this.Y(55);
-    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
-    gr.addColorStop(0, '#1a2332'); gr.addColorStop(0.6, '#111824'); gr.addColorStop(1, '#070a10');
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
-    // deck plates
-    const ps = Math.max(18, 8 * k);
-    g.strokeStyle = 'rgba(120,150,200,0.05)'; g.lineWidth = 1;
-    const ox = this.L.field.x % ps, oy = this.L.field.y % ps;
-    for (let x = ox; x < W; x += ps) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-    for (let y = oy; y < H; y += ps) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-    for (let i = 0; i < 260; i++) { // rivets, scorch marks, craters, rocks
-      const x = hash(i * 3 + 1) * W, y = hash(i * 3 + 2) * H, r = hash(i * 3 + 3);
-      if (r < 0.55) { g.fillStyle = 'rgba(160,190,230,0.06)'; g.fillRect(x, y, 2, 2); }
-      else if (r < 0.75) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.beginPath(); g.ellipse(x, y, (2 + r * 4) * k, (1.2 + r * 2) * k, r * 6, 0, TAU); g.fill(); }
-      else if (r < 0.88) {
-        const cr = (1.5 + r * 3) * k;
-        g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.arc(x, y, cr, 0, TAU); g.fill();
-        g.strokeStyle = 'rgba(150,170,200,0.08)'; g.lineWidth = Math.max(1, k * 0.4); g.beginPath(); g.arc(x, y - cr * 0.1, cr, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
-      } else {
-        g.fillStyle = '#1f2836'; g.beginPath();
-        const rr = (0.8 + r) * k;
-        for (let j = 0; j < 6; j++) { const a = j / 6 * TAU, q = rr * (0.7 + 0.3 * hash(i * 7 + j)); j ? g.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q) : g.moveTo(x + Math.cos(a) * q, y + Math.sin(a) * q); }
-        g.closePath(); g.fill();
-      }
-    }
-    // lanes: extend the first segment off-screen, then road layers
-    for (let l = 0; l < 3; l++) {
-      const pts = lanePolyline(l, 2).map((p) => ({ x: this.X(p.x), y: this.Y(p.y) }));
-      const a = pts[0], b = pts[1], dx = a.x - b.x, dy = a.y - b.y, dl = Math.hypot(dx, dy) || 1;
-      pts.unshift({ x: a.x + dx / dl * Math.max(W, H), y: a.y + dy / dl * Math.max(W, H) });
-      const path = () => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y))); };
-      g.lineCap = 'round'; g.lineJoin = 'round';
-      path(); g.strokeStyle = '#0b0f17'; g.lineWidth = 11 * k; g.stroke();
-      path(); g.strokeStyle = '#2a3446'; g.lineWidth = 9 * k; g.stroke();
-      path(); g.strokeStyle = '#1b2230'; g.lineWidth = 7.4 * k; g.stroke();
-      path(); g.setLineDash([2.2 * k, 3.2 * k]); g.strokeStyle = 'rgba(255,210,74,0.16)'; g.lineWidth = Math.max(1, 0.5 * k); g.stroke(); g.setLineDash([]);
-    }
-    // pads
-    for (const p of PADS) {
-      const x = this.X(p.x), y = this.Y(p.y), r = 4.2 * k;
-      g.fillStyle = '#151b27'; this.hex(g, x, y + k * 0.5, r * 1.05); g.fill();
-      g.fillStyle = '#232c3c'; this.hex(g, x, y, r); g.fill();
-      g.strokeStyle = 'rgba(255,210,74,0.22)'; g.lineWidth = Math.max(1, k * 0.3); this.hex(g, x, y, r * 0.8); g.stroke();
-      g.fillStyle = 'rgba(255,255,255,0.12)';
-      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + Math.PI / 6; g.beginPath(); g.arc(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82, Math.max(1, k * 0.25), 0, TAU); g.fill(); }
-    }
-    // base platform
-    const bx = this.X(BASE_X), by = this.Y(BASE_Y);
-    g.fillStyle = '#0d121b'; g.beginPath(); g.arc(bx, by, 10 * k, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(255,210,74,0.25)'; g.lineWidth = Math.max(1, k * 0.5); g.setLineDash([1.5 * k, 1.5 * k]);
-    g.beginPath(); g.arc(bx, by, 9 * k, 0, TAU); g.stroke(); g.setLineDash([]);
-    // top fog where enemies come from
-    const fog = g.createLinearGradient(0, 0, 0, this.Y(20));
-    fog.addColorStop(0, 'rgba(5,7,12,0.85)'); fog.addColorStop(1, 'rgba(5,7,12,0)');
-    g.fillStyle = fog; g.fillRect(0, 0, W, this.Y(20));
+    if (!this.L) this.relayout();
+    // Tiles, then the dirt road and its rubble edge. No vector road underneath.
+    if (!this.battlefield.paint(g, this.view, this.W, this.H)) { g.fillStyle = '#0d1118'; g.fillRect(0, 0, this.W, this.H); }
     return c;
   }
   private hex(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
@@ -292,32 +260,32 @@ export class TdRenderer implements GameRenderer {
       if (f.id <= this.lastFx) continue;
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind === 'death') {
-        const c = COL[f.color], x = this.X(f.x), y = this.Y(f.y);
+        const c = COL[f.color], { x, y } = this.P(f.x, f.y);
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
-        const x = this.X(f.x), y = this.Y(f.y);
+        const { x, y } = this.P(f.x, f.y);
         this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
         this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
         for (let i = 0; i < 3; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 6 * k, vy: -Math.random() * 4 * k, age: 0, life: 1, size: 2.5 * k, color: '', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
       } else if (f.kind === 'emp') {
-        const x = this.X(BASE_X), y = this.Y(BASE_Y);
+        const { x, y } = this.P(BASE_X, BASE_Y);
         this.ring(x, y, '#7df9ff', 5 * k, 140 * k, 1.1); this.ring(x, y, '#ffffff', 3 * k, 120 * k, 0.9);
         this.flash = { color: '#7df9ff', a: 0.5 }; this.shake = Math.max(this.shake, 1);
       } else if (f.kind === 'baseHit') {
         this.shake = Math.max(this.shake, Math.min(1, 0.2 + f.dmg / 15));
         if (f.dmg >= 5) this.flash = { color: '#ff3020', a: Math.min(0.45, 0.12 + f.dmg / 60) };
-        this.burst(this.X(BASE_X), this.Y(BASE_Y - 5), '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
+        this.burst(this.P(BASE_X, BASE_Y - 5).x, this.P(BASE_X, BASE_Y - 5).y, '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
       } else if (f.kind === 'beam') {
         this.flash = { color: COL.purple, a: Math.max(this.flash.a, 0.28) }; this.shake = Math.max(this.shake, 0.5);
       } else if (f.kind === 'text') {
-        this.particles.push({ x: this.X(f.x), y: this.Y(f.y), vx: 0, vy: -16 * k, age: 0, life: 1.1, size: Math.max(12, 3.2 * k), color: f.color, kind: 'text', text: f.text });
+        this.particles.push({ x: this.P(f.x, f.y).x, y: this.P(f.x, f.y).y, vx: 0, vy: -16 * k, age: 0, life: 1.1, size: Math.max(12, 3.2 * k), color: f.color, kind: 'text', text: f.text });
       } else if (f.kind === 'tracer' && f.hit) {
-        this.burst(this.X(f.x1), this.Y(f.y1), LIGHT.blue, 2, 20 * k, 0.4 * k, 0.2);
+        this.burst(this.P(f.x1, f.y1).x, this.P(f.x1, f.y1).y, LIGHT.blue, 2, 20 * k, 0.4 * k, 0.2);
       }
     }
   }
@@ -345,7 +313,8 @@ export class TdRenderer implements GameRenderer {
     const realDt = 1 / 60;
     this.lastT = s.t; this.wall += realDt;
     const t = s.t;
-    if (!this.bg) this.bg = this.buildBg();
+    // paint() returns false until the tiles decode, so keep rebuilding until that frame sticks.
+    if (!this.bg || !this.bgReady) { this.bg = this.buildBg(); this.bgReady = this.battlefield.ready; }
     this.playCues(s);
     this.consumeFx(s, !firstFrame);
     if (performance.now() < this.hitStopUntil) return;
@@ -355,6 +324,7 @@ export class TdRenderer implements GameRenderer {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.drawImage(this.bg, 0, 0);
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.battlefield.stain(g, this.view, this.W, this.H);
     this.hits = [];
 
     // camera shake (field only)
@@ -362,7 +332,7 @@ export class TdRenderer implements GameRenderer {
     const sh = this.shake * this.shake * 1.6 * k;
     g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
 
-    const bx = this.X(BASE_X), by = this.Y(BASE_Y);
+    const { x: bx, y: by } = this.P(BASE_X, BASE_Y);
     this.view.k = k; this.view.dpr = this.dpr;
     this.battlefield.ground(g, this.view, s);
     // Shade and light the ground before actors: coloured silhouettes retain their contrast.
@@ -374,20 +344,21 @@ export class TdRenderer implements GameRenderer {
       this.aliens?.drawGround(g, this.view, t);
       this.battlefield.wiring(g, this.view, s, bike);
       this.drawPads(g, s, t);
-      for (const tw of s.towers) { const p = PADS[tw.pad]; if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
+      for (const tw of s.towers) { const p = PADS[tw.pad]; if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, tw, this.P(p.x, p.y).x, this.P(p.x, p.y).y, k, t, s.grid); }
       // aim line
       const ac = WEAPON_COLOR[s.weapon];
       g.strokeStyle = ac; g.globalAlpha = s.targetId ? 0.18 : 0; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
-      g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k);
+      const aim0 = this.P(BASE_X + Math.sin(s.aimAngle) * 8, BASE_Y - Math.cos(s.aimAngle) * 8);
       const reach = s.weapon === 'flame' ? s.flameRange : 100;
-      g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      const aim1 = this.P(BASE_X + Math.sin(s.aimAngle) * reach, BASE_Y - Math.cos(s.aimAngle) * reach);
+      g.beginPath(); g.moveTo(aim0.x, aim0.y); g.lineTo(aim1.x, aim1.y); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
       // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
       const puppets = this.aliens?.ready ? this.aliens : null;
-      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
+      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.P(e.x, e.y).x, this.P(e.x, e.y).y, k, h, t));
       const live = new Set<number>();
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
-        const x = this.X(e.x), y = this.Y(e.y);
+        const { x, y } = this.P(e.x, e.y);
         const prev = this.heading.get(e.id);
         let h = prev?.h ?? Math.atan2(by - y, bx - x);
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
@@ -397,7 +368,6 @@ export class TdRenderer implements GameRenderer {
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
       this.drawShells(g, s);
-      this.drawFlame(g, s, bx, by, dt);
       this.drawFx(g, s, bx, by, t);
       this.drawParticles(g);
       const muzzle = s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0;
@@ -406,6 +376,9 @@ export class TdRenderer implements GameRenderer {
         weapon: s.weapon, aim: s.aimAngle, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle, overdrive: s.overdrive,
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
+      // After the turret, so the barrel does not cover the nozzle end of the cone.
+      this.drawFlame(g, s, bx, by, dt);
+      this.drawParticles(g);
     } else {
       this.drawLanes(g, s, t);
       this.drawPads(g, s, t);
@@ -441,15 +414,15 @@ export class TdRenderer implements GameRenderer {
       if (s.slowLane === l) {
         g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.35 + 0.1 * Math.sin(t * 4); g.lineWidth = 7 * k;
         g.setLineDash([3 * k, 2 * k]); g.beginPath();
-        pts.forEach((p, i) => i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y))); g.stroke(); g.restore();
+        pts.forEach((p, i) => i ? g.lineTo(this.P(p.x, p.y).x, this.P(p.x, p.y).y) : g.moveTo(this.P(p.x, p.y).x, this.P(p.x, p.y).y)); g.stroke(); g.restore();
       }
       const nk = s.nudge?.lane === l ? s.nudge.k : 0;
       if (s.phase === 'run' && nk > 0) {
         g.strokeStyle = `rgba(160,200,255,${(0.04 + 0.08 * nk).toFixed(3)})`; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
-        g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y)))); g.stroke();
+        g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(this.P(p.x, p.y).x, this.P(p.x, p.y).y) : g.moveTo(this.P(p.x, p.y).x, this.P(p.x, p.y).y))); g.stroke();
       }
       // Painted burrows carry spawn identity; keep guidance subtle and temporary.
-      const sp = pts[Math.min(3, pts.length - 1)], gx = this.X(Math.max(3, Math.min(97, sp.x))), gy = this.Y(Math.max(3, sp.y));
+      const sp = pts[Math.min(3, pts.length - 1)], g0 = this.P(Math.max(3, Math.min(97, sp.x)), Math.max(3, sp.y)), gx = g0.x, gy = g0.y;
       const nl = s.nudge?.lane ?? -1;
       if (this.laneShown.lane !== nl) this.laneShown = { lane: nl, at: this.wall };
       const since = this.wall - this.laneShown.at;
@@ -465,7 +438,7 @@ export class TdRenderer implements GameRenderer {
   private drawPads(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     const k = this.k, ws = s.workshop;
     for (const p of PADS) {
-      const x = this.X(p.x), y = this.Y(p.y), sel = ws?.pad === p.id, built = s.towers.find((q) => q.pad === p.id);
+      const { x, y } = this.P(p.x, p.y), sel = ws?.pad === p.id, built = s.towers.find((q) => q.pad === p.id);
       if (sel) {
         const kind = built?.kind ?? ws!.rows[ws!.row]?.tower, lv = built ? Math.min(5, built.level + (ws!.rows[ws!.row]?.kind === 'upgrade' ? 1 : 0)) : 1;
         if (kind) {
@@ -482,7 +455,7 @@ export class TdRenderer implements GameRenderer {
         g.fillRect(x - 1.6 * k, y - 0.3 * k, 3.2 * k, 0.6 * k); g.fillRect(x - 0.3 * k, y - 1.6 * k, 0.6 * k, 3.2 * k);
       }
     }
-    if (ws?.pad === 6) { g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(this.X(BASE_X), this.Y(BASE_Y), 10 * k, 0, TAU); g.stroke(); }
+    if (ws?.pad === 6) { g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(this.P(BASE_X, BASE_Y).x, this.P(BASE_X, BASE_Y).y, 10 * k, 0, TAU); g.stroke(); }
   }
 
   private reticle(g: CanvasRenderingContext2D, e: EnemyView, x: number, y: number, t: number) {
@@ -494,7 +467,7 @@ export class TdRenderer implements GameRenderer {
   private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot) {
     const k = this.k;
     for (const sh of s.shells) {
-      const x = this.X(sh.x0 + (sh.x1 - sh.x0) * sh.k), y0 = this.Y(sh.y0 + (sh.y1 - sh.y0) * sh.k), lift = Math.sin(Math.PI * sh.k) * 9 * k;
+      const sh0 = this.P(sh.x0 + (sh.x1 - sh.x0) * sh.k, sh.y0 + (sh.y1 - sh.y0) * sh.k), x = sh0.x, y0 = sh0.y, lift = Math.sin(Math.PI * sh.k) * 9 * k;
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, y0, 1.1 * k, 0.5 * k, 0, 0, TAU); g.fill();
       glowAt(g, '#ff8a4a', x, y0 - lift, 2.2 * k, 0.8);
       g.fillStyle = '#ffe0c0'; g.beginPath(); g.arc(x, y0 - lift, 0.8 * k, 0, TAU); g.fill();
@@ -504,17 +477,30 @@ export class TdRenderer implements GameRenderer {
   private drawFlame(g: CanvasRenderingContext2D, s: TdSnapshot, bx: number, by: number, dt: number) {
     if (!s.flaming) return;
     const k = this.k, a = s.aimAngle, n = Math.round((2 + 4 * Math.min(1.5, s.flamePower)) * Math.max(1, dt * 60));
-    const mx = bx + Math.sin(a) * 9 * k, my = by - Math.cos(a) * 9 * k;
+    // The barrel is painted along face(aim), which landscape rotates. The cone has to leave that mouth,
+    // not the unstretched sim angle, or it misses the nozzle.
+    const span = this.L.wide ? Math.hypot(this.P(50, 80).x - this.P(50, 90).x, this.P(50, 80).y - this.P(50, 90).y) : 10 * k;
+    const scale = Math.max(22 * k, span * 2.4) / 440;
+    // Puppet rotates the barrel by face(aim) around its pivot. Canvas rotate is clockwise, so the
+    // painted mouth is the opposite way from a world-up vector of the same angle.
+    const fa = this.face(a);
+    const base = this.P(BASE_X, BASE_Y);
+    const mx = base.x + Math.sin(fa) * 100 * scale, my = base.y + Math.cos(fa) * 100 * scale;
+    // The cone follows the muzzle, which world() already turned. Adding the landscape rotation again points it off the lane.
+    const tip = this.P(BASE_X + Math.sin(a) * s.flameRange, BASE_Y - Math.cos(a) * s.flameRange);
+    const dir = Math.atan2(tip.y - my, tip.x - mx);
     for (let i = 0; i < n && this.particles.length < 600; i++) {
-      // exp(-3t) damping over ~0.45 s travels ~v/4: spread the puffs along the whole cone
-      const sa = a + (Math.random() - 0.5) * 2 * s.flameHalfAngle * 0.85, v = s.flameRange * k * (1.6 + Math.random() * 2.6);
-      this.particles.push({ x: mx, y: my, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.38 + Math.random() * 0.12, size: 1.3 * k, color: '', kind: 'flame' });
+      const sa = dir + (Math.random() - 0.5) * 2 * s.flameHalfAngle * 0.85, v = Math.hypot(tip.x - mx, tip.y - my) * (1.6 + Math.random() * 2.6);
+      this.particles.push({ x: mx, y: my, vx: Math.cos(sa) * v, vy: Math.sin(sa) * v, age: 0, life: 0.38 + Math.random() * 0.12, size: 1.3 * k, color: '', kind: 'flame' });
     }
+    // A screen-space arc follows the stretch, so landscape draws a tall wedge. Build the cone from the muzzle to the lane tip.
+    const spread = s.flameHalfAngle;
+    const left = this.P(BASE_X + Math.sin(a - spread) * s.flameRange, BASE_Y - Math.cos(a - spread) * s.flameRange);
+    const right = this.P(BASE_X + Math.sin(a + spread) * s.flameRange, BASE_Y - Math.cos(a + spread) * s.flameRange);
     g.globalCompositeOperation = 'lighter';
-    const gr = g.createRadialGradient(mx, my, 0, mx, my, s.flameRange * k);
+    const gr = g.createRadialGradient(mx, my, 0, mx, my, Math.hypot(tip.x - mx, tip.y - my));
     gr.addColorStop(0, 'rgba(255,170,80,0.28)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
-    g.fillStyle = gr; g.beginPath(); g.moveTo(mx, my);
-    g.arc(bx, by, s.flameRange * k, a - Math.PI / 2 - s.flameHalfAngle, a - Math.PI / 2 + s.flameHalfAngle); g.closePath(); g.fill();
+    g.fillStyle = gr; g.beginPath(); g.moveTo(mx, my); g.lineTo(left.x, left.y); g.lineTo(right.x, right.y); g.closePath(); g.fill();
     g.globalCompositeOperation = 'source-over';
   }
 
@@ -526,7 +512,7 @@ export class TdRenderer implements GameRenderer {
       if (life <= 0) continue;
       if (f.kind === 'tracer') {
         g.strokeStyle = COL.blue; g.globalAlpha = life; g.lineWidth = Math.max(1, k * 0.45);
-        const x1 = this.X(f.x1), y1 = this.Y(f.y1), x0 = this.X(f.x0), y0 = this.Y(f.y0), q = Math.min(1, age / f.life + 0.3);
+        const a1 = this.P(f.x1, f.y1), a0 = this.P(f.x0, f.y0), x1 = a1.x, y1 = a1.y, x0 = a0.x, y0 = a0.y, q = Math.min(1, age / f.life + 0.3);
         g.beginPath(); g.moveTo(x0 + (x1 - x0) * (q - 0.3), y0 + (y1 - y0) * (q - 0.3)); g.lineTo(x0 + (x1 - x0) * q, y0 + (y1 - y0) * q); g.stroke();
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
@@ -539,17 +525,17 @@ export class TdRenderer implements GameRenderer {
         g.strokeStyle = LIGHT.blue; g.globalAlpha = life; g.lineWidth = Math.max(1, k * 0.4);
         g.beginPath();
         f.pts.forEach((p, i) => {
-          const x = this.X(p.x), y = this.Y(p.y);
+          const { x, y } = this.P(p.x, p.y);
           if (!i) { g.moveTo(x, y); return; }
-          const pr = f.pts[i - 1], px = this.X(pr.x), py = this.Y(pr.y);
+          const pr = f.pts[i - 1], { x: px, y: py } = this.P(pr.x, pr.y);
           for (let j = 1; j < 5; j++) g.lineTo(px + (x - px) * j / 5 + (Math.random() - 0.5) * 2.2 * k, py + (y - py) * j / 5 + (Math.random() - 0.5) * 2.2 * k);
           g.lineTo(x, y);
         });
         g.stroke();
-        for (const p of f.pts.slice(1)) glowAt(g, COL.blue, this.X(p.x), this.Y(p.y), 2.5 * k, life);
+        for (const p of f.pts.slice(1)) glowAt(g, COL.blue, this.P(p.x, p.y).x, this.P(p.x, p.y).y, 2.5 * k, life);
         g.globalAlpha = 1;
       } else if (f.kind === 'lens') {
-        const x0 = this.X(f.x0), y0 = this.Y(f.y0), x1 = this.X(f.x1), y1 = this.Y(f.y1);
+        const b0 = this.P(f.x0, f.y0), b1 = this.P(f.x1, f.y1), x0 = b0.x, y0 = b0.y, x1 = b1.x, y1 = b1.y;
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.7; g.lineWidth = 2 * k * life;
         g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
@@ -557,14 +543,14 @@ export class TdRenderer implements GameRenderer {
         glowAt(g, COL.purple, x1, y1, 3 * k, life);
 
       } else if (f.kind === 'boom' || f.kind === 'burst') {
-        glowAt(g, '#ff7a2a', this.X(f.x), this.Y(f.y), f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
+        glowAt(g, '#ff7a2a', this.P(f.x, f.y).x, this.P(f.x, f.y).y, f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
       }
     }
     // rail targeting laser
     if (s.laserId) {
       const e = s.enemies.find((q) => q.id === s.laserId);
       if (e) {
-        const x = this.X(e.x), y = this.Y(e.y), fl = 0.6 + 0.4 * Math.sin(t * 40);
+        const { x, y } = this.P(e.x, e.y), fl = 0.6 + 0.4 * Math.sin(t * 40);
         g.strokeStyle = COL.purple; g.globalAlpha = 0.5 * fl; g.lineWidth = Math.max(1, 0.6 * k);
         g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k); g.lineTo(x, y); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, x, y, 2.4 * k, fl);

@@ -6,13 +6,15 @@ The production PR changes assets and geometry data only, not game code.
 
 ## Registration (unchanged)
 
-background.webp: 1536×1024; field image rectangle [318,32,900,900],
-100×100 field units. Outpost [50,90] maps to image [768,842].
+background.webp: 2304×1408. The original 1536×1024 painting is unchanged at image
+(384, 384); its field rectangle is therefore [702, 416, 900, 900], 100×100 field units.
+Outpost [50,90] maps to image [1152, 1226]. Ground outside that painting is hive
+territory behind the spawns. No roads or base are painted there.
 
     imageScale = fieldSize / 900
-    imageX = fieldX - 318 * imageScale
-    imageY = fieldY - 32 * imageScale
-    drawImage(background, imageX, imageY, 1536*imageScale, 1024*imageScale)
+    imageX = fieldX - (384 + 318) * imageScale
+    imageY = fieldY - (384 + 32) * imageScale
+    drawImage(background, imageX, imageY, 2304*imageScale, 1408*imageScale)
     actorX = fieldX + worldX * fieldSize / 100
     actorY = fieldY + worldY * fieldSize / 100
 

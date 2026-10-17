@@ -28,6 +28,8 @@ CONTRACT-REQUESTs: none.
 
 ## Saves and balance
 - Save v3 (`readSave` in `sim/sim.ts`) keeps bank, upgrades, best wave and Auto-crew from legacy and v2 saves, and drops core fields. A fall or bail banks parts already earned and returns to the Garage; `isOver()` stays false. The shell pause menu offers **Return to Garage · bank parts** during a run.
+- The Garage is the pre-game menu (`inMenu`), including the first ride: the shell opens there and runs 3-2-1-GO only after Start run. `skipGarage` and autopilot still jump straight into the run.
+- Landscape shell layout uses the extended map (`background.webp`, 2304×1408, registered painting at image 384,384). The field is at least 78% of the width, so the crop lands in the hive ground behind the spawns instead of leaving empty side bands. The Garage is a two-column panel between the status rows and the ride stats.
 - `autopilot` no longer fires combat actions or purchases every 1.5 s; `actionBot` explicitly opts into sparse actions, and `autoCrew` can be overridden in headless tests.
 - The `surge-ready-deep` achievement fixture uses `actionBot`, hook-responsive riding and a reinforced base (`simOpts.baseHp`) to reach wave 40. `wavesSurvived` is the best single run, so a later fall does not erase it. Passive survival remains measured separately.
 - With #140, fresh profile, FTP 200, 30 min z2, seeds 1–4: passive = 34 cleared waves in every seed, active = 33–35; all six pads and 24 upgrades in both. Passive turret damage share 41–47% remains inside #120's 40–60% band. No tower damage/cost buffs were made.

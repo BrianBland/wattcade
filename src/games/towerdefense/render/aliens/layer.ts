@@ -16,7 +16,7 @@ interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: numb
 interface Splat { x: number; y: number; rot: number; size: number; img: HTMLCanvasElement; t0: number; wave: number; fadeAt?: number }
 
 /** Field → screen mapping supplied by the renderer each frame. */
-export interface View { X(x: number): number; Y(y: number): number; k: number; dpr: number }
+export interface View { X(x: number): number; Y(y: number): number; P?(x: number, y: number): { x: number; y: number }; face?(angle: number): number; k: number; dpr: number }
 
 export class AlienLayer {
   private cache: FrameCache | null = null;
@@ -81,7 +81,7 @@ export class AlienLayer {
       const h = this.tracks.get(f.eid)?.h ?? Math.atan2(90 - f.y, 50 - f.x);
       this.corpses.push({ species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint: sp.tint ? COL[f.color] : undefined, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined });
       this.addSplat(f.x, f.y, len, f.color, f.eid, s.t);
-      if (f.fire && f.color === 'red') onFireBurst(v.X(f.x), v.Y(f.y), len * v.k);
+      if (f.fire && f.color === 'red') { const p = v.P?.(f.x, f.y) ?? { x: v.X(f.x), y: v.Y(f.y) }; onFireBurst(p.x, p.y, len * v.k); }
     }
     if (firstPass) this.lastFx = Math.max(this.lastFx, 0);
     for (const id of this.tracks.keys()) if (!live.has(id)) this.tracks.delete(id);
@@ -112,7 +112,7 @@ export class AlienLayer {
       const a = 0.85 * Math.min(1, (t - sp.t0) * 6) * (sp.fadeAt == null ? 1 : Math.max(0, 1 - (t - sp.fadeAt) / SPLAT_FADE_S));
       if (a <= 0) continue;
       const w = sp.size * v.k, h = w * (sp.img.height / sp.img.width);
-      g.save(); g.globalAlpha = a; g.translate(v.X(sp.x), v.Y(sp.y)); g.rotate(sp.rot); g.drawImage(sp.img, -w / 2, -h / 2, w, h); g.restore();
+      { const p = v.P?.(sp.x, sp.y) ?? { x: v.X(sp.x), y: v.Y(sp.y) }; g.save(); g.globalAlpha = a; g.translate(p.x, p.y); g.rotate(sp.rot); g.drawImage(sp.img, -w / 2, -h / 2, w, h); g.restore(); }
     }
   }
 
@@ -123,7 +123,7 @@ export class AlienLayer {
       const set = cache.get(c.species, c.len * v.k * v.dpr, c.outline, c.tint); if (!set) continue;
       const age = t - c.t0, k = Math.min(1, age / DEATH_S), i = Math.floor(k * DEATH_FRAMES);
       const fr = i < DEATH_FRAMES ? set.death[i] : set.corpse;
-      this.blit(g, fr, v.X(c.x), v.Y(c.y), c.h + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12);
+      { const p = v.P?.(c.x, c.y) ?? { x: v.X(c.x), y: v.Y(c.y) }; this.blit(g, fr, p.x, p.y, c.h + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12); }
     }
     for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
@@ -141,7 +141,8 @@ export class AlienLayer {
       if (tr.attack > 0.15) fr = set.attack[Math.min(set.attack.length - 1, Math.floor(tr.attack * set.attack.length))];
       else { const n = set.walk.length; fr = set.walk[Math.floor((tr.cycles - Math.floor(tr.cycles)) * n) % n]; }
     }
-    let x = v.X(e.x), y = v.Y(e.y);
+    const at = v.P?.(e.x, e.y) ?? { x: v.X(e.x), y: v.Y(e.y) };
+    let x = at.x, y = at.y;
     if (sp.thud) { // the body surges ahead during each burst and settles on the thud
       const lead = thud(tr.cycles).lead * sp.stride * lenU * 0.5 * v.k;
       x += Math.cos(tr.h) * lead; y += Math.sin(tr.h) * lead;
@@ -149,7 +150,7 @@ export class AlienLayer {
     this.shadow(g, x, y, lenU * v.k, !!sp.flying, tr.h);
     this.halo(g, x, y, lenU * v.k, e.gold ? COL.gold : COL[e.element], e.kind === 'boss');
     const lift = sp.flying ? 1.04 : 1;
-    this.blit(g, fr, x, y, tr.h, v.dpr, 1, lift);
+    this.blit(g, fr, x, y, v.face?.(tr.h) ?? tr.h, v.dpr, 1, lift);
     if (e.hurt > 0.05) { // hit flash: add the frame onto itself
       g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, tr.h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
     }

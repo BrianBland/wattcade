@@ -71,11 +71,14 @@ export const BASE_Y = 90;
 export const BASE_R = 6;
 
 type P = { x: number; y: number };
-/** Each lane is a cubic Bézier from its spawn (off the top / side edge) to the base. */
+/**
+ * Each lane is a cubic Bézier from its spawn to the turret. They stay apart until the last stretch,
+ * so a cable can run between them, then meet under the turret, which covers the join.
+ */
 const LANE_CTRL: Array<[P, P, P, P]> = [
-  [{ x: -3, y: 16 }, { x: 28, y: 18 }, { x: 18, y: 66 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 50, y: -3 }, { x: 34, y: 28 }, { x: 66, y: 52 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 103, y: 16 }, { x: 84, y: 18 }, { x: 87, y: 66 }, { x: BASE_X, y: BASE_Y }],
+  [{ x: -3, y: 16 }, { x: 16, y: 34 }, { x: 26, y: 64 }, { x: BASE_X, y: BASE_Y }],
+  [{ x: 50, y: -3 }, { x: 36, y: 24 }, { x: 64, y: 52 }, { x: BASE_X, y: BASE_Y }],
+  [{ x: 103, y: 16 }, { x: 92, y: 42 }, { x: 78, y: 74 }, { x: BASE_X, y: BASE_Y }],
 ];
 export const LANE_NAMES = ['Left', 'Center', 'Right'];
 const SAMPLES = 160;
@@ -115,46 +118,10 @@ export const AIM_LIMIT = 1.45;
 /** Six build pads: two beside each lane (near / far), on the lane's outer side. */
 export interface Pad { id: number; lane: number; x: number; y: number; near: boolean }
 export const PADS: Pad[] = [
-  {
-    "id": 0,
-    "lane": 0,
-    "x": 13.0,
-    "y": 56.5,
-    "near": false
-  },
-  {
-    "id": 1,
-    "lane": 0,
-    "x": 39.0,
-    "y": 50.5,
-    "near": true
-  },
-  {
-    "id": 2,
-    "lane": 1,
-    "x": 59.0,
-    "y": 22.5,
-    "near": false
-  },
-  {
-    "id": 3,
-    "lane": 1,
-    "x": 36.0,
-    "y": 40.5,
-    "near": true
-  },
-  {
-    "id": 4,
-    "lane": 2,
-    "x": 90.5,
-    "y": 61.5,
-    "near": false
-  },
-  {
-    "id": 5,
-    "lane": 2,
-    "x": 66.0,
-    "y": 51.5,
-    "near": true
-  }
+  { id: 0, lane: 0, x: 6, y: 50, near: false },
+  { id: 1, lane: 0, x: 14, y: 74, near: true },
+  { id: 2, lane: 1, x: 33, y: 25, near: false },
+  { id: 3, lane: 1, x: 38, y: 56, near: true },
+  { id: 4, lane: 2, x: 84, y: 18, near: false },
+  { id: 5, lane: 2, x: 92, y: 74, near: true },
 ];

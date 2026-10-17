@@ -1,7 +1,7 @@
 // Single-road layout sketches for Dynamo Defense. Plain vectors over the real status rows and the
 // measured shell HUD band, in whatever viewport the page has. ?v=A|B|C picks a variant; ?hud=px overrides.
 // ?side=0 keeps landscape status rows on top; ?flame=cone|range|lob; ?lock=1 shows a paddle-stepped target lock.
-import { FLYER_SPAWNS, ROAD_PADS, ROAD_WAYPOINTS, SPAWN_Y, splineLine } from '../src/games/towerdefense/sim/road';
+import { FLYER_SPAWNS, ROAD_PADS, ROAD_WAYPOINTS, SPAWN_Y, splineLine, worldToPaint } from '../src/games/towerdefense/sim/road';
 import { drawGuide } from './td-paint-guide';
 type P = { x: number; y: number };
 interface Variant { name: string; note: string; road: P[]; pads: P[]; flyers: P[]; smooth?: boolean }
@@ -222,6 +222,10 @@ function draw() {
   });
 }
 const guide = q.get('guide');
-if (guide === 'portrait' || guide === 'landscape') void drawGuide(canvas, guide, q.get('check'), Number(q.get('long') ?? 1536));
+if (guide === 'portrait' || guide === 'landscape') void drawGuide(canvas, guide, q.get('check'), Number(q.get('long') ?? 1536), q.get('mock') === '1').then(() => {
+  // The capture script zooms on the lower field, where the turret, towers and the final crossing meet.
+  document.body.dataset.focus = JSON.stringify(worldToPaint(guide, { x: 40, y: 76 }, Number(q.get('long') ?? 1536)));
+  document.body.dataset.ready = '1';
+});
 else { addEventListener('resize', draw); draw(); }
 export {};

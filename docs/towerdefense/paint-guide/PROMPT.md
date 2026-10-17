@@ -11,6 +11,7 @@ approves the portrait.
 |---|---|
 | `docs/towerdefense/paint-guide/portrait-guide.png` | 1024×1536 flat-colour layout guide, portrait |
 | `docs/towerdefense/paint-guide/landscape-guide.png` | 1536×1024 guide, the same world turned 90°: turret left, hive right |
+| `docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png` | the guides with the game's real outpost, towers and aliens at true size, for scale |
 | `public/td/environment/background.webp` | the previous painting: the **material and style reference** |
 | `public/td/environment/preview.png` | the previous painting with the real turret, towers and aliens on it |
 | `public/td/outpost/preview.png`, `public/td/towers/preview.png` | machinery the painting must sit under |
@@ -57,7 +58,8 @@ At 1024×1536 the scale is 6.4 px per world unit.
 - **Clearings and apron:** flat, uncluttered ground at least the size of each circle. Paint each as a slightly
   levelled, compacted patch, so a building there looks intended. **No structures, foundations, hex marks or pads.**
 - **Do not paint:** the turret, towers, aliens, cables or wires, text, numbers, UI, the dashed line, vignettes or borders.
-  The game draws all of these itself.
+  The game draws all of these itself. To judge the painting with them, use the review mocks (see Process), which
+  composite the real sprites over your painting without changing it.
 - **Edges:** every edge of the image is overflow that can appear behind interface panels on some screens. Carry
   the terrain all the way to every edge at full fidelity, with no fade, darkening frame or empty margin.
 - **Overflow:** outside the dashed rectangle, keep the terrain calmer and lower in contrast than the playfield,
@@ -82,10 +84,22 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
    2.5× (2560×3840 or 3840×2560), WebP quality about 85.
 3. `check.png`: run `npm run dev -- --port 5203` and then `node scripts/td-paint-guide.mjs`
    (set `CHROMIUM_PATH` if Chromium is not at `/usr/bin/chromium`). The script writes
-   `docs/towerdefense/paint-guide/<orientation>-check.png`, which overlays the game's road edges (cyan), shoulder
-   edges (dashed cyan), clearings (magenta), apron (yellow) and safe area on your painting. Copy it into the round folder.
+   these files in `docs/towerdefense/paint-guide/`. Copy them into the round folder:
+   - `<orientation>-check.png`: the game's road edges (cyan), shoulder edges (dashed cyan), clearings (magenta),
+     apron (yellow) and safe area over your painting.
+   - `<orientation>-mock.png`: the game's real outpost, four towers, a mix of aliens on the road and Gliders on
+     their flight lines, drawn over your painting at true size.
+   - `<orientation>-mock-zoom.png`: the same at about in-game iPad resolution, cropped to the lower field.
 4. `NOTES.md`, 15 lines at most: what changed this round, where the road misses the overlay (if anywhere),
-   and anything you are unsure about.
+   the readability review below, and anything you are unsure about.
+
+**Readability review** (answer in NOTES.md from the two mock images, and fix problems before stopping):
+- Every alien reads against the road and the rock at a glance: blue skitters and Gliders, red warriors and rams,
+  purple bulwark and broodmother, and the gold Tyrant. Say which, if any, get lost.
+- Towers sit naturally on their clearings, and empty clearings read as "build here" with the game's hex marker.
+- The outpost sits on its apron and doesn't look pasted onto a busy texture.
+- No painted feature competes with sprites for attention: bright spots, high-contrast clutter next to the road,
+  or shapes that look like units.
 
 **Portrait rounds:**
 - Round 1 paints from the guide and the style references.
@@ -113,6 +127,7 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
 ## Done means
 
 - Both orientations approved by the owner. Each has a production WebP in `public/td/environment/road/`,
-  a clean overlay check, and its round history in `docs/towerdefense/paint-guide/rounds/`.
+  a clean overlay check, review mocks with no readability problems, and its round history in
+  `docs/towerdefense/paint-guide/rounds/`.
 - `public/td/environment/road/NOTES.md` (40 lines at most) records the files, sizes, the registration
   (`PAINT_BOX` and `worldToPaint` in `road.ts`), and how they were made.

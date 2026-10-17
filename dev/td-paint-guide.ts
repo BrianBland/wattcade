@@ -52,6 +52,7 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
     g.strokeStyle = '#ff3df2'; g.lineWidth = 3; for (const p of ROAD_PADS) { circle(p, PAD_R); g.stroke(); }
     g.strokeStyle = '#ffe14a'; circle(TURRET, TURRET_R); g.stroke();
     safe();
+    document.body.dataset.clearings = JSON.stringify(measureClearings(img, o, long));
     return;
   }
 
@@ -170,4 +171,32 @@ export async function drawCompose(canvas: HTMLCanvasElement, bg: string, W: numb
   const l = Math.min(a.x, b.x), t = Math.min(a.y, b.y), r = Math.max(a.x, b.x), btm = Math.max(a.y, b.y);
   if (l > 0 || t > 0 || r < W || btm < H) { g.strokeStyle = '#ff3030'; g.lineWidth = 4; g.strokeRect(l, t, r - l, btm - t); }
   return k;
+}
+
+/**
+ * Where each painted clearing actually is: the centroid of ground lighter than halfway between the clearing's core
+ * and the surrounding rock, within 7.5 units of the pad. Offsets and radius in world units.
+ */
+export function measureClearings(img: HTMLImageElement, o: PaintOrientation, long: number) {
+  const { w, h, pxPerUnit: k } = paintSize(o, long);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true })!; g.drawImage(img, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  const lum = (x: number, y: number) => { const i = (y * w + x) * 4; return 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]; };
+  return ROAD_PADS.map((p, id) => {
+    const { x: cx, y: cy } = worldToPaint(o, p, long), R = 7.5 * k;
+    const box = (f: (x: number, y: number, r: number) => void) => {
+      for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(h - 1, cy + R); y++)
+        for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(w - 1, cx + R); x++) f(x, y, Math.hypot(x - cx, y - cy) / k);
+    };
+    let core = 0, nc = 0, rock = 0, nr = 0;
+    box((x, y, r) => { if (r < 2.5) { core += lum(x, y); nc++; } else if (r > 6.5 && r < 7.5) { rock += lum(x, y); nr++; } });
+    const threshold = (core / nc + rock / nr) / 2;
+    let sx = 0, sy = 0, n = 0;
+    box((x, y, r) => { if (r <= 7.5 && lum(x, y) > threshold) { sx += x; sy += y; n++; } });
+    // Back to world axes: landscape images run world y right-to-left and world x down.
+    const ix = (sx / n - cx) / k, iy = (sy / n - cy) / k;
+    const [dx, dy] = o === 'portrait' ? [ix, iy] : [iy, -ix];
+    return { pad: id, dx: +dx.toFixed(2), dy: +dy.toFixed(2), off: +Math.hypot(dx, dy).toFixed(2), r: +(Math.sqrt(n / Math.PI) / k).toFixed(2) };
+  });
 }

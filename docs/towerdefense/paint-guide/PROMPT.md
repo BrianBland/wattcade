@@ -57,7 +57,9 @@ At 1024×1536 the scale is 6.4 px per world unit.
   dashed rectangle. Small pebbles and wheel ruts are fine.
 - **Clearings:** a slightly levelled, compacted patch **the size of the green circle and no bigger**: about 31 px
   radius at 1024×1536, just past a tower's footprint. Give it a defined rim that fades to rock within about 4 px,
-  with no soft halo beyond. Oversized clearings leave towers sitting in rings of bare ground.
+  with no soft halo beyond. Oversized clearings leave towers sitting in rings of bare ground. Each clearing must be
+  **centred on its green circle within 0.3 world units** (2 px at 1024×1536) and have a radius of 4.8 ± 0.4 units.
+  The review script measures this into `<orientation>-clearings.json` and flags misses with `<- fix`.
   **No structures, foundations, hex marks or pads.**
 - **Apron:** flat, uncluttered ground the size of the gold circle. **The road ends at the apron.** No trail,
   track or worn path continues past the turret, because it reads as the enemies' route going on.

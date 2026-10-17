@@ -1,5 +1,4 @@
-# shell + debug (Agent E)
-CONTRACT-REQUEST: none.
+# shell + debug (Agent E; no open contract requests)
 ## Layout
 - HUD Insets retain the conservative bottom band; optional measured child rectangles update on content/legend changes, including in warmup. TD alone opts into shaped coverage. `hud/insets.test.ts` and GameHost tests cover offset/clipping/fallback and same-envelope shape changes.
 - `src/main.tsx` -> `shell/App.tsx` (screen state machine) + `debug/DebugOverlay.tsx`. CSS in `src/styles/main.css`.

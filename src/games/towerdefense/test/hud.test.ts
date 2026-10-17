@@ -31,7 +31,7 @@ it('announces the incoming brood through recovery, then leaves combat controls t
     expect(strip.hidden).toBe(false);
     expect(strip.querySelector('.td-count')).not.toBeNull();
     expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
-    session.step(15 * 30);
+    session.step(45 * 30);
     const combat = draw();
     expect(strip.querySelector('.td-count')).toBeNull();
     expect(strip.textContent).toContain(WEAPON_NAME[combat.brood.weapon]);

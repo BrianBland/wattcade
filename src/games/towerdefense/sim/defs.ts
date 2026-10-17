@@ -1,8 +1,9 @@
 // Dynamo Defense catalogues and field geometry. Pure data + math; no DOM, no rng.
+import { FLYER_SPAWNS, ROAD, ROAD_PADS, ROAD_PAD_NAMES, SPAWN_Y, TURRET } from './road';
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
 export type Kind = 'mini' | 'dart' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
-export type TowerKind = 'tesla' | 'mortar' | 'lens';
+export type TowerKind = 'tesla' | 'flamer' | 'lens';
 
 export const ELEMENTS: Element[] = ['blue', 'red', 'purple'];
 export const WEAPONS: Weapon[] = ['gatling', 'flame', 'rail'];
@@ -15,7 +16,7 @@ export const MATCHUP: Matchup = {
   flame: { blue: 0.5, red: 1.5, purple: 1 },
   rail: { blue: 1, red: 0.5, purple: 1.5 },
 };
-export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', mortar: 'flame', lens: 'rail' };
+export const TOWER_WEAPON: Record<TowerKind, Weapon> = { tesla: 'gatling', flamer: 'flame', lens: 'rail' };
 
 /** Cover the largest off-colour push with a strong tower; never suggest resistance to that push. */
 export function suggestedTower(counts: Record<Element, number>, brood: Element, matrix: Matchup = MATCHUP): TowerKind {
@@ -32,7 +33,7 @@ export interface KindDef {
   name: string; hp: number; speed: number; dmg: number; color: Element | 'gold' | 'prism';
   radius: number; scrap: number; heavy: boolean;
 }
-// speed in field units / s (lanes are ~110-125 units long)
+// speed in field units / s (the road is ~245 units long; Gliders fly ~100 straight to the turret)
 export const KINDS: Record<Kind, KindDef> = {
   mini:    { name: 'Skitter', hp: 10,  speed: 4.6, dmg: 1,  color: 'blue',   radius: 1.4, scrap: 1,  heavy: false },
   dart:    { name: 'Glider',        hp: 7,   speed: 8.5, dmg: 1,  color: 'blue',   radius: 1.2, scrap: 1,  heavy: false },
@@ -44,15 +45,16 @@ export const KINDS: Record<Kind, KindDef> = {
   boss:    { name: 'Hive Tyrant',     hp: 260, speed: 1.6, dmg: 30, color: 'gold',   radius: 5.2, scrap: 60, heavy: true },
 };
 /** First wave each kind can appear in. */
-export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 4, brute: 1, charger: 6, armor: 2, carrier: 9, prism: 12, boss: 5 };
+export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 2, brute: 1, charger: 3, armor: 2, carrier: 4, prism: 6, boss: 4 };
 
-export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string }
+/** `air`: can hit flying Gliders. `cone`: half-angle of a continuous cone (flamer), hitting everything inside. */
+export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string; air: boolean; cone?: number }
 export const TOWERS: Record<TowerKind, TowerDef> = {
-  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)' },
-  mortar: { name: 'Mortar',      element: 'red',    cost: 80,  range: 36, period: 2.4, dmg: 9, desc: 'Lobbed shells, splash damage' },
-  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest' },
+  tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)', air: true },
+  flamer: { name: 'Flame Tower', element: 'red',    cost: 80,  range: 15, period: 0.25, dmg: 1.2, desc: 'Short fire cone · ground only', air: false, cone: 0.55 },
+  lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest', air: true },
 };
-export const TOWER_KINDS: TowerKind[] = ['tesla', 'mortar', 'lens'];
+export const TOWER_KINDS: TowerKind[] = ['tesla', 'flamer', 'lens'];
 export const TOWER_MAX_LEVEL = 5;
 /** Damage / range multipliers per tower level (index = level - 1). */
 export const LEVEL_DMG = [1, 1.8, 3, 4.6, 6.6];
@@ -64,47 +66,48 @@ export function towerUpgradeCost(kind: TowerKind, level: number, costMult = 1): 
 }
 export function towerBuildCost(kind: TowerKind, costMult = 1): number { return Math.round(TOWERS[kind].cost * costMult); }
 
-// ----- field geometry (100 x 100 units; base at the bottom centre) -----
-export const FIELD = 100;
-export const BASE_X = 50;
-export const BASE_Y = 90;
-export const BASE_R = 6;
+// ----- field geometry: one road (sim/road.ts) from the hive to the turret; Gliders fly straight -----
+export { FIELD_W, FIELD_H, TURRET } from './road';
+export const BASE_X = TURRET.x;
+export const BASE_Y = TURRET.y;
+/** An alien this close to the end of the road (or its flight) has reached the turret. */
+export const BASE_R = 8;
 
 type P = { x: number; y: number };
-/** Each lane is a cubic Bézier from its spawn (off the top / side edge) to the base. */
-const LANE_CTRL: Array<[P, P, P, P]> = [
-  [{ x: -3, y: 16 }, { x: 28, y: 18 }, { x: 18, y: 66 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 50, y: -3 }, { x: 34, y: 28 }, { x: 66, y: 52 }, { x: BASE_X, y: BASE_Y }],
-  [{ x: 103, y: 16 }, { x: 84, y: 18 }, { x: 87, y: 66 }, { x: BASE_X, y: BASE_Y }],
-];
-export const LANE_NAMES = ['Left', 'Center', 'Right'];
-const SAMPLES = 160;
-function bez(c: [P, P, P, P], t: number): P {
-  const u = 1 - t, a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
-  return { x: a * c[0].x + b * c[1].x + d * c[2].x + e * c[3].x, y: a * c[0].y + b * c[1].y + d * c[2].y + e * c[3].y };
-}
-interface LaneTable { pts: P[]; cum: number[]; len: number }
-const LANES: LaneTable[] = LANE_CTRL.map((c) => {
-  const pts: P[] = [], cum: number[] = [0];
-  for (let i = 0; i <= SAMPLES; i++) pts.push(bez(c, i / SAMPLES));
-  for (let i = 1; i <= SAMPLES; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
-  return { pts, cum, len: cum[SAMPLES] };
-});
-export const laneLength = (lane: number): number => LANES[lane].len;
-/** Point `d` units along a lane, with the unit normal (pointing to the walker's left). */
-export function laneAt(lane: number, d: number): { x: number; y: number; nx: number; ny: number } {
-  const L = LANES[lane];
-  const dd = Math.max(0, Math.min(L.len, d));
-  let lo = 0, hi = SAMPLES;
-  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (L.cum[m] <= dd) lo = m; else hi = m; }
-  const seg = L.cum[hi] - L.cum[lo] || 1, k = (dd - L.cum[lo]) / seg;
-  const a = L.pts[lo], b = L.pts[hi];
+/** The walkable road: ROAD from where it crosses the spawn edge to the turret, with cumulative distances. */
+const ROAD_TABLE = (() => {
+  const first = Math.max(0, ROAD.findIndex((p) => p.y >= SPAWN_Y) - 1);
+  const pts = ROAD.slice(first), cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  return { pts, cum, len: cum[cum.length - 1] };
+})();
+export const ROAD_LENGTH = ROAD_TABLE.len;
+/** Point `d` units along the road from the spawn edge, with the unit normal (pointing to the walker's left). */
+export function roadAt(d: number): { x: number; y: number; nx: number; ny: number } {
+  const { pts, cum, len } = ROAD_TABLE, dd = Math.max(0, Math.min(len, d));
+  let lo = 0, hi = pts.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= dd) lo = m; else hi = m; }
+  const seg = cum[hi] - cum[lo] || 1, k = (dd - cum[lo]) / seg, a = pts[lo], b = pts[hi];
   const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
-  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, nx: ty / tl, ny: -tx / tl };
+  return { x: a.x + tx * k, y: a.y + ty * k, nx: ty / tl, ny: -tx / tl };
 }
-/** Polyline of a lane for drawing (every `step` samples). */
-export function lanePolyline(lane: number, step = 4): P[] {
-  return LANES[lane].pts.filter((_, i) => i % step === 0 || i === SAMPLES);
+/** Road distance of the nearest road point to (x, y). */
+export function roadDistanceOf(x: number, y: number): number {
+  let best = Infinity, at = 0;
+  for (let i = 0; i < ROAD_TABLE.pts.length; i++) { const p = ROAD_TABLE.pts[i], d = Math.hypot(p.x - x, p.y - y); if (d < best) { best = d; at = ROAD_TABLE.cum[i]; } }
+  return at;
+}
+/** The road for drawing (every `step` samples, always ending at the turret). */
+export function roadPolyline(step = 4): P[] {
+  const pts = ROAD_TABLE.pts;
+  return pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+}
+/** Glider flight `route` (an index into FLYER_SPAWNS): straight from its spawn to the turret. */
+export const flightLength = (route: number): number => Math.hypot(TURRET.x - FLYER_SPAWNS[route].x, TURRET.y - FLYER_SPAWNS[route].y);
+export function flightAt(route: number, d: number): { x: number; y: number; nx: number; ny: number } {
+  const a = FLYER_SPAWNS[route], len = flightLength(route), k = Math.max(0, Math.min(1, d / len));
+  const tx = (TURRET.x - a.x) / len, ty = (TURRET.y - a.y) / len;
+  return { x: a.x + (TURRET.x - a.x) * k, y: a.y + (TURRET.y - a.y) * k, nx: ty, ny: -tx };
 }
 
 /** Aim angle from the base to a point: 0 = straight up, negative = left. */
@@ -112,49 +115,8 @@ export const angleTo = (x: number, y: number): number => Math.atan2(x - BASE_X, 
 export const distTo = (x: number, y: number): number => Math.hypot(x - BASE_X, y - BASE_Y);
 export const AIM_LIMIT = 1.45;
 
-/** Six build pads: two beside each lane (near / far), on the lane's outer side. */
-export interface Pad { id: number; lane: number; x: number; y: number; near: boolean }
-export const PADS: Pad[] = [
-  {
-    "id": 0,
-    "lane": 0,
-    "x": 13.0,
-    "y": 56.5,
-    "near": false
-  },
-  {
-    "id": 1,
-    "lane": 0,
-    "x": 39.0,
-    "y": 50.5,
-    "near": true
-  },
-  {
-    "id": 2,
-    "lane": 1,
-    "x": 59.0,
-    "y": 22.5,
-    "near": false
-  },
-  {
-    "id": 3,
-    "lane": 1,
-    "x": 36.0,
-    "y": 40.5,
-    "near": true
-  },
-  {
-    "id": 4,
-    "lane": 2,
-    "x": 90.5,
-    "y": 61.5,
-    "near": false
-  },
-  {
-    "id": 5,
-    "lane": 2,
-    "x": 66.0,
-    "y": 51.5,
-    "near": true
-  }
-];
+/** Eight build pads beside the road. `s` = road distance of the nearest stretch (workshop order: spawn → turret). */
+export interface Pad { id: number; x: number; y: number; name: string; s: number }
+export const PADS: Pad[] = ROAD_PADS.map((p, id) => ({ id, x: p.x, y: p.y, name: ROAD_PAD_NAMES[id], s: roadDistanceOf(p.x, p.y) }));
+/** The workshop's pseudo-pad for the base (repair). */
+export const BASE_PAD = PADS.length;

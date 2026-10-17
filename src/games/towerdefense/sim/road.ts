@@ -29,6 +29,11 @@ export const ROAD_PADS: readonly Pt[] = [
   { x: 32, y: 76 }, { x: 56, y: 79 }, { x: 30, y: 48 }, { x: 10, y: 97 },
 ];
 
+/** Short names for the workshop and work orders, matching ROAD_PADS. */
+export const ROAD_PAD_NAMES: readonly string[] = [
+  'Upper pocket', 'Spawn ridge', 'East hairpin', 'West flank', 'Lower pocket', 'South ridge', 'Centre pocket', 'Turret flank',
+];
+
 /** Gliders fly straight from these points to the turret. */
 export const FLYER_SPAWNS: readonly Pt[] = [{ x: 6, y: -6 }, { x: 40, y: -6 }, { x: 74, y: -6 }];
 

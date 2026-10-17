@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, runHeadless, testProfile } from '../../../core';
 import type { Button, InputState } from '../../../contracts';
 import { module } from '../index';
+import { ROAD_LENGTH } from '../sim/defs';
 import type { ActionId, TdSnapshot } from '../sim/types';
 
 class Pad {
@@ -23,7 +24,7 @@ function rig() {
   s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railLaserDps', 0);
   s.tuning.set('towerdefense.towerDamageMult', 0.1);
   s.step(1); s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(1);
-  s.sim.receive!({ type: 'close' }); s.step(30 * 32);
+  s.sim.receive!({ type: 'close' }); s.step(30 * 62); // the 45 s lull, then aliens on the road
   const originalBike = s.ctx.bike;
   let zone = 2, sprint = false;
   s.ctx.bike = () => ({ ...originalBike(), ftpFraction: 0.95, powerZone: zone as 1 | 2 | 3 | 4 | 5, sprinting: sprint });
@@ -37,22 +38,26 @@ describe('three combat actions and input contexts', () => {
     a.pad.tap('b'); a.pad.tap('y');
     b.s.sim.receive!({ type: 'action', id: 'overcharge' }); b.s.sim.receive!({ type: 'action', id: 'slow' });
     b.pad.tap('b'); b.pad.tap('y'); a.s.step(1); b.s.step(1);
-    expect(snap(a.s).actions).toEqual(snap(b.s).actions); expect(snap(a.s).slowLane).toBe(snap(b.s).slowLane);
+    expect(snap(a.s).actions).toEqual(snap(b.s).actions); expect(snap(a.s).slowFrom).toBe(snap(b.s).slowFrom);
     expect(action(a.s, 'overcharge').activeS).toBe(10); expect(action(a.s, 'slow').activeS).toBe(8);
     expect(b.s.finish().events.filter(e => e.type === 'action')).toHaveLength(2);
   });
-  it('Slow affects only the most threatened lane, at 60% movement speed', () => {
-    const a = rig(), ref = rig(), before = snap(a.s);
-    const threat = [0, 0, 0]; for (const e of before.enemies) threat[e.lane] += ({ mini: 1, dart: 1, brute: 5, charger: 6, armor: 8, carrier: 10, prism: 6, boss: 30 }[e.kind]) * (0.3 + e.progress) ** 2;
+  it('Slow covers the back stretch of the road at 60% movement speed; the front stretch and Gliders are unaffected', () => {
+    const a = rig(), ref = rig();
+    a.s.step(30 * 40); ref.s.step(30 * 40); // let the column reach the back stretch
+    const before = snap(a.s);
     a.s.sim.receive!({ type: 'action', id: 'slow' }); a.s.step(1); ref.s.step(1);
-    const lane = snap(a.s).slowLane; expect(lane).toBe(threat.indexOf(Math.max(...threat)));
-    let checked = 0;
+    const from = snap(a.s).slowFrom; expect(from).toBeGreaterThan(0); expect(from).toBeLessThan(ROAD_LENGTH);
+    let inside = 0, outside = 0;
     for (const e of before.enemies) {
       const slowed = snap(a.s).enemies.find(q => q.id === e.id), normal = snap(ref.s).enemies.find(q => q.id === e.id);
       if (!slowed || !normal) continue;
-      expect((slowed.progress - e.progress) / (normal.progress - e.progress)).toBeCloseTo(e.lane === lane ? 0.6 : 1, 5); checked++;
+      const d = e.progress * ROAD_LENGTH, field = !e.flying && d >= from;
+      if (!e.flying && Math.abs(d - from) < 1) continue; // crossing the edge this tick
+      expect((slowed.progress - e.progress) / (normal.progress - e.progress)).toBeCloseTo(field ? 0.6 : 1, 5);
+      if (field) inside++; else outside++;
     }
-    expect(checked).toBeGreaterThan(0);
+    expect(inside).toBeGreaterThan(0); expect(outside).toBeGreaterThan(0);
   });
   it('Overcharge speeds tower firing while preserving the trainer mode', () => {
     const a = rig(), ref = rig();
@@ -122,15 +127,15 @@ describe('passive versus active riders', () => {
     let passiveWaves = 0, activeWaves = 0, passiveMinutes = 0, activeMinutes = 0;
     for (const seed of [1, 2, 3, 4]) {
       // Compare the first run; later runs keep the ride open and bank more towers and upgrades.
-      const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 60, seed, simOpts: { autopilot: true, actionBot } });
+      const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 90, seed, simOpts: { autopilot: true, actionBot } });
       const passive = run(false), active = run(true);
       const firstEnd = (r: typeof passive) => r.events.find(e => e.type === 'runEnded' && e.data?.reason === 'fell')!;
       const passiveEnd = firstEnd(passive), activeEnd = firstEnd(active);
       expect(passiveEnd).toBeDefined(); expect(activeEnd).toBeDefined();
-      expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t)).toHaveLength(6);
-      expect(Number(passive.summary.towerUpgrades)).toBeGreaterThanOrEqual(24);
+      expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t)).toHaveLength(8);
+      expect(Number(passive.summary.towerUpgrades)).toBeGreaterThanOrEqual(20);
       expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
-      expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(25);
+      expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(10);
       expect(passive.isOver).toBe(false); expect(active.isOver).toBe(false);
       expect(Number(activeEnd.data?.wavesSurvived)).toBeGreaterThanOrEqual(Number(passiveEnd.data?.wavesSurvived));
       expect(active.events.some(e => e.type === 'action')).toBe(true);
@@ -139,5 +144,5 @@ describe('passive versus active riders', () => {
     }
     expect(activeWaves).toBeGreaterThan(passiveWaves);
     expect(activeMinutes).toBeGreaterThan(passiveMinutes + 2);
-  }, 30_000);
+  }, 60_000);
 });

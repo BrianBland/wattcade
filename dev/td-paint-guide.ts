@@ -81,8 +81,8 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
  * Never baked into the painting.
  */
 export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k: number, dpr = 1) {
-  const at = (p: Pt): View => ({ X: () => px(p).x, Y: () => px(p).y, k, dpr });
-  const flat: View = { X: x => x, Y: y => y, k, dpr }; // aliens get image-pixel positions directly
+  const at = (p: Pt): View => ({ P: () => px(p), rot: 0, turned: false, k, dpr });
+  const flat: View = { P: (x, y) => ({ x, y }), rot: 0, turned: false, k, dpr }; // aliens get image-pixel positions directly
   const base = import.meta.env.BASE_URL;
   const machinery = new Machinery(base), aliens = new AlienLayer(base);
   await Promise.all([machinery.loaded, aliens.loaded]);
@@ -105,7 +105,7 @@ export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k
   ];
   const enemies: EnemyView[] = [];
   const enemy = (id: number, kind: Kind, p: Pt, element: Element): EnemyView => ({
-    id, kind, lane: 0, x: p.x, y: p.y, angle: 0, dist: 0, radius: KINDS[kind].radius, element, gold: kind === 'boss', hp: 1, maxHp: 1, hurt: 9,
+    id, kind, route: kind === 'dart' ? 0 : -1, flying: kind === 'dart', x: p.x, y: p.y, angle: 0, dist: 0, radius: KINDS[kind].radius, element, gold: kind === 'boss', hp: 1, maxHp: 1, hurt: 9,
     charging: false, shiftIn: 0, next: null, progress: 0, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0,
   });
   const before: EnemyView[] = [];
@@ -122,7 +122,7 @@ export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k
   aliens.update(snap(enemies, 0.5), flat, 1, () => {});
 
   // Four towers aimed at the nearest enemy; the other pads get the game's build marker.
-  const towers: Array<[number, TowerKind, number]> = [[0, 'tesla', 3], [2, 'mortar', 2], [6, 'lens', 4], [4, 'tesla', 1]];
+  const towers: Array<[number, TowerKind, number]> = [[0, 'tesla', 3], [2, 'flamer', 2], [6, 'lens', 4], [4, 'tesla', 1]];
   const aimAt = (from: Pt) => {
     const f = px(from), e = enemies.reduce((best, q) => Math.hypot(q.x - f.x, q.y - f.y) < Math.hypot(best.x - f.x, best.y - f.y) ? q : best);
     return Math.atan2(e.x - f.x, f.y - e.y);

@@ -8,7 +8,8 @@ import { module } from '../src/games/towerdefense';
 import type { TdSnapshot } from '../src/games/towerdefense/sim/types';
 import { layout } from '../src/games/towerdefense/render/layout';
 import { radialLayout } from '../src/games/towerdefense/render/construction';
-import { PADS } from '../src/games/towerdefense/sim/defs';
+import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../src/games/towerdefense/sim/defs';
+import { toScreen } from '../src/games/towerdefense/render/fieldView';
 
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const offKeys = input.attachKeyboard(window), useHud = q.get('canvas') !== '1';
@@ -56,10 +57,10 @@ window.__td = {
   send: (a: unknown) => { session.sim.receive?.(a); },
   ui: () => {
     const L = layout(innerWidth, innerHeight, hudInset(), useHud), s = session.sim.snapshot() as TdSnapshot, ws = s.workshop;
-    const p = ws?.pad == null || ws.pad === 6 ? { x: 50, y: 90 } : PADS[ws.pad];
+    const p = ws?.pad == null || ws.pad === BASE_PAD ? { x: BASE_X, y: BASE_Y } : PADS[ws.pad];
     return { layout: L,
-      pads: PADS.map(p => ({ id: p.id, x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 })),
-      menu: ws ? radialLayout(innerWidth, L.UH, { x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 }, ws.rows.length) : null };
+      pads: PADS.map(p => ({ id: p.id, ...toScreen(L.field, p) })),
+      menu: ws ? radialLayout(innerWidth, L.UH, toScreen(L.field, p), ws.rows.length) : null };
   },
   legend: (on: boolean) => { legendOn = on; renderHud(); },
   events: () => session.finish().events,

@@ -1,6 +1,6 @@
 // Draws the aliens with the cut-out puppets: per-enemy gait (see ./track), heading, strike pose near the base, hurt
 // flash, a death curl into a fading husk, and brood-tinted splats that stay until the wave ends.
-import { KINDS, type Element } from '../../sim/defs';
+import { BASE_X, BASE_Y, KINDS, type Element } from '../../sim/defs';
 import type { EnemyView, Fx, TdSnapshot } from '../../sim/types';
 import { COL } from '../sprites';
 import { DEATH_FRAMES, FrameCache, LiveCanvas, loadPuppets, type Frame } from './puppets';
@@ -15,8 +15,11 @@ const DEATH_S = 0.45;
 interface Corpse { species: SpeciesId; x: number; y: number; h: number; t0: number; tint?: string; outline: string; len: number; fadeAt?: number }
 interface Splat { x: number; y: number; rot: number; size: number; img: HTMLCanvasElement; t0: number; wave: number; fadeAt?: number }
 
-/** Field → screen mapping supplied by the renderer each frame. */
-export interface View { X(x: number): number; Y(y: number): number; k: number; dpr: number }
+/**
+ * Field → screen mapping supplied by the renderer each frame (see ../fieldView). `rot` turns world headings into
+ * screen headings (π/2 when the landscape field is turned); `turned` is the landscape rotation itself.
+ */
+export interface View { P(x: number, y: number): { x: number; y: number }; rot: number; turned: boolean; k: number; dpr: number }
 
 export class AlienLayer {
   private cache: FrameCache | null = null;
@@ -78,10 +81,10 @@ export class AlienLayer {
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind !== 'death' || firstPass) continue; // don't replay history on mount
       const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(KINDS[f.ekind].radius, sp);
-      const h = this.tracks.get(f.eid)?.h ?? Math.atan2(90 - f.y, 50 - f.x);
+      const h = this.tracks.get(f.eid)?.h ?? Math.atan2(BASE_Y - f.y, BASE_X - f.x);
       this.corpses.push({ species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint: sp.tint ? COL[f.color] : undefined, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined });
       this.addSplat(f.x, f.y, len, f.color, f.eid, s.t);
-      if (f.fire && f.color === 'red') onFireBurst(v.X(f.x), v.Y(f.y), len * v.k);
+      if (f.fire && f.color === 'red') { const q = v.P(f.x, f.y); onFireBurst(q.x, q.y, len * v.k); }
     }
     if (firstPass) this.lastFx = Math.max(this.lastFx, 0);
     for (const id of this.tracks.keys()) if (!live.has(id)) this.tracks.delete(id);
@@ -112,7 +115,7 @@ export class AlienLayer {
       const a = 0.85 * Math.min(1, (t - sp.t0) * 6) * (sp.fadeAt == null ? 1 : Math.max(0, 1 - (t - sp.fadeAt) / SPLAT_FADE_S));
       if (a <= 0) continue;
       const w = sp.size * v.k, h = w * (sp.img.height / sp.img.width);
-      g.save(); g.globalAlpha = a; g.translate(v.X(sp.x), v.Y(sp.y)); g.rotate(sp.rot); g.drawImage(sp.img, -w / 2, -h / 2, w, h); g.restore();
+      const q = v.P(sp.x, sp.y); g.save(); g.globalAlpha = a; g.translate(q.x, q.y); g.rotate(sp.rot); g.drawImage(sp.img, -w / 2, -h / 2, w, h); g.restore();
     }
   }
 
@@ -123,7 +126,8 @@ export class AlienLayer {
       const set = cache.get(c.species, c.len * v.k * v.dpr, c.outline, c.tint); if (!set) continue;
       const age = t - c.t0, k = Math.min(1, age / DEATH_S), i = Math.floor(k * DEATH_FRAMES);
       const fr = i < DEATH_FRAMES ? set.death[i] : set.corpse;
-      this.blit(g, fr, v.X(c.x), v.Y(c.y), c.h + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12);
+      const q = v.P(c.x, c.y);
+      this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, (c.fadeAt == null ? 0.8 : Math.max(0, 1 - (t - c.fadeAt) / SPLAT_FADE_S)), 1 - k * 0.12);
     }
     for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
@@ -141,17 +145,18 @@ export class AlienLayer {
       if (tr.attack > 0.15) fr = set.attack[Math.min(set.attack.length - 1, Math.floor(tr.attack * set.attack.length))];
       else { const n = set.walk.length; fr = set.walk[Math.floor((tr.cycles - Math.floor(tr.cycles)) * n) % n]; }
     }
-    let x = v.X(e.x), y = v.Y(e.y);
+    let { x, y } = v.P(e.x, e.y);
+    const h = tr.h + v.rot;
     if (sp.thud) { // the body surges ahead during each burst and settles on the thud
       const lead = thud(tr.cycles).lead * sp.stride * lenU * 0.5 * v.k;
-      x += Math.cos(tr.h) * lead; y += Math.sin(tr.h) * lead;
+      x += Math.cos(h) * lead; y += Math.sin(h) * lead;
     }
-    this.shadow(g, x, y, lenU * v.k, !!sp.flying, tr.h);
+    this.shadow(g, x, y, lenU * v.k, !!sp.flying, h);
     this.halo(g, x, y, lenU * v.k, e.gold ? COL.gold : COL[e.element], e.kind === 'boss');
     const lift = sp.flying ? 1.04 : 1;
-    this.blit(g, fr, x, y, tr.h, v.dpr, 1, lift);
+    this.blit(g, fr, x, y, h, v.dpr, 1, lift);
     if (e.hurt > 0.05) { // hit flash: add the frame onto itself
-      g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, tr.h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
+      g.globalCompositeOperation = 'lighter'; this.blit(g, fr, x, y, h, v.dpr, Math.min(0.55, e.hurt * 5), lift); g.globalCompositeOperation = 'source-over';
     }
     return true;
   }

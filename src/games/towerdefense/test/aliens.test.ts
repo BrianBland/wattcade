@@ -85,7 +85,7 @@ describe('rig: gaits', () => {
 });
 
 const view = (over: Partial<EnemyView>): EnemyView => ({
-  id: 7, kind: 'brute', lane: 0, x: 20, y: 20, angle: 0, dist: 50, radius: KINDS.brute.radius, element: 'red', gold: false,
+  id: 7, kind: 'brute', route: -1, flying: false, x: 20, y: 20, angle: 0, dist: 50, radius: KINDS.brute.radius, element: 'red', gold: false,
   hp: 10, maxHp: 10, hurt: 0, charging: false, shiftIn: 0, next: null, progress: 0.3, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, ...over,
 });
 

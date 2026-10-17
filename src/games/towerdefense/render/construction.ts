@@ -1,7 +1,8 @@
 // Big, inset-aware touch targets; the controller operates the very same WorkshopView.
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { LANE_NAMES, PADS } from '../sim/defs';
+import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../sim/defs';
+import { toScreen } from './fieldView';
 import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import type { Hit } from './panels';
 
@@ -56,12 +57,12 @@ export function radialLayout(W: number, UH: number, anchor: { x: number; y: numb
 
 export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, W: number): Hit[] {
   const ws = s.workshop!;
-  const p = ws.pad < 6 ? PADS[ws.pad] : { x: 50, y: 90, lane: -1, near: false };
-  const r = radialLayout(W, L.UH, { x: L.field.x + p.x * L.field.s / 100, y: L.field.y + p.y * L.field.s / 100 }, ws.rows.length);
+  const p = ws.pad < BASE_PAD ? PADS[ws.pad] : { x: BASE_X, y: BASE_Y, name: 'Base' };
+  const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length);
   const css = getComputedStyle(g.canvas);
   g.save(); g.fillStyle = css.getPropertyValue('--panel-solid'); g.beginPath(); g.roundRect(r.body.x - 4, r.body.y - 4, r.body.w + 8, r.body.h + 8, 12); g.fill();
   g.fillStyle = css.getPropertyValue('--neon'); g.font = `bold 13px ${css.fontFamily}`; g.textAlign = 'center';
-  g.fillText(ws.pad < 6 ? `${LANE_NAMES[p.lane]} ${p.near ? 'Near' : 'Far'} · ${s.scrap} scrap` : `Base · ${s.scrap} scrap`, r.body.x + r.body.w / 2, r.body.y + 19);
+  g.fillText(`${p.name} · ${s.scrap} scrap`, r.body.x + r.body.w / 2, r.body.y + 19);
   g.font = `11px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--dim'); g.fillText('◀▶ pad · ▲▼ option · A confirm', r.body.x + r.body.w / 2, r.body.y + 36);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];

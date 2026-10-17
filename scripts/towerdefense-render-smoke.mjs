@@ -87,7 +87,7 @@ try {
   console.log('Rail: captured hold dumps all; dragging away cancels without a follow-up shot');
   await page.evaluate(() => window.__td.dispose()); await page.close();
   const boss = await browser.newPage({ viewport: { width: 1180, height: 820 }, hasTouch: true });
-  await boss.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&crew=0&boss=1&seed=2`);
+  await boss.goto(`${base}/dev/towerdefense.html?canvas=1&manual=1&inset=140&crew=0&boss=1&seed=3`);
   await boss.waitForFunction(() => window.__td);
   await boss.evaluate(() => {
     for (let i = 0; i < 1800; i++) {

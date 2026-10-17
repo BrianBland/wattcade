@@ -1,0 +1,818 @@
+[
+  {
+    "device": "ipad",
+    "file": "landscape-hud-ipad-touch.png",
+    "mode": "touch",
+    "viewport": {
+      "width": 1180,
+      "height": 820
+    },
+    "field": {
+      "x": 307,
+      "y": 73.09090909090912,
+      "k": 6.5227272727272725,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -6.090909090909065,
+      "top": -253.0454545454545,
+      "right": 1755.0454545454545,
+      "bottom": 921.0454545454545
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 719,
+        "w": 260,
+        "h": 97
+      },
+      {
+        "x": 280,
+        "y": 679.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 912,
+        "y": 668,
+        "w": 260,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 283,
+      "h": 190
+    },
+    "legendOn": false
+  },
+  {
+    "device": "ipad",
+    "file": "landscape-hud-ipad-legend-on-toggle.png",
+    "mode": "legend-on-toggle",
+    "viewport": {
+      "width": 1180,
+      "height": 820
+    },
+    "field": {
+      "x": 307,
+      "y": 68.01278409090912,
+      "k": 6.5227272727272725,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -6.090909090909065,
+      "top": -258.1235795454545,
+      "right": 1755.0454545454545,
+      "bottom": 915.9673295454545
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 657.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      },
+      {
+        "x": 280,
+        "y": 679.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 995.84375,
+        "y": 657.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 283,
+      "h": 190
+    },
+    "legendOn": true
+  },
+  {
+    "device": "ipad",
+    "file": "landscape-hud-ipad-legend-off-toggle.png",
+    "mode": "legend-off-toggle",
+    "viewport": {
+      "width": 1180,
+      "height": 820
+    },
+    "field": {
+      "x": 307,
+      "y": 73.09090909090912,
+      "k": 6.5227272727272725,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -6.090909090909065,
+      "top": -253.0454545454545,
+      "right": 1755.0454545454545,
+      "bottom": 921.0454545454545
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 719,
+        "w": 260,
+        "h": 97
+      },
+      {
+        "x": 280,
+        "y": 679.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 912,
+        "y": 668,
+        "w": 260,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 283,
+      "h": 190
+    },
+    "legendOn": false
+  },
+  {
+    "device": "ipad",
+    "file": "landscape-hud-ipad-controller.png",
+    "mode": "controller",
+    "viewport": {
+      "width": 1180,
+      "height": 820
+    },
+    "field": {
+      "x": 307,
+      "y": 68.01278409090912,
+      "k": 6.5227272727272725,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -6.090909090909065,
+      "top": -258.1235795454545,
+      "right": 1755.0454545454545,
+      "bottom": 915.9673295454545
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 657.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      },
+      {
+        "x": 280,
+        "y": 679.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 995.84375,
+        "y": 657.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 283,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 283,
+      "h": 190
+    },
+    "legendOn": true
+  },
+  {
+    "device": "ipad-pro",
+    "file": "landscape-hud-ipad-pro-touch.png",
+    "mode": "touch",
+    "viewport": {
+      "width": 1366,
+      "height": 1024
+    },
+    "field": {
+      "x": 324,
+      "y": 123.87878787878788,
+      "k": 7.803030303030303,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -50.545454545454504,
+      "top": -266.27272727272725,
+      "right": 2056.272727272727,
+      "bottom": 1138.2727272727273
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 923,
+        "w": 260,
+        "h": 97
+      },
+      {
+        "x": 373,
+        "y": 883.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 1098,
+        "y": 872,
+        "w": 260,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 300,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 300,
+      "h": 190
+    },
+    "legendOn": false
+  },
+  {
+    "device": "ipad-pro",
+    "file": "landscape-hud-ipad-pro-legend-on-toggle.png",
+    "mode": "legend-on-toggle",
+    "viewport": {
+      "width": 1366,
+      "height": 1024
+    },
+    "field": {
+      "x": 324,
+      "y": 118.80066287878788,
+      "k": 7.803030303030303,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -50.545454545454504,
+      "top": -271.35085227272725,
+      "right": 2056.272727272727,
+      "bottom": 1133.1946022727273
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 861.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      },
+      {
+        "x": 373,
+        "y": 883.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 1181.84375,
+        "y": 861.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 300,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 300,
+      "h": 190
+    },
+    "legendOn": true
+  },
+  {
+    "device": "ipad-pro",
+    "file": "landscape-hud-ipad-pro-legend-off-toggle.png",
+    "mode": "legend-off-toggle",
+    "viewport": {
+      "width": 1366,
+      "height": 1024
+    },
+    "field": {
+      "x": 324,
+      "y": 123.87878787878788,
+      "k": 7.803030303030303,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -50.545454545454504,
+      "top": -266.27272727272725,
+      "right": 2056.272727272727,
+      "bottom": 1138.2727272727273
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 923,
+        "w": 260,
+        "h": 97
+      },
+      {
+        "x": 373,
+        "y": 883.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 1098,
+        "y": 872,
+        "w": 260,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 300,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 300,
+      "h": 190
+    },
+    "legendOn": false
+  },
+  {
+    "device": "ipad-pro",
+    "file": "landscape-hud-ipad-pro-controller.png",
+    "mode": "controller",
+    "viewport": {
+      "width": 1366,
+      "height": 1024
+    },
+    "field": {
+      "x": 324,
+      "y": 118.80066287878788,
+      "k": 7.803030303030303,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": -50.545454545454504,
+      "top": -271.35085227272725,
+      "right": 2056.272727272727,
+      "bottom": 1133.1946022727273
+    },
+    "coverage": true,
+    "uncovered": {
+      "left": 0,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 861.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      },
+      {
+        "x": 373,
+        "y": 883.8125,
+        "w": 620,
+        "h": 136.1875
+      },
+      {
+        "x": 1181.84375,
+        "y": 861.84375,
+        "w": 176.15625,
+        "h": 158.15625
+      }
+    ],
+    "status": {
+      "x": 12,
+      "y": 12,
+      "w": 300,
+      "h": 150
+    },
+    "current": {
+      "x": 12,
+      "y": 174,
+      "w": 300,
+      "h": 190
+    },
+    "legendOn": true
+  },
+  {
+    "device": "phone",
+    "file": "landscape-hud-phone-touch.png",
+    "mode": "touch",
+    "viewport": {
+      "width": 844,
+      "height": 390
+    },
+    "field": {
+      "x": 235.86666666666667,
+      "y": 7.933333333333334,
+      "k": 2.9559635416666667,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": 93.98041666666666,
+      "top": -139.86484375,
+      "right": 892.0905729166667,
+      "bottom": 392.20859375000003
+    },
+    "coverage": false,
+    "uncovered": {
+      "left": 93.98041666666666,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 289,
+        "w": 157.75,
+        "h": 97
+      },
+      {
+        "x": 175.75,
+        "y": 251.8125,
+        "w": 492.5,
+        "h": 134.1875
+      },
+      {
+        "x": 678.25,
+        "y": 238,
+        "w": 157.75,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 7.933333333333334,
+      "y": 7.933333333333334,
+      "w": 220,
+      "h": 96.39
+    },
+    "current": {
+      "x": 7.933333333333334,
+      "y": 112.25666666666667,
+      "w": 220,
+      "h": 117.80999999999999
+    },
+    "legendOn": false
+  },
+  {
+    "device": "phone",
+    "file": "landscape-hud-phone-legend-on-toggle.png",
+    "mode": "legend-on-toggle",
+    "viewport": {
+      "width": 844,
+      "height": 390
+    },
+    "field": {
+      "x": 236.7875,
+      "y": 8.39375,
+      "k": 2.950926920572917,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": 95.14300781249997,
+      "top": -139.15259602864583,
+      "right": 891.8932763671876,
+      "bottom": 392.01424967447923
+    },
+    "coverage": false,
+    "uncovered": {
+      "left": 95.14300781249997,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 302.171875,
+        "w": 101.828125,
+        "h": 83.828125
+      },
+      {
+        "x": 119.828125,
+        "y": 251.8125,
+        "w": 604.34375,
+        "h": 134.1875
+      },
+      {
+        "x": 734.171875,
+        "y": 302.171875,
+        "w": 101.828125,
+        "h": 83.828125
+      }
+    ],
+    "status": {
+      "x": 8.39375,
+      "y": 8.39375,
+      "w": 220,
+      "h": 101.9840625
+    },
+    "current": {
+      "x": 8.39375,
+      "y": 118.77156249999999,
+      "w": 220,
+      "h": 124.6471875
+    },
+    "legendOn": true
+  },
+  {
+    "device": "phone",
+    "file": "landscape-hud-phone-legend-off-toggle.png",
+    "mode": "legend-off-toggle",
+    "viewport": {
+      "width": 844,
+      "height": 390
+    },
+    "field": {
+      "x": 235.86666666666667,
+      "y": 7.933333333333334,
+      "k": 2.9559635416666667,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": 93.98041666666666,
+      "top": -139.86484375,
+      "right": 892.0905729166667,
+      "bottom": 392.20859375000003
+    },
+    "coverage": false,
+    "uncovered": {
+      "left": 93.98041666666666,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 289,
+        "w": 157.75,
+        "h": 97
+      },
+      {
+        "x": 175.75,
+        "y": 251.8125,
+        "w": 492.5,
+        "h": 134.1875
+      },
+      {
+        "x": 678.25,
+        "y": 238,
+        "w": 157.75,
+        "h": 148
+      }
+    ],
+    "status": {
+      "x": 7.933333333333334,
+      "y": 7.933333333333334,
+      "w": 220,
+      "h": 96.39
+    },
+    "current": {
+      "x": 7.933333333333334,
+      "y": 112.25666666666667,
+      "w": 220,
+      "h": 117.80999999999999
+    },
+    "legendOn": false
+  },
+  {
+    "device": "phone",
+    "file": "landscape-hud-phone-controller.png",
+    "mode": "controller",
+    "viewport": {
+      "width": 844,
+      "height": 390
+    },
+    "field": {
+      "x": 236.7875,
+      "y": 8.39375,
+      "k": 2.950926920572917,
+      "turned": true
+    },
+    "paintBox": {
+      "x0": -50,
+      "y0": -110,
+      "x1": 130,
+      "y1": 160
+    },
+    "paintBounds": {
+      "left": 95.14300781249997,
+      "top": -139.15259602864583,
+      "right": 891.8932763671876,
+      "bottom": 392.01424967447923
+    },
+    "coverage": false,
+    "uncovered": {
+      "left": 95.14300781249997,
+      "top": 0,
+      "right": 0,
+      "bottom": 0
+    },
+    "foregroundClearsHudAndStatus": true,
+    "hudOcclusions": [
+      {
+        "x": 8,
+        "y": 302.171875,
+        "w": 101.828125,
+        "h": 83.828125
+      },
+      {
+        "x": 119.828125,
+        "y": 251.8125,
+        "w": 604.34375,
+        "h": 134.1875
+      },
+      {
+        "x": 734.171875,
+        "y": 302.171875,
+        "w": 101.828125,
+        "h": 83.828125
+      }
+    ],
+    "status": {
+      "x": 8.39375,
+      "y": 8.39375,
+      "w": 220,
+      "h": 101.9840625
+    },
+    "current": {
+      "x": 8.39375,
+      "y": 118.77156249999999,
+      "w": 220,
+      "h": 124.6471875
+    },
+    "legendOn": true
+  }
+]

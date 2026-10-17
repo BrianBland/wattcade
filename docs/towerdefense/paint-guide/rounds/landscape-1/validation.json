@@ -1,0 +1,54 @@
+{
+  "base": "e028ed3e7cd359678aec4569617d6ec13c8e298e",
+  "briefPR": 168,
+  "briefCommit": "4715c8be6562fc5e372bfc5b92397b9e531a74ed",
+  "briefHash": "acad6e3c15ec9b5c8bf792534d26c903124ab55a540323070a6aebae34815a82",
+  "sourceReferences": [
+    "regenerated landscape-guide.png",
+    "registered 90-degree clockwise portrait-3 reference",
+    "portrait-3/painting.png",
+    "docs/towerdefense/art-reference/environment/background.webp"
+  ],
+  "method": "Image generation from registered portrait-3 reference with extended hive overflow and top-frame relighting; ImageMagick road registration and local clearing translations; Lanczos 3x upscale, quality-85 WebP.",
+  "generation": {
+    "width": 1536,
+    "height": 1024
+  },
+  "production": {
+    "width": 4608,
+    "height": 3072,
+    "bytes": 1553992,
+    "sha256": "6a708be499ee146298e73e4f49c801b308c0f5e2e447e67820c1d1fbbda8f0b0"
+  },
+  "clearingsPassed": true,
+  "roadAndShoulders": "Visually reviewed with current game overlay; no visible misses remaining.",
+  "readability": "Reviewed full and zoomed sprite mocks and device modes; no enemies lost, towers/markers/apron read naturally.",
+  "coverage": {
+    "ipad": true,
+    "ipadPro": true,
+    "shortPhone": false,
+    "limitation": "At 844x390 the fixed paint box leaves 93.98px (touch) or 95.14px (controller) uncovered at the left; red frame retained in diagnostic captures."
+  },
+  "typecheck": true,
+  "towerDefenseTests": {
+    "files": 16,
+    "passed": 180
+  },
+  "preserved": [
+    {
+      "path": "docs/towerdefense/paint-guide/rounds/portrait-3/painting.png",
+      "unchangedFromMain": true,
+      "sha256": "de402bd0f7ec561b766171cd1c73ded5d46abf6ae4d90e148ef140d51b56988a"
+    },
+    {
+      "path": "docs/towerdefense/paint-guide/rounds/portrait-3/NOTES.md",
+      "unchangedFromMain": true,
+      "sha256": "0c7b1a83fa3adc3c059521413ff62a4a643e83e6d040c690c697fc0ea23ad7ac"
+    },
+    {
+      "path": "public/td/environment/road/portrait.webp",
+      "unchangedFromMain": true,
+      "sha256": "06e222601f0874302d4076a2bde81ae5dff1f7a52fdcf4e0b42b26a89b12ff75"
+    }
+  ]
+}

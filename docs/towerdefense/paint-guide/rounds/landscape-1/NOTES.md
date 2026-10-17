@@ -1,0 +1,15 @@
+# Landscape round 1
+- Branched from main e028ed3; followed PR #168 at 4715c8b (snapshot in BRIEF.md); regenerated current guides first.
+- Used portrait-3 for registered burrow, salvage and basalt landmarks/materials; expanded right hive and relit from the landscape top.
+- Generated 1536×1024, corrected road registration and locally translated clearing patches; Lanczos 3× WebP at 4608×3072, quality 85.
+- Road/shoulder overlay visually reviewed: no visible misses; walkable earth stays clear of boulders and ends at the empty apron.
+- All eight clearings pass: centre offsets 0.03–0.14 world units; radii 4.58–4.90; see landscape-clearings.json.
+- Reviewed full/zoomed sprite mocks: blue skitters/Gliders, red warriors/rams, purple bulwark/broodmother and gold Tyrant all read; none get lost.
+- Towers sit naturally on compact clearings; all four empty sites read as build locations with the game's hex markers.
+- Outpost sits on a calm apron; no painted glow or unit-like clutter competes with sprites.
+- Hive creep remains visible beside the spawn run/first crossing and off the road/clearings; basalt and salvage stay subordinate.
+- iPad 1180×820 and iPad Pro 1366×1024 pass coverage and foreground clearance in touch/controller modes and legend on/off toggles.
+- Short-phone diagnostic 844×390 FAILS coverage: paint bounds touch (93.98,-139.86)–(892.09,392.21), controller (95.14,-139.15)–(891.89,392.01) CSS px.
+- Phone retains the red frame: 93.98–95.14 px left uncovered by the fixed box; foreground still clears HUD/status; bounds recorded in landscape-hud-coverage.json.
+- Ran scripts/td-paint-guide.mjs; archived landscape outputs plus supplemental HUD captures; typecheck and all 180 tower-defense tests pass.
+- Portrait production/source/history and game/review code remain unchanged; ready for owner review, with the short-phone coverage limit unresolved.

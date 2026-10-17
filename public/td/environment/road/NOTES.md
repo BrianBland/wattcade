@@ -1,9 +1,9 @@
 # Single-road terrain paintings
 
-- portrait.webp: 2560×3840, 1,203,146 bytes, WebP quality 85; portrait round 2, awaiting owner feedback.
-- Current painting: docs/towerdefense/paint-guide/rounds/portrait-2/painting.png, 1024×1536.
-- Round 2 also contains a byte-identical portrait.webp and all 10 review-script outputs, including three HUD captures.
-- Round 1 remains archived in docs/towerdefense/paint-guide/rounds/portrait-1/.
+- portrait.webp: 2560×3840, 1,203,140 bytes, WebP quality 85; portrait round 3, awaiting owner feedback.
+- Current painting: docs/towerdefense/paint-guide/rounds/portrait-3/painting.png, 1024×1536.
+- Round 3 contains a byte-identical portrait.webp and all 11 review outputs, including clearing measurements and HUD captures.
+- Rounds 1 and 2 remain archived in docs/towerdefense/paint-guide/rounds/.
 - Landscape has not been painted; it requires the owner's explicit "portrait approved" first.
 
 Registration comes from src/games/towerdefense/sim/road.ts (unchanged):
@@ -15,6 +15,8 @@ Registration comes from src/games/towerdefense/sim/road.ts (unchanged):
 Round 1 used image generation from portrait-guide.png with background.webp as the material reference.
 Round 2 edited round 1's painting against the updated guide, preserving its layout and landmarks.
 It extends hive creep into the upper field, tightens clearings to ~31 px and removes the trail past the apron.
+Round 3 locally translated round 2's existing clearing textures/rims with ImageMagick to fix measured centring.
+All pixels outside the seven edit regions, including pad 5, match round 2; no clearing is flagged by the review script.
 The listed machinery previews, guide mocks and HUD sketches were inspected for scale, lighting and readability.
 Camera is orthographic from above; soft light comes from the top of the portrait frame.
 Upscaled with ImageMagick: convert painting.png -filter Lanczos -resize 2560x3840! -quality 85 portrait.webp.

@@ -6,6 +6,7 @@ import type { View } from './aliens/layer';
 import { BASE_X, BASE_Y, PADS } from '../sim/defs';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
+import { dropPose, dropsFor } from './structureFx';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
 interface Animation { durationMs: number; frameDurationMs: number; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[] } }
 interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation } }
@@ -36,7 +37,8 @@ class Puppet {
       }
     });
   }
-  draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void }) {
+  /** `drop`: parts animating in (a build or an upgrade to `level`), `age` seconds after it happened. */
+  draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void; drop?: { level: number; from: number; built: boolean; age: number } }) {
     const m = this.m; if (!m) return false;
     g.save(); g.translate(x, y); g.scale(scale, scale); g.translate(-m.size[0] / 2, -m.size[1] / 2);
     const aim = (p: Part): boolean => !!p.aims || !!p.parent && aim(m.parts.find(q => q.name === p.parent)!);
@@ -45,6 +47,14 @@ class Puppet {
       if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
       if (p.z >= 44 && opts.rider && !riderDrawn) { opts.rider(); riderDrawn = true; }
       g.save();
+      if (opts.drop) { // falls in from above, then squashes on landing (about the part's pivot)
+        const d = dropsFor(p, opts.drop.level, opts.drop.built, opts.drop.from);
+        if (d.drops) {
+          const dp = dropPose(opts.drop.age, d.delay);
+          if (!dp.visible) { g.restore(); continue; }
+          g.translate(0, -dp.lift); g.translate(p.pivot[0], p.pivot[1]); g.scale(1 + (1 - dp.sy) * 0.5, dp.sy); g.translate(-p.pivot[0], -p.pivot[1]);
+        }
+      }
       if (aim(p)) { const pivot = m.parts.find(q => q.aims)?.pivot ?? p.pivot; g.translate(pivot[0], pivot[1]); g.rotate(opts.angle); g.translate(-pivot[0], -pivot[1]); }
       if (p.name === 'flywheel') { g.translate(p.pivot[0], p.pivot[1]); g.rotate(opts.revs * TAU); g.translate(-p.pivot[0], -p.pivot[1]); }
       if (p.recoil) g.translate(0, p.recoil.distancePx * Math.max(0, 1 - opts.age / 0.3));
@@ -73,9 +83,9 @@ export class Machinery {
   profile: Readonly<Profile> | null = null;
   readonly loaded: Promise<void>;
   constructor(base: string) { this.outpost = new Puppet(base, 'outpost'); this.towers = { tesla: new Puppet(base, 'towers/tesla'), mortar: new Puppet(base, 'towers/mortar'), lens: new Puppet(base, 'towers/prism') }; this.loaded = Promise.all([this.outpost.loaded, ...Object.values(this.towers).map(p => p.loaded)]).then(() => {}); }
-  tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot) {
+  tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot, drop?: { level: number; from: number; built: boolean; age: number }) {
     const p = PADS[tw.pad], puppet = this.towers[tw.kind];
-    const ready = puppet.draw(g, v.X(p.x), v.Y(p.y), 8.4 * v.k / 136, { angle: tw.angle, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t });
+    const ready = puppet.draw(g, v.X(p.x), v.Y(p.y), 8.4 * v.k / 136, { angle: tw.angle, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t, drop });
     const age = s.t - tw.firedAt;
     if (ready && tw.kind === 'mortar' && age >= 0 && age < 0.16) glowAt(g, '#ffc38b', v.X(p.x + Math.sin(tw.angle) * 4), v.Y(p.y - Math.cos(tw.angle) * 4), 1.8 * v.k, 0.7 * (1 - age / 0.16));
     return ready;

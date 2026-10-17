@@ -302,7 +302,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
     place(e);
     spawned.push(e);
-    if (kind === 'boss') { ctx.emit({ type: 'bossSpawned', data: { wave, id: e.id } }); say(`${k.name} incoming`, `Wave ${wave} boss · announced phases · sprint when Exposed`, '#ffd24a', true); cue('bossStart'); }
+    if (kind === 'boss') { ctx.emit({ type: 'bossSpawned', data: { wave, id: e.id } }); addFx({ kind: 'bossIntro', life: 3, wave }); say(`${k.name} incoming`, `Wave ${wave} boss · announced phases · sprint when Exposed`, '#ffd24a', true); cue('bossStart'); }
   }
 
   interface IgnitionChain { id: number; bursts: number }

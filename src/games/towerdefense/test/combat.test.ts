@@ -27,7 +27,7 @@ describe('element matchups', () => {
       s.tuning.set(`towerdefense.match_${w}_${e}`, 1.25);
       expect(snapshot(s).matchup[w][e]).toBe(1.25);
     }
-    expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('FLAMER ✓');
+    expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('FIREBALL ✓');
     expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('RAILGUN ✗');
   });
   it('suggests strong off-colour coverage, never a resisted tower, including live matrix overrides', () => {
@@ -97,7 +97,7 @@ describe('boss ladder', () => {
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
       profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
-      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true } });
+      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
@@ -122,6 +122,10 @@ describe('boss ladder', () => {
       const s = createGameSession({ game: module,
         profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
         input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true }, onEmit: (e) => events.push(e) });
+      // Keep the route within reach to isolate the sprint damage bonus from
+      // whether the boss reaches the turret during an Exposed window.
+      s.tuning.set('towerdefense.turretRange', 200);
+      s.tuning.set('towerdefense.flameRange', 120);
       // Hold watts and cadence identical to isolate the sprint bonus from extra fire rate / watts.
       const bike = s.ctx.bike;
       s.ctx.bike = () => ({ ...bike(), sprinting: sprint && Boolean(snapshot(s).boss?.exposed) });
@@ -142,7 +146,7 @@ describe('boss ladder', () => {
   it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
     const s = createGameSession({ game: module,
       profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false } });
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true, autoCrew: false } });
     s.tuning.set('towerdefense.railLaserDps', 1);
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);

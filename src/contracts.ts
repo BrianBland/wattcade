@@ -196,7 +196,13 @@ export interface GameSim {
   receive?(action: unknown): void;
 }
 /** CSS px the shell's HUD covers on each edge of the (edge-to-edge) render surface. Draw backgrounds full-bleed; keep foreground UI and the play focus inside. */
-export interface Insets { top: number; right: number; bottom: number; left: number }
+/** Actual HUD bounds in CSS pixels relative to the render surface. */
+export interface HudOcclusion { x: number; y: number; w: number; h: number }
+export interface Insets {
+  top: number; right: number; bottom: number; left: number;
+  /** Optional occupied HUD rectangles. Renderers without shape support use the edge insets. */
+  occlusions?: readonly HudOcclusion[];
+}
 export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void; hudControls?: boolean }): void; // send -> GameSim.receive

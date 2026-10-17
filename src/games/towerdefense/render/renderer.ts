@@ -12,6 +12,7 @@ import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
+import { along, cableRoutes, strokeCrossings } from './cables';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -33,7 +34,7 @@ export class TdRenderer implements GameRenderer {
   private mounted = false;
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
-  private insetB = 0;
+  private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private W = 800; private H = 600; private dpr = 1;
   private L!: TdLayout;
   private bg: HTMLCanvasElement | null = null;
@@ -44,6 +45,8 @@ export class TdRenderer implements GameRenderer {
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
+  /** Power pulses: sim time of each pedal half-stroke still travelling down the cables. */
+  private pulses: number[] = []; private pulseRevs: number | null = null;
   private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
@@ -72,7 +75,7 @@ export class TdRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
     this.mounted = true;
     this.hudControls = !!ctx.hudControls;
-    this.insetB = ctx.insets?.bottom ?? 0;
+    this.insets = ctx.insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
     this.battlefield = new Battlefield(import.meta.env.BASE_URL, () => { this.bg = null; });
@@ -112,7 +115,7 @@ export class TdRenderer implements GameRenderer {
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
     this.relayout();
   }
-  setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
+  setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.relayout(); } }
   unmount() {
     this.mounted = false;
     this.onBlur(); window.removeEventListener('blur', this.onBlur);
@@ -127,7 +130,7 @@ export class TdRenderer implements GameRenderer {
     stopAmbient();
   }
   private relayout() {
-    this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
+    this.L = layout(this.W, this.H, this.insets, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
   }
 
@@ -340,6 +343,7 @@ export class TdRenderer implements GameRenderer {
     // Shade and light the ground before actors: coloured silhouettes retain their contrast.
     this.battlefield.lighting(g, this.view, s, this.W, this.H);
     if (s.phase === 'run') {
+      this.drawCables(g, s, bike);
       this.drawRoadFx(g, s, t);
       this.drawBurns(g, s, t);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
@@ -408,6 +412,35 @@ export class TdRenderer implements GameRenderer {
     if (s.over) { g.fillStyle = 'rgba(5,6,10,0.5)'; g.fillRect(0, 0, this.W, this.H); }
   }
 
+  /**
+   * Power cables from under the deck to each built tower, routed around the road (render/cables.ts). Every pedal
+   * half-stroke sends a pulse down each one while the dynamo is live.
+   */
+  private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, bike: Readonly<BikeState>) {
+    const k = this.k, speed = 55;
+    const n = this.pulseRevs === null ? 0 : strokeCrossings(this.pulseRevs, bike.crankRevs);
+    this.pulseRevs = bike.crankRevs;
+    if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
+    this.pulses = this.pulses.filter((t0) => s.t >= t0 && (s.t - t0) * speed < 160).slice(-16);
+    if (!s.towers.length) return;
+    const routes = cableRoutes();
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const tw of s.towers) {
+      const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
+      const path = () => { g.beginPath(); c.pts.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
+      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], ['#6d6f72', 0.56], ['#2b393d', 0.3]] as const) {
+        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * k); path(); g.stroke();
+      }
+      g.globalCompositeOperation = 'lighter';
+      for (const t0 of this.pulses) {
+        const f = (s.t - t0) * speed / c.length; if (f > 1) continue;
+        const p = along(c.pts, c.length, f), q = this.P(p.x, p.y);
+        glowAt(g, '#75edff', q.x, q.y, 1.6 * k, 0.6 * Math.min(1, s.grid));
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+    g.restore();
+  }
   /** The slow field over the back stretch of the road. */
   private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     if (s.slowFrom < 0) return;
@@ -445,7 +478,7 @@ export class TdRenderer implements GameRenderer {
     const k = this.k;
     for (const tw of s.towers) {
       if (tw.kind !== 'flamer' || t - tw.firedAt > 0.3 || s.grid <= 0) continue;
-      const m = this.machinery.towerMuzzle(tw as TowerView, this.view), a = tw.angle + this.view.rot;
+      const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot;
       const range = TOWERS.flamer.range * LEVEL_RANGE[tw.level - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
       g.save(); g.globalCompositeOperation = 'lighter';
       const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);

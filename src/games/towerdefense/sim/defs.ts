@@ -26,7 +26,7 @@ export function suggestedTower(counts: Record<Element, number>, brood: Element, 
   return (safe.length ? safe : TOWER_KINDS).reduce((a, b) =>
     matrix[TOWER_WEAPON[b]][target] > matrix[TOWER_WEAPON[a]][target] ? b : a);
 }
-export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Flamer', rail: 'Railgun' };
+export const WEAPON_NAME: Record<Weapon, string> = { gatling: 'Gatling', flame: 'Fireball', rail: 'Railgun' };
 
 /** color: fixed element, 'gold' = boss (announced phases), 'prism' = cycles on its own. */
 export interface KindDef {
@@ -51,7 +51,7 @@ export const KIND_FROM: Record<Kind, number> = { mini: 1, dart: 2, brute: 1, cha
 export interface TowerDef { name: string; element: Element; cost: number; range: number; period: number; dmg: number; desc: string; air: boolean; cone?: number }
 export const TOWERS: Record<TowerKind, TowerDef> = {
   tesla:  { name: 'Tesla Coil',  element: 'blue',   cost: 60,  range: 24, period: 0.8, dmg: 2.1,  desc: 'Chain lightning (3 targets)', air: true },
-  flamer: { name: 'Flame Tower', element: 'red',    cost: 80,  range: 15, period: 0.25, dmg: 1.2, desc: 'Short fire cone · ground only', air: false, cone: 0.55 },
+  flamer: { name: 'Flamethrower', element: 'red',    cost: 80,  range: 15, period: 0.25, dmg: 1.2, desc: 'Short fire cone · ground only', air: false, cone: 0.55 },
   lens:   { name: 'Prism Lens',  element: 'purple', cost: 100, range: 44, period: 3.2, dmg: 17, desc: 'Charged beam at the toughest', air: true },
 };
 export const TOWER_KINDS: TowerKind[] = ['tesla', 'flamer', 'lens'];

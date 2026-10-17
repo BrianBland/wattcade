@@ -7,7 +7,7 @@ import { KINDS, type Element, type Kind, type TowerKind } from '../src/games/tow
 import type { EnemyView, TdSnapshot } from '../src/games/towerdefense/sim/types';
 import { AlienLayer, type View } from '../src/games/towerdefense/render/aliens/layer';
 import { Machinery } from '../src/games/towerdefense/render/machinery';
-import { FLYER_SPAWNS, SPAWN_Y, FIELD_H, FIELD_W, PAD_R, PAINT_BOX, paintSize, ROAD, ROAD_HALF_WIDTH, ROAD_PADS, SHOULDER, HIVE_MOUTH, TURRET, TURRET_R, worldToPaint, type PaintOrientation, type Pt } from '../src/games/towerdefense/sim/road';
+import { FLYER_SPAWNS, SPAWN_Y, FIELD_H, FIELD_W, PAD_R, PAINT_BOXES, paintSize, ROAD, ROAD_HALF_WIDTH, ROAD_PADS, SHOULDER, HIVE_MOUTH, TURRET, TURRET_R, worldToPaint, type PaintOrientation, type Pt } from '../src/games/towerdefense/sim/road';
 
 export const GUIDE_COLORS = {
   sides: '#5c5c66', field: '#80808a', hive: '#6b3d8c', deepHive: '#43215e', yard: '#4f6170',
@@ -27,7 +27,7 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
   };
   const path = (pts: readonly Pt[]) => { g.beginPath(); pts.forEach((p, i) => { const s = P(p); i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y); }); };
   const circle = (p: Pt, r: number) => { const s = P(p); g.beginPath(); g.arc(s.x, s.y, r * k, 0, Math.PI * 2); };
-  const { x0, y0, x1, y1 } = PAINT_BOX;
+  const { x0, y0, x1, y1 } = PAINT_BOXES[o];
   const safe = () => {
     const a = P({ x: 0, y: 0 }), b = P({ x: FIELD_W, y: FIELD_H });
     g.strokeStyle = GUIDE_COLORS.safe; g.lineWidth = 3; g.setLineDash([14, 10]);
@@ -37,7 +37,7 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
   if (check) {
     const img = new Image(); img.src = check; await img.decode();
     g.drawImage(img, 0, 0, w, h);
-    if (mock) { await drawMock(g, o, long); return; }
+    if (mock) { await drawMock(g, p => worldToPaint(o, p, long), paintSize(o, long).pxPerUnit); return; }
     // Road edges and shoulder edges, offset along the sampled normals.
     const offset = (d: number) => ROAD.map((p, i) => {
       const a = ROAD[Math.max(0, i - 1)], b = ROAD[Math.min(ROAD.length - 1, i + 1)], len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
@@ -69,8 +69,8 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
   }
   g.fillStyle = GUIDE_COLORS.mouth; circle(HIVE_MOUTH, 9); g.fill();
   g.fillStyle = GUIDE_COLORS.apron; circle(TURRET, TURRET_R + 1); g.fill();
-  g.fillStyle = GUIDE_COLORS.pad; for (const p of ROAD_PADS) { circle(p, PAD_R + 1); g.fill(); }
-  if (mock) { await drawMock(g, o, long); return; }
+  g.fillStyle = GUIDE_COLORS.pad; for (const p of ROAD_PADS) { circle(p, PAD_R + 0.6); g.fill(); }
+  if (mock) { await drawMock(g, p => worldToPaint(o, p, long), paintSize(o, long).pxPerUnit); return; }
   safe();
 }
 
@@ -79,11 +79,9 @@ export async function drawGuide(canvas: HTMLCanvasElement, o: PaintOrientation, 
  * game draws them in both orientations. Positions are converted to image pixels first, so one view serves both.
  * Never baked into the painting.
  */
-export async function drawMock(g: CanvasRenderingContext2D, o: PaintOrientation, long: number) {
-  const k = paintSize(o, long).pxPerUnit;
-  const px = (p: Pt) => worldToPaint(o, p, long);
-  const at = (p: Pt): View => ({ X: () => px(p).x, Y: () => px(p).y, k, dpr: 1 });
-  const flat: View = { X: x => x, Y: y => y, k, dpr: 1 }; // aliens get image-pixel positions directly
+export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k: number, dpr = 1) {
+  const at = (p: Pt): View => ({ X: () => px(p).x, Y: () => px(p).y, k, dpr });
+  const flat: View = { X: x => x, Y: y => y, k, dpr }; // aliens get image-pixel positions directly
   const base = import.meta.env.BASE_URL;
   const machinery = new Machinery(base), aliens = new AlienLayer(base);
   await Promise.all([machinery.loaded, aliens.loaded]);
@@ -139,4 +137,37 @@ export async function drawMock(g: CanvasRenderingContext2D, o: PaintOrientation,
   for (const [pad, kind, level] of towers) machinery.tower(g, { pad: 0, kind, level, angle: aimAt(ROAD_PADS[pad]), charge: 1, firedAt: -9 }, at(ROAD_PADS[pad]), s);
   machinery.base(g, at(TURRET), s, { crankRevs: 0.3 } as BikeState);
   g.restore();
+}
+
+/**
+ * A painting composed into a live viewport: the field fits between the status rows (`top`) and the HUD (`bottom`)
+ * the way the single-road layout will, the painting's overflow fills the rest, and the real sprites sit on top.
+ * Landscape turns the field (turret left, hive right). A portrait painting in a landscape viewport is turned with
+ * it, so its light falls sideways: fine for checking layout, not lighting.
+ */
+export async function drawCompose(canvas: HTMLCanvasElement, bg: string, W: number, H: number, top: number, bottom: number, dpr: number, turned: boolean, painting: PaintOrientation) {
+  const rotate = turned;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  const g = canvas.getContext('2d')!; g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pad = 12, area = { x: pad, y: top, w: W - 2 * pad, h: bottom - pad - top };
+  const k = rotate ? Math.min(area.h / FIELD_W, area.w / FIELD_H) : Math.min(area.w / FIELD_W, area.h / FIELD_H);
+  const ox = rotate ? area.x : area.x + (area.w - FIELD_W * k) / 2;
+  const oy = rotate ? area.y + (area.h - FIELD_W * k) / 2 : area.y + area.h - FIELD_H * k;
+  const P = (p: Pt) => rotate ? { x: ox + (FIELD_H - p.y) * k, y: oy + p.x * k } : { x: ox + p.x * k, y: oy + p.y * k };
+  const img = new Image(); img.src = bg; await img.decode();
+  const { x0, y0, x1, y1 } = PAINT_BOXES[painting], a = P({ x: x0, y: y0 }), b = P({ x: x1, y: y1 });
+  g.fillStyle = '#0a0e16'; g.fillRect(0, 0, W, H);
+  g.save();
+  if (painting === 'landscape') { const c = P({ x: x0, y: y1 }); g.drawImage(img, c.x, c.y, (y1 - y0) * k, (x1 - x0) * k); }
+  else {
+    // The portrait image's x runs along world x and its y along world y; P's rotation carries both.
+    g.translate(a.x, a.y); if (rotate) g.transform(0, 1, -1, 0, 0, 0);
+    g.drawImage(img, 0, 0, (x1 - x0) * k, (y1 - y0) * k);
+  }
+  g.restore();
+  await drawMock(g, P, k, dpr);
+  // Where the painting runs out, if it does: a red frame flags uncovered screen.
+  const l = Math.min(a.x, b.x), t = Math.min(a.y, b.y), r = Math.max(a.x, b.x), btm = Math.max(a.y, b.y);
+  if (l > 0 || t > 0 || r < W || btm < H) { g.strokeStyle = '#ff3030'; g.lineWidth = 4; g.strokeRect(l, t, r - l, btm - t); }
+  return k;
 }

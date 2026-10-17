@@ -76,19 +76,25 @@ export function walkedLength(line: readonly Pt[] = ROAD): number {
 }
 
 /**
- * Paint-guide registration. Both paintings cover the same world box; portrait maps it upright, landscape turns it
- * 90° so the spawn edge is on the right and the turret on the left. Image pixels per world unit = PAINT_PX / box.
+ * Paint-guide registration. Each painting covers its own world box, the field plus overflow for the screens it serves.
+ * Portrait maps its box upright. Landscape turns 90° (spawn edge right, turret left) and needs far more hive overflow,
+ * because a wide screen shows ~80 units beyond the spawn edge. Image pixels per world unit = long side / box.
  */
-export const PAINT_BOX = { x0: -40, y0: -60, x1: 120, y1: 180 } as const;
 export type PaintOrientation = 'portrait' | 'landscape';
+export const PAINT_BOXES = {
+  portrait: { x0: -40, y0: -60, x1: 120, y1: 180 },
+  landscape: { x0: -50, y0: -110, x1: 130, y1: 160 },
+} as const satisfies Record<PaintOrientation, { x0: number; y0: number; x1: number; y1: number }>;
+/** The portrait box, under its original name. */
+export const PAINT_BOX = PAINT_BOXES.portrait;
 export function paintSize(o: PaintOrientation, long = 1536) {
-  const w = PAINT_BOX.x1 - PAINT_BOX.x0, h = PAINT_BOX.y1 - PAINT_BOX.y0, s = long / Math.max(w, h);
+  const b = PAINT_BOXES[o], w = b.x1 - b.x0, h = b.y1 - b.y0, s = long / Math.max(w, h);
   return o === 'portrait' ? { w: w * s, h: h * s, pxPerUnit: s } : { w: h * s, h: w * s, pxPerUnit: s };
 }
 /** World point to image pixel for a painting of the given size. */
 export function worldToPaint(o: PaintOrientation, p: Pt, long = 1536): Pt {
-  const { pxPerUnit: s } = paintSize(o, long);
+  const { pxPerUnit: s } = paintSize(o, long), b = PAINT_BOXES[o];
   return o === 'portrait'
-    ? { x: (p.x - PAINT_BOX.x0) * s, y: (p.y - PAINT_BOX.y0) * s }
-    : { x: (PAINT_BOX.y1 - p.y) * s, y: (p.x - PAINT_BOX.x0) * s };
+    ? { x: (p.x - b.x0) * s, y: (p.y - b.y0) * s }
+    : { x: (b.y1 - p.y) * s, y: (p.x - b.x0) * s };
 }

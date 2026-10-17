@@ -55,8 +55,12 @@ At 1024×1536 the scale is 6.4 px per world unit.
   ±6 px of the guide's tan edge along the whole road. The rubble shoulder stays within the brown edge, plus at most 6 px.
 - **Road surface:** level and walkable along the whole length. No boulders, pipes, pits or debris on it inside the
   dashed rectangle. Small pebbles and wheel ruts are fine.
-- **Clearings and apron:** flat, uncluttered ground at least the size of each circle. Paint each as a slightly
-  levelled, compacted patch, so a building there looks intended. **No structures, foundations, hex marks or pads.**
+- **Clearings:** a slightly levelled, compacted patch **the size of the green circle and no bigger**: about 31 px
+  radius at 1024×1536, just past a tower's footprint. Give it a defined rim that fades to rock within about 4 px,
+  with no soft halo beyond. Oversized clearings leave towers sitting in rings of bare ground.
+  **No structures, foundations, hex marks or pads.**
+- **Apron:** flat, uncluttered ground the size of the gold circle. **The road ends at the apron.** No trail,
+  track or worn path continues past the turret, because it reads as the enemies' route going on.
 - **Do not paint:** the turret, towers, aliens, cables or wires, text, numbers, UI, the dashed line, vignettes or borders.
   The game draws all of these itself. To judge the painting with them, use the review mocks (see Process), which
   composite the real sprites over your painting without changing it.
@@ -67,8 +71,11 @@ At 1024×1536 the scale is 6.4 px per world unit.
 
 ## Set pieces (portrait coordinates at 1024×1536)
 
-- Hive mouth, near (730, 128): an organic burrow or cave mouth swallowing the road, ringed with creep. Creep thins out
-  toward the dashed rectangle, and only light creep enters the top of the playfield.
+- Hive mouth, near (730, 128): an organic burrow or cave mouth swallowing the road, ringed with creep.
+- **The hive reaches into the playfield.** On iPads the status rows cover everything above the dashed rectangle,
+  so the enemy side must read inside it. Let creep tendrils, violet staining and a few small growths come
+  10–15 world units (64–96 px) into the top of the playfield, around the first crossing and the spawn run,
+  fading out before the second crossing. Keep creep off the road surface and the clearings.
 - Open ground at the bottom right of the playfield, about (600–760, 1000–1100), and left of the middle crossing:
   good places for one or two dramatic but low features (a fissure, a half-buried machine hulk, a crater),
   away from clearings and the road.
@@ -81,7 +88,7 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
 `docs/towerdefense/paint-guide/rounds/<orientation>-<n>/` with:
 1. `painting.png`: the 1024×1536 (or 1536×1024) generation, before upscaling.
 2. A copy of the upscaled production file, also at `public/td/environment/road/<orientation>.webp`:
-   2.5× (2560×3840 or 3840×2560), WebP quality about 85.
+   portrait 2.5× (2560×3840), landscape 3× (4608×3072, because its box is larger), WebP quality about 85.
 3. `check.png`: run `npm run dev -- --port 5203` and then `node scripts/td-paint-guide.mjs`
    (set `CHROMIUM_PATH` if Chromium is not at `/usr/bin/chromium`). The script writes
    these files in `docs/towerdefense/paint-guide/`. Copy them into the round folder:
@@ -90,16 +97,20 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
    - `<orientation>-mock.png`: the game's real outpost, four towers, a mix of aliens on the road and Gliders on
      their flight lines, drawn over your painting at true size.
    - `<orientation>-mock-zoom.png`: the same at about in-game iPad resolution, cropped to the lower field.
+   - `<orientation>-hud-<device>.png`: the painting and sprites in real iPad, iPad Pro and phone viewports, under
+     the game's real status rows and shell HUD. A red frame means the painting runs out before the screen edge,
+     which must never happen.
 4. `NOTES.md`, 15 lines at most: what changed this round, where the road misses the overlay (if anywhere),
    the readability review below, and anything you are unsure about.
 
-**Readability review** (answer in NOTES.md from the two mock images, and fix problems before stopping):
+**Readability review** (answer in NOTES.md from the mock and HUD images, and fix problems before stopping):
 - Every alien reads against the road and the rock at a glance: blue skitters and Gliders, red warriors and rams,
   purple bulwark and broodmother, and the gold Tyrant. Say which, if any, get lost.
 - Towers sit naturally on their clearings, and empty clearings read as "build here" with the game's hex marker.
 - The outpost sits on its apron and doesn't look pasted onto a busy texture.
 - No painted feature competes with sprites for attention: bright spots, high-contrast clutter next to the road,
   or shapes that look like units.
+- In the HUD images, the hive side reads on every device, and nothing important hides under the status rows or HUD.
 
 **Portrait rounds:**
 - Round 1 paints from the guide and the style references.
@@ -111,9 +122,12 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
 
 **Landscape round** (after approval):
 - Use `landscape-guide.png` for the layout and the approved portrait painting for materials and landmarks.
+  The landscape box is larger than the portrait one (`PAINT_BOXES` in `road.ts`): wide screens show about 80 units
+  of hive beyond the spawn edge, so paint a broad, dramatic hive region on the right. It is the biggest
+  overflow area and the most visible.
 - It is the same place seen from a different heading: every landmark (hive mouth, set pieces, salvage yard,
   distinctive rocks near the road) sits at the same world position. Rotate the approved portrait 90° clockwise
-  as a positional reference.
+  as a positional reference; it covers less area than the landscape box, so extend outward from it.
 - Relight it so the key light again comes from the **top of the new frame**. Do not just rotate the portrait
   painting; its shadows would then fall sideways.
 - Same rules, check and round folder (`landscape-1/`, …). Stop for feedback after each landscape round.
@@ -130,4 +144,4 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
   a clean overlay check, review mocks with no readability problems, and its round history in
   `docs/towerdefense/paint-guide/rounds/`.
 - `public/td/environment/road/NOTES.md` (40 lines at most) records the files, sizes, the registration
-  (`PAINT_BOX` and `worldToPaint` in `road.ts`), and how they were made.
+  (`PAINT_BOXES` and `worldToPaint` in `road.ts`), and how they were made.

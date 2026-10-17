@@ -20,7 +20,8 @@ describe('single road layout', () => {
     expect(paintSize('landscape')).toMatchObject({ w: 1536, h: 1024 });
     const tp = worldToPaint('portrait', TURRET), tl = worldToPaint('landscape', TURRET);
     expect(tp.x).toBeCloseTo(512); expect(tl.y).toBeCloseTo(512);
-    // Landscape: spawn edge (y = 0) right of the turret.
+    // Landscape: spawn edge (y = 0) right of the turret, with more hive overflow than behind the turret.
     expect(worldToPaint('landscape', { x: 40, y: 0 }).x).toBeGreaterThan(tl.x);
+    expect(1536 - worldToPaint('landscape', { x: 40, y: 0 }).x).toBeGreaterThan(worldToPaint('landscape', { x: 40, y: FIELD_H }).x);
   });
 });

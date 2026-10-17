@@ -5,6 +5,35 @@ from three lanes to one winding road. The road and build pads are fixed game dat
 The work happens in **rounds**: several portrait rounds with owner feedback, then landscape only after the owner
 approves the portrait.
 
+## Current owner handoff — landscape generation authorized (2026-10-17)
+
+Owner instruction:
+> For the landscape art, we still need to prompt the original thread to generate it based on the original constraints.
+> The prompt it's using is in the td-single-lane branch. We can update that one and give it another nudge to generate and validate the landscape painting.
+
+**Generate landscape round 1 now.** This instruction supersedes the earlier wait-for-portrait-approval gate for
+starting landscape. Use portrait round 3 from #164 as the fixed material/landmark reference; preserve all existing
+portrait production pixels and round history. This authorizes a landscape review round, not final acceptance.
+
+- Start a landscape continuation branch from `codex/td-single-road-finish` (#166), which already contains #164's
+  portrait painting, the current HUD shape layout, and corrected review tooling. Open its PR into
+  `codex/td-single-road-finish`. Keep the portrait PR/history intact; do not merge code into `td-single-lane`.
+- Read this entire brief, the current `road.ts`, and the round-3 painting/NOTES before generating. Regenerate the
+  flat guides from the current code; never trace a screenshot or change the road/pad geometry to fit the art.
+- Keep the same landmarks at the same world positions, expand the larger hive overflow to the right, and relight
+  from the top of the landscape frame. A plain rotated portrait is only a positional reference.
+- Produce `landscape-1/painting.png` at 1536×1024 and the 4608×3072 quality-85 production WebP, retaining the
+  original scale, camera, road/shoulder tolerances, empty clearings/apron, overflow and readability constraints below.
+- Run `node scripts/td-paint-guide.mjs` against the updated branch and fix all eight clearing flags and visible
+  road/shoulder misses. Include the numeric clearing JSON, overlay, sprite mocks, zoom and HUD captures in the round.
+- Check iPad 1180×820 and iPad Pro 1366×1024 in both touch and controller HUD modes, including a legend toggle.
+  Also inspect short phone landscape 844×390 as a coverage diagnostic. A red coverage frame is a failure to report;
+  if the fixed paint box cannot cover a viewport, record its bounds/viewport instead of stretching the road,
+  changing `road.ts`, painting a border, or claiming the capture passes.
+- Read the generated review images yourself. Record all readability answers and any registration/coverage limit in
+  at most 15 lines of `landscape-1/NOTES.md`; stop with the round ready for owner review. Do not wait to be prompted
+  again before generating this authorized first landscape round.
+
 ## Inputs (read all of these first)
 
 | File | What it is |
@@ -12,8 +41,9 @@ approves the portrait.
 | `docs/towerdefense/paint-guide/portrait-guide.png` | 1024×1536 flat-colour layout guide, portrait |
 | `docs/towerdefense/paint-guide/landscape-guide.png` | 1536×1024 guide, the same world turned 90°: turret left, hive right |
 | `docs/towerdefense/paint-guide/{portrait,landscape}-guide-mock.png` | the guides with the game's real outpost, towers and aliens at true size, for scale |
-| `docs/towerdefense/art-reference/environment/background.webp` | the previous painting: the **material and style reference** |
+| `docs/towerdefense/art-reference/environment/background.webp` | the archived previous painting: the **material and style reference** |
 | `docs/towerdefense/art-reference/environment/preview.png` | the previous painting with the real turret, towers and aliens on it |
+| `docs/towerdefense/paint-guide/rounds/portrait-3/painting.png` | the fixed portrait reference from #164 |
 | `public/td/outpost/preview.png`, `public/td/towers/preview.png` | machinery the painting must sit under |
 | `src/games/towerdefense/sim/road.ts` | the geometry the guides are drawn from (read only) |
 | `docs/towerdefense/sketches/d-port.png`, `d-land.png` | gameplay sketches with the HUD, for context |
@@ -51,6 +81,11 @@ Guide colours:
 ## Hard geometry rules (checked by overlay)
 
 At 1024×1536 the scale is 6.4 px per world unit.
+Landscape has its own larger world box, not the portrait box turned into a different canvas:
+`PAINT_BOXES.landscape = { x0: -50, y0: -110, x1: 130, y1: 160 }`.
+At 1536×1024 its scale is 1536 / 270 = 5.688889 px per world unit; at production size it is 17.066667.
+Use `worldToPaint('landscape', ...)` for registration. The 0.3-unit clearing-center tolerance is about 1.71 px
+at generation size; radius 4.8 ± 0.4 units is about 27.31 ± 2.28 px. Do not reuse portrait pixel radii/offsets.
 - **Road:** the painted road surface must cover the tan band. Its edges may be ragged but must stay within
   ±6 px of the guide's tan edge along the whole road. The rubble shoulder stays within the brown edge, plus at most 6 px.
 - **Road surface:** level and walkable along the whole length. No boulders, pipes, pits or debris on it inside the
@@ -86,7 +121,8 @@ At 1024×1536 the scale is 6.4 px per world unit.
 
 ## Process: rounds
 
-Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
+Work on a branch from `td-single-lane` and open a PR into it. For the authorized landscape continuation,
+use #166's branch/PR target as specified in the current handoff above. Each round goes in
 `docs/towerdefense/paint-guide/rounds/<orientation>-<n>/` with:
 1. `painting.png`: the 1024×1536 (or 1536×1024) generation, before upscaling.
 2. A copy of the upscaled production file, also at `public/td/environment/road/<orientation>.webp`:
@@ -120,7 +156,7 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
   edit it rather than starting over, unless the feedback asks for a fresh take.
 - Fix the overlay misses each round.
 - **Stop after each portrait round** and wait for feedback. Do not start landscape until the owner writes
-  "portrait approved".
+  "portrait approved", unless a newer owner instruction explicitly authorizes starting landscape (see current handoff).
 
 **Landscape round** (after approval):
 - Use `landscape-guide.png` for the layout and the approved portrait painting for materials and landmarks.
@@ -137,7 +173,7 @@ Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
 ## Do not
 
 - Edit anything under `src/`, including `road.ts`. If the layout seems impossible to paint well, explain why in NOTES.md.
-- Replace or delete the archived material references or other existing assets. Runtime switchover and obsolete production asset cleanup happen separately.
+- Replace or delete the archived material references, portrait painting, or other existing assets. Runtime switchover and obsolete production asset cleanup happen separately.
 - Add runtime dependencies.
 
 ## Done means

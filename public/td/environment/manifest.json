@@ -11,25 +11,6 @@
   "paddingPx": 6,
   "scale": 2,
   "groundColor": "#211d19",
-  "background": {
-    "file": "background.webp",
-    "size": [
-      1536,
-      1024
-    ],
-    "layout": "map-layout.json",
-    "tile": false,
-    "repeatX": false,
-    "repeatY": false,
-    "format": "WebP quality 92",
-    "field": {
-      "x": 318,
-      "y": 32,
-      "size": 900,
-      "units": 100
-    },
-    "composition": "fixed painted terrain; all actors, machinery, cables, organic decals and emissive effects stay separate"
-  },
   "glowBlend": "additive RGB weighted by alpha; never multiply alpha twice",
   "tint": "splat base: multiply neutral RGB by brood RGB / 255; glow: white RGB multiplied by brood RGB / 255",
   "anchors": {

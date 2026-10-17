@@ -2,7 +2,7 @@
 // /dev/td-battlefield.html?sec=700&inset=110&manual=1&stress=150&weapon=flame
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { module } from '../src/games/towerdefense';
-import { BASE_X, BASE_Y, KINDS, WEAPON_ELEMENT, laneAt, laneLength, type Kind, type Weapon } from '../src/games/towerdefense/sim/defs';
+import { BASE_X, BASE_Y, KINDS, ROAD_LENGTH, WEAPON_ELEMENT, flightAt, flightLength, roadAt, type Kind, type Weapon } from '../src/games/towerdefense/sim/defs';
 import type { EnemyView, TdSnapshot } from '../src/games/towerdefense/sim/types';
 const q = new URLSearchParams(location.search);
 const profile = testProfile({ color: '#4cc9f0' });
@@ -21,16 +21,16 @@ function snapshot(): TdSnapshot {
   if (!stress) return s;
   const enemies: EnemyView[] = Array.from({ length: stress }, (_, i) => {
     const kind = i === stress - 1 ? 'boss' : i % 50 < 30 ? 'mini' : i % 50 < 38 ? 'dart' : kinds[2 + i % 5], def = KINDS[kind];
-    const lane = i % 3, progress = 0.08 + ((i * 0.618034 + s.t * 0.003) % 1) * 0.76;
-    const p = laneAt(lane, laneLength(lane) * progress), off = ((i % 5) - 2) * 0.65;
+    const route = kind === 'dart' ? i % 3 : -1, progress = 0.08 + ((i * 0.618034 + s.t * 0.003) % 1) * 0.76;
+    const p = route < 0 ? roadAt(ROAD_LENGTH * progress) : flightAt(route, flightLength(route) * progress), off = ((i % 5) - 2) * 0.65;
     const x = p.x + p.nx * off, y = p.y + p.ny * off;
-    return { id: 10000+i, kind, lane, x, y, angle: Math.atan2(-p.nx,p.ny), dist: Math.hypot(x-BASE_X,y-BASE_Y), radius: def.radius,
+    return { id: 10000+i, kind, route, flying: route >= 0, x, y, angle: Math.atan2(-p.nx,p.ny), dist: Math.hypot(x-BASE_X,y-BASE_Y), radius: def.radius,
       element: def.color === 'blue' || def.color === 'red' || def.color === 'purple' ? def.color : 'purple', gold: kind === 'boss', hp: def.hp, maxHp: def.hp, hurt: 0, charging: false, shiftIn: 5, next: null, progress, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0 };
   });
   const weapon = (q.get('weapon') ?? 'gatling') as Weapon;
-  return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 36, flameHalfAngle: 0.22, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
+  return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 70, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,
     baseHp: q.has('damage') ? 20 : s.baseMaxHp, grid: 1.1, brood: { ...s.brood, weapon, color: WEAPON_ELEMENT[weapon], countdownS: 0 },
-    towers: s.towers.map((tw,i)=>({...tw, kind: (['tesla','mortar','lens'] as const)[i%3], level: 3+i%3, firedAt: s.t - ((s.t+i*0.17)%1.6) })), fx: [] };
+    towers: s.towers.map((tw,i)=>({...tw, kind: (['tesla','flamer','lens'] as const)[i%3], level: 3+i%3, firedAt: s.t - ((s.t+i*0.17)%1.6) })), fx: [] };
 }
 function draw() {
   const s = snapshot(), start = performance.now();

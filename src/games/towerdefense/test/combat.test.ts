@@ -5,6 +5,7 @@ import { module } from '../index';
 import { advanceBoss, bossColors, bossHpFloor, createBossState } from '../sim/boss';
 import { ELEMENTS, MATCHUP, suggestedTower, TOWER_KINDS, TOWER_WEAPON, WEAPONS } from '../sim/defs';
 import { effortMet, scheduleCall, type EffortView } from '../sim/efforts';
+import { waveRole } from '../sim/waves';
 import type { TdSnapshot } from '../sim/types';
 import { matchupCopy } from '../render/panels';
 
@@ -26,7 +27,7 @@ describe('element matchups', () => {
       s.tuning.set(`towerdefense.match_${w}_${e}`, 1.25);
       expect(snapshot(s).matchup[w][e]).toBe(1.25);
     }
-    expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('FLAMER ✓');
+    expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('FIREBALL ✓');
     expect(matchupCopy({ matchup: MATCHUP }, 'red')).toContain('RAILGUN ✗');
   });
   it('suggests strong off-colour coverage, never a resisted tower, including live matrix overrides', () => {
@@ -45,7 +46,7 @@ describe('element matchups', () => {
     s.tuning.set('towerdefense.ignitionRadius', 25);
     s.tuning.set('towerdefense.ignitionDamage', 100);
     s.tuning.set('towerdefense.ignitionChainCap', 3);
-    s.step(30 * 60 * 10);
+    s.step(30 * 60 * 20);
     const bursts = events.filter((e) => e.type === 'burst');
     expect(bursts.length).toBeGreaterThan(10);
     expect(bursts.some((e) => e.data?.ordinal === 3)).toBe(true);
@@ -95,11 +96,11 @@ describe('boss ladder', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
-      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
-      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true } });
+      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
+      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
-    for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
+    for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
     expect(effect().ftpFraction).toBe(0.95);
@@ -119,13 +120,17 @@ describe('boss ladder', () => {
     const ride = (sprint: boolean) => {
       const events: Array<GameEvent & { t: number }> = [];
       const s = createGameSession({ game: module,
-        profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
+        profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
         input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true }, onEmit: (e) => events.push(e) });
+      // Keep the route within reach to isolate the sprint damage bonus from
+      // whether the boss reaches the turret during an Exposed window.
+      s.tuning.set('towerdefense.turretRange', 200);
+      s.tuning.set('towerdefense.flameRange', 120);
       // Hold watts and cadence identical to isolate the sprint bonus from extra fire rate / watts.
       const bike = s.ctx.bike;
       s.ctx.bike = () => ({ ...bike(), sprinting: sprint && Boolean(snapshot(s).boss?.exposed) });
       const stops: number[] = [];
-      for (let i = 0; i < 30 * 80; i++) {
+      for (let i = 0; i < 30 * 240 && !events.some((e) => e.type === 'bossKilled'); i++) {
         s.step(1);
         for (const f of snapshot(s).fx) if (f.kind === 'hitStop') stops.push(f.seconds);
       }
@@ -140,10 +145,10 @@ describe('boss ladder', () => {
   });
   it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
     const s = createGameSession({ game: module,
-      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 8, upgrades: { headstart: 2 } } } }),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 2, simOpts: { skipGarage: true, autoCrew: false } });
+      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true, autoCrew: false } });
     s.tuning.set('towerdefense.railLaserDps', 1);
-    for (let i = 0; i < 30 * 40 && !snapshot(s).boss?.telegraph; i++) s.step(1);
+    for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);
     const effect = () => s.mixer.debug().activeEffects.find(e => e.id === 'weapon')!;
     const epoch = snapshot(s).inputEpoch;
@@ -161,19 +166,22 @@ describe('boss ladder', () => {
 });
 
 describe('called-effort scheduler', () => {
-  it('spaces calls 2–3 waves apart, postpones boss calls, and matches the weapon', () => {
+  it('calls at most once per work wave, skips boss and easy waves, and matches the weapon', () => {
     const rng = makeRng(9), scheduler = { nextWave: 2, lastWave: 0 };
     let last = 0, count = 0;
     for (let wave = 1; wave <= 200; wave++) {
       const weapon = WEAPONS[wave % 3];
-      const call = scheduleCall(scheduler, wave, wave % 5 === 0, weapon, rng, 2, 3);
+      const call = scheduleCall(scheduler, wave, waveRole(wave) !== 'work', weapon, rng, 1, 1);
       if (!call) continue;
       expect(call).toBe({ gatling: 'spin', flame: 'grind', rail: 'hold' }[weapon]);
-      expect(wave % 5).not.toBe(0);
-      if (last) { expect(wave - last).toBeGreaterThanOrEqual(2); expect(wave - last).toBeLessThanOrEqual(4); }
+      expect(waveRole(wave)).toBe('work');
+      if (last) expect(wave).toBeGreaterThan(last);
       last = wave; count++;
     }
-    expect(count).toBeGreaterThan(60);
+    expect(count).toBe(120 - 1); // every work wave from wave 2
+    const spaced = { nextWave: 2, lastWave: 0 }, waves: number[] = [];
+    for (let wave = 1; wave <= 60; wave++) if (scheduleCall(spaced, wave, false, 'rail', makeRng(wave), 2, 3)) waves.push(wave);
+    for (let i = 1; i < waves.length; i++) { expect(waves[i] - waves[i - 1]).toBeGreaterThanOrEqual(2); expect(waves[i] - waves[i - 1]).toBeLessThanOrEqual(3); }
   });
   it('requires cadence and power together; hold also has a power ceiling', () => {
     const e: EffortView = { kind: 'grind', wave: 2, state: 'active', countdownS: 0, heldS: 0, needS: 8, leftS: 18,

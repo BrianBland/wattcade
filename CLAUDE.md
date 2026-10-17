@@ -12,6 +12,7 @@ Web "bike arcade" (KICKR CORE + Zwift Ride + Garmin HR) for iPad/Bluefy via Web 
 - Do not copy code from GPL reference projects; implement from SPEC protocol facts.
 - Before finishing: `npx tsc --noEmit -p .` and `npx vitest run <your folder>` green; write `<folder>/NOTES.md` (≤ 40 lines).
 - **HUD insets (every renderer):** the shell HUD floats over the bottom of the render surface. Implement `setInsets()` and honor `insets.bottom` (also from `mount` ctx): lay out ALL foreground content (play focus, UI, panels, tickers, toasts, menus) in the height above it; draw backgrounds full-bleed. Never hard-code a HUD margin. Put pure layout math in a function with a unit test asserting nothing important lands below `H - insets.bottom` (see `hamster/render/layout.ts`). `src/games/insets.test.ts` enforces `setInsets` for every registered game.
+- **Shaped HUD opt-in:** `Insets.occlusions`, when present, supplies the actual occupied HUD rectangles in render-surface CSS pixels. A renderer may reclaim gaps only when its layout tests keep every foreground sprite and control clear of those rectangles. Keep the rectangular edge-inset behavior when shape data is absent; existing renderers need no changes.
 - Tests: Vitest, `environment: node` by default; add `// @vitest-environment jsdom` at the top of a test file that needs the DOM.
 
 Scripts: `npm run dev | dev:ipad | build | test | typecheck | sim | sim:all | deploy`.

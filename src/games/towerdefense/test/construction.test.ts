@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile, TimelineInput } from '../../../core';
 import { module } from '../index';
 import { readSave } from '../sim/sim';
-import { suggestBuild, type ConstructionState } from '../sim/construction';
-import { MATCHUP, PADS, towerUpgradeCost } from '../sim/defs';
+import { PAD_COVER, suggestBuild, type ConstructionState } from '../sim/construction';
+import { BASE_PAD, MATCHUP, PADS, towerUpgradeCost } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 
 const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
-const forecast = () => ({ blue: 0, red: 0, purple: 0, prism: 0, gold: 0 });
+const forecast = () => ({ blue: 0, red: 0, purple: 0, prism: 0, gold: 0, air: 0 });
 const state = (patch: Partial<ConstructionState> = {}): ConstructionState => ({
-  wave: 4, brood: 'blue', lanes: [forecast(), { ...forecast(), red: 6 }, forecast()], towers: [],
+  wave: 4, brood: 'blue', counts: { ...forecast(), red: 6 }, towers: [],
   scrap: 1000, costMult: 1, baseHp: 100, baseMaxHp: 100, repairCost: 42, ...patch,
 });
 function session(input = new TimelineInput(), extra: Record<string, unknown> = {}, profile = testProfile()) {
@@ -21,16 +21,24 @@ describe('crew recommendation', () => {
     const matchup = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
     expect(suggestBuild(state({ matchup }))?.tower).toBe('tesla');
   });
-  it('covers the threatened lane’s off-colour heavies, without spending beyond scrap', () => {
+  it('covers the off-colour heavies from the pad that sees the most road, without spending beyond scrap', () => {
     const s = state({ scrap: 80 }), a = suggestBuild(s)!;
-    expect(a.tower).toBe('mortar'); expect(PADS[a.pad].lane).toBe(1); expect(a.cost).toBeLessThanOrEqual(s.scrap);
+    expect(a.tower).toBe('flamer'); expect(a.cost).toBeLessThanOrEqual(s.scrap);
+    expect(PAD_COVER.flamer[a.pad]).toBe(Math.max(...PAD_COVER.flamer));
+    expect(a.label).toContain(PADS[a.pad].name);
     expect(suggestBuild(state({ scrap: 59 }))).toBeNull();
     expect(suggestBuild(s)).toEqual(a);
   });
+  it('values dangerous off-colour reds before excluding the Flamethrower against a larger blue swarm', () => {
+    const s = state({ brood: 'purple', counts: { ...forecast(), red: 10, blue: 30, air: 30 }, scrap: 80 });
+    expect(suggestBuild(s)?.tower).toBe('flamer');
+    // A genuinely blue-dominated push still gets anti-air coverage.
+    expect(suggestBuild({ ...s, counts: { ...s.counts, red: 1 } })?.tower).toBe('tesla');
+  });
   it('uses existing coverage and ranks upgrades as well as empty pads', () => {
-    const towers = PADS.map(p => ({ pad: p.id, kind: 'mortar' as const, level: 1 }));
+    const towers = PADS.map(p => ({ pad: p.id, kind: 'flamer' as const, level: 1 }));
     const a = suggestBuild(state({ towers, scrap: 112 }))!;
-    expect(a.kind).toBe('upgrade'); expect(a.targetLevel).toBe(2); expect(a.cost).toBe(towerUpgradeCost('mortar', 1));
+    expect(a.kind).toBe('upgrade'); expect(a.targetLevel).toBe(2); expect(a.cost).toBe(towerUpgradeCost('flamer', 1));
     expect(suggestBuild(state({ towers: towers.map(t => ({ ...t, level: 5 })), baseHp: 100 }))).toBeNull();
   });
   it('quotes every level in a funded upgrade order, and offers repairs for a damaged base', () => {
@@ -39,9 +47,34 @@ describe('crew recommendation', () => {
     expect(a.targetLevel).toBe(3); expect(a.cost).toBe(towerUpgradeCost('tesla', 1) + towerUpgradeCost('tesla', 2));
     expect(suggestBuild(state({ baseHp: 20 }))?.kind).toBe('repair');
   });
+  it('funds new towers at useful levels in one quoted order instead of hoarding the bank', () => {
+    const s = state({ scrap: 1000 });
+    const order = suggestBuild(s)!;
+    expect(order.kind).toBe('build');
+    expect(order.targetLevel).toBeGreaterThan(2);
+    expect(order.cost).toBeLessThanOrEqual(s.scrap);
+    expect(order.label).toContain(`Lv ${order.targetLevel}`);
+    expect(suggestBuild({ ...s, scrap: 80 })?.targetLevel).toBe(1);
+  });
 });
 
 describe('construction input and persistence', () => {
+  it('executes a funded build and every quoted level once, charging the displayed total', () => {
+    const s = session();
+    s.tuning.set('towerdefense.startScrap', 1000); s.step(1);
+    const before = snap(s), suggestion = before.suggestion!;
+    expect(suggestion.targetLevel).toBeGreaterThan(1);
+    s.sim.receive!({ type: 'construct', suggestion: { ...suggestion, targetLevel: 1 } }); s.step(1);
+    expect(snap(s).towers).toHaveLength(0);
+    expect(snap(s).scrap).toBe(before.scrap);
+    s.sim.receive!({ type: 'construct', suggestion });
+    s.sim.receive!({ type: 'construct', suggestion }); s.step(1);
+    const after = snap(s);
+    expect(after.towers).toHaveLength(1);
+    expect(after.towers[0]).toMatchObject({ pad: suggestion.pad, kind: suggestion.tower, level: suggestion.targetLevel });
+    expect(after.scrap).toBe(before.scrap - suggestion.cost);
+    expect(after.constructionDone).toBe(true);
+  });
   it('migrates old saves additively and preserves an explicit Commander choice', () => {
     expect(readSave({ bestWave: 10, bank: 420, autoInvest: true })).toMatchObject({ bestWave: 10, bank: 420, autoInvest: true, autoCrew: true });
     expect(readSave({ v: 2, autoCrew: false }).autoCrew).toBe(false);
@@ -73,10 +106,10 @@ describe('construction input and persistence', () => {
   it('Auto-crew builds at the lull’s end without autopilot or manual input', () => {
     const s = session(new NullInput(), { autoCrew: true }); s.step(1);
     expect(snap(s).towers).toHaveLength(0);
-    s.step(30 * 14); expect(snap(s).towers).toHaveLength(0);
+    s.step(30 * 44); expect(snap(s).towers).toHaveLength(0);
     s.step(30 * 2); expect(snap(s).towers).toHaveLength(1);
     expect(snap(s).constructionDone).toBe(true);
-    const commander = session(); commander.step(30 * 20); expect(snap(commander).towers).toHaveLength(0);
+    const commander = session(); commander.step(30 * 50); expect(snap(commander).towers).toHaveLength(0);
   });
   it('manual overrides consume the lull’s crew purchase and can be entered by touch, confirmed by controller', () => {
     const s = session(new TimelineInput([{ t: 0.2, press: 'a' }, { t: 0.3, release: 'a' }]), { autoCrew: true });
@@ -90,16 +123,16 @@ describe('construction input and persistence', () => {
     const input = new TimelineInput([{ t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, { t: 0.4, press: 'a' }]);
     const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 1,
       simOpts: { skipGarage: true }, onSave: d => { saved = d; } });
-    s.step(1); s.sim.receive!({ type: 'pad', pad: 6 }); s.step(1);
+    s.step(1); s.sim.receive!({ type: 'pad', pad: BASE_PAD }); s.step(1);
     expect(snap(s).workshop!.rows[0].kind).toBe('repair');
     s.step(15); expect(snap(s).autoCrew).toBe(false);
     expect(readSave(saved).autoCrew).toBe(false);
     const reload = session(new NullInput(), { autoCrew: undefined }, testProfile({ gameData: { towerdefense: saved } }));
-    reload.step(30 * 20); expect(snap(reload).autoCrew).toBe(false); expect(snap(reload).towers).toHaveLength(0);
+    reload.step(30 * 50); expect(snap(reload).autoCrew).toBe(false); expect(snap(reload).towers).toHaveLength(0);
   });
   it('rejects fractional and non-finite pad and row indices', () => {
     const s = session(); s.step(1);
-    for (const pad of [NaN, Infinity, 0.5, 7]) s.sim.receive!({ type: 'pad', pad });
+    for (const pad of [NaN, Infinity, 0.5, BASE_PAD + 1]) s.sim.receive!({ type: 'pad', pad });
     s.step(1); expect(snap(s).workshop).toBeNull();
     s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1);
     for (const row of [NaN, Infinity, 0.5, -1, 100]) s.sim.receive!({ type: 'row', row });

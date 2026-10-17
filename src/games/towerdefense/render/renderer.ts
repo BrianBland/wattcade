@@ -1,8 +1,10 @@
 // Dynamo Defense renderer (Canvas 2D). Loaded via dynamic import; reads TdSnapshot only.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
-import { BASE_X, BASE_Y, FIELD, LANE_NAMES, PADS, TOWERS, LEVEL_RANGE, lanePolyline } from '../sim/defs';
-import type { EnemyView, Fx, TdSnapshot } from '../sim/types';
+import { BASE_PAD, BASE_X, BASE_Y, PADS, ROAD_LENGTH, TOWERS, LEVEL_RANGE, roadAt } from '../sim/defs';
+import { HIVE_MOUTH, ROAD, ROAD_HALF_WIDTH, SHOULDER, TURRET_R } from '../sim/road';
+import { toScreen, toWorld } from './fieldView';
+import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
 import { TdHud, type Hit } from './panels';
@@ -10,11 +12,12 @@ import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
 import { Machinery } from './machinery';
+import { along, cableRoutes, strokeCrossings } from './cables';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
 const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: number }> = {
-  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'zap', gap: 0.08, vol: 0.6 }, mortar: { s: 'shootHeavy', gap: 0.12, vol: 0.7 },
+  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'zap', gap: 0.08, vol: 0.6 }, fireball: { s: 'shootHeavy', gap: 0.12, vol: 0.6 }, flameTower: { s: 'shoot', gap: 0.5, vol: 0.12, pitch: 0.5 },
   explode: { s: 'explode', gap: 0.12, vol: 0.55 }, lens: { s: 'lens', gap: 0.1 }, rail: { s: 'rail' }, railReady: { s: 'railReady' },
   swap: { s: 'swap' }, kill: { s: 'kill', gap: 0.05, vol: 0.8 }, bossStart: { s: 'bossStart' }, bossDie: { s: 'bossDie' },
   build: { s: 'build' }, upgrade: { s: 'upgrade' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
@@ -31,7 +34,7 @@ export class TdRenderer implements GameRenderer {
   private mounted = false;
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
-  private insetB = 0;
+  private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private W = 800; private H = 600; private dpr = 1;
   private L!: TdLayout;
   private bg: HTMLCanvasElement | null = null;
@@ -41,15 +44,16 @@ export class TdRenderer implements GameRenderer {
   private particles: Particle[] = [];
   private lastCue = -1; private lastFx = 0;
   private heading = new Map<number, { x: number; y: number; h: number }>();
-  private laneShown = { lane: -2, at: -99 };
   private shake = 0; private flash = { color: '#fff', a: 0 }; private lastT = -1; private wall = 0;
+  /** Power pulses: sim time of each pedal half-stroke still travelling down the cables. */
+  private pulses: number[] = []; private pulseRevs: number | null = null;
   private hitStopUntil = 0;
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
   private battlefield!: Battlefield;
   private machinery!: Machinery;
-  private view: View = { X: (x) => this.X(x), Y: (y) => this.Y(y), k: 1, dpr: 1 };
+  private view: View = { P: (x, y) => this.P(x, y), rot: 0, turned: false, k: 1, dpr: 1 };
   private onPointer = (e: PointerEvent) => this.tap(e);
   private heldPointers = new Map<number, { epoch: number; kind: 'rail' | 'boost' }>();
   private onUp = (e: PointerEvent) => this.releaseHold(e.pointerId, false);
@@ -71,7 +75,7 @@ export class TdRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
     this.mounted = true;
     this.hudControls = !!ctx.hudControls;
-    this.insetB = ctx.insets?.bottom ?? 0;
+    this.insets = ctx.insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
     this.battlefield = new Battlefield(import.meta.env.BASE_URL, () => { this.bg = null; });
@@ -111,7 +115,7 @@ export class TdRenderer implements GameRenderer {
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
     this.relayout();
   }
-  setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
+  setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.relayout(); } }
   unmount() {
     this.mounted = false;
     this.onBlur(); window.removeEventListener('blur', this.onBlur);
@@ -125,12 +129,14 @@ export class TdRenderer implements GameRenderer {
     this.hud?.root.remove();
     stopAmbient();
   }
-  private relayout() { this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null; }
+  private relayout() {
+    this.L = layout(this.W, this.H, this.insets, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
+    this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
+  }
 
   // ---------- coordinates ----------
-  private X(x: number) { return this.L.field.x + x * this.L.field.s / FIELD; }
-  private Y(y: number) { return this.L.field.y + y * this.L.field.s / FIELD; }
-  private get k() { return this.L.field.s / FIELD; }
+  private P(x: number, y: number) { return toScreen(this.L.field, { x, y }); }
+  private get k() { return this.L.field.k; }
 
   // ---------- taps ----------
   private tap(e: PointerEvent) {
@@ -151,11 +157,11 @@ export class TdRenderer implements GameRenderer {
       }
     }
     const s = this.snap; if (!s || s.phase !== 'run' || s.over || py > this.L.UH) return;
-    const fx = (px - this.L.field.x) / this.k, fy = (py - this.L.field.y) / this.k;
-    const targets = [...PADS, { id: 6, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(fx - p.x, fy - p.y) }))
+    const w = toWorld(this.L.field, { x: px, y: py });
+    const targets = [...PADS, { id: BASE_PAD, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(w.x - p.x, w.y - p.y) }))
       .sort((a, b) => a.distance - b.distance);
     const closest = targets[0];
-    if (closest.distance < Math.max(closest.id === 6 ? 8 : 5.5, 22 / this.k)) {
+    if (closest.distance < Math.max(closest.id === BASE_PAD ? 10 : 5.5, 22 / this.k)) {
       e.preventDefault(); this.send?.({ type: 'pad', pad: closest.id, epoch: s.inputEpoch });
     }
   }
@@ -171,63 +177,31 @@ export class TdRenderer implements GameRenderer {
     const c = document.createElement('canvas'); c.width = this.canvas.width; c.height = this.canvas.height;
     const g = c.getContext('2d')!; g.scale(this.dpr, this.dpr);
     this.view.k = this.k; this.view.dpr = this.dpr;
-    if (this.battlefield.paint(g, this.view, this.W, this.H)) return c;
-    const W = this.W, H = this.H, k = this.k, cx = this.X(50), cy = this.Y(55);
-    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
-    gr.addColorStop(0, '#1a2332'); gr.addColorStop(0.6, '#111824'); gr.addColorStop(1, '#070a10');
-    g.fillStyle = gr; g.fillRect(0, 0, W, H);
-    // deck plates
-    const ps = Math.max(18, 8 * k);
-    g.strokeStyle = 'rgba(120,150,200,0.05)'; g.lineWidth = 1;
-    const ox = this.L.field.x % ps, oy = this.L.field.y % ps;
-    for (let x = ox; x < W; x += ps) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-    for (let y = oy; y < H; y += ps) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-    for (let i = 0; i < 260; i++) { // rivets, scorch marks, craters, rocks
-      const x = hash(i * 3 + 1) * W, y = hash(i * 3 + 2) * H, r = hash(i * 3 + 3);
-      if (r < 0.55) { g.fillStyle = 'rgba(160,190,230,0.06)'; g.fillRect(x, y, 2, 2); }
-      else if (r < 0.75) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.beginPath(); g.ellipse(x, y, (2 + r * 4) * k, (1.2 + r * 2) * k, r * 6, 0, TAU); g.fill(); }
-      else if (r < 0.88) {
-        const cr = (1.5 + r * 3) * k;
-        g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.arc(x, y, cr, 0, TAU); g.fill();
-        g.strokeStyle = 'rgba(150,170,200,0.08)'; g.lineWidth = Math.max(1, k * 0.4); g.beginPath(); g.arc(x, y - cr * 0.1, cr, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
-      } else {
-        g.fillStyle = '#1f2836'; g.beginPath();
-        const rr = (0.8 + r) * k;
-        for (let j = 0; j < 6; j++) { const a = j / 6 * TAU, q = rr * (0.7 + 0.3 * hash(i * 7 + j)); j ? g.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q) : g.moveTo(x + Math.cos(a) * q, y + Math.sin(a) * q); }
-        g.closePath(); g.fill();
-      }
-    }
-    // lanes: extend the first segment off-screen, then road layers
-    for (let l = 0; l < 3; l++) {
-      const pts = lanePolyline(l, 2).map((p) => ({ x: this.X(p.x), y: this.Y(p.y) }));
-      const a = pts[0], b = pts[1], dx = a.x - b.x, dy = a.y - b.y, dl = Math.hypot(dx, dy) || 1;
-      pts.unshift({ x: a.x + dx / dl * Math.max(W, H), y: a.y + dy / dl * Math.max(W, H) });
-      const path = () => { g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y))); };
-      g.lineCap = 'round'; g.lineJoin = 'round';
-      path(); g.strokeStyle = '#0b0f17'; g.lineWidth = 11 * k; g.stroke();
-      path(); g.strokeStyle = '#2a3446'; g.lineWidth = 9 * k; g.stroke();
-      path(); g.strokeStyle = '#1b2230'; g.lineWidth = 7.4 * k; g.stroke();
-      path(); g.setLineDash([2.2 * k, 3.2 * k]); g.strokeStyle = 'rgba(255,210,74,0.16)'; g.lineWidth = Math.max(1, 0.5 * k); g.stroke(); g.setLineDash([]);
-    }
-    // pads
-    for (const p of PADS) {
-      const x = this.X(p.x), y = this.Y(p.y), r = 4.2 * k;
-      g.fillStyle = '#151b27'; this.hex(g, x, y + k * 0.5, r * 1.05); g.fill();
-      g.fillStyle = '#232c3c'; this.hex(g, x, y, r); g.fill();
-      g.strokeStyle = 'rgba(255,210,74,0.22)'; g.lineWidth = Math.max(1, k * 0.3); this.hex(g, x, y, r * 0.8); g.stroke();
-      g.fillStyle = 'rgba(255,255,255,0.12)';
-      for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + Math.PI / 6; g.beginPath(); g.arc(x + Math.cos(a) * r * 0.82, y + Math.sin(a) * r * 0.82, Math.max(1, k * 0.25), 0, TAU); g.fill(); }
-    }
-    // base platform
-    const bx = this.X(BASE_X), by = this.Y(BASE_Y);
-    g.fillStyle = '#0d121b'; g.beginPath(); g.arc(bx, by, 10 * k, 0, TAU); g.fill();
-    g.strokeStyle = 'rgba(255,210,74,0.25)'; g.lineWidth = Math.max(1, k * 0.5); g.setLineDash([1.5 * k, 1.5 * k]);
-    g.beginPath(); g.arc(bx, by, 9 * k, 0, TAU); g.stroke(); g.setLineDash([]);
-    // top fog where enemies come from
-    const fog = g.createLinearGradient(0, 0, 0, this.Y(20));
-    fog.addColorStop(0, 'rgba(5,7,12,0.85)'); fog.addColorStop(1, 'rgba(5,7,12,0)');
-    g.fillStyle = fog; g.fillRect(0, 0, W, this.Y(20));
+    if (!this.battlefield.paint(g, this.view, this.W, this.H)) this.vectorGround(g);
     return c;
+  }
+  /** Stand-in ground until a painting loads: rock, the road from the hive mouth, pad clearings and the turret apron. */
+  private vectorGround(g: CanvasRenderingContext2D) {
+    const W = this.W, H = this.H, k = this.k, mid = this.P(40, 56);
+    const gr = g.createRadialGradient(mid.x, mid.y, 0, mid.x, mid.y, Math.max(W, H) * 0.75);
+    gr.addColorStop(0, '#1d2230'); gr.addColorStop(0.6, '#141923'); gr.addColorStop(1, '#090c12');
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 320; i++) { // rocks and scorch
+      const x = hash(i * 3 + 1) * W, y = hash(i * 3 + 2) * H, r = hash(i * 3 + 3);
+      g.fillStyle = r < 0.6 ? 'rgba(0,0,0,0.25)' : 'rgba(150,160,190,0.05)';
+      g.beginPath(); g.ellipse(x, y, (1.5 + r * 4) * k, (1 + r * 2.5) * k, r * 6, 0, TAU); g.fill();
+    }
+    const hive = this.P(HIVE_MOUTH.x, HIVE_MOUTH.y), hg = g.createRadialGradient(hive.x, hive.y, 0, hive.x, hive.y, 60 * k);
+    hg.addColorStop(0, 'rgba(70,24,100,0.7)'); hg.addColorStop(1, 'rgba(70,24,100,0)');
+    g.fillStyle = hg; g.fillRect(0, 0, W, H);
+    const path = () => { g.beginPath(); ROAD.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    path(); g.strokeStyle = '#3b3328'; g.lineWidth = (ROAD_HALF_WIDTH + SHOULDER) * 2 * k; g.stroke();
+    path(); g.strokeStyle = '#7a6448'; g.lineWidth = ROAD_HALF_WIDTH * 2 * k; g.stroke();
+    g.fillStyle = '#12080f'; g.beginPath(); g.arc(hive.x, hive.y, 8 * k, 0, TAU); g.fill();
+    for (const p of PADS) { const q = this.P(p.x, p.y); g.fillStyle = '#4a3f33'; g.beginPath(); g.arc(q.x, q.y, 4.8 * k, 0, TAU); g.fill(); }
+    const b = this.P(BASE_X, BASE_Y);
+    g.fillStyle = '#2a2620'; g.beginPath(); g.arc(b.x, b.y, (TURRET_R + 1) * k, 0, TAU); g.fill();
   }
   private hex(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
     g.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + Math.PI / 6; i ? g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r) : g.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath();
@@ -292,32 +266,33 @@ export class TdRenderer implements GameRenderer {
       if (f.id <= this.lastFx) continue;
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind === 'death') {
-        const c = COL[f.color], x = this.X(f.x), y = this.Y(f.y);
+        const c = COL[f.color], { x, y } = this.P(f.x, f.y);
         this.burst(x, y, c, f.big ? 26 : 8, (f.big ? 40 : 26) * k, (f.big ? 1 : 0.6) * k, f.big ? 0.8 : 0.45);
         if (f.big) { this.ring(x, y, c, 1 * k, 9 * k, 0.45); for (let i = 0; i < 4; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 8 * k, vy: (Math.random() - 0.5) * 8 * k, age: 0, life: 1.2, size: 2 * k, color: '', kind: 'smoke' }); }
         if (f.color === 'gold') { this.shake = Math.max(this.shake, 1); this.flash = { color: COL.gold, a: 0.45 }; }
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
-        const x = this.X(f.x), y = this.Y(f.y);
+        const { x, y } = this.P(f.x, f.y);
         this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
         this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
         for (let i = 0; i < 3; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 6 * k, vy: -Math.random() * 4 * k, age: 0, life: 1, size: 2.5 * k, color: '', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
       } else if (f.kind === 'emp') {
-        const x = this.X(BASE_X), y = this.Y(BASE_Y);
+        const { x, y } = this.P(BASE_X, BASE_Y);
         this.ring(x, y, '#7df9ff', 5 * k, 140 * k, 1.1); this.ring(x, y, '#ffffff', 3 * k, 120 * k, 0.9);
         this.flash = { color: '#7df9ff', a: 0.5 }; this.shake = Math.max(this.shake, 1);
       } else if (f.kind === 'baseHit') {
         this.shake = Math.max(this.shake, Math.min(1, 0.2 + f.dmg / 15));
         if (f.dmg >= 5) this.flash = { color: '#ff3020', a: Math.min(0.45, 0.12 + f.dmg / 60) };
-        this.burst(this.X(BASE_X), this.Y(BASE_Y - 5), '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
+        const b = this.P(BASE_X, BASE_Y - 5); this.burst(b.x, b.y, '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
       } else if (f.kind === 'beam') {
         this.flash = { color: COL.purple, a: Math.max(this.flash.a, 0.28) }; this.shake = Math.max(this.shake, 0.5);
       } else if (f.kind === 'text') {
-        this.particles.push({ x: this.X(f.x), y: this.Y(f.y), vx: 0, vy: -16 * k, age: 0, life: 1.1, size: Math.max(12, 3.2 * k), color: f.color, kind: 'text', text: f.text });
+        const q = this.P(f.x, f.y);
+        this.particles.push({ x: q.x, y: q.y, vx: 0, vy: -16 * k, age: 0, life: 1.1, size: Math.max(12, 3.2 * k), color: f.color, kind: 'text', text: f.text });
       } else if (f.kind === 'tracer' && f.hit) {
-        this.burst(this.X(f.x1), this.Y(f.y1), LIGHT.blue, 2, 20 * k, 0.4 * k, 0.2);
+        const q = this.P(f.x1, f.y1); this.burst(q.x, q.y, LIGHT.blue, 2, 20 * k, 0.4 * k, 0.2);
       }
     }
   }
@@ -362,54 +337,57 @@ export class TdRenderer implements GameRenderer {
     const sh = this.shake * this.shake * 1.6 * k;
     g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
 
-    const bx = this.X(BASE_X), by = this.Y(BASE_Y);
+    const { x: bx, y: by } = this.P(BASE_X, BASE_Y), rot = this.view.rot;
     this.view.k = k; this.view.dpr = this.dpr;
-    this.battlefield.ground(g, this.view, s);
+    this.battlefield.hive(g, this.view, s);
     // Shade and light the ground before actors: coloured silhouettes retain their contrast.
     this.battlefield.lighting(g, this.view, s, this.W, this.H);
     if (s.phase === 'run') {
-      this.drawLanes(g, s, t);
-      this.view.k = k; this.view.dpr = this.dpr;
+      this.drawCables(g, s, bike);
+      this.drawRoadFx(g, s, t);
+      this.drawBurns(g, s, t);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
-      this.battlefield.wiring(g, this.view, s, bike);
       this.drawPads(g, s, t);
-      for (const tw of s.towers) { const p = PADS[tw.pad]; if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, tw, this.X(p.x), this.Y(p.y), k, t, s.grid); }
-      // aim line
-      const ac = WEAPON_COLOR[s.weapon];
-      g.strokeStyle = ac; g.globalAlpha = s.targetId ? 0.18 : 0; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
-      g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k);
-      const reach = s.weapon === 'flame' ? s.flameRange : 100;
-      g.lineTo(bx + Math.sin(s.aimAngle) * reach * k, by - Math.cos(s.aimAngle) * reach * k); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
+      for (const tw of s.towers) {
+        const p = this.P(PADS[tw.pad].x, PADS[tw.pad].y);
+        this.contactShadow(g, p.x, p.y, k);
+        if (!this.machinery.tower(g, tw, this.view, s)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
+      }
+      this.drawTowerFlames(g, s, t, dt);
+      // aim line, from the muzzle along the turret's screen heading
+      const muzzle = this.machinery.muzzle(this.view, s), aim = s.aimAngle + rot;
+      g.strokeStyle = WEAPON_COLOR[s.weapon]; g.globalAlpha = s.targetId ? 0.18 : 0; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([2 * k, 2 * k]);
+      const reach = (s.weapon === 'flame' ? s.flameRange : 100) * k;
+      g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(bx + Math.sin(aim) * reach, by - Math.cos(aim) * reach); g.stroke(); g.setLineDash([]); g.globalAlpha = 1;
       // enemies, back to front: cut-out puppets, or the vector sprites until their frames exist
       const puppets = this.aliens?.ready ? this.aliens : null;
-      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => drawEnemy(g, e, this.X(e.x), this.Y(e.y), k, h, t));
+      if (puppets) puppets.draw(g, s, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
       const live = new Set<number>();
       for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
         live.add(e.id);
-        const x = this.X(e.x), y = this.Y(e.y);
+        const { x, y } = this.P(e.x, e.y);
         const prev = this.heading.get(e.id);
         let h = prev?.h ?? Math.atan2(by - y, bx - x);
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
         if (!puppets) drawEnemy(g, e, x, y, k, h, t);
-        if (e.id === s.targetId) this.reticle(g, e, x, y, t);
+        if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
-      this.drawShells(g, s);
-      this.drawFlame(g, s, bx, by, dt);
-      this.drawFx(g, s, bx, by, t);
+      this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
-      const muzzle = s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0;
+      this.contactShadow(g, bx, by, k * 2.4);
       if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, {
         x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: s.grid, color: this.color, hpFrac: s.baseHp / s.baseMaxHp, hurt: s.baseHurt,
-        weapon: s.weapon, aim: s.aimAngle, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle, overdrive: s.overdrive,
+        weapon: s.weapon, aim, swapK: s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1, muzzle: s.fx.some((f) => f.kind === 'tracer' && t - f.t0 < 0.05) ? 1 : 0, overdrive: s.overdrive,
         railCharge: s.railCharges / Math.max(1, s.railMaxCharges), flaming: s.flaming,
       });
+      // Fireballs arc over everything, from the launcher.
+      this.drawShells(g, s, muzzle);
     } else {
-      this.drawLanes(g, s, t);
       this.drawPads(g, s, t);
-      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
+      if (!this.machinery.base(g, this.view, s, bike)) drawBase(g, { x: bx, y: by, k, t, spin: bike.crankRevs * TAU * 0.5, grid: 0.5, color: this.color, hpFrac: 1, hurt: 99, weapon: 'gatling', aim: Math.sin(t * 0.5) * 0.6 + rot, swapK: 1, muzzle: 0, overdrive: false, railCharge: 0, flaming: false });
     }
     this.stepParticles(realDt);
     g.restore();
@@ -434,30 +412,83 @@ export class TdRenderer implements GameRenderer {
     if (s.over) { g.fillStyle = 'rgba(5,6,10,0.5)'; g.fillRect(0, 0, this.W, this.H); }
   }
 
-  private drawLanes(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
+  /**
+   * Power cables from under the deck to each built tower, routed around the road (render/cables.ts). Every pedal
+   * half-stroke sends a pulse down each one while the dynamo is live.
+   */
+  private drawCables(g: CanvasRenderingContext2D, s: TdSnapshot, bike: Readonly<BikeState>) {
+    const k = this.k, speed = 55;
+    const n = this.pulseRevs === null ? 0 : strokeCrossings(this.pulseRevs, bike.crankRevs);
+    this.pulseRevs = bike.crankRevs;
+    if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
+    this.pulses = this.pulses.filter((t0) => s.t >= t0 && (s.t - t0) * speed < 160).slice(-16);
+    if (!s.towers.length) return;
+    const routes = cableRoutes();
+    g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+    for (const tw of s.towers) {
+      const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
+      const path = () => { g.beginPath(); c.pts.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
+      for (const [color, width] of [['rgba(0,0,0,0.45)', 1.5], ['#0b0e12', 1.1], ['#6d6f72', 0.56], ['#2b393d', 0.3]] as const) {
+        g.strokeStyle = color; g.lineWidth = Math.max(0.6, width * k); path(); g.stroke();
+      }
+      g.globalCompositeOperation = 'lighter';
+      for (const t0 of this.pulses) {
+        const f = (s.t - t0) * speed / c.length; if (f > 1) continue;
+        const p = along(c.pts, c.length, f), q = this.P(p.x, p.y);
+        glowAt(g, '#75edff', q.x, q.y, 1.6 * k, 0.6 * Math.min(1, s.grid));
+      }
+      g.globalCompositeOperation = 'source-over';
+    }
+    g.restore();
+  }
+  /** The slow field over the back stretch of the road. */
+  private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
+    if (s.slowFrom < 0) return;
     const k = this.k;
-    for (let l = 0; l < 3; l++) {
-      const pts = lanePolyline(l, 4);
-      if (s.slowLane === l) {
-        g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.35 + 0.1 * Math.sin(t * 4); g.lineWidth = 7 * k;
-        g.setLineDash([3 * k, 2 * k]); g.beginPath();
-        pts.forEach((p, i) => i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y))); g.stroke(); g.restore();
+    g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = ROAD_HALF_WIDTH * 2 * k;
+    g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([3 * k, 2 * k]); g.beginPath();
+    for (let d = s.slowFrom, i = 0; d <= ROAD_LENGTH; d += 2, i++) { const p = roadAt(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
+    g.stroke(); g.restore();
+  }
+  /** Burning road left by the fireballs: a scorched patch with flame tongues licking up across it. */
+  private drawBurns(g: CanvasRenderingContext2D, s: TdSnapshot, _t: number) {
+    const k = this.k;
+    for (const b of s.burns) {
+      const { x, y } = this.P(b.x, b.y), r = b.r * k, f = Math.min(1, b.k * 1.5), seed = Math.round(b.x * 7 + b.y * 13);
+      g.fillStyle = `rgba(18,10,6,${0.5 * f})`; g.beginPath();
+      for (let i = 0; i < 10; i++) { const a = i / 10 * TAU, q = r * (0.75 + 0.25 * hash(seed + i)); i ? g.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q * 0.85) : g.moveTo(x + Math.cos(a) * q, y + Math.sin(a) * q * 0.85); }
+      g.closePath(); g.fill();
+      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff6a20', x, y, r * 0.8, 0.12 * f); g.restore();
+      // a few flame tongues per frame, rising and fading
+      for (let i = 0; i < 2 && this.particles.length < 600; i++) {
+        if (Math.random() > 0.6 * f) continue;
+        const a = Math.random() * TAU, d = r * 0.8 * Math.sqrt(Math.random());
+        this.particles.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.85, vx: (Math.random() - 0.5) * k, vy: -(2 + Math.random() * 3) * k, age: 0, life: 0.35 + Math.random() * 0.3, size: 0.8 * k, color: '', kind: 'flame' });
       }
-      const nk = s.nudge?.lane === l ? s.nudge.k : 0;
-      if (s.phase === 'run' && nk > 0) {
-        g.strokeStyle = `rgba(160,200,255,${(0.04 + 0.08 * nk).toFixed(3)})`; g.lineWidth = 8 * k; g.lineCap = 'round'; g.lineJoin = 'round';
-        g.beginPath(); pts.forEach((p, i) => (i ? g.lineTo(this.X(p.x), this.Y(p.y)) : g.moveTo(this.X(p.x), this.Y(p.y)))); g.stroke();
-      }
-      // Painted burrows carry spawn identity; keep guidance subtle and temporary.
-      const sp = pts[Math.min(3, pts.length - 1)], gx = this.X(Math.max(3, Math.min(97, sp.x))), gy = this.Y(Math.max(3, sp.y));
-      const nl = s.nudge?.lane ?? -1;
-      if (this.laneShown.lane !== nl) this.laneShown = { lane: nl, at: this.wall };
-      const since = this.wall - this.laneShown.at;
-      if (s.phase === 'run' && nl === l && since < 2 && this.laneShown.at > 0.5) {
-        g.globalAlpha = Math.min(1, (2 - since) * 2);
-        g.font = `800 ${Math.max(10, Math.round(2.6 * k))}px system-ui, sans-serif`; g.textAlign = 'center';
-        g.fillStyle = 'rgba(200,225,255,0.85)'; g.fillText(`${LANE_NAMES[l].toUpperCase()} · NUDGE`, gx, gy + 7 * k); g.textAlign = 'left';
-        g.globalAlpha = 1;
+    }
+  }
+  /** A soft shadow under machinery, falling downward with the top light, so towers sit in their clearings. */
+  private contactShadow(g: CanvasRenderingContext2D, x: number, y: number, k: number) {
+    const r = 4.4 * k, gr = g.createRadialGradient(x, y + r * 0.35, r * 0.2, x, y + r * 0.35, r * 1.15);
+    gr.addColorStop(0, 'rgba(0,0,0,0.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.beginPath(); g.ellipse(x, y + r * 0.35, r * 1.15, r * 0.9, 0, 0, TAU); g.fill();
+  }
+  /** Flame towers spray a short cone from the nozzle while they burn something. */
+  private drawTowerFlames(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, dt: number) {
+    const k = this.k;
+    for (const tw of s.towers) {
+      if (tw.kind !== 'flamer' || t - tw.firedAt > 0.3 || s.grid <= 0) continue;
+      const m = this.machinery.towerMuzzle(tw as TowerView, this.view, t), a = tw.angle + this.view.rot;
+      const range = TOWERS.flamer.range * LEVEL_RANGE[tw.level - 1] * k, half = TOWERS.flamer.cone ?? 0.5;
+      g.save(); g.globalCompositeOperation = 'lighter';
+      const gr = g.createRadialGradient(m.x, m.y, 0, m.x, m.y, range);
+      gr.addColorStop(0, 'rgba(255,170,80,0.32)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
+      g.fillStyle = gr; g.beginPath(); g.moveTo(m.x, m.y); g.arc(m.x, m.y, range, a - Math.PI / 2 - half, a - Math.PI / 2 + half); g.closePath(); g.fill();
+      g.restore();
+      const n = Math.round(2 * Math.max(1, dt * 60));
+      for (let i = 0; i < n && this.particles.length < 600; i++) {
+        const sa = a + (Math.random() - 0.5) * 2 * half * 0.8, v = range * (2 + Math.random() * 2);
+        this.particles.push({ x: m.x, y: m.y, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.3 + Math.random() * 0.1, size: 0.9 * k, color: '', kind: 'flame' });
       }
     }
   }
@@ -465,7 +496,7 @@ export class TdRenderer implements GameRenderer {
   private drawPads(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     const k = this.k, ws = s.workshop;
     for (const p of PADS) {
-      const x = this.X(p.x), y = this.Y(p.y), sel = ws?.pad === p.id, built = s.towers.find((q) => q.pad === p.id);
+      const { x, y } = this.P(p.x, p.y), sel = ws?.pad === p.id, built = s.towers.find((q) => q.pad === p.id);
       if (sel) {
         const kind = built?.kind ?? ws!.rows[ws!.row]?.tower, lv = built ? Math.min(5, built.level + (ws!.rows[ws!.row]?.kind === 'upgrade' ? 1 : 0)) : 1;
         if (kind) {
@@ -478,95 +509,83 @@ export class TdRenderer implements GameRenderer {
         this.hex(g, x, y, (5.2 + Math.sin(t * 6) * 0.3) * k); g.stroke();
         if (!built && kind) { g.globalAlpha = 0.45; drawTower(g, { pad: p.id, kind, level: 1, angle: 0, charge: 1, firedAt: -9 }, x, y, k, t, 1); g.globalAlpha = 1; }
       } else if (!built && s.phase === 'run') {
-        g.fillStyle = s.scrap >= 60 ? `rgba(255,210,74,${0.35 + 0.25 * Math.sin(t * 3 + p.id)})` : 'rgba(255,255,255,0.15)';
-        g.fillRect(x - 1.6 * k, y - 0.3 * k, 3.2 * k, 0.6 * k); g.fillRect(x - 0.3 * k, y - 1.6 * k, 0.6 * k, 3.2 * k);
+        // The build marker: a hex outline, brighter when a tower is affordable.
+        g.strokeStyle = s.scrap >= 60 ? `rgba(255,210,74,${0.45 + 0.25 * Math.sin(t * 3 + p.id)})` : 'rgba(255,255,255,0.18)';
+        g.lineWidth = Math.max(1.5, k * 0.3); this.hex(g, x, y, 3.6 * k); g.stroke();
       }
     }
-    if (ws?.pad === 6) { g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(this.X(BASE_X), this.Y(BASE_Y), 10 * k, 0, TAU); g.stroke(); }
+    if (ws?.pad === BASE_PAD) { const b = this.P(BASE_X, BASE_Y); g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(b.x, b.y, (TURRET_R + 1) * k, 0, TAU); g.stroke(); }
   }
 
-  private reticle(g: CanvasRenderingContext2D, e: EnemyView, x: number, y: number, t: number) {
-    const r = (e.radius + 1.6) * this.k, a = t * 2;
-    g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 1.5;
+  /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */
+  private reticle(g: CanvasRenderingContext2D, e: EnemyView, x: number, y: number, t: number, locked = false) {
+    const r = (e.radius + 1.6) * this.k, a = locked ? Math.PI / 4 : t * 2;
+    g.strokeStyle = locked ? '#ffd24a' : 'rgba(255,255,255,0.75)'; g.lineWidth = locked ? 2.5 : 1.5;
     for (let i = 0; i < 4; i++) { const q = a + i * Math.PI / 2; g.beginPath(); g.arc(x, y, r, q, q + 0.6); g.stroke(); }
   }
 
-  private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot) {
+  /** Fireballs climb from the launcher's mouth and drop onto their road point. */
+  private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }) {
     const k = this.k;
     for (const sh of s.shells) {
-      const x = this.X(sh.x0 + (sh.x1 - sh.x0) * sh.k), y0 = this.Y(sh.y0 + (sh.y1 - sh.y0) * sh.k), lift = Math.sin(Math.PI * sh.k) * 9 * k;
-      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, y0, 1.1 * k, 0.5 * k, 0, 0, TAU); g.fill();
-      glowAt(g, '#ff8a4a', x, y0 - lift, 2.2 * k, 0.8);
-      g.fillStyle = '#ffe0c0'; g.beginPath(); g.arc(x, y0 - lift, 0.8 * k, 0, TAU); g.fill();
+      const end = this.P(sh.x1, sh.y1), x = muzzle.x + (end.x - muzzle.x) * sh.k, y0 = muzzle.y + (end.y - muzzle.y) * sh.k;
+      const lift = Math.sin(Math.PI * sh.k) * 12 * k;
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, y0, 1.2 * k, 0.6 * k, 0, 0, TAU); g.fill();
+      g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, '#ff8a3a', x, y0 - lift, 2.8 * k, 0.9); g.restore();
+      g.fillStyle = '#ffe2b0'; g.beginPath(); g.arc(x, y0 - lift, 0.9 * k, 0, TAU); g.fill();
+      if (this.particles.length < 600 && Math.random() < 0.6) this.particles.push({ x, y: y0 - lift, vx: (Math.random() - 0.5) * 3 * k, vy: (Math.random() - 0.5) * 3 * k, age: 0, life: 0.3, size: 0.9 * k, color: '', kind: 'flame' });
     }
   }
 
-  private drawFlame(g: CanvasRenderingContext2D, s: TdSnapshot, bx: number, by: number, dt: number) {
-    if (!s.flaming) return;
-    const k = this.k, a = s.aimAngle, n = Math.round((2 + 4 * Math.min(1.5, s.flamePower)) * Math.max(1, dt * 60));
-    const mx = bx + Math.sin(a) * 9 * k, my = by - Math.cos(a) * 9 * k;
-    for (let i = 0; i < n && this.particles.length < 600; i++) {
-      // exp(-3t) damping over ~0.45 s travels ~v/4: spread the puffs along the whole cone
-      const sa = a + (Math.random() - 0.5) * 2 * s.flameHalfAngle * 0.85, v = s.flameRange * k * (1.6 + Math.random() * 2.6);
-      this.particles.push({ x: mx, y: my, vx: Math.sin(sa) * v, vy: -Math.cos(sa) * v, age: 0, life: 0.38 + Math.random() * 0.12, size: 1.3 * k, color: '', kind: 'flame' });
-    }
-    g.globalCompositeOperation = 'lighter';
-    const gr = g.createRadialGradient(mx, my, 0, mx, my, s.flameRange * k);
-    gr.addColorStop(0, 'rgba(255,170,80,0.28)'); gr.addColorStop(1, 'rgba(255,60,20,0)');
-    g.fillStyle = gr; g.beginPath(); g.moveTo(mx, my);
-    g.arc(bx, by, s.flameRange * k, a - Math.PI / 2 - s.flameHalfAngle, a - Math.PI / 2 + s.flameHalfAngle); g.closePath(); g.fill();
-    g.globalCompositeOperation = 'source-over';
-  }
-
-  private drawFx(g: CanvasRenderingContext2D, s: TdSnapshot, bx: number, by: number, t: number) {
-    const k = this.k;
+  /** Turret shots start at the muzzle; tower effects at their pads. */
+  private drawFx(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }, t: number) {
+    const k = this.k, rot = this.view.rot;
     g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
     for (const f of s.fx as Fx[]) {
       const age = t - f.t0, life = 1 - age / f.life;
       if (life <= 0) continue;
       if (f.kind === 'tracer') {
         g.strokeStyle = COL.blue; g.globalAlpha = life; g.lineWidth = Math.max(1, k * 0.45);
-        const x1 = this.X(f.x1), y1 = this.Y(f.y1), x0 = this.X(f.x0), y0 = this.Y(f.y0), q = Math.min(1, age / f.life + 0.3);
-        g.beginPath(); g.moveTo(x0 + (x1 - x0) * (q - 0.3), y0 + (y1 - y0) * (q - 0.3)); g.lineTo(x0 + (x1 - x0) * q, y0 + (y1 - y0) * q); g.stroke();
+        const end = this.P(f.x1, f.y1), x0 = muzzle.x, y0 = muzzle.y, q = Math.min(1, age / f.life + 0.3);
+        g.beginPath(); g.moveTo(x0 + (end.x - x0) * (q - 0.3), y0 + (end.y - y0) * (q - 0.3)); g.lineTo(x0 + (end.x - x0) * q, y0 + (end.y - y0) * q); g.stroke();
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
-        const ex = bx + Math.sin(f.angle) * 140 * k, ey = by - Math.cos(f.angle) * 140 * k;
+        const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = (f.spread ? 3.5 : 4.5) * k * life;
-        g.beginPath(); g.moveTo(bx, by); g.lineTo(ex, ey); g.stroke();
+        g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;
-        g.beginPath(); g.moveTo(bx, by); g.lineTo(ex, ey); g.stroke(); g.globalAlpha = 1;
+        g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke(); g.globalAlpha = 1;
       } else if (f.kind === 'zap') {
         g.strokeStyle = LIGHT.blue; g.globalAlpha = life; g.lineWidth = Math.max(1, k * 0.4);
         g.beginPath();
         f.pts.forEach((p, i) => {
-          const x = this.X(p.x), y = this.Y(p.y);
+          const { x, y } = this.P(p.x, p.y);
           if (!i) { g.moveTo(x, y); return; }
-          const pr = f.pts[i - 1], px = this.X(pr.x), py = this.Y(pr.y);
-          for (let j = 1; j < 5; j++) g.lineTo(px + (x - px) * j / 5 + (Math.random() - 0.5) * 2.2 * k, py + (y - py) * j / 5 + (Math.random() - 0.5) * 2.2 * k);
+          const pr = this.P(f.pts[i - 1].x, f.pts[i - 1].y);
+          for (let j = 1; j < 5; j++) g.lineTo(pr.x + (x - pr.x) * j / 5 + (Math.random() - 0.5) * 2.2 * k, pr.y + (y - pr.y) * j / 5 + (Math.random() - 0.5) * 2.2 * k);
           g.lineTo(x, y);
         });
         g.stroke();
-        for (const p of f.pts.slice(1)) glowAt(g, COL.blue, this.X(p.x), this.Y(p.y), 2.5 * k, life);
+        for (const p of f.pts.slice(1)) { const q = this.P(p.x, p.y); glowAt(g, COL.blue, q.x, q.y, 2.5 * k, life); }
         g.globalAlpha = 1;
       } else if (f.kind === 'lens') {
-        const x0 = this.X(f.x0), y0 = this.Y(f.y0), x1 = this.X(f.x1), y1 = this.Y(f.y1);
+        const a = this.P(f.x0, f.y0), b = this.P(f.x1, f.y1);
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.7; g.lineWidth = 2 * k * life;
-        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;
-        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); g.globalAlpha = 1;
-        glowAt(g, COL.purple, x1, y1, 3 * k, life);
-
+        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.globalAlpha = 1;
+        glowAt(g, COL.purple, b.x, b.y, 3 * k, life);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
-        glowAt(g, '#ff7a2a', this.X(f.x), this.Y(f.y), f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
+        const q = this.P(f.x, f.y); glowAt(g, '#ff7a2a', q.x, q.y, f.r * k * (0.45 + 0.35 * (1 - life)), life * 0.45);
       }
     }
     // rail targeting laser
     if (s.laserId) {
       const e = s.enemies.find((q) => q.id === s.laserId);
       if (e) {
-        const x = this.X(e.x), y = this.Y(e.y), fl = 0.6 + 0.4 * Math.sin(t * 40);
+        const { x, y } = this.P(e.x, e.y), fl = 0.6 + 0.4 * Math.sin(t * 40);
         g.strokeStyle = COL.purple; g.globalAlpha = 0.5 * fl; g.lineWidth = Math.max(1, 0.6 * k);
-        g.beginPath(); g.moveTo(bx + Math.sin(s.aimAngle) * 8 * k, by - Math.cos(s.aimAngle) * 8 * k); g.lineTo(x, y); g.stroke(); g.globalAlpha = 1;
+        g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(x, y); g.stroke(); g.globalAlpha = 1;
         glowAt(g, COL.purple, x, y, 2.4 * k, fl);
       }
     }

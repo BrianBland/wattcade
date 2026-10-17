@@ -6,10 +6,11 @@ import type { View } from './aliens/layer';
 import { BASE_X, BASE_Y, PADS } from '../sim/defs';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
+import { partPose, posedPoint } from './puppetPose';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
-interface Animation { durationMs: number; frameDurationMs: number; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[] } }
-interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation } }
-const TAU = Math.PI * 2;
+interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; parent?: string } }
+interface Anchor { parent: string; position: number[] }
+interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
 function curve(keys: number[][], ms: number) {
   for (let i = 1; i < keys.length; i++) if (ms <= keys[i][0]) { const a = keys[i - 1], b = keys[i]; return a[1] + (b[1] - a[1]) * (ms - a[0]) / (b[0] - a[0]); }
   return keys[keys.length - 1][1];
@@ -36,32 +37,48 @@ class Puppet {
       }
     });
   }
+  /**
+   * Where a manifest anchor (e.g. `muzzle_gatling`) lands on screen for a puppet drawn at (x, y) with `scale` and aim
+   * `angle`: anchors on aiming parts turn with the aim pivot, exactly as draw() turns those parts. Null if absent.
+   */
+  anchor(name: string, x: number, y: number, scale: number, angle: number, age = 99): { x: number; y: number } | null {
+    const m = this.m, a = m?.anchors?.[name]; if (!m || !a) return null;
+    const [cx, cy] = [m.size[0] / 2, m.size[1] / 2];
+    const { x: px, y: py } = posedPoint(partPose(m.parts, a.parent, { angle, age, revs: 0 }), a.position);
+    return { x: x + (px - cx) * scale, y: y + (py - cy) * scale };
+  }
   draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void }) {
     const m = this.m; if (!m) return false;
     g.save(); g.translate(x, y); g.scale(scale, scale); g.translate(-m.size[0] / 2, -m.size[1] / 2);
-    const aim = (p: Part): boolean => !!p.aims || !!p.parent && aim(m.parts.find(q => q.name === p.parent)!);
+    const attack = !!m.animations && opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
+    const animation = m.animations?.[attack ? 'attack' : 'passive'];
+    const ms = animation ? (attack ? opts.age * 1000 : opts.t * 1000 % animation.durationMs) : 0;
     let riderDrawn = false;
     for (const p of m.parts) {
       if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;
       if (p.z >= 44 && opts.rider && !riderDrawn) { opts.rider(); riderDrawn = true; }
       g.save();
-      if (aim(p)) { const pivot = m.parts.find(q => q.aims)?.pivot ?? p.pivot; g.translate(pivot[0], pivot[1]); g.rotate(opts.angle); g.translate(-pivot[0], -pivot[1]); }
-      if (p.name === 'flywheel') { g.translate(p.pivot[0], p.pivot[1]); g.rotate(opts.revs * TAU); g.translate(-p.pivot[0], -p.pivot[1]); }
-      if (p.recoil) g.translate(0, p.recoil.distancePx * Math.max(0, 1 - opts.age / 0.3));
+      g.transform(...partPose(m.parts, p.name, opts));
       const phase = p.axialSpin ? Math.floor(((opts.revs * 5 % 1) + 1) % 1 * p.axialSpin.frames.length) : 0;
       const file = p.axialSpin?.frames[phase] ?? p.file, glow = p.axialSpin?.frameGlows[phase] ?? p.glow;
       if (!p.emissiveOnly) {
         if (p.name === 'cab' && this.cab) g.drawImage(this.cab, 0, 0);
         else g.drawImage(this.images.get(file)!, p.offset[0], p.offset[1]);
       }
-      if (glow) { g.globalCompositeOperation = 'lighter'; g.globalAlpha *= Math.min(0.6, 0.15 + opts.grid * 0.25); g.drawImage(this.images.get(glow)!, p.offset[0], p.offset[1]); }
+      if (glow) {
+        g.globalCompositeOperation = 'lighter';
+        const gain = animation?.glowGain ? curve(animation.glowGain, ms) : 1;
+        const strength = animation?.glowStrength ? curve(animation.glowStrength, ms) : 1;
+        g.globalAlpha *= Math.min(0.6, (0.15 + opts.grid * 0.25) * gain * strength);
+        g.drawImage(this.images.get(glow)!, p.offset[0], p.offset[1]);
+      }
       g.restore();
     }
-    if (m.animations) {
-      const attack = opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
-      const a = attack ? m.animations.attack : m.animations.passive, ms = attack ? opts.age * 1000 : opts.t * 1000 % a.durationMs;
+    if (animation) {
+      const a = animation;
       const e = a.effect, f = Math.floor(ms / a.frameDurationMs) % e.frames;
       g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha *= curve(a.effectOpacity, ms) * Math.min(1, opts.grid);
+      g.transform(...partPose(m.parts, e.parent, opts));
       g.drawImage(this.images.get(e.file)!, f * e.frameSize[0], 0, e.frameSize[0], e.frameSize[1], e.offset[0], e.offset[1], e.frameSize[0], e.frameSize[1]); g.restore();
     }
     g.restore(); return true;
@@ -69,29 +86,45 @@ class Puppet {
 }
 export class Machinery {
   private outpost: Puppet;
-  private towers: Record<string, Puppet>;
+  private towers: Record<'tesla' | 'lens', Puppet>;
   profile: Readonly<Profile> | null = null;
   readonly loaded: Promise<void>;
-  constructor(base: string) { this.outpost = new Puppet(base, 'outpost'); this.towers = { tesla: new Puppet(base, 'towers/tesla'), mortar: new Puppet(base, 'towers/mortar'), lens: new Puppet(base, 'towers/prism') }; this.loaded = Promise.all([this.outpost.loaded, ...Object.values(this.towers).map(p => p.loaded)]).then(() => {}); }
+  private flamer: Puppet;
+  private mortar: Puppet;
+  constructor(base: string) {
+    this.outpost = new Puppet(base, 'outpost');
+    this.towers = { tesla: new Puppet(base, 'towers/tesla'), lens: new Puppet(base, 'towers/prism') };
+    // The flame tower's own art is pending (docs/towerdefense/art-briefs/FLAMER.md); the Mortar stands in until then.
+    this.flamer = new Puppet(base, 'towers/flamer'); this.mortar = new Puppet(base, 'towers/mortar');
+    this.loaded = Promise.all([this.outpost.loaded, this.mortar.loaded, this.flamer.loaded.catch(() => {}), ...Object.values(this.towers).map(p => p.loaded)]).then(() => {});
+  }
+  private puppet(kind: TowerView['kind']) { return kind === 'flamer' ? (this.flamer.m ? this.flamer : this.mortar) : this.towers[kind]; }
+  /** Towers stay upright on screen; only their aim turns with the field. */
   tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot) {
-    const p = PADS[tw.pad], puppet = this.towers[tw.kind];
-    const ready = puppet.draw(g, v.X(p.x), v.Y(p.y), 8.4 * v.k / 136, { angle: tw.angle, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t });
-    const age = s.t - tw.firedAt;
-    if (ready && tw.kind === 'mortar' && age >= 0 && age < 0.16) glowAt(g, '#ffc38b', v.X(p.x + Math.sin(tw.angle) * 4), v.Y(p.y - Math.cos(tw.angle) * 4), 1.8 * v.k, 0.7 * (1 - age / 0.16));
-    return ready;
+    const p = PADS[tw.pad], at = v.P(p.x, p.y);
+    const puppet = this.puppet(tw.kind);
+    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: puppet === this.mortar ? 99 : s.t - tw.firedAt, t: s.t });
+  }
+  /** Screen position of a tower's nozzle or muzzle: its manifest anchor, else a point just ahead of the pad. */
+  towerMuzzle(tw: TowerView, v: View, t = tw.firedAt + 99) {
+    const p = PADS[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
+    const puppet = this.puppet(tw.kind), age = puppet === this.mortar ? 99 : t - tw.firedAt;
+    return puppet.anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a, age) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
+  }
+  /** Screen position of the outpost's current weapon muzzle, from its manifest anchor. */
+  muzzle(v: View, s: TdSnapshot) {
+    const b = v.P(BASE_X, BASE_Y), name = `muzzle_${s.weapon === 'flame' ? 'flamer' : s.weapon}`, a = s.aimAngle + v.rot;
+    return this.outpost.anchor(name, b.x, b.y, 22 * v.k / 440, a) ?? { x: b.x + Math.sin(a) * 7 * v.k, y: b.y - Math.cos(a) * 7 * v.k };
   }
   base(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
-    const look = this.profile ? riderLook(this.profile) : null;
-    const ready = this.outpost.draw(g, v.X(BASE_X), v.Y(BASE_Y), 22 * v.k / 440, {
-      angle: s.aimAngle, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
+    const look = this.profile ? riderLook(this.profile) : null, b = v.P(BASE_X, BASE_Y);
+    const ready = this.outpost.draw(g, b.x, b.y, 22 * v.k / 440, {
+      angle: s.aimAngle + v.rot, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
       charge: Math.floor(3 * (s.railCharges + s.railProgress) / Math.max(1, s.railMaxCharges)), damage: s.baseHp / s.baseMaxHp < 0.25 ? 2 : s.baseHp / s.baseMaxHp < 0.5 ? 1 : 0, age: 99, t: s.t,
       rider: look ? () => { g.save(); g.beginPath(); g.rect(300, 321, 76, 47); g.clip(); g.translate(338, 366); g.scale(1.7, 1.7); drawRider(g, look, bike.crankRevs, 0, { t: s.t }); g.restore(); } : undefined,
     });
-    const muzzle = s.fx.some(f => ((f.kind === 'tracer' && f.x0 === BASE_X && f.y0 === BASE_Y) || f.kind === 'beam') && s.t - f.t0 < 0.08);
-    if (ready && muzzle) {
-      const reach = s.weapon === 'gatling' ? 7.75 : 6.8;
-      glowAt(g, WEAPON_COLOR[s.weapon], v.X(BASE_X + Math.sin(s.aimAngle) * reach), v.Y(BASE_Y - Math.cos(s.aimAngle) * reach), 2.5 * v.k, 0.8);
-    }
+    const flash = s.fx.some(f => (f.kind === 'tracer' || f.kind === 'beam') && s.t - f.t0 < 0.08) || s.shells.some(sh => sh.k < 0.12);
+    if (ready && flash) { const m = this.muzzle(v, s); glowAt(g, WEAPON_COLOR[s.weapon], m.x, m.y, 2.5 * v.k, 0.8); }
     return ready;
   }
 }

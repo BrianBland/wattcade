@@ -1,5 +1,4 @@
 # Dynamo Defense (towerdefense)
-
 CONTRACT-REQUESTs: none.
 
 ## Seams
@@ -33,6 +32,7 @@ CONTRACT-REQUESTs: none.
 - FTP 200 z2, seeds 1–4, `towerDamageMult` 1.1: passive falls at 29–34 min (w10–12), active 32–58 min; full-run turret share 49–56%. Survival is sensitive near this point (1.15–1.25 gave 28–64 min); needs a dedicated balance pass.
 
 ## Verification and device check
+- Shaped HUD coverage grows the field into clear space between hoods while keeping road sprites, towers, gliders and turret clear; menus keep the conservative band. `node scripts/towerdefense-layout-smoke.mjs` verifies actual geometry in four sizes/both modes; screenshots `/tmp/towerdefense-layout`. Short landscape uses a status column at usable height ≥200px.
 - `npx tsc --noEmit -p .`; `npx vitest run src/games/towerdefense` covers action effects/refill/sprint edges, commander/crew saves, stale/double purchases, mixed input, held Rail cancellation, layout/insets and four-seed passive/active scenarios.
 - `npm run dev -- --port 5203`, then `node scripts/towerdefense-hud-smoke.mjs`: both HUD modes at landscape/portrait/phone/short sizes, mixed upgrades, fills, Rail holds/cancel/toggle and boss boost; screenshots in `/tmp/towerdefense-hud`. The renderer smoke separately covers the no-shell fallback.
 - Interactive harness: `/dev/towerdefense.html?crew=0&legend=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=2` starts a control demo at wave 5 with a reduced Rail laser.

@@ -33,7 +33,7 @@ export class TdRenderer implements GameRenderer {
   private mounted = false;
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
-  private insetB = 0;
+  private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private W = 800; private H = 600; private dpr = 1;
   private L!: TdLayout;
   private bg: HTMLCanvasElement | null = null;
@@ -72,7 +72,7 @@ export class TdRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
     this.mounted = true;
     this.hudControls = !!ctx.hudControls;
-    this.insetB = ctx.insets?.bottom ?? 0;
+    this.insets = ctx.insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
     this.battlefield = new Battlefield(import.meta.env.BASE_URL, () => { this.bg = null; });
@@ -112,7 +112,7 @@ export class TdRenderer implements GameRenderer {
     this.canvas.width = Math.round(this.W * this.dpr); this.canvas.height = Math.round(this.H * this.dpr);
     this.relayout();
   }
-  setInsets(i: Insets) { if (i.bottom !== this.insetB) { this.insetB = i.bottom; this.relayout(); } }
+  setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.relayout(); } }
   unmount() {
     this.mounted = false;
     this.onBlur(); window.removeEventListener('blur', this.onBlur);
@@ -127,7 +127,7 @@ export class TdRenderer implements GameRenderer {
     stopAmbient();
   }
   private relayout() {
-    this.L = layout(this.W, this.H, this.insetB, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
+    this.L = layout(this.W, this.H, this.insets, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
   }
 

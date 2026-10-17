@@ -6,6 +6,7 @@ import { canPause, openingPhase, startTarget } from '../countGate';
 import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer } from '../hud/HudLayer';
+import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
 import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
@@ -95,6 +96,9 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
+    const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
+    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(readInsets()); };
+    window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
     const detachTouch = mount.current ? input.attachTouch(mount.current) : () => {};
@@ -125,7 +129,6 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         debugActions.panic(true); // trainer neutral through the intro and countdown
         renderer = await game.loadRenderer(); rendererRef.current = renderer;
         if (disposed) { renderer.unmount(); return; }
-        const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
         renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
         renderer.setInsets?.(readInsets());
@@ -205,7 +208,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       } catch (e) { if (!disposed) { setLoading(false); setError(e instanceof Error ? e.message : String(e)); } }
     })();
     return () => {
-      disposed = true; detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
+      disposed = true; window.removeEventListener(HUD_LAYOUT_EVENT, hudLayout); detachFakeKeys(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock); cancelAnimationFrame(raf); ro?.disconnect(); offSys(); detachKeys(); detachPad(); detachTouch();
       renderer?.unmount(); rendererRef.current = null; void lock?.release();
       music.current?.engine.setFx({ degrade: 0 }); music.current?.engine.stop(); music.current = null; duckAmbient('music', false);
     };

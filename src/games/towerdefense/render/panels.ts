@@ -51,6 +51,15 @@ const CSS = `
 .td-hud[data-column=true] .td-next { text-align:left; font-size:14px; }
 .td-hud[data-column=true] .td-current b, .td-hud[data-column=true] .td-current.incoming .td-brood b { font-size:20px; line-height:1.15; }
 .td-hud[data-column=true] .td-stat b { font-size:22px; }
+.td-hud[data-compact=true] .td-status, .td-hud[data-compact=true] .td-current { overflow:auto; pointer-events:auto; overscroll-behavior:contain; padding:6px 10px; }
+.td-hud[data-compact=true] .td-status { grid-template-columns:1fr auto; gap:4px 8px; }
+.td-hud[data-compact=true] .td-status > :first-child { grid-column:1 / -1; }
+.td-hud[data-compact=true] .td-stat b { font-size:18px; }
+.td-hud[data-compact=true] .td-stat small, .td-hud[data-compact=true] .td-current small { font-size:10px; letter-spacing:0; }
+.td-hud[data-compact=true] .td-stat small { margin-left:4px; }
+.td-hud[data-compact=true] .td-current, .td-hud[data-compact=true] .td-current.incoming { gap:4px; }
+.td-hud[data-compact=true] .td-current b, .td-hud[data-compact=true] .td-current.incoming .td-brood b { font-size:16px; }
+.td-hud[data-compact=true] .td-current .td-count { font-size:24px; }
 `;
 
 const color = (e: Element) => ({ blue: 'var(--neon)', red: 'var(--bad)', purple: 'var(--pink)' })[e];
@@ -93,6 +102,7 @@ export class TdHud {
   resize(L: TdLayout, W: number) {
     this.root.dataset.narrow = String(W < 560);
     this.root.dataset.column = String(L.column);
+    this.root.dataset.compact = String(L.column && L.UH < 360);
     for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
   }
   render(s: TdSnapshot, L: TdLayout, W: number) {
@@ -105,7 +115,7 @@ export class TdHud {
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
     const forecast = incoming
-      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/3`} · ${bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/3`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
       : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
     this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;

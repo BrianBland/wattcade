@@ -25,6 +25,9 @@ it('announces the incoming brood through recovery, then leaves combat controls t
     expect(strip.textContent).toContain(`${Math.ceil(s.brood.countdownS)}s`);
     expect(hud.root.querySelector('.td-call')).toBeNull();
     expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
+    hud.render({ ...s, set: { ...s.set, role: 'easy' }, brood: { ...s.brood, countdownS: 1, rampS: 15 } }, layout(820, 1180, 160, true), 820);
+    expect(strip.textContent).toContain('Easy · Recovery');
+    expect(strip.textContent).not.toContain('Ramping');
     session.sim.receive!({ type: 'pad', pad: 1, epoch: s.inputEpoch });
     session.step(1);
     expect(draw().workshop).toBeTruthy();

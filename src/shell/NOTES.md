@@ -1,6 +1,7 @@
 # shell + debug (Agent E)
 CONTRACT-REQUEST: none.
 ## Layout
+- HUD Insets retain the conservative bottom band; optional measured child rectangles update on content/legend changes, including in warmup. TD alone opts into shaped coverage. `hud/insets.test.ts` and GameHost tests cover offset/clipping/fallback and same-envelope shape changes.
 - `src/main.tsx` -> `shell/App.tsx` (screen state machine) + `debug/DebugOverlay.tsx`. CSS in `src/styles/main.css`.
 - `shell/services.ts` is the ONLY file importing core/input/progression/devices (adapters, singletons `input`, `dataHub`). Everything else uses it.
 - `shell/screens/`: ProfilePicker, ProfileEditor (+backup export/import), Connect, ArcadeMenu, GameHost, PauseMenu, Summary, Achievements.

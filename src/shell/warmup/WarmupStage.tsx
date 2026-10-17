@@ -12,6 +12,7 @@ import { deliverMenuPresses, setExternalMenuDriver } from '../menuInput';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { DriveInScreen, type DriveInApi } from '../drivein/DriveInScreen';
 import { getDriveIn } from '../drivein/store';
+import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
 
 /** Stop pedalling this long after a creditable ride and it is saved on its own (a fresh ride starts). */
 export const AUTO_SAVE_IDLE_S = 180;
@@ -39,7 +40,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
   const [devKey, setDevKey] = useState(deviceKey);
   const [autoSaves, setAutoSaves] = useState(0);
   const cb = useRef({ onSession, onRideEnded }); cb.current = { onSession, onRideEnded };
-  const readInsets = (): Insets => ({ top: 0, right: 0, left: 0, bottom: probe.current?.offsetHeight ?? 0 });
+  const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
 
   useEffect(() => subscribeDevices(() => setDevKey(deviceKey())), []);
 
@@ -79,6 +80,8 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     wake();
     window.addEventListener('pointerdown', wake); document.addEventListener('visibilitychange', onVis); window.addEventListener('pagehide', checkpointLobby);
     const el = mount.current!;
+    const hudLayout = () => renderer.current?.setInsets?.(readInsets());
+    window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
     const ro = new ResizeObserver(() => { renderer.current?.resize?.(el.clientWidth, el.clientHeight); renderer.current?.setInsets?.(readInsets()); size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 }; });
     ro.observe(el); if (probe.current) ro.observe(probe.current);
 
@@ -116,7 +119,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     };
     raf = requestAnimationFrame(loop);
     return () => {
-      cancelAnimationFrame(raf); ro.disconnect(); setExternalMenuDriver(false);
+      cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener(HUD_LAYOUT_EVENT, hudLayout); setExternalMenuDriver(false);
       detachKeys(); detachPad(); detachFake();
       window.removeEventListener('pointerdown', wake); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', checkpointLobby);
       void lock?.release();

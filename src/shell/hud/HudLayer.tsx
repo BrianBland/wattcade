@@ -6,6 +6,7 @@ import { Hood, PadKey } from './Pad';
 import { buildPad, type PadButton } from './padModel';
 import { ZoneWidget, type ZoneView } from './ZoneWidget';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
+import { HUD_LAYOUT_EVENT } from './insets';
 
 interface Frame { bike: BikeState; hud: GameHud; command?: TrainerCommand | null; held: ReadonlySet<any>; paddles: [number, number]; view: ZoneView; bars: Bar[] }
 
@@ -27,10 +28,14 @@ export function HudLayer({ session, profile, paused, legendOn, fake, menu }: {
   useEffect(() => {
     const el = root.current;
     if (!el) return;
-    const measure = () => document.documentElement.style.setProperty('--hud-content-h', `${Math.max(0, ...[...el.children].map(c => c.getBoundingClientRect().height))}px`);
+    const measure = () => {
+      document.documentElement.style.setProperty('--hud-content-h', `${Math.max(0, ...[...el.children].map(c => c.getBoundingClientRect().height))}px`);
+      window.dispatchEvent(new Event(HUD_LAYOUT_EVENT));
+    };
     const observer = new ResizeObserver(measure);
+    observer.observe(el);
     for (const child of el.children) observer.observe(child); measure();
-    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); };
+    return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); window.dispatchEvent(new Event(HUD_LAYOUT_EVENT)); };
   }, [!!f, legendOn, f?.hud.touchControls?.join(), f?.hud.gears]);
   const hist = useRef(rideHistory);
   const last = useRef({ t: performance.now() });

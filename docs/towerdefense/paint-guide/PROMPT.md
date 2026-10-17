@@ -121,8 +121,8 @@ at generation size; radius 4.8 ± 0.4 units is about 27.31 ± 2.28 px. Do not re
 
 ## Process: rounds
 
-Work on a branch from `td-single-lane` and open a PR into it. Each round goes in
-For the authorized landscape continuation, use #166's branch/PR target as specified in the current handoff above.
+Work on a branch from `td-single-lane` and open a PR into it. For the authorized landscape continuation,
+use #166's branch/PR target as specified in the current handoff above. Each round goes in
 `docs/towerdefense/paint-guide/rounds/<orientation>-<n>/` with:
 1. `painting.png`: the 1024×1536 (or 1536×1024) generation, before upscaling.
 2. A copy of the upscaled production file, also at `public/td/environment/road/<orientation>.webp`:

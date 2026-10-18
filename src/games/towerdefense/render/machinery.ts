@@ -6,11 +6,11 @@ import type { View } from './aliens/layer';
 import { BASE_X, BASE_Y, PADS } from '../sim/defs';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
-import { partPose, posedPoint } from './puppetPose';
+import { levelPosition, partPose, posedPoint } from './puppetPose';
 import { dropPose, dropsFor } from './structureFx';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
-interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; parent?: string } }
-interface Anchor { parent: string; position: number[] }
+interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; offsetsByLevel?: Record<string, number[]>; parent?: string } }
+interface Anchor { parent: string; position: number[]; positionsByLevel?: Record<string, number[]> }
 interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
 function curve(keys: number[][], ms: number) {
   for (let i = 1; i < keys.length; i++) if (ms <= keys[i][0]) { const a = keys[i - 1], b = keys[i]; return a[1] + (b[1] - a[1]) * (ms - a[0]) / (b[0] - a[0]); }
@@ -42,10 +42,10 @@ class Puppet {
    * Where a manifest anchor (e.g. `muzzle_gatling`) lands on screen for a puppet drawn at (x, y) with `scale` and aim
    * `angle`: anchors on aiming parts turn with the aim pivot, exactly as draw() turns those parts. Null if absent.
    */
-  anchor(name: string, x: number, y: number, scale: number, angle: number, age = 99): { x: number; y: number } | null {
+  anchor(name: string, x: number, y: number, scale: number, angle: number, age = 99, level = 1): { x: number; y: number } | null {
     const m = this.m, a = m?.anchors?.[name]; if (!m || !a) return null;
     const [cx, cy] = [m.size[0] / 2, m.size[1] / 2];
-    const { x: px, y: py } = posedPoint(partPose(m.parts, a.parent, { angle, age, revs: 0 }), a.position);
+    const { x: px, y: py } = posedPoint(partPose(m.parts, a.parent, { angle, age, revs: 0 }), levelPosition(a.position, a.positionsByLevel, level));
     return { x: x + (px - cx) * scale, y: y + (py - cy) * scale };
   }
   /** `drop`: parts animating in (a build or an upgrade to `level`), `age` seconds after it happened. */
@@ -87,39 +87,35 @@ class Puppet {
     if (animation) {
       const a = animation;
       const e = a.effect, f = Math.floor(ms / a.frameDurationMs) % e.frames;
+      const offset = levelPosition(e.offset, e.offsetsByLevel, opts.level);
       g.save(); g.globalCompositeOperation = 'lighter'; g.globalAlpha *= curve(a.effectOpacity, ms) * Math.min(1, opts.grid);
       g.transform(...partPose(m.parts, e.parent, opts));
-      g.drawImage(this.images.get(e.file)!, f * e.frameSize[0], 0, e.frameSize[0], e.frameSize[1], e.offset[0], e.offset[1], e.frameSize[0], e.frameSize[1]); g.restore();
+      g.drawImage(this.images.get(e.file)!, f * e.frameSize[0], 0, e.frameSize[0], e.frameSize[1], offset[0], offset[1], e.frameSize[0], e.frameSize[1]); g.restore();
     }
     g.restore(); return true;
   }
 }
 export class Machinery {
   private outpost: Puppet;
-  private towers: Record<'tesla' | 'lens', Puppet>;
+  private towers: Record<TowerView['kind'], Puppet>;
   profile: Readonly<Profile> | null = null;
   readonly loaded: Promise<void>;
-  private flamer: Puppet;
-  private mortar: Puppet;
   constructor(base: string) {
     this.outpost = new Puppet(base, 'outpost');
-    this.towers = { tesla: new Puppet(base, 'towers/tesla'), lens: new Puppet(base, 'towers/prism') };
-    // The flame tower's own art is pending (docs/towerdefense/art-briefs/FLAMER.md); the Mortar stands in until then.
-    this.flamer = new Puppet(base, 'towers/flamer'); this.mortar = new Puppet(base, 'towers/mortar');
-    this.loaded = Promise.all([this.outpost.loaded, this.mortar.loaded, this.flamer.loaded.catch(() => {}), ...Object.values(this.towers).map(p => p.loaded)]).then(() => {});
+    this.towers = { tesla: new Puppet(base, 'towers/tesla'), flamer: new Puppet(base, 'towers/flamer'), lens: new Puppet(base, 'towers/prism') };
+    this.loaded = Promise.all([this.outpost.loaded, ...Object.values(this.towers).map(p => p.loaded)]).then(() => {});
   }
-  private puppet(kind: TowerView['kind']) { return kind === 'flamer' ? (this.flamer.m ? this.flamer : this.mortar) : this.towers[kind]; }
   /** Towers stay upright on screen; only their aim turns with the field. */
   tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot, drop?: { level: number; from: number; built: boolean; age: number }) {
     const p = PADS[tw.pad], at = v.P(p.x, p.y);
-    const puppet = this.puppet(tw.kind);
-    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: puppet === this.mortar ? 99 : s.t - tw.firedAt, t: s.t, drop });
+    const puppet = this.towers[tw.kind];
+    return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t, drop });
   }
   /** Screen position of a tower's nozzle or muzzle: its manifest anchor, else a point just ahead of the pad. */
   towerMuzzle(tw: TowerView, v: View, t = tw.firedAt + 99) {
     const p = PADS[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
-    const puppet = this.puppet(tw.kind), age = puppet === this.mortar ? 99 : t - tw.firedAt;
-    return puppet.anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a, age) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
+    const puppet = this.towers[tw.kind], age = t - tw.firedAt;
+    return puppet.anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a, age, tw.level) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
   }
   /** Screen position of the outpost's current weapon muzzle, from its manifest anchor. */
   muzzle(v: View, s: TdSnapshot) {

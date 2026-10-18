@@ -1,19 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import mortar from '../../../../public/td/towers/mortar/manifest.json';
+import flamer from '../../../../public/td/towers/flamer/manifest.json';
 import outpost from '../../../../public/td/outpost/manifest.json';
-import { partPose, posedPoint } from '../render/puppetPose';
+import { levelPosition, partPose, posedPoint } from '../render/puppetPose';
 
 describe('machinery attachment poses', () => {
-  it('keeps the muzzle on the recoiling barrel in both field orientations', () => {
-    for (const turn of [0, Math.PI / 2]) for (const aim of [-1.2, 0, 0.8]) for (const age of [0, 0.15, 0.3, 1]) {
-      const angle = turn + aim, anchor = mortar.anchors.muzzle;
-      const p = posedPoint(partPose(mortar.parts, anchor.parent, { angle, age, revs: 0 }), anchor.position);
-      const reach = 66 - 8 * Math.max(0, 1 - age / 0.3);
-      expect(p.x).toBeCloseTo(112 + Math.sin(angle) * reach);
-      expect(p.y).toBeCloseTo(112 - Math.cos(angle) * reach);
-      // A nozzle effect strip inherits precisely the barrel's motion, too.
-      const flare = posedPoint(partPose(mortar.parts, 'barrel', { angle, age, revs: 0 }), [112, 46]);
-      expect(flare).toEqual(p);
+  it('keeps the flame origin and tier flare on each upgraded nozzle through aim and pulse', () => {
+    const anchor = flamer.anchors.muzzle;
+    for (const [level, y] of [[1, 64], [2, 64], [3, 51], [4, 51], [5, 44]]) {
+      const tip = levelPosition(anchor.position, anchor.positionsByLevel, level);
+      expect(tip).toEqual([112, y]);
+      for (const animation of Object.values(flamer.animations)) {
+        const e = animation.effect, offset = levelPosition(e.offset, e.offsetsByLevel, level);
+        // The four flare frames share a local hot-tip registration at [12,14].
+        expect([offset[0] + 12, offset[1] + 14]).toEqual(tip);
+        for (const turn of [0, Math.PI / 2]) for (const aim of [-1.2, 0, 0.8]) for (const age of [0, 0.15, 0.3, 1]) {
+          const angle = aim + turn, motion = { angle, age, revs: 0 };
+          const muzzle = posedPoint(partPose(flamer.parts, anchor.parent, motion), tip);
+          const flare = posedPoint(partPose(flamer.parts, e.parent, motion), [offset[0] + 12, offset[1] + 14]);
+          const reach = 112 - y - 2.5 * Math.max(0, 1 - age / 0.3);
+          expect(muzzle.x).toBeCloseTo(112 + Math.sin(angle) * reach);
+          expect(muzzle.y).toBeCloseTo(112 - Math.cos(angle) * reach);
+          expect(flare).toEqual(muzzle);
+          const cable = flamer.anchors.cable;
+          expect(posedPoint(partPose(flamer.parts, cable.parent, motion), cable.position)).toEqual({ x: 177, y: 112 });
+        }
+      }
     }
   });
   it('keeps sockets and the cab fixed while the flywheel spins and weapon aims', () => {

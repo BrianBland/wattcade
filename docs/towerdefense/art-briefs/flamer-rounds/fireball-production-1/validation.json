@@ -1,0 +1,62 @@
+{
+  "source": "docs/towerdefense/art-briefs/flamer-rounds/fireball-production-1/source/head.png",
+  "sourcePixelsUnchanged": true,
+  "partSize": [
+    118,
+    200
+  ],
+  "offset": [
+    200,
+    107
+  ],
+  "pivot": [
+    260,
+    260
+  ],
+  "muzzle": [
+    260,
+    148
+  ],
+  "posesChecked": 480,
+  "unchangedProductionFiles": [
+    "masks/cab_window.png",
+    "parts/belt.png",
+    "parts/belt_glow.png",
+    "parts/cab.png",
+    "parts/cab_glow.png",
+    "parts/damage_1.png",
+    "parts/damage_1_glow.png",
+    "parts/damage_2.png",
+    "parts/damage_2_glow.png",
+    "parts/deck.png",
+    "parts/deck_glow.png",
+    "parts/flywheel.png",
+    "parts/flywheel_glow.png",
+    "parts/gatling_barrels.png",
+    "parts/gatling_barrels_glow.png",
+    "parts/gatling_barrels_phase_1.png",
+    "parts/gatling_barrels_phase_1_glow.png",
+    "parts/gatling_barrels_phase_2.png",
+    "parts/gatling_barrels_phase_2_glow.png",
+    "parts/gatling_barrels_phase_3.png",
+    "parts/gatling_barrels_phase_3_glow.png",
+    "parts/gatling_barrels_phase_4.png",
+    "parts/gatling_barrels_phase_4_glow.png",
+    "parts/gatling_barrels_phase_5.png",
+    "parts/gatling_barrels_phase_5_glow.png",
+    "parts/generator.png",
+    "parts/generator_glow.png",
+    "parts/head_gatling.png",
+    "parts/head_gatling_glow.png",
+    "parts/head_rail.png",
+    "parts/head_rail_glow.png",
+    "parts/rail_cap_1.png",
+    "parts/rail_cap_1_glow.png",
+    "parts/rail_cap_2.png",
+    "parts/rail_cap_2_glow.png",
+    "parts/rail_cap_3.png",
+    "parts/rail_cap_3_glow.png"
+  ],
+  "otherPreviewPixelsUnchanged": true,
+  "productionBytes": 1189713
+}

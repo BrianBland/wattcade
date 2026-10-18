@@ -15,9 +15,10 @@ Owner instruction:
 starting landscape. Use portrait round 3 from #164 as the fixed material/landmark reference; preserve all existing
 portrait production pixels and round history. This authorizes a landscape review round, not final acceptance.
 
-- Start a landscape continuation branch from `codex/td-single-road-finish` (#166), which already contains #164's
-  portrait painting, the current HUD shape layout, and corrected review tooling. Open its PR into
-  `codex/td-single-road-finish`. Keep the portrait PR/history intact; do not merge code into `td-single-lane`.
+- Start a landscape continuation branch from the latest `main`: #163 and #166 have now merged, and
+  `td-single-lane` is deleted. Main contains the round-3 portrait, HUD shape layout and corrected review tooling.
+  Open a landscape-only PR into `main`. Preserve the retained portrait source and avoid restoring removed,
+  bulky historical review outputs. Refresh review images into the new landscape round instead.
 - Read this entire brief, the current `road.ts`, and the round-3 painting/NOTES before generating. Regenerate the
   flat guides from the current code; never trace a screenshot or change the road/pad geometry to fit the art.
 - Keep the same landmarks at the same world positions, expand the larger hive overflow to the right, and relight
@@ -27,6 +28,8 @@ portrait production pixels and round history. This authorizes a landscape review
 - Run `node scripts/td-paint-guide.mjs` against the updated branch and fix all eight clearing flags and visible
   road/shoulder misses. Include the numeric clearing JSON, overlay, sprite mocks, zoom and HUD captures in the round.
 - Check iPad 1180×820 and iPad Pro 1366×1024 in both touch and controller HUD modes, including a legend toggle.
+  Use the current layout: wave/base/scrap at upper left, objective/crew in the middle, brood/forecast at lower left above controls. Older captures
+  that stack both panels at upper left are historical; do not paint landmarks to fit those superseded positions.
   Also inspect short phone landscape 844×390 as a coverage diagnostic. A red coverage frame is a failure to report;
   if the fixed paint box cannot cover a viewport, record its bounds/viewport instead of stretching the road,
   changing `road.ts`, painting a border, or claiming the capture passes.
@@ -34,7 +37,10 @@ portrait production pixels and round history. This authorizes a landscape review
   at most 15 lines of `landscape-1/NOTES.md`; stop with the round ready for owner review. Do not wait to be prompted
   again before generating this authorized first landscape round.
 
-## Inputs (read all of these first)
+## Inputs (regenerate the flat guides first, then read all inputs)
+
+Run `node scripts/td-paint-guide.mjs` with Vite running before reading generated guides/mocks.
+These review images are intentionally untracked; keep only painting sources and numeric measurements in Git.
 
 | File | What it is |
 |---|---|
@@ -46,7 +52,7 @@ portrait production pixels and round history. This authorizes a landscape review
 | `docs/towerdefense/paint-guide/rounds/portrait-3/painting.png` | the fixed portrait reference from #164 |
 | `public/td/outpost/preview.png`, `public/td/towers/preview.png` | machinery the painting must sit under |
 | `src/games/towerdefense/sim/road.ts` | the geometry the guides are drawn from (read only) |
-| `docs/towerdefense/sketches/d-port.png`, `d-land.png` | gameplay sketches with the HUD, for context |
+| `/dev/towerdefense.html?manual=1&sec=531` | current live HUD layout; inspect in portrait/landscape instead of superseded HUD sketches |
 
 Guide colours:
 
@@ -121,8 +127,8 @@ at generation size; radius 4.8 ± 0.4 units is about 27.31 ± 2.28 px. Do not re
 
 ## Process: rounds
 
-Work on a branch from `td-single-lane` and open a PR into it. For the authorized landscape continuation,
-use #166's branch/PR target as specified in the current handoff above. Each round goes in
+The earlier portrait work branched from `td-single-lane`. For the authorized landscape continuation,
+branch from current `main` and target `main`, as specified in the current handoff above. Each round goes in
 `docs/towerdefense/paint-guide/rounds/<orientation>-<n>/` with:
 1. `painting.png`: the 1024×1536 (or 1536×1024) generation, before upscaling.
 2. A copy of the upscaled production file, also at `public/td/environment/road/<orientation>.webp`:

@@ -137,17 +137,7 @@
       "parent": "head_flamer",
       "position": [
         260,
-        136
-      ],
-      "positions": [
-        [
-          238,
-          136
-        ],
-        [
-          281,
-          136
-        ]
+        148
       ]
     },
     "muzzle_rail": {
@@ -368,8 +358,8 @@
       "file": "parts/head_flamer.png",
       "glow": "parts/head_flamer_glow.png",
       "offset": [
-        196,
-        120
+        200,
+        107
       ],
       "pivot": [
         260,
@@ -381,21 +371,22 @@
       "aims": true,
       "registration": {
         "scale": [
-          0.3204819277108434,
-          0.3207207207207207
+          1,
+          1
         ],
         "origin": [
-          197,
-          120
+          200,
+          107
         ],
         "sourcePivot": [
-          196,
-          435
+          60,
+          153
         ],
         "registeredPivot": [
-          259.8144578313253,
-          259.51351351351354
-        ]
+          260,
+          260
+        ],
+        "source": "docs/towerdefense/art-briefs/flamer-rounds/fireball-production-1/source/head.png"
       }
     },
     {

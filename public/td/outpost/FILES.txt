@@ -1,5 +1,6 @@
 FILES.txt
 NOTES.md
+SHA256SUMS.txt
 manifest.json
 masks/cab_window.png
 parts/belt.png

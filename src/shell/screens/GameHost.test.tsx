@@ -5,12 +5,12 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 const mocks = vi.hoisted(() => ({
   session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false) } },
-  raf: vi.fn(() => 1), panic: vi.fn(),
+  raf: vi.fn(() => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
 }));
-vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: () => () => {}, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
+vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
-vi.mock('./PauseMenu', () => ({ PauseMenu: () => null }));
+vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride' }: { onQuit: () => void; quitLabel?: string }) => h('button', { onClick: onQuit }, quitLabel) }));
 vi.mock('../game/ResultBanner', () => ({ ResultBanner: () => null }));
 vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart}: {onStart:()=>void}) => h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
 vi.mock('../components/Toasts', () => ({ toast: vi.fn() }));
@@ -21,11 +21,11 @@ import { HUD_LAYOUT_EVENT } from '../hud/insets';
 let container: HTMLDivElement;
 let resolveReady: () => void, rejectReady: (error: Error) => void;
 let renderer: GameRenderer;
-async function mount() {
+async function mount(id = 'towerdefense') {
   const ready = new Promise<void>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
   renderer = {mount:vi.fn(),setInsets:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
-  const game = {id:'towerdefense',title:'Dynamo Defense',loadRenderer:async()=>renderer} as unknown as GameModule;
-  await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={()=>{}} onAbandon={()=>{}} onRestart={()=>{}} onSave={()=>{}} />,container);});
+  const game = {id,title:'Dynamo Defense',loadRenderer:async()=>renderer} as unknown as GameModule;
+  await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} />,container);});
 }
 beforeEach(()=>{
   vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false);
@@ -69,5 +69,44 @@ describe('renderer loading gate',()=>{
   it('does not start a loop or render after leaving during loading',async()=>{
     await mount(); await act(async()=>render(null,container));await act(async()=>resolveReady());
     expect(renderer.unmount).toHaveBeenCalledOnce();expect(renderer.render).not.toHaveBeenCalled();expect(mocks.raf).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('pause menu exit', () => {
+  async function readyToPlay(id: string) {
+    await mount(id);
+    await act(async () => resolveReady());
+    await act(async () => container.querySelector<HTMLButtonElement>('button')!.click());
+    let now = performance.now();
+    for (let i = 0; i < 12; i++) {
+      now += 250;
+      await act(async () => {
+        const calls = mocks.raf.mock.calls as unknown as [(time: number) => void][];
+        calls[calls.length - 1][0](now);
+      });
+    }
+  }
+  it('finishes an ordinary game instead of sending a garage action', async () => {
+    await readyToPlay('starfighter');
+    await act(async () => mocks.system?.('pause'));
+    expect(container.textContent).toContain('Finish ride');
+    expect(container.textContent).not.toContain('Return to Garage');
+    await act(async () => container.querySelector<HTMLButtonElement>('button:last-child')!.click());
+    expect(mocks.panic).toHaveBeenLastCalledWith(true);
+    expect(container.textContent).not.toContain('Finish ride');
+  });
+  it('keeps the garage action for Dynamo Defense during a run', async () => {
+    await readyToPlay('towerdefense');
+    await act(async () => mocks.system?.('pause'));
+    expect(container.textContent).toContain('Return to Garage · bank parts');
+  });
+  it('exits from the garage after returning during play', async () => {
+    await readyToPlay('towerdefense');
+    mocks.session.sim.inMenu.mockReturnValue(true);
+    await act(async () => mocks.system?.('pause'));
+    expect(container.textContent).toContain('Exit game');
+    await act(async () => container.querySelector<HTMLButtonElement>('button:last-child')!.click());
+    expect(mocks.abandon).toHaveBeenCalledOnce();
   });
 });

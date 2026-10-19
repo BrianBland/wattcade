@@ -2,11 +2,14 @@
 // so the hill on screen is exactly the hill under the wheels (just drawn taller).
 
 /** Loop order tells a little story: down to the beach, under the waves, up through jungle and desert to the volcano, the peaks, and off to the Moon. */
-export const BIOMES = ['countryside', 'seaside', 'underwater', 'jungle', 'desert', 'volcano', 'snow', 'moon'] as const;
+// Append new IDs: existing numeric start indices and lifetime achievement bits
+// continue to name the original eight destinations.
+export const BIOMES = ['countryside', 'seaside', 'underwater', 'jungle', 'desert', 'volcano', 'snow', 'moon', 'autumn', 'marsh', 'market', 'sky'] as const;
 export type BiomeId = (typeof BIOMES)[number];
 export const BIOME_NAMES: Record<BiomeId, string> = {
   countryside: 'Countryside', seaside: 'Seaside', underwater: 'Under the Sea', jungle: 'Jungle', desert: 'Desert Canyon',
   volcano: 'Volcano', snow: 'Snowy Pass', moon: 'The Moon',
+  autumn: 'Autumn Woodland', marsh: 'Marsh Boardwalk', market: 'Night Market', sky: 'Sky Islands',
 };
 
 /** Default metres over which one biome dissolves into the next, centred on the boundary (tunable `warmup.blendM`). */

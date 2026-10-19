@@ -9,7 +9,13 @@ export interface BiomeLook {
   ridge: string;                  // the real-terrain ridge (the road ahead, seen from afar)
   mid: string;                    // mid ground band
   ground: string; groundDark: string;
-  road: string; roadEdge: string; roadKind: 'asphalt' | 'planks' | 'dust';
+  road: string; roadEdge: string; roadKind: 'asphalt' | 'planks' | 'dust' | 'stone';
+  /** Extra structure below the continuous road, following the same grade. */
+  roadStructure?: 'boardwalk' | 'floating';
+  /** Floating worlds leave the rolling ridge and solid mid-ground transparent. */
+  openSky?: boolean;
+  /** Large scenery rooted beside the actual road, painted behind the rider. */
+  roadside?(g: G, w: number, roadY: (x: number) => number, scroll: number, t: number): void;
   stars: number;                  // 0..1 star visibility
   /** Distant scenery band (parallax ~0.05). `u` = layer scroll in px, `y` = band base. */
   backdrop(g: G, w: number, y: number, u: number, t: number): void;
@@ -20,9 +26,9 @@ export interface BiomeLook {
   /** Sky decoration (sun, Earth, ...). */
   celestial(g: G, w: number, h: number, t: number): void;
   /** Ambient flyers/swimmers spawned by the renderer. */
-  actor: 'bird' | 'gull' | 'ufo' | 'fish' | 'parrot' | 'vulture' | 'ember' | 'none';
+  actor: 'bird' | 'gull' | 'ufo' | 'fish' | 'parrot' | 'vulture' | 'ember' | 'skywhale' | 'none';
   /** Weather particles drifting over the scene. */
-  particles?: 'snow' | 'ash' | 'bubbles' | 'fireflies' | 'dust';
+  particles?: 'snow' | 'ash' | 'bubbles' | 'fireflies' | 'dust' | 'leaves';
   /** Also spawns tumbleweeds (desert-like biomes). */
   weeds?: boolean;
   /** 0..1 headlight on / dusk dimming regardless of the real clock (the Drive-In is always dusk). */

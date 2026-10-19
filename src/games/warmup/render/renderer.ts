@@ -15,6 +15,7 @@ import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, t
 import { Soundscape, speedFactor, type SceneId } from './soundscape';
 import { ambientDucked, play, setAmbient, stopAmbient } from '../../../audio/sfx';
 import { makeRng } from '../../../core/rng';
+import { drawRoadStructure } from './biomesNew';
 
 export { mixColor } from './blend';
 
@@ -52,6 +53,7 @@ export class WarmupRenderer implements GameRenderer {
   private lastNow = 0;
   private ambientAt = 0;
   private sounds: Soundscape | null = null;
+  private actorRng: (() => number) | null = null;
   private screen: ScreenRect | null = null;
   private ridge: number[] = [];
   private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;
@@ -167,17 +169,20 @@ export class WarmupRenderer implements GameRenderer {
     const backY = Math.round(UH * 0.5), bu = s.d * PPM * BACK_PARALLAX;
     this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, bu, t));
 
+    const solidGroundWeight = 1 - wsum(l => l.openSky ? 1 : 0);
     // ---- the real road, seen from afar (rolling ridge) ----
     const ridgeBase = Math.round(UH * 0.6), ridgeV = Math.max(0.6, s.hill * s.exaggeration * 0.7);
     const ridgeAt = (x: number) => { const uu = s.d + (x - RX) * RIDGE_M_PER_PX; return ridgeBase - (terr.elev(uu) - elevation) * ridgeV; };
+    g.globalAlpha = solidGroundWeight;
     g.fillStyle = blendColors(scene.map(([l, w]) => [l.ridge, w] as const));
     g.beginPath(); g.moveTo(0, H);
     const ridge = this.ridge;
     for (let x = 0; x <= W; x += 2) { const y = ridgeAt(x); ridge[x / 2] = y; g.lineTo(x, y); }
     g.lineTo(W, H); g.closePath(); g.fill();
-    g.strokeStyle = '#ffffff40'; g.lineWidth = 1; g.beginPath();
+    g.strokeStyle = '#ffffff16'; g.lineWidth = 1; g.beginPath();
     for (let x = 0; x <= W; x += 2) { const y = ridge[x / 2] + 2; if (x === 0) g.moveTo(x, y); else g.lineTo(x, y); }
     g.stroke();
+    g.globalAlpha = 1;
 
     // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----
     let screenBuf: BufRect | null = null;
@@ -195,8 +200,10 @@ export class WarmupRenderer implements GameRenderer {
     for (let x = 0; x < W; x += 2) {
       const lx = x + mu - RX;
       g.fillStyle = band(lx / (PPM * MID_PARALLAX), 'mid');
+      g.globalAlpha = solidGroundWeight;
       const y = Math.round(midY(lx)); g.fillRect(x, y, 2, H - y);
     }
+    g.globalAlpha = 1;
     const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
     this.layer(scene, (l, gg) => {
       for (let k = k0; k <= k1; k++) {
@@ -209,6 +216,14 @@ export class WarmupRenderer implements GameRenderer {
     const weedAtLane = (lane: WeedLane) => this.drawWeeds(g, lane, t, s, RX, roadY, midY, weedW);
     weedAtLane('far');
 
+    // Scenery uses the road's own world coordinates and grade. Extended culling
+    // keeps broad canopies and landmarks visible before their root enters view.
+    for (const [l, weight] of scene) if (l.roadside) {
+      this.sg.clearRect(0, 0, W, H);
+      l.roadside(this.sg, W, x => roadY(s.d + (x - RX) / PPM), s.d * PPM - RX, t);
+      g.globalAlpha = weight; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
+    }
+
     // ---- road + near ground ----
     for (let x = 0; x < W; x++) {
       const dd = s.d + (x - RX) / PPM;
@@ -219,7 +234,17 @@ export class WarmupRenderer implements GameRenderer {
       g.fillStyle = edge; g.fillRect(x, y + 5, 1, 1);
       if (kind === 'asphalt' && Math.floor(dd / 1.5) % 2 === 0) { g.fillStyle = '#f0e6a0'; g.fillRect(x, y + 2, 1, 1); }
       else if (kind === 'planks' && ((dd % 0.8) + 0.8) % 0.8 < 1 / PPM) { g.fillStyle = edge; g.fillRect(x, y, 1, 5); }
+      else if (kind === 'stone' && ((dd % 1.6) + 1.6) % 1.6 < 1 / PPM) { g.fillStyle = edge; g.fillRect(x, y + 1, 1, 4); }
       else if (kind === 'dust' && hash01(Math.floor(dd * PPM)) < 0.2) { g.fillStyle = edge; g.fillRect(x, y + 1 + Math.floor(hash01(x + Math.floor(dd)) * 3), 1, 1); }
+    }
+
+    // Deck supports / floating undersides use the same road profile and blend
+    // as a complete layer at biome boundaries.
+    for (const [l, weight] of scene) if (l.roadStructure) {
+      this.sg.clearRect(0, 0, W, H);
+      drawRoadStructure(this.sg, l.roadStructure, W, H,
+        (x) => roadY(s.d + (x - RX) / PPM), s.d * PPM - RX, t);
+      g.globalAlpha = weight; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
     }
 
     // ---- gateway landmarks at the biome boundaries (centre of each dissolve) ----
@@ -339,30 +364,39 @@ export class WarmupRenderer implements GameRenderer {
       this.nextActorAt = Math.min(this.nextActorAt, t + 2);
     }
     if (t >= this.nextActorAt && kind !== 'none') {
-      const R = Math.random;
+      const R = this.actorRng ??= makeRng(s.terrainSeed ^ 0xb17d);
       const fromLeft = R() < 0.5, dir = fromLeft ? 1 : -1;
-      const n = kind === 'ufo' ? 1 : kind === 'vulture' ? 1 + Math.floor(R() * 2) : kind === 'fish' ? 4 + Math.floor(R() * 6) : kind === 'ember' ? 1 + Math.floor(R() * 3) : 2 + Math.floor(R() * 4);
+      const n = kind === 'ufo' ? 1 : kind === 'skywhale' ? 2 : kind === 'vulture' ? 1 + Math.floor(R() * 2) : kind === 'fish' ? 4 + Math.floor(R() * 6) : kind === 'ember' ? 1 + Math.floor(R() * 3) : 2 + Math.floor(R() * 4);
       const baseY = 18 + R() * UH * (kind === 'fish' ? 0.45 : 0.25);
       const color = kind === 'parrot' ? PARROTS[Math.floor(R() * 4)] : FISH[Math.floor(R() * FISH.length)];
       for (let i = 0; i < n; i++) {
-        const speed = kind === 'ufo' ? 28 + R() * 30 : kind === 'fish' ? 12 + R() * 4 : kind === 'vulture' ? 6 : kind === 'parrot' ? 18 + R() * 6 : 10 + R() * 6;
+        const speed = kind === 'skywhale' ? 7 + R() * 3 : kind === 'ufo' ? 28 + R() * 30 : kind === 'fish' ? 12 + R() * 4 : kind === 'vulture' ? 6 : kind === 'parrot' ? 18 + R() * 6 : 10 + R() * 6;
         if (kind === 'ember') { // lava bombs lobbed from the crater (backdrop, upper right)
           this.actors.push({ kind, x: W * (0.45 + R() * 0.25), y: UH * 0.3, vx: (R() - 0.5) * 50, vy: -50 - R() * 30, t0: t, seed: R(), beamAt: -1, color: '#ff8a2a', leaveAt: -1 });
           continue;
         }
         const jelly = kind === 'fish' && i === 0 && R() < 0.3;
         this.actors.push({
-          kind: jelly ? 'none' : kind, x: (fromLeft ? -20 : W + 20) - i * (kind === 'fish' ? 5 : 7) * dir, y: baseY + (kind === 'fish' ? (R() - 0.5) * 14 : i * 3),
+          kind: jelly ? 'none' : kind === 'skywhale' && i > 0 ? 'bird' : kind, x: (fromLeft ? -20 : W + 20) - i * (kind === 'fish' ? 5 : 7) * dir, y: baseY + (kind === 'fish' ? (R() - 0.5) * 14 : i * 3),
           vx: jelly ? dir * 3 : speed * dir, vy: jelly ? -3 : 0, t0: t, seed: R(), beamAt: kind === 'ufo' && R() < 0.6 ? 0.3 + R() * 0.4 : -1, color: jelly ? '#e8b8ff' : color, leaveAt: -1,
         });
       }
-      this.nextActorAt = t + (kind === 'ufo' ? 9 + R() * 14 : kind === 'ember' ? 2 + R() * 4 : kind === 'fish' ? 4 + R() * 6 : 6 + R() * 10);
+      this.nextActorAt = t + (kind === 'skywhale' ? 28 + R() * 16 : kind === 'ufo' ? 9 + R() * 14 : kind === 'ember' ? 2 + R() * 4 : kind === 'fish' ? 4 + R() * 6 : 6 + R() * 10);
     }
     this.actors = this.actors.filter((a) => a.x > -60 && a.x < W + 60 && a.y < UH + 20 && t - a.t0 < 70 && (a.leaveAt < 0 || t - a.leaveAt < 2.5));
     for (const a of this.actors) {
       const age = t - a.t0, fade = Math.min(1, age / 1.2) * (a.leaveAt < 0 ? 1 : 1 - (t - a.leaveAt) / 2.5);
       g.globalAlpha = fade;
-      if (a.kind === 'ufo') {
+      if (a.kind === 'skywhale') {
+        a.x += a.vx * dt;
+        const y = a.y + Math.sin(age * 0.65 + a.seed * 9) * 3, dir = Math.sign(a.vx), flap = Math.sin(age * 1.3) * 2;
+        g.save(); g.translate(Math.round(a.x), Math.round(y)); g.scale(dir, 1);
+        g.fillStyle = '#8f94c6'; g.beginPath(); g.ellipse(0, 0, 11, 4.5, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#c3c7e2'; g.fillRect(-6, 1, 13, 2);
+        g.fillStyle = '#8f94c6'; g.beginPath(); g.moveTo(-9, 0); g.lineTo(-17, -4 + flap); g.lineTo(-15, 1); g.lineTo(-17, 5 + flap); g.closePath(); g.fill();
+        g.fillStyle = '#747da9'; g.beginPath(); g.moveTo(0, 1); g.lineTo(-2, 6 + flap); g.lineTo(4, 2); g.closePath(); g.fill();
+        g.fillStyle = '#303c68'; g.fillRect(7, -1, 1, 1); g.restore();
+      } else if (a.kind === 'ufo') {
         // hover to beam something up partway across, then zip off
         const frac = a.vx > 0 ? a.x / W : 1 - a.x / W;
         const beaming = a.beamAt > 0 && frac > a.beamAt && frac < a.beamAt + 0.12;
@@ -418,11 +452,12 @@ export class WarmupRenderer implements GameRenderer {
     const scroll = s.d * PPM * 0.6;
     const field = (kind: BiomeLook['particles'], alpha: number) => {
       if (!kind || alpha <= 0.02) return;
-      const n = kind === 'dust' ? 24 : kind === 'fireflies' ? 26 : 70;
+      const n = kind === 'leaves' ? 10 : kind === 'dust' ? 24 : kind === 'fireflies' ? 26 : 70;
       for (let i = 0; i < n; i++) {
         const h1 = hash01(i * 7 + 1), h2 = hash01(i * 7 + 2), h3 = hash01(i * 7 + 3);
         let x: number, y: number, c: string, sz = 1, a = alpha;
-        if (kind === 'snow') { x = wrap(h1 * W - scroll * (0.4 + h3) + Math.sin(t + i) * 4, W); y = wrap(h2 * H + t * (10 + h3 * 14), H); c = '#ffffff'; sz = h3 > 0.7 ? 2 : 1; }
+        if (kind === 'leaves') { x = wrap(h1 * W - scroll * 0.3 + Math.sin(t * 1.5 + i) * 5, W); y = wrap(h2 * H + t * (5 + h3 * 4), H); c = h3 < 0.5 ? '#d59b3e' : '#b96b3c'; sz = 1; }
+        else if (kind === 'snow') { x = wrap(h1 * W - scroll * (0.4 + h3) + Math.sin(t + i) * 4, W); y = wrap(h2 * H + t * (10 + h3 * 14), H); c = '#ffffff'; sz = h3 > 0.7 ? 2 : 1; }
         else if (kind === 'ash') { x = wrap(h1 * W - scroll * 0.5 + Math.sin(t * 0.5 + i) * 6, W); y = wrap(h2 * H + t * (5 + h3 * 6), H); c = h3 > 0.85 ? '#ff8a2a' : '#7a6a6a'; }
         else if (kind === 'bubbles') { x = wrap(h1 * W - scroll * 0.3 + Math.sin(t * 2 + i) * 2, W); y = wrap(h2 * H - t * (8 + h3 * 12), H); c = '#d8f6ffaa'; sz = h3 > 0.8 ? 2 : 1; }
         else if (kind === 'fireflies') { x = wrap(h1 * W - scroll * 0.5 + Math.sin(t * 0.7 + i * 3) * 10, W); y = H * 0.45 + h2 * H * 0.35 + Math.sin(t * 0.9 + i) * 6; c = '#f4ff8a'; a = alpha * (0.15 + 0.85 * night) * Math.max(0, Math.sin(t * (1.5 + h3) + i * 2)); }

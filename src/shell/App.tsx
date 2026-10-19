@@ -12,6 +12,7 @@ import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
 import { Locker } from './screens/Locker';
 import { RewardPick } from './screens/RewardPick';
+import { UnlockReveal } from './screens/UnlockReveal';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
 import { MediaPicker } from './media/MediaPicker';
@@ -143,7 +144,8 @@ export function App() {
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
         onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }} />; break;
-    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
+    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
+    case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>go({name:screen.award.picks>0?'pick':'menu'})}/>; break;
   }
   const inGame = screen.name === 'game';
   const driveInRider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;

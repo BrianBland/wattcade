@@ -41,7 +41,7 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
   const next = nextReward(profile);
   const owned = items.filter((it) => isUnlocked(profile, it)).length;
   return (
-    <div class="screen locker">
+    <div class="screen locker cosmetic-ui">
       <div class="screen-head">
         <div><h1>Locker</h1><div class="sub">Level {profile.level} · {SLOT_NAMES[slot]} {owned}/{items.length}</div></div>
         <span class="spacer" />
@@ -65,11 +65,12 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
             {items.map((it, i) => {
               const un = isUnlocked(profile, it), on = worn[slot] === it.id, f = idx === gridStart + i;
               return (
-                <div key={it.id} class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
-                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <ItemArt it={it} base={base} size="thumb" still lazy road={false} silhouette={!un} />}
-                  <div class="item-name">{un ? it.name : '🔒'}</div>
+                <button type="button" key={it.id} aria-label={`${it.name}${!un ? ', locked' : on ? ', equipped' : ''}`} class={`card item-tile${f ? ' focused' : ''}${un ? '' : ' locked'}${on ? ' on' : ''}`} onFocus={() => setIdx(gridStart + i)} onKeyDown={e => {if(e.key==='Enter')e.stopPropagation();}} onClick={() => { setIdx(gridStart + i); void select(gridStart + i); }}>
+                  {it.slot === 'title' ? <div class="title-tile">{it.id === 'none' ? '—' : it.name}</div> : <ItemArt it={it} base={base} size="thumb" still lazy road={false} />}
+                  <div class="item-name">{it.name}</div>
+                  <div class="item-status">{on ? '✓ Equipped' : un ? 'Owned' : 'Locked'}</div>
                   {!un && <div class="item-hint">{itemHint(it)}</div>}
-                </div>
+                </button>
               );
             })}
           </div>

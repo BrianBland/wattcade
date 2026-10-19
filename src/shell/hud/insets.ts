@@ -12,7 +12,9 @@ export function readHudInsets(surface: HTMLElement | null, probe: HTMLElement | 
   if (!hud) return insets; // first HUD frame has not mounted yet
   const area = surface.getBoundingClientRect();
   if (!area.width || !area.height) return insets;
-  insets.occlusions = [...hud.children].flatMap(child => {
+  // H1 has a continuous opaque band; include its border, padding and safe area.
+  const occupied = hud.classList.contains('hud-ribbon') ? [hud] : [...hud.children];
+  insets.occlusions = occupied.flatMap(child => {
     const r = child.getBoundingClientRect();
     const x = Math.max(0, r.left - area.left), y = Math.max(0, r.top - area.top);
     const right = Math.min(area.width, r.right - area.left), end = Math.min(area.height, r.bottom - area.top);

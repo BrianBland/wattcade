@@ -163,6 +163,8 @@ export interface ControlCooldown { fill: number; ready: boolean; tint?: string; 
 export interface ControlTouch { down: Record<string, unknown>; up?: Record<string, unknown>; cancel?: Record<string, unknown> }
 export interface ControlHint {
   button: ControlTarget; label: string;
+  /** Optional order within the same control family, e.g. left lane before right lane. */
+  displayOrder?: number;
   /** Short on-screen button name; label remains the full help/accessibility description. */
   shortLabel?: string;
   active?: boolean; cooldown?: ControlCooldown; touch?: ControlTouch;

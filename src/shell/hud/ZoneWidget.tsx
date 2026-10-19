@@ -22,8 +22,8 @@ function MetricIcon({ source }: { source: 'power' | 'hr' | 'cadence' | 'clock' |
   </svg>;
 }
 
-export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls, command }: {
-  command?: TrainerCommand | null; gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
+export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls, command, history = true }: {
+  history?: boolean; command?: TrainerCommand | null; gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
 }) {
   // The mixer's last issued command includes difficulty, safety caps and ramps; it is not trainer feedback.
   const trainer = bike.connected && !bike.connected.trainer && !bike.connected.fake ? 'Offline'
@@ -31,9 +31,6 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
     : command?.mode === 'resistance' ? `RES ${Math.round(command.levelPct)}%`
     : command?.mode === 'sim' ? `SIM ${command.gradePct > 0 ? '+' : ''}${command.gradePct.toFixed(1)}%`
     : 'Idle';
-  const maxP = Math.max(1.6 * ftp, 100, ...bars.map((b) => b.power));
-  const hrs = bars.map((b) => b.hr).filter((h): h is number => h != null);
-  const hrMin = Math.min(...hrs, 200), hrMax = Math.max(...hrs, 40);
   const cad = cadenceStatus(bike.cadence3s, cadenceTarget);
   // power-judged targets (short efforts) say how many watts they need, since the bar has switched to power
   const floorW = target?.source === 'power' ? zoneFloorWatts(target.min, ftp) : null;
@@ -41,7 +38,7 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
   const missing = view.source === 'hr' && bike.hr5s == null;
   const status = missing ? 'Waiting for HR' : !target ? `Current Z${view.pos.zone}` : view.pos.zone < target.min ? '↑ Below target' : view.pos.zone > target.max ? '↓ Above target' : '✓ In target';
   const range = target ? (target.min === target.max ? `Z${target.min}` : `Z${target.min}–${target.max}`) : 'Zones';
-  const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
+
   return (
     <div class="zw has-gears">
       <div class="zw-main">
@@ -70,13 +67,20 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
           {!gears && <div class="zw-trainer" aria-label={`Trainer ${trainer}`} title="Trainer: last commanded target (not measured output)">{trainer}</div>}
         </div>
       </div>
-      <div class="zw-history">
-      <div class="zw-chart">
-        {bars.map((b) => <i style={{ height: `${Math.max(2, (b.power / maxP) * 100)}%`, background: ZONE_COLORS[b.zone - 1] }} />)}
-        {hrPts && <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={hrPts} fill="none" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>}
-      </div>
-      </div>
-      {fake && <div class="zw-fake dim" style={{ fontSize: '11px' }}>Fake bike: W/S cadence · E/D power · R/F HR</div>}
+      {history && <RideHistory bars={bars} ftp={ftp} />}
     </div>
   );
+}
+
+/** Shared history chart: collected even while the compact HUD's popover is closed. */
+export function RideHistory({ bars, ftp }: { bars: Bar[]; ftp: number }) {
+  const maxP = Math.max(1.6 * ftp, 100, ...bars.map(b => b.power));
+  const hrs = bars.map(b => b.hr).filter((h): h is number => h != null);
+  const hrMin = Math.min(...hrs, 200), hrMax = Math.max(...hrs, 40);
+  const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
+  return <div class="zw-history" role="img" aria-label="Recent power bars and heart-rate line, last three minutes">
+    <div class="zw-chart">{bars.map((b, i) => <i key={i} style={{ height: `${Math.max(2, b.power / maxP * 100)}%`, background: ZONE_COLORS[b.zone - 1] }} />)}
+      {hrPts && <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={hrPts} fill="none" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>}
+    </div>
+  </div>;
 }

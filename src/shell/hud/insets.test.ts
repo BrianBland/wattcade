@@ -28,3 +28,11 @@ it('uses the rectangular fallback before the HUD mounts or when the warmup HUD i
   Object.defineProperty(probe, 'offsetHeight', { value: 0 });
   expect(readHudInsets(surface, probe)).toEqual({ top: 0, left: 0, right: 0, bottom: 0 });
 });
+
+it('reserves the whole opaque compact ribbon including its border and bottom padding', () => {
+  const surface=document.createElement('div'),probe=document.createElement('div'),hud=document.createElement('div');
+  hud.className='hud hud-ribbon';hud.innerHTML='<div></div><div></div>';document.body.append(surface,probe,hud);
+  Object.defineProperty(probe,'offsetHeight',{value:88});bounds(surface,0,0,1180,820);bounds(hud,0,732,1180,88);
+  bounds(hud.children[0] as HTMLElement,8,734,1164,50);bounds(hud.children[1] as HTMLElement,8,784,1164,32);
+  expect(readHudInsets(surface,probe).occlusions).toEqual([{x:0,y:732,w:1180,h:88}]);
+});

@@ -99,3 +99,15 @@ it('draws a game cooldown on the key: partial fill tinted by effort, then a read
   expect(el.querySelector('button')?.getAttribute('aria-label')).toBe('Strike the enemy');
   render(null, el);
 });
+
+
+it('keeps physical button letters and gear shifters visible in the read-only controller diagram', () => {
+  const el=document.createElement('div');
+  const pad=buildPad([{button:'a',label:'Construction'},{button:'b',label:'Overcharge'},{button:'y',label:'Slow field'},{button:'z',label:'Rail'}],true);
+  render(<Hood side="R" model={pad.right} held={new Set()} paddle={0} disabled reference />,el);
+  expect([...el.querySelectorAll('.face button')].map(b=>b.textContent)).toEqual(['Y','Z','A','B']);
+  expect(el.querySelector('[aria-label="A: Construction"]')).not.toBeNull();
+  expect(el.querySelectorAll('.shift button')).toHaveLength(2);
+  expect([...el.querySelectorAll('button')].every(b=>(b as HTMLButtonElement).disabled)).toBe(true);
+  render(null,el);
+});

@@ -88,3 +88,27 @@ it('uses one set of filled controls in either the legend or the HUD blocks, and 
     show(false, true); expect([...el.querySelectorAll<HTMLButtonElement>('.hud-actions button')].every(b => b.disabled)).toBe(true);
   } finally { act(() => render(null, el)); vi.unstubAllGlobals(); vi.useRealTimers(); }
 });
+
+it('keeps fake bike help and optional history outside the measured HUD, with independent menu access', () => {
+  vi.useFakeTimers();vi.stubGlobal('ResizeObserver',class {observe(){}disconnect(){}});
+  const el=document.createElement('div');document.body.append(el);
+  const bike={power3s:190,ftpFraction:.95,hr5s:145,cadence3s:85,activeSeconds:300,gear:8} as BikeState;
+  const hud:GameHud={controls:[{button:'a',label:'Build'},{button:'down',label:'Workshop'},{button:'left',label:'Closer'},{button:'right',label:'Further'},{button:'b',label:'Overcharge'},{button:'y',label:'Slow field'},{button:'z',label:'Rail'}]};
+  const session={ctx:{bike:()=>bike},sim:{hud:()=>hud}} as unknown as SessionLike;
+  const profile={ftp:200,maxHr:190,settings:{zoneSource:'auto'}} as Profile;
+  try {
+    act(()=>render(<HudLayer session={session} profile={profile} paused={false} legendOn fake />,el));
+    act(()=>{vi.advanceTimersByTime(2100);});
+    expect([...el.querySelectorAll('.hud .dpad [data-control]')].map(b=>b.getAttribute('data-control'))).toEqual(['left','right','down']);
+    expect([...el.querySelectorAll('.hud .face [data-control]')].map(b=>b.getAttribute('data-control'))).toEqual(['a','b','y','z']);
+    expect(el.querySelector('.hud .zw-history')).toBeNull();expect(el.querySelector('.hud .fake-bike-help,.hud .zw-fake')).toBeNull();
+    act(()=>el.querySelector<HTMLButtonElement>('[aria-label="Controller guide"]')!.click());
+    expect(el.querySelector('.hud-guide .fake-bike-help')?.textContent).toContain('W / S');
+    expect(el.querySelector('.hud')!.contains(el.querySelector('.hud-peek'))).toBe(false);
+    act(()=>el.querySelector<HTMLButtonElement>('[aria-label="Recent effort history"]')!.click());
+    expect(el.querySelector('.hud-peek .zw-history .zw-chart i')).not.toBeNull();
+    expect(el.querySelector('.hud-menu-hit')?.getAttribute('aria-label')).toBe('Open game menu');
+    act(()=>el.querySelector<HTMLButtonElement>('[aria-label="Close HUD panel"]')!.click());
+    expect(el.querySelector('.hud-peek')).toBeNull();
+  }finally{act(()=>render(null,el));el.remove();vi.useRealTimers();vi.unstubAllGlobals();}
+});

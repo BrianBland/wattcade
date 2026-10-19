@@ -1,18 +1,13 @@
-# Shared HUD
+# Shared HUD / H1 compact ribbon
 
-- The center panel is a single native menu button hit area, supporting touch/click and keyboard focus/activation. Controller hoods remain separate and independent.
-- Game start shows a short menu-discovery toast. In the lobby the HUD opens/wakes the arcade menu; End ride remains an explicit arcade-menu action.
-- Power, HR, cadence, ride time, and optional gear share one icon/number row on non-phone layouts. Units remain in tooltips and accessible labels.
-- A colored heart/bolt sits beside the zone meter; amber indicates off-target effort, dim indicates missing HR.
-- The target outline, dimmed outside zones, and current-position marker remain. Effort labels align under Z1.
-- The zone bar and history graph share exact left/right edges.
-- Cadence target range sits below measured rpm with up/down guidance; repeated units, extra tips, and difficulty are omitted.
-- Duplicate gear buttons are removed. Assigned hood shifters handle touch gearing and show current gear above them; the HUD retains its optional gear reading even with legends hidden.
-- Dungeon uses left gearing and right Dash/Potion; both sides shift in games using both for gears.
-- Controller legends retain original --k: min(64px, 7vw, 8.6vh) dimensions.
-- HudLayer measures the center, hoods and action blocks so renderer insets reserve their actual maximum height plus safe-area padding.
-- PR screenshots use deterministic HR/power targets, cadence guidance, gears, and 90 history bars.
-- Validation: TypeScript, shell/core/inset tests, build, Chromium menu taps/keyboard/shifter isolation, reading containment, and exact meter/history alignment at five viewport sizes.
-- Keys can show a game cooldown (`ControlHint.cooldown`: fill 0..1, ready, effort tint, flourish): `.pk.cd` fills bottom-to-top in the tint, stays dark until ready, glows when ready (dim if ready but `active: false`), ember edge when flourish > 0.6. Games build it with `core/cooldown.ts` (`readyFrac`, `effortTint`, `effortFlourish`).
-- Games can opt into `GameHud.touchControls`: hidden legends show those controls as 44+ px HUD blocks, visible legends show only the filled controller keys. Dynamo Defense passes `mount.hudControls` to reclaim its separate dock space.
-- `ControlHint.touch` carries semantic down/up/cancel commands, preserving the initial quote/epoch. Captured holds cancel on drag, lost capture, blur/visibility, mapping changes, pause and legend switches; ordinary keys still use InputHub.
+- One instrument row, then a linear control row. Directions stay on the left, face actions on the right; custom shifter actions and analog paddle hints keep separate labels. No circular diamonds in the permanent overlay.
+- Default family order: left/right, up/down; face A/B/Y/Z; shifter minus/plus. `ControlHint.displayOrder` can override order within a family for semantic pairs. Cadenza explicitly shows Z Left then A Right. It cannot mix arrow and face families.
+- Build from the live `GameHud.controls`, not a TD-specific list. All eight games' menu/play models are checked. Inactive actions retain their place, full names, state and cooldown. Merged D-pad/shifter hints get one caption and individual keys; separately mapped arrows keep separate labels. Cadenza/Watershed advertise only their used left/right steering arrows in play; menus retain full navigation.
+- `legendOn` is the persisted Controller/Touch layout choice. Touch uses curated `GameHud.touchControls` where provided; otherwise it retains the game's full mapping. Named shifter actions remain accessible. Gears are shown once, beside their metric, and yield to the commanded ERG/SIM/resistance reading when not available.
+- Keep zone source/threshold logic in `zoneMath`: power-judged efforts force power; missing HR has no current marker. Current numbers, target band, current marker and cadence direction/range stay visible.
+- History collection spans lobby/game/lobby and continues while hidden. History has its own hover/focus/tap target, Pin/Close, outside dismissal and Escape. Pause → History gives controller access without stealing an existing game button. Menu is a separate button; instrument taps no longer pause the game.
+- The controller guide retains the physical diagram and every mapping, including late-listed arrows/paddles/shifters. Game control keys are disabled in the guide; it is reference, not a second set of actionable buttons.
+- Fake-bike keyboard instructions live in Pause and the controller guide only. They never participate in HUD layout or renderer insets.
+- `HudLayer` paints the first sample immediately and measures in a layout effect, then updates readings at 10 Hz. The ribbon has natural responsive height; ResizeObserver publishes its full measured size including borders, wrapping and safe-area padding. `readHudInsets` treats H1 as one opaque occupied rectangle. Peeks are siblings and never change this inset.
+- Pointer holds reuse `PadKey`'s original semantic down/up/cancel handling, captured quote/epoch, and cancellation on lost capture, drag, blur, mapping changes and pause. Only presentation changes.
+- Targeted shell/HUD tests, all-game viewport checks (`scripts/check-compact-hud.mjs`) and TD touch/hold checks (`scripts/towerdefense-hud-smoke.mjs`) cover the implementation. Native iPad/Bluefy and physical Ride-controller checks remain a device validation step.

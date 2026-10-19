@@ -5,7 +5,7 @@ import { ProgramSync } from '../../media/clock';
 import { canPause, openingPhase, startTarget } from '../countGate';
 import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
-import { HudLayer } from '../hud/HudLayer';
+import { HudLayer, PauseHistory } from '../hud/HudLayer';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
 import { loadFlag, saveFlag } from '../../debug/flag';
 import { PauseMenu } from './PauseMenu';
@@ -39,6 +39,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const probe = useRef<HTMLDivElement>(null); // sized by --hud-h: the band the HUD covers
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
+  const [history, setHistory] = useState(false);
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -65,7 +66,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const setPause = (p: boolean) => {
     if (loadingRef.current) return;
     if (!canPause(phaseRef.current)) return;
-    pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setPauseFocus(0); }
+    pausedRef.current = p; setPaused(p); if (!p) { setHelp(false); setHistory(false); setPauseFocus(0); }
     const s = sessionRef.current; if (!s) return;
     if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
     if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
@@ -80,7 +81,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
     const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
-    pausedRef.current = false; setPaused(false); setHelp(false);
+    pausedRef.current = false; setPaused(false); setHelp(false); setHistory(false);
     debugActions.panic(true);
     if (music.current) { music.current.engine.setVolume(0); setTimeout(() => music.current?.engine.stop(), 1500); }
     let summary: Record<string, number | string> = {};
@@ -173,7 +174,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
               debugActions.panic(false); session.mixer?.rampIn();
               void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
               setPhase('play');
-              toast('Tap the HUD for the menu');
+              toast('Tap Menu for ride options');
               setTimeout(() => setCount(null), 700);
             }
           } else if (ph === 'play') {
@@ -233,8 +234,9 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           onStart={startCount} onBack={() => leave(onAbandon)} />
       )}
       {paused && help && session && <IntroHelp game={game} hud={hud} profile={profile} onClose={() => setHelp(false)} />}
-      {paused && !help && (
-        <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
+      {paused && history && <PauseHistory ftp={profile.ftp} onClose={() => setHistory(false)} />}
+      {paused && !help && !history && (
+        <PauseMenu fake={isFake()} onHistory={() => { setPauseFocus(5); setHistory(true); }} legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
           onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
           {...(phase === 'menu' ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
             : phase === 'play' && session && !session.sim.inMenu?.() ? { quitLabel: 'Return to Garage · bank parts', onQuit: () => { session.sim.receive?.({ type: 'bail' }); setPause(false); } }

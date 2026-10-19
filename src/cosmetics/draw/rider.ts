@@ -2,7 +2,7 @@ import type { RiderLook } from '../types';
 import { BIKES, paintAt, type BikeCtx, type BikeDef, type WheelOpts } from './bikes';
 import { drawHat, FULL_HEAD } from './hats';
 import { drawCape, drawTorso, legsOf } from './jersey';
-import { circle, joint, line, rect, SKIN, TAU, type G, type P } from './prims';
+import { circle, joint, line, poly, rect, shade, SKIN, TAU, type G, type P } from './prims';
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
 
@@ -21,7 +21,60 @@ export interface RiderOpts {
  * Side-on rider on their bike, around the ground point (0,0), facing +x, ~24 px tall.
  * `crank` in revolutions (legs), `wheelM` metres travelled (wheels).
  */
+// A fixed sprite grid keeps the world, large menu portraits and cab rider in the
+// same art style. Two samples per rider unit preserve small hat details; the
+// world's existing low-res buffer selects its native samples without smoothing.
+// Reuse one surface per destination, rather than allocating during animation.
+const SPRITE = { x: -110, y: -54, w: 154, h: 72, density: 2 };
+const surfaces = new WeakMap<G, { canvas: HTMLCanvasElement; g: G }>();
+const cutouts = new WeakMap<G, { canvas: HTMLCanvasElement; g: G }>();
+const CUTOUT = { x: -24, y: -49, w: 48, h: 61, density: 2 };
+const TRANSLUCENT_HATS = new Set(['halo', 'lamp', 'bubble']);
+
+/** Threshold coverage on the solid character only. Glass, trails and glows keep
+ * their intentional transparency in separate passes. Nearest-neighbor scaling
+ * alone cannot remove Canvas's antialiased polygon edges. */
+function drawCutout(g: G, paint: (ctx: G) => void) {
+  if (typeof document === 'undefined') { paint(g); return; }
+  let s = cutouts.get(g);
+  if (!s) {
+    const canvas = document.createElement('canvas');
+    canvas.width = CUTOUT.w * CUTOUT.density; canvas.height = CUTOUT.h * CUTOUT.density;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    s = { canvas, g: ctx }; cutouts.set(g, s);
+  }
+  const p = CUTOUT, ctx = s.g;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, s.canvas.width, s.canvas.height);
+  ctx.setTransform(p.density, 0, 0, p.density, -p.x * p.density, -p.y * p.density);
+  paint(ctx);
+  const pixels = ctx.getImageData(0, 0, s.canvas.width, s.canvas.height);
+  for (let i = 3; i < pixels.data.length; i += 4) pixels.data[i] = pixels.data[i] >= 128 ? 255 : 0;
+  ctx.putImageData(pixels, 0, 0);
+  g.save(); g.imageSmoothingEnabled = false; g.drawImage(s.canvas, p.x, p.y, p.w, p.h); g.restore();
+}
+
 export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, o: RiderOpts = {}) {
+  // The pure drawing smoke tests also run in Node without a DOM.
+  if (typeof document === 'undefined') { paintRider(g, look, crank, wheelM, o); return; }
+  let surface = surfaces.get(g);
+  if (!surface) {
+    const canvas = document.createElement('canvas');
+    canvas.width = SPRITE.w * SPRITE.density; canvas.height = SPRITE.h * SPRITE.density;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    surface = { canvas, g: ctx }; surfaces.set(g, surface);
+  }
+  const s = surface.g, p = SPRITE;
+  s.setTransform(1, 0, 0, 1, 0, 0); s.clearRect(0, 0, surface.canvas.width, surface.canvas.height);
+  s.setTransform(p.density, 0, 0, p.density, -p.x * p.density, -p.y * p.density);
+  paintRider(s, look, crank, wheelM, o);
+  g.save(); g.imageSmoothingEnabled = false;
+  g.drawImage(surface.canvas, p.x, p.y, p.w, p.h);
+  g.restore();
+}
+
+function paintRider(g: G, look: RiderLook, crank: number, wheelM: number, o: RiderOpts) {
   const t = o.t ?? 0, speed = o.speed ?? 0;
   const def: BikeDef = BIKES[look.bike] ?? BIKES.road;
   const c = bikeCtx(g, look, crank, wheelM, t, speed);
@@ -60,6 +113,18 @@ function bikeCtx(g: G, look: RiderLook, crank: number, wheelM: number, t: number
   return c;
 }
 
+/** The actual bike art without its rider, pet or trail, for item shelves. */
+export function drawBikeItem(g: G, look: RiderLook, t: number, wheels = true) {
+  const def = BIKES[look.bike] ?? BIKES.road;
+  const c = bikeCtx(g, look, .18, t * 4.5, t, 6);
+  if (!wheels) c.wheel = () => {};
+  g.save();
+  if (def.bob) g.translate(0, def.bob(c));
+  if (def.tilt) g.rotate(def.tilt(c));
+  def.frameDraw(c); def.front?.(c); def.over?.(c);
+  g.restore();
+}
+
 function wheel(c: BikeCtx, x: number, y: number, r: number, o: WheelOpts) {
   const g = c.g;
   if (o.disc) {
@@ -69,43 +134,87 @@ function wheel(c: BikeCtx, x: number, y: number, r: number, o: WheelOpts) {
   }
   const tyre = o.tyre ?? 1.6;
   g.strokeStyle = o.color ?? '#1b1b22'; g.lineWidth = tyre; g.beginPath(); g.arc(x, y, r, 0, TAU); g.stroke();
+  // Narrow metal rim and fine spokes leave open negative space inside the tyre.
+  g.strokeStyle = '#aab6c7'; g.lineWidth = 0.5;
+  g.beginPath(); g.arc(x, y, r - tyre * 0.4, 0, TAU); g.stroke();
   if (o.white) { g.strokeStyle = '#f5f5fa'; g.lineWidth = 0.5; g.beginPath(); g.arc(x, y, r - tyre * 0.45, 0, TAU); g.stroke(); }
   if (o.knobby) for (let i = 0; i < 12; i++) { const a = c.spin + (i * TAU) / 12; circle(g, '#1b1b22', x + Math.cos(a) * (r + tyre * 0.45), y + Math.sin(a) * (r + tyre * 0.45), 0.35); }
   const n = o.spokes ?? 3;
-  g.strokeStyle = '#c8c8d0'; g.lineWidth = 0.6;
+  g.strokeStyle = '#c5cdd8'; g.lineWidth = 0.6;
   for (let i = 0; i < n; i++) {
     const a = c.spin + (i * Math.PI) / n;
     g.beginPath(); g.moveTo(x - Math.cos(a) * r, y - Math.sin(a) * r); g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); g.stroke();
   }
+  rect(g, '#7e899b', x - 0.5, y - 0.5, 1, 1);
+}
+
+/** Flat, tapered limb with squared ends rather than a rounded capsule. */
+function limb(g: G, color: string, a: P, b: P, width: number, tip = width) {
+  const d = Math.max(0.01, Math.hypot(b[0] - a[0], b[1] - a[1]));
+  const nx = -(b[1] - a[1]) / d / 2, ny = (b[0] - a[0]) / d / 2;
+  poly(g, color, [a[0] + nx * width, a[1] + ny * width], [b[0] + nx * tip, b[1] + ny * tip],
+    [b[0] - nx * tip, b[1] - ny * tip], [a[0] - nx * width, a[1] - ny * width]);
 }
 
 function body(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker', o: RiderOpts) {
+  drawCutout(c.g, (g) => bodyShapes(bikeCtx(g, look, c.th / TAU, c.spin * 0.34, c.t, c.speed), look, def, who));
+  const head = headAt(def);
+  c.g.save(); c.g.translate(head[0], head[1]);
+  if (who === 'rider' && TRANSLUCENT_HATS.has(look.hat)) drawHat(c.g, look.hat, { t: c.t, color: look.color, speed: c.speed, crank: c.th / TAU });
+  if (who === 'rider' && o.gear) gear(c.g, o.gear, c.t);
+  c.g.restore();
+  if (who === 'rider') def.over?.(c);
+}
+
+function headAt(def: BikeDef): P {
+  const sh: P = [def.hip[0] + 8 * Math.sin(def.lean), def.hip[1] - 8 * Math.cos(def.lean)];
+  // Anchor the small facial features to the sprite grid. The head stays steady
+  // while the feet/knees move continuously through the crank's full phase.
+  return [Math.round((sh[0] + 3.8 * Math.sin(def.lean * 0.45) + 0.8) * 2) / 2,
+    Math.round((sh[1] - 3.8 * Math.cos(def.lean * 0.45)) * 2) / 2];
+}
+
+function bodyShapes(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker') {
   const g = c.g, t = c.t, j = look.jersey, legs = legsOf(j);
   const hip = def.hip, lean = def.lean;
   const sh: P = [hip[0] + 8 * Math.sin(lean), hip[1] - 8 * Math.cos(lean)];
-  const hl = lean * 0.55, head: P = [sh[0] + 3.4 * Math.sin(hl) + 0.6, sh[1] - 3.4 * Math.cos(hl)];
+  const head = headAt(def);
   const feet = footPoints(c, def);
   const leg = (foot: P, near: boolean) => {
     const k = joint(hip, foot, 6.4, 6.6, 1);
-    line(g, near ? legs.thigh : shadeLeg(legs.thigh), 2.2, hip, k);
-    line(g, legs.shin ? (near ? legs.shin : shadeLeg(legs.shin)) : near ? SKIN : '#c49a6c', 2, k, foot);
-    line(g, '#222', 1.6, [foot[0] - 1, foot[1]], [foot[0] + 1.2, foot[1]]);
+    const thigh = near ? legs.thigh : shade(legs.thigh, 0.65);
+    const shin = legs.shin ?? SKIN;
+    limb(g, near ? shin : shade(shin, 0.72), k, foot, 2, 1.6);
+    limb(g, near ? shin : shade(shin, 0.72), hip, k, 2.8, 2.3);
+    const shortsEnd: P = legs.shin ? k : [hip[0] + (k[0] - hip[0]) * 0.55, hip[1] + (k[1] - hip[1]) * 0.55];
+    limb(g, thigh, hip, shortsEnd, 3.5, 3.1);
+    rect(g, '#182132', foot[0] - 1, foot[1] - 0.7, 2.8, 1.3);
+    if (near) rect(g, '#aab8c7', foot[0] - 0.8, foot[1] + 0.4, 2.4, 0.4);
   };
   if (who === 'rider') drawCape(g, j, sh, t, c.speed);
   leg(feet[1], false);
   if (who === 'rider') def.frameDraw(c);
   leg(feet[0], true);
+  limb(g, SKIN, sh, [head[0] - 0.5, head[1] + 2], 1.8);
   drawTorso(g, j, hip, sh, t);
-  const elbow = joint(sh, def.hand, 3.6, 3.8, -1);
-  line(g, SKIN, 1.6, elbow, def.hand); line(g, j.base, 2, sh, elbow);
+  const elbow = joint(sh, def.hand, 4.1, 4.3, -1);
+  limb(g, SKIN, sh, elbow, 2.4, 2.1);
+  limb(g, SKIN, elbow, def.hand, 2.1, 1.7);
+  const cuff: P = [sh[0] + (elbow[0] - sh[0]) * 0.65, sh[1] + (elbow[1] - sh[1]) * 0.65];
+  limb(g, j.base, sh, cuff, 3.1, 2.7);
+  rect(g, '#182132', def.hand[0] - 0.5, def.hand[1] - 0.5, 1.5, 1.3);
   if (who === 'rider') def.front?.(c);
   g.save(); g.translate(head[0], head[1]);
-  if (!FULL_HEAD.has(look.hat) || who === 'stoker') circle(g, SKIN, 0, 0, 2.4);
+  if (!FULL_HEAD.has(look.hat) || who === 'stoker') {
+    poly(g, SKIN, [-2.4, -2.5], [1.7, -2.5], [2.8, -1.5], [2.8, -0.3], [3.3, 0.2],
+      [2.8, 0.7], [2.8, 1.7], [1.3, 2.7], [-1.5, 2.5], [-2.8, 1]);
+    rect(g, '#273043', -2.7, -2.2, 0.9, 2.4);
+    rect(g, '#d9a46b', -2, 0, 0.5, 1);
+    rect(g, '#182132', 1.5, -1, 0.5, 1);
+  }
   if (who === 'stoker') drawHat(g, 'road', { t, color: look.color, speed: c.speed, crank: c.th / TAU });
-  else drawHat(g, look.hat, { t, color: look.color, speed: c.speed, crank: c.th / TAU });
-  if (who === 'rider' && o.gear) gear(g, o.gear, t);
+  else if (!TRANSLUCENT_HATS.has(look.hat)) drawHat(g, look.hat, { t, color: look.color, speed: c.speed, crank: c.th / TAU });
   g.restore();
-  if (who === 'rider') def.over?.(c);
 }
 
 /** Near and far foot positions for the bike's leg style. */
@@ -122,7 +231,6 @@ function footPoints(c: BikeCtx, def: BikeDef): [P, P] {
   const bb = def.bb ?? [0, -5], cr = def.cr ?? 2.8, f = (a: number): P => [bb[0] + Math.cos(a) * cr, bb[1] + Math.sin(a) * cr];
   return [f(th), f(th + Math.PI)];
 }
-const shadeLeg = (c: string) => (c === '#22222b' ? '#15151c' : c);
 
 /** Warm-up biome gear, drawn over the hat in head space. */
 function gear(g: G, kind: 'bubble' | 'scuba', t: number) {

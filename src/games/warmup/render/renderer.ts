@@ -47,6 +47,8 @@ export class WarmupRenderer implements GameRenderer {
   private look: RiderLook | null = null;
   private terrain: { key: string; t: Terrain } | null = null;
   private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
+  private crankSample = NaN; private crankSampleAt = 0;
+  private distanceSample = NaN; private distanceSampleAt = 0;
   private weeds: Weed[] = []; private nextWeedAt = 0; private weedRng: (() => number) | null = null;
   private lastBiome: string | null = null; private lastDriveIn = false; private titleAt = -99; private title = '';
   private texts: Text[] = [];
@@ -275,7 +277,16 @@ export class WarmupRenderer implements GameRenderer {
     if (lights > 0.3) { // headlight
       g.fillStyle = `rgba(255,244,200,${0.18 * lights})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
     }
-    drawRider(g, look, bike.crankRevs, s.d, { t, speed: s.v, gear: gear === 'road' ? null : gear, trailer: di > 0.5 });
+    // Trainer samples arrive at the fixed sim rate. Extrapolate at most one
+    // tick using raw cadence so a 60 Hz display doesn't repeat every pose twice.
+    // Stopped cadence freezes the feet immediately rather than using a 3s tail.
+    if (bike.crankRevs !== this.crankSample) { this.crankSample = bike.crankRevs; this.crankSampleAt = t; }
+    const crank = bike.crankRevs + Math.min(1 / 30, Math.max(0, t - this.crankSampleAt)) * Math.max(0, bike.raw.cadence) / 60;
+    // Distance has its own clock: wheels keep turning smoothly while coasting
+    // after cadence (and therefore the crank sample) has stopped changing.
+    if (s.d !== this.distanceSample) { this.distanceSample = s.d; this.distanceSampleAt = t; }
+    const wheelDistance = s.d + Math.min(1 / 30, Math.max(0, t - this.distanceSampleAt)) * s.v;
+    drawRider(g, look, crank, wheelDistance, { t, speed: s.v, gear: gear === 'road' ? null : gear, trailer: di > 0.5 });
     g.restore();
     weedAtLane('near');
 

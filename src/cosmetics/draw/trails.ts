@@ -29,6 +29,15 @@ function stream(c: TrailCtx, k: number, rate: number, len: number, each: (i: num
 const alpha = (g: G, a: number, k: number) => { g.globalAlpha = Math.max(0, (1 - a) * k); };
 
 const TRAILS: Record<string, (g: G, c: TrailCtx, k: number) => void> = {
+  lightcycle: (g, c, k) => {
+    const len = 18 + k * 28;
+    for (let i = 0; i < len; i += 2) {
+      const fade = (1 - i / len) * k;
+      g.globalAlpha = fade * .28; rect(g, c.color, c.x0 - i - 2, -7, 2, 5);
+      g.globalAlpha = fade * .9; rect(g, c.color, c.x0 - i - 2, -5.5, 2, 2);
+      g.globalAlpha = fade; rect(g, '#e6ffff', c.x0 - i - 2, -5, 2, .5);
+    }
+  },
   sparks: (g, c, k) => stream(c, k, 1.6, 22, (i, a, x, y) => { alpha(g, a, k); rect(g, i % 3 ? '#ffd23b' : '#ff8a1a', x, y + a * a * 6, 0.7, 0.7); }),
   bubbles: (g, c, k) => stream(c, k, 0.8, 18, (i, a, x, y) => { alpha(g, a, k); g.strokeStyle = '#bfefff'; g.lineWidth = 0.35; g.beginPath(); g.arc(x, y - a * 5, 0.5 + (i % 3) * 0.3, 0, Math.PI * 2); g.stroke(); }),
   confetti: (g, c, k) => stream(c, k, 1, 20, (i, a, x, y) => { alpha(g, a, k); g.save(); g.translate(x, y + a * 4); g.rotate(c.t * 6 + i); rect(g, ['#ff2e93', '#ffd23b', '#00e5ff', '#7dffb0', '#a046ff'][i % 5], -0.5, -0.3, 1, 0.6); g.restore(); }),

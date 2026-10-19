@@ -23,6 +23,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 - Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.
 - Old profiles: `gameData._progression.stormsWeathered` seeds `counters['lighthouse.storms']`.
+- Afterglow (`afterglow`) grants the separate Light Cycle Trail. `ride.arcadeTenMinutes` sums arcade sessions with at least 600 active-cadence samples; Warm-up Ride and shorter/idle sessions do not count. This new counter starts with future qualifying rides; it does not guess historical durations from lifetime totals.
 
 ## Test
 `npx vitest run src/progression` (`scenarios.test.ts` runs headless rides, ~10 s)

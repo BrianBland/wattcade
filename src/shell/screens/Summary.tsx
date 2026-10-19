@@ -75,7 +75,7 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
       <div class="screen-head">
         <div><h1>{warm ? 'Warm-up done' : 'Ride complete'}</h1><div class="sub">{game?.title ?? record.gameId}</div></div>
         <span class="spacer" />
-        <Btn primary focused onClick={onDone}>{award.picks > 0 ? 'Choose reward ▶' : 'Continue ▶'}</Btn>
+        <Btn primary focused onClick={onDone}>{award.newItems.length ? 'View new gear →' : award.picks > 0 ? 'Choose reward →' : 'Continue →'}</Btn>
       </div>
       <div class="summary-grid">
         <div class="panel">

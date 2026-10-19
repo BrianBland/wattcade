@@ -30,6 +30,8 @@ export const CORE_ACHIEVEMENTS: AchievementDef[] = [
   total('triple_threat', 'Triple Threat', 'Play 3 different games', 50, 3, ' games', playedGames),
   total('sampler', 'Sampler', 'Play 5 different games', 75, 5, ' games', playedGames),
   total('arcade_rat', 'Arcade Rat', 'Play every game in the arcade', 150, ARCADE.length, ' games', playedGames),
+  { id: 'afterglow', name: 'Afterglow', desc: 'Finish 10 arcade rides with at least 10 minutes of pedalling each', bonusXp: 100, goal: 10, unit: ' rides',
+    count: { key: 'ride.arcadeTenMinutes', agg: 'sum', of: (r) => isArcade(r.gameId) && activeSeconds(r) >= 600 ? 1 : 0 } },
   {
     id: 'balanced_week', name: 'Balanced Week', desc: 'Play 3 different games within 7 days', bonusXp: 100,
     check: (p, r) => ARCADE.filter((g) => (p.lastPlayed[g] ?? -Infinity) >= r.startedAt - WEEK_MS).length >= 3,

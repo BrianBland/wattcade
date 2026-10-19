@@ -11,25 +11,45 @@ export const FULL_HEAD = new Set(['pumpkin', 'knight', 'football', 'bucket', 'di
  * Keep each one a handful of shapes: the rider is ~24 px tall in the warm-up (bigger in menus).
  */
 export function drawHat(g: G, id: string, c: HatCtx) {
+  g.save(); g.scale(1.12, 1.12);
   (HATS[id] ?? HATS.road)(g, c, c.color);
+  g.restore();
 }
 
 const roadHelmet = (g: G, col: string, shell = '#f5f5fa') => {
-  oval(g, shell, -0.4, -1.4, 3, 2, -0.2, true);
-  rect(g, col, -2.4, -2.6, 4.4, 0.9);
+  poly(g, shell, [-3.2, -1], [-3.2, -2], [-1.7, -3.3], [1.6, -3.3], [2.7, -2.4], [3.2, -1.3]);
+  rect(g, col, -2.7, -2.3, 5.4, 0.9);
+  rect(g, '#c4cfdb', -3.2, -1.3, 6.4, 0.5);
 };
 const dome = (g: G, c: string, rx = 2.7, ry = 2.2, y = -0.9) => oval(g, c, -0.2, y, rx, ry, -0.1, true);
 const brim = (g: G, c: string, x0: number, x1: number, y: number, w = 0.8) => line(g, c, w, [x0, y], [x1, y]);
 
 export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   road: (g, _c, col) => roadHelmet(g, col),
-  cap: (g, _c, col) => { dome(g, col, 2.6, 1.9); line(g, '#f5f5fa', 0.7, [1.8, -1.5], [3.7, -2.4]); },
-  beanie: (g, _c, col) => { dome(g, col, 2.8, 2.6, -0.6); line(g, shade(col, 0.7), 0.6, [-2.8, -0.9], [2.6, -0.6]); circle(g, '#f5f5fa', -0.5, -3.6, 0.9); },
-  cowboy: (g) => { oval(g, '#8a5a2b', 0, -2.1, 5, 0.9); poly(g, '#a8733d', [-2.1, -2.2], [-1.8, -5.6], [0, -4.8], [1.8, -5.6], [2.1, -2.2]); rect(g, '#3a2410', -2.1, -3, 4.2, 0.6); },
+  cap: (g, _c, col) => {
+    poly(g, col, [-3,-1],[-3,-2.3],[-1.7,-3.7],[1,-3.7],[2.6,-2.2],[2.6,-1]);
+    poly(g, '#f5eedb', [-1.6,-3.6],[.2,-3.6],[1.3,-1.1],[-1.5,-1.1]);
+    poly(g,col,[1,-1.6],[4.5,-1.6],[4.5,-1],[2.4,-.4],[1,-.6]);rect(g,'#273043',-2.9,-1,5.7,.6);
+  },
+  beanie: (g, _c, col) => {
+    poly(g,col,[-3,-1],[-3,-3],[-2,-4.2],[1.5,-4.2],[2.8,-3],[2.8,-1]);
+    rect(g,shade(col,.72),-3,-1.9,6,1.7);
+    for(let x=-2.4;x<3;x+=1.2)rect(g,col,x,-1.8,.5,1.5);
+    rect(g,shade(col,1.2),-1.1,-5.4,1.8,1.4);rect(g,col,-1.5,-5,2.6,.8);
+  },
+  cowboy: (g) => {
+    poly(g,'#83502e',[-5.4,-3.4],[-4.4,-3.4],[-3.3,-2.3],[3,-2.3],[4.5,-3.5],[5.2,-3.5],[4.8,-1.7],[2.6,-.9],[-2.8,-1],[-4.8,-1.9]);
+    poly(g,'#a97240',[-2.6,-2.1],[-2.3,-6],[-1,-6.4],[0,-5.7],[1.7,-6.2],[2.3,-5.6],[2.6,-2.1]);
+    rect(g,'#e5d1a4',-2.5,-3.1,5,.8);rect(g,'#bc8952',-1.8,-5.4,1,.6);
+  },
   tophat: (g, _c, col) => { brim(g, '#15151c', -3.2, 3.2, -2.3, 1); rect(g, '#15151c', -2, -8, 4, 5.8); rect(g, col, -2, -3.6, 4, 0.9); },
   pirate: (g) => { poly(g, '#15151c', [-4.2, -1.6], [-1.6, -5.4], [1.6, -5.4], [4.2, -1.6], [0, -2.8]); circle(g, '#f5f5fa', 0, -3.8, 0.6); },
   chef: (g) => { rect(g, '#f5f5fa', -2, -5.8, 4, 3.8); for (const x of [-1.6, 0, 1.6]) circle(g, '#ffffff', x, -6, 1.4); },
-  cone: (g) => { poly(g, '#ff7a1a', [-2.8, -1.6], [2.8, -1.6], [0, -9.5]); poly(g, '#f5f5fa', [-1.9, -4.3], [1.9, -4.3], [1.4, -5.6], [-1.4, -5.6]); brim(g, '#ff7a1a', -3.4, 3.4, -1.6, 0.9); },
+  cone: (g) => {
+    poly(g,'#ef7a29',[-2.9,-1.6],[2.9,-1.6],[.7,-9.6],[-.7,-9.6]);
+    for(const [yy,ww]of [[-4,2],[-7,1.1]])poly(g,'#f8edcf',[-ww,yy],[ww,yy],[ww-.35,yy-1.2],[-ww+.35,yy-1.2]);
+    rect(g,'#f48c36',-3.6,-2,7.2,1.2);rect(g,'#cf5b24',-3.6,-1.2,7.2,.5);
+  },
   jester: (g, c, col) => {
     const s = Math.sin(c.t * 5) * 0.6;
     poly(g, col, [-2.4, -1.6], [-6, -4 + s], [-0.6, -3.4]); poly(g, '#ffd23b', [2.2, -1.6], [5.8, -4.4 - s], [0.4, -3.4]);
@@ -39,8 +59,13 @@ export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   unicorn: (g, _c, col) => { poly(g, '#ffe8a8', [0.4, -2], [1.8, -2.2], [3.4, -8.2]); for (let i = 0; i < 3; i++) line(g, '#e3b04b', 0.3, [0.8 + i * 0.6, -3 - i * 1.6], [1.6 + i * 0.6, -3.4 - i * 1.6]); quad(g, col, 1.2, [-1.2, -2.4], [-3.4, -1.6], [-3, 1.6]); },
   mohawk: (g, _c, col) => { roadHelmet(g, '#15151c', '#2a2a3a'); for (let i = 0; i < 5; i++) poly(g, col, [-2.4 + i * 1, -3], [-1.8 + i * 1, -6.2 + (i % 2) * 0.8], [-1.4 + i * 1, -3]); },
   cat: (g) => { for (const x of [-1.6, 1.2]) { poly(g, '#15151c', [x - 1, -1.8], [x, -4.6], [x + 1, -1.8]); poly(g, '#ff9ac2', [x - 0.5, -2.1], [x, -3.7], [x + 0.5, -2.1]); } },
-  wizard: (g) => { brim(g, '#4b2a8a', -3.6, 3.6, -2, 1.1); poly(g, '#4b2a8a', [-2.4, -2.2], [2.4, -2.2], [-1.4, -10]); circle(g, '#ffd23b', 0.2, -5, 0.6); circle(g, '#ffd23b', -0.9, -7.4, 0.4); },
-  bowler: (g) => { brim(g, '#15151c', -3, 3, -1.9, 0.9); oval(g, '#15151c', 0, -2, 2.3, 2.6, 0, true); },
+  wizard: (g) => {
+    poly(g,'#5726a0',[-3,-2],[2.8,-2],[-1.1,-10.4],[-1.8,-10.4],[-2.1,-7.7]);
+    poly(g,'#7040b7',[-2.5,-2.5],[-1.8,-8.5],[-1.1,-5.6],[0,-2.5]);
+    rect(g,'#51218c',-4,-2.6,8,1.2);
+    for(const [x,y,r]of [[-.9,-7.2,.7],[.7,-4.4,.7]]){rect(g,'#f5cf63',x-r,y-.25,r*2,.5);rect(g,'#f5cf63',x-.25,y-r,.5,r*2);}
+  },
+  bowler: (g) => { oval(g,'#394452',0,-2.2,2.5,2.7,0,true);rect(g,'#d7cba9',-2.4,-2.5,4.8,.7);brim(g,'#27313d',-3.3,3.3,-1.8,.9); },
   santa: (g) => { poly(g, '#d42a2a', [-2.6, -1.8], [2.4, -1.8], [-1, -5.4], [-4.6, -3.4]); circle(g, '#f5f5fa', -4.8, -3.2, 0.9); line(g, '#f5f5fa', 1.3, [-2.8, -1.8], [2.6, -1.8]); },
   deely: (g, c, col) => {
     line(g, '#15151c', 0.5, [-2.2, -1.2], [-0.2, -2.6], [2, -1.4]);
@@ -73,8 +98,12 @@ export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   halo: (g, c) => { g.save(); g.shadowColor = '#ffe066'; g.shadowBlur = 3; g.strokeStyle = '#ffe066'; g.lineWidth = 0.6; g.beginPath(); g.ellipse(0, -4.4 + Math.sin(c.t * 2) * 0.3, 2.4, 0.7, 0, 0, TAU); g.stroke(); g.restore(); },
   horns: (g) => { for (const sx of [-1, 1]) poly(g, '#d42a2a', [sx * 0.6, -2.2], [sx * 2, -2], [sx * 2.4, -4.6]); },
   lamp: (g, c) => {
-    rect(g, '#f5f5fa', -1, -4, 2, 2.2); rect(g, '#e8322b', -1, -3.4, 2, 0.6); rect(g, '#15151c', -1.3, -5.4, 2.6, 1.4); circle(g, '#fff3a0', 0, -4.7, 0.6); poly(g, '#e8322b', [-1.5, -5.4], [1.5, -5.4], [0, -6.6]);
-    const dir = Math.cos(c.t * 1.6); g.save(); g.globalAlpha *= 0.35 * Math.abs(dir); poly(g, '#fff3a0', [0, -4.7], [dir * 12, -6.5], [dir * 12, -2.9]); g.restore();
+    rect(g,'#26313d',-2.4,-1.6,4.8,.7);
+    poly(g,'#f4edd8',[-2,-1.6],[2,-1.6],[1.2,-6],[-1.2,-6]);
+    rect(g,'#ce5141',-1.7,-3.4,3.4,1);rect(g,'#ce5141',-1.4,-5.3,2.8,.8);
+    rect(g,'#29313d',-1.4,-7.5,2.8,1.6);rect(g,'#f3cf68',-.8,-7.1,1.6,1);
+    poly(g,'#d94d3b',[-1.8,-7.5],[1.8,-7.5],[.6,-8.9],[-.6,-8.9]);rect(g,'#e67a50',-.4,-9.5,.8,.7);
+    const dir = Math.cos(c.t * 1.6); g.save(); g.globalAlpha *= .22 * Math.abs(dir); poly(g, '#ffe7a0', [0,-6.7],[dir*12,-8.5],[dir*12,-4.9]);g.restore();
   },
   souwester: (g) => { oval(g, '#ffd23b', -0.4, -1.2, 2.8, 2.3, 0, true); poly(g, '#ffd23b', [-2.8, -1.4], [-5, 0.4], [-4.6, 1.2], [-2, -0.6]); brim(g, '#e8b800', -1, 3.2, -1.3, 0.7); },
   flowers: (g) => { const cs = ['#ff6b8a', '#ffd23b', '#c56cf0', '#ffffff', '#4dabf7']; for (let i = 0; i < 5; i++) { const a = Math.PI + 0.35 + i * 0.6; circle(g, cs[i], Math.cos(a) * 2.4, Math.sin(a) * 2.2 - 0.6, 0.75); } },
@@ -96,8 +125,10 @@ export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   beaver: (g) => { oval(g, '#6b4a2b', -0.2, -1, 2.9, 2.6, 0, true); oval(g, '#4a3220', -4.4, -0.4, 1.8, 0.8, 0.5); line(g, '#8a6a48', 0.4, [-2.6, -1.8], [2.4, -1.6]); },
   dino: (g) => { circle(g, '#3bb54a', -0.4, -0.4, 3.1); for (let i = 0; i < 4; i++) poly(g, '#2a8a36', [-3 + i * 1.2, -2.6 + i * 0.1], [-2.4 + i * 1.2, -4.4], [-1.8 + i * 1.2, -2.8]); circle(g, '#f5f5fa', 1.6, -2.4, 0.7); circle(g, '#15151c', 1.8, -2.4, 0.3); circle(g, SKIN, 1.4, 0.6, 1.3); },
   cloud: (g, c) => {
-    const y = -7 + Math.sin(c.t * 1.5) * 0.4;
-    for (const [x, r] of [[-1.6, 1.3], [0, 1.8], [1.7, 1.3]] as const) circle(g, '#b8c2d0', x, y, r);
-    g.fillStyle = '#7fb8ff'; for (let i = 0; i < 4; i++) { const k = (c.t * 1.4 + i / 4) % 1; g.fillRect(-1.8 + i * 1.1, y + 1.2 + k * 5, 0.3, 0.7); }
+    const y=-7+Math.sin(c.t*1.2)*.25;
+    poly(g,'#535f6e',[-4,y-.3],[-4,y-1.5],[-2.8,y-2],[-2,y-3.3],[.2,y-3.3],[1.5,y-2],[3,y-2],[4,y-.7],[3.3,y+1],[-2.8,y+1]);
+    rect(g,'#71808b',-2.5,y-2,2.5,1);rect(g,'#667480',.6,y-1,2.5,1);
+    for(let i=0;i<3;i++){const age=(c.t*.8+i/3)%1;const x=-2.6+i*2.4,yy=y+1+age*4;poly(g,'#70bdd8',[x,yy],[x-.5,yy+1.1],[x+.3,yy+1.2],[x+.7,yy+.2]);}
   },
+
 };

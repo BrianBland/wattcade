@@ -183,6 +183,8 @@ export interface GameHud {
   touchControls?: Button[];
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }
+/** Additional pause-menu action supplied by a game; the shell resumes after dispatching it. */
+export interface GameMenuAction { id: string; label: string; action: unknown }
 export interface GameSim {
   update(dt: Seconds): void;       // called with FIXED_DT
   hud?(): GameHud;                 // read by the shell each frame; keep it cheap and plain-data
@@ -190,6 +192,8 @@ export interface GameSim {
   isOver(): boolean;
   /** Optional: true while the sim shows its own pre-game menu (camp, loadout). The shell runs the sim through it and starts the 3-2-1-GO countdown only after it ends. */
   inMenu?(): boolean;
+  /** Extra pause actions available in the current game state. Never replaces the shell exit action. */
+  menuActions?(): readonly GameMenuAction[];
   summary(): Record<string, number | string>;
   dispose?(): void;
   /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */

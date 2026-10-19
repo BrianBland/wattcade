@@ -236,8 +236,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       {paused && !help && (
         <PauseMenu legendOn={legendOn} onLegend={(v) => { setLegendOn(v); saveFlag('wattcade.legend', v); }}
           onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
+          extensions={session?.sim.menuActions?.() ?? []} onExtension={(action) => { session?.sim.receive?.(action); setPause(false); }}
           {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
-            : game.id === 'towerdefense' && phase === 'play' && session ? { quitLabel: 'Return to Garage · bank parts', onQuit: () => { session.sim.receive?.({ type: 'bail' }); setPause(false); } }
             : { onQuit: () => toEnding(false) })} />
       )}
       {phase === 'ending' && ending && !recap && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}

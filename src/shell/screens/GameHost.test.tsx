@@ -4,13 +4,13 @@ import { act } from 'preact/test-utils';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 const mocks = vi.hoisted(() => ({
-  session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false) } },
+  session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false), menuActions: vi.fn((): import('../../contracts').GameMenuAction[] => []), receive: vi.fn() } },
   raf: vi.fn(() => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
 }));
 vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
-vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride' }: { onQuit: () => void; quitLabel?: string }) => h('button', { onClick: onQuit }, quitLabel) }));
+vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride', extensions, onExtension }: { onQuit: () => void; quitLabel?: string; extensions: import('../../contracts').GameMenuAction[]; onExtension: (action: unknown) => void }) => h('div', {}, extensions.map(entry => h('button', { onClick: () => onExtension(entry.action) }, entry.label)), h('button', { onClick: onQuit }, quitLabel)) }));
 vi.mock('../game/ResultBanner', () => ({ ResultBanner: () => null }));
 vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart}: {onStart:()=>void}) => h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
 vi.mock('../components/Toasts', () => ({ toast: vi.fn() }));
@@ -28,7 +28,7 @@ async function mount(id = 'towerdefense') {
   await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} />,container);});
 }
 beforeEach(()=>{
-  vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false);
+  vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false); mocks.session.sim.menuActions.mockReturnValue([]);
   vi.stubGlobal('requestAnimationFrame',mocks.raf); vi.stubGlobal('cancelAnimationFrame',vi.fn());
   vi.stubGlobal('ResizeObserver',class {observe(){} disconnect(){}});
   container=document.createElement('div');document.body.appendChild(container);
@@ -96,10 +96,18 @@ describe('pause menu exit', () => {
     expect(mocks.panic).toHaveBeenLastCalledWith(true);
     expect(container.textContent).not.toContain('Finish ride');
   });
-  it('keeps the garage action for Dynamo Defense during a run', async () => {
-    await readyToPlay('towerdefense');
+  it('adds game-supplied actions without replacing Finish ride, regardless of game ID', async () => {
+    mocks.session.sim.menuActions.mockReturnValue([{ id: 'custom', label: 'Custom game action', action: { type: 'custom' } }]);
+    await readyToPlay('starfighter');
     await act(async () => mocks.system?.('pause'));
-    expect(container.textContent).toContain('Return to Garage · bank parts');
+    expect(container.textContent).toContain('Finish ride');
+    const button = [...container.querySelectorAll('button')].find(button => button.textContent === 'Custom game action')!;
+    expect(button).toBeDefined();
+    await act(async () => button.click());
+    expect(mocks.session.sim.receive).toHaveBeenCalledWith({ type: 'custom' });
+    expect(mocks.session.resume).toHaveBeenCalled();
+    expect(mocks.quit).not.toHaveBeenCalled();
+    expect(mocks.abandon).not.toHaveBeenCalled();
   });
   it('exits from the garage after returning during play', async () => {
     await readyToPlay('towerdefense');

@@ -67,7 +67,7 @@ export function buildBars(): VoxelGrid {
 }
 
 /** Spinning rod held in the right hand, left hand on the reel crank. Origin = right hand. Returns the tip in grid-local metres. */
-export function buildRod(dir: readonly [number, number, number], len = 2.1): { grid: VoxelGrid; tip: [number, number, number] } {
+export function buildRod(dir: readonly [number, number, number], len = 2.1, blank = true): { grid: VoxelGrid; tip: [number, number, number] } {
   const g = new VoxelGrid(0.007);
   const n = Math.hypot(...dir), d = dir.map((v) => v / n) as [number, number, number];
   const at = (t: number) => [d[0] * t, d[1] * t, d[2] * t] as const;
@@ -76,7 +76,7 @@ export function buildRod(dir: readonly [number, number, number], len = 2.1): { g
   for (let t = -0.3; t < 0; t += 0.06) g.wsegment(at(t), at(t + 0.006), 0.0175, K.cork2);
   g.wsegment(at(-0.02), at(0.07), 0.013, K.reel);
   // blank, tapering, with white thread wraps
-  const steps = 40;
+  const steps = blank ? 40 : 0;
   for (let i = 0; i < steps; i++) {
     const t0 = 0.07 + (len - 0.07) * (i / steps), t1 = 0.07 + (len - 0.07) * ((i + 1) / steps);
     const r = 0.011 - 0.0075 * (i / steps);
@@ -99,6 +99,18 @@ export function buildRod(dir: readonly [number, number, number], len = 2.1): { g
   g.wsegment([knob[0] - 0.03, knob[1] - 0.02, knob[2] + 0.06], [knob[0] - 0.1, knob[1] - 0.12, knob[2] + 0.36], 0.036, K.warmer2);
   const tip = at(len) as unknown as [number, number, number];
   return { grid: g, tip: [tip[0], tip[1], tip[2]] };
+}
+
+/** One straight piece of rod blank along local +y (for an articulated, bendable rod). */
+export function buildRodPiece(len: number, r0: number, r1: number, wrapAt: number | null): VoxelGrid {
+  const n = Math.max(1, Math.round(len / 0.04));
+  const g = new VoxelGrid(0.007, [-0.0035, 0, -0.0035]); // axis through voxel centres so the thin tip never vanishes
+  for (let i = 0; i < n; i++) {
+    const t0 = (len * i) / n, t1 = (len * (i + 1)) / n, r = r0 + (r1 - r0) * (i / n);
+    g.wsegment([0, t0, 0], [0, t1, 0], Math.max(r, 0.0036), i % 2 ? KIT.idx.rod : KIT.idx.rod2);
+  }
+  if (wrapAt !== null) g.wsegment([0, wrapAt, 0], [0, wrapAt + 0.012, 0], Math.max(r0, 0.0036) + 0.002, KIT.idx.wrap);
+  return g;
 }
 
 /** A road bike standing on its wheels, leaned slightly; origin = ground under the bottom bracket, facing −z. */

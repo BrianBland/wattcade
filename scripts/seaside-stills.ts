@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import { join } from 'node:path';
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : ['highway', 'turnout', 'shop', 'lou'];
-const server = await createServer({ server: { port: 5298, strictPort: false }, logLevel: 'error' });
+const server = await createServer({ server: { port: 5298, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

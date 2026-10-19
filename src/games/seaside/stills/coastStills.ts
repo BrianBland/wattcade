@@ -25,7 +25,8 @@ function coastStage(canvas: HTMLCanvasElement, w: number, h: number, focus?: { x
   // open sea beyond the voxel LODs
   const seaCol = new THREE.Color(COAST.hex.deep);
   const seaPlane = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: seaCol }));
-  seaPlane.rotation.x = -Math.PI / 2; seaPlane.position.y = SEA_LEVEL + 0.2;
+  seaPlane.rotation.x = -Math.PI / 2; seaPlane.position.y = SEA_LEVEL - 0.5;
+  seaPlane.material.depthWrite = false; seaPlane.renderOrder = -0.5;
   st.scene.add(seaPlane);
   // a few gulls
   const birds = new VoxelGrid(0.1);

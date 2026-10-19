@@ -1,7 +1,7 @@
 // Shared still-frame stage: renderer, gradient sky, fog, sun + hemisphere light, first-person camera rig.
 import * as THREE from 'three';
 import type { VoxelGrid } from '../voxel/grid';
-import { buildGrid } from '../voxel/three';
+import { buildClusteredMeshes } from '../voxel/three';
 import type { MeshOpts } from '../voxel/mesh';
 
 export interface Stage { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; sun: THREE.DirectionalLight; stats: string[] }
@@ -59,8 +59,10 @@ export function aimSun(st: Stage, centre: THREE.Vector3, dir: THREE.Vector3, hal
 export function addGrid(st: Stage, name: string, grid: VoxelGrid, opts: MeshOpts, parent: THREE.Object3D = st.scene, shadows = { cast: true, receive: true }, mat?: THREE.Material) {
   const t0 = performance.now();
   const material = mat ?? new THREE.MeshLambertMaterial({ vertexColors: true });
-  const built = buildGrid(grid, opts, material, shadows);
-  parent.add(built.group);
-  st.stats.push(`${name}: ${built.faces.toLocaleString()} faces, ${built.chunks} chunks, ${Math.round(performance.now() - t0)} ms`);
-  return built.group;
+  const built = buildClusteredMeshes(grid, opts, material);
+  const group = new THREE.Group();
+  for (const m of built.meshes) { m.castShadow = shadows.cast; m.receiveShadow = shadows.receive; group.add(m); }
+  parent.add(group);
+  st.stats.push(`${name}: ${built.faces.toLocaleString()} faces, ${built.meshes.length} meshes, ${Math.round(performance.now() - t0)} ms`);
+  return group;
 }

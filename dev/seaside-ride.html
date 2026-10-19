@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Seaside ride test</title>
+<style>
+html,body{margin:0;background:#000;overflow:hidden;height:100%}
+#wrap{position:relative;width:100vw;height:100vh}
+canvas{display:block;width:100%;height:100%}
+#ov{position:absolute;inset:0;pointer-events:none;font-family:ui-sans-serif,system-ui,sans-serif}
+.bubble{position:absolute;left:3.2%;top:5%;background:#fffdf6;color:#2b2b2b;border-radius:14px;padding:.55em .9em;font:italic 2.4vh/1.2 Georgia,serif;box-shadow:0 4px 0 rgba(0,0,0,.18)}
+.bubble:after{content:"";position:absolute;left:30px;bottom:-14px;border:9px solid transparent;border-top:11px solid #fffdf6;border-left:12px solid #fffdf6}
+.prompt{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);font:800 4.4vh ui-sans-serif,system-ui;color:#fffdf6;text-shadow:0 3px 0 rgba(0,0,0,.35);letter-spacing:.04em}
+.meter{position:absolute;left:50%;bottom:5.5%;transform:translateX(-50%);width:26%;height:1.6vh;border-radius:1vh;background:rgba(0,0,0,.35);overflow:hidden;border:2px solid #fffdf6}
+.meter i{display:block;height:100%;background:#ffcf33}
+.bang{position:absolute;left:41%;top:44%;font:900 12vh Georgia,serif;color:#fffdf6;text-shadow:0 5px 0 #d0453c}
+.fade{position:absolute;inset:0;background:#000}
+#fps{position:absolute;right:8px;top:8px;color:#fff;background:rgba(0,0,0,.55);font:12px/1.35 ui-monospace,monospace;padding:6px 8px;border-radius:6px;white-space:pre;display:none}
+</style></head>
+<body><div id="wrap"><canvas id="c"></canvas><div id="ov"></div><div id="fps"></div></div>
+<script type="module" src="./seaside-ride.ts"></script></body></html>

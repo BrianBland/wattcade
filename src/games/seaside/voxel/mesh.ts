@@ -2,7 +2,7 @@
 // Pure: returns typed arrays; the Three.js wrapper lives in three.ts.
 import { CHUNK, VoxelGrid } from './grid';
 
-export interface MeshData { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array; faces: number }
+export interface MeshData { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array; faces: number; /** baked sun visibility per vertex (greedy + sunVis only) */ sunVis?: Float32Array }
 export interface MeshOpts {
   /** Linear RGB per palette index, 256 × 3. */
   palette: Float32Array;
@@ -12,6 +12,16 @@ export interface MeshOpts {
   ao?: readonly [number, number, number, number];
   /** Optional per-palette-index jitter override (e.g. 0 for water). */
   jitterFor?: (v: number) => number | undefined;
+  /** Mesh only voxels passing this test (others still occlude), e.g. to split water into its own material. */
+  include?: (v: number) => boolean;
+  /** Merge equal faces into rectangles (voxel/greedy.ts); jitter must then come from voxelMaterial(). */
+  greedy?: boolean;
+  /** Greedy only: palette remap applied before merging (fold random colour variants into one base colour). */
+  remap?: Uint8Array;
+  /** Greedy only: skip ambient occlusion (distant LODs, where it is invisible) so everything merges. */
+  flatAO?: boolean;
+  /** Greedy only: bake sun visibility (0..1) sampled at each voxel face centre (world metres); quantized to quarters, faces never merge across a change. */
+  sunVis?: (x: number, y: number, z: number) => number;
 }
 
 export const DEFAULT_AO = [0.52, 0.7, 0.86, 1] as const;
@@ -47,7 +57,7 @@ export function meshChunk(grid: VoxelGrid, chunkKey: number, opts: MeshOpts): Me
   const solid = (x: number, y: number, z: number) => (grid.get(x, y, z) ? 1 : 0);
   for (let lx = 0; lx < CHUNK; lx++) for (let ly = 0; ly < CHUNK; ly++) for (let lz = 0; lz < CHUNK; lz++) {
     const v = data[(lx * CHUNK + ly) * CHUNK + lz];
-    if (!v) continue;
+    if (!v || (opts.include && !opts.include(v))) continue;
     const x = cx * CHUNK + lx, y = cy * CHUNK + ly, z = cz * CHUNK + lz;
     const j = opts.jitterFor?.(v) ?? J;
     const bright = 1 + (hash3(x, y, z) * 2 - 1) * j;

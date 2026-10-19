@@ -21,6 +21,16 @@ export const COAST = definePalette({
 });
 const C = COAST.idx;
 
+/** Random colour variants folded into their base colour (for greedy meshing; shader noise supplies the variety). */
+export const COAST_FOLD = (() => {
+  const m = new Uint8Array(256).map((_, i) => i);
+  const fold: Array<[keyof typeof C, keyof typeof C]> = [['asphalt2', 'asphalt'], ['asphalt3', 'asphalt'], ['gravel2', 'gravel'], ['grass2', 'grass'], ['grass3', 'grass'],
+    ['grassG2', 'grassG'], ['scrub2', 'scrub'], ['scrub3', 'scrub'], ['ice2', 'ice'], ['iceFlower2', 'iceFlower'], ['sand2', 'sand'], ['kelp2', 'kelp'],
+    ['cypress2', 'cypress'], ['cypress3', 'cypress'], ['bark2', 'bark'], ['cloud2', 'cloud']];
+  for (const [a, b] of fold) m[C[a]] = C[b];
+  return m;
+})();
+
 export const SEA_LEVEL = -16;
 
 /** Mountain spurs that run down to the sea as headlands; the road swings out around each one. */
@@ -89,7 +99,7 @@ export function sample(x: number, z: number, out: Sample): Sample {
   return out;
 }
 
-interface Region { x0: number; x1: number; z0: number; z1: number }
+export interface Region { x0: number; x1: number; z0: number; z1: number }
 const inR = (r: Region, x: number, z: number) => x >= r.x0 && x < r.x1 && z >= r.z0 && z < r.z1;
 
 export interface CoastOpts { detail: 'still' | 'fast' }
@@ -97,8 +107,9 @@ export const NEAR: Region = { x0: -80, x1: 46, z0: -140, z1: 10 };
 export const MID: Region = { x0: -360, x1: 360, z0: -760, z1: 60 };
 export const FAR: Region = { x0: -2400, x1: 1800, z0: -3600, z1: 120 };
 
-/** Voxelize the heightfield into `grid` over `reg`, skipping columns inside `skip`. */
-function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: { lines: boolean; skipSea: boolean; scrub: boolean }) {
+export interface FillOpts { lines: boolean; skipSea: boolean; scrub: boolean; /** extra voxels of wall below border columns (hides LOD cracks) */ skirt?: number }
+/** Voxelize the heightfield into `grid` over `reg` (x1/z1 exclusive), skipping columns inside `skip`. */
+export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: FillOpts) {
   const s = grid.size, [ox, oy, oz] = grid.origin;
   const ix0 = Math.floor((reg.x0 - ox) / s), ix1 = Math.ceil((reg.x1 - ox) / s), iz0 = Math.floor((reg.z0 - oz) / s), iz1 = Math.ceil((reg.z1 - oz) / s);
   const W = ix1 - ix0 + 3, D = iz1 - iz0 + 3;
@@ -113,6 +124,7 @@ function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: { 
   for (let i = 1; i < W - 1; i++) for (let k = 1; k < D - 1; k++) {
     const x = ix0 - 1 + i, z = iz0 - 1 + k, wx = ox + (x + 0.5) * s, wz = oz + (z + 0.5) * s;
     if (skip && inR(skip, wx, wz)) continue;
+    if (wx >= reg.x1 || wz >= reg.z1) continue;
     const h = H[i * D + k], t = TT[i * D + k] as T, d = DD[i * D + k];
     if (t === T.SEA) {
       if (opts.skipSea) continue;
@@ -136,6 +148,7 @@ function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: { 
     for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
     lo = Math.max(Math.min(lo, top), seaY - 1);
     const steep = top - lo > 1;
+    if (opts.skirt && (i === 1 || k === 1 || i >= W - 3 || k >= D - 3)) lo = Math.max(lo - opts.skirt, seaY - 1);
     for (let y = lo; y <= top; y++) {
       const wy = oy + (y + 0.5) * s, r = hash2(x * 31 + y, z, 7);
       let c: number;
@@ -199,15 +212,17 @@ export function cypress(g: VoxelGrid, base: readonly number[], size: number, see
 export interface CoastWorld { close: VoxelGrid | null; near: VoxelGrid; mid: VoxelGrid; far: VoxelGrid; detail: VoxelGrid; props: VoxelGrid[]; palette: typeof COAST }
 
 /** `focus`: an extra 1/8 m ring of terrain around the camera (x, z, half-size). */
-export function buildCoast(focus?: { x: number; z: number; r: number }): CoastWorld {
+export function buildCoast(focus?: { x: number; z: number; r: number }, sizes: { mid?: number; far?: number; terrain?: boolean } = {}): CoastWorld {
   const vans: VoxelGrid[] = [];
-  const near = new VoxelGrid(0.25), mid = new VoxelGrid(1), far = new VoxelGrid(6), detail = new VoxelGrid(1 / 16);
+  const near = new VoxelGrid(0.25), mid = new VoxelGrid(sizes.mid ?? 1), far = new VoxelGrid(sizes.far ?? 6), detail = new VoxelGrid(1 / 16);
   let close: VoxelGrid | null = null;
   const closeR: Region | null = focus ? { x0: focus.x - focus.r, x1: focus.x + focus.r, z0: focus.z - focus.r, z1: focus.z + focus.r } : null;
-  if (closeR) { close = new VoxelGrid(0.125); fillTerrain(close, closeR, null, { lines: true, skipSea: false, scrub: true }); }
-  fillTerrain(near, NEAR, closeR, { lines: true, skipSea: false, scrub: true });
-  fillTerrain(mid, MID, NEAR, { lines: false, skipSea: false, scrub: true });
-  fillTerrain(far, FAR, MID, { lines: false, skipSea: true, scrub: false });
+  if (sizes.terrain !== false) { // terrain: false = props only (trees, rails, signs, van), for the LOD terrain
+    if (closeR) { close = new VoxelGrid(0.125); fillTerrain(close, closeR, null, { lines: true, skipSea: false, scrub: true }); }
+    fillTerrain(near, NEAR, closeR, { lines: true, skipSea: false, scrub: true });
+    fillTerrain(mid, MID, NEAR, { lines: false, skipSea: false, scrub: true });
+    fillTerrain(far, FAR, MID, { lines: false, skipSea: true, scrub: false });
+  }
 
   // W-beam guardrail on the sea side (gap at the turnout), on the 1/16 m detail grid
   for (let z = NEAR.z1 - 2; z > NEAR.z0 + 2; z -= 1 / 16) {

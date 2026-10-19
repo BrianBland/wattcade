@@ -30,6 +30,8 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
   `?hour=21` previews a time. Ambient noise bed per biome via `setAmbient('warmup', …)`, stopped on unmount.
 - `rider.ts`: procedural rider (profile jersey colour, two-bone legs from `bike.crankRevs`; bubble helmet on the Moon, scuba gear underwater).
 
+- The shared rider uses a binary-alpha solid-art pass plus separate translucent gear/effects. A bounded one-tick cadence extrapolation smooths fixed-rate samples; raw zero cadence stops the feet immediately. Motion/biome proof pages and capture scripts are in `docs/visual-polish/player/README.md`.
+
 ## Tests
 `npx vitest run src/games/warmup` (terrain integral/bounds, biome loop, determinism, flat toggle, startDistance, scenarios).
 

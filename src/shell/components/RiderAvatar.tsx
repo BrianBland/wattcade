@@ -4,7 +4,9 @@ import type { Profile } from '../../contracts';
 import type { Item, RiderLook } from '../../cosmetics/types';
 import { riderLook, withItem } from '../../cosmetics/unlocks';
 import { drawRider } from '../../cosmetics/draw/rider';
+import { BIKES } from '../../cosmetics/draw/bikes';
 import { drawShip } from '../../cosmetics/draw/ships';
+import { drawCosmeticItem, itemBox } from '../../cosmetics/draw/items';
 
 /** One rAF loop for every animated avatar on screen. */
 const live = new Set<(t: number) => void>();
@@ -36,13 +38,14 @@ const MAX_PX = 640;
  * WebKit a canvas's width attribute is its intrinsic size, so a `width: 100%` canvas in a `1fr` grid column that
  * sized itself from `clientWidth` grew the column, which grew the canvas, and froze the Locker.
  */
-export function RiderAvatar({ profile, look, ship, size = 'big', still, lazy = false, road = true, silhouette, class: cls = '' }: {
+export function RiderAvatar({ profile, look, ship, item, size = 'big', still, lazy = false, road = true, silhouette, class: cls = '' }: {
   profile?: Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'>; look?: RiderLook; ship?: string;
+  item?: Item;
   size?: 'small' | 'big' | 'hero' | 'thumb'; still?: boolean; lazy?: boolean; road?: boolean; silhouette?: boolean; class?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const resolved = look ?? riderLook(profile ?? { level: 1, achievements: [], color: '#00f0ff' });
-  const key = JSON.stringify(resolved) + (ship ?? '');
+  const key = JSON.stringify(resolved) + (ship ?? '') + (item ? `${item.slot}:${item.id}` : '');
   useEffect(() => {
     const c = ref.current; if (!c) return;
     let stop = () => {};
@@ -63,11 +66,16 @@ export function RiderAvatar({ profile, look, ship, size = 'big', still, lazy = f
       };
       resize();
       const draw = (t: number) => {
-        const box = ship ? SHIP_BOX : BOX, s = Math.min(w / (box.x1 - box.x0), h / (box.y1 - box.y0));
+        const def = BIKES[resolved.bike] ?? BIKES.road;
+        // Tall bikes and upright riders need extra headroom for the enlarged
+        // head and tall hats. Keep the normal rider's framing unchanged.
+        const top = def.hip[1] - 8 * Math.cos(def.lean) - 3.8 * Math.cos(def.lean * 0.45) - 13;
+        const box = ship ? SHIP_BOX : item ? itemBox(item) : { ...BOX, y0: Math.min(BOX.y0, top) };
+        const s = Math.min(w / (box.x1 - box.x0), h / (box.y1 - box.y0));
         g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
         g.translate(w / 2 - ((box.x0 + box.x1) / 2) * s, h - box.y1 * s); g.scale(s, s);
-        if (road && !ship) { g.fillStyle = '#ffffff22'; g.fillRect(BOX.x0, 0, BOX.x1 - BOX.x0, 0.8); }
-        try { if (ship) drawShip(g, ship, resolved.color, t); else drawRider(g, resolved, t * 0.8, t * 4.5, { t, speed: 6 }); } catch { /* art must never break a menu */ }
+        if (road && !ship && !item) { g.fillStyle = '#ffffff22'; g.fillRect(BOX.x0, 0, BOX.x1 - BOX.x0, 0.8); }
+        try { if (ship) drawShip(g, ship, resolved.color, t); else if(item)drawCosmeticItem(g,item,resolved,t);else drawRider(g, resolved, t * 0.8, t * 4.5, { t, speed: 6 }); } catch { /* art must never break a menu */ }
         if (silhouette) {
           g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-in';
           g.fillStyle = 'rgba(0, 0, 0, 0.45)'; g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over';
@@ -95,5 +103,5 @@ export function RiderAvatar({ profile, look, ship, size = 'big', still, lazy = f
 
 /** Art for a cosmetic `it` on top of `base`: the rider wearing it, or for ships, the ship itself. */
 export function ItemArt({ it, base, ...rest }: { it: Item; base: RiderLook } & Omit<Parameters<typeof RiderAvatar>[0], 'look' | 'ship' | 'profile'>) {
-  return it.slot === 'ship' ? <RiderAvatar look={base} ship={it.id} {...rest} /> : <RiderAvatar look={withItem(base, it)} {...rest} />;
+  return it.slot === 'ship' ? <RiderAvatar look={base} ship={it.id} {...rest} /> : <RiderAvatar look={withItem(base, it)} item={it} {...rest} />;
 }

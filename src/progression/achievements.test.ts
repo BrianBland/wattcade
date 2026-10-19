@@ -80,6 +80,17 @@ describe('achievement catalogue', () => {
 });
 
 describe('counters and goals', () => {
+  it('Afterglow counts active arcade rides independently of owning the bike', () => {
+    let p=defaultProfile();
+    p=awardSession(p,rec({gameId:'warmup'})).profile;
+    p=awardSession(p,rec({},flat(599))).profile;
+    p=awardSession(p,rec({},flat(900,150,0))).profile;
+    expect(achievementProgress(byId('afterglow'),p)!.label).toBe('0/10 rides');
+    for(let i=0;i<9;i++)p=awardSession(p,rec()).profile;
+    expect(p.achievements).not.toContain('afterglow');
+    const tenth=awardSession(p,rec());expect(ids(tenth)).toContain('afterglow');
+    expect(tenth.profile.achievements).not.toContain('arcade_rat');
+  });
   it('max keeps the best, with progress', () => {
     let p = defaultProfile();
     p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 6 } })).profile;

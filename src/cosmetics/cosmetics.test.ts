@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Profile } from '../contracts';
 import { ACHIEVEMENTS, defaultProfile } from '../progression';
 import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
-import { choosePick, equip, isPickLevel, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
+import { choosePick, equip, isPickLevel, isUnlocked, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
 import { PET_IDS } from './draw/pets';
@@ -51,6 +51,17 @@ describe('catalogue rules', () => {
 });
 
 describe('unlocks', () => {
+  it('light cycle and its trail unlock and equip independently', () => {
+    const bikeOwner=rider({achievements:['arcade_rat']});
+    expect(isUnlocked(bikeOwner,item('bike','tron')!)).toBe(true);
+    expect(isUnlocked(bikeOwner,item('trail','lightcycle')!)).toBe(false);
+    expect(loadout(equip(bikeOwner,'bike','tron')).trail).toBe('none');
+    const trailOwner=equip(rider({achievements:['afterglow']}),'trail','lightcycle');
+    expect(loadout(trailOwner)).toMatchObject({bike:'road',trail:'lightcycle'});
+    expect(isUnlocked(trailOwner,item('bike','tron')!)).toBe(false);
+    const both= equip({...trailOwner,achievements:['afterglow','arcade_rat']},'bike','tron');
+    expect(loadout(both)).toMatchObject({bike:'tron',trail:'lightcycle'});
+  });
   it('level, achievement and default items', () => {
     const p = rider({ level: 12, achievements: ['arcade_rat'] });
     const got = new Set(unlockedItems(p).map((i) => `${i.slot}:${i.id}`));

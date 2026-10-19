@@ -45,7 +45,7 @@ export const ITEMS: Item[] = [
   bike('swan', 'Swan Pedalo', P(40), 'The lake pedalo, now on wheels.'),
   bike('ufo', 'Hover Saucer', P(45), 'Pedal-powered antigravity. Do not ask how.'),
   bike('carousel', 'Carousel Horse', P(50), 'Bobs up and down on its golden pole, forever.'),
-  bike('tron', 'Light Cycle', A('arcade_rat'), 'Leaves a wall of light. Derezzes nothing (yet).'),
+  bike('tron', 'Light Cycle', A('arcade_rat'), 'Glowing rims, low-slung chassis. Pair with any trail.'),
   bike('rocket', 'Rocket Bike', A('kj_50k'), 'The booster burns harder the harder you push.'),
   bike('tallbike', 'Tall Bike', A('hours_100'), 'Two frames welded together. Wave at the second floor.'),
   bike('recumbent', 'Recumbent', A('ride_90'), 'Lie back. You earned it.'),
@@ -183,6 +183,7 @@ export const ITEMS: Item[] = [
   // ---------- trails (behind the rear wheel; stronger the faster you go) ----------
   trail('none', 'No trail', D),
   trail('sparks', 'Sparks', L(16)),
+  trail('lightcycle', 'Light Cycle Trail', A('afterglow'), 'A wall of light in your color. Fits every bike.'),
   trail('rainbow', 'Rainbow', A('balanced_week')),
   trail('confetti', 'Confetti', A('sessions_200')),
   trail('stars', 'Stardust', A('td_wave50')),

@@ -47,13 +47,13 @@ export class WarmupRenderer implements GameRenderer {
   private look: RiderLook | null = null;
   private terrain: { key: string; t: Terrain } | null = null;
   private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
-  private actorRng: (() => number) | null = null;
   private weeds: Weed[] = []; private nextWeedAt = 0; private weedRng: (() => number) | null = null;
   private lastBiome: string | null = null; private lastDriveIn = false; private titleAt = -99; private title = '';
   private texts: Text[] = [];
   private lastNow = 0;
   private ambientAt = 0;
   private sounds: Soundscape | null = null;
+  private actorRng: (() => number) | null = null;
   private screen: ScreenRect | null = null;
   private ridge: number[] = [];
   private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;

@@ -1,6 +1,6 @@
 # Compact H1 live HUD
 
-The shared HUD now uses linear controls grouped by function and hand. Directions are together on the left, face actions on the right. The default face order is A/B/Y/Z; Cadenza explicitly orders its opposing lane controls Z Left / A Right. Per-game shifter actions and analog paddle hints keep separate groups. Steering-only games advertise left/right in play and retain full navigation in menus. Inactive controls retain their positions, full labels and cooldowns.
+The shared HUD now uses linear controls grouped by function and hand. Directions are together on the left, face actions on the right. The default face order is A/B/Y/Z; Cadenza explicitly orders its opposing lane controls Z Left / A Right. Per-game shifter actions and analog paddle hints keep separate groups. Steering, targeting and stance controls advertise their used left/right arrows in play and retain full navigation in menus. Inactive controls retain their positions, full labels and cooldowns.
 
 History and the physical controller guide open above the ribbon without increasing its reserved height. Controller users can open history through Pause → History. The guide shows physical letters and all current mappings. Fake-bike keyboard instructions live in Pause and the guide; they never occupy the HUD band. Menu has its own hit target.
 

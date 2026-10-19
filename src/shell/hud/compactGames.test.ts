@@ -23,6 +23,7 @@ it('preserves every mapped button and game-specific shifter across all eight gam
         if (cluster.kind === 'dpad') expect(actual.every(b => ['left','right','up','down'].includes(b.id))).toBe(true);
         if (cluster.kind === 'face') expect(actual.every(b => ['a','b','y','z'].includes(b.id))).toBe(true);
       }
+      if (playing && ['cadenza','watershed','starfighter','dungeon'].includes(game.id)) expect(compactButtons(pad.left.stick).map(b => b.id)).toEqual(['left','right']);
       if (hud.controls?.some(h => h.button === 'paddles')) expect(pad.left.paddle.mapped).toBe(true);
       if (game.id === 'cadenza' && playing) expect(compactButtons(pad.right.stick).map(b => [b.id, b.label])).toEqual([['z','Left'],['a','Right']]);
     } finally { s.sim.dispose?.(); }

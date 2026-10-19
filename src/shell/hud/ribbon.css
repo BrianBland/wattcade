@@ -80,3 +80,5 @@
 }
 /* Full action copy may grow the row; never let wrapped text escape its key. */
 .hud-ribbon .compact-key { height:auto; }
+
+@media(max-width:599px){.hud-ribbon .compact-hood:has(.compact-family.dpad) .compact-paddles{display:none}}

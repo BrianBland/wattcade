@@ -21,6 +21,10 @@ export const SOUNDSCAPE: Record<SceneId, Voice[]> = {
   volcano: [{ sfx: 'rumble', every: [9, 18], vol: 1, pitch: [0.8, 1.2] }, { sfx: 'lavaBubble', every: [1.5, 4.5], vol: 1, pitch: [0.6, 1.3] }],
   snow: [{ sfx: 'windHowl', every: [9, 18], vol: 1, pitch: [0.85, 1.2] }],
   moon: [{ sfx: 'ufoWarble', every: [10, 22], vol: 1, pitch: [0.8, 1.25] }],
+  autumn: [{ sfx: 'songbird', every: [8, 17], vol: 0.65, pitch: [0.8, 1.1] }, { sfx: 'windGust', every: [16, 30], vol: 0.45 }],
+  marsh: [{ sfx: 'croak', every: [7, 15], vol: 0.35, pitch: [0.8, 1.1] }, { sfx: 'plop', every: [11, 21], vol: 0.22 }, { sfx: 'birdWhistle', every: [18, 32], vol: 0.45 }],
+  market: [{ sfx: 'cricket', every: [3, 7], vol: 0.5 }, { sfx: 'bell', every: [24, 42], vol: 0.15, pitch: [1.3, 1.6] }],
+  sky: [{ sfx: 'whale', every: [24, 42], vol: 0.35, pitch: [1.1, 1.35] }, { sfx: 'birdChirp', every: [10, 22], vol: 0.5 }, { sfx: 'windGust', every: [18, 32], vol: 0.3 }],
   driveIn: [{ sfx: 'cricket', every: [1.2, 3], vol: 1, pitch: [0.9, 1.1] }, { sfx: 'windGust', every: [14, 28], vol: 0.6, pitch: [0.8, 1] }],
 };
 

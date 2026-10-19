@@ -3,6 +3,7 @@ import type { SessionRecord, SessionSample } from '../contracts';
 import { ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, awardSession, defaultProfile } from './index';
 import { addDay, localDay, peakAvg, speedFor, variabilityIndex, virtualRide, weekday, weekOf, weekStreak } from './rideStats';
 import { games } from '../games/registry';
+import { BIOMES } from '../games/warmup/sim/terrain';
 
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 const flat = (n: number, power = 150, cadence = 85): SessionSample[] =>
@@ -101,8 +102,8 @@ describe('counters and goals', () => {
     const reach = (...b: string[]) => rec({ gameId: 'warmup', events: b.map((biome, t) => ({ t, type: 'biomeReached', data: { biome } })) });
     p = awardSession(p, reach('seaside', 'underwater')).profile;
     p = awardSession(p, reach('underwater', 'jungle')).profile;
-    expect(achievementProgress(byId('wu_globetrotter'), p)!.label).toBe('3/8 biomes');
-    const r = awardSession(p, reach('countryside', 'desert', 'volcano', 'snow', 'moon'));
+    expect(achievementProgress(byId('wu_globetrotter'), p)!.label).toBe(`3/${BIOMES.length} biomes`);
+    const r = awardSession(p, reach(...BIOMES));
     expect(ids(r)).toEqual(expect.arrayContaining(['wu_globetrotter', 'wu_moon']));
   });
   it('the old storm tally carries over', () => {

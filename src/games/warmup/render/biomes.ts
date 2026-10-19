@@ -3,6 +3,8 @@
 import type { BiomeId } from '../sim/terrain';
 import { disc, rect, silhouette, tri, type BiomeLook, type G } from './paint';
 import { MORE_LOOKS } from './biomesMore';
+import { NEW_LOOKS } from './biomesNew';
+import { polishWorld } from './worldPolish';
 export { noise1, type G, type BiomeLook } from './paint';
 
 // ---------------- countryside ----------------
@@ -151,4 +153,4 @@ const moon: BiomeLook = {
   },
 };
 
-export const LOOKS: Record<BiomeId, BiomeLook> = { countryside, seaside, moon, ...MORE_LOOKS };
+export const LOOKS: Record<BiomeId, BiomeLook> = polishWorld({ countryside, seaside, moon, ...MORE_LOOKS, ...NEW_LOOKS });

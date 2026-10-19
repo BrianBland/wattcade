@@ -14,6 +14,10 @@ export const GATEWAYS: Record<BiomeId, GatewayStyle> = {
   volcano: { post: '#1e1418', post2: '#3a2a2a', board: '#2a1818', trim: '#ff7a2a', text: '#ffd0a0', kind: 'obsidian' },
   snow: { post: '#7a4a2a', post2: '#5b3a22', board: '#f4f8ff', trim: '#4a7ab8', text: '#24405e', kind: 'snow' },
   moon: { post: '#c9c9d4', post2: '#8a8a98', board: '#12121e', trim: '#00f0ff', text: '#aef8ff', kind: 'metal' },
+  autumn: { post: '#785137', post2: '#573e32', board: '#f3dfaa', trim: '#c77c36', text: '#573e32', kind: 'wood' },
+  marsh: { post: '#a58860', post2: '#725f48', board: '#dfe9c9', trim: '#518b80', text: '#294f51', kind: 'driftwood' },
+  market: { post: '#55424b', post2: '#3b3446', board: '#28364f', trim: '#e6b85c', text: '#f3dfaa', kind: 'wood' },
+  sky: { post: '#e6d8ac', post2: '#b6a5a8', board: '#f7edcc', trim: '#9189b6', text: '#534f77', kind: 'vine' },
 };
 
 export const GATEWAY_H = 52, GATEWAY_HALF = 17, BOARD_W = 54, BOARD_H = 10;

@@ -536,3 +536,38 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .game-loading p { color: #a9bbce; }
 .game-loading-ring { width: 44px; height: 44px; border: 3px solid #26465d; border-top-color: #75edff; border-radius: 50%; animation: game-loading-spin 1s linear infinite; }
 @keyframes game-loading-spin { to { transform: rotate(360deg); } }
+
+/* C1–C3: open cosmetic shelves and deliberate reward actions. */
+.cosmetic-ui { --fg:#f3edda;--dim:#a5b6c8;--neon:#42e4c2;--lime:#42e4c2;background:linear-gradient(90deg,#081d2bd9,#0a20318c); }
+.cosmetic-ui h1 {color:var(--fg);text-shadow:none;letter-spacing:-.03em;text-transform:none;}
+.cosmetic-ui h2 {color:var(--fg);text-shadow:none;}
+.cosmetic-ui .panel {background:transparent;border:0;border-radius:0;box-shadow:none;backdrop-filter:none;}
+.cosmetic-ui .btn {min-height:44px;border:0;border-radius:3px;box-shadow:none;background:transparent;backdrop-filter:none;}
+.cosmetic-ui .btn.primary {background:#42e4c2;color:#082732;}
+.cosmetic-ui .btn.focused,.cosmetic-ui .btn:focus-visible {outline:2px solid #f3edda;outline-offset:4px;transform:none;}
+.cosmetic-ui .tabs .btn {border-radius:0;border-bottom:3px solid transparent;}
+.cosmetic-ui .tabs .btn.on {border-color:#42e4c2;box-shadow:none;}
+.cosmetic-ui .item-tile {font:inherit;color:var(--fg);background:transparent;border:0;border-bottom:2px solid #b4c7cf26;border-radius:0;box-shadow:none;padding:12px 7px;}
+.cosmetic-ui .item-tile.locked {opacity:1;}
+.cosmetic-ui .item-tile.on {border-bottom-color:#42e4c2;box-shadow:none;}
+.cosmetic-ui .item-tile.focused,.cosmetic-ui .item-tile:focus-visible {outline:2px solid #42e4c2;outline-offset:-2px;background:#96b7bf10;transform:none;box-shadow:none;}
+.item-status {font-size:11px;color:#a5b6c8;margin:4px 0;}.item-tile.on .item-status {color:#42e4c2;}
+.cosmetic-ui .item-grid {gap:18px 10px;}
+.reward-stage {justify-content:center;gap:24px;padding:clamp(20px,4vw,56px);}
+.reward-eyebrow {font-size:13px;font-weight:800;letter-spacing:2px;color:#bdcbd6;margin-bottom:12px;}
+.reward-stage .sub {font-size:clamp(17px,2vw,24px);color:#b6c9df;}
+.reward-showcase {display:grid;grid-template-columns:minmax(0,3fr) minmax(160px,1fr);gap:24px;align-items:center;}
+.cosmetic-ui .pick-row {gap:20px;align-items:stretch;}
+.pick-card {position:relative;min-width:0;min-height:44px;padding:18px 10px;font:inherit;color:inherit;background:transparent;border:0;border-bottom:2px solid #b6c7ce44;cursor:pointer;}
+.pick-card h3 {font-size:clamp(17px,2vw,25px);margin:8px 0 4px;}
+.pick-card.selected {border-bottom-color:#42e4c2;}
+.pick-card.focused::after,.pick-card:focus-visible::after {content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(#42e4c2,#42e4c2) left top/16px 3px no-repeat,linear-gradient(#42e4c2,#42e4c2) left top/3px 16px no-repeat,linear-gradient(#42e4c2,#42e4c2) right top/16px 3px no-repeat,linear-gradient(#42e4c2,#42e4c2) right top/3px 16px no-repeat,linear-gradient(#42e4c2,#42e4c2) left bottom/16px 3px no-repeat,linear-gradient(#42e4c2,#42e4c2) right bottom/16px 3px no-repeat;}
+.pick-card:focus-visible {outline:2px solid #f3edda;outline-offset:4px;}
+.pick-card .rider-av.hero {height:clamp(100px,22vh,230px);}
+.reward-outfit {text-align:center;}.reward-actions {display:flex;gap:18px;align-items:center;flex-wrap:wrap;}
+.pick>.reward-actions {justify-content:center;}.reward-stage>.key-hints {justify-content:flex-end;}
+.unlock-layout {display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1fr);gap:24px;align-items:center;}
+.unlock-art {position:relative;padding:20px 0 70px;}.unlock-art>.rider-av.hero {height:clamp(240px,42vh,420px);width:65%;position:relative;z-index:1;}
+.unlock-rider {position:absolute;right:0;bottom:30px;width:62%;opacity:.65;}.reward-title {font-size:42px;font-weight:900;color:#e5ca7c;}
+@media(max-width:760px){.reward-showcase,.unlock-layout {grid-template-columns:1fr;}.cosmetic-ui .pick-row {grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}.reward-outfit .rider-av.hero {height:160px;}.pick-card {padding:12px 5px;}.pick-card .rider-av.hero {height:100px;}.pick-card .dim.small {font-size:11px;}.unlock-art {order:-1;padding-bottom:40px;}.unlock-art>.rider-av.hero {height:220px;}.reward-stage {justify-content:flex-start;}.reward-stage h1 {font-size:32px;}.reward-actions {gap:12px;}.reward-actions .btn {padding:12px 14px;}.cosmetic-ui .locker-hero {position:static;}}
+@media(prefers-reduced-motion:reduce){.cosmetic-ui,.cosmetic-ui * {animation:none!important;transition:none!important;}}

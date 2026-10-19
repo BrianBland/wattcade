@@ -38,7 +38,8 @@ export type Screen =
   | { name: 'menu' } | { name: 'achievements' } | { name: 'locker' } | { name: 'pick' }
   | { name: 'media'; game: GameModule }
   | { name: 'game'; game: GameModule; run?: number; media?: MediaRun }
-  | { name: 'summary'; record: SessionRecord; award: AwardView };
+  | { name: 'summary'; record: SessionRecord; award: AwardView }
+  | { name: 'unlocks'; award: AwardView };
 /** The music a game was started with (from the media picker). */
 export interface MediaRun { ids: string[]; mode: QueueMode; items: MixItem[]; plan: MixPlan; timeline: MediaTimeline; rolling?: import('../media/online/rolling').RangeSource }
 export type { Profile };

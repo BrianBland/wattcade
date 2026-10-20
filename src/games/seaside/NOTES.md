@@ -1,8 +1,7 @@
 # Seaside — art-direction prototype (not a registered game yet)
 
 Story/pacing: `docs/seaside/storyboard.html`. Stills: `docs/seaside/stills/*.png`.
-Render them: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]` (starts Vite, drives headless Chromium via SwiftShader).
-Live: `npm run dev` → `/dev/seaside.html?still=highway|turnout|shop|lou&stats=1`.
+Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/dev/seaside.html?still=…&stats=1`.
 
 ## Voxel pipeline (`voxel/`)
 - `grid.ts` sparse 32³ chunks of palette indices; world-space brushes (`wbox`, `wellipsoid`, `wsegment`).

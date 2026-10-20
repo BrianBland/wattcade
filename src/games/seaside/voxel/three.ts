@@ -39,7 +39,7 @@ export const LOOK = { bevel: { value: 0 }, cool: { value: 0 } };
  * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water, baked sun
  * visibility, and the LOOK bevel / cool-shadow switches. Cell maths runs in the mesh's local space (grid `origin`).
  */
-export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; wave?: { time: { value: number }; amp: number }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
+export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const o = opts.origin ?? [0, 0, 0];
   mat.onBeforeCompile = (sh) => {
@@ -47,6 +47,7 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
     sh.uniforms.uJit = { value: opts.jitter };
     sh.uniforms.uOrigin = { value: new THREE.Vector3(o[0], o[1], o[2]) };
     sh.uniforms.uBevel = LOOK.bevel; sh.uniforms.uCool = LOOK.cool;
+    if (opts.fade) sh.uniforms.uFade = opts.fade;
     if (opts.wave) sh.uniforms.uTime = opts.wave.time;
     sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
       + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
@@ -60,7 +61,12 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
       reflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(0.74, 0.84, 1.22), uCool);
       reflectedLight.directDiffuse *= mix(vec3(1.0), vec3(1.08, 1.0, 0.88), uCool);`;
     sh.fragmentShader = 'uniform float uVox;\nuniform float uJit;\nuniform vec3 uOrigin;\nuniform float uBevel;\nuniform float uCool;\nvarying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.baked ? 'varying float vSunVis;\n' : '')
-      + sh.fragmentShader.replace('#include <lights_fragment_end>', lights).replace('#include <color_fragment>', `#include <color_fragment>
+      + (opts.fade ? 'uniform vec2 uFade;\n' : '')
+      + sh.fragmentShader.replace('#include <lights_fragment_end>', lights).replace('#include <clipping_planes_fragment>', opts.fade ? `#include <clipping_planes_fragment>
+        { ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0)); // 4×4 Bayer threshold
+          int bm[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
+          float b = (float(bm[q.x + q.y * 4]) + 0.5) / 16.0;
+          if (uFade.y > 0.0 ? b >= uFade.x : b < uFade.x) discard; }` : '#include <clipping_planes_fragment>').replace('#include <color_fragment>', `#include <color_fragment>
         vec3 gv = (vVoxL - uOrigin) / uVox;
         vec3 cell = floor(gv - vVoxN * 0.5);
         float hj = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
@@ -75,7 +81,7 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
         float bev = (dot(ed, normalize(vec3(-0.35, 1.0, 0.3))) * 0.5 - length(ed) * 0.1) * (1.0 - smoothstep(0.08, 0.2, px));
         diffuseColor.rgb *= 1.0 + (hj * 2.0 - 1.0) * uJit + 0.09 * vWave + uBevel * bev;`);
   };
-  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}`;
+  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}-${opts.fade ? 'f' : ''}`;
   return mat;
 }
 

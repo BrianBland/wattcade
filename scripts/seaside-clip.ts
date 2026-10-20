@@ -9,7 +9,8 @@ import { execFileSync } from 'node:child_process';
 
 const arg = (k: string, d: number) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const FPS = arg('fps', 30), Wd = arg('w', 1280), Ht = arg('h', 720);
-const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=1.2&bake=1&road=1';
+const oi = process.argv.indexOf('--out'), OUT = oi > 0 ? process.argv[oi + 1] : 'ride-fish';
+const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5';
 const server = await createServer({ server: { port: 5297, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');
@@ -29,8 +30,8 @@ try {
     if (i % 60 === 0) console.log(`frame ${i}/${n} · ${((Date.now() - t0) / (i + 1)).toFixed(0)} ms/frame`);
   }
   mkdirSync('docs/seaside/clips', { recursive: true });
-  const out = join('docs/seaside/clips', 'ride-fish.mp4');
+  const out = join('docs/seaside/clips', `${OUT}.mp4`);
   execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(FPS), '-i', join(dir, 'f%04d.png'), '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '24', '-preset', 'slow', '-movflags', '+faststart', out]);
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', join(dir, `f${String(Math.min(n - 1, Math.round(22.6 * FPS - from * FPS))).padStart(4, '0')}.png`), join('docs/seaside/clips', 'ride-fish-poster.png')]);
+  if (OUT === 'ride-fish') execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', join(dir, `f${String(Math.min(n - 1, Math.round(22.6 * FPS - from * FPS))).padStart(4, '0')}.png`), join('docs/seaside/clips', `${OUT}-poster.png`)]);
   console.log(`wrote ${out} in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 } finally { await browser.close(); await server.close(); rmSync(dir, { recursive: true, force: true }); }

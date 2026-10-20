@@ -10,7 +10,7 @@ import { voxelMaterial } from '../voxel/three';
 import { TerrainLOD } from '../world/terrainLOD';
 import { SunShadow } from '../world/sunShadow';
 
-export interface Knobs { road?: boolean; cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
+export interface Knobs { routeLod?: number; hyst?: number; fade?: number; road?: boolean; cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
 export interface Overlay { bubble?: string; prompt?: string; meter?: number; fade?: number; bang?: boolean }
 export interface Ride { stage: Stage; duration: number; setTime(t: number): void; overlay(t: number): Overlay; terrain: TerrainLOD | null }
 
@@ -50,7 +50,13 @@ export function createRide(canvas: HTMLCanvasElement, w: number, h: number, knob
       { cell: 8, x0: -2400, x1: 1800, z0: -3600, z1: 160 }, { cell: 2, x0: -420, x1: 420, z0: -820, z1: 140 }, { cell: 0.25, x0: -70, x1: 50, z0: -110, z1: 20 },
     ]) : undefined;
     if (sun) st.stats.push(`sun shadow field: ${Math.round(performance.now() - tb)} ms`);
-    terrain = new TerrainLOD({ road: knobs.road ? {} : undefined, cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
+    // route = the road centre line (and the turnout spot): tiles beside it keep their detail as the rider passes
+    const routeDist = (x0: number, z0: number, S: number) => {
+      let best = Infinity;
+      for (let i = 0; i <= 4; i++) { const z = Math.min(120, Math.max(-3600, z0 + (S * i) / 4)), rx = roadX(z); best = Math.min(best, Math.max(0, x0 - rx, rx - (x0 + S)) + Math.max(0, z0 - 120, -3600 - (z0 + S))); }
+      return best;
+    };
+    terrain = new TerrainLOD({ route: knobs.routeLod ? routeDist : undefined, routeAlpha: knobs.routeLod || 3, hysteresis: knobs.hyst, fade: knobs.fade, road: knobs.road ? {} : undefined, cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
     st.scene.add(terrain.root);
     // props only (trees, scrub clumps, rails, signs): greedy, folded colours, shader noise
     for (const [name, g] of [['props 0.25', world.near], ['props 1', world.mid]] as const)
@@ -153,7 +159,7 @@ export function createRide(canvas: HTMLCanvasElement, w: number, h: number, knob
       // prefetch where the rider will be in ~1.5 s and 3 s (and the turnout shot as the cut approaches)
       const ahead = [1.5, 3].map((dt) => { const zz = 6 - SPEED * (t + dt); return new THREE.Vector3(roadX(zz) + 4.2, roadY(zz) + 1.5, zz); });
       if (t > RIDE_S - 3) ahead.push(new THREE.Vector3(tx, tgy + 1.62, tz));
-      terrain?.update(cam.position, ahead);
+      terrain?.update(cam.position, ahead, t);
       return;
     }
     const u = t - RIDE_S;
@@ -226,7 +232,7 @@ export function createRide(canvas: HTMLCanvasElement, w: number, h: number, knob
       }
     }
     splash.count = si; splash.instanceMatrix.needsUpdate = true;
-    terrain?.update(cam.position);
+    terrain?.update(cam.position, [], t);
   }
 
   function overlay(t: number): Overlay {

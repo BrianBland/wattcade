@@ -107,7 +107,16 @@ export const NEAR: Region = { x0: -80, x1: 46, z0: -140, z1: 10 };
 export const MID: Region = { x0: -360, x1: 360, z0: -760, z1: 60 };
 export const FAR: Region = { x0: -2400, x1: 1800, z0: -3600, z1: 120 };
 
-export interface FillOpts { lines: boolean; skipSea: boolean; scrub: boolean; /** extra voxels of wall below border columns (hides LOD cracks) */ skirt?: number }
+export interface FillOpts {
+  lines: boolean; skipSea: boolean; scrub: boolean;
+  /** extra voxels of wall below border columns (hides LOD cracks) */ skirt?: number;
+  /**
+   * The road corridor (|d| ≤ half metres from the centre line) is voxelized separately at a fixed fine size so it stays
+   * flat to the horizon. 'inside' fills only the corridor (walls skirt down at its edges); 'outside' skips it and caps
+   * any column that touches it just below the road surface, so coarse terrain never pokes through the road edge.
+   */
+  corridor?: { half: number; mode: 'inside' | 'outside'; edgeSkirt?: number };
+}
 /** Voxelize the heightfield into `grid` over `reg` (x1/z1 exclusive), skipping columns inside `skip`. */
 export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: FillOpts) {
   const s = grid.size, [ox, oy, oz] = grid.origin;
@@ -126,6 +135,8 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
     if (skip && inR(skip, wx, wz)) continue;
     if (wx >= reg.x1 || wz >= reg.z1) continue;
     const h = H[i * D + k], t = TT[i * D + k] as T, d = DD[i * D + k];
+    const cor = opts.corridor, ad = Math.abs(d);
+    if (cor && (cor.mode === 'inside' ? ad > cor.half : ad + s * 0.5 < cor.half)) continue;
     if (t === T.SEA) {
       if (opts.skipSea) continue;
       const depth = SEA_LEVEL - h;
@@ -143,12 +154,16 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
       grid.set(x, seaY, z, c);
       continue;
     }
-    const top = yi(h);
+    let top = yi(h);
+    const capped = cor?.mode === 'outside' && s > 0.25 && ad - s * 0.75 < cor.half; // coarse columns touching the road
+    if (capped) top = Math.min(top, yi(roadY(wz) - 0.06) - 1);
     let lo = top;
     for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
     lo = Math.max(Math.min(lo, top), seaY - 1);
+    if (capped) lo = Math.min(lo, top - 2); // keep a capped column solid (never a hole beside the road)
     const steep = top - lo > 1;
     if (opts.skirt && (i === 1 || k === 1 || i >= W - 3 || k >= D - 3)) lo = Math.max(lo - opts.skirt, seaY - 1);
+    if (cor?.mode === 'inside' && ad > cor.half - s * 1.5) lo = Math.max(lo - (cor.edgeSkirt ?? 8), seaY - 1);
     for (let y = lo; y <= top; y++) {
       const wy = oy + (y + 0.5) * s, r = hash2(x * 31 + y, z, 7);
       let c: number;

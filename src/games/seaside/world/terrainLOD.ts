@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { geometryFrom, voxelMaterial } from '../voxel/three';
 import { mergeMeshData } from '../voxel/merge';
-import { buildTile, type TileData, type TileParams } from './tileBuild';
+import { buildRoad, buildTile, type TileData, type TileParams } from './tileBuild';
 import type { SunShadow } from './sunShadow';
 
 export interface TerrainLODOpts {
@@ -25,8 +25,10 @@ export interface TerrainLODOpts {
   /** Worker threads (0 = build synchronously on the calling thread). Default: min(4, cores − 1). */
   workers?: number;
   /** Cluster width in tiles. */ cluster?: number;
+  /** Road corridor kept at a fixed fine voxel size to the horizon (half-width m, voxel m, segment m, range m). Off when omitted. */
+  road?: { half?: number; voxel?: number; seg?: number; range?: number; /** beyond this distance road segments use farVoxel */ near?: number; farVoxel?: number };
 }
-interface Tile { key: string; x0: number; z0: number; S: number; data?: TileData; lastUsed: number }
+interface Tile { key: string; kind: 'tile' | 'road'; x0: number; z0: number; S: number; voxel?: number; data?: TileData; lastUsed: number }
 interface Job { key: string; prio: number }
 interface Cluster { sig: string; group: THREE.Group; faces: number }
 
@@ -47,7 +49,7 @@ export class TerrainLOD {
 
   constructor(private o: TerrainLODOpts) {
     this.res = o.res ?? 64; this.minTile = o.minTile ?? 8; this.splitK = o.splitK ?? 1.6;
-    this.params = { res: this.res, skirt: o.skirt ?? 3, flatAOFrom: o.flatAOFrom ?? 1 };
+    this.params = { res: this.res, skirt: o.skirt ?? 3, flatAOFrom: o.flatAOFrom ?? 1, corridor: o.road ? (o.road.half ?? 6.2) : 0, roadVoxel: o.road?.voxel ?? 0.125 };
     const n = o.workers ?? Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1));
     for (let i = 0; i < n && typeof Worker !== 'undefined'; i++) {
       const w = new Worker(new URL('./tileWorker.ts', import.meta.url), { type: 'module' });
@@ -82,22 +84,30 @@ export class TerrainLOD {
   private select(cam: THREE.Vector3) {
     const b = this.o.bounds ?? { x0: -2400, x1: 1800, z0: -3600, z1: 120 };
     let R = this.minTile; while (R < 2048) R *= 2;
-    const out: Array<{ key: string; x0: number; z0: number; S: number; d: number }> = [];
+    const out: Array<{ key: string; kind: 'tile' | 'road'; x0: number; z0: number; S: number; d: number; voxel?: number }> = [];
     const visit = (x0: number, z0: number, S: number) => {
       if (x0 >= b.x1 || z0 >= b.z1 || x0 + S <= b.x0 || z0 + S <= b.z0) return;
       const dx = Math.max(x0 - cam.x, 0, cam.x - (x0 + S)), dz = Math.max(z0 - cam.z, 0, cam.z - (z0 + S));
       const d = Math.hypot(dx, dz, Math.max(0, Math.abs(cam.y) - 30) * 0.5);
       if (S > this.minTile && d < this.splitK * S) { const h = S / 2; visit(x0, z0, h); visit(x0 + h, z0, h); visit(x0, z0 + h, h); visit(x0 + h, z0 + h, h); }
-      else out.push({ key: `${x0},${z0},${S}`, x0, z0, S, d });
+      else out.push({ key: `${x0},${z0},${S}`, kind: 'tile', x0, z0, S, d });
     };
     // roots aligned to multiples of R, so every tile's origin is a multiple of its voxel size (keeps shader noise on-grid)
     for (let x = Math.floor(b.x0 / R) * R; x < b.x1; x += R) for (let z = Math.floor(b.z0 / R) * R; z < b.z1; z += R) visit(x, z, R);
+    if (this.o.road) { // road segments along z (the route runs roughly along z), by distance from the camera
+      const seg = this.o.road.seg ?? 32, range = this.o.road.range ?? 1500;
+      for (let z = Math.floor(b.z0 / seg) * seg; z < b.z1; z += seg) {
+        const d = Math.abs(cam.z - Math.min(Math.max(cam.z, z), z + seg));
+        const v = d < (this.o.road.near ?? 200) ? this.params.roadVoxel : (this.o.road.farVoxel ?? 0.5);
+        if (d < range) out.push({ key: `road:${z}:${v}`, kind: 'road', x0: 0, z0: z, S: seg, d, voxel: v });
+      }
+    }
     return out;
   }
 
-  private want(l: { key: string; x0: number; z0: number; S: number }, prio: number) {
+  private want(l: { key: string; kind: 'tile' | 'road'; x0: number; z0: number; S: number; voxel?: number }, prio: number) {
     let t = this.tiles.get(l.key);
-    if (!t) { t = { key: l.key, x0: l.x0, z0: l.z0, S: l.S, lastUsed: this.frame }; this.tiles.set(l.key, t); }
+    if (!t) { t = { key: l.key, kind: l.kind, x0: l.x0, z0: l.z0, S: l.S, voxel: l.voxel, lastUsed: this.frame }; this.tiles.set(l.key, t); }
     t.lastUsed = this.frame;
     if (t.data || this.pool.some((p) => p.busy === l.key)) return;
     const j = this.queue.get(l.key);
@@ -109,7 +119,7 @@ export class TerrainLOD {
       for (const j of [...this.queue.values()]) {
         if (j.prio >= 1e6) continue;
         const t = this.tiles.get(j.key)!;
-        t.data = buildTile(t.x0, t.z0, t.S, this.params, this.o.sun ?? null);
+        t.data = t.kind === 'road' ? buildRoad(t.z0, t.S, this.params, this.o.sun ?? null, t.voxel) : buildTile(t.x0, t.z0, t.S, this.params, this.o.sun ?? null);
         this.stats.built++; this.stats.buildMs += t.data.ms; this.queue.delete(j.key);
       }
       this.queue.clear();
@@ -121,7 +131,7 @@ export class TerrainLOD {
         this.queue.delete(best!.key);
         const t = this.tiles.get(best!.key)!;
         slot.busy = t.key;
-        slot.w.postMessage({ type: 'build', id: 0, x0: t.x0, z0: t.z0, S: t.S });
+        slot.w.postMessage({ type: 'build', id: 0, kind: t.kind, x0: t.x0, z0: t.z0, S: t.S, voxel: t.voxel });
       }
     }
     this.stats.pending = this.queue.size + this.pool.filter((p) => p.busy).length;
@@ -153,7 +163,7 @@ export class TerrainLOD {
     const groups = new Map<string, Tile[]>();
     for (const k of this.wanted) {
       const t = this.tiles.get(k)!;
-      const ck = `${t.S}:${Math.floor(t.x0 / (t.S * C))}:${Math.floor(t.z0 / (t.S * C))}`;
+      const ck = t.kind === 'road' ? `road:${t.voxel}:${Math.floor(t.z0 / (t.S * C * 2))}` : `${t.S}:${Math.floor(t.x0 / (t.S * C))}:${Math.floor(t.z0 / (t.S * C))}`;
       (groups.get(ck) ?? groups.set(ck, []).get(ck)!).push(t);
     }
     let faces = 0;
@@ -162,7 +172,7 @@ export class TerrainLOD {
       let c = this.clusters.get(ck);
       if (!c || c.sig !== csig) {
         if (c) this.dropCluster(ck, c);
-        const S = members[0].S, s = S / this.res, group = new THREE.Group();
+        const road = members[0].kind === 'road', S = road ? 0 : members[0].S, s = road ? members[0].voxel! : S / this.res, group = new THREE.Group();
         let cf = 0;
         const land = mergeMeshData(members.map((m) => m.data!.land).filter((x): x is NonNullable<typeof x> => !!x));
         if (land) {

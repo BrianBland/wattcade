@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 
 const arg = (k: string, d: number) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const FPS = arg('fps', 30), Wd = arg('w', 1280), Ht = arg('h', 720);
-const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=1.2&bake=1';
+const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=1.2&bake=1&road=1';
 const server = await createServer({ server: { port: 5297, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');

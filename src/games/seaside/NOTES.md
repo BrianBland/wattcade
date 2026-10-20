@@ -22,16 +22,17 @@ Live: `npm run dev` → `/dev/seaside.html?still=highway|turnout|shop|lou&stats=
 - 10 s ride → cut → cast, bite, pull, haul-up (23.5 s). Pure `setTime(t)`; articulated rod (7 bending joints), shader swell on a separate water mesh, splash particles + rings.
 - Clip: `npx tsx scripts/seaside-clip.ts` → `docs/seaside/clips/ride-fish.mp4`. iPad: `npm run dev:ipad` → `/dev/seaside-ride.html` (fps overlay).
 
-## Fast path (default for the clip): `?lod=1&lodres=32&lodmin=4&skirt=2&lodk=1.2&bake=1`
+## Fast path (default for the clip): `?lod=1&lodres=32&lodmin=4&skirt=2&lodk=1.2&bake=1&road=1`
 - `voxel/greedy.ts` merges faces exactly (AO-constant strips, colour variants folded via `COAST_FOLD`, per-cube noise moved to `voxelMaterial` shader).
 - `world/terrainLOD.ts` quadtree of 32-voxel tiles around the camera (1/8 m underfoot, doubling per ring), built on demand + cached = streaming. One land + one water mesh per tile, skirts hide cracks.
+- `road=1`: the road corridor (|d| ≤ 6.2 m) skips the rings: fixed 1/8 m segments (1/2 m past 200 m), built once, so it
+  stays flat to the horizon; coarse terrain touching it is capped below the road. Reuse for boardwalk/bridges.
 - `world/sunShadow.ts` bakes terrain self-shadowing (sweep toward a fixed sun, 3 nested levels); faces carry `sunVis`, which scales only direct light. Live shadow map now holds only props (trees, rails, van, bike).
 - Bench: `npx tsx scripts/seaside-bench.ts "<query>" …`. Headless 1280×720: 1057 ms/frame, 10.7 M tris → 125 ms, 0.64 M tris.
 - Tiles build in a Web Worker pool (`world/tileWorker.ts` → pure `world/tileBuild.ts`); the visible set swaps atomically
   when all its tiles are ready (no holes); positions ahead on the route are prefetched. Visible tiles merge into 2×2
   clusters; props merge into 48 m clusters (`buildClusteredMeshes`). 125 ms → 133 ms render, 565 → 94 draw calls.
-- `npx tsx scripts/seaside-hitch.ts "<query>"`: main-thread cost while riding. Inline builds: 271 ms worst frame;
-  workers: 15 ms worst, 0/705 frames over 16 ms. Next: measure on the iPad.
+- `scripts/seaside-hitch.ts`: main-thread cost while riding (inline 271 ms worst → workers 15 ms, 0/705 frames > 16 ms).
 
 ## Looks (`render/looks.ts`, `render/post.ts`) — `?look=raw|crafted|illustrated|pixel|morning|midday|fever`
 - Material: per-cube bevels (fade below ~8 px/cube) + cool ambient / warm sun (`LOOK` uniforms). Post: ink outlines

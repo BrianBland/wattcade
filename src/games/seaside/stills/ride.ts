@@ -10,7 +10,7 @@ import { voxelMaterial } from '../voxel/three';
 import { TerrainLOD } from '../world/terrainLOD';
 import { SunShadow } from '../world/sunShadow';
 
-export interface Knobs { cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
+export interface Knobs { road?: boolean; cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
 export interface Overlay { bubble?: string; prompt?: string; meter?: number; fade?: number; bang?: boolean }
 export interface Ride { stage: Stage; duration: number; setTime(t: number): void; overlay(t: number): Overlay; terrain: TerrainLOD | null }
 
@@ -50,7 +50,7 @@ export function createRide(canvas: HTMLCanvasElement, w: number, h: number, knob
       { cell: 8, x0: -2400, x1: 1800, z0: -3600, z1: 160 }, { cell: 2, x0: -420, x1: 420, z0: -820, z1: 140 }, { cell: 0.25, x0: -70, x1: 50, z0: -110, z1: 20 },
     ]) : undefined;
     if (sun) st.stats.push(`sun shadow field: ${Math.round(performance.now() - tb)} ms`);
-    terrain = new TerrainLOD({ cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
+    terrain = new TerrainLOD({ road: knobs.road ? {} : undefined, cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
     st.scene.add(terrain.root);
     // props only (trees, scrub clumps, rails, signs): greedy, folded colours, shader noise
     for (const [name, g] of [['props 0.25', world.near], ['props 1', world.mid]] as const)

@@ -21,7 +21,7 @@ const knobs = { routeLod: num('routelod'), hyst: num('hyst'), fade: num('fade'),
 const ride = createRide(canvas, W, H, knobs);
 ride.stage.camera.aspect = W / H; ride.stage.camera.updateProjectionMatrix();
 const buildMs = Math.round(performance.now() - t0);
-const look = applyLook(q.get('look') ?? 'raw');
+const look = applyLook(q.get('look') ?? 'raw', q.get('detail') !== null ? Number(q.get('detail')) : undefined); // ?detail=0..1 mixed-size cubes
 const post = look.post ? new PostFX(ride.stage.renderer, W, H) : null;
 if (post) {
   Object.assign(post.p, look.post);

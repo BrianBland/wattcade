@@ -2,7 +2,7 @@
 // Coordinates: metres, y up, the ride heads toward −z. Road y = 0 at z = 0.
 import { VoxelGrid } from '../voxel/grid';
 import { definePalette } from '../voxel/palette';
-import { fbm, hash2, smooth, clamp } from '../voxel/noise';
+import { fbm, hash2, noise2, smooth, clamp } from '../voxel/noise';
 
 export const COAST = definePalette({
   asphalt: 0x67686b, asphalt2: 0x646568, asphalt3: 0x6a6b6e, yellow: 0xf2c230, white: 0xf3f0e6,
@@ -154,7 +154,8 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
       grid.set(x, seaY, z, c);
       continue;
     }
-    let top = yi(h);
+    // road steps: clumped noise in the rounding so each step edge wanders and crumbles a little instead of a ruler line
+    let top = (t === T.ROAD || t === T.GRAVEL) && opts.lines ? yi(h + (noise2(wx * 1.7, wz * 1.7, 41) - 0.5) * s * 0.55) : yi(h);
     const capped = cor?.mode === 'outside' && s > 0.25 && ad - s * 0.75 < cor.half; // coarse columns touching the road
     if (capped) top = Math.min(top, yi(roadY(wz) - 0.06) - 1);
     let lo = top;

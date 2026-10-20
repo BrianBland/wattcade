@@ -16,8 +16,8 @@ export const LOOKS: Record<string, LookPreset> = {
   fever: { label: 'G · Evening: fever dream', bevel: 1, cool: 1, post: { outline: 1, ink: new THREE.Color(0x5a0f3a), grade: 1, saturation: 1.3, bloom: 1.2, threshold: 0.5, halation: 1, dream: 1, posterize: 24, dither: 0.5 } },
 };
 
-export function applyLook(name: string): LookPreset {
+export function applyLook(name: string, detail?: number): LookPreset {
   const l = LOOKS[name] ?? LOOKS.raw;
-  LOOK.bevel.value = l.bevel; LOOK.cool.value = l.cool;
+  LOOK.bevel.value = l.bevel; LOOK.cool.value = l.cool; LOOK.detail.value = detail ?? (l.bevel > 0 ? 1 : 0);
   return l;
 }

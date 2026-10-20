@@ -34,7 +34,7 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
   when all its tiles are ready (no holes); positions ahead on the route are prefetched. Visible tiles merge into 2×2
   clusters; props merge into 48 m clusters (`buildClusteredMeshes`). 125 ms → 133 ms render, 565 → 94 draw calls.
 ## Looks (`render/looks.ts`, `render/post.ts`) — `?look=raw|crafted|illustrated|pixel|morning|midday|fever`
-- Material: per-cube bevels (fade below ~8 px/cube) + cool ambient / warm sun (`LOOK` uniforms). Post: ink outlines
+- Material: per-cube bevels, mixed-size sub-cubes (`?detail=`, 2×2/4×4 in patches), cool ambient / warm sun (`LOOK`). Post: ink outlines
   (depth silhouettes + 1/depth creases), split-tone grade, posterize + Bayer dither, low-res pixels, bloom/halation,
   and a `dream` dial (vignette, hue drift, chromatic fringe, wobble). Sheets: `npx tsx scripts/seaside-looks.ts`.
 - Not yet: sim/game module, audio, scenarios; nothing in `src/games/registry.ts`.

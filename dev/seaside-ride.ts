@@ -1,8 +1,10 @@
 // Seaside motion test.
-//   Live / iPad perf:  /dev/seaside-ride.html   knobs: ?lod=1 &bake=1 &greedy=1 &mid=0 &far=0 &shadows=0 &close=0 &res=0.75 &midv=2 &farv=12 &smap=2048 &t=12 (start time)
+//   Live / iPad perf:  /dev/seaside-ride.html   knobs: ?look=raw|crafted|illustrated|pixel|morning|midday|fever &lod=1 &bake=1 &greedy=1 &mid=0 &far=0 &shadows=0 &close=0 &res=0.75 &midv=2 &farv=12 &smap=2048 &t=12 (start time)
 //                      ?lite=1 = close=0 midv=2 farv=12 smap=2048 res=0.75
 //   Capture (script):  /dev/seaside-ride.html?capture=1&w=1280&h=720  → window.__frame(t) renders one frame at time t
 import { createRide, type Overlay } from '../src/games/seaside/stills/ride';
+import { applyLook } from '../src/games/seaside/render/looks';
+import { PostFX } from '../src/games/seaside/render/post';
 
 const q = new URLSearchParams(location.search);
 const on = (k: string) => q.get(k) !== '0';
@@ -19,6 +21,12 @@ const knobs = { cluster: num('cluster'), workers: num('workers'), bake: q.get('b
 const ride = createRide(canvas, W, H, knobs);
 ride.stage.camera.aspect = W / H; ride.stage.camera.updateProjectionMatrix();
 const buildMs = Math.round(performance.now() - t0);
+const look = applyLook(q.get('look') ?? 'raw');
+const post = look.post ? new PostFX(ride.stage.renderer, W, H) : null;
+if (post) {
+  Object.assign(post.p, look.post);
+  for (const k of Object.keys(post.p)) if (q.get(`p_${k}`) !== null && typeof (post.p as any)[k] === 'number') (post.p as any)[k] = Number(q.get(`p_${k}`)); // ?p_outline=0 etc.
+}
 console.log(ride.stage.stats.join('\n'));
 
 function drawOverlay(o: Overlay) {
@@ -26,7 +34,7 @@ function drawOverlay(o: Overlay) {
     + (o.prompt ? `<div class="prompt">${o.prompt}</div>` : '') + (o.meter !== undefined ? `<div class="meter"><i style="width:${Math.round(o.meter * 100)}%"></i></div>` : '')
     + (o.fade ? `<div class="fade" style="opacity:${o.fade.toFixed(3)}"></div>` : '');
 }
-function frame(t: number) { ride.setTime(t); ride.stage.renderer.render(ride.stage.scene, ride.stage.camera); drawOverlay(ride.overlay(t)); }
+function frame(t: number) { ride.setTime(t); if (post) post.render(ride.stage.scene, ride.stage.camera, t); else ride.stage.renderer.render(ride.stage.scene, ride.stage.camera); drawOverlay(ride.overlay(t)); }
 /** Capture: wait until every terrain tile for this camera is built (workers are async), then render. */
 async function frameExact(t: number) { ride.setTime(t); await ride.terrain?.whenReady(); frame(t); }
 

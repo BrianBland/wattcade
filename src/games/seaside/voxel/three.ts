@@ -28,27 +28,52 @@ export function buildGrid(grid: VoxelGrid, opts: MeshOpts, material: THREE.Mater
 }
 
 /**
- * Lambert material with per-voxel brightness jitter computed in the fragment shader (hash of the voxel cell under the
- * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water.
+ * Global look switches shared by every voxel material (uniform objects, so a look can change at runtime with no rebuild).
+ *   bevel: per-cube edge shading — faces read as individual blocks, even when greedy-merged (0..1)
+ *   cool:  hue-shifted lighting — shadow/ambient light shifts cool, direct sun warm (0..1)
  */
-export function voxelMaterial(opts: { size: number; jitter: number; wave?: { time: { value: number }; amp: number }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
+export const LOOK = { bevel: { value: 0 }, cool: { value: 0 } };
+
+/**
+ * Lambert material with per-voxel brightness jitter computed in the fragment shader (hash of the voxel cell under the
+ * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water, baked sun
+ * visibility, and the LOOK bevel / cool-shadow switches. Cell maths runs in the mesh's local space (grid `origin`).
+ */
+export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; wave?: { time: { value: number }; amp: number }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const o = opts.origin ?? [0, 0, 0];
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uVox = { value: opts.size };
     sh.uniforms.uJit = { value: opts.jitter };
+    sh.uniforms.uOrigin = { value: new THREE.Vector3(o[0], o[1], o[2]) };
+    sh.uniforms.uBevel = LOOK.bevel; sh.uniforms.uCool = LOOK.cool;
     if (opts.wave) sh.uniforms.uTime = opts.wave.time;
-    sh.vertexShader = 'varying vec3 vVoxW;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
+    sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
       + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        vVoxW = (modelMatrix * vec4(position, 1.0)).xyz;
+        vVoxL = position;
         vVoxN = normal;${opts.baked ? '\n        vSunVis = sunVis;' : ''}
         vWave = 0.0;
-        ${opts.wave ? `vWave = sin(dot(vVoxW.xz, vec2(0.23, 0.11)) - uTime * 1.4) * 0.6 + sin(dot(vVoxW.xz, vec2(-0.07, 0.29)) - uTime * 2.0) * 0.4;
+        ${opts.wave ? `vec3 wpos = (modelMatrix * vec4(position, 1.0)).xyz;
+        vWave = sin(dot(wpos.xz, vec2(0.23, 0.11)) - uTime * 1.4) * 0.6 + sin(dot(wpos.xz, vec2(-0.07, 0.29)) - uTime * 2.0) * 0.4;
         transformed.y += vWave * ${opts.wave.amp.toFixed(3)};` : ''}`);
-    sh.fragmentShader = 'uniform float uVox;\nuniform float uJit;\nvarying vec3 vVoxW;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.baked ? 'varying float vSunVis;\n' : '')
-      + sh.fragmentShader.replace('#include <lights_fragment_end>', opts.baked ? '#include <lights_fragment_end>\n  reflectedLight.directDiffuse *= mix(0.0, 1.0, vSunVis);' : '#include <lights_fragment_end>').replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 cell = floor(vVoxW / uVox - vVoxN * 0.5);
+    const lights = `#include <lights_fragment_end>${opts.baked ? '\n  reflectedLight.directDiffuse *= vSunVis;' : ''}
+      reflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(0.74, 0.84, 1.22), uCool);
+      reflectedLight.directDiffuse *= mix(vec3(1.0), vec3(1.08, 1.0, 0.88), uCool);`;
+    sh.fragmentShader = 'uniform float uVox;\nuniform float uJit;\nuniform vec3 uOrigin;\nuniform float uBevel;\nuniform float uCool;\nvarying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.baked ? 'varying float vSunVis;\n' : '')
+      + sh.fragmentShader.replace('#include <lights_fragment_end>', lights).replace('#include <color_fragment>', `#include <color_fragment>
+        vec3 gv = (vVoxL - uOrigin) / uVox;
+        vec3 cell = floor(gv - vVoxN * 0.5);
         float hj = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-        diffuseColor.rgb *= 1.0 + (hj * 2.0 - 1.0) * uJit + 0.09 * vWave;`);
+        // bevel: within ~14% of a cube edge, tilt the shading toward that edge's outward direction (lit from above-left)
+        vec3 fr = gv - cell, ed = vec3(0.0);
+        const float BW = 0.14;
+        for (int a = 0; a < 3; a++) {
+          if (abs(vVoxN[a]) > 0.5) continue;
+          ed[a] = fr[a] < BW ? -(1.0 - fr[a] / BW) : fr[a] > 1.0 - BW ? (1.0 - (1.0 - fr[a]) / BW) : 0.0;
+        }
+        float px = max(max(fwidth(gv.x), fwidth(gv.y)), fwidth(gv.z)); // cube size on screen (voxels per pixel)
+        float bev = (dot(ed, normalize(vec3(-0.35, 1.0, 0.3))) * 0.5 - length(ed) * 0.1) * (1.0 - smoothstep(0.08, 0.2, px));
+        diffuseColor.rgb *= 1.0 + (hj * 2.0 - 1.0) * uJit + 0.09 * vWave + uBevel * bev;`);
   };
   mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}`;
   return mat;

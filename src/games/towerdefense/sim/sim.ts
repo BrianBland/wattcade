@@ -1259,6 +1259,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   return {
     update,
     isOver: () => false,
+    menuActions: () => phase === 'run' ? [{ id: 'garage', label: 'Return to Garage · bank parts', action: { type: 'bail' } }] : [],
     inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;

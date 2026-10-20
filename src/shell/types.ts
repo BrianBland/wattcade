@@ -1,4 +1,4 @@
-import type { Button, GameHud, BikeState, GameModule, MediaTimeline, Profile, SessionRecord, TrainerCommand } from '../contracts';
+import type { Button, GameHud, GameSim, BikeState, GameModule, MediaTimeline, Profile, SessionRecord, TrainerCommand } from '../contracts';
 import type { MixItem, MixPlan, QueueMode } from '../media';
 
 export type DeviceKind = 'trainer' | 'controller' | 'hr';
@@ -31,7 +31,7 @@ export interface SessionLike {
   finish(): SessionRecord;
   ctx: { bike(): Readonly<BikeState>; debug?(key: string, value: number | string | boolean): void };
   media?: { positionS(): number; setTrim(trim: number | null): void };
-  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; inMenu?(): boolean; receive?(action: unknown): void };
+  sim: { isOver(): boolean; snapshot(): unknown; hud?(): GameHud; inMenu?(): boolean; menuActions?: GameSim['menuActions']; receive?(action: unknown): void };
 }
 export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }

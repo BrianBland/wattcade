@@ -16,6 +16,16 @@ function ride(script = 'z2') {
 }
 
 describe('endless runs', () => {
+  it('provides a garage pause action only during runs', () => {
+    const { s, snap } = ride();
+    const actions = s.sim.menuActions!();
+    expect(actions).toEqual([{ id: 'garage', label: 'Return to Garage · bank parts', action: { type: 'bail' } }]);
+    s.sim.receive!(actions[0].action); s.step(1);
+    expect(snap().phase).toBe('garage');
+    expect(s.sim.menuActions!()).toEqual([]);
+    s.finish();
+  });
+
   it('clears a boss announcement when bailing during its recovery lull or an active phase', () => {
     const profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } });
     const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true } });

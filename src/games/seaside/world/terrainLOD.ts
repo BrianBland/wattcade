@@ -35,6 +35,7 @@ export interface TerrainLODOpts {
   route?: (x0: number, z0: number, S: number) => number; routeAlpha?: number;
   /** Merge back to a coarser level only once this much past the split distance (stops flip-flopping). */ hysteresis?: number;
   /** Cross-fade (screen-door dissolve) between levels over this many seconds; 0 = pop. */ fade?: number;
+  /** Geometric detail density (half-size cubes) and the coarsest voxel size that gets it. */ decor?: number; decorMax?: number;
 }
 interface Tile { key: string; kind: 'tile' | 'road'; x0: number; z0: number; S: number; voxel?: number; data?: TileData; lastUsed: number }
 interface Job { key: string; prio: number }
@@ -63,13 +64,13 @@ export class TerrainLOD {
 
   constructor(private o: TerrainLODOpts) {
     this.res = o.res ?? 64; this.minTile = o.minTile ?? 8; this.splitK = o.splitK ?? 1.6;
-    this.params = { res: this.res, skirt: o.skirt ?? 3, flatAOFrom: o.flatAOFrom ?? 1, corridor: o.road ? (o.road.half ?? 6.2) : 0, roadVoxel: o.road?.voxel ?? 0.125 };
+    this.params = { decor: o.decor ?? 0, decorMax: o.decorMax ?? 0.25, res: this.res, skirt: o.skirt ?? 3, flatAOFrom: o.flatAOFrom ?? 1, corridor: o.road ? (o.road.half ?? 6.2) : 0, roadVoxel: o.road?.voxel ?? 0.125 };
     const n = o.workers ?? Math.max(1, Math.min(4, (globalThis.navigator?.hardwareConcurrency ?? 2) - 1));
     for (let i = 0; i < n && typeof Worker !== 'undefined'; i++) {
       const w = new Worker(new URL('./tileWorker.ts', import.meta.url), { type: 'module' });
       w.postMessage({ type: 'init', params: this.params, sun: o.sun?.serialize() ?? null });
       const slot = { w, busy: null as string | null };
-      w.onmessage = (e) => this.onBuilt(slot, e.data as { land: TileData['land']; water: TileData['water']; ms: number });
+      w.onmessage = (e) => this.onBuilt(slot, e.data as TileData);
       this.pool.push(slot);
     }
     this.stats.workers = this.pool.length;
@@ -161,11 +162,11 @@ export class TerrainLOD {
     this.stats.pending = this.queue.size + this.pool.filter((p) => p.busy).length;
   }
 
-  private onBuilt(slot: { busy: string | null }, d: { land: TileData['land']; water: TileData['water']; ms: number }) {
+  private onBuilt(slot: { busy: string | null }, d: TileData) {
     const t0 = performance.now();
     const t = this.tiles.get(slot.busy!);
     slot.busy = null;
-    if (t) { t.data = { land: d.land, water: d.water, ms: d.ms }; this.stats.built++; this.stats.buildMs += d.ms; }
+    if (t) { t.data = { land: d.land, water: d.water, decor: d.decor, ms: d.ms }; this.stats.built++; this.stats.buildMs += d.ms; }
     this.pump();
     this.tryApply();
     this.stats.onBuiltMaxMs = Math.max(this.stats.onBuiltMaxMs, performance.now() - t0);
@@ -205,6 +206,8 @@ export class TerrainLOD {
           group.add(mesh); cf += land.faces;
         }
         const water = mergeMeshData(members.map((m) => m.data!.water).filter((x): x is NonNullable<typeof x> => !!x));
+        const decor = mergeMeshData(members.map((m) => m.data!.decor).filter((x): x is NonNullable<typeof x> => !!x));
+        if (decor) { const mesh = new THREE.Mesh(geometryFrom(decor), this.mat(s / 2, false)); mesh.userData.voxel = s / 2; mesh.receiveShadow = S <= 64; group.add(mesh); cf += decor.faces; }
         if (water) { const mesh = new THREE.Mesh(geometryFrom(water), this.mat(s, true)); mesh.userData.voxel = s; mesh.userData.water = true; mesh.receiveShadow = S <= 64; group.add(mesh); cf += water.faces; }
         c = { sig: csig, group, faces: cf };
         this.clusters.set(ck, c);

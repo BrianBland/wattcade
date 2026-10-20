@@ -16,16 +16,16 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
 - `stills/stage.ts` renderer, gradient sky shader, exp fog, sun with shadow box, hemisphere light, FP fill light. NeutralToneMapping keeps colours vivid.
 - `world/lou.ts` Lou, one reusable model: red watch cap, white beard + walrus moustache, rosy nose, pipe, gold earring, yellow oilskin bib. Finishes `live`/`stone` (temple statue), poses `counter`/`wheel` (the car).
 - `stills/shopStill.ts` Lou's counter diorama at 2 cm voxels + HTML paper UI overlay (price tags, receipt); `stillLouSheet` character sheet.
-
 ## Motion test (`stills/ride.ts`)
 - 10 s ride → cut → cast, bite, pull, haul-up (23.5 s). Pure `setTime(t)`; articulated rod (7 bending joints), shader swell on a separate water mesh, splash particles + rings.
 - Clip: `npx tsx scripts/seaside-clip.ts` → `docs/seaside/clips/ride-fish.mp4`. iPad: `npm run dev:ipad` → `/dev/seaside-ride.html` (fps overlay).
 
-## Fast path (clip default): `?lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5`
+## Fast path (clip default): `?lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5&decor=0.25`
 - `voxel/greedy.ts` merges faces exactly (AO-constant strips, colour variants folded via `COAST_FOLD`, per-cube noise moved to `voxelMaterial` shader).
 - `world/terrainLOD.ts` quadtree of 32-voxel tiles around the camera (1/8 m underfoot, doubling per ring), built on demand + cached = streaming. One land + one water mesh per tile, skirts hide cracks.
 - `road=1`: the road corridor (|d| ≤ 6.2 m) skips the rings: fixed 1/8 m segments (1/2 m past 200 m), built once, so it
   stays flat to the horizon; coarse terrain touching it is capped below the road. Reuse for boardwalk/bridges.
+- `decor`: real half-size cubes on tiles ≤ 1/4 m (bumps in clumps off the asphalt; rubble at the foot of 1-step risers).
 - Anti-popping: detail follows max(route distance, camera distance / 3) (`routelod`), hysteresis, 0.5 s Bayer dissolve.
   `scripts/seaside-pops.ts`: cube px at a level change avg 6.3 → 3.9, max 12.8 → 7.3; render +12% (185 → 208 ms).
 - `world/sunShadow.ts` bakes terrain self-shadowing (sweep toward a fixed sun, 3 nested levels); faces carry `sunVis`, which scales only direct light. Live shadow map now holds only props (trees, rails, van, bike).

@@ -10,7 +10,7 @@ import { voxelMaterial } from '../voxel/three';
 import { TerrainLOD } from '../world/terrainLOD';
 import { SunShadow } from '../world/sunShadow';
 
-export interface Knobs { routeLod?: number; hyst?: number; fade?: number; road?: boolean; cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
+export interface Knobs { decor?: number; routeLod?: number; hyst?: number; fade?: number; road?: boolean; cluster?: number; workers?: number; bake?: boolean; lodK?: number; lodRes?: number; lodMin?: number; skirt?: number; aoFrom?: number; lod?: boolean; farAO?: boolean; mid: boolean; far: boolean; shadows: boolean; close: boolean; greedy?: 0 | 1 | 2; midVoxel?: number; farVoxel?: number; shadowMap?: number }
 export interface Overlay { bubble?: string; prompt?: string; meter?: number; fade?: number; bang?: boolean }
 export interface Ride { stage: Stage; duration: number; setTime(t: number): void; overlay(t: number): Overlay; terrain: TerrainLOD | null }
 
@@ -56,7 +56,7 @@ export function createRide(canvas: HTMLCanvasElement, w: number, h: number, knob
       for (let i = 0; i <= 4; i++) { const z = Math.min(120, Math.max(-3600, z0 + (S * i) / 4)), rx = roadX(z); best = Math.min(best, Math.max(0, x0 - rx, rx - (x0 + S)) + Math.max(0, z0 - 120, -3600 - (z0 + S))); }
       return best;
     };
-    terrain = new TerrainLOD({ route: knobs.routeLod ? routeDist : undefined, routeAlpha: knobs.routeLod || 3, hysteresis: knobs.hyst, fade: knobs.fade, road: knobs.road ? {} : undefined, cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
+    terrain = new TerrainLOD({ decor: knobs.decor, route: knobs.routeLod ? routeDist : undefined, routeAlpha: knobs.routeLod || 3, hysteresis: knobs.hyst, fade: knobs.fade, road: knobs.road ? {} : undefined, cluster: knobs.cluster, workers: knobs.workers, sun, water: { time: uTime, amp: 0.09 }, splitK: knobs.lodK, res: knobs.lodRes, minTile: knobs.lodMin, skirt: knobs.skirt, flatAOFrom: knobs.aoFrom });
     st.scene.add(terrain.root);
     // props only (trees, scrub clumps, rails, signs): greedy, folded colours, shader noise
     for (const [name, g] of [['props 0.25', world.near], ['props 1', world.mid]] as const)

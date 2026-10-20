@@ -116,6 +116,12 @@ export interface FillOpts {
    * any column that touches it just below the road surface, so coarse terrain never pokes through the road edge.
    */
   corridor?: { half: number; mode: 'inside' | 'outside'; edgeSkirt?: number };
+  /**
+   * Geometric detail: a grid at half this grid's voxel size (same origin) receives small cubes that change the real
+   * surface — bumps sitting proud of the ground in clumpy patches, and rubble half-filling the foot of one-step risers
+   * (so road steps read as broken ledges, not ruler lines). `density` 0..1.
+   */
+  decor?: { grid: VoxelGrid; density: number };
 }
 /** Voxelize the heightfield into `grid` over `reg` (x1/z1 exclusive), skipping columns inside `skip`. */
 export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, opts: FillOpts) {
@@ -129,6 +135,15 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
     H[i * D + k] = smp.h; TT[i * D + k] = smp.t; DD[i * D + k] = smp.d;
   }
   const yi = (h: number) => Math.floor((h - oy) / s);
+  /** Top voxel index of column (i, k), as filled (road dithering + the corridor cap). */
+  const topAt = (i: number, k: number) => {
+    const t = TT[i * D + k] as T, h = H[i * D + k], wx = ox + (ix0 - 1 + i + 0.5) * s, wz = oz + (iz0 - 1 + k + 0.5) * s;
+    // road steps: clumped noise in the rounding so each step edge wanders and crumbles a little instead of a ruler line
+    let top = (t === T.ROAD || t === T.GRAVEL) && opts.lines ? yi(h + (noise2(wx * 1.7, wz * 1.7, 41) - 0.5) * s * 0.55) : yi(h);
+    const cor = opts.corridor;
+    if (cor?.mode === 'outside' && s > 0.25 && Math.abs(DD[i * D + k]) - s * 0.75 < cor.half) top = Math.min(top, yi(roadY(wz) - 0.06) - 1);
+    return top;
+  };
   const seaY = Math.round((SEA_LEVEL - oy) / s) - 1; // water voxels' top face sits exactly at SEA_LEVEL on every LOD
   for (let i = 1; i < W - 1; i++) for (let k = 1; k < D - 1; k++) {
     const x = ix0 - 1 + i, z = iz0 - 1 + k, wx = ox + (x + 0.5) * s, wz = oz + (z + 0.5) * s;
@@ -154,10 +169,8 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
       grid.set(x, seaY, z, c);
       continue;
     }
-    // road steps: clumped noise in the rounding so each step edge wanders and crumbles a little instead of a ruler line
-    let top = (t === T.ROAD || t === T.GRAVEL) && opts.lines ? yi(h + (noise2(wx * 1.7, wz * 1.7, 41) - 0.5) * s * 0.55) : yi(h);
+    let top = topAt(i, k);
     const capped = cor?.mode === 'outside' && s > 0.25 && ad - s * 0.75 < cor.half; // coarse columns touching the road
-    if (capped) top = Math.min(top, yi(roadY(wz) - 0.06) - 1);
     let lo = top;
     for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
     lo = Math.max(Math.min(lo, top), seaY - 1);
@@ -194,6 +207,27 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, skip: Region | null, o
         c = below > 0 ? (steep ? C.cutB : C.dirt) : g > 0.62 ? (r < 0.5 ? C.grassG : C.grassG2) : r < 0.45 ? C.grass : r < 0.8 ? C.grass2 : r < 0.97 ? C.grass3 : C.poppy;
       }
       grid.set(x, y, z, c);
+    }
+    // geometric detail at half size: bumps on top, rubble at the foot of one-step risers
+    const dec = opts.decor;
+    if (dec) {
+      const dg = dec.grid, host = grid.get(x, top, z), clump = noise2(wx / (6 * s), wz / (6 * s), 61);
+      const nTop = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => (TT[(i + a) * D + k + b] === T.SEA ? -1e9 : topAt(i + a, k + b)));
+      const fx = 2 * x, fz = 2 * z, fy = 2 * (top + 1);
+      if (host && t !== T.ROAD && nTop.every((n) => n <= top) && hash2(x, z, 62) < dec.density * (0.15 + 0.85 * clump)) { // no litter on the asphalt
+        const r = hash2(x, z, 63), sx = r < 0.5 ? 0 : 1, sz = hash2(z, x, 64) < 0.5 ? 0 : 1;
+        dg.set(fx + sx, fy, fz + sz, host);
+        if (r > 0.65) dg.set(fx + (1 - sx), fy, fz + sz, host);
+        if (r > 0.85) dg.set(fx + sx, fy + 1, fz + sz, host);
+      }
+      // rubble: this column is one step above a neighbour → half-fill the foot of the riser on the neighbour's side
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([a, b], n) => {
+        if (nTop[n] !== top - 1 || hash2(x * 3 + a, z * 3 + b, 65) > dec.density * 1.6) return;
+        const along = hash2(x + a, z + b, 66) < 0.5 ? 0 : 1;
+        const gx = a > 0 ? fx + 2 : a < 0 ? fx - 1 : fx + along, gz = b > 0 ? fz + 2 : b < 0 ? fz - 1 : fz + along;
+        const c = grid.get(x + a, top - 1, z + b) || host;
+        if (c) { dg.set(gx, 2 * top, gz, c); if (hash2(x, z * 5 + n, 67) < 0.35) dg.set(a !== 0 ? gx : gx + (along ? -1 : 1), 2 * top, b !== 0 ? gz : gz + (along ? -1 : 1), c); }
+      });
     }
     // coastal scrub on the hills
     if (opts.scrub && t === T.INLAND && d > 9) {

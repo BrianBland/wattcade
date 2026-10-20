@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 const arg = (k: string, d: number) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? Number(process.argv[i + 1]) : d; };
 const FPS = arg('fps', 30), Wd = arg('w', 1280), Ht = arg('h', 720);
 const oi = process.argv.indexOf('--out'), OUT = oi > 0 ? process.argv[oi + 1] : 'ride-fish';
-const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5';
+const qi = process.argv.indexOf('--q'), Q = qi > 0 ? process.argv[qi + 1] : 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5&decor=0.25';
 const server = await createServer({ server: { port: 5297, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');

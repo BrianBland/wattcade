@@ -33,7 +33,6 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
 - Tiles build in a Web Worker pool (`world/tileWorker.ts` → pure `world/tileBuild.ts`); the visible set swaps atomically
   when all its tiles are ready (no holes); positions ahead on the route are prefetched. Visible tiles merge into 2×2
   clusters; props merge into 48 m clusters (`buildClusteredMeshes`). 125 ms → 133 ms render, 565 → 94 draw calls.
-
 ## Looks (`render/looks.ts`, `render/post.ts`) — `?look=raw|crafted|illustrated|pixel|morning|midday|fever`
 - Material: per-cube bevels (fade below ~8 px/cube) + cool ambient / warm sun (`LOOK` uniforms). Post: ink outlines
   (depth silhouettes + 1/depth creases), split-tone grade, posterize + Bayer dither, low-res pixels, bloom/halation,

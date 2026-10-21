@@ -6,6 +6,8 @@ import { play } from '../audio/sfx';
 export interface MenuNavOpts {
   /** Start focused here. */
   initial?: number;
+  /** Disabled entries are skipped by directional navigation. */
+  isDisabled?: (i: number) => boolean;
   /** Left/right on item i: return true if it adjusted a value (the focus then stays put). */
   onAdjust?: (i: number, dir: -1 | 1) => boolean;
   /** Y on item i (e.g. "edit this profile"). */
@@ -26,10 +28,31 @@ export function useMenuNav(count: number, layout: number | readonly number[], on
     const move = (k: NavKey) => {
       const r = ref.current;
       if ((k === 'left' || k === 'right') && r.opts.onAdjust?.(r.index, k === 'left' ? -1 : 1)) { play('uiTick'); return; }
-      const next = typeof r.layout === 'number' ? navReduce({ index: r.index }, k, r.count, r.layout).index : navRows(r.index, k, r.layout);
+      const step = (i: number) => typeof r.layout === 'number' ? navReduce({ index: i }, k, r.count, r.layout).index : navRows(i, k, r.layout);
+      let next = step(r.index);
+      const visited = new Set<number>([r.index]);
+      while (r.opts.isDisabled?.(next)) {
+        if (visited.has(next)) return;
+        visited.add(next);
+        // A vertical move may land in a locked column of an otherwise usable row.
+        if ((k === 'up' || k === 'down') && typeof r.layout !== 'number') {
+          let start = 0;
+          for (const length of r.layout) {
+            if (next >= start && next < start + length) {
+              const candidates = Array.from({ length }, (_, j) => start + j)
+                .filter((i) => !r.opts.isDisabled?.(i))
+                .sort((a, b) => Math.abs(a - next) - Math.abs(b - next));
+              if (candidates.length) { next = candidates[0]; break; }
+            }
+            start += length;
+          }
+          if (!r.opts.isDisabled?.(next)) break;
+        }
+        next = step(next);
+      }
       if (next !== r.index) { play('uiMove'); ref.current.index = next; setIndex(next); }
     };
-    const select = () => { play('uiSelect'); ref.current.onSelect(ref.current.index); };
+    const select = () => { play('uiSelect'); if (!ref.current.opts.isDisabled?.(ref.current.index)) ref.current.onSelect(ref.current.index); };
     const back = () => { if (ref.current.onBack) { play('uiBack'); ref.current.onBack(); } };
     const off = onMenuPress((p) => {
       for (const k of ['up', 'down', 'left', 'right'] as const) if (p.has(k)) move(k);

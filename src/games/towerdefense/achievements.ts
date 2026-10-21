@@ -57,7 +57,7 @@ export const achievements: AchievementDef[] = [
   tally(G, 'bosses', (r) => Math.max(num(r, 'bossesKilled'), countEvents(r, 'bossKilled')))({ id: 'td_boss', name: 'Boss Breaker', desc: 'Destroy 30 Hive Tyrants', bonusXp: 80, goal: 30, unit: ' bosses' }),
   tally(G, 'spotless', (r) => Math.max(num(r, 'spotlessWaves'), countEvents(r, 'waveCleared', (d) => d.spotless === true)))({ id: 'td_spotless', name: 'Clean Sweep', desc: 'Clear 25 Spotless waves (early, no leak, full heal)', bonusXp: 60, goal: 25, unit: ' waves' }),
   feat(G, { id: 'td_surges', name: 'Surge Protector', desc: 'Win 8 called efforts in one run', bonusXp: 80, check: (r) => Math.max(num(r, 'bestRunCalls'), num(r, 'bestRunSurges')) >= 8 }),
-  feat(G, { id: 'td_spin', name: 'Spin Cycle', desc: 'Win a dynamo spin-up', bonusXp: 40, check: (r) => num(r, 'spinsWon') >= 1 || hasEvent(r, 'spinWon') }),
+  feat(G, { id: 'td_spin', name: 'Spin Cycle', desc: 'Win 3 dynamo spin-ups in one ride', bonusXp: 40, check: (r) => num(r, 'spinsWon') >= 3 || countEvents(r, 'spinWon') >= 3 }),
   tally(G, 'kills', kills)({ id: 'td_kills', name: 'Scrap Heap', desc: 'Destroy 100,000 enemies in Dynamo Defense', bonusXp: 200, goal: 100000, unit: ' kills' }),
 
   feat(G, { id: 'td_kindling', name: 'Kindling', desc: 'Start an ignition chain of 3 in one ride', bonusXp: 40, check: (r) => bestChain(r) >= 3 }),

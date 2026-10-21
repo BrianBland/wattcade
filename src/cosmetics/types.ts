@@ -10,7 +10,7 @@ export type JerseyPattern =
   | 'plain' | 'vstripes' | 'hoops' | 'dots' | 'band' | 'checker' | 'sash' | 'bolt' | 'flames' | 'tiger' | 'zebra' | 'camo'
   | 'galaxy' | 'stars' | 'tux' | 'cape' | 'floral' | 'retro' | 'mail' | 'bones' | 'hazard' | 'suit' | 'hamster' | 'coat'
   | 'eq' | 'disco' | 'waves' | 'overalls' | 'rainbow' | 'argyle' | 'tiedye' | 'leopard' | 'plaid' | 'bee' | 'pajamas'
-  | 'circuit' | 'neon' | 'marble' | 'royal' | 'lighthouse';
+  | 'circuit' | 'neon' | 'marble' | 'royal' | 'lighthouse' | 'embers' | 'scrap' | 'dynamo' | 'chevrons';
 /** `base`/`ink` 'rider' = the profile colour. */
 export interface JerseyLook { pattern: JerseyPattern; base: string; ink: string }
 /** Frame colours. `kind` animates: rainbow cycles hue, glow adds a halo, fade blends frame→frame2 along the bike. */

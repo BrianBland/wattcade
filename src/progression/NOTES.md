@@ -22,6 +22,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 ## Conventions games must follow
 - Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.
+- Dynamo Defense (#156) adds easy/medium/hard/playtime tiers on the same curve. `td_spotless` and `td_surges` changed meaning (lifetime Spotless waves; called efforts in one run) without a rules bump, so already-earned copies stay.
 - Old profiles: `gameData._progression.stormsWeathered` seeds `counters['lighthouse.storms']`.
 - Afterglow (`afterglow`) grants the separate Light Cycle Trail. `ride.arcadeTenMinutes` sums arcade sessions with at least 600 active-cadence samples; Warm-up Ride and shorter/idle sessions do not count. This new counter starts with future qualifying rides; it does not guess historical durations from lifetime totals.
 

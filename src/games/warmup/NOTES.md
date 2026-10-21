@@ -20,15 +20,20 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
   drawn at full res on top. Layers: sky (+stars), celestial, clouds, backdrop (parallax .05), a ridge that is the real
   road profile zoomed out (4 m/px), mid ground + props (.5), road + ground (1, drawn with the same exaggerated elev),
   rider (tilted by the drawn slope), foreground bits (1.35), actors (birds, gulls, UFOs with tractor beams).
-- Biomes (loop): countryside, seaside, underwater, jungle, desert, volcano, snow, moon. `paint.ts` = helpers + `BiomeLook`
+- Biomes (loop): countryside, seaside, underwater, jungle, desert, volcano, snow, moon, autumn, marsh, market, sky. New IDs are appended to retain old start indices and achievement bits. `paint.ts` = helpers + `BiomeLook`
   (colours, backdrop, mid/fore props, celestial, actor kind, particles, rider gear, outdoor, ambient bed);
   `biomes.ts` (first three + `LOOKS`), `biomesMore.ts` (the rest). Everything cross-dissolves by `biomeWeights` (colours, sky, celestials, particles, ambient bed); layers (backdrop/mid/fore) are drawn per biome into a scratch buffer and composited with `blend.ts layerAlphas`. A gateway landmark (`gateway.ts`, styled by destination biome) stands at each boundary.
   Add a biome = `BIOMES` + `BIOME_NAMES` (terrain.ts) + a look in `LOOKS`.
+- `biomesNew.ts`: approved woodland, marsh, market and sky art; continuous-grade road structures, swaying reeds/lanterns, stateless alternating frog hops with landing ripples, floating gardens and pinwheels. Sky actors include a slow whale and birds; actor RNG is separate from simulation RNG.
+- `worldPolish.ts`: all twelve looks gain larger road-anchored scenery groups, branching trees, detailed landmarks and revised backdrops. `roadside` hooks use world-pixel scroll and the actual road-height function; draw before the road/rider and composite sparse layers by biome weight. Floating sky terrain sets `openSky` to suppress solid ridge/mid-ground. Tree geometry scales together so small distant trees retain correct proportions. Round-4 renders, plan, actual before/after captures and motion proof are in `docs/visual-polish/biomes/README.md`.
+- Sky underside: shared `skyRock.ts` builds overlapping cliff fragments with unequal tips, broken shelves and a loose overall triangular taper. Broad faces stop at different depths; avoid radial crystal facets, a mathematically trimmed cone, repeated teeth or column strips. Seeded lean/depth variation, darker near cliffs, muted far cliffs, draping sod and partial cloud occlusion support the landscape reading. Applies to distant gardens and road undersides. Round-7 stills, seeded variants and gameplay clip: `docs/visual-polish/biomes/README.md`. Road, arches and grade are unchanged.
 - Actors per biome (birds, gulls, parrots, vultures, fish schools + jellyfish, lava bombs, UFOs); a biome change sends the old
   ones away. Particles are stateless (index + time): snow, ash, bubbles, fireflies, dust.
 - Day/night (`daylight.ts`, tested) for outdoor biomes from the real clock: night sky, moon, stars, headlight, sunset tint.
   `?hour=21` previews a time. Ambient noise bed per biome via `setAmbient('warmup', …)`, stopped on unmount.
 - `rider.ts`: procedural rider (profile jersey colour, two-bone legs from `bike.crankRevs`; bubble helmet on the Moon, scuba gear underwater).
+
+- The shared rider uses a binary-alpha solid-art pass plus separate translucent gear/effects. A bounded one-tick cadence extrapolation smooths fixed-rate samples; raw zero cadence stops the feet immediately. Motion/biome proof pages and capture scripts are in `docs/visual-polish/player/README.md`.
 
 ## Tests
 `npx vitest run src/games/warmup` (terrain integral/bounds, biome loop, determinism, flat toggle, startDistance, scenarios).

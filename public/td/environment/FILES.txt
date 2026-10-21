@@ -1,0 +1,11 @@
+FILES.txt
+NOTES.md
+SHA256SUMS.txt
+parts/splat_1.png
+parts/splat_2.png
+parts/splat_3.png
+parts/splat_4.png
+parts/splat_5.png
+parts/splat_6.png
+road/NOTES.md
+road/portrait.webp

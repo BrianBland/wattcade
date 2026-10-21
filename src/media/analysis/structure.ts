@@ -3,16 +3,16 @@ import { MEL_BANDS, type Frames } from './features';
 import { bandFlux } from './rhythm';
 import { mean, nearestIndex, normalise, percentile, resampleSeries, smooth, std } from './util';
 
-const frameOf = (f: Frames, t: number) => Math.max(0, Math.min(f.count - 1, Math.round((t * f.sr - f.n / 2) / f.hop)));
+export const frameOf = (f: Frames, t: number) => Math.max(0, Math.min(f.count - 1, Math.round((t * f.sr - f.n / 2) / f.hop)));
 
-function chromaMean(f: Frames, t0: number, t1: number): number[] {
+export function chromaMean(f: Frames, t0: number, t1: number): number[] {
   const a = frameOf(f, t0), b = Math.max(a + 1, frameOf(f, t1));
   const c = new Array(12).fill(0);
   for (let i = a; i < b; i++) for (let k = 0; k < 12; k++) c[k] += f.chroma[i * 12 + k];
   const nrm = Math.hypot(...c) || 1;
   return c.map((v) => v / nrm);
 }
-const cosine = (a: number[], b: number[]) => { let s = 0, na = 0, nb = 0; for (let i = 0; i < a.length; i++) { s += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return s / (Math.sqrt(na * nb) || 1); };
+export const cosine = (a: number[], b: number[]) => { let s = 0, na = 0, nb = 0; for (let i = 0; i < a.length; i++) { s += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; } return s / (Math.sqrt(na * nb) || 1); };
 
 /**
  * Which beat of four starts the bar: kicks land on 1 (and 3), and chords change on 1 (not 3),
@@ -96,7 +96,7 @@ export function bandCurves(f: Frames, durationS: number, hz: number): [number[],
 }
 
 /** DCT-II of a vector (MFCC from log mel). */
-function dct(x: number[], keep: number): number[] {
+export function dct(x: number[], keep: number): number[] {
   const N = x.length, out: number[] = [];
   for (let k = 0; k < keep; k++) { let s = 0; for (let n = 0; n < N; n++) s += x[n] * Math.cos((Math.PI / N) * (n + 0.5) * k); out.push(s); }
   return out;
@@ -117,14 +117,25 @@ export function curveMean(curve: number[], hz: number, t0: number, t1: number): 
 export function findSections(f: Frames, downbeats: number[], intensity: number[], hz: number, durationS: number): MediaSection[] {
   const bars = downbeats.length - 1;
   if (bars < 8) return label([{ t0: 0, t1: durationS }], intensity, hz);
-  const feats: number[][] = [], energy: number[] = [];
+  const feats: number[][] = [];
   for (let i = 0; i < bars; i++) {
     const a = frameOf(f, downbeats[i]), b = Math.max(a + 1, frameOf(f, downbeats[i + 1]));
     const mel = new Array(MEL_BANDS).fill(0);
     for (let j = a; j < b; j++) for (let m = 0; m < MEL_BANDS; m++) mel[m] += f.mel[j * MEL_BANDS + m] / (b - a);
     feats.push([...dct(mel, 13).slice(1), ...chromaMean(f, downbeats[i], downbeats[i + 1]).map((v) => v * 2)]);
-    energy.push(curveMean(intensity, hz, downbeats[i], downbeats[i + 1]));
   }
+  return sectionsFromBarFeatures(feats, downbeats, intensity, hz, durationS);
+}
+
+/**
+ * The boundary search behind findSections, from per-bar features (12 timbre + 12 chroma·2) only. Rolling analysis
+ * calls it with bar features accumulated across windows (no audio kept). `feats` is z-normalised in place.
+ */
+export function sectionsFromBarFeatures(feats: number[][], downbeats: number[], intensity: number[], hz: number, durationS: number): MediaSection[] {
+  const bars = feats.length;
+  if (bars < 8) return label([{ t0: 0, t1: durationS }], intensity, hz);
+  const energy: number[] = [];
+  for (let i = 0; i < bars; i++) energy.push(curveMean(intensity, hz, downbeats[i], downbeats[i + 1]));
   // z-normalise each feature dimension across bars
   const D = feats[0].length;
   for (let d = 0; d < D; d++) {
@@ -235,4 +246,86 @@ export function previewSpectrogram(f: Frames, durationS: number, hz = 4, bands =
   }
   let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
   return { hz, bands, data: btoa(bin) };
+}
+
+/** Compact per-beat features: all rolling structure analysis needs once the audio is gone (26 floats per beat). */
+export const BEAT_FEATURE_DIMS = { timbre: 12, chroma: 12 } as const;
+export interface BeatFeature { t: number; /** low-band flux at the beat */ low: number; /** peak log10 energy over the beat */ energy: number; /** mean loudness (10·log10 power) over the beat */ loud: number; /** mean total spectral flux over the beat */ act: number; timbre: Float32Array; chroma: Float32Array }
+
+/** Per-beat features from frames: timbre (MFCC-lite over the beat), unnormalised chroma sum, low-band flux at the beat. */
+export function beatFeatures(f: Frames, beats: number[]): BeatFeature[] {
+  const low = smooth(bandFlux(f, 0), 3);
+  return beats.map((t, i) => {
+    const t1 = beats[i + 1] ?? t + (i > 0 ? t - beats[i - 1] : 0.5);
+    const a = frameOf(f, t), b = Math.max(a + 1, frameOf(f, t1));
+    const mel = new Array(MEL_BANDS).fill(0), chroma = new Float32Array(12); let energy = -Infinity, loud = 0, act = 0;
+    for (let j = a; j < b; j++) { energy = Math.max(energy, f.energy[j]); loud += (10 * f.energy[j]) / (b - a); act += (f.flux[j * 3] + f.flux[j * 3 + 1] + f.flux[j * 3 + 2]) / (b - a); for (let m = 0; m < MEL_BANDS; m++) mel[m] += f.mel[j * MEL_BANDS + m] / (b - a); for (let k = 0; k < 12; k++) chroma[k] += f.chroma[j * 12 + k]; }
+    return { t, low: low[a], energy, loud, act, timbre: Float32Array.from(dct(mel, 13).slice(1)), chroma };
+  });
+}
+
+/** Downbeats, sections and phrases from accumulated beat features (whole song so far), same scoring as the full-file path. */
+export function structureFromBeats(bf: readonly BeatFeature[], windowIntensity: number[], hz: number, durationS: number): { downbeats: number[]; sections: MediaSection[]; phrases: number[] } {
+  const beats = bf.map((b) => b.t);
+  // Song-global energy from retained per-beat loudness/activity (each window's own curve is normalised per window).
+  const intensity = bf.length >= 8 ? beatIntensity(bf, hz, durationS) : windowIntensity;
+  if (beats.length < 8) { const downbeats = beats.filter((_, i) => i % 4 === 0), sections = label([{ t0: 0, t1: durationS }], intensity, hz); return { downbeats, sections, phrases: findPhrases(downbeats, sections) }; }
+  const sumChroma = (i0: number, i1: number) => { const c = new Array(12).fill(0); for (let i = Math.max(0, i0); i < Math.min(bf.length, i1); i++) for (let k = 0; k < 12; k++) c[k] += bf[i].chroma[k]; const n = Math.hypot(...c) || 1; return c.map((v) => v / n); };
+  const harm = bf.map((_, i) => (i < 2 || i + 2 >= bf.length ? 0 : 1 - cosine(sumChroma(i - 2, i), sumChroma(i, i + 2))));
+  const z = (xs: number[]) => { const m = mean(xs), sd = std(xs) || 1; return xs.map((x) => (x - m) / sd); };
+  const zl = z(bf.map((b) => b.low)), zh = z(harm);
+  // Bar phase per beat run: a silence gap or a tempo change restarts the count (one global phase broke multi-song streams).
+  const idx: number[] = [];
+  const loud = Math.max(...bf.map((b) => b.energy)), silent = bf.map((b) => b.energy < loud - 4); // 40 dB below the loudest beat
+  const audible: Array<[number, number]> = [];
+  for (let i = 0; i < bf.length; i++) { if (silent[i]) continue; let j = i; while (j < bf.length && !silent[j]) j++; audible.push([i, j]); i = j; }
+  const runs = audible.flatMap(([a, b]) => beatRuns(beats.slice(a, b)).map(([x, y]) => [a + x, a + y] as [number, number]));
+  for (const [r0, r1] of runs) {
+    let phase = 0, bestS = -Infinity;
+    for (let ph = 0; ph < 4; ph++) { let s = 0, n = 0; for (let i = r0 + ph; i < r1; i += 4) { s += zl[i] + 1.5 * zh[i]; n++; } if (n && s / n > bestS) { bestS = s / n; phase = ph; } }
+    for (let i = r0 + phase; i < r1; i += 4) idx.push(i);
+  }
+  const downbeats = idx.map((i) => beats[i]);
+  const feats: number[][] = [];
+  for (let k = 0; k + 1 < idx.length; k++) {
+    const timbre = new Array(12).fill(0); const n = idx[k + 1] - idx[k];
+    for (let i = idx[k]; i < idx[k + 1]; i++) for (let d = 0; d < 12; d++) timbre[d] += bf[i].timbre[d] / n;
+    feats.push([...timbre, ...sumChroma(idx[k], idx[k + 1]).map((v) => v * 2)]);
+  }
+  const sections = sectionsFromBarFeatures(feats, downbeats, intensity, hz, durationS);
+  return { downbeats, sections, phrases: findPhrases(downbeats, sections) };
+}
+
+/** Split a beat list into runs [start, end) at silence gaps (> 2.5 periods) and sustained tempo changes (> 8 % for 4 beats). */
+export function beatRuns(beats: readonly number[]): Array<[number, number]> {
+  const runs: Array<[number, number]> = []; let r0 = 0;
+  const ibi = (i: number) => beats[i + 1] - beats[i];
+  for (let i = 1; i < beats.length - 1; i++) {
+    const prev = beats.slice(Math.max(r0, i - 8), i + 1), p = prev.length > 1 ? (prev[prev.length - 1] - prev[0]) / (prev.length - 1) : ibi(i - 1);
+    const gap = ibi(i) > 2.5 * p;
+    let change = false;
+    if (!gap && i - r0 >= 8 && i + 4 < beats.length) { change = true; for (let k = i; k < i + 4; k++) if (Math.abs(ibi(k) / p - 1) <= 0.08) { change = false; break; } }
+    if (gap || change) { runs.push([r0, i + 1]); r0 = i + 1; }
+  }
+  runs.push([r0, beats.length]);
+  return runs.filter(([a, b]) => b > a);
+}
+
+/**
+ * Intensity curve at `hz` over [0, durationS) from per-beat features, normalised over the whole song so far:
+ * the intensityCurve recipe (75 % loudness + 25 % onset activity, smoothed ~0.5 s / ~2 s, 2–99 % normalisation) at beat resolution.
+ */
+export function beatIntensity(bf: readonly BeatFeature[], hz: number, durationS: number): number[] {
+  const n = bf.length, period = n > 1 ? (bf[n - 1].t - bf[0].t) / (n - 1) : 0.5;
+  const sm = (xs: number[], w: number) => smooth(xs, Math.max(1, Math.round(w)));
+  const loud = sm(bf.map((b) => b.loud), 0.5 / period), act = sm(bf.map((b) => b.act), 2 / period);
+  const nl = normalise(loud, 0.02, 0.99), na = normalise(act, 0.02, 0.99);
+  const mix = normalise(Array.from(nl, (v, i) => 0.75 * v + 0.25 * na[i]), 0.01, 0.995);
+  const N = Math.ceil(durationS * hz), out = new Array(N).fill(0);
+  for (let i = 0, k = 0; i < N; i++) {
+    const t = i / hz;
+    while (k + 1 < n && bf[k + 1].t <= t) k++;
+    out[i] = t - bf[k].t > 2 * period ? 0 : mix[k]; // gaps with no beats (silence) stay quiet
+  }
+  return out.map((v) => Math.round(v * 1000) / 1000);
 }

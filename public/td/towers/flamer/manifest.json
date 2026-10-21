@@ -1,0 +1,420 @@
+{
+  "size": [
+    224,
+    224
+  ],
+  "centerX": 112,
+  "root": "pad",
+  "light": "reference-matched",
+  "mountCenter": [
+    112,
+    112
+  ],
+  "aim": {
+    "enabled": true,
+    "part": "head"
+  },
+  "view": "steep overhead with visible machinery depth, matching the approved concept",
+  "inGameDiameterPx": 68,
+  "padDiameterPx": 136,
+  "paddingPx": 4,
+  "angleConvention": "clockwise degrees in image coordinates; zero aims up",
+  "coordinates": "offset, pivot and anchor position are absolute assembled rest-frame pixels; inherit parent transforms",
+  "glowBlend": "additive RGB weighted by alpha; base art remains complete without glow",
+  "upgrades": "Cumulative L1 head + L3 shield/supplies + L5 reinforced casing/gauges; retain all unlocked parts.",
+  "anchors": {
+    "muzzle": {
+      "parent": "nozzle",
+      "position": [
+        112,
+        64
+      ],
+      "positionsByLevel": {
+        "1": [
+          112,
+          64
+        ],
+        "3": [
+          112,
+          51
+        ],
+        "5": [
+          112,
+          44
+        ]
+      }
+    },
+    "cable": {
+      "parent": "pad",
+      "position": [
+        177,
+        112
+      ]
+    },
+    "range_center": {
+      "parent": "pad",
+      "position": [
+        112,
+        112
+      ]
+    }
+  },
+  "parts": [
+    {
+      "name": "pad",
+      "file": "../parts/pad.png",
+      "glow": "../parts/pad_glow.png",
+      "offset": [
+        43,
+        49
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": null,
+      "z": 0,
+      "minLevel": 1,
+      "outlineCenter": [
+        112.15926892950391,
+        112.32185628742515
+      ],
+      "outlineBounds": [
+        55.52219321148824,
+        53.712574850299404,
+        168.79634464751956,
+        170.9311377245509
+      ]
+    },
+    {
+      "name": "base",
+      "file": "../mortar/parts/base.png",
+      "glow": "../mortar/parts/base_glow.png",
+      "offset": [
+        55,
+        60
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "pad",
+      "z": 10,
+      "minLevel": 1,
+      "outlineCenter": [
+        111.5450643776824,
+        111.54394299287411
+      ],
+      "outlineBounds": [
+        65.14163090128756,
+        64.22802850356294,
+        157.94849785407723,
+        158.85985748218528
+      ]
+    },
+    {
+      "name": "upgrade_l4",
+      "file": "../mortar/parts/upgrade_l4.png",
+      "glow": "../mortar/parts/upgrade_l4_glow.png",
+      "offset": [
+        48,
+        96
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 20,
+      "minLevel": 4
+    },
+    {
+      "name": "upgrade_l2",
+      "file": "../mortar/parts/upgrade_l2.png",
+      "glow": "../mortar/parts/upgrade_l2_glow.png",
+      "offset": [
+        65,
+        73
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 30,
+      "minLevel": 2
+    },
+    {
+      "name": "head",
+      "file": "parts/head.png",
+      "glow": "parts/head_glow.png",
+      "offset": [
+        92,
+        79
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "base",
+      "z": 40,
+      "minLevel": 1,
+      "aims": true,
+      "mountPosition": [
+        112,
+        112
+      ]
+    },
+    {
+      "name": "nozzle",
+      "file": "parts/nozzle.png",
+      "glow": "parts/nozzle_glow.png",
+      "offset": [
+        100,
+        57
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 42,
+      "minLevel": 1,
+      "recoil": {
+        "axis": [
+          0,
+          1
+        ],
+        "distancePx": 2.5
+      }
+    },
+    {
+      "name": "upgrade_l3",
+      "file": "parts/upgrade_l3.png",
+      "glow": "parts/upgrade_l3_glow.png",
+      "offset": [
+        63,
+        59
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 45,
+      "minLevel": 3
+    },
+    {
+      "name": "nozzle_l3",
+      "file": "parts/nozzle_l3.png",
+      "glow": "parts/nozzle_l3_glow.png",
+      "offset": [
+        102,
+        42
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "nozzle",
+      "z": 50,
+      "minLevel": 3
+    },
+    {
+      "name": "upgrade_l5",
+      "file": "parts/upgrade_l5.png",
+      "glow": "parts/upgrade_l5_glow.png",
+      "offset": [
+        54,
+        55
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "head",
+      "z": 55,
+      "minLevel": 5
+    },
+    {
+      "name": "nozzle_l5",
+      "file": "parts/nozzle_l5.png",
+      "glow": "parts/nozzle_l5_glow.png",
+      "offset": [
+        101,
+        34
+      ],
+      "pivot": [
+        112,
+        112
+      ],
+      "parent": "nozzle",
+      "z": 60,
+      "minLevel": 5
+    }
+  ],
+  "animations": {
+    "passive": {
+      "durationMs": 1600,
+      "loop": true,
+      "frameDurationMs": 400,
+      "glowGain": [
+        [
+          0,
+          0.75
+        ],
+        [
+          800,
+          1.1
+        ],
+        [
+          1600,
+          0.75
+        ]
+      ],
+      "glowStrength": [
+        [
+          0,
+          0.15
+        ],
+        [
+          800,
+          0.4
+        ],
+        [
+          1600,
+          0.15
+        ]
+      ],
+      "effectOpacity": [
+        [
+          0,
+          0.3
+        ],
+        [
+          800,
+          0.55
+        ],
+        [
+          1600,
+          0.3
+        ]
+      ],
+      "effect": {
+        "file": "effects/passive.png",
+        "frames": 4,
+        "frameSize": [
+          24,
+          24
+        ],
+        "offset": [
+          100,
+          50
+        ],
+        "offsetsByLevel": {
+          "1": [
+            100,
+            50
+          ],
+          "3": [
+            100,
+            37
+          ],
+          "5": [
+            100,
+            30
+          ]
+        },
+        "parent": "nozzle",
+        "blend": "additive"
+      }
+    },
+    "attack": {
+      "durationMs": 640,
+      "loop": false,
+      "frameDurationMs": 160,
+      "glowGain": [
+        [
+          0,
+          0.85
+        ],
+        [
+          160,
+          1.2
+        ],
+        [
+          320,
+          1
+        ],
+        [
+          640,
+          0.75
+        ]
+      ],
+      "glowStrength": [
+        [
+          0,
+          0.25
+        ],
+        [
+          160,
+          0.65
+        ],
+        [
+          320,
+          0.45
+        ],
+        [
+          640,
+          0.15
+        ]
+      ],
+      "effectOpacity": [
+        [
+          0,
+          0.5
+        ],
+        [
+          160,
+          1
+        ],
+        [
+          320,
+          0.8
+        ],
+        [
+          640,
+          0.3
+        ]
+      ],
+      "effect": {
+        "file": "effects/attack.png",
+        "frames": 4,
+        "frameSize": [
+          24,
+          24
+        ],
+        "offset": [
+          100,
+          50
+        ],
+        "offsetsByLevel": {
+          "1": [
+            100,
+            50
+          ],
+          "3": [
+            100,
+            37
+          ],
+          "5": [
+            100,
+            30
+          ]
+        },
+        "parent": "nozzle",
+        "blend": "additive"
+      }
+    }
+  }
+}

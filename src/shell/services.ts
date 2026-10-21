@@ -3,9 +3,10 @@
  * Written against the CLAUDE.md "Integration seams"; guessed signatures are
  * isolated behind `any` adapters here so fixes stay local.
  */
+import type { SongAnalysis, SongMeta } from '../media';
 import { unitsFor, measurementText } from '../units';
 import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, SessionRecord, TrainerCommand, ResistanceEffect } from '../contracts';
-import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
+import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, analyzeWindowInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
@@ -14,6 +15,7 @@ import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosm
 import type { Item, Slot } from '../cosmetics/types';
 import { readSavedSetup, rememberDevices, resolveSavedSetup } from './savedSetup';
 import { discoverSavedDevice } from './savedDiscovery';
+import { bluetoothLog, bluetoothLogText, bluetoothError, ConnectionCancelled, type ConnectionOptions } from '../devices/bluetooth/lifecycle';
 import { getDriveIn } from './drivein/store';
 import { ridesByGame, type GameRides } from './arcade';
 import { BIOMES } from '../games/warmup/sim/terrain';
@@ -33,7 +35,9 @@ const sessionStore: any = new SessionStore();
 
 // ---------- profiles ----------
 export const listProfiles = (): Promise<Profile[]> => profileStore.list();
-export const saveProfile = async (p: Profile): Promise<void> => { await profileStore.update(p); };
+export const saveProfile = (p: Profile): Promise<Profile> => profileStore.update(p);
+export const awardProfile = (p: Profile): Promise<Profile> => profileStore.award(p);
+export const saveGameData = (profileId: string, gameId: string, data: unknown): Promise<void> => profileStore.updateGameData(profileId, gameId, data);
 export const deleteProfile = (id: string): Promise<void> => profileStore.delete(id);
 export async function createProfile(name: string): Promise<Profile> {
   return profileStore.create(name);
@@ -101,6 +105,23 @@ export const getDeviceStatus = (): DeviceStatusMap => status;
 export function subscribeDevices(cb: () => void): () => void { listeners.add(cb); return () => listeners.delete(cb); }
 export let controllerInfo: { firmware?: string; battery?: number; warning?: string } = {};
 
+const connectionScopes: Partial<Record<DeviceKind, AbortController>> = {};
+const restorationCanceled = new Set<DeviceKind>();
+const deviceOffs: Partial<Record<DeviceKind, Array<() => void>>> = {};
+export function downloadBluetoothLog(): void {
+  const url = URL.createObjectURL(new Blob([bluetoothLogText()], { type: 'text/plain' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'wattcade-bluetooth.txt'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+async function retireDevice(kind: DeviceKind): Promise<void> {
+  const d = devices[kind]; delete devices[kind];
+  deviceOffs[kind]?.forEach(off => off()); delete deviceOffs[kind];
+  if (kind === 'trainer') dataHub.detachTrainer();
+  else if (kind === 'hr') dataHub.detachHr();
+  else { dataHub.detachController(); input.setControllerState({ buttons: new Set(), paddleL: 0, paddleR: 0 }); }
+  await d?.disconnect();
+}
+
 const authorizedHrDevices = new Map<string, BluetoothDevice>();
 let hrConnectionAttempt = 0;
 export function savedHrWatches(): Array<{ id: string; name: string; selected: boolean }> {
@@ -124,6 +145,15 @@ export async function connectDevice(kind: DeviceKind): Promise<void> {
 }
 
 async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automatic = false): Promise<void> {
+  if (!automatic) restorationCanceled.add(kind);
+  const previousStatus = status[kind];
+  const previousScope = connectionScopes[kind];
+  const scope = new AbortController(); connectionScopes[kind] = scope;
+  const owns = () => connectionScopes[kind] === scope && !scope.signal.aborted;
+  const check = () => { if (!owns()) throw new ConnectionCancelled(); };
+  const replace = async () => { check(); previousScope?.abort(); await retireDevice(kind); check(); };
+  const options: ConnectionOptions = { signal: scope.signal, beforeConnect: replace };
+  const onLog = (s: string) => bluetoothLog(`${kind}: ${s}`);
   const hrAction = automatic ? 'Automatic watch connection' : granted ? 'Saved watch retry' : 'Watch selection';
   const hrAttempt = kind === 'hr' ? ++hrConnectionAttempt : 0;
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
@@ -131,34 +161,35 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automat
   }
   status[kind] = { connected: false, busy: true, detail: kind === 'hr' ? `${hrAction} #${hrAttempt}: starting` : granted?.[0]?.name ? `Connecting to ${granted[0].name}` : undefined }; notify();
   try {
-    if (devices[kind]) { await devices[kind].disconnect(); delete devices[kind]; }
+    bluetoothLog(`${kind}: ${automatic ? 'saved startup' : granted ? 'saved selection' : 'picker selection'} started`);
+    if (granted) await replace();
     const hub: any = dataHub;
     if (kind === 'trainer') {
-      const progress = (detail: string) => { status.trainer = { connected: false, busy: true, detail }; notify(); };
-      if (granted) await discoverSavedDevice(granted[0], progress);
-      const d = granted ? await FtmsTrainer.connectDevice(granted[0], progress) : await FtmsTrainer.connect(progress);
-      devices.trainer = d; hub.attachTrainer(d);
-      d.onStatus((st) => { status.trainer = { ...status.trainer, connected: st.connected, detail: st.detail }; notify(); });
+      const progress = (detail: string) => { if (!owns()) return; status.trainer = { connected: false, busy: !detail.startsWith('Reconnect failed'), detail }; notify(); };
+      if (granted) await discoverSavedDevice(granted[0], progress, scope.signal);
+      const d = granted ? await FtmsTrainer.connectDevice(granted[0], progress, onLog, options) : await FtmsTrainer.connect(progress, onLog, options);
+      check(); devices.trainer = d;
+      deviceOffs.trainer = [hub.attachTrainer(d), d.onStatus((st) => { if (devices.trainer !== d) return; status.trainer = { ...status.trainer, connected: st.connected, busy: !st.connected && !!st.detail && st.detail !== 'closed' && !st.detail.startsWith('Reconnect failed'), detail: st.detail }; notify(); })];
       rememberDevices(kind, [d.id]);
     }
     else if (kind === 'hr') {
       let connectingName = 'HR watch';
-      const progress = (step: string) => { status.hr = { connected: false, busy: true, detail: `${hrAction} #${hrAttempt} · ${connectingName}: ${step}` }; notify(); };
+      const progress = (step: string) => { if (!owns()) return; status.hr = { connected: false, busy: !step.startsWith('Reconnect failed'), detail: `${hrAction} #${hrAttempt} · ${connectingName}: ${step}` }; notify(); };
       let d: HeartRateMonitor | undefined;
       if (granted) {
         const errors: string[] = [];
         for (const device of granted) {
           connectingName = device.name ?? 'HR watch';
           try {
-            await discoverSavedDevice(device, progress);
-            d = await HeartRateMonitor.connectDevice(device, progress); break;
+            await discoverSavedDevice(device, progress, scope.signal);
+            d = await HeartRateMonitor.connectDevice(device, progress, onLog, options); break;
           }
-          catch (e) { errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
+          catch (e) { check(); errors.push(`${device.name ?? 'HR watch'}: ${e instanceof Error ? e.message : String(e)}`); }
         }
         if (!d) throw new Error('Saved watch connection failed. Enable HR broadcast, or tap Select watch again to open the picker. ' + errors.join(' · '));
-      } else d = await HeartRateMonitor.connect(progress);
-      devices.hr = d; hub.attachHr(d);
-      d.onStatus((st) => { status.hr = { ...status.hr, connected: st.connected }; notify(); });
+      } else d = await HeartRateMonitor.connect(progress, onLog, options);
+      check(); devices.hr = d;
+      deviceOffs.hr = [hub.attachHr(d), d.onStatus((st) => { if (devices.hr !== d) return; status.hr = { ...status.hr, connected: st.connected, busy: false, detail: st.connected ? d.name : status.hr.detail }; notify(); })];
       authorizedHrDevices.set(d.id, d.bluetoothDevice);
       status.hr.detail = d.name;
       rememberDevices(kind, [d.id]);
@@ -166,27 +197,31 @@ async function openDevice(kind: DeviceKind, granted?: BluetoothDevice[], automat
     else {
       // The Ride's two sides may appear as two devices; the group merges them. First tap adds one side.
       const g = new RideControllerGroup();
-      g.onStatus((s) => { controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { ...status.controller, connected: s.connected, detail: s.warning }; notify(); });
-      g.onLog((l) => console.info('[ride]', l));
+      g.onStatus((s) => { if (!owns() || devices.controller !== g) return; controllerInfo = { firmware: s.firmware ?? controllerInfo.firmware, battery: s.battery ?? controllerInfo.battery, warning: s.warning ?? controllerInfo.warning }; status.controller = { ...status.controller, connected: s.connected, busy: !!s.detail && !s.detail.startsWith('Reconnect failed'), detail: s.detail ?? s.warning }; notify(); });
+      g.onLog(onLog);
       if (granted) {
         const errors: string[] = [];
         for (const device of granted) {
           try {
-            await discoverSavedDevice(device, detail => { status.controller = { connected: false, busy: true, detail: `${device.name ?? 'Controller'}: ${detail}` }; notify(); });
-            await g.addDevice(device);
+            await discoverSavedDevice(device, detail => { if (!owns()) return; status.controller = { connected: false, busy: true, detail: `${device.name ?? 'Controller'}: ${detail}` }; notify(); }, scope.signal);
+            await g.addDevice(device, options, detail => { if (!owns()) return; status.controller.detail = detail; notify(); });
           }
-          catch (e) { errors.push(e instanceof Error ? e.message : String(e)); }
+          catch (e) { check(); errors.push(e instanceof Error ? e.message : String(e)); }
         }
         if (!g.count) throw new Error(errors.join(' · '));
         if (errors.length) status.controller.error = 'One controller could not connect: ' + errors.join(' · ');
-      } else await g.addFromPicker();
-      devices.controller = g; hub.attachController(g, input);
+      } else await g.addFromPicker(options);
+      check(); devices.controller = g; deviceOffs.controller = [hub.attachController(g, input)];
       // Preserve missing/offline saved sides during restoration.
       if (!granted) rememberDevices(kind, g.ids);
     }
+    check(); bluetoothLog(`${kind}: ready`);
     status[kind] = { connected: true, detail: status[kind].detail, error: status[kind].error };
   } catch (e) {
-    status[kind] = { connected: false, detail: kind === 'hr' ? `${hrAction} #${hrAttempt} failed` : undefined, error: e instanceof Error ? e.message : String(e) };
+    bluetoothLog(`${kind}: ${bluetoothError(e)}`);
+    if (!owns()) return;
+    if (devices[kind] && previousScope && !previousScope.signal.aborted) { connectionScopes[kind] = previousScope; scope.abort(); }
+    status[kind] = { connected: devices[kind] ? previousStatus.connected : false, detail: kind === 'hr' ? `${hrAction} #${hrAttempt} failed` : undefined, error: e instanceof Error ? e.message : String(e) };
   }
   notify();
 }
@@ -208,6 +243,7 @@ async function restoreSetup(): Promise<void> {
     for (const device of granted.hr ?? []) authorizedHrDevices.set(device.id, device);
     // Serialize GATT setup to avoid overloading the iPad's Bluetooth bridge.
     for (const kind of kinds) {
+      if (restorationCanceled.has(kind)) continue;
       if (!granted[kind]?.length) {
         status[kind] = { connected: false, error: 'Choose your device to reconnect; saved permission is unavailable.' };
       } else {
@@ -219,7 +255,7 @@ async function restoreSetup(): Promise<void> {
       notify();
     }
   } catch (e) {
-    for (const kind of kinds) status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
+    for (const kind of kinds) if (!restorationCanceled.has(kind)) status[kind] = { connected: false, error: e instanceof Error ? e.message : String(e) };
     notify();
   }
 }
@@ -232,14 +268,17 @@ export async function addSecondController(): Promise<void> {
   if (status.controller.busy) return;
   const g = devices.controller as RideControllerGroup | undefined;
   if (!g) return connectDevice('controller');
+  const scope = connectionScopes.controller;
+  const owns = () => devices.controller === g && connectionScopes.controller === scope && !scope?.signal.aborted;
   status.controller = { ...status.controller, busy: true, error: undefined }; notify();
-  try { await g.addFromPicker(); rememberDevices('controller', g.ids); status.controller = { ...status.controller, busy: false }; }
-  catch (e) { status.controller = { ...status.controller, busy: false, error: e instanceof Error ? e.message : String(e) }; }
+  try { await g.addFromPicker({ signal: scope?.signal }); if (!owns()) return; rememberDevices('controller', g.ids); status.controller = { ...status.controller, busy: false }; }
+  catch (e) { if (!owns()) return; status.controller = { ...status.controller, busy: false, error: e instanceof Error ? e.message : String(e) }; }
   notify();
 }
 export async function disconnectDevice(kind: DeviceKind): Promise<void> {
-  if (status[kind].busy) return;
-  await devices[kind]?.disconnect?.(); delete devices[kind]; status[kind] = { connected: false }; notify();
+  restorationCanceled.add(kind);
+  connectionScopes[kind]?.abort(); delete connectionScopes[kind];
+  await retireDevice(kind); status[kind] = { connected: false }; notify();
 }
 const anyReal = () => Object.keys(devices).length > 0;
 
@@ -250,7 +289,7 @@ export const activeSession = (): SessionLike | null => active;
 /** The game session if one is running, else the warm-up lobby (for debug + fake keys). */
 const current = (): any => active ?? lobby;
 
-export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline }): SessionLike {
+export function startSession(game: GameModule, profile: Profile, onSave: (d: unknown) => void, media?: { timeline: MediaTimeline; announce?(id: string, t: number): void }): SessionLike {
   input.applySettings(profile.settings); debugState.timeScale = 1;
   const useFake = fakeMode || !anyReal();
   activeGameId = game.id;
@@ -288,7 +327,28 @@ export function mediaEngine(): MixEngine {
   return engine;
 }
 /** Streaming runs keep only the configured horizon decoded; analysis is per audio window. */
-export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode): Promise<MediaRun> {
+/** Mono PCM at ANALYSIS_SR from a decoded buffer (linear resample). */
+function downmix(buffer: AudioBuffer): Float32Array {
+  const pcm = new Float32Array(Math.floor(buffer.duration * ANALYSIS_SR));
+  const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+  for (let i = 0; i < pcm.length; i++) {
+    const x = i * buffer.sampleRate / ANALYSIS_SR, k = Math.floor(x), f = x - k;
+    for (const ch of channels) pcm[i] += ((ch[k] ?? 0) * (1 - f) + (ch[k + 1] ?? ch[k] ?? 0) * f) / channels.length;
+  }
+  return pcm;
+}
+/**
+ * Picker preview: fetch one range of a streamed song and analyze it the way the ride does (window analysis + beat
+ * features, tempo hint), so the ride can reuse it. The decoded audio is dropped right away (analysis only).
+ */
+export async function analyzeStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) {
+  const data = await loadAudioRange(song, startS, durationS, mediaServerConfig(), signal);
+  const pcm = downmix(await mediaEngine().ctx.decodeAudioData(data));
+  if (signal.aborted) throw new Error('Preview was cancelled.');
+  return analyzeWindowInWorker(pcm, ANALYSIS_SR, hint?.bpm);
+}
+/** `seeds`: picker-preview windows per song id, reused as already-committed analysis (audio is still fetched). */
+export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode, seeds?: Map<string, import('../media').SeedWindow[]>): Promise<MediaRun> {
   const lib = mediaLibrary(), config = mediaServerConfig(), ctx = mediaEngine().ctx;
   if (!config.enabled) throw new Error('Enable the media server on Connect first.');
   const metas = await Promise.all(ids.map((id) => lib.get(id)));
@@ -299,7 +359,7 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
     const item = await lib.mixItem(m.id); if (!item) throw new Error(`Still preparing ${m.title}.`); return structuredClone(item);
   }));
   const local = new Map<number, AudioBuffer>();
-  const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal) => {
+  const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal, hint) => {
     const meta = metas[index]!;
     let buffer: AudioBuffer;
     if (meta.sourceUrl) {
@@ -317,15 +377,11 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
       for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
     }
     if (signal.aborted) throw new Error('Media queue was closed.');
-    const pcm = new Float32Array(Math.floor(buffer.duration * ANALYSIS_SR));
-    const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
-    for (let i = 0; i < pcm.length; i++) {
-      const x = i * buffer.sampleRate / ANALYSIS_SR, k = Math.floor(x), f = x - k;
-      for (const ch of channels) pcm[i] += ((ch[k] ?? 0) * (1 - f) + (ch[k + 1] ?? ch[k] ?? 0) * f) / channels.length;
-    }
-    const analysis = await analyzeInWorker(pcm, ANALYSIS_SR, () => {});
-    return { buffer, analysis };
+    // Mono 22.05 kHz copy for analysis; only compact per-beat features come back (structure is rebuilt from them).
+    const { analysis, beats } = await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm);
+    return { buffer, analysis, beats };
   });
+  if (seeds) metas.forEach((m, i) => { const w = m?.sourceUrl ? seeds.get(m.id) : undefined; if (w) rolling.seed(i, w); });
   return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };
 }
 /** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */
@@ -356,9 +412,12 @@ export function previewAward(profile: Profile): { xp: number; level: number; ach
 /** Save a finished record and apply XP / achievements to `profile`. */
 async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
   await sessionStore.save(record);
-  const r: any = awardSession(profile, record);
-  const next: Profile = r.profile ?? profile;
-  await saveProfile(next);
+  // A checkpoint may have committed after this snapshot. Award against the stored game slots.
+  const stored = await profileStore.get(profile.id);
+  const current = stored ? { ...profile, gameData: stored.gameData } : profile;
+  const r: any = awardSession(current, record);
+  const next: Profile = r.profile ?? current;
+  const saved = await awardProfile(next);
   const award: AwardView = {
     xpGained: r.xpGained ?? 0,
     levelBefore: profile.level, levelAfter: next.level,
@@ -366,7 +425,7 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
     newItems: newUnlocks(profile, next).map((it) => ({ slot: it.slot, id: it.id, name: it.name })),
     picks: pendingPicks(next).length,
   };
-  return { record, award, profile: next };
+  return { record, award, profile: saved };
 }
 
 // ---------- warm-up lobby (the ride behind the menus) ----------

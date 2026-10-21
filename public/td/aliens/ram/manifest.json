@@ -1,0 +1,271 @@
+{
+ "id": "ram",
+ "kind": "charger",
+ "source": "ram-parts",
+ "scale": 0.36,
+ "size": [
+  230.4,
+  230.4
+ ],
+ "centerX": 115.2,
+ "centerY": 131.94,
+ "lengthPx": 172.8,
+ "root": "thorax_2",
+ "parts": [
+  {
+   "name": "head",
+   "file": "head.webp",
+   "glow": "head_glow.webp",
+   "offset": [
+    80.28,
+    52.92
+   ],
+   "pivot": [
+    115.2,
+    88.925
+   ],
+   "parent": "thorax_1",
+   "z": 60,
+   "w": 69.84,
+   "h": 50.4
+  },
+  {
+   "name": "thorax_1",
+   "file": "thorax_1.webp",
+   "glow": "thorax_1_glow.webp",
+   "offset": [
+    78.12,
+    82.44
+   ],
+   "pivot": [
+    115.02,
+    122.22
+   ],
+   "parent": "thorax_2",
+   "z": 54,
+   "w": 75.24,
+   "h": 49.68
+  },
+  {
+   "name": "thorax_2",
+   "file": "thorax_2.webp",
+   "glow": "thorax_2_glow.webp",
+   "offset": [
+    75.6,
+    109.44
+   ],
+   "pivot": [
+    115.2,
+    138.635
+   ],
+   "parent": null,
+   "z": 53,
+   "w": 77.04,
+   "h": 51.12
+  },
+  {
+   "name": "thorax_3",
+   "file": "thorax_3.webp",
+   "glow": "thorax_3_glow.webp",
+   "offset": [
+    75.6,
+    136.44
+   ],
+   "pivot": [
+    115.02,
+    154.62
+   ],
+   "parent": "thorax_2",
+   "z": 52,
+   "w": 75.96,
+   "h": 52.56
+  },
+  {
+   "name": "abdomen",
+   "file": "abdomen.webp",
+   "glow": "abdomen_glow.webp",
+   "offset": [
+    82.44,
+    167.04
+   ],
+   "pivot": [
+    115.02,
+    183.06
+   ],
+   "parent": "thorax_3",
+   "z": 51,
+   "w": 64.44,
+   "h": 37.44
+  },
+  {
+   "name": "coxa_front_r",
+   "file": "coxa_front_r.webp",
+   "glow": "coxa_front_r_glow.webp",
+   "offset": [
+    128.16,
+    84.24
+   ],
+   "pivot": [
+    135.54,
+    94.14
+   ],
+   "parent": "thorax_1",
+   "z": 10,
+   "w": 33.48,
+   "h": 25.92
+  },
+  {
+   "name": "femur_front_r",
+   "file": "femur_front_r.webp",
+   "glow": "femur_front_r_glow.webp",
+   "offset": [
+    139.68,
+    72
+   ],
+   "pivot": [
+    149.22,
+    98.46
+   ],
+   "parent": "coxa_front_r",
+   "z": 15,
+   "w": 43.56,
+   "h": 38.16
+  },
+  {
+   "name": "claw_front_r",
+   "file": "claw_front_r.webp",
+   "glow": "claw_front_r_glow.webp",
+   "offset": [
+    144.36,
+    54.36
+   ],
+   "pivot": [
+    162.9,
+    80.82
+   ],
+   "parent": "femur_front_r",
+   "z": 20,
+   "w": 38.88,
+   "h": 38.16
+  },
+  {
+   "name": "coxa_mid_r",
+   "file": "coxa_mid_r.webp",
+   "glow": "coxa_mid_r_glow.webp",
+   "offset": [
+    131.4,
+    111.6
+   ],
+   "pivot": [
+    139.86,
+    129.78
+   ],
+   "parent": "thorax_2",
+   "z": 10,
+   "w": 29.52,
+   "h": 33.48
+  },
+  {
+   "name": "femur_mid_r",
+   "file": "femur_mid_r.webp",
+   "glow": "femur_mid_r_glow.webp",
+   "offset": [
+    144.72,
+    104.4
+   ],
+   "pivot": [
+    153.54,
+    126.18
+   ],
+   "parent": "coxa_mid_r",
+   "z": 15,
+   "w": 40.68,
+   "h": 40.32
+  },
+  {
+   "name": "claw_mid_r",
+   "file": "claw_mid_r.webp",
+   "glow": "claw_mid_r_glow.webp",
+   "offset": [
+    161.64,
+    104.4
+   ],
+   "pivot": [
+    170.46,
+    119.7
+   ],
+   "parent": "femur_mid_r",
+   "z": 20,
+   "w": 32.4,
+   "h": 37.44
+  },
+  {
+   "name": "coxa_rear_r",
+   "file": "coxa_rear_r.webp",
+   "glow": "coxa_rear_r_glow.webp",
+   "offset": [
+    127.08,
+    141.12
+   ],
+   "pivot": [
+    135.18,
+    155.34
+   ],
+   "parent": "thorax_3",
+   "z": 10,
+   "w": 37.08,
+   "h": 29.52
+  },
+  {
+   "name": "femur_rear_r",
+   "file": "femur_rear_r.webp",
+   "glow": "femur_rear_r_glow.webp",
+   "offset": [
+    142.56,
+    141.12
+   ],
+   "pivot": [
+    151.02,
+    153.9
+   ],
+   "parent": "coxa_rear_r",
+   "z": 15,
+   "w": 43.56,
+   "h": 37.8
+  },
+  {
+   "name": "claw_rear_r",
+   "file": "claw_rear_r.webp",
+   "glow": "claw_rear_r_glow.webp",
+   "offset": [
+    155.88,
+    152.28
+   ],
+   "pivot": [
+    167.58,
+    169.38
+   ],
+   "parent": "femur_rear_r",
+   "z": 20,
+   "w": 32.04,
+   "h": 46.8
+  },
+  {
+   "name": "battering_crest",
+   "file": "battering_crest.webp",
+   "glow": "battering_crest_glow.webp",
+   "offset": [
+    85.32,
+    25.56
+   ],
+   "pivot": [
+    115.02,
+    88.02
+   ],
+   "parent": "head",
+   "z": 70,
+   "w": 59.04,
+   "h": 75.24
+  }
+ ]
+}

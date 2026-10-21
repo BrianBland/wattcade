@@ -35,13 +35,22 @@ const eye = (g: G, x: number, y: number) => circle(g, '#15151c', x, y, 0.32);
 
 const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
   corgi: (g, c, rest) => {
-    const y = rest ? 1 : 0, b = rest ? 0 : Math.abs(Math.sin(c.gait)) * 0.4;
-    legs(g, '#d9822b', -2.4, 1.4, -2 + y, c, rest);
-    oval(g, '#e8973a', -0.4, -3.2 + y - b, 3.4, 1.6); oval(g, '#fff1d6', 0.6, -2.6 + y - b, 1.8, 0.9);
-    const hx = rest ? 2.6 : 3, look = rest ? -1 : 1;
-    circle(g, '#e8973a', hx, -5 + y - b, 1.5); poly(g, '#e8973a', [hx - 1, -5.8 + y - b], [hx - 0.6, -7.8 + y - b], [hx + 0.2, -6.2 + y - b]); poly(g, '#e8973a', [hx + 0.2, -6 + y - b], [hx + 0.8, -7.8 + y - b], [hx + 1.2, -5.8 + y - b]);
-    eye(g, hx + 0.6 * look, -5.2 + y - b); circle(g, '#15151c', hx + 1.4 * look, -4.6 + y - b, 0.3);
-    line(g, '#e8973a', 0.8, [-3.6, -3.6 + y - b], [-4.6, -4.6 + y - b + Math.sin(c.t * 12) * 0.5]);
+    const y=(rest?.6:0)-(rest?0:Math.abs(Math.sin(c.gait))*.3);
+    legs(g,'#c37a36',-2.7,1.2,-1.5+y,c,rest);
+    for(const [x,ph]of [[-2.7,0],[-1.9,Math.PI],[1.2,Math.PI],[2,0]]){
+      const sx=rest?.6:Math.sin(c.gait+ph)*1.2,sy=rest?-.3:-Math.max(0,-Math.cos(c.gait+ph))*.8;
+      rect(g,'#fff0d5',x+sx-.4,sy-.4,1.1,.7);
+    }
+    poly(g,'#e79a42',[-4,-3.5+y],[-3.1,-4.7+y],[.4,-4.8+y],[2.6,-4+y],[2.9,-2+y],[1.3,-1.2+y],[-3,-1.3+y],[-4,-2.2+y]);
+    poly(g,'#f6c574',[-3.2,-4.3+y],[-.5,-4.4+y],[1.8,-3.9+y],[-2.8,-3.8+y]);
+    poly(g,'#fff0d5',[-1.5,-2.8+y],[1.5,-3.4+y],[2.5,-2.8+y],[1,-1.4+y],[-1.9,-1.7+y]);
+    const hx=rest?2.5:2.9,hy=-5.1+y;
+    poly(g,'#e79a42',[hx-1.7,hy-.9],[hx-1.1,hy-1.6],[hx+1.2,hy-1.5],[hx+1.9,hy-.4],[hx+1.8,hy+1.5],[hx-.7,hy+1.7],[hx-1.8,hy+.6]);
+    for(const dx of [-1.1,.7]){poly(g,'#df8b36',[hx+dx-.6,hy-1],[hx+dx-.4,hy-3.1],[hx+dx+.7,hy-1.1]);poly(g,'#edbd80',[hx+dx-.2,hy-1.3],[hx+dx-.2,hy-2.2],[hx+dx+.3,hy-1.3]);}
+    poly(g,'#fff0d5',[hx+.1,hy+.1],[hx+1,hy+.3],[hx+2.2,hy+.4],[hx+2.2,hy+1.2],[hx+.7,hy+1.6],[hx-.4,hy+.9]);
+    rect(g,'#25313a',hx+.8,hy-.6,.6,.7);rect(g,'#25313a',hx+1.9,hy+.3,.6,.5);rect(g,'#d47580',hx+1.1,hy+1.3,.5,.7);
+    line(g,'#bc5546',.45,[hx-1.5,hy+1.3],[hx+.2,hy+1.7]);
+    line(g,'#e79a42',1.1,[-3.6,-3.2+y],[-5,-4+y],[-5.2,-5+y+Math.sin(c.t*8)*.3]);rect(g,'#fff0d5',-5.6,-5.2+y,.9,.9);
   },
   cat: (g, c, rest) => {
     const y = rest ? 0.8 : 0;
@@ -71,7 +80,9 @@ const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
     g.fillStyle = '#cfefff55'; g.beginPath(); g.arc(0, -r, r, 0, TAU); g.fill();
     const run = Math.sin(c.gait * 2) * 0.5;
     oval(g, '#f2a33a', 0, -1.8, 1.8, 1.2); circle(g, '#f2a33a', 1.4, -2.6, 0.9); eye(g, 1.8, -2.8); line(g, '#d67f1a', 0.5, [-0.6, -0.8], [-0.6 + run, -0.2]); line(g, '#d67f1a', 0.5, [0.6, -0.8], [0.6 - run, -0.2]);
-    g.strokeStyle = '#e8f6ffcc'; g.lineWidth = 0.4; g.beginPath(); g.arc(0, -r, r, 0, TAU); g.stroke();
+    oval(g,'#fff0d7',.2,-1.5,1.3,.6);circle(g,'#cc803b',.8,-3.3,.45);circle(g,'#ffb4af',2.1,-2.3,.25);
+    line(g,'#f2fbf8',.4,[-2.3,-5.3],[-1.5,-6]);
+    g.strokeStyle = '#9dcce2'; g.lineWidth = 0.4; g.beginPath(); g.arc(0, -r, r, 0, TAU); g.stroke();
     for (let i = 0; i < 3; i++) { const q = a + (i * TAU) / 3; line(g, '#e8f6ff88', 0.3, [Math.cos(q) * r * 0.9, -r + Math.sin(q) * r * 0.9], [Math.cos(q) * r * 0.55, -r + Math.sin(q) * r * 0.55]); }
   },
   trex: (g, c, rest) => {
@@ -79,7 +90,10 @@ const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
     if (!rest) for (const ph of [0, Math.PI]) line(g, '#3a8a3a', 1, [0, -3], [Math.sin(c.gait + ph) * 1.4, 0]);
     else line(g, '#3a8a3a', 1, [0, -3], [0.8, 0]);
     poly(g, '#4caf50', [-5, -3.4 - b], [-1, -5 - b], [1.6, -5.4 - b], [1.2, -2.4 - b], [-1, -2.6 - b]);
-    oval(g, '#4caf50', 2.6, -6.4 - b, 1.8, 1.1, -0.2); eye(g, 2.8, -6.9 - b); line(g, '#fff', 0.3, [3.4, -5.7 - b], [4.2, -5.9 - b]);
+    poly(g,'#65af4c',[.6,-5.1-b],[1,-7.3-b],[2.2,-8-b],[4.4,-7.7-b],[5,-6.8-b],[4.8,-5.4-b],[3.1,-5-b]);
+    poly(g,'#bed37c',[-.4,-3-b],[1.2,-4.8-b],[2.3,-4.6-b],[1.3,-2.4-b]);
+    rect(g,'#293d35',2.8,-7.1-b,.6,.7);poly(g,'#324d38',[3,-6-b],[5,-6.2-b],[4.5,-5.4-b],[3.2,-5.4-b]);rect(g,'#f3ebce',3.6,-6-b,.6,.5);
+    for(let i=0;i<4;i++)poly(g,'#32824d',[-3.7+i*1.1,-3.7-i*.3-b],[-3.2+i*1.1,-4.7-i*.3-b],[-2.7+i*1.1,-4-i*.3-b]);
     line(g, '#3a8a3a', 0.5, [1.4, -4.4 - b], [2.2, -4 - b + Math.sin(c.t * 9) * 0.3]);
   },
   penguin: (g, c, rest) => {
@@ -115,8 +129,12 @@ const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
   dragon: (g, c) => {
     const y = hover(c), w = flap(c);
     poly(g, '#7d3bd1', [-0.4, y - 0.4], [-2.4, y - 3 * w - 0.4], [0.6, y - 0.8]);
-    oval(g, '#9b59f6', 0, y, 2.4, 1.3); circle(g, '#9b59f6', 2.4, y - 1.2, 1.1); poly(g, '#ffd23b', [2, y - 2.2], [2.2, y - 3], [2.6, y - 2.2]);
+    oval(g, '#9b59f6', 0, y, 2.4, 1.3); circle(g, '#9b59f6', 2.4, y - 1.2, 1.7); poly(g, '#ffd23b', [2, y - 2.2], [2.2, y - 3], [2.6, y - 2.2]);
     eye(g, 2.8, y - 1.4); g.strokeStyle = '#9b59f6'; g.lineWidth = 0.7; g.beginPath(); g.moveTo(-2.2, y + 0.2); g.quadraticCurveTo(-4, y + 1.6, -5, y + 0.4); g.stroke();
+    poly(g,'#d2a6e6',[-1,y+.3],[.1,y-1.1],[1.4,y-.8],[1.4,y+1],[.1,y+1.3]);
+    poly(g,'#e6bb65',[1.4,y-2],[1.4,y-3.3],[2,y-2.2]);poly(g,'#d3aa57',[2.6,y-2],[3,y-3],[3.2,y-2]);
+    poly(g,'#ba86dd',[-1,y-.8],[-3.2,y-1.5-w*2],[-2.4,y-1],[0,y+.2]);
+    line(g,'#8351b6',.6,[-.5,y+.7],[-.8,y+2],[.1,y+2]);line(g,'#8351b6',.6,[1,y+.5],[1.2,y+1.7],[2,y+1.7]);
     if (c.speed > 7) { const k = (c.t * 3) % 1; circle(g, '#ff9a2b', 4 + k * 3, y - 1 + k, 0.5 * (1 - k)); } // sprint sneezes
   },
   ghost: (g, c) => {

@@ -948,9 +948,9 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
       const controls = mode === 'build'
         ? tab === 'decor'
           ? [{ button: 'dpad' as const, label: '▲▼ choose' }, { button: 'a' as const, label: 'Buy', active: true }, { button: 'y' as const, label: 'Build tab' }, { button: 'b' as const, label: 'Close' }]
-          : [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose' }, { button: 'a' as const, label: ROWS[sel] === 'demolish' ? (confirming() ? 'Confirm demolish' : 'Demolish') : 'Build', active: true }, { button: 'y' as const, label: 'Decorate' }, { button: 'b' as const, label: 'Close' }]
-        : [{ button: 'a' as const, label: 'Build menu' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", active: logOpen },
-          ...(logOpen ? [{ button: 'b' as const, label: 'Close log' }] : [])];
+          : [{ button: 'dpad' as const, label: '◀▶ plot  ▲▼ choose', shortLabel: 'Choose' }, { button: 'a' as const, label: ROWS[sel] === 'demolish' ? (confirming() ? 'Confirm demolish' : 'Demolish') : 'Build', shortLabel: ROWS[sel] === 'demolish' ? (confirming() ? 'Confirm' : 'Remove') : 'Build', active: true }, { button: 'y' as const, label: 'Decorate', shortLabel: 'Decor' }, { button: 'b' as const, label: 'Close' }]
+        : [{ button: 'a' as const, label: 'Build menu', shortLabel: 'Build' }, { button: 'y' as const, label: 'Camera' }, { button: 'z' as const, label: "Keeper's Log", shortLabel: 'Log', active: logOpen },
+          ...(logOpen ? [{ button: 'b' as const, label: 'Close log', shortLabel: 'Close' }] : [])];
       const targetCadence = wind ? { min: Math.round(windRpm()), label: 'Wind the clockwork' } : undefined;
       return { targetZone, targetCadence, controls: [...controls, { button: 'shiftersL', label: 'Gears' }, { button: 'shiftersR', label: 'Gears' }], gears: true };
     },

@@ -1,50 +1,72 @@
-import type { BossKind, EKind, PowerKind } from './content';
-import type { UpgradeId } from './meta';
-
-export type Side = 'L' | 'R';
-export type Stage = 'cruise' | 'attack' | 'boss' | 'warp';
-
+import type { SectionKind } from '../../../contracts';
+export type CraftId = 'cruiser' | 'escort';
+export interface SfSave {
+  v: 3; best: number; legacyBest: number; runs: number; onTargetS: number; unlockCredit: number;
+  craft: CraftId; totals: { kills: number; bosses: number }; legacy?: Record<string, unknown>;
+  /** On-target seconds flown in each craft (craft levels), and craft unlocked so far (sticky). */
+  craftS: Record<CraftId, number>; unlocked: CraftId[];
+}
 export interface EnemyView {
-  id: number; kind: EKind; x: number; y: number; r: number; hp: number; maxHp: number;
-  golden: boolean; hurt: number; tell: number; // tell 0..1 = wind-up before a dive / shot / lance
-  boss?: BossKind; part?: 'core' | 'L' | 'R'; diving?: boolean;
+  id: number; kind: 'drone' | 'armor' | 'weaver' | 'gunner' | 'turret' | 'tank' | 'boss';
+  parentId?: number; mountX?: number; ground?: boolean; heading?: number;
+  /** Formation this enemy entered with (clear-rate tracking). */
+  formation?: number;
+  /** Elite wings cross the far field and leave; only a rider who targets them can clear them. */
+  elite?: boolean; fled?: boolean;
+  /** Escaped past the ship: still flying (peeling away / scrolling off-screen), no longer in combat; `resolved` = counted. */
+  passing?: boolean; resolved?: boolean;
+  /** Ground units are anchored to the world (they swing beneath the ship in turns). */
+  wx?: number; wz?: number;
+  /** Lancers fire telegraphed beat beams instead of bullets; `beamReadyAt` is the age they may warn again. */
+  lancer?: boolean; beamReadyAt?: number;
+  /** 0..1 muzzle charge shown before the enemy fires. */
+  warn?: number;
+  entry?: { fromX: number; fromY: number; toX: number; toY: number; duration: number };
+  x: number; y: number; hp: number; maxHp: number; age: number; fireAt: number; bossStyle: number;
 }
-export interface ShotView { x: number; y: number; vx: number; vy: number; kind: 'shot' | 'missile' | 'wing'; side: Side }
-export interface HazardView { kind: 'rock' | 'bolt' | 'orb'; x: number; y: number; r: number; spin: number }
-export interface LanceView { x: number; w: number; tell: number; active: boolean; y0: number }
-export interface DropView { id: number; kind: 'scrap' | 'power'; power?: PowerKind; x: number; y: number; value: number }
-export interface FxView {
-  id: number; kind: 'boom' | 'spark' | 'text' | 'nova' | 'pickup' | 'hurt' | 'muzzle';
-  x: number; y: number; t0: number; color: string; size: number; text?: string;
-}
-export interface Banner { text: string; sub?: string; color: string; t0: number; life: number }
-export interface ToastView { text: string; color: string; t0: number }
-export interface HangarRow {
-  kind: 'launch' | 'upgrade' | 'auto';
-  id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean;
-}
-export interface HangarView {
-  bank: number; sel: number; rows: HangarRow[]; startSector: number; maxStartSector: number;
-  autoInvest: boolean; autoLaunchS: number; autoLaunchLeft: number; bestSector: number; best: number; runs: number;
-}
-/** The optional cruise challenge: Slipstream (power zone 3+) on odd sectors, Spin-Up (cadence) on even ones. */
-export interface ChallengeView {
-  kind: 'slipstream' | 'spinup'; state: 'idle' | 'active' | 'done' | 'failed';
-  progress: number; need: number; left: number; x: number; rpm: number;
-}
-
+export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
+export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean; amp?: number }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
+/** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
+export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
+/** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
+export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
-  t: number; phase: 'hangar' | 'run'; hangar: HangarView | null;
-  stage: Stage; stageLeft: number; sector: number; sectorName: string; theme: number; scroll: number;
-  shipX: number; hp: number; hpMax: number; shield: number; shieldMax: number; invuln: number; lives: number; livesMax: number;
-  score: number; combo: number; mult: number; thrust: number; overdrive: boolean; odWidth: number;
-  gunL: boolean; gunR: boolean; credits: number; gunLevel: number; missilesLeft: number; wingmen: Array<{ x: number; y: number; temp: boolean }>;
-  scrap: number; bank: number;
-  enemies: EnemyView[]; shots: ShotView[]; hazards: HazardView[]; lances: LanceView[]; drops: DropView[];
-  fx: FxView[]; banners: Banner[]; toasts: ToastView[]; cues: Array<{ name: string; id: number }>;
-  boss: { name: string; hp: number; maxHp: number; leftS: number } | null;
-  challenge: ChallengeView | null;
-  rapidLeft: number; // Rapid Fire seconds left (Spin-Up reward)
-  bossesDefeated: number; kills: number; over: boolean; hitFlash: number; shake: number; frozen: boolean;
-  hooks: { boss: boolean; challenge: boolean };
+  t: number; phase: 'hangar' | 'run';
+  /** Downbeat pulse (1 at a bar line, decaying), alongside `beat`. */
+  bar: number;
+  /** Beat count (changes on every beat) and current low/mid/high band energy 0..1, for music-reactive lighting. */
+  beatIndex: number; bands: [number, number, number];
+  /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
+  selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
+  /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
+  crafts: Record<CraftId, { level: number; progress: number; next: string | null; minutesToNext: number | null; unlocked: boolean; arsenalCap: number }>; tester: boolean;
+  heavy: boolean; ace: boolean; fullLock: number; eaten: number;
+  /** Visual height offset from the weave pattern, the current weave pattern, and the latest barrel roll (sim time). */
+  lift: number; pattern: string; roll: { at: number; dur: number; dir: number } | null;
+  /** 0..1 smoothed music intensity: weapons swell with the track (Beat Hazard's idea), enemy density with it. */
+  amp: number;
+  menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;
+  song: string; shipX: number; shipY: number; bank: number; dodge: number; hull: number; shield: number; quality: number;
+  effort: { status: 'on' | 'under' | 'over' | 'recover' | 'settling'; targetWatts: number; floorWatts: number; ceilingWatts: number; erg: boolean };
+  upcoming: { label: string; left: number; watts: number } | null;
+  cadence: { min: number; max: number; left: number; progress: number } | null;
+  charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
+  score: number; kills: number; salvage: number; combo: number; deaths: number;
+  selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];
+  enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[]; beams: BeamView[];
+  boss: { name: string; stage: string; hp: number; maxHp: number; left: number } | null;
+  bossIn: number | null; banner: string;
+  /** Ride clear rate over resolved formations, perfect formations, and the most recently resolved formation. */
+  clear: { rate: number; perfects: number; streak: number; last: { pct: number; perfect: boolean; at: number } | null };
+  /** Current place in the ride (song or mix segment) and the next one's biome, `switchIn` sim seconds ahead. */
+  /** World pose of the ship's route point, turn rate (rad/s, + = left), biome frames, and the route ahead (world x,z). */
+  world: { x: number; z: number; h: number; turn: number; s: number };
+  frames: { cur: WorldFrame; next: WorldFrame };
+  routeAhead: number[];
+  segment: { index: number; title: string; biome: number; seed: number; nextBiome: number; nextSeed: number; switchIn: number; breather: boolean };
+  /** End-of-segment scorecard, shown during the breather. */
+  scorecard: { title: string; grade: 'S' | 'A' | 'B' | 'C' | 'D'; score: number; clearPct: number; onTargetPct: number; perfects: number; elites: string; boss: string; at: number } | null;
+  hooks: { powerFtp: number; cadence: number; boss: boolean };
 }

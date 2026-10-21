@@ -15,7 +15,7 @@ export { paletteFromPixels, paletteFromKey } from './library/palette';
 export { MixEngine, type EngineOpts, type EngineState } from './player/engine';
 export { decodeMono } from './player/decode';
 export { encodeWav } from './player/wav';
-export { analyzeInWorker, renderSynthWav } from './analysis/client';
+export { analyzeInWorker, analyzeWindowInWorker, renderSynthWav } from './analysis/client';
 export { rateQueue, type QueueRating } from './rating';
 
 export { searchOnline, loadOnlineAudio, resolverConfig, setResolverConfig, type OnlineProvider } from './online/client';
@@ -23,4 +23,6 @@ export { searchOnline, loadOnlineAudio, resolverConfig, setResolverConfig, type 
 export { mediaServerConfig, saveMediaServerConfig, subscribeMediaServer, type MediaServerConfig } from './online/config';
 export { checkMediaServer, loadAudioRange } from './online/client';
 
-export { RollingQueue, estimatedAnalysis, type RangeSource } from './online/rolling';
+export { RollingQueue, estimatedAnalysis, type RangeSource, type SeedWindow } from './online/rolling';
+export { PreviewPrefetch, isBusyError, type PartialPreview, type PreviewLoader, type PreviewState } from './online/prefetch';
+export { STREAM_BUFFER_OPTIONS } from './online/buffer';

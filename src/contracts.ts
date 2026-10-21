@@ -142,6 +142,8 @@ export interface GameContext {
   clock: Clock;
   profile: Readonly<Profile>;
   bike(): Readonly<BikeState>;
+  /** Available trainer modes; variant pickers can disable an unsupported craft before launch. */
+  trainerCapabilities?(): Readonly<TrainerCapabilities> | null;
   input(): Readonly<InputState>;
   resistance: ResistanceController;
   tuning: Tuning;
@@ -155,7 +157,16 @@ export interface GameContext {
 }
 /** What a control does right now, for the shell's on-screen controller legend. */
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
-export interface ControlHint { button: ControlTarget; label: string; active?: boolean }
+/** Optional cooldown shown on the overlay key itself: fills bottom-to-top, greyed until ready, glows when ready. */
+export interface ControlCooldown { fill: number; ready: boolean; tint?: string; flourish?: number }
+/** Optional semantic pointer commands for held actions. The HUD adds `pointer` and preserves the down-time quote/epoch through release or cancel. */
+export interface ControlTouch { down: Record<string, unknown>; up?: Record<string, unknown>; cancel?: Record<string, unknown> }
+export interface ControlHint {
+  button: ControlTarget; label: string;
+  /** Short on-screen button name; label remains the full help/accessibility description. */
+  shortLabel?: string;
+  active?: boolean; cooldown?: ControlCooldown; touch?: ControlTouch;
+}
 /**
  * A zone band. `source: 'power'` = judged on min(5, powerZone): use it for any effort shorter than ~2 min,
  * because HR lags 30–60 s and can't follow a sprint. Default 'effort' = effortZone (HR-aware), for long holds.
@@ -168,8 +179,12 @@ export interface GameHud {
   targetZone?: ZoneTarget;         // zone band the game wants now
   targetCadence?: CadenceTarget;   // cadence band the game wants now (shown next to the rpm readout)
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
+  /** Primary touch buttons to show in the HUD when the controller legend is hidden; uses the same controls and cooldowns. */
+  touchControls?: Button[];
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }
+/** Additional pause-menu action supplied by a game; the shell resumes after dispatching it. */
+export interface GameMenuAction { id: string; label: string; action: unknown }
 export interface GameSim {
   update(dt: Seconds): void;       // called with FIXED_DT
   hud?(): GameHud;                 // read by the shell each frame; keep it cheap and plain-data
@@ -177,18 +192,28 @@ export interface GameSim {
   isOver(): boolean;
   /** Optional: true while the sim shows its own pre-game menu (camp, loadout). The shell runs the sim through it and starts the 3-2-1-GO countdown only after it ends. */
   inMenu?(): boolean;
+  /** Extra pause actions available in the current game state. Never replaces the shell exit action. */
+  menuActions?(): readonly GameMenuAction[];
   summary(): Record<string, number | string>;
   dispose?(): void;
   /** Optional: UI actions from the renderer (e.g. taps on a canvas menu); apply them on the next update(). */
   receive?(action: unknown): void;
 }
 /** CSS px the shell's HUD covers on each edge of the (edge-to-edge) render surface. Draw backgrounds full-bleed; keep foreground UI and the play focus inside. */
-export interface Insets { top: number; right: number; bottom: number; left: number }
+/** Actual HUD bounds in CSS pixels relative to the render surface. */
+export interface HudOcclusion { x: number; y: number; w: number; h: number }
+export interface Insets {
+  top: number; right: number; bottom: number; left: number;
+  /** Optional occupied HUD rectangles. Renderers without shape support use the edge insets. */
+  occlusions?: readonly HudOcclusion[];
+}
 export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 export interface GameRenderer {
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void }): void; // send -> GameSim.receive
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets; musicFx?: (fx: MusicFx) => void; hudControls?: boolean }): void; // send -> GameSim.receive
   /** Called after mount and whenever the HUD size changes. */
   setInsets?(insets: Insets): void;
+  /** Await after mount before advancing the simulation or countdown. */
+  ready?(): Promise<void>;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
   /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the shell's
@@ -237,6 +262,8 @@ export interface MediaSongSpan {
  * One clock for a whole queue (songs mixed or back to back). Everything is in program seconds.
  * Curves are sampled at `hz` (10) and normalised 0..1. Games read only this.
  */
+/** An analysed span of program time (rolling sources only) with separate 0..1 confidence in its rhythm (beat grid) and structure (sections/phrases). */
+export interface MediaCoverage { t0: Seconds; t1: Seconds; rhythm: number; structure: number }
 export interface MediaTimeline {
   durationS: Seconds; hz: number;
   intensity: number[];              // overall energy
@@ -246,6 +273,10 @@ export interface MediaTimeline {
   confidence: 'full' | 'metadata';
   /** Rolling sources mutate this object; consumer clears updateFromS after applying the earliest pending revision. */
   revision?: number; updateFromS?: Seconds;
+  /** Rolling sources: analysed spans in program time. Absent = the whole timeline is fully analysed. Time not covered is unanalysed (estimates). */
+  coverage?: MediaCoverage[];
+  /** Rolling sources: revisions never change events, sections or curves before this time (playhead + 3 s floor, and every announced cue). Absent = nothing will change. */
+  frozenUntilS?: Seconds;
 }
 /** Effects a music game's renderer may put on the playing music (present in mount ctx only when music is playing). Reset on exit. */
 export interface MusicFx { /** 0..1: muffle, sputter and crunch the music (a failing signal). */ degrade: number }
@@ -255,6 +286,8 @@ export interface MediaContext {
   positionS(): Seconds;
   /** True once the program has started (after any pre-game menu). */
   started(): boolean;
+  /** Register a cue the game has shown the rider (`t` = program time of the event it targets). Later revisions never move or remove events at or before it. Absent when the timeline can't change. */
+  announce?(id: string, t: Seconds): void;
 }
 
 // ===== Sessions =====

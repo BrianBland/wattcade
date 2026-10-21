@@ -50,8 +50,8 @@ describe('saved setup', () => {
     saveAll(); const s = await import('./services');
     await Promise.all([s.restoreSavedSetup(), s.restoreSavedSetup()]);
     expect(navigator.bluetooth.getDevices).toHaveBeenCalledTimes(1);
-    expect(mocks.trainer).toHaveBeenCalledWith(device('trainer'), expect.any(Function));
-    expect(mocks.hr).toHaveBeenCalledWith(device('hr'), expect.any(Function));
+    expect(mocks.trainer).toHaveBeenCalledWith(device('trainer'), expect.any(Function), expect.any(Function), expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(mocks.hr).toHaveBeenCalledWith(device('hr'), expect.any(Function), expect.any(Function), expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mocks.ride.mock.calls.map(([d]) => d.id)).toEqual(['left', 'right']);
     expect(mocks.trainerPicker).not.toHaveBeenCalled(); expect(mocks.hrPicker).not.toHaveBeenCalled(); expect(mocks.ridePicker).not.toHaveBeenCalled();
     expect(s.controllerCount()).toBe(2); expect(s.getDeviceStatus().trainer.connected).toBe(true);
@@ -178,4 +178,29 @@ describe('saved setup', () => {
     await s.connectDevice('trainer'); expect(mocks.trainerPicker).not.toHaveBeenCalled();
     release([device('trainer')]); await restore;
   });
+});
+it('honors cancellation of roles still waiting for saved permissions', async () => {
+  saveAll(); let release!: (d: BluetoothDevice[]) => void;
+  vi.stubGlobal('navigator', { bluetooth: { getDevices: () => new Promise<BluetoothDevice[]>(r => { release = r; }) } });
+  const s = await import('./services'); const restoring = s.restoreSavedSetup();
+  await s.disconnectDevice('hr'); release([device('hr'), device('trainer'), device('left'), device('right')]); await restoring;
+  expect(mocks.hr).not.toHaveBeenCalled(); expect(s.getDeviceStatus().hr).toEqual({ connected: false });
+  expect(s.getDeviceStatus().trainer.connected).toBe(true);
+});
+it('does not attach a canceled factory result to the hub or overwrite the canceled status', async () => {
+  rememberDevices('hr', ['hr']); let release!: () => void;
+  const blocked = new Promise<void>(r => { release = r; }); const original = mocks.hr.getMockImplementation()!;
+  mocks.hr.mockImplementationOnce(async d => { await blocked; return original(d); });
+  const s = await import('./services'); const restoring = s.restoreSavedSetup();
+  await vi.waitFor(() => expect(mocks.hr).toHaveBeenCalledOnce()); await s.disconnectDevice('hr');
+  release(); await restoring; expect(s.getDeviceStatus().hr).toEqual({ connected: false });
+  expect(s.savedHrWatches().every(w => !w.selected)).toBe(true);
+});
+it('preserves the active watch when the user cancels the replacement picker', async () => {
+  rememberDevices('hr', ['hr']); const s = await import('./services'); await s.restoreSavedSetup();
+  const active = await mocks.hr.mock.results[0].value;
+  mocks.hrPicker.mockRejectedValueOnce(new DOMException('User canceled', 'NotFoundError'));
+  await s.connectDevice('hr');
+  expect(active.disconnect).not.toHaveBeenCalled(); expect(s.getDeviceStatus().hr.connected).toBe(true);
+  expect(s.savedHrWatches().find(w => w.id === 'hr')?.selected).toBe(true);
 });

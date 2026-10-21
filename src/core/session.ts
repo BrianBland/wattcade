@@ -17,7 +17,7 @@ export interface SessionOpts {
   onEmit?: (e: { t: number } & GameEvent) => void; onSave?: (data: unknown) => void;
   tuningRegistry?: TuningRegistry;   // optional: share/inspect the registry (e.g. headless overrides)
   /** Music for games with requires.media: the program timeline (ctx.media). */
-  media?: { timeline: MediaTimeline };
+  media?: { timeline: MediaTimeline; announce?(id: string, t: number): void };
 }
 
 /** Program clock for media sessions. It runs with the sim once the game is past any pre-game menu. */
@@ -71,6 +71,7 @@ export function createGameSession(o: SessionOpts): GameSession {
   const ctx: GameContext = {
     clock, profile,
     bike: () => bikeStore.get(),
+    trainerCapabilities: () => dataHub.capabilities(),
     input: () => o.input.state(),
     resistance: mixer,
     tuning: tuning.scoped(o.game.id),
@@ -79,7 +80,7 @@ export function createGameSession(o: SessionOpts): GameSession {
     debug: (k, v) => { dbg[k] = v; },
     save: (d) => { saved = d; o.onSave?.(d); },
     load: <T,>() => saved as T | undefined,
-    ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted } } : {}),
+    ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, ...(o.media.announce ? { announce: o.media.announce } : {}) } } : {}),
   };
   const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
 

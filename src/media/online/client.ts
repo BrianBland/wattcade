@@ -15,7 +15,7 @@ export async function resolverRequest(config: ResolverConfig, route: string, bod
   if (!r.ok) {
     let error = `Audio resolver failed (${r.status})`;
     try { error = (await r.json()).error ?? error; } catch { /* proxy returned HTML */ }
-    throw new Error(error);
+    throw Object.assign(new Error(error), { status: r.status });
   }
   return r;
 }

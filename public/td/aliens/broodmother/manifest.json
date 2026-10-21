@@ -1,0 +1,288 @@
+{
+ "id": "broodmother",
+ "kind": "carrier",
+ "source": "broodmother-parts",
+ "scale": 0.53,
+ "size": [
+  339.2,
+  339.2
+ ],
+ "centerX": 169.6,
+ "centerY": 155.29,
+ "lengthPx": 254.4,
+ "root": "thorax_2",
+ "parts": [
+  {
+   "name": "head",
+   "file": "head.webp",
+   "glow": "head_glow.webp",
+   "offset": [
+    136.21,
+    46.64
+   ],
+   "pivot": [
+    169.335,
+    105.205
+   ],
+   "parent": "thorax_1",
+   "z": 60,
+   "w": 65.72,
+   "h": 73.67
+  },
+  {
+   "name": "thorax_1",
+   "file": "thorax_1.webp",
+   "glow": "thorax_1_glow.webp",
+   "offset": [
+    128.79,
+    95.93
+   ],
+   "pivot": [
+    169.335,
+    132.765
+   ],
+   "parent": "thorax_2",
+   "z": 54,
+   "w": 81.62,
+   "h": 51.94
+  },
+  {
+   "name": "thorax_2",
+   "file": "thorax_2.webp",
+   "glow": "thorax_2_glow.webp",
+   "offset": [
+    128.79,
+    119.78
+   ],
+   "pivot": [
+    169.6,
+    153.411
+   ],
+   "parent": null,
+   "z": 53,
+   "w": 81.62,
+   "h": 58.3
+  },
+  {
+   "name": "abdomen_1",
+   "file": "abdomen_1.webp",
+   "glow": "abdomen_1_glow.webp",
+   "offset": [
+    148.93,
+    155.29
+   ],
+   "pivot": [
+    169.335,
+    170.395
+   ],
+   "parent": "thorax_2",
+   "z": 52,
+   "w": 41.87,
+   "h": 56.71
+  },
+  {
+   "name": "abdomen_2",
+   "file": "abdomen_2.webp",
+   "glow": "abdomen_2_glow.webp",
+   "offset": [
+    148.93,
+    188.68
+   ],
+   "pivot": [
+    169.335,
+    204.315
+   ],
+   "parent": "abdomen_1",
+   "z": 51,
+   "w": 41.87,
+   "h": 44.52
+  },
+  {
+   "name": "coxa_front_r",
+   "file": "coxa_front_r.webp",
+   "glow": "coxa_front_r_glow.webp",
+   "offset": [
+    175.96,
+    95.93
+   ],
+   "pivot": [
+    190.005,
+    113.155
+   ],
+   "parent": "thorax_1",
+   "z": 10,
+   "w": 34.45,
+   "h": 27.03
+  },
+  {
+   "name": "femur_front_r",
+   "file": "femur_front_r.webp",
+   "glow": "femur_front_r_glow.webp",
+   "offset": [
+    187.09,
+    75.79
+   ],
+   "pivot": [
+    200.075,
+    108.915
+   ],
+   "parent": "coxa_front_r",
+   "z": 15,
+   "w": 48.23,
+   "h": 47.17
+  },
+  {
+   "name": "claw_front_r",
+   "file": "claw_front_r.webp",
+   "glow": "claw_front_r_glow.webp",
+   "offset": [
+    200.34,
+    45.05
+   ],
+   "pivot": [
+    221.805,
+    86.655
+   ],
+   "parent": "femur_front_r",
+   "z": 20,
+   "w": 34.98,
+   "h": 56.71
+  },
+  {
+   "name": "coxa_mid_r",
+   "file": "coxa_mid_r.webp",
+   "glow": "coxa_mid_r_glow.webp",
+   "offset": [
+    181.26,
+    110.24
+   ],
+   "pivot": [
+    195.835,
+    132.235
+   ],
+   "parent": "thorax_2",
+   "z": 10,
+   "w": 35.51,
+   "h": 39.22
+  },
+  {
+   "name": "femur_mid_r",
+   "file": "femur_mid_r.webp",
+   "glow": "femur_mid_r_glow.webp",
+   "offset": [
+    193.98,
+    105.47
+   ],
+   "pivot": [
+    209.085,
+    125.875
+   ],
+   "parent": "coxa_mid_r",
+   "z": 15,
+   "w": 82.15,
+   "h": 59.36
+  },
+  {
+   "name": "claw_mid_r",
+   "file": "claw_mid_r.webp",
+   "glow": "claw_mid_r_glow.webp",
+   "offset": [
+    218.89,
+    39.75
+   ],
+   "pivot": [
+    246.715,
+    142.835
+   ],
+   "parent": "femur_mid_r",
+   "z": 20,
+   "w": 59.89,
+   "h": 125.08
+  },
+  {
+   "name": "coxa_rear_r",
+   "file": "coxa_rear_r.webp",
+   "glow": "coxa_rear_r_glow.webp",
+   "offset": [
+    170.66,
+    140.45
+   ],
+   "pivot": [
+    184.175,
+    156.085
+   ],
+   "parent": "thorax_2",
+   "z": 10,
+   "w": 66.78,
+   "h": 33.92
+  },
+  {
+   "name": "femur_rear_r",
+   "file": "femur_rear_r.webp",
+   "glow": "femur_rear_r_glow.webp",
+   "offset": [
+    208.29,
+    141.51
+   ],
+   "pivot": [
+    221.805,
+    158.205
+   ],
+   "parent": "coxa_rear_r",
+   "z": 15,
+   "w": 68.37,
+   "h": 55.65
+  },
+  {
+   "name": "claw_rear_r",
+   "file": "claw_rear_r.webp",
+   "glow": "claw_rear_r_glow.webp",
+   "offset": [
+    226.31,
+    157.41
+   ],
+   "pivot": [
+    246.715,
+    186.295
+   ],
+   "parent": "femur_rear_r",
+   "z": 20,
+   "w": 53,
+   "h": 95.93
+  },
+  {
+   "name": "egg_sac",
+   "file": "egg_sac.webp",
+   "glow": "egg_sac_glow.webp",
+   "offset": [
+    102.29,
+    135.68
+   ],
+   "pivot": [
+    169.6,
+    164.396
+   ],
+   "parent": "abdomen_1",
+   "z": 30,
+   "w": 137.8,
+   "h": 118.72
+  },
+  {
+   "name": "posterior_fan",
+   "file": "posterior_fan.webp",
+   "glow": "posterior_fan_glow.webp",
+   "offset": [
+    113.42,
+    208.82
+   ],
+   "pivot": [
+    169.335,
+    223.925
+   ],
+   "parent": "abdomen_2",
+   "z": 50,
+   "w": 116.07,
+   "h": 92.22
+  }
+ ]
+}

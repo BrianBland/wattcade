@@ -3,6 +3,7 @@ import type { SessionRecord, SessionSample } from '../contracts';
 import { ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, awardSession, defaultProfile } from './index';
 import { addDay, localDay, peakAvg, speedFor, variabilityIndex, virtualRide, weekday, weekOf, weekStreak } from './rideStats';
 import { games } from '../games/registry';
+import { BIOMES } from '../games/warmup/sim/terrain';
 
 const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).getTime();
 const flat = (n: number, power = 150, cadence = 85): SessionSample[] =>
@@ -80,13 +81,24 @@ describe('achievement catalogue', () => {
 });
 
 describe('counters and goals', () => {
+  it('Afterglow counts active arcade rides independently of owning the bike', () => {
+    let p=defaultProfile();
+    p=awardSession(p,rec({gameId:'warmup'})).profile;
+    p=awardSession(p,rec({},flat(599))).profile;
+    p=awardSession(p,rec({},flat(900,150,0))).profile;
+    expect(achievementProgress(byId('afterglow'),p)!.label).toBe('0/10 rides');
+    for(let i=0;i<9;i++)p=awardSession(p,rec()).profile;
+    expect(p.achievements).not.toContain('afterglow');
+    const tenth=awardSession(p,rec());expect(ids(tenth)).toContain('afterglow');
+    expect(tenth.profile.achievements).not.toContain('arcade_rat');
+  });
   it('max keeps the best, with progress', () => {
     let p = defaultProfile();
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 14 } })).profile;
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 4 } })).profile;
-    expect(p.counters!['towerdefense.bestWave']).toBe(14);
-    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.7, label: 'Best 14/20 waves' });
-    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 24 } }));
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 6 } })).profile;
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 2 } })).profile;
+    expect(p.counters!['towerdefense.bestWave']).toBe(6);
+    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.75, label: 'Best 6/8 waves' });
+    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 12 } }));
     expect(ids(r)).toContain('td_wave10');
     expect(ids(r)).not.toContain('td_wave25');
   });
@@ -101,8 +113,8 @@ describe('counters and goals', () => {
     const reach = (...b: string[]) => rec({ gameId: 'warmup', events: b.map((biome, t) => ({ t, type: 'biomeReached', data: { biome } })) });
     p = awardSession(p, reach('seaside', 'underwater')).profile;
     p = awardSession(p, reach('underwater', 'jungle')).profile;
-    expect(achievementProgress(byId('wu_globetrotter'), p)!.label).toBe('3/8 biomes');
-    const r = awardSession(p, reach('countryside', 'desert', 'volcano', 'snow', 'moon'));
+    expect(achievementProgress(byId('wu_globetrotter'), p)!.label).toBe(`3/${BIOMES.length} biomes`);
+    const r = awardSession(p, reach(...BIOMES));
     expect(ids(r)).toEqual(expect.arrayContaining(['wu_globetrotter', 'wu_moon']));
   });
   it('the old storm tally carries over', () => {

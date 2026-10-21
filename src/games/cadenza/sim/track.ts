@@ -1,20 +1,21 @@
 import type { MediaTimeline, SectionKind, ZoneTarget } from '../../../contracts';
 import { makeRng } from '../../../core/rng';
+import { COUNTDOWN_S, TRANSITION_S, planRide, rideIndexAt, rideTarget, type RideBlock } from './ride';
 
 /**
  * The ride, built from the music (pure, deterministic). Everything is sampled on the program clock at `hz`.
- *  - Every section is a zone: new hue, a speed step, and an effort target.
- *  - Builds climb (real trainer grade), drops crest and dive (grade falls away, sprint target), breaks are flat.
+ *  - Every section is a visual zone; a separate ride plan coalesces effort targets and protects recovery.
+ *  - Builds climb visually, drops crest and dive; the trainer follows planned effort, including recovery overrides.
  *  - Blocks sit on the song's hits; their colour follows hit strength × intensity; greys fill dense passages.
  */
 export type Difficulty = 'casual' | 'pro' | 'elite';
 export type Mode = 'mono' | 'classic';
 export const DIFFICULTIES: readonly Difficulty[] = ['casual', 'pro', 'elite'];
 
-export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4 }> = {
-  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3 },
-  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3 },
-  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4 },
+export const DIFF: Record<Difficulty, { lanes: number; minGap: number; thr: number; grey: number; buildZone: 3 | 4; dropZone: 4 | 5; sprintS: number; holdZone: 3 | 4; sprintEveryS: number; restS: number; mixRestS: number; maxWorkS: number; periodicRestS: number }> = {
+  casual: { lanes: 3, minGap: 0.36, thr: 0.35, grey: 0.05, buildZone: 3, dropZone: 4, sprintS: 10, holdZone: 3, sprintEveryS: 150, restS: 25, mixRestS: 36, maxWorkS: 150, periodicRestS: 40 },
+  pro: { lanes: 3, minGap: 0.22, thr: 0.22, grey: 0.12, buildZone: 4, dropZone: 5, sprintS: 15, holdZone: 3, sprintEveryS: 120, restS: 15, mixRestS: 24, maxWorkS: 180, periodicRestS: 30 },
+  elite: { lanes: 5, minGap: 0.11, thr: 0.12, grey: 0.18, buildZone: 4, dropZone: 5, sprintS: 20, holdZone: 4, sprintEveryS: 75, restS: 12, mixRestS: 20, maxWorkS: 210, periodicRestS: 25 },
 };
 /** ERG watts (FTP fraction) per effort phase, for the ERG option. */
 export const ERG_FTP = { cruise: 0.65, climb: [0.75, 0.92], sprint: 1.12, hold: 0.88, recover: 0.5 } as const;
@@ -35,15 +36,23 @@ export interface Zone {
   sprintEnd?: number;
 }
 export type Phase = 'cruise' | 'climb' | 'sprint' | 'hold' | 'recover';
-export interface Effort { phase: Phase; target: ZoneTarget; floorFtp: number; ergFtp: number; left: number }
+export interface Effort {
+  phase: Phase;
+  /** What is judged: during a transition the union of the old and new bands; during a countdown the ceiling opens to Z5. */
+  target: ZoneTarget;
+  /** What the rider is asked for (the block's own band), shown on the HUD. */
+  band: { min: number; max: number };
+  floorFtp: number; ergFtp: number; left: number; instruction: string; countdown: number | null; transition: boolean; gradePct: number;
+}
 export interface Track {
-  durationS: number; hz: number; lanes: number;
+  durationS: number; hz: number; lanes: number; maxGrade: number;
   dist: Float64Array;   // metres travelled at each sample
   speed: Float32Array;  // m/s
   height: Float32Array; // visual track height (m, exaggerated by the renderer)
-  grade: Float32Array;  // trainer grade % (before difficulty / hill scale)
+  grade: Float32Array;  // visual road grade %; trainer demand comes from planned effort
   curve: Float32Array;  // heading (rad)
   zones: Zone[]; blocks: Block[];
+  rideBlocks: RideBlock[];
   /** Bank (roll, rad; + = rolls right) per sample, and tunnel membership per sample (renderer only). */
   roll: Float32Array; tunnel: Uint8Array; tunnels: Array<{ t0: number; t1: number }>;
   /**
@@ -76,18 +85,28 @@ function targetFor(kind: SectionKind, d: (typeof DIFF)[Difficulty]): ZoneTarget 
   }
 }
 
-/** The effort asked for at program time p: drops sprint for at most `sprintS`, then hold a lower zone. */
+/** Effort follows the ride plan, independently of the music's visual sections. */
 export function effortAt(track: Track, p: number, difficulty: Difficulty): Effort {
-  const z = track.zones[zoneIndexAt(track, p)], d = DIFF[difficulty];
-  const prog = clamp((p - z.t0) / Math.max(1, z.t1 - z.t0), 0, 1);
-  switch (z.kind) {
-    case 'drop':
-      if (p < (z.sprintEnd ?? z.t1)) return { phase: 'sprint', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.sprint, left: (z.sprintEnd ?? z.t1) - p };
-      return { phase: 'hold', target: { min: d.holdZone, max: (d.holdZone + 1) as 4 | 5, label: 'Hold it', source: 'power' }, floorFtp: ZONE_FLOOR[d.holdZone], ergFtp: ERG_FTP.hold, left: z.t1 - p };
-    case 'build': return { phase: 'climb', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.climb[0] + (ERG_FTP.climb[1] - ERG_FTP.climb[0]) * prog, left: z.t1 - p };
-    case 'break': case 'outro': return { phase: 'recover', target: z.target, floorFtp: 0, ergFtp: ERG_FTP.recover, left: z.t1 - p };
-    default: return { phase: 'cruise', target: z.target, floorFtp: z.floorFtp, ergFtp: ERG_FTP.cruise, left: z.t1 - p };
+  const blocks = track.rideBlocks, index = rideIndexAt(blocks, p), b = blocks[index], prev = blocks[index - 1];
+  const prog = clamp((p - b.t0) / Math.max(1, b.t1 - b.t0), 0, 1);
+  let target = { ...b.target }, instruction = target.label ?? 'Hold Steady';
+  // look past a short block so the full 3-2-1 always lands on the sprint
+  const sprint = blocks.slice(index + 1, index + 3).find((x) => x.phase === 'sprint');
+  const countdown = sprint && sprint.t0 > p && sprint.t0 - p <= COUNTDOWN_S + 1e-6 ? Math.max(1, Math.ceil(sprint.t0 - p - 1e-6)) : null;
+  const transition = !!prev && b.phase !== 'sprint' && p - b.t0 < TRANSITION_S;
+  if (countdown) { target.max = 5; instruction = String(countdown); }
+  else if (transition) {
+    target.min = Math.min(prev.target.min, target.min) as ZoneTarget['min'];
+    target.max = Math.max(prev.target.max, target.max) as ZoneTarget['max'];
+    instruction = b.phase === 'recover' ? 'Break' : b.target.min < prev.target.min ? 'Ease Off' : b.target.min > prev.target.min ? 'Harder' : instruction;
   }
+  const ergFtp = b.phase === 'recover' ? ERG_FTP.recover : b.phase === 'sprint' ? ERG_FTP.sprint
+    : b.phase === 'climb' ? ERG_FTP.climb[0] + (ERG_FTP.climb[1] - ERG_FTP.climb[0]) * prog
+    : b.phase === 'hold' ? ERG_FTP.hold : ERG_FTP.cruise;
+  return { phase: b.phase, target: { ...target, label: instruction }, band: { min: b.target.min, max: b.target.max }, instruction, countdown, transition,
+    floorFtp: b.phase === 'recover' ? 0 : ZONE_FLOOR[target.min], ergFtp,
+    gradePct: b.phase === 'recover' ? 0.5 : b.phase === 'sprint' ? 0 : b.phase === 'climb' ? 2 + (track.maxGrade - 2) * prog : b.phase === 'hold' ? 2 : 1.5,
+    left: Math.max(0, b.t1 - p) };
 }
 
 export function sampleAt(arr: ArrayLike<number>, hz: number, p: number): number {
@@ -104,6 +123,7 @@ export function zoneIndexAt(track: Track, p: number): number {
 
 export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const d = DIFF[o.difficulty], hz = tl.hz || 10, n = Math.max(2, Math.ceil(tl.durationS * hz) + 1);
+  const rideBlocks = planRide(tl, d);
   const rng = makeRng(o.seed * 101 + 7), maxGrade = o.maxGrade ?? 7, vBase = o.vBase ?? 26;
   const sections = tl.sections.length ? tl.sections : [{ t0: 0, t1: tl.durationS, kind: 'verse' as SectionKind, energy: 0.5 }];
   const songOf = (t: number) => Math.max(0, tl.songs.findIndex((s) => t >= s.t0 && t < s.t1));
@@ -124,18 +144,18 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
   const speed = new Float32Array(n), dist = new Float64Array(n), height = new Float32Array(n), grade = new Float32Array(n), curve = new Float32Array(n);
   const roll = new Float32Array(n), tunnel = new Uint8Array(n);
   const phase = rng() * Math.PI * 2, curvePhase = rng() * Math.PI * 2;
-  // hard banks: every drop throws you into a near-sideways turn; some longer verses get a softer one.
-  // Long builds spiral up a full banked helix; every drop opens with a launch roll (360° corkscrew) before its bank.
+  // Planned sprints launch; longer ones bank hard. Builds can helix when outside protected recovery.
   const banks: Array<{ t0: number; dur: number; ang: number; yaw?: number }> = [];
   const rolls: Array<{ t0: number; dur: number; ang: number }> = [];
   const stunts: Track['stunts'] = [];
   let dir = rng() < 0.5 ? 1 : -1;
   zones.forEach((z, zi) => {
     const len = z.t1 - z.t0;
-    if (z.kind === 'drop' && len > 6) {
+    if (z.kind === 'drop' && rideBlocks[rideIndexAt(rideBlocks, z.t0)].phase === 'sprint') {
       rolls.push({ t0: z.t0, dur: LAUNCH.s, ang: dir * Math.PI * 2 }); stunts.push({ kind: 'launch', t0: z.t0, t1: z.t0 + LAUNCH.s, zone: zi });
-      banks.push({ t0: z.t0 + LAUNCH.s + 0.3, dur: 4.5, ang: dir * 1.15 }); dir = -dir;
-    } else if (z.kind === 'build' && len >= HELIX_S + 4) {
+      if (len > 6) banks.push({ t0: z.t0 + LAUNCH.s + 0.3, dur: 4.5, ang: dir * 1.15 });
+      dir = -dir;
+    } else if (z.kind === 'build' && len >= HELIX_S + 4 && !rideBlocks.some((b) => b.phase === 'recover' && b.t0 < z.t1 && b.t1 > z.t1 - HELIX_S - 1)) {
       const t0 = z.t1 - HELIX_S - 1;
       banks.push({ t0, dur: HELIX_S, ang: dir * 0.75, yaw: (dir * Math.PI * 2) / (0.75 * HELIX_S) }); // the envelope integrates to 0.75 × dur
       stunts.push({ kind: 'helix', t0, t1: t0 + HELIX_S, zone: zi }); dir = -dir;
@@ -159,7 +179,7 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     speed[i] = v;
     if (i) x += ((speed[i - 1] + v) / 2) / hz;
     dist[i] = x;
-    // trainer grade by section kind, then a ~2 s ease so changes feel like terrain, not steps
+    // Visual grade by section kind, eased over ~2 s. Trainer demand follows the ride plan separately.
     let want: number;
     switch (z.kind) {
       case 'build': want = 2 + (maxGrade - 2) * prog ** 1.2; break;
@@ -222,16 +242,16 @@ export function buildTrack(tl: MediaTimeline, o: TrackOpts): Track {
     }
   }
   return {
-    durationS: tl.durationS, hz, lanes: d.lanes, dist, speed, height, grade, curve, zones, blocks, roll, tunnel, tunnels, stunts,
+    durationS: tl.durationS, hz, lanes: d.lanes, maxGrade, dist, speed, height, grade, curve, zones, blocks, rideBlocks, roll, tunnel, tunnels, stunts,
     beats: tl.beats, downbeats: tl.downbeats, phrases: tl.phrases, bands: tl.bands, intensity: tl.intensity,
   };
 }
 
 /** Rough training load of riding a track at its targets (for the picker): TSS-ish and minutes per zone. */
 export function rateTrack(track: Track): { stars: number; tss: number; blocksPerMin: number; greyPct: number; minutesZ4: number } {
-  const want: Record<SectionKind, number> = { intro: 0.62, verse: 0.65, build: 0.86, drop: 1.1, break: 0.5, outro: 0.55 };
+  const want: Record<Phase, number> = { cruise: 0.65, climb: 0.86, sprint: 1.1, recover: 0.5, hold: 0.88 };
   let f4 = 0, t = 0, z4 = 0;
-  for (const z of track.zones) { const dt = z.t1 - z.t0, f = want[z.kind] * (z.floorFtp >= 0.91 ? 1.04 : 1); f4 += f ** 4 * dt; t += dt; if (z.floorFtp >= 0.91) z4 += dt; }
+  for (const b of track.rideBlocks) { const dt = b.t1 - b.t0, f = want[b.phase] * (b.target.min >= 4 ? 1.04 : 1); f4 += f ** 4 * dt; t += dt; if (b.target.min >= 4) z4 += dt; }
   const IF = t ? (f4 / t) ** 0.25 : 0, hours = t / 3600;
   const tss = Math.round(hours * IF * IF * 100);
   const bpm = track.blocks.length / Math.max(1, track.durationS / 60);
@@ -245,6 +265,22 @@ export function extendTrack(old: Track, next: Track, fromS: number): Track {
   const cut = Math.min(old.dist.length - 1, Math.max(0, Math.ceil(fromS * old.hz)));
   if (!cut) return next;
   const at = cut / old.hz;
+  // Finish a committed sprint or recovery; retain at least 30 s of a steady instruction.
+  const committed = old.rideBlocks[rideIndexAt(old.rideBlocks, at)];
+  const rideCut = Math.min(next.durationS, Math.max(at, committed.phase === 'sprint' || committed.phase === 'recover'
+    ? committed.t1 : Math.min(committed.t1, committed.t0 + 30)));
+  const beforeRide = old.rideBlocks.filter((b) => b.t0 < rideCut).map((b) => ({ ...b, t1: Math.min(b.t1, rideCut) }));
+  const afterRide = next.rideBlocks.filter((b) => b.t1 > rideCut).map((b) => {
+    // A newly detected sprint may not start halfway through, without its countdown.
+    if (b.phase === 'sprint' && b.t0 < rideCut + COUNTDOWN_S) return { ...b, t0: Math.max(b.t0, rideCut), phase: 'cruise' as Phase, target: rideTarget('cruise', DIFF.pro) }; // cruise is Z2–3 at every difficulty
+    return { ...b, t0: Math.max(b.t0, rideCut) };
+  });
+  next.rideBlocks = [...beforeRide, ...afterRide].reduce<RideBlock[]>((blocks, b) => {
+    const prev = blocks.at(-1);
+    if (prev && prev.phase === b.phase && prev.target.min === b.target.min && prev.target.max === b.target.max) prev.t1 = b.t1;
+    else blocks.push(b);
+    return blocks;
+  }, []);
   const distOffset = old.dist[cut] - next.dist[cut], heightOffset = old.height[cut] - next.height[cut], curveOffset = old.curve[cut] - next.curve[cut];
   for (let i = cut; i < next.dist.length; i++) {
     next.dist[i] += distOffset; next.height[i] += heightOffset; next.curve[i] += curveOffset;
@@ -253,9 +289,10 @@ export function extendTrack(old: Track, next: Track, fromS: number): Track {
   }
   for (const key of ['dist', 'speed', 'height', 'grade', 'curve', 'roll', 'tunnel'] as const) next[key].set(old[key].subarray(0, cut));
   const before = old.zones.filter((z) => z.t0 < at).map((z) => ({ ...z, t1: Math.min(z.t1, at) }));
-  next.zones = [...before, ...next.zones.filter((z) => z.t1 > at).map((z) => ({ ...z, t0: Math.max(z.t0, at) }))].map((z, n) => ({ ...z, n }));
+  next.zones = [...before, ...next.zones.filter((z) => z.t1 > at).map((z) => ({ ...z, t0: Math.max(z.t0, at) }))].map((z, n) => ({ ...z, n: n + 1 }));
   next.blocks = [...old.blocks.filter((b) => b.t < at), ...next.blocks.filter((b) => b.t >= at)].map((b) => ({ ...b, zone: zoneIndexAt(next, b.t) }));
   next.stunts = [...old.stunts.filter((s) => s.t0 < at), ...next.stunts.filter((s) => s.t0 >= at)].map((s) => ({ ...s, zone: zoneIndexAt(next, s.t0) }));
+  next.stunts = next.stunts.filter((s) => s.kind !== 'launch' || next.rideBlocks[rideIndexAt(next.rideBlocks, s.t0)].phase === 'sprint');
   next.tunnels = [...old.tunnels.filter((s) => s.t0 < at).map((s) => ({ ...s, t1: Math.min(s.t1, at) })), ...next.tunnels.filter((s) => s.t1 > at).map((s) => ({ ...s, t0: Math.max(s.t0, at) }))];
   for (const key of ['beats', 'downbeats', 'phrases'] as const) next[key] = [...old[key].filter((t) => t < at), ...next[key].filter((t) => t >= at)];
   for (let i = 0; i < cut; i++) {

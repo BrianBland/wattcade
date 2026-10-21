@@ -48,11 +48,11 @@ const saddle = (g: G, x: number, y: number, w = 2.8) => line(g, '#333', 1.4, [x 
 const crank = (c: BikeCtx, bb: P, cr: number) => line(c.g, '#999', 0.8, bb, [bb[0] + Math.cos(c.th) * cr, bb[1] + Math.sin(c.th) * cr]);
 
 const road: BikeDef = {
-  hip: [-3, -14], hand: [6.8, -13.6], bb: [0, -5], cr: 2.8, lean: 0.8, legs: 'pedal', hitch: -7,
+  hip: [-3.6, -14], hand: [7.2, -13.7], bb: [0, -5.5], cr: 2.5, lean: 0.8, legs: 'pedal', hitch: -8,
   frameDraw: (c) => {
-    c.wheel(-7, -4.5, 4.5); c.wheel(7, -4.5, 4.5);
-    diamond(c, [-7, -4.5], [0, -5], [-3.2, -12.5], [5, -12], [7, -4.5]);
-    saddle(c.g, -3.1, -13.2); line(c.g, '#333', 1.3, [5, -12], [6.6, -13.6], [7.4, -12.4]); crank(c, [0, -5], 2.8);
+    c.wheel(-8, -5.5, 5, { tyre: 1.1 }); c.wheel(8, -5.5, 5, { tyre: 1.1 });
+    diamond(c, [-8, -5.5], [0, -5.5], [-3.6, -12.8], [5.5, -12.3], [8, -5.5]);
+    saddle(c.g, -3.6, -13.3); line(c.g, '#273043', 1, [5.5, -12.3], [7.2, -13.7], [7.7, -12.2]); crank(c, [0, -5.5], 2.5);
   },
 };
 
@@ -81,6 +81,7 @@ export const BIKES: Record<string, BikeDef> = {
       for (const x of [-7.4, 7.4]) { c.wheel(x, -4.8, 4.8, { tyre: 1.8, white: true }); c.g.strokeStyle = c.frame(); c.g.lineWidth = 0.7; c.g.beginPath(); c.g.arc(x, -4.8, 5.8, Math.PI * 1.1, Math.PI * 1.9); c.g.stroke(); }
       quad(c.g, c.frame(0.5), 1.4, [-7.4, -4.8], [-2, -13], [5.4, -11.6]); c.tube([0, -4.8], [-3.4, -12.4]); quad(c.g, c.frame(0.5), 1.4, [0, -4.8], [2, -9], [5.4, -11.4]); c.tube([5.4, -11.6], [7.4, -4.8]);
       line(c.g, '#c6ccd6', 1, [5.4, -11.6], [5.6, -14.4]); quad(c.g, '#c6ccd6', 0.9, [5.6, -14.4], [5, -16.4], [3.6, -15.4]); saddle(c.g, -3.6, -13, 3.4); crank(c, [0, -4.8], 2.6);
+      poly(c.g,shade(c.frame(),.83),[-1.7,-5.8],[2,-5.7],[2.8,-4.5],[-1.7,-4.3]);
     },
   },
   pennyfarthing: {
@@ -146,7 +147,12 @@ export const BIKES: Record<string, BikeDef> = {
       line(c.g, '#c6ccd6', 1, [2, -12.6], [2.6, -15.2], [4, -15.2]); line(c.g, '#999', 0.6, [2, -12.6], [11, -3]);
       saddle(c.g, -5, -13.2); crank(c, [-2, -5], 2.8);
     },
-    front: (c) => { rect(c.g, WOOD, 3, -11, 9.4, 6.6); for (let y = -9.4; y < -4.5; y += 1.6) line(c.g, shade(WOOD, 0.75), 0.3, [3, y], [12.4, y]); rect(c.g, c.frame(), 3, -11.4, 9.4, 0.8); },
+    front: (c) => {
+      rect(c.g,'#a87944',3,-11,9.4,6.6);rect(c.g,'#bc9155',3,-11,2,6.6);
+      for(let y=-9.2;y<-4.5;y+=1.6)rect(c.g,'#795735',3,y,9.4,.4);
+      rect(c.g,'#dec18a',3,-11.4,9.4,.8);rect(c.g,'#715034',6.2,-10.1,2.8,.6);
+      rect(c.g,c.frame(),2.8,-4.7,9.8,.7);
+    },
   },
   recumbent: {
     hip: [-3.4, -7.4], hand: [-0.4, -7.6], bb: [8.6, -9.6], cr: 2.2, lean: -1.05, legs: 'pedal', hitch: -9,
@@ -170,6 +176,8 @@ export const BIKES: Record<string, BikeDef> = {
     frameDraw: (c) => {
       for (const x of [-8.6, -3, 3, 8]) c.wheel(x, -1.4, 1.4, { tyre: 0.8, spokes: 1 });
       const s = c.frame(); rect(c.g, s, -11, -8.4, 19.6, 4); rect(c.g, shade(s, 0.85), -11.4, -16.4, 3.4, 12); rect(c.g, shade(s, 1.15), -8, -9.6, 13, 1.6); crank(c, [5, -5.6], 1.8);
+      rect(c.g,shade(s,1.12),-10.8,-15.9,2.2,7.2);rect(c.g,shade(s,.7),-3,-9.5,.4,1.6);
+      for(const yy of [-13.7,-11.2])rect(c.g,shade(s,.65),-9.6,yy,.5,.5);
     },
     front: (c) => { const s = c.frame(); rect(c.g, shade(s, 0.85), 5.6, -10.8, 3.4, 6.4); circle(c.g, shade(s, 0.85), 7.3, -10.8, 1.7); },
   },
@@ -232,11 +240,6 @@ export const BIKES: Record<string, BikeDef> = {
   },
   tron: {
     hip: [-4, -10.6], hand: [5, -10.4], bb: [-1, -6], cr: 0.01, lean: 1.2, legs: 'pedal', hitch: -8,
-    back: (c) => {
-      const g = c.g, col = c.frame(), len = 30 + Math.min(1, c.speed / 8) * 50;
-      const gr = g.createLinearGradient(-9, 0, -9 - len, 0); gr.addColorStop(0, col); gr.addColorStop(1, /^#[0-9a-f]{6}$/i.test(col) ? `${col}00` : 'rgba(0,0,0,0)');
-      g.save(); g.shadowColor = col; g.shadowBlur = 4; g.fillStyle = gr; g.fillRect(-9 - len, -5.4, len, 3.2); g.restore();
-    },
     frameDraw: (c) => {
       const g = c.g, col = c.frame();
       for (const x of [-7, 7]) c.wheel(x, -4.2, 4.2, { disc: '#0a0d14', glow: col });

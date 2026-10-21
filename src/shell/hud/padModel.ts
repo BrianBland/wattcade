@@ -1,9 +1,9 @@
-import type { Button, ControlHint } from '../../contracts';
+import type { Button, ControlCooldown, ControlHint, ControlTouch } from '../../contracts';
 
-export interface PadButton { id: Button; glyph: string; label?: string; mapped: boolean; active?: boolean; color: string }
+export interface PadButton { id: Button; glyph: string; label?: string; shortLabel?: string; mapped: boolean; active?: boolean; color: string; cooldown?: ControlCooldown; touch?: ControlTouch }
 /** One group of physical buttons. `label` is set when every mapped member does the same thing (drawn once, centered). */
-export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; mapped: boolean; gears?: boolean }
-export interface HoodModel { paddle: { label?: string; mapped: boolean }; shift: Cluster | null; stick: Cluster }
+export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; shortLabel?: string; mapped: boolean; gears?: boolean }
+export interface HoodModel { paddle: { label?: string; shortLabel?: string; mapped: boolean }; shift: Cluster | null; stick: Cluster }
 export interface PadModel { left: HoodModel; right: HoodModel }
 
 export const FACE_COLOR: Partial<Record<Button, string>> = { y: '#3b82ff', b: '#ff4d4d', z: '#ff9a2b', a: '#2bd96b' };
@@ -21,17 +21,21 @@ function cluster(kind: Cluster['kind'], defs: Def, hints: Map<string, ControlHin
   const merged = (g && !member.some(Boolean)) ? g : same ? member[0] : undefined;
   const buttons = defs.map(([id, glyph], i): PadButton => {
     const h = merged ?? member[i] ?? (g && !member.some(Boolean) ? g : undefined);
-    return { id, glyph, label: merged ? undefined : h?.label, mapped: !!h, active: h?.active, color: color(id) };
+    return { id, glyph, label: merged ? undefined : h?.label, shortLabel: h?.shortLabel, mapped: !!h, active: h?.active, color: color(id), cooldown: h?.cooldown, touch: h?.touch };
   });
-  return { kind, buttons, label: merged?.label, mapped: buttons.some((b) => b.mapped) };
+  return { kind, buttons, label: merged?.label, shortLabel: merged?.shortLabel, mapped: buttons.some((b) => b.mapped) };
 }
 
 /** Map game controls onto the hoods, including virtual gears on their assigned shifters. */
 export function buildPad(controls: ControlHint[], gears: boolean): PadModel {
   const hints = new Map<string, ControlHint>(controls.map((c) => [c.button as string, c]));
-  const paddle = { label: hints.get('paddles')?.label, mapped: hints.has('paddles') };
+  const paddle = { label: hints.get('paddles')?.label, shortLabel: hints.get('paddles')?.shortLabel, mapped: hints.has('paddles') };
   const shift = (side: 'L' | 'R'): Cluster | null => {
     const c = cluster('shift', [[`shiftUp${side}`, '+'], [`shiftDn${side}`, '−']] as Def, hints, `shifters${side}`);
+    // A gear assignment stays a gear assignment while ERG or a game phase disables shifting.
+    if (!gears && /^gears?$/i.test(c.label ?? '')) {
+      return { ...c, gears: true, buttons: c.buttons.map(b => ({ ...b, active: false })) };
+    }
     if (gears && (side === 'L' || !c.mapped || /gear/i.test(c.label ?? '') || c.buttons.filter((b) => b.mapped).every((b) => /gear/i.test(b.label ?? '')))) {
       return { ...c, gears: true, label: 'Gear', mapped: true, buttons: c.buttons.map((b) => ({ ...b, mapped: true, label: undefined, active: undefined })) };
     }

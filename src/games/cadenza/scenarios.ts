@@ -20,11 +20,13 @@ export const scenarios: Array<{
       if (n(s, 'accuracyPct') < 85) f.push(`accuracy ${s.accuracyPct}% < 85`);
       if (n(s, 'greysHit') > 2) f.push(`greysHit ${s.greysHit} > 2 with an autopilot dodging`);
       if (n(s, 'dropouts') !== 0) f.push(`dropouts ${s.dropouts} while riding the targets`);
-      if (n(s, 'drops') < 4) f.push(`drops ${s.drops} < 4`);
+      if (n(s, 'drops') < 3) f.push(`sprinted drops ${s.drops} < 3`);
+      if (n(s, 'drops') > 5) f.push(`sprinted drops ${s.drops} > 5 in ~8 min: too dense`);
       if (n(s, 'dropsHeld') !== n(s, 'drops')) f.push(`held ${s.dropsHeld}/${s.drops} drops while following the power target`);
       if (n(s, 'launches') !== n(s, 'drops')) f.push(`launches ${s.launches} != drops ${s.drops}`);
       if (n(s, 'launchBonus') < n(s, 'launches') * 1000) f.push(`launch bonus ${s.launchBonus}: following the sprint target should rate at least great`);
-      if (Math.max(...grades(run)) < 4) f.push(`steepest climb ${Math.max(...grades(run))}% < 4`);
+      if (Math.max(...grades(run)) > 7) f.push(`steepest climb ${Math.max(...grades(run))}% > 7`);
+      if (!grades(run).some((g) => g < 0.7)) f.push('trainer never eases for recovery');
       if (!run.events.some((e) => e.type === 'zone' && e.data?.kind === 'build')) f.push('no build zone');
       return f;
     },

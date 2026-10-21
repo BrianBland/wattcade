@@ -27,9 +27,9 @@ export function trackUrl(value: string): { provider: Provider; url: string } {
   throw new Error('Only individual YouTube and SoundCloud track links are supported.');
 }
 
-type TrackProblem = 'invalid' | 'live' | 'drm' | 'missing-duration' | 'too-long';
+export type TrackProblem = 'invalid' | 'live' | 'drm' | 'missing-duration' | 'too-long';
 const pageUrl = (t: Record<string, any>, provider: Provider) => provider === 'youtube' ? `https://www.youtube.com/watch?v=${t.id}` : t.webpage_url ?? t.url;
-function trackProblem(t: unknown, provider: Provider): TrackProblem | null {
+export function trackProblem(t: unknown, provider: Provider): TrackProblem | null {
   if (!t || typeof t !== 'object') return 'invalid';
   const info = t as Record<string, any>;
   try {
@@ -41,7 +41,7 @@ function trackProblem(t: unknown, provider: Provider): TrackProblem | null {
   if (!Number.isFinite(duration) || duration <= 0) return 'missing-duration';
   return duration > MAX_STREAM_DURATION_S ? 'too-long' : null;
 }
-const problemText: Record<TrackProblem, string> = {
+export const problemText: Record<TrackProblem, string> = {
   invalid: 'unsupported or incomplete track information',
   live: 'live or upcoming streams are not supported',
   drm: 'protected audio is not supported',
@@ -54,19 +54,20 @@ export function mapTrack(t: Record<string, any>, provider: Provider): OnlineTrac
     artist: String(t.artist ?? t.uploader ?? t.channel ?? 'Unknown artist'), durationS: Number(t.duration), pageUrl: trackUrl(pageUrl(t, provider)).url };
 }
 
-export type RunExtractor = (args: string[], timeoutMs: number) => Promise<string>;
+export type RunExtractor = (args: string[], timeoutMs: number, signal?: AbortSignal) => Promise<string>;
 const exec = promisify(execFile);
-export const runExtractor: RunExtractor = async (args, timeout) => {
+export const runExtractor: RunExtractor = async (args, timeout, signal) => {
   try {
-    const result = await exec(process.env.YT_DLP_BIN ?? 'yt-dlp', args, { timeout, maxBuffer: 8 * 1024 * 1024 });
+    const result = await exec(process.env.YT_DLP_BIN ?? 'yt-dlp', args, { timeout, signal, maxBuffer: 8 * 1024 * 1024 });
     return result.stdout;
   } catch (e: any) {
+    if (e.name === 'AbortError' || signal?.aborted) throw new Error('Extraction was cancelled.');
     if (e.code === 'ENOENT') throw new Error('yt-dlp is missing. Install yt-dlp and ffmpeg on the resolver host.');
     throw new Error(e.killed ? 'Extraction timed out. Try another track.' : 'The source could not be extracted. It may be unavailable, restricted, or need an updated yt-dlp.');
   }
 };
 
-const COMMON = ['--js-runtimes', 'node', '--no-plugin-dirs', '--ignore-config', '--no-warnings', '--no-playlist', '--socket-timeout', '20', '--retries', '1', '--no-progress'];
+export const COMMON = ['--js-runtimes', 'node', '--no-plugin-dirs', '--ignore-config', '--no-warnings', '--no-playlist', '--socket-timeout', '20', '--retries', '1', '--no-progress'];
 export async function search(provider: Provider, query: string, run = runExtractor): Promise<OnlineTrack[]> {
   if (!['youtube', 'soundcloud'].includes(provider)) throw new Error('Unknown music source.');
   if (!query.trim() || query.length > 300) throw new Error('Enter a search or track URL (up to 300 characters).');

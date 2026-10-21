@@ -10,7 +10,7 @@ A web "bike arcade" for a **Zwift Ride frame + Wahoo KICKR CORE + Garmin HR broa
 | **Crank Crawler** | 2D endless dungeon crawler (RotMG-lite) with loot, levels and roguelite upgrades | Crank revs fire; Zone 2 heals. Terrain, swamp, low HP, curses and boss shields add grade. Sprint to crack boss shields; shrines ask for Z3+, Z2 holds, sprints or 95 rpm spins. |
 | **Keeper's Light** | 3D Zone 2 idle game | Holding Zone 2 clears fog and calms the sea so ships dock. A gentle swell rolls the grade. Storms add grade and demand Zone 3+, with Z5 lightning surges. The island town persists and grows between sessions. |
 | **Dynamo Defense** | 2D tower defense with towers, a workshop, waves, bosses and garage upgrades | Your pedalling powers the base: towers fire faster at higher FTP fraction, and sprinting triggers Overdrive. Gatling = sim grade, Flamethrower = resistance level, Railgun = ERG (charges at ≥ 0.75 FTP). Match each weapon to the enemy colour. Power Surges (Z4+) fire an EMP; Spin-ups (95 rpm) overclock the Gatling. |
-| **Sprocket Squadron** | 2D shoot-'em-up with sectors, bosses, power-ups and hangar upgrades | Shifters fire the left/right guns, cadence reloads, power thrusts, and sprints fire the overdrive beam. Attack runs add grade and ask for Zone 4. |
+| **Sprocket Squadron** | Bright carrier shooter with paddle targeting, curved laser volleys and automatic dodging | **Needs music.** Cadence Cruiser holds Zone 2 with left-side virtual gears; unlocked Resonance Escort holds ERG endurance with wingmen. On-target riding powers guns and protection. Right paddles select targets; A/Y = Nova and 20 seconds of easy cover. [Game spec](docs/SPROCKET_SQUADRON.md). |
 
 Behind the menus runs the **Warm-up Ride**, a free ride through rolling countryside, coast and the Moon where the hills on screen are the grade on the trainer (toggle *Road: Hills/Flat* in the arcade). Rides over 2 minutes on real devices count toward XP, and the menus fade out on their own after 25 s so it works as a screensaver.
 
@@ -41,7 +41,7 @@ npm run snap:watershed -- --script grind --minutes 15 --every 5   # top-down PNG
 npm run capture:cards -- [--only hamster]   # re-record the arcade clips (needs `npm run dev -- --port 5199`, ffmpeg, Playwright's Chromium)
 ```
 
-Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.html` (Music Lab), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell), `/dev/cadenza.html?autopilot=1` (Cadenza on a synth set), `/dev/capture.html?game=<id>&sec=600&opts={"autopilot":true}` (any game's renderer, fast-forwarded, no HUD; what `capture:cards` records).
+Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.html` (Music Lab), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell), `/dev/cadenza.html?autopilot=1` (Cadenza on a synth set), `/dev/squadron.html?sec=375&craft=escort` (Squadron on a silent synth timeline; `menu=1` opens craft selection), `/dev/capture.html?game=<id>&sec=600&opts={"autopilot":true}` (any game's renderer, fast-forwarded, no HUD; what `capture:cards` records).
 
 ## Controls
 
@@ -135,5 +135,6 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
 
 Enable **Connect → Media server**, then search YouTube/SoundCloud or paste a track URL in
 **Online music**. A Linux yt-dlp/ffmpeg daemon behind Cloudflare Tunnel supplies short audio
-windows for buffered playback and JIT analysis (60s ahead by default). Online automix uses estimated crossfades.
+windows for buffered playback and JIT analysis (180s ahead by default, adjustable from 120–240s).
+Online automix uses estimated crossfades.
 See [setup and deployment instructions](docs/CADENZA_STREAMING.md).

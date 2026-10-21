@@ -1,6 +1,6 @@
 # media — music core (SPEC §5.6)
 
-CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameModule.requires.media`, `mediaPreview` and `GameContext.media` are in contracts.ts).
+CONTRACT-REQUEST: (#64) add optional `MediaCoverage {t0,t1,rhythm,structure}` and `MediaTimeline.coverage?: MediaCoverage[]` + `MediaTimeline.frozenUntilS?: Seconds`, and optional `MediaContext.announce?(id: string, t: Seconds): void`. Additive/optional; full-file timelines omit them (meaning fully analysed, nothing frozen). Needed so music games can tell unanalysed from weakly-analysed audio, skip mandatory cadence challenges on uncertain rhythm, and keep announced cues fixed across rolling revisions. — Approved by the owner and applied in this PR (#64 PR 3).
 
 ## Pure (Node + browser, tested)
 - `analysis/`: `analyzePcm(pcm, sr)` → `SongAnalysis` (types.ts). Own FFT (2048/512 Hann) → per-frame band energy, log-flux, mel, peak chroma
@@ -16,6 +16,8 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
   the bass swap / crossfade midpoint; curves gain-blended; near-duplicate beats merged).
 - `clock.ts`: `ProgramSync` (trim: 1 ± 2 %, 0 = hold when the sim is ahead / audio stalled, 4 = catch up), `SmoothedPosition`.
 - `library/tags.ts` (ID3v2.2–2.4, MP4 ilst, FLAC), `library/palette.ts` (k-means art palette, key fallback), `rating.ts` (`rateQueue`).
+
+- `online/freeze.ts`: rolling coverage and cue freezing (#64). `songCoverage` → `MediaTimeline.coverage` (one span per analysed window: `rhythm` = beat-grid regularity × tempo agreement × density, `structure` = least-seen share of the overlapped sections). `freezeMerge(prev, next, horizon)`: events/onsets/sections/curves before the horizon never change; `freezeHorizon` is monotonic, ≥ playhead + 3 s over analysed time, and past every `announce(id, t)` cue (first announcement of an id wins). `RollingQueue` applies both on every revision; whole-file timelines omit `coverage`/`frozenUntilS`.
 
 ## Browser
 - `library/library.ts` `MediaLibrary`: import (sha256 dedupe, tags, art) → background analysis queue (decode → worker) → IndexedDB
@@ -35,6 +37,9 @@ CONTRACT-REQUEST: none (MediaCaps/MediaNeed/MediaTimeline/MediaContext, `GameMod
 - Shell: launching a game with `requires.media` opens `shell/media/MediaPicker` (queue persisted per profile); GameHost loads the plan,
   starts the music at GO, and locks the sim with ProgramSync (idles the session while music buffers). `/media-lab.html` = Music Lab.
 
-`npx vitest run src/media src/core/media.test.ts src/shell/media`. Gaps: the engine's Web Audio glue is browser-only (checked with Playwright in the Music Lab);
+`npx vitest run src/media src/core/media.test.ts src/shell/media`. Streaming clock/reserve behavior uses inert audio nodes in unit tests;
+the engine's Web Audio scheduling is checked with Playwright in the Music Lab.
 Online: ≤12 h, app-wide config; `RollingQueue` loads/merges overlapping 30s windows, evicts PCM, fixes estimated crossfades.
-`MixEngine.load(plan, ranges)` schedules chunks and holds clocks on starvation. Smooth lowpass FX. Setup: docs/CADENZA_STREAMING.md.
+The default analyzed buffer is 180s (120–240s); old shorter preferences migrate to 120s.
+`MixEngine.load(plan, ranges)` schedules chunks, holds clocks below 90s analyzed lead, and resumes at 120s (clipped at queue end).
+Smooth lowpass FX. Setup: docs/CADENZA_STREAMING.md.

@@ -1,6 +1,9 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
 import { synthTimeline } from '../../../media/synth/queue';
-import { extendTrack, buildTrack, COLOR_POINTS, DIFFICULTIES, effortAt, ZONE_FLOOR, sampleAt, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
+import { rideIndexAt } from './ride';
+import { advanceCoaching, freshCoaching, type Direction } from './coaching';
+import { Announcements } from './announcements';
 
 export type TrainerStyle = 'grade' | 'erg';
 export interface CadenzaOpts { seed?: number; autopilot?: boolean; difficulty?: Difficulty; mode?: Mode; menu?: boolean; trainer?: TrainerStyle }
@@ -34,8 +37,9 @@ export interface CadenzaSnapshot {
   /** The drop's launch roll: live meter while rolling, then the result for a few seconds. */
   launch: { active: boolean; progress: number; ratio: number; rating: LaunchRating | null; bonus: number; age: number } | null;
   zone: { index: number; n: number; kind: SectionKind; hue: number; left: number; label: string; floorFtp: number };
-  /** The effort asked for right now: phase, floor watts (0 = none), seconds left in the phase. */
+  /** The effort asked for right now: phase, the band's floor / ceiling watts (0 = none), seconds left in the phase. `min`/`max` = the band's zones. */
   effort: { ftp: number; ok: boolean; phase: Phase; watts: number; left: number; erg: boolean;
+    instruction: string; countdown: number | null; min: number; max: number; transition: boolean; coaching: Direction;
     /** 0..1, eased: how far (and how long) the rider has been under the floor / over the zone's ceiling. Drives the fade and the overcharge. */
     under: number; over: number; ceilingWatts: number;
     /** For the track gauge: phase floor / ceiling as FTP fractions (0 = none) and rpm. */
@@ -83,6 +87,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
   let blockState = new Uint8Array(track.blocks.length);
   let revision = timeline.revision ?? 0;
+  const announcements = new Announcements(ctx.media);
+  announcements.setTrack(track, ctx.media?.positionS() ?? 0);
 
   let ownP = 0, started = false, done = false, saved = false;
   let previousX = 0, steeringTick = 0;
@@ -92,6 +98,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let zoneIdx = -1, zoneClean = true, zoneBlocks = 0, zoneOd = 0, zoneDur = 0, dropsHeld = 0, drops = 0, songsDone = 0;
   let ok = false, overdrive = false, ftp = 0, zoneSprint = 0;
   let under = 0, over = 0, underS = 0, ceiling = 0, underDrainS = 0, cadence = 0;
+  let coaching = freshCoaching(), effortIdx = -1, trainerGrade = 0;
   let nextLaunch = 0, launchSum = 0, launchT = 0, launchActive = false, launchResult: { rating: LaunchRating; bonus: number; ratio: number; at: number } | null = null;
   let launches = 0, perfectLaunches = 0, launchBonus = 0;
   const recaps: SongRecap[] = [];
@@ -119,6 +126,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   const startRide = () => {
     menu = false;
     track = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
+    announcements.setTrack(track, position());
     blockState = new Uint8Array(track.blocks.length);
     save.lastDifficulty = difficulty; save.lastMode = mode; save.reducedFlash = reducedFlash; save.trainer = trainer; ctx.save(save);
     ctx.resistance.useVirtualGears(true);
@@ -129,7 +137,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     if (zoneIdx < 0) return;
     const z = track.zones[zoneIdx];
     if (zoneClean && zoneBlocks >= 6) { cleanZones++; score += 250 * z.n; cue('cleanZone', { n: z.n, bonus: 250 * z.n }); }
-    if (z.kind === 'drop') { drops++; if (zoneSprint > 0 && zoneOd / zoneSprint >= 0.7) { dropsHeld++; cue('dropHeld', { n: z.n }); } }
+    if (z.kind === 'drop' && zoneSprint > 0) { drops++; if (zoneOd / zoneSprint >= 0.7) { dropsHeld++; cue('dropHeld', { n: z.n }); } }
   };
 
   const steer = () => {
@@ -202,9 +210,12 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if ((timeline.revision ?? 0) !== revision) {
         const next = buildTrack(timeline, { difficulty, mode, seed, maxGrade: tun.maxGrade() });
         // Ahead-only commits: the engine holds the clock before the analyzed horizon is exhausted.
-        const from = started ? Math.max(position() + 3, timeline.updateFromS ?? position() + 35) : 0;
+        const from = Math.max(announcements.untilS, timeline.frozenUntilS ?? 0,
+          started ? timeline.updateFromS ?? (timeline.frozenUntilS === undefined ? position() + 35 : 0) : 0,
+          started && timeline.frozenUntilS === undefined ? position() + 3 : 0);
         const previous = blockState;
-        track = started ? extendTrack(track, next, from) : next;
+        track = extendTrack(track, next, from);
+        announcements.setTrack(track, position());
         blockState = new Uint8Array(track.blocks.length);
         const kept = started ? track.blocks.filter((b) => b.t < from).length : 0;
         blockState.set(previous.subarray(0, Math.min(kept, blockState.length)));
@@ -214,6 +225,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (!ctx.media) ownP += dt;
       const p = position();
       if (!started && (ctx.media ? ctx.media.started() : true)) { started = true; cue('start'); }
+      announcements.show(p);
       const bike = ctx.bike();
 
       // zone bookkeeping
@@ -227,19 +239,22 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
 
       // effort: power targets (sections are too short for HR); ERG holds the watts so pedalling is enough
       const e = effortAt(track, p, difficulty);
+      const ei = rideIndexAt(track.rideBlocks, p);
+      if (ei !== effortIdx) { effortIdx = ei; coaching = freshCoaching(); cue('effort', { phase: e.phase }); }
       ftp = bike.ftpFraction; cadence = bike.cadence3s;
       const erg = trainer === 'erg';
-      ok = e.phase === 'recover' || (erg ? bike.cadence3s >= 55 : bike.ftpFraction >= e.floorFtp - 0.005);
+      ok = e.phase === 'recover' || (erg ? bike.cadence3s >= 55 : bike.ftpFraction >= e.floorFtp - 0.02);
       const wasOd = overdrive;
       overdrive = e.phase === 'sprint' && ok && dropoutLeft < 0;
       if (overdrive && !wasOd) cue('overdrive', undefined, false);
       // off target: under fades the world (and drains the shield after a grace), over overcharges the ship
-      ceiling = erg || e.phase === 'sprint' ? 0 : zoneCeiling(e.target.max);
+      ceiling = erg || e.target.max === 5 ? 0 : zoneCeiling(e.target.max);
       const short = !ok && p > START_GRACE_S ? clamp((e.floorFtp - ftp) / Math.max(0.1, e.floorFtp) / 0.15, 0.35, 1) : 0;
       const hot = ceiling && ftp > ceiling + 0.03 ? clamp((ftp - ceiling) / 0.15, 0.35, 1) : 0;
       under = ease(under, short, dt, short > under ? 1.2 : 0.35);
       over = ease(over, hot, dt, hot > over ? 1.5 : 0.6);
       underS = ok ? 0 : underS + dt;
+      coaching = advanceCoaching(coaching, e.countdown || e.transition ? null : !ok ? 'harder' : hot ? 'easier' : null, dt);
       zoneDur += dt; if (e.phase === 'sprint') zoneSprint += dt;
       if (overdrive) { zoneOd += dt; overdriveS += dt; }
       lastEffort = e;
@@ -276,7 +291,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (trainer === 'erg') {
         ergF += (lastEffort.ergFtp - ergF) * (1 - Math.exp(-dt / 2.5));
         ctx.resistance.set({ id: 'track', mode: 'erg', ftpFraction: Math.round(ergF * 100) / 100 });
-      } else ctx.resistance.set({ id: 'track', mode: 'sim', gradePct: sampleAt(track.grade, track.hz, p) * tun.hillScale() });
+      } else {
+        trainerGrade = ease(trainerGrade, e.gradePct * tun.hillScale(), dt, e.phase === 'recover' ? 1 : 2.5);
+        ctx.resistance.set({ id: 'track', mode: 'sim', gradePct: trainerGrade });
+      }
 
       // steering
       steer();
@@ -322,7 +340,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       ctx.debug('ws.p', +p.toFixed(2)); ctx.debug('ws.zone', `${z.n} ${z.kind}`); ctx.debug('ws.shield', Math.round(shield));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start' }] };
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start', shortLabel: 'Start' }] };
       const e = lastEffort, erg = trainer === 'erg';
       return {
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,
@@ -334,6 +352,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     },
     snapshot(): CadenzaSnapshot {
       const p = position(), zi = Math.max(0, zoneIdx < 0 ? zoneIndexAt(track, p) : zoneIdx), z = track.zones[zi];
+      if (!menu) announcements.show(p);
       const song = timeline.songs.find((s) => p >= s.t0 && p < s.t1) ?? timeline.songs[0];
       return {
         p, durationS: track.durationS, started, done,
@@ -345,13 +364,19 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
           : launchResult && p - launchResult.at < 3 ? { active: false, progress: 1, ratio: launchResult.ratio, rating: launchResult.rating, bonus: launchResult.bonus, age: p - launchResult.at } : null,
         zone: { index: zi, n: z.n, kind: z.kind, hue: z.hue, left: Math.max(0, z.t1 - p), label: z.target.label ?? '', floorFtp: z.floorFtp },
         effort: {
-          ftp, ok, phase: lastEffort.phase, watts: Math.round(lastEffort.floorFtp * ctx.profile.ftp), left: lastEffort.left, erg: trainer === 'erg',
-          under, over, ceilingWatts: Math.round(ceiling * ctx.profile.ftp),
+          ftp, ok, phase: lastEffort.phase, watts: lastEffort.phase === 'recover' ? 0 : Math.round(ZONE_FLOOR[lastEffort.band.min] * ctx.profile.ftp), left: lastEffort.left, erg: trainer === 'erg',
+          instruction: lastEffort.countdown ? String(lastEffort.countdown) : coaching.direction === 'harder' ? trainer === 'erg' ? 'Keep Spinning' : 'Harder'
+            : coaching.direction === 'easier' ? 'Ease Off' : trainer === 'erg' && lastEffort.instruction === 'Harder' ? 'Keep Spinning' : lastEffort.instruction,
+          countdown: lastEffort.countdown, min: lastEffort.band.min, max: lastEffort.band.max, transition: lastEffort.transition,
+          coaching: lastEffort.countdown || lastEffort.transition ? null : coaching.direction,
+          under, over, ceilingWatts: trainer === 'erg' || lastEffort.band.max >= 5 ? 0 : Math.round(zoneCeiling(lastEffort.band.max) * ctx.profile.ftp),
           floorFtp: lastEffort.phase === 'recover' ? 0 : lastEffort.floorFtp, ceilingFtp: ceiling, cadence: Math.round(cadence),
         },
         song: song ? { title: song.title, artist: song.artist, ...(song.credit ? { credit: song.credit.text } : {}) } : null,
         difficulty, mode, reducedFlash, cues, recaps,
-        hooks: { powerFtp: lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
+        // The fake rider prepares during the countdown, just as a rider can now do without an over-power warning.
+        hooks: { powerFtp: lastEffort.countdown ? ZONE_FLOOR[DIFF[difficulty].dropZone] + 0.03
+          : lastEffort.phase === 'recover' ? 0.5 : lastEffort.floorFtp + 0.03 },
       };
     },
     isOver: () => !menu && done,

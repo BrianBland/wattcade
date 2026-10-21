@@ -1,0 +1,509 @@
+{
+ "id": "tyrant",
+ "kind": "boss",
+ "source": "hive-tyrant-parts",
+ "scale": 0.76,
+ "size": [
+  486.4,
+  486.4
+ ],
+ "centerX": 243.2,
+ "centerY": 283.469,
+ "lengthPx": 364.8,
+ "root": "thorax_2",
+ "parts": [
+  {
+   "name": "head",
+   "file": "head.webp",
+   "glow": "head_glow.webp",
+   "offset": [
+    199.88,
+    95.76
+   ],
+   "pivot": [
+    242.82,
+    156.94
+   ],
+   "parent": "thorax_1",
+   "z": 70,
+   "w": 91.2,
+   "h": 82.84
+  },
+  {
+   "name": "thorax_1",
+   "file": "thorax_1.webp",
+   "glow": "thorax_1_glow.webp",
+   "offset": [
+    192.28,
+    145.16
+   ],
+   "pivot": [
+    242.82,
+    202.54
+   ],
+   "parent": "thorax_2",
+   "z": 55,
+   "w": 103.36,
+   "h": 76.76
+  },
+  {
+   "name": "thorax_2",
+   "file": "thorax_2.webp",
+   "glow": "thorax_2_glow.webp",
+   "offset": [
+    192.28,
+    180.88
+   ],
+   "pivot": [
+    243.2,
+    229.54
+   ],
+   "parent": null,
+   "z": 54,
+   "w": 103.36,
+   "h": 80.56
+  },
+  {
+   "name": "thorax_3",
+   "file": "thorax_3.webp",
+   "glow": "thorax_3_glow.webp",
+   "offset": [
+    198.36,
+    226.48
+   ],
+   "pivot": [
+    242.82,
+    248.9
+   ],
+   "parent": "thorax_2",
+   "z": 53,
+   "w": 88.92,
+   "h": 75.24
+  },
+  {
+   "name": "abdomen_1",
+   "file": "abdomen_1.webp",
+   "glow": "abdomen_1_glow.webp",
+   "offset": [
+    214.32,
+    269.8
+   ],
+   "pivot": [
+    242.82,
+    290.7
+   ],
+   "parent": "thorax_3",
+   "z": 52,
+   "w": 60.04,
+   "h": 59.28
+  },
+  {
+   "name": "abdomen_2",
+   "file": "abdomen_2.webp",
+   "glow": "abdomen_2_glow.webp",
+   "offset": [
+    217.36,
+    300.2
+   ],
+   "pivot": [
+    242.82,
+    319.58
+   ],
+   "parent": "abdomen_1",
+   "z": 51,
+   "w": 56.24,
+   "h": 53.2
+  },
+  {
+   "name": "socket_scythe_arm_r",
+   "file": "socket_scythe_arm_r.webp",
+   "glow": "socket_scythe_arm_r_glow.webp",
+   "offset": [
+    253.08,
+    155.04
+   ],
+   "pivot": [
+    270.18,
+    175.94
+   ],
+   "parent": "thorax_1",
+   "z": 15,
+   "w": 79.8,
+   "h": 82.84
+  },
+  {
+   "name": "upper_scythe_arm_r",
+   "file": "upper_scythe_arm_r.webp",
+   "glow": "upper_scythe_arm_r_glow.webp",
+   "offset": [
+    291.84,
+    135.28
+   ],
+   "pivot": [
+    310.46,
+    214.7
+   ],
+   "parent": "socket_scythe_arm_r",
+   "z": 20,
+   "w": 94.24,
+   "h": 102.6
+  },
+  {
+   "name": "scythe_scythe_arm_r",
+   "file": "scythe_scythe_arm_r.webp",
+   "glow": "scythe_scythe_arm_r_glow.webp",
+   "offset": [
+    310.84,
+    135.28
+   ],
+   "pivot": [
+    353.78,
+    185.82
+   ],
+   "parent": "upper_scythe_arm_r",
+   "z": 25,
+   "w": 87.4,
+   "h": 225.72
+  },
+  {
+   "name": "coxa_front_r",
+   "file": "coxa_front_r.webp",
+   "glow": "coxa_front_r_glow.webp",
+   "offset": [
+    251.56,
+    169.48
+   ],
+   "pivot": [
+    265.62,
+    189.62
+   ],
+   "parent": "thorax_1",
+   "z": 10,
+   "w": 53.96,
+   "h": 54.72
+  },
+  {
+   "name": "femur_front_r",
+   "file": "femur_front_r.webp",
+   "glow": "femur_front_r_glow.webp",
+   "offset": [
+    266,
+    186.2
+   ],
+   "pivot": [
+    287.66,
+    204.06
+   ],
+   "parent": "coxa_front_r",
+   "z": 15,
+   "w": 55.48,
+   "h": 53.2
+  },
+  {
+   "name": "claw_front_r",
+   "file": "claw_front_r.webp",
+   "glow": "claw_front_r_glow.webp",
+   "offset": [
+    278.92,
+    209.76
+   ],
+   "pivot": [
+    304.38,
+    226.86
+   ],
+   "parent": "femur_front_r",
+   "z": 20,
+   "w": 44.08,
+   "h": 63.08
+  },
+  {
+   "name": "coxa_mid_r",
+   "file": "coxa_mid_r.webp",
+   "glow": "coxa_mid_r_glow.webp",
+   "offset": [
+    250.04,
+    212.8
+   ],
+   "pivot": [
+    266.38,
+    235.22
+   ],
+   "parent": "thorax_2",
+   "z": 10,
+   "w": 50.92,
+   "h": 54.72
+  },
+  {
+   "name": "femur_mid_r",
+   "file": "femur_mid_r.webp",
+   "glow": "femur_mid_r_glow.webp",
+   "offset": [
+    262.2,
+    225.72
+   ],
+   "pivot": [
+    284.62,
+    245.86
+   ],
+   "parent": "coxa_mid_r",
+   "z": 15,
+   "w": 60.8,
+   "h": 60.04
+  },
+  {
+   "name": "claw_mid_r",
+   "file": "claw_mid_r.webp",
+   "glow": "claw_mid_r_glow.webp",
+   "offset": [
+    277.4,
+    250.8
+   ],
+   "pivot": [
+    298.3,
+    273.98
+   ],
+   "parent": "femur_mid_r",
+   "z": 20,
+   "w": 53.2,
+   "h": 89.68
+  },
+  {
+   "name": "coxa_rear_r",
+   "file": "coxa_rear_r.webp",
+   "glow": "coxa_rear_r_glow.webp",
+   "offset": [
+    247,
+    237.88
+   ],
+   "pivot": [
+    263.34,
+    254.22
+   ],
+   "parent": "thorax_3",
+   "z": 10,
+   "w": 58.52,
+   "h": 59.28
+  },
+  {
+   "name": "femur_rear_r",
+   "file": "femur_rear_r.webp",
+   "glow": "femur_rear_r_glow.webp",
+   "offset": [
+    258.4,
+    252.32
+   ],
+   "pivot": [
+    289.18,
+    273.22
+   ],
+   "parent": "coxa_rear_r",
+   "z": 15,
+   "w": 85.88,
+   "h": 86.64
+  },
+  {
+   "name": "claw_rear_r",
+   "file": "claw_rear_r.webp",
+   "glow": "claw_rear_r_glow.webp",
+   "offset": [
+    304,
+    304.76
+   ],
+   "pivot": [
+    317.3,
+    328.7
+   ],
+   "parent": "femur_rear_r",
+   "z": 20,
+   "w": 44.08,
+   "h": 82.08
+  },
+  {
+   "name": "crest",
+   "file": "crest.webp",
+   "glow": "crest_glow.webp",
+   "offset": [
+    107.92,
+    54.72
+   ],
+   "pivot": [
+    243.2,
+    151.598
+   ],
+   "parent": "head",
+   "z": 65,
+   "w": 273.6,
+   "h": 133
+  },
+  {
+   "name": "tail_01",
+   "file": "tail_01.webp",
+   "glow": "tail_01_glow.webp",
+   "offset": [
+    224.96,
+    313.88
+   ],
+   "pivot": [
+    242.82,
+    331.74
+   ],
+   "parent": "abdomen_2",
+   "z": 48,
+   "w": 45.6,
+   "h": 44.84
+  },
+  {
+   "name": "tail_02",
+   "file": "tail_02.webp",
+   "glow": "tail_02_glow.webp",
+   "offset": [
+    222.68,
+    337.44
+   ],
+   "pivot": [
+    240.54,
+    349.22
+   ],
+   "parent": "tail_01",
+   "z": 47,
+   "w": 50.16,
+   "h": 38
+  },
+  {
+   "name": "tail_03",
+   "file": "tail_03.webp",
+   "glow": "tail_03_glow.webp",
+   "offset": [
+    228.76,
+    353.4
+   ],
+   "pivot": [
+    245.1,
+    367.46
+   ],
+   "parent": "tail_02",
+   "z": 46,
+   "w": 46.36,
+   "h": 42.56
+  },
+  {
+   "name": "tail_04",
+   "file": "tail_04.webp",
+   "glow": "tail_04_glow.webp",
+   "offset": [
+    230.28,
+    370.88
+   ],
+   "pivot": [
+    247.38,
+    384.94
+   ],
+   "parent": "tail_03",
+   "z": 45,
+   "w": 50.16,
+   "h": 40.28
+  },
+  {
+   "name": "tail_05",
+   "file": "tail_05.webp",
+   "glow": "tail_05_glow.webp",
+   "offset": [
+    242.44,
+    376.2
+   ],
+   "pivot": [
+    258.02,
+    399.38
+   ],
+   "parent": "tail_04",
+   "z": 44,
+   "w": 44.84,
+   "h": 47.12
+  },
+  {
+   "name": "tail_06",
+   "file": "tail_06.webp",
+   "glow": "tail_06_glow.webp",
+   "offset": [
+    257.64,
+    384.56
+   ],
+   "pivot": [
+    273.22,
+    409.26
+   ],
+   "parent": "tail_05",
+   "z": 43,
+   "w": 40.28,
+   "h": 44.84
+  },
+  {
+   "name": "tail_07",
+   "file": "tail_07.webp",
+   "glow": "tail_07_glow.webp",
+   "offset": [
+    278.92,
+    393.68
+   ],
+   "pivot": [
+    289.94,
+    413.82
+   ],
+   "parent": "tail_06",
+   "z": 42,
+   "w": 36.48,
+   "h": 38.76
+  },
+  {
+   "name": "tail_08",
+   "file": "tail_08.webp",
+   "glow": "tail_08_glow.webp",
+   "offset": [
+    297.16,
+    397.48
+   ],
+   "pivot": [
+    308.18,
+    415.34
+   ],
+   "parent": "tail_07",
+   "z": 41,
+   "w": 38,
+   "h": 34.96
+  },
+  {
+   "name": "tail_09",
+   "file": "tail_09.webp",
+   "glow": "tail_09_glow.webp",
+   "offset": [
+    314.64,
+    403.56
+   ],
+   "pivot": [
+    326.42,
+    414.58
+   ],
+   "parent": "tail_08",
+   "z": 40,
+   "w": 36.48,
+   "h": 25.08
+  },
+  {
+   "name": "tail_tip",
+   "file": "tail_tip.webp",
+   "glow": "tail_tip_glow.webp",
+   "offset": [
+    333.64,
+    399.76
+   ],
+   "pivot": [
+    344.66,
+    410.78
+   ],
+   "parent": "tail_09",
+   "z": 39,
+   "w": 25.08,
+   "h": 21.28
+  }
+ ]
+}

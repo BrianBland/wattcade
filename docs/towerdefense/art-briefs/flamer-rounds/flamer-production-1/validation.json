@@ -1,0 +1,27 @@
+{
+  "baseline": "44514c3",
+  "approved_source": "flamer-production-1/source/A-l{1,3,5}.png",
+  "muzzles": {
+    "1": [
+      112,
+      64
+    ],
+    "3": [
+      112,
+      51
+    ],
+    "5": [
+      112,
+      44
+    ]
+  },
+  "recoilPx": 2.5,
+  "new_art": "none: approved pixels split and emission transformed",
+  "poses": 1080,
+  "animationSamples": 200,
+  "unchangedSiblingAndPadFiles": 38,
+  "decodedFiles": 14,
+  "flamerBytes": 55716,
+  "totalKitBytes": 578606,
+  "passed": true
+}

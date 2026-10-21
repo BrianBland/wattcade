@@ -1,12 +1,12 @@
 // Dev turntable: the Cadenza craft (normal / overcharged / underpowered) and a mine, through the game's bloom.
-//   /dev/craft.html?color=%2344aaff&t=1.2&z=34&x=0   (t = fixed turntable angle, omit to spin; z/x = camera distance/pan)
+//   /dev/craft.html?color=%2344aaff&t=1.2&z=34&x=0&ship=triad   (t = fixed turntable angle, omit to spin; z/x = camera distance/pan; ship = triad | lancer | manta)
 import * as THREE from 'three';
-import { Craft } from '../src/games/cadenza/render/craft';
+import { Craft, type CraftKind } from '../src/games/cadenza/render/craft';
 import { mineGeometry, mineMaterial } from '../src/games/cadenza/render/blocks';
 import { Post } from '../src/games/cadenza/render/post';
 import { U } from '../src/games/cadenza/render/look';
 
-const q = new URLSearchParams(location.search), color = q.get('color') ?? '#44aaff', fixed = q.get('t');
+const q = new URLSearchParams(location.search), color = q.get('color') ?? '#44aaff', fixed = q.get('t'), ship = (q.get('ship') ?? 'triad') as CraftKind;
 const app = document.getElementById('app')!;
 const r = new THREE.WebGLRenderer({ antialias: true }); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.1;
 app.appendChild(r.domElement);
@@ -14,7 +14,7 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color('#07060f');
 const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 200); const cz = Number(q.get('z') ?? 34), cx = Number(q.get('x') ?? 0); cam.position.set(cx, cz * 0.3, cz); cam.lookAt(cx, 0, 0);
 const post = new Post(r, scene, cam);
 const states = [{ label: 'normal', over: 0, under: 0 }, { label: 'overcharged', over: 1, under: 0 }, { label: 'underpowered', over: 0, under: 1 }];
-const crafts = states.map((s, i) => { const c = new Craft(color); c.group.position.set((i - 1.5) * 9, 0, 0); scene.add(c.group); return c; });
+const crafts = states.map((s, i) => { const c = new Craft(color, ship); c.group.position.set((i - 1.5) * 9, 0, 0); scene.add(c.group); return c; });
 const mines = new THREE.Group(); mines.position.set(13.5, 0.6, 0); scene.add(mines);
 const grid = new THREE.GridHelper(60, 30, '#333', '#1a1a2a'); grid.position.y = -1; scene.add(grid);
 document.getElementById('lbl')!.innerHTML = [...states.map((s) => s.label), 'mine'].map((l) => `<span>${l}</span>`).join('');

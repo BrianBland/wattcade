@@ -1,0 +1,16 @@
+# Portrait round 3
+- Merged td-single-lane through e4e3809; re-read PROMPT.md and its new centring/radius rule.
+- Edited round 2's existing pixels with local ImageMagick translations; no replacement painting was used.
+- Re-centred pads 0, 1, 2, 3, 4, 6 and 7; kept pad 5 unchanged.
+- Pixel comparison: 32,524 changed pixels, all inside those seven clearing/rim edit regions; zero changes elsewhere or at pad 5.
+- Final node scripts/td-paint-guide.mjs run flags no clearing; portrait-clearings.json records all eight results.
+- Corrected pad offsets are 0.04–0.17 units; unchanged pad 5 passes at 0.30; all radii are 4.69–5.03 (required 4.4–5.2).
+- Overlay review: no visible road misses; compact clearings remain empty and fit their prescribed locations.
+- Both sprite mocks and all three HUD captures reviewed: blue skitters/Gliders, red warriors/rams, purple bulwark/broodmother and gold Tyrant all read; none get lost.
+- Towers sit naturally on centred clearings; the four empty sites read as build locations with the game's hex markers.
+- Outpost still sits on a quiet apron; no painted glow or unit-like clutter competes with sprites.
+- Hive side reads on iPad, iPad Pro and phone; gameplay content stays clear of panels; no red coverage frame.
+- Archived all 11 script outputs, including the measurements, guides, sprite mocks and three HUD images.
+- Painting 1024×1536; Lanczos 2.5× to 2560×3840, WebP quality 85; typecheck and all 160 tower-defense tests pass.
+- No remaining measurement flags; stopped for feedback without starting landscape.
+- Review images (check, mocks, HUD captures) regenerate with `node scripts/td-paint-guide.mjs`; the originals are archived on branch `archive/td-single-road-history`.

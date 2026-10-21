@@ -106,15 +106,19 @@ export function drawEnemy(g: CanvasRenderingContext2D, e: EnemyView, x: number, 
       g.fillStyle = l; poly(g, 4, r * 0.42, -spin * 1.5); g.fill();
       break;
     }
-    case 'boss': { // gold core in a segmented shield of the current weakness colour
-      const sc = COL[e.element];
+    case 'boss': { // Goliath art stays; the phase colour drives the segmented armour
+      const sc = e.exposed ? '#7dffb0' : COL[e.element];
+      if (e.telegraph || e.exposed) {
+        g.strokeStyle = sc; g.lineWidth = Math.max(2, r * 0.15); g.globalAlpha = e.exposed ? 0.9 : 0.4 + 0.4 * Math.sin(t * 16);
+        g.beginPath(); g.arc(0, 0, r * 1.9, 0, TAU); g.stroke(); g.globalAlpha = 1;
+      }
       glowAt(g, sc, 0, 0, r * 2.4, 0.35);
       g.fillStyle = '#3a2e10'; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.fill();
       g.fillStyle = COL.gold; g.beginPath(); g.arc(0, 0, r * 0.78, 0, TAU); g.fill();
       g.fillStyle = '#fff2b0'; g.beginPath(); g.arc(0, 0, r * 0.32 + Math.sin(t * 5) * r * 0.05, 0, TAU); g.fill();
       g.lineWidth = Math.max(2, r * 0.22); g.strokeStyle = sc;
       for (let i = 0; i < 6; i++) { const a = t * 0.8 + (i / 6) * TAU; g.beginPath(); g.arc(0, 0, r * 1.3, a, a + TAU / 9); g.stroke(); }
-      if (e.next && e.shiftIn < 1.5) { // telegraph the next shield colour
+      if (e.next && e.shiftIn < 1.5) { // announce the next phase colour
         g.strokeStyle = COL[e.next]; g.globalAlpha = 0.4 + 0.4 * Math.sin(t * 18); g.lineWidth = Math.max(1.5, r * 0.12);
         g.beginPath(); g.arc(0, 0, r * 1.62, 0, TAU); g.stroke(); g.globalAlpha = 1;
       }
@@ -145,13 +149,12 @@ export function drawTower(g: CanvasRenderingContext2D, tw: TowerView, x: number,
     const orb = r * (0.34 + 0.12 * tw.charge);
     if (on) glowAt(g, COL.blue, 0, -r * 1.35, r * (1 + tw.charge + flash * 1.5), 0.55 + flash * 0.4);
     g.fillStyle = on ? LIGHT.blue : '#5a6a80'; g.beginPath(); g.arc(0, -r * 1.35, orb, 0, TAU); g.fill();
-  } else if (tw.kind === 'mortar') {
-    g.fillStyle = '#4a3a36'; g.beginPath(); g.arc(0, 0, r * 0.62, 0, TAU); g.fill();
+  } else if (tw.kind === 'flamer') { // squat fuel tank and a flared nozzle; the renderer draws its cone
+    g.fillStyle = '#4a3a36'; g.beginPath(); g.arc(0, 0, r * 0.66, 0, TAU); g.fill();
     g.rotate(tw.angle);
-    const kick = flash * r * 0.25;
-    g.fillStyle = '#6a5048'; g.fillRect(-r * 0.3, -r * 1.05 + kick, r * 0.6, r * 0.9);
-    g.fillStyle = COL.red; g.fillRect(-r * 0.34, -r * 1.12 + kick, r * 0.68, r * 0.18);
-    if (flash > 0) glowAt(g, '#ff9a50', 0, -r * 1.15, r * flash * 0.8, flash * 0.7);
+    g.fillStyle = '#6a5048'; g.fillRect(-r * 0.22, -r * 0.95, r * 0.44, r * 0.7);
+    g.fillStyle = '#8a6a50'; g.beginPath(); g.moveTo(-r * 0.22, -r * 0.95); g.lineTo(-r * 0.38, -r * 1.2); g.lineTo(r * 0.38, -r * 1.2); g.lineTo(r * 0.22, -r * 0.95); g.closePath(); g.fill();
+    if (on) glowAt(g, '#ff9a50', 0, -r * 0.1, r * (0.5 + flash * 0.5), 0.4 + flash * 0.4);
   } else {
     g.strokeStyle = '#5a6278'; g.lineWidth = Math.max(1, k * 0.35);
     for (const a of [-0.5, 0.5, Math.PI]) { g.beginPath(); g.moveTo(0, -r * 0.5); g.lineTo(Math.sin(a) * r * 0.7, Math.cos(a) * r * 0.5); g.stroke(); }
@@ -171,7 +174,7 @@ export function drawTower(g: CanvasRenderingContext2D, tw: TowerView, x: number,
 /** Dynamo base + turret. `spin` = coil rotation (radians), `swapK` 0..1 barrel deployed. */
 export function drawBase(g: CanvasRenderingContext2D, o: {
   x: number; y: number; k: number; t: number; spin: number; grid: number; color: string; hpFrac: number; hurt: number;
-  weapon: Weapon; aim: number; swapK: number; muzzle: number; overdrive: boolean; railCharge: number; cores: number; coresMax: number; flaming: boolean;
+  weapon: Weapon; aim: number; swapK: number; muzzle: number; overdrive: boolean; railCharge: number; flaming: boolean;
 }) {
   const { x, y, k, t } = o, R = 6 * k;
   g.save(); g.translate(x, y);
@@ -190,12 +193,6 @@ export function drawBase(g: CanvasRenderingContext2D, o: {
   }
   g.fillStyle = '#2a3242'; g.beginPath(); g.arc(0, 0, R * 0.62, 0, TAU); g.fill();
   g.fillStyle = o.color; g.globalAlpha = 0.5 + 0.5 * Math.min(1, o.grid); g.beginPath(); g.arc(0, 0, R * 0.4, 0, TAU); g.fill(); g.globalAlpha = 1;
-  // reactor cores
-  for (let i = 0; i < o.coresMax; i++) { // pips in a short arc under the base
-    const a = Math.PI / 2 + (i - (o.coresMax - 1) / 2) * 0.32;
-    g.fillStyle = i < o.cores ? '#7df9ff' : '#2a3242';
-    g.beginPath(); g.arc(Math.cos(a) * R * 1.42, Math.sin(a) * R * 1.42, Math.max(2, k * 0.8), 0, TAU); g.fill();
-  }
   // turret
   g.rotate(o.aim);
   const wc = WEAPON_COLOR[o.weapon], ext = o.swapK;
@@ -217,4 +214,4 @@ export function drawBase(g: CanvasRenderingContext2D, o: {
   if (o.hurt < 0.4) { glowAt(g, '#ff3020', x, y, R * 2.2, (0.4 - o.hurt) * 1.6); }
 }
 
-export const TOWER_ICON_COLOR: Record<TowerKind, string> = { tesla: COL.blue, mortar: COL.red, lens: COL.purple };
+export const TOWER_ICON_COLOR: Record<TowerKind, string> = { tesla: COL.blue, flamer: COL.red, lens: COL.purple };

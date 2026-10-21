@@ -1,9 +1,23 @@
 import { expect, it } from 'vitest';
 import { RollingQueue, estimatedAnalysis, mergeWindow } from '../online/rolling';
 import type { MixItem } from '../mix/plan';
+import { DEFAULT_STREAM_BUFFER_S } from '../online/buffer';
 const item = (id: string, durationS = 180): MixItem => ({ id, title: id, artist: '', analysis: estimatedAnalysis(durationS) });
 const buffer = (duration: number) => ({ duration } as AudioBuffer);
 const analysis = (duration: number) => ({ ...estimatedAnalysis(duration), bpm: 120, beats: [0, 2, 29, 30, 31], onsets: [{ t: 2, s: 0.9, band: 0 as const }] });
+it('analyzes three minutes across a song handover while keeping decoded windows bounded', async () => {
+  const q = new RollingQueue([item('a', 120), item('b', 600)], 'automix', DEFAULT_STREAM_BUFFER_S,
+    async (_, __, duration) => ({ buffer: buffer(duration), analysis: analysis(duration) }));
+  await q.prepare(0);
+  expect(q.readyThrough(0)).toBeGreaterThanOrEqual(180);
+  expect(q.windows(q.plan.entries[1]).length).toBeGreaterThan(0);
+  expect(q.items[1].analysis.beats.length).toBeGreaterThan(0);
+  await q.prepare(200); q.evict(200);
+  expect(q.readyThrough(200)).toBeGreaterThanOrEqual(380);
+  expect(q.windows(q.plan.entries[0])).toHaveLength(0);
+  expect(q.windows(q.plan.entries[1]).length).toBeLessThanOrEqual(8);
+  q.dispose();
+});
 it('loads just the horizon, merges contextual events once and evicts old PCM', async () => {
   const calls: number[][] = [];
   const q = new RollingQueue([item('a')], 'automix', 60, async (_, start, duration) => {
@@ -88,4 +102,28 @@ it('starts and seeks near the end of a four-hour video with only the configured 
   expect(q.windows(q.plan.entries[0])).toHaveLength(2);
   expect(q.readyThrough(14340)).toBe(14400);
   q.dispose();
+});
+
+it('seeds preview analysis: coverage and beats from the start, audio still fetched, seeded windows never re-analysed', async () => {
+  const calls: number[] = [];
+  const q = new RollingQueue([item('a')], 'automix', 60, async (_, start, duration) => {
+    calls.push(start); return { buffer: buffer(duration), analysis: { ...analysis(duration), beats: [5] }, beats: [] };
+  });
+  const seeded = q.seed(0, [
+    { startS: 0, endS: 30, bufferStartS: 0, analysis: analysis(32), beats: [] },
+    { startS: 7, endS: 37, bufferStartS: 5, analysis: analysis(32), beats: [] }, // off the chunk grid: ignored
+  ]);
+  expect(seeded).toBe(1);
+  expect(q.timeline.revision).toBe(1);
+  expect(q.timeline.coverage?.[0]).toMatchObject({ t0: 0 });
+  expect(q.timeline.coverage?.[0].t1).toBeCloseTo(30);
+  const before = [...q.items[0].analysis.beats];
+  await q.prepare(0);
+  expect(calls).toEqual([0, 28]); // audio for the seeded window is still loaded for playback
+  expect(q.items[0].analysis.beats.filter((t) => t < 30)).toEqual(before.filter((t) => t < 30)); // not re-merged
+  expect(q.readyThrough(0)).toBeCloseTo(60);
+  // full-file items are never seeded
+  const full = new RollingQueue([{ ...item('f'), analysis: { ...estimatedAnalysis(180), confidence: 'full' as const } }], 'automix', 60, async () => ({ buffer: buffer(32), analysis: analysis(32) }));
+  expect(full.seed(0, [{ startS: 0, endS: 30, bufferStartS: 0, analysis: analysis(32), beats: [] }])).toBe(0);
+  q.dispose(); full.dispose();
 });

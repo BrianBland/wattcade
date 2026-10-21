@@ -40,3 +40,4 @@ scenario (mixerCommands/events as counts, plus ok/failures), exits 1 on failure.
 
 ## Gaps
 No DataHub unit tests with real device mocks beyond fake; ControllerDevice adapter untested. No FIT export.
+- `cooldown.ts` (pure, sim-safe): effort-scaled cooldowns — `refillRate(powerZone)` (Z1 = 1x up to Z5 = 3.2x), `startCooldown`/`tickCooldown`/`completeCooldown` (e.g. on a sprint)/`readyFrac`. Draw with `games/kit/actionButton.ts`.

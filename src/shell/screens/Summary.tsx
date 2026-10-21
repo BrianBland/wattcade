@@ -2,9 +2,9 @@ import { unitsFor, formatDistance, formatElevation, formatSpeed } from '../../un
 import { useEffect, useState } from 'preact/hooks';
 import type { Profile, SessionRecord } from '../../contracts';
 import { item } from '../../cosmetics/catalog';
-import { riderLook, withItem } from '../../cosmetics/unlocks';
+import { riderLook } from '../../cosmetics/unlocks';
 import type { Slot } from '../../cosmetics/types';
-import { RiderAvatar } from '../components/RiderAvatar';
+import { ItemArt } from '../components/RiderAvatar';
 import type { AwardView } from '../types';
 import { Btn, Stat, ZoneBar } from '../components/Bits';
 import { CountUp, KeyHints } from '../components/ui';
@@ -75,7 +75,7 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
       <div class="screen-head">
         <div><h1>{warm ? 'Warm-up done' : 'Ride complete'}</h1><div class="sub">{game?.title ?? record.gameId}</div></div>
         <span class="spacer" />
-        <Btn primary focused onClick={onDone}>{award.picks > 0 ? 'Choose reward ▶' : 'Continue ▶'}</Btn>
+        <Btn primary focused onClick={onDone}>{award.newItems.length ? 'View new gear →' : award.picks > 0 ? 'Choose reward →' : 'Continue →'}</Btn>
       </div>
       <div class="summary-grid">
         <div class="panel">
@@ -99,7 +99,7 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
             <h2>New gear</h2>
             <div class="gear-row">{award.newItems.slice(0, 8).map((g) => {
               const it = item(g.slot as Slot, g.id);
-              return <div class="gear">{it && it.slot !== 'title' && profile ? <RiderAvatar look={withItem(riderLook(profile), it)} size="thumb" still road={false} /> : <div class="title-tile">{g.name}</div>}<small>{g.name}</small></div>;
+              return <div class="gear">{it && it.slot !== 'title' && profile ? <ItemArt it={it} base={riderLook(profile)} size="thumb" still road={false} /> : <div class="title-tile">{g.name}</div>}<small>{g.name}</small></div>;
             })}</div>
             {award.newItems.length > 8 && <div class="dim small">+{award.newItems.length - 8} more in your Locker</div>}
           </div>}

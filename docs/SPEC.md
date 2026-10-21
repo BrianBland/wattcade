@@ -1,5 +1,7 @@
 # wattcade — Build Spec (v0 demo)
 
+Current Squadron rebuild: [Sprocket Squadron](SPROCKET_SQUADRON.md) supersedes the old trigger-driven Sprocket/Crank Fighter design. Shared music work is tracked in issues #64–#66.
+
 A web-based "bike arcade" for a **Zwift Ride V1 frame + Wahoo KICKR CORE + Garmin watch (HR broadcast)**, played on an **iPad in the Bluefy browser** (Web Bluetooth). Three minimal-but-working games that prove the bike↔game mechanics, plus the foundation that makes new games easy to vibecode.
 
 This file is both the product spec and the execution plan for Claude Code. **Orchestrator: read §0–§4 fully, then execute §9. Subagents: read §0–§4 and only your own section in §5–§7.**
@@ -257,7 +259,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 
 ### §5.4b Cosmetics · `src/cosmetics/`
 
-- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
+- **Cosmetic only.** Slots: bike, helmet/hat, jersey, paint (frame colour), pet, trail, ship (what you fly in Cadenza: Triad by default; Lancer and Manta from Cadenza achievements), title. Every item is in `catalog.ts` with one source: default, a level, an achievement, or a pick level.
 - **Unlocks are derived, never stored:** defaults + level rewards up to `profile.level` + one item per earned achievement + picks. So catalogue changes apply to existing riders. Stored: `profile.cosmetics.loadout` (equipped id per slot; a missing or locked id falls back to the default) and `profile.cosmetics.picks` (level → chosen id).
 - **Level track:** levels 2–50 each give one item. Every 5th level is a **pick**: choose one of three, and the other two come back in a later pick (after level 50, the passed-over items are offered three at a time every 5 levels). There's no shop or currency.
 - **Every achievement grants exactly one item** (tested).
@@ -365,7 +367,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
   Draw an aim reticle.
 - **Firing:** automatic, one shot every `tuning 'revsPerShot'` crank revs (default 0.5). Damage = `base × clamp(ftpFraction, 0.3, 2.5)`.
-- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Right shift up = dash (2 s cooldown), right shift down = potion (3 per run); virtual gears use the left shifters only.
+- **Survival:** HP regen only while effortZone == 2 (×2 out of combat). Hands-off: the hero AI moves, aims and fights. Rider actions on the right-hood diamond: A Strike, B Ward, Y Rally (only when a spin-up is called), Z Potion (3 per run, short cooldown). All four shifters are virtual gears.
 - **Resistance** (sim mode, virtual gears enabled):
   - base effect `terrain` 1 %
   - on swamp tiles, `swamp` +4 %
@@ -415,22 +417,29 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
 ### §6.3 Agent H — "Dynamo Defense" (tower defense, 2D Canvas) · owns `src/games/towerdefense/`
 
-- **Map:** a base at the bottom center, 3 lanes (left, center, right) converging on it, and a turret on the base. Enemies are **color-coded by weakness**. The right element does ×1.5 damage; the wrong one ×0.25.
-  - **Blue swarm minis:** many, low HP. Weak to Gatling.
-  - **Red brutes.** Weak to Flame.
-  - **Purple armored:** slow, high HP. Weak to Rail.
-  - **Gold boss** every 5 waves: its shield color cycles, so you must switch weapons.
+- **Map:** a base at the bottom center, 3 lanes (left, center, right) converging on it, and a turret on the base. Enemies use a strong/neutral/resisted matrix: Gatling/Tesla vs blue/red/purple = ×1.5/×1/×0.5; Flamer/Mortar = ×0.5/×1.5/×1; Rail/Prism = ×1/×0.5/×1.5. All nine cells are tunable.
+  - **Blue swarm minis:** many, low HP, crystalline bioluminescent chitin. Strong: Gatling; resisted: fire.
+  - **Red brutes:** fuel-blooded; fire bursts their volatile bladders and can ignite nearby reds in a capped chain. Strong: Flamer; resisted: Rail.
+  - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
+  - **Gold boss** every 5 waves: 2–3 HP-gated phases automatically change weapon and trainer mode after an announced countdown. Current phase colour uses the matrix. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold D-pad Up or the touch Sprint boost target during a Rail opening to raise its ERG target for a power sprint, preserving the mode; A stays construction. Keeps the Goliath art.
 
   The stream of minis is continuous; heavier enemies arrive in waves.
-- **Weapons** (switch: A = Gatling, B = Flame, Y = Rail; 1.5 s swap; each weapon owns a resistance effect, so all three trainer modes are exercised):
+- **Weapons** (follow the announced brood or boss phase automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):
   - **Gatling** (blue): sim mode, effect `weapon` +1 % grade (low, spinny). Fires one bullet per `tuning 'gatlingRevsPerShot'` (default 0.25) crank revs.
   - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
   - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).
-- **Aim:** paddles rotate the aim (per `aimMode`). When paddles are idle for > 1.5 s, auto-aim picks the nearest enemy in the **priority lane** (D-pad left/right picks the lane) that the current weapon beats. Draw the aim line.
+- **Aim:** the turret always aims itself (no `aimMode`): the lead alien of the wave's colour on the most threatened lane. Paddles or D-pad left/right nudge it toward a lane for a few seconds (optional). All four shifters are virtual gears. Draw the aim line and a target marker.
+- **Construction:** A accepts the lull's quoted build/upgrade work order, otherwise opens the workshop; D-pad Down also opens it. Touch pads/base open the same menu. Left/right chooses pad/base, up/down chooses an option, A confirms and B closes. Build, upgrade, sell, scrap-funded repair and the saved Auto-crew toggle are available to both inputs. Auto-crew defaults on and accepts one order per lull; a successful manual purchase consumes that order.
+- **Combat actions:** B Overcharge (tower fire rate ×1.5 for 10 s), Y Slow field (most threatened lane moves 40% slower for 8 s), Z Rail. The two cooldowns refill faster with power-zone effort; a sprint edge finishes them without granting rail stock. All parameters are tunable. Combat actions are disabled in construction, and menu/pause/cancel discards held gestures.
+- **Action display:** the shell owns action controls in its HUD band. With the controller legend on, its keys show cooldown/stock fills; with it off, compact blocks flank the ride stats in the same band. No separate game dock is reserved in either layout. The lull card retains the quoted construction cost; touch and controller share purchases and held-action cancellation. A bare renderer without a shell HUD retains the standalone dock.
 - **Summary:** wavesSurvived, kills per element, weaponSeconds per weapon, railChargesFired, baseHpLeft.
-- **Scenarios** (autopilot opt: picks the correct weapon for the nearest threat and fires rail at 3 charges):
+- **Endless roguelite runs:** no reactor cores. When the base falls, bank every earned part and return to the Garage; `isOver()` remains false. Pause → **Return to Garage · bank parts** bails mid-wave (`runEnded{reason:'bail'|'fell', wave, wavesSurvived, parts}`). The Garage allows the same start-wave choice, starts after 30 pedalling seconds, and gives a 6-second breather before this countdown after returning. Its trainer effect is neutral. A new run resets towers, enemies, scrap, weapon/rail state and effort challenges; ride stats accumulate. Default base HP remains 100; an idle rider falls by wave 2.
+- **Save:** v3 at `gameData.towerdefense`, with bank, upgrades, best wave, run count, auto-invest and lifetime totals (including `runsFallen`/`runsBailed`). `readSave` reads legacy and v2 saves without losing progress; core fields are retired. Parts bank as earned, never twice on fall, bail or dispose. `wavesSurvived` in the summary is the best single run; `wavesCleared`, `runs`, outcome counts and `partsEarned` accumulate across the ride.
+- **Workout rhythm:** optional spin, grind-at-power and ERG hold calls follow Gatling, Flamer and Rail waves. Calls arrive every 2–3 waves with a countdown, after recovery ends; targets adapt to recent riding. Spin rewards Overclock, grind/hold reward EMP, with scrap bonuses. Bosses use their own Exposed sprint calls.
+- **Scenarios** (`Auto-crew` develops towers; combat actions require explicit `actionBot`, independently of `autopilot`):
   - `sprints`, 20 min → wavesSurvived ≥ 8
-  - `idle`, 5 min → base destroyed (isOver) with wavesSurvived ≤ 2
+  - `idle-falls`, 5 min → base falls by wave 2, remains in the Garage, ride stays open
+  - `endless-restart`, 45 min Z2 → a fallen run returns to the Garage and auto-starts another run
   - `intervals`, 20 min → all three weapons used ≥ 60 s and mixer commands include all of sim, erg, and resistance
   - a unit test: charges cap at 3 and a hold-Z dump emits `railFired{charges:3}`
 
@@ -514,7 +523,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 - **Input:** paddles (analog) or ◀▶ held = lateral position; D-pad taps snap lanes; shifters = gears; A = Shift (Classic) / B = air-brake slide (Mono, small lateral boost). Controls legend via `hud.controls`.
 - **Renderer** (`render/`, Three.js, Wipeout HD Zone look; no outrun palette):
   - A black void. The track is a flat ribbon with bright emissive edge rails, lane lines and chevron decals. The world is **two-tone** per zone (base hue plus accent, seeded from the song palette), and the hue shifts on the section's first downbeat.
-  - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft with an engine glow.
+  - Wireframe arches on phrase boundaries, trackside light pylons pulsing on beats, a horizon skyline of band-energy bars, speed streaks with intensity, and a procedural anti-grav craft (the rider's equipped `ship` cosmetic) with bell nozzles and exhaust beams.
   - Bloom (three/examples `UnrealBloomPass`). Big "ZONE 07 / DROP" callouts (system condensed font stack for now; a self-hosted OFL font is a later polish). Song title card at each song start (with the cover palette).
   - **Reduced flashing** (profile setting): beat pulses limited to ≤ 3 full-screen flashes/s, hue jumps become 1-beat crossfades.
   - HUD insets honoured (`render/layout.ts` tested: craft, Classic grid and callouts above `H − insets.bottom`). The game's own sfx are quiet and ducked under the music.

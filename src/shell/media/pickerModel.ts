@@ -60,3 +60,43 @@ export function fmtTime(s: number): string {
   const m = Math.floor(s / 60), r = Math.floor(s % 60);
   return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
 }
+
+/** Songs with local, analyzed audio can be auditioned; online/unanalyzed songs cannot. */
+export const canPreview = (m: { status: string; sourceUrl?: string } | undefined): boolean => !!m && m.status === 'ready' && !m.sourceUrl;
+
+export type PreviewTrigger = 'hover' | 'press' | 'focus';
+/** Hover/press/focus intent → debounced preview start, immediate stop on leave (pure; timers injectable). */
+export function previewIntent(o: {
+  start: (id: string) => void; stop: () => void;
+  delays?: Partial<Record<PreviewTrigger, number>>;
+  setTimer?: (fn: () => void, ms: number) => unknown; clearTimer?: (h: unknown) => void;
+}) {
+  const delays: Record<PreviewTrigger, number> = { hover: 350, press: 250, focus: 600, ...o.delays };
+  const setT = o.setTimer ?? ((fn, ms) => setTimeout(fn, ms)), clearT = o.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
+  let pending: { id: string; h: unknown } | null = null, playing: string | null = null;
+  const cancel = () => { if (pending) { clearT(pending.h); pending = null; } };
+  return {
+    enter(id: string, trigger: PreviewTrigger, allowed = true) {
+      if (!allowed) { this.leave(); return; }
+      if (playing === id || pending?.id === id) return;
+      cancel();
+      if (playing) { playing = null; o.stop(); }
+      pending = { id, h: setT(() => { pending = null; playing = id; o.start(id); }, delays[trigger]) };
+    },
+    /** Leave/release/blur: cancels a pending start and stops audio (only for `id` when given). */
+    leave(id?: string) {
+      if (id !== undefined && id !== playing && id !== pending?.id) return;
+      cancel();
+      if (playing) { playing = null; o.stop(); }
+    },
+    /** Audio ended or was stopped elsewhere. */
+    reset() { cancel(); playing = null; },
+    get playing() { return playing; }, get pending() { return pending?.id ?? null; },
+  };
+}
+export type PreviewIntent = ReturnType<typeof previewIntent>;
+
+/** A queue/library removal that can still be undone. */
+export interface PendingRemoval { kind: 'queue' | 'library'; id: string; title: string; queueBefore: string[] }
+/** Undo window for removals (ms). */
+export const UNDO_MS = 6000;

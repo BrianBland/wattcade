@@ -16,6 +16,7 @@ const session = createGameSession({
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const r = await game.loadRenderer();
 r.mount(document.getElementById('app')!, { profile, send: (a) => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+await r.ready?.();
 r.setInsets?.({ top: 0, right: 0, bottom: 0, left: 0 });
 type W = { __frames?: number; __advance?: (ms: number) => void; __vclock?: (ms: number) => void };
 const w = window as unknown as W;

@@ -7,7 +7,7 @@ export const module: GameModule = {
   achievements,
   id: 'towerdefense',
   title: 'Dynamo Defense',
-  blurb: 'Your pedaling powers the base. Match weapons to enemy colors, build towers, sprint for Overdrive.',
+  blurb: 'Your pedaling powers the base. Each wave is one alien brood and brings the weapon to match; build towers for the rest, sprint for Overdrive.',
   progressLine, drawCard,
   tags: ['sprint', 'intervals'],
   createSim(ctx, opts) {

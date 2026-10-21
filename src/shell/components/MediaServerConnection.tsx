@@ -1,11 +1,15 @@
 import { useState } from 'preact/hooks';
-import { checkMediaServer, mediaServerConfig, saveMediaServerConfig } from '../../media';
+import { checkMediaServer, mediaServerConfig, saveMediaServerConfig, STREAM_BUFFER_OPTIONS } from '../../media';
 import { Btn, Dot } from './Bits';
 
 /** Optional app-wide extension, configured beside the bike devices. */
 export function MediaServerConnection({ focused, onFocus }: { focused?: boolean; onFocus?: () => void }) {
   const [config, setConfig] = useState(mediaServerConfig), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [connected, setConnected] = useState(false);
-  const save = (next: typeof config) => { setConfig(next); saveMediaServerConfig(next); setConnected(false); setMessage(''); };
+  const save = (next: typeof config) => {
+    setConfig(next); setConnected(false); setMessage('');
+    try { saveMediaServerConfig(next); }
+    catch { setMessage('Could not save media server settings. Allow browser storage to remember them after reopening.'); }
+  };
   const connect = async () => {
     setBusy(true); setMessage('');
     try { const server = await checkMediaServer(config); saveMediaServerConfig({ ...config, enabled: true }); setConfig({ ...config, enabled: true }); setConnected(true); setMessage(`Connected · ${server.name}`); }
@@ -21,10 +25,11 @@ export function MediaServerConnection({ focused, onFocus }: { focused?: boolean;
       onInput={(e) => save({ ...config, token: e.currentTarget.value })}/></label>
     <label class="dim small">Buffer ahead<select class="mp-search" aria-label="Buffer ahead" value={config.bufferS}
       onChange={(e) => save({ ...config, bufferS: Number(e.currentTarget.value) })}>
-      {[60, 90, 120, 180].map((s) => <option value={s}>{s} seconds</option>)}
+      {STREAM_BUFFER_OPTIONS.map((s) => <option value={s}>{s} seconds</option>)}
     </select></label>
+    <div class="dim small">A longer buffer gives ride planning more time for steady efforts and breaks, but takes longer to start.</div>
     <Btn small disabled={busy || !config.url.trim()} onClick={() => void connect()}>{busy ? 'Connecting…' : 'Test connection'}</Btn>
     {message && <div role="status" class={connected ? 'device-live' : 'warn'}>{message}</div>}
-    <div class="dim small note">Search YouTube and SoundCloud. Online mixes use estimated transitions and analyze the buffered audio as you ride. The token lasts for this tab; server settings are remembered.</div>
+    <div class="dim small note">Search YouTube and SoundCloud. Online mixes use estimated transitions and analyze the buffered audio as you ride. Server settings and the access token are saved in this browser on this device. Clear the token field to forget it.</div>
   </div>;
 }

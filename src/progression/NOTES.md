@@ -2,7 +2,7 @@
 
 Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSession`, `updateCounters`, `defaultProfile(name?)`, `defaultSettings()`, `levelForXp`, `xpForLevel`, `ACHIEVEMENTS`, `ACHIEVEMENT_GAME` (id → game), `CORE_ACHIEVEMENTS`, `achievementValue`, `achievementProgress`.
 
-- `ProfileStore(dbName?)`: `list/get/create(name, init?)/update/delete/getLastProfileId/setLastProfileId/exportJson/importJson` (import merges by id, returns count). Settings are merged over defaults on read.
+- `ProfileStore(dbName?)`: `list/get/create(name, init?)/update/delete/getLastProfileId/setLastProfileId/exportJson/importJson` (import merges by id, returns count). Settings are merged over defaults on read. `updateGameData` writes one game slot. `award` writes XP and cosmetics and keeps game slots already stored.
 - `SessionStore(dbName?)`: `save(record)`, `list(profileId, limit?)` newest first, `clear`; keeps last 200 per profile.
 - `awardSession(profile, record) -> { profile, xpGained, baseXp, levelUps: number[], newAchievements: {id,name,bonusXp}[] }` (pure; does not mutate input; caller persists).
 - XP = round(kJ) + 2*activeMin (samples with cadence>20 at 1 Hz) + round(zone2 min) + 5*sprints + achievement bonuses. Zone 2 = `stats.zoneSeconds[1]` (index 0 = zone 1).
@@ -23,6 +23,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 - Achievement ids are permanent; a rename needs an entry in `core/renames.ts` `RENAMED_ACHIEVEMENTS`. Achievements read summary keys/events: rename one → update `achievements.ts`;
   `scenarios.test.ts` runs real headless rides and fails if a key goes missing.
 - Old profiles: `gameData._progression.stormsWeathered` seeds `counters['lighthouse.storms']`.
+- Afterglow (`afterglow`) grants the separate Light Cycle Trail. `ride.arcadeTenMinutes` sums arcade sessions with at least 600 active-cadence samples; Warm-up Ride and shorter/idle sessions do not count. This new counter starts with future qualifying rides; it does not guess historical durations from lifetime totals.
 
 ## Test
 `npx vitest run src/progression` (`scenarios.test.ts` runs headless rides, ~10 s)

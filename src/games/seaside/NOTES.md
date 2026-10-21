@@ -15,7 +15,8 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
 - `world/rider.ts` first-person kit in camera space: drop bars + Zwift-Ride-style hood buttons, neutral gloves, head unit; rod + reel; leaned bike; bobber.
 - `stills/stage.ts` renderer, gradient sky shader, exp fog, sun with shadow box, hemisphere light, FP fill light. NeutralToneMapping keeps colours vivid.
 - `world/lou.ts` Lou, one reusable model: red watch cap, white beard + walrus moustache, rosy nose, pipe, gold earring, yellow oilskin bib. Finishes `live`/`stone` (temple statue), poses `counter`/`wheel` (the car).
-- `stills/later/` belly, monkey, lava bridge, re-entry: shape-fn voxels (`fillBox`) + unlit glow layer; grades in looks.ts.
+- `stills/later/` belly, drill, monkey, lava, re-entry: `fillBox` voxels + glow layer; `tick(t)` animates; clips via
+  `npx tsx scripts/seaside-scenes.ts` → docs/seaside/clips/<scene>.mp4 (`?play=1` plays live).
 - `stills/shopStill.ts` Lou's counter diorama at 2 cm voxels + HTML paper UI overlay (price tags, receipt); `stillLouSheet` character sheet.
 ## Motion test (`stills/ride.ts`)
 - 10 s ride → cut → cast, bite, pull, haul-up (23.5 s). Pure `setTime(t)`; articulated rod (7 bending joints), shader swell on a separate water mesh, splash particles + rings.

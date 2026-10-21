@@ -4,7 +4,7 @@ import type { VoxelGrid } from '../voxel/grid';
 import { buildClusteredMeshes, voxelMaterial } from '../voxel/three';
 import type { MeshOpts } from '../voxel/mesh';
 
-export interface Stage { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; sun: THREE.DirectionalLight; stats: string[] }
+export interface Stage { renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; sun: THREE.DirectionalLight; stats: string[]; /** animated scenes: pose everything for time t (s); pure in t */ tick?: (t: number) => void; /** suggested clip length (s) */ duration?: number }
 
 export function makeStage(canvas: HTMLCanvasElement, w: number, h: number, sky: { zenith: number; horizon: number; fog: number; fogDensity: number; sunDir: THREE.Vector3; sunColor: number; sunI: number; hemiSky: number; hemiGround: number; hemiI: number }): Stage {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });

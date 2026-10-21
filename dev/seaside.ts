@@ -26,16 +26,18 @@ const STILLS: Record<string, Still> = {
 
 const q = new URLSearchParams(location.search);
 const name = q.get('still') ?? 'highway', still = STILLS[name] ?? STILLS.highway;
-const W = 1600, H = 900;
+const W = Number(q.get('w') ?? 1600), H = Number(q.get('h') ?? 900);
+if (q.get('w')) { const wrap = document.getElementById('wrap')!; wrap.style.width = `${W}px`; wrap.style.height = `${H}px`; }
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const t0 = performance.now();
 const look = applyLook(q.get('look') ?? still.look ?? 'raw');
 const st = still.make(canvas, W, H);
 document.getElementById('overlay')!.innerHTML = still.overlay ?? '';
+let post: PostFX | null = null;
 if (look.post) {
-  const post = new PostFX(st.renderer, W, H); Object.assign(post.p, look.post);
-  for (const k of Object.keys(post.p)) if (q.get(`p_${k}`) !== null && typeof (post.p as any)[k] === 'number') (post.p as any)[k] = Number(q.get(`p_${k}`)); post.render(st.scene, st.camera, still.time ?? 0); }
-else st.renderer.render(st.scene, st.camera);
+  post = new PostFX(st.renderer, W, H); Object.assign(post.p, look.post);
+  for (const k of Object.keys(post.p)) if (q.get(`p_${k}`) !== null && typeof (post.p as any)[k] === 'number') (post.p as any)[k] = Number(q.get(`p_${k}`)); st.tick?.(0); post.render(st.scene, st.camera, still.time ?? 0); }
+else { st.tick?.(0); st.renderer.render(st.scene, st.camera); }
 const info = st.renderer.info.render;
 const stats = [...st.stats, `tris ${info.triangles.toLocaleString()} · calls ${info.calls} · build+render ${Math.round(performance.now() - t0)} ms`].join('\n');
 const pre = document.getElementById('stats')!;
@@ -44,3 +46,10 @@ if (q.get('stats')) pre.style.opacity = '1';
 console.log(stats);
 (window as unknown as { __done: string; __st: Stage }).__st = st;
 (window as unknown as { __done: string }).__done = stats;
+// animated scenes: window.__frame(t) poses the scene at time t and renders it (the clip recorder steps this)
+(window as unknown as { __frame: (t: number) => void; __duration: number }).__duration = st.duration ?? 0;
+(window as unknown as { __frame: (t: number) => void }).__frame = (t: number) => {
+  st.tick?.(t);
+  if (post) post.render(st.scene, st.camera, (still.time ?? 0) + t); else st.renderer.render(st.scene, st.camera);
+};
+if (q.get('play')) { const t0 = performance.now(); const loop = () => { (window as any).__frame(((performance.now() - t0) / 1000) % (st.duration || 8)); requestAnimationFrame(loop); }; requestAnimationFrame(loop); }

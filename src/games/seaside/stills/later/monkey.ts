@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../../voxel/grid';
 import { noise2, fbm } from '../../voxel/noise';
 import { makeStage, aimSun, type Stage } from '../stage';
-import { L, fillBox, addLit, addGlow, fpBars, rnd } from './kit';
+import { L, fillBox, addLit, addGlow, fpBars, rnd, Particles, setGlow } from './kit';
 
 const ground = (x: number, z: number) => 0.7 * fbm(x / 9, z / 9, 3, 31) - 0.35 + 0.025 * Math.abs(x) - (Math.abs(x) < 2.2 ? 0.25 : 0);
 const FACE_Z = -46, K = 2.6; // face position and scale (the head is designed in unit space, ~15 units tall)
@@ -162,7 +162,7 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
   });
   const eg = new VoxelGrid(0.15);
   for (const sx of [-1, 1]) eg.wellipsoid([sx * 2.4 * K, 8.65 * K, FACE_Z + 1.0 * K], [0.3 * K, 0.24 * K, 0.15], L.glyph);
-  addGlow(st, 'eye glints', eg, 1.6);
+  const eyes = addGlow(st, 'eye glints', eg, 1.6);
   for (let i = 0; i < 26; i++) { // vines spilling over the brow and ears, clear of the eyes and mouth
     const ux = -7 + i * 0.56; if (Math.abs(ux) < 5.5) continue;
     const x = (ux + rnd(i, 1, 49) * 0.3) * K, len = (2 + rnd(i, 2, 49) * 6) * K;
@@ -175,5 +175,24 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
   st.camera.position.set(0.3, 1.55, 5);
   st.camera.lookAt(0, 13.5, FACE_Z);
   fpBars(st);
+
+  // motion: ride slowly up the path toward the mouth; leaves drift down through the light; the eyes slowly brighten,
+  // as if the head has noticed you
+  const leaves = new Particles(st, 120, { lit: true });
+  const look = new THREE.Vector3(0, 13.5, FACE_Z);
+  st.duration = 8;
+  st.tick = (t) => {
+    const z = 5 - 1.3 * t;
+    st.camera.position.set(0.3 + 0.04 * Math.sin(t * 0.8), 1.55 + 0.012 * Math.sin(t * 9.5), z);
+    st.camera.lookAt(look.x, look.y - t * 0.25, look.z);
+    setGlow(eyes, 1 + 0.9 * Math.min(1, t / 7) ** 2 + 0.1 * Math.sin(t * 3));
+    for (let i = 0; i < 120; i++) {
+      const fall = 0.6 + rnd(i, 1, 140) * 0.6, side = i % 2 ? 1 : -1, x0 = side * (3 + rnd(i, 2, 140) * 14) /* never across the camera's path */, z0 = 6 - rnd(i, 3, 140) * 40, h0 = 4 + rnd(i, 4, 140) * 20;
+      const y = h0 - ((t * fall + rnd(i, 5, 140) * 20) % h0);
+      const sway = Math.sin(t * 1.7 + i) * 0.6;
+      leaves.set(i, [x0 + sway, y, z0 + Math.cos(t * 1.3 + i) * 0.4], [0.16, 0.02, 0.1], i % 3 ? L.leafLime : L.jungle3, [Math.sin(t * 3 + i) * 0.9, t * 2 + i, Math.cos(t * 2.5 + i) * 0.7]);
+    }
+    leaves.commit(120);
+  };
   return st;
 }

@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../../voxel/grid';
 import { noise2 } from '../../voxel/noise';
 import { makeStage, type Stage } from '../stage';
-import { L, fillBox, addLit, addGlow, rnd } from './kit';
+import { L, fillBox, addLit, addGlow, rnd, Particles, wob } from './kit';
 
 const FACE = -3.4; // where the bit meets the bone (camera at z = 0, looking down −z)
 
@@ -20,7 +20,7 @@ export function stillDrill(canvas: HTMLCanvasElement, w: number, h: number): Sta
 
   // the bored tunnel: a rough cylinder whose wall material records the layers cut through; the end face is bone,
   // cut in concentric rings around the bit, with an annulus of cartilage still showing at its edge
-  const s = 0.04, t = new VoxelGrid(s), sparks = new VoxelGrid(0.02);
+  const s = 0.04, t = new VoxelGrid(s);
   const layer = (z: number) => (z > -1.2 ? 'flesh' : z > -2.4 ? 'cart' : 'bone');
   const tint = (kind: string, n: number) => kind === 'flesh' ? (n < 0.33 ? L.fleshDark : n < 0.66 ? L.flesh2 : L.flesh) : kind === 'cart' ? (n < 0.3 ? L.cartDark : n < 0.65 ? L.cart2 : L.cart) : n < 0.5 ? L.bone : L.bone2;
   fillBox(t, [-2.4, -2.1, FACE - 0.6], [2.4, 2.1, 0.8], (x, y, z) => {
@@ -48,11 +48,17 @@ export function stillDrill(canvas: HTMLCanvasElement, w: number, h: number): Sta
   for (let k = 0; k < 5; k++) d.wbox([-0.1 + k * 0.045, Y + 0.13, Z - 0.12], [-0.085 + k * 0.045, Y + 0.145, Z + 0.02], L.drillDark); // vents
   d.wellipsoid([0, Y + 0.02, Z - 0.24], [0.07, 0.07, 0.04], L.drillSteel2); // chuck
   const tip = [0, -0.18, FACE + 0.04];
-  for (let k = 0; k <= 160; k++) { // fluted bit: a helix of two cutting edges around a core, tapering to the tip
-    const u = k / 160, p = [0, Y + 0.02 + (tip[1] - Y - 0.02) * u, Z - 0.26 + (tip[2] - Z + 0.26) * u], r = 0.055 * (1 - u * 0.75);
-    d.wellipsoid(p, [r * 0.55, r * 0.55, 0.012], L.drillSteel2);
-    for (const ph of [0, Math.PI]) { const a = u * 40 + ph; d.wellipsoid([p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r, p[2]], [0.012, 0.012, 0.012], L.drillSteel); }
+  // fluted bit, built along its own +z axis so it can spin: a helix of two cutting edges around a tapering core
+  const C0 = new THREE.Vector3(0, Y + 0.02, Z - 0.26), TIP = new THREE.Vector3(tip[0], tip[1], tip[2]), LB = C0.distanceTo(TIP);
+  const bitG = new VoxelGrid(0.006);
+  for (let k = 0; k <= 160; k++) {
+    const u = k / 160, zz = u * LB, r = 0.055 * (1 - u * 0.75);
+    bitG.wellipsoid([0, 0, zz], [r * 0.55, r * 0.55, 0.012], L.drillSteel2);
+    for (const ph of [0, Math.PI]) { const a = u * 40 + ph; bitG.wellipsoid([Math.cos(a) * r, Math.sin(a) * r, zz], [0.012, 0.012, 0.012], L.drillSteel); }
   }
+  const bit = new THREE.Group(); bit.position.copy(C0); st.scene.add(bit); bit.lookAt(TIP);
+  const bitBase = bit.quaternion.clone();
+  addLit(st, 'bit', bitG, 0.03, { cast: false, receive: false }, bit);
   for (const sx of [-1, 1]) {
     const gx = sx * 0.2, Y = -0.36; // grips stand up beside the housing, gloves in view
     d.wbox([gx - 0.025, Y - 0.12, Z - 0.05], [gx + 0.025, Y + 0.12, Z + 0.05], L.drillDark); // grip
@@ -68,22 +74,38 @@ export function stillDrill(canvas: HTMLCanvasElement, w: number, h: number): Sta
   const lamp = new THREE.SpotLight(0xfff0d8, 5, 8, 0.6, 0.6, 1.2); lamp.position.set(0, Y + 0.12, Z - 0.1); lamp.target.position.set(0, -0.1, FACE); st.scene.add(lamp, lamp.target);
   d.wbox([-0.03, Y + 0.13, Z - 0.2], [0.03, Y + 0.16, Z - 0.17], L.lamp);
 
-  // sparks spraying off the contact point, bone chips and flesh scraps flying back past the camera
-  for (let i = 0; i < 90; i++) {
-    const a = rnd(i, 1, 100) * Math.PI * 2, sp = 0.2 + rnd(i, 2, 100) * 1.1, back = rnd(i, 3, 100) * 2.4;
-    const p0 = [tip[0] + Math.cos(a) * 0.03, tip[1] + Math.sin(a) * 0.03, tip[2] + 0.02];
-    const p1 = [p0[0] + Math.cos(a) * sp, p0[1] + Math.sin(a) * sp * 0.8 + 0.1, p0[2] + back * 0.35];
-    sparks.wsegment(p0.map((v, k) => v + (p1[k] - v) * 0.55), p1, 0.006, i % 3 ? L.spark : L.lavaHot);
-  }
-  sparks.wellipsoid(tip, [0.035, 0.035, 0.02], L.spark);
-  addGlow(st, 'sparks', sparks, 1.8);
-  const chips = new VoxelGrid(0.012);
-  for (let i = 0; i < 45; i++) {
-    const a = rnd(i, 4, 101) * Math.PI * 2, rr = 0.2 + rnd(i, 5, 101) * 0.9, z = FACE + 0.2 + rnd(i, 6, 101) * 1.6;
-    const c = [Math.cos(a) * rr, -0.15 + Math.sin(a) * rr * 0.8, z], sz = 0.012 + rnd(i, 7, 101) * 0.025;
-    chips.wbox([c[0] - sz, c[1] - sz, c[2] - sz], [c[0] + sz, c[1] + sz, c[2] + sz], rnd(i, 8, 101) < 0.55 ? L.bone : rnd(i, 9, 101) < 0.5 ? L.cart : L.flesh2);
-  }
-  addLit(st, 'chips', chips, 0.05, { cast: false, receive: false });
+  // sparks and chips are re-thrown every frame (deterministic per frame), see tick()
+  const sparks = new Particles(st, 160, { intensity: 2.6 }), chips = new Particles(st, 70, { lit: true });
   const hot = new THREE.PointLight(0xffb060, 1.5, 3, 1.6); hot.position.set(tip[0], tip[1], tip[2] + 0.3); st.scene.add(hot);
+  const rim = new THREE.PointLight(0xffd8b0, 1.2, 1.5, 1.5); rim.position.set(0, -0.15, -0.35); st.scene.add(rim); // separates the gloves from the dark tunnel
+  const glow = addGlow(st, 'contact glow', (() => { const g = new VoxelGrid(0.02); g.wellipsoid(tip, [0.035, 0.035, 0.02], L.spark); return g; })(), 1.8);
+
+  st.duration = 8;
+  const spin = new THREE.Quaternion(), zAxis = new THREE.Vector3(0, 0, 1);
+  st.tick = (t) => {
+    const f = Math.floor(t * 30), bite = 0.6 + 0.4 * Math.abs(wob(t * 0.7, 3)); // the drill bucks harder when it bites
+    st.camera.position.set(wob(t * 2.3, 1) * 0.006 * bite, wob(t * 2.9, 2) * 0.006 * bite, 0);
+    spin.setFromAxisAngle(zAxis, -t * 38); bit.quaternion.copy(bitBase).multiply(spin);
+    hot.intensity = 1.0 + 1.2 * bite * (0.6 + 0.4 * Math.abs(Math.sin(t * 37)));
+    glow.scale.setScalar(0.8 + 0.4 * Math.abs(Math.sin(t * 29)));
+    let n = 0;
+    for (let i = 0; i < 160; i++) { // sparks: born at the tip, fly out along a ballistic arc, live ~0.35 s
+      const born = (i / 160) * 0.35, age = ((t - born) % 0.35 + 0.35) % 0.35, gen = Math.floor((t - born) / 0.35) + f * 0;
+      const a = rnd(i, gen, 130) * Math.PI * 2, sp = 1.2 + rnd(i, gen, 131) * 3.2 * bite, back = 0.6 + rnd(i, gen, 132) * 2.2;
+      const p = [tip[0] + Math.cos(a) * sp * age, tip[1] + Math.sin(a) * sp * age * 0.8 - 2.5 * age * age, tip[2] + back * age];
+      const len = 0.03 + 0.08 * (1 - age / 0.35);
+      sparks.set(n++, p, [0.014, 0.014, len * 1.6], rnd(i, gen, 133) < 0.6 ? L.spark : L.lavaHot, [Math.sin(a) * 0.8, Math.cos(a) * 0.8, 0]);
+    }
+    sparks.commit(n);
+    n = 0;
+    for (let i = 0; i < 70; i++) { // chips: tumble out of the cut and fly back past the camera, live ~0.9 s
+      const born = (i / 70) * 0.9, age = ((t - born) % 0.9 + 0.9) % 0.9, gen = Math.floor((t - born) / 0.9);
+      const a = rnd(i, gen, 134) * Math.PI * 2, sp = 0.5 + rnd(i, gen, 135) * 1.2, back = 1.5 + rnd(i, gen, 136) * 2.5;
+      const p = [tip[0] + Math.cos(a) * sp * age, tip[1] + Math.sin(a) * sp * age * 0.8 - 3 * age * age, tip[2] + back * age];
+      const sz = 0.012 + rnd(i, gen, 137) * 0.03, kind = rnd(i, gen, 138);
+      chips.set(n++, p, sz, kind < 0.6 ? L.bone : kind < 0.8 ? L.cart : L.flesh2, [t * 9 + i, t * 7 + i * 2, 0]);
+    }
+    chips.commit(n);
+  };
   return st;
 }

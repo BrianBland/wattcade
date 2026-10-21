@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../../voxel/grid';
 import { noise2, fbm } from '../../voxel/noise';
 import { makeStage, type Stage } from '../stage';
-import { L, fillBox, addLit, addGlow, fpBars, rnd, glyphTexture, glyphDecal } from './kit';
+import { L, fillBox, addLit, addGlow, fpBars, rnd, glyphTexture, glyphDecal, Particles, setGlow, wob } from './kit';
 
 const LAVA_Y = -28;
 const bridgeY = (z: number) => 2.6 * Math.sin((Math.PI * (4 - z)) / 170);
@@ -46,7 +46,7 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
     return crack ? L.lavaHot : cell < 0.32 ? L.lava : L.lava2;
   });
   addLit(st, 'cavern + crust', rock, 0.1, { cast: false, receive: false });
-  addGlow(st, 'lava', lava, 2.4);
+  const lavaGrp = addGlow(st, 'lava', lava, 2.4);
 
   // the bridge: black glass, a violet sheen on its edges, thin piers into the lava with glowing cracks
   const b = new VoxelGrid(0.12), bglow = new VoxelGrid(0.12);
@@ -83,17 +83,13 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
   addLit(st, 'bridge + piers + columns', b, 0.06, { cast: false, receive: false });
   addGlow(st, 'glyphs + pier cracks', bglow, 1.8);
 
-  // magma fish mid-leap with dripping trails, and embers drifting up
-  const fish = new VoxelGrid(0.1);
-  const leap = (x0: number, z0: number, x1: number, z1: number, hgt: number, k: number, len: number, seed: number) => {
-    const p = (t: number) => [x0 + (x1 - x0) * t, LAVA_Y + 4 * hgt * t * (1 - t), z0 + (z1 - z0) * t];
-    const at = p(k), ahead = p(Math.min(1, k + 0.02)), dir = new THREE.Vector3(ahead[0] - at[0], ahead[1] - at[1], ahead[2] - at[2]).normalize();
-    for (let i = 0; i < 14; i++) { const t = i / 13 - 0.5, r = len * 0.17 * Math.cos(t * Math.PI * 0.95) + 0.05; fish.wellipsoid([at[0] + dir.x * t * len, at[1] + dir.y * t * len, at[2] + dir.z * t * len], [r, r, r], i > 10 ? L.lavaHot : i % 3 ? L.magma : L.magma2); }
-    for (let j = 1; j < 30; j++) { const tt = Math.max(0, k - j * 0.012); const q = p(tt); fish.wellipsoid([q[0] + (rnd(j, seed, 82) - 0.5), q[1] - j * 0.05, q[2] + (rnd(j, seed, 83) - 0.5)], [0.08 + 0.12 * (1 - j / 30), 0.08, 0.08], j % 2 ? L.lava2 : L.ember); }
-  };
-  leap(-16, -26, -6, -40, 14, 0.42, 2.4, 1); leap(18, -48, 10, -34, 18, 0.55, 3.0, 2); leap(-24, -70, -14, -80, 20, 0.5, 2.8, 3); leap(9, -95, 20, -105, 16, 0.3, 2.6, 4);
-  for (let i = 0; i < 160; i++) { const e = [(rnd(i, 1, 84) - 0.5) * 60, LAVA_Y + 2 + rnd(i, 2, 84) * 30, -rnd(i, 3, 84) * 140]; fish.wbox(e, e.map((v) => v + 0.12), L.ember); }
-  addGlow(st, 'magma fish + embers', fish, 2.2);
+  // magma fish: one voxel model, several instances that leap on looping arcs (see tick); embers + drips are particles
+  const fishG = new VoxelGrid(0.1);
+  for (let i = 0; i < 14; i++) { const u = i / 13 - 0.5, r = 0.42 * Math.cos(u * Math.PI * 0.95) + 0.05; fishG.wellipsoid([u * 2.6, 0, 0], [r, r, r], i > 10 ? L.lavaHot : i % 3 ? L.magma : L.magma2); }
+  for (let k = 0; k <= 4; k++) fishG.wellipsoid([-1.45, (k - 2) * 0.18, 0], [0.1, 0.1, 0.1], L.lava2); // tail fan
+  const LEAPS = [[-14, -20, -5, -32, 12, 2.6, 0.0], [16, -40, 7, -28, 15, 3.1, 0.9], [-20, -55, -9, -64, 17, 2.9, 1.7], [8, -70, 18, -80, 14, 2.4, 0.4], [-7, -14, -2, -8, 8, 2.2, 2.3], [22, -24, 12, -16, 11, 2.7, 1.3]];
+  const fishes = LEAPS.map(() => { const grp = new THREE.Group(); const inner = new THREE.Group(); inner.scale.setScalar(2.2); grp.add(inner); addGlow(st, 'magma fish', fishG, 2.2, inner); st.scene.add(grp); return grp; });
+  const drips = new Particles(st, 400, { intensity: 2.4 }), embers = new Particles(st, 220, { intensity: 2.2 });
 
   // the lava lights the cavern: a grid of warm lights just above the surface, plus a glow under the bridge
   for (let x = -60; x <= 60; x += 30) for (let z = 10; z >= -200; z -= 35) { const pl = new THREE.PointLight(0xff6a1a, 260, 95, 1.3); pl.position.set(x, LAVA_Y + 4, z); st.scene.add(pl); }
@@ -102,5 +98,26 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
   st.camera.position.set(0.15, bridgeY(4) + 1.55, 4);
   st.camera.lookAt(-0.6, -11, -70);
   fpBars(st);
+
+  st.duration = 8;
+  const arc = (L: number[], u: number) => [L[0] + (L[2] - L[0]) * u, LAVA_Y + 4 * L[4] * u * (1 - u) - 0.5, L[1] + (L[3] - L[1]) * u];
+  st.tick = (t) => {
+    const z = 4 - 1.1 * t;
+    st.camera.position.set(0.15, bridgeY(z) + 1.55 + 0.01 * Math.sin(t * 9), z);
+    setGlow(lavaGrp, 1 + 0.12 * wob(t * 0.6, 1)); // the whole lake breathes
+    let nd = 0;
+    LEAPS.forEach((Lp, i) => { // each fish: leap (period × 0.55), then hidden under the crust
+      const per = Lp[5], ph = ((t + Lp[6]) % per) / per, u = ph / 0.55, g = fishes[i];
+      g.visible = u <= 1;
+      if (!g.visible) return;
+      const p = arc(Lp, u), q = arc(Lp, Math.min(1, u + 0.02));
+      g.position.set(p[0], p[1], p[2]); g.lookAt(q[0], q[1], q[2]); g.rotateY(-Math.PI / 2); g.rotateZ(Math.sin(t * 14 + i) * 0.25);
+      for (let k = 1; k < 26 && nd < 400; k++) { const uu = u - k * 0.012; if (uu < 0) break; const d = arc(Lp, uu); drips.set(nd++, [d[0] + (rnd(k, i, 150) - 0.5) * 0.8, d[1] - k * 0.07 - (t * 3 % 1) * 0.1, d[2] + (rnd(k, i, 151) - 0.5) * 0.8], 0.4 * (1 - k / 26) + 0.1, k % 2 ? L.lava2 : L.ember); }
+      if (u > 0.92 || u < 0.06) for (let k = 0; k < 18 && nd < 400; k++) { const a = rnd(k, i, 152) * Math.PI * 2, rr = 0.4 + rnd(k, i, 153) * 1.6; drips.set(nd++, [p[0] + Math.cos(a) * rr, LAVA_Y + 0.3 + rnd(k, i, 154) * 2.5, p[2] + Math.sin(a) * rr * 2], 0.45, L.lavaHot); } // splash
+    });
+    drips.commit(nd);
+    for (let i = 0; i < 220; i++) { const x = (rnd(i, 1, 155) - 0.5) * 70, zz = 6 - rnd(i, 2, 155) * 150, rise = 1.5 + rnd(i, 3, 155) * 2, h = 34; embers.set(i, [x + Math.sin(t + i) * 0.8, LAVA_Y + 1 + ((t * rise + rnd(i, 4, 155) * h) % h), zz], 0.22 + 0.1 * Math.sin(t * 6 + i), i % 4 ? L.ember : L.lava2); }
+    embers.commit(220);
+  };
   return st;
 }

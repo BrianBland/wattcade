@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../../voxel/grid';
 import { noise2, fbm } from '../../voxel/noise';
 import { makeStage, type Stage } from '../stage';
-import { L, fillBox, addLit, addGlow, fpBars, rnd } from './kit';
+import { L, fillBox, addLit, addGlow, fpBars, rnd, Particles, setGlow } from './kit';
 
 const R = (z: number) => 5.6 + 1.3 * Math.sin(z / 11) + 0.6 * Math.sin(z / 4.3 + 1);
 const floorY = (x: number, z: number) => 0.14 * Math.sin(x * 1.5 + 2 * Math.sin(z * 0.33)) + 0.08 * Math.sin(z * 0.9 + x * 0.4);
@@ -36,11 +36,11 @@ export function stillBelly(canvas: HTMLCanvasElement, w: number, h: number): Sta
     }
     return 0;
   });
-  addLit(st, 'belly walls', wall, 0.07, { cast: false, receive: false });
+  const wallGrp = addLit(st, 'belly walls', wall, 0.07, { cast: false, receive: false });
   // ribs: pale bone with a faint self-light so the pink haze can't swallow them
   const ribGrp = addLit(st, 'ribs', ribs, 0.06, { cast: false, receive: false });
   ribGrp.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined; if (m?.emissive) { m.emissive.set(0x4a3e32); } });
-  addGlow(st, 'bioluminescence + bile', glow, 2.4);
+  const glowGrp = addGlow(st, 'bioluminescence + bile', glow, 2.4);
 
   // swallowed things, at finer voxels
   const junk = new VoxelGrid(0.04), jglow = new VoxelGrid(0.04);
@@ -90,5 +90,22 @@ export function stillBelly(canvas: HTMLCanvasElement, w: number, h: number): Sta
   st.camera.position.set(0.25, 1.55, 3.5);
   st.camera.lookAt(0.2, 1.25, -26);
   fpBars(st);
+
+  // motion: a slow ride down the gut; the whole cavity swells with a double-thump heartbeat; the lights pulse with it;
+  // glowing motes drift in the air
+  const motes = new Particles(st, 80, { intensity: 2.4 });
+  const hb = (t: number) => { const p = t % 1.15; return Math.exp(-((p - 0.08) ** 2) * 260) + 0.6 * Math.exp(-((p - 0.32) ** 2) * 260); };
+  st.duration = 8;
+  st.tick = (t) => {
+    const b = hb(t);
+    st.camera.position.set(0.25 + 0.06 * Math.sin(t * 0.7), 1.55 + 0.012 * Math.sin(t * 9), 3.5 - 0.75 * t);
+    for (const g of [wallGrp, ribGrp, glowGrp]) g.scale.set(1 + 0.018 * b, 1 + 0.024 * b, 1);
+    setGlow(glowGrp, 1 + 0.45 * b);
+    for (let i = 0; i < 80; i++) {
+      const x = (rnd(i, 1, 120) - 0.5) * 8, z = 3 - rnd(i, 2, 120) * 30, y = 0.5 + rnd(i, 3, 120) * 5 + Math.sin(t * 0.6 + i) * 0.4;
+      motes.set(i, [x + Math.sin(t * 0.4 + i * 1.3) * 0.5, y, z], 0.035 + 0.02 * Math.sin(t * 3 + i), i % 3 ? L.spot : L.spot2);
+    }
+    motes.commit(80);
+  };
   return st;
 }

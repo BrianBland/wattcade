@@ -103,3 +103,34 @@ export function glyphDecal(tex: THREE.Texture, w: number, h: number, intensity =
   m.renderOrder = 2;
   return m;
 }
+
+/** Instanced glowing (or lit) cubes for particles; call set(i, …) each frame, then commit(n). */
+export class Particles {
+  readonly mesh: THREE.InstancedMesh;
+  private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sc = new THREE.Vector3(); private c = new THREE.Color();
+  constructor(st: Stage, max: number, opts: { lit?: boolean; intensity?: number; parent?: THREE.Object3D } = {}) {
+    const mat = opts.lit ? new THREE.MeshLambertMaterial({ color: 0xffffff }) : new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(opts.intensity ?? 2.2), fog: false });
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, max);
+    this.mesh.frustumCulled = false; this.mesh.count = 0;
+    (opts.parent ?? st.scene).add(this.mesh);
+  }
+  /** Cube at p, size s (or [sx,sy,sz]), optional rotation (Euler y/x), palette colour index. */
+  set(i: number, p: readonly number[], s: number | readonly number[], colorIdx: number, rot: readonly number[] = [0, 0, 0]) {
+    this.v.set(p[0], p[1], p[2]);
+    this.q.setFromEuler(new THREE.Euler(rot[0], rot[1], rot[2]));
+    if (typeof s === 'number') this.sc.setScalar(s); else this.sc.set(s[0], s[1], s[2]);
+    this.m.compose(this.v, this.q, this.sc);
+    this.mesh.setMatrixAt(i, this.m);
+    this.c.setRGB(LATER.linear[colorIdx * 3], LATER.linear[colorIdx * 3 + 1], LATER.linear[colorIdx * 3 + 2], THREE.LinearSRGBColorSpace);
+    this.mesh.setColorAt(i, this.c);
+  }
+  commit(n: number) { this.mesh.count = n; this.mesh.instanceMatrix.needsUpdate = true; if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true; }
+}
+
+/** Scale the brightness of every unlit glow material under a group (for pulsing). */
+export function setGlow(grp: THREE.Object3D, k: number) {
+  grp.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined; if (m && (m as THREE.Material).type === 'MeshBasicMaterial') m.color.setScalar(k); });
+}
+
+/** A deterministic smooth wobble in [-1, 1] (sum of sines), for shakes and flicker. */
+export const wob = (t: number, seed = 0) => (Math.sin(t * 7.1 + seed) + Math.sin(t * 13.3 + seed * 2.1) * 0.6 + Math.sin(t * 23.7 + seed * 3.7) * 0.3) / 1.9;

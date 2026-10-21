@@ -548,7 +548,9 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .cosmetic-ui .tabs .btn {border-radius:0;border-bottom:3px solid transparent;}
 .cosmetic-ui .tabs .btn.on {border-color:#42e4c2;box-shadow:none;}
 .cosmetic-ui .item-tile {font:inherit;color:var(--fg);background:transparent;border:0;border-bottom:2px solid #b4c7cf26;border-radius:0;box-shadow:none;padding:12px 7px;}
-.cosmetic-ui .item-tile.locked {opacity:1;}
+.cosmetic-ui .item-tile.locked {opacity:.5;filter:grayscale(1);color:#a5b6c8;background:#8b98a30a;cursor:not-allowed;border-bottom-color:#8b98a333;transform:none;box-shadow:none;}
+.cosmetic-ui .item-tile.locked .item-status {font-weight:700;color:#c0c8d0;}
+.cosmetic-ui .item-tile:not(.locked):not(.on) .item-status {color:#42e4c2;}
 .cosmetic-ui .item-tile.on {border-bottom-color:#42e4c2;box-shadow:none;}
 .cosmetic-ui .item-tile.focused,.cosmetic-ui .item-tile:focus-visible {outline:2px solid #42e4c2;outline-offset:-2px;background:#96b7bf10;transform:none;box-shadow:none;}
 .item-status {font-size:11px;color:#a5b6c8;margin:4px 0;}.item-tile.on .item-status {color:#42e4c2;}
@@ -571,3 +573,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .unlock-rider {position:absolute;right:0;bottom:30px;width:62%;opacity:.65;}.reward-title {font-size:42px;font-weight:900;color:#e5ca7c;}
 @media(max-width:760px){.reward-showcase,.unlock-layout {grid-template-columns:1fr;}.cosmetic-ui .pick-row {grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}.reward-outfit .rider-av.hero {height:160px;}.pick-card {padding:12px 5px;}.pick-card .rider-av.hero {height:100px;}.pick-card .dim.small {font-size:11px;}.unlock-art {order:-1;padding-bottom:40px;}.unlock-art>.rider-av.hero {height:220px;}.reward-stage {justify-content:flex-start;}.reward-stage h1 {font-size:32px;}.reward-actions {gap:12px;}.reward-actions .btn {padding:12px 14px;}.cosmetic-ui .locker-hero {position:static;}}
 @media(prefers-reduced-motion:reduce){.cosmetic-ui,.cosmetic-ui * {animation:none!important;transition:none!important;}}
+
+.cosmetic-ui .locker-divider {grid-column:1 / -1;display:flex;align-items:center;gap:10px;color:var(--dim);font-size:11px;line-height:1;margin:4px 0;}
+.cosmetic-ui .locker-divider::before,.cosmetic-ui .locker-divider::after {content:"";height:1px;flex:1;background:#a5b6c833;}
+
+.cosmetic-ui .locked-art > canvas,.cosmetic-ui .title-tile.locked-art {filter:blur(3px);}

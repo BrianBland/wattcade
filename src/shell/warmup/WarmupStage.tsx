@@ -1,5 +1,5 @@
 import { FrameGate } from './frameGate';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameRenderer, Insets, Profile, SessionRecord } from '../../contracts';
 import type { SessionLike } from '../types';
 import { lobbyGame } from '../../games/registry';
@@ -24,8 +24,8 @@ const deviceKey = () => { const s = getDeviceStatus(); return `${getFake()}|${s.
  * The Warm-up Ride behind every menu: runs the lobby session, draws the scenery full-bleed, and drives the
  * shared InputHub for the menus. Restarts the ride (keeping the road position) when the rider or devices change.
  */
-export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSession, onRideEnded }: {
-  profile: Profile | null; hud: boolean; restartKey: number;
+export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible, onSession, onRideEnded }: {
+  profile: Profile | null; profiles: readonly Profile[]; hud: boolean; restartKey: number;
   /** The lobby menu screen is up, so the Drive-In screen may show. */
   driveInVisible: boolean;
   onSession: (s: SessionLike | null) => void;
@@ -40,6 +40,8 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
   const [devKey, setDevKey] = useState(deviceKey);
   const [autoSaves, setAutoSaves] = useState(0);
   const cb = useRef({ onSession, onRideEnded }); cb.current = { onSession, onRideEnded };
+  const riders = useMemo(() => profiles.filter(p => p.id !== profile?.id)
+    .map(p => ({ id: p.id, name: p.name, look: riderLook(p) })), [profiles, profile?.id]);
   const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
 
   useEffect(() => subscribeDevices(() => setDevKey(deviceKey())), []);
@@ -47,6 +49,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
   // ride lifecycle: cleanup credits the ride that is ending
   useEffect(() => {
     const s = startLobby(profile);
+    s.sim.receive?.({ type: 'riders', riders });
     cb.current.onSession(s);
     return () => {
       const rec = stopLobby();
@@ -54,6 +57,7 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
       if (rec) cb.current.onRideEnded(rec);
     };
   }, [profile?.id, devKey, restartKey, autoSaves]);
+  useEffect(() => { lobbySession()?.sim.receive?.({ type: 'riders', riders }); }, [riders]);
 
   // renderer (remounted per rider, and when their look changes in the Locker)
   const lookKey = profile ? JSON.stringify(riderLook(profile)) : '';
@@ -61,7 +65,8 @@ export function WarmupStage({ profile, hud, restartKey, driveInVisible, onSessio
     let disposed = false;
     void lobbyGame.loadRenderer().then((r) => {
       if (disposed || !mount.current) return;
-      r.mount(mount.current, { profile: profile ?? { color: '#00f0ff' } as Profile, insets: readInsets() });
+      r.mount(mount.current, { profile: profile ?? { color: '#00f0ff' } as Profile, insets: readInsets(),
+        send: action => lobbySession()?.sim.receive?.(action) });
       renderer.current = r;
     });
     return () => { disposed = true; renderer.current?.unmount(); renderer.current = null; };

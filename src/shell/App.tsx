@@ -155,7 +155,7 @@ export function App() {
   const hud = !inGame && !!rider && !!lobby && HUD_SCREENS.includes(screen.name);
   return (
     <>
-      {!inGame && <WarmupStage profile={rider} hud={hud} restartKey={restartKey} driveInVisible={screen.name === 'menu'} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
+      {!inGame && <WarmupStage profile={rider} profiles={profiles} hud={hud} restartKey={restartKey} driveInVisible={screen.name === 'menu'} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
       <div class={`screens${asleep ? ' asleep' : ''}${hud ? ' with-hud' : ''}`}>{body}</div>
       {hud && lobby && rider && (
         <div class="hud-host">

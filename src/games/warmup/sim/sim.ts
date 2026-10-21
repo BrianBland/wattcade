@@ -1,5 +1,7 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { BIOMES, biomeAt, makeTerrain, type BiomeId, type Terrain } from './terrain';
+import { rideSpeed } from './physics';
+import { WarmupTraffic, type LocalRider, type RiderView, type RoadRider } from './traffic';
 
 export interface WarmupOpts {
   seed?: number;
@@ -11,10 +13,13 @@ export interface WarmupOpts {
   terrainSeed?: number;
   /** Start with the Drive-In biome fully on (the shell passes it on restart so the scene doesn't flip). */
   driveIn?: boolean;
+  riders?: LocalRider[];
 }
 
 /** `receive()` actions. */
-export type WarmupAction = { type: 'driveIn'; on: boolean };
+export type WarmupAction = { type: 'driveIn'; on: boolean }
+  | { type: 'riders'; riders: LocalRider[] }
+  | { type: 'riderView'; view: RiderView };
 
 export interface WarmupSnapshot {
   t: number;
@@ -30,10 +35,9 @@ export interface WarmupSnapshot {
   /** 0..1 blend into the Drive-In biome (a lobby mode, not in the loop) and whether it is switched on. */
   driveIn: number; driveInOn: boolean;
   rodeM: number; climbM: number; topKph: number;
+  riders: RoadRider[]; riderView: RiderView;
   hooks: Record<string, unknown>;
 }
-
-const G = 9.81, RHO = 1.2, DRIVE_EFF = 0.975, MAX_V = 22;
 
 /** Free ride behind the menus: power moves you along a seeded rolling road through looping biomes. Never ends. */
 export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSim & { snapshot(): WarmupSnapshot } {
@@ -58,6 +62,8 @@ export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSi
   let d = d0, v = 0, hill = tun.hills() ? 1 : 0, grade = 0, climb = 0, top = 0;
   let lastBiomeSeg = at(d).index;
   const visited = new Set<BiomeId>([at(d).dom]);
+  const traffic = new WarmupTraffic(terrainSeed, ctx.profile.id);
+  traffic.setRiders(opts.riders ?? []);
   ctx.resistance.useVirtualGears(true);
 
   const sim = {
@@ -70,16 +76,14 @@ export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSi
       ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: +grade.toFixed(1) });
 
       const bike = ctx.bike();
-      const m = ctx.profile.weightKg + 9;
-      const th = Math.atan(grade / 100);
-      const drive = (Math.max(0, bike.raw.power) * DRIVE_EFF) / Math.max(v, 1);
-      const resist = m * G * (tun.crr() * Math.cos(th) + Math.sin(th)) + 0.5 * RHO * tun.cda() * v * v;
-      v = Math.min(MAX_V, Math.max(0, v + ((drive - resist) / m) * dt));
-      if (v < 0.05 && bike.raw.power <= 0) v = 0;
+      const physics = { mass: ctx.profile.weightKg + 9, cda: tun.cda(), crr: tun.crr() };
+      v = rideSpeed(v, bike.raw.power, grade, physics, dt);
       const dd = v * dt;
       d += dd;
       if (grade > 0) climb += (dd * grade) / 100;
       top = Math.max(top, v);
+      // Pace is based on the current player's Z1/Z2 power boundary, never the peer's fitness.
+      traffic.update(dt, d, v, ctx.profile.ftp * 0.55, physics, dd => hill * terrain.grade(dd));
 
       const dStep = dt / tun.driveInS();
       driveIn = driveInOn ? Math.min(1, driveIn + dStep) : Math.max(0, driveIn - dStep);
@@ -108,11 +112,14 @@ export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSi
         biome: b.dom, nextBiome: biomeAt(d + b.toNextM + 1, biomeM, startBiome, 1).dom, from: b.cur, to: b.next, mix: b.mix, toNextM: b.toNextM,
         driveIn, driveInOn,
         rodeM: d - d0, climbM: climb, topKph: top * 3.6, hooks: {},
+        riders: traffic.snapshot(), riderView: { ...traffic.view },
       };
     },
     receive(action: unknown) {
       const a = action as WarmupAction;
       if (a?.type === 'driveIn') driveInOn = !!a.on;
+      else if (a?.type === 'riders') traffic.setRiders(a.riders);
+      else if (a?.type === 'riderView') traffic.view = { ...a.view };
     },
     isOver: () => false,
     summary() {

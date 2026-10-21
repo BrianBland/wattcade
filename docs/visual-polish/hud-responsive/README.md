@@ -16,11 +16,15 @@ Measure **total reserved height**, including the floating controls and the gap a
 | [iPad Pro landscape · controller](./ipad-landscape-controller-comparison.png) | 1366 × 1024 | 168 | 59 | **59** (5.8%) | -109 |
 | [iPad Pro landscape · Tower Defense · controller](./ipad-td-controller-comparison.png) | 1366 × 1024 | 168 | 95 | **95** (9.3%) | -73 |
 
-Portrait touch recovers 84 px from the previous PR version (35% less HUD height). It still reserves 45 px more than the old UI. Old warmup phone controls included 28 px targets and Tower Defense 39 px targets; the revised UI preserves 44 px targets and readable action copy. This remains a tradeoff, not a claim that the new touch layout is smaller than the original.
+Warmup and Tower Defense portrait touch recover 84 px from the previous PR version (35% less HUD height). It still reserves 45 px more than the old UI. Old warmup phone controls included 28 px targets and Tower Defense 39 px targets; the revised UI preserves 44 px targets and readable action copy. This remains a tradeoff, not a claim that the new touch layout is smaller than the original.
 
 The revised warmup portrait bar is 97 px, plus 50 px of controls and an 8 px gap. Tower Defense is 91 + 56 + 8 = 155 px. With a controller, warmup has no floating action row; Tower Defense adds its actual cooldown/special status strip.
 
 All captures use coarse-pointer Chromium emulation, device scale factor 1, seed 3, fake Z2 input at 5 simulation seconds, history closed and fake-bike help hidden. Both controller and touch variants use the same session fixtures. Controller mode is explicitly selected; the connection switch is verified separately by the native matrix. CSS safe-area insets are zero in these captures; browser chrome and a real iPad home indicator are excluded. Rounded values in the table can differ by less than one pixel from the JSON geometry. Raw measurements and full-resolution captures are in the three version directories.
+
+A busy eight-button touch layout still requires wrapped keys: [Hamster portrait screenshot](./hamster-phone.png) reserves **200 px** (23.7% of the phone), with every target at least 44 px. The 155 px result is not a universal ceiling across games or long action quotes.
+
+Validation: 48 browser layout cases (eight games × three viewports × both input modes), extra 320/360 px touch checks, idle controller connect/disconnect, optional history, long quotes and controls help pass. Typecheck, production build and all 195 shell tests pass. The native browser script now enforces a 160 px portrait budget for the standard warmup and Tower Defense fixtures.
 
 ## Reproduce
 

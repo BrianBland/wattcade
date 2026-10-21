@@ -37,7 +37,7 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
 - Actors per biome (birds, gulls, parrots, vultures, fish schools + jellyfish, lava bombs, UFOs); a biome change sends the old
   ones away. Particles are stateless (index + time): snow, ash, bubbles, fireflies, dust.
 - Day/night (`daylight.ts`, tested) for outdoor biomes from the real clock: night sky, moon, stars, headlight, sunset tint.
-  `?hour=21` previews a time. Ambient noise bed per biome via `setAmbient('warmup', …)`, stopped on unmount.
+  `?hour=21` previews a time. No looping noise bed (it read as constant static). Scenery is the one-shots in `soundscape.ts`; the jungle falls voice only plays while that cliff is on screen.
 - `rider.ts`: procedural rider (profile jersey colour, two-bone legs from `bike.crankRevs`; bubble helmet on the Moon, scuba gear underwater).
 - Local riders draw at 82% scale in the farther lane, before the player's silhouette, with their names and biome gear.
   Renderer sends its visible road range through `mount.send`, including when a fresh lobby session resets its view.

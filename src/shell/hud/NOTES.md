@@ -10,7 +10,8 @@
 - Controls during play pauses into the same guide; Escape returns to Pause. Help/history do not reserve viewport space.
 - Fake-bike instructions appear only in Pause/help. Target zones, cadence guidance and gear/trainer state stay persistent.
 - `readHudInsets` supplies actual bar/action rectangles plus a conservative combined envelope. No action strip means no extra inset.
-- Optional peeks use the measured floating height; phone actions wrap and touch targets stay >=44px.
+- Optional peeks use the measured floating height; phone touch groups sit side by side; busy groups wrap their keys as needed and touch targets stay >=44px.
 - Review: `/dev/hud-live.html`, `/dev/hud-flow.html`; native matrix: `scripts/check-compact-hud.mjs`.
 - Tests cover all-game metadata, presence/fallback, held-input cancellation, full legends, post-menu start gating and shaped insets.
 - Native iPad/Bluefy frame pacing and a physical controller ride remain device validation.
+- Responsive review: `docs/visual-polish/hud-responsive/README.md` compares pre-PR, stacked and revised layouts with total reserved heights.

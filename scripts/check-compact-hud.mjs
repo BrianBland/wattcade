@@ -29,6 +29,8 @@ try {
     if(controller){assert.equal(info.controls.filter(b=>b.id&&['up','down','left','right','a','b','y','z','Gear up','Gear down'].includes(b.id)).length,0,tag);assert.equal(info.statuses.length,info.expected,tag);assert(info.statuses.every(s=>s.buttons===0),tag);}
     else {assert.equal(info.statuses.length,0,tag);if(game==='cadenza')assert.deepEqual(info.groups.find(g=>g.kind.includes('face'))?.ids,['z','a']);}
     for(const g of info.groups){if(g.kind.includes('face'))assert(g.ids.every(id=>['a','b','y','z'].includes(id)),tag);if(g.kind.includes('dpad'))assert(g.ids.every(id=>['left','right','up','down'].includes(id)),tag);}
+    // Portrait touch must not regress into separate Move and action rows.
+    if(label==='phone'&&!controller&&['warmup','towerdefense'].includes(game))assert(info.insets.bottom<=160,`${tag}: HUD exceeds 160px portrait budget`);
     const occupied=info.insets.occlusions??[];assert(occupied.length>0,tag);assert(Math.abs(info.insets.bottom-Math.max(...occupied.map(r=>height-r.y)))<1,`${tag}: inset misses floating actions`);
     results.push({game,label,controller,...info});writeFileSync(`${out}/checks.json`,JSON.stringify({results,errors},null,2));
     if(controller&&label==='tablet'){

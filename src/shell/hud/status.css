@@ -57,7 +57,7 @@
 }
 @media(max-width:700px){
   .ride-hud .hud.hud-ribbon { padding-left:12px; padding-right:12px; }
-  .ride-hud .hud-ribbon .hud-center { min-height:100px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; }
+  .ride-hud .hud-ribbon .hud-center { min-height:0; padding:3px 0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; }
   .ride-hud .hud-ribbon .zw,.ride-hud .hud-ribbon .zw-main { display:contents; }
   .ride-hud .hud-ribbon .zw-nums { grid-row:1; grid-column:1/-1; gap:8px; }
   .ride-hud .hud-ribbon .zw-zone { grid-row:2; grid-column:1; }
@@ -65,14 +65,18 @@
   .ride-hud .hud-ribbon .zw-clock b { font-size:18px; }
   .ride-hud .hud-ribbon .hud-utilities { grid-row:2; grid-column:2; position:static; gap:0; padding-left:8px; }
   .ride-hud .hud-ribbon .hud-utilities button { width:35px; min-width:35px; height:38px; }
-  .ride-hud .floating-controls { width:max-content; max-width:calc(100% - 24px); flex-direction:column; gap:6px; align-items:center; bottom:calc(var(--hud-h) + 8px); }
-  .ride-hud .hud-ribbon .hood,.ride-hud .hud-ribbon .hud-actions { width:max-content; max-width:100%; padding:6px 8px; gap:6px; }
-  .ride-hud .hud-ribbon .compact-keys { gap:1px; }
+  .ride-hud .floating-controls { width:max-content; max-width:calc(100% - 24px); flex-direction:row; gap:6px; align-items:stretch; flex-wrap:nowrap; bottom:calc(var(--hud-h) + 8px); }
+  .ride-hud .hud-ribbon .hood,.ride-hud .hud-ribbon .hud-actions { width:max-content; max-width:100%; padding:3px 4px; gap:4px; }
+  /* Keep a lone direction action readable while the adjacent action group flexes. */
+  .ride-hud .floating-controls > .hud-actions:first-child { flex-shrink:0; }
+  .ride-hud .hud-ribbon .compact-keys { gap:1px; flex-wrap:wrap; }
   .ride-hud .hud-ribbon .compact-key { min-width:48px; max-width:100px; padding:3px 5px; min-height:44px; }
   .ride-hud .hud-ribbon .compact-key span { font-size:10px; }
   .ride-hud .hud-ribbon .compact-paddles { display:none; }
   .ride-hud .hud-peek { bottom:calc(var(--hud-h) + var(--hud-floating-h, 0px) + 12px); }
 }
+/* The button names remain available to assistive technology on very narrow phones. */
+@media(max-width:360px){.ride-hud .floating-controls .compact-family-label{display:none}}
 @media(pointer:coarse){
   .ride-hud .hud-ribbon .compact-key,.ride-hud .hud-ribbon .compact-key.merged { min-width:44px; min-height:44px; }
   .ride-hud .hud-ribbon .hud-utilities button { min-width:44px; min-height:44px; }

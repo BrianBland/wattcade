@@ -12,7 +12,7 @@ export type SfxName =
   | 'uiMove' | 'uiSelect' | 'uiBack' | 'uiTick' | 'uiWake' | 'countTick'
   | 'count' | 'go' | 'gameOver' | 'milestone'
   | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
-  | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic'
+  | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic' | 'waterfall'
   | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin' | 'shoreBreak' | 'thunderRoll'
   | 'teslaCrack' | 'mortarThump' | 'prismBeam' | 'railShot' | 'chitinCrunch' | 'chitinCrunchBig' | 'rivetBuild' | 'boltOn' | 'hiveHorn' | 'waveClearTd' | 'clank' | 'ignite' | 'payoffSting';
 
@@ -101,6 +101,8 @@ const R: Record<SfxName, Tone[]> = {
   windHowl: [{ type: 'noise', f0: 700, f1: 1300, dur: 3.6, vol: 0.05, q: 6, atk: 1.6 }, { type: 'sine', f0: 520, f1: 640, dur: 3.4, vol: 0.012, atk: 1.6, vib: { hz: 0.7, depth: 40 } }],
   ufoWarble: [{ type: 'sine', f0: 900, f1: 1300, dur: 1.4, vol: 0.03, atk: 0.3, vib: { hz: 7, depth: 220 } }, { type: 'sine', f0: 1350, f1: 800, dur: 1.2, vol: 0.02, delay: 0.5, atk: 0.2, vib: { hz: 9, depth: 160 } }],
   cricket: [0, 0.07, 0.14, 0.21, 0.28].map((d) => ({ type: 'square' as const, f0: 4300, dur: 0.035, vol: 0.008, delay: d })),
+  // jungle cliff falls: a low rush plus a bright sheet. Not a loop — the lobby's noise bed sounded like static.
+  waterfall: [{ type: 'noise', f0: 180, f1: 280, dur: 3.4, vol: 0.045, q: 0.7, atk: 0.8 }, { type: 'noise', f0: 1400, f1: 900, dur: 3.2, vol: 0.018, q: 1.4, atk: 0.6 }],
   // drive-in channel flip: a click then a burst of static
   chStatic: [{ type: 'square', f0: 220, f1: 90, dur: 0.04, vol: 0.07 }, { type: 'noise', f0: 3000, dur: 0.4, vol: 0.06, q: 0.3, delay: 0.02 }],
   // island village (Keeper's Light)

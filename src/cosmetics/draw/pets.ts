@@ -4,7 +4,7 @@ import { circle, line, oval, poly, rect, TAU, type G } from './prims';
 export interface PetCtx { t: number; speed: number; gait: number; color: string }
 
 /** Runners trot ahead of the front wheel; fliers hover behind the rider's shoulder. */
-export const FLIERS = new Set(['bee', 'parrot', 'bat', 'dragon', 'ghost', 'gull', 'drone', 'miniufo']);
+export const FLIERS = new Set(['bee', 'parrot', 'bat', 'dragon', 'ghost', 'gull', 'drone', 'miniufo', 'ember']);
 /** Where each kind sits in rider space (ground at y = 0). */
 export const RUN_AT: [number, number] = [15, 0];
 export const FLY_AT: [number, number] = [-12, -25];
@@ -102,6 +102,17 @@ const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
     oval(g, '#20232c', 0, -3.4, 1.9, 3.2); oval(g, '#f8f8f0', 0.6, -3, 1.2, 2.5); circle(g, '#20232c', 0.4, -6.4, 1.3);
     poly(g, '#ff9a2b', [1.6, -6.5], [2.8, -6.2], [1.6, -5.9]); eye(g, 1, -6.7); rect(g, '#ff9a2b', -1, -0.4, 2.4, 0.5);
     g.restore();
+  },
+  ember: (g, c) => {
+    const y = hover(c), f = 0.7 + Math.sin(c.t * 12) * 0.3;
+    circle(g, '#ff8a1a', 0, y, 1.4 * f); circle(g, '#ffd23b', 0.2, y + 0.2, 0.7 * f);
+    poly(g, '#e8322b', [-0.4, y + 0.6], [0, y - 1.6 * f], [0.5, y + 0.4]);
+  },
+  turret: (g, c, rest) => {
+    const y = rest ? 0.6 : Math.abs(Math.sin(c.gait)) * 0.2;
+    rect(g, '#5a616e', -2.2, -2.4 + y, 4.4, 2); rect(g, '#3a3f48', -2.6, -1.2 + y, 5.2, 0.8);
+    g.save(); g.translate(0.4, -2.2 + y); g.rotate(Math.sin(c.t * 1.5) * 0.4);
+    rect(g, '#7d8494', 0, -0.4, 3.2, 0.8); circle(g, '#ffd23b', 3.2, 0, 0.35); g.restore();
   },
   robodog: (g, c, rest) => {
     const y = rest ? 0.8 : 0;

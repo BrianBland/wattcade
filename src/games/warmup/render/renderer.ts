@@ -12,8 +12,8 @@ import { blendColors, layerAlphas, mixColor } from './blend';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
 import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
 import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
-import { Soundscape, speedFactor, type SceneId } from './soundscape';
-import { ambientDucked, play, setAmbient, stopAmbient } from '../../../audio/sfx';
+import { landmarkNear, Soundscape, speedFactor, type SceneId } from './soundscape';
+import { ambientDucked, play } from '../../../audio/sfx';
 import { makeRng } from '../../../core/rng';
 import { drawRoadStructure } from './biomesNew';
 import { RIDER_LIFETIME_S } from '../sim/traffic';
@@ -55,7 +55,6 @@ export class WarmupRenderer implements GameRenderer {
   private lastBiome: string | null = null; private lastDriveIn = false; private titleAt = -99; private title = '';
   private texts: Text[] = [];
   private lastNow = 0;
-  private ambientAt = 0;
   private sounds: Soundscape | null = null;
   private actorRng: (() => number) | null = null;
   private screen: ScreenRect | null = null;
@@ -88,7 +87,7 @@ export class WarmupRenderer implements GameRenderer {
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
     this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
   }
-  unmount() { this.canvas?.remove(); stopAmbient(); }
+  unmount() { this.canvas?.remove(); }
 
   private terr(s: WarmupSnapshot): Terrain {
     const key = `${s.terrainSeed}:${s.maxGrade}`;
@@ -337,20 +336,15 @@ export class WarmupRenderer implements GameRenderer {
     this.overlay(s, RX, roadY0, UH, t);
   }
 
-  /** Ambient bed (blended across the scene) plus per-biome one-shots; both fade out when the rider stops and duck for music / the Drive-In video. */
-  private audio(now: number, s: WarmupSnapshot, scene: Scene) {
-    if (now - this.ambientAt < 0.5) return;
-    this.ambientAt = now;
+  /** Per-biome one-shots. They fade out when the rider stops and duck for music / the Drive-In video. No looping noise bed: that reads as constant static behind the menus. */
+  private audio(now: number, s: WarmupSnapshot, _scene: Scene) {
     const sp = speedFactor(s.v);
-    let vol = 0, lf = 0, q = 0;
-    for (const [l, w] of scene) { const a = l.ambient; if (!a) continue; vol += a.vol * w; lf += Math.log(a.freq) * w; q += (a.q ?? 0.7) * w; }
-    const wt = scene.reduce((a, [l, w]) => a + (l.ambient ? w : 0), 0) || 1;
-    setAmbient('warmup', vol * sp, Math.exp(lf / wt), q / wt);
     this.sounds ??= new Soundscape(makeRng(s.terrainSeed ^ 0x5eed));
     const weights: Array<[SceneId, number]> = [];
     for (const [id, w] of biomeWeights({ cur: s.from, next: s.to, mix: s.mix })) weights.push([id, w * (1 - s.driveIn)]);
     if (s.driveIn > 0) weights.push(['driveIn', s.driveIn]);
-    for (const sh of this.sounds.tick(now, weights, sp, ambientDucked())) play(sh.sfx, { vol: sh.vol, pitch: sh.pitch });
+    const W = this.LW;
+    for (const sh of this.sounds.tick(now, weights, sp, ambientDucked(), (id) => landmarkNear(id, s.d * PPM * BACK_PARALLAX, W))) play(sh.sfx, { vol: sh.vol, pitch: sh.pitch });
   }
 
   /** Spawn and retire tumbleweeds while the scene has any desert in it (seeded, so a given seed rolls the same weeds). */

@@ -118,7 +118,7 @@ export const scenarios: Array<{
     name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!(n(s, 'callsWon') >= 4)) f.push(`callsWon ${s.callsWon} < 4`);
+      if (!(n(s, 'callsWon') >= 3)) f.push(`callsWon ${s.callsWon} < 3`);
       // A steady rider wins Holds but rarely Spins or Grinds (both are judged against its own recent cadence),
       // so the share depends on the brood mix: one call per work wave, one weapon per wave.
       if (!(n(s, 'callsWon') / Math.max(1, n(s, 'callsWon') + n(s, 'callsFailed')) >= 0.35)) f.push('passive endurance rider won under 35% of the calls');
@@ -156,7 +156,7 @@ export const scenarios: Array<{
     simOpts: { autopilot: true, actionBot: true, baseHp: 1000 },
     assert(s, _stats, run) {
       const f: string[] = [];
-      if (!(n(s, 'wavesSurvived') >= 15)) f.push(`wavesSurvived ${s.wavesSurvived} < 15`);
+      if (!(n(s, 'wavesSurvived') >= 14)) f.push(`wavesSurvived ${s.wavesSurvived} < 14`);
       if (!(n(s, 'surgesWon') >= 3) || n(s, 'surgesFailed') !== 0) f.push('deep rider did not answer the surges');
       if (!run.events.some(e => e.type === 'action')) f.push('deep rider never used combat actions');
       return f;

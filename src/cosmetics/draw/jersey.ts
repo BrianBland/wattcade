@@ -1,5 +1,5 @@
 import type { JerseyLook } from '../types';
-import { circle, line, poly, quad, shade, TAU, type G, type P } from './prims';
+import { circle, line, poly, quad, rect, shade, TAU, type G, type P } from './prims';
 
 /**
  * A broad, tapered jersey with a shoulder and a distinct hem. Drawn in a local frame:
@@ -88,6 +88,10 @@ function pattern(g: G, j: JerseyLook, L: number, w: number, t: number) {
     case 'neon': along([-1.4, 1.4], 0.5); hoops(2.8, 0.5); break;
     case 'marble': quad(g, ink, 0.25, [0, -1.2], [3, 1], [L, -0.4]); quad(g, ink, 0.18, [2, 1.6], [5, -1.4], [L, 1.2]); break;
     case 'royal': g.fillStyle = ink; g.fillRect(L - 1.5, -w, 1.5, 2 * w); for (const v of [-1, 0.4]) circle(g, '#15151c', L - 0.8, v, 0.2); break;
+    case 'embers': for (let i = 0; i < 5; i++) { const u = 0.6 + (i * 1.7) % (L - 1), v = -h + 0.6 + ((i * 1.3) % (2 * h - 1)); circle(g, ink, u, v, 0.35 + (i % 3) * 0.2); circle(g, '#ff8a1a', u + 0.5, v + 0.4, 0.2); } break;
+    case 'scrap': for (let u = 0.4; u < L; u += 1.6) for (let v = -h + 0.3; v < h; v += 1.4) rect(g, ink, u, v, 0.9, 0.7); break;
+    case 'dynamo': { g.strokeStyle = ink; g.lineWidth = 0.4; g.beginPath(); g.arc(L * 0.6, 0, 1.6, t * 4, t * 4 + 4); g.stroke(); circle(g, ink, L * 0.6, 0, 0.4); break; }
+    case 'chevrons': for (let u = 0.4; u < L; u += 2.2) poly(g, ink, [u, -h + 0.4], [u + 1.4, 0], [u, h - 0.4], [u + 0.5, h - 0.4], [u + 1.9, 0], [u + 0.5, -h + 0.4]); break;
     case 'bolt': poly(g, ink, [0.4, 0.6], [L * 0.5, -0.3], [L * 0.5, 0.5], [L - 0.5, -0.8], [L * 0.55, 0.9], [L * 0.55, 0.1]); break;
     case 'flames': for (let i = 0; i < 4; i++) { const v = -h + 0.5 + i * 0.9, len = 3 + Math.sin(t * 8 + i * 2) * 0.8 + (i % 2) * 1.5; poly(g, ink, [-0.5, v - 0.45], [len, v], [-0.5, v + 0.45]); } break;
   }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { blendColors, layerAlphas, mixColor, rgb } from '../render/blend';
 import { makeMesa, mesaSlot, mesaThemeAt, DESERT_MESA } from '../render/mesa';
 import { hop, makeWeed, weedAt, weedGone } from '../render/tumbleweed';
-import { SOUNDSCAPE, Soundscape, speedFactor } from '../render/soundscape';
+import { landmarkNear, SOUNDSCAPE, Soundscape, speedFactor } from '../render/soundscape';
 import { makeRng } from '../../../core/rng';
 import { BIOMES } from '../sim/terrain';
 
@@ -86,7 +86,7 @@ describe('soundscape', () => {
     const a = run([['jungle', 1]], 1), b = run([['jungle', 1]], 1);
     expect(a).toEqual(b);
     expect(a.length).toBeGreaterThan(20);
-    expect(new Set(a)).toEqual(new Set(['birdTrill', 'birdWhistle', 'monkeyHoot']));
+    expect(new Set(a)).toEqual(new Set(['birdTrill', 'birdWhistle', 'monkeyHoot', 'waterfall']));
   });
   it('is silent when stopped or ducked, and crossfades by weight', () => {
     expect(run([['jungle', 1]], 0)).toEqual([]);
@@ -96,4 +96,19 @@ describe('soundscape', () => {
     expect(mixed.filter((x) => x === 'birdTrill').length).toBeLessThan(all.filter((x) => x === 'birdTrill').length);
   });
   it('speed factor ramps 0..1', () => { expect(speedFactor(0)).toBe(0); expect(speedFactor(3)).toBe(0.5); expect(speedFactor(30)).toBe(1); });
+  it('the falls are loudest under the cliff and silent once it has scrolled off', () => {
+    // painted at backdrop x = k*360 - scroll + 100; a 300 px view is centred at 150
+    expect(landmarkNear('waterfall', 100 - 150, 300)).toBe(1);
+    expect(landmarkNear('waterfall', 100 - 150 + 360, 300)).toBe(1);
+    expect(landmarkNear('waterfall', 100 - 150 + 180, 300)).toBe(0);
+    const near = new Soundscape(makeRng(1)), far = new Soundscape(makeRng(1));
+    const shots = (s: Soundscape, place: number) => {
+      const out: string[] = [];
+      for (let t = 0; t < 120; t += 0.5) for (const sh of s.tick(t, [['jungle', 1]], 1, false, () => place)) out.push(sh.sfx);
+      return out;
+    };
+    expect(shots(near, 1)).toContain('waterfall');
+    expect(shots(far, 0)).not.toContain('waterfall');
+    expect(shots(new Soundscape(makeRng(1)), 0)).toContain('birdTrill');
+  });
 });

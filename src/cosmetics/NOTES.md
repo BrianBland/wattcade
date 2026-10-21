@@ -28,7 +28,7 @@ compositing; glass, biome gear and translucent hats remain outside that cutout. 
 
 C1–C3 implementation and real captures are in `docs/visual-polish/player/README.md`. Locked items remain named and visible. The Light Cycle
 (`bike:tron`, Arcade Rat) no longer paints a trail. Independent `trail:lightcycle` is earned through Afterglow (ten qualifying arcade rides,
-at least ten minutes of active cadence each). It uses the existing trail slot, respects No trail and works on any bike.
+at least ten minutes of active cadence each). It uses the existing trail slot, respects No trail and works on any bike. Titles stay rare: #156 grants hats, jerseys, paint, pets and trails, and `cz_launch` grants a jersey instead of a title.
 
 ## Adding an item
 Add it to `ITEMS` (and a drawer in `BIKES`/`HATS`/pets/trails, or a `JerseyPattern` case). Tests enforce: one item per achievement, one per

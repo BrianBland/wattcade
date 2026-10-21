@@ -3,7 +3,7 @@
 import type { SfxName } from '../../../audio/sfx';
 import type { BiomeId } from '../sim/terrain';
 
-export interface Voice { sfx: SfxName; every: [number, number]; vol: number; pitch?: [number, number] }
+export interface Voice { sfx: SfxName; every: [number, number]; vol: number; pitch?: [number, number]; /** Only while this landmark is on screen (see `landmarkNear`). */ near?: Landmark }
 export type SceneId = BiomeId | 'driveIn';
 
 export const SOUNDSCAPE: Record<SceneId, Voice[]> = {
@@ -16,6 +16,7 @@ export const SOUNDSCAPE: Record<SceneId, Voice[]> = {
   jungle: [
     { sfx: 'birdTrill', every: [4, 9], vol: 1, pitch: [0.75, 1.2] }, { sfx: 'birdWhistle', every: [5, 12], vol: 1, pitch: [0.8, 1.2] },
     { sfx: 'monkeyHoot', every: [20, 40], vol: 1, pitch: [0.85, 1.15] },
+    { sfx: 'waterfall', every: [2.8, 3.2], vol: 1, near: 'waterfall' },
   ],
   desert: [{ sfx: 'windGust', every: [8, 16], vol: 1, pitch: [0.8, 1.2] }, { sfx: 'hawk', every: [18, 35], vol: 1, pitch: [0.9, 1.1] }],
   volcano: [{ sfx: 'rumble', every: [9, 18], vol: 1, pitch: [0.8, 1.2] }, { sfx: 'lavaBubble', every: [1.5, 4.5], vol: 1, pitch: [0.6, 1.3] }],
@@ -30,6 +31,17 @@ export const SOUNDSCAPE: Record<SceneId, Voice[]> = {
 
 export interface Shot { sfx: SfxName; vol: number; pitch: number }
 
+/** Backdrop landmarks a voice can be tied to. Span matches the painted repeat in `worldPolish.ts`. */
+export type Landmark = 'waterfall';
+const LANDMARKS: Record<Landmark, { span: number; at: number }> = { waterfall: { span: 360, at: 100 } };
+/** 1 under the landmark, falling to 0 across half its repeat. The jungle falls sit at this spot in each 360 px of backdrop scroll. */
+export function landmarkNear(id: Landmark, scroll: number, viewW: number): number {
+  const { span, at } = LANDMARKS[id];
+  const x = ((at - scroll) % span + span) % span;
+  const dx = Math.min(Math.abs(x - viewW * 0.5), span - Math.abs(x - viewW * 0.5));
+  return Math.max(0, 1 - dx / (span * 0.5));
+}
+
 /** Below this speed factor the scenery goes silent (a parked screensaver is quiet). */
 export const MIN_SPEED_FACTOR = 0.05;
 /** 0 when stopped .. 1 from `fullAt` m/s, like the ambient bed. */
@@ -41,7 +53,7 @@ export class Soundscape {
   private interval(v: Voice, w: number) { const [a, b] = v.every; return (a + this.rng() * (b - a)) / Math.max(0.25, w); }
 
   /** Sounds due at time `t` (s). `weights` are the scene's share per biome (sum 1): a voice fires with probability = its weight, so boundaries crossfade. */
-  tick(t: number, weights: ReadonlyArray<readonly [SceneId, number]>, speed: number, ducked = false): Shot[] {
+  tick(t: number, weights: ReadonlyArray<readonly [SceneId, number]>, speed: number, ducked = false, near: (id: Landmark) => number = () => 1): Shot[] {
     const out: Shot[] = [];
     for (const [id, w] of weights) {
       if (w < 0.05) continue;
@@ -50,10 +62,11 @@ export class Soundscape {
         let at = this.next.get(key);
         if (at === undefined) { at = t + this.rng() * v.every[1]; this.next.set(key, at); }
         if (t < at) return;
-        this.next.set(key, t + this.interval(v, w));
-        if (ducked || speed < MIN_SPEED_FACTOR || this.rng() > w) return;
+        const place = v.near ? near(v.near) : 1;
+        this.next.set(key, t + this.interval(v, w * Math.max(0.25, place)));
+        if (ducked || speed < MIN_SPEED_FACTOR || place < 0.15 || this.rng() > w) return;
         const [p0, p1] = v.pitch ?? [1, 1];
-        out.push({ sfx: v.sfx, vol: v.vol * w * speed, pitch: p0 + this.rng() * (p1 - p0) });
+        out.push({ sfx: v.sfx, vol: v.vol * w * speed * place, pitch: p0 + this.rng() * (p1 - p0) });
       });
     }
     return out;

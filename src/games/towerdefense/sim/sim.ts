@@ -7,7 +7,7 @@ import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import {
   AIM_LIMIT, BASE_PAD, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS, ROAD_LENGTH,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, flightAt, flightLength, roadAt, towerBuildCost, towerUpgradeCost,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, flightAt, flightLength, roadAt, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { advanceBoss, bossColors, bossHpFloor, createBossState, type BossState } from './boss';
@@ -94,6 +94,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
   const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
   const railLaserDps = T.num('railLaserDps', 140, 0, 300, 1, 'targeting laser dps while Rail is selected (x ftpFraction / 0.95, max x1.5)');
+  const weaponPowerFloor = T.num('weaponPowerFloor', 0.7, 0, 1, 0.05, 'turret output at this fraction of the weapon demand; full output at the demand');
   const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
   const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
   const turretRange = T.num('turretRange', 75, 20, 200, 1, 'Gatling and Rail laser reach from the turret: the upper road is the towers\' job');
@@ -107,7 +108,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const ignitionChance = T.num('ignitionChance', 0.6, 0, 1, 0.05);
   const ignitionRadius = T.num('ignitionRadius', 10, 1, 25, 1);
   const ignitionDamage = T.num('ignitionDamage', 20, 0, 100, 1);
-  const ignitionCap = T.num('ignitionChainCap', 3, 0, 8, 1, 'maximum bursts in one ignition chain, including its first kill');
+  const ignitionCap = T.num('ignitionChainCap', 6, 0, 8, 1, 'maximum bursts in one ignition chain, including its first kill');
   // base, waves
   const baseHpMax = () => opts?.baseHp ?? T.num('baseHp', 100, 10, 1000, 5)();
   const garageAutostart = T.num('garageAutostartS', 30, 5, 120, 1, 'pedalling seconds before a run auto-starts');
@@ -228,6 +229,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const calls = { started: 0, won: 0, failed: 0 };
   let scrap = 0, partsRun = 0, partsEarned = 0;
   let bestRunWaves = 0, wavesCleared = 0, runSurges = 0, bestRunSurges = 0;
+  let runCallsWon = 0, bestRunCalls = 0;
+  let runSpotless = 0, bestRunSpotless = 0, spotlessWaves = 0;
+  let bestChain = 0, strongKills = 0, exposedSprinted = false;
   let workshop: { pad: number; row: number; idle: number } | null = null;
   let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
@@ -319,13 +323,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const cls: HitClass = mult > 1.001 ? 'strong' : mult < 0.999 ? 'resisted' : 'neutral';
     if (e.hitT === t) { e.hitDmg += damage; if (cls !== 'neutral') e.hitCls = cls; } else { e.hitT = t; e.hitDmg = damage; e.hitCls = cls; }
     if (e.hp <= 0) {
-      kill(e, src);
+      kill(e, src, cls);
       if (el === 'red' && element === 'red') ignite(e, src, chain ?? { id: ++ignitionChainId, bursts: 0 });
     }
   }
   function ignite(e: Enemy, src: 'player' | 'tower' | 'emp', chain: IgnitionChain) {
     if (chain.bursts >= Math.floor(ignitionCap()) || ctx.rng() >= ignitionChance()) return;
     chain.bursts++;
+    bestChain = Math.max(bestChain, chain.bursts);
     stats.ignitionBursts++;
     const r = ignitionRadius();
     addFx({ kind: 'burst', life: 0.5, x: e.x, y: e.y, r, chain: chain.id, ordinal: chain.bursts });
@@ -335,10 +340,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
   }
 
-  function kill(e: Enemy, src: 'player' | 'tower' | 'emp') {
+  function kill(e: Enemy, src: 'player' | 'tower' | 'emp', cls: HitClass = 'neutral') {
     e.dead = true;
     const def = KINDS[e.kind];
     const key = e.kind === 'boss' ? 'gold' : elementOf(e);
+    if (cls === 'strong') strongKills++;
     addFx({ kind: 'death', life: def.heavy ? 0.7 : 0.4, x: e.x, y: e.y, color: e.kind === 'boss' ? 'gold' : key as Element, big: def.heavy, eid: e.id, ekind: e.kind, fire: e.lastEl === 'red' });
     kills[key]++;
     if (src === 'tower') stats.towerKills++;
@@ -358,7 +364,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.colors.length ?? 0 } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
       persist();
-    } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave } });
+    } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave, matchup: cls } });
   }
   /** Spawns near another alien: on the road at its distance, or (for a flyer's brood) on the road below it. */
   function spawnAt(kind: Kind, from: Enemy, dOff: number) {
@@ -416,7 +422,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (!effort || effort.state === 'won' || effort.state === 'failed') return;
     const e = effort;
     e.state = won ? 'won' : 'failed'; effortEndedAt = t;
-    if (won) calls.won++; else calls.failed++;
+    if (won) { calls.won++; runCallsWon++; bestRunCalls = Math.max(bestRunCalls, runCallsWon); }
+    else calls.failed++;
     ctx.emit({ type: won ? 'effortWon' : 'effortFailed', data: { wave: e.wave, kind: e.kind } });
     addFx({ kind: 'payoff', life: 1.4, effort: e.kind, won });
     if (won) addFx({ kind: 'hitStop', life: 0.1, seconds: payoffHitStop() });
@@ -485,7 +492,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const bonus = gainScrap(10 + wave * 2 + (early ? 10 : 0));
     const heal = early ? clearHealFor(waveElapsed, leakDmg, { heal: clearHeal(), speedBonus: speedHeal(), waveMinS: waveMin(), waveMaxS: waveMax(), leakZero: leakHealZero() }) : 0;
     baseHp = Math.min(baseMaxHp, baseHp + heal);
-    ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg } });
+    // Spotless is the full clean-clear heal, not merely "nothing leaked": a zone-2 ride leaks nothing.
+    const spotless = early && leakDmg === 0 && heal >= clearHeal() + speedHeal();
+    if (spotless) { runSpotless++; spotlessWaves++; bestRunSpotless = Math.max(bestRunSpotless, runSpotless); }
+    else runSpotless = 0;
+    ctx.emit({ type: 'waveCleared', data: { wave, heal, leakDmg, spotless, runSpotless } });
     say(`Wave ${wave} cleared`, `+${bonus} scrap · +${p} parts${heal ? ` · base +${heal} HP${leakDmg === 0 ? ' (clean)' : ''}` : ''}`, '#7dffb0');
     leakDmg = 0;
     cue('waveClear');
@@ -500,6 +511,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else { stats.runsBailed++; save.totals.runsBailed++; }
     // Parts already enter the bank as earned; ending a run never adds them a second time.
     persist();
+    runCallsWon = 0; runSpotless = 0; runSurges = 0;
     ctx.emit({ type: 'runEnded', data: { reason, wave, wavesSurvived, parts: partsRun } });
     lull = 0; swapLeft = 0; plan = undefined!;
     phase = 'garage'; garageSel = 0; garageT = 0; garageBreather = garageBreatherS();
@@ -538,6 +550,18 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   const stalled = () => phase === 'run' && stallT >= stallGrace();
   const odMult = () => (overdrive ? overdriveMult() : 1);
+  /**
+   * The turret's share of its rated output for the weapon that spends watts. Fireball and Rail are rated at
+   * their trainer target, so a steady zone-2 ride (~0.65 FTP) is about half power and the brood gets through.
+   * Gatling spends crank revs, not watts, so it is not scaled here. Below `weaponPowerFloor` of the demand the
+   * turret is at the floor; at the demand it is at full.
+   */
+  function weaponPower(): number {
+    if (weapon === 'gatling') return 1;
+    const have = ctx.bike().ftpFraction / (weapon === 'flame' ? 0.85 : railFtp());
+    const floor = weaponPowerFloor();
+    return clamp((have - floor) / Math.max(1e-6, 1 - floor), 0, 1.5);
+  }
 
   function fireRail(n: number) {
     n = Math.min(n, railCharges);
@@ -597,9 +621,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return Math.hypot(e.x - p.x, e.y - p.y) <= r + radiusOf(e);
   }
   function updateTowers(dt: number) {
-    const rate = grid * odMult() * (overchargeLeft > 0 ? overchargeMult() : 1);
+    const boost = grid * odMult() * (overchargeLeft > 0 ? overchargeMult() : 1);
+    // A watt weapon's brood is that weapon's job. Any tower the brood does not resist answers to the same
+    // watts, or the others cover the wave and the push never matters. A resisted tower, and every tower
+    // during a Gatling wave (the turret spends revs there), keeps its cadence-powered rate.
+    const fed = weapon === 'gatling' ? 1 : weaponPower();
+    const brood = plan?.brood;
     for (const tw of towers) {
       if (!tw) continue;
+      const covers = brood != null && match[TOWER_WEAPON[tw.kind]][brood]() >= 1;
+      const rate = (covers ? fed : 1) * boost;
       const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
       tw.cd = Math.max(-0.01, tw.cd - dt * rate);
       if (tw.cd > 0 || rate <= 0) continue;
@@ -693,7 +724,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (scrap < c) { cue('deny'); return false; }
     scrap -= c; tw.level++; stats.towerUpgrades++;
     cue('upgrade');
-    ctx.emit({ type: 'towerUpgraded', data: { tower: tw.kind, level: tw.level } });
+    ctx.emit({ type: 'towerUpgraded', data: { tower: tw.kind, pad, level: tw.level } });
     return true;
   }
   function sell(pad: number) {
@@ -872,7 +903,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     zDown = false; zHold = 0; zDumped = false;
     surge = null; effort = null; spin = null; overclock = 0;
     flaming = false; flamePower = 0; grid = 0; overdrive = false; laserId = 0;
-    wavesSurvived = 0; runSurges = 0; partsRun = 0; waveElapsed = 0; lull = 0; miniTimer = 2;
+    wavesSurvived = 0; runSurges = 0; runCallsWon = 0; runSpotless = 0; partsRun = 0; waveElapsed = 0; lull = 0; miniTimer = 2;
     baseHurt = 99;
     resetCombat();
     callSchedule.nextWave = 2; callSchedule.lastWave = 0;
@@ -1037,6 +1068,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     overdrive = bike.sprinting;
     if (overdrive) stats.overdriveS += dt;
     if (overdrive && !wasOd) { cue('overdrive'); ctx.emit({ type: 'overdrive' }); }
+    // The opening lasts a few seconds and the boss often dies before it; a sprint that lands inside it is the answer.
+    if (overdrive && enemies.some((e) => !e.dead && e.boss?.exposed)) exposedSprinted = true;
     railCharging = bike.ftpFraction >= railMinFtp() && railCharges < railCap();
     if (bike.ftpFraction >= railMinFtp()) {
       railProgress += (dt / railPeriod()) * Math.min(1.5, bike.ftpFraction / 0.95) * mods.railRate;
@@ -1071,7 +1104,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         revAcc -= perShot; shots++;
         const e = nearestInCone(aim, 0.1, turretRange());
         const end = e ? { x: e.x, y: e.y } : { x: BASE_X + Math.sin(aim) * 110, y: BASE_Y - Math.cos(aim) * 110 };
-        if (e) hit(e, gatlingDmg() * mods.gatlingMult * odMult(), 'blue');
+        if (e) hit(e, gatlingDmg() * mods.gatlingMult * odMult() * weaponPower(), 'blue');
         addFx({ kind: 'tracer', life: 0.1, x0: BASE_X + Math.sin(aim) * 7, y0: BASE_Y - Math.cos(aim) * 7, x1: end.x, y1: end.y, hit: !!e });
       }
       if (shots) cue('shoot');
@@ -1082,7 +1115,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       fireballT -= dt;
       if (fireballT <= 0 && tgt && tgt.route < 0 && angDiff(tgt.angle, aim) < 0.25) {
         fireballT = fireballPeriod();
-        lobFireball(tgt, bike.power3s * flameDpw() * mods.flameMult * odMult() * fireballPeriod());
+        lobFireball(tgt, bike.power3s * flameDpw() * mods.flameMult * odMult() * weaponPower() * fireballPeriod());
       }
     }
     updateFireballs(dt);
@@ -1090,7 +1123,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     laserId = 0;
     if (weapon === 'rail' && ready && bike.cadence3s > 15) {
       const e = nearestInCone(aim, 0.06, turretRange());
-      if (e) { laserId = e.id; hit(e, railLaserDps() * Math.min(1.5, bike.ftpFraction / 0.95) * odMult() * dt, 'purple'); }
+      if (e) { laserId = e.id; hit(e, railLaserDps() * Math.min(1.5, bike.ftpFraction / 0.95) * odMult() * weaponPower() * dt, 'purple'); }
     }
 
     updateTowers(dt);
@@ -1326,7 +1359,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         over: false, bestWave: bestWave(), kills: { ...kills },
         hooks: { storm: false, surge: effort?.state === 'active',
           cadence: effort && (effort.state === 'active' || effort.state === 'announced') ? effort.kind === 'grind' ? (effort.minRpm + effort.maxRpm) / 2 : effort.kind === 'spin' ? effort.minRpm + 3 : undefined : undefined,
-          powerFtp: effort?.targetFtp, shielded: bossView()?.exposed ?? false },
+          powerFtp: effort?.targetFtp ?? (weapon === 'flame' ? 0.85 : weapon === 'rail' ? railFtp() : 0.65), shielded: bossView()?.exposed ?? false },
       };
     },
     summary() {
@@ -1344,7 +1377,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         surgesWon: stats.surgesWon, surgesFailed: stats.surgesFailed,
         spinsWon: stats.spinsWon, spinsFailed: stats.spinsFailed, overclockSeconds: Math.round(stats.overclockS),
         callsStarted: calls.started, callsWon: calls.won, callsFailed: calls.failed,
-        ignitionBursts: stats.ignitionBursts,
+        bestRunCalls, callsMissed: calls.failed,
+        ignitionBursts: stats.ignitionBursts, bestChain,
+        strongKills, exposedSprinted: exposedSprinted ? 1 : 0,
+        spotlessWaves, bestRunSpotless,
         bossesKilled: stats.bosses, bestRunSurges,
         overdriveSeconds: Math.round(stats.overdriveS),
       };

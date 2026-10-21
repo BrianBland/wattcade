@@ -14,7 +14,7 @@ export const LATER = definePalette({
   boatWhite: 0xeeeae0, boatOrange: 0xef6a2a, boatStripe: 0x2f4f6f, steel: 0x8f969c, steel2: 0x6c7379, chain: 0x5a5f64, partGlow: 0x9ff8ff,
   // jungle / temple
   jungle: 0x3f8f3a, jungle2: 0x2f7a33, jungle3: 0x5aa548, fern: 0x6cbf4a, fern2: 0x4f9f3e, trunk: 0x6e4f34, palm: 0x58a83a, palm2: 0x46902f,
-  soil: 0x7a5a3a, moss: 0x6f8f3a, stone: 0xb8b09c, stone2: 0xa59d89, stone3: 0xc8c0aa, stoneDark: 0x5e584c, shadowVoid: 0x0d0b09, flower: 0xf05a7a, flower2: 0xffd23a,
+  soil: 0x5a4028, litter: 0x7a5a32, leafDark: 0x1f5a2a, leafLime: 0x8ccf4a, leafMid: 0x34803a, vine: 0x3f6a2a, bark: 0x5a4a3a, bark2: 0x6e5c48, barkMoss: 0x5a7a3a, teeth: 0xe8dcc0, teeth2: 0xd6c8a8, moss: 0x6f8f3a, stone: 0xb8b09c, stone2: 0xa59d89, stone3: 0xc8c0aa, stoneDark: 0x5e584c, shadowVoid: 0x0d0b09, flower: 0xf05a7a, flower2: 0xffd23a,
   // lava
   basalt: 0x2f2a2e, basalt2: 0x3b3438, basalt3: 0x242024, obsidian: 0x1a1022, obsidian2: 0x2c1a3a, obsidianEdge: 0x7a5aa0,
   lava: 0xff7a1a, lava2: 0xffb02a, lavaHot: 0xffe08a, crust: 0x2a1410, crust2: 0x40201a, ember: 0xff4a10,

@@ -15,6 +15,9 @@ for (const [gameId, buttons] of [
     session.step(150);
     const hud = session.sim.hud!();
     expect(actionIndicators(hud.controls ?? []).map(h => h.id)).toEqual(buttons);
+    if (gameId === 'warmup') expect(hud.touchControls).toEqual([]);
+    if (gameId === 'cadenza') expect(hud.touchControls).toEqual(['z', 'a']);
+    if (gameId === 'hamster') { expect(hud.touchControls).toContain('up'); expect(hud.touchControls).toContain('down'); expect(hud.touchControls).not.toContain('a'); expect(hud.touchControls).not.toContain('z'); }
     const state = session.sim.snapshot() as any;
     if (gameId === 'starfighter') expect(actionIndicators(hud.controls!)[0].fill).toBeCloseTo(state.charge / 100);
     if (gameId === 'watershed') expect(actionIndicators(hud.controls!)[0].fill).toBeCloseTo(1 - state.boost.cd / state.boost.total);

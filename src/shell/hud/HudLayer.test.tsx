@@ -94,3 +94,41 @@ it('keeps the complete guide and fake help on demand, with history outside measu
   act(() => el.querySelector<HTMLButtonElement>('[aria-label="Controller guide"]')!.click());
   expect(controls).toHaveBeenCalledOnce(); expect(el.querySelector('.hud-guide')).toBeNull();
 });
+
+
+it('keeps an explicit empty touch set out of the measured floating envelope', () => {
+  const hud: GameHud = { gears: true, touchControls: [], controls: [{ button: 'dpad', label: 'Move' }, { button: 'a', label: 'Select' }] };
+  act(() => render(<HudLayer session={make(hud)} profile={profile} paused={false} layout="touch" />, el));
+  expect(el.querySelector('.floating-controls')).toBeNull();
+  expect(el.querySelectorAll('[data-hud-occlusion]')).toHaveLength(1);
+});
+
+it('keeps phone gears and secondary tools on demand and cancels a held gear when dismissed', () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
+  const hud: GameHud = { gears: true, targetZone: { min: 4, max: 5, source: 'power', label: 'Climb' }, touchControls: [], controls: [{ button: 'shiftersL', label: 'Gear' }] };
+  act(() => render(<HudLayer session={make(hud)} profile={profile} paused={false} layout="touch" />, el));
+  expect(el.querySelector('.compact-instruments')).not.toBeNull();
+  expect(el.querySelector('.zw-nums>div:first-child .zw-unit')?.textContent).toBe('W');
+  expect(el.querySelector('.zw-label')?.textContent).toContain('Climb');
+  expect(el.querySelector('.zw-label')?.textContent).toContain('+ W');
+  const toggle = el.querySelector<HTMLButtonElement>('button[aria-label="Ride tools"]')!;
+  expect(el.querySelector('.hud-tools-list')?.hasAttribute('hidden')).toBe(true);
+  expect(el.querySelector('[aria-label="Gear up"]')).toBeNull();
+  act(() => toggle.click());
+  const shift = el.querySelector('[aria-label="Gear up"]')!;
+  const down = new Event('pointerdown', { bubbles: true, cancelable: true }); Object.defineProperty(down, 'pointerId', { value: 72 });
+  act(() => { shift.dispatchEvent(down); services.input.beginTick(.1); });
+  expect(services.input.state().held.has('shiftUpL')).toBe(true);
+  act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  act(() => services.input.beginTick(.1));
+  expect(services.input.state().held.has('shiftUpL')).toBe(false);
+  expect(el.querySelector('[aria-label="Gear up"]')).toBeNull();
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  act(() => toggle.click());
+  act(() => el.querySelector<HTMLButtonElement>('[aria-label="Recent effort history"]')!.click());
+  expect(el.querySelector('.hud-peek .zw-chart')).not.toBeNull();
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(el.querySelectorAll('[data-hud-occlusion]')).toHaveLength(1);
+  act(() => el.querySelector<HTMLButtonElement>('[aria-label="Close HUD panel"]')!.click());
+  expect(document.activeElement).toBe(toggle);
+});

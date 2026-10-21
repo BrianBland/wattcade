@@ -100,6 +100,7 @@ export function createWarmupSim(ctx: GameContext, opts: WarmupOpts = {}): GameSi
       return {
         targetZone: { min: 1, max: 2, label: 'Warm-up' },
         gears: true,
+        touchControls: [], // The shell arcade menu supplies native touch navigation.
         controls: [{ button: 'dpad', label: 'Move' }, { button: 'a', label: 'Select' }, { button: 'b', label: 'Back' }],
       };
     },

@@ -15,3 +15,5 @@
 - Tests cover all-game metadata, presence/fallback, held-input cancellation, full legends, post-menu start gating and shaped insets.
 - Native iPad/Bluefy frame pacing and a physical controller ride remain device validation.
 - Responsive review: `docs/visual-polish/hud-responsive/README.md` compares pre-PR, stacked and revised layouts with total reserved heights.
+- Phone/short-landscape instruments use inline readouts, a 6px zone rail and one 44px tools toggle. Gear buttons mount only inside the open tools panel; dismissal cancels holds.
+- Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.

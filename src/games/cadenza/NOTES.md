@@ -37,4 +37,4 @@ Rolling: `announcements.ts` gives effort/launch/helix/steering cues stable IDs; 
 Revisions honor `frozenUntilS` and the local announcement horizon; legacy fallback remains. `extendTrack` keeps road/blocks and committed efforts; new sprints need a countdown.
 Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low confidence use effort-only holds/recovery. No coverage = unchanged full-file/synth plan.
 `test/rolling.test.ts`: real RollingQueue with shifting grids/sections, every announced ID/time, frozen samples, gaps/0.6.
-Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).
+Touch HUD uses Z Left / A Right; duplicate arrows remain in help. Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).

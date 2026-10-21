@@ -1,5 +1,7 @@
 # Controller status HUD
 
+Latest phone/short-landscape implementation: [compact read-only instruments, native-touch deduplication and measured screenshots](../hud-slim/README.md). The captures below predate that follow-up.
+
 With a connected Ride controller or gamepad, the bottom HUD keeps ride metrics,
 active zone/cadence targets, gear/trainer state, and small colored indicators for
 cooldowns or special triggers. Routine navigation, targeting, building and camera

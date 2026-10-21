@@ -3,6 +3,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 import {chromium} from 'playwright-core';
 const base=process.env.REVIEW_URL??'http://127.0.0.1:5212',out=process.argv[2]??'/tmp/wattcade-hud-flow';mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']}),results=[];
+async function hudTool(page,name){const button=page.getByRole('button',{name,exact:true});if(!await button.isVisible())await page.getByRole('button',{name:'Ride tools',exact:true}).click();await button.click();}
 try{
  for(const [game,width,height,label] of [['towerdefense',1180,820,'desktop'],['dungeon',1180,820,'desktop'],['towerdefense',390,844,'phone']]){
   const page=await browser.newPage({viewport:{width,height}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -19,14 +20,14 @@ try{
   else await page.keyboard.press('l');
   await page.waitForSelector('.intro-count');await page.waitForSelector('.intro-count',{state:'hidden'});await page.waitForSelector('.action-indicators');
   assert.equal(await page.locator('.floating-controls').count(),0,'idle controller lost after keyboard start');
-  await page.getByRole('button',{name:'Controller guide',exact:true}).click();await page.locator('.controls-card').waitFor();
+  await hudTool(page,'Controller guide');await page.locator('.controls-card').waitFor();
   if(game==='dungeon')await page.keyboard.press('k');else await page.keyboard.press('Escape');
   await page.locator('.modal.pause').waitFor();assert.equal(await page.getByRole('button',{name:'Finish ride',exact:true}).count(),1);
   assert.equal(await page.getByRole('button',{name:'Return to Garage',exact:false}).count(),game==='towerdefense'?1:0);
   await page.getByRole('button',{name:'Resume',exact:false}).click();await page.waitForSelector('.modal.pause',{state:'hidden'});
   await page.evaluate(()=>window.__pads=[]);await page.waitForSelector('.floating-controls');
   await page.evaluate(()=>window.__pads=[{connected:true,buttons:[],axes:[]}]);await page.waitForSelector('.action-indicators');
-  await page.getByRole('button',{name:'Open game menu',exact:true}).click();await page.locator('.modal.pause').waitFor();
+  await hudTool(page,'Open game menu');await page.locator('.modal.pause').waitFor();
   await page.locator('.field').filter({hasText:'Control layout'}).getByRole('button',{name:'›',exact:true}).click();
   assert.equal(await page.evaluate(()=>localStorage.getItem('wattcade.hudLayout')),'touch');await page.getByRole('button',{name:'Resume',exact:false}).click();await page.waitForSelector('.floating-controls');assert.equal(await page.locator('.action-indicators').count(),0,'manual touch override lost');
   assert.deepEqual(errors,[]);results.push({game,label,bindings,initial,errors,loadoutGuide:true,pauseHelp:true,autoFallback:true,touchOverride:true});writeFileSync(`${out}/checks.json`,JSON.stringify(results,null,2));await page.close();console.log(game+'/'+label+' flow passed');

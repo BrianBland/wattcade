@@ -406,7 +406,7 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
 
   **The town persists** via `ctx.save/load` and keeps growing across sessions.
 - **Storms** (the Z3+ spikes): every 8–12 min (tunable). A 20 s warning (dark clouds, horn), then 60–90 s of storm. During a storm the requirement flips to **power zone ≥ 3** to keep the lamp alive, and a `storm` effect adds +3 % grade. A mid-storm "lightning surge" of 15 s asks for power zone ≥ 5 (bonus salvage if held). Storms are judged on power, not effortZone, because HR lags 30–60 s (see the short-effort rule below). Weathering a storm gives salvage plus a `stormWeathered` event. Expose `hooks.storm` (boolean) in the snapshot for the `storm-ready` script.
-- **Resistance:** sim mode. A `swell` effect adds ±1 % as a sine wave with a 3-minute period. Virtual gears are enabled.
+- **Resistance:** sim mode. Calm riding is flat so the rider can hold a steady effort without chasing a rolling grade. Virtual gears are enabled; storms add their +3 % grade.
 - **Summary:** minutesInZone, shipsDocked, shipsLost, buildingsBuilt, stormsWeathered, coin.
 - **Scenarios:**
   - `z2`, 30 min → shipsDocked ≥ 15 and minutesInZone ≥ 25

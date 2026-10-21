@@ -2,6 +2,7 @@
 // Layers: pad (always) -> bass (1 min steady) -> accordion (3 min) -> fiddle tune (5 min). Night swaps the accordion for a
 // music box; festivals add tambourine and bells and pick up the tempo; storms turn minor with drums. All Web Audio, no assets.
 import { audioOut } from '../../../audio/sfx';
+import { ISLAND_MIX } from './audio';
 import { mulberry } from './util';
 
 export interface MusicState { t: number; streakS: number; night: number; storm: boolean; festival: boolean; paused: boolean }
@@ -33,17 +34,18 @@ export class IslandMusic {
     const wallDt = now - this.lastWall; this.lastWall = now;
     this.stillS = s.t === this.lastSimT ? this.stillS + wallDt : 0; this.lastSimT = s.t;
     const silent = a.ducked || s.paused || this.stillS > 0.6;
-    this.bus.gain.setTargetAtTime(silent ? 0 : 0.55, now, silent ? 0.25 : 1.5);
+    const level = s.storm ? ISLAND_MIX.music.storm : s.festival ? ISLAND_MIX.music.festival : ISLAND_MIX.music.calm;
+    this.bus.gain.setTargetAtTime(silent ? 0 : level, now, silent ? 0.25 : 1.5);
     // layer mix
     const st = s.streakS, calm = !s.storm, f = s.festival && calm, nightK = Math.min(1, s.night * 1.4);
     const mix: Record<Layer, number> = {
       pad: s.storm ? 0.7 : 1,
-      bass: s.storm || f || st > 60 ? 1 : 0,
+      bass: s.storm || f || st > 60 ? 0.85 : 0,
       acc: calm && (f || st > 180) ? 1 - nightK : 0,
       box: calm && (f || st > 180) ? nightK : 0,
       fiddle: calm && (f || st > 300) ? 1 - nightK * 0.4 : 0,
-      tamb: f ? 1 : 0, bells: f ? 1 : 0,
-      drum: s.storm ? 1 : 0,
+      tamb: f ? 0.75 : 0, bells: f ? 0.8 : 0,
+      drum: s.storm ? 0.7 : 0,
     };
     for (const [l, g] of this.layers) g.gain.setTargetAtTime(mix[l], now, 2);
     if (silent) { this.nextAt = Math.max(this.nextAt, now + 0.1); return; }

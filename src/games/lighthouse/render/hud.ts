@@ -10,7 +10,7 @@ const RANKS = ['Apprentice Keeper', 'Keeper', 'Senior Keeper', 'Harbourmaster', 
 /** Endless title from lifetime ships and storms. */
 export function keeperRank(ships: number, storms: number) { const pts = ships + storms * 10; const i = Math.min(RANKS.length - 1, Math.floor(Math.sqrt(pts / 25))); return { name: RANKS[i], next: i < RANKS.length - 1 ? (i + 1) * (i + 1) * 25 - pts : 0 }; }
 import { PLOTS } from '../sim/layout';
-import { play } from '../../../audio/sfx';
+import { playIsland as play } from './audio';
 import { SEASON_NAME, VISITORS } from '../sim/extras';
 import { POSTCARD_CSS, postcardEl, type Postcard } from './postcard';
 

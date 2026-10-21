@@ -1,7 +1,8 @@
 // Keeper's Light renderer: low-poly island in three.js, plus a DOM HUD. Reads only the sim snapshot.
 import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
-import { play, setAmbient, stopAmbient, type SfxName } from '../../../audio/sfx';
+import type { SfxName } from '../../../audio/sfx';
+import { playIsland as play } from './audio';
 import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, MOORING, PIER_LEN, PLOTS, PLOT_COUNT, plotHeight } from '../sim/layout';
 import { NEAR } from '../sim/town';
 import { LAMP, WIN, makeBuilding, makeShip, plotYaw, SHORE_KINDS, type BuildingModel, type ShipModel } from './buildings';
@@ -17,6 +18,7 @@ import { Keeper } from './keeper';
 import { Decor } from './decor';
 import { HUBS } from './life';
 import { IslandMusic } from './music';
+import { IslandAmbience } from './ambience';
 import { addToAlbum, loadAlbum, popSchedule, postcardLines, snapshot } from './postcard';
 import { createLighthouse, createScenery, createTerrain, REEFS, type Lighthouse, type Terrain } from './world';
 
@@ -47,6 +49,7 @@ export class LighthouseRenderer implements GameRenderer {
   private sea!: Sea; private terrain!: Terrain; private lighthouse!: Lighthouse; private life!: Life; private sky!: Sky;
   private fx!: Fx; private wild!: Wildlife; private lastLens = 0; private escort: WildFrame['ships'] = [];
   private keeper = new Keeper(); private decor!: Decor; private music = new IslandMusic();
+  private ambience = new IslandAmbience();
   /** Dusk lamp-lighting / dawn chorus, in sim seconds. */
   private duskAt = -999; private dawnAt = -999; private prevNight = -1; private flared = true;
   private lastDockAt = -999; private dockAt = { x: HARBOUR.x, z: HARBOUR.z }; private nextFireworks = 0;
@@ -402,28 +405,25 @@ export class LighthouseRenderer implements GameRenderer {
   }
 
   // ---------- sound ----------
-  private sounds(s: Snap, storm: number, night: number) {
+  private sounds(s: Snap, storm: number, night: number, dt: number) {
     if (this.lastCue < 0) this.lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
     for (const c of s.cues) if (c.id > this.lastCue) {
       this.lastCue = c.id;
       if (c.name === 'unlock' || c.name === 'reward' || c.name === 'festival') this.fx.fireworks(V(HARBOUR.x, 2, HARBOUR.z + 8), c.name === 'reward' ? 6 : c.name === 'festival' ? 12 : 9);
-      if (c.name === 'thunder') { const d = 300 + Math.random() * 900; setTimeout(() => play('thunder', { minGapS: 0.6, pitch: 0.8 + Math.random() * 0.4 }), d); }
+      if (c.name === 'thunder') this.ambience.lightning(s.t, s.storm.surge);
       else play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] });
     }
-    const surf = 0.5 + 0.5 * Math.sin(s.t * 0.9);
-    setAmbient('sea', 0.05 + 0.06 * surf + s.chop * 0.08, 380 + surf * 260, 0.6);
     const wk = this.weatherK(s);
-    setAmbient('wind', storm * 0.16 + s.fog * 0.02 + wk('windy') * 0.06, 700 + Math.sin(s.t * 0.4) * 200, 1.2);
-    setAmbient('rain', Math.max(0, storm - 0.15) * 0.18 + wk('shower') * 0.05, 2800, 0.3);
+    if (!this.ambience.update({ t: s.t, chop: s.chop, fog: s.fog, storm, windy: wk('windy'), shower: wk('shower') })) return;
     // village life: sheep, puffins on the cliff, children at play (by day, out of storms)
-    const day = night < 0.5 && storm < 0.3, T = this.timers, step = 1 / 30;
+    const day = night < 0.5 && storm < 0.3, T = this.timers, step = dt;
     T.baa -= step; T.puffin -= step; T.giggle -= step;
     if (T.baa <= 0) { T.baa = 25 + Math.random() * 30; if (day) play('baa', { pitch: 0.9 + Math.random() * 0.25 }); }
     if (T.puffin <= 0) { T.puffin = 35 + Math.random() * 30; if (day) play('puffin', { vol: s.view === 2 ? 1.4 : 0.7 }); }
     if (T.giggle <= 0) { T.giggle = 20 + Math.random() * 25; if (day && s.buildings.includes('cottage') && s.season !== 'winter') play('giggle', { pitch: 0.9 + Math.random() * 0.3 }); }
     // festival nights get fireworks every so often
     if (s.festival && night > 0.4 && s.t > this.nextFireworks) { this.nextFireworks = s.t + 22; this.fx.fireworks(V(HARBOUR.x, 2, HARBOUR.z + 8), 5); }
-    this.nextGull -= 1 / 30;
+    this.nextGull -= dt;
     if (this.nextGull <= 0) { this.nextGull = 12 + Math.random() * 20; if (night < 0.5 && storm < 0.3) play('gull', { pitch: 0.85 + Math.random() * 0.3 }); }
   }
 
@@ -455,6 +455,7 @@ export class LighthouseRenderer implements GameRenderer {
     const when = popSchedule(fresh.length);
     const shotAt = Math.max(7.5, (when[when.length - 1] ?? 0) + 1.4);
     const az = Math.atan2(this.camPos.x - this.camTgt.x, this.camPos.z - this.camTgt.z);
+    this.ambience.dispose();
     this.recap = { at: performance.now() / 1000, pops: new Map(fresh.map((p, i) => [p, when[i]])), shotAt, shot: false, az, popped: new Set() };
     this.hud.setRecap(true);
     return Math.min(14, shotAt + 4.5);
@@ -528,7 +529,7 @@ export class LighthouseRenderer implements GameRenderer {
     this.fx.update(dt);
 
     if (rc) this.recapPops(rc, rt);
-    else this.sounds(s, storm, sky.night);
+    else this.sounds(s, storm, sky.night, dt);
     this.hud?.update(s);
     this.lastT = s.t;
     this.renderer.render(this.scene, this.camera);
@@ -590,7 +591,7 @@ export class LighthouseRenderer implements GameRenderer {
   unmount() {
     this.ro?.disconnect();
     this.renderer?.domElement.removeEventListener('pointerdown', this.onDown);
-    stopAmbient(); this.music.dispose();
+    this.ambience.dispose(); this.music.dispose();
     this.hud?.unmount();
     this.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
     disposeShared();

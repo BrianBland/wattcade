@@ -13,7 +13,7 @@ export type SfxName =
   | 'count' | 'go' | 'gameOver' | 'milestone'
   | 'birdTrill' | 'birdWhistle' | 'birdChirp' | 'monkeyHoot' | 'songbird' | 'cow' | 'waveWash' | 'windGust' | 'hawk'
   | 'bubblePop' | 'whale' | 'rumble' | 'lavaBubble' | 'windHowl' | 'ufoWarble' | 'cricket' | 'chStatic'
-  | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin'
+  | 'festival' | 'cheer' | 'giggle' | 'baa' | 'puffin' | 'shoreBreak' | 'thunderRoll'
   | 'teslaCrack' | 'mortarThump' | 'prismBeam' | 'railShot' | 'chitinCrunch' | 'chitinCrunchBig' | 'rivetBuild' | 'boltOn' | 'hiveHorn' | 'waveClearTd' | 'clank' | 'ignite' | 'payoffSting';
 
 /** `atk`: fade-in seconds (swells); `vib`: frequency modulation (FM chirps, warbles) as LFO Hz and depth in Hz; noise `f1` sweeps its filter. */
@@ -104,6 +104,16 @@ const R: Record<SfxName, Tone[]> = {
   // drive-in channel flip: a click then a burst of static
   chStatic: [{ type: 'square', f0: 220, f1: 90, dur: 0.04, vol: 0.07 }, { type: 'noise', f0: 3000, dur: 0.4, vol: 0.06, q: 0.3, delay: 0.02 }],
   // island village (Keeper's Light)
+  shoreBreak: [
+    { type: 'noise', f0: 280, f1: 850, dur: 3.8, vol: 0.07, q: 0.4, atk: 1.1 },
+    { type: 'noise', f0: 1800, f1: 650, dur: 3.0, vol: 0.045, q: 0.4, atk: 0.65, delay: 0.8 },
+    { type: 'noise', f0: 3600, f1: 1400, dur: 2.6, vol: 0.018, q: 0.5, atk: 0.35, delay: 1.6 },
+  ],
+  thunderRoll: [
+    { type: 'noise', f0: 190, f1: 65, dur: 5.2, vol: 0.23, q: 0.5, atk: 0.18 },
+    { type: 'noise', f0: 380, f1: 100, dur: 3.8, vol: 0.12, q: 0.6, atk: 0.4, delay: 0.55 },
+    { type: 'noise', f0: 120, f1: 55, dur: 3.2, vol: 0.1, q: 0.5, atk: 0.6, delay: 1.7 },
+  ],
   festival: [523, 659, 784, 659, 784, 1047].map((f, i) => ({ type: 'triangle' as const, f0: f, dur: i === 5 ? 0.6 : 0.16, vol: 0.13, delay: [0, 0.14, 0.28, 0.5, 0.64, 0.8][i] })),
   cheer: [
     ...[0, 0.05, 0.12, 0.2].map((d, i) => ({ type: 'noise' as const, f0: 900 + i * 350, f1: 1400 + i * 300, dur: 0.9, vol: 0.05, q: 1.6, delay: d, atk: 0.12 })),
@@ -183,7 +193,8 @@ export function play(name: SfxName, opts: { vol?: number; minGapS?: number; pitc
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + tn.dur);
     g.connect(master);
     if (tn.type === 'noise') {
-      const s = c.createBufferSource(); s.buffer = noise;
+      // The shared noise buffer is short; loop it for the entire envelope (surf and thunder have long tails).
+      const s = c.createBufferSource(); s.buffer = noise; s.loop = true;
       const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.setValueAtTime(tn.f0 * p, t0); f.Q.value = tn.q ?? 0.8;
       if (tn.f1) f.frequency.exponentialRampToValueAtTime(tn.f1 * p, t0 + tn.dur);
       s.connect(f); f.connect(g); s.start(t0); s.stop(t0 + tn.dur);

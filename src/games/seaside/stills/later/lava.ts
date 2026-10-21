@@ -85,10 +85,23 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
 
   // magma fish: one voxel model, several instances that leap on looping arcs (see tick); embers + drips are particles
   const fishG = new VoxelGrid(0.1);
-  for (let i = 0; i < 14; i++) { const u = i / 13 - 0.5, r = 0.42 * Math.cos(u * Math.PI * 0.95) + 0.05; fishG.wellipsoid([u * 2.6, 0, 0], [r, r, r], i > 10 ? L.lavaHot : i % 3 ? L.magma : L.magma2); }
-  for (let k = 0; k <= 4; k++) fishG.wellipsoid([-1.45, (k - 2) * 0.18, 0], [0.1, 0.1, 0.1], L.lava2); // tail fan
-  const LEAPS = [[-14, -20, -5, -32, 12, 2.6, 0.0], [16, -40, 7, -28, 15, 3.1, 0.9], [-20, -55, -9, -64, 17, 2.9, 1.7], [8, -70, 18, -80, 14, 2.4, 0.4], [-7, -14, -2, -8, 8, 2.2, 2.3], [22, -24, 12, -16, 11, 2.7, 1.3]];
-  const fishes = LEAPS.map(() => { const grp = new THREE.Group(); const inner = new THREE.Group(); inner.scale.setScalar(2.2); grp.add(inner); addGlow(st, 'magma fish', fishG, 2.2, inner); st.scene.add(grp); return grp; });
+  // a long magma eel (head at +x): dark cooled-crust bands over white-hot seams so its silhouette reads against the lava
+  for (let i = 0; i <= 70; i++) {
+    const u = i / 70, x = (u - 0.6) * 4.6, r = 0.4 * Math.sin(Math.PI * Math.min(1, 0.15 + u * 0.95)) + 0.07;
+    const band = Math.floor(u * 9) % 3 === 0; // narrow cooled bands over a bright molten body
+    fishG.wellipsoid([x, Math.sin(u * 7) * 0.12, 0], [0.14, r, r * 0.9], u > 0.9 ? L.lavaHot : band ? L.ember : u % 0.22 < 0.11 ? L.magma : L.lava2);
+    fishG.wellipsoid([x, Math.sin(u * 7) * 0.12 - r * 0.45, 0], [0.09, r * 0.45, r * 0.6], L.lavaHot); // glowing belly seam
+    if (i % 6 === 0) fishG.wellipsoid([x, Math.sin(u * 7) * 0.12 + r * 0.85, 0], [0.06, 0.1, 0.05], L.magma2); // dorsal sparks
+  }
+  for (const sz of [-1, 1]) fishG.wellipsoid([1.95, 0.08, sz * 0.18], [0.07, 0.07, 0.04], L.lavaHot); // eyes
+  for (let k = 0; k <= 5; k++) fishG.wellipsoid([-2.75 - k * 0.06, (k - 2.5) * 0.14, 0], [0.08, 0.08, 0.06], L.lava2); // tail fin
+  // [x0, z0, x1, z1, height, period, phase, airborne fraction] — high leaps; two of them vault the bridge side to side
+  const LEAPS = [
+    [-14, -22, -4, -34, 22, 3.6, 0.0, 0.6], [16, -46, 6, -32, 26, 4.2, 1.6, 0.6], [-22, -60, -10, -70, 28, 4.0, 2.8, 0.6], [10, -78, 20, -90, 24, 3.4, 0.7, 0.6],
+    [-30, -18, 30, -27, 40, 6.0, 0.3, 0.55], // over the bridge, left → right
+    [32, -34, -32, -40, 44, 7.0, 3.4, 0.55], // and back, right → left
+  ];
+  const fishes = LEAPS.map(() => { const grp = new THREE.Group(); const inner = new THREE.Group(); inner.scale.setScalar(2.6); grp.add(inner); addGlow(st, 'magma fish', fishG, 2.2, inner); st.scene.add(grp); return grp; });
   const drips = new Particles(st, 400, { intensity: 2.4 }), embers = new Particles(st, 220, { intensity: 2.2 });
 
   // the lava lights the cavern: a grid of warm lights just above the surface, plus a glow under the bridge
@@ -107,16 +120,16 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
     setGlow(lavaGrp, 1 + 0.12 * wob(t * 0.6, 1)); // the whole lake breathes
     let nd = 0;
     LEAPS.forEach((Lp, i) => { // each fish: leap (period × 0.55), then hidden under the crust
-      const per = Lp[5], ph = ((t + Lp[6]) % per) / per, u = ph / 0.55, g = fishes[i];
+      const per = Lp[5], ph = ((t + Lp[6]) % per) / per, u = ph / Lp[7], g = fishes[i];
       g.visible = u <= 1;
       if (!g.visible) return;
       const p = arc(Lp, u), q = arc(Lp, Math.min(1, u + 0.02));
-      g.position.set(p[0], p[1], p[2]); g.lookAt(q[0], q[1], q[2]); g.rotateY(-Math.PI / 2); g.rotateZ(Math.sin(t * 14 + i) * 0.25);
-      for (let k = 1; k < 26 && nd < 400; k++) { const uu = u - k * 0.012; if (uu < 0) break; const d = arc(Lp, uu); drips.set(nd++, [d[0] + (rnd(k, i, 150) - 0.5) * 0.8, d[1] - k * 0.07 - (t * 3 % 1) * 0.1, d[2] + (rnd(k, i, 151) - 0.5) * 0.8], 0.4 * (1 - k / 26) + 0.1, k % 2 ? L.lava2 : L.ember); }
-      if (u > 0.92 || u < 0.06) for (let k = 0; k < 18 && nd < 400; k++) { const a = rnd(k, i, 152) * Math.PI * 2, rr = 0.4 + rnd(k, i, 153) * 1.6; drips.set(nd++, [p[0] + Math.cos(a) * rr, LAVA_Y + 0.3 + rnd(k, i, 154) * 2.5, p[2] + Math.sin(a) * rr * 2], 0.45, L.lavaHot); } // splash
+      g.position.set(p[0], p[1], p[2]); g.lookAt(q[0], q[1], q[2]); g.rotateY(-Math.PI / 2); g.rotateX(Math.sin(t * 6 + i) * 0.35); g.rotateY(Math.sin(t * 9 + i) * 0.18); // writhing
+      for (let k = 1; k < 26 && nd < 400; k++) { const uu = u - k * 0.012; if (uu < 0) break; const d = arc(Lp, uu); drips.set(nd++, [d[0] + (rnd(k, i, 150) - 0.5) * 0.8, d[1] - k * 0.07 - (t * 3 % 1) * 0.1, d[2] + (rnd(k, i, 151) - 0.5) * 0.8], 0.22 * (1 - k / 26) + 0.06, k % 2 ? L.lava2 : L.ember); }
+      if (u > 0.92 || u < 0.06) for (let k = 0; k < 18 && nd < 400; k++) { const a = rnd(k, i, 152) * Math.PI * 2, rr = 0.4 + rnd(k, i, 153) * 1.6; drips.set(nd++, [p[0] + Math.cos(a) * rr, LAVA_Y + 0.3 + rnd(k, i, 154) * 2.5, p[2] + Math.sin(a) * rr * 2], 0.28, L.lavaHot); } // splash
     });
     drips.commit(nd);
-    for (let i = 0; i < 220; i++) { const x = (rnd(i, 1, 155) - 0.5) * 70, zz = 6 - rnd(i, 2, 155) * 150, rise = 1.5 + rnd(i, 3, 155) * 2, h = 34; embers.set(i, [x + Math.sin(t + i) * 0.8, LAVA_Y + 1 + ((t * rise + rnd(i, 4, 155) * h) % h), zz], 0.22 + 0.1 * Math.sin(t * 6 + i), i % 4 ? L.ember : L.lava2); }
+    for (let i = 0; i < 220; i++) { const x = (rnd(i, 1, 155) < 0.5 ? -1 : 1) * (7 + rnd(i, 6, 155) * 30), /* never over the bridge */ zz = 6 - rnd(i, 2, 155) * 150, rise = 1.5 + rnd(i, 3, 155) * 2, h = 34; embers.set(i, [x + Math.sin(t + i) * 0.8, LAVA_Y + 1 + ((t * rise + rnd(i, 4, 155) * h) % h), zz], 0.22 + 0.1 * Math.sin(t * 6 + i), i % 4 ? L.ember : L.lava2); }
     embers.commit(220);
   };
   return st;

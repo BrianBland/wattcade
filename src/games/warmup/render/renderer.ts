@@ -16,6 +16,7 @@ import { Soundscape, speedFactor, type SceneId } from './soundscape';
 import { ambientDucked, play, setAmbient, stopAmbient } from '../../../audio/sfx';
 import { makeRng } from '../../../core/rng';
 import { drawRoadStructure } from './biomesNew';
+import { RIDER_LIFETIME_S } from '../sim/traffic';
 
 export { mixColor } from './blend';
 
@@ -45,6 +46,7 @@ export class WarmupRenderer implements GameRenderer {
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   private color = '#00f0ff';
   private look: RiderLook | null = null;
+  private send?: (action: unknown) => void;
   private terrain: { key: string; t: Terrain } | null = null;
   private actors: Actor[] = []; private nextActorAt = 0; private actorKind: BiomeLook['actor'] | null = null;
   private crankSample = NaN; private crankSampleAt = 0;
@@ -60,7 +62,8 @@ export class WarmupRenderer implements GameRenderer {
   private ridge: number[] = [];
   private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
+    this.send = ctx.send;
     this.units = unitsFor(ctx.profile);
     this.color = ctx.profile.color;
     this.look = riderLook({ ...ctx.profile, level: ctx.profile.level ?? 1, achievements: ctx.profile.achievements ?? [] }); // the guest lobby passes a bare { color }
@@ -121,6 +124,10 @@ export class WarmupRenderer implements GameRenderer {
     const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
     const dom = di > 0.5 ? DRIVE_IN : LOOKS[s.biome];
     const RX = Math.round(W * 0.3), roadY0 = Math.round(UH * 0.8);
+    // Keep encounters outside the actual viewport, including on wide displays and after lobby restarts.
+    const view = { behindM: RX / PPM, aheadM: (W - RX) / PPM };
+    if (s.riderView?.behindM !== view.behindM || s.riderView?.aheadM !== view.aheadM)
+      this.send?.({ type: 'riderView', view });
     const elevation = terr.elev(s.d);
     const roadY = (dd: number) => roadY0 - (terr.elev(dd) - elevation) * vscale;
     const biomeM = s.biomeM, start = s.startBiome, blendM = s.blendM;
@@ -261,6 +268,22 @@ export class WarmupRenderer implements GameRenderer {
       if (clear > 0) this.texts.push({ s: BIOME_NAMES[to], x: sx + bx, y: sy + by + 0.5, size: 4.4, color: st.text, align: 'center', alpha: clear });
     }
     weedAtLane('road');
+
+    // ---- local riders, in the farther lane and behind the player's silhouette ----
+    for (const r of s.riders ?? []) {
+      const x = RX + (r.d - s.d) * PPM;
+      if (x < -100 || x > W + 40) continue;
+      const fade = Math.max(0, Math.min(1, r.age / 1.2, (RIDER_LIFETIME_S - r.age) / 3));
+      const b = biome(r.d), peerLook = di > 0.5 ? DRIVE_IN : LOOKS[b.dom], gear = peerLook.rider;
+      const bob = r.v > 1 ? (b.dom === 'moon' && di < 0.5 ? -Math.abs(Math.sin(t * 2.2 + r.crankRevs)) * 1.6 : gear === 'scuba' ? Math.sin(t * 1.4 + r.crankRevs) : 0) : 0;
+      const y = roadY(r.d) - 1 + bob;
+      g.save(); g.globalAlpha = fade;
+      g.translate(x, y); g.scale(0.82, 0.82);
+      g.rotate(-Math.atan(terr.grade(r.d) / 100 * s.hill * s.exaggeration));
+      drawRider(g, r.look, r.crankRevs, r.d, { t, speed: r.v, gear: gear === 'road' ? null : gear });
+      g.restore();
+      this.texts.push({ s: r.name, x, y: y - 31, size: 3.6, color: '#ffffff', align: 'center', alpha: fade });
+    }
 
     // ---- rider (towing the projector in the Drive-In) ----
     const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)

@@ -9,8 +9,15 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
 - `terrain.ts` (pure, seeded): `makeTerrain(seed, maxGrade)` -> `grade(d)` % and `elev(d)` m (analytic integral of grade,
   three interfering waves, |grade| <= maxGrade). `biomeAt(d, biomeM, start, blendM)` loops `BIOMES`; a `blendM` (tunable `warmup.blendM`, 300) window centred on each boundary dissolves `cur -> next` (`mix`), `dom` flips at the centre; `biomeWeights()` gives each biome's share.
 - `sim.ts`: grade under the wheels = `hill * terrain.grade(d)`, sent as ResistanceEffect `terrain` (sim mode), virtual gears on.
-  On-screen speed from `bike.raw.power` with a simple drag + rolling + slope model. Emits `biomeReached`.
-- opts: `startDistance`, `startBiome`, `terrainSeed` (the shell passes them on restart so the road doesn't jump).
+  On-screen speed from `bike.raw.power` with a simple drag + rolling + slope model (`physics.ts`). Emits `biomeReached`.
+- `traffic.ts`: occasional same-direction riders from other local profiles (identity + resolved equipped look only).
+  An Easter egg: first encounter after 5 min, then one opportunity every 5 min, with no duplicate active profile.
+  Pace uses the current player's 55% FTP Z1/Z2 boundary, mass and road physics, including grade at each peer's position.
+  Faster players catch riders entering ahead; slower/stopped players are passed by riders entering behind.
+  Viewport bounds keep spawning/culling offscreen; speed-matched riders fade out after 2 min so encounters keep rotating.
+  `receive({type:'riders', riders})` refreshes the roster/cosmetics and removes deleted profiles without restarting the session;
+  `receive({type:'riderView', view})` supplies the visible road range. Traffic RNG is separate from the player's ride.
+- opts: `startDistance`, `startBiome`, `terrainSeed` (the shell passes them on restart so the road doesn't jump), optional `riders` roster.
 - Tunables (`warmup.*`): `hills` (bool; off fades the road and grade to flat over `hillFadeS`), `maxGrade`, `exaggeration`
   (screen hill height vs trainer grade), `biomeKm`, `cda`, `crr`, `hillFadeS`.
 - hud(): target Z1-Z2 "Warm-up", gears, D-pad Move / A Select / B Back.
@@ -32,6 +39,8 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
 - Day/night (`daylight.ts`, tested) for outdoor biomes from the real clock: night sky, moon, stars, headlight, sunset tint.
   `?hour=21` previews a time. Ambient noise bed per biome via `setAmbient('warmup', …)`, stopped on unmount.
 - `rider.ts`: procedural rider (profile jersey colour, two-bone legs from `bike.crankRevs`; bubble helmet on the Moon, scuba gear underwater).
+- Local riders draw at 82% scale in the farther lane, before the player's silhouette, with their names and biome gear.
+  Renderer sends its visible road range through `mount.send`, including when a fresh lobby session resets its view.
 
 - The shared rider uses a binary-alpha solid-art pass plus separate translucent gear/effects. A bounded one-tick cadence extrapolation smooths fixed-rate samples; raw zero cadence stops the feet immediately. Motion/biome proof pages and capture scripts are in `docs/visual-polish/player/README.md`.
 

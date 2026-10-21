@@ -54,6 +54,8 @@ const TRAILS: Record<string, (g: G, c: TrailCtx, k: number) => void> = {
       g.stroke();
     });
   },
+  embers: (g, c, k) => stream(c, k, 1.4, 16, (i, a, x, y) => { alpha(g, a, k); circle(g, i % 2 ? '#ffd23b' : '#ff8a1a', x, y - a * 6, 0.4 + (1 - a) * 0.5); }),
+  cogs: (g, c, k) => stream(c, k, 0.8, 18, (i, a, x, y) => { alpha(g, a, k); g.save(); g.translate(x, y + a * 2); g.rotate(c.t * 3 + i); circle(g, '#c6ccd6', 0, 0, 0.7); circle(g, '#3a3f48', 0, 0, 0.3); g.restore(); }),
   flames: (g, c) => {
     const hot = Math.max(0, (c.speed - 4) / 6), len = 3 + hot * 14;
     if (hot <= 0) return;

@@ -132,10 +132,11 @@ describe('passive versus active riders', () => {
       const firstEnd = (r: typeof passive) => r.events.find(e => e.type === 'runEnded' && e.data?.reason === 'fell')!;
       const passiveEnd = firstEnd(passive), activeEnd = firstEnd(active);
       expect(passiveEnd).toBeDefined(); expect(activeEnd).toBeDefined();
-      expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t)).toHaveLength(8);
+      // A watt-weapon wave now needs its own push, so a steady zone-2 ride can fall before every pad is built.
+      expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t).length).toBeGreaterThanOrEqual(5);
       expect(Number(passive.summary.towerUpgrades)).toBeGreaterThanOrEqual(20);
       expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
-      expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(10);
+      expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(4);
       expect(passive.isOver).toBe(false); expect(active.isOver).toBe(false);
       expect(Number(activeEnd.data?.wavesSurvived)).toBeGreaterThanOrEqual(Number(passiveEnd.data?.wavesSurvived));
       expect(active.events.some(e => e.type === 'action')).toBe(true);

@@ -109,6 +109,10 @@ export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   flowers: (g) => { const cs = ['#ff6b8a', '#ffd23b', '#c56cf0', '#ffffff', '#4dabf7']; for (let i = 0; i < 5; i++) { const a = Math.PI + 0.35 + i * 0.6; circle(g, cs[i], Math.cos(a) * 2.4, Math.sin(a) * 2.2 - 0.6, 0.75); } },
   captain: (g) => { oval(g, '#f5f5fa', -0.4, -2.4, 3, 1.2); rect(g, '#15151c', -2.4, -2.2, 4.6, 0.8); line(g, '#15151c', 0.8, [1.6, -1.6], [3.6, -1.2]); circle(g, '#ffd23b', 0.8, -2.8, 0.4); },
   welder: (g) => { poly(g, '#3a3f48', [0.4, -2.8], [3.2, -2], [3.4, 2], [0.6, 2.6]); rect(g, '#3bdc6b', 1.8, -0.8, 1.4, 0.8); line(g, '#3a3f48', 0.6, [-2, -2], [0.6, -2.6]); },
+  match: (g) => { poly(g, '#ffd23b', [-0.4, -1.4], [2.6, -1.4], [2.2, -2.6], [-0.2, -2.6]); circle(g, '#e8322b', 0.4, -2, 0.55); circle(g, '#2a5bd7', 1.6, -2, 0.55); line(g, '#8a5a2b', 0.4, [-2.2, -1.2], [-0.4, -1.8]); },
+  spinner: (g, c) => { const s = Math.sin(c.crank * 6); line(g, '#c6ccd6', 0.3, [-1.6 * s, -4.6], [1.6 * s, -4.6]); circle(g, '#ffd23b', 0, -4.6, 0.35); oval(g, '#3a3f48', 0, -2.6, 2.2, 1.4, 0, true); },
+  lungs: (g, c) => { const s = 1 + Math.sin(c.t * 2) * 0.08; oval(g, '#e8f4ff', -0.6, -1.4, 2.4 * s, 2 * s, 0, true); oval(g, '#9fd3ff', 0.2, -1.2, 1.2, 1); line(g, '#7aa0c4', 0.3, [-2.4, 0.4], [2, 0.4]); },
+  scrapcrown: (g) => { poly(g, '#c6ccd6', [-2.8, -1], [2.8, -1], [2.4, -3.4], [1.2, -2.2], [0, -4.2], [-1.2, -2.2], [-2.4, -3.4]); for (const x of [-1.6, 0, 1.6]) rect(g, '#ffd23b', x - 0.3, -3.2, 0.6, 0.6); },
   alien: (g, c) => { line(g, '#15151c', 0.4, [-2, -1.6], [0, -2.6], [2, -1.6]); const s = Math.sin(c.t * 6) * 0.6; for (const x of [-0.9, 0.9]) { line(g, '#3bdc6b', 0.3, [x, -2.4], [x * 2.4 + s, -6]); circle(g, '#7dffb0', x * 2.4 + s, -6.2, 0.75); } },
   pilot: (g) => { oval(g, '#7a4a24', -0.2, -0.8, 2.8, 2.6, 0, true); rect(g, '#7a4a24', -2.8, -1, 1.4, 2.4); circle(g, '#9fd3ff', 1, -2.4, 0.75); circle(g, '#9fd3ff', -0.6, -2.6, 0.75); line(g, '#3a2410', 0.3, [-2.6, -2.4], [1.8, -2.4]); },
   hamster: (g, c) => {

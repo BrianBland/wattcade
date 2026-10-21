@@ -1,60 +1,90 @@
-# Compact H1 live HUD
+# Controller status HUD
 
-The shared HUD now uses linear controls grouped by function and hand. Directions are together on the left, face actions on the right. The default face order is A/B/Y/Z; Cadenza explicitly orders its opposing lane controls Z Left / A Right. Per-game shifter actions and analog paddle hints keep separate groups. Steering, targeting and stance controls advertise their used left/right arrows in play and retain full navigation in menus. Inactive controls retain their positions, full labels and cooldowns.
+With a connected Ride controller or gamepad, the bottom HUD keeps ride metrics,
+active zone/cadence targets, gear/trainer state, and small colored indicators for
+cooldowns or special triggers. Routine navigation, targeting, building and camera
+bindings move to the full start/pause guide. Games without qualifying actions get
+no extra action strip. Indicators contain an action name, readiness/usability
+text, counts where applicable, and a 2px loading bar; they are not touch buttons.
 
-History and the physical controller guide open above the ribbon without increasing its reserved height. Controller users can open history through Pause → History. The guide shows physical letters and all current mappings. Fake-bike keyboard instructions live in Pause and the guide; they never occupy the HUD band. Menu has its own hit target.
+Auto follows actual controller presence, including idle devices, and restores
+floating touch controls on disconnect. Pause offers persistent Auto/Touch/Controller
+overrides. Switching layouts cancels captured touch holds instead of firing them.
+Touch keeps full action labels, current quotes, cooldowns and >=44px hit targets.
 
-![Live implementation](game.png)
+![Native implementation](game.png)
+
+The instrument bar and floating actions are measured separately. Renderers receive
+both their occupied rectangles and a conservative combined bottom inset. Optional
+history and help reserve no viewport height. The desktop instrument bar is 59px;
+controller indicators add about 28px only where needed. Phone wraps naturally.
+
+## Full controls at start and pause
+
+The guide includes every current binding, grouped directions/paddles and face
+actions, physical button maps, custom shifters and gears. Face order is stable
+A/B/Y/Z, with explicit spatial exceptions such as Cadenza Z Left / A Right.
+Games with loadout menus show gameplay controls after selection. Starting is
+explicit; instructions no longer disappear on an eight-second timer. D-pad arrows
+scroll long guides. The action footer stays visible on phones.
+
+During play, Controls pauses into the same guide; Escape/B returns to Pause.
+Fake-bike instructions stay in Pause/help. Recent history is available on demand
+and through Pause -> History. Existing game-specific pause actions and Finish ride
+remain available independently.
+
+![Implemented controls guide](guide.png)
 
 ## All eight games
 
-### Warm-up Ride
+![Warm-up Ride](warmup.png)
+![Dynamo Defense](towerdefense.png)
+![Crank Crawler](dungeon.png)
+![Cadenza](cadenza.png)
+![Watershed](watershed.png)
+![Sprocket Squadron](starfighter.png)
+![HAMSTERGRID](hamster.png)
+![Keeper's Light](lighthouse.png)
 
-![Warm-up Ride control strip](warmup.png)
+Cooldown data covers Tower Defense, Crank Crawler, Nova charge and Watershed's
+phase boost. Rail preserves its charge count; boss sprint windows and trial offers
+appear contextually. Charge is distinct from usability. Squadron's duplicate
+canvas Nova/target buttons are hidden when the shared HUD owns the controls;
+standalone renderers retain their fallback.
 
-### Dynamo Defense
+![Touch controls](touch.png)
 
-![Dynamo Defense control strip](towerdefense.png)
-
-### Crank Crawler
-
-![Crank Crawler control strip](dungeon.png)
-
-### Cadenza
-
-![Cadenza control strip](cadenza.png)
-
-### Watershed
-
-![Watershed control strip](watershed.png)
-
-### Sprocket Squadron
-
-![Sprocket Squadron control strip](starfighter.png)
-
-### HAMSTERGRID
-
-![HAMSTERGRID control strip](hamster.png)
-
-### Keeper’s Light
-
-![Keeper’s Light control strip](lighthouse.png)
-
-## Touch and help
-
-![Touch layout](touch.png)
-![Physical map and help](guide.png)
-
-Full action copy can grow the measured ribbon instead of being clipped. [Long-price phone capture](long-price-phone.png) · [Cadenza on short landscape](cadenza-short.png). Native height adapts to labels, viewport, safe areas and touch targets; the earlier 88px mock was a study envelope. Ordinary 1180×820 desktop captures here are about 93–94px. Core readings, zone targets, current marker, cadence guidance and gear/command state remain visible.
+[Phone start/pause guide](guide-phone.png) · [Long-price phone capture](long-price-phone.png) · [Short-landscape Cadenza](cadenza-short.png)
 
 ## Validation and reproduction
 
-- Typecheck and production build pass.
-- 45 focused tests pass, including all-game menu/play mapping preservation, independent History/Menu, physical-map letters, fake-help placement, whole-band insets, controller access to pause history, and pointer cancellation.
-- The all-game Chromium matrix covers tablet 1180×820, short landscape 844×390 and phone 390×844, with no page errors, mixed arrow/face families, clipped labels or offscreen controls. Narrow layouts were rechecked after the phone footer refinement.
-- TD browser checks pass both layouts at four sizes, touch/keyboard workshop input, current construction quotes, rail tap/hold/drag and layout-switch cancellation, and touch/Up-arrow boss boost/release/construction cancellation. The old test fixture assumed obsolete square field geometry, an earlier boss window, and an affordable upgrade; those checks now use the current field rectangle, a Rail boss seed/window, and the quoted affordability.
-- Fake-help visibility leaves measured height unchanged. A 9,999-scrap phone action label stays within its button.
+- Typecheck and production build.
+- 193 shell/debug tests and 167 affected game tests, including all-game indicator
+  metadata, connection presence, manual override, held-input cancellation,
+  complete/stable legends, post-loadout start gating and measured insets.
+- 48 native Chromium layout checks: eight games x tablet/short-landscape/phone x
+  controller/touch. Zero page errors, off-screen controls, clipped labels or
+  undersized touch targets. Auto connect/disconnect, optional history and fake-help
+  placement also pass; [capture checks](checks.json).
+- Tower Defense browser smoke covers both modes at four sizes, mixed workshop
+  input, quoted affordability, Rail tap/hold, touch drag/layout cancellation,
+  keyboard/touch boss boost and construction cancellation.
+- `check-hud-flow.mjs` exercises the actual GameHost: post-loadout guide, explicit
+  start, keyboard/controller input, pause/help return, connection fallback,
+  persistent touch override and phone guide scrolling/actions.
 
-Run Vite on port 5211, then `node scripts/check-compact-hud.mjs` (or set `REVIEW_URL`). Captures default to `/tmp/wattcade-compact-hud`; `HUD_GAMES`/`HUD_SIZES` can focus a subset. `TOWERDEFENSE_BASE=http://127.0.0.1:5211 node scripts/towerdefense-hud-smoke.mjs` runs held-input checks. `/dev/hud-live.html?game=cadenza` opens a real HUD/renderer review; `legend=0` selects touch, `menu=1` checks menu mappings, and `manual=1` freezes simulation. See [gallery](index.html).
+Run Vite on port 5212, then:
 
-Native iPad/Bluefy frame pacing and a physical Ride-controller pass remain device validation. This branch targets main independently of the reward/locker UI PR.
+```
+REVIEW_URL=http://127.0.0.1:5212 node scripts/check-compact-hud.mjs
+REVIEW_URL=http://127.0.0.1:5212 node scripts/check-hud-flow.mjs
+TOWERDEFENSE_BASE=http://127.0.0.1:5212 node scripts/towerdefense-hud-smoke.mjs
+```
+
+`HUD_GAMES` / `HUD_SIZES` can focus the layout matrix. Review pages:
+`/dev/hud-live.html?game=cadenza` (controller), `legend=0` (touch), `layout=auto`,
+`menu=1` (game menus), `manual=1` (freeze), and `/dev/hud-flow.html?game=dungeon`
+(actual startup/pause flow).
+
+Native iPad/Bluefy frame pacing and a physical Ride-controller pass remain device
+validation. This change does not implement the separate achievements/chrome study.

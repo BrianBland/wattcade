@@ -1,5 +1,5 @@
 import type { RefObject } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import type { GameHud, GameModule, Profile } from '../../contracts';
 import { Btn } from '../components/Bits';
 import { ControlLegend } from '../hud/ControlLegend';
@@ -16,11 +16,11 @@ export function GameIntro({ game, hud, profile, mode, count, onStart, onBack, fa
   scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
   const ownRef = useRef<HTMLDivElement>(null), card = scrollRef ?? ownRef, tz = hud.targetZone;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (count != null) return;
     const el = card.current; if (!el) return;
     const previous = document.activeElement as HTMLElement | null;
-    el.querySelector<HTMLButtonElement>('.intro-actions .primary')?.focus();
+    el.querySelector<HTMLButtonElement>('.intro-actions .primary')?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onBack(); }
       if (mode === 'pre' && e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); onStart(); }

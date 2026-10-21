@@ -1,7 +1,5 @@
 # Keeper's Light (lighthouse)
 
-CONTRACT-REQUESTs: none.
-
 ## Layout
 - `sim/layout.ts` (pure): 28 plots in 5 districts (harbour 10 incl. 4 beach, hillside 6, hilltop 4, headland 3, Gull Rock islet 5 incl. 2 beach), `islandHeight(x,z)` (terraced island, lighthouse headland, islet), bridge position.
 - `sim/town.ts` (pure): building catalogue (names/effects per level, costs, caps, shore-only), `upgradeCost`/`upgradeGrow`, neighbour rules (`NEAR` 8.5, `homeBonus`, `pierBonus`, `orchardBonus`, `millBonus`, `preview`), `DISTRICTS` milestones, `LENS` tiers.
@@ -21,12 +19,13 @@ CONTRACT-REQUESTs: none.
 - Steady Light: +10% per 5 min continuous in zone (cap x1.5) on cargo and growth; breaks after 12 s out of zone; paused while easing down after a storm (`stormCalmAfterS`) or during a wind-up.
 - Lifeboat: a ship that would be lost/spilled is rescued for half cargo, then 240 s cooldown. Shipyard: cargo x1.3/x1.6, more steamers, Lv2 ships call 15% more often.
 - Zone source: the calm Z2 hold uses `effortZone` (HR-aware, 4 s debounce). Storm warning + storm + surge use `min(5, powerZone)` (1.5 s debounce, `stormZoneGraceS`), because HR can't follow a 60–90 s push or a 15 s surge; `hud()` marks them `source: 'power'`.
+- Resistance: flat sim grade during calm riding, plus virtual gears. The old rolling swell and its tunables are removed; storms still add `stormGradePct` (+3%).
 - Clockwork wind-up (calm only, every 4–7 min): 40 s window, 20 s at ≥ `windRpm` (90) → lamp full, +15 coin, +2 timber. Shown in the storm banner slot plus `hud().targetCadence`.
 - Bloom (`meadow`): 1/400 per in-zone minute, +15% per garden level.
 - No conflicting goals: during a storm ships heave to offshore (progress and spawns frozen, "Sheltering" chip), so pushing hard never costs a ship; a weathered storm calms the sea (chop ≤ 0.1, fog ≤ 0.2). For `stormCalmAfterS` (90 s) after a storm, and during a clockwork wind-up, riding above zone neither churns the sea nor breaks the streak (HR is still high).
 - Whales (`whaleEveryS` 600): during a Steady Light streak in calm seas; toast + `whaleSighted` event + 0.5% bloom; `whales` in summary and log.
 - Delight (cosmetic or coin-only, never a new demand on the rider): decor tab (Y in the build menu; 7 items, 1-3 levels, coin only, needs 2 buildings); special visitors (`visitorChance` 0.12 once eligible; circus 5b → carousel, royal 10b+20 ships → bandstand, research 7b+40 ships → telescope; lost visitors retry); festivals at 10/25/50/75/100% bloom (`festivalS` 300, +25·n coin, dancing, bunting, fireworks at night); season = `floor(rides / ridesPerSeason) % 4` (2 rides each, spring first); weather every 4–7 min from a per-season table on its own seeded stream (doesn't shift gameplay RNG).
-- Music layers by streak: pad → bass (1 min) → accordion (3 min; music box at night) → fiddle tune (5 min); festival adds tambourine + bells; storms go minor with drums. Silent when ducked or the sim stops.
+- Music layers by streak: pad → bass (1 min) → accordion (3 min; music box at night) → fiddle tune (5 min); festival adds tambourine + bells; storms go minor with drums. Silent when ducked or the sim stops. `render/audio.ts` owns the local mix: music ~5–6 dB back, scenery ~3–6 dB forward, softer stings/horns/coins and storm beds; quieter bass/percussion in dense arrangements. Shared recipes retain their levels for other games. `render/ambience.ts`: varied shore breakers over blended sea swells, weather-driven gusts/rain, delayed rolling thunder (sharper cracks in surges). Sim-time scheduling, pause/mute/duck gating and teardown discard pending strikes; scenery timers use sim dt. Shared SFX noise loops through long envelopes. Tests cover timing, weather, frame rates and lifecycle; Chromium offline audio verifies full surf/thunder tails.
 - Ideal autopilot (storm-ready, 60 min rides): hilltop ride 1, headland ride 2, Gull Rock + max lens ride 4, all upgrades ~ride 5.
 - Save `{ v: 2, buildings, levels, grow, coin, timber, meadow, lens, totals, rides, decor, gifts, festivals }` (old saves: festivals = milestones already passed).
 

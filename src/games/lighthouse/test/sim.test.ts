@@ -13,6 +13,26 @@ function withSave(data: Record<string, unknown>) {
   return p;
 }
 
+describe('steady resistance', () => {
+  it('holds a low-power Z2 effort at constant cadence throughout the former three-minute swell', () => {
+    const profile = testProfile({ ftp: 123, weightKg: 65 });
+    profile.settings.zoneSource = 'power';
+    const s = createGameSession({ game: module, profile, input: new NullInput(), fake: {}, seed: 1 });
+    // Use trainer physics, rather than a script or manual watt override.
+    s.fakeBike!.manual = { cadence: 76, power: null, hr: null };
+    s.step(30 * 10);
+    const watts = s.bikeStore.get().power3s;
+    expect(watts).toBeGreaterThan(75);
+    expect(watts).toBeLessThan(85);
+    for (let second = 0; second < 180; second++) {
+      s.step(30);
+      expect(s.bikeStore.get().power3s).toBeCloseTo(watts, 1);
+      expect(snap(s).inZone).toBe(true);
+    }
+    expect(s.sim.summary().minutesInZone).toBeGreaterThan(3);
+  });
+});
+
 describe('layout', () => {
   it('plots sit on land, apart from each other; shore plots reach the water; lighthouse on the cliff', () => {
     for (const p of PLOTS) expect(islandHeight(p.x, p.z)).toBeGreaterThan(0.5);

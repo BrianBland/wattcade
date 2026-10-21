@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import type { GameMenuAction } from '../../contracts';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Btn } from '../components/Bits';
 import { Choice, Field, KeyHints, Stepper, Toggle } from '../components/ui';
 import type { HudLayout } from '../hud/layout';
@@ -6,10 +7,12 @@ import { debugActions, getDifficulty } from '../services';
 import { FakeBikeHelp } from '../hud/FakeBikeHelp';
 import { useMenuNav } from '../useMenuNav';
 import { setSoundEnabled, soundEnabled } from '../../audio/sfx';
+import './pause.css';
 
 const clampDiff = (v: number) => Math.min(1.5, Math.max(0.5, +v.toFixed(2)));
 
-export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, quitLabel = 'Finish ride' }: { initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, extensions = [], onExtension, quitLabel = 'Finish ride' }: { extensions?: readonly GameMenuAction[]; onExtension: (action: unknown) => void; initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+  const card = useRef<HTMLDivElement>(null);
   const [diff, setDiff] = useState(getDifficulty);
   const setD = (v: number) => { const c = clampDiff(v); setDiff(c); debugActions.setDifficulty(c); };
   const [sound, setSound] = useState(soundEnabled());
@@ -17,8 +20,8 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
   const tail = [{ label: 'Controls', run: onHelp }, ...(onHistory ? [{ label: 'History', run: onHistory }] : []), { label: '↻ Restart', run: onRestart }, { label: quitLabel, run: onQuit }];
   const layouts = ['auto', 'touch', 'controller'] as const;
   const cycleLayout = (d: number) => onLayout(layouts[(layouts.indexOf(layout) + d + layouts.length) % layouts.length]);
-  const actions = [onResume, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run)];
-  const [idx, setIdx] = useMenuNav(actions.length, [1, 1, 1, 1, tail.length], (i) => actions[i](), onResume, true, {
+  const actions = [onResume, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run), ...extensions.map(entry => () => onExtension(entry.action))];
+  const [idx, setIdx] = useMenuNav(actions.length, [1, 1, 1, 1, tail.length, ...extensions.map(() => 1)], (i) => actions[i](), onResume, true, {
     initial,
     onAdjust: (i, d) => {
       if (i === 1) { setD(diff + d * 0.05); return true; }
@@ -27,9 +30,10 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
       return false;
     },
   });
+  useLayoutEffect(() => { card.current?.querySelector<HTMLElement>('.focused')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }, [idx]);
   return (
     <div class="overlay-modal">
-      <div class="modal pause">
+      <div class="modal pause" ref={card}>
         <h2>Paused</h2>
         <Btn primary focused={idx === 0} onClick={onResume}>▶ Resume</Btn>
         <div class="fields">
@@ -42,6 +46,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
         <div class="row pause-actions">
           {tail.map((a, i) => <Btn key={a.label} focused={idx === i + 4} onClick={a.run}>{a.label}</Btn>)}
         </div>
+        {extensions.map((entry, i) => <Btn key={entry.id} focused={idx === 4 + tail.length + i} onClick={() => onExtension(entry.action)}>{entry.label}</Btn>)}
         {fake && <FakeBikeHelp />}
         <KeyHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
       </div>

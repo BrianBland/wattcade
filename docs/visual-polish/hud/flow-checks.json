@@ -1,0 +1,83 @@
+[
+  {
+    "game": "towerdefense",
+    "label": "desktop",
+    "bindings": [
+      "⇕Step target",
+      "←Target closer",
+      "→Target further",
+      "▲Release target lock",
+      "▼Workshop",
+      "AConstruction",
+      "BOvercharge",
+      "YSlow field",
+      "ZRail 0/3 (hold = all)",
+      "L±R±Gear"
+    ],
+    "initial": {
+      "scroll": 0,
+      "scrollHeight": 775,
+      "height": 772,
+      "buttonTop": 714.47998046875,
+      "buttonBottom": 767.52001953125
+    },
+    "errors": [],
+    "loadoutGuide": true,
+    "pauseHelp": true,
+    "autoFallback": true,
+    "touchOverride": true
+  },
+  {
+    "game": "dungeon",
+    "label": "desktop",
+    "bindings": [
+      "←Previous stance",
+      "→Next stance",
+      "AStrike",
+      "BWard",
+      "YRally",
+      "ZPotion",
+      "L±R±Gear"
+    ],
+    "initial": {
+      "scroll": 0,
+      "scrollHeight": 735,
+      "height": 735,
+      "buttonTop": 696.15185546875,
+      "buttonBottom": 749.19189453125
+    },
+    "errors": [],
+    "loadoutGuide": true,
+    "pauseHelp": true,
+    "autoFallback": true,
+    "touchOverride": true
+  },
+  {
+    "game": "towerdefense",
+    "label": "phone",
+    "bindings": [
+      "⇕Step target",
+      "←Target closer",
+      "→Target further",
+      "▲Release target lock",
+      "▼Workshop",
+      "AConstruction",
+      "BOvercharge",
+      "YSlow field",
+      "ZRail 0/3 (hold = all)",
+      "L±R±Gear"
+    ],
+    "initial": {
+      "scroll": 0,
+      "scrollHeight": 1105,
+      "height": 820,
+      "buttonTop": 754.732421875,
+      "buttonBottom": 803.4852294921875
+    },
+    "errors": [],
+    "loadoutGuide": true,
+    "pauseHelp": true,
+    "autoFallback": true,
+    "touchOverride": true
+  }
+]

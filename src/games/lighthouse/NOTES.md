@@ -1,7 +1,5 @@
 # Keeper's Light (lighthouse)
 
-CONTRACT-REQUESTs: none.
-
 ## Layout
 - `sim/layout.ts` (pure): 28 plots in 5 districts (harbour 10 incl. 4 beach, hillside 6, hilltop 4, headland 3, Gull Rock islet 5 incl. 2 beach), `islandHeight(x,z)` (terraced island, lighthouse headland, islet), bridge position.
 - `sim/town.ts` (pure): building catalogue (names/effects per level, costs, caps, shore-only), `upgradeCost`/`upgradeGrow`, neighbour rules (`NEAR` 8.5, `homeBonus`, `pierBonus`, `orchardBonus`, `millBonus`, `preview`), `DISTRICTS` milestones, `LENS` tiers.
@@ -21,6 +19,7 @@ CONTRACT-REQUESTs: none.
 - Steady Light: +10% per 5 min continuous in zone (cap x1.5) on cargo and growth; breaks after 12 s out of zone; paused while easing down after a storm (`stormCalmAfterS`) or during a wind-up.
 - Lifeboat: a ship that would be lost/spilled is rescued for half cargo, then 240 s cooldown. Shipyard: cargo x1.3/x1.6, more steamers, Lv2 ships call 15% more often.
 - Zone source: the calm Z2 hold uses `effortZone` (HR-aware, 4 s debounce). Storm warning + storm + surge use `min(5, powerZone)` (1.5 s debounce, `stormZoneGraceS`), because HR can't follow a 60–90 s push or a 15 s surge; `hud()` marks them `source: 'power'`.
+- Resistance: flat sim grade during calm riding, plus virtual gears. The old rolling swell and its tunables are removed; storms still add `stormGradePct` (+3%).
 - Clockwork wind-up (calm only, every 4–7 min): 40 s window, 20 s at ≥ `windRpm` (90) → lamp full, +15 coin, +2 timber. Shown in the storm banner slot plus `hud().targetCadence`.
 - Bloom (`meadow`): 1/400 per in-zone minute, +15% per garden level.
 - No conflicting goals: during a storm ships heave to offshore (progress and spawns frozen, "Sheltering" chip), so pushing hard never costs a ship; a weathered storm calms the sea (chop ≤ 0.1, fog ≤ 0.2). For `stormCalmAfterS` (90 s) after a storm, and during a clockwork wind-up, riding above zone neither churns the sea nor breaks the streak (HR is still high).

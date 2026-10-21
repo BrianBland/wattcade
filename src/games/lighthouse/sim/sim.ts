@@ -78,8 +78,6 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
   const windNeedS = tn.num('windNeedS', 20, 5, 120, 1, 'Seconds at wind-up cadence to wind the clockwork');
   const windRpm = tn.num('windRpm', 90, 60, 140, 1, 'Wind-up cadence floor (rpm)');
   const windCoin = tn.num('windCoin', 15, 0, 200, 1, 'Coin for a wound clockwork');
-  const swellPct = tn.num('swellGradePct', 1, 0, 3, 0.1, 'Swell effect amplitude');
-  const swellPeriod = tn.num('swellPeriodS', 180, 30, 600, 5);
   const refundFrac = tn.num('demolishRefund', 0.75, 0, 1, 0.05, 'Fraction of everything spent on a building that demolishing refunds');
   const cottageCoin = tn.num('cottageCoinPerS', 0.04, 0, 1, 0.01);
   const orchardCoin = tn.num('orchardCoinPerS', 0.03, 0, 1, 0.005);
@@ -826,9 +824,6 @@ export function createLighthouseSim(ctx: GameContext, opts?: SimOpts): GameSim {
         nextBell -= dt;
         if (nextBell <= 0) { bellAt = t; cue('bell'); nextBell = 9; }
       } else nextBell = Math.min(nextBell, 1);
-
-      // swell resistance (sim mode) - 3 min sine
-      ctx.resistance.set({ id: 'swell', mode: 'sim', gradePct: swellPct() * Math.sin((2 * Math.PI * t) / swellPeriod()) });
 
       // ships: during a storm they heave to offshore and wait it out, so pushing hard never costs a ship
       const shelter = phase === 'storm';

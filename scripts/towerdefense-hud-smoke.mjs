@@ -17,16 +17,16 @@ try {
       await page.waitForSelector('.hud');
       const advance = seconds => page.evaluate(s => window.__td.advance(s), seconds);
       const snapshot = () => page.evaluate(() => window.__td.snapshot());
-      const key = id => page.locator(`.hud [data-control="${id}"]`);
-      const tap = async id => { await key(id).tap(); await advance(1 / 30); };
+      const key = id => page.locator(`.ride-hud [data-control="${id}"]`);
+      const tap = async id => { if (legend) await page.keyboard.press(({a:'l',b:'k',y:'i',z:'j',down:'ArrowDown'})[id]); else await key(id).tap(); await advance(1 / 30); };
       const settle = () => page.waitForTimeout(180); // HUD reads the sim at 10 Hz.
       const containment = async () => {
         const boxes = await page.evaluate(async () => {
           const { fieldRect } = await import('/src/games/towerdefense/render/fieldView.ts');
-          const hud = document.querySelector('.hud').getBoundingClientRect(), L = window.__td.ui().layout;
+          const occupied = [...document.querySelectorAll('[data-hud-occlusion]')].map(e=>e.getBoundingClientRect()).filter(r=>r.height&&r.width), L = window.__td.ui().layout;
           const field = fieldRect(L.field);
-          return { top: hud.top, fieldBottom: field.y + field.h, W: innerWidth, H: innerHeight,
-            controls: [...document.querySelectorAll('.hud button')].map(b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, block: b.classList.contains('block') }; }) };
+          return { top: Math.min(...occupied.map(r=>r.top)), fieldBottom: field.y + field.h, W: innerWidth, H: innerHeight,
+            controls: [...document.querySelectorAll('.ride-hud button')].map(b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, block: b.classList.contains('block') }; }) };
         });
         assert.ok(boxes.fieldBottom <= boxes.top + .5, 'field stays above the HUD');
         for (const b of boxes.controls) {
@@ -35,7 +35,7 @@ try {
         }
       };
       assert.equal(await page.locator('.hud-actions').count(), legend ? 0 : 2);
-      assert.equal(await page.locator('.hood').count(), legend ? 2 : 0);
+      assert.equal(await page.locator('.hood').count(), 0);
       await settle(); await containment();
       await tap('a'); assert.equal((await snapshot()).towers.length, 1); assert.equal((await snapshot()).workshop, null);
       const pad = (await snapshot()).towers[0].pad; await advance(120);
@@ -54,8 +54,7 @@ try {
       await settle();
       for (let i = 0; i < 10; i++) await advance(1 / 30); // compose loaded alien frames for screenshots.
       await containment();
-      assert.ok(await key('b').locator('.pk-fill').count());
-      assert.ok(parseFloat(await key('b').evaluate(b => b.style.getPropertyValue('--fill'))) < 100);
+      if(legend){assert.equal(await page.locator('.action-indicator').count(),3);assert.ok(Number(await page.getByRole('progressbar',{name:/Overcharge/}).getAttribute('aria-valuenow'))<100);}else{assert.ok(await key('b').locator('.pk-fill').count());assert.ok(parseFloat(await key('b').evaluate(b=>b.style.getPropertyValue('--fill')))<100);}
       await page.screenshot({ path: `${output}/${name}-${legend ? 'controller' : 'touch'}.png` });
       const before = await page.evaluate(() => window.__td.ui().layout.field);
       await page.evaluate(on => window.__td.legend(on), !legend); await settle(); await containment();
@@ -63,7 +62,7 @@ try {
       assert.ok(after.k > 0 && before.k > 0, 'both layouts retain a playable field');
       assert.deepEqual(errors, []); assert.deepEqual(badAssets, []);
       await page.evaluate(() => window.__td.dispose()); await page.close();
-      console.log(`${name} ${legend ? 'controller' : 'touch'}: filled HUD controls, mixed workshop input, menu isolation, containment, layout toggle`);
+      console.log(`${name} ${legend ? 'controller' : 'touch'}: controller indicators / touch controls, mixed workshop input, menu isolation, containment, layout toggle`);
     }
   }
   const quotePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -82,11 +81,12 @@ try {
     const snapshot = () => page.evaluate(() => window.__td.snapshot());
     const advance = seconds => page.evaluate(s => window.__td.advance(s), seconds);
     const recharge = async () => { for (let i = 0; i < 100 && (await snapshot()).railCharges < 3; i++) await advance(10); assert.equal((await snapshot()).railCharges, 3); await page.waitForTimeout(180); };
-    const down = async () => { const b = await page.locator('.hud [data-control="z"]').boundingBox(); await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); };
-    await recharge(); await down(); await advance(.1); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 2);
-    await recharge(); await down(); await advance(.6); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 0);
-    await recharge(); await down(); await advance(.1); await page.mouse.move(20, 20); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 3);
-    await down(); await advance(.1); await page.evaluate(on => window.__td.legend(on), !legend); await page.waitForTimeout(180); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 3);
+    const down = async () => { if(legend){await page.keyboard.down('j');return;}const b=await page.locator('.ride-hud [data-control="z"]').boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down(); };
+    const up=()=>legend?page.keyboard.up('j'):page.mouse.up();
+    await recharge(); await down(); await advance(.1); await up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 2);
+    await recharge(); await down(); await advance(.6); await up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 0);
+    if(!legend){await recharge(); await down(); await advance(.1); await page.mouse.move(20, 20); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 3);
+    await down(); await advance(.1); await page.evaluate(on => window.__td.legend(on), !legend); await page.waitForTimeout(180); await page.mouse.up(); await advance(1 / 30); assert.equal((await snapshot()).railCharges, 3);}
     await page.evaluate(() => window.__td.dispose()); await page.close();
     console.log(`Rail ${legend ? 'controller' : 'touch'}: tap one, hold all, drag/switch cancellation`);
   }
@@ -99,15 +99,15 @@ try {
     await page.evaluate(() => { for (let i = 0; i < 3600 && !window.__td.snapshot().boss?.telegraph; i++) window.__td.advance(1 / 30); });
     await page.waitForTimeout(180);
     assert.equal((await page.evaluate(() => window.__td.snapshot().boss))?.weapon, 'rail', 'fixture reaches the Rail boss window');
-    const boost = page.locator('.hud [data-control="up"]'), b = await boost.boundingBox();
-    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.evaluate(() => window.__td.advance(1 / 30));
+    const boost = page.locator('.ride-hud [data-control="up"]');
+    if(legend)await page.keyboard.down('ArrowUp');else{const b=await boost.boundingBox();await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();} await page.evaluate(() => window.__td.advance(1 / 30));
     assert.equal(await page.evaluate(() => window.__td.snapshot().boss?.sprintBoost), true);
     await page.screenshot({ path: `${output}/boss-${legend ? 'controller' : 'touch'}.png` });
-    await page.mouse.up(); await page.evaluate(() => window.__td.advance(1 / 30));
+    if(legend)await page.keyboard.up('ArrowUp');else await page.mouse.up();await page.evaluate(() => window.__td.advance(1 / 30));
     assert.equal(await page.evaluate(() => window.__td.snapshot().boss?.sprintBoost), false);
     await page.keyboard.down('ArrowUp'); await page.evaluate(() => window.__td.advance(1 / 30));
     assert.equal(await page.evaluate(() => window.__td.snapshot().boss?.sprintBoost), true);
-    await page.locator('.hud [data-control="a"]').tap(); await page.evaluate(() => window.__td.advance(1 / 30));
+    if(legend)await page.keyboard.press('l');else await page.locator('.ride-hud [data-control="a"]').tap(); await page.evaluate(() => window.__td.advance(1 / 30));
     assert.ok(await page.evaluate(() => window.__td.snapshot().workshop));
     assert.equal(await page.evaluate(() => window.__td.snapshot().boss?.sprintBoost), false);
     await page.keyboard.up('ArrowUp'); await page.evaluate(() => window.__td.dispose()); await page.close();

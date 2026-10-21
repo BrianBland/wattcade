@@ -7,7 +7,7 @@ import {PauseMenu} from './PauseMenu';
 
 it('reaches History with the controller and keeps fake bike instructions in pause only when applicable', () => {
  const el=document.createElement('div'),onHistory=vi.fn();
- const show=(fake:boolean)=>act(()=>render(<PauseMenu fake={fake} legendOn onLegend={()=>{}} onResume={()=>{}} onQuit={()=>{}} onHelp={()=>{}} onRestart={()=>{}} onHistory={onHistory}/>,el));
+ const show=(fake:boolean)=>act(()=>render(<PauseMenu fake={fake} layout="auto" onLayout={()=>{}} onResume={()=>{}} onQuit={()=>{}} onHelp={()=>{}} onRestart={()=>{}} onHistory={onHistory}/>,el));
  try{
   show(true);expect(el.querySelector('.fake-bike-help')?.textContent).toContain('W / S');
   for(let i=0;i<4;i++)act(()=>deliverMenuPresses(new Set(['down'])));

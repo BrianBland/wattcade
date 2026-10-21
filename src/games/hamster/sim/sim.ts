@@ -619,7 +619,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       { button: 'a', label: tab === 'vibes' ? 'Buy / toggle' : tab === 'rebirth' ? 'Reincarnate' : 'Buy', shortLabel: tab === 'vibes' ? 'Toggle' : tab === 'rebirth' ? 'Rebirth' : 'Buy' },
       { button: 'b', label: 'Buy ×10', active: tab === 'gens' },
       { button: 'y', label: 'Re-dose', active: unlocks.has('market') },
-      { button: 'z', label: 'Accept trial', shortLabel: 'Trial', active: trial?.phase === 'offer' },
+      { button: 'z', label: 'Accept trial', shortLabel: 'Trial', active: trial?.phase === 'offer',
+        ...(trial?.phase === 'offer' ? { indicator: { label: 'Trial offer', status: 'Available', ready: true } } : {}) },
       { button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gear' },
     ];
     // short efforts are judged on power (HR can't climb in time); the Z2 grind uses the profile's zone source

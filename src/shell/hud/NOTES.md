@@ -1,15 +1,16 @@
-# Shared HUD / H1 compact ribbon
-
-- One instrument row, then a linear control row. Directions stay on the left, face actions on the right; custom shifter actions and analog paddle hints keep separate labels. No circular diamonds in the permanent overlay.
-- Default family order: left/right, up/down; face A/B/Y/Z; shifter minus/plus. `ControlHint.displayOrder` can override order within a family for semantic pairs. Cadenza explicitly shows Z Left then A Right. It cannot mix arrow and face families.
-- Build from the live `GameHud.controls`, not a TD-specific list. All eight games' menu/play models are checked. Inactive actions retain their place, full names, state and cooldown. Merged D-pad/shifter hints get one caption and individual keys; separately mapped arrows keep separate labels. Cadenza, Watershed, Dungeon and Squadron advertise their used left/right arrows in play; menus retain full navigation.
-- `legendOn` is the persisted Controller/Touch layout choice. Touch uses curated `GameHud.touchControls` where provided; otherwise it retains the game's full mapping. Named shifter actions remain accessible. Gears are shown once, beside their metric, and yield to the commanded ERG/SIM/resistance reading when not available.
-- Keep zone source/threshold logic in `zoneMath`: power-judged efforts force power; missing HR has no current marker. Current numbers, target band, current marker and cadence direction/range stay visible.
-- History collection spans lobby/game/lobby and continues while hidden. History has its own hover/focus/tap target, Pin/Close, outside dismissal and Escape. Pause → History gives controller access without stealing an existing game button. Menu is a separate button; instrument taps no longer pause the game.
-- The controller guide retains the physical diagram and every mapping, including late-listed arrows/paddles/shifters. Game control keys are disabled in the guide; it is reference, not a second set of actionable buttons.
-- Fake-bike keyboard instructions live in Pause and the controller guide only. They never participate in HUD layout or renderer insets.
-- `HudLayer` paints the first sample immediately and measures in a layout effect, then updates readings at 10 Hz. The ribbon has natural responsive height; ResizeObserver publishes its full measured size including borders, wrapping and safe-area padding. `readHudInsets` treats H1 as one opaque occupied rectangle. Peeks are siblings and never change this inset.
-- Pointer holds reuse `PadKey`'s original semantic down/up/cancel handling, captured quote/epoch, and cancellation on lost capture, drag, blur, mapping changes and pause. Only presentation changes.
-- Targeted shell/HUD tests, all-game viewport checks (`scripts/check-compact-hud.mjs`) and TD touch/hold checks (`scripts/towerdefense-hud-smoke.mjs`) cover the implementation. Native iPad/Bluefy and physical Ride-controller checks remain a device validation step.
-
-- On phones, redundant analog paddle hints move into the guide when directional buttons already provide that action, leaving more width for full arrow labels.
+# Shared ride HUD
+- `HudLayer`: one measured instrument bar; separate floating touch controls or read-only controller status indicators.
+- Auto detects connected Ride devices or gamepads through services, including idle hardware; Touch/Controller overrides persist under `wattcade.hudLayout`.
+- Use live connection state, not the last input source or a stale paused BikeState snapshot. Auto restores touch on disconnect.
+- `ControlHint.cooldown` opts into status display. Optional typed `indicator` customizes name/status/progress or opts out; routine bindings remain in help.
+- Colors match controller buttons. Charge, readiness and usability differ; no letter tiles/touch buttons in controller statuses.
+- Touch keeps full labels, quotes, primary-control selection and semantic pointer holds. Unmounting on connect cancels held gestures.
+- `ControlLegend` shows every binding, stable family order, explicit spatial overrides, physical maps and custom shifters/paddles.
+- GameHost shows controls after built-in loadout menus and waits for explicit Start; A/B and D-pad scrolling work before countdown.
+- Controls during play pauses into the same guide; Escape returns to Pause. Help/history do not reserve viewport space.
+- Fake-bike instructions appear only in Pause/help. Target zones, cadence guidance and gear/trainer state stay persistent.
+- `readHudInsets` supplies actual bar/action rectangles plus a conservative combined envelope. No action strip means no extra inset.
+- Optional peeks use the measured floating height; phone actions wrap and touch targets stay >=44px.
+- Review: `/dev/hud-live.html`, `/dev/hud-flow.html`; native matrix: `scripts/check-compact-hud.mjs`.
+- Tests cover all-game metadata, presence/fallback, held-input cancellation, full legends, post-menu start gating and shaped insets.
+- Native iPad/Bluefy frame pacing and a physical controller ride remain device validation.

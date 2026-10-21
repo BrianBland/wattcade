@@ -36,3 +36,13 @@ it('reserves the whole opaque compact ribbon including its border and bottom pad
   bounds(hud.children[0] as HTMLElement,8,734,1164,50);bounds(hud.children[1] as HTMLElement,8,784,1164,32);
   expect(readHudInsets(surface,probe).occlusions).toEqual([{x:0,y:732,w:1180,h:88}]);
 });
+
+it('includes floating status/touch bounds in the conservative envelope but excludes history and help', () => {
+  const surface=document.createElement('div'),probe=document.createElement('div'),host=document.createElement('div');
+  host.className='ride-hud';host.innerHTML='<div class="hud hud-ribbon" data-hud-occlusion></div><div data-hud-occlusion></div><section class="hud-peek"></section>';document.body.append(surface,probe,host);
+  Object.defineProperty(probe,'offsetHeight',{value:59});bounds(surface,0,0,1180,820);
+  bounds(host.children[0] as HTMLElement,0,761,1180,59);bounds(host.children[1] as HTMLElement,400,725,380,28);bounds(host.children[2] as HTMLElement,300,200,500,400);
+  expect(readHudInsets(surface,probe)).toEqual({top:0,right:0,left:0,bottom:95,occlusions:[{x:0,y:761,w:1180,h:59},{x:400,y:725,w:380,h:28}]});
+  bounds(host.children[1] as HTMLElement,0,0,0,0);
+  expect(readHudInsets(surface,probe).bottom).toBe(59);
+});

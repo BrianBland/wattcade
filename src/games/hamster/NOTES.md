@@ -36,3 +36,4 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - No new sfx: it reuses `src/audio/sfx.ts` names.
 
 - HUD insets: `render/layout.ts` lays scene + panel out above `insets.bottom` (tested); the last pixel rows are stretched under the HUD band so backgrounds stay full-bleed.
+- Shared controller HUD opts Z into a Trial offer indicator only during an offer; routine purchases/navigation stay in help.

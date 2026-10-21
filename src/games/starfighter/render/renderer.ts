@@ -36,7 +36,7 @@ export class SfRenderer implements GameRenderer {
     if (el?.dataset.action === 'launch') this.send?.({ type: 'launch' });
     if (el?.dataset.action === 'craft') this.send?.({ type: 'craft', craft: el.dataset.craft });
   };
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets; hudControls?: boolean }) {
     this.container = container; this.color = ctx.profile.color; this.send = ctx.send; this.insets = ctx.insets ?? NO_INSETS;
     const gl = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     gl.setPixelRatio(Math.min(1.5, devicePixelRatio || 1)); gl.setClearColor('#050917', 0); gl.info.autoReset = false;
@@ -46,7 +46,7 @@ export class SfRenderer implements GameRenderer {
     overlay.style.cssText = 'position:absolute;inset:0;color:#eaf5ff;font:14px system-ui;pointer-events:none;background:radial-gradient(ellipse at 70% 35%,#22456044,transparent 50%),radial-gradient(ellipse at 20% 70%,#6b235333,transparent 55%);';
     // Backdrop beneath the transparent Three.js surface, HUD above it.
     container.insertBefore(overlay, gl.domElement);
-    this.hud = new SquadronHud(); const hud = this.hud.root; overlay.style.zIndex = '0'; gl.domElement.style.zIndex = '1';
+    this.hud = new SquadronHud(ctx.hudControls); const hud = this.hud.root; overlay.style.zIndex = '0'; gl.domElement.style.zIndex = '1';
     container.appendChild(hud); hud.style.zIndex = '2'; this.overlay = hud;
     hud.addEventListener('click', this.controls);
     this.scene.add(new THREE.HemisphereLight('#c6e9ff', '#142035', 2.7));

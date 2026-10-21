@@ -8,7 +8,7 @@ import { LOOKS } from '../src/games/seaside/render/looks';
 
 const FAST = 'lod=1&lodres=32&lodmin=4&skirt=2&lodk=0.85&bake=1&road=1&routelod=3&hyst=1.3&fade=0.5&decor=0.25';
 const SHOTS: Array<[string, number]> = [['highway', 2.2], ['turnout', 14.6], ['catch', 22.6]];
-const looks = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(LOOKS);
+const looks = process.argv.slice(2).length ? process.argv.slice(2) : ['raw', 'crafted', 'illustrated', 'pixel', 'morning', 'midday', 'fever'];
 const out = 'docs/seaside/looks';
 mkdirSync(out, { recursive: true });
 const server = await createServer({ server: { port: 5291, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });

@@ -15,6 +15,7 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
 - `world/rider.ts` first-person kit in camera space: drop bars + Zwift-Ride-style hood buttons, neutral gloves, head unit; rod + reel; leaned bike; bobber.
 - `stills/stage.ts` renderer, gradient sky shader, exp fog, sun with shadow box, hemisphere light, FP fill light. NeutralToneMapping keeps colours vivid.
 - `world/lou.ts` Lou, one reusable model: red watch cap, white beard + walrus moustache, rosy nose, pipe, gold earring, yellow oilskin bib. Finishes `live`/`stone` (temple statue), poses `counter`/`wheel` (the car).
+- `stills/later/` belly, monkey, lava bridge, re-entry: shape-fn voxels (`fillBox`) + unlit glow layer; grades in looks.ts.
 - `stills/shopStill.ts` Lou's counter diorama at 2 cm voxels + HTML paper UI overlay (price tags, receipt); `stillLouSheet` character sheet.
 ## Motion test (`stills/ride.ts`)
 - 10 s ride → cut → cast, bite, pull, haul-up (23.5 s). Pure `setTime(t)`; articulated rod (7 bending joints), shader swell on a separate water mesh, splash particles + rings.
@@ -29,7 +30,6 @@ Render: `npx tsx scripts/seaside-stills.ts [highway turnout shop lou]`; live: `/
 - Anti-popping: detail follows max(route distance, camera distance / 3) (`routelod`), hysteresis, 0.5 s Bayer dissolve.
   `scripts/seaside-pops.ts`: cube px at a level change avg 6.3 → 3.9, max 12.8 → 7.3; render +12% (185 → 208 ms).
 - `world/sunShadow.ts` bakes terrain self-shadowing (sweep toward a fixed sun, 3 nested levels); faces carry `sunVis`, which scales only direct light. Live shadow map now holds only props (trees, rails, van, bike).
-- Bench: `npx tsx scripts/seaside-bench.ts "<query>"` (headless; original 1057 ms/frame, 10.7 M tris). Also hitch/pops.
 - Tiles build in a Web Worker pool (`world/tileWorker.ts` → pure `world/tileBuild.ts`); the visible set swaps atomically
   when all its tiles are ready (no holes); positions ahead on the route are prefetched. Visible tiles merge into 2×2
   clusters; props merge into 48 m clusters (`buildClusteredMeshes`). 125 ms → 133 ms render, 565 → 94 draw calls.

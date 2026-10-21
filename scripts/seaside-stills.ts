@@ -4,7 +4,8 @@ import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { join } from 'node:path';
 
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ['highway', 'turnout', 'shop', 'lou'];
+const extra = process.env.STILL_Q ? `&${process.env.STILL_Q}` : '';
+const names = process.argv.slice(2).length ? process.argv.slice(2) : ['highway', 'turnout', 'shop', 'lou', 'belly', 'monkey', 'lava', 'reentry'];
 const server = await createServer({ server: { port: 5298, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');
@@ -14,7 +15,7 @@ try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
     page.on('pageerror', (e) => console.warn(`${n}: ${e.message}`));
     page.on('console', (m) => { if (m.type() === 'error') console.warn(`${n}: ${m.text()}`); });
-    await page.goto(`${base}/dev/seaside.html?still=${n}`);
+    await page.goto(`${base}/dev/seaside.html?still=${n}${extra}`);
     const stats = await page.waitForFunction(() => (window as unknown as { __done?: string }).__done, null, { timeout: 600_000 });
     console.log(`— ${n}\n${await stats.jsonValue()}`);
     await page.screenshot({ path: join('docs/seaside/stills', `${n}.png`), clip: { x: 0, y: 0, width: 1600, height: 900 } });

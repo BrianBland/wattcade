@@ -148,3 +148,15 @@
 .ride-hud.compact-instruments .hud-ribbon .hud-tools-gears .pk { min-width:44px; min-height:44px; height:44px; }
 
 .ride-hud.compact-instruments .hud-ribbon .zw-gear-label { order:-1; }
+
+/* Action names carry touch controls; physical button letters live in controller guides. */
+.ride-hud.is-touch .hud-ribbon .compact-key.touch-name { width:max-content; align-items:center; justify-content:center; text-align:center; }
+.ride-hud.is-touch .hud-ribbon .compact-key.touch-name span { text-align:center; }
+.controller-navigation {
+  position:absolute; left:50%; bottom:calc(var(--hud-h) + 8px); transform:translateX(-50%);
+  display:flex; flex-wrap:wrap; justify-content:center; gap:8px 18px;
+  width:max-content; max-width:calc(100% - 24px); padding:6px 10px; background:#0b202cf2;
+  border-radius:2px; pointer-events:none; color:#e7eee9; font:600 11px/1.3 system-ui;
+}
+.navigation-binding,.navigation-glyphs { display:flex; align-items:center; gap:6px; }
+.navigation-glyphs b { font:750 11px/1.3 system-ui; white-space:nowrap; }

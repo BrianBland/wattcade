@@ -29,3 +29,12 @@ export function ControlLegend({ hud }: { hud: GameHud }) {
     <p class="legend-learn"><i />Action colors match your controller. Find this guide again in Pause → Controls.</p>
   </div>;
 }
+
+
+/** Read-only reminder for navigation spaces that have no pregame guide. */
+export function NavigationLegend({ controls }: { controls: ControlHint[] }) {
+  return <>{legendRows(controls).map(row => <span class="navigation-binding" key={row.label}>
+    <span class="navigation-glyphs">{row.glyphs.map((g, i) => <b key={i} style={{ color: g.color }}>{g.glyph === '✥' ? '← ↑ ↓ →' : g.glyph}</b>)}</span>
+    <span>{row.label}</span>
+  </span>)}</>;
+}

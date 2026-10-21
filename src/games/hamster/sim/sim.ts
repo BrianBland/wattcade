@@ -634,7 +634,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       : trial?.phase === 'active' ? { min: 50, label: 'Keep the cranks turning' }
       : undefined;
     // Tabs, row purchase and trial acceptance already have native tap targets.
-    return { controls, touchControls: ['up', 'down', ...(tab === 'gens' ? ['b' as const] : []), ...(unlocks.has('market') ? ['y' as const] : [])], gears: true, targetZone: tz, targetCadence: tc };
+    return { controls, touchControls: [...(tab === 'gens' ? ['b' as const] : []), ...(unlocks.has('market') ? ['y' as const] : [])], gears: true, targetZone: tz, targetCadence: tc };
   }
 
   checkMilestones();

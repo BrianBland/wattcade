@@ -1,0 +1,12 @@
+{
+  "errors": [],
+  "controllerHeight": 86.296875,
+  "touchHeight": 52,
+  "swipe": true,
+  "wheel": true,
+  "noPurchaseOnDrag": true,
+  "cancel": true,
+  "tapPurchase": true,
+  "liveAttachDetach": true,
+  "touchLabels": true
+}

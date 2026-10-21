@@ -11,7 +11,7 @@ import type { HudLayout } from '../src/shell/hud/layout';
 import '../src/styles/main.css';
 
 const q = new URLSearchParams(location.search), game = getGame(q.get('game') ?? 'towerdefense')!;
-const profile = testProfile(), off = input.attachKeyboard(window);
+const profile = testProfile(q.has('shop') ? { gameData: { hamster: { v: 1, gens: [20, 5, 1], bank: 1e7, unlocks: ['upgrades', 'market', 'vibes'] } } } : {}), off = input.attachKeyboard(window);
 const session = createGameSession({ game, profile, input, fake: { script: 'z2' }, seed: 3,
   media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) },
   simOpts: { autopilot: q.get('menu') !== '1', skipGarage: q.get('menu') !== '1', autoCrew: true, actionBot: true } });
@@ -32,7 +32,7 @@ resize(); await renderer.ready?.(); paint();
 let raf=0, last=performance.now();
 if(!q.has('manual')){const tick=(t:number)=>{if(!paused)session.frame(Math.min(.1,(t-last)/1000));last=t;paint();raf=requestAnimationFrame(tick);};raf=requestAnimationFrame(tick);}
 (window as any).__hudLive = {
- ready: true, hud: () => session.sim.hud?.(), snapshot: () => session.sim.snapshot(),
+ ready: true, renderer: () => renderer, hud: () => session.sim.hud?.(), snapshot: () => session.sim.snapshot(),
  advance: (seconds: number) => { session.step(Math.round(seconds*30)); paint(); },
  legend: (value:boolean) => { layout=value?'controller':'touch'; show(); },
  layout: (value:HudLayout) => { layout=value; show(); },

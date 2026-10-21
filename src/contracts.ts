@@ -186,6 +186,8 @@ export interface GameHud {
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
   /** Primary touch buttons to show in the HUD when the controller legend is hidden; uses the same controls and cooldowns. */
   touchControls?: Button[];
+  /** Keep a compact controller guide visible where there is no pregame controls popup. */
+  persistentLegend?: boolean;
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }
 /** Additional pause-menu action supplied by a game; the shell resumes after dispatching it. */

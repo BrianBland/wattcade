@@ -1,5 +1,7 @@
 # Controller status HUD
 
+Latest touch gestures and controller-only overworld guide: [screenshots and checks](../hud-gestures/README.md).
+
 Latest phone/short-landscape implementation: [compact read-only instruments, native-touch deduplication and measured screenshots](../hud-slim/README.md). The captures below predate that follow-up.
 
 With a connected Ride controller or gamepad, the bottom HUD keeps ride metrics,

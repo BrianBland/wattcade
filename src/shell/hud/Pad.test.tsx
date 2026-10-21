@@ -111,3 +111,23 @@ it('keeps physical button letters and gear shifters visible in the read-only con
   expect([...el.querySelectorAll('button')].every(b=>(b as HTMLButtonElement).disabled)).toBe(true);
   render(null,el);
 });
+
+it('shows action names without controller letters on compact touch controls', () => {
+  const el = document.createElement('div');
+  const b = buildPad([{ button: 'b', label: 'Buy ×10' }], false).right.stick.buttons.find(b => b.id === 'b')!;
+  act(() => render(<PadKey b={b} held={new Set()} compact />, el));
+  expect(el.querySelector('button')?.textContent).toBe('Buy ×10');
+  expect(el.querySelector('button b')).toBeNull();
+  act(() => render(<PadKey b={b} held={new Set()} reference />, el));
+  expect(el.querySelector('button b')?.textContent).toBe('B');
+  act(() => render(null, el));
+});
+
+
+it('omits the inert paddle legend from live touch controls', () => {
+  const el = document.createElement('div'), pad = buildPad([{ button: 'paddles', label: 'Steer' }, { button: 'left', label: 'Steer left' }], false);
+  act(() => render(<Hood side="L" model={pad.left} held={new Set()} paddle={0} compact />, el));
+  expect(el.querySelector('.compact-paddles')).toBeNull();
+  expect(el.querySelector('[aria-label="Steer left"]')).not.toBeNull();
+  act(() => render(null, el));
+});

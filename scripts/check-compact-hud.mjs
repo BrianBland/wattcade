@@ -28,7 +28,7 @@ try {
     for(const b of [...info.controls,...info.statuses])assert(b.width>0&&b.height>0&&b.x>=-.5&&b.x+b.width<=width+.5&&b.y>=-.5&&b.y+b.height<=height+.5,`${tag}: offscreen ${JSON.stringify(b)}`);
     for(const b of info.controls){assert(!b.clipped,`${tag}: clipped ${b.text}`);assert(b.width>=43.5&&b.height>=43.5,`${tag}: undersized touch target ${b.id}`);}
     if(controller){assert.equal(info.controls.filter(b=>b.id&&['up','down','left','right','a','b','y','z','Gear up','Gear down'].includes(b.id)).length,0,tag);assert.equal(info.statuses.length,info.expected,tag);assert(info.statuses.every(s=>s.buttons===0),tag);}
-    else {assert.equal(info.statuses.length,0,tag);if(game==='cadenza')assert.deepEqual(info.groups.find(g=>g.kind.includes('face'))?.ids,['z','a']);}
+    else {assert.equal(info.statuses.length,0,tag);assert.equal(await page.locator('.floating-controls button[data-control] > b').filter({hasText:/^[ABYZ]$/}).count(),0,`${tag}: touch controller letter`);if(game==='cadenza')assert.deepEqual(info.groups.find(g=>g.kind.includes('face'))?.ids,['z','a']);}
     for(const g of info.groups){if(g.kind.includes('face'))assert(g.ids.every(id=>['a','b','y','z'].includes(id)),tag);if(g.kind.includes('dpad'))assert(g.ids.every(id=>['left','right','up','down'].includes(id)),tag);}
     // Portrait touch must not regress into separate Move and action rows.
     if(label==='phone'&&!controller&&['warmup','towerdefense'].includes(game))assert(info.insets.bottom<=(game==='warmup'?60:120),`${tag}: HUD exceeds compact portrait budget`);

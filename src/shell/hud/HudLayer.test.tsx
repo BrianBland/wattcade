@@ -132,3 +132,18 @@ it('keeps phone gears and secondary tools on demand and cancels a held gear when
   act(() => el.querySelector<HTMLButtonElement>('[aria-label="Close HUD panel"]')!.click());
   expect(document.activeElement).toBe(toggle);
 });
+
+it('keeps the overworld reminder only while a controller is present and measures it separately', () => {
+  const connected = vi.mocked(services.hasConnectedController);
+  const hud: GameHud = { persistentLegend: true, touchControls: [], controls: [{ button: 'dpad', label: 'Move' }, { button: 'a', label: 'Select' }, { button: 'b', label: 'Back' }] };
+  act(() => render(<HudLayer session={make(hud)} profile={profile} paused={false} layout="auto" />, el));
+  expect(el.querySelector('.controller-navigation')).toBeNull();
+  connected.mockReturnValue(true); act(() => { vi.advanceTimersByTime(100); });
+  expect(el.querySelector('.controller-navigation')?.textContent).toContain('ASelect');
+  expect(el.querySelector('.controller-navigation')?.textContent).toContain('BBack');
+  expect(el.querySelector('.controller-navigation button')).toBeNull();
+  expect(el.querySelectorAll('[data-hud-occlusion]')).toHaveLength(2);
+  connected.mockReturnValue(false); act(() => { vi.advanceTimersByTime(100); });
+  expect(el.querySelector('.controller-navigation')).toBeNull();
+  expect(el.querySelector('.floating-controls')).toBeNull();
+});

@@ -6,7 +6,7 @@ import type { BikeState, GameHud, Profile, TrainerCommand } from '../../contract
 import type { SessionLike } from '../types';
 import { hasConnectedController, input } from '../services';
 import { useMenuNav } from '../useMenuNav';
-import { ControlLegend } from './ControlLegend';
+import { ControlLegend, NavigationLegend } from './ControlLegend';
 import { ActionIndicators, actionIndicators } from './ActionIndicators';
 import { loadHudLayout, resolveHudLayout, type HudLayout } from './layout';
 import { Hood, PadKey } from './Pad';
@@ -56,7 +56,8 @@ export function HudLayer({ session, profile, paused, layout, fake, menu, onContr
 }) {
   const [f, setF] = useState<Frame>(() => readFrame(session, profile));
   const controller = resolveHudLayout(layout ?? loadHudLayout(), f.connected) === 'controller';
-  const statusCount = controller && !paused ? actionIndicators(f.hud.controls ?? []).length : 0;
+  const navigationLegend = controller && !!f.hud.persistentLegend && !paused;
+  const statusCount = controller && !paused && !navigationLegend ? actionIndicators(f.hud.controls ?? []).length : 0;
   const compact = useCompactInstruments();
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsButton = useRef<HTMLButtonElement>(null), tools = useRef<HTMLElement>(null);
@@ -79,7 +80,7 @@ export function HudLayer({ session, profile, paused, layout, fake, menu, onContr
     };
     const observer = new ResizeObserver(measure); observer.observe(el); if (floating.current) observer.observe(floating.current); measure();
     return () => { observer.disconnect(); document.documentElement.style.removeProperty('--hud-content-h'); document.documentElement.style.removeProperty('--hud-floating-h'); window.dispatchEvent(new Event(HUD_LAYOUT_EVENT)); };
-  }, [controller, statusCount, paused, compact, f.hud.touchControls?.join()]);
+  }, [controller, statusCount, navigationLegend, paused, compact, f.hud.touchControls?.join()]);
   useLayoutEffect(() => {
     last.current = performance.now();
     const id = setInterval(() => {
@@ -129,7 +130,7 @@ export function HudLayer({ session, profile, paused, layout, fake, menu, onContr
     // Selection never reorders families: all arrow actions left; face buttons A B Y Z right.
     const cluster = side === 'L' ? pad.left.stick : pad.right.stick;
     const selected = compactButtons(cluster).filter(b => primary.has(b.id));
-    return selected.length > 0 && <div class={`hud-actions ${side === 'L' ? 'left dpad' : 'right face'}`} role="group" aria-label={`${side === 'L' ? 'Direction' : 'Face button'} touch controls`}>
+    return selected.length > 0 && <div class={`hud-actions ${side === 'L' ? 'left dpad' : 'right face'}`} role="group" aria-label={`${side === 'L' ? 'Navigation actions' : 'Actions'}`}>
       {selected.map(b => <PadKey key={b.id} b={{ ...b, label: b.label ?? cluster.label }} held={f.held} send={send} disabled={paused} block compact />)}
     </div>;
   };
@@ -158,6 +159,7 @@ export function HudLayer({ session, profile, paused, layout, fake, menu, onContr
       {!f.hud.touchControls ? <Hood side="L" model={pad.left} held={f.held} paddle={f.paddles[0]} send={send} disabled={paused} compact /> : touchSide('L')}
       {!f.hud.touchControls ? <Hood side="R" model={pad.right} held={f.held} paddle={f.paddles[1]} send={send} disabled={paused} compact /> : touchSide('R')}
     </div>}
+    {navigationLegend && <div ref={floating} data-hud-occlusion class="controller-navigation" aria-label="Controller navigation"><NavigationLegend controls={f.hud.controls ?? []} /></div>}
     {statusCount > 0 && <div ref={floating} data-hud-occlusion class="action-indicators" aria-label="Action status" key="controller"><ActionIndicators controls={f.hud.controls ?? []} /></div>}
     {panel && <section ref={peek} class={`hud-peek ${panel === 'controls' ? 'hud-guide' : ''}`} role="region" aria-label={panel === 'history' ? 'Recent effort' : 'Controller guide'} onPointerEnter={cancelDismiss} onPointerLeave={panel === 'history' ? scheduleDismiss : undefined} onFocusIn={cancelDismiss} onFocusOut={panel === 'history' ? scheduleDismiss : undefined}>
       <header><b>{panel === 'history' ? 'Recent effort' : 'Controls'}</b><span>{panel === 'history' ? 'Last 3 minutes' : 'Zwift Ride'}</span>

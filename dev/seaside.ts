@@ -6,6 +6,7 @@ import { stillBelly } from '../src/games/seaside/stills/later/belly';
 import { stillMonkey } from '../src/games/seaside/stills/later/monkey';
 import { stillLava } from '../src/games/seaside/stills/later/lava';
 import { stillReentry } from '../src/games/seaside/stills/later/reentry';
+import { stillDrill } from '../src/games/seaside/stills/later/drill';
 import { applyLook } from '../src/games/seaside/render/looks';
 import { PostFX } from '../src/games/seaside/render/post';
 
@@ -19,6 +20,7 @@ const STILLS: Record<string, Still> = {
   monkey: { make: stillMonkey, overlay: bubble('Well. In we go.'), look: 'jungle', time: 2 },
   lava: { make: stillLava, overlay: bubble('Those are fish.'), look: 'lava', time: 5 },
   reentry: { make: stillReentry, look: 'reentry', time: 7 },
+  drill: { make: stillDrill, overlay: bubble('Bone. Bone is close to out.'), look: 'belly', time: 4 },
   belly: { make: stillBelly, overlay: bubble('That’s my old rod.'), look: 'belly', time: 3 },
 };
 

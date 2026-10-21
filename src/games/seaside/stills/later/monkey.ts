@@ -38,7 +38,7 @@ function giant(g: VoxelGrid, x: number, z: number, H: number, R: number, seed: n
 export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): Stage {
   const sunDir = new THREE.Vector3(-0.35, 0.9, 0.45);
   const st = makeStage(canvas, w, h, {
-    zenith: 0x6fbde6, horizon: 0xe2f0dc, fog: 0xb9d8b4, fogDensity: 0.0072, sunDir, sunColor: 0xfff0c8, sunI: 2.9, hemiSky: 0xc8e8c4, hemiGround: 0x3a5a2a, hemiI: 0.9,
+    zenith: 0x6fbde6, horizon: 0xe2f0dc, fog: 0xb9d8b4, fogDensity: 0.0042, sunDir, sunColor: 0xfff0c8, sunI: 2.9, hemiSky: 0xc8e8c4, hemiGround: 0x3a5a2a, hemiI: 0.9,
   });
 
   // forest floor with leaf litter and roots
@@ -53,10 +53,10 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
   });
   // rainforest giants: an arch over the path in front, walls of trees down both sides, a backdrop behind the head
   const giants: Array<[number, number, number, number, [number, number]]> = [
-    [-10.5, -2, 24, 9, [3.5, 0]], [9, -7, 27, 10, [-3.5, 0]], [-11, -16, 26, 8, [2, 0]], [12, -20, 29, 9, [-2, 0]],
-    [-14, -30, 30, 9, [1, 0]], [15, -33, 28, 9, [-1, 0]], [-28, -12, 31, 11, [0, 0]], [29, -8, 30, 11, [0, 0]],
-    [-24, -40, 34, 12, [0, 0]], [25, -44, 33, 12, [0, 0]], [-36, -24, 32, 10, [0, 0]], [37, -28, 31, 10, [0, 0]],
-    [-14, FACE_Z - 26, 38, 14, [0, 0]], [12, FACE_Z - 30, 40, 15, [0, 0]], [-34, FACE_Z - 18, 36, 13, [0, 0]], [33, FACE_Z - 14, 37, 13, [0, 0]],
+    [-10.5, 1, 22, 7, [2.5, 0]], [10, -2, 24, 7, [-2.5, 0]], [-19, -14, 26, 7, [0, 0]], [20, -18, 27, 7, [0, 0]],
+    [-26, -30, 30, 8, [0, 0]], [27, -33, 28, 8, [0, 0]], [-30, -6, 31, 9, [0, 0]], [31, -4, 30, 9, [0, 0]],
+    [-34, -44, 34, 10, [0, 0]], [35, -48, 33, 10, [0, 0]], [-40, -22, 32, 9, [0, 0]], [41, -26, 31, 9, [0, 0]],
+    [-30, FACE_Z - 30, 30, 10, [0, 0]], [30, FACE_Z - 34, 30, 10, [0, 0]], [-44, FACE_Z - 14, 36, 12, [0, 0]], [44, FACE_Z - 10, 37, 12, [0, 0]],
   ];
   giants.forEach(([x, z, H, R, lean], i) => giant(g, x, z, H, R, i + 1, lean));
   addLit(st, 'jungle giants', g, 0.08, { cast: true, receive: true });
@@ -66,11 +66,11 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
   for (let i = 0; i < 70; i++) {
     const [tx, tz, H] = giants[i % giants.length], a = rnd(i, 1, 70) * Math.PI * 2, d = 2 + rnd(i, 2, 70) * 6;
     const x = tx + Math.cos(a) * d, z = tz + Math.sin(a) * d;
-    if ((Math.abs(x) < 3 && z < 2 && z > PATH_END) || (Math.abs(x) < 13 && z < -18)) continue; // nothing hanging in front of the face
+    if ((Math.abs(x) < 3 && z < 2 && z > PATH_END) || (Math.abs(x) < 20 && z < -12)) continue; // nothing hanging in front of the face
     const y0 = ground(tx, tz) + H - 3, y1 = ground(x, z) + rnd(i, 3, 70) * 6, sway = (rnd(i, 4, 70) - 0.5) * 1.5;
     for (let k = 0; k < 24; k++) { const t0 = k / 24, t1 = (k + 1) / 24; u.wsegment([x + sway * Math.sin(t0 * 3), y0 + (y1 - y0) * t0, z], [x + sway * Math.sin(t1 * 3), y0 + (y1 - y0) * t1, z], 0.06, L.vine); if (k % 3 === 0) u.wellipsoid([x + sway * Math.sin(t0 * 3) + 0.12, y0 + (y1 - y0) * t0, z], [0.14, 0.05, 0.1], L.jungle3); }
   }
-  for (const [ia, ib] of [[0, 1], [1, 2], [0, 3], [6, 0], [7, 1], [2, 4], [3, 5]]) { // swags between giants, only over the near path
+  for (const [ia, ib] of [[0, 1], [6, 0], [7, 1], [2, 6], [3, 7]]) { // swags between giants, only over the near path
     const [ax, az, ah] = giants[ia], [bx, bz, bh] = giants[ib];
     const A = [ax, ground(ax, az) + ah * 0.75, az], B = [bx, ground(bx, bz) + bh * 0.75, bz];
     for (let k = 0; k < 30; k++) { const t0 = k / 30, t1 = (k + 1) / 30, p = (t: number) => [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t - Math.sin(Math.PI * t) * 5, A[2] + (B[2] - A[2]) * t]; u.wsegment(p(t0), p(t1), 0.07, L.vine); }
@@ -84,7 +84,7 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
   };
   for (let i = 0; i < 120; i++) {
     const side = i % 2 ? 1 : -1, x = side * (2.6 + rnd(i, 1, 71) ** 1.4 * 20), z = 4 - rnd(i, 2, 71) * (8 - FACE_Z), y0 = ground(x, z);
-    if (z < PATH_END - 6 && Math.abs(x) < 9) continue; // keep the mouth clear
+    if (z < PATH_END - 6 && Math.abs(x) < 12) continue; // keep the mouth clear
     const kind = rnd(i, 3, 71);
     if (kind < 0.45) { // big broad-leaf clump (elephant ear / banana)
       const n = 4 + Math.floor(rnd(i, 4, 71) * 4), size = 0.9 + rnd(i, 5, 71) * 1.4;
@@ -135,8 +135,13 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
     const brow = (dx / 6.4) ** 2 + ((y - 10.1) / 1.1) ** 2 + ((z - (FACE_Z + 2.4)) / 1.5) ** 2 < 1;
     const muzzle = (dx / 4.8) ** 2 + ((y - 4.2) / 3.6) ** 2 + ((z - (FACE_Z + 2.0)) / 2.0) ** 2 < 1;
     const jaw = Math.abs(x) < 4.6 && y < 0.9 && z > FACE_Z - 1 && z < FACE_Z + 3.4; // lower jaw / threshold
-    const ears = [-1, 1].some((sx) => ((x - sx * 7.6) / 1.7) ** 2 + ((y - 8.6) / 2.4) ** 2 + ((z - (FACE_Z - 1)) / 0.9) ** 2 < 1);
+    const earAt = (sx: number) => ((x - sx * 8.6) / 2.6) ** 2 + ((y - 8.4) / 2.9) ** 2 + ((z - (FACE_Z - 0.2)) / 1.1) ** 2;
+    const ears = [-1, 1].some((sx) => earAt(sx) < 1);
+    const earCup = [-1, 1].some((sx) => earAt(sx) < 0.45 && z > FACE_Z + 0.2);
+    // heart-shaped face mask: two eye lobes + the muzzle
+    const mask = [-1, 1].some((sx) => ((x - sx * 2.4) / 2.5) ** 2 + ((y - 8.6) / 2.4) ** 2 < 1) || (x / 4.6) ** 2 + ((y - 4.2) / 4.0) ** 2 < 1;
     if (!(head || base || brow || muzzle || jaw || ears)) return 0;
+    if (earCup) return L.stoneDark;
     // eye sockets and nostrils
     if ([-1, 1].some((sx) => ((x - sx * 2.4) / 1.35) ** 2 + ((y - 8.7) / 1.05) ** 2 < 1) && z > FACE_Z + 0.4) return z < FACE_Z + 0.9 ? L.shadowVoid : 0;
     if ([-1, 1].some((sx) => ((x - sx * 0.75) / 0.38) ** 2 + ((y - 6.6) / 0.32) ** 2 < 1) && z > FACE_Z + 3.0) return 0;
@@ -151,15 +156,15 @@ export function stillMonkey(canvas: HTMLCanvasElement, w: number, h: number): St
     if (mo < 1.25 && z > FACE_Z + 1.6 && y > 0.6) return L.stoneDark; // lip ring
     const mossy = y > 3 && rnd(Math.round(wx * 3), Math.round(wy * 3), Math.round(wz * 3)) < 0.1 + 0.5 * Math.max(0, fbm(x / 3, z / 3, 2, 47) - 0.55);
     if (mossy) return L.moss;
-    if (muzzle || brow || jaw) return rnd(Math.round(wx * 3), Math.round(wy * 3), Math.round(wz * 3)) < 0.5 ? L.stone3 : L.stone; // pale face mask
-    const band = Math.floor(y / 0.6 + fbm(x / 4, z / 4, 2, 48) * 1.5) % 3;
-    return band === 1 ? L.stoneDark : L.stone2;
+    if ((mask && z > FACE_Z + 1.0) || muzzle || jaw) return rnd(Math.round(wx * 3), Math.round(wy * 3), Math.round(wz * 3)) < 0.5 ? L.stone3 : L.stone; // pale face mask
+    const n = fbm(x / 4, z / 4 + y / 4, 2, 48);
+    return n < 0.45 ? L.stoneDark : L.basalt2; // a dark-furred head around the pale face
   });
   const eg = new VoxelGrid(0.15);
   for (const sx of [-1, 1]) eg.wellipsoid([sx * 2.4 * K, 8.65 * K, FACE_Z + 1.0 * K], [0.3 * K, 0.24 * K, 0.15], L.glyph);
   addGlow(st, 'eye glints', eg, 1.6);
   for (let i = 0; i < 26; i++) { // vines spilling over the brow and ears, clear of the eyes and mouth
-    const ux = -7 + i * 0.56; if (Math.abs(ux) < 4.2) continue;
+    const ux = -7 + i * 0.56; if (Math.abs(ux) < 5.5) continue;
     const x = (ux + rnd(i, 1, 49) * 0.3) * K, len = (2 + rnd(i, 2, 49) * 6) * K;
     f.wsegment([x, 12.5 * K, FACE_Z + 1.5 * K], [x + (rnd(i, 3, 49) - 0.5) * 2, 12.5 * K - len, FACE_Z + 2.4 * K], 0.2, rnd(i, 4, 49) < 0.5 ? L.vine : L.jungle3);
   }

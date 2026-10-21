@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { VoxelGrid } from '../../voxel/grid';
 import { noise2, fbm } from '../../voxel/noise';
 import { makeStage, type Stage } from '../stage';
-import { L, fillBox, addLit, addGlow, fpBars, rnd } from './kit';
+import { L, fillBox, addLit, addGlow, fpBars, rnd, glyphTexture, glyphDecal } from './kit';
 
 const LAVA_Y = -28;
 const bridgeY = (z: number) => 2.6 * Math.sin((Math.PI * (4 - z)) / 170);
@@ -13,7 +13,7 @@ const bankY = (x: number, z: number) => { const out = Math.max(0, Math.abs(x) - 
 export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stage {
   const st = makeStage(canvas, w, h, {
     zenith: 0x0a0406, horizon: 0x2a0d08, fog: 0x4a1a0a, fogDensity: 0.0075, sunDir: new THREE.Vector3(0.25, -1, 0.35), sunColor: 0xff8a3a, sunI: 1.6,
-    hemiSky: 0x40203a, hemiGround: 0xff7a2a, hemiI: 1.5,
+    hemiSky: 0x40203a, hemiGround: 0xff6a1a, hemiI: 2.0,
   });
   st.sun.castShadow = false;
 
@@ -46,7 +46,7 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
     return crack ? L.lavaHot : cell < 0.32 ? L.lava : L.lava2;
   });
   addLit(st, 'cavern + crust', rock, 0.1, { cast: false, receive: false });
-  addGlow(st, 'lava', lava, 1.7);
+  addGlow(st, 'lava', lava, 2.4);
 
   // the bridge: black glass, a violet sheen on its edges, thin piers into the lava with glowing cracks
   const b = new VoxelGrid(0.12), bglow = new VoxelGrid(0.12);
@@ -72,10 +72,14 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
   for (let z = -112; z > gz; z -= 9) for (const sx of [-1, 1]) {
     const x = sx * 2.4, base = bridgeY(z) - 3;
     b.wbox([x - 0.45, base, z - 0.45], [x + 0.45, base + 9, z + 0.45], L.basalt2);
-    for (let k = 0; k < 6; k++) if (rnd(Math.round(z), k, sx + 80) < 0.7) bglow.wbox([x - 0.18 - sx * 0.3, base + 2 + k * 1.1, z - 0.18], [x + 0.18 - sx * 0.3, base + 2.5 + k * 1.1, z + 0.18], k % 2 ? L.glyph : L.glyph2);
+    // a strip of painted glyphs down the face of the column that looks at the path
+    const d = glyphDecal(glyphTexture(1, 6, Math.round(z) * 3 + sx), 0.8, 4.8, 2.4);
+    d.position.set(x - sx * 0.46, base + 5, z); d.rotation.y = -sx * Math.PI / 2; st.scene.add(d);
   }
   b.wbox([-14, bridgeY(gz) - 6, gz - 1.5], [14, bridgeY(gz) + 22, gz], L.basalt3);
-  for (let i = 0; i < 70; i++) { const x = -12 + rnd(i, 1, 81) * 24, y = bridgeY(gz) - 2 + rnd(i, 2, 81) * 20; if (Math.abs(x) < 2.5 && y < bridgeY(gz) + 5) continue; bglow.wbox([x - 0.3, y - 0.3, gz + 0.05], [x + 0.3, y + 0.3, gz + 0.2], rnd(i, 3, 81) < 0.7 ? L.glyph : L.glyph2); }
+  // the gate: one great painted inscription, a ring of symbols around a doorway-shaped panel
+  const gate = glyphDecal(glyphTexture(12, 10, 7), 24, 20, 2.0);
+  gate.position.set(0, bridgeY(gz) + 9, gz + 0.02); st.scene.add(gate);
   addLit(st, 'bridge + piers + columns', b, 0.06, { cast: false, receive: false });
   addGlow(st, 'glyphs + pier cracks', bglow, 1.8);
 
@@ -91,7 +95,9 @@ export function stillLava(canvas: HTMLCanvasElement, w: number, h: number): Stag
   for (let i = 0; i < 160; i++) { const e = [(rnd(i, 1, 84) - 0.5) * 60, LAVA_Y + 2 + rnd(i, 2, 84) * 30, -rnd(i, 3, 84) * 140]; fish.wbox(e, e.map((v) => v + 0.12), L.ember); }
   addGlow(st, 'magma fish + embers', fish, 2.2);
 
-  for (const [x, z] of [[-10, -30], [12, -45], [0, -80], [-15, -110]]) { const pl = new THREE.PointLight(0xff7a2a, 40, 60, 1.4); pl.position.set(x, LAVA_Y + 6, z); st.scene.add(pl); }
+  // the lava lights the cavern: a grid of warm lights just above the surface, plus a glow under the bridge
+  for (let x = -60; x <= 60; x += 30) for (let z = 10; z >= -200; z -= 35) { const pl = new THREE.PointLight(0xff6a1a, 260, 95, 1.3); pl.position.set(x, LAVA_Y + 4, z); st.scene.add(pl); }
+  const under = new THREE.PointLight(0xff8a3a, 60, 25, 1.2); under.position.set(0, LAVA_Y + 10, -20); st.scene.add(under);
   st.camera.fov = 72; st.camera.updateProjectionMatrix();
   st.camera.position.set(0.15, bridgeY(4) + 1.55, 4);
   st.camera.lookAt(-0.6, -11, -70);

@@ -8,7 +8,8 @@ import { addGrid, type Stage } from '../stage';
 
 export const LATER = definePalette({
   // belly
-  flesh: 0xd2487e, flesh2: 0xbf3a70, flesh3: 0xe0649a, fleshDark: 0x6a1f4e, fold: 0xe98ab4, bone: 0xf0e4c8, bone2: 0xdccfaf,
+  flesh: 0xd2487e, flesh2: 0xbf3a70, flesh3: 0xe0649a, fleshDark: 0x6a1f4e, fold: 0xe98ab4, cart: 0xd4e6f0, cart2: 0xbcd4e4, cartDark: 0x8fb0c8, drillBody: 0xe8553a, drillBody2: 0xc9452e, drillSteel: 0xc8cdd2, drillSteel2: 0x8e959c, drillDark: 0x2a2d32, gloveG: 0x6a707a, gloveG2: 0x5f6570, gloveTop: 0xa9b0b9, spark: 0xfff0b0, lamp: 0xfff6d8,
+  bone: 0xfff3da, bone2: 0xf0e2c2, ribEdge: 0xfffbf0,
   bile: 0x3ef0d8, bile2: 0x7affea, spot: 0x5ff6ff, spot2: 0xb8fff4, hubcap: 0xc9d1d8, hubcap2: 0x8e979f,
   signGreen: 0x1f7a4a, signWhite: 0xf6f6f2, post: 0x8a9096, rodBlue: 0x2a6fd6, cork: 0xc9a06a,
   boatWhite: 0xeeeae0, boatOrange: 0xef6a2a, boatStripe: 0x2f4f6f, steel: 0x8f969c, steel2: 0x6c7379, chain: 0x5a5f64, partGlow: 0x9ff8ff,
@@ -60,3 +61,45 @@ export function fpBars(st: Stage, y = -0.31, z = -0.46) {
 }
 
 export const rnd = (a: number, b: number, c = 0) => { let h = (a * 374761393 + b * 668265263 + c * 982451653) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+
+/**
+ * Painted glyphs: a canvas texture of hand-drawn-looking symbols (rings, eyes, spirals, fish, ladders, suns) in rows,
+ * for decals on walls and columns. Glowing paint: use with an unlit additive material whose colour is > 1 for bloom.
+ */
+export function glyphTexture(cols: number, rows: number, seed: number, palette = ['#ffd27a', '#ffb347', '#7affea']): THREE.CanvasTexture {
+  const cell = 96, cv = document.createElement('canvas');
+  cv.width = cols * cell; cv.height = rows * cell;
+  const g = cv.getContext('2d')!;
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  const R = (i: number, k: number) => rnd(i, k, seed);
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const i = r * cols + c, cx = c * cell + cell / 2 + (R(i, 1) - 0.5) * 8, cy = r * cell + cell / 2 + (R(i, 2) - 0.5) * 8, s = cell * 0.36;
+    if (R(i, 3) < 0.12) continue; // gaps, like a worn inscription
+    g.strokeStyle = g.fillStyle = palette[Math.floor(R(i, 4) * palette.length)];
+    g.lineWidth = 5 + R(i, 5) * 3;
+    g.shadowColor = g.strokeStyle; g.shadowBlur = 10;
+    g.beginPath();
+    switch (Math.floor(R(i, 6) * 8)) {
+      case 0: g.arc(cx, cy, s, 0, Math.PI * 2); g.moveTo(cx + s * 0.35, cy); g.arc(cx, cy, s * 0.35, 0, Math.PI * 2); break; // ringed eye
+      case 1: g.moveTo(cx - s, cy); g.quadraticCurveTo(cx, cy - s * 1.2, cx + s, cy); g.quadraticCurveTo(cx, cy + s * 1.2, cx - s, cy); g.moveTo(cx + s * 0.18, cy); g.arc(cx, cy, s * 0.18, 0, Math.PI * 2); break; // eye
+      case 2: for (let a = 0; a < 12; a += 0.25) { const rr = (a / 12) * s; const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr; if (a === 0) g.moveTo(x, y); else g.lineTo(x, y); } break; // spiral
+      case 3: g.moveTo(cx - s, cy); g.quadraticCurveTo(cx, cy - s * 0.8, cx + s * 0.5, cy); g.quadraticCurveTo(cx, cy + s * 0.8, cx - s, cy); g.moveTo(cx + s * 0.5, cy); g.lineTo(cx + s, cy - s * 0.5); g.lineTo(cx + s, cy + s * 0.5); g.closePath(); break; // fish
+      case 4: g.moveTo(cx - s * 0.5, cy - s); g.lineTo(cx - s * 0.5, cy + s); g.moveTo(cx + s * 0.5, cy - s); g.lineTo(cx + s * 0.5, cy + s); for (let k = -2; k <= 2; k++) { g.moveTo(cx - s * 0.5, cy + k * s * 0.4); g.lineTo(cx + s * 0.5, cy + k * s * 0.4); } break; // ladder
+      case 5: g.arc(cx, cy, s * 0.4, 0, Math.PI * 2); for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; g.moveTo(cx + Math.cos(a) * s * 0.6, cy + Math.sin(a) * s * 0.6); g.lineTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s); } break; // sun
+      case 6: g.moveTo(cx - s, cy + s); g.lineTo(cx, cy - s); g.lineTo(cx + s, cy + s); g.moveTo(cx - s * 0.5, cy + s * 0.2); g.lineTo(cx + s * 0.5, cy + s * 0.2); break; // mountain / gate
+      default: g.moveTo(cx - s, cy - s * 0.3); g.bezierCurveTo(cx - s * 0.3, cy - s * 1.2, cx + s * 0.3, cy + s * 0.6, cx + s, cy - s * 0.3); g.moveTo(cx, cy + s * 0.2); g.lineTo(cx, cy + s); g.moveTo(cx - s * 0.6, cy + s); g.lineTo(cx + s * 0.6, cy + s); break; // wave over a stand
+    }
+    g.stroke();
+    if (R(i, 7) < 0.4) { g.beginPath(); g.arc(cx + s * 0.9, cy - s * 0.9, 4, 0, Math.PI * 2); g.fill(); } // dot accents
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  return tex;
+}
+
+/** A glowing painted-glyph decal plane (w × h metres), facing +z by default. */
+export function glyphDecal(tex: THREE.Texture, w: number, h: number, intensity = 2.2): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(intensity, intensity, intensity), depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  m.renderOrder = 2;
+  return m;
+}

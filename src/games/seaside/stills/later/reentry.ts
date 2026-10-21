@@ -46,13 +46,14 @@ export function stillReentry(canvas: HTMLCanvasElement, w: number, h: number): S
   // camera-space effects: fire streaking past the frame edges, plasma at the front wheel, wings tearing out
   const fx = new THREE.Group(); st.camera.add(fx);
   const fire = new VoxelGrid(0.012);
-  for (let i = 0; i < 46; i++) {
-    const a = rnd(i, 1, 96) * Math.PI * 2, r0 = 0.78 + rnd(i, 2, 96) * 0.25, len = 0.18 + rnd(i, 3, 96) * 0.4, z = -0.9 - rnd(i, 4, 96) * 0.6;
-    if (Math.abs(Math.cos(a)) > 0.75) continue; // keep the sides clear for the wings
+  for (let i = 0; i < 70; i++) {
+    const a = rnd(i, 1, 96) * Math.PI * 2, r0 = 0.6 + rnd(i, 2, 96) * 0.3, len = 0.22 + rnd(i, 3, 96) * 0.5, z = -0.9 - rnd(i, 4, 96) * 0.6;
+    if (Math.abs(Math.cos(a)) > 0.8 && rnd(i, 6, 96) < 0.5) continue; // thin out over the wings
     const p0 = [Math.cos(a) * r0 * 1.6, Math.sin(a) * r0, z], p1 = [Math.cos(a) * (r0 + len) * 1.6, Math.sin(a) * (r0 + len), z + 0.4];
-    fire.wsegment(p0, p1, 0.004 + rnd(i, 5, 96) * 0.006, i % 3 === 0 ? L.fire3 : i % 3 === 1 ? L.fire2 : L.fire);
+    fire.wsegment(p0, p1, 0.005 + rnd(i, 5, 96) * 0.009, i % 3 === 0 ? L.fire3 : i % 3 === 1 ? L.fire2 : L.fire);
   }
-  fire.wellipsoid([0, -0.5, -0.95], [0.12, 0.03, 0.06], L.fire3); // plasma building under the front of the bike
+  fire.wellipsoid([0, -0.46, -0.92], [0.17, 0.04, 0.09], L.fire3); // plasma building under the front of the bike
+  fire.wellipsoid([0, -0.47, -0.94], [0.26, 0.05, 0.13], L.fire2);
   addGlow(st, 'fire', fire, 2.6, fx);
   // wings: big white feathers bursting in from both sides, lit orange from below
   const wing = new VoxelGrid(0.012);

@@ -15,7 +15,7 @@ export function stillBelly(canvas: HTMLCanvasElement, w: number, h: number): Sta
     hemiSky: 0xff6ab0, hemiGround: 0x3a0f30, hemiI: 0.85,
   });
   st.sun.castShadow = false;
-  const s = 0.15, wall = new VoxelGrid(s), glow = new VoxelGrid(s);
+  const s = 0.15, wall = new VoxelGrid(s), glow = new VoxelGrid(s), ribs = new VoxelGrid(s);
   fillBox(wall, [-9, -1.2, -78], [9, 12, 8], (x, y, z) => {
     const r = R(z), rx = r * 1.15, ry = r * 0.85, cy = ry - 0.6;
     const th = Math.atan2(y - cy, x);
@@ -24,7 +24,7 @@ export function stillBelly(canvas: HTMLCanvasElement, w: number, h: number): Sta
     const fy = floorY(x, z) - (pool(x, z) ? 0.25 : 0);
     // ribs: bone bands arching over the upper half, protruding ~1 m inward
     const k = Math.round((z + 2) / -4.4), zr = -2 - 4.4 * k;
-    if (k >= 0 && Math.abs(z - zr) < 0.42 + 0.1 * Math.sin(th * 5) && y > cy - ry * 0.45 && q > 1 - 1.3 / r && q < 1 + 0.6 / r) return rnd(Math.round(x / s), Math.round(y / s), 3) < 0.5 ? L.bone : L.bone2;
+    if (k >= 1 && Math.abs(z - zr) < 0.32 + 0.06 * Math.sin(th * 5) && y > cy - ry * 0.6 && q > 1 - 1.5 / r && q < 1 + 0.6 / r) { ribs.set(ribs.vi(x, 0), ribs.vi(y, 1), ribs.vi(z, 2), q < 1 - 1.3 / r ? L.ribEdge : rnd(Math.round(x / s), Math.round(y / s), 3) < 0.6 ? L.bone : L.bone2); return 0; }
     if (q >= 1 && q < 1 + 0.9 / r && y > fy - 0.6) {
       const n = noise2(th * 4 + 9, z * 0.5, 7);
       if (q < 1 + 1.5 * s / r && rnd(Math.round(x / s), Math.round(y / s), Math.round(z / s)) < 0.02 + 0.05 * Math.max(0, n - 0.6)) { glow.set(glow.vi(x, 0), glow.vi(y, 1), glow.vi(z, 2), n > 0.7 ? L.spot2 : L.spot); return 0; }
@@ -37,6 +37,9 @@ export function stillBelly(canvas: HTMLCanvasElement, w: number, h: number): Sta
     return 0;
   });
   addLit(st, 'belly walls', wall, 0.07, { cast: false, receive: false });
+  // ribs: pale bone with a faint self-light so the pink haze can't swallow them
+  const ribGrp = addLit(st, 'ribs', ribs, 0.06, { cast: false, receive: false });
+  ribGrp.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.MeshLambertMaterial | undefined; if (m?.emissive) { m.emissive.set(0x4a3e32); } });
   addGlow(st, 'bioluminescence + bile', glow, 2.4);
 
   // swallowed things, at finer voxels

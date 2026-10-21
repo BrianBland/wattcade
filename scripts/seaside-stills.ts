@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 import { join } from 'node:path';
 
 const extra = process.env.STILL_Q ? `&${process.env.STILL_Q}` : '';
-const names = process.argv.slice(2).length ? process.argv.slice(2) : ['highway', 'turnout', 'shop', 'lou', 'belly', 'monkey', 'lava', 'reentry'];
+const names = process.argv.slice(2).length ? process.argv.slice(2) : ['highway', 'turnout', 'shop', 'lou', 'belly', 'drill', 'monkey', 'lava', 'reentry'];
 const server = await createServer({ server: { port: 5298, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');

@@ -1,12 +1,10 @@
 # core (Agent C)
 CONTRACT-REQUEST: none.
-
 ## API (`src/core/index.ts`)
 makeRng, SimClock, TuningRegistry, BikeStateStore, ResistanceMixer, DataHub, GameLoop, FakeBike, FakeTrainer,
 SCRIPTS, SessionRecorder, InputSource, TimelineInput/NullInput (local scripted input for headless),
 createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
-
-- `createGameSession` per CLAUDE.md. Extras: optional `tuningRegistry` opt; session also exposes `dataHub`, `clock`, `loop`, `commands` (all mixer commands sent).
+- `createGameSession` per CLAUDE.md. Extras: optional `tuningRegistry` opt; calls optional input `bindTuning(registry, gameId)` after sim creation; session also exposes `dataHub`, `clock`, `loop`, `commands` (all mixer commands sent).
   Fake bike is on when `fake` is truthy, or when `fake` is undefined and no `dataHub` was passed. `fake:false` = real devices only.
   `pause()` = loop pause + mixer.panic(true) (sends sim/0 immediately); `resume()` reverses.
 - Step order: clock.advance -> input.beginTick -> fakeBike.tick -> bikeStore.tick -> mixer.tick -> sim.update -> recorder.tick.
@@ -23,7 +21,6 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
 - Scripts: `{name, cadence(t), powerFtp?(t, {hooks, seed}), usesHooks?, input?}`; power is FTP fraction; script power overrides the trainer model in sim/resistance modes, but ERG always wins (2 s time constant toward target; cadence 0 -> 0 W).
   `storm-ready` reads `snapshot().hooks.storm`. `mash` is a stateless hash of (2 s slot, seed).
 - FakeBike manual mode (no script): `fakeBike.manual = {cadence, power|null, hr|null}`; `useScript(name|null)`.
-
 - `session.idle(realDt)`: steps input/fake bike/bike store/mixer but not the sim, clock or recorder; returns presses (game intros).
 - ERG low-cadence relief: mixer opt `cadence()` (session passes `cadence3s`); tunables `core.ergReliefRpm/ergReliefFloor/ergReliefRecoverS`; `debug().ergRelief`.
 - Cadence scripts: `grind`, `spin`, `cadence-follow` (reads `hooks.cadence`); `Script.cadence(t, env)` gets `{hooks, seed}`.

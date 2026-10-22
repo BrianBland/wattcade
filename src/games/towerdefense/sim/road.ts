@@ -23,19 +23,25 @@ export const ROAD_WAYPOINTS: readonly Pt[] = [
   { x: 12, y: 78 }, { x: 24, y: 88 }, TURRET,
 ];
 
-/** Twelve build pads. Ids are the array index; the first PAINTED_PADS have clearings in the terrain paintings. */
+/**
+ * Twelve build pads, laid out as a set: three in the top pocket, a west pair and two in the middle pocket, two
+ * in the lower pocket with the southeast rim and the apron east, and the turret flank. Ids are the array index;
+ * the first PAINTED_PADS have clearings in the terrain paintings.
+ */
 export const ROAD_PADS: readonly Pt[] = [
-  { x: 32, y: 21 }, { x: 66, y: 20 }, { x: 54, y: 50 }, { x: 7, y: 48 },
-  { x: 32, y: 76 }, { x: 56, y: 79 }, { x: 30, y: 48 }, { x: 10, y: 97 },
-  { x: 48, y: 22 }, { x: 62, y: 90 }, { x: 70, y: 72 }, { x: 45, y: 73 },
+  { x: 32, y: 21 }, { x: 66, y: 20 }, { x: 54, y: 50 }, { x: 32, y: 76 }, { x: 56, y: 79 }, { x: 30, y: 48 }, { x: 10, y: 97 },
+  { x: 48, y: 22 }, { x: 9, y: 42 }, { x: 8, y: 55 }, { x: 70, y: 72 }, { x: 62, y: 90 },
 ];
-/** Pads 0..PAINTED_PADS-1 are painted clearings; later pads get a drawn plate until the next painting round. */
-export const PAINTED_PADS = 8;
+/**
+ * Pads 0..PAINTED_PADS-1 are painted clearings; later pads get a drawn plate until the next painting round. The
+ * portrait round-3 painting still has the old West flank clearing at (7, 48), between the west pair.
+ */
+export const PAINTED_PADS = 7;
 
 /** Short names for the workshop and work orders, matching ROAD_PADS. */
 export const ROAD_PAD_NAMES: readonly string[] = [
-  'Upper pocket', 'Spawn ridge', 'East hairpin', 'West flank', 'Lower pocket', 'South ridge', 'Centre pocket', 'Turret flank',
-  'Inner bend', 'Apron east', 'Southeast rim', 'Pocket mouth',
+  'Upper pocket', 'Spawn ridge', 'East hairpin', 'Lower pocket', 'South ridge', 'Centre pocket', 'Turret flank',
+  'Inner bend', 'West upper', 'West lower', 'Southeast rim', 'Apron east',
 ];
 
 /** Gliders fly straight from these points to the turret. */

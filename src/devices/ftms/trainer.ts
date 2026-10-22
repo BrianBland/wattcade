@@ -202,7 +202,10 @@ export class FtmsTrainer implements TrainerDevice {
           catch (e) {
             this.log(`Native shift failed: ${String(e)}; disconnecting before recovery`);
             this.lastSim = undefined; this.lastNativeGear = undefined;
-            if (this.cp === cp && this.native === native) this.device.gatt?.disconnect();
+            if (this.cp === cp && this.native === native) {
+              this.teardown(); // stop queued writes before the async disconnect event arrives
+              this.device.gatt?.disconnect();
+            }
             return { ok: false, detail: String(e) };
           }
           if (!this.connected || this.cp !== cp || this.native !== native) return { ok: false, detail: 'not connected' };

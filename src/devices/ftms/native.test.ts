@@ -113,3 +113,14 @@ it('does not let a late shift from an old connection disconnect the recovered tr
   expect([...f.nativeWrite.mock.calls.at(-1)![0]]).toEqual([...encodeGear(17)]);
   await trainer.disconnect();
 });
+it('stops accepting commands immediately after a native write fails, before the disconnect event', async () => {
+  vi.useFakeTimers(); const f = fixture(); const trainer = await FtmsTrainer.connectDevice(f.device);
+  f.disconnect.mockImplementationOnce(() => true); // real browsers may dispatch the event later
+  f.nativeWrite.mockRejectedValueOnce(new Error('native write failed'));
+  expect(await trainer.apply({ mode: 'sim', gradePct: 2, virtualGear: 14 })).toMatchObject({ ok: false });
+  expect(await trainer.apply({ mode: 'sim', gradePct: 2, virtualGear: 15 })).toEqual({ ok: false, detail: 'not connected' });
+  f.device.dispatchEvent(new Event('gattserverdisconnected'));
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(await trainer.apply({ mode: 'sim', gradePct: 2, virtualGear: 15 })).toMatchObject({ ok: true });
+  await trainer.disconnect();
+});

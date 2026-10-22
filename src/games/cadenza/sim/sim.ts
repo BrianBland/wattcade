@@ -52,8 +52,8 @@ export interface CadenzaSnapshot {
   hooks: { powerFtp: number };
 }
 
-const MENU_ROWS = 5; // mode, difficulty, trainer, reduced flashing, start
-export const MENU = { mode: 0, difficulty: 1, trainer: 2, flash: 3, start: 4 } as const;
+const MENU_ROWS = 4; // difficulty, trainer, reduced flashing, start
+export const MENU = { difficulty: 0, trainer: 1, flash: 2, start: 3 } as const;
 const MENU_AUTO_S = 25;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const FIXED = 1 / 30;
@@ -196,7 +196,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       menuT = 0;
     };
     if (dir) { change(menuRow, dir); cue('menuMove', undefined, false); }
-    if (inp.pressed.has('a')) { if (menuRow === MENU.start || menuRow === MENU.mode) go = true; else change(menuRow, 1); }
+    if (inp.pressed.has('a')) { if (menuRow === MENU.start) go = true; else change(menuRow, 1); }
     for (const a of actions.splice(0)) {
       if (a.type === 'difficulty' && DIFFICULTIES.includes(a.value as Difficulty)) difficulty = a.value as Difficulty;
       if (a.type === 'trainer') trainer = trainer === 'grade' ? 'erg' : 'grade';

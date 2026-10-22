@@ -2,7 +2,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import type { CadenzaSnapshot } from '../sim/sim';
+import { MENU, type CadenzaSnapshot } from '../sim/sim';
 import { Hud } from '../render/hud';
 import { rideTimeline } from './fixtures';
 
@@ -57,9 +57,31 @@ it('starts the ride from the touch menu', () => {
   const hud = new Hud(document.body);
   hud.setSend((a) => s.sim.receive?.(a));
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 0);
-  const row = document.querySelector('[data-i="4"]')!;
+  const row = document.querySelector(`[data-i="${MENU.start}"]`)!;
   expect(row.textContent).toContain('Ride');
   row.dispatchEvent(new Event('pointerdown', { bubbles: true })); s.step(1);
   expect((s.sim.snapshot() as CadenzaSnapshot).menu).toBeNull();
+  hud.dispose();
+});
+
+it('shows four useful settings and routes touch actions to the correct rows', () => {
+  const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput() });
+  const hud = new Hud(document.body);
+  hud.setSend((a) => s.sim.receive?.(a));
+  const draw = () => hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 0);
+  const press = (i: number) => { document.querySelector(`[data-i="${i}"]`)!.dispatchEvent(new Event('pointerdown', { bubbles: true })); s.step(1); draw(); };
+  draw();
+  expect(document.querySelectorAll('.ws-row')).toHaveLength(4);
+  expect(document.querySelector('.ws-menu')!.textContent).not.toMatch(/Mode|Mono/);
+  const ride = document.querySelector(`[data-i="${MENU.start}"]`);
+  s.step(30); draw();
+  expect(document.querySelector(`[data-i="${MENU.start}"]`)).toBe(ride);
+  const initial = (s.sim.snapshot() as CadenzaSnapshot).menu!;
+  press(MENU.difficulty);
+  expect((s.sim.snapshot() as CadenzaSnapshot).menu!.difficulty).not.toBe(initial.difficulty);
+  press(MENU.trainer);
+  expect((s.sim.snapshot() as CadenzaSnapshot).menu!.trainer).not.toBe(initial.trainer);
+  press(MENU.flash);
+  expect((s.sim.snapshot() as CadenzaSnapshot).menu!.reducedFlash).toBe(!initial.reducedFlash);
   hud.dispose();
 });

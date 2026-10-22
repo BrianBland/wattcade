@@ -16,6 +16,7 @@ export interface TerrainLODOpts {
   water: { time: { value: number }; amp: number };
   /** Tiles at or below this size cast realtime shadows (only without a baked sun). */ shadowTile?: number;
   stream?: StreamOpts;
+  /** Main-thread ms per frame for building clusters ahead of a swap. */ budgetMs?: number;
 }
 interface Cluster { sig: string; group: THREE.Group; faces: number; fade?: { u: { value: THREE.Vector2 }; t0: number; mats: THREE.Material[] } }
 
@@ -29,6 +30,8 @@ export class TerrainLOD {
   private lod;
   private mats = new Map<string, THREE.Material>();
   private clusters = new Map<string, Cluster>();
+  private staged = new Map<string, Cluster>();
+  private frameMs = 0;
   private shownSig = '';
   private waiters: Array<() => void> = [];
   private pool: Array<{ w: Worker; busy: string | null }> = [];
@@ -58,6 +61,7 @@ export class TerrainLOD {
   dispose() {
     this.pool.forEach((p) => p.w.terminate());
     for (const [k, c] of this.clusters) this.dropCluster(k, c);
+    this.staged.forEach((c) => this.dropGroup(c));
     this.fading.forEach((c) => this.dropGroup(c));
     this.mats.forEach((m) => m.dispose());
   }
@@ -67,7 +71,7 @@ export class TerrainLOD {
     const c = new THREE.Vector3(cam.x, cam.y, cam.z);
     // camera cuts (or time jumping) swap instantly; continuous motion cross-fades
     this.instant = c.distanceTo(this.lastCam) > 20 || time < this.time || time - this.time > 0.5;
-    this.time = time; this.lastCam.copy(c);
+    this.time = time; this.lastCam.copy(c); this.frameMs = 0;
     this.stepFades();
     this.streamer.update(cam, time, at, extra);
     this.pump();
@@ -76,7 +80,10 @@ export class TerrainLOD {
 
   /** Resolves once the tiles for the latest update() are on screen. */
   whenReady(): Promise<void> {
-    return this.ready() ? Promise.resolve() : new Promise((r) => this.waiters.push(r));
+    if (this.ready()) return Promise.resolve();
+    const p = new Promise<void>((r) => this.waiters.push(r));
+    this.tryApply(); // unbudgeted now that someone waits
+    return p;
   }
 
   private ready() { return this.shownSig === this.sig(); }
@@ -128,24 +135,43 @@ export class TerrainLOD {
     return `${job.S}:${Math.floor(job.x0 / (job.S * C))}:${Math.floor(job.z0 / (job.S * C))}`;
   }
 
-  /** Swap in the wanted set if every tile is built; rebuild only clusters whose membership changed. */
+  /**
+   * Swap in the wanted set once every tile is built. Clusters whose membership changed are built ahead into `staged`
+   * under a per-frame time budget (merging + geometry is the expensive part), so the swap itself is cheap and atomic.
+   * Callers awaiting whenReady() (captures, scripts) skip the budget.
+   */
   private tryApply() {
     const st = this.streamer, sig = this.sig();
     if (sig === this.shownSig || !st.ready()) return;
-    const t0 = now();
+    const t0 = now(), budget = this.waiters.length ? Infinity : (this.o.budgetMs ?? 6);
     const groups = new Map<string, Array<{ key: string; job: TileJob; data: TileData }>>();
     for (const l of st.wanted) {
       const ck = this.clusterKey(l.job);
       (groups.get(ck) ?? groups.set(ck, []).get(ck)!).push({ key: l.key, job: l.job, data: st.get(l.key)! });
     }
-    let faces = 0;
+    const sigs = new Map<string, string>();
+    let complete = true;
     for (const [ck, members] of groups) {
       const csig = members.map((m) => m.key).sort().join('|');
+      sigs.set(ck, csig);
+      if (this.clusters.get(ck)?.sig === csig || this.staged.has(csig)) continue;
+      if (this.frameMs + (now() - t0) >= budget) { complete = false; continue; }
+      const c = this.makeCluster(members);
+      c.sig = csig;
+      this.staged.set(csig, c);
+    }
+    this.frameMs += now() - t0;
+    this.stats.applyMaxMs = Math.max(this.stats.applyMaxMs, this.frameMs);
+    if (!complete) return;
+    // the swap: staged clusters in, replaced ones out
+    let faces = 0;
+    for (const [ck, members] of groups) {
+      const csig = sigs.get(ck)!;
       let c = this.clusters.get(ck);
       if (!c || c.sig !== csig) {
         if (c) this.retire(ck, c);
-        c = this.makeCluster(members);
-        c.sig = csig;
+        c = this.staged.get(csig)!;
+        this.staged.delete(csig);
         this.clusters.set(ck, c);
         this.root.add(c.group);
         if (!this.instant && this.lod.fade > 0) this.startFade(c, 1);
@@ -159,9 +185,10 @@ export class TerrainLOD {
       faces += c.faces;
     }
     for (const [ck, c] of this.clusters) if (!groups.has(ck)) this.retire(ck, c);
+    for (const c of this.staged.values()) c.group.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); // built for a set that moved on
+    this.staged.clear();
     this.shownSig = sig;
     this.stats.leaves = st.wanted.length; this.stats.faces = faces; this.stats.clusters = this.clusters.size;
-    this.stats.applyMaxMs = Math.max(this.stats.applyMaxMs, now() - t0);
     const w = this.waiters; this.waiters = []; w.forEach((r) => r());
   }
 

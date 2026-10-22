@@ -2,7 +2,7 @@
 CONTRACT-REQUESTs: none.
 
 ## Seams
-- Single road (#163): `sim/road.ts` is the one geometry source (spline road from the hive mouth, 8 pads, Glider flight spawns, paint boxes); `sim/defs.ts` derives `roadAt`/`flightAt`/`PADS`/`BASE_PAD`. Gliders fly straight to the turret. `waves.ts`: sets of 3 work waves, a boss, an easy wave; brood order, packs, forecast counts, clear healing.
+- Single road (#163): `sim/road.ts` is the one geometry source (spline road from the hive mouth, 12 pads, Glider flight spawns, paint boxes; pads ≥ `PAINTED_PADS` get a drawn plate in `render/battlefield.ts` until repainted); `sim/defs.ts` derives `roadAt`/`flightAt`/`PADS`/`BASE_PAD`. Gliders fly straight to the turret. `waves.ts`: sets of 3 work waves, a boss, an easy wave; brood order, packs, forecast counts, clear healing.
 - `sim/boss.ts` and `sim/efforts.ts` retain #140’s HP-gated boss ladder, stagger/Exposed timing, and seeded spin/grind/hold calls. Live matchups and fuel-blooded ignition retain turret/tower attribution.
 - `sim/targeting.ts`: soonest-arriving brood-colour target; ◀▶/paddles step a decaying lock closer/further along the queue. Turret reach `turretRange` 75 (Flamer: `flameRange`, ground only) leaves the upper road to towers. Shifters stay virtual gears.
 - `sim/construction.ts`: affordable build/upgrade/repair orders use off-colour leak danger consistently for resistance filtering and scoring. Build and upgrade orders quote/pay all funded levels; new-pad ranking keeps basic coverage economical. Manual workshop builds remain Lv 1.
@@ -16,7 +16,7 @@ CONTRACT-REQUESTs: none.
 - Every wave has one brood/weapon/trainer mode. Its 45 s lull announces the coming wave and ramps the trainer over the last 8 s. Easy waves and their incoming lulls stay at recovery settings; their cards say recover. `brood` is incoming; `nextBrood` is one wave further ahead.
 - A accepts the displayed work order during a lull, otherwise opens construction. ▼ always opens the full workshop. It never auto-opens.
 - Auto-crew defaults ON and accepts one order at the lull's end. Commander mode OFF requires one acceptance per lull. A successful manual build/upgrade/repair consumes that lull's crew order; an open workshop prevents automatic spending. Overrides remain available throughout combat.
-- Workshop: ◀▶ pads/base, ▲▼ option, A confirm, B close (10 s idle timeout). Tap pads/base to open, then tap build/upgrade/sell/repair or the saved Auto-crew toggle. Touch and controller share selection and purchase state.
+- Workshop: ◀▶ pads/base in on-screen order (`padOrder`: portrait rows, landscape columns; the renderer reports orientation with a `padOrder` action), ▲▼ option, A confirm, B close (10 s idle timeout). Tap pads/base to open, then tap build/upgrade/sell/repair or the saved Auto-crew toggle. Touch and controller share selection and purchase state.
 - B Overcharge: towers fire x1.5 for 10 s; 60 s base cooldown. Y Slow field: ground aliens on the back 55% of the road move 40% slower for 8 s; 50 s base cooldown. They are optional; unusable actions consume nothing.
 - Hold ▲ (or the HUD’s Sprint boost touch key) during a Rail boss telegraph/opening for the optional ERG push. A remains construction; menu/pause/cancel clears both gesture types.
 - Z Rail: tap = one stored charge, hold 0.5 s = all. Touch and controller share a gesture; cancel/drag away/lost capture/blur/pause/menu changes discard it. Stock still requires >= 0.75 FTP (20 s nominal, max 3), independent of cooldown refill.

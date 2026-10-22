@@ -1,5 +1,5 @@
 import { BASE_X, BASE_Y, PADS, roadAt } from '../sim/defs';
-import { PAINT_BOXES, type PaintOrientation } from '../sim/road';
+import { PAD_R, PAINTED_PADS, PAINT_BOXES, type PaintOrientation } from '../sim/road';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
 import { boundedLights, type Point } from './battlefieldMath';
@@ -40,7 +40,30 @@ export class Battlefield {
       g.drawImage(image, 0, 0, (x1 - x0) * v.k, (y1 - y0) * v.k);
     }
     g.restore();
+    for (const p of PADS.slice(PAINTED_PADS)) this.plate(g, v, p.x, p.y, p.id);
     return true;
+  }
+  /**
+   * A cleared, packed-grit pad for pads the painting does not have yet: a soft dark rim, a grit disc in the clearings'
+   * muted palette lit from the top of the field, and a few pebbles. Matches the painted clearings' ~4.8-unit radius.
+   */
+  private plate(g: CanvasRenderingContext2D, v: View, x: number, y: number, seed: number) {
+    const c = v.P(x, y), r = (PAD_R + 0.4) * v.k, light = v.P(x, y - r / v.k * 0.5);
+    g.save();
+    const rim = g.createRadialGradient(c.x, c.y, r * 0.8, c.x, c.y, r * 1.35);
+    rim.addColorStop(0, 'rgba(10,8,6,0.4)'); rim.addColorStop(1, 'rgba(10,8,6,0)');
+    g.fillStyle = rim; g.beginPath(); g.arc(c.x, c.y, r * 1.35, 0, Math.PI * 2); g.fill();
+    const dirt = g.createRadialGradient(light.x, light.y, 0, c.x, c.y, r);
+    dirt.addColorStop(0, 'rgba(122,98,74,0.9)'); dirt.addColorStop(0.7, 'rgba(92,75,58,0.9)'); dirt.addColorStop(1, 'rgba(62,51,41,0.85)');
+    g.fillStyle = dirt; g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(20,16,12,0.45)'; g.lineWidth = Math.max(1, v.k * 0.35); g.stroke();
+    for (let i = 0; i < 14; i++) {
+      const h = (n: number) => { const s = Math.sin((seed * 31 + i * 7 + n) * 12.9898) * 43758.5453; return s - Math.floor(s); };
+      const a = h(1) * Math.PI * 2, d = Math.sqrt(h(2)) * r * 0.85, pr = (0.15 + h(3) * 0.3) * v.k;
+      g.fillStyle = h(4) < 0.5 ? 'rgba(30,26,22,0.4)' : 'rgba(170,160,145,0.25)';
+      g.beginPath(); g.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, pr, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
   }
   /** The hive mouth breathes in the incoming brood's colour, so the spawn reads even under the status rows' edge. */
   hive(g: CanvasRenderingContext2D, v: View, s: TdSnapshot) {

@@ -3,6 +3,7 @@ import type { GameEvent, SessionRecord } from '../../../contracts';
 import { testProfile } from '../../../core';
 import { awardSession, defaultProfile } from '../../../progression';
 import { achievements } from '../achievements';
+import { PADS } from '../sim/defs';
 
 type Ev = { t: number } & GameEvent;
 const profile = testProfile();
@@ -61,14 +62,15 @@ it('Overbuilt and Full Workshop count level 5 towers standing at once', () => {
   expect(check('td_overbuilt', { events: [...pads(3), sold(0), ...maxed(3)] })).toBe(false);
   expect(check('td_overbuilt', { events: [...pads(2), end, ...pads(2, 2)] })).toBe(false);
   // one of each kind is no longer enough for Full Workshop: every pad
+  expect(PADS).toHaveLength(12);
   expect(check('td_workshop', { events: [...maxed(0, 'tesla'), ...maxed(1, 'flamer'), ...maxed(2, 'lens')] })).toBe(false);
-  expect(check('td_workshop', { events: pads(7) })).toBe(false);
-  expect(check('td_workshop', { events: [...pads(7), sold(6), ...maxed(7)] })).toBe(false);
-  expect(check('td_workshop', { events: pads(8) })).toBe(true);
+  expect(check('td_workshop', { events: pads(11) })).toBe(false);
+  expect(check('td_workshop', { events: [...pads(11), sold(10), ...maxed(11)] })).toBe(false);
+  expect(check('td_workshop', { events: pads(12) })).toBe(true);
   // the sim's summary counts when events were not kept
   expect(check('td_overbuilt', { gameSummary: { bestMaxedTowers: 4 } })).toBe(true);
-  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 7 } })).toBe(false);
-  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 8 } })).toBe(true);
+  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 11 } })).toBe(false);
+  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 12 } })).toBe(true);
 });
 
 it('Exposed! is a sprint inside the window, not a sprint sometime during the fight', () => {

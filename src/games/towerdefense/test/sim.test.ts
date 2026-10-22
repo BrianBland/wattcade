@@ -4,7 +4,7 @@ import type { InputState, Profile } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
-import { BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, roadAt, towerBuildCost, type Element } from '../sim/defs';
+import { BASE_PAD, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, padOrder, roadAt, towerBuildCost, type Element } from '../sim/defs';
 import { clearHealFor, nextBrood, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
 import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
 import { readSave } from '../sim/sim';
@@ -34,11 +34,28 @@ describe('field geometry', () => {
       expect(flightLength(r)).toBeLessThan(ROAD_LENGTH / 2);
     }
   });
-  it('eight pads inside the field, well apart, in road order by their stretch', () => {
-    expect(PADS).toHaveLength(8);
+  it('twelve pads inside the field, well apart, in road order by their stretch', () => {
+    expect(PADS).toHaveLength(12);
     for (const p of PADS) { expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(FIELD_W); expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(FIELD_H); expect(p.name).toBeTruthy(); }
     for (const a of PADS) for (const b of PADS) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(9);
     expect(PADS.find((p) => p.id === 1)!.s).toBeLessThan(PADS.find((p) => p.id === 7)!.s); // spawn ridge before turret flank
+  });
+  it('orders pads and the base the way each orientation shows them', () => {
+    const at = (id: number) => id === BASE_PAD ? { x: BASE_X, y: BASE_Y } : PADS[id];
+    for (const turned of [false, true]) {
+      const order = padOrder(turned);
+      expect([...order].sort((a, b) => a - b)).toEqual([...PADS.map((p) => p.id), BASE_PAD]);
+      // screen position: portrait reads rows (down, then right); landscape reads columns (right, then down)
+      const scr = (id: number) => turned ? { main: FIELD_H - at(id).y, cross: at(id).x } : { main: at(id).y, cross: at(id).x };
+      for (let i = 1; i < order.length; i++) {
+        const a = scr(order[i - 1]), b = scr(order[i]);
+        // either further along the same row/column, or the next row/column starts further down/right
+        expect(b.cross > a.cross || b.main > a.main, `${turned ? 'landscape' : 'portrait'} ${order[i - 1]} → ${order[i]}`).toBe(true);
+      }
+    }
+    expect(padOrder(false).slice(0, 3)).toEqual([0, 8, 1]); // top row, left to right
+    expect(padOrder(false).slice(-3)).toEqual([7, BASE_PAD, 9]); // the bottom row runs through the turret
+    expect(padOrder(true).slice(0, 2)).toEqual([7, BASE_PAD]); // landscape starts at the turret end, left
   });
 });
 

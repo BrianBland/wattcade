@@ -1,5 +1,5 @@
 // Dynamo Defense catalogues and field geometry. Pure data + math; no DOM, no rng.
-import { FLYER_SPAWNS, ROAD, ROAD_PADS, ROAD_PAD_NAMES, SPAWN_Y, TURRET } from './road';
+import { FIELD_H, FLYER_SPAWNS, ROAD, ROAD_PADS, ROAD_PAD_NAMES, SPAWN_Y, TURRET } from './road';
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
 export type Kind = 'mini' | 'dart' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
@@ -115,8 +115,26 @@ export const angleTo = (x: number, y: number): number => Math.atan2(x - BASE_X, 
 export const distTo = (x: number, y: number): number => Math.hypot(x - BASE_X, y - BASE_Y);
 export const AIM_LIMIT = 1.45;
 
-/** Eight build pads beside the road. `s` = road distance of the nearest stretch (workshop order: spawn → turret). */
+/** Build pads beside the road. `s` = road distance of the nearest stretch. */
 export interface Pad { id: number; x: number; y: number; name: string; s: number }
 export const PADS: Pad[] = ROAD_PADS.map((p, id) => ({ id, x: p.x, y: p.y, name: ROAD_PAD_NAMES[id], s: roadDistanceOf(p.x, p.y) }));
 /** The workshop's pseudo-pad for the base (repair). */
 export const BASE_PAD = PADS.length;
+
+/**
+ * Pads and the base (BASE_PAD) in on-screen order for ◀▶. Portrait reads in rows, top to bottom and left to
+ * right; a turned (landscape) field reads in columns, left (turret) to right (hive) and top to bottom. Points
+ * within `band` world units across the main axis share a row/column. Pure, so the sim and tests agree.
+ */
+export function padOrder(turned: boolean, band = 12): number[] {
+  const pts = [...PADS.map(p => ({ id: p.id, x: p.x, y: p.y })), { id: BASE_PAD, x: BASE_X, y: BASE_Y }]
+    // screen axes: `main` runs down the rows (portrait) or across the columns (landscape); `cross` along them
+    .map(p => turned ? { id: p.id, main: FIELD_H - p.y, cross: p.x } : { id: p.id, main: p.y, cross: p.x })
+    .sort((a, b) => a.main - b.main || a.cross - b.cross);
+  const rows: Array<typeof pts> = [];
+  for (const p of pts) {
+    const row = rows.at(-1);
+    if (row && p.main - row[0].main <= band) row.push(p); else rows.push([p]);
+  }
+  return rows.flatMap(r => r.sort((a, b) => a.cross - b.cross).map(p => p.id));
+}

@@ -8,7 +8,7 @@ import { suggestBuild, type BuildSuggestion } from './construction';
 import {
   AIM_LIMIT, BASE_PAD, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS, ROAD_LENGTH,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, flightAt, flightLength, roadAt, towerBuildCost, towerUpgradeCost,
-  type Element, type Matchup, type Kind, type TowerKind, type Weapon,
+  padOrder, type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { advanceBoss, bossColors, bossHpFloor, createBossState, type BossState } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
@@ -62,8 +62,8 @@ interface Burn { x: number; y: number; r: number; left: number; total: number; d
 
 const WORKSHOP_IDLE_S = 10;
 const REPAIR_HP = 25;
-/** Pads in road order (spawn → turret), then the base (BASE_PAD = repair). */
-const PAD_ORDER = [...PADS].sort((a, b) => a.s - b.s).map((p) => p.id).concat(BASE_PAD);
+/** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
+const PAD_ORDERS = { portrait: padOrder(false), landscape: padOrder(true) };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const angDiff = (a: number, b: number) => Math.abs(a - b);
 type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) : never;
@@ -233,6 +233,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let runSpotless = 0, bestRunSpotless = 0, spotlessWaves = 0;
   let bestChain = 0, strongKills = 0, exposedSprinted = false, bestMaxedTowers = 0;
   let workshop: { pad: number; row: number; idle: number } | null = null;
+  /** The renderer reports its orientation (`padOrder` action) so ◀▶ follow the screen; headless stays portrait. */
+  let padsTurned = false;
+  const PAD_ORDER = () => PAD_ORDERS[padsTurned ? 'landscape' : 'portrait'];
   let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
@@ -779,7 +782,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function openWorkshop(pad?: number) {
     let p = pad ?? -1;
-    if (p < 0) p = recommendation()?.pad ?? PAD_ORDER.find((i) => i < BASE_PAD && !towers[i]) ?? PAD_ORDER[0];
+    if (p < 0) p = recommendation()?.pad ?? PAD_ORDER().find((i) => i < BASE_PAD && !towers[i]) ?? PAD_ORDER()[0];
     workshop = { pad: p, row: p < BASE_PAD && !towers[p] ? suggestTower(p) : 0, idle: 0 };
     workshopRevision++; inputEpoch++; cancelHolds();
     cue('uiOpen');
@@ -1007,8 +1010,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       workshop.idle += dt;
       if (inp.pressed.size) workshop.idle = 0;
       if (p('left') || p('right')) {
-        const i = PAD_ORDER.indexOf(workshop.pad), n = PAD_ORDER.length;
-        workshop.pad = PAD_ORDER[(i + (p('left') ? n - 1 : 1)) % n];
+        const order = PAD_ORDER(), i = order.indexOf(workshop.pad), n = order.length;
+        workshop.pad = order[(i + (p('left') ? n - 1 : 1)) % n];
         workshop.row = workshop.pad < BASE_PAD && !towers[workshop.pad] ? suggestTower(workshop.pad) : 0;
         workshopRevision++;
         cue('select');
@@ -1311,6 +1314,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
+      if (a?.type === 'padOrder') { padsTurned = (a as { turned?: unknown }).turned === true; return; }
       if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
       if (a?.type === 'boostCancel') {
         cancelBoost();

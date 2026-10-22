@@ -1,5 +1,5 @@
 import type { World, EnemyKind, ShrineKind } from './world';
-import type { Gear, Rarity, Slot, Weapon, WeaponStyle } from './loot';
+import type { Element, Gear, Rarity, Slot, UniqueFx, Weapon, WeaponStyle } from './loot';
 import type { UpgradeId } from './meta';
 
 export type EliteMod = 'undying' | 'splitting' | 'shielded' | 'swift' | 'volatile';
@@ -8,8 +8,8 @@ export interface EnemyView {
   hurt: number; face: number; slowed: boolean; dot: boolean; tell: number; // tell 0..1 = wind-up / fuse / charge
   variant: number; elite: EliteMod | null; shieldFrac: number;
 }
-export interface BulletView { x: number; y: number; r: number; friendly: boolean; style: WeaponStyle | 'enemy'; color: string; angle: number; age: number }
-export interface DropView { id: number; kind: 'coin' | 'potion' | 'weapon' | 'gear'; x: number; y: number; rarity: Rarity; style?: WeaponStyle; slot?: Slot }
+export interface BulletView { x: number; y: number; r: number; friendly: boolean; style: WeaponStyle | 'enemy'; color: string; angle: number; age: number; variant?: number }
+export interface DropView { id: number; kind: 'coin' | 'potion' | 'weapon' | 'gear'; x: number; y: number; rarity: Rarity; style?: WeaponStyle; slot?: Slot; element?: Element; variant?: number; unique?: UniqueFx; plus?: number }
 export interface Fx {
   kind: 'text' | 'chain' | 'boom' | 'hit' | 'death' | 'levelup' | 'muzzle' | 'banner';
   x: number; y: number; t0: number; life: number; color: string;
@@ -45,7 +45,7 @@ export interface DungeonSnapshot {
   stance: {
     id: string; name: string; role: string; color: string; band: [number, number];
     styleOn: boolean; styleHidden: boolean; swapping: string | null; ready: number; suggest: string | null;
-    list: Array<{ id: string; name: string; color: string; weapon: string; base: string; level: number; rarity: number }>;
+    list: Array<{ id: string; name: string; color: string; weapon: string; base: string; level: number; rarity: number; element?: Element; variant?: number; unique?: UniqueFx; plus?: number }>;
   };
   pace: { seg: string; label: string; erg: boolean; segT: number };
   /** Current cooldown refill speed (x base) and the power zone driving it (1..5). */

@@ -1,0 +1,39 @@
+# Pixel combat and boss art
+
+- Native world canvas: 16 px tiles/actors, dedicated 32 px art for all six bosses; integer device-pixel upscale.
+- World camera and simulation remain continuous; drawing snaps to native pixels. Area-based zoom balances portrait/landscape.
+- Display canvas retains readable HUD/damage text and the shell's bottom-inset layout.
+- `pixel.ts`: native geometry, nearest-neighbour mask rotation, centered masks, viewport sizing.
+- `weapons.ts`: ten families × three silhouettes; the item name tier is the visual tier.
+- Normal steel / arcane purple / fire orange / frost cyan / venom green / storm yellow weapon and shot colors.
+- Rarity colors fittings; unique weapons get crest pixels; shrine upgrades add a rune.
+- Held weapon, drop and stance chip use the same item metadata and cached art.
+- Dagger (fast, piercing) → Skirmisher; axe (slow, piercing) → Vanguard; spear (long, piercing) → Ranger.
+- Thrown alternatives share 20% of the corresponding pellet/arrow/star family roll; no extra RNG samples.
+- `effects.ts`: outlined projectiles, separated trail pixels, three-step bursts, lightning, broken shields and warning rings.
+- Torch/brazier/camp fires are animated native masks. Ambient light uses restrained pixel bands.
+- `bossArt.ts`: Slime Monarch, Bone Lord, Ogre Warchief and Arch Necromancer native drawings and wind-ups.
+- Bone King and Frost Wyrm retain dedicated art. No enlarged minion placeholders or vector crowns.
+- Boss `tell` now publishes the wind-up cycle; hurt flashes do not hide attack poses.
+- Terrain uses flat flagstones, faint single-pixel joints, distributed scuffs and rare hairline wear; marsh shores connect.
+- Review: `/dev/dungeon.html` (Armory, Bosses, Terrain, Effects, Typography, Live game; `manual=1` for captures).
+- Capture/check: `node scripts/dungeon-render-smoke.mjs` while Vite runs on port 5173.
+- Generated captures: `/tmp/dungeon-smoke/` (outside git); includes all six modifier palettes and six boss idle/attack pairs.
+- Checks: typecheck, production build, dungeon/inset tests, browser landscape/iPad DPR2/portrait/phone/rotation/unmount.
+- Physical iPad/Bluefy and the opt-in long balance suite are not covered by the browser smoke check.
+
+- Class names: Wand, Scattergun, Bow, Blaster, Boltcaster, Orb, Shuriken, Dagger, Axe, Spear.
+- Normal takes 20% of the same modifier roll, consumes no extra RNG and has no elemental on-hit effect.
+- Shuriken tiers share solid-hub, four-pointed masks; all projectile types animate glints or shape frames.
+- Pixel chrome: stepped frames, segmented meters and a shared bitmap font for all in-game text.
+- Effects tab and `projectiles.gif` show four animation phases without changing shot collision bounds.
+- Pacing scenario checks spin-up opportunities across its seeds, since boss priority can preempt one seed’s calls.
+- Normal Boltcaster uses the same animated arc masks as elemental versions, colored silver.
+- Short one-word item variants accompany shared `WEAPON_CLASS_NAMES` armory headings; quality/element affixes remain separate.
+- `font.ts`: original 5×7 alphabet, lowercase/descenders, tabular digits and HUD symbols; no font download or system fallback.
+- Native cached text rasters upscale at integer steps; fitting ellipsizes rather than squashing glyphs.
+- HUD/camp sizing uses CSS dimensions before DPR; compact camp puts descriptions on a second line.
+- Elite labels and damage text draw at display resolution; typography/camp captures are generated under `/tmp/dungeon-smoke/`.
+- Camera focus eases exponentially toward the hero/boss midpoint; only new floors reset it, with no distance-triggered snap.
+- Zoom: either signed paddle axis steps in/out with hysteresis; opposing inputs cancel. Room/boss changes never override it.
+- Two-finger pinch/spread zooms on the canvas; captures clear on cancel, blur, resize and unmount. Legend: Zoom ± / pinch.

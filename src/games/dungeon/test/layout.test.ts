@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runLayout } from '../render/layout';
+import { runLayout, bossHudLayout } from '../render/layout';
 
 describe('run layout', () => {
   for (const [W, H, inset, u] of [[1180, 820, 90, 1.2], [820, 1180, 120, 1.2], [2360, 1640, 180, 2.4], [640, 480, 60, 1]]) {
@@ -13,6 +13,15 @@ describe('run layout', () => {
       expect(L.stance.x).toBeGreaterThanOrEqual(L.card.x + L.card.w);
       expect(L.playH).toBeLessThanOrEqual(L.card.y);
       expect((L.card.w + L.stance.w) * L.card.h / (W * H)).toBeLessThan(0.03); // under 3% of the screen
+    });
+  }
+});
+
+describe('boss HUD readability',()=>{
+  for(const [W,H,inset,hu]of [[390,844,100,1],[1280,800,100,1.25],[2048,1536,200,2.5]]){
+    it(`${W}px keeps the whole boss panel above the HUD`,()=>{
+      const r=bossHudLayout(W,H,inset,hu);expect(r.y+r.h).toBeLessThanOrEqual(H-inset);expect(r.x+r.w).toBeLessThanOrEqual(W);expect(r.w).toBeGreaterThan(W<700*hu?W*.8:W*.25);
+      if(W<700*hu)expect(r.y).toBeGreaterThanOrEqual(50*hu);
     });
   }
 });

@@ -14,9 +14,9 @@ export const UNIQUES: Array<{ fx: UniqueFx; name: string; base: WeaponStyle; ele
   { fx: 'ricochet', name: 'Ricochet Ballista', base: 'arrow', element: 'fire', blurb: 'bolts leap between foes' },
 ];
 
-export type Element = 'arcane' | 'fire' | 'frost' | 'venom' | 'storm';
-export const ELEMENT_COLORS: Record<Element, string> = { arcane: '#c77dff', fire: '#ff7a2a', frost: '#7fe7ff', venom: '#7dff5a', storm: '#fff36a' };
-export type WeaponStyle = 'bolt' | 'pellet' | 'arrow' | 'flame' | 'spark' | 'orb' | 'star';
+export type Element = 'normal' | 'arcane' | 'fire' | 'frost' | 'venom' | 'storm';
+export const ELEMENT_COLORS: Record<Element, string> = { normal: '#b9c5d2', arcane: '#c77dff', fire: '#ff7a2a', frost: '#7fe7ff', venom: '#7dff5a', storm: '#fff36a' };
+export type WeaponStyle = 'bolt' | 'pellet' | 'arrow' | 'flame' | 'spark' | 'orb' | 'star' | 'knife' | 'axe' | 'spear';
 
 export interface Weapon {
   name: string; base: WeaponStyle; level: number; rarity: Rarity; element: Element;
@@ -32,23 +32,48 @@ export interface Weapon {
   bounce: number;     // wall bounces
   plus: number;       // shrine upgrades (+6% dmg each)
   unique?: UniqueFx;
+  /** Silhouette tier, shared by held art, drops and HUD. Optional for older item fixtures. */
+  variant?: number;
   score: number;
 }
 
 interface Base { label: string[]; dmg: number; rate: number; count: number; spread: number; speed: number; range: number; pierce: number; chain: number; blast: number; bounce: number; eff: number }
 const BASES: Record<WeaponStyle, Base> = {
   bolt:   { label: ['Wand', 'Rod', 'Sceptre'], dmg: 1.0, rate: 1.0, count: 1, spread: 0, speed: 13, range: 9, pierce: 0, chain: 0, blast: 0, bounce: 0, eff: 1 },
-  pellet: { label: ['Blunderbuss', 'Scattergun', 'Hand Cannon'], dmg: 0.3, rate: 0.75, count: 5, spread: 0.55, speed: 14, range: 5, pierce: 0, chain: 0, blast: 0, bounce: 0, eff: 0.9 },
-  arrow:  { label: ['Crossbow', 'Longbow', 'Ballista'], dmg: 1.75, rate: 0.48, count: 1, spread: 0, speed: 22, range: 13, pierce: 2, chain: 0, blast: 0, bounce: 0, eff: 1 },
-  flame:  { label: ['Flamecaster', 'Dragon Tongue', 'Pyre Staff'], dmg: 0.12, rate: 2.6, count: 3, spread: 0.4, speed: 7.5, range: 3.6, pierce: 9, chain: 0, blast: 0, bounce: 0, eff: 0.85 },
-  spark:  { label: ['Storm Rod', 'Tesla Coil', 'Thunder Glyph'], dmg: 0.55, rate: 1.2, count: 1, spread: 0, speed: 28, range: 8, pierce: 0, chain: 2, blast: 0, bounce: 0, eff: 1 },
-  orb:    { label: ['Orb Staff', 'Bomb Lobber', 'Comet Staff'], dmg: 1.25, rate: 0.6, count: 1, spread: 0, speed: 8, range: 9, pierce: 0, chain: 0, blast: 1.8, bounce: 0, eff: 1 },
-  star:   { label: ['Shuriken', 'Chakram', 'Star Discs'], dmg: 0.38, rate: 1.3, count: 2, spread: 0.09, speed: 14, range: 11, pierce: 1, chain: 0, blast: 0, bounce: 2, eff: 1 },
+  pellet: { label: ['Scattergun', 'Shotgun', 'Cannon'], dmg: 0.3, rate: 0.75, count: 5, spread: 0.55, speed: 14, range: 5, pierce: 0, chain: 0, blast: 0, bounce: 0, eff: 0.9 },
+  arrow:  { label: ['Crossbow', 'Bow', 'Ballista'], dmg: 1.75, rate: 0.48, count: 1, spread: 0, speed: 22, range: 13, pierce: 2, chain: 0, blast: 0, bounce: 0, eff: 1 },
+  // Keep the internal ids stable; these describe spread/chain attack patterns, not an element.
+  flame:  { label: ['Blaster', 'Sprayer', 'Repeater'], dmg: 0.12, rate: 2.6, count: 3, spread: 0.4, speed: 7.5, range: 3.6, pierce: 9, chain: 0, blast: 0, bounce: 0, eff: 0.85 },
+  spark:  { label: ['Boltcaster', 'Coil', 'Conduit'], dmg: 0.55, rate: 1.2, count: 1, spread: 0, speed: 28, range: 8, pierce: 0, chain: 2, blast: 0, bounce: 0, eff: 1 },
+  orb:    { label: ['Orb', 'Lobber', 'Comet'], dmg: 1.25, rate: 0.6, count: 1, spread: 0, speed: 8, range: 9, pierce: 0, chain: 0, blast: 1.8, bounce: 0, eff: 1 },
+  star:   { label: ['Shuriken', 'Star', 'Razor'], dmg: 0.38, rate: 1.3, count: 2, spread: 0.09, speed: 14, range: 11, pierce: 1, chain: 0, blast: 0, bounce: 2, eff: 1 },
+  knife:  { label: ['Dagger', 'Kunai', 'Dirk'], dmg: 0.68, rate: 1.35, count: 1, spread: 0, speed: 23, range: 8, pierce: 1, chain: 0, blast: 0, bounce: 0, eff: 1 },
+  axe:    { label: ['Axe', 'Hatchet', 'Greataxe'], dmg: 1.65, rate: 0.5, count: 1, spread: 0, speed: 10, range: 6, pierce: 2, chain: 0, blast: 0, bounce: 0, eff: 1 },
+  spear:  { label: ['Spear', 'Javelin', 'Lance'], dmg: 2.4, rate: 0.35, count: 1, spread: 0, speed: 18, range: 10, pierce: 3, chain: 0, blast: 0, bounce: 0, eff: 1 },
+};
+/** Short family names shared by the armory and any future class labels; item variants stay distinct. */
+export const WEAPON_CLASS_NAMES: Record<WeaponStyle, string> = {
+  bolt: 'Wand', pellet: 'Scattergun', arrow: 'Bow', flame: 'Blaster', spark: 'Boltcaster',
+  orb: 'Orb', star: 'Shuriken', knife: 'Dagger', axe: 'Axe', spear: 'Spear',
 };
 const STYLES = Object.keys(BASES) as WeaponStyle[];
+const THROWN: Partial<Record<WeaponStyle, WeaponStyle>> = { pellet: 'axe', arrow: 'spear', star: 'knife' };
+/** Keep the established family weights; thrown alternatives share a family's drop roll.
+ * One random sample, just like the original selection, so adding art never consumes gameplay RNG. */
+export function pickWeaponStyle(styles: readonly WeaponStyle[], roll: number): WeaponStyle {
+  const core = styles.filter(s => s !== 'knife' && s !== 'axe' && s !== 'spear');
+  if (!core.length) return styles[Math.min(styles.length - 1, Math.floor(roll * styles.length))];
+  const n = Math.min(1 - Number.EPSILON, Math.max(0, roll)) * core.length, base = core[Math.floor(n)], thrown = THROWN[base];
+  return thrown && styles.includes(thrown) && n % 1 >= 0.8 ? thrown : base;
+}
 const ELEMENTS: Element[] = ['arcane', 'fire', 'frost', 'venom', 'storm'];
+/** Normal weapons share the existing modifier roll, with no elemental on-hit effect or extra RNG sample. */
+export function weaponElement(roll: number): Element {
+  const n = Math.min(1 - Number.EPSILON, Math.max(0, roll)) * ELEMENTS.length;
+  return n % 1 >= 0.8 - 1e-10 ? 'normal' : ELEMENTS[Math.floor(n)];
+}
 const PREFIX = [['Rusty', 'Plain', 'Worn'], ['Fine', 'Keen', 'Charged'], ['Runed', 'Gleaming', 'Savage'], ['Ancient', 'Dread', 'Astral'], ['Mythic', 'Godforged', 'Eternal']];
-const ELEMENT_SUFFIX: Record<Element, string> = { arcane: 'of Whispers', fire: 'of Embers', frost: 'of Rime', venom: 'of Blight', storm: 'of Thunder' };
+const ELEMENT_SUFFIX: Record<Element, string> = { normal: 'of Steel', arcane: 'of Whispers', fire: 'of Embers', frost: 'of Rime', venom: 'of Blight', storm: 'of Thunder' };
 
 /** Item power growth per item level (enemy HP grows a bit faster, so upgrades matter). */
 export const levelMult = (lvl: number) => Math.pow(1.17, lvl - 1);
@@ -66,9 +91,9 @@ export function weaponScore(w: Pick<Weapon, 'dmg' | 'rate' | 'count' | 'chain' |
 }
 
 export function makeWeapon(rng: () => number, level: number, rarity: Rarity, style?: WeaponStyle): Weapon {
-  const base = style ?? STYLES[Math.floor(rng() * STYLES.length)];
+  const base = style ?? pickWeaponStyle(STYLES, rng());
   const b = BASES[base];
-  const element = ELEMENTS[Math.floor(rng() * ELEMENTS.length)];
+  const element = weaponElement(rng());
   const v = () => 0.88 + rng() * 0.24;
   const m = levelMult(level) * RARITY_MULT[rarity];
   const extra = rarity >= 2 && b.count > 1 ? (b.count % 2 ? 2 : 1) : 0; // keep a centre projectile
@@ -79,7 +104,9 @@ export function makeWeapon(rng: () => number, level: number, rarity: Rarity, sty
     pierce: b.pierce + (rarity >= 3 ? 1 : 0), chain: b.chain + (rarity >= 3 && base === 'spark' ? 1 : 0),
     blast: b.blast ? b.blast * (1 + 0.1 * rarity) : 0, bounce: b.bounce + (rarity >= 3 && base === 'star' ? 1 : 0), plus: 0, score: 0,
   };
-  w.name = `${PREFIX[rarity][Math.floor(rng() * 3)]} ${b.label[Math.min(2, Math.floor(rarity / 2 + rng()))]}${rarity >= 1 ? ' ' + ELEMENT_SUFFIX[element] : ''}`;
+  const prefix = PREFIX[rarity][Math.floor(rng() * 3)];
+  w.variant = Math.min(2, Math.floor(rarity / 2 + rng()));
+  w.name = `${prefix} ${b.label[w.variant]}${rarity >= 1 ? ' ' + ELEMENT_SUFFIX[element] : ''}`;
   w.score = weaponScore(w);
   return w;
 }

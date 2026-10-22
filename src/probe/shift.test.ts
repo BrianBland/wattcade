@@ -38,6 +38,15 @@ async function fixture() {
 }
 it('connects without trainer writes, then sends an explicit handshake and selected ratio', async () => {
   const { write, ftmsWrite } = await fixture();
+  expect(navigator.bluetooth.requestDevice).toHaveBeenCalledWith({
+    filters: [{ namePrefix: 'KICKR' }],
+    optionalServices: [
+      '00001826-0000-1000-8000-00805f9b34fb',
+      '0000fc82-0000-1000-8000-00805f9b34fb',
+      '00000001-19ca-4651-86e5-fa29dcdd09d1',
+      '0000180a-0000-1000-8000-00805f9b34fb',
+    ],
+  });
   expect(write).not.toHaveBeenCalled(); expect(ftmsWrite).not.toHaveBeenCalled();
   click('Enable native shifting');
   await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
@@ -71,3 +80,13 @@ it('disconnect clears native initialization and removes notification listeners',
   await vi.waitFor(() => expect(document.body.textContent).toContain('Enable native shifting first'));
   expect(write).toHaveBeenCalledTimes(1);
 });
+
+it('identifies a bare Bluefy picker rejection before any GATT attempt', async () => {
+  document.body.innerHTML = '<div id="shift-probe"></div>';
+  vi.stubGlobal('navigator', { userAgent: 'Bluefy', bluetooth: { requestDevice: vi.fn().mockRejectedValue(2) } });
+  await import('./shift');
+  click('Connect KICKR');
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Bluetooth picker failed before GATT connection: non-Error rejection: 2 (number)'));
+  expect([...document.querySelectorAll('button')].find(b => b.textContent === 'Connect KICKR')!.disabled).toBe(false);
+});
+

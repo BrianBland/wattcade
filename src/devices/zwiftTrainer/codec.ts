@@ -1,6 +1,7 @@
 // CORE protocol facts: https://github.com/csanz91/kickr_esp32
 // Independently encoded HubCommand physical field 5 / GearRatioX10000 field 2.
-export const SHIFT_SERVICES = [0xfc82, '00000001-19ca-4651-86e5-fa29dcdd09d1'] as const;
+// Bluefy can reject numeric UUIDs before displaying its native device picker.
+export const SHIFT_SERVICES = ['0000fc82-0000-1000-8000-00805f9b34fb', '00000001-19ca-4651-86e5-fa29dcdd09d1'] as const;
 export const SHIFT_CHARS = {
   write: '00000003-19ca-4651-86e5-fa29dcdd09d1',
   response: '00000004-19ca-4651-86e5-fa29dcdd09d1',
@@ -26,3 +27,4 @@ export function encodeGear(gear: number): Uint8Array {
   } while (value);
   return Uint8Array.of(0x04, 0x2a, encoded.length + 1, 0x10, ...encoded);
 }
+

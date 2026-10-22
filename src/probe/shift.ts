@@ -75,10 +75,17 @@ async function write(c: BluetoothRemoteGATTCharacteristic, bytes: Uint8Array) {
 }
 async function connect() {
   if (!navigator.bluetooth) throw new Error('Use Bluefy over HTTPS or desktop Chrome with Web Bluetooth');
-  device = await navigator.bluetooth.requestDevice({
-    filters: [{ services: [FTMS_SERVICE] }, { namePrefix: 'KICKR' }],
-    optionalServices: [FTMS_SERVICE, ...SHIFT_SERVICES, 0x180a],
-  });
+  // Match the name-filter/full-UUID shape already used by the Ride controller.
+  const options: RequestDeviceOptions = {
+    filters: [{ namePrefix: 'KICKR' }],
+    optionalServices: ['00001826-0000-1000-8000-00805f9b34fb', ...SHIFT_SERVICES, '0000180a-0000-1000-8000-00805f9b34fb'],
+  };
+  log('PICK', JSON.stringify(options));
+  try { device = await navigator.bluetooth.requestDevice(options); }
+  catch (e) {
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : `non-Error rejection: ${String(e)} (${typeof e})`;
+    throw new Error(`Bluetooth picker failed before GATT connection: ${detail}`);
+  }
   log('DEVICE', `${device.name ?? '(unnamed)'} ${device.id}`);
   const onDisconnect = () => { log('DISCONNECT', 'GATT disconnected'); reset(); };
   device.addEventListener('gattserverdisconnected', onDisconnect);
@@ -166,3 +173,4 @@ button('Download log', () => {
 root.append(telemetry, output);
 log('BROWSER', `${navigator.userAgent} secure=${window.isSecureContext}`);
 status.textContent = 'Disconnected'; refresh();
+

@@ -3,6 +3,7 @@ import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../..
 import { play, stopAmbient, type SfxName } from '../../../audio/sfx';
 import { BASE_PAD, BASE_X, BASE_Y, PADS, ROAD_LENGTH, TOWERS, LEVEL_RANGE, roadAt } from '../sim/defs';
 import { HIVE_MOUTH, ROAD, ROAD_HALF_WIDTH, SHOULDER, TURRET_R } from '../sim/road';
+import { BOSS_NAME, BOSS_TRICK } from '../sim/boss';
 import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
@@ -62,7 +63,7 @@ export class TdRenderer implements GameRenderer {
   /** base-damage sparks and steam: drawn after the outpost, which would otherwise cover them */
   private baseFx: Particle[] = [];
   /** boss arrival name card start (wall clock) and wave; Exposed window bookkeeping for the first-hit slow-down */
-  private intro = { at: -99, wave: 0 };
+  private intro: { at: number; wave: number; color: 'blue' | 'red' | 'purple' } = { at: -99, wave: 0, color: 'purple' };
   private exposedWindow = { open: false, since: 0, slowed: false };
   private snap: TdSnapshot | null = null;
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
@@ -400,7 +401,7 @@ export class TdRenderer implements GameRenderer {
         } else this.particles.push({ x, y: y - 12 * k, vx: 0, vy: -6 * k, age: 0, life: 1.4, size: Math.max(11, 2.4 * k), color: 'rgba(200,205,215,0.8)', kind: 'text', text: `${st.label} missed` });
       } else if (f.kind === 'bossIntro') {
         if (!allowHitStop) continue;
-        this.intro = { at: this.wall, wave: f.wave }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
+        this.intro = { at: this.wall, wave: f.wave, color: f.color }; this.shake = Math.max(this.shake, 0.55); play('rumble', { vol: 1.2 }); play('roar', { vol: 0.6, pitch: 0.7 });
       } else if (f.kind === 'hitStop') {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
@@ -518,6 +519,7 @@ export class TdRenderer implements GameRenderer {
         if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.3) { const nh = Math.atan2(y - prev.y, x - prev.x); h = prev.h + angleLerp(prev.h, nh, 0.3); }
         this.heading.set(e.id, { x, y, h });
         if (!puppets) drawEnemy(g, e, x, y, k, h, t);
+        if (e.kind === 'boss') this.bossTrick(g, e, s, x, y, h, t);
         if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
@@ -563,12 +565,15 @@ export class TdRenderer implements GameRenderer {
         const k2 = Math.min(1, age / 0.25), a = age < 2.2 ? 1 : 1 - (age - 2.2) / 0.6, scale = 1.35 - 0.35 * (1 - Math.pow(1 - k2, 3));
         const size = Math.round(Math.min(this.W * 0.075, 64 * L.u)), y = L.banner.y;
         g.save(); g.globalAlpha = a * k2; g.translate(this.W / 2, y); g.scale(scale, scale); g.textAlign = 'center';
-        g.font = `900 ${size}px system-ui, sans-serif`; g.lineWidth = Math.max(4, size * 0.12); g.strokeStyle = 'rgba(20,12,0,0.85)';
-        const title = 'H I V E   T Y R A N T';
-        g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL.gold);
+        const title = BOSS_NAME[this.intro.color].toUpperCase().split('').join(' ');
+        g.font = `900 ${size}px system-ui, sans-serif`;
+        const fit = Math.min(1, (this.W * 0.9) / Math.max(1, g.measureText(title).width * 1.35)); // fits at the slam-in scale
+        g.scale(fit, fit);
+        g.lineWidth = Math.max(4, size * 0.12); g.strokeStyle = 'rgba(20,12,0,0.85)';
+        g.strokeText(title, 0, 0); const gr = g.createLinearGradient(0, -size, 0, 0); gr.addColorStop(0, '#fff2b0'); gr.addColorStop(1, COL[this.intro.color]);
         g.fillStyle = gr; g.fillText(title, 0, 0);
         g.font = `700 ${Math.round(size * 0.32)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,236,190,0.9)'; g.lineWidth = 3;
-        const sub = `Wave ${this.intro.wave} boss · announced phases · sprint when Exposed`;
+        const sub = `Wave ${this.intro.wave} boss · ${BOSS_TRICK[this.intro.color]} · sprint when Exposed`;
         g.strokeText(sub, 0, size * 0.62); g.fillText(sub, 0, size * 0.62); g.restore();
       }
     }
@@ -694,6 +699,34 @@ export class TdRenderer implements GameRenderer {
   }
 
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */
+  /** Purple's shield plates ring the boss and fall away as they break; red's charge warning flashes ahead of it. */
+  private bossTrick(g: CanvasRenderingContext2D, e: EnemyView, s: TdSnapshot, x: number, y: number, heading: number, t: number) {
+    const r = (e.radius + 2.2) * this.k;
+    if (e.shield > 0) {
+      const plates = 8, lit = Math.ceil(e.shield * plates);
+      g.save(); g.lineWidth = Math.max(2, this.k * 0.7); g.lineCap = 'round';
+      for (let i = 0; i < plates; i++) {
+        const a = t * 0.6 + i * TAU / plates;
+        g.strokeStyle = i < lit ? COL.purple : 'rgba(198,148,255,0.15)'; g.globalAlpha = i < lit ? 0.85 : 1;
+        g.beginPath(); g.arc(x, y, r, a + 0.08, a + TAU / plates - 0.08); g.stroke();
+      }
+      g.restore();
+    }
+    const charge = s.boss?.id === e.id ? s.boss.charge : null;
+    if (charge) {
+      const pulse = charge === 'warn' ? 0.5 + 0.5 * Math.sin(t * 16) : 1, len = r * (charge === 'warn' ? 1.6 : 2.4);
+      g.save(); g.globalAlpha = 0.35 + 0.5 * pulse; g.strokeStyle = COL.red; g.lineWidth = Math.max(2, this.k * 0.6);
+      for (let i = 0; i < 3; i++) { // chevrons along its heading
+        const d = r + len * (i / 3), cx = x + Math.cos(heading) * d, cy = y + Math.sin(heading) * d, w = r * 0.45;
+        g.beginPath();
+        g.moveTo(cx - Math.cos(heading) * w + Math.sin(heading) * w, cy - Math.sin(heading) * w - Math.cos(heading) * w);
+        g.lineTo(cx, cy);
+        g.lineTo(cx - Math.cos(heading) * w - Math.sin(heading) * w, cy - Math.sin(heading) * w + Math.cos(heading) * w);
+        g.stroke();
+      }
+      g.restore();
+    }
+  }
   private reticle(g: CanvasRenderingContext2D, e: EnemyView, x: number, y: number, t: number, locked = false) {
     const r = (e.radius + 1.6) * this.k, a = locked ? Math.PI / 4 : t * 2;
     g.strokeStyle = locked ? '#ffd24a' : 'rgba(255,255,255,0.75)'; g.lineWidth = locked ? 2.5 : 1.5;

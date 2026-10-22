@@ -107,7 +107,7 @@ export async function drawMock(g: CanvasRenderingContext2D, px: (p: Pt) => Pt, k
   const enemies: EnemyView[] = [];
   const enemy = (id: number, kind: Kind, p: Pt, element: Element): EnemyView => ({
     id, kind, route: kind === 'dart' ? 0 : -1, flying: kind === 'dart', x: p.x, y: p.y, angle: 0, dist: 0, radius: KINDS[kind].radius, element, gold: kind === 'boss', hp: 1, maxHp: 1, hurt: 9,
-    charging: false, shiftIn: 0, next: null, progress: 0, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, hitT: -1, hitCls: 'neutral', hitDmg: 0,
+    charging: false, shiftIn: 0, next: null, progress: 0, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, shield: 0, hitT: -1, hitCls: 'neutral', hitDmg: 0,
   });
   const before: EnemyView[] = [];
   roster.forEach(([kind, d, side, el], i) => {

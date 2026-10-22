@@ -421,10 +421,10 @@ Until core lands, test the sims with a local minimal stub context. Keep it in `t
   - **Blue swarm minis:** many, low HP, crystalline bioluminescent chitin. Strong: Gatling; resisted: fire.
   - **Red brutes:** fuel-blooded; fire bursts their volatile bladders and can ignite nearby reds in a capped chain. Strong: Flamer; resisted: Rail.
   - **Purple armored:** slow, high HP, sealed plates. Strong: Rail; resisted: Gatling.
-  - **Gold boss** every 5 waves: 2–3 HP-gated phases automatically change weapon and trainer mode after an announced countdown. Current phase colour uses the matrix. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold D-pad Up or the touch Sprint boost target during a Rail opening to raise its ERG target for a power sprint, preserving the mode; A stays construction. Keeps the Goliath art.
+  - **Boss** every 5 waves, one per brood colour, taking turns: it keeps its colour, weapon and trainer mode all fight. 2–3 HP-gated phases (announced countdown, stagger) escalate its trick: blue Swarm Tyrant births swarm packs, red Ram Tyrant warns then charges, purple Bulwark Tyrant raises shield plates that rail shots break fast. Telegraphed Exposed windows give ×2 damage, with a further ×1.5 for sprinting. Hold D-pad Up or the touch Sprint boost target during a Rail opening to raise its ERG target for a power sprint, preserving the mode; A stays construction. Keeps the Goliath art.
 
   The stream of minis is continuous; heavier enemies arrive in waves.
-- **Weapons** (follow the announced brood or boss phase automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):
+- **Weapons** (follow the announced brood automatically; 1.5 s mount; each weapon owns a resistance effect, so all three trainer modes are exercised):
   - **Gatling** (blue): sim mode, effect `weapon` +1 % grade (low, spinny). Fires one bullet per `tuning 'gatlingRevsPerShot'` (default 0.25) crank revs.
   - **Flamethrower** (red): **resistance mode**, `levelPct` 35. A short cone with damage per second ∝ power3s.
   - **Railgun** (purple): **ERG mode**, `ftpFraction` 0.95. Charge accumulates while ftpFraction ≥ 0.75, one charge per ~20 s at 0.95 FTP (tunable). It **stores up to 3 charges** (tunable). **Z fires manually**: one charge per press, a piercing beam. Holding Z for 0.5 s dumps all stored charges in a spread (event `railFired` with `charges`).

@@ -91,17 +91,22 @@ it('shows effort targets, held progress and remaining time in one place, with co
   expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(false);
 });
 
-it('prioritizes boss switches and sprint windows, then recovery over stale effort state', () => {
+it('prioritizes boss phases and sprint windows, then recovery over stale effort state', () => {
   const { snapshot: s, draw, card } = hudFixture();
-  const boss: NonNullable<TdSnapshot['boss']> = { id: 1, phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', next: null, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false };
+  const boss: NonNullable<TdSnapshot['boss']> = { id: 1, name: 'Bulwark Tyrant', phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', pending: false, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false, charge: null, shield: 0 };
   draw({ ...s, boss });
-  expect(card.textContent).toContain('Boss phase 1/3');
+  expect(card.textContent).toContain('Bulwark Tyrant · phase 1/3');
   expect(card.textContent).toContain('Hold ▲ for the ERG push');
   draw({ ...s, boss: { ...boss, exposed: true, telegraph: false } });
   expect(card.textContent).toContain('Exposed');
-  draw({ ...s, boss: { ...boss, next: 'red', countdownS: 7 } });
-  expect(card.textContent).toContain('Fireball next');
-  expect(card.textContent).toContain('Switch in 7s');
+  draw({ ...s, boss: { ...boss, pending: true, countdownS: 7 } });
+  expect(card.textContent).toContain('Phase 2 next');
+  expect(card.textContent).toContain('same weapon');
+  expect(card.textContent).toContain('Starts in 7s');
+  draw({ ...s, boss: { ...boss, telegraph: false, shield: 0.5 } });
+  expect(card.textContent).toContain('Shield plates up');
+  draw({ ...s, boss: { ...boss, name: 'Ram Tyrant', color: 'red', weapon: 'flame', telegraph: false, charge: 'warn' } });
+  expect(card.textContent).toContain('Ram charge incoming');
   draw({ ...s, boss, brood: { ...s.brood, countdownS: 15 } });
   expect(card.textContent).toContain('Recover');
   expect(card.textContent).not.toContain('ERG push');

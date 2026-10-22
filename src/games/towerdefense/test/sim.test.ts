@@ -86,6 +86,18 @@ describe('brood planner', () => {
     for (let i = 0; i < 200; i++) seq.push(nextBrood(seq, rng, { maxRun: 1, coverWaves: 0 }));
     for (let i = 1; i < seq.length; i++) expect(seq[i]).not.toBe(seq[i - 1]);
   });
+  it('bosses take turns: a boss wave never repeats the last boss colour, even over colour cover', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      const rng = makeRng(seed), seq: Element[] = [], bosses: Element[] = [];
+      for (let w = 1; w <= 60; w++) {
+        const boss = waveRole(w) === 'boss';
+        const c = nextBrood(seq, rng, { ...BROOD, maxRun: boss ? 1 : BROOD.maxRun, avoid: boss ? bosses.at(-1) : undefined });
+        seq.push(c); if (boss) bosses.push(c);
+      }
+      for (let i = 1; i < bosses.length; i++) expect(bosses[i], `seed ${seed} boss ${i}`).not.toBe(bosses[i - 1]);
+      for (let i = 2; i < seq.length; i++) expect(seq[i] === seq[i - 1] && seq[i] === seq[i - 2]).toBe(false); // the run limit holds
+    }
+  });
   it('about 80% of a wave\'s slots are the brood colour; blue slots are swarm packs', () => {
     for (const brood of ELEMENTS) for (let w = 1; w <= 40; w++) {
       const p = planWave(w, makeRng(w * 7), { ...WO, brood });

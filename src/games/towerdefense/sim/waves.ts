@@ -35,6 +35,8 @@ export interface BroodOrderOpts {
   maxRun: number;
   /** Every run of this many consecutive waves has all three colours (< 3 = off). */
   coverWaves: number;
+  /** Prefer any other colour to this one (bosses take turns); only the run limit outranks it. */
+  avoid?: Element;
 }
 
 /**
@@ -52,7 +54,11 @@ export function nextBrood(history: readonly Element[], rng: () => number, o: Bro
     // never leave the next window needing two colours at once
     return missing(seq.slice(-(cover - 1))) <= 1;
   };
-  let pool = ELEMENTS.filter((c) => ok(c, true));
+  // Turn-taking (`avoid`) outranks colour cover, never the run limit.
+  const allowed = (c: Element) => c !== o.avoid;
+  let pool = ELEMENTS.filter((c) => ok(c, true) && allowed(c));
+  if (!pool.length) pool = ELEMENTS.filter((c) => ok(c, false) && allowed(c));
+  if (!pool.length) pool = ELEMENTS.filter((c) => ok(c, true));
   if (!pool.length) pool = ELEMENTS.filter((c) => ok(c, false));
   if (!pool.length) pool = ELEMENTS;
   return pool[Math.floor(rng() * pool.length) % pool.length];

@@ -31,7 +31,7 @@ export const rateLaunch = (ratio: number) => LAUNCH_RATINGS.find((x) => ratio >=
 export interface CadenzaSnapshot {
   p: number; durationS: number; started: boolean; done: boolean;
   menu: { row: number; difficulty: Difficulty; mode: Mode; reducedFlash: boolean; trainer: TrainerStyle; left: number } | null;
-  track: Track; blockState: Uint8Array; x: number; lanes: number;
+  track: Track; blockState: Uint8Array; x: number; previousX: number; steeringTick: number; lanes: number;
   score: number; mult: number; chain: number; shield: number; overdrive: boolean;
   dropout: { left: number } | null;
   /** The drop's launch roll: live meter while rolling, then the result for a few seconds. */
@@ -72,7 +72,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     greyHit: t.num('greyHit', 20, 5, 60, 1, 'Shield lost per gray block'),
     rebootS: t.num('rebootS', 5, 1, 15, 0.5, 'Seconds on target to reboot after a dropout'),
     steer: t.num('steerRate', 9, 2, 30, 0.5, 'Lanes per second the craft can slide'),
-    hitWindow: t.num('hitWindow', 0.55, 0.3, 1, 0.05, 'Lateral catch radius (lanes)'),
+    paddleMode: t.choice('paddleMode', 'continuous', ['stepped', 'continuous'] as const, 'Continuous position or stepped lanes'),
+    paddleCurve: t.choice('paddleCurve', 'linear', ['linear', 'quadratic'] as const, 'Linear responds evenly; quadratic softens light pulls'),
+    paddleDeadzone: t.num('paddleDeadzone', ctx.profile.settings.paddleDeadzone, 0, 60, 1, 'Raw paddle movement ignored near rest (%)'),
+    paddleSwitch: t.num('paddleSwitchThreshold', 30, 5, 90, 1, 'Processed pull needed for the first lane in stepped mode (%)'),
     underDrain: t.num('underDrain', 4, 0, 20, 0.5, 'Shield % per second drained while under the power target'),
     underGrace: t.num('underGraceS', 1.5, 0, 6, 0.25, 'Seconds under target before the shield starts draining'),
   };
@@ -92,6 +95,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   announcements.setTrack(track, ctx.media?.positionS() ?? 0);
 
   let ownP = 0, started = false, done = false, saved = false;
+  let previousX = 0, steeringTick = 0;
   let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padLevel = 0, padActive = false, ergF = 0.6;
   let nextBlock = 0, score = 0, chain = 0, maxChain = 0, shield = 100, dropoutLeft = -1;
   let collected = 0, missed = 0, greysHit = 0, greysDodged = 0, dropouts = 0, overdriveS = 0, cleanZones = 0;
@@ -150,26 +154,31 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       let want = laneTarget;
       const nextColour = track.blocks.slice(nextBlock, nextBlock + 8).find((b) => b.color >= 0 && b.t < p + 1.5);
       if (nextColour) want = nextColour.lane;
-      if (nb && nb.color < 0 && nb.t < p + 0.6 && Math.abs(nb.lane - (nb.t - p < 0.15 ? x : want)) <= tun.hitWindow()) {
+      if (nb && nb.color < 0 && nb.t < p + 0.6 && nb.lane === Math.round(nb.t - p < 0.15 ? x : want)) {
         const away = [nb.lane - 1, nb.lane + 1].filter((l) => l >= -h && l <= h);
         want = away.sort((a, b) => Math.abs(a - want) - Math.abs(b - want))[0];
       }
       laneTarget = want;
       return;
     }
-    // Paddles = absolute position: the stronger paddle leads (left pulls left, right pulls right); how far you pull picks
-    // the lane (with hysteresis); letting both rest returns you to the centre. While both rest, the D-pad and Z/A step
-    // one lane per press (holding repeats).
+    // Paddles place the ship continuously or select lane centres; buttons always step lanes.
+    // Resting both paddles returns to centre once, then leaves button steering available.
     const l = Math.abs(inp.paddleL), r = Math.abs(inp.paddleR);
-    if (l > 0.05 || r > 0.05) {
-      const v = l >= r ? -l : r, mag = Math.abs(v);
-      let level = 0;
-      for (let k = 1; k <= h; k++) {
-        const on = 0.3 + ((k - 1) * 0.7) / h, held = Math.abs(padLevel) >= k;
-        if (mag >= (held ? on - 0.08 : on)) level = k;
+    if (l > 0 || r > 0) {
+      const v = l >= r ? -l : r;
+      if (tun.paddleMode() === 'continuous') {
+        laneTarget = clamp(v * h, -h, h); padLevel = 0;
+      } else {
+        const threshold = tun.paddleSwitch() / 100;
+        let level = 0;
+        for (let k = 1; k <= h; k++) {
+          const on = threshold + ((k - 1) * (1 - threshold)) / h;
+          const held = Math.sign(padLevel) === Math.sign(v) && Math.abs(padLevel) >= k;
+          if (Math.abs(v) >= (held ? on - Math.min(0.08, threshold / 2) : on)) level = k;
+        }
+        padLevel = Math.sign(v) * level; laneTarget = padLevel;
       }
-      padLevel = Math.sign(v) * level;
-      laneTarget = padLevel; padActive = true; holdDir = 0;
+      padActive = true; holdDir = 0;
       return;
     }
     if (padActive) { padActive = false; padLevel = 0; laneTarget = 0; }
@@ -306,13 +315,14 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       // steering
       steer();
       const h = half();
+      previousX = x; steeringTick++;
       x += clamp(laneTarget - x, -tun.steer() * dt, tun.steer() * dt);
       x = clamp(x, -h, h);
 
       // blocks reaching the craft
       while (nextBlock < track.blocks.length && track.blocks[nextBlock].t <= p) {
         const b = track.blocks[nextBlock];
-        const caught = Math.abs(b.lane - x) <= tun.hitWindow();
+        const caught = b.lane === Math.round(x);
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {
@@ -351,7 +361,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       return {
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,
         controls: [
-          { button: 'dpad', label: '◀▶ Lane' }, { button: 'z', label: 'Left' }, { button: 'a', label: 'Right' }, { button: 'paddles', label: 'Lane' },
+          { button: 'dpad', label: '◀▶ Lane' }, { button: 'z', label: 'Left' }, { button: 'a', label: 'Right' }, { button: 'paddles', label: tun.paddleMode() === 'continuous' ? 'Position' : 'Lane' },
           ...(erg ? [] : [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }]),
         ],
       };
@@ -363,7 +373,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       return {
         p, durationS: track.durationS, started, done,
         menu: menu ? { row: menuRow, difficulty, mode, reducedFlash, trainer, left: Math.max(0, MENU_AUTO_S - menuT) } : null,
-        track, blockState, x, lanes: track.lanes,
+        track, blockState, x, previousX, steeringTick, lanes: track.lanes,
         score, mult: mult(), chain, shield, overdrive, dropout: dropoutLeft >= 0 ? { left: dropoutLeft } : null,
         launch: launchActive
           ? { active: true, progress: launchProgress(p), ratio: launchT > 0 ? launchSum / launchT : 0, rating: null, bonus: 0, age: 0 }

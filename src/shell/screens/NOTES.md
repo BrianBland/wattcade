@@ -13,3 +13,5 @@
 - Rejection shows the existing Back/error UI. Unmount guards prevent a late render or gameplay loop.
 - Renderers without ready() keep their existing startup flow after the import/mount completes.
 - GameHost tests cover intro/menu waiting, failed loading and leaving during loading.
+
+- Cadenza Pause → Paddle steering: movement/curve toggles and deadzone/switch-threshold steppers write directly to the session tuning registry (per rider). Back keeps the ride paused; Resume applies on the next tick. Controller focus scrolls into view on short screens. `PauseMenu.test.tsx` + `scripts/cadenza-paddles-smoke.mjs` cover touch, controller, numeric bounds and persistence.

@@ -10,7 +10,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   (other drops ride as a hold); breaks ≥25/15/12 s, handovers 36/24/20 s, 40/30/25 s rest after 150/180/210 s of work. Rests
   are trimmed around sprints, so the 3-2-1 runs at the end of a rest; rests < 8 s / work slivers < 6 s fold away.
   `effortAt`: countdown opens the ceiling to Z5 (floor unchanged); transitions judge old ∪ new band for 5 s, `band` = shown.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
+- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = continuous or stepped position; D-pad/Z/A step; nearest lane judges hits),
   judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor
@@ -24,15 +24,15 @@ viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `
 `craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
-`renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
+`renderer.ts` + `steering.ts` (display-rate steering interpolation; camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),
 `hud.ts` (callout: big instruction 3 s per effort change / 4 s Break, + a smaller line in the same style — band · watts,
 `Sprint incoming`, `Easy pedaling · Z1–2`; countdown digits pop (no sfx over the music), coaching/dropout stay up; accent text `--acc-t`), `layout.ts`.
 Recovery calms pulses, bloom, shake, streaks, rings (`uMotion`), no fireworks. AV penalty: 3 s grace, 10 s ramp, capped 0.75.
 ## Dev / tests
 `/dev/cadenza.html?script=target-follow&sec=40&autopilot=1&songs=2` (synth, no audio; `sec=49.4&speed=0` = launch roll,
 `script=z2&sec=44` = under, `script=intervals&sec=86` = over, `sec=174.3` = recap). `/dev/craft.html?ship=lancer` = ship states + mine.
-`node scripts/cadenza-render-smoke.mjs` against Vite checks finite bloom, bounded GPU allocations, smooth audio.
-Scenarios: EDM set (3–5 spaced launches ≥ great), idle dropout, continuous album on casual. Gaps: Classic; iPad GPU cost; real-ride tuning.
+`node scripts/cadenza-{render,paddles}-smoke.mjs` against Vite: GPU/audio checks; pause controls, persistence, raw input, controller navigation and responsive layouts.
+Pause → Paddle steering: per-rider `paddleMode`, `paddleCurve`, `paddleDeadzone`, `paddleSwitchThreshold`; continuous/linear defaults, profile deadzone, 30% stepped threshold. Real Ride/iPad feel remains a device pass.
 Rolling: `announcements.ts` gives effort/launch/helix/steering cues stable IDs; calls `media.announce` once within 10 s (also pre-playback snapshots).
 Revisions honor `frozenUntilS` and the local announcement horizon; legacy fallback remains. `extendTrack` keeps road/blocks and committed efforts; new sprints need a countdown.
 Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low confidence use effort-only holds/recovery. No coverage = unchanged full-file/synth plan.

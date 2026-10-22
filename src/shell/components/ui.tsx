@@ -44,12 +44,12 @@ export function Field({ label, focused, hint, children, onClick }: { label: stri
 }
 
 /** − value + ; the value is editable by typing too. */
-export function Stepper({ value, onChange, step = 1, min = -Infinity, max = Infinity, unit, digits = 0 }: { value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string; digits?: number }) {
+export function Stepper({ value, onChange, step = 1, min = -Infinity, max = Infinity, unit, digits = 0, label }: { value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string; digits?: number; label?: string }) {
   const set = (v: number) => onChange(clampStep(v, min, max, digits));
   return (
     <span class="stepper">
       <button type="button" class="step" onClick={(e) => { e.stopPropagation(); play('uiTick'); set(value - step); }}>−</button>
-      <input type="number" value={value.toFixed(digits)} step={step} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); if (Number.isFinite(v)) onChange(v); }} onBlur={() => set(value)} />
+      <input type="number" aria-label={label} value={value.toFixed(digits)} step={step} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); if (Number.isFinite(v)) onChange(v); }} onBlur={() => set(value)} />
       {unit && <span class="unit">{unit}</span>}
       <button type="button" class="step" onClick={(e) => { e.stopPropagation(); play('uiTick'); set(value + step); }}>+</button>
     </span>

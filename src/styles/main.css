@@ -332,8 +332,15 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 /* editor / pause */
 .editor { display: flex; flex-direction: column; gap: 12px; max-width: 820px; }
 .editor .actions { padding: 4px 12px 0; }
-.modal.pause { min-width: min(520px, 94vw); }
+.modal.pause { min-width: min(520px, 94vw); max-width: 94vw; max-height: 94dvh; overflow-y: auto; }
 .modal.pause .field { grid-template-columns: 170px 1fr; }
+.modal.pause.paddle-settings { width: min(760px, 94vw); min-width: 0; }
+.paddle-settings p { margin: 0; }
+@media (max-width: 560px) {
+  .modal.pause { min-width: 0; width: 94vw; padding: 16px; }
+  .modal.pause .field { grid-template-columns: 1fr; }
+  .modal.pause .field > small { grid-column: 1; }
+}
 .stats.compact { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .stats.compact .stat { padding: 6px 10px; } .stats.compact .stat b { font-size: 20px; } .stats.compact .stat span { font-size: 11px; }
 /* arcade carousel: one row, the selection centred and enlarged (positions from shell/arcade.ts carouselSlots) */

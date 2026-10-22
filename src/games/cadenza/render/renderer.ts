@@ -15,6 +15,7 @@ import { layout } from './layout';
 import { U } from './look';
 import { newFrame, Path } from './path';
 import { Post } from './post';
+import { SteeringInterpolation } from './steering';
 import { buildTrackMeshes } from './trackMesh';
 
 /**
@@ -39,6 +40,7 @@ export class CadenzaRenderer implements GameRenderer {
   private streaks?: THREE.LineSegments; private streakPos = new Float32Array(0);
   private hue = 200; private hueTarget = 200; private lastZone = -1; private lastCue = -1; private lastT = now(); private lastX = 0; private bank = 0;
   private degradation: Degradation = { belowS: 0, level: 0 }; private lastP = 0;
+  private steering = new SteeringInterpolation();
   private shake = 0; private hurt = 0; private down = 0; private lastDown = -1;
   private motion = 0.6;
   private camPos = new THREE.Vector3(); private camLook = new THREE.Vector3(); private camUp = new THREE.Vector3(0, 1, 0); private camInit = false;
@@ -121,10 +123,12 @@ export class CadenzaRenderer implements GameRenderer {
     const s = snapshot as CadenzaSnapshot;
     if (!this.renderer || !this.post || !this.hud || !this.craft) return;
     const p = s.menu ? 0 : Math.max(0, s.p);
-    if (Math.abs(p - this.lastP) > 3) this.camInit = false; // seeks snap the chase camera to the new road
+    const seek = Math.abs(p - this.lastP) > 3;
+    if (seek) this.camInit = false; // seeks snap the chase camera to the new road
     if (s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);
     const t = this.track!, path = this.path!;
     const tNow = now(), dt = Math.min(0.1, tNow - this.lastT); this.lastT = tNow;
+    const shipX = this.steering.sample(s, tNow, seek || !!s.menu);
     const reduced = s.reducedFlash;
     const motionTarget = s.effort.phase === 'recover' ? 0.12 : s.effort.phase === 'cruise' ? 0.55 : 1;
     this.motion += (motionTarget - this.motion) * (1 - Math.exp(-dt / 1.2));
@@ -182,9 +186,9 @@ export class CadenzaRenderer implements GameRenderer {
     const dCraft = path.distAt(p);
     U.uCraftM.value = dCraft;
     path.at(dCraft, this.fr);
-    const vx = (s.x - this.lastX) / Math.max(dt, 1e-3); this.lastX = s.x;
+    const vx = (shipX - this.lastX) / Math.max(dt, 1e-3); this.lastX = shipX;
     this.bank += (THREE.MathUtils.clamp(-vx * 0.035, -0.3, 0.3) - this.bank) * Math.min(1, dt * 8);
-    path.point(dCraft, s.x, 0.9, this.fr, this.v);
+    path.point(dCraft, shipX, 0.9, this.fr, this.v);
     this.craft.group.position.copy(this.v);
     this.m.makeBasis(this.fr.r, this.fr.u, this.s.copy(this.fr.f).negate());
     this.craft.group.quaternion.setFromRotationMatrix(this.m);
@@ -231,9 +235,9 @@ export class CadenzaRenderer implements GameRenderer {
     // chase camera, rolling with the bank. A launch punches in close for the roll, then flings back out wide.
     const roll = s.launch?.active ? Math.sin(Math.PI * Math.min(1, s.launch.progress * 1.15)) : 0;
     path.at(dCraft - 9.5 + 3.5 * roll, this.fc);
-    const camTarget = this.fc.p.clone().addScaledVector(this.fc.r, s.x * 3.2 * 0.6).addScaledVector(this.fc.u, 4.6);
+    const camTarget = this.fc.p.clone().addScaledVector(this.fc.r, shipX * 3.2 * 0.6).addScaledVector(this.fc.u, 4.6);
     path.at(dCraft + 24, this.fc);
-    const look = this.fc.p.clone().addScaledVector(this.fc.r, s.x * 3.2 * 0.3).addScaledVector(this.fc.u, 0.6);
+    const look = this.fc.p.clone().addScaledVector(this.fc.r, shipX * 3.2 * 0.3).addScaledVector(this.fc.u, 0.6);
     if (!this.camInit) { this.camPos.copy(camTarget); this.camLook.copy(look); this.camUp.copy(this.fr.u); this.camInit = true; }
     this.camPos.lerp(camTarget, Math.min(1, dt * 8)); this.camLook.lerp(look, Math.min(1, dt * 10));
     this.camUp.lerp(this.v.copy(this.fr.u).lerp(this.worldUp, 0.12), Math.min(1, dt * 5)).normalize();

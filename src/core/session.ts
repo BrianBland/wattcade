@@ -83,6 +83,7 @@ export function createGameSession(o: SessionOpts): GameSession {
     ...(o.media ? { media: { timeline: o.media.timeline, positionS: () => mediaPos, started: () => mediaStarted, ...(o.media.announce ? { announce: o.media.announce } : {}) } } : {}),
   };
   const sim = o.game.createSim(ctx, { seed, ...(o.simOpts ?? {}) } as { seed?: number });
+  o.input.bindTuning?.(tuning, o.game.id);
 
   const hooksOf = () => (sim.snapshot() as { hooks?: Record<string, unknown> } | undefined)?.hooks;
 

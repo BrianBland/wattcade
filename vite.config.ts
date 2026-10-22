@@ -13,6 +13,8 @@ export default defineConfig({
         probe: resolve(__dirname, 'probe.html'),
         mediaLab: resolve(__dirname, 'media-lab.html'),
         tdPreview: resolve(__dirname, 'dev/towerdefense.html'),
+        seasideRide: resolve(__dirname, 'dev/seaside-ride.html'),
+        seasideStills: resolve(__dirname, 'dev/seaside.html'),
       },
     },
   },

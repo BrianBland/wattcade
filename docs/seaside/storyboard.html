@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seaside — storyboard v1</title>
+<style>
+  :root {
+    --paper: #f6f2e9; --card: #fffdf8; --ink: #2b2b2b; --ink2: #5c5a55; --muted: #8b8780;
+    --rule: #ddd6c8; --accent: #d0453c; --line: #2a78d6; --area: #2a78d6;
+    --surface-1: #fcfcfb; --grid: #e6e3dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #141413; --card: #1f1f1d; --ink: #ecebe6; --ink2: #b9b6ae; --muted: #8b8780;
+      --rule: #34332f; --line: #6da7ec; --area: #6da7ec; --surface-1: #1a1a19; --grid: #2e2d2a;
+    }
+    .sketch { filter: brightness(.92); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font: 14px/1.45 ui-sans-serif, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font: 600 34px/1.1 Georgia, serif; letter-spacing: .02em; margin: 0 0 4px; }
+  h2 { font: 600 22px/1.2 Georgia, serif; margin: 40px 0 6px; }
+  h3 { font-size: 14px; margin: 0 0 6px; }
+  .sub { color: var(--ink2); margin: 0 0 20px; max-width: 820px; }
+  .chip { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 9px;
+          border: 1px solid var(--rule); color: var(--ink2); margin-right: 4px; }
+  .notes { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin: 18px 0; }
+  .note { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
+  .note p, .note ul { margin: 0; color: var(--ink2); font-size: 13px; }
+  .note ul { padding-left: 18px; }
+  /* effort chart */
+  .chartbox { background: var(--surface-1); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px 8px; position: relative; }
+  .chartbox .title { font-weight: 600; } .chartbox .cap { color: var(--ink2); font-size: 12px; }
+  #effort { width: 100%; height: 230px; display: block; }
+  #tip { position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--rule);
+         border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.12); display: none; white-space: nowrap; }
+  #tip b { display: block; }
+  table.sum { border-collapse: collapse; font-size: 13px; margin-top: 10px; width: 100%; }
+  table.sum th, table.sum td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--rule); }
+  table.sum th { color: var(--ink2); font-weight: 600; }
+  table.sum td.n { font-variant-numeric: tabular-nums; }
+  /* panels */
+  .chapter { margin-top: 44px; border-top: 2px solid var(--ink); padding-top: 10px; }
+  .chapter .meta { color: var(--ink2); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 18px; margin-top: 14px; }
+  .panel { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .panel header { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 12px 6px; }
+  .panel header .t { font-weight: 650; } .panel header .n { color: var(--muted); margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .panel header .when { color: var(--ink2); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .sketch { display: block; width: 100%; aspect-ratio: 16/9; background: #fff; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .panel dl { margin: 0; padding: 8px 12px 12px; display: grid; grid-template-columns: 74px 1fr; gap: 3px 8px; font-size: 13px; }
+  .panel dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding-top: 2px; }
+  .panel dd { margin: 0; color: var(--ink2); }
+  .panel dd.say { font-family: Georgia, serif; font-style: italic; color: var(--ink); }
+  .bar { height: 6px; display: flex; gap: 1px; margin: 0 12px 0; }
+  .bar span { background: var(--line); border-radius: 1px; }
+  .seed { color: var(--accent); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="pencil" x="-2%" y="-2%" width="104%" height="104%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d0453c"/>
+    </marker>
+  </defs>
+</svg>
+<main>
+  <h1>Seaside</h1>
+  <p class="sub">Storyboard v2 · ~2 h in three chapters (36–46 min each) · first person, voxel, story-first. Low intensity overall:
+    mostly Z2, two Z3 drilling grinds, nine short sprints (all fishing pulls plus two set pieces). Sketches are framing only. Gloved hands and the current tool
+    are at the bottom of almost every shot. <span class="seed">Red</span> = motion, annotations and hidden seeds.</p>
+
+  <div class="chartbox">
+    <div class="title">Effort target across the ride (% FTP)</div>
+    <div class="cap">Hover for scene. Dashed lines = top of Z2 (75%) and Z3 (90%). Spikes are fishing pulls and set-piece sprints. Effort is measured against each rider's FTP.</div>
+    <svg id="effort" role="img" aria-label="Effort profile, percent FTP over 124 minutes"></svg>
+    <div id="tip"></div>
+  </div>
+  <table class="sum" id="sumtable"></table>
+
+  <h2>Systems in one glance</h2>
+  <div class="notes">
+    <div class="note"><h3>Fishing (the core loop)</h3><ul>
+      <li><b>Pick a spot</b>: paddles move a marker between 2–3 spots (rocks / kelp / pier end). Each spot has a different fish mix.</li>
+      <li><b>Cast</b>: press A. Cadence at the moment of release sets the distance (cast farther for bigger fish).</li>
+      <li><b>Wait</b>: light pedaling turns the reel and the lure drifts. Spinning a bit faster makes it twitch, which brings more bites. No penalty.</li>
+      <li><b>Bite</b>: the bobber plunges. Press A within a generous 2 s window (it auto-sets after 3 s, at half credit).</li>
+      <li><b>Pull</b>: a short sprint. The fish's stamina drains while you're above its target (110–150% FTP × 6–25 s, scaled by size). Trainer resistance surges when the fish runs.</li>
+      <li><b>Fail</b> only if you land under ~60% of the target. The fish wins, a funny line plays, and you recast.</li>
+    </ul></div>
+    <div class="note"><h3>Economy (catches matter, gently)</h3><ul>
+      <li>Fish sell by weight at Lou's. Rods: <b>Pier Rod</b> (start) → <b>Surf Rod</b> (shop 1) → <b>"the Deep"</b> (pier stand), which is needed to hook the Big One.</li>
+      <li>A rider who lands most of the bites has enough money with a margin. If you're short, a bonus turnout appears (+3 min of fishing) before the next shop. You're never stuck.</li>
+      <li>Extra money buys flair: lures, a bucket hat, a nicer bobber, a bell for the bars. Some of these show up again later (the hubcap and the old rod in the belly).</li>
+    </ul></div>
+    <div class="note"><h3>Drilling</h3><ul>
+      <li>ERG at Z3, low cadence (60–75 rpm target). Each material is a layer with its own ERG watts, colour, and sound.</li>
+      <li>Progress = depth. Cadence in the target band adds a bonus to the bore rate. Drifting off-band just slows the bore; you can't fail.</li>
+      <li>Ten-second easy "clear the chips" breaks between layers act as micro-rests.</li>
+    </ul></div>
+    <div class="note"><h3>Movement</h3><ul>
+      <li>Paddles steer left/right inside the shoulder or path width. The camera rails along an authored spline.</li>
+      <li>Scenes are authored in distance. Virtual speed is nudged toward the 2 h target, so riding harder feels faster without breaking the edit.</li>
+      <li>Fishing, drilling and the fan are effort-gated, not time-gated.</li>
+    </ul></div>
+    <div class="note"><h3>Chapters</h3><ul>
+      <li>Shown only as <b>Morning / Midday / Evening</b>. Deliberately vague; each ends on a quiet beat (sinking, the temple hall, the credits).</li>
+      <li>Each chapter opens soft, so the opening scene doubles as a warm-up. Progress saves at chapter boundaries; chapter select unlocks after the first full ride.</li>
+    </ul></div>
+    <div class="note"><h3>Sound</h3><ul>
+      <li>Ambient beds per area (surf + gulls + tyres on asphalt, gravel crunch, Lou's radio, wet heartbeat, jungle insects, cave drips, lava hiss and boom, silence in the fall, roaring fire on re-entry, wind under the wings).</li>
+      <li>Stock CC music only on a few cues: title, the Big One, the island reveal, the Earth growing, the final lift-off and credits. CC-BY attribution goes in the credits roll.</li>
+    </ul></div>
+    <div class="note"><h3>Monologue</h3><ul>
+      <li>Speech bubble at the top-left, one line, ≤ 8 words, 4 s, and never during a sprint.</li>
+      <li>The voice is dry and accepting. It gets <i>calmer</i> as things get stranger. Silence is used on purpose (the fall, re-entry, the final shot).</li>
+    </ul></div>
+    <div class="note"><h3>A loop hint that stays mundane</h3><p>In the first two minutes a large white "bird" glides west, far out over the water, once (panel 02). The thought: <i>"Big bird."</i> At the end
+      you're that shape over the same water (panel 32). Nothing in between mentions it.</p></div>
+  </div>
+
+  <div id="board"></div>
+</main>
+
+<script>
+/* ---------- tiny sketch kit (320×180 frames) ---------- */
+const P = '#2b2b2b', R = '#d0453c';
+const C = { sky:'#d6edf3', sea:'#7cc3d3', deep:'#3f8fa8', sand:'#e9cd8f', cliff:'#bf8e5f', grass:'#b4cf72',
+  road:'#9a9a96', glove:'#6c6c6c', wood:'#b98a5c', flesh:'#e07aa8', glow:'#5fe3e0', jungle:'#5aa35a',
+  stone:'#b8b2a3', lava:'#f07a2a', obs:'#2c2533', night:'#141a33', earth:'#3c8ee0', sun:'#f6c35a', dusk:'#f2a07a' };
+const pts = a => a.map(p => p.join(',')).join(' ');
+const poly = (a, f='none', o=1, w=1.6, s=P) => `<polygon points="${pts(a)}" fill="${f}" fill-opacity="${o}" stroke="${s}" stroke-width="${w}" stroke-linejoin="round"/>`;
+const pline = (a, w=1.6, s=P, d='') => `<polyline points="${pts(a)}" fill="none" stroke="${s}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" ${d?`stroke-dasharray="${d}"`:''}/>`;
+const ln = (x1,y1,x2,y2,w=1.6,s=P,d='') => pline([[x1,y1],[x2,y2]], w, s, d);
+const rc = (x,y,w,h,f='none',o=1,sw=1.6,s=P) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" fill-opacity="${o}" stroke="${s}" stroke-width="${sw}"/>`;
+const ci = (x,y,r,f='none',o=1,sw=1.6,s=P) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" fill-opacity="${o}" stroke="${s}" stroke-width="${sw}"/>`;
+const tx = (x,y,s,sz=9,a='start',c=P,st='') => `<text x="${x}" y="${y}" font-size="${sz}" text-anchor="${a}" fill="${c}" font-family="ui-sans-serif,sans-serif" ${st}>${s}</text>`;
+const arrow = (x1,y1,x2,y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${R}" stroke-width="1.8" marker-end="url(#ah)"/>`;
+const note = (x,y,s,a='start') => tx(x,y,s,8,a,R);
+const wash = (f, o=1) => `<rect x="0" y="0" width="320" height="180" fill="${f}" fill-opacity="${o}"/>`;
+/* voxel skyline: stair-stepped polygon from x0..x1, top y=f(x), closed at bottom */
+function blocks(x0, x1, step, f, bottom, fill, o=1) {
+  const a = [[x0, bottom]];
+  for (let x = x0; x < x1; x += step) { const y = Math.round(f(x + step / 2) / 4) * 4; a.push([x, y], [Math.min(x + step, x1), y]); }
+  a.push([x1, bottom]); return poly(a, fill, o);
+}
+const sky = (c = C.sky, hy = 80) => rc(0, 0, 320, hy, c, 1, 0);
+const sea = (y = 80, c = C.sea, h = 100) => rc(0, y, 320, h, c, 1, 0) + ln(0, y, 320, y, 1.2);
+const road = (vx, vy, l, r, f = C.road) => poly([[l,180],[vx-2,vy],[vx+2,vy],[r,180]], f, 1) + ln((l+r)/2,180,vx,vy,1.2,'#fff','6 6');
+const bubble = (s, x = 8, y = 8) => { const w = s.length * 4.6 + 14;
+  return `<g>${poly([[x,y],[x+w,y],[x+w,y+18],[x+22,y+18],[x+14,y+25],[x+15,y+18],[x,y+18]],'#fff',1,1.2)}${tx(x+7,y+12.5,s,8.5,'start',P,'font-style="italic" font-family="Georgia,serif"')}</g>`; };
+const glove = (x, y, w = 28, h = 17) => rc(x, y, w, h, C.glove, 1) + ln(x + w*.33, y, x + w*.33, y + 6, 1, '#ddd') + ln(x + w*.66, y, x + w*.66, y + 6, 1, '#ddd');
+function hands(kind, o = {}) {
+  if (kind === 'bars') return ln(52,168,268,168,5) + rc(150,166,20,14,'#444') + glove(88,158) + glove(204,158) + (o.bell ? ci(122,162,4,C.sun) : '');
+  if (kind === 'rod') { const t = o.tip || [250, 40], b = o.bob;
+    return pline([[222,176],[230,150],t], 3.2) + (b ? ln(t[0],t[1],b[0],b[1],.9,o.taut?R:P) + ci(b[0],b[1],3,R) : '')
+      + rc(226,154,10,8,'#888') + glove(214,146,24,16) + glove(236,166,24,14); }
+  if (kind === 'drill') return poly([[118,180],[140,138],[180,138],[202,180]], '#7a7a7a', 1) + poly([[140,138],[160,100],[180,138]], '#c9c9c9', 1)
+      + pline([[146,128],[174,122]],1) + pline([[150,118],[170,113]],1) + pline([[154,108],[166,105]],1)
+      + rc(96,150,16,26,'#444') + rc(208,150,16,26,'#444') + glove(88,146,30,15) + glove(202,146,30,15);
+  if (kind === 'paddle') return ln(52,168,268,168,5) + glove(88,158) + glove(204,158)
+      + rc(4,128,30,52,C.wood,1) + rc(286,128,30,52,C.wood,1) + ln(4,146,34,146) + ln(286,146,316,146) + arrow(30,120,30,100) + arrow(290,120,290,100);
+  return '';
+}
+const palm = (x, y, s = 1) => rc(x, y - 40*s, 5*s, 40*s, C.wood) + poly([[x-18*s,y-34*s],[x+2,y-44*s],[x+24*s,y-34*s],[x+2,y-40*s]], C.jungle);
+const guard = (x0, y0, x1, y1, n = 7) => { let s = ln(x0, y0, x1, y1, 2); for (let i = 0; i <= n; i++) { const x = x0 + (x1 - x0) * i / n, y = y0 + (y1 - y0) * i / n; s += ln(x, y, x, y + 8 * (1 - i / n) + 2, 1.6); } return s; };
+const fishArc = (x, y, c) => pline([[x,y],[x+8,y-14],[x+18,y-16],[x+26,y-4]], 1.2, R, '2 3') + poly([[x+12,y-18],[x+22,y-17],[x+18,y-12]], c, 1, 1);
+const earthDot = (x, y, r) => ci(x, y, r, C.earth) + (r > 6 ? poly([[x-r*.5,y-r*.3],[x-r*.1,y-r*.5],[x+r*.1,y],[x-r*.3,y+r*.3]], C.jungle, 1, 1) + poly([[x+r*.3,y+r*.1],[x+r*.6,y-r*.1],[x+r*.5,y+r*.4]], C.jungle, 1, 1) : '');
+const wingL = () => poly([[0,40],[40,70],[30,100],[54,108],[26,128],[50,140],[0,160]], '#fff', 1) + pline([[8,70],[34,92]],1) + pline([[6,110],[34,124]],1);
+const wingR = () => poly([[320,40],[280,70],[290,100],[266,108],[294,128],[270,140],[320,160]], '#fff', 1) + pline([[312,70],[286,92]],1) + pline([[314,110],[286,124]],1);
+
+/* ---------- panels ---------- */
+const CH = [
+  { id:'Morning', meta:'Highway 1 · fishing · the Big One · ~40 min · 5 pulls' },
+  { id:'Midday', meta:'The belly · the drill · the island · the temple · ~46 min · scavenging · 2 pulls + 10 min drill' },
+  { id:'Evening', meta:'Cavern · lava · gate · the fall · wings · home · ~37 min · 2 pulls + 6 min drill' },
+];
+const PANELS = [
+// ---------- MORNING ----------
+{ ch:0, t:'Title', dur:1, e:[[1,45]],
+  shot:'Marine-layer fog over an empty road. Small serif "Seaside". Gulls. Nothing else.',
+  you:'Pedal to start. The fog thins with cadence.', tr:'Sim 0%', say:[], snd:'Surf, gulls, distant foghorn. Soft acoustic CC cue.',
+  sk:() => wash('#e9eef0') + sea(86,'#c7dde3') + road(160,86,40,280,'#c3c3bf') + wash('#fff',.45) + tx(160,62,'Seaside',20,'middle',P,'font-family="Georgia,serif"') + note(160,76,'pedal to begin','middle') },
+{ ch:0, t:'Highway 1', dur:8, e:[[3,50],[5,63]],
+  shot:'Ocean on the left below a guardrail, golden-grass cliffs on the right, the road curling along the headland. Long sightlines; the scale comes from the far headlands fading into fog.',
+  you:'Steer within the shoulder. Gentle rollers ±2%. Rotate past a mile marker, a cattle grate, a parked VW van.',
+  tr:'Sim ±2%', say:['Good day for it.','Wind\'s out of the north. Figures.','Big bird.'],
+  snd:'Tyres on asphalt, wind, waves below, one car passing.',
+  sk:() => sky() + sea(80) + blocks(200,320,12,x=>80-(x-200)*.45-Math.sin(x/9)*4,180,C.grass) + blocks(250,320,10,x=>70-(x-250)*.3,82,C.cliff,.6)
+    + road(176,82,70,300) + guard(0,140,168,86) + ci(64,30,3,'#fff') + pline([[56,30],[64,27],[72,30]],1.2) + `<circle cx="64" cy="29" r="10" fill="none" stroke="${R}" stroke-width="1.2" stroke-dasharray="3 3"/>` + note(78,44,'"big bird" (loop seed)')
+    + hands('bars') + bubble('Good day for it.') },
+{ ch:0, t:'Turnout 1', dur:6, e:[[2,55],[.13,135],[1.87,58],[.13,135],[1.87,58]],
+  shot:'Gravel pull-off, the bike leaned on a fence post, rocks and kelp below. First rod tutorial: two spot markers float over the water.',
+  you:'Paddles: choose a spot. A: cast. Light pedaling reels. Bite → A → 8 s pull. Two small fish (perch, kelp greenling).',
+  tr:'Resistance 20% → surges on the run', say:['Lunch, maybe.','That counts. That definitely counts.'],
+  snd:'Gravel crunch, reel ratchet, splash, line zing.',
+  sk:() => sky() + sea(70) + blocks(0,120,10,x=>120+Math.sin(x/14)*10,180,C.cliff) + blocks(120,320,14,x=>150+Math.cos(x/20)*8,180,C.sand)
+    + blocks(30,90,8,x=>96+Math.sin(x/5)*5,108,'#7a6a5a') + note(56,92,'◀ rocks','middle') + note(176,100,'kelp ▶','middle') + rc(150,104,40,6,C.jungle,.7,1)
+    + hands('rod',{tip:[246,34],bob:[178,96]}) },
+{ ch:0, t:'Rollers', dur:6, e:[[2,62],[2,75],[2,60]],
+  shot:'The road climbs to 4% over a headland. At the crest the coast opens up: a concrete arch bridge over a creek mouth, cypress trees, a far lighthouse.',
+  you:'Ride. A short rest at the top: the camera drifts toward the view on its own.', tr:'Sim up to +4%, then −3%',
+  say:['Every hill out here has a better view than the last.'], snd:'Breathing, freewheel ticking on the descent.',
+  sk:() => sky() + sea(96) + blocks(0,320,16,x=>100-Math.sin(x/50)*16,130,C.grass) + poly([[110,112],[210,112],[210,118],[110,118]],C.stone) + `<path d="M118,130 Q160,96 202,130" fill="none" stroke="${P}" stroke-width="1.6"/>`
+    + poly([[60,180],[150,118],[156,118],[260,180]],C.road) + note(226,140,'+4%') + hands('bars') },
+{ ch:0, t:'Lou\'s Bait & Tackle', dur:2, e:[[2,45]],
+  shot:'Shop mode: the camera locks into a cozy counter diorama (the same voxel world, framed like a still life). Lou is behind the counter. The UI is paper: handwritten price tags and a receipt that prints your sale.',
+  you:'Sell the catch (fish slide across the counter onto a scale). Buy the Surf Rod, plus optional flair. Soft spin keeps a ceiling fan turning.',
+  tr:'Sim 0%, soft', say:['Lou has opinions about kelp.'],
+  snd:'Door bell, AM radio (ballgame), ice machine hum.',
+  sk:() => wash('#efe2c8') + rc(0,0,320,96,'#d9c3a0',1,0) + [0,1,2,3,4].map(i=>ln(24+i*12,10,24+i*12,90,2.4,C.wood)).join('')
+    + rc(110,14,64,44,'#c9a77a') + ci(128,34,8,C.earth) + note(128,54,'postcard','middle') + blocks(186,226,5,x=>40-Math.abs(x-206)*.6,64,C.wood) + ci(200,34,1.6,P) + ci(212,34,1.6,P) + note(206,72,'monkey mural','middle')
+    + rc(246,18,46,30,'#fff') + note(269,36,'LAVA EEL','middle') + note(269,44,'not for sale','middle')
+    + rc(126,62,26,34,'#c58d6e') + rc(122,54,34,14,'#e3b48f') + tx(160,92,'Lou',8,'start')
+    + rc(0,100,320,80,C.wood,1) + poly([[30,120],[96,118],[100,160],[34,164]],'#fff') + tx(40,136,'Surf Rod',9) + tx(40,150,'$40',11) + poly([[210,116],[262,114],[264,172],[212,174]],'#fff') + tx(218,130,'RECEIPT',8) + tx(218,142,'perch ×2 .. $14',7) + tx(218,152,'greenling .. $11',7) },
+{ ch:0, t:'To the pier', dur:5, e:[[5,65]],
+  shot:'The road descends into a sleepy harbour town: a wooden pier on pilings, a weathervane, a "PIER" sign. The pier is much longer than it should be; you only clock it subliminally.',
+  you:'Ride. Steer around a pothole and a pelican.', tr:'Sim −1% to +1%', say:['New rod. Big plans.'], snd:'Harbour bell buoy, a dog barking.',
+  sk:() => sky() + sea(78) + rc(150,84,170,5,C.wood) + [0,1,2,3,4,5,6,7].map(i=>ln(160+i*20,89,160+i*20,100,1.2)).join('') + note(250,80,'too-long pier')
+    + blocks(0,120,10,x=>90+x*.1,140,'#e2a37a') + road(150,96,60,280) + rc(240,108,30,14,'#fff') + tx(244,118,'PIER',8) + hands('bars',{bell:true}) },
+{ ch:0, t:'The pier', dur:6, e:[[2,55],[.2,140],[1.8,58],[.2,140],[1.8,58]],
+  shot:'Wooden planks running off in perspective, an old guy\'s abandoned bucket, gulls on the posts. Spots: pilings / end of the pier / sandy channel.',
+  you:'Two bites, 12 s pulls (rockfish, lingcod). Short of cash? A bonus spot lights up.', tr:'Resistance 30% → surges',
+  say:['That one pulled back.','Lingcod. Ugly. Valuable.'], snd:'Planks creak, waves slap the pilings.',
+  sk:() => sky() + sea(66) + poly([[40,180],[150,66],[176,66],[300,180]],C.wood) + [0,1,2,3,4,5].map(i=>ln(40+i*10,180-i*20,300-i*22,180-i*20,.8)).join('')
+    + rc(70,120,16,16,'#9aa',1) + note(78,116,'bucket','middle') + hands('rod',{tip:[236,30],bob:[110,74],taut:true}) + arrow(100,80,86,90) },
+{ ch:0, t:'Pier stand', dur:1.5, e:[[1.5,45]],
+  shot:'A little stand at the end of the pier, and Lou is somehow behind it (never remarked on). One rod on the rack: dark wood, a brass reel stamped with glyphs.',
+  you:'Buy "the Deep". (Can\'t afford it? Lou: "Pay me later." It costs you the flair instead.)', tr:'Soft',
+  say:['Last one on the rack.'], snd:'Same radio, same ballgame, same inning.',
+  sk:() => sky() + sea(90) + rc(90,40,140,90,'#e7d3ae') + poly([[80,40],[160,20],[240,40]],'#e8665a') + rc(140,60,26,40,'#c58d6e') + rc(136,52,34,14,'#e3b48f')
+    + ln(200,48,200,124,3) + ci(200,100,7,'#c9a24a') + note(214,100,'glyphs on reel (seed)') + rc(80,130,160,50,C.wood) },
+{ ch:0, t:'The Big One', dur:3, e:[[1.5,55],[.42,150],[1.08,50]],
+  shot:'Long cast off the end of the pier. The sea goes glassy, the gulls leave all at once, the radio cuts out. Bite. The rod bends to the water; a shadow the size of the pier slides underneath.',
+  you:'A 25 s all-out pull. It can\'t be won: the harder you pull, the farther the bike is yanked off the end (in slow motion, a big splash).',
+  tr:'Resistance ramps 30 → 70%, then drops to zero at the jump', say:['Huh. Quiet.','—'],
+  snd:'All ambience drops out. One low cello note. Line screaming.',
+  sk:() => sky('#dfe9ea') + sea(70,'#9ccbd6') + `<ellipse cx="150" cy="120" rx="120" ry="26" fill="${C.deep}" fill-opacity=".7" stroke="${P}" stroke-width="1.2"/>` + note(150,124,'shadow ≈ length of pier','middle')
+    + hands('rod',{tip:[176,70],bob:[150,104],taut:true}) + arrow(200,150,150,112) + arrow(240,160,190,120) + tx(40,44,'!!!',16,'start',R) },
+{ ch:0, t:'Under', dur:1.5, e:[[1.5,40]],
+  shot:'Rushing down through green to blue to black, bubbles streaming up. A pale ring of teeth (each tooth a pillar) closes around the frame. Black. Chapter card: "Midday".',
+  you:'Nothing; just pedal softly. (The chapter save is here.)', tr:'None', say:[], snd:'Muffled underwater roar → heartbeat.',
+  sk:() => wash(C.night) + wash(C.deep,.35) + [[60,40],[80,90],[250,60],[270,120],[120,140],[200,30]].map(([x,y])=>ci(x,y,4,'#fff',.6,1,'#fff')).join('')
+    + Array.from({length:12},(_,i)=>{const a=i/12*Math.PI*2,x=160+Math.cos(a)*130,y=90+Math.sin(a)*78;return rc(x-6,y-10,12,20,'#f2efe4')}).join('') + arrow(160,30,160,70) + arrow(160,150,160,110) + note(166,96,'mouth closes in') },
+// ---------- MIDDAY ----------
+{ ch:1, t:'Eyes open', dur:2, e:[[2,50]],
+  shot:'Black. The heartbeat is the clock. With cadence, the eyelids open in two slow blinks onto blurry pink arches.',
+  you:'Pedal to wake (this is the warm-up).', tr:'Sim 0%', say:['...','Okay.','Inside a fish. Sure.'],
+  snd:'Huge slow heartbeat, gurgles, distant whale-song groan.',
+  sk:() => wash('#000') + `<path d="M20,90 Q160,30 300,90 Q160,150 20,90 Z" fill="${C.flesh}" fill-opacity=".65" stroke="none"/>` + `<path d="M20,90 Q160,30 300,90" fill="none" stroke="#000" stroke-width="10"/>`
+    + note(160,96,'eyelids open with cadence','middle') + bubble('Inside a fish. Sure.') },
+{ ch:1, t:'The belly', dur:4, e:[[4,58]],
+  shot:'Still on the bike, riding slowly through chambers: ribs like a cathedral nave, bioluminescent lining, shallow pools, a gut "street" that sways with the fish. Swallowed things everywhere: hubcaps, a VISTA POINT sign, a capsized dinghy, and the Pier Rod you sold back to the shop.',
+  you:'Ride and steer through the chambers. The floor heaves gently (the fish is swimming), so the grade rolls.', tr:'Sim, slow ±3% swells',
+  say:['That\'s my old rod.','How long has this been in here?'], snd:'Drip echoes, deep groans, the heartbeat a little faster.',
+  sk:() => wash('#3a1830') + [0,1,2,3].map(i=>`<path d="M${40+i*20},180 Q160,${-20+i*24} ${280-i*20},180" fill="none" stroke="${C.flesh}" stroke-width="${8-i*1.5}"/>`).join('')
+    + [[70,60],[250,70],[110,40],[210,44],[160,30]].map(([x,y])=>ci(x,y,2.5,C.glow,1,0)).join('') + ci(60,140,10,'#bbb') + rc(230,120,40,16,'#2f7a3d') + tx(233,131,'VISTA PT',6,'start','#fff')
+    + ln(90,150,200,128,2) + note(140,126,'old rod','middle') + hands('bars') },
+{ ch:1, t:'Spare parts', dur:3, e:[[3,60]],
+  shot:'A half-digested survey boat lies on its side in the last chamber, with its coring rig spilled across the floor: a drill bit, a gearbox, a drive chain. Each one glows faintly when you get close.',
+  you:'Ride past each part and press A to grab it (generous). With three parts, the handlebars unfold into drill grips and the bit locks on. Popup: "Drill. Keep it turning."', tr:'Sim 0% → ERG ramp-in',
+  say:['Somebody had a worse day than me.','That\'ll do.'], snd:'Clanks as parts snap on, servo whine, the drill idling.',
+  sk:() => wash('#3a1830') + [0,1,2].map(i=>`<path d="M${40+i*24},180 Q160,${10+i*26} ${280-i*24},180" fill="none" stroke="${C.flesh}" stroke-width="${7-i*1.5}"/>`).join('')
+    + poly([[30,120],[120,96],[132,124],[44,146]],'#e7e2d6') + rc(60,104,30,10,'#e8553a') + note(76,92,'survey boat','middle')
+    + poly([[170,140],[182,116],[194,140]],'#c9c9c9') + rc(226,128,22,16,'#7a7a7a') + pline([[262,144],[272,134],[286,142],[296,132]],3,'#555')
+    + [[182,132],[237,136],[280,138]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="14" fill="none" stroke="${R}" stroke-width="1.2" stroke-dasharray="3 3"/>`).join('')
+    + note(182,112,'bit','middle') + note(237,122,'gearbox','middle') + note(282,126,'chain','middle') + hands('drill') },
+{ ch:1, t:'The drill', dur:10, e:[[1,65],[2.5,80],[.5,60],[2.5,84],[.5,60],[2.5,86],[.5,65]],
+  shot:'A shrinking circle of tunnel ahead. Layers: soft flesh (pink, squelch) → cartilage (white-blue, crunch) → bone (ivory, screech). Chips fly toward the camera. A depth meter scratched on the wall.',
+  you:'Hold 60–75 rpm. Each layer = 2.5 min Z3 + 30 s chip-clearing rest.', tr:'ERG 80 / 84 / 86% FTP',
+  say:['If I stop, I think it digests me.','Bone. Good. Bone is close to out.'], snd:'Drill tone pitched to cadence, material-specific crunch.',
+  sk:() => wash('#5a2440') + ci(160,82,90,C.flesh,.8) + ci(160,82,62,'#dfe9f2',.9) + ci(160,82,36,'#efe6cf') + ci(160,82,14,'#2a1020')
+    + note(232,30,'flesh') + note(206,52,'cartilage') + note(186,72,'bone') + [[120,60],[200,70],[140,110],[186,104]].map(([x,y])=>arrow(160,92,x,y)).join('') + hands('drill') },
+{ ch:1, t:'Breakthrough', dur:1, e:[[.25,140],[.75,55]],
+  shot:'The last of the bone cracks; seawater floods in and the light is straight up. The bike\'s wheels become a paddle wheel on the way up.',
+  you:'15 s sprint to the surface. The light grows with power.', tr:'Resistance 40%, released at the surface', say:[], snd:'Bubbles, rising tone, then a gasp of open air.',
+  sk:() => wash(C.deep) + `<path d="M160,0 L60,180 L260,180 Z" fill="#cfefff" fill-opacity=".35"/>` + ci(160,20,22,'#fff',.85) + [100,140,180,220].map(x=>arrow(x,150,x,96)).join('') + hands('paddle') },
+{ ch:1, t:'Paddle', dur:5, e:[[5,63]],
+  shot:'Flat calm, huge sky. An island rises out of the haze, too symmetrical. A long boardwalk rings its shore. The fish is gone.',
+  you:'Paddle (pedal). Paddles steer toward the island.', tr:'Sim 0%, light rhythmic pulses', say:['There wasn\'t an island here.','I\'d have seen it.'],
+  snd:'Paddle splash on each stroke. Island-reveal CC cue.',
+  sk:() => sky('#e8f3f0') + sea(92,'#86cdd3') + blocks(80,240,8,x=>92-Math.max(0,30-Math.abs(x-160)*.42)-(Math.abs(x-160)<10?8:0),94,C.jungle) + ln(70,94,250,94,2.2,C.wood) + note(160,52,'too symmetrical','middle') + hands('paddle') },
+{ ch:1, t:'Beach', dur:5, e:[[2,55],[.17,135],[2.83,50]],
+  shot:'White sand, blocky palms, a driftwood fire already smouldering (nobody\'s there). The reef water is neon: parrotfish, a blue tang.',
+  you:'Fish until you land one: one bite, a 10 s pull. Cook it on the fire, and the screen warms.', tr:'Resistance 25%',
+  say:['Tired. Hungry. In that order.','Who lit this fire?'], snd:'Lapping water, crackling fire, birds you don\'t recognise.',
+  sk:() => sky('#e6f6f3') + sea(80,'#4fd0c7') + blocks(0,320,10,x=>130+Math.sin(x/30)*6,180,'#f4e7c4') + palm(40,132) + palm(78,128,.8) + rc(150,128,26,6,C.wood) + poly([[156,128],[163,112],[170,128]],C.lava)
+    + note(163,108,'nobody here','middle') + hands('rod',{tip:[252,36],bob:[214,92]}) + fishArc(226,96,'#3aa0ff') },
+{ ch:1, t:'Boardwalk', dur:6, e:[[6,64]],
+  shot:'Grey weathered planks on stilts at the island\'s edge, the sea on the right, jungle on the left. It curves left forever: a slow inward spiral. Every lap the jungle is thicker and the sea is farther away.',
+  you:'Ride and steer. The planks drum under the tyres.', tr:'Sim 0–1%', say:['It keeps turning left.'], snd:'Plank rhythm (tempo matches speed), insects building.',
+  sk:() => sky('#e6f6f3') + sea(80,'#4fd0c7') + blocks(0,150,8,x=>70+x*.3+Math.sin(x/6)*6,180,C.jungle) + `<path d="M70,180 Q150,110 110,82 L124,82 Q190,110 270,180 Z" fill="#a39b8d" stroke="${P}" stroke-width="1.6"/>`
+    + arrow(170,130,128,90) + note(180,126,'spirals inward') + hands('bars') },
+{ ch:1, t:'Cut stones', dur:6, e:[[2,65],[2,70],[2,72]],
+  shot:'Very gradual: a squared block in the ferns. Then several in a row. Then pillars, toppled and then standing. The boardwalk planks give way to a long fitted-stone road that climbs gently through the canopy.',
+  you:'Ride. A few forks: steer either way (purely cosmetic, they re-merge).', tr:'Sim +2–3%', say:['Somebody cut these.','Somebody a long time ago.'],
+  snd:'Insects drop out one species at a time. Wind in the canopy.',
+  sk:() => wash('#d9ecd2') + blocks(0,320,10,x=>40+Math.sin(x/14)*14,180,C.jungle,.9) + [[40,120],[80,110],[230,108],[270,118]].map(([x,y])=>rc(x,y-60,16,60,C.stone)).join('') + rc(110,138,16,10,C.stone) + rc(196,140,18,10,C.stone)
+    + poly([[80,180],[154,92],[166,92],[240,180]],C.stone) + [0,1,2,3].map(i=>ln(96+i*16,160-i*18,224-i*16,160-i*18,.8)).join('') + hands('bars') },
+{ ch:1, t:'The monkey mouth', dur:1, e:[[1,60]],
+  shot:'The path ends at a stone monkey face the height of a building, its mouth open wide. (Same face as the mural in Lou\'s shop; nobody says so.)',
+  you:'Ride in. The light dims with each metre.', tr:'Sim 0%', say:['Well.','In we go.'], snd:'A deep tone resonating from inside.',
+  sk:() => wash('#d9ecd2') + blocks(40,280,10,x=>30+Math.abs(x-160)*.35,180,C.stone) + ci(124,70,10,P) + ci(196,70,10,P) + `<path d="M104,110 Q160,96 216,110 L210,180 L110,180 Z" fill="#1a1712" stroke="${P}" stroke-width="1.6"/>`
+    + poly([[120,180],[156,120],[164,120],[200,180]],C.stone,.8) + hands('bars') },
+{ ch:1, t:'The temple', dur:3, e:[[3,52]],
+  shot:'A grand open hall: sun shafts through roof holes, vines, a still reflecting pool, pillars carved with the same glyphs as the reel. One statue has a familiar face (unremarked). Chapter card: "Evening".',
+  you:'Cruise slowly through it (cooldown).', tr:'Sim 0%', say:['Hello?','...nice echo.'], snd:'Huge reverb, water drip, low choir pad.',
+  sk:() => wash('#cfc6b2') + [30,80,240,290].map(x=>rc(x-10,20,20,140,C.stone)).join('') + [100,180].map(x=>`<path d="M${x},0 L${x+40},0 L${x+80},140 L${x+30},140 Z" fill="${C.sun}" fill-opacity=".35"/>`).join('')
+    + rc(146,60,28,60,'#a59e8e') + rc(150,46,20,16,'#a59e8e') + note(160,40,'familiar face','middle') + poly([[90,180],[150,120],[170,120],[230,180]],C.stone) + hands('bars') },
+// ---------- EVENING ----------
+{ ch:2, t:'Torchlit cavern', dur:5, e:[[2,58],[3,48]],
+  shot:'A temple back passage narrows into a winding natural cave lit by torches in iron cages. The floor tilts downward and the walls warm from grey to brown to red-brown.',
+  you:'Flat warm-up, then a long free descent (recovery). Steer the curves.', tr:'Sim 0%, then −3 to −5%', say:['Down it is.'], snd:'Torch crackle, dripping, wind rising from below.',
+  sk:() => wash('#2a1d17') + `<path d="M0,0 L320,0 L320,180 L240,180 Q190,100 176,60 L148,60 Q128,100 80,180 L0,180 Z" fill="#5a3a2a" stroke="${P}" stroke-width="1.6"/>`
+    + [[110,90],[214,92],[150,64]].map(([x,y])=>ci(x,y,4,C.sun,1,1)+ci(x,y,12,C.sun,.2,0)).join('') + arrow(168,160,160,80) + note(176,140,'−4%') + hands('bars') },
+{ ch:2, t:'The obsidian bridge', dur:3, e:[[3,62]],
+  shot:'The cave opens into an enormous volcanic hall. A glassy black bridge, a bike-width wide, crosses a slow river of lava far below. Things are jumping out of it. They\'re fish.',
+  you:'Ride across. Heat shimmer warps the edges of the screen.', tr:'Sim 0%', say:['Those are fish.','In the lava.','I\'m hungry enough not to care.'], snd:'Lava blurps and booms, the hiss of fish re-entering.',
+  sk:() => wash('#1a0e10') + rc(0,110,320,70,C.lava,1,0) + blocks(0,90,10,x=>60+Math.sin(x/8)*10,180,'#3a2a2e') + blocks(230,320,10,x=>50+Math.cos(x/8)*12,180,'#3a2a2e')
+    + poly([[120,180],[158,70],[162,70],[200,180]],C.obs,1,1.6,'#a99') + fishArc(60,130,C.lava) + fishArc(236,138,C.lava) + hands('bars') },
+{ ch:2, t:'Magma fishing', dur:4, e:[[1.5,55],[.2,140],[2.3,52]],
+  shot:'Cast from the middle of the bridge. The line smokes. A glowing eel-like fish, molten orange with white-hot seams, comes up writhing.',
+  you:'One bite, a 12 s pull. The trainer surges hard and fast, like it\'s angry.', tr:'Resistance 40% → surges', say:['Hot. Very hot.'], snd:'Line sizzle, a metallic shriek from the fish.',
+  sk:() => wash('#1a0e10') + rc(0,96,320,84,C.lava,1,0) + `<path d="M150,120 q12,-30 30,-10 q18,20 30,-8" fill="none" stroke="#ffd36a" stroke-width="6" stroke-linecap="round"/>` + note(186,140,'glowing eel','middle') + hands('rod',{tip:[232,26],bob:[196,110],taut:true}) },
+{ ch:2, t:'Cooling fan', dur:2, e:[[1.5,78],[.5,45]],
+  shot:'The fish on a stick in front of the bike, which now drives a big fan. As it cools, the glow fades orange → red → plain grey-green. It looks like an ordinary eel. Then you eat it.',
+  you:'Hold a steady cadence band; the glow fade is the progress bar. Drop out of the band and the glow creeps back.', tr:'Resistance, steady (Z2–3)',
+  say:['Blow on it. Big blow.','Tastes like... trout?'], snd:'Fan whoosh pitched to cadence, sizzle fading to quiet.',
+  sk:() => wash('#1a0e10') + ci(160,80,56,'#555',.5) + [0,1,2,3].map(i=>{const a=i*Math.PI/2+.4;return poly([[160,80],[160+Math.cos(a)*54,80+Math.sin(a)*54],[160+Math.cos(a+.5)*54,80+Math.sin(a+.5)*54]],'#999',.9)}).join('')
+    + ln(60,40,110,60,2) + `<path d="M70,38 q10,-10 22,0 q10,10 22,0" fill="none" stroke="${C.lava}" stroke-width="6"/>` + note(90,24,'glow fades = progress','middle') + rc(250,20,12,80,'none') + rc(250,60,12,40,C.lava,1,0) + hands('bars') },
+{ ch:2, t:'Toward the gate', dur:4, e:[[3,62],[1,50]],
+  shot:'A long causeway of black glass past the lava. The glyphs come first on loose rocks, then on standing columns lining the way, then on a wall that rises out of the heat haze: gate-shaped, sheer, no door. A dead end.',
+  you:'Ride the approach. The causeway narrows and the glyphs brighten as you pass. At the wall the handlebars unfold into the drill again, unprompted.', tr:'Soft', say:['Dead end.','Of course it is.'], snd:'Your echo comes back late.',
+  sk:() => wash('#24161a') + rc(40,10,240,170,'#4a3a40') + `<path d="M100,180 L100,60 Q160,10 220,60 L220,180" fill="#3a2c32" stroke="${P}" stroke-width="1.6"/>`
+    + Array.from({length:24},(_,i)=>rc(56+(i%8)*28,22+Math.floor(i/8)*16+(i%8>1&&i%8<6&&i>7?60:0),8,8,'none',1,1.2,'#e8c46a')).join('') + hands('drill') },
+{ ch:2, t:'Drill II', dur:6, e:[[1,65],[2.5,82],[2.5,86]],
+  shot:'Boring a narrow tunnel: basalt → obsidian (glassy, sparks) → a crystal geode layer. Cracks start spidering around you, the floor shudders, a hole opens below.',
+  you:'Same mechanic as the belly. In the last minute the tunnel tilts forward on its own.', tr:'ERG 82 / 86% FTP', say:['That sounds structural.'], snd:'Grinding, a deep cracking groan, silence.',
+  sk:() => wash('#24161a') + ci(160,80,80,'#3a3036') + ci(160,80,46,'#151012') + [[160,0,150,30],[260,40,220,60],[40,120,94,100],[300,150,236,118],[90,10,118,40]].map(([a,b,c,d])=>pline([[a,b],[(a+c)/2+6,(b+d)/2-4],[c,d]],1.4,R)).join('') + note(250,174,'floor drops') + hands('drill') },
+{ ch:2, t:'The fall', dur:3, e:[[3,40]],
+  shot:'You tip forward into the hole: rubble falling alongside you, then pure black. A white dot dead ahead slowly grows. Blue. Green. Clouds. It\'s the Earth, and you\'re falling toward it.',
+  you:'Nothing. Soft pedaling, if you like. A breath.', tr:'None', say:[], snd:'Silence, then a single slow CC cue as the Earth swells.',
+  sk:() => wash('#05060c') + [[40,40,10],[260,30,8],[80,130,6],[230,140,12],[150,20,5],[290,100,7]].map(([x,y,s])=>rc(x,y,s,s,'#6a5e66')).join('') + earthDot(160,92,14) + note(180,80,'a dot that grows') },
+{ ch:2, t:'Re-entry', dur:1, e:[[.1,70],[.42,150],[.48,55]],
+  shot:'The air ignites: orange streaks race past the frame edges and the screen shakes. Instinct: you grind the pedals, and wings tear out of your shoulders into view.',
+  you:'25 s all-out sprint. Power widens the wings and slows the fall. You can\'t fail it.', tr:'Resistance ramps to 70%', say:[], snd:'Roar of fire, a choir hit at the moment the wings appear.',
+  sk:() => wash('#081430') + `<path d="M-20,180 Q160,110 340,180 Z" fill="${C.earth}" stroke="${P}" stroke-width="1.6"/>` + [[0,0,60,60],[320,0,260,60],[0,180,60,130],[320,180,262,128],[160,0,160,40]].map(([a,b,c,d])=>pline([[a,b],[c,d]],5,C.lava)).join('')
+    + wingL() + wingR() + note(160,100,'wings!','middle') + hands('bars') },
+{ ch:2, t:'Wings', dur:2, e:[[2,65]],
+  shot:'You arc out of the dive over the coast. The highway is below, the same highway. Feathers fill both edges of the frame. Thin air.',
+  you:'Cadence = flap (lift); paddles = bank. Follow a ribbon of air toward the road. A near-miss over a cypress, then a soft landing.', tr:'Pulsed (each downstroke)', say:['Okay.','Wings.'], snd:'Flap whumps, wind.',
+  sk:() => sky('#cde6f3') + sea(110,C.sea) + blocks(160,320,12,x=>100+Math.sin(x/16)*8,180,C.grass) + pline([[150,180],[190,130],[230,110]],3,C.road) + `<path d="M120,40 Q200,40 220,104" fill="none" stroke="${R}" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#ah)"/>` + wingL() + wingR() + hands('bars') },
+{ ch:2, t:'Sunset highway', dur:3, e:[[3,55]],
+  shot:'Golden hour on the same road as panel 02. You pass Lou\'s shop: dark, with a "GONE FISHING" sign on the door. The wings fold out of view.',
+  you:'Easy riding. You can\'t stop at the shop.', tr:'Sim ±1%', say:['Gone fishing.'], snd:'Panel 02\'s soundscape again, warmer, with crickets.',
+  sk:() => sky(C.dusk) + ci(60,72,16,C.sun) + sea(80,'#c27a7a') + road(176,82,70,300) + rc(220,52,60,30,'#a07c5a') + rc(234,58,30,10,'#fff') + tx(236,66,'GONE FISHING',4.4) + guard(0,140,168,86) + hands('bars') },
+{ ch:2, t:'The cliff', dur:1.5, e:[[1.5,50]],
+  shot:'The road turns hard right around a cliff. You go straight. A small lift, a few feet up, over the ocean. The road curves back underneath, and a car with its headlights on passes right under you. The driver waves. (It\'s Lou.)',
+  you:'Don\'t steer. Keep pedaling; there\'s nothing to do wrong.', tr:'Sim 0%, then resistance fading', say:[], snd:'Tyres vanish, a car horn toots twice, wind.',
+  sk:() => sky(C.dusk) + ci(150,70,16,C.sun) + sea(78,'#c27a7a') + `<path d="M40,180 Q120,150 320,140 L320,156 Q130,166 70,180 Z" fill="${C.road}" stroke="${P}" stroke-width="1.6"/>`
+    + rc(180,140,30,12,'#3a6ea8') + poly([[210,144],[260,136],[260,154]],C.sun,.4,0) + note(194,134,'Lou waves','middle') + arrow(160,170,160,110) },
+{ ch:2, t:'Angel', dur:3, e:[[3,40]],
+  shot:'The camera eases from first person to third, behind you: a gloved rider on the bike, two great white wings, the faint ring of a halo. You climb into the sunset over open water, small against it. Credits roll over the cooldown.',
+  you:'Cool-down pedaling. The credits list the CC music. A last, tiny shot: a white bird over the morning sea.', tr:'Sim 0%, soft', say:[], snd:'Final CC cue, wind fading, gulls.',
+  sk:() => sky(C.dusk) + ci(160,82,46,C.sun) + sea(96,'#c27a7a') + `<g transform="translate(160,108)">${ci(0,-18,4,'none',1,1.4,'#fff')}${rc(-5,-14,10,16,'#555')}${ci(-10,8,7)}${ci(10,8,7)}${poly([[-6,-10],[-40,-30],[-30,-8]],'#fff')}${poly([[6,-10],[40,-30],[30,-8]],'#fff')}</g>`
+    + note(196,94,'halo (faint)') + tx(160,170,'C R E D I T S',8,'middle','#fff') + note(10,20,'1st → 3rd person, from behind only') },
+];
+
+/* ---------- render chart ---------- */
+let t0 = 0; const segs = []; const starts = [];
+PANELS.forEach((p, i) => { p.i = i; p.t0 = t0; starts.push(t0); let s = t0; p.e.forEach(([d, v]) => { segs.push({ a: s, b: s + d, v, p }); s += d; }); t0 += p.dur; });
+const TOTAL = t0;
+const fmt = m => `${Math.floor(m / 60)}:${String(Math.floor(m % 60)).padStart(2, '0')}`;
+const chStart = [0, 1, 2].map(c => PANELS.find(p => p.ch === c).t0);
+function drawChart() {
+  const svg = document.getElementById('effort'), W = svg.clientWidth, H = 230, m = { l: 36, r: 10, t: 22, b: 24 };
+  const x = v => m.l + v / TOTAL * (W - m.l - m.r), y = v => m.t + (1 - v / 160) * (H - m.t - m.b);
+  const css = getComputedStyle(document.documentElement), line = css.getPropertyValue('--line').trim(), ink2 = css.getPropertyValue('--ink2').trim(), grid = css.getPropertyValue('--grid').trim();
+  let d = `M${x(0)},${y(0)}`; segs.forEach(s => { d += ` L${x(s.a)},${y(s.v)} L${x(s.b)},${y(s.v)}`; }); const top = d.replace(/^M[^L]+/, '');
+  let g = '';
+  [0, 50, 100, 150].forEach(v => { g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${grid}"/><text x="${m.l - 6}" y="${y(v) + 4}" font-size="10" text-anchor="end" fill="${ink2}">${v}%</text>`; });
+  [[75, 'Z2'], [90, 'Z3']].forEach(([v, l]) => { g += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${ink2}" stroke-dasharray="3 4" stroke-opacity=".6"/><text x="${W - m.r - 2}" y="${y(v) - 3}" font-size="10" text-anchor="end" fill="${ink2}">${l} top</text>`; });
+  CH.forEach((c, i) => { const a = chStart[i]; g += `<line x1="${x(a)}" x2="${x(a)}" y1="${m.t - 14}" y2="${H - m.b}" stroke="${ink2}" stroke-opacity=".5"/><text x="${x(a) + 5}" y="${m.t - 6}" font-size="11" font-weight="600" fill="${ink2}">${c.id}</text>`; });
+  for (let v = 0; v <= TOTAL; v += 15) g += `<text x="${x(v)}" y="${H - 6}" font-size="10" text-anchor="middle" fill="${ink2}">${fmt(v)}</text>`;
+  g += `<path d="M${x(0)},${y(0)}${top} L${x(TOTAL)},${y(0)} Z" fill="${line}" fill-opacity=".14"/><path d="M${x(0)},${y(segs[0].v)}${top.slice(top.indexOf('L', 1))}" fill="none" stroke="${line}" stroke-width="2" stroke-linejoin="round"/>`;
+  g += `<line id="xh" y1="${m.t}" y2="${H - m.b}" stroke="${ink2}" stroke-width="1" visibility="hidden"/><circle id="xd" r="4" fill="${line}" stroke="var(--surface-1)" stroke-width="2" visibility="hidden"/>`;
+  g += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" id="hit"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = g;
+  const tip = document.getElementById('tip'), hit = svg.querySelector('#hit'), xh = svg.querySelector('#xh'), xd = svg.querySelector('#xd');
+  hit.addEventListener('mousemove', ev => {
+    const r = svg.getBoundingClientRect(), px = ev.clientX - r.left, t = Math.max(0, Math.min(TOTAL - 1e-6, (px - m.l) / (W - m.l - m.r) * TOTAL));
+    const s = segs.find(s => t >= s.a && t < s.b) || segs[segs.length - 1];
+    xh.setAttribute('x1', px); xh.setAttribute('x2', px); xh.setAttribute('visibility', 'visible'); xd.setAttribute('cx', px); xd.setAttribute('cy', y(s.v)); xd.setAttribute('visibility', 'visible');
+    tip.style.display = 'block'; tip.innerHTML = `<b>${String(s.p.i + 1).padStart(2, '0')} · ${s.p.t}</b>${fmt(t)} · ${s.v}% FTP · ${s.p.tr}`;
+    const tw = tip.offsetWidth; tip.style.left = Math.min(px + 28, r.width - tw) + 'px'; tip.style.top = (y(s.v) + 10) + 'px';
+  });
+  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; xh.setAttribute('visibility', 'hidden'); xd.setAttribute('visibility', 'hidden'); });
+}
+/* ---------- summary table ---------- */
+(function () {
+  const rows = CH.map((c, i) => { const ps = PANELS.filter(p => p.ch === i), ss = segs.filter(s => s.p.ch === i);
+    const dur = ps.reduce((a, p) => a + p.dur, 0), spr = ss.filter(s => s.v >= 120), z3 = ss.filter(s => s.v >= 76 && s.v < 120).reduce((a, s) => a + s.b - s.a, 0);
+    const avg = ss.reduce((a, s) => a + s.v * (s.b - s.a), 0) / dur;
+    return `<tr><td>${c.id}</td><td class="n">${fmt(chStart[i])}</td><td class="n">${dur.toFixed(1)} min</td><td class="n">${spr.length} · ${Math.round(spr.reduce((a, s) => a + (s.b - s.a) * 60, 0))} s total</td><td class="n">${z3.toFixed(1)} min</td><td class="n">${Math.round(avg)}%</td></tr>`; });
+  document.getElementById('sumtable').innerHTML = `<tr><th>Chapter</th><th>Starts</th><th>Length</th><th>Sprints</th><th>Z3 time</th><th>Avg % FTP</th></tr>${rows.join('')}`;
+})();
+/* ---------- board ---------- */
+const board = document.getElementById('board');
+CH.forEach((c, ci_) => {
+  const sec = document.createElement('section'); sec.className = 'chapter';
+  sec.innerHTML = `<h2>${ci_ + 1}. ${c.id}</h2><div class="meta">${c.meta}</div><div class="grid"></div>`;
+  const grid = sec.querySelector('.grid');
+  PANELS.filter(p => p.ch === ci_).forEach(p => {
+    const el = document.createElement('article'); el.className = 'panel';
+    const bar = p.e.map(([d, v]) => `<span style="flex:${d};opacity:${(0.25 + Math.min(v, 150) / 200).toFixed(2)};height:${Math.max(2, v / 150 * 6)}px;align-self:flex-end"></span>`).join('');
+    el.innerHTML = `<header><div><span class="n">${String(p.i + 1).padStart(2, '0')}</span><span class="t">${p.t}</span></div><div class="when">${fmt(p.t0)} · ${p.dur} min</div></header>
+      <svg class="sketch" viewBox="0 0 320 180"><g filter="url(#pencil)">${p.sk()}</g></svg>
+      <div class="bar" title="effort shape">${bar}</div>
+      <dl><dt>Shot</dt><dd>${p.shot}</dd><dt>You</dt><dd>${p.you}</dd><dt>Trainer</dt><dd>${p.tr}</dd>
+      ${p.say.length ? `<dt>Thinks</dt><dd class="say">${p.say.map(s => `“${s}”`).join(' &nbsp;')}</dd>` : `<dt>Thinks</dt><dd class="say" style="color:var(--muted)">(silence)</dd>`}
+      <dt>Sound</dt><dd>${p.snd}</dd></dl>`;
+    grid.appendChild(el);
+  });
+  board.appendChild(sec);
+});
+drawChart(); addEventListener('resize', drawChart);
+</script>
+</body>
+</html>

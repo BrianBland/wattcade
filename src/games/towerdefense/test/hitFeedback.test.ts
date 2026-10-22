@@ -7,7 +7,7 @@ import { BUDGET, HitFeedback, MULTIKILL_N, isBigHit } from '../render/hitFeedbac
 
 const enemy = (id: number, over: Partial<EnemyView> = {}): EnemyView => ({
   id, kind: 'mini', route: -1, flying: false, x: 10, y: 10, angle: 0, dist: 50, radius: KINDS.mini.radius, element: 'blue', gold: false, hp: 10, maxHp: 10,
-  hurt: 0, charging: false, shiftIn: 0, next: null, progress: 0.3, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0,
+  hurt: 0, charging: false, shiftIn: 0, next: null, progress: 0.3, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, shield: 0,
   hitT: -1, hitCls: 'neutral', hitDmg: 0, ...over,
 });
 

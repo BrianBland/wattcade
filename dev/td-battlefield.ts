@@ -25,7 +25,7 @@ function snapshot(): TdSnapshot {
     const p = route < 0 ? roadAt(ROAD_LENGTH * progress) : flightAt(route, flightLength(route) * progress), off = ((i % 5) - 2) * 0.65;
     const x = p.x + p.nx * off, y = p.y + p.ny * off;
     return { id: 10000+i, kind, route, flying: route >= 0, x, y, angle: Math.atan2(-p.nx,p.ny), dist: Math.hypot(x-BASE_X,y-BASE_Y), radius: def.radius,
-      element: def.color === 'blue' || def.color === 'red' || def.color === 'purple' ? def.color : 'purple', gold: kind === 'boss', hp: def.hp, maxHp: def.hp, hurt: 0, charging: false, shiftIn: 5, next: null, progress, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, hitT: -1, hitCls: 'neutral', hitDmg: 0 };
+      element: def.color === 'blue' || def.color === 'red' || def.color === 'purple' ? def.color : 'purple', gold: kind === 'boss', hp: def.hp, maxHp: def.hp, hurt: 0, charging: false, shiftIn: 5, next: null, progress, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, shield: 0, hitT: -1, hitCls: 'neutral', hitDmg: 0 };
   });
   const weapon = (q.get('weapon') ?? 'gatling') as Weapon;
   return { ...s, wave: 15, lull: 0, waveElapsed: 35, waveMaxS: 60, enemies, phase: 'run', over: false, banner: null, boss: null, effort: null, flaming: weapon === 'flame', flamePower: 1.1, flameRange: 70, railCharges: 2, railProgress: 0.5, weapon, aimAngle: -0.25,

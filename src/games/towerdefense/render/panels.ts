@@ -1,4 +1,5 @@
 // DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
@@ -140,8 +141,8 @@ export class TdHud {
     const e = s.effort, boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
-      headline = boss.next ? `${boss.next} in ${Math.ceil(boss.countdownS)}s` : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
-      sub = boss.next ? 'Weapon changes after the countdown' : boss.weapon === 'rail' ? 'Hold ▲ for ERG sprint' : 'Sprint for ×1.5 damage';
+      headline = boss.pending ? `Phase ${boss.phase + 1} in ${Math.ceil(boss.countdownS)}s` : boss.charge === 'warn' ? 'Ram charge incoming' : boss.charge === 'on' ? 'Ram charging' : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
+      sub = boss.pending ? `${BOSS_ESCALATION[boss.color]} · same weapon` : boss.charge ? 'Burn it down before it closes' : boss.weapon === 'rail' ? 'Hold ▲ for ERG sprint' : 'Sprint for ×1.5 damage';
     } else if (e) {
       headline = e.state === 'announced' ? `${e.kind} in ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s more · ${Math.ceil(e.leftS)}s left` : `${e.kind} ${e.state}`;
       sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;

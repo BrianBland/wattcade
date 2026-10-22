@@ -13,10 +13,12 @@ export type HitClass = 'strong' | 'neutral' | 'resisted';
 export interface EnemyView {
   /** `route`: -1 on the road, else the Glider flight it follows; `flying` = route >= 0 */
   id: number; kind: Kind; route: number; flying: boolean; x: number; y: number; angle: number; dist: number; radius: number;
-  /** Current element: fixed colour, a prism's current colour, or a boss's phase colour. */
+  /** Current element: fixed colour, a prism's current colour, or a boss's (fixed) colour. */
   element: Element; gold: boolean; hp: number; maxHp: number; hurt: number;
-  charging: boolean; /** seconds until a boss / prism changes colour, and the colour it changes to */
+  charging: boolean; /** seconds until a prism changes colour, and the colour it changes to */
   shiftIn: number; next: Element | null; progress: number;
+  /** a Bulwark Tyrant's shield plates left (0..1 of their size when raised; 0 = none) */
+  shield: number;
   bossPhase: number; telegraph: boolean; exposed: boolean; staggerS: number;
   /** last hit (sim time), its matchup class and the damage dealt that tick: renderer hit feedback */
   hitT: number; hitCls: HitClass; hitDmg: number;
@@ -31,7 +33,7 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number; chain: number; ordinal: number }
   | { id: number; t0: number; life: number; kind: 'hitStop'; seconds: number }
   /** the boss arrives: the renderer plays its name card (the HUD banner stays quiet meanwhile) */
-  | { id: number; t0: number; life: number; kind: 'bossIntro'; wave: number }
+  | { id: number; t0: number; life: number; kind: 'bossIntro'; wave: number; color: Element }
   /** a called effort resolved: won = set-piece payoff, lost = a quiet 'missed' note */
   | { id: number; t0: number; life: number; kind: 'payoff'; effort: EffortKind; won: boolean }
   /** `eid`/`ekind`: the alien that died (renderer leaves its corpse); `fire`: its last hit was fire (red brood bursts). */
@@ -63,8 +65,12 @@ export interface BroodView extends BroodInfo { countdownS: number; lullS: number
 /** A wave's aliens per colour (gold = boss, prism = shifting); `air` = Gliders among the blue. */
 export type WaveForecast = Record<Element | 'gold' | 'prism', number> & { air: number };
 export interface BossView {
-  id: number; phase: number; phaseCount: number; color: Element; weapon: Weapon;
-  next: Element | null; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
+  /** One boss per colour: it keeps its colour, weapon and trainer mode all fight; `name` e.g. Swarm Tyrant. */
+  id: number; name: string; phase: number; phaseCount: number; color: Element; weapon: Weapon;
+  /** the next phase is announced and starts after `countdownS` */
+  pending: boolean; countdownS: number; telegraph: boolean; exposed: boolean; windowLeftS: number;
+  /** red: a charge is announced ('warn') or under way ('on'); purple: shield plates left (0..1) */
+  charge: 'warn' | 'on' | null; shield: number;
   /** Optional hold-Up / touch ERG push, preserving the phase's trainer mode; A stays construction. */
   sprintBoost: boolean;
 }

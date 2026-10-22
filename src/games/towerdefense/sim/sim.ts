@@ -10,7 +10,7 @@ import {
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, flightAt, flightLength, roadAt, towerBuildCost, towerUpgradeCost,
   padOrder, type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
-import { advanceBoss, bossColors, bossHpFloor, createBossState, type BossState } from './boss';
+import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
@@ -138,6 +138,17 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const exposedS = T.num('bossExposedS', 5, 1, 10, 0.5);
   const exposedMult = T.num('bossExposedMult', 2, 1, 4, 0.1);
   const exposedSprintMult = T.num('bossExposedSprintMult', 1.5, 1, 3, 0.1);
+  const bossSwarmEvery = T.num('bossSwarmEveryS', 12, 3, 60, 1, 'Swarm Tyrant (blue): seconds between swarm packs in phase 1 (x0.75 each later phase)');
+  const bossSwarmPack = T.num('bossSwarmPack', 4, 1, 12, 1, 'Swarm Tyrant: minis per pack in phase 1 (+2 each later phase)');
+  const bossChargeEvery = T.num('bossChargeEveryS', 14, 4, 60, 1, 'Ram Tyrant (red): seconds between charges in phase 1 (x0.8 each later phase)');
+  const bossChargeWarn = T.num('bossChargeWarnS', 2, 0.5, 6, 0.5, 'Ram Tyrant: warning before each charge');
+  const bossChargeS = T.num('bossChargeS', 2.5, 0.5, 8, 0.5, 'Ram Tyrant: charge length in phase 1 (+0.5 s each later phase)');
+  const bossChargeMult = T.num('bossChargeMult', 2.2, 1, 4, 0.1, 'Ram Tyrant: speed while charging');
+  const bossShieldShare = T.num('bossShieldShare', 0.1, 0, 0.5, 0.01, 'Bulwark Tyrant (purple): shield plates as a share of max HP (+25 % each later phase)');
+  const bossShieldRail = T.num('bossShieldRailMult', 2.5, 0.5, 6, 0.1, 'Bulwark Tyrant: rail shots break plates this much faster');
+  const bossShieldOther = T.num('bossShieldOtherMult', 0.5, 0.1, 2, 0.05, 'Bulwark Tyrant: laser and tower damage to plates');
+  const bossTricks = (): BossTricks => ({ swarmEveryS: bossSwarmEvery(), swarmPack: bossSwarmPack(), chargeEveryS: bossChargeEvery(),
+    chargeWarnS: bossChargeWarn(), chargeS: bossChargeS(), shieldShare: bossShieldShare() });
   const bossSprintFtp = T.num('bossSprintFtp', 1.35, 1.2, 1.6, 0.05, 'optional hold-Up ERG push during a Rail boss opening');
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
@@ -206,8 +217,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let plan: WavePlan, nextPlan: WavePlan;
   let schedule: Spawn[] = [];
   let miniTimer = 2;
-  let phaseColors: Element[] = [];
-  const escorts: Array<{ at: number; from: Enemy; offset: number }> = [];
+  const escorts: Array<{ at: number; from: Enemy; offset: number; kind: Kind }> = [];
+  let railVolley = false;
   let ignitionChainId = 0;
   let revAcc = 0, lastRevs = 0;
   let railCharges = 0, railProgress = 0, railFired = 0, railCharging = false;
@@ -238,6 +249,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const PAD_ORDER = () => PAD_ORDERS[padsTurned ? 'landscape' : 'portrait'];
   let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
+  let lastBoss: Element | null = null;
   const pending: Array<{ type: string; [k: string]: unknown }> = [];
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const dealt = { player: 0, tower: 0, emp: 0 };
@@ -280,7 +292,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const gainScrap = (n: number) => { const v = Math.max(0, Math.round(n * mods.scrapMult * scrapScale())); scrap += v; stats.scrapEarned += v; return v; };
 
   const elementOf = (e: Enemy): Element => {
-    if (e.boss) return e.boss.colors[e.boss.phase];
+    if (e.boss) return e.boss.color;
     if (e.kind === 'prism') return ELEMENTS[Math.floor((t + e.phase) / 4) % 3];
     return KINDS[e.kind].color as Element;
   };
@@ -308,12 +320,19 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : 4.5),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
       hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
-      spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(phaseColors.slice()) : null,
+      spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null,
     };
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
     place(e);
     spawned.push(e);
-    if (kind === 'boss') { ctx.emit({ type: 'bossSpawned', data: { wave, id: e.id } }); addFx({ kind: 'bossIntro', life: 3, wave }); say(`${k.name} incoming`, `Wave ${wave} boss · announced phases · sprint when Exposed`, '#ffd24a', true); cue('bossStart'); }
+    if (e.boss) {
+      const b = e.boss;
+      ctx.emit({ type: 'bossSpawned', data: { wave, id: e.id, color: b.color } });
+      addFx({ kind: 'bossIntro', life: 3, wave, color: b.color });
+      say(`${BOSS_NAME[b.color]} incoming`, `Wave ${wave} boss · ${BOSS_TRICK[b.color]} · sprint when Exposed`, '#ffd24a', true);
+      cue('bossStart');
+      bossEvents(e, openBoss(b, e.maxHp, bossTricks()));
+    }
   }
 
   interface IgnitionChain { id: number; bursts: number }
@@ -323,7 +342,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const mult = el == null ? 1 : match[ELEMENT_WEAPON[el]][element]();
     const exposure = e.boss?.exposed ? exposedMult() * (ctx.bike().sprinting ? exposedSprintMult() : 1) : 1;
     const floor = e.boss ? bossHpFloor(e.boss, e.maxHp) : 0;
-    const damage = Math.min(Math.max(0, e.hp - floor), base * mult * exposure);
+    const raw = e.boss ? shieldHit(e.boss, base * mult * exposure, railVolley, bossShieldRail(), bossShieldOther()) : base * mult * exposure;
+    if (e.boss && e.boss.shieldMax > 0 && e.boss.shield <= 0) { e.boss.shieldMax = 0; bossEvents(e, ['shieldBroken']); }
+    const damage = Math.min(Math.max(0, e.hp - floor), raw);
     dealt[src] += damage; // effective damage, including ignition; no overkill or damage through phase gates
     e.hp -= damage;
     e.hurt = 0.12; e.lastEl = el;
@@ -368,7 +389,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       stats.bosses++; save.totals.bosses++;
       const p = Math.round((30 + wave * 2) * partsScale()); partsRun += p; partsEarned += p; bank += p;
       say(`${def.name} destroyed!`, `+${got} scrap · +${p} parts`, '#ffd24a', true);
-      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.colors.length ?? 0 } });
+      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.phases ?? 0, color: e.boss?.color ?? 'gold' } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
       persist();
     } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave, matchup: cls } });
@@ -380,7 +401,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   // ---------- waves ----------
   function planFor(w: number): WavePlan {
-    const brood = nextBrood(broods, waveRng, { maxRun: waveRole(w) === 'boss' ? 1 : broodMaxRun(), coverWaves: broodCover() });
+    const boss = waveRole(w) === 'boss';
+    // Bosses take turns: a boss wave avoids the last boss's colour when the brood order allows it.
+    const brood = nextBrood(broods, waveRng, { maxRun: boss ? 1 : broodMaxRun(), coverWaves: broodCover(), avoid: boss ? lastBoss ?? undefined : undefined });
+    if (boss) lastBoss = brood;
     broods.push(brood);
     return planWave(w, waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack() });
   }
@@ -393,7 +417,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     escorts.length = 0;
     schedule = plan.spawns.map((s) => ({ ...s }));
     lull = lullS();
-    phaseColors = plan.boss ? bossColors(plan.brood, bossPhases()) : [];
     const b = broodInfo(plan);
     ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
     if (plan.boss) ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: 1, color: b.color, weapon: b.weapon, mode: b.mode, countdownS: lull } });
@@ -589,7 +612,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       addFx({ kind: 'beam', life: 0.45, angle: a, spread: n > 1 });
       for (const e of enemies) {
         if (e.dead) continue;
-        if (angDiff(e.angle, a) <= railWidth() + radiusOf(e) / Math.max(4, e.dist)) hit(e, railDmg() * odMult(), 'purple');
+        if (angDiff(e.angle, a) <= railWidth() + radiusOf(e) / Math.max(4, e.dist)) { railVolley = true; hit(e, railDmg() * odMult(), 'purple'); railVolley = false; }
       }
     }
     cue('rail');
@@ -719,7 +742,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   const slowStart = () => ROAD_LENGTH * slowFrom();
   function travelSpeed(e: Enemy) {
-    return e.speed * (e.charging ? 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= slowStart() ? 1 - slowFraction() : 1)
+    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= slowStart() ? 1 - slowFraction() : 1)
       * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1);
   }
 
@@ -935,40 +958,58 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     startWave(true);
   }
 
+  /** Announces a boss's events and carries out its tricks. */
+  function bossEvents(e: Enemy, events: ReadonlyArray<string>) {
+    const b = e.boss!, name = BOSS_NAME[b.color];
+    for (const event of events) {
+      if (event === 'phaseAnnounced') {
+        ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: b.phase + 2, color: b.color, weapon, countdownS: b.countdownS } });
+        say(`Phase ${b.phase + 2} incoming`, `${BOSS_ESCALATION[b.color]} in ${Math.ceil(b.countdownS)}s`, '#ffd24a', true);
+        cue('alarm');
+      } else if (event === 'phaseStarted') {
+        ctx.emit({ type: 'bossPhaseStarted', data: { wave, phase: b.phase + 1, color: b.color, weapon } });
+        say(`Phase ${b.phase + 1} · ${name}`, BOSS_ESCALATION[b.color], '#ffd24a', true);
+        addFx({ kind: 'hitStop', life: 0.1, seconds: 0.06 });
+        cue('alarm');
+      } else if (event === 'swarm') {
+        const n = swarmPackFor(b, bossTricks());
+        for (let i = 0; i < n; i++) escorts.push({ at: t + i * 0.25, from: e, offset: -1.5 - (i % 4) * 1.5, kind: 'mini' });
+        ctx.emit({ type: 'bossSwarm', data: { wave, count: n } });
+        cue('alarm');
+      } else if (event === 'chargeWarn') {
+        say(`${name} charging!`, `Charge in ${Math.ceil(b.warnS)}s · burn it down`, '#ff6a5a', true);
+        ctx.emit({ type: 'bossChargeWarn', data: { wave, seconds: b.warnS } });
+        cue('alarm');
+      } else if (event === 'charge') {
+        ctx.emit({ type: 'bossCharge', data: { wave, seconds: b.chargeS } });
+      } else if (event === 'shield') {
+        say('Shield plates up', 'Rail shots and openings break plates fast', '#c694ff', true);
+        ctx.emit({ type: 'bossShield', data: { wave, hp: Math.round(b.shieldMax) } });
+        cue('alarm');
+      } else if (event === 'shieldBroken') {
+        say('Plates broken!', `${name} is open`, '#7dffb0');
+        ctx.emit({ type: 'bossShieldBroken', data: { wave } });
+        addFx({ kind: 'hitStop', life: 0.1, seconds: 0.05 });
+      } else if (event === 'telegraph') {
+        say('Boss opening soon', `Sprint in ${Math.ceil(b.windowLeftS)}s`, '#ffd24a', true);
+        cue('alarm');
+        ctx.emit({ type: 'bossTelegraph', data: { wave, seconds: b.windowLeftS } });
+      } else if (event === 'exposed') {
+        say('Exposed!', 'Double damage · sprint for another ×1.5', '#7dffb0', true);
+        ctx.emit({ type: 'bossExposed', data: { wave, seconds: b.windowLeftS } });
+      }
+    }
+  }
   function updateBosses(dt: number) {
+    const timing = { phaseCountdownS: bossCountdown(), exposedEveryS: exposedEvery(), telegraphS: exposedTelegraph(), exposedS: exposedS() };
     for (const e of enemies) {
       if (e.dead || !e.boss) continue;
-      const b = e.boss;
-      for (const event of advanceBoss(b, dt, e.hp / e.maxHp, {
-        phaseCountdownS: bossCountdown(), exposedEveryS: exposedEvery(), telegraphS: exposedTelegraph(), exposedS: exposedS(),
-      })) {
-        if (event === 'phaseAnnounced') {
-          const color = b.colors[b.phase + 1], info = broodInfo({ ...plan, brood: color });
-          ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: b.phase + 2, color, weapon: info.weapon, mode: info.mode, countdownS: b.countdownS } });
-          say(`Phase ${b.phase + 2} incoming`, `${color.toUpperCase()} · ${WEAPON_NAME[info.weapon]} in ${Math.ceil(b.countdownS)}s`, '#ffd24a', true);
-          cue('alarm');
-        } else if (event === 'phaseStarted') {
-          const color = b.colors[b.phase];
-          selectWeapon(ELEMENT_WEAPON[color]);
-          ctx.emit({ type: 'bossPhaseStarted', data: { wave, phase: b.phase + 1, color, weapon, mode: broodInfo({ ...plan, brood: color }).mode } });
-          say(`Phase ${b.phase + 1} · ${WEAPON_NAME[weapon]}`, 'Escorts incoming', '#ffd24a', true);
-          for (let i = 0; i < 4; i++) escorts.push({ at: t + i * 0.3, from: e, offset: -2 - i * 2 });
-          addFx({ kind: 'hitStop', life: 0.1, seconds: 0.06 });
-          cue('alarm');
-        } else if (event === 'telegraph') {
-          say('Boss opening soon', `Sprint in ${Math.ceil(b.windowLeftS)}s`, '#ffd24a', true);
-          cue('alarm');
-          ctx.emit({ type: 'bossTelegraph', data: { wave, seconds: b.windowLeftS } });
-        } else {
-          say('Exposed!', 'Double damage · sprint for another ×1.5', '#7dffb0', true);
-          ctx.emit({ type: 'bossExposed', data: { wave, seconds: b.windowLeftS } });
-        }
-      }
+      bossEvents(e, advanceBoss(e.boss, dt, e.hp / e.maxHp, timing, bossTricks(), e.maxHp));
     }
     while (escorts.length && escorts[0].at <= t) {
       const escort = escorts.shift()!;
       // A dying boss still sent these escorts; changing waves or ending a run cancels them.
-      spawnAt('mini', escort.from, escort.offset);
+      spawnAt(escort.kind, escort.from, escort.offset);
     }
   }
 
@@ -1150,7 +1191,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     for (const e of enemies) {
       if (e.dead) continue;
       e.hurt = Math.max(0, e.hurt - dt);
-      e.charging = e.kind === 'charger' && e.d / e.len > 0.5;
+      e.charging = e.boss ? e.boss.chargeS > 0 : e.kind === 'charger' && e.d / e.len > 0.5;
       e.d += travelSpeed(e) * dt;
       place(e);
       if (e.kind === 'carrier') { e.spawnT -= dt; if (e.spawnT <= 0) { e.spawnT = 6; spawnAt('mini', e, 1.5); spawnAt('mini', e, -1.5); } }
@@ -1261,11 +1302,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   };
   function enemyView(e: Enemy): EnemyView {
     const el = elementOf(e), si = shiftIn(e);
-    const shifting = e.kind === 'boss' || e.kind === 'prism';
+    const shifting = e.kind === 'prism';
     return {
       id: e.id, kind: e.kind, route: e.route, flying: e.route >= 0, x: e.x, y: e.y, angle: e.angle, dist: e.dist, radius: radiusOf(e),
       element: el, gold: e.kind === 'boss', hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, charging: e.charging,
-      shiftIn: si, next: e.boss ? (e.boss.pending ? e.boss.colors[e.boss.phase + 1] : null) : shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
+      shiftIn: si, next: shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
+      shield: e.boss && e.boss.shieldMax > 0 ? e.boss.shield / e.boss.shieldMax : 0,
       bossPhase: e.boss ? e.boss.phase + 1 : 0, telegraph: !!e.boss?.telegraph && !e.boss?.pending, exposed: !!e.boss?.exposed && !e.boss?.pending, staggerS: e.boss?.staggerS ?? 0,
       hitT: e.hitT, hitCls: e.hitCls, hitDmg: e.hitDmg,
     };
@@ -1274,16 +1316,17 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (phase !== 'run') return null;
     const e = enemies.find((e) => !e.dead && e.boss);
     if (e?.boss) {
-      const b = e.boss, color = elementOf(e);
-      return { id: e.id, phase: b.phase + 1, phaseCount: b.colors.length, color, weapon: ELEMENT_WEAPON[color],
-        next: b.pending ? b.colors[b.phase + 1] : null, countdownS: b.countdownS,
+      const b = e.boss, color = b.color;
+      return { id: e.id, name: BOSS_NAME[color], phase: b.phase + 1, phaseCount: b.phases, color, weapon: ELEMENT_WEAPON[color],
+        pending: b.pending, countdownS: b.countdownS, charge: b.chargeS > 0 ? 'on' : b.warnS > 0 ? 'warn' : null,
+        shield: b.shieldMax > 0 ? b.shield / b.shieldMax : 0,
         telegraph: b.telegraph && !b.pending, exposed: b.exposed && !b.pending, windowLeftS: b.windowLeftS,
         sprintBoost: weapon === 'rail' && !b.pending && (b.telegraph || b.exposed) && !workshop &&
           ((!boostBlocked && ctx.input().held.has('up')) || boostPointers.size > 0) };
     }
     if (plan?.boss && (lull > 0 || schedule.some((s) => s.kind === 'boss'))) {
-      return { id: 0, phase: 1, phaseCount: phaseColors.length, color: plan.brood, weapon: ELEMENT_WEAPON[plan.brood],
-        next: null, countdownS: lull, telegraph: false, exposed: false, windowLeftS: 0, sprintBoost: false };
+      return { id: 0, name: BOSS_NAME[plan.brood], phase: 1, phaseCount: Math.max(2, Math.min(3, Math.round(bossPhases()))), color: plan.brood,
+        weapon: ELEMENT_WEAPON[plan.brood], pending: false, charge: null, shield: 0, countdownS: lull, telegraph: false, exposed: false, windowLeftS: 0, sprintBoost: false };
     }
     return null;
   }

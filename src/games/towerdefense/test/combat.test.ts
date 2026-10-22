@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, makeRng, testProfile, TimelineInput } from '../../../core';
 import type { Button, GameEvent, InputState } from '../../../contracts';
 import { module } from '../index';
-import { advanceBoss, bossColors, bossHpFloor, createBossState } from '../sim/boss';
+import { advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossTricks } from '../sim/boss';
 import { ELEMENTS, MATCHUP, suggestedTower, TOWER_KINDS, TOWER_WEAPON, WEAPONS } from '../sim/defs';
 import { effortMet, scheduleCall, type EffortView } from '../sim/efforts';
 import { waveRole } from '../sim/waves';
@@ -11,6 +11,7 @@ import { matchupCopy } from '../render/panels';
 
 const snapshot = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
 const timing = { phaseCountdownS: 3, exposedEveryS: 20, telegraphS: 3, exposedS: 5 };
+const tricks: BossTricks = { swarmEveryS: 12, swarmPack: 4, chargeEveryS: 14, chargeWarnS: 2, chargeS: 2.5, shieldShare: 0.12 }; // plates: 12 % here, not the tuned default
 
 describe('element matchups', () => {
   it('has exactly one strong, neutral and resisted element per weapon, with towers sharing their row', () => {
@@ -65,10 +66,9 @@ describe('element matchups', () => {
 });
 
 describe('boss ladder', () => {
-  it('announces HP-gated phases, then switches after the full countdown with a stagger', () => {
-    const b = createBossState(bossColors('red', 3));
-    expect(b.colors).toEqual(['red', 'purple', 'blue']);
-    expect(bossColors('blue', 2)).toHaveLength(2);
+  it('announces HP-gated phases, then starts the next after the full countdown with a stagger, keeping its colour', () => {
+    const b = createBossState('red', 3);
+    expect(createBossState('blue', 2).phases).toBe(2);
     expect(bossHpFloor(b, 300)).toBe(200);
     expect(advanceBoss(b, 0.1, 2 / 3, timing)).toContain('phaseAnnounced');
     expect(b.phase).toBe(0); expect(b.pending).toBe(true);
@@ -80,9 +80,50 @@ describe('boss ladder', () => {
     advanceBoss(b, 3, 1 / 3, timing);
     expect(b.phase).toBe(2); expect(bossHpFloor(b, 300)).toBe(0);
     expect(advanceBoss(b, 0.1, 0.01, timing)).not.toContain('phaseAnnounced');
+    expect(b.color).toBe('red');
+  });
+  it('Swarm Tyrant births bigger packs more often each phase', () => {
+    const b = createBossState('blue', 3);
+    expect(openBoss(b, 300, tricks)).toEqual([]);
+    const step = (seconds: number, hp: number) => { const ev: string[] = []; for (let i = 0; i < Math.round(seconds * 10); i++) ev.push(...advanceBoss(b, 0.1, hp, timing, tricks, 300)); return ev; };
+    expect(step(36.5, 1).filter((e) => e === 'swarm')).toHaveLength(3); // every 12 s
+    expect(swarmPackFor(b, tricks)).toBe(4);
+    const opening = step(3.1, 0.6);
+    expect(opening).toContain('phaseStarted'); expect(opening).toContain('swarm'); // a new phase opens with a pack
+    expect(swarmPackFor(b, tricks)).toBe(6);
+    expect(step(28, 0.6).filter((e) => e === 'swarm')).toHaveLength(3); // every 9 s
+  });
+  it('Ram Tyrant warns, then charges; charges last longer in later phases', () => {
+    const b = createBossState('red', 3);
+    openBoss(b, 300, tricks);
+    let seen: string[] = [];
+    const until = (event: string, hp = 1) => { for (let i = 0; i < 400; i++) { seen = advanceBoss(b, 0.1, hp, timing, tricks, 300); if (seen.includes(event)) return i * 0.1 + 0.1; } return Infinity; };
+    expect(until('chargeWarn')).toBeCloseTo(14, 0);
+    expect(until('charge')).toBeCloseTo(2, 0);
+    expect(b.chargeS).toBeCloseTo(2.5);
+    expect(until('chargeWarn')).toBeGreaterThan(2.5); // the charge runs out before the next timer
+    expect(until('phaseStarted', 0.6)).toBeLessThan(6);
+    expect(until('chargeWarn', 0.6)).toBeLessThan(1); // a new phase opens with a charge after the stagger
+    expect(until('charge', 0.6)).toBeCloseTo(2, 0);
+    expect(b.chargeS).toBeCloseTo(3); // +0.5 s in phase 2
+  });
+  it('Bulwark Tyrant raises plates at the start and each phase; rail shots break them fast', () => {
+    const b = createBossState('purple', 3);
+    expect(openBoss(b, 1000, tricks)).toEqual(['shield']);
+    expect(b.shield).toBeCloseTo(120);
+    expect(shieldHit(b, 40, false, 2.5, 0.5)).toBe(0); // laser: plates soak it at half rate
+    expect(b.shield).toBeCloseTo(100);
+    expect(shieldHit(b, 30, true, 2.5, 0.5)).toBe(0); // a rail shot breaks 2.5x
+    expect(b.shield).toBeCloseTo(25);
+    expect(shieldHit(b, 30, true, 2.5, 0.5)).toBeCloseTo(20); // breaks through, the rest hits HP
+    expect(b.shield).toBe(0);
+    const ev: string[] = [];
+    for (let i = 0; i < 40; i++) ev.push(...advanceBoss(b, 0.1, 0.6, timing, tricks, 1000));
+    expect(ev).toContain('shield');
+    expect(b.shieldMax).toBeCloseTo(150); // +25 % in phase 2
   });
   it('telegraphs each 5-second Exposed window and repeats at 20-second intervals', () => {
-    const b = createBossState(bossColors('blue', 3));
+    const b = createBossState('blue', 3);
     advanceBoss(b, 16, 1, timing); expect(b.telegraph).toBe(false);
     expect(advanceBoss(b, 1, 1, timing)).toContain('telegraph');
     expect(b.windowLeftS).toBe(3); expect(b.exposed).toBe(false);

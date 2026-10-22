@@ -1,4 +1,4 @@
-import { ELEMENT_WEAPON, WEAPON_NAME } from '../sim/defs';
+import { BOSS_ESCALATION } from '../sim/boss';
 import type { TdSnapshot } from '../sim/types';
 
 export interface RideObjective { label: string; title: string; target: string; detail: string; progress?: number }
@@ -15,10 +15,12 @@ export function rideObjective(s: TdSnapshot): RideObjective {
     detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
   const b = s.boss;
   if (b) {
-    const phase = `Boss phase ${b.phase}/${b.phaseCount}`;
-    if (b.next) return { label: phase, title: `${WEAPON_NAME[ELEMENT_WEAPON[b.next]]} next`, target: 'Weapon changes after the countdown', detail: `Switch in ${seconds(b.countdownS)}` };
+    const phase = `${b.name} · phase ${b.phase}/${b.phaseCount}`;
+    if (b.pending) return { label: phase, title: `Phase ${b.phase + 1} next`, target: `${BOSS_ESCALATION[b.color]} · same weapon`, detail: `Starts in ${seconds(b.countdownS)}` };
     if (b.exposed) return { label: phase, title: 'Exposed', target: 'Push now · damage window open', detail: `${seconds(b.windowLeftS)} remaining` };
     if (b.telegraph) return { label: phase, title: 'Prepare to sprint', target: b.weapon === 'rail' ? 'Hold ▲ for the ERG push' : 'Sprint for ×1.5 damage', detail: `Opening in ${seconds(b.windowLeftS)}` };
+    if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Burn it down before it reaches the base', detail: s.brood.cue };
+    if (b.shield > 0) return { label: phase, title: 'Shield plates up', target: 'Fire rail charges to break them', detail: `${Math.round(b.shield * 100)}% plates left · openings break them fast` };
     return { label: phase, title: 'Hold your rhythm', target: s.brood.cue, detail: 'Watch for the next sprint window' };
   }
   const e = s.effort;

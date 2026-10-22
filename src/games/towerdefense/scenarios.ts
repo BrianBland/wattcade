@@ -26,20 +26,18 @@ export const scenarios: Array<{
       const f: string[] = [];
       const collapse = (xs: string[]) => xs.filter((x, i) => i === 0 || x !== xs[i - 1]);
       const modes = collapse(run.mixerCommands.map((c) => c.mode));
-      const announced = run.events.filter((e) => e.type === 'broodAnnounced' || (e.type === 'bossPhaseStarted' && Number(e.data?.phase) > 1));
+      // One boss per colour: only the brood card changes the trainer mode; a boss fight never does.
+      const announced = run.events.filter((e) => e.type === 'broodAnnounced');
       const waves = run.events.filter((e) => e.type === 'waveStart').length;
       const ann = collapse(announced.map((e) => String(e.data?.mode)));
       if (modes.length - 1 > announced.length) f.push(`${modes.length - 1} trainer-mode changes for ${announced.length} waves`);
-      for (const e of run.events.filter((e) => e.type === 'bossPhaseStarted' && Number(e.data?.phase) > 1)) {
-        const a = run.events.find((a) => a.type === 'bossPhaseAnnounced' && a.data?.wave === e.data?.wave && a.data?.phase === e.data?.phase);
-        if (!a || e.t - a.t < Number(a.data?.countdownS) - 0.05) f.push('boss mode changed without its full countdown');
-      }
       const bosses = run.events.filter((e) => e.type === 'bossKilled');
       for (const b of bosses) {
         const starts = run.events.filter((e) => e.type === 'bossPhaseStarted' && e.data?.wave === b.data?.wave);
         if (starts.length !== Number(b.data?.phases)) f.push('boss skipped a phase');
-        const switches = run.events.filter((e) => e.type === 'weaponSwitched' && e.data?.wave === b.data?.wave);
-        if (switches.length !== starts.length) f.push('boss weapon switches != phase count');
+        if (new Set(starts.map((e) => e.data?.color)).size !== 1) f.push('boss changed colour mid-fight');
+        const first = starts[0]?.t ?? Infinity;
+        if (run.events.some((e) => e.type === 'weaponSwitched' && e.data?.wave === b.data?.wave && e.t > first)) f.push('boss switched weapons mid-fight');
       }
       if (!(n(s, 'bossesKilled') >= 1 && n(s, 'bossesKilled') <= 2)) f.push(`bossesKilled ${s.bossesKilled} outside baseline 1–2 per 20 min (one per set)`);
       // the garage/neutral 'sim' may lead before the first brood's mode

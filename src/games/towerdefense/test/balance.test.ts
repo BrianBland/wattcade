@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, NullInput, testProfile } from '../../../core';
+import { createGameSession, NullInput, SCRIPTS, testProfile } from '../../../core';
 import { module } from '../index';
 import type { TdSnapshot } from '../sim/types';
 
@@ -34,6 +34,31 @@ describe('balance comparisons', () => {
       expect(value()).toBeGreaterThan(low); expect(value()).toBeLessThan(high);
     }
     expect([...modes].sort()).toEqual(['erg', 'resistance', 'sim']);
+  });
+  it('arms the turret for a rider holding the recovery target through an easy Fireball or Rail wave', () => {
+    // Rides exactly the published trainer target: 0.5 FTP on an easy wave, never the work-wave demand.
+    SCRIPTS['td-test-on-target'] = { ...SCRIPTS['target-follow'], name: 'td-test-on-target',
+      powerFtp: (_t, e) => Number((e.hooks as { powerFtp?: number } | undefined)?.powerFtp ?? 0.65) };
+    const weapons = new Set<string>();
+    try {
+      for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+        const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), seed,
+          fake: { script: 'td-test-on-target' }, simOpts: { autopilot: true, baseHp: 1000 } });
+        for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 40, heavySpawnWindowS: 3, lullS: 12 })) {
+          s.tuning.set(`towerdefense.${key}`, value);
+        }
+        const snap = () => s.sim.snapshot() as TdSnapshot;
+        for (let second = 0; second < 300 && !(snap().wave === 5 && snap().lull <= 0); second++) s.step(30);
+        expect(snap().set.role).toBe('easy');
+        if (snap().weapon === 'gatling') continue;
+        weapons.add(snap().weapon);
+        expect(snap().hooks.powerFtp).toBeCloseTo(0.5);
+        const before = Number(s.sim.summary().turretDamage);
+        s.step(30 * 30);
+        expect(Number(s.sim.summary().turretDamage)).toBeGreaterThan(before);
+      }
+    } finally { delete SCRIPTS['td-test-on-target']; }
+    expect(weapons.size).toBeGreaterThan(0);
   });
   it('keeps broods and forecast packs identical when combat damage and ignition change', () => {
     const plan = (damage: number, ignition: number) => {

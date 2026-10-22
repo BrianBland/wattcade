@@ -159,7 +159,7 @@ export function App() {
       <div class={`screens${asleep ? ' asleep' : ''}${hud ? ' with-hud' : ''}`}>{body}</div>
       {hud && lobby && rider && (
         <div class="hud-host">
-          <HudLayer session={lobby} profile={rider} paused={false} fake={!!(lobby as { fakeBike?: unknown }).fakeBike}
+          <HudLayer session={lobby} profile={rider} paused={false} showNavigationLegend={asleep} fake={!!(lobby as { fakeBike?: unknown }).fakeBike}
             menu={() => ({ label: 'Open arcade menu', onClick: () => { lastActive.current = performance.now(); setAsleep(false); go({ name: 'menu' }); } })} />
         </div>
       )}

@@ -49,14 +49,16 @@ export function PauseHistory({ ftp, onClose }: { ftp: number; onClose(): void })
 }
 
 /** One instrument bar; controller statuses or floating touch controls above it. */
-export function HudLayer({ session, profile, paused, layout, fake, menu, onControls }: {
+export function HudLayer({ session, profile, paused, layout, fake, menu, onControls, showNavigationLegend = true }: {
   fake?: boolean; session: SessionLike; profile: Profile; paused: boolean; layout?: HudLayout;
   onControls?: () => void;
+  /** Menus with their own contextual key hints replace the overworld reminder. */
+  showNavigationLegend?: boolean;
   menu?: () => { label: string; onClick: () => void; dim?: boolean };
 }) {
   const [f, setF] = useState<Frame>(() => readFrame(session, profile));
   const controller = resolveHudLayout(layout ?? loadHudLayout(), f.connected) === 'controller';
-  const navigationLegend = controller && !!f.hud.persistentLegend && !paused;
+  const navigationLegend = showNavigationLegend && controller && !!f.hud.persistentLegend && !paused;
   const statusCount = controller && !paused && !navigationLegend ? actionIndicators(f.hud.controls ?? []).length : 0;
   const compact = useCompactInstruments();
   const [toolsOpen, setToolsOpen] = useState(false);

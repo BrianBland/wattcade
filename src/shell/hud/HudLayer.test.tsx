@@ -143,6 +143,12 @@ it('keeps the overworld reminder only while a controller is present and measures
   expect(el.querySelector('.controller-navigation')?.textContent).toContain('BBack');
   expect(el.querySelector('.controller-navigation button')).toBeNull();
   expect(el.querySelectorAll('[data-hud-occlusion]')).toHaveLength(2);
+  // The game selector supplies more specific contextual hints while it is visible.
+  act(() => render(<HudLayer session={make(hud)} profile={profile} paused={false} layout="auto" showNavigationLegend={false} />, el));
+  expect(el.querySelector('.controller-navigation')).toBeNull();
+  expect(el.querySelectorAll('[data-hud-occlusion]')).toHaveLength(1);
+  act(() => render(<HudLayer session={make(hud)} profile={profile} paused={false} layout="auto" showNavigationLegend />, el));
+  expect(el.querySelector('.controller-navigation')).not.toBeNull();
   connected.mockReturnValue(false); act(() => { vi.advanceTimersByTime(100); });
   expect(el.querySelector('.controller-navigation')).toBeNull();
   expect(el.querySelector('.floating-controls')).toBeNull();

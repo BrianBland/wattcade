@@ -4,7 +4,7 @@ The Hamster shop scrolls with swipe/drag, wheel and trackpad input. Rows activat
 
 Live touch controls show action names instead of A/B/Y/Z letter tiles. Direction/gear symbols that carry meaning remain. The inert paddle legend is removed from live touch controls; the complete controller guide retains physical references.
 
-The overworld opts into `GameHud.persistentLegend` because it has no pregame guide. With an attached controller in Auto it shows a small read-only Move / A Select / B Back reminder; disconnecting removes it. Controller presence is checked live, without requiring a button press. Explicit Touch/Controller overrides remain available. The guide is measured as a floating occlusion and never steals pointer input.
+The overworld opts into `GameHud.persistentLegend` because it has no pregame guide. Visible menus (including the game selector) own their contextual A/B/arrows/gears hints; the HUD reminder is suppressed while those menus are on screen. Once menus fade away, with an attached controller in Auto the HUD shows a small read-only Move / A Select / B Back reminder; disconnecting removes it. Controller presence is checked live, without requiring a button press. Explicit Touch/Controller overrides remain available. The guide is measured as a floating occlusion and never steals pointer input.
 
 At 390 × 844 CSS px, the captured overworld reserves 52 px without a controller and 86.3 px with its persistent controller guide. The guide adds 26.3 px and an 8 px gap. Real game session captures use coarse-pointer Chromium emulation, device scale factor 1, zero safe-area inset and 5 simulation seconds of fake Z2 input. Shop gesture captures use an unlocked preset to expose overflow.
 

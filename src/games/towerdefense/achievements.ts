@@ -1,10 +1,11 @@
 import type { AchievementDef, SessionRecord } from '../../contracts';
 import { countEvents, feat, hasEvent, num, tally } from '../../progression/kit';
+import { PADS } from './sim/defs';
 
 const G = 'towerdefense';
 const bestWave = tally(G, 'bestWave', (r) => num(r, 'wavesSurvived'), 'max');
 const kills = (r: Readonly<SessionRecord>) => ['blue', 'red', 'purple', 'gold'].reduce((s, k) => s + num(r, `kills_${k}`), 0);
-const TOWER_KINDS = ['tesla', 'flamer', 'lens'] as const;
+const PAD_COUNT = PADS.length;
 
 /**
  * Best single run's consecutive Spotless clears. A wave is Spotless when the sim says so (`waveCleared.spotless`:
@@ -27,19 +28,19 @@ function bestChain(r: Readonly<SessionRecord>): number {
   return Math.max(best, num(r, 'bestChain'));
 }
 
-/** A level 5 of each tower kind standing at once (a sell ends it). */
-function fullWorkshop(r: Readonly<SessionRecord>): boolean {
-  const level = new Map<string, number>(), kind = new Map<string, string>();
-  const have = () => TOWER_KINDS.every((k) => [...kind.entries()].some(([pad, name]) => name === k && (level.get(pad) ?? 0) >= 5));
+/** Most level 5 towers standing at once in one run: a sell, a rebuild on the pad or a fall ends them. */
+function maxedTowers(r: Readonly<SessionRecord>): number {
+  const level = new Map<string, number>();
+  let best = 0;
   for (const e of r.events) {
     const pad = e.data?.pad;
-    if ((e.type === 'towerBuilt' || e.type === 'towerUpgraded') && pad != null && e.data?.tower != null) {
-      kind.set(`${pad}`, String(e.data.tower));
-      level.set(`${pad}`, e.type === 'towerBuilt' ? 1 : Number(e.data.level) || 0);
-    } else if (e.type === 'runEnded') { level.clear(); kind.clear(); }
-    if (have()) return true;
+    if (e.type === 'towerBuilt' && pad != null) level.set(`${pad}`, 1);
+    else if (e.type === 'towerUpgraded' && pad != null) level.set(`${pad}`, Number(e.data?.level) || 0);
+    else if (e.type === 'towerSold' && pad != null) level.delete(`${pad}`);
+    else if (e.type === 'runEnded') level.clear();
+    best = Math.max(best, [...level.values()].filter((l) => l >= 5).length);
   }
-  return false;
+  return Math.max(best, num(r, 'bestMaxedTowers'));
 }
 
 /** Answered every called effort, and the ride was long enough that there were calls to answer. */
@@ -64,11 +65,11 @@ export const achievements: AchievementDef[] = [
   tally(G, 'calls', (r) => Math.max(num(r, 'callsWon'), countEvents(r, 'effortWon')))({ id: 'td_on_call', name: 'On Call', desc: 'Answer 8 called efforts', bonusXp: 40, goal: 8, unit: ' calls' }),
   feat(G, { id: 'td_bonfire', name: 'Bonfire', desc: 'Start an ignition chain of 4 in one ride', bonusXp: 80, check: (r) => bestChain(r) >= 4 }),
   tally(G, 'strongKills', (r) => Math.max(num(r, 'strongKills'), countEvents(r, 'enemyKilled', (d) => d.matchup === 'strong')))({ id: 'td_matchmaker', name: 'Matchmaker', desc: 'Kill 8,000 aliens with a strong matchup', bonusXp: 80, goal: 8000, unit: ' kills' }),
-  feat(G, { id: 'td_overbuilt', name: 'Overbuilt', desc: 'Own a level 5 tower', bonusXp: 80, check: (r) => hasEvent(r, 'towerUpgraded', (d) => Number(d.level) >= 5) }),
+  feat(G, { id: 'td_overbuilt', name: 'Overbuilt', desc: 'Have 4 level 5 towers standing at once', bonusXp: 80, check: (r) => maxedTowers(r) >= 4 }),
   feat(G, { id: 'td_exposed', name: 'Exposed!', desc: 'Sprint during a Hive Tyrant’s Exposed window', bonusXp: 120, check: (r) => num(r, 'exposedSprinted') >= 1 || r.events.some((e) => e.type === 'overdrive' && r.events.some((w) => w.type === 'bossExposed' && e.t >= w.t && e.t < w.t + Number(w.data?.seconds ?? 0))) }),
   feat(G, { id: 'td_untouchable', name: 'Untouchable', desc: 'Clear 4 Spotless waves in a row', bonusXp: 120, check: (r) => spotlessStreak(r) >= 4 }),
   feat(G, { id: 'td_iron_lungs', name: 'Iron Lungs', desc: 'Answer every called effort in a ride of 30+ minutes', bonusXp: 120, check: ironLungs }),
-  feat(G, { id: 'td_workshop', name: 'Full Workshop', desc: 'Have a level 5 of each tower at the same time', bonusXp: 150, check: fullWorkshop }),
+  feat(G, { id: 'td_workshop', name: 'Full Workshop', desc: `Fill all ${PAD_COUNT} pads with level 5 towers at once`, bonusXp: 200, check: (r) => maxedTowers(r) >= PAD_COUNT }),
   tally(G, 'scrap', (r) => num(r, 'scrapEarned'))({ id: 'td_salvage', name: 'Salvage King', desc: 'Bank 250,000 scrap', bonusXp: 200, goal: 250000, unit: ' scrap' }),
   { id: 'td_hours', name: 'Dynamo Hours', desc: 'Ride Dynamo Defense for 20 hours', bonusXp: 250, goal: 20, unit: ' h', count: { key: 'towerdefense.hours', agg: 'sum', of: (r) => (r.gameId === G ? r.durationS / 3600 : 0) } },
   tally(G, 'tyrants', (r) => Math.max(num(r, 'bossesKilled'), countEvents(r, 'bossKilled')))({ id: 'td_brood', name: 'Brood Breaker', desc: 'Destroy 50 Hive Tyrants', bonusXp: 200, goal: 50, unit: ' bosses' }),

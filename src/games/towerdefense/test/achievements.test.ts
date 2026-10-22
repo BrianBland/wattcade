@@ -50,14 +50,25 @@ it('Iron Lungs needs a long ride with every call answered, and none missed', () 
   expect(check('td_iron_lungs', { durationS: 31 * 60, gameSummary: won })).toBe(true);
 });
 
-it('Full Workshop needs a level 5 of each kind standing together', () => {
-  const shop = [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), built(2, 'lens'), up(2, 'lens', 4)];
-  expect(check('td_workshop', { events: shop })).toBe(false);
-  expect(check('td_workshop', { events: [...shop, up(2, 'lens', 5)] })).toBe(true);
-  // sold the tesla (pad reused) before the lens caught up: never all three at once
-  expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(0, 'lens'), up(0, 'lens', 5), built(1, 'flamer'), up(1, 'flamer', 5)] })).toBe(false);
-  // a fall clears the field; the second run has to rebuild
-  expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), end, built(2, 'lens'), up(2, 'lens', 5)] })).toBe(false);
+it('Overbuilt and Full Workshop count level 5 towers standing at once', () => {
+  const maxed = (pad: number, tower = 'tesla'): Ev[] => [built(pad, tower), up(pad, tower, 2), up(pad, tower, 3), up(pad, tower, 4), up(pad, tower, 5)];
+  const sold = (pad: number): Ev => ({ t: 0, type: 'towerSold', data: { pad, tower: 'tesla', level: 5 } });
+  const pads = (n: number, from = 0) => Array.from({ length: n }, (_, i) => maxed(from + i)).flat();
+  expect(check('td_overbuilt', { events: pads(3) })).toBe(false);
+  expect(check('td_overbuilt', { events: [...pads(3), up(3, 'lens', 4)] })).toBe(false);
+  expect(check('td_overbuilt', { events: pads(4) })).toBe(true);
+  // a sell or a fall ends a maxed tower
+  expect(check('td_overbuilt', { events: [...pads(3), sold(0), ...maxed(3)] })).toBe(false);
+  expect(check('td_overbuilt', { events: [...pads(2), end, ...pads(2, 2)] })).toBe(false);
+  // one of each kind is no longer enough for Full Workshop: every pad
+  expect(check('td_workshop', { events: [...maxed(0, 'tesla'), ...maxed(1, 'flamer'), ...maxed(2, 'lens')] })).toBe(false);
+  expect(check('td_workshop', { events: pads(7) })).toBe(false);
+  expect(check('td_workshop', { events: [...pads(7), sold(6), ...maxed(7)] })).toBe(false);
+  expect(check('td_workshop', { events: pads(8) })).toBe(true);
+  // the sim's summary counts when events were not kept
+  expect(check('td_overbuilt', { gameSummary: { bestMaxedTowers: 4 } })).toBe(true);
+  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 7 } })).toBe(false);
+  expect(check('td_workshop', { gameSummary: { bestMaxedTowers: 8 } })).toBe(true);
 });
 
 it('Exposed! is a sprint inside the window, not a sprint sometime during the fight', () => {

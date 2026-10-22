@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seaside stills</title>
+<style>
+html,body{margin:0;background:#111;overflow:hidden}
+#wrap{position:relative;width:1600px;height:900px}
+canvas{display:block}
+#overlay{position:absolute;inset:0;pointer-events:none;font-family:ui-sans-serif,system-ui,sans-serif}
+.bubble{position:absolute;left:40px;top:36px;background:#fffdf6;color:#2b2b2b;border-radius:14px;padding:14px 22px;font:italic 28px/1.2 Georgia,serif;box-shadow:0 4px 0 rgba(0,0,0,.18)}
+.bubble:after{content:"";position:absolute;left:34px;bottom:-16px;border:10px solid transparent;border-top:12px solid #fffdf6;border-left:14px solid #fffdf6}
+#stats{position:absolute;right:8px;bottom:6px;color:#fff;font:11px monospace;opacity:.0}
+</style></head>
+<body><div id="wrap"><canvas id="c"></canvas><div id="overlay"></div><pre id="stats"></pre></div>
+<script type="module" src="./seaside.ts"></script></body></html>

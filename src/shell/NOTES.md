@@ -1,12 +1,12 @@
 # shell + debug (Agent E; no open contract requests)
 ## Layout
 - HUD Insets retain the conservative bottom band; optional measured child rectangles update on content/legend changes, including in warmup. TD alone opts into shaped coverage. `hud/insets.test.ts` and GameHost tests cover offset/clipping/fallback and same-envelope shape changes.
+- Locker groups: Ride, Rider, Company & effects, Identity; independent wardrobe slots and an owned-only Legacy collection. Ships are selected in Cadenza. Controller grid columns follow the phone/desktop layout.
 - `src/main.tsx` -> `shell/App.tsx` (screen state machine) + `debug/DebugOverlay.tsx`. CSS in `src/styles/main.css`.
 - `shell/services.ts` is the ONLY file importing core/input/progression/devices (adapters, singletons `input`, `dataHub`). Everything else uses it.
 - `shell/screens/`: ProfilePicker, ProfileEditor (+backup export/import), Connect, ArcadeMenu, GameHost, PauseMenu, Summary, Achievements.
 - Pure/tested: `shell/nav.ts` (grid nav reducer), `shell/format.ts`. `shell/useMenuNav.ts` drives InputHub.beginTick itself in menus (D-pad/A/B + Enter/Esc).
 - `debug/`: `panels.tsx` (device, derived, controller, mixer, tuning), `TrainerTest.tsx`, `types.ts` (`DebugSnapshot`, `DebugActions`), polled at 5 Hz from `services.debugSnapshot()`.
-## Behavior
 - Flow: connect -> profiles -> menu -> game -> summary. On quit: `session.finish()`, SessionStore.save, `awardSession`, profile saved.
 - No device connected (or Fake toggle on) => session uses core FakeBike with chosen script. Real devices => shared `dataHub`.
 - Pause (system `pause`): `session.pause()` + mixer panic; resume releases. Wake lock requested in GameHost.

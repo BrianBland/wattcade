@@ -1,6 +1,6 @@
 import type { Profile } from '../contracts';
-import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item } from './catalog';
-import { SLOTS, type Item, type RiderLook, type Slot } from './types';
+import { ARCHIVED_ITEMS, DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, isArchived, item, itemKey } from './catalog';
+import { SLOTS, type Item, type OutfitLook, type RiderLook, type Slot } from './types';
 
 /** Pure unlock rules. Reads only profile fields (level, achievements, cosmetics), so renderers can use it too. */
 type P = Pick<Profile, 'level' | 'achievements' | 'cosmetics' | 'color'>;
@@ -8,6 +8,8 @@ const key = (it: Item) => `${it.slot}:${it.id}`;
 const picksOf = (p: P): Record<string, string> => p.cosmetics?.picks ?? {};
 
 export function isUnlocked(p: P, it: Item): boolean {
+  if (p.cosmetics?.legacy?.includes(itemKey(it))) return true;
+  if (isArchived(it)) return false;
   const s = it.source;
   if ('default' in s) return true;
   if ('level' in s) return p.level >= s.level;
@@ -15,6 +17,7 @@ export function isUnlocked(p: P, it: Item): boolean {
   return Object.values(picksOf(p)).includes(it.id);
 }
 export const unlockedItems = (p: P): Item[] => ITEMS.filter((it) => isUnlocked(p, it));
+export const legacyItems = (p: P): Item[] => ARCHIVED_ITEMS.filter(it => isUnlocked(p, it));
 
 export const isPickLevel = (level: number) => level >= PICK_EVERY && level % PICK_EVERY === 0;
 const poolItems = () => ITEMS.filter((it) => 'pick' in it.source).sort((a, b) => (a.source as { pick: number }).pick - (b.source as { pick: number }).pick);
@@ -27,7 +30,7 @@ export function pickOptions(p: P, level: number): Item[] {
   if (!isPickLevel(level)) return [];
   if (level <= LAST_LEVEL) return poolItems().filter((it) => (it.source as { pick: number }).pick === level);
   const chosenElsewhere = new Set(Object.entries(picksOf(p)).filter(([l]) => Number(l) !== level).map(([, id]) => id));
-  return poolItems().filter((it) => !chosenElsewhere.has(it.id)).slice(0, 3);
+  return poolItems().filter((it) => !chosenElsewhere.has(it.id) && !isUnlocked(p, it)).slice(0, 3);
 }
 /** Pick levels reached but not chosen yet, lowest first. */
 export function pendingPicks(p: P): number[] {
@@ -65,10 +68,19 @@ export function riderLook(p: P): RiderLook {
   const j = item('jersey', l.jersey), pt = item('paint', l.paint);
   const look = j?.slot === 'jersey' ? j.look : { pattern: 'plain' as const, base: 'rider', ink: '#ffffff' };
   const sub = (c: string) => (c === 'rider' ? color : c);
+  const outfit: OutfitLook = Object.fromEntries((['bottoms', 'hands', 'feet', 'eyewear', 'back'] as const).map(slot => {
+    const it = item(slot, l[slot]);
+    return [slot === 'hands' ? 'gloves' : slot === 'feet' ? 'footwear' : slot, it && 'look' in it ? it.look : undefined];
+  }));
+  // An untouched old outfit keeps its original whole-kit pants until the player chooses a bottom.
+  if (!('bottoms' in (p.cosmetics?.loadout ?? {})) && p.cosmetics?.legacy?.includes(`jersey:${l.jersey}`)) {
+    outfit.bottoms = { kind: 'legacy', base: '#22222b', ink: '#aab8c7' };
+  }
   return {
     bike: l.bike, hat: l.hat, pet: l.pet, trail: l.trail, color,
-    jersey: { pattern: look.pattern, base: sub(look.base), ink: sub(look.ink) },
+    jersey: { ...look, base: sub(look.base), ink: sub(look.ink) },
     paint: pt?.slot === 'paint' ? pt.look : { frame: '#d8dbe6' },
+    outfit,
   };
 }
 /** The rider's title text, or null. */
@@ -96,6 +108,7 @@ export function nextReward(p: P): { level: number; items: Item[]; pick: boolean 
 /** How to unlock `it`, for locked tiles. `achievementName` resolves ids; secret achievements stay hidden. */
 export function unlockHint(it: Item, achievementName: (id: string) => { name: string; secret?: boolean } | undefined): string {
   const s = it.source;
+  if (isArchived(it)) return 'Legacy item';
   if ('default' in s) return 'Starter item';
   if ('level' in s) return `Reach level ${s.level}`;
   if ('pick' in s) return `Level ${s.pick} reward pick`;
@@ -109,10 +122,12 @@ export function withItem(look: RiderLook, it: Item): RiderLook {
   switch (it.slot) {
     case 'bike': return { ...look, bike: it.id };
     case 'hat': return { ...look, hat: it.id };
-    case 'jersey': return { ...look, jersey: { pattern: it.look.pattern, base: sub(it.look.base), ink: sub(it.look.ink) } };
+    case 'jersey': return { ...look, jersey: { ...it.look, base: sub(it.look.base), ink: sub(it.look.ink) } };
     case 'paint': return { ...look, paint: it.look };
     case 'pet': return { ...look, pet: it.id };
     case 'trail': return { ...look, trail: it.id };
+    case 'bottoms': case 'hands': case 'feet': case 'eyewear': case 'back':
+      return { ...look, outfit: { ...look.outfit, [it.slot === 'hands' ? 'gloves' : it.slot === 'feet' ? 'footwear' : it.slot]: it.look } };
     default: return look;
   }
 }

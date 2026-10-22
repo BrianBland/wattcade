@@ -4,7 +4,7 @@ import '../src/styles/main.css';
 import { testProfile, createGameSession, NullInput } from '../src/core';
 import { module as warmup } from '../src/games/warmup';
 import { item } from '../src/cosmetics/catalog';
-import { riderLook, withItem } from '../src/cosmetics/unlocks';
+import { riderLook, withItem, choosePick, pickOptions } from '../src/cosmetics/unlocks';
 import { drawCosmeticItem, itemBox } from '../src/cosmetics/draw/items';
 import { drawRider } from '../src/cosmetics/draw/rider';
 import type { Item, RiderLook, Slot } from '../src/cosmetics/types';
@@ -13,7 +13,16 @@ import { UnlockReveal } from '../src/shell/screens/UnlockReveal';
 import { Locker } from '../src/shell/screens/Locker';
 
 const mode=new URLSearchParams(location.search).get('mode')??'c1';
-const profile=testProfile({name:'Rider',color:'#19b5bc',level:mode==='pick'?5:7});
+let profile=testProfile({name:'Rider',color:'#19b5bc',level:mode==='pick'?5:7});
+if(mode==='wardrobe-locker'){
+  const {ACHIEVEMENTS}=await import('../src/progression/achievements');
+  profile={...profile,level:150,achievements:ACHIEVEMENTS.map(a=>a.id),cosmetics:{rotation:1}};
+  if(new URLSearchParams(location.search).has('legacy')){
+    const {migrateCosmetics}=await import('../src/cosmetics/migrate');
+    profile=migrateCosmetics({...profile,cosmetics:undefined});
+  }
+  for(let level=5;level<=150;level+=5){const option=pickOptions(profile,level)[0];if(option)profile=choosePick(profile,level,option.id);}
+}
 const base=riderLook(profile);
 const app=document.querySelector<HTMLDivElement>('#app')!;app.style.background='transparent';
 const c=document.createElement('canvas');c.width=1536;c.height=1024;

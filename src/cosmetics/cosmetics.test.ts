@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '../contracts';
 import { ACHIEVEMENTS, defaultProfile } from '../progression';
-import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
+import { ALL_ITEMS, DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
 import { choosePick, equip, isPickLevel, isUnlocked, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
@@ -10,7 +10,8 @@ import { TRAIL_IDS } from './draw/trails';
 import { SHIP_IDS, drawShip } from './draw/ships';
 import { CRAFT_KINDS } from '../games/cadenza/render/craft';
 import { drawRider } from './draw/rider';
-import { SLOTS } from './types';
+import { SLOTS, type Slot } from './types';
+import { ACHIEVEMENT_GAME } from '../progression/achievements';
 
 const rider = (over: Partial<Profile> = {}): Profile => ({ ...defaultProfile('T'), color: '#ff2e93', ...over });
 
@@ -41,12 +42,21 @@ describe('catalogue rules', () => {
     expect(ITEMS.some((i) => ('level' in i.source && i.source.level > LAST_LEVEL) || ('pick' in i.source && i.source.pick > LAST_LEVEL))).toBe(false);
   });
   it('every bike and hat has a drawer (and every drawer an item)', () => {
+    const itemsIn = (slot: Slot) => ALL_ITEMS.filter(it => it.slot === slot);
     expect(new Set(itemsIn('bike').map((i) => i.id))).toEqual(new Set(Object.keys(BIKES)));
     expect(new Set(itemsIn('hat').map((i) => i.id))).toEqual(new Set(Object.keys(HATS)));
     expect(new Set(itemsIn('pet').map((i) => i.id))).toEqual(new Set(['none', ...PET_IDS]));
     expect(new Set(itemsIn('trail').map((i) => i.id))).toEqual(new Set(['none', ...TRAIL_IDS]));
     expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(SHIP_IDS));
     expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(CRAFT_KINDS)); // Cadenza flies every ship
+  });
+  it('offers three distinct slots at every pick and exactly one title per game', () => {
+    for (let level = 5; level <= LAST_LEVEL; level += 5) expect(new Set(pickOptions(rider(), level).map(it => it.slot)).size).toBe(3);
+    const gameTitles = ITEMS.filter(it => it.slot === 'title' && 'achievement' in it.source && ACHIEVEMENT_GAME[it.source.achievement]);
+    for (const game of new Set(Object.values(ACHIEVEMENT_GAME))) expect(gameTitles.filter(it => 'achievement' in it.source && ACHIEVEMENT_GAME[it.source.achievement] === game), game).toHaveLength(1);
+    expect(ITEMS.some(it => it.slot === 'title' && ('level' in it.source || 'pick' in it.source))).toBe(false);
+    expect(ITEMS.some(it => it.slot === 'ship')).toBe(false);
+    expect(itemsIn('bottoms').find(it => it.name === 'Tutu')?.source).toEqual({ level: 36 });
   });
 });
 
@@ -93,20 +103,21 @@ describe('unlocks', () => {
   it('equip ignores locked items; loadout falls back to defaults', () => {
     const p = rider({ level: 3 });
     expect(equip(p, 'bike', 'tron')).toBe(p);
-    const q = equip(p, 'hat', 'beanie');
-    expect(loadout(q).hat).toBe('beanie');
-    expect(loadout({ ...q, level: 1 }).hat).toBe('road'); // no longer unlocked (e.g. a restored backup)
+    const q = equip(p, 'eyewear', 'w_club_shades');
+    expect(loadout(q).eyewear).toBe('w_club_shades');
+    expect(loadout({ ...q, level: 1 }).eyewear).toBe('none');
   });
   it('look resolves rider colours; titles and previews', () => {
-    const p = equip(equip(rider({ level: 27 }), 'jersey', 'vstripes'), 'title', 't_captain');
+    const p = equip(equip(rider({ level: 27, achievements: ['km_1000'] }), 'jersey', 'w_crop_top'), 'title', 't_hauler');
     const look = riderLook(p);
     expect(look.jersey.base).toBe('#ff2e93');
-    expect(titleOf(p)).toBe('Road Captain');
+    expect(titleOf(p)).toBe('Long Hauler');
+    expect(look.jersey.cut).toBe('crop');
     expect(withItem(look, item('bike', 'tron')!).bike).toBe('tron');
   });
   it('new unlocks and the next reward', () => {
     const a = rider({ level: 11 }), b = rider({ level: 12, achievements: ['leg_day'] });
-    expect(newUnlocks(a, b).map((i) => i.id).sort()).toEqual(['pennyfarthing', 'viking']);
+    expect(newUnlocks(a, b).map((i) => i.id).sort()).toEqual(['pennyfarthing', 'w_barbarian_fur_briefs']);
     expect(nextReward(a)).toMatchObject({ level: 12, pick: false });
     expect(nextReward(rider({ level: 14 }))).toMatchObject({ level: 15, pick: true });
   });

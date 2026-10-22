@@ -45,6 +45,10 @@ Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.htm
 
 ## Controls
 
+**Native shifting hardware test:** `/shift-probe.html` is an opt-in KICKR CORE
+protocol experiment with 24 ratio selections and FTMS hill controls. See
+[test instructions](docs/NATIVE_SHIFTING_TEST.md). Arcade gearing is unchanged.
+
 | Action | Keyboard | Zwift Ride | Gamepad |
 |---|---|---|---|
 | D-pad | arrows | D-pad | d-pad |

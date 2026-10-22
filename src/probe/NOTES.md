@@ -1,4 +1,5 @@
 # BLE capability check
+- `/shift-probe.html`: isolated CORE native ratio / FTMS hill experiment; instructions in `docs/NATIVE_SHIFTING_TEST.md`. Logs requested commands and raw responses; hardware validation pending.
 - `/probe.html` logs secure context, origin, and requestDevice/getDevices method availability at startup.
 - Check saved devices lists authorized IDs without a picker, scan, or GATT connection.
 - Repeat on the same origin after reload/relaunch to measure permission persistence.

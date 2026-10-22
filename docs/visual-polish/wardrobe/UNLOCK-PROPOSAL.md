@@ -127,7 +127,7 @@ These are curation calls based on repeated shapes, weak visibility, generic reco
 | Union Rep | HAMSTERGRID / Labour Relations (`hm_strike`) | Union work gloves — **Hands** | Labour Relations earns red work gloves with a small union badge. |
 | Breadbasket | Watershed / Breadbasket (`ws_breadbasket`) | Bread basket — **Back** | A wicker basket with baguettes: turn the title into a wearable joke. |
 | Not Today | Crank Crawler / Not Today (`dg_second_wind`) | Bandage wraps — **Hands** | A visible memento of surviving another near-death encounter. |
-| Perfectly Exposed | Crank Crawler / Perfect Exposure (`dg_perfect_exposure`) | Censored blocks — **Bottoms** | The Perfect Exposure pun: an opaque skin-tone pixel mosaic with subtle digital noise. |
+| Perfectly Exposed | Crank Crawler / Perfect Exposure (`dg_perfect_exposure`) | Censored blocks — **Bottoms** | The Perfect Exposure pun: actual scene pixelation over a featureless pantless body, including the bike and background, with subtle noise. |
 | Walking Armoury | Crank Crawler / Full Arsenal (`dg_full_arsenal`) | Weapon rack — **Back** | A strapped sword, bow, and staff silhouette shows the collected arsenal. |
 | Spin Doctor | Crank Crawler / Spin Doctor (`dg_spin_doctor`) | Windstep boots — **Feet** | Spiral ankle wraps and a trailing ribbon reward spin-ups. |
 | Iron Vanguard | Crank Crawler / Vanguard Mastery (`dg_master_vanguard`) | Iron gauntlets — **Hands** | Steel fists suit the Vanguard stance. |

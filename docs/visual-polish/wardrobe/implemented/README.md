@@ -16,6 +16,7 @@ Locker browsing groups are Ride, Rider, Company & effects, and Identity. Ships h
 - [Desktop Locker](locker-desktop.png), [phone Locker](locker-phone.png)
 - [Desktop Legacy collection](legacy-desktop.png), [phone Legacy collection](legacy-phone.png)
 - [Cadenza ship selection](cadenza-ships.png), [locked ships](cadenza-locked.png)
+- [Scene-based censor effect](censor-scene-proof.png), [checks](censor-checks.json): actual pixelation of a featureless pantless rider, bike and background, with subtle noise.
 - [Canvas validation](render-checks.json): each new wearable changes visible rider pixels and has isolated shelf art; 300 combined outfit poses across all 25 bikes; legacy art also renders.
 
 ## Reproduce
@@ -25,6 +26,7 @@ Start Vite on localhost, then open `/dev/wardrobe-catalog.html`. It shows actual
 ```sh
 npm run dev -- --host 127.0.0.1 --port 5199 --strictPort
 node scripts/check-wardrobe.mjs
+node scripts/check-censor.mjs
 node scripts/check-rider-style.mjs /tmp/wattcade-player
 npm run typecheck
 npm test
@@ -36,3 +38,5 @@ Pass an output directory to either capture script; set `REVIEW_URL` to use a dif
 ## Verification results
 
 Typecheck and production build passed. The broad regression run passed 1,150 tests; four tests hit environment/time limits (the localhost media-resolver server and two Dynamo scenarios). Re-running those two files with localhost sockets enabled, one worker, and a 15-second test limit passed all 42 tests. The final focused wardrobe, migration, Locker, and ship-menu run passed 33 tests. Browser checks verify 94 worn/shelf designs, 300 combined poses, desktop/phone Locker interactions, owned-only Legacy browsing, and locked/unlocked ship selection above the HUD. Native iPad/Bluefy remains a device check.
+
+The censor follow-up samples the completed Canvas scene rather than painting a garment. Additional browser checks cover three source backgrounds, rotated/reflected camera transforms, clipping, transparent previews, caller alpha/state, and all 25 bikes at four crank phases. The featureless bare body remains underneath the coarse mosaic; no scene pixel readback is required.

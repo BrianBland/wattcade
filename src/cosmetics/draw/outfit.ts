@@ -68,7 +68,7 @@ export function drawBottomDetail(g: G, value: OutfitLook['bottoms'], hip: P, kne
     }
   });
 }
-/** Skirts and censor panels span both legs and stay anchored to the pelvis. */
+/** Skirts and the featureless bare pelvis span both legs and stay anchored to the hips. */
 export function drawHipWear(g: G, value: OutfitLook['bottoms'], hip: P, t: number) {
   const w = resolveWear(value); if (inactive(w)) return;
   const { kind, base, ink, accent = ink } = w!;
@@ -80,17 +80,8 @@ export function drawHipWear(g: G, value: OutfitLook['bottoms'], hip: P, t: numbe
     rect(g, ink, -2.1, -.9, 4.4, .7);
   }
   if (kind === 'censor') {
-    // Opaque skin-tone macroblocks, with coarse digital noise instead of clothing details.
-    const palette = [base, ink, accent, shade(base, .94), shade(base, 1.04)];
-    const frame = Math.floor(t * 6);
-    rect(g, base, -3.1, -.5, 6.8, 3.4);
-    for (let row = 0; row < 4; row++) for (let col = 0; col < 8; col++) {
-      const seed = (row * 19 + col * 11 + row * col * 7 + frame * 13) % 29;
-      const color = palette[seed % palette.length];
-      const x = -3.1 + col * .85, y = -.5 + row * .85;
-      rect(g, color, x, y, .85, .85);
-      if (seed % 3 === 0) rect(g, shade(color, seed % 2 ? .94 : 1.04), x + .3, y + .4, .25, .25);
-    }
+    // The censor is a later scene effect; only the unclothed cartoon body goes here.
+    oval(g, SKIN, 0, .5, 2.1, 1.8);
   }
   if (kind === 'bib' || kind === 'dungarees') { rect(g, base, -.5, -2.6, 2.8, 3.3); rect(g, ink, .1, -2.2, 1.5, .9); }
   g.restore();

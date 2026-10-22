@@ -5,6 +5,7 @@ import { drawJerseyItem } from './jersey';
 import { drawPet, FLIERS } from './pets';
 import { drawTrail } from './trails';
 import { drawWearItem } from './outfit';
+import { drawCensor } from './censor';
 import { rect, TAU, type G } from './prims';
 
 export function itemBox(it: Item) {
@@ -46,4 +47,5 @@ export function drawCosmeticItem(g:G,it:Item,look:RiderLook,t:number) {
     const pixels=s.g.getImageData(0,0,160,110);for(let i=3;i<pixels.data.length;i+=4)pixels.data[i]=pixels.data[i]>=128?255:0;s.g.putImageData(pixels,0,0);
   }
   g.save();g.imageSmoothingEnabled=false;g.drawImage(s.canvas,-56,-43,80,55);g.restore();
+  if(it.slot==='bottoms'&&it.look.kind==='censor')drawCensor(g,[0,-10],t);
 }

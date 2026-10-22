@@ -6,6 +6,7 @@ import { circle, joint, line, poly, rect, shade, SKIN, TAU, type G, type P } fro
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
 import { bottomColors, bottomLength, drawBack, drawBottomDetail, drawHipWear, drawEyewear, drawFootwear, drawGloves, resolveWear } from './outfit';
+import { drawCensor } from './censor';
 
 export interface RiderOpts {
   /** Seconds (animations). */
@@ -73,6 +74,15 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, 
   g.save(); g.imageSmoothingEnabled = false;
   g.drawImage(surface.canvas, p.x, p.y, p.w, p.h);
   g.restore();
+  if (resolveWear(look.outfit?.bottoms)?.kind === 'censor') {
+    const def = BIKES[look.bike] ?? BIKES.road;
+    const c = bikeCtx(g, look, crank, wheelM, o.t ?? 0, o.speed ?? 0);
+    g.save();
+    g.rotate(def.tilt?.(c) ?? 0); g.translate(0, def.bob?.(c) ?? 0);
+    drawCensor(g, def.hip, c.t);
+    if (def.stoker) drawCensor(g, def.stoker.hip ?? def.hip, c.t);
+    g.restore();
+  }
 }
 
 function paintRider(g: G, look: RiderLook, crank: number, wheelM: number, o: RiderOpts) {

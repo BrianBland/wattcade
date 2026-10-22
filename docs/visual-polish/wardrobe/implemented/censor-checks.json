@@ -1,0 +1,8 @@
+{
+  "backgrounds": 3,
+  "transforms": 3,
+  "poses": 100,
+  "clipping": true,
+  "transparency": true,
+  "callerState": true
+}

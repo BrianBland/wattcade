@@ -83,6 +83,8 @@ describe('hands-off input map', () => {
     expect(snap.actions.every((a: { ready: number }) => a.ready === 1)).toBe(true);
     const hints = new Map(s.sim.hud!().controls!.map((c) => [c.button, c.label]));
     expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
+    expect(hints.get('paddles')).toBe('Zoom in/out: either paddle direction or pinch');
+    expect(s.sim.hud!().controls!.find(c => c.button === 'paddles')!.shortLabel).toBe('Zoom ±');
     expect(hints.get('a')).toBe('Strike'); expect(hints.get('b')).toBe('Ward'); expect(hints.get('y')).toBe('Rally'); expect(hints.get('z')).toBe('Potion');
   });
   it('the hero walks and fights with no input, and the paddles/D-pad do not steer', () => {

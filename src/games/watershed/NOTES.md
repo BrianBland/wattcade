@@ -31,3 +31,4 @@ Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectiv
 ## Gaps / next
 - Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
   on iPad. Not built: story-mode levels (SPEC §6.4 "Later").
+- Shared HUD publishes the phase boost cooldown and Active status; steering/camera stay in start/pause help for controller users.

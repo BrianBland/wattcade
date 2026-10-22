@@ -36,6 +36,18 @@ describe('hamster econ', () => {
 });
 
 describe('hamster sim', () => {
+  it('keeps native row purchases and tab selection usable without duplicated touch buttons', () => {
+    const { s, snap } = session({ gameData: { v: 1, gens: [0], bank: 0, unlocks: ['upgrades'] } }); s.step(secs(10));
+    expect(s.sim.hud!().touchControls).not.toContain('a');
+    const owned = snap().gens[0].owned;
+    s.sim.receive!({ type: 'row', i: 0 }); s.step(1);
+    expect(snap().gens[0].owned).toBe(owned + 1);
+    const i = snap().tabs.findIndex(t => t.id === 'upgrades');
+    s.sim.receive!({ type: 'tab', i }); s.step(1);
+    expect(snap().tab).toBe('upgrades');
+    expect(s.sim.hud!().touchControls).not.toContain('b');
+    expect(s.sim.hud!().controls!.find(c => c.button === 'a')).toBeDefined();
+  });
   it('pedaling earns energy; A buys a hamster; hamsters need cadence', () => {
     const { s, pad, snap } = session();
     s.step(secs(10));

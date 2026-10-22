@@ -22,8 +22,8 @@ function MetricIcon({ source }: { source: 'power' | 'hr' | 'cadence' | 'clock' |
   </svg>;
 }
 
-export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls, command }: {
-  command?: TrainerCommand | null; gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
+export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake, gears, gearControls, command, history = true, compact = false }: {
+  compact?: boolean; history?: boolean; command?: TrainerCommand | null; gearControls?: ComponentChildren; gears?: boolean; ftp: number; fake?: boolean; bike: Readonly<BikeState>; view: ZoneView; target?: GameHud['targetZone']; cadenceTarget?: GameHud['targetCadence']; bars: Bar[];
 }) {
   // The mixer's last issued command includes difficulty, safety caps and ramps; it is not trainer feedback.
   const trainer = bike.connected && !bike.connected.trainer && !bike.connected.fake ? 'Offline'
@@ -31,17 +31,14 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
     : command?.mode === 'resistance' ? `RES ${Math.round(command.levelPct)}%`
     : command?.mode === 'sim' ? `SIM ${command.gradePct > 0 ? '+' : ''}${command.gradePct.toFixed(1)}%`
     : 'Idle';
-  const maxP = Math.max(1.6 * ftp, 100, ...bars.map((b) => b.power));
-  const hrs = bars.map((b) => b.hr).filter((h): h is number => h != null);
-  const hrMin = Math.min(...hrs, 200), hrMax = Math.max(...hrs, 40);
   const cad = cadenceStatus(bike.cadence3s, cadenceTarget);
   // power-judged targets (short efforts) say how many watts they need, since the bar has switched to power
   const floorW = target?.source === 'power' ? zoneFloorWatts(target.min, ftp) : null;
-  const label = target?.label && floorW != null ? `${target.label} · ${floorW}+ W` : target?.label;
+  const label = target?.label && floorW != null ? `${target.label} · ${floorW}+ W` : target?.label ?? (compact && target ? floorW != null ? `${floorW}+ W` : 'Target' : undefined);
   const missing = view.source === 'hr' && bike.hr5s == null;
   const status = missing ? 'Waiting for HR' : !target ? `Current Z${view.pos.zone}` : view.pos.zone < target.min ? '↑ Below target' : view.pos.zone > target.max ? '↓ Above target' : '✓ In target';
   const range = target ? (target.min === target.max ? `Z${target.min}` : `Z${target.min}–${target.max}`) : 'Zones';
-  const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
+
   return (
     <div class="zw has-gears">
       <div class="zw-main">
@@ -56,27 +53,34 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
             {!missing && <s class="zw-marker" style={{ left: `${Math.min(.98, Math.max(.02, view.pos.pos)) * 100}%` }} />}
           </div>
           </div>
-          {label && <div class="zw-label-track"><div class="zw-label" style={target ? labelAnchor(target) : undefined} title={label}>{label}</div></div>}
+          {label && <div class="zw-label-track"><div class="zw-label" style={target ? labelAnchor(target) : undefined} title={label}><span class="zw-zone-range">{range} · </span>{label}</div></div>}
         </div>
         <div class="zw-nums">
-          <div class={view.source === 'power' ? 'primary' : ''}><div class="zw-reading" aria-label={`${Math.round(bike.power3s)} watts`} title="Power (watts)"><MetricIcon source="power" /><b>{Math.round(bike.power3s)}</b></div><span class="zw-unit">{floorW != null ? `${floorW}+ W` : 'W'}</span><span class="zw-ftp">{Math.round(bike.ftpFraction * 100)}% FTP</span></div>
+          <div class={view.source === 'power' ? 'primary' : ''}><div class="zw-reading" aria-label={`${Math.round(bike.power3s)} watts`} title="Power (watts)"><MetricIcon source="power" /><b>{Math.round(bike.power3s)}</b></div><span class="zw-unit">{!compact && floorW != null ? `${floorW}+ W` : 'W'}</span><span class="zw-ftp">{Math.round(bike.ftpFraction * 100)}% FTP</span></div>
           <div class={view.source === 'hr' ? 'primary' : ''}><div class="zw-reading" aria-label={bike.hr5s == null ? 'Heart rate unavailable' : `${Math.round(bike.hr5s)} beats per minute`} title="Heart rate (bpm)"><MetricIcon source="hr" /><b>{bike.hr5s == null ? '--' : Math.round(bike.hr5s)}</b></div><span class="zw-unit">HR</span></div>
           <div class={`zw-cad${cad ? ` ${cad}` : ''}`}>
             <div class="zw-reading" aria-label={`${Math.round(bike.cadence3s)} revolutions per minute`} title="Cadence (rpm)"><MetricIcon source="cadence" /><b>{Math.round(bike.cadence3s)}</b></div>
             {cadenceTarget ? <em class="zw-cad-guide" title={cadenceTarget.label} aria-label={`Cadence target ${cadenceRange(cadenceTarget)} rpm`}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)}</em> : <span class="zw-unit">rpm</span>}
           </div>
           <div class="zw-clock"><div class="zw-reading" aria-label={`Ride time ${formatDuration(bike.activeSeconds)}`} title="Ride time (pedalling)"><MetricIcon source="clock" /><b>{formatDuration(bike.activeSeconds)}</b></div></div>
-          {gears && <div class="zw-gear"><div class="zw-reading" aria-label={`Gear ${bike.gear}`} title="Current virtual gear"><MetricIcon source="gear" /><b>{bike.gear}</b></div>{gearControls && <div class="zw-gear-controls">{gearControls}</div>}</div>}
+          {gears && <div class="zw-gear"><div class="zw-reading" aria-label={`Gear ${bike.gear}`} title="Current virtual gear"><MetricIcon source="gear" /><b>{bike.gear}</b></div><span class="zw-gear-label">Gear</span>{gearControls && <div class="zw-gear-controls">{gearControls}</div>}</div>}
           {!gears && <div class="zw-trainer" aria-label={`Trainer ${trainer}`} title="Trainer: last commanded target (not measured output)">{trainer}</div>}
         </div>
       </div>
-      <div class="zw-history">
-      <div class="zw-chart">
-        {bars.map((b) => <i style={{ height: `${Math.max(2, (b.power / maxP) * 100)}%`, background: ZONE_COLORS[b.zone - 1] }} />)}
-        {hrPts && <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={hrPts} fill="none" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>}
-      </div>
-      </div>
-      {fake && <div class="zw-fake dim" style={{ fontSize: '11px' }}>Fake bike: W/S cadence · E/D power · R/F HR</div>}
+      {history && <RideHistory bars={bars} ftp={ftp} />}
     </div>
   );
+}
+
+/** Shared history chart: collected even while the compact HUD's popover is closed. */
+export function RideHistory({ bars, ftp }: { bars: Bar[]; ftp: number }) {
+  const maxP = Math.max(1.6 * ftp, 100, ...bars.map(b => b.power));
+  const hrs = bars.map(b => b.hr).filter((h): h is number => h != null);
+  const hrMin = Math.min(...hrs, 200), hrMax = Math.max(...hrs, 40);
+  const hrPts = bars.map((b, i) => b.hr == null ? null : `${(i / 89) * 100},${100 - ((b.hr - hrMin + 5) / (hrMax - hrMin + 10)) * 100}`).filter(Boolean).join(' ');
+  return <div class="zw-history" role="img" aria-label="Recent power bars and heart-rate line, last three minutes">
+    <div class="zw-chart">{bars.map((b, i) => <i key={i} style={{ height: `${Math.max(2, b.power / maxP * 100)}%`, background: ZONE_COLORS[b.zone - 1] }} />)}
+      {hrPts && <svg viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={hrPts} fill="none" stroke="#fff" stroke-width="2" vector-effect="non-scaling-stroke" /></svg>}
+    </div>
+  </div>;
 }

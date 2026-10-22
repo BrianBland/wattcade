@@ -36,3 +36,4 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - No new sfx: it reuses `src/audio/sfx.ts` names.
 
 - HUD insets: `render/layout.ts` lays scene + panel out above `insets.bottom` (tested); the last pixel rows are stretched under the HUD band so backgrounds stay full-bleed.
+- Shared controller HUD opts Z into a Trial offer indicator during offers. Touch keeps Buy ×10 in generators and Re-dose when unlocked. Swipe/drag/wheel scroll the list; row taps buy on release and drags/cancel never buy. Controller selection re-centers the list; native tab/row/trial taps replace duplicate buttons.

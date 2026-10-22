@@ -1,18 +1,20 @@
-# Shared HUD
-
-- The center panel is a single native menu button hit area, supporting touch/click and keyboard focus/activation. Controller hoods remain separate and independent.
-- Game start shows a short menu-discovery toast. In the lobby the HUD opens/wakes the arcade menu; End ride remains an explicit arcade-menu action.
-- Power, HR, cadence, ride time, and optional gear share one icon/number row on non-phone layouts. Units remain in tooltips and accessible labels.
-- A colored heart/bolt sits beside the zone meter; amber indicates off-target effort, dim indicates missing HR.
-- The target outline, dimmed outside zones, and current-position marker remain. Effort labels align under Z1.
-- The zone bar and history graph share exact left/right edges.
-- Cadence target range sits below measured rpm with up/down guidance; repeated units, extra tips, and difficulty are omitted.
-- Duplicate gear buttons are removed. Assigned hood shifters handle touch gearing and show current gear above them; the HUD retains its optional gear reading even with legends hidden.
-- Dungeon uses left gearing and right Dash/Potion; both sides shift in games using both for gears.
-- Controller legends retain original --k: min(64px, 7vw, 8.6vh) dimensions.
-- HudLayer measures the center, hoods and action blocks so renderer insets reserve their actual maximum height plus safe-area padding.
-- PR screenshots use deterministic HR/power targets, cadence guidance, gears, and 90 history bars.
-- Validation: TypeScript, shell/core/inset tests, build, Chromium menu taps/keyboard/shifter isolation, reading containment, and exact meter/history alignment at five viewport sizes.
-- Keys can show a game cooldown (`ControlHint.cooldown`: fill 0..1, ready, effort tint, flourish): `.pk.cd` fills bottom-to-top in the tint, stays dark until ready, glows when ready (dim if ready but `active: false`), ember edge when flourish > 0.6. Games build it with `core/cooldown.ts` (`readyFrac`, `effortTint`, `effortFlourish`).
-- Games can opt into `GameHud.touchControls`: hidden legends show those controls as 44+ px HUD blocks, visible legends show only the filled controller keys. Dynamo Defense passes `mount.hudControls` to reclaim its separate dock space.
-- `ControlHint.touch` carries semantic down/up/cancel commands, preserving the initial quote/epoch. Captured holds cancel on drag, lost capture, blur/visibility, mapping changes, pause and legend switches; ordinary keys still use InputHub.
+# Shared ride HUD
+- `HudLayer`: one measured instrument bar; separate floating touch controls or read-only controller status indicators.
+- Auto detects connected Ride devices or gamepads through services, including idle hardware; Touch/Controller overrides persist under `wattcade.hudLayout`.
+- Use live connection state, not the last input source or a stale paused BikeState snapshot. Auto restores touch on disconnect.
+- `ControlHint.cooldown` opts into status display. Optional typed `indicator` customizes name/status/progress or opts out; routine bindings remain in help.
+- Colors match controller buttons. Charge, readiness and usability differ; no letter tiles/touch buttons in controller statuses.
+- Touch keeps full labels, quotes, primary-control selection and semantic pointer holds. Unmounting on connect cancels held gestures.
+- `ControlLegend` shows every binding, stable family order, explicit spatial overrides, physical maps and custom shifters/paddles.
+- GameHost shows controls after built-in loadout menus and waits for explicit Start; A/B and D-pad scrolling work before countdown.
+- Controls during play pauses into the same guide; Escape returns to Pause. Help/history do not reserve viewport space.
+- Fake-bike instructions appear only in Pause/help. Target zones, cadence guidance and gear/trainer state stay persistent.
+- `readHudInsets` supplies actual bar/action rectangles plus a conservative combined envelope. No action strip means no extra inset.
+- Optional peeks use the measured floating height; phone touch groups sit side by side; busy groups wrap their keys as needed and touch targets stay >=44px.
+- Review: `/dev/hud-live.html`, `/dev/hud-flow.html`; native matrix: `scripts/check-compact-hud.mjs`.
+- Tests cover all-game metadata, presence/fallback, held-input cancellation, full legends, post-menu start gating and shaped insets.
+- Native iPad/Bluefy frame pacing and a physical controller ride remain device validation.
+- Responsive review: `docs/visual-polish/hud-responsive/README.md` compares pre-PR, stacked and revised layouts with total reserved heights.
+- Phone/short-landscape instruments use inline readouts, a 6px zone rail and one 44px tools toggle. Gear buttons mount only inside the open tools panel; dismissal cancels holds.
+- Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.
+- Touch actions show names rather than A/B/Y/Z glyphs. Warmup opts into a read-only persistent controller navigation legend; Auto removes it on disconnect. App suppresses it while menus are visible; their contextual key hints take precedence.

@@ -7,7 +7,8 @@ export type HostPhase = 'intro' | 'menu' | 'count' | 'play' | 'ending';
  */
 /**
  * A game with its own pre-game menu (variant, loadout, difficulty) opens straight into it: that menu replaces the
- * shell's generic intro card, whose blurb and controls stay one tap away under Pause → Controls.
+ * shell's controls guide until selection is complete. GameHost then shows the
+ * gameplay mappings and waits for an explicit Start before counting down.
  */
 export function openingPhase(simInMenu: boolean): 'intro' | 'menu' {
   return simInMenu ? 'menu' : 'intro';

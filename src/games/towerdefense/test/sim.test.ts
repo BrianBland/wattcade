@@ -38,7 +38,7 @@ describe('field geometry', () => {
     expect(PADS).toHaveLength(12);
     for (const p of PADS) { expect(p.x).toBeGreaterThan(0); expect(p.x).toBeLessThan(FIELD_W); expect(p.y).toBeGreaterThan(0); expect(p.y).toBeLessThan(FIELD_H); expect(p.name).toBeTruthy(); }
     for (const a of PADS) for (const b of PADS) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(9);
-    expect(PADS.find((p) => p.id === 1)!.s).toBeLessThan(PADS.find((p) => p.id === 7)!.s); // spawn ridge before turret flank
+    expect(PADS.find((p) => p.id === 1)!.s).toBeLessThan(PADS.find((p) => p.id === 6)!.s); // spawn ridge before turret flank
   });
   it('orders pads and the base the way each orientation shows them', () => {
     const at = (id: number) => id === BASE_PAD ? { x: BASE_X, y: BASE_Y } : PADS[id];
@@ -53,9 +53,9 @@ describe('field geometry', () => {
         expect(b.cross > a.cross || b.main > a.main, `${turned ? 'landscape' : 'portrait'} ${order[i - 1]} → ${order[i]}`).toBe(true);
       }
     }
-    expect(padOrder(false).slice(0, 3)).toEqual([0, 8, 1]); // top row, left to right
-    expect(padOrder(false).slice(-3)).toEqual([7, BASE_PAD, 9]); // the bottom row runs through the turret
-    expect(padOrder(true).slice(0, 2)).toEqual([7, BASE_PAD]); // landscape starts at the turret end, left
+    expect(padOrder(false).slice(0, 3)).toEqual([0, 7, 1]); // top row, left to right
+    expect(padOrder(false).slice(-3)).toEqual([6, BASE_PAD, 11]); // the bottom row runs through the turret
+    expect(padOrder(true).slice(0, 2)).toEqual([6, BASE_PAD]); // landscape starts at the turret end, left
   });
 });
 

@@ -25,7 +25,7 @@ portrait production pixels and round history. This authorizes a landscape review
   from the top of the landscape frame. A plain rotated portrait is only a positional reference.
 - Produce `landscape-1/painting.png` at 1536×1024 and the 4608×3072 quality-85 production WebP, retaining the
   original scale, camera, road/shoulder tolerances, empty clearings/apron, overflow and readability constraints below.
-- Run `node scripts/td-paint-guide.mjs` against the updated branch and fix every clearing flag (twelve pads; pads 8–11 are new since portrait round 3 and drawn as plates until painted) and visible
+- Run `node scripts/td-paint-guide.mjs` against the updated branch and fix every clearing flag (twelve pads; pads 7–11 are new since portrait round 3 and drawn as plates until painted; remove the old West flank clearing at world (7, 48)) and visible
   road/shoulder misses. Include the numeric clearing JSON, overlay, sprite mocks, zoom and HUD captures in the round.
 - Check iPad 1180×820 and iPad Pro 1366×1024 in both touch and controller HUD modes, including a legend toggle.
   Use the current layout: wave/base/scrap at upper left, objective/crew in the middle, brood/forecast at lower left above controls. Older captures

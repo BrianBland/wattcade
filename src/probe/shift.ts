@@ -3,6 +3,7 @@ import { SHIFT_SERVICES, SHIFT_CHARS, GEAR_RATIOS, encodeShiftHello, encodeGear,
 import { FTMS_SERVICE, CHAR, encodeRequestControl, encodeStart, encodeSetSim, parseControlPointResponse, parseIndoorBikeData } from '../devices/ftms/codec';
 import { withTimeout } from '../devices/ftms/steps';
 import { toHex } from './format';
+import { logExport } from './exportLog';
 
 const root = document.getElementById('shift-probe')!;
 root.style.cssText = 'font:16px system-ui;max-width:900px;margin:auto;padding:16px';
@@ -165,11 +166,7 @@ for (const grade of [0, 2, 5]) button(`FTMS hill ${grade}%`, () => void run(asyn
   log('HILL', `${grade}% accepted. Check whether gearing still works; read ratio and resend the same gear to compare.`);
 }));
 disconnectButton = button('Disconnect', disconnect, false);
-button('Download log', () => {
-  const url = URL.createObjectURL(new Blob([logs.join('\n')], { type: 'text/plain' }));
-  const a = document.createElement('a'); a.href = url; a.download = 'wattcade-native-shifting.txt'; a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}, false);
+root.append(logExport(() => logs.join('\n'), 'wattcade-native-shifting.txt'));
 root.append(telemetry, output);
 log('BROWSER', `${navigator.userAgent} secure=${window.isSecureContext}`);
 status.textContent = 'Disconnected'; refresh();

@@ -52,6 +52,8 @@ export function createGameSession(o: SessionOpts): GameSession {
   const commands: TrainerCommand[] = [];
   const mixer = new ResistanceMixer({
     profile: () => profile, tuning: tuning.scoped('core'), cadence: () => bikeStore.get().cadence3s,
+    nativeShifting: () => dataHub.capabilities()?.nativeShifting === true,
+    trainerRevision: () => dataHub.connectionRevision(),
     send: (cmd) => { commands.push(cmd); if (commands.length > 5000) commands.shift(); return dataHub.sendCommand(cmd); },
   });
   const recorder = new SessionRecorder();

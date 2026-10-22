@@ -10,6 +10,7 @@ export class DataHub {
   private offs: { trainer: Array<() => void>; hr: Array<() => void>; controller: Array<() => void> } = { trainer: [], hr: [], controller: [] };
   private hrDev: HrDevice | null = null; private ctlDev: ControllerDevice | null = null;
   private listeners = new Set<() => void>();
+  private trainerRevision = 0;
   controllerStatus: { connected: boolean; firmware?: string; battery?: number; warning?: string } = { connected: false };
 
   constructor(store: BikeStateStore = new BikeStateStore()) { this.store = store; }
@@ -21,7 +22,7 @@ export class DataHub {
     this.detachTrainer();
     this.trainer = dev;
     const isFake = dev.kind === 'fake';
-    const flag = (v: boolean) => { this.store.setConnected(isFake ? { fake: v } : { trainer: v }); this.changed(); };
+    const flag = (v: boolean) => { this.trainerRevision++; this.store.setConnected(isFake ? { fake: v } : { trainer: v }); this.changed(); };
     flag(true);
     this.offs.trainer.push(dev.onSample((s) => this.store.ingestTrainer(s)));
     this.offs.trainer.push(dev.onStatus((st) => flag(st.connected)));
@@ -30,7 +31,7 @@ export class DataHub {
   detachTrainer(): void {
     this.offs.trainer.forEach((f) => f()); this.offs.trainer = [];
     if (this.trainer) this.store.setConnected(this.trainer.kind === 'fake' ? { fake: false } : { trainer: false });
-    this.trainer = null; this.changed();
+    this.trainer = null; this.trainerRevision++; this.changed();
   }
 
   attachHr(dev: HrDevice, opts: { fake?: boolean } = {}): () => void {
@@ -65,6 +66,7 @@ export class DataHub {
   }
 
   capabilities(): TrainerCapabilities | null { return this.trainer?.capabilities ?? null; }
+  connectionRevision(): number { return this.trainerRevision; }
   hasRealDevices(): boolean { const c = this.store.get().connected; return c.trainer || c.hr || c.controller; }
 
   sendCommand(cmd: TrainerCommand): Promise<{ ok: boolean; result?: number; detail?: string }> {

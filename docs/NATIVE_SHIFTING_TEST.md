@@ -19,7 +19,7 @@ throughout; Bluetooth permissions belong to that origin.
    disable shifting? Compare gears 10 and 14 again at 2%.
 5. Return to **FTMS hill 0%**, then **Disconnect**. Reconnect, enable shifting,
    and send gear 12 again to test the complete lifecycle.
-6. **Download log** and report CORE model/firmware, Bluefy/iPad version, whether
+6. Use **Share log** or **Copy log** (or **Download log**) and report CORE model/firmware, Bluefy/iPad version, whether
    shifts changed pedal feel, and whether FTMS hills preserved that behavior.
 
 The log keeps the most recent 6000 lines. Native responses are raw bytes, not
@@ -30,5 +30,13 @@ This tests an independently implemented, reverse-engineered CORE v1 protocol:
 https://github.com/csanz91/kickr_esp32. CORE 2/newer variants are not implemented.
 Errors disconnect GATT to prevent later commands overlapping an uncertain write.
 Disconnect does not promise to restore trainer state; power-cycle the trainer
-if needed before returning to the arcade. The game's existing 11 gradient-based
-gears remain unchanged pending this hardware result.
+if needed before returning to the arcade. Compatible KICKRs now use native
+gearing throughout the arcade. Older saved permissions may require selecting
+the KICKR again in device setup; inaccessible native services fall back to the
+existing 11 gradient gears. During an arcade ride, verify the HUD starts at gear
+12, shifts reach 24, hills remain perceptible, ERG still holds its watt target,
+and native shifting returns after ERG or a trainer reconnect.
+
+Bluefy may silently ignore blob downloads. All export buttons expose selectable
+log text; use Copy, Share, or touch and hold the text if no download appears.
+

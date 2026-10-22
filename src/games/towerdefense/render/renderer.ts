@@ -148,6 +148,7 @@ export class TdRenderer implements GameRenderer {
   private relayout() {
     this.L = layout(this.W, this.H, this.insets, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
+    this.send?.({ type: 'padOrder', turned: this.view.turned });
   }
 
   // ---------- coordinates ----------

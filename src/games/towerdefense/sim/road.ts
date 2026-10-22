@@ -23,15 +23,19 @@ export const ROAD_WAYPOINTS: readonly Pt[] = [
   { x: 12, y: 78 }, { x: 24, y: 88 }, TURRET,
 ];
 
-/** Eight build pads. Ids are the array index. */
+/** Twelve build pads. Ids are the array index; the first PAINTED_PADS have clearings in the terrain paintings. */
 export const ROAD_PADS: readonly Pt[] = [
   { x: 32, y: 21 }, { x: 66, y: 20 }, { x: 54, y: 50 }, { x: 7, y: 48 },
   { x: 32, y: 76 }, { x: 56, y: 79 }, { x: 30, y: 48 }, { x: 10, y: 97 },
+  { x: 48, y: 22 }, { x: 62, y: 90 }, { x: 70, y: 72 }, { x: 45, y: 73 },
 ];
+/** Pads 0..PAINTED_PADS-1 are painted clearings; later pads get a drawn plate until the next painting round. */
+export const PAINTED_PADS = 8;
 
 /** Short names for the workshop and work orders, matching ROAD_PADS. */
 export const ROAD_PAD_NAMES: readonly string[] = [
   'Upper pocket', 'Spawn ridge', 'East hairpin', 'West flank', 'Lower pocket', 'South ridge', 'Centre pocket', 'Turret flank',
+  'Inner bend', 'Apron east', 'Southeast rim', 'Pocket mouth',
 ];
 
 /** Gliders fly straight from these points to the turret. */

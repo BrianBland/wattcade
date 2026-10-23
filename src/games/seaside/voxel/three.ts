@@ -53,7 +53,7 @@ export const LOOK = { bevel: { value: 0 }, cool: { value: 0 }, detail: { value: 
  * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water, baked sun
  * visibility, and the LOOK bevel / cool-shadow switches. Cell maths runs in the mesh's local space (grid `origin`).
  */
-export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
+export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number; /** live amplitude multiplier (glassy water) */ scale?: { value: number } }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const o = opts.origin ?? [0, 0, 0];
   mat.onBeforeCompile = (sh) => {
@@ -62,15 +62,15 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
     sh.uniforms.uOrigin = { value: new THREE.Vector3(o[0], o[1], o[2]) };
     sh.uniforms.uBevel = LOOK.bevel; sh.uniforms.uCool = LOOK.cool; sh.uniforms.uDetail = opts.detail === false || opts.wave ? { value: 0 } : LOOK.detail;
     if (opts.fade) sh.uniforms.uFade = opts.fade;
-    if (opts.wave) sh.uniforms.uTime = opts.wave.time;
-    sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
+    if (opts.wave) { sh.uniforms.uTime = opts.wave.time; sh.uniforms.uWaveK = opts.wave.scale ?? { value: 1 }; }
+    sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\nuniform float uWaveK;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
       + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
         vVoxL = position;
         vVoxN = normal;${opts.baked ? '\n        vSunVis = sunVis;' : ''}
         vWave = 0.0;
         ${opts.wave ? `vec3 wpos = (modelMatrix * vec4(position, 1.0)).xyz;
         vWave = sin(dot(wpos.xz, vec2(0.23, 0.11)) - uTime * 1.4) * 0.6 + sin(dot(wpos.xz, vec2(-0.07, 0.29)) - uTime * 2.0) * 0.4;
-        transformed.y += vWave * ${opts.wave.amp.toFixed(3)};` : ''}`);
+        transformed.y += vWave * ${opts.wave.amp.toFixed(3)} * uWaveK;` : ''}`);
     const lights = `#include <lights_fragment_end>${opts.baked ? '\n  reflectedLight.directDiffuse *= vSunVis;' : ''}
       reflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(0.74, 0.84, 1.22), uCool);
       reflectedLight.directDiffuse *= mix(vec3(1.0), vec3(1.08, 1.0, 0.88), uCool);`;

@@ -13,7 +13,7 @@ export function corridorCarve(route: RouteSpline, c: CorridorDef | undefined): C
       const n = route.nearest(x, z, c.half + s * 2);
       if (!n) return null;
       const ad = Math.abs(n.d);
-      if (c.support === 'ground') {
+      if (c.support === 'ground' && !c.span?.(n.s)) {
         if (ad + s * 0.5 < c.half) return 'skip';
         // coarse columns touching the corridor are capped below its surface (fine ones line up with it already)
         return s > 0.25 && ad - s * 0.75 < c.half ? n.y - 0.06 : null;
@@ -33,17 +33,18 @@ export function fillCorridor(route: RouteSpline, c: CorridorDef, s0: number, s1:
   const g = new VoxelGrid(voxel, [gx0, 0, gz0]);
   const nx = Math.ceil((b.x1 + pad - gx0) / voxel), nz = Math.ceil((b.z1 + pad - gz0) / voxel);
   const last = s1 >= route.length;
-  const bed = Math.max(1, Math.ceil(c.thickness / voxel)), skirt = c.support === 'ground' ? Math.round((c.edgeSkirt ?? 0.4) / voxel) : 0;
+  const bed = Math.max(1, Math.ceil(c.thickness / voxel)), skirtV = Math.round((c.edgeSkirt ?? 0.4) / voxel);
+  const skirt = (s: number) => (c.support === 'ground' && !c.span?.(s) ? skirtV : 0);
   for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
     const wx = gx0 + (i + 0.5) * voxel, wz = gz0 + (k + 0.5) * voxel;
     const n = route.nearest(wx, wz, pad);
-    if (!n || Math.abs(n.d) > c.half || n.s < s0 || (n.s >= s1 && !last)) continue;
+    if (!n || Math.abs(n.d) > c.half || n.s < s0 || (n.s >= s1 && !last) || n.dist > Math.abs(n.d) + voxel) continue; // (not past the route's ends)
     const r0 = hash2(i + Math.round(gx0 / voxel), k + Math.round(gz0 / voxel), 7);
     const top0 = c.surface(n.d, n.s, 0, r0, voxel);
     // clumped noise in the rounding: step edges wander and crumble instead of ruling straight lines across the path
     const top = Math.floor((n.y + top0.dy + (noise2(wx * 1.7, wz * 1.7, 41) - 0.5) * voxel * 0.55) / voxel);
     let lo = top - bed;
-    if (Math.abs(n.d) > c.half - voxel * 1.5) lo -= skirt;
+    if (Math.abs(n.d) > c.half - voxel * 1.5) lo -= skirt(n.s);
     const x = Math.round((wx - gx0) / voxel - 0.5), z = Math.round((wz - gz0) / voxel - 0.5);
     for (let y = lo; y <= top; y++) {
       const v = y === top ? top0.c : c.surface(n.d, n.s, top - y, hash2(x * 31 + y, z, 7), voxel).c;

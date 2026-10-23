@@ -79,7 +79,8 @@ export class PostFX {
           if (uOutline > 0.0) {
             float d = D(uv), dl = D(uv - vec2(uTexel.x, 0.0)), dr2 = D(uv + vec2(uTexel.x, 0.0)), du = D(uv + vec2(0.0, uTexel.y)), dd = D(uv - vec2(0.0, uTexel.y));
             float near = min(d, min(min(dl, dr2), min(du, dd)));
-            float sil = max(max(d - dl, d - dr2), max(d - du, d - dd)) / near;
+            // a jump beyond the surface's own slope (flat ground seen at a grazing angle steps a lot per pixel, evenly)
+            float sil = max(max(d - dl, d - dr2) - 0.5 * abs(dr2 - dl), max(d - du, d - dd) - 0.5 * abs(du - dd)) / near;
             float id = 1.0 / d; // 1/depth is linear across a plane in screen space, so its 2nd difference is ~0 except at creases
             float crease = (abs(1.0 / dl + 1.0 / dr2 - 2.0 * id) + abs(1.0 / du + 1.0 / dd - 2.0 * id)) / id;
             float e = clamp(smoothstep(0.035, 0.08, sil) + smoothstep(0.03, 0.09, crease) * 0.6, 0.0, 1.0);

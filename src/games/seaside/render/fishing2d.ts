@@ -1,5 +1,6 @@
 // Fishing on the placeholder canvas (#187): spots, rod, line, bobber, ripples, the fish, prompts and the catch card.
-// The voxel rig (`fishingRig.ts`) is the real view; this keeps fishing playable until the scenes move to WorldView.
+// The voxel rig (`fishingRig.ts`) is the real view; over the voxel world (`hudOnly`) only the markers, prompt, meter and
+// card are drawn here.
 import { money, saleCents } from '../sim/economy';
 import type { FishId } from '../sim/catalogue';
 import type { FishingView } from '../sim/fishing';
@@ -24,11 +25,13 @@ const prompts = (f: FishingView): string => {
   }
 };
 
-export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout, stage: Box, t: number): void {
+export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout, stage: Box, t: number, hudOnly = false): void {
   const wb = L.water, [top, deep] = WATER[f.location] ?? ['#7cc3d3', '#1f5f78'];
-  const grad = g.createLinearGradient(0, wb.y, 0, wb.y + wb.h);
-  grad.addColorStop(0, top); grad.addColorStop(1, deep);
-  g.fillStyle = grad; g.fillRect(wb.x, wb.y, wb.w, wb.h);
+  if (!hudOnly) {
+    const grad = g.createLinearGradient(0, wb.y, 0, wb.y + wb.h);
+    grad.addColorStop(0, top); grad.addColorStop(1, deep);
+    g.fillStyle = grad; g.fillRect(wb.x, wb.y, wb.w, wb.h);
+  }
 
   // spot markers: all of them while picking, the chosen one after
   g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -44,6 +47,12 @@ export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: Fish
     g.globalAlpha = 1;
   });
 
+  if (!hudOnly) drawRod(g, f, L, stage, t);
+  drawHud(g, f, L);
+}
+
+function drawRod(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout, stage: Box, t: number): void {
+  const wb = L.water;
   // rod, line, bobber, fish
   const p = fishPose(f, t), sx = (u: number) => stage.x + stage.w * u, sy = (v: number) => stage.y + stage.h * v;
   const butt = { x: sx(0.86), y: sy(1) }, tip = { x: sx(0.72 + 0.05 * p.rodSwing), y: sy(0.18 + 0.12 * p.bend) };
@@ -75,7 +84,11 @@ export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: Fish
     g.restore();
   }
 
+}
+
+function drawHud(g: CanvasRenderingContext2D, f: FishingView, L: FishLayout): void {
   // prompt + the fight meter
+  g.textAlign = 'center'; g.textBaseline = 'middle';
   const text = prompts(f);
   if (text) {
     const b = L.prompt, hot = f.phase === 'bite' || f.phase === 'pull';

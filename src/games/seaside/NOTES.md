@@ -1,40 +1,40 @@
-# Seaside — runtime, voxels, workout, fishing, Lou’s shop (#184–188)
+# Seaside — runtime, voxels, workout, fishing, Lou’s shop, Chapter 1 (#184–189)
 
-~2 h story ride (#183); storyboard + media on unmerged PR #175. `devGames` (`?dev=1` / vite dev) until Chapter 1.
+~2 h story ride (#183); storyboard + media on unmerged PR #175. `devGames` (`?dev=1` / vite dev) until all chapters land.
 
 ## Sim (`sim/`)
-- `story.ts` 33 scenes (chapter, kind, minutes, effort %FTP, trainer, ≤ 8-word monologue, look + dream).
-- `types.ts` additive snapshot: base rail/story fields; #186 pull/cadenceBand/hooks; #187 fishing; #188 economy/shop.
-- `graph.ts` plan / route / effort / checkpoints; `pace.ts` power⅓ × nudge (+20 % behind, −2 % ahead).
-- `sim.ts` menu → story; saves at chapters / long-scene checkpoints; opts chapter/save/skipMenu. `monologue.ts` 4 s,
-  hidden ≥ 105 % FTP. Events scene/chapter/save/storyEnd/trainer/pull/cast/bite/catch/escape.
-- `workout.ts` one scene-mode effect/tick: ride profiles + swells, FTP-scaled fish surges by heft + bite tug, set pieces
-  ramp/release, drill ERG (60–75 rpm +15 % bore), fan 80–100 rpm, paddle/wing pulses. All bike↔game values `seaside.*`.
-- `pull.ts` 9 sized sprints (110–150 % FTP × 6–25 s); fish hold, tire in 110–190 s below target, escape at 240 s;
-  overtime excluded from lag. Set pieces always resolve; effort sets spectacle. Z2 ~130 min vs on-cue ~120 min.
-- `fishing.ts` FishingStop: spots → cast (rpm = distance) → wait (×1.5 twitch ≥ 95 rpm) → bite (A ≤ 2 s, auto 3 s
-  at half value) → pull → haul/card or escape (2 tries/fish) → done (≥ 0.5× plan). `catalogue.ts`: kg, $/kg, fight.
-- `economy.ts` integer cents: weight × catalogue rate × hook credit; atomic creel sale, purchases, receipt/account.
-  Surf $40 / Deep $90; extras $6/$8/$4/$10. Paid extras and all old rods persist; credit forfeits extras, later sales
-  repay the account first. Shop exit/timeout packs the required rod; legacy/chapter skips repair missing rods.
-- Short money offers one optional, capped 180 s FishingStop per shop (`shopBonusS`); shop clock/pace lag pause.
-  Catch saves checkpoint AFTER its bite; purchases/sales checkpoint immediately. Snapshot economy is a copy.
-  Events purchase/bonusTurnout/bigOneReady; every scenario reaching bigOne asserts Deep. `save.ts` migrates old saves.
+- `story.ts` 33 scenes (chapter, kind, minutes, effort %FTP, trainer, monologue, look + dream). `types.ts` additive snapshot.
+- `graph.ts` plan / route / effort / checkpoints; `pace.ts` power⅓ × nudge. `sim.ts` menu → story, saves at chapters /
+  long-scene checkpoints. Events scene/chapter/save/storyEnd/trainer/pull/cast/bite/catch/escape/purchase/bigOneReady.
+- `workout.ts` scene-mode effect per tick (profiles, swells, fish surges, set pieces, drill ERG, fan, pulses); all `seaside.*`.
+- `pull.ts` 9 sprints; fish tire in 110–190 s below target, escape at 240 s. Z2 ~130 min vs on-cue ~120 min.
+- `fishing.ts` FishingStop (spot → cast → wait → bite → pull → haul/card); `catalogue.ts` kg, $/kg, fight.
+- `economy.ts` integer cents; Surf $40 / Deep $90; credit forfeits extras; short money → one bonus FishingStop per shop.
 
-## World / render
-- Sparse 32³ voxels, AO/greedy meshing, shader look; WorldDef data (terrain, spline, corridor, scatter, sky, rig, LOD).
-- `worlds.ts`: coast + belly. Corridors keep fixed voxel size; streaming prefetches, evicts after 8 s; worker tile
-  builds ≤ 6 ms/frame, atomic swaps + 0.5 s dissolve. Baked sun shadows. `world/lou.ts` reused live/stone/wheel model.
-- `renderer.ts` Canvas story/fishing + shop paper; `shopView.ts` locked voxel counter/pier dioramas ported from
-  reference `stills/shopStill.ts` (3 cm, 1024 shadows), rendered on entry/resize; GPU resources disposed on unmount.
-  The Deep’s reel uses a painted glyph decal. `shopLayout.ts` keeps all paper/buttons above HUD; portrait framing.
-- `fishingPose.ts` shared pure pose, `fishingRig.ts` voxel rod/line/bobber/fish. `worldView.ts` production ride view,
-  inset-aware aim/bars, look/dream blends, perf governor (½ / ⅓ resolution), pixelLook auto/on/off.
+## World (`world/`, pure, rebuilt per worker)
+- Sparse 32³ voxels, AO/greedy meshing; WorldDef data (terrain, route, corridor, scatter, sky, LOD); coast + belly.
+- Corridors keep a fixed voxel size; `span(s)` marks void crossings (bridge deck, pier: terrain below kept). Nothing is
+  built past a route's ends. Streaming prefetches, evicts after 8 s; worker builds; atomic swaps + 0.5 s dissolve.
+- #189 `coastLayout.ts`: Chapter 1 in route metres (`CH1`): elevation integrated from grade keys (the rollers use the
+  scene's trainer profile; the descent is solved to land the town at `TOWN_Y`), pullouts (van, Turnout 1, Lou's lot),
+  the diagonal creek gorge + the road's swing across it, the town flat, and the route: highway → harbour street → 480 m
+  pier. `coastBuild.ts` structures voxelized into terrain tiles at tile size (LOD for free): arch bridge, pier (pilings,
+  rails, lamps, PIER arch, bait stand), houses + Lou's shack with a 5×7 pixel font; small props are route scatter.
+- Sun moved over the sea (NW, 31°): the old NE morning sun put the whole road below the spurs in baked shade.
 
-## Verification / review (no media committed)
-- `npm run typecheck`; `npm test`; `npm run build`; `npm run sim -- --game seaside --script z2 --minutes 150`.
-- `CHROMIUM_PATH=/usr/bin/chromium npx tsx scripts/seaside-shop-review.ts`: four viewports, controls/purchases,
-  bonus/credit/Deep checks + stills in `/tmp/seaside-shop-review`; PR workflow uploads these as an artifact.
-- `/dev/seaside-play.html?scene=shop1|pierStand&speed=1&inset=140` (review fixtures: cash=150&creel=1).
-- Engine benchmarks: `seaside-bench.ts`, `seaside-hitch.ts`, `seaside-pops.ts`. No engine changes for #188.
-- **iPad/Bluefy hardware fps remains unmeasured** (highway ≥ 50, later scenes ≥ 40 or automatic fallback).
+## Render (`render/`)
+- `renderer.ts`: Morning scenes on WorldView (lazy, workers start on the first shot), shops = counter dioramas, later
+  chapters still the placeholder stage. HUD (fishing prompts, bubble, card, title) is the 2D canvas; layout above insets.
+- `morningShots.ts` (pure, tested): scene → shot. Rides map progress onto `rideSpan` (within 2 % of rail length);
+  stops have fixed poses; Big One / Under run on plan seconds (progress × planS, so mid-scene resumes stay in sync).
+- `morning.ts`: camera blends between shots, title fog (thins with pedalling, ink fades with it), the big bird,
+  gulls, Big One shadow, yank + splash, underwater fog, bubbles, the closing ring of teeth, a far lighthouse.
+- `worldView.ts`: eye / atmos / calm per frame; streaming + dissolves on a wall clock (paused story time used to freeze
+  tile fade-ins); bar pitch from the view direction (Euler x broke at westward headings). `post.ts` ink ignores planar
+  slope. `fishingRig.ts` / `fishingPose.ts` shared rod; `shopView.ts` dioramas; `perf.ts` governor (½ / ⅓ res).
+## Verification (no media committed)
+- `npm run typecheck`; `npm test`; `npm run sim -- --game seaside --script z2 --minutes 150`; Morning stills of every
+  shot: `npx tsx scripts/seaside-morning-review.ts [names]` → /tmp/seaside-morning.
+- Also `seaside-{shop-review,bench,hitch,pops}.ts`; `/dev/seaside-play.html?scene=…&progress=…`.
+- **iPad/Bluefy hardware fps remains unmeasured** (highway ≥ 50, later ≥ 40 or fallback). Known: a blue strip along the
+  inland shoulder (sea backdrop through a corridor/terrain gap; predates #189).

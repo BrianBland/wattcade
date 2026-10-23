@@ -32,6 +32,15 @@ export interface WorldFrame {
   aim?: { x: number; y: number; z: number };
   /** Show the bars (default true; hidden while the rod is in hand). */
   bars?: boolean;
+  /** Put the eye here instead of on the route (set pieces); the bob still applies. */
+  eye?: { x: number; y: number; z: number };
+  /** Override fog and sky for this frame (title fog, under water); omitted = the world's own. */
+  atmos?: { fog: number; density: number; zenith?: number; horizon?: number; sunI?: number; hemiI?: number; /** ink outline × (fog hides lines too) */ ink?: number };
+  /** 0 = the world's swell, 1 = glassy water. */
+  calm?: number;
+  /** Monotonic seconds for streaming, eviction and tile dissolves (default: the view's own wall clock in frame(),
+   *  `t` in pose()). Story time can stand still (paused, shops); tiles must still arrive and fade in. */
+  wall?: number;
 }
 
 const RIG = { lane: 0, gaze: { ahead: 30, d: 0, dy: -0.5 } };
@@ -44,10 +53,13 @@ export class WorldView {
   private post: PostFX;
   private bars = new THREE.Group();
   private uTime = { value: 0 };
+  private uWaveK = { value: 1 };
+  private skyU: { zen: { value: THREE.Color }; hor: { value: THREE.Color } } | null = null;
+  private hemi: THREE.HemisphereLight | null = null;
   private extras: THREE.Object3D[] = [];
   private insets: Insets = NO_INSETS;
   private W = 1; private H = 1; private ratio: number;
-  private lastT = -1; private lastReal = 0; private baseBarsY = -0.31;
+  private lastT = -1; private lastReal = 0; private wallT = 0; private baseBarsY = -0.31;
   private overlayAcc = { n: 0, ms: 0, worst: 0, at: 0, text: '' };
 
   constructor(canvas: HTMLCanvasElement, public world: WorldDef, private o: WorldViewOpts = {}) {
@@ -66,7 +78,7 @@ export class WorldView {
   }
 
   private makeTerrain() {
-    const t = new TerrainLOD(this.world, { workers: this.o.workers, water: { time: this.uTime, amp: this.world.waterAmp ?? 0.09 }, stream: this.o.stream });
+    const t = new TerrainLOD(this.world, { workers: this.o.workers, water: { time: this.uTime, amp: this.world.waterAmp ?? 0.09, scale: this.uWaveK }, stream: this.o.stream });
     this.stage.scene.add(t.root);
     return t;
   }
@@ -78,8 +90,8 @@ export class WorldView {
     (st.scene.fog as THREE.FogExp2).color.set(sk.fog); (st.scene.fog as THREE.FogExp2).density = sk.fogDensity;
     st.sun.color.set(sk.sunColor); st.sun.intensity = sk.sunI; st.sun.castShadow = !!sk.shadows;
     st.renderer.shadowMap.enabled = !!sk.shadows;
-    st.scene.traverse((o) => { if ((o as THREE.HemisphereLight).isHemisphereLight) { const h = o as THREE.HemisphereLight; h.color.set(sk.hemiSky); h.groundColor.set(sk.hemiGround); h.intensity = sk.hemiI; } });
-    st.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined; if (m?.uniforms?.zen) { m.uniforms.zen.value.set(sk.zenith); m.uniforms.hor.value.set(sk.horizon); m.uniforms.sun.value.set(...sk.sunDir).normalize(); m.uniforms.sunC.value.set(sk.sunColor); } });
+    st.scene.traverse((o) => { if ((o as THREE.HemisphereLight).isHemisphereLight) { const h = (this.hemi = o as THREE.HemisphereLight); h.color.set(sk.hemiSky); h.groundColor.set(sk.hemiGround); h.intensity = sk.hemiI; } });
+    st.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.ShaderMaterial | undefined; if (m?.uniforms?.zen) { this.skyU = m.uniforms as never; m.uniforms.zen.value.set(sk.zenith); m.uniforms.hor.value.set(sk.horizon); m.uniforms.sun.value.set(...sk.sunDir).normalize(); m.uniforms.sunC.value.set(sk.sunColor); } });
     if (sk.plane) { // open sea beyond the voxels: a backdrop drawn first that never occludes (a 30 km quad z-fights otherwise)
       const pl = new THREE.Mesh(new THREE.PlaneGeometry(30000, 30000), new THREE.MeshLambertMaterial({ color: new THREE.Color(sk.plane.color), depthWrite: false }));
       pl.rotation.x = -Math.PI / 2; pl.position.y = sk.plane.y; pl.renderOrder = -0.5;
@@ -124,8 +136,10 @@ export class WorldView {
     this.lastReal = realNow;
     const dt = this.lastT < 0 ? 0 : Math.max(0, Math.min(0.25, f.t - this.lastT));
     this.lastT = f.t;
+    this.wallT += realDt > 0 ? Math.min(0.25, realDt) : dt;
     this.stage.renderer.info.reset();
-    this.pose(f);
+    this.pose({ ...f, wall: f.wall ?? this.wallT });
+    this.applyAtmos(f);
     // look: the scene's preset blended in, the dream dial eased, the chunky-pixel level from the setting or the governor
     if (this.o.pixel === 'auto' || this.o.pixel === undefined) this.governor.sample(realDt);
     this.director.pixelLevel = this.o.pixel === 'off' ? 0 : this.o.pixel === 'on' ? 2 : this.governor.level;
@@ -133,8 +147,19 @@ export class WorldView {
     const look = this.director.step(dt);
     applyLookState(look);
     Object.assign(this.post.p, look.post);
+    if (f.atmos?.ink !== undefined) this.post.p.outline *= f.atmos.ink;
     this.post.render(this.stage.scene, this.stage.camera, f.t);
     this.overlay(realDt);
+  }
+
+  /** Per-frame fog / sky / light / swell overrides, back to the world's own when omitted. */
+  private applyAtmos(f: WorldFrame) {
+    const sk = this.world.sky, a = f.atmos, fog = this.stage.scene.fog as THREE.FogExp2;
+    fog.color.set(a?.fog ?? sk.fog); fog.density = a?.density ?? sk.fogDensity;
+    if (this.skyU) { this.skyU.zen.value.set(a?.zenith ?? sk.zenith); this.skyU.hor.value.set(a?.horizon ?? sk.horizon); }
+    this.stage.sun.intensity = a?.sunI ?? sk.sunI;
+    if (this.hemi) this.hemi.intensity = a?.hemiI ?? sk.hemiI;
+    this.uWaveK.value = 1 - Math.max(0, Math.min(1, f.calm ?? 0));
   }
 
   /** Camera + streaming only (no render): the headless hitch script measures this. */
@@ -143,16 +168,17 @@ export class WorldView {
     const lane = f.lateral ?? rig.lane, ph = (f.t * (f.cadence ?? 86)) / 60 * Math.PI * 2;
     this.uTime.value = f.t;
     const p = r.offset(f.routeS, lane), g = r.offset(f.routeS + rig.gaze.ahead, rig.gaze.d);
-    cam.position.set(p.x, p.y + w.eye + Math.sin(ph * 2) * 0.008, p.z);
+    if (f.eye) cam.position.set(f.eye.x, f.eye.y + Math.sin(ph * 2) * 0.008, f.eye.z);
+    else cam.position.set(p.x, p.y + w.eye + Math.sin(ph * 2) * 0.008, p.z);
     if (f.aim) cam.lookAt(f.aim.x, f.aim.y, f.aim.z); else cam.lookAt(g.x, g.y + rig.gaze.dy, g.z);
     this.bars.visible = f.bars ?? true;
     cam.rotateZ(Math.sin(ph) * 0.006);
     cam.updateMatrixWorld();
     this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003;
-    this.bars.rotation.set(-cam.rotation.x + 0.12, 0, Math.sin(ph) * 0.02);
     const fwd = cam.getWorldDirection(new THREE.Vector3());
+    this.bars.rotation.set(-Math.asin(Math.max(-1, Math.min(1, fwd.y))) + 0.12, 0, Math.sin(ph) * 0.02); // undo the pitch at any heading
     aimSun(this.stage, cam.position.clone().addScaledVector(fwd, 55), new THREE.Vector3(...w.sky.sunDir), 75);
-    this.terrain.update(cam.position, f.t, { routeS: f.routeS, speed: f.speed });
+    this.terrain.update(cam.position, f.wall ?? f.t, { routeS: f.routeS, speed: f.speed });
   }
 
   /** Dev overlay: fps, worst frame, triangles, draw calls, streaming, look. */

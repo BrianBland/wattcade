@@ -13,7 +13,7 @@ import { TileStreamer, type StreamOpts, type Vec3 } from './streaming';
 
 export interface TerrainLODOpts {
   /** Worker threads (0 = build synchronously on the calling thread). Default: min(4, cores − 1). */ workers?: number;
-  water: { time: { value: number }; amp: number };
+  water: { time: { value: number }; amp: number; scale?: { value: number } };
   /** Tiles at or below this size cast realtime shadows (only without a baked sun). */ shadowTile?: number;
   stream?: StreamOpts;
   /** Main-thread ms per frame for building clusters ahead of a swap. */ budgetMs?: number;

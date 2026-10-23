@@ -24,7 +24,21 @@ try {
       assert.deepEqual(result.smallButtons, [], `${context}: touch buttons below 44px`);
       assert.equal(result.controllerHints, false, `${context}: physical labels without a controller`);
       if (result.ctaBottom != null) assert.ok(result.ctaBottom <= result.hudTop, `${context}: Continue obscured by HUD`);
-      if (view === 'connect') await page.locator('[aria-label="Media server URL"]').scrollIntoViewIfNeeded();
+      if (view === 'connect') {
+        const setup = page.locator('.media-server-connection');
+        assert.equal(await setup.getAttribute('open'), null, `${context}: optional setup should start collapsed`);
+        assert.equal(await page.getByLabel('Media server URL').isVisible(), false);
+        await page.getByLabel('Media server setup', { exact: true }).click();
+        await page.getByLabel('Media server URL').scrollIntoViewIfNeeded();
+        assert.equal(await page.getByLabel('Media server URL').isVisible(), true);
+        await page.getByLabel('Media server setup', { exact: true }).click();
+        assert.equal(await page.getByLabel('Media server URL').isVisible(), false);
+        await page.getByLabel('Media server setup', { exact: true }).focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await setup.getAttribute('open'), '', `${context}: keyboard should expand once`);
+        await page.keyboard.press('Enter');
+        assert.equal(await setup.getAttribute('open'), null, `${context}: keyboard should collapse once`);
+      }
       if (view === 'riders') {
         await page.locator('.rider-entry').nth(2).click();
         assert.equal(await page.locator('.rider-details h2').innerText(), 'Rowan');

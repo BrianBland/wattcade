@@ -14,6 +14,8 @@ export default defineConfig({
         mediaLab: resolve(__dirname, 'media-lab.html'),
         tdPreview: resolve(__dirname, 'dev/towerdefense.html'),
         seasidePlay: resolve(__dirname, 'dev/seaside-play.html'),
+        seasideRide: resolve(__dirname, 'dev/seaside-ride.html'),
+        seasideStills: resolve(__dirname, 'dev/seaside.html'),
       },
     },
   },

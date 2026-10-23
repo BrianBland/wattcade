@@ -4,6 +4,7 @@ import { act } from 'preact/test-utils';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { testProfile } from '../../core/testProfile';
 import { Locker } from './Locker';
+import { migrateCosmetics } from '../../cosmetics/migrate';
 const mocks = vi.hoisted(() => ({ equip: vi.fn(), press: null as null | ((s: Set<string>) => void) }));
 vi.mock('../services', async () => {
   const { pendingPicks } = await import('../../cosmetics/unlocks');
@@ -39,7 +40,8 @@ it('controller skips locked bikes and still equips an unlocked bike', async () =
   const profile = testProfile({ achievements: ['arcade_rat'] });
   mocks.equip.mockResolvedValue(profile);
   act(() => render(<Locker profile={profile} onProfile={vi.fn()} onPick={vi.fn()} onBack={vi.fn()} />, host));
-  act(() => mocks.press?.(new Set(['down'])));
+  act(() => { mocks.press?.(new Set(['down'])); });
+  act(() => { mocks.press?.(new Set(['down'])); });
   expect(host.querySelector('.item-tile.focused')?.textContent).toContain('Road Bike');
   act(() => mocks.press?.(new Set(['right'])));
   expect(host.querySelector('.item-tile.focused')?.textContent).toContain('Light Cycle');
@@ -59,6 +61,30 @@ it('places unlocked items above the divider and locked items below it', () => {
   expect(children[1].textContent).toContain('Light Cycle');
   act(() => mocks.press?.(new Set(['down'])));
   act(() => mocks.press?.(new Set(['down'])));
+  act(() => mocks.press?.(new Set(['down'])));
   expect(host.querySelector('.locked.focused')).toBeNull();
   expect(host.querySelector('.item-tile.focused')?.textContent).toContain('Road Bike');
+});
+
+it('groups the new slots, equips a tutu, and keeps ships out of the shared Locker', async () => {
+  const profile=testProfile({level:40,cosmetics:{rotation:1}});
+  mocks.equip.mockResolvedValue(profile);
+  act(()=>render(<Locker profile={profile} onProfile={vi.fn()} onPick={vi.fn()} onBack={vi.fn()}/>,host));
+  const button=(text:string)=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent===text)!;
+  act(()=>button('Rider').click());
+  expect(host.textContent).toContain('Eyewear');expect(host.textContent).toContain('Bottoms');expect(host.textContent).toContain('Feet');
+  expect(host.textContent).not.toContain('Ships');
+  act(()=>button('Bottoms').click());
+  await act(()=>host.querySelector<HTMLButtonElement>('[aria-label="Tutu, unlocked"]')!.click());
+  expect(mocks.equip).toHaveBeenCalledWith(profile,'bottoms','w_tutu');
+});
+
+it('shows only current items and no Legacy collection for an old profile', () => {
+  const profile=migrateCosmetics(testProfile({level:15,cosmetics:{loadout:{hat:'beanie'}}}));
+  act(()=>render(<Locker profile={profile} onProfile={vi.fn()} onPick={vi.fn()} onBack={vi.fn()}/>,host));
+  const click=(text:string)=>act(()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent===text)!.click());
+  click('Rider');click('Helmets & hats');
+  expect(host.textContent).not.toContain('Legacy');
+  expect(host.querySelector('[aria-label="Beanie, unlocked"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Cowboy Hat, locked"]')).not.toBeNull();
 });

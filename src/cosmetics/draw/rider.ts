@@ -5,6 +5,8 @@ import { drawCape, drawTorso, legsOf } from './jersey';
 import { circle, joint, line, poly, rect, shade, SKIN, TAU, type G, type P } from './prims';
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
+import { bottomColors, bottomLength, drawBack, drawBottomDetail, drawHipWear, drawEyewear, drawFootwear, drawGloves, resolveWear } from './outfit';
+import { drawCensor } from './censor';
 
 export interface RiderOpts {
   /** Seconds (animations). */
@@ -72,6 +74,15 @@ export function drawRider(g: G, look: RiderLook, crank: number, wheelM: number, 
   g.save(); g.imageSmoothingEnabled = false;
   g.drawImage(surface.canvas, p.x, p.y, p.w, p.h);
   g.restore();
+  if (resolveWear(look.outfit?.bottoms)?.kind === 'censor') {
+    const def = BIKES[look.bike] ?? BIKES.road;
+    const c = bikeCtx(g, look, crank, wheelM, o.t ?? 0, o.speed ?? 0);
+    g.save();
+    g.rotate(def.tilt?.(c) ?? 0); g.translate(0, def.bob?.(c) ?? 0);
+    drawCensor(g, def.hip, c.t);
+    if (def.stoker) drawCensor(g, def.stoker.hip ?? def.hip, c.t);
+    g.restore();
+  }
 }
 
 function paintRider(g: G, look: RiderLook, crank: number, wheelM: number, o: RiderOpts) {
@@ -161,6 +172,7 @@ function body(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker'
   const head = headAt(def);
   c.g.save(); c.g.translate(head[0], head[1]);
   if (who === 'rider' && TRANSLUCENT_HATS.has(look.hat)) drawHat(c.g, look.hat, { t: c.t, color: look.color, speed: c.speed, crank: c.th / TAU });
+  if (resolveWear(look.outfit?.eyewear)?.kind === 'bubble') drawEyewear(c.g, look.outfit?.eyewear);
   if (who === 'rider' && o.gear) gear(c.g, o.gear, c.t);
   c.g.restore();
   if (who === 'rider') def.over?.(c);
@@ -175,7 +187,8 @@ function headAt(def: BikeDef): P {
 }
 
 function bodyShapes(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 'stoker') {
-  const g = c.g, t = c.t, j = look.jersey, legs = legsOf(j);
+  const g = c.g, t = c.t, j = look.jersey, outfit = look.outfit;
+  const legs = bottomColors(outfit?.bottoms) ?? legsOf(j);
   const hip = def.hip, lean = def.lean;
   const sh: P = [hip[0] + 8 * Math.sin(lean), hip[1] - 8 * Math.cos(lean)];
   const head = headAt(def);
@@ -186,24 +199,36 @@ function bodyShapes(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 's
     const shin = legs.shin ?? SKIN;
     limb(g, near ? shin : shade(shin, 0.72), k, foot, 2, 1.6);
     limb(g, near ? shin : shade(shin, 0.72), hip, k, 2.8, 2.3);
-    const shortsEnd: P = legs.shin ? k : [hip[0] + (k[0] - hip[0]) * 0.55, hip[1] + (k[1] - hip[1]) * 0.55];
+    const fraction = bottomLength(outfit?.bottoms);
+    const shortsEnd: P = legs.shin ? k : [hip[0] + (k[0] - hip[0]) * fraction, hip[1] + (k[1] - hip[1]) * fraction];
     limb(g, thigh, hip, shortsEnd, 3.5, 3.1);
-    rect(g, '#182132', foot[0] - 1, foot[1] - 0.7, 2.8, 1.3);
-    if (near) rect(g, '#aab8c7', foot[0] - 0.8, foot[1] + 0.4, 2.4, 0.4);
+    drawBottomDetail(g, outfit?.bottoms, hip, k, foot, near, t);
+    if (outfit?.footwear && resolveWear(outfit.footwear)?.kind !== 'none') drawFootwear(g, outfit.footwear, foot, near, t);
+    else {
+      rect(g, '#182132', foot[0] - 1, foot[1] - 0.7, 2.8, 1.3);
+      if (near) rect(g, '#aab8c7', foot[0] - 0.8, foot[1] + 0.4, 2.4, 0.4);
+    }
   };
-  if (who === 'rider') drawCape(g, j, sh, t, c.speed);
+  if (who === 'rider') {
+    if (outfit?.back && resolveWear(outfit.back)?.kind !== 'none') drawBack(g, outfit.back, hip, sh, t, c.speed);
+    else drawCape(g, j, sh, t, c.speed);
+  }
   leg(feet[1], false);
   if (who === 'rider') def.frameDraw(c);
   leg(feet[0], true);
+  drawHipWear(g, outfit?.bottoms, hip, t);
   limb(g, SKIN, sh, [head[0] - 0.5, head[1] + 2], 1.8);
   drawTorso(g, j, hip, sh, t);
   const elbow = joint(sh, def.hand, 4.1, 4.3, -1);
   limb(g, SKIN, sh, elbow, 2.4, 2.1);
   limb(g, SKIN, elbow, def.hand, 2.1, 1.7);
   const cuff: P = [sh[0] + (elbow[0] - sh[0]) * 0.65, sh[1] + (elbow[1] - sh[1]) * 0.65];
-  limb(g, j.base, sh, cuff, 3.1, 2.7);
-  rect(g, '#182132', def.hand[0] - 0.5, def.hand[1] - 0.5, 1.5, 1.3);
+  const cut = j.cut ?? (j.pattern === 'coat' ? 'coat' : j.pattern === 'royal' ? 'robe' : 'jersey');
+  if (!['tank', 'bikini', 'mesh', 'vest'].includes(cut)) limb(g, j.base, sh, ['hoodie', 'coat', 'jacket', 'robe'].includes(cut) ? def.hand : cuff, 3.1, 2.7);
+  const gloveKind = resolveWear(outfit?.gloves)?.kind;
+  rect(g, gloveKind === 'none' || gloveKind === 'bands' ? SKIN : '#182132', def.hand[0] - 0.5, def.hand[1] - 0.5, 1.5, 1.3);
   if (who === 'rider') def.front?.(c);
+  drawGloves(g, outfit?.gloves, elbow, def.hand);
   g.save(); g.translate(head[0], head[1]);
   if (!FULL_HEAD.has(look.hat) || who === 'stoker') {
     poly(g, SKIN, [-2.4, -2.5], [1.7, -2.5], [2.8, -1.5], [2.8, -0.3], [3.3, 0.2],
@@ -214,6 +239,7 @@ function bodyShapes(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 's
   }
   if (who === 'stoker') drawHat(g, 'road', { t, color: look.color, speed: c.speed, crank: c.th / TAU });
   else if (!TRANSLUCENT_HATS.has(look.hat)) drawHat(g, look.hat, { t, color: look.color, speed: c.speed, crank: c.th / TAU });
+  if (resolveWear(outfit?.eyewear)?.kind !== 'bubble' && (who === 'stoker' || !FULL_HEAD.has(look.hat) && look.hat !== 'welder')) drawEyewear(g, outfit?.eyewear);
   g.restore();
 }
 

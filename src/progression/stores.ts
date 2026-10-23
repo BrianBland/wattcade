@@ -3,6 +3,7 @@ import type { Profile, SessionRecord } from '../contracts';
 import { defaultProfile, defaultSettings } from './defaults';
 import { migrateProfile, migrateSessionRecord } from '../core/renames';
 import { rebalanceProfile } from './rebalance';
+import { migrateCosmetics } from '../cosmetics/migrate';
 
 const MAX_SESSIONS = 200;
 
@@ -12,20 +13,33 @@ export class ProfileStore {
     this.store = createStore(dbName, 'kv');
   }
   private norm(p: Profile): Profile {
-    const m = rebalanceProfile(migrateProfile(p)); // renamed games keep their saves; older rules are re-graded once
+    const m = migrateCosmetics(rebalanceProfile(migrateProfile(p)));
     return { ...m, settings: { ...defaultSettings(), ...m.settings } };
+  }
+  /** The one-time wardrobe migration must not overwrite a concurrent game checkpoint. */
+  private async readNormalized(p: Profile): Promise<Profile | undefined> {
+    const normalized = this.norm(p);
+    if (p.cosmetics === normalized.cosmetics) return normalized;
+    let saved: Profile | undefined;
+    await updateValue<Profile | undefined>(p.id, current => {
+      saved = current ? this.norm(current) : undefined;
+      return saved;
+    }, this.store);
+    return saved;
   }
   async list(): Promise<Profile[]> {
     const ks = (await keys(this.store)).filter((k) => typeof k === 'string' && k.startsWith('p_')) as string[];
-    const ps = (await getMany<Profile>(ks, this.store)).filter((p): p is Profile => !!p).map((p) => this.norm(p));
+    const raw = (await getMany<Profile>(ks, this.store)).filter((p): p is Profile => !!p);
+    const ps = (await Promise.all(raw.map(p => this.readNormalized(p)))).filter((p): p is Profile => !!p);
     return ps.sort((a, b) => a.createdAt - b.createdAt);
   }
   async get(id: string): Promise<Profile | undefined> {
     const p = await get<Profile>(id, this.store);
-    return p ? this.norm(p) : undefined;
+    if (!p) return undefined;
+    return this.readNormalized(p);
   }
   async create(name: string, init: Partial<Profile> = {}): Promise<Profile> {
-    const p: Profile = { ...defaultProfile(name), ...init, name };
+    const p: Profile = this.norm({ ...defaultProfile(name), ...init, name });
     await set(p.id, p, this.store);
     return p;
   }

@@ -9,23 +9,25 @@ const q = new URLSearchParams(location.search);
 const inset = Number(q.get('inset') ?? 120), speed = Number(q.get('speed') ?? 1);
 const hub = new InputHub(); hub.attachKeyboard(window);
 const timeline = synthTimeline({ style: (q.get('style') ?? 'edm') as 'edm', songs: Number(q.get('songs') ?? 2), seed: Number(q.get('seed') ?? 1), mix: 'automix' });
+const profile=testProfile({achievements:q.has('ships')?['cz_sets','cz_launches']:[]});
 const session = createGameSession({
-  game: module, profile: testProfile(), input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
+  game: module, profile, input: q.get('autopilot') ? new NullInput() : hub, fake: { script: q.get('script') ?? 'target-follow' },
   media: { timeline }, simOpts: { ...(q.get('autopilot') ? { autopilot: true } : {}), ...(q.get('menu') ? {} : { difficulty: q.get('diff') ?? 'pro' }) },
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;
 bar.style.height = `${inset}px`;
 const r = await module.loadRenderer();
-r.mount(app, { profile: testProfile(), send: (a) => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 } });
+r.mount(app, { profile, send: (a) => { session.sim.receive?.(a); if(speed===0)session.step(1); if(q.has('manual'))r.render(session.sim.snapshot(),session.bikeStore.get(),session.ctx.input()); }, insets: { top: 0, right: 0, bottom: inset, left: 0 } });
 let last = performance.now();
 const loop = (now: number) => {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  session.step(Math.max(1, Math.round((dt * speed) / (1 / 30))));
+  if(speed>0)session.step(Math.max(1, Math.round((dt * speed) / (1 / 30))));
   const b = session.bikeStore.get();
   bar.textContent = `${Math.round(b.power3s)} W · ${Math.round(b.cadence3s)} rpm · grade ${(session.mixer.command as any)?.gradePct?.toFixed?.(1) ?? '-'}% · p ${session.media!.positionS().toFixed(1)} s`;
   r.render(session.sim.snapshot(), b, session.ctx.input());
   (window as any).__frames = ((window as any).__frames ?? 0) + 1;
-  requestAnimationFrame(loop);
+  if(!q.has('manual'))requestAnimationFrame(loop);
+  (window as any).__cadenzaReady=true;
 };
 requestAnimationFrame(loop);

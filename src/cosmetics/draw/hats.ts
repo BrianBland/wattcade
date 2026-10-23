@@ -25,6 +25,7 @@ const dome = (g: G, c: string, rx = 2.7, ry = 2.2, y = -0.9) => oval(g, c, -0.2,
 const brim = (g: G, c: string, x0: number, x1: number, y: number, w = 0.8) => line(g, c, w, [x0, y], [x1, y]);
 
 export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
+  none: () => {},
   road: (g, _c, col) => roadHelmet(g, col),
   cap: (g, _c, col) => {
     poly(g, col, [-3,-1],[-3,-2.3],[-1.7,-3.7],[1,-3.7],[2.6,-2.2],[2.6,-1]);

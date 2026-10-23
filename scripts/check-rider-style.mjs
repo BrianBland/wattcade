@@ -14,7 +14,10 @@ try {
   const summary = await page.evaluate(async () => {
     const { drawRider } = await import('/src/cosmetics/draw/rider.ts');
     const { riderLook, withItem } = await import('/src/cosmetics/unlocks.ts');
-    const { itemsIn, item } = await import('/src/cosmetics/catalog.ts');
+    const { itemsIn, item: currentItem } = await import('/src/cosmetics/catalog.ts');
+    const { ORIGINAL_ITEMS } = await import('/src/cosmetics/legacyCatalog.ts');
+    // Historical art comparisons are separate from the playable catalog.
+    const item = (slot, id) => currentItem(slot, id) ?? ORIGINAL_ITEMS.find(it => it.slot === slot && it.id === id);
     const base = riderLook({ color: '#27bcb8', level: 50, achievements: [] });
     const c = document.createElement('canvas'); c.width = 360; c.height = 180;
     const g = c.getContext('2d', { willReadFrequently: true });

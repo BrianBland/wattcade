@@ -1,12 +1,14 @@
-import type { Button, GameContext, GameHud, GameSim } from '../../../contracts';
+import type { Button, ControlHint, GameContext, GameHud, GameSim } from '../../../contracts';
 import { baseFtp, checkpointsOf, effortAt, makeGraph, planElapsed, resumePoint, routeAt } from './graph';
 import { MonologueQueue } from './monologue';
+import { ESCAPE_LINES, fishHeft, type FishCatch } from './catalogue';
+import { FISHING_DEFAULTS, FishingStop, type FishingEvent, type FishingTuning } from './fishing';
 import { effortRate, railSpeed } from './pace';
 import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } from './pull';
 import { migrateSave } from './save';
 import { STORY } from './story';
 import { CHAPTER_NAMES, type ChapterId, type MenuView, type PullPlan, type SeasideSave, type SeasideSnapshot } from './types';
-import { cadenceBand, cadenceRate, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
+import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
 
 export interface SeasideOpts {
   seed?: number;
@@ -50,8 +52,10 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     flapPct: num('flapPulsePct', W.flapPct, 0, 40, 1, 'Resistance % added on each wing downstroke'),
     flapRevs: num('flapRevs', W.flapRevs, 1, 6, 0.5, 'Crank revolutions per wing flap'),
     pulseOn: num('pulseOn', W.pulseOn, 0.1, 0.9, 0.05, 'Fraction of each stroke / flap the pulse is on'),
-    pullLevelMin: num('pullLevelMin', W.pullLevelMin, 0, 100, 1, 'Resistance % while the smallest fish runs'),
-    pullLevelMax: num('pullLevelMax', W.pullLevelMax, 0, 100, 1, 'Resistance % while the largest fish runs'),
+    pullLevelMin: num('pullLevelMin', W.pullLevelMin, 0, 100, 1, 'Resistance % while the lightest fish runs'),
+    pullLevelMax: num('pullLevelMax', W.pullLevelMax, 0, 100, 1, 'Resistance % while the heaviest fish runs'),
+    setPieceMax: num('setPieceMax', W.setPieceMax, 0, 100, 1, 'Resistance % the Big One / re-entry ramp up to'),
+    biteTug: num('biteTug', W.biteTug, 0, 1, 0.05, 'On a bite the trainer tugs this far from the base level toward the surge'),
     runPeriodS: num('fishRunPeriodS', W.runPeriodS, 1, 12, 0.5, 'A fish runs, then rests: period (s)'),
     runOn: num('fishRunOn', W.runOn, 0.1, 1, 0.05, 'Fraction of each period the fish runs'),
     runDip: num('fishRunDip', W.runDip, 0, 0.5, 0.05, 'Resistance dip while the fish rests (fraction)'),
@@ -73,10 +77,34 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     pedalFtp: num('fishPedalFtp', P.pedalFtp, 0, 1, 0.05, 'A fish only tires on its own while power is at least this (fraction of FTP)'),
     giveUpS: num('pullGiveUpS', P.giveUpS, 30, 600, 10, 'A fish still fighting after this long slips the hook'),
   };
+  const F = FISHING_DEFAULTS;
+  const ftun = {
+    autoCastS: num('fishAutoCastS', F.autoCastS, 2, 60, 1, 'The rod casts itself after this long at the spot picker'),
+    castS: num('fishCastS', F.castS, 1, 6, 0.1, 'Cast wind-up + flight (s)'),
+    castRpmLo: num('fishCastRpmLo', F.castRpmLo, 0, 100, 1, 'Cadence at release for the shortest cast (rpm)'),
+    castRpmHi: num('fishCastRpmHi', F.castRpmHi, 40, 140, 1, 'Cadence at release for the longest cast (rpm)'),
+    biteMinS: num('fishBiteMinS', F.biteMinS, 0, 30, 0.5, 'Once a bite is due, it comes after at least this long (s)'),
+    biteMaxS: num('fishBiteMaxS', F.biteMaxS, 0, 60, 0.5, '… and at most this long (s)'),
+    retryMinS: num('fishRetryMinS', F.retryMinS, 0, 60, 1, 'After an escape, the next bite comes after at least this long (s)'),
+    retryMaxS: num('fishRetryMaxS', F.retryMaxS, 0, 90, 1, '… and at most this long (s)'),
+    maxWaitS: num('fishMaxWaitS', F.maxWaitS, 20, 600, 10, 'A bite comes anyway after this long in the water (s)'),
+    biteWindowS: num('fishBiteWindowS', F.biteWindowS, 0.5, 6, 0.25, 'Strike within this long of the bite for full credit (s)'),
+    autoSetS: num('fishAutoSetS', F.autoSetS, 1, 10, 0.25, 'The hook sets itself after this long (s)'),
+    lateCredit: num('fishLateCredit', F.lateCredit, 0, 1, 0.05, 'Value of a fish hooked late (fraction)'),
+    slackS: num('fishSlackS', F.slackS, 5, 240, 5, 'A fish gets away after this long without pedalling (s)'),
+    triesPerFish: num('fishTries', F.triesPerFish, 1, 5, 1, 'Bites per planned fish before the stop moves on'),
+    twitchRpm: num('fishTwitchRpm', F.twitchRpm, 60, 130, 1, 'Spinning at or above this twitches the lure (rpm)'),
+    twitchBonus: num('fishTwitchBonus', F.twitchBonus, 0, 2, 0.05, 'A twitching lure brings the next bite this much sooner'),
+    haulS: num('fishHaulS', F.haulS, 0.5, 6, 0.1, 'Haul-up (s)'),
+    escapeS: num('fishEscapeS', F.escapeS, 0.5, 6, 0.1, 'Line goes slack after an escape (s)'),
+    cardS: num('fishCardS', F.cardS, 1, 10, 0.5, 'Catch card (s; A skips)'),
+  };
+  const fishDoneFloor = num('fishDoneFloor', 0.5, 0, 1, 0.05, 'Once every fish at a stop is landed or lost, the stop wraps up at least this fast (× plan)');
   const read = <T,>(o: { [K in keyof T]: () => number }) =>
     Object.fromEntries(Object.entries(o).map(([k, f]) => [k, (f as () => number)()])) as T;
   const wt = (): WorkoutTuning => read<WorkoutTuning>(wtun);
   const pt = (): PullTuning => read<PullTuning>(ptun);
+  const ft = (): FishingTuning => read<FishingTuning>(ftun);
   const g = makeGraph(STORY);
   const last = g.scenes.length - 1;
   let save = migrateSave(opts.save ?? ctx.load());
@@ -93,6 +121,9 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   let pull: Pull | null = null, nextPull = 0, released = false, trainerMode = '';
   let heldS = 0; // fish-fight time beyond the planned sprint: the pace nudge never pays it back
   let fish = 0, landed = 0, sprints = 0, hits = 0, bestFtp = 0, drillS = 0;
+  // fishing (#187)
+  let fishing: FishingStop | null = null, lastPaddle = 0, tapSpot: number | undefined;
+  let catchValue = 0, biggest: FishCatch | null = null;
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
 
@@ -100,20 +131,22 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     const sc = g.scenes[index], p = Math.min(1, progress);
     const cmd = sceneCommand(sc, {
       p, planT: p * sc.planS, sceneT, crankRevs: ctx.bike().crankRevs, released,
-      pull: pull && { size: pull.size, t: pull.t, durS: pull.durS, setPiece: pull.setPiece },
+      pull: pull && { size: pull.size, t: pull.t, durS: pull.durS, setPiece: pull.setPiece, ...(fishing?.fish && !pull.setPiece && { heft: fishHeft(fishing.fish) }) },
+      bite: fishing?.phase === 'bite' ? sc.pulls[fishing.slot]?.size ?? null : null,
     }, wt());
     if (cmd) ctx.resistance.set({ id: SCENE_EFFECT, ...cmd }); else ctx.resistance.clear(SCENE_EFFECT);
     const mode = cmd?.mode ?? 'none';
     if (mode !== trainerMode) { trainerMode = mode; ctx.emit({ type: 'trainer', data: { scene: sc.id, mode } }); }
   };
 
-  const startPull = (pl: PullPlan, setPiece: boolean) => {
+  /** Set-piece sprints (fish fights live in `FishingStop`). */
+  const startPull = (pl: PullPlan) => {
     const t = pullTarget(pl.size, pt());
-    pull = new Pull(pl.size, t.ftp, t.s, setPiece);
+    pull = new Pull(pl.size, t.ftp, t.s, true);
   };
 
-  const endPull = (r: PullResult) => {
-    const p = pull!;
+  /** Book a finished sprint (stats + `pull` event). */
+  const bookPull = (p: Pull, r: PullResult, f?: FishCatch) => {
     sprints++;
     if (p.hit()) hits++;
     if (!p.setPiece) { fish++; if (r === 'landed') landed++; }
@@ -121,9 +154,11 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     ctx.emit({ type: 'pull', data: {
       scene: g.scenes[index].id, size: p.size, ftp: +p.ftp.toFixed(2), s: +p.t.toFixed(1), landed: r === 'landed',
       setPiece: p.setPiece, hit: p.hit(), spectacle: +p.spectacle().toFixed(2),
+      ...(f && { fish: f.id, kg: f.kg, value: f.value }),
     } });
-    pull = null; nextPull++;
   };
+
+  const endPull = (r: PullResult) => { bookPull(pull!, r); pull = null; nextPull++; };
 
   const enter = (i: number, p: number) => {
     if (pull) endPull(pull.setPiece ? 'landed' : 'escaped');
@@ -131,6 +166,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     index = i; progress = p; sceneT = 0; released = false;
     nextPull = sc.pulls.findIndex((pl) => pl.atS >= p * sc.planS - 1e-6);
     if (nextPull < 0) nextPull = sc.pulls.length;
+    fishing = sc.fishing ? new FishingStop(sc.fishing, sc.pulls, ctx.rng, nextPull) : null;
     visited.add(sc.id);
     applyTrainer();
     ctx.emit({ type: 'scene', data: { id: sc.id, index: i, chapter: sc.chapter } });
@@ -187,6 +223,67 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     if (auto > 0 && m.t >= auto) pick(m.index);
   };
 
+  const onFishing = (e: FishingEvent) => {
+    const sc = g.scenes[index], f = fishing!;
+    switch (e.type) {
+      case 'cast': ctx.emit({ type: 'cast', data: { scene: sc.id, spot: e.spot, cast: e.cast } }); break;
+      case 'bite': {
+        const pl = sc.pulls[f.slot];
+        if (pl) progress = Math.max(progress, pl.atS / sc.planS); // a slow rider's bite comes anyway
+        ctx.emit({ type: 'bite', data: { scene: sc.id, early: e.early } });
+        break;
+      }
+      case 'hook': pull = f.pull; break;
+      case 'landed':
+        bookPull(e.pull, 'landed', e.fish); pull = null;
+        catchValue += e.fish.value;
+        if (!biggest || e.fish.kg > biggest.kg) biggest = e.fish;
+        ctx.emit({ type: 'catch', data: { scene: sc.id, ...e.fish } });
+        break;
+      case 'escaped': {
+        bookPull(e.pull, 'escaped', e.fish); pull = null;
+        const lines = ESCAPE_LINES[sc.fishing!];
+        mono.push(lines[Math.floor(ctx.rng() * lines.length) % lines.length], storyT);
+        ctx.emit({ type: 'escape', data: { scene: sc.id, fish: e.fish.id, retry: e.retry } });
+        break;
+      }
+      case 'slot': {
+        const pl = sc.pulls[e.slot];
+        progress = Math.max(progress, (pl.atS + pl.planS) / sc.planS);
+        heldS -= pl.planS; // the planned sprint was part of the plan; only the hold beyond it is never paid back
+        nextPull = e.slot + 1;
+        break;
+      }
+      case 'done': break;
+    }
+  };
+
+  /** A fishing stop: the plan runs on effort (faster with a twitching lure) up to the next bite, then holds. */
+  const updateFishing = (dt: number, planW: number, frac: number) => {
+    const sc = g.scenes[index], f = fishing!, b = ctx.bike(), inp = ctx.input(), w = wt();
+    const pd = inp.paddleR - inp.paddleL, paddle = Math.abs(pd) >= 0.5 ? Math.sign(pd) : 0;
+    let step = paddle !== lastPaddle ? paddle : 0;
+    lastPaddle = paddle;
+    if (inp.pressed.has('left')) step = -1;
+    if (inp.pressed.has('right')) step = 1;
+    const pl = sc.pulls[f.slot];
+    const evs = f.tick(dt, {
+      a: inp.pressed.has('a'), step, tap: tapSpot, frac, rpm: b.cadence3s,
+      due: !!pl && progress * sc.planS >= pl.atS - 1e-6, running: !!f.pull && fishRunning(f.pull.t, w),
+    }, ft(), pt());
+    tapSpot = undefined;
+    for (const e of evs) onFishing(e);
+    speed = 0;
+    if (!f.holds()) {
+      const k = f.twitching() ? 1 + ftun.twitchBonus() : 1;
+      const floor = f.phase === 'done' ? Math.max(tun.effortFloor(), fishDoneFloor()) : tun.effortFloor();
+      progress += (effortRate(b.power3s, planW, floor, tun.effortCap()) * k * dt) / sc.planS;
+    }
+    const next = sc.pulls[f.slot];
+    if (next && progress >= next.atS / sc.planS) { progress = next.atS / sc.planS; heldS += dt; } // waiting on a bite / the fight
+
+  };
+
   const finish = () => {
     phase = 'done'; speed = 0;
     persist({ rides: save.rides + 1, chapterSelect: true, checkpoint: null });
@@ -202,16 +299,13 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     const before = progress, frac = b.power3s / ftp, w = wt();
     if (pull) bestFtp = Math.max(bestFtp, frac);
     if (sc.kind === 'drill') drillS += dt;
-    if (pull && !pull.setPiece) {
-      // the fish fights: the scene waits on work done
-      speed = 0;
-      const r = pull.tick(dt, frac, pt());
-      if (r !== 'pulling') {
-        const pl = sc.pulls[nextPull];
-        heldS += Math.max(0, pull.t - pl.planS);
-        endPull(r); progress = (pl.atS + pl.planS) / sc.planS;
-      }
-    } else if ('m' in sc.length) {
+    for (const a of pending) {
+      const o = a as { type?: string; index?: number };
+      if (o.type === 'spot' && typeof o.index === 'number') tapSpot = o.index;
+    }
+    pending = [];
+    if (fishing) updateFishing(dt, planW, frac);
+    else if ('m' in sc.length) {
       const target = railSpeed(b.power3s, planW, sc.length.m / sc.planS, lag, { exponent: tun.exponent(), gain: tun.gain(), max: tun.max(), maxAhead: tun.maxAhead(), cap: tun.cap() });
       speed += (target - speed) * (1 - Math.exp(-dt / tun.tau()));
       progress += (speed * dt) / sc.length.m;
@@ -223,11 +317,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     }
     if (pull?.setPiece) { const r = pull.tick(dt, frac, pt()); if (r !== 'pulling') endPull(r); }
     const pl = sc.pulls[nextPull];
-    if (!pull && pl && progress * sc.planS >= pl.atS) {
-      const setPiece = !('effortS' in sc.length);
-      if (!setPiece) progress = pl.atS / sc.planS; // the fight holds the scene
-      startPull(pl, setPiece);
-    }
+    if (!pull && !fishing && pl && progress * sc.planS >= pl.atS) startPull(pl);
     const e = effortAt(sc, Math.min(1, progress) * sc.planS);
     effortTarget = pull ? pull.ftp : e >= 1 ? baseFtp(sc) : e;
     for (const line of sc.monologue) if (line.at > before && line.at <= progress) mono.push(line.text, storyT);
@@ -240,7 +330,19 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     ctx.debug('progress', +progress.toFixed(3));
     ctx.debug('lagS', Math.round(lag));
     ctx.debug('speed', +speed.toFixed(2));
+    if (fishing) ctx.debug('fishing', `${fishing.phase} · slot ${fishing.slot}/${fishing.slots.length} · try ${fishing.tries}`);
     ctx.debug('pull', pull ? `${pull.setPiece ? 'set piece' : 'fish'} ${Math.round(pull.t)} s, ${Math.round(pull.stamina * 100)} %` : '-');
+  };
+
+  const fishingHud = (f: FishingStop): GameHud => {
+    const c = (button: ControlHint['button'], label: string, shortLabel?: string): ControlHint => ({ button, label, ...(shortLabel && { shortLabel }) });
+    switch (f.phase) {
+      case 'spot': return { controls: [c('paddles', 'Pick a fishing spot', 'Spot'), c('a', 'Cast (spin faster to cast farther)', 'Cast')], touchControls: ['left', 'right', 'a'] };
+      case 'bite': return { controls: [c('a', 'Strike!')], touchControls: ['a'] };
+      case 'pull': return { targetZone: { min: 5, max: 5, label: 'Pull!', source: 'power' } };
+      case 'card': return { controls: [c('a', 'Next')], touchControls: ['a'] };
+      default: return {};
+    }
   };
 
   const menuView = (): MenuView | null => menu && {
@@ -257,7 +359,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     receive(a) { pending.push(a); },
     hud(): GameHud {
       if (phase === 'menu') return { controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Ride' }], touchControls: ['a'] };
-      return {};
+      return fishing ? fishingHud(fishing) : {};
     },
     snapshot(): SeasideSnapshot {
       const sc = g.scenes[index], next = g.scenes[Math.min(last, index + 1)];
@@ -272,6 +374,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         hooks: { powerFtp: effortTarget, cadence: band ? (band[0] + band[1]) / 2 : 90 },
         pull: pull && { size: pull.size, ftp: pull.ftp, durS: pull.durS, t: pull.t, stamina: pull.stamina, setPiece: pull.setPiece },
         cadenceBand: band,
+        fishing: fishing && fishing.view(ft()),
       };
     },
     isOver: () => phase === 'done',
@@ -287,6 +390,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         'Sprints on target': `${hits}/${sprints}`,
         'Best sprint': `${Math.round(bestFtp * 100)}% FTP`,
         'Drill minutes': +(drillS / 60).toFixed(1),
+        'Catch value': catchValue,
+        'Biggest fish': biggest ? `${biggest.name}, ${biggest.kg} kg` : '-',
       };
     },
     dispose() { ctx.resistance.clear(SCENE_EFFECT); },

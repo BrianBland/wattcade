@@ -28,6 +28,10 @@ export interface WorldFrame {
   look?: string; dream?: number;
   /** Lateral offset from the route centre (m, + right); default the world's lane. */ lateral?: number;
   cadence?: number;
+  /** Look at this world point instead of down the route (fishing stops look out to sea). */
+  aim?: { x: number; y: number; z: number };
+  /** Show the bars (default true; hidden while the rod is in hand). */
+  bars?: boolean;
 }
 
 const RIG = { lane: 0, gaze: { ahead: 30, d: 0, dy: -0.5 } };
@@ -140,7 +144,8 @@ export class WorldView {
     this.uTime.value = f.t;
     const p = r.offset(f.routeS, lane), g = r.offset(f.routeS + rig.gaze.ahead, rig.gaze.d);
     cam.position.set(p.x, p.y + w.eye + Math.sin(ph * 2) * 0.008, p.z);
-    cam.lookAt(g.x, g.y + rig.gaze.dy, g.z);
+    if (f.aim) cam.lookAt(f.aim.x, f.aim.y, f.aim.z); else cam.lookAt(g.x, g.y + rig.gaze.dy, g.z);
+    this.bars.visible = f.bars ?? true;
     cam.rotateZ(Math.sin(ph) * 0.006);
     cam.updateMatrixWorld();
     this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003;

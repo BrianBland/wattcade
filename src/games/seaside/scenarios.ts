@@ -10,8 +10,8 @@ interface Scenario {
 const TARGET_MIN = 120;
 const ofType = (run: Run, type: string) => run.events.filter((e) => e.type === type);
 const PLAN_MIN = STORY.reduce((a, x) => a + x.planS, 0) / 60;
-/** A sprint on the trainer: a run of resistance commands at or above this level (fish runs dip to ≥ 54 %). */
-const SPRINT_LEVEL = 50;
+/** A sprint on the trainer: a run of resistance commands at or above this level (fish runs dip to ≥ 49.5 %; base levels stay ≤ 42 %). */
+const SPRINT_LEVEL = 45;
 
 /** Maximal runs of consecutive mixer commands matching `f`. */
 const runs = (cmds: TrainerCommand[], f: (c: TrainerCommand) => boolean) =>
@@ -36,6 +36,21 @@ function workoutPlan(run: Run): string[] {
   return f;
 }
 
+/** Fishing stops (#187) and their planned bites. */
+const STOPS = STORY.filter((x) => x.fishing).map((x) => ({ id: x.id, bites: x.pulls.length }));
+
+/** Catches per stop: every stop gets its planned bites; `min` of them must be landed. */
+function catchesPerStop(run: Run, min: (bites: number) => number, stops = STOPS): string[] {
+  const f: string[] = [];
+  for (const st of stops) {
+    const caught = ofType(run, 'catch').filter((e) => e.data?.scene === st.id).length;
+    const bites = ofType(run, 'pull').filter((e) => e.data?.scene === st.id).length;
+    if (bites < st.bites) f.push(`${st.id}: ${bites} bites, want ≥ ${st.bites}`);
+    if (caught < min(st.bites)) f.push(`${st.id}: ${caught} caught, want ≥ ${min(st.bites)}`);
+  }
+  return f;
+}
+
 const near = (got: number, want: number, tol: number, what: string) =>
   Math.abs(got - want) <= want * tol ? [] : [`${what} ${got} min, want ${want} ± ${Math.round(tol * 100)}%`];
 
@@ -47,6 +62,8 @@ export const scenarios: Scenario[] = [
       if (!run.isOver) f.push('story did not finish');
       f.push(...near(Number(s['Ride minutes']), PLAN_MIN, 0.03, 'ride'));
       if (s['Fish landed'] !== '6/6' || s['Sprints on target'] !== '9/9') f.push(`fish ${s['Fish landed']}, sprints ${s['Sprints on target']}`);
+      f.push(...catchesPerStop(run, (n) => n));
+      if (Number(s['Catch value']) <= 0) f.push('no catch value');
       f.push(...workoutPlan(run));
       return f;
     },
@@ -67,6 +84,8 @@ export const scenarios: Scenario[] = [
       if (Number(s['Ride minutes']) < PLAN_MIN + 7) f.push(`ride ${s['Ride minutes']} min: not sprinting should cost more`);
       if (Number(s.Lines) < 30) f.push(`only ${s.Lines} monologue lines shown`);
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
+      f.push(...catchesPerStop(run, (n) => Math.ceil(n / 2)));
+      if (ofType(run, 'cast').length !== 6) f.push(`${ofType(run, 'cast').length} casts, want 6 (one per fish)`);
       f.push(...workoutPlan(run));
       return f;
     },
@@ -81,6 +100,7 @@ export const scenarios: Scenario[] = [
       f.push(...near(Number(s['Ride minutes']), TARGET_MIN, 0.1, 'ride'));
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
       if (ofType(run, 'pull').some((e) => !e.data?.landed)) f.push('a pull did not land');
+      f.push(...catchesPerStop(run, (n) => n));
       if (!ofType(run, 'pull').some((e) => e.data?.hit)) f.push('no sprint on target');
       if (st.sprints < 9) f.push(`only ${st.sprints} sprints in the session record`);
       f.push(...workoutPlan(run));
@@ -145,10 +165,28 @@ export const scenarios: Scenario[] = [
     assert(s, _st, run) {
       const f: string[] = [];
       const pulls = ofType(run, 'pull');
-      if (pulls.length < 3 || pulls.slice(0, 2).some((e) => e.data?.landed)) f.push(`pulls ${JSON.stringify(pulls.map((e) => e.data))}`);
+      if (pulls.length < 5 || pulls.slice(0, 4).some((e) => e.data?.landed)) f.push(`pulls ${JSON.stringify(pulls.map((e) => e.data))}`);
       if (!ofType(run, 'scene').some((e) => e.data?.id === 'belly')) f.push('did not get through the pier and the Big One');
-      if (s['Fish landed'] !== '0/2') f.push(`fish landed ${s['Fish landed']}`);
+      // two tries per fish, then the stop moves on
+      if (s['Fish landed'] !== '0/4') f.push(`fish landed ${s['Fish landed']}`);
+      const esc = ofType(run, 'escape').map((e) => e.data?.retry).join();
+      if (esc !== 'true,false,true,false') f.push(`escapes ${esc}`);
+      if (ofType(run, 'bite').filter((e) => e.data?.early).length < 1) f.push('no early bite for a rider who never pedals');
       return f;
     },
   },
+  ...(['turnout1', 'beach', 'magma'] as const).map((id, i): Scenario => ({
+    name: `idle finishes the ${id} stop: escapes, then a capped number of tries`, script: 'idle', minutes: 20, seed: 10 + i,
+    simOpts: { skipMenu: true, save: { checkpoint: { sceneId: id, progress: 0 } } },
+    assert(s, _st, run) {
+      const f: string[] = [];
+      const st = STOPS.find((x) => x.id === id)!;
+      const ids = ofType(run, 'scene').map((e) => e.data?.id);
+      if (ids.length < 2) f.push(`still at ${id} after 20 min`);
+      const bites = ofType(run, 'pull').filter((e) => e.data?.scene === id).length;
+      if (bites !== 2 * st.bites) f.push(`${bites} bites, want ${2 * st.bites} (2 tries per fish)`);
+      if (Number(s['Catch value']) !== 0) f.push(`caught ${s['Catch value']}`);
+      return f;
+    },
+  })),
 ];

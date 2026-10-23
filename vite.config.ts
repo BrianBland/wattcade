@@ -15,6 +15,7 @@ export default defineConfig({
         tdPreview: resolve(__dirname, 'dev/towerdefense.html'),
         seasidePlay: resolve(__dirname, 'dev/seaside-play.html'),
         seasideRide: resolve(__dirname, 'dev/seaside-ride.html'),
+        seasideFishing: resolve(__dirname, 'dev/seaside-fishing.html'),
         seasideStills: resolve(__dirname, 'dev/seaside.html'),
       },
     },

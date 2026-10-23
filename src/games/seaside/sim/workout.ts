@@ -17,8 +17,12 @@ export interface WorkoutTuning {
   flapPct: number; flapRevs: number;
   /** Fraction of each paddle stroke / flap the pulse is on. */
   pulseOn: number;
-  /** Resistance % while the smallest / largest fish runs. */
+  /** Resistance % while the lightest / heaviest fish runs (by `heft`: species fight × size, #187). */
   pullLevelMin: number; pullLevelMax: number;
+  /** Set pieces (the Big One, re-entry) ramp up to this at size 1. */
+  setPieceMax: number;
+  /** The bite: the trainer tugs to this fraction of the way from the base level to the surge. */
+  biteTug: number;
   /** A fish runs, then rests: period (s), run fraction, and how far the level dips while it rests (fraction). */
   runPeriodS: number; runOn: number; runDip: number;
   /** Resistance % after a set-piece sprint (released at the surface, the jump). */
@@ -32,7 +36,7 @@ export interface WorkoutTuning {
 export const WORKOUT_DEFAULTS: WorkoutTuning = {
   gradeScale: 1, levelScale: 1, drillScale: 1,
   paddlePct: 1.5, paddlePeriodS: 3, flapPct: 12, flapRevs: 3, pulseOn: 0.4,
-  pullLevelMin: 60, pullLevelMax: 80, runPeriodS: 4, runOn: 0.6, runDip: 0.1, releasePct: 0,
+  pullLevelMin: 55, pullLevelMax: 85, setPieceMax: 90, biteTug: 0.6, runPeriodS: 4, runOn: 0.6, runDip: 0.1, releasePct: 0,
   drillRpmLo: 60, drillRpmHi: 75, drillBandBonus: 0.15,
   fanRpmLo: 80, fanRpmHi: 100, fanOffBand: 0.3,
 };
@@ -41,8 +45,10 @@ export interface TrainerState {
   /** Scene progress 0..1, plan seconds into the scene, real seconds in the scene. */
   p: number; planT: number; sceneT: number;
   crankRevs: number;
-  /** The sprint in progress (t = seconds into it). */
-  pull: { size: number; t: number; durS: number; setPiece: boolean } | null;
+  /** The sprint in progress (t = seconds into it); `heft` 0..1 = the fish on the line (default: the plan's size). */
+  pull: { size: number; t: number; durS: number; setPiece: boolean; heft?: number } | null;
+  /** A bite is on (the bobber is down): the plan's size of the fish taking it. */
+  bite?: number | null;
   /** A set piece's sprint is over and the trainer lets go. */
   released: boolean;
 }
@@ -73,12 +79,17 @@ export function pulseOn(kind: PulseKind, st: Pick<TrainerState, 'sceneT' | 'cran
   return phase - Math.floor(phase) < t.pulseOn;
 }
 
+/** A fish fight alternates runs and rests (the surge). */
+export function fishRunning(t: number, w: Pick<WorkoutTuning, 'runPeriodS' | 'runOn'>): boolean {
+  const ph = t / w.runPeriodS;
+  return ph - Math.floor(ph) < w.runOn;
+}
+
 /** Resistance % during a sprint: a fish surges by size and rests between runs; a set piece ramps up. */
 export function pullLevel(base: number, pull: NonNullable<TrainerState['pull']>, t: WorkoutTuning): number {
-  const top = lerp(t.pullLevelMin, t.pullLevelMax, pull.size);
-  if (pull.setPiece) return lerp(base, top, pull.t / Math.max(1, pull.durS));
-  const ph = pull.t / t.runPeriodS;
-  return ph - Math.floor(ph) < t.runOn ? top : top * (1 - t.runDip);
+  if (pull.setPiece) return lerp(base, lerp(t.pullLevelMin, t.setPieceMax, pull.size), pull.t / Math.max(1, pull.durS));
+  const top = lerp(t.pullLevelMin, t.pullLevelMax, pull.heft ?? pull.size);
+  return fishRunning(pull.t, t) ? top : top * (1 - t.runDip);
 }
 
 /** The scene's resistance effect right now (null = no game resistance: soft, the cutscenes). */
@@ -95,6 +106,7 @@ export function sceneCommand(sc: Scene, st: TrainerState, t: WorkoutTuning): Sce
       const base = tr.levelPct * t.levelScale;
       let lvl = base;
       if (st.pull) lvl = pullLevel(base, st.pull, t);
+      else if (st.bite != null) lvl = lerp(base, lerp(t.pullLevelMin, t.pullLevelMax, st.bite), t.biteTug);
       else if (st.released) lvl = t.releasePct;
       else if (tr.pulse && pulseOn(tr.pulse, st, t)) lvl += t.flapPct;
       return { mode: 'resistance', levelPct: +clamp(lvl, 0, 100).toFixed(1) };

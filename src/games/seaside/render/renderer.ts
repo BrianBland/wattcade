@@ -3,6 +3,7 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
+import { drawFishing } from './fishing2d';
 import { inside, layout, type Box } from './layout';
 
 const SKY: Record<LookName, [string, string]> = {
@@ -16,6 +17,7 @@ export class SeasideRenderer implements GameRenderer {
   private insets: Insets = NO_INSETS;
   private W = 0; H = 0;
   private menuRows: Box[] = [];
+  private spotBoxes: Box[] = [];
   private send?: (a: unknown) => void;
   private ro: ResizeObserver | null = null;
   private offTap: (() => void) | null = null;
@@ -30,7 +32,9 @@ export class SeasideRenderer implements GameRenderer {
     const onDown = (e: PointerEvent) => {
       const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
       const i = this.menuRows.findIndex((b) => inside(b, x, y));
-      if (i >= 0) this.send?.({ type: 'menu', index: i });
+      if (i >= 0) { this.send?.({ type: 'menu', index: i }); return; }
+      const k = this.spotBoxes.findIndex((b) => inside(b, x, y));
+      if (k >= 0) this.send?.({ type: 'spot', index: k });
     };
     c.addEventListener('pointerdown', onDown);
     this.offTap = () => c.removeEventListener('pointerdown', onDown);
@@ -55,8 +59,9 @@ export class SeasideRenderer implements GameRenderer {
     const g = this.g, s = snap as SeasideSnapshot;
     if (!g || !s || !this.W) return;
     const { W, H } = this;
-    const L = layout(W, H, this.insets, s.menu?.items.length ?? 0);
+    const L = layout(W, H, this.insets, s.menu?.items.length ?? 0, s.fishing?.spots.length ?? 3);
     this.menuRows = L.menu;
+    this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
 
     // background: full bleed, tinted by the look and dream dial
     const [a, b] = SKY[s.look.name];
@@ -76,15 +81,18 @@ export class SeasideRenderer implements GameRenderer {
 
     if (s.menu) { this.drawMenu(g, s, L.menu); return; }
 
-    // stage placeholder
+    // stage placeholder (fishing draws its own)
     g.fillStyle = 'rgba(128,128,128,.35)'; g.strokeStyle = 'rgba(40,40,40,.6)'; g.lineWidth = 2;
     g.fillRect(L.stage.x, L.stage.y, L.stage.w, L.stage.h); g.strokeRect(L.stage.x, L.stage.y, L.stage.w, L.stage.h);
+    if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT);
     g.fillStyle = '#1b1b1b'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.font = `600 ${Math.round(Math.min(40, L.stage.h * 0.12))}px system-ui, sans-serif`;
-    g.fillText(s.scene.title, W / 2, L.stage.y + L.stage.h * 0.42);
-    g.font = `${Math.round(Math.min(20, L.stage.h * 0.06))}px system-ui, sans-serif`;
-    g.fillText(`${s.scene.kind} · ${s.sceneId} · ${s.speed > 0 ? `${(s.speed * 3.6).toFixed(0)} km/h · ` : ''}target ${Math.round(s.effortTarget * 100)}% FTP`,
-      W / 2, L.stage.y + L.stage.h * 0.58);
+    if (!s.fishing) {
+      g.font = `600 ${Math.round(Math.min(40, L.stage.h * 0.12))}px system-ui, sans-serif`;
+      g.fillText(s.scene.title, W / 2, L.stage.y + L.stage.h * 0.42);
+      g.font = `${Math.round(Math.min(20, L.stage.h * 0.06))}px system-ui, sans-serif`;
+      g.fillText(`${s.scene.kind} · ${s.sceneId} · ${s.speed > 0 ? `${(s.speed * 3.6).toFixed(0)} km/h · ` : ''}target ${Math.round(s.effortTarget * 100)}% FTP`,
+        W / 2, L.stage.y + L.stage.h * 0.58);
+    }
 
     // plate: chapter, scene n/N, progress
     const p = L.plate;

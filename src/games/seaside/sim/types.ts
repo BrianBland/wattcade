@@ -11,12 +11,32 @@ export const CHAPTER_NAMES = ['Morning', 'Midday', 'Evening'] as const;
  */
 export type SceneLength = { m: number } | { effortS: number } | { s: number };
 
-/** The scene's base trainer command (#186 layers surges, ERG blocks and pulses on top). */
+/** The scene's base trainer command; `workout.ts` (#186) layers route grades, surges, ERG plans and pulses on top.
+ *  The mode never changes inside a scene. */
 export type TrainerPlan =
-  | { mode: 'sim'; gradePct: number }
+  | {
+      mode: 'sim'; gradePct: number;
+      /** Route profile: [scene progress 0..1, grade %] keyframes (linear); replaces `gradePct` when present. */
+      profile?: Array<[number, number]>;
+      /** Rolling swells on top: ± `pct` over `cycles` per scene, eased in over the first 10 %. */
+      swell?: { pct: number; cycles: number };
+      pulse?: PulseKind;
+    }
+  /** ERG follows the scene's effort plan (`ftpFraction` is its nominal Z3 level). */
   | { mode: 'erg'; ftpFraction: number }
-  | { mode: 'resistance'; levelPct: number }
+  | { mode: 'resistance'; levelPct: number; pulse?: PulseKind }
   | { mode: 'none' };
+
+/** Rhythmic pulses: `paddle` strokes on a clock, `flap` on every few crank revolutions (each downstroke). */
+export type PulseKind = 'paddle' | 'flap';
+
+/** A sprint in the effort plan: a fishing pull, or a set-piece sprint in a fixed-time scene. */
+export interface PullPlan {
+  /** Plan seconds into the scene where it starts, and its planned length. */
+  atS: number; planS: number;
+  /** Fish size 0..1: scales the target (%FTP), the length and the surge. */
+  size: number;
+}
 
 /** Post-processing preset names from the prototype (`render/looks.ts` on the storyboard branch). */
 export type LookName = 'morning' | 'midday' | 'belly' | 'jungle' | 'lava' | 'reentry' | 'fever';
@@ -40,6 +60,8 @@ export interface Scene {
   trainer: TrainerPlan;
   monologue: MonologueLine[];
   look: LookName;
+  /** Sprints in plan order (additive, #186). */
+  pulls: PullPlan[];
   /** 0 mundane .. 1 fever dream, at the scene's start (eases to the next scene's value). */
   dream: number;
 }
@@ -66,8 +88,13 @@ export interface SeasideSnapshot {
   chapterCard: { name: string; age: number } | null;
   menu: MenuView | null;
   over: boolean;
-  /** For headless scripts (`target-follow`). */
-  hooks: { powerFtp: number };
+  /** For headless scripts (`target-follow`, `cadence-follow`). */
+  hooks: { powerFtp: number; cadence: number };
+  // ---- additive (#186) ----
+  /** The sprint in progress: fish fights wait on `stamina`; set pieces run their window. */
+  pull: { size: number; ftp: number; durS: number; t: number; stamina: number; setPiece: boolean } | null;
+  /** Cadence band the scene asks for (drill, fan), else null. */
+  cadenceBand: [number, number] | null;
 }
 
 /** profile.gameData.seaside. Unknown fields are preserved on save (other issues add their own). */

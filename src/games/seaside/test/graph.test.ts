@@ -36,7 +36,7 @@ describe('story graph', () => {
   it('reads planned effort by position and excludes sprints from the base', () => {
     const t1 = STORY.find((s) => s.id === 'turnout1')!;
     expect(effortAt(t1, 60)).toBeCloseTo(0.55);
-    expect(effortAt(t1, 125)).toBeCloseTo(1.35);
+    expect(effortAt(t1, 125)).toBeCloseTo(1.14); // re-timed by fish size (110–150 % FTP)
     expect(effortAt(t1, 1e9)).toBeCloseTo(0.58);
     expect(baseFtp(t1)).toBeGreaterThan(0.55);
     expect(baseFtp(t1)).toBeLessThan(0.6);

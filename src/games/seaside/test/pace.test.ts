@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { effortRate, paceNudge, railSpeed } from '../sim/pace';
 
-const T = { exponent: 1 / 3, gain: 0.002, max: 0.2, cap: 1.8 };
+const T = { exponent: 1 / 3, gain: 0.002, max: 0.2, maxAhead: 0.2, cap: 1.8 };
 
 describe('pace', () => {
   it('rides at the planned speed at the planned power, on time', () => {
@@ -20,6 +20,10 @@ describe('pace', () => {
     expect(paceNudge(1e4, 0.002, 0.2)).toBeCloseTo(1.2);
     expect(paceNudge(-1e4, 0.002, 0.2)).toBeCloseTo(0.8);
     expect(railSpeed(130, 130, 8, 120, T)).toBeCloseTo(8 * 1.2);
+  });
+  it('brakes a rider ahead of the plan less than it helps one behind', () => {
+    expect(paceNudge(-1e4, 0.002, 0.2, 0.05)).toBeCloseTo(0.95);
+    expect(paceNudge(1e4, 0.002, 0.2, 0.05)).toBeCloseTo(1.2);
   });
   it('caps rail speed', () => { expect(railSpeed(1e5, 130, 8, 600, T)).toBeCloseTo(8 * 1.8); });
   it('effort gating: work at plan runs on schedule; floor and cap', () => {

@@ -1,5 +1,8 @@
 // The seam between the Seaside sim and its renderer (and other Seaside issues). #184 owns the base fields;
 // later issues add fields additively and say so in their PR.
+import type { FishingLocation } from './catalogue';
+import type { FishingView } from './fishing';
+import type { EconomySave, ShopView } from './economy';
 
 export type SceneKind = 'ride' | 'fish' | 'shop' | 'drill' | 'cutscene' | 'fan' | 'flight';
 export type ChapterId = 0 | 1 | 2;
@@ -64,6 +67,8 @@ export interface Scene {
   pulls: PullPlan[];
   /** 0 mundane .. 1 fever dream, at the scene's start (eases to the next scene's value). */
   dream: number;
+  /** A fishing stop (#187): its `pulls` are the bite slots. */
+  fishing?: FishingLocation;
 }
 
 export interface MonologueView { id: number; text: string; age: number; life: number }
@@ -95,10 +100,18 @@ export interface SeasideSnapshot {
   pull: { size: number; ftp: number; durS: number; t: number; stamina: number; setPiece: boolean } | null;
   /** Cadence band the scene asks for (drill, fan), else null. */
   cadenceBand: [number, number] | null;
+  // ---- additive (#187) ----
+  /** The fishing stop in progress (spots, cast, bite, fight, haul, card), else null. */
+  fishing: FishingView | null;
+  // ---- additive (#188) ----
+  economy: EconomySave;
+  shop: ShopView | null;
 }
 
 /** profile.gameData.seaside. Unknown fields are preserved on save (other issues add their own). */
 export interface SeasideSave {
+  /** Optional on legacy saves; normalised by migrateSave. */
+  economy?: EconomySave;
   v: 1;
   /** Full rides finished. */
   rides: number;

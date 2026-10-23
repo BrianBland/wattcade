@@ -33,7 +33,7 @@ describe('seaside sim', () => {
   });
   it('saves at chapter boundaries and resumes there', () => {
     const { s, saves } = session(undefined, { chapter: 0 });
-    const chapterSave = () => saves.find((d) => (d as SeasideSave).checkpoint?.progress === 0) as SeasideSave | undefined;
+    const chapterSave = () => saves.find((d) => (d as SeasideSave).checkpoint?.sceneId === 'eyesOpen' && (d as SeasideSave).checkpoint?.progress === 0) as SeasideSave | undefined;
     let guard = 0;
     while (!chapterSave() && guard++ < 30 * 60 * 60) s.step(30);
     expect(chapterSave()?.checkpoint).toEqual({ sceneId: 'eyesOpen', progress: 0 });

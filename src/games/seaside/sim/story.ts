@@ -1,6 +1,7 @@
 // The story graph, transcribed from the storyboard (docs/seaside/storyboard.html on `seaside-storyboard`).
 // Durations and effort segments are the storyboard's minutes / %FTP; ride lengths are duration × a scene speed.
 import { PULL_DEFAULTS, pullTarget } from './pull';
+import type { FishingLocation } from './catalogue';
 import type { ChapterId, LookName, MonologueLine, PullPlan, Scene, SceneKind, SceneLength, TrainerPlan } from './types';
 
 type Len = { m: number /* m/s */ } | { effortS: true } | { s: true };
@@ -11,6 +12,8 @@ interface Raw {
   len: Len; tr: TrainerPlan; say?: string[]; look: LookName; dream: number;
   /** Size (0..1) of each ≥ 100 % FTP segment in `e`, in order: re-timed to 110–150 % × 6–25 s by size. */
   sizes?: number[];
+  /** Fishing stop (#187): its spots and fish. */
+  fish?: FishingLocation;
 }
 
 const sim = (gradePct: number, extra: Omit<Extract<TrainerPlan, { mode: 'sim' }>, 'mode' | 'gradePct'> = {}): TrainerPlan =>
@@ -27,14 +30,14 @@ const RAW: Raw[] = [
   { id: 'title', ch: 0, kind: 'cutscene', title: 'Title', min: 1, e: [[1, 45]], len: timed, tr: sim(0), look: 'morning', dream: 0.1 },
   { id: 'highway', ch: 0, kind: 'ride', title: 'Highway 1', min: 7, e: [[3, 50], [4, 63]], len: at(8), tr: swell(0.5, 1.5, 3),
     say: ['Good day for it.', "Wind's out of the north. Figures.", 'Big bird.'], look: 'morning', dream: 0.12 },
-  { id: 'turnout1', ch: 0, kind: 'fish', title: 'Turnout 1', min: 6, e: [[2, 55], [0.13, 135], [1.87, 58], [0.13, 135], [1.87, 58]], len: effort, tr: res(20), sizes: [0.1, 0.15],
+  { id: 'turnout1', fish: 'turnout', ch: 0, kind: 'fish', title: 'Turnout 1', min: 6, e: [[2, 55], [0.13, 135], [1.87, 58], [0.13, 135], [1.87, 58]], len: effort, tr: res(20), sizes: [0.1, 0.15],
     say: ['Lunch, maybe.', 'That counts. That definitely counts.'], look: 'morning', dream: 0.15 },
   { id: 'rollers', ch: 0, kind: 'ride', title: 'Rollers', min: 6, e: [[2, 62], [2, 75], [2, 60]], len: at(7.5), tr: route([[0, 0.5], [0.3, 4], [0.55, 4], [0.65, 0], [0.8, -3], [1, -1]]),
     say: ['Every hill out here has a better view.'], look: 'morning', dream: 0.15 },
   { id: 'shop1', ch: 0, kind: 'shop', title: "Lou's Bait & Tackle", min: 2, e: [[2, 45]], len: timed, tr: sim(0),
-    say: ['Lou has opinions about kelp.'], look: 'morning', dream: 0.18 },
+    say: ['Smells like salt and old wood.'], look: 'morning', dream: 0.18 },
   { id: 'toPier', ch: 0, kind: 'ride', title: 'To the pier', min: 5, e: [[5, 65]], len: at(7.5), tr: swell(0, 1, 2), say: ['New rod. Big plans.'], look: 'morning', dream: 0.2 },
-  { id: 'pier', ch: 0, kind: 'fish', title: 'The pier', min: 6, e: [[2, 55], [0.2, 140], [1.8, 58], [0.2, 140], [1.8, 58]], len: effort, tr: res(30), sizes: [0.3, 0.35],
+  { id: 'pier', fish: 'pier', ch: 0, kind: 'fish', title: 'The pier', min: 6, e: [[2, 55], [0.2, 140], [1.8, 58], [0.2, 140], [1.8, 58]], len: effort, tr: res(30), sizes: [0.3, 0.35],
     say: ['That one pulled back.', 'Lingcod. Ugly. Valuable.'], look: 'morning', dream: 0.22 },
   { id: 'pierStand', ch: 0, kind: 'shop', title: 'Pier stand', min: 1.5, e: [[1.5, 45]], len: timed, tr: sim(0), say: ['Last one on the rack.'], look: 'morning', dream: 0.25 },
   { id: 'bigOne', ch: 0, kind: 'fish', title: 'The Big One', min: 3, e: [[1.5, 55], [0.42, 150], [1.08, 50]], len: timed, tr: res(30), sizes: [1],
@@ -52,7 +55,7 @@ const RAW: Raw[] = [
   { id: 'breakthrough', ch: 1, kind: 'cutscene', title: 'Breakthrough', min: 1, e: [[0.25, 140], [0.75, 55]], len: timed, tr: res(40), sizes: [0.47], look: 'midday', dream: 0.5 },
   { id: 'paddle', ch: 1, kind: 'ride', title: 'Paddle', min: 5, e: [[5, 63]], len: at(2.5), tr: sim(0, { pulse: 'paddle' }),
     say: ["There wasn't an island here.", "I'd have seen it."], look: 'midday', dream: 0.5 },
-  { id: 'beach', ch: 1, kind: 'fish', title: 'Beach', min: 5, e: [[2, 55], [0.17, 135], [2.83, 50]], len: effort, tr: res(25), sizes: [0.2],
+  { id: 'beach', fish: 'beach', ch: 1, kind: 'fish', title: 'Beach', min: 5, e: [[2, 55], [0.17, 135], [2.83, 50]], len: effort, tr: res(25), sizes: [0.2],
     say: ['Tired. Hungry. In that order.', 'Who lit this fire?'], look: 'midday', dream: 0.52 },
   { id: 'boardwalk', ch: 1, kind: 'ride', title: 'Boardwalk', min: 5, e: [[5, 64]], len: at(6.5), tr: swell(0.5, 0.5, 3), say: ['It keeps turning left.'], look: 'jungle', dream: 0.55 },
   { id: 'cutStones', ch: 1, kind: 'ride', title: 'Cut stones', min: 6, e: [[2, 65], [2, 70], [2, 72]], len: at(6), tr: route([[0, 1.5], [0.25, 2.5], [1, 3]], { pct: 0.5, cycles: 4 }),
@@ -63,7 +66,7 @@ const RAW: Raw[] = [
   { id: 'cavern', ch: 2, kind: 'ride', title: 'Torchlit cavern', min: 5, e: [[2, 58], [3, 48]], len: at(7), tr: route([[0, 0], [0.38, 0], [0.48, -3], [0.75, -5], [1, -3]]), say: ['Down it is.'], look: 'lava', dream: 0.65 },
   { id: 'bridge', ch: 2, kind: 'ride', title: 'The obsidian bridge', min: 3, e: [[3, 62]], len: at(5), tr: sim(0),
     say: ['Those are fish.', 'In the lava.', "I'm hungry enough not to care."], look: 'lava', dream: 0.72 },
-  { id: 'magma', ch: 2, kind: 'fish', title: 'Magma fishing', min: 4, e: [[1.5, 55], [0.2, 140], [2.3, 52]], len: effort, tr: res(40), sizes: [0.35], say: ['Hot. Very hot.'], look: 'lava', dream: 0.75 },
+  { id: 'magma', fish: 'lava', ch: 2, kind: 'fish', title: 'Magma fishing', min: 4, e: [[1.5, 55], [0.2, 140], [2.3, 52]], len: effort, tr: res(40), sizes: [0.35], say: ['Hot. Very hot.'], look: 'lava', dream: 0.75 },
   { id: 'fan', ch: 2, kind: 'fan', title: 'Cooling fan', min: 2, e: [[1.5, 78], [0.5, 45]], len: effort, tr: res(35),
     say: ['Blow on it. Big blow.', 'Tastes like... trout?'], look: 'lava', dream: 0.75 },
   { id: 'toGate', ch: 2, kind: 'ride', title: 'Toward the gate', min: 4, e: [[3, 62], [1, 50]], len: at(5.5), tr: sim(0), say: ['Dead end.', 'Of course it is.'], look: 'lava', dream: 0.8 },
@@ -112,6 +115,7 @@ function build(r: Raw): Scene {
   return {
     id: r.id, chapter: r.ch, kind: r.kind, title: r.title, length, planS,
     effort, trainer: r.tr, monologue: spread(r.say ?? []), look: r.look, dream: r.dream, pulls,
+    ...(r.fish && { fishing: r.fish }),
   };
 }
 

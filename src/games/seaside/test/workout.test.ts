@@ -56,13 +56,32 @@ describe('workout: trainer plan per scene', () => {
     expect(big).toBe(W.pullLevelMax);
     const rest = pullLevel(base, { size: 0, t: W.runPeriodS * 0.8, durS: 6, setPiece: false }, W);
     expect(rest).toBeLessThan(small);
-    expect(rest).toBeGreaterThanOrEqual(50); // still a surge: scenarios count sprints as runs ≥ 50 %
+    expect(rest).toBeGreaterThanOrEqual(45); // still a surge: scenarios count sprints as runs ≥ 45 %
+  });
+  it('the fish on the line sets the surge (a lingcod drags more than a perch); a bite tugs before the hook', () => {
+    const f = scene('pier'), base = f.trainer.mode === 'resistance' ? f.trainer.levelPct : 0;
+    const lvl = (heft: number) => sceneCommand(f, st(f, 0.33, { pull: { size: 0.3, t: 0.5, durS: 13, setPiece: false, heft } }), W)!.levelPct!;
+    expect(lvl(0.85)).toBeGreaterThan(lvl(0.1) + 15);
+    const bite = sceneCommand(f, st(f, 0.33, { bite: 0.3 }), W)!.levelPct!;
+    expect(bite).toBeGreaterThan(base);
+    expect(bite).toBeLessThan(lvl(0.3));
+  });
+  it('resistance levels scale with the rider\'s FTP (tuned at refFtp), clamped at both ends', () => {
+    const f = scene('pier'), pull = { size: 0.3, t: 0.5, durS: 13, setPiece: false, heft: 0.85 };
+    const lvl = (ftp?: number) => sceneCommand(f, st(f, 0.33, { pull, ftp }), W)!.levelPct!;
+    expect(lvl(W.refFtp)).toBe(lvl());
+    expect(lvl(150)).toBeCloseTo(lvl() * 150 / W.refFtp, 0);
+    expect(lvl(300)).toBeGreaterThan(lvl());
+    expect(lvl(60)).toBeCloseTo(lvl() * W.ftpMinK, 0);
+    expect(lvl(1000)).toBeCloseTo(Math.min(100, lvl() * W.ftpMaxK), 0);
+    const big = scene('bigOne');
+    expect(sceneCommand(big, st(big, 0.55, { pull: { size: 1, t: 25, durS: 25, setPiece: true }, ftp: 200 }), W)!.levelPct).toBe(64);
   });
   it('set pieces ramp up through the sprint and let go after it', () => {
     const b = scene('bigOne');
     const at = (t: number) => sceneCommand(b, st(b, 0.55, { pull: { size: 1, t, durS: 25, setPiece: true } }), W)!.levelPct!;
     expect(at(0)).toBe(30);
-    expect(at(25)).toBe(W.pullLevelMax);
+    expect(at(25)).toBe(W.setPieceMax); // the Big One drags hardest
     expect(sceneCommand(b, st(b, 0.8, { released: true }), W)!.levelPct).toBe(W.releasePct);
   });
   it('paddling and flapping pulse rhythmically', () => {

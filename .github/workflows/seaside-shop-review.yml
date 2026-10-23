@@ -1,0 +1,30 @@
+name: Seaside shop review
+on:
+  pull_request:
+    paths:
+      - 'src/games/seaside/**'
+      - 'dev/seaside-play.*'
+      - 'scripts/seaside-shop-review.ts'
+      - '.github/workflows/seaside-shop-review.yml'
+permissions:
+  contents: read
+jobs:
+  shop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npx tsx scripts/seaside-shop-review.ts
+        env:
+          OUT: /tmp/seaside-shop-review
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: seaside-shop-review
+          path: /tmp/seaside-shop-review

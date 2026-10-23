@@ -15,9 +15,20 @@ export interface SeasideLayout {
   menu: Box[];
   /** The placeholder scene box (grey). */
   stage: Box;
+  /** Fishing (#187), inside the stage: tappable spot markers, the prompt, the stamina meter, the catch card. */
+  fish: FishLayout;
 }
 
-export function layout(W: number, H: number, insets: Insets, menuItems = 0): SeasideLayout {
+export interface FishLayout {
+  /** Water band the spots, bobber and line are drawn in. */
+  water: Box;
+  spots: Box[];
+  prompt: Box;
+  meter: Box;
+  card: Box;
+}
+
+export function layout(W: number, H: number, insets: Insets, menuItems = 0, spots = 3): SeasideLayout {
   const top = Math.max(0, insets.top), left = Math.max(0, insets.left), right = Math.max(0, insets.right);
   const UH = Math.max(160, H - Math.max(0, insets.bottom));
   const pad = Math.max(12, Math.min(W, UH) * 0.03);
@@ -34,7 +45,24 @@ export function layout(W: number, H: number, insets: Insets, menuItems = 0): Sea
   const total = menuItems * rh + Math.max(0, menuItems - 1) * gap;
   const y0 = Math.max(top + pad, (UH - total) / 2);
   const menu = Array.from({ length: menuItems }, (_, i) => ({ x: (W - rw) / 2, y: y0 + i * (rh + gap), w: rw, h: rh }));
-  return { UH, bubble, plate, card, menu, stage };
+  return { UH, bubble, plate, card, menu, stage, fish: fishLayout(stage, spots) };
+}
+
+/** Fishing boxes inside the stage (so above the HUD too): markers ≥ 44 px tall for touch. */
+export function fishLayout(stage: Box, n: number): FishLayout {
+  const { x, y, w, h } = stage;
+  const water = { x, y: y + h * 0.3, w, h: h * 0.7 };
+  const mh = Math.max(44, Math.min(64, h * 0.14)), mw = Math.min(200, (w - 24) / Math.max(1, n) - 12);
+  const spots = Array.from({ length: n }, (_, i) => {
+    const cx = x + (w * (i + 0.5)) / n;
+    return { x: cx - mw / 2, y: y + h * 0.36, w: mw, h: mh };
+  });
+  const pw = Math.min(w * 0.7, 420), ph = Math.max(40, Math.min(64, h * 0.13));
+  const prompt = { x: x + (w - pw) / 2, y: y + h * 0.04, w: pw, h: ph };
+  const meter = { x: x + (w - pw) / 2, y: prompt.y + ph + 8, w: pw, h: Math.max(10, ph * 0.3) };
+  const cw = Math.min(w * 0.8, 380), ch = Math.min(h * 0.62, 200);
+  const card = { x: x + (w - cw) / 2, y: y + (h - ch) / 2, w: cw, h: ch };
+  return { water, spots, prompt, meter, card };
 }
 
 export const inside = (b: Box, x: number, y: number) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;

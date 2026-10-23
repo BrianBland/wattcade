@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Pull, PULL_DEFAULTS as P, pullTarget } from '../sim/pull';
+import { Pull, PULL_DEFAULTS as P, pullTarget, tireS } from '../sim/pull';
 import { STORY } from '../sim/story';
 
 const run = (p: Pull, ftpFrac: number, maxS = 600) => {
   let r = 'pulling', t = 0;
-  while (r === 'pulling' && t < maxS) { r = p.tick(0.1, ftpFrac, P.giveUpS, P.softRate); t += 0.1; }
+  while (r === 'pulling' && t < maxS) { r = p.tick(0.1, ftpFrac, P); t += 0.1; }
   return { r, t };
 };
 
@@ -24,10 +24,12 @@ describe('pulls (sprints)', () => {
     const p = new Pull(0.3, t.ftp, t.s, false); run(p, t.ftp);
     expect(p.hit()).toBe(true);
   });
-  it('below the target the fish still tires (easy catches); a stopped rider loses it, never soft-locks', () => {
+  it('without a sprint the fish tires on its own (slow, but landed); a stopped rider loses it, never soft-locks', () => {
     const t = pullTarget(0.35, P);
     const z2 = run(new Pull(0.35, t.ftp, t.s, false), 0.65);
     expect(z2.r).toBe('landed');
+    expect(z2.t).toBeCloseTo(tireS(0.35, P), 0);
+    expect(z2.t).toBeGreaterThan(5 * t.s);
     expect(z2.t).toBeLessThan(P.giveUpS);
     const idle = run(new Pull(0.35, t.ftp, t.s, false), 0);
     expect(idle.r).toBe('escaped');

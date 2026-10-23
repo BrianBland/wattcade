@@ -8,6 +8,8 @@ interface Scenario {
 }
 
 const TARGET_MIN = 120;
+/** Not sprinting holds every fish fight for ~2 min: z2 rides 10–15 min longer than a rider who sprints on cue. */
+const Z2_MAX_MIN = 135;
 const ofType = (run: Run, type: string) => run.events.filter((e) => e.type === type);
 const PLAN_MIN = STORY.reduce((a, x) => a + x.planS, 0) / 60;
 /** A sprint on the trainer: a run of resistance commands at or above this level (fish runs dip to ≥ 54 %). */
@@ -41,7 +43,18 @@ const near = (got: number, want: number, tol: number, what: string) =>
 
 export const scenarios: Scenario[] = [
   {
-    name: 'z2 rides the whole story in about 2 h', script: 'z2', minutes: 150, seed: 1,
+    name: 'sprinting on cue rides the story in about 2 h and hits every sprint', script: 'target-follow', minutes: 150, seed: 9,
+    assert(s, _st, run) {
+      const f: string[] = [];
+      if (!run.isOver) f.push('story did not finish');
+      f.push(...near(Number(s['Ride minutes']), PLAN_MIN, 0.03, 'ride'));
+      if (s['Fish landed'] !== '6/6' || s['Sprints on target'] !== '9/9') f.push(`fish ${s['Fish landed']}, sprints ${s['Sprints on target']}`);
+      f.push(...workoutPlan(run));
+      return f;
+    },
+  },
+  {
+    name: 'z2 rides the whole story without sprinting, slower', script: 'z2', minutes: 160, seed: 1,
     assert(s, _st, run) {
       const f: string[] = [];
       if (!run.isOver || s.Finished !== 'Yes') f.push('story did not finish');
@@ -51,7 +64,8 @@ export const scenarios: Scenario[] = [
       const chapterSaves = ofType(run, 'save').filter((e) => e.data?.progress === 0).map((e) => e.data?.sceneId);
       if (chapterSaves.join() !== 'eyesOpen,cavern') f.push(`chapter saves ${chapterSaves.join()}`);
       if (!ofType(run, 'save').some((e) => e.data?.sceneId === 'drill1' && e.data?.progress === 0.5)) f.push('no checkpoint inside the drill');
-      f.push(...near(Number(s['Ride minutes']), TARGET_MIN, 0.1, 'ride'));
+      const min = Number(s['Ride minutes']);
+      if (min < PLAN_MIN + 7 || min > Z2_MAX_MIN) f.push(`ride ${min} min, want ${(PLAN_MIN + 7).toFixed(1)}–${Z2_MAX_MIN}`);
       if (Number(s.Lines) < 30) f.push(`only ${s.Lines} monologue lines shown`);
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
       f.push(...workoutPlan(run));
@@ -59,12 +73,12 @@ export const scenarios: Scenario[] = [
     },
   },
   {
-    name: 'sprints rides the same plan faster and lands every fish', script: 'sprints', minutes: 150, seed: 6,
+    name: 'sprints (blind, every 2 min) beats z2 and lands every fish', script: 'sprints', minutes: 150, seed: 6,
     assert(s, st, run) {
       const f: string[] = [];
       if (!run.isOver) f.push('story did not finish');
-      // z2 lands about on the plan; a rider who sprints is ahead of it
-      if (Number(s['Ride minutes']) > PLAN_MIN - 1.5) f.push(`ride ${s['Ride minutes']} min, want < ${(PLAN_MIN - 1.5).toFixed(1)}`);
+      // sprints blind (every 2 min), so it waits on most fish, but still well ahead of z2
+      if (Number(s['Ride minutes']) > PLAN_MIN + 4) f.push(`ride ${s['Ride minutes']} min, want ≤ ${(PLAN_MIN + 4).toFixed(1)}`);
       f.push(...near(Number(s['Ride minutes']), TARGET_MIN, 0.1, 'ride'));
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
       if (ofType(run, 'pull').some((e) => !e.data?.landed)) f.push('a pull did not land');

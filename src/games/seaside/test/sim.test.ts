@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, NullInput, testProfile } from '../../../core';
+import { createGameSession, NullInput, runHeadless, testProfile } from '../../../core';
 import { module } from '../index';
 import { STORY } from '../sim/story';
 import type { SeasideSave, SeasideSnapshot } from '../sim/types';
@@ -58,6 +58,12 @@ describe('seaside sim', () => {
     expect(snap2().speed).toBe(0);
     expect(snap2().routeS).toBe(r0);
     expect(snap2().scene.progress).toBeGreaterThan(0);
+  });
+  it('not sprinting adds 10–15 min to the ride (fish fights are not paid back by the pace nudge)', () => {
+    const min = (script: string) => Number(runHeadless({ game: module, script, minutes: 170, seed: 1 }).summary['Ride minutes']);
+    const gap = min('z2') - min('target-follow');
+    expect(gap).toBeGreaterThanOrEqual(10);
+    expect(gap).toBeLessThanOrEqual(15);
   });
   it('covers every storyboard scene once', () => {
     expect(STORY.length).toBe(33);

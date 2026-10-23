@@ -68,8 +68,10 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     maxFtp: num('sprintMaxFtp', P.maxFtp, 1, 2, 0.05, 'Sprint target for the largest fish / set pieces'),
     minS: num('sprintMinS', P.minS, 3, 20, 1, 'Sprint length for the smallest fish (s)'),
     maxS: num('sprintMaxS', P.maxS, 6, 40, 1, 'Sprint length for the largest fish / set pieces (s)'),
-    softRate: num('pullSoftRate', P.softRate, 0, 1, 0.05, 'Below the target, a fish still tires at this fraction of the rate'),
-    giveUpS: num('pullGiveUpS', P.giveUpS, 20, 300, 5, 'A fish still fighting after this long slips the hook'),
+    tireMinS: num('fishTireMinS', P.tireMinS, 10, 300, 5, 'Without a sprint, the smallest fish tires on its own in this long (s)'),
+    tireMaxS: num('fishTireMaxS', P.tireMaxS, 10, 400, 5, 'Without a sprint, the largest fish tires on its own in this long (s)'),
+    pedalFtp: num('fishPedalFtp', P.pedalFtp, 0, 1, 0.05, 'A fish only tires on its own while power is at least this (fraction of FTP)'),
+    giveUpS: num('pullGiveUpS', P.giveUpS, 30, 600, 10, 'A fish still fighting after this long slips the hook'),
   };
   const read = <T,>(o: { [K in keyof T]: () => number }) =>
     Object.fromEntries(Object.entries(o).map(([k, f]) => [k, (f as () => number)()])) as T;
@@ -89,6 +91,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   let pending: unknown[] = [];
   // workout (#186)
   let pull: Pull | null = null, nextPull = 0, released = false, trainerMode = '';
+  let heldS = 0; // fish-fight time beyond the planned sprint: the pace nudge never pays it back
   let fish = 0, landed = 0, sprints = 0, hits = 0, bestFtp = 0, drillS = 0;
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
@@ -195,15 +198,19 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     storyT += dt; sceneT += dt; rideT += dt;
     if (cardName !== null && (cardAge += dt) > CARD_S) cardName = null;
     const planW = baseFtp(sc) * ftp * tun.planScale();
-    lag = storyT - planElapsed(g, index, progress);
+    lag = storyT - heldS - planElapsed(g, index, progress);
     const before = progress, frac = b.power3s / ftp, w = wt();
     if (pull) bestFtp = Math.max(bestFtp, frac);
     if (sc.kind === 'drill') drillS += dt;
     if (pull && !pull.setPiece) {
       // the fish fights: the scene waits on work done
       speed = 0;
-      const r = pull.tick(dt, frac, ptun.giveUpS(), ptun.softRate());
-      if (r !== 'pulling') { const pl = sc.pulls[nextPull]; endPull(r); progress = (pl.atS + pl.planS) / sc.planS; }
+      const r = pull.tick(dt, frac, pt());
+      if (r !== 'pulling') {
+        const pl = sc.pulls[nextPull];
+        heldS += Math.max(0, pull.t - pl.planS);
+        endPull(r); progress = (pl.atS + pl.planS) / sc.planS;
+      }
     } else if ('m' in sc.length) {
       const target = railSpeed(b.power3s, planW, sc.length.m / sc.planS, lag, { exponent: tun.exponent(), gain: tun.gain(), max: tun.max(), maxAhead: tun.maxAhead(), cap: tun.cap() });
       speed += (target - speed) * (1 - Math.exp(-dt / tun.tau()));
@@ -214,7 +221,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         ? (effortRate(b.power3s, planW, tun.effortFloor(), tun.effortCap()) * cadenceRate(sc, b.cadence3s, w) * dt) / sc.length.effortS
         : dt / sc.length.s;
     }
-    if (pull?.setPiece) { const r = pull.tick(dt, frac, ptun.giveUpS(), ptun.softRate()); if (r !== 'pulling') endPull(r); }
+    if (pull?.setPiece) { const r = pull.tick(dt, frac, pt()); if (r !== 'pulling') endPull(r); }
     const pl = sc.pulls[nextPull];
     if (!pull && pl && progress * sc.planS >= pl.atS) {
       const setPiece = !('effortS' in sc.length);

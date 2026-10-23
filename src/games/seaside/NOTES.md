@@ -21,20 +21,20 @@ flag (`?dev=1`, remembered; `?dev=0` clears; always on under `vite` dev). Move t
   80–100 rpm band (×0.3 outside). Paddle: grade pulses on a clock; wings: resistance pulses every 3 crank revs. Set
   pieces ramp up through their sprint, then let go. All `seaside.*` tunables.
 - `pull.ts` pure: 9 sprints (story `sizes` re-time each ≥ 100 % segment to 110–150 % FTP × 6–25 s). Fish fights hold
-  the scene; stamina drains with work (×0.5 below target), escapes after 90 s. Set pieces (Big One, breakthrough,
+  the scene: at target the stamina drains with work; below it the fish tires on its own in 110–190 s (by size) while
+  you pedal (≥ 0.3 FTP), escaping after 240 s. That overtime is excluded from the pace lag, so not sprinting costs
+  10–15 min (z2 ≈ 132.5 vs on-cue ≈ 121.7 min). Set pieces (Big One, breakthrough,
   re-entry) always resolve; effort → `spectacle`. Events `pull`; summary: fish landed, sprints on target, best, drill.
 - Scene length: `{ m }` (rail), `{ effortS }` (fish, drill, fan) or `{ s }` (cutscenes, shops, the Big One, re-entry).
-- `monologue.ts`: one line, 4 s, 1 s gap, dropped after 30 s; hidden while sprinting or the target ≥ 105 % FTP.
-- `sim.ts`: menu (continue / start over, + chapter select after the first full ride; auto-picks after 20 s; renderer taps
+- `monologue.ts`: one line, 4 s, 1 s gap, dropped after 30 s, hidden while the target ≥ 105 % FTP. `sim.ts`: menu (continue / start over, + chapter select after the first full ride; auto-picks after 20 s; renderer taps
   send `{ type: 'menu', index }`) → story. Saves at each chapter start and at 50 % of scenes ≥ 5 min; finishing clears the checkpoint, `rides++`, unlocks select.
 - Events: `scene`, `chapter`, `save`, `storyEnd`, `trainer`, `pull`. `hooks.powerFtp` (target), `hooks.cadence` (band).
-- simOpts: `chapter` (start there, no menu), `save` (instead of the profile's), `skipMenu` (continue if possible).
+- simOpts: `chapter` (start there, no menu), `save` (instead of the profile's), `skipMenu` (continue if possible). `/dev/seaside-play.html?script=z2&speed=30&scene=drill1&menu=1&inset=120` (keys 1–5 = ×1…×120).
 
 **Render** (`render/`): placeholder Canvas 2D: look-tinted sky, rail ticks scrolling with `routeS`, grey stage box with the scene label, title
 plate + progress, bubble top-left, chapter card, menu. `layout.ts` keeps all of it above `insets.bottom` (tested).
 #185 swaps the stage box for the voxel world (dynamic `import()` from `loadRenderer`).
 
 ## Run
-- `/dev/seaside-play.html?script=z2&speed=30&scene=drill1&menu=1&inset=120`; keys 1–5 = ×1/×10/×30/×60/×120.
-- Tests: `npx vitest run src/games/seaside`. Scenarios: z2 ≈ 123 min (`npm run sim -- --game seaside --script z2 --minutes 150`), sprints ≈ 121 min and 6/6 fish, both
-  2 ERG blocks + 9 trainer sprints (resistance runs ≥ 50 %); idle resolves set pieces / lets fish go, waits on rides.
+- Tests: `npx vitest run src/games/seaside`. Scenarios: target-follow ≈ plan, sprints ≈ 125, z2 ≤ 135 min; all 6/6 fish,
+  2 ERG blocks, 9 trainer sprints (resistance runs ≥ 50 %); idle resolves set pieces / lets fish go, waits on rides.

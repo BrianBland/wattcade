@@ -1,0 +1,11 @@
+# Flat game chrome
+- `chrome.css` is scoped to `.chrome-ui` screens/pause and `.chrome-toasts`; other screens keep their existing styles.
+- Flat navy surfaces, mint primary/focus, gold achievement accent. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
+- Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings. The setup list scrolls independently while Continue remains reachable.
+- ProfilePicker has a roster + one live selected-rider showcase. Touch previews first, then explicit Ride/Edit; controller A starts, Y edits. Phone roster scrolls horizontally with gestures; controller focus scrolls into view.
+- Pause uses vertical menu navigation matching its visual order, preserving difficulty/layout/sound/help/history/restart/quit and game extension actions. Short screens scroll the sheet.
+- `ChromeHints` follows Bluetooth and gamepad connection changes. Physical A/B labels only appear with a controller attached.
+- Menu sheets stop above the measured live HUD. Read-only achievement notifications use the upper right, clear of the bottom HUD and touch actions and expire after 6 seconds; regular toast API/lifetime stays compatible.
+- `achievementToast` carries achievement description and bonus XP from `previewAward`; earning/saving progression is unchanged.
+- Review: `/dev/chrome-review.html?game=warmup&manual=1&fake=0&legend=0&view=connect` (also riders/pause/achievement; Connect state=busy/error). Uses production components over the real renderer, with dev-only rider/device fixtures.
+- Verification: shell tests, TypeScript and production build. Captures in `docs/visual-polish/chrome/` at 1180×820, 390×844 and 844×390. Real Bluetooth/iOS remains a hardware check.

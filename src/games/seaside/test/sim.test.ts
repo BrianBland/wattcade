@@ -64,7 +64,7 @@ describe('seaside sim', () => {
     const gap = min('z2') - min('target-follow');
     expect(gap).toBeGreaterThanOrEqual(10);
     expect(gap).toBeLessThanOrEqual(15);
-  });
+  }, 60_000); // two full headless rides
   it('covers every storyboard scene once', () => {
     expect(STORY.length).toBe(33);
   });

@@ -1,7 +1,7 @@
 # shell + debug (Agent E; no open contract requests)
 ## Layout
 - HUD Insets retain the conservative bottom band; optional measured child rectangles update on content/legend changes, including in warmup. TD alone opts into shaped coverage. `hud/insets.test.ts` and GameHost tests cover offset/clipping/fallback and same-envelope shape changes.
-- Locker groups: Ride, Rider, Company & effects, Identity; independent wardrobe slots and an owned-only Legacy collection. Ships are selected in Cadenza. Controller grid columns follow the phone/desktop layout.
+- Locker groups: Ride, Rider, Company & effects, Identity; independent wardrobe slots and only the current catalog. Ships are selected in Cadenza. Controller grid columns follow the phone/desktop layout.
 - `src/main.tsx` -> `shell/App.tsx` (screen state machine) + `debug/DebugOverlay.tsx`. CSS in `src/styles/main.css`.
 - `shell/services.ts` is the ONLY file importing core/input/progression/devices (adapters, singletons `input`, `dataHub`). Everything else uses it.
 - `shell/screens/`: ProfilePicker, ProfileEditor (+backup export/import), Connect, ArcadeMenu, GameHost, PauseMenu, Summary, Achievements.

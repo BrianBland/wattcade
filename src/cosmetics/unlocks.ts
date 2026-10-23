@@ -1,5 +1,5 @@
 import type { Profile } from '../contracts';
-import { ARCHIVED_ITEMS, DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, isArchived, item, itemKey } from './catalog';
+import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item } from './catalog';
 import { SLOTS, type Item, type OutfitLook, type RiderLook, type Slot } from './types';
 
 /** Pure unlock rules. Reads only profile fields (level, achievements, cosmetics), so renderers can use it too. */
@@ -8,16 +8,14 @@ const key = (it: Item) => `${it.slot}:${it.id}`;
 const picksOf = (p: P): Record<string, string> => p.cosmetics?.picks ?? {};
 
 export function isUnlocked(p: P, it: Item): boolean {
-  if (p.cosmetics?.legacy?.includes(itemKey(it))) return true;
-  if (isArchived(it)) return false;
-  const s = it.source;
+  const s = item(it.slot, it.id)?.source;
+  if (!s) return false;
   if ('default' in s) return true;
   if ('level' in s) return p.level >= s.level;
   if ('achievement' in s) return p.achievements.includes(s.achievement);
   return Object.values(picksOf(p)).includes(it.id);
 }
 export const unlockedItems = (p: P): Item[] => ITEMS.filter((it) => isUnlocked(p, it));
-export const legacyItems = (p: P): Item[] => ARCHIVED_ITEMS.filter(it => isUnlocked(p, it));
 
 export const isPickLevel = (level: number) => level >= PICK_EVERY && level % PICK_EVERY === 0;
 const poolItems = () => ITEMS.filter((it) => 'pick' in it.source).sort((a, b) => (a.source as { pick: number }).pick - (b.source as { pick: number }).pick);
@@ -72,10 +70,6 @@ export function riderLook(p: P): RiderLook {
     const it = item(slot, l[slot]);
     return [slot === 'hands' ? 'gloves' : slot === 'feet' ? 'footwear' : slot, it && 'look' in it ? it.look : undefined];
   }));
-  // An untouched old outfit keeps its original whole-kit pants until the player chooses a bottom.
-  if (!('bottoms' in (p.cosmetics?.loadout ?? {})) && p.cosmetics?.legacy?.includes(`jersey:${l.jersey}`)) {
-    outfit.bottoms = { kind: 'legacy', base: '#22222b', ink: '#aab8c7' };
-  }
   return {
     bike: l.bike, hat: l.hat, pet: l.pet, trail: l.trail, color,
     jersey: { ...look, base: sub(look.base), ink: sub(look.ink) },
@@ -108,7 +102,6 @@ export function nextReward(p: P): { level: number; items: Item[]; pick: boolean 
 /** How to unlock `it`, for locked tiles. `achievementName` resolves ids; secret achievements stay hidden. */
 export function unlockHint(it: Item, achievementName: (id: string) => { name: string; secret?: boolean } | undefined): string {
   const s = it.source;
-  if (isArchived(it)) return 'Legacy item';
   if ('default' in s) return 'Starter item';
   if ('level' in s) return `Reach level ${s.level}`;
   if ('pick' in s) return `Level ${s.pick} reward pick`;

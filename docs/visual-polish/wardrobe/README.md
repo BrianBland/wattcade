@@ -1,6 +1,6 @@
 # Wardrobe studies
 
-The [implemented collection and browser proof](implemented/README.md) now cover the complete rotation, including the tutu. The original study below contains fifteen render-only concepts across five independently composited groups. Each has a simple, interesting, and wacky option. These use the shared rider renderer, pixel grid, bike geometry, and live pedal joints. The original images remain as an art-study record; the implemented collection uses the revised reward sources and preserves earned originals in Legacy.
+The [implemented collection and browser proof](implemented/README.md) now cover the complete rotation, including the tutu. The original study below contains fifteen render-only concepts across five independently composited groups. Each has a simple, interesting, and wacky option. These use the shared rider renderer, pixel grid, bike geometry, and live pedal joints. The original images remain as an art-study record; the implemented collection uses the revised reward sources and derives all inventories from the current unlock rules.
 
 The [rotation and unlock proposal](UNLOCK-PROPOSAL.md) lists proposed retirements, slot moves, all achievement reward sources, and the complete level track.
 

@@ -42,7 +42,6 @@ it('controller skips locked bikes and still equips an unlocked bike', async () =
   act(() => render(<Locker profile={profile} onProfile={vi.fn()} onPick={vi.fn()} onBack={vi.fn()} />, host));
   act(() => { mocks.press?.(new Set(['down'])); });
   act(() => { mocks.press?.(new Set(['down'])); });
-  act(() => mocks.press?.(new Set(['down'])));
   expect(host.querySelector('.item-tile.focused')?.textContent).toContain('Road Bike');
   act(() => mocks.press?.(new Set(['right'])));
   expect(host.querySelector('.item-tile.focused')?.textContent).toContain('Light Cycle');
@@ -80,13 +79,12 @@ it('groups the new slots, equips a tutu, and keeps ships out of the shared Locke
   expect(mocks.equip).toHaveBeenCalledWith(profile,'bottoms','w_tutu');
 });
 
-it('offers only previously owned archived items in the Legacy collection', () => {
-  const profile=migrateCosmetics(testProfile({level:3}));
+it('shows only current items and no Legacy collection for an old profile', () => {
+  const profile=migrateCosmetics(testProfile({level:15,cosmetics:{loadout:{hat:'beanie'}}}));
   act(()=>render(<Locker profile={profile} onProfile={vi.fn()} onPick={vi.fn()} onBack={vi.fn()}/>,host));
   const click=(text:string)=>act(()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent===text)!.click());
   click('Rider');click('Helmets & hats');
+  expect(host.textContent).not.toContain('Legacy');
   expect(host.querySelector('[aria-label="Beanie, unlocked"]')).toBeNull();
-  click('View owned legacy items');
-  expect(host.querySelector('[aria-label="Beanie, unlocked"]')).not.toBeNull();
-  expect(host.querySelector('[aria-label="Pirate Hat, locked"]')).toBeNull();
+  expect(host.querySelector('[aria-label="Cowboy Hat, locked"]')).not.toBeNull();
 });

@@ -2,7 +2,7 @@
 
 Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSession`, `updateCounters`, `defaultProfile(name?)`, `defaultSettings()`, `levelForXp`, `xpForLevel`, `ACHIEVEMENTS`, `ACHIEVEMENT_GAME` (id → game), `CORE_ACHIEVEMENTS`, `achievementValue`, `achievementProgress`.
 
-- Wardrobe migration: `cosmetics/migrate.ts` snapshots original ownership on first read, remaps old picks, and persists once. New profiles start at the current cosmetic rotation. Export/import retains Legacy ownership; achievement goals and XP are unchanged.
+- Wardrobe migration: `cosmetics/migrate.ts` maps old reward picks, drops retired equipment and ownership snapshots, and persists once. Old/new profiles use current unlock rules; import/export strips retired ownership. Achievement goals and XP are unchanged.
 - `ProfileStore(dbName?)`: `list/get/create(name, init?)/update/delete/getLastProfileId/setLastProfileId/exportJson/importJson` (import merges by id, returns count). Settings are merged over defaults on read. `updateGameData` writes one game slot. `award` writes XP and cosmetics and keeps game slots already stored.
 - `SessionStore(dbName?)`: `save(record)`, `list(profileId, limit?)` newest first, `clear`; keeps last 200 per profile.
 - `awardSession(profile, record) -> { profile, xpGained, baseXp, levelUps: number[], newAchievements: {id,name,bonusXp}[] }` (pure; does not mutate input; caller persists).

@@ -16,10 +16,10 @@ export class ProfileStore {
     const m = migrateCosmetics(rebalanceProfile(migrateProfile(p)));
     return { ...m, settings: { ...defaultSettings(), ...m.settings } };
   }
-  /** The one-time ownership write must not overwrite a concurrent game checkpoint. */
+  /** The one-time wardrobe migration must not overwrite a concurrent game checkpoint. */
   private async readNormalized(p: Profile): Promise<Profile | undefined> {
     const normalized = this.norm(p);
-    if (p.cosmetics?.rotation === normalized.cosmetics?.rotation) return normalized;
+    if (p.cosmetics === normalized.cosmetics) return normalized;
     let saved: Profile | undefined;
     await updateValue<Profile | undefined>(p.id, current => {
       saved = current ? this.norm(current) : undefined;

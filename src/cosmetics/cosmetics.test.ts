@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '../contracts';
 import { ACHIEVEMENTS, defaultProfile } from '../progression';
-import { ALL_ITEMS, DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
+import { DEFAULTS, ITEMS, LAST_LEVEL, PICK_EVERY, item, itemsIn } from './catalog';
 import { choosePick, equip, isPickLevel, isUnlocked, loadout, newUnlocks, nextReward, pendingPicks, pickOptions, riderLook, titleOf, unlockedItems, withItem } from './unlocks';
 import { BIKES } from './draw/bikes';
 import { HATS } from './draw/hats';
@@ -10,7 +10,7 @@ import { TRAIL_IDS } from './draw/trails';
 import { SHIP_IDS, drawShip } from './draw/ships';
 import { CRAFT_KINDS } from '../games/cadenza/render/craft';
 import { drawRider } from './draw/rider';
-import { SLOTS, type Slot } from './types';
+import { SLOTS } from './types';
 import { ACHIEVEMENT_GAME } from '../progression/achievements';
 
 const rider = (over: Partial<Profile> = {}): Profile => ({ ...defaultProfile('T'), color: '#ff2e93', ...over });
@@ -41,14 +41,12 @@ describe('catalogue rules', () => {
     }
     expect(ITEMS.some((i) => ('level' in i.source && i.source.level > LAST_LEVEL) || ('pick' in i.source && i.source.pick > LAST_LEVEL))).toBe(false);
   });
-  it('every bike and hat has a drawer (and every drawer an item)', () => {
-    const itemsIn = (slot: Slot) => ALL_ITEMS.filter(it => it.slot === slot);
-    expect(new Set(itemsIn('bike').map((i) => i.id))).toEqual(new Set(Object.keys(BIKES)));
-    expect(new Set(itemsIn('hat').map((i) => i.id))).toEqual(new Set(Object.keys(HATS)));
-    expect(new Set(itemsIn('pet').map((i) => i.id))).toEqual(new Set(['none', ...PET_IDS]));
-    expect(new Set(itemsIn('trail').map((i) => i.id))).toEqual(new Set(['none', ...TRAIL_IDS]));
-    expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(SHIP_IDS));
-    expect(new Set(itemsIn('ship').map((i) => i.id))).toEqual(new Set(CRAFT_KINDS)); // Cadenza flies every ship
+  it('every active cosmetic has a drawer', () => {
+    for (const it of itemsIn('bike')) expect(BIKES[it.id]).toBeDefined();
+    for (const it of itemsIn('hat').filter(i=>i.id!=='none')) expect(HATS[it.id]).toBeDefined();
+    for (const it of itemsIn('pet')) expect(['none', ...PET_IDS]).toContain(it.id);
+    for (const it of itemsIn('trail')) expect(['none', ...TRAIL_IDS]).toContain(it.id);
+    expect(new Set(SHIP_IDS)).toEqual(new Set(CRAFT_KINDS)); // Cadenza owns its hulls.
   });
   it('offers three distinct slots at every pick and exactly one title per game', () => {
     for (let level = 5; level <= LAST_LEVEL; level += 5) expect(new Set(pickOptions(rider(), level).map(it => it.slot)).size).toBe(3);

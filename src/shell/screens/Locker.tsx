@@ -2,7 +2,7 @@ import { Fragment } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Profile } from '../../contracts';
 import { itemsIn } from '../../cosmetics/catalog';
-import { isUnlocked, loadout, nextReward, riderLook, titleOf, withItem, legacyItems } from '../../cosmetics/unlocks';
+import { isUnlocked, loadout, nextReward, riderLook, titleOf, withItem } from '../../cosmetics/unlocks';
 import { SLOT_GROUPS, SLOT_NAMES, type Item } from '../../cosmetics/types';
 import { Btn } from '../components/Bits';
 import { KeyHints } from '../components/ui';
@@ -15,30 +15,29 @@ import { play } from '../../audio/sfx';
 export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profile; onProfile: (p: Profile) => void; onPick: () => void; onBack: () => void }) {
   const [cols, setCols] = useState(() => innerWidth <= 760 ? 3 : 5);
   useEffect(() => { const resize = () => setCols(innerWidth <= 760 ? 3 : 5); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize); }, []);
-  const [group, setGroup] = useState(0), [tab, setTab] = useState(0), [legacy, setLegacy] = useState(false);
+  const [group, setGroup] = useState(0), [tab, setTab] = useState(0);
   const slots = SLOT_GROUPS[group].slots;
   const slot = slots[tab] ?? slots[0], worn = loadout(profile);
-  const catalog = legacy ? legacyItems(profile).filter(it => it.slot === slot) : itemsIn(slot);
+  const catalog = itemsIn(slot);
   const unlocked = catalog.filter((it) => isUnlocked(profile, it));
   const locked = catalog.filter((it) => !isUnlocked(profile, it));
   const items = [...unlocked, ...locked];
   const itemRows = (count: number) => Array.from({ length: Math.ceil(count / cols) }, (_, r) => Math.min(cols, count - r * cols));
   const picks = pendingPicks(profile).length;
   const head = picks ? 1 : 0;                          // the "choose your reward" button row
-  const rows = [...(head ? [1] : []), SLOT_GROUPS.length, slots.length, 1, ...itemRows(unlocked.length), ...itemRows(locked.length)];
-  const groupStart = head, tabStart = head + SLOT_GROUPS.length, legacyIndex = tabStart + slots.length, gridStart = legacyIndex + 1;
+  const rows = [...(head ? [1] : []), SLOT_GROUPS.length, slots.length, ...itemRows(unlocked.length), ...itemRows(locked.length)];
+  const groupStart = head, tabStart = head + SLOT_GROUPS.length, gridStart = tabStart + slots.length;
   const select = async (i: number) => {
     if (head && i === 0) return onPick();
     if (i < tabStart) { setGroup(i - groupStart); setTab(0); return; }
-    if (i < legacyIndex) { setTab(i - tabStart); return; }
-    if (i === legacyIndex) { setLegacy(!legacy); return; }
+    if (i < gridStart) { setTab(i - tabStart); return; }
     const it = items[i - gridStart];
     if (!it || !isUnlocked(profile, it)) { play('deny'); return; }
     onProfile(await equipItem(profile, slot, it.id));
   };
   const [idx, setIdx] = useMenuNav(gridStart + items.length, rows, (i) => void select(i), onBack, true, { initial: groupStart, isDisabled: (i) => i >= gridStart && (!items[i - gridStart] || !isUnlocked(profile, items[i - gridStart])) });
   // moving along the tabs switches the tab
-  useEffect(() => { if (idx >= groupStart && idx < tabStart) { setGroup(idx - groupStart); setTab(0); } else if (idx >= tabStart && idx < legacyIndex) setTab(idx - tabStart); }, [idx]);
+  useEffect(() => { if (idx >= groupStart && idx < tabStart) { setGroup(idx - groupStart); setTab(0); } else if (idx >= tabStart && idx < gridStart) setTab(idx - tabStart); }, [idx]);
   const grid = useRef<HTMLDivElement>(null);
   useEffect(() => { grid.current?.querySelector('.focused')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, [idx, tab]);
 
@@ -71,8 +70,6 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
         <div class="panel locker-items">
           <div class="row tabs locker-groups" aria-label="Collections">{SLOT_GROUPS.map((g, i) => <Btn small focused={idx === groupStart + i} class={group === i ? 'on' : ''} onClick={() => { setGroup(i); setTab(0); setIdx(groupStart + i); }}>{g.name}</Btn>)}</div>
           <div class="row tabs" aria-label="Equipment slots">{slots.map((s, i) => <Btn small focused={idx === tabStart + i} class={tab === i ? 'on' : ''} onClick={() => { setTab(i); setIdx(tabStart + i); }}>{SLOT_NAMES[s]}</Btn>)}</div>
-          <div class="row locker-collection"><Btn small focused={idx === legacyIndex} class={legacy ? 'on' : ''} onClick={() => { setLegacy(!legacy); setIdx(legacyIndex); }}>{legacy ? 'Legacy collection · Show current items' : 'View owned legacy items'}</Btn></div>
-          {legacy && !items.length && <p class="dim">No legacy items owned in this slot.</p>}
           <div class="item-grid" ref={grid} key={slot}>
             {items.map((it, i) => {
               const un = isUnlocked(profile, it), on = worn[slot] === it.id, f = un && idx === gridStart + i;

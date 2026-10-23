@@ -1,4 +1,4 @@
-/** Frozen pre-wardrobe sources: migration and earned Legacy art depend on these IDs. */
+/** Frozen source catalog for the current reward rotation and old pick-ID translation. Retired entries are not available to players. */
 import type { Item, JerseyLook, JerseyPattern, PaintLook, Slot, Source } from './types';
 
 /**

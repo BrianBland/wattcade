@@ -20,7 +20,7 @@ const CONCEPTS: Record<string, WearLook> = {
   rocket: { kind: 'rocket', base: '#dee3d9', ink: '#df5942', accent: '#46677a' },
 };
 export const resolveWear = (value: WearValue): WearLook | undefined => typeof value === 'string' ? CONCEPTS[value] : value;
-const inactive = (w?: WearLook) => !w || w.kind === 'none' || w.kind === 'legacy';
+const inactive = (w?: WearLook) => !w || w.kind === 'none';
 const fullLeg = new Set(['tights', 'trousers', 'waders', 'dungarees', 'chaps', 'fireproof', 'space', 'pajamas', 'flares']);
 export function bottomColors(value: OutfitLook['bottoms']) {
   const w = resolveWear(value); if (inactive(w)) return undefined;

@@ -2,7 +2,7 @@
 
 Implemented in the shared wardrobe. This document records the approved source map and original assets; the live catalog uses these replacements. Tutu occupies level 36. See [implementation proof](implemented/README.md).
 
-The full catalog contains 214 entries: 59 headwear, 45 tops, 25 bikes, 22 paints, 19 pets, 15 trails, 26 titles, and 3 ships. Earlier rough counts missed same-line headwear entries. There are 137 achievement sources and 69 level reward entries (39 guaranteed rewards and 30 options across ten pick levels).
+The original catalog contained 214 entries: 59 headwear, 45 tops, 25 bikes, 22 paints, 19 pets, 15 trails, 26 titles, and 3 ships. Earlier rough counts missed same-line headwear entries. There are 137 achievement sources and 69 level reward entries (39 guaranteed rewards and 30 options across ten pick levels).
 
 ## Equipment and browsing
 
@@ -18,7 +18,7 @@ Add free starter options for plain black shorts, basic black shoes, bare hands, 
 
 ## Removals from the active rotation
 
-“Archive” means stop offering the asset as a new reward or in the normal Locker rotation. Keep permanent IDs/art and existing owners’ pieces in a Legacy section. Grant each replacement automatically when its existing achievement/level requirement is already met. For old chosen reward picks, retain the old choice and grant its mapped replacement; do not reroll a player’s choice. No achievement goals or XP values change.
+“Archive” means remove the asset from player inventories and the Locker. All profiles receive exactly what the current catalog grants for their level, achievements and chosen rewards. Translate old reward choices to their mapped current replacements without rerolling; discard retired equipment and any earlier ownership snapshots. There is no Legacy collection or grandfathered ownership. No achievement goals or XP values change.
 
 These are curation calls based on repeated shapes, weak visibility, generic recolors, or a theme that fits another body part better. They do not imply every archived drawing is poor. All 25 bike silhouettes remain; the first cut targets more crowded categories.
 
@@ -163,7 +163,7 @@ These are curation calls based on repeated shapes, weak visibility, generic reco
 
 The Welding Mask becomes **welding goggles**, while Pilot’s Cap contributes **aviator goggles**. The Space Bubble moves to Eyewear as a transparent surrounding visor. Road/Aero/Football/Knight-style helmets are actual helmets; do not relabel those as glasses. Headphones remain Head accessories in this pass. We do not need an Ears or Miscellaneous slot just for them.
 
-Cowboy Hat stays in the active collection but moves from guaranteed level 8 to the level 5 pick, replacing Bowler Hat. Musette becomes guaranteed at level 8, so every new slot has a guaranteed starter upgrade by level 11. Keep earned Cowboy Hats as legacy-owned items when changing their source.
+Cowboy Hat stays in the active collection but moves from guaranteed level 8 to the level 5 pick, replacing Bowler Hat. Musette becomes guaranteed at level 8, so every new slot has a guaranteed starter upgrade by level 11. Cowboy Hats now require the current level-5 reward choice for every player; a former level unlock does not retain ownership.
 
 Do not build a compatibility matrix for cosmetic combinations. Let players overlap glasses, hats, hair, backpacks, and garments. Fully opaque head coverings may naturally hide glasses; transparent bubbles go over the chosen hat. Keep explicit No item options. A chosen Back item replaces a top’s legacy attached cape.
 
@@ -489,7 +489,7 @@ The before column includes the two achievement ships, excludes starter items, an
 ## Implementation order after review
 
 1. Add the five independent equipment slots, starter fallbacks, top garment cuts, and Locker browsing groups; move the ship picker into Cadenza.
-2. Make archive/legacy ownership and old-pick mappings explicit before changing catalog sources. Preserve earned originals, achievements, and level pacing.
+2. Apply the current catalog to every profile, map old reward choices, and discard retired ownership. Preserve achievements and level pacing.
 3. Reuse existing palettes and motifs for the slot moves, then build the highest-value new silhouettes: boots, trousers, gloves, bags, and cropped/sleeveless tops.
 4. Render the proposed pieces with vanilla and random existing equipment, including full outfits, before treating them as finished art. The earlier fifteen concepts are a visual starting point, not final art for this entire list.
 5. Check one shared cosmetic per achievement, exactly one title per game, zero level titles, three distinct slots per pick, profile/pick migration, visible small-scale art, and per-game slot diversity.

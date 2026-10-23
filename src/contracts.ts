@@ -32,9 +32,9 @@ export interface Profile {
   rideDays?: number[];
   /**
    * Cosmetics (see src/cosmetics): `loadout` = equipped item id per slot (missing = the slot's default);
-   * `picks` = level → the item chosen at that level's reward pick. Active ownership is derived from level + achievements; `legacy` freezes old owned slot:id keys at `rotation`.
+   * `picks` = level → the item chosen at that level's reward pick. Ownership follows the current catalog's level, achievement and pick rules; `rotation` versions reward-choice migration.
    */
-  cosmetics?: { loadout?: Record<string, string>; picks?: Record<string, string>; rotation?: number; legacy?: string[] };
+  cosmetics?: { loadout?: Record<string, string>; picks?: Record<string, string>; rotation?: number };
 }
 
 /**

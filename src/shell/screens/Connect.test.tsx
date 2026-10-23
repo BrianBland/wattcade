@@ -8,7 +8,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock('../services', () => ({
   downloadBluetoothLog: vi.fn(), addSecondController: vi.fn(), connectDevice: m.connect, disconnectDevice: m.disconnect,
-  controllerCount: () => 0, controllerInfo: {}, getDeviceStatus: () => m.status, getFake: () => false,
+  hasConnectedController: () => false, controllerCount: () => 0, controllerInfo: {}, getDeviceStatus: () => m.status, getFake: () => false,
   liveDevices: () => ({ raw: { power: 0, cadence: 0 } }), setFake: vi.fn(), subscribeDevices: () => () => {},
   savedHrWatches: () => [{ id: 'watch-1', name: 'Garmin', selected: false }], selectSavedHrWatch: m.select,
 }));

@@ -12,7 +12,7 @@ import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { ResultBanner } from '../game/ResultBanner';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
-import { toast } from '../components/Toasts';
+import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
 /** The result banner stays this long before the summary (A skips). */
@@ -110,7 +110,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     const seen = { ach: new Set<string>(), level: profile.level, milestone: 0, nextCheck: 10 };
     const celebrate = () => {
       const pv = previewAward(profile); if (!pv) return;
-      for (const a of pv.achievements) if (!seen.ach.has(a.id)) { seen.ach.add(a.id); toast(`★ Achievement: ${a.name}`, 'good'); play('unique'); }
+      for (const a of pv.achievements) if (!seen.ach.has(a.id)) { seen.ach.add(a.id); achievementToast(a.name, a.description, a.bonusXp); play('unique'); }
       if (pv.level > seen.level) { seen.level = pv.level; toast(`LEVEL UP! You're level ${pv.level}`, 'good'); play('levelup'); }
       const m = Math.floor(pv.activeS / MILESTONE_S);
       if (m > seen.milestone) { seen.milestone = m; toast(`⏱ ${(m * MILESTONE_S) / 60} min ridden · ${Math.round(pv.kj)} kJ`); play('milestone'); }

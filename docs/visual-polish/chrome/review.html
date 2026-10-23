@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8"><title>Wattcade · Chrome review</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:28px;background:#071923;color:#eaf0e6;font-family:system-ui}h1{margin:0 0 6px;font-size:26px}p{margin:0 0 24px;color:#9eb9c4;font-size:14px}.grid{display:grid;grid-template-columns:repeat(2,590px);gap:20px}figure{margin:0}figcaption{display:flex;gap:14px;align-items:baseline;padding:10px 0;font-size:16px;font-weight:700}small{font-size:11px;font-weight:400;color:#9eb9c4}img{display:block;width:590px;height:410px}body.phone .grid{grid-template-columns:repeat(4,390px)}body.phone img{width:390px;height:844px}body.phone figcaption{display:block;height:64px}body.phone figcaption small{display:block;margin-top:4px}
+</style>
+<h1>Wattcade · Chrome</h1><p>Working screens · flat surfaces, pixel accents, mint focus and gold achievements</p>
+<div class="grid"></div>
+<script>
+const phone=new URLSearchParams(location.search).has('phone');document.body.classList.toggle('phone',phone);
+const views=[['connect','01 · Connection','Flat device list / setup details on demand'],['riders','02 · Rider selection','A compact roster and one animated showcase'],['pause','03 · Pause','A quiet sheet over the actual game'],['achievement','04 · Achievement','A compact, temporary notification']];
+document.querySelector('.grid').innerHTML=views.map(([id,name,desc])=>`<figure><figcaption>${name}<small>${desc}</small></figcaption><img src="${phone?'phone':'desktop'}-${id}.png"></figure>`).join('');
+</script>

@@ -402,7 +402,7 @@ export function abandonSession(): void {
   active.finish(); active.mixer?.panic?.(true); active = null;
 }
 /** What the rider would earn if the game ended now (for mid-ride toasts). Nothing is saved. */
-export function previewAward(profile: Profile): { xp: number; level: number; achievements: Array<{ id: string; name: string }>; activeS: number; kj: number } | null {
+export function previewAward(profile: Profile): { xp: number; level: number; achievements: Array<{ id: string; name: string; description?: string; bonusXp?: number }>; activeS: number; kj: number } | null {
   if (!active) return null;
   let summary: Record<string, number | string> = {};
   try { summary = active.sim.summary(); } catch { /* mid-run summary is best effort */ }
@@ -410,7 +410,7 @@ export function previewAward(profile: Profile): { xp: number; level: number; ach
   const r: any = awardSession(profile, rec);
   return {
     xp: r.xpGained ?? 0, level: r.profile?.level ?? profile.level,
-    achievements: (r.newAchievements ?? []).map((x: any) => ({ id: x.id, name: x.name ?? x.id })),
+    achievements: (r.newAchievements ?? []).map((x: any) => ({ id: x.id, name: x.name ?? x.id, description: x.desc ? measurementText(x.desc, unitsFor(profile)) : undefined, bonusXp: x.bonusXp })),
     activeS: activeSecondsOf(rec), kj: rec.stats.kj,
   };
 }

@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'preact/hooks';
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
+import { PixelIcon } from '../chrome/PixelIcon';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { DeviceKind } from '../types';
 import { Btn, Dot } from '../components/Bits';
-import { KeyHints, Spinner } from '../components/ui';
+import { Spinner } from '../components/ui';
 import { addSecondController, connectDevice, controllerCount, controllerInfo, disconnectDevice, getDeviceStatus, getFake, downloadBluetoothLog, liveDevices, setFake, subscribeDevices, savedHrWatches, selectSavedHrWatch } from '../services';
 import { MediaServerConnection } from '../components/MediaServerConnection';
 import { useMenuNav } from '../useMenuNav';
 
-const ITEMS: Array<{ kind: DeviceKind; label: string; icon: string; note: string }> = [
-  { kind: 'trainer', label: 'Trainer', icon: '⚡', note: 'KICKR CORE. Close Zwift on this iPad first.' },
-  { kind: 'controller', label: 'Controller', icon: '🎮', note: 'Zwift Ride. Connect one "Zwift SF2", then + Add other side. Close Zwift first.' },
-  { kind: 'hr', label: 'Heart rate', icon: '❤', note: 'Garmin: enable Broadcast Heart Rate and record an Indoor Bike activity on the watch.' },
+const ITEMS: Array<{ kind: DeviceKind; label: string; note: string }> = [
+  { kind: 'trainer', label: 'Trainer', note: 'KICKR CORE. Close Zwift on this iPad first.' },
+  { kind: 'controller', label: 'Controller', note: 'Zwift Ride. Connect one "Zwift SF2", then + Add other side. Close Zwift first.' },
+  { kind: 'hr', label: 'Heart rate', note: 'Garmin: enable Broadcast Heart Rate and record an Indoor Bike activity on the watch.' },
 ];
 
 function live(kind: DeviceKind): string | null {
@@ -20,6 +23,7 @@ function live(kind: DeviceKind): string | null {
 }
 
 export function Connect({ onDone }: { onDone: () => void }) {
+  const list = useRef<HTMLDivElement>(null);
   const [, force] = useState(0);
   useEffect(() => subscribeDevices(() => force((n) => n + 1)), []);
   useEffect(() => { const id = setInterval(() => force((n) => n + 1), 250); return () => clearInterval(id); }, []); // live readings
@@ -27,28 +31,31 @@ export function Connect({ onDone }: { onDone: () => void }) {
   const act = (i: number) => {
     if (i < 3) { const k = ITEMS[i].kind; void (st[k].busy || st[k].connected ? disconnectDevice(k) : connectDevice(k)); }
     else if (i === 3) document.querySelector<HTMLInputElement>('[aria-label="Media server URL"]')?.focus();
-    else if (i === 4) setFake(!getFake());
-    else if (i === 5) onDone();
+    else if (i === 4) onDone();
+    else if (i === 5) setFake(!getFake());
     else downloadBluetoothLog();
   };
   const anyOn = ITEMS.some((it) => st[it.kind].connected);
-  const [idx, setIdx] = useMenuNav(7, [4, 2, 1], act, onDone, true, { initial: 5 }); // default to Ride/Continue so a stray controller press can't disconnect a device
+  const [idx, setIdx] = useMenuNav(7, [4, 2, 1], act, onDone, true, { initial: 4 }); // default to Ride/Continue so a stray controller press can't disconnect a device
+  useLayoutEffect(() => { list.current?.querySelector<HTMLElement>('.focused')?.scrollIntoView?.({ block: 'nearest' }); }, [idx]);
   return (
-    <div class="screen">
-      <div class="screen-head">
-        <div><h1>Connect</h1><div class="sub">{anyOn ? 'Connected devices ride with you through every game.' : 'Your saved setup connects automatically. Tap a device to choose it, or continue for a demo ride.'}</div></div>
+    <div class="screen chrome-ui connect-screen">
+      <div class="screen-head chrome-head">
+        <div><div class="chrome-eyebrow">WATTCADE / YOUR SETUP</div><h1>Ready to ride.</h1><div class="sub">{anyOn ? 'Connected devices ride with you through every game.' : 'Your saved setup connects automatically. Tap a device to choose it, or continue for a demo ride.'}</div></div>
       </div>
-      <div class="device-row">
+      <div class="connection-layout" ref={list}><div class="device-row">
         {ITEMS.map((it, i) => {
           const s = st[it.kind];
           return (
-            <div class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`} onClick={() => { setIdx(5); act(i); }}>
-              <div class="device-top"><span class="icon">{it.icon}</span><h3>{it.label}</h3><span class="spacer" />{s.busy ? <Spinner /> : <Dot on={s.connected} />}</div>
-              <div class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? 'Connected · tap to disconnect' : 'Tap to connect'}</div>
+            <section class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`}>
+              <button type="button" class="device-connect" aria-label={`${s.connected ? 'Disconnect' : 'Connect'} ${it.label}`} disabled={s.busy} onClick={() => { setIdx(4); act(i); }}>
+                <span class="device-symbol"><PixelIcon kind={it.kind} /></span>
+                <span class="device-heading"><strong>{it.label}</strong><span class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? `Connected${it.kind === 'trainer' && s.detail ? ` · ${s.detail}` : ''}` : it.kind === 'trainer' ? 'Connect your bike' : 'Optional'}</span></span>
+                <span class="device-status">{s.busy ? <Spinner /> : <Dot on={s.connected} />}{s.busy ? 'Connecting' : s.connected ? 'Disconnect' : 'Connect'}</span>
+              </button>
               {s.connected && <div class="device-live">{live(it.kind)}</div>}
-              {it.kind === 'trainer' && s.connected && s.detail && <div class="warn">{s.detail}</div>}
               {it.kind === 'hr' && !s.busy && s.detail && <div class="dim small">{s.detail}</div>}
-              {it.kind === 'hr' && (
+              {it.kind === 'hr' && (s.connected || s.error || savedHrWatches().length > 0) && (
                 <div class="row" onClick={(e) => e.stopPropagation()}>
                   {savedHrWatches().map((watch) => (
                     <button key={watch.id} class="btn small" disabled={s.busy || watch.selected} onClick={(e) => { e.stopPropagation(); void selectSavedHrWatch(watch.id); }}>
@@ -66,18 +73,16 @@ export function Connect({ onDone }: { onDone: () => void }) {
                 <button class="btn small" disabled={s.busy} onClick={(e) => { e.stopPropagation(); void addSecondController(); }}>+ Add other side</button>
               )}
               {controllerInfo.warning && it.kind === 'controller' && <div class="warn">{controllerInfo.warning}</div>}
-              <div class="dim small note">{it.note}</div>
-            </div>
+              <details class="device-help"><summary>Setup help</summary><p>{it.note}</p></details>
+            </section>
           );
         })}
-        <MediaServerConnection focused={idx === 3} onFocus={() => setIdx(3)}/>
+      <Btn class="connection-log" focused={idx === 6} onClick={downloadBluetoothLog}>Download Bluetooth log</Btn></div><aside class="connection-extras"><div class="chrome-eyebrow">MORE WAYS TO RIDE</div><MediaServerConnection focused={idx === 3} onFocus={() => setIdx(3)}/></aside></div>
+      <div class="row connection-actions">
+        <Btn primary focused={idx === 4} onClick={onDone}>Continue →</Btn>
+        <Btn focused={idx === 5} onClick={() => act(5)}>{getFake() ? 'Demo bike: on' : 'Try a demo ride'}</Btn>
       </div>
-      <div class="row">
-        <Btn focused={idx === 4} onClick={() => act(4)}>{getFake() ? 'Fake bike: ON' : 'Fake bike: off'}</Btn>
-        <Btn primary focused={idx === 5} onClick={onDone}>Continue ▶</Btn>
-      </div>
-      <Btn focused={idx === 6} onClick={downloadBluetoothLog}>Download Bluetooth log</Btn>
-      <KeyHints hints={[['dpad', 'Move'], ['a', 'Connect / select'], ['b', 'Continue']]} />
+      <ChromeHints hints={[['dpad', 'Move'], ['a', 'Connect / select'], ['b', 'Continue']]} />
     </div>
   );
 }

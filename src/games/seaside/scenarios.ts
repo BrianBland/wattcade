@@ -8,8 +8,6 @@ interface Scenario {
 }
 
 const TARGET_MIN = 120;
-/** Not sprinting holds every fish fight for ~2 min: z2 rides 10–15 min longer than a rider who sprints on cue. */
-const Z2_MAX_MIN = 135;
 const ofType = (run: Run, type: string) => run.events.filter((e) => e.type === type);
 const PLAN_MIN = STORY.reduce((a, x) => a + x.planS, 0) / 60;
 /** A sprint on the trainer: a run of resistance commands at or above this level (fish runs dip to ≥ 54 %). */
@@ -64,8 +62,9 @@ export const scenarios: Scenario[] = [
       const chapterSaves = ofType(run, 'save').filter((e) => e.data?.progress === 0).map((e) => e.data?.sceneId);
       if (chapterSaves.join() !== 'eyesOpen,cavern') f.push(`chapter saves ${chapterSaves.join()}`);
       if (!ofType(run, 'save').some((e) => e.data?.sceneId === 'drill1' && e.data?.progress === 0.5)) f.push('no checkpoint inside the drill');
-      const min = Number(s['Ride minutes']);
-      if (min < PLAN_MIN + 7 || min > Z2_MAX_MIN) f.push(`ride ${min} min, want ${(PLAN_MIN + 7).toFixed(1)}–${Z2_MAX_MIN}`);
+      // not sprinting holds every fish fight for ~2 min: 10–15 min over a rider who sprints on cue, still ~2 h
+      f.push(...near(Number(s['Ride minutes']), TARGET_MIN, 0.1, 'ride'));
+      if (Number(s['Ride minutes']) < PLAN_MIN + 7) f.push(`ride ${s['Ride minutes']} min: not sprinting should cost more`);
       if (Number(s.Lines) < 30) f.push(`only ${s.Lines} monologue lines shown`);
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
       f.push(...workoutPlan(run));

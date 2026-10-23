@@ -25,7 +25,7 @@ const at = (v: number) => ({ m: v }), effort = { effortS: true as const }, timed
 const RAW: Raw[] = [
   // ---------- Morning ----------
   { id: 'title', ch: 0, kind: 'cutscene', title: 'Title', min: 1, e: [[1, 45]], len: timed, tr: sim(0), look: 'morning', dream: 0.1 },
-  { id: 'highway', ch: 0, kind: 'ride', title: 'Highway 1', min: 8, e: [[3, 50], [5, 63]], len: at(8), tr: swell(0.5, 1.5, 3),
+  { id: 'highway', ch: 0, kind: 'ride', title: 'Highway 1', min: 7, e: [[3, 50], [4, 63]], len: at(8), tr: swell(0.5, 1.5, 3),
     say: ['Good day for it.', "Wind's out of the north. Figures.", 'Big bird.'], look: 'morning', dream: 0.12 },
   { id: 'turnout1', ch: 0, kind: 'fish', title: 'Turnout 1', min: 6, e: [[2, 55], [0.13, 135], [1.87, 58], [0.13, 135], [1.87, 58]], len: effort, tr: res(20), sizes: [0.1, 0.15],
     say: ['Lunch, maybe.', 'That counts. That definitely counts.'], look: 'morning', dream: 0.15 },
@@ -54,7 +54,7 @@ const RAW: Raw[] = [
     say: ["There wasn't an island here.", "I'd have seen it."], look: 'midday', dream: 0.5 },
   { id: 'beach', ch: 1, kind: 'fish', title: 'Beach', min: 5, e: [[2, 55], [0.17, 135], [2.83, 50]], len: effort, tr: res(25), sizes: [0.2],
     say: ['Tired. Hungry. In that order.', 'Who lit this fire?'], look: 'midday', dream: 0.52 },
-  { id: 'boardwalk', ch: 1, kind: 'ride', title: 'Boardwalk', min: 6, e: [[6, 64]], len: at(6.5), tr: swell(0.5, 0.5, 3), say: ['It keeps turning left.'], look: 'jungle', dream: 0.55 },
+  { id: 'boardwalk', ch: 1, kind: 'ride', title: 'Boardwalk', min: 5, e: [[5, 64]], len: at(6.5), tr: swell(0.5, 0.5, 3), say: ['It keeps turning left.'], look: 'jungle', dream: 0.55 },
   { id: 'cutStones', ch: 1, kind: 'ride', title: 'Cut stones', min: 6, e: [[2, 65], [2, 70], [2, 72]], len: at(6), tr: route([[0, 1.5], [0.25, 2.5], [1, 3]], { pct: 0.5, cycles: 4 }),
     say: ['Somebody cut these.', 'Somebody a long time ago.'], look: 'jungle', dream: 0.58 },
   { id: 'monkeyMouth', ch: 1, kind: 'ride', title: 'The monkey mouth', min: 1, e: [[1, 60]], len: at(4), tr: sim(0), say: ['Well.', 'In we go.'], look: 'jungle', dream: 0.6 },

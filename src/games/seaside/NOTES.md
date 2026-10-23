@@ -23,7 +23,7 @@ flag (`?dev=1`, remembered; `?dev=0` clears; always on under `vite` dev). Move t
 - `pull.ts` pure: 9 sprints (story `sizes` re-time each ≥ 100 % segment to 110–150 % FTP × 6–25 s). Fish fights hold
   the scene: at target the stamina drains with work; below it the fish tires on its own in 110–190 s (by size) while
   you pedal (≥ 0.3 FTP), escaping after 240 s. That overtime is excluded from the pace lag, so not sprinting costs
-  10–15 min (z2 ≈ 132.5 vs on-cue ≈ 121.7 min). Set pieces (Big One, breakthrough,
+  10–15 min (z2 ≈ 130.5 vs on-cue ≈ 119.7 min). Set pieces (Big One, breakthrough,
   re-entry) always resolve; effort → `spectacle`. Events `pull`; summary: fish landed, sprints on target, best, drill.
 - Scene length: `{ m }` (rail), `{ effortS }` (fish, drill, fan) or `{ s }` (cutscenes, shops, the Big One, re-entry).
 - `monologue.ts`: one line, 4 s, 1 s gap, dropped after 30 s, hidden while the target ≥ 105 % FTP. `sim.ts`: menu (continue / start over, + chapter select after the first full ride; auto-picks after 20 s; renderer taps
@@ -36,5 +36,5 @@ plate + progress, bubble top-left, chapter card, menu. `layout.ts` keeps all of 
 #185 swaps the stage box for the voxel world (dynamic `import()` from `loadRenderer`).
 
 ## Run
-- Tests: `npx vitest run src/games/seaside`. Scenarios: target-follow ≈ plan, sprints ≈ 125, z2 ≤ 135 min; all 6/6 fish,
+- Tests: `npx vitest run src/games/seaside`. Scenarios: target-follow ≈ plan, sprints ≈ 121, z2 ≈ 130.5 min; all 6/6 fish,
   2 ERG blocks, 9 trainer sprints (resistance runs ≥ 50 %); idle resolves set pieces / lets fish go, waits on rides.

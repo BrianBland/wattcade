@@ -28,6 +28,38 @@ describe('levels', () => {
 });
 
 describe('awardSession', () => {
+  it.each([
+    ['an immediate exit', 0, 0],
+    ['a short ride', 119, 119],
+    ['a long idle session', 1800, 0],
+    ['a long session with too little pedalling', 1800, 119],
+    ['a partial second represented by the first sample', 119.5, 120],
+  ])('does not award XP, achievements or progression for %s', (_name, durationS, activeS) => {
+    const p = defaultProfile();
+    const record = rec({
+      gameId: 'cadenza', durationS,
+      samples: Array.from({ length: Math.max(activeS, Math.floor(durationS)) }, (_, t) => ({
+        t, power: t < activeS ? 150 : 0, cadence: t < activeS ? 85 : 0,
+        hr: null, grade: null, mode: 'sim' as const,
+      })),
+      events: [{ t: 0, type: 'setDone' }], gameSummary: { songsDone: 5 },
+    });
+    const result = awardSession(p, record);
+    expect(result).toEqual({ profile: p, xpGained: 0, baseXp: 0, levelUps: [], newAchievements: [] });
+    expect(result.profile).toBe(p);
+  });
+
+  it('awards the full ride once two minutes of pedalling are reached', () => {
+    const record = rec({ durationS: 120, samples: rec().samples.slice(0, 120) }, {
+      kj: 18, sprints: 0, zoneSeconds: [0, 120, 0, 0, 0],
+    });
+    const result = awardSession(defaultProfile(), record);
+    expect(result.baseXp).toBe(24);
+    expect(result.xpGained).toBe(49);
+    expect(result.newAchievements.map((a) => a.id)).toEqual(['first_ride']);
+    expect(result.profile.lifetime).toMatchObject({ sessions: 1, seconds: 120, kj: 18 });
+  });
+
   it('xp formula + first_ride', () => {
     const p = defaultProfile();
     const r = awardSession(p, rec());

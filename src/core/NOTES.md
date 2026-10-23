@@ -10,6 +10,7 @@ createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
   Fake bike is on when `fake` is truthy, or when `fake` is undefined and no `dataHub` was passed. `fake:false` = real devices only.
   `pause()` = loop pause + mixer.panic(true) (sends sim/0 immediately); `resume()` reverses.
 - Step order: clock.advance -> input.beginTick -> fakeBike.tick -> bikeStore.tick -> mixer.tick -> sim.update -> recorder.tick.
+- Recorder integrates power only on recorded ticks and receives each tick's new sprint count; shared bike totals from earlier games or idle time never enter a session's kJ/sprints (or its XP).
 - `frame()` timeScale is forced to 1x when `dataHub.hasRealDevices()` (trainer/hr/controller flags; fake does not count).
 - DataHub: `new DataHub(store?)`, `.store`, `attachTrainer/attachHr/attachController(dev, {setControllerState})` (each returns detach),
   `sendCommand`, `capabilities()`, `onChange`, `disconnectAll`. A trainer with kind 'fake' sets `connected.fake`, not `.trainer`.

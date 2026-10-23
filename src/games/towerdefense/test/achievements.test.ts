@@ -83,7 +83,8 @@ it('a zone-2 half hour unlocks at most one Dynamo Defense achievement', () => {
   ];
   const record = {
     id: 'z2', profileId: 'x', gameId: 'towerdefense', startedAt: Date.now(), durationS: 30 * 60,
-    samples: [], events, stats: { avgPower: 130, kj: 200, sprints: 0, maxPower: 160, avgHr: null, zoneSeconds: [0, 1800, 0, 0, 0] }, gameSummary: summary,
+    samples: Array.from({ length: 1800 }, (_, t) => ({ t, power: 130, cadence: 85, hr: null, grade: 0, mode: 'sim' as const })),
+    events, stats: { avgPower: 130, kj: 200, sprints: 0, maxPower: 160, avgHr: null, zoneSeconds: [0, 1800, 0, 0, 0] }, gameSummary: summary,
   } as SessionRecord;
   const ids = awardSession(defaultProfile(), record).newAchievements.map((a) => a.id).filter((id) => achievements.some((a) => a.id === id));
   expect(ids).toEqual(['td_kindling']);

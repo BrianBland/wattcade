@@ -7,6 +7,7 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 - `SessionStore(dbName?)`: `save(record)`, `list(profileId, limit?)` newest first, `clear`; keeps last 200 per profile.
 - `awardSession(profile, record) -> { profile, xpGained, baseXp, levelUps: number[], newAchievements: {id,name,bonusXp}[] }` (pure; does not mutate input; caller persists).
 - XP = round(kJ) + 2*activeMin (samples with cadence>20 at 1 Hz) + round(zone2 min) + 5*sprints + achievement bonuses. Zone 2 = `stats.zoneSeconds[1]` (index 0 = zone 1).
+- `MIN_AWARD_ACTIVE_S` = 120: shorter rides (by duration or pedalling samples) earn no XP/achievements and do not advance lifetime, calendar, variety or game counters. The shell uses the same minimum for warm-up credit; previews and saved awards share this gate.
 
 - Award order: lifetime/lastPlayed/`rideDays` (local days, last 120) → `counters` (each `count.key` once) → achievements in list order
   (core, games in `allGames` order, then `overachiever`, which sees the ids earned earlier in the same award).

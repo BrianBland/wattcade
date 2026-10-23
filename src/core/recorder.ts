@@ -10,13 +10,15 @@ export class SessionRecorder {
 
   event(t: number, e: GameEvent): void { this.events.push({ t, ...e }); }
 
-  tick(dt: number, bike: Readonly<BikeState>, cmd: TrainerCommand | null): void {
+  /** Record this tick's work only; the bike's cumulative totals span games and idle time. */
+  tick(dt: number, bike: Readonly<BikeState>, cmd: TrainerCommand | null, newSprints: number): void {
     this.t += dt;
     const p = bike.raw.power;
     this.sumP += p; this.n++; this.maxP = Math.max(this.maxP, p);
     if (bike.raw.hr !== null) { this.sumHr += bike.raw.hr; this.nHr++; }
     this.zoneS[bike.effortZone - 1] += dt;
-    this.kj = bike.kj; this.sprints = bike.sprintCount;
+    this.kj += (p * dt) / 1000;
+    this.sprints += newSprints;
     if (this.t >= this.nextSample) {
       this.nextSample += 1;
       this.samples.push({ t: this.t, power: p, cadence: bike.raw.cadence, hr: bike.raw.hr,

@@ -3,7 +3,7 @@ import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { afterEach, expect, it, vi } from 'vitest';
 const m = vi.hoisted(() => ({
-  select: vi.fn(), connect: vi.fn(), disconnect: vi.fn(),
+  select: vi.fn(), connect: vi.fn(), disconnect: vi.fn(), activate: (_: number) => {},
   status: { trainer: { connected: false }, controller: { connected: false }, hr: { connected: false, busy: false, detail: '', error: undefined as string | undefined } },
 }));
 vi.mock('../services', () => ({
@@ -12,7 +12,7 @@ vi.mock('../services', () => ({
   liveDevices: () => ({ raw: { power: 0, cadence: 0 } }), setFake: vi.fn(), subscribeDevices: () => () => {},
   savedHrWatches: () => [{ id: 'watch-1', name: 'Garmin', selected: false }], selectSavedHrWatch: m.select,
 }));
-vi.mock('../useMenuNav', () => ({ useMenuNav: () => [4, vi.fn()] }));
+vi.mock('../useMenuNav', () => ({ useMenuNav: (_count: number, _layout: unknown, activate: (i: number) => void) => { m.activate = activate; return [4, vi.fn()]; } }));
 vi.mock('../../audio/sfx', () => ({ play: vi.fn() }));
 import { Connect } from './Connect';
 let host: HTMLDivElement;
@@ -48,4 +48,12 @@ it('cancels the busy watch without bubbling to the device-card action', async ()
   const button = [...host.querySelectorAll('button')].find(b => b.textContent === 'Cancel connection')!;
   await act(() => button.click());
   expect(m.disconnect).toHaveBeenCalledExactlyOnceWith('hr'); expect(m.connect).not.toHaveBeenCalled();
+});
+
+it('controller selection expands and collapses optional media setup', async () => {
+  await mount();
+  const panel = host.querySelector<HTMLDetailsElement>('.media-server-connection')!;
+  expect(panel.open).toBe(false);
+  await act(() => m.activate(3)); expect(panel.open).toBe(true);
+  await act(() => m.activate(3)); expect(panel.open).toBe(false);
 });

@@ -30,7 +30,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
   const st = getDeviceStatus();
   const act = (i: number) => {
     if (i < 3) { const k = ITEMS[i].kind; void (st[k].busy || st[k].connected ? disconnectDevice(k) : connectDevice(k)); }
-    else if (i === 3) document.querySelector<HTMLInputElement>('[aria-label="Media server URL"]')?.focus();
+    else if (i === 3) list.current?.querySelector<HTMLElement>('.media-server-summary')?.click();
     else if (i === 4) onDone();
     else if (i === 5) setFake(!getFake());
     else downloadBluetoothLog();

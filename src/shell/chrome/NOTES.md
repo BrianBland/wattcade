@@ -1,7 +1,7 @@
 # Flat game chrome
 - `chrome.css` is scoped to `.chrome-ui` screens/pause and `.chrome-toasts`; other screens keep their existing styles.
 - Flat navy surfaces, mint primary/focus, gold achievement accent. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
-- Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings. The setup list scrolls independently while Continue remains reachable.
+- Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings (collapsed on every visit, including saved setups; summary shows Optional/Enabled/Connected; controller A toggles). The setup list scrolls independently while Continue remains reachable.
 - ProfilePicker has a roster + one live selected-rider showcase. Touch previews first, then explicit Ride/Edit; controller A starts, Y edits. Phone roster scrolls horizontally with gestures; controller focus scrolls into view.
 - Pause uses vertical menu navigation matching its visual order, preserving difficulty/layout/sound/help/history/restart/quit and game extension actions. Short screens scroll the sheet.
 - `ChromeHints` follows Bluetooth and gamepad connection changes. Physical A/B labels only appear with a controller attached.

@@ -90,11 +90,11 @@ export type SystemAction = 'pause' | 'toggleDebug' | 'panic';
 
 // ===== Trainer =====
 export type TrainerCommand =
-  | { mode: 'sim'; gradePct: number; windMps?: number; crr?: number; cw?: number }
+  | { mode: 'sim'; gradePct: number; windMps?: number; crr?: number; cw?: number; virtualGear?: number }
   | { mode: 'erg'; watts: Watts }
   | { mode: 'resistance'; levelPct: number }  // 0..100 of supported range
   | { mode: 'none' };
-export interface TrainerCapabilities { sim: boolean; erg: boolean; resistance: boolean; resistanceRange?: [number, number, number]; powerRange?: [number, number, number] }
+export interface TrainerCapabilities { sim: boolean; erg: boolean; resistance: boolean; nativeShifting?: boolean; resistanceRange?: [number, number, number]; powerRange?: [number, number, number] }
 export interface TrainerDevice {
   readonly kind: 'ftms' | 'fake';
   readonly capabilities: TrainerCapabilities;

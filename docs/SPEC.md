@@ -147,7 +147,7 @@ See `src/contracts.ts` (written verbatim from the original spec; the orchestrato
 
 - **Resistance mixer** (core): the highest-priority mode wins. Effects in the same mode combine: sim grades add, ERG takes the max target, resistance levels add. Then:
   - **Difficulty knob:** scales positive grade, ERG watts, and resistance level.
-  - **Virtual gears** (sim mode only, when enabled): add `(gear − 6) × tuning 'core.gearStepPct'` (default 0.8 %) to the grade.
+  - **Virtual gears** (sim mode only, when enabled): compatible KICKRs use native ratios, gears 1–24 starting at 12, independent of road gradient. FTMS-only trainers and the fake bike use gears 1–11 and add `(gear − 6) × tuning 'core.gearStepPct'` (default 0.8 %) to grade. ERG retains its watt target; the chosen native gear is restored on return to sim. Panic selects flat grade and native gear 1. Native discovery/handshake runs on each connection; inaccessible services fall back to FTMS gearing.
   - **Clamps:** grade to [−5, maxGradePct]; ERG to [60 W, ergCap × FTP]; level to [0, 100].
   - **Rate limits:** send a command only when it changes by at least 0.2 % grade, 5 W, or 2 level, and at most once every 750 ms of real time.
   - **Panic/pause:** overrides everything with `{mode:'sim', gradePct:0}` until resumed.

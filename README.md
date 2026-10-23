@@ -45,6 +45,14 @@ Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.htm
 
 ## Controls
 
+**Virtual shifting:** compatible KICKRs automatically use 24 native gear ratios,
+starting at gear 12, wherever a game or warm-up enables gears. Hills stay separate
+from gearing; ERG workouts keep their watt targets. Other trainers and the fake
+bike retain the 11 gradient-based gears. If an already-saved KICKR stays on 11 gears,
+select it again from device setup to grant access to the native Bluetooth service.
+The [native shifting test](docs/NATIVE_SHIFTING_TEST.md) at `/shift-probe.html`
+also offers Copy, Share, and selectable log text for Bluefy.
+
 | Action | Keyboard | Zwift Ride | Gamepad |
 |---|---|---|---|
 | D-pad | arrows | D-pad | d-pad |

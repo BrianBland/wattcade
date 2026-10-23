@@ -7,6 +7,8 @@ export interface MixerOpts {
   send: (cmd: TrainerCommand) => Promise<SendResult>;
   /** Rider cadence (rpm) for the ERG low-cadence relief; omit to disable it. */
   cadence?: () => number;
+  nativeShifting?: () => boolean;
+  trainerRevision?: () => number;
 }
 
 const MIN_INTERVAL_S = 0.75;
@@ -20,9 +22,12 @@ export class ResistanceMixer implements ResistanceController {
   private gears = false;
   private gearSide: 'L' | 'R' | undefined;
   gear = 6;
+  private nativeGears = false;
+  private trainerRevision: number | undefined;
   private lastCommand: TrainerCommand | null = null;
   private lastSentAt = -Infinity;
   private lastResult: SendResult | null = null;
+  private sendSequence = 0;
   private chosenMode: TrainerCommand['mode'] = 'none';
   private gearStep: () => number;
   private rampS: () => number;
@@ -44,12 +49,18 @@ export class ResistanceMixer implements ResistanceController {
   }
   clear(id: string): void { this.effects.delete(id); }
   clearAll(): void { this.effects.clear(); }
-  useVirtualGears(enabled: boolean, side?: 'L' | 'R'): void { if (enabled && !this.gears) this.gear = 6; this.gears = enabled; this.gearSide = side; }
+  useVirtualGears(enabled: boolean, side?: 'L' | 'R'): void { this.syncGearing(); if (enabled && !this.gears) this.gear = this.nativeGears ? 12 : 6; this.gears = enabled; this.gearSide = side; }
+  private syncGearing(): void {
+    const native = this.o.nativeShifting?.() === true;
+    if (native === this.nativeGears) return;
+    this.nativeGears = native; this.gear = native ? 12 : 6;
+    this.lastCommand = null; // resend even when the road gradient is unchanged
+  }
   setDifficulty(d: number): void { this.difficulty = Math.min(1.5, Math.max(0.5, d)); }
   getDifficulty(): number { return this.difficulty; }
   panic(on: boolean): void {
     this.panicOn = on;
-    if (on) this.send({ mode: 'sim', gradePct: 0 });
+    if (on) { this.syncGearing(); this.send({ mode: 'sim', gradePct: 0, ...(this.nativeGears ? { virtualGear: 1 } : {}) }); }
   }
   isPanic(): boolean { return this.panicOn; }
   /** Ease the next commands in from neutral over `seconds` (default tuning core.rampInS), e.g. after a game's countdown. */
@@ -66,16 +77,19 @@ export class ResistanceMixer implements ResistanceController {
 
   tick(dt: Seconds, input: Readonly<InputState>): void {
     this.now += dt;
+    this.syncGearing();
+    const revision = this.o.trainerRevision?.();
+    if (revision !== this.trainerRevision) { this.trainerRevision = revision; this.lastCommand = null; }
     for (const [id, e] of this.effects) if (this.now >= e.expiresAt) this.effects.delete(id);
     if (this.gears) {
       const sides = this.gearSide ? [this.gearSide] : ['L', 'R'];
       for (const b of input.pressed) {
-        if (sides.some((s) => b === `shiftUp${s}`)) this.gear = Math.min(11, this.gear + 1);
+        if (sides.some((s) => b === `shiftUp${s}`)) this.gear = Math.min(this.nativeGears ? 24 : 11, this.gear + 1);
         else if (sides.some((s) => b === `shiftDn${s}`)) this.gear = Math.max(1, this.gear - 1);
       }
     }
     this.tickErgRelief(dt);
-    if (this.panicOn) { this.chosenMode = 'sim'; return; }
+    if (this.panicOn) { this.chosenMode = 'sim'; if (!this.lastCommand) this.panic(true); return; }
     if (this.rampLeft > 0) { this.rampLeft = Math.max(0, this.rampLeft - dt); if (this.rampLeft === 0) this.rampSettle = true; }
     const want = this.ramped(this.compute());
     // when a ramp ends, land exactly on the full command even if the last step is below the send thresholds
@@ -100,11 +114,12 @@ export class ResistanceMixer implements ResistanceController {
 
   /** The unthrottled command for the current effects. */
   compute(): TrainerCommand {
+    this.syncGearing();
     const prof = this.o.profile();
     const all = [...this.effects.values()];
     if (!all.length) {
       this.chosenMode = 'sim';
-      return { mode: 'sim', gradePct: this.clampGrade(this.gearOffset(), prof) };
+      return this.simCommand(this.clampGrade(this.gearOffset(), prof));
     }
     const top = Math.max(...all.map((e) => e.priority ?? 0));
     const mode = all.find((e) => (e.priority ?? 0) === top)!.mode;
@@ -113,7 +128,7 @@ export class ResistanceMixer implements ResistanceController {
     if (mode === 'sim') {
       let g = same.reduce((a, e) => a + (e.gradePct ?? 0), 0);
       if (g > 0) g *= this.difficulty;
-      return { mode: 'sim', gradePct: this.clampGrade(g + this.gearOffset(), prof) };
+      return this.simCommand(this.clampGrade(g + this.gearOffset(), prof));
     }
     if (mode === 'erg') {
       let w = Math.max(0, ...same.map((e) => e.watts ?? (e.ftpFraction !== undefined ? e.ftpFraction * prof.ftp : 0)));
@@ -124,13 +139,19 @@ export class ResistanceMixer implements ResistanceController {
     return { mode: 'resistance', levelPct: Math.min(100, Math.max(0, lvl)) };
   }
 
-  private gearOffset(): number { return this.gears ? (this.gear - 6) * this.gearStep() : 0; }
+  private simCommand(gradePct: number): Extract<TrainerCommand, { mode: 'sim' }> {
+    return { mode: 'sim', gradePct, ...(this.nativeGears ? { virtualGear: this.gears ? this.gear : 12 } : {}) };
+  }
+  private gearOffset(): number { return this.gears && !this.nativeGears ? (this.gear - 6) * this.gearStep() : 0; }
   private clampGrade(g: number, prof: Readonly<Profile>): number { return Math.min(prof.settings.maxGradePct, Math.max(-5, g)); }
 
   private shouldSend(c: TrainerCommand): boolean {
     const l = this.lastCommand;
     if (!l) return true;
+    // Ratios use the native channel: shifts should not wait for the road's 750ms rate limit.
+    if (c.mode === 'sim' && l.mode === 'sim' && c.virtualGear !== l.virtualGear) return true;
     if (this.now - this.lastSentAt < MIN_INTERVAL_S - 1e-9) return false;
+    if (this.lastResult?.ok === false) return true;
     if (l.mode !== c.mode) return true;
     switch (c.mode) {
       case 'sim': return Math.abs(c.gradePct - (l as typeof c).gradePct) >= 0.2;
@@ -142,14 +163,16 @@ export class ResistanceMixer implements ResistanceController {
 
   private send(c: TrainerCommand): void {
     this.lastCommand = c; this.lastSentAt = this.now;
-    this.o.send(c).then((r) => { this.lastResult = r; }, (e) => { this.lastResult = { ok: false, detail: String(e) }; });
+    this.lastResult = null;
+    const sequence = ++this.sendSequence;
+    this.o.send(c).then((r) => { if (sequence === this.sendSequence) this.lastResult = r; }, (e) => { if (sequence === this.sendSequence) this.lastResult = { ok: false, detail: String(e) }; });
   }
 
   debug() {
     return {
       activeEffects: [...this.effects.values()].map(({ expiresAt, ...e }) => e),
       chosenMode: this.chosenMode, lastCommand: this.lastCommand, lastResult: this.lastResult,
-      difficulty: this.difficulty, ergRelief: +this.ergRelief.toFixed(2), gear: this.gear, gearsEnabled: this.gears, panic: this.panicOn,
+      difficulty: this.difficulty, ergRelief: +this.ergRelief.toFixed(2), gear: this.gear, gearsEnabled: this.gears, nativeGears: this.nativeGears, panic: this.panicOn,
     };
   }
   get command(): TrainerCommand | null { return this.lastCommand; }

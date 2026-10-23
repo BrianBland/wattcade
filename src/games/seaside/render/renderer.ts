@@ -3,6 +3,9 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
+import { drawShop, type ShopTarget } from './shop';
+import { shopLayout } from './shopLayout';
+import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
 import { inside, layout, type Box } from './layout';
 
@@ -18,6 +21,9 @@ export class SeasideRenderer implements GameRenderer {
   private W = 0; H = 0;
   private menuRows: Box[] = [];
   private spotBoxes: Box[] = [];
+  private shopTargets: ShopTarget[] = [];
+  private diorama: ShopDiorama | null = null;
+  private shopCanvas: HTMLCanvasElement | null = null;
   private send?: (a: unknown) => void;
   private ro: ResizeObserver | null = null;
   private offTap: (() => void) | null = null;
@@ -25,12 +31,16 @@ export class SeasideRenderer implements GameRenderer {
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }): void {
     this.send = ctx.send;
     if (ctx.insets) this.insets = ctx.insets;
+    const background = document.createElement('canvas'); container.appendChild(background);
+    this.shopCanvas = background; this.diorama = new ShopDiorama(background); this.diorama.hide();
     const c = document.createElement('canvas');
     c.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(c);
     this.canvas = c; this.g = c.getContext('2d');
     const onDown = (e: PointerEvent) => {
       const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const shopTarget = this.shopTargets.find((t) => inside(t.box, x, y));
+      if (shopTarget) { this.send?.({ type: 'shop', action: shopTarget.action }); return; }
       const i = this.menuRows.findIndex((b) => inside(b, x, y));
       if (i >= 0) { this.send?.({ type: 'menu', index: i }); return; }
       const k = this.spotBoxes.findIndex((b) => inside(b, x, y));
@@ -61,7 +71,17 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const L = layout(W, H, this.insets, s.menu?.items.length ?? 0, s.fishing?.spots.length ?? 3);
     this.menuRows = L.menu;
+    this.shopTargets = [];
     this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
+
+    if (s.shop && s.shop.bonusRemaining === null && !s.menu) {
+      this.spotBoxes = [];
+      this.diorama?.show(s.shop.id, W, H, this.insets);
+      g.clearRect(0, 0, W, H);
+      this.shopTargets = drawShop(g, s.shop, shopLayout(W, H, this.insets));
+      return;
+    }
+    this.diorama?.hide();
 
     // background: full bleed, tinted by the look and dream dial
     const [a, b] = SKY[s.look.name];
@@ -137,6 +157,7 @@ export class SeasideRenderer implements GameRenderer {
 
   unmount(): void {
     this.ro?.disconnect(); this.offTap?.();
+    this.diorama?.dispose(); this.diorama = null; this.shopCanvas?.remove(); this.shopCanvas = null;
     this.canvas?.remove(); this.canvas = null; this.g = null;
   }
 }

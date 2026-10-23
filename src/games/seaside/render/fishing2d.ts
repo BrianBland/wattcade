@@ -1,5 +1,6 @@
 // Fishing on the placeholder canvas (#187): spots, rod, line, bobber, ripples, the fish, prompts and the catch card.
 // The voxel rig (`fishingRig.ts`) is the real view; this keeps fishing playable until the scenes move to WorldView.
+import { money, saleCents } from '../sim/economy';
 import type { FishId } from '../sim/catalogue';
 import type { FishingView } from '../sim/fishing';
 import { fishPose } from './fishingPose';
@@ -18,7 +19,7 @@ const prompts = (f: FishingView): string => {
     case 'bite': return 'Ⓐ  STRIKE!';
     case 'pull': return 'PULL!';
     case 'escape': return 'It got away.';
-    case 'done': return f.caught.length ? `${f.caught.length} in the bucket · $${f.caught.reduce((a, c) => a + c.value, 0)}` : 'Nothing biting.';
+    case 'done': return f.caught.length ? `${f.caught.length} in the bucket · ${money(f.caught.reduce((a, c) => a + saleCents(c), 0))}` : 'Nothing biting.';
     default: return '';
   }
 };
@@ -100,7 +101,7 @@ export function drawFishing(g: CanvasRenderingContext2D, f: FishingView, L: Fish
     g.font = `${Math.round(c.h * 0.12)}px system-ui, sans-serif`;
     g.fillText(`${fish.kg} kg · ${Math.round(fish.lenM * 100)} cm`, c.x + c.w / 2, c.y + c.h * 0.48);
     g.font = `700 ${Math.round(c.h * 0.16)}px system-ui, sans-serif`;
-    g.fillText(`$${fish.value}`, c.x + c.w / 2, c.y + c.h * 0.7);
+    g.fillText(money(saleCents(fish)), c.x + c.w / 2, c.y + c.h * 0.7);
     if (fish.credit < 1) { g.font = `italic ${Math.round(c.h * 0.08)}px Georgia, serif`; g.fillText('late strike: half price', c.x + c.w / 2, c.y + c.h * 0.88); }
     g.globalAlpha = 1;
   }

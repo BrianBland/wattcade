@@ -5,13 +5,16 @@
 import { createGameSession, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { module } from '../src/games/seaside';
+import { migrateEconomy } from '../src/games/seaside/sim/economy';
 
 const q = new URLSearchParams(location.search);
 const script = q.get('script') ?? 'z2';
 const inset = Number(q.get('inset') ?? 120);
 let speed = Number(q.get('speed') ?? 1);
 const scene = q.get('scene');
-const save = { v: 1, rides: q.get('menu') ? 1 : 0, chapterSelect: !!q.get('menu'), checkpoint: scene ? { sceneId: scene, progress: 0 } : null };
+// Optional shop-review fixtures. Real play always loads the rider's own save.
+const economy = migrateEconomy({ cash: Number(q.get('cash') ?? 0) * 100, creel: q.has('creel') ? [{ id: 'perch', kg: 0.65, credit: 1 }, { id: 'rockfish', kg: 2.1, credit: 0.5 }] : [] });
+const save = { economy, v: 1, rides: q.get('menu') ? 1 : 0, chapterSelect: !!q.get('menu'), checkpoint: scene ? { sceneId: scene, progress: 0 } : null };
 const hub = new InputHub();
 hub.attachKeyboard(window);
 const session = createGameSession({

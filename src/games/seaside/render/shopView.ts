@@ -12,16 +12,18 @@ export class ShopDiorama {
   constructor(private canvas: HTMLCanvasElement) {}
   show(kind: ShopId, W: number, H: number, inset: Insets): void {
     const w = Math.max(1, W - inset.left - inset.right), h = Math.max(1, H - inset.top - inset.bottom);
-    this.canvas.style.cssText = `position:absolute;left:${inset.left}px;top:${inset.top}px;width:${w}px;height:${h}px;pointer-events:none;display:block`;
+    this.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block';
     if (this.kind !== kind) {
       this.dispose(); this.kind = kind;
       this.stage = kind === 'shop1' ? stillShop(this.canvas, w, h) : stillPierStand(this.canvas, w, h);
       this.size = '';
     }
-    const key = `${w}/${h}`;
+    const key = `${W}/${H}/${inset.top}/${inset.right}/${inset.bottom}/${inset.left}`;
     if (key !== this.size && this.stage) {
       const { renderer, camera, scene } = this.stage;
-      renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(W, H, false);
+      // Frame the counter in the usable area, extending the background behind the shell HUD.
+      camera.setViewOffset(w, h, -inset.left, -inset.top, W, H); camera.updateProjectionMatrix();
       camera.lookAt(-0.05, w / h < 0.8 ? 1.04 : 1.42, -2.6);
       renderer.render(scene, camera); this.size = key;
     }

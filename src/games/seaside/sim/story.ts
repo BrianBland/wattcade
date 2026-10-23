@@ -35,7 +35,7 @@ const RAW: Raw[] = [
   { id: 'rollers', ch: 0, kind: 'ride', title: 'Rollers', min: 6, e: [[2, 62], [2, 75], [2, 60]], len: at(7.5), tr: route([[0, 0.5], [0.3, 4], [0.55, 4], [0.65, 0], [0.8, -3], [1, -1]]),
     say: ['Every hill out here has a better view.'], look: 'morning', dream: 0.15 },
   { id: 'shop1', ch: 0, kind: 'shop', title: "Lou's Bait & Tackle", min: 2, e: [[2, 45]], len: timed, tr: sim(0),
-    say: ['Lou has opinions about kelp.'], look: 'morning', dream: 0.18 },
+    say: ['Smells like salt and old wood.'], look: 'morning', dream: 0.18 },
   { id: 'toPier', ch: 0, kind: 'ride', title: 'To the pier', min: 5, e: [[5, 65]], len: at(7.5), tr: swell(0, 1, 2), say: ['New rod. Big plans.'], look: 'morning', dream: 0.2 },
   { id: 'pier', fish: 'pier', ch: 0, kind: 'fish', title: 'The pier', min: 6, e: [[2, 55], [0.2, 140], [1.8, 58], [0.2, 140], [1.8, 58]], len: effort, tr: res(30), sizes: [0.3, 0.35],
     say: ['That one pulled back.', 'Lingcod. Ugly. Valuable.'], look: 'morning', dream: 0.22 },

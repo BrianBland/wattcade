@@ -3,11 +3,12 @@ import { baseFtp, checkpointsOf, effortAt, makeGraph, planElapsed, resumePoint, 
 import { MonologueQueue } from './monologue';
 import { ESCAPE_LINES, fishHeft, type FishCatch } from './catalogue';
 import { FISHING_DEFAULTS, FishingStop, type FishingEvent, type FishingTuning } from './fishing';
+import { bankCatch, buy, canHookBigOne, ensureRod, equipForScene, migrateEconomy, owns, receipt, requiredRod, saleCents, sellCreel, shortForRod, stock, type ShopId, type ShopView } from './economy';
 import { effortRate, railSpeed } from './pace';
 import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } from './pull';
 import { migrateSave } from './save';
 import { STORY } from './story';
-import { CHAPTER_NAMES, type ChapterId, type MenuView, type PullPlan, type SeasideSave, type SeasideSnapshot } from './types';
+import { CHAPTER_NAMES, type ChapterId, type MenuView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
 import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
 
 export interface SeasideOpts {
@@ -108,9 +109,12 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   const wt = (): WorkoutTuning => read<WorkoutTuning>(wtun);
   const pt = (): PullTuning => read<PullTuning>(ptun);
   const ft = (): FishingTuning => read<FishingTuning>(ftun);
+  const bonusS = num('shopBonusS', 180, 60, 180, 10, 'Maximum extra fishing time offered for short money (s)');
   const g = makeGraph(STORY);
   const last = g.scenes.length - 1;
   let save = migrateSave(opts.save ?? ctx.load());
+  const economy = migrateEconomy(save.economy);
+  const shopIndex = STORY.findIndex((s) => s.id === 'shop1'), standIndex = STORY.findIndex((s) => s.id === 'pierStand');
   const mono = new MonologueQueue(() => ({ lifeS: tun.lifeS(), gapS: tun.gapS(), staleS: tun.staleS() }));
 
   // ---- state ----
@@ -127,11 +131,17 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   // fishing (#187)
   let fishing: FishingStop | null = null, lastPaddle = 0, tapSpot: number | undefined;
   let catchValue = 0, biggest: FishCatch | null = null;
+  let shop: { id: ShopId; index: number; message: string } | null = null;
+  let bonus: { scene: Scene; t: number; duration: number } | null = null;
+  let bigOneRod = '-';
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
 
+  const persistEconomy = (cp = { sceneId: g.scenes[index].id, progress }) => persist({ economy: structuredClone(economy), checkpoint: cp });
+  const fishingScene = () => bonus?.scene ?? g.scenes[index];
+
   const applyTrainer = () => {
-    const sc = g.scenes[index], p = Math.min(1, progress);
+    const sc = fishingScene(), p = Math.min(1, progress);
     const cmd = sceneCommand(sc, {
       p, planT: p * sc.planS, sceneT, crankRevs: ctx.bike().crankRevs, released, ftp: ctx.profile.ftp,
       pull: pull && { size: pull.size, t: pull.t, durS: pull.durS, setPiece: pull.setPiece, ...(fishing?.fish && !pull.setPiece && { heft: fishHeft(fishing.fish) }) },
@@ -166,10 +176,23 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   const enter = (i: number, p: number) => {
     if (pull) endPull(pull.setPiece ? 'landed' : 'escaped');
     const sc = g.scenes[i], prev = g.scenes[i - 1];
+    bonus = null; shop = null;
     index = i; progress = p; sceneT = 0; released = false;
     nextPull = sc.pulls.findIndex((pl) => pl.atS >= p * sc.planS - 1e-6);
     if (nextPull < 0) nextPull = sc.pulls.length;
     fishing = sc.fishing ? new FishingStop(sc.fishing, sc.pulls, ctx.rng, nextPull) : null;
+    if (equipForScene(economy, i, shopIndex, standIndex)) persistEconomy({ sceneId: sc.id, progress: p });
+    if (sc.kind === 'shop') {
+      speed = 0;
+      const id = sc.id as ShopId;
+      const sold = sellCreel(economy, id);
+      shop = { id, index: 0, message: sold ? 'Fresh catch. Fair weight.' : 'Have a look around.' };
+      persistEconomy({ sceneId: sc.id, progress: p });
+    }
+    if (sc.id === 'bigOne') {
+      bigOneRod = economy.rod;
+      ctx.emit({ type: 'bigOneReady', data: { rod: economy.rod, ready: canHookBigOne(economy) } });
+    }
     visited.add(sc.id);
     applyTrainer();
     ctx.emit({ type: 'scene', data: { id: sc.id, index: i, chapter: sc.chapter } });
@@ -227,19 +250,23 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   };
 
   const onFishing = (e: FishingEvent) => {
-    const sc = g.scenes[index], f = fishing!;
+    const sc = fishingScene(), f = fishing!;
     switch (e.type) {
       case 'cast': ctx.emit({ type: 'cast', data: { scene: sc.id, spot: e.spot, cast: e.cast } }); break;
       case 'bite': {
         const pl = sc.pulls[f.slot];
-        if (pl) progress = Math.max(progress, pl.atS / sc.planS); // a slow rider's bite comes anyway
+        if (pl && !bonus) progress = Math.max(progress, pl.atS / sc.planS); // a slow rider's bite comes anyway
         ctx.emit({ type: 'bite', data: { scene: sc.id, early: e.early } });
         break;
       }
       case 'hook': pull = f.pull; break;
       case 'landed':
         bookPull(e.pull, 'landed', e.fish); pull = null;
-        catchValue += e.fish.value;
+        catchValue += saleCents(e.fish) / 100;
+        bankCatch(economy, e.fish);
+        // Resume after this bite's slot, never with both a banked catch and its hook still available.
+        const slot = sc.pulls[f.slot - 1];
+        persistEconomy({ sceneId: g.scenes[index].id, progress: bonus ? progress : Math.max(progress, (slot.atS + slot.planS) / sc.planS) });
         if (!biggest || e.fish.kg > biggest.kg) biggest = e.fish;
         ctx.emit({ type: 'catch', data: { scene: sc.id, ...e.fish } });
         break;
@@ -252,9 +279,11 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       }
       case 'slot': {
         const pl = sc.pulls[e.slot];
-        progress = Math.max(progress, (pl.atS + pl.planS) / sc.planS);
-        heldS -= pl.planS; // the planned sprint was part of the plan; only the hold beyond it is never paid back
-        nextPull = e.slot + 1;
+        if (!bonus) {
+          progress = Math.max(progress, (pl.atS + pl.planS) / sc.planS);
+          heldS -= pl.planS; // only overtime is excluded from the pace lag
+          nextPull = e.slot + 1;
+        }
         break;
       }
       case 'done': break;
@@ -263,7 +292,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
 
   /** A fishing stop: the plan runs on effort (faster with a twitching lure) up to the next bite, then holds. */
   const updateFishing = (dt: number, planW: number, frac: number) => {
-    const sc = g.scenes[index], f = fishing!, b = ctx.bike(), inp = ctx.input(), w = wt();
+    const sc = fishingScene(), f = fishing!, b = ctx.bike(), inp = ctx.input(), w = wt();
     const pd = inp.paddleR - inp.paddleL, paddle = Math.abs(pd) >= 0.5 ? Math.sign(pd) : 0;
     let step = paddle !== lastPaddle ? paddle : 0;
     lastPaddle = paddle;
@@ -272,24 +301,82 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     const pl = sc.pulls[f.slot];
     const evs = f.tick(dt, {
       a: inp.pressed.has('a'), step, tap: tapSpot, frac, rpm: b.cadence3s,
-      due: !!pl && progress * sc.planS >= pl.atS - 1e-6, running: !!f.pull && fishRunning(f.pull.t, w),
+      due: !!pl && (bonus ? bonus.t : progress * sc.planS) >= pl.atS - 1e-6, running: !!f.pull && fishRunning(f.pull.t, w),
     }, ft(), pt());
     tapSpot = undefined;
     for (const e of evs) onFishing(e);
     speed = 0;
-    if (!f.holds()) {
+    if (!bonus && !f.holds()) {
       const k = f.twitching() ? 1 + ftun.twitchBonus() : 1;
       const floor = f.phase === 'done' ? Math.max(tun.effortFloor(), fishDoneFloor()) : tun.effortFloor();
       progress += (effortRate(b.power3s, planW, floor, tun.effortCap()) * k * dt) / sc.planS;
     }
     const next = sc.pulls[f.slot];
-    if (next && progress >= next.atS / sc.planS) { progress = next.atS / sc.planS; heldS += dt; } // waiting on a bite / the fight
+    if (next && !bonus && progress >= next.atS / sc.planS) { progress = next.atS / sc.planS; heldS += dt; }
+  };
 
+  const leaveShop = () => {
+    if (!shop) return;
+    const result = ensureRod(economy, shop.id);
+    ctx.emit({ type: 'purchase', data: { shop: shop.id, item: requiredRod(shop.id), result, automatic: true } });
+    persistEconomy({ sceneId: g.scenes[index + 1].id, progress: 0 });
+    progress = 1;
+  };
+
+  const startBonus = () => {
+    if (!shop || bonus || !shortForRod(economy, shop.id) || economy.bonusUsed.includes(shop.id)) return;
+    const duration = bonusS(), sc = g.scenes[index];
+    const location = shop.id === 'shop1' ? 'turnout' : 'pier';
+    const pulls = [0.2, 0.6].map((p) => ({ atS: duration * p, planS: 8, size: 0.2 }));
+    bonus = { t: 0, duration, scene: { ...sc, id: `${shop.id}Bonus`, kind: 'fish', planS: duration, pulls, fishing: location, trainer: { mode: 'resistance', levelPct: 20 }, effort: [[duration, 0.55]], monologue: [] } };
+    fishing = new FishingStop(location, pulls, ctx.rng);
+    economy.bonusUsed.push(shop.id); persistEconomy();
+    ctx.emit({ type: 'bonusTurnout', data: { shop: shop.id, seconds: duration } });
+    shop.message = 'One more turnout. Take your time.';
+  };
+
+  const updateShop = (dt: number) => {
+    if (!shop) return;
+    const inp = ctx.input(), pr = inp.pressed;
+    const pd = inp.paddleR - inp.paddleL, paddle = Math.abs(pd) >= 0.5 ? Math.sign(pd) : 0;
+    let step = paddle !== lastPaddle ? paddle : 0; lastPaddle = paddle;
+    if (pr.has('left') || pr.has('shiftUpL')) step = -1;
+    if (pr.has('right') || pr.has('shiftDnL')) step = 1;
+    const offers = stock(shop.id), n = offers.length + (shortForRod(economy, shop.id) && !economy.bonusUsed.includes(shop.id) ? 1 : 0);
+    let action = pr.has('b') ? 'leave' : pr.has('a') ? 'buy' : '';
+    for (const a of pending) {
+      const o = a as { type?: string; action?: string; index?: number };
+      if (o.type !== 'shop') continue;
+      if (Number.isInteger(o.index) && o.index! >= 0 && o.index! < n) shop.index = o.index!;
+      if (o.action === 'next') step = 1;
+      else if (o.action === 'prev') step = -1;
+      else if (o.action) action = o.action;
+    }
+    pending = [];
+    shop.index = (shop.index + step + n) % n;
+    if (action === 'leave') { leaveShop(); return; }
+    if (action === 'bonus' || (action === 'buy' && shop.index === offers.length)) { startBonus(); return; }
+    if (action === 'buy') {
+      const id = offers[shop.index].id, result = buy(economy, shop.id, id, id === requiredRod(shop.id));
+      shop.message = result === 'short' ? 'A little short for that.' : result === 'owned' ? 'Already in your bag.' : result === 'credit' ? 'Pay me later. Leave the extras here.' : 'Good choice. Keep the receipt.';
+      ctx.emit({ type: 'purchase', data: { shop: shop.id, item: id, result } });
+      if (result === 'bought' || result === 'credit') persistEconomy();
+    }
+    progress += dt / g.scenes[index].planS;
+    if (progress >= 1) leaveShop();
+  };
+
+  const shopView = (): ShopView | null => shop && {
+    id: shop.id, index: shop.index, items: stock(shop.id).map((i) => ({ ...i, owned: owns(economy, i.id) })),
+    cash: economy.cash, debt: economy.debt, receipt: structuredClone(receipt(economy, shop.id)), message: shop.message,
+    short: shortForRod(economy, shop.id), bonusAvailable: shortForRod(economy, shop.id) && !economy.bonusUsed.includes(shop.id),
+    bonusRemaining: bonus ? Math.max(0, bonus.duration - bonus.t) : null,
+    autoIn: Math.max(0, (1 - progress) * g.scenes[index].planS),
   };
 
   const finish = () => {
     phase = 'done'; speed = 0;
-    persist({ rides: save.rides + 1, chapterSelect: true, checkpoint: null });
+    persist({ rides: save.rides + 1, chapterSelect: true, checkpoint: null, economy: structuredClone(economy) });
     ctx.emit({ type: 'storyEnd', data: { minutes: +(rideT / 60).toFixed(1) } });
   };
 
@@ -306,8 +393,20 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       const o = a as { type?: string; index?: number };
       if (o.type === 'spot' && typeof o.index === 'number') tapSpot = o.index;
     }
-    pending = [];
-    if (fishing) updateFishing(dt, planW, frac);
+    if (shop && !bonus) updateShop(dt);
+    else if (bonus) {
+      pending = [];
+      bonus.t += dt; storyT -= dt; // optional fishing adds time without a catch-up pace debt
+      updateFishing(dt, baseFtp(bonus.scene) * ftp * tun.planScale(), frac);
+      if (bonus.t + 1e-6 >= bonus.duration) {
+        if (pull) { bookPull(pull, 'escaped'); pull = null; }
+        bonus = null; fishing = null;
+        sellCreel(economy, shop!.id);
+        shop!.message = shortForRod(economy, shop!.id) ? 'Pay me later. Leave the extras here.' : 'That ought to cover it.';
+        shop!.index = 0; persistEconomy();
+      }
+    }
+    else if (fishing) { pending = []; updateFishing(dt, planW, frac); }
     else if ('m' in sc.length) {
       const target = railSpeed(b.power3s, planW, sc.length.m / sc.planS, lag, { exponent: tun.exponent(), gain: tun.gain(), max: tun.max(), maxAhead: tun.maxAhead(), cap: tun.cap() });
       speed += (target - speed) * (1 - Math.exp(-dt / tun.tau()));
@@ -318,9 +417,10 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         ? (effortRate(b.power3s, planW, tun.effortFloor(), tun.effortCap()) * cadenceRate(sc, b.cadence3s, w) * dt) / sc.length.effortS
         : dt / sc.length.s;
     }
+    pending = [];
     if (pull?.setPiece) { const r = pull.tick(dt, frac, pt()); if (r !== 'pulling') endPull(r); }
     const pl = sc.pulls[nextPull];
-    if (!pull && !fishing && pl && progress * sc.planS >= pl.atS) startPull(pl);
+    if (!pull && !fishing && !shop && pl && (sc.id !== 'bigOne' || canHookBigOne(economy)) && progress * sc.planS >= pl.atS) startPull(pl);
     const e = effortAt(sc, Math.min(1, progress) * sc.planS);
     effortTarget = pull ? pull.ftp : e >= 1 ? baseFtp(sc) : e;
     for (const line of sc.monologue) if (line.at > before && line.at <= progress) mono.push(line.text, storyT);
@@ -362,6 +462,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     receive(a) { pending.push(a); },
     hud(): GameHud {
       if (phase === 'menu') return { controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Ride' }], touchControls: ['a'] };
+      if (shop && !bonus) return { controls: [{ button: 'dpad', label: 'Browse' }, { button: 'a', label: 'Buy / choose' }, { button: 'b', label: 'Back on the road' }], touchControls: ['left', 'right', 'a', 'b'] };
       return fishing ? fishingHud(fishing) : {};
     },
     snapshot(): SeasideSnapshot {
@@ -378,6 +479,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         pull: pull && { size: pull.size, ftp: pull.ftp, durS: pull.durS, t: pull.t, stamina: pull.stamina, setPiece: pull.setPiece },
         cadenceBand: band,
         fishing: fishing && fishing.view(ft()),
+        economy: structuredClone(economy), shop: shopView(),
       };
     },
     isOver: () => phase === 'done',
@@ -393,7 +495,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         'Sprints on target': `${hits}/${sprints}`,
         'Best sprint': `${Math.round(bestFtp * 100)}% FTP`,
         'Drill minutes': +(drillS / 60).toFixed(1),
-        'Catch value': catchValue,
+        'Catch value': +catchValue.toFixed(2),
+        Rod: economy.rod, 'Big One rod': bigOneRod, Cash: economy.cash / 100, 'Lou account': economy.debt / 100,
         'Biggest fish': biggest ? `${biggest.name}, ${biggest.kg} kg` : '-',
       };
     },

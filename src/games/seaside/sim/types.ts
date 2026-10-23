@@ -2,6 +2,7 @@
 // later issues add fields additively and say so in their PR.
 import type { FishingLocation } from './catalogue';
 import type { FishingView } from './fishing';
+import type { EconomySave, ShopView } from './economy';
 
 export type SceneKind = 'ride' | 'fish' | 'shop' | 'drill' | 'cutscene' | 'fan' | 'flight';
 export type ChapterId = 0 | 1 | 2;
@@ -102,10 +103,15 @@ export interface SeasideSnapshot {
   // ---- additive (#187) ----
   /** The fishing stop in progress (spots, cast, bite, fight, haul, card), else null. */
   fishing: FishingView | null;
+  // ---- additive (#188) ----
+  economy: EconomySave;
+  shop: ShopView | null;
 }
 
 /** profile.gameData.seaside. Unknown fields are preserved on save (other issues add their own). */
 export interface SeasideSave {
+  /** Optional on legacy saves; normalised by migrateSave. */
+  economy?: EconomySave;
   v: 1;
   /** Full rides finished. */
   rides: number;

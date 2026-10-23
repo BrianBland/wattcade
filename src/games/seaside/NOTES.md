@@ -9,7 +9,7 @@
 - `graph.ts` plan time / route metres / effort / checkpoints · `pace.ts` speed = plan × (W/planned)^⅓ × nudge (+20 %
   behind, −2 % ahead); effort-gated scenes (`{ effortS }`) advance at W/planned × cadence rate; `{ m }` rail, `{ s }` fixed.
 - `workout.ts` (pure) one `scene` effect in the scene's mode (≤ 1 mode change/scene, `trainer` events): route grade
-  `profile` + `swell` (cavern −3..−5 %), fish surge 55–85 % by heft (species fight × size), bite tug, set pieces ramp to 90 %, drill ERG = Z3 plan (60–75 rpm +15 %), fan 80–100 rpm,
+  `profile` + `swell` (cavern −3..−5 %), fish surge 50–75 % by heft (species fight × size), bite tug, set pieces → 80 %; every level × FTP/250 (0.5–1.15), drill ERG = Z3 plan (60–75 rpm +15 %), fan 80–100 rpm,
   paddle/flap pulses, then let go. `pull.ts` 9 sprints sized 110–150 % FTP × 6–25 s; fish fights hold the
   scene (below target: tire in 110–190 s, escape 240 s; overtime off the pace lag), so z2 ≈ 130.5 vs on-cue ≈ 119.7 min.
 - `fishing.ts` `FishingStop` per fish scene (`Scene.fishing`; its `pulls` = bite slots): spot (paddles / ◀▶ / tap, auto 10 s)

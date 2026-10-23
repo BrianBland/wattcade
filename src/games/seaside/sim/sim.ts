@@ -55,6 +55,9 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     pullLevelMin: num('pullLevelMin', W.pullLevelMin, 0, 100, 1, 'Resistance % while the lightest fish runs'),
     pullLevelMax: num('pullLevelMax', W.pullLevelMax, 0, 100, 1, 'Resistance % while the heaviest fish runs'),
     setPieceMax: num('setPieceMax', W.setPieceMax, 0, 100, 1, 'Resistance % the Big One / re-entry ramp up to'),
+    refFtp: num('levelRefFtp', W.refFtp, 100, 400, 5, 'Resistance levels are tuned for this FTP (W) and scale by FTP / this'),
+    ftpMinK: num('levelFtpMinK', W.ftpMinK, 0.2, 1, 0.05, 'Smallest FTP scaling of resistance levels'),
+    ftpMaxK: num('levelFtpMaxK', W.ftpMaxK, 1, 2, 0.05, 'Largest FTP scaling of resistance levels'),
     biteTug: num('biteTug', W.biteTug, 0, 1, 0.05, 'On a bite the trainer tugs this far from the base level toward the surge'),
     runPeriodS: num('fishRunPeriodS', W.runPeriodS, 1, 12, 0.5, 'A fish runs, then rests: period (s)'),
     runOn: num('fishRunOn', W.runOn, 0.1, 1, 0.05, 'Fraction of each period the fish runs'),
@@ -130,7 +133,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   const applyTrainer = () => {
     const sc = g.scenes[index], p = Math.min(1, progress);
     const cmd = sceneCommand(sc, {
-      p, planT: p * sc.planS, sceneT, crankRevs: ctx.bike().crankRevs, released,
+      p, planT: p * sc.planS, sceneT, crankRevs: ctx.bike().crankRevs, released, ftp: ctx.profile.ftp,
       pull: pull && { size: pull.size, t: pull.t, durS: pull.durS, setPiece: pull.setPiece, ...(fishing?.fish && !pull.setPiece && { heft: fishHeft(fishing.fish) }) },
       bite: fishing?.phase === 'bite' ? sc.pulls[fishing.slot]?.size ?? null : null,
     }, wt());

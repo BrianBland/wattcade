@@ -66,6 +66,17 @@ describe('workout: trainer plan per scene', () => {
     expect(bite).toBeGreaterThan(base);
     expect(bite).toBeLessThan(lvl(0.3));
   });
+  it('resistance levels scale with the rider\'s FTP (tuned at refFtp), clamped at both ends', () => {
+    const f = scene('pier'), pull = { size: 0.3, t: 0.5, durS: 13, setPiece: false, heft: 0.85 };
+    const lvl = (ftp?: number) => sceneCommand(f, st(f, 0.33, { pull, ftp }), W)!.levelPct!;
+    expect(lvl(W.refFtp)).toBe(lvl());
+    expect(lvl(150)).toBeCloseTo(lvl() * 150 / W.refFtp, 0);
+    expect(lvl(300)).toBeGreaterThan(lvl());
+    expect(lvl(60)).toBeCloseTo(lvl() * W.ftpMinK, 0);
+    expect(lvl(1000)).toBeCloseTo(Math.min(100, lvl() * W.ftpMaxK), 0);
+    const big = scene('bigOne');
+    expect(sceneCommand(big, st(big, 0.55, { pull: { size: 1, t: 25, durS: 25, setPiece: true }, ftp: 200 }), W)!.levelPct).toBe(64);
+  });
   it('set pieces ramp up through the sprint and let go after it', () => {
     const b = scene('bigOne');
     const at = (t: number) => sceneCommand(b, st(b, 0.55, { pull: { size: 1, t, durS: 25, setPiece: true } }), W)!.levelPct!;

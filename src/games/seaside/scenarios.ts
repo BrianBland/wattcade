@@ -10,8 +10,9 @@ interface Scenario {
 const TARGET_MIN = 120;
 const ofType = (run: Run, type: string) => run.events.filter((e) => e.type === type);
 const PLAN_MIN = STORY.reduce((a, x) => a + x.planS, 0) / 60;
-/** A sprint on the trainer: a run of resistance commands at or above this level (fish runs dip to ≥ 49.5 %; base levels stay ≤ 42 %). */
-const SPRINT_LEVEL = 45;
+/** A sprint on the trainer: a run of resistance commands at or above this level. Headless FTP 200 scales levels ×0.8
+ *  (refFtp 250): fish runs dip to ≥ 36 %, base levels stay ≤ 33.6 % (wings + flap). */
+const SPRINT_LEVEL = 35;
 
 /** Maximal runs of consecutive mixer commands matching `f`. */
 const runs = (cmds: TrainerCommand[], f: (c: TrainerCommand) => boolean) =>

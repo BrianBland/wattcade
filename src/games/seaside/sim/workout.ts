@@ -19,6 +19,9 @@ export interface WorkoutTuning {
   pulseOn: number;
   /** Resistance % while the lightest / heaviest fish runs (by `heft`: species fight × size, #187). */
   pullLevelMin: number; pullLevelMax: number;
+  /** Resistance levels are tuned for a rider with this FTP (W) and scale by FTP / refFtp, clamped to [minK, maxK]:
+   *  a resistance % is a fraction of the trainer's brake, so the same % is much harder for a lower FTP. */
+  refFtp: number; ftpMinK: number; ftpMaxK: number;
   /** Set pieces (the Big One, re-entry) ramp up to this at size 1. */
   setPieceMax: number;
   /** The bite: the trainer tugs to this fraction of the way from the base level to the surge. */
@@ -36,7 +39,7 @@ export interface WorkoutTuning {
 export const WORKOUT_DEFAULTS: WorkoutTuning = {
   gradeScale: 1, levelScale: 1, drillScale: 1,
   paddlePct: 1.5, paddlePeriodS: 3, flapPct: 12, flapRevs: 3, pulseOn: 0.4,
-  pullLevelMin: 55, pullLevelMax: 85, setPieceMax: 90, biteTug: 0.6, runPeriodS: 4, runOn: 0.6, runDip: 0.1, releasePct: 0,
+  pullLevelMin: 50, pullLevelMax: 75, setPieceMax: 80, biteTug: 0.6, refFtp: 250, ftpMinK: 0.5, ftpMaxK: 1.15, runPeriodS: 4, runOn: 0.6, runDip: 0.1, releasePct: 0,
   drillRpmLo: 60, drillRpmHi: 75, drillBandBonus: 0.15,
   fanRpmLo: 80, fanRpmHi: 100, fanOffBand: 0.3,
 };
@@ -49,6 +52,8 @@ export interface TrainerState {
   pull: { size: number; t: number; durS: number; setPiece: boolean; heft?: number } | null;
   /** A bite is on (the bobber is down): the plan's size of the fish taking it. */
   bite?: number | null;
+  /** The rider's FTP (W): scales resistance levels (default: `refFtp`, no scaling). */
+  ftp?: number;
   /** A set piece's sprint is over and the trainer lets go. */
   released: boolean;
 }
@@ -71,6 +76,11 @@ export function gradeAt(tr: Extract<TrainerPlan, { mode: 'sim' }>, p: number): n
   }
   if (tr.swell) g += tr.swell.pct * clamp(p / 0.1, 0, 1) * Math.sin(2 * Math.PI * tr.swell.cycles * p);
   return g;
+}
+
+/** Resistance multiplier for a rider's FTP (levels are tuned at `refFtp`). */
+export function ftpScale(ftp: number | undefined, t: Pick<WorkoutTuning, 'refFtp' | 'ftpMinK' | 'ftpMaxK'>): number {
+  return ftp === undefined || !(ftp > 0) ? 1 : clamp(ftp / t.refFtp, t.ftpMinK, t.ftpMaxK);
 }
 
 /** Is the rhythmic pulse on right now? */
@@ -109,7 +119,7 @@ export function sceneCommand(sc: Scene, st: TrainerState, t: WorkoutTuning): Sce
       else if (st.bite != null) lvl = lerp(base, lerp(t.pullLevelMin, t.pullLevelMax, st.bite), t.biteTug);
       else if (st.released) lvl = t.releasePct;
       else if (tr.pulse && pulseOn(tr.pulse, st, t)) lvl += t.flapPct;
-      return { mode: 'resistance', levelPct: +clamp(lvl, 0, 100).toFixed(1) };
+      return { mode: 'resistance', levelPct: +clamp(lvl * ftpScale(st.ftp, t), 0, 100).toFixed(1) };
     }
   }
 }

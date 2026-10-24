@@ -195,3 +195,56 @@
 @media(max-width:760px){
  .chrome-ui.screen,.chrome-ui.chrome-pause { background:linear-gradient(100deg,#0b202cfa,#0b202cee); }
 }
+/* New/edit rider: flat settings rows with a live preview and reachable Save/Cancel. */
+.chrome-ui.rider-editor { overflow:hidden; gap:18px; }
+.rider-editor .chrome-head { width:min(860px,100%); flex:none; flex-wrap:nowrap; justify-content:space-between; gap:20px; }
+.rider-editor .chrome-head>.rider-av.big { width:150px; height:130px; flex:none; }
+.rider-editor .editor { display:flex; flex-direction:column; flex:1; min-height:0; width:min(860px,100%); overflow:visible; }
+.rider-editor .editor-fields { flex:1; min-height:0; overflow-y:auto; gap:0; padding:4px; scroll-padding:4px; }
+.rider-editor .field { min-height:64px; grid-template-columns:minmax(120px,.7fr) minmax(0,1.5fr); gap:4px 20px; padding:10px 12px; border:0; border-bottom:1px solid var(--line); border-radius:0; background:transparent; transform:none; font-size:13px; }
+.rider-editor .field.focused { background:#57dfbe08; box-shadow:inset 3px 0 #57dfbe; }
+.rider-editor .field label { font-weight:600; }
+.rider-editor .field>small { font:400 10px/1.5 system-ui; color:#8daeb8; max-width:440px; }
+.rider-editor .field-ctl { min-width:0; }
+.rider-editor .field input[type=text] { width:100%; max-width:380px; min-height:44px; background:transparent; color:var(--fg); border:0; border-bottom:1px solid #bdd3da55; border-radius:0; padding:10px 0; font:500 15px system-ui; }
+.rider-editor .field input::placeholder { color:#809ea9; }
+.rider-editor .field input:focus-visible { outline:2px solid #57dfbe; outline-offset:2px; }
+.rider-editor .stepper,.rider-editor .choice { border:0; background:none; border-radius:0; gap:4px; min-width:0; }
+.rider-editor .step { width:44px; min-width:44px; height:44px; border:0; border-radius:0; background:none; color:#b9d2d8; box-shadow:none; }
+.rider-editor .stepper input { width:68px; min-height:44px; border:0; border-radius:0; background:none; color:var(--fg); font:650 14px system-ui; }
+.rider-editor .stepper .unit { font-size:12px; }
+.rider-editor .choice { width:min(100%,300px); justify-content:space-between; }
+.rider-editor .choice b { min-width:0; font:650 13px system-ui; }
+.rider-editor .swatches { display:grid; grid-template-columns:repeat(8,44px); gap:6px; }
+.rider-editor .swatch { position:relative; width:44px; height:44px; padding:0; border:0; border-radius:0; background:none; box-shadow:none; cursor:pointer; transform:none; }
+.rider-editor .swatch::before { content:''; position:absolute; inset:8px; background:var(--swatch); }
+.rider-editor .swatch.on { outline:2px solid #eaf0e6; outline-offset:-3px; }
+.rider-editor .swatch:focus-visible { outline:2px solid #57dfbe; outline-offset:-2px; }
+.rider-editor .editor-actions { flex:none; padding:18px 4px 0; }
+.rider-editor .editor-primary { gap:12px; }
+.rider-editor .editor-secondary { gap:8px; margin-top:8px; }
+.rider-editor .editor-secondary .btn { color:#9db9c3; background:none; font-size:11px; padding:8px 12px; }
+.rider-editor .editor-message { flex:none; padding:8px 4px; font:500 12px/1.5 system-ui; }
+.rider-editor>.key-hints { flex:none; padding-top:0; margin-top:0; }
+@media(max-width:760px){
+ .chrome-ui.rider-editor { gap:12px; }
+ .rider-editor .chrome-head { gap:8px; align-items:center; }
+ .rider-editor .chrome-head>.rider-av.big { width:84px; height:84px; }
+ .rider-editor.screen h1 { font-size:30px; letter-spacing:-1px; }
+ .rider-editor .screen-head .sub { font-size:12px; margin-top:8px; }
+ .rider-editor .field { grid-template-columns:82px minmax(0,1fr); gap:4px 8px; padding:8px; }
+ .rider-editor .editor-color .field { grid-template-columns:1fr; gap:8px; }
+ .rider-editor .swatches { grid-template-columns:repeat(4,44px); gap:4px 12px; }
+ .rider-editor .stepper { gap:0; }
+ .rider-editor .stepper input { width:48px; }
+ .rider-editor .choice b { font-size:11px; }
+ .rider-editor .stepper .unit { font-size:10px; }
+ .rider-editor .editor-actions { padding-top:12px; }
+ .rider-editor .editor-secondary { margin-top:2px; }
+ .rider-editor .editor-secondary .btn { padding:8px; }
+}
+@media(max-height:550px){
+ .rider-editor .chrome-head>.rider-av.big { width:80px; height:70px; }
+ .rider-editor .editor-actions { display:flex; align-items:center; flex-wrap:wrap; gap:4px 16px; padding-top:10px; }
+ .rider-editor .editor-secondary { margin-top:0; }
+}

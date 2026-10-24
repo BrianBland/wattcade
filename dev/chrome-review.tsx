@@ -3,6 +3,7 @@ import { h, render } from 'preact';
 import './hud-live';
 import { defaultProfile, xpForLevel } from '../src/progression';
 import { Connect } from '../src/shell/screens/Connect';
+import { ProfileEditor } from '../src/shell/screens/ProfileEditor';
 import { ProfilePicker } from '../src/shell/screens/ProfilePicker';
 import { PauseMenu } from '../src/shell/screens/PauseMenu';
 import { achievementToast, toast, Toasts } from '../src/shell/components/Toasts';
@@ -20,6 +21,7 @@ if(view==='connect'){
  if(q.get('state')==='error'){status.hr.error='Could not connect. Try selecting your watch again.';}
  render(<Connect onDone={()=>toast('Setup ready')}/>,root);
 }else if(view==='riders')render(<ProfilePicker profiles={profiles} lastId={profiles[0].id} onPick={p=>toast(`Ready to ride, ${p.name}`)} onNew={on} onEdit={on}/>,root);
+else if(view==='new-rider'||view==='edit-rider')render(<ProfileEditor profile={view==='new-rider'?{...defaultProfile(''),name:''}:profiles[0]} onSave={p=>toast(`Saved rider: ${p.name}`)} onCancel={()=>toast('Changes canceled')} onDelete={view==='edit-rider'?()=>toast('Rider deleted'):undefined}/>,root);
 else if(view==='pause')render(<PauseMenu layout="auto" onLayout={on} onResume={on} onQuit={on} onHelp={on} onRestart={on} onHistory={on} onExtension={on}/>,root);
 else {root.style.pointerEvents='none';setTimeout(()=>achievementToast('Kilojoule Club','Ride a total of 2,500 kJ.',50),200);}
 

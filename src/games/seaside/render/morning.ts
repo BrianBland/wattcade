@@ -3,6 +3,7 @@
 // white bird over the water, the gulls on the pier, the Big One's shadow, the splash, bubbles, the ring of teeth, the
 // far lighthouse, the title fog and the water going glassy, then dark.
 import * as THREE from 'three';
+import { disposeSet } from './dispose';
 import type { SeasideSnapshot } from '../sim/types';
 import { addGrid } from '../stills/stage';
 import { VoxelGrid } from '../voxel/grid';
@@ -257,8 +258,7 @@ export class MorningSet {
 
   dispose(): void {
     this.rig.dispose();
-    this.view.stage.camera.remove(this.mouth);
-    this.view.stage.scene.remove(this.root);
+    disposeSet(this.mouth, this.root);
   }
 }
 

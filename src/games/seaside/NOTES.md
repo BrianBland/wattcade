@@ -29,6 +29,7 @@
 - `morningShots.ts` (pure, tested): scene → shot. Rides map progress onto `rideSpan` (within 2 % of rail length);
   stops have fixed poses; Big One / Under run on plan seconds (progress × planS, so mid-scene resumes stay in sync).
 - `morning.ts`: shot blends, title fog, bird, gulls, Big One shadow, yank + splash, bubbles, teeth, lighthouse.
+- Scene switches dispose outgoing prop geometry, materials, textures and particle instance buffers.
 - `worldView.ts`: eye / atmos / calm / roll / post per frame; streaming + dissolves on a wall clock; bar pitch from the
   view direction. `fishingRig.ts` shared rod; `shopView.ts` dioramas; `perf.ts` governor (½ / ⅓ res).
 ## Verification (no media committed)

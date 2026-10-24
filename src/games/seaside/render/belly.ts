@@ -4,6 +4,7 @@
 // spinning with your cadence, the tunnel face of each layer, chips and sparks, the cracks, the flood and the swim up
 // toward the light (which grows with your power).
 import * as THREE from 'three';
+import { disposeSet } from './dispose';
 import type { SeasideSnapshot } from '../sim/types';
 import { BELLY_LAYERS, PARTS, type PartId } from '../sim/belly';
 import { addGlow, addLit, L, Particles, rnd, setGlow, wob } from '../stills/later/kit';
@@ -217,7 +218,6 @@ export class BellySet {
   dispose(): void {
     const t = this.view.terrain.root;
     t.scale.set(1, 1, 1); t.position.set(0, 0, 0);
-    this.view.stage.camera.remove(this.rig);
-    this.view.stage.scene.remove(this.root);
+    disposeSet(this.rig, this.root);
   }
 }

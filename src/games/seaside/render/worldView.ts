@@ -2,6 +2,7 @@
 // route, the rider's bars, look blending + dream dial, post, the chunky-pixel setting / automatic perf fallback, and
 // HUD insets. The game renderer drives it with frame({ t, routeS, speed, look, dream }) every animation frame.
 import * as THREE from 'three';
+import { disposeSet } from './dispose';
 import type { Insets } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import { addGrid, aimSun, makeStage, type Stage } from '../stills/stage';
@@ -92,7 +93,7 @@ export class WorldView {
   /** Lights, backdrop and fog for the current world (called on world switches). */
   private setupWorld() {
     const st = this.stage, sk = this.world.sky;
-    this.extras.forEach((e) => st.scene.remove(e)); this.extras = [];
+    disposeSet(...this.extras); this.extras = [];
     (st.scene.fog as THREE.FogExp2).color.set(sk.fog); (st.scene.fog as THREE.FogExp2).density = sk.fogDensity;
     st.sun.color.set(sk.sunColor); st.sun.intensity = sk.sunI; st.sun.castShadow = !!sk.shadows;
     st.renderer.shadowMap.enabled = !!sk.shadows;

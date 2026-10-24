@@ -3,6 +3,7 @@
 import type { FishingLocation } from './catalogue';
 import type { FishingView } from './fishing';
 import type { EconomySave, ShopView } from './economy';
+import type { DrillView, PartId } from './belly';
 
 export type SceneKind = 'ride' | 'fish' | 'shop' | 'drill' | 'cutscene' | 'fan' | 'flight';
 export type ChapterId = 0 | 1 | 2;
@@ -106,6 +107,20 @@ export interface SeasideSnapshot {
   // ---- additive (#188) ----
   economy: EconomySave;
   shop: ShopView | null;
+  // ---- additive (#190) ----
+  /** Eyes open: how awake you are 0..1 (pedalling opens the eyes), else null. */
+  wake: number | null;
+  /** Spare parts: the survey boat's rig along the chamber, which are in hand, and the one in reach. */
+  parts: PartsView | null;
+  /** A drill scene: layer, phase, bored depth. */
+  drill: DrillView | null;
+}
+
+export interface PartsView {
+  items: Array<{ id: PartId; name: string; at: number; got: boolean; auto: boolean }>;
+  reach: PartId | null;
+  /** Scene progress when the last part came in (the bars unfold into the drill), else null. */
+  allAt: number | null;
 }
 
 /** profile.gameData.seaside. Unknown fields are preserved on save (other issues add their own). */

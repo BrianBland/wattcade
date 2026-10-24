@@ -1,5 +1,6 @@
 import type { GameEvent, SessionRecord, TrainerCommand } from '../../contracts';
 import { STORY } from './sim/story';
+import { planZ3S } from './sim/belly';
 
 type Run = { mixerCommands: TrainerCommand[]; isOver: boolean; events: Array<{ t: number } & GameEvent> };
 interface Scenario {
@@ -52,6 +53,11 @@ function catchesPerStop(run: Run, min: (bites: number) => number, stops = STOPS)
   return f;
 }
 
+/** Planned Z3 in the ERG drills: z2 can't reach Z3 anywhere else (it rides 65 % FTP outside ERG). */
+const DRILL_Z3_MIN = STORY.filter((x) => x.kind === 'drill').reduce((a, x) => a + planZ3S(x), 0) / 60;
+const z3 = (s: Record<string, number | string>, want: number) =>
+  Math.abs(Number(s['Z3 minutes']) - want) <= 1 ? [] : [`Z3 ${s['Z3 minutes']} min, want ${want.toFixed(1)} ± 1`];
+
 const near = (got: number, want: number, tol: number, what: string) =>
   Math.abs(got - want) <= want * tol ? [] : [`${what} ${got} min, want ${want} ± ${Math.round(tol * 100)}%`];
 
@@ -87,6 +93,7 @@ export const scenarios: Scenario[] = [
       if (s['Fish landed'] !== '6/6') f.push(`fish landed ${s['Fish landed']}`);
       f.push(...catchesPerStop(run, (n) => Math.ceil(n / 2)));
       if (ofType(run, 'cast').length !== 6) f.push(`${ofType(run, 'cast').length} casts, want 6 (one per fish)`);
+      f.push(...z3(s, DRILL_Z3_MIN));
       f.push(...workoutPlan(run));
       return f;
     },
@@ -118,6 +125,25 @@ export const scenarios: Scenario[] = [
       if (!run.isOver) f.push('did not finish');
       const planMin = STORY.filter((x) => x.chapter > 0).reduce((a, x) => a + x.planS, 0) / 60;
       f.push(...near(Number(s['Ride minutes']), planMin, 0.1, 'Midday + Evening'));
+      return f;
+    },
+  },
+  {
+    name: 'z2 through the belly: wakes, the parts come along, the drill bores three layers on its Z3 plan, breaks through', script: 'z2', minutes: 22, seed: 12,
+    simOpts: { skipMenu: true, save: { checkpoint: { sceneId: 'eyesOpen', progress: 0 } } },
+    assert(s, _st, run) {
+      const f: string[] = [];
+      const ids = ofType(run, 'scene').map((e) => e.data?.id).join();
+      if (!ids.startsWith('eyesOpen,belly,spareParts,drill1,breakthrough,paddle')) f.push(`scenes ${ids}`);
+      const parts = ofType(run, 'part');
+      if (parts.map((e) => e.data?.id).join() !== 'bit,gearbox,chain') f.push(`parts ${parts.map((e) => e.data?.id).join()}`);
+      if (ofType(run, 'drillReady').length !== 1) f.push('the drill never came together');
+      f.push(...z3(s, planZ3S(STORY.find((x) => x.id === 'drill1')!) / 60));
+      // the trainer: three ERG levels for flesh, cartilage and bone (FTP 200), then the breakthrough sprint
+      const ergW = new Set(run.mixerCommands.filter((c) => c.mode === 'erg').map((c) => (c as { watts: number }).watts));
+      for (const w of [160, 168, 172]) if (!ergW.has(w)) f.push(`no ${w} W ERG block (have ${[...ergW].join(', ')})`);
+      const sprint = ofType(run, 'pull').find((e) => e.data?.scene === 'breakthrough');
+      if (!sprint?.data?.setPiece) f.push('no breakthrough sprint');
       return f;
     },
   },

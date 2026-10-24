@@ -8,7 +8,8 @@ import { effortRate, railSpeed } from './pace';
 import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } from './pull';
 import { migrateSave } from './save';
 import { STORY } from './story';
-import { CHAPTER_NAMES, type ChapterId, type MenuView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
+import { CHAPTER_NAMES, type ChapterId, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
+import { BELLY_DEFAULTS, drillView, partInReach, PARTS, partsPassed, wakeFloor, Z3, type PartId } from './belly';
 import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
 
 export interface SeasideOpts {
@@ -103,6 +104,12 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     escapeS: num('fishEscapeS', F.escapeS, 0.5, 6, 0.1, 'Line goes slack after an escape (s)'),
     cardS: num('fishCardS', F.cardS, 1, 10, 0.5, 'Catch card (s; A skips)'),
   };
+  const B = BELLY_DEFAULTS;
+  const btun = {
+    wakeRpm: num('wakeRpm', B.wakeRpm, 0, 90, 5, 'Eyes open: pedalling at or above this cadence wakes you (rpm)'),
+    wakeS: num('wakeS', B.wakeS, 5, 120, 5, 'Eyes open: seconds of pedalling to open the eyes'),
+    partReach: num('partReach', B.partReach, 0.02, 0.2, 0.01, 'Spare parts: a part is in reach this far either side (scene progress)'),
+  };
   const fishDoneFloor = num('fishDoneFloor', 0.5, 0, 1, 0.05, 'Once every fish at a stop is landed or lost, the stop wraps up at least this fast (× plan)');
   const read = <T,>(o: { [K in keyof T]: () => number }) =>
     Object.fromEntries(Object.entries(o).map(([k, f]) => [k, (f as () => number)()])) as T;
@@ -134,6 +141,9 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   let shop: { id: ShopId; index: number; message: string } | null = null;
   let bonus: { scene: Scene; t: number; duration: number } | null = null;
   let bigOneRod = '-';
+  // the belly (#190)
+  let wake = 0, z3S = 0, allAt: number | null = null;
+  const got = new Map<PartId, { auto: boolean }>();
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
 
@@ -188,6 +198,12 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       const sold = sellCreel(economy, id);
       shop = { id, index: 0, message: sold ? 'Fresh catch. Fair weight.' : 'Have a look around.' };
       persistEconomy({ sceneId: sc.id, progress: p });
+    }
+    if (sc.id === 'eyesOpen') wake = 0;
+    if (sc.id === 'spareParts') { // resuming mid-scene: the parts behind you are already in hand
+      got.clear(); allAt = null;
+      for (const x of PARTS) if (x.at < p) got.set(x.id, { auto: false });
+      if (got.size === PARTS.length) allAt = p;
     }
     if (sc.id === 'bigOne') {
       bigOneRod = economy.rod;
@@ -315,6 +331,27 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     if (next && !bonus && progress >= next.atS / sc.planS) { progress = next.atS / sc.planS; heldS += dt; }
   };
 
+  /** Spare parts: A grabs the part in reach; one ridden past comes along anyway (generous). */
+  const updateParts = () => {
+    const reach = btun.partReach(), set = new Set(got.keys());
+    const grab = (id: PartId, auto: boolean) => {
+      got.set(id, { auto }); set.add(id);
+      ctx.emit({ type: 'part', data: { id, auto, n: got.size } });
+    };
+    const near = partInReach(progress, set, reach);
+    if (near && ctx.input().pressed.has('a')) grab(near.id, false);
+    for (const x of partsPassed(progress, set, reach)) grab(x.id, true);
+    if (allAt === null && got.size === PARTS.length) { allAt = Math.min(1, progress); ctx.emit({ type: 'drillReady', data: { auto: [...got.values()].filter((g) => g.auto).length } }); }
+  };
+
+  const partsView = (): PartsView => {
+    const set = new Set(got.keys());
+    return {
+      items: PARTS.map((x) => ({ ...x, got: got.has(x.id), auto: !!got.get(x.id)?.auto })),
+      reach: partInReach(Math.min(1, progress), set, btun.partReach())?.id ?? null, allAt,
+    };
+  };
+
   const leaveShop = () => {
     if (!shop) return;
     const result = ensureRod(economy, shop.id);
@@ -413,10 +450,15 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       progress += (speed * dt) / sc.length.m;
     } else {
       speed = 0;
+      // a drill holds its ERG target: working at it bores on plan (rests and blocks alike), never fails, only slows
+      const gateW = sc.kind === 'drill' ? effortAt(sc, Math.min(1, progress) * sc.planS) * w.drillScale * ftp * tun.planScale() : planW;
       progress += 'effortS' in sc.length
-        ? (effortRate(b.power3s, planW, tun.effortFloor(), tun.effortCap()) * cadenceRate(sc, b.cadence3s, w) * dt) / sc.length.effortS
+        ? (effortRate(b.power3s, gateW, tun.effortFloor(), tun.effortCap()) * cadenceRate(sc, b.cadence3s, w) * dt) / sc.length.effortS
         : dt / sc.length.s;
     }
+    if (frac >= Z3[0] && frac <= Z3[1]) z3S += dt;
+    if (sc.id === 'eyesOpen' && b.cadence3s >= btun.wakeRpm()) wake = Math.min(1, wake + dt / btun.wakeS());
+    if (sc.id === 'spareParts') updateParts();
     pending = [];
     if (pull?.setPiece) { const r = pull.tick(dt, frac, pt()); if (r !== 'pulling') endPull(r); }
     const pl = sc.pulls[nextPull];
@@ -463,7 +505,15 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     hud(): GameHud {
       if (phase === 'menu') return { controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Ride' }], touchControls: ['a'] };
       if (shop && !bonus) return { controls: [{ button: 'dpad', label: 'Browse' }, { button: 'a', label: 'Buy / choose' }, { button: 'b', label: 'Back on the road' }], touchControls: ['left', 'right', 'a', 'b'] };
-      return fishing ? fishingHud(fishing) : {};
+      if (fishing) return fishingHud(fishing);
+      const sc = g.scenes[index];
+      if (sc.id === 'spareParts') {
+        const near = partInReach(Math.min(1, progress), new Set(got.keys()), btun.partReach());
+        return near ? { controls: [{ button: 'a', label: `Grab ${near.name}`, shortLabel: 'Grab' }], touchControls: ['a'] } : {};
+      }
+      const band = cadenceBand(sc, wt());
+      if (sc.kind === 'drill' && band) return { targetCadence: { min: band[0], max: band[1], label: 'Keep it turning' } };
+      return {};
     },
     snapshot(): SeasideSnapshot {
       const sc = g.scenes[index], next = g.scenes[Math.min(last, index + 1)];
@@ -480,6 +530,9 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         cadenceBand: band,
         fishing: fishing && fishing.view(ft()),
         economy: structuredClone(economy), shop: shopView(),
+        wake: sc.id === 'eyesOpen' ? Math.max(wake, wakeFloor(p)) : null,
+        parts: sc.id === 'spareParts' ? partsView() : null,
+        drill: sc.kind === 'drill' ? drillView(sc, p * sc.planS) : null,
       };
     },
     isOver: () => phase === 'done',
@@ -495,6 +548,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         'Sprints on target': `${hits}/${sprints}`,
         'Best sprint': `${Math.round(bestFtp * 100)}% FTP`,
         'Drill minutes': +(drillS / 60).toFixed(1),
+        'Z3 minutes': +(z3S / 60).toFixed(1),
+        'Parts grabbed': `${[...got.values()].filter((x) => !x.auto).length}/${PARTS.length}`,
         'Catch value': +catchValue.toFixed(2),
         Rod: economy.rod, 'Big One rod': bigOneRod, Cash: economy.cash / 100, 'Lou account': economy.debt / 100,
         'Biggest fish': biggest ? `${biggest.name}, ${biggest.kg} kg` : '-',

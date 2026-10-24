@@ -1,8 +1,14 @@
-// Placeholder renderer: grey boxes and labels for every scene, so the story runtime can be ridden end to end.
-// The voxel world (#185) replaces the stage box; the HUD pieces (bubble, plate, card, menu) stay.
+// The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
+// the shops are the counter dioramas; later chapters still use the placeholder stage (grey box and labels) until
+// their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
+import { getWorld } from '../world/worlds';
+import { MorningSet } from './morning';
+import { MORNING_WORLD, type MorningShot } from './morningShots';
+import { pixelSetting } from './perf';
+import { WorldView } from './worldView';
 import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
@@ -27,10 +33,25 @@ export class SeasideRenderer implements GameRenderer {
   private send?: (a: unknown) => void;
   private ro: ResizeObserver | null = null;
   private offTap: (() => void) | null = null;
+  private worldCanvas: HTMLCanvasElement | null = null;
+  private view: WorldView | null = null;
+  private morning: MorningSet | null = null;
+  private profile: Readonly<Profile> | null = null;
+  private overlayEl: HTMLElement | null = null;
+  /** Story clock for the world (advances with the sim's scene time, so pauses freeze it). */
+  private clock = 0; private lastScene = ''; private lastSceneT = 0;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }): void {
-    this.send = ctx.send;
+    this.send = ctx.send; this.profile = ctx.profile;
     if (ctx.insets) this.insets = ctx.insets;
+    const world = document.createElement('canvas');
+    world.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:none';
+    container.appendChild(world); this.worldCanvas = world;
+    if (import.meta.env?.DEV) {
+      const o = document.createElement('pre');
+      o.style.cssText = 'position:absolute;right:6px;top:6px;margin:0;padding:4px 6px;font:11px/1.3 ui-monospace,monospace;color:#fff;background:rgba(0,0,0,.45);pointer-events:none;display:none;z-index:2';
+      container.appendChild(o); this.overlayEl = o;
+    }
     const background = document.createElement('canvas'); container.appendChild(background);
     this.shopCanvas = background; this.diorama = new ShopDiorama(background); this.diorama.hide();
     const c = document.createElement('canvas');
@@ -55,20 +76,47 @@ export class SeasideRenderer implements GameRenderer {
     this.resize(container.clientWidth, container.clientHeight);
   }
 
-  setInsets(insets: Insets): void { this.insets = insets; }
+  setInsets(insets: Insets): void { this.insets = insets; this.view?.setInsets(insets); }
 
   resize(w: number, h: number): void {
     if (!this.canvas) return;
     const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     this.W = w; this.H = h;
+    this.view?.resize(w, h);
     this.canvas.width = Math.max(1, Math.round(w * dpr)); this.canvas.height = Math.max(1, Math.round(h * dpr));
     this.g?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  render(snap: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>): void {
+  /** The voxel world, built on the first Morning shot (its tile workers start then). */
+  private ensureWorld(): MorningSet {
+    if (!this.morning) {
+      const save = (this.profile?.gameData as Record<string, unknown> | undefined)?.seaside;
+      this.view = new WorldView(this.worldCanvas!, getWorld('coast'), { pixel: pixelSetting(save), overlay: this.overlayEl });
+      this.view.resize(this.W, this.H); this.view.setInsets(this.insets);
+      this.morning = new MorningSet(this.view);
+    }
+    return this.morning;
+  }
+
+  private tickClock(s: SeasideSnapshot): number {
+    const before = this.clock;
+    this.clock += s.sceneId === this.lastScene ? Math.max(0, s.sceneT - this.lastSceneT) : s.sceneT;
+    this.lastScene = s.sceneId; this.lastSceneT = s.sceneT;
+    return this.clock - before;
+  }
+
+  render(snap: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>): void {
     const g = this.g, s = snap as SeasideSnapshot;
     if (!g || !s || !this.W) return;
     const { W, H } = this;
+    const dt = this.tickClock(s);
+    const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && !shopOpen && (MORNING_WORLD.has(s.sceneId) || (s.fishing && (s.sceneId === 'shop1' || s.sceneId === 'pierStand')))) {
+      const shot = this.ensureWorld().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawWorldHud(g, s, shot); return; }
+    }
+    this.worldCanvas!.style.display = 'none';
+    if (this.overlayEl) this.overlayEl.style.display = 'none';
     const L = layout(W, H, this.insets, s.menu?.items.length ?? 0, s.fishing?.spots.length ?? 3);
     this.menuRows = L.menu;
     this.shopTargets = [];
@@ -121,14 +169,42 @@ export class SeasideRenderer implements GameRenderer {
     g.fillStyle = '#222'; g.textAlign = 'left'; g.font = `${Math.round(p.h * 0.38)}px system-ui, sans-serif`;
     g.fillText(`${['Morning', 'Midday', 'Evening'][s.chapter]} · ${s.scene.index + 1}/${s.scene.count} ${s.scene.title}`, p.x + 12, p.y + p.h * 0.45);
     g.textAlign = 'right'; g.fillText(`${Math.round(s.routeS)} m · dream ${s.look.dream.toFixed(2)}`, p.x + p.w - 12, p.y + p.h * 0.45);
+    this.drawBubbleAndCard(g, s, L);
+  }
 
+  /** Over the voxel world: the title, fishing prompts, the monologue, the chapter card, a thin progress line. */
+  private drawWorldHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: MorningShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets, 0, s.fishing?.spots.length ?? 3);
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = [];
+    this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
+    if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT, true);
+    if (s.sceneId === 'title') { // small serif "Seaside" in the fog
+      const al = Math.max(0, Math.min(1, shot.fx.fog * 1.6, s.sceneT / 2));
+      g.globalAlpha = al; g.fillStyle = '#3d4446'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `${Math.round(Math.min(64, L.UH * 0.09))}px Georgia, serif`;
+      g.fillText('Seaside', W / 2, L.UH * 0.42);
+      g.font = `italic ${Math.round(Math.min(20, L.UH * 0.032))}px Georgia, serif`;
+      g.fillText('pedal to begin', W / 2, L.UH * 0.42 + Math.min(52, L.UH * 0.075));
+      g.globalAlpha = 1;
+    }
+    // the title is the Morning's card: no second card on top of it
+    const card = s.sceneId === 'title' ? null : s.chapterCard;
+    if (shot.fx.black > 0) { g.fillStyle = `rgba(0,0,0,${shot.fx.black})`; g.fillRect(0, 0, W, H); }
+    const p = L.plate; // progress through the scene: a hairline above the HUD
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, { ...s, chapterCard: card }, L);
+  }
+
+  private drawBubbleAndCard(g: CanvasRenderingContext2D, s: SeasideSnapshot, L: ReturnType<typeof layout>): void {
     // monologue bubble, top-left
     if (s.monologue) {
       const m = s.monologue, fade = Math.min(1, m.age / 0.3, (m.life - m.age) / 0.4), bb = L.bubble;
       g.globalAlpha = Math.max(0, fade);
       g.fillStyle = '#fff'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
       g.beginPath(); g.roundRect(bb.x, bb.y, bb.w, bb.h, 12); g.fill(); g.stroke();
-      g.fillStyle = '#2b2b2b'; g.textAlign = 'left'; g.font = `italic ${Math.round(bb.h * 0.38)}px Georgia, serif`;
+      g.fillStyle = '#2b2b2b'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = `italic ${Math.round(bb.h * 0.38)}px Georgia, serif`;
       g.fillText(m.text, bb.x + 16, bb.y + bb.h / 2, bb.w - 32);
       g.globalAlpha = 1;
     }
@@ -137,7 +213,7 @@ export class SeasideRenderer implements GameRenderer {
     if (s.chapterCard) {
       const c = L.card, age = s.chapterCard.age, al = Math.max(0, Math.min(1, age / 0.6, (5 - age) / 0.8));
       g.globalAlpha = al; g.fillStyle = 'rgba(10,10,10,.75)'; g.fillRect(c.x, c.y, c.w, c.h);
-      g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = `${Math.round(c.h * 0.36)}px Georgia, serif`;
+      g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(c.h * 0.36)}px Georgia, serif`;
       g.fillText(s.chapterCard.name, c.x + c.w / 2, c.y + c.h / 2); g.globalAlpha = 1;
     }
   }
@@ -157,6 +233,8 @@ export class SeasideRenderer implements GameRenderer {
 
   unmount(): void {
     this.ro?.disconnect(); this.offTap?.();
+    this.morning?.dispose(); this.morning = null; this.view?.dispose(); this.view = null;
+    this.worldCanvas?.remove(); this.worldCanvas = null; this.overlayEl?.remove(); this.overlayEl = null;
     this.diorama?.dispose(); this.diorama = null; this.shopCanvas?.remove(); this.shopCanvas = null;
     this.canvas?.remove(); this.canvas = null; this.g = null;
   }

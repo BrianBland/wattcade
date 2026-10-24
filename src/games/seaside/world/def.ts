@@ -18,6 +18,8 @@ export interface CorridorDef {
   surface: SurfaceFn;
   /** 'ground' sits on the terrain (terrain under it is skipped); 'span' crosses a void (terrain below is kept). */
   support: 'ground' | 'span';
+  /** Ground corridors that cross a void for part of their length (bridge decks, piers): true where s spans. */
+  span?(s: number): boolean;
   /** Bed thickness under the surface (m). */ thickness: number;
   /** Terrain is carved this high above the surface (m), so nothing pokes through. */ clearance: number;
   /** Ground corridors: walls this deep (m) at the edges to meet the terrain. */ edgeSkirt?: number;

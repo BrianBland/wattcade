@@ -67,3 +67,17 @@ export function fishLayout(stage: Box, n: number): FishLayout {
 
 export const inside = (b: Box, x: number, y: number) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 export const overlaps = (a: Box, b: HudOcclusion) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Chapter 2a's HUD pieces (#190): the depth meter scratched down the left, the parts tally top-right, the popup. */
+export interface BellyHud { meter: Box; tally: Box; popup: Box }
+export function bellyHud(W: number, H: number, insets: Insets): BellyHud {
+  const L = layout(W, H, insets), pad = Math.max(12, Math.min(W, L.UH) * 0.03), left = Math.max(0, insets.left), right = Math.max(0, insets.right);
+  const top = L.bubble.y + L.bubble.h + pad, bottom = L.plate.y - pad;
+  const mh = Math.max(80, Math.min(360, (bottom - top) * 0.8));
+  const meter = { x: left + pad, y: top + Math.max(0, (bottom - top - mh) / 2), w: Math.max(40, Math.min(64, W * 0.05)), h: Math.min(mh, Math.max(0, bottom - top)) };
+  const tw = Math.min(300, W * 0.32), th = Math.max(32, Math.min(44, L.UH * 0.06));
+  const tally = { x: W - right - pad - tw, y: Math.max(0, insets.top) + pad, w: tw, h: th };
+  const pw = Math.min(W * 0.7, 440), ph = Math.max(48, Math.min(72, L.UH * 0.1));
+  const popup = { x: (W - pw) / 2, y: Math.max(top, L.UH * 0.3 - ph / 2), w: pw, h: ph };
+  return { meter, tally, popup };
+}

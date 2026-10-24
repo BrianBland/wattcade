@@ -46,9 +46,9 @@ const RAW: Raw[] = [
   // ---------- Midday ----------
   { id: 'eyesOpen', ch: 1, kind: 'cutscene', title: 'Eyes open', min: 2, e: [[2, 50]], len: timed, tr: sim(0),
     say: ['...', 'Okay.', 'Inside a fish. Sure.'], look: 'belly', dream: 0.4 },
-  { id: 'belly', ch: 1, kind: 'ride', title: 'The belly', min: 4, e: [[4, 58]], len: at(4), tr: swell(0, 3, 3),
+  { id: 'belly', ch: 1, kind: 'ride', title: 'The belly', min: 4, e: [[4, 58]], len: at(2.5), tr: swell(0, 3, 3),
     say: ["That's my old rod.", 'How long has this been in here?'], look: 'belly', dream: 0.4 },
-  { id: 'spareParts', ch: 1, kind: 'ride', title: 'Spare parts', min: 3, e: [[3, 60]], len: at(3.5), tr: sim(0),
+  { id: 'spareParts', ch: 1, kind: 'ride', title: 'Spare parts', min: 3, e: [[3, 60]], len: at(1.5), tr: sim(0),
     say: ['Somebody had a worse day than me.', "That'll do."], look: 'belly', dream: 0.42 },
   { id: 'drill1', ch: 1, kind: 'drill', title: 'The drill', min: 10, e: [[1, 65], [2.5, 80], [0.5, 60], [2.5, 84], [0.5, 60], [2.5, 86], [0.5, 65]], len: effort, tr: erg(0.82),
     say: ['If I stop, I think it digests me.', 'Bone. Good. Bone is close to out.'], look: 'belly', dream: 0.45 },

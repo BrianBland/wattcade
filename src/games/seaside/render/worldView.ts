@@ -38,6 +38,12 @@ export interface WorldFrame {
   atmos?: { fog: number; density: number; zenith?: number; horizon?: number; sunI?: number; hemiI?: number; /** ink outline × (fog hides lines too) */ ink?: number };
   /** 0 = the world's swell, 1 = glassy water. */
   calm?: number;
+  /** Extra camera roll (rad): the belly floor heaving. */
+  roll?: number;
+  /** Bars sinking out of view 0..1 (they unfold into the drill). */
+  barsDrop?: number;
+  /** Post overrides on top of the look for this frame (waking haze). */
+  post?: { bloom?: number; threshold?: number };
   /** Monotonic seconds for streaming, eviction and tile dissolves (default: the view's own wall clock in frame(),
    *  `t` in pose()). Story time can stand still (paused, shops); tiles must still arrive and fade in. */
   wall?: number;
@@ -111,6 +117,9 @@ export class WorldView {
 
   setInsets(insets: Insets): void { this.insets = insets; this.applyView(); }
 
+  /** Camera-space y (m) of the hands at 0.46 m in front of the eye: props held in place of the bars sit here. */
+  get handsY(): number { return this.baseBarsY; }
+
   /** CSS size of the canvas. */
   resize(w: number, h: number): void {
     this.W = Math.max(1, Math.round(w * this.ratio)); this.H = Math.max(1, Math.round(h * this.ratio));
@@ -148,6 +157,7 @@ export class WorldView {
     applyLookState(look);
     Object.assign(this.post.p, look.post);
     if (f.atmos?.ink !== undefined) this.post.p.outline *= f.atmos.ink;
+    if (f.post) Object.assign(this.post.p, f.post);
     this.post.render(this.stage.scene, this.stage.camera, f.t);
     this.overlay(realDt);
   }
@@ -172,9 +182,9 @@ export class WorldView {
     else cam.position.set(p.x, p.y + w.eye + Math.sin(ph * 2) * 0.008, p.z);
     if (f.aim) cam.lookAt(f.aim.x, f.aim.y, f.aim.z); else cam.lookAt(g.x, g.y + rig.gaze.dy, g.z);
     this.bars.visible = f.bars ?? true;
-    cam.rotateZ(Math.sin(ph) * 0.006);
+    cam.rotateZ(Math.sin(ph) * 0.006 + (f.roll ?? 0));
     cam.updateMatrixWorld();
-    this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003;
+    this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003 - 0.35 * (f.barsDrop ?? 0);
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     this.bars.rotation.set(-Math.asin(Math.max(-1, Math.min(1, fwd.y))) + 0.12, 0, Math.sin(ph) * 0.02); // undo the pitch at any heading
     aimSun(this.stage, cam.position.clone().addScaledVector(fwd, 55), new THREE.Vector3(...w.sky.sunDir), 75);

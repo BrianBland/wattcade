@@ -1,0 +1,45 @@
+/* Generated from tokens.ts; do not edit by hand. */
+:root {
+  --ui-color-background: #0b202c;
+  --ui-color-surface: #102b38;
+  --ui-color-raised: #183744;
+  --ui-color-text: #eaf0e6;
+  --ui-color-muted: #a7bdc6;
+  --ui-color-subtle: #8daeb8;
+  --ui-color-accent: #57dfbe;
+  --ui-color-on-accent: #09242b;
+  --ui-color-gold: #dfc477;
+  --ui-color-danger: #ff8f98;
+  --ui-color-line: #bdd3da24;
+  --ui-color-hover: #bdd3da0b;
+  --ui-color-focus: #57dfbe;
+  --ui-color-disabled: #647d87;
+  --ui-font-family: system-ui, sans-serif;
+  --ui-font-title: 36px;
+  --ui-font-heading: 20px;
+  --ui-font-body: 14px;
+  --ui-font-small: 12px;
+  --ui-font-micro: 10px;
+  --ui-space-xs: 4px;
+  --ui-space-sm: 8px;
+  --ui-space-md: 12px;
+  --ui-space-lg: 16px;
+  --ui-space-xl: 24px;
+  --ui-space-section: 32px;
+  --ui-size-touch: 44px;
+  --ui-size-radius: 2px;
+  --ui-size-focus: 2px;
+  --ui-size-progress: 4px;
+  --ui-motion-fast: 120ms;
+  --ui-motion-normal: 200ms;
+  --ui-controller-a: #2bd96b;
+  --ui-controller-b: #ff4d4d;
+  --ui-controller-y: #3b82ff;
+  --ui-controller-z: #ff9a2b;
+  --ui-controller-direction: #a7bdc6;
+  --ui-zone-1: #8a8aa0;
+  --ui-zone-2: #3b82ff;
+  --ui-zone-3: #2de26a;
+  --ui-zone-4: #ffd23b;
+  --ui-zone-5: #ff4d4d;
+}

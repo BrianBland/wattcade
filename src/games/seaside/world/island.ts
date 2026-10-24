@@ -58,8 +58,12 @@ function fillIsland(grid: VoxelGrid, reg: Region, o: TerrainFill) {
     if (cc > -Infinity) top = Math.min(top, yi(cc) - 1);
     const hc = hallCap(wx, wz);
     if (hc !== null) top = Math.min(top, yi(hc) - 1);
-    let lo = top;
-    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
+    let lo = top, byRoad = false;
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
+      byRoad ||= CC[(i + a) * D + k + b] === -Infinity;
+    }
+    if (byRoad) { const n = route.nearest(wx, wz, 6); if (n) lo = Math.min(lo, yi(n.y - 0.6)); } // the steep flank meets the road bed
     lo = Math.max(Math.min(lo, top - 1), seaY - 1);
     if (o.skirt && (i === 1 || k === 1 || i >= W - 3 || k >= D - 3)) lo = Math.max(lo - o.skirt, seaY - 1);
     const steep = slopeAt(r) > 0.75 && r < SHORE_R - 20, sandy = r > SHORE_R - 14;

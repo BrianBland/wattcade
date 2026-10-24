@@ -1,5 +1,6 @@
 // The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
-// Chapter 2a (#190) switches the same view to the belly world (render/belly.ts); the shops are the counter dioramas;
+// Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
+// (render/island.ts); the shops are the counter dioramas;
 // later chapters still use the placeholder stage (grey box and labels) until their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
@@ -8,6 +9,8 @@ import { getWorld } from '../world/worlds';
 import { MorningSet } from './morning';
 import { BellySet } from './belly';
 import { BELLY_WORLD, type BellyShot } from './bellyShots';
+import { IslandSet } from './island';
+import { ISLAND_WORLD, type IslandShot } from './islandShots';
 import { BELLY_LAYERS, PARTS } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -42,6 +45,9 @@ export class SeasideRenderer implements GameRenderer {
   private view: WorldView | null = null;
   private morning: MorningSet | null = null;
   private belly: BellySet | null = null;
+  private island: IslandSet | null = null;
+  /** Seconds since the beach's first fish went on the fire (null before). */
+  private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
   private overlayEl: HTMLElement | null = null;
   /** Story clock for the world (advances with the sim's scene time, so pauses freeze it). */
@@ -106,16 +112,25 @@ export class SeasideRenderer implements GameRenderer {
   /** The Morning set on the coast world. */
   private ensureWorld(): MorningSet {
     if (!this.morning) {
-      this.belly?.dispose(); this.belly = null;
+      this.belly?.dispose(); this.belly = null; this.island?.dispose(); this.island = null;
       this.morning = new MorningSet(this.ensureView('coast'));
     }
     return this.morning;
   }
 
+  /** The island set on the island world. */
+  private ensureIsland(): IslandSet {
+    if (!this.island) {
+      this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
+      this.island = new IslandSet(this.ensureView('island'));
+    }
+    return this.island;
+  }
+
   /** The belly set on the belly world. */
   private ensureBelly(): BellySet {
     if (!this.belly) {
-      this.morning?.dispose(); this.morning = null;
+      this.morning?.dispose(); this.morning = null; this.island?.dispose(); this.island = null;
       this.belly = new BellySet(this.ensureView('belly'));
     }
     return this.belly;
@@ -134,6 +149,10 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && ISLAND_WORLD.has(s.sceneId)) {
+      const shot = this.ensureIsland().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawIslandHud(g, s, shot, dt); return; }
+    }
     if (!s.menu && BELLY_WORLD.has(s.sceneId)) {
       const ftp = this.profile?.ftp || 200;
       const shot = this.ensureBelly().frame(s, this.clock, dt, { cadence: bike?.cadence3s ?? 0, powerFtp: (bike?.power3s ?? 0) / ftp });
@@ -276,6 +295,33 @@ export class SeasideRenderer implements GameRenderer {
     this.drawBubbleAndCard(g, s, L);
   }
 
+  /** Over the island: fishing prompts on the beach, the white of the surface fading, the fire's warmth once the
+   *  fish is cooking, then the usual bubble, card and progress line. */
+  private drawIslandHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: IslandShot, dt: number): void {
+    const { W, H } = this, L = layout(W, H, this.insets, 0, s.fishing?.spots.length ?? 3);
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = [];
+    this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
+    if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT, true);
+    // the screen warms once something is cooking (the beach's first catch), and stays warm a while after
+    if (s.sceneId === 'beach' && s.fishing?.caught.length && this.cooked === null) this.cooked = 0;
+    if (this.cooked !== null) {
+      this.cooked += dt;
+      const k = Math.min(1, this.cooked / 6) * (s.sceneId === 'beach' ? 1 : Math.max(0, 1 - s.scene.progress * 3));
+      if (k > 0) {
+        const r = g.createRadialGradient(W / 2, L.UH * 0.6, 0, W / 2, L.UH * 0.6, Math.max(W, L.UH) * 0.75);
+        r.addColorStop(0, `rgba(255,170,90,${0.1 * k})`); r.addColorStop(1, `rgba(255,120,40,${0.24 * k})`);
+        g.fillStyle = r; g.fillRect(0, 0, W, H);
+      }
+      if (s.sceneId !== 'beach' && s.scene.progress > 0.4) this.cooked = null;
+    }
+    if (shot.fx.white > 0) { g.fillStyle = `rgba(250,253,255,${shot.fx.white})`; g.fillRect(0, 0, W, H); }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
   private popup(g: CanvasRenderingContext2D, b: Box, text: string, alpha: number): void {
     g.globalAlpha = Math.max(0, alpha);
     g.fillStyle = 'rgba(255,250,240,.94)'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
@@ -321,7 +367,7 @@ export class SeasideRenderer implements GameRenderer {
 
   unmount(): void {
     this.ro?.disconnect(); this.offTap?.();
-    this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null; this.view?.dispose(); this.view = null;
+    this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null; this.island?.dispose(); this.island = null; this.view?.dispose(); this.view = null;
     this.worldCanvas?.remove(); this.worldCanvas = null; this.overlayEl?.remove(); this.overlayEl = null;
     this.diorama?.dispose(); this.diorama = null; this.shopCanvas?.remove(); this.shopCanvas = null;
     this.canvas?.remove(); this.canvas = null; this.g = null;

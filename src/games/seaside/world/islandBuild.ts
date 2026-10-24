@@ -8,7 +8,8 @@ import type { Structure } from './coastBuild';
 import { approachLane, HALL, HEAD, headLocal, headWorld, islandRoute, islandSpan, PLATEAU_Y } from './islandLayout';
 import { I } from './islandPalette';
 
-const K = 2.6; // the head is designed in unit space (prototype stills/later/monkey.ts), ~15 units tall
+/** The head is designed in unit space (prototype stills/later/monkey.ts, ~15 units tall); metres per unit. */
+export const K = 3.4;
 const rnd = (a: number, b: number, c = 0) => hash2(a * 1.31 + c * 7.7, b * 0.73 - c * 3.1, c);
 
 /** The monkey head in unit space: x right, y up from the mouth floor (prototype y − 0.9), z out of the face (+ toward
@@ -54,14 +55,14 @@ const hallRoof = (u: number) => HALL.h - 5 * (u / HALL.half) ** 2;
 export const POOL = { u0: -11, u1: -3.8, w0: 40, w1: HALL.len - 34 };
 export const PLINTH = { half: 2.6, w0: HALL.len - 13, w1: HALL.len - 6, h: 1.6 };
 /** Roof wells for the sun shafts: centres along w (at u = 0). */
-export const SHAFTS = Array.from({ length: Math.floor((HALL.len - 40) / 22) }, (_, i) => 34 + i * 22);
+export const SHAFTS = [...Array.from({ length: Math.floor((HALL.len - 40) / 22) }, (_, i) => 34 + i * 22), HALL.len - 9.5];
 const PILLAR_W = Array.from({ length: Math.floor((HALL.len - 30) / 12) }, (_, i) => 26 + i * 12);
 
 function hallVoxel(u: number, y: number, w: number, wx: number, wz: number): number {
   const au = Math.abs(u), r = rnd(Math.round(wx * 2), Math.round(y * 2), Math.round(wz * 2));
   if (w < 16 || w > HALL.len) return -1; // not the hall
   if (au >= HALL.half || y >= hallRoof(u)) { // walls and roof: carved glyph bands at eye height, open wells overhead
-    if (y >= hallRoof(u) && au < 4.5 && SHAFTS.some((c) => Math.abs(w - c) < 2.5)) return 0;
+    if (y >= hallRoof(u) && au < 3.5 && SHAFTS.some((c) => Math.abs(w - c) < 2.5)) return 0;
     if (au < HALL.half + 0.6 && y > 1.2 && y < 6.5 && Math.floor(y / 1.3) % 2 === 0) {
       const g = hash2(Math.floor(w / 0.9), Math.floor(y / 0.65), 31);
       return g < 0.25 ? I.glyph : g < 0.5 ? I.stoneDark : I.stone2;
@@ -254,7 +255,7 @@ export function islandScatter(height: (x: number, z: number) => number): Scatter
       place(g, p) {
         const k = (p.s - cs0) / (cs1 - cs0), side = hash2(p.s, 7, 92) < 0.5 ? -1 : 1;
         const x = p.x - p.tz * (side - 1) * p.d, z = p.z + p.tx * (side - 1) * p.d, y = height(x, z);
-        if (p.s > mm0) { if (Math.round((p.s - mm0) / 9) % 2 === 0) for (const sd of [-1, 1]) cutStone(g, p.x - p.tz * sd * 5, height(p.x - p.tz * sd * 5, p.z + p.tx * sd * 5), p.z + p.tx * sd * 5, p.tx, p.tz, 'pillar', p.seed + sd); return; }
+        if (p.s > mm0) { if (Math.round((p.s - mm0) / 9) % 3 === 0) for (const sd of [-1, 1]) cutStone(g, p.x - p.tz * sd * 8.5, height(p.x - p.tz * sd * 8.5, p.z + p.tx * sd * 8.5), p.z + p.tx * sd * 8.5, p.tx, p.tz, 'pillar', p.seed + sd); return; }
         const chance = 0.12 + 0.8 * k;
         if (hash2(p.s, 8, 92) > chance) return;
         const kind = k < 0.3 ? 'block' : k < 0.55 ? (hash2(p.s, 9, 92) < 0.5 ? 'row' : 'block') : k < 0.8 ? (hash2(p.s, 9, 92) < 0.6 ? 'toppled' : 'row') : 'pillar';

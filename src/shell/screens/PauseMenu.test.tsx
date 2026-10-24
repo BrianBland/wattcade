@@ -10,8 +10,7 @@ it('reaches History with the controller and keeps fake bike instructions in paus
  const show=(fake:boolean)=>act(()=>render(<PauseMenu fake={fake} layout="auto" onLayout={()=>{}} onResume={()=>{}} onQuit={()=>{}} onHelp={()=>{}} onRestart={()=>{}} onHistory={onHistory} onExtension={()=>{}}/>,el));
  try{
   show(true);expect(el.querySelector('.fake-bike-help')?.textContent).toContain('W / S');
-  for(let i=0;i<4;i++)act(()=>deliverMenuPresses(new Set(['down'])));
-  act(()=>deliverMenuPresses(new Set(['right'])));
+  for(let i=0;i<5;i++)act(()=>deliverMenuPresses(new Set(['down'])));
   act(()=>deliverMenuPresses(new Set(['a'])));
   expect(onHistory).toHaveBeenCalledOnce();
   show(false);expect(el.querySelector('.fake-bike-help')).toBeNull();

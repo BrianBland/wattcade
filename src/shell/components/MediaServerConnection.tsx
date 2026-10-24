@@ -16,8 +16,11 @@ export function MediaServerConnection({ focused, onFocus }: { focused?: boolean;
     catch (e) { setConnected(false); setMessage(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
-  return <div class={`card tile device${focused ? ' focused' : ''}${config.enabled ? ' on' : ''}`} onPointerDown={onFocus}>
-    <div class="device-top"><span class="icon">🎵</span><h3>Media server</h3><span class="spacer"/><Dot on={connected}/></div>
+  return <details class={`card tile device media-server-connection${focused ? ' focused' : ''}${config.enabled ? ' on' : ''}`} onPointerDown={onFocus}>
+    <summary class="device-top media-server-summary" aria-label="Media server setup" onClick={onFocus} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
+      <span class="icon" aria-hidden="true">🎵</span><h3>Media server</h3><span class="spacer"/>
+      <span class="media-server-state">{connected ? 'Connected' : config.enabled ? 'Enabled' : 'Optional'}</span><Dot on={connected}/>
+    </summary>
     <label><input type="checkbox" checked={config.enabled} onChange={(e) => save({ ...config, enabled: e.currentTarget.checked })}/> Enable media extension</label>
     <label class="dim small">Server URL<input class="mp-search" aria-label="Media server URL" value={config.url} placeholder="https://media.example.com"
       onInput={(e) => save({ ...config, url: e.currentTarget.value })}/></label>
@@ -31,5 +34,5 @@ export function MediaServerConnection({ focused, onFocus }: { focused?: boolean;
     <Btn small disabled={busy || !config.url.trim()} onClick={() => void connect()}>{busy ? 'Connecting…' : 'Test connection'}</Btn>
     {message && <div role="status" class={connected ? 'device-live' : 'warn'}>{message}</div>}
     <div class="dim small note">Search YouTube and SoundCloud. Online mixes use estimated transitions and analyze the buffered audio as you ride. Server settings and the access token are saved in this browser on this device. Clear the token field to forget it.</div>
-  </div>;
+  </details>;
 }

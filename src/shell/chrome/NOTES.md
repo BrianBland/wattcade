@@ -1,5 +1,5 @@
 # Flat game chrome
-- `chrome.css` is scoped to `.chrome-ui` screens/pause and `.chrome-toasts`; other screens keep their existing styles.
+- `chrome.css` composes shell screens; canonical tokens/widgets are in `src/ui/`. See `docs/UI_STYLE_GUIDE.md` and `/dev/ui-kit.html` for DOM/Canvas adoption.
 - Flat navy surfaces, mint primary/focus, gold achievement accent. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
 - Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings (collapsed on every visit, including saved setups; summary shows Optional/Enabled/Connected; controller A toggles). The setup list scrolls independently while Continue remains reachable.
 - ProfilePicker has a roster + one live selected-rider showcase. Touch previews first, then explicit Ride/Edit; controller A starts, Y edits. Phone roster scrolls horizontally with gestures; controller focus scrolls into view.
@@ -8,5 +8,8 @@
 - `ChromeHints` follows Bluetooth and gamepad connection changes. Physical A/B labels only appear with a controller attached.
 - Menu sheets stop above the measured live HUD. Read-only achievement notifications use the upper right, clear of the bottom HUD and touch actions and expire after 6 seconds; regular toast API/lifetime stays compatible.
 - `achievementToast` carries achievement description and bonus XP from `previewAward`; earning/saving progression is unchanged.
-- Review: `/dev/chrome-review.html?game=warmup&manual=1&fake=0&legend=0&view=connect` (also riders/new-rider/edit-rider/pause/achievement; Connect state=busy/error). Uses production components over the real renderer, with dev-only rider/device fixtures.
+- Review: `/dev/chrome-review.html?game=warmup&manual=1&fake=0&legend=0&view=connect` (also riders/new-rider/edit-rider/pause/achievement/result/summary/achievements/arcade/media/controls/loading/error; Connect state=busy/error). Uses production components over the real renderer, with dev-only rider/device fixtures.
 - Verification: shell tests, TypeScript and production build. Captures in `docs/visual-polish/chrome/` at 1180×820, 390×844 and 844×390. Real Bluetooth/iOS remains a hardware check.
+- Results/summary/achievements, arcade toolbar/carousel, media panels, controls guide and loading/error states use shared widgets/tokens. Summary is D-pad scrollable; result and summary share rider-selected units.
+- Phone/portrait music uses Browse/Queue/Preview tabs; controller focus selects the relevant panel. Search still takes over the visual viewport while the keyboard is open. Queue/undo/mode/start remain unchanged.
+- Arcade toolbar scrolls horizontally, focused controls scroll into view, carousel cards share a vertical centerline, and help uses a viewport-positioned tooltip outside clipping containers. Game-owned menus stay unchanged.

@@ -1,3 +1,4 @@
+import { UiListRow } from '../../ui';
 import '../chrome/chrome.css';
 import { ChromeHints } from '../chrome/ChromeHints';
 import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
@@ -38,11 +39,11 @@ export function ProfilePicker({ profiles, lastId, onPick, onNew, onEdit }: { pro
       <header class="screen-head chrome-head"><div><div class="chrome-eyebrow">WATTCADE / RIDERS</div><h1>Who's riding?</h1><div class="sub">Pick up where you left off.</div></div></header>
       <div class="rider-selector">
         <div class="rider-roster" ref={roster} role="group" aria-label="Choose rider">
-          {profiles.map((p, i) => <button type="button" key={p.id} class={`rider-entry${idx === i ? ' focused selected' : ''}`} aria-pressed={idx === i} onFocus={() => setIdx(i)} onClick={() => setIdx(i)}>
+          {profiles.map((p, i) => <UiListRow selected={idx===i} focused={idx===i} key={p.id} class={`rider-entry${idx === i ? ' focused selected' : ''}`} aria-pressed={idx === i} onFocus={() => setIdx(i)} onClick={() => setIdx(i)}>
             <RiderAvatar profile={p} size="thumb" still road={false} />
             <span><b>{p.name}</b><small>Level {levelView(p.xp).level} · {lastRide(p) ? `Last ride ${timeAgo(lastRide(p)).toLowerCase()}` : 'Ready for a first ride'}</small></span>
             <span class="roster-arrow" aria-hidden="true">→</span>
-          </button>)}
+          </UiListRow>)}
           <button type="button" class={`rider-entry new${idx === profiles.length ? ' focused' : ''}`} onFocus={() => setIdx(profiles.length)} onClick={onNew}><span class="new-rider-icon" aria-hidden="true">+</span><span><b>New rider</b><small>Make this ride your own</small></span></button>
         </div>
         <section class="rider-showcase" aria-label="Selected rider">

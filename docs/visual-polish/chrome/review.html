@@ -6,6 +6,7 @@
 <div class="grid"></div>
 <script>
 const phone=new URLSearchParams(location.search).has('phone');document.body.classList.toggle('phone',phone);
-const views=[['connect','01 · Connection','Flat device list / setup details on demand'],['riders','02 · Rider selection','A compact roster and one animated showcase'],['pause','03 · Pause','A quiet sheet over the actual game'],['achievement','04 · Achievement','A compact, temporary notification']];
+let views=[['connect','01 · Connection','Flat device list / setup details on demand'],['riders','02 · Rider selection','A compact roster and one animated showcase'],['pause','03 · Pause','A quiet sheet over the actual game'],['achievement','04 · Achievement','A compact, temporary notification']];
+if(new URLSearchParams(location.search).has('finish'))views=[['summary','01 · Ride summary','Stats, charts and earned rewards'],['achievements','02 · Achievements','Quiet rows and clear goal progress'],['arcade','03 · Arcade selector','Compact toolbar and centered cards'],['media','04 · Music','Library, preview and queue']];
 document.querySelector('.grid').innerHTML=views.map(([id,name,desc])=>`<figure><figcaption>${name}<small>${desc}</small></figcaption><img src="${phone?'phone':'desktop'}-${id}.png"></figure>`).join('');
 </script>

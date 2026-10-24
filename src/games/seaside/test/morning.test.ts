@@ -150,3 +150,12 @@ describe('Morning shots', () => {
     expect(at(60).eye.y).toBeLessThan(at(5).eye.y - 20);
   });
 });
+
+it('uses the coast fishing shots during optional shop turnouts, leaving the counters alone', () => {
+  for (const [shop, stop] of [['shop1', 'turnout1'], ['pierStand', 'pier']]) {
+    const bonus = morningShot(snap(shop, 0.2, { fishing: { phase: 'wait' } }));
+    expect(bonus).toEqual(morningShot(snap(stop, 0.2)));
+    expect(bonus?.rod).toBe('fish');
+    expect(morningShot(snap(shop, 0.2))).toBeNull();
+  }
+});

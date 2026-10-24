@@ -213,6 +213,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     storyT = planElapsed(g, i, p);
     startedAt = g.scenes[i].id;
     enter(i, p);
+    // Morning has no chapter-boundary save in enter(); a restart must replace the old Continue point.
+    if (i === 0 && save.checkpoint) checkpoint(g.scenes[i].id, p);
   };
 
   // ---- opening: chapter select / continue menu, or straight in ----

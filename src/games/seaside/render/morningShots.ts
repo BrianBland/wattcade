@@ -120,8 +120,10 @@ export function bigOneView(t: number, pull: SeasideSnapshot['pull']): FishingVie
 // ---- the shot for a snapshot --------------------------------------------------------------------------------------
 
 /** The Morning shot for this snapshot, or null when the scene isn't one of the voxel-world Morning scenes. */
-export function morningShot(s: Pick<SeasideSnapshot, 'sceneId' | 'sceneT' | 'speed' | 'pull'> & { scene: { progress: number } }): MorningShot | null {
-  const id = s.sceneId, p = s.scene.progress, r = coastRoute(), P = pierGeom();
+export function morningShot(s: Pick<SeasideSnapshot, 'sceneId' | 'sceneT' | 'speed' | 'pull'> & { scene: { progress: number }; fishing?: SeasideSnapshot['fishing'] }): MorningShot | null {
+  // Optional shop outings use the same fishing rig and location as the corresponding story stop.
+  const id = s.fishing && s.sceneId === 'shop1' ? 'turnout1' : s.fishing && s.sceneId === 'pierStand' ? 'pier' : s.sceneId;
+  const p = s.scene.progress, r = coastRoute(), P = pierGeom();
   if (!MORNING_WORLD.has(id)) return null;
   // timed scenes run on plan seconds (= scene time, and right after resuming mid-scene too)
   const t = p * (STORY.find((x) => x.id === id)?.planS ?? 0);

@@ -15,6 +15,7 @@
   --ui-color-focus: #57dfbe;
   --ui-color-disabled: #647d87;
   --ui-font-family: system-ui, sans-serif;
+  --ui-font-numeric: "Oxanium", ui-monospace, monospace;
   --ui-font-title: 36px;
   --ui-font-heading: 20px;
   --ui-font-body: 14px;

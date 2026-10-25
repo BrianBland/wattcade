@@ -32,7 +32,7 @@ Use flat navy surfaces, off-white text, mint interaction accents, small pixel ic
 
 Controller and effort colors are semantic: `UI.controller` and `UI.zone`. Keep A/B/Y/Z colors distinct, and preserve effort-zone meaning in charts. Song artwork and game accents can keep their own colors; they do not recolor system actions.
 
-Use 4/8/12/16/24/32px spacing. Body text is normally 14px, secondary text 12px, eyebrows 10px. Titles range from 30px on phones to 48px on larger screens. Use tabular digits for readings. Avoid all-caps titles, wide letter spacing on body copy, and outlined/shadowed text on quiet surfaces.
+Use 4/8/12/16/24/32px spacing. Body text is normally 14px, secondary text 12px, eyebrows 10px. Titles range from 30px on phones to 48px on larger screens. Use tabular digits for readings. The live HUD uses the self-hosted Oxanium 700 numeric subset (`UI.font.numeric` / `--ui-font-numeric`, import `ui/fonts.css`); ordinary labels retain system type. Numeric rows share a size and baseline: desktop instruments, zone meter and utility icons use a 28px main row, 4px gap and 12px caption. Compact instruments stay inline; do not give read-only values a touch-button height. The bundled font license/provenance lives in `public/fonts/`. Avoid all-caps titles, wide letter spacing on body copy, and outlined/shadowed text on quiet surfaces.
 
 ## Components
 

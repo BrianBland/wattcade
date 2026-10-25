@@ -18,6 +18,7 @@ export const UI = {
   },
   font: {
     family: 'system-ui, sans-serif',
+    numeric: '"Oxanium", ui-monospace, monospace',
     title: 36,
     heading: 20,
     body: 14,

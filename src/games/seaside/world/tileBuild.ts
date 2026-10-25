@@ -78,12 +78,12 @@ export class TileBuilder {
     const w = this.world, c = w.corridor;
     if (!c) return out;
     const end = s0 + len;
-    if (c.smooth && s0 < c.smooth.end) {
+    if (c.graded && s0 < c.graded.end) {
       const sun = this.sun;
-      const mesh = meshRoad(w.route, c, s0, end, w.palette.linear,
+      const mesh = meshRoad(w.route, c, s0, end, voxel, w.palette.linear,
         sun ? (x, y, z) => sun.vis(x, y + voxel, z, Math.max(2 * voxel, 0.25), voxel) : undefined);
       if (mesh.faces) out.push({ role: 'road', voxel, mesh });
-      s0 = Math.min(end, c.smooth.end);
+      s0 = Math.min(end, c.graded.end);
     }
     if (s0 < end) this.mesh(fillCorridor(w.route, c, s0, end, voxel), voxel, true, () => true, 'land', out);
     return out;

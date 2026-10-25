@@ -31,6 +31,8 @@ export interface CorridorDef {
 export interface CorridorCarve {
   /** For a column at (x, z) of voxel size s: 'skip' (inside a ground corridor), a cap height (m), or null. */
   at(x: number, z: number, s: number): 'skip' | number | null;
+  /** Bed height beneath skipped ground columns; adjacent terrain walls must reach this depth. */
+  bedAt?(x: number, z: number, s: number): number | null;
 }
 
 export interface TerrainFill {

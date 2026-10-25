@@ -128,6 +128,7 @@ export function islandWorld(): WorldDef {
     corridor: {
       half: 2.4, support: 'ground', span: (s) => s < bwEnd, thickness: 0.3, clearance: 5, edgeSkirt: 0.4, voxel: 0.125, farVoxel: 0.5, near: 160, seg: 32, range: 900,
       surface: islandSurface(),
+      graded: { end: route.length },
     },
     scatter: islandScatter(height),
     sun: { coarse: { cell: 8, ...ISLAND_BOUNDS }, patches: [{ cell: 2, size: 512, maxVoxel: 4 }, { cell: 0.25, size: 128, maxVoxel: 0.25, apron: 48 }] },

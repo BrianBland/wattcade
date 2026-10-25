@@ -1,4 +1,4 @@
-// Chapter 3a review stills (#192), from the real game renderer on the fake bike: every cavern shot, at a few viewports.
+// Chapter 3 review stills (#192, #193), from the real game renderer on the fake bike: every cavern and gate shot.
 //   npx tsx scripts/seaside-cavern-review.ts [shot names…] [--w 1180 --h 820 --inset 140]
 // Stills go to $OUT (default /tmp/seaside-cavern; never committed). CHROMIUM_PATH selects a local browser.
 import { createServer } from 'vite';
@@ -14,6 +14,9 @@ const SHOTS: Array<[string, string, number, number]> = [
   ['01-passage', 'cavern', 0.01, 1], ['02-torches', 'cavern', 0.2, 1], ['03-descent', 'cavern', 0.6, 1], ['04-red-rock', 'cavern', 0.9, 1],
   ['05-mouth', 'cavern', 0.985, 1], ['06-bridge', 'bridge', 0.1, 1.5], ['07-eels', 'bridge', 0.5, 2], ['08-bridge-late', 'bridge', 0.9, 1],
   ['09-cast', 'magma', 0, 13], ['10-pull', 'magma', 0.37, 30], ['11-fan-hot', 'fan', 0.05, 3], ['12-fan-cooling', 'fan', 0.5, 2], ['13-eat', 'fan', 0.9, 2],
+  ['14-causeway', 'toGate', 0.05, 1], ['15-rocks', 'toGate', 0.25, 1], ['16-columns', 'toGate', 0.62, 1], ['17-wall', 'toGate', 0.9, 1], ['18-unfold', 'toGate', 0.985, 1],
+  ['19-basalt', 'drill2', 0.25, 1], ['20-obsidian', 'drill2', 0.55, 1], ['21-geode', 'drill2', 0.8, 1], ['22-cracks', 'drill2', 0.97, 1],
+  ['23-tip', 'fall', 0.012, 1], ['24-black', 'fall', 0.12, 1], ['25-dot', 'fall', 0.3, 1], ['26-earth', 'fall', 0.95, 1],
 ];
 const pick = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
 const server = await createServer({ server: { port: 5303, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });

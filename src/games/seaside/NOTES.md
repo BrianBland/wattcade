@@ -13,9 +13,8 @@
 - #192 `fan.ts`: glow = 1 − cooled + `heat` (creeps back out of the band, capped; blown off in it); then the eating
   (no band). Fan progress never drops below `effortFloor`. Magma eel: one 12 s pull, `magmaRunPeriodS` surges.
 ## World (`world/`, pure, rebuilt per worker)
-- Sparse 32³ voxels, AO/greedy meshing; WorldDef data (terrain, route, corridor, scatter, sky, LOD); coast … cavern.
-- Corridors keep a fixed voxel size; `span(s)` marks void crossings (terrain below kept); `start` = none before that s.
-  Nothing past a route's ends. Streaming reprioritizes each frame, prefetches, evicts after 8 s; atomic swaps + dissolve.
+- Sparse 32³ voxels, AO/greedy meshing; WorldDef data. Corridors: fixed voxel size, `span(s)` = void crossings (terrain
+  below kept), `start` = none before it. Streaming reprioritizes, prefetches, evicts after 8 s; atomic swaps + dissolve.
 - #189 `coastLayout.ts` (`CH1`, route metres): grade-key elevation, pullouts, gorge, town, harbour, 480 m pier;
   `coastBuild.ts` structures voxelized into tiles (bridge, pier, houses, Lou's shack, 5×7 font). Sun NW over the sea.
 - #190 `bellyLayout.ts` gut in u = −z: floor = belly grade integrated, 5 chambers, stomach wall holed on the drill axis.
@@ -35,8 +34,7 @@
   clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `shopView.ts` dioramas; `perf.ts` governor.
 ## Verification (no media committed)
 - `npm run typecheck`; `npm test`; `npm run sim -- --game seaside --script z2 --minutes 150` (summary `Z3 minutes`).
-- `scripts/seaside-{morning,belly,island,cavern}-review.ts` → /tmp/seaside-… (wait 5 s: first LOD coarse); also
-  `seaside-{shop-review,bench,hitch,pops}.ts`, `/dev/seaside-play.html?scene=…&progress=…`. Swiftshader ms/frame:
-  coast ≈ 250, belly ≈ 100, island 110–290 (1100 at 2.7 M tris), cave ≈ 430 (fill-bound walls), hall ≈ 290.
+- `scripts/seaside-{morning,belly,island,cavern,shop}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`.
+  Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430 (fill-bound walls), hall ≈ 290.
 - **iPad/Bluefy hardware fps remains unmeasured** (highway ≥ 50, later ≥ 40 or fallback). Known: a blue strip along the
   inland shoulder (sea backdrop through a corridor/terrain gap; predates #189).

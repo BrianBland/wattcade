@@ -44,7 +44,7 @@ export interface WorldFrame {
   /** Bars sinking out of view 0..1 (they unfold into the drill). */
   barsDrop?: number;
   /** Post overrides on top of the look for this frame (waking haze). */
-  post?: { bloom?: number; threshold?: number };
+  post?: { bloom?: number; threshold?: number; shimmer?: number };
   /** Monotonic seconds for streaming, eviction and tile dissolves (default: the view's own wall clock in frame(),
    *  `t` in pose()). Story time can stand still (paused, shops); tiles must still arrive and fade in. */
   wall?: number;

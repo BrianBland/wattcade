@@ -32,6 +32,7 @@ export function corridorCarve(route: RouteSpline, c: CorridorDef | undefined): C
  * holding its nearest route point, so neighbouring segments never overlap or leave gaps.
  */
 export function fillCorridor(route: RouteSpline, c: CorridorDef, s0: number, s1: number, voxel: number): VoxelGrid {
+  if (c.start !== undefined) { if (s1 <= c.start) return new VoxelGrid(voxel); s0 = Math.max(s0, c.start); }
   const pad = c.half + 1, b = route.bbox(s0, s1);
   const gx0 = Math.floor((b.x0 - pad) / voxel) * voxel, gz0 = Math.floor((b.z0 - pad) / voxel) * voxel;
   const g = new VoxelGrid(voxel, [gx0, 0, gz0]);

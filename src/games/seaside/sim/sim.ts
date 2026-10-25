@@ -11,6 +11,7 @@ import { STORY } from './story';
 import { CHAPTER_NAMES, type ChapterId, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
 import { BELLY_DEFAULTS, drillView, partInReach, PARTS, partsPassed, wakeFloor, Z3, type PartId } from './belly';
 import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
+import { coolEnd, FAN_DEFAULTS, fanView, stepHeat, type FanTuning } from './fan';
 
 export interface SeasideOpts {
   seed?: number;
@@ -110,10 +111,23 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     wakeS: num('wakeS', B.wakeS, 5, 120, 5, 'Eyes open: seconds of pedalling to open the eyes'),
     partReach: num('partReach', B.partReach, 0.02, 0.2, 0.01, 'Spare parts: a part is in reach this far either side (scene progress)'),
   };
+  const FD = FAN_DEFAULTS;
+  const fantun = {
+    creepPerS: num('fanCreepPerS', FD.creepPerS, 0, 0.1, 0.002, 'Cooling fan: glow regained per second out of the cadence band'),
+    creepMax: num('fanCreepMax', FD.creepMax, 0, 0.6, 0.05, 'Cooling fan: the most glow that can creep back'),
+    recoverK: num('fanRecoverK', FD.recoverK, 1, 10, 0.5, 'Cooling fan: back in the band, regained glow blows off this many times faster'),
+  };
+  // the magma eel surges hard and fast, like it's angry (storyboard): a shorter run / rest cycle than the sea fish
+  const magmaRunPeriodS = num('magmaRunPeriodS', 2, 0.5, 8, 0.25, 'Magma eel: run / rest period (s)');
+  const magmaRunOn = num('magmaRunOn', 0.5, 0.1, 1, 0.05, 'Magma eel: fraction of each period it runs');
   const fishDoneFloor = num('fishDoneFloor', 0.5, 0, 1, 0.05, 'Once every fish at a stop is landed or lost, the stop wraps up at least this fast (× plan)');
   const read = <T,>(o: { [K in keyof T]: () => number }) =>
     Object.fromEntries(Object.entries(o).map(([k, f]) => [k, (f as () => number)()])) as T;
-  const wt = (): WorkoutTuning => read<WorkoutTuning>(wtun);
+  const wt = (): WorkoutTuning => {
+    const w = read<WorkoutTuning>(wtun);
+    if (fishingScene().fishing === 'lava') { w.runPeriodS = magmaRunPeriodS(); w.runOn = magmaRunOn(); }
+    return w;
+  };
   const pt = (): PullTuning => read<PullTuning>(ptun);
   const ft = (): FishingTuning => read<FishingTuning>(ftun);
   const bonusS = num('shopBonusS', 180, 60, 180, 10, 'Maximum extra fishing time offered for short money (s)');
@@ -143,6 +157,10 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   let bigOneRod = '-';
   // the belly (#190)
   let wake = 0, z3S = 0, allAt: number | null = null;
+  // the cooling fan (#192): glow regained out of the band
+  let fanHeat = 0, fanIn = false;
+  /** The fan has done its job: the cadence band no longer applies while you eat. */
+  const eating = (sc: Scene) => sc.kind === 'fan' && progress >= coolEnd(sc);
   const got = new Map<PartId, { auto: boolean }>();
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
@@ -200,6 +218,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       persistEconomy({ sceneId: sc.id, progress: p });
     }
     if (sc.id === 'eyesOpen') wake = 0;
+    if (sc.kind === 'fan') { fanHeat = 0; fanIn = false; }
     if (sc.id === 'spareParts') { // resuming mid-scene: the parts behind you are already in hand
       got.clear(); allAt = null;
       for (const x of PARTS) if (x.at < p) got.set(x.id, { auto: false });
@@ -455,12 +474,18 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       // a drill holds its ERG target: working at it bores on plan (rests and blocks alike), never fails, only slows
       const gateW = sc.kind === 'drill' ? effortAt(sc, Math.min(1, progress) * sc.planS) * w.drillScale * ftp * tun.planScale() : planW;
       progress += 'effortS' in sc.length
-        ? (effortRate(b.power3s, gateW, tun.effortFloor(), tun.effortCap()) * cadenceRate(sc, b.cadence3s, w) * dt) / sc.length.effortS
+        // (the fan's crawl outside its band never drops below the floor every effort-gated scene keeps)
+        ? (Math.max(tun.effortFloor(), effortRate(b.power3s, gateW, tun.effortFloor(), tun.effortCap()) * (eating(sc) ? 1 : cadenceRate(sc, b.cadence3s, w))) * dt) / sc.length.effortS
         : dt / sc.length.s;
     }
     if (frac >= Z3[0] && frac <= Z3[1]) z3S += dt;
     if (sc.id === 'eyesOpen' && b.cadence3s >= btun.wakeRpm()) wake = Math.min(1, wake + dt / btun.wakeS());
     if (sc.id === 'spareParts') updateParts();
+    if (sc.kind === 'fan') {
+      const band = cadenceBand(sc, w)!;
+      fanIn = b.cadence3s >= band[0] && b.cadence3s <= band[1];
+      fanHeat = stepHeat(fanHeat, fanIn, !eating(sc), dt, read<FanTuning>(fantun));
+    }
     pending = [];
     if (pull?.setPiece) { const r = pull.tick(dt, frac, pt()); if (r !== 'pulling') endPull(r); }
     const pl = sc.pulls[nextPull];
@@ -515,6 +540,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       }
       const band = cadenceBand(sc, wt());
       if (sc.kind === 'drill' && band) return { targetCadence: { min: band[0], max: band[1], label: 'Keep it turning' } };
+      if (sc.kind === 'fan' && band && !eating(sc)) return { targetCadence: { min: band[0], max: band[1], label: 'Steady on the fan' } };
       return {};
     },
     snapshot(): SeasideSnapshot {
@@ -535,6 +561,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         wake: sc.id === 'eyesOpen' ? Math.max(wake, wakeFloor(p)) : null,
         parts: sc.id === 'spareParts' ? partsView() : null,
         drill: sc.kind === 'drill' ? drillView(sc, p * sc.planS) : null,
+        fan: sc.kind === 'fan' ? fanView(sc, p, fanHeat, fanIn) : null,
       };
     },
     isOver: () => phase === 'done',

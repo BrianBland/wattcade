@@ -4,6 +4,7 @@ import type { FishingLocation } from './catalogue';
 import type { FishingView } from './fishing';
 import type { EconomySave, ShopView } from './economy';
 import type { DrillView, PartId } from './belly';
+import type { FanView } from './fan';
 
 export type SceneKind = 'ride' | 'fish' | 'shop' | 'drill' | 'cutscene' | 'fan' | 'flight';
 export type ChapterId = 0 | 1 | 2;
@@ -114,6 +115,9 @@ export interface SeasideSnapshot {
   parts: PartsView | null;
   /** A drill scene: layer, phase, bored depth. */
   drill: DrillView | null;
+  // ---- additive (#192) ----
+  /** The cooling fan: how hot the eel still glows (creeps back out of the cadence band), then eating it. */
+  fan: FanView | null;
 }
 
 export interface PartsView {

@@ -51,13 +51,54 @@ export class HamsterRenderer implements GameRenderer {
   private tabRects: Array<Rect & { i: number }> = [];
   private rowRects: Array<Rect & { i: number }> = [];
   private acceptRect: Rect | null = null;
+  private listRect: Rect | null = null;
+  private maxScroll = 0;
+  private manualScroll = false;
+  private selected = { tab: '', row: -1 };
+  private tappedRow: number | null = null;
+  private gesture: { id: number; x: number; y: number; lastY: number; dragged: boolean; row: number | null } | null = null;
+  private point(e: { clientX: number; clientY: number }) {
+    const r = this.canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  private inside(b: Rect, p: { x: number; y: number }) { return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h; }
+  private scrollBy(delta: number) { this.manualScroll = true; this.scroll = Math.max(0, Math.min(this.maxScroll, this.scroll + delta)); }
   private onPointer = (e: PointerEvent) => {
-    unlockAudio();
-    const r = this.canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    const inR = (b: Rect) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
-    if (this.acceptRect && inR(this.acceptRect)) { this.send?.({ type: 'accept' }); return; }
-    for (const t of this.tabRects) if (inR(t)) { this.send?.({ type: 'tab', i: t.i }); return; }
-    for (const t of this.rowRects) if (inR(t)) { this.send?.({ type: 'row', i: t.i }); return; }
+    if (this.gesture) return;
+    unlockAudio(); const p = this.point(e);
+    if (this.listRect && this.inside(this.listRect, p)) {
+      e.preventDefault();
+      this.gesture = { id: e.pointerId, x: p.x, y: p.y, lastY: p.y, dragged: false, row: this.rowRects.find(r => this.inside(r, p))?.i ?? null };
+      this.canvas.setPointerCapture?.(e.pointerId); return;
+    }
+    if (this.acceptRect && this.inside(this.acceptRect, p)) { this.send?.({ type: 'accept' }); return; }
+    for (const r of this.tabRects) if (this.inside(r, p)) { this.send?.({ type: 'tab', i: r.i }); return; }
+  };
+  private onMove = (e: PointerEvent) => {
+    const g = this.gesture; if (!g || g.id !== e.pointerId) return;
+    const p = this.point(e), wasDragged = g.dragged;
+    g.dragged ||= Math.hypot(p.x - g.x, p.y - g.y) > 8;
+    if (g.dragged) { e.preventDefault(); this.scrollBy((wasDragged ? g.lastY : g.y) - p.y); }
+    g.lastY = p.y;
+  };
+  private onUp = (e: PointerEvent) => {
+    const g = this.gesture; if (!g || g.id !== e.pointerId) return;
+    const p = this.point(e), top = document.elementFromPoint?.(e.clientX, e.clientY);
+    // Releasing a capture through a newly opened overlay must not buy a row.
+    if (!g.dragged && Math.hypot(p.x - g.x, p.y - g.y) <= 8 && (!top || top === this.canvas) && this.listRect && this.inside(this.listRect, p)) {
+      const row = this.rowRects.find(r => this.inside(r, p))?.i;
+      if (row != null && row === g.row) { this.tappedRow = row; this.send?.({ type: 'row', i: row }); }
+    }
+    this.cancelGesture();
+  };
+  private onCancel = (e: PointerEvent) => { if (this.gesture?.id === e.pointerId) this.cancelGesture(); };
+  private cancelGesture = () => {
+    const id = this.gesture?.id; this.gesture = null;
+    if (id != null && this.canvas?.hasPointerCapture?.(id)) this.canvas.releasePointerCapture(id);
+  };
+  private onVisibility = () => { if (document.hidden) this.cancelGesture(); };
+  private onWheel = (e: WheelEvent) => {
+    if (!this.listRect || !this.inside(this.listRect, this.point(e))) return;
+    e.preventDefault(); this.scrollBy(e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.listRect.h : 1));
   };
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
@@ -67,13 +108,26 @@ export class HamsterRenderer implements GameRenderer {
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0b0812;touch-action:none';
     container.appendChild(this.canvas);
     this.canvas.addEventListener('pointerdown', this.onPointer);
+    this.canvas.addEventListener('pointermove', this.onMove);
+    this.canvas.addEventListener('pointerup', this.onUp);
+    this.canvas.addEventListener('pointercancel', this.onCancel);
+    this.canvas.addEventListener('lostpointercapture', this.onCancel);
+    this.canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    window.addEventListener('blur', this.cancelGesture);
+    document.addEventListener('visibilitychange', this.onVisibility);
     this.g = this.canvas.getContext('2d')!;
     this.dpr = Math.min(2, globalThis.devicePixelRatio ?? 1);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
-  resize(w: number, h: number) { this.W = w; this.H = h; this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr); }
+  resize(w: number, h: number) { this.cancelGesture(); this.W = w; this.H = h; this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr); }
   setInsets(i: Insets) { this.insetB = i.bottom; }
-  unmount() { this.canvas?.removeEventListener('pointerdown', this.onPointer); this.canvas?.remove(); }
+  unmount() {
+    this.cancelGesture(); this.canvas?.removeEventListener('pointerdown', this.onPointer);
+    this.canvas?.removeEventListener('pointermove', this.onMove); this.canvas?.removeEventListener('pointerup', this.onUp);
+    this.canvas?.removeEventListener('pointercancel', this.onCancel); this.canvas?.removeEventListener('lostpointercapture', this.onCancel);
+    this.canvas?.removeEventListener('wheel', this.onWheel); window.removeEventListener('blur', this.cancelGesture);
+    document.removeEventListener('visibilitychange', this.onVisibility); this.canvas?.remove();
+  }
 
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as HamsterSnapshot, g = this.g;
@@ -468,7 +522,13 @@ export class HamsterRenderer implements GameRenderer {
     g.font = F(10, 800); g.fillStyle = C.faint; g.fillText(label.toUpperCase(), p.x + 14, ly0 + 2);
     const listY = ly0 + 10, listH = lh - 10;
     const target = Math.max(0, Math.min(s.row * (rh + gap) - listH / 2 + rh, s.items.length * (rh + gap) - listH + 8));
-    this.scroll += (Math.max(0, target) - this.scroll) * Math.min(1, dt * 12);
+    this.listRect = { x: p.x, y: listY, w: p.w, h: Math.max(0, listH) };
+    this.maxScroll = Math.max(0, s.items.length * (rh + gap) - listH + 8);
+    if (this.selected.tab !== s.tab) { this.scroll = 0; this.manualScroll = false; this.cancelGesture(); }
+    else if (this.selected.row !== s.row && this.tappedRow !== s.row) this.manualScroll = false;
+    this.selected = { tab: s.tab, row: s.row }; this.tappedRow = null;
+    this.scroll = Math.max(0, Math.min(this.maxScroll, this.scroll));
+    if (!this.manualScroll) this.scroll += (Math.max(0, target) - this.scroll) * Math.min(1, dt * 12);
     this.rowRects = [];
     g.save(); g.beginPath(); g.rect(p.x, listY, p.w, listH); g.clip();
     const cheap = s.effects.some((e) => e.kind === 'cheap');
@@ -525,7 +585,7 @@ export class HamsterRenderer implements GameRenderer {
         if (!usable && it.cost > 0 && it.cost > s.bank && eta < 86400) {
           g.font = F(10.5, 700); g.fillStyle = C.faint; g.textAlign = 'right';
           g.fillText(`⏳ ${fmtDur(eta)}`, cx2 + costW, y + 56); g.textAlign = 'left';
-        } else if (usable && it.key.startsWith('gen:') && sel) { g.font = F(10, 800); g.fillStyle = C.green; g.textAlign = 'right'; g.fillText('A buy · B ×10', cx2 + costW, y + 56); g.textAlign = 'left'; }
+        } else if (usable && it.key.startsWith('gen:') && sel) { g.font = F(10, 800); g.fillStyle = C.green; g.textAlign = 'right'; g.fillText('Tap row to buy', cx2 + costW, y + 56); g.textAlign = 'left'; }
       }
       // progress toward affordability
       if (!usable && !it.locked && it.cost > 0 && !owned) {
@@ -534,7 +594,8 @@ export class HamsterRenderer implements GameRenderer {
         g.fillStyle = 'rgba(255,207,74,0.6)'; rr(g, x + 10, y + rh - 5, (w - 20) * k, 3, 1.5); g.fill();
       }
       g.globalAlpha = 1;
-      this.rowRects.push({ x, y, w, h: rh, i });
+      const hitY = Math.max(listY, y), hitEnd = Math.min(p.y + p.h, y + rh);
+      if (hitEnd > hitY) this.rowRects.push({ x, y: hitY, w, h: hitEnd - hitY, i });
     });
     g.restore();
     // scroll fades

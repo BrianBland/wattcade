@@ -360,9 +360,10 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start', shortLabel: 'Start' }] };
       const e = lastEffort, erg = trainer === 'erg';
       return {
+        touchControls: ['z', 'a'], // One touch target per lane; arrow bindings remain in the guide.
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,
         controls: [
-          { button: 'dpad', label: '◀▶ Lane' }, { button: 'z', label: 'Left' }, { button: 'a', label: 'Right' }, { button: 'paddles', label: 'Lane' },
+          { button: 'left', label: 'Left lane' }, { button: 'right', label: 'Right lane' }, { button: 'z', label: 'Left', displayOrder: 0 }, { button: 'a', label: 'Right', displayOrder: 1 }, { button: 'paddles', label: 'Lane' },
           ...(erg ? [] : [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }]),
         ],
       };

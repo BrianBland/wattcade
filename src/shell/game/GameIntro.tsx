@@ -1,69 +1,63 @@
+import type { RefObject } from 'preact';
+import { useEffect, useLayoutEffect, useRef } from 'preact/hooks';
 import type { GameHud, GameModule, Profile } from '../../contracts';
 import { Btn } from '../components/Bits';
-import { KeyHints } from '../components/ui';
-import { controlRows } from '../controlGlyphs';
+import { ControlLegend } from '../hud/ControlLegend';
+import { FakeBikeHelp } from '../hud/FakeBikeHelp';
 import { ZONE_COLORS } from '../hud/zoneMath';
+import { onMenuPress } from '../menuInput';
 import { useMenuNav } from '../useMenuNav';
+import './controls.css';
 
-const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
-
-/**
- * Before a game: title, how to play, the target zone and the current controls, then a 3-2-1-GO countdown.
- * `mode: 'help'` reopens it from the pause menu (no countdown; A/B closes). In 'pre' mode the GameHost feeds presses.
- */
-export function GameIntro({ game, hud, profile, mode, count, autoLeft, onStart, onBack }: {
+/** Full guide before the countdown or from Pause. Starting is always explicit. */
+export function GameIntro({ game, hud, profile, mode, count, onStart, onBack, fake, scrollRef }: {
   game: GameModule; hud: GameHud; profile: Profile; mode: 'pre' | 'help';
-  /** null = waiting; 3..1 = counting; 0 = GO */
-  count: number | null; autoLeft: number; onStart: () => void; onBack: () => void;
+  count: number | null; onStart: () => void; onBack: () => void; fake?: boolean;
+  scrollRef?: RefObject<HTMLDivElement | null>;
 }) {
-  const rows = controlRows(hud.controls ?? []);
-  const tz = hud.targetZone;
-  let line: string | null = null;
-  try { line = game.progressLine?.(profile.gameData[game.id]) ?? null; } catch { /* bad save */ }
-  if (count != null) {
-    return (
-      <div class="intro-count" key={count}>
-        <b>{count > 0 ? count : 'GO!'}</b>
-        {count > 0 && <small>Get pedaling</small>}
-      </div>
-    );
-  }
-  return (
-    <div class="overlay-modal intro">
-      <div class="modal intro-card">
-        <div class="intro-head">
-          <div><h1>{game.title}</h1><div class="tags">{game.tags.map((t) => <span class={`tag ${t}`}>{TAG_LABEL[t] ?? t}</span>)}</div></div>
-          <span class="spacer" />
-          {tz && <div class="intro-zone" style={{ '--zc': ZONE_COLORS[tz.min - 1] } as Record<string, string>}>
-            <small>Aim for</small><b>{tz.min === tz.max ? `Zone ${tz.min}` : `Z${tz.min}–Z${tz.max}`}</b>{tz.label && <small>{tz.label}</small>}
-          </div>}
-        </div>
-        <p class="intro-blurb">{game.blurb}</p>
-        {line && <div class="intro-progress">Your best: {line}</div>}
-        {rows.length > 0 && (
-          <div class="intro-controls">
-            {rows.map((r) => (
-              <div class={`ctl${r.active ? ' active' : ''}`}>
-                <span class="glyphs">{r.glyphs.map((g) => <span class="key" style={{ '--kc': g.color } as Record<string, string>}>{g.glyph}</span>)}</span>
-                <span>{r.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div class="row">
-          {mode === 'pre' ? <>
-            <Btn primary focused onClick={onStart}>▶ Start {autoLeft > 0 && <small class="auto">({Math.ceil(autoLeft)})</small>}</Btn>
-            <Btn onClick={onBack}>Back to menu</Btn>
-          </> : <Btn primary focused onClick={onBack}>Back</Btn>}
-        </div>
-        <KeyHints hints={mode === 'pre' ? [['a', 'Start'], ['b', 'Back to menu']] : [['a', 'Close'], ['b', 'Close']]} />
-      </div>
-    </div>
-  );
+  const ownRef = useRef<HTMLDivElement>(null), card = scrollRef ?? ownRef, tz = hud.targetZone;
+  useLayoutEffect(() => {
+    if (count != null) return;
+    const el = card.current; if (!el) return;
+    const previous = document.activeElement as HTMLElement | null;
+    el.querySelector<HTMLButtonElement>('.intro-actions .primary')?.focus({ preventScroll: true });
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onBack(); }
+      if (mode === 'pre' && e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); onStart(); }
+      if (e.key === 'Tab') {
+        const buttons = [...el.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+        const first = buttons[0], last = buttons.at(-1);
+        if (e.shiftKey && (document.activeElement === first || !el.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    };
+    window.addEventListener('keydown', key, true);
+    return () => { window.removeEventListener('keydown', key, true); if (previous?.isConnected) previous.focus(); };
+  }, [count, mode]);
+  // Help uses pause-menu input; GameHost owns pre-game press edges and scrolling.
+  useEffect(() => mode === 'help' ? onMenuPress(p => {
+    if (p.has('down')) card.current?.scrollBy({ top: 140, behavior: 'smooth' });
+    if (p.has('up')) card.current?.scrollBy({ top: -140, behavior: 'smooth' });
+  }) : undefined, [mode]);
+  if (count != null) return <div class="intro-count" key={count}><b>{count > 0 ? count : 'GO!'}</b>{count > 0 && <small>Get pedaling</small>}</div>;
+  let best: string | null = null;
+  try { best = game.progressLine?.(profile.gameData[game.id]) ?? null; } catch { /* old save */ }
+  return <div class="overlay-modal intro control-intro"><div ref={card} class="modal intro-card controls-card" role="dialog" aria-modal="true" aria-label={`${game.title} controls`}>
+    <header class="controls-heading"><div><small>{mode === 'pre' ? 'BEFORE YOU RIDE' : 'PAUSED / CONTROLS'}</small><h1>{game.title}</h1></div>
+      {tz && <div class="controls-zone" style={{ color: ZONE_COLORS[tz.min - 1] }}>Aim for <b>{tz.min === tz.max ? `Z${tz.min}` : `Z${tz.min}–${tz.max}`}</b></div>}
+      <button type="button" class="controls-close" aria-label={mode === 'pre' ? 'Back to menu' : 'Close controls'} onClick={onBack}>×</button>
+    </header>
+    <p class="controls-blurb">{game.blurb}</p>
+    {best && <p class="dim small">Your best: {best}</p>}
+    <ControlLegend hud={hud} />
+    {fake && <FakeBikeHelp />}
+    <footer><span>Ride: tap both power buttons to pause.<br />↑ ↓ Scroll · A {mode === 'pre' ? 'Start' : 'Back'} · B {mode === 'pre' ? 'Menu' : 'Back'}</span>
+      <div class="intro-actions">{mode === 'pre' && <Btn onClick={onBack}>Back to menu</Btn>}<Btn primary focused onClick={mode === 'pre' ? onStart : onBack}>{mode === 'pre' ? 'Start ride →' : 'Back to pause →'}</Btn></div>
+    </footer>
+  </div></div>;
 }
 
-/** The intro card reopened from the pause menu: A or B closes it. */
-export function IntroHelp({ game, hud, profile, onClose }: { game: GameModule; hud: GameHud; profile: Profile; onClose: () => void }) {
+export function IntroHelp({ game, hud, profile, onClose, fake }: { game: GameModule; hud: GameHud; profile: Profile; onClose: () => void; fake?: boolean }) {
   useMenuNav(1, 1, onClose, onClose);
-  return <GameIntro game={game} hud={hud} profile={profile} mode="help" count={null} autoLeft={0} onStart={onClose} onBack={onClose} />;
+  return <GameIntro game={game} hud={hud} profile={profile} mode="help" count={null} onStart={onClose} onBack={onClose} fake={fake} />;
 }

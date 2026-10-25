@@ -1495,7 +1495,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
           return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
             cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
         }),
-        { button: 'dpad', label: 'Stance', active: true },
+        { button: 'left', label: 'Previous stance', active: true }, { button: 'right', label: 'Next stance', active: true },
         { button: 'paddles', label: 'Zoom in/out: either paddle direction or pinch', shortLabel: 'Zoom ±' },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },

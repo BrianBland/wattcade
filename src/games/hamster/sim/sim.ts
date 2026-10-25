@@ -615,11 +615,13 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
 
   function hud(): GameHud {
     const controls: ControlHint[] = [
-      { button: 'dpad', label: '◀▶ tabs  ▲▼ pick', shortLabel: 'Choose' },
+      { button: 'left', label: 'Previous tab' }, { button: 'right', label: 'Next tab' },
+      { button: 'up', label: 'Previous row' }, { button: 'down', label: 'Next row' },
       { button: 'a', label: tab === 'vibes' ? 'Buy / toggle' : tab === 'rebirth' ? 'Reincarnate' : 'Buy', shortLabel: tab === 'vibes' ? 'Toggle' : tab === 'rebirth' ? 'Rebirth' : 'Buy' },
       { button: 'b', label: 'Buy ×10', active: tab === 'gens' },
       { button: 'y', label: 'Re-dose', active: unlocks.has('market') },
-      { button: 'z', label: 'Accept trial', shortLabel: 'Trial', active: trial?.phase === 'offer' },
+      { button: 'z', label: 'Accept trial', shortLabel: 'Trial', active: trial?.phase === 'offer',
+        ...(trial?.phase === 'offer' ? { indicator: { label: 'Trial offer', status: 'Available', ready: true } } : {}) },
       { button: 'shiftersL', label: 'Gear' }, { button: 'shiftersR', label: 'Gear' },
     ];
     // short efforts are judged on power (HR can't climb in time); the Z2 grind uses the profile's zone source
@@ -631,7 +633,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     const tc: GameHud['targetCadence'] = spin ? { min: Math.round(tun.spinRpm()), label: 'Spin class!' }
       : trial?.phase === 'active' ? { min: 50, label: 'Keep the cranks turning' }
       : undefined;
-    return { controls, gears: true, targetZone: tz, targetCadence: tc };
+    // Tabs, row purchase and trial acceptance already have native tap targets.
+    return { controls, touchControls: [...(tab === 'gens' ? ['b' as const] : []), ...(unlocks.has('market') ? ['y' as const] : [])], gears: true, targetZone: tz, targetCadence: tc };
   }
 
   checkMilestones();

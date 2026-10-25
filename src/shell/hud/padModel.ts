@@ -1,6 +1,6 @@
 import type { Button, ControlCooldown, ControlHint, ControlTouch } from '../../contracts';
 
-export interface PadButton { id: Button; glyph: string; label?: string; shortLabel?: string; mapped: boolean; active?: boolean; color: string; cooldown?: ControlCooldown; touch?: ControlTouch }
+export interface PadButton { id: Button; glyph: string; order?: number; label?: string; shortLabel?: string; mapped: boolean; active?: boolean; color: string; cooldown?: ControlCooldown; touch?: ControlTouch }
 /** One group of physical buttons. `label` is set when every mapped member does the same thing (drawn once, centered). */
 export interface Cluster { kind: 'dpad' | 'face' | 'shift'; buttons: PadButton[]; label?: string; shortLabel?: string; mapped: boolean; gears?: boolean }
 export interface HoodModel { paddle: { label?: string; shortLabel?: string; mapped: boolean }; shift: Cluster | null; stick: Cluster }
@@ -21,7 +21,7 @@ function cluster(kind: Cluster['kind'], defs: Def, hints: Map<string, ControlHin
   const merged = (g && !member.some(Boolean)) ? g : same ? member[0] : undefined;
   const buttons = defs.map(([id, glyph], i): PadButton => {
     const h = merged ?? member[i] ?? (g && !member.some(Boolean) ? g : undefined);
-    return { id, glyph, label: merged ? undefined : h?.label, shortLabel: h?.shortLabel, mapped: !!h, active: h?.active, color: color(id), cooldown: h?.cooldown, touch: h?.touch };
+    return { id, glyph, order: h?.displayOrder, label: merged ? undefined : h?.label, shortLabel: h?.shortLabel, mapped: !!h, active: h?.active, color: color(id), cooldown: h?.cooldown, touch: h?.touch };
   });
   return { kind, buttons, label: merged?.label, shortLabel: merged?.shortLabel, mapped: buttons.some((b) => b.mapped) };
 }
@@ -45,4 +45,14 @@ export function buildPad(controls: ControlHint[], gears: boolean): PadModel {
     left: { paddle, shift: shift('L'), stick: cluster('dpad', DPAD, hints, 'dpad') },
     right: { paddle, shift: shift('R'), stick: cluster('face', FACE, hints) },
   };
+}
+
+/** Fixed reading order within each control family; never interleave arrows with face buttons. */
+export const COMPACT_ORDER = {
+  dpad: ['left', 'right', 'up', 'down'], face: ['a', 'b', 'y', 'z'],
+  shift: ['shiftDnL', 'shiftUpL', 'shiftDnR', 'shiftUpR'],
+} as const;
+export function compactButtons(c: Cluster): PadButton[] {
+  const order: readonly string[] = COMPACT_ORDER[c.kind];
+  return c.buttons.filter(b => b.mapped).slice().sort((a, b) => (a.order ?? 100 + order.indexOf(a.id)) - (b.order ?? 100 + order.indexOf(b.id)));
 }

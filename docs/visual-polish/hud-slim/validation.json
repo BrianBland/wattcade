@@ -1,0 +1,503 @@
+{
+  "errors": [],
+  "autoConnectDisconnect": true,
+  "optionalHistory": true,
+  "guide": true,
+  "views": 48,
+  "flow": [
+    {
+      "game": "towerdefense",
+      "label": "desktop",
+      "bindings": [
+        "\u21d5Step target",
+        "\u2190Target closer",
+        "\u2192Target further",
+        "\u25b2Release target lock",
+        "\u25bcWorkshop",
+        "AConstruction",
+        "BOvercharge",
+        "YSlow field",
+        "ZRail 0/3 (hold = all)",
+        "L\u00b1R\u00b1Gear"
+      ],
+      "initial": {
+        "scroll": 0,
+        "scrollHeight": 775,
+        "height": 772,
+        "buttonTop": 714.47998046875,
+        "buttonBottom": 767.52001953125
+      },
+      "errors": [],
+      "loadoutGuide": true,
+      "pauseHelp": true,
+      "autoFallback": true,
+      "touchOverride": true
+    },
+    {
+      "game": "dungeon",
+      "label": "desktop",
+      "bindings": [
+        "\u2190Previous stance",
+        "\u2192Next stance",
+        "AStrike",
+        "BWard",
+        "YRally",
+        "ZPotion",
+        "L\u00b1R\u00b1Gear"
+      ],
+      "initial": {
+        "scroll": 0,
+        "scrollHeight": 735,
+        "height": 735,
+        "buttonTop": 694.6262817382812,
+        "buttonBottom": 747.6663208007812
+      },
+      "errors": [],
+      "loadoutGuide": true,
+      "pauseHelp": true,
+      "autoFallback": true,
+      "touchOverride": true
+    },
+    {
+      "game": "towerdefense",
+      "label": "phone",
+      "bindings": [
+        "\u21d5Step target",
+        "\u2190Target closer",
+        "\u2192Target further",
+        "\u25b2Release target lock",
+        "\u25bcWorkshop",
+        "AConstruction",
+        "BOvercharge",
+        "YSlow field",
+        "ZRail 0/3 (hold = all)",
+        "L\u00b1R\u00b1Gear"
+      ],
+      "initial": {
+        "scroll": 0,
+        "scrollHeight": 1105,
+        "height": 820,
+        "buttonTop": 762.7251586914062,
+        "buttonBottom": 811.4779663085938
+      },
+      "errors": [],
+      "loadoutGuide": true,
+      "pauseHelp": true,
+      "autoFallback": true,
+      "touchOverride": true
+    }
+  ],
+  "narrowPhones": {
+    "results": [
+      {
+        "game": "hamster",
+        "info": {
+          "height": 52,
+          "inset": {
+            "top": 0,
+            "right": 0,
+            "left": 0,
+            "bottom": 116,
+            "occlusions": [
+              {
+                "x": 0,
+                "y": 792,
+                "w": 390,
+                "h": 52
+              },
+              {
+                "x": 98.75,
+                "y": 728,
+                "w": 192.5,
+                "h": 56
+              }
+            ]
+          },
+          "width": 390,
+          "heightPx": 844
+        },
+        "touch": [
+          "up",
+          "down",
+          "b"
+        ]
+      },
+      {
+        "game": "cadenza",
+        "info": {
+          "height": 52,
+          "inset": {
+            "top": 0,
+            "right": 0,
+            "left": 0,
+            "bottom": 110,
+            "occlusions": [
+              {
+                "x": 0,
+                "y": 792,
+                "w": 390,
+                "h": 52
+              },
+              {
+                "x": 145,
+                "y": 734,
+                "w": 100,
+                "h": 50
+              }
+            ]
+          },
+          "width": 390,
+          "heightPx": 844
+        },
+        "touch": [
+          "z",
+          "a"
+        ]
+      }
+    ],
+    "narrowPhones": true,
+    "tools": true,
+    "history": true
+  },
+  "typecheck": true,
+  "build": true,
+  "relevantTests": 294,
+  "results": [
+    {
+      "game": "warmup",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 59
+    },
+    {
+      "game": "warmup",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 59
+    },
+    {
+      "game": "towerdefense",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 94.796875
+    },
+    {
+      "game": "towerdefense",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "dungeon",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 94.796875
+    },
+    {
+      "game": "dungeon",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "cadenza",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 59
+    },
+    {
+      "game": "cadenza",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "watershed",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 94.796875
+    },
+    {
+      "game": "watershed",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "starfighter",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 94.796875
+    },
+    {
+      "game": "starfighter",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "hamster",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 59
+    },
+    {
+      "game": "hamster",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "lighthouse",
+      "size": "tablet",
+      "controller": true,
+      "barHeight": 59,
+      "reservedHeight": 59
+    },
+    {
+      "game": "lighthouse",
+      "size": "tablet",
+      "controller": false,
+      "barHeight": 59,
+      "reservedHeight": 121
+    },
+    {
+      "game": "warmup",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 51
+    },
+    {
+      "game": "warmup",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 51
+    },
+    {
+      "game": "towerdefense",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "towerdefense",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "dungeon",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "dungeon",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "cadenza",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 51
+    },
+    {
+      "game": "cadenza",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "watershed",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "watershed",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "starfighter",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "starfighter",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "hamster",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 51
+    },
+    {
+      "game": "hamster",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "lighthouse",
+      "size": "short",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 51
+    },
+    {
+      "game": "lighthouse",
+      "size": "short",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 115
+    },
+    {
+      "game": "warmup",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 52
+    },
+    {
+      "game": "warmup",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 52
+    },
+    {
+      "game": "towerdefense",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "towerdefense",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 116
+    },
+    {
+      "game": "dungeon",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 117.59375
+    },
+    {
+      "game": "dungeon",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 110
+    },
+    {
+      "game": "cadenza",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 52
+    },
+    {
+      "game": "cadenza",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 110
+    },
+    {
+      "game": "watershed",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 51,
+      "reservedHeight": 85.796875
+    },
+    {
+      "game": "watershed",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 51,
+      "reservedHeight": 174
+    },
+    {
+      "game": "starfighter",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 86.796875
+    },
+    {
+      "game": "starfighter",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 110
+    },
+    {
+      "game": "hamster",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 52
+    },
+    {
+      "game": "hamster",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 116
+    },
+    {
+      "game": "lighthouse",
+      "size": "phone",
+      "controller": true,
+      "barHeight": 52,
+      "reservedHeight": 52
+    },
+    {
+      "game": "lighthouse",
+      "size": "phone",
+      "controller": false,
+      "barHeight": 52,
+      "reservedHeight": 110
+    }
+  ]
+}

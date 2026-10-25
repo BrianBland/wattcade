@@ -159,13 +159,18 @@ export interface GameContext {
 export type ControlTarget = Button | 'dpad' | 'paddles' | 'shiftersL' | 'shiftersR';
 /** Optional cooldown shown on the overlay key itself: fills bottom-to-top, greyed until ready, glows when ready. */
 export interface ControlCooldown { fill: number; ready: boolean; tint?: string; flourish?: number }
+/** A contextual controller status. Cooldowns appear automatically; other controls opt in explicitly. */
+export interface ControlIndicator { label?: string; status?: string; fill?: number; ready?: boolean }
 /** Optional semantic pointer commands for held actions. The HUD adds `pointer` and preserves the down-time quote/epoch through release or cancel. */
 export interface ControlTouch { down: Record<string, unknown>; up?: Record<string, unknown>; cancel?: Record<string, unknown> }
 export interface ControlHint {
   button: ControlTarget; label: string;
+  /** Optional order within the same control family, e.g. left lane before right lane. */
+  displayOrder?: number;
   /** Short on-screen button name; label remains the full help/accessibility description. */
   shortLabel?: string;
   active?: boolean; cooldown?: ControlCooldown; touch?: ControlTouch;
+  indicator?: ControlIndicator | false;
 }
 /**
  * A zone band. `source: 'power'` = judged on min(5, powerZone): use it for any effort shorter than ~2 min,
@@ -181,6 +186,8 @@ export interface GameHud {
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
   /** Primary touch buttons to show in the HUD when the controller legend is hidden; uses the same controls and cooldowns. */
   touchControls?: Button[];
+  /** Keep a compact controller guide visible where there is no pregame controls popup. */
+  persistentLegend?: boolean;
   gears?: boolean;                 // true if shifters change virtual gears in this game right now
 }
 /** Additional pause-menu action supplied by a game; the shell resumes after dispatching it. */

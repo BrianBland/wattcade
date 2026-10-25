@@ -121,12 +121,11 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .zw-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 8px; width: 100%; min-width: 0; line-height: 1; }
 .has-gears .zw-nums { grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto; }
 .zw-gear b { color: #d4b6ff; }
-.zw-clock b { font-size: 22px; }
 .zw-nums > div { min-width: 0; }
 .zw-reading { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .zw-metric-icon { width: 18px; height: 18px; flex: none; color: var(--dim); }
 .zw-nums .primary .zw-metric-icon { color: var(--neon); }
-.zw-nums b { font-size: 24px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.6px; }
+.zw-nums b { font: 700 24px/1 ui-sans-serif, "Segoe UI", Roboto, "Noto Sans", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .zw-nums .primary b { color: var(--neon); }
 .zw-nums small { font-size: 10px; margin-left: 3px; color: var(--dim); }
 .zw-ftp { padding-left: 22px; display: block; font-size: 10px; color: var(--dim); margin-top: 4px; }
@@ -206,7 +205,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-nums b { font-size: 18px; }
   .zw-nums, .has-gears .zw-nums { gap: 4px; }
   .zw-ftp, .zw-cad-guide { font-size: 9px; padding-left: 17px; margin-top: 3px; }
-  .zw-clock b { font-size: 18px; }
   .zw-reading { gap: 3px; }
   .zw-metric-icon { width: 14px; height: 14px; }
 }
@@ -218,7 +216,6 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .hood { gap: 3px; }
   .zw-nums, .has-gears .zw-nums { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .zw-ftp, .zw-cad-guide { padding-left: 17px; }
-  .zw-clock b { font-size: 14px; }
 }
 
 /* Distribute desktop instruments evenly, with full-width zone and history tracks. */
@@ -258,11 +255,10 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
   .zw-clock { grid-column: 1 / -1; }
   .has-gears .zw-clock { grid-column: 1; }
   .zw-clock .zw-reading { height: 28px; }
-  .zw-clock b { font-size: clamp(12px, 3.3vw, 20px); }
   .zw-clock .zw-metric-icon { display: none; }
   .zw-gear { grid-column: 2 / 4; display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
   .zw-trainer { grid-column: 2 / 4; text-align: right; font-size: clamp(10px, 2.8vw, 15px); letter-spacing: -.3px; }
-  .zw-gear b { font-size: 16px; }
+  .zw-gear b { font-size: inherit; }
   .zw-gear .zw-metric-icon { width: 12px; height: 12px; }
   .zw-icon { width: 12px; height: 16px; }
   .zw-meter { gap: 3px; }

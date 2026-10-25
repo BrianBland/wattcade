@@ -1,0 +1,11 @@
+/* Keep settings and game-supplied actions reachable on phones and short screens. */
+.modal.pause { width:min(600px,calc(100vw - 24px)); min-width:0; max-height:calc(100dvh - 24px); overflow:auto; }
+.pause .step,.pause .toggle { min-width:44px; min-height:44px; }
+.pause .choice b { min-width:100px; }
+@media(max-width:600px){
+  .modal.pause { padding:18px; }
+  .modal.pause .field { grid-template-columns:minmax(0,1fr); padding:8px; gap:6px; }
+  .modal.pause .field>small { grid-column:1; }
+  .pause .choice { display:flex; align-items:center; justify-content:space-between; width:100%; min-width:0; }
+  .pause .choice b { min-width:0; flex:1; }
+}

@@ -24,6 +24,7 @@ import { HeartRateMonitor } from '../devices/hr';
 import { RideControllerGroup } from '../devices/zwiftRide';
 import type { AchievementView, AwardView, DeviceKind, DeviceStatusMap, LevelView, SessionLike, MediaRun } from './types';
 import type { DebugActions, DebugSnapshot, TuningEntry } from '../debug/types';
+import { controllerPresent } from './hud/layout';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const any = <T = any>(x: unknown) => x as T;
@@ -102,6 +103,10 @@ export function missingRequirement(game: GameModule): string | null {
   return dataHub.capabilities()?.erg === false ? `${game.title} needs a trainer with ERG mode` : null;
 }
 export const getDeviceStatus = (): DeviceStatusMap => status;
+export function hasConnectedController(): boolean {
+  try { return controllerPresent(status.controller.connected, typeof navigator !== 'undefined' ? navigator.getGamepads?.() ?? [] : []); }
+  catch { return status.controller.connected; }
+}
 export function subscribeDevices(cb: () => void): () => void { listeners.add(cb); return () => listeners.delete(cb); }
 export let controllerInfo: { firmware?: string; battery?: number; warning?: string } = {};
 

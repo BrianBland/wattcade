@@ -94,7 +94,7 @@ export class SquadronHud {
   private shield!: HTMLElement; private song!: HTMLElement; private nova!: HTMLButtonElement;
   private menuKey = ''; private callUntil = 0; private lastClearAt = -1; private lastBanner = '';
 
-  constructor() {
+  constructor(sharedControls = false) {
     this.root.className = 'sq-hud';
     const style = document.createElement('style'); style.textContent = CSS; this.root.appendChild(style);
     this.foot.innerHTML = `<div class="sq-shield"><span>Shield</span><div class="sq-bar"><i></i></div></div><div class="sq-song"></div>`
@@ -102,6 +102,8 @@ export class SquadronHud {
       + `<button class="btn small" data-action="target" data-direction="1" aria-label="Next target">›</button><button class="btn small" data-action="nova"></button></div>`;
     this.shield = this.foot.querySelector('.sq-shield')!; this.song = this.foot.querySelector('.sq-song')!;
     this.nova = this.foot.querySelector('[data-action="nova"]')!;
+    // Shell touch buttons / compact controller statuses own these actions.
+    if (sharedControls) this.foot.querySelector<HTMLElement>('.sq-actions')!.style.display = 'none';
     this.menu.className = 'sq-menu'; this.root.appendChild(this.menu);
   }
   private box(cls: string) { return this.part(this.root, `sq-box ${cls}`); }

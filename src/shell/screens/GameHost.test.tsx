@@ -5,14 +5,14 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameModule, GameRenderer, Profile } from '../../contracts';
 const mocks = vi.hoisted(() => ({
   session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false), menuActions: vi.fn((): import('../../contracts').GameMenuAction[] => []), receive: vi.fn() } },
-  raf: vi.fn(() => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
+  raf: vi.fn((_cb: FrameRequestCallback) => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
 }));
 vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
 vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride', extensions, onExtension }: { onQuit: () => void; quitLabel?: string; extensions: import('../../contracts').GameMenuAction[]; onExtension: (action: unknown) => void }) => h('div', {}, extensions.map(entry => h('button', { onClick: () => onExtension(entry.action) }, entry.label)), h('button', { onClick: onQuit }, quitLabel)) }));
 vi.mock('../game/ResultBanner', () => ({ ResultBanner: () => null }));
-vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart}: {onStart:()=>void}) => h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
+vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart,count}: {onStart:()=>void;count:number|null}) => count != null ? h('div',{'data-count':count},count) : h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
 vi.mock('../components/Toasts', () => ({ toast: vi.fn() }));
 vi.mock('../../debug/flag', () => ({ loadFlag: () => false, saveFlag: vi.fn() }));
 vi.mock('../../audio/sfx', () => ({ duckAmbient: vi.fn(), play: vi.fn(), unlockAudio: vi.fn() }));
@@ -35,6 +35,24 @@ beforeEach(()=>{
 });
 afterEach(async()=>{await act(async()=>render(null,container));container.remove();vi.unstubAllGlobals();});
 describe('renderer loading gate',()=>{
+  it('keeps the guide visible beyond the old automatic-start deadline',async()=>{
+    await mount();await act(async()=>resolveReady());
+    const loop=mocks.raf.mock.calls.at(-1)![0] as unknown as FrameRequestCallback;
+    const start=performance.now();
+    for(let i=1;i<=44;i++)await act(async()=>loop(start+i*250));
+    expect(container.textContent).toContain('Start game');expect(container.querySelector('[data-count]')).toBeNull();
+    expect(mocks.session.frame).not.toHaveBeenCalled();
+  });
+  it('teaches gameplay controls after a built-in loadout closes before accepting a fresh start press',async()=>{
+    mocks.session.sim.inMenu.mockReturnValue(true);await mount();await act(async()=>resolveReady());
+    const loop=mocks.raf.mock.calls.at(-1)![0] as unknown as FrameRequestCallback;
+    const start=performance.now();mocks.session.sim.inMenu.mockReturnValue(false);
+    await act(async()=>loop(start+100));
+    expect(container.textContent).toContain('Start game');expect(container.querySelector('[data-count]')).toBeNull();
+    mocks.session.idle.mockReturnValueOnce(new Set(['a']));
+    await act(async()=>loop(start+200));
+    expect(container.querySelector('[data-count]')?.textContent).toBe('3');
+  });
   it('updates actual HUD shape when content or legend changes inside the same reserved band',async()=>{
     await mount();
     const surface = container.querySelector<HTMLElement>('.mount')!, probe = container.querySelector<HTMLElement>('.hud-probe')!;

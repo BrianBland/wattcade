@@ -1,6 +1,7 @@
 // Working chrome review: production components over a real game renderer.
 import { h, render } from 'preact';
 import './hud-live';
+import './chrome-variants';
 import { defaultProfile, xpForLevel } from '../src/progression';
 import type { SessionRecord } from '../src/contracts';
 import { games } from '../src/games/registry';
@@ -21,6 +22,7 @@ import '../src/styles/main.css';
 
 const q = new URLSearchParams(location.search), view = q.get('view') ?? 'connect';
 const profiles = [['Mika','#64e4c3',12],['Jules','#e8bb68',7],['Rowan','#9daee5',3]].map(([name,color,level],i) => ({ ...defaultProfile(String(name)), id:`review-${i}`, color:String(color), level:Number(level), xp:xpForLevel(Number(level))+80, lastPlayed:{warmup:Date.now()-86400000*(i+1)}, cosmetics:{picks:{},loadout:{}} }));
+if(q.has('proof'))profiles[0].xp=xpForLevel(12)+(xpForLevel(13)-xpForLevel(12))*.62;
 const root=document.createElement('div');root.className='screens with-hud';root.style.zIndex='40';document.querySelector('#app')!.append(root);
 const notice=document.createElement('div');document.body.append(notice);render(<Toasts/>,notice);
 const on=()=>{};

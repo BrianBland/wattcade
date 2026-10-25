@@ -2,6 +2,7 @@
 // gloved hands that bends with the load, the line, bobber, ripple rings, splash bursts, and the fish leaping and
 // dangling. Everything is posed from `fishPose(view, t)`, so the rig holds no animation state of its own.
 import * as THREE from 'three';
+import { disposeSet } from './dispose';
 import type { FishId } from '../sim/catalogue';
 import type { FishingView } from '../sim/fishing';
 import { addGrid, type Stage } from '../stills/stage';
@@ -157,6 +158,6 @@ export class FishingRig {
   }
 
   dispose(): void {
-    this.st.camera.remove(this.rod); this.st.scene.remove(this.root);
+    disposeSet(this.rod, this.root);
   }
 }

@@ -1,11 +1,15 @@
 // The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
-// the shops are the counter dioramas; later chapters still use the placeholder stage (grey box and labels) until
-// their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
+// Chapter 2a (#190) switches the same view to the belly world (render/belly.ts); the shops are the counter dioramas;
+// later chapters still use the placeholder stage (grey box and labels) until their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
 import { getWorld } from '../world/worlds';
 import { MorningSet } from './morning';
+import { BellySet } from './belly';
+import { BELLY_WORLD, type BellyShot } from './bellyShots';
+import { BELLY_LAYERS, PARTS } from '../sim/belly';
+import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
 import { pixelSetting } from './perf';
 import { WorldView } from './worldView';
@@ -13,8 +17,9 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { inside, layout, type Box } from './layout';
+import { bellyHud, inside, layout, type Box } from './layout';
 
+const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
 const SKY: Record<LookName, [string, string]> = {
   morning: ['#cfe6ee', '#7cc3d3'], midday: ['#bfe3f5', '#4fa3c9'], belly: ['#4a1830', '#b4507a'],
   jungle: ['#c9e3b0', '#5aa35a'], lava: ['#2a0c10', '#c2451c'], reentry: ['#1a0a20', '#f07a2a'], fever: ['#141a33', '#7a3a8a'],
@@ -36,6 +41,7 @@ export class SeasideRenderer implements GameRenderer {
   private worldCanvas: HTMLCanvasElement | null = null;
   private view: WorldView | null = null;
   private morning: MorningSet | null = null;
+  private belly: BellySet | null = null;
   private profile: Readonly<Profile> | null = null;
   private overlayEl: HTMLElement | null = null;
   /** Story clock for the world (advances with the sim's scene time, so pauses freeze it). */
@@ -87,15 +93,32 @@ export class SeasideRenderer implements GameRenderer {
     this.g?.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  /** The voxel world, built on the first Morning shot (its tile workers start then). */
+  /** The voxel view on `world` (made on the first world shot: its tile workers start then; switched after). */
+  private ensureView(world: string): WorldView {
+    if (!this.view) {
+      const save = (this.profile?.gameData as Record<string, unknown> | undefined)?.seaside;
+      this.view = new WorldView(this.worldCanvas!, getWorld(world), { pixel: pixelSetting(save), overlay: this.overlayEl });
+      this.view.resize(this.W, this.H); this.view.setInsets(this.insets);
+    } else this.view.setWorld(getWorld(world));
+    return this.view;
+  }
+
+  /** The Morning set on the coast world. */
   private ensureWorld(): MorningSet {
     if (!this.morning) {
-      const save = (this.profile?.gameData as Record<string, unknown> | undefined)?.seaside;
-      this.view = new WorldView(this.worldCanvas!, getWorld('coast'), { pixel: pixelSetting(save), overlay: this.overlayEl });
-      this.view.resize(this.W, this.H); this.view.setInsets(this.insets);
-      this.morning = new MorningSet(this.view);
+      this.belly?.dispose(); this.belly = null;
+      this.morning = new MorningSet(this.ensureView('coast'));
     }
     return this.morning;
+  }
+
+  /** The belly set on the belly world. */
+  private ensureBelly(): BellySet {
+    if (!this.belly) {
+      this.morning?.dispose(); this.morning = null;
+      this.belly = new BellySet(this.ensureView('belly'));
+    }
+    return this.belly;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -111,6 +134,11 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && BELLY_WORLD.has(s.sceneId)) {
+      const ftp = this.profile?.ftp || 200;
+      const shot = this.ensureBelly().frame(s, this.clock, dt, { cadence: bike?.cadence3s ?? 0, powerFtp: (bike?.power3s ?? 0) / ftp });
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawBellyHud(g, s, shot); return; }
+    }
     if (!s.menu && !shopOpen && (MORNING_WORLD.has(s.sceneId) || (s.fishing && (s.sceneId === 'shop1' || s.sceneId === 'pierStand')))) {
       const shot = this.ensureWorld().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawWorldHud(g, s, shot); return; }
@@ -197,6 +225,66 @@ export class SeasideRenderer implements GameRenderer {
     this.drawBubbleAndCard(g, { ...s, chapterCard: card }, L);
   }
 
+  /** Over the gut: eyelids and the heartbeat in the dark, the parts tally and the drill popup, the depth meter,
+   *  the white-out at the surface, then the usual bubble, card and progress line. */
+  private drawBellyHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: BellyShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), B = bellyHud(W, H, this.insets), fx = shot.fx;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (fx.lids < 1) { // eyelids: black with an eye-shaped opening; a red heartbeat glow while they're shut
+      const cx = W / 2, cy = L.UH * 0.45, ry = Math.max(0.5, fx.lids * L.UH * 0.8), rx = W * 0.8;
+      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#000'; g.fill('evenodd');
+      if (fx.lids < 0.98) { g.lineWidth = Math.max(8, L.UH * 0.06); g.strokeStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke(); }
+      g.restore();
+      const glow = fx.heart * (1 - fx.lids) * 0.5;
+      if (glow > 0.01) { const r = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, L.UH) * 0.5); r.addColorStop(0, `rgba(120,10,30,${glow})`); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, L.UH); }
+    }
+    const font = (px: number, style = '') => `${style}${Math.round(px)}px Georgia, serif`;
+    if (s.parts) { // three scratched icons: what's in hand
+      const T = B.tally, w = T.w / PARTS.length;
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = font(T.h * 0.42);
+      s.parts.items.forEach((it, i) => {
+        const x = T.x + w * i, on = it.got, near = s.parts!.reach === it.id;
+        g.fillStyle = on ? 'rgba(255,246,216,.92)' : near ? 'rgba(159,248,255,.85)' : 'rgba(20,6,18,.55)';
+        g.beginPath(); g.roundRect(x + 4, T.y, w - 8, T.h, 8); g.fill();
+        g.fillStyle = on ? '#2b1a12' : '#f7e7f0';
+        g.fillText(`${on ? '✓ ' : ''}${it.name.replace('the ', '')}`, x + w / 2, T.y + T.h / 2, w - 16);
+      });
+      const since = s.parts.allAt === null ? -1 : (s.scene.progress - s.parts.allAt) * PARTS_PLAN_S;
+      if (since >= 2.5 && since < 9) this.popup(g, B.popup, 'Drill. Keep it turning.', Math.min(1, (since - 2.5) / 0.5, (9 - since) / 0.8));
+    }
+    const d = fx.drill;
+    if (d && fx.since === null) { // the depth meter, scratched: bands of flesh, cartilage, bone; the bit's mark
+      const M = B.meter, k = (m: number) => M.y + (m / d.total) * M.h;
+      g.fillStyle = 'rgba(20,6,18,.55)'; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
+      let acc = 0;
+      for (const l of BELLY_LAYERS) {
+        g.fillStyle = `#${l.color.toString(16).padStart(6, '0')}`; g.globalAlpha = 0.85;
+        g.fillRect(M.x + M.w * 0.35, k(acc), M.w * 0.3, k(acc + l.m) - k(acc)); acc += l.m;
+      }
+      g.globalAlpha = 1; g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5;
+      for (let m = 0; m <= d.total + 1e-6; m += 0.25) { const y = k(m), long = Math.abs(m - Math.round(m)) < 1e-6; g.beginPath(); g.moveTo(M.x + (long ? 0 : M.w * 0.12), y + (m * 7 % 2 - 1)); g.lineTo(M.x + M.w * 0.32, y - (m * 5 % 2 - 1)); g.stroke(); }
+      const y = k(d.depth);
+      g.fillStyle = '#fff6d8'; g.beginPath(); g.moveTo(M.x + M.w * 0.66, y); g.lineTo(M.x + M.w, y - 7); g.lineTo(M.x + M.w, y + 7); g.closePath(); g.fill();
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff6d8'; g.font = font(Math.max(12, M.w * 0.28), 'italic ');
+      g.fillText(d.phase === 'rest' ? 'clear the chips' : d.phase === 'crack' ? 'cracking…' : BELLY_LAYERS[d.layer].name, M.x, M.y + M.h + 10);
+    }
+    if (fx.white > 0) { g.fillStyle = `rgba(250,253,255,${fx.white})`; g.fillRect(0, 0, W, H); }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  private popup(g: CanvasRenderingContext2D, b: Box, text: string, alpha: number): void {
+    g.globalAlpha = Math.max(0, alpha);
+    g.fillStyle = 'rgba(255,250,240,.94)'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
+    g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 10); g.fill(); g.stroke();
+    g.fillStyle = '#2b2b2b'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(b.h * 0.4)}px Georgia, serif`;
+    g.fillText(text, b.x + b.w / 2, b.y + b.h / 2, b.w - 24);
+    g.globalAlpha = 1;
+  }
+
   private drawBubbleAndCard(g: CanvasRenderingContext2D, s: SeasideSnapshot, L: ReturnType<typeof layout>): void {
     // monologue bubble, top-left
     if (s.monologue) {
@@ -233,7 +321,7 @@ export class SeasideRenderer implements GameRenderer {
 
   unmount(): void {
     this.ro?.disconnect(); this.offTap?.();
-    this.morning?.dispose(); this.morning = null; this.view?.dispose(); this.view = null;
+    this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null; this.view?.dispose(); this.view = null;
     this.worldCanvas?.remove(); this.worldCanvas = null; this.overlayEl?.remove(); this.overlayEl = null;
     this.diorama?.dispose(); this.diorama = null; this.shopCanvas?.remove(); this.shopCanvas = null;
     this.canvas?.remove(); this.canvas = null; this.g = null;

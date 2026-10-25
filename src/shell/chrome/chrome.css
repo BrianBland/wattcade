@@ -287,7 +287,8 @@
 .chrome-ui.menu .who {min-width:150px;max-width:220px}.chrome-ui.menu .who>b {font:700 18px var(--ui-font-family)}
 .chrome-ui.menu .topbar .btn {padding:8px 10px;font-size:12px;background:transparent}
 .chrome-ui.menu .topbar .dot {margin-right:0}
-.chrome-ui.menu .carousel {flex:1;min-height:160px}
+/* Size the strip to its cards so the overworld stays visible below. */
+.chrome-ui.menu .carousel {flex:0 0 auto;min-height:0}
 .chrome-ui.menu .gc {border:0;border-radius:var(--ui-size-radius);background:var(--ui-color-background);box-shadow:none}
 .chrome-ui.menu .gc::before {height:3px;box-shadow:none}
 .chrome-ui.menu .gc.active.focused {outline:2px solid var(--ui-color-accent);outline-offset:-2px;box-shadow:none}
@@ -348,13 +349,13 @@
  .chrome-ui .summary-grid {grid-template-columns:minmax(0,1fr);gap:16px}.summary .summary-grid>.panel {padding:16px}
  .chrome-ui .result-card {padding:20px;gap:16px}.chrome-ui .result-stats {gap:16px}
  .chrome-ui.menu {padding:16px 12px;gap:12px}.chrome-ui.menu .who {min-width:110px;max-width:140px}.chrome-ui.menu .topbar {gap:4px}
- .chrome-ui.menu .carousel {min-height:300px}.chrome-ui.menu .gc-info {padding:12px}.chrome-ui.menu .gc-info h3 {font-size:22px}
+ .chrome-ui.menu .gc-info {padding:12px}.chrome-ui.menu .gc-info h3 {font-size:22px}
  .chrome-ui.menu .ui-tooltip {margin-left:auto}.chrome-ui.menu .topbar>.spacer {display:none}
  .chrome-ui.media-picker .mp-row {flex-wrap:wrap}.chrome-ui.media-picker .mp-row>.mp-title {min-width:100px}
  .chrome-ui.media-picker .mp-qrow {flex-wrap:wrap}.chrome-ui.media-picker .mp-qrow>.mp-title {min-width:120px}
 }
 @media(max-height:550px){
- .chrome-ui.menu .carousel {min-height:180px}.chrome-ui.menu .topbar {flex-wrap:nowrap;overflow-x:auto;padding:4px}
+ .chrome-ui.menu .topbar {flex-wrap:nowrap;overflow-x:auto;padding:4px}
  .chrome-ui.menu .topbar>.btn,.chrome-ui.menu .topbar>.who {flex:none}
  .chrome-ui .result-card {padding:20px;gap:12px}.chrome-ui .result-stats .ui-readout>b {font-size:20px}
 }
@@ -370,7 +371,7 @@
 .chrome-ui.media-picker .mp-delete {min-width:var(--ui-size-touch);min-height:var(--ui-size-touch);border-radius:0;background:transparent;color:var(--ui-color-muted);border:0}
 .chrome-ui.menu .topbar:has(.focused) {scroll-padding:4px}
 @media(prefers-reduced-motion:reduce){.chrome-ui.menu .gc {transition:none!important}}
-.chrome-ui.menu .gc.active {position:absolute}
+.chrome-ui.menu .gc.active {position:relative}
 .chrome-ui.menu .arcade-actions {display:flex;align-items:center;flex:1;min-width:0;gap:4px;overflow-x:auto;scroll-padding:4px;padding:4px}
 .chrome-ui.menu .arcade-actions>.btn,.chrome-ui.menu .arcade-actions>.arcade-help {flex:none;white-space:nowrap}
 .chrome-ui.menu .projector {text-shadow:none;box-shadow:none}
@@ -395,3 +396,8 @@
 }
 .drivein .di-card>* {border-radius:var(--ui-size-radius);background:color-mix(in srgb,var(--ui-color-background) 85%,transparent);color:var(--ui-color-text)}
 .drivein .di-bar>button {min-width:var(--ui-size-touch);min-height:var(--ui-size-touch);border:0;border-radius:var(--ui-size-radius);background:transparent;color:var(--ui-color-text);box-shadow:none}
+/* Short landscape cards keep their image beside the details. */
+@media(max-height:550px) and (min-width:761px){
+ .chrome-ui.menu .carousel.narrow .gc.active {grid-template-columns:58fr 42fr}
+ .chrome-ui.menu .carousel.narrow .gc.active .gc-media {aspect-ratio:auto}
+}

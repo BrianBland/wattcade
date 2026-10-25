@@ -20,7 +20,7 @@ Canonical design rules and integration examples: [UI style guide](../../UI_STYLE
 | Result banner | [Capture](desktop-result.png) | [Capture](phone-result.png) | Verified in browser matrix |
 | Ride summary | [Capture](desktop-summary.png) | [Capture](phone-summary.png) | Verified in browser matrix |
 | Achievements page | [Capture](desktop-achievements.png) | [Capture](phone-achievements.png) | Verified in browser matrix |
-| Arcade selector | [Capture](desktop-arcade.png) | [Capture](phone-arcade.png) | Verified in browser matrix |
+| Arcade selector | [Capture](desktop-arcade.png) | [Capture](phone-arcade.png) | [Capture](landscape-arcade.png) |
 | Music browser | [Capture](desktop-media.png) | [Capture](phone-media.png) | Verified in browser matrix |
 | Controls guide | [Capture](desktop-controls.png) | [Capture](phone-controls.png) | Verified in browser matrix |
 | Loading | [Capture](desktop-loading.png) | [Capture](phone-loading.png) | Verified in browser matrix |
@@ -32,7 +32,7 @@ Canonical design rules and integration examples: [UI style guide](../../UI_STYLE
 - New/edit rider: flat scrolling settings rows, a live rider preview and reachable Save/Cancel. Touch color choices have 44px targets; delete and backup actions remain available. Aim is removed from both forms without altering saved aim behavior.
 - Pause: a left sheet with vertical navigation, flat settings and clear Resume. Retains help/history/restart/finish, fake-bike instructions when applicable and game-specific actions. Long menus scroll.
 - Achievements: a temporary upper-right banner with a pixel trophy, unlocked goal and bonus XP; clears after six seconds. The earning and saving rules are unchanged.
-- Remaining chrome: result/summary/achievement pages, selector toolbar/carousel, music library/queue/preview, controls help and loading/error states share canonical DOM widgets and token values. Phone music uses Browse/Queue/Preview tabs; [queue](phone-media-queue.png) and [preview](phone-media-preview.png) captures show the other panels. Summary supports controller scrolling; results and summary use the rider's units. Carousel cards start at their measured size and share a centerline; toolbar help escapes overflow clipping.
+- Remaining chrome: result/summary/achievement pages, selector toolbar/carousel, music library/queue/preview, controls help and loading/error states share canonical DOM widgets and token values. Phone music uses Browse/Queue/Preview tabs; [queue](phone-media-queue.png) and [preview](phone-media-preview.png) captures show the other panels. Summary supports controller scrolling; results and summary use the rider's units. Carousel cards start at their measured size, share a centerline and sit immediately below the toolbar in a strip sized to their content, leaving the overworld below; short landscape uses a side-by-side card; toolbar help escapes overflow clipping.
 - Physical controller labels only appear with an attached controller. All real buttons retain at least 44px height; instrument readings retain the existing compact HUD. Mobile sheets use a stronger backdrop for legibility.
 
 ## Reproduce

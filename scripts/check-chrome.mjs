@@ -66,6 +66,9 @@ try {
       }
       if(view==='arcade') {
         await page.waitForFunction(()=>{const a=document.querySelector('.gc.active')?.getBoundingClientRect(),b=document.querySelector('.carousel')?.getBoundingClientRect();return a&&b&&Math.abs(a.x+a.width/2-b.x-b.width/2)<1&&a.width<=b.width;});
+        const spacing=await page.locator('.gc.active').evaluate(a=>{const card=a.getBoundingClientRect(),toolbar=document.querySelector('.topbar').getBoundingClientRect(),strip=document.querySelector('.carousel').getBoundingClientRect();return {gap:card.top-toolbar.bottom,extraHeight:strip.height-card.height};});
+        assert.ok(spacing.gap>=0&&spacing.gap<=32,`${context}: cards should sit just below the toolbar`);
+        assert.ok(spacing.extraHeight<=28,`${context}: carousel should fit its cards, leaving the overworld below`);
         const centers=await page.locator('.gc').evaluateAll(cards=>cards.filter(c=>+getComputedStyle(c).opacity>.3).map(c=>{const r=c.getBoundingClientRect();return r.y+r.height/2;}));
         assert.ok(Math.max(...centers)-Math.min(...centers)<2,`${context}: carousel cards should share a centerline`);
         await page.getByRole('button',{name:'Arcade help',exact:true}).click();await page.waitForSelector('[role=tooltip]');

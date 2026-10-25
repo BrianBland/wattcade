@@ -12,4 +12,4 @@
 - Verification: shell tests, TypeScript and production build. Captures in `docs/visual-polish/chrome/` at 1180×820, 390×844 and 844×390. Real Bluetooth/iOS remains a hardware check.
 - Results/summary/achievements, arcade toolbar/carousel, media panels, controls guide and loading/error states use shared widgets/tokens. Summary is D-pad scrollable; result and summary share rider-selected units.
 - Phone/portrait music uses Browse/Queue/Preview tabs; controller focus selects the relevant panel. Search still takes over the visual viewport while the keyboard is open. Queue/undo/mode/start remain unchanged.
-- Arcade toolbar scrolls horizontally, focused controls scroll into view, carousel cards share a vertical centerline, and help uses a viewport-positioned tooltip outside clipping containers. Game-owned menus stay unchanged.
+- Arcade toolbar scrolls horizontally, focused controls scroll into view, carousel fits its cards immediately below the toolbar (short landscape uses a side-by-side card), cards share a vertical centerline, and help uses a viewport-positioned tooltip outside clipping containers. Game-owned menus stay unchanged.

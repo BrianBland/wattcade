@@ -66,7 +66,7 @@ const RAW: Raw[] = [
   { id: 'cavern', ch: 2, kind: 'ride', title: 'Torchlit cavern', min: 5, e: [[2, 58], [3, 48]], len: at(7), tr: route([[0, 0], [0.38, 0], [0.48, -3], [0.75, -5], [1, -3]]), say: ['Down it is.'], look: 'lava', dream: 0.65 },
   { id: 'bridge', ch: 2, kind: 'ride', title: 'The obsidian bridge', min: 3, e: [[3, 62]], len: at(5), tr: sim(0),
     say: ['Those are fish.', 'In the lava.', "I'm hungry enough not to care."], look: 'lava', dream: 0.72 },
-  { id: 'magma', fish: 'lava', ch: 2, kind: 'fish', title: 'Magma fishing', min: 4, e: [[1.5, 55], [0.2, 140], [2.3, 52]], len: effort, tr: res(40), sizes: [0.35], say: ['Hot. Very hot.'], look: 'lava', dream: 0.75 },
+  { id: 'magma', fish: 'lava', ch: 2, kind: 'fish', title: 'Magma fishing', min: 4, e: [[1.5, 55], [0.2, 140], [2.3, 52]], len: effort, tr: res(40), sizes: [0.32], say: ['Hot. Very hot.'], look: 'lava', dream: 0.75 },
   { id: 'fan', ch: 2, kind: 'fan', title: 'Cooling fan', min: 2, e: [[1.5, 78], [0.5, 45]], len: effort, tr: res(35),
     say: ['Blow on it. Big blow.', 'Tastes like... trout?'], look: 'lava', dream: 0.75 },
   { id: 'toGate', ch: 2, kind: 'ride', title: 'Toward the gate', min: 4, e: [[3, 62], [1, 50]], len: at(5.5), tr: sim(0), say: ['Dead end.', 'Of course it is.'], look: 'lava', dream: 0.8 },

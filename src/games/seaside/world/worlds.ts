@@ -3,8 +3,9 @@ import type { WorldDef } from './def';
 import { coastWorld } from './coast';
 import { bellyWorld } from './belly';
 import { islandWorld } from './island';
+import { cavernWorld } from './cavern';
 
-export const WORLDS: Record<string, () => WorldDef> = { coast: coastWorld, belly: bellyWorld, island: islandWorld };
+export const WORLDS: Record<string, () => WorldDef> = { coast: coastWorld, belly: bellyWorld, island: islandWorld, cavern: cavernWorld };
 
 const cache = new Map<string, WorldDef>();
 export function getWorld(id: string): WorldDef {

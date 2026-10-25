@@ -21,6 +21,8 @@ export interface CorridorDef {
   graded?: { end: number };
   /** 'ground' sits on the terrain (terrain under it is skipped); 'span' crosses a void (terrain below is kept). */
   support: 'ground' | 'span';
+  /** No corridor before this route distance (m): the path is the terrain until then (the cave floor before a bridge). */
+  start?: number;
   /** Ground corridors that cross a void for part of their length (bridge decks, piers): true where s spans. */
   span?(s: number): boolean;
   /** Bed thickness under the surface (m). */ thickness: number;

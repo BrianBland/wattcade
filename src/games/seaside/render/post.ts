@@ -12,10 +12,11 @@ export interface PostParams {
   /** Posterize levels per channel (0 = off) and ordered dither 0..1. */ posterize: number; dither: number;
   /** Bloom strength and threshold; halation tints the glow warm. */ bloom: number; threshold: number; halation: number;
   /** 0 = mundane … 1 = fever dream: vignette, hue drift, chromatic fringing, screen wobble. */ dream: number;
+  /** Heat shimmer 0..1: the edges of the screen waver (over the lava). */ shimmer: number;
 }
 export const POST_DEFAULTS: PostParams = {
   pixel: 1, outline: 0, ink: new THREE.Color(0x1b2a3a), grade: 0, pastel: 0, saturation: 1, posterize: 0, dither: 0,
-  bloom: 0, threshold: 0.8, halation: 0, dream: 0,
+  bloom: 0, threshold: 0.8, halation: 0, dream: 0, shimmer: 0,
 };
 
 const FS_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
@@ -50,11 +51,11 @@ export class PostFX {
         tScene: { value: null }, tDepth: { value: null }, tBloom: { value: null }, uTexel: { value: new THREE.Vector2() }, uRes: { value: new THREE.Vector2() },
         uNear: { value: 0.03 }, uFar: { value: 12000 }, uPixel: { value: 1 }, uTime: { value: 0 },
         uOutline: { value: 0 }, uInk: { value: new THREE.Color() }, uGrade: { value: 0 }, uPastel: { value: 0 }, uSat: { value: 1 },
-        uPost: { value: 0 }, uDither: { value: 0 }, uBloom: { value: 0 }, uHal: { value: 0 }, uDream: { value: 0 },
+        uPost: { value: 0 }, uDither: { value: 0 }, uBloom: { value: 0 }, uHal: { value: 0 }, uDream: { value: 0 }, uShim: { value: 0 },
       },
       fragmentShader: `
         uniform sampler2D tScene, tDepth, tBloom; uniform vec2 uTexel, uRes; uniform float uNear, uFar, uPixel, uTime;
-        uniform float uOutline, uGrade, uPastel, uSat, uPost, uDither, uBloom, uHal, uDream; uniform vec3 uInk;
+        uniform float uOutline, uGrade, uPastel, uSat, uPost, uDither, uBloom, uHal, uDream, uShim; uniform vec3 uInk;
         varying vec2 vUv;
         float lin(float d){ return uNear * uFar / (uFar - d * (uFar - uNear)); }
         float D(vec2 uv){ return lin(texture2D(tDepth, uv).r); }
@@ -71,6 +72,9 @@ export class PostFX {
           if (uPixel > 1.0) uv = (floor(uv / uTexel) + 0.5) * uTexel; // snap to the low-res pixel grid: crisp 1-pixel ink
           // fever: the screen breathes and ripples
           uv += vec2(sin(uv.y * 9.0 + uTime * 1.3), cos(uv.x * 7.0 - uTime * 1.1)) * 0.006 * dr;
+          // heat shimmer: the edges of the screen waver, the middle stays readable
+          if (uShim > 0.0) { float ed = smoothstep(0.22, 0.5, max(abs(uv.x - 0.5), abs(uv.y - 0.5) * 0.9));
+            uv += vec2(sin(uv.y * 58.0 + uTime * 5.0) + 0.5 * sin(uv.y * 23.0 - uTime * 3.1), cos(uv.x * 47.0 - uTime * 4.3)) * 0.003 * uShim * ed; }
           vec2 cc = uv - 0.5;
           // chromatic fringing toward the edges
           float ab = 0.006 * dr * dot(cc, cc) * 4.0;
@@ -156,7 +160,7 @@ export class PostFX {
     u.uTexel.value.set(1 / this.size.w, 1 / this.size.h); u.uRes.value.set(this.w, this.h);
     u.uNear.value = camera.near; u.uFar.value = camera.far; u.uPixel.value = this.size.pixel; u.uTime.value = time;
     u.uOutline.value = p.outline; u.uInk.value.copy(p.ink); u.uGrade.value = p.grade; u.uPastel.value = p.pastel; u.uSat.value = p.saturation;
-    u.uPost.value = p.posterize; u.uDither.value = p.dither; u.uBloom.value = p.bloom; u.uHal.value = p.halation; u.uDream.value = p.dream;
+    u.uPost.value = p.posterize; u.uDither.value = p.dither; u.uBloom.value = p.bloom; u.uHal.value = p.halation; u.uDream.value = p.dream; u.uShim.value = p.shimmer;
     this.pass(this.comp, null);
   }
 }

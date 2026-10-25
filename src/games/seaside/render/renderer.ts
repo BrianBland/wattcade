@@ -1,6 +1,6 @@
 // The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
-// (render/island.ts); the shops are the counter dioramas;
+// (render/island.ts), Chapter 3a (#192) to the cavern (render/cavern.ts); the shops are the counter dioramas;
 // later chapters still use the placeholder stage (grey box and labels) until their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
@@ -11,6 +11,8 @@ import { BellySet } from './belly';
 import { BELLY_WORLD, type BellyShot } from './bellyShots';
 import { IslandSet } from './island';
 import { ISLAND_WORLD, type IslandShot } from './islandShots';
+import { CavernSet } from './cavern';
+import { CAVERN_WORLD, type CavernShot } from './cavernShots';
 import { BELLY_LAYERS, PARTS } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -46,6 +48,7 @@ export class SeasideRenderer implements GameRenderer {
   private morning: MorningSet | null = null;
   private belly: BellySet | null = null;
   private island: IslandSet | null = null;
+  private cavern: CavernSet | null = null;
   /** Seconds since the beach's first fish went on the fire (null before). */
   private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
@@ -112,7 +115,7 @@ export class SeasideRenderer implements GameRenderer {
   /** The Morning set on the coast world. */
   private ensureWorld(): MorningSet {
     if (!this.morning) {
-      this.belly?.dispose(); this.belly = null; this.island?.dispose(); this.island = null;
+      this.dropSets();
       this.morning = new MorningSet(this.ensureView('coast'));
     }
     return this.morning;
@@ -121,7 +124,7 @@ export class SeasideRenderer implements GameRenderer {
   /** The island set on the island world. */
   private ensureIsland(): IslandSet {
     if (!this.island) {
-      this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
+      this.dropSets();
       this.island = new IslandSet(this.ensureView('island'));
     }
     return this.island;
@@ -130,10 +133,25 @@ export class SeasideRenderer implements GameRenderer {
   /** The belly set on the belly world. */
   private ensureBelly(): BellySet {
     if (!this.belly) {
-      this.morning?.dispose(); this.morning = null; this.island?.dispose(); this.island = null;
+      this.dropSets();
       this.belly = new BellySet(this.ensureView('belly'));
     }
     return this.belly;
+  }
+
+  /** The cavern set on the cavern world. */
+  private ensureCavern(): CavernSet {
+    if (!this.cavern) {
+      this.dropSets();
+      this.cavern = new CavernSet(this.ensureView('cavern'));
+    }
+    return this.cavern;
+  }
+
+  /** Release whichever set is up (each holds GPU resources on the shared view). */
+  private dropSets(): void {
+    this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
+    this.island?.dispose(); this.island = null; this.cavern?.dispose(); this.cavern = null;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -149,6 +167,10 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && CAVERN_WORLD.has(s.sceneId)) {
+      const shot = this.ensureCavern().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawCavernHud(g, s, shot); return; }
+    }
     if (!s.menu && ISLAND_WORLD.has(s.sceneId)) {
       const shot = this.ensureIsland().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawIslandHud(g, s, shot, dt); return; }
@@ -322,6 +344,33 @@ export class SeasideRenderer implements GameRenderer {
     this.drawBubbleAndCard(g, s, L);
   }
 
+  /** Over the cavern: fishing prompts at the magma, the fan's glow gauge (the eel's heat, creeping back out of the
+   *  band), then the usual bubble, card and progress line. */
+  private drawCavernHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: CavernShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets, 0, s.fishing?.spots.length ?? 3);
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = [];
+    this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
+    if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT, true);
+    const fan = shot.fx.fan;
+    if (fan && fan.eat < 1) { // a scratched gauge down the left: how hot the eel still is
+      const M = bellyHud(W, H, this.insets).meter, al = Math.max(0, 1 - fan.eat * 3), k = fan.glow;
+      g.globalAlpha = al;
+      g.fillStyle = 'rgba(20,8,6,.6)'; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
+      const hot = `rgb(${Math.round(110 + 145 * k)},${Math.round(120 - 10 * k + 30 * k * k)},${Math.round(100 - 90 * k)})`;
+      g.fillStyle = hot; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, M.h * k);
+      if (fan.heat > 0.005) { g.fillStyle = 'rgba(255,200,120,.9)'; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, Math.max(2, M.h * fan.heat)); }
+      g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5; g.strokeRect(M.x + M.w * 0.3, M.y, M.w * 0.4, M.h);
+      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff2e0'; g.font = `italic ${Math.round(Math.max(12, M.w * 0.28))}px Georgia, serif`;
+      g.fillText(fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 10);
+      g.globalAlpha = 1;
+    }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
   private popup(g: CanvasRenderingContext2D, b: Box, text: string, alpha: number): void {
     g.globalAlpha = Math.max(0, alpha);
     g.fillStyle = 'rgba(255,250,240,.94)'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
@@ -367,7 +416,7 @@ export class SeasideRenderer implements GameRenderer {
 
   unmount(): void {
     this.ro?.disconnect(); this.offTap?.();
-    this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null; this.island?.dispose(); this.island = null; this.view?.dispose(); this.view = null;
+    this.dropSets(); this.view?.dispose(); this.view = null;
     this.worldCanvas?.remove(); this.worldCanvas = null; this.overlayEl?.remove(); this.overlayEl = null;
     this.diorama?.dispose(); this.diorama = null; this.shopCanvas?.remove(); this.shopCanvas = null;
     this.canvas?.remove(); this.canvas = null; this.g = null;

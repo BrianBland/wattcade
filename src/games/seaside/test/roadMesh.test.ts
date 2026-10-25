@@ -5,6 +5,7 @@ import { flatCorridor, flatWorld, PAL } from './fixtures';
 import { TileBuilder } from '../world/tileBuild';
 import type { CorridorDef } from '../world/def';
 import type { MeshData } from '../voxel/mesh';
+import { boardwalkSurface, stoneSurface } from '../world/corridor';
 
 const route = new RouteSpline([[0, 0, 0], [0, 4, -40], [0, 0, -80]], 1);
 const c: CorridorDef = { ...flatCorridor, graded: { end: route.length } };
@@ -101,5 +102,68 @@ describe('graded voxel road', () => {
     const builder = new TileBuilder(flatWorld({ route, corridor: short }));
     expect(builder.build({ kind: 'road', s0: 0, len: 16, voxel: 0.125 }).parts.map((p) => p.role)).toEqual(['road', 'land']);
     expect(builder.build({ kind: 'road', s0: 16, len: 16, voxel: 0.125 }).parts.map((p) => p.role)).toEqual(['land']);
+  });
+
+  describe('surfaces with detail along the route (island boardwalk and cut stone)', () => {
+    const P = PAL.idx;
+    const planks = boardwalkSurface({ plank: [P.rock], gap: P.dirt, plankLen: 0.5 });
+    const stone = stoneSurface({ stone: [P.rock, P.grass], mortar: P.dirt });
+    // planks only within 1 m of the centre line: empty cells beyond
+    const narrow: CorridorDef = { ...c, surface: (d, s, below, r, v) => (Math.abs(d) > 1 ? { dy: 0, c: 0 } : planks(d, s, below, r, v)) };
+    const winding = (m: MeshData) => {
+      for (let i = 0; i < m.indices.length; i += 3) {
+        const [a, b, cc] = m.indices.slice(i, i + 3).map((v) => v * 3);
+        const u = [0, 1, 2].map((j) => m.positions[b + j] - m.positions[a + j]);
+        const v = [0, 1, 2].map((j) => m.positions[cc + j] - m.positions[a + j]);
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        expect(n.reduce((sum, value, j) => sum + value * m.normals[a + j], 0)).toBeGreaterThan(0);
+      }
+    };
+
+    it('keeps tops on the grade and steps plank gaps with risers facing into the gap', () => {
+      const m = meshRoad(route, narrow, 20, 22, 0.125, PAL.linear);
+      winding(m);
+      let risers = 0;
+      for (let i = 0; i < m.positions.length / 3; i++) {
+        const [x, y, z] = vert(m, i), [d, h, s] = m.voxL!.slice(i * 3, i * 3 + 3), nz = m.normals[i * 3 + 2];
+        if (m.normals[i * 3 + 1] > 0.5) {
+          expect(Math.abs(x)).toBeLessThanOrEqual(1 + 1e-6); // nothing on the empty cells
+          expect(y - route.at(-z).y).toBeCloseTo(h, 4);
+        }
+        // along-route risers lie on a row boundary and face the gap row (route runs toward −z here)
+        if (Math.abs(nz) > 0.5 && h > -0.125 - 1e-6) {
+          risers++;
+          expect(Math.abs(s / 0.125 - Math.round(s / 0.125))).toBeLessThan(1e-4);
+          const behind = planks(d, s - 0.0625, 0, 0, 0.125).dy, ahead = planks(d, s + 0.0625, 0, 0, 0.125).dy;
+          expect(behind).not.toBe(ahead);
+          expect(Math.sign(-nz)).toBe(behind < ahead ? -1 : 1);
+        }
+      }
+      expect(risers).toBeGreaterThan(0);
+    });
+
+    it('walls in empty cells, facing away from the surface', () => {
+      const m = meshRoad(route, narrow, 20, 21, 0.125, PAL.linear);
+      let walls = 0;
+      for (let i = 0; i < m.positions.length / 3; i++) {
+        const x = m.positions[i * 3], nx = m.normals[i * 3];
+        if (Math.abs(nx) > 0.5) { walls++; expect(Math.abs(x)).toBeCloseTo(1, 5); expect(Math.sign(nx)).toBe(Math.sign(x)); }
+      }
+      expect(walls).toBeGreaterThan(0);
+    });
+
+    it('meshes cut stone with consistent winding and closes the end of the graded stretch', () => {
+      const short: CorridorDef = { ...c, surface: stone, graded: { end: 10 } };
+      const m = meshRoad(route, short, 0, 16, 0.125, PAL.linear);
+      winding(m);
+      let endWall = 0;
+      for (let i = 0; i < m.positions.length / 3; i++) if (m.normals[i * 3 + 2] < -0.5 && Math.abs(m.voxL![i * 3 + 2] - 10) < 1e-6) endWall++;
+      expect(endWall).toBeGreaterThan(0);
+      // a segment boundary (here on a mortar line) is meshed once, by the segment after it
+      const a = meshRoad(route, { ...c, surface: stone }, 0, 4.5, 0.125, PAL.linear), b = meshRoad(route, { ...c, surface: stone }, 4.5, 9, 0.125, PAL.linear);
+      const onSeam = (m: MeshData) => [...Array(m.positions.length / 3).keys()].filter((i) => Math.abs(m.normals[i * 3 + 2]) > 0.5 && Math.abs(m.voxL![i * 3 + 2] - 4.5) < 1e-6).length;
+      expect(onSeam(a)).toBe(0);
+      expect(onSeam(b)).toBeGreaterThan(0);
+    });
   });
 });

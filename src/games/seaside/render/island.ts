@@ -4,6 +4,7 @@
 // coming down through the canopy, the head's eyes catching the light, the dark of the hall with its sun shafts and
 // dust, and the statue on its plinth (Lou, in stone; nobody says so).
 import * as THREE from 'three';
+import { disposeSet } from './dispose';
 import type { SeasideSnapshot } from '../sim/types';
 import { addGrid } from '../stills/stage';
 import { VoxelGrid } from '../voxel/grid';
@@ -212,7 +213,6 @@ export class IslandSet {
 
   dispose(): void {
     this.rig.dispose();
-    this.view.stage.camera.remove(this.wheelRoot);
-    this.view.stage.scene.remove(this.root);
+    disposeSet(this.wheelRoot, this.root);
   }
 }

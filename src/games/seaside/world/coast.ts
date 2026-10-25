@@ -358,17 +358,7 @@ export function coastWorld(): WorldDef {
     corridor: {
       half: 6.2, support: 'ground', span: spanAt, thickness: 0.5, clearance: 6, edgeSkirt: 0.4, voxel: 0.125, farVoxel: 0.5, near: 200, seg: 32, range: 1500,
       surface: coastSurface(),
-      smooth: { end: pierGeom().start, bands: [
-        { from: -6.2, to: -5, dy: -0.12, color: C.gravel },
-        { from: -5, to: -3.8, dy: 0, color: C.asphalt },
-        { from: -3.8, to: -3.55, dy: 0, color: C.white },
-        { from: -3.55, to: -0.125, dy: 0, color: C.asphalt },
-        { from: -0.125, to: 0.125, dy: 0, color: C.yellow },
-        { from: 0.125, to: 3.55, dy: 0, color: C.asphalt },
-        { from: 3.55, to: 3.8, dy: 0, color: C.white },
-        { from: 3.8, to: 5, dy: 0, color: C.asphalt },
-        { from: 5, to: 6.2, dy: -0.12, color: C.gravel },
-      ] },
+      graded: { end: pierGeom().start },
     },
     scatter: coastScatter(),
     sun: { coarse: { cell: 12, ...BOUNDS }, patches: [{ cell: 2, size: 512, maxVoxel: 4 }, { cell: 0.25, size: 128, maxVoxel: 0.25, apron: 48 }] },

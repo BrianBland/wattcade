@@ -43,6 +43,8 @@ export class TileStreamer<D> {
   /** Pick the display set for a camera, queue what's missing, prefetch ahead on the route, evict stale tiles. */
   update(cam: Vec3, time: number, at?: { routeS: number; speed: number }, extra: Vec3[] = []): void {
     this.time = time;
+    // Recompute queued priorities for this frame: old display jobs must not outrank the new camera.
+    for (const k of this.queue.keys()) this.queue.set(k, Infinity);
     const sel = this.select(cam, true);
     this.wanted = sel;
     for (const l of sel) this.want(l, l.d);
@@ -53,6 +55,7 @@ export class TileStreamer<D> {
       for (const d of ds) { const p = r.at(Math.min(r.length, at.routeS + d)); ahead.push({ x: p.x, y: p.y + eye, z: p.z }); }
     }
     for (const p of ahead) for (const l of this.select(p, false)) if (this.want(l, PREFETCH + l.d)) this.stats.prefetched++;
+    for (const [k, priority] of this.queue) if (priority === Infinity) this.queue.delete(k);
     this.evict();
   }
 

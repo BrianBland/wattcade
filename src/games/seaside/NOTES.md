@@ -1,9 +1,9 @@
 # Seaside — runtime, voxels, workout, fishing, Lou’s shop, Chapter 1 (#184–189)
 
 ~2 h story ride (#183); storyboard + media on unmerged PR #175. `devGames` (`?dev=1` / vite dev) until all chapters land.
-
 ## Sim (`sim/`)
 - `story.ts` 33 scenes (chapter, kind, minutes, effort %FTP, trainer, monologue, look + dream). `types.ts` additive snapshot.
+- Restarts save Morning immediately; optional shop outings use the coast fishing shots.
 - `graph.ts` plan / route / effort / checkpoints; `pace.ts` power⅓ × nudge. `sim.ts` menu → story, saves at chapters /
   long-scene checkpoints. Events scene/chapter/save/storyEnd/trainer/pull/cast/bite/catch/escape/purchase/bigOneReady.
 - `workout.ts` scene-mode effect per tick (profiles, swells, fish surges, set pieces, drill ERG, fan, pulses); all `seaside.*`.
@@ -14,7 +14,7 @@
 ## World (`world/`, pure, rebuilt per worker)
 - Sparse 32³ voxels, AO/greedy meshing; WorldDef data (terrain, route, corridor, scatter, sky, LOD); coast + belly.
 - Corridors keep a fixed voxel size; `span(s)` marks void crossings (bridge deck, pier: terrain below kept). Nothing is
-  built past a route's ends. Streaming prefetches, evicts after 8 s; worker builds; atomic swaps + 0.5 s dissolve.
+  built past a route's ends. Streaming reprioritizes each frame, prefetches, evicts after 8 s; atomic swaps + 0.5 s dissolve.
 - #189 `coastLayout.ts`: Chapter 1 in route metres (`CH1`): elevation integrated from grade keys (the rollers use the
   scene's trainer profile; the descent is solved to land the town at `TOWN_Y`), pullouts (van, Turnout 1, Lou's lot),
   the diagonal creek gorge + the road's swing across it, the town flat, and the route: highway → harbour street → 480 m

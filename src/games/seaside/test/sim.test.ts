@@ -69,3 +69,12 @@ describe('seaside sim', () => {
     expect(STORY.length).toBe(33);
   });
 });
+
+it('saves a new Morning selection immediately instead of keeping the old continue checkpoint', () => {
+  const { s, saves, snap } = session({ checkpoint: { sceneId: 'drill1', progress: 0.5 } });
+  s.sim.receive?.({ type: 'menu', index: 1 }); s.step(1);
+  expect(snap().sceneId).toBe('title');
+  const latest = saves.at(-1) as SeasideSave;
+  expect(latest?.checkpoint).toEqual({ sceneId: 'title', progress: 0 });
+  expect(session(latest, { skipMenu: true }).snap().sceneId).toBe('title');
+});

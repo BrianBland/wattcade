@@ -65,3 +65,18 @@ describe('route streaming', () => {
     expect(keys.size).toBe(1);
   });
 });
+
+it('prioritizes the current display after a camera cut over obsolete queued tiles', () => {
+  const w = flatWorld({ corridor: undefined }), st = new TileStreamer<object>(w, { useRoute: false, lookaheadS: [], lookaheadM: [] });
+  st.update({ x: 0, y: 1.5, z: 0 }, 0);
+  const before = new Set(st.wanted.map((l) => l.key));
+  st.update({ x: 150, y: 1.5, z: -850 }, 0.1);
+  const current = new Set(st.wanted.map((l) => l.key));
+  expect([...before].some((k) => !current.has(k))).toBe(true);
+  let job;
+  while ((job = st.next())) {
+    expect(current.has(job.key), `obsolete tile ${job.key} still queued`).toBe(true);
+    st.done(job.key, {});
+  }
+  expect(st.ready()).toBe(true);
+});

@@ -53,14 +53,14 @@ export const LOOK = { bevel: { value: 0 }, cool: { value: 0 }, detail: { value: 
  * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water, baked sun
  * visibility, and the LOOK bevel / cool-shadow switches. Cell maths runs in the mesh's local space (grid `origin`).
  */
-export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number; /** live amplitude multiplier (glassy water) */ scale?: { value: number } }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
+export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** false = smooth surface without cube-edge shading */ bevel?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number; /** live amplitude multiplier (glassy water) */ scale?: { value: number } }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const o = opts.origin ?? [0, 0, 0];
   mat.onBeforeCompile = (sh) => {
     sh.uniforms.uVox = { value: opts.size };
     sh.uniforms.uJit = { value: opts.jitter };
     sh.uniforms.uOrigin = { value: new THREE.Vector3(o[0], o[1], o[2]) };
-    sh.uniforms.uBevel = LOOK.bevel; sh.uniforms.uCool = LOOK.cool; sh.uniforms.uDetail = opts.detail === false || opts.wave ? { value: 0 } : LOOK.detail;
+    sh.uniforms.uBevel = opts.bevel === false ? { value: 0 } : LOOK.bevel; sh.uniforms.uCool = LOOK.cool; sh.uniforms.uDetail = opts.detail === false || opts.wave ? { value: 0 } : LOOK.detail;
     if (opts.fade) sh.uniforms.uFade = opts.fade;
     if (opts.wave) { sh.uniforms.uTime = opts.wave.time; sh.uniforms.uWaveK = opts.wave.scale ?? { value: 1 }; }
     sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\nuniform float uWaveK;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
@@ -100,7 +100,7 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
         }
         diffuseColor.rgb *= 1.0 + (hj * 2.0 - 1.0) * uJit + 0.09 * vWave + uBevel * bev + uDetail * sub;`);
   };
-  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}-${opts.fade ? 'f' : ''}`;
+  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}-${opts.fade ? 'f' : ''}-${opts.detail === false ? 'plain' : ''}-${opts.bevel === false ? 'smooth' : ''}`;
   return mat;
 }
 

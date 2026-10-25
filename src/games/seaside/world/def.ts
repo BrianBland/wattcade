@@ -16,6 +16,8 @@ export type SurfaceFn = (d: number, s: number, below: number, r: number, voxel: 
 export interface CorridorDef {
   /** Half-width (m). */ half: number;
   surface: SurfaceFn;
+  /** Continuous road surface; ends before non-road sections such as a plank pier. */
+  smooth?: { end: number; bands: ReadonlyArray<{ from: number; to: number; dy: number; color: number }> };
   /** 'ground' sits on the terrain (terrain under it is skipped); 'span' crosses a void (terrain below is kept). */
   support: 'ground' | 'span';
   /** Ground corridors that cross a void for part of their length (bridge decks, piers): true where s spans. */

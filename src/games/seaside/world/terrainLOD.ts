@@ -121,10 +121,10 @@ export class TerrainLOD {
 
   private mat(role: PartRole, size: number, fade?: { value: THREE.Vector2 }): THREE.Material {
     if (role === 'glow') return this.mats.get('glow') ?? this.mats.set('glow', new THREE.MeshBasicMaterial({ vertexColors: true })).get('glow')!;
-    const baked = this.baked && role !== 'prop', water = role === 'water';
-    const make = () => voxelMaterial(water ? { size, jitter: 0.025, wave: this.o.water, baked, fade } : { size, jitter: 0.1, baked, fade });
+    const baked = this.baked && role !== 'prop', water = role === 'water', road = role === 'road';
+    const make = () => voxelMaterial(water ? { size, jitter: 0.025, wave: this.o.water, baked, fade } : { size, jitter: road ? 0.035 : 0.1, detail: !road, bevel: !road, baked, fade });
     if (fade) return make();
-    const k = `${role === 'prop' ? 'p' : baked ? 'b' : 'u'}:${size}:${water}`;
+    const k = `${role === 'prop' ? 'p' : baked ? 'b' : 'u'}:${size}:${water}:${road}`;
     return this.mats.get(k) ?? this.mats.set(k, make()).get(k)!;
   }
 

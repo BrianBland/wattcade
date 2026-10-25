@@ -35,14 +35,14 @@ export function buildGrid(grid: VoxelGrid, opts: MeshOpts, material: THREE.Mater
  */
 const VOX_GLSL = `
 float vxHash(vec3 c) { return fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
-// bevel: within bw of a cube edge, tilt the shading toward that edge's outward direction (lit from above-left)
-float vxBevel(vec3 fr, vec3 n, float bw) {
+// bevel: within bw of a cube edge, tilt the shading toward that edge's outward direction (lit from lt, above-left)
+float vxBevel(vec3 fr, vec3 n, float bw, vec3 lt) {
   vec3 ed = vec3(0.0);
   for (int a = 0; a < 3; a++) {
     if (abs(n[a]) > 0.5) continue;
     ed[a] = fr[a] < bw ? -(1.0 - fr[a] / bw) : fr[a] > 1.0 - bw ? (1.0 - (1.0 - fr[a]) / bw) : 0.0;
   }
-  return dot(ed, normalize(vec3(-0.35, 1.0, 0.3))) * 0.5 - length(ed) * 0.1;
+  return dot(ed, lt) * 0.5 - length(ed) * 0.1;
 }
 `;
 
@@ -53,7 +53,7 @@ export const LOOK = { bevel: { value: 0 }, cool: { value: 0 }, detail: { value: 
  * fragment), so greedy-merged quads still read as individual cubes. Optional travelling swell for water, baked sun
  * visibility, and the LOOK bevel / cool-shadow switches. Cell maths runs in the mesh's local space (grid `origin`).
  */
-export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number; /** live amplitude multiplier (glassy water) */ scale?: { value: number } }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
+export function voxelMaterial(opts: { size: number; jitter: number; origin?: readonly number[]; /** false = no mixed-size sub-cubes (water) */ detail?: boolean; /** geometry has `voxL`/`voxT` attributes: cells live in that sheared road frame instead of world axes */ frame?: boolean; /** screen-door dissolve: x = progress 0..1, y = +1 fading in / −1 fading out */ fade?: { value: THREE.Vector2 }; wave?: { time: { value: number }; amp: number; /** live amplitude multiplier (glassy water) */ scale?: { value: number } }; /** geometry has a baked `sunVis` attribute scaling direct light */ baked?: boolean }): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const o = opts.origin ?? [0, 0, 0];
   mat.onBeforeCompile = (sh) => {
@@ -63,10 +63,15 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
     sh.uniforms.uBevel = LOOK.bevel; sh.uniforms.uCool = LOOK.cool; sh.uniforms.uDetail = opts.detail === false || opts.wave ? { value: 0 } : LOOK.detail;
     if (opts.fade) sh.uniforms.uFade = opts.fade;
     if (opts.wave) { sh.uniforms.uTime = opts.wave.time; sh.uniforms.uWaveK = opts.wave.scale ?? { value: 1 }; }
-    sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + (opts.wave ? 'uniform float uTime;\nuniform float uWaveK;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
+    sh.vertexShader = 'varying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying vec3 vVoxLt;\nvarying float vWave;\n' + (opts.frame ? 'attribute vec3 voxL;\nattribute vec2 voxT;\n' : '') + (opts.wave ? 'uniform float uTime;\nuniform float uWaveK;\n' : '') + (opts.baked ? 'attribute float sunVis;\nvarying float vSunVis;\n' : '')
       + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-        vVoxL = position;
-        vVoxN = normal;${opts.baked ? '\n        vSunVis = sunVis;' : ''}
+        ${opts.frame ? `// road frame: x = lateral (+ right), y = up, z = along the route; normal and bevel light expressed in it
+        vec3 vxLat = vec3(-voxT.y, 0.0, voxT.x), vxAlong = vec3(voxT.x, 0.0, voxT.y), vxSun = normalize(vec3(-0.35, 1.0, 0.3));
+        vVoxL = voxL;
+        vVoxN = vec3(dot(normal, vxLat), normal.y, dot(normal, vxAlong));
+        vVoxLt = vec3(dot(vxSun, vxLat), vxSun.y, dot(vxSun, vxAlong));` : `vVoxL = position;
+        vVoxN = normal;
+        vVoxLt = normalize(vec3(-0.35, 1.0, 0.3));`}${opts.baked ? '\n        vSunVis = sunVis;' : ''}
         vWave = 0.0;
         ${opts.wave ? `vec3 wpos = (modelMatrix * vec4(position, 1.0)).xyz;
         vWave = sin(dot(wpos.xz, vec2(0.23, 0.11)) - uTime * 1.4) * 0.6 + sin(dot(wpos.xz, vec2(-0.07, 0.29)) - uTime * 2.0) * 0.4;
@@ -74,7 +79,7 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
     const lights = `#include <lights_fragment_end>${opts.baked ? '\n  reflectedLight.directDiffuse *= vSunVis;' : ''}
       reflectedLight.indirectDiffuse *= mix(vec3(1.0), vec3(0.74, 0.84, 1.22), uCool);
       reflectedLight.directDiffuse *= mix(vec3(1.0), vec3(1.08, 1.0, 0.88), uCool);`;
-    sh.fragmentShader = 'uniform float uVox;\nuniform float uJit;\nuniform vec3 uOrigin;\nuniform float uBevel;\nuniform float uCool;\nuniform float uDetail;\nvarying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying float vWave;\n' + VOX_GLSL + (opts.baked ? 'varying float vSunVis;\n' : '')
+    sh.fragmentShader = 'uniform float uVox;\nuniform float uJit;\nuniform vec3 uOrigin;\nuniform float uBevel;\nuniform float uCool;\nuniform float uDetail;\nvarying vec3 vVoxL;\nvarying vec3 vVoxN;\nvarying vec3 vVoxLt;\nvarying float vWave;\n' + VOX_GLSL + (opts.baked ? 'varying float vSunVis;\n' : '')
       + (opts.fade ? 'uniform vec2 uFade;\n' : '')
       + sh.fragmentShader.replace('#include <lights_fragment_end>', lights).replace('#include <clipping_planes_fragment>', opts.fade ? `#include <clipping_planes_fragment>
         { ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0)); // 4×4 Bayer threshold
@@ -85,7 +90,7 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
         vec3 cell = floor(gv - vVoxN * 0.5);
         float hj = vxHash(cell);
         float px = max(max(fwidth(gv.x), fwidth(gv.y)), fwidth(gv.z)); // voxels per pixel
-        float bev = vxBevel(gv - cell, vVoxN, 0.14) * (1.0 - smoothstep(0.08, 0.2, px));
+        float bev = vxBevel(gv - cell, vVoxN, 0.14, vVoxLt) * (1.0 - smoothstep(0.08, 0.2, px));
         // mixed-size cubes: in patches, a cube shows as 2×2 or 4×4 smaller bevelled cubes (fades when they'd be < ~3 px)
         float sub = 0.0;
         if (uDetail > 0.0) {
@@ -95,12 +100,12 @@ export function voxelMaterial(opts: { size: number; jitter: number; origin?: rea
             float k = exp2(L);
             vec3 gs = gv * k, sc = floor(gs - vVoxN * 0.5);
             float vis = 1.0 - smoothstep(0.25, 0.5, px * k);
-            sub = (vxBevel(gs - sc, vVoxN, 0.22) * 1.3 + (vxHash(sc + 3.1) - 0.5) * 0.24) * vis;
+            sub = (vxBevel(gs - sc, vVoxN, 0.22, vVoxLt) * 1.3 + (vxHash(sc + 3.1) - 0.5) * 0.24) * vis;
           }
         }
         diffuseColor.rgb *= 1.0 + (hj * 2.0 - 1.0) * uJit + 0.09 * vWave + uBevel * bev + uDetail * sub;`);
   };
-  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}-${opts.fade ? 'f' : ''}`;
+  mat.customProgramCacheKey = () => `vox-${opts.size}-${opts.jitter}-${opts.wave ? 'w' : ''}-${opts.baked ? 'b' : ''}-${opts.fade ? 'f' : ''}-${opts.detail === false ? 'plain' : ''}-${opts.frame ? 'frame' : ''}`;
   return mat;
 }
 
@@ -111,6 +116,7 @@ export function geometryFrom(m: MeshData): THREE.BufferGeometry {
   geo.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(m.colors, 3));
   if (m.sunVis) geo.setAttribute('sunVis', new THREE.BufferAttribute(m.sunVis, 1));
+  if (m.voxL && m.voxT) { geo.setAttribute('voxL', new THREE.BufferAttribute(m.voxL, 3)); geo.setAttribute('voxT', new THREE.BufferAttribute(m.voxT, 2)); }
   geo.setIndex(new THREE.BufferAttribute(m.indices, 1));
   geo.computeBoundingSphere();
   return geo;

@@ -2,7 +2,8 @@
 // Pure: returns typed arrays; the Three.js wrapper lives in three.ts.
 import { CHUNK, VoxelGrid } from './grid';
 
-export interface MeshData { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array; faces: number; /** baked sun visibility per vertex (greedy + sunVis only) */ sunVis?: Float32Array }
+export interface MeshData { positions: Float32Array; normals: Float32Array; colors: Float32Array; indices: Uint32Array; faces: number; /** baked sun visibility per vertex (greedy + sunVis only) */ sunVis?: Float32Array;
+  /** graded road only: per-vertex voxel-frame coords (lateral d, height h, route s; m) and route tangent (x, z) */ voxL?: Float32Array; voxT?: Float32Array }
 export interface MeshOpts {
   /** Linear RGB per palette index, 256 × 3. */
   palette: Float32Array;

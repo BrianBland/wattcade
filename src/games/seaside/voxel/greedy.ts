@@ -23,37 +23,51 @@ export function meshChunkGreedy(grid: VoxelGrid, chunkKey: number, opts: MeshOpt
   if (!data) return empty;
   const [cx, cy, cz] = VoxelGrid.unkey(chunkKey);
   const base = [cx * CHUNK, cy * CHUNK, cz * CHUNK];
+  // Limit all six sweeps to occupied bounds (props and shallow terrain often use very little of a chunk).
+  const lo = [CHUNK, CHUNK, CHUNK], hi = [-1, -1, -1];
+  for (let x = 0; x < CHUNK; x++) for (let y = 0; y < CHUNK; y++) for (let z = 0; z < CHUNK; z++) {
+    if (!data[(x * CHUNK + y) * CHUNK + z]) continue;
+    if (x < lo[0]) lo[0] = x; if (x > hi[0]) hi[0] = x;
+    if (y < lo[1]) lo[1] = y; if (y > hi[1]) hi[1] = y;
+    if (z < lo[2]) lo[2] = z; if (z > hi[2]) hi[2] = z;
+  }
+  if (hi[0] < 0) return { ...empty, ...(opts.sunVis ? { sunVis: new Float32Array(0) } : {}) };
   const s = grid.size, o = grid.origin, pal = opts.palette, aoK = opts.ao ?? DEFAULT_AO;
   const pos = new Buf(4096), nor = new Buf(4096), col = new Buf(4096), sun: number[] = [];
   const idx: number[] = [];
   let faces = 0;
   // mask[i + j*CHUNK]: 0 = no face; otherwise (v) | (occ0<<8) | (occ1<<10) | (occ2<<12) | (occ3<<14) | (canMergeU<<16) | (canMergeW<<17) | (sun<<18)
   const mask = new Int32Array(CHUNK * CHUNK);
-  const solid = (x: number, y: number, z: number) => (grid.get(x, y, z) ? 1 : 0);
+  // Most neighbours are in this chunk. Only boundary AO/culling samples need a map lookup.
+  const solid = (x: number, y: number, z: number) => {
+    if (x >= 0 && x < CHUNK && y >= 0 && y < CHUNK && z >= 0 && z < CHUNK)
+      return data[(x * CHUNK + y) * CHUNK + z] ? 1 : 0;
+    return grid.get(base[0] + x, base[1] + y, base[2] + z) ? 1 : 0;
+  };
   const c = [0, 0, 0], q = [0, 0, 0];
   for (const [a, sg] of FACES) {
     const u = ((a + 1) % 3) as 0 | 1 | 2, w = ((a + 2) % 3) as 0 | 1 | 2;
-    for (let d = 0; d < CHUNK; d++) {
+    for (let d = lo[a]; d <= hi[a]; d++) {
       // build the mask for this slice
       let any = false;
-      for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; i++) {
+      for (let j = lo[w]; j <= hi[w]; j++) for (let i = lo[u]; i <= hi[u]; i++) {
         c[a] = d; c[u] = i; c[w] = j;
         const raw = data[(c[0] * CHUNK + c[1]) * CHUNK + c[2]];
         mask[i + j * CHUNK] = 0;
         if (!raw || (opts.include && !opts.include(raw))) continue;
         const v = opts.remap ? opts.remap[raw] : raw;
         const gx = base[0] + c[0], gy = base[1] + c[1], gz = base[2] + c[2];
-        q[0] = gx; q[1] = gy; q[2] = gz; q[a] += sg;
+        q[0] = c[0]; q[1] = c[1]; q[2] = c[2]; q[a] += sg;
         if (solid(q[0], q[1], q[2])) continue;
         const p0 = q[0], p1 = q[1], p2 = q[2];
         let key = v;
         const occs = [0, 0, 0, 0];
-        for (let k = 0; k < 4; k++) {
+        if (!opts.flatAO) for (let k = 0; k < 4; k++) {
           const du = k === 1 || k === 2 ? 1 : -1, dw = k >= 2 ? 1 : -1;
           q[0] = p0; q[1] = p1; q[2] = p2; q[u] += du; const s1 = solid(q[0], q[1], q[2]);
           q[u] -= du; q[w] += dw; const s2 = solid(q[0], q[1], q[2]);
           q[u] += du; const sc = solid(q[0], q[1], q[2]);
-          const occ = opts.flatAO ? 0 : s1 && s2 ? 3 : s1 + s2 + sc;
+          const occ = s1 && s2 ? 3 : s1 + s2 + sc;
           key |= occ << (8 + k * 2); occs[k] = occ;
         }
         // corners: 0 (u0,w0) 1 (u1,w0) 2 (u1,w1) 3 (u0,w1)
@@ -68,13 +82,13 @@ export function meshChunkGreedy(grid: VoxelGrid, chunkKey: number, opts: MeshOpt
       }
       if (!any) continue;
       // greedy rectangles; non-uniform-AO faces are 1×1
-      for (let j = 0; j < CHUNK; j++) for (let i = 0; i < CHUNK; ) {
+      for (let j = lo[w]; j <= hi[w]; j++) for (let i = lo[u]; i <= hi[u]; ) {
         const key = mask[i + j * CHUNK];
         if (!key) { i++; continue; }
         let W = 1, H = 1;
-        if (key & (1 << 16)) while (i + W < CHUNK && mask[i + W + j * CHUNK] === key) W++;
+        if (key & (1 << 16)) while (i + W <= hi[u] && mask[i + W + j * CHUNK] === key) W++;
         if (key & (1 << 17)) {
-          grow: while (j + H < CHUNK) {
+          grow: while (j + H <= hi[w]) {
             for (let k = 0; k < W; k++) if (mask[i + k + (j + H) * CHUNK] !== key) break grow;
             H++;
           }
@@ -91,7 +105,7 @@ export function meshChunkGreedy(grid: VoxelGrid, chunkKey: number, opts: MeshOpt
           nor.push3(a === 0 ? sg : 0, a === 1 ? sg : 0, a === 2 ? sg : 0);
           const kk = aoK[3 - occ[k]];
           col.push3(pal[v * 3] * kk, pal[v * 3 + 1] * kk, pal[v * 3 + 2] * kk);
-          sun.push(((key >> 18) & 3) / 3);
+          if (opts.sunVis) sun.push(((key >> 18) & 3) / 3);
         }
         const flip = occ[0] + occ[2] > occ[1] + occ[3];
         if (sg > 0) {

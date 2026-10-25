@@ -113,14 +113,21 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, opts: TerrainFill) {
     if (cor) { const c = cor.at(wx, wz, s); if (c !== null) CC[i * D + k] = c === 'skip' ? -Infinity : c; }
   }
   const yi = (h: number) => Math.floor((h - oy) / s);
+  const tops = new Float64Array(W * D).fill(NaN);
   /** Top voxel index of column (i, k), as filled (road dithering + the corridor cap). */
   const topAt = (i: number, k: number) => {
+    const index = i * D + k;
+    if (!Number.isNaN(tops[index])) return tops[index];
     const t = TT[i * D + k] as T, h = H[i * D + k], wx = ox + (ix0 - 1 + i + 0.5) * s, wz = oz + (iz0 - 1 + k + 0.5) * s;
     // road steps: clumped noise in the rounding so each step edge wanders and crumbles a little instead of a ruler line
     let top = (t === T.ROAD || t === T.GRAVEL) && opts.lines ? yi(h + (noise2(wx * 1.7, wz * 1.7, 41) - 0.5) * s * 0.55) : yi(h);
     const cap = CC[i * D + k];
+    if (cap === -Infinity) {
+      const bed = cor?.bedAt?.(wx, wz, s);
+      if (bed != null) return tops[index] = yi(bed) - 1;
+    }
     if (cap > -Infinity) top = Math.min(top, yi(cap) - 1);
-    return top;
+    return tops[index] = top;
   };
   const seaY = Math.round((SEA_LEVEL - oy) / s) - 1; // water voxels' top face sits exactly at SEA_LEVEL on every LOD
   for (let i = 1; i < W - 1; i++) for (let k = 1; k < D - 1; k++) {
@@ -148,7 +155,9 @@ export function fillTerrain(grid: VoxelGrid, reg: Region, opts: TerrainFill) {
     let top = topAt(i, k);
     const capped = cc > -Infinity; // coarse columns touching the road
     let lo = top;
-    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(H[(i + a) * D + k + b]) + 1);
+    // Use the filled neighbours, including corridor caps and the bed beneath skipped road columns.
+    // Raw heightfield heights can leave the cliff floating above a carved shoulder.
+    for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, topAt(i + a, k + b) + 1);
     lo = Math.max(Math.min(lo, top), seaY - 1);
     if (capped) lo = Math.min(lo, top - 2); // keep a capped column solid (never a hole beside the road)
     const steep = top - lo > 1;
@@ -349,6 +358,7 @@ export function coastWorld(): WorldDef {
     corridor: {
       half: 6.2, support: 'ground', span: spanAt, thickness: 0.5, clearance: 6, edgeSkirt: 0.4, voxel: 0.125, farVoxel: 0.5, near: 200, seg: 32, range: 1500,
       surface: coastSurface(),
+      graded: { end: pierGeom().start },
     },
     scatter: coastScatter(),
     sun: { coarse: { cell: 12, ...BOUNDS }, patches: [{ cell: 2, size: 512, maxVoxel: 4 }, { cell: 0.25, size: 128, maxVoxel: 0.25, apron: 48 }] },

@@ -9,6 +9,10 @@ import type { RouteSpline } from './route';
 export function corridorCarve(route: RouteSpline, c: CorridorDef | undefined): CorridorCarve | null {
   if (!c) return null;
   return {
+    bedAt(x, z, s) {
+      const n = route.nearest(x, z, c.half + s * 2);
+      return n ? n.y - c.thickness : null;
+    },
     at(x, z, s) {
       const n = route.nearest(x, z, c.half + s * 2);
       if (!n) return null;

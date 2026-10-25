@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { VoxelGrid } from '../voxel/grid';
 import { boardwalkSurface, corridorCarve, fillCorridor, obsidianSurface, stoneSurface } from '../world/corridor';
+import { coastWorld, fillTerrain, roadX } from '../world/coast';
 import { TileBuilder } from '../world/tileBuild';
 import { flatCorridor, flatWorld, PAL } from './fixtures';
 
@@ -84,5 +85,30 @@ describe('path corridors', () => {
     for (const c of [1, 3, 4, 6, 7, 8]) expect(seen.has(c)).toBe(true);
     expect(glass(1.15, 0, 0, 0.5, 0.05).c).toBe(8);
     expect(glass(0, 0, 0, 0.5, 0.05).c).toBe(7);
+  });
+});
+
+
+describe('coast corridor seams', () => {
+  it.each([0.125, 0.25, 0.5, 1])('extends cliff walls to carved neighbours at voxel size %s', (s) => {
+    const w = coastWorld(), carve = corridorCarve(w.route, w.corridor)!;
+    const z0 = -160, x0 = Math.floor((roadX(z0) + 5) / 4) * 4;
+    const g = new VoxelGrid(s, [x0, 0, z0]);
+    // No tile skirts: the seam must be closed inside tiles as well as at their boundaries.
+    fillTerrain(g, { x0, x1: x0 + 8, z0, z1: z0 + 8 }, { lines: true, skipSea: false, scrub: false, corridor: carve });
+    let checked = 0;
+    for (let x = 0; x < 8 / s; x++) for (let z = 0; z < 8 / s; z++) {
+      const wx = g.wc(x, 0) + s / 2, wz = g.wc(z, 2) + s / 2;
+      if (carve.at(wx, wz, s) !== null) continue;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = wx + dx * s, nz = wz + dz * s, cap = carve.at(nx, nz, s);
+        if (cap === null) continue;
+        const bed = cap === 'skip' ? carve.bedAt!(nx, nz, s)! : cap;
+        const y = g.vi(bed, 1);
+        expect(g.get(x, y, z), `wall at ${wx},${wz} must reach neighbour bed ${bed}`).not.toBe(0);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 });

@@ -16,6 +16,9 @@ export type SurfaceFn = (d: number, s: number, below: number, r: number, voxel: 
 export interface CorridorDef {
   /** Half-width (m). */ half: number;
   surface: SurfaceFn;
+  /** Up to `end` (m), lay the surface as voxels sheared to the route's grade (world/roadMesh.ts) instead of world-aligned
+   *  voxel steps; ends before sections that stay world-aligned, such as a plank pier. */
+  graded?: { end: number };
   /** 'ground' sits on the terrain (terrain under it is skipped); 'span' crosses a void (terrain below is kept). */
   support: 'ground' | 'span';
   /** Ground corridors that cross a void for part of their length (bridge decks, piers): true where s spans. */
@@ -31,6 +34,8 @@ export interface CorridorDef {
 export interface CorridorCarve {
   /** For a column at (x, z) of voxel size s: 'skip' (inside a ground corridor), a cap height (m), or null. */
   at(x: number, z: number, s: number): 'skip' | number | null;
+  /** Bed height beneath skipped ground columns; adjacent terrain walls must reach this depth. */
+  bedAt?(x: number, z: number, s: number): number | null;
 }
 
 export interface TerrainFill {

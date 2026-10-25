@@ -8,6 +8,7 @@ import { mergeMeshData } from '../voxel/merge';
 import type { MeshData, MeshOpts } from '../voxel/mesh';
 import { corridorCarve, fillCorridor, fillScatter } from './corridor';
 import { lodOf, type CorridorCarve, type LodDef, type WorldDef } from './def';
+import { meshRoad } from './roadMesh';
 import { SunShadow } from './sunShadow';
 
 export type TileJob =
@@ -15,7 +16,7 @@ export type TileJob =
   | { kind: 'road'; s0: number; len: number; voxel: number }
   | { kind: 'props'; s0: number; len: number };
 
-export type PartRole = 'land' | 'water' | 'decor' | 'glow' | 'prop';
+export type PartRole = 'land' | 'water' | 'decor' | 'glow' | 'prop' | 'road';
 /** One mesh of a tile: what it is and its voxel size (sets the material). */
 export interface TilePart { role: PartRole; voxel: number; mesh: MeshData }
 export interface TileData { parts: TilePart[]; ms: number }
@@ -74,7 +75,17 @@ export class TileBuilder {
 
   private road(s0: number, len: number, voxel: number): TilePart[] {
     const out: TilePart[] = [];
-    if (this.world.corridor) this.mesh(fillCorridor(this.world.route, this.world.corridor, s0, s0 + len, voxel), voxel, true, () => true, 'land', out);
+    const w = this.world, c = w.corridor;
+    if (!c) return out;
+    const end = s0 + len;
+    if (c.graded && s0 < c.graded.end) {
+      const sun = this.sun;
+      const mesh = meshRoad(w.route, c, s0, end, voxel, w.palette.linear,
+        sun ? (x, y, z) => sun.vis(x, y + voxel, z, Math.max(2 * voxel, 0.25), voxel) : undefined);
+      if (mesh.faces) out.push({ role: 'road', voxel, mesh });
+      s0 = Math.min(end, c.graded.end);
+    }
+    if (s0 < end) this.mesh(fillCorridor(w.route, c, s0, end, voxel), voxel, true, () => true, 'land', out);
     return out;
   }
 

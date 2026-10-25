@@ -1,0 +1,68 @@
+{
+  "visible": [
+    {
+      "name": "Club shorts",
+      "changedPixels": 298
+    },
+    {
+      "name": "Aurora tights",
+      "changedPixels": 1100
+    },
+    {
+      "name": "Disco flares",
+      "changedPixels": 1509
+    },
+    {
+      "name": "Road shoes",
+      "changedPixels": 312
+    },
+    {
+      "name": "Winged boots",
+      "changedPixels": 601
+    },
+    {
+      "name": "Duck slippers",
+      "changedPixels": 554
+    },
+    {
+      "name": "Club shades",
+      "changedPixels": 223
+    },
+    {
+      "name": "Prism visor",
+      "changedPixels": 325
+    },
+    {
+      "name": "Star specs",
+      "changedPixels": 469
+    },
+    {
+      "name": "Musette",
+      "changedPixels": 329
+    },
+    {
+      "name": "Courier rolltop",
+      "changedPixels": 905
+    },
+    {
+      "name": "Twin rocket pack",
+      "changedPixels": 903
+    },
+    {
+      "name": "Club mitts",
+      "changedPixels": 184
+    },
+    {
+      "name": "Dynamo gauntlets",
+      "changedPixels": 302
+    },
+    {
+      "name": "Lobster claws",
+      "changedPixels": 457
+    }
+  ],
+  "poses": 100,
+  "fullFaceOcclusion": true,
+  "biomeGear": true,
+  "rocketFlamesStop": true
+}

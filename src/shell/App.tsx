@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Button, Profile, SessionRecord } from '../contracts';
-import { games } from '../games/registry';
+import { pickerGames } from '../games/registry';
 import { DebugOverlay } from '../debug/DebugOverlay';
 import { loadFlag } from '../debug/flag';
 import { Achievements } from './screens/Achievements';
@@ -27,6 +27,9 @@ import {
   lastProfileId, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
+
+/** Arcade picker list (dev-only games appear with the dev flag). */
+const games = pickerGames();
 
 /** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
 export const SLEEP_S = 25;

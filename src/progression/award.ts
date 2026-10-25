@@ -1,7 +1,10 @@
 import type { AchievementDef, Profile, SessionRecord } from '../contracts';
 import { ACHIEVEMENTS, achievementValue } from './achievements';
 import { levelForXp } from './levels';
-import { addDay, localDay } from './rideStats';
+import { activeSeconds, addDay, localDay } from './rideStats';
+
+/** Minimum pedalling needed for a ride to earn XP or advance achievements. */
+export const MIN_AWARD_ACTIVE_S = 120;
 
 export interface AwardResult {
   profile: Profile;
@@ -35,7 +38,11 @@ function migratedCounters(p: Readonly<Profile>): Record<string, number> {
 }
 
 export function awardSession(profile: Profile, record: SessionRecord, list: readonly AchievementDef[] = ACHIEVEMENTS): AwardResult {
-  const activeMin = record.samples.filter((s) => s.cadence > 20).length / 60;
+  const activeS = activeSeconds(record);
+  if (Math.min(record.durationS, activeS) < MIN_AWARD_ACTIVE_S) {
+    return { profile, xpGained: 0, baseXp: 0, levelUps: [], newAchievements: [] };
+  }
+  const activeMin = activeS / 60;
   const z2Min = (record.stats.zoneSeconds[1] ?? 0) / 60;
   const baseXp = Math.round(record.stats.kj) + Math.round(2 * activeMin) + Math.round(z2Min) + 5 * record.stats.sprints;
 

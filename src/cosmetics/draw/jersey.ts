@@ -1,5 +1,5 @@
 import type { JerseyLook } from '../types';
-import { circle, line, poly, quad, rect, shade, TAU, type G, type P } from './prims';
+import { circle, line, poly, quad, rect, shade, SKIN, TAU, type G, type P } from './prims';
 
 /**
  * A broad, tapered jersey with a shoulder and a distinct hem. Drawn in a local frame:
@@ -9,21 +9,41 @@ export function drawTorso(g: G, j: JerseyLook, hip: P, sh: P, t: number) {
   const L = Math.hypot(sh[0] - hip[0], sh[1] - hip[1]) + 0.6, w = 5.4;
   g.save();
   g.translate(hip[0], hip[1]); g.rotate(Math.atan2(sh[1] - hip[1], sh[0] - hip[0]));
-  g.beginPath();
-  const outline: P[] = [[-0.4, -1.7], [1.2, -2.2], [L - 1.8, -2.7], [L, -1.6],
-    [L, 1.5], [L - 1.8, 2.7], [1, 2.1], [-0.4, 1.4]];
+  const cut = j.cut ?? (j.pattern === 'coat' ? 'coat' : j.pattern === 'royal' ? 'robe' : 'jersey');
+  // The torso exists independently of its garment, so short hems expose skin.
+  poly(g, SKIN, [-.5,-1.6], [L-1,-2.1], [L,-1.3], [L,1.4], [-.5,1.5]);
+  if (cut === 'hoodie') { circle(g, shade(j.base,.8), L-.4, -1.4, 2.5); }
+  if (cut === 'bikini') {
+    line(g,j.ink,.55,[L-.6,-1.5],[L-.6,1.9]);
+    poly(g,j.base,[L-2.8,-2],[L-.7,-1.8],[L-1.8,.3]);
+    poly(g,j.base,[L-2.5,.1],[L-1.2,2.2],[L-3.6,1.8]);
+    line(g,j.ink,.5,[L-3.6,1.8],[L-1.1,2.1]);
+    if(j.pattern==='hoops'){line(g,j.ink,.45,[L-2.5,-1.2],[L-1.2,-1.1]);line(g,j.ink,.45,[L-3,1],[L-1.7,1.2]);}
+    if(j.pattern==='disco')for(let i=0;i<3;i++)circle(g,j.ink,L-2+i*.5,-.8+i*.8,.35);
+    g.restore();return;
+  }
+  g.save();g.beginPath();
+  const hem = cut === 'crop' ? L*.38 : cut === 'coat' || cut === 'robe' ? -2.7 : -.4;
+  const width = cut === 'hoodie' || cut === 'robe' ? 3.1 : cut === 'tank' || cut === 'mesh' ? 2.15 : 2.7;
+  const outline: P[] = [[hem, -1.7], [Math.max(hem,1.2), -2.2], [L - 1.8, -width], [L, -1.6],
+    [L, 1.5], [L - 1.8, width], [Math.max(hem,1), 2.1], [hem, 1.4]];
   g.moveTo(...outline[0]); for (const p of outline.slice(1)) g.lineTo(...p);
   g.closePath(); g.clip();
-  g.fillStyle = j.base; g.fillRect(-1, -w, L + 2, 2 * w);
+  g.fillStyle = j.base; if(cut==='mesh')g.globalAlpha*=.65;g.fillRect(-3, -w, L + 4, 2 * w);if(cut==='mesh')g.globalAlpha/=.65;
   pattern(g, j, L, w, t);
   // Two flat trim shapes give plain jerseys structure without adding texture.
   g.fillStyle = shade(j.base, 0.8); g.fillRect(-0.4, -w, 0.8, w * 2);
   g.fillStyle = shade(j.base, 0.9); g.fillRect(-0.4, -w / 2, L + 1, 0.5);
+  if(cut==='vest'){line(g,j.ink,.9,[hem,1.2],[L,1.2]);rect(g,j.ink,L*.4,-2.7,1.5,5.4);}
+  if(cut==='jacket'){poly(g,j.ink,[L-2,-2.5],[L,-1.5],[L-1,.1]);rect(g,shade(j.base,.6),hem,-2,1,4);}
+  g.restore();
+  if(cut==='knotted')poly(g,j.ink,[hem,0],[hem-2,2.6],[hem+1.4,2]);
   g.restore();
 }
 
 /** Thigh (shorts) and shin colours. */
 export function legsOf(j: JerseyLook): { thigh: string; shin: string | null } {
+  if (j.cut) return { thigh: '#22222b', shin: null };
   if (j.pattern === 'overalls') return { thigh: j.ink, shin: j.ink };
   if (j.pattern === 'pajamas') return { thigh: j.base, shin: j.base };
   if (j.pattern === 'tux') return { thigh: '#15151c', shin: '#15151c' };
@@ -105,9 +125,17 @@ function star(g: G, c: string, x: number, y: number, r: number) {
 
 /** A front-facing jersey thumbnail using the same pattern as the worn kit. */
 export function drawJerseyItem(g: G, j: JerseyLook, t: number) {
-  const outline: P[] = [[-2,-10],[-4,-9.5],[-6.5,-6],[-4.5,-4.5],[-3.5,-6],[-3.5,0],[3.5,0],[3.5,-6],[4.5,-4.5],[6.5,-6],[4,-9.5],[2,-10]];
+  const cut=j.cut??(j.pattern==='coat'?'coat':j.pattern==='royal'?'robe':'jersey');
+  if(cut==='bikini'){
+    poly(g,j.base,[-4,-8],[-1,-8],[-1,-4],[-4,-5]);poly(g,j.base,[1,-8],[4,-8],[4,-5],[1,-4]);
+    line(g,j.ink,.6,[-4,-8],[-3,-11]);line(g,j.ink,.6,[4,-8],[3,-11]);line(g,j.ink,.6,[-4,-4],[4,-4]);if(j.pattern==='hoops')for(const y of [-7,-5.7]){line(g,j.ink,.4,[-3.8,y],[-1.2,y]);line(g,j.ink,.4,[1.2,y],[3.8,y]);}if(j.pattern==='disco')for(const x of [-2.6,2.6]){star(g,j.ink,x,-6,.55);}return;
+  }
+  const hem=cut==='crop'?-4:cut==='coat'||cut==='robe'?2:0;
+  const long=['hoodie','coat','jacket','robe'].includes(cut),bare=['tank','mesh','vest'].includes(cut);
+  const outline: P[] = bare ? [[-1.5,-10],[-3.5,-9],[-2.8,-6],[-3.5,hem],[3.5,hem],[2.8,-6],[3.5,-9],[1.5,-10]] : [[-2,-10],[-4,-9.5],[-6.5,long?0:-6],[-4.5,long?0:-4.5],[-3.5,-6],[-3.5,hem],[3.5,hem],[3.5,-6],[4.5,long?0:-4.5],[6.5,long?0:-6],[4,-9.5],[2,-10]];
+  if(cut==='hoodie')ovalHood(g,j);
   g.save(); g.beginPath(); g.moveTo(...outline[0]); for(const p of outline.slice(1))g.lineTo(...p);g.closePath();g.clip();
-  g.fillStyle=j.base;g.fillRect(-7,-11,14,12);
+  g.fillStyle=j.base;g.fillRect(-7,-11,14,14);
   if(j.pattern==='bolt')poly(g,j.ink,[1.6,-9.2],[-2.8,-4.7],[-.5,-4.7],[-1.8,-1.2],[3,-6.6],[.6,-6.6]);
   else if(j.pattern==='argyle'){
     for(let row=0;row<4;row++)for(let col=0;col<3;col++){const x=-3+col*3,y=-9+row*3;poly(g,j.ink,[x,y-1.5],[x+1.5,y],[x,y+1.5],[x-1.5,y]);}
@@ -115,6 +143,8 @@ export function drawJerseyItem(g: G, j: JerseyLook, t: number) {
     for(let y=-8.4;y<0;y+=3){g.fillStyle=j.ink;g.fillRect(-7,y,14,1.4);}
   }else {g.save();g.rotate(-Math.PI/2);pattern(g,j,10,10,t);g.restore();}
   g.fillStyle='#202b38';g.fillRect(-1.7,-10,3.4,.9);
-  g.fillStyle=shade(j.base,.75);g.fillRect(-3.5,-.6,7,.6);g.restore();
+  g.fillStyle=shade(j.base,.75);g.fillRect(-3.5,hem-.6,7,.6);g.restore();
+  if(cut==='knotted')poly(g,j.ink,[-1,hem],[2,hem],[1,hem+2.1],[-1,hem+1]);
   if(j.pattern==='cape')poly(g,j.ink,[3,-8],[8,-6],[5,0],[3,0]);
 }
+function ovalHood(g:G,j:JerseyLook){circle(g,shade(j.base,.75),0,-10,3);circle(g,'#27313a',0,-10,1.7);}

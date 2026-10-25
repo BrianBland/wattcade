@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionRecord } from '../contracts';
-import { runHeadless } from '../core';
+import { FIXED_DT } from '../contracts';
+import { createGameSession, resolveMedia, SCRIPTS, testProfile, TimelineInput, type HeadlessOpts } from '../core';
 import { getGame } from '../games/registry';
 import { awardSession, defaultProfile } from './index';
 
@@ -10,6 +11,16 @@ import { awardSession, defaultProfile } from './index';
  */
 // Each (game, scenario) ride is deterministic, so run it once and share it between the unlock and counter checks.
 const rides = new Map<string, Promise<{ ids: string[]; counters: Record<string, number> }>>();
+/** Keep the real recording, including cadence samples used by award eligibility. */
+function recordedRide(o: Omit<HeadlessOpts, 'tuning'>): SessionRecord {
+  const session = createGameSession({
+    game: o.game, profile: testProfile(), input: new TimelineInput(SCRIPTS[o.script].input),
+    fake: { script: o.script }, seed: o.seed, simOpts: o.simOpts, media: resolveMedia(o.media, o.game),
+  });
+  for (let i = 0; i < Math.round(o.minutes * 60 / FIXED_DT) && !session.sim.isOver(); i++) session.step(1);
+  return session.finish();
+}
+
 function ride(gameId: string, scenarioName: string): Promise<{ ids: string[]; counters: Record<string, number> }> {
   const key = `${gameId}/${scenarioName}`;
   if (!rides.has(key)) rides.set(key, rideOnce(gameId, scenarioName));
@@ -22,10 +33,9 @@ async function rideOnce(gameId: string, scenarioName: string): Promise<{ ids: st
   // multi-seed scenarios count as consecutive rides on one profile (tallies add up; robust to one unlucky seed)
   let profile = defaultProfile(); const ids: string[] = [];
   for (const [i, seed] of (sc.seeds ?? [sc.seed]).entries()) {
-    const r = runHeadless({ game, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts, media: sc.media });
+    const r = recordedRide({ game, script: sc.script, minutes: sc.minutes, seed, simOpts: sc.simOpts, media: sc.media });
     const record: SessionRecord = {
-      id: `h${i}`, profileId: 'x', gameId, startedAt: new Date(2026, 4, 13 + i, 12).getTime(), durationS: 60, samples: [],
-      events: r.events, stats: r.stats, gameSummary: r.summary,
+      ...r, id: `h${i}`, profileId: 'x', startedAt: new Date(2026, 4, 13 + i, 12).getTime(),
     };
     const res = awardSession(profile, record); profile = res.profile; ids.push(...res.newAchievements.map((a) => a.id));
   }
@@ -48,9 +58,9 @@ describe('headless rides unlock game achievements', () => {
     await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestFloor']);
   }, RIDE_TIMEOUT);
   it('a deep dungeon dive unlocks Delver and Curse Breaker', () => {
-    const r = runHeadless({ game: getGame('dungeon')!, script: 'z2', minutes: 1, seed: 1 });
+    const r = recordedRide({ game: getGame('dungeon')!, script: 'z2', minutes: 3, seed: 1 });
     const record: SessionRecord = {
-      id: 'h', profileId: 'x', gameId: 'dungeon', startedAt: new Date(2026, 4, 13, 12).getTime(), durationS: 3600, samples: [], events: r.events, stats: r.stats,
+      ...r, id: 'h', profileId: 'x', startedAt: new Date(2026, 4, 13, 12).getTime(),
       gameSummary: { 'Deepest floor': 8, 'Curses survived': 12, 'Bosses slain': 7, Deaths: 1 },
     };
     expect(awardSession(defaultProfile(), record).newAchievements.map((a) => a.id)).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));

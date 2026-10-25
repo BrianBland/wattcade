@@ -1,6 +1,7 @@
 import type { CadenzaSnapshot, SongRecap } from '../sim/sim';
 import type { Box, Layout } from './layout';
 import { rideIndexAt } from '../sim/ride';
+import { drawShip } from '../../../cosmetics/draw/ships';
 
 /** Wipeout-flavoured DOM HUD: score, target card, shield, now playing, coaching callout + countdown, launch meter, recaps, pre-game menu. */
 const CSS = `
@@ -29,6 +30,7 @@ const CSS = `
 .ws-row { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:2px solid transparent; font:800 16px system-ui; letter-spacing:2px; cursor:pointer; }
 .ws-row.f { border-color:var(--acc); background:color-mix(in srgb, var(--acc) 18%, transparent); }
 .ws-row em { font-style:normal; color:var(--acc-t); }
+.ws-row canvas { width:72px; height:48px; flex:none; }
 .ws-row.go { justify-content:center; background:var(--acc); color:#000; font-size:20px; }
 .ws-row.go.f { box-shadow:0 0 20px var(--acc); border-color:#fff; }
 .ws-menu small { font:600 12px system-ui; text-transform:none; opacity:.7; text-align:center; }
@@ -135,18 +137,23 @@ export class Hud {
       this.effortKey = ''; this.calloutUntil = 0;
       this.menu.style.display = 'flex';
       for (const e of [this.score, this.zone, this.song, this.shield]) e.style.display = 'none';
-      const m = s.menu, key = JSON.stringify(m) + accent;
+      const m = s.menu, key = JSON.stringify({ ...m, left: Math.ceil(m.left) });
       if (key !== this.lastKey) {
         this.lastKey = key;
         const row = (i: number, label: string, val: string, cls = '') => `<div class="ws-row${m.row === i ? ' f' : ''} ${cls}" data-i="${i}">${label}${val ? `<em>◀ ${val} ▶</em>` : ''}</div>`;
-        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        this.menu.innerHTML = `<h2>CADENZA</h2><div class="ws-row${m.row === 0 ? ' f' : ''}" data-i="0">Mode<em>Mono</em></div>${row(1, 'Difficulty', m.difficulty)}${row(2, 'Trainer', m.trainer === 'erg' ? 'ERG (holds the watts)' : 'Grade (climbs)')}${row(3, 'Reduced flashing', m.reducedFlash ? 'On' : 'Off')}${row(4, 'Ship<canvas width="144" height="96" aria-label="Ship preview"></canvas>', m.ships.find(s => s.id === m.ship)?.name ?? 'Triad')}${m.ships.filter(s => s.locked).map(s => `<small>${esc(s.name)} · ${esc(s.hint)}</small>`).join('')}${row(5, `Ride · ${Math.ceil(m.left)}`, '', 'go')}<small>◀▶ / Z A / paddles: steer · follow the target, sprint on the 3-2-1 · casual rests more, elite sprints more</small>`;
+        const canvas=this.menu.querySelector<HTMLCanvasElement>('canvas');
+        const preview=canvas&&typeof CanvasRenderingContext2D!=='undefined'?canvas.getContext('2d'):null;
+        if(preview){preview.translate(72,30);preview.scale(64,64);drawShip(preview,m.ship,accent,now);}
+        this.menu.querySelector<HTMLElement>('.ws-row.f')?.scrollIntoView?.({block:'nearest'});
         this.menu.querySelectorAll<HTMLElement>('.ws-row').forEach((r) => r.addEventListener('pointerdown', (e) => {
           e.preventDefault(); e.stopPropagation();
           const i = Number(r.dataset.i);
           if (i === 1) { const d = ['casual', 'pro', 'elite']; this.send?.({ type: 'difficulty', value: d[(d.indexOf(m.difficulty) + 1) % 3] }); }
           if (i === 2) this.send?.({ type: 'trainer' });
           if (i === 3) this.send?.({ type: 'flash' });
-          if (i === 4 || i === 0) this.send?.({ type: 'start' });
+          if (i === 4) this.send?.({ type: 'ship' });
+          if (i === 5 || i === 0) this.send?.({ type: 'start' });
         }));
       }
       return;

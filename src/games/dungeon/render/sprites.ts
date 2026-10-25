@@ -150,9 +150,9 @@ function pal2Key(p: Pal): string { let k = palKeys2.get(p); if (k === undefined)
 
 // ---------------- sprites v2 ----------------
 export type AnimState = 'idle' | 'walk' | 'attack' | 'hurt';
-/** Boss variant -> art (32 px). Bosses without their own art use their minion's 16 px art scaled x2 (re-outlined at 32 px). */
+/** Every boss has dedicated native 32px art on the same grid as the 16px actors. */
 export const BOSS_ART: Array<{ art: string; scale: 1 | 2; pal?: Pal }> = [
-  { art: 'spitter', scale: 2 }, { art: 'archer', scale: 2 }, { art: 'brute', scale: 2 }, { art: 'summoner', scale: 2 },
+  { art: 'slime_monarch', scale: 1 }, { art: 'bone_lord', scale: 1 }, { art: 'ogre_warchief', scale: 1 }, { art: 'arch_necromancer', scale: 1 },
   { art: 'bone_king', scale: 1 }, { art: 'frost_wyrm', scale: 1 },
 ];
 export const OUTLINE = '#140f1c';
@@ -170,16 +170,7 @@ export function anim(name: string, state: AnimState, t: number, fps = 8): { stat
   if (state !== 'idle' && !(ART[name]?.frames[state]?.length)) return { state: 'idle', idx: 0 };
   return { state, idx: state === 'walk' ? Math.floor(t * fps) % n : 0 };
 }
-function hexRgb(hex: string): [number, number, number] { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
-function ramp(hex: string, f: number): string {
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
-  const [r, g, b] = hexRgb(hex), m = (c: number) => Math.max(0, Math.min(255, Math.round(f >= 1 ? c + (255 - c) * (f - 1) : c * f)));
-  return `rgb(${m(r)},${m(g)},${m(b)})`;
-}
-/**
- * Rasterise a v2 frame: 1 px dark outline around the silhouette, a light ramp on pixels lit from above-left and a shadow
- * ramp on pixels facing down-right. `scale` 2 upsizes 16 px art for bosses before outlining.
- */
+/** Rasterise a flat palette frame with a one-pixel silhouette outline. */
 export function sprite2(name: string, state: AnimState = 'idle', idx = 0, over?: Pal, flash = false, scale = 1): HTMLCanvasElement {
   const key = `v2|${name}|${state}|${idx}|${over ? pal2Key(over) : ''}|${flash}|${scale}`;
   let c = cache.get(key); if (c) return c;
@@ -195,8 +186,7 @@ export function sprite2(name: string, state: AnimState = 'idle', idx = 0, over?:
       continue;
     }
     const col = pal[ch] ?? '#f0f';
-    const lit = at(x, y - 1) === '.' || at(x - 1, y) === '.', dark = at(x, y + 1) === '.' || at(x + 1, y) === '.';
-    g.fillStyle = flash ? '#ffe0e0' : lit && !dark ? ramp(col, 1.22) : dark && !lit ? ramp(col, 0.68) : col;
+    g.fillStyle = flash ? '#ffe0e0' : col;
     g.fillRect(x + 1, y + 1, 1, 1);
   }
   cache.set(key, c);
@@ -209,28 +199,10 @@ export function artChars(name: string): Set<string> {
   return out;
 }
 
-// small held weapons (8 px), one per weapon style, drawn in the hero's hand and rotated toward the aim
-export const WEAPON_ART: Record<string, { rows: string[]; pal: Pal }> = {
-  bolt:   { rows: ['......w.', '.....wW.', '....wW..', '...bW...', '..bb....', '.bb.....', 'bb......', '........'], pal: { b: '#6b4a2a', w: '#c77dff', W: '#7a3fbf' } },
-  arrow:  { rows: ['..bbb...', '.b...b..', 'b.....b.', 'sssssss>', 'b.....b.', '.b...b..', '..bbb...', '........'].map((r) => r.replace('>', 's')), pal: { b: '#8a5a2b', s: '#d8d0c0' } },
-  pellet: { rows: ['........', '........', 'bbmmmmmm', 'bbbMMMMM', 'bb......', 'b.......', '........', '........'], pal: { b: '#6b4a2a', m: '#9aa3b5', M: '#5a6070' } },
-  flame:  { rows: ['........', '......ff', 'bbmmmmFf', 'bbbMMMM.', 'bbt.....', 'b.......', '........', '........'], pal: { b: '#6b4a2a', m: '#9aa3b5', M: '#5a6070', f: '#ffd84a', F: '#ff7a2a', t: '#ff7a2a' } },
-  star:   { rows: ['...y....', '..yYy...', 'yyYYYyy.', '..yYy...', '...y....', '........', '........', '........'], pal: { y: '#bfe9ff', Y: '#ffffff' } },
-  spark:  { rows: ['.....y..', '....yy..', '...yYy..', '..yYy...', '.bYy....', 'bb......', 'b.......', '........'], pal: { b: '#6b4a2a', y: '#ffe14a', Y: '#ffffff' } },
-  orb:    { rows: ['.....oo.', '....oOOo', '....oOOo', '...b.oo.', '..b.....', '.b......', 'b.......', '........'], pal: { b: '#6b4a2a', o: '#c77dff', O: '#f0d8ff' } },
-};
-export function weaponSprite(style: string): HTMLCanvasElement {
-  const key = `w|${style}`; let c = cache.get(key); if (c) return c;
-  const d = WEAPON_ART[style] ?? WEAPON_ART.bolt, h = d.rows.length, w = d.rows[0].length;
-  c = document.createElement('canvas'); c.width = w + 2; c.height = h + 2; const g = c.getContext('2d')!;
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? '.' : d.rows[y][x]);
-  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
-    const ch = at(x, y);
-    if (ch === '.') { if (at(x - 1, y) !== '.' || at(x + 1, y) !== '.' || at(x, y - 1) !== '.' || at(x, y + 1) !== '.') { g.fillStyle = OUTLINE; g.fillRect(x + 1, y + 1, 1, 1); } continue; }
-    g.fillStyle = d.pal[ch] ?? '#f0f'; g.fillRect(x + 1, y + 1, 1, 1);
-  }
-  cache.set(key, c); return c;
-}
+export { heldWeapon } from './weapons';
+import { heldWeapon, weaponArt, WEAPON_STYLES } from './weapons';
+export const WEAPON_ART = Object.fromEntries(WEAPON_STYLES.map(base => [base, weaponArt({ base })]));
+export const weaponSprite = (style: string) => heldWeapon({ base: style as import('../sim/loot').WeaponStyle });
 
 function shade(hex: string, f: number): string {
   const n = parseInt(hex.slice(1), 16);
@@ -270,18 +242,4 @@ export function heroPalette(color: string): Pal {
   let p = heroPals.get(color);
   if (!p) { p = /^#[0-9a-f]{6}$/i.test(color) ? { c: color, d: shade(color, 0.6) } : {}; heroPals.set(color, p); }
   return p;
-}
-
-/** Soft radial glow, cached per colour; draw with 'lighter' compositing. */
-export function glow(color: string): HTMLCanvasElement {
-  const key = `glow|${color}`;
-  let c = cache.get(key);
-  if (c) return c;
-  c = document.createElement('canvas'); c.width = c.height = 64;
-  const g = c.getContext('2d')!;
-  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-  gr.addColorStop(0, color); gr.addColorStop(0.35, color + '88'); gr.addColorStop(1, color + '00');
-  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
-  cache.set(key, c);
-  return c;
 }

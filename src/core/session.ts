@@ -91,6 +91,7 @@ export function createGameSession(o: SessionOpts): GameSession {
     o.input.beginTick(dt);
     fakeBike?.tick(dt, { profile, gear: mixer.gear, hooks: fakeBike.usesHooks ? hooksOf() : undefined });
     bikeStore.setGear(mixer.gear);
+    const sprintCountBeforeTick = bikeStore.get().sprintCount;
     bikeStore.tick(dt, profile);
     mixer.tick(dt, o.input.state());
     bikeStore.setTrainerMode(mixer.command?.mode ?? 'none');
@@ -99,7 +100,7 @@ export function createGameSession(o: SessionOpts): GameSession {
       if (mediaStarted) mediaPos += dt;
     }
     sim.update(dt);
-    recorder.tick(dt, bikeStore.get(), mixer.command);
+    recorder.tick(dt, bikeStore.get(), mixer.command, bikeStore.get().sprintCount - sprintCountBeforeTick);
   };
 
   let idleAcc = 0;

@@ -1,7 +1,9 @@
+import { BOSS_SPRITES } from './bossArt';
 // Generated-once pixel art for sprites v2 (16 px actors, 32 px bosses). '.' = transparent; other chars map through `pal`.
 // Outline and light/shadow ramps are added when rasterised (sprites.ts), so the art stays flat and easy to edit.
 export interface ArtDef { rows: string[]; pal: Record<string, string>; /** per-frame row overrides (row index -> row) */ frames: Partial<Record<'walk' | 'attack' | 'hurt', Array<Record<number, string>>>> }
 export const ART: Record<string, ArtDef> = {
+  ...BOSS_SPRITES,
   hero: {
     pal: {"c": "#4cc9f0", "d": "#2b7a99", "s": "#f1c27d", "e": "#1b1b2a", "g": "#ffd84a", "b": "#5b3a29", "p": "#3a3550", "w": "#e8f6ff"},
     rows: [

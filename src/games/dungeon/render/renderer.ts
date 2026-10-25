@@ -1,13 +1,18 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import type { DungeonSnapshot, EnemyView, BulletView, DropView, Fx, EliteMod, CampView } from '../sim/types';
-import { desaturate, drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
-import { runLayout } from './layout';
+import { desaturate } from '../../kit/actionButton';
+import { runLayout, bossHudLayout } from './layout';
 import { play, type SfxName } from '../../../audio/sfx';
 import { TILE, type World } from '../sim/world';
 import { ELEMENT_COLORS, RARITY_COLORS, SLOTS, type Weapon } from '../sim/loot';
-import { BOSS_ART, anim, glow, heroPalette, sprite, sprite2, weaponSprite, type AnimState } from './sprites';
+import { BOSS_ART, anim, heroPalette, sprite, sprite2, type AnimState } from './sprites';
+import { heldWeapon, gearSprite, type WeaponLook } from './weapons';
+import { drawProjectile, drawPixelFx, flameSprite } from './effects';
+import { pixelPanel, pixelMeter, pixelText } from './chrome';
+import { fillText, strokeText, pixelFont, textWidth as textW, fitPixelText, fontScale } from './font';
+import { drawFlagstone, drawMarsh } from './terrain';
+import { TILE_PX, pixelViewport, paddleZoom, pinchZoom, pixelDisc, pixelLine, pixelRing, pixelTarget, type ZoomState } from './pixel';
 
-const TILES_ACROSS = 16; // camera zoom
 const ACTION_COLOR: Record<string, string> = { strike: '#ffd84a', ward: '#7fe7ff', rally: '#8fd8ff', potion: '#ff6b8a' };
 const BT = 16;           // background px per tile
 const MM = 2;            // minimap px per tile
@@ -21,14 +26,11 @@ const THEMES = [
 const AURA: Array<{ c: string; a: number; r: number } | null> = [null, null,
   { c: '#5aa0ff', a: 0.35, r: 1.3 }, { c: '#40e0c0', a: 0.45, r: 1.5 }, { c: '#ff9a2a', a: 0.6, r: 1.8 }, { c: '#ff2a2a', a: 0.85, r: 2.3 }];
 const ENEMY_TINT: Record<string, string> = { chaser: '#e66', bat: '#a7f', spitter: '#5d5', archer: '#eee', brute: '#c84', bomber: '#f72', summoner: '#a5f', boss: '#c0a' };
-/** New bosses reuse a base sprite with their own palette until #91 draws them. */
 const ELITE_COLORS: Record<EliteMod, string> = { undying: '#7dff5a', splitting: '#ffd84a', shielded: '#66ccff', swift: '#ff5af0', volatile: '#ff7a2a' };
 const ELITE_LABEL: Record<EliteMod, string> = { undying: 'Undying', splitting: 'Splitting', shielded: 'Warded', swift: 'Swift', volatile: 'Volatile' };
 const KIND_LABEL: Record<string, string> = { chaser: 'Goblin', bat: 'Bat', spitter: 'Slime', archer: 'Skeleton', brute: 'Ogre', bomber: 'Bomber', summoner: 'Necromancer' };
 const SHRINE_COLORS = { fury: '#ff8c2a', endurance: '#5aa9ff', sprint: '#ffd84a', whirl: '#8fd8ff' } as const;
 // rate limits (s) for spammy sound cues
-/** Tile scale in arenas (boss rooms, rooms 17+ wide or 13+ tall). */
-const ARENA_ZOOM = 0.8;
 const CUE_GAP: Partial<Record<SfxName, number>> = { shoot: 0.06, shootHeavy: 0.08, zap: 0.06, flame: 0.1, hit: 0.05, crit: 0.08, coin: 0.05, kill: 0.04, explode: 0.08, hurt: 0.2, door: 0.2 };
 
 const hash = (x: number, y: number) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -64,7 +66,7 @@ export function buildBackground(w: World): FloorBg {
         g.fillStyle = th.wallFace[0]; g.fillRect(px, py, BT, BT);
         for (let row = 0; row < 4; row++) {
           const off = row % 2 ? 4 : 0;
-          for (let bx = -off; bx < BT; bx += 8) { const v = hash(x * 4 + bx, y * 4 + row); g.fillStyle = v > 0.66 ? 'rgba(255,255,255,0.07)' : v < 0.25 ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0)'; g.fillRect(px + Math.max(0, bx), py + row * 4, Math.min(7, BT - Math.max(0, bx)), 3); }
+          for (let bx = -off; bx < BT; bx += 8) { const v = hash(x * 4 + bx, y * 4 + row); g.fillStyle = v > 0.66 ? 'rgba(255,255,255,0.07)' : v < 0.25 ? 'rgba(0,0,0,0.14)' : 'rgba(0,0,0,0)'; g.fillRect(px+Math.max(0,bx),py+row*4,Math.min(7,BT-Math.max(0,bx)),3); if(v>.3){g.fillStyle='#ffffff15';g.fillRect(px+Math.max(0,bx)+1,py+row*4,Math.min(5,BT-Math.max(0,bx)-1),1);} }
           g.fillStyle = th.wallFace[1];
           for (let bx = -off; bx < BT; bx += 8) g.fillRect(px + bx + 7, py + row * 4, 1, 4);
           g.fillRect(px, py + row * 4 + 3, BT, 1);
@@ -85,27 +87,18 @@ export function buildBackground(w: World): FloorBg {
       }
       return;
     }
-    g.fillStyle = th.floor[Math.floor(r * 3)]; g.fillRect(px, py, BT, BT);
-    g.fillStyle = th.grout; g.fillRect(px, py + BT - 1, BT, 1); g.fillRect(px + BT - 1, py, 1, BT);
-    if (r > 0.7) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(px + 3 + Math.floor(r * 7), py + 4 + Math.floor(r * 50) % 7, 2, 1); }
-    if (r < 0.08) { g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(px + 2, py + 2, 5, 3); }
+    drawFlagstone(g,x,y,th,at(x,y-1)===TILE.WALL);
     if (k === TILE.PIT) {
       g.fillStyle = '#030206'; g.fillRect(px, py, BT, BT);
       if (at(x, y - 1) !== TILE.PIT) { g.fillStyle = th.grout; g.fillRect(px, py, BT, 3); g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(px, py + 3, BT, 3); }
       return;
     }
     if (k === TILE.PILLAR) { // brazier pedestal (flame drawn live)
-      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(px + 8, py + 13, 7, 3, 0, 0, Math.PI * 2); g.fill();
+      pixelDisc(g,px+8,py+13,7,'#100d1c66',0.4);
       g.fillStyle = '#5a5262'; g.fillRect(px + 4, py + 4, 8, 9); g.fillStyle = '#3a3442'; g.fillRect(px + 3, py + 3, 10, 3); g.fillRect(px + 4, py + 11, 8, 2);
       return;
     }
-    if (k === TILE.SWAMP) {
-      g.fillStyle = th.swamp; g.fillRect(px, py, BT, BT);
-      g.strokeStyle = 'rgba(150,230,140,0.22)'; g.lineWidth = 1;
-      g.beginPath(); g.ellipse(px + 4 + Math.floor(r * 8), py + 4 + Math.floor(r * 53) % 8, 3, 1.5, 0, 0, Math.PI * 2); g.stroke();
-      if (r > 0.6) { g.fillStyle = 'rgba(190,255,170,0.25)'; g.fillRect(px + Math.floor(r * 37) % 12, py + Math.floor(r * 11), 2, 2); }
-    }
-    if (at(x, y - 1) === TILE.WALL && k !== TILE.SWAMP) { g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(px, py, BT, 4); } // wall shadow
+    if(k===TILE.SWAMP)drawMarsh(g,x,y,th,(dx,dy)=>at(x+dx,y+dy)===TILE.SWAMP);
   };
   const make = (i: number) => {
     const cx = i % cw, cy = (i / cw) | 0, c = chunkPool.pop() ?? document.createElement('canvas');
@@ -142,39 +135,6 @@ export function buildBackground(w: World): FloorBg {
   };
 }
 
-/** Non-ASCII glyphs the HUD draws. The first use of each one in a font triggers a system font-fallback lookup that took ~40 ms
- *  (curse banner '☠', slim-row '✓'), so draw them once off-screen at mount, behind the intro. */
-const WARM_GLYPHS = '☠✓●◀▶·×–—…★⏱';
-function warmGlyphs() {
-  const c = document.createElement('canvas'); c.width = c.height = 8;
-  const g = c.getContext('2d'); if (!g) return;
-  const ascii = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 +-:%/()!?.,\'';
-  for (const f of ['', 'bold ', '900 ']) { g.font = `${f}16px sans-serif`; g.fillText(WARM_GLYPHS, 0, 8); g.measureText(WARM_GLYPHS); }
-  // first draw of text at a new size rasterises its glyphs; camp and the HUD use roughly 7-40 px
-  for (const f of ['', 'bold ']) for (let px = 7; px <= 40; px++) { g.font = `${f}${px}px sans-serif`; g.fillText(ascii, 0, 8); }
-}
-
-/** Per-frame canvas objects (gradients, TextMetrics) are Blink heap objects; making several every frame grew the
- *  embedder heap and made V8 major GCs (with Blink tracing) take 15-100 ms at 4x CPU. Keep them, keyed by what they depend on. */
-const gradCache = new Map<string, CanvasGradient>();
-function cachedGrad(key: string, make: () => CanvasGradient): CanvasGradient {
-  let gr = gradCache.get(key);
-  if (!gr) { if (gradCache.size > 96) gradCache.clear(); gr = make(); gradCache.set(key, gr); }
-  return gr;
-}
-const widthCache = new Map<string, number>();
-/** measureText(text).width for the context's current font, cached. */
-// Digits are folded to '0' in the key: the HUD fonts use tabular (equal-width) figures, so "Lv12" and "Lv47" measure the
-// same. Caching the raw counter/timer strings filled the map with strings that lived just long enough to be promoted;
-// measuring them fresh each frame allocated a Blink TextMetrics per call that only a major GC reclaims.
-const DIGITS = /\d/g;
-function textW(g: CanvasRenderingContext2D, text: string): number {
-  const key = g.font + '|' + text.replace(DIGITS, '0');
-  let w = widthCache.get(key);
-  if (w === undefined) { if (widthCache.size > 512) widthCache.clear(); w = g.measureText(text).width; widthCache.set(key, w); }
-  return w;
-}
-
 export function createRenderer(): GameRenderer {
   let canvas: HTMLCanvasElement | null = null;
   let g: CanvasRenderingContext2D | null = null;
@@ -182,13 +142,53 @@ export function createRenderer(): GameRenderer {
   let bg: FloorBg | null = null, bgFor: unknown = null;
   let mini: HTMLCanvasElement | null = null;
   let pillars: Array<{ x: number; y: number }> = [];
+  let worldCanvas: HTMLCanvasElement | null = null;
+  let pixelScale = 1;
   let lightC: HTMLCanvasElement | null = null;
   let lastCue = -1;
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
+  let zoom: ZoomState = { steps: 0, held: 0 };
+  let pinchEnabled = false;
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinch: { span: number; scale: number } | null = null;
+  const touchSpan = () => {
+    const [a, b] = [...touches.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  const beginPinch = () => {
+    if (!canvas) return;
+    const span = touchSpan();
+    pinch = span >= 8 ? { span, scale: pixelViewport(canvas.width, canvas.height, zoom.steps).scale } : null;
+  };
+  const endTouch = (e: PointerEvent) => {
+    touches.delete(e.pointerId); pinch = null;
+    if (canvas?.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+  };
+  const clearPinch = () => {
+    for (const id of touches.keys()) if (canvas?.hasPointerCapture(id)) canvas.releasePointerCapture(id);
+    touches.clear(); pinch = null;
+  };
+  const moveTouch = (e: PointerEvent) => {
+    if (!canvas || !touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size !== 2) return;
+    e.preventDefault();
+    if (!pinch) { beginPinch(); return; }
+    zoom.steps = pinchZoom(canvas.width, canvas.height, pinch.scale, touchSpan() / pinch.span);
+  };
   let campHits: Array<{ x: number; y: number; w: number; h: number; row: number }> = [];
   const onPointer = (e: PointerEvent) => {
     if (!canvas) return;
+    if (e.pointerType === 'touch' && pinchEnabled) {
+      e.preventDefault();
+      if (touches.size < 2) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        canvas.setPointerCapture(e.pointerId);
+        if (touches.size === 2) beginPinch();
+      }
+      return;
+    }
     const r = canvas.getBoundingClientRect(), px = (e.clientX - r.left) * (canvas.width / r.width), py = (e.clientY - r.top) * (canvas.height / r.height);
     const ah = actionHits.find((h) => px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h);
     if (ah) { e.preventDefault(); send?.({ type: 'action', id: ah.id }); return; }
@@ -197,7 +197,7 @@ export function createRenderer(): GameRenderer {
     if (hit) { e.preventDefault(); send?.({ type: 'campRow', row: hit.row }); }
   };
   let dpr = 1;
-  let camX = NaN, camY = NaN, camT = 0, zoom = 1, camFor: unknown = null;
+  let camX = NaN, camY = NaN, camT = 0, camFor: unknown = null;
   let actionHits: Array<{ x: number; y: number; w: number; h: number; id: string }> = [];
   /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   let hudBoxes: Array<[number, number, number, number]> = [];
@@ -214,7 +214,7 @@ export function createRenderer(): GameRenderer {
   function drawCanvas(c: HTMLCanvasElement, x: number, y: number, ps: number, face = 1, bob = 0) {
     const gg = g!, w = c.width * ps, h = c.height * ps;
     gg.save(); gg.translate(Math.round(x), Math.round(y + bob)); if (face < 0) gg.scale(-1, 1);
-    gg.drawImage(c, -w / 2, -h, w, h); gg.restore();
+    gg.drawImage(c, -Math.floor(w / 2), -h, w, h); gg.restore();
   }
   const moved = new Map<number, { x: number; y: number }>();
   // render-only juice: coins fly to the HUD counter; a ring pulses on the hero when an action becomes ready
@@ -223,159 +223,45 @@ export function createRenderer(): GameRenderer {
   let coinPulseT = -9, heroScr = { x: 0, y: 0 };
   const readyPrev = new Map<string, number>();
   const pulses: Array<{ t0: number; color: string; label: string }> = [];
-  function shadow(x: number, y: number, rx: number) {
-    const gg = g!; gg.fillStyle = 'rgba(0,0,0,0.35)';
-    gg.beginPath(); gg.ellipse(x, y, rx, rx * 0.4, 0, 0, Math.PI * 2); gg.fill();
-  }
+  const eliteLabels: Array<{ x: number; y: number; text: string; color: string }> = [];
+  function shadow(x: number, y: number, rx: number) { pixelDisc(g!,x,y,rx,'#100d1c88',0.4); }
+  // Subtle hard-edged ambient color bands. Combat itself never relies on glow for its silhouette.
   function glowAt(color: string, x: number, y: number, r: number, a = 1) {
-    const gg = g!; gg.globalAlpha = a; gg.drawImage(glow(color), x - r, y - r, r * 2, r * 2); gg.globalAlpha = 1;
+    const gg=g!,old=gg.globalAlpha;
+    gg.globalAlpha=old*a*0.07;pixelDisc(gg,x,y,r,color);
+    gg.globalAlpha=old*a*0.10;pixelDisc(gg,x,y,r*0.6,color);
+    gg.globalAlpha=old;
   }
 
-  function drawBullet(b: BulletView, TS: number, t: number) {
-    const gg = g!, x = b.x * TS, y = b.y * TS, r = Math.max(2, b.r * TS), ca = Math.cos(b.angle), sa = Math.sin(b.angle);
-    gg.globalCompositeOperation = 'lighter';
-    switch (b.style) {
-      case 'enemy':
-        glowAt('#ff2a4a', x, y, r * 2.6, 0.75);
-        gg.fillStyle = '#ff8a9a'; gg.beginPath(); gg.arc(x, y, r * 0.55, 0, Math.PI * 2); gg.fill(); break;
-      case 'bolt': {
-        gg.strokeStyle = b.color; gg.lineWidth = r * 0.9; gg.lineCap = 'round'; gg.globalAlpha = 0.6;
-        gg.beginPath(); gg.moveTo(x - ca * r * 4, y - sa * r * 4); gg.lineTo(x, y); gg.stroke(); gg.globalAlpha = 1;
-        glowAt(b.color, x, y, r * 3); gg.fillStyle = '#fff'; gg.beginPath(); gg.arc(x, y, r * 0.45, 0, Math.PI * 2); gg.fill(); break;
-      }
-      case 'pellet':
-        gg.strokeStyle = b.color; gg.lineWidth = r; gg.lineCap = 'round';
-        gg.beginPath(); gg.moveTo(x - ca * r * 3, y - sa * r * 3); gg.lineTo(x, y); gg.stroke();
-        glowAt(b.color, x, y, r * 3, 0.7); break;
-      case 'arrow': {
-        gg.globalCompositeOperation = 'source-over';
-        gg.strokeStyle = '#e8dcc0'; gg.lineWidth = Math.max(2, TS * 0.05);
-        gg.beginPath(); gg.moveTo(x - ca * TS * 0.55, y - sa * TS * 0.55); gg.lineTo(x, y); gg.stroke();
-        gg.globalCompositeOperation = 'lighter';
-        gg.strokeStyle = b.color; gg.globalAlpha = 0.35; gg.lineWidth = r;
-        gg.beginPath(); gg.moveTo(x - ca * TS * 1.6, y - sa * TS * 1.6); gg.lineTo(x - ca * TS * 0.4, y - sa * TS * 0.4); gg.stroke(); gg.globalAlpha = 1;
-        glowAt(b.color, x, y, r * 2.2); break;
-      }
-      case 'flame': {
-        const k = Math.min(1, b.age / 0.45), rr = r * (1 + k * 2.2);
-        glowAt(k < 0.35 ? '#fff3b0' : b.color, x, y, rr * 1.6, 0.9 * (1 - k * 0.7));
-        glowAt('#ff6a1a', x, y, rr, 0.5 * (1 - k)); break;
-      }
-      case 'spark': {
-        gg.strokeStyle = b.color; gg.lineWidth = 2;
-        gg.beginPath(); gg.moveTo(x, y);
-        for (let i = 1; i <= 4; i++) { const j = (hash(Math.floor(t * 30), i) - 0.5) * TS * 0.25; gg.lineTo(x - ca * i * TS * 0.2 - sa * j, y - sa * i * TS * 0.2 + ca * j); }
-        gg.stroke(); glowAt(b.color, x, y, r * 3); break;
-      }
-      case 'orb': {
-        const p = 1 + Math.sin(b.age * 18) * 0.15;
-        glowAt(b.color, x, y, r * 3.2 * p); glowAt('#ffffff', x, y, r * 1.1, 0.9);
-        gg.strokeStyle = b.color; gg.lineWidth = 2; gg.beginPath(); gg.arc(x, y, r * 1.6 * p, b.age * 9, b.age * 9 + 4); gg.stroke(); break;
-      }
-      case 'star': {
-        glowAt(b.color, x, y, r * 2.6, 0.7);
-        gg.globalCompositeOperation = 'source-over';
-        gg.save(); gg.translate(x, y); gg.rotate(b.age * 22); gg.fillStyle = '#e8eef8'; gg.strokeStyle = b.color; gg.lineWidth = 1.5;
-        gg.beginPath();
-        for (let i = 0; i < 8; i++) { const rr = i % 2 ? r * 0.45 : r * 1.4, a = (i / 8) * Math.PI * 2; gg.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
-        gg.closePath(); gg.fill(); gg.stroke(); gg.restore(); break;
-      }
-    }
-    gg.globalCompositeOperation = 'source-over';
-  }
+  function drawBullet(b: BulletView, TS: number, _t: number) { drawProjectile(g!,b,TS); }
 
   function drawFx(f: Fx, t: number, TS: number) {
-    const gg = g!, k = (t - f.t0) / f.life;
-    if (k < 0 || k > 1) return;
-    const x = f.x * TS, y = f.y * TS;
-    switch (f.kind) {
-      case 'text': {
-        const pop = f.big ? 1 + 0.5 * Math.max(0, 1 - k / 0.18) : 1; // crits pop, then settle
-        gg.globalAlpha = 1 - k * k; gg.font = `bold ${Math.round(TS * (f.big ? 0.42 : 0.26) * pop)}px sans-serif`; gg.textAlign = 'center';
-        gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(f.text!, x, y - k * TS * 0.7); gg.fillStyle = f.color; gg.fillText(f.text!, x, y - k * TS * 0.7);
-        gg.globalAlpha = 1; gg.textAlign = 'left'; break;
-      }
-      case 'chain': {
-        gg.globalCompositeOperation = 'lighter'; gg.strokeStyle = f.color; gg.globalAlpha = 1 - k;
-        for (const lw of [5, 2]) {
-          gg.lineWidth = lw; gg.beginPath();
-          f.pts!.forEach((p, i) => {
-            if (i === 0) { gg.moveTo(p.x * TS, p.y * TS); return; }
-            const q = f.pts![i - 1];
-            for (let s = 1; s <= 4; s++) {
-              const u = s / 4, j = s < 4 ? (hash(Math.floor(t * 40) + i, s) - 0.5) * TS * 0.5 : 0;
-              gg.lineTo((q.x + (p.x - q.x) * u) * TS + j, (q.y + (p.y - q.y) * u) * TS - j);
-            }
-          });
-          gg.stroke(); gg.strokeStyle = '#fff';
-        }
-        gg.globalAlpha = 1; gg.globalCompositeOperation = 'source-over'; break;
-      }
-      case 'boom': {
-        const r = f.r! * TS * (0.4 + k * 0.6);
-        gg.globalCompositeOperation = 'lighter';
-        glowAt(f.color, x, y, r * 1.4, 1 - k); glowAt('#ffffff', x, y, r * 0.5, (1 - k) * 0.8);
-        gg.strokeStyle = f.color; gg.globalAlpha = 1 - k; gg.lineWidth = 3; gg.beginPath(); gg.arc(x, y, r, 0, Math.PI * 2); gg.stroke();
-        gg.globalAlpha = 1; gg.globalCompositeOperation = 'source-over'; break;
-      }
-      case 'hit': case 'muzzle':
-        gg.globalCompositeOperation = 'lighter'; glowAt(f.color, x, y, TS * (f.kind === 'muzzle' ? 0.35 : 0.3) * (1 + k), 1 - k); gg.globalCompositeOperation = 'source-over'; break;
-      case 'death': {
-        gg.fillStyle = f.color; gg.globalAlpha = 1 - k;
-        for (let i = 0; i < 8; i++) { const a = i * 0.785 + f.t0, d = k * TS * (f.r ?? 1) * 0.8; gg.fillRect(x + Math.cos(a) * d - 3, y - TS * 0.3 + Math.sin(a) * d - 3, 6, 6); }
-        gg.globalAlpha = 1; break;
-      }
-      case 'levelup': {
-        gg.globalCompositeOperation = 'lighter'; gg.strokeStyle = f.color; gg.globalAlpha = 1 - k;
-        for (let i = 0; i < 2; i++) { gg.lineWidth = 4 - i * 2; gg.beginPath(); gg.ellipse(x, y - k * TS * 0.6 * (i + 1), (f.r ?? 1) * TS * (0.4 + k * 0.6), (f.r ?? 1) * TS * 0.3 * (0.4 + k * 0.6), 0, 0, Math.PI * 2); gg.stroke(); }
-        gg.globalAlpha = 1; gg.globalCompositeOperation = 'source-over'; break;
-      }
-    }
+    const gg=g!,k=(t-f.t0)/f.life;if(k<0||k>1)return;
+    if(f.kind!=='text'){drawPixelFx(gg,f,t,TS);return;}
+    const pop=f.big?1+0.5*Math.max(0,1-k/0.18):1;
+    gg.globalAlpha=1-k*k;gg.font = pixelFont(Math.round(TS*(f.big?0.32:0.22)*pop));gg.textAlign='center';
+    gg.lineWidth=3;gg.strokeStyle='#100d1c';strokeText(gg, f.text!,f.x*TS,f.y*TS-k*TS*0.7);gg.fillStyle=f.color;fillText(gg, f.text!,f.x*TS,f.y*TS-k*TS*0.7);
+    gg.globalAlpha=1;gg.textAlign='left';
   }
 
-  function weaponIcon(gg: CanvasRenderingContext2D, w: Pick<Weapon, 'base'>, x: number, y: number, s: number, col: string) {
-    gg.save(); gg.translate(x, y); gg.strokeStyle = col; gg.fillStyle = col; gg.lineWidth = Math.max(2, s * 0.12); gg.lineCap = 'round';
-    gg.beginPath();
-    switch (w.base) {
-      case 'bolt': gg.moveTo(-s * 0.4, s * 0.4); gg.lineTo(s * 0.3, -s * 0.3); gg.stroke(); gg.beginPath(); gg.arc(s * 0.32, -s * 0.32, s * 0.16, 0, 7); gg.fill(); break;
-      case 'pellet': gg.moveTo(-s * 0.45, s * 0.2); gg.lineTo(s * 0.3, -s * 0.1); gg.lineTo(s * 0.45, -s * 0.25); gg.moveTo(-s * 0.45, s * 0.2); gg.lineTo(-s * 0.35, s * 0.45); gg.stroke(); break;
-      case 'arrow': gg.arc(0, 0, s * 0.42, -1.2, 1.2); gg.moveTo(s * 0.15, -s * 0.39); gg.lineTo(s * 0.15, s * 0.39); gg.moveTo(-s * 0.4, 0); gg.lineTo(s * 0.45, 0); gg.stroke(); break;
-      case 'flame': gg.moveTo(-s * 0.4, s * 0.45); gg.lineTo(s * 0.15, -s * 0.1); gg.stroke(); gg.beginPath(); gg.moveTo(s * 0.1, -s * 0.05); gg.quadraticCurveTo(s * 0.5, -s * 0.2, s * 0.25, -s * 0.5); gg.quadraticCurveTo(s * 0.1, -s * 0.25, s * 0.1, -s * 0.05); gg.fill(); break;
-      case 'spark': gg.moveTo(s * 0.1, -s * 0.45); gg.lineTo(-s * 0.2, s * 0.05); gg.lineTo(s * 0.15, s * 0.05); gg.lineTo(-s * 0.1, s * 0.45); gg.stroke(); break;
-      case 'orb': gg.moveTo(-s * 0.35, s * 0.45); gg.lineTo(s * 0.05, -s * 0.05); gg.stroke(); gg.beginPath(); gg.arc(s * 0.18, -s * 0.18, s * 0.26, 0, 7); gg.fill(); break;
-      case 'star': for (let i = 0; i < 8; i++) { const rr = i % 2 ? s * 0.16 : s * 0.45, a = (i / 8) * Math.PI * 2; gg.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } gg.closePath(); gg.fill(); break;
-    }
-    gg.restore();
+  function weaponIcon(gg: CanvasRenderingContext2D, w: WeaponLook, x: number, y: number, size: number, _col: string) {
+    const c=heldWeapon(w),sc=Math.max(1,Math.floor(size/14));gg.drawImage(c,Math.round(x-c.width*sc/2),Math.round(y-c.height*sc/2),c.width*sc,c.height*sc);
   }
-  function gearIcon(gg: CanvasRenderingContext2D, slot: string, x: number, y: number, s: number, col: string) {
-    gg.save(); gg.translate(x, y); gg.fillStyle = col; gg.strokeStyle = col; gg.lineWidth = Math.max(2, s * 0.12);
-    gg.beginPath();
-    if (slot === 'helm') { gg.arc(0, s * 0.1, s * 0.38, Math.PI, 0); gg.lineTo(s * 0.38, s * 0.3); gg.lineTo(-s * 0.38, s * 0.3); gg.fill(); }
-    else if (slot === 'armor') { gg.moveTo(-s * 0.4, -s * 0.3); gg.lineTo(-s * 0.15, -s * 0.4); gg.lineTo(0, -s * 0.25); gg.lineTo(s * 0.15, -s * 0.4); gg.lineTo(s * 0.4, -s * 0.3); gg.lineTo(s * 0.3, s * 0.4); gg.lineTo(-s * 0.3, s * 0.4); gg.fill(); }
-    else if (slot === 'boots') { gg.moveTo(-s * 0.2, -s * 0.4); gg.lineTo(s * 0.05, -s * 0.4); gg.lineTo(s * 0.05, s * 0.1); gg.lineTo(s * 0.4, s * 0.2); gg.lineTo(s * 0.4, s * 0.4); gg.lineTo(-s * 0.2, s * 0.4); gg.fill(); }
-    else { gg.arc(0, s * 0.08, s * 0.3, 0, 7); gg.stroke(); gg.beginPath(); gg.arc(0, -s * 0.25, s * 0.12, 0, 7); gg.fill(); }
-    gg.restore();
+  function gearIcon(gg: CanvasRenderingContext2D, slot: string, x: number, y: number, size: number, col: string) {
+    const c=gearSprite(slot,col),sc=Math.max(1,Math.floor(size/10));gg.drawImage(c,Math.round(x-c.width*sc/2),Math.round(y-c.height*sc/2),c.width*sc,c.height*sc);
   }
 
   function drawDrop(d: DropView, TS: number, t: number) {
-    const gg = g!, x = d.x * TS, y = d.y * TS, bob = Math.sin(t * 4 + d.id) * TS * 0.06;
-    if (d.kind === 'coin') {
-      const s = sprite('coin'), sc = TS / 22, sx = Math.max(0.15, Math.abs(Math.cos(t * 5 + d.id)));
-      gg.drawImage(s, x - (s.width * sc * sx) / 2, y - s.height * sc + bob, s.width * sc * sx, s.height * sc);
-      return;
+    const gg=g!,x=Math.round(d.x*TS),y=Math.round(d.y*TS),bob=Math.floor(Math.sin(t*4+d.id)*1.2);
+    if(d.kind==='coin'){
+      const c=sprite('coin'),edge=Math.floor(t*5+d.id)%4===0,w=edge?2:c.width;
+      gg.drawImage(c,x-Math.floor(w/2),y-c.height+bob,w,c.height);return;
     }
-    if (d.kind === 'potion') { drawSprite('potion', x, y, TS / 16, 1, false, undefined, bob); return; }
-    const col = RARITY_COLORS[d.rarity];
-    gg.globalCompositeOperation = 'lighter';
-    if (d.rarity >= 2) { // light pillar (uniques get a tall pulsing one)
-      const hgt = Math.round(TS * (d.rarity === 5 ? 4 + Math.sin(t * 6) * 0.5 : 2) / 2) * 2;
-      gg.fillStyle = cachedGrad(`lp|${col}|${hgt}`, () => { const gr = gg.createLinearGradient(0, -hgt, 0, 0); gr.addColorStop(0, col + '00'); gr.addColorStop(1, col + '88'); return gr; });
-      gg.save(); gg.translate(0, y); gg.fillRect(x - TS * (d.rarity === 5 ? 0.22 : 0.12), -hgt, TS * (d.rarity === 5 ? 0.44 : 0.24), hgt); gg.restore();
-    }
-    glowAt(col, x, y - TS * 0.3 + bob, TS * 0.6, 0.6);
-    gg.globalCompositeOperation = 'source-over';
-    if (d.kind === 'weapon') weaponIcon(gg, { base: d.style! }, x, y - TS * 0.3 + bob, TS * 0.6, col);
-    else gearIcon(gg, d.slot!, x, y - TS * 0.3 + bob, TS * 0.55, col);
+    if(d.kind==='potion'){drawSprite('potion',x,y,1,1,false,undefined,bob);return;}
+    const col=RARITY_COLORS[d.rarity];
+    if(d.rarity>=2){pixelRing(gg,x,y,6,col,true,0.4);gg.fillStyle=col;gg.fillRect(x-1,y-13+bob,1,2);if(d.rarity===5){gg.fillRect(x-4,y-18+bob,1,1);gg.fillRect(x+4,y-16-bob,1,1);}}
+    if(d.kind==='weapon')weaponIcon(gg,{base:d.style!,element:d.element,rarity:d.rarity,variant:d.variant,unique:d.unique,plus:d.plus},x,y-5+bob,14,col);
+    else gearIcon(gg,d.slot!,x,y-5+bob,10,col);
   }
 
   function drawEnemy(e: EnemyView, TS: number, t: number) {
@@ -385,38 +271,31 @@ export function createRenderer(): GameRenderer {
     // animation state (render-only): hurt flinch, wind-up = attack pose, moving = walk cycle
     const prev = moved.get(e.id), mv = !!prev && Math.hypot(e.x - prev.x, e.y - prev.y) > 0.004;
     if (prev) { prev.x = e.x; prev.y = e.y; } else { if (moved.size > 512) moved.clear(); moved.set(e.id, { x: e.x, y: e.y }); } // reuse entries; bounded
-    const st: AnimState = e.hurt < 0.12 ? 'hurt' : e.tell > 0.05 ? 'attack' : mv ? 'walk' : 'idle';
+    const st: AnimState = e.tell > 0.05 ? 'attack' : e.hurt < 0.12 ? 'hurt' : mv ? 'walk' : 'idle';
     const fr = anim(name, st, t + e.id * 0.13, e.kind === 'bat' ? 10 : 7);
     const def = sprite2(name, fr.state, fr.idx, pal, false, scale);
-    const ps = (e.r * 2.4 * TS) / Math.max(def.width, def.height) * (isBoss ? 1.25 : 1.15);
+    const ps = 1; // all actor pixels are the same size as one background pixel
     const flash = e.hurt < 0.06;
     const bob = e.kind === 'bat' ? Math.sin(t * 14 + e.id) * TS * 0.12 : -Math.abs(Math.sin(t * 8 + e.id)) * TS * 0.05;
     shadow(x, y, e.r * TS * 0.9);
     if (e.elite) { gg.globalCompositeOperation = 'lighter'; glowAt(ELITE_COLORS[e.elite], x, y - e.r * TS, e.r * TS * (2 + Math.sin(t * 5 + e.id) * 0.2), 0.55); gg.globalCompositeOperation = 'source-over'; }
     if (e.tell > 0) { gg.globalCompositeOperation = 'lighter'; glowAt(e.kind === 'bomber' ? '#ff7a2a' : '#ff3b3b', x, y - e.r * TS, e.r * TS * (1.5 + e.tell), 0.3 + e.tell * 0.6); gg.globalCompositeOperation = 'source-over'; }
-    if (e.exposed) { gg.strokeStyle = `rgba(255,224,138,${0.6 + 0.4 * Math.sin(t * 10)})`; gg.lineWidth = Math.max(2, TS * 0.08); gg.setLineDash([TS * 0.25, TS * 0.15]); gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.9, t * 2, t * 2 + Math.PI * 2); gg.stroke(); gg.setLineDash([]); }
+    if (e.exposed) pixelRing(gg,x,y-e.r*TS,e.r*TS*1.9,'#ffe08a',true);
     if (e.exposed) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffe08a', x, y - e.r * TS, e.r * TS * 2.6, 0.75 + Math.sin(t * 9) * 0.2); gg.globalCompositeOperation = 'source-over'; }
-    const sq = e.kind === 'spitter' ? 1 + Math.sin(t * 6 + e.id) * 0.08 : 1;
-    gg.save(); gg.translate(x, y); gg.scale(1 / sq, sq); gg.translate(-x, -y);
+    gg.save();
     drawCanvas(def, x, y, ps, e.face, bob);
     if (flash) { gg.globalAlpha = 0.4; drawCanvas(sprite2(name, fr.state, fr.idx, pal, true, scale), x, y, ps, e.face, bob); gg.globalAlpha = 1; }
     gg.restore();
-    if (e.shieldFrac > 0) { gg.strokeStyle = `rgba(102,204,255,${0.3 + 0.6 * e.shieldFrac})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(x, y - e.r * TS, e.r * TS * 1.5, 0, Math.PI * 2); gg.stroke(); }
+    if(e.shieldFrac>0)pixelRing(gg,x,y-e.r*TS,e.r*TS*1.5,'#7fe7ff',false,1,e.shieldFrac);
     if (e.elite) {
-      const ly = y - def.height * ps - 14;
-      gg.font = `bold ${Math.round(TS * 0.22)}px sans-serif`; gg.textAlign = 'center'; gg.lineWidth = 3; gg.strokeStyle = '#000';
-      const label = `${ELITE_LABEL[e.elite]} ${KIND_LABEL[e.kind] ?? ''}`;
-      gg.strokeText(label, x, ly); gg.fillStyle = ELITE_COLORS[e.elite]; gg.fillText(label, x, ly); gg.textAlign = 'left';
+      eliteLabels.push({ x, y: y - def.height * ps - 3,
+        text: `${ELITE_LABEL[e.elite]} ${KIND_LABEL[e.kind] ?? ''}`, color: ELITE_COLORS[e.elite] });
     }
     if (e.slowed) { gg.fillStyle = 'rgba(127,231,255,0.25)'; gg.fillRect(x - e.r * TS, y - e.r * TS * 2.2, e.r * TS * 2, e.r * TS * 2.2); }
     if (e.dot && Math.floor(t * 8) % 2) { gg.globalCompositeOperation = 'lighter'; glowAt('#7dff5a', x, y - e.r * TS * 1.8, TS * 0.2, 0.8); gg.globalCompositeOperation = 'source-over'; }
-    if (isBoss && scale === 2) { // crown (bosses drawn from minion art)
-      const cy = y - def.height * ps + bob - 4, cw = TS * 0.6;
-      gg.fillStyle = '#ffd84a'; gg.beginPath(); gg.moveTo(x - cw / 2, cy); gg.lineTo(x - cw / 2, cy - cw * 0.45); gg.lineTo(x - cw / 4, cy - cw * 0.2); gg.lineTo(x, cy - cw * 0.55); gg.lineTo(x + cw / 4, cy - cw * 0.2); gg.lineTo(x + cw / 2, cy - cw * 0.45); gg.lineTo(x + cw / 2, cy); gg.fill();
-    } else if (e.hp < e.maxHp) {
-      const bw = TS * 0.7, by = y - def.height * ps - 8;
-      gg.fillStyle = '#000a'; gg.fillRect(x - bw / 2 - 1, by - 1, bw + 2, 5);
-      gg.fillStyle = '#e44'; gg.fillRect(x - bw / 2, by, bw * Math.max(0, e.hp) / e.maxHp, 3);
+    if (!isBoss && e.hp < e.maxHp) {
+      const bw=12,by=Math.round(y-def.height*ps-3);gg.fillStyle='#100d1c';gg.fillRect(Math.round(x-bw/2)-1,by-1,bw+2,3);
+      gg.fillStyle='#ef7070';gg.fillRect(Math.round(x-bw/2),by,Math.round(bw*Math.max(0,e.hp)/e.maxHp),1);
     }
   }
 
@@ -424,44 +303,51 @@ export function createRenderer(): GameRenderer {
     mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
       color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0;
       canvas = document.createElement('canvas');
-      canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b';
+      canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b;touch-action:none';
       container.appendChild(canvas);
       canvas.addEventListener('pointerdown', onPointer);
+      canvas.addEventListener('pointermove', moveTouch);
+      canvas.addEventListener('pointerup', endTouch);
+      canvas.addEventListener('pointercancel', endTouch);
+      canvas.addEventListener('lostpointercapture', endTouch);
+      window.addEventListener('blur', clearPinch);
       g = canvas.getContext('2d');
-      warmGlyphs();
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
     setInsets(i) { insetCss = i.bottom; },
-    resize(w, h) { if (canvas) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); } },
-    render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
+    resize(w, h) { if (canvas) { clearPinch(); canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); } },
+    render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
       if (!canvas || !g || !s.world) return;
+      pinchEnabled = s.phase === 'run';
       // sound cues (skip any backlog from before mount)
       if (lastCue < 0) lastCue = s.cues.length ? s.cues[s.cues.length - 1].id : 0;
       for (const c of s.cues) if (c.id > lastCue) { lastCue = c.id; play(c.name as SfxName, { minGapS: CUE_GAP[c.name as SfxName] }); }
-      if (s.phase === 'camp' && s.camp) { actionHits = []; drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
+      if (s.phase === 'camp' && s.camp) { actionHits = []; clearPinch(); drawCamp(s.camp, canvas.width, canvas.height, s.t); return; }
       campHits = []; if (s.phase !== 'run') actionHits = [];
-      const gg = g, W = canvas.width, H = canvas.height, w = s.world, t = s.t, p = s.player;
-      // camera: smooth follow, and zoom out in arenas (boss rooms and big rooms) so the whole fight fits
+      const output=g, OW=canvas.width, OH=canvas.height, w=s.world,t=s.t,p=s.player;
+      // Orientation-balanced framing; room boundaries and boss phases never change the selected zoom.
       const bossE = s.boss?.active ? s.enemies.find((e) => e.kind === 'boss') : undefined;
-      const here = w.rooms.find((r) => p.x >= r.x0 && p.x < r.x0 + r.w && p.y >= r.y0 && p.y < r.y0 + r.h);
       const dtR = Math.max(0, Math.min(0.1, t - camT)); camT = t;
-      const zt = bossE || (here && (here.boss || here.w >= 17 || here.h >= 13)) ? ARENA_ZOOM : 1;
-      zoom += (zt - zoom) * Math.min(1, dtR * 2.5);
-      const TS = Math.max(20, Math.round((W / TILES_ACROSS) * zoom));
+      zoom = paddleZoom(zoom, OW, OH, input.paddleL, input.paddleR);
+      const V=pixelViewport(OW,OH,zoom.steps);pixelScale=V.scale;
+      if(!worldCanvas)worldCanvas=document.createElement('canvas');
+      if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
+      g=worldCanvas.getContext('2d')!;
+      const gg=g,W=V.width,H=V.height,TS=TILE_PX;
       gg.imageSmoothingEnabled = false;
       gg.fillStyle = '#07060b'; gg.fillRect(0, 0, W, H);
       if (bgFor !== w) {
         bgFor = w; bg?.release(); bg = buildBackground(w); mini = null; pillars = [];
         for (let i = 0; i < w.tiles.length; i++) if (w.tiles[i] === TILE.PILLAR) pillars.push({ x: i % w.w, y: Math.floor(i / w.w) });
       }
-      const IB = insetCss * dpr, uu = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
-      const VH = runLayout(W, H, IB, uu).playH; // VH: play view above the slim stance row (which sits above the HUD)
+      const uiU=(Math.max(1,Math.min(OW,OH)/dpr/600)*0.75+0.25)*dpr;
+      const VH=runLayout(OW,OH,insetCss*dpr,uiU,s.stance.list.length-1).playH/pixelScale;
       // frame the fight: during a boss, the camera centres between the hero and the boss so neither hides under the dock
       const fx0 = bossE ? p.x + (bossE.x - p.x) * 0.45 : p.x, fy0 = bossE ? p.y + (bossE.y - p.y) * 0.45 : p.y;
-      if (camFor !== w || !Number.isFinite(camX) || Math.hypot(fx0 - camX, fy0 - camY) > 8) { camX = fx0; camY = fy0; camFor = w; }
-      else { const kf = Math.min(1, dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
+      if (camFor !== w || !Number.isFinite(camX)) { camX = fx0; camY = fy0; camFor = w; }
+      else { const kf = 1 - Math.exp(-dtR * 6); camX += (fx0 - camX) * kf; camY += (fy0 - camY) * kf; }
       const cx = camX * TS - W / 2, cy = camY * TS - VH / 2;
       gg.save(); gg.translate(-Math.round(cx), -Math.round(cy));
       // background (visible part only)
@@ -478,64 +364,43 @@ export function createRenderer(): GameRenderer {
           const locked = w.rooms[w.doorRoom[y * w.w + x]]?.locked;
           if (locked) {
             gg.fillStyle = '#3a2a1a'; gg.fillRect(x * TS, y * TS, TS, TS);
-            gg.fillStyle = '#9aa3b5'; for (let i = 1; i < 5; i++) gg.fillRect(x * TS + (i * TS) / 5 - 2, y * TS, 4, TS);
+            gg.fillStyle='#9aa3b5';for(let i=1;i<5;i++)gg.fillRect(x*TS+i*3,y*TS,1,TS);
             gg.globalCompositeOperation = 'lighter'; glowAt('#ff3b3b', x * TS + TS / 2, y * TS + TS / 2, TS * 0.8, 0.35); gg.globalCompositeOperation = 'source-over';
-          } else { gg.fillStyle = 'rgba(122,90,42,0.5)'; gg.fillRect(x * TS, y * TS, TS, TS * 0.12); gg.fillRect(x * TS, y * TS + TS * 0.88, TS, TS * 0.12); }
+          } else { gg.fillStyle = 'rgba(122,90,42,0.5)'; gg.fillRect(x * TS, y * TS, TS, 2); gg.fillRect(x * TS, y * TS + TS * 0.88, TS, 2); }
         } else if (kk === TILE.STAIRS) {
-          for (let i = 0; i < 4; i++) { gg.fillStyle = ['#1a1622', '#110e18', '#0a0810', '#040306'][i]; gg.fillRect(x * TS + i * TS * 0.08, y * TS + i * TS * 0.22, TS - i * TS * 0.16, TS - i * TS * 0.22); }
-          gg.strokeStyle = '#8a7a5a'; gg.lineWidth = 2; gg.strokeRect(x * TS, y * TS, TS, TS);
+          for (let i = 0; i < 4; i++) { gg.fillStyle = ['#1a1622', '#110e18', '#0a0810', '#040306'][i]; gg.fillRect(x*TS+i,y*TS+i*3,TS-i*2,TS-i*3); }
+          pixelTarget(gg,x*TS+8,y*TS+8,8,'#8a7a5a');
           if (s.stairsOpen) { gg.globalCompositeOperation = 'lighter'; glowAt('#ffd84a', x * TS + TS / 2, y * TS + TS / 2, TS * (1.2 + Math.sin(t * 3) * 0.2), 0.7); gg.globalCompositeOperation = 'source-over'; }
         }
       }
-      for (const r of w.rooms) if (r.chest) {
-        const x = r.chest.x * TS, y = r.chest.y * TS, cw = TS * 0.8, ch = TS * 0.55;
-        gg.fillStyle = '#6b3f1d'; gg.fillRect(x - cw / 2, y - ch, cw, ch);
-        gg.fillStyle = '#ffd84a'; gg.fillRect(x - cw / 2, y - ch * 0.62, cw, ch * 0.12); gg.fillRect(x - 3, y - ch * 0.7, 6, ch * 0.3);
-        if (r.chest.opened) { gg.fillStyle = '#2a1608'; gg.fillRect(x - cw / 2, y - ch - ch * 0.4, cw, ch * 0.4); }
-        else { gg.fillStyle = '#8a5428'; gg.fillRect(x - cw / 2, y - ch - ch * 0.2, cw, ch * 0.3); }
+      for(const r of w.rooms)if(r.chest){
+        const x=Math.round(r.chest.x*TS),y=Math.round(r.chest.y*TS);
+        gg.fillStyle='#35251f';gg.fillRect(x-7,y-10,14,10);gg.fillStyle='#975f38';gg.fillRect(x-6,y-9,12,8);
+        gg.fillStyle='#c48b50';gg.fillRect(x-5,y-9,10,2);gg.fillStyle='#e8bf65';gg.fillRect(x-6,y-5,12,1);gg.fillRect(x-1,y-6,2,3);
+        if(r.chest.opened){gg.fillStyle='#211820';gg.fillRect(x-6,y-11,12,4);}
       }
       // fog over unseen rooms
       gg.fillStyle = '#07060b';
       for (const r of w.rooms) if (!r.seen) gg.fillRect((r.x0 - 1) * TS, (r.y0 - 1) * TS, (r.w + 2) * TS, (r.h + 2) * TS);
 
-      // brazier flames
-      gg.globalCompositeOperation = 'lighter';
-      for (const q of pillars) {
-        if (q.x < x0 - 1 || q.x > x1 || q.y < y0 - 1 || q.y > y1) continue;
-        const fl = 1 + Math.sin(t * 9 + q.x * 3 + q.y) * 0.15;
-        glowAt('#ff8c2a', (q.x + 0.5) * TS, (q.y + 0.25) * TS, TS * 1.1 * fl, 0.35);
-        glowAt('#ffe08a', (q.x + 0.5) * TS, (q.y + 0.15) * TS - TS * 0.1 * fl, TS * 0.3 * fl, 0.9);
+      // Authored 8px flame frames replace blurry torch and brazier dots.
+      for(const q of pillars){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.x*.13);gg.drawImage(f,q.x*TS+3,q.y*TS-3);}
+      for(const q of torches){if(q.x<x0-1||q.x>x1||q.y<y0-1||q.y>y1)continue;const f=flameSprite(t+q.y*.17);gg.drawImage(f,q.x*TS+3,q.y*TS-1);}
+      for(const sh of s.shrines){
+        if(!w.rooms[sh.room].seen)continue;
+        const x=Math.round(sh.x*TS),y=Math.round(sh.y*TS),col=sh.state==='failed'?'#777080':SHRINE_COLORS[sh.kind];
+        pixelRing(gg,x,y,12,col,true,0.4);gg.fillStyle='#2d293d';gg.fillRect(x-5,y-3,11,5);gg.fillStyle='#675b79';gg.fillRect(x-3,y-15,7,13);gg.fillRect(x-1,y-18,3,3);
+        gg.fillStyle='#8a7b9e';gg.fillRect(x-3,y-15,1,11);gg.fillStyle=col;gg.fillRect(x,y-12,1,6);
+        if(sh.state==='active')pixelRing(gg,x,y-8,15,col,false,1,sh.progress);
       }
-      for (const q of torches) {
-        if (q.x < x0 - 1 || q.x > x1 || q.y < y0 - 1 || q.y > y1) continue;
-        const fl = 1 + Math.sin(t * 11 + q.x * 5) * 0.12 + Math.sin(t * 23 + q.y) * 0.06;
-        glowAt('#ff8c2a', (q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * 0.9 * fl, 0.3);
-        glowAt('#ffe08a', (q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * 0.22 * fl, 1);
-      }
-      gg.globalCompositeOperation = 'source-over';
-      // shrines
-      for (const sh of s.shrines) {
-        if (!w.rooms[sh.room].seen) continue;
-        const x = sh.x * TS, y = sh.y * TS, col = sh.state === 'failed' ? '#666666' : SHRINE_COLORS[sh.kind];
-        const a = sh.state === 'active' ? 0.8 + Math.sin(t * 6) * 0.2 : sh.state === 'idle' ? 0.45 : 0.15;
-        gg.globalCompositeOperation = 'lighter'; glowAt(col, x, y - TS * 0.5, TS * 1.4, a); gg.globalCompositeOperation = 'source-over';
-        gg.fillStyle = '#4a4458'; gg.beginPath(); gg.moveTo(x - TS * 0.28, y + TS * 0.2); gg.lineTo(x - TS * 0.18, y - TS * 1.0); gg.lineTo(x, y - TS * 1.2); gg.lineTo(x + TS * 0.18, y - TS * 1.0); gg.lineTo(x + TS * 0.28, y + TS * 0.2); gg.fill();
-        gg.fillStyle = col; gg.fillRect(x - TS * 0.06, y - TS * 0.85, TS * 0.12, TS * 0.5);
-        if (sh.state === 'active') { gg.strokeStyle = col; gg.lineWidth = 4; gg.beginPath(); gg.arc(x, y - TS * 0.5, TS * 0.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sh.progress); gg.stroke(); }
-      }
-      // volatile-elite blasts about to go off
-      for (const h of s.hazards) {
-        const k2 = 1 - h.left / h.total;
-        gg.fillStyle = `rgba(255,90,40,${0.15 + 0.25 * k2})`; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS * k2, 0, Math.PI * 2); gg.fill();
-        gg.strokeStyle = '#ff7a2a'; gg.lineWidth = 2; gg.beginPath(); gg.arc(h.x * TS, h.y * TS, h.r * TS, 0, Math.PI * 2); gg.stroke();
-      }
+      for(const h of s.hazards){const k=1-h.left/h.total,x=h.x*TS,y=h.y*TS;pixelDisc(gg,x,y,h.r*TS*k,'#f45f3433');pixelRing(gg,x,y,h.r*TS,'#ff8a4a',true);}
       for (const d of s.drops) drawDrop(d, TS, t);
-      heroScr = { x: p.x * TS - Math.round(cx), y: p.y * TS - Math.round(cy) };
+      heroScr = { x: (p.x*TS-Math.round(cx))*pixelScale,y:(p.y*TS-Math.round(cy))*pixelScale };
       { // coin magnet: a coin that vanished next to the hero was picked up -> fly it to the HUD counter
         const now = new Map<number, { x: number; y: number }>();
         for (const d of s.drops) if (d.kind === 'coin') now.set(d.id, { x: d.x, y: d.y });
         for (const [id, q] of coinSeen) if (!now.has(id) && Math.hypot(q.x - p.x, q.y - p.y) < 2.5 && flyers.length < 24)
-          flyers.push({ x: q.x * TS - Math.round(cx), y: q.y * TS - Math.round(cy), t0: t });
+          flyers.push({ x: (q.x*TS-Math.round(cx))*pixelScale,y:(q.y*TS-Math.round(cy))*pixelScale,t0:t });
         coinSeen = now;
       }
       for (const a of s.actions) { // ready pulse on the frame an action finishes refilling
@@ -550,11 +415,11 @@ export function createRenderer(): GameRenderer {
         let ax = s.player.x, ay = s.player.y, carry = 0.6, drawn = 0;
         for (const q of s.ai.path) {
           const dx = q.x - ax, dy = q.y - ay, d = Math.hypot(dx, dy);
-          for (let k = carry; k < d && drawn < 27; k += 0.6, drawn++) { gg.beginPath(); gg.arc((ax + dx * k / d) * TS, (ay + dy * k / d) * TS, Math.max(2, TS * 0.06), 0, Math.PI * 2); gg.fill(); }
+          for(let k=carry;k<d&&drawn<27;k+=0.6,drawn++)gg.fillRect(Math.round((ax+dx*k/d)*TS),Math.round((ay+dy*k/d)*TS),1,1);
           carry = ((carry - d) % 0.6 + 0.6) % 0.6 || 0.6; ax = q.x; ay = q.y;
         }
         const end = s.ai.path[s.ai.path.length - 1];
-        gg.strokeStyle = 'rgba(255,255,255,0.5)'; gg.lineWidth = 2; gg.beginPath(); gg.arc(end.x * TS, end.y * TS, TS * 0.28, 0, Math.PI * 2); gg.stroke();
+        pixelTarget(gg,end.x*TS,end.y*TS,4,'#ffffff66');
       }
 
       // aura (effort zone) under the hero
@@ -572,6 +437,7 @@ export function createRenderer(): GameRenderer {
 
       // y-sorted actors
       type A = { y: number; d: () => void };
+      eliteLabels.length = 0;
       const actors: A[] = s.enemies.map((e) => ({ y: e.y, d: () => drawEnemy(e, TS, t) }));
       actors.push({ y: p.y, d: () => {
         const px = p.x * TS, py = p.y * TS + p.r * TS * 1.1, face = Math.cos(s.aim.angle) >= 0 ? 1 : -1;
@@ -579,144 +445,139 @@ export function createRenderer(): GameRenderer {
         shadow(px, py, TS * 0.32);
         const shot = s.bullets.some((b) => b.friendly && b.age < 0.12 && Math.hypot(b.x - p.x, b.y - p.y) < 1.6);
         const hst: AnimState = p.hurt < 0.12 ? 'hurt' : shot ? 'attack' : p.moving ? 'walk' : 'idle';
-        const hf = anim('hero', hst, t, 9), hs = TS / 15, hpal = heroPalette(color);
+        const hf = anim('hero',hst,t,9),hs=1,hpal=heroPalette(color);
         if (p.rolling) { gg.globalAlpha = 0.3; drawCanvas(sprite2('hero', 'walk', 0, hpal), px - Math.cos(s.aim.angle) * TS * 0.3, py, hs, face); gg.globalAlpha = 1; }
         gg.globalAlpha = p.invuln && Math.floor(t * 12) % 2 ? 0.45 : 1;
         drawCanvas(sprite2('hero', hf.state, hf.idx, hpal), px, py, hs, face, bob);
         if (p.hurt < 0.08) { gg.globalAlpha = 0.5; drawCanvas(sprite2('hero', hf.state, hf.idx, undefined, true), px, py, hs, face, bob); }
         gg.globalAlpha = 1;
-        if (p.warded) { gg.strokeStyle = `rgba(127,231,255,${0.6 + Math.sin(t * 12) * 0.25})`; gg.lineWidth = 3; gg.beginPath(); gg.arc(p.x * TS, p.y * TS, TS * 0.75, 0, Math.PI * 2); gg.stroke(); }
+        if(p.warded)pixelRing(gg,p.x*TS,p.y*TS,TS*0.8,'#7fe7ff',true);
         // weapon held toward the aim
-        const hx = p.x * TS, hy = p.y * TS, ca = Math.cos(s.aim.angle), sa = Math.sin(s.aim.angle), wc = RARITY_COLORS[s.weapon.rarity];
-        { // the stance's weapon (by style) in the hero's hand, rotated toward the aim
-          const ws = weaponSprite(s.weapon.base), sz = ws.width * hs * 0.9, kick = shot ? -TS * 0.06 : 0;
-          gg.save(); gg.translate(hx + ca * (TS * 0.28 + kick), hy + sa * (TS * 0.28 + kick) + bob + TS * 0.05);
-          gg.rotate(s.aim.angle + Math.PI / 4); if (ca < 0) gg.scale(1, -1);
-          gg.drawImage(ws, -sz * 0.35, -sz * 0.65, sz, sz); gg.restore();
-          gg.globalCompositeOperation = 'lighter'; glowAt(ELEMENT_COLORS[s.weapon.element], hx + ca * TS * 0.55, hy + sa * TS * 0.55 + bob, TS * (shot ? 0.32 : 0.2), shot ? 0.9 : 0.5); gg.globalCompositeOperation = 'source-over';
-          gg.fillStyle = wc; gg.fillRect(hx + ca * TS * 0.55 - 1, hy + sa * TS * 0.55 + bob - 1, 3, 3);
+        const hx = p.x * TS, hy = p.y * TS, ca=Math.cos(s.aim.angle),sa=Math.sin(s.aim.angle);
+        {
+          const ws=heldWeapon(s.weapon,s.aim.angle),kick=shot?-1:0;
+          const wx=Math.round(hx+ca*(6+kick)),wy=Math.round(hy+sa*(6+kick)+bob);
+          gg.drawImage(ws,wx-Math.floor(ws.width/2),wy-Math.floor(ws.height/2));
         }
       } });
       actors.sort((a, b) => a.y - b.y);
       for (const a of actors) a.d();
 
       for (const b of s.bullets) drawBullet(b, TS, t);
-      for (const f of s.fx) drawFx(f, t, TS);
-      // orbiting blades (unique)
-      for (const o of s.orbit) {
-        const ox = o.x * TS, oy = o.y * TS, col = ELEMENT_COLORS[s.weapon.element];
-        gg.globalCompositeOperation = 'lighter'; glowAt(col, ox, oy, TS * 0.5, 0.8); gg.globalCompositeOperation = 'source-over';
-        gg.save(); gg.translate(ox, oy); gg.rotate(t * 14); gg.fillStyle = '#eef4ff'; gg.beginPath();
-        for (let i = 0; i < 8; i++) { const rr = i % 2 ? TS * 0.08 : TS * 0.26, a = (i / 8) * Math.PI * 2; gg.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
-        gg.fill(); gg.restore();
-      }
-
-      // AI intent: target marker (the path is drawn under the actors)
-      const tgt = s.ai.targetId ? s.enemies.find((e) => e.id === s.ai.targetId) : undefined;
-      if (tgt) {
-        const rx = tgt.x * TS, ry = tgt.y * TS, rr = (tgt.r + 0.35) * TS, sp = t * 2;
-        gg.strokeStyle = tgt.kind === 'boss' ? '#ff5a5a' : '#ffd84a'; gg.lineWidth = 2.5;
-        for (let i = 0; i < 4; i++) { const a = sp + (i * Math.PI) / 2; gg.beginPath(); gg.arc(rx, ry, rr, a, a + 0.8); gg.stroke(); }
-      }
+      for(const f of s.fx)if(f.kind!=='text')drawFx(f,t,TS);
+      // Orbit blades and target marker use the same native-pixel masks as ordinary shots.
+      for(const o of s.orbit)drawProjectile(gg,{x:o.x,y:o.y,r:0.2,friendly:true,style:'star',color:ELEMENT_COLORS[s.weapon.element],angle:t*14,age:t},TS);
+      const tgt=s.ai.targetId?s.enemies.find(e=>e.id===s.ai.targetId):undefined;
+      if(tgt)pixelTarget(gg,tgt.x*TS,tgt.y*TS,(tgt.r+0.35)*TS,tgt.kind==='boss'?'#ff6a70':'#ffd84a');
       gg.restore();
 
-      // torch-light vignette
-      const dark = s.curse?.kind === 'darkness';
-      gg.fillStyle = cachedGrad(`vg|${W}|${VH}|${H}|${TS}|${dark}`, () => {
-        const vg = gg.createRadialGradient(W / 2, VH / 2, TS * (dark ? 1.4 : 3.5), W / 2, VH / 2, Math.max(W, H) * (dark ? 0.32 : 0.7));
-        vg.addColorStop(0, 'rgba(7,6,11,0)'); vg.addColorStop(1, `rgba(7,6,11,${dark ? 0.97 : 0.55})`); return vg; // light map below adds the rest
-      }); gg.fillRect(0, 0, W, H);
-      if (!dark) { // light map at 1/4 res: ambient dark, holes punched by the hero, torches and braziers (flickering)
-        const LW = Math.ceil(W / 4), LH = Math.ceil(H / 4);
-        if (!lightC || lightC.width !== LW || lightC.height !== LH) { lightC = document.createElement('canvas'); lightC.width = LW; lightC.height = LH; }
-        const lg = lightC.getContext('2d')!, ox = Math.round(cx), oy = Math.round(cy), q4 = (v: number) => v / 4;
-        lg.globalCompositeOperation = 'source-over'; lg.clearRect(0, 0, LW, LH); lg.fillStyle = 'rgba(7,6,11,0.42)'; lg.fillRect(0, 0, LW, LH);
-        lg.globalCompositeOperation = 'destination-out';
-        const hole = (x: number, y: number, r: number, a: number) => { lg.globalAlpha = a; lg.drawImage(glow('#ffffff'), q4(x - ox - r), q4(y - oy - r), q4(2 * r), q4(2 * r)); };
-        hole(p.x * TS, p.y * TS, TS * 5, 1);
-        for (const q of torches) if (q.x >= x0 - 4 && q.x <= x1 + 4 && q.y >= y0 - 4 && q.y <= y1 + 4) hole((q.x + 0.5) * TS, (q.y + 0.6) * TS, TS * (3 + Math.sin(t * 11 + q.x * 5) * 0.2), 0.9);
-        for (const q of pillars) if (q.x >= x0 - 4 && q.x <= x1 + 4 && q.y >= y0 - 4 && q.y <= y1 + 4) hole((q.x + 0.5) * TS, (q.y + 0.3) * TS, TS * (3.4 + Math.sin(t * 9 + q.x * 3) * 0.25), 0.9);
-        lg.globalAlpha = 1; lg.globalCompositeOperation = 'source-over';
-        gg.imageSmoothingEnabled = true; gg.drawImage(lightC, 0, 0, W, H); gg.imageSmoothingEnabled = false;
+      // Restrained stepped darkness, drawn at native resolution. No smoothed light-map upscale.
+      const dark=s.curse?.kind==='darkness';
+      if(!lightC)lightC=document.createElement('canvas');
+      if(lightC.width!==W||lightC.height!==H){lightC.width=W;lightC.height=H;}
+      const lg=lightC.getContext('2d')!;lg.globalCompositeOperation='source-over';lg.clearRect(0,0,W,H);lg.fillStyle=dark?'#07060bf5':'#07060b38';lg.fillRect(0,0,W,H);
+      lg.globalCompositeOperation='destination-out';
+      const lamp=(x:number,y:number,r:number)=>{for(const [f,a] of [[1,.25],[.8,.35],[.6,.55],[.35,1]]){lg.globalAlpha=a;pixelDisc(lg,x-Math.round(cx),y-Math.round(cy),r*f,'#ffffff');}};
+      lamp(p.x*TS,p.y*TS,TS*(dark?3:5));
+      if(!dark){for(const q of torches)if(q.x>=x0-3&&q.x<=x1+3&&q.y>=y0-3&&q.y<=y1+3)lamp((q.x+.5)*TS,(q.y+.5)*TS,TS*3);for(const q of pillars)if(q.x>=x0-3&&q.x<=x1+3&&q.y>=y0-3&&q.y<=y1+3)lamp((q.x+.5)*TS,(q.y+.5)*TS,TS*3);}
+      lg.globalAlpha=1;lg.globalCompositeOperation='source-over';gg.drawImage(lightC,0,0);
+      if(s.curse){gg.fillStyle=s.curse.color+'12';gg.fillRect(0,0,W,H);}
+      if(p.hurt<0.3){gg.fillStyle='#f4516133';gg.fillRect(0,0,W,2);gg.fillRect(0,H-2,W,2);gg.fillRect(0,0,2,H);gg.fillRect(W-2,0,2,H);}
+      g=output;output.imageSmoothingEnabled=false;
+      output.drawImage(worldCanvas,0,0,W*pixelScale,H*pixelScale);
+      output.save();output.translate(-Math.round(cx)*pixelScale,-Math.round(cy)*pixelScale);
+      for(const f of s.fx)if(f.kind==='text')drawFx(f,t,TS*pixelScale);
+      output.font = pixelFont(10 * dpr); output.textAlign = 'center'; output.strokeStyle = '#100d1c';
+      for (const label of eliteLabels) {
+        strokeText(output, label.text, label.x * pixelScale, label.y * pixelScale);
+        output.fillStyle = label.color; fillText(output, label.text, label.x * pixelScale, label.y * pixelScale);
       }
-      if (s.curse) { // cursed: pulsing coloured edges
-        const cc = s.curse.color, ca = (Math.round((0x30 + 0x20 * Math.sin(t * 3)) / 4) * 4).toString(16).padStart(2, '0');
-        gg.fillStyle = cachedGrad(`cv|${W}|${VH}|${H}|${cc}|${ca}`, () => {
-          const cv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.4, W / 2, VH / 2, Math.max(W, H) * 0.7);
-          cv.addColorStop(0, cc + '00'); cv.addColorStop(1, cc + ca); return cv;
-        }); gg.fillRect(0, 0, W, H);
-      }
-      if (p.hurt < 0.3) { // red edge pulse when hit
-        const ha = Math.round(35 * (1 - p.hurt / 0.3)) / 100;
-        gg.fillStyle = cachedGrad(`hv|${W}|${VH}|${H}|${ha}`, () => {
-          const hv = gg.createRadialGradient(W / 2, VH / 2, Math.min(W, H) * 0.35, W / 2, VH / 2, Math.max(W, H) * 0.65);
-          hv.addColorStop(0, 'rgba(255,0,0,0)'); hv.addColorStop(1, `rgba(255,0,0,${ha})`); return hv;
-        }); gg.fillRect(0, 0, W, H);
-      }
-
-      drawHud(s, W, H, bike);
+      output.restore();
+      drawHud(s,OW,OH,bike);
     },
-    unmount() { canvas?.removeEventListener('pointerdown', onPointer); canvas?.remove(); canvas = null; g = null; bg?.release(); bg = null; bgFor = null; mini = null; },
+    unmount() {
+      clearPinch(); pinchEnabled = false;
+      canvas?.removeEventListener('pointerdown', onPointer);
+      canvas?.removeEventListener('pointermove', moveTouch);
+      canvas?.removeEventListener('pointerup', endTouch);
+      canvas?.removeEventListener('pointercancel', endTouch);
+      canvas?.removeEventListener('lostpointercapture', endTouch);
+      window.removeEventListener('blur', clearPinch);
+      canvas?.remove(); canvas = null; g = null; bg?.release(); bg = null; bgFor = null;
+      mini=null;worldCanvas=null;lightC=null;zoom.held=0;
+    },
   };
 
   function drawCamp(c: CampView, W: number, H: number, t: number) {
-    const gg = g!, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25, fs = Math.round(15 * u);
+    const gg = g!, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, fs = Math.round(15 * u);
+    const compact = W < 700 * dpr;
     const UH = H - insetCss * dpr; // camp scene sits above the HUD; the backdrop is full-bleed
-    gg.fillStyle = cachedGrad(`camp|${W}|${H}|${UH}`, () => {
-      const bgG = gg.createRadialGradient(W / 2, UH * 0.95, 10, W / 2, UH * 0.95, Math.max(W, H) * 0.8);
-      bgG.addColorStop(0, '#3a1e10'); bgG.addColorStop(0.4, '#140c14'); bgG.addColorStop(1, '#05040a'); return bgG;
-    }); gg.fillRect(0, 0, W, H);
-    gg.globalCompositeOperation = 'lighter'; // campfire
-    glowAt('#ff8c2a', W / 2, UH * 0.93, 140 * u * (1 + Math.sin(t * 7) * 0.06), 0.7); glowAt('#ffe08a', W / 2, UH * 0.94, 40 * u, 0.9);
-    gg.globalCompositeOperation = 'source-over';
-    drawSprite('hero', W / 2 - 70 * u, UH * 0.97, 5 * u, 1, false, heroPalette(color));
-    gg.textAlign = 'center'; gg.fillStyle = '#ffd84a'; gg.font = `900 ${Math.round(30 * u)}px sans-serif`;
-    gg.fillText('Camp', W / 2, 44 * u);
-    gg.fillStyle = '#ccc'; gg.font = `${fs}px sans-serif`;
-    gg.fillText(`Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u);
-    if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = `bold ${Math.round(fs * 0.9)}px sans-serif`;
-      gg.fillText(`You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, UH * 0.82); }
-    const rowH = 30 * u, lw = Math.min(W - 40 * u, 620 * u), lx = W / 2 - lw / 2;
+    const V=pixelViewport(W,H),scale=V.scale;
+    if(!worldCanvas)worldCanvas=document.createElement('canvas');
+    if(worldCanvas.width!==V.width||worldCanvas.height!==V.height){worldCanvas.width=V.width;worldCanvas.height=V.height;}
+    const cg=worldCanvas.getContext('2d')!;cg.imageSmoothingEnabled=false;cg.fillStyle='#15111f';cg.fillRect(0,0,V.width,V.height);
+    const ground=Math.round(UH/scale*.84);
+    for(let yy=ground;yy<V.height;yy+=16)for(let xx=0;xx<V.width;xx+=16){cg.fillStyle=hash(xx,yy)>.5?'#302737':'#2a2332';cg.fillRect(xx,yy,15,15);}
+    pixelDisc(cg,V.width/2,UH/scale*.93,32,'#633b3033',.4);pixelDisc(cg,V.width/2,UH/scale*.93,20,'#b86a3633',.4);
+    const fc=flameSprite(t),hx=Math.round(V.width/2-20),hy=Math.round(UH/scale*.95);
+    const hero=sprite2('hero','idle',0,heroPalette(color));cg.drawImage(hero,hx-9,hy-18);
+    cg.fillStyle='#704830';cg.fillRect(Math.round(V.width/2)-5,hy-2,11,2);cg.drawImage(fc,Math.round(V.width/2)-5,hy-10);
+    gg.imageSmoothingEnabled=false;gg.drawImage(worldCanvas,0,0,V.width*scale,V.height*scale);
+    pixelText(gg,'CAMP',W/2,18*u,Math.max(3,Math.round(4*dpr)),'#ffd84a',true);
+    gg.textAlign='center';
+    gg.fillStyle = '#ccc'; gg.font = pixelFont(fs);
+    fillText(gg, `Bank ● ${c.bank}   ·   Best floor ${c.bestFloor}   ·   Runs ${c.runs}`, W / 2, 70 * u, W - 24 * u);
+    if (c.lastDeath) { gg.fillStyle = '#ff8a8a'; gg.font = pixelFont(Math.round(fs * 0.9));
+      fillText(gg, compact ? `Fell on floor ${c.lastDeath.floor}. Coins banked.` : `You fell on floor ${c.lastDeath.floor}. Every coin was banked. Cool down, level up, go again.`, W / 2, UH * 0.82, W - 24 * u); }
+    const rowH = (compact ? 48 : 32) * u, lw = Math.min(W - 24 * u, 620 * u), lx = W / 2 - lw / 2;
     const maxRows = Math.max(4, Math.floor((UH * 0.72 - 90 * u) / rowH));
     const first = Math.max(0, Math.min(c.sel - Math.floor(maxRows / 2), c.rows.length - maxRows));
     campHits = [];
     c.rows.slice(first, first + maxRows).forEach((r, i) => {
       const idx = first + i, y = 90 * u + i * rowH, sel = idx === c.sel;
       campHits.push({ x: lx, y, w: lw, h: rowH - 4 * u, row: idx });
-      gg.fillStyle = sel ? 'rgba(255,216,74,0.18)' : 'rgba(0,0,0,0.45)'; gg.fillRect(lx, y, lw, rowH - 4 * u);
-      if (sel) { gg.strokeStyle = '#ffd84a'; gg.lineWidth = 2; gg.strokeRect(lx, y, lw, rowH - 4 * u); }
-      gg.textAlign = 'left'; gg.font = `bold ${fs}px sans-serif`;
-      gg.fillStyle = r.kind === 'start' ? '#7dff5a' : '#fff';
-      gg.fillText(r.name, lx + 10 * u, y + rowH * 0.62);
-      gg.font = `${Math.round(12 * u)}px sans-serif`; gg.fillStyle = '#aaa';
-      gg.fillText(r.desc, lx + 190 * u, y + rowH * 0.62, lw - 330 * u);
+      pixelPanel(gg,lx,y,lw,rowH-4*u,sel?'#ffd84a':'#493c59',sel?'#493925ee':'#181320ee',dpr);
+      if(sel){gg.fillStyle='#ffd84a';gg.fillRect(lx+4*dpr,y+7*dpr,2*dpr,Math.max(2*dpr,rowH-18*dpr));}
+      const baseline = y + 20 * u, costX = lx + lw - 10 * u, levelX = costX - 86 * u;
+      let descRight = lx + lw - 10 * u;
       gg.textAlign = 'right';
       if (r.kind === 'upgrade') {
-        gg.fillStyle = '#ddd'; gg.fillText(`Lv ${r.level}/${r.max}`, lx + lw - 90 * u, y + rowH * 0.62);
+        gg.font = pixelFont(Math.round(12 * u));
+        const level = `Lv ${r.level}/${r.max}`;
+        descRight = levelX - textW(gg, level) - 12 * u;
+        gg.fillStyle = '#ddd'; fillText(gg, level, levelX, baseline);
         gg.fillStyle = r.cost === undefined ? '#7dff5a' : r.affordable ? '#ffd84a' : '#775';
-        gg.font = `bold ${Math.round(13 * u)}px sans-serif`;
-        gg.fillText(r.cost === undefined ? 'MAX' : `● ${r.cost}`, lx + lw - 10 * u, y + rowH * 0.62);
+        gg.font = pixelFont(Math.round(13 * u));
+        fillText(gg, r.cost === undefined ? 'MAX' : `● ${r.cost}`, costX, baseline, 76 * u);
       }
+      gg.textAlign = 'left'; gg.font = pixelFont(fs);
+      gg.fillStyle = r.kind === 'start' ? '#7dff5a' : '#fff';
+      fillText(gg, r.name, lx + 10 * u, baseline, compact ? descRight - lx - 10 * u : 170 * u);
+      gg.font = pixelFont(Math.round(12 * u)); gg.fillStyle = '#aaa';
+      const descX = lx + (compact ? 10 : 190) * u;
+      fillText(gg, r.desc, descX, compact ? y + 37 * u : baseline, (compact ? lx + lw - 10 * u : descRight) - descX);
     });
-    gg.textAlign = 'center'; gg.font = `${fs}px sans-serif`; gg.fillStyle = '#bbb';
+    gg.textAlign = 'center'; gg.font = pixelFont(fs); gg.fillStyle = '#bbb';
     const left = Math.ceil(c.autoStartLeft);
-    gg.fillText(`Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u);
+    if (compact) {
+      gg.font = pixelFont(12 * u);
+      fillText(gg, 'Tap a row to buy · B to begin', W / 2, UH - 30 * u, W - 24 * u);
+      fillText(gg, `D-pad + Z · Auto-start in ${left}s`, W / 2, UH - 14 * u, W - 24 * u);
+    } else fillText(gg, `Tap a row, or D-pad + Z to buy/select · B begin  —  auto-start after ${left}s of pedaling`, W / 2, UH - 18 * u, W - 24 * u);
     gg.textAlign = 'left';
   }
 
   function bar(x: number, y: number, w: number, h: number, frac: number, col: string, label: string) {
     const gg = g!;
-    gg.fillStyle = '#000b'; gg.fillRect(x - 2, y - 2, w + 4, h + 4);
-    gg.fillStyle = '#2a2433'; gg.fillRect(x, y, w, h);
-    gg.fillStyle = col; gg.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h);
-    gg.fillStyle = 'rgba(255,255,255,0.18)'; gg.fillRect(x, y, w * Math.max(0, Math.min(1, frac)), h * 0.35);
-    gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(h * 0.75)}px sans-serif`; gg.fillText(label, x + 6, y + h * 0.78);
+    pixelPanel(gg,x-2*dpr,y-2*dpr,w+4*dpr,h+4*dpr,'#82718f','#171320ee',dpr);
+    pixelMeter(gg,x,y,w,h,frac,col,dpr);
+    gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(h * 0.75)); fillText(gg, label, x + 6, y + h * 0.78, w - 12);
   }
 
   /** Dev measurement: boxes the dungeon HUD covers this frame (device px); read by dev-shot to report HUD area. */
   function drawHud(s: DungeonSnapshot, W: number, H: number, _bike: Readonly<BikeState>) {
     hudBoxes = []; (globalThis as { __dgHud?: unknown }).__dgHud = { boxes: hudBoxes, W, H };
-    const gg = g!, p = s.player, u = Math.max(1, Math.min(W, H) / 600) * dpr * 0.75 + 0.25;
+    const gg = g!, p = s.player, u = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr;
     const L = 14 * u, fs = Math.round(13 * u);
     gg.textAlign = 'left';
     // compact status panel (top-left): thin HP + XP bars, then Lv/floor, coins, potions and the Second Wind pip on one line.
@@ -724,18 +585,16 @@ export function createRenderer(): GameRenderer {
     const hu = (Math.max(1, Math.min(W, H) / dpr / 600) * 0.75 + 0.25) * dpr, PW = 150 * hu;
     {
       const x = L, y = L, hpLow = p.hp < p.maxHp * 0.4;
-      gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
-      gg.fillStyle = '#2a2433'; gg.fillRect(x, y, PW, 11 * hu);
-      gg.fillStyle = hpLow ? '#e44' : '#3c3'; gg.fillRect(x, y, PW * Math.max(0, Math.min(1, p.hp / p.maxHp)), 11 * hu);
-      gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(9 * hu)}px sans-serif`;
-      gg.fillText(`${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
-      gg.fillStyle = '#2a2433'; gg.fillRect(x, y + 13 * hu, PW, 3 * hu);
-      gg.fillStyle = '#b06cff'; gg.fillRect(x, y + 13 * hu, PW * Math.max(0, Math.min(1, p.xp / p.xpNext)), 3 * hu);
-      const ly = y + 28 * hu; gg.font = `bold ${Math.round(10 * hu)}px sans-serif`;
-      gg.fillStyle = '#fff'; gg.fillText(`Lv${p.level} F${s.floor}`, x, ly);
+      pixelPanel(gg,x-3*hu,y-3*hu,PW+6*hu,38*hu,'#746481','#15111fee',dpr); hudBox(x - 3 * hu, y - 3 * hu, PW + 6 * hu, 38 * hu);
+      pixelMeter(gg,x,y,PW,11*hu,p.hp/p.maxHp,hpLow?'#e96d75':'#68ba78',dpr);
+      gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(9 * hu));
+      fillText(gg, `${Math.min(Math.round(p.maxHp), Math.ceil(Math.max(0, p.hp)))} / ${Math.round(p.maxHp)}`, x + 4 * hu, y + 8.5 * hu);
+      pixelMeter(gg,x,y+13*hu,PW,3*hu,p.xp/p.xpNext,'#b58ad9',dpr);
+      const ly = y + 28 * hu; gg.font = pixelFont(Math.round(10 * hu));
+      gg.fillStyle = '#fff'; fillText(gg, `Lv${p.level} F${s.floor}`, x, ly);
       const cp = Math.max(0, 1 - (s.t - coinPulseT) / 0.25);
-      if (cp > 0) { gg.save(); gg.font = `bold ${Math.round(10 * hu * (1 + 0.35 * cp))}px sans-serif`; }
-      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; gg.fillText(`● ${p.coins}`, x + 44 * hu, ly);
+      if (cp > 0) { gg.save(); gg.font = pixelFont(Math.round(10 * hu * (1 + 0.35 * cp))); }
+      gg.fillStyle = cp > 0 ? '#fff4b0' : '#ffd84a'; fillText(gg, `● ${p.coins}`, x + 44 * hu, ly);
       if (cp > 0) gg.restore();
       const tx = x + 47 * hu, ty = ly - 3.5 * hu;
       for (let i = flyers.length - 1; i >= 0; i--) {
@@ -751,7 +610,7 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = 'rgba(0,0,0,0.55)'; gg.fillRect(sx, sy, w, h);
       gg.fillStyle = ready ? '#ffe08a' : desaturate('#ffe08a', 0.7, 0.35); gg.fillRect(sx, sy, w * Math.min(1, sw), h);
       if (ready || p.secondWindFlash > 0) { gg.strokeStyle = `rgba(255,224,138,${ready ? 0.5 + 0.4 * Math.sin(s.t * 4) : p.secondWindFlash})`; gg.lineWidth = Math.max(1, hu); gg.strokeRect(sx - 1, sy - 1, w + 2, h + 2); }
-      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = `bold ${Math.round(7 * hu)}px sans-serif`; gg.textAlign = 'center'; gg.fillText('2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
+      gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = pixelFont(Math.round(7 * hu)); gg.textAlign = 'center'; fillText(gg, '2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
     // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
     // Actions and cooldowns live on the shell's controller-overlay diamond (also the touch target).
@@ -759,38 +618,37 @@ export function createRenderer(): GameRenderer {
     actionHits = [];
     {
       const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card, cy = R.y + R.h / 2;
-      gg.fillStyle = 'rgba(10,8,16,0.72)'; gg.fillRect(R.x, R.y, R.w, R.h); hudBox(R.x, R.y, R.w, R.h);
-      gg.strokeStyle = st.color; gg.lineWidth = Math.max(1, u); gg.strokeRect(R.x, R.y, R.w, R.h);
+      pixelPanel(gg,R.x,R.y,R.w,R.h,st.color,'#171320ee',dpr); hudBox(R.x, R.y, R.w, R.h);
+
       // stance badge: its colour with the initial; swapping shows the pick's colour
       const pickC = st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.color ?? st.color : st.color;
       gg.fillStyle = pickC; gg.fillRect(R.x + 2 * u, R.y + 2 * u, R.h - 4 * u, R.h - 4 * u);
-      gg.fillStyle = '#0a0810'; gg.font = `900 ${Math.round(13 * u)}px sans-serif`; gg.textAlign = 'center';
-      gg.fillText((st.swapping ? s.stance.list.find((x) => x.id === st.swapping)?.name ?? st.name : st.name)[0], R.x + R.h / 2, cy + 4.5 * u);
+      gg.fillStyle = '#0a0810'; gg.font = pixelFont(Math.round(13 * u)); gg.textAlign = 'center';
+      pixelText(gg,(st.swapping?s.stance.list.find(x=>x.id===st.swapping)?.name??st.name:st.name)[0],R.x+R.h/2,cy-7*dpr,2*dpr,'#15111f',true);
       weaponIcon(gg, s.weapon, R.x + R.h + 11 * u, cy, 16 * u, wcol);
-      gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
+      gg.textAlign = 'left'; gg.fillStyle = '#eee'; gg.font = pixelFont(Math.round(11 * u));
       const elem = ` ${s.weapon.element}`;
       // weapon name (rarity colour, ellipsized to fit) then Lv/element
       const tail = ` Lv${s.weapon.level}${s.weapon.plus ? '+' + s.weapon.plus : ''}${elem}${st.styleOn ? ' ✓' : ''}`;
       const tx = R.x + R.h + 23 * u, room = R.x + R.w - 4 * u - tx;
-      gg.font = `${Math.round(10.5 * u)}px sans-serif`; const tw = textW(gg, tail);
-      gg.font = `bold ${Math.round(11 * u)}px sans-serif`;
-      let name = s.weapon.name; const nameRoom = Math.max(0, room - tw);
-      if (textW(gg, name) > nameRoom) { while (name.length > 1 && textW(gg, name + '…') > nameRoom) name = name.slice(0, -1); name = name.trimEnd() + '…'; }
-      gg.fillStyle = wcol; gg.fillText(name, tx, cy + 4 * u);
+      gg.font = pixelFont(Math.round(10.5 * u)); const tw = textW(gg, tail);
+      gg.font = pixelFont(Math.round(11 * u));
+      const nameRoom = Math.max(0, room - tw), name = fitPixelText(s.weapon.name, fontScale(Math.round(11 * u)), nameRoom);
+      gg.fillStyle = wcol; fillText(gg, name, tx, cy + 4 * u);
       const nx = tx + textW(gg, name);
-      gg.font = `${Math.round(10.5 * u)}px sans-serif`; gg.fillStyle = '#ccc'; gg.fillText(tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
+      gg.font = pixelFont(Math.round(10.5 * u)); gg.fillStyle = '#ccc'; fillText(gg, tail, nx, cy + 4 * u, Math.max(1, R.x + R.w - 4 * u - nx));
       // other stances: weapon icon + level; the D-pad pick fills, the AI suggestion pulses
       const others = s.stance.list.filter((x) => x.id !== st.id), C = LY.stance, n = Math.max(1, others.length);
       const cw = (C.w - (n - 1) * 3 * u) / n;
       others.forEach((o, k) => {
         const x = C.x + k * (cw + 3 * u), picked = st.swapping === o.id, sug = st.suggest === o.id;
         hudBox(x, C.y, cw, C.h);
-        gg.fillStyle = picked ? o.color : 'rgba(10,8,16,0.6)'; gg.fillRect(x, C.y, cw, C.h);
+        pixelPanel(gg,x,C.y,cw,C.h,o.color,picked?o.color:'#171320ee',dpr);
         gg.globalAlpha = sug && !picked ? 0.6 + 0.4 * Math.sin(s.t * 5) : 1;
-        gg.strokeStyle = o.color; gg.lineWidth = sug || picked ? 2 : 1; gg.strokeRect(x, C.y, cw, C.h);
-        if (o.base) weaponIcon(gg, { base: o.base as Weapon['base'] }, x + cw * 0.36, C.y + C.h / 2, C.h * 0.55, picked ? '#0a0810' : o.color);
-        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = `bold ${Math.round(9 * u)}px sans-serif`; gg.textAlign = 'right';
-        gg.fillText(o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
+        if(sug||picked){gg.fillStyle=o.color;gg.fillRect(Math.round(x+cw/2)-2*dpr,C.y+2*dpr,4*dpr,dpr);}
+        if (o.base) weaponIcon(gg, {base:o.base as Weapon['base'],element:o.element,rarity:o.rarity as Weapon['rarity'],variant:o.variant,unique:o.unique,plus:o.plus}, x + cw * 0.36, C.y + C.h / 2, C.h * 0.55, picked ? '#0a0810' : o.color);
+        gg.fillStyle = picked ? '#0a0810' : '#fff'; gg.font = pixelFont(Math.round(9 * u)); gg.textAlign = 'right';
+        fillText(gg, o.level ? String(o.level) : '–', x + cw - 2 * u, C.y + C.h - 3 * u); gg.textAlign = 'left'; gg.globalAlpha = 1;
       });
       // equipped gear: slot icon + item level, border/tint in the item's rarity colour
       let gx = C.x + C.w + 6 * u;
@@ -798,30 +656,30 @@ export function createRenderer(): GameRenderer {
         const it = s.gear[sl]; if (!it) continue;
         const gw = C.h, rc = RARITY_COLORS[it.rarity];
         hudBox(gx, C.y, gw, C.h);
-        gg.fillStyle = 'rgba(10,8,16,0.6)'; gg.fillRect(gx, C.y, gw, C.h);
-        gg.strokeStyle = rc; gg.lineWidth = Math.max(1, u); gg.strokeRect(gx, C.y, gw, C.h);
+        pixelPanel(gg,gx,C.y,gw,C.h,rc,'#171320ee',dpr);
         gearIcon(gg, sl, gx + gw * 0.4, C.y + C.h * 0.42, C.h * 0.5, rc);
-        gg.fillStyle = '#fff'; gg.font = `bold ${Math.round(8.5 * u)}px sans-serif`; gg.textAlign = 'right';
-        gg.fillText(String(it.level), gx + gw - 2 * u, C.y + C.h - 2.5 * u); gg.textAlign = 'left';
+        gg.fillStyle = '#fff'; gg.font = pixelFont(Math.round(8.5 * u)); gg.textAlign = 'right';
+        fillText(gg, String(it.level), gx + gw - 2 * u, C.y + C.h - 2.5 * u); gg.textAlign = 'left';
         gx += gw + 3 * u;
       }
     }
 
     // active shrine banner
     const act = s.shrines.find((x) => x.state === 'active');
+    const infoTop=s.boss?.active?bossHudLayout(W,H,insetCss*dpr,hu).y+78*hu:L+28*hu;
     if (act) {
-      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by = L + (s.boss?.active ? 78 : 0) * u + 28 * u;
+      const bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2, by=infoTop;
       bar(bx, by, bw, 14 * u, act.progress, SHRINE_COLORS[act.kind], '');
-      gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
-      gg.fillText(`${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
+      gg.fillStyle = '#fff'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
+      fillText(gg, `${act.label} — ${Math.ceil(act.leftS)}s`, W / 2, by - 6 * u); gg.textAlign = 'left';
     }
     // active curse
     if (s.curse) {
       const c = s.curse, bw = Math.min(W * 0.4, 420 * u), bx = W / 2 - bw / 2;
-      const by = L + (s.boss?.active ? 78 : 0) * u + (act ? 50 : 0) * u + 28 * u;
+      const by=infoTop+(act?50*hu:0);
       bar(bx, by, bw, 14 * u, c.left / c.total, c.color, '');
-      gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
-      gg.fillText(`☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
+      gg.fillStyle = c.color; gg.textAlign = 'center'; gg.font = pixelFont(fs);
+      fillText(gg, `☠ ${c.name}: ${c.desc} · ${Math.ceil(c.left)}s`, W / 2, by - 6 * u, bw + 60 * u); gg.textAlign = 'left';
     }
     // big banners (uniques, curses)
     let bannerRow = 0; // stack banners that overlap in time (e.g. EXPLORE straight into AMBUSH), newest lowest
@@ -829,9 +687,10 @@ export function createRenderer(): GameRenderer {
       const k2 = (s.t - f.t0) / f.life; if (k2 < 0 || k2 > 1) continue;
       const row = bannerRow++;
       gg.globalAlpha = Math.min(1, (1 - k2) * 3); gg.textAlign = 'center';
-      gg.font = `900 ${Math.round(30 * u)}px sans-serif`; gg.lineWidth = 6; gg.strokeStyle = '#000';
-      const by = H * 0.3 + row * 40 * u - Math.min(1, k2 * 6) * 10 * u;
-      gg.strokeText(f.text!, W / 2, by); gg.fillStyle = f.color; gg.fillText(f.text!, W / 2, by);
+      gg.font = pixelFont(Math.round(30 * u)); gg.lineWidth = 6; gg.strokeStyle = '#000';
+      const by = LY.playH * 0.3 + row * 40 * u - Math.min(1, k2 * 6) * 10 * u;
+      if(/^[A-Z0-9 ]{1,24}$/.test(f.text!)){const q=Math.max(1,Math.min(Math.round(4*dpr),Math.floor((W-40*hu)/(f.text!.length*6-1))));pixelText(gg,f.text!,W/2+q,by-7*q+q,q,'#100d1c',true);pixelText(gg,f.text!,W/2,by-7*q,q,f.color,true);}
+      else{strokeText(gg, f.text!,W/2,by,W-40*hu);gg.fillStyle=f.color;fillText(gg, f.text!,W/2,by,W-40*hu);}
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // action-ready pulses (screen space, around the hero)
@@ -839,16 +698,16 @@ export function createRenderer(): GameRenderer {
       const q = pulses[i], k = (s.t - q.t0) / 0.7;
       if (k < 0 || k > 1) { pulses.splice(i, 1); continue; }
       gg.strokeStyle = q.color; gg.globalAlpha = 1 - k; gg.lineWidth = 3 * u;
-      gg.beginPath(); gg.arc(heroScr.x, heroScr.y, (18 + 40 * k) * u, 0, Math.PI * 2); gg.stroke();
-      gg.font = `bold ${Math.round(11 * u)}px sans-serif`; gg.textAlign = 'center'; gg.lineWidth = 3; gg.strokeStyle = '#000';
-      gg.strokeText(q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; gg.fillText(q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
+      gg.save();gg.scale(pixelScale,pixelScale);pixelRing(gg,heroScr.x/pixelScale,heroScr.y/pixelScale,(18+40*k)*u/pixelScale,q.color,true);gg.restore();
+      gg.font = pixelFont(Math.round(11 * u)); gg.textAlign = 'center'; gg.lineWidth = 3; gg.strokeStyle = '#000';
+      strokeText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u); gg.fillStyle = q.color; fillText(gg, q.label, heroScr.x, heroScr.y - (34 + 14 * k) * u);
       gg.globalAlpha = 1; gg.textAlign = 'left';
     }
     // toasts
-    gg.font = `bold ${Math.round(11 * hu)}px sans-serif`;
+    gg.font = pixelFont(Math.round(11 * hu));
     s.toasts.forEach((tt, i) => {
       const age = s.t - tt.t0; gg.globalAlpha = Math.max(0, Math.min(1, (6 - age) / 1.5));
-      gg.lineWidth = 3; gg.strokeStyle = '#000'; gg.strokeText(tt.text, L, L + (52 + i * 15) * hu); gg.fillStyle = tt.color; gg.fillText(tt.text, L, L + (52 + i * 15) * hu);
+      gg.lineWidth = 3; gg.strokeStyle = '#000'; strokeText(gg, tt.text, L, L + (52 + i * 15) * hu, W - 2 * L); gg.fillStyle = tt.color; fillText(gg, tt.text, L, L + (52 + i * 15) * hu, W - 2 * L);
     });
     gg.globalAlpha = 1;
 
@@ -868,7 +727,7 @@ export function createRenderer(): GameRenderer {
     const br = w.rooms.find((r) => r.boss);
     if (br?.seen) { m.fillStyle = s.stairsOpen ? '#ffd84a' : '#a07a2a'; m.fillRect((w.stairs.x - 1) * mm, (w.stairs.y - 1) * mm, 2 * mm, 2 * mm); }
     const mw = mini.width * mScale, mh = mini.height * mScale, mx0 = W - mw - L, my0 = L, mk = mm * mScale;
-    gg.fillStyle = 'rgba(0,0,0,0.35)'; gg.fillRect(mx0 - 3, my0 - 3, mw + 6, mh + 6); hudBox(mx0 - 3, my0 - 3, mw + 6, mh + 6);
+    pixelPanel(gg,mx0-3,my0-3,mw+6,mh+6,'#655572','#171320cc',dpr); hudBox(mx0 - 3, my0 - 3, mw + 6, mh + 6);
     gg.globalAlpha = 0.8; gg.drawImage(mini, mx0, my0, mw, mh); gg.globalAlpha = 1;
     for (const e of s.enemies) if (e.kind === 'boss' || w.rooms[s.room] && e.x >= w.rooms[s.room].x0 && e.x <= w.rooms[s.room].x0 + w.rooms[s.room].w && e.y >= w.rooms[s.room].y0 && e.y <= w.rooms[s.room].y0 + w.rooms[s.room].h) {
       gg.fillStyle = ENEMY_TINT[e.kind] ?? '#e55'; gg.fillRect(mx0 + e.x * mk - 1, my0 + e.y * mk - 1, 2.5 * u, 2.5 * u);
@@ -876,18 +735,18 @@ export function createRenderer(): GameRenderer {
     gg.fillStyle = color; gg.fillRect(mx0 + p.x * mk - 2 * u, my0 + p.y * mk - 2 * u, 4 * u, 4 * u);
 
     if (s.boss && s.boss.active) {
-      const bw0 = Math.min(W * 0.4, 420 * u), bx0 = Math.max(W / 2 - bw0 / 2, L + PW + 12 * hu), bw = Math.min(bw0, W - bx0 - L - 130 * u), bx = bx0, by = L;
+      const BR=bossHudLayout(W,H,insetCss*dpr,hu),bw=BR.w,bx=BR.x,by=BR.y;
       const B = s.boss, exp = B.cycle === 'exposed', wind = B.cycle === 'windup';
-      hudBox(bx - 2, by - 2, bw + 4, 48 * u);
-      bar(bx, by, bw, 18 * u, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
-      gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2, 18 * u); // phase marks
-      gg.textAlign = 'center'; gg.font = `bold ${Math.round(13 * u)}px sans-serif`;
+      hudBox(bx,by,bw,BR.h);
+      bar(bx, by, bw, 18 * hu, B.hp / B.maxHp, exp ? '#ffd84a' : B.tide > 0 ? '#9a5ab0' : '#c0a', `${B.name}  ·  phase ${B.phase}`);
+      gg.fillStyle = '#fff'; for (const sp of B.splits) gg.fillRect(bx + bw * sp - 1, by, 2,18*hu); // phase marks
+      gg.textAlign = 'center'; gg.font = pixelFont(Math.round(13 * u));
       gg.fillStyle = exp ? '#ffe08a' : wind ? '#ff7a2a' : B.tide > 0 ? '#7dff5a' : '#ddd';
-      gg.fillText(exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack', W / 2, by + 40 * u);
+      fillText(gg, exp ? 'EXPOSED: x2 damage. Sprint and Strike now!' : wind ? 'Big attack coming: Ward to parry' : B.cycle === 'stagger' ? 'Staggered!' : B.tide > 0 ? `Turning Tide: boss takes +${Math.round(B.tide * 100)}%` : 'Watch for the big attack',bx+bw/2,by+36*hu,bw);
       gg.textAlign = 'left';
     } else if (s.stairsOpen) {
-      gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = `bold ${fs}px sans-serif`;
-      gg.fillText('Stairs open — descend!', W / 2, L + 14 * u); gg.textAlign = 'left';
+      gg.fillStyle = '#ffd84a'; gg.textAlign = 'center'; gg.font = pixelFont(fs);
+      fillText(gg, 'Stairs open — descend!', W / 2, L + 14 * u); gg.textAlign = 'left';
     }
   }
 }

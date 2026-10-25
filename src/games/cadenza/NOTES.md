@@ -10,7 +10,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
   (other drops ride as a hold); breaks ≥25/15/12 s, handovers 36/24/20 s, 40/30/25 s rest after 150/180/210 s of work. Rests
   are trimmed around sprints, so the 3-2-1 runs at the end of a rest; rests < 8 s / work slivers < 6 s fold away.
   `effortAt`: countdown opens the ceiling to Z5 (floor unchanged); transitions judge old ∪ new band for 5 s, `band` = shown.
-- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing), controls (paddles = absolute position; D-pad/Z/A step),
+- `sim.ts`: menu (difficulty, trainer Grade|ERG, reduced flashing, ship), controls (paddles = absolute position; D-pad/Z/A step),
   judging, score/chain/Overdrive, shield/dropout/reboot, trainer effect `track`, clean zones, drops held, best scores.
   Off target: `effort.under` (eased; after a 6 s start grace) drains the shield after `underGraceS` and drives the grey-out +
   music FX; `effort.over` (above the zone ceiling; never sprints/ERG) overcharges the ship. Launches: avg power ÷ sprint floor
@@ -21,7 +21,7 @@ Music racer (formerly "Wattsurf"; `core/renames.ts` migrates saves/history/tunin
 Shared uniforms (`look.ts`) drive every shader. `path.ts` (rolled frame), `trackMesh.ts` (ribbon, walls, tunnels, pylons,
 arches), `blocks.ts` (glass cubes in the live track accent, value → brighter / hotter (`blockTier`, `blockColor`); mines = black spiked balls with white-hot tips; absorb-into-ship; misses crumble against a
 viscous wall and ooze back in the craft's frame; mine-hit shards; `firework`), `city.ts` + `cityPlacement.ts` (grounded towers; horizontal offsets and full road footprint clearance),
-`craft.ts` (hulls = `ship` cosmetic: triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
+`ships.ts` owns Triad/Lancer/Manta unlocks (Encore/Launch Pad); the game menu previews/selects/saves hulls and reads old shared ship selections. `craft.ts` (triad/lancer/manta, < ¾ lane; bells, beams; flash, knockback, ghost, arcs, sputter; shockwave
 `ring`; chain-tier trail gold / rainbow / wide rainbow), `gauge.ts` (power bar on the inside of both walls filling forward,
 white wall target posts 16 m ahead, red ceiling posts; `gaugeMarks` tested; rpm vs 55 in ERG), `post.ts` (bloom + lens + `gray`),
 `renderer.ts` (camera rolls with banks; launch punch-in + fling-out, streak burst, fireworks on clean zones / perfect launches),

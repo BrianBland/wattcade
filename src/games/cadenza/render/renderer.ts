@@ -8,7 +8,7 @@ import { advanceDegradation, type Degradation } from './degradation';
 import { disposeObjects } from './dispose';
 import { City } from './city';
 import { Craft, isCraftKind } from './craft';
-import { loadout } from '../../../cosmetics/unlocks';
+import { selectedShip, type ShipId } from '../ships';
 import { Gauge, gaugeMarks } from './gauge';
 import { Hud } from './hud';
 import { layout } from './layout';
@@ -34,6 +34,7 @@ export class CadenzaRenderer implements GameRenderer {
   private color = '#00f0ff';
   private windowBucket = -1; private track?: Track; private path?: Path; private world = new THREE.Group();
   private blocks?: Blocks; private city?: City; private craft?: Craft; private gauge?: Gauge;
+  private craftKind: ShipId = 'triad';
   /** Launch exit burst (0..1 by rating, decays), and queued fireworks [time, kind]. */
   private launchKick = 0; private fireworks: Array<{ at: number; c: THREE.Color }> = []; private lastRecap = -2; // -2 = not primed (never replay a recap on mount)
   private streaks?: THREE.LineSegments; private streakPos = new Float32Array(0);
@@ -57,7 +58,7 @@ export class CadenzaRenderer implements GameRenderer {
     this.renderer = r;
     this.scene.background = new THREE.Color('#05040c');
     this.scene.add(this.world, this.camera);
-    const ship = loadout(ctx.profile).ship; // the rider's equipped ship (Locker → Ships)
+    const ship = selectedShip(ctx.profile); this.craftKind = ship;
     this.craft = new Craft(this.color, isCraftKind(ship) ? ship : undefined);
     this.scene.add(this.craft.group, this.craft.trailMesh);
     this.buildStreaks();
@@ -120,6 +121,12 @@ export class CadenzaRenderer implements GameRenderer {
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as CadenzaSnapshot;
     if (!this.renderer || !this.post || !this.hud || !this.craft) return;
+    if (s.ship && s.ship !== this.craftKind) {
+      this.scene.remove(this.craft.group, this.craft.trailMesh);
+      disposeObjects(this.craft.group); disposeObjects(this.craft.trailMesh);
+      this.craftKind = s.ship; this.craft = new Craft(this.color, s.ship);
+      this.scene.add(this.craft.group, this.craft.trailMesh);
+    }
     const p = s.menu ? 0 : Math.max(0, s.p);
     if (Math.abs(p - this.lastP) > 3) this.camInit = false; // seeks snap the chase camera to the new road
     if (s.track !== this.track || Math.floor(p / 30) !== this.windowBucket) this.build(s.track, p);

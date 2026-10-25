@@ -57,9 +57,17 @@ it('starts the ride from the touch menu', () => {
   const hud = new Hud(document.body);
   hud.setSend((a) => s.sim.receive?.(a));
   hud.update(s.sim.snapshot() as CadenzaSnapshot, '#00f0ff', 0);
-  const row = document.querySelector('[data-i="4"]')!;
+  const row = document.querySelector('[data-i="5"]')!;
   expect(row.textContent).toContain('Ride');
   row.dispatchEvent(new Event('pointerdown', { bubbles: true })); s.step(1);
   expect((s.sim.snapshot() as CadenzaSnapshot).menu).toBeNull();
   hud.dispose();
+});
+
+it('preserves touch targets while the countdown fraction and track color change', () => {
+  const s=createGameSession({game:module,profile:testProfile(),input:new NullInput()});
+  const hud=new Hud(document.body),snap=s.sim.snapshot() as CadenzaSnapshot;
+  hud.update(snap,'#00f0ff',0);const row=document.querySelector('[data-i="4"]');
+  snap.menu!.left-=.01;hud.update(snap,'#ff3080',.01);
+  expect(document.querySelector('[data-i="4"]')).toBe(row);hud.dispose();
 });

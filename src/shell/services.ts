@@ -9,7 +9,7 @@ import type { Button, GameModule, InputState, MediaTimeline, Profile, Seconds, S
 import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loadOnlineAudio, ANALYSIS_SR, IdbStorage, MediaLibrary, MixEngine, analyzeInWorker, analyzeWindowInWorker, decodeMono, paletteFromImageBlob, renderSynthWav } from '../media';
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
-import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress } from '../progression';
+import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, MIN_AWARD_ACTIVE_S } from '../progression';
 import { getGame, lobbyGame } from '../games/registry';
 import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
 import type { Item, Slot } from '../cosmetics/types';
@@ -435,7 +435,7 @@ async function creditRecord(profile: Profile, record: SessionRecord): Promise<{ 
 
 // ---------- warm-up lobby (the ride behind the menus) ----------
 /** A warm-up counts (lifetime, XP) once it has this much pedalling on real devices. */
-export const WARMUP_CREDIT_S = 120;
+export const WARMUP_CREDIT_S = MIN_AWARD_ACTIVE_S;
 const PENDING_KEY = 'wattcade.pendingRide';
 let lobby: any = null;
 let lobbyMeta: { profileId: string | null; startedAt: number } = { profileId: null, startedAt: 0 };
@@ -460,7 +460,7 @@ export function takeLobbyPresses(): Set<Button> { const p = new Set(menuPressed)
 /** True if the current lobby ride is on real devices (fake demo rides never earn credit). */
 export const lobbyIsReal = (): boolean => !!lobby && !lobby.fakeBike && !!lobbyMeta.profileId;
 const activeSecondsOf = (r: SessionRecord) => r.samples.filter((x) => x.cadence > 20).length;
-const creditable = (r: SessionRecord | null): r is SessionRecord => !!r && activeSecondsOf(r) >= WARMUP_CREDIT_S;
+const creditable = (r: SessionRecord | null): r is SessionRecord => !!r && Math.min(r.durationS, activeSecondsOf(r)) >= WARMUP_CREDIT_S;
 
 /** Start (or restart) the lobby ride. `profile` null = guest (profile picker): rides, never credits. */
 export function startLobby(profile: Profile | null): SessionLike {

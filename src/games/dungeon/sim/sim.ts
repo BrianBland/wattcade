@@ -1,7 +1,7 @@
 import type { BikeState, Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
 import { generateWorld, tileAt, TILE, type EnemyKind, type Room, type ShrineKind, type World } from './world';
 import {
-  ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, rollRarity, sellValue, starterWeapon, weaponScore,
+  ELEMENT_COLORS, RARITY_COLORS, SLOTS, UNIQUES, makeGear, makeUnique, makeWeapon, pickWeaponStyle, rollRarity, sellValue, starterWeapon, weaponScore,
   type Gear, type Rarity, type Slot, type Weapon,
 } from './loot';
 import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, effortTint, refillRate, tickCooldown } from '../../../core/cooldown';
@@ -454,12 +454,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     drops.push({
       id: nextId++, kind, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, value, item,
       rarity: (item?.rarity ?? 0) as Rarity, style: item && 'base' in item ? item.base : undefined, slot: item && 'slot' in item ? item.slot : undefined,
+      ...(item && 'base' in item ? { element: item.element, variant: item.variant, unique: item.unique, plus: item.plus } : {}),
     });
   }
   function dropItem(x: number, y: number, bump: number, uniqueMult = 1) {
     const lvl = floor + (rng() < 0.3 ? 1 : 0), rar = rollRarity(rng, bump + (rng() < mods.rarityBumpChance ? 1 : 0));
     if (rng() * 100 < uniquePct() * uniqueMult * mods.dropMult) dropAt(x, y, 'weapon', 0, makeUnique(rng, lvl + 1));
-    else if (rng() < 0.45) { const st = stylesFor(stance, mods.arcanist); dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < stanceDropBias() ? st[Math.floor(rng() * st.length)] : undefined)); }
+    else if (rng() < 0.45) { const st = stylesFor(stance, mods.arcanist); dropAt(x, y, 'weapon', 0, makeWeapon(rng, lvl, rar, rng() < stanceDropBias() ? pickWeaponStyle(st, rng()) : undefined)); }
     else dropAt(x, y, 'gear', 0, makeGear(rng, lvl, rar));
   }
   function coinValue() { return Math.max(1, Math.round((1 + rng() * 2) * (1 + 0.3 * (floor - 1)) * mods.coinMult)); }
@@ -1425,12 +1426,13 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const ev: EnemyView[] = [];
     for (const e of enemies) if (e.alive && (e.kind !== 'boss' || bossStarted)) ev.push({
       id: e.id, kind: e.kind, x: e.x, y: e.y, r: e.r, hp: e.hp, maxHp: e.maxHp, exposed: e.kind === 'boss' && bs.cycle === 'exposed',
-      hurt: t - e.hurtT, face: P.x >= e.x ? 1 : -1, slowed: e.slowT > 0, dot: e.dotT > 0, tell: clamp(e.kind === 'brute' || e.kind === 'boss' ? e.state : e.tell, 0, 1),
+      hurt: t - e.hurtT, face: P.x >= e.x ? 1 : -1, slowed: e.slowT > 0, dot: e.dotT > 0,
+      tell: clamp(e.kind === 'boss' ? (bs.cycle === 'windup' ? 1 : e.state) : e.kind === 'brute' ? e.state : e.tell, 0, 1),
       variant: e.variant, elite: e.elite, shieldFrac: e.shieldMax > 0 ? e.shield / e.shieldMax : 0,
     });
     const bv: BulletView[] = bullets.map((b) => ({
       x: b.x, y: b.y, r: b.r, friendly: b.friendly, style: b.w ? b.w.base : 'enemy', color: b.w ? ELEMENT_COLORS[b.w.element] : '#ff5a5a',
-      angle: Math.atan2(b.vy, b.vx), age: b.age,
+      angle: Math.atan2(b.vy, b.vx), age: b.age, variant: b.w?.variant,
     }));
     return {
       t, phase, camp: phase === 'camp' ? campView() : null, world, floor,
@@ -1444,7 +1446,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       stance: {
         id: stance, name: STANCES[stance].name, role: STANCES[stance].role, color: STANCES[stance].color, band: STANCES[stance].band,
         styleOn, styleHidden: spinCalled(), swapping: pick ?? swapTo, ready: 1, suggest: suggestion,
-        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '', base: slots[id]?.base ?? '', level: slots[id]?.level ?? 0, rarity: slots[id]?.rarity ?? 0 })),
+        list: stancesFor(mods.arcanist).map((id) => ({ id, name: STANCES[id].name, color: STANCES[id].color, weapon: slots[id]?.name ?? '', base: slots[id]?.base ?? '', level: slots[id]?.level ?? 0, rarity: slots[id]?.rarity ?? 0, element: slots[id]?.element, variant: slots[id]?.variant, unique: slots[id]?.unique, plus: slots[id]?.plus })),
       },
       pace: { seg: dir.seg, label: DEFAULT_TARGETS[dir.seg].label, erg, segT: dir.segT },
       refill: { rate: lastRate, zone: Math.max(1, Math.min(5, ctx.bike().powerZone)) },
@@ -1494,6 +1496,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
             cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
         }),
         { button: 'left', label: 'Previous stance', active: true }, { button: 'right', label: 'Next stance', active: true },
+        { button: 'paddles', label: 'Zoom in/out: either paddle direction or pinch', shortLabel: 'Zoom ±' },
         { button: 'shiftersL', label: 'Gear' },
         { button: 'shiftersR', label: 'Gear' },
       ],

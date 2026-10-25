@@ -58,10 +58,10 @@ const RAW: Raw[] = [
   { id: 'beach', fish: 'beach', ch: 1, kind: 'fish', title: 'Beach', min: 5, e: [[2, 55], [0.17, 135], [2.83, 50]], len: effort, tr: res(25), sizes: [0.2],
     say: ['Tired. Hungry. In that order.', 'Who lit this fire?'], look: 'midday', dream: 0.52 },
   { id: 'boardwalk', ch: 1, kind: 'ride', title: 'Boardwalk', min: 5, e: [[5, 64]], len: at(6.5), tr: swell(0.5, 0.5, 3), say: ['It keeps turning left.'], look: 'jungle', dream: 0.55 },
-  { id: 'cutStones', ch: 1, kind: 'ride', title: 'Cut stones', min: 6, e: [[2, 65], [2, 70], [2, 72]], len: at(6), tr: route([[0, 1.5], [0.25, 2.5], [1, 3]], { pct: 0.5, cycles: 4 }),
+  { id: 'cutStones', ch: 1, kind: 'ride', title: 'Cut stones', min: 6, e: [[2, 65], [2, 70], [2, 72]], len: at(4.5), tr: route([[0, 1.5], [0.25, 2.5], [1, 3]], { pct: 0.5, cycles: 4 }),
     say: ['Somebody cut these.', 'Somebody a long time ago.'], look: 'jungle', dream: 0.58 },
   { id: 'monkeyMouth', ch: 1, kind: 'ride', title: 'The monkey mouth', min: 1, e: [[1, 60]], len: at(4), tr: sim(0), say: ['Well.', 'In we go.'], look: 'jungle', dream: 0.6 },
-  { id: 'temple', ch: 1, kind: 'ride', title: 'The temple', min: 3, e: [[3, 52]], len: at(3), tr: sim(0), say: ['Hello?', '...nice echo.'], look: 'jungle', dream: 0.62 },
+  { id: 'temple', ch: 1, kind: 'ride', title: 'The temple', min: 3, e: [[3, 52]], len: at(0.8), tr: sim(0), say: ['Hello?', '...nice echo.'], look: 'jungle', dream: 0.62 },
   // ---------- Evening ----------
   { id: 'cavern', ch: 2, kind: 'ride', title: 'Torchlit cavern', min: 5, e: [[2, 58], [3, 48]], len: at(7), tr: route([[0, 0], [0.38, 0], [0.48, -3], [0.75, -5], [1, -3]]), say: ['Down it is.'], look: 'lava', dream: 0.65 },
   { id: 'bridge', ch: 2, kind: 'ride', title: 'The obsidian bridge', min: 3, e: [[3, 62]], len: at(5), tr: sim(0),

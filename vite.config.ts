@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         probe: resolve(__dirname, 'probe.html'),
+        shiftProbe: resolve(__dirname, 'shift-probe.html'),
         mediaLab: resolve(__dirname, 'media-lab.html'),
         tdPreview: resolve(__dirname, 'dev/towerdefense.html'),
         seasidePlay: resolve(__dirname, 'dev/seaside-play.html'),

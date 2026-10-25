@@ -6,6 +6,7 @@ import {
 } from './codec';
 import { ControlPointQueue } from './queue';
 import { Attempt, ConnectionLifecycle, type ConnectionOptions } from '../bluetooth/lifecycle';
+import { NativeShifting, TRAINER_REQUEST_OPTIONS } from '../zwiftTrainer/native';
 
 const REFUSED = 'Trainer control refused — close Zwift, then reconnect';
 
@@ -23,6 +24,12 @@ export class FtmsTrainer implements TrainerDevice {
   private resForm: 'u8' | 's16' = 'u8';
   private resRange: [number, number, number] | undefined;
   private connected = false;
+  private native: NativeShifting | null = null;
+  private nativeSetupFailed = false;
+  private lastSim: string | undefined;
+  private lastNativeGear: number | undefined;
+  private applying = false;
+  private pendingCommand: { cmd: TrainerCommand; cp: ControlPointQueue | null; resolve: (r: Apply) => void } | undefined;
   private lifecycle: ConnectionLifecycle;
   private bikeChar: BluetoothRemoteGATTCharacteristic | null = null;
   private onDisc = () => this.handleDisconnect();
@@ -36,6 +43,8 @@ export class FtmsTrainer implements TrainerDevice {
   }
   private teardown() {
     this.connected = false; this.hasControl = false; this.latest = {}; this.resRange = undefined;
+    this.native?.close(); this.native = null; this.lastSim = undefined; this.lastNativeGear = undefined;
+    this.pendingCommand?.resolve({ ok: false, detail: 'not connected' }); this.pendingCommand = undefined;
     this.cp?.reset('closed'); this.cp = null;
     this.cpChar?.removeEventListener('characteristicvaluechanged', this.onCp); this.cpChar = null;
     this.bikeChar?.removeEventListener('characteristicvaluechanged', this.onBike); this.bikeChar = null;
@@ -46,8 +55,8 @@ export class FtmsTrainer implements TrainerDevice {
 
   /** Must be called from a user gesture. */
   static async connect(onProgress?: (step: string) => void, onLog?: (line: string) => void, options: ConnectionOptions = {}): Promise<FtmsTrainer> {
-    // Same minimal request shape as the HR monitor (known to work in Bluefy); the extra optional services were unused.
-    const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [FTMS_SERVICE] }] });
+    // Full UUIDs keep Bluefy's native picker working and grant the optional shift service.
+    const device = await navigator.bluetooth.requestDevice(TRAINER_REQUEST_OPTIONS);
     await options.beforeConnect?.();
     return FtmsTrainer.connectDevice(device, onProgress, onLog, options);
   }
@@ -87,10 +96,22 @@ export class FtmsTrainer implements TrainerDevice {
     await a.step('subscribing (bike data)', () => bike.startNotifications());
     const gotControl = await a.step('requesting control', () => this.takeControl());
     await this.readCapabilities(svc, a);
+    if (/KICKR/i.test(this.device.name ?? '') && !this.nativeSetupFailed) {
+      try { this.native = await NativeShifting.discover(server, a, line => this.log(line)); }
+      catch (e) {
+        a.check();
+        // End this GATT session before trying FTMS-only: a failed handshake/write
+        // may still be settling in the native bridge.
+        this.nativeSetupFailed = true;
+        this.log(`Native shifting setup failed (${String(e)}); reconnecting with gradient gears`);
+        throw e;
+      }
+    }
+    this.capabilities.nativeShifting = !!this.native;
     a.check();
     this.step('connected');
     this.connected = true;
-    this.emitStatus(gotControl ? { connected: true } : { connected: true, detail: REFUSED });
+    this.emitStatus(gotControl ? { connected: true, detail: this.native ? 'Native shifting · 24 gears' : undefined } : { connected: true, detail: REFUSED });
   }
 
   private hasControl = false;
@@ -109,7 +130,7 @@ export class FtmsTrainer implements TrainerDevice {
   }
 
   private async readCapabilities(svc: BluetoothRemoteGATTService, a: Attempt): Promise<void> {
-    const caps: TrainerCapabilities = { sim: true, erg: true, resistance: true };
+    const caps: TrainerCapabilities = { sim: true, erg: true, resistance: true, nativeShifting: this.capabilities.nativeShifting };
     try { const c = await a.step('finding resistance range', () => svc.getCharacteristic(CHAR.resistanceRange)); this.resRange = parseResistanceRange(await a.step('reading resistance range', () => c.readValue())); }
     catch { caps.resistance = false; }
     if (this.resRange) caps.resistanceRange = this.resRange; else caps.resistance = false;
@@ -131,7 +152,28 @@ export class FtmsTrainer implements TrainerDevice {
     for (const cb of this.sampleCbs) cb(s);
   }
 
-  async apply(cmd: TrainerCommand): Promise<Apply> {
+  apply(cmd: TrainerCommand): Promise<Apply> {
+    if (!this.connected || !this.cp) return Promise.resolve({ ok: false, detail: 'not connected' });
+    return new Promise(resolve => {
+      // Keep only the latest waiting command, so fast shifts/panic never build a backlog.
+      this.pendingCommand?.resolve({ ok: true, detail: 'superseded' });
+      this.pendingCommand = { cmd, cp: this.cp, resolve };
+      void this.drainCommands();
+    });
+  }
+  private async drainCommands(): Promise<void> {
+    if (this.applying) return;
+    this.applying = true;
+    try {
+      while (this.pendingCommand) {
+        const pending = this.pendingCommand; this.pendingCommand = undefined;
+        if (pending.cp !== this.cp) { pending.resolve({ ok: false, detail: 'not connected' }); continue; }
+        try { pending.resolve(await this.applyNow(pending.cmd)); }
+        catch (e) { pending.resolve({ ok: false, detail: String(e) }); }
+      }
+    } finally { this.applying = false; }
+  }
+  private async applyNow(cmd: TrainerCommand): Promise<Apply> {
     if (!this.connected || !this.cp) return { ok: false, detail: 'not connected' };
     const cp = this.cp;
     if (!this.hasControl && cmd.mode !== 'none' && !(await this.takeControl())) {
@@ -140,9 +182,38 @@ export class FtmsTrainer implements TrainerDevice {
       return { ok: false, detail: 'control refused' };
     }
     if (!this.connected || this.cp !== cp) return { ok: false, detail: 'not connected' };
+    if (cmd.mode !== 'sim') { this.lastSim = undefined; this.lastNativeGear = undefined; }
     switch (cmd.mode) {
       case 'none': return { ok: true, detail: 'noop' };
-      case 'sim': return this.send(encodeSetSim(cmd.gradePct, cmd.windMps, cmd.crr, cmd.cw), OP.setSim, cmd.gradePct);
+      case 'sim': {
+        const key = JSON.stringify([cmd.gradePct, cmd.windMps, cmd.crr, cmd.cw]);
+        const native = this.native;
+        const gear = cmd.virtualGear ?? 12;
+        if (native && (!Number.isInteger(gear) || gear < 1 || gear > 24)) return { ok: false, detail: 'invalid native gear' };
+        const roadChanged = !native || key !== this.lastSim;
+        if (roadChanged) {
+          const result = await this.send(encodeSetSim(cmd.gradePct, cmd.windMps, cmd.crr, cmd.cw), OP.setSim, cmd.gradePct);
+          if (!result.ok) { this.lastSim = undefined; this.lastNativeGear = undefined; return result; }
+          this.lastSim = key;
+        }
+        if (native && (roadChanged || gear !== this.lastNativeGear)) {
+          if (!this.connected || this.cp !== cp || this.native !== native) return { ok: false, detail: 'not connected' };
+          try { await native.setGear(gear); }
+          catch (e) {
+            this.log(`Native shift failed: ${String(e)}; disconnecting before recovery`);
+            this.lastSim = undefined; this.lastNativeGear = undefined;
+            if (this.cp === cp && this.native === native) {
+              this.teardown(); // stop queued writes before the async disconnect event arrives
+              this.device.gatt?.disconnect();
+            }
+            return { ok: false, detail: String(e) };
+          }
+          if (!this.connected || this.cp !== cp || this.native !== native) return { ok: false, detail: 'not connected' };
+          this.lastNativeGear = gear;
+          this.log(`Native gear ${gear}`);
+        }
+        return { ok: true, result: cmd.gradePct };
+      }
       case 'erg': return this.send(encodeSetPower(cmd.watts), OP.setPower, cmd.watts);
       case 'resistance': {
         if (!this.resRange) return { ok: false, detail: 'resistance range unknown' };

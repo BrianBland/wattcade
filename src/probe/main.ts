@@ -4,6 +4,7 @@ import { toHex, propsList, fmtLine, isPrintable } from './format';
 import { parseRideMessage, PolarityDetector, RIDE_ON } from '../devices/zwiftRide/codec';
 import { withTimeout } from '../devices/ftms/steps';
 import { RIDE_REQUEST_OPTIONS } from '../devices/zwiftRide/controller';
+import { logExport } from './exportLog';
 
 const KNOWN_SERVICES: Array<number | string> = [
   0x1800, 0x1801, 0x180a, 0x180d, 0x180f, 0x1814, 0x1816, 0x1818, 0x1826, 0x1827, 0x1828, 0xfc82, 0xfee0, 0xfee7, 0xfff0,
@@ -142,19 +143,6 @@ async function sendRideOn() {
   } catch (e) { log('ERROR', String(e)); }
 }
 
-function download() {
-  const blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
-  const a = el('a', { href: URL.createObjectURL(blob), download: `wattcade-probe-${new Date().toISOString().replace(/[:.]/g, '-')}.txt` });
-  document.body.append(a); a.click(); a.remove();
-}
-async function copy() {
-  try { await navigator.clipboard.writeText(lines.join('\n')); log('INFO', 'copied'); }
-  catch (e) {
-    const r = document.createRange(); r.selectNodeContents(logEl); const s = getSelection(); s?.removeAllRanges(); s?.addRange(r);
-    log('INFO', 'clipboard blocked; log selected, copy manually (' + e + ')');
-  }
-}
-
 async function checkSavedDevices() {
   if (typeof navigator.bluetooth?.getDevices !== 'function') {
     log('SAVED', 'getDevices() is not exposed by this browser'); return;
@@ -246,7 +234,7 @@ function build() {
     btn('Check saved devices', checkSavedDevices),
     savedSelect, btn('Connect selected saved device', () => connectSavedDevice()),
     btn('Discover then connect saved device', () => connectSavedDevice(true)),
-    btn('Copy log', copy), btn('Download log', download),
+    logExport(() => lines.join('\n') + '\n', 'wattcade-probe.txt'),
     btn('Clear', () => { lines.length = 0; logEl.textContent = ''; }),
     parsedEl, logEl, el('h3', { textContent: 'Services / characteristics' }), treeEl,
   );

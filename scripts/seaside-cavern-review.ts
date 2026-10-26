@@ -1,6 +1,6 @@
 // Chapter 3 review stills (#192, #193), from the real game renderer on the fake bike: every cavern and gate shot.
 //   npx tsx scripts/seaside-cavern-review.ts [shot names…] [--w 1180 --h 820 --inset 140]
-// Stills go to $OUT (default /tmp/seaside-cavern; never committed). CHROMIUM_PATH selects a local browser.
+// RUNES=<style id> picks the glyph style. Stills go to $OUT (default /tmp/seaside-cavern; never committed). CHROMIUM_PATH selects a local browser.
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';
@@ -29,7 +29,7 @@ try {
     const t0 = Date.now();
     const page = await browser.newPage({ viewport: { width: W, height: H } });
     page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
-    await page.goto(`${base}/dev/seaside-play.html?scene=${scene}&progress=${progress}&speed=0&inset=${inset}&cash=150&creel=1`);
+    await page.goto(`${base}/dev/seaside-play.html?scene=${scene}&progress=${progress}&speed=0&inset=${inset}&cash=150&creel=1${process.env.RUNES ? `&runes=${process.env.RUNES}` : ''}`);
     await page.waitForFunction(() => (window as any).__renderer?.view, null, { timeout: 120_000 });
     await page.evaluate(async (n) => { const w = window as any; for (let i = 0; i < n; i += 15) { w.__session.step(Math.min(15, n - i)); await new Promise((r) => requestAnimationFrame(r)); } }, Math.round(ride * 30));
     await page.evaluate(async () => {

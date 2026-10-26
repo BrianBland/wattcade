@@ -1,17 +1,19 @@
 // Dev harness: ride the Seaside story (placeholder scenes) on the fake bike without the shell.
 //   /dev/seaside-play.html?script=z2&speed=30&scene=drill1&inset=120
-// ?scene=<id>[&progress=0..1] starts there (as if resuming a save); ?menu=1 shows the chapter-select menu; keys 1–5 set ×1/×10/×30/×60/×120.
+// ?runes=runes|ogham|cuneiform|cartouche|sigil picks the gate's glyph style. ?scene=<id>[&progress=0..1] starts there (as if resuming a save); ?menu=1 shows the chapter-select menu; keys 1–5 set ×1/×10/×30/×60/×120.
 // Fishing (#187): ?scene=turnout1 (pier, beach, magma); arrows / N M pick a spot, L = A (cast, strike). window.__session for scripts.
 import { createGameSession, testProfile } from '../src/core';
 import { InputHub } from '../src/input';
 import { module } from '../src/games/seaside';
 import { migrateEconomy } from '../src/games/seaside/sim/economy';
+import { setRuneStyle } from '../src/games/seaside/render/runes';
 
 const q = new URLSearchParams(location.search);
 const script = q.get('script') ?? 'z2';
 const inset = Number(q.get('inset') ?? 120);
 let speed = Number(q.get('speed') ?? 1);
 const scene = q.get('scene');
+setRuneStyle(q.get('runes')); // ?runes=<style id> (Chapter 3b glyph review)
 // Optional shop-review fixtures. Real play always loads the rider's own save.
 const economy = migrateEconomy({ cash: Number(q.get('cash') ?? 0) * 100, creel: q.has('creel') ? [{ id: 'perch', kg: 0.65, credit: 1 }, { id: 'rockfish', kg: 2.1, credit: 0.5 }] : [] });
 const save = { economy, v: 1, rides: q.get('menu') ? 1 : 0, chapterSelect: !!q.get('menu'), checkpoint: scene ? { sceneId: scene, progress: Number(q.get('progress') ?? 0) } : null };

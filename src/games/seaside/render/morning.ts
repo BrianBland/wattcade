@@ -13,6 +13,7 @@ import { coastRoute, edgeD, pierGeom, roadX, SEA_LEVEL } from '../world/coastLay
 import { groundAt } from '../world/coast';
 import { FishingRig } from './fishingRig';
 import { bigOneView, morningShot, type MorningShot, type V3 } from './morningShots';
+import { EVENING } from './flightShots';
 import { STORY } from '../sim/story';
 
 const BIG_PLAN_S = STORY.find((s) => s.id === 'bigOne')!.planS;
@@ -172,7 +173,8 @@ export class MorningSet {
       const deep = mixHex(0x1f8a86, 0x0a3562, fx.dark), col = mixHex(deep, 0x000000, fx.dark ** 2 * 0.9);
       const u = fx.under;
       atmos = { fog: mixHex(sky.fog, col, u), density: lerp(sky.fogDensity, 0.05, u), zenith: mixHex(sky.zenith, col, u), horizon: mixHex(sky.horizon, col, u), sunI: lerp(sky.sunI, 0.6 * (1 - fx.dark), u), hemiI: lerp(sky.hemiI, 0.5 * (1 - fx.dark * 0.8), u) };
-    } else if (fog > 0) {
+    } else if (snap.sceneId === 'sunset') atmos = { ...EVENING }; // the wings set you down in the evening (#195 dresses it)
+    else if (fog > 0) {
       const f = fog ** 1.4, white = 0xe7ecec;
       atmos = { fog: mixHex(sky.fog, white, fog), density: lerp(sky.fogDensity, 0.05, f), zenith: mixHex(sky.zenith, white, fog), horizon: mixHex(sky.horizon, white, fog), ink: 1 - f };
     }

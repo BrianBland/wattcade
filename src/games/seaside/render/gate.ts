@@ -23,7 +23,7 @@ const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 export const GATE_SCENES = new Set(['toGate', 'drill2', 'fall']);
 
 /** A painted Earth (equirectangular canvas: oceans, land, desert, ice caps) and its clouds. */
-function earthTextures(): { ground: THREE.CanvasTexture; clouds: THREE.CanvasTexture } {
+export function earthTextures(): { ground: THREE.CanvasTexture; clouds: THREE.CanvasTexture } {
   const W = 512, H = 256, mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
   const g0 = mk(), c0 = mk(), g = g0.getContext('2d')!, c = c0.getContext('2d')!;
   const img = g.createImageData(W, H), cl = c.createImageData(W, H);

@@ -1,7 +1,8 @@
 // The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
 // (render/island.ts), Chapters 3a/3b (#192, #193) to the cavern (render/cavern.ts, render/gate.ts); the shops are dioramas;
-// later chapters (re-entry on) still use the placeholder stage (grey box and labels) until their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
+// Chapter 3c (#194) flies re-entry and the wings over the coast (render/flight.ts) and lands on the Sunset highway (the
+// Morning set rides it); the ending (the cliff on) still uses the placeholder stage (grey box and labels) until it lands. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
@@ -13,6 +14,8 @@ import { IslandSet } from './island';
 import { ISLAND_WORLD, type IslandShot } from './islandShots';
 import { CavernSet } from './cavern';
 import { CAVERN_WORLD, type CavernShot } from './cavernShots';
+import { FlightSet } from './flight';
+import { FLIGHT_WORLD, type FlightShot } from './flightShots';
 import { BELLY_LAYERS, GATE_LAYERS, PARTS, type DrillLayer, type DrillView } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -49,6 +52,7 @@ export class SeasideRenderer implements GameRenderer {
   private belly: BellySet | null = null;
   private island: IslandSet | null = null;
   private cavern: CavernSet | null = null;
+  private flight: FlightSet | null = null;
   /** Seconds since the beach's first fish went on the fire (null before). */
   private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
@@ -148,10 +152,20 @@ export class SeasideRenderer implements GameRenderer {
     return this.cavern;
   }
 
+  /** Re-entry and the wings over the coast world. */
+  private ensureFlight(): FlightSet {
+    if (!this.flight) {
+      this.dropSets();
+      this.flight = new FlightSet(this.ensureView('coast'));
+    }
+    return this.flight;
+  }
+
   /** Release whichever set is up (each holds GPU resources on the shared view). */
   private dropSets(): void {
     this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
     this.island?.dispose(); this.island = null; this.cavern?.dispose(); this.cavern = null;
+    this.flight?.dispose(); this.flight = null;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -167,6 +181,10 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && FLIGHT_WORLD.has(s.sceneId)) {
+      const shot = this.ensureFlight().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawFlightHud(g, s, shot); return; }
+    }
     if (!s.menu && CAVERN_WORLD.has(s.sceneId)) {
       const shot = this.ensureCavern().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawCavernHud(g, s, shot); return; }
@@ -368,6 +386,25 @@ export class SeasideRenderer implements GameRenderer {
       g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5; g.strokeRect(M.x + M.w * 0.3, M.y, M.w * 0.4, M.h);
       g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff2e0'; g.font = `italic ${Math.round(Math.max(12, M.w * 0.28))}px Georgia, serif`;
       g.fillText(fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 10);
+      g.globalAlpha = 1;
+    }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Over re-entry and the wings: the white of the cloud deck, a soft chevron toward the ribbon when you've
+   *  drifted off it, then the usual bubble, card and progress line. */
+  private drawFlightHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: FlightShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), w = shot.fx.wings;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (shot.fx.white > 0) { g.fillStyle = `rgba(252,250,246,${shot.fx.white})`; g.fillRect(0, 0, W, H); }
+    if (w && !w.inRibbon && w.align < 0.5) {
+      const side = Math.sign(w.ribbon - w.x) || 1, x = side > 0 ? W - 34 : 34, y = L.UH * 0.5, k = Math.min(18, L.UH * 0.04);
+      g.globalAlpha = 0.55 + 0.25 * Math.sin(s.sceneT * 5); g.strokeStyle = '#fff4dc'; g.lineWidth = 4; g.lineCap = 'round';
+      for (const d of [0, 14]) { g.beginPath(); g.moveTo(x - side * (k + d), y - k); g.lineTo(x - side * d, y); g.lineTo(x - side * (k + d), y + k); g.stroke(); }
       g.globalAlpha = 1;
     }
     const p = L.plate;

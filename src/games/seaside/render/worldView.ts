@@ -109,6 +109,12 @@ export class WorldView {
     this.director.set(this.world.look); this.director.snap();
   }
 
+  /** Hide the voxel world and its backdrops (the sea plane, its lights): space, before re-entry clears the clouds. */
+  showWorld(on: boolean): void {
+    this.terrain.root.visible = on;
+    for (const e of this.extras) e.visible = on;
+  }
+
   /** Switch worlds (scene transitions). The old world's tiles and workers are dropped. */
   setWorld(world: WorldDef): void {
     if (world === this.world) return;

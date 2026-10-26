@@ -1,4 +1,4 @@
-# Seaside — runtime, voxels, workout, fishing, Lou’s shop, Chapters 1, 2a, 2b, 3a, 3b (#184–193)
+# Seaside — runtime, voxels, workout, fishing, Lou’s shop, Chapters 1, 2a, 2b, 3a–3c (#184–194)
 
 ~2 h story ride (#183); storyboard + media on unmerged PR #175. `devGames` (`?dev=1` / vite dev) until all chapters land.
 ## Sim (`sim/`)
@@ -12,6 +12,7 @@
   (no band). Fan progress never drops below `effortFloor`. Magma eel: one 12 s pull, `magmaRunPeriodS` surges.
 - #193 Drill II = the #190 drill with `GATE_LAYERS` spread over its two bores by plan time. `gate.ts`: `TILT_S`, the
   fall's beats (`fallView`: tip, black, dot → Earth), one `cue` event (`earth`) for the music pass.
+- #194 `flight.ts`: `reentryView` beats off the sprint; wings: bank → `x`, ribbon × speed (never stops), `alignAt` lands.
 ## World (`world/`, pure, rebuilt per worker)
 - Sparse 32³ voxels, AO/greedy meshing; WorldDef data. Corridors: fixed voxel size, `span(s)` = void crossings (terrain
   below kept), `start` = none before it. Streaming reprioritizes, prefetches, evicts after 8 s; atomic swaps + dissolve.
@@ -26,15 +27,14 @@
   #193: `GLYPH_STONES` (rocks, then columns; flat path-side face on the voxel grid), the gate panel + pilasters, the
   bore carved at `gateAxis`; `gateProps.ts` tunnel / faces / cracks in tunnel space (the set places them).
 ## Render (`render/`)
-- `renderer.ts`: one WorldView, `setWorld` coast / belly / island / cavern; dioramas; reentry on = placeholder. `*Shots.ts`
-  pure + sets; `cavern.ts` torch flames/lights, eels (`LEAPS`, some vault the bridge), embers, line smoke, fan + eel;
-  `gate.ts` (built near the gate): glowing painted-glyph decals (`runes.ts`: ragged lines of mixed sizes, gaps packed with small glyphs), drill rig, tunnel, the Earth.
-- `morningShots.ts` (pure): rides map progress onto `rideSpan`; stops have fixed poses. Sets dispose GPU resources.
+- `renderer.ts`: one WorldView, `setWorld` coast / belly / island / cavern; dioramas; `FlightSet` (coast) for re-entry
+  and the wings. `cavern.ts` torch flames/lights, eels (`LEAPS`), embers, line smoke, fan + eel; `gate.ts`: glowing
+  glyph decals (`runes.ts`: ragged mixed-size lines, gaps packed with small glyphs), drill rig, tunnel, the Earth.
+- `morningShots.ts` (pure): rides on `rideSpan`, fixed stop poses. #194 `flightShots.ts`: glide over the sea → cypress
+  (`CYPRESS.clear`) → `rideCam(LAND_S)` = Sunset start. Sets dispose GPU resources.
 - `worldView.ts`: eye / atmos / calm / roll / post (+ `shimmer` heat haze) per frame; streaming + dissolves on a wall
   clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `shopView.ts` dioramas; `perf.ts` governor.
-## Verification (no media committed)
-- `npm run typecheck`; `npm test`; `npm run sim -- --game seaside --script z2 --minutes 150` (summary `Z3 minutes`).
-- `scripts/seaside-{morning,belly,island,cavern,shop}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`.
+## Verification (no media committed): typecheck, test, `npm run sim -- --game seaside --script z2 --minutes 150`
+- `scripts/seaside-{morning,belly,island,cavern,flight,shop}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`.
   Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430 (fill-bound walls), hall ≈ 290.
-- **iPad/Bluefy hardware fps remains unmeasured** (highway ≥ 50, later ≥ 40 or fallback). Known: a blue strip along the
-  inland shoulder (sea backdrop through a corridor/terrain gap; predates #189). BellySet keeps its own drill rig code.
+- **iPad fps unmeasured** (highway ≥ 50, later ≥ 40). Known: blue strip on the inland shoulder (predates #189).

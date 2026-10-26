@@ -7,6 +7,7 @@ import { STORY } from '../sim/story';
 import type { SeasideSnapshot } from '../sim/types';
 import { CH1, coastRoute, edgeD, pierGeom, roadX, SEA_LEVEL, win, zOfS, bridge } from '../world/coastLayout';
 import { PIER_FISH_BACK } from '../world/coastBuild';
+import { LAND_S } from './flightShots';
 
 export interface V3 { x: number; y: number; z: number }
 
@@ -42,12 +43,14 @@ export function rideSpan(id: string): [number, number] | null {
     case 'highway': return [CH1.start, CH1.turnout - 25];
     case 'rollers': return [CH1.turnout + 28, CH1.shop - 28];
     case 'toPier': return [CH1.shop + 28, pierGeom().end - PIER_FISH_BACK];
+    // the Evening's ride home (#194 lands the wings at its start; #195 dresses it)
+    case 'sunset': { const sc = STORY.find((x) => x.id === 'sunset')!; return [LAND_S, LAND_S + ('m' in sc.length ? sc.length.m : 1350)]; }
     default: return null;
   }
 }
 
-/** The Morning scenes this director shoots (the shops are the counter dioramas). */
-export const MORNING_WORLD = new Set(['title', 'highway', 'turnout1', 'rollers', 'toPier', 'pier', 'bigOne', 'under']);
+/** The Morning scenes this director shoots (the shops are the counter dioramas), and the Sunset highway after the wings land. */
+export const MORNING_WORLD = new Set(['title', 'highway', 'turnout1', 'rollers', 'toPier', 'pier', 'bigOne', 'under', 'sunset']);
 
 /** A point on the route `ahead` metres past s (straight on past the end of the pier). */
 function pointAhead(s: number, d: number): V3 {

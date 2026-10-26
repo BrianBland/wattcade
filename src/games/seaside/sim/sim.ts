@@ -8,11 +8,12 @@ import { effortRate, railSpeed } from './pace';
 import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } from './pull';
 import { migrateSave } from './save';
 import { STORY } from './story';
-import { CHAPTER_NAMES, type ChapterId, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
+import { CHAPTER_NAMES, type ChapterId, type FlightView, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
 import { FALL } from './gate';
 import { BELLY_DEFAULTS, drillView, partInReach, PARTS, partsPassed, wakeFloor, Z3, type PartId } from './belly';
 import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
 import { coolEnd, FAN_DEFAULTS, fanView, stepHeat, type FanTuning } from './fan';
+import { alignAt, FLIGHT_DEFAULTS, FLIGHT_START, flapPhase, inRibbon, reentryView, ribbonAt, ribbonFactor, steerFrom, stepFlight, type FlightState, type FlightTuning } from './flight';
 
 export interface SeasideOpts {
   seed?: number;
@@ -121,6 +122,15 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   // the magma eel surges hard and fast, like it's angry (storyboard): a shorter run / rest cycle than the sea fish
   const magmaRunPeriodS = num('magmaRunPeriodS', 2, 0.5, 8, 0.25, 'Magma eel: run / rest period (s)');
   const magmaRunOn = num('magmaRunOn', 0.5, 0.1, 1, 0.05, 'Magma eel: fraction of each period it runs');
+  const FL = FLIGHT_DEFAULTS;
+  const fltun = {
+    bankRate: num('flightBankRate', FL.bankRate, 0.5, 8, 0.25, 'Wings: how fast the bank follows the paddles (1/s)'),
+    maxBank: num('flightMaxBank', FL.maxBank, 0.1, 1, 0.05, 'Wings: steepest bank (rad)'),
+    drift: num('flightDrift', FL.drift, 0.05, 1, 0.05, 'Wings: sideways m/s per m/s of speed at full bank'),
+    ribbonHalf: num('ribbonHalfM', FL.ribbonHalf, 2, 30, 1, 'Wings: half width of the ribbon of air (m)'),
+    ribbonBoost: num('ribbonBoost', FL.ribbonBoost, 0, 0.6, 0.05, 'Wings: extra speed inside the ribbon (fraction)'),
+    offRibbon: num('offRibbon', FL.offRibbon, 0.5, 1, 0.05, 'Wings: speed factor outside the ribbon (the glide just takes longer)'),
+  };
   const fishDoneFloor = num('fishDoneFloor', 0.5, 0, 1, 0.05, 'Once every fish at a stop is landed or lost, the stop wraps up at least this fast (× plan)');
   const read = <T,>(o: { [K in keyof T]: () => number }) =>
     Object.fromEntries(Object.entries(o).map(([k, f]) => [k, (f as () => number)()])) as T;
@@ -163,6 +173,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
   /** The fan has done its job: the cadence band no longer applies while you eat. */
   const eating = (sc: Scene) => sc.kind === 'fan' && progress >= coolEnd(sc);
   const got = new Map<PartId, { auto: boolean }>();
+  // re-entry and the wings (#194): where you are across the line of flight, the sprint's spectacle once it's done
+  let flight: FlightState = FLIGHT_START, reentrySpectacle: number | null = null;
 
   const persist = (patch: Partial<SeasideSave>) => { save = { ...save, ...patch }; ctx.save(save); };
 
@@ -192,7 +204,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     sprints++;
     if (p.hit()) hits++;
     if (!p.setPiece) { fish++; if (r === 'landed') landed++; }
-    else released = true;
+    else { released = true; if (g.scenes[index].id === 'reentry') reentrySpectacle = p.spectacle(); }
     ctx.emit({ type: 'pull', data: {
       scene: g.scenes[index].id, size: p.size, ftp: +p.ftp.toFixed(2), s: +p.t.toFixed(1), landed: r === 'landed',
       setPiece: p.setPiece, hit: p.hit(), spectacle: +p.spectacle().toFixed(2),
@@ -220,6 +232,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     }
     if (sc.id === 'eyesOpen') wake = 0;
     if (sc.kind === 'fan') { fanHeat = 0; fanIn = false; }
+    if (sc.kind === 'flight') { flight = FLIGHT_START; if (sc.id === 'reentry') reentrySpectacle = null; }
     if (sc.id === 'spareParts') { // resuming mid-scene: the parts behind you are already in hand
       got.clear(); allAt = null;
       for (const x of PARTS) if (x.at < p) got.set(x.id, { auto: false });
@@ -467,7 +480,12 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     }
     else if (fishing) { pending = []; updateFishing(dt, planW, frac); }
     else if ('m' in sc.length) {
-      const target = railSpeed(b.power3s, planW, sc.length.m / sc.planS, lag, { exponent: tun.exponent(), gain: tun.gain(), max: tun.max(), maxAhead: tun.maxAhead(), cap: tun.cap() });
+      let target = railSpeed(b.power3s, planW, sc.length.m / sc.planS, lag, { exponent: tun.exponent(), gain: tun.gain(), max: tun.max(), maxAhead: tun.maxAhead(), cap: tun.cap() });
+      if (sc.kind === 'flight') { // the wings: bank with the paddles; the ribbon carries you, missing it only slows the glide
+        const ft = read<FlightTuning>(fltun);
+        flight = stepFlight(flight, steerFrom(ctx.input()), progress, speed, dt, ft);
+        target *= ribbonFactor(inRibbon(flight.x, progress, ft), progress, ft);
+      }
       speed += (target - speed) * (1 - Math.exp(-dt / tun.tau()));
       progress += (speed * dt) / sc.length.m;
     } else {
@@ -519,6 +537,16 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     }
   };
 
+  const flightView = (sc: Scene, p: number): FlightView | null => {
+    if (sc.kind !== 'flight') return null;
+    if (!('m' in sc.length)) {
+      const pl = sc.pulls[0], frac = ctx.bike().power3s / ctx.profile.ftp;
+      return { phase: 'reentry', ...reentryView(p * sc.planS, pl, pull && pull.setPiece ? { t: pull.t, durS: pull.durS } : null, pull ? frac / pull.ftp : 0, reentrySpectacle) };
+    }
+    const w = wt(), ph = flapPhase(ctx.bike().crankRevs, w.flapRevs);
+    return { phase: 'wings', x: flight.x, bank: flight.bank, ribbon: ribbonAt(p), inRibbon: inRibbon(flight.x, p, read<FlightTuning>(fltun)), flap: ph, down: ph < w.pulseOn, align: alignAt(p) };
+  };
+
   const menuView = (): MenuView | null => menu && {
     items: menu.items.map(({ id, label }) => ({ id, label })), index: menu.index,
     autoIn: tun.menuAutoS() > 0 ? Math.max(0, tun.menuAutoS() - menu.t) : -1,
@@ -543,6 +571,8 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
       const band = cadenceBand(sc, wt());
       if (sc.kind === 'drill' && band) return { targetCadence: { min: band[0], max: band[1], label: 'Keep it turning' } };
       if (sc.kind === 'fan' && band && !eating(sc)) return { targetCadence: { min: band[0], max: band[1], label: 'Steady on the fan' } };
+      if (sc.id === 'reentry' && pull) return { targetZone: { min: 5, max: 5, label: 'Spread them!', source: 'power' } };
+      if (sc.kind === 'flight' && 'm' in sc.length && alignAt(progress) < 0.5) return { controls: [{ button: 'paddles', label: 'Bank: follow the ribbon of air', shortLabel: 'Bank' }], touchControls: ['left', 'right'] };
       return {};
     },
     snapshot(): SeasideSnapshot {
@@ -564,6 +594,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
         parts: sc.id === 'spareParts' ? partsView() : null,
         drill: sc.kind === 'drill' ? drillView(sc, p * sc.planS) : null,
         fan: sc.kind === 'fan' ? fanView(sc, p, fanHeat, fanIn) : null,
+        flight: flightView(sc, p),
       };
     },
     isOver: () => phase === 'done',

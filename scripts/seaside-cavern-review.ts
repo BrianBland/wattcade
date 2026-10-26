@@ -1,6 +1,6 @@
 // Chapter 3 review stills (#192, #193), from the real game renderer on the fake bike: every cavern and gate shot.
 //   npx tsx scripts/seaside-cavern-review.ts [shot names…] [--w 1180 --h 820 --inset 140]
-// RUNES=<style id> picks the glyph style. Stills go to $OUT (default /tmp/seaside-cavern; never committed). CHROMIUM_PATH selects a local browser.
+// RUNES=<layout> picks the gate inscription's layout. Stills go to $OUT (default /tmp/seaside-cavern; never committed). CHROMIUM_PATH selects a local browser.
 import { createServer } from 'vite';
 import { chromium } from 'playwright-core';
 import { mkdirSync } from 'node:fs';

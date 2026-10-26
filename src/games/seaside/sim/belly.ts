@@ -1,6 +1,7 @@
 // Chapter 2a (#190): the belly's rules, pure. Waking up (cadence opens the eyes in two slow blinks), the spare parts
 // (grab each one with A as you ride past it, or the bike scoops it up: generous), and the drill's layers (flesh,
 // cartilage, bone), read off the drill scene's effort plan so the bore depth is effort-gated like the scene itself.
+// Drill II (#193) reuses it through the gate: basalt, obsidian, a crystal geode, spread over its two bores.
 import type { Scene } from './types';
 
 export interface BellyTuning {
@@ -46,7 +47,7 @@ export const partsPassed = (p: number, got: ReadonlySet<PartId>, reach: number) 
 
 // ---- the drill ----------------------------------------------------------------------------------------------------
 
-export type DrillLayerId = 'flesh' | 'cartilage' | 'bone' | 'rock';
+export type DrillLayerId = 'flesh' | 'cartilage' | 'bone' | 'basalt' | 'obsidian' | 'geode' | 'rock';
 export interface DrillLayer {
   id: DrillLayerId; name: string;
   /** Bore thickness (m). */ m: number;
@@ -60,10 +61,23 @@ export const BELLY_LAYERS: readonly DrillLayer[] = [
   { id: 'cartilage', name: 'Cartilage', m: 1.2, color: 0xd4e6f0, sound: 'crunch', shake: 0.007, chatter: 11 },
   { id: 'bone', name: 'Bone', m: 0.9, color: 0xfff3da, sound: 'screech', shake: 0.011, chatter: 19 },
 ];
+/** The gate's layers (Drill II), in boring order: spread over its two Z3 bores by time, not one per bore. */
+export const GATE_LAYERS: readonly DrillLayer[] = [
+  { id: 'basalt', name: 'Basalt', m: 1.5, color: 0x3b3438, sound: 'grind', shake: 0.009, chatter: 14 },
+  { id: 'obsidian', name: 'Obsidian', m: 1.0, color: 0x2c1a3a, sound: 'shatter', shake: 0.012, chatter: 22 },
+  { id: 'geode', name: 'Geode', m: 0.8, color: 0xb48cff, sound: 'chime', shake: 0.006, chatter: 9 },
+];
 const ROCK: DrillLayer = { id: 'rock', name: 'Rock', m: 1.2, color: 0x3b3438, sound: 'grind', shake: 0.01, chatter: 15 };
 
 export const drillLayers = (sc: Pick<Scene, 'id' | 'effort'>): readonly DrillLayer[] =>
-  sc.id === 'drill1' ? BELLY_LAYERS : sc.effort.filter(([, v]) => v >= BORE_FTP).map(() => ROCK);
+  sc.id === 'drill1' ? BELLY_LAYERS : sc.id === 'drill2' ? GATE_LAYERS : sc.effort.filter(([, v]) => v >= BORE_FTP).map(() => ROCK);
+
+/** The layer at bored depth `m` (index into `layers`); a depth on a boundary counts as the layer just finished. */
+export function layerAt(layers: readonly DrillLayer[], m: number): number {
+  let acc = 0;
+  for (let i = 0; i < layers.length; i++) { acc += layers[i].m; if (m <= acc + 1e-9) return i; }
+  return layers.length - 1;
+}
 
 /** Effort segments at or above this (fraction of FTP) are bores; the rest are the ramp-in, chip-clearing rests and
  *  the last crack. */
@@ -79,22 +93,30 @@ export interface DrillView {
   /** Seconds (plan) left in this phase. */ left: number;
 }
 
-/** Where the drill is at plan seconds `t` into a drill scene. Depth only grows while boring. */
+/** Where the drill is at plan seconds `t` into a drill scene. Depth only grows while boring. With one layer per bore
+ *  (the belly) each bore cuts its layer; otherwise (the gate) the depth runs on over the bores by plan time. */
 export function drillView(sc: Pick<Scene, 'id' | 'effort'>, t: number): DrillView {
-  const layers = drillLayers(sc), total = layers.reduce((a, l) => a + l.m, 0);
-  let acc = 0, bores = 0, depth = 0;
-  const n = sc.effort.length;
+  const layers = drillLayers(sc), total = layers.reduce((a, l) => a + l.m, 0), n = sc.effort.length;
+  const boreS = sc.effort.reduce((a, [d, v]) => a + (v >= BORE_FTP ? d : 0), 0);
+  const perBore = layers.length === sc.effort.filter(([, v]) => v >= BORE_FTP).length;
+  const start = (j: number) => layers.slice(0, j).reduce((a, l) => a + l.m, 0);
+  /** Depth range of bore j (which starts `before` bore-seconds in and lasts d). */
+  const range = (j: number, before: number, d: number): [number, number] =>
+    perBore ? [start(j), start(j) + layers[j].m] : [(total * before) / boreS, (total * (before + d)) / boreS];
+  let acc = 0, bores = 0, boreAcc = 0, depth = 0;
   for (let i = 0; i < n; i++) {
     const [d, v] = sc.effort[i], bore = v >= BORE_FTP, end = acc + d;
     if (t < end || i === n - 1) {
       const k = d > 0 ? clamp01((t - acc) / d) : 1;
-      const L = Math.min(layers.length - 1, bore ? bores : Math.max(0, bores - 1));
-      if (bore) depth += layers[L].m * k;
+      if (bore) { const [a, b] = range(Math.min(layers.length - 1, bores), boreAcc, d); depth = a + (b - a) * k; }
+      let L: number, layerK: number;
+      if (perBore) { L = Math.min(layers.length - 1, bore ? bores : Math.max(0, bores - 1)); layerK = bore ? k : bores ? 1 : 0; }
+      else { L = layerAt(layers, depth); layerK = clamp01((depth - start(L)) / layers[L].m); }
       const after = sc.effort.slice(i + 1).some(([, x]) => x >= BORE_FTP);
       const phase: DrillPhase = bore ? 'bore' : !bores ? 'start' : after ? 'rest' : 'crack';
-      return { phase, k, layer: L, layerK: bore ? k : bores ? 1 : 0, depth, total, ftp: v, left: Math.max(0, end - t) };
+      return { phase, k, layer: L, layerK, depth, total, ftp: v, left: Math.max(0, end - t) };
     }
-    if (bore) { depth += layers[Math.min(layers.length - 1, bores)].m; bores++; }
+    if (bore) { depth = range(Math.min(layers.length - 1, bores), boreAcc, d)[1]; boreAcc += d; bores++; }
     acc = end;
   }
   return { phase: 'crack', k: 1, layer: layers.length - 1, layerK: 1, depth: total, total, ftp: sc.effort[n - 1][1], left: 0 };

@@ -3,6 +3,7 @@
 // lava's glow coming up the mouth and out over the hall, magma eels leaping (some vaulting the bridge) with molten
 // drips and splashes, embers rising, the line smoking over the lava, and the cooling fan: the bike's big fan spinning
 // with your cadence, the eel on its stick cooling from molten orange through red to a plain grey-green, then eaten.
+// The gate, Drill II and the fall (#193) are the gate set's (render/gate.ts), built as you near the gate.
 import * as THREE from 'three';
 import { disposeSet } from './dispose';
 import type { SeasideSnapshot } from '../sim/types';
@@ -10,7 +11,8 @@ import { addGrid } from '../stills/stage';
 import { VoxelGrid } from '../voxel/grid';
 import { definePalette } from '../voxel/palette';
 import { hash2 } from '../voxel/noise';
-import { cx, LAVA_Y, LEAP_EVERY, leapAt, LEAPS, TORCH_EVERY, TORCHES, U_MOUTH } from '../world/cavernLayout';
+import { cx, GATE_U, LAVA_Y, LEAP_EVERY, leapAt, LEAPS, TORCH_EVERY, TORCHES, U_MOUTH } from '../world/cavernLayout';
+import { GATE_SCENES, GateSet } from './gate';
 import { CAVERN_SKY } from '../world/cavern';
 import { FishingRig } from './fishingRig';
 import { castTarget } from './fishingPose';
@@ -91,6 +93,7 @@ export class CavernSet {
   private last: { id: string; pose: Pose } | null = null;
   private blend: { from: Pose; t0: number; dur: number } | null = null;
   private fanA = 0; private fanSpin = 0;
+  private gate: GateSet | null = null;
   private m4 = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v3 = new THREE.Vector3(); private sc = new THREE.Vector3(); private col = new THREE.Color();
 
   constructor(private view: WorldView) {
@@ -139,11 +142,18 @@ export class CavernSet {
     }
     this.last = { id: snap.sceneId, pose };
     this.props(snap, shot, pose, t, dt, cadence);
-    const k = shot.fx.hall, sk = CAVERN_SKY;
-    // the cave is dark and close (torchlight); out in the hall the lava lights everything from below
-    const atmos = { fog: new THREE.Color(0x24160e).lerp(new THREE.Color(sk.fog), k).getHex(), density: lerp(0.026, sk.fogDensity, k), sunI: lerp(0.05, sk.sunI, k), hemiI: lerp(0.85, sk.hemiI, k) };
-    this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
-      bars: shot.bars, cadence: cadence || 80, atmos, post: { shimmer: shot.fx.shimmer } });
+    // the gate's props once you're near it; the floor's shudder shakes the eye
+    if (!this.gate && (GATE_SCENES.has(snap.sceneId) || -pose.eye.z > GATE_U - 600)) this.gate = new GateSet(this.view);
+    const jolt = this.gate?.update(snap, shot, pose, t, dt, cadence);
+    const eye = jolt ? { x: pose.eye.x + jolt.x, y: pose.eye.y + jolt.y, z: pose.eye.z + jolt.z } : pose.eye;
+    const k = shot.fx.hall, sk = CAVERN_SKY, black = shot.fx.gate?.fall?.black ?? 0;
+    // the cave is dark and close (torchlight); out in the hall the lava lights everything from below; the fall is black
+    const fog = new THREE.Color(0x24160e).lerp(new THREE.Color(sk.fog), k).lerp(new THREE.Color(0), black).getHex();
+    const atmos = { fog, density: lerp(lerp(0.026, sk.fogDensity, k), 0.5, black), sunI: lerp(0.05, sk.sunI, k) * (1 - black), hemiI: lerp(lerp(0.85, sk.hemiI, k), 0.25, black),
+      ...(black > 0 && { zenith: new THREE.Color(sk.zenith).lerp(new THREE.Color(0), black).getHex(), horizon: new THREE.Color(sk.horizon).lerp(new THREE.Color(0), black).getHex(), sunColor: new THREE.Color(sk.sunColor).lerp(new THREE.Color(0), black).getHex() }) };
+    this.view.terrain.root.visible = black < 0.98; // nothing out there in the void
+    this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye, aim: pose.target,
+      bars: shot.bars, barsDrop: shot.fx.gate?.unfold ?? 0, cadence: cadence || 80, atmos, post: { shimmer: shot.fx.shimmer } });
     this.rig.update(shot.rod ? snap.fishing : null, t, shot.place ?? { waterY: LAVA_Y });
     return shot;
   }
@@ -261,6 +271,7 @@ export class CavernSet {
   }
 
   dispose(): void {
+    this.gate?.dispose(); this.gate = null; this.view.terrain.root.visible = true;
     this.rig.dispose();
     disposeSet(this.fanRoot, this.stick, this.root);
   }

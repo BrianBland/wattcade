@@ -9,6 +9,7 @@ import { Pull, PULL_DEFAULTS, pullTarget, type PullResult, type PullTuning } fro
 import { migrateSave } from './save';
 import { STORY } from './story';
 import { CHAPTER_NAMES, type ChapterId, type MenuView, type PartsView, type PullPlan, type Scene, type SeasideSave, type SeasideSnapshot } from './types';
+import { FALL } from './gate';
 import { BELLY_DEFAULTS, drillView, partInReach, PARTS, partsPassed, wakeFloor, Z3, type PartId } from './belly';
 import { cadenceBand, cadenceRate, fishRunning, sceneCommand, WORKOUT_DEFAULTS, type WorkoutTuning } from './workout';
 import { coolEnd, FAN_DEFAULTS, fanView, stepHeat, type FanTuning } from './fan';
@@ -493,6 +494,7 @@ export function createSeasideSim(ctx: GameContext, opts: SeasideOpts = {}): Game
     const e = effortAt(sc, Math.min(1, progress) * sc.planS);
     effortTarget = pull ? pull.ftp : e >= 1 ? baseFtp(sc) : e;
     for (const line of sc.monologue) if (line.at > before && line.at <= progress) mono.push(line.text, storyT);
+    if (sc.id === 'fall' && before * sc.planS < FALL.cueS && progress * sc.planS >= FALL.cueS) ctx.emit({ type: 'cue', data: { id: 'earth', scene: sc.id } });
     for (const f of checkpointsOf(sc, tun.checkpointMinS())) if (f > before && f <= progress) checkpoint(sc.id, f);
     mono.tick(storyT, dt, b.sprinting || effortTarget >= tun.sprintFtp());
     if (progress >= 1) {

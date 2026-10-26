@@ -53,15 +53,16 @@ const RIDE_TIMEOUT = 30_000;
 
 describe('headless rides unlock game achievements', () => {
   it('dungeon hour', async () => {
-    // lifetime tallies are robust for any seed; the floor-8 / 12-curse feats need a deep dive, checked below on a fixed summary
-    await counted('dungeon', 'action-hour', ['bosses', 'kills', 'bestFloor']);
-    await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestFloor']);
+    // Lifetime tallies and boss-clear depth advance even when no new reward unlocks.
+    await counted('dungeon', 'action-hour', ['bosses', 'kills', 'bestClearedFloor']);
+    await counted('dungeon', 'z2-hour', ['bosses', 'kills', 'bestClearedFloor']);
   }, RIDE_TIMEOUT);
   it('a deep dungeon dive unlocks Delver and Curse Breaker', () => {
     const r = recordedRide({ game: getGame('dungeon')!, script: 'z2', minutes: 3, seed: 1 });
     const record: SessionRecord = {
       ...r, id: 'h', profileId: 'x', startedAt: new Date(2026, 4, 13, 12).getTime(),
-      gameSummary: { 'Deepest floor': 8, 'Curses survived': 12, 'Bosses slain': 7, Deaths: 1 },
+      gameSummary: { 'Deepest floor': 10, 'Curses survived': 6, 'Bosses slain': 9, Deaths: 1 },
+      events: [{ t: 120, type: 'bossDefeated', data: { floor: 10 } }],
     };
     expect(awardSession(defaultProfile(), record).newAchievements.map((a) => a.id)).toEqual(expect.arrayContaining(['dg_floor5', 'dg_curses']));
   });

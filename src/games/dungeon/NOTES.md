@@ -118,12 +118,27 @@ Turning Tide); a rider who answers ambushes/spin-ups/Exposed windows and uses ac
 - Light map at 1/4 resolution: ambient dark with holes at the hero, torches and braziers (flickering). Render cost at 2x
   DPR on the box: median 0.8 -> 1.7-2.0 ms per frame.
 
-## Achievements and effects (#92)
-- New: Curse Eater (100 curses), Not Today (25 Second Wind saves), Perfect Exposure (Strike in every Exposed window of a
-  2+ window boss fight), Full Arsenal (rare+ weapon in every unlocked stance in one dive), Spin Doctor (3 answered
-  spin-ups in one ride), and Vanguard/Ranger/Skirmisher/Arcanist Mastery (2,000 kills in that stance). Each grants a title.
+## Achievements and effects
+- Depth rewards require defeating a boss at floor 10 / 15 / 20 or deeper. `dungeon.bestClearedFloor` is distinct from
+  the old floor-entry counter, so entering a deep floor or starting there from camp cannot qualify.
+- Perfect Exposure requires three bosses at floor 5+ in one dive, with a Strike in every Exposed window and at least
+  two windows per fight. A killing Strike counts before the boss-defeat event is emitted.
+- Full Arsenal requires epic+ weapon pickups for all four unlocked stances in one dive. Pickups count even when
+  auto-sold; later auto-equipping never removes collection credit. A new descent clears the collection.
+- Elite Hunter (75 elites) and Untouchable (8 bosses) count within a dive using death events as boundaries. A death
+  before a successful dive, or after its threshold is reached, does not invalidate that success.
+- Curse Eater (100 curses), Not Today (25 Second Wind saves), and Spin Doctor (3 answered spin-ups in one ride) keep
+  their goals. Second Wind emits exactly one event per save. The 2,000-kill stance goals are named Veteran milestones.
+- Achievement IDs, reward mappings, and previously earned rewards remain intact; this change does not bump the
+  progression rules version or revoke rewards. New depth progress starts from verified boss defeats.
+- Retune check: six fresh 35-minute `hook-responsive` rides with `autopilot` + `actionBot`, seeds 11–16, default
+  tuning/FTP 200. Before: 2–3 game achievements per ride, Full Arsenal and Perfect Exposure in all six. After:
+  0–1 per ride (Curse Breaker in five); neither collection nor exposure unlocks. These bots test early clustering,
+  not human unlock rates or the whole late-game curve. An upgraded invulnerable fixture verifies Full Arsenal can
+  still emit once all four epic collections are complete; it is not a pacing benchmark.
 - Curse Breaker is now 6 curses in one ride (was 12: about 60+ min even for the action bot; 40-min rides see 5-8).
-- Events: `kill` carries `stance`; `bossDefeated` carries `stance`, `windows`, `struck`; new `secondWind`, `fullArsenal`.
+- Events: `kill` carries `stance` and `elite`; `bossDefeated` carries `floor`, `stance`, `windows`, `struck`;
+  `fullArsenal` carries `stances: 4` and `minRarity: 3` to distinguish the new collection from older rare-weapon events.
 - Effects: damage numbers on every hit (rapid hits on one enemy merge; crits pop), red numbers for damage taken,
   segment banners (warm-up, explore, recover, cool-down) that stack with others, SECOND WIND banner, coins fly to the
   HUD counter (which pulses), and a ring + "<action> ready" pulse on the hero when an action finishes refilling.

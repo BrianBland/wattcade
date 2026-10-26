@@ -28,7 +28,7 @@
 ## Render (`render/`)
 - `renderer.ts`: one WorldView, `setWorld` coast / belly / island / cavern; dioramas; reentry on = placeholder. `*Shots.ts`
   pure + sets; `cavern.ts` torch flames/lights, eels (`LEAPS`, some vault the bridge), embers, line smoke, fan + eel;
-  `gate.ts` (built near the gate): glowing painted-glyph decals (`runes.ts`, free layouts: flow, serpent band, panels), drill rig, tunnel, the Earth.
+  `gate.ts` (built near the gate): glowing painted-glyph decals (`runes.ts`: ragged lines of mixed sizes, gaps packed with small glyphs), drill rig, tunnel, the Earth.
 - `morningShots.ts` (pure): rides map progress onto `rideSpan`; stops have fixed poses. Sets dispose GPU resources.
 - `worldView.ts`: eye / atmos / calm / roll / post (+ `shimmer` heat haze) per frame; streaming + dissolves on a wall
   clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `shopView.ts` dioramas; `perf.ts` governor.

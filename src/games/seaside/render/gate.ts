@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { GATE_LAYERS, layerAt } from '../sim/belly';
 import type { SeasideSnapshot } from '../sim/types';
 import { addGlow, addLit, L, Particles, rnd, wob } from '../stills/later/kit';
-import { PIGMENTS, runeDecal, runeLayoutKind, runeTexture } from './runes';
+import { PIGMENTS, runeDecal, runeTexture } from './runes';
 import { buildBit, buildDrillRig, CHUCK } from '../world/bellyProps';
 import { BRIDGE_Y, cx, GATE, GATE_TUNNEL_R, GATE_U, gateAxis, glyphPanel, GLYPH_STONES } from '../world/cavernLayout';
 import { buildGateCracks, buildGateFace, buildGateTunnel, FLOOR_HOLE } from '../world/gateProps';
@@ -69,21 +69,21 @@ export class GateSet {
     // painted glyphs: a few shared inscriptions (each in its own paint set), one material per stone so they
     // can brighten on their own
     const sets = PIGMENTS;
-    const strips = sets.map((pg, i) => runeTexture(1, 6, 11 + i, pg, 'flow', 70)), patches = sets.map((pg, i) => runeTexture(2, 2, 31 + i, pg, 'flow', 64));
+    const strips = sets.map((pg, i) => runeTexture(1, 6, 11 + i, pg, 70)), patches = sets.map((pg, i) => runeTexture(2, 2, 31 + i, pg, 64));
     GLYPH_STONES.forEach((s, i) => {
       const p = glyphPanel(s), m = runeDecal((s.kind === 'column' ? strips : patches)[(i * 7) % sets.length], p.w, p.h);
       m.position.set(p.x, p.y, p.z); m.rotation.y = p.facing * Math.PI / 2;
       this.decals.push({ m, u: s.u, base: s.kind === 'column' ? 1.6 : 2.2 }); this.root.add(m);
     });
     // the gate's inscription, with the bore's mouth cut out of it (the face being drilled shows through)
-    const gw = GATE.half * 2 - 1.6, gh = GATE.h + GATE.arch - 1.2, gate = runeDecal(runeTexture(12, 10, 7, undefined, runeLayoutKind()), gw, gh), gy = BRIDGE_Y + 0.2 + gh / 2;
+    const gw = GATE.half * 2 - 1.6, gh = GATE.h + GATE.arch - 1.2, gate = runeDecal(runeTexture(12, 10, 7), gw, gh), gy = BRIDGE_Y + 0.2 + gh / 2;
     const shape = new THREE.Shape().moveTo(-gw / 2, -gh / 2).lineTo(gw / 2, -gh / 2).lineTo(gw / 2, gh / 2).lineTo(-gw / 2, gh / 2).closePath();
     shape.holes.push(new THREE.Path().absarc(0, gateAxis().y - gy, GATE_TUNNEL_R + 0.5, 0, Math.PI * 2, true));
     const geo = new THREE.ShapeGeometry(shape, 24), uv = geo.attributes.uv, pos = geo.attributes.position;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / gw + 0.5, pos.getY(i) / gh + 0.5);
     gate.geometry.dispose(); gate.geometry = geo;
     gate.position.set(cx(GATE_U), gy, -GATE_U + 0.03);
-    this.decals.push({ m: gate, u: GATE_U, base: 1.8 }); this.root.add(gate);
+    this.decals.push({ m: gate, u: GATE_U, base: 1.25 }); this.root.add(gate); // dimmer than the stones: packed, it adds up
     // the drill: rig on the camera (in place of the bars), bit aimed at the face every frame
     addLit(st, 'gate drill', buildDrillRig(), 0.04, NONE, this.rig);
     addLit(st, 'gate bit', buildBit(), 0.03, NONE, this.spin);

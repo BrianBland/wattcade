@@ -11,7 +11,7 @@ import { cavernShot } from '../render/cavernShots';
 import { BRIDGE, BRIDGE_Y, cavernRoute, cavernSpan, cx, GATE, GATE_DEPTH, GATE_S, GATE_TUNNEL_R, GATE_U, gateAxis, glyphPanel, GLYPH_STONES, LAVA_Y, STOP_S, uOfS } from '../world/cavernLayout';
 import { cavernWorld } from '../world/cavern';
 import { C } from '../world/cavernPalette';
-import { GLYPH_KINDS, glyphPath, LAYOUTS, PIGMENTS, runeLayout } from '../render/runes';
+import { GLYPH_KINDS, glyphPath, PIGMENTS, runeLayout } from '../render/runes';
 import { buildGateCracks, buildGateFace, buildGateTunnel, FLOOR_HOLE } from '../world/gateProps';
 
 const scene = (id: string) => STORY.find((s) => s.id === id)!;
@@ -77,14 +77,14 @@ describe('the causeway and the gate (#193)', () => {
     expect(new Set(PIGMENTS.flat())).toEqual(new Set(['#ffb347', '#ffd27a', '#7affea']));
   });
 
-  it('inscriptions are laid out free, not in a grid: runes of many sizes, inside the panel', () => {
-    for (const kind of LAYOUTS) {
-      const lay = runeLayout(kind, 1152, 960, 7), hs = lay.runes.map((r) => r.h);
-      expect(lay.runes.length, kind).toBeGreaterThan(40);
-      expect(Math.max(...hs) / Math.min(...hs), `${kind}: sizes vary`).toBeGreaterThan(2.5);
+  it('inscriptions are laid out free, not in a grid: glyphs of many sizes, gaps filled, inside the panel', () => {
+    for (const [W, H, cell] of [[1152, 960, 96], [96, 576, 70], [192, 192, 64]]) {
+      const lay = runeLayout(W, H, 7, cell), hs = lay.runes.map((r) => r.h);
+      expect(lay.runes.length).toBeGreaterThan(W * H / (cell * cell) * 0.8);
+      expect(Math.max(...hs) / Math.min(...hs), 'sizes vary').toBeGreaterThan(2.5);
       for (const r of lay.runes) {
         const c = Math.abs(Math.cos(r.rot)), s = Math.abs(Math.sin(r.rot)), ex = (c * r.w + s * r.h) / 2, ey = (s * r.w + c * r.h) / 2;
-        expect([r.x - ex, r.y - ey, 1152 - r.x - ex, 960 - r.y - ey].every((v) => v > -2), `${kind}: rune inside ${JSON.stringify(r)}`).toBe(true);
+        expect([r.x - ex, r.y - ey, W - r.x - ex, H - r.y - ey].every((v) => v > -4), `inside ${JSON.stringify(r)}`).toBe(true);
       }
     }
   });

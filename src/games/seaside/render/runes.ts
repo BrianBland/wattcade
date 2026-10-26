@@ -1,7 +1,6 @@
 // Painted glyphs for the gate's inscriptions (#193): rings, eyes, spirals, fish, suns, moons and more in glowing
 // orange, gold and cyan paint. Laid out like a real inscription, not a grid: glyphs of every size in ragged lines with
-// word dots, a serpent band carrying the text round a few great glyphs, or a patchwork of panels. `runeLayout` and
-// `glyphPath` are pure.
+// word dots, the gaps packed with smaller ones. `runeLayout` and `glyphPath` are pure.
 import * as THREE from 'three';
 import { rnd } from '../stills/later/kit';
 
@@ -39,102 +38,70 @@ export function glyphPath(g: Pick<CanvasPath, 'moveTo' | 'lineTo' | 'arc' | 'qua
   }
 }
 
-/** A rune placed on the panel: centre (x, y), box w × h, turned `rot` rad, `pig` indexes the pigment list. */
+/** A glyph placed on the panel: centre (x, y), box w × h, turned `rot` rad, `pig` indexes the paint list. */
 export interface RunePlace { x: number; y: number; w: number; h: number; rot: number; seed: number; pig: number }
-export interface RuneLayout { runes: RunePlace[]; lines: Array<Array<[number, number]>>; dots: Array<[number, number, number]> }
-export type LayoutKind = 'flow' | 'serpent' | 'panels';
-export const LAYOUTS: readonly LayoutKind[] = ['flow', 'serpent', 'panels'];
+export interface RuneLayout { runes: RunePlace[]; dots: Array<[number, number, number]> }
 
-/** Ragged lines of runes in [x0, x1] × [y0, y1]: each line its own height (now and then a line of great runes), runes of
- *  varied width in words split by dots, sometimes a cut rule under the line. `cell` is a typical rune height. */
-function flow(out: RuneLayout, x0: number, y0: number, x1: number, y1: number, cell: number, r: (k: number) => number, k0: number) {
-  let y = y0, k = k0;
+/** Lay out an inscription on a W × H px panel (`cell` a typical glyph height): ragged lines, each its own height (now
+ *  and then a line of great glyphs), glyphs of varied width in words split by dots; then the gaps (line ends, between
+ *  lines, round the small glyphs of a big line) filled with smaller glyphs, scattered rather than in rows. */
+export function runeLayout(W: number, H: number, seed: number, cell = 96): RuneLayout {
+  const out: RuneLayout = { runes: [], dots: [] }, r = (k: number) => rnd(seed, k, 977), pad = cell * 0.12;
+  const x0 = pad, y0 = pad, x1 = W - pad, y1 = H - pad, rag = Math.min(1, (x1 - x0) / (cell * 4)); // narrow panels (columns) aren't ragged
+  let y = y0, k = 0;
   while (y < y1) {
     const big = r(k++) < 0.14, lh = Math.min(y1 - y, cell * (big ? 1.5 + r(k++) * 0.8 : 0.45 + r(k++) * 0.8));
     if (lh < cell * 0.3) break;
-    const rag = Math.min(1, (x1 - x0) / (cell * 4)); // narrow panels (columns) aren't ragged
     let x = x0 + r(k++) * cell * 0.6 * rag;
     const end = x1 - r(k++) * cell * 0.8 * rag, base = y + lh / 2, tilt = (r(k++) - 0.5) * 0.04;
     while (x < end) {
       const n = 2 + Math.floor(r(k++) * 5), pig = Math.floor(r(k++) * 64);
       for (let i = 0; i < n && x < end; i++) {
-        const w = lh * (0.7 + r(k++) * 0.4);
+        const w = lh * (0.7 + r(k++) * 0.4), h = lh * (0.6 + r(k++) * 0.32); // not all as tall as the line
         if (x + w > x1) break;
-        out.runes.push({ x: x + w / 2, y: base + (x - x0) * tilt + (r(k++) - 0.5) * lh * 0.06, w, h: lh * 0.92, rot: tilt + (r(k++) - 0.5) * 0.05, seed: Math.floor(r(k++) * 1e6), pig });
+        out.runes.push({ x: x + w / 2, y: base + (x - x0) * tilt + (r(k++) - 0.5) * (lh - h), w, h, rot: tilt + (r(k++) - 0.5) * 0.05, seed: Math.floor(r(k++) * 1e6), pig });
         x += w * (0.95 + r(k++) * 0.25);
       }
       x += lh * 0.12;
       if (x < end) { const d = Math.max(2.5, lh * 0.05); out.dots.push([x, base - lh * 0.12, d]); if (r(k++) < 0.5) out.dots.push([x, base + lh * 0.12, d]); }
       x += lh * 0.22;
     }
-    if (r(k++) < 0.55 && y + lh + 4 < y1) out.lines.push([[x0, y + lh + 3], [(x0 + x1) / 2, y + lh + 3 + (r(k++) - 0.5) * 6], [x1, y + lh + 3]]);
-    y += lh + cell * (0.08 + r(k++) * 0.18);
+    y += lh + cell * (0.04 + r(k++) * 0.14);
   }
-  return k;
-}
-
-/** Lay out an inscription on a W × H px panel. */
-export function runeLayout(kind: LayoutKind, W: number, H: number, seed: number, cell = 96): RuneLayout {
-  const out: RuneLayout = { runes: [], lines: [], dots: [] }, r = (k: number) => rnd(seed, k, 977), pad = cell * 0.12;
-  if (kind === 'flow') { flow(out, pad, pad, W - pad, H - pad, cell, r, 0); return out; }
-  if (kind === 'serpent') {
-    // a band round the panel (a squarish loop, open at the bottom), runes running along it, great runes inside
-    const bw = cell * 0.9, cx = W / 2, cy = H / 2, a = W / 2 - pad - bw / 2, b = H / 2 - pad - bw / 2, N = 600;
-    const at = (t: number): [number, number] => { const c = Math.cos(t), s = Math.sin(t); return [cx + a * Math.sign(c) * Math.abs(c) ** 0.35, cy + b * Math.sign(s) * Math.abs(s) ** 0.35]; };
-    const t0 = Math.PI / 2 + 0.22, t1 = Math.PI / 2 + Math.PI * 2 - 0.22, pts: [number, number][] = [];
-    for (let i = 0; i <= N; i++) pts.push(at(t0 + (t1 - t0) * i / N));
-    const edge = (o: number) => pts.map(([x, y], i) => { const [px, py] = pts[Math.max(0, i - 1)], [nx, ny] = pts[Math.min(N, i + 1)], l = Math.hypot(nx - px, ny - py) || 1; return [x - (ny - py) / l * o, y + (nx - px) / l * o] as [number, number]; });
-    out.lines.push(edge(bw / 2), edge(-bw / 2));
-    let k = 0, i = 4, pig = 0;
-    while (i < N - 4) {
-      const w = bw * (0.8 + r(k++) * 0.3), [x, y] = pts[i], [nx, ny] = pts[Math.min(N, i + 2)];
-      if (r(k++) < 0.18) { out.dots.push([x, y, 3]); i += 6; pig = Math.floor(r(k++) * 64); continue; }
-      out.runes.push({ x, y, w, h: bw * 0.78, rot: Math.atan2(ny - y, nx - x), seed: Math.floor(r(k++) * 1e6), pig });
-      let d = 0; while (i < N - 4 && d < w * 1.05) { d += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); i++; }
-    }
-    // the inside: two or three great runes over a few ragged lines
-    const ix0 = pad + bw * 1.4, ix1 = W - pad - bw * 1.4, iy0 = pad + bw * 1.4, iy1 = H - pad - bw * 1.7, n = 2 + Math.floor(r(k++) * 2);
-    const gh = (iy1 - iy0) * 0.5, gw = Math.min(gh * 0.95, (ix1 - ix0) / n * 0.8);
-    for (let j = 0; j < n; j++) out.runes.push({ x: ix0 + (ix1 - ix0) * (j + 0.5) / n, y: iy0 + gh / 2, w: gw, h: gh, rot: (r(k++) - 0.5) * 0.06, seed: Math.floor(r(k++) * 1e6), pig: Math.floor(r(k++) * 64) });
-    flow(out, ix0, iy0 + gh + cell * 0.2, ix1, iy1, cell * 0.6, r, k);
-    return out;
-  }
-  // panels: the face split into framed fields of different sizes, each a great rune, a block of text or worn blank
-  let k = 0;
-  const split = (x0: number, y0: number, x1: number, y1: number, depth: number) => {
-    const w = x1 - x0, h = y1 - y0;
-    if (depth > 0 && (w > cell * 2.5 || h > cell * 2.5) && r(k++) < 0.85) {
-      const vert = w > h ? r(k++) < 0.8 : r(k++) < 0.2, f = 0.3 + r(k++) * 0.4;
-      if (vert) { const m = x0 + w * f; split(x0, y0, m, y1, depth - 1); split(m, y0, x1, y1, depth - 1); }
-      else { const m = y0 + h * f; split(x0, y0, x1, m, depth - 1); split(x0, m, x1, y1, depth - 1); }
-      return;
-    }
-    const g = cell * 0.1;
-    out.lines.push([[x0 + g, y0 + g], [x1 - g, y0 + g], [x1 - g, y1 - g], [x0 + g, y1 - g], [x0 + g, y0 + g]]);
-    const pick = r(k++);
-    if (pick < 0.25 && h > cell * 1.2) { const rh = h - 5 * g, rw = Math.min(w - 5 * g, rh); out.runes.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: rw, h: rh, rot: 0, seed: Math.floor(r(k++) * 1e6), pig: Math.floor(r(k++) * 64) }); }
-    else if (pick < 0.92) k = flow(out, x0 + 2.5 * g, y0 + 2.5 * g, x1 - 2.5 * g, y1 - 2.5 * g, cell * (0.5 + r(k++) * 0.6), r, k + 100);
+  // fill the gaps: an occupancy grid of what's painted, then smaller and smaller glyphs wherever they fit
+  const q = 4, gw = Math.ceil(W / q), gh = Math.ceil(H / q), occ = new Uint8Array(gw * gh);
+  const span = (cx: number, cy: number, w: number, h: number, m: number) => [Math.max(0, Math.floor((cx - w / 2 - m) / q)), Math.max(0, Math.floor((cy - h / 2 - m) / q)), Math.min(gw - 1, Math.ceil((cx + w / 2 + m) / q)), Math.min(gh - 1, Math.ceil((cy + h / 2 + m) / q))];
+  const mark = (cx: number, cy: number, w: number, h: number) => { const [a, b, c, d] = span(cx, cy, w, h, 0); for (let j = b; j <= d; j++) occ.fill(1, j * gw + a, j * gw + c + 1); };
+  const free = (cx: number, cy: number, w: number, h: number, m: number) => {
+    if (cx - w / 2 < x0 || cx + w / 2 > x1 || cy - h / 2 < y0 || cy + h / 2 > y1) return false;
+    const [a, b, c, d] = span(cx, cy, w, h, m);
+    for (let j = b; j <= d; j++) for (let i = a; i <= c; i++) if (occ[j * gw + i]) return false;
+    return true;
   };
-  split(pad, pad, W - pad, H - pad, 5);
+  for (const ru of out.runes) mark(ru.x, ru.y, ru.w * 0.9, ru.h * 0.9);
+  for (const [x, y, d] of out.dots) mark(x, y, d * 2, d * 2);
+  for (const f of [0.5, 0.36, 0.26, 0.19]) {
+    const s = cell * f, step = s * 0.5, tries = Math.ceil((W * H) / (step * step));
+    for (let t = 0; t < tries; t++) {
+      const cx = x0 + r(k++) * (x1 - x0), cy = y0 + r(k++) * (y1 - y0), w = s * (0.8 + r(k++) * 0.4), h = s * (0.8 + r(k++) * 0.4);
+      if (!free(cx, cy, w, h, s * 0.12)) continue;
+      out.runes.push({ x: cx, y: cy, w, h, rot: (r(k++) - 0.5) * 0.3, seed: Math.floor(r(k++) * 1e6), pig: Math.floor(r(k++) * 64) });
+      mark(cx, cy, w, h);
+    }
+  }
   return out;
 }
 
-let current: LayoutKind = 'flow';
-/** The layout the gate's inscription is built with (a review hook; the game ships 'flow'). */
-export const runeLayoutKind = () => current;
-export function setRuneLayout(k: string | null): void { current = (LAYOUTS as readonly string[]).includes(k ?? '') ? k as LayoutKind : 'flow'; }
-
 /** A painted inscription on a `cols` × `rows` cell panel; paint from `pigments` (default: all). */
-export function runeTexture(cols: number, rows: number, seed: number, pigments: readonly string[] = ALL, kind: LayoutKind = 'flow', cell = 96): THREE.CanvasTexture {
+export function runeTexture(cols: number, rows: number, seed: number, pigments: readonly string[] = ALL, cell = 96): THREE.CanvasTexture {
   const cv = document.createElement('canvas'), W = cols * 96, H = rows * 96;
   cv.width = W; cv.height = H;
-  const g = cv.getContext('2d')!, lay = runeLayout(kind, W, H, seed, cell);
+  const g = cv.getContext('2d')!, lay = runeLayout(W, H, seed, cell);
   g.lineCap = 'round'; g.lineJoin = 'round';
   /** Paint `p` (in a local frame at x, y turned rot) in glowing `c`. */
   const paint = (p: Path2D, x: number, y: number, rot: number, w: number, c: string, a = 1) => {
     g.save(); g.translate(x, y); g.rotate(rot); g.globalAlpha = a; g.lineWidth = w; g.strokeStyle = c; g.shadowColor = c; g.shadowBlur = 6 + w; g.stroke(p); g.restore();
   };
-  for (const ln of lay.lines) { const p = new Path2D(); ln.forEach(([x, y], i) => (i ? p.lineTo(x, y) : p.moveTo(x, y))); paint(p, 0, 0, 0, 3, ALL[Math.floor(rnd(ln.length, Math.round(ln[0][1]), seed) * ALL.length)], 0.55); }
   for (const [x, y, d] of lay.dots) { const p = new Path2D(); p.arc(0, 0, d * 0.5, 0, Math.PI * 2); paint(p, x, y, 0, d * 1.2, ALL[Math.floor(rnd(Math.round(x), Math.round(y), seed) * ALL.length)]); }
   lay.runes.forEach((ru, i) => {
     if (rnd(i, 3, seed) < 0.06) return; // worn away

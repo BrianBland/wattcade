@@ -38,3 +38,10 @@ Revisions honor `frozenUntilS` and the local announcement horizon; legacy fallba
 Sprints/launches require rhythm ≥ 0.6 throughout countdown/sprint; gaps/low confidence use effort-only holds/recovery. No coverage = unchanged full-file/synth plan.
 `test/rolling.test.ts`: real RollingQueue with shifting grids/sections, every announced ID/time, frozen samples, gaps/0.6.
 Touch HUD uses Z Left / A Right; duplicate arrows remain in help. Nearby road/city/blocks only (≤140 s); dispose replaced GPU resources; clamp shader light before bloom (× 0.85).
+
+## Achievement correctness
+Overdrive requires `setDone`. Unbroken uses `maxCleanChain`, a separate streak
+reset by missed blocks, gray hits, or dropouts; blocks caught during a dropout do
+not build it. The scoring combo remains unchanged. Sharpshooter additionally
+requires zero dropouts. Existing earned rewards and block-count gates are retained;
+perfect automated steering is not evidence for raising human accuracy thresholds.

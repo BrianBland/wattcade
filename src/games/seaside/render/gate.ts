@@ -1,12 +1,13 @@
-// Chapter 3b in the voxel world (#193), driven from the cavern set: the painted glyphs on the stones by the causeway
-// and on the gate (glowing paint, brightening as you come up on them), the bars unfolding into the drill again at the
+// Chapter 3b in the voxel world (#193), driven from the cavern set: the carved runes on the stones by the causeway
+// and on the gate (pigmented cuts, warming as you come up on them), the bars unfolding into the drill again at the
 // wall, Drill II (the bit spinning with your cadence into basalt, obsidian that throws sparks, a geode's crystals),
 // the cracks spidering out and the tunnel tilting in its last minute, the floor dropping away, and the fall: rubble
 // alongside you, then black, and a white dot dead ahead that grows into the Earth.
 import * as THREE from 'three';
 import { GATE_LAYERS, layerAt } from '../sim/belly';
 import type { SeasideSnapshot } from '../sim/types';
-import { addGlow, addLit, glyphDecal, glyphTexture, L, Particles, rnd, wob } from '../stills/later/kit';
+import { addGlow, addLit, L, Particles, rnd, wob } from '../stills/later/kit';
+import { PIGMENTS, runeDecal, runeTexture } from './runes';
 import { buildBit, buildDrillRig, CHUCK } from '../world/bellyProps';
 import { BRIDGE_Y, cx, GATE, GATE_TUNNEL_R, GATE_U, gateAxis, glyphPanel, GLYPH_STONES } from '../world/cavernLayout';
 import { buildGateCracks, buildGateFace, buildGateTunnel, FLOOR_HOLE } from '../world/gateProps';
@@ -65,22 +66,23 @@ export class GateSet {
 
   constructor(private view: WorldView) {
     const st = view.stage;
-    // painted glyphs: a few shared inscriptions, one material each so they can brighten on their own
-    const strips = Array.from({ length: 6 }, (_, i) => glyphTexture(1, 6, 11 + i)), patches = Array.from({ length: 6 }, (_, i) => glyphTexture(2, 2, 31 + i));
+    // carved, pigmented runes: a few shared inscriptions (each in its own pigment set), one material per stone so they
+    // can brighten on their own
+    const strips = PIGMENTS.map((pg, i) => runeTexture(1, 6, 11 + i, pg)), patches = PIGMENTS.map((pg, i) => runeTexture(2, 2, 31 + i, pg));
     GLYPH_STONES.forEach((s, i) => {
-      const p = glyphPanel(s), m = glyphDecal((s.kind === 'column' ? strips : patches)[i % 6], p.w, p.h, 1);
+      const p = glyphPanel(s), m = runeDecal((s.kind === 'column' ? strips : patches)[(i * 7) % PIGMENTS.length], p.w, p.h);
       m.position.set(p.x, p.y, p.z); m.rotation.y = p.facing * Math.PI / 2;
-      this.decals.push({ m, u: s.u, base: s.kind === 'column' ? 1.6 : 2.2 }); this.root.add(m);
+      this.decals.push({ m, u: s.u, base: 1.25 }); this.root.add(m);
     });
     // the gate's inscription, with the bore's mouth cut out of it (the face being drilled shows through)
-    const gw = GATE.half * 2 - 1.6, gh = GATE.h + GATE.arch - 1.2, gate = glyphDecal(glyphTexture(12, 10, 7), gw, gh, 1), gy = BRIDGE_Y + 0.2 + gh / 2;
+    const gw = GATE.half * 2 - 1.6, gh = GATE.h + GATE.arch - 1.2, gate = runeDecal(runeTexture(12, 10, 7), gw, gh), gy = BRIDGE_Y + 0.2 + gh / 2;
     const shape = new THREE.Shape().moveTo(-gw / 2, -gh / 2).lineTo(gw / 2, -gh / 2).lineTo(gw / 2, gh / 2).lineTo(-gw / 2, gh / 2).closePath();
     shape.holes.push(new THREE.Path().absarc(0, gateAxis().y - gy, GATE_TUNNEL_R + 0.5, 0, Math.PI * 2, true));
     const geo = new THREE.ShapeGeometry(shape, 24), uv = geo.attributes.uv, pos = geo.attributes.position;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / gw + 0.5, pos.getY(i) / gh + 0.5);
     gate.geometry.dispose(); gate.geometry = geo;
     gate.position.set(cx(GATE_U), gy, -GATE_U + 0.03);
-    this.decals.push({ m: gate, u: GATE_U, base: 1.8 }); this.root.add(gate);
+    this.decals.push({ m: gate, u: GATE_U, base: 1.1 }); this.root.add(gate);
     // the drill: rig on the camera (in place of the bars), bit aimed at the face every frame
     addLit(st, 'gate drill', buildDrillRig(), 0.04, NONE, this.rig);
     addLit(st, 'gate bit', buildBit(), 0.03, NONE, this.spin);
@@ -124,11 +126,11 @@ export class GateSet {
     const fx = shot.fx.gate, eye = pose.eye, uEye = -eye.z;
     const on = GATE_SCENES.has(snap.sceneId);
     this.root.visible = on || uEye > GATE_U - 500;
-    // glyphs: dim far off, bright as you come up on them, a slow fade once behind; only once the causeway starts
+    // runes: the pigment dull far off, warming as you come up on them, a slow fade once behind; only once the causeway starts
     for (const d of this.decals) {
       const ahead = d.u - uEye, k = ahead > 0 ? 1 - ease(clamp01((ahead - 15) / 160)) : 1 - 0.6 * ease(clamp01(-ahead / 60));
       d.m.visible = on && ahead > -80;
-      (d.m.material as THREE.MeshBasicMaterial).color.setScalar(d.base * (0.35 + 0.65 * k) * (0.92 + 0.08 * Math.sin(t * 1.3 + d.u)) * (fx?.fall ? 1 - fx.fall.black : 1));
+      (d.m.material as THREE.MeshBasicMaterial).color.setScalar(d.base * (0.55 + 0.5 * k) * (0.96 + 0.04 * Math.sin(t * 1.3 + d.u)) * (fx?.fall ? 1 - fx.fall.black : 1));
     }
     const unfold = fx?.unfold ?? 0, d = fx?.drill ?? null, crack = fx?.crack ?? 0, fall = fx?.fall ?? null;
     // the drill rig rises into the hands as the bars sink

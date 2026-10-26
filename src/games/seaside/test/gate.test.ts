@@ -11,6 +11,7 @@ import { cavernShot } from '../render/cavernShots';
 import { BRIDGE, BRIDGE_Y, cavernRoute, cavernSpan, cx, GATE, GATE_DEPTH, GATE_S, GATE_TUNNEL_R, GATE_U, gateAxis, glyphPanel, GLYPH_STONES, LAVA_Y, STOP_S, uOfS } from '../world/cavernLayout';
 import { cavernWorld } from '../world/cavern';
 import { C } from '../world/cavernPalette';
+import { PIGMENTS, runeStrokes } from '../render/runes';
 import { buildGateCracks, buildGateFace, buildGateTunnel, FLOOR_HOLE } from '../world/gateProps';
 
 const scene = (id: string) => STORY.find((s) => s.id === id)!;
@@ -60,6 +61,18 @@ describe('the causeway and the gate (#193)', () => {
         expect(at(st.face - st.side * 0.12, y, z), `${st.kind} at s=${st.s.toFixed(0)}: air in front of it`).toBe(0);
       }
     }
+  });
+
+  it('runes are straight cuts on a stave, inside their cell, in varied pigments', () => {
+    const shapes = new Set<string>();
+    for (let k = 0; k < 200; k++) {
+      const r = runeStrokes(k);
+      expect(r.some(([a, b, c, d]) => a === c && b < 0.1 && d > 0.9)).toBe(true); // a full-height stave
+      for (const sg of r) for (const v of sg) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1); }
+      shapes.add(JSON.stringify(r.map((sg) => sg.map((v) => v.toFixed(2)))));
+    }
+    expect(shapes.size).toBeGreaterThan(150);
+    expect(new Set(PIGMENTS.flat()).size).toBeGreaterThanOrEqual(6);
   });
 
   it('the gate is a sheer panel between pilasters, no door; the bore is open behind it', () => {

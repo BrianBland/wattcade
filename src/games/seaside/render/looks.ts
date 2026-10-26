@@ -43,8 +43,16 @@ const NUM_KEYS = (Object.keys(POST_DEFAULTS) as Array<keyof PostParams>).filter(
 export function mixLook(a: LookState, b: LookState, t: number): LookState {
   const post = { ...a.post, ink: a.post.ink.clone().lerp(b.post.ink, t), pixel: t < 0.5 ? a.post.pixel : b.post.pixel };
   for (const k of NUM_KEYS) (post[k] as number) = lerp(a.post[k] as number, b.post[k] as number, t);
+  // posterize counts levels (0 = off): blend from "off" as a level count too fine to see, never through 0.x levels (black)
+  if (a.post.posterize === 0 || b.post.posterize === 0) {
+    const v = lerp(a.post.posterize || POSTERIZE_OFF, b.post.posterize || POSTERIZE_OFF, t);
+    post.posterize = v >= POSTERIZE_OFF ? 0 : v;
+  }
   return { bevel: lerp(a.bevel, b.bevel, t), cool: lerp(a.cool, b.cool, t), detail: lerp(a.detail, b.detail, t), post };
 }
+
+/** Posterize levels indistinguishable from none (blends to and from 0 = off pass through it). */
+const POSTERIZE_OFF = 256;
 
 const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 

@@ -66,14 +66,14 @@ export class GateSet {
 
   constructor(private view: WorldView) {
     const st = view.stage;
-    // carved, pigmented runes: a few shared inscriptions (each in its own pigment set), one material per stone so they
+    // painted glyphs: a few shared inscriptions (each in its own paint set), one material per stone so they
     // can brighten on their own
     const sets = PIGMENTS;
     const strips = sets.map((pg, i) => runeTexture(1, 6, 11 + i, pg, 'flow', 70)), patches = sets.map((pg, i) => runeTexture(2, 2, 31 + i, pg, 'flow', 64));
     GLYPH_STONES.forEach((s, i) => {
       const p = glyphPanel(s), m = runeDecal((s.kind === 'column' ? strips : patches)[(i * 7) % sets.length], p.w, p.h);
       m.position.set(p.x, p.y, p.z); m.rotation.y = p.facing * Math.PI / 2;
-      this.decals.push({ m, u: s.u, base: 1.25 }); this.root.add(m);
+      this.decals.push({ m, u: s.u, base: s.kind === 'column' ? 1.6 : 2.2 }); this.root.add(m);
     });
     // the gate's inscription, with the bore's mouth cut out of it (the face being drilled shows through)
     const gw = GATE.half * 2 - 1.6, gh = GATE.h + GATE.arch - 1.2, gate = runeDecal(runeTexture(12, 10, 7, undefined, runeLayoutKind()), gw, gh), gy = BRIDGE_Y + 0.2 + gh / 2;
@@ -83,7 +83,7 @@ export class GateSet {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / gw + 0.5, pos.getY(i) / gh + 0.5);
     gate.geometry.dispose(); gate.geometry = geo;
     gate.position.set(cx(GATE_U), gy, -GATE_U + 0.03);
-    this.decals.push({ m: gate, u: GATE_U, base: 1.1 }); this.root.add(gate);
+    this.decals.push({ m: gate, u: GATE_U, base: 1.8 }); this.root.add(gate);
     // the drill: rig on the camera (in place of the bars), bit aimed at the face every frame
     addLit(st, 'gate drill', buildDrillRig(), 0.04, NONE, this.rig);
     addLit(st, 'gate bit', buildBit(), 0.03, NONE, this.spin);
@@ -127,11 +127,11 @@ export class GateSet {
     const fx = shot.fx.gate, eye = pose.eye, uEye = -eye.z;
     const on = GATE_SCENES.has(snap.sceneId);
     this.root.visible = on || uEye > GATE_U - 500;
-    // runes: the pigment dull far off, warming as you come up on them, a slow fade once behind; only once the causeway starts
+    // glyphs: dim far off, bright as you come up on them, a slow fade once behind; only once the causeway starts
     for (const d of this.decals) {
       const ahead = d.u - uEye, k = ahead > 0 ? 1 - ease(clamp01((ahead - 15) / 160)) : 1 - 0.6 * ease(clamp01(-ahead / 60));
       d.m.visible = on && ahead > -80;
-      (d.m.material as THREE.MeshBasicMaterial).color.setScalar(d.base * (0.55 + 0.5 * k) * (0.96 + 0.04 * Math.sin(t * 1.3 + d.u)) * (fx?.fall ? 1 - fx.fall.black : 1));
+      (d.m.material as THREE.MeshBasicMaterial).color.setScalar(d.base * (0.35 + 0.65 * k) * (0.92 + 0.08 * Math.sin(t * 1.3 + d.u)) * (fx?.fall ? 1 - fx.fall.black : 1));
     }
     const unfold = fx?.unfold ?? 0, d = fx?.drill ?? null, crack = fx?.crack ?? 0, fall = fx?.fall ?? null;
     // the drill rig rises into the hands as the bars sink

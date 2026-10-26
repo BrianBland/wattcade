@@ -28,8 +28,8 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, END_TITLE, endTitle, inside, layout, trackedXs, type Box } from './layout';
-import titleFontUrl from './fonts/bodoni-moda-800.woff2?url';
+import { bellyHud, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
 const SKY: Record<LookName, [string, string]> = {
@@ -37,11 +37,11 @@ const SKY: Record<LookName, [string, string]> = {
   jungle: ['#c9e3b0', '#5aa35a'], lava: ['#2a0c10', '#c2451c'], reentry: ['#1a0a20', '#f07a2a'], fever: ['#141a33', '#7a3a8a'],
 };
 
-/** The end title's face (Bodoni Moda, OFL), fetched once when the ending comes up; until then it falls back. */
+/** The end title's face (Bodoni Moda 800 italic, OFL), fetched once when the ending comes up; until then it falls back. */
 let titleFont: Promise<unknown> | null = null;
 function loadTitleFont(): void {
   if (titleFont || typeof FontFace === 'undefined') return;
-  titleFont = new FontFace('Seaside Title', `url(${titleFontUrl})`, { weight: '800' }).load()
+  titleFont = new FontFace('Seaside Title', `url(${titleFontUrl})`, { weight: '800', style: 'italic' }).load()
     .then((f) => document.fonts.add(f)).catch(() => undefined);
 }
 
@@ -446,14 +446,13 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this, L = layout(W, H, this.insets), fx = shot.fx;
     g.clearRect(0, 0, W, H);
     this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
-    if (fx.title > 0) { // the opening's small serif "Seaside", now in the evening light
+    if (fx.title > 0) { // the title, big, in the evening light
       const T = endTitle(W, L.UH, this.insets.top), px = Math.round(T.px);
-      g.globalAlpha = fx.title; g.fillStyle = '#fffaf0'; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.font = `800 ${px}px "Seaside Title", "Bodoni 72", Didot, Georgia, serif`;
-      const chars = [...END_TITLE.text], xs = trackedXs(chars.map((c) => g.measureText(c).width), END_TITLE.track * px, W / 2);
+      g.globalAlpha = fx.title; g.fillStyle = '#fffaf0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `italic 800 ${px}px "Seaside Title", "Bodoni 72", Didot, Georgia, serif`;
       for (const [glow, blur] of [['rgba(255,214,160,.7)', px * 0.35], ['rgba(60,24,10,.55)', px * 0.08]] as const) {
         g.shadowColor = glow; g.shadowBlur = blur;
-        chars.forEach((c, i) => g.fillText(c, xs[i], T.y));
+        g.fillText(END_TITLE.text, W / 2, T.y);
       }
       g.shadowBlur = 0; g.globalAlpha = 1;
     }

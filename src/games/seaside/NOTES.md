@@ -5,7 +5,7 @@
 - `graph.ts` plan / route / effort / checkpoints; `pace.ts` power⅓ × nudge. `sim.ts` menu → story, saves at chapters /
   long-scene checkpoints; events scene/chapter/save/storyEnd/trainer/pull/cast/bite/cue/….
 - `pull.ts` 9 sprints; `fishing.ts`; `catalogue.ts`; `economy.ts` cents, Surf $40 / Deep $90, one bonus stop per shop.
-  End title SEASIDE (Bodoni Moda 800, OFL, `render/fonts/`, tracked by `trackedXs`) fades in over the climb; no credit roll (music: #197).
+  End title "Seaside" (Bodoni Moda 800 italic, OFL, `render/fonts/`) fades in over the climb; no credit roll (music: #197).
 - #190 `belly.ts`: wake (cadence → two blinks), parts (A in reach; ridden past = scooped up), `drillView` (layers off
   the effort plan; depth grows only while boring). Drills gate on the ERG target (held = on plan, idle only creeps).
 - #192 `fan.ts`: glow = 1 − cooled + `heat` (creeps back out of the band, capped; blown off in it); then the eating

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORY } from '../sim/story';
 import { ANGEL, angelEye, angelU, CLIFF, cliffEye, endingShot, EYE, LIFT_S, louCar, SUNWARD } from '../render/endingShots';
-import { END_TITLE, endTitle, trackedXs } from '../render/layout';
+import { END_TITLE, endTitle } from '../render/layout';
 import { LAND_S } from '../render/flightShots';
 import { rideCam, rideSpan } from '../render/morningShots';
 import { textAt } from '../world/coastBuild';
@@ -106,9 +106,6 @@ describe('end title and sign (#195)', () => {
       expect(T.y - T.px / 2).toBeGreaterThanOrEqual(top);
       expect(T.px * END_TITLE.em).toBeLessThanOrEqual(W * 0.9); // the whole word fits across
     }
-    const xs = trackedXs([10, 20, 30], 5, 100);
-    expect(xs).toEqual([65, 80, 105]);
-    expect(xs[2] + 30 - 100).toBeCloseTo(100 - xs[0]); // centred
   });
 
   it('can spell GONE FISHING on Lou’s door', () => {

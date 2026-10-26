@@ -21,3 +21,4 @@
 - Numeric browser checks: `scripts/check-hud-alignment.mjs`; normal/long values, ten layouts (including mouse and breakpoint edges), 51px compact / 59px desktop bar. Review: `docs/visual-polish/hud-alignment/README.md`.
 - Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.
 - Touch actions show names rather than A/B/Y/Z glyphs. Warmup opts into a read-only persistent controller navigation legend; Auto removes it on disconnect. App suppresses it while menus are visible; their contextual key hints take precedence.
+- Pocket Arcade supplies shared warm navy/cream and mint tokens to the bar, peeks and floating surfaces; typography, zone/controller semantics and geometry are unchanged.

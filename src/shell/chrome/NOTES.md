@@ -1,6 +1,6 @@
 # Flat game chrome
 - `chrome.css` composes shell screens; canonical tokens/widgets are in `src/ui/`. See `docs/UI_STYLE_GUIDE.md` and `/dev/ui-kit.html` for DOM/Canvas adoption.
-- Flat navy surfaces, mint primary/focus, gold achievement accent. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
+- Pocket Arcade default: warm navy/cream surfaces, mint primary/focus, gold achievement accent, pixel eyebrow stars, 900-weight headings and tactile 3px primary edges. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
 - Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings (collapsed on every visit, including saved setups; summary shows Optional/Enabled/Connected; controller A toggles). The setup list scrolls independently while Continue remains reachable.
 - ProfilePicker has a roster + one live selected-rider showcase. Touch previews first, then explicit Ride/Edit; controller A starts, Y edits. Phone roster scrolls horizontally with gestures; controller focus scrolls into view.
 - New/edit rider uses flat scrolling fields, an animated preview and pinned Save/Cancel with quieter backup/delete actions. Aim is removed from editor fields; stored aim behavior is preserved. Color choices are semantic 44px buttons, and controller navigation follows the action rows.

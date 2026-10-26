@@ -1,19 +1,20 @@
 /** Renderer-safe source of truth. Run `npx tsx scripts/generate-ui-tokens.ts` after edits. */
 export const UI = {
   color: {
-    background: '#0b202c',
-    surface: '#102b38',
-    raised: '#183744',
-    text: '#eaf0e6',
+    background: '#102631',
+    surface: '#173542',
+    raised: '#214452',
+    text: '#fff4dc',
     muted: '#a7bdc6',
     subtle: '#8daeb8',
-    accent: '#57dfbe',
+    accent: '#66e6b8',
     onAccent: '#09242b',
-    gold: '#dfc477',
+    accentEdge: '#236b5c',
+    gold: '#f4cf71',
     danger: '#ff8f98',
     line: '#bdd3da24',
     hover: '#bdd3da0b',
-    focus: '#57dfbe',
+    focus: '#66e6b8',
     disabled: '#647d87'
   },
   font: {
@@ -37,7 +38,10 @@ export const UI = {
     touch: 44,
     radius: 2,
     focus: 2,
-    progress: 4
+    progress: 4,
+    buttonDepth: 3,
+    progressStep: 12,
+    progressGap: 2
   },
   motion: {
     fast: 120,

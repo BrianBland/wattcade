@@ -1,18 +1,19 @@
 /* Generated from tokens.ts; do not edit by hand. */
 :root {
-  --ui-color-background: #0b202c;
-  --ui-color-surface: #102b38;
-  --ui-color-raised: #183744;
-  --ui-color-text: #eaf0e6;
+  --ui-color-background: #102631;
+  --ui-color-surface: #173542;
+  --ui-color-raised: #214452;
+  --ui-color-text: #fff4dc;
   --ui-color-muted: #a7bdc6;
   --ui-color-subtle: #8daeb8;
-  --ui-color-accent: #57dfbe;
+  --ui-color-accent: #66e6b8;
   --ui-color-on-accent: #09242b;
-  --ui-color-gold: #dfc477;
+  --ui-color-accent-edge: #236b5c;
+  --ui-color-gold: #f4cf71;
   --ui-color-danger: #ff8f98;
   --ui-color-line: #bdd3da24;
   --ui-color-hover: #bdd3da0b;
-  --ui-color-focus: #57dfbe;
+  --ui-color-focus: #66e6b8;
   --ui-color-disabled: #647d87;
   --ui-font-family: system-ui, sans-serif;
   --ui-font-numeric: "Oxanium", ui-monospace, monospace;
@@ -31,6 +32,9 @@
   --ui-size-radius: 2px;
   --ui-size-focus: 2px;
   --ui-size-progress: 4px;
+  --ui-size-button-depth: 3px;
+  --ui-size-progress-step: 12px;
+  --ui-size-progress-gap: 2px;
   --ui-motion-fast: 120ms;
   --ui-motion-normal: 200ms;
   --ui-controller-a: #2bd96b;

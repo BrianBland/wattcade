@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { aboveHud, drawButton, hitTest, progressRect } from './canvas';
+import { aboveHud, drawButton, drawProgress, hitTest, progressRect } from './canvas';
 it('keeps foreground bounds above every supplied edge inset', () => {
   expect(aboveHud(390, 844, {
     top: 12,
@@ -61,4 +61,22 @@ it('isolates canvas drawing state and omits focus on disabled actions', () => {
   expect(g.restore).toHaveBeenCalledOnce();
   expect(g.strokeRect).not.toHaveBeenCalled();
   expect(g.fillText).toHaveBeenCalledWith(expect.stringContaining('…'), 20, 30);
+});
+
+it('keeps segmented progress decoration inside the filled portion, including partial ticks', () => {
+  const g = { save: vi.fn(), restore: vi.fn(), fillRect: vi.fn() } as unknown as CanvasRenderingContext2D;
+  const r = { x: 8, y: 12, w: 101, h: 4 };
+  for (const value of [0, .109, .5, 1, -1, NaN, Infinity]) {
+    vi.mocked(g.fillRect).mockClear();
+    drawProgress(g, r, value);
+    const fill = progressRect(r, value);
+    for (const [x, y, width, height] of vi.mocked(g.fillRect).mock.calls.slice(1)) {
+      expect(x).toBeGreaterThanOrEqual(r.x);
+      expect(x + width).toBeLessThanOrEqual(fill.x + fill.w);
+      expect(y).toBe(r.y);
+      expect(height).toBe(r.h);
+    }
+  }
+  expect(g.save).toHaveBeenCalledTimes(7);
+  expect(g.restore).toHaveBeenCalledTimes(7);
 });

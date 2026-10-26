@@ -1,5 +1,5 @@
 @import '../../ui/widgets.css';
-/* Shared shell chrome: quiet sheets, crisp accents, and real var(--ui-size-touch) controls. */
+/* Pocket Arcade: warm navy, mint/gold accents and small tactile pixel details. */
 .chrome-ui {
   --fg:var(--ui-color-text); --dim:var(--ui-color-muted); --neon:var(--ui-color-accent); --pink:var(--ui-color-gold); --lime:var(--ui-color-accent);
   --line:var(--ui-color-line); --glass:var(--ui-color-surface); --glass-line:var(--ui-color-line);
@@ -10,18 +10,21 @@
   background:linear-gradient(100deg,color-mix(in srgb,var(--ui-color-background) 97.65%,transparent) 5%,color-mix(in srgb,var(--ui-color-background) 92.94%,transparent) 62%,color-mix(in srgb,var(--ui-color-background) 54.90%,transparent));
 }
 .chrome-ui .chrome-head { margin-bottom:10px; }
-.chrome-eyebrow { font:700 10px/1.5 system-ui; letter-spacing:2px; color:var(--ui-color-subtle); }
-.chrome-ui.screen h1 { margin-top:8px; font:750 clamp(30px,4vw,48px)/1.1 system-ui; letter-spacing:-1.5px; text-transform:none; color:var(--fg); text-shadow:none; }
+.chrome-eyebrow { display:inline-flex; align-items:center; gap:8px; font:800 10px/1.5 system-ui; letter-spacing:2px; color:var(--ui-color-gold); }
+.chrome-eyebrow::before { content:''; display:inline-block; flex:none; width:9px; height:9px; background:var(--ui-color-gold); clip-path:polygon(33% 0,66% 0,66% 33%,100% 33%,100% 66%,66% 66%,66% 100%,33% 100%,33% 66%,0 66%,0 33%,33% 33%); }
+.chrome-ui.screen h1 { margin-top:8px; font:900 clamp(30px,4vw,48px)/1.1 system-ui; letter-spacing:-1.5px; text-transform:none; color:var(--fg); text-shadow:none; }
 .chrome-ui .screen-head .sub { max-width:650px; color:var(--dim); font:400 14px/1.6 system-ui; margin-top:12px; text-shadow:none; }
 .chrome-ui .btn { min-height:var(--ui-size-touch); padding:10px 16px; border:0; border-radius:var(--ui-size-radius); box-shadow:none; background:color-mix(in srgb,var(--ui-color-muted) 4.31%,transparent); color:var(--fg); backdrop-filter:none; -webkit-backdrop-filter:none; font:650 14px/1.4 system-ui; text-align:left; }
-.chrome-ui .btn.primary { background:var(--ui-color-accent); color:var(--ui-color-on-accent); padding:12px 22px; box-shadow:none; border:0; }
+.chrome-ui .btn.primary { background:var(--ui-color-accent); color:var(--ui-color-on-accent); padding:12px 22px; font-weight:800; box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge); border:0; }
 .chrome-ui .btn.small { font-size:12px; min-height:var(--ui-size-touch); }
 .chrome-ui .btn.focused,.chrome-ui .btn:focus-visible { outline:2px solid var(--ui-color-accent); outline-offset:3px; box-shadow:none; transform:none; }
+.chrome-ui .btn.primary:is(.focused,:focus-visible) { box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge); }
 .chrome-ui .btn:active { transform:translateY(1px); }
 .chrome-ui .key-hints { margin-top:auto; padding-top:18px; color:var(--dim); font-size:11px; gap:20px; }
 .chrome-ui .key { min-width:20px; height:20px; border:0; border-radius:0; background:transparent; box-shadow:none; font-size:11px; }
 .chrome-ui .bar { height:3px; border-radius:0; background:#b5cbd025; }
 .chrome-ui .bar>i { background:var(--ui-color-accent); }
+.chrome-ui .bar:not(.zone-bar)>i { background-image:repeating-linear-gradient(90deg,transparent 0 calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)),var(--ui-color-background) calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)) var(--ui-size-progress-step)); }
 .pixel-icon { display:block; width:24px; height:24px; }
 /* Connection rows form one list, rather than a grid of rounded cards. */
 .connection-layout { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(240px,.8fr); gap:48px; max-width:1100px; }
@@ -67,7 +70,7 @@
 .rider-entry>span:not(.rider-av) { min-width:0; }
 .rider-entry b { font:650 18px/1.4 system-ui; }
 .rider-entry small { display:block; color:var(--dim); font:400 11px/1.6 system-ui; }
-.rider-entry.selected { background:color-mix(in srgb,var(--ui-color-accent) 3.53%,transparent); box-shadow:inset 3px 0 var(--ui-color-accent); }
+.rider-entry.selected { background:color-mix(in srgb,var(--ui-color-accent) 9%,transparent); box-shadow:inset 4px 0 var(--ui-color-accent); }
 .rider-entry:focus-visible { outline:2px solid var(--ui-color-accent); outline-offset:-2px; }
 .rider-entry .roster-arrow { margin-left:auto; font-size:22px; color:var(--ui-color-accent); opacity:0; }
 .rider-entry.selected .roster-arrow { opacity:1; }
@@ -78,7 +81,7 @@
 .rider-portrait { position:relative; min-height:250px; display:flex; align-items:flex-end; }
 .rider-portrait::after { content:''; position:absolute; left:8%; right:8%; bottom:12%; height:1px; background:linear-gradient(90deg,transparent,#6e9b9e66,transparent); }
 .rider-portrait .rider-av.hero { width:100%; height:270px; max-width:540px; }
-.chrome-ui .rider-details h2,.chrome-ui .new-rider-prompt h2 { font:750 clamp(30px,3.5vw,var(--ui-size-touch))/1.2 system-ui; margin:6px 0 16px; letter-spacing:-1px; text-transform:none; color:var(--fg); text-shadow:none; }
+.chrome-ui.screen .rider-details h2,.chrome-ui.screen .new-rider-prompt h2 { font:900 clamp(30px,3.2vw,40px)/1.15 system-ui; margin:6px 0 16px; letter-spacing:-1px; text-transform:none; color:var(--fg); text-shadow:none; }
 .rider-readings { display:flex; gap:28px; color:var(--dim); font-size:12px; margin-bottom:18px; }
 .rider-readings b { color:var(--fg); font-size:18px; }
 .rider-details .bar { margin-bottom:10px; max-width:380px; }
@@ -88,7 +91,7 @@
 /* Pause is a readable sheet over the actual game, with a consistent vertical nav order. */
 .chrome-ui.chrome-pause { justify-content:flex-start; align-items:stretch; background:linear-gradient(95deg,color-mix(in srgb,var(--ui-color-background) 98.43%,transparent) 15%,color-mix(in srgb,var(--ui-color-background) 90.98%,transparent) 48%,color-mix(in srgb,var(--ui-color-background) 26.67%,transparent) 80%); backdrop-filter:none; -webkit-backdrop-filter:none; }
 .chrome-pause .modal.pause { display:flex; flex-direction:column; gap:0; width:min(560px,100%); min-width:0; max-height:100dvh; height:100%; padding:clamp(20px,4vw,var(--ui-size-touch)); background:transparent; border:0; border-radius:0; box-shadow:none; animation:none; }
-.chrome-pause h2 { font:750 46px/1.1 system-ui; margin:5px 0 0; letter-spacing:-1.5px; }
+.chrome-pause h2 { font:900 46px/1.1 system-ui; margin:5px 0 0; letter-spacing:-1.5px; }
 .pause-caption { margin:10px 0 22px; color:var(--dim); font:13px/1.5 system-ui; }
 .chrome-pause .pause>.btn.primary { align-self:flex-start; min-width:220px; margin-bottom:24px; }
 .chrome-pause .fields { gap:0; }
@@ -264,7 +267,7 @@
 .chrome-ui .badge b {font-size:14px}.chrome-ui .badge .small {font-size:12px;line-height:1.5;margin-top:4px}
 .chrome-ui .badge-grid {gap:0 28px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
 .chrome-ui .levelup {font:650 18px/1.4 var(--ui-font-family);color:var(--ui-color-gold);text-shadow:none;animation:none}
-.chrome-ui .xp-gain {color:var(--ui-color-accent);font:750 40px/1.2 var(--ui-font-family);text-shadow:none}
+.chrome-ui .xp-gain {color:var(--ui-color-gold);font:750 40px/1.2 var(--ui-font-family);text-shadow:none}
 .chrome-ui .summary-grid {display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:24px;min-height:0}
 .chrome-ui.summary {overflow-y:auto}.chrome-ui.summary>* {flex-shrink:0}
 .summary .summary-grid>.panel {padding:24px;min-width:0}
@@ -277,7 +280,7 @@
 .achievements-screen>.stats {background:transparent;padding:0;border-bottom:1px solid var(--ui-color-line)}
 .chrome-ui.result {background:color-mix(in srgb,var(--ui-color-background) 90.98%,transparent);backdrop-filter:none;-webkit-backdrop-filter:none;padding:24px;overflow:auto;cursor:default}
 .chrome-ui .result-card {width:min(720px,100%);max-height:100%;overflow:auto;align-items:flex-start;padding:32px;background:var(--ui-color-background);gap:24px}
-.chrome-ui .result-card h1 {font:750 clamp(32px,6vw,56px)/1.1 var(--ui-font-family);letter-spacing:-1px;text-transform:none;color:var(--ui-color-text);text-shadow:none;margin:0}
+.chrome-ui .result-card h1 {font:900 clamp(32px,6vw,56px)/1.1 var(--ui-font-family);letter-spacing:-1px;text-transform:none;color:var(--ui-color-text);text-shadow:none;margin:0}
 .chrome-ui .result-stats {justify-content:flex-start;gap:24px}
 .chrome-ui .result-stats>div {padding:8px 0;background:none;border:0;border-radius:0;animation:none;align-items:flex-start}
 .chrome-ui .result-stats b {font-size:26px;color:var(--ui-color-text)}
@@ -304,7 +307,7 @@
 .chrome-ui.media-picker .mp-library {border-left:0;padding-left:0}
 .chrome-ui.media-picker .mp-tabs {gap:4px}
 .chrome-ui.media-picker .mp-tabs .btn {padding:8px;font-size:11px;white-space:nowrap;background:none;border-bottom:2px solid transparent;border-radius:0}
-.chrome-ui.media-picker .mp-tabs .btn.primary {border-bottom-color:var(--ui-color-accent);color:var(--ui-color-accent)}
+.chrome-ui.media-picker .mp-tabs .btn.primary {border-bottom-color:var(--ui-color-accent);color:var(--ui-color-accent);box-shadow:none}
 .chrome-ui.media-picker .mp-search {min-height:var(--ui-size-touch);background:var(--ui-color-hover);border:0;border-bottom:1px solid var(--ui-color-line);border-radius:0;color:var(--ui-color-text);font-size:16px}
 .chrome-ui.media-picker .mp-row,.chrome-ui.media-picker .mp-qrow {min-height:52px;border:0;border-bottom:1px solid var(--ui-color-line);border-radius:0;padding:8px 0;gap:8px;flex-shrink:0}
 .chrome-ui.media-picker .mp-row.focused,.chrome-ui.media-picker .mp-qrow.focused,.chrome-ui.media-picker .mp-mode.focused {background:var(--ui-color-hover);box-shadow:inset 3px 0 var(--ui-color-accent);border-radius:0}
@@ -315,7 +318,7 @@
 .chrome-ui.media-picker .mp-mode .ui-tabs {max-width:100%}
 .chrome-ui.media-picker .mp-mode .ui-tab {padding:8px;font-size:11px}
 .chrome-ui.media-picker .mp-qremove {font-size:11px;padding:8px;white-space:nowrap}
-.chrome-ui.media-picker .mp-queue>.btn.primary {box-shadow:none;min-height:var(--ui-size-touch)}
+.chrome-ui.media-picker .mp-queue>.btn.primary {min-height:var(--ui-size-touch)}
 .chrome-ui.media-picker>.key-hints {flex:none;margin:0;padding:0}
 .chrome-ui.media-picker .mp-undo {background:var(--ui-color-surface);border:0;border-left:3px solid var(--ui-color-accent);border-radius:0;box-shadow:none;color:var(--ui-color-text)}
 .chrome-ui.media-picker .mp-empty {font-size:12px;line-height:1.6;white-space:normal}
@@ -401,3 +404,6 @@
  .chrome-ui.menu .carousel.narrow .gc.active {grid-template-columns:58fr 42fr}
  .chrome-ui.menu .carousel.narrow .gc.active .gc-media {aspect-ratio:auto}
 }
+
+.chrome-ui .btn.primary:active:not(:disabled) {transform:translate(var(--ui-size-button-depth),var(--ui-size-button-depth));box-shadow:none}
+@media(prefers-reduced-motion:reduce){.chrome-ui .btn.primary:active:not(:disabled){transform:none}}

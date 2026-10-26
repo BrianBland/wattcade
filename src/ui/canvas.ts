@@ -64,13 +64,19 @@ export function drawButton(g: CanvasRenderingContext2D, r: Rect, label: string, 
 } = {}) {
   g.save();
   g.globalAlpha = state.disabled ? .45 : 1;
+  const depth = state.primary ? UI.size.buttonDepth : 0;
+  const offset = state.pressed && !state.disabled ? depth : 0;
+  if (state.primary && !offset) {
+    g.fillStyle = UI.color.accentEdge;
+    g.fillRect(r.x + depth, r.y + depth, r.w, r.h);
+  }
   g.fillStyle = state.primary ? UI.color.accent : state.pressed ? UI.color.raised : UI.color.surface;
-  g.fillRect(r.x, r.y, r.w, r.h);
+  g.fillRect(r.x + offset, r.y + offset, r.w, r.h);
   if (state.selected) {
     g.fillStyle = UI.color.accent;
-    g.fillRect(r.x, r.y, 3, r.h);
+    g.fillRect(r.x, r.y, 4, r.h);
   }
-  text(g, label, r.x + 12, r.y + r.h / 2, UI.font.body, state.primary ? UI.color.onAccent : UI.color.text, Math.max(0, r.w - 24));
+  text(g, label, r.x + 12 + offset, r.y + r.h / 2 + offset, UI.font.body, state.primary ? UI.color.onAccent : UI.color.text, Math.max(0, r.w - 24), state.primary ? 800 : 650);
   if (state.focused && !state.disabled) focus(g, r);
   g.restore();
 }
@@ -81,6 +87,10 @@ export function drawProgress(g: CanvasRenderingContext2D, r: Rect, value: number
   const f = progressRect(r, value);
   g.fillStyle = UI.color[tone];
   g.fillRect(f.x, f.y, f.w, f.h);
+  g.fillStyle = UI.color.background;
+  for (let x = UI.size.progressStep - UI.size.progressGap; x < f.w; x += UI.size.progressStep) {
+    g.fillRect(f.x + x, f.y, Math.min(UI.size.progressGap, f.w - x), f.h);
+  }
   g.restore();
 }
 export function drawReadout(g: CanvasRenderingContext2D, r: Rect, label: string, value: string) {
@@ -97,7 +107,7 @@ export function drawListRow(g: CanvasRenderingContext2D, r: Rect, label: string,
   }
   if (state.selected) {
     g.fillStyle = UI.color.accent;
-    g.fillRect(r.x, r.y, 3, r.h);
+    g.fillRect(r.x, r.y, 4, r.h);
   }
   g.globalAlpha = state.disabled ? .45 : 1;
   g.font = `650 ${UI.font.small}px ${UI.font.family}`;

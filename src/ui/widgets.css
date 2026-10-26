@@ -1,21 +1,23 @@
 @import './tokens.css';
 .ui-root {font:var(--ui-font-body)/1.5 var(--ui-font-family);color:var(--ui-color-text)}
 .ui-button.ui-button,.ui-tab,.ui-list-row {font:650 var(--ui-font-body)/1.4 var(--ui-font-family);min-height:var(--ui-size-touch);padding:10px 16px;border:0;border-radius:var(--ui-size-radius);background:var(--ui-color-hover);color:var(--ui-color-text);box-shadow:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;backdrop-filter:none;-webkit-backdrop-filter:none;text-decoration:none;transform:none}
-.ui-button.ui-button.primary {background:var(--ui-color-accent);color:var(--ui-color-on-accent);border:0;box-shadow:none}
+.ui-button.ui-button.primary {background:var(--ui-color-accent);color:var(--ui-color-on-accent);border:0;font-weight:800;box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge)}
 .ui-button.ui-button.danger {color:var(--ui-color-danger)}
 .ui-button.ui-button:disabled,.ui-tab:disabled,.ui-list-row:disabled {opacity:.45;cursor:default}
 .ui-button.ui-button:focus-visible,.ui-button.ui-button.focused,.ui-tab:focus-visible,.ui-tab.focused,.ui-list-row:focus-visible,.ui-list-row.focused {outline:var(--ui-size-focus) solid var(--ui-color-focus);outline-offset:3px;box-shadow:none;transform:none}
 .ui-button.ui-button:hover:not(:disabled),.ui-list-row:hover:not(:disabled) {filter:brightness(1.1)}
 .ui-button.ui-button:active:not(:disabled) {transform:translateY(1px)}
-.ui-button.ui-button.selected,.ui-list-row.selected {box-shadow:inset 3px 0 var(--ui-color-accent);background:var(--ui-color-hover)}
+.ui-button.ui-button.primary:is(:focus-visible,.focused) {box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge)}
+.ui-button.ui-button.primary:active:not(:disabled) {transform:translate(var(--ui-size-button-depth),var(--ui-size-button-depth));box-shadow:none}
+.ui-button.ui-button.selected,.ui-list-row.selected {box-shadow:inset 4px 0 var(--ui-color-accent);background:color-mix(in srgb,var(--ui-color-accent) 9%,transparent)}
 .ui-panel.ui-panel {background:var(--ui-color-surface);border:0;border-radius:var(--ui-size-radius);padding:var(--ui-space-lg);box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--ui-color-text)}
 .ui-panel.focused {outline:2px solid var(--ui-color-focus);outline-offset:2px}
 .ui-readout {display:flex;flex-direction:column;gap:4px;padding:8px 0;min-width:0;background:none;border:0;border-radius:0;box-shadow:none}
 .ui-readout>span {font:500 var(--ui-font-small)/1.4 var(--ui-font-family);color:var(--ui-color-muted)}
 .ui-readout>b {font:750 24px/1.2 var(--ui-font-family);color:var(--ui-color-text);font-variant-numeric:tabular-nums}
 .ui-progress.ui-progress {display:flex;height:var(--ui-size-progress);border:0;border-radius:0;background:var(--ui-color-line);overflow:hidden}
-.ui-progress.ui-progress>i {display:block;height:100%;background:var(--ui-color-accent);transition:width var(--ui-motion-normal)}
-.ui-progress.gold>i {background:var(--ui-color-gold)}
+.ui-progress.ui-progress>i {display:block;height:100%;background:var(--ui-color-accent);background-image:repeating-linear-gradient(90deg,transparent 0 calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)),var(--ui-color-background) calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)) var(--ui-size-progress-step));transition:width var(--ui-motion-normal)}
+.ui-progress.gold>i {background-color:var(--ui-color-gold)}
 .ui-tabs {display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding:4px;scrollbar-width:thin}
 .ui-tab {flex:none;background:none;border-radius:0;border-bottom:2px solid transparent;white-space:nowrap;font-size:12px}
 .ui-tab[aria-selected=true] {border-bottom-color:var(--ui-color-accent);color:var(--ui-color-accent)}
@@ -45,3 +47,5 @@
 .ui-tooltip>button.focused {outline:2px solid var(--ui-color-focus);outline-offset:2px}
 @media(max-width:360px){.ui-field.ui-field{grid-template-columns:80px minmax(0,1fr)}}
 @media(max-width:599px){.ui-field.ui-field {grid-template-columns:minmax(0,1fr)}.ui-field.ui-field>small{grid-column:1}}
+
+@media(prefers-reduced-motion:reduce){.ui-button.ui-button.primary:active:not(:disabled){transform:none}}

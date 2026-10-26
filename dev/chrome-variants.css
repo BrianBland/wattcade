@@ -1,17 +1,12 @@
-/* Three experiments: palette, display type, button edge, and selection/progress treatment. */
+/* Review-only alternatives to the Pocket Arcade production default. */
 :root[data-arcade-variant] .chrome-eyebrow {display:inline-flex;align-items:center;gap:8px;color:var(--ui-color-gold);font-weight:800}
 :root[data-arcade-variant] .chrome-eyebrow::before {content:'';display:inline-block;flex:none}
 :root[data-arcade-variant] :is(.chrome-ui.screen h1,.chrome-ui .rider-details h2,.chrome-ui .result-card h1,.chrome-pause h2) {font-weight:900}
 :root[data-arcade-variant] .chrome-ui .ui-button.primary {font-weight:800}
 :root[data-arcade-variant] .chrome-ui .ui-button.primary:active {transform:translate(2px,2px);box-shadow:none}
 :root[data-arcade-variant] .chrome-ui .rider-details h2 {font-size:clamp(30px,3.2vw,40px);line-height:1.15}
-/* A — Pocket Arcade: closest to the current direction, with small tactile pixel accents. */
-:root[data-arcade-variant=pocket] {--ui-color-accent:#66e6b8;--ui-color-focus:#66e6b8;--ui-color-gold:#f4cf71;--ui-color-text:#fff4dc;--ui-color-background:#102631;--ui-color-surface:#173542;--ui-color-raised:#214452}
-:root[data-arcade-variant=pocket] .chrome-eyebrow::before {width:9px;height:9px;background:var(--ui-color-gold);clip-path:polygon(33% 0,66% 0,66% 33%,100% 33%,100% 66%,66% 66%,66% 100%,33% 100%,33% 66%,0 66%,0 33%,33% 33%)}
-:root[data-arcade-variant=pocket] .chrome-ui .ui-button.primary {box-shadow:3px 3px 0 #236b5c;border-radius:2px}
-:root[data-arcade-variant=pocket] .chrome-ui .rider-entry.selected {background:color-mix(in srgb,var(--ui-color-accent) 9%,transparent);box-shadow:inset 4px 0 var(--ui-color-accent)}
-:root[data-arcade-variant=pocket] .chrome-ui :is(.ui-progress,.bar:not(.zone-bar))>i {background-image:repeating-linear-gradient(90deg,transparent 0 10px,#102631 10px 12px)}
-:root[data-arcade-variant=pocket] :is(.chrome-ui .xp-gain,.chrome-ui .result-xp) {color:var(--ui-color-gold)}
+/* Pocket Arcade is now the production default in src/ui and shell/chrome. */
+:root[data-arcade-variant] .chrome-eyebrow::before {clip-path:none}
 /* B — Sunset Sprint: sportier coral, slanted display type, and a tiny racing-stripe accent. */
 :root[data-arcade-variant=sprint] {--ui-color-accent:#ff9b76;--ui-color-focus:#ff9b76;--ui-color-gold:#f6d66e;--ui-color-text:#fff1db;--ui-color-background:#192632;--ui-color-surface:#233541;--ui-color-raised:#314553;--ui-color-on-accent:#291e23}
 :root[data-arcade-variant=sprint] .chrome-eyebrow::before {width:13px;height:10px;transform:skewX(-20deg);background:repeating-linear-gradient(90deg,var(--ui-color-accent) 0 3px,transparent 3px 5px)}

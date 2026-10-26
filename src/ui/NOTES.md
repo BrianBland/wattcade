@@ -6,3 +6,6 @@
 - The guide is `docs/UI_STYLE_GUIDE.md`; live gallery `/dev/ui-kit.html`. It shows normal/focused/selected/disabled/busy DOM states alongside Canvas primitives.
 - Existing game-owned menus and the legacy glowing `games/kit/actionButton.ts` are intentionally left for their follow-up migration.
 - Tests cover token generation, bounded progress, inset geometry, disabled hit testing, Canvas state isolation, native button event ownership, accessible toggle/progress and tab keyboard focus.
+- Pocket Arcade is the production default: warm navy/cream, mint/gold, 3px solid primary-key edges, heavier chrome titles and 10px/2px segmented progress.
+- DOM and Canvas share palette, button depth, progress tick dimensions and 4px selection edges. Allow 3px beyond primary button bounds for its key edge; preserve measured HUD insets.
+- Sunset Sprint/Coin-Op stay dev-only previews; no production theme picker or saved selection is exposed yet.

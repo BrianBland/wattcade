@@ -11,11 +11,13 @@ This is the shared contract for shell chrome and future game-owned widgets. The 
 - `/dev/ui-kit.html`: interactive component gallery and matching Canvas specimens. Run Vite locally to open it. Desktop/phone captures are in `docs/visual-polish/chrome/`.
 - `/dev/chrome-review.html?game=warmup&manual=1&fake=0&legend=0&view=summary`: production-screen previews. Other views: connect, riders, new-rider, edit-rider, pause, result, achievements, arcade, media, controls, loading, error, achievement.
 
+Sunset Sprint and Coin-Op remain dev-only explorations, without a production theme picker or persistence. `variant=pocket` shows the same default styling; no query parameter is required.
+
 The compatibility components in `shell/components/Bits.tsx` and `ui.tsx` use the new primitives and add shell sounds/navigation. Games can use the library without depending on shell services. Adjust the relative imports in the examples for your file location. Do not import UI into simulation code.
 
 ## Visual language
 
-Use flat navy surfaces, off-white text, mint interaction accents, small pixel icons and restrained hairline separators. Keep text in readable system type; pixel art belongs in illustrations/icons. Chrome has no bloom, glass blur, decorative outlines or pill-shaped panels. Small 2px corner radii are allowed. A selected list row uses a mint edge; keyboard/controller focus uses a 2px outline with a 3px offset. Keep selected, focused, pressed, disabled and busy states distinct.
+Pocket Arcade is the production default: warm navy surfaces, cream text, mint interaction accents, gold milestones, small pixel icons and restrained hairline separators. Primary buttons have a 3px solid key edge; progress uses 10px segments separated by 2px ticks. These treatments live in the shared DOM and Canvas adapters. Display headings use weight 900. Body copy and labels stay in readable system type; pixel art belongs in illustrations/icons. Chrome has no bloom, glass blur, decorative outlines or pill-shaped panels. Small 2px corner radii are allowed. A selected list row uses a 4px mint edge; keyboard/controller focus uses a 2px outline with a 3px offset. Keep selected, focused, pressed, disabled and busy states distinct.
 
 | Role | Token | Use |
 | --- | --- | --- |
@@ -26,6 +28,7 @@ Use flat navy surfaces, off-white text, mint interaction accents, small pixel ic
 | Secondary | `muted`, `subtle` | Descriptions and eyebrows |
 | Action/focus | `accent`, `focus` | Primary action, selection and focus |
 | On primary | `onAccent` | Text on mint buttons |
+| Key edge | `accentEdge` | Solid primary-button depth, never a glow |
 | Achievement | `gold` | Unlocks, earned XP, milestone accents |
 | Error | `danger` | Failures and destructive actions |
 | Separator | `line` | Quiet dividers and progress tracks |
@@ -77,7 +80,7 @@ For shell screens use `chrome-ui` and the shared shell adapters. `chrome.css` ow
 
 ## Canvas adoption
 
-Draw in **logical CSS pixels**, after scaling the context for the backing-store DPR. Canvas helpers draw the supplied state; they do not own input, callbacks, simulation, timers, device connection or focus. Map pointer coordinates into those same logical pixels before using `hitTest`. Pass `disabled=true` to exclude unavailable actions.
+Draw in **logical CSS pixels**, after scaling the context for the backing-store DPR. Leave room for the primary button’s `UI.size.buttonDepth` (3px) edge on its right/bottom as well as focus outlines. Canvas helpers draw the supplied state; they do not own input, callbacks, simulation, timers, device connection or focus. Map pointer coordinates into those same logical pixels before using `hitTest`. Pass `disabled=true` to exclude unavailable actions.
 
 ```ts
 import { aboveHud, drawButton, drawProgress, hitTest } from '../ui/canvas';
@@ -97,7 +100,7 @@ Provide a matching keyboard/controller action and an accessible DOM control or e
 
 ## Motion and feedback
 
-Use 120ms for quick feedback and 200ms for ordinary transitions. No scaling on focus, looping chrome glow, or ornamental idle animation. Preserve meaningful game animation and brief earned-reward feedback. Respect reduced-motion preferences for UI transitions, count-ups and scrolling. DOM widgets disable transitions/animations automatically; Canvas callers should not add unconditional pulses.
+Primary keys depress by their 3px edge depth on press; reduced-motion DOM styles keep their position fixed. Use 120ms for quick feedback and 200ms for ordinary transitions. No scaling on focus, looping chrome glow, or ornamental idle animation. Preserve meaningful game animation and brief earned-reward feedback. Respect reduced-motion preferences for UI transitions, count-ups and scrolling. DOM widgets disable transitions/animations automatically; Canvas callers should not add unconditional pulses.
 
 Errors explain what failed and offer a recovery action. Loading states say what is loading. Empty states explain what to do next. Connection failures must not masquerade as successful setup; enabled configuration and a verified connection are distinct states.
 

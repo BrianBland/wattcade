@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORY } from '../sim/story';
 import { ANGEL, angelEye, angelU, CLIFF, cliffEye, endingShot, EYE, LIFT_S, louCar, SUNWARD } from '../render/endingShots';
-import { endTitle } from '../render/layout';
+import { END_TITLE, endTitle, trackedXs } from '../render/layout';
 import { LAND_S } from '../render/flightShots';
 import { rideCam, rideSpan } from '../render/morningShots';
 import { textAt } from '../world/coastBuild';
@@ -100,11 +100,15 @@ describe('the angel (#195)', () => {
 
 describe('end title and sign (#195)', () => {
   it('shows the title in the space above the HUD', () => {
-    for (const [H, top] of [[820, 0], [600, 40], [1366, 24], [320, 0]] as const) {
-      const UH = H - 140, T = endTitle(UH, top);
+    for (const [W, H, top] of [[1180, 820, 0], [820, 1180, 24], [600, 600, 40], [1366, 1024, 24], [568, 320, 0]] as const) {
+      const UH = H - 140, T = endTitle(W, UH, top);
       expect(T.y + T.px / 2).toBeLessThanOrEqual(UH);
       expect(T.y - T.px / 2).toBeGreaterThanOrEqual(top);
+      expect(T.px * END_TITLE.em).toBeLessThanOrEqual(W * 0.9); // the whole word fits across
     }
+    const xs = trackedXs([10, 20, 30], 5, 100);
+    expect(xs).toEqual([65, 80, 105]);
+    expect(xs[2] + 30 - 100).toBeCloseTo(100 - xs[0]); // centred
   });
 
   it('can spell GONE FISHING on Lou’s door', () => {

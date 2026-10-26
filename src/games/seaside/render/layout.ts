@@ -48,10 +48,19 @@ export function layout(W: number, H: number, insets: Insets, menuItems = 0, spot
   return { UH, bubble, plate, card, menu, stage, fish: fishLayout(stage, spots) };
 }
 
-/** The end title: centred in the upper third of the space above the HUD (the climbing rider is below it). */
-export function endTitle(UH: number, top: number): { y: number; px: number } {
-  const t = Math.max(0, top), px = Math.max(30, Math.min(72, (UH - t) * 0.09));
-  return { y: t + (UH - t) * 0.3, px };
+/** The end title "SEASIDE": big, tracked capitals a little above the middle of the space above the HUD
+ *  (the climbing rider is below it). `em` is the set width in ems, tracking included. */
+export const END_TITLE = { text: 'SEASIDE', track: 0.14, em: 5.9 };
+export function endTitle(W: number, UH: number, top: number): { y: number; px: number } {
+  const t = Math.max(0, top), px = Math.max(28, Math.min((UH - t) * 0.17, (W * 0.84) / END_TITLE.em));
+  return { y: t + (UH - t) * 0.38, px };
+}
+
+/** Left x of each letter of a tracked line centred on cx (canvas letterSpacing isn't in iPad Safari). */
+export function trackedXs(widths: number[], track: number, cx: number): number[] {
+  const total = widths.reduce((a, w) => a + w, 0) + track * (widths.length - 1);
+  let x = cx - total / 2;
+  return widths.map((w) => { const at = x; x += w + track; return at; });
 }
 
 /** Fishing boxes inside the stage (so above the HUD too): markers ≥ 44 px tall for touch. */

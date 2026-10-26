@@ -80,6 +80,9 @@
 }
 /* Controller statuses are read-only; they never inherit touch button sizing. */
 .action-indicators { position:absolute; z-index:21; left:50%; bottom:calc(var(--hud-h) + 8px); transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:5px; width:max-content; max-width:calc(100% - 24px); pointer-events:none; }
+@media (min-width:701px) and (min-height:501px) and (orientation:landscape) {
+  .action-indicators { left:auto; right:12px; transform:none; justify-content:flex-end; }
+}
 .action-indicator { --action-color:#6be5ca; min-width:110px; max-width:210px; padding:4px 9px; background:#0b202cf2; border-radius:2px; color:#ecf0e6; }
 .action-indicator>div:first-child { display:flex; align-items:baseline; gap:12px; line-height:1.1; }
 .action-indicator b { font:600 11px/1.2 system-ui; white-space:nowrap; color:color-mix(in srgb,var(--action-color) 70%,white); }

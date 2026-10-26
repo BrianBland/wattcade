@@ -38,3 +38,9 @@
 
 ## Known gaps
 - Renderer checked with throwaway Playwright screenshots, not on a real iPad; sounds and music untested by ear. Decor absorbs ~2.5k coin; after that coin still piles up. 
+
+## Early achievement
+Foundations rewards opening the Hillside (five standing buildings) with 30 XP and
+an Island workshirt. It also recognizes already-established islands on their next
+eligible ride. Existing achievements, thresholds and rewards remain unchanged.
+A fresh steady 35-minute autopilot ride earns this one game-specific reward.

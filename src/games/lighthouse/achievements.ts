@@ -6,6 +6,8 @@ const G = 'lighthouse';
 const storms = (r: Readonly<SessionRecord>) => countEvents(r, 'stormWeathered') || num(r, 'stormsWeathered');
 
 export const achievements: AchievementDef[] = [
+  feat(G, { id: 'lh_foundations', name: 'Foundations', desc: 'Open the Hillside by building five island buildings', bonusXp: 30,
+    check: r => num(r, 'districtsOpen') >= 2 || hasEvent(r, 'districtUnlocked', d => d.district === 'hillside') }),
   feat(G, { id: 'keeper_20', name: 'Keeper', desc: '45 min in zone 2 in one Lighthouse session', bonusXp: 60, check: (r) => (r.stats.zoneSeconds[1] ?? 0) >= 45 * 60 }),
   tally(G, 'storms', storms)({ id: 'storm_chaser', name: 'Storm Chaser', desc: 'Weather 25 storms (lifetime)', bonusXp: 80, goal: 25, unit: ' storms' }),
   feat(G, { id: 'lh_storm_season', name: 'Storm Season', desc: 'Weather 5 storms in one Lighthouse session', bonusXp: 80, check: (r) => storms(r) >= 5 }),

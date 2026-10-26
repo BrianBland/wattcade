@@ -13,7 +13,7 @@ All five readings use the self-hosted Oxanium 700 numeric subset (2,512 bytes,
 SIL OFL 1.1). Labels retain system type. Sizes are uniform within each viewport:
 26px desktop, 20px narrower tablet, 16px compact, 14px at <=360px. The small-phone
 spacing also handles four-digit watts, three-digit cadence, hour-long time and
-24 gears without wrapping. Gear touch targets remain 44px; compact gear adjustment
+24 gears without wrapping. Gear symbols sit in 28px quiet faces centered on the numeric row, with transparent 44px touch targets around them; compact gear adjustment
 stays inside the tools popup. Controller behavior and native shifting are retained.
 
 ![Desktop touch before and after](desktop-touch-comparison.png)
@@ -22,6 +22,7 @@ stays inside the tools popup. Controller behavior and native shifting are retain
 
 | View / input | Instrument bar before | After | Numeric top spread after |
 | --- | ---: | ---: | ---: |
+| 1180×820 mouse | — | 59px | 0px |
 | 1180×820 controller | 59px | 59px | 0px |
 | 1180×820 touch | 59px | 59px | 0px |
 | 390×844 touch | 51px | 51px | 0px |
@@ -49,7 +50,7 @@ npx vitest run src/shell src/ui
 npm run build
 ```
 
-The alignment script checks nine viewports/input modes, normal and long values,
+The alignment script checks ten viewport/input permutations, normal and long values,
 font selection, equal baselines/sizes, cell separation, viewport boundaries,
 desktop zone/tool centerlines and unchanged bar heights. Actual production HUD
 components render over the real Warm-up renderer with deterministic dev data;
@@ -57,6 +58,16 @@ the long-value check replaces only displayed text to exercise font widths.
 Physical iOS/controller validation remains a device check.
 
 Validation completed: 223 UI/shell tests, typecheck and production build pass;
-all 48 game/viewport/input browser cases pass with no page errors; all nine
-alignment/breakpoint cases pass with normal and long values. The build retains
+all 48 game/viewport/input browser cases pass with no page errors; all ten
+alignment/input/breakpoint cases pass with normal and long values. The build retains
 its existing large Three.js chunk advisory.
+
+
+Gear-button follow-up: the previous full-height boxes centered +/- across the
+number and caption, 8px below the numeric/zone centerline. The visible faces and
+44px hit regions now share the numeric centerline. Compact tools-panel buttons
+retain their existing layout. The browser regression checks both centerlines
+with normal/long values, fine mouse input and coarse touch input. Typecheck and
+all 52 HUD tests pass after this correction.
+
+![Gear buttons before and after](gear-buttons-comparison.png)

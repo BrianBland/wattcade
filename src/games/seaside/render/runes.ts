@@ -115,15 +115,6 @@ export function runeTexture(cols: number, rows: number, seed: number, pigments: 
     else if (extra < 0.6) { p.moveTo(s * 1.05, -s * 0.9); p.arc(s * 0.9, -s * 0.9, Math.max(2, s * 0.06), 0, Math.PI * 2); }
     paint(p, ru.x, ru.y, ru.rot, Math.max(3, Math.min(14, s * (0.1 + q(10) * 0.1))), pigments[ru.pig % pigments.length], 0.8 + q(11) * 0.2);
   });
-  // wear: chips knocked out of the paint and the cuts, and a few broad weathered patches
-  const R = (i: number, k: number) => rnd(i, k, seed);
-  g.globalCompositeOperation = 'destination-out';
-  for (let k = 0; k < cols * rows * 3; k++) { g.beginPath(); g.arc(R(k, 7) * W, R(k, 8) * H, 1.5 + R(k, 9) * 4, 0, Math.PI * 2); g.fill(); }
-  for (let k = 0; k < Math.ceil(cols * rows / 12); k++) {
-    const x = R(k, 17) * W, y = R(k, 18) * H, rr = 40 + R(k, 19) * 110, gr = g.createRadialGradient(x, y, 0, x, y, rr);
-    gr.addColorStop(0, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - rr, y - rr, 2 * rr, 2 * rr);
-  }
-  g.globalCompositeOperation = 'source-over';
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   return tex;

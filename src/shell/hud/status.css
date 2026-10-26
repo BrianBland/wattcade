@@ -17,9 +17,12 @@
 .ride-hud .hud-ribbon .zw-gear { align-items:start; }
 .ride-hud .hud-ribbon .zw-gear-metric { display:block; }
 /* Center gear symbols on the reading row, with full touch targets around them. */
-.ride-hud .hud-ribbon .zw-gear-controls { height:28px; align-self:start; align-items:center; }
+.ride-hud .hud-ribbon .zw-gear-controls { height:28px; align-self:start; align-items:center; gap:4px; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk { width:44px; height:44px; min-width:44px; min-height:44px; border:0; background:transparent; box-shadow:none; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk b { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:2px; background:#ffffff0b; font:700 20px/1 system-ui; }
+/* Inward-facing visuals leave a 4px gap; the 44px hit regions never overlap. */
+.ride-hud .hud-ribbon .zw-gear-controls .pk:first-child { align-items:flex-end; }
+.ride-hud .hud-ribbon .zw-gear-controls .pk:last-child { align-items:flex-start; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk:hover:not(:disabled) b { background:#ffffff18; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk.held b,
 .ride-hud .hud-ribbon .zw-gear-controls .pk:active:not(:disabled) b { background:#57dfbe30; color:#eaf0e6; }

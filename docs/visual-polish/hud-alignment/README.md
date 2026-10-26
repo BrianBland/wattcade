@@ -65,7 +65,7 @@ its existing large Three.js chunk advisory.
 
 Gear-button follow-up: the previous full-height boxes centered +/- across the
 number and caption, 8px below the numeric/zone centerline. The visible faces and
-44px hit regions now share the numeric centerline. Compact tools-panel buttons
+44px hit regions now share the numeric centerline. The visible faces sit 4px apart, with each face aligned toward the center of the pair; hit regions remain disjoint. Compact tools-panel buttons
 retain their existing layout. The browser regression checks both centerlines
 with normal/long values, fine mouse input and coarse touch input. Typecheck and
 all 52 HUD tests pass after this correction.

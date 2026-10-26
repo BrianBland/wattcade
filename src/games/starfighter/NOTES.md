@@ -38,3 +38,10 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
 - Scenery is regenerated per frame from (segment seed, tile) into fixed-size instance pools; no geometry/material allocation on biome changes.
 - Flagship batteries group with the flagship for targeting; auto-select prefers the flagship group during a fight.
+
+## Achievement curve
+Depth rewards now use the defeated flagship's sector (5 / 10), stored under a new
+`bestDefeatedSector` counter; sector advances caused by escapes do not qualify.
+Combo Breaker requires 1,500; Full Spectrum requires tier six (beyond the starter
+craft ceiling); Flawless requires three rides with six flagship victories and no
+ship losses. Existing achievement IDs and earned rewards are preserved.

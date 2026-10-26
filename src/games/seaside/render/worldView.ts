@@ -36,7 +36,8 @@ export interface WorldFrame {
   /** Put the eye here instead of on the route (set pieces); the bob still applies. */
   eye?: { x: number; y: number; z: number };
   /** Override fog and sky for this frame (title fog, under water); omitted = the world's own. */
-  atmos?: { fog: number; density: number; zenith?: number; horizon?: number; /** the sky's sun glow colour */ sunColor?: number; sunI?: number; hemiI?: number; /** ink outline × (fog hides lines too) */ ink?: number };
+  atmos?: { fog: number; density: number; zenith?: number; horizon?: number; /** the sky's sun glow colour */ sunColor?: number; sunI?: number; hemiI?: number;
+    /** direction toward the sun (the sky's glow and the light; the evening sets it low over the sea) */ sunDir?: readonly [number, number, number]; /** ink outline × (fog hides lines too) */ ink?: number };
   /** 0 = the world's swell, 1 = glassy water. */
   calm?: number;
   /** Extra camera roll (rad): the belly floor heaving. */
@@ -61,7 +62,7 @@ export class WorldView {
   private bars = new THREE.Group();
   private uTime = { value: 0 };
   private uWaveK = { value: 1 };
-  private skyU: { zen: { value: THREE.Color }; hor: { value: THREE.Color }; sunC: { value: THREE.Color } } | null = null;
+  private skyU: { zen: { value: THREE.Color }; hor: { value: THREE.Color }; sunC: { value: THREE.Color }; sun: { value: THREE.Vector3 } } | null = null;
   private hemi: THREE.HemisphereLight | null = null;
   private extras: THREE.Object3D[] = [];
   private insets: Insets = NO_INSETS;
@@ -173,7 +174,10 @@ export class WorldView {
   private applyAtmos(f: WorldFrame) {
     const sk = this.world.sky, a = f.atmos, fog = this.stage.scene.fog as THREE.FogExp2;
     fog.color.set(a?.fog ?? sk.fog); fog.density = a?.density ?? sk.fogDensity;
-    if (this.skyU) { this.skyU.zen.value.set(a?.zenith ?? sk.zenith); this.skyU.hor.value.set(a?.horizon ?? sk.horizon); this.skyU.sunC.value.set(a?.sunColor ?? sk.sunColor); }
+    if (this.skyU) {
+      this.skyU.zen.value.set(a?.zenith ?? sk.zenith); this.skyU.hor.value.set(a?.horizon ?? sk.horizon); this.skyU.sunC.value.set(a?.sunColor ?? sk.sunColor);
+      this.skyU.sun.value.set(...(a?.sunDir ?? sk.sunDir)).normalize();
+    }
     this.stage.sun.intensity = a?.sunI ?? sk.sunI;
     if (this.hemi) this.hemi.intensity = a?.hemiI ?? sk.hemiI;
     this.uWaveK.value = 1 - Math.max(0, Math.min(1, f.calm ?? 0));
@@ -194,7 +198,7 @@ export class WorldView {
     this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003 - 0.35 * (f.barsDrop ?? 0);
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     this.bars.rotation.set(-Math.asin(Math.max(-1, Math.min(1, fwd.y))) + 0.12, 0, Math.sin(ph) * 0.02); // undo the pitch at any heading
-    aimSun(this.stage, cam.position.clone().addScaledVector(fwd, 55), new THREE.Vector3(...w.sky.sunDir), 75);
+    aimSun(this.stage, cam.position.clone().addScaledVector(fwd, 55), new THREE.Vector3(...(f.atmos?.sunDir ?? w.sky.sunDir)), 75);
     this.terrain.update(cam.position, f.wall ?? f.t, { routeS: f.routeS, speed: f.speed });
   }
 

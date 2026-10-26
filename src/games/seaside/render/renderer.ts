@@ -2,7 +2,8 @@
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
 // (render/island.ts), Chapters 3a/3b (#192, #193) to the cavern (render/cavern.ts, render/gate.ts); the shops are dioramas;
 // Chapter 3c (#194) flies re-entry and the wings over the coast (render/flight.ts) and lands on the Sunset highway (the
-// Morning set rides it); the ending (the cliff on) still uses the placeholder stage (grey box and labels) until it lands. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
+// Morning set rides it, the sun low, Lou's shut); the ending (#195: the cliff lift-off, Lou's car, the angel, the credits)
+// rides the same coast (render/ending.ts). The HUD pieces (bubble, plate, card, menu, fishing prompts, credits) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
@@ -16,6 +17,10 @@ import { CavernSet } from './cavern';
 import { CAVERN_WORLD, type CavernShot } from './cavernShots';
 import { FlightSet } from './flight';
 import { FLIGHT_WORLD, type FlightShot } from './flightShots';
+import { EndingSet } from './ending';
+import { ANGEL, ENDING_WORLD, type EndingShot } from './endingShots';
+import { creditsLayout } from './creditsLayout';
+import { creditLines } from '../credits';
 import { BELLY_LAYERS, GATE_LAYERS, PARTS, type DrillLayer, type DrillView } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -53,6 +58,7 @@ export class SeasideRenderer implements GameRenderer {
   private island: IslandSet | null = null;
   private cavern: CavernSet | null = null;
   private flight: FlightSet | null = null;
+  private endSet: EndingSet | null = null;
   /** Seconds since the beach's first fish went on the fire (null before). */
   private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
@@ -161,11 +167,20 @@ export class SeasideRenderer implements GameRenderer {
     return this.flight;
   }
 
+  /** The ending (the cliff, the angel) over the coast world. */
+  private ensureEnding(): EndingSet {
+    if (!this.endSet) {
+      this.dropSets();
+      this.endSet = new EndingSet(this.ensureView('coast'));
+    }
+    return this.endSet;
+  }
+
   /** Release whichever set is up (each holds GPU resources on the shared view). */
   private dropSets(): void {
     this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
     this.island?.dispose(); this.island = null; this.cavern?.dispose(); this.cavern = null;
-    this.flight?.dispose(); this.flight = null;
+    this.flight?.dispose(); this.flight = null; this.endSet?.dispose(); this.endSet = null;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -181,6 +196,10 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && ENDING_WORLD.has(s.sceneId)) {
+      const shot = this.ensureEnding().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawEndingHud(g, s, shot); return; }
+    }
     if (!s.menu && FLIGHT_WORLD.has(s.sceneId)) {
       const shot = this.ensureFlight().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawFlightHud(g, s, shot); return; }
@@ -407,6 +426,31 @@ export class SeasideRenderer implements GameRenderer {
       for (const d of [0, 14]) { g.beginPath(); g.moveTo(x - side * (k + d), y - k); g.lineTo(x - side * d, y); g.lineTo(x - side * (k + d), y + k); g.stroke(); }
       g.globalAlpha = 1;
     }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Over the ending: the credits rolling in the space above the HUD (soft shadow, no panel), the white cut to the
+   *  morning, then the usual bubble, card and progress line. */
+  private drawEndingHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: EndingShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), fx = shot.fx;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (fx.credits !== null) {
+      const top = Math.max(0, this.insets.top), band = top + (L.UH - top) * 0.6; // the upper band: you're below it
+      const lines = creditsLayout(creditLines(), band, top, fx.credits, ANGEL.creditsEndS - ANGEL.creditsS);
+      g.save(); g.beginPath(); g.rect(0, 0, W, band); g.clip();
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = 'rgba(40,20,10,.55)'; g.shadowBlur = 8;
+      for (const l of lines) {
+        g.globalAlpha = l.alpha; g.fillStyle = l.kind === 'head' ? '#ffe7c4' : '#fffaf0';
+        g.font = l.kind === 'title' ? `${Math.round(l.px)}px Georgia, serif` : l.kind === 'head' ? `600 ${Math.round(l.px)}px system-ui, sans-serif` : `italic ${Math.round(l.px)}px Georgia, serif`;
+        g.fillText(l.kind === 'head' ? l.text.toUpperCase() : l.text, W / 2, l.y, W - 48);
+      }
+      g.restore(); g.globalAlpha = 1;
+    }
+    if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }
     const p = L.plate;
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);

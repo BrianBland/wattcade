@@ -3,15 +3,17 @@
 // (just clearing a cypress on its edge) and touches down in the right lane at LAND_S, exactly where the Sunset
 // highway's ride picks up (morningShots' rideSpan('sunset')). Re-entry falls out of the sky on to the glide's start.
 import { REENTRY, alignAt, type ReentryView } from '../sim/flight';
+import { LIFT_S } from './endingShots';
 import { STORY } from '../sim/story';
 import type { FlightView, SeasideSnapshot } from '../sim/types';
-import { CH1, coastRoute, edgeD, SEA_LEVEL, zOfS } from '../world/coastLayout';
+import { coastRoute, edgeD, SEA_LEVEL, zOfS } from '../world/coastLayout';
 import { groundAt } from '../world/coast';
 import type { V3 } from './morningShots';
 
-const WINGS = STORY.find((s) => s.id === 'wings')!, REENTRY_SCENE = STORY.find((s) => s.id === 'reentry')!;
-/** Route metres where you touch down (past the gorge bridge, just short of Lou's: the sunset ride passes the shop). */
-export const LAND_S = CH1.shop - 150;
+const WINGS = STORY.find((s) => s.id === 'wings')!, REENTRY_SCENE = STORY.find((s) => s.id === 'reentry')!, SUNSET = STORY.find((s) => s.id === 'sunset')!;
+/** Route metres where you touch down: the Sunset ride from here (over the gorge bridge, past Lou's) ends just as the
+ *  highway turns hard right around the cliff (#195's lift-off). */
+export const LAND_S = LIFT_S - ('m' in SUNSET.length ? SUNSET.length.m : 1350);
 /** The glide's length along the route (the wings' rail length). */
 export const WINGS_LEN = 'm' in WINGS.length ? WINGS.length.m : 1680;
 export const FLIGHT_S0 = LAND_S - WINGS_LEN;
@@ -34,7 +36,8 @@ export interface FlightShot { s: number; speed: number; eye: V3; target: V3; bar
 
 export const FLIGHT_WORLD = new Set(['reentry', 'wings']);
 /** The evening over the coast (the sun low, the sky warm): the wings, and the Sunset highway after them. */
-export const EVENING = { zenith: 0x2f4a8a, horizon: 0xffa368, fog: 0xeab08e, density: 0.0007, sunColor: 0xffb068, sunI: 1.9, hemiI: 0.8 } as const;
+export const EVENING = { zenith: 0x2f4a8a, horizon: 0xffa368, fog: 0xeab08e, density: 0.0007, sunColor: 0xffb068, sunI: 1.9, hemiI: 0.8,
+  /** low in the west-northwest, over the sea ahead-left of the ride north */ sunDir: [-0.8, 0.14, -0.56] as [number, number, number] } as const;
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const smooth = (a: number, b: number, x: number) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };

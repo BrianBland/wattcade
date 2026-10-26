@@ -14,7 +14,7 @@ const SHOTS: Array<[string, string, number, number]> = [
   ['01-landed', 'sunset', 0.01, 1], ['02-gone-fishing', 'sunset', 0.49, 1], ['02b-door', 'sunset', 0.505, 1], ['03-bend', 'sunset', 0.985, 1],
   ['04-lift', 'cliff', 0.08, 1], ['05-over', 'cliff', 0.35, 1], ['06-car', 'cliff', 0.64, 1], ['07-lou', 'cliff', 0.71, 1], ['08-pass', 'cliff', 0.755, 1], ['08b-under', 'cliff', 0.772, 1],
   ['09-out', 'cliff', 0.95, 1], ['10-angel-fp', 'angel', 0.01, 1], ['11-easing', 'angel', 0.045, 1], ['12-behind', 'angel', 0.09, 1],
-  ['13-credits', 'angel', 0.3, 1], ['14-climb', 'angel', 0.6, 1], ['15-small', 'angel', 0.88, 1], ['16-bird', 'angel', 0.97, 1],
+  ['13-title', 'angel', 0.3, 1], ['14-climb', 'angel', 0.6, 1], ['15-small', 'angel', 0.88, 1], ['16-bird', 'angel', 0.97, 1],
 ];
 const pick = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && !all[i - 1]?.startsWith('--'));
 const server = await createServer({ server: { port: 5306, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });

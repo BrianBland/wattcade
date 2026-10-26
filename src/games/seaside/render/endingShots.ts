@@ -2,7 +2,7 @@
 // ends where the highway turns hard right around the cliff (LIFT_S). The Cliff: you go straight on, lift a little,
 // the ground falls away to the sea, then the road curves back underneath you and Lou's car passes below, headlights
 // on, Lou waving. The Angel: the camera eases from first person to third, from behind only, the winged rider climbing
-// into the sunset over open water, small against it, while the credits roll; then a last tiny shot of a white bird
+// into the sunset over open water, small against it, under the title; then a last tiny shot of a white bird
 // over the morning sea (where the ride began).
 import { STORY } from '../sim/story';
 import type { SeasideSnapshot } from '../sim/types';
@@ -20,8 +20,9 @@ export const LIFT_S = 6810;
 export const CLIFF = { passS: 7420, lift: 1.6, over: 3.4, passP: 0.78 } as const;
 /** Lou's car: lane (m right of the centre line; he drives back toward the shop) and speed × the rail's. */
 export const LOU_CAR = { d: -2.3, speed: 0.8 } as const;
-/** The angel's beats (plan seconds): first person, the ease out to third, the credits, the white-out and the morning bird. */
-export const ANGEL = { easeS: 4, thirdS: 14, creditsS: 16, creditsEndS: 160, whiteS: 164, birdS: 168 } as const;
+/** The angel's beats (plan seconds): first person, the ease out to third, the title up and down, the white-out and the
+ *  morning bird. */
+export const ANGEL = { easeS: 4, thirdS: 14, titleS: 20, titleEndS: 158, whiteS: 164, birdS: 168 } as const;
 /** Toward the evening sun over the sea (horizontal, unit): the angel climbs into it. */
 export const SUNWARD = { x: -0.82, z: -0.57 } as const;
 /** Eye height over the bike's wheels (m). */
@@ -34,7 +35,7 @@ export interface EndingFx {
   car: { s: number; at: V3; yaw: number } | null;
   /** Third person 0 (your eyes) .. 1 (behind you). */ third: number;
   /** The rider (wheel contact point), heading (yaw) and climb (rad). */ rider: { at: V3; yaw: number; pitch: number };
-  /** The credits roll (seconds into it; null = not up). */ credits: number | null;
+  /** The title over the sunset 0..1 (the ride's only credit). */ title: number;
   /** White over everything 0..1 (the cut to the morning). */ white: number;
   /** The morning bird shot: the bird's glide 0..1 (null = the evening). */ morning: number | null;
   /** High over the water 0..1 (thicker haze: the far sea fades out). */ high: number;
@@ -130,7 +131,7 @@ export function endingShot(s: Pick<SeasideSnapshot, 'sceneId' | 'speed'> & { sce
     if (p >= 0.9) target = lerpV(v(ahead.x, ahead.y - 3, ahead.z), fwd, smooth(0.9, 1, p));
     const rider = { at: v(eye.x, eye.y - EYE, eye.z), yaw: a.yaw, pitch: a.pitch };
     return { s: Math.min(LIFT_S + p * (CLIFF.passS + 200 - LIFT_S), CLIFF.passS + 200), speed: s.speed, eye, target, bars: true,
-      fx: { car, third: 0, rider, credits: null, white: 0, morning: null, high: 0 } };
+      fx: { car, third: 0, rider, title: 0, white: 0, morning: null, high: 0 } };
   }
   // the angel
   const t = p * ANGEL_SCENE.planS, A = ANGEL, u = angelU(t), eye1 = angelEye(u), a = aim(angelEye, u, 0.004);
@@ -139,7 +140,7 @@ export function endingShot(s: Pick<SeasideSnapshot, 'sceneId' | 'speed'> & { sce
   if (t >= A.birdS) { // the last tiny shot: the morning sea at the start of the ride, a white bird gliding west far out
     const r = coastRoute(), s0 = CH1.start + 240, e = r.offset(s0, edgeD(zOfS(s0)) + 2), g = r.offset(s0 + 60, -420);
     return { s: s0, speed: 0, eye: v(e.x, e.y + EYE, e.z), target: v(g.x, SEA_LEVEL + 22, g.z), bars: false,
-      fx: { car: null, third: 1, rider, credits: null, white, morning: clamp01((t - A.birdS) / (ANGEL_SCENE.planS - A.birdS)), high: 0 } };
+      fx: { car: null, third: 1, rider, title: 0, white, morning: clamp01((t - A.birdS) / (ANGEL_SCENE.planS - A.birdS)), high: 0 } };
   }
   // first person → third, from behind only: up off your shoulders first, then back; then drifting back as you climb
   const k = smooth(A.easeS, A.thirdS, t), far = smooth(A.thirdS + 6, A.whiteS, t);
@@ -149,7 +150,7 @@ export function endingShot(s: Pick<SeasideSnapshot, 'sceneId' | 'speed'> & { sce
   const ahead = v(eye1.x + a.dir.x * 40, eye1.y - 2, eye1.z + a.dir.z * 40);
   // looking ahead with your own eyes, then at yourself and the sun beyond
   const target = lerpV(lerpV(ahead, v(eye1.x + a.dir.x * 18, eye1.y + 0.4, eye1.z + a.dir.z * 18), k), sun, 0.35 * far);
-  const credits = t >= A.creditsS && t < A.creditsEndS ? t - A.creditsS : null;
+  const title = smooth(A.titleS, A.titleS + 6, t) * (1 - smooth(A.titleEndS - 6, A.titleEndS, t));
   return { s: CLIFF.passS + 200, speed: s.speed, eye, target, bars: back < 0.6,
-    fx: { car: null, third: back < 0.6 ? 0 : Math.max(0.01, k), rider, credits, white, morning: null, high: far } };
+    fx: { car: null, third: back < 0.6 ? 0 : Math.max(0.01, k), rider, title, white, morning: null, high: far } };
 }

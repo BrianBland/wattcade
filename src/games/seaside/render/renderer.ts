@@ -2,8 +2,8 @@
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
 // (render/island.ts), Chapters 3a/3b (#192, #193) to the cavern (render/cavern.ts, render/gate.ts); the shops are dioramas;
 // Chapter 3c (#194) flies re-entry and the wings over the coast (render/flight.ts) and lands on the Sunset highway (the
-// Morning set rides it, the sun low, Lou's shut); the ending (#195: the cliff lift-off, Lou's car, the angel, the credits)
-// rides the same coast (render/ending.ts). The HUD pieces (bubble, plate, card, menu, fishing prompts, credits) are a 2D canvas on top.
+// Morning set rides it, the sun low, Lou's shut); the ending (#195: the cliff lift-off, Lou's car, the angel)
+// rides the same coast (render/ending.ts). The HUD pieces (bubble, plate, card, menu, fishing prompts, the end title) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
@@ -18,9 +18,7 @@ import { CAVERN_WORLD, type CavernShot } from './cavernShots';
 import { FlightSet } from './flight';
 import { FLIGHT_WORLD, type FlightShot } from './flightShots';
 import { EndingSet } from './ending';
-import { ANGEL, ENDING_WORLD, type EndingShot } from './endingShots';
-import { creditsLayout } from './creditsLayout';
-import { creditLines } from '../credits';
+import { ENDING_WORLD, type EndingShot } from './endingShots';
 import { BELLY_LAYERS, GATE_LAYERS, PARTS, type DrillLayer, type DrillView } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -30,7 +28,7 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, inside, layout, type Box } from './layout';
+import { bellyHud, endTitle, inside, layout, type Box } from './layout';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
 const SKY: Record<LookName, [string, string]> = {
@@ -432,23 +430,18 @@ export class SeasideRenderer implements GameRenderer {
     this.drawBubbleAndCard(g, s, L);
   }
 
-  /** Over the ending: the credits rolling in the space above the HUD (soft shadow, no panel), the white cut to the
-   *  morning, then the usual bubble, card and progress line. */
+  /** Over the ending: the title over the sunset (above you), the white cut to the morning, then the usual bubble, card
+   *  and progress line. */
   private drawEndingHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: EndingShot): void {
     const { W, H } = this, L = layout(W, H, this.insets), fx = shot.fx;
     g.clearRect(0, 0, W, H);
     this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
-    if (fx.credits !== null) {
-      const top = Math.max(0, this.insets.top), band = top + (L.UH - top) * 0.6; // the upper band: you're below it
-      const lines = creditsLayout(creditLines(), band, top, fx.credits, ANGEL.creditsEndS - ANGEL.creditsS);
-      g.save(); g.beginPath(); g.rect(0, 0, W, band); g.clip();
-      g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = 'rgba(40,20,10,.55)'; g.shadowBlur = 8;
-      for (const l of lines) {
-        g.globalAlpha = l.alpha; g.fillStyle = l.kind === 'head' ? '#ffe7c4' : '#fffaf0';
-        g.font = l.kind === 'title' ? `${Math.round(l.px)}px Georgia, serif` : l.kind === 'head' ? `600 ${Math.round(l.px)}px system-ui, sans-serif` : `italic ${Math.round(l.px)}px Georgia, serif`;
-        g.fillText(l.kind === 'head' ? l.text.toUpperCase() : l.text, W / 2, l.y, W - 48);
-      }
-      g.restore(); g.globalAlpha = 1;
+    if (fx.title > 0) { // the opening's small serif "Seaside", now in the evening light
+      const T = endTitle(L.UH, this.insets.top);
+      g.globalAlpha = fx.title; g.fillStyle = '#fffaf0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.shadowColor = 'rgba(60,24,10,.5)'; g.shadowBlur = 10;
+      g.font = `${Math.round(T.px)}px Georgia, serif`; g.fillText('Seaside', W / 2, T.y);
+      g.shadowBlur = 0; g.globalAlpha = 1;
     }
     if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }
     const p = L.plate;

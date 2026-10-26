@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { SAMPLE_TRACKS, sampleCredit } from '../../../media/library/samples';
-import { creditLines, SEASIDE_MUSIC } from '../credits';
 import { STORY } from '../sim/story';
 import { ANGEL, angelEye, angelU, CLIFF, cliffEye, endingShot, EYE, LIFT_S, louCar, SUNWARD } from '../render/endingShots';
-import { creditsLayout } from '../render/creditsLayout';
+import { endTitle } from '../render/layout';
 import { LAND_S } from '../render/flightShots';
 import { rideCam, rideSpan } from '../render/morningShots';
 import { textAt } from '../world/coastBuild';
@@ -94,32 +92,18 @@ describe('the angel (#195)', () => {
     expect(last.fx.morning).toBeCloseTo(1, 6);
     expect(last.fx.white).toBe(0);
     expect(last.s).toBeLessThan(CH1.turnout);
-    expect(shot('angel', 0.5).fx.credits).not.toBeNull();
+    expect(shot('angel', 0.5).fx.title).toBeGreaterThan(0.99);
+    expect(shot('angel', 0).fx.title).toBe(0);
+    expect(shot('cliff', 0.5).fx.title).toBe(0);
   });
 });
 
-describe('credits (#195)', () => {
-  it('list every music track with its attribution', () => {
-    for (const k of SEASIDE_MUSIC) expect(SAMPLE_TRACKS.some((s) => s.key === k)).toBe(true);
-    const keys = SAMPLE_TRACKS.slice(0, 3).map((s) => s.key), text = creditLines(keys).map((l) => l.text);
-    for (const s of SAMPLE_TRACKS.slice(0, 3)) expect(text).toContain(sampleCredit(s).text);
-    expect(creditLines([]).some((l) => l.text === 'Music')).toBe(false);
-  });
-
-  it('roll in the space above the HUD and end centred in it', () => {
-    const lines = creditLines(SAMPLE_TRACKS.slice(0, 6).map((s) => s.key));
-    for (const [H, top] of [[820, 0], [600, 40], [1366, 24]] as const) {
-      const UH = H - 140;
-      for (let t = 0; t <= 100; t += 2.5) {
-        for (const l of creditsLayout(lines, UH, top, t, 100)) {
-          expect(l.y + l.px / 2).toBeLessThanOrEqual(UH);
-          expect(l.y - l.px / 2).toBeGreaterThanOrEqual(top);
-        }
-      }
-      const end = creditsLayout(lines, UH, top, 100, 100), last = end[end.length - 1];
-      expect(last.text).toBe('Thanks for riding.');
-      expect(last.y).toBeCloseTo((top + UH) / 2, 6);
-      expect(creditsLayout(lines, UH, top, 0, 100)).toHaveLength(0);
+describe('end title and sign (#195)', () => {
+  it('shows the title in the space above the HUD', () => {
+    for (const [H, top] of [[820, 0], [600, 40], [1366, 24], [320, 0]] as const) {
+      const UH = H - 140, T = endTitle(UH, top);
+      expect(T.y + T.px / 2).toBeLessThanOrEqual(UH);
+      expect(T.y - T.px / 2).toBeGreaterThanOrEqual(top);
     }
   });
 

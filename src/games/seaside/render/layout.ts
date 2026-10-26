@@ -48,6 +48,12 @@ export function layout(W: number, H: number, insets: Insets, menuItems = 0, spot
   return { UH, bubble, plate, card, menu, stage, fish: fishLayout(stage, spots) };
 }
 
+/** The end title: centred in the upper third of the space above the HUD (the climbing rider is below it). */
+export function endTitle(UH: number, top: number): { y: number; px: number } {
+  const t = Math.max(0, top), px = Math.max(30, Math.min(72, (UH - t) * 0.09));
+  return { y: t + (UH - t) * 0.3, px };
+}
+
 /** Fishing boxes inside the stage (so above the HUD too): markers ≥ 44 px tall for touch. */
 export function fishLayout(stage: Box, n: number): FishLayout {
   const { x, y, w, h } = stage;

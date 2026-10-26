@@ -13,7 +13,7 @@ All five readings use the self-hosted Oxanium 700 numeric subset (2,512 bytes,
 SIL OFL 1.1). Labels retain system type. Sizes are uniform within each viewport:
 26px desktop, 20px narrower tablet, 16px compact, 14px at <=360px. The small-phone
 spacing also handles four-digit watts, three-digit cadence, hour-long time and
-24 gears without wrapping. Gear symbols sit in 28px quiet faces centered on the numeric row, with transparent 44px touch targets around them; compact gear adjustment
+24 gears without wrapping. Touch gear adjustment places the value between 28px minus/plus faces, with equal visual gaps and transparent 44px touch targets; compact gear adjustment
 stays inside the tools popup. Controller behavior and native shifting are retained.
 
 ![Desktop touch before and after](desktop-touch-comparison.png)
@@ -63,11 +63,13 @@ alignment/input/breakpoint cases pass with normal and long values. The build ret
 its existing large Three.js chunk advisory.
 
 
-Gear-button follow-up: the previous full-height boxes centered +/- across the
-number and caption, 8px below the numeric/zone centerline. The visible faces and
-44px hit regions now share the numeric centerline. The visible faces sit 4px apart, with each face aligned toward the center of the pair; hit regions remain disjoint. Compact tools-panel buttons
-retain their existing layout. The browser regression checks both centerlines
-with normal/long values, fine mouse input and coarse touch input. Typecheck and
-all 52 HUD tests pass after this correction.
+Gear adjustment now reads as one stepper: **− / value / +**. Equal gaps on
+both sides of the value make the relationship clear; the Gear caption is
+centered beneath it. Every visible face and 44px hit target shares the numeric
+centerline, and hit regions remain disjoint from one another and the value.
+The touch stepper omits the redundant cog icon; controller-only readings keep it.
+Compact tools-panel controls retain their existing layout. Browser checks verify
+symmetry and alignment with single- and double-digit gears, mouse and touch input.
+Typecheck and all 52 HUD tests pass after this correction.
 
 ![Gear buttons before and after](gear-buttons-comparison.png)

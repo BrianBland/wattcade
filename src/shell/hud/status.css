@@ -16,13 +16,20 @@
 .ride-hud .hud-ribbon .zw-unit,.ride-hud .hud-ribbon .zw-cad-guide { display:block; height:12px; margin:4px 0 0 19px; padding:0; font:550 10px/12px system-ui; text-align:left; }
 .ride-hud .hud-ribbon .zw-gear { align-items:start; }
 .ride-hud .hud-ribbon .zw-gear-metric { display:block; }
-/* Center gear symbols on the reading row, with full touch targets around them. */
-.ride-hud .hud-ribbon .zw-gear-controls { height:28px; align-self:start; align-items:center; gap:4px; }
-.ride-hud .hud-ribbon .zw-gear-controls .pk { width:44px; height:44px; min-width:44px; min-height:44px; border:0; background:transparent; box-shadow:none; }
+/* Touch gear adjustment is a single stepper: minus / value / plus. */
+.ride-hud .hud-ribbon .zw-gear.has-controls {
+  display:grid; grid-template-columns:44px minmax(32px,max-content) 44px;
+  grid-template-rows:28px 16px; gap:0; align-items:center;
+}
+.ride-hud .hud-ribbon .zw-gear.has-controls .zw-gear-metric,
+.ride-hud .hud-ribbon .zw-gear-controls { display:contents; }
+.ride-hud .hud-ribbon .zw-gear.has-controls .zw-reading { grid-column:2; grid-row:1; justify-content:center; }
+.ride-hud .hud-ribbon .zw-gear.has-controls .zw-metric-icon { display:none; }
+.ride-hud .hud-ribbon .zw-gear.has-controls .zw-gear-label { grid-column:2; grid-row:2; align-self:start; margin:4px 0 0; text-align:center; }
+.ride-hud .hud-ribbon .zw-gear-controls .pk { grid-row:1; align-self:center; width:44px; height:44px; min-width:44px; min-height:44px; border:0; background:transparent; box-shadow:none; }
+.ride-hud .hud-ribbon .zw-gear-controls .pk:first-child { grid-column:1; }
+.ride-hud .hud-ribbon .zw-gear-controls .pk:last-child { grid-column:3; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk b { display:flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:2px; background:#ffffff0b; font:700 20px/1 system-ui; }
-/* Inward-facing visuals leave a 4px gap; the 44px hit regions never overlap. */
-.ride-hud .hud-ribbon .zw-gear-controls .pk:first-child { align-items:flex-end; }
-.ride-hud .hud-ribbon .zw-gear-controls .pk:last-child { align-items:flex-start; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk:hover:not(:disabled) b { background:#ffffff18; }
 .ride-hud .hud-ribbon .zw-gear-controls .pk.held b,
 .ride-hud .hud-ribbon .zw-gear-controls .pk:active:not(:disabled) b { background:#57dfbe30; color:#eaf0e6; }

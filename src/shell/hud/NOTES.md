@@ -17,7 +17,7 @@
 - Responsive review: `docs/visual-polish/hud-responsive/README.md` compares pre-PR, stacked and revised layouts with total reserved heights.
 - Phone/short-landscape instruments use inline readouts, a 6px zone rail and one 44px tools toggle. Gear buttons mount only inside the open tools panel; dismissal cancels holds.
 - Readings use self-hosted Oxanium 700 tabular numerals. Desktop uses a shared 28px main row + 4px gap + 12px caption, aligned to the zone rail and SVG tools.
-- Time/Gear captions complete the desktop row; compact captions stay inline (time is self-describing). Gear controls center their 28px visible faces on the numeric row; inward-facing visuals leave a 4px gap while disjoint 44px hit targets retain touch usability.
+- Time/Gear captions complete the desktop row; compact captions stay inline (time is self-describing). Touch gear adjustment is one balanced minus/value/plus stepper: centered caption, equal visual gaps and disjoint 44px targets aligned with the numeric row.
 - Numeric browser checks: `scripts/check-hud-alignment.mjs`; normal/long values, ten layouts (including mouse and breakpoint edges), 51px compact / 59px desktop bar. Review: `docs/visual-polish/hud-alignment/README.md`.
 - Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.
 - Touch actions show names rather than A/B/Y/Z glyphs. Warmup opts into a read-only persistent controller navigation legend; Auto removes it on disconnect. App suppresses it while menus are visible; their contextual key hints take precedence.

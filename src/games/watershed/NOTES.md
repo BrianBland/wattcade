@@ -32,3 +32,11 @@ Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectiv
 - Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
   on iPad. Not built: story-mode levels (SPEC §6.4 "Later").
 - Shared HUD publishes the phase boost cooldown and Active status; steering/camera stay in start/pause help for controller users.
+
+## Achievement curve
+Salmon Shepherd and Breadbasket require 500 lifetime salmon and 200 lifetime
+harvests. Cadence Maestro and Miller each require three completed rides with at
+least 20 active minutes; their performance thresholds remain 90% in-band time and
+180 flour + 180 planks. Act of Nature requires two distinct completed geological
+events and a finished ride. Delta Builder's label now matches its 8,000 threshold.
+The Water Cycle remains an introduction. Existing earned rewards are preserved.

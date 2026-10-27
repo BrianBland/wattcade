@@ -100,6 +100,8 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
   let ownP = 0, started = false, done = false, saved = false;
   let x = 0, laneTarget = 0, holdDir = 0, holdT = 0, padLevel = 0, padActive = false, ergF = 0.6;
   let nextBlock = 0, score = 0, chain = 0, maxChain = 0, shield = 100, dropoutLeft = -1;
+  // Achievement streak is stricter than the forgiving scoring combo.
+  let cleanChain = 0, maxCleanChain = 0;
   let collected = 0, missed = 0, greysHit = 0, greysDodged = 0, dropouts = 0, overdriveS = 0, cleanZones = 0;
   let zoneIdx = -1, zoneClean = true, zoneBlocks = 0, zoneOd = 0, zoneDur = 0, dropsHeld = 0, drops = 0, songsDone = 0;
   let ok = false, overdrive = false, ftp = 0, zoneSprint = 0;
@@ -302,7 +304,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       } else if (ok) shield = Math.min(100, shield + tun.recharge() * dt);
       else if (underS > tun.underGrace() && p > START_GRACE_S) {
         shield -= tun.underDrain() * Math.max(0.35, under) * dt; underDrainS += dt;
-        if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cue('dropout'); }
+        if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cleanChain = 0; cue('dropout'); }
       }
 
       // trainer: the track's grade (difficulty and gears are applied by the mixer), or ERG at the phase's watts (eased)
@@ -327,17 +329,18 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
         if (b.zone === zoneIdx) zoneBlocks++;
         if (b.color >= 0) {
           if (caught) {
+            if (dropoutLeft < 0) { cleanChain++; maxCleanChain = Math.max(maxCleanChain, cleanChain); }
             chain++; maxChain = Math.max(maxChain, chain); collected++; song.collected++; song.maxChain = Math.max(song.maxChain, chain);
             if (isChainMilestone(chain)) cue('chain', { n: chain }, false);
             score += Math.round(COLOR_POINTS[b.color] * mult());
             blockState[nextBlock] = BLOCK.HIT;
-          } else { missed++; song.missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS; }
+          } else { cleanChain = 0; missed++; song.missed++; zoneClean = false; blockState[nextBlock] = BLOCK.MISS; }
         } else if (caught) {
           if (chain >= 25) cue('chainBreak', { n: chain }, false);
-          greysHit++; chain = 0; zoneClean = false; blockState[nextBlock] = BLOCK.GREY_HIT; cue('grey', undefined, false);
+          greysHit++; chain = 0; cleanChain = 0; zoneClean = false; blockState[nextBlock] = BLOCK.GREY_HIT; cue('grey', undefined, false);
           if (dropoutLeft < 0) {
             shield -= tun.greyHit();
-            if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cue('dropout'); }
+            if (shield <= 0) { shield = 0; dropoutLeft = tun.rebootS(); dropouts++; cleanChain = 0; cue('dropout'); }
           }
         } else { greysDodged++; blockState[nextBlock] = BLOCK.GREY_DODGED; }
         nextBlock++;
@@ -403,7 +406,7 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
     summary() {
       const total = collected + missed;
       return {
-        score, collected, missed, accuracyPct: total ? Math.round((100 * collected) / total) : 0, maxChain,
+        score, collected, missed, accuracyPct: total ? Math.round((100 * collected) / total) : 0, maxChain, maxCleanChain,
         greysHit, greysDodged, dropouts, cleanZones, drops, dropsHeld, overdriveS: Math.round(overdriveS), underDrainS: Math.round(underDrainS),
         launches, perfectLaunches, launchBonus,
         zones: Math.max(0, zoneIdx + 1), songs: timeline.songs.length, songsDone, difficulty, mode, trainer,

@@ -232,6 +232,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let runCallsWon = 0, bestRunCalls = 0;
   let runSpotless = 0, bestRunSpotless = 0, spotlessWaves = 0;
   let bestChain = 0, strongKills = 0, exposedSprinted = false;
+  const exposedBossIds = new Set<number>();
   let workshop: { pad: number; row: number; idle: number } | null = null;
   let leakDmg = 0, stallT = 0;
   const broods: Element[] = [];
@@ -361,7 +362,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       stats.bosses++; save.totals.bosses++;
       const p = Math.round((30 + wave * 2) * partsScale()); partsRun += p; partsEarned += p; bank += p;
       say(`${def.name} destroyed!`, `+${got} scrap · +${p} parts`, '#ffd24a', true);
-      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.colors.length ?? 0 } });
+      ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.colors.length ?? 0, exposedSprinted: exposedBossIds.delete(e.id) } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
       persist();
     } else if (def.heavy) ctx.emit({ type: 'enemyKilled', data: { element: key, wave, matchup: cls } });
@@ -518,7 +519,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     enemies = []; spawned.length = 0; shells = []; burns = []; schedule = []; fx = [];
     towers.fill(null); workshop = null; pending.length = 0;
     surge = null; spin = null; overclock = 0; effort = null; escorts.length = 0;
-    grid = 0; overdrive = false; flaming = false; flamePower = 0; laserId = 0; targetId = 0;
+    exposedBossIds.clear(); grid = 0; overdrive = false; flaming = false; flamePower = 0; laserId = 0; targetId = 0;
     railCharges = 0; railProgress = 0; railCharging = false; zDown = false; zHold = 0; zDumped = false;
     mods = metaMods(levels, save.bestWave); fromWave = Math.min(fromWave, mods.maxStartWave);
     resetCombat();
@@ -732,6 +733,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     let spent = towerBuildCost(tw.kind, towerCostMult());
     for (let l = 1; l < tw.level; l++) spent += towerUpgradeCost(tw.kind, l, towerCostMult());
     scrap += Math.round(spent * 0.5); towers[pad] = null; cue('coin');
+    ctx.emit({ type: 'towerSold', data: { pad, tower: tw.kind } });
   }
   function repair(): boolean {
     if (baseHp >= baseMaxHp || scrap < repairCost()) { cue('deny'); return false; }
@@ -1069,7 +1071,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (overdrive) stats.overdriveS += dt;
     if (overdrive && !wasOd) { cue('overdrive'); ctx.emit({ type: 'overdrive' }); }
     // The opening lasts a few seconds and the boss often dies before it; a sprint that lands inside it is the answer.
-    if (overdrive && enemies.some((e) => !e.dead && e.boss?.exposed)) exposedSprinted = true;
+    if (overdrive) for (const e of enemies) if (!e.dead && e.boss?.exposed) { exposedSprinted = true; exposedBossIds.add(e.id); }
     railCharging = bike.ftpFraction >= railMinFtp() && railCharges < railCap();
     if (bike.ftpFraction >= railMinFtp()) {
       railProgress += (dt / railPeriod()) * Math.min(1.5, bike.ftpFraction / 0.95) * mods.railRate;

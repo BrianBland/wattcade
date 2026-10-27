@@ -8,7 +8,7 @@ type Ev = { t: number } & GameEvent;
 const profile = testProfile();
 const check = (id: string, record: Partial<SessionRecord>) => {
   const a = achievements.find((x) => x.id === id)!;
-  const full = { gameId: 'towerdefense', events: [], gameSummary: {}, durationS: 0, ...record } as SessionRecord;
+  const full = { gameId: 'towerdefense', events: [], gameSummary: {}, durationS: 0, samples: Array.from({ length: record.durationS ?? 0 }, (_, t) => ({ t, power: 130, cadence: 90 })), ...record } as unknown as SessionRecord;
   return a.check ? a.check(profile, full, []) : false;
 };
 const cleared = (leak = 0, spotless = leak === 0): Ev => ({ t: 0, type: 'waveCleared', data: { leakDmg: leak, spotless } });
@@ -41,32 +41,46 @@ it('ignition chains read burst ordinals, not the burst count', () => {
   expect(check('td_bonfire', { gameSummary: { bestChain: 4 } })).toBe(true);
 });
 
-it('Iron Lungs needs a long ride with every call answered, and none missed', () => {
-  const won = { callsWon: 6, callsMissed: 0, callsStarted: 6 };
-  expect(check('td_iron_lungs', { durationS: 29 * 60, gameSummary: won })).toBe(false);
-  expect(check('td_iron_lungs', { durationS: 40 * 60, gameSummary: { callsWon: 0, callsMissed: 0 } })).toBe(false);
-  expect(check('td_iron_lungs', { durationS: 40 * 60, gameSummary: { ...won, callsMissed: 1 } })).toBe(false);
-  expect(check('td_iron_lungs', { durationS: 31 * 60, events: [{ t: 0, type: 'effortFailed' }], gameSummary: won })).toBe(false);
-  expect(check('td_iron_lungs', { durationS: 31 * 60, gameSummary: won })).toBe(true);
+it('Iron Lungs requires 12 calls, all three kinds, no failures or pending calls, and active time', () => {
+  const events = Array.from({ length: 12 }, (_, t) => ({ t, type: 'effortWon', data: { kind: ['spin','grind','hold'][t % 3] } }));
+  const r = { durationS: 1800, events, gameSummary: { callsStarted: 12 } };
+  expect(check('td_iron_lungs', r)).toBe(true);
+  expect(check('td_iron_lungs', { ...r, events: events.slice(1) })).toBe(false);
+  expect(check('td_iron_lungs', { ...r, events: events.map(e => ({ ...e, data: { kind: 'hold' } })) })).toBe(false);
+  expect(check('td_iron_lungs', { ...r, gameSummary: { callsStarted: 13 } })).toBe(false);
+  expect(check('td_iron_lungs', { ...r, events: [...events, { t: 20, type: 'effortFailed' }] })).toBe(false);
+  expect(check('td_iron_lungs', { ...r, durationS: 1799 })).toBe(false);
+  expect(check('td_iron_lungs', { ...r, samples: [] })).toBe(false);
 });
 
 it('Full Workshop needs a level 5 of each kind standing together', () => {
   const shop = [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), built(2, 'lens'), up(2, 'lens', 4)];
   expect(check('td_workshop', { events: shop })).toBe(false);
   expect(check('td_workshop', { events: [...shop, up(2, 'lens', 5)] })).toBe(true);
+  expect(check('td_workshop', { events: [...shop, { t: 0, type: 'towerSold', data: { pad: 0 } }, up(2, 'lens', 5)] })).toBe(false);
+  expect(check('td_workshop', { events: [...shop, up(2, 'lens', 5), { t: 0, type: 'towerSold', data: { pad: 0 } }] })).toBe(true);
   // sold the tesla (pad reused) before the lens caught up: never all three at once
   expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(0, 'lens'), up(0, 'lens', 5), built(1, 'flamer'), up(1, 'flamer', 5)] })).toBe(false);
   // a fall clears the field; the second run has to rebuild
   expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), end, built(2, 'lens'), up(2, 'lens', 5)] })).toBe(false);
 });
 
-it('Exposed! is a sprint inside the window, not a sprint sometime during the fight', () => {
-  const open = (t: number): Ev => ({ t, type: 'bossExposed', data: { seconds: 5 } });
-  const sprint = (t: number): Ev => ({ t, type: 'overdrive' });
-  expect(check('td_exposed', { events: [sprint(1), open(10)] })).toBe(false);
-  expect(check('td_exposed', { events: [open(10), sprint(16)] })).toBe(false);
-  expect(check('td_exposed', { events: [open(10), sprint(14)] })).toBe(true);
-  expect(check('td_exposed', { gameSummary: { exposedSprinted: 1 } })).toBe(true);
+it('Exposed! counts each defeated, exposed-sprinted boss once, not mere sprint events', () => {
+  const a = achievements.find(a => a.id === 'td_exposed')!;
+  const record = { gameId: 'towerdefense', gameSummary: { exposedSprinted: 1 }, events: [
+    { t: 0, type: 'overdrive' }, { t: 1, type: 'bossExposed' },
+    { t: 2, type: 'bossKilled', data: { exposedSprinted: false } },
+    { t: 3, type: 'bossKilled', data: { exposedSprinted: true } },
+  ] } as unknown as SessionRecord;
+  expect(a.goal).toBe(5);
+  expect(a.count!.of(record, profile)).toBe(1);
+  expect(a.count!.of({ ...record, gameId: 'dungeon' }, profile)).toBe(0);
+});
+it('Triple Rail requires repeated full volleys and On Call is a longer lifetime goal', () => {
+  const a = achievements.find(a => a.id === 'triple_rail')!;
+  expect(a.goal).toBe(25);
+  expect(a.count!.of({ gameId: 'towerdefense', events: [1,2,3,3].map(charges => ({ t: 0, type: 'railFired', data: { charges } })) } as unknown as SessionRecord, profile)).toBe(2);
+  expect(achievements.find(a => a.id === 'td_on_call')!.goal).toBe(40);
 });
 
 it('a zone-2 half hour unlocks at most one Dynamo Defense achievement', () => {
@@ -85,7 +99,18 @@ it('a zone-2 half hour unlocks at most one Dynamo Defense achievement', () => {
     id: 'z2', profileId: 'x', gameId: 'towerdefense', startedAt: Date.now(), durationS: 30 * 60,
     samples: Array.from({ length: 1800 }, (_, t) => ({ t, power: 130, cadence: 85, hr: null, grade: 0, mode: 'sim' as const })),
     events, stats: { avgPower: 130, kj: 200, sprints: 0, maxPower: 160, avgHr: null, zoneSeconds: [0, 1800, 0, 0, 0] }, gameSummary: summary,
-  } as SessionRecord;
+  } as unknown as SessionRecord;
   const ids = awardSession(defaultProfile(), record).newAchievements.map((a) => a.id).filter((id) => achievements.some((a) => a.id === id));
   expect(ids).toEqual(['td_kindling']);
 });
+
+it('real boss victories record exposed sprints per boss, without awarding five victories at once', async () => {
+  const { runHeadless } = await import('../../../core');
+  const { module } = await import('../index');
+  const r = runHeadless({ game: module, script: 'hook-responsive', minutes: 35, seed: 11, simOpts: { autopilot: true, actionBot: true } });
+  const bosses = r.events.filter(e => e.type === 'bossKilled');
+  expect(bosses.length).toBeGreaterThan(0);
+  expect(bosses.every(e => typeof e.data?.exposedSprinted === 'boolean')).toBe(true);
+  expect(bosses.some(e => e.data?.exposedSprinted === true)).toBe(true);
+  expect(achievements.find(a => a.id === 'td_exposed')!.count!.of({ gameId: 'towerdefense', events: r.events } as unknown as SessionRecord, profile)).toBeLessThan(5);
+}, 30_000);

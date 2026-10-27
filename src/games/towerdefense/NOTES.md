@@ -38,3 +38,11 @@ CONTRACT-REQUESTs: none.
 - Interactive harness: `/dev/towerdefense.html?crew=0&legend=0` (L=A, K=B, I=Y, J=Z, hold Arrow Up for boss boost); `manual=1` exposes `window.__td.advance(seconds)` for repeatable browser checks; `boss=1&seed=3` starts the wave 4 boss with a reduced Rail laser.
 - #126 visual checks: 2x touch-enabled Chromium captures at 1180×820, 820×1180 and 390×844 for combat/recovery/workshop, with real `HudLayer`; DOM bounds/overflow and clear recovery map checked. Recorded a manual recovery build with the countdown visible. Shared HUD smoke covers both legends, actions, upgrades and held-input cancellation; typecheck, build and 167 targeted tests pass.
 - Real iPad/Bluefy and Ride hardware remain unverified: check seated thumb reach on the dock/radial targets, action response at 1x, simultaneous touch/controller input, release/cancel, portrait rotation and the real HUD band. Sounds need an ear check.
+
+## Achievement curve
+Triple Rail requires 25 fully charged volleys; On Call requires 40 lifetime calls.
+Exposed! counts five defeated bosses that were individually sprinted during an
+Exposed window. Iron Lungs needs 30 active minutes, 12 answered calls including
+spin/grind/hold, and no failures or unfinished calls. Full Workshop consumes
+`towerSold` events so sold towers no longer remain in the collection. Existing
+reward IDs and earned unlocks are preserved; new counters start from new evidence.

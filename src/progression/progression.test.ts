@@ -84,7 +84,7 @@ describe('awardSession', () => {
     const ids = r.newAchievements.map((a) => a.id);
     expect(ids).toEqual(expect.arrayContaining(['dg_elites', 'sprinter_10', 'kilojoule_1000']));
     expect(ids).not.toContain('triple_rail'); // a Dynamo Defense feat: not from a dungeon ride
-    const td = awardSession(r.profile, rec({ gameId: 'towerdefense', events: [{ t: 2, type: 'railFired', data: { charges: 3 } }] }));
+    const td = awardSession(r.profile, rec({ gameId: 'towerdefense', events: Array.from({ length: 25 }, (_, t) => ({ t, type: 'railFired', data: { charges: 3 } })) }));
     expect(td.newAchievements.map((a) => a.id)).toContain('triple_rail');
   });
   it('keeper_20 and storms', () => {

@@ -20,15 +20,16 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const mixHex = (a: number, b: number, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), clamp01(t)).getHex();
 
-/** A wing: a fan of long primary feathers sweeping up and out from the shoulder (camera space, `sx` = side). */
-function buildWing(sx: number): VoxelGrid {
-  const g = new VoxelGrid(0.012);
+/** A wing: a fan of long primary feathers sweeping up and out from the shoulder (camera space, `sx` = side); `k`
+ *  scales it (the angel's, seen from behind, is a few metres across). */
+export function buildWing(sx: number, k = 1): VoxelGrid {
+  const g = new VoxelGrid(0.012 * k);
   for (let f = 0; f < 8; f++) {
-    const ang = 0.15 + f * 0.17, len = 0.42 + (f < 5 ? f * 0.05 : (8 - f) * 0.05);
-    const tip = [sx * Math.cos(ang) * len * 0.75, Math.sin(ang) * len, -0.12 - f * 0.012];
-    for (let k = 0; k <= 16; k++) {
-      const t = k / 16, w = 0.03 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.008;
-      g.wellipsoid([tip[0] * t, tip[1] * t, tip[2] * t], [w, w, 0.008], t > 0.85 ? L.feather3 : f % 2 ? L.feather : L.feather2);
+    const ang = 0.15 + f * 0.17, len = (0.42 + (f < 5 ? f * 0.05 : (8 - f) * 0.05)) * k;
+    const tip = [sx * Math.cos(ang) * len * 0.75, Math.sin(ang) * len, (-0.12 - f * 0.012) * k];
+    for (let j = 0; j <= 16; j++) {
+      const t = j / 16, w = (0.03 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.008) * k;
+      g.wellipsoid([tip[0] * t, tip[1] * t, tip[2] * t], [w, w, 0.008 * k], t > 0.85 ? L.feather3 : f % 2 ? L.feather : L.feather2);
     }
   }
   return g;
@@ -107,7 +108,7 @@ export class FlightSet {
     const eve = { zenith: EVENING.zenith, horizon: EVENING.horizon, fog: EVENING.fog };
     const atmos = {
       zenith: mixHex(space.zenith, eve.zenith, e), horizon: mixHex(space.horizon, eve.horizon, e), fog: mixHex(space.fog, eve.fog, e),
-      density: lerp(0, EVENING.density, e), sunColor: EVENING.sunColor, sunI: lerp(2.6, EVENING.sunI, e), hemiI: lerp(0.5, EVENING.hemiI, e),
+      density: lerp(0, EVENING.density, e), sunColor: EVENING.sunColor, sunI: lerp(2.6, EVENING.sunI, e), hemiI: lerp(0.5, EVENING.hemiI, e), sunDir: EVENING.sunDir,
     };
     // shake: the eye jitters and rolls while the air burns
     const sh = fx.shake, eye = { x: shot.eye.x + wob(t * 1.7, 1) * sh * 0.4, y: shot.eye.y + wob(t * 2.1, 2) * sh * 0.3, z: shot.eye.z + wob(t * 1.3, 3) * sh * 0.4 };

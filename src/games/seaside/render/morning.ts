@@ -9,20 +9,21 @@ import { addGrid } from '../stills/stage';
 import { VoxelGrid } from '../voxel/grid';
 import { definePalette } from '../voxel/palette';
 import { hash2 } from '../voxel/noise';
-import { coastRoute, edgeD, pierGeom, roadX, SEA_LEVEL } from '../world/coastLayout';
+import { CH1, coastRoute, edgeD, pierGeom, roadX, SEA_LEVEL } from '../world/coastLayout';
 import { groundAt } from '../world/coast';
 import { FishingRig } from './fishingRig';
-import { bigOneView, morningShot, type MorningShot, type V3 } from './morningShots';
+import { bigOneView, morningShot, shopDoor, type MorningShot, type V3 } from './morningShots';
+import { textAt, textWidth } from '../world/coastBuild';
 import { EVENING } from './flightShots';
 import { STORY } from '../sim/story';
 
 const BIG_PLAN_S = STORY.find((s) => s.id === 'bigOne')!.planS;
 import type { WorldView } from './worldView';
 
-const PAL = definePalette({
+export const MORNING_PAL = definePalette({
   white: 0xf7f6f1, white2: 0xe9e8e2, grey: 0x9aa3ab, dark: 0x2c2f33, beak: 0xf0b72c, red: 0xc8382c, glass: 0x34495a, lamp: 0xfff2c0, stone: 0xd9d3c4,
 });
-const P = PAL.idx;
+const PAL = MORNING_PAL, P = PAL.idx;
 const NONE = { cast: false, receive: false };
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -30,7 +31,7 @@ const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const mixHex = (a: number, b: number, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), clamp01(t)).getHex();
 
 /** A big white bird, wings spread (the angel's shape, seen once, far out). Faces +x. */
-function buildBird(): VoxelGrid {
+export function buildBird(): VoxelGrid {
   const g = new VoxelGrid(0.18);
   g.wellipsoid([0, 0, 0], [1.1, 0.32, 0.3], P.white);
   g.wellipsoid([1.05, 0.12, 0], [0.32, 0.26, 0.24], P.white);
@@ -71,6 +72,23 @@ function buildLighthouse(): VoxelGrid {
   return g;
 }
 
+/** The card on Lou's door in the evening: GONE / FISHING in red on a pale board, hung from a nail. Faces +z, centred. */
+function buildGoneFishing(): VoxelGrid {
+  const g = new VoxelGrid(0.03), cell = 0.06, W = 2.8, H = 1.24;
+  for (let x = -W / 2; x < W / 2; x += g.size) for (let y = -H / 2; y < H / 2; y += g.size) {
+    const edge = Math.abs(x) > W / 2 - 0.09 || Math.abs(y) > H / 2 - 0.09;
+    let ink = false;
+    for (const [line, v0] of [['GONE', 0.09], ['FISHING', -0.5]] as const) {
+      const u = x + textWidth(line, cell) / 2;
+      if (textAt(line, u, y - v0, cell)) ink = true;
+    }
+    g.wbox([x, y, -0.015], [x + g.size, y + g.size, 0.03], ink || edge ? P.red : P.stone);
+  }
+  g.wsegment([-W / 2 + 0.12, H / 2, 0], [0, H / 2 + 0.3, 0], 0.012, P.dark);
+  g.wsegment([W / 2 - 0.12, H / 2, 0], [0, H / 2 + 0.3, 0], 0.012, P.dark);
+  return g;
+}
+
 interface Pose { eye: V3; target: V3 }
 
 /** A soft-edged ellipse (alpha map) for the Big One's shadow. */
@@ -91,6 +109,7 @@ export class MorningSet {
   private shadow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private shadowG = new THREE.Group();
   private lighthouse = new THREE.Group();
+  private gone = new THREE.Group();
   private splash: THREE.InstancedMesh;
   private bubbles: THREE.InstancedMesh;
   private mouth = new THREE.Group();
@@ -143,7 +162,13 @@ export class MorningSet {
     this.gum.position.z = -0.2; this.mouth.add(this.gum);
     this.mouth.visible = false;
     st.camera.add(this.mouth);
-    this.root.add(this.bird, this.shadowG, this.lighthouse, this.splash, this.bubbles);
+    // the evening: Lou's shop shut, a card on the door
+    // unlit, so it reads in the shade of the evening (the shop's a silhouette against the sun)
+    addGrid(st, 'gone fishing', buildGoneFishing(), { palette: PAL.linear.map((c) => c * 0.8), jitter: 0.02 }, this.gone, NONE, new THREE.MeshBasicMaterial({ vertexColors: true }));
+    const door = shopDoor(), tn = r.tangent(CH1.shop);
+    this.gone.position.set(door.x, door.y, door.z); this.gone.rotation.y = Math.atan2(-tn.z, tn.x); // facing the road
+    this.gone.visible = false;
+    this.root.add(this.bird, this.shadowG, this.lighthouse, this.splash, this.bubbles, this.gone);
     st.scene.add(this.root);
   }
 
@@ -173,12 +198,13 @@ export class MorningSet {
       const deep = mixHex(0x1f8a86, 0x0a3562, fx.dark), col = mixHex(deep, 0x000000, fx.dark ** 2 * 0.9);
       const u = fx.under;
       atmos = { fog: mixHex(sky.fog, col, u), density: lerp(sky.fogDensity, 0.05, u), zenith: mixHex(sky.zenith, col, u), horizon: mixHex(sky.horizon, col, u), sunI: lerp(sky.sunI, 0.6 * (1 - fx.dark), u), hemiI: lerp(sky.hemiI, 0.5 * (1 - fx.dark * 0.8), u) };
-    } else if (snap.sceneId === 'sunset') atmos = { ...EVENING }; // the wings set you down in the evening (#195 dresses it)
+    } else if (snap.sceneId === 'sunset') atmos = { ...EVENING }; // the wings set you down in the evening, the sun low over the sea
     else if (fog > 0) {
       const f = fog ** 1.4, white = 0xe7ecec;
       atmos = { fog: mixHex(sky.fog, white, fog), density: lerp(sky.fogDensity, 0.05, f), zenith: mixHex(sky.zenith, white, fog), horizon: mixHex(sky.horizon, white, fog), ink: 1 - f };
     }
     this.props(shot, t);
+    this.gone.visible = snap.sceneId === 'sunset';
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
       bars: shot.bars, cadence: cadence || 86, atmos, calm: fx.calm });
     // the rod is posed after the camera moves

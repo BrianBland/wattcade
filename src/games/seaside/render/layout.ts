@@ -48,6 +48,14 @@ export function layout(W: number, H: number, insets: Insets, menuItems = 0, spot
   return { UH, bubble, plate, card, menu, stage, fish: fishLayout(stage, spots) };
 }
 
+/** The end title "Seaside" (Bodoni Moda italic): big, a little above the middle of the space above the HUD
+ *  (the climbing rider is below it). `em` is the word's set width in ems. */
+export const END_TITLE = { text: 'Seaside', em: 3.9 };
+export function endTitle(W: number, UH: number, top: number): { y: number; px: number } {
+  const t = Math.max(0, top), px = Math.max(28, Math.min((UH - t) * 0.2, (W * 0.84) / END_TITLE.em));
+  return { y: t + (UH - t) * 0.38, px };
+}
+
 /** Fishing boxes inside the stage (so above the HUD too): markers ≥ 44 px tall for touch. */
 export function fishLayout(stage: Box, n: number): FishLayout {
   const { x, y, w, h } = stage;

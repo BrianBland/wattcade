@@ -43,7 +43,7 @@ export function rideSpan(id: string): [number, number] | null {
     case 'highway': return [CH1.start, CH1.turnout - 25];
     case 'rollers': return [CH1.turnout + 28, CH1.shop - 28];
     case 'toPier': return [CH1.shop + 28, pierGeom().end - PIER_FISH_BACK];
-    // the Evening's ride home (#194 lands the wings at its start; #195 dresses it)
+    // the Evening's ride home: the wings land at its start (#194); it ends at the cliff's lift-off (#195)
     case 'sunset': { const sc = STORY.find((x) => x.id === 'sunset')!; return [LAND_S, LAND_S + ('m' in sc.length ? sc.length.m : 1350)]; }
     default: return null;
   }
@@ -59,6 +59,12 @@ function pointAhead(s: number, d: number): V3 {
   if (s <= L) return p;
   const t = r.tangent(L);
   return v(p.x + t.x * (s - L), p.y, p.z + t.z * (s - L));
+}
+
+/** The middle of Lou's shop door (where the GONE FISHING sign hangs in the evening). */
+export function shopDoor(): V3 {
+  const q = coastRoute().offset(CH1.shop, -16.85);
+  return v(q.x, q.y + 1.45, q.z);
 }
 
 /** The riding camera at route metres s: right lane, eyes drifting to the sea; centred and level on the pier. */
@@ -139,6 +145,10 @@ export function morningShot(s: Pick<SeasideSnapshot, 'sceneId' | 'sceneT' | 'spe
       const w = win(p, 0.62, 0.72, 0.04) * 0.7, wg = win(p, pb0 + 0.004, pb1 - 0.006, 0.006) * 0.6;
       const look = w > 0 ? crestView(at) : gorgeView(at), k = Math.max(w, wg);
       cam.target = v(lerp(cam.target.x, look.x, k), lerp(cam.target.y, look.y, k), lerp(cam.target.z, look.z, k));
+    }
+    if (id === 'sunset') { // riding past Lou's in the evening, the eyes go to the door: dark, GONE FISHING
+      const w = win(at, CH1.shop - 40, CH1.shop + 6, 14) * 0.85, d = shopDoor();
+      cam.target = v(lerp(cam.target.x, d.x, w), lerp(cam.target.y, d.y, w), lerp(cam.target.z, d.z, w));
     }
     const bird = id === 'highway' && p > 0.7 && p < 0.96 ? (p - 0.7) / 0.26 : null;
     return { s: at, speed: s.speed * ((span[1] - span[0]) / len), ...cam, bars: true, rod: null, place: null, fx: { ...NO_FX, bird } };

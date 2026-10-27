@@ -2,7 +2,8 @@
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
 // (render/island.ts), Chapters 3a/3b (#192, #193) to the cavern (render/cavern.ts, render/gate.ts); the shops are dioramas;
 // Chapter 3c (#194) flies re-entry and the wings over the coast (render/flight.ts) and lands on the Sunset highway (the
-// Morning set rides it); the ending (the cliff on) still uses the placeholder stage (grey box and labels) until it lands. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
+// Morning set rides it, the sun low, Lou's shut); the ending (#195: the cliff lift-off, Lou's car, the angel)
+// rides the same coast (render/ending.ts). The HUD pieces (bubble, plate, card, menu, fishing prompts, the end title) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
@@ -16,6 +17,8 @@ import { CavernSet } from './cavern';
 import { CAVERN_WORLD, type CavernShot } from './cavernShots';
 import { FlightSet } from './flight';
 import { FLIGHT_WORLD, type FlightShot } from './flightShots';
+import { EndingSet } from './ending';
+import { ENDING_WORLD, type EndingShot } from './endingShots';
 import { BELLY_LAYERS, GATE_LAYERS, PARTS, type DrillLayer, type DrillView } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
@@ -25,13 +28,22 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, inside, layout, type Box } from './layout';
+import { bellyHud, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
 const SKY: Record<LookName, [string, string]> = {
   morning: ['#cfe6ee', '#7cc3d3'], midday: ['#bfe3f5', '#4fa3c9'], belly: ['#4a1830', '#b4507a'],
   jungle: ['#c9e3b0', '#5aa35a'], lava: ['#2a0c10', '#c2451c'], reentry: ['#1a0a20', '#f07a2a'], fever: ['#141a33', '#7a3a8a'],
 };
+
+/** The end title's face (Bodoni Moda 800 italic, OFL), fetched once when the ending comes up; until then it falls back. */
+let titleFont: Promise<unknown> | null = null;
+function loadTitleFont(): void {
+  if (titleFont || typeof FontFace === 'undefined') return;
+  titleFont = new FontFace('Seaside Title', `url(${titleFontUrl})`, { weight: '800', style: 'italic' }).load()
+    .then((f) => document.fonts.add(f)).catch(() => undefined);
+}
 
 export class SeasideRenderer implements GameRenderer {
   private canvas: HTMLCanvasElement | null = null;
@@ -53,6 +65,7 @@ export class SeasideRenderer implements GameRenderer {
   private island: IslandSet | null = null;
   private cavern: CavernSet | null = null;
   private flight: FlightSet | null = null;
+  private endSet: EndingSet | null = null;
   /** Seconds since the beach's first fish went on the fire (null before). */
   private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
@@ -161,11 +174,21 @@ export class SeasideRenderer implements GameRenderer {
     return this.flight;
   }
 
+  /** The ending (the cliff, the angel) over the coast world. */
+  private ensureEnding(): EndingSet {
+    if (!this.endSet) {
+      this.dropSets();
+      this.endSet = new EndingSet(this.ensureView('coast'));
+      loadTitleFont();
+    }
+    return this.endSet;
+  }
+
   /** Release whichever set is up (each holds GPU resources on the shared view). */
   private dropSets(): void {
     this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
     this.island?.dispose(); this.island = null; this.cavern?.dispose(); this.cavern = null;
-    this.flight?.dispose(); this.flight = null;
+    this.flight?.dispose(); this.flight = null; this.endSet?.dispose(); this.endSet = null;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -181,6 +204,10 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && ENDING_WORLD.has(s.sceneId)) {
+      const shot = this.ensureEnding().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawEndingHud(g, s, shot); return; }
+    }
     if (!s.menu && FLIGHT_WORLD.has(s.sceneId)) {
       const shot = this.ensureFlight().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawFlightHud(g, s, shot); return; }
@@ -407,6 +434,29 @@ export class SeasideRenderer implements GameRenderer {
       for (const d of [0, 14]) { g.beginPath(); g.moveTo(x - side * (k + d), y - k); g.lineTo(x - side * d, y); g.lineTo(x - side * (k + d), y + k); g.stroke(); }
       g.globalAlpha = 1;
     }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Over the ending: the title over the sunset (above you), the white cut to the morning, then the usual bubble, card
+   *  and progress line. */
+  private drawEndingHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: EndingShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), fx = shot.fx;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (fx.title > 0) { // the title, big, in the evening light
+      const T = endTitle(W, L.UH, this.insets.top), px = Math.round(T.px);
+      g.globalAlpha = fx.title; g.fillStyle = '#fffaf0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `italic 800 ${px}px "Seaside Title", "Bodoni 72", Didot, Georgia, serif`;
+      for (const [glow, blur] of [['rgba(255,214,160,.7)', px * 0.35], ['rgba(60,24,10,.55)', px * 0.08]] as const) {
+        g.shadowColor = glow; g.shadowBlur = blur;
+        g.fillText(END_TITLE.text, W / 2, T.y);
+      }
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    }
+    if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }
     const p = L.plate;
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);

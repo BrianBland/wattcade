@@ -189,6 +189,7 @@ export function stillShop(canvas: HTMLCanvasElement, w: number, h: number): Stag
   addGrid(st, 'shop 3 cm', g, { palette: SHOP.linear, jitter: 0.035 });
   const louG = new THREE.Group(); louG.position.set(0.12, 0, -1.55); st.scene.add(louG);
   addGrid(st, 'lou', buildLou({ voxel: 0.03 }), { palette: LOU.linear, jitter: 0.03 }, louG);
+  st.scene.add(lavaEelSticker());
   // the ocean outside the window
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshBasicMaterial({ color: 0x2a9cc0 }));
   sea.rotation.x = -Math.PI / 2; sea.position.y = -12; st.scene.add(sea);
@@ -201,6 +202,24 @@ export function stillShop(canvas: HTMLCanvasElement, w: number, h: number): Stag
   st.camera.position.set(0.05, 1.62, 1.15);
   st.camera.lookAt(-0.05, 1.42, -2.6);
   return st;
+}
+
+/** A bumper sticker on the corkboard by the Earth postcard (a seed for the magma eel; nobody mentions it). */
+function lavaEelSticker(): THREE.Mesh {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const ink = c.getContext('2d')!;
+  ink.fillStyle = '#e8622a'; ink.beginPath(); ink.roundRect(4, 4, 248, 120, 18); ink.fill();
+  ink.strokeStyle = '#ffd25a'; ink.lineWidth = 6; ink.beginPath(); ink.roundRect(12, 12, 232, 104, 12); ink.stroke();
+  // the eel: one wavy stroke with a head, leaping over the words
+  ink.strokeStyle = '#2a120c'; ink.lineWidth = 9; ink.lineCap = 'round'; ink.beginPath(); ink.moveTo(40, 44);
+  for (let x = 40; x <= 196; x += 4) ink.lineTo(x, 40 - Math.sin((x - 40) / 26) * 9);
+  ink.stroke(); ink.fillStyle = '#2a120c'; ink.beginPath(); ink.ellipse(206, 36, 14, 9, -0.3, 0, Math.PI * 2); ink.fill();
+  ink.fillStyle = '#fff3d6'; ink.font = 'bold 44px Impact, "Arial Black", sans-serif'; ink.textAlign = 'center'; ink.textBaseline = 'middle';
+  ink.fillText('LAVA EEL', 128, 88);
+  const texture = new THREE.CanvasTexture(c); texture.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.16), new THREE.MeshBasicMaterial({ map: texture, color: 0xd8d8d8 }));
+  m.position.set(-0.71, 1.62, -3.255); m.rotation.z = 0.07;
+  return m;
 }
 
 /** The outdoor counter reuses Lou and the tackle props; the Deep carries a painted reel decal. */

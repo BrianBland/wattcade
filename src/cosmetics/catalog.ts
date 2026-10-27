@@ -7,6 +7,8 @@ export const itemKey = (it: Pick<Item, 'slot' | 'id'>) => `${it.slot}:${it.id}`;
 
 /** Only the current shared rewards are available; ships belong to Cadenza. */
 export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => ROTATION[itemKey(it)] ?? it).filter(it => it.slot !== 'ship').concat([
+  { slot: 'jersey', id: 'lh_workshirt', name: 'Island workshirt', source: { achievement: 'lh_foundations' },
+    look: { pattern: 'overalls', base: '#526f79', ink: '#d4bf90' } },
   { slot: 'hat', id: 'none', name: 'No headwear', source: { default: true } },
   ...(['bottoms', 'hands', 'feet', 'eyewear', 'back'] as const).map(slot => ({
     slot, id: 'none', name: ({bottoms: 'Classic shorts', hands: 'Bare hands', feet: 'Basic shoes', eyewear: 'No eyewear', back: 'No back item'})[slot],

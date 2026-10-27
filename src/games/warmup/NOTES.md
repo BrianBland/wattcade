@@ -28,3 +28,10 @@ but in `allGames` so `npm run sim:all` runs its scenarios). Never ends.
 - `tumbleweed.ts`: pure motion (`weedAt`: bounce parabola, spin = ground distance / radius), seeded spawn; lanes far/road/near are drawn behind / in front of the rider.
 - `soundscape.ts`: pure scheduler of per-biome one-shots (recipes in `audio/sfx.ts`: FM chirps via `vib`, swells via `atk`), weighted crossfade, silent when stopped or ducked (`ambientDucked()`).
 - Debug: `?biome=desert&at=0.9` starts the lobby ride in a biome (km in), `?hour=21` previews the time of day.
+
+## Achievement curve
+Sightseer remains the introduction. Moonwalker needs five rides that visit the
+Moon; Globetrotter needs every biome on three rides each. Both require ten active
+minutes per ride, and duplicate biome events within a ride count only once.
+Globetrotter uses a new packed, saturating per-biome ride counter; the old bitmap
+cannot establish repeated visits. Existing earned rewards remain unlocked.

@@ -8,6 +8,7 @@ import { DEFAULT_ZONE_REFILL, completeCooldown, startCooldown, effortFlourish, e
 import { DEFAULT_CFG, DEFAULT_TARGETS, newFloor, spinupCalled, stepDirector, type DirectorCfg, type DirectorState, type Seg } from './director';
 import { sprintBreak, DEFAULT_BOSS, bossDamageMult, bossStunned, newBoss, strikeBoss, stepBoss, tideBonus, type BossCfg, type BossState } from './boss';
 import { STANCES, stanceOfStyle, stancesFor, styleActive, stylesFor, suggestStance, type StanceId } from './stances';
+import { createArsenalCollection } from './arsenal';
 import { clearLine, cadenceSpeed, findPath, readyFrac, shouldAutoPotion, standoff, type ActionId, type Cooldown } from './ai';
 import { RETIRED, UPGRADES, spentOn, autoInvest, lvl, metaMods, upgradeCost, type Levels, type MetaMods } from './meta';
 import type { BulletView, CampView, CurseKind, CurseView, DropView, DungeonSnapshot, EliteMod, EnemyView, Fx, Hazard, ShrineView, Toast } from './types';
@@ -475,6 +476,10 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const it = d.item!;
     const col = RARITY_COLORS[it.rarity];
     const sid = 'base' in it ? stanceOfStyle(it.base, mods.arcanist) : stance;
+    if ('base' in it && arsenal.collect(it.base, it.rarity, mods.arcanist)) {
+      toast('Full Arsenal: epic+ weapons collected for all 4 stances', '#ffd84a');
+      ctx.emit({ type: 'fullArsenal', data: { floor, stances: 4, minRarity: 3 } });
+    }
     const better = 'base' in it ? it.score > weaponScore(slots[sid]) : !gear[it.slot] || it.score > gear[it.slot]!.score;
     if (!better) { const v = Math.round(sellValue(it.level, Math.min(4, it.rarity) as Rarity) * mods.coinMult); addCoins(v); toast(`Sold ${it.name} +${v}c`, '#bbb'); cue('coin'); return; }
     if ('base' in it) { slots[sid] = it; if (sid === stance && !swapTo) weapon = it; } else { gear[it.slot] = it; recomputeHp(false); }
@@ -493,7 +498,8 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
   /** Fury: a long boss fight gets dangerous for the hero too, racing Turning Tide. */
   function bossFury() { return bossStarted && boss.alive && floor > 1 ? clamp((bs.fightT - furyAfter()) * furyRate(), 0, 1.5) : 0; }
   /** Damage numbers: every hit shows; rapid hits on one enemy merge into one rising number (keeps the fx budget). */
-  let expWindows = 0, expStruck = 0, expHit = false, arsenalDone = false;
+  let expWindows = 0, expStruck = 0, expHit = false;
+  const arsenal = createArsenalCollection();
   const dmgFx = new Map<number, { fx: Fx; v: number; t: number }>();
   function dmgNumber(e: Enemy, dmg: number, crit: boolean, color: string) {
     // keep the RNG stream identical to the old (big hits only) numbers: draw only where they drew
@@ -530,7 +536,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     freeze(0.25); cue('levelup');
     addFx({ kind: 'banner', x: P.x, y: P.y, life: 2.5, color: '#ffe08a', text: 'SECOND WIND' });
     addFx({ kind: 'levelup', x: P.x, y: P.y, life: 1, color: '#ffe08a', r: 3.5 });
-    ctx.emit({ type: 'secondWind', data: { floor } });
   }
   function damageEnemy(e: Enemy, raw: number, bike: Readonly<BikeState>, crit = false, color = '#fff') {
     if (!e.alive) return;
@@ -684,8 +689,9 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const hit = liveInRoom(current).filter((e) => Math.hypot(e.x - P.x, e.y - P.y) < strikeRadius() + e.r);
     if (!hit.length) { cue('deny'); return false; }
     const dmg = weapon.dmg * playerDmg(bike) * strikeMult();
-    for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
+    // Record before damage: a killing Strike emits bossDefeated synchronously.
     if (hit.some((e) => e.kind === 'boss') && bs.cycle === 'exposed' && !expHit) { expHit = true; expStruck++; }
+    for (const e of hit) { damageEnemy(e, dmg, bike, true, '#ffd84a'); e.slowT = Math.max(e.slowT, 2); }
     if (hit.some((e) => e.kind === 'boss') && strikeBoss(bs, bossCfg())) toast(`Timed Strike: exposed +${bossCfg().strikeBonusS}s`, '#ffd84a');
     addFx({ kind: 'boom', x: P.x, y: P.y, life: 0.4, color: '#ffd84a', r: strikeRadius() });
     freeze(0.08); cue('explode');
@@ -746,10 +752,6 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     if (dir.seg === 'spinup' && bike.cadence3s >= cfg.spinRpm) spinGood += dt;
     // segment banners for the calm segments (ambush, spin-up and boss announce themselves)
     if (dir.seg !== seg0 && SEG_BANNER[dir.seg]) addFx({ kind: 'banner', x: P.x, y: P.y, life: 2, color: '#8fd8ff', text: SEG_BANNER[dir.seg]! });
-    if (!arsenalDone && phase === 'run') {
-      const ids = stancesFor(mods.arcanist);
-      if (ids.every((id) => (slots[id]?.rarity ?? 0) >= 2)) { arsenalDone = true; toast('Full Arsenal: a rare+ weapon in every stance', '#ffd84a'); ctx.emit({ type: 'fullArsenal', data: { floor, stances: ids.length } }); }
-    }
     for (const ev of evs) {
       if (ev === 'ambush') {
         const n = Math.round(ambushN()) + Math.floor(floor / 3);
@@ -963,7 +965,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     runs++;
     totals.runs++; P.coins = 0; P.coinsEarned = 0; lastDeath = undefined;
     P.level = 1 + 2 * (floor - 1); P.xp = 0;
-    weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenalDone = false; bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
+    weapon = starterWeapon(floor, rng); fillSlots(P.level); arsenal.reset(); bestFind = weapon; swapT = 0; swapTo = null; pick = null; stanceSince = -99;
     P.potions = mods.potionCap;
     buildFloor(); dir = newFloor(true);
     recomputeHp(true);

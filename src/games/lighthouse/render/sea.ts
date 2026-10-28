@@ -1,5 +1,6 @@
-// Animated sea: waves displaced in the vertex shader (cheap on iPad), flat-shaded, shallow-water tint and shore foam.
-import * as THREE from 'three';
+// Animated sea: waves displaced in the vertex stage (TSL) (cheap on iPad), flat-shaded, shallow-water tint and shore foam.
+import * as THREE from 'three/webgpu';
+import { attribute, max, mix, positionLocal, sin, smoothstep, uniform, varying, vec3 } from 'three/tsl';
 import { islandHeight } from '../sim/layout';
 
 /** JS mirror of the shader wave so ships and props can bob on the same surface. */
@@ -21,29 +22,22 @@ export function createSea(): Sea {
   }
   g.setAttribute('aShore', new THREE.BufferAttribute(shore, 1));
 
-  const uniforms = {
-    uTime: { value: 0 }, uAmp: { value: 0.3 }, uChop: { value: 0 },
-    uDeep: { value: new THREE.Color(0x0f4c74) }, uShallow: { value: new THREE.Color(0x2fa7b5) }, uFoam: { value: new THREE.Color(0xf4fbff) },
-  };
-  const mat = new THREE.MeshPhongMaterial({ color: 0xffffff, flatShading: true, shininess: 40, specular: new THREE.Color(0x3a4a58) });
-  mat.onBeforeCompile = (sh) => {
-    Object.assign(sh.uniforms, uniforms);
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>
-        uniform float uTime; uniform float uAmp; attribute float aShore; varying float vShore; varying float vCrest;
-        float waveH(vec2 p) { return uAmp * (0.55 * sin(p.x * 0.16 + uTime * 1.3 + p.y * 0.05) + 0.35 * sin(p.y * 0.21 - uTime * 1.05 + p.x * 0.07) + 0.18 * sin((p.x + p.y) * 0.37 + uTime * 2.1)); }`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        float wh = waveH(transformed.xz) * (1.0 - 0.6 * aShore);
-        transformed.y += wh; vShore = aShore; vCrest = wh / max(uAmp, 0.05);`);
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `#include <common>
-        uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam; uniform float uTime; uniform float uChop; varying float vShore; varying float vCrest;`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-        vec3 water = mix(uDeep, uShallow, smoothstep(0.35, 0.95, vShore));
-        float crest = smoothstep(0.85 - 0.35 * uChop, 1.05, vCrest) * (0.2 + 0.6 * uChop);
-        float surf = smoothstep(0.86, 0.97, vShore + 0.04 * sin(uTime * 1.7 + vShore * 30.0));
-        diffuseColor.rgb = mix(water, uFoam, max(crest, surf));`);
-  };
+  const uTime = uniform(0), uAmp = uniform(0.3), uChop = uniform(0);
+  const uDeep = uniform(new THREE.Color(0x0f4c74)), uShallow = uniform(new THREE.Color(0x2fa7b5)), uFoam = uniform(new THREE.Color(0xf4fbff));
+  const mat = new THREE.MeshPhongNodeMaterial({ color: 0xffffff, flatShading: true, shininess: 40, specular: new THREE.Color(0x3a4a58) });
+  // vertex: same wave as waveHeight(), damped near the shore
+  const aShore = attribute<'float'>('aShore', 'float'), p = positionLocal.xz;
+  const waveH = uAmp.mul(sin(p.x.mul(0.16).add(uTime.mul(1.3)).add(p.y.mul(0.05))).mul(0.55)
+    .add(sin(p.y.mul(0.21).sub(uTime.mul(1.05)).add(p.x.mul(0.07))).mul(0.35))
+    .add(sin(p.x.add(p.y).mul(0.37).add(uTime.mul(2.1))).mul(0.18)));
+  const wh = waveH.mul(aShore.mul(-0.6).add(1));
+  mat.positionNode = positionLocal.add(vec3(0, wh, 0));
+  // fragment: deep -> shallow tint, crest foam with chop, surf at the waterline
+  const vShore = varying(aShore), vCrest = varying(wh.div(max(uAmp, 0.05)));
+  const water = mix(uDeep, uShallow, smoothstep(0.35, 0.95, vShore));
+  const crest = smoothstep(uChop.mul(-0.35).add(0.85), 1.05, vCrest).mul(uChop.mul(0.6).add(0.2));
+  const surf = smoothstep(0.86, 0.97, vShore.add(sin(uTime.mul(1.7).add(vShore.mul(30))).mul(0.04)));
+  mat.colorNode = mix(water, uFoam, max(crest, surf));
   const mesh = new THREE.Mesh(g, mat);
   mesh.receiveShadow = false;
   const deepDay = new THREE.Color(0x0f4c74), deepNight = new THREE.Color(0x061a2c), deepStorm = new THREE.Color(0x1d2e38);
@@ -51,10 +45,10 @@ export function createSea(): Sea {
   return {
     mesh,
     update(t, amp, dark, storm) {
-      uniforms.uTime.value = t; uniforms.uAmp.value = amp; uniforms.uChop.value = Math.max(0, Math.min(1, (amp - 0.25) / 1.6));
-      uniforms.uDeep.value.copy(deepDay).lerp(deepNight, dark).lerp(deepStorm, storm * 0.6);
-      uniforms.uShallow.value.copy(shDay).lerp(shNight, dark).lerp(deepStorm, storm * 0.5);
-      uniforms.uFoam.value.setScalar(0.96 - dark * 0.55);
+      uTime.value = t; uAmp.value = amp; uChop.value = Math.max(0, Math.min(1, (amp - 0.25) / 1.6));
+      uDeep.value.copy(deepDay).lerp(deepNight, dark).lerp(deepStorm, storm * 0.6);
+      uShallow.value.copy(shDay).lerp(shNight, dark).lerp(deepStorm, storm * 0.5);
+      uFoam.value.setScalar(0.96 - dark * 0.55);
     },
   };
 }

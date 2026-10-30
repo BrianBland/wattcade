@@ -56,6 +56,13 @@ export function endTitle(W: number, UH: number, top: number): { y: number; px: n
   return { y: t + (UH - t) * 0.38, px };
 }
 
+/** Music credit lines under the end title (only when a cue uses a CC track): small, centred, kept above the HUD. */
+export function endCredits(W: number, UH: number, top: number, n: number): { ys: number[]; px: number } {
+  const T = endTitle(W, UH, top), px = Math.max(11, Math.min(15, W / 70)), gap = px * 1.5;
+  const y0 = Math.min(T.y + T.px * 0.85, UH - px - gap * Math.max(0, n - 1));
+  return { ys: Array.from({ length: n }, (_, i) => y0 + i * gap), px };
+}
+
 /** Fishing boxes inside the stage (so above the HUD too): markers ≥ 44 px tall for touch. */
 export function fishLayout(stage: Box, n: number): FishLayout {
   const { x, y, w, h } = stage;

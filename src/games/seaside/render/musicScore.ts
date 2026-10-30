@@ -1,5 +1,6 @@
 // The five music cues (#197), pure: small generative scores in the Lighthouse manner (no files, nothing to credit).
 // `cueNotes(cue, beat)` lists the notes that start on that beat; `render/music.ts` schedules them on Web Audio.
+import { SAMPLE_TRACKS, sampleCredit } from '../../../media/library/samples';
 import type { CueId } from './soundMix';
 
 export type Instrument = 'pad' | 'pluck' | 'bass' | 'bell' | 'pulse' | 'choir' | 'lead';
@@ -45,3 +46,14 @@ export function cueNotes(cue: CueId, beat: number): Note[] {
 }
 
 export const mtof = (m: number) => 440 * 2 ** ((m - 69) / 12);
+
+/** CC tracks that replace generated cues (keys into the media library's `SAMPLE_TRACKS`). Empty: every cue is generated.
+ *  A track set here downloads on first use (the generated cue plays until it's ready) and is credited under the end title;
+ *  record its licence in `docs/seaside/AUDIO.md`. */
+export const CUE_TRACKS: Partial<Record<CueId, string>> = {};
+
+/** Credit lines for the tracks in use, in cue order (none while every cue is generated). */
+export function musicCredits(tracks: Partial<Record<CueId, string>> = CUE_TRACKS): string[] {
+  const keys = (Object.keys(CUES) as CueId[]).map((c) => tracks[c]).filter((k): k is string => !!k);
+  return [...new Set(keys)].map((k) => SAMPLE_TRACKS.find((t) => t.key === k)).filter((t) => !!t).map((t) => sampleCredit(t).text);
+}

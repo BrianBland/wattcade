@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { FALL } from '../sim/gate';
 import { STORY } from '../sim/story';
 import type { SeasideSnapshot } from '../sim/types';
-import { CUES, cueNotes } from '../render/musicScore';
+import { CUE_TRACKS, CUES, cueNotes, musicCredits } from '../render/musicScore';
+import { SAMPLE_TRACKS, sampleCredit } from '../../../media/library/samples';
 import { BEDS, bedsFor, INSECTS, musicFor, PLANK_M, SoundTicker, voicesFor, type CueId } from '../render/soundMix';
 
 const at = (sceneId: string, progress: number, extra: Partial<SeasideSnapshot> = {}): SeasideSnapshot => {
@@ -100,5 +101,12 @@ describe('the generative cues (#197)', () => {
       expect(notes.length, cue).toBeGreaterThan(0);
       for (const n of notes) { expect(n.midi).toBeGreaterThanOrEqual(24); expect(n.midi).toBeLessThanOrEqual(108); expect(n.vol).toBeLessThanOrEqual(0.1); }
     }
+  });
+
+  it('can swap any cue for a CC track by key, and credits it', () => {
+    for (const k of Object.values(CUE_TRACKS)) expect(SAMPLE_TRACKS.some((t) => t.key === k)).toBe(true);
+    expect(musicCredits({})).toEqual([]);
+    const [a, b] = SAMPLE_TRACKS;
+    expect(musicCredits({ title: a.key, liftoff: b.key, earth: a.key })).toEqual([sampleCredit(a).text, sampleCredit(b).text]);
   });
 });

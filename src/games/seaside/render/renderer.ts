@@ -28,7 +28,8 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import { bellyHud, endCredits, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import { musicCredits } from './musicScore';
 import { SeasideSound } from './sound';
 import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
@@ -457,6 +458,9 @@ export class SeasideRenderer implements GameRenderer {
         g.shadowColor = glow; g.shadowBlur = blur;
         g.fillText(END_TITLE.text, W / 2, T.y);
       }
+      const credits = musicCredits(), C = endCredits(W, L.UH, this.insets.top, credits.length);
+      g.shadowBlur = 4; g.font = `${Math.round(C.px)}px Georgia, serif`;
+      credits.forEach((line, i) => g.fillText(line, W / 2, C.ys[i], W - 32));
       g.shadowBlur = 0; g.globalAlpha = 1;
     }
     if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }

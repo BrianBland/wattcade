@@ -1,14 +1,17 @@
 // Plays the generative cues from `musicScore.ts` on the shared audio graph (#197). One cue at a time: a new cue
 // cross-fades in over the old one. Respects the sound toggle and the ambient ducker (`audioOut()` is null when off).
 import { audioOut } from '../../../audio/sfx';
-import { beatS, cueNotes, mtof, type Instrument, type Note } from './musicScore';
+import { SAMPLE_TRACKS, sampleUrl } from '../../../media/library/samples';
+import { beatS, CUE_TRACKS, cueNotes, mtof, type Instrument, type Note } from './musicScore';
 import type { CueId } from './soundMix';
 
-interface Playing { cue: CueId; bus: GainNode; beat: number; nextAt: number }
+interface Playing { cue: CueId; bus: GainNode; beat: number; nextAt: number; track: AudioBufferSourceNode | null }
 
 export class SeasideMusic {
   private cur: Playing | null = null;
   private dying: GainNode[] = [];
+  /** CC tracks standing in for cues (`CUE_TRACKS`): fetched and decoded once, on first use. */
+  private tracks = new Map<string, AudioBuffer | 'loading' | 'failed'>();
 
   /** `want` from `musicFor`; `running` is false while the story is paused (the music fades and holds). */
   update(want: { cue: CueId; gain: number } | null, running: boolean): void {
@@ -18,26 +21,43 @@ export class SeasideMusic {
     if (want && (!this.cur || this.cur.cue !== want.cue)) {
       this.release(now);
       const bus = c.createGain(); bus.gain.value = 0; bus.connect(a.out);
-      this.cur = { cue: want.cue, bus, beat: 0, nextAt: now + 0.1 };
+      this.cur = { cue: want.cue, bus, beat: 0, nextAt: now + 0.1, track: this.startTrack(c, bus, want.cue) };
     }
     const p = this.cur; if (!p) return;
     const level = want && running && !a.ducked ? want.gain : 0;
     p.bus.gain.setTargetAtTime(level, now, 0.4);
     if (!want) { this.release(now); return; }
-    if (!running || level <= 0.001) { p.nextAt = Math.max(p.nextAt, now + 0.1); return; }
+    if (p.track || !running || level <= 0.001) { p.nextAt = Math.max(p.nextAt, now + 0.1); return; }
     const spb = beatS(p.cue);
     if (p.nextAt < now - 0.5) p.nextAt = now + 0.05; // the tab slept: don't burst
     while (p.nextAt < now + 0.3) { for (const n of cueNotes(p.cue, p.beat)) playNote(c, p.bus, n, p.nextAt + (n.at ?? 0) * spb, spb); p.nextAt += spb; p.beat++; }
   }
 
+  /** The cue's CC track if it's decoded (it loops under the cue's fades); else starts loading it and returns null, so the
+   *  generated cue plays this time. */
+  private startTrack(c: AudioContext, bus: GainNode, cue: CueId): AudioBufferSourceNode | null {
+    const key = CUE_TRACKS[cue], sample = key ? SAMPLE_TRACKS.find((t) => t.key === key) : undefined;
+    if (!key || !sample) return null;
+    const got = this.tracks.get(key);
+    if (got instanceof AudioBuffer) { const src = c.createBufferSource(); src.buffer = got; src.loop = true; src.connect(bus); src.start(); return src; }
+    if (!got) {
+      this.tracks.set(key, 'loading');
+      fetch(sampleUrl(sample)).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b))
+        .then((buf) => { this.tracks.set(key, buf); }, () => { this.tracks.set(key, 'failed'); });
+    }
+    return null;
+  }
+
   private release(now: number): void {
     if (!this.cur) return;
-    const g = this.cur.bus; g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.8);
+    const g = this.cur.bus, src = this.cur.track; g.gain.cancelScheduledValues(now); g.gain.setTargetAtTime(0, now, 0.8);
+    try { src?.stop(now + 5); } catch { /* already stopped */ }
     this.dying.push(g); this.cur = null;
     setTimeout(() => { try { g.disconnect(); } catch { /* gone */ } this.dying = this.dying.filter((d) => d !== g); }, 6000);
   }
 
   stop(): void {
+    try { this.cur?.track?.stop(); } catch { /* already stopped */ }
     for (const g of [...this.dying, ...(this.cur ? [this.cur.bus] : [])]) { try { g.disconnect(); } catch { /* gone */ } }
     this.dying = []; this.cur = null;
   }

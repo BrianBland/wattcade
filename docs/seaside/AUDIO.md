@@ -1,8 +1,12 @@
 # Seaside — audio (#197)
 
 All of Seaside's sound is made in the browser with Web Audio. It plays no audio files, so **nothing needs a licence or
-attribution**. If a cue is later swapped for a Creative Commons track, record the track and its licence in the table at
-the bottom and show the credit under the end title.
+attribution** while every cue is generated.
+
+**Swapping in a CC track:** set the cue's key in `CUE_TRACKS` (`render/musicScore.ts`) to one of the media library's
+`SAMPLE_TRACKS` (add the track there first if it's new), and add a row to the licence table below. The track downloads
+on first use and loops under the cue's fades; the generated cue plays until it's ready, and if the download fails. Its
+credit ("Title" by Artist · licence) then shows under the end title automatically.
 
 The mix lives in `src/games/seaside/render/soundMix.ts` (pure and tested). `render/sound.ts` and `render/music.ts` play
 it on the shared graph (`src/audio/sfx.ts`, `src/audio/voices.ts`), so the arcade's sound toggle and the ambient ducker

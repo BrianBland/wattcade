@@ -34,4 +34,4 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 ## Gaps
 - None known.
 
-- `settings.mediaTimingDebug` defaults false (including legacy profiles), persists per player through storage/backup, and never stores timing samples.
+- `settings.debugStats` defaults false (including legacy profiles), persists per player through storage/backup, and never stores timing samples.

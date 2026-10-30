@@ -203,7 +203,8 @@ threshold unchanged; an extractor slower than playback can still cause subsequen
 
 ## Per-player timing diagnostics
 
-Edit the player's profile and enable **Debug: media timings** (off by default). The music
+Edit the player's profile and enable **Debug stats** (off by default). This general per-player
+flag can gate diagnostics throughout the app; media timings are its first consumer. The music
 picker and game show a collapsible timing table for that music queue. The same in-memory
 collector transfers from the picker into the ride; another player/queue gets a fresh one.
 Disabling the flag leaves collection, timing clock reads and diagnostic polling off. The

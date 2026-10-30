@@ -89,7 +89,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
 
   // Streamed songs: prepare playback on enqueue; hand completed audio and analysis to the ride at Start.
   const [, bumpPrefetch] = useState(0);
-  const timings = useMemo(() => createMediaTimings(profile.settings), [profile.id, profile.settings.mediaTimingDebug]);
+  const timings = useMemo(() => createMediaTimings(profile.settings), [profile.id, profile.settings.debugStats]);
   const makePrefetch = () => new PreviewPrefetch({ load: (song, start, duration, signal) => prepareStreamWindow(song, start, duration, signal, timings), timings, concurrency: 2, firstTrackWindows: Math.ceil(resolver.bufferS / 30), firstTrackFirst: true, onChange: () => bumpPrefetch((x) => x + 1) });
   const prefetch = useRef<PreviewPrefetch | null>(null);
   useEffect(() => {

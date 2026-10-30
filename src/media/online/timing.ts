@@ -27,8 +27,8 @@ export class MediaTimings {
   }
   snapshot(): MediaTimingRow[] { return MEDIA_STAGES.map(stage => this.rows.get(stage)).filter((r): r is MediaTimingRow => !!r).map(r => ({ ...r })); }
 }
-export function createMediaTimings(settings: Pick<ProfileSettings, 'mediaTimingDebug'>): MediaTimings | undefined {
-  return settings.mediaTimingDebug === true ? new MediaTimings() : undefined;
+export function createMediaTimings(settings: Pick<ProfileSettings, 'debugStats'>): MediaTimings | undefined {
+  return settings.debugStats === true ? new MediaTimings() : undefined;
 }
 export function measureMedia<T>(timings: MediaTimings | undefined, stage: MediaStage, task: () => Promise<T>): Promise<T> {
   return timings ? timings.measure(stage, task) : task();

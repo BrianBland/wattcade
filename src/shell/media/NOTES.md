@@ -5,4 +5,4 @@
 - BufferProgress appears after five seconds of a wait, polling actual ready/target audio seconds every 250ms.
 - Shared by picker handoff and GameHost startup/rebuffering. Unknown progress is indeterminate; no invented ETA.
 - Unmount clears delay/poll timers. DOM tests cover delay, updates, unknown progress and a fresh subsequent wait.
-- Profile “Debug: media timings” gates collector creation and a collapsible table in picker/game; collector follows the queue into playback. No collector/polling when off.
+- Profile “Debug stats” gates collector creation and a collapsible table in picker/game; collector follows the queue into playback. No collector/polling when off.

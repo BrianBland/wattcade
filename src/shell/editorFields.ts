@@ -28,7 +28,7 @@ export const EDITOR_FIELDS: FieldDef[] = [
   { id: 'zoneSource', label: 'Zones from', kind: 'choice', options: ZONE_OPTS, hint: 'For long holds; short sprints always use power (HR lags 30–60 s)', ...(S('zoneSource') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'aimMode', label: 'Aim', kind: 'choice', options: AIM_OPTS, ...(S('aimMode') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'paddleDeadzone', label: 'Paddle deadzone', kind: 'num', step: 1, min: 0, max: 60, ...S('paddleDeadzone') },
-  { id: 'mediaTimingDebug', label: 'Debug: media timings', kind: 'bool', get: p => p.settings.mediaTimingDebug === true, set: (p, v) => ({ ...p, settings: { ...p.settings, mediaTimingDebug: v } }) },
+  { id: 'debugStats', label: 'Debug stats', kind: 'bool', get: p => p.settings.debugStats === true, set: (p, v) => ({ ...p, settings: { ...p.settings, debugStats: v } }) },
   { id: 'maxGradePct', label: 'Max grade', kind: 'num', step: 0.5, min: 0, max: 20, unit: '%', digits: 1, hint: 'Safety cap on any grade sent to the trainer', ...S('maxGradePct') },
 ];
 

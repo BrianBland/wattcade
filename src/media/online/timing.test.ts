@@ -4,7 +4,7 @@ it('does not allocate collectors or read the clock unless the player explicitly 
   const clock = vi.spyOn(performance, 'now').mockImplementation(() => { throw new Error('disabled clock'); });
   try {
     expect(createMediaTimings({})).toBeUndefined();
-    const off = createMediaTimings({ mediaTimingDebug: false });
+    const off = createMediaTimings({ debugStats: false });
     expect(await measureMedia(off, 'fetch', async () => 7)).toBe(7);
     expect(measureMediaSync(off, 'commit', () => 8)).toBe(8);
     expect(clock).not.toHaveBeenCalled();
@@ -24,5 +24,5 @@ it('aggregates stage latency, failure and concurrency without retaining per-wind
   ]);
   const copy = timings.snapshot(); copy[0].totalMs = 0;
   expect(timings.snapshot()[0].totalMs).toBe(70);
-  expect(createMediaTimings({ mediaTimingDebug: true })!.snapshot()).toEqual([]);
+  expect(createMediaTimings({ debugStats: true })!.snapshot()).toEqual([]);
 });

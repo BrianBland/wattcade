@@ -20,3 +20,5 @@ Streams up to 12 h, ≤40 s windows; range requests do not apply full-source fil
   no audio), ≤100 items (MAX_PLAYLIST_ITEMS), order + stable youtube:<id>, skipped[] with reasons (unavailable/duplicate/…),
   truncated flag; watch?v&list → 409 choice-required unless choice:'playlist'; mixes/personal lists rejected;
   client disconnect aborts yt-dlp. Client/MediaPicker/persistence pending (#65/#66).
+
+- Range requests pass browser-disconnect cancellation through to yt-dlp; HTTP tests cover two concurrent jobs, 429 at capacity, and slot release.

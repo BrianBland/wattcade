@@ -41,5 +41,5 @@ export type Screen =
   | { name: 'summary'; record: SessionRecord; award: AwardView }
   | { name: 'unlocks'; award: AwardView };
 /** The music a game was started with (from the media picker). */
-export interface MediaRun { ids: string[]; mode: QueueMode; items: MixItem[]; plan: MixPlan; timeline: MediaTimeline; rolling?: import('../media/online/rolling').RangeSource }
+export interface MediaRun { ids: string[]; mode: QueueMode; items: MixItem[]; plan: MixPlan; timeline: MediaTimeline; rolling?: import('../media/online/rolling').RangeSource; timings?: import('../media/online/timing').MediaTimings }
 export type { Profile };

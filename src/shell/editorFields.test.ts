@@ -45,3 +45,14 @@ describe('player units', () => {
     expect(p.settings.units).toBeUndefined();
   });
 });
+
+it('keeps the general debug stats flag off by default and toggles only the selected player', () => {
+  const a = testProfile(), b = testProfile(), field = f('debugStats');
+  expect(field.kind).toBe('bool');
+  if (field.kind !== 'bool') throw new Error('missing toggle');
+  expect(field.get(a)).toBe(false);
+  const enabled = activateField(field, a)!;
+  expect(enabled.settings.debugStats).toBe(true);
+  expect(field.get(a)).toBe(false); expect(field.get(b)).toBe(false);
+  expect(adjustField(field, enabled, -1)!.settings.debugStats).toBe(false);
+});

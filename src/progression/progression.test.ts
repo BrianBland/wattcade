@@ -167,6 +167,18 @@ describe('stores', () => {
     expect((await restored.get(a.id))!.settings.units).toBe('imperial');
     expect((await restored.get(a.id))!.weightKg).toBe(75);
   });
+  it('persists timing debug separately for each player and defaults legacy profiles to off', async () => {
+    const store = new ProfileStore('media-debug');
+    const a = await store.create('Debug'), b = await store.create('Normal');
+    await store.update({ ...a, settings: { ...a.settings, mediaTimingDebug: true } });
+    const restored = new ProfileStore('media-debug-restored');
+    await restored.importJson(await store.exportJson());
+    expect((await restored.get(a.id))!.settings.mediaTimingDebug).toBe(true);
+    expect((await restored.get(b.id))!.settings.mediaTimingDebug).toBe(false);
+    const { mediaTimingDebug, ...legacy } = a.settings;
+    await restored.importJson(JSON.stringify({ profiles: [{ ...a, settings: legacy }] }));
+    expect((await restored.get(a.id))!.settings.mediaTimingDebug).toBe(false);
+  });
   it('session store keeps last 200', async () => {
     const s = new SessionStore('t3');
     for (let i = 0; i < 205; i++) await s.save(rec({ profileId: 'pp', startedAt: i, id: 'id' + i }));

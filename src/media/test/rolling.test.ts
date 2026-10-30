@@ -154,7 +154,7 @@ it('refetches incomplete seeded audio and ignores malformed window offsets', asy
   await q.prepare(0); expect(loads).toBe(2); expect(q.readyThrough(0)).toBeCloseTo(60);
 });
 
-it('fetches pairs concurrently but analyzes and commits in order using the latest tempo', async () => {
+it('pipelines fetches but analyzes and commits in order using the latest tempo', async () => {
   type Prepared = (hint?: { bpm: number }) => Promise<{ buffer: AudioBuffer; analysis: ReturnType<typeof analysis> }>;
   const calls: Array<{ start: number; signal: AbortSignal; resolve: (value: Prepared) => void }> = [];
   const analyzed: Array<[number, number | undefined]> = [];
@@ -171,7 +171,7 @@ it('fetches pairs concurrently but analyzes and commits in order using the lates
   ready(0); await flush();
   expect(analyzed).toEqual([[0, undefined], [1, 120]]);
   expect(calls.map(c => c.start)).toEqual([0, 28, 58, 88]);
-  ready(2); await flush(); expect(calls).toHaveLength(4);
+  ready(2); await flush(); expect(calls).toHaveLength(5);
   ready(3); await flush(); expect(calls).toHaveLength(6);
   ready(5); ready(4); await task;
   expect(q.readyThrough(0)).toBe(180);

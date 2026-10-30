@@ -1,4 +1,5 @@
-import { orderedLoads } from './ordered';
+import { measureMediaSync, type MediaTimings } from './timing';
+import { orderedPipeline } from './ordered';
 import type { SongMeta } from '../library/store';
 import type { SongAnalysis } from '../types';
 import type { BeatFeature } from '../analysis/structure';
@@ -32,6 +33,7 @@ export const isBusyError = (e: unknown) => (e as { status?: number })?.status ==
 
 export interface PrefetchOptions {
   load: PreviewLoader;
+  timings?: MediaTimings;
   concurrency?: 1 | 2;
   onChange?: () => void;
   firstTrackWindows?: number;
@@ -119,35 +121,44 @@ export class PreviewPrefetch {
     const job = this.next(); if (!job) return;
     const { song, index } = job, p = this.previews.get(song.id)!;
     const songIndex = this.songs.findIndex(m => m.id === song.id);
-    const count = Math.min(this.o.concurrency ?? 1, this.wantWindows(songIndex, song) - index);
+    const count = this.o.firstTrackFirst ? this.wantWindows(songIndex, song) - index : Math.min(this.o.concurrency ?? 1, this.wantWindows(songIndex, song) - index);
     const batch = Array.from({ length: count }, (_, i) => {
       const start = (index + i) * CHUNK_S, end = Math.min(song.durationS, start + CHUNK_S);
       const bufferStart = Math.max(0, start - CONTEXT_S), bufferEnd = Math.min(song.durationS, end + CONTEXT_S);
       return { start, end, bufferStart, bufferEnd };
     });
-    const controller = new AbortController(); this.running = { id: song.id, endS: batch.at(-1)!.end, controller };
+    const controller = new AbortController(); this.running = { id: song.id, endS: p.coveredS, controller };
     p.state = 'loading'; p.error = undefined; this.changed();
     const hint = () => p.analysis.bpm > 0 ? { bpm: p.analysis.bpm } : undefined;
-    const loads = orderedLoads(batch.map(w => () => this.o.load(song, w.bufferStart, w.bufferEnd - w.bufferStart, controller.signal, hint())));
-    this.pending = (async () => {
-      for (const [i, { start, end, bufferStart }] of batch.entries()) {
-        const loaded = await loads[i]();
+    let cursor = 0;
+    this.pending = orderedPipeline({
+      concurrency: this.o.concurrency ?? 1, signal: controller.signal,
+      canSchedule: () => !this.handingOff && !this.paused && !this.closed,
+      next: () => {
+        const w = batch[cursor++];
+        if (w && this.running?.controller === controller) this.running.endS = w.end;
+        return w ?? null;
+      },
+      load: w => this.o.load(song, w.bufferStart, w.bufferEnd - w.bufferStart, controller.signal, hint()),
+      consume: async ({ start, end, bufferStart }, loaded) => {
         if (this.running?.controller !== controller || this.previews.get(song.id) !== p) return;
         const r = typeof loaded === 'function' ? await loaded(hint()) : loaded;
         if (this.running?.controller !== controller || this.previews.get(song.id) !== p) return;
         const a = 'analysis' in r ? r.analysis : r, beats = 'analysis' in r ? r.beats : undefined;
-        mergeWindow(p.analysis, a, bufferStart, start, end, beats);
+        measureMediaSync(this.o.timings, 'commit', () => mergeWindow(p.analysis, a, bufferStart, start, end, beats));
         const buffer = 'analysis' in r ? r.buffer : undefined;
         const retainedBytes = [...this.previews.values()].reduce((sum, preview) => sum + preview.windows.reduce((n, w) => n + (w.buffer ? w.buffer.length * w.buffer.numberOfChannels * 4 : 0), 0), 0);
         const keepAudio = buffer && retainedBytes + buffer.length * buffer.numberOfChannels * 4 <= (this.o.maxAudioBytes ?? 128 * 1024 * 1024);
         p.windows.push({ startS: start, endS: end, bufferStartS: bufferStart, spec: a.spec, ...(beats ? { analysis: a, beats, ...(keepAudio ? { buffer } : {}) } : {}) });
         p.coveredS = end;
         this.changed();
-      }
+      },
+    }).then(() => {
+      if (this.running?.controller !== controller) return;
       this.running = null;
       p.state = p.coveredS >= song.durationS - 1e-6 ? 'complete' : 'partial';
       this.changed(); this.pump();
-    })().catch((e) => {
+    }).catch((e) => {
       if (this.running?.controller !== controller) return;
       this.running = null; controller.abort();
       if (isBusyError(e)) {

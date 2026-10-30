@@ -578,3 +578,8 @@ body { background: radial-gradient(ellipse at 50% -10%, #231a52 0%, var(--bg) 60
 .music-buffer-progress { display: grid; gap: 6px; margin: 10px 0; }
 .music-buffer-progress progress { display: block; width: 100%; height: 12px; accent-color: #2de2a6; }
 .music-buffer-progress small { color: var(--dim); font-variant-numeric: tabular-nums; }
+.media-timing-stats { margin: 8px 0; max-width: 100%; overflow-x: auto; font-size: 12px; }
+.media-timing-stats summary { cursor: pointer; }
+.media-timing-stats table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.media-timing-stats th, .media-timing-stats td { padding: 4px 6px; text-align: right; white-space: nowrap; }
+.media-timing-stats th:first-child { text-align: left; }

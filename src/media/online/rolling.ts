@@ -1,4 +1,5 @@
-import { orderedLoads } from './ordered';
+import { measureMediaSync, type MediaTimings } from './timing';
+import { orderedPipeline } from './ordered';
 import type { MediaCoverage, MediaTimeline } from '../../contracts';
 import { freezeHorizon, freezeMerge, songCoverage } from './freeze';
 import { ANALYSIS_VERSION, CURVE_HZ, type QueueMode, type SongAnalysis } from '../types';
@@ -132,7 +133,7 @@ export class RollingQueue implements RangeSource {
   private alive = true;
   private announced = new Map<string, number>();
   private analysed = new Map<number, Array<[number, number]>>();
-  constructor(readonly items: MixItem[], mode: QueueMode, readonly bufferS: number, private load: WindowLoader, private concurrency: 1 | 2 = 1) {
+  constructor(readonly items: MixItem[], mode: QueueMode, readonly bufferS: number, private load: WindowLoader, private concurrency: 1 | 2 = 1, private timings?: MediaTimings) {
     this.wantedBufferS = bufferS;
     this.plan = planMix(items, mode === 'continuous' ? mode : 'crossfade');
     this.plan.mode = mode;
@@ -174,35 +175,37 @@ export class RollingQueue implements RangeSource {
     this.busy = task; return task;
   }
   private async pump() {
-    const controller = this.controller;
-    while (this.alive && controller === this.controller) {
+    const controller = this.controller, abort = new AbortController(), cancel = () => abort.abort();
+    controller.signal.addEventListener('abort', cancel, { once: true });
+    const reserved = new Set<string>();
+    const hint = (index: number) => this.items[index].analysis.bpm > 0 ? { bpm: this.items[index].analysis.bpm } : undefined;
+    type Job = { e: PlanEntry; start: number; end: number; due: number };
+    const next = (): Job | null => {
       const p = this.wantedP, horizon = Math.min(this.plan.durationS, p + this.wantedBufferS);
-      const pending: Array<{ e: PlanEntry; start: number; end: number; due: number }> = [];
+      let pending: Job | null = null;
       for (const e of this.plan.entries) {
         if (e.endP <= p || e.startP >= horizon) continue;
         const duration = this.items[e.index].analysis.durationS;
         const from = Math.max(0, Math.floor(Math.max(0, songTime(e.segs, Math.max(p, e.startP))) / CHUNK_S) * CHUNK_S);
         for (let start = from; start < Math.min(duration, songTime(e.segs, horizon)) - 1e-5; start += CHUNK_S) {
-          if (this.cache.has(this.key(e.index, start))) continue;
+          const key = this.key(e.index, start);
+          if (this.cache.has(key) || reserved.has(key)) continue;
           const due = progTime(e.segs, start);
-          pending.push({ e, start, end: Math.min(duration, start + CHUNK_S), due });
-          if (pending.filter(w => w.e === e).length >= this.concurrency) break;
+          if (!pending || due < pending.due) pending = { e, start, end: Math.min(duration, start + CHUNK_S), due };
+          break;
         }
       }
-      if (!pending.length) { this.error = ''; return; }
-      const batch = pending.sort((a, b) => a.due - b.due).slice(0, this.concurrency);
-      const abort = new AbortController(), cancel = () => abort.abort();
-      controller.signal.addEventListener('abort', cancel, { once: true });
-      const hint = (index: number) => this.items[index].analysis.bpm > 0 ? { bpm: this.items[index].analysis.bpm } : undefined;
-      const loads = orderedLoads(batch.map(({ e, start, end }) => () => {
-        const bufferStart = Math.max(0, start - CONTEXT_S);
-        return this.load(e.index, bufferStart, Math.min(this.items[e.index].analysis.durationS, end + CONTEXT_S) - bufferStart, abort.signal, hint(e.index));
-      }));
-      try {
-        for (const [i, { e, start, end }] of batch.entries()) {
-          const bufferStart = Math.max(0, start - CONTEXT_S), loaded = await loads[i]();
-          if (!this.alive || controller !== this.controller) return;
-          // Fetches overlap; analysis waits for the previous commit's tempo estimate.
+      if (pending) reserved.add(this.key(pending.e.index, pending.start));
+      return pending;
+    };
+    try {
+      await orderedPipeline({ next, concurrency: this.concurrency, signal: abort.signal,
+        load: ({ e, start, end }) => {
+          const bufferStart = Math.max(0, start - CONTEXT_S);
+          return this.load(e.index, bufferStart, Math.min(this.items[e.index].analysis.durationS, end + CONTEXT_S) - bufferStart, abort.signal, hint(e.index));
+        },
+        consume: async ({ e, start, end }, loaded) => {
+          const bufferStart = Math.max(0, start - CONTEXT_S);
           const result = typeof loaded === 'function' ? await loaded(hint(e.index)) : loaded;
           if (!this.alive || controller !== this.controller) return;
           // Search durations can be rounded to whole seconds. Only the final window may end slightly early.
@@ -211,15 +214,18 @@ export class RollingQueue implements RangeSource {
           const key = this.key(e.index, start);
           this.cache.set(key, { startS: start, endS: end, bufferStartS: bufferStart, buffer: result.buffer });
           if (!this.committed.has(key)) {
-            mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
-            this.committed.add(key);
-            const spans = this.analysed.get(e.index) ?? []; spans.push([start, end]); this.analysed.set(e.index, spans);
-            this.revise(Math.max(0, progTime(e.segs, start)));
+            measureMediaSync(this.timings, 'commit', () => {
+              mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
+              this.committed.add(key);
+              const spans = this.analysed.get(e.index) ?? []; spans.push([start, end]); this.analysed.set(e.index, spans);
+              this.revise(Math.max(0, progTime(e.segs, start)));
+            });
           }
-        }
-      } catch (e) { if (controller !== this.controller || !this.alive) return; this.error = e instanceof Error ? e.message : String(e); throw e; }
-      finally { controller.signal.removeEventListener('abort', cancel); abort.abort(); }
-    }
+        },
+      });
+      this.error = '';
+    } catch (e) { if (controller !== this.controller || !this.alive) return; this.error = e instanceof Error ? e.message : String(e); throw e; }
+    finally { controller.signal.removeEventListener('abort', cancel); abort.abort(); }
   }
   /** Apply a new revision under the freeze horizon (playhead + 3 s floor over analysed time, plus every announced cue). */
   private revise(changedFromS: number) {

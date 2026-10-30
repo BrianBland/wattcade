@@ -1,3 +1,4 @@
+import { MediaTimingStats } from '../media/MediaTimingStats';
 import { BufferProgress } from '../media/BufferProgress';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../contracts';
@@ -225,7 +226,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         <p>Your ride starts when the scene is ready.</p>
         <button class="btn" onClick={() => leave(onAbandon)}>Back</button>
       </div>}
-      {musicWait && <div role="status" class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}<BufferProgress read={() => music.current?.engine.bufferProgress() ?? null} /></div>}
+      {(musicWait || (profile.settings?.mediaTimingDebug && media?.timings)) && <div role={musicWait ? "status" : undefined} class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}{musicWait && <BufferProgress read={() => music.current?.engine.bufferProgress() ?? null} />}<MediaTimingStats timings={profile.settings?.mediaTimingDebug ? media?.timings : undefined} /></div>}
       {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={() => leave(onAbandon)}>Back</button></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro' || phase === 'count' || phase === 'ending'} layout={layout} fake={isFake()}
         onControls={() => { if (canPause(phaseRef.current)) { setPause(true); setHelp(true); } }} />}

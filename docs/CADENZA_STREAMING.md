@@ -10,10 +10,10 @@ the existing recovery threshold. Playback then fills the configured buffer (180 
 adjustable from 120 to 240; older 60/90-second preferences move to 120). This lookahead gives Cadenza room
 to plan steady efforts and recovery across song changes. Preparation begins when a streamed
 track is queued: the first streamed track gets the configured opening buffer before later tracks
-get one preview window each. Windows are fetched in pairs (at most two requests), while
+get one preview window each. Up to two windows are fetched ahead while
 analysis and timeline commits stay in playback order so tempo hints remain consistent.
 Completed decoded audio and analysis transfer into the ride,
-including the pair in flight when Start is pressed; they are not downloaded or analyzed again.
+including the in-flight pipeline when Start is pressed; they are not downloaded or analyzed again.
 Picker audio is capped at 128 MiB and released on removal or exit. Windows beyond that budget
 retain analysis only and need audio fetching at playback. Starting immediately can still require
 the remaining startup windows. Waits longer than five seconds show a progress bar in the picker
@@ -184,7 +184,9 @@ window. Tests also cover transfer during extraction, PCM limits, incomplete seed
 cancellation, and normal eviction. Live extraction/tunnel/iPad timing remains to be measured.
 
 Parallel fetching uses the resolver's existing two-job limit, both in the picker and during
-playback. The next pair starts after the current pair has been analyzed and committed.
+playback. A freed fetch slot is refilled before analyzing the current window. At most two
+windows wait ahead of the one being analyzed; analysis and commits stay ordered. Start
+stops scheduling new picker work and drains only already-started windows.
 Cancelling ranged requests now aborts server extraction; search briefly retries a busy response
 while cancelled jobs release their slots. This server-side cancellation improvement requires
 restarting the updated media daemon as well as updating the browser app.
@@ -198,3 +200,23 @@ Startup now needs four windows (120 seconds) rather than waiting for all six def
 The engine fixture starts at 60 seconds of simulated time, then fills the 180-second rolling
 buffer during playback. This keeps the 90-second pause reserve and 120-second recovery
 threshold unchanged; an extractor slower than playback can still cause subsequent buffering.
+
+## Per-player timing diagnostics
+
+Edit the player's profile and enable **Debug: media timings** (off by default). The music
+picker and game show a collapsible timing table for that music queue. The same in-memory
+collector transfers from the picker into the ride; another player/queue gets a fresh one.
+Disabling the flag leaves collection, timing clock reads and diagnostic polling off. The
+regular buffering progress bar does not require this flag.
+
+Stages: fetch (resolver extraction plus network/body transfer), browser decode, mono downmix,
+analysis (worker execution plus queue/message overhead), and analysis/timeline commit. Each
+reports call count, average/last/max/total milliseconds, active/peak calls and failures
+(including cancelled requests). Totals overlap and must not be added to estimate wall time.
+Only fixed-size aggregates are retained; no track URLs/titles or per-window records are stored,
+logged or uploaded. The flag persists with the player's settings, including backups.
+
+With simulated 30-second fetches and 10-second analysis, four windows now finish in 80 seconds,
+versus 100 seconds when pairs waited for analysis before fetching again. This models scheduling,
+not actual iPad or YouTube performance. Use the timing table on the real setup to identify the
+next bottleneck before raising resolver concurrency or adding analysis workers.

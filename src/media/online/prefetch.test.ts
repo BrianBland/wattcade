@@ -128,3 +128,22 @@ it('pausing cancels both preview requests and discards late completions', async 
   pf.pause(false); expect(calls.map(c => c.start)).toEqual([0, 28, 0, 28]);
   pf.cancel();
 });
+
+it('pipelines the next fetch during analysis and drains only started work at Start', async () => {
+  let release!: () => void; const gate = new Promise<void>(r => { release = r; });
+  const calls: number[] = [], hints: Array<number | undefined> = [];
+  const pf = new PreviewPrefetch({ concurrency: 2, firstTrackFirst: true, firstTrackWindows: 6,
+    load: async (_, start, duration) => {
+      calls.push(start);
+      return async hint => {
+        hints.push(hint?.bpm); if (start === 0) await gate;
+        return { analysis: win(duration), beats: [], buffer: { duration, length: 1, numberOfChannels: 1 } as AudioBuffer };
+      };
+    } });
+  pf.setQueue([song('a')]);
+  await new Promise(r => setTimeout(r, 0));
+  expect(calls).toEqual([0, 28, 58]); expect(pf.get('a')!.coveredS).toBe(0);
+  const transfer = pf.takeSeeds(); release();
+  expect((await transfer).get('a')!.map(w => w.startS)).toEqual([0, 30, 60]);
+  expect(calls).toHaveLength(3); expect(hints).toEqual([undefined, 128, 128]);
+});

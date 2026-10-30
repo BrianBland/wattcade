@@ -15,3 +15,4 @@
 - GameHost tests cover intro/menu waiting, failed loading and leaving during loading.
 
 - Music buffering keeps the existing error/status text and shows actual ready-audio progress after five seconds.
+- Per-player media timing diagnostics are opt-in and collapsed by default; ordinary music progress remains independent.

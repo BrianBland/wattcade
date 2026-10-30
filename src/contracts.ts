@@ -9,6 +9,7 @@ export type ZoneSource = 'auto' | 'power' | 'hr'; // auto = HR if connected & fr
 export type UnitSystem = 'imperial' | 'metric';
 export type AimMode = 'auto' | 'rotate' | 'axes' | 'buttons';
 export interface ProfileSettings {
+  mediaTimingDebug?: boolean; // per-player opt-in; run-local streaming diagnostics
   units?: UnitSystem;      // absent on older profiles: imperial
   difficulty: number;      // 0.5..1.5, default 1.0
   zoneSource: ZoneSource;

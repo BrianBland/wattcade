@@ -53,7 +53,7 @@ const ENV: Record<Instrument, { atk: number; osc: Array<[OscillatorType, number,
   lead: { atk: 0.06, osc: [['triangle', 1, 0], ['sine', 2, 0]], lp: 2400 },
 };
 
-/** One note on `bus` at `t0` (also used offline by `scripts/seaside-music-review.ts`). */
+/** One note on `bus` at `t0` (also used offline by `scripts/seaside-sound-review.ts`). */
 export function playNote(c: BaseAudioContext, bus: AudioNode, n: Note, t0: number, spb: number): void {
   const dur = n.dur * spb, f = mtof(n.midi), g = c.createGain();
   const shape = ENV[n.inst];

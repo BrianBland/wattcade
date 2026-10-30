@@ -1,8 +1,12 @@
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
 import { useEffect, useRef } from 'preact/hooks';
 import type { Profile } from '../../contracts';
 import type { AchievementView } from '../types';
+import { UiProgress } from '../../ui';
+import { PixelIcon } from '../chrome/PixelIcon';
 import { Btn, Stat } from '../components/Bits';
-import { CountUp, KeyHints } from '../components/ui';
+import { CountUp } from '../components/ui';
 import { formatDuration } from '../format';
 import { achievementViews } from '../services';
 import { onMenuPress } from '../menuInput';
@@ -13,9 +17,9 @@ function Badge({ a, i }: { a: AchievementView; i: number }) {
   const hidden = a.secret && !a.unlocked;
   return (
     <div class={`badge${a.unlocked ? ' on' : ''}${hidden ? ' secret' : ''}`} style={{ animationDelay: `${Math.min(i, 24) * 30}ms` }}>
-      <span class="medal">{a.unlocked ? '★' : hidden ? '?' : '☆'}</span>
+      <span class="medal">{a.unlocked ? <PixelIcon kind="trophy"/> : hidden ? '?' : '·'}</span>
       <div><b>{hidden ? '???' : a.name}</b><div class="dim small">{hidden ? 'Secret achievement' : a.desc}</div>
-        {a.progress && !hidden && <div class="badge-prog"><div class="bar"><i style={{ width: `${a.progress.frac * 100}%` }} /></div><small class="dim">{a.progress.label}</small></div>}
+        {a.progress && !hidden && <div class="badge-prog"><UiProgress class="bar" value={a.progress.frac} label={`${a.name} progress`} tone="gold"/><small class="dim">{a.progress.label}</small></div>}
       </div>
     </div>
   );
@@ -36,9 +40,9 @@ export function Achievements({ profile, onBack }: { profile: Profile; onBack: ()
   const done = list.filter((a) => a.unlocked).length;
   const next = closestGoals(list, 3);
   return (
-    <div class="screen" ref={scroller}>
-      <div class="screen-head">
-        <div><h1>Achievements</h1><div class="sub">{done} of {list.length} unlocked</div></div>
+    <div class="screen chrome-ui achievements-screen" ref={scroller}>
+      <div class="screen-head chrome-head">
+        <div><div class="chrome-eyebrow">YOUR RIDER / MILESTONES</div><h1>Achievements</h1><div class="sub">{done} of {list.length} unlocked</div></div>
         <span class="spacer" />
         <Btn focused onClick={onBack}>Back</Btn>
       </div>
@@ -56,7 +60,7 @@ export function Achievements({ profile, onBack }: { profile: Profile; onBack: ()
         <h2 class="gap-top">{g.title} <small class="dim">{g.done}/{g.items.length}</small></h2>
         <div class="badge-grid">{g.items.map((a, i) => <Badge a={a} i={i} />)}</div>
       </>)}
-      <KeyHints hints={[['ud', 'Scroll'], ['b', 'Back']]} />
+      <ChromeHints hints={[['ud', 'Scroll'], ['b', 'Back']]} />
     </div>
   );
 }

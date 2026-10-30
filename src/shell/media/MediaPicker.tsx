@@ -1,9 +1,12 @@
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
+import { UiTabs, UiMessage } from '../../ui';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, MediaTimeline, Profile } from '../../contracts';
 import { buildTimeline, searchOnline, mediaServerConfig, subscribeMediaServer, estimatedAnalysis, type OnlineProvider, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta, PreviewPrefetch, type PartialPreview } from '../../media';
 import { analyzeStreamWindow, mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
 import { onMenuPress } from '../menuInput';
-import { KeyHints, Spinner } from '../components/ui';
+import { Spinner } from '../components/ui';
 import { Btn } from '../components/Bits';
 import { toast } from '../components/Toasts';
 import { duckAmbient, play as sfx } from '../../audio/sfx';
@@ -56,7 +59,9 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const initial = useMemo(() => loadQueue(profile), [profile.id]);
   const [queue, setQueue] = useState<string[]>(initial.ids);
   const [mode, setMode] = useState<QueueMode>(initial.mode);
+  const [pane,setPane]=useState<'library'|'queue'|'preview'>('library');
   const [focus, setFocus] = useState<PickerFocus>({ zone: 'list', tab: 0, list: 0, queue: 0 });
+  useEffect(()=>setPane(focus.zone==='queue'?'queue':'library'),[focus.zone]);
   const [timeline, setTimeline] = useState<MediaTimeline | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [, bump] = useState(0);
@@ -238,14 +243,15 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const rating = timeline ? rateQueue(timeline) : null;
   const zoneIs = (z: PickerFocus['zone']) => focus.zone === z;
   return (
-    <div class={`screen media-picker${keyboard ? ' keyboard-open' : ''}`} style={keyboard ? {
+    <div data-pane={pane} class={`screen chrome-ui media-picker${keyboard ? ' keyboard-open' : ''}`} style={keyboard ? {
       top: `${keyboard.top}px`, left: `${keyboard.left}px`, width: `${keyboard.width}px`, height: `${keyboard.height}px`,
     } : undefined}>
-      <div class="screen-head">
-        <div><h1>Pick your music</h1><div class="sub">{game.title} · {queued.length ? `${queued.length} in the queue` : 'add songs to the queue'}</div></div>
+      <div class="screen-head chrome-head">
+        <div><div class="chrome-eyebrow">YOUR SOUNDTRACK</div><h1>Pick your music</h1><div class="sub">{game.title} · {queued.length ? `${queued.length} in the queue` : 'add songs to the queue'}</div></div>
         <span class="spacer" />
         <Btn small onClick={() => { stopPreview(); onBack(); }}>Back</Btn>
       </div>
+      <div class="mp-mobile-nav"><UiTabs label="Music panels" value={pane} items={[{value:'library',label:'Browse'},{value:'queue',label:`Queue (${queued.length})`},{value:'preview',label:'Preview'}]} onChange={v=>{setPane(v);if(v!=='preview')setFocus(f=>({...f,zone:v==='queue'?'queue':'list'}));}}/></div>
       <div class="mp-cols">
         <div class="panel mp-library">
           <div class="mp-tabs">
@@ -274,8 +280,8 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
             {tab === 3 && <button type="submit" class="btn small" disabled={!resolver.enabled || searching || !query.trim()}>{searching ? 'Searching…' : 'Search'}</button>}
           </form>
           <div class="mp-list">
-            {tab === 3 && onlineError && <div role="alert">{onlineError}</div>}
-            {!list.length && !(tab === 3 && (searching || onlineError)) && <div class="dim mp-empty">{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : tab === 3 ? 'Search YouTube or SoundCloud, then tap Add to queue a song.' : 'No matches.'}</div>}
+            {tab === 3 && onlineError && <UiMessage title="Music search" tone="error">{onlineError}</UiMessage>}
+            {!list.length && !(tab === 3 && (searching || onlineError)) && <UiMessage class="mp-empty" tone="empty" title={query?'No matching tracks':'No tracks here yet'}>{tab === 0 ? (query ? 'No matches.' : 'No songs yet. Choose "+ Add music" to pick files from your iPad (MP3, M4A, FLAC, WAV).') : tab === 3 ? 'Search YouTube or SoundCloud, then tap Add to queue a song.' : 'Choose another source or add music to your library.'}</UiMessage>}
             {list.map((m, i) => m.id === hidden ? null : (
               <SongRow m={m} focused={zoneIs('list') && focus.list === i} progress={lib.progress.get(m.id)} partial={partialOf(m)} previewing={previewing === m.id}
                 inQueue={queue.filter((x) => x === m.id).length}
@@ -290,11 +296,11 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
         </div>
         <div class="panel mp-queue">
           <div class={`mp-mode${zoneIs('queue') && focus.queue === 0 ? ' focused' : ''}`}>
-            {MODES.map((x) => <button type="button" class={`btn small${mode === x.value ? ' primary' : ''}`} onClick={() => setMode(x.value)}>{x.label}</button>)}
+            <UiTabs label="Queue play mode" items={MODES} value={mode} onChange={setMode}/>
             <small class="dim">{streaming && mode === 'automix' ? 'Estimated crossfades; beat and phrase matching needs full-song analysis.' : MODES.find((x) => x.value === mode)?.hint}</small>
           </div>
           <div class="mp-qlist">
-            {!queued.length && <div class="dim mp-empty">Press A on a song (or tap Add) to queue it. Hover or press and hold a song to hear it.</div>}
+            {!queued.length && <div class="dim mp-empty">Tap Add to queue a song. Hover, focus, or press and hold a song to preview it.</div>}
             {queued.map((m, i) => (
               <div class={`mp-qrow${zoneIs('queue') && focus.queue === i + 1 ? ' focused' : ''}`} onClick={() => setFocus({ ...focus, zone: 'queue', queue: i + 1 })}>
                 <span class="mp-swatch" style={{ background: m.palette?.[0] ?? '#444' }} />
@@ -310,7 +316,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
           {rating && !streaming && <div class="mp-stats">{fmtTime(rating.durationS)} · {rating.songs} song{rating.songs === 1 ? '' : 's'} · {rating.drops} drop{rating.drops === 1 ? '' : 's'} · {rating.bpmMin === rating.bpmMax ? rating.bpmMin : `${rating.bpmMin}–${rating.bpmMax}`} bpm · <span class="mp-stars">{'★'.repeat(rating.stars)}<span class="dim">{'★'.repeat(5 - rating.stars)}</span></span></div>}
           {streaming && <div class="dim small">Estimated timing · duration-based crossfades · audio analyzed within the {resolver.bufferS}s buffer. Full-song difficulty is unknown until played.</div>}
           <Btn primary focused={zoneIs('queue') && focus.queue === queueRows(queued.length) - 1} disabled={!ready || starting} onClick={() => void start()}>
-            {starting ? 'Preparing…' : ready ? '▶ Start ride' : streaming && !resolver.enabled ? 'Enable media server on Connect' : queued.length ? <><Spinner /> Preparing music…</> : 'Queue is empty'}
+            {starting ? 'Preparing…' : ready ? 'Start ride →' : streaming && !resolver.enabled ? 'Enable media server on Connect' : queued.length ? <><Spinner /> Preparing music…</> : 'Queue is empty'}
           </Btn>
         </div>
       </div>
@@ -319,7 +325,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
         <button type="button" class="btn small primary" onClick={undoRemoval}>Undo</button>
         <button type="button" class="btn small" aria-label="Dismiss" onClick={commitPending}>✕</button>
       </div>}
-      <KeyHints hints={[['dpad', 'Move'], ['a', focus.zone === 'queue' ? (focus.queue === 0 ? 'Play mode' : focus.queue > queued.length ? 'Start' : 'Remove') : 'Add to queue'], ['y', focus.zone === 'queue' && focus.queue >= 2 && focus.queue <= queued.length ? 'Move up' : 'Play / stop preview'], ['b', 'Back']]} />
+      <ChromeHints hints={[['dpad', 'Move'], ['a', focus.zone === 'queue' ? (focus.queue === 0 ? 'Play mode' : focus.queue > queued.length ? 'Start' : 'Remove') : 'Add to queue'], ['y', focus.zone === 'queue' && focus.queue >= 2 && focus.queue <= queued.length ? 'Move up' : 'Play / stop preview'], ['b', 'Back']]} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
+import { UI } from '../../ui/tokens';
 export const POWER_BOUNDS = [0.55, 0.75, 0.9, 1.05] as const;
 export const HR_BOUNDS = [0.6, 0.7, 0.8, 0.9] as const;
-export const ZONE_COLORS = ['#8a8aa0', '#3b82ff', '#2de26a', '#ffd23b', '#ff4d4d'];
+export const ZONE_COLORS = UI.zone;
 /** Width given to the open-ended zones (Z1 below first bound, Z5 above last) as a span of fraction. */
 const OPEN_SPAN = 0.3;
 

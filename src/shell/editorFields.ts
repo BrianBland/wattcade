@@ -1,5 +1,5 @@
 import { LB_PER_KG, unitsFor } from '../units';
-import type { AimMode, Profile, ProfileSettings, ZoneSource } from '../contracts';
+import type { Profile, ProfileSettings, ZoneSource } from '../contracts';
 
 export const COLORS = ['#00f0ff', '#ff2bd6', '#b6ff3b', '#ffb020', '#7a5cff', '#ff4d6d', '#2de2a6', '#ffffff'];
 
@@ -15,7 +15,6 @@ const S = <K extends keyof ProfileSettings>(k: K) => ({
   get: (p: Profile) => p.settings[k], set: (p: Profile, v: ProfileSettings[K]) => ({ ...p, settings: { ...p.settings, [k]: v } }),
 });
 const ZONE_OPTS: Opt<ZoneSource> = [{ value: 'auto', label: 'Auto (HR if on)' }, { value: 'power', label: 'Power' }, { value: 'hr', label: 'Heart rate' }];
-const AIM_OPTS: Opt<AimMode> = [{ value: 'rotate', label: 'Rotate (paddles)' }, { value: 'auto', label: 'Auto' }, { value: 'axes', label: 'Axes' }, { value: 'buttons', label: 'Buttons' }];
 
 /** Profile editor rows, in D-pad order. */
 export const EDITOR_FIELDS: FieldDef[] = [
@@ -26,7 +25,6 @@ export const EDITOR_FIELDS: FieldDef[] = [
   { id: 'maxHr', label: 'Max HR', kind: 'num', step: 1, min: 100, max: 230, unit: 'bpm', get: (p) => p.maxHr, set: (p, v) => ({ ...p, maxHr: v }) },
   { id: 'weightKg', label: 'Weight', kind: 'num', step: 0.5, min: 30, max: 200, unit: 'kg', digits: 1, get: (p) => p.weightKg, set: (p, v) => ({ ...p, weightKg: v }) },
   { id: 'zoneSource', label: 'Zones from', kind: 'choice', options: ZONE_OPTS, hint: 'For long holds; short sprints always use power (HR lags 30–60 s)', ...(S('zoneSource') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
-  { id: 'aimMode', label: 'Aim', kind: 'choice', options: AIM_OPTS, ...(S('aimMode') as { get(p: Profile): string; set(p: Profile, v: string): Profile }) },
   { id: 'paddleDeadzone', label: 'Paddle deadzone', kind: 'num', step: 1, min: 0, max: 60, ...S('paddleDeadzone') },
   { id: 'maxGradePct', label: 'Max grade', kind: 'num', step: 0.5, min: 0, max: 20, unit: '%', digits: 1, hint: 'Safety cap on any grade sent to the trainer', ...S('maxGradePct') },
 ];

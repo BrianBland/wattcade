@@ -1,0 +1,51 @@
+@import './tokens.css';
+.ui-root {font:var(--ui-font-body)/1.5 var(--ui-font-family);color:var(--ui-color-text)}
+.ui-button.ui-button,.ui-tab,.ui-list-row {font:650 var(--ui-font-body)/1.4 var(--ui-font-family);min-height:var(--ui-size-touch);padding:10px 16px;border:0;border-radius:var(--ui-size-radius);background:var(--ui-color-hover);color:var(--ui-color-text);box-shadow:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;backdrop-filter:none;-webkit-backdrop-filter:none;text-decoration:none;transform:none}
+.ui-button.ui-button.primary {background:var(--ui-color-accent);color:var(--ui-color-on-accent);border:0;font-weight:800;box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge)}
+.ui-button.ui-button.danger {color:var(--ui-color-danger)}
+.ui-button.ui-button:disabled,.ui-tab:disabled,.ui-list-row:disabled {opacity:.45;cursor:default}
+.ui-button.ui-button:focus-visible,.ui-button.ui-button.focused,.ui-tab:focus-visible,.ui-tab.focused,.ui-list-row:focus-visible,.ui-list-row.focused {outline:var(--ui-size-focus) solid var(--ui-color-focus);outline-offset:3px;box-shadow:none;transform:none}
+.ui-button.ui-button:hover:not(:disabled),.ui-list-row:hover:not(:disabled) {filter:brightness(1.1)}
+.ui-button.ui-button:active:not(:disabled) {transform:translateY(1px)}
+.ui-button.ui-button.primary:is(:focus-visible,.focused) {box-shadow:var(--ui-size-button-depth) var(--ui-size-button-depth) 0 var(--ui-color-accent-edge)}
+.ui-button.ui-button.primary:active:not(:disabled) {transform:translate(var(--ui-size-button-depth),var(--ui-size-button-depth));box-shadow:none}
+.ui-button.ui-button.selected,.ui-list-row.selected {box-shadow:inset 4px 0 var(--ui-color-accent);background:color-mix(in srgb,var(--ui-color-accent) 9%,transparent)}
+.ui-panel.ui-panel {background:var(--ui-color-surface);border:0;border-radius:var(--ui-size-radius);padding:var(--ui-space-lg);box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;color:var(--ui-color-text)}
+.ui-panel.focused {outline:2px solid var(--ui-color-focus);outline-offset:2px}
+.ui-readout {display:flex;flex-direction:column;gap:4px;padding:8px 0;min-width:0;background:none;border:0;border-radius:0;box-shadow:none}
+.ui-readout>span {font:500 var(--ui-font-small)/1.4 var(--ui-font-family);color:var(--ui-color-muted)}
+.ui-readout>b {font:750 24px/1.2 var(--ui-font-family);color:var(--ui-color-text);font-variant-numeric:tabular-nums}
+.ui-progress.ui-progress {display:flex;height:var(--ui-size-progress);border:0;border-radius:0;background:var(--ui-color-line);overflow:hidden}
+.ui-progress.ui-progress>i {display:block;height:100%;background:var(--ui-color-accent);background-image:repeating-linear-gradient(90deg,transparent 0 calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)),var(--ui-color-background) calc(var(--ui-size-progress-step) - var(--ui-size-progress-gap)) var(--ui-size-progress-step));transition:width var(--ui-motion-normal)}
+.ui-progress.gold>i {background-color:var(--ui-color-gold)}
+.ui-tabs {display:flex;align-items:stretch;gap:8px;overflow-x:auto;padding:4px;scrollbar-width:thin}
+.ui-tab {flex:none;background:none;border-radius:0;border-bottom:2px solid transparent;white-space:nowrap;font-size:12px}
+.ui-tab[aria-selected=true] {border-bottom-color:var(--ui-color-accent);color:var(--ui-color-accent)}
+.ui-list-row {display:flex;width:100%;justify-content:space-between;text-align:left;border-bottom:1px solid var(--ui-color-line);border-radius:0;background:none}
+.ui-tooltip {position:relative;display:inline-flex}
+.ui-tooltip>button {min-width:44px;min-height:44px;background:none;color:var(--ui-color-muted);border:0;font:18px var(--ui-font-family);cursor:pointer}
+.ui-tooltip-content {position:fixed;width:min(240px,calc(100vw - 16px));padding:12px;background:var(--ui-color-surface);color:var(--ui-color-text);font:12px/1.5 var(--ui-font-family);z-index:100;box-shadow:0 2px 12px #0004;pointer-events:none;box-sizing:border-box}
+.ui-message {display:flex;flex-direction:column;align-items:flex-start;gap:12px;background:var(--ui-color-surface);color:var(--ui-color-text);padding:24px;font:14px/1.5 var(--ui-font-family);border-left:3px solid var(--ui-color-accent);overflow-wrap:anywhere}
+.ui-message>div {color:var(--ui-color-muted)}.ui-message.error {border-left-color:var(--ui-color-danger)}.ui-message.empty {border-left-color:var(--ui-color-line)}
+.ui-spinner {display:inline-block;flex:none;width:18px;height:18px;border:2px solid var(--ui-color-line);border-top-color:var(--ui-color-accent);border-radius:50%;animation:ui-spin 1s linear infinite}
+@keyframes ui-spin {to{transform:rotate(360deg)}}
+.ui-field.ui-field {border:0;border-bottom:1px solid var(--ui-color-line);border-radius:0;background:none;color:var(--ui-color-text);padding:10px 12px;box-shadow:none;transform:none}
+.ui-field.ui-field.focused {box-shadow:inset 3px 0 var(--ui-color-accent);background:var(--ui-color-hover)}
+.ui-stepper .step,.ui-choice .step {min-width:44px;min-height:44px;border:0;border-radius:0;background:none;color:var(--ui-color-muted);box-shadow:none}
+.ui-stepper input {min-height:44px;border:0;border-radius:0;background:none;color:var(--ui-color-text)}
+.ui-choice.ui-choice b {font-size:13px}.ui-toggle {min-height:44px}.ui-toggle.on i {background:var(--ui-color-accent)}
+@media(prefers-reduced-motion:reduce){.ui-root *,.ui-button,.ui-spinner,.ui-progress>i{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Each primitive also works outside the shell's legacy global stylesheet. */
+.ui-field.ui-field {display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,1.5fr);align-items:center;gap:4px 12px;font:13px/1.5 var(--ui-font-family)}
+.ui-field .field-ctl {display:flex;align-items:center;gap:8px;min-width:0}.ui-field>small {grid-column:2;color:var(--ui-color-muted);font-size:11px}
+.ui-stepper,.ui-choice {display:inline-flex;align-items:center;gap:4px;min-width:0}.ui-stepper.ui-stepper input {width:64px;text-align:center;font:650 14px var(--ui-font-family)}
+.ui-stepper .step,.ui-choice .step {font:700 20px var(--ui-font-family);cursor:pointer}.ui-choice.ui-choice b {min-width:90px;text-align:center}
+.ui-toggle {display:inline-flex;align-items:center;gap:10px;background:none;border:0;color:var(--ui-color-text);font:650 13px var(--ui-font-family);cursor:pointer}
+.ui-toggle.ui-toggle i {position:relative;display:block;width:44px;height:24px;border-radius:12px;background:var(--ui-color-line)}
+.ui-toggle.ui-toggle i::after {content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;background:var(--ui-color-text);border-radius:50%;transition:transform var(--ui-motion-fast)}
+.ui-toggle.ui-toggle.on i::after {transform:translateX(20px)}
+.ui-tooltip>button.focused {outline:2px solid var(--ui-color-focus);outline-offset:2px}
+@media(max-width:360px){.ui-field.ui-field{grid-template-columns:80px minmax(0,1fr)}}
+@media(max-width:599px){.ui-field.ui-field {grid-template-columns:minmax(0,1fr)}.ui-field.ui-field>small{grid-column:1}}
+
+@media(prefers-reduced-motion:reduce){.ui-button.ui-button.primary:active:not(:disabled){transform:none}}

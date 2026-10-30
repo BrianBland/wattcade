@@ -1,3 +1,5 @@
+import { UiMessage } from '../../ui';
+import { Btn } from '../components/Bits';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../contracts';
 import type { MediaRun, SessionLike } from '../types';
@@ -12,7 +14,7 @@ import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { ResultBanner } from '../game/ResultBanner';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
-import { toast } from '../components/Toasts';
+import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
 /** The result banner stays this long before the summary (A skips). */
@@ -110,7 +112,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     const seen = { ach: new Set<string>(), level: profile.level, milestone: 0, nextCheck: 10 };
     const celebrate = () => {
       const pv = previewAward(profile); if (!pv) return;
-      for (const a of pv.achievements) if (!seen.ach.has(a.id)) { seen.ach.add(a.id); toast(`★ Achievement: ${a.name}`, 'good'); play('unique'); }
+      for (const a of pv.achievements) if (!seen.ach.has(a.id)) { seen.ach.add(a.id); achievementToast(a.name, a.description, a.bonusXp); play('unique'); }
       if (pv.level > seen.level) { seen.level = pv.level; toast(`LEVEL UP! You're level ${pv.level}`, 'good'); play('levelup'); }
       const m = Math.floor(pv.activeS / MILESTONE_S);
       if (m > seen.milestone) { seen.milestone = m; toast(`⏱ ${(m * MILESTONE_S) / 60} min ridden · ${Math.round(pv.kj)} kJ`); play('milestone'); }
@@ -218,14 +220,9 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     <div class="game-host">
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
-      {loading && !error && <div class="game-loading" role="status" aria-busy="true">
-        <div class="game-loading-ring" />
-        <h2>Preparing {game.title}</h2>
-        <p>Your ride starts when the scene is ready.</p>
-        <button class="btn" onClick={() => leave(onAbandon)}>Back</button>
-      </div>}
-      {musicWait && <div role="status" class="panel" style={{ position: 'absolute', top: '12%', left: '10%', right: '10%', zIndex: 12 }}>{musicWait}</div>}
-      {error && <div class="modal" style={{ position: 'absolute', top: '30%', left: '20%' }}><b class="warn">{error}</b><button class="btn" onClick={() => leave(onAbandon)}>Back</button></div>}
+      {loading && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
+      {musicWait && <div class="game-message chrome-ui"><UiMessage title="Preparing music" busy>{musicWait}</UiMessage></div>}
+      {error && <div class="game-loading chrome-ui"><UiMessage title="Could not start the ride" tone="error" action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>{error}</UiMessage></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro' || phase === 'count' || phase === 'ending'} layout={layout} fake={isFake()}
         onControls={() => { if (canPause(phaseRef.current)) { setPause(true); setHelp(true); } }} />}
       {session && !loading && !error && (phase === 'intro' || count != null) && (
@@ -241,7 +238,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
             : { onQuit: () => toEnding(false) })} />
       )}
-      {phase === 'ending' && ending && !recap && <ResultBanner {...ending} onContinue={() => leave(onQuit)} />}
+      {phase === 'ending' && ending && !recap && <ResultBanner {...ending} profile={profile} onContinue={() => leave(onQuit)} />}
     </div>
   );
 }

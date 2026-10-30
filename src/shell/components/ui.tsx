@@ -1,15 +1,15 @@
-// Shared UI kit for the shell screens: glass panels, controller key hints, steppers/choices/toggles that work with the
-// D-pad (left/right via useMenuNav's onAdjust) and touch, count-up numbers and a spinner.
+// Shell adapters: shared flat widgets plus controller hints and animated progression.
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { UiPanel, UiField, UiStepper, UiChoice, UiToggle, UiSpinner, clampStep, UI } from '../../ui';
 import { play } from '../../audio/sfx';
 
 export function Panel({ children, class: cls = '', focused }: { children: ComponentChildren; class?: string; focused?: boolean }) {
-  return <div class={`panel${focused ? ' focused' : ''}${cls ? ` ${cls}` : ''}`}>{children}</div>;
+  return <UiPanel class={`panel ${cls}`} focused={focused}>{children}</UiPanel>;
 }
 
 const KEY_STYLE: Record<string, { glyph: string; color: string }> = {
-  a: { glyph: 'A', color: '#2bd96b' }, b: { glyph: 'B', color: '#ff4d4d' }, y: { glyph: 'Y', color: '#3b82ff' }, z: { glyph: 'Z', color: '#ff9a2b' },
+  a: { glyph: 'A', color: UI.controller.a }, b: { glyph: 'B', color: UI.controller.b }, y: { glyph: 'Y', color: UI.controller.y }, z: { glyph: 'Z', color: UI.controller.z },
   dpad: { glyph: '✥', color: '#8a84b8' }, lr: { glyph: '◀▶', color: '#8a84b8' }, ud: { glyph: '▲▼', color: '#8a84b8' }, shift: { glyph: '±', color: '#b07cff' },
 };
 /** Ride-style button glyph. */
@@ -32,61 +32,18 @@ export function ScreenHeader({ title, sub, children }: { title: string; sub?: Co
   );
 }
 
-/** A focusable form row: label, control, optional hint. */
-export function Field({ label, focused, hint, children, onClick }: { label: string; focused?: boolean; hint?: string; children: ComponentChildren; onClick?: () => void }) {
-  return (
-    <div class={`field${focused ? ' focused' : ''}`} onClick={onClick}>
-      <label>{label}</label>
-      <div class="field-ctl">{children}</div>
-      {hint && <small class="dim">{hint}</small>}
-    </div>
-  );
-}
-
-/** − value + ; the value is editable by typing too. */
-export function Stepper({ value, onChange, step = 1, min = -Infinity, max = Infinity, unit, digits = 0 }: { value: number; onChange: (v: number) => void; step?: number; min?: number; max?: number; unit?: string; digits?: number }) {
-  const set = (v: number) => onChange(clampStep(v, min, max, digits));
-  return (
-    <span class="stepper">
-      <button type="button" class="step" onClick={(e) => { e.stopPropagation(); play('uiTick'); set(value - step); }}>−</button>
-      <input type="number" value={value.toFixed(digits)} step={step} onInput={(e) => { const v = Number((e.target as HTMLInputElement).value); if (Number.isFinite(v)) onChange(v); }} onBlur={() => set(value)} />
-      {unit && <span class="unit">{unit}</span>}
-      <button type="button" class="step" onClick={(e) => { e.stopPropagation(); play('uiTick'); set(value + step); }}>+</button>
-    </span>
-  );
-}
-export function clampStep(v: number, min: number, max: number, digits = 0): number {
-  const f = 10 ** digits;
-  return Math.min(max, Math.max(min, Math.round(v * f) / f));
-}
-
-/** ‹ option › cycling choice. */
-export function Choice<T extends string>({ value, options, onChange }: { value: T; options: ReadonlyArray<{ value: T; label: string }>; onChange: (v: T) => void }) {
-  const i = Math.max(0, options.findIndex((o) => o.value === value));
-  const go = (d: number) => { play('uiTick'); onChange(options[(i + d + options.length) % options.length].value); };
-  return (
-    <span class="choice">
-      <button type="button" class="step" onClick={(e) => { e.stopPropagation(); go(-1); }}>‹</button>
-      <b>{options[i]?.label}</b>
-      <button type="button" class="step" onClick={(e) => { e.stopPropagation(); go(1); }}>›</button>
-    </span>
-  );
-}
-
-export function Toggle({ on, onChange, labels = ['Off', 'On'] }: { on: boolean; onChange: (v: boolean) => void; labels?: [string, string] }) {
-  return (
-    <button type="button" class={`toggle${on ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); play('uiTick'); onChange(!on); }}>
-      <i /><span>{on ? labels[1] : labels[0]}</span>
-    </button>
-  );
-}
+export const Field = UiField;
+export { clampStep };
+export function Stepper(p: Parameters<typeof UiStepper>[0]) { return <UiStepper {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }
+export function Choice<T extends string>(p: {value:T; options:ReadonlyArray<{value:T;label:string}>;onChange:(v:T)=>void}) { return <UiChoice {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }
+export function Toggle(p: Parameters<typeof UiToggle>[0]) { return <UiToggle {...p} onChange={v=>{play('uiTick');p.onChange(v);}}/>; }
 
 /** Animated number (ease-out). `delayMs` lets a screen reveal values one after another. */
 export function CountUp({ to, from = 0, ms = 900, delayMs = 0, format = (n: number) => String(Math.round(n)), tick = false }: { to: number; from?: number; ms?: number; delayMs?: number; format?: (n: number) => string; tick?: boolean }) {
   const [v, setV] = useState(from);
   const lastTick = useRef(0);
   useEffect(() => {
-    if (!Number.isFinite(to)) { setV(to); return; }
+    if (!Number.isFinite(to) || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)) { setV(to); return; }
     let raf = 0; const t0 = performance.now() + delayMs;
     const step = (now: number) => {
       const k = Math.min(1, Math.max(0, (now - t0) / ms)), e = 1 - Math.pow(1 - k, 3);
@@ -100,4 +57,4 @@ export function CountUp({ to, from = 0, ms = 900, delayMs = 0, format = (n: numb
   return <>{format(v)}</>;
 }
 
-export function Spinner() { return <span class="spinner" aria-label="working" />; }
+export function Spinner() { return <UiSpinner/>; }

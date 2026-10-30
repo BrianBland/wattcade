@@ -2,12 +2,17 @@
 // only the runs it needs: the cave's floor slab, wall shell and arched ceiling; the hall's banks, cliffs and the lava's
 // single layer; the bridge piers), so a 100 m-tall world costs about what a landscape does. The ridden obsidian bridge
 // is the path corridor (nothing in the cave: its floor is the terrain). Lava is unlit and bloom-bright; the torches'
-// flames and the hall's lights are the set's (render/cavern.ts).
+// flames and the hall's lights are the set's (render/cavern.ts). Chapter 3b (#193) adds the glyph stones by the
+// causeway, the gate (a sheer panel between pilasters, no door) and the bore through it (the tunnel's walls and the
+// face being cut are the set's).
 import type { VoxelGrid } from '../voxel/grid';
 import { fbm, hash2, noise2 } from '../voxel/noise';
 import type { Region, TerrainFill, WorldDef } from './def';
 import { obsidianSurface } from './corridor';
-import { BRIDGE, BRIDGE_Y, caveSize, cavernRoute, cx, floorY, HALL_END, LAVA_Y, PIER_FLARE, PIER_R, PIERS, riverHalf, smooth, torchAt, TORCH_EVERY, U_GATE, U_MOUTH, WALL_TOP, warmth } from './cavernLayout';
+import {
+  BRIDGE, BRIDGE_Y, caveSize, cavernRoute, cx, floorY, GATE, GATE_DEPTH, GATE_TUNNEL_R, GATE_U, gateAxis, GLYPH_STONES, HALL_END, LAVA_Y, PIER_FLARE, PIER_R, PIERS, riverHalf,
+  smooth, torchAt, TORCH_EVERY, U_MOUTH, WALL_TOP, warmth, type GlyphStone,
+} from './cavernLayout';
 import { C, CAVE, CAVE_GLOW } from './cavernPalette';
 
 export const CAVERN_BOUNDS: Region = { x0: -200, x1: 230, z0: -Math.ceil(HALL_END + 20), z1: 16 };
@@ -56,8 +61,8 @@ function ceilAt(x: number, z: number, ad: number, w: number, h: number, natural:
 
 /** Bank / cliff height of the hall at a column (the lava river is LAVA_Y), and the far end wall where the gate goes. */
 export function hallGround(x: number, z: number): number {
-  const u = -z, e = Math.abs(x - cx(u)) - riverHalf(u);
-  if (u > U_GATE + 22) return WALL_TOP;
+  const u = -z, lx = Math.abs(x - cx(u)), e = lx - riverHalf(u);
+  if (u > GATE_U || (u > GATE_U - GATE.out && lx > GATE.half && lx < GATE.half + GATE.pilaster)) return WALL_TOP;
   if (e < 0) return LAVA_Y;
   let h = LAVA_Y + 0.4 + e * 0.5 + 2.5 * fbm(x / 14, z / 14, 3, 31) * smooth(0, 8, e);
   if (e > 28) h += (e - 28) * 2.6 + 25 * fbm(x / 40, z / 40, 2, 32);
@@ -111,6 +116,11 @@ function fillCavern(grid: VoxelGrid, reg: Region, o: TerrainFill) {
         continue;
       }
     }
+    const st = stoneAt(wx, wz, u);
+    if (st) { // a glyph stone standing in the lava: rough on top and round the back, flat on the painted face
+      run(x, z, yi(LAVA_Y - 1), yi(stoneTop(st, wx, wz)), (_y, wy) => (wy < LAVA_Y + 0.6 ? (r < 0.5 ? C.crust : C.crust2) : st.kind === 'column' ? (r < 0.6 ? C.basalt2 : C.basalt) : r < 0.4 ? C.basalt3 : r < 0.8 ? C.basalt : C.basalt2));
+      continue;
+    }
     if (hh <= LAVA_Y + 1e-6) { // the river: one flat layer (crust and molten at the same height, so crust never hides lava)
       const cell = noise2(wx / 5.5, wz / 7, 74), crack = Math.abs(cell - 0.42) < 0.035;
       grid.set(x, yi(LAVA_Y - s * 0.5), z, crack ? C.lavaHot : cell > 0.42 ? (cell > 0.6 ? C.crust : C.crust2) : cell < 0.26 ? C.lava : C.lava2);
@@ -119,13 +129,45 @@ function fillCavern(grid: VoxelGrid, reg: Region, o: TerrainFill) {
     let lo = yi(hh);
     for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) lo = Math.min(lo, yi(hall![(i + a) * D + k + b]) + 1);
     lo = Math.max(Math.min(lo, yi(hh)), yi(LAVA_Y - 1));
-    const topI = yi(hh);
+    const topI = yi(hh), gate = u > GATE_U - GATE.out - 0.5 && u < GATE_U + GATE_DEPTH + 1;
     run(x, z, lo, topI, (y, wy) => {
+      if (gate) { const g = gateVoxel(wx, wy, u, r); if (g >= 0) return g; }
       if (wy < LAVA_Y + 0.8 && y === topI) return r < 0.5 ? C.crust : C.crust2; // the scorched lip at the lava
       const n = noise2(wx / 9 + wy / 13, wz / 9, 34), seam = Math.abs(n - 0.5) < 0.015 && wy < LAVA_Y + 14;
       return seam ? C.ember : n < 0.35 ? C.basalt3 : n < 0.7 ? C.basalt : C.basalt2;
     });
   }
+}
+
+/** The gate's voxels: nothing in the bore (the set draws its walls and face), a sheer panel with a dressed border on
+ *  the face, plain basalt pilasters; −1 = not the gate's (ordinary wall rock). */
+function gateVoxel(wx: number, wy: number, u: number, r: number): number {
+  const A = gateAxis(), lx = Math.abs(wx - cx(u)), up = wy - BRIDGE_Y;
+  if (u > GATE_U - 0.6 && Math.hypot(wx - A.x, wy - A.y) < GATE_TUNNEL_R + 0.45) return 0;
+  if (lx > GATE.half) return lx < GATE.half + GATE.pilaster ? (r < 0.5 ? C.basalt : C.basalt2) : -1;
+  if (u > GATE_U + 1.5 || up < -1) return -1;
+  const ah = GATE.h + GATE.arch * Math.sqrt(Math.max(0, 1 - (lx / GATE.half) ** 2)); // the arched top
+  if (up > ah + 0.6) return -1;
+  return up > ah - 0.2 || lx > GATE.half - 0.6 || up < -0.4 ? C.basalt2 : C.obsidian;
+}
+
+/** The glyph stones by the causeway, binned by u for the fill. */
+const STONE_BINS = new Map<number, GlyphStone[]>();
+for (const st of GLYPH_STONES) for (let b = Math.floor((st.u - st.hz - 1) / 8); b <= Math.floor((st.u + st.hz + 1) / 8); b++) {
+  const l = STONE_BINS.get(b) ?? []; l.push(st); STONE_BINS.set(b, l);
+}
+function stoneAt(wx: number, wz: number, u: number): GlyphStone | null {
+  for (const st of STONE_BINS.get(Math.floor(u / 8)) ?? []) {
+    const ox = (wx - st.face) * st.side; // metres out from the painted face, away from the path
+    if (ox > 0 && ox < 2 * st.hx * (st.kind === 'rock' ? 0.85 + 0.3 * noise2(wx / 1.3, wz / 1.3, 61) : 1) && Math.abs(wz - st.z) < st.hz) return st;
+  }
+  return null;
+}
+/** A stone's top: columns square-cut, rocks rounded off toward their edges. */
+function stoneTop(st: GlyphStone, wx: number, wz: number): number {
+  if (st.kind === 'column') return st.top;
+  const ez = Math.abs(wz - st.z) / st.hz, ex = Math.abs(wx - st.x) / st.hx;
+  return st.top - 0.9 * Math.max(0, Math.max(ez, ex) - 0.5) ** 2 - 0.35 * noise2(wx / 0.9, wz / 0.9, 62);
 }
 
 /** The pier nearest along the hall (piers stand every 70 m of rail). */

@@ -102,7 +102,7 @@ describe('Chapter 3a shots (#192)', () => {
     expect(b.eye.y).toBeCloseTo(BRIDGE_Y + 1.55, 2);
     expect(cavernShot(snap('temple', 0.5))).toBeNull();
     expect(islandShot({ ...snap('cavern', 0.5), sceneT: 0 })).toBeNull();
-    expect([...CAVERN_WORLD]).toEqual(['cavern', 'bridge', 'magma', 'fan']);
+    expect([...CAVERN_WORLD]).toEqual(['cavern', 'bridge', 'magma', 'fan', 'toGate', 'drill2', 'fall']);
   });
 
   it('fishes over the side of the bridge onto the lava, and puts the fan in front of the bars', () => {

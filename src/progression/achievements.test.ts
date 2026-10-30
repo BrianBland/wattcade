@@ -108,14 +108,21 @@ describe('counters and goals', () => {
     expect(p.counters!['starfighter.kills']).toBe(52000);
     expect(p.achievements).toContain('sf_kills');
   });
-  it('bits collect warm-up biomes', () => {
+  it('warm-up exploration needs repeated qualifying rides, not repeated laps', () => {
     let p = defaultProfile();
-    const reach = (...b: string[]) => rec({ gameId: 'warmup', events: b.map((biome, t) => ({ t, type: 'biomeReached', data: { biome } })) });
-    p = awardSession(p, reach('seaside', 'underwater')).profile;
-    p = awardSession(p, reach('underwater', 'jungle')).profile;
-    expect(achievementProgress(byId('wu_globetrotter'), p)!.label).toBe(`3/${BIOMES.length} biomes`);
-    const r = awardSession(p, reach(...BIOMES));
-    expect(ids(r)).toEqual(expect.arrayContaining(['wu_globetrotter', 'wu_moon']));
+    const reach = (...biomes: string[]) => rec({ gameId: 'warmup',
+      samples: Array.from({ length: 600 }, (_, t) => ({ t, power: 130, cadence: 90, hr: null, grade: 0, mode: 'sim' as const })),
+      events: biomes.map((biome, t) => ({ t, type: 'biomeReached', data: { biome } })) });
+    for (let i = 0; i < 2; i++) {
+      p = awardSession(p, reach(...BIOMES, ...BIOMES)).profile;
+      expect(p.achievements).not.toContain('wu_globetrotter');
+      expect(p.achievements).not.toContain('wu_moon');
+    }
+    p = awardSession(p, reach(...BIOMES)).profile;
+    expect(p.achievements).toContain('wu_globetrotter');
+    expect(achievementProgress(byId('wu_globetrotter'), p)!.frac).toBe(1);
+    for (let i = 0; i < 2; i++) p = awardSession(p, reach('moon')).profile;
+    expect(p.achievements).toContain('wu_moon');
   });
   it('the old storm tally carries over', () => {
     const p = { ...defaultProfile(), gameData: { _progression: { stormsWeathered: 24 } } };

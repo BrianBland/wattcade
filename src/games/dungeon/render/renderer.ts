@@ -148,6 +148,7 @@ export function createRenderer(): GameRenderer {
   let lastCue = -1;
   let send: ((a: unknown) => void) | undefined;
   let insetCss = 0; // HUD band (CSS px) at the bottom; the world renders under it, foreground UI stays above
+  let hudOcclusions: Insets['occlusions'];
   let zoom: ZoomState = { steps: 0, held: 0 };
   let pinchEnabled = false;
   const touches = new Map<number, { x: number; y: number }>();
@@ -302,6 +303,7 @@ export function createRenderer(): GameRenderer {
   return {
     mount(container: HTMLElement, c: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }) {
       color = c.profile.color; send = c.send; insetCss = c.insets?.bottom ?? 0;
+      hudOcclusions = c.insets?.occlusions;
       canvas = document.createElement('canvas');
       canvas.style.cssText = 'width:100%;height:100%;display:block;background:#07060b;touch-action:none';
       container.appendChild(canvas);
@@ -315,7 +317,7 @@ export function createRenderer(): GameRenderer {
       dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
       this.resize?.(container.clientWidth || 800, container.clientHeight || 600);
     },
-    setInsets(i) { insetCss = i.bottom; },
+    setInsets(i) { insetCss = i.bottom; hudOcclusions = i.occlusions; },
     resize(w, h) { if (canvas) { clearPinch(); canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); } },
     render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>) {
       const s = snapshot as DungeonSnapshot;
@@ -613,8 +615,10 @@ export function createRenderer(): GameRenderer {
       gg.fillStyle = ready ? '#2a1d00' : '#ddd'; gg.font = pixelFont(Math.round(7 * hu)); gg.textAlign = 'center'; fillText(gg, '2nd W', sx + w / 2, sy + h - 2 * hu); gg.textAlign = 'left';
     }
     // slim stance row (bottom-left): [stance badge][weapon icon] Lv · element, then tiny chips for the other stances.
-    // Actions and cooldowns live on the shell's controller-overlay diamond (also the touch target).
-    const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1);
+    // Actions and cooldowns live in the shell HUD; use its occupied shape to share the row.
+    const LY = runLayout(W, H, insetCss * dpr, u, s.stance.list.length - 1,
+      W > H && W / dpr > 700 && H / dpr > 500
+        ? hudOcclusions?.map(r => ({ x: r.x * dpr, y: r.y * dpr, w: r.w * dpr, h: r.h * dpr })) : undefined);
     actionHits = [];
     {
       const st = s.stance, wcol = RARITY_COLORS[s.weapon.rarity], R = LY.card, cy = R.y + R.h / 2;

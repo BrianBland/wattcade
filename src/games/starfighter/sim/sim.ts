@@ -105,7 +105,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     if (e.parentId && boss?.id === e.parentId) boss.hp -= boss.maxHp * 0.15;
     if (e.kind === 'boss') {
       for (const mount of enemies) if (mount.parentId === e.id) { effect('boom',mount.x,mount.y); mount.hp=-1; mount.y=SHIP_Y; }
-      bosses++; sector++; boss = null; bossAt = null; segBoss = 'defeated'; emit('bossDefeated'); announce('Flagship destroyed'); }
+      bosses++; emit('bossDefeated', { sector }); sector++; boss = null; bossAt = null; segBoss = 'defeated'; announce('Flagship destroyed'); }
     emit('enemyKilled');
   };
   const nova = () => {

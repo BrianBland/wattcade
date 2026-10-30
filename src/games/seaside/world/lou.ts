@@ -13,7 +13,7 @@ export const LOU = definePalette({
 });
 const L = LOU.idx;
 type Finish = 'live' | 'stone';
-type Pose = 'counter' | 'wheel';
+type Pose = 'counter' | 'wheel' | 'wave';
 
 export function buildLou(opts: { finish?: Finish; pose?: Pose; scale?: number; voxel?: number } = {}): VoxelGrid {
   const finish = opts.finish ?? 'live', k = opts.scale ?? 1;
@@ -52,6 +52,7 @@ export function buildLou(opts: { finish?: Finish; pose?: Pose; scale?: number; v
   // shoulders + arms
   for (const s of [1, -1]) {
     ell(P(s * 0.23, 1.47, 0), R(0.1, 0.09, 0.1), L.sweater);
+    if (opts.pose === 'wave' && s === 1) continue; // one hand on the wheel; the waving arm is its own piece (louArm)
     if ((opts.pose ?? 'counter') === 'counter') {
       seg(P(s * 0.27, 1.44, 0), P(s * 0.3, 1.1, 0.16), 0.065, L.sweater);
       seg(P(s * 0.3, 1.07, 0.16), P(s * 0.21, 1.05, 0.62), 0.055, L.sweater2);
@@ -92,5 +93,16 @@ export function buildLou(opts: { finish?: Finish; pose?: Pose; scale?: number; v
   seg(P(0.04, H[1] - 0.07, H[2] + 0.13), P(0.105, H[1] - 0.085, H[2] + 0.215), 0.013, L.pipe2);
   ell(P(0.11, H[1] - 0.07, H[2] + 0.215), R(0.024, 0.032, 0.024), L.pipe);
   if (finish === 'live') g.wellipsoid(P(0.11, H[1] - 0.04, H[2] + 0.215), R(0.012, 0.006, 0.012), L.ember);
+  return g;
+}
+
+/** Lou's waving arm (the 'wave' pose's left arm), from the shoulder joint at the origin: up and out (+x), the forearm
+ *  straight up, the hand open. Rotate it about z at the shoulder to wave. */
+export function louArm(opts: { scale?: number; voxel?: number } = {}): VoxelGrid {
+  const k = opts.scale ?? 1, g = new VoxelGrid(opts.voxel ?? 0.02), P = (x: number, y: number, z: number) => [x * k, y * k, z * k];
+  g.wsegment(P(0, 0, 0), P(0.2, 0.2, 0.04), 0.06 * k, L.sweater);
+  g.wsegment(P(0.2, 0.2, 0.04), P(0.25, 0.5, 0.06), 0.05 * k, L.sweater2);
+  g.wellipsoid(P(0.26, 0.6, 0.06), [0.055 * k, 0.075 * k, 0.03 * k], L.skin);
+  for (let i = 0; i < 4; i++) g.wsegment(P(0.22 + i * 0.026, 0.65, 0.06), P(0.2 + i * 0.036, 0.73 - Math.abs(i - 1.5) * 0.014, 0.06), 0.012 * k, L.skin);
   return g;
 }

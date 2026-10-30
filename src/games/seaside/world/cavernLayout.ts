@@ -3,7 +3,9 @@
 // and then), its floor the cavern scene's trainer grade integrated along the rail (flat, then the long descent: the
 // slope you see is the grade you feel), opening at the mouth onto a volcanic hall where a bike-width obsidian bridge
 // runs level over a lava river 20 m below, on to the gate (#193). Magma fishing and the cooling fan stand on the bridge
-// where the bridge scene ends; leaping eels and the torch cages are placed from here too.
+// where the bridge scene ends; leaping eels and the torch cages are placed from here too. Chapter 3b (#193) rides on
+// along it: glyphs painted on loose rocks, then on columns lining the way, then the gate wall, where the drill goes in.
+import { GATE_LAYERS } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { gradeAt } from '../sim/workout';
 import { RouteSpline } from './route';
@@ -61,6 +63,17 @@ export const BRIDGE_Y = floorY(U_MOUTH), LAVA_Y = BRIDGE_Y - 20, WALL_TOP = BRID
 /** The bridge's rail: from the mouth to the gate landing. Magma fishing and the fan stand where the bridge scene ends. */
 export const BRIDGE = { s0: CAVE_M, s1: CAVE_M + BRIDGE_M + GATE_M, stand: CAVE_M + BRIDGE_M, half: 0.9, thickness: 0.55 };
 export const U_GATE = uOfS(BRIDGE.s1), HALL_END = U_GATE + 40;
+/** The gate wall's face (u), on a multiple of 8 m so every LOD's voxels put the face exactly there (the painted
+ *  inscription lies on it). The route ends just short of it. */
+export const GATE_U = Math.ceil((U_GATE + 20) / 8) * 8;
+/** Route metres of the face, and where you stop in front of it (the bit's reach and a little). */
+export const GATE_S = sOfU(GATE_U), STOP_S = GATE_S - 2.6;
+/** The gate: a sheer panel `half` m either side of the line, `h` m tall (an arch on top), between pilasters standing
+ *  `out` m proud of the wall. No door. */
+export const GATE = { half: 7, pilaster: 2, out: 2, h: 17, arch: 3 } as const;
+/** Drill II's bore: its mouth on the gate (centre at the bit's height above the deck), boring along −z. */
+export const GATE_TUNNEL_R = 1.3, GATE_DEPTH = GATE_LAYERS.reduce((a, l) => a + l.m, 0);
+export const gateAxis = () => ({ x: cx(GATE_U), y: BRIDGE_Y + GATE_TUNNEL_R, z: -GATE_U });
 
 // ---- the cave's cross-section -------------------------------------------------------------------------------------
 
@@ -96,7 +109,7 @@ let routeCache: RouteSpline | null = null;
 export function cavernRoute(): RouteSpline {
   if (!routeCache) {
     const pts: Array<[number, number, number]> = [];
-    const end = uOfS(BRIDGE.s1 + 20);
+    const end = GATE_U - 1.2; // the deck stops just short of the gate
     for (let u = 0; u < end; u += 2) pts.push([cx(u), floorY(u), -u]);
     pts.push([cx(end), floorY(end), -end]);
     routeCache = new RouteSpline(pts, 2);
@@ -104,10 +117,12 @@ export function cavernRoute(): RouteSpline {
   return routeCache;
 }
 
-/** Route metres each scene runs over (the fishing and the fan stand at a point). */
-export function cavernSpan(id: 'cavern' | 'bridge' | 'magma' | 'fan'): [number, number] {
+/** Route metres each scene runs over (the fishing and the fan stand at a point; the drill and the fall at the gate). */
+export function cavernSpan(id: 'cavern' | 'bridge' | 'magma' | 'fan' | 'toGate' | 'drill2' | 'fall'): [number, number] {
   if (id === 'cavern') return [0, CAVE_M];
   if (id === 'bridge') return [CAVE_M, BRIDGE.stand];
+  if (id === 'toGate') return [BRIDGE.stand, STOP_S];
+  if (id === 'drill2' || id === 'fall') return [STOP_S, STOP_S];
   return [BRIDGE.stand, BRIDGE.stand];
 }
 
@@ -148,4 +163,32 @@ export const LEAPS: readonly Leap[] = (() => {
 export function leapAt(l: Leap, k: number): { x: number; y: number; z: number } {
   const u = lerp(l.u0, l.u1, k);
   return { x: cx(u) + lerp(l.lx0, l.lx1, k), y: LAVA_Y + 4 * l.h * k * (1 - k) - 0.5, z: -u };
+}
+
+// ---- the glyph stones (#193) -------------------------------------------------------------------------------------
+
+/** A stone standing in the lava by the causeway with glyphs painted on the face toward the path: loose rocks first,
+ *  then columns lining the way. A box (half-sizes hx across, hz along) whose path-side face is flat at x = `face`
+ *  (snapped to the voxel grid, so the paint lies on it). */
+export interface GlyphStone { kind: 'rock' | 'column'; s: number; u: number; side: number; x: number; z: number; hx: number; hz: number; top: number; face: number }
+/** The causeway's stretch (Toward the gate), and where the rocks give way to the columns (fraction of it). */
+const G0 = BRIDGE.stand, G1 = STOP_S, ROCKS_END = 0.45, COLS_START = 0.5, COLS_END = (G1 - 30 - G0) / (G1 - G0);
+const snap = (x: number) => Math.round(x * 2) / 2;
+export const GLYPH_STONES: readonly GlyphStone[] = (() => {
+  const out: GlyphStone[] = [];
+  const add = (kind: GlyphStone['kind'], s: number, side: number, inner: number, hx: number, hz: number, top: number) => {
+    const u = uOfS(s), face = snap(cx(u) + side * inner), x = face + side * hx;
+    out.push({ kind, s, u, side, x, z: -u, hx, hz, top, face });
+  };
+  for (let j = 0, s = G0 + 70; s < G0 + ROCKS_END * (G1 - G0); j++, s += 26) {
+    const r = (k: number) => rnd(j, 40 + k), side = j % 2 ? 1 : -1;
+    add('rock', s, side, 3 + r(1) * 3.5, 0.9 + r(2) * 0.7, 1.1 + r(3) * 0.9, BRIDGE_Y - 1.2 + r(4) * 3);
+  }
+  for (let s = G0 + COLS_START * (G1 - G0); s < G0 + COLS_END * (G1 - G0); s += 15) for (const side of [-1, 1]) add('column', s, side, 2.5, 0.5, 0.5, BRIDGE_Y + 7);
+  return out;
+})();
+/** The painted panel on a stone: centre, size (m), facing (+1 = toward +x), and how far along the causeway it is. */
+export function glyphPanel(st: GlyphStone): { x: number; y: number; z: number; w: number; h: number; facing: number } {
+  const h = st.kind === 'column' ? 4.8 : Math.min(1.8, st.top - LAVA_Y - 0.6), y = st.top - (st.kind === 'column' ? 1.6 : 0.25) - h / 2;
+  return { x: st.face - st.side * 0.02, y, z: st.z, w: 2 * st.hz * 0.82, h, facing: -st.side };
 }

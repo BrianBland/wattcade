@@ -1,5 +1,6 @@
 // The seam between the Seaside sim and its renderer (and other Seaside issues). #184 owns the base fields;
 // later issues add fields additively and say so in their PR.
+import type { ReentryView } from './flight';
 import type { FishingLocation } from './catalogue';
 import type { FishingView } from './fishing';
 import type { EconomySave, ShopView } from './economy';
@@ -118,7 +119,16 @@ export interface SeasideSnapshot {
   // ---- additive (#192) ----
   /** The cooling fan: how hot the eel still glows (creeps back out of the cadence band), then eating it. */
   fan: FanView | null;
+  // ---- additive (#194) ----
+  /** Re-entry and the wings, else null. */
+  flight: FlightView | null;
 }
+
+/** Re-entry (the fire, the wings growing through the sprint, the cloud deck) or the glide (where you are across the
+ *  line of flight, the bank, the ribbon, the wingbeat). */
+export type FlightView =
+  | ({ phase: 'reentry' } & ReentryView)
+  | { phase: 'wings'; x: number; bank: number; ribbon: number; inRibbon: boolean; flap: number; down: boolean; align: number };
 
 export interface PartsView {
   items: Array<{ id: PartId; name: string; at: number; got: boolean; auto: boolean }>;

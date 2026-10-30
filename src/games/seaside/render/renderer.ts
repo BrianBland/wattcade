@@ -1,7 +1,9 @@
 // The Seaside renderer. Chapter 1 (#189) rides the voxel world (WorldView + the Morning director, render/morning.ts);
 // Chapter 2a (#190) switches the same view to the belly world (render/belly.ts), Chapter 2b (#191) to the island
-// (render/island.ts), Chapter 3a (#192) to the cavern (render/cavern.ts); the shops are the counter dioramas;
-// later chapters still use the placeholder stage (grey box and labels) until their scenes land. The HUD pieces (bubble, plate, card, menu, fishing prompts) are a 2D canvas on top.
+// (render/island.ts), Chapters 3a/3b (#192, #193) to the cavern (render/cavern.ts, render/gate.ts); the shops are dioramas;
+// Chapter 3c (#194) flies re-entry and the wings over the coast (render/flight.ts) and lands on the Sunset highway (the
+// Morning set rides it, the sun low, Lou's shut); the ending (#195: the cliff lift-off, Lou's car, the angel)
+// rides the same coast (render/ending.ts). The HUD pieces (bubble, plate, card, menu, fishing prompts, the end title) are a 2D canvas on top.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { LookName, SeasideSnapshot } from '../sim/types';
@@ -13,7 +15,11 @@ import { IslandSet } from './island';
 import { ISLAND_WORLD, type IslandShot } from './islandShots';
 import { CavernSet } from './cavern';
 import { CAVERN_WORLD, type CavernShot } from './cavernShots';
-import { BELLY_LAYERS, PARTS } from '../sim/belly';
+import { FlightSet } from './flight';
+import { FLIGHT_WORLD, type FlightShot } from './flightShots';
+import { EndingSet } from './ending';
+import { ENDING_WORLD, type EndingShot } from './endingShots';
+import { BELLY_LAYERS, GATE_LAYERS, PARTS, type DrillLayer, type DrillView } from '../sim/belly';
 import { STORY } from '../sim/story';
 import { MORNING_WORLD, type MorningShot } from './morningShots';
 import { pixelSetting } from './perf';
@@ -22,13 +28,22 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, inside, layout, type Box } from './layout';
+import { bellyHud, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
 const SKY: Record<LookName, [string, string]> = {
   morning: ['#cfe6ee', '#7cc3d3'], midday: ['#bfe3f5', '#4fa3c9'], belly: ['#4a1830', '#b4507a'],
   jungle: ['#c9e3b0', '#5aa35a'], lava: ['#2a0c10', '#c2451c'], reentry: ['#1a0a20', '#f07a2a'], fever: ['#141a33', '#7a3a8a'],
 };
+
+/** The end title's face (Bodoni Moda 800 italic, OFL), fetched once when the ending comes up; until then it falls back. */
+let titleFont: Promise<unknown> | null = null;
+function loadTitleFont(): void {
+  if (titleFont || typeof FontFace === 'undefined') return;
+  titleFont = new FontFace('Seaside Title', `url(${titleFontUrl})`, { weight: '800', style: 'italic' }).load()
+    .then((f) => document.fonts.add(f)).catch(() => undefined);
+}
 
 export class SeasideRenderer implements GameRenderer {
   private canvas: HTMLCanvasElement | null = null;
@@ -49,6 +64,8 @@ export class SeasideRenderer implements GameRenderer {
   private belly: BellySet | null = null;
   private island: IslandSet | null = null;
   private cavern: CavernSet | null = null;
+  private flight: FlightSet | null = null;
+  private endSet: EndingSet | null = null;
   /** Seconds since the beach's first fish went on the fire (null before). */
   private cooked: number | null = null;
   private profile: Readonly<Profile> | null = null;
@@ -148,10 +165,30 @@ export class SeasideRenderer implements GameRenderer {
     return this.cavern;
   }
 
+  /** Re-entry and the wings over the coast world. */
+  private ensureFlight(): FlightSet {
+    if (!this.flight) {
+      this.dropSets();
+      this.flight = new FlightSet(this.ensureView('coast'));
+    }
+    return this.flight;
+  }
+
+  /** The ending (the cliff, the angel) over the coast world. */
+  private ensureEnding(): EndingSet {
+    if (!this.endSet) {
+      this.dropSets();
+      this.endSet = new EndingSet(this.ensureView('coast'));
+      loadTitleFont();
+    }
+    return this.endSet;
+  }
+
   /** Release whichever set is up (each holds GPU resources on the shared view). */
   private dropSets(): void {
     this.morning?.dispose(); this.morning = null; this.belly?.dispose(); this.belly = null;
     this.island?.dispose(); this.island = null; this.cavern?.dispose(); this.cavern = null;
+    this.flight?.dispose(); this.flight = null; this.endSet?.dispose(); this.endSet = null;
   }
 
   private tickClock(s: SeasideSnapshot): number {
@@ -167,6 +204,14 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this;
     const dt = this.tickClock(s);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (!s.menu && ENDING_WORLD.has(s.sceneId)) {
+      const shot = this.ensureEnding().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawEndingHud(g, s, shot); return; }
+    }
+    if (!s.menu && FLIGHT_WORLD.has(s.sceneId)) {
+      const shot = this.ensureFlight().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
+      if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawFlightHud(g, s, shot); return; }
+    }
     if (!s.menu && CAVERN_WORLD.has(s.sceneId)) {
       const shot = this.ensureCavern().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawCavernHud(g, s, shot); return; }
@@ -295,26 +340,29 @@ export class SeasideRenderer implements GameRenderer {
       if (since >= 2.5 && since < 9) this.popup(g, B.popup, 'Drill. Keep it turning.', Math.min(1, (since - 2.5) / 0.5, (9 - since) / 0.8));
     }
     const d = fx.drill;
-    if (d && fx.since === null) { // the depth meter, scratched: bands of flesh, cartilage, bone; the bit's mark
-      const M = B.meter, k = (m: number) => M.y + (m / d.total) * M.h;
-      g.fillStyle = 'rgba(20,6,18,.55)'; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
-      let acc = 0;
-      for (const l of BELLY_LAYERS) {
-        g.fillStyle = `#${l.color.toString(16).padStart(6, '0')}`; g.globalAlpha = 0.85;
-        g.fillRect(M.x + M.w * 0.35, k(acc), M.w * 0.3, k(acc + l.m) - k(acc)); acc += l.m;
-      }
-      g.globalAlpha = 1; g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5;
-      for (let m = 0; m <= d.total + 1e-6; m += 0.25) { const y = k(m), long = Math.abs(m - Math.round(m)) < 1e-6; g.beginPath(); g.moveTo(M.x + (long ? 0 : M.w * 0.12), y + (m * 7 % 2 - 1)); g.lineTo(M.x + M.w * 0.32, y - (m * 5 % 2 - 1)); g.stroke(); }
-      const y = k(d.depth);
-      g.fillStyle = '#fff6d8'; g.beginPath(); g.moveTo(M.x + M.w * 0.66, y); g.lineTo(M.x + M.w, y - 7); g.lineTo(M.x + M.w, y + 7); g.closePath(); g.fill();
-      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff6d8'; g.font = font(Math.max(12, M.w * 0.28), 'italic ');
-      g.fillText(d.phase === 'rest' ? 'clear the chips' : d.phase === 'crack' ? 'cracking…' : BELLY_LAYERS[d.layer].name, M.x, M.y + M.h + 10);
-    }
+    if (d && fx.since === null) this.drawDrillMeter(g, B.meter, d, BELLY_LAYERS, d.phase === 'rest' ? 'clear the chips' : d.phase === 'crack' ? 'cracking…' : BELLY_LAYERS[d.layer].name, 'rgba(20,6,18,.55)');
     if (fx.white > 0) { g.fillStyle = `rgba(250,253,255,${fx.white})`; g.fillRect(0, 0, W, H); }
     const p = L.plate;
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
     this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** A scratched depth meter: a band per layer, ticks every 25 cm, the bit's mark at the bored depth, a label. */
+  private drawDrillMeter(g: CanvasRenderingContext2D, M: Box, d: DrillView, layers: readonly DrillLayer[], label: string, bg: string): void {
+    const k = (m: number) => M.y + (m / d.total) * M.h;
+    g.fillStyle = bg; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
+    let acc = 0;
+    for (const l of layers) {
+      g.fillStyle = `#${l.color.toString(16).padStart(6, '0')}`; g.globalAlpha = 0.85;
+      g.fillRect(M.x + M.w * 0.35, k(acc), M.w * 0.3, k(acc + l.m) - k(acc)); acc += l.m;
+    }
+    g.globalAlpha = 1; g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5;
+    for (let m = 0; m <= d.total + 1e-6; m += 0.25) { const y = k(m), long = Math.abs(m - Math.round(m)) < 1e-6; g.beginPath(); g.moveTo(M.x + (long ? 0 : M.w * 0.12), y + (m * 7 % 2 - 1)); g.lineTo(M.x + M.w * 0.32, y - (m * 5 % 2 - 1)); g.stroke(); }
+    const y = k(d.depth);
+    g.fillStyle = '#fff6d8'; g.beginPath(); g.moveTo(M.x + M.w * 0.66, y); g.lineTo(M.x + M.w, y - 7); g.lineTo(M.x + M.w, y + 7); g.closePath(); g.fill();
+    g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff6d8'; g.font = `italic ${Math.round(Math.max(12, M.w * 0.28))}px Georgia, serif`;
+    g.fillText(label, M.x, M.y + M.h + 10);
   }
 
   /** Over the island: fishing prompts on the beach, the white of the surface fading, the fire's warmth once the
@@ -352,6 +400,8 @@ export class SeasideRenderer implements GameRenderer {
     this.menuRows = []; this.shopTargets = [];
     this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
     if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT, true);
+    const gd = shot.fx.gate?.drill;
+    if (gd) this.drawDrillMeter(g, bellyHud(W, H, this.insets).meter, gd, GATE_LAYERS, shot.fx.gate!.crack > 0.08 ? 'cracking…' : gd.phase === 'start' ? 'Keep it turning' : GATE_LAYERS[gd.layer].name, 'rgba(20,8,6,.6)');
     const fan = shot.fx.fan;
     if (fan && fan.eat < 1) { // a scratched gauge down the left: how hot the eel still is
       const M = bellyHud(W, H, this.insets).meter, al = Math.max(0, 1 - fan.eat * 3), k = fan.glow;
@@ -365,6 +415,48 @@ export class SeasideRenderer implements GameRenderer {
       g.fillText(fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 10);
       g.globalAlpha = 1;
     }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Over re-entry and the wings: the white of the cloud deck, a soft chevron toward the ribbon when you've
+   *  drifted off it, then the usual bubble, card and progress line. */
+  private drawFlightHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: FlightShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), w = shot.fx.wings;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (shot.fx.white > 0) { g.fillStyle = `rgba(252,250,246,${shot.fx.white})`; g.fillRect(0, 0, W, H); }
+    if (w && !w.inRibbon && w.align < 0.5) {
+      const side = Math.sign(w.ribbon - w.x) || 1, x = side > 0 ? W - 34 : 34, y = L.UH * 0.5, k = Math.min(18, L.UH * 0.04);
+      g.globalAlpha = 0.55 + 0.25 * Math.sin(s.sceneT * 5); g.strokeStyle = '#fff4dc'; g.lineWidth = 4; g.lineCap = 'round';
+      for (const d of [0, 14]) { g.beginPath(); g.moveTo(x - side * (k + d), y - k); g.lineTo(x - side * d, y); g.lineTo(x - side * (k + d), y + k); g.stroke(); }
+      g.globalAlpha = 1;
+    }
+    const p = L.plate;
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
+    this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Over the ending: the title over the sunset (above you), the white cut to the morning, then the usual bubble, card
+   *  and progress line. */
+  private drawEndingHud(g: CanvasRenderingContext2D, s: SeasideSnapshot, shot: EndingShot): void {
+    const { W, H } = this, L = layout(W, H, this.insets), fx = shot.fx;
+    g.clearRect(0, 0, W, H);
+    this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
+    if (fx.title > 0) { // the title, big, in the evening light
+      const T = endTitle(W, L.UH, this.insets.top), px = Math.round(T.px);
+      g.globalAlpha = fx.title; g.fillStyle = '#fffaf0'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = `italic 800 ${px}px "Seaside Title", "Bodoni 72", Didot, Georgia, serif`;
+      for (const [glow, blur] of [['rgba(255,214,160,.7)', px * 0.35], ['rgba(60,24,10,.55)', px * 0.08]] as const) {
+        g.shadowColor = glow; g.shadowBlur = blur;
+        g.fillText(END_TITLE.text, W / 2, T.y);
+      }
+      g.shadowBlur = 0; g.globalAlpha = 1;
+    }
+    if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }
     const p = L.plate;
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);

@@ -15,6 +15,7 @@ export const LATER = definePalette({
   basalt: 0x2f2a2e, basalt2: 0x3b3438, basalt3: 0x242024, obsidian: 0x1a1022, obsidian2: 0x2c1a3a, obsidianEdge: 0x7a5aa0,
   lava: 0xff7a1a, lava2: 0xffb02a, lavaHot: 0xffe08a, crust: 0x2a1410, crust2: 0x40201a, ember: 0xff4a10,
   glyph: 0xffd27a, glyph2: 0x7affea, magma: 0xff9a30, magma2: 0xffe070,
+  geode: 0x8a8090, geode2: 0xb8aec4, crystal: 0xb48cff, crystal2: 0x7ad8ff, crystalHot: 0xf4e8ff,
   // space / earth
   ocean: 0x1f5fb8, ocean2: 0x2a76cf, shelf: 0x3fa6d6, land: 0x4f9a3a, land2: 0x7aa64a, desert: 0xd8b878, ice: 0xf2f6fa, cloud: 0xffffff, cloud2: 0xdfe8f0,
   fire: 0xff7a1a, fire2: 0xffc23a, fire3: 0xfff0b0, feather: 0xf8f6f0, feather2: 0xe4e0d8, feather3: 0xcfcac0, star: 0xffffff,

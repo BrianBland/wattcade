@@ -247,7 +247,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       for (const c of geo.update(dt, at.index, at.blockT, b.minutes * 60 * scale, water.w)) {
         if (c.type === 'eventWarn') cue('eventWarn', { kind: c.kind }, false);
         else if (c.type === 'eventHit') cue('eventHit', { kind: c.kind, x: +c.x.toFixed(1), y: +c.y.toFixed(1) });
-        else cue('eventDone', { kind: c.kind }, false);
+        else cue('eventDone', { kind: c.kind });
       }
 
       const bike = ctx.bike(), input = ctx.input();

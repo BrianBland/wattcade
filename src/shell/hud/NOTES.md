@@ -22,3 +22,4 @@
 - Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.
 - Touch actions show names rather than A/B/Y/Z glyphs. Warmup opts into a read-only persistent controller navigation legend; Auto removes it on disconnect. App suppresses it while menus are visible; their contextual key hints take precedence.
 - Pocket Arcade supplies shared warm navy/cream and mint tokens to the bar, peeks and floating surfaces; typography, zone/controller semantics and geometry are unchanged.
+- Main integration preserves right-aligned controller status indicators on landscape viewports >=701px wide and >=501px high, matching Crank Crawler inventory placement; compact/portrait indicators stay centered.

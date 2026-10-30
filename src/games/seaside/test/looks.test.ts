@@ -11,6 +11,14 @@ describe('looks and the dream dial', () => {
     expect(mixLook(a, b, 1).post.ink.getHex()).toBe(b.post.ink.getHex());
   });
 
+  it('blends posterize in from off without passing through a fraction of a level (a black screen)', () => {
+    const a = resolveLook('morning'), b = resolveLook('fever');
+    expect(mixLook(a, b, 0).post.posterize).toBe(0);
+    expect(mixLook(a, b, 1).post.posterize).toBe(b.post.posterize);
+    for (let t = 0.01; t < 1; t += 0.01) expect(mixLook(a, b, t).post.posterize).toBeGreaterThanOrEqual(b.post.posterize);
+    expect(mixLook(b, a, 1).post.posterize).toBe(0);
+  });
+
   it('never switches hard between scenes: every frame moves each parameter only a little', () => {
     const d = new LookDirector('morning', 6);
     let prev = d.step(0);

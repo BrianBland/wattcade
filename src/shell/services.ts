@@ -344,15 +344,18 @@ function downmix(buffer: AudioBuffer): Float32Array {
 }
 /**
  * Picker preview: fetch one range of a streamed song and analyze it the way the ride does (window analysis + beat
- * features, tempo hint), so the ride can reuse it. The decoded audio is dropped right away (analysis only).
+ * features, tempo hint), so the ride can reuse it. Retain decoded audio within the picker budget for playback at Start.
  */
-export async function analyzeStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) {
+export async function prepareStreamWindow(song: SongMeta, startS: number, durationS: number, signal: AbortSignal) {
   const data = await loadAudioRange(song, startS, durationS, mediaServerConfig(), signal);
-  const pcm = downmix(await mediaEngine().ctx.decodeAudioData(data));
+  const buffer = await mediaEngine().ctx.decodeAudioData(data);
   if (signal.aborted) throw new Error('Preview was cancelled.');
-  return analyzeWindowInWorker(pcm, ANALYSIS_SR, hint?.bpm);
+  return async (hint?: { bpm: number }) => {
+    if (signal.aborted) throw new Error('Preview was cancelled.');
+    return { ...await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm), buffer };
+  };
 }
-/** `seeds`: picker-preview windows per song id, reused as already-committed analysis (audio is still fetched). */
+/** `seeds`: picker-preview windows per song id, reused as already-committed analysis and decoded playback audio. */
 export async function rollingMediaRun(ids: string[], mode: import('../media').QueueMode, seeds?: Map<string, import('../media').SeedWindow[]>): Promise<MediaRun> {
   const lib = mediaLibrary(), config = mediaServerConfig(), ctx = mediaEngine().ctx;
   if (!config.enabled) throw new Error('Enable the media server on Connect first.');
@@ -363,29 +366,39 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
     if (m.sourceUrl) return { id: m.id, title: m.title, artist: m.artist, palette: m.palette, credit: m.credit, analysis: estimatedAnalysis(m.durationS) };
     const item = await lib.mixItem(m.id); if (!item) throw new Error(`Still preparing ${m.title}.`); return structuredClone(item);
   }));
-  const local = new Map<number, AudioBuffer>();
+  const seedAnalysis = new Map<string, { analysis: SongAnalysis; beats: import('../media/analysis/structure').BeatFeature[] }>();
+  seeds?.forEach((windows, id) => windows.forEach((w) => seedAnalysis.set(`${id}:${w.bufferStartS}`, { analysis: w.analysis, beats: w.beats })));
+  const local = new Map<number, Promise<AudioBuffer>>();
   const rolling = new RollingQueue(items, mode, config.bufferS, async (index, startS, durationS, signal, hint) => {
     const meta = metas[index]!;
-    let buffer: AudioBuffer;
     if (meta.sourceUrl) {
       const data = await loadAudioRange(meta, startS, durationS, config, signal);
-      buffer = await ctx.decodeAudioData(data);
-    } else {
-      let full = local.get(index);
-      if (!full) {
-        full = await ctx.decodeAudioData(await (await fetch(await lib.audioUrl(meta.id), { signal })).arrayBuffer());
-        for (const k of local.keys()) if (k < index - 1) local.delete(k);
-        local.set(index, full);
-      }
-      const from = Math.round(startS * full.sampleRate), length = Math.min(Math.round(durationS * full.sampleRate), full.length - from);
-      buffer = ctx.createBuffer(full.numberOfChannels, length, full.sampleRate);
-      for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
+      const buffer = await ctx.decodeAudioData(data);
+      return async (hint?: { bpm: number }) => {
+        if (signal.aborted) throw new Error('Media queue was closed.');
+        const key = `${meta.id}:${startS}`, seeded = seedAnalysis.get(key);
+        seedAnalysis.delete(key);
+        return { buffer, ...(seeded ?? await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm)) };
+      };
     }
+    let fullTask = local.get(index);
+    if (!fullTask) {
+      fullTask = (async () => ctx.decodeAudioData(await (await fetch(await lib.audioUrl(meta.id), { signal })).arrayBuffer()))();
+      local.set(index, fullTask);
+      fullTask.catch(() => { if (local.get(index) === fullTask) local.delete(index); });
+      for (const k of local.keys()) if (k < index - 1) local.delete(k);
+    }
+    const full = await fullTask;
+    const from = Math.round(startS * full.sampleRate), length = Math.min(Math.round(durationS * full.sampleRate), full.length - from);
+    const buffer = ctx.createBuffer(full.numberOfChannels, length, full.sampleRate);
+    for (let c = 0; c < full.numberOfChannels; c++) buffer.copyToChannel(full.getChannelData(c).subarray(from, from + length), c);
     if (signal.aborted) throw new Error('Media queue was closed.');
     // Mono 22.05 kHz copy for analysis; only compact per-beat features come back (structure is rebuilt from them).
-    const { analysis, beats } = await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm);
+    const key = `${meta.id}:${startS}`, seeded = seedAnalysis.get(key);
+    seedAnalysis.delete(key);
+    const { analysis, beats } = seeded ?? await analyzeWindowInWorker(downmix(buffer), ANALYSIS_SR, hint?.bpm);
     return { buffer, analysis, beats };
-  });
+  }, 2);
   if (seeds) metas.forEach((m, i) => { const w = m?.sourceUrl ? seeds.get(m.id) : undefined; if (w) rolling.seed(i, w); });
   return { ids, mode, items, plan: rolling.plan, timeline: rolling.timeline, rolling };
 }

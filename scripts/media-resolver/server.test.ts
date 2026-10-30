@@ -51,3 +51,29 @@ it('serves the playlist route with choice, validation and protection', async () 
   expect(await (await fetch(base + '/health', { method: 'POST', headers, body: '{}' })).json()).toMatchObject({ api: 2, capabilities: { playlists: true }, maxPlaylistItems: 100 });
   expect(seen).toContain(10);
 });
+
+it('runs two ranges concurrently and releases their slots when the browser cancels', async () => {
+  let started!: () => void, cancelled!: () => void;
+  const bothStarted = new Promise<void>(r => { started = r; });
+  const bothCancelled = new Promise<void>(r => { cancelled = r; });
+  let active = 0, aborted = 0;
+  const server = resolverServer({ origin: 'http://localhost:5173', search: async () => [],
+    extractRange: async (_url, _start, _duration, _run, signal) => new Promise((_resolve, reject) => {
+      if (++active === 2) started();
+      signal!.addEventListener('abort', () => {
+        reject(new Error('cancelled'));
+        if (++aborted === 2) cancelled();
+      }, { once: true });
+    }) });
+  servers.push(server); await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const headers = { 'Content-Type': 'application/json' };
+  const abort = new AbortController();
+  const requests = [0, 28].map(startS => fetch(base + '/chunk', { method: 'POST', headers, signal: abort.signal,
+    body: JSON.stringify({ url: 'https://youtu.be/BaW_jenozKc', startS, durationS: 32 }) }).catch(() => null));
+  await bothStarted;
+  expect((await fetch(base + '/chunk', { method: 'POST', headers, body: '{}' })).status).toBe(429);
+  abort.abort(); await Promise.all(requests); await bothCancelled;
+  const search = await fetch(base + '/search', { method: 'POST', headers, body: JSON.stringify({ provider: 'youtube', query: 'next' }) });
+  expect(search.status).toBe(200); expect(aborted).toBe(2);
+});

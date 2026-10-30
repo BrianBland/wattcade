@@ -109,7 +109,7 @@ export async function extractAudio(value: string, run = runExtractor): Promise<B
 }
 
 /** Download only the requested window; yt-dlp delegates range cutting to native ffmpeg. */
-export async function extractRange(value: string, startS: number, durationS: number, run = runExtractor): Promise<Buffer> {
+export async function extractRange(value: string, startS: number, durationS: number, run = runExtractor, signal?: AbortSignal): Promise<Buffer> {
   const { url } = trackUrl(value);
   if (!Number.isFinite(startS) || !Number.isFinite(durationS) || startS < 0 || startS >= MAX_STREAM_DURATION_S || durationS <= 0 || durationS > 40 || startS + durationS > MAX_STREAM_DURATION_S + 4)
     throw new Error('Audio ranges must be between 0 and 12 hours and at most 40 seconds long.');
@@ -118,7 +118,7 @@ export async function extractRange(value: string, startS: number, durationS: num
     await run([...COMMON, '--match-filters', `duration <= ${MAX_STREAM_DURATION_S} & !is_live`,
       '-f', 'bestaudio/best', '--force-keyframes-at-cuts', '--download-sections', `*${startS}-${startS + durationS}`,
       '-x', '--audio-format', 'wav', '--postprocessor-args', 'ExtractAudio+ffmpeg_o:-ar 44100 -ac 2',
-      '-o', join(dir, 'track.%(ext)s'), '--', url], 90000);
+      '-o', join(dir, 'track.%(ext)s'), '--', url], 90000, signal);
     const audio = await readFile(join(dir, 'track.wav')).catch(() => { throw new Error('The source did not produce this audio range.'); });
     if (!audio.length || audio.length > MAX_BYTES) throw new Error('Audio range exceeds the output limit.');
     return audio;

@@ -1,7 +1,8 @@
+import { BufferProgress } from './BufferProgress';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, MediaTimeline, Profile } from '../../contracts';
 import { buildTimeline, searchOnline, mediaServerConfig, subscribeMediaServer, estimatedAnalysis, type OnlineProvider, matchesQuery, planMix, rateQueue, type QueueMode, type SongAnalysis, type SongMeta, PreviewPrefetch, type PartialPreview } from '../../media';
-import { analyzeStreamWindow, mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
+import { prepareStreamWindow, mediaLibrary, rollingMediaRun, unlockMedia } from '../services';
 import { onMenuPress } from '../menuInput';
 import { KeyHints, Spinner } from '../components/ui';
 import { Btn } from '../components/Bits';
@@ -42,6 +43,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     if (!resolver.enabled) return;
     searchAbort.current?.abort();
     const controller = new AbortController(); searchAbort.current = controller;
+    prefetch.current?.pause(true);
     setSearching(true); setOnlineError(''); setOnline([]);
     try {
       const songs = await searchOnline(provider, query, resolver, controller.signal);
@@ -83,12 +85,13 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
   const ready = queue.length > 0 && queued.length === queue.length && queued.every((m) => m.sourceUrl ? resolver.enabled && m.durationS > 0 : m.status === 'ready');
   const [starting, setStarting] = useState(false);
 
-  // Streamed songs: analyze the first chunk on enqueue for a partial preview (memory only; the ride fetches its own audio).
+  // Streamed songs: prepare playback on enqueue; hand completed audio and analysis to the ride at Start.
   const [, bumpPrefetch] = useState(0);
-  const makePrefetch = () => new PreviewPrefetch({ load: analyzeStreamWindow, onChange: () => bumpPrefetch((x) => x + 1) });
+  const makePrefetch = () => new PreviewPrefetch({ load: prepareStreamWindow, concurrency: 2, firstTrackWindows: Math.ceil(resolver.bufferS / 30), firstTrackFirst: true, onChange: () => bumpPrefetch((x) => x + 1) });
   const prefetch = useRef<PreviewPrefetch | null>(null);
   if (!prefetch.current) prefetch.current = makePrefetch();
-  useEffect(() => () => prefetch.current?.cancel(), []);
+  const pickerAlive = useRef(true);
+  useEffect(() => () => { pickerAlive.current = false; prefetch.current?.cancel(); }, []);
   useEffect(() => { prefetch.current?.setQueue(resolver.enabled ? queued : []); }, [queue.join('|'), resolver.enabled, queued.length]);
   useEffect(() => { prefetch.current?.pause(searching); }, [searching]);
   const partialOf = (m: SongMeta | undefined) => (m?.sourceUrl ? prefetch.current?.get(m.id) : undefined);
@@ -195,10 +198,10 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
     if (!ready) { toast(queued.length ? 'Waiting for analysis to finish…' : 'Add a song to the queue first'); sfx('deny'); return; }
     if (starting) return;
     stopPreview(); unlockMedia();
-    const seeds = prefetch.current?.seeds(); // reuse picker analysis in the ride (analysis only)
-    prefetch.current?.cancel();
     setStarting(true);
     try {
+    const seeds = await prefetch.current?.takeSeeds();
+    if (!pickerAlive.current) return;
     if (streaming) { onStart(await rollingMediaRun(queue, mode, seeds)); return; }
     const items = (await Promise.all(queue.map((id) => lib.mixItem(id)))).filter((i): i is NonNullable<typeof i> => !!i);
     const plan = planMix(items, mode);
@@ -309,6 +312,7 @@ export function MediaPicker({ game, profile, onStart, onBack }: { game: GameModu
           {timeline && game.mediaPreview && <GamePreview game={game} timeline={timeline} profile={profile} />}
           {rating && !streaming && <div class="mp-stats">{fmtTime(rating.durationS)} · {rating.songs} song{rating.songs === 1 ? '' : 's'} · {rating.drops} drop{rating.drops === 1 ? '' : 's'} · {rating.bpmMin === rating.bpmMax ? rating.bpmMin : `${rating.bpmMin}–${rating.bpmMax}`} bpm · <span class="mp-stars">{'★'.repeat(rating.stars)}<span class="dim">{'★'.repeat(5 - rating.stars)}</span></span></div>}
           {streaming && <div class="dim small">Estimated timing · duration-based crossfades · audio analyzed within the {resolver.bufferS}s buffer. Full-song difficulty is unknown until played.</div>}
+          {starting && <BufferProgress read={() => prefetch.current?.progress() ?? null} />}
           <Btn primary focused={zoneIs('queue') && focus.queue === queueRows(queued.length) - 1} disabled={!ready || starting} onClick={() => void start()}>
             {starting ? 'Preparing…' : ready ? '▶ Start ride' : streaming && !resolver.enabled ? 'Enable media server on Connect' : queued.length ? <><Spinner /> Preparing music…</> : 'Queue is empty'}
           </Btn>

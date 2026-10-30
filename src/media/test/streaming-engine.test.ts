@@ -64,3 +64,35 @@ it('recovers from a failed startup once the remaining short queue is analyzed', 
   readyThrough(80); tick();
   expect(engine.getState()).toBe('playing');
 });
+
+it('starts after four windows in two pairs and fills the configured six-window buffer while playing', async () => {
+  const ctx = audioContext(), starts: number[] = [];
+  const q = new RollingQueue([{ id: 'stream', title: '', artist: '', analysis: estimatedAnalysis(3000) }], 'continuous', 180,
+    async (_, start, duration) => {
+      starts.push(start); await new Promise(r => setTimeout(r, 30000));
+      return { buffer: { duration } as AudioBuffer, analysis: estimatedAnalysis(duration) };
+    }, 2);
+  const ranges: RangeSource = { prepare: q.prepare.bind(q), readyThrough: q.readyThrough.bind(q), windows: () => [],
+    evict: q.evict.bind(q), cancel: q.cancel.bind(q), dispose: q.dispose.bind(q), debug: q.debug.bind(q) };
+  engine = new MixEngine({ ctx: ctx as unknown as AudioContext, resolveUrl: async () => '' });
+  engine.load(q.plan, ranges); engine.preload();
+  const task = engine.start();
+  expect(starts).toEqual([0, 28]);
+  expect(engine.bufferProgress()).toEqual({ readyS: 0, targetS: 120 });
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(engine.getState()).toBe('starting');
+  expect(engine.bufferProgress()!.readyS).toBeCloseTo(60);
+  expect(engine.bufferProgress()!.targetS).toBe(120);
+  await vi.advanceTimersByTimeAsync(30000); await task;
+  expect(engine.getState()).toBe('playing');
+  expect(starts).toEqual([0, 28, 58, 88]);
+  expect(q.readyThrough(0)).toBe(120);
+  await vi.advanceTimersByTimeAsync(30100);
+  expect(starts).toEqual([0, 28, 58, 88, 118, 148]);
+  expect(q.readyThrough(0)).toBe(180);
+});
+it('clips progress to a short remaining queue and never reports more than 100 percent', async () => {
+  const { readyThrough } = setup(80);
+  readyThrough(100); await engine.start();
+  expect(engine.bufferProgress()).toEqual({ readyS: 80, targetS: 80 });
+});

@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { RollingQueue, estimatedAnalysis, mergeWindow } from '../online/rolling';
 import type { MixItem } from '../mix/plan';
 import { DEFAULT_STREAM_BUFFER_S } from '../online/buffer';
@@ -126,4 +126,102 @@ it('seeds preview analysis: coverage and beats from the start, audio still fetch
   const full = new RollingQueue([{ ...item('f'), analysis: { ...estimatedAnalysis(180), confidence: 'full' as const } }], 'automix', 60, async () => ({ buffer: buffer(32), analysis: analysis(32) }));
   expect(full.seed(0, [{ startS: 0, endS: 30, bufferStartS: 0, analysis: analysis(32), beats: [] }])).toBe(0);
   q.dispose(); full.dispose();
+});
+
+it('starts a 50-minute track from queued audio without any duplicate extraction', async () => {
+  let loads = 0;
+  const q = new RollingQueue([item('long', 3000)], 'continuous', 180, async (_, __, duration) => {
+    loads++; return { buffer: buffer(duration), analysis: analysis(duration) };
+  });
+  const windows = Array.from({ length: 6 }, (_, i) => ({ startS: i * 30, endS: (i + 1) * 30,
+    bufferStartS: Math.max(0, i * 30 - 2), buffer: buffer(i ? 34 : 32), analysis: analysis(i ? 34 : 32), beats: [] }));
+  expect(q.seed(0, windows)).toBe(6);
+  await q.prepare(0);
+  expect(loads).toBe(0); expect(q.readyThrough(0)).toBe(180);
+  await q.prepare(30); q.evict(63);
+  expect(loads).toBe(1);
+  expect(q.windows(q.plan.entries[0]).every(w => w.startS >= 60)).toBe(true);
+  q.dispose(); expect(q.windows(q.plan.entries[0])).toHaveLength(0);
+});
+it('refetches incomplete seeded audio and ignores malformed window offsets', async () => {
+  let loads = 0;
+  const q = new RollingQueue([item('a')], 'continuous', 60, async (_, __, duration) => {
+    loads++; return { buffer: buffer(duration), analysis: analysis(duration) };
+  });
+  q.seed(0, [{ startS: 0, endS: 30, bufferStartS: 0, buffer: buffer(3), analysis: analysis(32), beats: [] },
+    { startS: 30, endS: 60, bufferStartS: 0, buffer: buffer(34), analysis: analysis(34), beats: [] }]);
+  expect(q.readyThrough(0)).toBe(0);
+  await q.prepare(0); expect(loads).toBe(2); expect(q.readyThrough(0)).toBeCloseTo(60);
+});
+
+it('fetches pairs concurrently but analyzes and commits in order using the latest tempo', async () => {
+  type Prepared = (hint?: { bpm: number }) => Promise<{ buffer: AudioBuffer; analysis: ReturnType<typeof analysis> }>;
+  const calls: Array<{ start: number; signal: AbortSignal; resolve: (value: Prepared) => void }> = [];
+  const analyzed: Array<[number, number | undefined]> = [];
+  const q = new RollingQueue([item('a', 3000)], 'continuous', 180, (_, start, duration, signal) =>
+    new Promise<Prepared>(resolve => calls.push({ start, signal, resolve })), 2);
+  const task = q.prepare(0);
+  const flush = () => new Promise(r => setTimeout(r, 0));
+  const ready = (i: number) => calls[i].resolve(async hint => {
+    analyzed.push([i, hint?.bpm]); return { buffer: buffer(i ? 34 : 32), analysis: analysis(i ? 34 : 32) };
+  });
+  expect(calls.map(c => c.start)).toEqual([0, 28]);
+  ready(1); await flush();
+  expect(analyzed).toEqual([]); expect(q.readyThrough(0)).toBe(0);
+  ready(0); await flush();
+  expect(analyzed).toEqual([[0, undefined], [1, 120]]);
+  expect(calls.map(c => c.start)).toEqual([0, 28, 58, 88]);
+  ready(2); await flush(); expect(calls).toHaveLength(4);
+  ready(3); await flush(); expect(calls).toHaveLength(6);
+  ready(5); ready(4); await task;
+  expect(q.readyThrough(0)).toBe(180);
+  expect(analyzed.map(a => a[0])).toEqual([0, 1, 2, 3, 4, 5]);
+});
+
+it('aborts both parallel requests on cancellation and never commits their late results', async () => {
+  const calls: Array<{ signal: AbortSignal; resolve: (value: { buffer: AudioBuffer; analysis: ReturnType<typeof analysis> }) => void }> = [];
+  const q = new RollingQueue([item('a')], 'continuous', 60, (_, __, ___, signal) =>
+    new Promise(resolve => calls.push({ signal, resolve })), 2);
+  const task = q.prepare(0);
+  q.cancel(); expect(calls).toHaveLength(2); expect(calls.every(c => c.signal.aborted)).toBe(true);
+  for (const c of calls) c.resolve({ buffer: buffer(34), analysis: analysis(34) });
+  await task; expect(q.readyThrough(0)).toBe(0); expect(q.timeline.revision).toBe(0);
+});
+
+it('handles an early rejection in the second request and retries only missing windows', async () => {
+  let first!: (value: { buffer: AudioBuffer; analysis: ReturnType<typeof analysis> }) => void;
+  const calls: number[] = []; let fail = true;
+  const q = new RollingQueue([item('a')], 'continuous', 60, async (_, start, duration) => {
+    calls.push(start);
+    if (fail && start === 0) return new Promise(resolve => { first = resolve; });
+    if (fail) throw new Error('busy');
+    return { buffer: buffer(duration), analysis: analysis(duration) };
+  }, 2);
+  const task = q.prepare(0), rejected = expect(task).rejects.toThrow('busy');
+  await new Promise(r => setTimeout(r, 0));
+  first({ buffer: buffer(32), analysis: analysis(32) }); await rejected;
+  expect(q.readyThrough(0)).toBeCloseTo(30);
+  fail = false; await q.prepare(0);
+  expect(calls).toEqual([0, 28, 28]); expect(q.readyThrough(0)).toBeCloseTo(60);
+});
+
+it('prepares six 30-second-latency windows in three batches rather than six', async () => {
+  vi.useFakeTimers();
+  try {
+    const elapsed: number[] = [];
+    for (const concurrency of [1, 2] as const) {
+      let active = 0, peak = 0;
+      const q = new RollingQueue([item('long', 3000)], 'continuous', 180, async (_, __, duration) => {
+        peak = Math.max(peak, ++active);
+        await new Promise(r => setTimeout(r, 30000)); active--;
+        return { buffer: buffer(duration), analysis: analysis(duration) };
+      }, concurrency);
+      const before = Date.now(), task = q.prepare(0);
+      await vi.runAllTimersAsync(); await task;
+      elapsed.push(Date.now() - before);
+      expect(peak).toBe(concurrency); expect(q.readyThrough(0)).toBe(180);
+      q.dispose();
+    }
+    expect(elapsed).toEqual([180000, 90000]);
+  } finally { vi.useRealTimers(); }
 });

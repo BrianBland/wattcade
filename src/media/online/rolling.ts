@@ -1,3 +1,4 @@
+import { orderedLoads } from './ordered';
 import type { MediaCoverage, MediaTimeline } from '../../contracts';
 import { freezeHorizon, freezeMerge, songCoverage } from './freeze';
 import { ANALYSIS_VERSION, CURVE_HZ, type QueueMode, type SongAnalysis } from '../types';
@@ -9,7 +10,7 @@ import { planMix, progTime, songTime, type MixItem, type PlanEntry } from '../mi
 export const CHUNK_S = 30, CONTEXT_S = 2;
 export interface AudioWindow { startS: number; endS: number; bufferStartS: number; buffer: AudioBuffer }
 export interface RangeSource {
-  prepare(p: number): Promise<void>;
+  prepare(p: number, targetS?: number): Promise<void>;
   windows(e: PlanEntry): AudioWindow[];
   readyThrough(p: number): number;
   evict(p: number): void;
@@ -20,9 +21,9 @@ export interface RangeSource {
   announce?(id: string, t: number): void;
 }
 export interface WindowResult { buffer: AudioBuffer; analysis: SongAnalysis; /** Per-beat features (times relative to the buffer start). */ beats?: BeatFeature[] }
-/** A window already analysed elsewhere (picker preview), in the ride's own format; seeds analysis, never audio. */
-export interface SeedWindow { startS: number; endS: number; bufferStartS: number; analysis: SongAnalysis; beats: BeatFeature[] }
-export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) => Promise<WindowResult>;
+/** A window already analysed elsewhere (picker preview), in the ride's own format; seeds analysis and, when retained, decoded audio. */
+export interface SeedWindow { startS: number; endS: number; bufferStartS: number; analysis: SongAnalysis; beats: BeatFeature[]; buffer?: AudioBuffer }
+export type WindowLoader = (index: number, startS: number, durationS: number, signal: AbortSignal, hint?: { bpm: number }) => Promise<WindowResult | ((hint?: { bpm: number }) => Promise<WindowResult>)>;
 
 /** Honest placeholders: no invented beats or drops; only duration is known. */
 export function estimatedAnalysis(durationS: number): SongAnalysis {
@@ -126,11 +127,13 @@ export class RollingQueue implements RangeSource {
   private controller = new AbortController();
   private busy: Promise<void> | null = null;
   private wantedP = 0;
+  private wantedBufferS: number;
   private error = '';
   private alive = true;
   private announced = new Map<string, number>();
   private analysed = new Map<number, Array<[number, number]>>();
-  constructor(readonly items: MixItem[], mode: QueueMode, readonly bufferS: number, private load: WindowLoader) {
+  constructor(readonly items: MixItem[], mode: QueueMode, readonly bufferS: number, private load: WindowLoader, private concurrency: 1 | 2 = 1) {
+    this.wantedBufferS = bufferS;
     this.plan = planMix(items, mode === 'continuous' ? mode : 'crossfade');
     this.plan.mode = mode;
     for (const t of this.plan.transitions) t.why = 'Estimated from song duration; rolling analysis does not claim phrase or beat matching.';
@@ -139,8 +142,7 @@ export class RollingQueue implements RangeSource {
   private key(index: number, start: number) { return `${index}:${start}`; }
   /**
    * Reuse preview analysis (#64 PR 5): commit already-analysed windows of item `index` so coverage and structure are there
-   * from the start. Only windows on the ride's own chunk grid, before any audio, on estimated (streamed) items. Audio for
-   * those windows is still fetched for playback, but is not re-analysed (the committed analysis stays put).
+   * from the start. Only windows on the ride's own chunk grid, before any audio, on estimated (streamed) items. Retained audio enters the playback cache directly, avoiding extraction, decoding and analysis again.
    */
   seed(index: number, windows: readonly SeedWindow[]): number {
     const item = this.items[index]; if (!item || item.analysis.confidence !== 'metadata') return 0;
@@ -149,6 +151,12 @@ export class RollingQueue implements RangeSource {
       const key = this.key(index, w.startS);
       const onGrid = Math.abs(w.startS / CHUNK_S - Math.round(w.startS / CHUNK_S)) < 1e-6 && Math.abs(w.endS - Math.min(item.analysis.durationS, w.startS + CHUNK_S)) < 0.5;
       if (!onGrid || this.committed.has(key)) continue;
+      const bufferStart = Math.max(0, w.startS - CONTEXT_S);
+      if (w.startS < 0 || w.endS <= w.startS || Math.abs(w.bufferStartS - bufferStart) > 1e-6) continue;
+      const tolerance = w.endS === item.analysis.durationS ? 1 : 0.1;
+      if (w.buffer && w.buffer.duration + tolerance >= w.endS - bufferStart) {
+        this.cache.set(key, { startS: w.startS, endS: w.endS, bufferStartS: w.bufferStartS, buffer: w.buffer });
+      }
       mergeWindow(item.analysis, w.analysis, w.bufferStartS, w.startS, w.endS, w.beats);
       this.committed.add(key); n++;
       const spans = this.analysed.get(index) ?? []; spans.push([w.startS, w.endS]); this.analysed.set(index, spans);
@@ -157,9 +165,10 @@ export class RollingQueue implements RangeSource {
     return n;
   }
   windows(e: PlanEntry): AudioWindow[] { return [...this.cache.entries()].filter(([k]) => k.startsWith(`${e.index}:`)).map(([, w]) => w).sort((a, b) => a.startS - b.startS); }
-  prepare(p: number): Promise<void> {
+  prepare(p: number, targetS = this.bufferS): Promise<void> {
     if (!this.alive) return Promise.reject(new Error('Media queue was closed.'));
     this.wantedP = p;
+    this.wantedBufferS = Math.min(this.bufferS, Math.max(0, targetS));
     if (this.busy) return this.busy;
     const task = this.pump().finally(() => { if (this.busy === task) this.busy = null; });
     this.busy = task; return task;
@@ -167,8 +176,8 @@ export class RollingQueue implements RangeSource {
   private async pump() {
     const controller = this.controller;
     while (this.alive && controller === this.controller) {
-      const p = this.wantedP, horizon = Math.min(this.plan.durationS, p + this.bufferS);
-      let pending: { e: PlanEntry; start: number; end: number; due: number } | undefined;
+      const p = this.wantedP, horizon = Math.min(this.plan.durationS, p + this.wantedBufferS);
+      const pending: Array<{ e: PlanEntry; start: number; end: number; due: number }> = [];
       for (const e of this.plan.entries) {
         if (e.endP <= p || e.startP >= horizon) continue;
         const duration = this.items[e.index].analysis.durationS;
@@ -176,28 +185,40 @@ export class RollingQueue implements RangeSource {
         for (let start = from; start < Math.min(duration, songTime(e.segs, horizon)) - 1e-5; start += CHUNK_S) {
           if (this.cache.has(this.key(e.index, start))) continue;
           const due = progTime(e.segs, start);
-          if (!pending || due < pending.due) pending = { e, start, end: Math.min(duration, start + CHUNK_S), due };
-          break;
+          pending.push({ e, start, end: Math.min(duration, start + CHUNK_S), due });
+          if (pending.filter(w => w.e === e).length >= this.concurrency) break;
         }
       }
-      if (!pending) { this.error = ''; return; }
-      const { e, start, end } = pending, bufferStart = Math.max(0, start - CONTEXT_S);
-      const requestedEnd = Math.min(this.items[e.index].analysis.durationS, end + CONTEXT_S);
+      if (!pending.length) { this.error = ''; return; }
+      const batch = pending.sort((a, b) => a.due - b.due).slice(0, this.concurrency);
+      const abort = new AbortController(), cancel = () => abort.abort();
+      controller.signal.addEventListener('abort', cancel, { once: true });
+      const hint = (index: number) => this.items[index].analysis.bpm > 0 ? { bpm: this.items[index].analysis.bpm } : undefined;
+      const loads = orderedLoads(batch.map(({ e, start, end }) => () => {
+        const bufferStart = Math.max(0, start - CONTEXT_S);
+        return this.load(e.index, bufferStart, Math.min(this.items[e.index].analysis.durationS, end + CONTEXT_S) - bufferStart, abort.signal, hint(e.index));
+      }));
       try {
-        const result = await this.load(e.index, bufferStart, requestedEnd - bufferStart, controller.signal, this.items[e.index].analysis.bpm > 0 ? { bpm: this.items[e.index].analysis.bpm } : undefined);
-        if (!this.alive || controller !== this.controller) return;
-        // Search durations can be rounded to whole seconds. Only the final window may end slightly early.
-        const tolerance = end === this.items[e.index].analysis.durationS ? 1 : 0.1;
-        if (result.buffer.duration + tolerance < end - bufferStart) throw new Error('The server returned an incomplete audio window.');
-        const key = this.key(e.index, start);
-        this.cache.set(key, { startS: start, endS: end, bufferStartS: bufferStart, buffer: result.buffer });
-        if (!this.committed.has(key)) {
-          mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
-          this.committed.add(key);
-          const spans = this.analysed.get(e.index) ?? []; spans.push([start, end]); this.analysed.set(e.index, spans);
-          this.revise(Math.max(0, progTime(e.segs, start)));
+        for (const [i, { e, start, end }] of batch.entries()) {
+          const bufferStart = Math.max(0, start - CONTEXT_S), loaded = await loads[i]();
+          if (!this.alive || controller !== this.controller) return;
+          // Fetches overlap; analysis waits for the previous commit's tempo estimate.
+          const result = typeof loaded === 'function' ? await loaded(hint(e.index)) : loaded;
+          if (!this.alive || controller !== this.controller) return;
+          // Search durations can be rounded to whole seconds. Only the final window may end slightly early.
+          const tolerance = end === this.items[e.index].analysis.durationS ? 1 : 0.1;
+          if (result.buffer.duration + tolerance < end - bufferStart) throw new Error('The server returned an incomplete audio window.');
+          const key = this.key(e.index, start);
+          this.cache.set(key, { startS: start, endS: end, bufferStartS: bufferStart, buffer: result.buffer });
+          if (!this.committed.has(key)) {
+            mergeWindow(this.items[e.index].analysis, result.analysis, bufferStart, start, end, result.beats);
+            this.committed.add(key);
+            const spans = this.analysed.get(e.index) ?? []; spans.push([start, end]); this.analysed.set(e.index, spans);
+            this.revise(Math.max(0, progTime(e.segs, start)));
+          }
         }
       } catch (e) { if (controller !== this.controller || !this.alive) return; this.error = e instanceof Error ? e.message : String(e); throw e; }
+      finally { controller.signal.removeEventListener('abort', cancel); abort.abort(); }
     }
   }
   /** Apply a new revision under the freeze horizon (playhead + 3 s floor over analysed time, plus every announced cue). */

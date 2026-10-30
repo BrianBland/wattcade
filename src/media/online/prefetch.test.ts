@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { SongMeta } from '../library/store';
 import type { SongAnalysis } from '../types';
 import { estimatedAnalysis } from './rolling';
-import { PreviewPrefetch } from './prefetch';
+import { PreviewPrefetch, type PrefetchOptions } from './prefetch';
 
 const song = (id: string, durationS = 200, online = true): SongMeta => ({ id, source: 'youtube', title: id, artist: 'A', durationS, addedAt: 0, status: 'remote', ...(online ? { sourceUrl: `https://www.youtube.com/watch?v=${id}` } : {}) });
 const win = (d: number): SongAnalysis => ({ ...estimatedAnalysis(d), bpm: 128, key: { name: 'A minor', camelot: '8A', confidence: 0.7 }, beats: [0.5, 1, 30], sections: [{ t0: 0, t1: d, kind: 'drop', energy: 0.9 }], spec: { hz: 2, bands: 2, data: 'AAAA' } });
-function rig(o: { firstTrackWindows?: number } = {}) {
-  const calls: Array<{ id: string; start: number; dur: number; signal: AbortSignal; resolve: (a: SongAnalysis | { analysis: SongAnalysis; beats?: never[] }) => void; hint?: { bpm: number }; reject: (e: unknown) => void }> = [];
+function rig(o: Partial<Pick<PrefetchOptions, 'firstTrackWindows' | 'firstTrackFirst' | 'maxAudioBytes' | 'concurrency'>> = {}) {
+  const calls: Array<{ id: string; start: number; dur: number; signal: AbortSignal; resolve: (a: SongAnalysis | { analysis: SongAnalysis; beats?: never[]; buffer?: AudioBuffer }) => void; hint?: { bpm: number }; reject: (e: unknown) => void }> = [];
   const timers: Array<() => void> = []; let changes = 0;
   const pf = new PreviewPrefetch({ ...o, retryMs: 10, onChange: () => changes++, setTimer: (fn) => { timers.push(fn); return fn; }, clearTimer: () => {},
     load: (m, start, dur, signal, hint) => new Promise((resolve, reject) => calls.push({ id: m.id, start, dur, signal, resolve, reject, hint })) });
@@ -74,4 +74,57 @@ describe('PreviewPrefetch', () => {
     expect([...seeds.keys()]).toEqual(['a']);
     expect(seeds.get('a')!.map((w) => [w.startS, w.endS, w.bufferStartS])).toEqual([[0, 30, 0], [30, 60, 28]]);
   });
+});
+
+it('prepares the full opening horizon first and transfers the in-flight audio at Start', async () => {
+  const { pf, calls, flush } = rig({ firstTrackWindows: 6, firstTrackFirst: true });
+  const buffer = { duration: 34, length: 34 * 44100, numberOfChannels: 2 } as AudioBuffer;
+  pf.setQueue([song('long', 3000), song('next')]);
+  for (let i = 0; i < 5; i++) {
+    calls[i].resolve({ analysis: win(34), beats: [], buffer }); await flush();
+  }
+  expect(calls.map(c => c.id)).toEqual(Array(6).fill('long'));
+  const transfer = pf.takeSeeds();
+  expect(calls[5].signal.aborted).toBe(false);
+  calls[5].resolve({ analysis: win(34), beats: [], buffer });
+  const seeds = await transfer;
+  expect(seeds.get('long')).toHaveLength(6);
+  expect(seeds.get('long')!.every(w => w.buffer === buffer)).toBe(true);
+  expect(calls).toHaveLength(6);
+  expect(pf.get('long')).toBeUndefined();
+});
+it('bounds retained PCM while preserving analysis-only seeds', async () => {
+  const { pf, calls, flush } = rig({ firstTrackWindows: 2, maxAudioBytes: 8 });
+  const buffer = { duration: 34, length: 2, numberOfChannels: 1 } as AudioBuffer;
+  pf.setQueue([song('a')]);
+  calls[0].resolve({ analysis: win(32), beats: [], buffer }); await flush();
+  calls[1].resolve({ analysis: win(34), beats: [], buffer }); await flush();
+  expect(pf.seeds().get('a')!.map(w => w.buffer)).toEqual([buffer, undefined]);
+  pf.setQueue([]); expect(pf.seeds().size).toBe(0);
+});
+
+it('hands off both parallel windows in order, using the first window tempo for the second', async () => {
+  type Prepared = (hint?: { bpm: number }) => Promise<{ analysis: SongAnalysis; beats: never[] }>;
+  const calls: Array<{ signal: AbortSignal; resolve: (value: Prepared) => void }> = [];
+  const hints: Array<number | undefined> = [];
+  const pf = new PreviewPrefetch({ firstTrackWindows: 6, concurrency: 2,
+    load: (_, __, ___, signal) => new Promise<Prepared>(resolve => calls.push({ signal, resolve })) });
+  pf.setQueue([song('a')]); expect(calls).toHaveLength(2);
+  const transfer = pf.takeSeeds();
+  calls[1].resolve(async hint => { hints.push(hint?.bpm); return { analysis: win(34), beats: [] }; });
+  await new Promise(r => setTimeout(r, 0));
+  expect(pf.get('a')!.coveredS).toBe(0);
+  calls[0].resolve(async hint => { hints.push(hint?.bpm); return { analysis: win(32), beats: [] }; });
+  expect((await transfer).get('a')!.map(w => w.startS)).toEqual([0, 30]);
+  expect(hints).toEqual([undefined, 128]); expect(calls).toHaveLength(2);
+});
+
+it('pausing cancels both preview requests and discards late completions', async () => {
+  const { pf, calls, flush } = rig({ firstTrackWindows: 6, concurrency: 2 });
+  pf.setQueue([song('a')]); expect(calls).toHaveLength(2);
+  pf.pause(true); expect(calls.every(c => c.signal.aborted)).toBe(true);
+  calls[1].resolve(win(34)); calls[0].resolve(win(32)); await flush();
+  expect(pf.get('a')!.coveredS).toBe(0);
+  pf.pause(false); expect(calls.map(c => c.start)).toEqual([0, 28, 0, 28]);
+  pf.cancel();
 });

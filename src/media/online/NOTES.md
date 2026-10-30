@@ -6,3 +6,11 @@
 - Connection UI reports persistent storage write failures and explains local token storage.
 - Regression coverage: browser session end, legacy migration, token clearing, unavailable
   session storage, write failure, and connection form edits followed by remount.
+
+## Streaming startup
+- Picker prepares the opening buffer on enqueue; retains up to 128 MiB decoded audio and transfers it with analysis at Start.
+- Two range fetches per batch, ordered analysis/commits so tempo hints and contiguous coverage stay stable.
+- Start/preload request 120s (or queue end); playback fills the configured 120–240s horizon. Pause/resume remain 90/120s.
+- Failures preserve committed windows; cancellation discards late results and aborts both outstanding requests.
+- Search retries transient 429s while cancelled extraction slots release.
+- Tests cover zero duplicate loads, bounds, order, cancellation, retry, simulated latency and engine startup/recovery.

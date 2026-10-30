@@ -20,7 +20,18 @@ export async function resolverRequest(config: ResolverConfig, route: string, bod
   return r;
 }
 export async function searchOnline(provider: OnlineProvider, query: string, config = resolverConfig(), signal?: AbortSignal): Promise<SongMeta[]> {
-  const r = await resolverRequest(config, 'search', { provider, query }, signal);
+  let r: Response | undefined;
+  for (let attempt = 0; ; attempt++) {
+    try { r = await resolverRequest(config, 'search', { provider, query }, signal); break; }
+    catch (e) {
+      if ((e as { status?: number }).status !== 429 || attempt >= 3 || signal?.aborted) throw e;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(new DOMException('Search cancelled', 'AbortError')); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, 250 * (attempt + 1));
+        signal?.addEventListener('abort', abort, { once: true });
+      });
+    }
+  }
   const body = await r.json();
   if (!Array.isArray(body.tracks)) throw new Error('Invalid audio resolver response.');
   return body.tracks.map((t: any) => {

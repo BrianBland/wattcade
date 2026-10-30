@@ -51,7 +51,9 @@ export function resolverServer(o: Options) {
         if (typeof data.url !== 'string' || data.url.length > 2048) throw new Error('Invalid track URL.');
         const ranged = req.url === '/chunk';
         if (ranged && (typeof data.startS !== 'number' || typeof data.durationS !== 'number')) throw new Error('Invalid audio range.');
-        const audio = ranged ? await (o.extractRange ?? extractRange)(data.url, data.startS as number, data.durationS as number) : await (o.extractAudio ?? extractAudio)(data.url);
+        const abort = new AbortController();
+        res.on('close', () => { if (!res.writableFinished) abort.abort(); });
+        const audio = ranged ? await (o.extractRange ?? extractRange)(data.url, data.startS as number, data.durationS as number, undefined, abort.signal) : await (o.extractAudio ?? extractAudio)(data.url);
         res.writeHead(200, { 'Content-Type': ranged ? 'audio/wav' : 'audio/mpeg', 'Content-Length': audio.length }); res.end(audio);
       }
     } catch (e) { if (!res.headersSent) json(400, { error: e instanceof Error ? e.message : 'Resolver failed.' }); }

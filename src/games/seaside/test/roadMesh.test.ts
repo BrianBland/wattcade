@@ -94,6 +94,22 @@ describe('graded voxel road', () => {
     }
   });
 
+  it('keeps matching top edges between rows with different colour runs', () => {
+    const v = 0.25, seam = 20 + v;
+    const varied: CorridorDef = { ...c, surface: (d, s) => ({ dy: 0,
+      c: s < seam || Math.floor(d / v) % 2 === 0 ? PAL.idx.asphalt : PAL.idx.gravel }) };
+    const m = meshRoad(route, varied, 20, 20.5, v, PAL.linear);
+    const edges = [new Set<number>(), new Set<number>()];
+    for (let i = 0; i < m.positions.length / 3; i += 4) {
+      if (m.normals[i * 3 + 1] < 0.5) continue;
+      const ss = [0, 1, 2, 3].map((k) => m.voxL![(i + k) * 3 + 2]);
+      const side = Math.min(...ss) < seam ? 0 : 1;
+      for (let k = 0; k < 4; k++) if (ss[k] === seam) edges[side].add(m.voxL![(i + k) * 3]);
+    }
+    expect(edges[0].size).toBeGreaterThan(2);
+    expect([...edges[0]].sort((a, b) => a - b)).toEqual([...edges[1]].sort((a, b) => a - b));
+  });
+
   it('retains baked sun attributes and leaves the plank section on the voxel path', () => {
     const m = meshRoad(route, c, 0, 2, 0.125, PAL.linear, () => 0.5);
     expect(m.sunVis?.length).toBe(m.positions.length / 3);

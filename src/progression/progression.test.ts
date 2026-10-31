@@ -28,6 +28,20 @@ describe('levels', () => {
 });
 
 describe('awardSession', () => {
+  it('preserves earned dungeon rewards but does not reuse old floor-entry progress', () => {
+    const p = defaultProfile();
+    p.achievements = ['dg_floor5', 'dg_full_arsenal', 'dg_perfect_exposure'];
+    p.counters = { 'dungeon.bestFloor': 30 };
+    const r = awardSession(p, rec({ gameSummary: { 'Deepest floor': 30 } }));
+    expect(r.profile.achievements).toEqual(expect.arrayContaining(p.achievements));
+    expect(r.profile.achievements).not.toContain('dg_floor10');
+    expect(r.profile.achievements).not.toContain('dg_floor20');
+    expect(r.profile.counters?.['dungeon.bestClearedFloor']).toBe(0);
+    expect(r.newAchievements.map(a => a.id)).not.toContain('dg_floor5');
+    const cleared = awardSession(r.profile, rec({ events: [{ t: 100, type: 'bossDefeated', data: { floor: 15 } }] }));
+    expect(cleared.newAchievements.map(a => a.id)).toContain('dg_floor10');
+    expect(cleared.profile.counters?.['dungeon.bestClearedFloor']).toBe(15);
+  });
   it.each([
     ['an immediate exit', 0, 0],
     ['a short ride', 119, 119],
@@ -78,7 +92,8 @@ describe('awardSession', () => {
   it('event/summary achievements', () => {
     const p = defaultProfile();
     const r = awardSession(p, rec({
-      events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } }],
+      events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } },
+        ...Array.from({ length: 75 }, (_, i) => ({ t: i + 3, type: 'kill', data: { elite: true } }))],
       gameSummary: { 'Elites slain': 75 },
     }, { sprints: 10, kj: 2500 }));
     const ids = r.newAchievements.map((a) => a.id);

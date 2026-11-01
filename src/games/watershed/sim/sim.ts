@@ -1,5 +1,5 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
-import { bandMid, makePlan, planAt, RIDE_BLURB, RIDE_LENGTHS, type Block, type Phase, type Style } from './plan';
+import { bandMid, makePlan, planAt, planMinutes, RIDE_BLURB, RIDE_LENGTHS, type Block, type Phase, type Style } from './plan';
 import { DEFAULT_SKY, Sky, type Puff, type SunSpot } from './sky';
 import type { WatershedSave } from '../card';
 import { makeTerrain, NX, type Terrain } from './terrain';
@@ -8,8 +8,11 @@ import { Jobs, type Dam, type Field, type Mill, type Objective } from './objecti
 import { dealEvents, GeoEvents, type EventKind, type GeoEvent } from './events';
 import { DEFAULT_WATER, Water, type Emit, type WaterParams } from './water';
 
-/** `length` (minutes) skips the pre-game menu; `menu: false` skips it with the saved/default length. */
-export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number; length?: number; menu?: boolean; /** force the geological event deck (else dealt from the seed) */ events?: EventKind[] }
+/**
+ * `length` (minutes) skips the pre-game menu; `menu: false` skips it with the saved/default length. `skipWarmup`
+ * starts at the rain (the menu's default; the rider can toggle it there).
+ */
+export interface WatershedOpts { seed?: number; autopilot?: boolean; terrainSeed?: number; length?: number; menu?: boolean; skipWarmup?: boolean; /** force the geological event deck (else dealt from the seed) */ events?: EventKind[] }
 
 export interface WatershedSnapshot {
   t: number; over: boolean;
@@ -26,7 +29,8 @@ export interface WatershedSnapshot {
   cadence: number; cadNorm: number; rpmLow: number; rpmHigh: number; dropVol: number; inBand: boolean; bandBonus: number;
   carved: number; delta: number; deepestCut: number; toSea: number; bandS: number;
   /** The pre-game ride-length menu (null once the ride has started). */
-  menu: { sel: number; left: number; options: Array<{ minutes: number; blurb: string; blocks: Array<{ phase: Phase; minutes: number }> }> } | null;
+  menu: { sel: number; left: number; skipWarmup: boolean; /** `length` = the menu choice; `minutes` = what the ride actually lasts (shorter without the warm-up). */
+    options: Array<{ length: number; minutes: number; blurb: string; blocks: Array<{ phase: Phase; minutes: number }> }> } | null;
   /** Geological events this ride (pending/warning/active/done), and the ground-material grid (lava/scorched/debris). */
   events: Array<Omit<GeoEvent, 'edits' | 'marks'>>;
   mat: Uint8Array;
@@ -67,6 +71,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   const tn = ctx.tuning;
   const tun = {
     planScale: tn.num('planScale', 1, 0.1, 2, 0.05, 'Multiply every block length (1 = the 45 min ride)'),
+    warmCloud: tn.num('warmCloud', 90, 0, 200, 5, 'Cloud size a skipped warm-up starts the rain with'),
     flowPerFtp: tn.num('flowPerFtp', 16, 2, 60, 1, 'Water volume per second at 1.0 FTP'),
     volHeavy: tn.num('volHeavy', 0.6, 0.1, 2, 0.02, 'Parcel volume at low cadence (heavy, carving)'),
     volLight: tn.num('volLight', 0.2, 0.05, 1, 0.01, 'Parcel volume at high cadence (light, fast)'),
@@ -101,11 +106,12 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   // ride length: chosen in the pre-game menu (or given in opts); the plan is rebuilt for it
   const prevSave = ctx.load<WatershedSave>() ?? {};
   let rideMin = opts.length ?? prevSave.lastLength ?? 45;
-  let plan: Block[] = makePlan(rideMin);
-  let rideS = rideMin * 60 * scale;
+  let skipWarmup = !!opts.skipWarmup;
+  let plan: Block[] = makePlan(rideMin, skipWarmup);
+  let rideS = planMinutes(plan) * 60 * scale;
   let menu = opts.length === undefined && !opts.autopilot && opts.menu !== false;
   let menuSel = Math.max(0, RIDE_LENGTHS.indexOf(rideMin as (typeof RIDE_LENGTHS)[number])), menuT = 0;
-  const pendingActions: Array<{ type?: string; minutes?: number }> = [];
+  const pendingActions: Array<{ type?: string; minutes?: number; skip?: boolean }> = [];
 
   let t = 0, sourceX = NX / 2, bandS = 0, bonus = 0, lastBlock = -1;
   let cadence = 0, cadNorm = 0.5, dropVol = 0.3, inBand = false;
@@ -122,6 +128,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let forkCued = false;
   const jobs = new Jobs(terrain);
   const geo = new GeoEvents(terrain, menu ? [] : dealEvents(terrainSeed, plan, opts.events), terrainSeed);
+  if (!menu && skipWarmup) sky.preset(tun.warmCloud());
   /** Max water depth within ~4 cells (cheap: 9 samples). */
   const nearW = (x: number, y: number) => {
     let m = 0;
@@ -172,12 +179,13 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
 
   let bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
   const startRide = () => {
-    rideMin = RIDE_LENGTHS[menuSel]; plan = makePlan(rideMin); rideS = rideMin * 60 * scale;
+    rideMin = RIDE_LENGTHS[menuSel]; plan = makePlan(rideMin, skipWarmup); rideS = planMinutes(plan) * 60 * scale;
+    if (skipWarmup) sky.preset(tun.warmCloud());
     geo.events = dealEvents(terrainSeed, plan, opts.events);
     bandedS = plan.reduce((a, b) => a + (b.rpm ? b.minutes * 60 * scale : 0), 0);
     menu = false;
     ctx.save({ ...(ctx.load<WatershedSave>() ?? {}), lastLength: rideMin });
-    cue('rideLength', { minutes: rideMin });
+    cue('rideLength', { minutes: rideMin, skipWarmup });
   };
   /** The ride score: every phase of the cycle counts. */
   const score = () => Math.max(0, Math.round(sky.vapor * 2 + sky.puffsCaught * 20 + sky.rained * 0.05 + carved / 20 + delta / 20
@@ -201,7 +209,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   const sim = {
     update(dt: Seconds) {
       if (menu) {
-        // pre-game menu: pick the ride length (◀▶ / ▲▼ / shifters, A starts, or taps); auto-starts after 25 s
+        // pre-game menu: pick the ride length (◀▶ / ▲▼ / shifters, Y toggles the warm-up, A starts, or taps); auto-starts after 25 s
         ctx.resistance.clear('flow');
         const input = ctx.input();
         let move = 0;
@@ -210,9 +218,11 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           if (p === 'left' || p === 'up' || p === 'shiftUpL' || p === 'shiftDnL') move--;
         }
         if (move) { menuSel = clamp(menuSel + move, 0, RIDE_LENGTHS.length - 1); cue('menuMove', undefined, false); }
+        if (input.pressed.has('y')) { skipWarmup = !skipWarmup; cue('menuMove', undefined, false); }
         let go = input.pressed.has('a');
         for (const a of pendingActions.splice(0)) {   // taps win over a same-tick d-pad move
           if (a.type === 'length' && typeof a.minutes === 'number') { const k = RIDE_LENGTHS.indexOf(a.minutes as (typeof RIDE_LENGTHS)[number]); if (k >= 0) menuSel = k; }
+          if (a.type === 'warmup') skipWarmup = typeof a.skip === 'boolean' ? a.skip : !skipWarmup;
           if (a.type === 'start') go = true;
         }
         menuT += dt;
@@ -352,7 +362,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       ctx.debug('watershed.carved', Math.round(carved)); ctx.debug('watershed.delta', Math.round(delta));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length', shortLabel: 'Length' }, { button: 'a', label: 'Start' }] };
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length', shortLabel: 'Length' }, { button: 'y', label: skipWarmup ? 'Include warm-up' : 'Skip warm-up', shortLabel: 'Warm-up' }, { button: 'a', label: 'Start' }] };
       const b = planAt(t, scale, plan).block;
       const fish = salmon.active;
       const label = { grind: 'Grind', spin: 'Spin', steady: b.phase === 'evaporate' ? 'Spin' : 'Steady', salmon: salmon.needLeap ? 'Leap: 95+' : 'Swim', free: 'Easy' }[b.style];
@@ -380,7 +390,10 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         blocks: plan.map((b) => ({ name: b.name, style: b.style, minutes: b.minutes * scale })),
         rideS, cadence, cadNorm, rpmLow: tun.rpmLow(), rpmHigh: tun.rpmHigh(), dropVol, inBand, bandBonus: bonus,
         carved, delta, deepestCut, toSea: water.stats.toSea, bandS,
-        menu: menu ? { sel: menuSel, left: Math.max(0, 25 - menuT), options: RIDE_LENGTHS.map((m) => ({ minutes: m, blurb: RIDE_BLURB[m], blocks: makePlan(m).map((b) => ({ phase: b.phase, minutes: b.minutes })) })) } : null,
+        menu: menu ? {
+          sel: menuSel, left: Math.max(0, 25 - menuT), skipWarmup,
+          options: RIDE_LENGTHS.map((m) => { const p = makePlan(m, skipWarmup); return { length: m, minutes: planMinutes(p), blurb: RIDE_BLURB[m], blocks: p.map((b) => ({ phase: b.phase, minutes: b.minutes })) }; }),
+        } : null,
         events: geo.events.map(({ edits, marks, ...e }) => (void edits, void marks, e)), mat: geo.mat,
         phase: at.block.phase, view, springs: [{ x: sourceX, share: springs[0].share }, ...springs.slice(1)], boost: { active: boostT > 0, ready: boostCd <= 0, cd: boostCd, total: BOOST_CD },
         sky: { vapor: sky.vapor, x: sky.x, y: sky.y, size: sky.size, radius: sky.radius, seaY: sky.seaY, inSun: sky.inSun, sun: sky.sun, puffs: sky.puffs, caught: sky.puffsCaught, rained: sky.rained, raining, springX: sky.springX() },
@@ -395,7 +408,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     },
     isOver: () => !menu && t >= rideS,
     inMenu: () => menu,
-    receive(a: unknown) { if (pendingActions.length < 8 && a && typeof a === 'object') pendingActions.push(a as { type?: string; minutes?: number }); },
+    receive(a: unknown) { if (pendingActions.length < 8 && a && typeof a === 'object') pendingActions.push(a as { type?: string; minutes?: number; skip?: boolean }); },
     summary() {
       measure();
       const banded = bandedS;

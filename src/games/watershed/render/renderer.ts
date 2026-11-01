@@ -354,7 +354,7 @@ export class WatershedRenderer implements GameRenderer {
         case 'springRises': this.popup('intro'); play('splash'); play('chime', { vol: 0.8 }); break;
         case 'cloudlet': play('pickup', { vol: 0.6 }); break;
         case 'menuMove': play('uiMove'); break;
-        case 'rideLength': play('uiSelect'); this.popup('evaporate'); break;
+        case 'rideLength': play('uiSelect'); if (!d.skipWarmup) this.popup('evaporate'); break;   // else the rain block's popup greets
         case 'objective': this.hud?.popup(String(d.title), String(d.goal), 5); play('horn', { vol: 0.5 }); break;
         case 'objectiveDone': this.hud?.popup('Done! ✓', JOB_DONE[String(d.kind)] ?? 'Nice work', 3, 'salmon'); play('reward'); break;
         case 'objectiveFailed': this.hud?.popup('Missed it', JOB_MISS[String(d.kind)] ?? 'Next time', 3, 'warn'); play('deny', { vol: 0.5 }); break;

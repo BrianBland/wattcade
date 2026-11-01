@@ -15,7 +15,8 @@ export interface EngineDom {
   };
 }
 
-export interface LevelInfo { id: string; name: string; chapter?: string }
+/** `item` is the campaign entry it was built from: a level id, '<tier>:<seed>' or 'cg:<seed>' (see ../campaign.ts). */
+export interface LevelInfo { id: string; name: string; chapter?: string; item?: string }
 export interface MachineInfo { key: 'a' | 'b' | 'y' | 'z'; name: string; on: boolean }
 
 export interface EngineHooks {
@@ -44,4 +45,14 @@ export interface PenroseEngine {
   /** Advance the level without drawing (scripted checks). */
   simulate(dt: number): void;
   dispose(): void;
+  /** Level-design tooling (seed sweeps, previews, the screen audit); used by scripts/penrose-*.mjs through dev/penrose.html. */
+  tools: {
+    tiers(): Array<{ index: number; id: string; label: string; zone: number }>;
+    candidates(tier: number, seeds: number[]): unknown[];
+    plan(tier: number, seed: number): unknown;
+    curtainPlan(seed: number): unknown;
+    handBuilt(): string[];
+    preview(item: string): number;
+    audit(o?: { step?: number }): unknown[];
+  };
 }

@@ -1,7 +1,7 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { Command, PenroseAction, PenroseSnapshot } from '../sim/sim';
-import { createPenroseEngine } from './engine';
+import { createPenroseEngine } from '../engine';
 import type { EngineDom, PenroseEngine } from './engineTypes';
 import { layout } from './layout';
 

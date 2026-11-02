@@ -95,7 +95,7 @@ export function createCombat(scene: THREE.Scene) {
         const age = s.t-fx.at;
         if (fx.kind !== 'boom' && fx.kind !== 'intercept') continue;
         // Ground explosions and smoke stay put on the terrain as it scrolls.
-        const fy = fx.y + (fx.ground ? age * GROUND_SPEED : 0);
+        const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0);
         if (age < 0.45 && f < 160) {
           mat.position.set(fx.x,fx.ground?-2:12,fy-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
         }

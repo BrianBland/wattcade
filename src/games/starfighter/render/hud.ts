@@ -124,7 +124,9 @@ export class SquadronHud {
   update(s: SfSnapshot) {
     // No title during play: just the arsenal tier (and a tester tag), small, on a legible chip.
     this.title.innerHTML = `<span class="sq-chip"><b>Arsenal ${s.gunLevel}</b><span>${TIER_NAMES[s.gunLevel]}${s.tester ? ' · Tester' : ''}</span></span>`
-      + `<div class="sq-chip" style="display:flex;margin-top:4px"><span>Amp</span><span class="sq-amp"><i style="width:${Math.round((0.15 + s.amp * 0.85) * (0.9 + s.beat * 0.1) * 100)}%"></i></span></div>`;
+      + `<div class="sq-chip" style="display:flex;margin-top:4px"><span>Amp</span><span class="sq-amp"><i style="width:${Math.round((0.15 + s.amp * 0.85) * (0.9 + s.beat * 0.1) * 100)}%"></i></span></div>`
+      // Drive chip: only when the music pushes past cruising.
+      + (s.drive.level !== 'cruise' ? `<div class="sq-chip" style="display:flex;margin-top:4px;--acc:${s.drive.level === 'burn' ? '#ff8a3c' : '#fff36b'}"><b>${s.drive.level === 'burn' ? 'Burn' : 'Push'}</b><span>${s.drive.met ? 'full speed' : s.drive.rpm ? `spin ${s.drive.rpm}` : 'hold it'}</span></div>` : '');
     this.renderScore(s);
     const pips = Array.from({ length: s.lockCapacity }, (_, i) => `<i class="${i < s.locks.length ? 'on' : ''}"></i>`).join('');
     this.stats.innerHTML = `<div class="sq-stat"><b>${s.score.toLocaleString()}</b><span>Score</span></div>`
@@ -136,8 +138,8 @@ export class SquadronHud {
     this.status.innerHTML = s.boss
       ? `<span>${s.boss.name} · ${s.boss.stage} · ${Math.ceil(s.boss.left)}s</span><div class="sq-bar"><i style="width:${Math.max(0, s.boss.hp / s.boss.maxHp * 100)}%"></i></div>`
       : s.bossIn !== null ? `Flagship inbound · ${Math.ceil(s.bossIn)}s`
-      : s.upcoming ? `${s.upcoming.label} · ${s.upcoming.watts} W in ${Math.ceil(s.upcoming.left)}s`
-      : s.cadence ? `Optional spin · ${s.cadence.min}–${s.cadence.max} RPM` : STATUS[s.effort.status];
+      : s.upcoming ? `${s.upcoming.label} in ${Math.ceil(s.upcoming.left)}s${s.upcoming.watts ? ` · ${s.upcoming.watts} W` : s.upcoming.rpm ? ` · spin ${s.upcoming.rpm} RPM` : ''}`
+      : s.drive.level !== 'cruise' && !s.drive.met && s.drive.rpm ? `Spin up · ${s.drive.rpm} RPM` : STATUS[s.effort.status];
     if (!s.boss && this.status.innerHTML) this.status.innerHTML = `<span>${this.status.innerHTML}</span>`;
     if (s.eliteHint) this.status.insertAdjacentHTML('beforeend', `<div class="sq-elite" style="--b:${s.beat.toFixed(2)}">${s.eliteHint < 0 ? '◀ Elite wing' : 'Elite wing ▶'}</div>`);
     // Callouts: perfect formations take priority over banners.

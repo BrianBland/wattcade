@@ -11,8 +11,8 @@ try {
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(`${base}/dev/squadron.html?manual=1&inset=150&${query}`); await page.waitForFunction(() => window.__squadron);
     if(name !== 'menu') {
-      // Catch the volley travelling rather than a random empty combat frame.
-      await page.evaluate(() => {for(let i=0;i<300;i++){const s=window.__squadron.snapshot();if(s.lasers.some(l=>s.t-l.at>0.38 && s.t-l.at<0.52 && l.sy-l.y>35))break;window.__squadron.advance(1/30,false);}window.__squadron.advance(0);});
+      // Catch the volley travelling, with two formations to choose between, rather than a random empty combat frame.
+      await page.evaluate(() => {for(let i=0;i<600;i++){const s=window.__squadron.snapshot(),groups=new Set(s.enemies.filter(e=>e.hp>0&&!e.passing&&e.y>=(e.ground?-60:-28)&&e.y<72&&Math.abs(e.x)<55).map(e=>e.parentId??e.formation));if(groups.size>1&&s.lasers.some(l=>s.t-l.at>0.38 && s.t-l.at<0.52 && l.sy-l.y>35))break;window.__squadron.advance(1/30,false);}window.__squadron.advance(0);});
       const selected = await page.evaluate(() => window.__squadron.snapshot().selectedId);
       await page.getByRole('button',{name:'Next target'}).click();await page.evaluate(()=>window.__squadron.advance(1/30));
       assert.notEqual(await page.evaluate(()=>window.__squadron.snapshot().selectedId),selected);

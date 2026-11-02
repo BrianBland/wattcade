@@ -1,4 +1,5 @@
 import type { SectionKind } from '../../../contracts';
+import type { Drive } from './drive';
 export type CraftId = 'cruiser' | 'escort';
 export interface SfSave {
   v: 3; best: number; legacyBest: number; runs: number; onTargetS: number; unlockCredit: number;
@@ -29,7 +30,7 @@ export interface LaserView { id: number; targetId: number; sx: number; sy: numbe
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
 export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
 /** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
 export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
@@ -50,8 +51,10 @@ export interface SfSnapshot {
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;
   song: string; shipX: number; shipY: number; bank: number; dodge: number; hull: number; shield: number; quality: number;
   effort: { status: 'on' | 'under' | 'over' | 'recover' | 'settling'; targetWatts: number; floorWatts: number; ceilingWatts: number; erg: boolean };
-  upcoming: { label: string; left: number; watts: number } | null;
-  cadence: { min: number; max: number; left: number; progress: number } | null;
+  /** Next drive change, announced ahead: Escort watts or the Cruiser's spin ask. */
+  upcoming: { label: string; level: Drive; left: number; watts: number | null; rpm: number | null } | null;
+  /** Music drive now: level, ground speed (units/s), whether the rider meets it, the Cruiser's spin ask, speed relative to cruising. */
+  drive: { level: Drive; speed: number; met: boolean; rpm: number | null; rel: number };
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];
@@ -68,5 +71,5 @@ export interface SfSnapshot {
   segment: { index: number; title: string; biome: number; seed: number; nextBiome: number; nextSeed: number; switchIn: number; breather: boolean };
   /** End-of-segment scorecard, shown during the breather. */
   scorecard: { title: string; grade: 'S' | 'A' | 'B' | 'C' | 'D'; score: number; clearPct: number; onTargetPct: number; perfects: number; elites: string; boss: string; at: number } | null;
-  hooks: { powerFtp: number; cadence: number; boss: boolean };
+  hooks: { powerFtp: number; cadence: number; boss: boolean; drive: Drive };
 }

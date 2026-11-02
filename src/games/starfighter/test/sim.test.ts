@@ -76,16 +76,61 @@ describe('endurance music combat', () => {
     const r = rig({}, 'z2', tl); r.seconds(22);
     expect(r.s.sim.isOver()).toBe(true); expect(r.snap().t).toBeCloseTo(20, 1);
   });
-  it('uncertain online analysis never asks for cadence', () => {
+  it('uncertain online analysis never leaves cruise or asks for a spin', () => {
     const tl = longMusic(); tl.confidence = 'metadata';
-    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60);
-    for (let i = 0; i < 240; i++) { r.seconds(1); expect(r.snap().cadence).toBeNull(); }
+    const r = rig({}, 'cadence-follow', tl);
+    for (let i = 0; i < 240; i++) {
+      r.seconds(1); const s = r.snap();
+      expect(s.drive.level).toBe('cruise'); expect(s.upcoming).toBeNull(); expect(r.s.sim.hud!().targetCadence).toBeUndefined();
+    }
+    expect(r.snap().drive.speed).toBeCloseTo(22, 0);
   });
-  it('full beat analysis can offer a cadence bonus without changing the endurance target', () => {
-    const tl = longMusic(); tl.beats = Array.from({ length: 1200 }, (_, i) => i * 0.5); tl.phrases = Array.from({ length: 40 }, (_, i) => i * 16);
-    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60); r.seconds(65);
-    expect(r.snap().cadence).toMatchObject({ min: 83, max: 97 }); expect(r.snap().effort.ceilingWatts).toBe(150);
-  });
+  it('the ride swells with the music: announced pushes and burns, earned speed, a relative spin ask, a burn shout', () => {
+    const r = rig({}, 'cadence-follow', longMusic());
+    let prev = 'cruise', lastUpcoming: SfSnapshot['upcoming'] = null, burnFrom = -1, longestBurn = 0, maxSpeed = 0, shout = false;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30 * 600; i++) {
+      r.s.step(1); const s = r.snap(); seen.add(s.drive.level);
+      if (s.drive.level !== prev && s.drive.level !== 'cruise' && s.t > 20) {
+        // Every rise was announced ahead, with the rider's spin ask.
+        expect(lastUpcoming?.level).toBe(s.drive.level); expect(lastUpcoming?.rpm).toBe(s.drive.rpm);
+      }
+      if (s.drive.level === 'burn') { if (burnFrom < 0) burnFrom = s.t; longestBurn = Math.max(longestBurn, s.t - burnFrom); maxSpeed = Math.max(maxSpeed, s.drive.speed);
+        expect(s.drive.rpm).toBeGreaterThanOrEqual(90); expect(s.effort.ceilingWatts).toBeLessThanOrEqual(Math.round(0.78 * 200)); } else burnFrom = -1;
+      if (/^Burn · \d+ down/.test(s.banner)) shout = true;
+      prev = s.drive.level; lastUpcoming = s.upcoming;
+    }
+    expect([...seen].sort()).toEqual(['burn', 'cruise', 'push']);
+    expect(longestBurn).toBeLessThanOrEqual(91); expect(maxSpeed).toBeGreaterThan(40); expect(shout).toBe(true);
+    const sum = r.s.sim.summary();
+    expect(Number(sum.burnHeldPct)).toBeGreaterThan(85); expect(Number(sum.absorbed)).toBe(0); expect(Number(sum.deaths)).toBe(0);
+    // The Cruiser's resistance stays gentle: a fraction of a percent of extra grade.
+    expect(r.s.commands.every(c => c.mode !== 'sim' || c.gradePct <= 0.6)).toBe(true);
+    expect(r.s.commands.some(c => c.mode === 'sim' && c.gradePct > 0)).toBe(true);
+  }, 30_000);
+  it('missing the spin ask slows the ship but never makes it vulnerable', () => {
+    const r = rig({}, 'z2', longMusic()); let burnSpeed = 0, frames = 0;
+    for (let i = 0; i < 30 * 400; i++) { r.s.step(1); const s = r.snap(); if (s.drive.level === 'burn' && !s.drive.met) { burnSpeed += s.drive.speed; frames++; expect(s.quality).toBeGreaterThan(0.9); } }
+    expect(frames).toBeGreaterThan(0); expect(burnSpeed / frames).toBeLessThan(34);
+    expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(Number(r.s.sim.summary().deaths)).toBe(0);
+  }, 30_000);
+  it('Escort ERG steps with the drive and stays conversational', () => {
+    const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); r.seconds(600);
+    const watts = r.s.commands.flatMap(c => c.mode === 'erg' ? [c.watts] : []);
+    expect(Math.max(...watts)).toBeLessThanOrEqual(141); expect(Math.max(...watts)).toBeGreaterThan(134);
+    expect(watts.some(w => w < 126)).toBe(true);
+  }, 30_000);
+  it('the next place starts where the ship is when the song changes, whatever the drive', () => {
+    for (const script of ['cadence-follow', 'z2']) {
+      const r = rig({}, script, longMusic()); let before = r.snap(), changes = 0;
+      for (let i = 0; i < 30 * 900; i++) {
+        r.s.step(1); const s = r.snap();
+        if (s.segment.index !== before.segment.index) { changes++; expect(Math.abs(s.frames.cur.s - before.frames.next.s)).toBeLessThan(4); }
+        before = s;
+      }
+      expect(changes).toBeGreaterThan(1);
+    }
+  }, 60_000);
   it('same seed and rider produce identical results', () => {
     const run = () => { const r = rig({}, 'z2', longMusic()); r.seconds(100); return r.s.sim.summary(); };
     expect(run()).toEqual(run());
@@ -243,7 +288,8 @@ describe('spectacle encounters', () => {
         if (prev) expect(Math.hypot(prev.x - w.x, prev.z - w.z)).toBeLessThan(0.01); else tracked.set(e.id, w);
       }
     }
-    expect(turnedIso).toBe(true); expect(maxRate).toBeLessThan(0.1); expect(Number(r.s.sim.summary().absorbed)).toBe(0);
+    // Turns are arcs in distance: faster drives sweep them faster, still gently (≤ ~9°/s at burn speed).
+    expect(turnedIso).toBe(true); expect(maxRate).toBeLessThan(0.16); expect(Number(r.s.sim.summary().absorbed)).toBe(0);
   }, 30_000);
   it('new arsenal tiers unfold on bar lines', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.arsenalPace', 10); const ups: number[] = [];

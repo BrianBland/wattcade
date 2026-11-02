@@ -56,7 +56,7 @@ export interface SfSnapshot {
   /** Next drive change, announced ahead: Escort watts or the Cruiser's spin ask. */
   upcoming: { label: string; level: Drive; left: number; watts: number | null; rpm: number | null } | null;
   /** Music drive now: level, ground speed (units/s), whether the rider meets it (`exposed`: missed past the grace, some fire connects), the Cruiser's spin ask, speed relative to cruising. */
-  drive: { level: Drive; speed: number; met: boolean; exposed: boolean; rpm: number | null; rel: number };
+  drive: { level: Drive; speed: number; met: boolean; exposed: boolean; rpm: number | null; rel: number; /** Terrain rise toward the ship, extra FOV and camera drop (fraction of height), from drive pace. */ dip: number; fov: number; tilt: number };
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];

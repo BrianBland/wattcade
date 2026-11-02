@@ -32,6 +32,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     speedCruise: ctx.tuning.num('speedCruise', 22, 12, 40, 1), speedPush: ctx.tuning.num('speedPush', 31, 15, 60, 1), speedBurn: ctx.tuning.num('speedBurn', 42, 15, 80, 1),
     // A gentle headwind, as a small extra grade (the rider shifts down to keep the spin).
     windPush: ctx.tuning.num('headwindPushPct', 0.3, 0, 2, 0.1), windBurn: ctx.tuning.num('headwindBurnPct', 0.6, 0, 3, 0.1),
+    dip: ctx.tuning.num('burnDip', 3, 0, 12, 0.5, 'Terrain rise toward the ship at full burn speed (push gets 40%)'), fovAdd: ctx.tuning.num('burnFov', 3, 0, 10, 0.5, 'Extra field of view (degrees) at full burn speed'),
+    tilt: ctx.tuning.num('burnTilt', 0.12, 0, 0.4, 0.02, 'Camera drops toward the play plane at full burn speed (fraction of its height)'),
     passScale: ctx.tuning.num('drivePassScale', 0.6, 0, 1, 0.05, 'How much of the extra drive speed air enemies pass with (1 = all)'),
     lockScale: ctx.tuning.num('driveLockScale', 1, 0, 1.5, 0.05, 'Locks paint faster with speed (exponent of relative pass speed)'),
     exposure: ctx.tuning.num('driveExposure', 0.35, 0, 1, 0.05, 'Share of enemy volleys left aimed at a rider missing a push/burn (below the power band = all)'),
@@ -696,7 +698,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         upcoming: driveNow.next && started && !(coverLeft > 0 || rejoinLeft > 0) ? { label: driveNow.next.level === 'burn' ? 'Burn' : driveNow.next.level === 'push' ? 'Push' : 'Cruise', level: driveNow.next.level, left: Math.max(0, driveNow.next.at - p),
           watts: craft === 'escort' ? Math.round(ergFor(driveNow.next.level) * ctx.profile.ftp * ctx.profile.settings.difficulty) : null,
           rpm: craft === 'cruiser' && driveNow.next.level !== 'cruise' ? Math.min(110, Math.round(cadBase) + (driveNow.next.level === 'burn' ? tun.rpmBurn() : tun.rpmPush())) : null } : null,
-        drive: { level, speed, met: driveMet, exposed, rpm: rpmAsk, rel: rel() }, charge, coverLeft, rejoinLeft, gunLevel, wingmen: pk.wingmen, missiles: pk.heavy,
+        drive: { level, speed, met: driveMet, exposed, rpm: rpmAsk, rel: rel(), ...(() => { const u = clamp((pace - tun.speedCruise()) / Math.max(1, tun.speedBurn() - tun.speedCruise()), 0, 1); return { dip: tun.dip() * u, fov: tun.fovAdd() * u, tilt: tun.tilt() * u }; })() }, charge, coverLeft, rejoinLeft, gunLevel, wingmen: pk.wingmen, missiles: pk.heavy,
         score: Math.round(score), kills, salvage, combo, deaths, selectedId, locks: [...locks], lockCapacity: lockCapacity(), lockProgress: clamp(1 - lockIn / lockInterval(), 0, 1), volleyFlash: Math.max(0, 1 - (t - volleyAt) / 0.8), lasers, enemies, shots, bolts, fx, beams,
         boss: boss ? { stage: enemies.some(e=>e.parentId===boss!.id && e.hp>0) ? 'Destroy the batteries' : 'Reactor exposed', name: ['Iron Dreadnought', 'Hive Carrier', 'Twin Lancer', 'Spiral Core', 'The Maw'][boss.bossStyle], hp: boss.hp, maxHp: boss.maxHp, left: Math.max(0, tun.bossTime() - (p - bossStart)) } : null,
         bossIn: !boss && bossAt !== null ? Math.max(0, bossAt - p) : null,

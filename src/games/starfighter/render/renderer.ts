@@ -25,7 +25,9 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private cameraBase = new THREE.Vector3(); private turnRoll = 0; private post?: SquadronPost;
+  private cameraBase = new THREE.Vector3(); private turnRoll = 0;
+  /** Terrain lift (the ship flies lower in pushes and burns) and the speed FOV widening, both eased. */
+  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
@@ -153,7 +155,7 @@ export class SfRenderer implements GameRenderer {
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
-    this.combat?.update(s);
+    this.combat?.update(s, this.lift);
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
@@ -161,7 +163,7 @@ export class SfRenderer implements GameRenderer {
         const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
       // Running lights breathe on the beat.
       for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
-      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
+      model.position.set(e.x,e.ground?-3.8+this.lift:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
@@ -197,7 +199,13 @@ export class SfRenderer implements GameRenderer {
       s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })), { beatIndex: s.beatIndex, bands: s.bands });
     // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
     this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
-    this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
+    // Lower and faster in pushes and burns: the terrain rises toward the ship and the view widens a touch with speed.
+    const k = this.altT < 0 || s.t < this.altT ? 1 : Math.min(1, (s.t - this.altT) / 0.9); this.altT = s.t;
+    this.lift += ((hangar ? 0 : s.drive.dip) - this.lift) * k; this.space?.setLift(this.lift);
+    const fov = hangar ? 0 : s.drive.fov; if (Math.abs(fov - this.fovAdd) > 0.01) { this.fovAdd += (fov - this.fovAdd) * k; this.camera.fov = 48 + this.fovAdd; this.camera.updateProjectionMatrix(); }
+    // A lower camera (pulled back a little, same aim) reads as flying lower and faster.
+    this.tilt += ((hangar ? 0 : s.drive.tilt) - this.tilt) * k;
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y * (1 - this.tilt) - s.bar * 0.45, this.cameraBase.z * (1 + this.tilt * 0.35) - s.bar * 0.3);
     this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);

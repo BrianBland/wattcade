@@ -92,9 +92,11 @@ export function createSpace(scene: THREE.Scene) {
     float band=exp(-abs(world.z-wave)/16.0)*waveFade;
     float k=smoothstep(-30.0,30.0,dot(W-uF1.xy,fwdV(uF1.z)));vec3 c=k<0.999?shadeAt(uB0,uP0,frameP(uB0,uF0,W),band):vec3(0.0);if(k>0.001)c=mix(c,shadeAt(uB1,uP1,frameP(uB1,uF1,W),band),k);
     c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(c,1.0);}` }));
-  surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);scene.add(surface);
+  // Everything on the ground hangs off one root, so the terrain can rise toward the ship (lower flight in a burn).
+  const root=new THREE.Group();scene.add(root);
+  surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
-  const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;scene.add(m);return m;};
+  const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;root.add(m);return m;};
   const stone=make(geometries.rock,strata(material('#b67565',0.15)),512);
   const rockBox=make(geometries.box,strata(material('#9c5f55',0.1)),256);
   const walls=make(geometries.box,windowed(material('#28486a')),3200);
@@ -310,6 +312,8 @@ export function createSpace(scene: THREE.Scene) {
     },
     stats(){return {dropped,peakFill:Math.round(peakFill*100)/100,overflowed:[...overflowed].join(','),peaks:[...peaks].filter(([,v])=>v>100).map(([k,v])=>k+':'+v).join(' ')};},
     auditBuildings(on:boolean){const out=audit;audit=on?[]:null;return out;},
+    /** Raise the whole terrain by `y` (the ship flies lower). */
+    setLift(y:number){root.position.y=y;},
     dispose(){for(const pool of pools)pool.dispose();},
   };
 }

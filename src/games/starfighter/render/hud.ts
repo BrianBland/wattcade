@@ -133,13 +133,13 @@ export class SquadronHud {
       + `<div class="sq-stat" style="--acc:#b6ff3b"><b><em>${Math.round(s.clear.rate * 100)}%</em></b><span>Cleared</span></div>`
       + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b><em>${s.locks.length}</em>/${s.lockCapacity}</b><span>Locks</span><div>${pips}</div>`
       + `<em class="sq-pop${s.fullLock > 0 ? ' on' : ''}">Full lock</em><em class="sq-pop${s.clear.streak > 1 && s.clear.last?.perfect && s.t - s.clear.last.at < 3 ? ' on' : ''}">Perfect ×${s.clear.streak}</em></div>`;
-    const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6;
+    const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6 || s.drive.exposed;
     this.status.classList.toggle('warn', warn);
     this.status.innerHTML = s.boss
       ? `<span>${s.boss.name} · ${s.boss.stage} · ${Math.ceil(s.boss.left)}s</span><div class="sq-bar"><i style="width:${Math.max(0, s.boss.hp / s.boss.maxHp * 100)}%"></i></div>`
       : s.bossIn !== null ? `Flagship inbound · ${Math.ceil(s.bossIn)}s`
       : s.upcoming ? `${s.upcoming.label} in ${Math.ceil(s.upcoming.left)}s${s.upcoming.watts ? ` · ${s.upcoming.watts} W` : s.upcoming.rpm ? ` · spin ${s.upcoming.rpm} RPM` : ''}`
-      : s.drive.level !== 'cruise' && !s.drive.met && s.drive.rpm ? `Spin up · ${s.drive.rpm} RPM` : STATUS[s.effort.status];
+      : s.drive.level !== 'cruise' && !s.drive.met ? (s.drive.rpm ? `Spin up · ${s.drive.rpm} RPM` : 'Hold the push') + (s.drive.exposed ? ' · shots getting through' : '') : STATUS[s.effort.status];
     if (!s.boss && this.status.innerHTML) this.status.innerHTML = `<span>${this.status.innerHTML}</span>`;
     if (s.eliteHint) this.status.insertAdjacentHTML('beforeend', `<div class="sq-elite" style="--b:${s.beat.toFixed(2)}">${s.eliteHint < 0 ? '◀ Elite wing' : 'Elite wing ▶'}</div>`);
     // Callouts: perfect formations take priority over banners.

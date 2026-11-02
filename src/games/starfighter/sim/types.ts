@@ -27,9 +27,9 @@ export interface EnemyView {
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean; amp?: number }
-export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
-export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
+export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean; open?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
 /** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
 export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
@@ -53,8 +53,8 @@ export interface SfSnapshot {
   effort: { status: 'on' | 'under' | 'over' | 'recover' | 'settling'; targetWatts: number; floorWatts: number; ceilingWatts: number; erg: boolean };
   /** Next drive change, announced ahead: Escort watts or the Cruiser's spin ask. */
   upcoming: { label: string; level: Drive; left: number; watts: number | null; rpm: number | null } | null;
-  /** Music drive now: level, ground speed (units/s), whether the rider meets it, the Cruiser's spin ask, speed relative to cruising. */
-  drive: { level: Drive; speed: number; met: boolean; rpm: number | null; rel: number };
+  /** Music drive now: level, ground speed (units/s), whether the rider meets it (`exposed`: missed past the grace, some fire connects), the Cruiser's spin ask, speed relative to cruising. */
+  drive: { level: Drive; speed: number; met: boolean; exposed: boolean; rpm: number | null; rel: number };
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];

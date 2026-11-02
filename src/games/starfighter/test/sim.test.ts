@@ -108,11 +108,17 @@ describe('endurance music combat', () => {
     expect(r.s.commands.every(c => c.mode !== 'sim' || c.gradePct <= 0.6)).toBe(true);
     expect(r.s.commands.some(c => c.mode === 'sim' && c.gradePct > 0)).toBe(true);
   }, 30_000);
-  it('missing the spin ask slows the ship but never makes it vulnerable', () => {
-    const r = rig({}, 'z2', longMusic()); let burnSpeed = 0, frames = 0;
-    for (let i = 0; i < 30 * 400; i++) { r.s.step(1); const s = r.snap(); if (s.drive.level === 'burn' && !s.drive.met) { burnSpeed += s.drive.speed; frames++; expect(s.quality).toBeGreaterThan(0.9); } }
-    expect(frames).toBeGreaterThan(0); expect(burnSpeed / frames).toBeLessThan(34);
-    expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(Number(r.s.sim.summary().deaths)).toBe(0);
+  it('missing the spin ask slows the ship and lets some fire through, less than riding below the band', () => {
+    const r = rig({}, 'z2', longMusic()); let burnSpeed = 0, frames = 0, exposedEarly = false;
+    for (let i = 0; i < 30 * 400; i++) {
+      r.s.step(1); const s = r.snap();
+      if (s.drive.level === 'burn' && !s.drive.met) { burnSpeed += s.drive.speed; frames++; expect(s.quality).toBeGreaterThan(0.9); }
+      if (s.drive.level === 'cruise' && s.drive.exposed) exposedEarly = true;
+    }
+    expect(frames).toBeGreaterThan(0); expect(burnSpeed / frames).toBeLessThan(34); expect(exposedEarly).toBe(false);
+    const sum = r.s.sim.summary(), idle = rig({}, 'idle', longMusic()); idle.seconds(400);
+    expect(Number(sum.driveHits)).toBeGreaterThan(0); expect(Number(sum.hits)).toBe(Number(sum.driveHits));
+    expect(Number(sum.absorbed)).toBe(0); expect(Number(sum.hits)).toBeLessThan(Number(idle.s.sim.summary().hits) / 3);
   }, 30_000);
   it('Escort ERG steps with the drive and stays conversational', () => {
     const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); r.seconds(600);

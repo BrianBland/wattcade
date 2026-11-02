@@ -49,7 +49,8 @@ export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign
   }
   const st = () => E.state();
   const wrap = (i) => ((i % LEVELS.length) + LEVELS.length) % LEVELS.length;
-  const machineFor = (key) => st().LVL && st().LVL.machines.find((m) => m.key === key);
+  // a long level can give two machines one button; the one on the wall in front of you (live) takes the press
+  const machineFor = (key) => { const ms = st().LVL ? st().LVL.machines.filter((m) => m.key === key) : []; return ms.find((m) => !m.live || m.live()) || ms[0]; };
   return {
     get levels() { return LEVELS.map((d) => ({ id: d.id, name: d.name, chapter: d.chapter, item: d.item })); },
     get index() { return st().lvIndex; },

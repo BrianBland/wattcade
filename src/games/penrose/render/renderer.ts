@@ -64,7 +64,9 @@ export class PenroseRenderer implements GameRenderer {
       onFell: (index) => this.send({ type: 'fell', index }),
       onLevel: (index, def, level) => {
         const ms = (level as { machines?: Array<{ key: string; name: string }> } | null)?.machines ?? [];
-        this.send({ type: 'level', index, id: def.id, name: def.name, machines: ms.map((m) => ({ key: m.key, name: m.name })) });
+        // one button can drive a machine on each storey of a long level: list it once, with both names
+        const byKey = new Map<string, string[]>(); for (const m of ms) byKey.set(m.key, [...(byKey.get(m.key) ?? []), m.name]);
+        this.send({ type: 'level', index, id: def.id, name: def.name, machines: [...byKey].map(([key, names]) => ({ key, name: names.join(' / ') })) });
       },
       onAutopilot: () => {},
     });

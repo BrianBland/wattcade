@@ -902,7 +902,11 @@ function makeLevel(def, idx) {
     // badges follow their machines
     L.machines.forEach((m, i) => { const p = new T.Vector3(); m.bloom.holder.getWorldPosition(p); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
     if (W.mode === 'win' && W.t > .5 && L.state === 'play') { L.state = 'won'; L.wonT = 0; hooks.onWon(L.idx); }
-    if (W.mode === 'dead' && W.t > .4 && L.state === 'play') { L.state = 'restart'; fadeTo(1, '', ''); hooks.onFell(L.idx); }
+    if (W.mode === 'dead' && W.t > .4 && L.state === 'play') {
+      // a level with checkpoints (a long one) puts the wheel back on the loop it last reached, not at the start
+      const cp = def.checkpoint && def.checkpoint(L);
+      if (cp) { Object.assign(W, { mode: 'spawn', t: 0, road: cp.road, s: cp.s, dir: cp.dir }); L.flash('Fell. Back to the loop on this wall'); hooks.onFell(L.idx); }
+      else { L.state = 'restart'; fadeTo(1, '', ''); hooks.onFell(L.idx); } }
     flowTick(dt);
   });
   L.state = 'play'; L.respawn();

@@ -1,5 +1,5 @@
 # penrose (Penrose Pedals)
-CONTRACT-REQUEST: none. Dev-flag game (`devGames`), ported from the design prototype (35 levels in 8 chapters).
+CONTRACT-REQUEST: none. Dev-flag game (`devGames`), ported from the design prototype (36 levels in 9 chapters).
 
 ## What it is
 An isometric perception-puzzle ride. The wheel never stops; loops hold it, and it leaves a loop only where a piece
@@ -17,7 +17,9 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
   (`install($scope)`, order in `engine/index.ts`): `core` (materials, view, wheel, themes, roads, makeLevel and the
   level flow, wheel-over-roads overlay pass), `machines`, `levels` (hand-built), `studies`, `gen9` (main generator:
   TIERS, planLevel3, checkPlan3, solve3, genDef3, candidates3), `persp`, `machines2`, `combos` (+ sceneryPass),
-  `gravity`, `gravity2`, `curtain` (curtain generator), `audit` (screen audit). Colour management is off
+  `gravity`, `gravity2`, `curtain` (curtain generator), `audit` (screen audit), `decor` (seeded wall-art decals that
+  shade like the wall), `cube` (wall machines and The Cube: box turns per edge, camera per storey, per-wall checkpoints,
+  one button per storey via `machine.live`). Colour management is off
   (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
 - `campaign.ts`: the chapters, as data: hand-built ids, `'<tier>:<seed>'` (gen9) or `'cg:<seed>'` (curtain).
 - `render/renderer.ts`: builds the sky / stage / status / fade DOM, feeds the engine rider from the snapshot (not while
@@ -26,15 +28,13 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
 - `dev/penrose.html?level=N&inset=120`: fake-bike harness; `window.__pp` exposes the session and renderer.
 - Level design (with `npm run dev` up): `scripts/penrose-gen-sweep.mjs` (tiers | gen <tier> <from> <to> |
   curtain <from> <to>: plan, solve and idle-ride seeds), `scripts/penrose-audit.mjs [n|item...]` (overlaps, hidden
-  road, joins per view), `scripts/penrose-solve-check.mjs` (every campaign level solves and is idle safe).
-  The prototype's earlier generators (gen1–gen8, the dynamo) were superseded by gen9 and are not ported.
+  road, joins per view), `scripts/penrose-solve-check.mjs` (every level solves, idle safe). gen1–8 not ported.
 
 ## Known gaps (next PRs)
 - The level logic lives in the renderer, so it is not deterministic and the headless runner can't play levels
   (no `scenarios.ts` yet). Plan: move `Road`, the wheel stepper and machine state into `sim/` as pure math
   (the screen joins only need the iso projection per camera yaw), leaving three.js meshes in `render/`.
-- The engine is untyped and still uses its own frame-dt for machines and the wheel.
-- Hints are the prototype's prose (keyboard-free, buttons named by letter); no achievements or sound yet.
+- The engine is untyped and uses its own frame-dt. Hints are prose; no achievements or sound yet.
 
-Checked: all 35 levels solve on the engine autopilot inside the port (same times as the prototype), and the full
+Checked: all 36 levels solve on the engine autopilot inside the port (same times as the prototype), and the full
 vitest suite and `tsc` pass.

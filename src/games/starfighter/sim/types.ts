@@ -39,8 +39,10 @@ export interface SfSnapshot {
   bar: number;
   /** Beat count (changes on every beat) and current low/mid/high band energy 0..1, for music-reactive lighting. */
   beatIndex: number; bands: [number, number, number];
-  /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
-  selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
+  /** Formation under your guns (own flank), and which way an incoming elite wing's flank is. */
+  selectedGroup: number | null; eliteHint: -1 | 0 | 1;
+  /** Flank station the ship holds or is heading for: -1 left, 0 centre, 1 right. */
+  station: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
   crafts: Record<CraftId, { level: number; progress: number; next: string | null; minutesToNext: number | null; unlocked: boolean; arsenalCap: number }>; tester: boolean;
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;

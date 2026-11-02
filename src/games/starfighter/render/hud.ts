@@ -98,8 +98,8 @@ export class SquadronHud {
     this.root.className = 'sq-hud';
     const style = document.createElement('style'); style.textContent = CSS; this.root.appendChild(style);
     this.foot.innerHTML = `<div class="sq-shield"><span>Shield</span><div class="sq-bar"><i></i></div></div><div class="sq-song"></div>`
-      + `<div class="sq-actions"><button class="btn small" data-action="target" data-direction="-1" aria-label="Previous target">‹</button>`
-      + `<button class="btn small" data-action="target" data-direction="1" aria-label="Next target">›</button><button class="btn small" data-action="nova"></button></div>`;
+      + `<div class="sq-actions"><button class="btn small" data-action="flank" data-direction="-1" aria-label="Flank left">‹</button>`
+      + `<button class="btn small" data-action="flank" data-direction="1" aria-label="Flank right">›</button><button class="btn small" data-action="nova"></button></div>`;
     this.shield = this.foot.querySelector('.sq-shield')!; this.song = this.foot.querySelector('.sq-song')!;
     this.nova = this.foot.querySelector('[data-action="nova"]')!;
     // Shell touch buttons / compact controller statuses own these actions.

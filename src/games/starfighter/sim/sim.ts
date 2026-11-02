@@ -5,7 +5,7 @@ import { craftName, escortAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, TIER_NAMES, WING_OFFSETS } from './progression';
 import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
-import { newRoute, extendRoute, routeX, laneX, choreograph, moveActivity, ROUTE } from './flight';
+import { newRoute, holdRoute, commandMove, movePending, missDistance, routeX, laneX, choreograph, moveActivity, ROUTE, FLANK, stationX } from './flight';
 import { createWeave } from './weave';
 import { createSegmenter, gradeSegment, type Segment } from './segments';
 import { WorldRoute, planTurns, toLocal, toWorld } from './route';
@@ -66,20 +66,22 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const route = newRoute(), weaveAt = createWeave(timeline); let pOff = 0, shipV = 0, lift = 0, lastRoll = -99;
   let roll: SfSnapshot['roll'] = null;
   // The sway is part of the route (a pure function of time), so choreographed fire is authored around it too.
-  route.weave = tt => tun.weave() ? weaveAt.at(tt + pOff, moveActivity(route, tt)) * tun.weave() : 0;
-  /** Lane changes start and end on swing peaks when weaving (else on beats). */
+  // Soft-capped so the flanks stay distinct.
+  route.weave = tt => { if (!tun.weave()) return 0; const w = weaveAt.at(tt + pOff, moveActivity(route, tt)) * tun.weave(); return 7 * Math.tanh(w / 7); };
+  /** Flank station (-1 left, 0 centre, 1 right) the ship holds or is heading for, and the hands-off pilot's state. */
+  /** Next swing peak (else beat) at or after sim time `at`. */
   const peakAfterSim = (at: number) => { if (!tun.weave()) return beatAfter(at); const q = weaveAt.peakAfter(at + pOff) - pOff; return q >= at && q - at < 2.5 ? q : beatAfter(at); };
+  let station = 0, lastInputT = -99, pilotBars = 0, hotFlank = 0, lastFlank = 0;
+  const stationOf = (sx: number) => clamp(Math.round(sx / FLANK.x), -1, 1);
   const beams: BeamView[] = [];
   let prevX = 0, grazed = 0;
   // Formation bookkeeping: an enemy resolves when it dies (kill) or passes the ship (escape).
   const squads = new Map<number, { total: number; killed: number; left: number; elite?: boolean }>();
   let elitePursuitUntil = -99;
-  let selectedGroup: number | null = null, eliteHint: -1 | 0 | 1 = 0, eliteSeen = 0, eliteCleared = 0, airFormations = 0, eliteSide = 1;
+  let selectedGroup: number | null = null, eliteHint: -1 | 0 | 1 = 0, eliteSeen = 0, eliteCleared = 0, airFormations = 0;
   let clearKilled = 0, clearTotal = 0, perfects = 0, lastClear: SfSnapshot['clear']['last'] = null;
   let wall: { id: number; at: number } | null = null, lastWall = -99;
-  const cruiseLine = (at: number) => Math.sin(at * 0.22) * 12 + Math.sin(at * 0.57) * 3;
   /** Next beat at or after sim time `at`, mapped through the media clock offset. */
-  const phraseAfter = (at: number) => { const phrases = timeline?.phrases; if (!phrases?.length) return Infinity; const b = phrases[after(phrases, at - t + p - 1e-6)]; return b === undefined ? Infinity : b - p + t; };
   /** Next bar line at or after sim time `at` (beat fallback without downbeats). */
   const barAfter = (at: number) => { const d = timeline?.downbeats; if (!d?.length) return beatAfter(at); const b = d[after(d, at - t + p - 1e-6)]; return b !== undefined && b - p + t - at < 3 ? b - p + t : at; };
   const beatAfter = (at: number) => { const beats = timeline?.beats; if (!beats?.length) return at; const b = beats[after(beats, at - t + p - 1e-6)]; return b !== undefined && b - p + t - at < 0.8 ? b - p + t : at; };
@@ -159,34 +161,47 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       emit('shipLost'); announce('Regrouping · easy spin, squadron returning'); persist();
     }
   };
-  const spawn = () => {
-    const recovery = music.kind === 'break' || music.kind === 'outro';
-    // Swarms grow with the drive: 6–8 cruising, 7–9 pushing, 9–12 burning.
-    const want = recovery ? 5 : level === 'burn' ? 9 + Math.floor(music.intensity * 3.99) : level === 'push' ? 7 + Math.floor(music.intensity * 2.99) : 6 + Math.floor(music.intensity * 2.99);
-    const n = Math.min(Math.max(0,Math.min(MAX_ENEMIES-enemies.length,60-enemies.filter(e=>!e.ground&&!e.passing).length)), want);
-    const kind: EnemyView['kind'] = music.kind === 'build' ? 'armor' : music.kind === 'drop' ? 'weaver' : encounter % 3 === 2 ? 'gunner' : 'drone';
-    const center = (ctx.rng() - 0.5) * 20, pattern = formations++ % 3;
-    // About once a minute (every eighth formation outside calm sections and flagship fights) an elite wing crosses the far field.
-    const elite = !recovery && !boss && ++airFormations % 8 === 0, eliteY = -16 + ctx.rng() * 10;
-    const size = elite ? Math.min(n, 5) : n;
-    if (size > 0) squads.set(formations, { total: size, killed: 0, left: size, elite });
-    if (elite) eliteSide = -eliteSide;
-    // Gunner and armour formations put lancers on their flanks: they fire telegraphed beams on a bar line.
+  /** A wing flies down one flank: 5–6 fighters six units apart (it fits the flank), entering from ahead or that side. */
+  const spawnWing = (fl: number, size: number, kind: EnemyView['kind'], elite = false) => {
+    const pattern = formations++ % 3, center = stationX(fl) + (ctx.rng() - 0.5) * 4;
+    if (size <= 0) return;
+    squads.set(formations, { total: size, killed: 0, left: size, elite });
+    // Gunner and armour formations put lancers on their edges: they fire telegraphed beams on a bar line.
     const lancerAt = (i: number) => !elite && (kind === 'gunner' || kind === 'armor') && size >= 4 && (i === 0 || i === size - 1);
     for (let i = 0; i < size; i++) {
       const hp = elite ? 26 : kind === 'armor' ? 54 : kind === 'gunner' ? 36 : 26;
-      const entry = elite ? eliteEntry(i, eliteSide, eliteY) : entryFor(i,n,pattern,center);
-      if (!elite) entry.duration /= 0.6 + 0.4 * rel();
+      const entry = elite ? eliteEntry(i, stationX(fl)) : entryFor(i, size, pattern, center, 6, fl);
+      entry.duration /= 0.6 + 0.4 * rel();
       enemies.push({ id: ++id, kind: elite ? 'weaver' : kind, elite, x: entry.fromX, y: entry.fromY, entry, formation: formations,
-        hp, maxHp: hp, age: 0, fireAt: firesInFormation(kind, i) && !lancerAt(i) ? 4 + i * 0.2 : 1e9, bossStyle: 0,
+        hp, maxHp: hp, age: 0, fireAt: !elite && firesInFormation(kind, i) && !lancerAt(i) ? 4 + i * 0.2 : 1e9, bossStyle: 0,
         ...(lancerAt(i) ? { lancer: true, beamReadyAt: 0 } : {}) });
     }
   };
+  const spawn = () => {
+    const recovery = music.kind === 'break' || music.kind === 'outro';
+    const room = Math.max(0, Math.min(MAX_ENEMIES - enemies.length, 60 - enemies.filter(e => !e.ground && !e.passing).length));
+    const kind: EnemyView['kind'] = music.kind === 'build' ? 'armor' : music.kind === 'drop' ? 'weaver' : encounter % 3 === 2 ? 'gunner' : 'drone';
+    // Each phrase has a hot flank where most wings come; the others get some too, so choosing a flank matters.
+    const fl = ctx.rng() < 0.6 ? hotFlank : ([-1, 0, 1].filter(f => f !== hotFlank)[ctx.rng() < 0.5 ? 0 : 1]);
+    lastFlank = fl;
+    // About once a minute (every eighth wing outside calm sections and flagship fights) an elite wing dives down a flank.
+    if (!recovery && !boss && ++airFormations % 8 === 0) {
+      const ef = [-1, 0, 1].filter(f => f !== station)[ctx.rng() < 0.5 ? 0 : 1];
+      spawnWing(ef, Math.min(room, 5), 'weaver', true); return;
+    }
+    const size = Math.min(room, recovery ? 5 : level === 'cruise' ? 5 + Math.floor(music.intensity * 1.99) : 6);
+    spawnWing(fl, size, kind);
+    // Swarms grow with the drive: a burn sends a second wing down another flank at the same time.
+    if (level === 'burn' && !recovery) {
+      const other = [-1, 0, 1].filter(f => f !== fl)[ctx.rng() < 0.5 ? 0 : 1];
+      spawnWing(other, Math.min(Math.max(0, room - size), 5 + Math.floor(music.intensity * 1.99)), kind);
+    }
+  };
   const spawnGround = () => {
-    const squad = ++formations, n = Math.min(3, MAX_ENEMIES - enemies.length);
+    const squad = ++formations, n = Math.min(3, MAX_ENEMIES - enemies.length), gfl = Math.floor(ctx.rng() * 3) - 1;
     if (n > 0) squads.set(squad, { total: n, killed: 0, left: n });
     for(let i=0;i<n;i++) {
-      const kind=i===1?'tank':'turret', toX=(i-1)*18+(ctx.rng()-0.5)*6;
+      const kind=i===1?'tank':'turret', toX=stationX(gfl)+(i-1)*7+(ctx.rng()-0.5)*3;
       const hp=kind==='tank'?64:48;
       // No entry glide: ground units ride the terrain from the horizon at exactly the scroll speed.
       const w=toWorld(world.pose(routeS()),toX,SHIP_Y-(-300-i*9));
@@ -196,21 +211,48 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   };
   const targetable = () => enemies.filter(inCombat).sort((a, b) => a.x - b.x || a.id - b.id);
   /** Formations in combat, keyed by group (boss batteries group with their flagship). */
-  const groups = () => { const m = new Map<number, EnemyView[]>(); for (const e of targetable()) { const k = groupOf(e); const g = m.get(k); if (g) g.push(e); else m.set(k, [e]); } return m; };
-  const centroid = (g: EnemyView[]) => g.reduce((a, e) => a + e.x, 0) / g.length;
-  const paddleArmed = { L: true, R: true }; let releaseAsked = false;
-  /** Jump selection to an elite wing if one is in range, else the flagship. */
-  const snapTarget = () => {
-    const gs = [...groups()], pick = gs.find(([, m]) => m[0].elite) ?? gs.find(([k]) => k === boss?.id);
-    if (pick) { selectedGroup = pick[0]; lockIn = Math.min(lockIn, 0.15); emit('retarget', { target: pick[0], snap: true }); }
+  /**
+   * Move one flank left or right (rider or pilot). The move starts on the next beat, lasts whole beats by drive (a bar
+   * cruising, half a bar pushing, a two-beat barrel roll burning; twice that for two flanks), and a running move finishes
+   * first. Pressing toward the edge you are on leans: a short nudge out and back. Shots already flying at the new line
+   * are spent as grazes, so an on-band rider still never gets hit by fire authored for the old one.
+   */
+  const flankMove = (dir: number, rider = true) => {
+    if (!started || done) return;
+    if (rider) lastInputT = t;
+    // The rider's move starts on the next beat; the pilot waits for a swing peak so its moves land in the sway.
+    const bl = weaveAt.beatLen(p), startAt = rider ? beatAfter(t + 0.05) : peakAfterSim(t + 0.05), target = clamp(station + dir, -1, 1);
+    if (target === station) {
+      if (movePending(route, t)) return;
+      const out = commandMove(route, startAt, 2 * bl, stationX(station) + Math.sign(dir) * FLANK.lean);
+      commandMove(route, out + 2 * bl, 2 * bl, stationX(station)); emit('lean'); reauthor(); return;
+    }
+    station = target;
+    const running = route.moves.find(m => m.start < startAt && m.end > startAt && m.to !== m.from), at = running ? running.end : startAt;
+    const stations = Math.max(1, Math.round(Math.abs(stationX(station) - laneX(route, at)) / FLANK.x));
+    // It lands on a swing peak (the sway resumes from rest), at most a little longer than its whole beats.
+    // At least ~1.1 s per flank so the hop stays a glide (lateral speed under ~45 units/s) at fast tempos.
+    const beats = Math.max(level === 'cruise' ? 4 : 2, Math.ceil(1.1 / bl)) * stations, endAt = peakAfterSim(at + beats * bl - 0.15), dur = endAt > at + beats * bl * 0.8 && endAt < at + beats * bl * 1.8 ? endAt - at : beats * bl;
+    const began = commandMove(route, startAt, dur, stationX(station));
+    if (level === 'burn' && tun.weave() && quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence()) { roll = { at: began, dur, dir: dir > 0 ? -1 : 1 }; lastRoll = t; emit('barrelRoll'); }
+    emit('flank', { station, rider }); reauthor();
   };
-  const retarget = (direction: number) => {
-    const gs = [...groups()].sort((a, b) => centroid(a[1]) - centroid(b[1]) || a[0] - b[0]);
-    if (!gs.length) { selectedGroup = null; selectedId = null; return; }
-    const index = gs.findIndex(g => g[0] === selectedGroup);
-    selectedGroup = gs[(index < 0 ? 0 : index + (direction < 0 ? -1 : 1) + gs.length) % gs.length][0];
-    // Redirect the next acquisition; already painted locks remain committed.
-    lockIn = Math.min(lockIn, 0.15); emit('retarget', { target: selectedGroup });
+  const goTo = (st: number, rider = true) => { for (let k = 0; k < 2 && station !== st; k++) flankMove(Math.sign(st - station), rider); };
+  /** After a route change: shots and warned beams that would now connect with an on-band ship are spent as grazes. */
+  const reauthor = () => {
+    if (!(quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence())) return;
+    for (const b of bolts) if (!b.open && b.vy > 0.5 && b.y < SHIP_Y - 3 && missDistance(route, t, b.x, b.y, b, SHIP_Y) < ROUTE.clearance) { effect('graze', b.x, b.y); b.y = 200; }
+    for (let i = beams.length - 1; i >= 0; i--) { const bm = beams[i]; if (!bm.fired && !bm.open && [0, 0.08, 0.16, 0.24].some(d => Math.abs(routeX(route, bm.fireAt + d) - bm.x) < ROUTE.clearance)) beams.splice(i, 1); }
+  };
+  const paddleArmed = { L: true, R: true }; let releaseAsked = false;
+  /** Where an enemy is headed (entering wings report their slot), for the pilot and the elite cue. */
+  const aimX = (e: EnemyView) => e.entry && e.age < e.entry.duration ? e.entry.toX : e.x;
+  /** Hands-off pilot: the busiest flank of ordinary enemies arriving or in range (the harness bot also chases elites). */
+  const pilotPick = () => {
+    const score = [-1, 0, 1].map(st => enemies.reduce((a, e) => a + (e.hp > 0 && !e.passing && !e.resolved && e.y > -80 && e.y < SHIP_Y - 12 && Math.abs(aimX(e) - stationX(st)) <= FLANK.reach
+      ? (e.elite ? (opts.smartTarget ? 8 : 0) : e.parentId ? 3 : e.kind === 'boss' ? (enemies.some(m => m.parentId === e.id && m.hp > 0) ? 0 : 3) : 1) : 0), 0));
+    const best = [-1, 0, 1].reduce((b, st) => score[st + 1] > score[b + 1] ? st : b, station);
+    return score[best + 1] > score[station + 1] * 1.25 + 1 ? best : station;
   };
   /** Count an enemy toward its formation once: when it dies, or when it gets past the ship. */
   const resolve = (e: EnemyView, killedIt: boolean) => {
@@ -270,8 +312,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (pressed.has('a') || pressed.has('y') || pressed.has('powerUpR')) nova();
       // Retarget: arrow keys / d-pad, or a firm squeeze of an analog paddle (re-arms when it relaxes).
       const input = ctx.input();
-      if (pressed.has('left') || paddleArmed.L && input.paddleL > 0.6) retarget(-1);
-      if (pressed.has('right') || paddleArmed.R && input.paddleR > 0.6) retarget(1);
+      if (pressed.has('left') || paddleArmed.L && input.paddleL > 0.6) flankMove(-1);
+      if (pressed.has('right') || paddleArmed.R && input.paddleR > 0.6) flankMove(1);
       paddleArmed.L = input.paddleL > 0.6 ? false : input.paddleL < 0.3 ? true : paddleArmed.L;
       paddleArmed.R = input.paddleR > 0.6 ? false : input.paddleR < 0.3 ? true : paddleArmed.R;
       // B: release painted locks now (the volley still lands on the next beat). Z / left power: snap to an elite or the flagship.
@@ -279,9 +321,10 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (pressed.has('z') || pressed.has('powerUpL')) actions.push({ type: 'snap' });
       for (const a of actions.splice(0)) {
         if (a.type === 'nova') nova();
-        if (a.type === 'target') retarget(a.direction ?? 1);
+        if (a.type === 'target' || a.type === 'flank') flankMove(Math.sign(a.direction ?? 1) || 1);
         if (a.type === 'release' && locks.length) releaseAsked = true;
-        if (a.type === 'snap') snapTarget();
+        // Z / left power: dive to the flank of an incoming elite wing.
+        if (a.type === 'snap') { const el = enemies.find(e => e.elite && e.hp > 0 && !e.passing); if (el) goTo(stationOf(aimX(el))); }
       }
       const protectedRide = coverLeft > 0 || rejoinLeft > 0;
       const erg = craft === 'escort';
@@ -356,7 +399,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       rapid = level === 'burn' && driveMet;
       // Choreographed flight: follow the scheduled route; a sloppy pilot lags it and loses the authored misses.
       const alert = pedalling ? quality : 0;
-      pOff = p - t; extendRoute(route, t, ctx.rng, cruiseLine, peakAfterSim, phraseAfter);
+      pOff = p - t; holdRoute(route, t);
+      // Each phrase picks a hot flank. Without rider input for a phrase, the pilot flies to the busiest flank every few bars.
+      if (music.phrase) hotFlank = Math.floor(ctx.rng() * 3) - 1;
+      if (music.downbeat || !timeline?.downbeats.length && music.phrase) pilotBars++;
+      if (pilotBars >= (opts.smartTarget ? 1 : 4) && t - lastInputT > 16 && !movePending(route, t) && !protectedRide) { pilotBars = 0; const best = pilotPick(); if (best !== station) goTo(best, false); }
       const routeNow = routeX(route, t), routeV = (routeNow - routeX(route, t - dt)) / Math.max(dt, 1e-3);
       // On target the ship tracks the choreographed route exactly. Below target it gets sloppy: the weave runs late and
       // smaller, a lazy wobble creeps in, and a loose spring overshoots — and fire is no longer authored to miss it.
@@ -425,7 +472,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         escaped++; sector++; boss = null; bossAt = null; segBoss = 'escaped'; emit('bossEscaped'); announce('Flagship escaped · back to cruise');
       }
       if (!wall && !protectedRide && !breather && (music.kind === 'build' || music.kind === 'drop') && music.downbeat && t - lastWall > 7) {
-        const shooter = enemies.filter(e => inCombat(e) && !e.ground && !e.parentId && e.kind !== 'boss' && e.y > -20 && e.y < 35).sort((a, b) => Math.abs(a.x) - Math.abs(b.x))[0];
+        const shooter = enemies.filter(e => inCombat(e) && !e.ground && !e.parentId && e.kind !== 'boss' && e.y > -20 && e.y < 35)
+          // A wing one flank over, not already under your locks, fires it across your line.
+          .sort((a, b) => Number(locks.includes(a.id)) - Number(locks.includes(b.id)) || Math.abs(Math.abs(a.x - x) - FLANK.x) - Math.abs(Math.abs(b.x - x) - FLANK.x))[0];
         if (shooter) { wall = { id: shooter.id, at: t + 0.6 }; lastWall = t; }
       }
       spawnIn -= dt;
@@ -436,28 +485,21 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       groundIn-=dt;
       if(groundIn<=0 && !protectedRide && !breather) {spawnGround();groundIn=12;}
-      const candidates = targetable(), gs = groups();
-      // Selection sticks to a formation until it is gone. Auto-pick: flagship, else the nearest ordinary formation;
-      // elite wings are only ever chosen by the rider (or the harness bot).
-      if (selectedGroup === null || !gs.has(selectedGroup)) {
-        const maxY = (g: EnemyView[]) => Math.max(...g.map(e => e.y));
-        const eliteGroup = opts.smartTarget ? [...gs].find(([, m]) => m[0].elite)?.[0] : undefined;
-        selectedGroup = eliteGroup ?? (boss && gs.has(boss.id) ? boss.id : [...gs].filter(([, m]) => !m[0].elite).sort((a, b) => maxY(b[1]) - maxY(a[1]))[0]?.[0] ?? null);
-      }
-      const selected = selectedGroup !== null ? [...gs.get(selectedGroup) ?? []].sort((a, b) => Number(!!b.parentId) - Number(!!a.parentId) || b.y - a.y) : [];
-      selectedId = selected[0]?.id ?? null;
-      if (selected[0]?.elite) elitePursuitUntil = t + 6;
-      const elites = [...gs].filter(([k, m]) => m[0].elite && k !== selectedGroup);
-      eliteHint = elites.length ? (centroid(elites[0][1]) < (selected.length ? centroid(selected) : x) ? -1 : 1) : 0;
+      // Where you fly is what you hit: locks fill your own flank first (flagship parts leading), then spill a little
+      // into the next one. Elites only lock from their own flank.
+      const candidates = targetable(), lx = laneX(route, t), dxOf = (e: EnemyView) => Math.abs(e.x - lx);
+      const own = candidates.filter(e => dxOf(e) <= FLANK.reach).sort((a, b) => Number(!!b.parentId || b.kind === 'boss') - Number(!!a.parentId || a.kind === 'boss') || b.y - a.y);
+      const spill = candidates.filter(e => !e.elite && dxOf(e) > FLANK.reach && dxOf(e) <= FLANK.spill).sort((a, b) => dxOf(a) - dxOf(b) || b.y - a.y);
+      selectedId = own[0]?.id ?? null; selectedGroup = own[0] ? groupOf(own[0]) : null;
+      if (own.some(e => e.elite)) elitePursuitUntil = t + 6;
+      const elite = enemies.find(e => e.elite && e.hp > 0 && !e.passing && e.y > -200);
+      eliteHint = elite ? (Math.sign(stationOf(aimX(elite)) - station) || 0) as -1 | 0 | 1 : 0;
       for (let i = locks.length - 1; i >= 0; i--) if (!candidates.some(e => e.id === locks[i])) locks.splice(i, 1);
       const capacity = lockCapacity();
       volleyAge += dt; lockIn -= dt;
       // Locks paint on the sixteenth-note grid: the rising ticks play as a rhythm.
-      if (pedalling && quality >= 0.8 && candidates.length && locks.length < capacity && lockIn <= 0 && (music.sixteenth || !timeline?.beats.length)) {
-        // Fill the selected formation first, then spill to the nearest ordinary enemies; elites only when selected.
-        const spill = candidates.filter(e => !e.elite && groupOf(e) !== selectedGroup).sort((a, b) => Number(!!b.parentId || b.kind==='boss')-Number(!!a.parentId || a.kind==='boss') || b.y-a.y);
-        const ordered = [...selected, ...spill];
-        const target = ordered.find(e => !locks.includes(e.id)) ?? selected[0] ?? spill[0];
+      if (pedalling && quality >= 0.8 && own.length + spill.length && locks.length < capacity && lockIn <= 0 && (music.sixteenth || !timeline?.beats.length)) {
+        const target = own.find(e => !locks.includes(e.id)) ?? spill.find(e => !locks.includes(e.id)) ?? own[0] ?? spill[0];
         if (target) { locks.push(target.id); lockIn = lockInterval(); emit('lockAcquired', { target: target.id, count: locks.length }); }
       }
       // Volleys release on a downbeat (a beat if it is late) and their lasers land together on the next beat.
@@ -478,9 +520,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (!pedalling || quality < 0.3) locks.length = 0;
       fireIn -= dt;
       if ((fireIn <= 0 || (music.beat || music.hit) && fireIn < 0.15) && quality > 0.05 && pedalling) {
-        const targets = enemies.filter(inCombat).sort((a, b) => b.y - a.y);
+        const targets = [...own, ...spill], bossNear = !!boss && inCombat(boss) && dxOf(boss) <= FLANK.spill;
         const n = Math.min(3, gunLevel) + (craft === 'escort' ? 0 : 1);
-        for (let i = 0; i < n; i++) shot(x + (i - (n - 1) / 2) * 2.3, 'pulse', boss && inCombat(boss) && i >= 2 ? boss : targets[i % Math.max(1, targets.length)], (2 + gunLevel * 0.5) * ampMul);
+        for (let i = 0; i < n; i++) shot(x + (i - (n - 1) / 2) * 2.3, 'pulse', bossNear && i >= 2 ? boss! : targets[i % Math.max(1, targets.length)], (2 + gunLevel * 0.5) * ampMul);
 
         for (let i = 0; i < pk.wingmen; i++) shot(x + WING_OFFSETS[i], 'wing', targets[i % Math.max(1, targets.length)], 2.5);
         fireIn = (rapid ? 0.2 : 0.45) / Math.max(0.1, quality) / clamp(1 + 0.5 * (amp - ampMean), 0.8, 1.2);
@@ -488,8 +530,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const steady = pedalling && quality >= 0.8;
       // Heavy escort (craft level 7): a homing missile from behind the ship at the toughest target, on the beat.
       heavyIn -= dt;
-      if (pk.heavy && steady && heavyIn <= 0 && (music.beat || heavyIn < -0.6) && candidates.length) {
-        const target = [...candidates].sort((a, b) => Number(!!b.parentId) - Number(!!a.parentId) || b.hp - a.hp)[0];
+      if (pk.heavy && steady && heavyIn <= 0 && (music.beat || heavyIn < -0.6) && own.length + spill.length) {
+        const target = [...own, ...spill].sort((a, b) => Number(!!b.parentId) - Number(!!a.parentId) || b.hp - a.hp)[0];
         lasers.push({ id: ++id, targetId: target.id, sx: x, sy: shipY + 6, x: target.x, y: target.y, at: t, hitAt: impactAt(), height: target.ground ? -3.5 : 12, side: 22, damage: 40, hit: false, tier: gunLevel, heavy: true });
         heavyIn = 3.2;
       }
@@ -533,8 +575,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         }
         if (e.parentId) { if (!boss || boss.id !== e.parentId) { e.hp=-1;e.y=SHIP_Y;continue; } e.x=boss.x+(e.mountX??0);e.y=boss.y+4; }
         else if(!advanceEntry(e)) {
-          if (e.elite) { e.hp = -1; e.fled = true; continue; }
-          if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*24;e.y=16+Math.sin((e.age-7)*0.4)*3;}
+          if (e.elite) e.y += dt * 14 * rel();
+          else
+          if(e.kind==='boss') {e.x=Math.sin((e.age-7)*(0.3+e.bossStyle*0.08))*8;e.y=16+Math.sin((e.age-7)*0.4)*3;}
           else if(!e.ground){e.y+=dt*(e.kind==='armor'?7:10)*rel();if(e.kind==='weaver')e.x+=Math.cos(e.age*1.4+e.id)*dt*9;else if(e.kind==='tank')e.x+=Math.sin(e.age*0.6)*dt*2;}
         }
         e.heading=Math.atan2(e.x-oldX,e.y-oldY);
@@ -588,7 +631,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         if (hit) { hit.hp -= s.damage * (hit.kind === 'boss' ? 0.1 : 1); s.y = -200; }
       }
       for (const laser of lasers) {
-        const e = enemies.find(e => e.id === laser.targetId && e.hp > 0);
+        // A target that already got past (fast ground scroll in a burn) is missed, not killed beside the ship.
+        const e = enemies.find(e => e.id === laser.targetId && e.hp > 0 && !e.passing);
         if (e && !laser.hit) { laser.x = e.x; laser.y = e.y; }
         if (!laser.hit && t >= laser.hitAt) {
           laser.hit = true;
@@ -641,7 +685,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const ons = timeline?.onsets ?? [];
       const hits = [0, 0, 0]; for (let i = Math.max(0, onsetIndex(p) - 40); i < ons.length && ons[i].t <= p; i++) { const o = ons[i], age = p - o.t; if (age <= 0.45) hits[o.band] = Math.max(hits[o.band], o.s * Math.exp(-age * 7)); }
       const band = (j: 0 | 1 | 2) => clamp((timeline?.bands[j]?.[bk] ?? music.intensity) * 0.25 + hits[j] * 0.62, 0, 1);
-      return { t, bar: music.barPulse, beatIndex: bi, bands: [band(0), band(1), band(2)], selectedGroup, eliteHint, elites: { cleared: eliteCleared, seen: eliteSeen }, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
+      return { t, bar: music.barPulse, beatIndex: bi, bands: [band(0), band(1), band(2)], selectedGroup, eliteHint, station: station as -1 | 0 | 1, elites: { cleared: eliteCleared, seen: eliteSeen }, phase: menu ? 'hangar' : 'run', done, craft, escortUnlocked: unlockCheck(), ergAvailable, tester: tester(),
         crafts: Object.fromEntries(CRAFTS.map(c => { const info = craftLevel(pendingS(c)), level = levelOf(c);
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null,
             minutesToNext: tester() || info.nextAtS === null ? null : Math.max(1, Math.ceil((info.nextAtS - pendingS(c)) / 60)),
@@ -673,8 +717,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         ...(rpmAsk !== null ? { targetCadence: { min: rpmAsk, max: rpmAsk + 15, label: level === 'burn' ? 'Burn · spin up' : 'Push · spin up' } } : {}),
         controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
           ...(craft === 'cruiser' ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }] : []),
-          { button: 'left', label: 'Previous target' }, { button: 'right', label: 'Next target' },
-          { button: 'paddles', label: 'Target ◀ ▶' }, { button: 'b', label: 'Release', active: locks.length > 0 }, { button: 'z', label: 'Elite' },
+          { button: 'left', label: 'Flank ◀' }, { button: 'right', label: 'Flank ▶' },
+          { button: 'paddles', label: 'Flank ◀ ▶' }, { button: 'b', label: 'Release', active: locks.length > 0 }, { button: 'z', label: 'Elite flank', active: eliteHint !== 0 },
           { button: 'a', label: 'Nova', active: charge >= 100 && coverLeft <= 0 && rejoinLeft <= 0,
             cooldown: { fill: Math.min(1, charge / 100), ready: charge >= 100 },
             ...(coverLeft > 0 ? { indicator: { status: `Cover ${Math.ceil(coverLeft)}s` } } : rejoinLeft > 0 ? { indicator: { status: `Rejoin ${Math.ceil(rejoinLeft)}s` } } : {}) }] };

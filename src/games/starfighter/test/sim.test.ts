@@ -152,33 +152,69 @@ describe('musical locks and paddle targeting', () => {
     }
     expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
   });
-  it('touch retarget cycles formations spatially and preserves already painted locks', () => {
-    const r = rig(); const groupsOf = () => { const m = new Map<number, number[]>(); for (const e of r.snap().enemies.filter(inCombat)) { const k = groupOf(e); m.set(k, [...(m.get(k) ?? []), e.x]); } return [...m].map(([k, xs]) => ({ k, x: xs.reduce((a, b) => a + b, 0) / xs.length })).sort((a, b) => a.x - b.x || a.k - b.k); };
-    for (let i = 0; i < 300; i++) { r.seconds(0.1); if (groupsOf().length >= 3 && r.snap().locks.length > 0) break; }
-    const groups = groupsOf(); expect(groups.length).toBeGreaterThan(2);
-    const previous = r.snap().selectedGroup, painted = [...r.snap().locks];
-    r.s.sim.receive!({ type: 'target', direction: 1 }); r.s.step(1);
-    expect(r.snap().selectedGroup).toBe(groups[(groups.findIndex(g => g.k === previous) + 1) % groups.length].k);
-    expect(r.snap().locks.slice(0, painted.length)).toEqual(painted);
-    r.s.sim.receive!({ type: 'target', direction: -1 }); r.s.step(1); expect(r.snap().selectedGroup).toBe(previous);
+  it('touch moves one flank per press from the next beat; a second press queues to the far flank; the edge leans', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); r.seconds(12);
+    const lane = () => { const s = r.snap(); return s.station; };
+    const start = lane(), dir = start <= 0 ? 1 : -1;
+    r.s.sim.receive!({ type: 'target', direction: dir }); r.s.step(1);
+    expect(lane()).toBe(start + dir);
+    // The move starts on a beat and lands one flank (22 units) over within about a bar and a half.
+    const x0 = r.snap().shipX; r.seconds(3.5); expect(Math.abs(r.snap().shipX - x0)).toBeGreaterThan(12);
+    // From an edge, a double press goes all the way across.
+    const edge = rig({}, 'z2', tl); edge.seconds(12);
+    for (let k = 0; k < 3; k++) { edge.s.sim.receive!({ type: 'target', direction: -1 }); edge.s.step(1); }
+    edge.seconds(6); expect(edge.snap().station).toBe(-1); expect(edge.snap().shipX).toBeLessThan(-12);
+    edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1); edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1);
+    expect(edge.snap().station).toBe(1); edge.seconds(7); expect(edge.snap().shipX).toBeGreaterThan(12);
+    // Pressing into the edge leans out a little and comes back; the station does not change.
+    const leans: string[] = []; edge.s.ctx.emit = ((e: { type: string }) => { if (e.type === 'lean') leans.push(e.type); }) as typeof edge.s.ctx.emit;
+    edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1); expect(leans).toHaveLength(1); expect(edge.snap().station).toBe(1);
   });
-  it('both shifters change Cruiser gears; analog paddles retarget; B releases locks; Z snaps to an elite or flagship', () => {
+  it('both shifters change Cruiser gears; analog paddles move flanks; B releases locks; Z dives to an elite wing', () => {
     const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }, { t: 20.5, release: 'shiftUpL' },
-      { t: 20.8, paddleR: 0.9 }, { t: 21.0, paddleR: 0 }]);
+      { t: 20.8, paddleL: 0.9 }, { t: 21.0, paddleL: 0 }]);
     const r = rig({}, 'z2', undefined, undefined, input); r.s.tuning.set('starfighter.novaChargeS',10); r.seconds(20);
     const gear = r.s.ctx.bike().gear!; r.seconds(0.35); expect(r.s.ctx.bike().gear).toBeGreaterThan(gear);
     const afterOne = r.s.ctx.bike().gear!; r.seconds(0.3); expect(r.s.ctx.bike().gear).toBeGreaterThan(afterOne);
     r.seconds(1); expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
-    expect(r.s.recorder.events.filter(e => e.type === 'retarget')).toHaveLength(1);
+    // One firm squeeze is one move (re-armed only on release).
+    expect(r.s.recorder.events.filter(e => e.type === 'flank' && e.data?.rider)).toHaveLength(1);
     // B: painted locks fire on the next beat instead of waiting for the bar.
     const b = rig({}, 'z2', longMusic()); for (let i = 0; i < 900 && !(b.snap().locks.length >= 2 && b.snap().volleyFlash === 0); i++) b.s.step(1);
     const volleys = Number(b.s.sim.summary().volleys); b.s.sim.receive!({ type: 'release' }); b.seconds(0.6);
     expect(Number(b.s.sim.summary().volleys)).toBe(volleys + 1);
-    // Z: snap to an elite wing while one is crossing.
+    // Z: dive to the flank of an incoming elite wing.
     const z = rig({}, 'z2', longMusic()); for (let i = 0; i < 30 * 600 && !z.snap().eliteHint; i++) z.s.step(1);
-    z.s.sim.receive!({ type: 'snap' }); z.s.step(1);
-    expect(z.snap().enemies.find(e => e.id === z.snap().selectedId)?.elite).toBe(true);
+    const elite = z.snap().enemies.find(e => e.elite)!, want = Math.max(-1, Math.min(1, Math.round((elite.entry?.toX ?? elite.x) / 22))) || 0;
+    z.s.sim.receive!({ type: 'snap' }); z.s.step(1); expect(z.snap().station).toBe(want); expect(z.snap().eliteHint).toBe(0);
   });
+  it('locks fill your own flank first and spill only into the next; elites lock only from their own flank', () => {
+    const r = rig({}, 'z2', longMusic()); let checked = 0;
+    r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => {
+      if (e.type !== 'lockAcquired') return;
+      // At acquisition the target is within reach of the ship's lane (the weave adds up to 7 either way).
+      const s = r.snap(), en = s.enemies.find(x => x.id === e.data?.target); if (!en) return;
+      const dx = Math.abs(en.x - s.shipX); expect(dx).toBeLessThan(26 + 8); if (en.elite) expect(dx).toBeLessThan(13 + 8); checked++;
+    }) as typeof r.s.ctx.emit;
+    r.seconds(300); expect(checked).toBeGreaterThan(100);
+  }, 20_000);
+  it('the hands-off pilot changes flank on swing peaks at most every four bars and leaves a rider alone for a phrase', () => {
+    const tl = longMusic(), r = rig({}, 'cadence-follow', tl); const pilot: number[] = [];
+    r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => { if (e.type === 'flank' && !e.data?.rider) pilot.push(r.snap().t); }) as typeof r.s.ctx.emit;
+    r.seconds(300); const moves = pilot.filter((t, i) => i === 0 || t - pilot[i - 1] > 1e-6); expect(moves.length).toBeGreaterThan(5);
+    // A two-flank pilot move is two steps at once; decisions are at least about four bars apart.
+    const bar = 4 * 60 / 130; for (let i = 1; i < moves.length; i++) expect(moves[i] - moves[i - 1]).toBeGreaterThan(bar * 3);
+    const quiet: number[] = []; r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => { if (e.type === 'flank' && !e.data?.rider) quiet.push(r.snap().t); }) as typeof r.s.ctx.emit;
+    r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(15); expect(quiet).toHaveLength(0);
+  }, 20_000);
+  it('rider flank moves never get an on-band ship hit: fire aimed at the new line is spent as grazes', () => {
+    const events: Array<{ t: number; press?: 'left' | 'right'; release?: 'left' | 'right' }> = [];
+    let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let t = 12; t < 400; t += 0.7 + rand() * 2.5) { const b = rand() < 0.5 ? 'left' as const : 'right' as const; events.push({ t, press: b }, { t: t + 0.1, release: b }); }
+    const r = rig({}, 'cadence-follow', longMusic(), undefined, new TimelineInput(events)); r.seconds(400);
+    const sum = r.s.sim.summary(); expect(Number(sum.hits)).toBe(0); expect(Number(sum.absorbed)).toBe(0);
+    expect(r.s.recorder.events.filter(e => e.type === 'flank' && e.data?.rider).length).toBeGreaterThan(80);
+  }, 30_000);
   it('flagship batteries expose the reactor and leave with an escaping boss', () => {
     const r = rig(); r.s.tuning.set('starfighter.bossEveryS',120); r.s.tuning.set('starfighter.bossHull',200);
     for (let i = 0; i < 30 * 120 && !r.snap().boss; i++) r.s.step(1); r.seconds(1);
@@ -253,12 +289,13 @@ describe('spectacle encounters', () => {
     expect(Number(sum.clearPct)).toBeGreaterThan(20);expect(Number(sum.perfects)).toBeGreaterThan(0);expect(Number(sum.absorbed)).toBe(0);
     expect(r.snap().clear.rate).toBeCloseTo(Number(sum.clearPct)/100,1);
   }, 15_000);
-  it('elite wings reward attentive targeting and never lower the clear rate when ignored', () => {
+  it('elite wings reward riding to their flank and never lower the clear rate when ignored', () => {
     const auto = rig({}, 'z2', longMusic()), smart = rig({ smartTarget: true }, 'z2', longMusic());
     auto.seconds(900); smart.seconds(900);
     const a = auto.s.sim.summary(), b = smart.s.sim.summary();
-    expect(Number(a.elitesSeen)).toBeGreaterThan(5); expect(Number(a.elitesCleared)).toBe(0);
-    expect(Number(b.elitesCleared)).toBeGreaterThanOrEqual(2); expect(Number(b.score)).toBeGreaterThan(Number(a.score));
+    // Elites dive down a flank the ship is not on: the pilot catches a few by chance, an attentive rider most of them.
+    expect(Number(a.elitesSeen)).toBeGreaterThan(5); expect(Number(b.elitesCleared)).toBeGreaterThan(Number(a.elitesCleared) * 3);
+    expect(Number(b.elitesCleared)).toBeGreaterThan(Number(b.elitesSeen) / 2); expect(Number(b.score)).toBeGreaterThan(Number(a.score) * 1.15);
     expect(Math.abs(Number(b.clearPct) - Number(a.clearPct))).toBeLessThan(10);
     expect(Number(a.absorbed) + Number(b.absorbed)).toBe(0);
   }, 20_000);

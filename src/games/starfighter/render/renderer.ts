@@ -31,7 +31,7 @@ export class SfRenderer implements GameRenderer {
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-    if (el?.dataset.action === 'target') this.send?.({ type: 'target', direction: Number(el.dataset.direction) });
+    if (el?.dataset.action === 'flank' || el?.dataset.action === 'target') this.send?.({ type: 'flank', direction: Number(el.dataset.direction) });
     if (el?.dataset.action === 'nova') this.send?.({ type: 'nova' });
     if (el?.dataset.action === 'launch') this.send?.({ type: 'launch' });
     if (el?.dataset.action === 'craft') this.send?.({ type: 'craft', craft: el.dataset.craft });

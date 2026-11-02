@@ -16,4 +16,5 @@ export const CAMPAIGN: Chapter[] = [
   { name: '6 · Walls and ceilings', levels: ['g-wall', 'w-vane', 'g-under', 't-mast', 'w-canopy'] },
   { name: '7 · Sight', levels: ['p-turn', 'c-bridge', 'm-gyro', 'c-towers', '6:28', '6:20'] },
   { name: '8 · Generated curtains', levels: ['cg:297', 'cg:187', 'cg:86', 'cg:510'] },
+  { name: '9 · The Cube', levels: ['x-cube'] },
 ];

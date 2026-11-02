@@ -18,7 +18,7 @@ session.step(Math.round(Number(q.get('min') ?? 0) * 60 * 30));
 const app = document.getElementById('app')!, bar = document.getElementById('hudfake')!;
 bar.style.height = `${inset}px`;
 const r = await module.loadRenderer();
-r.mount(app, { profile: testProfile(), insets: { top: 0, right: 0, bottom: inset, left: 0 } });
+r.mount(app, { profile: testProfile(), send: (a) => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 } });
 let last = performance.now();
 const loop = (now: number) => {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;

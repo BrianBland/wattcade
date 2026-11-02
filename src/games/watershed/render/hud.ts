@@ -50,6 +50,8 @@ const MENU_CSS = `
 .ws-menu .opt b { display:block; font-size:30px } .ws-menu .opt small { display:block; font-size:13px; opacity:.85; margin:2px 0 8px; min-height:2.4em }
 .ws-menu .tl { display:flex; height:9px; border-radius:5px; overflow:hidden; gap:1px }
 .ws-menu .tl i { display:block; height:100% }
+.ws-menu .warm { margin-top:12px; display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:8px 16px; border-radius:12px; background:rgba(255,255,255,.07); border:2px solid transparent; font-size:15px }
+.ws-menu .warm.on { border-color:#7fb6e0; background:rgba(127,182,224,.16) } .ws-menu .warm .box { width:18px; height:18px; border-radius:5px; border:2px solid rgba(255,255,255,.7); display:inline-grid; place-items:center; font-size:13px; line-height:1 }
 .ws-menu .go { margin-top:14px; display:inline-block; cursor:pointer; padding:10px 26px; border-radius:14px; background:#2f7d3f; font-weight:800; font-size:18px }
 .ws-menu .hint { margin-top:8px; font-size:13px; opacity:.75 }
 `;
@@ -86,17 +88,18 @@ export class Hud {
     if (!m) return;
     const L = layout(this.size[0], this.size[1], this.insetB);
     this.menuEl.style.top = `${Math.max(12, L.UH * 0.16)}px`;
-    const key = `${m.sel}`;
+    const key = `${m.sel}:${m.skipWarmup}`;
     if (key !== this.menuKey) {
       this.menuKey = key;
       this.menuEl.innerHTML = `<h2>Choose your ride</h2><div class="sub">Same water cycle, sized to your workout: ERG all the way.</div><div class="opts">${m.options.map((o, i) => {
         const tot = o.blocks.reduce((a, b) => a + b.minutes, 0);
-        return `<div class="opt${i === m.sel ? ' sel' : ''}" data-min="${o.minutes}"><b>${o.minutes} min</b><small>${o.blurb}</small><div class="tl">${o.blocks.map((b) => `<i style="flex:${b.minutes / tot};background:${PHASE_COLOR[b.phase]}"></i>`).join('')}</div></div>`;
-      }).join('')}</div><div class="go">▶ Start</div><div class="hint"></div>`;
+        return `<div class="opt${i === m.sel ? ' sel' : ''}" data-min="${o.length}"><b>${o.minutes} min</b><small>${o.blurb}</small><div class="tl">${o.blocks.map((b) => `<i style="flex:${b.minutes / tot};background:${PHASE_COLOR[b.phase]}"></i>`).join('')}</div></div>`;
+      }).join('')}</div><div class="warm${m.skipWarmup ? ' on' : ''}"><span class="box">${m.skipWarmup ? '✓' : ''}</span>Already warm: skip evaporation &amp; cloud, start at the rain</div><br><div class="go">▶ Start</div><div class="hint"></div>`;
       this.menuEl.querySelectorAll<HTMLElement>('.opt').forEach((el) => el.addEventListener('pointerdown', () => this.send?.({ type: 'length', minutes: Number(el.dataset.min) })));
+      this.menuEl.querySelector('.warm')?.addEventListener('pointerdown', () => this.send?.({ type: 'warmup', skip: !m.skipWarmup }));
       this.menuEl.querySelector('.go')?.addEventListener('pointerdown', () => this.send?.({ type: 'start' }));
     }
-    (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ choose · A start · starts by itself in ${Math.ceil(m.left)} s`;
+    (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ choose · Y warm-up · A start · starts by itself in ${Math.ceil(m.left)} s`;
   }
 
   setRpmRange(lo: number, hi: number) { this.rpmLow = lo; this.rpmHigh = hi; }

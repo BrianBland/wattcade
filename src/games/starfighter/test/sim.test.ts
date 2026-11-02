@@ -7,7 +7,7 @@ import { inCombat, MAX_BOLTS, bulletPattern, wallPattern, groupOf } from '../sim
 import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createWeave } from '../sim/weave';
 import { createDirector, cadenceFor } from '../sim/director';
-import { escortAvailable, migrateSave } from '../sim/save';
+import { escortAvailable, strikerAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
 import { arsenalTier, craftLevel, perks } from '../sim/progression';
 import type { SfSave, SfSnapshot } from '../sim/types';
@@ -400,6 +400,38 @@ describe('craft selection and save migration', () => {
     r.s.sim.receive!({ type: 'craft', craft: 'escort' }); r.seconds(1); expect(r.snap().craft).toBe('cruiser');
     r.s.sim.receive!({ type: 'launch' }); r.seconds(1); expect(r.snap().phase).toBe('run');
   });
+  it('the Tempo Striker unlocks at Cruiser level 5 or Escort level 3 and stays unlocked', () => {
+    const base = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser'] };
+    expect(rig({ craft: 'striker' }).snap().craft).toBe('cruiser');
+    expect(rig({ craft: 'striker' }, 'z2', undefined, { ...base, craftS: { cruiser: 209 * 60, escort: 89 * 60, striker: 0 } }).snap().craft).toBe('cruiser');
+    expect(strikerAvailable(migrateSave({ ...base, craftS: { cruiser: 210 * 60, escort: 0 } }))).toBe(true);
+    const viaEscort = rig({ craft: 'striker' }, 'z2', undefined, { ...base, craftS: { cruiser: 0, escort: 90 * 60, striker: 0 } });
+    expect(viaEscort.snap().craft).toBe('striker'); expect(viaEscort.snap().crafts.striker.unlocked).toBe(true);
+    viaEscort.s.sim.dispose!(); expect(viaEscort.saved().unlocked).toContain('striker');
+    // Controller craft cycling reaches it in the hangar.
+    const menu = rig({ skipHangar: false }, 'z2', undefined, { ...base, craft: 'cruiser', craftS: { cruiser: 210 * 60, escort: 0, striker: 0 } },
+      new TimelineInput([{ t: 0.2, press: 'right' }, { t: 0.3, release: 'right' }, { t: 0.5, press: 'right' }, { t: 0.6, release: 'right' }]));
+    menu.seconds(1); expect(menu.snap().craft).toBe('striker');
+  });
+  it('the Striker rides harder in ERG with a spin ask, and its flank moves strike what they pass', () => {
+    const save = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser', 'striker'], craftS: { cruiser: 0, escort: 0, striker: 0 } };
+    const r = rig({ craft: 'striker' }, 'cadence-follow', longMusic(), save); let rpmSeen = 0;
+    for (let i = 0; i < 600; i++) { r.seconds(1); if (r.snap().drive.level === 'burn') rpmSeen = Math.max(rpmSeen, r.snap().drive.rpm ?? 0); }
+    const watts = r.s.commands.flatMap(c => c.mode === 'erg' ? [c.watts] : []);
+    expect(Math.max(...watts)).toBeLessThanOrEqual(Math.round(0.88 * 200) + 1); expect(Math.max(...watts)).toBeGreaterThan(165);
+    expect(watts.some(w => w < 140)).toBe(true); expect(rpmSeen).toBeGreaterThan(95);
+    const sum = r.s.sim.summary(); expect(Number(sum.strikeHits)).toBeGreaterThan(10); expect(Number(sum.hits)).toBe(0); expect(r.snap().drive.level).toBeDefined();
+    expect(r.s.sim.hud!().gears).toBe(false);
+  }, 30_000);
+  it('the Striker on a trainer without ERG rides gears with a higher band and more resistance', () => {
+    const profile = testProfile(); profile.gameData.starfighter = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser', 'striker'], craftS: { cruiser: 0, escort: 0, striker: 0 } };
+    const hub = new DataHub(), trainer = new FakeTrainer(); trainer.capabilities.erg = false; hub.attachTrainer(trainer);
+    const s = createGameSession({ game: module, profile, input: new NullInput(), dataHub: hub, fake: false, simOpts: { craft: 'striker', skipHangar: true }, media: { timeline: longMusic() } });
+    let burnFloor = 0; for (let i = 0; i < 400; i++) { s.step(30); const snap = s.sim.snapshot() as SfSnapshot; if (snap.drive.level === 'burn') burnFloor = Math.max(burnFloor, snap.effort.floorWatts); }
+    expect((s.sim.snapshot() as SfSnapshot).craft).toBe('striker'); expect(s.sim.hud!().gears).toBe(true);
+    expect(s.commands.every(c => c.mode !== 'erg')).toBe(true); expect(burnFloor).toBe(160);
+    expect(Math.max(...s.commands.flatMap(c => c.mode === 'sim' ? [c.gradePct] : []))).toBeCloseTo(1.2, 5);
+  }, 30_000);
   it('keeps the cruiser available and blocks the ERG craft on an unsupported trainer', () => {
     const profile = testProfile(); profile.gameData.starfighter = { bank: 1000 };
     const hub = new DataHub(), trainer = new FakeTrainer(); trainer.capabilities.erg = false; hub.attachTrainer(trainer);

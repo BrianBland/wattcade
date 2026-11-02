@@ -107,7 +107,7 @@ export class SfRenderer implements GameRenderer {
     this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
-      this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
+      this.craft = shipModel(this.color, s.craft === 'cruiser' ? 'player' : s.craft); this.craftKind = s.craft; this.scene.add(this.craft);
       this.liveryKey = '';
     }
     const craft = this.craft!, hangar = s.phase === 'hangar', level = s.crafts[s.craft].level;

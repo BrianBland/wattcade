@@ -1,6 +1,6 @@
 import type { SectionKind } from '../../../contracts';
 import type { Drive } from './drive';
-export type CraftId = 'cruiser' | 'escort';
+export type CraftId = 'cruiser' | 'escort' | 'striker';
 export interface SfSave {
   v: 3; best: number; legacyBest: number; runs: number; onTargetS: number; unlockCredit: number;
   craft: CraftId; totals: { kills: number; bosses: number }; legacy?: Record<string, unknown>;

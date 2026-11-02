@@ -1,7 +1,7 @@
 import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
 import { after, clamp, createDirector } from './director';
 import { createDrive, rank, DRIVES, spanDistance, timeAtDistance, type Drive, type DriveSpan } from './drive';
-import { craftName, escortAvailable, migrateSave } from './save';
+import { craftName, escortAvailable, strikerAvailable, migrateSave } from './save';
 import { arsenalTier, craftLevel, CRAFTS, MAX_LEVEL, perks, rewardFor, TIER_NAMES, WING_OFFSETS } from './progression';
 import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, eliteEntry, groupOf, entryFor, advanceEntry, inCombat, bulletPattern, wallPattern, firesInFormation } from './encounters';
 import { SECTORS } from './content';
@@ -13,6 +13,8 @@ import { mulberry } from './rng';
 import type { BeamView, CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
 export type { SfSnapshot } from './types';
 export const H = 100, SHIP_Y = 84;
+/** Tempo Striker on gears (no ERG): power band [floor, ceiling] as FTP fractions per drive level. */
+export const STRIKER_SIM: Record<Drive, [number, number]> = { cruise: [0.6, 0.8], push: [0.7, 0.86], burn: [0.8, 0.95] };
 export interface SfOpts { autopilot?: boolean; skipHangar?: boolean; craft?: CraftId; endless?: boolean; /** Harness bot that targets elite wings like an attentive rider. */ smartTarget?: boolean }
 
 export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
@@ -38,6 +40,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     lockScale: ctx.tuning.num('driveLockScale', 1, 0, 1.5, 0.05, 'Locks paint faster with speed (exponent of relative pass speed)'),
     exposure: ctx.tuning.num('driveExposure', 0.35, 0, 1, 0.05, 'Share of enemy volleys left aimed at a rider missing a push/burn (below the power band = all)'),
     driveGrace: ctx.tuning.num('driveGraceS', 4, 0, 15, 0.5, 'Seconds to spin up into a push/burn before fire connects'),
+    // Tempo Striker: the harder ride (ERG targets; on gears it uses STRIKER_SIM bands).
+    strikerCruise: ctx.tuning.num('strikerCruiseFtp', 0.68, 0.56, 0.8, 0.01), strikerPush: ctx.tuning.num('strikerPushFtp', 0.78, 0.6, 0.9, 0.01), strikerBurn: ctx.tuning.num('strikerBurnFtp', 0.88, 0.6, 1, 0.01),
     rpmPush: ctx.tuning.num('rpmPush', 4, 0, 15, 1), rpmBurn: ctx.tuning.num('rpmBurn', 8, 0, 20, 1),
     ergPush: ctx.tuning.num('ergPushFtp', 0.66, 0.56, 0.75, 0.01), ergBurn: ctx.tuning.num('ergBurnFtp', 0.7, 0.56, 0.8, 0.01), ergCruise: ctx.tuning.num('ergCruiseFtp', 0.62, 0.5, 0.7, 0.01),
     // Playtesting: 1 unlocks every craft at max level; pace speeds up in-ride arsenal growth.
@@ -49,6 +53,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const ergAvailable = ctx.trainerCapabilities?.()?.erg === true;
   let craft: CraftId = opts.craft ?? save.craft;
   if (craft === 'escort' && (!(tun.tester() >= 1 || escortAvailable(save)) || !ergAvailable)) craft = 'cruiser';
+  if (craft === 'striker' && !(tun.tester() >= 1 || strikerAvailable(save))) craft = 'cruiser';
   let menu = !opts.autopilot && !opts.skipHangar, menuT = 0, started = false, done = false;
   let t = 0, p = 0, id = 0, score = 0, kills = 0, combo = 0, maxCombo = 0, deaths = 0, bosses = 0, escaped = 0, sector = 1;
   let hull = 100, shield = 100, quality = 1, underS = 0, charge = 0, coverLeft = 0, rejoinLeft = 0;
@@ -73,6 +78,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** Flank station (-1 left, 0 centre, 1 right) the ship holds or is heading for, and the hands-off pilot's state. */
   /** Next swing peak (else beat) at or after sim time `at`. */
   const peakAfterSim = (at: number) => { if (!tun.weave()) return beatAfter(at); const q = weaveAt.peakAfter(at + pOff) - pOff; return q >= at && q - at < 2.5 ? q : beatAfter(at); };
+  let strikeRun: { from: number; until: number; hit: Set<number> } | null = null, strikeHits = 0;
   let station = 0, lastInputT = -99, pilotBars = 0, hotFlank = 0, lastFlank = 0;
   const stationOf = (sx: number) => clamp(Math.round(sx / FLANK.x), -1, 1);
   const beams: BeamView[] = [];
@@ -105,7 +111,10 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** How often this rider has held each drive lately (forecasts expect what they actually do). */
   const held = { push: 1, burn: 1 };
   const expectSpeed = (d: Drive) => d === 'cruise' ? levelSpeed(d) : levelSpeed(DRIVES[rank(d) - 1]) + held[d] * (levelSpeed(d) - levelSpeed(DRIVES[rank(d) - 1]));
-  const ergFor = (d: Drive) => d === 'burn' ? tun.ergBurn() : d === 'push' ? tun.ergPush() : tun.ergCruise();
+  const ergFor = (d: Drive) => craft === 'striker' ? (d === 'burn' ? tun.strikerBurn() : d === 'push' ? tun.strikerPush() : tun.strikerCruise())
+    : d === 'burn' ? tun.ergBurn() : d === 'push' ? tun.ergPush() : tun.ergCruise();
+  /** Spin ask over the rider's own cruising cadence: the Striker asks a little more. */
+  const spinAsk = (d: Drive) => Math.min(112, Math.round(cadBase) + (d === 'burn' ? tun.rpmBurn() : tun.rpmPush()) + (craft === 'striker' ? (d === 'burn' ? 2 : 1) : 0));
   /** Expected distance from now to program time `until`, if the rider meets every announced drive. */
   const aheadSpans = (until: number): DriveSpan[] => until > p ? drive.forecast(p, until) : [];
   let effort: SfSnapshot['effort'] = { status: 'settling', targetWatts: 130, floorWatts: 112, ceilingWatts: 150, erg: false };
@@ -119,6 +128,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     const gained = Math.max(0, onTargetS - savedOn);
     save.onTargetS += gained; save.craftS[craft] += gained; savedOn = onTargetS;
     if (!save.unlocked.includes('escort') && escortAvailable(save)) save.unlocked.push('escort');
+    if (!save.unlocked.includes('striker') && strikerAvailable(save)) save.unlocked.push('striker');
     save.totals.kills += kills - savedKills; savedKills = kills;
     save.totals.bosses += bosses - savedBosses; savedBosses = bosses;
     save.best = Math.max(save.best, Math.round(score)); save.craft = craft;
@@ -126,12 +136,18 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   };
   const launch = () => {
     if (started) return; menu = false; started = true; save.runs++;
-    ctx.resistance.useVirtualGears(craft === 'cruiser'); persist(); // both hoods' shifters change gear
+    ctx.resistance.useVirtualGears(gears()); persist(); // both hoods' shifters change gear
     announce(`${craftName(craft)} · hold the groove`);
   };
   const pendingS = (c: CraftId) => save.craftS[c] + (c === craft && started ? Math.max(0, onTargetS - savedOn) : 0);
   const tester = () => tun.tester() >= 1;
   const unlockCheck = () => tester() || escortAvailable({ ...save, craftS: { ...save.craftS, cruiser: pendingS('cruiser') } });
+  const pendingSave = () => ({ ...save, craftS: { cruiser: pendingS('cruiser'), escort: pendingS('escort'), striker: pendingS('striker') } });
+  /** Craft the rider may fly now: the Escort needs ERG; the Striker unlocks at Cruiser 5 / Escort 3. */
+  const canFly = (c: CraftId) => c === 'cruiser' || c === 'escort' ? c === 'cruiser' || unlockCheck() && ergAvailable : tester() || strikerAvailable(pendingSave());
+  /** The Striker lets the trainer hold its harder watts when it can; otherwise it rides on gears like the Cruiser. */
+  const ergCraft = () => craft === 'escort' || craft === 'striker' && ergAvailable;
+  const gears = () => !ergCraft();
   const levelOf = (c: CraftId) => tester() ? MAX_LEVEL : craftLevel(pendingS(c)).level;
   let rideLevel = 0, pk = perks(craft, levelOf(craft));
   let tierWaitFrom = -1, amp = 0.5, ampMean = 0.5;
@@ -236,7 +252,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     // At least ~1.1 s per flank so the hop stays a glide (lateral speed under ~45 units/s) at fast tempos.
     const beats = Math.max(level === 'cruise' ? 4 : 2, Math.ceil(1.1 / bl)) * stations, endAt = peakAfterSim(at + beats * bl - 0.15), dur = endAt > at + beats * bl * 0.8 && endAt < at + beats * bl * 1.8 ? endAt - at : beats * bl;
     const began = commandMove(route, startAt, dur, stationX(station));
-    if (level === 'burn' && tun.weave() && quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence()) { roll = { at: began, dur, dir: dir > 0 ? -1 : 1 }; lastRoll = t; emit('barrelRoll'); }
+    // Striker signature: a flank move in a push or burn is a strike, rolled, hitting everything it passes under.
+    if (craft === 'striker' && level !== 'cruise') strikeRun = { from: began, until: began + dur, hit: new Set() };
+    if ((level === 'burn' || craft === 'striker' && level === 'push') && tun.weave() && quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence()) { roll = { at: began, dur, dir: dir > 0 ? -1 : 1 }; lastRoll = t; emit('barrelRoll'); }
     emit('flank', { station, rider }); reauthor();
   };
   const goTo = (st: number, rider = true) => { for (let k = 0; k < 2 && station !== st; k++) flankMove(Math.sign(st - station), rider); };
@@ -295,10 +313,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       if (done) return;
       const bike = ctx.bike(), pressed = ctx.input().pressed;
       if (menu) {
-        if (pressed.has('left') || pressed.has('right') || pressed.has('up') || pressed.has('down')) if (unlockCheck() && ergAvailable) craft = craft === 'cruiser' ? 'escort' : 'cruiser';
+        // Left / up go back through the flyable craft, right / down forward.
+        const step = pressed.has('left') || pressed.has('up') ? -1 : pressed.has('right') || pressed.has('down') ? 1 : 0;
+        if (step) { const list = CRAFTS.filter(canFly), i = list.indexOf(craft); craft = list[(i + step + list.length) % list.length] ?? craft; }
         if (pressed.has('a') || pressed.has('b')) actions.push({ type: 'launch' });
         for (const a of actions.splice(0)) {
-          if (a.type === 'craft' && (a.craft === 'cruiser' || a.craft === 'escort' && unlockCheck() && ergAvailable)) craft = a.craft;
+          if (a.type === 'craft' && a.craft && CRAFTS.includes(a.craft) && canFly(a.craft)) craft = a.craft;
           if (a.type === 'launch') launch();
         }
         if (bike.cadence3s > 30) menuT += dt;
@@ -329,20 +349,20 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         if (a.type === 'snap') { const el = enemies.find(e => e.elite && e.hp > 0 && !e.passing); if (el) goTo(stationOf(aimX(el))); }
       }
       const protectedRide = coverLeft > 0 || rejoinLeft > 0;
-      const erg = craft === 'escort';
+      const erg = ergCraft(), striker = craft === 'striker';
       // Drive level for this moment: protection and the breather always cruise.
       driveNow = drive.step(p);
       const breatherNow = !!seg && seg.t1 - seg.t0 > 60 && p >= seg.t1 - 14;
       level = protectedRide || breatherNow || !started || !tun.drive() ? 'cruise' : driveNow.level;
       const calmSection = music.kind === 'break' || music.kind === 'outro';
-      const wanted = protectedRide ? tun.recovery() : erg ? (level === 'cruise' && calmSection ? 0.56 : ergFor(level)) : 0.65;
+      const wanted = protectedRide ? tun.recovery() : erg ? (level === 'cruise' && calmSection ? (striker ? 0.6 : 0.56) : ergFor(level)) : 0.65;
       if (Math.abs(wanted - lastWanted) > 0.005) { settleLeft = tun.settle(); lastWanted = wanted; }
       targetFtp += (wanted - targetFtp) * (1 - Math.exp(-dt / 2.5));
       const scaled = erg ? Math.min(ctx.profile.settings.ergCapFtpFraction, Math.max(60 / ctx.profile.ftp, targetFtp * ctx.profile.settings.difficulty)) : 0.65;
-      // The Cruiser's band lifts a little with the drive; it stays conversational.
-      const lift0 = erg ? 0 : rank(level);
-      const floor = protectedRide ? 0 : erg ? scaled * 0.85 : tun.floor() + lift0 * 0.02;
-      const ceiling = protectedRide ? 0 : erg ? scaled * 1.15 : tun.ceiling() + lift0 * 0.015;
+      // The Cruiser's band lifts a little with the drive (it stays conversational); the Striker's on gears lifts hard.
+      const lift0 = erg ? 0 : rank(level), sBand = STRIKER_SIM[level];
+      const floor = protectedRide ? 0 : erg ? scaled * 0.85 : striker ? sBand[0] : tun.floor() + lift0 * 0.02;
+      const ceiling = protectedRide ? 0 : erg ? scaled * 1.15 : striker ? sBand[1] : tun.ceiling() + lift0 * 0.015;
       const pedalling = bike.cadence3s >= tun.cadence();
       const under = !pedalling || bike.ftpFraction < floor;
       const over = ceiling > 0 && bike.ftpFraction > ceiling;
@@ -355,10 +375,10 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       effort = { status: protectedRide ? 'recover' : settling ? 'settling' : under ? 'under' : over ? 'over' : 'on',
         targetWatts: Math.round(scaled * ctx.profile.ftp), floorWatts: Math.round(floor * ctx.profile.ftp), ceilingWatts: Math.round(ceiling * ctx.profile.ftp), erg };
       if (erg) ctx.resistance.set({ id: 'squadron', mode: 'erg', ftpFraction: targetFtp });
-      else ctx.resistance.set({ id: 'squadron', mode: 'sim', gradePct: level === 'burn' ? tun.windBurn() : level === 'push' ? tun.windPush() : 0 });
-      // The Cruiser's spin ask is relative to the rider's own cruising cadence (learned slowly while cruising).
-      if (!erg && level === 'cruise' && pedalling && !protectedRide && t > tun.start()) cadBase = clamp(cadBase + (bike.cadence3s - cadBase) * (1 - Math.exp(-dt / 90)), 75, 98);
-      rpmAsk = !erg && level !== 'cruise' ? Math.min(110, Math.round(cadBase) + (level === 'burn' ? tun.rpmBurn() : tun.rpmPush())) : null;
+      else ctx.resistance.set({ id: 'squadron', mode: 'sim', gradePct: (level === 'burn' ? tun.windBurn() : level === 'push' ? tun.windPush() : 0) * (striker ? 2 : 1) });
+      // The spin ask is relative to the rider's own cruising cadence (learned slowly while cruising); the Escort has none.
+      if (craft !== 'escort' && level === 'cruise' && pedalling && !protectedRide && t > tun.start()) cadBase = clamp(cadBase + (bike.cadence3s - cadBase) * (1 - Math.exp(-dt / 90)), 75, 98);
+      rpmAsk = craft !== 'escort' && level !== 'cruise' ? spinAsk(level) : null;
       driveMet = level === 'cruise' || pedalling && !under && (rpmAsk === null || bike.cadence3s >= rpmAsk - 2);
       if (level !== 'cruise') held[level] += (Number(driveMet) - held[level]) * (1 - Math.exp(-dt / 20));
       missS = level !== 'cruise' && !driveMet ? missS + dt : 0; exposed = missS > tun.driveGrace();
@@ -537,6 +557,14 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         lasers.push({ id: ++id, targetId: target.id, sx: x, sy: shipY + 6, x: target.x, y: target.y, at: t, hitAt: impactAt(), height: target.ground ? -3.5 : 12, side: 22, damage: 40, hit: false, tier: gunLevel, heavy: true });
         heavyIn = 3.2;
       }
+      if (strikeRun && t > strikeRun.until + 0.1) strikeRun = null;
+      if (strikeRun && t >= strikeRun.from && steady) {
+        for (const e of enemies) if (inCombat(e) && !strikeRun.hit.has(e.id) && Math.abs(e.x - x) < pk.strikeWidth) {
+          strikeRun.hit.add(e.id); strikeHits++; score += 20;
+          e.hp -= (40 + gunLevel * 8) * pk.strike * ampMul * (e.kind === 'boss' ? (enemies.some(m => m.parentId === e.id && m.hp > 0) ? 0.2 : 0.65) : 1);
+          effect('intercept', e.x, e.y, 1.6); emit('strike');
+        }
+      }
       if (craft === 'escort' && steady) {
         // Escort signature 1: wingmen shoot down nearby bullets for score.
         eatIn -= dt;
@@ -691,13 +719,13 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         crafts: Object.fromEntries(CRAFTS.map(c => { const info = craftLevel(pendingS(c)), level = levelOf(c);
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null,
             minutesToNext: tester() || info.nextAtS === null ? null : Math.max(1, Math.ceil((info.nextAtS - pendingS(c)) / 60)),
-            unlocked: c === 'cruiser' || unlockCheck(), arsenalCap: perks(c, level).arsenalCap }]; })) as SfSnapshot['crafts'],
+            unlocked: c === 'cruiser' || (c === 'escort' ? unlockCheck() : tester() || strikerAvailable(pendingSave())), arsenalCap: perks(c, level).arsenalCap }]; })) as SfSnapshot['crafts'],
         heavy: pk.heavy, ace: pk.ace, amp, lift, pattern: weaveAt.pattern(p), roll, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
         menuLeft: Math.max(0, 20 - menuT), sector, sectorName: SECTORS[theme].name, section: music.kind, intensity: music.intensity, beat: music.beatPulse,
         song: music.song, shipX: x, shipY, bank, dodge, hull, shield, quality, effort,
         upcoming: driveNow.next && started && !(coverLeft > 0 || rejoinLeft > 0) ? { label: driveNow.next.level === 'burn' ? 'Burn' : driveNow.next.level === 'push' ? 'Push' : 'Cruise', level: driveNow.next.level, left: Math.max(0, driveNow.next.at - p),
-          watts: craft === 'escort' ? Math.round(ergFor(driveNow.next.level) * ctx.profile.ftp * ctx.profile.settings.difficulty) : null,
-          rpm: craft === 'cruiser' && driveNow.next.level !== 'cruise' ? Math.min(110, Math.round(cadBase) + (driveNow.next.level === 'burn' ? tun.rpmBurn() : tun.rpmPush())) : null } : null,
+          watts: ergCraft() ? Math.round(Math.min(ctx.profile.settings.ergCapFtpFraction, ergFor(driveNow.next.level) * ctx.profile.settings.difficulty) * ctx.profile.ftp) : null,
+          rpm: craft !== 'escort' && driveNow.next.level !== 'cruise' ? spinAsk(driveNow.next.level) : null } : null,
         drive: { level, speed, met: driveMet, exposed, rpm: rpmAsk, rel: rel(), ...(() => { const u = clamp((pace - tun.speedCruise()) / Math.max(1, tun.speedBurn() - tun.speedCruise()), 0, 1); return { dip: tun.dip() * u, fov: tun.fovAdd() * u, tilt: tun.tilt() * u }; })() }, charge, coverLeft, rejoinLeft, gunLevel, wingmen: pk.wingmen, missiles: pk.heavy,
         score: Math.round(score), kills, salvage, combo, deaths, selectedId, locks: [...locks], lockCapacity: lockCapacity(), lockProgress: clamp(1 - lockIn / lockInterval(), 0, 1), volleyFlash: Math.max(0, 1 - (t - volleyAt) / 0.8), lasers, enemies, shots, bolts, fx, beams,
         boss: boss ? { stage: enemies.some(e=>e.parentId===boss!.id && e.hp>0) ? 'Destroy the batteries' : 'Reactor exposed', name: ['Iron Dreadnought', 'Hive Carrier', 'Twin Lancer', 'Spiral Core', 'The Maw'][boss.bossStyle], hp: boss.hp, maxHp: boss.maxHp, left: Math.max(0, tun.bossTime() - (p - bossStart)) } : null,
@@ -715,17 +743,18 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         banner: t < bannerUntil ? banner : '', hooks: { powerFtp: craft === 'escort' ? targetFtp : protectedTarget(), cadence: rpmAsk !== null ? rpmAsk + 3 : Math.round(cadBase), boss: !!boss, drive: level } };
     },
     hud(): GameHud {
-      return { gears: craft === 'cruiser', targetZone: { min: coverLeft > 0 || rejoinLeft > 0 ? 1 : 2, max: 2, source: 'power', label: menu ? 'Choose your craft' : effort.status === 'recover' ? 'Easy spin' : level === 'burn' ? 'Burn' : level === 'push' ? 'Push' : 'Hold Zone 2' },
+      const hard = craft === 'striker' && level !== 'cruise' && coverLeft <= 0 && rejoinLeft <= 0;
+      return { gears: gears(), targetZone: { min: coverLeft > 0 || rejoinLeft > 0 ? 1 : hard ? 3 : 2, max: hard ? 3 : 2, source: 'power', label: menu ? 'Choose your craft' : effort.status === 'recover' ? 'Easy spin' : level === 'burn' ? 'Burn' : level === 'push' ? 'Push' : 'Hold Zone 2' },
         ...(rpmAsk !== null ? { targetCadence: { min: rpmAsk, max: rpmAsk + 15, label: level === 'burn' ? 'Burn · spin up' : 'Push · spin up' } } : {}),
         controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
-          ...(craft === 'cruiser' ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }] : []),
+          ...(gears() ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }] : []),
           { button: 'left', label: 'Flank ◀' }, { button: 'right', label: 'Flank ▶' },
           { button: 'paddles', label: 'Flank ◀ ▶' }, { button: 'b', label: 'Release', active: locks.length > 0 }, { button: 'z', label: 'Elite flank', active: eliteHint !== 0 },
           { button: 'a', label: 'Nova', active: charge >= 100 && coverLeft <= 0 && rejoinLeft <= 0,
             cooldown: { fill: Math.min(1, charge / 100), ready: charge >= 100 },
             ...(coverLeft > 0 ? { indicator: { status: `Cover ${Math.ceil(coverLeft)}s` } } : rejoinLeft > 0 ? { indicator: { status: `Rejoin ${Math.ceil(rejoinLeft)}s` } } : {}) }] };
     },
-    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen, grades: grades.join(''), burns, burnS: Math.round(burnS), hits, driveHits, burnHeldPct: burnS ? Math.round(burnHeldS / burnS * 100) : 0, distance: Math.round(dist), bestGrade: ['S', 'A', 'B', 'C', 'D'].find(g => grades.includes(g)) ?? '' }),
+    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen, grades: grades.join(''), strikeHits, burns, burnS: Math.round(burnS), hits, driveHits, burnHeldPct: burnS ? Math.round(burnHeldS / burnS * 100) : 0, distance: Math.round(dist), bestGrade: ['S', 'A', 'B', 'C', 'D'].find(g => grades.includes(g)) ?? '' }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
   /** Each arsenal tier paints locks faster: in-ride growth is what lets a rider clear whole formations. */

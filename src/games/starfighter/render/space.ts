@@ -79,6 +79,8 @@ export function createSpace(scene: THREE.Scene) {
     uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])}};
   // Objects share the haze through scene fog (same range as the ground).
   scene.fog=new THREE.Fog(HAZE[0],380,1150);const fogTarget=new THREE.Color(HAZE[0]);
+  // Anything past the drawn world (a lowered camera looking far ahead) shows the haze, never a black strip.
+  scene.background=(scene.fog as THREE.Fog).color;
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
     fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;

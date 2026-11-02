@@ -32,8 +32,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     speedCruise: ctx.tuning.num('speedCruise', 22, 12, 40, 1), speedPush: ctx.tuning.num('speedPush', 31, 15, 60, 1), speedBurn: ctx.tuning.num('speedBurn', 42, 15, 80, 1),
     // A gentle headwind, as a small extra grade (the rider shifts down to keep the spin).
     windPush: ctx.tuning.num('headwindPushPct', 0.3, 0, 2, 0.1), windBurn: ctx.tuning.num('headwindBurnPct', 0.6, 0, 3, 0.1),
-    dip: ctx.tuning.num('burnDip', 3, 0, 12, 0.5, 'Terrain rise toward the ship at full burn speed (push gets 40%)'), fovAdd: ctx.tuning.num('burnFov', 3, 0, 10, 0.5, 'Extra field of view (degrees) at full burn speed'),
-    tilt: ctx.tuning.num('burnTilt', 0.12, 0, 0.4, 0.02, 'Camera drops toward the play plane at full burn speed (fraction of its height)'),
+    dip: ctx.tuning.num('burnDip', 4, 0, 12, 0.5, 'Terrain rise toward the ship at full burn speed (push gets 40%)'), fovAdd: ctx.tuning.num('burnFov', 3, 0, 10, 0.5, 'Extra field of view (degrees) at full burn speed'),
+    tilt: ctx.tuning.num('burnTilt', 0.17, 0, 0.4, 0.01, 'Camera drops toward the play plane at full burn speed (fraction of its height)'),
     passScale: ctx.tuning.num('drivePassScale', 0.6, 0, 1, 0.05, 'How much of the extra drive speed air enemies pass with (1 = all)'),
     lockScale: ctx.tuning.num('driveLockScale', 1, 0, 1.5, 0.05, 'Locks paint faster with speed (exponent of relative pass speed)'),
     exposure: ctx.tuning.num('driveExposure', 0.35, 0, 1, 0.05, 'Share of enemy volleys left aimed at a rider missing a push/burn (below the power band = all)'),

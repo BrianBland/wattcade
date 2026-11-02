@@ -16,7 +16,8 @@ import { WING_OFFSETS } from '../sim/progression';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
-  private scene = new THREE.Scene(); private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 800);
+  private scene = new THREE.Scene(); // Far plane beyond the fog's end (1150), so a lowered camera never sees past the drawn world.
+  private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1600);
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];

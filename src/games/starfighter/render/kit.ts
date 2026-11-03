@@ -165,6 +165,28 @@ function helicopter(): Part {
 }
 /** Fuel truck. Cab toward −z. */
 function fuelTruck(): Part { return merge([box(1.3, 1, 1.2, 0, 0.7, -1.4, '#c43c33'), box(1.2, 0.5, 0.8, 0, 1.2, -1.6, '#1f2a33'), cyl(0.6, 0.6, 2.4, 0, 0.85, 0.5, '#d8dde2', 10, Math.PI / 2), box(1.3, 0.3, 3.6, 0, 0.25, 0, BLK)]); }
+/** Rooftop water tank on legs (~2 across, 4 tall). */
+function waterTank(): Part {
+  const p: Part[] = [];
+  for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) p.push(box(0.16, 1.6, 0.16, x, 0.8, z, '#2e3238'));
+  p.push(cyl(1, 1, 1.8, 0, 2.5, 0, '#7b5e43', 12), cyl(1.02, 1.02, 0.12, 0, 2.0, 0, '#3d3f44', 12), cyl(1.02, 1.02, 0.12, 0, 3.0, 0, '#3d3f44', 12));
+  const roof = new THREE.ConeGeometry(1.12, 0.7, 12).toNonIndexed(); roof.translate(0, 3.75, 0); p.push(colored(roof, '#3d3f44'));
+  return merge(p);
+}
+/** A cluster of rooftop air-handling units with fan grilles (~4 across). */
+function acUnits(): Part {
+  const p: Part[] = [];
+  for (const [x, z, w] of [[-1.2, -0.6, 1.4], [0.4, -0.6, 1.2], [-0.6, 1, 1.6], [1.4, 0.9, 1]] as const) {
+    p.push(box(w, 0.7, 1, x, 0.35, z, '#8f989f'), cyl(0.32, 0.32, 0.06, x, 0.72, z, '#2b2f34', 10));
+  }
+  p.push(box(3.6, 0.25, 0.3, 0, 0.4, 0.2, '#6b737a')); return merge(p);
+}
+/** Rooftop helipad, radius 1: dark pad, white H, yellow touchdown ring. */
+function helipad(): Part {
+  const p: Part[] = [cyl(1, 1, 0.12, 0, 0.06, 0, '#2f353d', 24), box(0.12, 0.03, 0.7, -0.25, 0.135, 0, '#e8ecef'), box(0.12, 0.03, 0.7, 0.25, 0.135, 0, '#e8ecef'), box(0.5, 0.03, 0.12, 0, 0.135, 0, '#e8ecef')];
+  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; p.push(box(0.12, 0.03, 0.26, Math.cos(a) * 0.82, 0.135, Math.sin(a) * 0.82, '#e0b52a', -a)); }
+  return merge(p);
+}
 /** Seeded 3D value noise (deterministic, so the kit is identical on every mount). */
 function vnoise(x: number, y: number, z: number, seed: number): number {
   const h = (i: number, j: number, k: number) => { let n = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 2147483647) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -281,9 +303,9 @@ export function kit() {
   cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
     boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
     gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
-    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck() };
+    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad() };
   return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
-    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck', Part>;
+    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

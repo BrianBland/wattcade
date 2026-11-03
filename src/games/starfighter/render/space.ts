@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { geometries } from './models';
 import { GROUND_SPEED } from '../sim/encounters';
 import { biomeParams, mulberry, riverX, cityRoads, type BiomeParams } from './terrain';
-import { foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
+import { curtain, foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist). */
 export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf'];
@@ -102,8 +102,12 @@ export function createSpace(scene: THREE.Scene) {
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;root.add(m);return m;};
-  const walls=make(geometries.box,windowed(material('#28486a')),3200);
-  const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),3200);
+  // Walls are white: every instance carries its facade colour (see FACADES), so set one for each wall added.
+  const walls=make(geometries.box,windowed(material('#ffffff')),4800);
+  const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),4800);
+  // Building roofs carry their own tint (ROOFS); `roofs` stays the untinted structural grey.
+  const roofTops=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#ffffff',metalness:0.1,roughness:0.85})),3600);
+  const towers=make(geometries.box,curtain(new THREE.MeshStandardMaterial({color:'#1c3448',metalness:0.25,roughness:0.55})),500);
   // Soft drop shadows cast away from the sun (key light from -x, -z).
   const shade=make(geometries.box,new THREE.MeshBasicMaterial({color:'#000814',transparent:true,opacity:0.28,depthWrite:false}),2400);
   // Soft oval shadows for organic shapes (rocks): a flattened sphere, so no hard rectangle edges on the ground.
@@ -139,13 +143,15 @@ export function createSpace(scene: THREE.Scene) {
   const islandsB=make(K.islandStealth,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
   const islandsC=make(K.islandTall,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
   const helis=make(K.helicopter,kitMat(),80),trucks=make(K.fuelTruck,kitMat(),80);
+  // Rooftops: water tanks, air-handling clusters, helipads.
+  const tanks=make(K.waterTank,kitMat(),300),acs=make(K.acUnits,kitMat(),900),pads=make(K.helipad,kitMat(),60);
   const bodies=make(geometries.box,material('#2d3f5c',0.5),4000);
   const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),6000);
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
   edgeMods.forEach((m,i)=>m.name=`edge${i}`);
-  for(const [k,v] of Object.entries({islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  for(const [k,v] of Object.entries({roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -211,6 +217,12 @@ export function createSpace(scene: THREE.Scene) {
       }
     }
   };
+  /** Facade colours for city walls (dusk): navy, slate, brick, sandstone, teal, charcoal, concrete cream, plum. */
+  /** Roof finishes: steel blue, dark membrane, concrete, slate, gravel, green roof. */
+  /** Plaza paving: pale granite, warm sandstone, cool concrete. */
+  const PAVING=['#c9c4b6','#d2bfa0','#b5bec4'].map(c=>new THREE.Color(c));
+  const ROOFS=['#5f7c93','#3a4148','#7b7f82','#47545c','#857d6c','#4c5f48'].map(c=>new THREE.Color(c));
+  const FACADES=['#28486a','#3b4555','#5e3530','#7d6a52','#21515b','#25292f','#8c8576','#43344f'].map(c=>new THREE.Color(c));
   /** One city tile: blocks between the seeded street grid, a low-rise core under the play lane, a varied skyline beyond. */
   const cityTile=(tile:number,z:number,P:BiomeParams,lo:number,hi:number)=>{
     // The city fills every direction; blocks over the route stay low. Every block's content is a pure function of
@@ -230,20 +242,42 @@ export function createSpace(scene: THREE.Scene) {
         if(r()<0.4)add(domes,cx+bw*0.22,-6,z-14,bw*0.18,0.15,9);
         for(let k=0;k<14;k++){const tx=x0+1.5+r()*(bw-3),tz=z-27+r()*54,sc=1.5+r()*1.3,sy=sc*(0.9+r()*0.4),yaw=r()*6;if(Math.abs(tx-cx)<1.6||Math.abs(tz-z)<1.4)continue;add(trees,tx,-5.9,tz,sc,sy,sc,yaw);if(!far)shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);}
         continue;}
-      if(roll<0.2){add(roofs,cx,-5.9,z,bw,0.2,56);add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);continue;} // plaza with a fountain
+      if(roll<0.2){ // plaza: stone paving, a fountain, a planter, corner trees and lamp posts
+        const pv=r();if(add(roofTops,cx,-5.9,z,bw,0.2,56))setColor(roofTops,PAVING[Math.floor(pv*PAVING.length)]);
+        add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);add(grass,cx,-5.7,z+14,bw*0.4,0.3,5);
+        for(const qx of [-1,1])for(const qz of [-1,1]){add(trees,cx+qx*bw*0.36,-5.8,z+qz*23,1.6,1.7,1.6,qx+qz*2);add(roofs,cx+qx*bw*0.2,-3.6,z+qz*12,0.25,4.4,0.25);add(lamps,cx+qx*bw*0.2,-1.3,z+qz*12,0.6,0.35,0.6);}
+        continue;}
       let zz=z-30;
       while(zz<z+28){
-        // Fixed draw order per building: footprint, height (two draws), antenna, trim, gap.
+        // Fixed draw order per building: footprint, height (two draws), antenna, trim, gap, then shape/facade/roof draws.
         const d=Math.min(z+30-zz,8+r()*14),w=Math.max(4,Math.min(bw,6+r()*12)),x=x0+r()*(bw-w)+w/2,cz=zz+d/2;
         const hr=r(),tall=r()<0.15,lowH=1.5+r()*4,antenna=r()<0.25,trimmed=r()<0.5,gap=r()<0.3;
-        const h=core?lowH:8+hr*(tall?44:24);
-        add(walls,x,h/2-6,cz,w,h,d-1.5);add(roofs,x,h-5.5,cz,w+0.8,0.8,d-0.7);if(!far)shadow(x,cz,w,d-1.5,h);
-        if(!core){if(antenna&&!far){add(roofs,x,h+3,cz,0.4,8,0.4);add(lamps,x,h+7,cz,0.5,0.5,0.5);}}
-        else if(trimmed)add(trim,x,h-5,cz,w*0.7,0.12,0.4);
+        const arch=r(),fc=FACADES[Math.floor(r()*FACADES.length)],roofU=r(),roofV=r(),rc=ROOFS[Math.floor(r()*ROOFS.length)];
+        const h=core?lowH:8+hr*(tall?44:24),dd=d-1.5;
+        // block(): walls from y0 up hh, with its roof slab; returns the roof top.
+        const block=(y0:number,bw2:number,bd2:number,hh:number)=>{if(add(walls,x,y0+hh/2,cz,bw2,hh,bd2))setColor(walls,fc);if(add(roofTops,x,y0+hh+0.5,cz,bw2+0.8,0.8,bd2+0.8))setColor(roofTops,rc);return y0+hh+0.9;};
+        let top=-6+h,tw=w,td=dd;
+        if(core){top=block(-6,w,dd,h);if(trimmed)add(trim,x,h-5,cz,w*0.7,0.12,0.4);}
+        else if(arch<0.2&&h>22){add(towers,x,-6+h/2,cz,w*0.92,h,dd*0.92);if(add(roofTops,x,-6+h+0.4,cz,w*0.92+0.4,0.8,dd*0.92+0.4))setColor(roofTops,ROOFS[1]);top=-6+h+0.8;tw=w*0.92;td=dd*0.92;}
+        else if(arch<0.42&&h>18){ // setback tower: three shrinking tiers
+          const h1=h*0.62,h2=h*0.26,h3=h*0.12;block(-6,w,dd,h1);block(-6+h1+0.8,w*0.72,dd*0.72,h2);top=block(-6+h1+h2+1.6,w*0.46,dd*0.46,h3);tw=w*0.46;td=dd*0.46;}
+        else if(arch<0.6&&w>8&&dd>8){ // podium with a tower on it
+          const ph=3+roofV*3;block(-6,w,dd,ph);top=block(-6+ph+0.8,w*0.56,dd*0.56,h);tw=w*0.56;td=dd*0.56;}
+        else top=block(-6,w,dd,h);
+        if(!far)shadow(x,cz,w,dd,top+6);
+        // Rooftops: plant, tanks, a helipad or a garden (only near enough to see).
+        if(!far&&core&&roofU<0.5){const s2=Math.min(tw,td)*0.3;add(acs,x+(roofV-0.5)*tw*0.3,top,cz,s2*0.6,1,s2*0.6,roofV*3);}
+        if(!far&&!core){
+          if(roofU<0.45){const s2=Math.min(tw,td)*0.32;add(acs,x+(roofV-0.5)*tw*0.3,top,cz+(roofV-0.5)*td*0.2,s2*0.6,1,s2*0.6,roofV*3);}
+          else if(roofU<0.62)add(tanks,x+tw*0.22,top,cz-td*0.18,1,1,1,0);
+          else if(roofU<0.7&&tw>8&&td>8)add(pads,x,top,cz,Math.min(tw,td)*0.42,1,Math.min(tw,td)*0.42,0);
+          else if(roofU<0.8&&tw>7){add(grass,x,top+0.05,cz,tw*0.8,0.1,td*0.8);for(const q of [-1,1])add(trees,x+q*tw*0.22,top,cz+q*td*0.2,1.1,1.1,1.1,roofV*6);}
+        }
+        if(!core&&antenna&&!far){add(roofs,x,top+4,cz,0.4,8,0.4);add(lamps,x,top+8,cz,0.5,0.5,0.5);}
         zz+=d+(gap?2:0);
       }
     }
-    if(P.highway&&P.highwayX>lo&&P.highwayX<hi&&!nearRoute(...vWorld(P.highwayX,z),20)){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])add(walls,hx,-1.5,z+k,2.2,9,2.2);}
+    if(P.highway&&P.highwayX>lo&&P.highwayX<hi&&!nearRoute(...vWorld(P.highwayX,z),20)){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])if(add(walls,hx,-1.5,z+k,2.2,9,2.2))setColor(walls,FACADES[6]);}
   };
   /** Rock tints: sun-bleached, rust, ochre, mauve-grey; multiplied over the kit's strata. */
   const ROCK_TINTS=['#ffffff','#ffd7c4','#f4dcae','#e2cbd8','#ffc9b0','#ece4d6'].map(c=>new THREE.Color(c));

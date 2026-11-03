@@ -89,6 +89,82 @@ function tree(): Part {
   const blob = (r: number, x: number, y: number, z: number, color: string) => { const g = new THREE.IcosahedronGeometry(r, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
   return merge([cyl(0.12, 0.18, 1.3, 0, 0.65, 0, '#5a4330', 6), blob(0.95, 0, 1.9, 0, '#3f7d4c'), blob(0.7, 0.6, 1.6, 0.3, '#4a8f55'), blob(0.65, -0.55, 1.65, -0.25, '#36703f'), blob(0.6, 0.1, 2.5, -0.2, '#56a061')]);
 }
+/** Sphere part (radomes, domes, tanks). */
+const ball = (r: number, x: number, y: number, z: number, color: string, sy = 1) => { const g = new THREE.SphereGeometry(r, 10, 7); g.scale(1, sy, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
+const HULL = '#a3aeb9', HULL_D = '#6a7681', WHITE = '#dfe6ec', HAZ = '#d8b02a', BLK = '#22272d', ORANGE = '#e0672a';
+/** Railing along z at outer edge x, deck height y, over length len (posts every 2). */
+const railing = (x: number, y: number, len: number): Part[] => {
+  const p: Part[] = [box(0.12, 0.12, len, x, y + 1.05, 0, LIGHT)];
+  for (let z = -len / 2; z <= len / 2 + 0.01; z += 2) p.push(box(0.1, 1.05, 0.1, x, y + 0.52, z, LIGHT));
+  return p;
+};
+/**
+ * Deck-edge modules for the carrier flanks. Built for the starboard side: x runs outward from the deck edge (x = 0),
+ * y up from the deck, z along (length given per module); the port side is the same rotated half a turn.
+ */
+function gunSponson(): Part { // 10 long: a bracketed platform with a close-in weapon mount
+  const p: Part[] = [box(10, 2, 10, 5, 1, 0, HULL), box(9, 0.3, 9.4, 5.2, 2.15, 0, DECK), box(3, 3, 10, 9.5, -0.5, 0, HULL_D)];
+  p.push(cyl(1.3, 1.5, 1.4, 6.5, 2.9, 0, LIGHT, 12), ball(1.2, 6.5, 4.1, 0, WHITE, 1.2), box(0.9, 0.9, 1.2, 6.5, 4.2, -1.1, BLK));
+  p.push(cyl(0.16, 0.16, 2.4, 6.5, 4.2, -2.6, DARK, 6, Math.PI / 2), cyl(1, 1.1, 1.2, 2.6, 2.9, 3, LIGHT, 8), box(1.6, 1.2, 1.6, 2.6, 4, 3, DARK));
+  p.push(...railing(9.9, 2.3, 9.6)); return merge(p);
+}
+function radarSponson(): Part { // 10 long: a lattice tower carrying a radome
+  const p: Part[] = [box(9, 1.8, 10, 4.5, 0.9, 0, HULL), box(8.6, 0.3, 9.4, 4.5, 1.95, 0, DECK)];
+  for (const [x, z] of [[3, -2], [7, -2], [3, 2], [7, 2]]) p.push(box(0.3, 9, 0.3, x, 6.5, z, LIGHT));
+  for (const y of [4, 7, 10]) p.push(box(4.3, 0.2, 0.2, 5, y, -2, LIGHT), box(4.3, 0.2, 0.2, 5, y, 2, LIGHT), box(0.2, 0.2, 4.3, 3, y, 0, LIGHT), box(0.2, 0.2, 4.3, 7, y, 0, LIGHT));
+  p.push(box(5, 0.4, 5, 5, 11, 0, HULL_D), ball(2.1, 5, 13, 0, WHITE), cyl(0.12, 0.12, 4, 5, 16.6, 0, DARK, 6), box(2.2, 0.12, 0.3, 5, 17.8, 0, DARK));
+  p.push(...railing(8.9, 2.1, 9.6)); return merge(p);
+}
+function raftRack(): Part { // 14 long: life-raft canisters in two rows on a bracketed platform
+  const p: Part[] = [box(8, 1.6, 14, 4, 0.8, 0, HULL), box(7.6, 0.25, 13.4, 4, 1.7, 0, DECK)];
+  for (const x of [3, 6]) for (let i = 0; i < 6; i++) p.push(cyl(0.55, 0.55, 1.6, x, 2.45, -5.2 + i * 2.1, i % 2 ? WHITE : ORANGE, 10, Math.PI / 2));
+  p.push(box(0.2, 1.6, 13, 7.6, 2.5, 0, HULL_D), ...railing(7.8, 1.85, 13.6)); return merge(p);
+}
+function catwalk(): Part { // 16 long: an open gallery a little below the deck with crates and hose reels
+  const p: Part[] = [box(4, 0.3, 16, 2, -0.6, 0, DECK)];
+  for (const z of [-7, -2.3, 2.3, 7]) p.push(box(0.4, 2.2, 0.4, 3.6, -1.8, z, HULL_D), box(3.4, 0.3, 0.4, 2, -1.5, z, HULL_D));
+  p.push(box(1.2, 1, 1.4, 1.5, 0.05, -5, '#4f6b48'), box(1.2, 0.8, 1.2, 1.4, -0.05, -3.4, '#6a5a3c'), cyl(0.5, 0.5, 0.4, 1.6, 0, 4, ORANGE, 10, Math.PI / 2), box(1, 1, 1, 1.4, 0.05, 6, '#4f6b48'));
+  p.push(...railing(3.9, -0.45, 15.6)); return merge(p);
+}
+function edgeElevator(): Part { // 14 long: an aircraft elevator platform with hazard-striped edges and lift machinery
+  const p: Part[] = [box(11, 0.5, 14, 5.5, 0.25, 0, DECK), box(3, 3, 14, 11.5, -1, 0, HULL_D)];
+  for (let i = 0; i < 7; i++) p.push(box(0.5, 0.06, 2, 10.75, 0.53, -6 + i * 2, i % 2 ? HAZ : BLK), box(1.5, 0.06, 0.5, 1 + i * 1.5, 0.53, 6.75, i % 2 ? HAZ : BLK));
+  p.push(box(1.2, 4, 1.2, 11, 2, -6.4, HULL), box(1.2, 4, 1.2, 11, 2, 6.4, HULL), box(1.4, 0.6, 14, 11, 4.2, 0, HULL_D)); return merge(p);
+}
+function fuelStation(): Part { // 10 long: tanks, pipework and a hose cabinet
+  const p: Part[] = [box(8, 1.5, 10, 4, 0.75, 0, HULL), box(7.6, 0.25, 9.4, 4, 1.6, 0, DECK)];
+  for (const z of [-2.6, 2.6]) p.push(cyl(1.3, 1.3, 5, 4.5, 3, z, '#c8ccd0', 12, Math.PI / 2), box(0.3, 1.4, 0.3, 4.5, 1.9, z - 1.8, HULL_D), box(0.3, 1.4, 0.3, 4.5, 1.9, z + 1.8, HULL_D));
+  p.push(cyl(0.18, 0.18, 9, 7, 2, 0, HAZ, 6, Math.PI / 2), cyl(0.18, 0.18, 9, 7.6, 2.6, 0, '#3b7bd6', 6, Math.PI / 2), box(1.4, 2, 2, 1.2, 2.6, 0, '#b23a3a'), ...railing(7.9, 1.75, 9.6));
+  return merge(p);
+}
+/** Stealth island: raked, faceted tower walls, flat radar arrays, one integrated mast. */
+function islandStealth(): Part {
+  const s = new THREE.Shape(); s.moveTo(-3, -6); s.lineTo(3, -5); s.lineTo(3, 5); s.lineTo(-3, 6); s.lineTo(-3, -6);
+  const tower = new THREE.ExtrudeGeometry(s, { depth: 9, bevelEnabled: false }).toNonIndexed(); tower.rotateX(-Math.PI / 2);
+  const pos = tower.getAttribute('position'); for (let i = 0; i < pos.count; i++) { const y = pos.getY(i), k = 1 - y / 9 * 0.32; pos.setX(i, pos.getX(i) * k); pos.setZ(i, pos.getZ(i) * k); }
+  const p: Part[] = [colored(tower, '#9aa5b0'), box(3.6, 0.6, 7.2, 0, 9.3, 0, '#9aa5b0'), box(4.1, 0.7, 1.4, 0, 6, -4.2, WIN), box(0.2, 2.6, 2.6, 2.75, 5.5, 0, BLK), box(0.2, 2.6, 2.6, -2.75, 5.5, 0, BLK)];
+  const mast = new THREE.ConeGeometry(1.4, 6, 4).toNonIndexed(); mast.translate(0, 12.6, 0.5); p.push(colored(mast, '#9aa5b0'), cyl(0.08, 0.1, 3, 0, 17, 0.5, DARK, 5));
+  return merge(p);
+}
+/** Tall island: three stepped tiers with window bands, a funnel, a lattice mast with a big dish. */
+function islandTall(): Part {
+  const p: Part[] = [box(6, 6, 12, 0, 3, 0, LIGHT), box(5, 4.5, 9, 0, 8.25, -0.5, LIGHT), box(3.6, 3, 6, 0, 12, -1, LIGHT)];
+  p.push(box(6.1, 0.6, 2.2, 0, 7.4, -5.2, WIN), box(5.1, 0.6, 1.8, 0, 11.2, -4.4, WIN), box(3.7, 0.5, 1.4, 0, 13.6, -3.6, WIN));
+  p.push(cyl(1.1, 1.3, 4, 0, 12.5, 3.2, HULL_D, 10), cyl(1.15, 1.15, 0.5, 0, 14.6, 3.2, BLK, 10));
+  for (const [x, z] of [[-0.8, -1.6], [0.8, -1.6], [-0.8, 0], [0.8, 0]]) p.push(box(0.18, 7, 0.18, x, 17, z, DARK));
+  for (const y of [15, 17.5, 20]) p.push(box(1.8, 0.14, 1.8, 0, y, -0.8, DARK));
+  p.push(cyl(1.8, 1.8, 0.2, 0, 19, 1.2, '#d8dde2', 14, Math.PI / 2.4), box(4, 0.15, 0.5, 0, 20.4, -0.8, DARK));
+  return merge(p);
+}
+/** Deck helicopter: fuselage, tail boom and fin, skids, a four-blade rotor. Nose toward −z. */
+function helicopter(): Part {
+  const p: Part[] = [ball(1.1, 0, 1.3, -0.3, '#5d6f4f', 0.8), box(1.6, 1.2, 1.6, 0, 1.2, 0.8, '#5d6f4f'), box(0.9, 0.5, 0.7, 0, 1.4, -1.2, '#1f2a33'), box(0.35, 0.4, 4, 0, 1.5, 3.2, '#5d6f4f'), box(0.12, 1.2, 0.8, 0, 2, 5, '#5d6f4f')];
+  for (const sx of [-0.8, 0.8]) p.push(box(0.12, 0.12, 3, sx, 0.15, 0, BLK), box(0.1, 0.5, 0.1, sx, 0.4, -0.8, BLK), box(0.1, 0.5, 0.1, sx, 0.4, 0.8, BLK));
+  p.push(cyl(0.15, 0.15, 0.5, 0, 2.3, 0, BLK, 6), box(7.5, 0.06, 0.3, 0, 2.55, 0, BLK, 0.4), box(0.3, 0.06, 7.5, 0, 2.55, 0, BLK, 0.4));
+  return merge(p);
+}
+/** Fuel truck. Cab toward −z. */
+function fuelTruck(): Part { return merge([box(1.3, 1, 1.2, 0, 0.7, -1.4, '#c43c33'), box(1.2, 0.5, 0.8, 0, 1.2, -1.6, '#1f2a33'), cyl(0.6, 0.6, 2.4, 0, 0.85, 0.5, '#d8dde2', 10, Math.PI / 2), box(1.3, 0.3, 3.6, 0, 0.25, 0, BLK)]); }
 /** Seeded 3D value noise (deterministic, so the kit is identical on every mount). */
 function vnoise(x: number, y: number, z: number, seed: number): number {
   const h = (i: number, j: number, k: number) => { let n = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 2147483647) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -203,8 +279,11 @@ function wake(): Part {
 let cache: Record<string, Part> | null = null;
 export function kit() {
   cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
-    boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub() };
-  return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub', Part>;
+    boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
+    gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
+    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck() };
+  return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
+    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

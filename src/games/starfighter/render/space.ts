@@ -107,7 +107,7 @@ export function createSpace(scene: THREE.Scene) {
   // Soft drop shadows cast away from the sun (key light from -x, -z).
   const shade=make(geometries.box,new THREE.MeshBasicMaterial({color:'#000814',transparent:true,opacity:0.28,depthWrite:false}),2400);
   // Soft oval shadows for organic shapes (rocks): a flattened sphere, so no hard rectangle edges on the ground.
-  const softShade=make(geometries.sphere,new THREE.MeshBasicMaterial({color:'#2a0d10',transparent:true,opacity:0.2,depthWrite:false}),1200);
+  const softShade=make(geometries.sphere,new THREE.MeshBasicMaterial({color:'#1c0d14',transparent:true,opacity:0.2,depthWrite:false}),1200);
   const glassMat=new THREE.MeshBasicMaterial({color:'#28c9ff'}),trimMat=new THREE.MeshBasicMaterial({color:'#ffbb42'});
   const glassBase=glassMat.color.clone(),trimBase=trimMat.color.clone(),white=new THREE.Color('#ffffff');
   const glass=make(geometries.box,glassMat,2400);
@@ -133,12 +133,19 @@ export function createSpace(scene: THREE.Scene) {
   // Scale anchors: familiar-sized things moving on the ground (parked jets, cars, boats, ships), regular runway lights,
   // and sparse cloud wisps between the ship and the ground, so speed and altitude read correctly.
   const jets=make(K.jet,kitMat(),240);
+  // Carrier flanks: deck-edge modules in seeded sequence, three island designs, deck helicopters and fuel trucks.
+  const EDGE=[[K.gunSponson,10,-6],[K.radarSponson,10,-6],[K.raftRack,14,-6],[K.catwalk,16,-5],[K.edgeElevator,14,-6],[K.fuelStation,10,-6]] as const;
+  const edgeMods=EDGE.map(([g])=>make(g,kitMat(),200));
+  const islandsB=make(K.islandStealth,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
+  const islandsC=make(K.islandTall,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
+  const helis=make(K.helicopter,kitMat(),80),trucks=make(K.fuelTruck,kitMat(),80);
   const bodies=make(geometries.box,material('#2d3f5c',0.5),4000);
   const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),6000);
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
-  for(const [k,v] of Object.entries({shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  edgeMods.forEach((m,i)=>m.name=`edge${i}`);
+  for(const [k,v] of Object.entries({islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -172,21 +179,36 @@ export function createSpace(scene: THREE.Scene) {
   const softShadow=(x:number,z:number,w:number,d:number,h:number)=>{const l=Math.min(16,h*0.45);add(softShade,x+l*0.4,-5.97,z+l*0.5,(w+l*0.4)*0.62,0.02,(d+l*0.6)*0.62);};
   let params0:BiomeParams=biomeParams(0,1),params1:BiomeParams=params0,key='';
 
-  /** One carrier tile: deck edge structures, island towers, parked-jet rows, cranes and runway edge lights. */
+  /** Hull greys and jet liveries, multiplied over the kit colours. */
+  const HULL_TINTS=['#ffffff','#eef2f6','#dfe6ee','#f4f0e8','#d7dee6'].map(c=>new THREE.Color(c)),JET_TINTS=['#ffffff','#c9d2dc','#9aa8b8','#e8dcc2','#b4c4d6'].map(c=>new THREE.Color(c));
+  const pick=(list:THREE.Color[],u:number)=>list[Math.floor(u*list.length)];
+  /**
+   * One carrier tile: runway edge lights, parked jets and deck vehicles, and per side a seeded run of deck-edge modules
+   * (gun and radar sponsons, raft racks, catwalks, elevators, fuel stations) with the odd island (three designs) and crane.
+   */
   const carrierTile=(tile:number,z:number,P:BiomeParams,band:(z:number)=>number)=>{
     for(const side of [-1,1]){
-      const r=mulberry(P.seed^(tile*2654435761)^(side>0?0x9e37:0));
-      for(let k=0;k<8;k++){const zz=z-28+k*8;add(runway,side*39.2,-5.7,zz,0.45,0.25,0.45);setColor(runway,lightColor.copy(warm).multiplyScalar(0.45+0.55*band(zz)));}
-      // Parked jets angled toward the deck edge (wings folded), with a tractor beside some of them.
-      if(r()<0.65){const rows=2+Math.floor(r()*3),xx=side*(31+r()*3);for(let j=0;j<rows;j++){const zz=z-24+j*11+r()*2;
-        add(jets,xx,-5.95,zz,1.25,1.25,1.25,side*0.55+(r()-0.5)*0.15);if(r()<0.3)add(tractors,xx-side*4,-5.95,zz+1,1.4,1.4,1.4,r()*3);}}
+      const r=mulberry(P.seed^(tile*2654435761)^(side>0?0x9e37:0)),face=side>0?0:Math.PI;
+      for(let k=0;k<8;k++){const zz=z-28+k*8;if(add(runway,side*39.2,-5.7,zz,0.45,0.25,0.45))setColor(runway,lightColor.copy(warm).multiplyScalar(0.45+0.55*band(zz)));}
+      // Parked jets angled toward the deck edge (wings folded), in varied liveries, with a tractor beside some.
+      if(r()<0.65){const rows=2+Math.floor(r()*3),xx=side*(31+r()*3);for(let j=0;j<rows;j++){const zz=z-24+j*11+r()*2,ang=side*0.55+(r()-0.5)*0.15,tint=r();
+        if(add(jets,xx,-5.95,zz,1.25,1.25,1.25,ang))setColor(jets,pick(JET_TINTS,tint));if(r()<0.3)add(tractors,xx-side*4,-5.95,zz+1,1.4,1.4,1.4,r()*3);}}
       if(r()<0.25)add(tractors,side*(8+r()*20),-5.95,z+(r()-0.5)*50,1.4,1.4,1.4,r()*6);
-      add(walls,side*46,-8,z,12,8,62);add(roofs,side*46,-3.5,z,12,1,62);add(trim,side*40.5,-2.8,z,0.3,0.2,61);
-      // Island superstructures (bridge windows, mast, radar) on the deck-edge sponsons, and deck-edge lights.
-      const towers=r()<0.5?1:2;
-      for(let j=0;j<towers;j++){const sc=0.9+r()*0.6,zz=z-18+j*30+r()*8,xx=side*(48+r()*4);
-        add(islands,xx,-4,zz,sc,sc,sc,side>0?Math.PI:0);shadow(xx,zz,5*sc,10*sc,12*sc);add(trim,side*42,-2.8,zz,1.5,0.25,5);}
-      if(r()<0.25){const xx=side*(58+r()*8);add(roofs,xx,6,z,1,24,1);add(roofs,xx-side*5,17,z,10,0.8,0.8);} // deck crane
+      if(r()<0.3)add(helis,side*(22+r()*6),-5.95,z+(r()-0.5)*44,1.3,1.3,1.3,r()*6);
+      if(r()<0.2)add(trucks,side*(14+r()*14),-5.95,z+(r()-0.5)*50,1.3,1.3,1.3,(r()-0.5)*0.6+(r()<0.5?0:Math.PI));
+      add(roofs,side*41.3,-5.5,z,0.9,1,64.2); // deck-edge coaming, continuous
+      // Edge run: fixed draw order (the same draws whatever is in view), at most one island per tile and side.
+      let zz=z-32,island=false;
+      while(zz<z+30){
+        const u=r(),gap=r()*3,tint=r(),cz=(len:number)=>zz+len/2;
+        if(!island&&u<0.16){island=true;const kind=Math.floor(r()*3),sc=0.9+r()*0.4,c=cz(14),xx=side*(47+r()*3);
+          if(add([islands,islandsB,islandsC][kind],xx,-6,c,sc,sc,sc,side>0?Math.PI:0))setColor([islands,islandsB,islandsC][kind],pick(HULL_TINTS,tint));
+          softShadow(xx,c,6*sc,12*sc,14*sc);add(trim,side*42,-2.8,c,1.5,0.25,5);zz+=14+gap;continue;}
+        if(u<0.2&&!island){const xx=side*(52+r()*6);add(roofs,xx,6,cz(4),1,24,1);add(roofs,xx-side*5,17,cz(4),10,0.8,0.8);zz+=4+gap;continue;} // crane
+        const m=Math.floor(r()*EDGE.length),[,len,y]=EDGE[m];
+        if(add(edgeMods[m],side*41.6,y,cz(len),1,1,1,face))setColor(edgeMods[m],pick(HULL_TINTS,tint));
+        zz+=len+gap;
+      }
     }
   };
   /** One city tile: blocks between the seeded street grid, a low-rise core under the play lane, a varied skyline beyond. */

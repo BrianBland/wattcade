@@ -55,6 +55,8 @@ const biomeColor = `
     if(!harbour)c+=grid*vec3(0.01,0.05,0.06);
     float dash=step(rx,0.12)*step(0.5,fract(p.y/6.0))*step(4.0,ry);c+=dash*vec3(0.5,0.45,0.2)*(0.6+pulse*0.6);}
   else if(b<2.5){c=mix(vec3(0.27,0.11,0.18),vec3(0.67,0.36,0.24),n);c*=0.92+0.1*smoothstep(0.35,0.65,fract(n*7.0+noise(p*0.05)*0.6)); // strata contours
+    c*=0.93+0.1*noise(p*0.9)+0.03*sin(p.x*0.7+p.y*0.25+noise(p*0.08)*7.0); // grit and wind ripples
+    c=mix(c,c*0.7,step(0.94,hash(floor(p*0.8)))*0.7);c=mix(c,vec3(0.78,0.55,0.4),smoothstep(0.62,0.8,noise(p*0.03+7.0))*0.25); // pebbles, pale sand drifts
     float cx=15.0*sin(p.y*P.x+P.y)+7.0*sin(p.y*P.z+P.w),w=11.5+4.0*sin(p.y*0.011+P.y),d=abs(p.x-cx);
     c*=mix(0.72,1.0,smoothstep(w+0.5,w+7.0,d)); // wet banks
     // River: flows toward the camera; shallow teal at the banks, deep in the channel, foam on banks and in narrow rapids.
@@ -100,12 +102,12 @@ export function createSpace(scene: THREE.Scene) {
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;root.add(m);return m;};
-  const stone=make(geometries.rock,strata(material('#b67565',0.15)),512);
-  const rockBox=make(geometries.box,strata(material('#9c5f55',0.1)),256);
   const walls=make(geometries.box,windowed(material('#28486a')),3200);
   const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),3200);
   // Soft drop shadows cast away from the sun (key light from -x, -z).
   const shade=make(geometries.box,new THREE.MeshBasicMaterial({color:'#000814',transparent:true,opacity:0.28,depthWrite:false}),2400);
+  // Soft oval shadows for organic shapes (rocks): a flattened sphere, so no hard rectangle edges on the ground.
+  const softShade=make(geometries.sphere,new THREE.MeshBasicMaterial({color:'#2a0d10',transparent:true,opacity:0.2,depthWrite:false}),1200);
   const glassMat=new THREE.MeshBasicMaterial({color:'#28c9ff'}),trimMat=new THREE.MeshBasicMaterial({color:'#ffbb42'});
   const glassBase=glassMat.color.clone(),trimBase=trimMat.color.clone(),white=new THREE.Color('#ffffff');
   const glass=make(geometries.box,glassMat,2400);
@@ -118,6 +120,10 @@ export function createSpace(scene: THREE.Scene) {
   // Faceted via per-face vertex normals (non-indexed kit geometry), not flatShading: its derivative normal is NaN on
   // sub-pixel trees at the horizon, and one NaN pixel spreads through the bloom and blanks the frame.
   const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9})),1400);
+  // Canyon rock kit: strata baked into vertex colours, warped bands/streaks/dust in the shader, a seeded tint per instance.
+  const rockMat=()=>strata(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.92}));
+  const pebbles=make(K.boulderA,rockMat(),1400),boulders=make(K.boulderB,rockMat(),400),spires=make(K.spire,rockMat(),220),mesas=make(K.mesa,rockMat(),64);
+  const crags=make(K.crag,rockMat(),1100),scrub=make(K.scrub,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:1})),900);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
   const boats=make(K.riverBoat,kitMat(),24),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
@@ -131,8 +137,8 @@ export function createSpace(scene: THREE.Scene) {
   const lamps=make(geometries.box,new THREE.MeshBasicMaterial({color:'#fff1c2'}),6000);
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
-  for(const [k,v] of Object.entries({shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[shade,stone,rockBox,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  for(const [k,v] of Object.entries({shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -143,11 +149,11 @@ export function createSpace(scene: THREE.Scene) {
   const wLocal=(wx:number,wz:number)=>{const dx=wx-F.pose.x,dz=wz-F.pose.z,[fx,fz]=fwdOf(F.pose.h),[rx,rz]=rightOf(F.pose.h);return [dx*rx+dz*rz,dx*fx+dz*fz];};
   const beyondNext=(wx:number,wz:number)=>{const [fx,fz]=fwdOf(F.f1.h);return (wx-F.f1.x)*fx+(wz-F.f1.z)*fz>=0;};
   const add=(pool:THREE.InstancedMesh,x:number,y:number,z:number,sx:number,sy:number,sz:number,angle=0)=>{
-    const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count){dropped++;overflowed.add(pool.name);return;}
-    const [wx,wz]=vWorld(x,z);if(beyondNext(wx,wz)!==F.isNext)return;
-    const [lx,ahead]=wLocal(wx,wz);if(!inView(lx,ahead))return;
+    const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count){dropped++;overflowed.add(pool.name);return false;}
+    const [wx,wz]=vWorld(x,z);if(beyondNext(wx,wz)!==F.isNext)return false;
+    const [lx,ahead]=wLocal(wx,wz);if(!inView(lx,ahead))return false;
     if(audit&&pool===walls)audit.push(Math.round(wx*10),Math.round(wz*10),Math.round(sy*10),Math.round(lx),Math.round(ahead));
-    matrix.position.set(lx,y,34-ahead);matrix.rotation.set(0,angle+F.dh,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);
+    matrix.position.set(lx,y,34-ahead);matrix.rotation.set(0,angle+F.dh,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);return true;
   };
   /** Place at a world point (open-biome movers); `ang` is the world yaw. */
   const addW=(pool:THREE.InstancedMesh,wx:number,y:number,wz:number,sx:number,sy:number,sz:number,ang=0)=>add(pool,wx,y,F.T+34+wz,sx,sy,sz,ang);
@@ -163,6 +169,7 @@ export function createSpace(scene: THREE.Scene) {
   let audit:number[]|null=null;
   /** Drop shadow for a box of footprint w×d and height h standing at (x, z). */
   const shadow=(x:number,z:number,w:number,d:number,h:number)=>{if(h<0.5)return;const l=Math.min(14,h*0.45);add(shade,x+l*0.45,-5.96,z+l*0.55,w+l*0.35,0.02,d+l*0.6);};
+  const softShadow=(x:number,z:number,w:number,d:number,h:number)=>{const l=Math.min(16,h*0.45);add(softShade,x+l*0.4,-5.97,z+l*0.5,(w+l*0.4)*0.62,0.02,(d+l*0.6)*0.62);};
   let params0:BiomeParams=biomeParams(0,1),params1:BiomeParams=params0,key='';
 
   /** One carrier tile: deck edge structures, island towers, parked-jet rows, cranes and runway edge lights. */
@@ -216,17 +223,33 @@ export function createSpace(scene: THREE.Scene) {
     }
     if(P.highway&&P.highwayX>lo&&P.highwayX<hi&&!nearRoute(...vWorld(P.highwayX,z),20)){const hx=P.highwayX;add(roofs,hx,3,z,8,0.9,64);add(trim,hx-3.6,3.6,z,0.25,0.3,64);add(trim,hx+3.6,3.6,z,0.25,0.3,64);for(const k of [-20,12])add(walls,hx,-1.5,z+k,2.2,9,2.2);}
   };
-  /** One canyon tile: rock clusters along the banks, mesas, an occasional arch over the river, and outposts. */
+  /** Rock tints: sun-bleached, rust, ochre, mauve-grey; multiplied over the kit's strata. */
+  const ROCK_TINTS=['#ffffff','#ffd7c4','#f4dcae','#e2cbd8','#ffc9b0','#ece4d6'].map(c=>new THREE.Color(c));
+  /**
+   * One canyon tile, from the river out: wet-bank pebbles and scrub, then boulder fields, hoodoo spires and the odd
+   * mesa, then continuous craggy walls with a taller rim behind, always outside the play field. Occasional arches span
+   * the river; outposts sit on the banks.
+   */
   const canyonTile=(tile:number,z:number,P:BiomeParams,scroll:number)=>{
     const r=mulberry(P.seed^(tile*2654435761)),travel=scroll+160-z,cx=riverX(travel,P),w=riverW(travel,P);
+    const rock=(pool:THREE.InstancedMesh,x:number,zz:number,sx:number,sy:number,sz:number,ang:number,tint:number)=>{if(add(pool,x,-6,zz,sx,sy,sz,ang))setColor(pool,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);};
     for(const side of [-1,1]){
-      const n=4+Math.floor(r()*5);
-      for(let j=0;j<n;j++){const off=w+16+r()*64,xx=cx+side*off,zz=z-30+r()*60,height=4+r()*(off>40?22:10);
-        add(stone,xx,height*0.35-6,zz,6+r()*9,height,8+r()*9,r()*6);}
-      if(r()<0.22){const xx=cx+side*(w+30+r()*40),zz=z-10+r()*20,h=14+r()*14,wd=14+r()*10;add(rockBox,xx,h/2-6,zz,wd,h,wd*1.2);add(rockBox,xx,h-5.6,zz,wd*0.9,0.8,wd*1.1);shadow(xx,zz,wd,wd*1.2,h);} // mesa
-      if(r()<0.12){add(roofs,cx+side*(w+16),-1,z,14,2,18);add(domes,cx+side*(w+16),1,z,5,3,5);add(glass,cx+side*(w+16),2,z,10,0.3,1);} // outpost
+      // Fixed draw order per side (counts never depend on what is in view), so nothing re-rolls as tiles scroll in.
+      for(let j=0;j<10;j++){const off=w+2.5+r()*26,s=0.7+r()*r()*3.2;rock(pebbles,cx+side*off,z-32+r()*64,s*(1+r()*0.7),s*(0.5+r()*0.7),s*(1+r()*0.7),r()*6,r());}
+      for(let j=0;j<8;j++){const off=w+4+r()*48,s=1.1+r()*1.8;add(scrub,cx+side*off,-6,z-32+r()*64,s,s*(0.7+r()*0.5),s,r()*6);}
+      const nb=2+Math.floor(r()*4);
+      for(let j=0;j<nb;j++){const off=w+20+r()*36,wd=5+r()*11,h=3+r()*(off>40?16:8),zz=z-30+r()*60;rock(boulders,cx+side*off,zz,wd,h,wd*(0.8+r()*0.6),r()*6,r());if(wd>8)softShadow(cx+side*off,zz,wd,wd,h);}
+      if(r()<0.4){const n=1+Math.floor(r()*3),off=w+18+r()*34,zz=z-24+r()*48;
+        for(let k=0;k<n;k++){const sc=3+r()*2,h=0.75+r()*0.6,xx=cx+side*(off+k*4.5*(r()-0.3)),z2=zz+(r()-0.5)*10;rock(spires,xx,z2,sc,sc*h,sc,r()*6,r());softShadow(xx,z2,sc*1.2,sc*1.2,sc*h*4);}}
+      if(r()<0.16){const xx=cx+side*(w+44+r()*26),zz=z-10+r()*20,sc=10+r()*8,h=10+r()*14;rock(mesas,xx,zz,sc,h,sc*(0.8+r()*0.4),r()*6,r());softShadow(xx,zz,sc*1.8,sc*1.6,h);}
+      // Walls: a row of crags, never inside the play field (|x| ≥ 64), with a taller rim row behind.
+      const wallX=Math.max(64,side*cx+w+48);
+      for(let k=0;k<5;k++){const zz=z-32+k*13+r()*3,wd=12+r()*12,dp=15+r()*7,h=12+r()*22,xx=side*(wallX+r()*6);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.5,r());softShadow(xx,zz,wd,dp,h);}
+      for(let k=0;k<3;k++){const zz=z-30+k*22+r()*4,wd=18+r()*14,dp=22+r()*8,h=26+r()*26,xx=side*(wallX+20+r()*14);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.4,r());}
+      if(r()<0.12){const xx=cx+side*(w+16);add(roofs,xx,-1,z,14,2,18);add(domes,xx,1,z,5,3,5);add(glass,xx,2,z,10,0.3,1);} // outpost
     }
-    if(r()<0.1){const span=w*2+8;for(const s of [-1,1])add(rockBox,cx+s*(w+4),2,z,5,16,6);add(rockBox,cx,10,z,span+6,3,6);} // arch
+    // Arch over the river: two crag legs and a craggy span.
+    if(r()<0.1){const span=w*2+10;for(const sd of [-1,1])rock(crags,cx+sd*(w+6),z,9,20,9,r()*0.3,r());const tint=r();if(add(crags,cx,8,z,span+12,7,9,0))setColor(crags,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);}
   };
   const riverW=(travel:number,P:BiomeParams)=>11.5+4*Math.sin(travel*0.011+P.a);
   return {

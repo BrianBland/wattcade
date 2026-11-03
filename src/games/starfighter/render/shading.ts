@@ -27,7 +27,8 @@ function patch(material: THREE.MeshStandardMaterial, fragment: string, key: stri
         #endif
         vLZ = (modelMatrix * wp).z; vWPos = toWorld((modelMatrix * wp).xyz); vWNormal = dirToWorld(vWNormal);`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${VARYINGS}
-      uniform vec2 uWave; uniform vec4 uMusic; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
+      uniform vec2 uWave; uniform vec4 uMusic; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float shNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(shHash(i),shHash(i+vec2(1,0)),f.x),mix(shHash(i+vec2(0,1)),shHash(i+vec2(1,1)),f.x),f.y);}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${fragment}`);
   };
   material.customProgramCacheKey = () => key;
@@ -64,11 +65,22 @@ export function windowed(material: THREE.MeshStandardMaterial) {
       diffuseColor.rgb *= 0.9 + 0.1 * step(0.46, max(g.x, g.y));
     }`, 'sq-windowed');
 }
-/** Rock: sedimentary strata bands and a darker, wetter base. */
+/**
+ * Rock: warped sedimentary strata of uneven thickness (on top of the kit's vertex-colour bands), vertical erosion
+ * streaks down steep faces, wind-blown dust on ledges and tops, fine grit, and a darker, damper base.
+ */
 export function strata(material: THREE.MeshStandardMaterial) {
   return patch(material, `
-    float band = sin(vWPos.y * 1.7 + shHash(floor(vWPos.xz / 9.0)) * 3.0) * 0.5 + 0.5;
-    diffuseColor.rgb *= 0.78 + 0.32 * band;
+    float n = shNoise(vWPos.xz * 0.08 + vWPos.y * 0.05);
+    float y = vWPos.y + (n - 0.5) * 3.0;
+    float band = sin(y * 1.9 + shHash(floor(vWPos.xz / 14.0)) * 3.0) * 0.5 + 0.5, fine = sin(y * 7.3 + n * 4.0) * 0.5 + 0.5;
+    diffuseColor.rgb *= 0.82 + 0.2 * band + 0.06 * fine;
+    // Streaks follow the face across (a safe tangent: the normal may point straight up).
+    vec2 tr = vec2(-vWNormal.z, vWNormal.x); vec2 tg = dot(tr, tr) > 1e-6 ? normalize(tr) : vec2(1.0, 0.0);
+    float steep = clamp(1.0 - abs(vWNormal.y), 0.0, 1.0), streak = shNoise(vec2(dot(vWPos.xz, tg) * 0.9, vWPos.y * 0.06));
+    diffuseColor.rgb *= mix(1.0, 0.8 + 0.3 * streak, steep);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.55, 0.4), smoothstep(0.6, 0.95, vWNormal.y) * 0.25 * (0.6 + 0.4 * n));
+    diffuseColor.rgb *= 0.94 + 0.12 * shHash(floor(vWPos.xz * 3.0 + vWPos.y * 2.0));
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.62, 0.62), smoothstep(-2.0, -5.5, vWPos.y));`, 'sq-strata');
 }
 /** Plated metal (roofs, decks, hulls): panel seams and slight tonal variation per panel. */

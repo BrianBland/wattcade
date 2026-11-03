@@ -89,6 +89,99 @@ function tree(): Part {
   const blob = (r: number, x: number, y: number, z: number, color: string) => { const g = new THREE.IcosahedronGeometry(r, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
   return merge([cyl(0.12, 0.18, 1.3, 0, 0.65, 0, '#5a4330', 6), blob(0.95, 0, 1.9, 0, '#3f7d4c'), blob(0.7, 0.6, 1.6, 0.3, '#4a8f55'), blob(0.65, -0.55, 1.65, -0.25, '#36703f'), blob(0.6, 0.1, 2.5, -0.2, '#56a061')]);
 }
+/** Seeded 3D value noise (deterministic, so the kit is identical on every mount). */
+function vnoise(x: number, y: number, z: number, seed: number): number {
+  const h = (i: number, j: number, k: number) => { let n = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 2147483647) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), fx = x - xi, fy = y - yi, fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz), L = (a: number, b: number, t: number) => a + (b - a) * t;
+  return L(L(L(h(xi, yi, zi), h(xi + 1, yi, zi), u), L(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), u), v),
+    L(L(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), u), L(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), u), v), w);
+}
+const fbm = (x: number, y: number, z: number, seed: number) => vnoise(x, y, z, seed) * 0.6 + vnoise(x * 2.1, y * 2.1, z * 2.1, seed + 7) * 0.28 + vnoise(x * 4.3, y * 4.3, z * 4.3, seed + 13) * 0.12;
+/**
+ * Push each vertex out from `centre` by fbm noise (same position → same offset, so faces stay joined). `flat` clamps
+ * the base to y = 0 so rocks sit on the ground.
+ */
+function displace(g: Part, amp: number, freq: number, seed: number, centre = new THREE.Vector3(), flat = true): Part {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute, v = new THREE.Vector3(), d = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i); d.copy(v).sub(centre); const len = d.length() || 1;
+    const n = fbm(v.x * freq + 11, v.y * freq + 5, v.z * freq + 3, seed) - 0.5;
+    v.addScaledVector(d.divideScalar(len), n * amp * 2);
+    if (flat) v.y = Math.max(0, v.y);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+/** Sandstone strata by height: alternating warm bands of uneven thickness (vertex colours; the shader adds fine detail). */
+const STRATA = ['#b86a4b', '#9c4f3b', '#d39a6a', '#7d3c35', '#c98a5e', '#a65a43', '#e0b083'];
+function strataColours(g: Part, top: number, seed: number, palette = STRATA): Part {
+  const pos = g.getAttribute('position'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const y = pos.getY(i), warp = (vnoise(pos.getX(i) * 0.15, 0, pos.getZ(i) * 0.15, seed) - 0.5) * 1.6;
+    const band = Math.floor((y / Math.max(0.01, top)) * 6 + warp + vnoise(0, y * 0.9, 0, seed + 3) * 0.8);
+    c.set(palette[((band % palette.length) + palette.length) % palette.length]).multiplyScalar(0.92 + 0.16 * vnoise(pos.getX(i) * 0.6, y * 0.6, pos.getZ(i) * 0.6, seed + 9));
+    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+}
+const finish = (g: Part) => { g.deleteAttribute('uv'); g.deleteAttribute('normal'); g.computeVertexNormals(); return g; };
+/** Boulder / rock formation, ~1 unit across and tall (instances scale it): a lumpy, fractured, flat-based mass. */
+function boulder(seed: number, squash: number, detail: number): Part {
+  const g = new THREE.IcosahedronGeometry(0.62, detail); g.scale(1, squash, 1); g.translate(0, 0.32 * squash, 0);
+  displace(g, 0.28, 1.9, seed); return finish(strataColours(g, 0.9 * squash, seed));
+}
+/** Hoodoo spire, ~1 across × 4 tall: stacked, pinched drums with a darker, wider cap rock. */
+function spire(): Part {
+  const parts: Part[] = []; let y = 0;
+  for (const [r0, r1, h] of [[0.55, 0.42, 1.2], [0.44, 0.3, 1.0], [0.34, 0.26, 0.9], [0.27, 0.2, 0.6]]) {
+    const c = new THREE.CylinderGeometry(r1, r0, h, 9, 3).toNonIndexed(); c.translate(0, y + h / 2, 0); parts.push(c); y += h;
+  }
+  const cap = new THREE.CylinderGeometry(0.38, 0.3, 0.35, 9, 1).toNonIndexed(); cap.translate(0, y + 0.15, 0); parts.push(cap);
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.12, 2.4, 21, new THREE.Vector3(0, 0, 0)); strataColours(g, 4, 21);
+  // Cap rock: harder and darker than the column it protects.
+  const pos = g.getAttribute('position'), col = g.getAttribute('color') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) if (pos.getY(i) > y - 0.05) col.setXYZ(i, col.getX(i) * 0.62, col.getY(i) * 0.55, col.getZ(i) * 0.58);
+  return finish(g);
+}
+/** Stepped mesa, ~2 across × 1 tall: talus apron, three sheer ledged layers on an irregular footprint, a flat top. */
+function mesa(): Part {
+  const parts: Part[] = [], layer = (r: number, y0: number, h: number, seed: number) => {
+    const shape = new THREE.Shape(), N = 14;
+    for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI * 2, rr = r * (0.78 + 0.34 * vnoise(Math.cos(a) * 2 + 4, Math.sin(a) * 2 + 4, seed, 3)); const px = Math.cos(a) * rr, pz = Math.sin(a) * rr * 0.8; if (i) shape.lineTo(px, pz); else shape.moveTo(px, pz); }
+    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, steps: 2 }).toNonIndexed(); g.rotateX(-Math.PI / 2); g.translate(0, y0, 0); parts.push(g);
+  };
+  const talus = new THREE.CylinderGeometry(0.95, 1.25, 0.25, 16, 1).toNonIndexed(); talus.translate(0, 0.12, 0); parts.push(talus);
+  layer(1.0, 0.2, 0.32, 1); layer(0.9, 0.52, 0.28, 2); layer(0.8, 0.8, 0.22, 3);
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.05, 3.2, 33, new THREE.Vector3(0, 0.5, 0)); return finish(strataColours(g, 1.0, 33));
+}
+/**
+ * Crag: a fractured block of cliff, 1×1×1 (walls are rows of these at varied sizes). Hard layers stand out as ledges,
+ * soft ones recess, the top is a broken skyline, and the whole block is lumpy.
+ */
+function crag(): Part {
+  const g = new THREE.BoxGeometry(1, 1, 1, 4, 8, 4).toNonIndexed(); g.translate(0, 0.5, 0);
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const ledge = 1 + (vnoise(0, Math.floor(y * 7.99) * 1.7, 0, 51) - 0.5) * 0.22, taper = 1 - y * 0.14;
+    x *= ledge * taper; z *= ledge * taper;
+    if (y > 0.99) y += (fbm(x * 3 + 2, 0, z * 3 + 2, 52) - 0.45) * 0.45; // broken skyline
+    pos.setXYZ(i, x, y, z);
+  }
+  displace(g, 0.24, 2.8, 47, new THREE.Vector3(0, 0.5, 0)); return finish(strataColours(g, 1, 47));
+}
+/** Desert scrub: a low, dusty clump (~1 across). */
+function scrub(): Part {
+  const parts: Part[] = [];
+  for (const [x, z, r, c] of [[0, 0, 0.42, '#6d7240'], [0.3, 0.15, 0.3, '#857a45'], [-0.28, -0.1, 0.32, '#5b6438'], [0.05, -0.3, 0.26, '#7a7c4a']] as const) {
+    const b = new THREE.IcosahedronGeometry(r, 0).toNonIndexed(); b.scale(1, 0.55, 1); b.translate(x, r * 0.4, z); parts.push(colored(b, c));
+  }
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.08, 5, 61); return finish(g);
+}
 /** V-shaped wake: a foam fan widening and fading behind its source (additive white via vertex colours). */
 function wake(): Part {
   const g = new THREE.BufferGeometry(), pos: number[] = [], col: number[] = [], N = 10;
@@ -109,8 +202,9 @@ function wake(): Part {
 }
 let cache: Record<string, Part> | null = null;
 export function kit() {
-  cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake() };
-  return cache as { tree: Part; carrier: Part; battleship: Part; destroyer: Part; riverBoat: Part; barge: Part; jet: Part; tractor: Part; island: Part; wake: Part };
+  cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
+    boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub() };
+  return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

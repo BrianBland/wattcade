@@ -76,13 +76,13 @@ function awning(L, o) {
   const th = L.th, F = o.F, hinge = F.at((o.u0 + o.u1) / 2, o.z, .02);
   const hg = new T.Group(); hg.position.copy(V(...hinge)); o.parent.add(hg);
   // the leaf in hinge space: x along u, out along n; rotate about u to fold it up against the wall
-  const leafM = tri(th.roof || th.mech, { fresh: true, side: true }), leaf = new T.Group(); hg.add(leaf);
+  const leafM = tri(th.mech, { fresh: true, side: true }), leaf = new T.Group(); hg.add(leaf);
   const w = o.u1 - o.u0, d = o.depth;
   const slab = new T.Mesh(UNIT, leafM); leaf.add(slab);
   // basis: local X = u, local Y = up, local Z = n (in three coords); the slab lies in u x n, thin in up
   const bx = v3(F.u), by = v3(Zup), bz = v3(F.n);
   slab.matrixAutoUpdate = false; slab.matrix.copy(boxMatrix(bx, by, bz, w, .08, d, bz.clone().multiplyScalar(d / 2)));
-  for (let k = 0; k < 4; k++) { const stripe = new T.Mesh(UNIT, basic(k % 2 ? '#FFFFFF' : (th.goal || '#E8553B'))); stripe.matrixAutoUpdate = false;
+  for (let k = 0; k < 4; k++) { const stripe = new T.Mesh(UNIT, basic(k % 2 ? (th.trim || '#FFFFFF') : (th.mechDark ? th.mechDark.l : th.goal || '#E8553B'))); stripe.matrixAutoUpdate = false;
     stripe.matrix.copy(boxMatrix(bx, by, bz, w / 4 - .02, .1, .14, bx.clone().multiplyScalar(-w / 2 + w / 8 + k * w / 4).add(bz.clone().multiplyScalar(d - .07)))); leaf.add(stripe); }
   const st = { ang: 90, sweep: -1, leaf };   // 90 = folded up, 0 = out level
   const axis = v3(F.u);
@@ -92,7 +92,7 @@ function awning(L, o) {
       else { const tgt = st.ang > 45 ? 90 : 0; st.ang += clamp(tgt - st.ang, -60 * dt, 60 * dt); }
       // fold about u: positive turns the out-pointing leaf up the wall
       leaf.quaternion.setFromAxisAngle(axis, 0); const q = new T.Quaternion().setFromUnitVectors(bz, by); const qa = new T.Quaternion().slerpQuaternions(new T.Quaternion(), q, st.ang / 90); leaf.quaternion.copy(qa);
-      setTri(leafM, mixPal(th.roof || th.mech, tone(th.goal), clamp(this.bloom.e, 0, 1) * .5));
+      setTri(leafM, mixPal(th.mech, tone(th.goal), clamp(this.bloom.e, 0, 1) * .5));
       return drive > 0 ? .3 : 0; } });
   { const q = new T.Quaternion().setFromUnitVectors(bz, by); leaf.quaternion.copy(q); }
   st.out = () => st.ang < .5;
@@ -116,7 +116,7 @@ function liveGap(L, A, kA, Bq, kB, occ, o = {}) {
 function wallLift(L, o) {
   const th = L.th, F = o.F, lg = new T.Group(); o.parent.add(lg);
   const [u0, u1] = o.u, h = o.h, r = .4, pts = wallLoopPts(F, u0, u1, 0, h, r, .02);
-  const loop = L.road(pts, { g: lg, closed: true, pal: o.pal || tone('#F2D49B') });
+  const loop = L.road(pts, { g: lg, closed: true, pal: o.pal || L.th.path || tone('#F2D49B') });
   // the deck: a plate behind the loop, standing a little proud of the wall
   const plate = new T.Mesh(UNIT, tri(th.mech, { fresh: true })); plate.matrixAutoUpdate = false;
   const bx = v3(F.u), by = v3(Zup), bz = v3(F.n), c = F.at((u0 + u1) / 2, h / 2, -.01);
@@ -162,12 +162,14 @@ function plate(parent, a, b, n, la, lb, depth, centre, mat) {
   const m = new T.Mesh(UNIT, mat); m.matrixAutoUpdate = false;
   m.matrix.copy(boxMatrix(v3(a), v3(b), v3(n), la, lb, depth, V(...add(centre, n, depth / 2)))); parent.add(m); return m;
 }
-/** Red and white edge stripes along the outer edge of a plate, so it reads as a made thing. */
-function stripes(parent, a, b, n, la, depth, centre, col) {
-  for (let k = 0; k < 4; k++) { const c = add(add(centre, a, -la / 2 + la / 8 + k * la / 4), n, depth - .07);
-    const s = new T.Mesh(UNIT, basic(k % 2 ? '#FFFFFF' : col)); s.matrixAutoUpdate = false; s.matrix.copy(boxMatrix(v3(a), v3(b), v3(n), la / 4 - .02, .1, .14, V(...c))); parent.add(s); }
-}
 
+// Monument Valley's lesson: one soft palette, three flat tones per material, walkways paler than the walls they cross,
+// one accent colour for everything that moves, and ornament that is sparse and sits only where nothing happens
+const CUBE_THEME = Object.assign({}, THEMES[2], {
+  sky: 'linear-gradient(180deg,#F3C9C4 0%,#F9DFD3 48%,#FFF3E6 100%)',
+  stone: { t: '#FFF3EC', l: '#F8D8CB', r: '#E8B3A6' }, idle: { t: '#FBE9E1', l: '#EFC6BA', r: '#D9A396' },
+  roof: { t: '#F1CFC2', l: '#F6DED3', r: '#E3B9AC' }, mech: { t: '#7FD3C4', l: '#3FA79A', r: '#2A7E78' }, mechDark: { t: '#3E9C92', l: '#2A7E78', r: '#1D5D5A' },
+  path: { t: '#FFFAF2', l: '#FBEBD8', r: '#ECCDB0' }, ink: '#A86A66', lane: '#D9B79C', goal: '#2A7E78', trim: '#FFFFFF' });
 const CUBE_HINTS = [
   'Six puzzles round a tower of two storeys, and the tower turns to follow you. <b>First wall:</b> swing the wall turntable (<b>Y</b>) level and the loop leads off round the corner.',
   '<b>Second wall:</b> the road ahead has a hole. Swing the awning out (<b>A</b>): from here the hole is hidden behind it, so it is not there.',
@@ -178,7 +180,7 @@ const CUBE_HINTS = [
 ];
 
 const CUBES = [
-  { id: 'x-cube', name: 'The Cube', th: () => THEMES[2], cruise: [70, 92],
+  { id: 'x-cube', name: 'The Cube', th: () => CUBE_THEME, cruise: [70, 92],
     hint: CUBE_HINTS[0],
     build(L) {
       const th = L.th, g = L.g, P = L.props, h = CUBE_H, H = CUBE_Z;
@@ -188,15 +190,13 @@ const CUBES = [
       const stone = tri(sp(th, 0)), R2 = CR - .02;
       B(cube, -h + R2, -h, 0, h - R2, h, H, stone); B(cube, -h, -h + R2, 0, h, h - R2, H, stone);
       for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) CY(cube, sx * (h - R2), sy * (h - R2), R2, 0, H, stone, 20);
-      B(cube, -h - .1, -h - .1, H, h + .1, h + .1, H + .14, tri(th.idle));
+      B(cube, -h - .14, -h - .14, H, h + .14, h + .14, H + .14, tri(th.roof));
+      for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) { const fx = sx * (h - .05), fy = sy * (h - .05);
+        CY(cube, fx, fy, .2, H + .14, H + .5, tri(th.roof), 16); const cone = new T.Mesh(new T.ConeGeometry(.24, .55, 16), tri(th.mech)); cone.position.copy(V(fx, fy, H + .77)); cube.add(cone); }
+      // a storey line: a thin cornice ring painted round the tower (flush, so the roads cross it cleanly)
       // the plinth it turns on
-      CY(g, 0, 0, h * 1.5, -3, -.02, tri(sp(th, 1)), 48); CY(g, 0, 0, h * 1.35, -.02, 0, tri(th.idle), 48);
-      // wall art: a different pattern on each wall, storey and the roof
-      const low = ['tiles', 'arcade', 'mosaic', 'chevron'], high = ['mosaic', 'chevron', 'tiles', 'arcade'], aw2 = 2 * h - 2 * R2 - .1;
-      F.forEach((f, k) => { wallArt(L, cube, { centre: f.at(0, STOREY / 2, 0), u: f.u, up: Zup, n: f.n, w: aw2, h: STOREY - .2, style: low[k], seed: 11 + k, opacity: .55 });
-        wallArt(L, cube, { centre: f.at(0, (STOREY + H) / 2, 0), u: f.u, up: Zup, n: f.n, w: aw2, h: H - STOREY - .2, style: high[k], seed: 31 + k, opacity: .55 }); });
-      wallArt(L, cube, { centre: [0, 0, H + .14], u: [1, 0, 0], up: [0, 1, 0], n: [0, 0, 1], w: 2 * h, h: 2 * h, style: 'meander', seed: 5 });
-      const pal = tone('#F2D49B'), road = (pts, o = {}) => L.road(pts, { g: cube, pal, ...o });
+      CY(g, 0, 0, h * 1.75, -3.6, -.62, tri(th.idle), 64); CY(g, 0, 0, h * 1.55, -.62, -.32, tri(th.roof), 64); CY(g, 0, 0, h * 1.42, -.32, -.02, tri(sp(th, 0)), 64); CY(g, 0, 0, h * 1.36, -.02, 0, tri(th.roof), 64);
+      const pal = th.path, road = (pts, o = {}) => L.road(pts, { g: cube, pal, ...o });
 
       /* ---- lower storey ---- */
       // wall 0: a loop and a wall turntable whose arm, swung level, leads to the corner
@@ -232,39 +232,40 @@ const CUBES = [
       L3w.forks.push({ s: sAt(L3w, F[3].at(-1.2, 3.38, .02)), dir: 1, to: beam.road, toK: 0, when: () => beam.at(75), text: 'The beam is up, so the wheel climbs it' });
 
       /* ---- upper storey ---- */
-      const firstUpper = cube.children.length;   // everything added from here on belongs to the upper storey
+      // everything upstairs lives in its own group, hidden until the wheel heads up
+      const upperG = new T.Group(); cube.add(upperG); const up = (pts, o = {}) => road(pts, { g: upperG, ...o });
       // wall 3, upstairs: on from the beam's tip, level off and round the corner
       const a75 = 75 * Math.PI / 180, tip3 = F[3].at(-1.2 + 4.8 * Math.cos(a75), 3.38 + 4.8 * Math.sin(a75), .02);
       const t3 = ftur(tip3, add(F[3].u.map((v) => v * Math.cos(a75)), Zup, Math.sin(a75)), F[3].n).turn(.6, 75);
-      const zA = t3.st.p[2]; const s3 = roundEdge(t3, F, 3, -1.55); const U3 = road(t3.pts); P.U3 = U3;
+      const zA = t3.st.p[2]; const s3 = roundEdge(t3, F, 3, -1.55); const U3 = up(t3.pts); P.U3 = U3;
 
       // wall 0, upstairs: a bridge with a sail. Stood up, it carries the wheel straight on up from the loop to a loop at the
       // top; laid flat again, its sail is a shelf standing out of the wall in front of the hole on the way down
-      const A0 = road(wallLoopPts(F[0], -2.2, -.9, zA, zA + 1.2, .35, .02), { closed: true }); P.A0 = A0;
+      const A0 = up(wallLoopPts(F[0], -2.2, -.9, zA, zA + 1.2, .35, .02), { closed: true }); P.A0 = A0;
       U3.joins = [{ k: 1, to: A0, s: sAt(A0, F[0].at(-1.55, zA, .02)) + .02, dir: 1 }];
       const pz = zA + .85;   // the top of the loop's right side: the bridge, stood up, carries straight on
-      const sail = wallArm(L, { F: F[0], parent: cube, pivot: [-.9, pz], len: 2.0, stops: [0, 90], start: 0, at: [-1.55, zA + .6], key: 'y', name: 'Sail bridge', edgeText: 'The bridge went down under the wheel, so it dropped' }); P.sail = sail;
+      const sail = wallArm(L, { F: F[0], parent: upperG, pivot: [-.9, pz], len: 1.7, stops: [0, 90], start: 0, at: [-1.55, zA + .6], key: 'y', name: 'Sail bridge', edgeText: 'The bridge went down under the wheel, so it dropped' }); P.sail = sail;
       // the sail, on the arm's right-hand side (in arm space: along u, across -z, out along n)
-      const sg = sail.road.vo.host, sc = add(F[0].u.map((v) => v * .95), Zup, -.3);
-      plate(sg, F[0].u, Zup, F[0].n, 1.5, .06, .95, sc, tri(th.roof || th.mech, { fresh: true, side: true })); stripes(sg, F[0].u, Zup, F[0].n, 1.5, .95, sc, th.goal || '#E8553B');
+      const sg = sail.road.vo.host, sc = add(F[0].u.map((v) => v * .85), Zup, -.3);
+      plate(sg, F[0].u, Zup, F[0].n, 1.3, .06, .95, sc, tri(th.mech, { fresh: true, side: true }));
       A0.forks.push({ s: sAt(A0, F[0].at(-.9, pz, .02)), dir: 1, to: sail.road, toK: 0, when: () => sail.at(90), text: 'The bridge stands up, so the wheel rides on up' });
       // from the bridge's top, right into a clockwise loop along the top of the wall
-      const tq = ftur(F[0].at(-.9, pz + 2, .02), Zup, F[0].n).turn(.3, 90).fwd(1.1), T0 = road(tq.pts); P.T0 = T0;
-      const qt = pz + 2.3, Q0 = road(wallLoopPts(F[0], .2, 1.9, qt - 1.2, qt, .35, .02, true), { closed: true }); P.Q0 = Q0;
+      const tq = ftur(F[0].at(-.9, pz + 1.7, .02), Zup, F[0].n).turn(.3, 90).fwd(1.1), T0 = up(tq.pts); P.T0 = T0;
+      const qt = pz + 2.0, Q0 = up(wallLoopPts(F[0], .2, 1.9, qt - 1.2, qt, .35, .02, true), { closed: true }); P.Q0 = Q0;
       T0.joins = [{ k: 1, to: Q0, s: sAt(Q0, F[0].at(.6, qt, .02)) + .02, dir: 1 }];
       // the way down: off the loop's right side, past the bridge's tip, left under the sail (the hole), and round the corner low
       const xz = qt - .6, hz = pz - 1.0;
-      const xa = ftur(F[0].at(1.9, xz, .02), Zup.map((v) => -v), F[0].n).fwd(xz - hz - .3).turn(.3, 90).fwd(.5), Xa = road(xa.pts); P.Xa = Xa;   // ends at u 1.1
-      const xb = ftur(F[0].at(.7, hz, .02), F[0].u.map((v) => -v), F[0].n).fwd(.7).turn(.3, -90).fwd(.3).turn(.3, -90); const s4 = roundEdge(xb, F, 0, -1.55), Xb = road(xb.pts); P.Xb = Xb;
+      const xa = ftur(F[0].at(1.9, xz, .02), Zup.map((v) => -v), F[0].n).fwd(xz - hz - .3).turn(.3, 90).fwd(.5), Xa = up(xa.pts); P.Xa = Xa;   // ends at u 1.1
+      const xb = ftur(F[0].at(.7, hz, .02), F[0].u.map((v) => -v), F[0].n).fwd(.35).turn(.3, -90).fwd(.3).turn(.3, -90); const s4 = roundEdge(xb, F, 0, -1.55), Xb = up(xb.pts); P.Xb = Xb;
       const zB = xb.st.p[2];
       P.hole4 = liveGap(L, Xa, 1, Xb, 0, () => [sg], { text: 'Under the sail, so the hole was not there', edge: 'The hole was in plain sight' });
       Q0.forks.push({ s: sAt(Q0, F[0].at(1.9, xz, .02)), dir: 1, to: Xa, toK: 0, when: () => P.hole4.hidden(), text: 'The way down looks whole, so the wheel takes it' });
 
       // wall 1, upstairs: a tall loop and an arm on top of its right side; stood up, its tip meets a road on the roof, far behind it
-      const F1l = road(wallLoopPts(F[1], -2.2, -.7, zB, zB + 3.2, .45, .02), { closed: true }); P.F1 = F1l;
+      const F1l = up(wallLoopPts(F[1], -2.2, -.7, zB, zB + 3.2, .45, .02), { closed: true }); P.F1 = F1l;
       Xb.joins = [{ k: 1, to: F1l, s: sAt(F1l, F[1].at(-1.55, zB, .02)) + .02, dir: 1 }];
       const apz = zB + 3.2 - .45, alen = H + 1.0 - apz;
-      const arm = wallArm(L, { F: F[1], parent: cube, pivot: [-.7, apz], len: alen, stops: [0, 90], start: 0, at: [-1.45, zB + .9], key: 'a', name: 'Tall arm', edgeText: 'The arm led nowhere from here, so the wheel dropped' }); P.arm = arm;
+      const arm = wallArm(L, { F: F[1], parent: upperG, pivot: [-.7, apz], len: alen, stops: [0, 90], start: 0, at: [-1.45, zB + .9], key: 'a', name: 'Tall arm', edgeText: 'The arm led nowhere from here, so the wheel dropped' }); P.arm = arm;
       F1l.forks.push({ s: sAt(F1l, F[1].at(-.7, apz, .02)), dir: 1, to: arm.road, toK: 0, when: () => arm.at(90), text: 'The arm stands up, so the wheel rides on up' });
       // the roof road, placed in the cube's own frame for the turn at which this wall faces you (five quarter turns)
       { const KF = 5, rot = (p, a) => [p[0] * Math.cos(a) - p[1] * Math.sin(a), p[0] * Math.sin(a) + p[1] * Math.cos(a), p[2]];
@@ -276,7 +277,21 @@ const CUBES = [
         const r0 = rot(RW, -sk), d0 = rot([Math.cos(best), Math.sin(best), 0], -sk);
         const toC = [-r0[0], -r0[1]], left = d0[0] * toC[1] - d0[1] * toC[0] > 0;
         const rt = ftur(r0, d0, Zup).fwd(.8).turn(.7, left ? 90 : -90).fwd(.9);
-        P.home = road(rt.pts, { goal: true }); }
+        P.home = up(rt.pts, { goal: true }); }
+
+      // ornament, Monument Valley style: plain walls, a cornice line at each storey, and arched niches set only where no
+      // road runs, so the eye reads the paths first. Roads are sampled in each wall's own coordinates to find the clear space.
+      { const onWall = F.map(() => []);
+        for (const r of L.roads) { if (r.g !== cube && r.g !== upperG) continue;
+          for (const q of r.S) { const p3 = [q.p.x, q.p.z, q.p.y]; F.forEach((f, k) => { if (dot(p3, f.n) > h - .2) onWall[k].push([dot(p3, f.u), p3[2]]); }); } }
+        const keep = [[disc, 0, [.6, 1.9], 1.4], [beam, 3, [-1.2, 3.38], 0], [sail, 0, [-.9, pz], 1.9], [arm, 1, [-.7, apz], 0]];
+        for (const [, k, c, rr] of keep) if (rr) for (let a = 0; a < 360; a += 20) onWall[k].push([c[0] + rr * Math.cos(a * Math.PI / 180), c[1] + rr * Math.sin(a * Math.PI / 180)]);
+        onWall[1].push([1.45, 4.95], [.5, 4.95], [2.4, 4.95]);   // the awning's hinge line
+        F.forEach((f, k) => {
+          const clear = (u, z, rad) => onWall[k].every(([a, b]) => Math.hypot(a - u, b - z) > rad);
+          wallArt(L, cube, { centre: f.at(0, H / 2, 0), u: f.u, up: Zup, n: f.n, w: 2 * h - 2 * R2 - .1, h: H, style: 'niches', seed: 11 + k, clear, storey: STOREY,
+            pal: { light: th.trim || '#FFFFFF', dark: th.ink, accent: th.mech.l } }); }); }
+      wallArt(L, cube, { centre: [0, 0, H + .14], u: [1, 0, 0], up: [0, 1, 0], n: [0, 0, 1], w: 2 * h + .2, h: 2 * h + .2, style: 'panel', seed: 5, pal: { light: th.trim || '#FFFFFF', dark: th.ink, accent: th.mech.l } });
 
       // turning the box: as the wheel passes each edge, the next wall swings round to face you. Going upstairs, the tower
       // sinks into its plinth so the storey you are on stays in view; until then the upper storey fades into the sky
@@ -288,7 +303,7 @@ const CUBES = [
       Object.assign(haze.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '17%', pointerEvents: 'none', background: `linear-gradient(180deg, ${skyTop} 0%, ${skyTop} 30%, ${skyTop}00 100%)` });
       $scope.dom?.badges?.appendChild(haze); P.haze = haze;
       // the upper storey's roads and machines appear only once you head up, so downstairs shows only the puzzles in play
-      const upper = cube.children.slice(firstUpper); let upperShown = true;
+      let upperShown = true;
       let hintK = 0;
       L.view.updaters.push((t, dt) => {
         const W = L.W;
@@ -299,7 +314,7 @@ const CUBES = [
         if (turn.t < 1) { turn.t = Math.min(1, turn.t + dt / 1.6); const e = turn.t < .5 ? 4 * turn.t ** 3 : 1 - Math.pow(-2 * turn.t + 2, 3) / 2; cube.rotation.y = turn.from + (turn.to - turn.from) * e; }
         const st = P.up ? STOREY : 0; if (P.sink !== st) { P.sink += clamp(st - P.sink, -dt * 2.2, dt * 2.2); cube.position.y = -P.sink; }
         haze.style.opacity = (1 - P.sink / STOREY).toFixed(3);
-        const show = P.sink > .5; if (show !== upperShown) { upperShown = show; for (const o of upper) o.visible = show; }
+        const show = P.sink > .5; if (show !== upperShown) { upperShown = show; upperG.visible = show; }
         for (const m of L.machines) if (m.bd) m.bd.style.visibility = !m.live || m.live() ? 'visible' : 'hidden';
         if (turn.k !== hintK && $scope.dom) { hintK = turn.k; $scope.dom.ui.hint.innerHTML = CUBE_HINTS[hintK]; }
         L.say([`wall ${turn.k + 1} of 6`,

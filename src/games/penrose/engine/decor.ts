@@ -22,11 +22,11 @@ void main() {
   vec4 t = texture2D(map, vUv);
   gl_FragColor = vec4(t.rgb * k, t.a * opacity); }`;
 
-const STYLES = ['tiles', 'arcade', 'mosaic', 'chevron', 'meander'];
+const STYLES = ['tiles', 'arcade', 'mosaic', 'chevron', 'meander', 'niches', 'panel'];
 const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 
 /** Paint a pattern for a wall of w x h metres. pal: { light, dark, accent } hex colours. Returns a CanvasTexture. */
-function wallPattern(style, w, h, seed, pal) {
+function wallPattern(style, w, h, seed, pal, o = {}) {
   const ppm = 64, W = Math.max(64, Math.round(w * ppm)), H = Math.max(64, Math.round(h * ppm)), rnd = mulberry(seed * 7919 + 13);
   const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
   const L = (a) => rgba(pal.light, a), D = (a) => rgba(pal.dark, a), A = (a) => rgba(pal.accent, a);
@@ -72,6 +72,22 @@ function wallPattern(style, w, h, seed, pal) {
       for (let i = k; i >= 0; i--) g.lineTo(i * sw, (r + 1) * rh + (i % 2 ? rh * .5 : 0));
       g.closePath(); g.fill();
     }
+  } else if (style === 'niches') {
+    // sparse architecture: a cornice line at the base, each storey and the top; tall arched niches on a calm rhythm, each
+    // one placed only where o.clear(u, z, r) says no road runs (u from the wall's centre, z from its foot, in metres)
+    const clear = o.clear || (() => true), lines = [0, o.storey ?? h / 2, h].filter((v) => v <= h);
+    for (const z of lines) { const y = H - z * ppm; g.fillStyle = L(.7); g.fillRect(0, y - 7, W, 5); g.fillStyle = D(.16); g.fillRect(0, y - 2, W, 4); }
+    const nw = .34, nh = 1.0, step = .78;
+    for (let zb = .45; zb + nh < h - .3; zb += 1.55) for (let uc = -w / 2 + .55; uc <= w / 2 - .55; uc += step) {
+      const zc = zb + nh / 2; if (lines.some((z) => Math.abs(z - zc) < nh / 2 + .2)) continue;
+      if (![[0, 0], [0, nh / 2], [0, -nh / 2]].every(([du, dz]) => clear(uc + du, zc + dz, .62))) continue;
+      const x = (uc + w / 2) * ppm, yb = H - zb * ppm, yt = H - (zb + nh) * ppm, r = nw / 2 * ppm;
+      g.fillStyle = D(.28); g.beginPath(); g.moveTo(x - r, yb); g.lineTo(x - r, yt + r); g.arc(x, yt + r, r, Math.PI, 0); g.lineTo(x + r, yb); g.closePath(); g.fill();
+      g.fillStyle = L(.75); g.fillRect(x - r - 6, yb - 2, 2 * r + 12, 6);
+    }
+  } else if (style === 'panel') {
+    // a roof: a plain inset panel with a fine border, nothing to compete with the road on it
+    const m = 26; g.strokeStyle = L(.85); g.lineWidth = 6; g.strokeRect(m, m, W - 2 * m, H - 2 * m); g.strokeStyle = D(.14); g.lineWidth = 3; g.strokeRect(m + 14, m + 14, W - 2 * m - 28, H - 2 * m - 28);
   } else {
     // meander (greek key) bands between plain courses of ashlar
     const course = 40; g.strokeStyle = L(.3); g.lineWidth = 2;
@@ -94,7 +110,7 @@ function wallPattern(style, w, h, seed, pal) {
 function wallArt(L, parent, o) {
   const th = L.th, style = o.style || STYLES[(o.seed >>> 0) % STYLES.length];
   const pal = o.pal || { light: '#FFFFFF', dark: th.ink || '#22223A', accent: th.goal || '#FF8E6E' };
-  const tex = wallPattern(style, o.w, o.h, o.seed, pal);
+  const tex = wallPattern(style, o.w, o.h, o.seed, pal, o);
   const mat = new T.ShaderMaterial({ uniforms: { map: { value: tex }, opacity: { value: o.opacity ?? 1 } }, vertexShader: DECAL_VS, fragmentShader: DECAL_FS,
     transparent: true, depthWrite: false, side: T.DoubleSide, extensions: { derivatives: true }, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const m = new T.Mesh(new T.PlaneGeometry(o.w, o.h), mat);

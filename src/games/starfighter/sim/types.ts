@@ -30,7 +30,7 @@ export interface LaserView { id: number; targetId: number; sx: number; sy: numbe
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
 export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean; open?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' | 'strike' }
 /** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
 export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
@@ -73,5 +73,7 @@ export interface SfSnapshot {
   segment: { index: number; title: string; biome: number; seed: number; nextBiome: number; nextSeed: number; switchIn: number; breather: boolean };
   /** End-of-segment scorecard, shown during the breather. */
   scorecard: { title: string; grade: 'S' | 'A' | 'B' | 'C' | 'D'; score: number; clearPct: number; onTargetPct: number; perfects: number; elites: string; boss: string; at: number } | null;
+  /** Tempo Striker's latest strike: the swept span along the ship's row (x0 → x1) and its window (sim time). */
+  strike: { x0: number; x1: number; from: number; until: number } | null;
   hooks: { powerFtp: number; cadence: number; boss: boolean; drive: Drive };
 }

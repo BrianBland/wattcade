@@ -15,6 +15,9 @@ export function createCombat(scene: THREE.Scene) {
   // Lancer beams: a dashed warning line, then a brief bright beam with a white core.
   const dashes = pool(geometries.box, '#ffffff', 384), beamGlow = pool(geometries.box, '#ff3fd0', 24, true), beamCore = pool(geometries.box, '#ffffff', 24);
   (beamGlow.material as THREE.MeshBasicMaterial).opacity = 0.6; const dashColor = new THREE.Color(), beamPink = new THREE.Color('#ff3fd0'), white = new THREE.Color('#ffffff');
+  // Tempo Striker: an amber blade along the swept span, and a thin slash up to each enemy it hits (at most 8 at
+  // once, a quarter second each, so a column of hits never flares).
+  const blade = pool(geometries.box, '#ffcf3a', 2, true), slashes = pool(geometries.box, '#ffcf3a', 8, true), slashCores = pool(geometries.box, '#fff6d8', 8);
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
   const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
@@ -138,8 +141,25 @@ export function createCombat(scene: THREE.Scene) {
         }
       }
       sparks.count = k; sparks.instanceMatrix.needsUpdate = true;
+      let bl = 0, sl = 0;
+      if (s.strike) {
+        // Grows with the roll, then thins out over 0.6 s after it lands.
+        const st = s.strike, life = s.t <= st.until ? 1 : Math.max(0, 1 - (s.t - st.until) / 0.6), w = Math.abs(st.x1 - st.x0) + 3;
+        if (life > 0) for (const [h, scale] of [[1.6, 1], [0.5, 0.35]] as const) {
+          mat.position.set((st.x0 + st.x1) / 2, 10.4, s.shipY - 50); mat.rotation.set(0, 0, 0); mat.scale.set(w, 0.3, h * life * (1 + scale)); mat.updateMatrix(); blade.setMatrixAt(bl++, mat.matrix);
+        }
+      }
+      for (let q = s.fx.length - 1; q >= 0; q--) {
+        const fx = s.fx[q], age = s.t - fx.at; if (fx.kind !== 'strike' || age > 0.25 || sl >= 8) continue;
+        const life = 1 - age / 0.25, length = Math.max(1, s.shipY - fx.y);
+        mat.position.set(fx.x, 10.8, fx.y + length / 2 - 50); mat.rotation.set(0, 0, 0);
+        mat.scale.set(0.8 * life, 0.4, length); mat.updateMatrix(); slashes.setMatrixAt(sl, mat.matrix);
+        mat.scale.set(0.16 * life, 0.5, length); mat.updateMatrix(); slashCores.setMatrixAt(sl++, mat.matrix);
+      }
+      blade.count = bl; slashes.count = sl; slashCores.count = sl;
+      blade.instanceMatrix.needsUpdate = slashes.instanceMatrix.needsUpdate = slashCores.instanceMatrix.needsUpdate = true;
       smoke.count=sm;smoke.instanceMatrix.needsUpdate=true;debris.count=d; flashes.count=f; debris.instanceMatrix.needsUpdate=flashes.instanceMatrix.needsUpdate=true;
     },
-    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore]) { mesh.dispose(); } },
+    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
   };
 }

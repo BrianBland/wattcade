@@ -18,10 +18,10 @@ const biomeColor = `
     float e=0.35,t=time,h0=waveH(q,t),hx=waveH(q+vec2(e,0.0),t),hz=waveH(q+vec2(0.0,e),t);
     rough*=mix(1.0,0.35,smoothstep(150.0,650.0,length(cameraPosition-wpos))); // calmer with distance: no glitter aliasing
     vec3 nrm=normalize(vec3((h0-hx)/e*rough,1.0,(h0-hz)/e*rough)),v=normalize(cameraPosition-wpos),sun=normalize(vec3(-0.45,0.8,-0.4));
-    float fres=0.04+0.96*pow(1.0-max(dot(nrm,v),0.0),5.0);vec3 r=reflect(-v,nrm);
+    float fres=0.04+0.96*pow(clamp(1.0-dot(nrm,v),0.0,1.0),5.0);vec3 r=reflect(-v,nrm);
     vec3 sky=mix(uHaze0,vec3(0.32,0.58,0.92),smoothstep(0.05,0.7,r.y));
     vec3 body=mix(shallow,deep,depth)*(0.82+0.22*dot(nrm,sun))+vec3(0.02,0.12,0.12)*smoothstep(0.4,1.0,h0);
-    vec3 c=mix(body,sky,clamp(fres*1.5,0.0,0.8));float rs=max(dot(r,sun),0.0);c+=vec3(1.0,0.96,0.86)*(pow(rs,300.0)*0.55+pow(rs,30.0)*0.07);
+    vec3 c=mix(body,sky,clamp(fres*1.5,0.0,0.8));float rs=clamp(dot(r,sun),0.0,1.0);c+=vec3(1.0,0.96,0.86)*(pow(rs,300.0)*0.55+pow(rs,30.0)*0.07);
     float f=clamp(foam+smoothstep(0.95,1.35,h0)*0.4,0.0,1.0)*smoothstep(0.3,0.7,noise(q*0.6+vec2(t*0.3,-t*0.5)));
     return mix(c,vec3(0.86,0.93,0.97),f*0.85);}
   // Cloud sea: domain-warped density, lit by its own gradient toward the sun, bright billowing tops, deep sea in the gaps.
@@ -81,6 +81,7 @@ export function createSpace(scene: THREE.Scene) {
   scene.fog=new THREE.Fog(HAZE[0],380,1150);const fogTarget=new THREE.Color(HAZE[0]);
   // Anything past the drawn world (a lowered camera looking far ahead) shows the haze, never a black strip.
   scene.background=(scene.fog as THREE.Fog).color;
+  // The ground never outputs a negative colour (the bloom would turn it into NaN and blank the frame).
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
     fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;
@@ -93,7 +94,7 @@ export function createSpace(scene: THREE.Scene) {
     void main(){float ahead=34.0-world.z;vec2 W=uPose.xy+rightV(uPose.z)*world.x+fwdV(uPose.z)*ahead;
     float band=exp(-abs(world.z-wave)/16.0)*waveFade;
     float k=smoothstep(-30.0,30.0,dot(W-uF1.xy,fwdV(uF1.z)));vec3 c=k<0.999?shadeAt(uB0,uP0,frameP(uB0,uF0,W),band):vec3(0.0);if(k>0.001)c=mix(c,shadeAt(uB1,uP1,frameP(uB1,uF1,W),band),k);
-    c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(c,1.0);}` }));
+    c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(max(c,vec3(0.0)),1.0);}` }));
   // Everything on the ground hangs off one root, so the terrain can rise toward the ship (lower flight in a burn).
   const root=new THREE.Group();scene.add(root);
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
@@ -114,7 +115,9 @@ export function createSpace(scene: THREE.Scene) {
   const paths=make(geometries.box,new THREE.MeshStandardMaterial({color:'#9aa3a8',metalness:0,roughness:0.9}),480);
   // Kit models (vertex-coloured, plated): ships, boats, barges, parked jets, deck tractors, island towers.
   const K=kit(),kitMat=()=>plated(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.45,roughness:0.45}));
-  const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9,flatShading:true})),1400);
+  // Faceted via per-face vertex normals (non-indexed kit geometry), not flatShading: its derivative normal is NaN on
+  // sub-pixel trees at the horizon, and one NaN pixel spreads through the bloom and blanks the frame.
+  const trees=make(K.tree,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9})),1400);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
   const boats=make(K.riverBoat,kitMat(),24),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.

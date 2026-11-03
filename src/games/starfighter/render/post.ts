@@ -10,7 +10,7 @@ const GRADE = {
   uniforms: { tDiffuse: { value: null as THREE.Texture | null }, uTint: { value: new THREE.Vector3(1, 1, 1) }, uSat: { value: 1 }, uExp: { value: 1 } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `uniform sampler2D tDiffuse; uniform vec3 uTint; uniform float uSat; uniform float uExp; varying vec2 vUv;
-  void main() { vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)); vec3 g = mix(vec3(l), c.rgb, uSat) * uTint * uExp; gl_FragColor = vec4(g, c.a); }`,
+  void main() { vec4 c = texture2D(tDiffuse, vUv); float l = dot(c.rgb, vec3(0.299, 0.587, 0.114)); vec3 g = max(mix(vec3(l), c.rgb, uSat), vec3(0.0)) * uTint * uExp; gl_FragColor = vec4(g, c.a); }`,
 };
 const MOODS: Record<string, [number, number, number, number, number]> = {
   intro: [1, 1, 1, 0.95, 0.97], verse: [1, 1, 1, 1, 1], build: [1.05, 1, 0.94, 1.05, 1.02], drop: [1.02, 1, 1.03, 1.16, 1.06], break: [0.93, 0.98, 1.07, 0.84, 0.93], outro: [0.96, 0.98, 1.04, 0.9, 0.95],

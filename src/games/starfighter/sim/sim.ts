@@ -79,6 +79,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** Next swing peak (else beat) at or after sim time `at`. */
   const peakAfterSim = (at: number) => { if (!tun.weave()) return beatAfter(at); const q = weaveAt.peakAfter(at + pOff) - pOff; return q >= at && q - at < 2.5 ? q : beatAfter(at); };
   let strikeRun: { from: number; until: number; hit: Set<number> } | null = null, strikeHits = 0;
+  /** What the renderer draws: the span swept by the latest strike (kept briefly after it ends to fade). */
+  let strikeTrail: SfSnapshot['strike'] = null;
   let station = 0, lastInputT = -99, pilotBars = 0, hotFlank = 0, lastFlank = 0;
   const stationOf = (sx: number) => clamp(Math.round(sx / FLANK.x), -1, 1);
   const beams: BeamView[] = [];
@@ -253,7 +255,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     const beats = Math.max(level === 'cruise' ? 4 : 2, Math.ceil(1.1 / bl)) * stations, endAt = peakAfterSim(at + beats * bl - 0.15), dur = endAt > at + beats * bl * 0.8 && endAt < at + beats * bl * 1.8 ? endAt - at : beats * bl;
     const began = commandMove(route, startAt, dur, stationX(station));
     // Striker signature: a flank move in a push or burn is a strike, rolled, hitting everything it passes under.
-    if (craft === 'striker' && level !== 'cruise') strikeRun = { from: began, until: began + dur, hit: new Set() };
+    if (craft === 'striker' && level !== 'cruise') { strikeRun = { from: began, until: began + dur, hit: new Set() }; strikeTrail = null; }
     if ((level === 'burn' || craft === 'striker' && level === 'push') && tun.weave() && quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence()) { roll = { at: began, dur, dir: dir > 0 ? -1 : 1 }; lastRoll = t; emit('barrelRoll'); }
     emit('flank', { station, rider }); reauthor();
   };
@@ -559,10 +561,12 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       if (strikeRun && t > strikeRun.until + 0.1) strikeRun = null;
       if (strikeRun && t >= strikeRun.from && steady) {
+        if (!strikeTrail) strikeTrail = { x0: x, x1: x, from: strikeRun.from, until: strikeRun.until };
+        strikeTrail.x1 = x;
         for (const e of enemies) if (inCombat(e) && !strikeRun.hit.has(e.id) && Math.abs(e.x - x) < pk.strikeWidth) {
           strikeRun.hit.add(e.id); strikeHits++; score += 20;
           e.hp -= (40 + gunLevel * 8) * pk.strike * ampMul * (e.kind === 'boss' ? (enemies.some(m => m.parentId === e.id && m.hp > 0) ? 0.2 : 0.65) : 1);
-          effect('intercept', e.x, e.y, 1.6); emit('strike');
+          effect('strike', e.x, e.y, 1.6); emit('strike'); // the slash marks the hit; no extra flash (a column of hits would flare)
         }
       }
       if (craft === 'escort' && steady) {
@@ -740,7 +744,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         segment: (() => { const cur = seg ?? segmenter.at(p).segment, next = segmenter.peek();
           return { index: cur.index, title: cur.title, biome: cur.biome, seed: cur.seed, nextBiome: next?.biome ?? cur.biome, nextSeed: next?.seed ?? cur.seed, switchIn: Math.max(0, cur.t1 - p), breather: cur.t1 - cur.t0 > 60 && p >= cur.t1 - 14 }; })(),
         scorecard,
-        banner: t < bannerUntil ? banner : '', hooks: { powerFtp: craft === 'escort' ? targetFtp : protectedTarget(), cadence: rpmAsk !== null ? rpmAsk + 3 : Math.round(cadBase), boss: !!boss, drive: level } };
+        banner: t < bannerUntil ? banner : '', strike: strikeTrail && t - strikeTrail.until < 0.6 ? { ...strikeTrail } : null, hooks: { powerFtp: craft === 'escort' ? targetFtp : protectedTarget(), cadence: rpmAsk !== null ? rpmAsk + 3 : Math.round(cadBase), boss: !!boss, drive: level } };
     },
     hud(): GameHud {
       const hard = craft === 'striker' && level !== 'cruise' && coverLeft <= 0 && rejoinLeft <= 0;

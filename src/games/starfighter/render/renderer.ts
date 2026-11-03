@@ -181,7 +181,7 @@ export class SfRenderer implements GameRenderer {
     if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;

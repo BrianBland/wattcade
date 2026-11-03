@@ -187,6 +187,28 @@ function helipad(): Part {
   for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; p.push(box(0.12, 0.03, 0.26, Math.cos(a) * 0.82, 0.135, Math.sin(a) * 0.82, '#e0b52a', -a)); }
   return merge(p);
 }
+/** Lighthouse (~12 tall): banded tapering tower, gallery, lantern room, keeper's hut. */
+function lighthouse(): Part {
+  const p: Part[] = [];
+  for (let i = 0; i < 5; i++) { const r0 = 1.5 - i * 0.18, r1 = r0 - 0.18; p.push(cyl(r1, r0, 2, 0, 1 + i * 2, 0, i % 2 ? '#c8352f' : '#eef1f3', 12)); }
+  p.push(cyl(1.25, 1.25, 0.25, 0, 10.1, 0, '#2b2f34', 12), cyl(0.7, 0.7, 1.2, 0, 10.8, 0, '#ffe9a8', 10), cyl(0.15, 0.85, 0.7, 0, 11.75, 0, '#2b2f34', 10));
+  p.push(box(3, 2, 2.4, 2.2, 1, 1.6, '#e4e0d8'), box(3.4, 0.4, 2.8, 2.2, 2.2, 1.6, '#8c3b32'));
+  return merge(p);
+}
+/** Offshore oil platform (~30 across): legs, two decks, a derrick, a crane and a helideck. */
+function oilRig(): Part {
+  const p: Part[] = [];
+  for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) p.push(cyl(1.1, 1.3, 9, x, 4.5, z, '#c8a23a', 10));
+  p.push(box(24, 1.2, 24, 0, 9.6, 0, '#5d6670'), box(20, 4, 14, -1, 12.2, -3, '#9aa4ae'), box(20.4, 0.6, 2, -1, 13.4, -10.1, WIN));
+  for (const [x, z] of [[2, 3], [8, 3], [2, 9], [8, 9]]) p.push(box(0.4, 14, 0.4, x + (5 - x) * 0.3, 17, z + (6 - z) * 0.3, '#d7d2c4'));
+  for (const y of [13, 17, 21]) p.push(box(5, 0.25, 0.25, 5, y, 4.5, '#d7d2c4'), box(0.25, 0.25, 5, 3.5, y, 6, '#d7d2c4'));
+  p.push(cyl(0.9, 0.9, 1.2, -8, 14.8, 8, '#c8a23a', 8), box(0.6, 0.6, 14, -8, 18.5, 1.5, '#c8a23a', 0.5));
+  p.push(cyl(5, 5, 0.4, -7, 15.2, -2, '#2f353d', 20), box(0.5, 0.05, 3.4, -7.8, 15.45, -2, '#e8ecef'), box(0.5, 0.05, 3.4, -6.2, 15.45, -2, '#e8ecef'), box(1.6, 0.05, 0.5, -7, 15.45, -2, '#e8ecef'));
+  p.push(cyl(0.5, 0.5, 6, 10, 15, -9, DARK, 8));
+  return merge(p);
+}
+/** Channel buoy: float, cage and light. */
+function buoy(): Part { return merge([cyl(0.7, 0.9, 1, 0, 0.3, 0, '#c8352f', 10), cyl(0.12, 0.3, 1.6, 0, 1.6, 0, '#c8352f', 6), cyl(0.2, 0.2, 0.3, 0, 2.5, 0, '#fff1c2', 6)]); }
 /** Seeded 3D value noise (deterministic, so the kit is identical on every mount). */
 function vnoise(x: number, y: number, z: number, seed: number): number {
   const h = (i: number, j: number, k: number) => { let n = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 2147483647) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
@@ -303,9 +325,9 @@ export function kit() {
   cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
     boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
     gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
-    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad() };
+    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy() };
   return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
-    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad', Part>;
+    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

@@ -61,6 +61,8 @@ export class SfRenderer implements GameRenderer {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
     this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
+    // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears.
+    this.webgl?.compile(this.scene, this.camera);
     for (let i=0;i<2;i++) {
       const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });

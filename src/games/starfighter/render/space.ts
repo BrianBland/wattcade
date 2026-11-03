@@ -102,6 +102,9 @@ export function createSpace(scene: THREE.Scene) {
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
   const material=(color:string,metalness=0.45)=>new THREE.MeshStandardMaterial({color,metalness,roughness:0.4});
   const make=(geo:THREE.BufferGeometry,mat:THREE.Material,count:number)=>{const m=new THREE.InstancedMesh(geo,mat,count);m.frustumCulled=false;m.count=0;root.add(m);return m;};
+  // Pools tinted per instance get their colour attribute up front (white), so their shader variant exists from mount
+  // (the renderer compiles everything once) instead of compiling mid-ride the first time a biome shows up.
+  const tinted=(...ms:THREE.InstancedMesh[])=>{for(const m of ms)m.setColorAt(0,new THREE.Color(1,1,1));};
   // Walls are white: every instance carries its facade colour (see FACADES), so set one for each wall added.
   const walls=make(geometries.box,windowed(material('#ffffff')),4800);
   const roofs=make(geometries.box,plated(new THREE.MeshStandardMaterial({color:'#5f7c93',metalness:0.15,roughness:0.8})),4800);
@@ -129,7 +132,7 @@ export function createSpace(scene: THREE.Scene) {
   const pebbles=make(K.boulderA,rockMat(),1400),boulders=make(K.boulderB,rockMat(),400),spires=make(K.spire,rockMat(),220),mesas=make(K.mesa,rockMat(),64);
   const crags=make(K.crag,rockMat(),1100),scrub=make(K.scrub,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:1})),900);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
-  const boats=make(K.riverBoat,kitMat(),24),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
+  const boats=make(K.riverBoat,kitMat(),64),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
   const wakes=make(K.wake,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,opacity:0.5}),96);
   // Cloud banks: soft textured sheets drifting below the ship at several heights (altitude and speed cues).
@@ -143,6 +146,10 @@ export function createSpace(scene: THREE.Scene) {
   const islandsB=make(K.islandStealth,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
   const islandsC=make(K.islandTall,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),40);
   const helis=make(K.helicopter,kitMat(),80),trucks=make(K.fuelTruck,kitMat(),80);
+  // Open sea: islets with surf, lighthouses, oil platforms, buoys (fishing boats reuse the river boats).
+  // Surf: the soft cloud texture on a flat plane (additive), so foam fades out instead of ending in a hard edge.
+  const surfTex=cloudTexture(),surf=make(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:surfTex,color:surfTex?'#ffffff':'#000000',transparent:true,opacity:surfTex?0.55:0,blending:THREE.AdditiveBlending,depthWrite:false}),160);
+  const lights=make(K.lighthouse,kitMat(),30),rigs=make(K.oilRig,kitMat(),12),buoys=make(K.buoy,kitMat(),160);
   // Rooftops: water tanks, air-handling clusters, helipads.
   const tanks=make(K.waterTank,kitMat(),300),acs=make(K.acUnits,kitMat(),900),pads=make(K.helipad,kitMat(),60);
   const bodies=make(geometries.box,material('#2d3f5c',0.5),4000);
@@ -150,8 +157,9 @@ export function createSpace(scene: THREE.Scene) {
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
   edgeMods.forEach((m,i)=>m.name=`edge${i}`);
-  for(const [k,v] of Object.entries({roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  tinted(runway,glass,jets,...edgeMods,islands,islandsB,islandsC,walls,roofTops,pebbles,boulders,spires,mesas,crags);
+  for(const [k,v] of Object.entries({surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -188,6 +196,8 @@ export function createSpace(scene: THREE.Scene) {
   /** Hull greys and jet liveries, multiplied over the kit colours. */
   const HULL_TINTS=['#ffffff','#eef2f6','#dfe6ee','#f4f0e8','#d7dee6'].map(c=>new THREE.Color(c)),JET_TINTS=['#ffffff','#c9d2dc','#9aa8b8','#e8dcc2','#b4c4d6'].map(c=>new THREE.Color(c));
   const pick=(list:THREE.Color[],u:number)=>list[Math.floor(u*list.length)];
+  /** Sea rock: weathered grey-browns (multiplied over the sandstone strata). */
+  const SEA_ROCK=['#6d6f74','#5f625f','#7a7568','#585c66'].map(c=>new THREE.Color(c));
   /**
    * One carrier tile: runway edge lights, parked jets and deck vehicles, and per side a seeded run of deck-edge modules
    * (gun and radar sponsons, raft racks, catwalks, elevators, fuel stations) with the odd island (three designs) and crane.
@@ -384,6 +394,28 @@ export function createSpace(scene: THREE.Scene) {
           // Cloud banks below the ship over the cloud sea, at three heights for parallax; a few drift over the deck.
           const travel=anchored(w*67+(w%3)*23,1400),zz=zAt(travel)+time*(w%3)*1.5,layer=w%3,xx=(w%2?1:-1)*(w%7===0?10+(w*13)%25:50+(w*29)%90),size=26+(w*17)%22;
           add(clouds,xx,-3.5+layer*3.2,zz,size*1.6,1,size,(w*0.37)%3.14);
+        }
+        if(b===3){
+          // World-anchored sea features on a 200-unit grid, seeded per cell, kept off the route ahead.
+          let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [wx,wz] of corners){x0=Math.min(x0,wx);x1=Math.max(x1,wx);z0=Math.min(z0,wz);z1=Math.max(z1,wz);}
+          const C=200;
+          for(let i=Math.floor(x0/C);i<=Math.ceil(x1/C);i++)for(let j=Math.floor(z0/C);j<=Math.ceil(z1/C);j++){
+            const r=mulberry(P.seed^Math.imul(i,73856093)^Math.imul(j,19349663)^0x0cea),cx=(i+0.2+r()*0.6)*C,cz=(j+0.2+r()*0.6)*C,kind=r();
+            if(nearRoute(cx,cz,kind<0.08?70:50))continue;
+            if(kind<0.08){addW(rigs,cx,-6,cz,1,1,1,r()*6);addW(softShade,cx+8,-5.97,cz+9,18,0.02,18);addW(surf,cx,-5.95,cz,40,1,40);}
+            else if(kind<0.42){ // islet: a main rock and its scattered stacks, ringed with surf; sometimes a lighthouse
+              const n=3+Math.floor(r()*4),big=6+r()*10;let mainH=0;
+              for(let k=0;k<n;k++){const ox=k?(r()-0.5)*big*1.8:0,oz=k?(r()-0.5)*big*1.8:0,sc=big*(k?0.25+r()*0.4:0.9),h=sc*(0.5+r()*0.6),tint=r(),pool=k?pebbles:boulders;if(!k)mainH=h;
+                if(addW(pool,cx+ox,-6.9,cz+oz,sc,h,sc*(0.8+r()*0.4),r()*6))setColor(pool,pick(SEA_ROCK,tint));}
+              addW(surf,cx,-5.94,cz,big*3.8,1,big*3.4,r()*3);
+              if(r()<0.3)addW(lights,cx,-6.9+mainH*1.2,cz,0.9,0.9,0.9,r()*6);
+            }
+            if(r()<0.5)for(const q of [-1,1])addW(buoys,cx+q*14,-6,cz+q*6,1.2,1.2,1.2,0);
+            // Fishing boats work slowly back and forth, each with a small wake.
+            const nb=r()<0.4?1+Math.floor(r()*2):0;
+            for(let k=0;k<nb;k++){const hd=r()*6.28,ph=r()*6.28,along=40+k*18+22*Math.sin(time*0.03+ph),bx=cx+Math.cos(hd)*along,bz=cz+Math.sin(hd)*along,yaw=Math.atan2(-Math.cos(hd),-Math.sin(hd))+(Math.cos(time*0.03+ph)<0?Math.PI:0);
+              addW(boats,bx,-6,bz,1.6,1.6,1.6,yaw);}
+          }
         }
         // Ground units ride barges at sea (they are world-anchored; drawn at their local position).
         if(b===3)for(const g of ground){const [fx,fz]=fwdOf(e.pose.h),[rx,rz]=rightOf(e.pose.h),ah=34-g.z,wx=e.pose.x+rx*g.x+fx*ah,wz=e.pose.z+rz*g.x+fz*ah;

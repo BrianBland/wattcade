@@ -46,11 +46,11 @@ function boxMatrix(bx, by, bz, sx, sy, sz, pos) {
  * The arm's road starts at the pivot and runs out to its tip.
  */
 function wallArm(L, o) {
-  const th = L.th, F = o.F, off = o.off ?? .02, root = F.at(o.pivot[0], o.pivot[1], off);
+  const th = L.th, F = o.F, off = o.off ?? .008, root = F.at(o.pivot[0], o.pivot[1], off), base = th.path || th.mech;
   const pg = new T.Group(); pg.position.copy(V(...root)); o.parent.add(pg);
   const ag = new T.Group(); pg.add(ag);
-  const mat = tri(th.mech, { fresh: true, side: true });
-  const road = L.road(L3([0, 0, 0], F.u.map((v) => v * o.len), F.n), { g: ag, mat, edgeText: o.edgeText });
+  const mat = tri(base, { fresh: true, side: true });
+  const road = L.road(L3([0, 0, 0], F.u.map((v) => v * o.len), F.n), { g: ag, mat, th: .12, edgeText: o.edgeText });
   // a hub disc flush on the wall
   const hub = new T.Mesh(new T.CylinderGeometry(.42, .42, .08, 28), tri(th.mechDark || th.idle)); hub.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), v3(F.n)); hub.position.copy(V(...F.n.map((v) => -v * .03))); pg.add(hub);
   const [lo, hi] = [Math.min(...o.stops), Math.max(...o.stops)];
@@ -61,7 +61,7 @@ function wallArm(L, o) {
       const can = !o.hardPush || rider.cad >= o.hardPush;
       if (drive > 0 && can) { st.ang += st.sweep * drive * 30; if (st.ang <= lo || st.ang >= hi) { st.ang = clamp(st.ang, lo, hi); st.sweep *= -1; } }
       else if (!o.latch || drive <= 0) { const tgt = o.stops.reduce((a, d) => Math.abs(d - st.ang) < Math.abs(a - st.ang) ? d : a, o.stops[0]); st.ang += clamp(tgt - st.ang, -60 * dt, 60 * dt); }
-      aimInWall(ag, F, st.ang); setTri(mat, mixPal(th.mech, tone(th.goal), clamp(this.bloom.e, 0, 1)));
+      aimInWall(ag, F, st.ang); setTri(mat, mixPal(base, tone(th.goal), clamp(this.bloom.e, 0, 1) * .35));
       return drive > 0 ? (o.hardPush ? (can ? .9 : .5) : .3) : 0; } });
   aimInWall(ag, F, st.ang);
   st.at = (d) => Math.abs(st.ang - d) < .5;
@@ -196,7 +196,8 @@ const CUBES = [
       // a storey line: a thin cornice ring painted round the tower (flush, so the roads cross it cleanly)
       // the plinth it turns on
       CY(g, 0, 0, h * 1.75, -3.6, -.62, tri(th.idle), 64); CY(g, 0, 0, h * 1.55, -.62, -.32, tri(th.roof), 64); CY(g, 0, 0, h * 1.42, -.32, -.02, tri(sp(th, 0)), 64); CY(g, 0, 0, h * 1.36, -.02, 0, tri(th.roof), 64);
-      const pal = th.path, road = (pts, o = {}) => L.road(pts, { g: cube, pal, ...o });
+      const pal = th.path, tuck = (pts) => pts.map((q) => ({ ...q, p: q.p.map((v, i) => v - q.n[i] * .012) }));
+      const road = (pts, o = {}) => L.road(o.closed || o.goal ? pts : tuck(pts), { g: cube, pal, ...o });
 
       /* ---- lower storey ---- */
       // wall 0: a loop and a wall turntable whose arm, swung level, leads to the corner
@@ -277,7 +278,14 @@ const CUBES = [
         const r0 = rot(RW, -sk), d0 = rot([Math.cos(best), Math.sin(best), 0], -sk);
         const toC = [-r0[0], -r0[1]], left = d0[0] * toC[1] - d0[1] * toC[0] > 0;
         const rt = ftur(r0, d0, Zup).fwd(.8).turn(.7, left ? 90 : -90).fwd(.9);
-        P.home = up(rt.pts, { goal: true }); }
+        P.home = up(rt.pts, { goal: true });
+        // a goal pavilion just past the end of the road: four slim piers, a slab and an accent dome; it reads from any side
+        const e = rt.st.p, d = rt.st.d, sd = [-d[1], d[0], 0], pv = new T.Group(); upperG.add(pv); const pier = tri(th.roof), cap = tri(th.mech);
+        const pc = add(e, d, .1), z0 = e[2] - .04, ph = 1.15;   // the road runs in under it
+        for (const [a1, a2] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) { const c = add(add(pc, d, a1 * .42), sd, a2 * .42); CY(pv, c[0], c[1], .07, z0, z0 + ph, pier, 10); }
+        B(pv, pc[0] - .58, pc[1] - .58, z0 + ph, pc[0] + .58, pc[1] + .58, z0 + ph + .12, pier);
+        const dome = new T.Mesh(new T.SphereGeometry(.42, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), cap); dome.position.copy(V(pc[0], pc[1], z0 + ph + .12)); pv.add(dome);
+        const fin = new T.Mesh(new T.ConeGeometry(.06, .3, 8), cap); fin.position.copy(V(pc[0], pc[1], z0 + ph + .66)); pv.add(fin); }
 
       // ornament, Monument Valley style: plain walls, a cornice line at each storey, and arched niches set only where no
       // road runs, so the eye reads the paths first. Roads are sampled in each wall's own coordinates to find the clear space.

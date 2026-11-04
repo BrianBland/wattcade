@@ -31,12 +31,13 @@ try {
     for (let i = 0; i < 40; i++) await page.evaluate(() => window.__squadron.advance(3));
     const after = await page.evaluate(() => window.__squadron.resources());
     assert.equal(after.dropped ?? 0, 0, `scenery pool overflow: ${JSON.stringify(after)}`);
-    assert.ok(after.geometries <= before.geometries + 16 && after.geometries <= 80, JSON.stringify({ before, after }));
+    // Absolute ceiling: the static scenery kit (all biomes) plus enemy templates; growth between checks is the leak guard.
+    assert.ok(after.geometries <= before.geometries + 16 && after.geometries <= 96, JSON.stringify({ before, after }));
     assert.ok(after.programs <= before.programs + 2, JSON.stringify({ before, after }));
     // Static enemy templates can warm up once; repeated spawning must remain bounded.
     for(let i=0;i<40;i++) await page.evaluate(()=>window.__squadron.advance(3));
     const later=await page.evaluate(()=>window.__squadron.resources());
-    assert.ok(later.geometries<=after.geometries+12 && later.geometries<=80,JSON.stringify({after,later}));
+    assert.ok(later.geometries<=after.geometries+12 && later.geometries<=96,JSON.stringify({after,later}));
     assert.ok(later.programs<=after.programs+2,JSON.stringify({after,later}));
     assert.deepEqual(errors, []); await page.evaluate(() => window.__squadron.dispose());
     assert.equal(await page.locator('canvas').count(), 0);

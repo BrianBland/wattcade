@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { geometries } from './models';
 import { GROUND_SPEED } from '../sim/encounters';
-import { biomeParams, mulberry, riverX, cityRoads, type BiomeParams } from './terrain';
+import { biomeParams, mulberry, riverX, cityRoads, seaIslands, type BiomeParams, type SeaIsland } from './terrain';
 import { curtain, foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist). */
@@ -46,6 +46,22 @@ const biomeColor = `
     c=mix(c,mix(vec3(0.05),yellow,step(0.5,fract((x+p.y)*0.6))),ex*(1.0-inner));
     float lane=step(ax,0.25)*step(0.4,fract(p.y/8.0)),edge=step(40.5,ax);c+=(lane*vec3(0.3,0.7,0.8)+edge*vec3(0.02,0.7,0.85))*(1.0+pulse*0.7);
     return c+grid*0.015;}
+  // Ocean islands (uIsl: x, y in biome coords, radius, kind 0 jungle / 1 atoll / 2 volcano): the nearest coast wins.
+  // e > 0 is land (0 at the shore); a little below 0 is shallow water. Noise only for islands near this point.
+  vec3 islandShade(vec3 water,vec2 p){float best=-9.0;float kind=0.0,lagoon=0.0;
+    for(int i=0;i<16;i++){vec4 I=uIsl[i];if(I.z<=0.0)continue;vec2 d=p-I.xy;float dist=length(d);if(dist>I.z*1.6)continue;
+      float wob=(noise(p*0.035+I.xy*0.013)-0.5)*0.32+(noise(p*0.12)-0.5)*0.07;
+      float e=I.w>0.5&&I.w<1.5?(I.z*0.22-abs(dist-I.z*0.78))/I.z+wob*0.5:1.0-dist/I.z+wob;
+      if(e>best){best=e;kind=I.w;lagoon=I.w>0.5&&I.w<1.5&&dist<I.z*0.78?1.0:0.0;}}
+    if(best<-0.6)return water;
+    float sh=max(smoothstep(-0.55,0.0,best),lagoon*0.85);
+    vec3 c=mix(water,vec3(0.08,0.58,0.62)*(0.88+0.14*noise(p*0.2)),sh*0.85);
+    vec3 sand=mix(vec3(0.62,0.55,0.42),vec3(0.86,0.78,0.58),smoothstep(0.0,0.03,best));
+    vec3 inland=kind>1.5?mix(vec3(0.24,0.22,0.2),vec3(0.36,0.3,0.24),noise(p*0.15)):mix(vec3(0.18,0.38,0.17),vec3(0.32,0.5,0.24),noise(p*0.1))*(0.85+0.2*noise(p*0.6));
+    if(kind>0.5&&kind<1.5)inland=mix(sand,vec3(0.3,0.5,0.25),0.6*noise(p*0.2));
+    c=mix(c,sand,step(0.0,best));c=mix(c,inland,smoothstep(0.05,0.14,best));
+    float foam=smoothstep(0.03,0.0,abs(best+0.012))*(0.55+0.45*noise(p*0.6+vec2(time*0.4,-time*0.3)));
+    return mix(c,vec3(0.92,0.96,0.98),foam*0.85);}
   vec3 biomeColor(float b,vec4 P,vec2 p,float n,vec3 water,float grid,float pulse,vec3 wpos){vec3 c;
   if(b<0.5){c=abs(p.x)<42.0?flightDeck(p,grid,pulse):cloudSea(p);}
   else if(b<1.5){float grain=noise(p*1.3)*0.04;c=vec3(0.10,0.19,0.25)+n*0.07+grain;bool harbour=false; // the city fills every direction (turns would otherwise drift it over water)if(harbour)c=waterShade(vec3(0.02,0.14,0.28),vec3(0.05,0.28,0.4),0.7,p,wpos,0.55,smoothstep(122.0,118.5,abs(p.x))*0.8);
@@ -64,7 +80,7 @@ const biomeColor = `
     vec3 river=waterShade(vec3(0.02,0.16,0.3),vec3(0.12,0.42,0.42),smoothstep(w,0.0,d),p+vec2(0.0,time*5.0),wpos,0.45,smoothstep(w-1.3,w-0.1,d)*0.7+rapids*0.6);
     c=mix(river,c,smoothstep(w-0.5,w+1.5,d));c+=step(0.93,fract(n*12.0))*0.025;}
   else{float swell=noise(p*vec2(0.012,0.008)+vec2(0.0,time*0.02));float caps=step(0.86,noise(p*vec2(0.35,0.14)+vec2(time*0.1,time*0.6)))*smoothstep(0.5,0.8,swell);
-    c=waterShade(vec3(0.01,0.07,0.2),vec3(0.03,0.2,0.36),0.6+0.4*swell,p,wpos,1.0,caps*0.7);}
+    c=waterShade(vec3(0.01,0.07,0.2),vec3(0.03,0.2,0.36),0.6+0.4*swell,p,wpos,1.0,caps*0.7);c=islandShade(c,p);}
   return c;}`;
 export interface Frame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 /** Ship pose (route point), the current and next biome frames, and route samples ahead (world x,z pairs). */
@@ -78,7 +94,7 @@ const ISO = (b: number) => b === 1 || b === 3;
  */
 export function createSpace(scene: THREE.Scene) {
   const uniforms={time:{value:0},pulse:{value:0},speed:{value:GROUND_SPEED},wave:{value:-9999},waveFade:{value:0},
-    uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])}};
+    uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])},uIsl:{value:Array.from({length:16},()=>new THREE.Vector4())}};
   // Objects share the haze through scene fog (same range as the ground).
   scene.fog=new THREE.Fog(HAZE[0],380,1150);const fogTarget=new THREE.Color(HAZE[0]);
   // Anything past the drawn world (a lowered camera looking far ahead) shows the haze, never a black strip.
@@ -87,7 +103,7 @@ export function createSpace(scene: THREE.Scene) {
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
     fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;
-    uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
+    uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uIsl[16];uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
     vec2 fwdV(float h){return vec2(-sin(h),-cos(h));} vec2 rightV(float h){return vec2(cos(h),-sin(h));}
     // Biome coords: open biomes (city, ocean) use world axes; straight ones (carrier, canyon) their frame (lateral, route distance).
     vec2 frameP(float b,vec4 F,vec2 W){if(abs(b-1.0)<0.5||b>2.5)return vec2(W.x,-W.y);vec2 d=W-F.xy;return vec2(dot(d,rightV(F.z)),dot(d,fwdV(F.z))+F.w);}
@@ -149,6 +165,11 @@ export function createSpace(scene: THREE.Scene) {
   // Open sea: islets with surf, lighthouses, oil platforms, buoys (fishing boats reuse the river boats).
   // Surf: the soft cloud texture on a flat plane (additive), so foam fades out instead of ending in a hard edge.
   const surfTex=cloudTexture(),surf=make(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:surfTex,color:surfTex?'#ffffff':'#000000',transparent:true,opacity:surfTex?0.55:0,blending:THREE.AdditiveBlending,depthWrite:false}),160);
+  // Islands (the ground shader draws coast, lagoon and beach; these stand on them) and merchant shipping.
+  const hills=make(K.islandHill,new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.95}),40),volcanos=make(K.volcano,new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.95}),24);
+  const palms=make(K.palm,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9})),1100),huts=make(K.hut,new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9}),240);
+  const sailMat=kitMat();sailMat.side=THREE.DoubleSide;
+  const containers=make(K.containerShip,kitMat(),24),tankers=make(K.tanker,kitMat(),24),sails=make(K.sailboat,sailMat,90);
   const lights=make(K.lighthouse,kitMat(),30),rigs=make(K.oilRig,kitMat(),12),buoys=make(K.buoy,kitMat(),160);
   // Rooftops: water tanks, air-handling clusters, helipads.
   const tanks=make(K.waterTank,kitMat(),300),acs=make(K.acUnits,kitMat(),900),pads=make(K.helipad,kitMat(),60);
@@ -158,8 +179,8 @@ export function createSpace(scene: THREE.Scene) {
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
   edgeMods.forEach((m,i)=>m.name=`edge${i}`);
   tinted(runway,glass,jets,...edgeMods,islands,islandsB,islandsC,walls,roofTops,pebbles,boulders,spires,mesas,crags);
-  for(const [k,v] of Object.entries({surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  for(const [k,v] of Object.entries({hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -366,6 +387,7 @@ export function createSpace(scene: THREE.Scene) {
       F.isNext=true;fogTarget.set(HAZE[beyondNext(e.pose.x,e.pose.z)?e.f1.biome:e.f0.biome]??HAZE[0]);(scene.fog as THREE.Fog).color.lerp(fogTarget,0.02);
       // Visible region in the ship's frame (lateral, ahead) → world corners, for tile ranges.
       const corners=[[-650,-220],[650,-220],[-650,1150],[650,1150]].map(([lx,ah])=>{const [fx,fz]=fwdOf(e.pose.h),[rx,rz]=rightOf(e.pose.h);return [e.pose.x+rx*lx+fx*ah,e.pose.z+rz*lx+fz*ah];});
+      let seaSet=false;
       for(const [frame,P,isNext] of [[e.f0,params0,false],[e.f1,params1,true]] as const){
         const b=frame.biome,iso=ISO(b);
         // Open biomes are laid out on world axes; straight ones along their frame from its origin.
@@ -398,17 +420,24 @@ export function createSpace(scene: THREE.Scene) {
           // Boats on the river, each with a white wake.
           const travel=anchored(c*128+P.seed%211-time*5,1024),zz=zAt(travel),xr=riverX(travel,P)+(c%2?3:-3);
           add(boats,xr,-6,zz,1.3,1.3,1.3,c%3?0:Math.PI);add(wakes,xr,-5.9,zz+(c%3?3.5:-3.5),3.2,1,c%3?7:-7);}
-        if(b===3)for(const fam of [0,1]){
-          // The fleet sails world lanes (two headings per seed); ships are indexed along lanes so none wraps in view.
-          const ang=(P.seed%628)/100+fam*2.1,dx=-Math.sin(ang),dz=-Math.cos(ang),nx=-dz,nz=dx,spacing=170,gap=360,speed=3.5+fam;
+        // Islands in view (shared with the ground shader through uIsl, nearest 16 to the ship).
+        let isl:SeaIsland[]=[];
+        if(b===3){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [wx,wz] of corners){x0=Math.min(x0,wx);x1=Math.max(x1,wx);z0=Math.min(z0,wz);z1=Math.max(z1,wz);}
+          isl=seaIslands(P.seed,x0,x1,z0,z1).sort((a,c)=>Math.hypot(a.x-e.pose.x,a.z-e.pose.z)-Math.hypot(c.x-e.pose.x,c.z-e.pose.z)).slice(0,16);
+          uniforms.uIsl.value.forEach((v,i)=>{const I=isl[i];if(I)v.set(I.x,-I.z,I.r,I.kind);else v.set(0,0,0,0);});seaSet=true;}
+        const onIsland=(wx:number,wz:number,pad:number)=>isl.some(I=>Math.hypot(wx-I.x,wz-I.z)<I.r+pad);
+        if(b===3)for(const fam of [0,1,2]){
+          // The fleet sails world lanes (two warship headings and a merchant lane per seed); ships are indexed along lanes
+          // so none wraps in view, and none sails through an island.
+          const merchant=fam===2,ang=(P.seed%628)/100+fam*2.1,dx=-Math.sin(ang),dz=-Math.cos(ang),nx=-dz,nz=dx,spacing=merchant?150:170,gap=merchant?300:360,speed=merchant?4.8:3.5+fam;
           let j0=1e9,j1=-1e9,u0=1e9,u1=-1e9;for(const [wx,wz] of corners){const o=wx*nx+wz*nz,u=wx*dx+wz*dz;j0=Math.min(j0,o);j1=Math.max(j1,o);u0=Math.min(u0,u);u1=Math.max(u1,u);}
           for(let j=Math.floor(j0/spacing);j<=Math.ceil(j1/spacing);j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
-            const r=mulberry(P.seed^(j*7919)^(kk*104729)^(fam*31));if(r()<0.35)continue;
-            const kind=r()<0.18?0:r()<0.5?1:2,len=[70,48,28][kind],beam=[12,8.5,4.6][kind];
+            const r=mulberry(P.seed^(j*7919)^(kk*104729)^(fam*31));if(r()<(merchant?0.3:0.35))continue;
+            const u0k=r(),kind=merchant?(u0k<0.45?3:u0k<0.8?4:5):(u0k<0.18?0:r()<0.5?1:2),len=[70,48,28,62,66,9][kind],beam=[12,8.5,4.6,10.5,11,2.6][kind];
             const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o;
-            if(nearRoute(wx,wz,kind===0?34:22))continue;
-            const yaw=Math.atan2(-dx,-dz),pool=[carriers,battleships,destroyers][kind];
-            addW(pool,wx,-6,wz,1,1,1,yaw);addW(shade,wx+4,-5.96,wz+5,beam+2,0.02,len+3);
+            if(nearRoute(wx,wz,kind===0?28:kind===5?10:16)||onIsland(wx,wz,len*0.6))continue;
+            const yaw=Math.atan2(-dx,-dz),pool=[carriers,battleships,destroyers,containers,tankers,sails][kind];
+            addW(pool,wx,-6,wz,1,1,1,yaw);addW(shade,wx+4,-5.96,wz+5,beam+2,0.02,len+3,yaw); // shadow turns with the hull
             addW(wakes,wx-dx*len*0.45,-5.9,wz-dz*len*0.45,beam*1.1,1,len*0.45,yaw);
             if(kind===0)for(let q=0;q<5;q++){const a=-20+q*7;addW(jets,wx+dx*a+nx*((q%2)*3-2),-1.5,wz+dz*a+nz*((q%2)*3-2),1.1,1.1,1.1,yaw+0.6);}
           }
@@ -418,15 +447,33 @@ export function createSpace(scene: THREE.Scene) {
           const travel=anchored(w*67+(w%3)*23,1400),zz=zAt(travel)+time*(w%3)*1.5,layer=w%3,xx=(w%2?1:-1)*(w%7===0?10+(w*13)%25:50+(w*29)%90),size=26+(w*17)%22;
           add(clouds,xx,-3.5+layer*3.2,zz,size*1.6,1,size,(w*0.37)%3.14);
         }
+        if(b===3)for(const I of isl){
+          // Island scenery (matches the shader's coast: land reaches at least 0.8 r; atoll rings 0.66–0.9 r).
+          const R=mulberry(I.seed),near=nearRoute(I.x,I.z,I.r+25),ring=I.kind===1?I.r*0.78:I.r*0.62;
+          if(I.kind===0)addW(hills,I.x,-6.3,I.z,I.r*0.6,Math.min(near?4:28,I.r*(0.16+R()*0.14)),I.r*0.58,R()*6);
+          if(I.kind===2){if(near)addW(hills,I.x,-6.3,I.z,I.r*0.55,4,I.r*0.55,R()*6);else addW(volcanos,I.x,-6.3,I.z,I.r*0.66,Math.min(48,I.r*(0.42+R()*0.12)),I.r*0.66,R()*6);}
+          const np=Math.min(40,Math.floor(I.r/2.6));
+          for(let k=0;k<np;k++){const a=R()*6.283,d=I.kind===1?ring+(R()-0.5)*I.r*0.14:ring+R()*I.r*0.14,sc=1.1+R()*0.7;addW(palms,I.x+Math.cos(a)*d,-6,I.z+Math.sin(a)*d,sc,sc*(0.9+R()*0.3),sc,R()*6);}
+          if(I.kind!==2&&R()<0.65){ // a village by the shore with a jetty and moored boats
+            const a=R()*6.283,nh=3+Math.floor(R()*4);
+            for(let k=0;k<nh;k++){const aa=a+(k-nh/2)*0.09,d=(I.kind===1?ring:I.r*0.7)+(R()-0.5)*4;addW(huts,I.x+Math.cos(aa)*d,-6,I.z+Math.sin(aa)*d,1,1,1,-aa);}
+            const jx=I.x+Math.cos(a)*I.r*0.86,jz=I.z+Math.sin(a)*I.r*0.86;addW(roofs,jx+Math.cos(a)*7,-5.6,jz+Math.sin(a)*7,1.6,0.3,16,Math.PI/2-a);
+            for(let k=0;k<2;k++)addW(boats,jx+Math.cos(a)*(9+k*4)+Math.sin(a)*2.5*(k?1:-1),-6,jz+Math.sin(a)*(9+k*4)-Math.cos(a)*2.5*(k?1:-1),1.4,1.4,1.4,-a);
+          }
+          if(I.kind!==1&&R()<0.3){const a=R()*6.283,d=I.r*0.74;addW(lights,I.x+Math.cos(a)*d,-6,I.z+Math.sin(a)*d,0.9,0.9,0.9,R()*6);}
+          // Sailboats cruise slowly around the island.
+          const ns=R()<0.6?1+Math.floor(R()*3):0;
+          for(let k=0;k<ns;k++){const dir=k%2?1:-1,a=R()*6.283+dir*time*0.012,d=I.r*1.3+R()*40;addW(sails,I.x+Math.cos(a)*d,-6,I.z+Math.sin(a)*d,1,1,1,-a+(dir>0?0:Math.PI));}
+        }
         if(b===3){
           // World-anchored sea features on a 200-unit grid, seeded per cell, kept off the route ahead.
           let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [wx,wz] of corners){x0=Math.min(x0,wx);x1=Math.max(x1,wx);z0=Math.min(z0,wz);z1=Math.max(z1,wz);}
           const C=200;
           for(let i=Math.floor(x0/C);i<=Math.ceil(x1/C);i++)for(let j=Math.floor(z0/C);j<=Math.ceil(z1/C);j++){
             const r=mulberry(P.seed^Math.imul(i,73856093)^Math.imul(j,19349663)^0x0cea),cx=(i+0.2+r()*0.6)*C,cz=(j+0.2+r()*0.6)*C,kind=r();
-            if(nearRoute(cx,cz,kind<0.08?70:50))continue;
+            if(nearRoute(cx,cz,kind<0.08?70:50)||onIsland(cx,cz,40))continue;
             if(kind<0.08){addW(rigs,cx,-6,cz,1,1,1,r()*6);addW(softShade,cx+8,-5.97,cz+9,18,0.02,18);addW(surf,cx,-5.95,cz,40,1,40);}
-            else if(kind<0.42){ // islet: a main rock and its scattered stacks, ringed with surf; sometimes a lighthouse
+            else if(kind<0.2){ // islet: a main rock and its scattered stacks, ringed with surf; sometimes a lighthouse
               const n=3+Math.floor(r()*4),big=6+r()*10;let mainH=0;
               for(let k=0;k<n;k++){const ox=k?(r()-0.5)*big*1.8:0,oz=k?(r()-0.5)*big*1.8:0,sc=big*(k?0.25+r()*0.4:0.9),h=sc*(0.5+r()*0.6),tint=r(),pool=k?pebbles:boulders;if(!k)mainH=h;
                 if(addW(pool,cx+ox,-6.9,cz+oz,sc,h,sc*(0.8+r()*0.4),r()*6))setColor(pool,pick(SEA_ROCK,tint));}
@@ -444,6 +491,7 @@ export function createSpace(scene: THREE.Scene) {
         if(b===3)for(const g of ground){const [fx,fz]=fwdOf(e.pose.h),[rx,rz]=rightOf(e.pose.h),ah=34-g.z,wx=e.pose.x+rx*g.x+fx*ah,wz=e.pose.z+rz*g.x+fz*ah;
           addW(barges,wx,-6,wz,1,1,1,0);addW(wakes,wx,-5.9,wz+6.5,5,1,3,0);}
       }
+      if(!seaSet)for(const v of uniforms.uIsl.value)v.set(0,0,0,0);
       // Window strips brighten as the wave passes them.
       for(let i=0;i<(counts.get(glass)??0);i++){glass.getMatrixAt(i,probe);glass.setColorAt(i,lightColor.setScalar(0.6+0.25*band(probe.elements[14]))); /* stays ≤ 1: the wave reads without blooming */}
       for(const pool of [runway,glass])if(pool.instanceColor)pool.instanceColor.needsUpdate=true;

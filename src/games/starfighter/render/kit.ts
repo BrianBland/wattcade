@@ -320,14 +320,93 @@ function wake(): Part {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
+/** Paint by height and slope: green lowlands and tops, rock on steep faces, sand at the waterline. */
+function islandColours(g: Part, seed: number, rocky: boolean): Part {
+  g.computeVertexNormals();
+  const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
+  const sand = new THREE.Color('#d8c08c'), g1 = new THREE.Color(rocky ? '#4b5a37' : '#3f7a3a'), g2 = new THREE.Color(rocky ? '#5a5a40' : '#5c8f45'), rock = new THREE.Color(rocky ? '#4a4440' : '#6f6658'), dark = new THREE.Color('#2e2a28');
+  for (let i = 0; i < n; i++) {
+    const y = pos.getY(i), steep = 1 - Math.abs(nrm.getY(i)), v = vnoise(pos.getX(i) * 3, y * 3, pos.getZ(i) * 3, seed);
+    c.copy(g1).lerp(g2, v);
+    if (rocky) c.lerp(rock, Math.min(1, y * 1.6 + 0.2)).lerp(dark, Math.max(0, y - 0.7) * 2.2);
+    c.lerp(rock, Math.max(0, Math.min(1, (steep - 0.45) * 2.5)));
+    if (y < 0.06) c.lerp(sand, 1 - y / 0.06);
+    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); g.deleteAttribute('normal'); g.computeVertexNormals(); return g;
+}
+/** Island hill (radius 1, height 1): a lumpy green dome with rocky shoulders. */
+function islandHill(): Part {
+  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed(); g.deleteAttribute('uv');
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i), y = pos.getY(i), k = 0.75 + 0.5 * fbm(x * 1.8 + 3, 0, z * 1.8 + 3, 71); pos.setXYZ(i, x * (0.9 + 0.2 * fbm(x * 2, y * 2, z * 2, 72)), y * k, z * (0.9 + 0.2 * fbm(z * 2, y * 2, x * 2, 73))); }
+  return islandColours(g, 74, false);
+}
+/** Volcano (radius 1, height 1): a ridged cone, green skirts to dark scoria, an open crater. */
+function volcano(): Part {
+  const g = new THREE.CylinderGeometry(0.16, 1, 1, 30, 8, true).toNonIndexed(); g.translate(0, 0.5, 0); g.deleteAttribute('uv');
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x), ridge = 1 + 0.12 * Math.sin(ang * 9) * (1 - y) + (fbm(x * 2.5, y * 2.5, z * 2.5, 81) - 0.5) * 0.25;
+    const sag = y < 0.999 ? Math.pow(y, 0.82) : y; pos.setXYZ(i, x * ridge, sag, z * ridge);
+  }
+  const crater = new THREE.CylinderGeometry(0.15, 0.06, 0.14, 16, 1, true).toNonIndexed(); crater.scale(-1, 1, 1); crater.translate(0, 0.93, 0); crater.deleteAttribute('uv');
+  const parts = [islandColours(g, 82, true), colored(crater, '#3a1d18')];
+  const m = mergeGeometries(parts)!; parts.forEach(q => q.dispose()); m.deleteAttribute('normal'); m.computeVertexNormals(); return m;
+}
+/** Coconut palm (~5 tall): a leaning, curving trunk and a drooping crown. */
+function palm(): Part {
+  const p: Part[] = [];
+  for (let i = 0; i < 5; i++) p.push(cyl(0.13 - i * 0.012, 0.15 - i * 0.012, 0.95, 0.06 * i * i, 0.47 + i * 0.92, 0, '#7a5c3c', 6));
+  const top = 4.7, tx = 0.06 * 16;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2, f = new THREE.BoxGeometry(0.42, 0.05, 2.4).toNonIndexed();
+    f.translate(0, 0, 1.15); f.rotateX(0.42 + (k % 2) * 0.2); f.rotateY(a); f.translate(tx, top, 0); p.push(colored(f, k % 2 ? '#3f8a3a' : '#5aa04a'));
+  }
+  p.push(ball(0.12, tx + 0.15, top - 0.15, 0.1, '#5b4127'), ball(0.12, tx - 0.1, top - 0.18, -0.12, '#5b4127'));
+  return merge(p);
+}
+/** Stilted beach hut with a thatched roof (~3 across). */
+function hut(): Part {
+  const roof = new THREE.ConeGeometry(2.2, 1.6, 4).toNonIndexed(); roof.rotateY(Math.PI / 4); roof.translate(0, 3.1, 0);
+  const p: Part[] = [box(2.6, 1.6, 2.6, 0, 1.6, 0, '#b58b5e'), colored(roof, '#c9a564'), box(0.7, 1.1, 0.06, 0, 1.4, 1.32, '#3a2a1e')];
+  for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) p.push(box(0.15, 0.8, 0.15, x, 0.4, z, '#6b4f35'));
+  return merge(p);
+}
+/** Container ship (~62 long): dark hull, stacked containers in mixed colours, bridge and funnel aft. */
+function containerShip(): Part {
+  const p: Part[] = [hull(62, 10.5, 4, '#2c3e55', 0.16, 0.9), box(9.6, 0.4, 56, 0, 4.1, 0, '#8a3b30')];
+  const CC = ['#b8372f', '#2f6db0', '#d6a43a', '#3f8a52', '#d8dde2', '#7b4ea0', '#c4622d'];
+  let k = 0;
+  for (let z = -22; z <= 14; z += 4.2) for (let x = -3.6; x <= 3.7; x += 2.4) { const h = 1 + ((k * 7) % 4); for (let y = 0; y < h; y++) p.push(box(2.3, 1.2, 4, x, 4.9 + y * 1.25, z, CC[(k * 3 + y * 5) % CC.length])); k++; }
+  p.push(box(9.6, 6, 5, 0, 7.3, 22, '#e8ecef'), box(10.4, 0.5, 2, 0, 10.2, 20.5, WIN), box(11.4, 0.3, 1.2, 0, 10.6, 21, '#e8ecef'), cyl(0.9, 1, 3, 0, 11.5, 25, '#2b2f34', 10));
+  return merge(p);
+}
+/** Tanker (~66 long): red-bottomed hull, green deck with pipe runs and a manifold, white bridge aft. */
+function tanker(): Part {
+  const p: Part[] = [hull(66, 11, 4.4, '#7a2a26', 0.14, 0.92), box(10.2, 0.4, 60, 0, 4.5, 0, '#3f5a46')];
+  for (const x of [-1.2, 0, 1.2]) p.push(cyl(0.22, 0.22, 46, x, 5.1, -4, '#c8ccd0', 6, Math.PI / 2));
+  p.push(box(7, 1, 2, 0, 5.3, -2, '#c8a23a'), box(1.4, 3, 1.4, 3, 6, 6, '#c8ccd0'), box(0.25, 0.25, 9, 3, 7.3, 2, '#c8ccd0', 0.4));
+  p.push(box(10, 7, 6, 0, 8.4, 25, '#e8ecef'), box(10.6, 0.5, 2, 0, 11.6, 22.6, WIN), cyl(1, 1.1, 3.5, 0, 12.8, 27, '#2b2f34', 10));
+  return merge(p);
+}
+/** Sailboat (~9 long): white hull, mast, a heeled mainsail and jib (both sides drawn). */
+function sailboat(): Part {
+  const sail = (pts: number[][], color: string) => { const g = new THREE.BufferGeometry(); const v = pts.flat(); g.setAttribute('position', new THREE.Float32BufferAttribute([...v, ...[pts[0], pts[2], pts[1]].flat()], 3)); return colored(g, color); };
+  const p: Part[] = [hull(9, 2.6, 1.2, '#eef1f3', 0.32), box(2, 0.1, 5, 0, 1.25, 0.6, '#9a7a55'), cyl(0.06, 0.08, 9, 0.35, 5.6, -0.6, '#cfd3d6', 5)];
+  p.push(sail([[0.38, 1.6, -0.5], [0.38, 9.6, -0.6], [1.6, 1.8, 3.2]], '#f4f1e8'), sail([[0.36, 1.6, -0.9], [0.36, 8.6, -0.8], [0.9, 1.4, -4.2]], '#e6e2d6'));
+  const g = mergeGeometries(p.map(q => { if (q.getAttribute('uv')) q.deleteAttribute('uv'); if (q.getAttribute('normal')) q.deleteAttribute('normal'); return q; }))!; p.forEach(q => q.dispose()); g.computeVertexNormals(); return g;
+}
 let cache: Record<string, Part> | null = null;
 export function kit() {
   cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
     boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
     gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
-    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy() };
+    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy(),
+    islandHill: islandHill(), volcano: volcano(), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat() };
   return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
-    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy', Part>;
+    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy'
+    | 'islandHill' | 'volcano' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

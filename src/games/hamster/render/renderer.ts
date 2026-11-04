@@ -1,10 +1,11 @@
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, unlockAudio, type SfxName } from '../../../audio/sfx';
 import { fmtDur, fmtJ, fmtW } from '../sim/econ';
-import type { HamsterSnapshot, ShopItem } from '../sim/sim';
+import type { HamsterSnapshot } from '../sim/sim';
 import { COMIC, FONT, FURS, TAU, glow, hamster, rr } from './draw';
 import { SCENES, type Box, type SceneState } from './scenes';
 import { layout } from './layout';
+import { inventoryArt } from './art';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; kind: 'confetti' | 'spark' | 'text' | 'seed' | 'fw'; color: string; text?: string; size: number; rot: number }
 interface Rect { x: number; y: number; w: number; h: number }
@@ -13,28 +14,9 @@ type Font = (px: number, weight?: number) => string;
 const CUE_GAP: Partial<Record<SfxName, number>> = { select: 0.05, buy: 0.05, shrine: 0.4, potion: 0.2 };
 const C = {
   panel: '#140e24', panel2: '#0d0918', card: 'rgba(16,11,32,0.78)', line: 'rgba(255,255,255,0.08)',
-  text: '#f4f0ff', dim: '#a49cc4', faint: '#6c6490', gold: '#ffcf4a', green: '#6dffb0', pink: '#ff5fa8', cyan: '#4fd6ff', red: '#ff6a7a',
+  text: '#f4f0ff', dim: '#a49cc4', faint: '#a297b6', gold: '#ffcf4a', green: '#6dffb0', pink: '#ff5fa8', cyan: '#4fd6ff', red: '#ff6a7a',
 };
-const GEN_ICON = ['🐹', '🐭', '🐷', '🏋️', '🦦', '🦫', '🏢', '🤳', '📈', '🔌', '🌊', '🌬️', '☢️', '🌀', '🍩', '🌍', '🌋', '🌕', '💍', '🪐', '☀️', '🕳️', '🌌', '♾️'];
-const SPECIAL_ICON: Record<string, string> = { manager: '👔', hr: '📋', union: '✊', seedsub: '📦', dealer: '🕶️', zen: '🧘', trialpro: '🧪', cloning: '🧬' };
-const PEP_ICON: Record<string, string> = { seeds: '🌻', bpc: '💉', tb: '💉', pre: '⚡', ozem: '💊', mk: '🦍', tren: '💪', vial: '🧪', stack: '🐉' };
-const VIBE_ICON: Record<string, string> = { shades: '😎', confetti: '🎉', rgb: '🌈', shake: '📳', disco: '🪩', comic: '🔤', lasers: '🔦', tesla: '⚡', crt: '📺', vapor: '🌴', bighead: '🗿', hypno: '🌀', fried: '🍳', halo: '😇' };
-const TAB_ICON: Record<string, string> = { gens: '🐹', upgrades: '⬆️', market: '💉', vibes: '✨', rebirth: '☸️' };
 const EFFECT_ICON: Record<string, string> = { seeds: '🌻', bpc: '🩹', tb: '💉', pre: '⚡', crash: '😵', ozem: '💊', mk: '🦍', tren: '💪', vial: '🧪', stack: '🐉', frenzy: '🌟', quads: '🦵', solidarity: '🤝' };
-const TIER_HUES = [30, 45, 300, 210, 160, 200, 40, 270];
-
-function itemIcon(it: ShopItem): { icon: string; hue: number } {
-  const [kind, a] = it.key.split(':');
-  if (it.locked) return { icon: '❔', hue: 250 };
-  if (kind === 'gen') return { icon: GEN_ICON[+a] ?? '🐹', hue: TIER_HUES[Math.floor(+a / 3)] };
-  if (kind === 'g') return { icon: GEN_ICON[+a] ?? '⬆️', hue: TIER_HUES[Math.floor(+a / 3)] };
-  if (kind === 'leg') return { icon: '🦵', hue: 210 };
-  if (kind === 'mono') return { icon: '😐', hue: 40 };
-  if (kind === 'sp') return { icon: SPECIAL_ICON[a] ?? '⭐', hue: 320 };
-  if (kind === 'pep') return { icon: PEP_ICON[a] ?? '💉', hue: 140 };
-  if (kind === 'vibe') return { icon: VIBE_ICON[a] ?? '✨', hue: 280 };
-  return { icon: '☸️', hue: 50 };
-}
 const monoFace = (m: number) => (m < 1.5 ? '🙂' : m < 3 ? '😐' : m < 5 ? '😑' : m < 8 ? '😶' : '🫥');
 const ease = (k: number) => 1 - Math.pow(1 - Math.max(0, Math.min(1, k)), 3);
 
@@ -45,12 +27,13 @@ export class HamsterRenderer implements GameRenderer {
   private send?: (a: unknown) => void;
   private last = 0; private time = 0; private spin = 0; private hue = 0;
   private parts: Particle[] = [];
-  private lastCue = -1; private lastBuy = -1; private lastToast = -1; private textAcc = 0;
+  private lastCue = -1; private lastBuy = -1; private deliveredAt = -Infinity; private lastOwned = -1; private lastToast = -1; private textAcc = 0;
   private prevEra = -1; private trans: { from: number; t0: number } | null = null; private eraBanner: { text: string; sub: string; t0: number } | null = null;
   private shake = 0; private scroll = 0; private tickerX = 0; private tickerId = -1; private shownBank = 0; private bankPulse = 0;
   private tabRects: Array<Rect & { i: number }> = [];
   private rowRects: Array<Rect & { i: number }> = [];
   private acceptRect: Rect | null = null;
+  private latestRect: Rect | null = null;
   private listRect: Rect | null = null;
   private maxScroll = 0;
   private manualScroll = false;
@@ -70,6 +53,7 @@ export class HamsterRenderer implements GameRenderer {
       this.gesture = { id: e.pointerId, x: p.x, y: p.y, lastY: p.y, dragged: false, row: this.rowRects.find(r => this.inside(r, p))?.i ?? null };
       this.canvas.setPointerCapture?.(e.pointerId); return;
     }
+    if (this.latestRect && this.inside(this.latestRect, p)) { this.send?.({ type: 'latest' }); this.manualScroll = false; return; }
     if (this.acceptRect && this.inside(this.acceptRect, p)) { this.send?.({ type: 'accept' }); return; }
     for (const r of this.tabRects) if (this.inside(r, p)) { this.send?.({ type: 'tab', i: r.i }); return; }
   };
@@ -156,7 +140,7 @@ export class HamsterRenderer implements GameRenderer {
     if (this.shake > 0) { this.shake -= dt; const a = this.shake * 30; g.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a); }
     if (s.effects.some((e) => e.id === 'pre') || s.rage) g.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
     g.beginPath(); g.rect(scene.x, scene.y, scene.w, scene.h); g.clip();
-    const st: SceneState = { s, time: this.time, spin: this.spin, speed, vibes, strikeOn: s.strike?.phase === 'active', stopped, hue: this.hue };
+    const st: SceneState = { delivery: Math.max(0, 1 - (this.time - this.deliveredAt) / 2.5), s, time: this.time, spin: this.spin, speed, vibes, strikeOn: s.strike?.phase === 'active', stopped, hue: this.hue };
     const tr = this.trans && this.time - this.trans.t0 < 2.4 ? this.trans : null;
     if (tr) {
       const p = (this.time - tr.t0) / 2.4, e = p * p * (3 - 2 * p), cx = scene.x + scene.w / 2, cy = scene.y + scene.h / 2;
@@ -196,6 +180,8 @@ export class HamsterRenderer implements GameRenderer {
   }
   private spawn(s: HamsterSnapshot, scene: Box, panel: Box, vibes: Set<string>, stopped: boolean, dt: number) {
     if (this.lastBuy < 0) this.lastBuy = s.buySeq;
+    if (this.lastOwned >= 0 && s.totalOwned > this.lastOwned) this.deliveredAt = this.time;
+    this.lastOwned = s.totalOwned;
     if (s.buySeq > this.lastBuy) {
       this.lastBuy = s.buySeq; this.bankPulse = 1;
       if (vibes.has('shake')) this.shake = 0.3;
@@ -405,8 +391,8 @@ export class HamsterRenderer implements GameRenderer {
     this.acceptRect = null;
     let y = b.y + (b.w < 560 ? 240 : 140);
     const w = Math.min(460, b.w - 24), x = b.x + (b.w - w) / 2;
-    const card = (accent: string, icon: string, title: string, sub: string, frac: number | null, pulse = false) => {
-      const h = frac == null ? 64 : 76;
+    const card = (accent: string, icon: string, title: string, sub: string, frac: number | null, pulse = false, offer = false) => {
+      const h = offer ? 96 : frac == null ? 78 : 94;
       this.glass(g, x, y, w, h, 16, accent);
       g.save(); rr(g, x, y, w, h, 16); g.clip();
       const ag = g.createLinearGradient(x, 0, x + w * 0.5, 0); ag.addColorStop(0, accent.replace(')', ',0.28)').replace('rgb', 'rgba')); ag.addColorStop(1, 'rgba(0,0,0,0)');
@@ -414,13 +400,13 @@ export class HamsterRenderer implements GameRenderer {
       const sc = pulse ? 1 + 0.08 * Math.sin(this.time * 8) : 1;
       g.save(); g.translate(x + 32, y + 36); g.scale(sc, sc); g.font = F(30); g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText(icon, 0, 10); g.restore();
       g.textAlign = 'left';
-      g.font = F(15, 900); g.fillStyle = C.text; g.fillText(title, x + 62, y + 26);
-      g.font = F(12, 500); g.fillStyle = C.dim; g.fillText(sub, x + 62, y + 45);
-      if (frac != null) this.bar(g, x + 62, y + 56, w - 78, 9, frac, accent, accent);
+      g.font = F(15, 900); g.fillStyle = C.text; this.wrap(g, title, x + 62, y + 26, w - 78, 16, 1);
+      g.font = F(12, 500); g.fillStyle = C.dim; this.wrap(g, sub, x + 62, y + (offer ? 64 : 45), w - 78 - (offer ? 116 : 0), 14, 2);
+      if (frac != null) this.bar(g, x + 62, y + 76, w - 78, 9, frac, accent, accent);
       const r = { x, y, w, h }; y += h + 8; return r;
     };
-    if (s.rage) card('rgb(255,70,90)', '😡', `ROID RAGE — ${Math.ceil(s.rage.left)}s`, `Gerald is running BACKWARDS. Sprint to power Z4+ to out-pedal him (power Z${s.hardZone} now).`, s.rage.progress / s.rage.need, true);
-    if (s.golden) card('rgb(255,207,74)', '🌟', `GOLDEN HAMSTER — ${Math.ceil(s.golden.left)}s`, s.hardZone >= 4 ? 'GO GO GO! Keep sprinting!' : `Sprint to power Z4+ to catch it (power Z${s.hardZone} now)`, s.golden.progress / s.golden.need, true);
+    if (s.rage) card('rgb(255,70,90)', '😡', `ROID RAGE — ${Math.ceil(s.rage.left)}s`, `Power Z4+ for ${s.rage.need}s. Gerald has found reverse.`, s.rage.progress / s.rage.need, true);
+    if (s.golden) card('rgb(255,207,74)', '🌟', `GOLDEN HAMSTER — ${Math.ceil(s.golden.left)}s`, s.hardZone >= 4 ? 'GO GO GO! Keep sprinting!' : `Power Z4+ for ${s.golden.need}s. Catch the golden freeloader!`, s.golden.progress / s.golden.need, true);
     if (s.spin) {
       const on = s.cadence >= s.spin.rpm;
       card('rgb(120,220,255)', '🚴', `SPIN CLASS — ${Math.ceil(s.spin.left)}s`, on ? `That's it! Keep spinning  ·  ${Math.floor(s.spin.progress)}/${s.spin.need}s` : `Easy gear, spin ${s.spin.rpm}+ rpm (you're at ${Math.round(s.cadence)})`, s.spin.progress / s.spin.need, !on);
@@ -431,17 +417,17 @@ export class HamsterRenderer implements GameRenderer {
     }
     if (s.trial) {
       if (s.trial.phase === 'offer') {
-        const r = card('rgb(79,180,255)', '💉', `CLINICAL TRIAL offered — ${Math.ceil(s.trial.left)}s`, 'ERG block · big payout + free sample', null, true);
-        const bw = 104, bx = r.x + r.w - bw - 12, by = r.y + 18;
-        const bg = g.createLinearGradient(0, by, 0, by + 30); bg.addColorStop(0, '#6ac8ff'); bg.addColorStop(1, '#2a8ad8');
-        g.fillStyle = bg; rr(g, bx, by, bw, 30, 15); g.fill();
-        g.fillStyle = '#fff'; g.font = F(13, 900); g.textAlign = 'center'; g.fillText('Accept  (Z)', bx + bw / 2, by + 20); g.textAlign = 'left';
-        this.acceptRect = r;
+        const r = card('rgb(79,180,255)', '💉', `CLINICAL TRIAL · ${Math.ceil(s.trial.left)}s`, `${fmtDur(s.trial.duration)} · ${Math.round(s.trial.ftpFraction * 100)}% FTP · ERG`, null, true, true);
+        const bw = 104, bx = r.x + r.w - bw - 12, by = r.y + 42;
+        const bg = g.createLinearGradient(0, by, 0, by + 44); bg.addColorStop(0, '#6ac8ff'); bg.addColorStop(1, '#2a8ad8');
+        g.fillStyle = bg; rr(g, bx, by, bw, 44, 12); g.fill();
+        g.fillStyle = '#fff'; g.font = F(13, 900); g.textAlign = 'center'; g.fillText('Accept  (Z)', bx + bw / 2, by + 27); g.textAlign = 'left';
+        this.acceptRect = { x: bx, y: by, w: bw, h: 44 };
       } else card('rgb(79,180,255)', '🧪', `TRIAL IN PROGRESS — ${Math.ceil(s.trial.left)}s`, `ERG holds the watts. Keep the cranks turning · compliance ${Math.round(s.trial.compliance * 100)}%`, s.trial.compliance);
     }
   }
   private drawToasts(g: CanvasRenderingContext2D, s: HamsterSnapshot, b: Box, F: Font) {
-    const list = s.toasts.slice(-4);
+    const list = s.toasts.slice(b.w >= 560 ? -2 : -1);
     let y = b.y + b.h - 50 - list.length * 34;
     for (const t of list) {
       const age = s.t - t.t, a = age > 6 ? Math.max(0, 7 - age) : Math.min(1, age * 4), slide = (1 - ease(age * 4)) * 24;
@@ -510,7 +496,7 @@ export class HamsterRenderer implements GameRenderer {
       const x = tx + i * cw, sel = t.id === s.tab;
       if (sel) { const sg = g.createLinearGradient(0, ty, 0, ty + th); sg.addColorStop(0, '#5a3aa8'); sg.addColorStop(1, '#3a2478'); g.fillStyle = sg; rr(g, x + 3, ty + 3, cw - 6, th - 6, 9); g.fill(); g.strokeStyle = 'rgba(255,207,74,0.6)'; g.lineWidth = 1; rr(g, x + 3.5, ty + 3.5, cw - 7, th - 7, 9); g.stroke(); }
       g.textAlign = 'center';
-      g.font = F(16); g.fillStyle = '#fff'; g.globalAlpha = sel ? 1 : 0.7; g.fillText(TAB_ICON[t.id], x + cw / 2, ty + 22); g.globalAlpha = 1;
+      g.globalAlpha = sel ? 1 : 0.75; inventoryArt(g, t.id === 'gens' ? 'gen:0' : `tab:${t.id}`, x + cw / 2 - 12, ty + 3, 24); g.globalAlpha = 1;
       g.font = F(cw < 80 ? 9 : 10, 800); g.fillStyle = sel ? '#fff' : C.dim; g.fillText(t.label, x + cw / 2, ty + 40);
       g.textAlign = 'left';
       if (t.badge) { g.fillStyle = C.pink; g.beginPath(); g.arc(x + cw - 10, ty + 9, 4.5, 0, TAU); g.fill(); g.strokeStyle = C.panel; g.lineWidth = 2; g.stroke(); }
@@ -518,10 +504,25 @@ export class HamsterRenderer implements GameRenderer {
     });
     const label = s.tabs.find((t) => t.id === s.tab)?.label ?? '';
     // list
-    const ly0 = ty + th + 10, lh = p.y + p.h - ly0, rh = 68, gap = 6;
+    const market = s.tab === 'market';
+    const introH = market ? 68 : 0;
+    if (market) {
+      const yy = ty + th + 9;
+      g.fillStyle = '#2e2437'; rr(g, p.x + 10, yy, p.w - 20, 58, 8); g.fill();
+      inventoryArt(g, 'pep:stock', p.x + 17, yy + 7, 42);
+      g.fillStyle = '#eacb8d'; g.font = F(p.w < 360 ? 11 : 13, 900); g.fillText('GERALD’S UNLICENSED SUPPLY', p.x + 65, yy + 23);
+      g.fillStyle = '#c4b4ca'; g.font = F(11, 600); g.fillText('No receipts. No questions. No refunds.', p.x + 65, yy + 42);
+    }
+    const ly0 = ty + th + 18 + introH, lh = p.y + p.h - ly0, rh = s.tab === 'rebirth' ? 192 : market ? 124 : 104, gap = 7;
+    this.latestRect = null;
+    if (s.tab === 'gens' && s.items.length > 4) {
+      const r = { x: p.x + p.w - 102, y: ty + th + 2, w: 92, h: 26 };
+      this.latestRect = r;
+      g.fillStyle = '#e6c784'; g.font = F(11, 800); g.textAlign = 'right'; g.fillText('Latest unlock ↓', r.x + r.w - 4, r.y + 17); g.textAlign = 'left';
+    }
     g.font = F(10, 800); g.fillStyle = C.faint; g.fillText(label.toUpperCase(), p.x + 14, ly0 + 2);
     const listY = ly0 + 10, listH = lh - 10;
-    const target = Math.max(0, Math.min(s.row * (rh + gap) - listH / 2 + rh, s.items.length * (rh + gap) - listH + 8));
+    const target = Math.max(0, Math.min(s.row * (rh + gap) + rh / 2 - listH / 2, s.items.length * (rh + gap) - listH + 8));
     this.listRect = { x: p.x, y: listY, w: p.w, h: Math.max(0, listH) };
     this.maxScroll = Math.max(0, s.items.length * (rh + gap) - listH + 8);
     if (this.selected.tab !== s.tab) { this.scroll = 0; this.manualScroll = false; this.cancelGesture(); }
@@ -541,42 +542,32 @@ export class HamsterRenderer implements GameRenderer {
       if (sel) { g.save(); g.shadowColor = s.armed ? C.red : 'rgba(255,207,74,0.6)'; g.shadowBlur = 12; g.strokeStyle = s.armed ? C.red : C.gold; g.lineWidth = 2; rr(g, x + 1, y + 1, w - 2, rh - 2, 13); g.stroke(); g.restore(); }
       else { g.strokeStyle = usable ? 'rgba(109,255,176,0.25)' : C.line; g.lineWidth = 1; rr(g, x + 0.5, y + 0.5, w - 1, rh - 1, 14); g.stroke(); }
       g.globalAlpha = it.locked ? 0.45 : 1;
-      // icon tile
-      const ic = itemIcon(it), ix = x + 10, iy = y + 11, is = 46;
-      const ig = g.createLinearGradient(ix, iy, ix + is, iy + is); ig.addColorStop(0, `hsl(${ic.hue},70%,${usable || owned ? 42 : 26}%)`); ig.addColorStop(1, `hsl(${(ic.hue + 40) % 360},70%,${usable || owned ? 24 : 14}%)`);
-      g.fillStyle = ig; rr(g, ix, iy, is, is, 12); g.fill();
-      g.fillStyle = 'rgba(255,255,255,0.12)'; rr(g, ix + 2, iy + 2, is - 4, is * 0.4, 10); g.fill();
-      g.font = F(24); g.fillStyle = '#fff'; g.textAlign = 'center'; g.fillText(ic.icon, ix + is / 2, iy + is / 2 + 9); g.textAlign = 'left';
-      if (it.key.startsWith('g:')) { g.fillStyle = C.gold; g.beginPath(); g.arc(ix + is - 4, iy + 4, 8, 0, TAU); g.fill(); g.fillStyle = '#3a2a00'; g.font = F(10, 900); g.textAlign = 'center'; g.fillText('×2', ix + is - 4, iy + 8); g.textAlign = 'left'; }
+      // Bespoke illustrations use the same palette and character drawing as the world.
+      const ix = x + 10, iy = y + 13, is = 52;
+      g.fillStyle = sel ? '#46364f' : '#2c2336'; rr(g, ix, iy, is, is, 10); g.fill();
+      if (it.locked) { g.fillStyle = C.dim; g.font = F(28, 800); g.fillText('?', ix + 18, iy + 36); }
+      else inventoryArt(g, it.key, ix, iy, is);
       if (typeof it.owned === 'number' && it.owned > 0) {
-        const t = `${it.owned}`; g.font = F(10.5, 900); const bw = g.measureText(t).width + 10;
-        g.fillStyle = '#fff'; rr(g, ix + is - bw + 4, iy + is - 12, bw, 16, 8); g.fill(); g.fillStyle = '#1a1030'; g.fillText(t, ix + is - bw + 9, iy + is);
+        g.font = F(11, 800); g.fillStyle = '#decfae'; g.textAlign = 'center'; g.fillText(`${it.owned} owned`, ix + is / 2, y + 81); g.textAlign = 'left';
       }
-      // text
-      const tx2 = ix + is + 12, costW = 104;
-      g.save(); g.beginPath(); g.rect(tx2, y, w - (tx2 - x) - costW - 8, rh); g.clip();
-      let nx = tx2;
-      const nameW = w - (tx2 - x) - costW - 8;
-      g.font = F(15, 800); const nmw = g.measureText(it.name).width;
-      g.font = F(8.5, 900);
-      if (it.tag && !it.key.startsWith('g:') && g.measureText(it.tag).width + 16 + nmw < nameW) {
-        const tw2 = g.measureText(it.tag).width + 10;
-        g.fillStyle = it.tag === 'LEGS' ? 'rgba(79,150,255,0.3)' : it.tag === 'BOREDOM' ? 'rgba(200,180,120,0.3)' : it.tag === 'SPECIAL' ? 'rgba(255,95,168,0.3)' : 'rgba(255,255,255,0.12)';
-        rr(g, nx, y + 12, tw2, 15, 7.5); g.fill(); g.fillStyle = '#fff'; g.fillText(it.tag, nx + 5, y + 23); nx += tw2 + 6;
+      const tx2 = ix + is + 12, costW = 100;
+      const textW = w - (tx2 - x) - 12;
+      g.fillStyle = it.on === false && owned ? C.dim : C.text; g.font = F(15, 800);
+      this.wrap(g, it.name, tx2, y + 23, textW, 16, 1);
+      g.fillStyle = it.benefit ? '#b9dcc9' : '#d2c4dd'; g.font = F(12, 650);
+      this.wrap(g, it.benefit ?? it.desc, tx2, y + 46, it.benefit ? textW - costW - 6 : textW, 15, s.tab === 'rebirth' ? 7 : market ? 3 : 2);
+      if (it.flavor) { g.fillStyle = '#b5a5bd'; g.font = F(11, 500); this.wrap(g, it.flavor, tx2, y + 81, textW, 13, 2); }
+      if (it.tag && !it.benefit) {
+        g.font = F(9, 800); g.fillStyle = '#c7ad80'; this.wrap(g, it.tag, tx2, y + (market ? 112 : 92), textW - costW - 8, 12, 1);
       }
-      g.fillStyle = it.on === false ? C.dim : C.text; g.font = F(15, 800); g.fillText(it.name, nx, y + 25);
-      g.fillStyle = C.dim; g.font = F(11.5, 500);
-      const desc = it.desc;
-      this.wrap(g, desc, tx2, y + 43, w - (tx2 - x) - costW - 10, 14, 2);
-      g.restore();
       // cost column
       const cx2 = x + w - costW - 8;
       if (it.key.startsWith('vibe:') && owned) {
-        const on = !!it.on, sw = 46, sx = cx2 + costW - sw, sy = y + 18;
+        const on = !!it.on, sw = 46, sx = cx2 + costW - sw, sy = y + 74;
         g.fillStyle = on ? C.green : 'rgba(255,255,255,0.15)'; rr(g, sx, sy, sw, 26, 13); g.fill();
         g.fillStyle = '#fff'; g.beginPath(); g.arc(on ? sx + sw - 13 : sx + 13, sy + 13, 10, 0, TAU); g.fill();
       } else if (!it.locked) {
-        g.font = F(13, 900); const cw2 = Math.min(costW, g.measureText(it.costLabel).width + 18), px = cx2 + costW - cw2, py = y + 14;
+        g.font = F(13, 900); const cw2 = Math.min(costW, g.measureText(it.costLabel).width + 18), px = cx2 + costW - cw2, py = y + (it.benefit ? 34 : rh - 30);
         if (usable) { const cg = g.createLinearGradient(0, py, 0, py + 26); cg.addColorStop(0, cheap && it.key.startsWith('gen:') ? '#9affd0' : '#7affb8'); cg.addColorStop(1, '#2ac87a'); g.fillStyle = cg; }
         else g.fillStyle = 'rgba(255,255,255,0.07)';
         rr(g, px, py, cw2, 26, 13); g.fill();
@@ -584,8 +575,8 @@ export class HamsterRenderer implements GameRenderer {
         const eta = s.rate > 0 ? (it.cost - s.bank) / s.rate : Infinity;
         if (!usable && it.cost > 0 && it.cost > s.bank && eta < 86400) {
           g.font = F(10.5, 700); g.fillStyle = C.faint; g.textAlign = 'right';
-          g.fillText(`⏳ ${fmtDur(eta)}`, cx2 + costW, y + 56); g.textAlign = 'left';
-        } else if (usable && it.key.startsWith('gen:') && sel) { g.font = F(10, 800); g.fillStyle = C.green; g.textAlign = 'right'; g.fillText('Tap row to buy', cx2 + costW, y + 56); g.textAlign = 'left'; }
+          g.fillText(`⏳ ${fmtDur(eta)}`, cx2 + costW, y + (it.benefit ? 70 : rh - 2)); g.textAlign = 'left';
+        } else if (usable && it.key.startsWith('gen:') && sel) { g.font = F(10, 800); g.fillStyle = C.green; g.textAlign = 'right'; g.fillText('Buy 1', cx2 + costW, y + (it.benefit ? 70 : rh - 2)); g.textAlign = 'left'; }
       }
       // progress toward affordability
       if (!usable && !it.locked && it.cost > 0 && !owned) {
@@ -598,6 +589,10 @@ export class HamsterRenderer implements GameRenderer {
       if (hitEnd > hitY) this.rowRects.push({ x, y: hitY, w, h: hitEnd - hitY, i });
     });
     g.restore();
+    if (this.maxScroll > 0 && listH > 0) {
+      const thumbH = Math.max(24, listH * listH / (listH + this.maxScroll));
+      g.fillStyle = 'rgba(223,203,167,.45)'; rr(g, p.x + p.w - 5, listY + this.scroll / this.maxScroll * (listH - thumbH), 3, thumbH, 1.5); g.fill();
+    }
     // scroll fades
     const fade = (y0: number, up: boolean) => { const fg = g.createLinearGradient(0, y0, 0, y0 + (up ? 24 : -24)); fg.addColorStop(0, C.panel2); fg.addColorStop(1, 'rgba(13,9,24,0)'); g.fillStyle = fg; g.fillRect(p.x + 1, up ? y0 : y0 - 24, p.w, 24); };
     if (this.scroll > 4) fade(listY, true);
@@ -605,13 +600,18 @@ export class HamsterRenderer implements GameRenderer {
   }
   private wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, w: number, lh: number, maxLines: number) {
     const words = text.split(' '); let line = '', n = 0;
+    const drawLine = (value: string, truncated: boolean) => {
+      let fitted = value;
+      while (fitted.length && g.measureText(fitted + (truncated ? '…' : '')).width > w) { fitted = fitted.slice(0, -1); truncated = true; }
+      g.fillText(fitted.trimEnd() + (truncated ? '…' : ''), x, y + n * lh);
+    };
     for (let i = 0; i < words.length; i++) {
       const test = line ? `${line} ${words[i]}` : words[i];
       if (g.measureText(test).width > w && line) {
-        if (n === maxLines - 1) { g.fillText(`${line}…`, x, y + n * lh); return; }
-        g.fillText(line, x, y + n * lh); n++; line = words[i];
+        if (n === maxLines - 1) { drawLine(line, true); return; }
+        drawLine(line, false); n++; line = words[i];
       } else line = test;
     }
-    if (line) g.fillText(line, x, y + n * lh);
+    if (line) drawLine(line, false);
   }
 }

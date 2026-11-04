@@ -48,3 +48,9 @@ it('keeps native tab taps and does not treat horizontal drags as purchases', () 
   pointer('pointerdown', 30, 60); expect(send).toHaveBeenCalledExactlyOnceWith({ type: 'tab', i: 1 }); send.mockClear();
   pointer('pointerdown', 30, 130); pointer('pointermove', 100, 130); pointer('pointerup', 100, 130); expect(send).not.toHaveBeenCalled();
 });
+
+it('accepts a trial only inside its explicit button, not the surrounding offer', () => {
+  Object.assign(renderer, { acceptRect: { x: 200, y: 10, w: 90, h: 30 } });
+  pointer('pointerdown', 120, 25); expect(send).not.toHaveBeenCalled();
+  pointer('pointerdown', 245, 25); expect(send).toHaveBeenCalledExactlyOnceWith({ type: 'accept' });
+});

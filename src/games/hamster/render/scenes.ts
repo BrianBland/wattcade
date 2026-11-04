@@ -1,10 +1,13 @@
 // Era scenes. Pure Canvas 2D drawing; all state comes in via SceneState.
+import { satellite, shippingLabel, cargoArrival } from './orbital';
+import { switchboard, dispatchDesk, deliveryCrate } from './machinery';
+import { placard } from './art';
 import type { HamsterSnapshot } from '../sim/sim';
 import { FONT, FURS, STEEL, TAU, glow, hamster, hash, rr, shadow, wheelWith, type Fur, type Look, type WheelStyle } from './draw';
 
 export interface Box { x: number; y: number; w: number; h: number }
 export interface SceneState {
-  s: HamsterSnapshot; time: number; spin: number; speed: number; vibes: Set<string>; strikeOn: boolean; stopped: boolean; hue: number;
+  delivery?: number; s: HamsterSnapshot; time: number; spin: number; speed: number; vibes: Set<string>; strikeOn: boolean; stopped: boolean; hue: number;
 }
 type G = CanvasRenderingContext2D;
 
@@ -117,6 +120,15 @@ function shoebox(g: G, b: Box, st: SceneState) {
   const back = g.createLinearGradient(0, bw.y, 0, floorY); back.addColorStop(0, '#d2a46c'); back.addColorStop(1, '#b8874f');
   g.fillStyle = back; g.fillRect(bw.x, bw.y, bw.w, bw.h);
   g.strokeStyle = 'rgba(90,55,20,0.12)'; g.lineWidth = 2; for (let i = 0; i < 40; i++) { const lx = bw.x + (i / 40) * bw.w; g.beginPath(); g.moveTo(lx, bw.y); g.lineTo(lx, floorY); g.stroke(); }
+  // Cardboard fibers, folded seams and a strip of slightly optimistic packing tape.
+  g.save(); g.beginPath(); g.rect(bw.x, bw.y, bw.w, bw.h); g.clip();
+  for (let i = 0; i < 260; i++) {
+    const px = bw.x + hash(i + 15) * bw.w, py = bw.y + hash(i + 333) * bw.h;
+    g.strokeStyle = i % 2 ? 'rgba(90,52,23,.10)' : 'rgba(255,235,185,.18)'; g.lineWidth = .7;
+    g.beginPath(); g.moveTo(px, py); g.lineTo(px + 2 + hash(i) * 7, py + 1); g.stroke();
+  }
+  g.fillStyle = 'rgba(237,196,121,.35)'; g.fillRect(bw.x + bw.w * .42, bw.y, 27, bw.h);
+  g.strokeStyle = 'rgba(109,73,40,.3)'; g.setLineDash([5, 4]); g.beginPath(); g.moveTo(bw.x + bw.w * .42 + 13, bw.y); g.lineTo(bw.x + bw.w * .42 + 13, floorY); g.stroke(); g.restore();
   // stamp
   g.save(); g.translate(bw.x + bw.w * 0.62, bw.y + bw.h * 0.2); g.rotate(-0.06);
   g.strokeStyle = 'rgba(120,40,20,0.45)'; g.lineWidth = 3; rr(g, -110, -22, 220, 44, 6); g.stroke();
@@ -133,6 +145,21 @@ function shoebox(g: G, b: Box, st: SceneState) {
     g.save(); g.translate(fx, fy); g.rotate(hash(i + 1) * 3); g.fillRect(-3 - k * 3, -1, 6 + k * 6, 2 + k); g.restore();
   }
   g.save(); g.globalCompositeOperation = 'lighter'; glow(g, x + w * 0.45, y + h * 0.1, h * 0.9, 'rgba(255,200,120,A)', 0.18); g.restore();
+  if (w > 480) placard(g, x + w * .30, y + h * .36, Math.min(170, w * .27), 'EMPLOYEE OF THE MONTH', 'Gerald. Again.', -.06);
+  // A salvaged meter turns hamster power into visible, dubious infrastructure.
+  if (w > 480) {
+    const mx = x + w * .70, my = y + h * .42;
+    g.strokeStyle = '#675143'; g.lineWidth = 5; g.beginPath(); g.moveTo(mx, my + 50); g.bezierCurveTo(mx + 55, my + 115, x + w * .2, floorY + 20, x + w * .26, y + h * .8); g.stroke();
+    g.fillStyle = '#655c60'; rr(g, mx - 42, my - 27, 84, 78, 7); g.fill();
+    g.strokeStyle = '#b9a790'; g.lineWidth = 2; g.stroke();
+    g.fillStyle = '#e9d9ae'; rr(g, mx - 33, my - 18, 66, 36, 4); g.fill();
+    g.strokeStyle = '#7a6450'; g.lineWidth = 1;
+    for (let k = 0; k < 7; k++) { const a = Math.PI + .2 + k * (Math.PI - .4) / 6; g.beginPath(); g.moveTo(mx + Math.cos(a) * 23, my + 11 + Math.sin(a) * 23); g.lineTo(mx + Math.cos(a) * 27, my + 11 + Math.sin(a) * 27); g.stroke(); }
+    const a = Math.PI + .3 + Math.min(1, st.speed / 2) * 2.4;
+    g.strokeStyle = '#a94b44'; g.lineWidth = 2; g.beginPath(); g.moveTo(mx, my + 10); g.lineTo(mx + Math.cos(a) * 23, my + 10 + Math.sin(a) * 23); g.stroke();
+    g.fillStyle = '#f2dfb2'; g.textAlign = 'center'; g.font = `800 9px ${FONT}`; g.fillText('SQUEAK-O-METER', mx, my + 33);
+    g.fillStyle = st.stopped ? '#907367' : '#bfe0a1'; g.beginPath(); g.arc(mx, my + 43, 3, 0, TAU); g.fill(); g.textAlign = 'left';
+  }
   // water bottle
   const wx = bw.x + bw.w * 0.9, wy = bw.y + bw.h * 0.12;
   g.fillStyle = 'rgba(200,230,255,0.35)'; rr(g, wx - 14, wy, 28, bw.h * 0.5, 10); g.fill();
@@ -183,6 +210,14 @@ function garage(g: G, b: Box, st: SceneState) {
   const fl = g.createLinearGradient(0, fy, 0, y + h); fl.addColorStop(0, '#4c525e'); fl.addColorStop(1, '#2c3038');
   g.fillStyle = fl; g.fillRect(x, fy, w, h - wallH);
   g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(x, fy, w, 3);
+  // Painted concrete, patched conduit and a workplace with unusually small regulations.
+  for (let i = 0; i < 180; i++) { g.fillStyle = i % 2 ? 'rgba(240,231,211,.05)' : 'rgba(9,14,24,.08)'; g.fillRect(x + hash(i + 82) * w, y + hash(i + 92) * h, 1 + hash(i) * 4, 1); }
+  g.strokeStyle = '#222832'; g.lineWidth = 7; g.beginPath(); g.moveTo(x + w * .57, y + 100); g.lineTo(x + w * .57, y + h * .58); g.lineTo(x + w * .91, y + h * .58); g.stroke();
+  g.strokeStyle = '#909096'; g.lineWidth = 3; g.stroke();
+  if (w > 480) {
+    placard(g, x + w * .78, y + h * .44, Math.min(190, w * .30), '0 DAYS WITHOUT A SQUEAK', 'Management remains optimistic.', .025);
+    placard(g, x + w * .77, y + h * .65, Math.min(180, w * .29), 'PERMITS: PENDING', 'The inspector ate the paperwork.', -.025);
+  }
   // shelves of small wheels (the shoebox crew moved in)
   for (let sh = 0; sh < 2; sh++) { const sy = y + h * (0.3 + sh * 0.2); g.fillStyle = '#7a5a3a'; g.fillRect(x + w * 0.03, sy, w * 0.52, 8); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(x + w * 0.03, sy + 8, w * 0.52, 5); }
   const crewList: Array<[number, Fur]> = [[0, FURS.gerald], [1, FURS.gerbil], [2, FURS.guinea]];
@@ -277,12 +312,18 @@ function startup(g: G, b: Box, st: SceneState) {
   for (let k = 0; k < n; k++) {
     const row = Math.floor(k / 6), col = k % 6, r = h * (row ? 0.055 : 0.045);
     const dx = x + w * (0.45 + col * 0.088), dy = row ? y + h * 0.93 : y + h * 0.73;
+    g.fillStyle = '#624d5f'; g.fillRect(dx - r * 1.1, dy + 2, r * 2.2, 5);
+    g.fillStyle = '#a78071'; g.fillRect(dx - r, dy + 7, 3, 13); g.fillRect(dx + r - 3, dy + 7, 3, 13);
     minion(g, dx, dy - r * 1.12, r, st, k, k % 3 === 1 ? FURS.white : k % 3 === 2 ? FURS.grey : FURS.gerald, { shades: k % 4 === 0 });
   }
   // plant
   const px = x + w * 0.95, py = y + h * 0.95;
   for (let i = 0; i < 7; i++) { g.save(); g.translate(px, py - 30); g.rotate(-1.2 + i * 0.4 + Math.sin(st.time + i) * 0.05); g.fillStyle = i % 2 ? '#3a9a5a' : '#2a7a4a'; g.beginPath(); g.ellipse(0, -26, 7, 26, 0, 0, TAU); g.fill(); g.restore(); }
   g.fillStyle = '#c8b8e0'; rr(g, px - 16, py - 30, 32, 30, 4); g.fill();
+  if (w > 480) {
+    placard(g, x + w * .18, y + h * .30, w * .30, 'RUNWAY: 3 SEEDS', 'Our burn rate is mostly cardio.', -.025);
+    dispatchDesk(g, x + w * .29, y + h * .52, Math.min(1, w / 650), st.spin, !st.stopped, st.delivery);
+  }
   // influencer + ring light
   if (own(st, 7)) {
     const ix = x + w * 0.1, iy = y + h * 0.5;
@@ -293,6 +334,7 @@ function startup(g: G, b: Box, st: SceneState) {
   }
   const R = Math.min(w, h) * 0.17;
   geraldWheel(g, x + w * 0.24, y + h * 0.95 - R * 1.12, R, st);
+  deliveryCrate(g, x + w * .46, y + h * .91, Math.min(1, w / 650), st.delivery ?? 0);
 }
 
 // ---------- era 3: the utility ----------
@@ -341,6 +383,17 @@ function city(g: G, b: Box, st: SceneState) {
   g.save(); g.font = `900 ${Math.round(h * 0.028)}px ${FONT}`; g.textAlign = 'center';
   g.shadowColor = '#ffd86a'; g.shadowBlur = st.stopped ? 0 : 12; g.fillStyle = st.stopped ? '#6a5a30' : '#ffd86a';
   g.fillText('GERALD GENERATING STATION', cx, base + 20); g.restore();
+  if (w > 480) {
+    // Inspection walkway and hazard striping ground the equipment in the city.
+    const deckY = y + h * .93;
+    g.fillStyle = '#45404c'; g.fillRect(x + w * .53, deckY, w * .43, 9);
+    g.save(); g.beginPath(); g.rect(x + w * .53, deckY, w * .43, 9); g.clip();
+    g.strokeStyle = '#ba9a5d'; g.lineWidth = 7; for (let i = 0; i < 20; i++) { const xx = x + w * .53 + i * 18; g.beginPath(); g.moveTo(xx, deckY + 10); g.lineTo(xx + 10, deckY); g.stroke(); } g.restore();
+    switchboard(g, x + w * .79, y + h * .73, Math.min(.95, w / 680), st.spin, !st.stopped);
+    dispatchDesk(g, x + w * .56, y + h * .86, Math.min(.8, w / 800), st.spin, !st.stopped, st.delivery);
+    placard(g, x + w * .30, y + h * .31, Math.min(205, w * .34), 'RENEWABLE. QUESTIONABLE.', 'Please report unscheduled squeaks.', -.025);
+  }
+  deliveryCrate(g, x + w * .44, y + h * .94, Math.min(.85, w / 700), st.delivery ?? 0);
 }
 
 // ---------- era 4: the megaproject ----------
@@ -377,6 +430,14 @@ function mega(g: G, b: Box, st: SceneState) {
   } else { g.fillStyle = '#ffd86a'; g.font = `800 14px ${FONT}`; g.textAlign = 'center'; g.fillText('SITE OF FUTURE TOKAMAK', cx, cy + 5); g.textAlign = 'left'; }
   const R = Math.min(w, h) * 0.14;
   geraldWheel(g, x + w * 0.18, y + h * 0.94 - R * 1.12, R, st);
+  if (w > 480) {
+    switchboard(g, x + w * .84, y + h * .76, .7, st.spin, !st.stopped);
+    shippingLabel(g, x + w * .08, y + h * .24, w * .39, 'CERN HAS LEFT 14 MESSAGES', 'Gerald has put his phone on silent.');
+    // Maintenance carts and access gantries show the scale of the ring.
+    g.strokeStyle = '#8c968f'; g.lineWidth = 3; g.beginPath(); g.moveTo(x + w * .36, y + h * .74); g.lineTo(x + w * .70, y + h * .82); g.stroke();
+    for (let i = 0; i < 7; i++) { const xx = x + w * (.36 + i * .056), yy = y + h * (.74 + i * .013); g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx, yy - 16); g.stroke(); }
+  }
+  deliveryCrate(g, x + w * .48, y + h * .88, .85, st.delivery ?? 0);
 }
 
 // ---------- era 5: the planet ----------
@@ -403,7 +464,9 @@ function planet(g: G, b: Box, st: SceneState) {
   g.save(); g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.clip();
   for (let k = 0; k < 8; k++) {
     const px = cx - R * 1.4 + ((hash(k) * R * 2.8 + st.spin * R * 0.05) % (R * 2.8)), py = cy + (hash(k + 4) * 2 - 1) * R * 0.7;
-    g.fillStyle = k % 3 ? '#3a9a4a' : '#c8b070'; g.beginPath(); g.ellipse(px, py, R * (0.14 + hash(k + 1) * 0.22), R * (0.08 + hash(k + 2) * 0.12), hash(k) * 3, 0, TAU); g.fill();
+    g.fillStyle = k % 3 ? '#78a47b' : '#bea777'; g.beginPath();
+    for (let j = 0; j < 18; j++) { const a = j / 18 * TAU, edge = .65 + hash(k * 37 + j) * .35; const xx = px + Math.cos(a) * R * .28 * edge, yy = py + Math.sin(a) * R * .17 * edge; if (!j) g.moveTo(xx, yy); else g.lineTo(xx, yy); }
+    g.closePath(); g.fill();
   }
   g.fillStyle = 'rgba(255,255,255,0.5)';
   for (let k = 0; k < 10; k++) { const px = cx - R * 1.4 + ((hash(k + 20) * R * 2.8 + st.time * R * 0.03) % (R * 2.8)), py = cy + (hash(k + 24) * 2 - 1) * R * 0.85; g.beginPath(); g.ellipse(px, py, R * 0.18, R * 0.04, 0, 0, TAU); g.fill(); }
@@ -418,6 +481,17 @@ function planet(g: G, b: Box, st: SceneState) {
   g.fillStyle = mg; g.beginPath(); g.arc(mx, my, mr, 0, TAU); g.fill();
   g.fillStyle = 'rgba(0,0,0,0.15)'; for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(mx + (hash(k) - 0.5) * mr, my + (hash(k + 1) - 0.5) * mr, mr * 0.15 * (0.5 + hash(k + 2)), 0, TAU); g.fill(); }
   if (own(st, 17)) wheelWith(g, mx, my - mr * 1.35, mr * 0.45, st.spin * 2, style(st, 3), st.speed, undefined, false);
+  if (w > 480) {
+    const labels = [
+      ['EARTH: NOW UNDER MANAGEMENT', 'Please keep all continents inside the wheel.'],
+      ['THE SUN IS ON THE PAYROLL', 'Benefits include unlimited daylight.'],
+      ['REGIONAL OFFICE: EVERYWHERE', 'Head office is still a cardboard box.'],
+    ][st.s.era - 5];
+    shippingLabel(g, x + w * .48, y + h * .79, w * .48 - 14, labels[0], labels[1]);
+    const a = st.spin * .035;
+    satellite(g, x + w * (.73 + Math.cos(a) * .08), y + h * (.27 + Math.sin(a) * .04), 52, -.3, st.s.era === 5 ? 'station' : 'solar');
+    cargoArrival(g, x + w * .60, y + h * .74, st.delivery ?? 0);
+  }
   gerCam(g, b, st);
 }
 
@@ -453,7 +527,22 @@ function star(g: G, b: Box, st: SceneState) {
   const sg = g.createRadialGradient(cx - R * 0.2, cy - R * 0.2, 1, cx, cy, R); sg.addColorStop(0, '#ffffff'); sg.addColorStop(0.6, '#fff0a0'); sg.addColorStop(1, '#ffb030');
   g.fillStyle = sg; g.beginPath(); g.arc(cx, cy, R, 0, TAU); g.fill();
   swarm(true);
+  for (let k = 0; k < 5; k++) {
+    const a = st.spin * .03 + k / 5 * TAU;
+    satellite(g, cx + Math.cos(a) * R * 2.7, cy + Math.sin(a) * R * 1.7, 24 + k % 2 * 7, a + .4);
+  }
   if (own(st, 19)) { const a = st.time * 0.7, mx = cx + Math.cos(a) * R * 1.4, my = cy + Math.sin(a) * R * 0.4; g.fillStyle = '#a08070'; g.beginPath(); g.arc(mx, my, 8, 0.7, TAU - 0.7); g.lineTo(mx, my); g.fill(); for (let k = 0; k < 6; k++) g.fillRect(mx + 8 + k * 6, my + Math.sin(k + st.time * 3) * 3, 2, 2); }
+  if (w > 480) {
+    const labels = [
+      ['EARTH: NOW UNDER MANAGEMENT', 'Please keep all continents inside the wheel.'],
+      ['THE SUN IS ON THE PAYROLL', 'Benefits include unlimited daylight.'],
+      ['REGIONAL OFFICE: EVERYWHERE', 'Head office is still a cardboard box.'],
+    ][st.s.era - 5];
+    shippingLabel(g, x + w * .48, y + h * .79, w * .48 - 14, labels[0], labels[1]);
+    const a = st.spin * .035;
+    satellite(g, x + w * (.73 + Math.cos(a) * .08), y + h * (.27 + Math.sin(a) * .04), 52, -.3, st.s.era === 5 ? 'station' : 'solar');
+    cargoArrival(g, x + w * .60, y + h * .74, st.delivery ?? 0);
+  }
   gerCam(g, b, st);
 }
 
@@ -473,6 +562,13 @@ function galaxy(g: G, b: Box, st: SceneState) {
     g.fillRect(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2 * 0.55, 1.7, 1.7);
   }
   g.restore();
+  g.save(); g.strokeStyle = 'rgba(209,189,146,.25)'; g.lineWidth = 1; g.setLineDash([3, 6]);
+  for (let k = 0; k < 3; k++) {
+    const a = st.spin * .12 + k / 3 * TAU, px = cx + Math.cos(a) * R * .72, py = cy + Math.sin(a) * R * .4;
+    g.beginPath(); g.moveTo(cx, cy); g.quadraticCurveTo(cx, py, px, py); g.stroke();
+    satellite(g, px, py, 28, -.2, 'station');
+  }
+  g.restore();
   if (own(st, 21)) {
     const bx = cx + R * 0.55, by = cy - R * 0.35;
     g.save(); g.globalCompositeOperation = 'lighter'; glow(g, bx, by, 50, 'rgba(255,150,60,A)', 0.4); g.restore();
@@ -483,6 +579,17 @@ function galaxy(g: G, b: Box, st: SceneState) {
   if (own(st, 23)) {
     g.strokeStyle = 'rgba(255,255,255,0.12)'; g.lineWidth = 3; g.beginPath(); g.arc(cx, cy, R * 1.12, 0, TAU); g.stroke();
     for (let k = 0; k < 12; k++) { const a = st.spin * 0.05 + (k * TAU) / 12; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R * 1.12, cy + Math.sin(a) * R * 1.12); g.stroke(); }
+  }
+  if (w > 480) {
+    const labels = [
+      ['EARTH: NOW UNDER MANAGEMENT', 'Please keep all continents inside the wheel.'],
+      ['THE SUN IS ON THE PAYROLL', 'Benefits include unlimited daylight.'],
+      ['REGIONAL OFFICE: EVERYWHERE', 'Head office is still a cardboard box.'],
+    ][st.s.era - 5];
+    shippingLabel(g, x + w * .48, y + h * .79, w * .48 - 14, labels[0], labels[1]);
+    const a = st.spin * .035;
+    satellite(g, x + w * (.73 + Math.cos(a) * .08), y + h * (.27 + Math.sin(a) * .04), 52, -.3, st.s.era === 5 ? 'station' : 'solar');
+    cargoArrival(g, x + w * .60, y + h * .74, st.delivery ?? 0);
   }
   gerCam(g, b, st);
 }

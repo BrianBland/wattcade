@@ -64,6 +64,17 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
   bg.addColorStop(0, fur.light); bg.addColorStop(0.55, fur.mid); bg.addColorStop(1, fur.dark);
   g.fillStyle = bg; g.beginPath(); g.ellipse(bx, by, brx, bry, -0.06, 0, TAU); g.fill();
   g.strokeStyle = fur.line; g.globalAlpha = 0.45; g.lineWidth = Math.max(1, s * 0.018); g.stroke(); g.globalAlpha = 1;
+  // Short directional fur strokes add a drawn surface without changing the silhouette.
+  if (s > 24) {
+    g.save(); g.beginPath(); g.ellipse(bx, by, brx * .94, bry * .94, -.06, 0, TAU); g.clip();
+    g.lineWidth = Math.max(.6, s * .006);
+    for (let i = 0; i < 38; i++) {
+      const fx = bx + (hash(i + 8) - .5) * brx * 2, fy = by + (hash(i + 71) - .5) * bry * 2;
+      g.strokeStyle = i % 3 ? 'rgba(255,237,196,.25)' : 'rgba(111,64,34,.18)';
+      g.beginPath(); g.moveTo(fx, fy); g.quadraticCurveTo(fx + s * .025, fy - s * .012, fx + s * .045, fy + s * .005); g.stroke();
+    }
+    g.restore();
+  }
   // belly
   g.save(); g.beginPath(); g.ellipse(bx, by, brx, bry, -0.06, 0, TAU); g.clip();
   g.fillStyle = 'rgba(255,248,236,0.92)'; g.beginPath(); g.ellipse(s * 0.06, -s * 0.07, s * 0.36, s * 0.14, -0.05, 0, TAU); g.fill();
@@ -101,7 +112,8 @@ export function hamster(g: G, x: number, y: number, s: number, p: number, look: 
   g.fillStyle = '#f7a8b8'; g.beginPath(); g.arc(hx - hr * 0.42, hy - hr * 0.76, hr * 0.22, 0, TAU); g.fill();
   // eye
   const ex = hx + hr * 0.38, ey = hy - hr * 0.15;
-  if (still) { g.strokeStyle = '#2a1408'; g.lineWidth = Math.max(1, s * 0.02); g.beginPath(); g.arc(ex, ey, hr * 0.2, 0.2, Math.PI - 0.2); g.stroke(); }
+  const blink = !look.rage && time % 5.7 > 5.55;
+  if (still || blink) { g.strokeStyle = '#2a1408'; g.lineWidth = Math.max(1, s * 0.02); g.beginPath(); g.arc(ex, ey, hr * 0.2, 0.2, Math.PI - 0.2); g.stroke(); }
   else {
     g.fillStyle = look.rage ? '#3a0000' : '#140a06'; g.beginPath(); g.arc(ex, ey, hr * 0.26, 0, TAU); g.fill();
     if (look.rage) { g.fillStyle = '#ff2020'; g.beginPath(); g.arc(ex, ey, hr * 0.12, 0, TAU); g.fill(); }
@@ -196,6 +208,14 @@ export function wheelStand(g: G, x: number, y: number, r: number, st: WheelStyle
   g.strokeStyle = sg; g.lineWidth = Math.max(2, r * 0.08);
   g.beginPath(); g.moveTo(x, y); g.lineTo(x + r * 0.55, fy); g.moveTo(x, y); g.lineTo(x - r * 0.55, fy); g.stroke();
   g.fillStyle = st.rimDark; rr(g, x - r * 0.75, fy - r * 0.035, r * 1.5, r * 0.07, r * 0.03); g.fill();
+  if (r > 55) {
+    // Rubber feet, a riveted maker's plate, and visible wear on the stand.
+    g.fillStyle = '#453d46'; rr(g, x - r * .73, fy, r * .22, r * .045, 2); g.fill(); rr(g, x + r * .51, fy, r * .22, r * .045, 2); g.fill();
+    const px = x + r * .22, py = y + r * .72;
+    g.save(); g.translate(px, py); g.rotate(.47); g.fillStyle = '#c9a967'; rr(g, -r * .11, -r * .045, r * .22, r * .09, 2); g.fill();
+    g.fillStyle = '#5b4b42'; for (const xx of [-r * .08, r * .08]) { g.beginPath(); g.arc(xx, 0, 1.2, 0, TAU); g.fill(); }
+    g.restore();
+  }
 }
 export function hub(g: G, x: number, y: number, r: number, st: WheelStyle) {
   const hg = g.createRadialGradient(x - r * 0.04, y - r * 0.04, 1, x, y, r * 0.12);

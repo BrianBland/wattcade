@@ -446,14 +446,14 @@ export class HamsterRenderer implements GameRenderer {
     g.globalAlpha = 1;
   }
   private drawTicker(g: CanvasRenderingContext2D, s: HamsterSnapshot, b: Box, F: Font, dt: number) {
-    const h = 44, y = b.y + b.h - h, badge = b.w < 480 ? 94 : 116;
+    const h = 44, y = b.y + b.h - h, badge = b.w < 480 ? 106 : 116;
     this.tickerRect = { x: b.x, y, w: b.w, h };
     g.fillStyle = '#171323'; g.fillRect(b.x, y, b.w, h);
     g.fillStyle = '#786039'; g.fillRect(b.x, y, b.w, 1);
     g.fillStyle = '#e6c77c'; g.fillRect(b.x + 5, y + 6, badge - 5, h - 12);
     g.fillStyle = '#302538'; g.font = F(b.w < 480 ? 9 : 10, 900);
     g.fillText(this.ticker.paused ? 'NEWS PAUSED' : 'HAMSTER NEWS', b.x + 12, y + 20);
-    g.font = F(8, 700); g.fillText(this.ticker.paused ? 'TAP TO RESUME' : 'FACTS OPTIONAL', b.x + 12, y + 32);
+    g.font = F(8, 700); g.fillText(this.ticker.paused ? 'TAP TO RESUME' : 'TRUTH, AS BUDGETED', b.x + 12, y + 32);
     const x = b.x + badge + 10, width = Math.max(1, b.w - badge - 64);
     g.font = F(13, 600);
     const frame = this.ticker.frame(s.news, dt, width, text => g.measureText(text).width);

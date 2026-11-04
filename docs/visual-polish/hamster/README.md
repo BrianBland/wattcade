@@ -25,7 +25,7 @@ Gerald's Unlicensed Supply retains the Black Market tab and mechanics, with Bear
 
 Trial offers show configured duration and FTP target before acceptance. The explicit Accept button has a 104 × 44 px target; tapping elsewhere in the card does not accept. Event titles and instructions fit their cards. Notifications display at most two on tablet and one in narrow scenes; this is a display cap, not a notification queue.
 
-Hamster News uses a brass-colored masthead ("FACTS OPTIONAL") and a 44 px touch strip. Headlines appear immediately, hold for 2.5 seconds, and scroll only when they overflow, at 40 px/second. The final words remain visible for at least three seconds before replacement. New bulletins wait for the current joke to finish; only the latest pending bulletin is kept. Tap the strip to pause/resume. Rotation restarts the reading window. Gameplay events still appear in their dedicated cards immediately.
+Hamster News uses a brass-colored masthead ("TRUTH, AS BUDGETED") and a 44 px touch strip. Headlines appear immediately, hold for 2.5 seconds, and scroll only when they overflow, at 40 px/second. The final words remain visible for at least three seconds before replacement. New bulletins wait for the current joke to finish; only the latest pending bulletin is kept. Tap the strip to pause/resume. Rotation restarts the reading window. Gameplay events still appear in their dedicated cards immediately. Sixteen additional era-specific bulletins give the company newsroom a deadpan voice: regulatory capture, creative accounting, compulsory optimism and an expanding definition of company property.
 
 ## Current captures
 

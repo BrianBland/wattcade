@@ -50,7 +50,10 @@ function wallArm(L, o) {
   const pg = new T.Group(); pg.position.copy(V(...root)); o.parent.add(pg);
   const ag = new T.Group(); pg.add(ag);
   const mat = tri(base, { fresh: true, side: true });
-  const road = L.road(L3([0, 0, 0], F.u.map((v) => v * o.len), F.n), { g: ag, mat, th: .12, edgeText: o.edgeText });
+  // o.block: the arm ends in a block of that size, and its road runs on over the block's top edge, away from the wall
+  const bs = o.block, BR = .08, pts = bs ? ftur([0, 0, 0], F.u, F.n).fwd(o.len).curl(BR, -90).fwd(bs / 2 - BR).pts : L3([0, 0, 0], F.u.map((v) => v * o.len), F.n);
+  const road = L.road(pts, { g: ag, mat, th: .12, edgeText: o.edgeText });
+  if (bs) plate(ag, F.u, Zup, F.n.map((v) => -v), bs, bs, bs, add(F.u.map((v) => v * (o.len + BR - .008 - bs / 2)), F.n, -.006), tri(th.roof));
   // a hub disc flush on the wall
   const hub = new T.Mesh(new T.CylinderGeometry(.42, .42, .08, 28), tri(th.mechDark || th.idle)); hub.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), v3(F.n)); hub.position.copy(V(...F.n.map((v) => -v * .03))); pg.add(hub);
   const [lo, hi] = [Math.min(...o.stops), Math.max(...o.stops)];
@@ -266,16 +269,17 @@ const CUBES = [
       const F1l = up(wallLoopPts(F[1], -2.2, -.7, zB, zB + 3.2, .45, .02), { closed: true }); P.F1 = F1l;
       Xb.joins = [{ k: 1, to: F1l, s: sAt(F1l, F[1].at(-1.55, zB, .02)) + .02, dir: 1 }];
       const apz = zB + 3.2 - .45, alen = H + 1.0 - apz;
-      const arm = wallArm(L, { F: F[1], parent: upperG, pivot: [-.7, apz], len: alen, stops: [0, 90], start: 0, at: [-1.45, zB + .9], key: 'a', name: 'Tall arm', edgeText: 'The arm led nowhere from here, so the wheel dropped' }); P.arm = arm;
+      const BS = .8, arm = wallArm(L, { F: F[1], parent: upperG, pivot: [-.7, apz], len: alen, block: BS, stops: [0, 90], start: 0, at: [-1.45, zB + .9], key: 'a', name: 'Tall arm', edgeText: 'The arm led nowhere from here, so the wheel dropped' }); P.arm = arm;
       F1l.forks.push({ s: sAt(F1l, F[1].at(-.7, apz, .02)), dir: 1, to: arm.road, toK: 0, when: () => arm.at(90), text: 'The arm stands up, so the wheel rides on up' });
       // the roof road, placed in the cube's own frame for the turn at which this wall faces you (five quarter turns)
       { const KF = 5, rot = (p, a) => [p[0] * Math.cos(a) - p[1] * Math.sin(a), p[0] * Math.sin(a) + p[1] * Math.cos(a), p[2]];
-        const sk = KF * Math.PI / 2, tipW = rot(F[1].at(-.7, apz + alen, .02), sk);
-        const k = tipW[2] - (H + .16), RW = [tipW[0] - k, tipW[1] - k, H + .16];
-        const scr = (d) => [(d[0] - d[1]) * .7071, (2 * d[2] - d[0] - d[1]) * .4082];
-        const sT = scr([0, 0, 1]), nT = Math.hypot(...sT);
-        let best = 0, bd = -2; for (let i = 0; i < 360; i++) { const f = i * Math.PI / 180, s = scr([Math.cos(f), Math.sin(f), 0]), nn = Math.hypot(...s), c = (s[0] * sT[0] + s[1] * sT[1]) / (nn * nT); if (c > bd) { bd = c; best = f; } }
-        const r0 = rot(RW, -sk), d0 = rot([Math.cos(best), Math.sin(best), 0], -sk);
+        // the arm's road ends on top of its block; that point, slid back along the line of sight onto the roof, is where the roof
+        // road starts. A tile on the roof there is the block's top seen from here, so the road reads as going up the block's
+        // face, over its edge and on across the top
+        const sk = KF * Math.PI / 2, zt = apz + alen + .08, pA = add(F[1].at(-.7, zt, .008), F[1].n, -BS / 2);
+        const k = zt - (H + .16), back = rot([1, 1, 1], -sk), r0 = pA.map((v, i) => v - k * back[i]), d0 = F[1].n.map((v) => -v);
+        { const tc = add(r0, d0, 0), tile = new T.Mesh(UNIT, tri(th.roof)); tile.matrixAutoUpdate = false;
+          tile.matrix.copy(boxMatrix(v3(F[1].u), v3(d0), v3(Zup), BS, BS, .012, V(tc[0], tc[1], H + .146))); upperG.add(tile); }
         const toC = [-r0[0], -r0[1]], left = d0[0] * toC[1] - d0[1] * toC[0] > 0;
         const rt = ftur(r0, d0, Zup).fwd(.8).turn(.7, left ? 90 : -90).fwd(.9);
         P.home = up(rt.pts, { goal: true });

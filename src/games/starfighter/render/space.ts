@@ -230,6 +230,8 @@ export function createSpace(scene: THREE.Scene) {
   /** Facade colours for city walls (dusk): navy, slate, brick, sandstone, teal, charcoal, concrete cream, plum. */
   /** Roof finishes: steel blue, dark membrane, concrete, slate, gravel, green roof. */
   /** Plaza paving: pale granite, warm sandstone, cool concrete. */
+  /** Park surfaces: running-track red; allotment plots (greens, tilled soil). */
+  const TRACK=new THREE.Color('#9a4a3a'),PLOTS=['#4f7a3a','#6b8f45','#6a4e34','#7d6a3f','#3f6a3a'].map(c=>new THREE.Color(c));
   const PAVING=['#c9c4b6','#d2bfa0','#b5bec4'].map(c=>new THREE.Color(c));
   const ROOFS=['#5f7c93','#3a4148','#7b7f82','#47545c','#857d6c','#4c5f48'].map(c=>new THREE.Color(c));
   const FACADES=['#28486a','#3b4555','#5e3530','#7d6a52','#21515b','#25292f','#8c8576','#43344f'].map(c=>new THREE.Color(c));
@@ -247,12 +249,33 @@ export function createSpace(scene: THREE.Scene) {
       const r=mulberry(P.seed^(tile*2654435761)^(street*40503)),cx=(x0+x1)/2,[bwx,bwz]=vWorld(cx,z),[blx,bah]=wLocal(bwx,bwz);
       if(!inView(blx,bah))continue;
       const core=nearRoute(bwx,bwz,42+bw/2),roll=r(),far=Math.abs(blx)>260||bah>800;
-      if(roll<0.12&&!core){ // park: mown lawn, crossing paths, a pond sometimes, and clustered trees with shadows
-        add(grass,cx,-5.95,z,bw,0.1,58);add(paths,cx,-5.88,z,bw,0.04,1.6);add(paths,cx,-5.88,z,1.6,0.04,58,0);add(paths,cx,-5.88,z,1.4,0.04,Math.hypot(bw,58)*0.9,Math.atan2(bw,58));
-        if(r()<0.4)add(domes,cx+bw*0.22,-6,z-14,bw*0.18,0.15,9);
-        for(let k=0;k<14;k++){const tx=x0+1.5+r()*(bw-3),tz=z-27+r()*54,sc=1.5+r()*1.3,sy=sc*(0.9+r()*0.4),yaw=r()*6;if(Math.abs(tx-cx)<1.6||Math.abs(tz-z)<1.4)continue;add(trees,tx,-5.9,tz,sc,sy,sc,yaw);if(!far)shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);}
+      // Parks are rare and never side by side: a block yields its park to a neighbouring block that also rolled one lower.
+      const rollOf=(t:number,st:number)=>mulberry(P.seed^(t*2654435761)^(st*40503))();
+      const park=roll<0.07&&!core&&![[tile-1,street],[tile+1,street],[tile,street-1],[tile,street+1]].some(([t,st])=>{const v=rollOf(t,st);return v<0.07&&v<roll;});
+      if(park){
+        const kind=r(),tree=(tx:number,tz:number,sc:number)=>{add(trees,tx,-5.9,tz,sc,sc*(0.9+r()*0.4),sc,r()*6);if(!far)shadow(tx,tz,sc*1.6,sc*1.6,sc*2.6);};
+        const inX=(m:number)=>x0+m+r()*(bw-2*m),inZ=(m:number)=>z-29+m+r()*(58-2*m);
+        add(grass,cx,-5.95,z,bw,0.1,58);
+        if(kind<0.25){ // open lawn: two meandering paths and a few tree clusters
+          for(let q=0;q<2;q++){const a=(r()-0.5)*1.2,off=(r()-0.5)*bw*0.4;add(paths,cx+off,-5.88,z,1.3,0.04,58/Math.cos(a)*0.95,a);}
+          for(let c=0;c<3;c++){const kx=inX(5),kz=inZ(6);for(let k=0;k<4+Math.floor(r()*3);k++)tree(kx+(r()-0.5)*7,kz+(r()-0.5)*7,1.4+r()*1.2);}
+        }else if(kind<0.45){ // pond park: a pond off centre, a ring path, trees around the water
+          const px=cx+(r()-0.5)*bw*0.2,pz=z+(r()-0.5)*14,pr=Math.min(bw*0.3,12);
+          add(paths,px,-5.9,pz,pr*2.9,0.04,pr*2.4,0);add(grass,px,-5.89,pz,pr*2.6,0.05,pr*2.1);add(domes,px,-6,pz,pr,0.15,pr*0.8);
+          for(let k=0;k<10;k++){const a=k/10*Math.PI*2+r()*0.3,d=pr*(1.6+r()*0.5);tree(px+Math.cos(a)*d,pz+Math.sin(a)*d*0.8,1.3+r()*1.1);}
+        }else if(kind<0.65&&bw>16){ // sports ground: running track, pitch with markings, stands
+          if(add(roofTops,cx,-5.93,z,bw-4,0.06,50))setColor(roofTops,TRACK);add(grass,cx,-5.9,z,bw-9,0.06,40);
+          for(const q of [-1,1]){add(paths,cx,-5.86,z+q*19.5,bw-10,0.03,0.25);add(paths,cx+q*(bw-10)/2,-5.86,z,0.25,0.03,39);add(walls,cx+q*(bw/2-1),-5,z,1.6,2,30)&&setColor(walls,FACADES[6]);}
+          add(paths,cx,-5.86,z,bw-10,0.03,0.25);add(paths,cx,-5.86,z,4,0.03,4,0.785);
+        }else if(kind<0.82){ // grove: dense woodland, no paths
+          for(let k=0;k<26;k++)tree(inX(1.5),inZ(1.5),1.5+r()*1.6);
+        }else{ // allotments: a grid of planted plots and a couple of sheds
+          const cols=Math.max(2,Math.floor(bw/7)),rows=6;
+          for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){const v=r();if(add(roofTops,x0+(i+0.5)*bw/cols,-5.9,z-29+(j+0.5)*58/rows,bw/cols-1.4,0.12,58/rows-1.4))setColor(roofTops,PLOTS[Math.floor(v*PLOTS.length)]);}
+          for(let q=0;q<2;q++)add(roofs,inX(3),-5,inZ(4),2.4,2,2);
+        }
         continue;}
-      if(roll<0.2){ // plaza: stone paving, a fountain, a planter, corner trees and lamp posts
+      if(roll>=0.07&&roll<0.1){ // plaza (its own band: blocks that yield a park become buildings, not plazas): stone paving, a fountain, a planter, corner trees and lamp posts
         const pv=r();if(add(roofTops,cx,-5.9,z,bw,0.2,56))setColor(roofTops,PAVING[Math.floor(pv*PAVING.length)]);
         add(domes,cx,-5,z,2.2,1.2,2.2);add(lamps,cx,-4.2,z,0.6,0.6,0.6);add(grass,cx,-5.7,z+14,bw*0.4,0.3,5);
         for(const qx of [-1,1])for(const qz of [-1,1]){add(trees,cx+qx*bw*0.36,-5.8,z+qz*23,1.6,1.7,1.6,qx+qz*2);add(roofs,cx+qx*bw*0.2,-3.6,z+qz*12,0.25,4.4,0.25);add(lamps,cx+qx*bw*0.2,-1.3,z+qz*12,0.6,0.35,0.6);}

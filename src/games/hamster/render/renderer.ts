@@ -6,6 +6,7 @@ import { COMIC, FONT, FURS, TAU, glow, hamster, rr } from './draw';
 import { SCENES, type Box, type SceneState } from './scenes';
 import { layout } from './layout';
 import { inventoryArt } from './art';
+import { NewsTicker } from './ticker';
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; kind: 'confetti' | 'spark' | 'text' | 'seed' | 'fw'; color: string; text?: string; size: number; rot: number }
 interface Rect { x: number; y: number; w: number; h: number }
@@ -29,7 +30,9 @@ export class HamsterRenderer implements GameRenderer {
   private parts: Particle[] = [];
   private lastCue = -1; private lastBuy = -1; private deliveredAt = -Infinity; private lastOwned = -1; private lastToast = -1; private textAcc = 0;
   private prevEra = -1; private trans: { from: number; t0: number } | null = null; private eraBanner: { text: string; sub: string; t0: number } | null = null;
-  private shake = 0; private scroll = 0; private tickerX = 0; private tickerId = -1; private shownBank = 0; private bankPulse = 0;
+  private shake = 0; private scroll = 0; private shownBank = 0; private bankPulse = 0;
+  private ticker = new NewsTicker();
+  private tickerRect: Rect | null = null;
   private tabRects: Array<Rect & { i: number }> = [];
   private rowRects: Array<Rect & { i: number }> = [];
   private acceptRect: Rect | null = null;
@@ -48,6 +51,7 @@ export class HamsterRenderer implements GameRenderer {
   private onPointer = (e: PointerEvent) => {
     if (this.gesture) return;
     unlockAudio(); const p = this.point(e);
+    if (this.tickerRect && this.inside(this.tickerRect, p)) { this.ticker.paused = !this.ticker.paused; return; }
     if (this.listRect && this.inside(this.listRect, p)) {
       e.preventDefault();
       this.gesture = { id: e.pointerId, x: p.x, y: p.y, lastY: p.y, dragged: false, row: this.rowRects.find(r => this.inside(r, p))?.i ?? null };
@@ -442,18 +446,24 @@ export class HamsterRenderer implements GameRenderer {
     g.globalAlpha = 1;
   }
   private drawTicker(g: CanvasRenderingContext2D, s: HamsterSnapshot, b: Box, F: Font, dt: number) {
-    const h = 30, y = b.y + b.h - h;
-    const tg = g.createLinearGradient(0, y, 0, y + h); tg.addColorStop(0, 'rgba(10,6,20,0.85)'); tg.addColorStop(1, 'rgba(10,6,20,0.98)');
-    g.fillStyle = tg; g.fillRect(b.x, y, b.w, h);
-    g.fillStyle = 'rgba(255,255,255,0.06)'; g.fillRect(b.x, y, b.w, 1);
-    if (s.news.id !== this.tickerId) { this.tickerId = s.news.id; this.tickerX = b.w; }
-    this.tickerX -= dt * 75;
-    g.save(); g.beginPath(); g.rect(b.x + 118, y, b.w - 118, h); g.clip();
-    g.font = F(13, 600); g.fillStyle = '#ffe8a8'; g.fillText(s.news.text, b.x + 118 + Math.max(12, this.tickerX), y + 20);
+    const h = 44, y = b.y + b.h - h, badge = b.w < 480 ? 94 : 116;
+    this.tickerRect = { x: b.x, y, w: b.w, h };
+    g.fillStyle = '#171323'; g.fillRect(b.x, y, b.w, h);
+    g.fillStyle = '#786039'; g.fillRect(b.x, y, b.w, 1);
+    g.fillStyle = '#e6c77c'; g.fillRect(b.x + 5, y + 6, badge - 5, h - 12);
+    g.fillStyle = '#302538'; g.font = F(b.w < 480 ? 9 : 10, 900);
+    g.fillText(this.ticker.paused ? 'NEWS PAUSED' : 'HAMSTER NEWS', b.x + 12, y + 20);
+    g.font = F(8, 700); g.fillText(this.ticker.paused ? 'TAP TO RESUME' : 'FACTS OPTIONAL', b.x + 12, y + 32);
+    const x = b.x + badge + 10, width = Math.max(1, b.w - badge - 64);
+    g.font = F(13, 600);
+    const frame = this.ticker.frame(s.news, dt, width, text => g.measureText(text).width);
+    g.save(); g.beginPath(); g.rect(x, y, width, h); g.clip();
+    g.fillStyle = '#ffe8a8'; g.fillText(frame.text, x + frame.offset, y + 27);
     g.restore();
-    const lg = g.createLinearGradient(0, y + 5, 0, y + 25); lg.addColorStop(0, '#ff5a6a'); lg.addColorStop(1, '#d81a3a');
-    g.fillStyle = lg; rr(g, b.x + 8, y + 5, 104, 20, 10); g.fill();
-    g.fillStyle = '#fff'; g.font = F(10.5, 900); g.fillText('📰 HAMSTER NEWS', b.x + 15, y + 19);
+    const cx = b.x + b.w - 22;
+    g.fillStyle = this.ticker.paused ? C.gold : C.dim;
+    if (this.ticker.paused) { g.beginPath(); g.moveTo(cx - 4, y + 15); g.lineTo(cx + 6, y + 22); g.lineTo(cx - 4, y + 29); g.closePath(); g.fill(); }
+    else { g.fillRect(cx - 5, y + 16, 3, 12); g.fillRect(cx + 2, y + 16, 3, 12); }
   }
   private drawEraBanner(g: CanvasRenderingContext2D, b: Box, F: Font) {
     if (!this.eraBanner || this.time - this.eraBanner.t0 > 4.5) return;

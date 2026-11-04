@@ -2,7 +2,7 @@ import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const out = 'docs/visual-polish/hamster/complete'; mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-accelerated-2d-canvas', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1024, height: 768 } });
 const errors = []; page.on('pageerror', e => errors.push(e.message));
 const cdp = await page.context().newCDPSession(page);
@@ -16,7 +16,9 @@ try {
     await page.evaluate(async era => {
       const { createGameSession, testProfile, NullInput } = await import('/src/core/index.ts');
       const { module: game } = await import('/src/games/hamster/index.ts');
+      const { NewsTicker } = await import('/src/games/hamster/render/ticker.ts');
       const r = window.__hudLive.renderer();
+      r.ticker = new NewsTicker();
       window.__baseRender ??= r.render.bind(r); window.__complete?.session.sim.dispose?.();
       const gens = Array.from({ length: (era + 1) * 3 }, (_, i) => i < 3 ? 12 : 3);
       const profile = testProfile({ gameData: { hamster: { v: 1, gens, bank: 10 ** (5 + era * 4), life: 1e32, maxEra: era, unlocks: ['upgrades', 'market', 'vibes', 'rebirth'] } } });
@@ -49,5 +51,37 @@ try {
   assert.equal(first.scroll, 0, 'first market item must remain at the top on a short screen');
   assert(first.row.y >= first.list.y && first.row.h >= 124, 'first market item must be fully visible');
   await capture('market-phone');
+  // Exercise the real ticker at tablet and phone widths, including its touch control.
+  for (const [name, width, height] of [['ipad', 1024, 768], ['phone', 390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate(async ({ width, height }) => {
+      const { r } = window.__complete;
+      const { NewsTicker } = await import('/src/games/hamster/render/ticker.ts');
+      r.ticker = new NewsTicker(); r.resize(width, height);
+      window.__complete.patch = { news: { id: 9000, text: 'BREAKING: Management has reviewed your request for a larger wheel. The request has been shredded and repurposed as executive bedding.' } };
+    }, { width, height });
+    await paint(); await capture(`news-${name}`);
+    const rect = await page.evaluate(() => window.__complete.r.tickerRect);
+    assert(rect.h >= 44);
+    await page.mouse.click(rect.x + rect.w - 22, rect.y + 22);
+    const paused = await page.evaluate(() => window.__complete.r.ticker.elapsed);
+    await paint();
+    assert.equal(await page.evaluate(() => window.__complete.r.ticker.elapsed), paused);
+    await capture(`news-${name}-paused`);
+    await page.mouse.click(rect.x + rect.w - 22, rect.y + 22);
+    const result = await page.evaluate(async () => {
+      const { r, patch } = window.__complete;
+      const { FONT } = await import('/src/games/hamster/render/draw.ts');
+      const width = r.ticker.width;
+      r.g.font = `600 13px ${FONT}`;
+      const measure = text => r.g.measureText(text).width;
+      const frame = r.ticker.frame(patch.news, 60, width, measure);
+      const end = frame.offset + measure(frame.text);
+      r.render();
+      return { end, width, paused: r.ticker.paused };
+    });
+    assert.equal(result.paused, false); assert(Math.abs(result.end - result.width) < 1, 'headline tail must reach the visible reading window');
+    await capture(`news-${name}-end`);
+  }
   assert.deepEqual(errors, []); console.log('All eight eras, market/vibes/rebirth, trial sizing and narrow layouts passed.');
 } finally { await browser.close(); }

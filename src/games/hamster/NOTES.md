@@ -39,3 +39,4 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 - Shared controller HUD opts Z into a Trial offer indicator during offers. Touch keeps Buy ×10 in generators and Re-dose when unlocked. Swipe/drag/wheel scroll the list; row taps buy on release and drags/cancel never buy. Controller selection re-centers the list; native tab/row/trial taps replace duplicate buttons.
 
 - Completed visual pass: `render/art.ts` supplies custom inventory art, `render/machinery.ts` draws workshop equipment, and `render/orbital.ts` carries those materials into space. Current eight-era gallery and verification: `docs/visual-polish/hamster/README.md`.
+- `render/ticker.ts` manages headline reading time independently of simulation news cadence. It holds the opening, pans overflowing text through its final words, and retains only the newest pending headline. Tap the 44 px news strip to pause/resume; this does not pause riding or event cards.

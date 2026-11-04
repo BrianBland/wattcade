@@ -54,3 +54,11 @@ it('accepts a trial only inside its explicit button, not the surrounding offer',
   pointer('pointerdown', 120, 25); expect(send).not.toHaveBeenCalled();
   pointer('pointerdown', 245, 25); expect(send).toHaveBeenCalledExactlyOnceWith({ type: 'accept' });
 });
+
+it('pauses and resumes the news without sending a game action', () => {
+  const ticker = { paused: false };
+  Object.assign(renderer, { ticker, tickerRect: { x: 310, y: 400, w: 400, h: 44 } });
+  pointer('pointerdown', 500, 420); expect(ticker.paused).toBe(true);
+  pointer('pointerdown', 500, 420); expect(ticker.paused).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+});

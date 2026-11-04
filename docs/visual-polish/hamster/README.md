@@ -25,6 +25,8 @@ Gerald's Unlicensed Supply retains the Black Market tab and mechanics, with Bear
 
 Trial offers show configured duration and FTP target before acceptance. The explicit Accept button has a 104 × 44 px target; tapping elsewhere in the card does not accept. Event titles and instructions fit their cards. Notifications display at most two on tablet and one in narrow scenes; this is a display cap, not a notification queue.
 
+Hamster News uses a brass-colored masthead ("FACTS OPTIONAL") and a 44 px touch strip. Headlines appear immediately, hold for 2.5 seconds, and scroll only when they overflow, at 40 px/second. The final words remain visible for at least three seconds before replacement. New bulletins wait for the current joke to finish; only the latest pending bulletin is kept. Tap the strip to pause/resume. Rotation restarts the reading window. Gameplay events still appear in their dedicated cards immediately.
+
 ## Current captures
 
 | Era | Capture |
@@ -40,12 +42,14 @@ Trial offers show configured duration and FTP target before acceptance. The expl
 
 [Market](complete/market.png) · [Vibes](complete/vibes.png) · [Reincarnation](complete/rebirth.png) · [Trial on iPad](complete/trial-ipad.png) · [Trial on phone](complete/trial-phone.png) · [Market on phone](complete/market-phone.png)
 
+[News on iPad](complete/news-ipad.png) · [Paused news](complete/news-ipad-paused.png) · [Full punchline](complete/news-ipad-end.png) · [News on phone](complete/news-phone.png) · [Phone punchline](complete/news-phone-end.png)
+
 ## Verification and limits
 
 - `npm run typecheck`
-- `npm test -- src/games/hamster` — 32 tests, including latest-unlock navigation and trial button targeting.
+- `npm test -- src/games/hamster` — 38 tests, including latest-unlock navigation, trial button targeting, ticker playback and pause/resume.
 - `npm run build`
-- With Vite on port 5212: `node scripts/review-hamster-complete.mjs` — all eight era fixtures, shop tabs, reincarnation space, trial target dimensions, and first-row visibility on a short screen; rejects browser page errors.
+- With Vite on port 5212: `node scripts/review-hamster-complete.mjs` — all eight era fixtures, shop tabs, reincarnation space, trial target dimensions, first-row visibility, and ticker opening/end/pause at tablet and phone sizes; rejects browser page errors.
 - `node scripts/review-hamster-machinery.mjs` — actual purchases, workforce growth, brief delivery activation and stopped wheel clock.
 - `node scripts/check-hud-gestures.mjs /tmp/hamster-gestures` — scrolling, cancellation, purchase behavior, controller transitions and touch labels.
 

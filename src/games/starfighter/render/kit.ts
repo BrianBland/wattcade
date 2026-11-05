@@ -416,16 +416,35 @@ function icebreaker(): Part {
   p.push(box(0.6, 5, 0.6, 2.6, 6, 4, '#d6a43a'), box(0.5, 0.5, 7, 2.6, 8.3, 1.2, '#d6a43a', 0.3));
   return merge(p);
 }
+/**
+ * Carrier ski-jump: the bow's last 30 units curving up to a lit lip, following the deck's taper (half-width
+ * 42·(tip/70)^0.55, matching the ground shader). Back edge at z = 0, tip at z = −30 (forward).
+ */
+function skiJump(): Part {
+  const pos: number[] = [], col: number[] = [], N = 16, deck = new THREE.Color('#4a525a'), stripe = new THREE.Color('#c9a53a'), lip = new THREE.Color('#ffd27a'), wall = new THREE.Color('#30363d');
+  const row = (i: number) => { const t = i / N, tip = 30 * (1 - t), hw = tip > 0 ? 42 * Math.pow(tip / 70, 0.55) : 0.4, h = 3.2 * t * t; return { z: -30 * t, hw: Math.max(0.4, hw), h }; };
+  const push = (p: number[], c: THREE.Color) => { pos.push(...p); col.push(c.r, c.g, c.b); };
+  for (let i = 0; i < N; i++) {
+    const a = row(i), b = row(i + 1), c = i >= N - 1 ? lip : i % 3 === 1 ? stripe : deck;
+    for (const [p, q, r] of [[[-a.hw, a.h, a.z], [a.hw, a.h, a.z], [b.hw, b.h, b.z]], [[-a.hw, a.h, a.z], [b.hw, b.h, b.z], [-b.hw, b.h, b.z]]]) { push(p, c); push(q, c); push(r, c); }
+    for (const sd of [-1, 1]) { // side walls down to the deck
+      const w = [[sd * a.hw, 0, a.z], [sd * a.hw, a.h, a.z], [sd * b.hw, b.h, b.z], [sd * a.hw, 0, a.z], [sd * b.hw, b.h, b.z], [sd * b.hw, 0, b.z]];
+      for (const p of sd > 0 ? w : [w[0], w[2], w[1], w[3], w[5], w[4]]) push(p, wall);
+    }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.computeVertexNormals();
+  return g;
+}
 let cache: Record<string, Part> | null = null;
 export function kit() {
   cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
     boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
     gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
     islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy(),
-    islandHill: islandHill(), volcano: volcano(), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat(), berg: berg(), icebreaker: icebreaker() };
+    islandHill: islandHill(), volcano: volcano(), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat(), berg: berg(), icebreaker: icebreaker(), skiJump: skiJump() };
   return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
     | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy'
-    | 'islandHill' | 'volcano' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat' | 'berg' | 'icebreaker', Part>;
+    | 'islandHill' | 'volcano' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat' | 'berg' | 'icebreaker' | 'skiJump', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

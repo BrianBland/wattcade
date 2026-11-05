@@ -6,6 +6,7 @@ import type { SfSnapshot } from '../sim/types';
 import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
 import { layout } from './layout';
 import { createSpace } from './space';
+import { createSnow } from './snow';
 import { createCombat } from './combat';
 import { createBullets } from './bullets';
 import { SquadronPost } from './post';
@@ -28,7 +29,9 @@ export class SfRenderer implements GameRenderer {
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
   private cameraBase = new THREE.Vector3(); private turnRoll = 0;
   /** Terrain lift (the ship flies lower in pushes and burns) and the speed FOV widening, both eased. */
-  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1; private post?: SquadronPost;
+  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1;
+  /** Blizzard strength (arctic only): light when cruising, heavy in pushes, a whiteout-ish burn, with gusts. */
+  private snow?: ReturnType<typeof createSnow>; private blizzard = 0; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
@@ -60,7 +63,7 @@ export class SfRenderer implements GameRenderer {
     for (let i = 0; i < 240; i++) { stars[i * 3] = ((i * 71) % 240) - 120; stars[i * 3 + 1] = -8 - (i % 7) * 3; stars[i * 3 + 2] = ((i * 43) % 220) - 110; }
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
-    this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
+    this.space = createSpace(this.scene); this.combat = createCombat(this.scene); this.snow = createSnow(this.scene);
     // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears.
     this.webgl?.compile(this.scene, this.camera);
     for (let i=0;i<2;i++) {
@@ -208,6 +211,9 @@ export class SfRenderer implements GameRenderer {
     const fov = hangar ? 0 : s.drive.fov; if (Math.abs(fov - this.fovAdd) > 0.01) { this.fovAdd += (fov - this.fovAdd) * k; this.camera.fov = 48 + this.fovAdd; this.camera.updateProjectionMatrix(); }
     // A lower camera (pulled back a little, same aim) reads as flying lower and faster.
     this.tilt += ((hangar ? 0 : s.drive.tilt) - this.tilt) * k;
+    { const arctic = !hangar && s.frames.cur.biome === 4, dt = Math.min(0.1, k * 0.9), gust = 0.12 * (0.5 + 0.5 * Math.sin(s.t * 0.37) * Math.sin(s.t * 0.13 + 1));
+      const want = arctic ? Math.min(1, 0.35 + (s.drive.level === 'burn' ? 0.55 : s.drive.level === 'push' ? 0.3 : 0) + gust) : 0;
+      this.blizzard += (want - this.blizzard) * Math.min(1, dt / 2.5); this.space?.setWeather(this.blizzard); this.snow?.update(dt, this.blizzard); }
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y * (1 - this.tilt) - s.bar * 0.45, this.cameraBase.z * (1 + this.tilt * 0.35) - s.bar * 0.3);
     this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
@@ -224,7 +230,7 @@ export class SfRenderer implements GameRenderer {
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
     for (const pool of [this.bullets, this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
-    this.combat?.dispose(); this.space?.dispose();
+    this.combat?.dispose(); this.space?.dispose(); this.snow?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();
   }

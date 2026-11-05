@@ -6,7 +6,7 @@ import { biomeParams, mulberry, riverX, cityRoads, seaIslands, type BiomeParams,
 import { curtain, foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist, polar white, volcanic smoke). */
-export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf', '#8ea6ba', '#3a1d17'];
+export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf', '#dce7f0', '#3a1d17'];
 const noise = `float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
 float cloud(vec2 p){return noise(p)*0.55+noise(p*2.03)*0.28+noise(p*4.07)*0.12+noise(p*8.11)*0.05;}`;
@@ -61,19 +61,24 @@ const biomeColor = `
     vec3 water=waterShade(vec3(0.01,0.04,0.09),vec3(0.03,0.12,0.18),0.8,p,wpos,0.35,0.0)+aur;
     // Snow: grey-blue shading at three scales, sastrugi streaks, blue ice where floes meet, pressure ridges on some cracks.
     float n1=noise(q*0.008),n2=noise(q*0.05),n3=noise(q*0.4);
-    // Kept a cool mid blue-grey (not white) so pink and white enemy fire stays readable over the ice.
-    vec3 snow=mix(vec3(0.2,0.25,0.33),vec3(0.38,0.43,0.5),0.35+0.4*n1+0.25*n2)*(0.94+0.08*n3); // linear (≈ 0.5–0.7 on screen)
+    // Polar white (linear ≤ ~0.85, under the bloom threshold); enemy fire stays readable through its dark underlay.
+    vec3 snow=mix(vec3(0.56,0.63,0.72),vec3(0.82,0.86,0.9),0.35+0.4*n1+0.25*n2)*(0.95+0.07*n3);
     // Each floe has its own surface: mostly snow, some wind-scoured blue ice, some grey first-year ice.
-    snow=tone<0.18?mix(snow,vec3(0.1,0.24,0.36),0.7):tone<0.3?mix(snow,vec3(0.17,0.2,0.24),0.6):snow*(0.92+0.1*tone);
+    snow=tone<0.16?mix(snow,vec3(0.18,0.5,0.72),0.75):tone<0.26?mix(snow,vec3(0.5,0.6,0.68),0.5):snow*(0.94+0.08*tone);
     snow*=0.96+0.05*sin(dot(q,vec2(0.8,0.35))*1.4+n2*8.0);
-    snow=mix(snow,vec3(0.18,0.34,0.46),smoothstep(5.0,1.2,edge)*vis*0.45);
+    snow=mix(snow,vec3(0.16,0.46,0.66),smoothstep(5.0,1.2,edge)*vis*0.55);
     float ridge=step(0.6,hash(v.yz+vec2(1.3,2.2)))*vis;snow+=vec3(0.05)*smoothstep(0.8,0.0,abs(edge-3.4))*ridge;snow-=vec3(0.09,0.07,0.05)*smoothstep(0.7,0.0,abs(edge-4.3))*ridge;
     float crack=smoothstep(0.6,0.15,edge)*vis;
     vec3 c=mix(snow,mix(water,vec3(0.12,0.16,0.2),0.5),crack);
     // Open water: meandering leads and the odd polynya, skinned with grey new ice at the edges.
     float lead=smoothstep(0.03,0.012,abs(noise(q*0.0035+vec2(2.0,7.0))-0.5)),poly=smoothstep(0.1,0.05,hash(v.yz+vec2(3.1,0.7)))*smoothstep(0.55,0.75,noise(q*0.01+v.yz));
     float open=max(lead,poly);
-    return mix(c,mix(water,vec3(0.14,0.18,0.22),0.3*smoothstep(0.6,1.0,open)*n2),open);}
+    c=mix(c,mix(water,vec3(0.14,0.18,0.22),0.3*smoothstep(0.6,1.0,open)*n2),open);
+    // Blizzard: snow streaming across the ice with the wind, and a drifting veil that thickens with uSnow.
+    vec2 bq=vec2(q.x*0.8+q.y*0.6,q.y*0.8-q.x*0.6)+vec2(time*26.0,-time*62.0)*(0.6+0.9*uSnow);
+    float drift=smoothstep(0.6,0.85,noise(bq*vec2(0.05,0.7)))*smoothstep(0.3,0.7,noise(bq*0.01));
+    c=mix(c,vec3(0.86,0.9,0.95),drift*(0.25+0.5*uSnow)+uSnow*0.3*noise(q*0.008+vec2(time*0.05,0.0)));
+    return c;}
   // Lava fields: cracked basalt plates whose seams glow and pulse on the beat, ash drifts, and a molten river along the
   // route with a crust that drifts downstream and banks that glow.
   vec3 lavaField(vec2 p,vec4 P,float pulse){
@@ -140,7 +145,7 @@ const ISO = isOpenBiome;
  */
 export function createSpace(scene: THREE.Scene) {
   const uniforms={time:{value:0},pulse:{value:0},speed:{value:GROUND_SPEED},wave:{value:-9999},waveFade:{value:0},
-    uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])},uIsl:{value:Array.from({length:16},()=>new THREE.Vector4())}};
+    uPose:{value:new THREE.Vector4()},uF0:{value:new THREE.Vector4()},uF1:{value:new THREE.Vector4()},uB0:{value:0},uB1:{value:0},uP0:{value:new THREE.Vector4()},uP1:{value:new THREE.Vector4()},uHaze0:{value:new THREE.Color(HAZE[0])},uHaze1:{value:new THREE.Color(HAZE[0])},uIsl:{value:Array.from({length:16},()=>new THREE.Vector4())},uSnow:{value:0}};
   // Objects share the haze through scene fog (same range as the ground).
   scene.fog=new THREE.Fog(HAZE[0],380,1150);const fogTarget=new THREE.Color(HAZE[0]);
   // Anything past the drawn world (a lowered camera looking far ahead) shows the haze, never a black strip.
@@ -149,7 +154,7 @@ export function createSpace(scene: THREE.Scene) {
   const surface=new THREE.Mesh(new THREE.PlaneGeometry(1500,1800),new THREE.ShaderMaterial({uniforms,
     vertexShader:'varying vec3 world;void main(){world=(modelMatrix*vec4(position,1.0)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(world,1.0);}',
     fragmentShader:`varying vec3 world;uniform float time;uniform float pulse;uniform float speed;uniform float wave;uniform float waveFade;
-    uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uIsl[16];uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
+    uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uIsl[16];uniform float uSnow;uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
     vec2 fwdV(float h){return vec2(-sin(h),-cos(h));} vec2 rightV(float h){return vec2(cos(h),-sin(h));}
     // Biome coords: open biomes (city, ocean) use world axes; straight ones (carrier, canyon) their frame (lateral, route distance).
     vec2 frameP(float b,vec4 F,vec2 W){if(abs(b-1.0)<0.5||abs(b-3.0)<0.5||abs(b-4.0)<0.5)return vec2(W.x,-W.y);vec2 d=W-F.xy;return vec2(dot(d,rightV(F.z)),dot(d,fwdV(F.z))+F.w);}
@@ -164,7 +169,7 @@ export function createSpace(scene: THREE.Scene) {
     float rim=exp(-abs(coast)/2.5)*step(abs(sd),140.0);
     bool wet=abs(uB0-3.0)<0.5||abs(uB1-3.0)<0.5||abs(uB0-4.0)<0.5||abs(uB1-4.0)<0.5;
     c=wet?mix(c,vec3(0.78,0.86,0.9)*(0.75+0.25*noise(W*0.4+vec2(time*0.3,-time*0.2))),rim*0.75):mix(c,c*0.45+vec3(0.02),rim*0.8*(0.7+0.3*noise(W*0.3)));
-    c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(max(c,vec3(0.0)),1.0);}` }));
+    c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0-uSnow*220.0,1150.0-uSnow*480.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(max(c,vec3(0.0)),1.0);}` }));
   // Everything on the ground hangs off one root, so the terrain can rise toward the ship (lower flight in a burn).
   const root=new THREE.Group();scene.add(root);
   surface.rotation.x=-Math.PI/2;surface.position.set(0,-6,-250);root.add(surface);
@@ -620,6 +625,8 @@ export function createSpace(scene: THREE.Scene) {
     },
     stats(){return {dropped,peakFill:Math.round(peakFill*100)/100,overflowed:[...overflowed].join(','),peaks:[...peaks].filter(([,v])=>v>100).map(([k,v])=>k+':'+v).join(' ')};},
     auditBuildings(on:boolean){const out=audit;audit=on?[]:null;return out;},
+    /** Blizzard strength 0..1: drifting snow on the ice, and the fog closes in toward a whiteout. */
+    setWeather(snow:number){uniforms.uSnow.value=snow;const f=scene.fog as THREE.Fog;f.near=380-snow*220;f.far=1150-snow*480;},
     /** Raise the whole terrain by `y` (the ship flies lower). */
     setLift(y:number){root.position.y=y;},
     dispose(){for(const pool of pools)pool.dispose();},

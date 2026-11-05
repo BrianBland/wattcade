@@ -7,6 +7,7 @@ import type { Life } from './life';
 import { HUBS } from './life';
 import { waveHeight } from './sea';
 import { lam, mergeStatic, mesh, mulberry, pick, softTexture } from './util';
+import { PointCloud } from '../../../gfx/points';
 
 const FLAG_COLS = [0xff5a5a, 0xffd23f, 0x4fb3ff, 0x7ddc6a, 0xff9fd0, 0xffffff, 0xb07cff, 0xff9f43];
 const SQ = HUBS[0];
@@ -23,7 +24,7 @@ export class Decor {
   private lanternMat = new THREE.SpriteMaterial({ map: softTexture(64, 0.3), color: 0xffc070, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0 });
   private carousel?: { g: THREE.Group; horses: THREE.Object3D[] };
   private rowers: Array<{ g: THREE.Group; cx: number; cz: number; r: number; ph: number; oar: THREE.Object3D }> = [];
-  private spray?: THREE.Points; private sprayAt = V();
+  private spray?: PointCloud; private sprayAt = V();
   private musicians: THREE.Group[] = [];
   private flags: THREE.Mesh[] = [];
 
@@ -194,8 +195,8 @@ export class Decor {
     this.stat.add(mesh(new THREE.CylinderGeometry(0.14, 0.2, 1.3, 6), stone, x, y + 1.05, z));
     this.stat.add(mesh(new THREE.CylinderGeometry(0.55, 0.25, 0.18, 10), stone, x, y + 1.7, z));
     const N = 70, g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
-    this.spray = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xdff3ff, size: 0.22, transparent: true, opacity: 0.85, depthWrite: false }));
-    this.spray.frustumCulled = false; this.group.add(this.spray); this.sprayAt.set(x, y + 1.8, z);
+    this.spray = new PointCloud(g, { color: 0xdff3ff, size: 0.22, transparent: true, opacity: 0.85, depthWrite: false });
+    this.group.add(this.spray); this.sprayAt.set(x, y + 1.8, z);
   }
 
   private statue(x: number, z: number) {
@@ -264,7 +265,7 @@ export class Decor {
     }
     for (const m of this.musicians) m.position.y = (m.userData.y as number) + Math.abs(Math.sin(f.t * 5 + m.id)) * 0.08; // bobbing to the beat
     if (this.spray) {
-      const pa = this.spray.geometry.attributes.position as THREE.BufferAttribute, n = pa.count, o = this.sprayAt;
+      const pa = this.spray.cloud.attributes.position as THREE.BufferAttribute, n = pa.count, o = this.sprayAt;
       for (let i = 0; i < n; i++) {
         const k = ((f.t * 0.9 + i / n) % 1), a = i * 2.39996, r = k * 1.0;
         pa.setXYZ(i, o.x + Math.cos(a) * r, o.y + k * 1.6 - k * k * 2.2, o.z + Math.sin(a) * r);

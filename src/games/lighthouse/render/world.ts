@@ -1,5 +1,7 @@
 // Static island: terrain (vertex-coloured, flat-shaded, paths painted in), coast rocks, islets, and the lighthouse.
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { pow, uniform, uv, vec4 } from 'three/tsl';
+import { raw } from '../../../gfx/tsl';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, noise2 } from '../sim/layout';
 import { lam, mergeStatic, mesh, mulberry, roofGeo, softTexture } from './util';
 import type { Season } from '../sim/extras';
@@ -204,12 +206,10 @@ export function createLighthouse(color: string): Lighthouse {
   glow.position.set(0, lanternY, 0); grp.add(glow);
   const flare = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xfff4d0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, fog: false }));
   flare.position.set(0, lanternY, 0); flare.renderOrder = 10; grp.add(flare);
-  const beamMat = new THREE.ShaderMaterial({
-    uniforms: { uOpacity: { value: 0.3 }, uColor: { value: new THREE.Color(0xfff0b8) } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-    fragmentShader: 'uniform float uOpacity; uniform vec3 uColor; varying vec2 vUv; void main(){ float a = uOpacity * pow(vUv.y, 1.4); gl_FragColor = vec4(uColor * a, a); }',
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
+  const beamOpacity = uniform(0.3), beamColor = uniform(new THREE.Color(0xfff0b8));
+  const beamMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  const beamA = beamOpacity.mul(pow(uv().y, 1.4));
+  beamMat.colorNode = vec4(raw(beamColor.mul(beamA)), beamA);
   const L = 95;
   const coneGeo = new THREE.ConeGeometry(9, L, 24, 1, true); coneGeo.rotateZ(Math.PI / 2); coneGeo.translate(L / 2, 0, 0);
   const beam = new THREE.Group(); beam.position.set(0, lanternY, 0);
@@ -238,10 +238,10 @@ export function createLighthouse(color: string): Lighthouse {
       const lens = (tier - 1) / 3;
       brass.visible = tier >= 2; twin.visible = tier >= 3; pennant.visible = tier >= 4;
       flag.rotation.y = Math.sin(t * 2.3) * 0.3;
-      beamMat.uniforms.uColor.value.setHex(tier >= 4 ? 0xf2f6ff : 0xfff0b8);
+      beamColor.value.setHex(tier >= 4 ? 0xf2f6ff : 0xfff0b8);
       beam.rotation.y = beamAngle;
       const on = Math.max(0, lamp);
-      beamMat.uniforms.uOpacity.value = (0.07 + 0.45 * night) * on * (0.75 + 0.25 * lens);
+      beamOpacity.value = (0.07 + 0.45 * night) * on * (0.75 + 0.25 * lens);
       glassMat.color.setRGB(0.35 + 0.65 * on, 0.32 + 0.6 * on, 0.25 + 0.4 * on);
       const gs = (3 + 5 * on) * (0.6 + 0.6 * night) * (0.8 + 0.3 * lens);
       glow.scale.set(gs, gs, 1); (glow.material as THREE.SpriteMaterial).opacity = 0.25 + 0.6 * on;

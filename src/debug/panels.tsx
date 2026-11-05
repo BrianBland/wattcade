@@ -3,6 +3,7 @@ import type { DebugActions, DebugSnapshot, TuningEntry } from './types';
 import { TrainerTest } from './TrainerTest';
 import { formatNum, formatValue } from '../shell/format';
 import { Dot } from '../shell/components/Bits';
+import { gfxStats } from '../gfx/stats';
 
 const fmtCmd = (c: TrainerCommand): string =>
   c.mode === 'sim' ? `sim ${c.gradePct.toFixed(2)}%` : c.mode === 'erg' ? `erg ${Math.round(c.watts)}W`
@@ -38,6 +39,7 @@ export function DevicePanel({ s, pps }: { s: DebugSnapshot; pps: Record<string, 
 export function DerivedPanel({ s }: { s: DebugSnapshot }) {
   const b = s.bike;
   if (!b) return <div class="panel tr"><h4>Derived</h4>no session</div>;
+  const gfx = gfxStats();
   return (
     <div class="panel tr">
       <h4>Derived</h4>
@@ -46,6 +48,7 @@ export function DerivedPanel({ s }: { s: DebugSnapshot }) {
         ['pZone / hrZone', `${b.powerZone} / ${b.hrZone ?? '-'}`], ['effortZone', b.effortZone], ['ftpFrac', formatNum(b.ftpFraction, 2)],
         ['crankRevs', formatNum(b.crankRevs, 1)], ['sprint', `${b.sprinting ? 'YES' : 'no'} (${b.sprintCount})`],
         ['gear', b.gear], ['kJ', formatNum(b.kj, 1)], ['mode', b.trainerMode],
+        ['3D', gfx.backend === 'pending' ? '--' : `${gfx.backend} ${formatNum(gfx.fps)} fps`],
       ]} />
     </div>
   );

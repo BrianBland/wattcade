@@ -1,6 +1,7 @@
 // Short-lived particles: coin sparkles when a ship docks, dust when something is built, splashes, whale spouts, fireworks.
 import * as THREE from 'three';
 import { softTexture } from './util';
+import { PointCloud } from '../../../gfx/points';
 
 export interface BurstOpts {
   n: number; color: number | number[]; speed: number; up?: number; gravity?: number; life?: number; spread?: number; drag?: number;
@@ -8,7 +9,7 @@ export interface BurstOpts {
 
 /** A fixed pool of points with per-particle velocity, colour and fade. One pool per blending mode / size. */
 export class Particles {
-  readonly points: THREE.Points;
+  readonly points: PointCloud;
   private pos: Float32Array; private col: Float32Array; private vel: Float32Array;
   private age: Float32Array; private life: Float32Array; private grav: Float32Array; private drag: Float32Array; private base: Float32Array;
   private next = 0; private live = 0;
@@ -21,11 +22,10 @@ export class Particles {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.col, 4));
-    this.points = new THREE.Points(g, new THREE.PointsMaterial({
+    this.points = new PointCloud(g, {
       size, map: softTexture(64, 0.25), vertexColors: true, transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-    }));
-    this.points.frustumCulled = false;
+    });
   }
 
   burst(at: THREE.Vector3, o: BurstOpts) {
@@ -57,8 +57,8 @@ export class Particles {
       this.col.set([this.base[i * 3], this.base[i * 3 + 1], this.base[i * 3 + 2], (1 - k * k) * Math.min(1, a * 12) * tw], i * 4);
     }
     if (!any) this.live = 0;
-    this.points.geometry.attributes.position.needsUpdate = true;
-    this.points.geometry.attributes.color.needsUpdate = true;
+    this.points.cloud.attributes.position.needsUpdate = true;
+    this.points.cloud.attributes.color.needsUpdate = true;
   }
 }
 

@@ -36,6 +36,19 @@ describe('hamster econ', () => {
 });
 
 describe('hamster sim', () => {
+  it('jumps to the newest revealed generator without buying or moving another tab', () => {
+    const { s, pad, snap } = session({ gameData: { v: 1, gens: [20, 5, 1], bank: 1e7, unlocks: ['upgrades'] } });
+    s.step(secs(5)); pad.press('up'); s.step(1);
+    const newest = snap().items.filter(it => !it.locked).length - 1;
+    expect(snap().row).toBeLessThan(newest);
+    const owned = snap().totalOwned, buySeq = snap().buySeq;
+    s.sim.receive!({ type: 'latest' }); s.step(1);
+    expect(snap().row).toBe(newest); expect(snap().totalOwned).toBe(owned); expect(snap().buySeq).toBe(buySeq);
+    s.sim.receive!({ type: 'tab', i: 1 }); s.step(1);
+    const row = snap().row;
+    s.sim.receive!({ type: 'latest' }); s.step(1);
+    expect(snap().tab).toBe('upgrades'); expect(snap().row).toBe(row);
+  });
   it('keeps native row purchases and tab selection usable without duplicated touch buttons', () => {
     const { s, snap } = session({ gameData: { v: 1, gens: [0], bank: 0, unlocks: ['upgrades'] } }); s.step(secs(10));
     expect(s.sim.hud!().touchControls).not.toContain('a');

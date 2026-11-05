@@ -37,13 +37,16 @@ const B = {
 /** Ride lengths the pre-game menu offers (minutes). */
 export const RIDE_LENGTHS = [20, 30, 45, 60] as const;
 export const RIDE_BLURB: Record<number, string> = { 20: 'Quick cycle: one flood', 30: 'Short ride: two floods', 45: 'The full water cycle', 60: 'Epic: four floods' };
+/** The warm-up phases a rider who is already warm can skip (they start at the rain with a ready-made cloud). */
+export const WARMUP_PHASES: readonly Phase[] = ['evaporate', 'cloud'];
 
 /**
  * The ride plan for a length in minutes: the same story at any length. Shorter rides drop still pools and flood
  * cycles (1/2/3/4 surges for 20/30/45/60 min); every block scales to fit (0.5 min steps, at least 1 min) and the
- * salmon run / delta absorb rounding. makePlan(45) is the original 45-minute plan.
+ * salmon run / delta absorb rounding. makePlan(45) is the original 45-minute plan. `skipWarmup` then drops the
+ * warm-up phases (the ride gets shorter by their length; the rest is unchanged).
  */
-export function makePlan(minutes: number): Block[] {
+export function makePlan(minutes: number, skipWarmup = false): Block[] {
   const floods = minutes <= 20 ? 1 : minutes <= 30 ? 2 : minutes <= 45 ? 3 : 4;
   const blocks: Block[] = [B.evap, B.cloud, B.rain, B.carve, B.beavers, B.flush];
   if (minutes > 20) blocks.push(B.still);
@@ -63,10 +66,13 @@ export function makePlan(minutes: number): Block[] {
     const step = drift > 0 ? drift : Math.max(drift, 2 - b.minutes);
     b.minutes += step; drift -= step;
   }
-  return out;
+  return skipWarmup ? out.filter((b) => !WARMUP_PHASES.includes(b.phase)) : out;
 }
 
 export const PLAN: Block[] = makePlan(45);
+
+/** Total minutes of a plan. */
+export const planMinutes = (plan: Block[]): number => plan.reduce((a, b) => a + b.minutes, 0);
 
 export const PLAN_MINUTES = PLAN.reduce((a, b) => a + b.minutes, 0);
 

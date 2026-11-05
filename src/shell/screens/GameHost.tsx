@@ -1,5 +1,7 @@
-import { UiMessage } from '../../ui';
+import { UiMessage, UiPanel } from '../../ui';
 import { Btn } from '../components/Bits';
+import { MediaTimingStats } from '../media/MediaTimingStats';
+import { BufferProgress } from '../media/BufferProgress';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../contracts';
 import type { MediaRun, SessionLike } from '../types';
@@ -221,7 +223,12 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
       {loading && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
-      {musicWait && <div class="game-message chrome-ui"><UiMessage title="Preparing music" busy>{musicWait}</UiMessage></div>}
+      {(musicWait || (profile.settings?.debugStats && media?.timings)) && <div class="game-message chrome-ui">
+        {musicWait ? <UiMessage title="Preparing music" busy>
+          {musicWait}<BufferProgress read={() => music.current?.engine.bufferProgress() ?? null} />
+          <MediaTimingStats timings={profile.settings?.debugStats ? media?.timings : undefined} />
+        </UiMessage> : <UiPanel><MediaTimingStats timings={media?.timings} /></UiPanel>}
+      </div>}
       {error && <div class="game-loading chrome-ui"><UiMessage title="Could not start the ride" tone="error" action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>{error}</UiMessage></div>}
       {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro' || phase === 'count' || phase === 'ending'} layout={layout} fake={isFake()}
         onControls={() => { if (canPause(phaseRef.current)) { setPause(true); setHelp(true); } }} />}

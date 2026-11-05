@@ -5,6 +5,7 @@ import { COSMETICS_VERSION } from '../cosmetics/catalog';
 export function defaultSettings(): ProfileSettings {
   return {
     units: 'imperial',
+    debugStats: false,
     difficulty: 1.0,
     zoneSource: 'auto',
     aimMode: 'rotate',

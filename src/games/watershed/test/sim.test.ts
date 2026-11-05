@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runHeadless } from '../../../core';
 import { module } from '../index';
-import { makePlan, PLAN, PLAN_MINUTES, planAt, RIDE_LENGTHS } from '../sim/plan';
+import { makePlan, PLAN, PLAN_MINUTES, planAt, planMinutes, RIDE_LENGTHS } from '../sim/plan';
 import { makeTerrain, NX, NY, SEA } from '../sim/terrain';
 import { DEFAULT_WATER, Water, type Emit } from '../sim/water';
 import { makeRng } from '../../../core';
@@ -99,6 +99,39 @@ describe('watershed ride length', () => {
     expect(s.sim.inMenu?.()).toBe(false);
     expect((s.sim.snapshot() as { rideS: number }).rideS).toBe(20 * 60);
     expect(s.sim.isOver()).toBe(false);
+  });
+  it('skipping the warm-up drops evaporation and cloud, and nothing else', () => {
+    for (const L of RIDE_LENGTHS) {
+      const full = makePlan(L), skip = makePlan(L, true);
+      expect(skip[0].phase).toBe('rain');
+      expect(skip).toEqual(full.filter((b) => b.phase !== 'evaporate' && b.phase !== 'cloud'));
+      expect(planMinutes(skip)).toBeLessThan(L);
+    }
+  });
+  it('Y in the menu skips the warm-up: the ride starts raining from a ready-made cloud', async () => {
+    const { createGameSession, TimelineInput, testProfile } = await import('../../../core');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 1, press: 'y' }, { t: 1.2, release: 'y' }, { t: 2, press: 'a' }, { t: 2.2, release: 'a' }]), fake: { script: 'z2' }, seed: 3 });
+    s.step(45);
+    type Snap = { menu: { skipWarmup: boolean; options: Array<{ length: number; minutes: number }> } | null; rideS: number; phase: string; sky: { size: number } };
+    const m = (s.sim.snapshot() as Snap).menu!;
+    expect(m.skipWarmup).toBe(true);
+    expect(m.options.every((o) => o.minutes < o.length)).toBe(true);
+    s.step(30);
+    const snap = s.sim.snapshot() as Snap;
+    expect(s.sim.inMenu?.()).toBe(false);
+    expect(snap.phase).toBe('rain');
+    expect(snap.rideS).toBe(planMinutes(makePlan(45, true)) * 60);
+    expect(snap.sky.size).toBeGreaterThan(50);
+  });
+  it('a tap toggles the warm-up too', async () => {
+    const { createGameSession, NullInput, testProfile } = await import('../../../core');
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 3 });
+    s.sim.receive?.({ type: 'warmup', skip: true });
+    s.sim.receive?.({ type: 'length', minutes: 30 });
+    s.sim.receive?.({ type: 'start' });
+    s.step(2);
+    expect((s.sim.snapshot() as { phase: string; rideS: number }).phase).toBe('rain');
+    expect((s.sim.snapshot() as { rideS: number }).rideS).toBe(planMinutes(makePlan(30, true)) * 60);
   });
   it('auto-starts after 25 s in the menu', async () => {
     const { createGameSession, NullInput, testProfile } = await import('../../../core');

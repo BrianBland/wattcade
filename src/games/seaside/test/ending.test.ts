@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORY } from '../sim/story';
 import { ANGEL, angelEye, angelU, CLIFF, cliffEye, endingShot, EYE, LIFT_S, louCar, SUNWARD } from '../render/endingShots';
-import { END_TITLE, endTitle } from '../render/layout';
+import { endCredits, END_TITLE, endTitle } from '../render/layout';
 import { LAND_S } from '../render/flightShots';
 import { rideCam, rideSpan } from '../render/morningShots';
 import { textAt } from '../world/coastBuild';
@@ -105,6 +105,9 @@ describe('end title and sign (#195)', () => {
       expect(T.y + T.px / 2).toBeLessThanOrEqual(UH);
       expect(T.y - T.px / 2).toBeGreaterThanOrEqual(top);
       expect(T.px * END_TITLE.em).toBeLessThanOrEqual(W * 0.9); // the whole word fits across
+      const C = endCredits(W, UH, top, 5); // music credits, if CC tracks are ever used, below the title and above the HUD
+      expect(C.ys[0] - C.px / 2).toBeGreaterThan(T.y + T.px / 2 - 1);
+      expect(C.ys[4] + C.px / 2).toBeLessThanOrEqual(UH);
     }
   });
 

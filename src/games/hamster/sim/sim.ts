@@ -16,7 +16,7 @@ export interface HamsterSave {
 export type TabId = 'gens' | 'upgrades' | 'market' | 'vibes' | 'rebirth';
 export interface ShopItem {
   key: string; name: string; desc: string; cost: number; costLabel: string; can: boolean;
-  owned?: number | boolean; tag?: string; locked?: boolean; on?: boolean;
+  benefit?: string; flavor?: string; owned?: number | boolean; tag?: string; locked?: boolean; on?: boolean;
 }
 export interface Toast { id: number; t: number; text: string; kind: 'info' | 'milestone' | 'era' | 'event' | 'bad' }
 export interface Cue { id: number; name: string }
@@ -30,7 +30,7 @@ export interface HamsterSnapshot {
   effects: EffectView[];
   golden: { left: number; progress: number; need: number; x: number } | null;
   strike: { phase: 'warn' | 'active'; left: number; progress: number; need: number } | null;
-  trial: { phase: 'offer' | 'active'; left: number; compliance: number } | null;
+  trial: { phase: 'offer' | 'active'; left: number; compliance: number; duration: number; ftpFraction: number } | null;
   rage: { left: number; progress: number; need: number } | null;
   spin: { left: number; progress: number; need: number; rpm: number } | null;
   cadence: number; power: number; zone: number; hardZone: number; unionOn: boolean;
@@ -237,7 +237,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
         if (!revealed(i)) { out.push({ key: `gen:${i}`, name: '???', desc: 'Keep pedaling.', cost: 0, costLabel: '???', can: false, locked: true }); break; }
         const c = genCost(e, i, S.gens[i], 1, discount());
         const each = genOut(e, i) * genMult(i) * globalMult();
-        out.push({ key: `gen:${i}`, name: GENS[i].name, desc: `${GENS[i].flavor}  · ${fmtW(each)} each`, cost: c, costLabel: fmtJ(c), can: S.bank >= c, owned: S.gens[i] });
+        out.push({ key: `gen:${i}`, name: GENS[i].name, desc: `${GENS[i].flavor}  · ${fmtW(each)} each`, benefit: `${fmtW(each)} each`, flavor: GENS[i].flavor, cost: c, costLabel: fmtJ(c), can: S.bank >= c, owned: S.gens[i] });
       }
       return out;
     }
@@ -329,8 +329,8 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     if (S.pepUses % 4 === 1) setNews(PEPTIDE_NEWS[Math.floor(ctx.rng() * PEPTIDE_NEWS.length)]);
     switch (p.id) {
       case 'seeds': addEffect('seeds', 'Sunflower Seeds', 'all', k(1.5), p.dur); break;
-      case 'bpc': addEffect('bpc', 'BPC-157: no decay', 'nodecay', 1, p.dur); break;
-      case 'tb': addEffect('tb', 'TB-500', 'ham', k(2), p.dur); break;
+      case 'bpc': addEffect('bpc', 'Bearing Juice: no decay', 'nodecay', 1, p.dur); break;
+      case 'tb': addEffect('tb', 'Bottled overtime', 'ham', k(2), p.dur); break;
       case 'pre': addEffect('pre', 'PRE-WORKOUT', 'all', k(6), 30); addEffect('crash', 'The Crash', 'all', 0.5, 30, 30); break;
       case 'ozem': addEffect('ozem', 'Ozempeptide: -25%', 'cheap', 0.75, p.dur); break;
       case 'mk': addEffect('mk', 'MK-677: GIANT', 'leg', k(25), p.dur); break;
@@ -526,6 +526,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
     for (const a of pending.splice(0)) {
       if (a.type === 'tab' && a.i != null && tl[a.i]) { setTab(tl[a.i]); cue('select'); }
       else if (a.type === 'row' && a.i != null) { const l = items(tab); if (a.i === row) tryBuy(l, row, 1); else if (a.i < l.length) { row = a.i; cue('select'); } }
+      else if (a.type === 'latest' && tab === 'gens') { row = Math.max(0, items('gens').filter(it => !it.locked).length - 1); cue('select'); }
       else if (a.type === 'accept') acceptTrial();
       else if (a.type === 'inject') quickInject();
     }
@@ -603,7 +604,7 @@ export function createHamsterSim(ctx: GameContext, opts: HamsterOpts = {}): Game
       effects: effects.filter((x) => t >= x.from).map((x) => ({ id: x.id, label: x.label, left: x.until - t, total: x.until - x.from, kind: x.kind, mult: x.mult })),
       golden: golden ? { left: golden.until - t, progress: golden.progress, need: tun.goldenCatchS(), x: golden.x } : null,
       strike: strike ? { phase: strike.phase, left: strike.until - t, progress: strike.progress, need: tun.strikeNeedS() } : null,
-      trial: trial ? { phase: trial.phase, left: trial.until - t, compliance: trial.total > 0 ? trial.ok / trial.total : 1 } : null,
+      trial: trial ? { phase: trial.phase, left: trial.until - t, duration: tun.trialS(), ftpFraction: tun.trialFtp(), compliance: trial.total > 0 ? trial.ok / trial.total : 1 } : null,
       rage: rage ? { left: rage.until - t, progress: rage.progress, need: tun.rageNeedS() } : null,
       spin: spin ? { left: spin.until - t, progress: spin.progress, need: tun.spinNeedS(), rpm: tun.spinRpm() } : null,
       cadence: b.cadence3s, power: b.power3s, zone: b.effortZone, hardZone: Math.max(b.effortZone, Math.min(5, b.powerZone)), unionOn,

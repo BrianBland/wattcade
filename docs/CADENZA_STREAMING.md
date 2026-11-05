@@ -5,9 +5,19 @@ individual track URLs. A nearby Linux machine runs yt-dlp and ffmpeg. Cloudflare
 that daemon a public HTTPS hostname; the iPad connects to it directly from the hosted app.
 No Worker runs the extractor, and no incoming router port or local TLS certificate is needed.
 
-Online queues start after preparing the configured buffer (180 seconds by default, adjustable
-from 120 to 240; older 60/90-second preferences move to 120). This lookahead gives Cadenza room
-to plan steady efforts and recovery across song changes, at the cost of a longer startup.
+Online queues start after preparing 120 seconds (or the remaining queue, if shorter), matching
+the existing recovery threshold. Playback then fills the configured buffer (180 seconds by default,
+adjustable from 120 to 240; older 60/90-second preferences move to 120). This lookahead gives Cadenza room
+to plan steady efforts and recovery across song changes. Preparation begins when a streamed
+track is queued: the first streamed track gets the configured opening buffer before later tracks
+get one preview window each. Up to two windows are fetched ahead while
+analysis and timeline commits stay in playback order so tempo hints remain consistent.
+Completed decoded audio and analysis transfer into the ride,
+including the in-flight pipeline when Start is pressed; they are not downloaded or analyzed again.
+Picker audio is capped at 128 MiB and released on removal or exit. Windows beyond that budget
+retain analysis only and need audio fetching at playback. Starting immediately can still require
+the remaining startup windows. Waits longer than five seconds show a progress bar in the picker
+and in-game buffering panel, reporting seconds of audio prepared and a percentage, not a guessed ETA.
 Playback uses 30-second PCM windows with up to two seconds of analysis context on each
 side. Windows are decoded and analyzed in the browser worker, scheduled on the AudioContext
 clock, and evicted after playback. Only buffered audio is analyzed; duration is known up front.
@@ -158,3 +168,56 @@ A Cadenza browser check also exercised its renderer and later analysis extending
 YouTube requests (403); live source extraction, actual Cloudflare routing and iPad playback must be
 verified on your Linux/iPad setup. Short-window analysis uses local normalization and can differ from
 full-song BPM, key and structure; intro/outro classifications in interior windows are treated as verse.
+
+## Startup investigation (October 2026)
+
+Code review found six serial range extractions for the default 180-second startup. Picker
+previews previously fetched up to 90 seconds of the first track, discarded decoded audio,
+and cancelled any in-flight extraction at Start. Playback then re-fetched those ranges and
+ran analysis again even for analysis-seeded windows. A 50-minute source uses bounded ranges,
+not a full-file download, but every missing window launches yt-dlp and ffmpeg independently.
+The observed three-minute delay has not been reproduced against the live source here.
+
+The regression fixture uses a 3,000-second song: after enqueue-time preparation of six
+windows, preparing the ride makes zero loader calls; advancing 30 seconds loads one new
+window. Tests also cover transfer during extraction, PCM limits, incomplete seeds, removal,
+cancellation, and normal eviction. Live extraction/tunnel/iPad timing remains to be measured.
+
+Parallel fetching uses the resolver's existing two-job limit, both in the picker and during
+playback. A freed fetch slot is refilled before analyzing the current window. At most two
+windows wait ahead of the one being analyzed; analysis and commits stay ordered. Start
+stops scheduling new picker work and drains only already-started windows.
+Cancelling ranged requests now aborts server extraction; search briefly retries a busy response
+while cancelled jobs release their slots. This server-side cancellation improvement requires
+restarting the updated media daemon as well as updating the browser app.
+
+A deterministic latency test (30 seconds per fetch, no CPU/network contention) prepares the
+six-window horizon in 90 seconds with two requests versus 180 seconds with one. This is a
+scheduler test, not a live YouTube benchmark: shared bandwidth, ffmpeg CPU and browser analysis
+can reduce the speedup. Track duration still does not increase the opening window count.
+
+Startup now needs four windows (120 seconds) rather than waiting for all six default windows.
+The engine fixture starts at 60 seconds of simulated time, then fills the 180-second rolling
+buffer during playback. This keeps the 90-second pause reserve and 120-second recovery
+threshold unchanged; an extractor slower than playback can still cause subsequent buffering.
+
+## Per-player timing diagnostics
+
+Edit the player's profile and enable **Debug stats** (off by default). This general per-player
+flag can gate diagnostics throughout the app; media timings are its first consumer. The music
+picker and game show a collapsible timing table for that music queue. The same in-memory
+collector transfers from the picker into the ride; another player/queue gets a fresh one.
+Disabling the flag leaves collection, timing clock reads and diagnostic polling off. The
+regular buffering progress bar does not require this flag.
+
+Stages: fetch (resolver extraction plus network/body transfer), browser decode, mono downmix,
+analysis (worker execution plus queue/message overhead), and analysis/timeline commit. Each
+reports call count, average/last/max/total milliseconds, active/peak calls and failures
+(including cancelled requests). Totals overlap and must not be added to estimate wall time.
+Only fixed-size aggregates are retained; no track URLs/titles or per-window records are stored,
+logged or uploaded. The flag persists with the player's settings, including backups.
+
+With simulated 30-second fetches and 10-second analysis, four windows now finish in 80 seconds,
+versus 100 seconds when pairs waited for analysis before fetching again. This models scheduling,
+not actual iPad or YouTube performance. Use the timing table on the real setup to identify the
+next bottleneck before raising resolver concurrency or adding analysis workers.

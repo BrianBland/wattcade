@@ -33,3 +33,5 @@ Exports (`src/progression/index.ts`): `ProfileStore`, `SessionStore`, `awardSess
 
 ## Gaps
 - None known.
+
+- `settings.debugStats` defaults false (including legacy profiles), persists per player through storage/backup, and never stores timing samples.

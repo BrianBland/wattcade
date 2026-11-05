@@ -81,3 +81,12 @@ it('extracts late windows in a four-hour mix without rejecting the full source f
   };
   expect((await extractRange(`https://youtu.be/${id}`, 14368, 32, run)).toString()).toBe('late WAV');
 });
+
+it('passes range cancellation through to the extractor and cleans its temporary directory', async () => {
+  const abort = new AbortController(); let dir = '';
+  const task = extractRange(`https://youtu.be/${id}`, 0, 32, async (args, _timeout, signal) => {
+    dir = dirname(args[args.indexOf('-o') + 1]); expect(signal).toBe(abort.signal);
+    abort.abort(); signal!.throwIfAborted(); return '';
+  }, abort.signal);
+  await expect(task).rejects.toThrow(); await expect(access(dir)).rejects.toThrow();
+});

@@ -123,7 +123,13 @@ export class MixEngine {
 
   load(plan: MixPlan, ranges?: RangeSource): void { this.stop(); if (this.ranges !== ranges) this.ranges?.dispose(); this.ranges = ranges; this.plan = plan; this.state = 'idle'; }
   /** Decode the first song now (e.g. during a countdown) so start() is instant. */
-  preload(): void { if (this.ranges) { void this.ranges.prepare(0).catch((e) => { this.lastError = String(e.message ?? e); }); return; } const e = this.plan?.entries[0]; if (e) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); }); }
+  preload(): void { if (this.ranges) { void this.ranges.prepare(0, STREAM_RESUME_LEAD_S).catch((e) => { this.lastError = String(e.message ?? e); }); return; } const e = this.plan?.entries[0]; if (e) void this.ensureBuffer(e).catch((err) => { this.lastError = String(err?.message ?? err); }); }
+  /** Real contiguous audio + analysis, relative to the start/resume threshold (not an ETA). */
+  bufferProgress(): { readyS: number; targetS: number } | null {
+    if (!this.ranges || !this.plan) return null;
+    const p = Math.max(0, this.programNow()), targetS = Math.max(0, Math.min(STREAM_RESUME_LEAD_S, this.plan.durationS - p));
+    return { readyS: Math.max(0, Math.min(targetS, this.ranges.readyThrough(p) - p)), targetS };
+  }
   getState(): EngineState { return this.state; }
   playing(): boolean { return this.state === 'playing' && this.ctx.state === 'running'; }
   onEnded(cb: () => void): () => void { this.endedCbs.add(cb); return () => { this.endedCbs.delete(cb); }; }
@@ -196,7 +202,7 @@ export class MixEngine {
   private async begin(): Promise<void> {
     const plan = this.plan!; const ep = this.epoch;
     const cur = plan.entries.find((e) => this.anchorP >= e.startP && this.anchorP < e.endP) ?? plan.entries[0];
-    try { if (this.ranges) await this.ranges.prepare(this.anchorP); else await this.ensureBuffer(cur); } catch (e) { this.lastError = String((e as Error)?.message ?? e); if (ep === this.epoch) { this.state = this.ranges ? 'buffering' : 'paused'; if (this.ranges && !this.timer) this.timer = setInterval(() => this.tick(), TICK_MS); } return; }
+    try { if (this.ranges) await this.ranges.prepare(this.anchorP, STREAM_RESUME_LEAD_S); else await this.ensureBuffer(cur); } catch (e) { this.lastError = String((e as Error)?.message ?? e); if (ep === this.epoch) { this.state = this.ranges ? 'buffering' : 'paused'; if (this.ranges && !this.timer) this.timer = setInterval(() => this.tick(), TICK_MS); } return; }
     if (ep !== this.epoch || this.state !== 'starting') return;
     this.anchorCtx = this.ctx.currentTime + 0.1; // a little headroom so the first samples aren't cut
     this.state = 'playing';

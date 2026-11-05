@@ -32,8 +32,11 @@ CONTRACT-REQUESTs: none. Also touched `src/games/registry.ts` (added the module)
 `npx vitest run src/games/hamster`: econ, buy/union/mono/save/market/rebirth via a scripted pad, and the 7 scenarios.
 
 ## Known gaps
-- Visuals were checked with throwaway Playwright screenshots (desktop Chromium), not on the iPad. Icons are emoji (render as color on iOS). Font is ui-rounded (SF Pro Rounded on iOS), falling back to system-ui.
+- The illustrated industrial pass has retained Chromium captures and review instructions in `docs/visual-polish/hamster/README.md`. Shop/tab icons are custom Canvas illustrations; some HUD/event icons remain emoji. Physical iPad/Bluefy verification is pending. Font is ui-rounded (SF Pro Rounded on iOS), falling back to system-ui.
 - No new sfx: it reuses `src/audio/sfx.ts` names.
 
 - HUD insets: `render/layout.ts` lays scene + panel out above `insets.bottom` (tested); the last pixel rows are stretched under the HUD band so backgrounds stay full-bleed.
 - Shared controller HUD opts Z into a Trial offer indicator during offers. Touch keeps Buy ×10 in generators and Re-dose when unlocked. Swipe/drag/wheel scroll the list; row taps buy on release and drags/cancel never buy. Controller selection re-centers the list; native tab/row/trial taps replace duplicate buttons.
+
+- Completed visual pass: `render/art.ts` supplies custom inventory art, `render/machinery.ts` draws workshop equipment, and `render/orbital.ts` carries those materials into space. Current eight-era gallery and verification: `docs/visual-polish/hamster/README.md`.
+- `render/ticker.ts` manages headline reading time independently of simulation news cadence. It holds the opening, pans overflowing text through its final words, and retains only the newest pending headline. Tap the 44 px news strip to pause/resume; this does not pause riding or event cards.

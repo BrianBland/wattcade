@@ -17,15 +17,17 @@ vi.mock('../components/Toasts', () => ({ toast: vi.fn(), achievementToast: vi.fn
 vi.mock('../../debug/flag', () => ({ loadFlag: () => false, saveFlag: vi.fn() }));
 vi.mock('../../audio/sfx', () => ({ duckAmbient: vi.fn(), play: vi.fn(), unlockAudio: vi.fn() }));
 import { GameHost } from './GameHost';
+import { MediaTimings } from '../../media/online/timing';
+import type { MediaRun } from '../types';
 import { HUD_LAYOUT_EVENT } from '../hud/insets';
 let container: HTMLDivElement;
 let resolveReady: () => void, rejectReady: (error: Error) => void;
 let renderer: GameRenderer;
-async function mount(id = 'towerdefense') {
+async function mount(id = 'towerdefense', diagnostics?: { debugStats: boolean; timings: MediaTimings }) {
   const ready = new Promise<void>((resolve,reject)=>{resolveReady=resolve;rejectReady=reject;});
   renderer = {mount:vi.fn(),setInsets:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
   const game = {id,title:'Dynamo Defense',loadRenderer:async()=>renderer} as unknown as GameModule;
-  await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} />,container);});
+  await act(async()=>{render(<GameHost game={game} profile={{level:1,...(diagnostics ? {settings:{debugStats:diagnostics.debugStats}} : {})} as Profile} media={diagnostics ? {timings:diagnostics.timings} as MediaRun : undefined} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} />,container);});
 }
 beforeEach(()=>{
   vi.clearAllMocks(); mocks.session.sim.inMenu.mockReturnValue(false); mocks.session.sim.menuActions.mockReturnValue([]);
@@ -34,6 +36,19 @@ beforeEach(()=>{
   container=document.createElement('div');document.body.appendChild(container);
 });
 afterEach(async()=>{await act(async()=>render(null,container));container.remove();vi.unstubAllGlobals();});
+it('keeps opt-in media timings available outside buffering without a false busy state', async () => {
+  const timings = new MediaTimings();
+  await mount('towerdefense', { debugStats: true, timings });
+  await act(async () => resolveReady());
+  const stats = container.querySelector<HTMLDetailsElement>('.game-message .ui-panel .media-timing-stats');
+  expect(stats).not.toBeNull();
+  expect(stats!.open).toBe(false);
+  expect(container.querySelector('.game-message [aria-busy="true"]')).toBeNull();
+  expect(container.querySelector('.game-message .music-buffer-progress')).toBeNull();
+  await mount('towerdefense', { debugStats: false, timings });
+  expect(container.querySelector('.game-message')).toBeNull();
+});
+
 describe('renderer loading gate',()=>{
   it('keeps the guide visible beyond the old automatic-start deadline',async()=>{
     await mount();await act(async()=>resolveReady());

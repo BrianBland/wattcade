@@ -11,7 +11,8 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 - `salmon.ts` `SalmonRun`: path traced up real channels from the mouth (forks follow steering), lane steering in the
   fish frame (right = lane −), intro hold, escalating predators, charging bears, falls needing `leapRpm`.
 - `events.ts`: seeded geological event deck (quake/slide/volcano + rare meteor), heightfield edits to h and h0, `mat` grid.
-- `plan.ts`: `makePlan(20|30|45|60)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`.
+- `plan.ts`: `makePlan(20|30|45|60, skipWarmup?)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`;
+  menu Y/tap skips the warm-up (drops evaporate+cloud; rain starts from a `warmCloud`-size cloud).
 - `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer, hoods dart L/R, Y view, A boost); cues ring for the renderer;
   score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
 

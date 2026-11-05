@@ -13,3 +13,7 @@
 - Rejection shows the existing Back/error UI. Unmount guards prevent a late render or gameplay loop.
 - Renderers without ready() keep their existing startup flow after the import/mount completes.
 - GameHost tests cover intro/menu waiting, failed loading and leaving during loading.
+
+- Music buffering keeps the existing error/status text and shows actual ready-audio progress after five seconds.
+- Per-player media timing diagnostics are opt-in and collapsed by default; ordinary music progress remains independent.
+- Main integration keeps BufferProgress inside the shared music-wait message; debug-only timings remain available outside waits in a shared panel, without a false busy state.

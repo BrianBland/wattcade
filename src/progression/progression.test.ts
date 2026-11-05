@@ -28,6 +28,20 @@ describe('levels', () => {
 });
 
 describe('awardSession', () => {
+  it('preserves earned dungeon rewards but does not reuse old floor-entry progress', () => {
+    const p = defaultProfile();
+    p.achievements = ['dg_floor5', 'dg_full_arsenal', 'dg_perfect_exposure'];
+    p.counters = { 'dungeon.bestFloor': 30 };
+    const r = awardSession(p, rec({ gameSummary: { 'Deepest floor': 30 } }));
+    expect(r.profile.achievements).toEqual(expect.arrayContaining(p.achievements));
+    expect(r.profile.achievements).not.toContain('dg_floor10');
+    expect(r.profile.achievements).not.toContain('dg_floor20');
+    expect(r.profile.counters?.['dungeon.bestClearedFloor']).toBe(0);
+    expect(r.newAchievements.map(a => a.id)).not.toContain('dg_floor5');
+    const cleared = awardSession(r.profile, rec({ events: [{ t: 100, type: 'bossDefeated', data: { floor: 15 } }] }));
+    expect(cleared.newAchievements.map(a => a.id)).toContain('dg_floor10');
+    expect(cleared.profile.counters?.['dungeon.bestClearedFloor']).toBe(15);
+  });
   it.each([
     ['an immediate exit', 0, 0],
     ['a short ride', 119, 119],
@@ -78,7 +92,8 @@ describe('awardSession', () => {
   it('event/summary achievements', () => {
     const p = defaultProfile();
     const r = awardSession(p, rec({
-      events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } }],
+      events: [{ t: 1, type: 'bossDefeated' }, { t: 2, type: 'railFired', data: { charges: 3 } },
+        ...Array.from({ length: 75 }, (_, i) => ({ t: i + 3, type: 'kill', data: { elite: true } }))],
       gameSummary: { 'Elites slain': 75 },
     }, { sprints: 10, kj: 2500 }));
     const ids = r.newAchievements.map((a) => a.id);
@@ -166,6 +181,18 @@ describe('stores', () => {
     await restored.importJson(JSON.stringify({ profiles: [{ ...a, settings: legacy }] }));
     expect((await restored.get(a.id))!.settings.units).toBe('imperial');
     expect((await restored.get(a.id))!.weightKg).toBe(75);
+  });
+  it('persists debug stats separately for each player and defaults legacy profiles to off', async () => {
+    const store = new ProfileStore('media-debug');
+    const a = await store.create('Debug'), b = await store.create('Normal');
+    await store.update({ ...a, settings: { ...a.settings, debugStats: true } });
+    const restored = new ProfileStore('media-debug-restored');
+    await restored.importJson(await store.exportJson());
+    expect((await restored.get(a.id))!.settings.debugStats).toBe(true);
+    expect((await restored.get(b.id))!.settings.debugStats).toBe(false);
+    const { debugStats, ...legacy } = a.settings;
+    await restored.importJson(JSON.stringify({ profiles: [{ ...a, settings: legacy }] }));
+    expect((await restored.get(a.id))!.settings.debugStats).toBe(false);
   });
   it('session store keeps last 200', async () => {
     const s = new SessionStore('t3');

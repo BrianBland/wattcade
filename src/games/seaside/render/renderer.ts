@@ -28,7 +28,9 @@ import { drawShop, type ShopTarget } from './shop';
 import { shopLayout } from './shopLayout';
 import { ShopDiorama } from './shopView';
 import { drawFishing } from './fishing2d';
-import { bellyHud, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import { bellyHud, endCredits, END_TITLE, endTitle, inside, layout, type Box } from './layout';
+import { musicCredits } from './musicScore';
+import { SeasideSound } from './sound';
 import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
@@ -72,6 +74,7 @@ export class SeasideRenderer implements GameRenderer {
   private overlayEl: HTMLElement | null = null;
   /** Story clock for the world (advances with the sim's scene time, so pauses freeze it). */
   private clock = 0; private lastScene = ''; private lastSceneT = 0;
+  private sound = new SeasideSound();
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (a: unknown) => void; insets?: Insets }): void {
     this.send = ctx.send; this.profile = ctx.profile;
@@ -203,6 +206,7 @@ export class SeasideRenderer implements GameRenderer {
     if (!g || !s || !this.W) return;
     const { W, H } = this;
     const dt = this.tickClock(s);
+    this.sound.update(s, bike, dt, this.clock);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
     if (!s.menu && ENDING_WORLD.has(s.sceneId)) {
       const shot = this.ensureEnding().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
@@ -454,6 +458,9 @@ export class SeasideRenderer implements GameRenderer {
         g.shadowColor = glow; g.shadowBlur = blur;
         g.fillText(END_TITLE.text, W / 2, T.y);
       }
+      const credits = musicCredits(), C = endCredits(W, L.UH, this.insets.top, credits.length);
+      g.shadowBlur = 4; g.font = `${Math.round(C.px)}px Georgia, serif`;
+      credits.forEach((line, i) => g.fillText(line, W / 2, C.ys[i], W - 32));
       g.shadowBlur = 0; g.globalAlpha = 1;
     }
     if (fx.white > 0) { g.fillStyle = `rgba(255,252,246,${fx.white})`; g.fillRect(0, 0, W, H); }
@@ -507,6 +514,7 @@ export class SeasideRenderer implements GameRenderer {
   }
 
   unmount(): void {
+    this.sound.dispose();
     this.ro?.disconnect(); this.offTap?.();
     this.dropSets(); this.view?.dispose(); this.view = null;
     this.worldCanvas?.remove(); this.worldCanvas = null; this.overlayEl?.remove(); this.overlayEl = null;

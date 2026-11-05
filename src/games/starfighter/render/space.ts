@@ -409,7 +409,8 @@ export function createSpace(scene: THREE.Scene) {
       if(r()<0.12){const xx=cx+side*(w+16);add(roofs,xx,-1,z,14,2,18);add(domes,xx,1,z,5,3,5);add(glass,xx,2,z,10,0.3,1);} // outpost
     }
     // Arch over the river: two crag legs and a craggy span.
-    if(r()<0.1){const span=w*2+10;for(const sd of [-1,1])rock(crags,cx+sd*(w+6),z,9,20,9,r()*0.3,r());const tint=r();if(add(crags,cx,8,z,span+12,7,9,0))setColor(crags,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);}
+    // Kept below the flight plane (ship at y 10, terrain up to +4 in a burn): legs top out at y 4, the span just under.
+    if(r()<0.1){const span=w*2+10;for(const sd of [-1,1])rock(crags,cx+sd*(w+6),z,9,10,9,r()*0.3,r());const tint=r();if(add(crags,cx,-1,z,span+12,5,9,0))setColor(crags,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);}
   };
   /** Basalt, obsidian and scoria tints (multiplied over the kit's strata colours). */
   const LAVA_ROCK=['#2a2220','#211c1b','#30241f','#262120'].map(c=>new THREE.Color(c));

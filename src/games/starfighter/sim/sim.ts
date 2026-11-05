@@ -7,7 +7,7 @@ import { MAX_ENEMIES, MAX_BOLTS, FIRE_EVERY, eliteEntry, groupOf, entryFor, adva
 import { SECTORS } from './content';
 import { newRoute, holdRoute, commandMove, movePending, missDistance, routeX, laneX, choreograph, moveActivity, ROUTE, FLANK, stationX } from './flight';
 import { createWeave } from './weave';
-import { createSegmenter, gradeSegment, type Segment } from './segments';
+import { createSegmenter, gradeSegment, isOpenBiome, type Segment } from './segments';
 import { WorldRoute, planTurns, toLocal, toWorld } from './route';
 import { mulberry } from './rng';
 import type { BeamView, CraftId, EnemyView, SfSnapshot, ShotView, BoltView, FxView, LaserView } from './types';
@@ -61,7 +61,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, absorbed = 0, selectedId: number | null = null;
   let lockIn = 0, volleyAge = 0, volleyAt = -99, volleys = 0, dodges = 0;
   const segmenter = createSegmenter(timeline, tun.bossEvery, tun.firstBoss);
-  let seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
+  let plannedSeg = -1, seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
   let segBoss: 'defeated' | 'escaped' | null = null, bossDone = false, airResolved = 0, scorecard: SfSnapshot['scorecard'] = null; const grades: string[] = [];
   // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
   const world = new WorldRoute(), routeS = () => 126 + dist;
@@ -450,8 +450,11 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       bank += (clamp(vx * -0.016, -0.5, 0.5) - bank) * (1 - Math.exp(-dt * 6));
       if (music.phrase) encounter++;
       // Segments: one place per song (mixes split at seams). One flagship each; a breather and scorecard at the end.
+      // Set up each segment once, keyed by its index: snapshot() may consult the segmenter before the first update, which
+      // used to swallow the first segment's change (the first song always drew the carrier).
       const at = segmenter.at(p); seg = at.segment;
-      if (at.changed) {
+      if (seg.index !== plannedSeg) {
+        plannedSeg = seg.index;
         segBase = { t, onTargetS, clearKilled, clearTotal, perfects, airResolved, eliteCleared, eliteSeen };
         segBoss = null; bossDone = false; bossAt = null; scorecard = null;
         if (seg.index > 0) announce(seg.title ? `Now entering · ${seg.title}` : 'New airspace');
@@ -460,7 +463,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         const spans = aheadSpans(seg.t1), sNow = routeS(), sEnd = sNow + spanDistance(spans, expectSpeed), phrases = timeline?.phrases ?? [];
         const distTo = (q: number) => spanDistance(spans.filter(x => x.t0 < q).map(x => ({ ...x, t1: Math.min(x.t1, q) })), expectSpeed);
         const snap = (s: number) => { if (!phrases.length || !spans.length) return s; const pp = timeAtDistance(spans, expectSpeed, s - sNow), ph = phrases[after(phrases, pp - 1e-6)]; return ph === undefined ? s : sNow + distTo(ph); };
-        planTurns(world, sNow, sEnd, seg.biome === 1 || seg.biome === 3, mulberry(seg.seed ^ 0x7e11), snap);
+        planTurns(world, sNow, sEnd, isOpenBiome(seg.biome), mulberry(seg.seed ^ 0x7e11), snap);
         const o = world.pose(sNow); curFrame = { ...o, s: sNow, biome: seg.biome, seed: seg.seed }; switchS = -1;
       }
       // Where the next place starts: forecast from the drive, gliding (never jumping) as the rider's speed differs.

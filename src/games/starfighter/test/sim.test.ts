@@ -7,6 +7,7 @@ import { inCombat, MAX_BOLTS, bulletPattern, wallPattern, groupOf } from '../sim
 import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createWeave } from '../sim/weave';
 import { createDirector, cadenceFor } from '../sim/director';
+import { isOpenBiome } from '../sim/segments';
 import { escortAvailable, strikerAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
 import { arsenalTier, craftLevel, perks } from '../sim/progression';
@@ -316,12 +317,18 @@ describe('spectacle encounters', () => {
     expect(fires.every(f => tl.beats.some(b => Math.abs(b - f) < 0.04))).toBe(true); expect(longest).toBeGreaterThan(1);
     expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(r.snap().deaths).toBe(0);
   }, 15_000);
+  it('the first song draws its own biome, even when the snapshot is read before the first update', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7]) {
+      const r = rig({}, 'z2', synthTimeline({ style: 'mixed', songs: 4, seed })); r.snap(); r.s.step(2);
+      expect(r.snap().frames.cur.biome).toBe(r.snap().segment.biome);
+    }
+  });
   it('the route turns gently only over open biomes, and ground units stay put in the world', () => {
     const r = rig({}, 'z2', longMusic()); let turnedIso = false, maxRate = 0;
     const tracked = new Map<number, { x: number; z: number }>();
     for (let i = 0; i < 30 * 900; i++) {
       r.s.step(1); const s = r.snap();
-      if (s.world.turn) { expect([1, 3]).toContain(s.frames.cur.biome); turnedIso = true; }
+      if (s.world.turn) { expect(isOpenBiome(s.frames.cur.biome)).toBe(true); turnedIso = true; }
       maxRate = Math.max(maxRate, Math.abs(s.world.turn));
       if (i % 15) continue;
       for (const e of s.enemies) if (e.ground && e.hp > 0) {

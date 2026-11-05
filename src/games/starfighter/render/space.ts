@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { geometries } from './models';
 import { GROUND_SPEED } from '../sim/encounters';
+import { isOpenBiome } from '../sim/segments';
 import { biomeParams, mulberry, riverX, cityRoads, seaIslands, type BiomeParams, type SeaIsland } from './terrain';
 import { curtain, foliage, lawn, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { cloudTexture, kit } from './kit';
-/** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist). */
-export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf'];
+/** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist, polar white, volcanic smoke). */
+export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf', '#8ea6ba', '#3a1d17'];
 const noise = `float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
 float cloud(vec2 p){return noise(p)*0.55+noise(p*2.03)*0.28+noise(p*4.07)*0.12+noise(p*8.11)*0.05;}`;
@@ -46,6 +47,50 @@ const biomeColor = `
     c=mix(c,mix(vec3(0.05),yellow,step(0.5,fract((x+p.y)*0.6))),ex*(1.0-inner));
     float lane=step(ax,0.25)*step(0.4,fract(p.y/8.0)),edge=step(40.5,ax);c+=(lane*vec3(0.3,0.7,0.8)+edge*vec3(0.02,0.7,0.85))*(1.0+pulse*0.7);
     return c+grid*0.015;}
+  // Voronoi in cell units: x = distance to the nearest cell border, yz = that cell's id.
+  vec3 voro(vec2 g){vec2 i=floor(g),f=fract(g);float d1=9.0,d2=9.0;vec2 id=vec2(0.0);
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec2 o=vec2(float(x),float(y));vec2 h=vec2(hash(i+o),hash(i+o+vec2(17.3,5.1)));vec2 r=o+0.05+h*0.9-f;float d=dot(r,r);
+      if(d<d1){d2=d1;d1=d;id=i+o;}else if(d<d2)d2=d;}
+    return vec3(sqrt(d2)-sqrt(d1),id);}
+  // Arctic sea ice: snow-covered floes with blue-ice rims, pressure ridges and wind drifts; dark leads (some skinned with
+  // grey new ice) and open pools that mirror a slow aurora, brighter with the music.
+  vec3 arctic(vec2 p,vec4 P,vec3 wpos,float pulse){
+    vec2 q=p+P.xy,wq=q+vec2(noise(q*0.01),noise(q*0.01+vec2(5.2,1.3)))*45.0;
+    vec3 v=voro(wq/P.z);float edge=v.x*P.z,vis=smoothstep(0.52,0.7,noise(q*0.015+v.yz*0.37)),tone=hash(v.yz+vec2(6.3,2.9));
+    vec3 aur=mix(vec3(0.1,0.85,0.55),vec3(0.55,0.25,0.9),noise(p*0.004+vec2(time*0.03,0.0)))*(0.14+0.12*pulse)*smoothstep(0.35,0.75,noise(p*0.006-vec2(0.0,time*0.02)));
+    vec3 water=waterShade(vec3(0.01,0.04,0.09),vec3(0.03,0.12,0.18),0.8,p,wpos,0.35,0.0)+aur;
+    // Snow: grey-blue shading at three scales, sastrugi streaks, blue ice where floes meet, pressure ridges on some cracks.
+    float n1=noise(q*0.008),n2=noise(q*0.05),n3=noise(q*0.4);
+    // Kept a cool mid blue-grey (not white) so pink and white enemy fire stays readable over the ice.
+    vec3 snow=mix(vec3(0.2,0.25,0.33),vec3(0.38,0.43,0.5),0.35+0.4*n1+0.25*n2)*(0.94+0.08*n3); // linear (≈ 0.5–0.7 on screen)
+    // Each floe has its own surface: mostly snow, some wind-scoured blue ice, some grey first-year ice.
+    snow=tone<0.18?mix(snow,vec3(0.1,0.24,0.36),0.7):tone<0.3?mix(snow,vec3(0.17,0.2,0.24),0.6):snow*(0.92+0.1*tone);
+    snow*=0.96+0.05*sin(dot(q,vec2(0.8,0.35))*1.4+n2*8.0);
+    snow=mix(snow,vec3(0.18,0.34,0.46),smoothstep(5.0,1.2,edge)*vis*0.45);
+    float ridge=step(0.6,hash(v.yz+vec2(1.3,2.2)))*vis;snow+=vec3(0.05)*smoothstep(0.8,0.0,abs(edge-3.4))*ridge;snow-=vec3(0.09,0.07,0.05)*smoothstep(0.7,0.0,abs(edge-4.3))*ridge;
+    float crack=smoothstep(0.6,0.15,edge)*vis;
+    vec3 c=mix(snow,mix(water,vec3(0.12,0.16,0.2),0.5),crack);
+    // Open water: meandering leads and the odd polynya, skinned with grey new ice at the edges.
+    float lead=smoothstep(0.03,0.012,abs(noise(q*0.0035+vec2(2.0,7.0))-0.5)),poly=smoothstep(0.1,0.05,hash(v.yz+vec2(3.1,0.7)))*smoothstep(0.55,0.75,noise(q*0.01+v.yz));
+    float open=max(lead,poly);
+    return mix(c,mix(water,vec3(0.14,0.18,0.22),0.3*smoothstep(0.6,1.0,open)*n2),open);}
+  // Lava fields: cracked basalt plates whose seams glow and pulse on the beat, ash drifts, and a molten river along the
+  // route with a crust that drifts downstream and banks that glow.
+  vec3 lavaField(vec2 p,vec4 P,float pulse){
+    vec2 wq=p+vec2(noise(p*0.02),noise(p*0.02+vec2(3.7,8.1)))*18.0;
+    vec3 v=voro(wq/16.0);float edge=v.x*16.0;
+    vec3 c=vec3(0.075,0.062,0.06)*(0.7+0.55*noise(p*0.3))+vec3(0.035,0.022,0.018)*hash(v.yz);
+    // Hot zones drift slowly; elsewhere the seams have cooled. Ash blankets dim the cracks beneath.
+    float hot=smoothstep(0.5,0.78,noise(p*0.012+vec2(0.0,time*0.02))),ashc=smoothstep(0.55,0.75,noise(p*0.03+9.0));
+    float glow=smoothstep(0.75,0.0,edge)*(0.12+0.88*hot)*(0.45+0.55*hash(v.yz+vec2(2.0,4.0)))*(1.0-ashc*0.9);
+    c-=vec3(0.03)*smoothstep(0.6,0.0,edge)*(1.0-hot);
+    c=mix(c,vec3(0.24,0.22,0.21)*(0.85+0.2*noise(p*0.4)),ashc*0.7);
+    c+=vec3(1.0,0.35,0.06)*glow*(0.85+0.4*pulse);
+    float cx=15.0*sin(p.y*P.x+P.y)+7.0*sin(p.y*P.z+P.w),w=8.5+3.0*sin(p.y*0.013+P.y),d=abs(p.x-cx);
+    float flow=noise(p*vec2(0.25,0.06)+vec2(0.0,time*1.2)),crust=smoothstep(0.55,0.7,noise(p*vec2(0.12,0.05)+vec2(0.0,time*0.8)));
+    vec3 molten=mix(mix(vec3(1.0,0.42,0.05),vec3(1.0,0.82,0.3),flow)*(0.9+0.35*pulse),vec3(0.18,0.07,0.04),crust*0.85);
+    c=mix(c,molten,smoothstep(w+0.5,w-1.5,d));
+    return c+vec3(0.6,0.15,0.02)*smoothstep(w+9.0,w,d)*0.35;}
   // Ocean islands (uIsl: x, y in biome coords, radius, kind 0 jungle / 1 atoll / 2 volcano): the nearest coast wins.
   // e > 0 is land (0 at the shore); a little below 0 is shallow water. Noise only for islands near this point.
   vec3 islandShade(vec3 water,vec2 p){float best=-9.0;float kind=0.0,lagoon=0.0;
@@ -79,14 +124,15 @@ const biomeColor = `
     float rapids=smoothstep(11.5,8.5,w)*step(0.72,noise(p*vec2(0.5,0.12)+vec2(0.0,time*1.4)));
     vec3 river=waterShade(vec3(0.02,0.16,0.3),vec3(0.12,0.42,0.42),smoothstep(w,0.0,d),p+vec2(0.0,time*5.0),wpos,0.45,smoothstep(w-1.3,w-0.1,d)*0.7+rapids*0.6);
     c=mix(river,c,smoothstep(w-0.5,w+1.5,d));c+=step(0.93,fract(n*12.0))*0.025;}
-  else{float swell=noise(p*vec2(0.012,0.008)+vec2(0.0,time*0.02));float caps=step(0.86,noise(p*vec2(0.35,0.14)+vec2(time*0.1,time*0.6)))*smoothstep(0.5,0.8,swell);
+  else if(b<3.5){float swell=noise(p*vec2(0.012,0.008)+vec2(0.0,time*0.02));float caps=step(0.86,noise(p*vec2(0.35,0.14)+vec2(time*0.1,time*0.6)))*smoothstep(0.5,0.8,swell);
     c=waterShade(vec3(0.01,0.07,0.2),vec3(0.03,0.2,0.36),0.6+0.4*swell,p,wpos,1.0,caps*0.7);c=islandShade(c,p);}
+  if(b>3.5&&b<4.5)c=arctic(p,P,wpos,pulse);else if(b>4.5)c=lavaField(p,P,pulse);
   return c;}`;
 export interface Frame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 /** Ship pose (route point), the current and next biome frames, and route samples ahead (world x,z pairs). */
 export interface BiomeEnv { pose: { x: number; z: number; h: number }; f0: Frame; f1: Frame; routeAhead: number[] }
 const fwdOf = (h: number) => [-Math.sin(h), -Math.cos(h)], rightOf = (h: number) => [Math.cos(h), -Math.sin(h)];
-const ISO = (b: number) => b === 1 || b === 3;
+const ISO = isOpenBiome;
 /**
  * Seeded biomes streamed beyond the camera. Each segment (song) has a biome and seed; the next one takes over at
  * `switchTravel` (route distance, snapped to a tile edge), cross-faded in the ground shader. Tiles are generated from
@@ -106,7 +152,7 @@ export function createSpace(scene: THREE.Scene) {
     uniform float uB0;uniform float uB1;uniform vec4 uP0;uniform vec4 uP1;uniform vec3 uHaze0;uniform vec3 uHaze1;uniform vec4 uIsl[16];uniform vec4 uPose;uniform vec4 uF0;uniform vec4 uF1;${noise}${biomeColor}
     vec2 fwdV(float h){return vec2(-sin(h),-cos(h));} vec2 rightV(float h){return vec2(cos(h),-sin(h));}
     // Biome coords: open biomes (city, ocean) use world axes; straight ones (carrier, canyon) their frame (lateral, route distance).
-    vec2 frameP(float b,vec4 F,vec2 W){if(abs(b-1.0)<0.5||b>2.5)return vec2(W.x,-W.y);vec2 d=W-F.xy;return vec2(dot(d,rightV(F.z)),dot(d,fwdV(F.z))+F.w);}
+    vec2 frameP(float b,vec4 F,vec2 W){if(abs(b-1.0)<0.5||abs(b-3.0)<0.5||abs(b-4.0)<0.5)return vec2(W.x,-W.y);vec2 d=W-F.xy;return vec2(dot(d,rightV(F.z)),dot(d,fwdV(F.z))+F.w);}
     vec3 shadeAt(float b,vec4 P,vec2 p,float band){float n=cloud(p*0.025);vec3 water=mix(vec3(0.015,0.27,0.62),vec3(0.05,0.7,0.88),n)+vec3(0.22,0.32,0.36)*band;
       float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));return biomeColor(b,P,p,n,water,grid,pulse,world);}
     void main(){float ahead=34.0-world.z;vec2 W=uPose.xy+rightV(uPose.z)*world.x+fwdV(uPose.z)*ahead;
@@ -152,7 +198,7 @@ export function createSpace(scene: THREE.Scene) {
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
   const wakes=make(K.wake,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,opacity:0.5}),96);
   // Cloud banks: soft textured sheets drifting below the ship at several heights (altitude and speed cues).
-  const cloudTex=cloudTexture(),clouds=make(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:cloudTex,color:cloudTex?'#ffffff':'#000000',transparent:true,opacity:cloudTex?0.85:0,depthWrite:false,fog:true}),40);
+  const cloudTex=cloudTexture(),clouds=make(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:cloudTex,color:cloudTex?'#ffffff':'#000000',transparent:true,opacity:cloudTex?0.85:0,depthWrite:false,fog:true}),80);
   // Scale anchors: familiar-sized things moving on the ground (parked jets, cars, boats, ships), regular runway lights,
   // and sparse cloud wisps between the ship and the ground, so speed and altitude read correctly.
   const jets=make(K.jet,kitMat(),240);
@@ -170,6 +216,10 @@ export function createSpace(scene: THREE.Scene) {
   const palms=make(K.palm,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9})),1100),huts=make(K.hut,new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.9}),240);
   const sailMat=kitMat();sailMat.side=THREE.DoubleSide;
   const containers=make(K.containerShip,kitMat(),24),tankers=make(K.tanker,kitMat(),24),sails=make(K.sailboat,sailMat,90);
+  // Arctic: icebergs and ice rubble, icebreakers. Lava: glowing crater embers and drifting ash/smoke banks.
+  const bergs=make(K.berg,new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.05,roughness:0.35}),500),icebreakers=make(K.icebreaker,kitMat(),16);
+  const emberMat=new THREE.MeshBasicMaterial({color:'#ff7a1a'}),emberBase=emberMat.color.clone(),embers=make(geometries.sphere,emberMat,60);
+  const ashTex=cloudTexture(),ash=make(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:ashTex,color:ashTex?'#4a403c':'#000000',transparent:true,opacity:ashTex?0.6:0,depthWrite:false,fog:true}),120);
   const lights=make(K.lighthouse,kitMat(),30),rigs=make(K.oilRig,kitMat(),12),buoys=make(K.buoy,kitMat(),160);
   // Rooftops: water tanks, air-handling clusters, helipads.
   const tanks=make(K.waterTank,kitMat(),300),acs=make(K.acUnits,kitMat(),900),pads=make(K.helipad,kitMat(),60);
@@ -178,9 +228,9 @@ export function createSpace(scene: THREE.Scene) {
   const runway=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ffffff'}),1000);
   const tails=make(geometries.box,new THREE.MeshBasicMaterial({color:'#ff3b55'}),4000);
   edgeMods.forEach((m,i)=>m.name=`edge${i}`);
-  tinted(runway,glass,jets,...edgeMods,islands,islandsB,islandsC,walls,roofTops,pebbles,boulders,spires,mesas,crags);
-  for(const [k,v] of Object.entries({hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
-  const pools=[hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
+  tinted(volcanos,runway,glass,jets,...edgeMods,islands,islandsB,islandsC,walls,roofTops,pebbles,boulders,spires,mesas,crags);
+  for(const [k,v] of Object.entries({bergs,icebreakers,embers,ash,hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway}))v.name=k;
+  const pools=[bergs,icebreakers,embers,ash,hills,volcanos,palms,huts,containers,tankers,sails,surf,lights,rigs,buoys,roofTops,towers,tanks,acs,pads,...edgeMods,islandsB,islandsC,helis,trucks,shade,softShade,pebbles,boulders,spires,mesas,crags,scrub,walls,roofs,glass,trim,domes,grass,paths,trees,carriers,battleships,destroyers,boats,barges,tractors,islands,jets,bodies,lamps,tails,wakes,clouds,runway],counts=new Map<THREE.InstancedMesh,number>();
   const matrix=new THREE.Object3D(),probe=new THREE.Matrix4(),lightColor=new THREE.Color(),warm=new THREE.Color('#fff1c2');
   const setColor=(pool:THREE.InstancedMesh,c:THREE.Color)=>{const i=(counts.get(pool)??1)-1;if(i>=0)pool.setColorAt(i,c);};
   // Placement frame: tile code works in "virtual" coords (x = frame lateral, z = 34 − (frame distance − ship's frame distance)),
@@ -361,6 +411,26 @@ export function createSpace(scene: THREE.Scene) {
     // Arch over the river: two crag legs and a craggy span.
     if(r()<0.1){const span=w*2+10;for(const sd of [-1,1])rock(crags,cx+sd*(w+6),z,9,20,9,r()*0.3,r());const tint=r();if(add(crags,cx,8,z,span+12,7,9,0))setColor(crags,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);}
   };
+  /** Basalt, obsidian and scoria tints (multiplied over the kit's strata colours). */
+  const LAVA_ROCK=['#2a2220','#211c1b','#30241f','#262120'].map(c=>new THREE.Color(c));
+  /**
+   * One lava-field tile (the molten river follows the canyon's river shape): basalt boulders by the banks, obsidian
+   * spire clusters, ash cones with glowing craters under drifting smoke, and dark cliff walls outside the play field.
+   */
+  const lavaTile=(tile:number,z:number,P:BiomeParams,scroll:number)=>{
+    const r=mulberry(P.seed^(tile*2654435761)^0x1a7a),travel=scroll+160-z,cx=riverX(travel,P),w=8.5+3*Math.sin(travel*0.013+P.u[1]);
+    const rock=(pool:THREE.InstancedMesh,x:number,zz:number,sx:number,sy:number,sz:number,ang:number,t:number)=>{if(add(pool,x,-6,zz,sx,sy,sz,ang))setColor(pool,pick(LAVA_ROCK,t));};
+    for(const side of [-1,1]){
+      for(let j=0;j<7;j++){const off=w+3+r()*30,sc=0.8+r()*r()*3;rock(pebbles,cx+side*off,z-32+r()*64,sc*(1+r()*0.6),sc*(0.5+r()*0.6),sc*(1+r()*0.6),r()*6,r());}
+      if(r()<0.45){const n=1+Math.floor(r()*3),off=w+16+r()*36,zz=z-24+r()*48;for(let k=0;k<n;k++){const sc=2.4+r()*1.6,h=0.9+r()*0.8,xx=cx+side*(off+k*4*(r()-0.3));rock(spires,xx,zz+(r()-0.5)*10,sc,sc*h,sc,r()*6,r());}}
+      if(r()<0.2){ // ash cone: glowing crater, smoke drifting downwind
+        const xx=cx+side*(w+42+r()*24),zz=z+(r()-0.5)*30,sc=14+r()*10,h=12+r()*10;rock(volcanos,xx,zz,sc,h,sc,r()*6,r());
+        add(embers,xx,-6+h*0.92,zz,sc*0.12,0.5,sc*0.12);for(let q=0;q<3;q++)add(ash,xx+(r()-0.5)*6,-6+h+4+q*5,zz-q*4,22+q*9,1,16+q*7,r()*3);softShadow(xx,zz,sc*1.6,sc*1.6,h);}
+      const wallX=Math.max(64,side*cx+w+46);
+      for(let k=0;k<5;k++){const zz=z-32+k*13+r()*3,wd=12+r()*12,dp=15+r()*7,h=10+r()*18,xx=side*(wallX+r()*6);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.5,r());softShadow(xx,zz,wd,dp,h);}
+      for(let k=0;k<3;k++){const zz=z-30+k*22+r()*4,wd=18+r()*14,dp=22+r()*8,h=22+r()*22,xx=side*(wallX+20+r()*14);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.4,r());}
+    }
+  };
   const riverW=(travel:number,P:BiomeParams)=>11.5+4*Math.sin(travel*0.011+P.a);
   return {
     /**
@@ -381,7 +451,7 @@ export function createSpace(scene: THREE.Scene) {
       uniforms.uPose.value.set(e.pose.x,e.pose.z,e.pose.h,0);uniforms.uF0.value.set(e.f0.x,e.f0.z,e.f0.h,e.f0.s);uniforms.uF1.value.set(e.f1.x,e.f1.z,e.f1.h,e.f1.s);
       uniforms.uHaze0.value.set(HAZE[e.f0.biome]??HAZE[0]);uniforms.uHaze1.value.set(HAZE[e.f1.biome]??HAZE[0]);
       uniforms.uP0.value.set(params0.u[0],params0.u[1],params0.u[2],params0.u[3]);uniforms.uP1.value.set(params1.u[0],params1.u[1],params1.u[2],params1.u[3]);
-      glassMat.color.copy(glassBase).lerp(white,bar*0.12+beat*0.03);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();
+      glassMat.color.copy(glassBase).lerp(white,bar*0.12+beat*0.03);emberMat.color.copy(emberBase).multiplyScalar(0.85+0.3*beat);trimMat.color.copy(trimBase).lerp(white,bar*0.12);counts.clear();
       routePts=e.routeAhead;F.pose=e.pose;F.f1=e.f1;sceneryPose.value.set(e.pose.x,e.pose.z,e.pose.h);
       // Object fog follows the biome under the ship.
       F.isNext=true;fogTarget.set(HAZE[beyondNext(e.pose.x,e.pose.z)?e.f1.biome:e.f0.biome]??HAZE[0]);(scene.fog as THREE.Fog).color.lerp(fogTarget,0.02);
@@ -401,7 +471,7 @@ export function createSpace(scene: THREE.Scene) {
         const scroll=F.T-126,zAt=(travel:number)=>F.T+34-travel,anchored=(at:number,span:number)=>scroll-10+wrap(at-scroll+10,span);
         for(let tile=Math.floor(tlo/64);tile<=Math.ceil(thi/64);tile++){
           const z=F.T+34-tile*64;
-          if(b===0)carrierTile(tile,z,P,band);else if(b===1)cityTile(tile,z,P,lo,hi);else if(b===2)canyonTile(tile,z,P,scroll);
+          if(b===0)carrierTile(tile,z,P,band);else if(b===1)cityTile(tile,z,P,lo,hi);else if(b===2)canyonTile(tile,z,P,scroll);else if(b===5)lavaTile(tile,z,P,scroll);
         }
         if(b===1){
           // Traffic on both street directions: indexed cars on continuous lanes (never wrap in view).
@@ -420,6 +490,27 @@ export function createSpace(scene: THREE.Scene) {
           // Boats on the river, each with a white wake.
           const travel=anchored(c*128+P.seed%211-time*5,1024),zz=zAt(travel),xr=riverX(travel,P)+(c%2?3:-3);
           add(boats,xr,-6,zz,1.3,1.3,1.3,c%3?0:Math.PI);add(wakes,xr,-5.9,zz+(c%3?3.5:-3.5),3.2,1,c%3?7:-7);}
+        if(b===4){
+          // Arctic: world-anchored icebergs (ringed with surf), ice rubble, the odd research station, low fog wisps.
+          let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [wx,wz] of corners){x0=Math.min(x0,wx);x1=Math.max(x1,wx);z0=Math.min(z0,wz);z1=Math.max(z1,wz);}
+          const C=150;
+          for(let i=Math.floor(x0/C);i<=Math.ceil(x1/C);i++)for(let j=Math.floor(z0/C);j<=Math.ceil(z1/C);j++){
+            const r=mulberry(P.seed^Math.imul(i,0x2c1b3c6d)^Math.imul(j,0x297a2d39)^0xa4c7),cx=(i+0.15+r()*0.7)*C,cz=(j+0.15+r()*0.7)*C,k=r(),near=nearRoute(cx,cz,40);
+            if(k<0.22){const sc=8+r()*16,h=near?3+r()*3:5+r()*14;addW(bergs,cx,-6.5,cz,sc,h,sc*(0.7+r()*0.6),r()*6);addW(surf,cx,-5.95,cz,sc*2.6,1,sc*2.4,r()*3);addW(softShade,cx+h*0.3,-5.97,cz+h*0.35,sc*0.9,0.02,sc*0.9);}
+            else if(k<0.5){const n=5+Math.floor(r()*6);for(let q=0;q<n;q++){const sc=1+r()*2.5;addW(bergs,cx+(r()-0.5)*34,-6.2,cz+(r()-0.5)*34,sc,sc*(0.4+r()*0.5),sc,r()*6);}}
+            else if(k<0.53&&!near){ // research station: domes, huts, a radio mast with a light
+              for(let q=0;q<3;q++)addW(domes,cx+q*7,-6,cz+(q%2)*5,3,2.4,3);for(let q=0;q<2;q++)addW(roofs,cx-6,-4.8,cz+q*7,5,2.4,4);addW(roofs,cx+18,3,cz,0.4,18,0.4);addW(lamps,cx+18,12,cz,0.7,0.7,0.7);}
+            if(r()<0.15)addW(clouds,cx,-2+r()*3,cz,40+r()*30,1,30+r()*20,r()*3);
+          }
+          // Icebreakers plough steady lanes through the pack, leaving a wake.
+          const ang=(P.seed%628)/100,dx=-Math.sin(ang),dz=-Math.cos(ang),nx=-dz,nz=dx,spacing=220,gap=420,speed=3;
+          let j0=1e9,j1=-1e9,u0=1e9,u1=-1e9;for(const [wx,wz] of corners){const o=wx*nx+wz*nz,u=wx*dx+wz*dz;j0=Math.min(j0,o);j1=Math.max(j1,o);u0=Math.min(u0,u);u1=Math.max(u1,u);}
+          for(let j=Math.floor(j0/spacing);j<=Math.ceil(j1/spacing);j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
+            const r=mulberry(P.seed^(j*7919)^(kk*104729)^0x1ce);if(r()<0.5)continue;
+            const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o;if(nearRoute(wx,wz,20))continue;
+            const yaw=Math.atan2(-dx,-dz);addW(icebreakers,wx,-6,wz,1,1,1,yaw);addW(shade,wx+4,-5.96,wz+5,10,0.02,40,yaw);addW(wakes,wx-dx*17,-5.9,wz-dz*17,9,1,20,yaw);
+          }
+        }
         // Islands in view (shared with the ground shader through uIsl, nearest 16 to the ship).
         let isl:SeaIsland[]=[];
         if(b===3){let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;for(const [wx,wz] of corners){x0=Math.min(x0,wx);x1=Math.max(x1,wx);z0=Math.min(z0,wz);z1=Math.max(z1,wz);}

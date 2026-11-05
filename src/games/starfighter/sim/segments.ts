@@ -5,7 +5,10 @@ import { after } from './director';
  * short songs merge. Each segment has its own biome, at most one flagship, and ends with a breather + scorecard.
  */
 export interface Segment { index: number; t0: number; t1: number; title: string; seed: number; biome: number; bossAt: number | null }
-export const SEGMENT = { minS: 120, maxS: 420, targetS: 330, seamWindowS: 90, minBossSegS: 150, bossLeadS: 80, firstBossS: 120, biomes: 4 };
+/** Biome ids (render/space.ts draws them). Open biomes lie on world axes, so the route may turn over them. */
+export const BIOME = { carrier: 0, city: 1, canyon: 2, ocean: 3, arctic: 4, lava: 5 } as const;
+export const isOpenBiome = (b: number) => b === BIOME.city || b === BIOME.ocean || b === BIOME.arctic;
+export const SEGMENT = { minS: 120, maxS: 420, targetS: 330, seamWindowS: 90, minBossSegS: 150, bossLeadS: 80, firstBossS: 120, biomes: 6 };
 const hash = (text: string) => { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h >>> 0; };
 
 /** Song spans, with very short songs merged into the next one. */

@@ -13,7 +13,9 @@ export function biomeParams(biome: number, seed: number): BiomeParams {
     const highway = r() < 0.5, side = r() < 0.5 ? -1 : 1;
     return { seed, u: [sx, ox, sy, oy], a: 0, highway, highwayX: side * (58 + r() * 30) };
   }
-  if (biome === 2) {
+  // Lava fields reuse the canyon's river shape (a lava river along the route); the arctic offsets its floe field.
+  if (biome === 4) return { seed, u: [r() * 1000, r() * 1000, 32 + r() * 12, 0], a: 0, highway: false, highwayX: 0 };
+  if (biome === 2 || biome === 5) {
     const f1 = 0.009 + r() * 0.01, p1 = r() * 6.28, f2 = 0.022 + r() * 0.02, p2 = r() * 6.28;
     return { seed, u: [f1, p1, f2, p2], a: p1, highway: false, highwayX: 0 };
   }

@@ -22,7 +22,7 @@ export class SfRenderer implements GameRenderer {
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
-  private bullets?: THREE.InstancedMesh; private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
+  private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
@@ -76,7 +76,7 @@ export class SfRenderer implements GameRenderer {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#ffffff', 300); this.enemyFire = createBullets(this.scene);
+    this.enemyFire = createBullets(this.scene);
     this.effects = makePool(geometries.ring, '#ffcc8a', 160);
     this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
@@ -176,18 +176,10 @@ export class SfRenderer implements GameRenderer {
     }
     for (const [id, model] of this.enemies) if (!live.has(id)) { this.scene.remove(model); disposeModel(model); this.enemies.delete(id); }
     const mat = this.matrix;
-    // Pulse shots change shape with the arsenal: dots, then bolts, then long spears (white, then gold at the top tiers).
-    const pulseColor = new THREE.Color();
-    s.shots.slice(0, 300).forEach((b, i) => {
-      const len = b.kind === 'wing' ? 2.5 : b.tier >= 4 ? 4.8 : b.tier >= 2 ? 3.2 : 1.4, width = b.kind === 'wing' ? 0.28 : b.tier >= 4 ? 0.36 : b.tier >= 2 ? 0.28 : 0.4;
-      mat.position.set(b.x, 10.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(width, 0.25, len); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix);
-      this.bullets!.setColorAt(i, pulseColor.set(b.kind === 'wing' ? '#a4f3ff' : b.tier >= 7 ? '#ffe27a' : b.tier >= 4 ? '#effcff' : '#a4f3ff'));
-    });
-    if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
-    this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
+    // Player pulse shots are drawn by the combat layer as glowing bolts (render/vfx.ts).
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && f.kind !== 'boom' && s.t-f.at < (f.kind==='volley'?0.5:1.6)).slice(-160);
+    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
     // Escort phrase beam: a bright column sweeping up the ship's lane, narrowing as it fades.
@@ -229,7 +221,7 @@ export class SfRenderer implements GameRenderer {
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
-    for (const pool of [this.bullets, this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
+    for (const pool of [this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
     this.combat?.dispose(); this.space?.dispose(); this.snow?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();

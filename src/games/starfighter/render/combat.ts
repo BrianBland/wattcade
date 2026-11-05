@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { SfSnapshot } from '../sim/types';
 import { geometries } from './models';
 import { groupOf, GROUND_SPEED } from '../sim/encounters';
+import { createVfx, h01, VFX } from './vfx';
 
 /** Fixed-size pools: no geometry or material allocation in the frame loop. */
 export function createCombat(scene: THREE.Scene) {
@@ -10,8 +11,10 @@ export function createCombat(scene: THREE.Scene) {
       opacity: glow ? 0.28 : 0.95, depthWrite: false, blending: glow ? THREE.AdditiveBlending : THREE.NormalBlending }), count);
     mesh.count = 0; mesh.frustumCulled = false; scene.add(mesh); return mesh;
   };
-  const trails = pool(geometries.box, '#ffffff', 512, true), cores = pool(geometries.box, '#ffffff', 512);
-  const trailColor = new THREE.Color(), coreColor = new THREE.Color();
+  // Glowing particles and smoke (render/vfx.ts): lasers, player bolts, fireballs, sparks, flashes, shock rings, smoke.
+  const vfx = createVfx(scene), trailColor = new THREE.Color(), C = (hex: string) => new THREE.Color(hex);
+  const FLASH = C('#ffd9a0'), SPARK = C('#ff8a2a'), RING = C('#ffb46a'), SMOKE_AIR = C('#4a4448'), SMOKE_GROUND = C('#5a5048'), HIT = C('#bff6ff');
+  const BOLT = { cyan: C('#5fe6ff'), white: C('#b9f4ff'), gold: C('#ffcf4a') };
   // Lancer beams: a dashed warning line, then a brief bright beam with a white core.
   const dashes = pool(geometries.box, '#ffffff', 384), beamGlow = pool(geometries.box, '#ff3fd0', 24, true), beamCore = pool(geometries.box, '#ffffff', 24);
   (beamGlow.material as THREE.MeshBasicMaterial).opacity = 0.6; const dashColor = new THREE.Color(), beamPink = new THREE.Color('#ff3fd0'), white = new THREE.Color('#ffffff');
@@ -19,9 +22,10 @@ export function createCombat(scene: THREE.Scene) {
   // once, a quarter second each, so a column of hits never flares).
   const blade = pool(geometries.box, '#ffcf3a', 2, true), slashes = pool(geometries.box, '#ffcf3a', 8, true), slashCores = pool(geometries.box, '#fff6d8', 8);
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
-  const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
-  (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
-  const debris = pool(geometries.box, '#ffb339', 512), flashes = pool(geometries.sphere, '#fff4c9', 160, true);
+  const shadows=pool(geometries.sphere,'#071b34',96);
+  (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;
+  // Tumbling hull fragments (a few per blast; the fire, sparks and smoke are particles).
+  const debris = pool(geometries.box, '#8a5a3a', 256);
   // Muzzle charge before an enemy fires, and cyan streak sparks where a bullet grazes the ship.
   const warns = pool(geometries.sphere, '#ffffff', 96, true), warnRings = pool(geometries.ring, '#ffffff', 96, true), sparks = pool(geometries.box, '#9ffbff', 192, true);
   (warns.material as THREE.MeshBasicMaterial).opacity = 0.75; (warnRings.material as THREE.MeshBasicMaterial).opacity = 0.9; (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
@@ -35,24 +39,31 @@ export function createCombat(scene: THREE.Scene) {
   return {
     /** `lift`: how far the terrain has risen toward the ship (ground shadows and blasts follow it). */
     update(s: SfSnapshot, lift = 0) {
+      vfx.begin();
       let n = 0;
       for (const laser of s.lasers) {
         const age = s.t - laser.at; if (age < 0) continue;
         const flight = Math.max(0.05, laser.hitAt - laser.at), head = Math.min(1, age / flight), tail = Math.max(0, (age - flight - 0.16) / 0.52);
         // Lasers grow with the arsenal: thin cyan, then wider white-cyan, then a gold core. Full-lock volleys burn gold.
-        const tier = laser.tier ?? 1, swell = 0.8 + (laser.amp ?? 0.5) * 0.45, wide = (0.8 + tier * 0.08) * swell, core = (0.85 + tier * 0.07) * swell;
+        const tier = laser.tier ?? 1, swell = 0.8 + (laser.amp ?? 0.5) * 0.45, wide = (0.8 + tier * 0.08) * swell;
         trailColor.set(laser.heavy ? '#ff9d4d' : laser.full ? '#ffe066' : tier >= 7 ? '#5fd0ff' : tier >= 4 ? '#8fe9ff' : '#33eaff');
-        coreColor.set(laser.heavy ? '#fff0c8' : laser.full ? '#ffffff' : tier >= 7 ? '#ffd34d' : tier >= 4 ? '#ffffff' : '#ddffff');
-        for (let j = 0; j < 24 && n < 512; j++) {
-          const u = tail + (head-tail)*j/24, v = tail + (head-tail)*(j+1)/24;
+        const fade = Math.max(0, (age - flight) / 0.68);
+        for (let j = 0; j < 16; j++) {
+          const u = tail + (head-tail)*j/16, v = tail + (head-tail)*(j+1)/16;
           bezier(u, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a);
           bezier(v, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, b);
-          mat.position.copy(a).add(b).multiplyScalar(0.5); mat.quaternion.setFromUnitVectors(axis,direction.copy(b).sub(a).normalize());
-          mat.scale.set(2.5 * wide, 0.8, Math.max(0.01, a.distanceTo(b))); mat.updateMatrix(); trails.setMatrixAt(n, mat.matrix); trails.setColorAt(n, trailColor);
-          mat.scale.x = 0.42 * core; mat.scale.y = 0.24 * core; mat.updateMatrix(); cores.setMatrixAt(n, mat.matrix); cores.setColorAt(n++, coreColor);
+          const len = a.distanceTo(b); if (len < 0.01) continue;
+          vfx.add(VFX.beam, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, len * 1.08, 1.4 * wide, trailColor, fade, 0, b.x - a.x, b.y - a.y, b.z - a.z);
         }
+        // A bright head while the laser is still travelling.
+        if (head < 1) { bezier(head, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a); vfx.add(VFX.flash, a.x, a.y, a.z, 2.4 * wide, 2.4 * wide, trailColor, 0.45); }
+        n++;
       }
-      trails.count = cores.count = n; trails.instanceMatrix.needsUpdate = cores.instanceMatrix.needsUpdate = true;
+      // Player pulse shots: capsule bolts that grow with the arsenal (dots, bolts, spears; gold at the top tiers).
+      for (const sh of s.shots.slice(0, 400)) {
+        const len = sh.kind === 'wing' ? 3 : sh.tier >= 4 ? 6.4 : sh.tier >= 2 ? 4.4 : 2.6, wid = sh.kind === 'wing' ? 1 : sh.tier >= 4 ? 1.5 : 1.3;
+        vfx.add(VFX.bolt, sh.x, 10.7, sh.y - 50, len, wid, sh.kind === 'wing' ? BOLT.cyan : sh.tier >= 7 ? BOLT.gold : sh.tier >= 4 ? BOLT.white : BOLT.cyan, 0, 0, sh.vx, 0, sh.vy);
+      }
       let dn = 0, bn = 0;
       for (const beam of s.beams) {
         const end = 125, length = Math.max(1, end - beam.y);
@@ -73,7 +84,6 @@ export function createCombat(scene: THREE.Scene) {
       }
       dashes.count = dn; beamGlow.count = beamCore.count = bn;
       for (const p of [dashes, beamGlow, beamCore]) { p.instanceMatrix.needsUpdate = true; if (p.instanceColor) p.instanceColor.needsUpdate = true; }
-      for (const p of [trails, cores]) if (p.instanceColor) p.instanceColor.needsUpdate = true;
       n = 0;
       for (const e of s.enemies) {
         const count = s.locks.filter(id => id === e.id).length, inGroup = s.selectedGroup !== null && groupOf(e) === s.selectedGroup;
@@ -94,20 +104,38 @@ export function createCombat(scene: THREE.Scene) {
       let sh=0;
       for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8+lift,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?23:4,0.03,e.kind==='boss'?13:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
       mat.position.set(s.shipX,-5.8+lift,s.shipY-47);mat.scale.set(6,0.03,4);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);shadows.count=sh;shadows.instanceMatrix.needsUpdate=true;
-      let d = 0, f = 0, sm = 0;
+      let d = 0;
       for (const fx of s.fx) {
-        const age = s.t-fx.at;
-        if (fx.kind !== 'boom' && fx.kind !== 'intercept') continue;
+        const age = s.t - fx.at;
+        if ((fx.kind !== 'boom' && fx.kind !== 'intercept') || age < 0) continue;
         // Ground explosions and smoke stay put on the terrain as it scrolls.
-        const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0);
-        if (age < 0.45 && f < 160) {
-          mat.position.set(fx.x,fx.ground?-2+lift:12,fy-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
+        const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0), x = fx.x, y = fx.ground ? -2 + lift : 12, z = fy - 50, S = fx.size ?? 1, id = fx.id;
+        if (fx.kind === 'intercept') { // a hit: a small flash and a few sparks
+          if (age < 0.15) vfx.add(VFX.flash, x, y, z, 3.2 * S, 3.2 * S, HIT, age / 0.15);
+          if (age < 0.3) for (let j = 0; j < 3; j++) { const an = h01(id * 3 + j) * 6.283, sp = 18 + 14 * h01(id * 5 + j), vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, l = age / 0.3;
+            vfx.add(VFX.spark, x + vx * age, y + 1, z + vz * age, 1.2 + sp * 0.04, 0.16, HIT, l, 0, vx, 0, vz); }
+          continue;
         }
-        if(fx.kind==='boom' && sm<128) {mat.position.set(fx.x,(fx.ground?-2+lift:12)+age*5,fy-50);mat.scale.setScalar((2+age*3)*(fx.size??1));mat.updateMatrix();smoke.setMatrixAt(sm++,mat.matrix);}
-        if (fx.kind === 'boom') for (let j=0; j<12*(fx.size??1) && d<512; j++) {
-          const angle = j*Math.PI/4 + fx.id, speed = (5+j%3*4)*(fx.size??1);
-          mat.position.set(fx.x+Math.cos(angle)*age*speed, (fx.ground?-2+lift:12)+Math.sin(age*Math.PI/1.6)*5, fy-50+Math.sin(angle)*age*speed);
-          mat.rotation.set(age*3, angle+age*4, age*2); const size=Math.max(0.03, (1-age/1.6)*0.65); mat.scale.set(size, size, size*2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
+        // Blast: flash, turbulent fireballs, sparks, a shock ring, then smoke rising; a few tumbling fragments.
+        if (age < 0.12) vfx.add(VFX.flash, x, y + 1, z, 11 * S, 11 * S, FLASH, age / 0.12);
+        if (age < 0.6) for (let j = 0; j < 5; j++) {
+          const an = h01(id * 7 + j) * 6.283, l = age / 0.6, out = (1.2 + 3 * h01(id * 13 + j)) * S * (1 - (1 - l) * (1 - l)), sz = (3.2 + 2.4 * h01(id + j * 31)) * S * (0.55 + 0.8 * Math.sqrt(l));
+          vfx.add(VFX.fire, x + Math.cos(an) * out, y + (fx.ground ? 1 : 0.5) + l * 3 * S, z + Math.sin(an) * out, sz, sz, FLASH, l, h01(id + j * 3));
+        }
+        if (age < 0.55) for (let j = 0; j < Math.min(16, 10 * S); j++) {
+          const an = h01(id * 11 + j) * 6.283, up = (h01(id * 17 + j) - 0.25) * 0.8, sp = (22 + 26 * h01(id * 19 + j)) * S, l = age / 0.55, travel = age * (1 - 0.45 * l);
+          const vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, vy = up * sp - 22 * age;
+          vfx.add(VFX.spark, x + vx * travel, y + up * sp * travel - 10 * age * age, z + vz * travel, 1.4 + sp * 0.05 * (1 - l), 0.2, SPARK, l, 0, vx, vy, vz);
+        }
+        if (age < 0.35) { const l = age / 0.35, r = 9 * S * (0.3 + l * 1.6); vfx.add(VFX.ring, x, y + 0.5, z, r, r, RING, l); }
+        if (age > 0.1 && age < 1.7) for (let j = 0; j < 4; j++) {
+          const l = (age - 0.1) / 1.6, an = h01(id * 23 + j) * 6.283, sz = (3 + l * 7) * S * (0.8 + 0.4 * h01(id + j));
+          vfx.smoke(x + Math.cos(an) * 2 * S, y + 1 + l * 7 * S + j * 0.6, z + Math.sin(an) * 2 * S, sz, fx.ground ? SMOKE_GROUND : SMOKE_AIR, l, h01(id * 29 + j));
+        }
+        if (age < 1.4) for (let j = 0; j < 6 * S && d < 256; j++) {
+          const angle = j * Math.PI / 3 + id, speed = (5 + j % 3 * 4) * S;
+          mat.position.set(x + Math.cos(angle) * age * speed, y + Math.sin(age * Math.PI / 1.4) * 5, z + Math.sin(angle) * age * speed);
+          mat.rotation.set(age * 3, angle + age * 4, age * 2); const sz = Math.max(0.03, (1 - age / 1.4) * 0.6); mat.scale.set(sz, sz, sz * 2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
         }
       }
       let w = 0;
@@ -158,8 +186,9 @@ export function createCombat(scene: THREE.Scene) {
       }
       blade.count = bl; slashes.count = sl; slashCores.count = sl;
       blade.instanceMatrix.needsUpdate = slashes.instanceMatrix.needsUpdate = slashCores.instanceMatrix.needsUpdate = true;
-      smoke.count=sm;smoke.instanceMatrix.needsUpdate=true;debris.count=d; flashes.count=f; debris.instanceMatrix.needsUpdate=flashes.instanceMatrix.needsUpdate=true;
+      debris.count = d; debris.instanceMatrix.needsUpdate = true;
+      vfx.flush();
     },
-    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
+    dispose() { vfx.dispose(); for (const mesh of [rings, brackets, debris, shadows, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
   };
 }

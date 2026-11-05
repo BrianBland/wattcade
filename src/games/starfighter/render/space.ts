@@ -157,7 +157,13 @@ export function createSpace(scene: THREE.Scene) {
       float grid=step(0.96,fract(p.x/18.0))+step(0.97,fract(p.y/20.0));return biomeColor(b,P,p,n,water,grid,pulse,world);}
     void main(){float ahead=34.0-world.z;vec2 W=uPose.xy+rightV(uPose.z)*world.x+fwdV(uPose.z)*ahead;
     float band=exp(-abs(world.z-wave)/16.0)*waveFade;
-    float k=smoothstep(-30.0,30.0,dot(W-uF1.xy,fwdV(uF1.z)));vec3 c=k<0.999?shadeAt(uB0,uP0,frameP(uB0,uF0,W),band):vec3(0.0);if(k>0.001)c=mix(c,shadeAt(uB1,uP1,frameP(uB1,uF1,W),band),k);
+    // Biome seam: a wandering coastline (not a straight crossfade) with a rim: surf where either side is open water,
+    // a dark rubble edge between land biomes. Scenery tapers or keeps clear of it (render/space.ts add()).
+    float sd=dot(W-uF1.xy,fwdV(uF1.z)),coast=sd+(noise(W*0.012)-0.5)*70.0+(noise(W*0.06)-0.5)*14.0;
+    float k=smoothstep(-2.5,2.5,coast);vec3 c=k<0.999?shadeAt(uB0,uP0,frameP(uB0,uF0,W),band):vec3(0.0);if(k>0.001)c=mix(c,shadeAt(uB1,uP1,frameP(uB1,uF1,W),band),k);
+    float rim=exp(-abs(coast)/2.5)*step(abs(sd),140.0);
+    bool wet=abs(uB0-3.0)<0.5||abs(uB1-3.0)<0.5||abs(uB0-4.0)<0.5||abs(uB1-4.0)<0.5;
+    c=wet?mix(c,vec3(0.78,0.86,0.9)*(0.75+0.25*noise(W*0.4+vec2(time*0.3,-time*0.2))),rim*0.75):mix(c,c*0.45+vec3(0.02),rim*0.8*(0.7+0.3*noise(W*0.3)));
     c+=vec3(0.02,0.05,0.06)*band;float haze=smoothstep(380.0,1150.0,length(cameraPosition-world));c=mix(c,mix(uHaze0,uHaze1,k),haze*0.85);gl_FragColor=vec4(max(c,vec3(0.0)),1.0);}` }));
   // Everything on the ground hangs off one root, so the terrain can rise toward the ship (lower flight in a burn).
   const root=new THREE.Group();scene.add(root);
@@ -192,7 +198,7 @@ export function createSpace(scene: THREE.Scene) {
   // Canyon rock kit: strata baked into vertex colours, warped bands/streaks/dust in the shader, a seeded tint per instance.
   const rockMat=()=>strata(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:0.92}));
   const pebbles=make(K.boulderA,rockMat(),1400),boulders=make(K.boulderB,rockMat(),400),spires=make(K.spire,rockMat(),220),mesas=make(K.mesa,rockMat(),64);
-  const crags=make(K.crag,rockMat(),1100),scrub=make(K.scrub,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:1})),900);
+  const crags=make(K.crag,rockMat(),2200),scrub=make(K.scrub,foliage(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0,roughness:1})),900);
   const carriers=make(K.carrier,kitMat(),12),battleships=make(K.battleship,kitMat(),16),destroyers=make(K.destroyer,kitMat(),24);
   const boats=make(K.riverBoat,kitMat(),64),barges=make(K.barge,kitMat(),24),tractors=make(K.tractor,kitMat(),96),islands=make(K.island,windowed(new THREE.MeshStandardMaterial({vertexColors:true,metalness:0.4,roughness:0.45})),64);
   // Wakes: additive white V fans (fade baked into vertex colours) so they read as foam on any water.
@@ -239,10 +245,22 @@ export function createSpace(scene: THREE.Scene) {
   const F={ox:0,oz:0,h:0,s:0,T:0,dh:0,biome:0,pose:{x:0,z:0,h:0},f1:{x:0,z:0,h:0,s:0} as Frame,isNext:false};
   const vWorld=(x:number,z:number):[number,number]=>{const t=F.T+34-z-F.s,[fx,fz]=fwdOf(F.h),[rx,rz]=rightOf(F.h);return [F.ox+rx*x+fx*t,F.oz+rz*x+fz*t];};
   const wLocal=(wx:number,wz:number)=>{const dx=wx-F.pose.x,dz=wz-F.pose.z,[fx,fz]=fwdOf(F.pose.h),[rx,rz]=rightOf(F.pose.h);return [dx*rx+dz*rz,dx*fx+dz*fz];};
-  const beyondNext=(wx:number,wz:number)=>{const [fx,fz]=fwdOf(F.f1.h);return (wx-F.f1.x)*fx+(wz-F.f1.z)*fz>=0;};
+  /** Signed distance past the next biome's start line (≥ 0 = the next biome's side). */
+  const seamDist=(wx:number,wz:number)=>{const [fx,fz]=fwdOf(F.f1.h);return (wx-F.f1.x)*fx+(wz-F.f1.z)*fz;};
+  const beyondNext=(wx:number,wz:number)=>seamDist(wx,wz)>=0;
+  /** Seam band: rock scenery tapers over `taper`; other scenery keeps `clear` away (the shader's coastline wanders ±40). */
+  const SEAM={taper:170,clear:48};
+  const TAPER=new Set<THREE.InstancedMesh>([pebbles,boulders,spires,mesas,crags,volcanos,hills,bergs,shade,softShade]),FLAT=new Set<THREE.InstancedMesh>([shade,softShade]),ATMOS=new Set<THREE.InstancedMesh>([clouds,ash,surf,wakes,runway]);
   const add=(pool:THREE.InstancedMesh,x:number,y:number,z:number,sx:number,sy:number,sz:number,angle=0)=>{
     const i=counts.get(pool)??0;if(i>=pool.instanceMatrix.count){dropped++;overflowed.add(pool.name);return false;}
-    const [wx,wz]=vWorld(x,z);if(beyondNext(wx,wz)!==F.isNext)return false;
+    const [wx,wz]=vWorld(x,z),sd=seamDist(wx,wz);if((sd>=0)!==F.isNext)return false;
+    // Near a biome switch: rock scenery shrinks to nothing toward the seam (and rises from it on the far side);
+    // everything else except atmosphere stays clear of the seam's coastline band.
+    const asd=Math.abs(sd);
+    if(asd<SEAM.taper){
+      if(TAPER.has(pool)){const tp=asd/SEAM.taper,e=tp*tp*(3-2*tp);if(e<0.12)return false;sy*=e;const k=FLAT.has(pool)?e:0.3+0.7*e;sx*=k;sz*=k;} // footprints shrink too, so squashed slabs never read as flat tiles
+      else if(asd<SEAM.clear&&!ATMOS.has(pool))return false;
+    }
     const [lx,ahead]=wLocal(wx,wz);if(!inView(lx,ahead))return false;
     if(audit&&pool===walls)audit.push(Math.round(wx*10),Math.round(wz*10),Math.round(sy*10),Math.round(lx),Math.round(ahead));
     matrix.position.set(lx,y,34-ahead);matrix.rotation.set(0,angle+F.dh,0);matrix.scale.set(sx,sy,sz);matrix.updateMatrix();pool.setMatrixAt(i,matrix.matrix);counts.set(pool,i+1);return true;
@@ -406,11 +424,21 @@ export function createSpace(scene: THREE.Scene) {
       const wallX=Math.max(64,side*cx+w+48);
       for(let k=0;k<5;k++){const zz=z-32+k*13+r()*3,wd=12+r()*12,dp=15+r()*7,h=12+r()*22,xx=side*(wallX+r()*6);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.5,r());softShadow(xx,zz,wd,dp,h);}
       for(let k=0;k<3;k++){const zz=z-30+k*22+r()*4,wd=18+r()*14,dp=22+r()*8,h=26+r()*26,xx=side*(wallX+20+r()*14);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.4,r());}
+      plateau(tile,z,P.seed,side,wallX+40,ROCK_TINTS);
       if(r()<0.12){const xx=cx+side*(w+16);add(roofs,xx,-1,z,14,2,18);add(domes,xx,1,z,5,3,5);add(glass,xx,2,z,10,0.3,1);} // outpost
     }
     // Arch over the river: two crag legs and a craggy span.
     // Kept below the flight plane (ship at y 10, terrain up to +4 in a burn): legs top out at y 4, the span just under.
     if(r()<0.1){const span=w*2+10;for(const sd of [-1,1])rock(crags,cx+sd*(w+6),z,9,10,9,r()*0.3,r());const tint=r();if(add(crags,cx,-1,z,span+12,5,9,0))setColor(crags,ROCK_TINTS[Math.floor(tint*ROCK_TINTS.length)]);}
+  };
+  /**
+   * Tableland behind a canyon or lava wall, out to the edge of the view: wide craggy slabs a little lower than the rim,
+   * with the odd gap. Each tile and side has its own seeded sequence, so a wider view only appends slabs at the far edge.
+   */
+  const plateau=(tile:number,z:number,seed:number,side:number,x0:number,tints:THREE.Color[])=>{
+    const r=mulberry(seed^(tile*2654435761)^(side>0?0x51ab:0x3c9d)),maxX=260+Math.max(0,34-z)*0.66;
+    for(let x=x0;x<maxX;){const w=36+r()*34+x*0.08,h=18+r()*22,gap=r()<0.1,tint=r(),dz=r()*6-3,rot=(r()-0.5)*0.2;
+      if(!gap&&add(crags,side*(x+w/2),-6,z+dz,w,h,70,rot))setColor(crags,pick(tints,tint));x+=w*0.85;}
   };
   /** Basalt, obsidian and scoria tints (multiplied over the kit's strata colours). */
   const LAVA_ROCK=['#2a2220','#211c1b','#30241f','#262120'].map(c=>new THREE.Color(c));
@@ -430,6 +458,7 @@ export function createSpace(scene: THREE.Scene) {
       const wallX=Math.max(64,side*cx+w+46);
       for(let k=0;k<5;k++){const zz=z-32+k*13+r()*3,wd=12+r()*12,dp=15+r()*7,h=10+r()*18,xx=side*(wallX+r()*6);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.5,r());softShadow(xx,zz,wd,dp,h);}
       for(let k=0;k<3;k++){const zz=z-30+k*22+r()*4,wd=18+r()*14,dp=22+r()*8,h=22+r()*22,xx=side*(wallX+20+r()*14);rock(crags,xx,zz,wd,h,dp,(r()-0.5)*0.4,r());}
+      plateau(tile,z,P.seed^0x1a7a,side,wallX+40,LAVA_ROCK);
     }
   };
   const riverW=(travel:number,P:BiomeParams)=>11.5+4*Math.sin(travel*0.011+P.a);

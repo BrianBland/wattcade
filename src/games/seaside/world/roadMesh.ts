@@ -104,15 +104,13 @@ export function meshRoad(route: RouteSpline, c: CorridorDef, s0: number, s1: num
   for (let j = j0; j * voxel < end; j++) {
     const ns = Math.min(end, (j + 1) * voxel), next = section(ns), row = rowTops(j);
     across(prev, tops, row, j - 1, j);
-    // tops: runs of equal (colour, height) cells
-    for (let i = 0; i < cells.length;) {
+    // Keep every top cell edge, even where colours match. Merging only within a row creates
+    // T-junctions against the next row, which can rasterize as pinholes on the sheared surface.
+    for (let i = 0; i < cells.length; i++) {
       const t = row[i];
-      if (!t) { i++; continue; }
-      let k = i + 1;
-      while (k < cells.length && row[k]?.c === t.c && row[k]?.dy === t.dy) k++;
-      const d0 = cells[i].d0, d1 = cells[k - 1].d1;
+      if (!t) continue;
+      const { d0, d1 } = cells[i];
       face([[prev, d0, t.dy], [next, d0, t.dy], [next, d1, t.dy], [prev, d1, t.dy]], t.c);
-      i = k;
     }
     // sides between neighbouring cells: a riser on the higher one, or a full wall beside an empty cell / the edge
     for (let i = 0; i <= cells.length; i++) {

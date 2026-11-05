@@ -27,3 +27,20 @@ export function cityRoads(P: BiomeParams, lo: number, hi: number): { xs: number[
   for (let x = ox + sx / 2 + Math.floor((lo - ox - sx / 2) / sx) * sx; x <= hi; x += sx) if (x >= lo) xs.push(x);
   return { xs };
 }
+/** An ocean island: world centre (x, z), radius, kind (0 jungle hill, 1 atoll ring, 2 volcano) and its own seed. */
+export interface SeaIsland { x: number; z: number; r: number; kind: 0 | 1 | 2; seed: number }
+export const SEA_CELL = 420;
+/**
+ * Islands overlapping the world box [x0, x1] × [z0, z1]: about half the 420-unit cells hold one (radius 30–95),
+ * seeded per cell, so the shader (coast, lagoon, beach) and the scenery (hills, palms, villages) always agree.
+ */
+export function seaIslands(seed: number, x0: number, x1: number, z0: number, z1: number): SeaIsland[] {
+  const out: SeaIsland[] = [], C = SEA_CELL;
+  for (let i = Math.floor((x0 - 100) / C); i <= Math.floor((x1 + 100) / C); i++) for (let j = Math.floor((z0 - 100) / C); j <= Math.floor((z1 + 100) / C); j++) {
+    const r = mulberry(seed ^ Math.imul(i, 0x27d4eb2d) ^ Math.imul(j, 0x165667b1) ^ 0x51a7);
+    if (r() > 0.55) continue;
+    const rad = 30 + r() * 65, x = (i + 0.25 + r() * 0.5) * C, z = (j + 0.25 + r() * 0.5) * C, u = r();
+    out.push({ x, z, r: rad, kind: u < 0.55 ? 0 : u < 0.8 ? 1 : 2, seed: Math.floor(r() * 2 ** 31) });
+  }
+  return out;
+}

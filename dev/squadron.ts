@@ -14,6 +14,8 @@ const session = createGameSession({ game: module, profile, input: new NullInput(
 if (q.get('tester') === '1') session.tuning.set('starfighter.testerUnlockAll', 1);
 if (q.get('weave')) session.tuning.set('starfighter.weave', Number(q.get('weave')));
 if (q.get('pace')) session.tuning.set('starfighter.arsenalPace', Number(q.get('pace')));
+// ?tune=burnDip:6,burnFov:3 sets any starfighter tunable.
+for (const kv of (q.get('tune') ?? '').split(',').filter(Boolean)) { const [k, v] = kv.split(':'); session.tuning.set(`starfighter.${k}`, Number(v)); }
 const renderer = new SfRenderer();
 renderer.mount(document.getElementById('app')!, { profile, send: a => session.sim.receive?.(a), insets: { top: 0, left: 0, right: 0, bottom: Number(q.get('inset') ?? 100) } });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));

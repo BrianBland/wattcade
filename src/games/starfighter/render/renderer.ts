@@ -16,7 +16,8 @@ import { WING_OFFSETS } from '../sim/progression';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
-  private scene = new THREE.Scene(); private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 800);
+  private scene = new THREE.Scene(); // Far plane beyond the fog's end (1150), so a lowered camera never sees past the drawn world.
+  private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1600);
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
@@ -25,13 +26,15 @@ export class SfRenderer implements GameRenderer {
   private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private cameraBase = new THREE.Vector3(); private turnRoll = 0; private post?: SquadronPost;
+  private cameraBase = new THREE.Vector3(); private turnRoll = 0;
+  /** Terrain lift (the ship flies lower in pushes and burns) and the speed FOV widening, both eased. */
+  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-    if (el?.dataset.action === 'target') this.send?.({ type: 'target', direction: Number(el.dataset.direction) });
+    if (el?.dataset.action === 'flank' || el?.dataset.action === 'target') this.send?.({ type: 'flank', direction: Number(el.dataset.direction) });
     if (el?.dataset.action === 'nova') this.send?.({ type: 'nova' });
     if (el?.dataset.action === 'launch') this.send?.({ type: 'launch' });
     if (el?.dataset.action === 'craft') this.send?.({ type: 'craft', craft: el.dataset.craft });
@@ -58,6 +61,8 @@ export class SfRenderer implements GameRenderer {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
     this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
+    // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears.
+    this.webgl?.compile(this.scene, this.camera);
     for (let i=0;i<2;i++) {
       const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
@@ -104,7 +109,7 @@ export class SfRenderer implements GameRenderer {
     this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
-      this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
+      this.craft = shipModel(this.color, s.craft === 'cruiser' ? 'player' : s.craft); this.craftKind = s.craft; this.scene.add(this.craft);
       this.liveryKey = '';
     }
     const craft = this.craft!, hangar = s.phase === 'hangar', level = s.crafts[s.craft].level;
@@ -153,7 +158,7 @@ export class SfRenderer implements GameRenderer {
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
-    this.combat?.update(s);
+    this.combat?.update(s, this.lift);
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
@@ -161,7 +166,7 @@ export class SfRenderer implements GameRenderer {
         const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
       // Running lights breathe on the beat.
       for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
-      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
+      model.position.set(e.x,e.ground?-3.8+this.lift:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
@@ -178,7 +183,7 @@ export class SfRenderer implements GameRenderer {
     if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
     this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
@@ -197,7 +202,13 @@ export class SfRenderer implements GameRenderer {
       s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })), { beatIndex: s.beatIndex, bands: s.bands });
     // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
     this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
-    this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
+    // Lower and faster in pushes and burns: the terrain rises toward the ship and the view widens a touch with speed.
+    const k = this.altT < 0 || s.t < this.altT ? 1 : Math.min(1, (s.t - this.altT) / 0.9); this.altT = s.t;
+    this.lift += ((hangar ? 0 : s.drive.dip) - this.lift) * k; this.space?.setLift(this.lift);
+    const fov = hangar ? 0 : s.drive.fov; if (Math.abs(fov - this.fovAdd) > 0.01) { this.fovAdd += (fov - this.fovAdd) * k; this.camera.fov = 48 + this.fovAdd; this.camera.updateProjectionMatrix(); }
+    // A lower camera (pulled back a little, same aim) reads as flying lower and faster.
+    this.tilt += ((hangar ? 0 : s.drive.tilt) - this.tilt) * k;
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y * (1 - this.tilt) - s.bar * 0.45, this.cameraBase.z * (1 + this.tilt * 0.35) - s.bar * 0.3);
     this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);

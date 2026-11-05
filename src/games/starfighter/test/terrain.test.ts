@@ -21,3 +21,16 @@ describe('seeded terrain', () => {
     expect(diff).toBeGreaterThan(100);
   });
 });
+describe('sea islands', () => {
+  it('are seeded per cell, stable across query windows, and well spread', async () => {
+    const { seaIslands, SEA_CELL } = await import('../render/terrain');
+    const a = seaIslands(7, -1000, 1000, -1000, 1000), b = seaIslands(7, -400, 1400, -900, 1100);
+    const key = (i: { x: number; z: number }) => `${i.x.toFixed(3)},${i.z.toFixed(3)}`;
+    const common = a.filter(i => b.some(j => key(j) === key(i)));
+    expect(common.length).toBeGreaterThan(3);
+    for (const i of common) expect(b.find(j => key(j) === key(i))).toEqual(i);
+    expect(a.length).toBeGreaterThan(8); expect(a.length).toBeLessThan(40);
+    for (const i of a) for (const j of a) if (i !== j) expect(Math.hypot(i.x - j.x, i.z - j.z)).toBeGreaterThan(SEA_CELL * 0.5 - 1);
+    expect(new Set(a.map(i => i.kind)).size).toBe(3);
+  });
+});

@@ -89,6 +89,219 @@ function tree(): Part {
   const blob = (r: number, x: number, y: number, z: number, color: string) => { const g = new THREE.IcosahedronGeometry(r, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
   return merge([cyl(0.12, 0.18, 1.3, 0, 0.65, 0, '#5a4330', 6), blob(0.95, 0, 1.9, 0, '#3f7d4c'), blob(0.7, 0.6, 1.6, 0.3, '#4a8f55'), blob(0.65, -0.55, 1.65, -0.25, '#36703f'), blob(0.6, 0.1, 2.5, -0.2, '#56a061')]);
 }
+/** Sphere part (radomes, domes, tanks). */
+const ball = (r: number, x: number, y: number, z: number, color: string, sy = 1) => { const g = new THREE.SphereGeometry(r, 10, 7); g.scale(1, sy, 1); g.translate(x, y, z); return colored(g.toNonIndexed(), color); };
+const HULL = '#a3aeb9', HULL_D = '#6a7681', WHITE = '#dfe6ec', HAZ = '#d8b02a', BLK = '#22272d', ORANGE = '#e0672a';
+/** Railing along z at outer edge x, deck height y, over length len (posts every 2). */
+const railing = (x: number, y: number, len: number): Part[] => {
+  const p: Part[] = [box(0.12, 0.12, len, x, y + 1.05, 0, LIGHT)];
+  for (let z = -len / 2; z <= len / 2 + 0.01; z += 2) p.push(box(0.1, 1.05, 0.1, x, y + 0.52, z, LIGHT));
+  return p;
+};
+/**
+ * Deck-edge modules for the carrier flanks. Built for the starboard side: x runs outward from the deck edge (x = 0),
+ * y up from the deck, z along (length given per module); the port side is the same rotated half a turn.
+ */
+function gunSponson(): Part { // 10 long: a bracketed platform with a close-in weapon mount
+  const p: Part[] = [box(10, 2, 10, 5, 1, 0, HULL), box(9, 0.3, 9.4, 5.2, 2.15, 0, DECK), box(3, 3, 10, 9.5, -0.5, 0, HULL_D)];
+  p.push(cyl(1.3, 1.5, 1.4, 6.5, 2.9, 0, LIGHT, 12), ball(1.2, 6.5, 4.1, 0, WHITE, 1.2), box(0.9, 0.9, 1.2, 6.5, 4.2, -1.1, BLK));
+  p.push(cyl(0.16, 0.16, 2.4, 6.5, 4.2, -2.6, DARK, 6, Math.PI / 2), cyl(1, 1.1, 1.2, 2.6, 2.9, 3, LIGHT, 8), box(1.6, 1.2, 1.6, 2.6, 4, 3, DARK));
+  p.push(...railing(9.9, 2.3, 9.6)); return merge(p);
+}
+function radarSponson(): Part { // 10 long: a lattice tower carrying a radome
+  const p: Part[] = [box(9, 1.8, 10, 4.5, 0.9, 0, HULL), box(8.6, 0.3, 9.4, 4.5, 1.95, 0, DECK)];
+  for (const [x, z] of [[3, -2], [7, -2], [3, 2], [7, 2]]) p.push(box(0.3, 9, 0.3, x, 6.5, z, LIGHT));
+  for (const y of [4, 7, 10]) p.push(box(4.3, 0.2, 0.2, 5, y, -2, LIGHT), box(4.3, 0.2, 0.2, 5, y, 2, LIGHT), box(0.2, 0.2, 4.3, 3, y, 0, LIGHT), box(0.2, 0.2, 4.3, 7, y, 0, LIGHT));
+  p.push(box(5, 0.4, 5, 5, 11, 0, HULL_D), ball(2.1, 5, 13, 0, WHITE), cyl(0.12, 0.12, 4, 5, 16.6, 0, DARK, 6), box(2.2, 0.12, 0.3, 5, 17.8, 0, DARK));
+  p.push(...railing(8.9, 2.1, 9.6)); return merge(p);
+}
+function raftRack(): Part { // 14 long: life-raft canisters in two rows on a bracketed platform
+  const p: Part[] = [box(8, 1.6, 14, 4, 0.8, 0, HULL), box(7.6, 0.25, 13.4, 4, 1.7, 0, DECK)];
+  for (const x of [3, 6]) for (let i = 0; i < 6; i++) p.push(cyl(0.55, 0.55, 1.6, x, 2.45, -5.2 + i * 2.1, i % 2 ? WHITE : ORANGE, 10, Math.PI / 2));
+  p.push(box(0.2, 1.6, 13, 7.6, 2.5, 0, HULL_D), ...railing(7.8, 1.85, 13.6)); return merge(p);
+}
+function catwalk(): Part { // 16 long: an open gallery a little below the deck with crates and hose reels
+  const p: Part[] = [box(4, 0.3, 16, 2, -0.6, 0, DECK)];
+  for (const z of [-7, -2.3, 2.3, 7]) p.push(box(0.4, 2.2, 0.4, 3.6, -1.8, z, HULL_D), box(3.4, 0.3, 0.4, 2, -1.5, z, HULL_D));
+  p.push(box(1.2, 1, 1.4, 1.5, 0.05, -5, '#4f6b48'), box(1.2, 0.8, 1.2, 1.4, -0.05, -3.4, '#6a5a3c'), cyl(0.5, 0.5, 0.4, 1.6, 0, 4, ORANGE, 10, Math.PI / 2), box(1, 1, 1, 1.4, 0.05, 6, '#4f6b48'));
+  p.push(...railing(3.9, -0.45, 15.6)); return merge(p);
+}
+function edgeElevator(): Part { // 14 long: an aircraft elevator platform with hazard-striped edges and lift machinery
+  const p: Part[] = [box(11, 0.5, 14, 5.5, 0.25, 0, DECK), box(3, 3, 14, 11.5, -1, 0, HULL_D)];
+  for (let i = 0; i < 7; i++) p.push(box(0.5, 0.06, 2, 10.75, 0.53, -6 + i * 2, i % 2 ? HAZ : BLK), box(1.5, 0.06, 0.5, 1 + i * 1.5, 0.53, 6.75, i % 2 ? HAZ : BLK));
+  p.push(box(1.2, 4, 1.2, 11, 2, -6.4, HULL), box(1.2, 4, 1.2, 11, 2, 6.4, HULL), box(1.4, 0.6, 14, 11, 4.2, 0, HULL_D)); return merge(p);
+}
+function fuelStation(): Part { // 10 long: tanks, pipework and a hose cabinet
+  const p: Part[] = [box(8, 1.5, 10, 4, 0.75, 0, HULL), box(7.6, 0.25, 9.4, 4, 1.6, 0, DECK)];
+  for (const z of [-2.6, 2.6]) p.push(cyl(1.3, 1.3, 5, 4.5, 3, z, '#c8ccd0', 12, Math.PI / 2), box(0.3, 1.4, 0.3, 4.5, 1.9, z - 1.8, HULL_D), box(0.3, 1.4, 0.3, 4.5, 1.9, z + 1.8, HULL_D));
+  p.push(cyl(0.18, 0.18, 9, 7, 2, 0, HAZ, 6, Math.PI / 2), cyl(0.18, 0.18, 9, 7.6, 2.6, 0, '#3b7bd6', 6, Math.PI / 2), box(1.4, 2, 2, 1.2, 2.6, 0, '#b23a3a'), ...railing(7.9, 1.75, 9.6));
+  return merge(p);
+}
+/** Stealth island: raked, faceted tower walls, flat radar arrays, one integrated mast. */
+function islandStealth(): Part {
+  const s = new THREE.Shape(); s.moveTo(-3, -6); s.lineTo(3, -5); s.lineTo(3, 5); s.lineTo(-3, 6); s.lineTo(-3, -6);
+  const tower = new THREE.ExtrudeGeometry(s, { depth: 9, bevelEnabled: false }).toNonIndexed(); tower.rotateX(-Math.PI / 2);
+  const pos = tower.getAttribute('position'); for (let i = 0; i < pos.count; i++) { const y = pos.getY(i), k = 1 - y / 9 * 0.32; pos.setX(i, pos.getX(i) * k); pos.setZ(i, pos.getZ(i) * k); }
+  const p: Part[] = [colored(tower, '#9aa5b0'), box(3.6, 0.6, 7.2, 0, 9.3, 0, '#9aa5b0'), box(4.1, 0.7, 1.4, 0, 6, -4.2, WIN), box(0.2, 2.6, 2.6, 2.75, 5.5, 0, BLK), box(0.2, 2.6, 2.6, -2.75, 5.5, 0, BLK)];
+  const mast = new THREE.ConeGeometry(1.4, 6, 4).toNonIndexed(); mast.translate(0, 12.6, 0.5); p.push(colored(mast, '#9aa5b0'), cyl(0.08, 0.1, 3, 0, 17, 0.5, DARK, 5));
+  return merge(p);
+}
+/** Tall island: three stepped tiers with window bands, a funnel, a lattice mast with a big dish. */
+function islandTall(): Part {
+  const p: Part[] = [box(6, 6, 12, 0, 3, 0, LIGHT), box(5, 4.5, 9, 0, 8.25, -0.5, LIGHT), box(3.6, 3, 6, 0, 12, -1, LIGHT)];
+  p.push(box(6.1, 0.6, 2.2, 0, 7.4, -5.2, WIN), box(5.1, 0.6, 1.8, 0, 11.2, -4.4, WIN), box(3.7, 0.5, 1.4, 0, 13.6, -3.6, WIN));
+  p.push(cyl(1.1, 1.3, 4, 0, 12.5, 3.2, HULL_D, 10), cyl(1.15, 1.15, 0.5, 0, 14.6, 3.2, BLK, 10));
+  for (const [x, z] of [[-0.8, -1.6], [0.8, -1.6], [-0.8, 0], [0.8, 0]]) p.push(box(0.18, 7, 0.18, x, 17, z, DARK));
+  for (const y of [15, 17.5, 20]) p.push(box(1.8, 0.14, 1.8, 0, y, -0.8, DARK));
+  p.push(cyl(1.8, 1.8, 0.2, 0, 19, 1.2, '#d8dde2', 14, Math.PI / 2.4), box(4, 0.15, 0.5, 0, 20.4, -0.8, DARK));
+  return merge(p);
+}
+/** Deck helicopter: fuselage, tail boom and fin, skids, a four-blade rotor. Nose toward −z. */
+function helicopter(): Part {
+  const p: Part[] = [ball(1.1, 0, 1.3, -0.3, '#5d6f4f', 0.8), box(1.6, 1.2, 1.6, 0, 1.2, 0.8, '#5d6f4f'), box(0.9, 0.5, 0.7, 0, 1.4, -1.2, '#1f2a33'), box(0.35, 0.4, 4, 0, 1.5, 3.2, '#5d6f4f'), box(0.12, 1.2, 0.8, 0, 2, 5, '#5d6f4f')];
+  for (const sx of [-0.8, 0.8]) p.push(box(0.12, 0.12, 3, sx, 0.15, 0, BLK), box(0.1, 0.5, 0.1, sx, 0.4, -0.8, BLK), box(0.1, 0.5, 0.1, sx, 0.4, 0.8, BLK));
+  p.push(cyl(0.15, 0.15, 0.5, 0, 2.3, 0, BLK, 6), box(7.5, 0.06, 0.3, 0, 2.55, 0, BLK, 0.4), box(0.3, 0.06, 7.5, 0, 2.55, 0, BLK, 0.4));
+  return merge(p);
+}
+/** Fuel truck. Cab toward −z. */
+function fuelTruck(): Part { return merge([box(1.3, 1, 1.2, 0, 0.7, -1.4, '#c43c33'), box(1.2, 0.5, 0.8, 0, 1.2, -1.6, '#1f2a33'), cyl(0.6, 0.6, 2.4, 0, 0.85, 0.5, '#d8dde2', 10, Math.PI / 2), box(1.3, 0.3, 3.6, 0, 0.25, 0, BLK)]); }
+/** Rooftop water tank on legs (~2 across, 4 tall). */
+function waterTank(): Part {
+  const p: Part[] = [];
+  for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) p.push(box(0.16, 1.6, 0.16, x, 0.8, z, '#2e3238'));
+  p.push(cyl(1, 1, 1.8, 0, 2.5, 0, '#7b5e43', 12), cyl(1.02, 1.02, 0.12, 0, 2.0, 0, '#3d3f44', 12), cyl(1.02, 1.02, 0.12, 0, 3.0, 0, '#3d3f44', 12));
+  const roof = new THREE.ConeGeometry(1.12, 0.7, 12).toNonIndexed(); roof.translate(0, 3.75, 0); p.push(colored(roof, '#3d3f44'));
+  return merge(p);
+}
+/** A cluster of rooftop air-handling units with fan grilles (~4 across). */
+function acUnits(): Part {
+  const p: Part[] = [];
+  for (const [x, z, w] of [[-1.2, -0.6, 1.4], [0.4, -0.6, 1.2], [-0.6, 1, 1.6], [1.4, 0.9, 1]] as const) {
+    p.push(box(w, 0.7, 1, x, 0.35, z, '#8f989f'), cyl(0.32, 0.32, 0.06, x, 0.72, z, '#2b2f34', 10));
+  }
+  p.push(box(3.6, 0.25, 0.3, 0, 0.4, 0.2, '#6b737a')); return merge(p);
+}
+/** Rooftop helipad, radius 1: dark pad, white H, yellow touchdown ring. */
+function helipad(): Part {
+  const p: Part[] = [cyl(1, 1, 0.12, 0, 0.06, 0, '#2f353d', 24), box(0.12, 0.03, 0.7, -0.25, 0.135, 0, '#e8ecef'), box(0.12, 0.03, 0.7, 0.25, 0.135, 0, '#e8ecef'), box(0.5, 0.03, 0.12, 0, 0.135, 0, '#e8ecef')];
+  for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; p.push(box(0.12, 0.03, 0.26, Math.cos(a) * 0.82, 0.135, Math.sin(a) * 0.82, '#e0b52a', -a)); }
+  return merge(p);
+}
+/** Lighthouse (~12 tall): banded tapering tower, gallery, lantern room, keeper's hut. */
+function lighthouse(): Part {
+  const p: Part[] = [];
+  for (let i = 0; i < 5; i++) { const r0 = 1.5 - i * 0.18, r1 = r0 - 0.18; p.push(cyl(r1, r0, 2, 0, 1 + i * 2, 0, i % 2 ? '#c8352f' : '#eef1f3', 12)); }
+  p.push(cyl(1.25, 1.25, 0.25, 0, 10.1, 0, '#2b2f34', 12), cyl(0.7, 0.7, 1.2, 0, 10.8, 0, '#ffe9a8', 10), cyl(0.15, 0.85, 0.7, 0, 11.75, 0, '#2b2f34', 10));
+  p.push(box(3, 2, 2.4, 2.2, 1, 1.6, '#e4e0d8'), box(3.4, 0.4, 2.8, 2.2, 2.2, 1.6, '#8c3b32'));
+  return merge(p);
+}
+/** Offshore oil platform (~30 across): legs, two decks, a derrick, a crane and a helideck. */
+function oilRig(): Part {
+  const p: Part[] = [];
+  for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) p.push(cyl(1.1, 1.3, 9, x, 4.5, z, '#c8a23a', 10));
+  p.push(box(24, 1.2, 24, 0, 9.6, 0, '#5d6670'), box(20, 4, 14, -1, 12.2, -3, '#9aa4ae'), box(20.4, 0.6, 2, -1, 13.4, -10.1, WIN));
+  for (const [x, z] of [[2, 3], [8, 3], [2, 9], [8, 9]]) p.push(box(0.4, 14, 0.4, x + (5 - x) * 0.3, 17, z + (6 - z) * 0.3, '#d7d2c4'));
+  for (const y of [13, 17, 21]) p.push(box(5, 0.25, 0.25, 5, y, 4.5, '#d7d2c4'), box(0.25, 0.25, 5, 3.5, y, 6, '#d7d2c4'));
+  p.push(cyl(0.9, 0.9, 1.2, -8, 14.8, 8, '#c8a23a', 8), box(0.6, 0.6, 14, -8, 18.5, 1.5, '#c8a23a', 0.5));
+  p.push(cyl(5, 5, 0.4, -7, 15.2, -2, '#2f353d', 20), box(0.5, 0.05, 3.4, -7.8, 15.45, -2, '#e8ecef'), box(0.5, 0.05, 3.4, -6.2, 15.45, -2, '#e8ecef'), box(1.6, 0.05, 0.5, -7, 15.45, -2, '#e8ecef'));
+  p.push(cyl(0.5, 0.5, 6, 10, 15, -9, DARK, 8));
+  return merge(p);
+}
+/** Channel buoy: float, cage and light. */
+function buoy(): Part { return merge([cyl(0.7, 0.9, 1, 0, 0.3, 0, '#c8352f', 10), cyl(0.12, 0.3, 1.6, 0, 1.6, 0, '#c8352f', 6), cyl(0.2, 0.2, 0.3, 0, 2.5, 0, '#fff1c2', 6)]); }
+/** Seeded 3D value noise (deterministic, so the kit is identical on every mount). */
+function vnoise(x: number, y: number, z: number, seed: number): number {
+  const h = (i: number, j: number, k: number) => { let n = Math.imul(i, 374761393) ^ Math.imul(j, 668265263) ^ Math.imul(k, 2147483647) ^ Math.imul(seed, 1274126177); n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), fx = x - xi, fy = y - yi, fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz), L = (a: number, b: number, t: number) => a + (b - a) * t;
+  return L(L(L(h(xi, yi, zi), h(xi + 1, yi, zi), u), L(h(xi, yi + 1, zi), h(xi + 1, yi + 1, zi), u), v),
+    L(L(h(xi, yi, zi + 1), h(xi + 1, yi, zi + 1), u), L(h(xi, yi + 1, zi + 1), h(xi + 1, yi + 1, zi + 1), u), v), w);
+}
+const fbm = (x: number, y: number, z: number, seed: number) => vnoise(x, y, z, seed) * 0.6 + vnoise(x * 2.1, y * 2.1, z * 2.1, seed + 7) * 0.28 + vnoise(x * 4.3, y * 4.3, z * 4.3, seed + 13) * 0.12;
+/**
+ * Push each vertex out from `centre` by fbm noise (same position → same offset, so faces stay joined). `flat` clamps
+ * the base to y = 0 so rocks sit on the ground.
+ */
+function displace(g: Part, amp: number, freq: number, seed: number, centre = new THREE.Vector3(), flat = true): Part {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute, v = new THREE.Vector3(), d = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i); d.copy(v).sub(centre); const len = d.length() || 1;
+    const n = fbm(v.x * freq + 11, v.y * freq + 5, v.z * freq + 3, seed) - 0.5;
+    v.addScaledVector(d.divideScalar(len), n * amp * 2);
+    if (flat) v.y = Math.max(0, v.y);
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+/** Sandstone strata by height: alternating warm bands of uneven thickness (vertex colours; the shader adds fine detail). */
+const STRATA = ['#b86a4b', '#9c4f3b', '#d39a6a', '#7d3c35', '#c98a5e', '#a65a43', '#e0b083'];
+function strataColours(g: Part, top: number, seed: number, palette = STRATA): Part {
+  const pos = g.getAttribute('position'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const y = pos.getY(i), warp = (vnoise(pos.getX(i) * 0.15, 0, pos.getZ(i) * 0.15, seed) - 0.5) * 1.6;
+    const band = Math.floor((y / Math.max(0.01, top)) * 6 + warp + vnoise(0, y * 0.9, 0, seed + 3) * 0.8);
+    c.set(palette[((band % palette.length) + palette.length) % palette.length]).multiplyScalar(0.92 + 0.16 * vnoise(pos.getX(i) * 0.6, y * 0.6, pos.getZ(i) * 0.6, seed + 9));
+    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+}
+const finish = (g: Part) => { g.deleteAttribute('uv'); g.deleteAttribute('normal'); g.computeVertexNormals(); return g; };
+/** Boulder / rock formation, ~1 unit across and tall (instances scale it): a lumpy, fractured, flat-based mass. */
+function boulder(seed: number, squash: number, detail: number): Part {
+  const g = new THREE.IcosahedronGeometry(0.62, detail); g.scale(1, squash, 1); g.translate(0, 0.32 * squash, 0);
+  displace(g, 0.28, 1.9, seed); return finish(strataColours(g, 0.9 * squash, seed));
+}
+/** Hoodoo spire, ~1 across × 4 tall: stacked, pinched drums with a darker, wider cap rock. */
+function spire(): Part {
+  const parts: Part[] = []; let y = 0;
+  for (const [r0, r1, h] of [[0.55, 0.42, 1.2], [0.44, 0.3, 1.0], [0.34, 0.26, 0.9], [0.27, 0.2, 0.6]]) {
+    const c = new THREE.CylinderGeometry(r1, r0, h, 9, 3).toNonIndexed(); c.translate(0, y + h / 2, 0); parts.push(c); y += h;
+  }
+  const cap = new THREE.CylinderGeometry(0.38, 0.3, 0.35, 9, 1).toNonIndexed(); cap.translate(0, y + 0.15, 0); parts.push(cap);
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.12, 2.4, 21, new THREE.Vector3(0, 0, 0)); strataColours(g, 4, 21);
+  // Cap rock: harder and darker than the column it protects.
+  const pos = g.getAttribute('position'), col = g.getAttribute('color') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) if (pos.getY(i) > y - 0.05) col.setXYZ(i, col.getX(i) * 0.62, col.getY(i) * 0.55, col.getZ(i) * 0.58);
+  return finish(g);
+}
+/** Stepped mesa, ~2 across × 1 tall: talus apron, three sheer ledged layers on an irregular footprint, a flat top. */
+function mesa(): Part {
+  const parts: Part[] = [], layer = (r: number, y0: number, h: number, seed: number) => {
+    const shape = new THREE.Shape(), N = 14;
+    for (let i = 0; i <= N; i++) { const a = (i / N) * Math.PI * 2, rr = r * (0.78 + 0.34 * vnoise(Math.cos(a) * 2 + 4, Math.sin(a) * 2 + 4, seed, 3)); const px = Math.cos(a) * rr, pz = Math.sin(a) * rr * 0.8; if (i) shape.lineTo(px, pz); else shape.moveTo(px, pz); }
+    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false, steps: 2 }).toNonIndexed(); g.rotateX(-Math.PI / 2); g.translate(0, y0, 0); parts.push(g);
+  };
+  const talus = new THREE.CylinderGeometry(0.95, 1.25, 0.25, 16, 1).toNonIndexed(); talus.translate(0, 0.12, 0); parts.push(talus);
+  layer(1.0, 0.2, 0.32, 1); layer(0.9, 0.52, 0.28, 2); layer(0.8, 0.8, 0.22, 3);
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.05, 3.2, 33, new THREE.Vector3(0, 0.5, 0)); return finish(strataColours(g, 1.0, 33));
+}
+/**
+ * Crag: a fractured block of cliff, 1×1×1 (walls are rows of these at varied sizes). Hard layers stand out as ledges,
+ * soft ones recess, the top is a broken skyline, and the whole block is lumpy.
+ */
+function crag(): Part {
+  const g = new THREE.BoxGeometry(1, 1, 1, 4, 8, 4).toNonIndexed(); g.translate(0, 0.5, 0);
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const ledge = 1 + (vnoise(0, Math.floor(y * 7.99) * 1.7, 0, 51) - 0.5) * 0.22, taper = 1 - y * 0.14;
+    x *= ledge * taper; z *= ledge * taper;
+    if (y > 0.99) y += (fbm(x * 3 + 2, 0, z * 3 + 2, 52) - 0.45) * 0.45; // broken skyline
+    pos.setXYZ(i, x, y, z);
+  }
+  displace(g, 0.24, 2.8, 47, new THREE.Vector3(0, 0.5, 0)); return finish(strataColours(g, 1, 47));
+}
+/** Desert scrub: a low, dusty clump (~1 across). */
+function scrub(): Part {
+  const parts: Part[] = [];
+  for (const [x, z, r, c] of [[0, 0, 0.42, '#6d7240'], [0.3, 0.15, 0.3, '#857a45'], [-0.28, -0.1, 0.32, '#5b6438'], [0.05, -0.3, 0.26, '#7a7c4a']] as const) {
+    const b = new THREE.IcosahedronGeometry(r, 0).toNonIndexed(); b.scale(1, 0.55, 1); b.translate(x, r * 0.4, z); parts.push(colored(b, c));
+  }
+  const g = mergeGeometries(parts.map(p => { p.deleteAttribute('uv'); return p; }))!; parts.forEach(p => p.dispose());
+  displace(g, 0.08, 5, 61); return finish(g);
+}
 /** V-shaped wake: a foam fan widening and fading behind its source (additive white via vertex colours). */
 function wake(): Part {
   const g = new THREE.BufferGeometry(), pos: number[] = [], col: number[] = [], N = 10;
@@ -107,10 +320,93 @@ function wake(): Part {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
+/** Paint by height and slope: green lowlands and tops, rock on steep faces, sand at the waterline. */
+function islandColours(g: Part, seed: number, rocky: boolean): Part {
+  g.computeVertexNormals();
+  const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
+  const sand = new THREE.Color('#d8c08c'), g1 = new THREE.Color(rocky ? '#4b5a37' : '#3f7a3a'), g2 = new THREE.Color(rocky ? '#5a5a40' : '#5c8f45'), rock = new THREE.Color(rocky ? '#4a4440' : '#6f6658'), dark = new THREE.Color('#2e2a28');
+  for (let i = 0; i < n; i++) {
+    const y = pos.getY(i), steep = 1 - Math.abs(nrm.getY(i)), v = vnoise(pos.getX(i) * 3, y * 3, pos.getZ(i) * 3, seed);
+    c.copy(g1).lerp(g2, v);
+    if (rocky) c.lerp(rock, Math.min(1, y * 1.6 + 0.2)).lerp(dark, Math.max(0, y - 0.7) * 2.2);
+    c.lerp(rock, Math.max(0, Math.min(1, (steep - 0.45) * 2.5)));
+    if (y < 0.06) c.lerp(sand, 1 - y / 0.06);
+    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); g.deleteAttribute('normal'); g.computeVertexNormals(); return g;
+}
+/** Island hill (radius 1, height 1): a lumpy green dome with rocky shoulders. */
+function islandHill(): Part {
+  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed(); g.deleteAttribute('uv');
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i), y = pos.getY(i), k = 0.75 + 0.5 * fbm(x * 1.8 + 3, 0, z * 1.8 + 3, 71); pos.setXYZ(i, x * (0.9 + 0.2 * fbm(x * 2, y * 2, z * 2, 72)), y * k, z * (0.9 + 0.2 * fbm(z * 2, y * 2, x * 2, 73))); }
+  return islandColours(g, 74, false);
+}
+/** Volcano (radius 1, height 1): a ridged cone, green skirts to dark scoria, an open crater. */
+function volcano(): Part {
+  const g = new THREE.CylinderGeometry(0.16, 1, 1, 30, 8, true).toNonIndexed(); g.translate(0, 0.5, 0); g.deleteAttribute('uv');
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x), ridge = 1 + 0.12 * Math.sin(ang * 9) * (1 - y) + (fbm(x * 2.5, y * 2.5, z * 2.5, 81) - 0.5) * 0.25;
+    const sag = y < 0.999 ? Math.pow(y, 0.82) : y; pos.setXYZ(i, x * ridge, sag, z * ridge);
+  }
+  const crater = new THREE.CylinderGeometry(0.15, 0.06, 0.14, 16, 1, true).toNonIndexed(); crater.scale(-1, 1, 1); crater.translate(0, 0.93, 0); crater.deleteAttribute('uv');
+  const parts = [islandColours(g, 82, true), colored(crater, '#3a1d18')];
+  const m = mergeGeometries(parts)!; parts.forEach(q => q.dispose()); m.deleteAttribute('normal'); m.computeVertexNormals(); return m;
+}
+/** Coconut palm (~5 tall): a leaning, curving trunk and a drooping crown. */
+function palm(): Part {
+  const p: Part[] = [];
+  for (let i = 0; i < 5; i++) p.push(cyl(0.13 - i * 0.012, 0.15 - i * 0.012, 0.95, 0.06 * i * i, 0.47 + i * 0.92, 0, '#7a5c3c', 6));
+  const top = 4.7, tx = 0.06 * 16;
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2, f = new THREE.BoxGeometry(0.42, 0.05, 2.4).toNonIndexed();
+    f.translate(0, 0, 1.15); f.rotateX(0.42 + (k % 2) * 0.2); f.rotateY(a); f.translate(tx, top, 0); p.push(colored(f, k % 2 ? '#3f8a3a' : '#5aa04a'));
+  }
+  p.push(ball(0.12, tx + 0.15, top - 0.15, 0.1, '#5b4127'), ball(0.12, tx - 0.1, top - 0.18, -0.12, '#5b4127'));
+  return merge(p);
+}
+/** Stilted beach hut with a thatched roof (~3 across). */
+function hut(): Part {
+  const roof = new THREE.ConeGeometry(2.2, 1.6, 4).toNonIndexed(); roof.rotateY(Math.PI / 4); roof.translate(0, 3.1, 0);
+  const p: Part[] = [box(2.6, 1.6, 2.6, 0, 1.6, 0, '#b58b5e'), colored(roof, '#c9a564'), box(0.7, 1.1, 0.06, 0, 1.4, 1.32, '#3a2a1e')];
+  for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) p.push(box(0.15, 0.8, 0.15, x, 0.4, z, '#6b4f35'));
+  return merge(p);
+}
+/** Container ship (~62 long): dark hull, stacked containers in mixed colours, bridge and funnel aft. */
+function containerShip(): Part {
+  const p: Part[] = [hull(62, 10.5, 4, '#2c3e55', 0.16, 0.9), box(9.6, 0.4, 56, 0, 4.1, 0, '#8a3b30')];
+  const CC = ['#b8372f', '#2f6db0', '#d6a43a', '#3f8a52', '#d8dde2', '#7b4ea0', '#c4622d'];
+  let k = 0;
+  for (let z = -22; z <= 14; z += 4.2) for (let x = -3.6; x <= 3.7; x += 2.4) { const h = 1 + ((k * 7) % 4); for (let y = 0; y < h; y++) p.push(box(2.3, 1.2, 4, x, 4.9 + y * 1.25, z, CC[(k * 3 + y * 5) % CC.length])); k++; }
+  p.push(box(9.6, 6, 5, 0, 7.3, 22, '#e8ecef'), box(10.4, 0.5, 2, 0, 10.2, 20.5, WIN), box(11.4, 0.3, 1.2, 0, 10.6, 21, '#e8ecef'), cyl(0.9, 1, 3, 0, 11.5, 25, '#2b2f34', 10));
+  return merge(p);
+}
+/** Tanker (~66 long): red-bottomed hull, green deck with pipe runs and a manifold, white bridge aft. */
+function tanker(): Part {
+  const p: Part[] = [hull(66, 11, 4.4, '#7a2a26', 0.14, 0.92), box(10.2, 0.4, 60, 0, 4.5, 0, '#3f5a46')];
+  for (const x of [-1.2, 0, 1.2]) p.push(cyl(0.22, 0.22, 46, x, 5.1, -4, '#c8ccd0', 6, Math.PI / 2));
+  p.push(box(7, 1, 2, 0, 5.3, -2, '#c8a23a'), box(1.4, 3, 1.4, 3, 6, 6, '#c8ccd0'), box(0.25, 0.25, 9, 3, 7.3, 2, '#c8ccd0', 0.4));
+  p.push(box(10, 7, 6, 0, 8.4, 25, '#e8ecef'), box(10.6, 0.5, 2, 0, 11.6, 22.6, WIN), cyl(1, 1.1, 3.5, 0, 12.8, 27, '#2b2f34', 10));
+  return merge(p);
+}
+/** Sailboat (~9 long): white hull, mast, a heeled mainsail and jib (both sides drawn). */
+function sailboat(): Part {
+  const sail = (pts: number[][], color: string) => { const g = new THREE.BufferGeometry(); const v = pts.flat(); g.setAttribute('position', new THREE.Float32BufferAttribute([...v, ...[pts[0], pts[2], pts[1]].flat()], 3)); return colored(g, color); };
+  const p: Part[] = [hull(9, 2.6, 1.2, '#eef1f3', 0.32), box(2, 0.1, 5, 0, 1.25, 0.6, '#9a7a55'), cyl(0.06, 0.08, 9, 0.35, 5.6, -0.6, '#cfd3d6', 5)];
+  p.push(sail([[0.38, 1.6, -0.5], [0.38, 9.6, -0.6], [1.6, 1.8, 3.2]], '#f4f1e8'), sail([[0.36, 1.6, -0.9], [0.36, 8.6, -0.8], [0.9, 1.4, -4.2]], '#e6e2d6'));
+  const g = mergeGeometries(p.map(q => { if (q.getAttribute('uv')) q.deleteAttribute('uv'); if (q.getAttribute('normal')) q.deleteAttribute('normal'); return q; }))!; p.forEach(q => q.dispose()); g.computeVertexNormals(); return g;
+}
 let cache: Record<string, Part> | null = null;
 export function kit() {
-  cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake() };
-  return cache as { tree: Part; carrier: Part; battleship: Part; destroyer: Part; riverBoat: Part; barge: Part; jet: Part; tractor: Part; island: Part; wake: Part };
+  cache ??= { tree: tree(), carrier: carrierShip(), battleship: battleship(), destroyer: destroyer(), riverBoat: riverBoat(), barge: barge(), jet: parkedJet(), tractor: tractor(), island: island(), wake: wake(),
+    boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
+    gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
+    islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy(),
+    islandHill: islandHill(), volcano: volcano(), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat() };
+  return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
+    | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy'
+    | 'islandHill' | 'volcano' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

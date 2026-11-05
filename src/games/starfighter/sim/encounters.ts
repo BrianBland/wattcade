@@ -4,17 +4,18 @@ export const MAX_ENEMIES = 80, MAX_BOLTS = 160;
 /** Terrain scroll speed (units/s). Ground units ride the terrain at exactly this speed; the renderer scrolls scenery with it. */
 export const GROUND_SPEED = 22;
 /** Spawn beyond the widest supported field; enter along a continuous flight path. */
-export function entryFor(index: number, count: number, pattern: number, center: number): NonNullable<EnemyView['entry']> {
+export function entryFor(index: number, count: number, pattern: number, center: number, spacing = 9, flankSide = 0): NonNullable<EnemyView['entry']> {
   const lane = index - (count - 1) / 2;
-  const toX = clamp(center + lane * 9, -43, 43);
+  const toX = clamp(center + lane * spacing, -43, 43);
   const toY = pattern === 0 ? -12 - Math.abs(lane) * 4 : pattern === 1 ? -20 - index * 2.5 : -16;
-  const side = pattern === 1 ? -1 : 1;
+  const side = flankSide || (pattern === 1 ? -1 : 1);
   return { fromX: pattern === 0 ? toX : side * (220 + index * 12), fromY: pattern === 0 ? -500 - index * 12 : -60-index*8,
     toX, toY, duration: 6.5 + index * 0.12 };
 }
-/** Elite wings fly a high line across the far field from one flank to the other, then leave. */
-export function eliteEntry(index: number, side: number, y: number): NonNullable<EnemyView['entry']> {
-  return { fromX: side * (95 + index * 9), fromY: y - index * 1.5, toX: -side * (95 - index * 9), toY: y - index * 1.5, duration: 13 };
+/** Elite wings dive straight down one flank lane from far ahead, fast, and keep going: be in that flank to catch them. */
+export function eliteEntry(index: number, laneX: number): NonNullable<EnemyView['entry']> {
+  const lane = index - 2, toX = laneX + lane * 5;
+  return { fromX: toX, fromY: -170 - Math.abs(lane) * 6, toX, toY: -22 - Math.abs(lane) * 3, duration: 4.5 };
 }
 /** Formation key for targeting: boss batteries group with their flagship. */
 export const groupOf = (e: EnemyView) => e.parentId ?? (e.kind === 'boss' ? e.id : e.formation ?? -e.id);

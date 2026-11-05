@@ -41,21 +41,23 @@ export function shipModel(color: string, kind: string): THREE.Group {
   }
   const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
-  const light = new THREE.MeshBasicMaterial({ color: kind === 'player' || kind === 'escort' ? '#38edff' : '#ff43bd' });
+  const craft = kind === 'player' || kind === 'escort' || kind === 'striker';
+  const light = new THREE.MeshBasicMaterial({ color: craft ? (kind === 'striker' ? '#ffcf3a' : '#38edff') : '#ff43bd' });
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m;
   };
   add(hull, plate, [0, 0.7, 0], [1, 0.5, 1]);
   add(sphere, dark, [0, 1.3, -0.4], [0.8, 0.45, 1.6]);
   add(box, light, [0, 1.75, -0.5], [0.35, 0.08, 1.2]);
-  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : 3.6;
+  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : 3.6;
   for (const side of [-1, 1]) {
-    add(box, plate, [side * wings / 2, 0.6, 0.8], [wings, 0.35, 1.7]).rotation.y = side * 0.22;
+    // The Striker's wings sweep forward; everyone else's sweep back.
+    add(box, plate, [side * wings / 2, 0.6, kind === 'striker' ? 0.2 : 0.8], [wings, 0.35, kind === 'striker' ? 1.3 : 1.7]).rotation.y = side * (kind === 'striker' ? -0.38 : 0.22);
     add(box, dark, [side * wings, 0.6, 0], [0.8, 0.9, 3]);
     add(box, light, [side * wings, 0.65, -1.6], [0.3, 0.3, 0.7]);
     const engine = add(sphere, light, [side * 1.1, 0.6, 3.1], [0.5, 0.3, 1.2]); engine.name = 'engine';
   }
-  if (kind === 'player' || kind === 'escort') {
+  if (craft) {
     const white = new THREE.MeshStandardMaterial({ color: '#eaf6ff', metalness: 0.4, roughness: 0.25 });
     // Livery materials (craft level): trim/stripes in a light tint of the rider colour, engine glow, gold at level 10.
     const trim = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.45) });
@@ -83,9 +85,14 @@ export function shipModel(color: string, kind: string): THREE.Group {
     part('tier-8', box, light, [0,0.9,-5.4], [0.18,0.18,4]);                                      // spine lance
     part('tier-8', ring, light, [0,0.8,0.4], [4.6,4.6,4.6]);                                      // halo
     part('trim-3', box, trim, [0,1.02,1.6], [0.5,0.05,3]);
+    if (kind === 'striker') {
+      // Tempo Striker: a long nose lance and twin canted tail fins in amber.
+      add(box, light, [0, 0.75, -5.2], [0.22, 0.22, 3.4]);
+      for (const side of [-1, 1]) add(box, plate, [side * 0.9, 1.6, 2.6], [0.18, 1.6, 1.4]).rotation.z = side * -0.35;
+    }
   }
-  if (kind !== 'player' && kind !== 'escort') g.rotation.y = Math.PI;
-  return kind==='player'||kind==='escort'||kind==='boss'?g:compactModel(g,`${kind}:${color}`);
+  if (!craft) g.rotation.y = Math.PI;
+  return craft||kind==='boss'?g:compactModel(g,`${kind}:${color}`);
 }
 /** Heavy escort (craft level 7): a broad twin-boom gunship with missile racks, distinct from any craft. */
 export function heavyModel(color: string): THREE.Group {

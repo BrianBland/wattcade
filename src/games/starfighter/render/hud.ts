@@ -1,6 +1,8 @@
 import type { SfSnapshot } from '../sim/types';
 import { TIER_NAMES } from '../sim/progression';
 import { craftName } from '../sim/save';
+import { CRAFTS } from '../sim/progression';
+import type { CraftId } from '../sim/types';
 import type { layout } from './layout';
 
 /**
@@ -48,18 +50,18 @@ const CSS = `
 .sq-actions { display:flex; gap:8px; align-items:center; pointer-events:auto; }
 .sq-actions .btn { pointer-events:auto; }
 .sq-actions .btn.ready { border-color:var(--neon,#00f0ff); box-shadow:0 0 18px #00f0ff88; }
-.sq-menu { position:absolute; display:none; align-items:center; justify-content:center; padding:12px; box-sizing:border-box; background:#07060fb3; pointer-events:auto; overflow:auto; }
-.sq-menu .panel { width:min(620px,100%); text-align:center; }
+.sq-menu { position:absolute; display:none; align-items:flex-start; justify-content:center; padding:12px; box-sizing:border-box; background:#07060fb3; pointer-events:auto; overflow:auto; }
+.sq-menu .panel { width:min(620px,100%); text-align:center; margin-block:auto; } /* auto margins centre without clipping the top when it overflows */
 /* Hangar showcase: the turning craft takes the free side (right in landscape, bottom in portrait). */
 .sq-menu.wide { justify-content:flex-start; padding-left:max(12px, 3%); background:linear-gradient(90deg,#07060fd9 0%,#07060f99 52%,transparent 72%); } .sq-menu.wide .panel { width:min(560px, 54%); }
 .sq-menu.tall { align-items:flex-start; padding-top:max(12px, 4%); background:linear-gradient(180deg,#07060fd9 0%,#07060f99 55%,transparent 75%); }
 .sq-grow { margin:-6px 0 12px; font:800 11px system-ui; letter-spacing:2px; text-transform:uppercase; color:var(--neon,#00f0ff); }
 .sq-menu h2 { margin:0; font-size:var(--t-l,26px); font-style:italic; letter-spacing:5px; text-transform:uppercase; color:var(--neon,#00f0ff); text-shadow:0 0 14px #00f0ff99, 0 2px 0 #000; }
 .sq-menu .sub { margin:6px 0 16px; color:var(--dim,#a29dcc); }
-.sq-crafts { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:16px; text-align:left; }
+.sq-crafts { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:16px; text-align:left; }
 .sq-crafts .card { font:inherit; color:inherit; }
 .sq-crafts .card:disabled { opacity:.45; cursor:default; }
-.sq-crafts .card p { margin:8px 0; color:var(--dim,#a29dcc); font-size:14px; }
+.sq-crafts .card p { margin:6px 0; color:var(--dim,#a29dcc); font-size:13px; }
 .sq-crafts .card small { font-weight:800; letter-spacing:1px; text-transform:uppercase; font-size:11px; }
 .sq-lvl { display:flex; align-items:center; gap:8px; margin:8px 0 4px; font:800 12px system-ui; letter-spacing:1px; text-transform:uppercase; }
 .sq-lvl .bar { flex:1; height:8px; }
@@ -98,8 +100,8 @@ export class SquadronHud {
     this.root.className = 'sq-hud';
     const style = document.createElement('style'); style.textContent = CSS; this.root.appendChild(style);
     this.foot.innerHTML = `<div class="sq-shield"><span>Shield</span><div class="sq-bar"><i></i></div></div><div class="sq-song"></div>`
-      + `<div class="sq-actions"><button class="btn small" data-action="target" data-direction="-1" aria-label="Previous target">‹</button>`
-      + `<button class="btn small" data-action="target" data-direction="1" aria-label="Next target">›</button><button class="btn small" data-action="nova"></button></div>`;
+      + `<div class="sq-actions"><button class="btn small" data-action="flank" data-direction="-1" aria-label="Flank left">‹</button>`
+      + `<button class="btn small" data-action="flank" data-direction="1" aria-label="Flank right">›</button><button class="btn small" data-action="nova"></button></div>`;
     this.shield = this.foot.querySelector('.sq-shield')!; this.song = this.foot.querySelector('.sq-song')!;
     this.nova = this.foot.querySelector('[data-action="nova"]')!;
     // Shell touch buttons / compact controller statuses own these actions.
@@ -124,20 +126,22 @@ export class SquadronHud {
   update(s: SfSnapshot) {
     // No title during play: just the arsenal tier (and a tester tag), small, on a legible chip.
     this.title.innerHTML = `<span class="sq-chip"><b>Arsenal ${s.gunLevel}</b><span>${TIER_NAMES[s.gunLevel]}${s.tester ? ' · Tester' : ''}</span></span>`
-      + `<div class="sq-chip" style="display:flex;margin-top:4px"><span>Amp</span><span class="sq-amp"><i style="width:${Math.round((0.15 + s.amp * 0.85) * (0.9 + s.beat * 0.1) * 100)}%"></i></span></div>`;
+      + `<div class="sq-chip" style="display:flex;margin-top:4px"><span>Amp</span><span class="sq-amp"><i style="width:${Math.round((0.15 + s.amp * 0.85) * (0.9 + s.beat * 0.1) * 100)}%"></i></span></div>`
+      // Drive chip: only when the music pushes past cruising.
+      + (s.drive.level !== 'cruise' ? `<div class="sq-chip" style="display:flex;margin-top:4px;--acc:${s.drive.level === 'burn' ? '#ff8a3c' : '#fff36b'}"><b>${s.drive.level === 'burn' ? 'Burn' : 'Push'}</b><span>${s.drive.met ? 'full speed' : s.drive.rpm ? `spin ${s.drive.rpm}` : 'hold it'}</span></div>` : '');
     this.renderScore(s);
     const pips = Array.from({ length: s.lockCapacity }, (_, i) => `<i class="${i < s.locks.length ? 'on' : ''}"></i>`).join('');
     this.stats.innerHTML = `<div class="sq-stat"><b>${s.score.toLocaleString()}</b><span>Score</span></div>`
       + `<div class="sq-stat" style="--acc:#b6ff3b"><b><em>${Math.round(s.clear.rate * 100)}%</em></b><span>Cleared</span></div>`
       + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b><em>${s.locks.length}</em>/${s.lockCapacity}</b><span>Locks</span><div>${pips}</div>`
       + `<em class="sq-pop${s.fullLock > 0 ? ' on' : ''}">Full lock</em><em class="sq-pop${s.clear.streak > 1 && s.clear.last?.perfect && s.t - s.clear.last.at < 3 ? ' on' : ''}">Perfect ×${s.clear.streak}</em></div>`;
-    const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6;
+    const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6 || s.drive.exposed;
     this.status.classList.toggle('warn', warn);
     this.status.innerHTML = s.boss
       ? `<span>${s.boss.name} · ${s.boss.stage} · ${Math.ceil(s.boss.left)}s</span><div class="sq-bar"><i style="width:${Math.max(0, s.boss.hp / s.boss.maxHp * 100)}%"></i></div>`
       : s.bossIn !== null ? `Flagship inbound · ${Math.ceil(s.bossIn)}s`
-      : s.upcoming ? `${s.upcoming.label} · ${s.upcoming.watts} W in ${Math.ceil(s.upcoming.left)}s`
-      : s.cadence ? `Optional spin · ${s.cadence.min}–${s.cadence.max} RPM` : STATUS[s.effort.status];
+      : s.upcoming ? `${s.upcoming.label} in ${Math.ceil(s.upcoming.left)}s${s.upcoming.watts ? ` · ${s.upcoming.watts} W` : s.upcoming.rpm ? ` · spin ${s.upcoming.rpm} RPM` : ''}`
+      : s.drive.level !== 'cruise' && !s.drive.met ? (s.drive.rpm ? `Spin up · ${s.drive.rpm} RPM` : 'Hold the push') + (s.drive.exposed ? ' · shots getting through' : '') : STATUS[s.effort.status];
     if (!s.boss && this.status.innerHTML) this.status.innerHTML = `<span>${this.status.innerHTML}</span>`;
     if (s.eliteHint) this.status.insertAdjacentHTML('beforeend', `<div class="sq-elite" style="--b:${s.beat.toFixed(2)}">${s.eliteHint < 0 ? '◀ Elite wing' : 'Elite wing ▶'}</div>`);
     // Callouts: perfect formations take priority over banners.
@@ -185,21 +189,25 @@ export class SquadronHud {
     this.root.classList.toggle('hangar', s.phase === 'hangar');
     this.menu.style.display = s.phase === 'hangar' ? 'flex' : 'none';
     const countdown = `Pedalling launches in ${Math.ceil(s.menuLeft)}s · A to launch`;
-    const key = `${s.phase}:${s.craft}:${s.escortUnlocked}:${s.ergAvailable}:${s.tester}:${s.crafts.cruiser.level}:${s.crafts.escort.level}`;
+    const key = `${s.phase}:${s.craft}:${s.ergAvailable}:${s.tester}:${CRAFTS.map(c => `${s.crafts[c].level}${s.crafts[c].unlocked}`).join()}`;
     if (key === this.menuKey) { const c = this.menu.querySelector('.hint'); if (c) c.textContent = countdown; return; }
     this.menuKey = key;
-    const card = (c: 'cruiser' | 'escort') => {
-      const locked = c === 'escort' && (!s.escortUnlocked || !s.ergAvailable);
+    const TAGS: Record<CraftId, string> = { cruiser: '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>', escort: '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>',
+      striker: `<span class="tag zone2">Zone 2–3</span><span class="tag">${s.ergAvailable ? 'ERG' : 'Gears'}</span><span class="tag" style="color:var(--warn,#ffb020)">Harder</span>` };
+    const BLURB: Record<CraftId, string> = { cruiser: 'Ride steady with virtual gears. Fill every lock slot for full-lock volleys.',
+      escort: 'The trainer holds the watts. Wingmen shoot down bullets; a beam sweeps your lane on each phrase.',
+      striker: 'Rides harder when the music swells: burns near 88% FTP and a faster spin. Flank moves in a push or burn strike everything you pass under.' };
+    const card = (c: CraftId) => {
+      const locked = !s.crafts[c].unlocked || c === 'escort' && !s.ergAvailable;
       const info = s.crafts[c];
-      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : c === 'escort' && !s.escortUnlocked ? 'Unlocks at Cruiser level 3' : c === s.craft ? 'Selected' : 'Choose';
+      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : !info.unlocked ? (c === 'escort' ? 'Unlocks at Cruiser level 3' : 'Unlocks at Cruiser level 5 or Escort level 3') : c === s.craft ? 'Selected' : 'Choose';
       const level = locked ? '' : `<div class="sq-lvl">Lv ${info.level}<div class="bar"><i style="width:${Math.round(info.progress * 100)}%"></i></div></div>`
         + `<div class="sq-next">${info.next ? `Lv ${info.level + 1}: ${escapeHtml(info.next)}${info.minutesToNext ? ` · ${info.minutesToNext} min` : ''}` : 'Max level'}</div>`;
       return `<button class="card${c === s.craft ? ' focused' : ''}" data-action="craft" data-craft="${c}" ${locked ? 'disabled' : ''}>`
-        + `<h3>${craftName(c)}</h3>${c === 'cruiser' ? '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>' : '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>'}`
-        + `<p>${c === 'cruiser' ? 'Ride steady with virtual gears. Fill every lock slot for full-lock volleys.' : 'The trainer holds the watts. Wingmen shoot down bullets; a beam sweeps your lane on each phrase.'}</p>${level}<small>${note}</small></button>`;
+        + `<h3>${craftName(c)}</h3>${TAGS[c]}<p>${BLURB[c]}</p>${level}<small>${note}</small></button>`;
     };
-    this.menu.innerHTML = `<div class="panel">${s.tester ? '<span class="tag sq-tester" style="color:var(--warn,#ffb020)">Tester · everything unlocked</span>' : ''}<h2>Sprocket Squadron</h2><div class="sub">Hold the groove to paint targets. Your squadron flies itself — choose who it hits.</div>`
-      + `<div class="sq-grow">Arsenal grows to tier ${s.crafts[s.craft].arsenalCap} each ride</div><div class="sq-crafts">${card('cruiser')}${card('escort')}</div>`
+    this.menu.innerHTML = `<div class="panel">${s.tester ? '<span class="tag sq-tester" style="color:var(--warn,#ffb020)">Tester · everything unlocked</span>' : ''}<h2>Sprocket Squadron</h2><div class="sub">Hold the groove to paint targets. Your squadron flies itself — pick the flank, and it hits what's there.</div>`
+      + `<div class="sq-grow">Arsenal grows to tier ${s.crafts[s.craft].arsenalCap} each ride</div><div class="sq-crafts">${CRAFTS.map(card).join('')}</div>`
       + `<button class="btn primary" data-action="launch">Launch squadron</button><p class="hint">${countdown}</p></div>`;
   }
 }

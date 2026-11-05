@@ -15,6 +15,9 @@ export function createCombat(scene: THREE.Scene) {
   // Lancer beams: a dashed warning line, then a brief bright beam with a white core.
   const dashes = pool(geometries.box, '#ffffff', 384), beamGlow = pool(geometries.box, '#ff3fd0', 24, true), beamCore = pool(geometries.box, '#ffffff', 24);
   (beamGlow.material as THREE.MeshBasicMaterial).opacity = 0.6; const dashColor = new THREE.Color(), beamPink = new THREE.Color('#ff3fd0'), white = new THREE.Color('#ffffff');
+  // Tempo Striker: an amber blade along the swept span, and a thin slash up to each enemy it hits (at most 8 at
+  // once, a quarter second each, so a column of hits never flares).
+  const blade = pool(geometries.box, '#ffcf3a', 2, true), slashes = pool(geometries.box, '#ffcf3a', 8, true), slashCores = pool(geometries.box, '#fff6d8', 8);
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
   const shadows=pool(geometries.sphere,'#071b34',96),smoke=pool(geometries.sphere,'#343052',128);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;(smoke.material as THREE.MeshBasicMaterial).opacity=0.28;
@@ -30,7 +33,8 @@ export function createCombat(scene: THREE.Scene) {
       (1-u)*10.3+u*height + Math.sin(u * Math.PI) * 5, v*v*v*(sy-50) + 3*v*v*u*(sy-66) + 3*v*u*u*(ey-32) + u*u*u*(ey-50));
   };
   return {
-    update(s: SfSnapshot) {
+    /** `lift`: how far the terrain has risen toward the ship (ground shadows and blasts follow it). */
+    update(s: SfSnapshot, lift = 0) {
       let n = 0;
       for (const laser of s.lasers) {
         const age = s.t - laser.at; if (age < 0) continue;
@@ -88,21 +92,21 @@ export function createCombat(scene: THREE.Scene) {
       }
       brackets.count = n; brackets.instanceMatrix.needsUpdate = true;
       let sh=0;
-      for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?23:4,0.03,e.kind==='boss'?13:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
-      mat.position.set(s.shipX,-5.8,s.shipY-47);mat.scale.set(6,0.03,4);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);shadows.count=sh;shadows.instanceMatrix.needsUpdate=true;
+      for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8+lift,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?23:4,0.03,e.kind==='boss'?13:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
+      mat.position.set(s.shipX,-5.8+lift,s.shipY-47);mat.scale.set(6,0.03,4);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);shadows.count=sh;shadows.instanceMatrix.needsUpdate=true;
       let d = 0, f = 0, sm = 0;
       for (const fx of s.fx) {
         const age = s.t-fx.at;
         if (fx.kind !== 'boom' && fx.kind !== 'intercept') continue;
         // Ground explosions and smoke stay put on the terrain as it scrolls.
-        const fy = fx.y + (fx.ground ? age * GROUND_SPEED : 0);
+        const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0);
         if (age < 0.45 && f < 160) {
-          mat.position.set(fx.x,fx.ground?-2:12,fy-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
+          mat.position.set(fx.x,fx.ground?-2+lift:12,fy-50); mat.rotation.set(0, 0, 0); mat.scale.setScalar((fx.kind === 'boom' ? 7*(fx.size??1) : 2) * Math.max(0.01, 1-age/0.45)); mat.updateMatrix(); flashes.setMatrixAt(f++, mat.matrix);
         }
-        if(fx.kind==='boom' && sm<128) {mat.position.set(fx.x,(fx.ground?-2:12)+age*5,fy-50);mat.scale.setScalar((2+age*3)*(fx.size??1));mat.updateMatrix();smoke.setMatrixAt(sm++,mat.matrix);}
+        if(fx.kind==='boom' && sm<128) {mat.position.set(fx.x,(fx.ground?-2+lift:12)+age*5,fy-50);mat.scale.setScalar((2+age*3)*(fx.size??1));mat.updateMatrix();smoke.setMatrixAt(sm++,mat.matrix);}
         if (fx.kind === 'boom') for (let j=0; j<12*(fx.size??1) && d<512; j++) {
           const angle = j*Math.PI/4 + fx.id, speed = (5+j%3*4)*(fx.size??1);
-          mat.position.set(fx.x+Math.cos(angle)*age*speed, (fx.ground?-2:12)+Math.sin(age*Math.PI/1.6)*5, fy-50+Math.sin(angle)*age*speed);
+          mat.position.set(fx.x+Math.cos(angle)*age*speed, (fx.ground?-2+lift:12)+Math.sin(age*Math.PI/1.6)*5, fy-50+Math.sin(angle)*age*speed);
           mat.rotation.set(age*3, angle+age*4, age*2); const size=Math.max(0.03, (1-age/1.6)*0.65); mat.scale.set(size, size, size*2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
         }
       }
@@ -137,8 +141,25 @@ export function createCombat(scene: THREE.Scene) {
         }
       }
       sparks.count = k; sparks.instanceMatrix.needsUpdate = true;
+      let bl = 0, sl = 0;
+      if (s.strike) {
+        // Grows with the roll, then thins out over 0.6 s after it lands.
+        const st = s.strike, life = s.t <= st.until ? 1 : Math.max(0, 1 - (s.t - st.until) / 0.6), w = Math.abs(st.x1 - st.x0) + 3;
+        if (life > 0) for (const [h, scale] of [[1.6, 1], [0.5, 0.35]] as const) {
+          mat.position.set((st.x0 + st.x1) / 2, 10.4, s.shipY - 50); mat.rotation.set(0, 0, 0); mat.scale.set(w, 0.3, h * life * (1 + scale)); mat.updateMatrix(); blade.setMatrixAt(bl++, mat.matrix);
+        }
+      }
+      for (let q = s.fx.length - 1; q >= 0; q--) {
+        const fx = s.fx[q], age = s.t - fx.at; if (fx.kind !== 'strike' || age > 0.25 || sl >= 8) continue;
+        const life = 1 - age / 0.25, length = Math.max(1, s.shipY - fx.y);
+        mat.position.set(fx.x, 10.8, fx.y + length / 2 - 50); mat.rotation.set(0, 0, 0);
+        mat.scale.set(0.8 * life, 0.4, length); mat.updateMatrix(); slashes.setMatrixAt(sl, mat.matrix);
+        mat.scale.set(0.16 * life, 0.5, length); mat.updateMatrix(); slashCores.setMatrixAt(sl++, mat.matrix);
+      }
+      blade.count = bl; slashes.count = sl; slashCores.count = sl;
+      blade.instanceMatrix.needsUpdate = slashes.instanceMatrix.needsUpdate = slashCores.instanceMatrix.needsUpdate = true;
       smoke.count=sm;smoke.instanceMatrix.needsUpdate=true;debris.count=d; flashes.count=f; debris.instanceMatrix.needsUpdate=flashes.instanceMatrix.needsUpdate=true;
     },
-    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore]) { mesh.dispose(); } },
+    dispose() { for (const mesh of [trails, cores, rings, brackets, debris, flashes, shadows, smoke, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
   };
 }

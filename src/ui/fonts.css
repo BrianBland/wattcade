@@ -1,0 +1,9 @@
+/* Self-hosted numeric subset; copyright/license/provenance in public/fonts. */
+@font-face {
+  font-family: 'Oxanium';
+  src: url('/fonts/oxanium-numeric-700.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020,U+0025,U+002B-003A,U+2013,U+2212;
+}

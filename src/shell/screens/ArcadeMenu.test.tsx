@@ -14,6 +14,7 @@ afterEach(() => {
 });
 
 it('pauses the selected clip when asleep or hidden and resumes the same clip on wake', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
   const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});

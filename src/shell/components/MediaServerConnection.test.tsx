@@ -14,6 +14,9 @@ it('restores edited connection fields after closing and reopening the app', () =
   });
   try {
     act(() => render(<MediaServerConnection />, el));
+    expect(el.querySelector('details')!.open).toBe(false);
+    act(() => el.querySelector('summary')!.click());
+    expect(el.querySelector('details')!.open).toBe(true);
     edit('Media server URL', 'https://media.example.com');
     edit('Media server token', 'test-token');
     act(() => {
@@ -27,6 +30,10 @@ it('restores edited connection fields after closing and reopening the app', () =
     act(() => render(null, el));
     sessionStorage.clear();
     act(() => render(<MediaServerConnection />, el));
+    expect(el.querySelector('details')!.open).toBe(false);
+    expect(el.querySelector('.media-server-state')!.textContent).toBe('Enabled');
+    act(() => el.querySelector('summary')!.click());
+    expect(el.querySelector('details')!.open).toBe(true);
     expect(input('Media server URL').value).toBe('https://media.example.com');
     expect(input('Media server token').value).toBe('test-token');
     expect(el.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true);

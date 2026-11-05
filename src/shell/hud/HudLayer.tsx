@@ -16,6 +16,15 @@ import { FakeBikeHelp } from './FakeBikeHelp';
 import { History, boundsFor, effectiveSource, zonePosition, type Bar } from './zoneMath';
 import { HUD_LAYOUT_EVENT } from './insets';
 
+/** Fixed SVG bounds keep utility symbols on the same centerline as instruments. */
+function ToolIcon({ kind }: { kind: 'history' | 'controls' | 'menu' }) {
+  return <b aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="round">
+    {kind === 'history' ? <path d="M4 19V11m5 8V5m5 14V9m5 10V3" />
+      : kind === 'controls' ? <><rect x="2" y="6" width="20" height="13" rx="3" /><path d="M5 12h6M8 9v6m8-4h.01M19 14h.01" /></>
+      : <path d="M4 6h16M4 12h16M4 18h16" />}
+  </svg></b>;
+}
+
 /** Readouts stay compact on phones, including short landscape viewports. */
 function useCompactInstruments() {
   const [compact, setCompact] = useState(() => typeof matchMedia === 'function' && matchMedia('(max-width:700px), (max-height:500px)').matches);
@@ -144,15 +153,15 @@ export function HudLayer({ session, profile, paused, layout, fake, menu, onContr
         <ZoneWidget compact={compact} ftp={profile.ftp} bike={f.bike} view={f.view} target={f.hud.targetZone} cadenceTarget={f.hud.targetCadence} bars={f.bars} gears={gears} command={f.command} history={false}
           gearControls={!compact && gearControls} />
         <nav ref={tools} class={`hud-utilities${toolsOpen ? ' tools-open' : ''}`} aria-label="Ride tools">
-          {compact && <button ref={toolsButton} type="button" class="hud-tools-toggle" aria-label="Ride tools" aria-expanded={toolsOpen} aria-controls="ride-tools-list" onClick={() => { setPanel(null); setToolsOpen(!toolsOpen); }}><b aria-hidden="true">☰</b></button>}
+          {compact && <button ref={toolsButton} type="button" class="hud-tools-toggle" aria-label="Ride tools" aria-expanded={toolsOpen} aria-controls="ride-tools-list" onClick={() => { setPanel(null); setToolsOpen(!toolsOpen); }}><ToolIcon kind="menu" /></button>}
           <div id="ride-tools-list" class="hud-tools-list" hidden={compact && !toolsOpen}>
           {compact && toolsOpen && gearControls && <div class="hud-tools-gears" aria-label="Virtual gears"><span>Gear {f.bike.gear}</span>{gearControls}</div>}
           <button ref={historyButton} type="button" aria-label="Recent effort history" aria-expanded={panel === 'history'}
             onPointerEnter={e => { if (e.pointerType === 'mouse' && !paused && !compact) { cancelDismiss(); setPanel('history'); } }} onPointerLeave={scheduleDismiss}
             onFocus={e => { if (e.currentTarget.matches(':focus-visible') && !paused && !compact) setPanel('history'); }} onBlur={scheduleDismiss}
-            onClick={e => { setToolsOpen(false); cancelDismiss(); if (panel === 'history' && (('pointerType' in e && e.pointerType === 'mouse') || e.detail === 0)) setPinned(true); else { setPinned(false); setPanel(panel === 'history' ? null : 'history'); } }}><b aria-hidden="true">▥</b><span>History</span></button>
-          <button ref={controlsButton} type="button" aria-label="Controller guide" aria-expanded={panel === 'controls'} onClick={() => { setToolsOpen(false); if (onControls) { close(); onControls(); } else { setPinned(false); setPanel(panel === 'controls' ? null : 'controls'); } }}><b aria-hidden="true">⌘</b><span>Controls</span></button>
-          <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={() => { close(); (mb?.onClick ?? (() => input.system('pause')))(); }}><b aria-hidden="true">☰</b><span>Menu</span></button>
+            onClick={e => { setToolsOpen(false); cancelDismiss(); if (panel === 'history' && (('pointerType' in e && e.pointerType === 'mouse') || e.detail === 0)) setPinned(true); else { setPinned(false); setPanel(panel === 'history' ? null : 'history'); } }}><ToolIcon kind="history" /><span>History</span></button>
+          <button ref={controlsButton} type="button" aria-label="Controller guide" aria-expanded={panel === 'controls'} onClick={() => { setToolsOpen(false); if (onControls) { close(); onControls(); } else { setPinned(false); setPanel(panel === 'controls' ? null : 'controls'); } }}><ToolIcon kind="controls" /><span>Controls</span></button>
+          <button type="button" class="hud-menu-hit" aria-label={mb?.label ?? 'Open game menu'} title={mb?.label ?? 'Open game menu'} onClick={() => { close(); (mb?.onClick ?? (() => input.system('pause')))(); }}><ToolIcon kind="menu" /><span>Menu</span></button>
           </div>
         </nav>
       </div>

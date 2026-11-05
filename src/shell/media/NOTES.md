@@ -6,3 +6,4 @@
 - Shared by picker handoff and GameHost startup/rebuffering. Unknown progress is indeterminate; no invented ETA.
 - Unmount clears delay/poll timers. DOM tests cover delay, updates, unknown progress and a fresh subsequent wait.
 - Profile “Debug stats” gates collector creation and a collapsible table in picker/game; collector follows the queue into playback. No collector/polling when off.
+- Main integration retains queued audio preparation, delayed real buffer progress and opt-in timing diagnostics within the Pocket Arcade picker.

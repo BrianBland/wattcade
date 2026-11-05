@@ -16,6 +16,10 @@
 - Native iPad/Bluefy frame pacing and a physical controller ride remain device validation.
 - Responsive review: `docs/visual-polish/hud-responsive/README.md` compares pre-PR, stacked and revised layouts with total reserved heights.
 - Phone/short-landscape instruments use inline readouts, a 6px zone rail and one 44px tools toggle. Gear buttons mount only inside the open tools panel; dismissal cancels holds.
-- Readings share one tabular sans size. Time and gear no longer use a smaller clock face, so they line up with watts.
+- Readings use self-hosted Oxanium 700 tabular numerals. Desktop uses a shared 28px main row + 4px gap + 12px caption, aligned to the zone rail and SVG tools.
+- Time/Gear captions complete the desktop row; compact captions stay inline (time is self-describing). Touch gear adjustment is one balanced minus/value/plus stepper: centered caption, equal visual gaps and disjoint 44px targets aligned with the numeric row.
+- Numeric browser checks: `scripts/check-hud-alignment.mjs`; normal/long values, ten layouts (including mouse and breakpoint edges), 51px compact / 59px desktop bar. Review: `docs/visual-polish/hud-alignment/README.md`.
 - Explicit `touchControls: []` reserves no touch strip or gap. Warmup uses native arcade menus; Cadenza has one button per lane; Hamster native taps replace tabs, Buy and Trial.
 - Touch actions show names rather than A/B/Y/Z glyphs. Warmup opts into a read-only persistent controller navigation legend; Auto removes it on disconnect. App suppresses it while menus are visible; their contextual key hints take precedence.
+- Pocket Arcade supplies shared warm navy/cream and mint tokens to the bar, peeks and floating surfaces; typography, zone/controller semantics and geometry are unchanged.
+- Main integration preserves right-aligned controller status indicators on landscape viewports >=701px wide and >=501px high, matching Crank Crawler inventory placement; compact/portrait indicators stay centered.

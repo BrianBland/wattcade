@@ -1,7 +1,9 @@
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
 import type { GameMenuAction } from '../../contracts';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Btn } from '../components/Bits';
-import { Choice, Field, KeyHints, Stepper, Toggle } from '../components/ui';
+import { Choice, Field, Stepper, Toggle } from '../components/ui';
 import type { HudLayout } from '../hud/layout';
 import { debugActions, getDifficulty } from '../services';
 import { FakeBikeHelp } from '../hud/FakeBikeHelp';
@@ -21,7 +23,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
   const layouts = ['auto', 'touch', 'controller'] as const;
   const cycleLayout = (d: number) => onLayout(layouts[(layouts.indexOf(layout) + d + layouts.length) % layouts.length]);
   const actions = [onResume, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run), ...extensions.map(entry => () => onExtension(entry.action))];
-  const [idx, setIdx] = useMenuNav(actions.length, [1, 1, 1, 1, tail.length, ...extensions.map(() => 1)], (i) => actions[i](), onResume, true, {
+  const [idx, setIdx] = useMenuNav(actions.length, actions.map(() => 1), (i) => actions[i](), onResume, true, {
     initial,
     onAdjust: (i, d) => {
       if (i === 1) { setD(diff + d * 0.05); return true; }
@@ -32,10 +34,10 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
   });
   useLayoutEffect(() => { card.current?.querySelector<HTMLElement>('.focused')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }, [idx]);
   return (
-    <div class="overlay-modal">
-      <div class="modal pause" ref={card}>
-        <h2>Paused</h2>
-        <Btn primary focused={idx === 0} onClick={onResume}>▶ Resume</Btn>
+    <div class="overlay-modal chrome-ui chrome-pause">
+      <div class="modal pause" ref={card} role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <div class="chrome-eyebrow">TAKE A BREATHER</div><h2 id="pause-title">Paused.</h2><p class="pause-caption">Your ride will be here.</p>
+        <Btn primary focused={idx === 0} onClick={onResume}>Resume ride →</Btn>
         <div class="fields">
           <Field label="Difficulty" focused={idx === 1} hint="Scales hills and ERG targets" onClick={() => setIdx(1)}>
             <Stepper value={diff} step={0.05} min={0.5} max={1.5} digits={2} onChange={setD} />
@@ -48,7 +50,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
         </div>
         {extensions.map((entry, i) => <Btn key={entry.id} focused={idx === 4 + tail.length + i} onClick={() => onExtension(entry.action)}>{entry.label}</Btn>)}
         {fake && <FakeBikeHelp />}
-        <KeyHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
+        <ChromeHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
       </div>
     </div>
   );

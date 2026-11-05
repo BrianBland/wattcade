@@ -1,3 +1,5 @@
+import type { UnitSystem } from '../contracts';
+import { formatDistance, formatElevation, formatSpeed } from '../units';
 export function formatDuration(totalS: number): string {
   const s = Math.max(0, Math.round(totalS));
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -53,4 +55,15 @@ export function timeAgo(then: number | undefined, now = Date.now()): string {
   if (m < 60) return `${Math.round(m)} min ago`;
   const h = m / 60; if (h < 24) return `${Math.round(h)} h ago`;
   const d = h / 24; return d < 2 ? 'Yesterday' : `${Math.round(d)} days ago`;
+}
+
+/** Consistent labels and rider-selected units across the result banner and ride summary. */
+export const rideMetricLabel=(key:string)=>({distanceKm:'Distance',climbM:'Climb',topKph:'Top speed',avgKph:'Avg speed'}[key]??prettyKey(key));
+export function rideMetricValue(key:string,value:number|string|boolean,units:UnitSystem):string {
+ if(typeof value==='number'){
+  if(key==='distanceKm')return formatDistance(value,units);
+  if(key==='climbM')return formatElevation(value,units);
+  if(key==='topKph'||key==='avgKph')return formatSpeed(value,units);
+ }
+ return formatValue(value);
 }

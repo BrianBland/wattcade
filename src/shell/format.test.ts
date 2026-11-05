@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { downsample, formatDuration, formatNum, formatValue, levelProgress, packetsPerSecond, prettyKey, timeAgo, zoneFractions } from './format';
+import { downsample, formatDuration, formatNum, formatValue, levelProgress, packetsPerSecond, prettyKey, timeAgo, zoneFractions, rideMetricLabel, rideMetricValue } from './format';
 
 describe('format', () => {
   it('durations', () => {
@@ -42,3 +42,5 @@ describe('format extras', () => {
     expect(timeAgo(1, 3 * 86400000)).toBe('3 days ago');
   });
 });
+
+it('keeps result and summary measurements in the rider units',()=>{expect(rideMetricLabel('distanceKm')).toBe('Distance');expect(rideMetricValue('distanceKm',1.609344,'imperial')).toBe('1.00 mi');expect(rideMetricValue('climbM',30.48,'imperial')).toBe('100 ft');expect(rideMetricValue('topKph',16.09344,'imperial')).toBe('10.0 mph');expect(rideMetricValue('distanceKm',1,'metric')).toBe('1.00 km');expect(rideMetricValue('status','Complete','metric')).toBe('Complete');});

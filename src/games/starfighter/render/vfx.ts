@@ -5,10 +5,10 @@ import * as THREE from 'three';
  * simulated or allocated per frame; callers push the particles they want this frame and `flush()` uploads them.
  *
  * Types (additive): fireball, spark streak, flash with a cross flare, shock ring, player bolt, beam segment.
- * Alpha: smoke puff. Quads stretch along a world direction projected into view space (streaks, bolts, beams), or stay
+ * Alpha: smoke puff, snow flake (a soft white streak along the wind; `life` carries its opacity). Quads stretch along a world direction projected into view space (streaks, bolts, beams), or stay
  * round when the direction is zero.
  */
-export const VFX = { fire: 0, spark: 1, flash: 2, ring: 3, bolt: 4, beam: 5, smoke: 6 } as const;
+export const VFX = { fire: 0, spark: 1, flash: 2, ring: 3, bolt: 4, beam: 5, smoke: 6, flake: 7 } as const;
 const vertex = /* glsl */ `
   attribute vec3 aCenter; attribute vec3 aDir; attribute vec2 aSize; attribute vec3 aColor; attribute vec3 aMisc; // type, life 0..1, seed
   varying vec2 vUv; varying vec3 vColor; varying vec3 vMisc;
@@ -56,7 +56,13 @@ const additive = /* glsl */ `
   }`;
 const alpha = /* glsl */ `
   varying vec2 vUv; varying vec3 vColor; varying vec3 vMisc; ${noise}
-  void main() { // smoke: billowing puff, warm and dense when young, grey and thin as it rises
+  void main() {
+    if (vMisc.x > 6.5) { // snow flake: soft streak, opacity in vMisc.y
+      float a = exp(-vUv.x * vUv.x * 3.0) * (1.0 - vUv.y * vUv.y) * vMisc.y;
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(0.93, 0.96, 1.0, a); return;
+    }
+    // smoke: billowing puff, warm and dense when young, grey and thin as it rises
     float life = clamp(vMisc.y, 0.0, 1.0), seed = vMisc.z, r = length(vUv);
     float t = fbm(vUv * 1.8 + vec2(seed * 5.1, seed * 2.7 + life * 0.8));
     float a = smoothstep(1.0, 0.25, r + (t - 0.5) * 0.7) * (1.0 - life) * (1.0 - life) * 0.6;
@@ -75,8 +81,9 @@ function layer(scene: THREE.Scene, max: number, frag: string, blending: THREE.Bl
   mesh.frustumCulled = false; mesh.renderOrder = order; scene.add(mesh);
   return { mesh, geo, A, max, n: 0 };
 }
+const WHITE = new THREE.Color(1, 1, 1);
 export function createVfx(scene: THREE.Scene) {
-  const glow = layer(scene, 3072, additive, THREE.AdditiveBlending, 6), smoke = layer(scene, 640, alpha, THREE.NormalBlending, 4);
+  const glow = layer(scene, 3072, additive, THREE.AdditiveBlending, 6), smoke = layer(scene, 2400, alpha, THREE.NormalBlending, 4);
   const put = (L: typeof glow, type: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, len: number, width: number, color: THREE.Color, life: number, seed: number) => {
     if (L.n >= L.max) return; const i = L.n++;
     L.A.aCenter.setXYZ(i, x, y, z); L.A.aDir.setXYZ(i, dx, dy, dz); L.A.aSize.setXY(i, len, width);
@@ -87,6 +94,8 @@ export function createVfx(scene: THREE.Scene) {
     begin() { glow.n = 0; smoke.n = 0; },
     /** A glowing particle (any type but smoke). Zero direction keeps it round. */
     add(type: number, x: number, y: number, z: number, len: number, width: number, color: THREE.Color, life: number, seed = 0, dx = 0, dy = 0, dz = 0) { put(glow, type, x, y, z, dx, dy, dz, len, width, color, life, seed); },
+    /** A snow flake streak along (dx, dy, dz), with opacity `alpha`. */
+    flake(x: number, y: number, z: number, len: number, width: number, alpha: number, dx: number, dy: number, dz: number) { put(smoke, VFX.flake, x, y, z, dx, dy, dz, len, width, WHITE, alpha, 0); },
     smoke(x: number, y: number, z: number, size: number, color: THREE.Color, life: number, seed: number) { put(smoke, VFX.smoke, x, y, z, 0, 0, 0, size, size, color, life, seed); },
     /** Upload this frame's particles. */
     flush() {

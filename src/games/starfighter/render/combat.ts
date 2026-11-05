@@ -15,6 +15,10 @@ export function createCombat(scene: THREE.Scene) {
   const vfx = createVfx(scene), trailColor = new THREE.Color(), C = (hex: string) => new THREE.Color(hex);
   const FLASH = C('#ffd9a0'), SPARK = C('#ff8a2a'), RING = C('#ffb46a'), SMOKE_AIR = C('#4a4448'), SMOKE_GROUND = C('#5a5048'), HIT = C('#bff6ff');
   const BOLT = { cyan: C('#5fe6ff'), white: C('#b9f4ff'), gold: C('#ffcf4a') };
+  // Blizzard flakes: seeds fixed per mount, positions a pure function of the accumulated wind shift.
+  const FLAKES = 1600, BOX = { x0: -190, sx: 380, y0: -4, sy: 50, z0: -320, sz: 420 }, shift = new THREE.Vector3(); let snowT = -1;
+  const wrapIn = (u: number, sh: number, mn: number, sz: number) => mn + (((u * sz + sh) % sz) + sz) % sz;
+  const flakeSeeds = new Float32Array(FLAKES * 4); { let q = 12345; for (let i = 0; i < flakeSeeds.length; i++) flakeSeeds[i] = (q = (q * 16807) % 2147483647) / 2147483647; }
   // Lancer beams: a dashed warning line, then a brief bright beam with a white core.
   const dashes = pool(geometries.box, '#ffffff', 384), beamGlow = pool(geometries.box, '#ff3fd0', 24, true), beamCore = pool(geometries.box, '#ffffff', 24);
   (beamGlow.material as THREE.MeshBasicMaterial).opacity = 0.6; const dashColor = new THREE.Color(), beamPink = new THREE.Color('#ff3fd0'), white = new THREE.Color('#ffffff');
@@ -38,7 +42,8 @@ export function createCombat(scene: THREE.Scene) {
   };
   return {
     /** `lift`: how far the terrain has risen toward the ship (ground shadows and blasts follow it). */
-    update(s: SfSnapshot, lift = 0) {
+    /** `snow` 0..1: blizzard strength (arctic), drawn as wind-driven flakes in the alpha particle layer. */
+    update(s: SfSnapshot, lift = 0, snow = 0) {
       vfx.begin();
       let n = 0;
       for (const laser of s.lasers) {
@@ -187,6 +192,20 @@ export function createCombat(scene: THREE.Scene) {
       blade.count = bl; slashes.count = sl; slashCores.count = sl;
       blade.instanceMatrix.needsUpdate = slashes.instanceMatrix.needsUpdate = slashCores.instanceMatrix.needsUpdate = true;
       debris.count = d; debris.instanceMatrix.needsUpdate = true;
+      // Blizzard: seeded flakes wrapped in a box around the view, carried by an accumulated wind shift (so gusts never
+      // jump); `snow` sets how many show and how hard the wind blows. Faded at the box edges and with distance.
+      const dt = Math.min(0.1, Math.max(0, s.t - snowT)); snowT = s.t;
+      if (snow > 0.01) {
+        const k = 0.6 + 0.9 * snow, wx = -26 * k, wy = -4 * k, wz = 62 * k, len0 = 1 + Math.hypot(wx, wy, wz) * 0.035;
+        shift.x += wx * dt; shift.y += wy * dt; shift.z += wz * dt;
+        for (let i = 0; i < FLAKES; i++) {
+          const v = flakeSeeds[i * 4 + 3]; if (v > snow) continue;
+          const sp = 0.75 + 0.5 * v, x = wrapIn(flakeSeeds[i * 4], shift.x * sp, BOX.x0, BOX.sx), y = wrapIn(flakeSeeds[i * 4 + 1], shift.y * sp, BOX.y0, BOX.sy), z = wrapIn(flakeSeeds[i * 4 + 2], shift.z * sp, BOX.z0, BOX.sz);
+          const edge = Math.min(Math.min(x - BOX.x0, BOX.x0 + BOX.sx - x) / (BOX.sx * 0.08), Math.min(y - BOX.y0, BOX.y0 + BOX.sy - y) / (BOX.sy * 0.08), Math.min(z - BOX.z0, BOX.z0 + BOX.sz - z) / (BOX.sz * 0.08));
+          const far = Math.min(1, Math.max(0, -z / 600)), alpha = Math.min(1, Math.max(0, edge)) * (0.75 - 0.5 * far);
+          vfx.flake(x, y, z, len0 * (0.7 + 0.6 * v), 0.22 + 0.25 * v, alpha, wx, wy, wz);
+        }
+      }
       vfx.flush();
     },
     dispose() { vfx.dispose(); for (const mesh of [rings, brackets, debris, shadows, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { isFlagshipGeometry } from './flagships';
+import { flip, hullMaterial, isFlagshipGeometry, slab } from './flagships';
+import { fleetModel } from './fleet';
 const hull = new THREE.ConeGeometry(2.2, 7, 4);
 hull.rotateX(-Math.PI / 2); hull.rotateZ(Math.PI / 4);
 const box = new THREE.BoxGeometry(1, 1, 1);
@@ -10,8 +11,11 @@ const rock=new THREE.IcosahedronGeometry(1,0);
 export const geometries = { hull, box, sphere, ring, rock };
 const compiled = new Map<string, THREE.BufferGeometry[]>();
 export { bossModel, batteryModel } from './flagships';
+/** Craft hull and wing plates, built once per shape. */
+const craftGeo = new Map<string, THREE.BufferGeometry>();
+const cachedGeo = (key: string, make: () => THREE.BufferGeometry) => { let g = craftGeo.get(key); if (!g) craftGeo.set(key, g = make()); return g; };
 export function isSharedGeometry(g: THREE.BufferGeometry) {
-  return isFlagshipGeometry(g) || (Object.values(geometries) as THREE.BufferGeometry[]).includes(g) || [...compiled.values()].some(gs=>gs.includes(g));
+  return [...craftGeo.values()].includes(g) || isFlagshipGeometry(g) || (Object.values(geometries) as THREE.BufferGeometry[]).includes(g) || [...compiled.values()].some(gs=>gs.includes(g));
 }
 /** Merge static enemy parts by material; retain named aiming barrels as separate meshes. */
 function compactModel(group: THREE.Group, key: string): THREE.Group {
@@ -28,33 +32,25 @@ function compactModel(group: THREE.Group, key: string): THREE.Group {
   if(!cached)compiled.set(key,created);return group;
 }
 export function shipModel(color: string, kind: string): THREE.Group {
+  if (kind === 'turret' || kind === 'tank') return fleetModel(kind, color, '#ff3bbf');
+  if (kind === 'drone' || kind === 'armor' || kind === 'weaver' || kind === 'gunner') return fleetModel(kind, color, '#ff43bd');
   const g = new THREE.Group();
-  if(kind==='turret' || kind==='tank') {
-    const armor=new THREE.MeshStandardMaterial({color:'#e8ddec',metalness:0.6,roughness:0.3});
-    const glow=new THREE.MeshBasicMaterial({color:'#ff3bbf'});
-    const base=new THREE.Mesh(sphere,armor);base.scale.set(2.5,1.3,2.5);g.add(base);
-    const barrel=new THREE.Mesh(box,glow);barrel.position.set(0,1.3,1);barrel.scale.set(0.8,0.8,4);barrel.name='barrel';g.add(barrel);
-    if(kind==='tank') {
-      const dark=new THREE.MeshStandardMaterial({color:'#162b3c',metalness:0.6,roughness:0.4});
-      for(const side of [-1,1]){const tread=new THREE.Mesh(box,dark);tread.position.set(side*2.3,-0.6,0);tread.scale.set(1.4,1.6,6);g.add(tread);for(let i=0;i<5;i++){const wheel=new THREE.Mesh(sphere,armor);wheel.position.set(side*3,-0.6,-2+i);wheel.scale.set(0.2,0.6,0.6);g.add(wheel);}}
-      const body=new THREE.Mesh(box,armor);body.position.y=-0.5;body.scale.set(4,1.5,5);g.add(body);
-    }
-    return compactModel(g,kind);
-  }
-  const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
+  const craft = kind === 'player' || kind === 'escort' || kind === 'striker', lightColor = craft ? (kind === 'striker' ? '#ffcf3a' : '#38edff') : '#ff43bd';
+  // Panelled plating (seams, rim light in the running-light colour) from the flagship hull shader.
+  const plate = hullMaterial(color, new THREE.Color(lightColor), 0, [0.45, 0.7], 11, 0.6, 0.3);
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
-  const craft = kind === 'player' || kind === 'escort' || kind === 'striker';
-  const light = new THREE.MeshBasicMaterial({ color: craft ? (kind === 'striker' ? '#ffcf3a' : '#38edff') : '#ff43bd' });
+  const light = new THREE.MeshBasicMaterial({ color: lightColor });
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m;
   };
-  add(hull, plate, [0, 0.7, 0], [1, 0.5, 1]);
+  add(cachedGeo('fuselage', () => slab([[0, -4.6], [0.9, -2.6], [1.35, 0.4], [1.25, 3.3], [-1.25, 3.3], [-1.35, 0.4], [-0.9, -2.6]], 0.25, 0.75, 0.25)), plate, [0, 0, 0], [1, 1, 1]);
   add(sphere, dark, [0, 1.3, -0.4], [0.8, 0.45, 1.6]);
   add(box, light, [0, 1.75, -0.5], [0.35, 0.08, 1.2]);
   const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : 3.6;
   for (const side of [-1, 1]) {
     // The Striker's wings sweep forward; everyone else's sweep back.
-    add(box, plate, [side * wings / 2, 0.6, kind === 'striker' ? 0.2 : 0.8], [wings, 0.35, kind === 'striker' ? 1.3 : 1.7]).rotation.y = side * (kind === 'striker' ? -0.38 : 0.22);
+    const outline: Array<[number, number]> = kind === 'striker' ? [[0.9, 0.6], [wings, -1.1], [wings + 0.2, -0.1], [0.9, 2.4]] : [[0.9, -0.7], [wings, 1], [wings, 2.1], [0.9, 2.3]];
+    add(cachedGeo(`wing:${kind}:${side}`, () => slab(side > 0 ? outline : flip(outline), 0.45, 0.22, 0.12)), plate, [0, 0, 0], [1, 1, 1]);
     add(box, dark, [side * wings, 0.6, 0], [0.8, 0.9, 3]);
     add(box, light, [side * wings, 0.65, -1.6], [0.3, 0.3, 0.7]);
     const engine = add(sphere, light, [side * 1.1, 0.6, 3.1], [0.5, 0.3, 1.2]); engine.name = 'engine';
@@ -97,22 +93,7 @@ export function shipModel(color: string, kind: string): THREE.Group {
   return craft||kind==='boss'?g:compactModel(g,`${kind}:${color}`);
 }
 /** Heavy escort (craft level 7): a broad twin-boom gunship with missile racks, distinct from any craft. */
-export function heavyModel(color: string): THREE.Group {
-  const g = new THREE.Group();
-  const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
-  const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
-  const light = new THREE.MeshBasicMaterial({ color: '#38edff' });
-  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => { const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m; };
-  add(hull, plate, [0, 0.6, 0], [1.5, 0.6, 0.8]);
-  add(box, plate, [0, 0.5, 1.2], [6.5, 0.3, 1.6]);
-  for (const side of [-1, 1]) {
-    add(box, dark, [side * 2.6, 0.5, 0.6], [0.9, 0.9, 5.5]);
-    for (let i = 0; i < 3; i++) add(box, light, [side * (1.6 + i * 0.35), 0.15, -0.6], [0.22, 0.22, 1.4]);
-    add(sphere, light, [side * 2.6, 0.5, 3.5], [0.45, 0.35, 1]).name = 'engine';
-  }
-  add(sphere, dark, [0, 1.2, -0.6], [0.9, 0.5, 1.5]);
-  return g;
-}
+export function heavyModel(color: string): THREE.Group { return fleetModel('heavy', color, '#38edff'); }
 export function disposeModel(g: THREE.Object3D) {
   const materials = new Set<THREE.Material>();
   g.traverse(o => { if (o instanceof THREE.Mesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) materials.add(m); });

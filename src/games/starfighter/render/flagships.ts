@@ -38,7 +38,7 @@ export const FLAGSHIPS: FlagshipSpec[] = [
 /** Shared clock for every flagship shader: seconds and the beat pulse (0..1). Set by the renderer each frame. */
 export const flagshipClock = { time: { value: 0 }, beat: { value: 0 } };
 
-type Key = 'hull' | 'armor' | 'dark' | 'glow' | 'hot' | 'glass' | 'core' | 'bone' | 'plume';
+export type Key = 'hull' | 'armor' | 'dark' | 'glow' | 'hot' | 'glass' | 'core' | 'bone' | 'plume';
 type V3 = [number, number, number];
 /** One mesh per named group: a single geometry whose draw groups map to `keys` (one material each). */
 interface Part { keys: Key[]; geo: THREE.BufferGeometry; name: string; pivot: THREE.Vector3 }
@@ -46,16 +46,16 @@ const shared = new Set<THREE.BufferGeometry>();
 export const isFlagshipGeometry = (g: THREE.BufferGeometry) => shared.has(g);
 
 // ---- geometry helpers (all return fresh geometry; the builder clones, transforms and merges it) ----
-const TAU = Math.PI * 2;
+export const TAU = Math.PI * 2;
 /** A plate extruded upward from y0 by h, outlined by (x, z) points (top view). */
-function slab(pts: Array<[number, number]>, y0: number, h: number, bevel = 0.4) {
+export function slab(pts: Array<[number, number]>, y0: number, h: number, bevel = 0.4) {
   const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x, -z))),
     { depth: h, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 6 });
   g.rotateX(-Math.PI / 2); g.translate(0, y0, 0); return g;
 }
-const flip = (pts: Array<[number, number]>) => pts.map(([x, z]) => [-x, z] as [number, number]);
+export const flip = (pts: Array<[number, number]>) => pts.map(([x, z]) => [-x, z] as [number, number]);
 /** A strip of width w0 → w1 along a polyline (top view), as an outline for `slab`. */
-function ribbon(pts: Array<[number, number]>, w0: number, w1: number): Array<[number, number]> {
+export function ribbon(pts: Array<[number, number]>, w0: number, w1: number): Array<[number, number]> {
   const L: Array<[number, number]> = [], R: Array<[number, number]> = [];
   pts.forEach(([x, z], i) => {
     const [ax, az] = pts[Math.max(0, i - 1)], [bx, bz] = pts[Math.min(pts.length - 1, i + 1)], d = Math.hypot(bx - ax, bz - az) || 1;
@@ -64,13 +64,13 @@ function ribbon(pts: Array<[number, number]>, w0: number, w1: number): Array<[nu
   });
   return [...L, ...R.reverse()];
 }
-const box = () => new THREE.BoxGeometry(1, 1, 1);
-const cyl = (r0: number, r1: number, h: number, n = 14) => new THREE.CylinderGeometry(r0, r1, h, n);
-const ball = (n = 18) => new THREE.SphereGeometry(1, n, Math.max(8, n * 0.6));
-const torus = (r: number, t: number, arc = TAU, n = 32) => new THREE.TorusGeometry(r, t, 8, n, arc);
-const cone = (r: number, h: number, n = 8) => new THREE.ConeGeometry(r, h, n);
+export const box = () => new THREE.BoxGeometry(1, 1, 1);
+export const cyl = (r0: number, r1: number, h: number, n = 14) => new THREE.CylinderGeometry(r0, r1, h, n);
+export const ball = (n = 18) => new THREE.SphereGeometry(1, n, Math.max(8, n * 0.6));
+export const torus = (r: number, t: number, arc = TAU, n = 32) => new THREE.TorusGeometry(r, t, 8, n, arc);
+export const cone = (r: number, h: number, n = 8) => new THREE.ConeGeometry(r, h, n);
 
-class Builder {
+export class Builder {
   private bins = new Map<string, { key: Key; name: string; pivot: THREE.Vector3; geos: THREE.BufferGeometry[] }>();
   private name = ''; private pivot = new THREE.Vector3(); private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private e = new THREE.Euler();
   /** Following parts belong to a named, separately animated mesh, positioned relative to `pivot`. */
@@ -121,7 +121,7 @@ function greebles(b: Builder, rnd: () => number, n: number, x0: number, x1: numb
   }
 }
 /** An engine on the stern: nacelle, collar, a hot nozzle and an additive plume pointing +z. */
-function engine(b: Builder, x: number, y: number, z: number, r: number, len: number) {
+export function engine(b: Builder, x: number, y: number, z: number, r: number, len: number) {
   b.add('dark', cyl(r * 0.9, r, len, 16), [x, y, z + len / 2], [1, 1, 1], [Math.PI / 2, 0, 0]);
   b.add('armor', torus(r, r * 0.16, TAU, 20), [x, y, z + len]);
   b.add('hot', new THREE.CircleGeometry(r * 0.82, 18), [x, y, z + len + 0.02]);
@@ -269,7 +269,7 @@ function battery(b: Builder) {
 }
 const BUILD = [dreadnought, hive, lancer, spiral, maw];
 const templates = new Map<string, Part[]>();
-function template(key: string, make: (b: Builder) => void) {
+export function template(key: string, make: (b: Builder) => void) {
   let t = templates.get(key); if (t) return t;
   const b = new Builder(); make(b); t = b.build(); templates.set(key, t); return t;
 }
@@ -312,7 +312,7 @@ const HULL_FRAG = /* glsl */ `
       totalEmissiveRadiance += vec3(1.0, 0.38, 0.08) * (crack * (0.8 + 0.4 * sin(uTime * 9.0 + n * 40.0)) + scorch * 0.12 * uDamage);
     }
   }`;
-function hullMaterial(color: string, accent: THREE.Color, pattern: number, panel: [number, number], seed: number, metal: number, rough: number) {
+export function hullMaterial(color: string, accent: THREE.Color, pattern: number, panel: [number, number], seed: number, metal: number, rough: number) {
   const m = new THREE.MeshStandardMaterial({ color, metalness: metal, roughness: rough });
   const u = { uAccent: { value: accent }, uDamage: { value: 0 }, uPattern: { value: pattern }, uPanel: { value: new THREE.Vector2(...panel) }, uSeed: { value: seed }, uTime: flagshipClock.time, uBeat: flagshipClock.beat };
   m.onBeforeCompile = shader => {
@@ -347,7 +347,7 @@ function coreMaterial(accent: THREE.Color) {
       }`,
   });
 }
-function materials(spec: FlagshipSpec, style: number): Record<Key, THREE.Material> {
+export function materials(spec: Pick<FlagshipSpec, 'accent' | 'hull' | 'armor' | 'dark' | 'pattern' | 'panel'>, style: number): Record<Key, THREE.Material> {
   const accent = new THREE.Color(spec.accent), white = new THREE.Color('#ffffff');
   return {
     hull: hullMaterial(spec.hull, accent, spec.pattern, spec.panel, style * 7.1 + 1, 0.55, 0.42),
@@ -361,7 +361,7 @@ function materials(spec: FlagshipSpec, style: number): Record<Key, THREE.Materia
     core: coreMaterial(accent),
   };
 }
-function assemble(parts: Part[], mats: Record<Key, THREE.Material>) {
+export function assemble(parts: Part[], mats: Record<Key, THREE.Material>) {
   const g = new THREE.Group();
   for (const p of parts) { const m = new THREE.Mesh(p.geo, p.keys.map(k => mats[k])); if (p.name) { m.name = p.name; m.position.copy(p.pivot); } g.add(m); }
   g.userData.damage = [mats.hull.userData.damage, mats.armor.userData.damage];

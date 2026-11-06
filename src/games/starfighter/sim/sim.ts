@@ -45,6 +45,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
     rpmPush: ctx.tuning.num('rpmPush', 4, 0, 15, 1), rpmBurn: ctx.tuning.num('rpmBurn', 8, 0, 20, 1),
     ergPush: ctx.tuning.num('ergPushFtp', 0.66, 0.56, 0.75, 0.01), ergBurn: ctx.tuning.num('ergBurnFtp', 0.7, 0.56, 0.8, 0.01), ergCruise: ctx.tuning.num('ergCruiseFtp', 0.62, 0.5, 0.7, 0.01),
     // Playtesting: 1 unlocks every craft at max level; pace speeds up in-ride arsenal growth.
+    // Evasive roll: a rider's flank move starts at once, flies fast, and rolls through enemy fire untouched.
+    evadeS: ctx.tuning.num('evadeRollS', 0.4, 0.2, 1.2, 0.02, 'Seconds for a rider flank move (one flank; two flanks take ~45% longer)'),
+    evadeCool: ctx.tuning.num('evadeCooldownS', 0.5, 0, 3, 0.05, 'After an evasive roll, seconds before the next move protects again'),
     tester: ctx.tuning.num('testerUnlockAll', 0, 0, 1, 1), tierLock: ctx.tuning.num('tierLockScale', 0.95, 0.7, 1, 0.01), weave: ctx.tuning.num('weave', 1, 0, 1.5, 0.05, 'Music-locked sway of the ship around its lane (0 = lane changes only)'), pace: ctx.tuning.num('arsenalPace', 1, 0.25, 20, 0.25),
   };
   const timeline: MediaTimeline | undefined = ctx.media?.timeline;
@@ -82,6 +85,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** What the renderer draws: the span swept by the latest strike (kept briefly after it ends to fade). */
   let strikeTrail: SfSnapshot['strike'] = null;
   let station = 0, lastInputT = -99, pilotBars = 0, hotFlank = 0, lastFlank = 0;
+  /** Evasive roll window (sim time): enemy fire passes through the ship while t < evadeUntil. */
+  let evadeFrom = -99, evadeUntil = -99, evades = 0, evaded = 0;
   const stationOf = (sx: number) => clamp(Math.round(sx / FLANK.x), -1, 1);
   const beams: BeamView[] = [];
   let prevX = 0, grazed = 0;
@@ -232,21 +237,46 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   const targetable = () => enemies.filter(inCombat).sort((a, b) => a.x - b.x || a.id - b.id);
   /** Formations in combat, keyed by group (boss batteries group with their flagship). */
   /**
-   * Move one flank left or right (rider or pilot). The move starts on the next beat, lasts whole beats by drive (a bar
-   * cruising, half a bar pushing, a two-beat barrel roll burning; twice that for two flanks), and a running move finishes
-   * first. Pressing toward the edge you are on leans: a short nudge out and back. Shots already flying at the new line
-   * are spent as grazes, so an on-band rider still never gets hit by fire authored for the old one.
+   * Move one flank left or right (rider or pilot).
+   * Rider: an evasive roll. It starts this frame (cutting any running move short), takes `evadeRollS` per flank, and
+   * for its length (plus a beat of grace) enemy shots and beams pass through the ship. Pressing toward the edge you are
+   * on is a quick jink out and back, also rolled. A short cooldown keeps mashing from becoming permanent cover; the move
+   * itself is always immediate.
+   * Pilot: unchanged and musical; it starts on a swing peak and glides for whole beats by drive.
+   * Either way, shots already flying at the new line are spent as grazes for an on-band rider.
    */
   const flankMove = (dir: number, rider = true) => {
     if (!started || done) return;
-    if (rider) lastInputT = t;
-    // The rider's move starts on the next beat; the pilot waits for a swing peak so its moves land in the sway.
-    const bl = weaveAt.beatLen(p), startAt = rider ? beatAfter(t + 0.05) : peakAfterSim(t + 0.05), target = clamp(station + dir, -1, 1);
-    if (target === station) {
-      if (movePending(route, t)) return;
-      const out = commandMove(route, startAt, 2 * bl, stationX(station) + Math.sign(dir) * FLANK.lean);
-      commandMove(route, out + 2 * bl, 2 * bl, stationX(station)); emit('lean'); reauthor(); return;
+    const target = clamp(station + dir, -1, 1);
+    if (rider) {
+      lastInputT = t;
+      const base = tun.evadeS(), from = laneX(route, t);
+      let dur: number, began: number;
+      if (target === station) {
+        // Jink: out toward the edge and straight back.
+        const out = base * 0.4, back = base * 0.6;
+        began = commandMove(route, t, out, stationX(station) + Math.sign(dir) * FLANK.lean * 1.5, true);
+        commandMove(route, began + out, back, stationX(station)); dur = out + back; emit('lean');
+      } else {
+        station = target;
+        dur = base * (0.55 + 0.45 * Math.min(2, Math.abs(stationX(station) - from) / FLANK.x));
+        began = commandMove(route, t, dur, stationX(station), true);
+        emit('flank', { station, rider });
+      }
+      // Each new roll protects only once the last one has cooled down; within the cooldown it is a plain fast slide.
+      // A quick second press (on to the far flank) extends the roll it chains from.
+      const chaining = t < evadeUntil && t - evadeFrom < base;
+      if (chaining || t >= evadeUntil + tun.evadeCool()) {
+        if (!chaining) { evadeFrom = began; evades++; }
+        evadeUntil = began + dur + 0.12;
+        roll = { at: began, dur, dir: dir > 0 ? -1 : 1 }; lastRoll = t; emit('evade', { dir });
+      }
+      if (craft === 'striker' && level !== 'cruise') { strikeRun = { from: began, until: began + dur, hit: new Set() }; strikeTrail = null; }
+      reauthor(); return;
     }
+    // The pilot waits for a swing peak so its moves land in the sway.
+    const bl = weaveAt.beatLen(p), startAt = peakAfterSim(t + 0.05);
+    if (target === station) return;
     station = target;
     const running = route.moves.find(m => m.start < startAt && m.end > startAt && m.to !== m.from), at = running ? running.end : startAt;
     const stations = Math.max(1, Math.round(Math.abs(stationX(station) - laneX(route, at)) / FLANK.x));
@@ -263,7 +293,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   /** After a route change: shots and warned beams that would now connect with an on-band ship are spent as grazes. */
   const reauthor = () => {
     if (!(quality >= 0.8 && ctx.bike().cadence3s >= tun.cadence())) return;
-    for (const b of bolts) if (!b.open && b.vy > 0.5 && b.y < SHIP_Y - 3 && missDistance(route, t, b.x, b.y, b, SHIP_Y) < ROUTE.clearance) { effect('graze', b.x, b.y); b.y = 200; }
+    for (const b of bolts) if (!b.open && b.vy > 0.5 && !b.evaded && missDistance(route, t, b.x, b.y, b, SHIP_Y) < ROUTE.clearance) { effect('graze', b.x, b.y); b.y = 200; }
     for (let i = beams.length - 1; i >= 0; i--) { const bm = beams[i]; if (!bm.fired && !bm.open && [0, 0.08, 0.16, 0.24].some(d => Math.abs(routeX(route, bm.fireAt + d) - bm.x) < ROUTE.clearance)) beams.splice(i, 1); }
   };
   const paddleArmed = { L: true, R: true }; let releaseAsked = false;
@@ -439,7 +469,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         shipV += (k * (target - x) - c * shipV) * dt; x += shipV * dt;
       }
       const liftOn = tun.weave() ? weaveAt.lift(p, moving) * tun.weave() : 0;
-      lift += ((liftOn * (1 - slop) + Math.sin(t * 1.3) * 0.8 * slop) - lift) * (1 - Math.exp(-dt * 12));
+      // An evasive roll also ducks under the fire (visual only: the ship stays on its row).
+      const evading = t < evadeUntil ? Math.sin(Math.PI * clamp((t - evadeFrom) / Math.max(0.1, evadeUntil - evadeFrom), 0, 1)) : 0;
+      lift += ((liftOn * (1 - slop) + Math.sin(t * 1.3) * 0.8 * slop - 2.5 * evading) - lift) * (1 - Math.exp(-dt * 12));
       // Now and then, a barrel roll on a drop's phrase start (two beats, landing on the beat; on target only).
       if (music.phrase && music.kind === 'drop' && slop <= 0 && t - lastRoll > 35 && tun.weave() && ((Math.sin(Math.round(p) * 12.9898) * 43758.5453) % 1 + 1) % 1 < 0.6) {
         lastRoll = t; roll = { at: t, dur: 2 * weaveAt.beatLen(p), dir: shipV >= 0 ? -1 : 1 }; emit('barrelRoll');
@@ -685,7 +717,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         if (!b.fired && t >= b.fireAt) {
           b.fired = true; emit('beam');
           const gap = Math.abs(x - b.x);
-          if (gap < 4.7) { if (alert >= 0.8 && !b.open) { absorbed++; effect('intercept', x, shipY); } else { if (b.open && alert >= 0.8) driveHits++; hurt(14); } }
+          if (gap < 4.7 && t < evadeUntil) { evaded++; dodges++; score += 15; effect('graze', b.x + Math.sign(x - b.x) * 1.5, shipY); }
+          else if (gap < 4.7) { if (alert >= 0.8 && !b.open) { absorbed++; effect('intercept', x, shipY); } else { if (b.open && alert >= 0.8) driveHits++; hurt(14); } }
           else if (gap < ROUTE.graze + 3 && alert >= 0.8) { grazed++; dodges++; score += 15; effect('graze', b.x + Math.sign(x - b.x) * 1.5, shipY); }
         }
         if (t > b.until + 0.3) beams.splice(i, 1);
@@ -696,6 +729,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           b.grazed = true; if (alert >= 0.8) { grazed++; dodges++; score += 5; effect('graze', b.x, b.y); emit('autoDodge'); }
         }
         if (Math.hypot(b.x - x, b.y - shipY) < 3.5) {
+          // Rolling: the shot passes through (it keeps flying, so it reads as a near miss, not a block).
+          if (t < evadeUntil || b.evaded) { if (!b.evaded) { b.evaded = true; evaded++; dodges++; score += 10; effect('graze', b.x, b.y); } continue; }
           if (quality >= (craft === 'escort' ? 0.65 : 0.8) && pedalling && !b.open) { effect('intercept', b.x, b.y); absorbed++; }
           else { if (b.open && quality >= 0.8 && pedalling) driveHits++; hurt(8); }
           b.y = 200;
@@ -727,7 +762,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           return [c, { level, progress: tester() ? 1 : info.progress, next: level < MAX_LEVEL ? rewardFor(c, level + 1) : null,
             minutesToNext: tester() || info.nextAtS === null ? null : Math.max(1, Math.ceil((info.nextAtS - pendingS(c)) / 60)),
             unlocked: c === 'cruiser' || (c === 'escort' ? unlockCheck() : tester() || strikerAvailable(pendingSave())), arsenalCap: perks(c, level).arsenalCap }]; })) as SfSnapshot['crafts'],
-        heavy: pk.heavy, ace: pk.ace, amp, lift, pattern: weaveAt.pattern(p), roll, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
+        heavy: pk.heavy, ace: pk.ace, amp, lift, pattern: weaveAt.pattern(p), roll, evade: t < evadeUntil ? Math.max(0.05, Math.sin(Math.PI * clamp((t - evadeFrom) / Math.max(0.1, evadeUntil - evadeFrom), 0, 1))) : 0, evadeAt: evadeFrom, fullLock: Math.max(0, 1 - (t - fullLockAt) / 1.2), eaten,
         menuLeft: Math.max(0, 20 - menuT), sector, sectorName: SECTORS[theme].name, section: music.kind, intensity: music.intensity, beat: music.beatPulse,
         song: music.song, shipX: x, shipY, bank, dodge, hull, shield, quality, effort,
         upcoming: driveNow.next && started && !(coverLeft > 0 || rejoinLeft > 0) ? { label: driveNow.next.level === 'burn' ? 'Burn' : driveNow.next.level === 'push' ? 'Push' : 'Cruise', level: driveNow.next.level, left: Math.max(0, driveNow.next.at - p),
@@ -761,7 +796,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
             cooldown: { fill: Math.min(1, charge / 100), ready: charge >= 100 },
             ...(coverLeft > 0 ? { indicator: { status: `Cover ${Math.ceil(coverLeft)}s` } } : rejoinLeft > 0 ? { indicator: { status: `Rejoin ${Math.ceil(rejoinLeft)}s` } } : {}) }] };
     },
-    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen, grades: grades.join(''), strikeHits, burns, burnS: Math.round(burnS), hits, driveHits, burnHeldPct: burnS ? Math.round(burnHeldS / burnS * 100) : 0, distance: Math.round(dist), bestGrade: ['S', 'A', 'B', 'C', 'D'].find(g => grades.includes(g)) ?? '' }),
+    summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen, grades: grades.join(''), strikeHits, evades, evaded, burns, burnS: Math.round(burnS), hits, driveHits, burnHeldPct: burnS ? Math.round(burnHeldS / burnS * 100) : 0, distance: Math.round(dist), bestGrade: ['S', 'A', 'B', 'C', 'D'].find(g => grades.includes(g)) ?? '' }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
   /** Each arsenal tier paints locks faster: in-ride growth is what lets a rider clear whole formations. */

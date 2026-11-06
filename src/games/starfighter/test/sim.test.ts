@@ -153,14 +153,16 @@ describe('musical locks and paddle targeting', () => {
     }
     expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
   });
-  it('touch moves one flank per press from the next beat; a second press queues to the far flank; the edge leans', () => {
+  it('touch moves one flank per press at once, as an evasive roll; a second press goes on to the far flank; the edge leans', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); r.seconds(12);
     const lane = () => { const s = r.snap(); return s.station; };
-    const start = lane(), dir = start <= 0 ? 1 : -1;
+    const start = lane(), dir = start <= 0 ? 1 : -1, x0 = r.snap().shipX, t0 = r.snap().t;
     r.s.sim.receive!({ type: 'target', direction: dir }); r.s.step(1);
     expect(lane()).toBe(start + dir);
-    // The move starts on a beat and lands one flank (22 units) over within about a bar and a half.
-    const x0 = r.snap().shipX; r.seconds(3.5); expect(Math.abs(r.snap().shipX - x0)).toBeGreaterThan(12);
+    // The roll starts this frame (no wait for a beat), protects, and lands a flank (22 units) over in under half a second.
+    expect(r.snap().roll?.at).toBeLessThanOrEqual(t0 + 1 / 30 + 1e-6); expect(r.snap().evade).toBeGreaterThan(0);
+    r.s.step(2); expect(Math.sign(r.snap().shipX - x0)).toBe(dir);
+    r.seconds(0.45); expect(Math.abs(r.snap().shipX - x0)).toBeGreaterThan(15); r.seconds(0.2); expect(r.snap().evade).toBe(0);
     // From an edge, a double press goes all the way across.
     const edge = rig({}, 'z2', tl); edge.seconds(12);
     for (let k = 0; k < 3; k++) { edge.s.sim.receive!({ type: 'target', direction: -1 }); edge.s.step(1); }
@@ -208,6 +210,16 @@ describe('musical locks and paddle targeting', () => {
     const quiet: number[] = []; r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => { if (e.type === 'flank' && !e.data?.rider) quiet.push(r.snap().t); }) as typeof r.s.ctx.emit;
     r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(15); expect(quiet).toHaveLength(0);
   }, 20_000);
+  it('evasive rolls let enemy fire pass through, with a cooldown so mashing is not permanent cover', () => {
+    const steer = (gap: number, until: number) => { const ev: Array<{ t: number; press?: 'left' | 'right'; release?: 'left' | 'right' }> = []; let k = 0;
+      for (let t = 12; t < until; t += gap) { const b = k++ % 2 ? 'left' as const : 'right' as const; ev.push({ t, press: b }, { t: t + 0.05, release: b }); } return new TimelineInput(ev); };
+    // Under the band (idle), fire is aimed at the ship: rolling through it is the rider's own dodge.
+    const r = rig({}, 'idle', longMusic(), undefined, steer(1.1, 200)); r.seconds(200);
+    expect(Number(r.s.sim.summary().evaded)).toBeGreaterThan(5);
+    // Mashing every 0.15 s for 30 s: every press still moves, but rolls are spaced by the cooldown (~1 s apart).
+    const m = rig({}, 'z2', longMusic(), undefined, steer(0.15, 42)); m.seconds(43);
+    expect(Number(m.s.sim.summary().evades)).toBeLessThanOrEqual(32); expect(Number(m.s.sim.summary().evades)).toBeGreaterThan(10);
+  }, 30_000);
   it('rider flank moves never get an on-band ship hit: fire aimed at the new line is spent as grazes', () => {
     const events: Array<{ t: number; press?: 'left' | 'right'; release?: 'left' | 'right' }> = [];
     let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

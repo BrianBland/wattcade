@@ -34,7 +34,7 @@ export interface ArcView { id: number; at: number; pts: number[]; tier: number; 
 export interface RailView { id: number; at: number; sx: number; sy: number; x: number; y: number; height: number; tier: number }
 /** Gunship flak shell: lobbed from the ship, it bursts over its target at `hitAt` (a beat), catching everything within `radius`. */
 export interface ShellView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; height: number; at: number; hitAt: number; radius: number; tier: number; hit: boolean }
-export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Already passed through a rolling ship (counted once). */ evaded?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
 export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean; open?: boolean }
 export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' | 'strike' | 'flak' }
@@ -55,6 +55,8 @@ export interface SfSnapshot {
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;
   /** Visual height offset from the weave pattern, the current weave pattern, and the latest barrel roll (sim time). */
   lift: number; pattern: string; roll: { at: number; dur: number; dir: number } | null;
+  /** Rider's evasive roll: 0..1 while enemy fire passes through the ship (bump over the window), else 0; `evadeAt` = its start. */
+  evade: number; evadeAt: number;
   /** 0..1 smoothed music intensity: weapons swell with the track (Beat Hazard's idea), enemy density with it. */
   amp: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;

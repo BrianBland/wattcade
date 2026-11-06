@@ -125,3 +125,28 @@ export function foliage(material: THREE.MeshStandardMaterial) {
     float lump = shHash(floor(vWPos.xz * 2.2 + vWPos.y * 1.7));
     diffuseColor.rgb *= (0.78 + 0.3 * lump) * mix(0.75, 1.15, clamp(vWNormal.y * 0.5 + 0.5, 0.0, 1.0));`, 'sq-foliage');
 }
+/**
+ * Lava-field rock (basalt, scoria, ash cones): vesicular grit, grey ash settling on ledges and tops, a warm underglow
+ * near the ground from the lava around it, and molten rock where the geometry's `glow` attribute marks it (crater
+ * lakes, flows) — a crusted, slowly shifting emissive that swells with the bass. Stays non-negative (bloom safety).
+ */
+export function magma(material: THREE.MeshStandardMaterial) {
+  patch(material, `
+    float n = shNoise(vWPos.xz * 0.35 + vWPos.y * 0.21), grit = shHash(floor(vWPos.xz * 4.0 + vWPos.y * 3.0));
+    diffuseColor.rgb *= 0.86 + 0.18 * n + 0.08 * grit;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.21, 0.2), smoothstep(0.7, 0.95, vWNormal.y) * 0.35 * n);
+    float foot = smoothstep(-3.0, -6.0, vWPos.y);
+    totalEmissiveRadiance += vec3(0.5, 0.12, 0.02) * foot * (0.12 + 0.1 * uMusic.y);
+    float crust = smoothstep(0.35, 0.75, shNoise(vWPos.xz * 0.9 + vec2(vWPos.y * 0.4, uMusic.x * 0.05)));
+    float g = clamp(vGlow, 0.0, 1.0) * mix(1.0, 0.3, crust);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.02, 0.01), clamp(vGlow, 0.0, 1.0) * 0.85);
+    totalEmissiveRadiance += vec3(1.0, 0.36, 0.06) * g * (0.75 + 0.35 * uMusic.y);`, 'sq-magma');
+  const base = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    base.call(material, shader, renderer);
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float glow; varying float vGlow;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = glow;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGlow;');
+  };
+  return material;
+}

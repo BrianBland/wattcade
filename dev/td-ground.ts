@@ -209,6 +209,9 @@ async function kitMaterials(folder: string): Promise<Materials> {
   const apron = decals.shift(), clearIdx = decals.findIndex(s => Math.abs(s.wU - s.hU) < 0.25 * s.wU), clearing = clearIdx >= 0 ? decals.splice(clearIdx, 1)[0] : undefined;
   const bridge = br ? cutSheet(br, ppu) : [];
   const roadHw = meta.roadHalf ?? 4, roadSh = meta.roadRim ?? 1, cy = RD.h / 2, period = RD.w / ppu;
+  ((window as unknown as { __kitInfo?: Record<string, unknown> }).__kitInfo ??= {})[folder] = {
+    apron: apron && [+apron.wU.toFixed(1), +apron.hU.toFixed(1)], clearing: clearing && [+clearing.wU.toFixed(1), +clearing.hU.toFixed(1)],
+    decals: decals.map(d => [+d.wU.toFixed(1), +d.hU.toFixed(1)]) };
   /** A stamp's straight colour into `out` at (u, v) world units from its centre; returns its alpha. */
   const stampAt = (st: Stamp | undefined, u: number, v: number, out: Out) => {
     if (!st) return 0; const t = [0, 0, 0], a = samplePremul(st.img, (u + st.wU / 2) * ppu, (v + st.hU / 2) * ppu, t);
@@ -220,8 +223,12 @@ async function kitMaterials(folder: string): Promise<Materials> {
     gravel: (x, y, out, w) => gravel(x, y, out, w),
     hive: (x, y, out) => { const reach = smooth(22, -14, y + (fbm(x * 0.15, y * 0.15) - 0.5) * 22); if (!hive || reach <= 0) return 0; const t = [0, 0, 0], a = hive(x, y, t, 1) * reach; for (let k = 0; k < 3; k++) out[k] += t[k] * a; return a; },
     road: (s, o, out) => { samplePx(RD, tri(s, period) * ppu, cy - o * ppu, out); },
-    clearing: (_i, dx, dy, out) => stampAt(clearing, dx, dy, out) * (clearing ? 1 : 0),
-    apron: (dx, dy, scale, out) => stampAt(apron, dx / scale * (apron ? apron.wU / 26 : 1), dy / scale * (apron ? apron.hU / 26 : 1), out),
+    // stamps fade out over their outer third with a ragged edge, so clearings sit in the ground instead of on it
+    // clearings are normalised to a 10-unit disc around the pad, whatever size they were painted at (like the apron)
+    clearing: (i, dx, dy, out) => { if (!clearing) return 0; const f = Math.min(clearing.wU, clearing.hU) / 10, r = Math.hypot(dx, dy);
+      return stampAt(clearing, dx * f, dy * f, out) * (1 - smooth(3.2, 5.2, r + (noise(dx * 0.9 + i * 7, dy * 0.9) - 0.5) * 1.8)); },
+    apron: (dx, dy, scale, out) => { if (!apron) return 0; const u = dx / scale * apron.wU / 26, v = dy / scale * apron.hU / 26, R = Math.min(apron.wU, apron.hU) / 2, r = Math.hypot(u, v);
+      return stampAt(apron, u, v, out) * (1 - smooth(R * 0.7, R, r + (noise(u * 0.5, v * 0.5) - 0.5) * R * 0.25)); },
   };
 }
 
@@ -436,19 +443,27 @@ async function checkKit(folder: string) {
   }
   const rd = imgs.road, ga = imgs.ground_a;
   if (rd) {
-    // road band: per column, the brightest window of the road's width; its centre should sit on the middle row, level
-    const centres: number[] = [];
-    for (let x = 8; x < rd.w - 8; x += Math.max(1, rd.w / 48 | 0)) {
-      let best = -1, at = 0;
-      for (let y = half; y < rd.h - half; y += 4) { const v = meanLum(rd, x - 4, y - half, x + 4, y + half); if (v > best) { best = v; at = y; } }
-      centres.push(at);
-    }
-    const mean = centres.reduce((a, b) => a + b, 0) / centres.length, wobble = Math.sqrt(centres.reduce((a, b) => a + (b - mean) ** 2, 0) / centres.length);
-    const seam = meanLum(rd, 0, rd.h / 2 - half, 3, rd.h / 2 + half) - meanLum(rd, rd.w - 3, rd.h / 2 - half, rd.w, rd.h / 2 + half);
-    const road = meanLum(rd, 0, rd.h / 2 - half * 0.6, rd.w, rd.h / 2 + half * 0.6), ground = ga ? meanLum(ga, 0, 0, ga.w, ga.h) : 0;
-    out.roadStrip = { centreOffsetPx: Math.round(mean - rd.h / 2), wobblePx: Math.round(wobble), edgeSeamLum: +Math.abs(seam).toFixed(1), roadVsGround: ground ? +(road / ground).toFixed(2) : null };
-    if (Math.abs(mean - rd.h / 2) > half * 0.25) fails.push(`road: band ${Math.round(mean - rd.h / 2)} px off centre`);
+    // Road band from brightness, robust to painted ruts: the ground level is the strip's outer rows, the road level its
+    // brightest smoothed rows; the band is where a column block's smoothed profile stays above their midpoint.
+    const rowLum = (x0: number, x1: number) => Array.from({ length: rd.h }, (_, y) => meanLum(rd, x0, y, x1, y + 1));
+    const smoothRows = (p: number[], k: number) => p.map((_, i) => { let t = 0, n = 0; for (let j = Math.max(0, i - k); j <= Math.min(p.length - 1, i + k); j++) { t += p[j]; n++; } return t / n; });
+    const all = smoothRows(rowLum(0, rd.w), 6), edge = Math.round(rd.h * 0.15);
+    const groundLvl = [...all.slice(0, edge), ...all.slice(-edge)].sort((a, b) => a - b)[edge], roadLvl = Math.max(...all.slice(edge, -edge));
+    const cut = (groundLvl + roadLvl) / 2;
+    const band = (p: number[]) => { let i = p.indexOf(Math.max(...p.slice(edge, -edge))), a = i, z = i; while (a > 0 && p[a - 1] > cut) a--; while (z < p.length - 1 && p[z + 1] > cut) z++; return { a, z }; };
+    const whole = band(all), centres: number[] = [];
+    for (let x = 0; x + 96 <= rd.w; x += 96) { const b = band(smoothRows(rowLum(x, x + 96), 10)); centres.push((b.a + b.z) / 2); }
+    const mid = (whole.a + whole.z) / 2, mean = centres.reduce((a, b) => a + b, 0) / centres.length;
+    const wobble = Math.sqrt(centres.reduce((a, b) => a + (b - mean) ** 2, 0) / centres.length);
+    const seam = meanLum(rd, 0, mid - half, 3, mid + half) - meanLum(rd, rd.w - 3, mid - half, rd.w, mid + half);
+    const road = meanLum(rd, 0, mid - half * 0.6, rd.w, mid + half * 0.6), ground = ga ? meanLum(ga, 0, 0, ga.w, ga.h) : 0;
+    out.roadStrip = { centreOffsetPx: Math.round(mid - rd.h / 2), bandPx: whole.z - whole.a, surfacePx: Math.round(2 * half), wobblePx: Math.round(wobble), edgeSeamLum: +Math.abs(seam).toFixed(1), roadVsGround: ground ? +(road / ground).toFixed(2) : null };
+    if (Math.abs(mid - rd.h / 2) > half * 0.25) fails.push(`road: band ${Math.round(mid - rd.h / 2)} px off centre`);
     if (wobble > half * 0.2) fails.push(`road: band not level/straight (wobble ${Math.round(wobble)} px)`);
+    // the bright band is the surface plus its worn rims: brief ≈128 px surface, ≈224 px with rims
+    const bw = whole.z - whole.a;
+    if (bw < 1.6 * half) fails.push(`road: bright band only ${bw} px; the road surface should be about ${Math.round(2 * half)} px (≈224 with rims). Paint it wider, or set kit.json roadHalf to your surface's half-width in units`);
+    if (bw > 4.2 * half) fails.push(`road: bright band ${bw} px is wider than surface + rims (≈224 px)`);
     if (Math.abs(seam) > 12) fails.push(`road: left/right edges differ (seam ${Math.abs(seam).toFixed(1)})`);
     if (ground && road / ground < 1.25) fails.push(`road only ${(road / ground).toFixed(2)}× brighter than ground_a (want ≥ 1.25)`);
   }

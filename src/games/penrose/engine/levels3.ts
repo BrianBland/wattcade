@@ -6,7 +6,7 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { B, CY, basic, cameraCrank, liveGap, filletPath, turntable, L3, Road, UP, THEMES, V, conveyor, reflection, matchingDoors, clutchBridge, ftur, loopPts, loopSlab, ribbon, rider, sAt, sp, tone, tri } = $scope;
+const { B, CY, mixPal, basic, cameraCrank, liveGap, filletPath, turntable, L3, Road, UP, THEMES, V, conveyor, reflection, matchingDoors, clutchBridge, ftur, loopPts, loopSlab, ribbon, rider, sAt, sp, tone, tri } = $scope;
 
 const UNIT_BOX = new T.BoxGeometry(1, 1, 1);
 const PAL = () => tone('#F3E6C4');
@@ -43,6 +43,26 @@ function doorStation(L, ox, oy, keys) {
   const T1 = turntable(L, { key: keys[0], name: 'Turntable', pivot: P(4, 0), len: 3, open: -90 });
   const T2 = turntable(L, { key: keys[1], name: 'Turntable', pivot: P(0, 3), len: 2, base: -90, open: -90 });
   return { R1, R2, S1, S2, T1, T2, d1: [ox + 4, oy - 4], d2: [ox - 3, oy + 3], join: (x, y) => ({ to: R1, s: sAt(R1, P(x, y)), dir: 1 }) };
+}
+
+/**
+ * A cliff where a bridge used to be: a crag of stacked, uneven strata whose top ends at (x, yEdge), the bridge's first span
+ * snapped and hanging down the face, its far pier standing alone across the gap with a stub of deck, and stones falling.
+ * The road runs south (-y) to the edge.
+ */
+function brokenCliff(L, x, yEdge) {
+  const g = L.g, th = L.th, rock = tri(sp(th, 0)), dark = tri(mixPal(sp(th, 0), tone('#5B4636'), .1)), deck = tri(PAL(), { side: true });
+  // the crag: strata stepping in and out as they go down, so it reads as rock, not a slab
+  const strata = [[1.2, .4, 0], [1.12, .32, -1.1], [1.2, .42, -1.9], [1.0, .26, -3.0], [.9, .16, -4.0], [.72, 0, -5.0], [.5, -.25, -5.9]];
+  for (let i = 0; i < strata.length; i++) {
+    const [hw, back, z1] = strata[i], z0 = i + 1 < strata.length ? strata[i + 1][2] : z1 - 1.2, front = i ? -.08 * (i % 2) - .04 * i : 0;
+    B(g, x - hw, yEdge - front, z0, x + hw, yEdge + 1.6 + back, z1 - .02, i % 2 ? dark : rock); }
+  // the snapped first span, hanging from the lip, and its far pier with a stub of deck
+  const span = new T.Mesh(UNIT_BOX, deck); span.scale.set(.9, .12, 1.6); span.position.copy(V(x, yEdge - .25, -.75)); span.rotation.x = -1.15; g.add(span);
+  B(g, x - .3, yEdge - 4.3, -7, x + .3, yEdge - 3.7, -.14, rock);
+  const stub = new T.Mesh(UNIT_BOX, deck); stub.scale.set(1, .12, 1.0); stub.position.copy(V(x, yEdge - 3.3, -.06)); g.add(stub);
+  const bit = new T.Mesh(UNIT_BOX, deck); bit.scale.set(.5, .1, .4); bit.position.copy(V(x + .2, yEdge - 2.6, -.6)); bit.rotation.set(.5, .3, -.4); g.add(bit);
+  for (const [dx, dy, z, sz] of [[.3, -1.2, -1.6, .22], [-.4, -1.9, -2.7, .16], [.1, -2.3, -3.9, .12]]) { const st = new T.Mesh(UNIT_BOX, rock); st.scale.setScalar(sz); st.position.copy(V(x + dx, yEdge + dy, z)); st.rotation.set(z, dx * 3, dy); g.add(st); }
 }
 
 const LEVELS3 = [
@@ -122,7 +142,7 @@ const LEVELS3 = [
       const ys = -2.4, seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
       const t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(1.4).turn(.6, -90);
       t.fwd(-.3 - t.st.p[1]).curl(.32, -90).fwd(.5).turn(.6, -90).fwd(t.st.p[2] - .5 - .4 + .1).curl(.4, 90).fwd(2.6);
-      const W = L.road(t.pts, { goal: true, th: .12, mat: tri({ t: '#F6EBD0', l: '#F2E2BE', r: '#EAD6AE' }, { side: true }) }); P.W = W;
+      const W = L.road(t.pts, { goal: true, th: .12, mat: tri({ t: '#F4E5C6', l: '#F4E5C6', r: '#F4E5C6' }, { side: true }) }); P.W = W;
       const e = t.pts[t.pts.length - 1].p; floor(L, e[0] - .6, .1, e[0] + .6, e[1] + .3);
       const sm = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(2.7, -2.8, .04)); g.add(h); }, tick() { return 0; } }); P.seam = sm; CY(g, 2.7, -2.8, .6, -2.4, -.02, stone, 24);
       T2.forks.push({ s: sAt(T2, [.42, ys, 0]), dir: 1, to: W, toK: 0, when: () => sm.on, text: 'The seam is lit, so down is the wall' });
@@ -143,7 +163,7 @@ const LEVELS3 = [
       // where the doors come out: B's way in, A's way back in, a road into the air, and home
       const inB = strip(L, L3([28, -8, .006], [24, -8, .006], UP), { pal }); inB.joins = [{ k: 1, ...Bs.join(24, 4 - 12) }];
       const inA = strip(L, L3([14, 4, .006], [9, 4, .006], UP), { pal }); inA.joins = [{ k: 1, ...A.join(9, 4) }];
-      const lost = strip(L, L3([-6, -8, .006], [-6, -9.6, .006], UP), { pal, edgeText: 'That door led nowhere' });
+      const lost = strip(L, L3([-6, -8, .006], [-6, -9.6, .006], UP), { pal, noFloor: true, edgeText: 'The bridge was gone' }); brokenCliff(L, -6, -9.6);
       const home = strip(L, L3([6, -12, .006], [6, -15.4, .006], UP), { goal: true });
       const pair = (road, at, ang, to, far) => matchingDoors(L, { road, at, ang, to, far, farAng: ang, fixed: true, want: 0, banners: white, rtShift: 2, text: 'Through the door and out of its twin' });
       pair(A.S2, A.d2, 0, inB, [28, -8]);              // A, swung left: on to the second loop
@@ -158,18 +178,22 @@ const LEVELS3 = [
       A.T2.m.set(onA && farA && A.T2.ang > -89.5);
       const farB = W.road === Bs.R1 || W.road === Bs.T2.road || W.road === Bs.R2 && W.s < .5;
       Bs.T1.m.set(farB && Bs.T1.ang > -89.5); },
-    center: [11, -6, 0], pts: [[-3.7, 4.6, 0], [-6, -9.6, 0], [6, -15.4, 0], [25.6, -16.7, 0], [28, -8, 0], [14, 4.6, 0], [10.6, 4.6, 0], [-3.7, 3, 2.4]], pad: .7, scenery: false },
+    center: [11, -6, 0], pts: [[-3.7, 4.6, 0], [-6, -9.6, 0], [-7.2, -8, -5], [-6, -13.9, 0], [6, -15.4, 0], [25.6, -16.7, 0], [28, -8, 0], [14, 4.6, 0], [10.6, 4.6, 0], [-3.7, 3, 2.4]], pad: .7, scenery: false },
 
   { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, -90],
-    hint: 'Light the seam (<b>B</b>) and the wheel climbs the tower, crosses its roof and goes down the back, out of sight. Behind the tower the back road has a hole, but from here the tower stands in front of it, so it is not there. Out the back, a loop holds you. Its way home has a hole in plain sight, until you turn the camera (<b>A</b>) a quarter: then the tower stands in front of that one instead.',
+    // the camera starts a quarter turned, so neither hole is hidden until you turn it: each curtain needs its own turn
+    hint: 'Light the seam (<b>B</b>) and the wheel will climb the tower, cross its roof and go down the back, out of sight. Behind the tower the back road has a hole in plain sight from here. Turn the camera (<b>A</b>) a quarter and the tower stands in front of it, so it is not there, and the seam takes you round. Out the back, a loop holds you; its way home has a hole too, hidden only from the first angle. Turn the camera back.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), stone = tri(sp(th, 0)), H = 3.6;
-      const tower = new T.Group(); g.add(tower); B(tower, -3, -3, -.5, 0, 0, H, stone);
+      // the tower, its two top edges rounded to the road's own curve, so the road hugs it over the roof
+      const tower = new T.Group(), Rr = .38; g.add(tower);
+      B(tower, -3, -3, -.5, 0, 0, H - Rr, stone); B(tower, -3 + Rr, -3, H - Rr, -Rr, 0, H, stone);
+      for (const x of [-Rr, -3 + Rr]) { const c = new T.Mesh(new T.CylinderGeometry(Rr, Rr, 3, 32), stone); c.rotation.x = Math.PI / 2; c.position.copy(V(x, -1.5, H - Rr)); tower.add(c); }
       const A = L.road(loopPts(.42, -2.6, 5, 2.0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -.2, -3.2, 5.6, 2.6, -.5, tri(th.turf), 1);
       // the seam route: up the front face, over the roof, down the back face, round behind the tower to the first hole
       const ys = -1.0, t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(H - .4 - .006 - .38).curl(.4, -90).fwd(2.24).curl(.4, -90).fwd(H - .4 - .006 - .38).curl(.4, 90)
         .turn(1, 90).fwd(1.4).turn(1, 90).fwd(.82);
-      const W = L.road(t.pts, { pal, th: .12, mat: tri({ t: '#F6EBD0', l: '#F2E2BE', r: '#EAD6AE' }, { side: true }) }); P.W = W;
+      const W = L.road(t.pts, { pal, th: .12, mat: tri({ t: '#F4E5C6', l: '#F4E5C6', r: '#F4E5C6' }, { side: true }) }); P.W = W;
       floor(L, -5.0, -4.95, -2.6, -1.5);
       const seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
       // the back road on to the holding loop out the back (ridden backwards, so its near side runs east)
@@ -180,11 +204,12 @@ const LEVELS3 = [
       P.h1 = liveGap(L, W, 1, Rb, 0, occ, { text: 'Behind the tower, so the hole was not there' });
       // the way home, with the second hole
       const E1 = strip(L, L3([4, -5.6, .006], [2.4, -5.6, .006], UP), { pal, noFloor: true }), E2 = strip(L, L3([1.8, -5.6, .006], [-1.4, -5.6, .006], UP), { goal: true });
+      P.E1 = E1; P.E2 = E2;
       floor(L, 2.4, -6.15, 3.4, -5.05);
       P.h2 = liveGap(L, E1, 1, E2, 0, occ, { text: 'Behind the tower, from this side, so the hole was not there' });
       const sm = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(2.7, -1.3, .04)); g.add(h); }, tick() { return 0; } }); P.seam = sm;
       CY(g, 2.7, -1.3, .6, -2.4, -.02, stone, 24);
-      P.cam = cameraCrank(L, { key: 'a', name: 'Camera', at: [2.7, .6, 0], detents: [0, -90] });
+      P.cam = cameraCrank(L, { key: 'a', name: 'Camera', at: [2.7, .6, 0], detents: [-90, 0] }); L.view.yaw = -Math.PI / 2;
       A.forks.push({ s: sAt(A, [.42, ys, 0]), dir: 1, to: W, toK: 0, when: () => sm.on && P.h1.hidden(), text: 'The seam is lit, so down is the wall' });
       C.forks.push({ s: sAt(C, [4, -5.6, 0]), dir: -1, to: E1, toK: 0, when: () => P.h2.hidden(), text: 'From here the hole is behind the tower' });
       L.view.updaters.push(() => { seamM.color.set(sm.on ? (th.goal || '#E8553B') : '#FFFFFF'); seam.scale.z = sm.on ? .16 : .06;
@@ -192,7 +217,7 @@ const LEVELS3 = [
     },
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const P = L.props; R.gear = 4; R.cad = 80; if (W.road === P.A && !P.seam.on) P.seam.set(true);
-      P.cam.m.set(W.road === P.C && !P.cam.at(-90)); },
+      const want = [P.C, P.E1, P.E2].includes(W.road) ? -90 : 0; P.cam.m.set(!P.cam.at(want)); },
     center: [1.5, -3, 1.5], pts: [[-5, -5, 0], [-5, -1.5, 0], [8.6, -9, 0], [8.6, -3.8, 0], [5.6, 2.6, 0], [-1.4, -5.6, 0], [-3, -3, 3.6], [0, 0, 3.6], [-3, 0, 3.6], [0, -3, 3.6]], pad: 1.05, scenery: false },
 
 ];

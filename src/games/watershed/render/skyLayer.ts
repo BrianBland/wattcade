@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import type { WatershedSnapshot } from '../sim/sim';
 import { SEA } from '../sim/terrain';
+import { cloudAltitude } from './layout';
 
 const MAX_WISPS = 260, MAX_RAIN = 420;
 
@@ -102,10 +103,10 @@ export class SkyLayer {
       m.scale.set(sp.r * 1.3, 1, sp.r);
       (m.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.15 * Math.sin(time * 2 + k);
     });
-    // cloud: altitude follows the terrain under it, size follows the sim
-    const ground = Math.max(SEA, heightAt(sky.x, sky.y));
-    const targetAlt = phase === 'evaporate' ? 14 + sky.radius * 0.4 : ground + 9 + sky.radius * 0.35;
-    this.alt += (targetAlt - this.alt) * (1 - Math.exp(-dt * 1.2));
+    // cloud: altitude clears the highest terrain under its footprint (it never sinks into the gorge its rain carves),
+    // rising quickly over a ridge and settling slowly; size follows the sim
+    const targetAlt = phase === 'evaporate' ? 14 + sky.radius * 0.4 : cloudAltitude(heightAt, sky.x, sky.y, sky.radius, SEA);
+    this.alt += (targetAlt - this.alt) * (1 - Math.exp(-dt * (targetAlt > this.alt ? 4 : 1.2)));
     this.size += (sky.radius - this.size) * (1 - Math.exp(-dt * 2));
     this.focus.set(this.wx(sky.y), this.alt, this.wz(sky.x));
     this.cloud.visible = skyPhase;
@@ -200,7 +201,7 @@ export class SkyLayer {
       const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * sky.radius * 0.7;
       return [sky.x + Math.cos(a) * d, sky.y + Math.sin(a) * d];
     };
-    const top = (gx: number, gy: number) => (valley ? heightAt(gx, gy) + 22 : this.alt - 1);
+    const top = (gx: number, gy: number) => (valley ? heightAt(gx, gy) + 22 : Math.max(this.alt - 1, heightAt(gx, gy) + 4));  // never start underground
     while (this.rain.length < want) {
       const [gx, gy] = spot();
       this.rain.push({ x: this.wx(gy), z: this.wz(gx), y: top(gx, gy) - Math.random() * 6, floor: Math.max(SEA, heightAt(gx, gy)), v: 18 + heavy * 10 });

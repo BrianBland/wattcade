@@ -10,6 +10,8 @@ import { SEA, sample } from '../sim/terrain';
 import { SalmonLayer } from './creatures';
 import { Hud } from './hud';
 import { layout } from './layout';
+import { fitOverhead, overheadPitch, valleyOutline, type V3 } from './camFit';
+import { applyFreeCam, easeHome, FreeCamGestures, freeCamActive, freeCamHome } from './freeCam';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { TerrainView } from './terrainView';
 import { OuterLand } from './outerLand';
@@ -31,7 +33,7 @@ const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> =
   evaporate: ['Rise from the sea.', 'Spin to lift vapor · steer into the sunlight (paddles, ◀▶, shifters) · A: heat wave', 6, ''],
   cloud: ['Gather your cloud.', 'Drift inland and steer into the cloudlets · a bigger cloud means more rain', 5, ''],
   rain: ['Rain on the mountains!', 'Grind for a downpour, spin for drizzle · your spring rises where it rains most', 6, ''],
-  intro: ['You are the river.', 'Grind to carve deep · spin to carry silt · steer the spring ◀▶ · Y: follow view', 6, ''],
+  intro: ['You are the river.', 'Grind to carve deep · spin to carry silt · steer the spring ◀▶ · Y: follow view · pinch & drag to look around', 7, ''],
   salmonRun: ['The salmon are running!', 'Follow them home up the river you carved', 5, 'salmon'],
   salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · A: sprint · spin past 95 rpm to leap falls', 6, 'salmon'],
   salmonStuck: ['Falls ahead!', 'Spin past 95 rpm to leap', 3, 'warn'],
@@ -73,6 +75,11 @@ export class WatershedRenderer implements GameRenderer {
   private treeAcc = 0; private dropsDirty = true; private dropK = 1;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sc = new THREE.Vector3(); private dir = new THREE.Vector3();
   private X = new THREE.Vector3(1, 0, 0); private tmpC = new THREE.Color();
+  // the player's free camera (pinch / drag / twist) on top of the auto camera; eases home when the scene changes
+  private free = freeCamHome(); private freeKey = ''; private homing = false;
+  private freeView: { pos: V3; tgt: V3 } = { pos: { x: 0, y: 100, z: 0 }, tgt: { x: 0, y: 0, z: 0 } };
+  private gest = new FreeCamGestures(this.free, () => ({ ...this.freeView, fovY: (this.camera.fov * Math.PI) / 180, H: this.size[1] }), () => { this.homing = true; });
+  private detachGestures?: () => void;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
     this.insetB = ctx.insets?.bottom ?? 0;
@@ -84,6 +91,7 @@ export class WatershedRenderer implements GameRenderer {
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(r.domElement);
     this.renderer = r;
+    this.detachGestures = this.attachGestures(r.domElement);
 
     const s = this.scene;
     s.background = skyTexture();
@@ -98,6 +106,7 @@ export class WatershedRenderer implements GameRenderer {
     this.hud = new Hud(container);
     this.hud.setSend(ctx.send);
     this.hud.setInsetBottom(this.insetB);
+    this.hud.onResetView(() => { this.homing = true; });
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
@@ -160,17 +169,60 @@ export class WatershedRenderer implements GameRenderer {
     this.frameCamera();
   }
 
+  /**
+   * The overview: fitted to the screen (camFit). Upright it looks up the valley (spring at the top, sea at the bottom,
+   * left/right across the valley); on a wide screen it turns sideways (spring left, sea right) so the long valley fills
+   * the width under the HUD strip instead of a tall strip with forest either side.
+   */
   private frameCamera() {
     if (!this.nx) return;
-    const span = Math.max(this.ny, this.nx * 1.3);
-    const aspect = this.size[0] / Math.max(1, this.size[1]);
-    // look UP the valley from above the delta (spring at the top of the screen, sea at the bottom), so left/right on
-    // screen is across the valley in every phase
-    const k = Math.max(1, 1.35 / Math.max(0.5, aspect));   // portrait screens sit further back
-    void span;
-    this.camBase.pos.set(this.wx(this.ny - 1) + 62 * k, 172 * k, 0);
-    this.camBase.tgt.set(this.wx(this.ny * 0.36), 0, 0);
+    const [w, h] = this.size, L = layout(w, h, this.insetB);
+    const fit = fitOverhead(valleyOutline(this.nx, this.ny), (this.camera.fov * Math.PI) / 180, w / Math.max(1, h), L.band.yLo, L.band.yHi, overheadPitch(L.wide), L.wide);
+    this.camBase.pos.set(fit.pos.x, fit.pos.y, fit.pos.z);
+    this.camBase.tgt.set(fit.tgt.x, fit.tgt.y, fit.tgt.z);
     if (!this.camInit) { this.camPos.copy(this.camBase.pos); this.camTgt.copy(this.camBase.tgt); this.camInit = true; }
+  }
+
+  /** Pointer / wheel listeners for the free camera on the canvas (the HUD and touch pad sit above it). */
+  private attachGestures(el: HTMLElement): () => void {
+    const at = (e: PointerEvent) => { const b = el.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top] as const; };
+    const down = (e: PointerEvent) => {
+      const [x, y] = at(e);
+      try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+      this.gest.down(e.pointerId, x, y, e.timeStamp, e.button === 2 || e.shiftKey);
+    };
+    const move = (e: PointerEvent) => { const [x, y] = at(e); this.gest.move(e.pointerId, x, y); };
+    const up = (e: PointerEvent) => this.gest.up(e.pointerId, e.timeStamp);
+    const cancel = (e: PointerEvent) => this.gest.cancel(e.pointerId);
+    const wheel = (e: WheelEvent) => { e.preventDefault(); this.gest.wheel(e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY); };
+    const menu = (e: Event) => e.preventDefault();
+    el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
+    el.addEventListener('wheel', wheel, { passive: false }); el.addEventListener('contextmenu', menu);
+    return () => {
+      el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel);
+      el.removeEventListener('wheel', wheel); el.removeEventListener('contextmenu', menu);
+    };
+  }
+
+  /** Layer the player's zoom / pan / rotate over the auto camera, easing it home when the phase or view changes. */
+  private applyFreeCamera(s: WatershedSnapshot, dt: number) {
+    const key = `${s.phase}|${s.view}|${s.salmon?.run ?? 0}`;
+    if (key !== this.freeKey) { if (this.freeKey) this.homing = true; this.freeKey = key; }
+    if (this.gest.touched || this.gest.active) { this.gest.touched = false; if (this.gest.active) this.homing = false; }
+    if (this.homing && easeHome(this.free, dt)) this.homing = false;
+    const c = this.camera.position, pos = { x: c.x, y: c.y, z: c.z }, tgt = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z };
+    const on = freeCamActive(this.free);
+    if (on) {
+      applyFreeCam(this.free, pos, tgt, { x0: this.wx(0) - 10, x1: this.wx(this.ny - 1) + 40, z0: -this.nx / 2 - 10, z1: this.nx / 2 + 10 });
+      const tv = this.terrainView!, ground = Math.max(SEA, tv.heightAt(pos.z + this.nx / 2, pos.x + this.ny / 2));
+      pos.y = Math.max(pos.y, ground + 3);
+      this.camera.position.set(pos.x, pos.y, pos.z);
+      this.camera.lookAt(tgt.x, tgt.y, tgt.z);
+    }
+    this.freeView = { pos, tgt };
+    this.hud?.setResetView(on && !this.homing);
   }
 
   /** World point on the river centreline at grid row y (from the salmon view's path), at the water surface. */
@@ -445,6 +497,7 @@ export class WatershedRenderer implements GameRenderer {
     this.geo!.update(s, dt, tNow / 1000, (kind, state) => this.eventCue(kind, state));
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
+    this.applyFreeCamera(s, dt);
     const shake = this.geo!.shake;
     if (shake > 0.01) this.camera.position.add(this.cA.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
     // the boundary fence lights up near whatever the rider is steering
@@ -467,7 +520,7 @@ export class WatershedRenderer implements GameRenderer {
     this.frameCamera(); this.applyView();
   }
 
-  setInsets(i: Insets) { this.insetB = i.bottom; this.hud?.setInsetBottom(i.bottom); this.applyView(); }
+  setInsets(i: Insets) { this.insetB = i.bottom; this.hud?.setInsetBottom(i.bottom); this.frameCamera(); this.applyView(); }
 
   /** Render edge-to-edge, but shift the view so the valley is centred above the shell HUD. */
   private applyView() {
@@ -478,6 +531,7 @@ export class WatershedRenderer implements GameRenderer {
 
   unmount() {
     this.ro?.disconnect();
+    this.detachGestures?.();
     stopAmbient();
     this.hud?.unmount();
     this.scene.traverse((o) => {

@@ -8,7 +8,8 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 - `sky.ts` `Sky`: evaporation (sunlit patches), cloud drift + cloudlets, rain footprint, rain-per-column → `springs()`.
 - `objectives.ts` `Jobs`: grist mill (heavy water), sawmill (fast water), Millbrook flooding, fields, beaver dam
   (raises terrain; health = remaining height above its own baseline), per-block objectives.
-- `salmon.ts` `SalmonRun`: path traced up real channels from the mouth (forks follow steering), lane steering in the
+- `salmon.ts` `SalmonRun`: path traced up real channels from last trace's mouth; rows behind the school are frozen and
+  untouched forks keep last trace's branch (only forks 4..18 rows ahead follow steering), lane steering in the
   fish frame (right = lane −), intro hold, escalating predators, charging bears, falls needing `leapRpm`.
 - `events.ts`: seeded geological event deck (quake/slide/volcano + rare meteor), heightfield edits to h and h0, `mat` grid.
 - `plan.ts`: `makePlan(20|30|45|60, skipWarmup?)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`;
@@ -19,7 +20,7 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 ## Render (`render/`)
 `renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `terrainView.ts` (2× terrain,
 procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
-`skyLayer.ts`, `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
+`skyLayer.ts` (cloud clears the highest ground under its footprint: `layout.ts#cloudAltitude`), `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
 `upsample.ts` (tested).
 
 ## Tools

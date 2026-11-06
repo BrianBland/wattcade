@@ -62,19 +62,30 @@ export class SalmonRun {
 
   /**
    * Trace the channel the school will swim, from the river mouth upstream, following real channels (not an average of
-   * them): per row, the local depth maxima near the previous row's x are the candidate channels. At a fork the school
-   * takes the branch on the side it is steering toward (lane > 0 = larger x), else the nearest. Smoothed in time.
+   * them): per row, the local depth maxima near the previous row's x are the candidate channels. The path keeps to one
+   * flow: rows the school has already swum are frozen, the trace starts from last time's mouth (not the deepest cell,
+   * which can hop between outlets), and where several channels are in reach it keeps the one it took last time. Only a
+   * fork the school is approaching (4..18 rows ahead) is open to steering: it takes the branch on the side the school
+   * is steering toward (lane > 0 = larger x). Smoothed in time, gently near the school.
    */
   updatePath(w: Float32Array): void {
     const { nx, ny, coastY } = this.t, r = this.row;
     const blur = (j: number) => { for (let i = 0; i < nx; i++) r[i] = (w[j * nx + Math.max(0, i - 1)] + 2 * w[j * nx + i] + w[j * nx + Math.min(nx - 1, i + 1)]) / 4; };
-    blur(Math.min(ny - 1, coastY));
-    let x = nx / 2, best = -1;
-    for (let i = 0; i < nx; i++) if (r[i] > best) { best = r[i]; x = i; }
+    const top = Math.min(ny - 1, coastY + 3);
+    let x: number;
+    if (this.pathReady) x = this.px[top];
+    else {
+      blur(Math.min(ny - 1, coastY));
+      x = nx / 2; let best = -1;
+      for (let i = 0; i < nx; i++) if (r[i] > best) { best = r[i]; x = i; }
+    }
+    // the school's rows: frozen behind the leader (the school swims there), opened to steering just ahead
+    const swimming = this.active && this.restart < 0;
     const k = this.pathReady ? 0.6 : 1, forks: number[] = [];
     for (let j = ny - 1; j >= 0; j--) {
+      if (swimming && j <= top && j > this.y - 2) { x = this.px[j]; continue; }
       let nxp = x, hw = 3;
-      if (j <= coastY + 3) {
+      if (j <= top) {
         blur(j);
         let cands: number[] = [];
         const scan = (span: number) => {
@@ -97,14 +108,17 @@ export class SalmonRun {
         if (ch.length > 1) forks.push(j);
         if (ch.length) {
           const lean = this.lane;
-          nxp = ch.length > 1 && Math.abs(lean) > 0.3
-            ? (lean > 0 ? Math.max(...ch) : Math.min(...ch))
-            : ch.reduce((a, c) => (Math.abs(c - x) < Math.abs(a - x) ? c : a));
+          const steerable = !swimming || (j < this.y - 4 && j > this.y - 18);
+          const near = (to: number) => ch.reduce((a, c) => (Math.abs(c - to) < Math.abs(a - to) ? c : a));
+          nxp = ch.length > 1 && steerable && Math.abs(lean) > 0.3 ? (lean > 0 ? Math.max(...ch) : Math.min(...ch))
+            : ch.length > 1 && this.pathReady ? near(this.px[j])   // keep last trace's branch
+            : near(x);
           let wet = 0; for (let i = nxp; i < nx && r[i] > 0.05; i++) wet++; for (let i = nxp - 1; i >= 0 && r[i] > 0.05; i--) wet++;
           hw = Math.max(1.5, Math.min(6, wet / 2));
         } else hw = 1.5;
       }
-      this.px[j] += (nxp - this.px[j]) * k; this.pw[j] += (hw - this.pw[j]) * k;
+      const kj = swimming && j > this.y - 8 ? 0.25 : k;
+      this.px[j] += (nxp - this.px[j]) * kj; this.pw[j] += (hw - this.pw[j]) * kj;
       x = nxp;
     }
     this.forks = forks;

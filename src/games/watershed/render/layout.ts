@@ -32,3 +32,19 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.3), UH - ph - pad), w: pw, h: ph };
   return { UH, viewOffsetY: b / 2, focusY: UH / 2, block, stats, plan, meter, popup };
 }
+
+/**
+ * The rain cloud's altitude (world units) over grid cell (x, y). It clears the HIGHEST ground anywhere under its
+ * footprint, not just the cell under its centre: when the rain carves a gorge beneath it, the cloud must not sink
+ * into its own gorge (and below the ridges around it), or the raindrops would start underground. The clearance grows
+ * with the cloud so its drawn underside (≈ 0.55 · radius below centre) stays above the terrain.
+ */
+export function cloudAltitude(heightAt: (x: number, y: number) => number, x: number, y: number, radius: number, sea: number): number {
+  let top = Math.max(sea, heightAt(x, y));
+  const R = Math.max(2, radius);
+  for (let r = R / 2; r <= R + 1e-6; r += R / 2) {
+    const n = Math.max(8, Math.ceil(r * 1.5));
+    for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2; top = Math.max(top, heightAt(x + Math.cos(a) * r, y + Math.sin(a) * r)); }
+  }
+  return top + Math.max(9 + radius * 0.35, 3 + radius * 0.65);
+}

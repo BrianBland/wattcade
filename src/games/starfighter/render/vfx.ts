@@ -6,6 +6,8 @@ import * as THREE from 'three';
  *
  * Types (additive): fireball, spark streak, flash with a cross flare, shock ring, player bolt, beam segment, and a
  * flat shock ring lying in the world's horizontal plane (`shock`).
+ * `marker` (flat, additive) draws HUD-like markings on the play plane: lock reticles, elite crowns, muzzle warnings, the
+ * shield and target brackets, as crisp segmented arcs with a soft glow instead of solid hoops.
  * Alpha: smoke puff, snow flake (a soft white streak along the wind; `life` carries its opacity), and a flat dust ring
  * on the ground (`dust`). Quads stretch along a world direction projected into view space (streaks, bolts, beams), or
  * stay round when the direction is zero; the flat types ignore the direction.
@@ -13,7 +15,9 @@ import * as THREE from 'three';
  * Fireballs read their colour's red channel as a heat scale (1 = fresh, lower = cooler, smaller flames), so a blast can
  * mix a white-hot core with cooler outer billows from one particle type.
  */
-export const VFX = { fire: 0, spark: 1, flash: 2, ring: 3, bolt: 4, beam: 5, smoke: 6, flake: 7, shock: 8, dust: 9 } as const;
+export const VFX = { fire: 0, spark: 1, flash: 2, ring: 3, bolt: 4, beam: 5, smoke: 6, flake: 7, shock: 8, dust: 9, marker: 10 } as const;
+/** `marker` styles, passed as the integer part of the seed (the fraction is the rotation, 0..1). */
+export const MARKER = { lock: 0, lock2: 1, elite: 2, warn: 3, shield: 4, bracket: 5 } as const;
 const vertex = /* glsl */ `
   attribute vec3 aCenter; attribute vec3 aDir; attribute vec2 aSize; attribute vec3 aColor; attribute vec3 aMisc; // type, life 0..1, seed
   varying vec2 vUv; varying vec3 vColor; varying vec3 vMisc;
@@ -32,6 +36,7 @@ const vertex = /* glsl */ `
 const noise = /* glsl */ `
   float vh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
   float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(vh(i),vh(i+vec2(1,0)),f.x),mix(vh(i+vec2(0,1)),vh(i+vec2(1,1)),f.x),f.y);}
+  float gs(float x){return exp(-x*x);}
   float fbm(vec2 p){return vn(p)*0.55+vn(p*2.1)*0.3+vn(p*4.3)*0.15;}`;
 const additive = /* glsl */ `
   varying vec2 vUv; varying vec3 vColor; varying vec3 vMisc; ${noise}
@@ -57,6 +62,30 @@ const additive = /* glsl */ `
     } else if (type < 2.5) { // flash: soft glow and a brief cross flare
       float g = exp(-r * r * 3.5), rays = exp(-abs(q.x) * 16.0) * exp(-abs(q.y) * 1.6) + exp(-abs(q.y) * 16.0) * exp(-abs(q.x) * 1.6);
       col = vColor * (g + rays * 0.5) * (1.0 - life) * (1.0 - life);
+    } else if (type > 9.5) { // marker: crisp arcs and ticks with a soft glow; style in the seed's integer part, rotation in its fraction
+      float st = floor(seed + 1e-3), a = fract(atan(q.y, q.x) / 6.2831853 + fract(seed)), fade = 1.0 - life, m = 0.0;
+      float band = gs((r - 0.86) * 22.0), soft = gs((r - 0.86) * 6.0) * 0.3;
+      if (st < 1.5 || (st > 2.5 && st < 3.5)) { // lock (4 arcs) or muzzle warning (3 arcs), with pointers aimed inward at the gaps
+        float N = st > 2.5 ? 3.0 : 4.0, f = fract(a * N), g = min(f, 1.0 - f), d = g * 6.2831853 / N * r;
+        float arcs = smoothstep(0.15, 0.19, g) * smoothstep(0.5, 0.4, g) * 1.15 + smoothstep(0.15, 0.19, g) * 0.25, w = max(r - 0.5, 0.0) * 0.4;
+        float tick = smoothstep(0.5, 0.54, r) * smoothstep(1.0, 0.95, r) * smoothstep(w + 0.015, w - 0.015, d);
+        m = (band + soft) * arcs + tick * 0.9;
+        if (st > 0.5 && st < 1.5) m += gs((r - 0.68) * 40.0) * step(0.5, fract(a * 24.0)) * 0.8; // locked twice: a dashed inner ring
+        m += smoothstep(0.86, 0.25, r) * 0.05;
+      } else if (st < 2.5) { // elite crown: a fine ring, a ring of short radial ticks and three orbiting diamonds
+        float ticks = smoothstep(0.92, 0.94, r) * smoothstep(1.0, 0.98, r) * smoothstep(0.32, 0.2, abs(fract(a * 28.0) - 0.5) * 2.0 - 0.3);
+        float f = fract(a * 3.0), dd = abs(r - 0.86) * 1.4 + min(f, 1.0 - f) * 2.094 * r, h = fract(a * 6.0 + 0.5);
+        m = band * 0.8 * smoothstep(0.1, 0.16, min(h, 1.0 - h)) + soft + ticks * 0.6 + smoothstep(0.16, 0.12, dd) * 1.3 + gs((r - 0.62) * 50.0) * 0.35 + smoothstep(0.86, 0.2, r) * 0.05;
+      } else if (st < 4.5) { // shield: a shimmering band of hex-like cells with a bright rim and a sweep of light running round it
+        float rr = (r - 0.62) / 0.3, row = floor(rr * 3.0), u = fract(a * 40.0 + row * 0.5), v = fract(rr * 3.0);
+        float cell = max(smoothstep(0.38, 0.48, abs(u - 0.5)), smoothstep(0.38, 0.48, abs(v - 0.5)));
+        float inBand = smoothstep(0.0, 0.08, rr) * smoothstep(1.06, 0.95, rr), sweep = pow(fract(a * 2.0), 6.0);
+        m = inBand * (0.12 + cell * 0.45) * (0.6 + 0.8 * sweep) + gs((r - 0.93) * 40.0) * 0.9 + soft * 0.5;
+      } else { // target brackets: four glowing corners on a square
+        vec2 p = abs(q); float s = max(p.x, p.y), e = gs((s - 0.86) * 30.0) + gs((s - 0.86) * 8.0) * 0.25;
+        m = e * step(0.5, min(p.x, p.y)) * smoothstep(0.98, 0.9, s) * 1.2;
+      }
+      col = mix(vColor, vec3(1.0), clamp(m - 0.8, 0.0, 0.5)) * m * fade;
     } else if (type < 3.5 || type > 7.5) { // shock ring (camera-facing or flat): a bright leading edge with a soft wake
       float k = (r - 0.82) * 12.0, wake = smoothstep(0.35, 0.82, r) * step(r, 0.82) * 0.25;
       float broken = 0.75 + 0.25 * vn(normalize(q + 1e-4) * 3.0 + seed * 11.0);

@@ -26,6 +26,11 @@ function skyRoad(L, og, pts, h, wz) {
   for (const q of [sky[0].p, sky[sky.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + .5, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] - .5) / 2 - .2)); c.userData.rc = '#E5CFA0'; og.add(c); }
 }
 
+/** A slab of land with any outline (sketch x, y points), from z0 up to z1: one mesh, so no seams across its top. */
+function land(g, outline, z0, z1, mat) {
+  const sh = new T.Shape(outline.map(([x, y]) => new T.Vector2(x, -y))), geo = new T.ExtrudeGeometry(sh, { depth: z1 - z0, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2); geo.translate(0, z0, 0); const m = new T.Mesh(geo, mat); g.add(m); return m;
+}
 /** Low floor: top at -.5, the level loop slabs sit at, so turntable arms swing clear over it. */
 const lowFloor = (L, x0, y0, x1, y1) => B(L.g, x0, y0, -1.1, x1, y1, -.5, tri(sp(L.th, 0)));
 /**
@@ -165,6 +170,10 @@ const LEVELS3 = [
       const inA = strip(L, L3([14, 4, .006], [9, 4, .006], UP), { pal }); inA.joins = [{ k: 1, ...A.join(9, 4) }];
       const lost = strip(L, L3([-6, -8, .006], [-6, -9.6, .006], UP), { pal, noFloor: true, edgeText: 'The bridge was gone' }); brokenCliff(L, -6, -9.6);
       const home = strip(L, L3([6, -12, .006], [6, -15.4, .006], UP), { goal: true });
+      // one landscape under it all, turf over rock, cut by the canyon the bridge used to cross, a river down in it
+      const outline = [[-9, 5.4], [29, 5.4], [29, -17.4], [-9, -17.4], [-9, -13.4], [4, -13.4], [4, -9.6], [-9, -9.6]];
+      land(g, outline, -1.2, -.52, tri(th.turf)); land(g, outline, -6, -1.2, tri(mixPal(sp(th, 0), tone('#8A6A4A'), .25)));
+      B(g, -9, -13.4, -6, 4, -9.6, -3.4, tri({ t: '#86C9DA', l: '#6AAFC2', r: '#5A9DB0' }));
       const pair = (road, at, ang, to, far) => matchingDoors(L, { road, at, ang, to, far, farAng: ang, fixed: true, want: 0, banners: white, rtShift: 2, text: 'Through the door and out of its twin' });
       pair(A.S2, A.d2, 0, inB, [28, -8]);              // A, swung left: on to the second loop
       pair(A.S1, A.d1, -Math.PI / 2, lost, [-6, -8]);   // A, swung down: nowhere
@@ -180,9 +189,9 @@ const LEVELS3 = [
       Bs.T1.m.set(farB && Bs.T1.ang > -89.5); },
     center: [11, -6, 0], pts: [[-3.7, 4.6, 0], [-6, -9.6, 0], [-7.2, -8, -5], [-6, -13.9, 0], [6, -15.4, 0], [25.6, -16.7, 0], [28, -8, 0], [14, 4.6, 0], [10.6, 4.6, 0], [-3.7, 3, 2.4]], pad: .7, scenery: false },
 
-  { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, -90],
-    // the camera starts a quarter turned, so neither hole is hidden until you turn it: each curtain needs its own turn
-    hint: 'Light the seam (<b>B</b>) and the wheel will climb the tower, cross its roof and go down the back, out of sight. Behind the tower the back road has a hole in plain sight from here. Turn the camera (<b>A</b>) a quarter and the tower stands in front of it, so it is not there, and the seam takes you round. Out the back, a loop holds you; its way home has a hole too, hidden only from the first angle. Turn the camera back.',
+  { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, 90],
+    // two holes, each hidden by the tower only from the angle you are not at when you reach it: each curtain needs its own turn
+    hint: 'Light the seam (<b>B</b>) and the wheel will climb the tower, cross its roof and go down the back. Down there the road has a hole, in plain sight from here. Turn the camera (<b>A</b>) a quarter and the tower stands in front of it, so it is not there. Round the side a loop holds you; its way home runs behind the tower with a hole of its own, hidden only from where you started. Turn the camera back.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), stone = tri(sp(th, 0)), H = 3.6;
       // the tower, its two top edges rounded to the road's own curve, so the road hugs it over the roof
@@ -190,35 +199,37 @@ const LEVELS3 = [
       B(tower, -3, -3, -.5, 0, 0, H - Rr, stone); B(tower, -3 + Rr, -3, H - Rr, -Rr, 0, H, stone);
       for (const x of [-Rr, -3 + Rr]) { const c = new T.Mesh(new T.CylinderGeometry(Rr, Rr, 3, 32), stone); c.rotation.x = Math.PI / 2; c.position.copy(V(x, -1.5, H - Rr)); tower.add(c); }
       const A = L.road(loopPts(.42, -2.6, 5, 2.0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -.2, -3.2, 5.6, 2.6, -.5, tri(th.turf), 1);
-      // the seam route: up the front face, over the roof, down the back face, round behind the tower to the first hole
-      const ys = -1.0, t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(H - .4 - .006 - .38).curl(.4, -90).fwd(2.24).curl(.4, -90).fwd(H - .4 - .006 - .38).curl(.4, 90)
-        .turn(1, 90).fwd(1.4).turn(1, 90).fwd(.82);
+      // the seam route: up the front face, over the roof, down the back face, then round the tower's left side to the first hole
+      const ys = -.6, t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(H - .4 - .006 - .38).curl(.4, -90).fwd(2.24).curl(.4, -90).fwd(H - .4 - .006 - .38).curl(.4, 90)
+        .turn(1, -90).fwd(1.2);
       const W = L.road(t.pts, { pal, th: .12, mat: tri({ t: '#F4E5C6', l: '#F4E5C6', r: '#F4E5C6' }, { side: true }) }); P.W = W;
-      floor(L, -5.0, -4.95, -2.6, -1.5);
+      const we = t.pts[t.pts.length - 1].p, xw = we[0], y1 = we[1];
+      floor(L, xw - .58, ys - .6, -3.0, y1);
       const seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
-      // the back road on to the holding loop out the back (ridden backwards, so its near side runs east)
-      const Rb = strip(L, L3([-2.0, -4.4, .006], [4.8, -4.4, .006], UP), { pal, noFloor: true }); floor(L, -2.0, -4.95, 4.0, -3.85);
-      const C = L.road(loopPts(4, -8.4, 8, -4.4, 0, .8), { closed: true, pal }); P.C = C; loopSlab(g, 3.4, -9.0, 8.6, -3.8, -.5, tri(th.turf), 1);
-      Rb.joins = [{ k: 1, to: C, s: sAt(C, [4.8, -4.4, 0]), dir: -1 }];
+      // past the first hole, on to the holding loop
+      const yC = 4.0, Rb = strip(L, L3([xw, y1 + .6, .006], [xw, yC + .8, .006], UP), { pal, noFloor: true }); floor(L, xw - .55, y1 + .6, xw + .55, yC - .6);
+      const C = L.road(loopPts(xw - 5, yC, xw, yC + 3.4, 0, .8), { closed: true, pal }); P.C = C; loopSlab(g, xw - 5.6, yC - .6, xw + .6, yC + 4.0, -.5, tri(th.turf), 1);
+      Rb.joins = [{ k: 1, to: C, s: sAt(C, [xw, yC + .8, 0]), dir: 1 }];
       const occ = () => [tower];
-      P.h1 = liveGap(L, W, 1, Rb, 0, occ, { text: 'Behind the tower, so the hole was not there' });
-      // the way home, with the second hole
-      const E1 = strip(L, L3([4, -5.6, .006], [2.4, -5.6, .006], UP), { pal, noFloor: true }), E2 = strip(L, L3([1.8, -5.6, .006], [-1.4, -5.6, .006], UP), { goal: true });
-      P.E1 = E1; P.E2 = E2;
-      floor(L, 2.4, -6.15, 3.4, -5.05);
+      P.h1 = liveGap(L, W, 1, Rb, 0, occ, { text: 'Behind the tower, from here, so the hole was not there' });
+      // the way home: off the loop's near side, south past the tower, then east along its back, with the second hole
+      // (it keeps clear of where the roof road lands on screen, so the two never seem to meet)
+      const xe = xw - 3, ye = -5.6, hx = -3.9, e = ftur([xe - 1, yC, .006], [1, 0, 0], UP).turn(1, -90).fwd(yC - 1 - (ye + 1)).turn(1, 90).fwd(hx - (xe + 1));
+      const E1 = L.road(e.pts, { pal }), E2 = L.road(L3([hx + .6, ye, .006], [3, ye, .006], UP), { goal: true }); P.E1 = E1; P.E2 = E2;
+      floor(L, xe - .55, ye - .55, xe + .55, yC - .6); floor(L, xe + .55, ye - .55, hx, ye + .55); floor(L, hx + .6, ye - .55, 3.55, ye + .55);
       P.h2 = liveGap(L, E1, 1, E2, 0, occ, { text: 'Behind the tower, from this side, so the hole was not there' });
       const sm = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(2.7, -1.3, .04)); g.add(h); }, tick() { return 0; } }); P.seam = sm;
       CY(g, 2.7, -1.3, .6, -2.4, -.02, stone, 24);
-      P.cam = cameraCrank(L, { key: 'a', name: 'Camera', at: [2.7, .6, 0], detents: [-90, 0] }); L.view.yaw = -Math.PI / 2;
+      P.cam = cameraCrank(L, { key: 'a', name: 'Camera', at: [2.7, .6, 0], detents: [0, 90] });
       A.forks.push({ s: sAt(A, [.42, ys, 0]), dir: 1, to: W, toK: 0, when: () => sm.on && P.h1.hidden(), text: 'The seam is lit, so down is the wall' });
-      C.forks.push({ s: sAt(C, [4, -5.6, 0]), dir: -1, to: E1, toK: 0, when: () => P.h2.hidden(), text: 'From here the hole is behind the tower' });
+      C.forks.push({ s: sAt(C, [xe - 1, yC, 0]), dir: 1, to: E1, toK: 0, when: () => P.h2.hidden(), text: 'From here the hole is behind the tower' });
       L.view.updaters.push(() => { seamM.color.set(sm.on ? (th.goal || '#E8553B') : '#FFFFFF'); seam.scale.z = sm.on ? .16 : .06;
-        L.say(`seam ${sm.on ? 'lit' : 'dark'} · camera ${P.cam.at(0) ? 'front' : P.cam.at(-90) ? 'quarter turn' : 'turning'} · back hole ${P.h1.hidden() ? 'hidden' : 'in sight'} · home hole ${P.h2.hidden() ? 'hidden' : 'in sight'}`); });
+        L.say(`seam ${sm.on ? 'lit' : 'dark'} · camera ${P.cam.at(0) ? 'front' : P.cam.at(90) ? 'quarter turn' : 'turning'} · first hole ${P.h1.hidden() ? 'hidden' : 'in sight'} · home hole ${P.h2.hidden() ? 'hidden' : 'in sight'}`); });
     },
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const P = L.props; R.gear = 4; R.cad = 80; if (W.road === P.A && !P.seam.on) P.seam.set(true);
-      const want = [P.C, P.E1, P.E2].includes(W.road) ? -90 : 0; P.cam.m.set(!P.cam.at(want)); },
-    center: [1.5, -3, 1.5], pts: [[-5, -5, 0], [-5, -1.5, 0], [8.6, -9, 0], [8.6, -3.8, 0], [5.6, 2.6, 0], [-1.4, -5.6, 0], [-3, -3, 3.6], [0, 0, 3.6], [-3, 0, 3.6], [0, -3, 3.6]], pad: 1.05, scenery: false },
+      const want = [P.A, P.W].includes(W.road) ? 90 : 0; P.cam.m.set(!P.cam.at(want)); },
+    center: [-1.5, 0, 1.2], pts: [[-10.1, 3.4, 0], [-10.1, 8.0, 0], [-3.8, 8.0, 0], [-8, -6.2, 0], [3.55, -6.2, 0], [5.6, 2.6, 0], [5.6, -3.2, 0], [-3, -3, 3.6], [0, 0, 3.6], [-3, 0, 3.6], [0, -3, 3.6]], pad: 1.0, scenery: false },
 
 ];
 

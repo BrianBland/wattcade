@@ -189,22 +189,51 @@ function helipad(): Part {
 }
 /** Lighthouse (~12 tall): banded tapering tower, gallery, lantern room, keeper's hut. */
 function lighthouse(): Part {
-  const p: Part[] = [];
-  for (let i = 0; i < 5; i++) { const r0 = 1.5 - i * 0.18, r1 = r0 - 0.18; p.push(cyl(r1, r0, 2, 0, 1 + i * 2, 0, i % 2 ? '#c8352f' : '#eef1f3', 12)); }
-  p.push(cyl(1.25, 1.25, 0.25, 0, 10.1, 0, '#2b2f34', 12), cyl(0.7, 0.7, 1.2, 0, 10.8, 0, '#ffe9a8', 10), cyl(0.15, 0.85, 0.7, 0, 11.75, 0, '#2b2f34', 10));
-  p.push(box(3, 2, 2.4, 2.2, 1, 1.6, '#e4e0d8'), box(3.4, 0.4, 2.8, 2.2, 2.2, 1.6, '#8c3b32'));
+  const p: Part[] = [], N = 16;
+  // A rocky plinth, then a smooth tapering tower in red and white bands.
+  const plinth = new THREE.CylinderGeometry(2.4, 2.9, 1.2, 12, 1).toNonIndexed(); plinth.translate(0, 0.6, 0); p.push(colored(displace(plinth, 0.25, 1.2, 131, new THREE.Vector3(0, 0.6, 0), false), '#6d6a66'));
+  for (let i = 0; i < 6; i++) { const y0 = 1.2 + i * 1.5, r0 = 1.45 - i * 0.12, r1 = r0 - 0.12; p.push(cyl(r1, r0, 1.5, 0, y0 + 0.75, 0, i % 2 ? '#c8352f' : '#eef1f3', N)); }
+  for (const y of [3.6, 6.6]) p.push(box(0.35, 0.5, 0.06, 0, y, 1.2, '#2b2f34')); // windows
+  // Gallery deck with a railing, the lantern (glass between mullions), and a domed cap with a vent.
+  p.push(cyl(1.3, 1.1, 0.25, 0, 10.35, 0, '#2b2f34', N));
+  for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2; p.push(box(0.06, 0.6, 0.06, Math.cos(a) * 1.22, 10.75, Math.sin(a) * 1.22, '#2b2f34')); }
+  p.push(cyl(1.24, 1.24, 0.06, 0, 11.05, 0, '#2b2f34', N), cyl(0.7, 0.7, 1.1, 0, 11.05, 0, '#ffe9a8', 8));
+  for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2 + Math.PI / 8; p.push(box(0.07, 1.1, 0.07, Math.cos(a) * 0.72, 11.05, Math.sin(a) * 0.72, '#2b2f34')); }
+  p.push(ball(0.8, 0, 11.6, 0, '#2b2f34', 0.6), cyl(0.06, 0.12, 0.5, 0, 12.2, 0, '#2b2f34', 6));
+  // Keeper's cottage with a pitched roof and chimney.
+  p.push(box(3, 1.8, 2.4, 2.6, 2.1, 1.8, '#e4e0d8'), box(0.5, 0.8, 0.05, 2.2, 1.6, 3.02, '#3a3430'), box(0.5, 0.45, 0.05, 3.3, 2.2, 3.02, '#2b3a46'));
+  for (const sd of [-1, 1]) { const r = new THREE.BoxGeometry(3.4, 0.14, 1.55).toNonIndexed(); r.rotateX(sd * 0.62); r.translate(2.6, 3.42, 1.8 + sd * 0.62); p.push(colored(r, '#8c3b32')); }
+  p.push(box(0.35, 0.9, 0.35, 3.5, 3.7, 1.3, '#7a706a'));
   return merge(p);
 }
-/** Offshore oil platform (~30 across): legs, two decks, a derrick, a crane and a helideck. */
+/** Offshore oil platform (~30 across): braced jacket legs, two decks with process modules, a lattice derrick, crane, flare boom, helideck and lifeboats. */
 function oilRig(): Part {
-  const p: Part[] = [];
-  for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) p.push(cyl(1.1, 1.3, 9, x, 4.5, z, '#c8a23a', 10));
-  p.push(box(24, 1.2, 24, 0, 9.6, 0, '#5d6670'), box(20, 4, 14, -1, 12.2, -3, '#9aa4ae'), box(20.4, 0.6, 2, -1, 13.4, -10.1, WIN));
-  for (const [x, z] of [[2, 3], [8, 3], [2, 9], [8, 9]]) p.push(box(0.4, 14, 0.4, x + (5 - x) * 0.3, 17, z + (6 - z) * 0.3, '#d7d2c4'));
-  for (const y of [13, 17, 21]) p.push(box(5, 0.25, 0.25, 5, y, 4.5, '#d7d2c4'), box(0.25, 0.25, 5, 3.5, y, 6, '#d7d2c4'));
-  p.push(cyl(0.9, 0.9, 1.2, -8, 14.8, 8, '#c8a23a', 8), box(0.6, 0.6, 14, -8, 18.5, 1.5, '#c8a23a', 0.5));
-  p.push(cyl(5, 5, 0.4, -7, 15.2, -2, '#2f353d', 20), box(0.5, 0.05, 3.4, -7.8, 15.45, -2, '#e8ecef'), box(0.5, 0.05, 3.4, -6.2, 15.45, -2, '#e8ecef'), box(1.6, 0.05, 0.5, -7, 15.45, -2, '#e8ecef'));
-  p.push(cyl(0.5, 0.5, 6, 10, 15, -9, DARK, 8));
+  const p: Part[] = [], Y = '#c8a23a', S = '#59626c', W = '#d7d2c4';
+  for (const [x, z] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) p.push(cyl(0.9, 1.2, 9.5, x, 4.75, z, Y, 10));
+  for (const y of [2.5, 6]) for (const [x0, z0, x1, z1] of [[-9, -9, 9, -9], [-9, 9, 9, 9], [-9, -9, -9, 9], [9, -9, 9, 9]]) { // horizontal and diagonal bracing
+    const len = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0); p.push(box(0.35, 0.35, len, (x0 + x1) / 2, y, (z0 + z1) / 2, Y, ang));
+    const d = new THREE.BoxGeometry(0.28, 0.28, Math.hypot(len, 3.5)).toNonIndexed(); d.rotateX(Math.atan2(3.5, len)); d.rotateY(ang); d.translate((x0 + x1) / 2, y + 1.75, (z0 + z1) / 2); p.push(colored(d, Y));
+  }
+  p.push(box(24, 1.0, 24, 0, 9.8, 0, '#4d555d'), box(23, 0.8, 22, 0, 13.6, 0, '#5d6670'));
+  for (const [x, z] of [[-11, -11], [11, -11], [-11, 11], [11, 11], [0, -11], [0, 11]]) p.push(box(0.4, 3.2, 0.4, x, 11.8, z, S));
+  // Process modules on the lower deck (seen between decks) and on top, in plant colours.
+  for (const [x, z, w, d, h, c] of [[-6, 5, 6, 5, 2.6, '#8e9aa4'], [5, -6, 7, 4, 2.6, '#b8c0c6'], [6, 6, 4, 4, 2.6, '#7d8a6a']] as const) p.push(box(w, h, d, x, 10.3 + h / 2, z, c));
+  p.push(box(9, 3.6, 7, -5, 15.8, 6, '#e6e1d6'), box(9.2, 0.5, 7.2, -5, 17.8, 6, '#9aa4ae'), box(9.1, 0.5, 0.1, -5, 16.6, 2.45, '#2b3a46'), box(0.1, 0.5, 7.1, -9.55, 16.6, 6, '#2b3a46')); // accommodation block
+  p.push(cyl(1.2, 1.2, 3.5, 4, 15.75, -5, '#c4c9cd', 10), cyl(1.2, 1.2, 3.5, 6.8, 15.75, -5, '#c4c9cd', 10)); // separators
+  for (let k = 0; k < 4; k++) p.push(cyl(0.3, 0.3, 2, -10 + k * 2, 15, -9, '#9aa4ae', 6)); // pipe stubs
+  // Derrick: four converging legs with braces, a drill floor and crown block.
+  const dx = 6, dz = 5, H = 12;
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const g = new THREE.CylinderGeometry(0.14, 0.2, H, 4).toNonIndexed(); g.rotateZ(-sx * 0.1); g.rotateX(sz * 0.1); g.translate(dx + sx * 0.8, 14 + H / 2, dz + sz * 0.8); p.push(colored(g, W)); }
+  for (let y = 16; y < 26; y += 3) { const w = 3.2 * (1 - (y - 14) / (H * 1.25)); p.push(box(w, 0.15, 0.15, dx, y, dz - w / 2, W), box(w, 0.15, 0.15, dx, y, dz + w / 2, W), box(0.15, 0.15, w, dx - w / 2, y, dz, W), box(0.15, 0.15, w, dx + w / 2, y, dz, W)); }
+  p.push(box(5, 0.6, 5, dx, 14.3, dz, '#3e464e'), box(1.2, 0.8, 1.2, dx, 26.2, dz, '#3e464e'));
+  // Crane: pedestal, cab and lattice boom.
+  p.push(cyl(0.8, 0.9, 3, -9, 15.5, -7, Y, 8), box(1.8, 1.4, 2.2, -9, 17.6, -7, Y));
+  { const b = new THREE.BoxGeometry(0.5, 0.5, 14).toNonIndexed(); b.translate(0, 0, -7); b.rotateX(0.45); b.rotateY(0.6); b.translate(-9, 17.8, -7); p.push(colored(b, Y)); }
+  // Flare boom off one corner with a hot tip, and a helideck cantilevered off the other.
+  { const b = new THREE.BoxGeometry(0.6, 0.6, 14).toNonIndexed(); b.translate(0, 0, 7); b.rotateX(-0.5); b.rotateY(Math.PI / 4); b.translate(10, 13.8, 10); p.push(colored(b, W), ball(0.7, 18.7, 20.5, 18.7, '#ffb347'));  }
+  p.push(cyl(5, 5, 0.4, -7, 18.4, -2.5, '#2f353d', 20), cyl(3.6, 3.6, 0.05, -7, 18.62, -2.5, Y, 20), cyl(3.2, 3.2, 0.06, -7, 18.63, -2.5, '#2f353d', 20));
+  p.push(box(0.5, 0.05, 3.4, -7.8, 18.68, -2.5, '#e8ecef'), box(0.5, 0.05, 3.4, -6.2, 18.68, -2.5, '#e8ecef'), box(1.6, 0.05, 0.5, -7, 18.68, -2.5, '#e8ecef'));
+  for (const x of [-4, 0]) p.push(box(2.4, 1, 1.1, x, 11.8, 12.3, '#e0672a')); // lifeboats
   return merge(p);
 }
 /** Channel buoy: float, cage and light. */
@@ -320,57 +349,268 @@ function wake(): Part {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return g;
 }
-/** Paint by height and slope: green lowlands and tops, rock on steep faces, sand at the waterline. */
-function islandColours(g: Part, seed: number, rocky: boolean): Part {
-  g.computeVertexNormals();
-  const pos = g.getAttribute('position'), nrm = g.getAttribute('normal'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
-  const sand = new THREE.Color('#d8c08c'), g1 = new THREE.Color(rocky ? '#4b5a37' : '#3f7a3a'), g2 = new THREE.Color(rocky ? '#5a5a40' : '#5c8f45'), rock = new THREE.Color(rocky ? '#4a4440' : '#6f6658'), dark = new THREE.Color('#2e2a28');
-  for (let i = 0; i < n; i++) {
-    const y = pos.getY(i), steep = 1 - Math.abs(nrm.getY(i)), v = vnoise(pos.getX(i) * 3, y * 3, pos.getZ(i) * 3, seed);
-    c.copy(g1).lerp(g2, v);
-    if (rocky) c.lerp(rock, Math.min(1, y * 1.6 + 0.2)).lerp(dark, Math.max(0, y - 0.7) * 2.2);
-    c.lerp(rock, Math.max(0, Math.min(1, (steep - 0.45) * 2.5)));
-    if (y < 0.06) c.lerp(sand, 1 - y / 0.06);
-    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
-  }
-  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); g.deleteAttribute('normal'); g.computeVertexNormals(); return g;
+/** Radial heightfields repeat the centre vertex once per spoke: give those copies one shared (averaged) normal. */
+function smoothPole(g: Part, spokes: number): Part {
+  const n = g.getAttribute('normal') as THREE.BufferAttribute, v = new THREE.Vector3();
+  for (let j = 0; j < spokes; j++) v.x += n.getX(j), v.y += n.getY(j), v.z += n.getZ(j);
+  v.normalize(); for (let j = 0; j < spokes; j++) n.setXYZ(j, v.x, v.y, v.z);
+  return g;
 }
-/** Island hill (radius 1, height 1): a lumpy green dome with rocky shoulders. */
+/**
+ * Island hill (radius 1, height 1): a smooth radial heightfield of two or three jungle-clad summits with ridges running
+ * down to the shore, bumpy canopy (dark crowns and lighter clearings), rocky outcrops on steep ground and a sand rim.
+ */
 function islandHill(): Part {
-  const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed(); g.deleteAttribute('uv');
-  const pos = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i), y = pos.getY(i), k = 0.75 + 0.5 * fbm(x * 1.8 + 3, 0, z * 1.8 + 3, 71); pos.setXYZ(i, x * (0.9 + 0.2 * fbm(x * 2, y * 2, z * 2, 72)), y * k, z * (0.9 + 0.2 * fbm(z * 2, y * 2, x * 2, 73))); }
-  return islandColours(g, 74, false);
-}
-/** Volcano (radius 1, height 1): a ridged cone, green skirts to dark scoria, an open crater. */
-function volcano(): Part {
-  const g = new THREE.CylinderGeometry(0.16, 1, 1, 30, 8, true).toNonIndexed(); g.translate(0, 0.5, 0); g.deleteAttribute('uv');
-  const pos = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x), ridge = 1 + 0.12 * Math.sin(ang * 9) * (1 - y) + (fbm(x * 2.5, y * 2.5, z * 2.5, 81) - 0.5) * 0.25;
-    const sag = y < 0.999 ? Math.pow(y, 0.82) : y; pos.setXYZ(i, x * ridge, sag, z * ridge);
+  const NA = 72, NR = 20, seed = 71, pos: number[] = [], col: number[] = [], idx: number[] = [], c = new THREE.Color();
+  const peaks = [[0.12, -0.1, 1, 0.3], [-0.38, 0.25, 0.72, 0.22], [0.35, 0.4, 0.55, 0.18]];
+  const canopy = [new THREE.Color('#25562a'), new THREE.Color('#2f6b30'), new THREE.Color('#3f7d3a'), new THREE.Color('#58904a')], rock = new THREE.Color('#6a6256'), sand = new THREE.Color('#d6bf8e');
+  const H = (x: number, z: number) => {
+    const r = Math.hypot(x, z); let h = 0;
+    for (const [px, pz, ph, pw] of peaks) { const d2 = (x - px) ** 2 + (z - pz) ** 2; h = Math.max(h, ph * Math.exp(-d2 / (2 * pw * pw)) ); }
+    h = Math.max(h, 0.35 * (1 - r * r)) * Math.min(1, (1 - r) * 6);
+    const a = Math.atan2(z, x); h *= 1 - 0.12 * Math.max(0, Math.sin(a * 7 + fbm(x * 2, 0, z * 2, seed) * 4)) * Math.min(1, Math.max(0, r - 0.3) * 3); // ridges and valleys, faded out near the middle
+    return Math.max(0, h + (fbm(x * 5 + 3, 0, z * 5 + 3, seed + 1) - 0.5) * 0.08 * (1 - r));
+  };
+  for (let i = 0; i <= NR; i++) {
+    const r = i / NR;
+    for (let j = 0; j < NA; j++) {
+      const a = (j / NA) * Math.PI * 2, wob = 1 + (vnoise(Math.cos(a) * 1.5 + 2, Math.sin(a) * 1.5 + 2, 1, seed) - 0.5) * 0.18 * r, x = Math.cos(a) * r * wob, z = Math.sin(a) * r * wob, h = H(Math.cos(a) * r, Math.sin(a) * r);
+      pos.push(x, h, z);
+      const steep = (Math.abs(H(Math.cos(a) * r + 0.02, Math.sin(a) * r) - h) + Math.abs(H(Math.cos(a) * r, Math.sin(a) * r + 0.02) - h)) / 0.02;
+      const blot = vnoise(x * 14, h * 6, z * 14, seed + 2);
+      c.copy(canopy[Math.min(3, Math.floor(blot * 3.2 + vnoise(x * 4, 0, z * 4, seed + 3) * 0.9))]).lerp(rock, Math.max(0, Math.min(0.6, (steep - 2.2) * 0.6)));
+      if (r > 0.86) c.lerp(sand, Math.min(1, (r - 0.86) * 9));
+      col.push(c.r, c.g, c.b);
+    }
   }
-  const crater = new THREE.CylinderGeometry(0.15, 0.06, 0.14, 16, 1, true).toNonIndexed(); crater.scale(-1, 1, 1); crater.translate(0, 0.93, 0); crater.deleteAttribute('uv');
-  const parts = [islandColours(g, 82, true), colored(crater, '#3a1d18')];
-  const m = mergeGeometries(parts)!; parts.forEach(q => q.dispose()); m.deleteAttribute('normal'); m.computeVertexNormals(); return m;
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) { const a = i * NA + j, b = i * NA + (j + 1) % NA, d = (i + 1) * NA + j, e = (i + 1) * NA + (j + 1) % NA; idx.push(a, b, d, b, e, d); }
+  const g = new THREE.BufferGeometry(); g.setIndex(idx); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals(); return smoothPole(g, NA);
 }
-/** Coconut palm (~5 tall): a leaning, curving trunk and a drooping crown. */
-function palm(): Part {
+/** Smallest signed angle a − b. */
+const angDiff = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+/**
+ * Stratovolcano (radius 1, height 1), a smooth-shaded radial heightfield: a concave cone with radial gullies and spurs,
+ * a parasitic cone, an uneven crater rim breached on one side and a sunken crater. `lava`: dark scoria and oxidised
+ * red ash, a molten crater lake and two flows spilling down from the breach (marked in the `glow` attribute for the
+ * magma shader). Otherwise an ocean island: jungle skirts climbing the gullies, bare scoria near the top.
+ */
+function stratoCone(seed: number, lava: boolean): Part {
+  const NA = 120, NR = 34, rc = 0.17, breach = vnoise(seed * 0.37, 1, 2, seed) * Math.PI * 2, spur = breach + 2.2;
+  const flows = [breach, breach + 0.55 + vnoise(seed, 3, 1, seed) * 0.4, breach - 0.7], flowLen = [0.95, 0.7, 0.5];
+  const flowAt = (k: number, t: number) => flows[k] + 0.22 * Math.sin(t * 5.5 + seed + k * 2) * t; // flows meander as they descend
+  const pos: number[] = [], col: number[] = [], glow: number[] = [], idx: number[] = [], c = new THREE.Color();
+  const P = lava
+    ? { base: new THREE.Color('#2e2826'), dust: new THREE.Color('#5a524c'), top: new THREE.Color('#5b2f24'), gully: new THREE.Color('#1b1716'), crater: new THREE.Color('#2a1612'), melt: new THREE.Color('#ff7a1e') }
+    : { base: new THREE.Color('#4d4640'), dust: new THREE.Color('#6d655a'), top: new THREE.Color('#3b3432'), gully: new THREE.Color('#2f2a28'), crater: new THREE.Color('#2a2220'), melt: new THREE.Color('#3b3432') };
+  const jungle = [new THREE.Color('#2f6a33'), new THREE.Color('#3f7d3a'), new THREE.Color('#4f8a3e')], sand = new THREE.Color('#d2b98a');
+  for (let i = 0; i <= NR; i++) {
+    // Rings: dense around the rim; s < 0.2 is the crater, then the flank out to the foot.
+    const s = i / NR, r = s < 0.2 ? rc * Math.sqrt(s / 0.2) : rc + (1 - rc) * Math.pow((s - 0.2) / 0.8, 1.15);
+    for (let j = 0; j < NA; j++) {
+      const a = (j / NA) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a), t = Math.max(0, (r - rc) / (1 - rc));
+      const notch = Math.exp(-Math.pow(angDiff(a, breach) / 0.32, 2));
+      const rim = 1 + (fbm(ca * 2 + 5, sa * 2 + 5, seed, seed) - 0.5) * 0.12 - notch * 0.16;
+      let h: number;
+      if (r <= rc) { const u = r / rc; h = rim - (lava ? 0.17 : 0.2) * (1 - u * u * u); }
+      else {
+        h = rim * Math.pow(1 - t, 1.55);
+        // Gullies: narrow radial channels between broad spurs, deepest mid-slope, warped so they wander.
+        const warp = (fbm(ca * 1.7 + 9, t * 2.5, sa * 1.7 + 9, seed + 1) - 0.5) * 3.2;
+        const g = 1 - Math.min(1, Math.abs(Math.sin(a * 9 + warp + t * 1.5)) / 0.4);
+        h -= g * g * 0.055 * Math.sin(Math.PI * Math.min(1, t * 1.15)) * (1 - notch * 0.5);
+        // A parasitic cone on one shoulder and lumpy ground everywhere.
+        const pd = Math.hypot(angDiff(a, spur) * 0.55, t - 0.55); h += 0.1 * Math.exp(-pd * pd / 0.006);
+        h += (fbm(ca * r * 6, sa * r * 6, t * 3, seed + 2) - 0.5) * 0.07 * (1 - t * 0.6);
+        // Flow channels sit slightly proud (levees) where molten rock runs down.
+        if (lava) for (let k = 0; k < 3; k++) h += 0.014 * Math.exp(-Math.pow(angDiff(a, flowAt(k, t)) / 0.06, 2)) * (t < flowLen[k] ? 1 : 0);
+        h = Math.max(0, h);
+      }
+      const wob = 1 + (vnoise(ca * 1.6 + 3, sa * 1.6 + 3, 7, seed) - 0.5) * 0.16 * t; // irregular footprint
+      pos.push(ca * r * wob, h, sa * r * wob);
+      // Colour: base rock, oxidised top, dusty gentle slopes, dark gullies, crater, and lava / jungle.
+      const n = vnoise(ca * r * 9, h * 9, sa * r * 9, seed + 4), gw = 1 - Math.min(1, Math.abs(Math.sin(a * 9 + (fbm(ca * 1.7 + 9, t * 2.5, sa * 1.7 + 9, seed + 1) - 0.5) * 3.2 + t * 1.5)) / 0.4);
+      c.copy(P.base).lerp(P.top, Math.max(0, 1 - t * 2.6) * (0.6 + 0.4 * n)).lerp(P.dust, Math.max(0, t - 0.6) * 0.7 * n).lerp(P.gully, gw * gw * 0.75);
+      let gl = 0;
+      if (r <= rc) {
+        const u = r / rc; c.copy(P.crater);
+        if (lava && u < 0.78) { gl = 1 - Math.max(0, (u - 0.6) / 0.18); c.lerp(P.melt, gl); }
+      } else if (lava) {
+        for (let k = 0; k < 3; k++) {
+          // Each flow widens downhill and ends in a cooling lobe; braided by noise so its edges are ragged.
+          const len = flowLen[k], w = (0.05 + 0.09 * t) * (0.75 + 0.5 * vnoise(t * 14, k, a * 3, seed + 8)), d = Math.abs(angDiff(a, flowAt(k, t)));
+          if (t < len && d < w) { const f = Math.min(1, (1 - d / w) * 1.6) * (1 - Math.max(0, (t - len + 0.25) / 0.25) * 0.8); gl = Math.max(gl, f); }
+        }
+        c.lerp(P.melt, gl);
+      } else {
+        // Vegetation climbs higher in the moist gullies; a sandy beach at the foot.
+        const line = 0.42 - gw * 0.18 + (n - 0.5) * 0.12;
+        if (t > line) c.lerp(jungle[Math.floor(vnoise(ca * r * 4, 0, sa * r * 4, seed + 6) * 2.99)], Math.min(1, (t - line) * 6));
+        if (t > 0.93) c.lerp(sand, Math.min(1, (t - 0.93) * 16));
+      }
+      col.push(c.r, c.g, c.b); glow.push(gl);
+    }
+  }
+  for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+    const a = i * NA + j, b = i * NA + (j + 1) % NA, d = (i + 1) * NA + j, e = (i + 1) * NA + (j + 1) % NA;
+    idx.push(a, b, d, b, e, d);
+  }
+  const g = new THREE.BufferGeometry(); g.setIndex(idx);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('glow', new THREE.Float32BufferAttribute(glow, 1)); g.computeVertexNormals(); return smoothPole(g, NA);
+}
+/** Island volcano (radius 1, height 1) for the ocean. */
+const volcano = () => stratoCone(81, false);
+/** Lava-field ash cone (radius 1, height 1): molten crater lake and flows. */
+const ashCone = () => stratoCone(83, true);
+/** Zero `glow` for lava-field rock that has no molten parts (every lava pool shares the magma material). */
+const noGlow = (g: Part): Part => { g.setAttribute('glow', new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute('position').count), 1)); return g; };
+/** Basalt, scoria and oxidised ash for the lava field's rock (same strata machinery, volcanic palette). */
+const ASH = new THREE.Color('#5e5853');
+const BASALT = ['#3a3532', '#2c2827', '#47403b', '#332b28', '#4a3a33', '#2f2a29', '#55473e'];
+function basaltBoulder(seed: number, squash: number, detail: number): Part {
+  const g = new THREE.IcosahedronGeometry(0.62, detail); g.scale(1, squash, 1); g.translate(0, 0.32 * squash, 0);
+  displace(g, 0.24, 2.4, seed); return noGlow(finish(strataColours(g, 0.9 * squash, seed, BASALT)));
+}
+/** Volcanic cliff block (1×1×1): the crag recipe in basalt with a dark, glassy (obsidian) seam or two. */
+function basaltCrag(): Part {
+  const g = crag(); strataColours(g, 1, 57, BASALT);
+  const pos = g.getAttribute('position'), col = g.getAttribute('color') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) if (Math.abs(Math.sin(pos.getY(i) * 9.5 + 1.3)) < 0.12) col.setXYZ(i, col.getX(i) * 0.55, col.getY(i) * 0.55, col.getZ(i) * 0.6);
+  return noGlow(g);
+}
+/**
+ * Columnar basalt (~2 across × 1 tall): a cluster of hexagonal columns of stepped heights (the tallest near the
+ * middle), each top tilted a little and dusted with ash; a scree skirt of broken columns at the foot.
+ */
+function basaltColumns(): Part {
+  const parts: Part[] = [], r = (k: number) => vnoise(k * 1.37, k * 0.71, 3.3, 101), cc = new THREE.Color();
+  const hexAt = (x: number, z: number, rad: number, h: number, k: number, lie = 0) => {
+    const g = new THREE.CylinderGeometry(rad, rad * 1.04, h, 6, 1).toNonIndexed(); g.deleteAttribute('uv');
+    if (lie) { g.rotateZ(lie); g.translate(x, rad * 0.9, z); } else { g.rotateY(r(k) * 0.4); g.translate(x, h / 2, z); }
+    // Tilt the cap: lift the top ring's verts by a seeded plane.
+    const pos = g.getAttribute('position') as THREE.BufferAttribute, tx = (r(k + 9) - 0.5) * 0.25, tz = (r(k + 11) - 0.5) * 0.25;
+    if (!lie) for (let i = 0; i < pos.count; i++) if (pos.getY(i) > h - 0.001) pos.setY(i, pos.getY(i) + (pos.getX(i) - x) * tx + (pos.getZ(i) - z) * tz);
+    const n = pos.count, a = new Float32Array(n * 3), shade = 0.6 + r(k + 3) * 0.7;
+    for (let i = 0; i < n; i++) {
+      const y = pos.getY(i), top = !lie && y > h - 0.2;
+      cc.set(BASALT[Math.floor(r(k + 5) * BASALT.length) % BASALT.length]).multiplyScalar(shade * (0.85 + 0.25 * vnoise(pos.getX(i) * 5, y * 5, pos.getZ(i) * 5, 103)));
+      if (top) cc.lerp(ASH, 0.3 * r(k + 7)); else cc.multiplyScalar(0.8 + 0.2 * Math.min(1, y / Math.max(0.1, h))); // darker toward the foot
+      a[i * 3] = cc.r; a[i * 3 + 1] = cc.g; a[i * 3 + 2] = cc.b;
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(a, 3)); parts.push(g);
+  };
+  let k = 0; const R = 0.17, dx = R * 1.73;
+  for (let q = -3; q <= 3; q++) for (let p = -3; p <= 3; p++) {
+    const x = (p + q * 0.5) * dx, z = q * R * 1.5, d = Math.hypot(x, z * 1.25);
+    if (d > 0.95 || r(k + 40) < 0.12) { k++; continue; }
+    const h = Math.max(0.12, (1 - d * 0.85) * (0.75 + 0.35 * r(k)) - (r(k + 21) < 0.2 ? 0.25 : 0));
+    hexAt(x, z, R * 0.97, h, k++);
+  }
+  for (let j = 0; j < 6; j++) { const a = r(200 + j) * 6.28, d = 1.0 + r(220 + j) * 0.25; hexAt(Math.cos(a) * d, Math.sin(a) * d, R * 0.8, 0.35 + r(240 + j) * 0.3, 300 + j, 1.4 + r(260 + j) * 0.3); }
+  const g = mergeGeometries(parts)!; parts.forEach(p => p.dispose()); g.computeVertexNormals(); return noGlow(g);
+}
+/**
+ * Research station (~34 × 22, base at y = 0): a cleared pad, two modules raised on stilts with window bands, geodesic
+ * radomes, fuel tanks on saddles, crates, and a braced lattice mast (top at y ≈ 18) with a dish. `polar`: red and
+ * yellow modules on snow with a wind turbine; otherwise a dusty canyon outpost with solar arrays.
+ */
+function station(polar: boolean): Part {
+  const pad = polar ? '#c9d5dd' : '#8a6a52', m1 = polar ? '#c4452f' : '#b7ada0', m2 = polar ? '#d9a83a' : '#7d6b57', roof = polar ? '#8c949b' : '#6c645c';
+  const dome = polar ? '#e7edf1' : '#d6cfc3', steel = '#596470', glassC = '#24323e';
   const p: Part[] = [];
-  for (let i = 0; i < 5; i++) p.push(cyl(0.13 - i * 0.012, 0.15 - i * 0.012, 0.95, 0.06 * i * i, 0.47 + i * 0.92, 0, '#7a5c3c', 6));
-  const top = 4.7, tx = 0.06 * 16;
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2, f = new THREE.BoxGeometry(0.42, 0.05, 2.4).toNonIndexed();
-    f.translate(0, 0, 1.15); f.rotateX(0.42 + (k % 2) * 0.2); f.rotateY(a); f.translate(tx, top, 0); p.push(colored(f, k % 2 ? '#3f8a3a' : '#5aa04a'));
+  const slab = new THREE.CylinderGeometry(1, 1.06, 0.3, 18, 1).toNonIndexed(); slab.scale(17, 1, 11); slab.translate(1, 0.15, 0); p.push(colored(slab, pad));
+  const module = (w: number, d: number, x: number, z: number, color: string, ry = 0) => {
+    const legs: Part[] = [];
+    for (const sx of [-1, 1]) for (const sz of [-1, 0, 1]) legs.push(box(0.25, 1.4, 0.25, x + sx * (w / 2 - 0.5) * Math.cos(ry) + sz * (d / 2 - 0.4) * Math.sin(ry), 1, z - sx * (w / 2 - 0.5) * Math.sin(ry) + sz * (d / 2 - 0.4) * Math.cos(ry), steel));
+    return [...legs, box(w, 2.8, d, x, 3.1, z, color, ry), box(w + 0.2, 0.3, d + 0.2, x, 4.65, z, roof, ry), box(w * 0.9, 0.55, d + 0.06, x, 3.5, z, glassC, ry),
+      box(w * 0.92, 0.12, d + 0.1, x, 1.75, z, steel, ry)];
+  };
+  p.push(...module(13, 4.6, -3, -3, m1), ...module(9, 4, 6.5, 3.2, m2), box(3, 2.2, 2.4, 2.2, 2.9, -0.2, '#3e464e')); // link corridor
+  for (const [x, z, r] of [[-11, 5, 2.6], [-5.5, 6.5, 1.8]] as const) {
+    const g = new THREE.IcosahedronGeometry(r, 1).toNonIndexed(); g.translate(x, 1.4 + r * 0.55, z); p.push(colored(g, dome), cyl(r * 0.8, r * 0.85, 1.6, x, 0.9, z, steel, 10));
   }
-  p.push(ball(0.12, tx + 0.15, top - 0.15, 0.1, '#5b4127'), ball(0.12, tx - 0.1, top - 0.18, -0.12, '#5b4127'));
+  for (const x of [8.4, 10.6]) { const t = new THREE.CylinderGeometry(0.9, 0.9, 5.2, 12).toNonIndexed(); t.rotateX(Math.PI / 2); t.translate(x, 1.5, -6.5); p.push(colored(t, polar ? '#9aa2a8' : '#a9542e')); for (const z of [-8.3, -4.7]) p.push(box(1.6, 0.7, 0.3, x, 0.6, z, steel)); }
+  for (const [x, z, c] of [[-1, 8.2, '#5d7a52'], [0.4, 8.6, '#7a6a48'], [-0.2, 7.4, '#5d7a52']] as const) p.push(box(1.2, 1, 1.2, x, 0.8, z, c));
+  // Lattice mast: four tapering legs, cross braces every 3, a dish and a beacon housing at the top.
+  const mx = 14, mz = 2, legAt = (y: number) => 1.1 * (1 - y / 22);
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const g = new THREE.CylinderGeometry(0.08, 0.12, 18, 4).toNonIndexed(); g.rotateZ(-sx * 0.055); g.rotateX(sz * 0.055); g.translate(mx + sx * 0.6, 9.3, mz + sz * 0.6); p.push(colored(g, polar ? '#d64a35' : '#c9c2b4')); }
+  for (let y = 2; y < 18; y += 3) { const w = legAt(y) * 1.4; p.push(box(w, 0.1, 0.1, mx, y, mz - legAt(y) * 0.7, steel), box(w, 0.1, 0.1, mx, y, mz + legAt(y) * 0.7, steel), box(0.1, 0.1, w, mx - legAt(y) * 0.7, y, mz, steel), box(0.1, 0.1, w, mx + legAt(y) * 0.7, y, mz, steel)); }
+  { const d = new THREE.SphereGeometry(1.3, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3).toNonIndexed(); d.rotateZ(Math.PI / 2 + 0.3); d.translate(mx - 0.6, 13, mz); p.push(colored(d, '#dfe4e8')); }
+  p.push(box(0.6, 0.6, 0.6, mx, 18.4, mz, steel));
+  if (polar) { // wind turbine
+    p.push(cyl(0.12, 0.2, 9, -14, 4.5, -5, '#e7edf1', 6), box(0.5, 0.5, 1.2, -14, 9.1, -5, '#e7edf1'));
+    for (let k = 0; k < 3; k++) { const b = new THREE.BoxGeometry(0.25, 3.4, 0.08).toNonIndexed(); b.translate(0, 1.7, 0); b.rotateZ(k * Math.PI * 2 / 3 + 0.3); b.translate(-14, 9.1, -5.65); p.push(colored(b, '#e7edf1')); }
+  } else { // solar arrays
+    for (let k = 0; k < 3; k++) { const b = new THREE.BoxGeometry(5, 0.12, 2.2).toNonIndexed(); b.rotateX(-0.5); b.translate(-12, 1.3, -6 + k * 3.2); p.push(colored(b, '#22344f'), box(0.15, 1, 0.15, -12, 0.6, -6 + k * 3.2, steel)); }
+  }
   return merge(p);
 }
-/** Stilted beach hut with a thatched roof (~3 across). */
+/** Triangle soup → coloured part (per-vertex colours given as [r, g, b] per vertex). */
+function soup(pos: number[], col: number[]): Part {
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); return g;
+}
+/**
+ * Coconut palm (~5 tall): a smoothly curving, tapering trunk with growth rings and a swollen base, a crown of arched,
+ * drooping fronds with sawtooth leaflets (both faces), dead fronds hanging below, and a coconut cluster.
+ */
+function palm(): Part {
+  const p: Part[] = [], top = 4.7, tx = 0.96, ring = new THREE.Color(), cA = new THREE.Color('#7a5c3c'), cB = new THREE.Color('#5e4630');
+  const at = (u: number) => new THREE.Vector3(tx * u * u, top * u, 0.08 * Math.sin(u * 3));
+  { // trunk: rings of 8, tangent-aligned
+    const N = 14, S = 8, pos: number[] = [], col: number[] = [], rings: THREE.Vector3[][] = [];
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, c = at(u), t = at(Math.min(1, u + 0.01)).sub(at(Math.max(0, u - 0.01))).normalize(), side = new THREE.Vector3(0, 0, 1).cross(t).normalize(), up = t.clone().cross(side);
+      const rad = 0.13 + 0.06 * (1 - u) + 0.1 * Math.max(0, 1 - u * 8) + (i % 2 ? 0 : 0.012), rr: THREE.Vector3[] = [];
+      for (let j = 0; j < S; j++) { const a = (j / S) * Math.PI * 2; rr.push(c.clone().addScaledVector(side, Math.cos(a) * rad).addScaledVector(up, Math.sin(a) * rad)); }
+      rings.push(rr);
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < S; j++) {
+      const a = rings[i][j], b = rings[i][(j + 1) % S], c2 = rings[i + 1][j], d = rings[i + 1][(j + 1) % S];
+      ring.copy(i % 2 ? cA : cB).multiplyScalar(0.9 + 0.2 * ((j * 7 + i * 3) % 5) / 5);
+      for (const v of [a, c2, b, b, c2, d]) { pos.push(v.x, v.y, v.z); col.push(ring.r, ring.g, ring.b); }
+    }
+    p.push(soup(pos, col));
+  }
+  // Fronds: arched spines, leaflets alternating long/short for a feathered edge, darker at the base, both faces.
+  const pos: number[] = [], col: number[] = [], dark = new THREE.Color('#2f6b2e'), light = new THREE.Color('#6aa84a'), dead = new THREE.Color('#9a7f4a'), c = new THREE.Color();
+  const frond = (yaw: number, lift: number, L: number, droop: number, base: THREE.Color, tip: THREE.Color) => {
+    const dir = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)), side = new THREE.Vector3(-dir.z, 0, dir.x), M = 9;
+    const spine = (s: number) => new THREE.Vector3(tx, top, 0).addScaledVector(dir, s * L).add(new THREE.Vector3(0, lift * s - droop * s * s, 0));
+    for (let i = 0; i < M; i++) {
+      const s0 = i / M, s1 = (i + 1) / M, p0 = spine(s0), p1 = spine(s1), w = (k: number) => 0.55 * Math.sin(Math.PI * Math.min(1, k * 1.05 + 0.08)) * (i % 2 ? 1 : 0.7);
+      for (const sd of [-1, 1]) {
+        const e0 = p0.clone().addScaledVector(side, sd * w(s0) * 0.35).add(new THREE.Vector3(0, -0.12 * w(s0), 0)), e1 = p1.clone().addScaledVector(side, sd * w(s1)).add(new THREE.Vector3(0, -0.25 * w(s1), 0));
+        c.copy(base).lerp(tip, s0);
+        const tri = sd > 0 ? [p0, e1, p1, p0, e0, e1] : [p0, p1, e1, p0, e1, e0];
+        for (const v of tri) { pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); }
+        for (const v of [...tri].reverse()) { pos.push(v.x, v.y - 0.01, v.z); col.push(c.r * 0.7, c.g * 0.7, c.b * 0.7); }
+      }
+    }
+  };
+  for (let k = 0; k < 9; k++) frond((k / 9) * Math.PI * 2 + (k % 2) * 0.2, 0.9 + (k % 3) * 0.25, 2.3 + (k % 2) * 0.4, 1.5 + (k % 3) * 0.35, dark, light);
+  for (let k = 0; k < 3; k++) frond(k * 2.1 + 0.6, -0.4, 1.4, 1.2, dead, dead);
+  frond(0.3, 2.2, 0.9, 0.6, light, light); frond(3.4, 2.4, 0.8, 0.5, light, light); // new spear leaves
+  p.push(soup(pos, col));
+  p.push(ball(0.13, tx + 0.15, top - 0.18, 0.1, '#5b4127'), ball(0.13, tx - 0.1, top - 0.2, -0.12, '#6b4d2c'), ball(0.12, tx + 0.02, top - 0.24, 0.16, '#4f3a22'));
+  const g = mergeGeometries(p.map(q => { if (q.getAttribute('uv')) q.deleteAttribute('uv'); if (q.getAttribute('normal')) q.deleteAttribute('normal'); return q; }))!; p.forEach(q => q.dispose()); g.computeVertexNormals(); return g;
+}
+/** Stilted beach hut (~3 across): plank walls on a deck with a ladder, window and door openings, a layered thatch roof. */
 function hut(): Part {
-  const roof = new THREE.ConeGeometry(2.2, 1.6, 4).toNonIndexed(); roof.rotateY(Math.PI / 4); roof.translate(0, 3.1, 0);
-  const p: Part[] = [box(2.6, 1.6, 2.6, 0, 1.6, 0, '#b58b5e'), colored(roof, '#c9a564'), box(0.7, 1.1, 0.06, 0, 1.4, 1.32, '#3a2a1e')];
-  for (const [x, z] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) p.push(box(0.15, 0.8, 0.15, x, 0.4, z, '#6b4f35'));
+  const p: Part[] = [], PL = ['#b58b5e', '#a57d52', '#c09668'], post = '#6b4f35';
+  for (const [x, z] of [[-1.3, -1.3], [1.3, -1.3], [-1.3, 1.3], [1.3, 1.3], [0, -1.3], [0, 1.3]]) p.push(box(0.16, 0.9, 0.16, x, 0.45, z, post));
+  p.push(box(3.2, 0.12, 3.4, 0, 0.92, 0.1, '#8a6a48'));
+  for (let i = 0; i < 6; i++) p.push(box(3.2, 0.02, 0.5, 0, 0.99, -1.45 + i * 0.58, i % 2 ? '#7d5f40' : '#94724e')); // deck boards
+  for (let i = 0; i < 4; i++) p.push(box(0.5, 0.07, 0.12, 0, 0.2 + i * 0.22, 2.0, post)); // ladder rungs
+  p.push(box(0.08, 1.0, 0.1, -0.28, 0.45, 2.0, post), box(0.08, 1.0, 0.1, 0.28, 0.45, 2.0, post));
+  // Walls: vertical planks in three tones.
+  for (let i = 0; i < 6; i++) { const u = -1.0 + i * 0.4; for (const [x, z, ry] of [[u, -1.1, 0], [u, 1.1, 0], [-1.1, u, Math.PI / 2], [1.1, u, Math.PI / 2]] as const) p.push(box(0.4, 1.5, 0.1, x, 1.75, z, PL[(i + Math.round(x * 3 + z * 5)) % 3], ry)); }
+  p.push(box(0.6, 1.0, 0.04, 0.2, 1.5, 1.17, '#2a1e15'), box(0.5, 0.4, 0.04, -0.6, 1.9, 1.17, '#2a1e15'), box(0.04, 0.4, 0.5, 1.17, 1.9, 0, '#2a1e15'), box(0.04, 0.4, 0.5, -1.17, 1.9, 0.2, '#2a1e15'));
+  // Thatch: three stacked hip layers, each a little lighter, and a ridge cap.
+  for (const [r, h, y, c] of [[2.3, 1.0, 2.9, '#a8864c'], [1.85, 0.9, 3.3, '#bf9c5c'], [1.25, 0.8, 3.7, '#cfae6c']] as const) {
+    const roof = new THREE.ConeGeometry(r, h, 4, 2).toNonIndexed(); roof.rotateY(Math.PI / 4); roof.translate(0, y, 0); p.push(colored(roof, c));
+  }
+  p.push(cyl(0.05, 0.18, 0.4, 0, 4.15, 0, '#7d6238', 6));
   return merge(p);
 }
 /** Container ship (~62 long): dark hull, stacked containers in mixed colours, bridge and funnel aft. */
@@ -379,7 +619,7 @@ function containerShip(): Part {
   const CC = ['#b8372f', '#2f6db0', '#d6a43a', '#3f8a52', '#d8dde2', '#7b4ea0', '#c4622d'];
   let k = 0;
   for (let z = -22; z <= 14; z += 4.2) for (let x = -3.6; x <= 3.7; x += 2.4) { const h = 1 + ((k * 7) % 4); for (let y = 0; y < h; y++) p.push(box(2.3, 1.2, 4, x, 4.9 + y * 1.25, z, CC[(k * 3 + y * 5) % CC.length])); k++; }
-  p.push(box(9.6, 6, 5, 0, 7.3, 22, '#e8ecef'), box(10.4, 0.5, 2, 0, 10.2, 20.5, WIN), box(11.4, 0.3, 1.2, 0, 10.6, 21, '#e8ecef'), cyl(0.9, 1, 3, 0, 11.5, 25, '#2b2f34', 10));
+  p.push(box(9.6, 6, 5, 0, 7.3, 22, '#c9d0d6'), box(10.4, 0.5, 2, 0, 10.2, 20.5, WIN), box(11.4, 0.3, 1.2, 0, 10.6, 21, '#c9d0d6'), cyl(0.9, 1, 3, 0, 11.5, 25, '#2b2f34', 10));
   return merge(p);
 }
 /** Tanker (~66 long): red-bottomed hull, green deck with pipe runs and a manifold, white bridge aft. */
@@ -387,7 +627,7 @@ function tanker(): Part {
   const p: Part[] = [hull(66, 11, 4.4, '#7a2a26', 0.14, 0.92), box(10.2, 0.4, 60, 0, 4.5, 0, '#3f5a46')];
   for (const x of [-1.2, 0, 1.2]) p.push(cyl(0.22, 0.22, 46, x, 5.1, -4, '#c8ccd0', 6, Math.PI / 2));
   p.push(box(7, 1, 2, 0, 5.3, -2, '#c8a23a'), box(1.4, 3, 1.4, 3, 6, 6, '#c8ccd0'), box(0.25, 0.25, 9, 3, 7.3, 2, '#c8ccd0', 0.4));
-  p.push(box(10, 7, 6, 0, 8.4, 25, '#e8ecef'), box(10.6, 0.5, 2, 0, 11.6, 22.6, WIN), cyl(1, 1.1, 3.5, 0, 12.8, 27, '#2b2f34', 10));
+  p.push(box(10, 7, 6, 0, 8.4, 25, '#c9d0d6'), box(10.6, 0.5, 2, 0, 11.6, 22.6, WIN), cyl(1, 1.1, 3.5, 0, 12.8, 27, '#2b2f34', 10));
   return merge(p);
 }
 /** Sailboat (~9 long): white hull, mast, a heeled mainsail and jib (both sides drawn). */
@@ -397,22 +637,33 @@ function sailboat(): Part {
   p.push(sail([[0.38, 1.6, -0.5], [0.38, 9.6, -0.6], [1.6, 1.8, 3.2]], '#f4f1e8'), sail([[0.36, 1.6, -0.9], [0.36, 8.6, -0.8], [0.9, 1.4, -4.2]], '#e6e2d6'));
   const g = mergeGeometries(p.map(q => { if (q.getAttribute('uv')) q.deleteAttribute('uv'); if (q.getAttribute('normal')) q.deleteAttribute('normal'); return q; }))!; p.forEach(q => q.dispose()); g.computeVertexNormals(); return g;
 }
-/** Iceberg / ice block (1×1×1 at scale 1): fractured, flat-ish top, snow on top grading to blue-green ice down the sides. */
+/**
+ * Iceberg / ice block (1×1×1 at scale 1): fractured faceted cliffs and a flat-ish top. Wind-packed snow on top, pale blue walls with vertical meltwater striations and darker crevasses, glacial
+ * blue deepening toward the turquoise waterline.
+ */
 function berg(): Part {
-  const g = new THREE.BoxGeometry(1, 1, 1, 4, 5, 4).toNonIndexed(); g.translate(0, 0.5, 0);
+  const g: Part = new THREE.BoxGeometry(1, 1, 1, 5, 6, 5).toNonIndexed(); g.deleteAttribute('uv'); g.translate(0, 0.5, 0);
   const pos = g.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) { const y = pos.getY(i), k = (1 - y * 0.18) * (1 + (vnoise(0, Math.floor(y * 4.99) * 2.3, 0, 93) - 0.5) * 0.25); pos.setX(i, pos.getX(i) * k); pos.setZ(i, pos.getZ(i) * k); if (y > 0.99) pos.setY(i, y + (vnoise(pos.getX(i) * 3, 0, pos.getZ(i) * 3, 91) - 0.5) * 0.25); }
-  displace(g, 0.32, 2.2, 92, new THREE.Vector3(0, 0.5, 0)); g.deleteAttribute('uv'); g.deleteAttribute('normal'); g.computeVertexNormals();
-  const nrm = g.getAttribute('normal'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color(), snow = new THREE.Color('#b4c3cd'), ice = new THREE.Color('#7aaabf'), deep = new THREE.Color('#356f8a');
-  for (let i = 0; i < n; i++) { const up = nrm.getY(i), y = pos.getY(i); c.copy(deep).lerp(ice, Math.min(1, y * 1.4)).lerp(snow, Math.max(0, Math.min(1, (up - 0.35) * 2))); a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  for (let i = 0; i < pos.count; i++) { const y = pos.getY(i), k = (1 - y * 0.2) * (1 + (vnoise(0, Math.floor(y * 4.99) * 2.3, 0, 93) - 0.5) * 0.25); pos.setX(i, pos.getX(i) * k); pos.setZ(i, pos.getZ(i) * k); if (y > 0.99) pos.setY(i, y + (vnoise(pos.getX(i) * 3, 0, pos.getZ(i) * 3, 91) - 0.5) * 0.25); }
+  displace(g, 0.3, 2.2, 92, new THREE.Vector3(0, 0.5, 0)); g.deleteAttribute('normal'); g.computeVertexNormals();
+  const nrm = g.getAttribute('normal'), n = pos.count, a = new Float32Array(n * 3), c = new THREE.Color();
+  const snow = new THREE.Color('#d3dee6'), ice = new THREE.Color('#8fbfd3'), deep = new THREE.Color('#4d93b5'), sea = new THREE.Color('#3fb3c0'), crev = new THREE.Color('#2f6f93');
+  for (let i = 0; i < n; i++) {
+    const up = nrm.getY(i), x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i), ang = Math.atan2(z, x);
+    const streak = vnoise(ang * 9, y * 0.6, 0, 94), cr = Math.max(0, 1 - Math.abs(Math.sin(ang * 5 + vnoise(0, y * 3, ang, 95) * 2)) / 0.18);
+    c.copy(deep).lerp(ice, Math.min(1, y * 1.3)).multiplyScalar(0.9 + 0.2 * streak).lerp(crev, cr * 0.5 * (1 - Math.max(0, up)));
+    if (y < 0.12) c.lerp(sea, 1 - y / 0.12);
+    c.lerp(snow, Math.max(0, Math.min(1, (up - 0.3) * 2.2)));
+    a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
+  }
   g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
 }
 /** Polar icebreaker (~38 long): red reinforced hull, white superstructure forward, crane and helideck aft. */
 function icebreaker(): Part {
   const p: Part[] = [hull(38, 8, 3.4, '#b8322b', 0.3, 0.9), box(7, 0.35, 34, 0, 3.45, 0, '#5b6670')];
-  p.push(box(6, 4, 9, 0, 5.6, -6, '#eef1f3'), box(5, 2.2, 6, 0, 8.7, -7, '#eef1f3'), box(5.2, 0.5, 1.4, 0, 9.3, -9.6, WIN), box(6.2, 0.5, 1.6, 0, 6.6, -10.5, WIN));
+  p.push(box(6, 4, 9, 0, 5.6, -6, '#cdd4d9'), box(5, 2.2, 6, 0, 8.7, -7, '#cdd4d9'), box(5.2, 0.5, 1.4, 0, 9.3, -9.6, WIN), box(6.2, 0.5, 1.6, 0, 6.6, -10.5, WIN));
   p.push(cyl(0.8, 0.9, 2.6, 0, 8.9, -2.4, '#c8352f', 10), cyl(0.1, 0.12, 5, 0, 12.6, -7, DARK, 6), box(2.6, 0.1, 0.4, 0, 13.6, -7, DARK));
-  p.push(cyl(3, 3, 0.2, 0, 3.75, 11, '#2f353d', 18), box(0.4, 0.05, 2, -0.6, 3.9, 11, '#e8ecef'), box(0.4, 0.05, 2, 0.6, 3.9, 11, '#e8ecef'), box(1.2, 0.05, 0.4, 0, 3.9, 11, '#e8ecef'));
+  p.push(cyl(3, 3, 0.2, 0, 3.75, 11, '#2f353d', 18), box(0.4, 0.05, 2, -0.6, 3.9, 11, '#c9d0d6'), box(0.4, 0.05, 2, 0.6, 3.9, 11, '#c9d0d6'), box(1.2, 0.05, 0.4, 0, 3.9, 11, '#c9d0d6'));
   p.push(box(0.6, 5, 0.6, 2.6, 6, 4, '#d6a43a'), box(0.5, 0.5, 7, 2.6, 8.3, 1.2, '#d6a43a', 0.3));
   return merge(p);
 }
@@ -441,10 +692,10 @@ export function kit() {
     boulderA: boulder(5, 0.85, 1), boulderB: boulder(17, 1.35, 2), spire: spire(), mesa: mesa(), crag: crag(), scrub: scrub(),
     gunSponson: gunSponson(), radarSponson: radarSponson(), raftRack: raftRack(), catwalk: catwalk(), edgeElevator: edgeElevator(), fuelStation: fuelStation(),
     islandStealth: islandStealth(), islandTall: islandTall(), helicopter: helicopter(), fuelTruck: fuelTruck(), waterTank: waterTank(), acUnits: acUnits(), helipad: helipad(), lighthouse: lighthouse(), oilRig: oilRig(), buoy: buoy(),
-    islandHill: islandHill(), volcano: volcano(), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat(), berg: berg(), icebreaker: icebreaker(), skiJump: skiJump() };
+    islandHill: islandHill(), volcano: volcano(), ashCone: ashCone(), basaltA: basaltBoulder(5, 0.8, 2), basaltB: basaltBoulder(29, 1.3, 2), basaltCrag: basaltCrag(), columns: basaltColumns(), station: station(true), outpost: station(false), palm: palm(), hut: hut(), containerShip: containerShip(), tanker: tanker(), sailboat: sailboat(), berg: berg(), icebreaker: icebreaker(), skiJump: skiJump() };
   return cache as Record<'tree' | 'carrier' | 'battleship' | 'destroyer' | 'riverBoat' | 'barge' | 'jet' | 'tractor' | 'island' | 'wake' | 'boulderA' | 'boulderB' | 'spire' | 'mesa' | 'crag' | 'scrub'
     | 'gunSponson' | 'radarSponson' | 'raftRack' | 'catwalk' | 'edgeElevator' | 'fuelStation' | 'islandStealth' | 'islandTall' | 'helicopter' | 'fuelTruck' | 'waterTank' | 'acUnits' | 'helipad' | 'lighthouse' | 'oilRig' | 'buoy'
-    | 'islandHill' | 'volcano' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat' | 'berg' | 'icebreaker' | 'skiJump', Part>;
+    | 'islandHill' | 'volcano' | 'ashCone' | 'basaltA' | 'basaltB' | 'basaltCrag' | 'columns' | 'station' | 'outpost' | 'palm' | 'hut' | 'containerShip' | 'tanker' | 'sailboat' | 'berg' | 'icebreaker' | 'skiJump', Part>;
 }
 export const isKitGeometry = (g: THREE.BufferGeometry) => !!cache && Object.values(cache).includes(g);
 

@@ -245,9 +245,10 @@ const NSTUDIES = [
       const A = L.road(loopPts(.42, -5, 5, -.6, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -.2, -5.6, 5.6, 0, -.5, tri(th.turf), 1);
       // the seam: a bar across the road at the fork
       const ys = -2.4, seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
-      const t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(1.5).turn(.5, -90);
-      t.fwd(-.3 - t.st.p[1]).curl(.3, -90).fwd(.5).turn(.5, -90).fwd(t.st.p[2] - .5 - .4 + .1).curl(.4, 90).fwd(2.6);
-      const W = L.road(t.pts, { goal: true, pal }); P.W = W;
+      const t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(1.4).turn(.6, -90);
+      t.fwd(-.3 - t.st.p[1]).curl(.32, -90).fwd(.5).turn(.6, -90).fwd(t.st.p[2] - .5 - .4 + .1).curl(.4, 90).fwd(2.6);
+      // a thin deck, lit the same on every face, so the road reads as one road as it wraps the tower
+      const W = L.road(t.pts, { goal: true, th: .12, mat: tri({ t: '#F6EBD0', l: '#F2E2BE', r: '#EAD6AE' }, { side: true }) }); P.W = W;
       const st = { on: false }; P.seam = st;
       st.m = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(1.6, -5.9, .04)); g.add(h); }, tick() { return 0; } });
       A.forks.push({ s: sAt(A, [.42, ys, 0]), dir: 1, to: W, toK: 0, when: () => st.m.on, text: 'The seam is lit, so down is the wall' });

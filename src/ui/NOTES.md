@@ -9,3 +9,4 @@
 - Pocket Arcade is the production default: warm navy/cream, mint/gold, 3px solid primary-key edges, heavier chrome titles and 10px/2px segmented progress.
 - DOM and Canvas share palette, button depth, progress tick dimensions and 4px selection edges. Allow 3px beyond primary button bounds for its key edge; preserve measured HUD insets.
 - Sunset Sprint/Coin-Op stay dev-only previews; no production theme picker or saved selection is exposed yet.
+- `UiStepper.label` supplies a specific accessible input name, defaulting to Value.

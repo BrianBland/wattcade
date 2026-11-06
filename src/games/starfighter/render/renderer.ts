@@ -203,15 +203,11 @@ export class SfRenderer implements GameRenderer {
     const mat = this.matrix;
     // Player pulse shots are drawn by the combat layer as glowing bolts (render/vfx.ts).
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && f.kind !== 'boom' && f.kind !== 'flak' && s.t-f.at < (f.kind==='volley'?0.5:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : age * 4 + 0.5;
-      mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
-    this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
+    // Shock rings (full lock, perfect, nova, upgrade) are soft particles in the combat layer now.
+    this.effects!.count = 0;
     // Escort phrase plasma beam: a violet column sweeping up the ship's lane, narrowing as it fades.
-    const beams = s.fx.filter(f => f.kind === 'beam' && s.t - f.at < 0.6).slice(-4);
-    beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
-      mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
-    this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
+    // The Escort's plasma beam column is drawn by the combat layer.
+    this.beams!.count = 0;
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2 + s.evade*3);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);

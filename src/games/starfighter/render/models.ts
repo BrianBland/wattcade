@@ -85,15 +85,19 @@ export function shipModel(color: string, kind: string): THREE.Group {
     part('tier-8', ring, light, [0,0.8,0.4], [4.6,4.6,4.6]);                                      // halo
     part('trim-3', box, trim, [0,1.02,1.6], [0.5,0.05,3]);
     if (kind === 'gunship') {
-      // Staccato Gunship: a broad armoured back with twin flak turrets, chunky barrels, and a boxy ammo spine.
-      add(box, dark, [0, 1.15, 1.2], [1.6, 0.7, 3.2]);
+      // Staccato Gunship: an armoured ammo spine with feed lights, and twin hex flak turrets with paired barrels.
+      const cylG = cachedGeo('cyl', () => new THREE.CylinderGeometry(1, 1, 1, 12)), hexG = cachedGeo('hex', () => new THREE.CylinderGeometry(1, 1.15, 1, 6));
+      add(cachedGeo('spine', () => slab([[-0.8, -0.6], [0.8, -0.6], [0.95, 2.9], [-0.95, 2.9]], 0.95, 0.5, 0.15)), dark, [0, 0, 0], [1, 1, 1]);
+      for (let i = 0; i < 3; i++) add(box, light, [0, 1.62, 0.3 + i * 0.85], [1.1, 0.05, 0.14]);
       for (const side of [-1, 1]) {
-        add(sphere, plate, [side * 1.45, 1.35, -0.6], [0.75, 0.5, 0.75]);
-        add(box, dark, [side * 1.45, 1.45, -1.9], [0.32, 0.32, 2.2]);
-        add(box, light, [side * 1.45, 1.45, -3.05], [0.36, 0.36, 0.22]);
+        add(hexG, dark, [side * 1.45, 1.2, -0.6], [0.8, 0.35, 0.8]);
+        add(hexG, plate, [side * 1.45, 1.55, -0.65], [0.62, 0.4, 0.62]);
+        for (const o of [-0.2, 0.2]) {
+          add(cylG, dark, [side * 1.45 + o, 1.6, -1.9], [0.11, 2, 0.11]).rotation.x = Math.PI / 2;
+          add(box, light, [side * 1.45 + o, 1.6, -2.95], [0.2, 0.2, 0.14]);
+        }
         add(box, plate, [side * 1.2, 1.35, 3.2], [0.18, 1.1, 1.3]).rotation.z = side * 0.25;
       }
-      for (let i = 0; i < 3; i++) add(box, light, [0, 1.52, 0.2 + i * 0.9], [1.2, 0.06, 0.18]);
     }
     if (kind === 'escort') {
       // Resonance Escort: a resonator ring over the spine and coil fins at the wing roots (arc lightning emitters).

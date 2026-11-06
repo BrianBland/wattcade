@@ -5,7 +5,7 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { B, CY, L3, Road, ribbon, UP, THEMES, V, basic, clamp, ftur, liveGap, loopPts, loopSlab, mixPal, rider, sAt, setTri, sp, tone, tri } = $scope;
+const { B, CY, L3, R3, Road, ribbon, UP, THEMES, V, basic, clamp, ftur, liveGap, loopPts, loopSlab, mixPal, rider, sAt, setTri, sp, tone, tri } = $scope;
 
 /**
  * A conveyor belt laid across parallel lanes. Engaged (its button), it runs at your cadence and carries the wheel sideways
@@ -106,12 +106,12 @@ function reflection(L, o) {
   // the reflection: the road mirrored in the water plane, drawn under the surface
   const rg = new T.Group(); g.add(rg);
   const mir = new Road(o.pts.map((q) => ({ p: [q.p[0], q.p[1], 2 * wz - q.p[2]], n: [0, 0, 1] })));
-  const rM = tri(o.pal || sp(th, 1), { side: true, fresh: true }); rg.add(ribbon(mir, 1, .08, rM)); rg.add(ribbon(mir, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }));
+  const rM = tri(o.pal || sp(th, 1), { side: true, fresh: true }); rg.add(ribbon(mir, 1, .08, rM)); rg.add(ribbon(mir, .07, 0, L.lane, { lift: .012, dash: [.38, .2] })); if (o.extra) o.extra(rg, wz);
   // ripple rings that spread while the wind blows
   const rings = [0, 1, 2].map((i) => { const m = new T.Mesh(new T.TorusGeometry(1, .015, 4, 40), new T.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0, depthWrite: false })); m.rotation.x = Math.PI / 2; m.renderOrder = 3; g.add(m); return m; });
-  const st = { wind: 0, still: () => st.wind < .15 };
-  L.view.updaters.push(() => {
-    const dt = 1 / 60, target = clamp((rider.cad - calm) / 10, 0, 1); st.wind += (target - st.wind) * Math.min(1, dt * 2.5);
+  const st = { wind: 0, still: () => st.wind < .15, ruffled: () => st.wind > .8 };
+  L.view.updaters.push((t0, dt0) => {
+    const dt = dt0 || 1 / 60, target = clamp((rider.cad - calm) / 10, 0, 1); st.wind += (target - st.wind) * Math.min(1, dt * 2.5);
     const t = L.view.t || 0, w = st.wind;
     rg.visible = w < .9; rg.position.x = Math.sin(t * 7) * w * .08; rg.scale.y = 1 - w * .35;
     setTri(rM, mixPal(o.pal || sp(th, 1), tone('#9CC9D6'), .3 + .7 * w));
@@ -126,6 +126,14 @@ function reflection(L, o) {
  * door's banner turns with its button (each press shows the next banner); when it matches the far door's, they connect.
  * o: { road, at: [x, y] on road, to: road the far door opens onto (from its start), far: [x, y], farAng, ang, key, banners, want }
  */
+const PORTAL_VS = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const PORTAL_FS = `uniform float uT; uniform vec3 uC; uniform float uOpen; uniform sampler2D uMap; varying vec2 vUv;
+void main() { vec2 p = vUv - .5; p.x *= 1.12 / 1.46; float r = length(p), a = atan(p.y, p.x);
+  float sw = .5 + .5 * sin(a * 3. + r * 22. - uT * 4.), core = smoothstep(.5, .0, r);
+  vec3 c = mix(uC * .55, mix(uC, vec3(1.), .55), sw * .7 + core * .5);
+  vec3 v = uOpen > 0. ? texture2D(uMap, vUv).rgb : c; vec3 col = mix(c, v, uOpen);
+  vec2 e = abs(vUv - .5) * 2.; float rim = smoothstep(.82, 1., max(e.x, e.y));
+  gl_FragColor = vec4(mix(col, mix(uC, vec3(1.), .5), rim * .8), .92); }`;
 const BANNERS = ['#FF6B4A', '#FFC93C', '#46D6C2'];
 function doorway(g, th, x, y, ang, z = 0) {
   const grp = new T.Group(); grp.position.copy(V(x, y, z)); grp.rotation.y = ang; g.add(grp);
@@ -134,7 +142,11 @@ function doorway(g, th, x, y, ang, z = 0) {
   m(.3, .22, 1.6, 0, 1.6, 0, stone);
   const bannerM = new T.MeshBasicMaterial({ color: '#FFFFFF' }), banner = m(.08, .5, .8, 0, 1.97, 0, bannerM);
   m(.12, .08, .96, 0, 2.26, 0, stone);
-  return { grp, bannerM };
+  // the portal: a swirl in the banner's colour that fills the opening; open, it shows a live view of the other side
+  const pm = new T.ShaderMaterial({ uniforms: { uT: { value: 0 }, uC: { value: new T.Color('#FFFFFF') }, uOpen: { value: 0 }, uMap: { value: null } },
+    side: T.DoubleSide, transparent: true, depthWrite: false, vertexShader: PORTAL_VS, fragmentShader: PORTAL_FS });
+  const portal = new T.Mesh(new T.PlaneGeometry(1.12, 1.46), pm); portal.rotation.y = Math.PI / 2; portal.position.set(0, .74, 0); portal.renderOrder = 4; grp.add(portal);
+  return { grp, bannerM, portal, pm };
 }
 function matchingDoors(L, o) {
   const th = L.th, g = L.g, bs = o.banners || BANNERS;
@@ -143,7 +155,18 @@ function matchingDoors(L, o) {
   const st = { i: 0, was: false, match: () => st.i === o.want };
   st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), .04)); g.add(h); },
     tick() { if (this.on !== st.was) { st.was = this.on; st.i = (st.i + 1) % bs.length; } return 0; } });
-  L.view.updaters.push(() => { near.bannerM.color.set(bs[st.i]); });
+  // a camera at the far door looks on down its road; matched, the near portal shows what it sees
+  const rt = new T.WebGLRenderTarget(224, 292), cam = new T.PerspectiveCamera(48, 1.12 / 1.46, .05, 60), fz = o.z || 0, fa = o.farAng || 0;
+  cam.position.copy(V(o.far[0] - .2 * Math.cos(fa), o.far[1] + .2 * Math.sin(fa), fz + 1.05)); cam.lookAt(V(o.far[0] + 3 * Math.cos(fa), o.far[1] - 3 * Math.sin(fa), fz + .3)); cam.layers.enableAll();
+  st.open = 0;
+  L.view.updaters.push((t, dt) => {
+    near.bannerM.color.set(bs[st.i]); near.pm.uniforms.uC.value.set(bs[st.i]); far.pm.uniforms.uC.value.set(bs[o.want]);
+    near.pm.uniforms.uT.value = far.pm.uniforms.uT.value = t || 0;
+    st.open += ((st.match() ? 1 : 0) - st.open) * Math.min(1, (dt || 1 / 60) * 3); near.pm.uniforms.uOpen.value = st.open;
+    if (st.open > .01) { near.portal.visible = far.portal.visible = false; const prev = R3.getRenderTarget(), cc = R3.getClearColor(new T.Color()), ca = R3.getClearAlpha();
+      R3.setRenderTarget(rt); R3.setClearColor('#F7E3D6', 1); R3.clear(); R3.render(L.view.scene, cam); R3.setRenderTarget(prev); R3.setClearColor(cc, ca);
+      near.portal.visible = far.portal.visible = true; near.pm.uniforms.uMap.value = rt.texture; }
+  });
   o.road.forks.push({ s: sAt(o.road, [o.at[0], o.at[1], 0]), dir: 1, to: o.to, toS: .05, toDir: 1, when: st.match, text: 'The two doors matched, so they were one door' });
   return st;
 }
@@ -251,6 +274,28 @@ const NSTUDIES = [
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const d = L.props.doors; R.gear = 4; R.cad = 80; if (!d.match() && (L.view.t || 0) % 1 < .05) d.m.set(!d.m.on); },
     center: [0, -2.5, .5], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [7.4, -5.6, 0], [-4, 0, 2], [2, -5, 2.8]], pad: .9, scenery: false },
+  { id: 'n-pool2', name: 'Break the mirror', th: () => THEMES[1], cruise: [60, 95],
+    hint: 'This time the bridge is plain to see, but the still pool shows a gate across it, and what the still water shows is real. Pedal hard, above 86 rpm, and the wind ruffles the pool, the gate in the water breaks up, and the bridge is open.',
+    build(L) {
+      const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4');
+      const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -7.6, -4, -.4, .6, -.5, tri(th.turf), 1);
+      const X1 = L.road(L3([-1, -1.7, .006], [1.6, -1.7, .006], UP), { pal }), X2 = L.road(L3([5.4, -1.7, .006], [9, -1.7, .006], UP), { goal: true });
+      B(g, -.4, -2.3, -.5, 1.4, -1.1, -.02, tri(sp(th, 0))); B(g, 5.6, -2.3, -.5, 9.4, -1.1, -.02, tri(sp(th, 0)));
+      const pts = Array.from({ length: 41 }, (_, i) => { const t = i / 40; return { p: [1.6 + 3.8 * t, -1.7, .006 + .6 * Math.sin(Math.PI * t)], n: [0, 0, 1] }; });
+      L.road(pts, { pal });
+      // the gate, only in the water: two posts and a bar across the top of the bridge, mirrored in the surface
+      const gateM = tri(tone('#FF3B2E')), top = .606;
+      const pool = reflection(L, { pts, pool: [1.4, -3.2, 5.6, 1.2], pal, calm: 78, wz: -.04, extra(rg, wz) {
+        const m = (z0, z1) => [2 * wz - z1, 2 * wz - z0];
+        for (const sd of [-.62, .62]) { const [a, b] = m(top - .1, top + .8); B(rg, 3.42, -1.7 + sd - .08, a, 3.58, -1.7 + sd + .08, b, gateM); }
+        const [a, b] = m(top + .35, top + .5); B(rg, 3.44, -2.4, a, 3.56, -1.0, b, gateM); const [c, d] = m(top + .68, top + .8); B(rg, 3.44, -2.4, c, 3.56, -1.0, d, gateM); } });
+      P.pool = pool;
+      A.forks.push({ s: sAt(A, [-1, -1.7, 0]), dir: 1, to: X1, toK: 0, when: () => pool.ruffled(), text: 'The ruffled pool shows no gate, so there is none' });
+      L.view.updaters.push(() => L.say(`pool ${pool.ruffled() ? 'ruffled' : pool.still() ? 'still' : 'stirring'} · wind ${Math.round(pool.wind * 100)}% · ${Math.round(rider.cad)} rpm`));
+    },
+    spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
+    solve(L, W, R) { R.gear = 4; R.cad = 92; },
+    center: [1, -1.5, 0], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [9.4, -2.3, 0], [3.5, -1.7, 1.2], [3.5, -3.4, -.4]], pad: .9, scenery: false },
 ];
 
 Object.assign($scope, { conveyor, companion, clutchBridge, reflection, matchingDoors, NSTUDIES });

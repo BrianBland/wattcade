@@ -84,7 +84,7 @@ export class SfRenderer implements GameRenderer {
     };
     this.enemyFire = createBullets(this.scene);
     this.effects = makePool(geometries.ring, '#ffcc8a', 160);
-    this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
+    this.beams = makePool(geometries.box, '#b98bff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -203,11 +203,11 @@ export class SfRenderer implements GameRenderer {
     const mat = this.matrix;
     // Player pulse shots are drawn by the combat layer as glowing bolts (render/vfx.ts).
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && f.kind !== 'boom' && s.t-f.at < (f.kind==='volley'?0.5:1.6)).slice(-160);
+    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && f.kind !== 'boom' && f.kind !== 'flak' && s.t-f.at < (f.kind==='volley'?0.5:1.6)).slice(-160);
     shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : age * 4 + 0.5;
       mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
     this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
-    // Escort phrase beam: a bright column sweeping up the ship's lane, narrowing as it fades.
+    // Escort phrase plasma beam: a violet column sweeping up the ship's lane, narrowing as it fades.
     const beams = s.fx.filter(f => f.kind === 'beam' && s.t - f.at < 0.6).slice(-4);
     beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
       mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });

@@ -35,7 +35,8 @@ export function shipModel(color: string, kind: string): THREE.Group {
   if (kind === 'turret' || kind === 'tank') return fleetModel(kind, color, '#ff3bbf');
   if (kind === 'drone' || kind === 'armor' || kind === 'weaver' || kind === 'gunner') return fleetModel(kind, color, '#ff43bd');
   const g = new THREE.Group();
-  const craft = kind === 'player' || kind === 'escort' || kind === 'striker', lightColor = craft ? (kind === 'striker' ? '#ffcf3a' : '#38edff') : '#ff43bd';
+  const craft = kind === 'player' || kind === 'escort' || kind === 'striker' || kind === 'gunship';
+  const lightColor = craft ? (kind === 'striker' ? '#ffcf3a' : kind === 'gunship' ? '#ff8a3a' : kind === 'escort' ? '#b98bff' : '#38edff') : '#ff43bd';
   // Panelled plating (seams, rim light in the running-light colour) from the flagship hull shader.
   const plate = hullMaterial(color, new THREE.Color(lightColor), 0, [0.45, 0.7], 11, 0.6, 0.3);
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
@@ -46,7 +47,7 @@ export function shipModel(color: string, kind: string): THREE.Group {
   add(cachedGeo('fuselage', () => slab([[0, -4.6], [0.9, -2.6], [1.35, 0.4], [1.25, 3.3], [-1.25, 3.3], [-1.35, 0.4], [-0.9, -2.6]], 0.25, 0.75, 0.25)), plate, [0, 0, 0], [1, 1, 1]);
   add(sphere, dark, [0, 1.3, -0.4], [0.8, 0.45, 1.6]);
   add(box, light, [0, 1.75, -0.5], [0.35, 0.08, 1.2]);
-  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : 3.6;
+  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : kind === 'gunship' ? 3.9 : 3.6;
   for (const side of [-1, 1]) {
     // The Striker's wings sweep forward; everyone else's sweep back.
     const outline: Array<[number, number]> = kind === 'striker' ? [[0.9, 0.6], [wings, -1.1], [wings + 0.2, -0.1], [0.9, 2.4]] : [[0.9, -0.7], [wings, 1], [wings, 2.1], [0.9, 2.3]];
@@ -83,6 +84,22 @@ export function shipModel(color: string, kind: string): THREE.Group {
     part('tier-8', box, light, [0,0.9,-5.4], [0.18,0.18,4]);                                      // spine lance
     part('tier-8', ring, light, [0,0.8,0.4], [4.6,4.6,4.6]);                                      // halo
     part('trim-3', box, trim, [0,1.02,1.6], [0.5,0.05,3]);
+    if (kind === 'gunship') {
+      // Staccato Gunship: a broad armoured back with twin flak turrets, chunky barrels, and a boxy ammo spine.
+      add(box, dark, [0, 1.15, 1.2], [1.6, 0.7, 3.2]);
+      for (const side of [-1, 1]) {
+        add(sphere, plate, [side * 1.45, 1.35, -0.6], [0.75, 0.5, 0.75]);
+        add(box, dark, [side * 1.45, 1.45, -1.9], [0.32, 0.32, 2.2]);
+        add(box, light, [side * 1.45, 1.45, -3.05], [0.36, 0.36, 0.22]);
+        add(box, plate, [side * 1.2, 1.35, 3.2], [0.18, 1.1, 1.3]).rotation.z = side * 0.25;
+      }
+      for (let i = 0; i < 3; i++) add(box, light, [0, 1.52, 0.2 + i * 0.9], [1.2, 0.06, 0.18]);
+    }
+    if (kind === 'escort') {
+      // Resonance Escort: a resonator ring over the spine and coil fins at the wing roots (arc lightning emitters).
+      add(ring, light, [0, 1.7, 0.9], [1.3, 1.3, 1.3]).rotation.x = Math.PI / 2;
+      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) add(ring, light, [side * 1.6, 1.0, -0.6 + i * 0.6], [0.4, 0.4, 0.4]);
+    }
     if (kind === 'striker') {
       // Tempo Striker: a long nose lance and twin canted tail fins in amber.
       add(box, light, [0, 0.75, -5.2], [0.22, 0.22, 3.4]);

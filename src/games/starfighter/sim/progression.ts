@@ -7,7 +7,9 @@ export const LEVEL_MINUTES = [0, 45, 90, 150, 210, 285, 360, 450, 540, 630];
 export const MAX_LEVEL = LEVEL_MINUTES.length;
 /** In-ride arsenal tiers unlock at these on-target minutes, capped by the craft's ceiling. */
 export const TIER_MINUTES = [0, 2, 6, 12, 20, 30, 40, 50];
-export const CRAFTS: CraftId[] = ['cruiser', 'escort', 'striker'];
+export const CRAFTS: CraftId[] = ['cruiser', 'gunship', 'escort', 'striker'];
+/** The Staccato Gunship (the spin craft) unlocks at Cruiser level 2. */
+export const GUNSHIP_UNLOCK_LEVEL = 2;
 export const ESCORT_UNLOCK_LEVEL = 3;
 /** The Tempo Striker (the harder ride) unlocks at Cruiser level 5 or Escort level 3. */
 export const STRIKER_UNLOCK = { cruiser: 5, escort: 3 };
@@ -21,11 +23,14 @@ export interface Perks {
   interceptRange: number; beamWidth: number; ace: boolean;
   /** Striker: flank-move strike damage multiplier and half-width (0 = no strike). */
   strike: number; strikeWidth: number;
+  /** Extra projectiles per beat-weapon volley (Cruiser bar-line missiles, Striker rails), and the Gunship's flak burst radius. */
+  salvo: number; flakRadius: number;
 }
 const REWARDS: Record<CraftId, string[]> = {
-  cruiser: ['', 'Wingman', 'Arsenal 6 · Escort unlocked', 'Quick lock', 'Second wingman', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Quick lock II', 'Ace finish'],
+  cruiser: ['', 'Wingman · Gunship unlocked', 'Arsenal 6 · Escort unlocked', 'Bigger salvo', 'Second wingman', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Bigger salvo II', 'Ace finish'],
+  gunship: ['', 'Wider flak', 'Arsenal 6', 'Wingman', 'Bigger salvo', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Wider flak II', 'Ace finish'],
   escort: ['', 'Wider interception', 'Arsenal 6', 'Wider beam', 'Third wingman', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Wider beam II', 'Ace finish'],
-  striker: ['', 'Wider strike', 'Arsenal 6', 'Quick lock', 'Wingman', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Strike II', 'Ace finish'],
+  striker: ['', 'Wider strike', 'Arsenal 6', 'Third rail', 'Wingman', 'Arsenal 7', 'Heavy escort', 'Arsenal 8', 'Strike II', 'Ace finish'],
 };
 export function craftLevel(seconds: number): { level: number; progress: number; nextAtS: number | null } {
   const minutes = Math.max(0, seconds) / 60;
@@ -41,11 +46,13 @@ export function perks(craft: CraftId, level: number): Perks {
   const at = (l: number) => level >= l;
   const arsenalCap = at(8) ? 8 : at(6) ? 7 : at(3) ? 6 : 5;
   if (craft === 'escort') return { arsenalCap, wingmen: at(5) ? 3 : 2, heavy: at(7), lockS: 0.5,
-    interceptRange: at(2) ? 20 : 15, beamWidth: at(9) ? 15 : at(4) ? 12 : 9, ace: at(10), strike: 0, strikeWidth: 0 };
+    interceptRange: at(2) ? 20 : 15, beamWidth: at(9) ? 15 : at(4) ? 12 : 9, ace: at(10), strike: 0, strikeWidth: 0, salvo: 0, flakRadius: 0 };
+  if (craft === 'gunship') return { arsenalCap, wingmen: at(4) ? 1 : 0, heavy: at(7), lockS: 0.38,
+    interceptRange: 0, beamWidth: 0, ace: at(10), strike: 0, strikeWidth: 0, salvo: at(5) ? 1 : 0, flakRadius: at(9) ? 9.5 : at(2) ? 8 : 6.5 };
   if (craft === 'striker') return { arsenalCap, wingmen: at(5) ? 1 : 0, heavy: at(7), lockS: at(4) ? 0.34 : 0.37,
-    interceptRange: 0, beamWidth: 0, ace: at(10), strike: at(9) ? 1.6 : 1, strikeWidth: at(2) ? 6 : 4.5 };
+    interceptRange: 0, beamWidth: 0, ace: at(10), strike: at(9) ? 1.6 : 1, strikeWidth: at(2) ? 6 : 4.5, salvo: at(4) ? 1 : 0, flakRadius: 0 };
   return { arsenalCap, wingmen: at(5) ? 2 : at(2) ? 1 : 0, heavy: at(7), lockS: at(9) ? 0.31 : at(4) ? 0.345 : 0.38,
-    interceptRange: 0, beamWidth: 0, ace: at(10), strike: 0, strikeWidth: 0 };
+    interceptRange: 0, beamWidth: 0, ace: at(10), strike: 0, strikeWidth: 0, salvo: at(9) ? 2 : at(4) ? 1 : 0, flakRadius: 0 };
 }
 export function arsenalTier(onTargetS: number, cap: number, pace = 1): number {
   const minutes = onTargetS * pace / 60;

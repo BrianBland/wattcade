@@ -22,11 +22,12 @@ import { install as audit } from './audit';
 import { install as decor } from './decor';
 import { install as cube } from './cube';
 import { install as studies2 } from './studies2';
+import { install as levels3 } from './levels3';
 
 /** Hand-built level defs, by id, from every module that has them. */
 const handBuilt = (E) => {
   const pool = {};
-  for (const d of [...E.HAND_LEVELS, ...E.STUDIES, ...E.PSTUDIES, ...E.MSTUDIES, ...E.CSTUDIES, ...E.GSTUDIES, ...E.G2STUDIES, ...E.CUBES, ...E.NSTUDIES]) pool[d.id] = d;
+  for (const d of [...E.HAND_LEVELS, ...E.STUDIES, ...E.PSTUDIES, ...E.MSTUDIES, ...E.CSTUDIES, ...E.GSTUDIES, ...E.G2STUDIES, ...E.CUBES, ...E.NSTUDIES, ...E.LEVELS3]) pool[d.id] = d;
   return pool;
 };
 
@@ -42,7 +43,7 @@ function defFor(E, pool, item) {
 
 export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN): PenroseEngine {
   const E = { dom, hooks };
-  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, cube, studies2]) install(E);
+  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, cube, studies2, levels3]) install(E);
   const pool = handBuilt(E), LEVELS = E.LEVELS;
   for (const ch of campaign) for (const it of ch.levels) {
     const d = defFor(E, pool, it);

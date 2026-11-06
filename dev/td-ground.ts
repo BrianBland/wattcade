@@ -377,10 +377,94 @@ async function sheet() {
   document.getElementById('panels')!.append(c);
 }
 
+// ---------- automated kit checks (the brief's gates, measurable) ----------
+const lum = (r: number, g: number, b: number) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+function hsv(r: number, g: number, b: number) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, s = mx ? d / mx : 0;
+  let h = 0; if (d) h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: (h * 60 + 360) % 360, s, v: mx / 255 };
+}
+/** Share of strongly saturated pixels in the brood hues (blue, red, purple) — large areas must stay clear of them. */
+function broodShare(im: Img) {
+  let blue = 0, red = 0, purple = 0, n = 0;
+  for (let o = 0; o < im.d.length; o += 4 * 7) {
+    const { h, s, v } = hsv(im.d[o], im.d[o + 1], im.d[o + 2]); n++;
+    if (s < 0.45 || v < 0.25) continue;
+    if (h >= 190 && h < 255) blue++; else if (h >= 255 && h < 320) purple++; else if (h >= 340 || h < 15) red++;
+  }
+  return { blue: +(blue / n).toFixed(3), red: +(red / n).toFixed(3), purple: +(purple / n).toFixed(3) };
+}
+/** Low-frequency gradient: spread of 4×4 block mean luminance (vignettes and light gradients show up here). */
+function gradient(im: Img) {
+  const m: number[] = [];
+  for (let by = 0; by < 4; by++) for (let bx = 0; bx < 4; bx++) {
+    let t = 0, n = 0;
+    for (let y = Math.floor(by * im.h / 4); y < (by + 1) * im.h / 4; y += 3) for (let x = Math.floor(bx * im.w / 4); x < (bx + 1) * im.w / 4; x += 3) { const o = (y * im.w + x) * 4; t += lum(im.d[o], im.d[o + 1], im.d[o + 2]); n++; }
+    m.push(t / n);
+  }
+  return +((Math.max(...m) - Math.min(...m)) / 255).toFixed(3);
+}
+const meanLum = (im: Img, x0: number, y0: number, x1: number, y1: number) => { let t = 0, n = 0; for (let y = Math.max(0, y0 | 0); y < Math.min(im.h, y1); y += 2) for (let x = Math.max(0, x0 | 0); x < Math.min(im.w, x1); x += 2) { const o = (y * im.w + x) * 4; t += lum(im.d[o], im.d[o + 1], im.d[o + 2]); n++; } return t / Math.max(1, n); };
+/** Measures one kit folder against the brief; `fails` lists the gates it misses. */
+async function checkKit(folder: string) {
+  const root = `${BASE}td/ground-kits/${folder}/`;
+  const meta = await fetch(root + 'kit.json').then(r => r.ok ? r.json() : {}).catch(() => ({})) as { ppu?: number; roadHalf?: number };
+  const ppu = meta.ppu ?? 16, half = (meta.roadHalf ?? 4) * ppu;
+  const spec: Record<string, [number, number, number?]> = { ground_a: [1024, 1024], ground_b: [1024, 1024], gravel: [1024, 1024], road: [1536, 1024], overlay_hive: [1024, 1024, 1], props: [1536, 1024, 8], decals: [1536, 1024, 8], bridge: [1536, 1024, 4], hive_mouth: [1024, 1024, 1] };
+  const out: Record<string, unknown> = { kit: folder }, fails: string[] = [];
+  const imgs: Record<string, Img> = {};
+  for (const [f, [w, h, blobs]] of Object.entries(spec)) {
+    const image = await loadImage(root + f + '.png').catch(() => null);
+    if (!image) { out[f] = 'missing'; if (f === 'ground_a' || f === 'road') fails.push(`${f} missing`); continue; }
+    const im = pixels(image, ppu); imgs[f] = im;
+    const r: Record<string, unknown> = { size: `${im.w}x${im.h}` };
+    if (im.w !== w || im.h !== h) r.sizeNote = `brief asks ${w}x${h}`;
+    if (blobs) {
+      // key flatness: pixels near the key colour should be exactly the key
+      const key = keyOf(im.d); let near = 0, exact = 0;
+      for (let o = 0; o < im.d.length; o += 4 * 5) { const dd = Math.hypot(im.d[o] - key[0], im.d[o + 1] - key[1], im.d[o + 2] - key[2]); if (dd < 90) { near++; if (dd < 24) exact++; } }
+      r.keyFlat = +(exact / Math.max(1, near)).toFixed(3); if ((r.keyFlat as number) < 0.97) fails.push(`${f}: key colour not flat (${r.keyFlat})`);
+      const stamps = cutSheet(image, ppu); r.stamps = stamps.length;
+      if (f !== 'overlay_hive' && stamps.length < blobs) fails.push(`${f}: ${stamps.length} cut-outs, brief asks ${blobs}`);
+    } else {
+      r.broodShare = broodShare(im); r.gradient = gradient(im);
+      const b = r.broodShare as { blue: number; red: number; purple: number };
+      if (b.blue + b.red + b.purple > 0.03) fails.push(`${f}: ${((b.blue + b.red + b.purple) * 100).toFixed(1)}% saturated blue/red/purple`);
+      if ((r.gradient as number) > 0.12 && f !== 'road') fails.push(`${f}: light gradient/vignette ${r.gradient}`);
+    }
+    out[f] = r;
+  }
+  const rd = imgs.road, ga = imgs.ground_a;
+  if (rd) {
+    // road band: per column, the brightest window of the road's width; its centre should sit on the middle row, level
+    const centres: number[] = [];
+    for (let x = 8; x < rd.w - 8; x += Math.max(1, rd.w / 48 | 0)) {
+      let best = -1, at = 0;
+      for (let y = half; y < rd.h - half; y += 4) { const v = meanLum(rd, x - 4, y - half, x + 4, y + half); if (v > best) { best = v; at = y; } }
+      centres.push(at);
+    }
+    const mean = centres.reduce((a, b) => a + b, 0) / centres.length, wobble = Math.sqrt(centres.reduce((a, b) => a + (b - mean) ** 2, 0) / centres.length);
+    const seam = meanLum(rd, 0, rd.h / 2 - half, 3, rd.h / 2 + half) - meanLum(rd, rd.w - 3, rd.h / 2 - half, rd.w, rd.h / 2 + half);
+    const road = meanLum(rd, 0, rd.h / 2 - half * 0.6, rd.w, rd.h / 2 + half * 0.6), ground = ga ? meanLum(ga, 0, 0, ga.w, ga.h) : 0;
+    out.roadStrip = { centreOffsetPx: Math.round(mean - rd.h / 2), wobblePx: Math.round(wobble), edgeSeamLum: +Math.abs(seam).toFixed(1), roadVsGround: ground ? +(road / ground).toFixed(2) : null };
+    if (Math.abs(mean - rd.h / 2) > half * 0.25) fails.push(`road: band ${Math.round(mean - rd.h / 2)} px off centre`);
+    if (wobble > half * 0.2) fails.push(`road: band not level/straight (wobble ${Math.round(wobble)} px)`);
+    if (Math.abs(seam) > 12) fails.push(`road: left/right edges differ (seam ${Math.abs(seam).toFixed(1)})`);
+    if (ground && road / ground < 1.25) fails.push(`road only ${(road / ground).toFixed(2)}× brighter than ground_a (want ≥ 1.25)`);
+  }
+  out.fails = fails; out.pass = fails.length === 0;
+  return out;
+}
+
 const all = maps as MapDef[];
 const [now, ring, trident] = all;
 if (q.get('sheet')) await sheet();
-else {
+else if (q.get('check')) {
+  const results = await Promise.all(q.get('check')!.split(',').filter(Boolean).map(checkKit));
+  Object.assign(window, { __kitCheck: results });
+  const pre = document.createElement('pre'); pre.style.cssText = 'padding:12px;font:13px ui-monospace,monospace;white-space:pre-wrap'; pre.textContent = JSON.stringify(results, null, 2);
+  document.getElementById('panels')!.append(pre);
+} else {
   const paint = await loadImage(`${BASE}td/environment/road/portrait.webp`);
   const kits = (q.get('kit') ?? '').split(',').filter(Boolean);
   const blind = q.get('blind') === '1';

@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { SfSnapshot } from '../sim/types';
-import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
+import { batteryModel, bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
+import { FLAGSHIPS, flagshipClock, updateFlagship } from './flagships';
+import { BOSS_MAIN_AT } from './blast';
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
@@ -16,6 +18,7 @@ import { WING_OFFSETS } from '../sim/progression';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
+  private warm: THREE.Object3D[] = [];
   private scene = new THREE.Scene(); // Far plane beyond the fog's end (1150), so a lowered camera never sees past the drawn world.
   private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1600);
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
@@ -63,8 +66,12 @@ export class SfRenderer implements GameRenderer {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
     this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
-    // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears.
+    // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears. A flagship and a battery
+    // join briefly so their hull and plasma shaders are ready before the first boss arrives (kept, not disposed, so the
+    // programs stay cached).
+    this.warm = [bossModel(0), batteryModel(0)]; for (const w of this.warm) this.scene.add(w);
     this.webgl?.compile(this.scene, this.camera);
+    for (const w of this.warm) this.scene.remove(w);
     for (let i=0;i<2;i++) {
       const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
@@ -164,30 +171,43 @@ export class SfRenderer implements GameRenderer {
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12||s.evade>0;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
     this.combat?.update(s, this.lift, this.blizzard);
     const live = new Set<number>();
+    flagshipClock.time.value = s.t % 1000; flagshipClock.beat.value = s.beat;
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
-      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
-        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
+      const parent = e.parentId !== undefined ? s.enemies.find(p => p.id === e.parentId) : undefined;
+      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : parent ? batteryModel(parent.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
+        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh) for (const mm of Array.isArray(o.material) ? o.material : [o.material]) if (mm instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === mm)) lights.push([mm, mm.color.clone()]); }); model.userData.lights = lights; }
       // Running lights breathe on the beat.
       for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
       model.position.set(e.x,e.ground?-3.8+this.lift:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
+      if (e.kind === 'boss') { model.rotation.z = flagshipRoll(e); updateFlagship(model, s.t, Math.max(0, Math.min(1, (1 - e.hp / Math.max(1, e.maxHp)) * 1.25 - 0.1))); model.userData.at = [e.x, e.y]; }
+      else if (parent) {
+        // Batteries sit on their flagship's hardpoints and roll with it.
+        const r = flagshipRoll(parent), spec = FLAGSHIPS[parent.bossStyle % FLAGSHIPS.length], my = (e.mountX ?? 0) === 0 ? spec.mount.c : spec.mount.s;
+        model.position.y = 13 - s.beat * 0.25 - (e.mountX ?? 0) * Math.sin(r) + my * Math.cos(r); model.rotation.z = r;
+      }
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
     }
-    for (const [id, model] of this.enemies) if (!live.has(id)) { this.scene.remove(model); disposeModel(model); this.enemies.delete(id); }
+    for (const [id, model] of this.enemies) if (!live.has(id)) {
+      // A destroyed flagship lingers as a burning wreck through its chain of detonations, listing and sinking, and is
+      // gone when the reactor blows. Anything else is removed at once.
+      const wreck = s.fx.find(f => f.kind === 'boom' && (f.size ?? 1) >= 2.5 && s.t - f.at < BOSS_MAIN_AT);
+      if (model.userData.flagship !== undefined && wreck && Math.abs(wreck.x - model.position.x) < 1 && !hangar) {
+        const u = (s.t - wreck.at) / BOSS_MAIN_AT;
+        model.position.y = 13 - 4 * u * u; model.rotation.z = 0.35 * u * u; model.rotation.x = -0.12 * u; updateFlagship(model, s.t, 1); continue;
+      }
+      this.scene.remove(model); disposeModel(model); this.enemies.delete(id);
+    }
     const mat = this.matrix;
     // Player pulse shots are drawn by the combat layer as glowing bolts (render/vfx.ts).
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && f.kind !== 'strike' && f.kind !== 'boom' && f.kind !== 'flak' && s.t-f.at < (f.kind==='volley'?0.5:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : age * 4 + 0.5;
-      mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
-    this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
+    // Shock rings (full lock, perfect, nova, upgrade) are soft particles in the combat layer now.
+    this.effects!.count = 0;
     // Escort phrase plasma beam: a violet column sweeping up the ship's lane, narrowing as it fades.
-    const beams = s.fx.filter(f => f.kind === 'beam' && s.t - f.at < 0.6).slice(-4);
-    beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
-      mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
-    this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
+    // The Escort's plasma beam column is drawn by the combat layer.
+    this.beams!.count = 0;
     this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2 + s.evade*3);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
@@ -223,8 +243,11 @@ export class SfRenderer implements GameRenderer {
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
     for (const pool of [this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
+    for (const w of this.warm) disposeModel(w); this.warm = [];
     this.combat?.dispose(); this.space?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();
   }
 }
+/** A capital ship barely rolls: a slow sway, steadier than the fighters'. */
+const flagshipRoll = (e: { age: number; entry?: { duration: number }; heading?: number }) => e.entry && e.age < e.entry.duration ? Math.sin(e.heading ?? 0) * -0.12 : Math.sin(e.age * 0.7) * 0.035;

@@ -2,7 +2,7 @@
 
 Dynamo Defense is moving from one hand-painted map to **procedurally generated maps**. The game draws the road,
 pads and layout itself and composites the ground from a **material kit**: a small set of top-down texture swatches
-and stamps per visual style. We need kits in several styles. **Two image generators (Codex and Grok) receive this same
+and stamps per visual style. We need kits in several styles. **Several image-generating agents receive this same
 brief and compete**; the kits are judged side by side in the game (see Judging).
 
 Do not paint whole maps. Every image below is a material, a strip, or a sheet of stamps.
@@ -60,7 +60,7 @@ green), no gradient, no texture, no shadow on the key colour. Keep 32 px of key 
 | `bridge.png` | 1536×1024 | On key colour: a straight horizontal bridge deck segment (≈160 px tall, seamless left to right), two end caps, and one railing piece. |
 | `hive_mouth.png` | 1024×1024 | The enemy entrance (burrow, breach, vent…), ~20 units across, on key colour. |
 
-Name each kit folder `<style>-<generator>` (for example `scrapyard-codex`), put it in `public/td/ground-kits/`
+Name each kit folder `<style>-<agent>` (for example `scrapyard-grok-b`), put it in `public/td/ground-kits/`
 (git-ignored: candidates never get committed), and add a `NOTES.md` with the prompts used. Optional `kit.json`:
 `{ "ppu": 16, "roadHalf": 4, "roadRim": 1 }`, i.e. image pixels per world unit, and the road strip's half-width and rim
 in world units, if a delivery came out at a different scale. `ground_a.png` and `road.png` are required; anything

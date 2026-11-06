@@ -1,7 +1,9 @@
 # Ground-kit competition: rules for the competing agents
 
-Two agents (`codex`, `grok`) each build ground material kits for Dynamo Defense from the same brief,
-iterating against the same automated checks and visual harness. A human judges blind between rounds.
+Several agents each build ground material kits for Dynamo Defense from the same brief, iterating against the same
+automated checks and visual harness. A human judges blind between rounds. The judge names each agent (`grok`,
+`grok-b`, `grok-c`, `codex`…); that name is `<agent>` in every folder below. An agent may also be given an art-direction
+**lean**: a stance within the brief to explore. Keep to it; it is what makes your entry different.
 **The spec is [BRIEF.md](BRIEF.md). Read it fully before generating anything.**
 
 ## Setup
@@ -52,14 +54,14 @@ and post a report (format below).
   any other existing art) into kit images.
 - **Don't change the game or the harness.** Write only inside your own `public/td/ground-kits/<style>-<agent>*`
   folders. If the harness has a bug, report it instead of fixing it.
-- **Don't open the other agent's folders.** Judging is blind; stay independent.
+- **Don't open other agents' folders.** Judging is blind; stay independent.
 - **Never commit images.** `public/td/ground-kits/` is git-ignored on purpose. No pushes.
 - Track your image count; efficiency is noted in the final comparison.
 
 ## Report format (end of each round)
 
 ```
-Agent: <codex|grok>   Round: <n>   Style: <style>   Judged copy: public/td/ground-kits/<style>-<agent>/
+Agent: <agent> (lean: <lean or none>)   Round: <n>   Style: <style>   Judged copy: public/td/ground-kits/<style>-<agent>/
 Iterations: <n> (best: v<N>)   Images generated: <n>
 Gates: PASS | FAIL (<remaining fails>)
 Self-scores (1–5): reads <n> · style <n> · composites <n> · lighting <n> · scale <n> · variety <n>
@@ -70,9 +72,9 @@ Known weaknesses: <bullets>
 ## Judging (human)
 
 ```sh
-node scripts/td-kit-review.mjs outpost-codex,outpost-grok,painting-baseline --blind
-node scripts/td-kit-review.mjs scrapyard-codex,scrapyard-grok --blind
+node scripts/td-kit-review.mjs outpost-grok,outpost-grok-b,outpost-grok-c,painting-baseline --blind
+node scripts/td-kit-review.mjs scrapyard-grok,scrapyard-grok-b,scrapyard-grok-c --blind
 ```
 
 Then the same on iPad (`/dev/td-ground.html?kit=…&blind=1`). Feedback to each agent uses the rubric lines from the
-brief, without revealing the other agent's work.
+brief, without revealing the other agents' work.

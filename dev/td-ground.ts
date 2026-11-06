@@ -450,7 +450,15 @@ async function checkKit(folder: string) {
     const all = smoothRows(rowLum(0, rd.w), 6), edge = Math.round(rd.h * 0.15);
     const groundLvl = [...all.slice(0, edge), ...all.slice(-edge)].sort((a, b) => a - b)[edge], roadLvl = Math.max(...all.slice(edge, -edge));
     const cut = (groundLvl + roadLvl) / 2;
-    const band = (p: number[]) => { let i = p.indexOf(Math.max(...p.slice(edge, -edge))), a = i, z = i; while (a > 0 && p[a - 1] > cut) a--; while (z < p.length - 1 && p[z + 1] > cut) z++; return { a, z }; };
+    // the band may contain dark ruts: step across dips up to `gap` rows when the profile comes back above the cut
+    const gap = Math.round(half * 0.45);
+    const band = (p: number[]) => {
+      let i = p.indexOf(Math.max(...p.slice(edge, -edge))), a = i, z = i;
+      const reach = (from: number, dir: -1 | 1) => { for (let k = 1; k <= gap; k++) { const j = from + dir * k; if (j < 0 || j >= p.length) return -1; if (p[j] > cut) return j; } return -1; };
+      for (let j = reach(a, -1); j >= 0; j = reach(a, -1)) a = j;
+      for (let j = reach(z, 1); j >= 0; j = reach(z, 1)) z = j;
+      return { a, z };
+    };
     const whole = band(all), centres: number[] = [];
     for (let x = 0; x + 96 <= rd.w; x += 96) { const b = band(smoothRows(rowLum(x, x + 96), 10)); centres.push((b.a + b.z) / 2); }
     const mid = (whole.a + whole.z) / 2, mean = centres.reduce((a, b) => a + b, 0) / centres.length;

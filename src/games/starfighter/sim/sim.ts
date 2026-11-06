@@ -61,7 +61,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, absorbed = 0, selectedId: number | null = null;
   let lockIn = 0, volleyAge = 0, volleyAt = -99, volleys = 0, dodges = 0;
   const segmenter = createSegmenter(timeline, tun.bossEvery, tun.firstBoss);
-  let plannedSeg = -1, seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
+  let plannedSeg = -1, lastTitle = '', seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
   let segBoss: 'defeated' | 'escaped' | null = null, bossDone = false, airResolved = 0, scorecard: SfSnapshot['scorecard'] = null; const grades: string[] = [];
   // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
   const world = new WorldRoute(), routeS = () => 126 + dist;
@@ -457,7 +457,9 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         plannedSeg = seg.index;
         segBase = { t, onTargetS, clearKilled, clearTotal, perfects, airResolved, eliteCleared, eliteSeen };
         segBoss = null; bossDone = false; bossAt = null; scorecard = null;
-        if (seg.index > 0) announce(seg.title ? `Now entering · ${seg.title}` : 'New airspace');
+        // Name the song only when it changes: a mix split into several places keeps playing the same track.
+        if (seg.index > 0) announce(seg.title && seg.part === 0 && seg.title !== lastTitle ? `Now entering · ${seg.title}` : 'New airspace');
+        lastTitle = seg.title;
         // Plan this segment's path: turns only over open city/ocean, starting on phrases.
         // Distances ahead come from the drive forecast (turns are scenery: a rider below the drive just meets them late).
         const spans = aheadSpans(seg.t1), sNow = routeS(), sEnd = sNow + spanDistance(spans, expectSpeed), phrases = timeline?.phrases ?? [];

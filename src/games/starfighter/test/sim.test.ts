@@ -33,6 +33,13 @@ describe('endurance music combat', () => {
     expect(r.snap().effort).toMatchObject({ floorWatts: 112, ceilingWatts: 150, erg: false });
     expect(r.s.commands.every(c => c.mode !== 'erg')).toBe(true);
   });
+  it('names a song once: a biome change inside the same song does not announce it again', () => {
+    const tl = longMusic(); tl.songs = [{ ...tl.songs[0], t0: 0, t1: tl.durationS, title: 'Long Mix' }];
+    const r = rig({}, 'z2', tl), banners = new Set<string>(); let maxSeg = 0;
+    while (r.snap().segment.index < 2 && r.s.ctx.media!.positionS() < 1200) { r.seconds(1); banners.add(r.snap().banner); maxSeg = Math.max(maxSeg, r.snap().segment.index); }
+    expect(maxSeg).toBe(2); expect(banners.has('New airspace')).toBe(true);
+    expect([...banners].some(b => b.includes('Long Mix'))).toBe(false);
+  }, 30_000);
   it('sustained shortfall weakens guns and permits ramming; restored riding recovers', () => {
     const r = rig({}, 'idle'); let weakest = 1, lowestShield = 100;
     for (let i = 0; i < 100; i++) { r.seconds(0.25); weakest = Math.min(weakest, r.snap().quality); lowestShield = Math.min(lowestShield, r.snap().shield); }

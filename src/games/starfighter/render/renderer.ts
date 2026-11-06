@@ -36,7 +36,7 @@ export class SfRenderer implements GameRenderer {
   private blizzard = 0; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
-  private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
+  private hud!: SquadronHud; private lastGrazeId = 0; private lastEvadeAt = -99; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
     if (el?.dataset.action === 'flank' || el?.dataset.action === 'target') this.send?.({ type: 'flank', direction: Number(el.dataset.direction) });
@@ -111,6 +111,8 @@ export class SfRenderer implements GameRenderer {
     this.lastFxId=Math.max(this.lastFxId,...s.fx.map(f=>f.id));
     this.last = { ...s, locks: [...s.locks] };
     const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
+    // Evasive roll: a quick rising whoosh the moment the rider steers, so the move is felt even before it is seen.
+    if (s.evade > 0 && s.evadeAt !== this.lastEvadeAt) { this.lastEvadeAt = s.evadeAt; play('whoosh', { vol: 0.3, pitch: 1.5, minGapS: 0.15 }); }
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
     if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
     if (s.scorecard && s.scorecard.at !== this.lastScoreAt) { this.lastScoreAt = s.scorecard.at; play(s.scorecard.grade === 'S' ? 'levelup' : 'reward', { vol: 0.35 }); }
@@ -166,7 +168,7 @@ export class SfRenderer implements GameRenderer {
     this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy + (hangar ? 0 : s.lift * 0.6), hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8 + rollAt((s.roll?.dur ?? 0) / 2 * (i + 1))); });
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
-    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
+    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12||s.evade>0;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
     this.combat?.update(s, this.lift, this.blizzard);
     const live = new Set<number>();
     flagshipClock.time.value = s.t % 1000; flagshipClock.beat.value = s.beat;
@@ -210,7 +212,7 @@ export class SfRenderer implements GameRenderer {
     beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
       mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
     this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
-    this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
+    this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2 + s.evade*3);
     (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
     (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30;

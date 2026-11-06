@@ -151,9 +151,9 @@ judged on the rubric below; **round 2** assigns the remaining styles to the stro
 Kits are dropped into the ground spike and judged on the same three generated maps (today's road, ring-in/bridge-out,
 trident) in portrait and landscape, with the real turret, towers and aliens on top, then on iPad:
 
-- `/dev/td-ground.html?kit=outpost-codex,outpost-grok&blind=1`: two kits side by side, names hidden, order shuffled.
+- `/dev/td-ground.html?kit=outpost-grok,outpost-grok-b&blind=1`: kits side by side, names hidden, order shuffled.
 - `scripts/td-kit-from-painting.sh` builds `painting-baseline` from today's painting (placeholder props, deck and
-  decals): the bar for **Outpost Rock** to beat. Add it to the comparison: `?kit=painting-baseline,outpost-codex,...`.
+  decals): the bar for **Outpost Rock** to beat. Add it to the comparison: `?kit=painting-baseline,outpost-grok,...`.
 
 | Weight | Check | How |
 |---|---|---|

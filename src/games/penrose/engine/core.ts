@@ -832,12 +832,18 @@ function makeLevel(def, idx) {
     W.t += dt;
     if (W.mode === 'road') {
       const r = W.road, prev = W.s; W.s += W.dir * LV.speed * dt; W.spin += LV.speed * dt / .37;
-      for (const f of r.forks) if (f.dir === W.dir && (W.dir > 0 ? prev < f.s && W.s >= f.s : prev > f.s && W.s <= f.s) && f.when()) { enter(f.to, f.toK || 0); L.flash(f.text || ''); return; }
+      for (const f of r.forks) if (f.dir === W.dir && (W.dir > 0 ? prev < f.s && W.s >= f.s : prev > f.s && W.s <= f.s) && f.when()) {
+        // a fork can land mid-road (toS, a number or a function), sliding across (slide) as on a conveyor belt
+        if (f.toS !== undefined) { const ts = typeof f.toS === 'function' ? f.toS() : f.toS, tgt = typeof f.to === 'function' ? f.to() : f.to;
+          if (f.slide) { W.mode = 'hop'; W.t = 0; W.a = r.at(W.s).p.clone(); W.b = tgt.at(ts).p.clone(); W.hl = Math.max(.01, W.a.distanceTo(W.b)) / (f.slide || 1); W.to = { to: tgt, toS: ts, toDir: f.toDir ?? W.dir }; }
+          else attach(tgt, ts, f.toDir ?? W.dir);
+        } else enter(f.to, f.toK || 0);
+        L.flash(f.text || ''); return; }
       if (r.solid && !r.solid()) { const f = r.at(W.s); return fall({ p: f.p, out: f.d.clone().multiplyScalar(W.dir) }, r.goneText); }
       if (r.blowBack && r.blowBack(W.dir)) { W.dir = -W.dir; L.flash(r.blowText || 'Blown back by the headwind'); return; }
       if (r.closed) { if (W.s >= r.L) W.s -= r.L; else if (W.s < 0) W.s += r.L; }
       else if (W.dir > 0 && W.s >= r.L) atEnd(1, W.s - r.L); else if (W.dir < 0 && W.s <= 0) atEnd(0, -W.s);
-    } else if (W.mode === 'hop') { W.spin += LV.speed * dt / .37; if (W.t * LV.speed >= W.hl) enter(W.to.to, W.to.toK); }
+    } else if (W.mode === 'hop') { W.spin += LV.speed * dt / .37; if (W.t * LV.speed >= W.hl) { if (W.to.toS !== undefined) attach(W.to.to, W.to.toS, W.to.toDir); else enter(W.to.to, W.to.toK); } }
     else if (W.mode === 'fall') {
       const gv = new T.Vector2(0, -1); W.vel.addScaledVector(gv, LV.grav * dt); const prev = W.pos.clone(); W.pos.addScaledVector(W.vel, dt); W.spin += LV.speed * dt / .37;
       let hit = null;

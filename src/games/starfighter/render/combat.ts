@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { SfSnapshot } from '../sim/types';
 import { geometries } from './models';
 import { groupOf, GROUND_SPEED } from '../sim/encounters';
-import { createVfx, h01, VFX } from './vfx';
+import { createVfx, h01, MARKER, VFX } from './vfx';
 import { blast, flagshipBlast, type BlastColors } from './blast';
 import { FLAGSHIPS } from './flagships';
 
@@ -34,15 +34,16 @@ export function createCombat(scene: THREE.Scene) {
   // Tempo Striker: an amber blade along the swept span, and a thin slash up to each enemy it hits (at most 8 at
   // once, a quarter second each, so a column of hits never flares).
   const blade = pool(geometries.box, '#ffcf3a', 2, true), slashes = pool(geometries.box, '#ffcf3a', 8, true), slashCores = pool(geometries.box, '#fff6d8', 8);
-  const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
+  // Lock reticles, elite crowns, muzzle warnings, the shield and target brackets are flat `marker` particles.
+  const LOCK = C('#ffe27a'), BRACKET = C('#fff3b0'), markColor = new THREE.Color(), spin = (t: number) => ((t % 1) + 1) % 1 * 0.999;
   const shadows=pool(geometries.sphere,'#071b34',96);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;
   // Tumbling hull fragments (a few per blast, glowing hot; the fire, sparks and smoke are particles).
   const debris = new THREE.InstancedMesh(geometries.rock, new THREE.MeshStandardMaterial({ color: '#3b3533', metalness: 0.55, roughness: 0.5, emissive: '#ff5a1a', emissiveIntensity: 0.45 }), 384);
   debris.count = 0; debris.frustumCulled = false; scene.add(debris);
   // Muzzle charge before an enemy fires, and cyan streak sparks where a bullet grazes the ship.
-  const warns = pool(geometries.sphere, '#ffffff', 96, true), warnRings = pool(geometries.ring, '#ffffff', 96, true), sparks = pool(geometries.box, '#9ffbff', 192, true);
-  (warns.material as THREE.MeshBasicMaterial).opacity = 0.75; (warnRings.material as THREE.MeshBasicMaterial).opacity = 0.9; (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
+  const sparks = pool(geometries.box, '#9ffbff', 192, true);
+  (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
   const warnColor = new THREE.Color(), gold = new THREE.Color('#ffd34d'), pink = new THREE.Color('#ff45c9'), amber = new THREE.Color('#ffd24f');
   const mat = new THREE.Object3D(), a = new THREE.Vector3(), b = new THREE.Vector3(), direction = new THREE.Vector3(), axis = new THREE.Vector3(0,0,1);
   const bezier = (u: number, sx: number, sy: number, ex: number, ey: number, side: number, height: number, out: THREE.Vector3) => {
@@ -53,8 +54,10 @@ export function createCombat(scene: THREE.Scene) {
   return {
     /** `lift`: how far the terrain has risen toward the ship (ground shadows and blasts follow it). */
     /** `snow` 0..1: blizzard strength (arctic), drawn as wind-driven flakes in the alpha particle layer. */
-    update(s: SfSnapshot, lift = 0, snow = 0) {
+    /** `shield`: where to draw the ship's shield ring (null in the hangar), its radius, colour and strength 0..1. */
+    update(s: SfSnapshot, lift = 0, snow = 0, shield: { x: number; y: number; z: number; r: number; color: THREE.Color; alpha: number } | null = null) {
       vfx.begin();
+      if (shield && shield.alpha > 0.01) vfx.add(VFX.marker, shield.x, shield.y, shield.z, shield.r / 0.43, shield.r / 0.43, markColor.copy(shield.color).multiplyScalar(Math.min(1, shield.alpha * 1.6)), 0, MARKER.shield + spin(s.t * 0.2));
       let n = 0;
       for (const laser of s.lasers) {
         const age = s.t - laser.at; if (age < 0) continue;
@@ -198,23 +201,16 @@ export function createCombat(scene: THREE.Scene) {
       }
       dashes.count = dn; beamGlow.count = beamCore.count = bn;
       for (const p of [dashes, beamGlow, beamCore]) { p.instanceMatrix.needsUpdate = true; if (p.instanceColor) p.instanceColor.needsUpdate = true; }
-      n = 0;
+      let marks = 0;
       for (const e of s.enemies) {
         const count = s.locks.filter(id => id === e.id).length, inGroup = s.selectedGroup !== null && groupOf(e) === s.selectedGroup;
         if (!count && e.id !== s.selectedId && !inGroup) continue;
-        const size = (e.kind === 'boss' ? 12 : 4.5) * (count || e.id === s.selectedId ? 1 : 0.6);
-        mat.position.set(e.x, e.ground?-2.2:12.2, e.y-50); mat.rotation.set(0, s.t * 0.7, 0); mat.scale.setScalar(size); mat.updateMatrix(); rings.setMatrixAt(n++, mat.matrix);
-        if (count > 1 && n < 48) { mat.scale.setScalar(size+1); mat.updateMatrix(); rings.setMatrixAt(n++, mat.matrix); }
-        if (n >= 46) break;
+        const size = (e.kind === 'boss' ? 12 : 4.5) * (count || e.id === s.selectedId ? 1 : 0.6) / 0.43;
+        vfx.add(VFX.marker, e.x, e.ground ? -2.2 : 12.2, e.y - 50, size, size, count || e.id === s.selectedId ? LOCK : markColor.copy(LOCK).multiplyScalar(0.55), 0, (count > 1 ? MARKER.lock2 : MARKER.lock) + spin(s.t * 0.11));
+        if (++marks >= 46) break;
       }
-      rings.count = n; rings.instanceMatrix.needsUpdate = true;
-      const selected = s.enemies.find(e => e.id === s.selectedId); n = 0;
-      if (selected) for (const dx of [-1, 1]) for (const dz of [-1, 1]) {
-        const size = selected.kind === 'boss' ? 14 : 6;
-        mat.position.set(selected.x+dx*size, selected.ground?-2:12, selected.y-50+dz*size); mat.rotation.set(0, 0, 0); mat.scale.set(2.5, 0.22, 0.28); mat.updateMatrix(); brackets.setMatrixAt(n++, mat.matrix);
-        mat.position.x += dx * 1.1; mat.position.z -= dz * 1.1; mat.scale.set(0.28, 0.22, 2.5); mat.updateMatrix(); brackets.setMatrixAt(n++, mat.matrix);
-      }
-      brackets.count = n; brackets.instanceMatrix.needsUpdate = true;
+      const selected = s.enemies.find(e => e.id === s.selectedId);
+      if (selected) { const size = (selected.kind === 'boss' ? 15.5 : 7.5) / 0.43 * (1 + 0.04 * s.beat); vfx.add(VFX.marker, selected.x, selected.ground ? -2 : 12, selected.y - 50, size, size, BRACKET, 0, MARKER.bracket); }
       let sh=0;
       for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8+lift,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?FLAGSHIPS[e.bossStyle%FLAGSHIPS.length].shadow[0]:4,0.03,e.kind==='boss'?FLAGSHIPS[e.bossStyle%FLAGSHIPS.length].shadow[1]:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
       mat.position.set(s.shipX,-5.8+lift,s.shipY-47);mat.scale.set(6,0.03,4);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);shadows.count=sh;shadows.instanceMatrix.needsUpdate=true;
@@ -287,26 +283,21 @@ export function createCombat(scene: THREE.Scene) {
           vfx.add(VFX.fire, wreck.x, wreck.y + 1 + f * 2, wreck.z + f, 6.5 * (0.7 + 0.6 * f), 6.5 * (0.7 + 0.6 * f), hitHeat, f, seed);
         });
       }
+      // Elite wings wear a gold crown that breathes with the beat, so they read apart from amber armour.
       let w = 0;
-      // Elite wings wear a gold ring that breathes with the beat, so they read apart from amber armour.
       for (const e of s.enemies) {
-        if (!e.elite || w >= 96) continue;
-        mat.position.set(e.x, 10, e.y - 50); mat.rotation.set(0, 0, 0); mat.scale.setScalar(3.2 + s.beat * 0.5); mat.updateMatrix();
-        warnRings.setMatrixAt(w, mat.matrix); warns.setMatrixAt(w, mat.matrix); warnColor.copy(gold).multiplyScalar(0.75 + s.beat * 0.25);
-        warnRings.setColorAt(w, warnColor); warns.setColorAt(w++, warnColor.multiplyScalar(0.25));
+        if (!e.elite || w++ >= 96) continue;
+        const size = (3.6 + s.beat * 0.5) / 0.43;
+        vfx.add(VFX.marker, e.x, 10, e.y - 50, size, size, markColor.copy(gold).multiplyScalar(0.8 + s.beat * 0.2), 0, MARKER.elite + spin(s.t * 0.15 + h01(e.id)));
       }
       for (const e of s.enemies) {
-        if (!e.warn || e.warn < 0.05 || w >= 96) continue;
-        const pulse = 1 + Math.sin(s.t * 26) * 0.12 * e.warn;
-        mat.position.set(e.x, e.ground ? -1.5 : e.kind === 'boss' ? 13 : 10, e.y - 50 + 2.5); mat.rotation.set(0, 0, 0);
-        const big = e.kind === 'boss' ? 2.2 : 1;
-        mat.scale.setScalar((1 + e.warn * 2.8) * pulse * big); mat.updateMatrix(); warns.setMatrixAt(w, mat.matrix);
-        // A ring closing in on the muzzle reads as "about to fire".
-        mat.scale.setScalar((9 - e.warn * 6) * big); mat.updateMatrix(); warnRings.setMatrixAt(w, mat.matrix);
+        if (!e.warn || e.warn < 0.05 || w++ >= 96) continue;
+        const pulse = 1 + Math.sin(s.t * 26) * 0.12 * e.warn, big = e.kind === 'boss' ? 2.2 : 1, x = e.x, y = e.ground ? -1.5 : e.kind === 'boss' ? 13 : 10, z = e.y - 50 + 2.5;
         warnColor.copy(e.ground || e.kind === 'turret' || e.kind === 'tank' ? amber : pink).multiplyScalar(0.3 + 0.7 * e.warn);
-        warns.setColorAt(w, warnColor); warnRings.setColorAt(w++, warnColor);
+        // A charge glowing at the muzzle, and a reticle closing in on it, reads as "about to fire".
+        vfx.add(VFX.flash, x, y, z, (2 + e.warn * 5) * pulse * big, (2 + e.warn * 5) * pulse * big, warnColor, 0.15);
+        const r = (9 - e.warn * 6) * big / 0.43; vfx.add(VFX.marker, x, y, z, r, r, warnColor, 0, MARKER.warn + spin(e.warn * 0.4 + h01(e.id)));
       }
-      for (const p of [warns, warnRings]) { p.count = w; p.instanceMatrix.needsUpdate = true; if (p.instanceColor) p.instanceColor.needsUpdate = true; }
       let k = 0;
       for (const fx of s.fx) {
         const age = s.t - fx.at;
@@ -352,6 +343,6 @@ export function createCombat(scene: THREE.Scene) {
       }
       vfx.flush();
     },
-    dispose() { vfx.dispose(); for (const mesh of [rings, brackets, debris, shadows, warns, warnRings, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
+    dispose() { vfx.dispose(); for (const mesh of [debris, shadows, sparks, dashes, beamGlow, beamCore, blade, slashes, slashCores]) { mesh.dispose(); } },
   };
 }

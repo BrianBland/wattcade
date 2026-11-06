@@ -26,7 +26,7 @@ export class SfRenderer implements GameRenderer {
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
   private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
-  private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
+  private starfield?: THREE.Points; private shieldColor = new THREE.Color(); private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
   private cameraBase = new THREE.Vector3(); private turnRoll = 0;
@@ -77,7 +77,6 @@ export class SfRenderer implements GameRenderer {
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
       ghost.visible=false;this.ghosts.push(ghost);this.scene.add(ghost);
     }
-    this.halo = new THREE.Mesh(geometries.ring, new THREE.MeshBasicMaterial({ color: '#86e7ff', transparent: true, opacity: 0.35, depthWrite: false })); this.scene.add(this.halo);
     const makePool = (geo: THREE.BufferGeometry, color: string, count: number) => {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
@@ -169,7 +168,9 @@ export class SfRenderer implements GameRenderer {
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12||s.evade>0;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
-    this.combat?.update(s, this.lift, this.blizzard);
+    // The shield: a shimmering ring of cells round the ship (gold when ace), brighter under cover and with ride quality.
+    this.combat?.update(s, this.lift, this.blizzard, hangar ? null : { x: hx, y: hy + 0.4, z: hz, r: 5 + s.beat * 0.6 + s.dodge * 2 + s.evade * 3,
+      color: this.shieldColor.set(s.ace ? '#ffd34d' : '#86e7ff'), alpha: (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40) });
     const live = new Set<number>();
     flagshipClock.time.value = s.t % 1000; flagshipClock.beat.value = s.beat;
     for (const e of s.enemies) {
@@ -208,9 +209,6 @@ export class SfRenderer implements GameRenderer {
     // Escort phrase plasma beam: a violet column sweeping up the ship's lane, narrowing as it fades.
     // The Escort's plasma beam column is drawn by the combat layer.
     this.beams!.count = 0;
-    this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2 + s.evade*3);
-    (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
-    (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
     this.starfield!.position.z = (s.t * 1.5) % 30;
     // The world passes beneath through the ship's route pose; the next biome takes over at its frame line.
     this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,

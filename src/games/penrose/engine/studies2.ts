@@ -89,51 +89,64 @@ function clutchBridge(L, o) {
 }
 
 /**
- * A reflection road: a road that is there only in a pool's reflection. Above the water there is nothing to see, but the
- * road the pool shows is real, as long as the pool is still. Hard pedalling raises a wind that ruffles the water; ruffled,
- * the reflection breaks and the road is not there. Ride it at a calm cadence (under o.calm rpm), never stopped.
- * o: { pts: samples of the real (invisible) road, pool: [x0, y0, x1, y1], wz (water height), calm }
+ * Reflections on a pool. Roads ride flat on the water, and the pool paints the reflection of whatever stands above it over
+ * them, as a real pool would. While the water is still, what it shows is real: a reflected road is a road (the wheel can
+ * turn onto it), a reflected gate is a gate (the road under it is shut). Hard pedalling raises a wind that ruffles the
+ * water; ruffled, the reflection breaks up and none of it is there. Calm is a cadence under o.calm rpm, never a stop.
+ * o: { pool: [x0, y0, x1, y1], wz (water height), calm, over(og): builds the things above the pool into og; meshes may set
+ *      userData.rc for their reflected colour }
+ * Seen from the fixed camera, the reflection of a point h above the water lands on the water at (x + h, y + h): reflect()
+ * gives that spot, so a reflected road can be ridden by an invisible road laid there.
  */
+let CLIP_ON = false;
 function reflection(L, o) {
-  const th = L.th, g = L.g, [x0, y0, x1, y1] = o.pool, wz = o.wz ?? -.12, calm = o.calm ?? 74;
-  // the basin and the water: a sunk stone rim, a dark bed, and a translucent surface the reflection shows through
-  B(g, x0 - .2, y0 - .2, -.5, x1 + .2, y0, -.02, tri(sp(th, 0))); B(g, x0 - .2, y1, -.5, x1 + .2, y1 + .2, -.02, tri(sp(th, 0)));
-  B(g, x0, y0, -2.4, x1, y1, -1.8, tri(tone('#2F5C70')));
-  B(g, x0 - .2, y0, -2.4, x0, y1, -.02, tri(sp(th, 0))); B(g, x1, y0, -2.4, x1 + .2, y1, -.02, tri(sp(th, 0)));
-  B(g, x0 - .2, y0 - .2, -2.4, x1 + .2, y0, -.5, tri(sp(th, 0))); B(g, x0 - .2, y1, -2.4, x1 + .2, y1 + .2, -.5, tri(sp(th, 0)));
-  const waterM = new T.MeshBasicMaterial({ color: '#7EC4D8', transparent: true, opacity: .5, depthWrite: false });
-  const water = new T.Mesh(UNIT_BOX, waterM); water.scale.set(x1 - x0, .01, y1 - y0); water.position.copy(V((x0 + x1) / 2, (y0 + y1) / 2, wz)); water.renderOrder = 2; g.add(water);
-  // the reflection: the road mirrored in the water plane, drawn under the surface
-  const rg = new T.Group(); g.add(rg);
-  const mir = new Road(o.pts.map((q) => ({ p: [q.p[0], q.p[1], 2 * wz - q.p[2]], n: [0, 0, 1] })));
-  const rM = tri(o.pal || sp(th, 1), { side: true, fresh: true }); rg.add(ribbon(mir, 1, .08, rM)); rg.add(ribbon(mir, .07, 0, L.lane, { lift: .012, dash: [.38, .2] })); if (o.extra) o.extra(rg, wz);
+  const th = L.th, g = L.g, [x0, y0, x1, y1] = o.pool, wz = o.wz ?? -.04, calm = o.calm ?? 74;
+  if (!CLIP_ON) { R3.localClippingEnabled = true; CLIP_ON = true; }
+  // the basin: a stone rim, shallow walls and a dark bed under a bright, still surface
+  const rimM = tri(sp(th, 0));
+  B(g, x0 - .2, y0 - .2, -.5, x1 + .2, y0, -.02, rimM); B(g, x0 - .2, y1, -.5, x1 + .2, y1 + .2, -.02, rimM);
+  B(g, x0 - .2, y0, -.5, x0, y1, -.02, rimM); B(g, x1, y0, -.5, x1 + .2, y1, -.02, rimM);
+  B(g, x0, y0, -.5, x1, y1, wz - .02, tri({ t: '#7FC3D4', l: '#5FA7BA', r: '#4A8DA0' }));
+  // the things above the pool, and their reflection: the same meshes flipped in the water plane, drawn flat over the
+  // surface (and over any road riding on it), clipped to the pool's edge
+  const og = new T.Group(); g.add(og); o.over(og);
+  // clip to the pool as seen: a reflected point at height z shows on the water at (x + wz - z, y + wz - z), so each edge is
+  // a plane through the view direction (three: x = x, y = up, z = sketch y)
+  const k = Math.SQRT1_2, P3 = (nx, ny, nz, c) => new T.Plane(new T.Vector3(nx * k, ny * k, nz * k), c * k);
+  const clip = [P3(1, -1, 0, wz - x0), P3(-1, 1, 0, x1 - wz), P3(0, -1, 1, wz - y0), P3(0, 1, -1, y1 - wz)];
+  const rg = og.clone(true); rg.position.y = 2 * wz; rg.scale.y = -1; g.add(rg);
+  const mats = [];
+  rg.traverse((m) => { if (!m.isMesh) return; const c = new T.Color(m.userData.rc || '#FFFFFF').lerp(new T.Color('#7FC3D4'), .25);
+    m.material = new T.MeshBasicMaterial({ color: c, transparent: true, opacity: .9, depthTest: false, depthWrite: false, side: T.DoubleSide, clippingPlanes: clip }); m.renderOrder = 6; mats.push(m.material); });
   // ripple rings that spread while the wind blows
-  const rings = [0, 1, 2].map((i) => { const m = new T.Mesh(new T.TorusGeometry(1, .015, 4, 40), new T.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0, depthWrite: false })); m.rotation.x = Math.PI / 2; m.renderOrder = 3; g.add(m); return m; });
-  const st = { wind: 0, still: () => st.wind < .15, ruffled: () => st.wind > .8 };
+  const rings = [0, 1, 2].map(() => { const m = new T.Mesh(new T.TorusGeometry(1, .02, 4, 40), new T.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0, depthTest: false, depthWrite: false, clippingPlanes: clip })); m.rotation.x = Math.PI / 2; m.renderOrder = 7; g.add(m); return m; });
+  const st = { wind: 0, og, still: () => st.wind < .15, ruffled: () => st.wind > .8, reflect: (p) => [p[0] + (p[2] - wz), p[1] + (p[2] - wz), wz + .046] };
   L.view.updaters.push((t0, dt0) => {
     const dt = dt0 || 1 / 60, target = clamp((rider.cad - calm) / 10, 0, 1); st.wind += (target - st.wind) * Math.min(1, dt * 2.5);
     const t = L.view.t || 0, w = st.wind;
-    rg.visible = w < .9; rg.position.x = Math.sin(t * 7) * w * .08; rg.scale.y = 1 - w * .35;
-    setTri(rM, mixPal(o.pal || sp(th, 1), tone('#9CC9D6'), .3 + .7 * w));
-    rings.forEach((m, i) => { const f = ((t * .5 + i / 3) % 1); m.scale.setScalar(.3 + f * 1.4); m.material.opacity = w * (1 - f) * .8;
+    rg.visible = w < .95; rg.position.x = Math.sin(t * 7) * w * .12; rg.position.z = Math.cos(t * 5) * w * .08;
+    for (const m of mats) m.opacity = .9 * (1 - w * w);
+    rings.forEach((m, i) => { const f = ((t * .5 + i / 3) % 1); m.scale.setScalar(.3 + f * 1.4); m.material.opacity = w * (1 - f) * .9;
       m.position.copy(V(x0 + (x1 - x0) * (.3 + .2 * i), y0 + (y1 - y0) * (.35 + .15 * i), wz + .01)); });
   });
   return st;
 }
 
 /**
- * Matching doors. Two doorways with the same banner are one doorway: ride into one and you ride out of the other. The near
+ * Matching doors. Two doorways with the same banner are one doorway: ride into one and you ride out of the other, and looking into one you see out of the other. The near
  * door's banner turns with its button (each press shows the next banner); when it matches the far door's, they connect.
  * o: { road, at: [x, y] on road, to: road the far door opens onto (from its start), far: [x, y], farAng, ang, key, banners, want }
  */
 const PORTAL_VS = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-const PORTAL_FS = `uniform float uT; uniform vec3 uC; uniform float uOpen; uniform sampler2D uMap; varying vec2 vUv;
+// closed: a calm spiral in the banner colour; open: the far side, looked up in screen space so it keeps the camera's view
+const PORTAL_FS = `uniform float uT; uniform vec3 uC; uniform float uOpen; uniform sampler2D uMap; uniform vec2 uRes; uniform vec3 uSkyA; uniform vec3 uSkyB; varying vec2 vUv;
 void main() { vec2 p = vUv - .5; p.x *= 1.12 / 1.46; float r = length(p), a = atan(p.y, p.x);
-  float sw = .5 + .5 * sin(a * 3. + r * 22. - uT * 4.), core = smoothstep(.5, .0, r);
-  vec3 c = mix(uC * .55, mix(uC, vec3(1.), .55), sw * .7 + core * .5);
-  vec3 v = uOpen > 0. ? texture2D(uMap, vUv).rgb : c; vec3 col = mix(c, v, uOpen);
-  vec2 e = abs(vUv - .5) * 2.; float rim = smoothstep(.82, 1., max(e.x, e.y));
-  gl_FragColor = vec4(mix(col, mix(uC, vec3(1.), .5), rim * .8), .92); }`;
+  float sw = smoothstep(-.3, .3, sin(a * 2. - r * 9. + uT * 1.6));
+  vec3 c = mix(uC * .78, mix(uC, vec3(1.), .5), sw * .55 + smoothstep(.45, .0, r) * .45);
+  vec2 sc = gl_FragCoord.xy / uRes; vec4 tx = texture2D(uMap, sc); vec3 sky = mix(uSkyB, uSkyA, sc.y);
+  vec3 v = mix(sky, tx.rgb, tx.a); vec3 col = mix(c, v, uOpen);
+  vec2 e = abs(vUv - .5) * 2.; float rim = step(.94, max(e.x, e.y * 1.01));
+  gl_FragColor = vec4(mix(col, mix(uC, vec3(1.), .35), rim * (1. - uOpen * .6)), 1.); }`;
 const BANNERS = ['#FF6B4A', '#FFC93C', '#46D6C2'];
 function doorway(g, th, x, y, ang, z = 0) {
   const grp = new T.Group(); grp.position.copy(V(x, y, z)); grp.rotation.y = ang; g.add(grp);
@@ -143,9 +156,9 @@ function doorway(g, th, x, y, ang, z = 0) {
   const bannerM = new T.MeshBasicMaterial({ color: '#FFFFFF' }), banner = m(.08, .5, .8, 0, 1.97, 0, bannerM);
   m(.12, .08, .96, 0, 2.26, 0, stone);
   // the portal: a swirl in the banner's colour that fills the opening; open, it shows a live view of the other side
-  const pm = new T.ShaderMaterial({ uniforms: { uT: { value: 0 }, uC: { value: new T.Color('#FFFFFF') }, uOpen: { value: 0 }, uMap: { value: null } },
-    side: T.DoubleSide, transparent: true, depthWrite: false, vertexShader: PORTAL_VS, fragmentShader: PORTAL_FS });
-  const portal = new T.Mesh(new T.PlaneGeometry(1.12, 1.46), pm); portal.rotation.y = Math.PI / 2; portal.position.set(0, .74, 0); portal.renderOrder = 4; grp.add(portal);
+  const pm = new T.ShaderMaterial({ uniforms: { uT: { value: 0 }, uC: { value: new T.Color('#FFFFFF') }, uOpen: { value: 0 }, uMap: { value: null }, uRes: { value: new T.Vector2(1, 1) }, uSkyA: { value: new T.Color('#BFE8F0') }, uSkyB: { value: new T.Color('#F7F2CF') } },
+    side: T.DoubleSide, vertexShader: PORTAL_VS, fragmentShader: PORTAL_FS });
+  const portal = new T.Mesh(new T.PlaneGeometry(1.12, 1.46), pm); portal.rotation.y = Math.PI / 2; portal.position.set(0, .745, 0); grp.add(portal);
   return { grp, bannerM, portal, pm };
 }
 function matchingDoors(L, o) {
@@ -155,17 +168,30 @@ function matchingDoors(L, o) {
   const st = { i: 0, was: false, match: () => st.i === o.want };
   st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), .04)); g.add(h); },
     tick() { if (this.on !== st.was) { st.was = this.on; st.i = (st.i + 1) % bs.length; } return 0; } });
-  // a camera at the far door looks on down its road; matched, the near portal shows what it sees
-  const rt = new T.WebGLRenderTarget(224, 292), cam = new T.PerspectiveCamera(48, 1.12 / 1.46, .05, 60), fz = o.z || 0, fa = o.farAng || 0;
-  cam.position.copy(V(o.far[0] - .2 * Math.cos(fa), o.far[1] + .2 * Math.sin(fa), fz + 1.05)); cam.lookAt(V(o.far[0] + 3 * Math.cos(fa), o.far[1] - 3 * Math.sin(fa), fz + .3)); cam.layers.enableAll();
+  // the view through: the main camera carried through the doors (far * near^-1 * camera), so looking into the near door
+  // shows the far side from the same angle, as if the two doorways were one. Rendered at screen size, sampled in screen space.
+  const rt = new T.WebGLRenderTarget(4, 4), vc = new T.OrthographicCamera(); vc.matrixAutoUpdate = false; vc.matrixWorldAutoUpdate = false;
+  const sky = (L.th.sky || '').match(/#[0-9A-Fa-f]{6}/g) || [];
+  if (sky.length) { for (const d of [near, far]) { d.pm.uniforms.uSkyA.value.set(sky[0]); d.pm.uniforms.uSkyB.value.set(sky[sky.length - 1]); } }
+  const M = new T.Matrix4(), inv = new T.Matrix4(), size = new T.Vector2();
   st.open = 0;
   L.view.updaters.push((t, dt) => {
     near.bannerM.color.set(bs[st.i]); near.pm.uniforms.uC.value.set(bs[st.i]); far.pm.uniforms.uC.value.set(bs[o.want]);
     near.pm.uniforms.uT.value = far.pm.uniforms.uT.value = t || 0;
     st.open += ((st.match() ? 1 : 0) - st.open) * Math.min(1, (dt || 1 / 60) * 3); near.pm.uniforms.uOpen.value = st.open;
-    if (st.open > .01) { near.portal.visible = far.portal.visible = false; const prev = R3.getRenderTarget(), cc = R3.getClearColor(new T.Color()), ca = R3.getClearAlpha();
-      R3.setRenderTarget(rt); R3.setClearColor('#F7E3D6', 1); R3.clear(); R3.render(L.view.scene, cam); R3.setRenderTarget(prev); R3.setClearColor(cc, ca);
-      near.portal.visible = far.portal.visible = true; near.pm.uniforms.uMap.value = rt.texture; }
+    if (st.open < .01) return;
+    const cam = L.view.camera; R3.getDrawingBufferSize(size); const w = Math.max(4, size.x >> 1), h = Math.max(4, size.y >> 1);
+    if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
+    near.pm.uniforms.uRes.value.copy(size);
+    for (const k of ['left', 'right', 'top', 'bottom', 'near', 'far', 'zoom']) vc[k] = cam[k]; vc.updateProjectionMatrix();
+    near.grp.updateMatrixWorld(); far.grp.updateMatrixWorld();
+    M.copy(far.grp.matrixWorld).multiply(inv.copy(near.grp.matrixWorld).invert()).multiply(cam.matrixWorld);
+    vc.matrix.copy(M); vc.matrixWorld.copy(M); vc.matrixWorldInverse.copy(M).invert(); vc.layers.enableAll();
+    // hide the far doorway (it stands between that camera and the far side) and both portals while rendering
+    const vis = [far.grp.visible, near.portal.visible]; far.grp.visible = false; near.portal.visible = false;
+    const prev = R3.getRenderTarget(), cc = R3.getClearColor(new T.Color()), ca = R3.getClearAlpha();
+    R3.setRenderTarget(rt); R3.setClearColor(0x000000, 0); R3.clear(); R3.render(L.view.scene, vc); R3.setRenderTarget(prev); R3.setClearColor(cc, ca);
+    far.grp.visible = vis[0]; near.portal.visible = vis[1]; near.pm.uniforms.uMap.value = rt.texture;
   });
   o.road.forks.push({ s: sAt(o.road, [o.at[0], o.at[1], 0]), dir: 1, to: o.to, toS: .05, toDir: 1, when: st.match, text: 'The two doors matched, so they were one door' });
   return st;
@@ -244,58 +270,71 @@ const NSTUDIES = [
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const br = L.props.br; R.gear = 4; R.cad = 80; if (!br.m.on && !br.spans()) br.m.set(true); else if (br.m.on && br.len > 2.75) br.m.set(false); },
     center: [0, -1.5, 0], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [8.4, -2.3, 0], [-.4, -2.3, 0]], pad: .9, scenery: false },
-  { id: 'n-pool', name: 'What the pool says', th: () => THEMES[1], cruise: [60, 95],
-    hint: 'The pool shows a bridge that is not there. What the still water shows is real. Pedal hard and the wind ruffles the pool, the reflection breaks, and the wheel stays on its loop. Ease down to a calm cadence, under 74 rpm, and the road the pool shows carries you over.',
-    build(L) {
-      const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4');
-      const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -7.6, -4, -.4, .6, -.5, tri(th.turf), 1);
-      const X1 = L.road(L3([-1, -1.7, .006], [1.6, -1.7, .006], UP), { pal }), X2 = L.road(L3([5.4, -1.7, .006], [9, -1.7, .006], UP), { goal: true });
-      B(g, -.4, -2.3, -.5, 1.4, -1.1, -.02, tri(sp(th, 0))); B(g, 5.6, -2.3, -.5, 9.4, -1.1, -.02, tri(sp(th, 0)));
-      // the real road over the pool: an arch you cannot see
-      const pts = Array.from({ length: 41 }, (_, i) => { const t = i / 40; return { p: [1.6 + 3.8 * t, -1.7, .006 + .9 * Math.sin(Math.PI * t)], n: [0, 0, 1] }; });
-      const R = L.road(pts, { noDeck: true, noLane: true }); P.R = R;
-      const pool = reflection(L, { pts, pool: [1.4, -3.2, 5.6, -.2], pal }); P.pool = pool;
-      A.forks.push({ s: sAt(A, [-1, -1.7, 0]), dir: 1, to: X1, toK: 0, when: () => pool.still(), text: 'The pool is still, so the road it shows is there' });
-      L.view.updaters.push(() => L.say(`pool ${pool.still() ? 'still' : 'ruffled'} · wind ${Math.round(pool.wind * 100)}% · ${Math.round(rider.cad)} rpm`));
-    },
-    spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
-    solve(L, W, R) { R.gear = 4; R.cad = L.view.t > 6 ? 68 : 88; },
-    center: [1, -1.5, 0], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [9.4, -2.3, 0], [3.5, -1.7, 1.2], [3.5, -3.4, -.4]], pad: .9, scenery: false },
   { id: 'n-doors', name: 'Two doors, one door', th: () => THEMES[1], cruise: [65, 95],
-    hint: 'Two doorways with the same banner are one doorway: ride into one and you ride out of the other. Your loop runs through a door with a red banner. Each press of <b>A</b> turns it to the next banner. Match the door on the island and the loop takes you there.',
+    hint: 'Two doorways with the same banner are one doorway: ride into one and you ride out of the other, and looking into one you see out of the other. Your loop runs through a door with a red banner. Each press of <b>A</b> turns it to the next banner. Match the door on the island and the loop takes you there.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4');
       const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -7.6, -4, -.4, .6, -.5, tri(th.turf), 1);
-      const X2 = L.road(L3([1.6, -5, .806], [7, -5, .806], UP), { goal: true });
-      B(g, 1.2, -5.6, -1.2, 7.4, -4.4, .78, tri(sp(th, 0)));
-      P.doors = matchingDoors(L, { road: A, at: [-4, 0], to: X2, far: [2.0, -5], z: .8, key: 'a', want: 2, btn: [0, 1.3] });
+      const X2 = L.road(L3([2.0, -5, .806], [7, -5, .806], UP), { goal: true });
+      B(g, 2.0, -5.6, -1.2, 7.4, -3.0, .78, tri(sp(th, 0)));
+      // the far door faces the other way: the wheel enters the near door heading -x and leaves the far one heading +x
+      P.doors = matchingDoors(L, { road: A, at: [-4, 0], to: X2, far: [2.0, -5], farAng: Math.PI, z: .8, key: 'a', want: 2, btn: [0, 1.3] });
       L.view.updaters.push(() => L.say(`doors ${P.doors.match() ? 'match' : 'differ'}`));
     },
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const d = L.props.doors; R.gear = 4; R.cad = 80; if (!d.match() && (L.view.t || 0) % 1 < .05) d.m.set(!d.m.on); },
     center: [0, -2.5, .5], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [7.4, -5.6, 0], [-4, 0, 2], [2, -5, 2.8]], pad: .9, scenery: false },
-  { id: 'n-pool2', name: 'Break the mirror', th: () => THEMES[1], cruise: [60, 95],
-    hint: 'This time the bridge is plain to see, but the still pool shows a gate across it, and what the still water shows is real. Pedal hard, above 86 rpm, and the wind ruffles the pool, the gate in the water breaks up, and the bridge is open.',
+  { id: 'n-pool', name: 'What the pool says', th: () => THEMES[1], cruise: [60, 95],
+    hint: 'High above the pool runs a road you cannot reach, and its reflection lies on the water beside your road. What the still water shows is real: ride at a calm cadence, under 74 rpm, and the reflected road is a road, so the wheel turns onto it and out to the pier. Pedal hard and the wind ruffles the pool, and you carry straight on.',
     build(L) {
-      const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4');
-      const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -7.6, -4, -.4, .6, -.5, tri(th.turf), 1);
-      const X1 = L.road(L3([-1, -1.7, .006], [1.6, -1.7, .006], UP), { pal }), X2 = L.road(L3([5.4, -1.7, .006], [9, -1.7, .006], UP), { goal: true });
-      B(g, -.4, -2.3, -.5, 1.4, -1.1, -.02, tri(sp(th, 0))); B(g, 5.6, -2.3, -.5, 9.4, -1.1, -.02, tri(sp(th, 0)));
-      const pts = Array.from({ length: 41 }, (_, i) => { const t = i / 40; return { p: [1.6 + 3.8 * t, -1.7, .006 + .6 * Math.sin(Math.PI * t)], n: [0, 0, 1] }; });
-      L.road(pts, { pal });
-      // the gate, only in the water: two posts and a bar across the top of the bridge, mirrored in the surface
-      const gateM = tri(tone('#FF3B2E')), top = .606;
-      const pool = reflection(L, { pts, pool: [1.4, -3.2, 5.6, 1.2], pal, calm: 78, wz: -.04, extra(rg, wz) {
-        const m = (z0, z1) => [2 * wz - z1, 2 * wz - z0];
-        for (const sd of [-.62, .62]) { const [a, b] = m(top - .1, top + .8); B(rg, 3.42, -1.7 + sd - .08, a, 3.58, -1.7 + sd + .08, b, gateM); }
-        const [a, b] = m(top + .35, top + .5); B(rg, 3.44, -2.4, a, 3.56, -1.0, b, gateM); const [c, d] = m(top + .68, top + .8); B(rg, 3.44, -2.4, c, 3.56, -1.0, d, gateM); } });
+      const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4'), wz = -.04, h = 4.8;
+      const A = L.road(loopPts(-1, -3, 7, 0, 0, .8), { closed: true, pal }); P.A = A;
+      const turf = tri(th.turf); B(g, -1.6, -3.6, -.5, .2, .6, -.02, turf); B(g, 3.8, -3.6, -.5, 7.6, .6, -.02, turf); B(g, .2, -3.6, -.5, 3.8, -1.1, -.02, turf);
+      // the sky road: the water road lifted h and pulled back h, on two tall piers outside the loop
+      const sky = ftur([3.8 - h, -h, wz + h], [-1, 0, 0], UP).fwd(.8).turn(1, -90).fwd(2.2);
+      const pool = reflection(L, { pool: [.4, -.9, 3.6, 2.4], wz, over(og) {
+        const rr = new Road(sky.pts), m = ribbon(rr, 1, .12, tri(pal, { side: true })); m.userData.rc = '#FFF4DC'; og.add(m);
+        const ln = ribbon(rr, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }); ln.userData.rc = '#B0624E'; og.add(ln);
+        for (const q of [sky.pts[0].p, sky.pts[sky.pts.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + .5, 12), tri(sp(th, 0))); c.position.copy(V(q[0], q[1], (q[2] - .5) / 2 - .2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+      } });
       P.pool = pool;
-      A.forks.push({ s: sAt(A, [-1, -1.7, 0]), dir: 1, to: X1, toK: 0, when: () => pool.ruffled(), text: 'The ruffled pool shows no gate, so there is none' });
-      L.view.updaters.push(() => L.say(`pool ${pool.ruffled() ? 'ruffled' : pool.still() ? 'still' : 'stirring'} · wind ${Math.round(pool.wind * 100)}% · ${Math.round(rider.cad)} rpm`));
+      // the water road, where the sky road's reflection lies, and the pier it leads to
+      const wt = ftur([3.0, 0, .006], [-1, 0, 0], UP).turn(1, -90).fwd(1.4);
+      const W = L.road(wt.pts, { noDeck: true, noLane: true }); P.W = W;
+      const G = L.road(L3([2.0, 2.4, .006], [2.0, 5.4, .006], UP), { goal: true }); B(g, 1.4, 2.4, -.5, 2.6, 5.8, -.02, tri(sp(th, 0)));
+      A.forks.push({ s: sAt(A, [3.0, 0, 0]), dir: 1, to: W, toK: 0, when: () => pool.still(), text: 'The still pool shows a road, so there is one' });
+      L.view.updaters.push(() => L.say(`pool ${pool.ruffled() ? 'ruffled' : pool.still() ? 'still' : 'stirring'} · ${Math.round(rider.cad)} rpm`));
+    },
+    spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
+    solve(L, W, R) { R.gear = 4; R.cad = 68; },
+    center: [1.5, -1, 1], pts: [[-1.6, -3.6, 0], [7.6, .6, 0], [2, 5.8, 0], [-2.8, -1.6, 5], [-1, -4.8, 5]], pad: .9, scenery: false },
+
+  { id: 'n-pool2', name: 'Break the mirror', th: () => THEMES[1], cruise: [60, 95],
+    hint: 'The road home rides across the pool, and the pool shows a gate standing across it: the reflection of the portcullis hung high above. What the still water shows is real, so the road is shut. Pedal hard, above 86 rpm, and the wind ruffles the water, the gate breaks up, and the road is open.',
+    build(L) {
+      const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4'), wz = -.04, h0 = 3.2, h1 = 4.2, xg = 3.5;
+      const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, -7.6, -4, -.4, .6, -.5, tri(th.turf), 1);
+      const X = L.road(L3([-1, -1.7, .006], [9, -1.7, .006], UP), { goal: true, pal });
+      B(g, -.4, -2.3, -.5, 1.2, -1.1, -.02, tri(sp(th, 0))); B(g, 5.8, -2.3, -.5, 9.4, -1.1, -.02, tri(sp(th, 0)));
+      // the portcullis, hung high between two towers; its reflection lands across the road at x = xg
+      const gateM = tri(tone('#C9503F')), stone = tri(sp(th, 0));
+      const pool = reflection(L, { pool: [1.2, -3.2, 5.8, 1.0], wz, calm: 78, over(og) {
+        // a portcullis hung high: its top beam at h1, bars hanging to h0. Shifted back by (h1 - 2wz) in x and y, its
+        // reflection stands on the road at xg, beam on the water and spikes up, a gate h1 - h0 tall
+        const off = h1 - 2 * wz, at = (x, y, z) => V(x - off, y - off, z);
+        const box = (sx, sy, sz, x, y, z, mat, rc) => { const m = new T.Mesh(UNIT_BOX, mat); m.scale.set(sx, sz, sy); m.position.copy(at(x, y, z)); m.userData.rc = rc; og.add(m); };
+        for (const yy of [-2.5, -2.1, -1.7, -1.3, -.9]) { box(.1, .1, h1 - h0, xg, yy, (h0 + h1) / 2, gateM, '#E2563F'); const tip = new T.Mesh(new T.ConeGeometry(.09, .22, 4), gateM); tip.rotation.x = Math.PI; tip.position.copy(at(xg, yy, h0 - .1)); tip.userData.rc = '#E2563F'; og.add(tip); }
+        for (const zz of [h1, h0 + .35]) box(.16, 2.2, .14, xg, -1.7, zz, gateM, '#E2563F');
+        for (const yy of [-2.9, -.5]) { const zt = h1 + .5, c = new T.Mesh(new T.CylinderGeometry(.2, .24, zt + .5, 12), stone); c.position.copy(at(xg, yy, (zt - .5) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+      } });
+      P.pool = pool;
+      A.forks.push({ s: sAt(A, [-1, -1.7, 0]), dir: 1, to: X, toK: 0, when: () => pool.ruffled(), text: 'The ruffled pool shows no gate, so there is none' });
+      L.view.updaters.push(() => L.say(`pool ${pool.ruffled() ? 'ruffled' : pool.still() ? 'still' : 'stirring'} · gate ${pool.ruffled() ? 'gone' : 'shut'} · ${Math.round(rider.cad)} rpm`));
     },
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { R.gear = 4; R.cad = 92; },
-    center: [1, -1.5, 0], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [9.4, -2.3, 0], [3.5, -1.7, 1.2], [3.5, -3.4, -.4]], pad: .9, scenery: false },
+    center: [1, -1.5, 1], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [9.4, -2.3, 0], [-1, -6.5, 5], [5.8, 1, 0]], pad: .9, scenery: false },
+
 ];
 
 Object.assign($scope, { conveyor, companion, clutchBridge, reflection, matchingDoors, NSTUDIES });

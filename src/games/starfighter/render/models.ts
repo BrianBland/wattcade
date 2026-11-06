@@ -41,15 +41,15 @@ export function shipModel(color: string, kind: string): THREE.Group {
   }
   const plate = new THREE.MeshStandardMaterial({ color, metalness: 0.6, roughness: 0.3 });
   const dark = new THREE.MeshStandardMaterial({ color: '#15253d', metalness: 0.7, roughness: 0.4 });
-  const craft = kind === 'player' || kind === 'escort' || kind === 'striker';
-  const light = new THREE.MeshBasicMaterial({ color: craft ? (kind === 'striker' ? '#ffcf3a' : '#38edff') : '#ff43bd' });
+  const craft = kind === 'player' || kind === 'escort' || kind === 'striker' || kind === 'gunship';
+  const light = new THREE.MeshBasicMaterial({ color: craft ? (kind === 'striker' ? '#ffcf3a' : kind === 'gunship' ? '#ff8a3a' : kind === 'escort' ? '#b98bff' : '#38edff') : '#ff43bd' });
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, pos: number[], scale: number[]) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(pos[0], pos[1], pos[2]); m.scale.set(scale[0], scale[1], scale[2]); g.add(m); return m;
   };
   add(hull, plate, [0, 0.7, 0], [1, 0.5, 1]);
   add(sphere, dark, [0, 1.3, -0.4], [0.8, 0.45, 1.6]);
   add(box, light, [0, 1.75, -0.5], [0.35, 0.08, 1.2]);
-  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : 3.6;
+  const wings = kind === 'escort' ? 4.3 : kind === 'armor' ? 2.8 : kind === 'striker' ? 3.3 : kind === 'gunship' ? 3.9 : 3.6;
   for (const side of [-1, 1]) {
     // The Striker's wings sweep forward; everyone else's sweep back.
     add(box, plate, [side * wings / 2, 0.6, kind === 'striker' ? 0.2 : 0.8], [wings, 0.35, kind === 'striker' ? 1.3 : 1.7]).rotation.y = side * (kind === 'striker' ? -0.38 : 0.22);
@@ -85,6 +85,22 @@ export function shipModel(color: string, kind: string): THREE.Group {
     part('tier-8', box, light, [0,0.9,-5.4], [0.18,0.18,4]);                                      // spine lance
     part('tier-8', ring, light, [0,0.8,0.4], [4.6,4.6,4.6]);                                      // halo
     part('trim-3', box, trim, [0,1.02,1.6], [0.5,0.05,3]);
+    if (kind === 'gunship') {
+      // Staccato Gunship: a broad armoured back with twin flak turrets, chunky barrels, and a boxy ammo spine.
+      add(box, dark, [0, 1.15, 1.2], [1.6, 0.7, 3.2]);
+      for (const side of [-1, 1]) {
+        add(sphere, plate, [side * 1.45, 1.35, -0.6], [0.75, 0.5, 0.75]);
+        add(box, dark, [side * 1.45, 1.45, -1.9], [0.32, 0.32, 2.2]);
+        add(box, light, [side * 1.45, 1.45, -3.05], [0.36, 0.36, 0.22]);
+        add(box, plate, [side * 1.2, 1.35, 3.2], [0.18, 1.1, 1.3]).rotation.z = side * 0.25;
+      }
+      for (let i = 0; i < 3; i++) add(box, light, [0, 1.52, 0.2 + i * 0.9], [1.2, 0.06, 0.18]);
+    }
+    if (kind === 'escort') {
+      // Resonance Escort: a resonator ring over the spine and coil fins at the wing roots (arc lightning emitters).
+      add(ring, light, [0, 1.7, 0.9], [1.3, 1.3, 1.3]).rotation.x = Math.PI / 2;
+      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) add(ring, light, [side * 1.6, 1.0, -0.6 + i * 0.6], [0.4, 0.4, 0.4]);
+    }
     if (kind === 'striker') {
       // Tempo Striker: a long nose lance and twin canted tail fins in amber.
       add(box, light, [0, 0.75, -5.2], [0.22, 0.22, 3.4]);

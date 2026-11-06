@@ -180,7 +180,7 @@ describe('musical locks and paddle targeting', () => {
     const leans: string[] = []; edge.s.ctx.emit = ((e: { type: string }) => { if (e.type === 'lean') leans.push(e.type); }) as typeof edge.s.ctx.emit;
     edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1); expect(leans).toHaveLength(1); expect(edge.snap().station).toBe(1);
   });
-  it('both shifters change Cruiser gears; analog paddles move flanks; B releases locks; Z dives to an elite wing', () => {
+  it('both shifters change Cruiser gears; analog paddles move flanks; Z dives to an elite wing', () => {
     const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }, { t: 20.5, release: 'shiftUpL' },
       { t: 20.8, paddleL: 0.9 }, { t: 21.0, paddleL: 0 }]);
     const r = rig({}, 'z2', undefined, undefined, input); r.s.tuning.set('starfighter.novaChargeS',10); r.seconds(20);
@@ -189,10 +189,6 @@ describe('musical locks and paddle targeting', () => {
     r.seconds(1); expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
     // One firm squeeze is one move (re-armed only on release).
     expect(r.s.recorder.events.filter(e => e.type === 'flank' && e.data?.rider)).toHaveLength(1);
-    // B: painted locks fire on the next beat instead of waiting for the bar.
-    const b = rig({}, 'z2', longMusic()); for (let i = 0; i < 900 && !(b.snap().locks.length >= 2 && b.snap().volleyFlash === 0); i++) b.s.step(1);
-    const volleys = Number(b.s.sim.summary().volleys); b.s.sim.receive!({ type: 'release' }); b.seconds(0.6);
-    expect(Number(b.s.sim.summary().volleys)).toBe(volleys + 1);
     // Z: dive to the flank of an incoming elite wing.
     const z = rig({}, 'z2', longMusic()); for (let i = 0; i < 30 * 600 && !z.snap().eliteHint; i++) z.s.step(1);
     const elite = z.snap().enemies.find(e => e.elite)!, want = Math.max(-1, Math.min(1, Math.round((elite.entry?.toX ?? elite.x) / 22))) || 0;
@@ -366,14 +362,15 @@ describe('spectacle encounters', () => {
     r.seconds(240);
     expect(ups.length).toBe(4); for (const u of ups) expect(tl.downbeats.some(d => Math.abs(d - u) < 0.04) || tl.phrases.some(d => Math.abs(d - u) < 0.04)).toBe(true);
   });
-  it('locks tick on sixteenths, volleys release on beats, and laser impacts land on beats', () => {
-    const tl = longMusic(), r = rig({}, 'z2', tl); const volleys: number[] = [], locks: number[] = [], impacts: number[] = []; const seen = new Set<number>();
-    r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') volleys.push(p); if (ev.type === 'lockAcquired') locks.push(p); }) as typeof r.s.ctx.emit;
+  it('missiles launch on beats with a salvo on each bar line, and land on the next beat', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); const launches: number[] = [], fulls: number[] = [], impacts: number[] = []; const seen = new Set<number>();
+    r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') launches.push(p); if (ev.type === 'fullLock') fulls.push(p); }) as typeof r.s.ctx.emit;
     for (let i = 0; i < 30 * 180; i++) { r.s.step(1); for (const l of r.snap().lasers) if (l.hit && !seen.has(l.id)) { seen.add(l.id); impacts.push(r.s.ctx.media!.positionS()); } }
-    const sixteenths = tl.beats.flatMap((b, i) => { const n = tl.beats[i + 1] ?? b + 0.5; return [0, 1, 2, 3].map(k => b + (n - b) * k / 4); });
     const on = (xs: number[], grid: number[]) => xs.filter(x => grid.some(g => Math.abs(g - x) < 0.04)).length / xs.length;
-    expect(volleys.length).toBeGreaterThan(20); expect(on(volleys, tl.beats)).toBeGreaterThan(0.9);
-    expect(on(impacts, tl.beats)).toBeGreaterThan(0.9); expect(on(locks, sixteenths)).toBeGreaterThan(0.9);
+    // Firing every beat, not after a slow build: hundreds of launches in three minutes, all on the grid.
+    expect(launches.length).toBeGreaterThan(200); expect(on(launches, tl.beats)).toBeGreaterThan(0.95);
+    expect(fulls.length).toBeGreaterThan(20); expect(on(fulls, tl.downbeats)).toBeGreaterThan(0.95);
+    expect(on(impacts, tl.beats)).toBeGreaterThan(0.9);
   }, 15_000);
   it('sustains moderate bullet patterns and destroyable ground enemies within fixed budgets', () => {
     const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;
@@ -410,7 +407,7 @@ describe('craft selection and save migration', () => {
     const t = rig({ craft: 'escort', skipHangar: false }); t.s.tuning.set('starfighter.testerUnlockAll', 1); t.s.step(1);
     expect(t.snap()).toMatchObject({ tester: true, escortUnlocked: true }); expect(t.snap().crafts.cruiser.level).toBe(10);
     t.s.tuning.set('starfighter.arsenalPace', 20); t.s.sim.receive!({ type: 'launch' }); t.seconds(200);
-    expect(t.snap().gunLevel).toBe(8); expect(t.snap().heavy).toBe(true); expect(t.snap().lockCapacity).toBe(11);
+    expect(t.snap().gunLevel).toBe(8); expect(t.snap().heavy).toBe(true); expect(t.snap().lockCapacity).toBe(14);
   });
   it('Escort signatures: wingmen shoot down bullets and a phrase beam sweeps the lane', () => {
     const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); const events: string[] = [];
@@ -436,7 +433,7 @@ describe('craft selection and save migration', () => {
     viaEscort.s.sim.dispose!(); expect(viaEscort.saved().unlocked).toContain('striker');
     // Controller craft cycling reaches it in the hangar.
     const menu = rig({ skipHangar: false }, 'z2', undefined, { ...base, craft: 'cruiser', craftS: { cruiser: 210 * 60, escort: 0, striker: 0 } },
-      new TimelineInput([{ t: 0.2, press: 'right' }, { t: 0.3, release: 'right' }, { t: 0.5, press: 'right' }, { t: 0.6, release: 'right' }]));
+      new TimelineInput([{ t: 0.2, press: 'left' }, { t: 0.3, release: 'left' }]));
     menu.seconds(1); expect(menu.snap().craft).toBe('striker');
   });
   it('the Striker rides harder in ERG with a spin ask, and its flank moves strike what they pass', () => {

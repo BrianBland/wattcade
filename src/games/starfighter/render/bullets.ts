@@ -12,13 +12,13 @@ const MAX = 640;
 const SHAPE = { orb: 0, needle: 1, diamond: 2, trail: 3 };
 const vertex = /* glsl */ `
   attribute vec3 aCenter; attribute vec2 aDir; attribute vec2 aSize; attribute vec3 aColor; attribute float aShape;
-  uniform float uBeat; varying vec2 vUv; varying vec3 vColor; varying float vShape;
+  uniform float uBeat; uniform float uGrow; varying vec2 vUv; varying vec3 vColor; varying float vShape;
   void main() {
     vec4 c = viewMatrix * vec4(aCenter, 1.0);
     // Flight direction in view space (from the world xz velocity), so needles and trails point where they travel.
     vec3 dv = (viewMatrix * vec4(aDir.x, 0.0, aDir.y, 0.0)).xyz; vec2 d = length(dv.xy) > 1e-4 ? normalize(dv.xy) : vec2(0.0, 1.0);
     vec2 n = vec2(d.y, -d.x); // right-handed with d, so quads keep front-facing winding
-    float pulse = aShape < 2.5 ? 1.0 + uBeat * 0.22 : 1.0;
+    float pulse = (aShape < 2.5 ? 1.0 + uBeat * 0.22 : 1.0) * uGrow;
     vec2 off = d * position.y * aSize.x * pulse + n * position.x * aSize.y * pulse;
     // Trails hang behind their bullet: shift the quad back by half its length.
     if (aShape > 2.5) off -= d * aSize.x * 0.5;
@@ -46,6 +46,16 @@ const fragment = /* glsl */ `
     if (dot(col, vec3(1.0)) < 0.01) discard;
     gl_FragColor = vec4(col, 1.0);
   }`;
+/** Underlay: a soft dark disc behind each bullet body (normal blending), so fire reads on white ice, cloud and deck. */
+const underFragment = /* glsl */ `
+  varying vec2 vUv; varying vec3 vColor; varying float vShape;
+  void main() {
+    if (vShape > 2.5) discard;
+    vec2 q = vUv; float d = vShape > 1.5 ? abs(q.x) + abs(q.y) : vShape > 0.5 ? length(q * vec2(1.0, 0.55)) : length(q);
+    float a = smoothstep(1.0, 0.45, d) * 0.5;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(mix(vec3(0.05, 0.02, 0.08), vColor * 0.15, 0.3), a);
+  }`;
 export function createBullets(scene: THREE.Scene) {
   const quad = new THREE.PlaneGeometry(1, 1), geo = new THREE.InstancedBufferGeometry();
   geo.index = quad.index; geo.setAttribute('position', quad.getAttribute('position'));
@@ -55,9 +65,11 @@ export function createBullets(scene: THREE.Scene) {
   for (const a of [center, dir, size, color, shape]) a.setUsage(THREE.DynamicDrawUsage);
   geo.setAttribute('aCenter', center); geo.setAttribute('aDir', dir); geo.setAttribute('aSize', size); geo.setAttribute('aColor', color); geo.setAttribute('aShape', shape);
   geo.instanceCount = 0;
-  const uniforms = { uBeat: { value: 0 } };
+  const uniforms = { uBeat: { value: 0 }, uGrow: { value: 1 } }, underUniforms = { uBeat: uniforms.uBeat, uGrow: { value: 1.25 } };
   const material = new THREE.ShaderMaterial({ vertexShader: vertex, fragmentShader: fragment, uniforms, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
   const mesh = new THREE.Mesh(geo, material); mesh.frustumCulled = false; mesh.renderOrder = 5; scene.add(mesh);
+  const underMaterial = new THREE.ShaderMaterial({ vertexShader: vertex, fragmentShader: underFragment, uniforms: underUniforms, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const under = new THREE.Mesh(geo, underMaterial); under.frustumCulled = false; under.renderOrder = 4; scene.add(under);
   const PINK = [1.0, 0.16, 0.62], AMBER = [1.0, 0.5, 0.06];
   return {
     update(bolts: readonly BoltView[], beat: number) {
@@ -76,6 +88,6 @@ export function createBullets(scene: THREE.Scene) {
       geo.instanceCount = n;
       for (const a of [center, dir, size, color, shape]) a.needsUpdate = true;
     },
-    dispose() { quad.dispose(); geo.dispose(); material.dispose(); scene.remove(mesh); },
+    dispose() { quad.dispose(); geo.dispose(); material.dispose(); underMaterial.dispose(); scene.remove(mesh); scene.remove(under); },
   };
 }

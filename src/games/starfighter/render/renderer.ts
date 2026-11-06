@@ -28,7 +28,9 @@ export class SfRenderer implements GameRenderer {
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
   private cameraBase = new THREE.Vector3(); private turnRoll = 0;
   /** Terrain lift (the ship flies lower in pushes and burns) and the speed FOV widening, both eased. */
-  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1; private post?: SquadronPost;
+  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1;
+  /** Blizzard strength (arctic only): light when cruising, heavy in pushes, a whiteout-ish burn, with gusts. */
+  private blizzard = 0; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
   private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
@@ -158,7 +160,7 @@ export class SfRenderer implements GameRenderer {
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
     this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
-    this.combat?.update(s, this.lift);
+    this.combat?.update(s, this.lift, this.blizzard);
     const live = new Set<number>();
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
@@ -200,6 +202,9 @@ export class SfRenderer implements GameRenderer {
     const fov = hangar ? 0 : s.drive.fov; if (Math.abs(fov - this.fovAdd) > 0.01) { this.fovAdd += (fov - this.fovAdd) * k; this.camera.fov = 48 + this.fovAdd; this.camera.updateProjectionMatrix(); }
     // A lower camera (pulled back a little, same aim) reads as flying lower and faster.
     this.tilt += ((hangar ? 0 : s.drive.tilt) - this.tilt) * k;
+    { const arctic = !hangar && s.frames.cur.biome === 4, dt = Math.min(0.1, k * 0.9), gust = 0.12 * (0.5 + 0.5 * Math.sin(s.t * 0.37) * Math.sin(s.t * 0.13 + 1));
+      const want = arctic ? Math.min(1, 0.35 + (s.drive.level === 'burn' ? 0.55 : s.drive.level === 'push' ? 0.3 : 0) + gust) : 0;
+      this.blizzard += (want - this.blizzard) * Math.min(1, dt / 2.5); this.space?.setWeather(this.blizzard); }
     this.camera.position.set(this.cameraBase.x, this.cameraBase.y * (1 - this.tilt) - s.bar * 0.45, this.cameraBase.z * (1 + this.tilt * 0.35) - s.bar * 0.3);
     this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());

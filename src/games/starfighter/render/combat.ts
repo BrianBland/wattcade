@@ -15,6 +15,10 @@ export function createCombat(scene: THREE.Scene) {
   const vfx = createVfx(scene), trailColor = new THREE.Color(), C = (hex: string) => new THREE.Color(hex);
   const FLASH = C('#ffd9a0'), SPARK = C('#ff8a2a'), RING = C('#ffb46a'), SMOKE_AIR = C('#4a4448'), SMOKE_GROUND = C('#5a5048'), HIT = C('#bff6ff');
   const BOLT = { cyan: C('#5fe6ff'), white: C('#b9f4ff'), gold: C('#ffcf4a') };
+  // Beat weapons: Escort arc lightning (violet-white), Striker rails (amber), Gunship flak (orange shells, dark puffs),
+  // Cruiser missiles (smoke trails), Escort plasma beam.
+  const ARC = C('#b9a2ff'), ARC_HOT = C('#e6f0ff'), RAIL = C('#ffb02e'), FLAK = C('#ff8a3a'), FLAK_PUFF = C('#2e2a2c'), MISSILE_SMOKE = C('#9a9aa4'), PLASMA = C('#c58cff');
+  const jag = new THREE.Vector3(), jag2 = new THREE.Vector3();
   // Blizzard flakes: seeds fixed per mount, positions a pure function of the accumulated wind shift.
   const FLAKES = 1600, BOX = { x0: -190, sx: 380, y0: -4, sy: 50, z0: -320, sz: 420 }, shift = new THREE.Vector3(); let snowT = -1;
   const wrapIn = (u: number, sh: number, mn: number, sz: number) => mn + (((u * sz + sh) % sz) + sz) % sz;
@@ -60,9 +64,65 @@ export function createCombat(scene: THREE.Scene) {
           const len = a.distanceTo(b); if (len < 0.01) continue;
           vfx.add(VFX.beam, (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2, len * 1.08, 1.4 * wide, trailColor, fade, 0, b.x - a.x, b.y - a.y, b.z - a.z);
         }
-        // A bright head while the laser is still travelling.
-        if (head < 1) { bezier(head, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a); vfx.add(VFX.flash, a.x, a.y, a.z, 2.4 * wide, 2.4 * wide, trailColor, 0.45); }
+        // A missile body and hot exhaust while it travels, leaving a thin smoke trail that thins out behind it.
+        if (head < 1) {
+          bezier(head, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, a); bezier(Math.max(0, head - 0.04), laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, b);
+          vfx.add(VFX.bolt, a.x, a.y, a.z, 2.6 * wide, 0.9 * wide, trailColor, 0, 0, a.x - b.x, a.y - b.y, a.z - b.z);
+          vfx.add(VFX.flash, b.x, b.y, b.z, 1.8 * wide, 1.8 * wide, laser.full ? FLASH : trailColor, 0.35);
+          for (let j = 1; j <= 5; j++) {
+            const u = head - j * 0.07; if (u <= tail) break;
+            bezier(u, laser.sx, laser.sy, laser.x, laser.y, laser.side, laser.height, b);
+            vfx.smoke(b.x, b.y + j * 0.15, b.z, 0.9 + j * 0.35, MISSILE_SMOKE, Math.min(1, 0.35 + j * 0.12), h01(laser.id * 7 + j));
+          }
+        }
         n++;
+      }
+      // Escort arc lightning: a jagged, flickering bolt through each struck enemy, with a flash at each strike.
+      for (const arc of s.arcs) {
+        const age = s.t - arc.at; if (age < 0 || age > 0.4) continue;
+        const life = age / 0.4, flick = Math.floor(age * 40), wide = 0.9 + arc.tier * 0.06;
+        for (let k = 0; k + 5 < arc.pts.length; k += 3) {
+          const x0 = arc.pts[k], z0 = arc.pts[k + 1] - 50, y0 = arc.pts[k + 2], x1 = arc.pts[k + 3], z1 = arc.pts[k + 4] - 50, y1 = arc.pts[k + 5];
+          const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len, steps = Math.max(3, Math.min(9, Math.round(len / 4)));
+          jag.set(x0, y0, z0);
+          for (let q = 1; q <= steps; q++) {
+            const u = q / steps, off = q === steps ? 0 : (h01(arc.id * 131 + k * 17 + q * 7 + flick * 1013) - 0.5) * Math.min(5, len * 0.22);
+            jag2.set(x0 + dx * u + nx * off, y0 + (y1 - y0) * u + (h01(arc.id + q * 3 + flick) - 0.5) * 1.2, z0 + dz * u + nz * off);
+            const sl = jag.distanceTo(jag2);
+            vfx.add(VFX.beam, (jag.x + jag2.x) / 2, (jag.y + jag2.y) / 2, (jag.z + jag2.z) / 2, sl * 1.15, 1.5 * wide, ARC, life, 0, jag2.x - jag.x, jag2.y - jag.y, jag2.z - jag.z);
+            vfx.add(VFX.beam, (jag.x + jag2.x) / 2, (jag.y + jag2.y) / 2, (jag.z + jag2.z) / 2, sl * 1.1, 0.45 * wide, ARC_HOT, life * 0.6, 0, jag2.x - jag.x, jag2.y - jag.y, jag2.z - jag.z);
+            jag.copy(jag2);
+          }
+          if (age < 0.16) vfx.add(VFX.flash, x1, y1, z1, 5 * wide, 5 * wide, ARC_HOT, age / 0.16);
+        }
+        if (age < 0.1) vfx.add(VFX.flash, arc.pts[0], arc.pts[2], arc.pts[1] - 50, 3.5, 3.5, ARC, age / 0.1);
+      }
+      // Striker rails: an instant straight beam from the cannon, thinning fast, with a muzzle flash.
+      for (const r of s.rails) {
+        const age = s.t - r.at; if (age < 0 || age > 0.3) continue;
+        const life = age / 0.3, x0 = r.sx, y0 = 10.6, z0 = r.sy - 50, x1 = r.x, y1 = r.height, z1 = r.y - 50, len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+        const wide = (0.9 + r.tier * 0.08) * (1 - life * 0.7);
+        vfx.add(VFX.beam, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, len, 1.6 * wide, RAIL, life, 0, x1 - x0, y1 - y0, z1 - z0);
+        if (age < 0.08) { vfx.add(VFX.flash, x0, y0, z0 - 1.5, 2.6, 2.6, RAIL, age / 0.08); vfx.add(VFX.flash, x1, y1, z1, 3.2, 3.2, FLASH, age / 0.08); }
+      }
+      // Gunship flak shells: a glowing round lobbed in an arc, a short ember trail behind it.
+      for (const sh of s.shells) {
+        if (sh.hit) continue;
+        const span = Math.max(0.05, sh.hitAt - sh.at);
+        for (let j = 0; j < 4; j++) {
+          const u = Math.min(1, Math.max(0, (s.t - sh.at) / span - j * 0.035)); if (u <= 0 && j) break;
+          const x = sh.sx + (sh.x - sh.sx) * u, z = sh.sy - 50 + (sh.y - sh.sy) * u, y = 10.6 + (sh.height - 10.6) * u + Math.sin(u * Math.PI) * 9;
+          vfx.add(VFX.flash, x, y, z, (2.6 - j * 0.45) * (1 + sh.tier * 0.04), (2.6 - j * 0.45) * (1 + sh.tier * 0.04), j ? FLAK : FLASH, j ? 0.35 + j * 0.15 : 0.2);
+        }
+      }
+      // Escort plasma beam (phrase): bright plasma knots racing up the lane inside the beam column.
+      for (const f of s.fx) {
+        const age = s.t - f.at; if (f.kind !== 'beam' || age < 0 || age > 0.6) continue;
+        const w = (f.size ?? 9) * 0.5, life = age / 0.6;
+        for (let j = 0; j < 12; j++) {
+          const z = f.y - 50 - ((age * 260 + j * 12) % 140), wob = Math.sin(j * 1.7 + age * 30) * w * 0.4;
+          vfx.add(VFX.flash, f.x + wob, 10.6, z, w * 1.4, w * 1.4, PLASMA, life);
+        }
       }
       // Player pulse shots: capsule bolts that grow with the arsenal (dots, bolts, spears; gold at the top tiers).
       for (const sh of s.shots.slice(0, 400)) {
@@ -112,9 +172,19 @@ export function createCombat(scene: THREE.Scene) {
       let d = 0;
       for (const fx of s.fx) {
         const age = s.t - fx.at;
-        if ((fx.kind !== 'boom' && fx.kind !== 'intercept') || age < 0) continue;
+        if ((fx.kind !== 'boom' && fx.kind !== 'intercept' && fx.kind !== 'flak') || age < 0) continue;
         // Ground explosions and smoke stay put on the terrain as it scrolls.
         const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0), x = fx.x, y = fx.ground ? -2 + lift : 12, z = fy - 50, S = fx.size ?? 1, id = fx.id;
+        if (fx.kind === 'flak') { // a flak burst: a hard flash, a ring the size of the burst, shrapnel, and dark puffs that hang
+          const R = 6.5 * S;
+          if (age < 0.1) vfx.add(VFX.flash, x, y + 0.5, z, R * 1.3, R * 1.3, FLASH, age / 0.1);
+          if (age < 0.3) { const l = age / 0.3, r = R * 2 * (0.35 + 0.65 * Math.sqrt(l)); vfx.add(VFX.ring, x, y + 0.5, z, r, r, FLAK, l); }
+          if (age < 0.4) for (let j = 0; j < 8; j++) { const an = h01(id * 3 + j) * 6.283, sp = 30 + 20 * h01(id * 5 + j), vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, l = age / 0.4;
+            vfx.add(VFX.spark, x + vx * age * (1 - 0.4 * l), y + 0.5, z + vz * age * (1 - 0.4 * l), 1.4 + sp * 0.03, 0.18, FLAK, l, 0, vx, 0, vz); }
+          if (age > 0.05 && age < 1.2) for (let j = 0; j < 5; j++) { const l = (age - 0.05) / 1.15, an = h01(id * 23 + j) * 6.283, rr = R * 0.55 * h01(id * 29 + j);
+            vfx.smoke(x + Math.cos(an) * rr, y + 1 + l * 2, z + Math.sin(an) * rr, (2.2 + l * 3.5) * Math.max(0.8, S), FLAK_PUFF, l, h01(id * 31 + j)); }
+          continue;
+        }
         if (fx.kind === 'intercept') { // a hit: a small flash and a few sparks
           if (age < 0.15) vfx.add(VFX.flash, x, y, z, 3.2 * S, 3.2 * S, HIT, age / 0.15);
           if (age < 0.3) for (let j = 0; j < 3; j++) { const an = h01(id * 3 + j) * 6.283, sp = 18 + 14 * h01(id * 5 + j), vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, l = age / 0.3;

@@ -1,6 +1,7 @@
 import type { SfSnapshot } from '../sim/types';
 import { TIER_NAMES } from '../sim/progression';
 import { craftName } from '../sim/save';
+import { WEAPON_LABEL } from '../sim/weapons';
 import { CRAFTS } from '../sim/progression';
 import type { CraftId } from '../sim/types';
 import type { layout } from './layout';
@@ -133,7 +134,8 @@ export class SquadronHud {
     const pips = Array.from({ length: s.lockCapacity }, (_, i) => `<i class="${i < s.locks.length ? 'on' : ''}"></i>`).join('');
     this.stats.innerHTML = `<div class="sq-stat"><b>${s.score.toLocaleString()}</b><span>Score</span></div>`
       + `<div class="sq-stat" style="--acc:#b6ff3b"><b><em>${Math.round(s.clear.rate * 100)}%</em></b><span>Cleared</span></div>`
-      + `<div class="sq-stat sq-locks" style="--acc:#fff36b"><b><em>${s.locks.length}</em>/${s.lockCapacity}</b><span>Locks</span><div>${pips}</div>`
+      + `<div class="sq-stat sq-locks" style="--acc:#fff36b">${s.weapon === 'missiles' ? `<b><em>${s.locks.length}</em>/${s.lockCapacity}</b><span>Locks</span><div>${pips}</div>`
+        : `<b><em>${WEAPON_LABEL[s.weapon]}</em></b><span>On the beat</span>`}`
       + `<em class="sq-pop${s.fullLock > 0 ? ' on' : ''}">Full lock</em><em class="sq-pop${s.clear.streak > 1 && s.clear.last?.perfect && s.t - s.clear.last.at < 3 ? ' on' : ''}">Perfect ×${s.clear.streak}</em></div>`;
     const warn = s.effort.status !== 'on' && s.effort.status !== 'recover' && s.effort.status !== 'settling' || s.quality < 0.6 || s.drive.exposed;
     this.status.classList.toggle('warn', warn);
@@ -192,15 +194,17 @@ export class SquadronHud {
     const key = `${s.phase}:${s.craft}:${s.ergAvailable}:${s.tester}:${CRAFTS.map(c => `${s.crafts[c].level}${s.crafts[c].unlocked}`).join()}`;
     if (key === this.menuKey) { const c = this.menu.querySelector('.hint'); if (c) c.textContent = countdown; return; }
     this.menuKey = key;
-    const TAGS: Record<CraftId, string> = { cruiser: '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>', escort: '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>',
+    const TAGS: Record<CraftId, string> = { cruiser: '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span>',
+      gunship: '<span class="tag zone2">Zone 2</span><span class="tag">Gears</span><span class="tag" style="color:var(--neon,#00f0ff)">Spin</span>', escort: '<span class="tag zone2">Zone 2</span><span class="tag erg">ERG</span>',
       striker: `<span class="tag zone2">Zone 2–3</span><span class="tag">${s.ergAvailable ? 'ERG' : 'Gears'}</span><span class="tag" style="color:var(--warn,#ffb020)">Harder</span>` };
-    const BLURB: Record<CraftId, string> = { cruiser: 'Ride steady with virtual gears. Fill every lock slot for full-lock volleys.',
-      escort: 'The trainer holds the watts. Wingmen shoot down bullets; a beam sweeps your lane on each phrase.',
-      striker: 'Rides harder when the music swells: burns near 88% FTP and a faster spin. Flank moves in a push or burn strike everything you pass under.' };
+    const BLURB: Record<CraftId, string> = { cruiser: 'Ride steady with virtual gears. Missiles lock and launch on every beat, with a gold salvo on each bar.',
+      gunship: 'Light gears, fast legs: pushes and burns ask for a much quicker spin. Flak shells burst over whole wings on the beat.',
+      escort: 'The trainer holds the watts. Arc lightning jumps through a wing on every beat; wingmen shoot down bullets; a plasma beam sweeps your lane each phrase.',
+      striker: 'Rides harder when the music swells: burns near 88% FTP and a faster spin. Twin rails fire on every eighth note; flank moves in a push or burn strike everything you pass under.' };
     const card = (c: CraftId) => {
       const locked = !s.crafts[c].unlocked || c === 'escort' && !s.ergAvailable;
       const info = s.crafts[c];
-      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : !info.unlocked ? (c === 'escort' ? 'Unlocks at Cruiser level 3' : 'Unlocks at Cruiser level 5 or Escort level 3') : c === s.craft ? 'Selected' : 'Choose';
+      const note = c === 'escort' && !s.ergAvailable ? 'Requires an ERG trainer' : !info.unlocked ? (c === 'escort' ? 'Unlocks at Cruiser level 3' : c === 'gunship' ? 'Unlocks at Cruiser level 2' : 'Unlocks at Cruiser level 5 or Escort level 3') : c === s.craft ? 'Selected' : 'Choose';
       const level = locked ? '' : `<div class="sq-lvl">Lv ${info.level}<div class="bar"><i style="width:${Math.round(info.progress * 100)}%"></i></div></div>`
         + `<div class="sq-next">${info.next ? `Lv ${info.level + 1}: ${escapeHtml(info.next)}${info.minutesToNext ? ` · ${info.minutesToNext} min` : ''}` : 'Max level'}</div>`;
       return `<button class="card${c === s.craft ? ' focused' : ''}" data-action="craft" data-craft="${c}" ${locked ? 'disabled' : ''}>`

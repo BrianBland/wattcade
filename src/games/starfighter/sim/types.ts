@@ -1,6 +1,7 @@
 import type { SectionKind } from '../../../contracts';
 import type { Drive } from './drive';
-export type CraftId = 'cruiser' | 'escort' | 'striker';
+import type { WeaponKind } from './weapons';
+export type CraftId = 'cruiser' | 'gunship' | 'escort' | 'striker';
 export interface SfSave {
   v: 3; best: number; legacyBest: number; runs: number; onTargetS: number; unlockCredit: number;
   craft: CraftId; totals: { kills: number; bosses: number }; legacy?: Record<string, unknown>;
@@ -27,10 +28,16 @@ export interface EnemyView {
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean; amp?: number }
+/** Escort arc lightning: the struck chain as (x, y, height) triples starting at the ship, drawn briefly from `at`. */
+export interface ArcView { id: number; at: number; pts: number[]; tier: number }
+/** Striker rail: an instant beam from the ship's cannon (`sx`, `sy`) to its target. */
+export interface RailView { id: number; at: number; sx: number; sy: number; x: number; y: number; height: number; tier: number }
+/** Gunship flak shell: lobbed from the ship, it bursts over its target at `hitAt` (a beat), catching everything within `radius`. */
+export interface ShellView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; height: number; at: number; hitAt: number; radius: number; tier: number; hit: boolean }
 export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
 export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean; open?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' | 'strike' }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' | 'strike' | 'flak' }
 /** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
 export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
@@ -59,6 +66,9 @@ export interface SfSnapshot {
   drive: { level: Drive; speed: number; met: boolean; exposed: boolean; rpm: number | null; rel: number; /** Terrain rise toward the ship, extra FOV and camera drop (fraction of height), from drive pace. */ dip: number; fov: number; tilt: number };
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
+  /** The craft's beat weapon, and its live arcs, rails and flak shells (missiles are `lasers`). */
+  weapon: WeaponKind; arcs: ArcView[]; rails: RailView[]; shells: ShellView[];
+  /** Targets with missiles (or shells) in flight; `lockCapacity` is the bar-line salvo size. */
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];
   enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[]; beams: BeamView[];
   boss: { name: string; stage: string; hp: number; maxHp: number; left: number } | null;

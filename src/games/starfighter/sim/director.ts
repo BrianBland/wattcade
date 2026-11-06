@@ -15,7 +15,7 @@ export const sectionLabel = (kind: SectionKind) => ({ intro: 'Departure', verse:
 export function createDirector(timeline?: MediaTimeline) {
   let kind: SectionKind = timeline?.sections[0]?.kind ?? 'verse';
   const announced = new Map<number, SectionKind>();
-  let lastBoundary = -1, lastBeat = -1, lastPhrase = -1, lastDownbeat = -1, lastHit = -1, lastSub = -1, barT = -99;
+  let lastBoundary = -1, lastBeat = -1, lastPhrase = -1, lastDownbeat = -1, lastHit = -1, lastSub = -1, lastEighth = -1, barT = -99;
   return {
     step(p: number) {
       for (const section of timeline?.sections ?? []) {
@@ -38,6 +38,8 @@ export function createDirector(timeline?: MediaTimeline) {
       const beatLen = bi >= 0 && beats[bi + 1] !== undefined ? beats[bi + 1] - beats[bi] : 0.6;
       const subKey = Math.floor(bt / beatLen * 4 + 1e-6) + Math.floor((p - bt) / (beatLen / 4) + 1e-6);
       const sixteenth = subKey !== lastSub; lastSub = subKey;
+      const eighthKey = Math.floor(bt / beatLen * 2 + 1e-6) + Math.floor((p - bt) / (beatLen / 2) + 1e-6);
+      const eighth = eighthKey !== lastEighth; lastEighth = eighthKey;
       const onsets = timeline?.onsets ?? []; let lo = 0, hi = onsets.length;
       while (lo < hi) { const m = (lo + hi) >>> 1; if (onsets[m].t <= p) lo = m + 1; else hi = m; }
       const onset = onsets[lo - 1];
@@ -53,7 +55,7 @@ export function createDirector(timeline?: MediaTimeline) {
         const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
         if (avg > 0 && gaps.every(g => Math.abs(g - avg) < avg * 0.08)) rpm = cadenceFor(60 / avg);
       }
-      return { kind, intensity, beat, downbeat, hit, phrase, rpm, sixteenth, beatPulse: Math.exp(-Math.max(0, p - bt) * 7), barPulse: Math.exp(-Math.max(0, p - barT) * 3),
+      return { kind, intensity, beat, downbeat, hit, phrase, rpm, sixteenth, eighth, beatPulse: Math.exp(-Math.max(0, p - bt) * 7), barPulse: Math.exp(-Math.max(0, p - barT) * 3),
         song: song?.title ?? 'Deep space transmission', upcoming: upcoming ? { at: upcoming[0], kind: upcoming[1] } : null };
     },
     bossAt(earliest: number) {

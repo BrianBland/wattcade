@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { isFlagshipGeometry } from './flagships';
 const hull = new THREE.ConeGeometry(2.2, 7, 4);
 hull.rotateX(-Math.PI / 2); hull.rotateZ(Math.PI / 4);
 const box = new THREE.BoxGeometry(1, 1, 1);
@@ -8,8 +9,9 @@ const ring = new THREE.TorusGeometry(1, 0.08, 6, 32); ring.rotateX(Math.PI / 2);
 const rock=new THREE.IcosahedronGeometry(1,0);
 export const geometries = { hull, box, sphere, ring, rock };
 const compiled = new Map<string, THREE.BufferGeometry[]>();
+export { bossModel, batteryModel } from './flagships';
 export function isSharedGeometry(g: THREE.BufferGeometry) {
-  return (Object.values(geometries) as THREE.BufferGeometry[]).includes(g) || [...compiled.values()].some(gs=>gs.includes(g));
+  return isFlagshipGeometry(g) || (Object.values(geometries) as THREE.BufferGeometry[]).includes(g) || [...compiled.values()].some(gs=>gs.includes(g));
 }
 /** Merge static enemy parts by material; retain named aiming barrels as separate meshes. */
 function compactModel(group: THREE.Group, key: string): THREE.Group {
@@ -110,28 +112,6 @@ export function heavyModel(color: string): THREE.Group {
   }
   add(sphere, dark, [0, 1.2, -0.6], [0.9, 0.5, 1.5]);
   return g;
-}
-export function bossModel(style: number): THREE.Group {
-  const g = shipModel(['#ffb93a', '#ff438e', '#43e9e2', '#b16cff', '#71ffa7'][style], 'boss');
-  g.scale.setScalar(2.3);
-  const armor = new THREE.MeshStandardMaterial({color:'#d6e5f3',metalness:0.7,roughness:0.3});
-  for(const side of [-1,1]) {const deck=new THREE.Mesh(box,armor);deck.position.set(side*6,0,0);deck.scale.set(6,1.6,9);g.add(deck);}
-
-  const navy = new THREE.MeshStandardMaterial({color:'#203b69',metalness:0.6,roughness:0.35});
-  const neon = new THREE.MeshBasicMaterial({color:'#ff48c4'});
-  for(const side of [-1,1]) {
-    const roof=new THREE.Mesh(hull,navy);roof.position.set(side*6,1.4,-0.8);roof.scale.set(1.2,0.5,1.2);g.add(roof);
-    for(let i=0;i<5;i++) {const stripe=new THREE.Mesh(box,neon);stripe.position.set(side*6,1,-3+i*1.4);stripe.scale.set(4,0.15,0.2);g.add(stripe);}
-    const thruster=new THREE.Mesh(sphere,neon);thruster.position.set(side*6,0,5);thruster.scale.set(1,0.6,1.8);g.add(thruster);
-  }
-  const reactor=new THREE.Mesh(sphere,neon);reactor.position.set(0,2,0);reactor.scale.set(1.6,1,1.6);g.add(reactor);
-  const material = new THREE.MeshBasicMaterial({ color: '#ffb964' });
-  const hoop = new THREE.Mesh(ring, material); hoop.scale.setScalar(3.4 + style * 0.2); hoop.position.y = 1; g.add(hoop);
-  for (let i = 0; i < style + 2; i++) {
-    const pod = new THREE.Mesh(box, material), a = i * Math.PI * 2 / (style + 2);
-    pod.position.set(Math.cos(a) * 4, 0.7, Math.sin(a) * 3); pod.scale.set(0.8, 0.8, 1.8); g.add(pod);
-  }
-  return compactModel(g,`boss-${style}`);
 }
 export function disposeModel(g: THREE.Object3D) {
   const materials = new Set<THREE.Material>();

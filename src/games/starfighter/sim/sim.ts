@@ -709,7 +709,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       }
       for (let i = shots.length - 1; i >= 0; i--) if (shots[i].y < -30 || Math.abs(shots[i].x) > 70) shots.splice(i, 1);
       for (let i = bolts.length - 1; i >= 0; i--) if (bolts[i].y > 120 || bolts[i].y < -100 || Math.abs(bolts[i].x) > 100) bolts.splice(i, 1);
-      for (let i = fx.length - 1; i >= 0; i--) if (t - fx[i].at > 1.6) fx.splice(i, 1);
+      // Blasts stay a little longer so their smoke can thin out (a flagship's chain lasts about four seconds).
+      for (let i = fx.length - 1; i >= 0; i--) if (t - fx[i].at > (fx[i].kind !== 'boom' ? 1.6 : (fx[i].size ?? 1) >= 2.5 ? 4.3 : 3)) fx.splice(i, 1);
       if (quality > 0.8 && pedalling) shield = Math.min(100, shield + dt * 3);
       if (t - saveAt > 30) persist();
       if (!opts.endless && timeline && p >= timeline.durationS) { done = true; emit('setDone'); persist(); ctx.resistance.clear('squadron'); }

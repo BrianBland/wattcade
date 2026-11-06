@@ -3,6 +3,8 @@ import type { SfSnapshot } from '../sim/types';
 import { geometries } from './models';
 import { groupOf, GROUND_SPEED } from '../sim/encounters';
 import { createVfx, h01, VFX } from './vfx';
+import { blast, flagshipBlast, type BlastColors } from './blast';
+import { FLAGSHIPS } from './flagships';
 
 /** Fixed-size pools: no geometry or material allocation in the frame loop. */
 export function createCombat(scene: THREE.Scene) {
@@ -14,6 +16,8 @@ export function createCombat(scene: THREE.Scene) {
   // Glowing particles and smoke (render/vfx.ts): lasers, player bolts, fireballs, sparks, flashes, shock rings, smoke.
   const vfx = createVfx(scene), trailColor = new THREE.Color(), C = (hex: string) => new THREE.Color(hex);
   const FLASH = C('#ffd9a0'), SPARK = C('#ff8a2a'), RING = C('#ffb46a'), SMOKE_AIR = C('#4a4448'), SMOKE_GROUND = C('#5a5048'), HIT = C('#bff6ff');
+  const AIR: BlastColors = { flash: FLASH, spark: SPARK, ring: RING, ember: C('#ffb050'), smoke: SMOKE_AIR, dust: C('#6a5a48') }, GROUND: BlastColors = { ...AIR, smoke: SMOKE_GROUND };
+  const hitHeat = C('#ff0000').setRGB(0.9, 0, 0), wreck = { x: 0, y: 0, z: 0 };
   const BOLT = { cyan: C('#5fe6ff'), white: C('#b9f4ff'), gold: C('#ffcf4a') };
   // Blizzard flakes: seeds fixed per mount, positions a pure function of the accumulated wind shift.
   const FLAKES = 1600, BOX = { x0: -190, sx: 380, y0: -4, sy: 50, z0: -320, sz: 420 }, shift = new THREE.Vector3(); let snowT = -1;
@@ -28,8 +32,9 @@ export function createCombat(scene: THREE.Scene) {
   const rings = pool(geometries.ring, '#ffe84c', 48), brackets = pool(geometries.box, '#fff76b', 8);
   const shadows=pool(geometries.sphere,'#071b34',96);
   (shadows.material as THREE.MeshBasicMaterial).opacity=0.3;
-  // Tumbling hull fragments (a few per blast; the fire, sparks and smoke are particles).
-  const debris = pool(geometries.box, '#8a5a3a', 256);
+  // Tumbling hull fragments (a few per blast, glowing hot; the fire, sparks and smoke are particles).
+  const debris = new THREE.InstancedMesh(geometries.rock, new THREE.MeshStandardMaterial({ color: '#3b3533', metalness: 0.55, roughness: 0.5, emissive: '#ff5a1a', emissiveIntensity: 0.45 }), 384);
+  debris.count = 0; debris.frustumCulled = false; scene.add(debris);
   // Muzzle charge before an enemy fires, and cyan streak sparks where a bullet grazes the ship.
   const warns = pool(geometries.sphere, '#ffffff', 96, true), warnRings = pool(geometries.ring, '#ffffff', 96, true), sparks = pool(geometries.box, '#9ffbff', 192, true);
   (warns.material as THREE.MeshBasicMaterial).opacity = 0.75; (warnRings.material as THREE.MeshBasicMaterial).opacity = 0.9; (sparks.material as THREE.MeshBasicMaterial).opacity = 0.8;
@@ -107,41 +112,45 @@ export function createCombat(scene: THREE.Scene) {
       }
       brackets.count = n; brackets.instanceMatrix.needsUpdate = true;
       let sh=0;
-      for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8+lift,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?23:4,0.03,e.kind==='boss'?13:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
+      for(const e of s.enemies){if(sh>=95)break;mat.position.set(e.x,-5.8+lift,e.y-50+2);mat.rotation.set(0,0,0);mat.scale.set(e.kind==='boss'?FLAGSHIPS[e.bossStyle%FLAGSHIPS.length].shadow[0]:4,0.03,e.kind==='boss'?FLAGSHIPS[e.bossStyle%FLAGSHIPS.length].shadow[1]:3);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);}
       mat.position.set(s.shipX,-5.8+lift,s.shipY-47);mat.scale.set(6,0.03,4);mat.updateMatrix();shadows.setMatrixAt(sh++,mat.matrix);shadows.count=sh;shadows.instanceMatrix.needsUpdate=true;
       let d = 0;
+      const chunk = (px: number, py: number, pz: number, rx: number, ry: number, rz: number, size: number) => {
+        if (d >= 384) return; mat.position.set(px, py, pz); mat.rotation.set(rx, ry, rz); mat.scale.set(size, size * 0.6, size * 1.4); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
+      };
       for (const fx of s.fx) {
         const age = s.t - fx.at;
         if ((fx.kind !== 'boom' && fx.kind !== 'intercept') || age < 0) continue;
         // Ground explosions and smoke stay put on the terrain as it scrolls.
         const fy = fx.y + (fx.ground ? (fx.s !== undefined ? s.world.s - fx.s : age * GROUND_SPEED) : 0), x = fx.x, y = fx.ground ? -2 + lift : 12, z = fy - 50, S = fx.size ?? 1, id = fx.id;
-        if (fx.kind === 'intercept') { // a hit: a small flash and a few sparks
+        if (fx.kind === 'intercept') { // a hit: a small flash, a lick of flame and a few sparks
           if (age < 0.15) vfx.add(VFX.flash, x, y, z, 3.2 * S, 3.2 * S, HIT, age / 0.15);
-          if (age < 0.3) for (let j = 0; j < 3; j++) { const an = h01(id * 3 + j) * 6.283, sp = 18 + 14 * h01(id * 5 + j), vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, l = age / 0.3;
+          if (age < 0.25) { const l = age / 0.25; vfx.add(VFX.fire, x, y + 0.5, z, 2.4 * S * (0.6 + l), 2.4 * S * (0.6 + l), hitHeat, l, h01(id)); }
+          if (age < 0.3) for (let j = 0; j < 4; j++) { const an = h01(id * 3 + j) * 6.283, sp = 18 + 14 * h01(id * 5 + j), vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, l = age / 0.3;
             vfx.add(VFX.spark, x + vx * age, y + 1, z + vz * age, 1.2 + sp * 0.04, 0.16, HIT, l, 0, vx, 0, vz); }
           continue;
         }
-        // Blast: flash, turbulent fireballs, sparks, a shock ring, then smoke rising; a few tumbling fragments.
-        if (age < 0.12) vfx.add(VFX.flash, x, y + 1, z, 11 * S, 11 * S, FLASH, age / 0.12);
-        if (age < 0.6) for (let j = 0; j < 5; j++) {
-          const an = h01(id * 7 + j) * 6.283, l = age / 0.6, out = (1.2 + 3 * h01(id * 13 + j)) * S * (1 - (1 - l) * (1 - l)), sz = (3.2 + 2.4 * h01(id + j * 31)) * S * (0.55 + 0.8 * Math.sqrt(l));
-          vfx.add(VFX.fire, x + Math.cos(an) * out, y + (fx.ground ? 1 : 0.5) + l * 3 * S, z + Math.sin(an) * out, sz, sz, FLASH, l, h01(id + j * 3));
-        }
-        if (age < 0.55) for (let j = 0; j < Math.min(16, 10 * S); j++) {
-          const an = h01(id * 11 + j) * 6.283, up = (h01(id * 17 + j) - 0.25) * 0.8, sp = (22 + 26 * h01(id * 19 + j)) * S, l = age / 0.55, travel = age * (1 - 0.45 * l);
-          const vx = Math.cos(an) * sp, vz = Math.sin(an) * sp, vy = up * sp - 22 * age;
-          vfx.add(VFX.spark, x + vx * travel, y + up * sp * travel - 10 * age * age, z + vz * travel, 1.4 + sp * 0.05 * (1 - l), 0.2, SPARK, l, 0, vx, vy, vz);
-        }
-        if (age < 0.35) { const l = age / 0.35, r = 9 * S * (0.3 + l * 1.6); vfx.add(VFX.ring, x, y + 0.5, z, r, r, RING, l); }
-        if (age > 0.1 && age < 1.7) for (let j = 0; j < 4; j++) {
-          const l = (age - 0.1) / 1.6, an = h01(id * 23 + j) * 6.283, sz = (3 + l * 7) * S * (0.8 + 0.4 * h01(id + j));
-          vfx.smoke(x + Math.cos(an) * 2 * S, y + 1 + l * 7 * S + j * 0.6, z + Math.sin(an) * 2 * S, sz, fx.ground ? SMOKE_GROUND : SMOKE_AIR, l, h01(id * 29 + j));
-        }
-        if (age < 1.4) for (let j = 0; j < 6 * S && d < 256; j++) {
-          const angle = j * Math.PI / 3 + id, speed = (5 + j % 3 * 4) * S;
-          mat.position.set(x + Math.cos(angle) * age * speed, y + Math.sin(age * Math.PI / 1.4) * 5, z + Math.sin(angle) * age * speed);
-          mat.rotation.set(age * 3, angle + age * 4, age * 2); const sz = Math.max(0.03, (1 - age / 1.4) * 0.6); mat.scale.set(sz, sz, sz * 2); mat.updateMatrix(); debris.setMatrixAt(d++, mat.matrix);
-        }
+        if (S >= 2.5) flagshipBlast(vfx, chunk, x, y + 1, z, S, id, age, AIR);
+        else blast(vfx, chunk, x, y, z, S, id, age, !!fx.ground, fx.ground ? GROUND : AIR);
+      }
+      // Battle damage: a flagship that has lost its batteries or a third of its hull trails fire and smoke from fixed
+      // points on its hull, more of them as it weakens; a lost battery's mount keeps burning.
+      for (const e of s.enemies) {
+        if (e.kind !== 'boss' || e.hp <= 0) continue;
+        const spec = FLAGSHIPS[e.bossStyle % FLAGSHIPS.length], hurt = 1 - e.hp / Math.max(1, e.maxHp);
+        const mounts = s.enemies.filter(m => m.parentId === e.id && m.hp > 0).map(m => m.mountX ?? 0);
+        const points: Array<[number, number, number]> = [];
+        for (const mx of [-15, 0, 15]) if (e.age > 8 && !mounts.includes(mx)) points.push([mx, (mx ? spec.mount.s : spec.mount.c) + 0.5, 4]);
+        spec.damage.forEach((p, i) => { if (hurt > 0.3 + i * 0.12) points.push([-p[0], p[1], -p[2]]); });
+        points.forEach(([px, py, pz], i) => {
+          wreck.x = e.x + px; wreck.y = 13 + py; wreck.z = e.y - 50 + pz;
+          for (let k = 0; k < 5; k++) {
+            const u = (s.t * 0.9 + k / 5 + h01(e.id + i * 7)) % 1, seed = h01(i * 31 + k + Math.floor(s.t * 0.9 + k / 5 + h01(e.id + i * 7)) * 7);
+            vfx.smoke(wreck.x + (seed - 0.5) * 2, wreck.y + 0.5 + u * 8, wreck.z + u * 10, 5 + u * 14, SMOKE_AIR, u * 0.9, seed);
+          }
+          const f = (s.t * 2.3 + h01(i * 13)) % 1, seed = h01(i * 17 + Math.floor(s.t * 2.3 + h01(i * 13)));
+          vfx.add(VFX.fire, wreck.x, wreck.y + 1 + f * 2, wreck.z + f, 6.5 * (0.7 + 0.6 * f), 6.5 * (0.7 + 0.6 * f), hitHeat, f, seed);
+        });
       }
       let w = 0;
       // Elite wings wear a gold ring that breathes with the beat, so they read apart from amber armour.

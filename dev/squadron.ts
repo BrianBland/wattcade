@@ -21,6 +21,8 @@ renderer.mount(document.getElementById('app')!, { profile, send: a => session.si
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const frame = () => renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
 const api = { advance(seconds: number, render = true) { session.step(Math.round(seconds * 30)); if(render) frame(); }, snapshot: () => session.sim.snapshot(),
+  // Review: draw a doctored snapshot (e.g. a chosen flagship, or explosions at fixed ages).
+  draw: (s: unknown) => renderer.render(s, session.ctx.bike(), session.ctx.input()),
   resources: () => renderer.debugResources(), audit: (on: boolean) => renderer.debugAudit(on), position: () => session.ctx.media?.positionS() ?? 0, script: (name: string) => session.fakeBike?.useScript(name),
   dispose: () => { renderer.unmount(); session.sim.dispose?.(); } };
 Object.assign(window, { __squadron: api });

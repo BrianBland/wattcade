@@ -165,8 +165,9 @@ function matchingDoors(L, o) {
   const th = L.th, g = L.g, bs = o.banners || BANNERS;
   const near = doorway(g, th, o.at[0], o.at[1], o.ang || 0), far = doorway(g, th, o.far[0], o.far[1], o.farAng || 0, o.z || 0);
   far.bannerM.color.set(bs[o.want]);
-  const st = { i: 0, was: false, match: () => st.i === o.want };
-  st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), .04)); g.add(h); },
+  const st = { i: o.fixed ? o.want : 0, was: false, match: () => st.i === o.want, near, far };
+  // a fixed pair is always open (no banner button): its use is in where it leads, which you see by looking through it
+  if (!o.fixed) st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), .04)); g.add(h); },
     tick() { if (this.on !== st.was) { st.was = this.on; st.i = (st.i + 1) % bs.length; } return 0; } });
   // the view through: the main camera carried through the doors (far * near^-1 * camera), so looking into the near door
   // shows the far side from the same angle, as if the two doorways were one. Rendered at screen size, sampled in screen space.
@@ -180,7 +181,7 @@ function matchingDoors(L, o) {
     near.pm.uniforms.uT.value = far.pm.uniforms.uT.value = t || 0;
     st.open += ((st.match() ? 1 : 0) - st.open) * Math.min(1, (dt || 1 / 60) * 3); near.pm.uniforms.uOpen.value = st.open;
     if (st.open < .01) return;
-    const cam = L.view.camera; R3.getDrawingBufferSize(size); const w = Math.max(4, size.x >> 1), h = Math.max(4, size.y >> 1);
+    const cam = L.view.camera; R3.getDrawingBufferSize(size); const sh = o.rtShift ?? 1, w = Math.max(4, size.x >> sh), h = Math.max(4, size.y >> sh);
     if (rt.width !== w || rt.height !== h) rt.setSize(w, h);
     near.pm.uniforms.uRes.value.copy(size);
     for (const k of ['left', 'right', 'top', 'bottom', 'near', 'far', 'zoom']) vc[k] = cam[k]; vc.updateProjectionMatrix();
@@ -193,7 +194,7 @@ function matchingDoors(L, o) {
     R3.setRenderTarget(rt); R3.setClearColor(0x000000, 0); R3.clear(); R3.render(L.view.scene, vc); R3.setRenderTarget(prev); R3.setClearColor(cc, ca);
     far.grp.visible = vis[0]; near.portal.visible = vis[1]; near.pm.uniforms.uMap.value = rt.texture;
   });
-  o.road.forks.push({ s: sAt(o.road, [o.at[0], o.at[1], 0]), dir: 1, to: o.to, toS: .05, toDir: 1, when: st.match, text: 'The two doors matched, so they were one door' });
+  o.road.forks.push({ s: sAt(o.road, [o.at[0], o.at[1], 0]), dir: 1, to: o.to, toS: o.toS ?? .05, toDir: 1, when: st.match, text: o.text || 'The two doors matched, so they were one door' });
   return st;
 }
 

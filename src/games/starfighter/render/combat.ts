@@ -77,10 +77,25 @@ export function createCombat(scene: THREE.Scene) {
         }
         n++;
       }
+      // Escort tether: a faint, flickering thread to the lead target between strikes, brighter with the song's volume.
+      const lead = s.weapon === 'arc' && s.phase === 'run' && s.quality >= 0.8 ? s.enemies.find(e => e.id === s.selectedId) : undefined;
+      if (lead) {
+        const loud = Math.min(1, 0.6 * s.amp + 0.4 * (s.bands[0] + s.bands[1] + s.bands[2]) / 3), glow = 0.25 + 0.6 * loud + 0.3 * s.beat;
+        const x0 = s.shipX, y0 = 11, z0 = s.shipY - 53, x1 = lead.x, y1 = lead.ground ? -3.5 : lead.kind === 'boss' ? 13 : 12, z1 = lead.y - 50;
+        const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len, steps = Math.max(4, Math.min(12, Math.round(len / 5))), flick = Math.floor(s.t * 24);
+        jag.set(x0, y0, z0);
+        for (let q = 1; q <= steps; q++) {
+          const u = q / steps, off = q === steps ? 0 : (h01(lead.id * 97 + q * 13 + flick * 389) - 0.5) * Math.min(3, len * 0.12);
+          jag2.set(x0 + dx * u + nx * off, y0 + (y1 - y0) * u, z0 + dz * u + nz * off);
+          vfx.add(VFX.beam, (jag.x + jag2.x) / 2, (jag.y + jag2.y) / 2, (jag.z + jag2.z) / 2, jag.distanceTo(jag2) * 1.1, 0.5 + 0.5 * loud, ARC, 1 - 0.55 * glow, 0, jag2.x - jag.x, jag2.y - jag.y, jag2.z - jag.z);
+          jag.copy(jag2);
+        }
+        vfx.add(VFX.flash, x1, y1, z1, 2 + 2 * loud, 2 + 2 * loud, ARC, 1 - 0.5 * glow);
+      }
       // Escort arc lightning: a jagged, flickering bolt through each struck enemy, with a flash at each strike.
       for (const arc of s.arcs) {
         const age = s.t - arc.at; if (age < 0 || age > 0.4) continue;
-        const life = age / 0.4, flick = Math.floor(age * 40), wide = 0.9 + arc.tier * 0.06;
+        const life = age / 0.4, flick = Math.floor(age * 40), wide = (0.9 + arc.tier * 0.06) * (arc.major ? 1.5 : 1);
         for (let k = 0; k + 5 < arc.pts.length; k += 3) {
           const x0 = arc.pts[k], z0 = arc.pts[k + 1] - 50, y0 = arc.pts[k + 2], x1 = arc.pts[k + 3], z1 = arc.pts[k + 4] - 50, y1 = arc.pts[k + 5];
           const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz) || 1, nx = -dz / len, nz = dx / len, steps = Math.max(3, Math.min(9, Math.round(len / 4)));

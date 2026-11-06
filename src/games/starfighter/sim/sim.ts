@@ -549,7 +549,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
           // Escort: arc lightning strikes the lead target on each beat and jumps through its neighbours (one more on the bar).
           const chain = arcChain(aimed[0], candidates, arcHops(gunLevel) + (barLine ? 1 : 0), 16), pts = [x, shipY - 3, 11];
           chain.forEach((e, hop) => { e.hp -= DAMAGE.arc(gunLevel, hop) * ampMul * armour(e); pts.push(e.x, e.y, e.ground ? -3.5 : e.kind === 'boss' ? 13 : 12); effect('intercept', e.x, e.y, 0.8); });
-          arcs.push({ id: ++id, at: t, pts, tier: gunLevel }); emit('arc', { hops: chain.length }); volleys++; if (barLine) volleyAt = t;
+          arcs.push({ id: ++id, at: t, pts, tier: gunLevel, ...(barLine ? { major: true } : {}) }); emit('arc', { hops: chain.length }); volleys++; if (barLine) volleyAt = t;
         } else if (kind === 'rail' && music.eighth) {
           // Striker: twin rails fire instantly on every eighth note, alternating cannons.
           spread(aimed, railCount(gunLevel, pk.salvo)).forEach(e => {

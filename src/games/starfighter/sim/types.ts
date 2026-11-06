@@ -29,7 +29,7 @@ export interface EnemyView {
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean; amp?: number }
 /** Escort arc lightning: the struck chain as (x, y, height) triples starting at the ship, drawn briefly from `at`. */
-export interface ArcView { id: number; at: number; pts: number[]; tier: number }
+export interface ArcView { id: number; at: number; pts: number[]; tier: number; /** Fired on a bar line (drawn bigger). */ major?: boolean }
 /** Striker rail: an instant beam from the ship's cannon (`sx`, `sy`) to its target. */
 export interface RailView { id: number; at: number; sx: number; sy: number; x: number; y: number; height: number; tier: number }
 /** Gunship flak shell: lobbed from the ship, it bursts over its target at `hitAt` (a beat), catching everything within `radius`. */

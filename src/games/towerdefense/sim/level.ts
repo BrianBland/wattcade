@@ -36,6 +36,14 @@ export interface TdLevel {
   roadStyle?: string;
   /** Where the road crosses itself; the later pass rides a bridge deck (the final approach is never under one). */
   bridges?: readonly Pt[];
+  /**
+   * More walking routes (waypoints, entrance to turret) beside `waypoints`: a fork shares its start and splits, a
+   * merge comes from its own entrance and joins the road. Shared stretches repeat the same waypoints, so the splines
+   * coincide there. Walkers take the routes in turn.
+   */
+  lanes?: ReadonlyArray<readonly Pt[]>;
+  /** Where power cables may pass under the road (a buried conduit), so ground between routes can hold pads. */
+  culverts?: readonly Pt[];
   /** Registered terrain paintings (level 0 only). Pads ≥ `pads` get a drawn plate. */
   painted?: { boxes: Readonly<Record<PaintOrientation, PaintBox>>; pads: number };
 }
@@ -62,17 +70,33 @@ const LANE_SPREAD = 2.25, BOSS_RADIUS = 5.2, BASE_REACH = 8;
 export interface Pad { id: number; x: number; y: number; name: string; s: number }
 export type RoadPoint = { x: number; y: number; nx: number; ny: number };
 
+/** One walking route: its sampled centre line and the walk along it. */
+export interface Lane {
+  /** The whole sampled centre line, from its hive mouth to the turret (for drawing). */
+  line: readonly Pt[];
+  /** Walkable length, from the spawn edge to the turret. */
+  length: number;
+  /** Point `d` units along the route from the spawn edge, with the unit normal (pointing to the walker's left). */
+  at(d: number): RoadPoint;
+  /** Where the route enters the field (its hive mouth). */
+  mouth: Pt;
+}
+
 export interface TdGeometry {
   level: TdLevel;
-  /** The whole sampled centre line, from the hive mouth to the turret (for drawing). */
+  /** Lane 0's sampled centre line, from the hive mouth to the turret (for drawing). */
   road: readonly Pt[];
-  /** Walkable length, from the spawn edge to the turret. */
+  /** Every route's centre line (lane 0 first); shared stretches appear once per route. */
+  roads: ReadonlyArray<readonly Pt[]>;
+  /** The walking routes (lane 0 = `waypoints`). */
+  lanes: readonly Lane[];
+  /** Lane 0's walkable length, from the spawn edge to the turret. */
   roadLength: number;
-  /** Point `d` units along the road from the spawn edge, with the unit normal (pointing to the walker's left). */
+  /** Point `d` units along lane 0 from the spawn edge, with the unit normal (pointing to the walker's left). */
   roadAt(d: number): RoadPoint;
   /** Road distance of the nearest road point to (x, y). */
   roadDistanceOf(x: number, y: number): number;
-  /** Shortest distance from a point to the sampled road centre line. */
+  /** Shortest distance from a point to any route's sampled centre line. */
   distanceToRoad(p: Pt): number;
   /** The walkable road for drawing (every `step` samples, always ending at the turret). */
   roadPolyline(step?: number): Pt[];
@@ -114,16 +138,16 @@ export function distanceToLine(p: Pt, line: readonly Pt[]): number {
 const FIELD_H = 112;
 const cache = new WeakMap<TdLevel, TdGeometry>();
 
-/** The level's derived geometry, built once per level object. */
-export function levelGeometry(level: TdLevel): TdGeometry {
-  const hit = cache.get(level);
-  if (hit) return hit;
-  const road = splineLine(level.waypoints), base = level.turret;
-  const first = Math.max(0, road.findIndex((p) => p.y >= level.spawnY) - 1);
-  const pts = road.slice(first), cum = [0];
+/** The walkable part of a centre line (from just above the spawn edge) and its running length. */
+function walkOf(line: readonly Pt[], spawnY: number) {
+  const first = Math.max(0, line.findIndex((p) => p.y >= spawnY) - 1);
+  const pts = line.slice(first), cum = [0];
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
-  const len = cum[cum.length - 1];
-  const roadAt = (d: number): RoadPoint => {
+  return { pts, cum };
+}
+function laneOf(waypoints: readonly Pt[], spawnY: number): Lane {
+  const line = splineLine(waypoints), { pts, cum } = walkOf(line, spawnY), len = cum[cum.length - 1];
+  const at = (d: number): RoadPoint => {
     const dd = Math.max(0, Math.min(len, d));
     let lo = 0, hi = pts.length - 1;
     while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= dd) lo = m; else hi = m; }
@@ -131,6 +155,17 @@ export function levelGeometry(level: TdLevel): TdGeometry {
     const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
     return { x: a.x + tx * k, y: a.y + ty * k, nx: ty / tl, ny: -tx / tl };
   };
+  return { line, length: len, at, mouth: waypoints[0] };
+}
+
+/** The level's derived geometry, built once per level object. */
+export function levelGeometry(level: TdLevel): TdGeometry {
+  const hit = cache.get(level);
+  if (hit) return hit;
+  const base = level.turret;
+  const lanes = [level.waypoints, ...(level.lanes ?? [])].map((w) => laneOf(w, level.spawnY));
+  const road = lanes[0].line, roads = lanes.map((l) => l.line);
+  const { pts, cum } = walkOf(road, level.spawnY), len = lanes[0].length, roadAt = lanes[0].at;
   const roadDistanceOf = (x: number, y: number): number => {
     let best = Infinity, at = 0;
     for (let i = 0; i < pts.length; i++) { const p = pts[i], d = Math.hypot(p.x - x, p.y - y); if (d < best) { best = d; at = cum[i]; } }
@@ -157,8 +192,8 @@ export function levelGeometry(level: TdLevel): TdGeometry {
     return rows.flatMap((r) => r.sort((a, b) => a.cross - b.cross).map((p) => p.id));
   };
   const geo: TdGeometry = {
-    level, road, roadLength: len, roadAt, roadDistanceOf,
-    distanceToRoad: (p) => distanceToLine(p, road),
+    level, road, roads, lanes, roadLength: len, roadAt, roadDistanceOf,
+    distanceToRoad: (p) => Math.min(...roads.map((l) => distanceToLine(p, l))),
     roadPolyline: (step = 4) => pts.filter((_, i) => i % step === 0 || i === pts.length - 1),
     routes: level.flyerSpawns.length, flightLength, flightAt,
     pads, basePad, base,

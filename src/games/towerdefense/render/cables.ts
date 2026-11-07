@@ -1,5 +1,6 @@
-// Power cables from under the turret deck to each pad, routed around the road (never across it). The road runs from
-// the hive to the turret, so it splits the ground into two sides that both touch the turret: every pad is reachable.
+// Power cables from under the turret deck to each pad, routed around the road (never across it, but under a bridge
+// deck or through a culvert). The road runs from the hive to the turret, so it splits the ground into two sides that
+// both touch the turret; ground a fork or merge closes off is reached through a culvert.
 // Pure and deterministic: a grid search on world units, then simplification and smoothing that keep the clearance.
 import { PAD_R, type Pt } from '../sim/road';
 import { LEVEL_0, levelGeometry, type TdLevel } from '../sim/level';
@@ -9,8 +10,8 @@ export const cableRoadClear = (level: TdLevel): number => level.roadHalfWidth + 
 /** Level 0's cable clearance. */
 export const CABLE_ROAD_CLEAR = cableRoadClear(LEVEL_0);
 /** What a level's cables route around. */
-interface CableMap { road: readonly Pt[]; pads: readonly Pt[]; turret: Pt; turretR: number; clear: number; bridges: readonly Pt[] }
-/** Within this of a bridge crossing a cable may run under the deck. */
+interface CableMap { roads: ReadonlyArray<readonly Pt[]>; pads: readonly Pt[]; turret: Pt; turretR: number; clear: number; bridges: readonly Pt[] }
+/** Within this of a bridge crossing (or a culvert) a cable may run under the road. */
 const underDeck = (m: CableMap, p: Pt) => m.bridges.some((b) => Math.hypot(b.x - p.x, b.y - p.y) < m.clear * 1.5 + 3);
 const PAD_CLEAR = PAD_R + 1.4;
 const STEP = 0.5;
@@ -25,7 +26,7 @@ export interface CableRoute { pad: number; pts: Pt[]; length: number; through: n
 /** Distance from each grid cell to the road centre line, capped (rasterised from the road samples). */
 function roadDistance(m: CableMap, cap: number): Float32Array {
   const d = new Float32Array(W * H).fill(cap);
-  for (const p of m.road) {
+  for (const p of m.roads.flat()) {
     const r = Math.ceil(cap / STEP);
     const cx = Math.round((p.x - BOX.x0) / STEP), cy = Math.round((p.y - BOX.y0) / STEP);
     for (let j = Math.max(0, cy - r); j <= Math.min(H - 1, cy + r); j++) for (let i = Math.max(0, cx - r); i <= Math.min(W - 1, cx + r); i++) {
@@ -55,7 +56,7 @@ function clear(m: CableMap, pts: readonly Pt[], pad: number, through: ReadonlySe
       const p = { x: a.x + (b.x - a.x) * j / n, y: a.y + (b.y - a.y) * j / n };
       if (Math.hypot(p.x - m.turret.x, p.y - m.turret.y) < m.turretR - 1) continue; // under the deck
       if (Math.hypot(p.x - m.pads[pad].x, p.y - m.pads[pad].y) < PAD_R) continue; // under its own tower
-      if (distanceToLine(p, m.road) < m.clear - 0.6 && !underDeck(m, p)) return false;
+      if (m.roads.some((line) => distanceToLine(p, line) < m.clear - 0.6) && !underDeck(m, p)) return false;
       if (m.pads.some((q, k) => k !== pad && !through.has(k) && Math.hypot(p.x - q.x, p.y - q.y) < PAD_CLEAR - 0.6)) return false;
     }
   }
@@ -87,7 +88,8 @@ const cache = new WeakMap<TdLevel, CableRoute[]>();
 export function cableRoutes(level: TdLevel = LEVEL_0): CableRoute[] {
   const hit = cache.get(level);
   if (hit) return hit;
-  const m: CableMap = { road: levelGeometry(level).road, pads: level.pads, turret: level.turret, turretR: level.turretR, clear: cableRoadClear(level), bridges: level.bridges ?? [] };
+  const m: CableMap = { roads: levelGeometry(level).roads, pads: level.pads, turret: level.turret, turretR: level.turretR, clear: cableRoadClear(level),
+    bridges: [...level.bridges ?? [], ...level.culverts ?? []] };
   const road = roadDistance(m, m.clear + 4);
   const used = new Float32Array(W * H); // earlier cables: later ones run beside them rather than on top
   const routes: CableRoute[] = [];
@@ -145,6 +147,21 @@ export function cableRoutes(level: TdLevel = LEVEL_0): CableRoute[] {
   const sorted = routes.sort((a, b) => a.pad - b.pad);
   cache.set(level, sorted);
   return sorted;
+}
+
+/** A culvert's steel cover: centre, the road's heading there (radians) and its size (across × along the road). */
+export interface CulvertPlate { x: number; y: number; angle: number; across: number; along: number }
+/** Where the level's culverts cover the road: across its full width plus the shoulders, aligned with the road. */
+export function culvertPlates(level: TdLevel): CulvertPlate[] {
+  const roads = levelGeometry(level).roads, across = (level.roadHalfWidth + level.shoulder) * 2 + 1.5;
+  return (level.culverts ?? []).map((c) => {
+    let best = Infinity, angle = 0;
+    for (const line of roads) for (let i = 1; i < line.length; i++) {
+      const d = distanceToLine(c, [line[i - 1], line[i]]);
+      if (d < best) { best = d; angle = Math.atan2(line[i].y - line[i - 1].y, line[i].x - line[i - 1].x); }
+    }
+    return { x: c.x, y: c.y, angle, across, along: 4 };
+  });
 }
 
 /** The point a fraction 0..1 of the way along a route. */

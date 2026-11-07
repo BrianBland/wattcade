@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import { LENGTH_BAND, ROAD_STYLES, STYLE_FIT, generateLevel, minPads, padsFor, validateLevel } from '../sim/generator';
+import { ROAD_STYLES, STYLE_FIT, generateLevel, lengthBand, minPads, padsFor, validateLevel } from '../sim/generator';
 import { levelGeometry } from '../sim/level';
 import { layout, fieldClearsHud } from '../render/layout';
 import { cableRoutes } from '../render/cables';
@@ -36,8 +36,9 @@ describe('level generator', () => {
       expect(level.roadStyle).toBe(style);
       expect(level.pads.length).toBeGreaterThanOrEqual(minPads(asked));
       expect(level.pads.length).toBeLessThanOrEqual(asked);
-      expect(metrics.length).toBeGreaterThanOrEqual(LENGTH_BAND.min);
-      expect(metrics.length).toBeLessThanOrEqual(LENGTH_BAND.max);
+      expect(metrics.length).toBeGreaterThanOrEqual(lengthBand(style).min);
+      expect(metrics.length).toBeLessThanOrEqual(lengthBand(style).max);
+      expect(metrics.lanes).toBe(style === 'fork' || style === 'merge' ? 2 : 1);
       // within a little of the style's bar (a seed may settle for its best-covered try)
       const bar = STYLE_FIT[style], ease = asked < 8 ? 0.92 : 1;
       expect(metrics.flame).toBeGreaterThanOrEqual(bar.flame * ease - 0.06);
@@ -50,6 +51,28 @@ describe('level generator', () => {
       expect(cableRoutes(level).map((r) => r.pad)).toEqual(level.pads.map((_, i) => i));
     });
   }
+
+  for (const style of ['fork', 'merge'] as const) it(`a ${style}'s routes share the road where they should, and walkers take both`, () => {
+    const { level } = levels.find((l) => l.style === style)!, g = levelGeometry(level), [a, b] = g.lanes;
+    expect(g.lanes.length).toBe(2);
+    // a fork shares its start, a merge its end
+    const near = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y) < 0.5;
+    if (style === 'fork') { expect(near(a.at(10), b.at(10))).toBe(true); expect(near(a.at(a.length / 2), b.at(b.length / 2))).toBe(false); }
+    else { expect(near(a.at(a.length - 20), b.at(b.length - 20))).toBe(true); expect(near(a.at(0), b.at(0))).toBe(false); }
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'sprints' }, seed: 2,
+      simOpts: { autopilot: true, level } });
+    const seen = new Set<number>();
+    for (let i = 0; i < 300 && (s.sim.snapshot() as TdSnapshot).wavesSurvived < 2; i++) {
+      s.step(60);
+      for (const e of (s.sim.snapshot() as TdSnapshot).enemies) if (!e.flying) {
+        seen.add(e.lane ?? 0);
+        expect(g.lanes[e.lane ?? 0].length).toBeGreaterThan(0);
+        expect(g.distanceToRoad(e)).toBeLessThan(level.roadHalfWidth);
+      }
+    }
+    expect([...seen].sort()).toEqual([0, 1]);
+    expect((s.sim.snapshot() as TdSnapshot).wavesSurvived).toBeGreaterThanOrEqual(2);
+  });
 
   it('a generated level plays: the sim walks its road and builds on its pads', () => {
     const { level } = levels.find((l) => l.style === 'ring')!, g = levelGeometry(level);

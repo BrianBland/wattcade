@@ -60,8 +60,8 @@ export function readSave(raw: unknown): TdSave {
 }
 
 interface Enemy {
-  /** `route` -1 walks the road; 0..2 flies straight from that Glider spawn */
-  id: number; kind: Kind; route: number; d: number; len: number; off: number; phase: number;
+  /** `route` -1 walks the road (route `lane` of the level's roads); 0..2 flies straight from that Glider spawn */
+  id: number; kind: Kind; route: number; lane: number; d: number; len: number; off: number; phase: number;
   x: number; y: number; angle: number; dist: number;
   hp: number; maxHp: number; speed: number; dmg: number; dead: boolean; hurt: number;
   /** element of the last hit (for death effects: a fire kill bursts a red alien) */ lastEl: Element | null;
@@ -87,7 +87,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // Levels swap the map between runs (useLevel); Endless plays `opts.level`.
   const endlessLevel = opts?.level ?? LEVEL_0;
   let level = endlessLevel, geo = levelGeometry(level);
-  let { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo;
+  let { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, flightAt, flightLength, angleTo, distTo } = geo;
   let BASE_X = geo.base.x, BASE_Y = geo.base.y, BASE_R = geo.baseR;
   /** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
   let PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
@@ -95,7 +95,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function useLevel(l: TdLevel) {
     if (l === level) return;
     level = l; geo = levelGeometry(l);
-    ({ pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo);
+    ({ pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, flightAt, flightLength, angleTo, distTo } = geo);
     BASE_X = geo.base.x; BASE_Y = geo.base.y; BASE_R = geo.baseR;
     PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
     towers = PADS.map(() => null);
@@ -157,6 +157,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const intensityHard = T.num('intensityHard', 1.15, 1, 1.6, 0.05, 'Hard intensity: work-wave trainer targets x this');
   const intensityEasyHp = T.num('intensityEasyHp', 0.8, 0.3, 1, 0.05, 'Easy intensity: enemy HP x this');
   const intensityHardHp = T.num('intensityHardHp', 1.25, 1, 2.5, 0.05, 'Hard intensity: enemy HP x this');
+  const splitRoadHp = T.num('splitRoadHp', 0.8, 0.5, 1, 0.05, 'forks and merges: road walkers\' HP x this (a tower sees only one of the routes)');
   const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'base HP share left for a two-star level clear');
   const starThree = T.num('starThreeHp', 0.9, 0, 1, 0.05, 'base HP share left for a three-star level clear');
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
@@ -360,20 +361,22 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const radiusOf = (e: Enemy) => e.kind === 'boss' ? geo.bossRadius : KINDS[e.kind].radius;
 
   function place(e: Enemy) {
-    const p = e.route < 0 ? roadAt(e.d) : flightAt(e.route, e.d);
+    const p = e.route < 0 ? geo.lanes[e.lane].at(e.d) : flightAt(e.route, e.d);
     const wob = e.route >= 0 ? Math.sin(t * 5 + e.phase) * 2.5 : 0;
     const fade = Math.min(1, (e.len - e.d) / 12); // converge onto the base at the end
     e.x = p.x + p.nx * (e.off + wob) * fade; e.y = p.y + p.ny * (e.off + wob) * fade;
     e.angle = angleTo(e.x, e.y); e.dist = distTo(e.x, e.y);
   }
 
-  function spawn(kind: Kind, route: number, d = 0) {
+  /** Walkers take the level's roads in turn (one road: always lane 0). */
+  let laneTurn = 0;
+  function spawn(kind: Kind, route: number, d = 0, lane = route < 0 ? laneTurn++ % geo.lanes.length : 0) {
     const k = KINDS[kind];
     const w1 = dw(wave) - 1;
     const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(dw(wave) / 5) * 0.35 : 1);
-    const hp = k.hp * hs * hpK();
+    const hp = k.hp * hs * hpK() * (route < 0 && geo.lanes.length > 1 ? splitRoadHp() : 1);
     const e: Enemy = {
-      id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
+      id: nextId++, kind, route, lane, d, len: route < 0 ? geo.lanes[lane].length : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
       hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
       spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null,
@@ -452,7 +455,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** Spawns near another alien: on the road at its distance, or (for a flyer's brood) on the road below it. */
   function spawnAt(kind: Kind, from: Enemy, dOff: number) {
-    spawn(kind, from.route, Math.max(0, from.d + dOff));
+    spawn(kind, from.route, Math.max(0, from.d + dOff), from.lane);
   }
 
   // ---------- waves ----------
@@ -817,14 +820,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (burns.length > 24) burns.splice(0, burns.length - 24);
   }
   function lobFireball(target: Enemy, damage: number) {
-    const flight = fireballFlight(), ahead = target.route < 0 ? roadAt(target.d + travelSpeed(target) * flight) : target;
+    const flight = fireballFlight(), ahead = target.route < 0 ? geo.lanes[target.lane].at(target.d + travelSpeed(target) * flight) : target;
     const share = clamp(burnShare(), 0, 1);
     shells.push({ x0: BASE_X, y0: BASE_Y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg: damage * (1 - share), r: fireballRadius(), burnDps: damage * share / Math.max(0.1, burnS()) });
     cue('fireball');
   }
+  /** Where the slow field starts on lane 0 (each road is covered from the same share of its length). */
   const slowStart = () => ROAD_LENGTH * slowFrom();
   function travelSpeed(e: Enemy) {
-    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= slowStart() ? 1 - slowFraction() : 1)
+    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= e.len * slowFrom() ? 1 - slowFraction() : 1)
       * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1);
   }
 
@@ -1446,7 +1450,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const el = elementOf(e), si = shiftIn(e);
     const shifting = e.kind === 'prism';
     return {
-      id: e.id, kind: e.kind, route: e.route, flying: e.route >= 0, x: e.x, y: e.y, angle: e.angle, dist: e.dist, radius: radiusOf(e),
+      id: e.id, kind: e.kind, route: e.route, lane: e.lane, flying: e.route >= 0, x: e.x, y: e.y, angle: e.angle, dist: e.dist, radius: radiusOf(e),
       element: el, gold: e.kind === 'boss', hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, charging: e.charging,
       shiftIn: si, next: shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
       shield: e.boss && e.boss.shieldMax > 0 ? e.boss.shield / e.boss.shieldMax : 0,

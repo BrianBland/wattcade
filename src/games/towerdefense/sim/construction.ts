@@ -29,7 +29,7 @@ export function padCover(geo: TdGeometry): Record<TowerKind, number[]> {
   const cover = Object.fromEntries(TOWER_KINDS.map((kind) => [kind, geo.pads.map((p) => {
     const r = TOWERS[kind].range, near = (q: { x: number; y: number }) => Math.hypot(q.x - p.x, q.y - p.y) <= r;
     let n = 0;
-    for (let d = 0; d < geo.roadLength; d++) if (near(geo.roadAt(d))) n++;
+    for (const lane of geo.lanes) for (let d = 0; d < lane.length; d++) if (near(lane.at(d))) n += 1 / geo.lanes.length;
     if (TOWERS[kind].air) for (let route = 0; route < geo.routes; route++) for (let d = 0; d < geo.flightLength(route); d++) if (near(geo.flightAt(route, d))) n += 0.5;
     return n;
   })])) as Record<TowerKind, number[]>;

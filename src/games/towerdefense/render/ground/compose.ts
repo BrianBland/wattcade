@@ -74,13 +74,21 @@ const CLEARING_D = 10;
 /** The kit's turret apron is painted for a 26-unit disc; it is fitted to the level's turret (radius 11 → 26). */
 const APRON_D = 26;
 
-/** Distance to a road polyline plus the arc length there, via a coarse bucket grid of segments. */
-export function roadIndex(line: readonly Pt[], band: number) {
-  const pts: Array<Pt & { s: number }> = []; let s = 0;
-  line.forEach((p, i) => { if (i) s += Math.hypot(p.x - line[i - 1].x, p.y - line[i - 1].y); pts.push({ x: p.x, y: p.y, s }); });
+/**
+ * Distance to the nearest of some road polylines plus the arc length there (along that polyline), via a coarse bucket
+ * grid of segments. Routes that share a stretch share their arc length along it from their common start.
+ */
+export function roadIndex(lines: readonly Pt[] | ReadonlyArray<readonly Pt[]>, band: number) {
+  const all = (Array.isArray(lines[0]) ? lines : [lines]) as ReadonlyArray<readonly Pt[]>;
+  const pts: Array<Pt & { s: number; first: boolean }> = [];
+  for (const line of all) {
+    let s = 0;
+    line.forEach((p, i) => { if (i) s += Math.hypot(p.x - line[i - 1].x, p.y - line[i - 1].y); pts.push({ x: p.x, y: p.y, s, first: i === 0 }); });
+  }
   const CELL = 8, buckets = new Map<number, number[]>(), key = (cx: number, cy: number) => (cx + 512) * 4096 + (cy + 512);
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
+    if (b.first) continue; // no segment joins one line's end to the next line's start
     for (let cx = Math.floor((Math.min(a.x, b.x) - band) / CELL); cx <= Math.floor((Math.max(a.x, b.x) + band) / CELL); cx++)
       for (let cy = Math.floor((Math.min(a.y, b.y) - band) / CELL); cy <= Math.floor((Math.max(a.y, b.y) + band) / CELL); cy++) {
         const k = key(cx, cy); (buckets.get(k) ?? buckets.set(k, []).get(k)!).push(i);
@@ -107,13 +115,15 @@ const BANDS = new WeakMap<TdLevel, number>();
 export function gravelBand(level: TdLevel): number {
   const known = BANDS.get(level);
   if (known !== undefined) return known;
-  const hw = level.roadHalfWidth, sh = level.shoulder, line = levelGeometry(level).road, bridges = level.bridges ?? [];
-  const s: number[] = [0];
-  for (let i = 1; i < line.length; i++) s.push(s[i - 1] + Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y));
-  const open = line.map(p => bridges.every(b => Math.hypot(p.x - b.x, p.y - b.y) > hw * 3.4));
+  const hw = level.roadHalfWidth, sh = level.shoulder, bridges = level.bridges ?? [];
   let clear = Infinity;
-  for (let i = 0; i < line.length; i++) if (open[i]) for (let j = i + 1; j < line.length; j++)
-    if (open[j] && s[j] - s[i] > 30) clear = Math.min(clear, Math.hypot(line[i].x - line[j].x, line[i].y - line[j].y));
+  for (const line of levelGeometry(level).roads) {
+    const s: number[] = [0];
+    for (let i = 1; i < line.length; i++) s.push(s[i - 1] + Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y));
+    const open = line.map(p => bridges.every(b => Math.hypot(p.x - b.x, p.y - b.y) > hw * 3.4));
+    for (let i = 0; i < line.length; i++) if (open[i]) for (let j = i + 1; j < line.length; j++)
+      if (open[j] && s[j] - s[i] > 30) clear = Math.min(clear, Math.hypot(line[i].x - line[j].x, line[i].y - line[j].y));
+  }
   const band = Math.max(hw + sh + 3.7, Math.min(hw + sh + 7.5, clear / 2 - 0.5));
   BANDS.set(level, band);
   return band;
@@ -129,7 +139,7 @@ export function* composeGround(level: TdLevel, kit: KitManifest, px: KitPixels, 
   const W = Math.round(box.w * K), H = Math.round(box.h * K);
   if (out.length < W * H * 4) throw new Error('composeGround: buffer too small');
   const geo = levelGeometry(level), hw = level.roadHalfWidth, sh = level.shoulder;
-  const rim = hw + sh + 2.2, band = gravelBand(level), near = roadIndex(geo.road, band);
+  const rim = hw + sh + 2.2, band = gravelBand(level), near = roadIndex(geo.roads, band);
   const groundA = bombed(px.groundA, 11, 1), groundB = bombed(px.groundB, 11, 5), gravel = bombed(px.gravel, 4.5, 3), hive = bombed(px.hive, 9, 7, true);
   const RD = px.road, cy = RD.h / 2, period = RD.w / RD.ppu;
   const T = level.turret, apronScale = level.turretR / 11;
@@ -200,7 +210,10 @@ export function scatterPlan(level: TdLevel, kit: KitManifest, box: WorldBox): Pl
     const i = Math.floor(rnd() * kit.props.length), st = kit.props[i], r = Math.max(st.w, st.h) / 2, p = { x: box.x0 + rnd() * box.w, y: box.y0 + rnd() * box.h };
     if (geo.distanceToRoad(p) > band - 2 + r && clear(p, r) && placed.every(o => Math.hypot(o.x - p.x, o.y - p.y) > o.r + r + 2)) { placed.push({ ...p, r }); out.push({ kind: 'prop', i, ...p, alpha: 1 }); }
   }
-  if (kit.hiveMouth) { const e = geo.road.find(p => p.y >= box.y0 + 4) ?? geo.road[0]; out.push({ kind: 'mouth', i: 0, x: e.x, y: e.y, alpha: 1 }); }
+  if (kit.hiveMouth) for (const line of geo.roads) { // one mouth per entrance (a fork's routes share theirs)
+    const e = line.find(p => p.y >= box.y0 + 4) ?? line[0];
+    if (!out.some(o => o.kind === 'mouth' && Math.hypot(o.x - e.x, o.y - e.y) < 6)) out.push({ kind: 'mouth', i: 0, x: e.x, y: e.y, alpha: 1 });
+  }
   return out;
 }
 

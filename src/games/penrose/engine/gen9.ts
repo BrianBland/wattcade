@@ -400,7 +400,7 @@ function genDef3(plan, sol) {
     'Set a machine, or turn the camera, while the wheel is out in a cul-de-sac.'].filter(Boolean).join(' ');
   const all = plan.R.flatMap(r => r.pts).concat(plan.posts.map(q => q.p)), xs = all.map(p => p[0]), ys = all.map(p => p[1]), lm = [Math.min(...xs) - 2.4, Math.min(...ys) - 2.4];
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2, ztop = Math.max(...all.map(p => p[2]));
-  return { id: `${tier.id}-${plan.seed}`, name, th: () => THEMES[tier.theme], cruise: [78, 92], hint, plan, sol, gen: true, yaws: plan.views,
+  return { id: `${tier.id}-${plan.seed}`, name, th: () => THEMES[tier.theme], cruise: [78, 92], hint, plan, sol, gen: true, terrain: true, yaws: plan.views,
     build(L) {
       const th = L.th, g = L.g, P = L.props, postMat = tri(sp(th, 1)), ER = []; P.ER = ER; P.keys = []; P.held = 0;
       const occupied = plan.R.filter(r => !r.ghost).flatMap(r => r.pts), swings = M.filter(m => m.type === 'tt' || m.type === 'cross').map(m => m.type === 'tt' ? m.pivot : m.center).concat(plan.camAt ? [plan.camAt] : []);

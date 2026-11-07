@@ -780,7 +780,9 @@ function makeLevel(def, idx) {
   let fxAt = null, fxT = 9;
   const goalRing = sprite(TEX.ring, 1.1, 1.1, th.goal, { opacity: .9, add: true }), goalGlow = sprite(TEX.glow, 2.2, 2.2, th.goal, { opacity: .55, add: true }); g.add(goalRing); g.add(goalGlow);
   def.build(L);
-  if (def.scenery !== false && typeof sceneryPass === 'function') L.scenery = sceneryPass(L, def.scenery || {});
+  // generated levels may stand on plateaus (./terrain.ts); a level that does gets no floating scenery around it
+  if (def.terrain && $scope.autoTerrain) L.terrain = $scope.autoTerrain(L, def.terrain === true ? {} : def.terrain);
+  if (def.scenery !== false && !L.terrain?.length && typeof sceneryPass === 'function') L.scenery = sceneryPass(L, def.scenery || {});
   // a perspective join reads as one road: wherever two road ends meet on screen, the nearer end is drawn without its end cap,
   // with faces that wind outwards, so through the open end you see the far road carrying on behind it
   view.updaters.push(() => {

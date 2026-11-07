@@ -76,7 +76,7 @@ function curtainDef(plan) {
   const all = S.map(q => q.p).concat([[-.6, -.6, 0], [gw + .6, gh + .6, 0]]); for (const h of holes) if (h.tower) all.push([h.tower[0], h.tower[1], h.tower[4]], [h.tower[2], h.tower[3], h.tower[4] - 4]); else all.push([h.deck[0], h.deck[1], h.deck[4] + 1.4], [h.deck[2], h.deck[3], h.deck[4] - 3]);
   const lo = [0, 1, 2].map(j => Math.min(...all.map(p => p[j]))), hi = [0, 1, 2].map(j => Math.max(...all.map(p => p[j])));
   const view = y => y ? 'the side view' : 'the front view', step = h => h.kind === 'lift' ? `spin up to lift the terrace (from ${view(h.yaw)})` : h.kind === 'shutter' ? `raise the shutter (from ${view(h.yaw)})` : 'turn the camera to the side, past the tower';
-  return { id: `curtain-${plan.seed}`, name: plan.name, th: () => THEMES[plan.theme], cruise: [55, 92], yaws, generated: true,
+  return { id: `curtain-${plan.seed}`, name: plan.name, th: () => THEMES[plan.theme], cruise: [55, 92], yaws, generated: true, terrain: true,
     hint: `A hole you cannot see is not there. Three holes cut the road home, each hidden from one point of view only: a tower hides one from the side, a terrace on a cadence lift (no button: about 55 rpm keeps it low, 85 lifts it into place) hides another, and a shutter you raise with <b>A</b> hides the third. <b>Y</b> turns the camera. The loop lets the wheel go only when the road ahead looks whole. In order: ${holes.map(step).join('; then ')}.`,
     build(L) {
       const th = L.th, g = L.g, P = L.props;

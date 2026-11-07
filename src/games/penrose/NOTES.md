@@ -20,7 +20,7 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
   `gravity`, `gravity2`, `curtain` (curtain generator), `audit` (screen audit), `decor` (seeded wall-art decals that
   shade like the wall), `cube` (wall machines and The Cube: box turns per edge, camera per storey, per-wall checkpoints,
   one button per storey via `machine.live`), `studies2` (conveyor, reflection pools, portal doors, clutch bridge, seam
-  studies), `levels3` (levels using them, spread through the chapters). Colour management is off (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
+  studies), `surfaces` (tiling ground textures), `levels3` (levels using them, spread through the chapters; `terrain()` builds plateaus on a base). Colour management is off (`LinearSRGBColorSpace`) to keep the look. `render/engineTypes.ts` is the typed surface, including `tools`.
 - `campaign.ts`: the chapters, as data: hand-built ids, `'<tier>:<seed>'` (gen9) or `'cg:<seed>'` (curtain).
 - `render/renderer.ts`: builds the sky / stage / status / fade DOM, feeds the engine rider from the snapshot (not while
   the autopilot drives), reports level, wins, falls and load back through `send`.

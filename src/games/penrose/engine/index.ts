@@ -20,6 +20,7 @@ import { install as gravity2 } from './gravity2';
 import { install as curtain } from './curtain';
 import { install as audit } from './audit';
 import { install as decor } from './decor';
+import { install as surfaces } from './surfaces';
 import { install as cube } from './cube';
 import { install as studies2 } from './studies2';
 import { install as levels3 } from './levels3';
@@ -43,7 +44,7 @@ function defFor(E, pool, item) {
 
 export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN): PenroseEngine {
   const E = { dom, hooks };
-  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, cube, studies2, levels3]) install(E);
+  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, cube, studies2, levels3]) install(E);
   const pool = handBuilt(E), LEVELS = E.LEVELS;
   for (const ch of campaign) for (const it of ch.levels) {
     const d = defFor(E, pool, it);

@@ -805,6 +805,9 @@ function makeLevel(def, idx) {
       const b = [1e9, -1e9, 1e9, -1e9], add = (sx, sy, e = 0) => { b[0] = Math.min(b[0], sx - e); b[1] = Math.max(b[1], sx + e); b[2] = Math.min(b[2], sy - e); b[3] = Math.max(b[3], sy + e); };
       // the hand-picked points are chosen for the front view; a turned view is framed on its roads alone
       if (!yd) for (const q of def.pts) add(...scr(V(...q)));
+      // a turned view also keeps the land in frame (terrain marks its meshes), so the plateaus are not cut off at the edges
+      else g.traverse(o => { if (!o.userData?.terrain || !o.geometry) return; o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
+        for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.max.y]) for (const z of [bb.min.z, bb.max.z]) add(...scr(new T.Vector3(x, y, z).applyMatrix4(o.matrixWorld))); });
       for (const r of L.roads) for (const q of r.S) add(...scr(r.g ? q.p.clone().applyMatrix4(r.g.matrixWorld) : q.p), m);
       // leave room for each machine's badge dot, which sits just above it
       const hs = L.machines.map(mm => { const p = new T.Vector3(); mm.bloom.holder.getWorldPosition(p); return scr(p); });

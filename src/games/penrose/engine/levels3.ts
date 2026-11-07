@@ -28,6 +28,11 @@ function skyRoad(L, og, pts, h, wz) {
 
 /** Low floor: top at -.5, the level loop slabs sit at, so turntable arms swing clear over it. */
 const lowFloor = (L, x0, y0, x1, y1) => B(L.g, x0, y0, -1.1, x1, y1, -.5, tri(sp(L.th, 0)));
+/** brokenCliff for a road heading along `ang` (radians from -y, turning toward -x: 0 = heading -y, PI/2 = heading -x). */
+function cliffAt(L, x, y, z, zBase, ang) {
+  const grp = new T.Group(); grp.position.copy(V(x, y, 0)); grp.rotation.y = ang; L.g.add(grp);
+  brokenCliff({ g: grp, th: L.th, lane: L.lane }, 0, 0, z, zBase, true);
+}
 /**
  * A door station: a loop with two turntables, each able to swing its arm out to a spur that ends in a doorway.
  * In station space (offset ox, oy): the loop runs (7,0)->(10,0)->(10,4)->(0,4)->(0,3), arm T2 (0,3)->(0,1) [swings to -x],
@@ -190,6 +195,50 @@ const LEVELS3 = [
       const farB = W.road === Bs.R1 || W.road === Bs.T2.road || W.road === Bs.R2 && W.s < .5;
       Bs.T1.m.set(farB && Bs.T1.ang > -89.5); },
     center: [11, -6, 0], pts: [[-5.6, 6.4, -1.6], [-5.6, -6.4, -1.6], [3.6, -18.4, -1.6], [30.4, -18.4, -1.6], [30.4, -5.4, -1.6], [16.4, 6.4, -1.6], [8, -6, -5], [6, -17, 5.2], [0, -12.6, 3.6], [0, -12.6, -5], [28, -8, 4]], pad: .5, scenery: false },
+
+  { id: 'd-lanes', name: 'Three lanes, three doors', th: () => THEMES[1], cruise: [62, 95], yaws: [0, 90],
+    hint: 'Start the belt (<b>Y</b>): it carries the wheel one, two or three lanes over by your cadence (under 72, 72 to 86, over 86 rpm), and every lane ends in a door. Look through them first. On the far loop, <b>A</b> and <b>B</b> swing its turntables out to two roads past the tower. One looks whole and is not; the other has a hole you can only lose by turning the camera (<b>Z</b>).',
+    build(L) {
+      const th = L.th, g = L.g, P = L.props, pal = PAL(), white = ['#F4F1EA'], zA = 0, zL = .9, zB = 1.5, zb = -1.6;
+      // the land: the start and its lanes, a bluff off the west edge, the far loop's terrace, and two terraces past the tower split by the holes
+      terrain(L, { base: { outline: [[-9.2, 10], [11.8, 10], [11.8, -6.8], [-.8, -6.8], [-.8, -19.6], [-25, -19.6], [-25, -7.0], [-9.2, -7.0]], z: zb, depth: 1.2, top: 'gravel' },
+        tops: [{ rect: [-2.6, -.6, 11.2, 9.4], z: zA, top: 'lawn' }, { rect: [-9.2, 1.9, -4.2, 4.5], z: zL, top: 'meadow', side: 'strata', flush: true },
+          { rect: [-19.7, -19.0, -1.4, -7.4], z: zB, top: 'flagstone' }, { rect: [-25, -19.0, -19.7, -14.6], z: zB, top: 'meadow', side: 'strata', flush: true },
+          { rect: [-25, -14.0, -20.3, -7.4], z: zB, top: 'beds', flush: true }] });
+      // the start loop; the belt sits on its far side and carries the wheel out to three lanes, each ending in a door
+      const H = L.road(loopPts(0, 0, 8, 2.6, zA, .8), { closed: true, pal }); P.H = H;
+      const lanes = [4.6, 6.6, 8.6].map(y => L.road(L3([5.9, y, zA], [-2.5, y, zA], UP), { pal }));
+      P.belt = conveyor(L, { x: 5, y0: 2.6, dy: 2.0, lanes, from: H, key: 'y', bands: [72, 86] });
+      // where the doors come out: a bluff that runs off the world, the far loop, and back to the start
+      const bluff = L.road(L3([-5, 3.2, zL], [-9.2, 3.2, zL], UP), { pal, edgeText: 'The road ran off the edge of the world' }); cliffAt(L, -9.2, 3.2, zL, zb - 3.2, Math.PI / 2);
+      const Bs = doorStation(L, -14, -12, ['a', 'b'], zB, true); P.Bs = Bs;
+      const inB = L.road(L3([-2, -8, zB], [-5, -8, zB], UP), { pal }); inB.joins = [{ k: 1, ...Bs.join(9, 4) }];
+      const back = L.road(L3([10.6, 2.6, zA], [7.2, 2.6, zA], UP), { pal }); back.joins = [{ k: 1, to: H, s: sAt(H, [7.2, 2.6, 0]), dir: 1 }];
+      const pair = (road, y, to, far, z) => matchingDoors(L, { road, at: [-1.8, y], ang: 0, to, far, farAng: 0, atZ: zA, z, fixed: true, want: 0, banners: white, rtShift: 2, text: 'Through the door and out of its twin' });
+      pair(lanes[0], 4.6, bluff, [-5, 3.2], zL); pair(lanes[1], 6.6, inB, [-2, -8], zB); pair(lanes[2], 8.6, back, [10.6, 2.6], zA);
+      // the tower west of the far loop: from the front it hides the dead end's hole, from a quarter turn the hole on the way home
+      const tw = new T.Group(); g.add(tw); const stone = tri(sp(th, 0)), tz = zB - .5, ttop = 4.0;
+      B(tw, -19, -12.4, tz, -17.4, -10.4, ttop, stone); const cap = new T.Mesh(new T.ConeGeometry(1.2, .8, 4), tri(th.roof || th.mech)); cap.rotation.y = Math.PI / 4; cap.position.copy(V(-18.2, -11.4, ttop + .4)); tw.add(cap);
+      const occ = () => [tw];
+      // turntable A (S1, south): round west under the tower to a hole hidden from the front, then off the west edge
+      const w1 = ftur([-10, -16.7, zB], [0, -1, 0], UP).turn(1, -90).fwd(9).turn(1, -90).fwd(2.1);
+      const W1 = L.road(w1.pts, { pal }); Bs.S1.joins = [{ k: 1, to: W1, s: 0, dir: 1 }];
+      const W1b = L.road(ftur([-21, -14.0, zB], [0, 1, 0], UP).fwd(1.4).turn(1, 90).fwd(3.0).pts, { pal, edgeText: 'It looked whole. It ran off the edge' });
+      const e1 = W1b.end(1).p; cliffAt(L, e1.x, e1.z, zB, zb - 3.2, Math.PI / 2);
+      P.h1 = liveGap(L, W1, 1, W1b, 0, occ, { text: 'Behind the tower, so the hole was not there' });
+      // turntable B (S2, west): past the tower to a hole hidden only from a quarter turn, then home
+      const W2 = L.road(L3([-17.7, -9, zB], [-19.7, -9, zB], UP), { pal }); P.W2 = W2; Bs.S2.joins = [{ k: 1, to: W2, s: 0, dir: 1 }];
+      const E2 = L.road(L3([-20.3, -9, zB], [-23.6, -9, zB], UP), { goal: true });
+      P.h2 = liveGap(L, W2, 1, E2, 0, occ, { text: 'From here the hole is behind the tower' });
+      P.cam = cameraCrank(L, { key: 'z', name: 'Camera', at: [-8, -10, zB], detents: [0, 90] });
+      L.view.updaters.push(() => L.say(`belt ${P.belt.m.on ? 'on' : 'off'} · carries ${P.belt.shift()} · ${Math.round(rider.cad)} rpm · camera ${P.cam.at(0) ? 'front' : P.cam.at(90) ? 'quarter turn' : 'turning'}`));
+    },
+    spawn: (L) => ({ road: L.props.H, s: 1, dir: 1 }),
+    solve(L, W, R) { const P = L.props, Bs = P.Bs; R.gear = 4; R.cad = 80; if (W.road === P.H && !P.belt.m.on) P.belt.m.set(true);
+      const onB = [Bs.R1, Bs.R2, Bs.T1.road, Bs.T2.road].includes(W.road), farB = W.road === Bs.R2 || W.road === Bs.T1.road || (W.road === Bs.R1 && W.s < 6);
+      Bs.T2.m.set(onB && farB && Bs.T2.ang > -89.5);
+      const want = onB || W.road === Bs.S2 || W.road === P.W2 ? 90 : 0; P.cam.m.set(!P.cam.at(want)); },
+    center: [-6, -4, 1], pts: [[-25, -19.6, -1.6], [-25, -7, -1.6], [-9.2, 10, -1.6], [11.8, 10, -1.6], [11.8, -6.8, -1.6], [-.8, -19.6, -1.6], [-18.2, -11.4, 4.8], [-1.8, 8.6, 2.4], [-10, -10, -6], [-25, -9, 3], [-23.6, -9, 1.5]], pad: .9, scenery: false },
 
   { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, 90],
     // two holes, each hidden by the tower only from the angle you are not at when you reach it: each curtain needs its own turn

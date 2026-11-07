@@ -26,11 +26,25 @@ function skyRoad(L, og, pts, h, wz) {
   for (const q of [sky[0].p, sky[sky.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + .5, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] - .5) / 2 - .2)); c.userData.rc = '#E5CFA0'; og.add(c); }
 }
 
-/** A slab of land with any outline (sketch x, y points), from z0 up to z1: one mesh, so no seams across its top. */
-function land(g, outline, z0, z1, mat) {
-  const sh = new T.Shape(outline.map(([x, y]) => new T.Vector2(x, -y))), geo = new T.ExtrudeGeometry(sh, { depth: z1 - z0, bevelEnabled: false });
+/** A slab of land with any outline (sketch x, y points) and optional holes, from z0 up to z1: one mesh, so no seams across its top. */
+function land(g, outline, z0, z1, mat, holes = []) {
+  const v = (pts) => pts.map(([x, y]) => new T.Vector2(x, -y)), sh = new T.Shape(v(outline));
+  for (const h of holes) sh.holes.push(new T.Path(v(h)));
+  const geo = new T.ExtrudeGeometry(sh, { depth: z1 - z0, bevelEnabled: false, curveSegments: 1 });
   geo.rotateX(-Math.PI / 2); geo.translate(0, z0, 0); const m = new T.Mesh(geo, mat); g.add(m); return m;
 }
+/** Round every corner of a polygon (convex or concave) with radius r (clamped to half of each edge). */
+function roundPoly(pts, r, seg = 8) {
+  const out = [], n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = pts[(i + n - 1) % n], b = pts[(i + 1) % n], la = Math.hypot(a[0] - p[0], a[1] - p[1]), lb = Math.hypot(b[0] - p[0], b[1] - p[1]), rr = Math.min(r, la / 2, lb / 2);
+    const p0 = [p[0] + (a[0] - p[0]) / la * rr, p[1] + (a[1] - p[1]) / la * rr], p1 = [p[0] + (b[0] - p[0]) / lb * rr, p[1] + (b[1] - p[1]) / lb * rr];
+    // a quadratic through the corner is close to a circular arc for right angles and stays smooth for any other
+    for (let k = 0; k <= seg; k++) { const t = k / seg, u = 1 - t; out.push([u * u * p0[0] + 2 * u * t * p[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * p[1] + t * t * p1[1]]); }
+  }
+  return out;
+}
+const rrect = (x0, y0, x1, y1, r) => roundPoly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], r);
 /** Low floor: top at -.5, the level loop slabs sit at, so turntable arms swing clear over it. */
 const lowFloor = (L, x0, y0, x1, y1) => B(L.g, x0, y0, -1.1, x1, y1, -.5, tri(sp(L.th, 0)));
 /**
@@ -84,18 +98,18 @@ function brokenCliff(L, x, yEdge, z = 0, zBase = -7, edgeOfWorld = false) {
  */
 function terrain(L, o) {
   const g = L.g, th = L.th, st = sp(th, 0), cope = tri({ t: mixPal(st, tone('#FFFFFF'), .45).l, l: st.l, r: st.r }), plinth = tri(mixPal({ t: st.l, l: st.l, r: st.r }, tone('#5B4636'), .15));
-  const { outline, z: bz, depth = 1.2 } = o.base, cx = outline.reduce((a, q) => a + q[0], 0) / outline.length, cy = outline.reduce((a, q) => a + q[1], 0) / outline.length;
+  const { z: bz, depth = 1.2 } = o.base, outline = roundPoly(o.base.outline, o.base.r ?? .9);
+  const cx = o.base.outline.reduce((a, q) => a + q[0], 0) / o.base.outline.length, cy = o.base.outline.reduce((a, q) => a + q[1], 0) / o.base.outline.length;
   land(g, outline, bz - depth, bz, surface(th, o.base.top || 'gravel', o.base.side || 'strata'));
   // the underside steps in, so the platform reads as a carved, floating piece rather than a sheet
   const under = surface(th, 'gravel', 'strata', { seed: 3, sidePal: { stone: mixPal(st, tone('#5B4636'), .2).l, stoneDark: mixPal(st, tone('#3B2A20'), .3).r } });
   [[.94, .5], [.82, .6], [.6, .7]].reduce((z, [k, h]) => { land(g, outline.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]), z - h, z, under); return z - h; }, bz - depth);
   o.tops.forEach((t, i) => {
-    const [x0, y0, x1, y1] = t.rect, top = t.z - .5, cw = .2, ov = .06;
-    if (!t.flush) B(g, x0 - .14, y0 - .14, bz, x1 + .14, y1 + .14, bz + .2, plinth);
-    B(g, x0, y0, bz + .2, x1, y1, top, surface(th, t.top || 'lawn', t.side || 'ashlar', { seed: 5 + i }));
-    // the coping: a rim of pale stone just proud of the top
-    for (const [a0, b0, a1, b1] of [[x0 - ov, y0 - ov, x1 + ov, y0 - ov + cw], [x0 - ov, y1 + ov - cw, x1 + ov, y1 + ov], [x0 - ov, y0 - ov + cw, x0 - ov + cw, y1 + ov - cw], [x1 + ov - cw, y0 - ov + cw, x1 + ov, y1 + ov - cw]])
-      B(g, a0, b0, top - .12, a1, b1, top + .03, cope);
+    const [x0, y0, x1, y1] = t.rect, top = t.z - .5, cw = .2, ov = .06, r = t.r ?? Math.min(1.1, (x1 - x0) / 3, (y1 - y0) / 3);
+    if (!t.flush) land(g, rrect(x0 - .14, y0 - .14, x1 + .14, y1 + .14, r + .14), bz, bz + .2, plinth);
+    land(g, rrect(x0, y0, x1, y1, r), bz + .2, top, surface(th, t.top || 'lawn', t.side || 'ashlar', { seed: 5 + i }));
+    // the coping: a rounded rim of pale stone just proud of the top
+    land(g, rrect(x0 - ov, y0 - ov, x1 + ov, y1 + ov, r + ov), top - .12, top + .03, cope, [rrect(x0 - ov + cw, y0 - ov + cw, x1 + ov - cw, y1 + ov - cw, Math.max(.05, r + ov - cw))]);
   });
 }
 

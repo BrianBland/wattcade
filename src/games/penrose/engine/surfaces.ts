@@ -49,14 +49,11 @@ function paintTile(style, pal, seed) {
     fill(pal.grass); blot(26, [pal.grassDark, mix(pal.grass, '#FFF6B0', .35), mix(pal.grass, '#7FB8E0', .15)], .5, 1.3, .32);
     blades(2200, pal.grass, .45); flowers(30, .085); pebbles(10, [pal.stone, pal.stoneDark], .05, .12);
   } else if (style === 'flagstone') {
-    // irregular pale paving, laid in rows of uneven stones, with thin mossy joints and the odd tuft
-    fill(mix(pal.grassDark, pal.stone, .45)); const rows = 7, rh = W / rows;
+    // large, quiet slabs in a cool sage stone, well away from the road's warm cream; joints barely darker, so the road reads first
+    const slab = mix(mix(pal.grassDark, '#D9DED2', .72), '#9FB0A4', .12); fill(mix(slab, '#56685A', .22)); const rows = 4, rh = W / rows;
     for (let r = 0; r < rows; r++) { let x = rnd() * W; const end = x + W;
-      while (x < end) { const l = (.55 + rnd() * .75) * PPM, x1 = Math.min(x + l, end), y = r * rh, xx = x, sk = (rnd() - .5) * 6, tone = mix(pal.stone, '#FFFFFF', .35 + rnd() * .3);
-        wrap(() => { g.fillStyle = css(tone); g.beginPath(); g.moveTo(xx + 3 + sk, y + 3); g.lineTo(x1 - 3 + sk, y + 3); g.lineTo(x1 - 3 - sk, y + rh - 3); g.lineTo(xx + 3 - sk, y + rh - 3); g.closePath(); g.fill();
-          g.fillStyle = css('#FFFFFF', .25); g.fillRect(xx + 5, y + 4, x1 - xx - 10, 3); g.fillStyle = css(pal.stoneDark, .12); g.fillRect(xx + 5, y + rh - 8, x1 - xx - 10, 4); });
-        x = x1; } }
-    blot(8, [pal.grassDark], .2, .45, .35);
+      while (x < end) { const l = (1.1 + rnd() * 1.1) * PPM, x1 = Math.min(x + l, end), y = r * rh, xx = x, tone = mix(slab, rnd() < .5 ? '#FFFFFF' : '#7E8F82', rnd() * .1);
+        wrap(() => { g.fillStyle = css(tone); g.fillRect(xx + 2, y + 2, x1 - xx - 4, rh - 4); }); x = x1; } }
   } else if (style === 'courtyard') {
     // terracotta and cream squares with a small diamond at each meeting
     const n = 8, s = W / n, terra = pal.terra || '#D98A5F';

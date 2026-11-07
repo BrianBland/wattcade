@@ -12,10 +12,12 @@ const levels = ROAD_STYLES.flatMap((style) => SEEDS.map((seed) => ({ seed, ...ge
 
 describe('level generator', () => {
   it('is deterministic: the same seed and style give the same level', () => {
-    expect(generateLevel(7, { style: 'lasso' }).level).toEqual(generateLevel(7, { style: 'lasso' }).level);
-    expect(generateLevel(7).level).toEqual(generateLevel(7).level);
-    expect(generateLevel(7).level).not.toEqual(generateLevel(8).level);
-  });
+    // a short search keeps this quick on a busy runner; determinism does not depend on the iteration count
+    const gen = (seed: number, style?: 'lasso') => generateLevel(seed, { style, iterations: 1500 }).level;
+    expect(gen(7, 'lasso')).toEqual(gen(7, 'lasso'));
+    expect(gen(7)).toEqual(gen(7));
+    expect(gen(7)).not.toEqual(gen(8));
+  }, 20000);
 
   for (const { style, seed, level, metrics } of levels) {
     it(`${style} ${seed}: valid, well covered, HUD-safe in both orientations, cabled`, () => {

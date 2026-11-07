@@ -157,7 +157,7 @@ function autoTerrain(L, o = {}) {
   }
   const zMin = Math.min(...all.map(q => q.z)), bz = Math.floor((zMin - inset - 1.0) * 10) / 10;
   const ray = new T.Raycaster(), dirs = yaws.map(y => toCam(y)), taken = new Set();
-  const placed = [];
+  const placed = [], why = L.terrainWhy = { comps: comps.length, crowd: 0, taken: 0, hides: 0, empty: 0, flat: pts.filter(q => q.flat).length, pts: pts.length };
   for (const c of comps.sort((a, b) => b.pts.length - a.pts.length)) {
     const top = c.z - inset, own = new Set(c.pts), near = grow(c.cells, 1), far = grow(c.cells, 2);
     // nothing else may stand on it or just over it, nothing moving may come near, and no other plateau may touch it
@@ -166,13 +166,13 @@ function autoTerrain(L, o = {}) {
       if (q.ri >= 0 && Math.abs(q.z - c.z) < .06) return false;          // more road on this level, or a turntable arm
       if (q.ri < 0 && !q.gap && q.z > top - .1) return false;            // a machine standing on it
       if (q.gap && Math.abs(q.z - c.z) < .2) return false;               // a hole on this level (its cells were cut away)
-      return q.z < top + 1.3; });
-    if (crowd || [...near].some(k => taken.has(k))) continue;
+      return q.z < (o.over === false ? top + 1.3 : c.z - .06); });  // only what is under this level crowds it: roads may pass over
+    if (crowd || [...near].some(k => taken.has(k))) { why[crowd ? 'crowd' : 'taken']++; continue; }
     const outline = traceCells(c.cells, C, gx, gy).map(o => smooth(o.outer));
-    if (!outline.length) continue;
+    if (!outline.length) { why.empty++; continue; }
     // and from every camera angle it must stand in front of nothing that has to stay in view
     const body = outline.map(o => landMesh(o, bz, top + .05)), hides = all.some(q => !own.has(q) && dirs.some(d => { ray.set(q.p.clone().addScaledVector(d, 100), d.clone().negate()); return body.some(m => { const h = ray.intersectObject(m, false); return h.length && h[0].distance < 99.8; }); }));
-    if (hides) continue;
+    if (hides) { why.hides++; continue; }
     for (const k of c.cells) taken.add(k);
     placed.push({ outline, cells: c.cells, top, z: c.z, falls: c.falls, area: c.cells.size * C * C });
   }
@@ -180,7 +180,7 @@ function autoTerrain(L, o = {}) {
   // the base: every plateau grown by a metre, gaps under eighteen metres closed so it reads as one piece, cut away beyond each fall
   const F = new Set(); for (const p of placed) for (const k of grow(p.cells, 2)) F.add(k);
   // anchors: spots the base must reach too (piers, posts and towers standing off the plateaus), each a disc [x, y, r]
-  for (const [ax, ay, ar] of o.anchors || []) { const [i, j] = cellOf(ax, ay), n = Math.ceil(ar / C) + 1; for (let a = -n; a <= n; a++) for (let b = -n; b <= n; b++) { const [cx, cy] = ctr(i + a, j + b); if (Math.hypot(cx - ax, cy - ay) < ar) F.add(key(i + a, j + b)); } }
+  for (const [ax, ay, ar] of [...(o.anchors || []), ...(L.anchors || [])]) { const [i, j] = cellOf(ax, ay), n = Math.ceil(ar / C) + 1; for (let a = -n; a <= n; a++) for (let b = -n; b <= n; b++) { const [cx, cy] = ctr(i + a, j + b); if (Math.hypot(cx - ax, cy - ay) < ar) F.add(key(i + a, j + b)); } }
   let B0 = shrink(grow(F, 18), 18); const under = new Set(); for (const p of placed) for (const k of p.cells) under.add(k);
   for (const p of placed) for (const f of p.falls) if (f.len === undefined) { for (const k of [...B0]) { if (under.has(k)) continue; const [i, j] = k.split(',').map(Number), [cx, cy] = ctr(i, j), u = (cx - f.x) * f.dx + (cy - f.y) * f.dy, w = Math.abs((cx - f.x) * f.dy - (cy - f.y) * f.dx); if (u > -.1 && w < 1.2) B0.delete(k); } }
   B0 = grow(shrink(B0, 1), 1); for (const k of under) B0.add(k);
@@ -189,6 +189,8 @@ function autoTerrain(L, o = {}) {
   const big = o.surfaces || ['lawn', 'meadow', 'flagstone'], small = ['courtyard', 'beds', 'meadow', 'lawn'];
   let last = ''; placed.forEach((p, i) => { const pool = (p.area > 24 ? big : small).filter(s => s !== last), s = pool[Math.floor(rnd() * pool.length)]; last = s;
     for (const ol of p.outline) drawShape(L, { outline: ol, top: p.top, surf: s, side: rnd() < .7 ? 'ashlar' : 'strata', flush: p.falls.length > 0 }, bz, i); });
+  // what a plateau now carries: a hand-built floor at (x, y) whose top is just under road level z can go
+  placed.covers = (x, y, z) => placed.some(p => p.z - z > -.12 && p.z - z < .6 && p.cells.has(key(...cellOf(x, y))));
   return placed;
 }
 

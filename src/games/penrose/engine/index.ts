@@ -82,6 +82,8 @@ export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign
       handBuilt: () => Object.keys(pool),
       /** Append a level that isn't in the campaign (any campaign item string) and open it; returns its index or -1. */
       preview(item) { const d = defFor(E, pool, item); if (!d) return -1; LEVELS.push(Object.assign(Object.create(d), { chapter: 'Preview', item })); E.setAutopilot(false); E.loadLevel(LEVELS.length - 1); return LEVELS.length - 1; },
+      /** Try a level on terrain (a def.terrain value, e.g. { strip: true }) before committing it to the level's def. */
+      setTerrain(i, t) { LEVELS[wrap(i)].terrain = t; },
       audit: (o) => (st().LVL ? E.auditLevel(st().LVL, o) : []),
     },
   };

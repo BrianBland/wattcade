@@ -104,9 +104,9 @@ function reflection(L, o) {
   if (!CLIP_ON) { R3.localClippingEnabled = true; CLIP_ON = true; }
   // the basin: a stone rim, shallow walls and a dark bed under a bright, still surface
   const rimM = tri(sp(th, 0));
-  B(g, x0 - .2, y0 - .2, -.5, x1 + .2, y0, -.02, rimM); B(g, x0 - .2, y1, -.5, x1 + .2, y1 + .2, -.02, rimM);
-  B(g, x0 - .2, y0, -.5, x0, y1, -.02, rimM); B(g, x1, y0, -.5, x1 + .2, y1, -.02, rimM);
-  B(g, x0, y0, -.5, x1, y1, wz - .02, tri({ t: '#7FC3D4', l: '#5FA7BA', r: '#4A8DA0' }));
+  for (const m of [B(g, x0 - .2, y0 - .2, -.5, x1 + .2, y0, -.02, rimM), B(g, x0 - .2, y1, -.5, x1 + .2, y1 + .2, -.02, rimM),
+    B(g, x0 - .2, y0, -.5, x0, y1, -.02, rimM), B(g, x1, y0, -.5, x1 + .2, y1, -.02, rimM),
+    B(g, x0, y0, -.5, x1, y1, wz - .02, tri({ t: '#7FC3D4', l: '#5FA7BA', r: '#4A8DA0' }))]) m.userData.keep = true;
   // the things above the pool, and their reflection: the same meshes flipped in the water plane, drawn flat over the
   // surface (and over any road riding on it), clipped to the pool's edge
   const og = new T.Group(); g.add(og); o.over(og);
@@ -286,7 +286,7 @@ const NSTUDIES = [
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { const d = L.props.doors; R.gear = 4; R.cad = 80; if (!d.match() && (L.view.t || 0) % 1 < .05) d.m.set(!d.m.on); },
     center: [0, -2.5, .5], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [7.4, -5.6, 0], [-4, 0, 2], [2, -5, 2.8]], pad: .9, scenery: false },
-  { id: 'n-pool', name: 'What the pool says', th: () => THEMES[1], cruise: [60, 95],
+  { id: 'n-pool', name: 'What the pool says', th: () => THEMES[1], cruise: [60, 95], terrain: { strip: true },
     hint: 'High above the pool runs a road you cannot reach, and its reflection lies on the water beside your road. What the still water shows is real: ride at a calm cadence, under 74 rpm, and the reflected road is a road, so the wheel turns onto it and out to the pier. Pedal hard and the wind ruffles the pool, and you carry straight on.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = tone('#F3E6C4'), wz = -.04, h = 4.8;
@@ -297,7 +297,7 @@ const NSTUDIES = [
       const pool = reflection(L, { pool: [.4, -.9, 3.6, 2.4], wz, over(og) {
         const rr = new Road(sky.pts), m = ribbon(rr, 1, .12, tri(pal, { side: true })); m.userData.rc = '#FFF4DC'; og.add(m);
         const ln = ribbon(rr, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }); ln.userData.rc = '#B0624E'; og.add(ln);
-        for (const q of [sky.pts[0].p, sky.pts[sky.pts.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + .5, 12), tri(sp(th, 0))); c.position.copy(V(q[0], q[1], (q[2] - .5) / 2 - .2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+        for (const q of [sky.pts[0].p, sky.pts[sky.pts.length - 1].p]) { (L.anchors ||= []).push([q[0], q[1], 1.1]); const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + 2.4, 12), tri(sp(th, 0))); c.position.copy(V(q[0], q[1], (q[2] - 2.4) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
       } });
       P.pool = pool;
       // the water road, where the sky road's reflection lies, and the pier it leads to

@@ -43,7 +43,7 @@ function hiddenGap(L, A, kA, B, kB, occ, o = {}) {
 const dirv = hd => { const a = hd * Math.PI / 180; return [Math.cos(a), Math.sin(a)]; };
 
 const PSTUDIES = [
-  { id: 'p-turn', name: 'Two views of one turntable', th: () => THEMES[0], cruise: [78, 92], yaws: [0, -90],
+  { id: 'p-turn', name: 'Two views of one turntable', th: () => THEMES[0], cruise: [78, 92], yaws: [0, -90], terrain: { strip: true },
     hint: 'The turntable (<b>Y</b>) swings its arm north or south, out over nothing. From this angle the south arm meets a road far below on screen, so the wheel rolls on. Turn the camera (<b>A</b>) a quarter and each arm meets a different road. Two stops, two views: four places to go. Change things while the wheel is on the terrace or in its cul-de-sac, never while it is out on a far road, or the way back is gone.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, kit = studyKit(L); P.kit = kit;

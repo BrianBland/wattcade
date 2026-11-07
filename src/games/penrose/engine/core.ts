@@ -782,6 +782,13 @@ function makeLevel(def, idx) {
   def.build(L);
   // generated levels may stand on plateaus (./terrain.ts); a level that does gets no floating scenery around it
   if (def.terrain && $scope.autoTerrain) L.terrain = $scope.autoTerrain(L, def.terrain === true ? {} : def.terrain);
+  // a hand-built level moved onto terrain (terrain.strip) loses the flat floor boxes its plateaus now stand in for
+  if (def.terrain?.strip && L.terrain?.covers) for (const m of [...g.children]) {
+    if (!m.isMesh || m.geometry !== UNIT || m.userData.keep || m.rotation.x || m.rotation.y || m.rotation.z) continue;
+    const sx = m.scale.x, h = m.scale.y, sy = m.scale.z, top = m.position.y + h / 2; if (h < .3 || h > 2.5) continue;
+    let n = 0, hit = 0; for (let a = 0; a < 5; a++) for (let b = 0; b < 5; b++) { n++; if (L.terrain.covers(m.position.x + sx * (a / 4 - .5) * .9, m.position.z + sy * (b / 4 - .5) * .9, top + .02)) hit++; }
+    if (hit / n >= .2) g.remove(m);
+  }
   if (def.scenery !== false && !L.terrain?.length && typeof sceneryPass === 'function') L.scenery = sceneryPass(L, def.scenery || {});
   // a perspective join reads as one road: wherever two road ends meet on screen, the nearer end is drawn without its end cap,
   // with faces that wind outwards, so through the open end you see the far road carrying on behind it

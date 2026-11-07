@@ -23,7 +23,7 @@ function skyRoad(L, og, pts, h, wz, zb = -.7) {
   const sky = pts.map(q => ({ p: [q.p[0] - h, q.p[1] - h, wz + h], n: [0, 0, 1] })), rr = new Road(sky);
   const m = ribbon(rr, 1, .12, tri(PAL(), { side: true })); m.userData.rc = '#FFF4DC'; og.add(m);
   const ln = ribbon(rr, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }); ln.userData.rc = '#B0624E'; og.add(ln);
-  for (const q of [sky[0].p, sky[sky.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] - zb, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] + zb) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+  for (const q of [sky[0].p, sky[sky.length - 1].p]) { (L.anchors ||= []).push([q[0], q[1], 1.1]); const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] - zb, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] + zb) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
 }
 
 /** Low floor: top at -.5, the level loop slabs sit at, so turntable arms swing clear over it. */
@@ -77,7 +77,7 @@ function brokenCliff(L, x, yEdge, z = 0, zBase = -7, edgeOfWorld = false) {
 
 
 const LEVELS3 = [
-  { id: 'w-lanes', name: 'Lanes to the water', th: () => THEMES[1], cruise: [62, 95],
+  { id: 'w-lanes', name: 'Lanes to the water', th: () => THEMES[1], terrain: { strip: true }, cruise: [62, 95],
     hint: 'Two beats. Start the belt (<b>Y</b>) and hold 72 to 86 rpm: it carries the wheel two lanes over, onto the road to the pool. On the pool loop, the road high above lies reflected on the water. Ease under 74 rpm: the still pool makes the reflection real, and it carries you out to the pier.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), dy = -1.7, wz = -.04, h = 6;
@@ -93,7 +93,7 @@ const LEVELS3 = [
       floor(L, 2.8, -6, 5.2, -2.0); floor(L, 8.8, -6, 12, -2.0); floor(L, 5.2, -6, 8.8, -3.7);
       l2.joins = [{ k: 1, to: S2, s: sAt(S2, [4.4, -5.4, 0]), dir: 1 }];
       const wt = ftur([8.0, -2.6, .006], [-1, 0, 0], UP).turn(1, -90).fwd(1.4);
-      const pool = reflection(L, { pool: [5.4, -3.5, 8.6, -.2], wz, over: (og) => skyRoad(L, og, ftur([8.8, -2.6, .006], [-1, 0, 0], UP).fwd(.8).turn(1, -90).fwd(1.4).pts, h, wz) });
+      const pool = reflection(L, { pool: [5.4, -3.5, 8.6, -.2], wz, over: (og) => skyRoad(L, og, ftur([8.8, -2.6, .006], [-1, 0, 0], UP).fwd(.8).turn(1, -90).fwd(1.4).pts, h, wz, -2.4) });
       P.pool = pool;
       const W = L.road(wt.pts, { noDeck: true, noLane: true }); P.W = W;
       const G = strip(L, L3([7.0, -.2, .006], [7.0, 3.4, .006], UP), { goal: true }); P.G = G;
@@ -103,7 +103,7 @@ const LEVELS3 = [
     spawn: (L) => ({ road: L.props.H, s: 1, dir: 1 }),
     solve(L, W, R) { const P = L.props; R.gear = 4; P.belt.m.set(true); R.cad = [P.S2, P.W, P.G].includes(W.road) ? 66 : 80; },
     center: [2, -2, 1], pts: [[-7.6, -.6, 0], [-7.6, 3.2, 0], [12, -6, 0], [7.6, 3.8, 0], [1, -6.2, 6], [2.8, -8.6, 6]], pad: .8, scenery: false },
-  { id: 'w-doors', name: 'Through the door, past the gate', th: () => THEMES[1], cruise: [62, 95],
+  { id: 'w-doors', name: 'Through the door, past the gate', th: () => THEMES[1], terrain: { strip: true }, cruise: [62, 95],
     hint: 'Two beats. Turn the banner on your loop\'s door (<b>A</b>) until it matches the door across the gap: the two doors become one, and the wheel rides out on the far side. There the road home crosses a pool, and the pool shows a gate across it, the reflection of the portcullis hung high above. Pedal hard, above 86 rpm, to ruffle the water and break the gate.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), wz = -.04, off = 6.5, h1 = off + 2 * wz, h0 = h1 - 1.0;
@@ -124,7 +124,7 @@ const LEVELS3 = [
         const box = (sx, sy, sz, x, y, z, mat, rc) => { const m = new T.Mesh(UNIT_BOX, mat); m.scale.set(sx, sz, sy); m.position.copy(at(x, y, z)); m.userData.rc = rc; og.add(m); };
         for (const xx of [3.3, 3.65, 4.0, 4.35, 4.7]) { box(.1, .1, h1 - h0, xx, yg, (h0 + h1) / 2, gateM, '#E2563F'); const tip = new T.Mesh(new T.ConeGeometry(.09, .22, 4), gateM); tip.rotation.x = Math.PI; tip.position.copy(at(xx, yg, h0 - .1)); tip.userData.rc = '#E2563F'; og.add(tip); }
         for (const zz of [h1, h0 + .35]) box(1.9, .16, .14, 4.0, yg, zz, gateM, '#E2563F');
-        for (const xx of [3.0, 5.0]) { const zt = h1 + .5, c = new T.Mesh(new T.CylinderGeometry(.2, .24, zt + .5, 12), stone); c.position.copy(at(xx, yg, (zt - .5) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+        for (const xx of [3.0, 5.0]) { (L.anchors ||= []).push([xx - off, yg - off, 1.1]); const zt = h1 + .5, c = new T.Mesh(new T.CylinderGeometry(.2, .24, zt + 2.4, 12), stone); c.position.copy(at(xx, yg, (zt - 2.4) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
       } });
       P.pool = pool;
       S2.forks.push({ s: sAt(S2, [5.0, -2.0, 0]), dir: 1, to: E, toK: 0, when: () => pool.ruffled(), text: 'The ruffled pool shows no gate, so there is none' });
@@ -134,37 +134,40 @@ const LEVELS3 = [
     solve(L, W, R) { const P = L.props, d = P.doors; R.gear = 4; R.cad = [P.S2, P.E].includes(W.road) ? 92 : 80; if (!d.match() && (L.view.t || 0) % 1 < .05) d.m.set(!d.m.on); },
     center: [0, -1.5, 1], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [8.9, -5.5, 0], [4, 4.3, 0], [-4, 0, 2.4], [-3.5, -5.3, 7.5]], pad: .8, scenery: false },
 
-  { id: 'w-seam', name: 'Wind across, climb over', th: () => THEMES[1], cruise: [62, 95],
-    hint: 'Two beats. Engage the clutch (<b>Z</b>) and pedal: the bridge winds out across the gap. Press <b>Z</b> again to lock it with its tip between the red bollards, and the wheel crosses to the tower loop. There, light the seam (<b>B</b>): down becomes the wall, and the wheel climbs the tower, wraps its corner and comes down the far side to home.',
+  { id: 'w-seam', name: 'Wind across, climb over', th: () => THEMES[1], cruise: [62, 95], terrain: { strip: true, anchors: [[-1.5, -1.5, 2.2], [-4.6, -2.4, 1.4]] },
+    hint: 'Three beats. Engage the clutch (<b>Z</b>) and pedal: the bridge winds out across the gap. Press <b>Z</b> again to lock it with its tip between the red bollards, and the wheel crosses to the tower loop. Up on the tower roof a second bridge (<b>Y</b>) can wind out to the mesa where home is: wind it and lock it on its bollards from down here. Then light the seam (<b>B</b>): down becomes the wall, and the wheel climbs the tower and rides out over your bridge.',
     build(L) {
-      const th = L.th, g = L.g, P = L.props, pal = PAL(), stone = tri(sp(th, 0));
+      const th = L.th, g = L.g, P = L.props, pal = PAL(), stone = tri(sp(th, 0)), H = 3.6, Rr = .38, ys = -2.4;
       // the start loop, out to the right
       const A = L.road(loopPts(9.4, -4.4, 14.4, -1.0, 0, .8), { closed: true, pal }); P.A = A; loopSlab(g, 8.8, -5.0, 15.0, -.4, -.5, tri(th.turf), 1);
       const X1 = L.road(L3([9.4, -2.8, .006], [8.4, -2.8, .006], UP), { pal }); P.X1 = X1; floor(L, 8.4, -3.35, 8.8, -2.25);
       const X2 = L.road(L3([6.4, -2.8, .006], [5.5, -2.8, .006], UP), { pal });
-      // the tower loop; the tower stands at the back, so nothing hides behind it
-      B(g, -3, -3, -.5, -.3, 0, 3.6, stone); B(g, -3, -3, -.5, 0, -.3, 3.6, stone); CY(g, -.3, -.3, .3, -.5, 3.6, stone, 16);
-      B(g, -3.1, -3.1, 3.6, .1, .1, 3.75, tri(th.idle));
+      // the tower loop; the tower stands at the back, its front top edge rounded to the road's own curve
+      B(g, -3, -3, -2.4, 0, 0, H - Rr, stone); B(g, -3, -3, H - Rr, -Rr, 0, H, stone);
+      { const c = new T.Mesh(new T.CylinderGeometry(Rr, Rr, 3, 32), stone); c.rotation.x = Math.PI / 2; c.position.copy(V(-Rr, -1.5, H - Rr)); g.add(c); }
       const T2 = L.road(loopPts(.42, -5, 5, -.6, 0, .8), { closed: true, pal }); P.T2 = T2; loopSlab(g, -.2, -5.6, 6.4, 0, -.5, tri(th.turf), 1);
       X2.joins = [{ k: 1, to: T2, s: sAt(T2, [5, -2.8, 0]), dir: 1 }];
       const br = clutchBridge(L, { from: X1, to: X2, key: 'z', btn: [11.9, -2.7] }); P.br = br; CY(g, 11.9, -2.7, .6, -2.4, -.02, stone, 24);
       A.forks.push({ s: sAt(A, [9.4, -2.8, 0]), dir: 1, to: X1, toK: 0, when: () => br.locked(), text: 'The bridge is locked, so the wheel heads for it' });
-      // the seam, and the road over the tower
-      const ys = -2.4, seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
-      const t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(1.4).turn(.6, -90);
-      t.fwd(-.3 - t.st.p[1]).curl(.32, -90).fwd(.5).turn(.6, -90).fwd(t.st.p[2] - .5 - .4 + .1).curl(.4, 90).fwd(2.6);
-      const W = L.road(t.pts, { goal: true, th: .12, mat: tri({ t: '#F4E5C6', l: '#F4E5C6', r: '#F4E5C6' }, { side: true }) }); P.W = W;
-      const e = t.pts[t.pts.length - 1].p; floor(L, e[0] - .6, .1, e[0] + .6, e[1] + .3);
-      const sm = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(2.7, -2.8, .04)); g.add(h); }, tick() { return 0; } }); P.seam = sm; CY(g, 2.7, -2.8, .6, -2.4, -.02, stone, 24);
+      // the seam: up the front face, over the rounded edge and across the roof to its far edge
+      const seamM = basic('#FFFFFF'), seam = new T.Mesh(UNIT_BOX, seamM); seam.scale.set(.9, .02, .1); seam.position.copy(V(.42, ys, .03)); g.add(seam);
+      const t = ftur([.42, ys, .006], [-1, 0, 0], UP).curl(.4, 90).fwd(H - .4 - .006 - .38).curl(.4, -90);
+      t.fwd(t.st.p[0] + 3);
+      const W = L.road(t.pts, { pal, th: .12, mat: tri({ t: '#F4E5C6', l: '#F4E5C6', r: '#F4E5C6' }, { side: true }) }); P.W = W;
+      // home, on a mesa across the gap behind the tower, reached by the roof bridge
+      const zr = t.st.p[2], E = L.road(L3([-6.4, ys, zr], [-9.6, ys, zr], UP), { goal: true }); P.E = E;
+      const br2 = clutchBridge(L, { from: W, to: E, key: 'y', btn: [3.9, -1.6] }); P.br2 = br2; CY(g, 3.9, -1.6, .6, -2.4, -.02, stone, 24);
+      const sm = L.machine({ key: 'b', name: 'Seam', size: .45, place: (h) => { h.position.copy(V(2.7, -3.4, .04)); g.add(h); }, tick() { return 0; } }); P.seam = sm; CY(g, 2.7, -3.4, .6, -2.4, -.02, stone, 24);
       T2.forks.push({ s: sAt(T2, [.42, ys, 0]), dir: 1, to: W, toK: 0, when: () => sm.on, text: 'The seam is lit, so down is the wall' });
       L.view.updaters.push(() => { seamM.color.set(sm.on ? (th.goal || '#E8553B') : '#FFFFFF'); seam.scale.z = sm.on ? .16 : .06;
-        L.say(`clutch ${br.m.on ? 'engaged' : br.locked() ? 'locked' : 'free'} · bridge ${br.len.toFixed(1)} m · seam ${sm.on ? 'lit' : 'dark'}`); });
+        L.say(`low bridge ${br.locked() && br.spans() ? 'locked' : br.len.toFixed(1) + ' m'} · roof bridge ${br2.locked() && br2.spans() ? 'locked' : br2.len.toFixed(1) + ' m'} · seam ${sm.on ? 'lit' : 'dark'}`); });
     },
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
-    solve(L, W, R) { const P = L.props, br = P.br; R.gear = 4; R.cad = 80;
+    solve(L, W, R) { const P = L.props, br = P.br, b2 = P.br2; R.gear = 4; R.cad = 80;
       if (W.road === P.A || W.road === P.X1) { if (!br.m.on && !br.spans()) br.m.set(true); else if (br.m.on && br.len > 2.3) br.m.set(false); }
-      if (W.road === P.T2 && !P.seam.on) P.seam.set(true); },
-    center: [5, -2, 1.5], pts: [[-3, -3, 0], [15, -5, 0], [15, -.4, 0], [-1.4, 3.1, 0], [-3, -3, 3.8], [-.2, -5.6, 0]], pad: .8, scenery: false },
+      if (W.road === P.T2) { if (!b2.m.on && !b2.spans()) b2.m.set(true); else if (b2.m.on && b2.len > 3.55) b2.m.set(false);
+        if (b2.locked() && b2.spans() && !P.seam.on) P.seam.set(true); } },
+    center: [2, -2, 1.5], pts: [[-3, -3, 0], [15, -5, 0], [15, -.4, 0], [-10, -2.4, 3.6], [-10, -2.4, -1.6], [-3, -3, 3.8], [-.2, -5.6, 0], [-.2, 0, 0]], pad: .8, scenery: false },
 
   { id: 'd-peek', name: 'Look before you ride', th: () => THEMES[1], cruise: [65, 92], terrain: true,
     hint: 'Every door here has the same white banner, and every door is open: ride into one and you ride out of its twin, wherever that is. Each loop has two turntables (<b>Y</b> and <b>A</b> here, <b>B</b> and <b>Z</b> on the next loop), each able to swing the road out to a door. Look through the doors before you choose: one leads on, one leads back, one leads nowhere.',
@@ -234,7 +237,7 @@ const LEVELS3 = [
       const want = onB || W.road === Bs.S2 || W.road === P.W2 ? 90 : 0; P.cam.m.set(!P.cam.at(want)); },
     center: [-6, -4, 1], pts: [[-25, -19.6, -1.6], [-25, -7, -1.6], [-9.2, 10, -1.6], [11.8, 10, -1.6], [11.8, -6.8, -1.6], [-.8, -19.6, -1.6], [-18.2, -11.4, 4.8], [-1.8, 8.6, 2.4], [-10, -10, -6], [-25, -9, 3], [-23.6, -9, 1.5]], pad: .9, scenery: false },
 
-  { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, 90],
+  { id: 's-behind', name: 'Round the back', th: () => THEMES[1], terrain: { strip: true }, cruise: [65, 92], yaws: [0, 90],
     // two holes, each hidden by the tower only from the angle you are not at when you reach it: each curtain needs its own turn
     hint: 'Light the seam (<b>B</b>) and the wheel will climb the tower, cross its roof and go down the back. Down there the road has a hole, in plain sight from here. Turn the camera (<b>A</b>) a quarter and the tower stands in front of it, so it is not there. Round the side a loop holds you; its way home runs behind the tower with a hole of its own, hidden only from where you started. Turn the camera back.',
     build(L) {

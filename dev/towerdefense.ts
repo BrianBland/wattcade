@@ -10,15 +10,24 @@ import { layout } from '../src/games/towerdefense/render/layout';
 import { radialLayout } from '../src/games/towerdefense/render/construction';
 import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../src/games/towerdefense/sim/defs';
 import { toScreen } from '../src/games/towerdefense/render/fieldView';
+import { LEVEL_0, narrowed, type TdLevel } from '../src/games/towerdefense/sim/level';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../src/shell/hud/insets';
 
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const offKeys = input.attachKeyboard(window), useHud = q.get('canvas') !== '1';
 let legendOn = q.get('legend') !== '0';
+// `level=narrow`: level 0's road at the generated levels' narrower sizes (vector ground); `level=mirror`: also mirrored.
+const level: TdLevel | undefined = q.get('level') === 'narrow' || q.get('level') === 'mirror' ? {
+  ...narrowed(LEVEL_0), id: q.get('level')!,
+  ...(q.get('level') === 'mirror' ? {
+    waypoints: LEVEL_0.waypoints.map((p) => ({ x: 80 - p.x, y: p.y })), pads: LEVEL_0.pads.map((p) => ({ ...p, x: 80 - p.x })),
+    hiveMouth: { x: 80 - LEVEL_0.hiveMouth.x, y: LEVEL_0.hiveMouth.y },
+  } : {}),
+} : undefined;
 // Forward Base caps the start at bestWave - 2: wave 4 is the first boss in the five-wave set.
 const profile = testProfile(q.get('boss') === '1' ? { gameData: { towerdefense: { v: 2, runs: 1, bestWave: 6, upgrades: { headstart: 2 } } } } : {});
 const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1' } });
+  simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1', level } });
 if (q.get('boss') === '1') session.tuning.set('towerdefense.railLaserDps', 1); // keep the demo's first opening available for input checks
 session.step(Math.max(1, Math.round(Number(q.get('sec') ?? 0) * 30)));
 const r = await module.loadRenderer(), app = document.getElementById('field')!;

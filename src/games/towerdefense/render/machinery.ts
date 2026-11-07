@@ -122,11 +122,11 @@ export class Machinery {
   /** Screen position of the outpost's current weapon muzzle, from its manifest anchor. */
   muzzle(v: View, s: TdSnapshot) {
     const b = v.P(this.geo.base.x, this.geo.base.y), name = `muzzle_${s.weapon === 'flame' ? 'flamer' : s.weapon}`, a = s.aimAngle + v.rot;
-    return this.outpost.anchor(name, b.x, b.y, 22 * v.k / 440, a) ?? { x: b.x + Math.sin(a) * 7 * v.k, y: b.y - Math.cos(a) * 7 * v.k };
+    return this.outpost.anchor(name, b.x, b.y, 22 * this.geo.deckScale * v.k / 440, a) ?? { x: b.x + Math.sin(a) * 7 * this.geo.deckScale * v.k, y: b.y - Math.cos(a) * 7 * this.geo.deckScale * v.k };
   }
   base(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
     const look = this.profile ? riderLook(this.profile) : null, b = v.P(this.geo.base.x, this.geo.base.y);
-    const ready = this.outpost.draw(g, b.x, b.y, 22 * v.k / 440, {
+    const ready = this.outpost.draw(g, b.x, b.y, 22 * this.geo.deckScale * v.k / 440, {
       angle: s.aimAngle + v.rot, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
       charge: Math.floor(3 * (s.railCharges + s.railProgress) / Math.max(1, s.railMaxCharges)), damage: s.baseHp / s.baseMaxHp < 0.25 ? 2 : s.baseHp / s.baseMaxHp < 0.5 ? 1 : 0, age: 99, t: s.t,
       rider: look ? () => { g.save(); g.beginPath(); g.rect(300, 321, 76, 47); g.clip(); g.translate(338, 366); g.scale(1.7, 1.7); drawRider(g, look, bike.crankRevs, 0, { t: s.t }); g.restore(); } : undefined,

@@ -7,7 +7,7 @@ import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import {
-  AIM_LIMIT, BASE_R, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
+  AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
@@ -74,7 +74,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // The map: every road, pad, flight and turret position comes from the level's geometry.
   const level = opts?.level ?? LEVEL_0, geo = levelGeometry(level);
   const { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo;
-  const BASE_X = geo.base.x, BASE_Y = geo.base.y;
+  const BASE_X = geo.base.x, BASE_Y = geo.base.y, BASE_R = geo.baseR;
   /** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
   const PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
   // Combat (especially ignition chains) consumes a variable number of random draws.
@@ -309,7 +309,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const p = e.kind === 'prism' ? 4 : 0;
     return p ? p - ((t + e.phase) % p) : 0;
   };
-  const radiusOf = (e: Enemy) => KINDS[e.kind].radius;
+  const radiusOf = (e: Enemy) => e.kind === 'boss' ? geo.bossRadius : KINDS[e.kind].radius;
 
   function place(e: Enemy) {
     const p = e.route < 0 ? roadAt(e.d) : flightAt(e.route, e.d);
@@ -325,7 +325,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(wave / 5) * 0.35 : 1);
     const hp = k.hp * hs;
     const e: Enemy = {
-      id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : 4.5),
+      id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
       hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
       spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null,
@@ -1172,7 +1172,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         const e = nearestInCone(aim, 0.1, turretRange());
         const end = e ? { x: e.x, y: e.y } : { x: BASE_X + Math.sin(aim) * 110, y: BASE_Y - Math.cos(aim) * 110 };
         if (e) hit(e, gatlingDmg() * mods.gatlingMult * odMult() * weaponPower(), 'blue');
-        addFx({ kind: 'tracer', life: 0.1, x0: BASE_X + Math.sin(aim) * 7, y0: BASE_Y - Math.cos(aim) * 7, x1: end.x, y1: end.y, hit: !!e });
+        addFx({ kind: 'tracer', life: 0.1, x0: BASE_X + Math.sin(aim) * 7 * geo.deckScale, y0: BASE_Y - Math.cos(aim) * 7 * geo.deckScale, x1: end.x, y1: end.y, hit: !!e });
       }
       if (shots) cue('shoot');
     } else if (weapon === 'flame' && ready && bike.power3s > 5) {

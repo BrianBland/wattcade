@@ -27,6 +27,10 @@ export interface TdLevel {
   spawnY: number;
   /** Gliders fly straight from each of these to the turret. */
   flyerSpawns: readonly Pt[];
+  /** Road walkers keep within ± this of the centre line (default 2.25; the boss stays within ±0.5). */
+  laneSpread?: number;
+  /** The Hive Tyrant's size on this map, in units (default `KINDS.boss.radius`, 5.2). Size only: no balance change. */
+  bossRadius?: number;
   /** Registered terrain paintings (level 0 only). Pads ≥ `pads` get a drawn plate. */
   painted?: { boxes: Readonly<Record<PaintOrientation, PaintBox>>; pads: number };
 }
@@ -39,6 +43,15 @@ export const LEVEL_0: TdLevel = {
   hiveMouth: HIVE_MOUTH, spawnY: SPAWN_Y, flyerSpawns: FLYER_SPAWNS,
   painted: { boxes: PAINT_BOXES, pads: PAINTED_PADS },
 };
+
+/**
+ * The narrower road for generated levels (owner-approved): an 8-unit road with walkers within ±1.5, a smaller boss
+ * (size only) and a smaller turret deck. Level 0 keeps its painted 11-unit road.
+ */
+export const NARROW_ROAD = { roadHalfWidth: 4, laneSpread: 1.5, bossRadius: 4, turretR: 8 } as const satisfies Partial<TdLevel>;
+/** A level at the narrow-road sizes (drawn as vector ground: a painting would no longer line up). */
+export const narrowed = (level: TdLevel): TdLevel => ({ ...level, ...NARROW_ROAD, id: `${level.id}-narrow`, painted: undefined });
+const LANE_SPREAD = 2.25, BOSS_RADIUS = 5.2, BASE_REACH = 8;
 
 /** Build pads beside the road. `s` = road distance of the nearest stretch. */
 export interface Pad { id: number; x: number; y: number; name: string; s: number }
@@ -62,6 +75,12 @@ export interface TdGeometry {
   flightLength(route: number): number;
   flightAt(route: number, d: number): RoadPoint;
   pads: Pad[];
+  /** Road walkers' lateral half-spread; the boss's radius; the turret's art scale vs level 0 (deck radius / 11). */
+  laneSpread: number;
+  bossRadius: number;
+  deckScale: number;
+  /** An alien this close to the end of its road (or flight) has reached the turret (8 on level 0's deck). */
+  baseR: number;
   /** The workshop's pseudo-pad for the base (repair): one past the last pad. */
   basePad: number;
   base: Pt;
@@ -138,6 +157,8 @@ export function levelGeometry(level: TdLevel): TdGeometry {
     roadPolyline: (step = 4) => pts.filter((_, i) => i % step === 0 || i === pts.length - 1),
     routes: level.flyerSpawns.length, flightLength, flightAt,
     pads, basePad, base,
+    laneSpread: level.laneSpread ?? LANE_SPREAD, bossRadius: level.bossRadius ?? BOSS_RADIUS,
+    deckScale: level.turretR / TURRET_R, baseR: BASE_REACH * level.turretR / TURRET_R,
     angleTo: (x, y) => Math.atan2(x - base.x, base.y - y),
     distTo: (x, y) => Math.hypot(x - base.x, y - base.y),
     padOrder,

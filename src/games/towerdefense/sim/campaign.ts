@@ -1,7 +1,7 @@
 // Levels as workouts (docs/towerdefense/LEVELS-DESIGN.md §1–3): a level = a seeded map + a fixed wave list
 // (warm-up → sets of work waves and a boss, easy recovery waves between sets → done). Pure: no rng but the seed's.
 import { makeRng } from '../../../core/rng';
-import { GROUND_STYLES, ROAD_STYLES, type GroundStyle, type RoadStyle } from './generator';
+import { GROUND_STYLES, ROAD_STYLES, padsFor, type GroundStyle, type RoadStyle } from './generator';
 import type { WaveRole } from './waves';
 
 export type Intensity = 'easy' | 'steady' | 'hard';
@@ -17,6 +17,8 @@ export interface LevelSpec {
   minutes: number;
   roadStyle: RoadStyle;
   ground: GroundStyle;
+  /** Tower pads asked for (the road style may hold fewer or need more: generator padsFor). */
+  pads: number;
   /** Later levels peak deeper: the last wave fights like endless wave `levelPeakWave` + depth. */
   depth: number;
   kind: 'campaign' | 'quick';
@@ -65,20 +67,24 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 const STYLE_NAME: Record<GroundStyle, string> = { outpost: 'Outpost', scrapyard: 'Scrapyard', badlands: 'Badlands', volcanic: 'Volcanic', overgrown: 'Overgrown', blight: 'Blight' };
 /** Minutes per campaign level within a style: mostly short enough to chain two in one ride. */
 const CAMPAIGN_MINUTES = [15, 20, 25, 20, 40];
+/** Pads per campaign level within a style: a roomy start, then a lean level and a crowded one before the long finale. */
+const CAMPAIGN_PADS = [12, 10, 14, 8, 12];
 export const LEVELS_PER_STYLE = CAMPAIGN_MINUTES.length;
 
 /** The campaign: five levels per ground style, in style order; each unlocks the next. */
 export const CAMPAIGN: readonly LevelSpec[] = GROUND_STYLES.flatMap((ground, gi) => CAMPAIGN_MINUTES.map((minutes, n): LevelSpec => {
   const index = gi * LEVELS_PER_STYLE + n;
+  const roadStyle = ROAD_STYLES[(n + gi) % ROAD_STYLES.length]; // each ground rotates the road styles by one
   return { id: `c${index + 1}`, name: `${STYLE_NAME[ground]} ${ROMAN[n]}`, seed: 1000 + index * 37, minutes, ground,
-    roadStyle: ROAD_STYLES[(index + gi) % ROAD_STYLES.length], depth: gi + Math.floor(n / 2), kind: 'campaign', index };
+    roadStyle, pads: padsFor(roadStyle, CAMPAIGN_PADS[n]), depth: gi + Math.floor(n / 2), kind: 'campaign', index };
 }));
 
-/** A Quick Ride: any seed at a chosen length; road and ground come from the seed. */
+/** A Quick Ride: any seed at a chosen length; road, ground and pads (8–14) come from the seed. */
 export function quickRide(seed: number, minutes: number): LevelSpec {
   const r = makeRng(seed ^ 0x9e37);
   const ground = GROUND_STYLES[Math.floor(r() * GROUND_STYLES.length)], roadStyle = ROAD_STYLES[Math.floor(r() * ROAD_STYLES.length)];
-  return { id: `q${seed}-${minutes}`, name: `Quick ${minutes}′ · ${STYLE_NAME[ground]}`, seed, minutes, ground, roadStyle, depth: 4, kind: 'quick' };
+  const pads = padsFor(roadStyle, 8 + Math.floor(r() * 7));
+  return { id: `q${seed}-${minutes}`, name: `Quick ${minutes}′ · ${STYLE_NAME[ground]}`, seed, minutes, ground, roadStyle, pads, depth: 4, kind: 'quick' };
 }
 
 /** Stars from the base HP left when the last wave clears (a fall is no stars). */

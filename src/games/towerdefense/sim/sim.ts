@@ -1001,9 +1001,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** A level's map, generated once per seed. */
   function levelFor(spec: LevelSpec): TdLevel {
-    const key = `${spec.seed}|${spec.roadStyle}|${spec.ground}`;
+    const key = `${spec.seed}|${spec.roadStyle}|${spec.ground}|${spec.pads}`;
     let l = LEVEL_CACHE.get(key);
-    if (!l) { l = { ...generateLevel(spec.seed, { style: spec.roadStyle, ground: spec.ground }).level, name: spec.name }; LEVEL_CACHE.set(key, l); }
+    if (!l) { l = { ...generateLevel(spec.seed, { style: spec.roadStyle, ground: spec.ground, pads: spec.pads }).level, name: spec.name }; LEVEL_CACHE.set(key, l); }
     return l;
   }
   function startLevel(spec: LevelSpec) {

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LEVEL_0, levelGeometry, narrowed } from '../sim/level';
 import { GROUND_STYLES, generateLevel } from '../sim/generator';
-import { composeGround, scatterPlan, screenBox, type Img, type KitPixels } from '../render/ground/compose';
+import { composeGround, gravelBand, scatterPlan, screenBox, type Img, type KitPixels } from '../render/ground/compose';
 import { decks, onDeck, underDeck } from '../render/ground/deck';
 import { KIT_STYLES, kitStyle } from '../render/ground/bake';
 import type { KitManifest } from '../render/ground/kit';
@@ -70,6 +70,14 @@ describe('ground compositor', () => {
       for (const q of level.pads) expect(Math.hypot(q.x - p.x, q.y - p.y)).toBeGreaterThan(6 + r - 1e-9);
     }
   }, 30_000);
+
+  it('narrows the gravel where the road passes close to itself, leaving ground between a switchback\'s rows', () => {
+    const open = generateLevel(1, { style: 'zigzag', iterations: 300 }).level, tight = generateLevel(1, { style: 'switchback', iterations: 300 }).level;
+    const hw = tight.roadHalfWidth + tight.shoulder;
+    expect(gravelBand(open)).toBeGreaterThan(gravelBand(tight));
+    expect(gravelBand(open)).toBeLessThanOrEqual(hw + 7.5);
+    expect(gravelBand(tight)).toBeGreaterThanOrEqual(hw + 3.7);
+  });
 
   it('finds the world box a screen shows, upright and turned', () => {
     const P = (x: number, y: number) => ({ x: 100 + x * 9, y: 20 + y * 9 });

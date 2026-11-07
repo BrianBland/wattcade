@@ -166,15 +166,13 @@ const LEVELS3 = [
       if (W.road === P.T2 && !P.seam.on) P.seam.set(true); },
     center: [5, -2, 1.5], pts: [[-3, -3, 0], [15, -5, 0], [15, -.4, 0], [-1.4, 3.1, 0], [-3, -3, 3.8], [-.2, -5.6, 0]], pad: .8, scenery: false },
 
-  { id: 'd-peek', name: 'Look before you ride', th: () => THEMES[1], cruise: [65, 92],
+  { id: 'd-peek', name: 'Look before you ride', th: () => THEMES[1], cruise: [65, 92], terrain: true,
     hint: 'Every door here has the same white banner, and every door is open: ride into one and you ride out of its twin, wherever that is. Each loop has two turntables (<b>Y</b> and <b>A</b> here, <b>B</b> and <b>Z</b> on the next loop), each able to swing the road out to a door. Look through the doors before you choose: one leads on, one leads back, one leads nowhere.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), white = ['#F4F1EA'];
       // plateaus of four heights on one floating base: the first loop, the second loop up a step, a bluff on a tongue of the
       // base whose road runs off the edge of the world where a bridge fell away, and home on a tall mesa
       const zA = 0, zB = 1.5, zL = 1.1, zH = 2.6, zb = -1.6;
-      terrain(L, { base: { outline: [[-5.6, 6.4], [16.4, 6.4], [16.4, -5.4], [30.4, -5.4], [30.4, -18.4], [3.6, -18.4], [3.6, -6.4], [1.9, -6.4], [1.9, -12.6], [-1.9, -12.6], [-1.9, -6.4], [-5.6, -6.4]], z: zb, depth: 1.2, top: 'gravel' },
-        tops: [{ rect: [-4.4, -5.4, 15.2, 5.2], z: zA, top: 'lawn' }, { rect: [10.8, -17.2, 29.2, -6.6], z: zB, top: 'flagstone' }, { rect: [-1.6, -12.6, 1.6, -8.0], z: zL, top: 'meadow', side: 'strata', flush: true }, { rect: [4.8, -17.6, 7.2, -13.3], z: zH, top: 'courtyard' }] });
       const A = doorStation(L, 0, 0, ['y', 'a'], zA, true), Bs = doorStation(L, 15, -12, ['b', 'z'], zB, true); P.A = A; P.Bs = Bs;
       // where the doors come out: B's way in, A's way back in, a road to a broken bridge, and home
       const inB = L.road(L3([28, -8, zB], [24, -8, zB], UP), { pal }); inB.joins = [{ k: 1, ...Bs.join(24, 4 - 12) }];
@@ -196,15 +194,11 @@ const LEVELS3 = [
       Bs.T1.m.set(farB && Bs.T1.ang > -89.5); },
     center: [11, -6, 0], pts: [[-5.6, 6.4, -1.6], [-5.6, -6.4, -1.6], [3.6, -18.4, -1.6], [30.4, -18.4, -1.6], [30.4, -5.4, -1.6], [16.4, 6.4, -1.6], [8, -6, -5], [6, -17, 5.2], [0, -12.6, 3.6], [0, -12.6, -5], [28, -8, 4]], pad: .5, scenery: false },
 
-  { id: 'd-lanes', name: 'Three lanes, three doors', th: () => THEMES[1], cruise: [62, 95], yaws: [0, 90],
+  { id: 'd-lanes', name: 'Three lanes, three doors', th: () => THEMES[1], cruise: [62, 95], yaws: [0, 90], terrain: true,
     hint: 'Start the belt (<b>Y</b>): it carries the wheel one, two or three lanes over by your cadence (under 72, 72 to 86, over 86 rpm), and every lane ends in a door. Look through them first. On the far loop, <b>A</b> and <b>B</b> swing its turntables out to two roads past the tower. One looks whole and is not; the other has a hole you can only lose by turning the camera (<b>Z</b>).',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), white = ['#F4F1EA'], zA = 0, zL = .9, zB = 1.5, zb = -1.6;
       // the land: the start and its lanes, a bluff off the west edge, the far loop's terrace, and two terraces past the tower split by the holes
-      terrain(L, { base: { outline: [[-9.2, 10], [11.8, 10], [11.8, -6.8], [-.8, -6.8], [-.8, -19.6], [-25, -19.6], [-25, -7.0], [-9.2, -7.0]], z: zb, depth: 1.2, top: 'gravel' },
-        tops: [{ rect: [-2.6, -.6, 11.2, 9.4], z: zA, top: 'lawn' }, { rect: [-9.2, 1.9, -4.2, 4.5], z: zL, top: 'meadow', side: 'strata', flush: true },
-          { rect: [-19.7, -19.0, -1.4, -7.4], z: zB, top: 'flagstone' }, { rect: [-25, -19.0, -19.7, -14.6], z: zB, top: 'meadow', side: 'strata', flush: true },
-          { rect: [-25, -14.0, -20.3, -7.4], z: zB, top: 'beds', flush: true }] });
       // the start loop; the belt sits on its far side and carries the wheel out to three lanes, each ending in a door
       const H = L.road(loopPts(0, 0, 8, 2.6, zA, .8), { closed: true, pal }); P.H = H;
       const lanes = [4.6, 6.6, 8.6].map(y => L.road(L3([5.9, y, zA], [-2.5, y, zA], UP), { pal }));

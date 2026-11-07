@@ -303,10 +303,19 @@ function bridge(g: CanvasRenderingContext2D, m: MapDef, b: P, deck?: Stamp) {
   g.save(); g.lineCap = 'butt'; g.lineJoin = 'round';
   path(0.6 * K, 1.4 * K); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.lineWidth = (m.hw * 2 + 3) * K; g.filter = `blur(${K * 0.8}px)`; g.stroke(); g.filter = 'none';
   if (deck) {
-    const width = (m.hw * 2 + 2.2) * K, step = deck.wU * K * (width / (deck.hU * K));
+    // run the deck strip continuously along the bridge: each segment draws the next slice of the strip at its
+    // natural aspect (strip height → deck width), wrapping at the strip's end, so planks keep their proportions
+    const width = (m.hw * 2 + 2.2) * K, srcPerPx = deck.canvas.height / width, W = deck.canvas.width;
+    let u = 0;
     for (let i = 1; i < seg.length; i++) {
       const p0 = seg[i - 1], p1 = seg[i], len = Math.hypot(p1.x - p0.x, p1.y - p0.y), ang = Math.atan2(p1.y - p0.y, p1.x - p0.x);
-      g.save(); g.translate(p0.x, p0.y); g.rotate(ang); g.drawImage(deck.canvas, 0, 0, deck.canvas.width * Math.min(1, len / step), deck.canvas.height, 0, -width / 2, len + 1, width); g.restore();
+      g.save(); g.translate(p0.x, p0.y); g.rotate(ang);
+      for (let done = 0; done < len;) {
+        const sx = u % W, take = Math.min(len - done, (W - sx) / srcPerPx);
+        g.drawImage(deck.canvas, sx, 0, Math.max(1, take * srcPerPx), deck.canvas.height, done, -width / 2, take + 0.6, width);
+        done += take; u += take * srcPerPx;
+      }
+      g.restore();
     }
   } else {
     path(); g.strokeStyle = '#2b1f16'; g.lineWidth = (m.hw * 2 + 2.2) * K; g.stroke();

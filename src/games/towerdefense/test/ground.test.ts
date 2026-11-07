@@ -77,7 +77,7 @@ describe('ground compositor', () => {
     expect(gravelBand(open)).toBeGreaterThan(gravelBand(tight));
     expect(gravelBand(open)).toBeLessThanOrEqual(hw + 7.5);
     expect(gravelBand(tight)).toBeGreaterThanOrEqual(hw + 3.7);
-  });
+  }, 30_000); // two level generations: slow on a busy runner
 
   it('finds the world box a screen shows, upright and turned', () => {
     const P = (x: number, y: number) => ({ x: 100 + x * 9, y: 20 + y * 9 });

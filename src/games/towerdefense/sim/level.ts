@@ -31,6 +31,11 @@ export interface TdLevel {
   laneSpread?: number;
   /** The Hive Tyrant's size on this map, in units (default `KINDS.boss.radius`, 5.2). Size only: no balance change. */
   bossRadius?: number;
+  /** Generated levels: the seed and road style they came from. */
+  seed?: number;
+  roadStyle?: string;
+  /** Where the road crosses itself; the later pass rides a bridge deck (the final approach is never under one). */
+  bridges?: readonly Pt[];
   /** Registered terrain paintings (level 0 only). Pads ≥ `pads` get a drawn plate. */
   painted?: { boxes: Readonly<Record<PaintOrientation, PaintBox>>; pads: number };
 }

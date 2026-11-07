@@ -9,7 +9,9 @@ export const cableRoadClear = (level: TdLevel): number => level.roadHalfWidth + 
 /** Level 0's cable clearance. */
 export const CABLE_ROAD_CLEAR = cableRoadClear(LEVEL_0);
 /** What a level's cables route around. */
-interface CableMap { road: readonly Pt[]; pads: readonly Pt[]; turret: Pt; turretR: number; clear: number }
+interface CableMap { road: readonly Pt[]; pads: readonly Pt[]; turret: Pt; turretR: number; clear: number; bridges: readonly Pt[] }
+/** Within this of a bridge crossing a cable may run under the deck. */
+const underDeck = (m: CableMap, p: Pt) => m.bridges.some((b) => Math.hypot(b.x - p.x, b.y - p.y) < m.clear * 1.5 + 3);
 const PAD_CLEAR = PAD_R + 1.4;
 const STEP = 0.5;
 const BOX = { x0: -10, y0: -16, x1: 92, y1: 118 };
@@ -53,7 +55,7 @@ function clear(m: CableMap, pts: readonly Pt[], pad: number, through: ReadonlySe
       const p = { x: a.x + (b.x - a.x) * j / n, y: a.y + (b.y - a.y) * j / n };
       if (Math.hypot(p.x - m.turret.x, p.y - m.turret.y) < m.turretR - 1) continue; // under the deck
       if (Math.hypot(p.x - m.pads[pad].x, p.y - m.pads[pad].y) < PAD_R) continue; // under its own tower
-      if (distanceToLine(p, m.road) < m.clear - 0.6) return false;
+      if (distanceToLine(p, m.road) < m.clear - 0.6 && !underDeck(m, p)) return false;
       if (m.pads.some((q, k) => k !== pad && !through.has(k) && Math.hypot(p.x - q.x, p.y - q.y) < PAD_CLEAR - 0.6)) return false;
     }
   }
@@ -85,7 +87,7 @@ const cache = new WeakMap<TdLevel, CableRoute[]>();
 export function cableRoutes(level: TdLevel = LEVEL_0): CableRoute[] {
   const hit = cache.get(level);
   if (hit) return hit;
-  const m: CableMap = { road: levelGeometry(level).road, pads: level.pads, turret: level.turret, turretR: level.turretR, clear: cableRoadClear(level) };
+  const m: CableMap = { road: levelGeometry(level).road, pads: level.pads, turret: level.turret, turretR: level.turretR, clear: cableRoadClear(level), bridges: level.bridges ?? [] };
   const road = roadDistance(m, m.clear + 4);
   const used = new Float32Array(W * H); // earlier cables: later ones run beside them rather than on top
   const routes: CableRoute[] = [];
@@ -97,7 +99,7 @@ export function cableRoutes(level: TdLevel = LEVEL_0): CableRoute[] {
       const p = at(q);
       if (Math.hypot(p.x - m.turret.x, p.y - m.turret.y) < m.turretR - 1) return false;
       if (Math.hypot(p.x - goal.x, p.y - goal.y) < PAD_R) return false;
-      return road[q] < m.clear;
+      return road[q] < m.clear && !underDeck(m, p);
     };
     // Another pad's clearing is a last resort: some pockets are only reachable past a neighbouring pad.
     const padCost = (q: number) => { const p = at(q); return m.pads.some((o, k) => k !== pad && Math.hypot(p.x - o.x, p.y - o.y) < PAD_CLEAR) ? 12 : 0; };

@@ -11,13 +11,16 @@ import { radialLayout } from '../src/games/towerdefense/render/construction';
 import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../src/games/towerdefense/sim/defs';
 import { toScreen } from '../src/games/towerdefense/render/fieldView';
 import { LEVEL_0, narrowed, type TdLevel } from '../src/games/towerdefense/sim/level';
+import { generateLevel, type RoadStyle } from '../src/games/towerdefense/sim/generator';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../src/shell/hud/insets';
 
 const q = new URLSearchParams(location.search), inset = Number(q.get('inset') ?? 140);
 const offKeys = input.attachKeyboard(window), useHud = q.get('canvas') !== '1';
 let legendOn = q.get('legend') !== '0';
 // `level=narrow`: level 0's road at the generated levels' narrower sizes (vector ground); `level=mirror`: also mirrored.
-const level: TdLevel | undefined = q.get('level') === 'narrow' || q.get('level') === 'mirror' ? {
+// `gen=<seed>[&style=zigzag|trident|lasso|ring]`: a generated level.
+const level: TdLevel | undefined = q.get('gen') ? generateLevel(Number(q.get('gen')), { style: (q.get('style') ?? undefined) as RoadStyle | undefined }).level
+  : q.get('level') === 'narrow' || q.get('level') === 'mirror' ? {
   ...narrowed(LEVEL_0), id: q.get('level')!,
   ...(q.get('level') === 'mirror' ? {
     waypoints: LEVEL_0.waypoints.map((p) => ({ x: 80 - p.x, y: p.y })), pads: LEVEL_0.pads.map((p) => ({ ...p, x: 80 - p.x })),

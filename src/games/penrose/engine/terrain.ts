@@ -179,6 +179,8 @@ function autoTerrain(L, o = {}) {
   if (!placed.length) return [];
   // the base: every plateau grown by a metre, gaps under eighteen metres closed so it reads as one piece, cut away beyond each fall
   const F = new Set(); for (const p of placed) for (const k of grow(p.cells, 2)) F.add(k);
+  // anchors: spots the base must reach too (piers, posts and towers standing off the plateaus), each a disc [x, y, r]
+  for (const [ax, ay, ar] of o.anchors || []) { const [i, j] = cellOf(ax, ay), n = Math.ceil(ar / C) + 1; for (let a = -n; a <= n; a++) for (let b = -n; b <= n; b++) { const [cx, cy] = ctr(i + a, j + b); if (Math.hypot(cx - ax, cy - ay) < ar) F.add(key(i + a, j + b)); } }
   let B0 = shrink(grow(F, 18), 18); const under = new Set(); for (const p of placed) for (const k of p.cells) under.add(k);
   for (const p of placed) for (const f of p.falls) if (f.len === undefined) { for (const k of [...B0]) { if (under.has(k)) continue; const [i, j] = k.split(',').map(Number), [cx, cy] = ctr(i, j), u = (cx - f.x) * f.dx + (cy - f.y) * f.dy, w = Math.abs((cx - f.x) * f.dy - (cy - f.y) * f.dx); if (u > -.1 && w < 1.2) B0.delete(k); } }
   B0 = grow(shrink(B0, 1), 1); for (const k of under) B0.add(k);

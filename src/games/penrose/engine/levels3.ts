@@ -19,11 +19,11 @@ function strip(L, pts, o = {}, w = .55) {
   return r;
 }
 /** The sky road for a pool: the water road lifted h and pulled back h, on piers at both ends. */
-function skyRoad(L, og, pts, h, wz) {
+function skyRoad(L, og, pts, h, wz, zb = -.7) {
   const sky = pts.map(q => ({ p: [q.p[0] - h, q.p[1] - h, wz + h], n: [0, 0, 1] })), rr = new Road(sky);
   const m = ribbon(rr, 1, .12, tri(PAL(), { side: true })); m.userData.rc = '#FFF4DC'; og.add(m);
   const ln = ribbon(rr, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }); ln.userData.rc = '#B0624E'; og.add(ln);
-  for (const q of [sky[0].p, sky[sky.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] + .5, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] - .5) / 2 - .2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+  for (const q of [sky[0].p, sky[sky.length - 1].p]) { const c = new T.Mesh(new T.CylinderGeometry(.16, .2, q[2] - zb, 12), tri(sp(L.th, 0))); c.position.copy(V(q[0], q[1], (q[2] + zb) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
 }
 
 /** Low floor: top at -.5, the level loop slabs sit at, so turntable arms swing clear over it. */
@@ -276,6 +276,37 @@ const LEVELS3 = [
       const want = [P.A, P.W].includes(W.road) ? 90 : 0; P.cam.m.set(!P.cam.at(want)); },
     center: [-1.5, 0, 1.2], pts: [[-10.1, 3.4, 0], [-10.1, 8.0, 0], [-3.8, 8.0, 0], [-8, -6.2, 0], [3.55, -6.2, 0], [5.6, 2.6, 0], [5.6, -3.2, 0], [-3, -3, 3.6], [0, 0, 3.6], [-3, 0, 3.6], [0, -3, 3.6]], pad: 1.0, scenery: false },
 
+  { id: 'p-mirror', name: 'Break it, then still it', th: () => THEMES[1], cruise: [62, 95], terrain: { anchors: [[-2.68, -7.18, 1.1], [-2.68, -4.78, 1.1], [.7, -6.7, 1.1], [2.5, -8.6, 1.1]] },
+    // one pool, two reflections: a gate that only a sprint breaks, and a road that only a calm pool makes real
+    hint: 'Two beats on one pool. The road out crosses the water, and the water shows a gate across it: pedal hard, above 86 rpm, to ruffle the pool and break the gate. Across the pool, the far loop rides the water too, and there the pool shows a road from high above, turning off toward home. Ease under 78 rpm until the water is still, and the reflected road is a road.',
+    build(L) {
+      const th = L.th, P = L.props, pal = PAL(), wz = -.04, h = 5, h0 = 3.2, h1 = 4.2, xg = 1.6, yr = -1.7;
+      const A = L.road(loopPts(-7, -3.4, -1, 0, 0, .8), { closed: true, pal }); P.A = A;
+      const C = L.road(loopPts(4, yr, 10, 2.6, 0, .8), { closed: true, pal }); P.C = C;
+      const X = L.road(L3([-1, yr, .006], [5, yr, .006], UP), { pal }); P.X = X;
+      X.joins = [{ k: 1, to: C, s: sAt(C, [5, yr, 0]), dir: 1 }];
+      // the water road where the sky road's reflection lies, and the pier home it leads to
+      const wt = ftur([6.5, yr, .006], [1, 0, 0], UP).turn(1, -90).fwd(.9);
+      const W = L.road(wt.pts, { noDeck: true, noLane: true }); P.W = W;
+      const we = wt.pts[wt.pts.length - 1].p, G = L.road(L3([we[0], we[1], .006], [we[0], -7.6, .006], UP), { goal: true }); P.G = G;
+      const gateM = tri(tone('#C9503F')), stone = tri(sp(th, 0));
+      const pool = reflection(L, { pool: [.2, -3.6, 9.3, 1.8], wz, calm: 78, over(og) {
+        skyRoad(L, og, ftur([5.7, yr, .006], [1, 0, 0], UP).fwd(.8).turn(1, -90).fwd(.9).pts, h, wz, -2.4);
+        // the portcullis, hung high and shifted back so its reflection stands across the road out at xg
+        const off = h1 - 2 * wz, at = (x, y, z) => V(x - off, y - off, z);
+        const box = (sx, sy, sz, x, y, z, mat, rc) => { const m = new T.Mesh(UNIT_BOX, mat); m.scale.set(sx, sz, sy); m.position.copy(at(x, y, z)); m.userData.rc = rc; og.add(m); };
+        for (const yy of [-2.5, -2.1, -1.7, -1.3, -.9]) { box(.1, .1, h1 - h0, xg, yy, (h0 + h1) / 2, gateM, '#E2563F'); const tip = new T.Mesh(new T.ConeGeometry(.09, .22, 4), gateM); tip.rotation.x = Math.PI; tip.position.copy(at(xg, yy, h0 - .1)); tip.userData.rc = '#E2563F'; og.add(tip); }
+        for (const zz of [h1, h0 + .35]) box(.16, 2.2, .14, xg, -1.7, zz, gateM, '#E2563F');
+        for (const yy of [-2.9, -.5]) { const zt = h1 + .5, c = new T.Mesh(new T.CylinderGeometry(.2, .24, zt + 2.4, 12), stone); c.position.copy(at(xg, yy, (zt - 2.4) / 2)); c.userData.rc = '#E5CFA0'; og.add(c); }
+      } });
+      P.pool = pool;
+      A.forks.push({ s: sAt(A, [-1, yr, 0]), dir: 1, to: X, toK: 0, when: () => pool.ruffled(), text: 'The ruffled pool shows no gate, so there is none' });
+      C.forks.push({ s: sAt(C, [6.5, yr, 0]), dir: 1, to: W, toK: 0, when: () => pool.still(), text: 'The still pool shows a road, so there is one' });
+      L.view.updaters.push(() => L.say(`pool ${pool.ruffled() ? 'ruffled: no gate' : pool.still() ? 'still: gate and road both real' : 'stirring'} · ${Math.round(rider.cad)} rpm`));
+    },
+    spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
+    solve(L, W, R) { R.gear = 4; R.cad = W.road === L.props.A ? 92 : 66; },
+    center: [1.5, -2, 1], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [10.6, -2.3, 0], [10.6, 3.2, 0], [7, -7.6, 0], [3.4, 3.2, 0], [-2.7, -6.8, 4.8], [.7, -6.7, 5], [2.5, -8.6, 5]], pad: .8, scenery: false },
 ];
 
 Object.assign($scope, { LEVELS3 });

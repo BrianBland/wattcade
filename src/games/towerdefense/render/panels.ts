@@ -130,12 +130,12 @@ export class TdHud {
     const run = s.phase === 'run', bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
-    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
     const forecast = incoming
-      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/3`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
       : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
     this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;
@@ -160,7 +160,7 @@ export class TdHud {
     if (s.garage) {
       const gv = s.garage;
       const previous = this.menu.querySelector<HTMLElement>('.selected')?.dataset.index;
-      this.html(this.menu, `<header><h2>Garage</h2><b>${gv.bank} parts</b></header><p>Best wave ${gv.bestWave} · Run ${gv.runs + 1}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A buy · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}`);
+      this.html(this.menu, `<header><h2>${esc(gv.title)}</h2><b>${gv.bank} parts</b></header><p>${esc(gv.subtitle)}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}`);
       if (previous !== String(gv.sel)) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }

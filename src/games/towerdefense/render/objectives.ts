@@ -7,10 +7,12 @@ const role = (r: string) => r === 'boss' ? 'Boss' : r === 'easy' ? 'Recovery' : 
 
 /** Read the same live effort/boss state as the sim; recovery always takes priority over stale calls. */
 export function rideObjective(s: TdSnapshot): RideObjective {
-  const label = `Set ${s.set.set} · ${s.set.role === 'work' ? `Work ${s.set.pos}/3` : role(s.set.role)}`;
+  const label = `${s.run ? `${s.run.name} · W${s.wave}/${s.run.waves} · ` : ''}${s.set.warmup ? 'Warm-up' : `Set ${s.set.set} · ${s.set.role === 'work' ? `Work ${s.set.pos}/${s.set.of}` : role(s.set.role)}`}`;
   const next = `Next: ${role(s.forecast.role).toLowerCase()}`;
   if (s.brood.countdownS > 0) return { label, title: 'Recover', target: 'Easy spin · catch your breath',
     detail: `${role(s.set.role)} starts in ${seconds(s.brood.countdownS)}` };
+  if (s.set.warmup) return { label, title: 'Warm-up wave', target: 'Ride easy · build your first towers',
+    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
   if (s.set.role === 'easy') return { label, title: 'Recovery wave', target: 'Ride easy · no called efforts',
     detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
   const b = s.boss;

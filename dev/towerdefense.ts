@@ -30,7 +30,10 @@ const level: TdLevel | undefined = q.get('gen') ? generateLevel(Number(q.get('ge
 // Forward Base caps the start at bestWave - 2: wave 4 is the first boss in the five-wave set.
 const profile = testProfile(q.get('boss') === '1' ? { gameData: { towerdefense: { v: 2, runs: 1, bestWave: 6, upgrades: { headstart: 2 } } } } : {});
 const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1', level } });
+  simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1', level,
+    // `campaign=<index>` or `quick=<seed>[&minutes=]`: play a level; `intensity=easy|steady|hard`
+    play: q.get('campaign') ? { campaign: Number(q.get('campaign')) } : q.get('quick') ? { quick: { seed: Number(q.get('quick')), minutes: Number(q.get('minutes') ?? 15) } } : undefined,
+    intensity: q.get('intensity') ?? undefined } });
 if (q.get('boss') === '1') session.tuning.set('towerdefense.railLaserDps', 1); // keep the demo's first opening available for input checks
 session.step(Math.max(1, Math.round(Number(q.get('sec') ?? 0) * 30)));
 const r = await module.loadRenderer(), app = document.getElementById('field')!;

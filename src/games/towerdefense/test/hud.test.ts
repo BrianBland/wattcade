@@ -49,7 +49,7 @@ function hudFixture() {
   const session = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, seed: 7, simOpts: { skipGarage: true } });
   const initial = session.sim.snapshot() as TdSnapshot;
   session.sim.dispose?.();
-  const snapshot: TdSnapshot = { ...initial, phase: 'run', garage: null, lull: 0, set: { set: 2, pos: 2, role: 'work' },
+  const snapshot: TdSnapshot = { ...initial, phase: 'run', garage: null, lull: 0, set: { set: 2, pos: 2, of: 3, role: 'work', warmup: false },
     brood: { ...initial.brood, countdownS: 0 }, boss: null, effort: null, banner: null, workshop: null, constructionDone: false };
   const hud = new TdHud();
   const draw = (s: TdSnapshot, W = 1180, H = 820) => hud.render(s, layout(W, H, 160, true), W);
@@ -110,7 +110,7 @@ it('prioritizes boss phases and sprint windows, then recovery over stale effort 
   draw({ ...s, boss, brood: { ...s.brood, countdownS: 15 } });
   expect(card.textContent).toContain('Recover');
   expect(card.textContent).not.toContain('ERG push');
-  draw({ ...s, boss, set: { set: 2, pos: 5, role: 'easy' } });
+  draw({ ...s, boss, set: { set: 2, pos: 5, of: 3, role: 'easy', warmup: false } });
   expect(card.textContent).toContain('Recovery wave');
   expect(card.textContent).toContain('no called efforts');
   draw({ ...s, phase: 'garage' });

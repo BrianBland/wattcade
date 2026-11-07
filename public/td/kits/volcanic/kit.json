@@ -1,0 +1,109 @@
+{
+ "style": "volcanic",
+ "source": "volcanic-grok",
+ "ppu": 12,
+ "roadHalf": 4,
+ "roadRim": 1,
+ "roadBand": 9,
+ "files": {
+  "groundA": "ground_a.webp",
+  "groundB": "ground_b.webp",
+  "gravel": "gravel.webp",
+  "road": "road.webp",
+  "hive": "hive.webp"
+ },
+ "apron": {
+  "file": "apron.webp",
+  "w": 31.25,
+  "h": 30.75
+ },
+ "clearing": {
+  "file": "clearing.webp",
+  "w": 16.25,
+  "h": 16.5
+ },
+ "decals": [
+  {
+   "file": "decal0.webp",
+   "w": 15,
+   "h": 14.25
+  },
+  {
+   "file": "decal1.webp",
+   "w": 12.25,
+   "h": 11.75
+  },
+  {
+   "file": "decal2.webp",
+   "w": 12.5,
+   "h": 10.25
+  },
+  {
+   "file": "decal3.webp",
+   "w": 11.5,
+   "h": 9.5
+  },
+  {
+   "file": "decal4.webp",
+   "w": 9.75,
+   "h": 9
+  },
+  {
+   "file": "decal5.webp",
+   "w": 8.5,
+   "h": 8.25
+  }
+ ],
+ "props": [
+  {
+   "file": "prop0.webp",
+   "w": 26.25,
+   "h": 26
+  },
+  {
+   "file": "prop1.webp",
+   "w": 25,
+   "h": 26
+  },
+  {
+   "file": "prop2.webp",
+   "w": 18,
+   "h": 20
+  },
+  {
+   "file": "prop3.webp",
+   "w": 15.25,
+   "h": 19
+  },
+  {
+   "file": "prop4.webp",
+   "w": 14.25,
+   "h": 17.75
+  },
+  {
+   "file": "prop5.webp",
+   "w": 7.25,
+   "h": 13.5
+  },
+  {
+   "file": "prop6.webp",
+   "w": 7.75,
+   "h": 8.25
+  },
+  {
+   "file": "prop7.webp",
+   "w": 7.25,
+   "h": 7.75
+  }
+ ],
+ "deck": {
+  "file": "deck.webp",
+  "w": 93.25,
+  "h": 14
+ },
+ "hiveMouth": {
+  "file": "mouth.webp",
+  "w": 51,
+  "h": 50.5
+ }
+}

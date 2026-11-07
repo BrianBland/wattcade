@@ -1,7 +1,7 @@
 // Wave composition. Pure: everything random comes from the `rng` argument.
 import { ELEMENTS, KIND_FROM, KINDS, type Element, type Kind } from './defs';
 
-/** `route`: -1 walks the road; 0..2 is a Glider flight from that FLYER_SPAWNS point. */
+/** `route`: -1 walks the road; 0.. is a Glider flight from that level flyer spawn. */
 export interface Spawn { at: number; kind: Kind; route: number }
 /**
  * Waves come in sets of five, like workout intervals: three work waves, a boss wave, then an easy recovery wave
@@ -29,6 +29,8 @@ export interface WaveOpts {
   broodShare: number;
   /** Blue has no heavies: each blue slot is a swarm pack of this many darts or drones. */
   swarmPack: number;
+  /** Glider flight routes on this map (default 3). */
+  routes?: number;
 }
 export interface BroodOrderOpts {
   /** No colour more than this many waves in a row. */
@@ -102,7 +104,7 @@ export function waveCounts(w: number, countScale = 1): { heavies: number; dart: 
 }
 
 export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
-  const route = () => Math.floor(rng() * 3) % 3;
+  const routes = o.routes ?? 3, route = () => Math.floor(rng() * routes) % routes;
   const window = o.spawnWindowS;
   const spawns: Spawn[] = [];
   const counts = waveCounts(w, o.countScale);

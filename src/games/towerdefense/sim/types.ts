@@ -4,6 +4,7 @@ import type { UpgradeId } from './meta';
 import type { EffortKind, EffortView } from './efforts';
 import type { BuildSuggestion } from './construction';
 import type { WaveRole } from './waves';
+import type { TdLevel } from './level';
 
 export type ActionId = 'rail' | 'overcharge' | 'slow';
 export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number }
@@ -77,6 +78,8 @@ export interface BossView {
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
+  /** The map being played (same object for the whole session; the renderer derives its geometry from it). */
+  level: TdLevel;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;
   forecast: { wave: number; boss: boolean; role: WaveRole; counts: WaveForecast };
   /** where the current wave sits in its set: three work waves, a boss, then an easy recovery wave */

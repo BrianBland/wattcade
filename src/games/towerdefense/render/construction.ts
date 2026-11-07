@@ -1,7 +1,7 @@
 // Big, inset-aware touch targets; the controller operates the very same WorkshopView.
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../sim/defs';
+import { geoOf } from '../sim/level';
 import { toScreen } from './fieldView';
 import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import type { Hit } from './panels';
@@ -57,7 +57,7 @@ export function radialLayout(W: number, UH: number, anchor: { x: number; y: numb
 
 export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, W: number): Hit[] {
   const ws = s.workshop!;
-  const p = ws.pad < BASE_PAD ? PADS[ws.pad] : { x: BASE_X, y: BASE_Y, name: 'Base' };
+  const geo = geoOf(s), p = ws.pad < geo.basePad ? geo.pads[ws.pad] : { ...geo.base, name: 'Base' };
   const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length);
   const css = getComputedStyle(g.canvas);
   g.save(); g.fillStyle = css.getPropertyValue('--panel-solid'); g.beginPath(); g.roundRect(r.body.x - 4, r.body.y - 4, r.body.w + 8, r.body.h + 8, 12); g.fill();

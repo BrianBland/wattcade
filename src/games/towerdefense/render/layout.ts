@@ -1,6 +1,7 @@
 // Foreground boxes in CSS pixels. UI stays above UH; the field may use the space between HUD components.
 import type { Insets, HudOcclusion } from '../../../contracts';
-import { FIELD_H, FIELD_W, ROAD, ROAD_PADS, FLYER_SPAWNS, TURRET, TURRET_R } from '../sim/road';
+import { FIELD_H, FIELD_W } from '../sim/road';
+import { LEVEL_0, levelGeometry, type TdLevel } from '../sim/level';
 import { fieldRect, toScreen, type FieldView } from './fieldView';
 
 export interface Box { x: number; y: number; w: number; h: number }
@@ -19,7 +20,7 @@ export interface TdLayout {
 /** World units of hive kept visible beyond the spawn edge in landscape, so the enemy side reads. */
 export const HIVE_SHOW = 20;
 
-export function layout(W: number, H: number, inset: number | Insets, hudControls = false): TdLayout {
+export function layout(W: number, H: number, inset: number | Insets, hudControls = false, level: TdLevel = LEVEL_0): TdLayout {
   const shape = typeof inset === 'number' ? undefined : inset.occlusions;
   // The reserved CSS envelope is intentionally conservative. Only shaped renderers use actual coverage.
   const insetB = shape ? Math.max(0, ...shape.map(b => H - b.y)) : typeof inset === 'number' ? inset : inset.bottom;
@@ -75,7 +76,7 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
       const candidate: FieldView = turned
         ? { x: area.x, y: area.y + (h - FIELD_W * scale) / 2, k: scale, turned }
         : { x: area.x + (area.w - FIELD_W * scale) / 2, y: area.y + h - FIELD_H * scale, k: scale, turned };
-      if (fieldClearsHud(candidate, shape)) { field = candidate; break; }
+      if (fieldClearsHud(candidate, shape, level)) { field = candidate; break; }
     }
   }
   // Announcements and menus share the free region over the field, never the status rows or dock.
@@ -100,18 +101,26 @@ export const fieldBox = (L: TdLayout): Box => fieldRect(L.field);
 
 // Sprite clearance is deliberately broader than the painted road and pad discs (including bosses,
 // upright tower heads and gliders). These points describe play focus, not full-bleed ground art.
-const focus = [
-  ...ROAD.filter(p => p.y >= -10).map(p => ({ ...p, r: 8 })),
-  ...ROAD_PADS.map(p => ({ ...p, r: 9 })),
-  { ...TURRET, r: TURRET_R },
-  ...FLYER_SPAWNS.flatMap(spawn => Array.from({ length: 25 }, (_, i) => ({
-    x: spawn.x + (TURRET.x - spawn.x) * i / 24, y: spawn.y + (TURRET.y - spawn.y) * i / 24, r: 7,
-  }))),
-];
+const focusCache = new WeakMap<TdLevel, Array<{ x: number; y: number; r: number }>>();
+function focusOf(level: TdLevel) {
+  let focus = focusCache.get(level);
+  if (focus) return focus;
+  const T = level.turret;
+  focus = [
+    ...levelGeometry(level).road.filter(p => p.y >= level.spawnY).map(p => ({ ...p, r: 8 })),
+    ...level.pads.map(p => ({ x: p.x, y: p.y, r: 9 })),
+    { ...T, r: level.turretR },
+    ...level.flyerSpawns.flatMap(spawn => Array.from({ length: 25 }, (_, i) => ({
+      x: spawn.x + (T.x - spawn.x) * i / 24, y: spawn.y + (T.y - spawn.y) * i / 24, r: 7,
+    }))),
+  ];
+  focusCache.set(level, focus);
+  return focus;
+}
 
 /** True when all combat sprites fit clear of the actual HUD components (with a 4px gutter). */
-export function fieldClearsHud(view: FieldView, shape: readonly HudOcclusion[]): boolean {
-  return focus.every(p => {
+export function fieldClearsHud(view: FieldView, shape: readonly HudOcclusion[], level: TdLevel = LEVEL_0): boolean {
+  return focusOf(level).every(p => {
     const q = toScreen(view, p), radius = p.r * view.k + 4;
     return shape.every(b => {
       const dx = Math.max(b.x - q.x, 0, q.x - b.x - b.w), dy = Math.max(b.y - q.y, 0, q.y - b.y - b.h);

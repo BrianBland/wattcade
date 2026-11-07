@@ -1,5 +1,6 @@
 // Per-alien animation state, advanced from the sim's positions. Pure (no DOM) so it can be unit-tested.
-import { BASE_X, BASE_Y } from '../../sim/defs';
+import { LEVEL_0 } from '../../sim/level';
+import type { Pt } from '../../sim/road';
 import type { EnemyView } from '../../sim/types';
 import { flapPeriod } from './rig';
 import type { Species } from './species';
@@ -17,9 +18,10 @@ export interface Track {
   /** per-alien offset so fliers and new spawns don't move in lockstep */ offset: number;
 }
 
-export function newTrack(e: EnemyView): Track {
+/** `base`: the turret the alien first faces. */
+export function newTrack(e: EnemyView, base: Pt = LEVEL_0.turret): Track {
   const offset = ((e.id * 0.618034) % 1 + 1) % 1;
-  return { x: e.x, y: e.y, h: Math.atan2(BASE_Y - e.y, BASE_X - e.x), cycles: offset, attack: 0, offset };
+  return { x: e.x, y: e.y, h: Math.atan2(base.y - e.y, base.x - e.x), cycles: offset, attack: 0, offset };
 }
 
 const angleTo = (from: number, to: number) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };

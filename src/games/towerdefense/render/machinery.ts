@@ -3,7 +3,7 @@ import { riderLook } from '../../../cosmetics/unlocks';
 import { drawRider } from '../../../cosmetics/draw/rider';
 import type { TdSnapshot, TowerView } from '../sim/types';
 import type { View } from './aliens/layer';
-import { BASE_X, BASE_Y, PADS } from '../sim/defs';
+import { LEVEL_0, levelGeometry, type TdGeometry } from '../sim/level';
 import { glowAt, WEAPON_COLOR } from './sprites';
 import { loadImage, loadManifest } from './assets';
 import { levelPosition, partPose, posedPoint } from './puppetPose';
@@ -99,6 +99,8 @@ export class Machinery {
   private outpost: Puppet;
   private towers: Record<TowerView['kind'], Puppet>;
   profile: Readonly<Profile> | null = null;
+  /** The level's pads and turret; the renderer sets it from the snapshot. */
+  geo: TdGeometry = levelGeometry(LEVEL_0);
   readonly loaded: Promise<void>;
   constructor(base: string) {
     this.outpost = new Puppet(base, 'outpost');
@@ -107,23 +109,23 @@ export class Machinery {
   }
   /** Towers stay upright on screen; only their aim turns with the field. */
   tower(g: CanvasRenderingContext2D, tw: TowerView, v: View, s: TdSnapshot, drop?: { level: number; from: number; built: boolean; age: number }) {
-    const p = PADS[tw.pad], at = v.P(p.x, p.y);
+    const p = this.geo.pads[tw.pad], at = v.P(p.x, p.y);
     const puppet = this.towers[tw.kind];
     return puppet.draw(g, at.x, at.y, 8.4 * v.k / 136, { angle: tw.angle + v.rot, revs: 0, level: tw.level, grid: s.grid, age: s.t - tw.firedAt, t: s.t, drop });
   }
   /** Screen position of a tower's nozzle or muzzle: its manifest anchor, else a point just ahead of the pad. */
   towerMuzzle(tw: TowerView, v: View, t = tw.firedAt + 99) {
-    const p = PADS[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
+    const p = this.geo.pads[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
     const puppet = this.towers[tw.kind], age = t - tw.firedAt;
     return puppet.anchor('muzzle', at.x, at.y, 8.4 * v.k / 136, a, age, tw.level) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
   }
   /** Screen position of the outpost's current weapon muzzle, from its manifest anchor. */
   muzzle(v: View, s: TdSnapshot) {
-    const b = v.P(BASE_X, BASE_Y), name = `muzzle_${s.weapon === 'flame' ? 'flamer' : s.weapon}`, a = s.aimAngle + v.rot;
+    const b = v.P(this.geo.base.x, this.geo.base.y), name = `muzzle_${s.weapon === 'flame' ? 'flamer' : s.weapon}`, a = s.aimAngle + v.rot;
     return this.outpost.anchor(name, b.x, b.y, 22 * v.k / 440, a) ?? { x: b.x + Math.sin(a) * 7 * v.k, y: b.y - Math.cos(a) * 7 * v.k };
   }
   base(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
-    const look = this.profile ? riderLook(this.profile) : null, b = v.P(BASE_X, BASE_Y);
+    const look = this.profile ? riderLook(this.profile) : null, b = v.P(this.geo.base.x, this.geo.base.y);
     const ready = this.outpost.draw(g, b.x, b.y, 22 * v.k / 440, {
       angle: s.aimAngle + v.rot, revs: bike.crankRevs, level: 5, grid: s.grid, weapon: s.weapon === 'flame' ? 'flamer' : s.weapon,
       charge: Math.floor(3 * (s.railCharges + s.railProgress) / Math.max(1, s.railMaxCharges)), damage: s.baseHp / s.baseMaxHp < 0.25 ? 2 : s.baseHp / s.baseMaxHp < 0.5 ? 1 : 0, age: 99, t: s.t,

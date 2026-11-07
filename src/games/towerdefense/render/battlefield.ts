@@ -1,5 +1,5 @@
-import { BASE_X, BASE_Y, PADS, roadAt } from '../sim/defs';
-import { PAD_R, PAINTED_PADS, PAINT_BOXES, type PaintOrientation } from '../sim/road';
+import { PAD_R, type PaintOrientation } from '../sim/road';
+import { LEVEL_0, levelGeometry, type TdGeometry } from '../sim/level';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
 import { boundedLights, type Point } from './battlefieldMath';
@@ -17,6 +17,8 @@ export class Battlefield {
   private paintings: Partial<Record<PaintOrientation, HTMLImageElement>> = {};
   private darkness: HTMLCanvasElement | null = null;
   private lightKey = '';
+  /** The level being drawn; the renderer sets it from the snapshot. Only a painted level uses the paintings. */
+  geo: TdGeometry = levelGeometry(LEVEL_0);
   constructor(base: string, onBackground: () => void) {
     // A missing painting is fine: the other orientation or the vector ground stands in.
     this.loaded = Promise.all((['portrait', 'landscape'] as const).map(o =>
@@ -27,10 +29,12 @@ export class Battlefield {
   get ready() { return !!(this.paintings.portrait || this.paintings.landscape); }
   /** Paints the ground behind the field; false when no painting has loaded. */
   paint(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
+    const painted = this.geo.level.painted;
+    if (!painted) return false;
     const own = v.turned ? this.paintings.landscape : this.paintings.portrait;
     const o: PaintOrientation | null = own ? (v.turned ? 'landscape' : 'portrait') : this.paintings.portrait ? 'portrait' : null;
     if (!o) return false;
-    const image = this.paintings[o]!, { x0, y0, x1, y1 } = PAINT_BOXES[o];
+    const image = this.paintings[o]!, { x0, y0, x1, y1 } = painted.boxes[o];
     g.fillStyle = '#0d1118'; g.fillRect(0, 0, W, H);
     g.save();
     if (o === 'landscape') { const c = v.P(x0, y1); g.drawImage(image, c.x, c.y, (y1 - y0) * v.k, (x1 - x0) * v.k); }
@@ -40,7 +44,7 @@ export class Battlefield {
       g.drawImage(image, 0, 0, (x1 - x0) * v.k, (y1 - y0) * v.k);
     }
     g.restore();
-    for (const p of PADS.slice(PAINTED_PADS)) this.plate(g, v, p.x, p.y, p.id);
+    for (const p of this.geo.pads.slice(painted.pads)) this.plate(g, v, p.x, p.y, p.id);
     return true;
   }
   /**
@@ -68,12 +72,13 @@ export class Battlefield {
   /** The hive mouth breathes in the incoming brood's colour, so the spawn reads even under the status rows' edge. */
   hive(g: CanvasRenderingContext2D, v: View, s: TdSnapshot) {
     if (s.phase !== 'run') return;
-    const p = roadAt(0), q = v.P(p.x, p.y), pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
+    const p = this.geo.roadAt(0), q = v.P(p.x, p.y), pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
     g.save(); g.globalCompositeOperation = 'lighter';
     glowAt(g, COL[s.brood.color], q.x, q.y, (12 + 3 * pulse) * v.k, 0.18 + 0.12 * pulse);
     g.restore();
   }
   lighting(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, W: number, H: number) {
+    const { pads: PADS, base: { x: BASE_X, y: BASE_Y } } = this.geo;
     const lights: Light[] = [{ x: BASE_X, y: BASE_Y, r: 16, color: '#71e8ff', strength: 0.22 }];
     for (const tw of s.towers) { const p = PADS[tw.pad]; lights.push({ x: p.x, y: p.y, r: 8, color: COL[tw.kind === 'tesla' ? 'blue' : tw.kind === 'flamer' ? 'red' : 'purple'], strength: 0.14 }); }
     const ambientCount = lights.length;

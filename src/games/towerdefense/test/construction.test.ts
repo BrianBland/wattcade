@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile, TimelineInput } from '../../../core';
 import { module } from '../index';
 import { readSave } from '../sim/sim';
-import { PAD_COVER, suggestBuild, type ConstructionState } from '../sim/construction';
+import { padCover, suggestBuild, type ConstructionState } from '../sim/construction';
+import { LEVEL_0, levelGeometry } from '../sim/level';
+const PAD_COVER = padCover(levelGeometry(LEVEL_0));
 import { BASE_PAD, MATCHUP, PADS, towerUpgradeCost } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 

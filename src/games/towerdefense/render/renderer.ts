@@ -1,8 +1,8 @@
 // Dynamo Defense renderer (Canvas 2D). Loaded via dynamic import; reads TdSnapshot only.
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { play, stopAmbient, type SfxName } from '../../../audio/sfx';
-import { BASE_PAD, BASE_X, BASE_Y, PADS, ROAD_LENGTH, TOWERS, LEVEL_RANGE, roadAt } from '../sim/defs';
-import { HIVE_MOUTH, ROAD, ROAD_HALF_WIDTH, SHOULDER, TURRET_R } from '../sim/road';
+import { TOWERS, LEVEL_RANGE } from '../sim/defs';
+import { LEVEL_0, levelGeometry, type TdGeometry, type TdLevel } from '../sim/level';
 import { BOSS_NAME, BOSS_TRICK } from '../sim/boss';
 import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
@@ -66,6 +66,8 @@ export class TdRenderer implements GameRenderer {
   private intro: { at: number; wave: number; color: 'blue' | 'red' | 'purple' } = { at: -99, wave: 0, color: 'purple' };
   private exposedWindow = { open: false, since: 0, slowed: false };
   private snap: TdSnapshot | null = null;
+  /** The level being drawn (from the snapshot; level 0 until the first frame). */
+  private geo: TdGeometry = levelGeometry(LEVEL_0);
   /** cut-out alien puppets (falls back to the vector sprites until their frames are built) */
   private aliens: AlienLayer | null = null;
   private battlefield!: Battlefield;
@@ -146,8 +148,15 @@ export class TdRenderer implements GameRenderer {
     this.hud?.root.remove();
     stopAmbient(); this.dynamo.stop();
   }
+  /** A new map: geometry, ground, machinery positions and the field layout (its HUD clearance) all follow it. */
+  private setLevel(level: TdLevel) {
+    this.geo = levelGeometry(level);
+    this.battlefield.geo = this.geo; this.machinery.geo = this.geo;
+    this.drops.clear();
+    if (this.canvas) this.relayout();
+  }
   private relayout() {
-    this.L = layout(this.W, this.H, this.insets, this.hudControls); this.hud?.resize(this.L, this.W); this.bg = null;
+    this.L = layout(this.W, this.H, this.insets, this.hudControls, this.geo.level); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
     this.send?.({ type: 'padOrder', turned: this.view.turned });
   }
@@ -176,10 +185,10 @@ export class TdRenderer implements GameRenderer {
     }
     const s = this.snap; if (!s || s.phase !== 'run' || s.over || py > this.L.UH) return;
     const w = toWorld(this.L.field, { x: px, y: py });
-    const targets = [...PADS, { id: BASE_PAD, x: BASE_X, y: BASE_Y }].map(p => ({ ...p, distance: Math.hypot(w.x - p.x, w.y - p.y) }))
+    const targets = [...this.geo.pads, { id: this.geo.basePad, x: this.geo.base.x, y: this.geo.base.y }].map(p => ({ ...p, distance: Math.hypot(w.x - p.x, w.y - p.y) }))
       .sort((a, b) => a.distance - b.distance);
     const closest = targets[0];
-    if (closest.distance < Math.max(closest.id === BASE_PAD ? 10 : 5.5, 22 / this.k)) {
+    if (closest.distance < Math.max(closest.id === this.geo.basePad ? 10 : 5.5, 22 / this.k)) {
       e.preventDefault(); this.send?.({ type: 'pad', pad: closest.id, epoch: s.inputEpoch });
     }
   }
@@ -209,17 +218,17 @@ export class TdRenderer implements GameRenderer {
       g.fillStyle = r < 0.6 ? 'rgba(0,0,0,0.25)' : 'rgba(150,160,190,0.05)';
       g.beginPath(); g.ellipse(x, y, (1.5 + r * 4) * k, (1 + r * 2.5) * k, r * 6, 0, TAU); g.fill();
     }
-    const hive = this.P(HIVE_MOUTH.x, HIVE_MOUTH.y), hg = g.createRadialGradient(hive.x, hive.y, 0, hive.x, hive.y, 60 * k);
+    const hive = this.P(this.geo.level.hiveMouth.x, this.geo.level.hiveMouth.y), hg = g.createRadialGradient(hive.x, hive.y, 0, hive.x, hive.y, 60 * k);
     hg.addColorStop(0, 'rgba(70,24,100,0.7)'); hg.addColorStop(1, 'rgba(70,24,100,0)');
     g.fillStyle = hg; g.fillRect(0, 0, W, H);
-    const path = () => { g.beginPath(); ROAD.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
+    const path = () => { g.beginPath(); this.geo.road.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
     g.lineCap = 'round'; g.lineJoin = 'round';
-    path(); g.strokeStyle = '#3b3328'; g.lineWidth = (ROAD_HALF_WIDTH + SHOULDER) * 2 * k; g.stroke();
-    path(); g.strokeStyle = '#7a6448'; g.lineWidth = ROAD_HALF_WIDTH * 2 * k; g.stroke();
+    path(); g.strokeStyle = '#3b3328'; g.lineWidth = (this.geo.level.roadHalfWidth + this.geo.level.shoulder) * 2 * k; g.stroke();
+    path(); g.strokeStyle = '#7a6448'; g.lineWidth = this.geo.level.roadHalfWidth * 2 * k; g.stroke();
     g.fillStyle = '#12080f'; g.beginPath(); g.arc(hive.x, hive.y, 8 * k, 0, TAU); g.fill();
-    for (const p of PADS) { const q = this.P(p.x, p.y); g.fillStyle = '#4a3f33'; g.beginPath(); g.arc(q.x, q.y, 4.8 * k, 0, TAU); g.fill(); }
-    const b = this.P(BASE_X, BASE_Y);
-    g.fillStyle = '#2a2620'; g.beginPath(); g.arc(b.x, b.y, (TURRET_R + 1) * k, 0, TAU); g.fill();
+    for (const p of this.geo.pads) { const q = this.P(p.x, p.y); g.fillStyle = '#4a3f33'; g.beginPath(); g.arc(q.x, q.y, 4.8 * k, 0, TAU); g.fill(); }
+    const b = this.P(this.geo.base.x, this.geo.base.y);
+    g.fillStyle = '#2a2620'; g.beginPath(); g.arc(b.x, b.y, (this.geo.level.turretR + 1) * k, 0, TAU); g.fill();
   }
   private hex(g: CanvasRenderingContext2D, x: number, y: number, r: number) {
     g.beginPath(); for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + Math.PI / 6; i ? g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r) : g.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath();
@@ -270,7 +279,7 @@ export class TdRenderer implements GameRenderer {
       while (dd.landed < landings.length && age >= landings[dd.landed]) { // thump: dust puff, ring, a little shake
         dd.landed++;
         if (age > landings[dd.landed - 1] + 0.2) continue; // stale (e.g. on mount)
-        const p = PADS[tw.pad], { x, y } = this.P(p.x, p.y);
+        const p = this.geo.pads[tw.pad], { x, y } = this.P(p.x, p.y);
         for (let i = 0; i < 7; i++) { const a = Math.random() * TAU; this.particles.push({ x: x + Math.cos(a) * 3 * k, y: y + Math.sin(a) * 2 * k, vx: Math.cos(a) * 9 * k, vy: Math.sin(a) * 5 * k - 2 * k, age: 0, life: 0.7, size: 1.6 * k, color: '', kind: 'smoke' }); }
         this.ring(x, y, 'rgba(255,230,190,0.35)', 2.5 * k, 5 * k, 0.25); this.shake = Math.max(this.shake, 0.18);
       }
@@ -393,7 +402,7 @@ export class TdRenderer implements GameRenderer {
         }
       } else if (f.kind === 'payoff') {
         if (!allowHitStop) continue;
-        const st = PAYOFF_STYLE[f.effort], { x, y } = this.P(BASE_X, BASE_Y);
+        const st = PAYOFF_STYLE[f.effort], { x, y } = this.P(this.geo.base.x, this.geo.base.y);
         if (f.won) {
           this.ring(x, y, st.color, 4 * k, 110 * k, 0.9); this.ring(x, y, '#ffffff', 3 * k, 80 * k, 0.6);
           this.flash = { color: st.color, a: Math.max(this.flash.a, 0.22) }; this.shake = Math.max(this.shake, 0.6);
@@ -411,13 +420,13 @@ export class TdRenderer implements GameRenderer {
         for (let i = 0; i < 3; i++) this.particles.push({ x, y, vx: (Math.random() - 0.5) * 6 * k, vy: -Math.random() * 4 * k, age: 0, life: 1, size: 2.5 * k, color: '', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);
       } else if (f.kind === 'emp') {
-        const { x, y } = this.P(BASE_X, BASE_Y);
+        const { x, y } = this.P(this.geo.base.x, this.geo.base.y);
         this.ring(x, y, '#7df9ff', 5 * k, 140 * k, 1.1); this.ring(x, y, '#ffffff', 3 * k, 120 * k, 0.9);
         this.flash = { color: '#7df9ff', a: 0.5 }; this.shake = Math.max(this.shake, 1);
       } else if (f.kind === 'baseHit') {
         this.shake = Math.max(this.shake, Math.min(1, 0.2 + f.dmg / 15));
         if (f.dmg >= 5) this.flash = { color: '#ff3020', a: Math.min(0.45, 0.12 + f.dmg / 60) };
-        const b = this.P(BASE_X, BASE_Y - 5); this.burst(b.x, b.y, '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
+        const b = this.P(this.geo.base.x, this.geo.base.y - 5); this.burst(b.x, b.y, '#ff7a5a', 8, 30 * k, 0.7 * k, 0.4);
       } else if (f.kind === 'beam') {
         this.flash = { color: COL.purple, a: Math.max(this.flash.a, 0.28) }; this.shake = Math.max(this.shake, 0.5);
       } else if (f.kind === 'text') {
@@ -445,6 +454,7 @@ export class TdRenderer implements GameRenderer {
     for (const [id, pointer] of this.heldPointers) if (s.inputEpoch !== pointer.epoch || s.phase !== 'run' || s.over ||
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
+    if (s.level && s.level !== this.geo.level) this.setLevel(s.level);
     if (!this.L) this.relayout();
     this.hud.render(s, this.L, this.W);
     const g = this.g, k = this.k, L = this.L;
@@ -479,7 +489,7 @@ export class TdRenderer implements GameRenderer {
     const sh = this.shake * this.shake * 1.6 * k;
     g.save(); g.translate((Math.random() - 0.5) * sh, (Math.random() - 0.5) * sh);
 
-    const { x: bx, y: by } = this.P(BASE_X, BASE_Y), rot = this.view.rot;
+    const { x: bx, y: by } = this.P(this.geo.base.x, this.geo.base.y), rot = this.view.rot;
     this.view.k = k; this.view.dpr = this.dpr;
     this.battlefield.hive(g, this.view, s);
     // Shade and light the ground before actors: coloured silhouettes retain their contrast.
@@ -494,7 +504,7 @@ export class TdRenderer implements GameRenderer {
       this.drawPads(g, s, t);
       this.trackDrops(s, firstFrame);
       for (const tw of s.towers) {
-        const p = this.P(PADS[tw.pad].x, PADS[tw.pad].y), d = this.drops.get(tw.pad)!, age = s.t - d.at;
+        const p = this.P(this.geo.pads[tw.pad].x, this.geo.pads[tw.pad].y), d = this.drops.get(tw.pad)!, age = s.t - d.at;
         const drop = dropDone(age, d.built ? HEAD_DELAY_S : 0) ? undefined : { level: d.level, from: d.from, built: d.built, age };
         this.contactShadow(g, p.x, p.y, k);
         if (!this.machinery.tower(g, tw, this.view, s, drop)) drawTower(g, { ...tw, angle: tw.angle + rot }, p.x, p.y, k, t, s.grid);
@@ -603,7 +613,7 @@ export class TdRenderer implements GameRenderer {
     if (s.grid > 0) for (let i = 0; i < n; i++) this.pulses.push(s.t);
     this.pulses = this.pulses.filter((t0) => s.t >= t0 && (s.t - t0) * speed < 160).slice(-16);
     if (!s.towers.length) return;
-    const routes = cableRoutes();
+    const routes = cableRoutes(this.geo.level);
     g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
     for (const tw of s.towers) {
       const c = routes.find((r) => r.pad === tw.pad); if (!c) continue;
@@ -626,9 +636,9 @@ export class TdRenderer implements GameRenderer {
   private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     if (s.slowFrom < 0) return;
     const k = this.k;
-    g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = ROAD_HALF_WIDTH * 2 * k;
+    g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = this.geo.level.roadHalfWidth * 2 * k;
     g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([3 * k, 2 * k]); g.beginPath();
-    for (let d = s.slowFrom, i = 0; d <= ROAD_LENGTH; d += 2, i++) { const p = roadAt(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
+    for (let d = s.slowFrom, i = 0; d <= this.geo.roadLength; d += 2, i++) { const p = this.geo.roadAt(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
     g.stroke(); g.restore();
   }
   /** Burning road left by the fireballs: a scorched patch with flame tongues licking up across it. */
@@ -676,7 +686,7 @@ export class TdRenderer implements GameRenderer {
 
   private drawPads(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     const k = this.k, ws = s.workshop;
-    for (const p of PADS) {
+    for (const p of this.geo.pads) {
       const { x, y } = this.P(p.x, p.y), sel = ws?.pad === p.id, built = s.towers.find((q) => q.pad === p.id);
       if (sel) {
         const kind = built?.kind ?? ws!.rows[ws!.row]?.tower, lv = built ? Math.min(5, built.level + (ws!.rows[ws!.row]?.kind === 'upgrade' ? 1 : 0)) : 1;
@@ -695,7 +705,7 @@ export class TdRenderer implements GameRenderer {
         g.lineWidth = Math.max(1.5, k * 0.3); this.hex(g, x, y, 3.6 * k); g.stroke();
       }
     }
-    if (ws?.pad === BASE_PAD) { const b = this.P(BASE_X, BASE_Y); g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(b.x, b.y, (TURRET_R + 1) * k, 0, TAU); g.stroke(); }
+    if (ws?.pad === this.geo.basePad) { const b = this.P(this.geo.base.x, this.geo.base.y); g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(b.x, b.y, (this.geo.level.turretR + 1) * k, 0, TAU); g.stroke(); }
   }
 
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */

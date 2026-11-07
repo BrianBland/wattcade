@@ -1,8 +1,8 @@
 // Shared, deterministic recommendation for the rider and Auto-crew.
 import {
-  BASE_PAD, ELEMENTS, MATCHUP, TOWER_WEAPON, LEVEL_DMG, PADS, ROAD_LENGTH, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, flightAt, flightLength,
-  roadAt, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
+  ELEMENTS, MATCHUP, TOWER_WEAPON, LEVEL_DMG, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
 } from './defs';
+import { LEVEL_0, levelGeometry, type TdGeometry } from './level';
 import type { WaveForecast } from './types';
 
 export interface CrewTower { pad: number; kind: TowerKind; level: number }
@@ -17,18 +17,28 @@ export interface ConstructionState {
   matchup?: Matchup;
   /** Optional restriction for the workshop's highlighted pad; same recommendation rules. */
   pad?: number;
+  /** The level's geometry (default: level 0). */
+  geo?: TdGeometry;
 }
 
 /** Road (and, for anti-air towers, flight path) within a tower kind's level-1 range of each pad, in units. */
-export const PAD_COVER: Record<TowerKind, number[]> = Object.fromEntries(TOWER_KINDS.map((kind) => [kind, PADS.map((p) => {
-  const r = TOWERS[kind].range, near = (q: { x: number; y: number }) => Math.hypot(q.x - p.x, q.y - p.y) <= r;
-  let cover = 0;
-  for (let d = 0; d < ROAD_LENGTH; d++) if (near(roadAt(d))) cover++;
-  if (TOWERS[kind].air) for (let route = 0; route < 3; route++) for (let d = 0; d < flightLength(route); d++) if (near(flightAt(route, d))) cover += 0.5;
+const coverCache = new WeakMap<TdGeometry, Record<TowerKind, number[]>>();
+export function padCover(geo: TdGeometry): Record<TowerKind, number[]> {
+  const hit = coverCache.get(geo);
+  if (hit) return hit;
+  const cover = Object.fromEntries(TOWER_KINDS.map((kind) => [kind, geo.pads.map((p) => {
+    const r = TOWERS[kind].range, near = (q: { x: number; y: number }) => Math.hypot(q.x - p.x, q.y - p.y) <= r;
+    let n = 0;
+    for (let d = 0; d < geo.roadLength; d++) if (near(geo.roadAt(d))) n++;
+    if (TOWERS[kind].air) for (let route = 0; route < geo.routes; route++) for (let d = 0; d < geo.flightLength(route); d++) if (near(geo.flightAt(route, d))) n += 0.5;
+    return n;
+  })])) as Record<TowerKind, number[]>;
+  coverCache.set(geo, cover);
   return cover;
-})])) as Record<TowerKind, number[]>;
+}
 
 export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
+  const geo = s.geo ?? levelGeometry(LEVEL_0), BASE_PAD = geo.basePad, PAD_COVER = padCover(geo);
   if (s.baseHp < s.baseMaxHp * 0.4 && s.scrap >= s.repairCost) return {
     wave: s.wave, kind: 'repair', pad: BASE_PAD, level: 0, targetLevel: 0, cost: s.repairCost, label: 'Repair base',
   };
@@ -41,7 +51,7 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
   // the score sees a smaller but much more dangerous off-colour red push.
   const count = (e: Element) => c[e] * severity[e] + c.prism * 2 + c.gold * 10 + (e === 'blue' ? 3 : 0);
   const target = off.reduce((a, b) => count(b) > count(a) ? b : a);
-  for (const p of PADS) {
+  for (const p of geo.pads) {
     if (s.pad != null && p.id !== s.pad) continue;
     const existing = s.towers.find(t => t.pad === p.id);
     for (const kind of existing ? [existing.kind] : TOWER_KINDS) {

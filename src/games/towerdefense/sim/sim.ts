@@ -5,10 +5,11 @@ import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Se
 import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refillRate, startCooldown, tickCooldown } from '../../../core/cooldown';
 import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
+import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import {
-  AIM_LIMIT, BASE_PAD, BASE_R, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP, PADS, ROAD_LENGTH,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, angleTo, distTo, flightAt, flightLength, roadAt, towerBuildCost, towerUpgradeCost,
-  padOrder, type Element, type Matchup, type Kind, type TowerKind, type Weapon,
+  AIM_LIMIT, BASE_R, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
+  type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
@@ -29,6 +30,8 @@ export interface TdOpts {
   skipGarage?: boolean;
   /** Override the `baseHp` tunable (the deep-wave fixture reinforces the base). */
   baseHp?: number;
+  /** The map to play (default: level 0, today's painted serpentine). */
+  level?: TdLevel;
 }
 export interface TdSave {
   v: 3; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
@@ -62,14 +65,18 @@ interface Burn { x: number; y: number; r: number; left: number; total: number; d
 
 const WORKSHOP_IDLE_S = 10;
 const REPAIR_HP = 25;
-/** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
-const PAD_ORDERS = { portrait: padOrder(false), landscape: padOrder(true) };
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const angDiff = (a: number, b: number) => Math.abs(a - b);
 type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) : never;
 
 export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapshot(): TdSnapshot } {
   const T = ctx.tuning;
+  // The map: every road, pad, flight and turret position comes from the level's geometry.
+  const level = opts?.level ?? LEVEL_0, geo = levelGeometry(level);
+  const { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo;
+  const BASE_X = geo.base.x, BASE_Y = geo.base.y;
+  /** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
+  const PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
   // Combat (especially ignition chains) consumes a variable number of random draws.
   // Keep future broods, packs and swarm intervals stable when damage or rider actions change.
   const waveRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
@@ -407,7 +414,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const brood = nextBrood(broods, waveRng, { maxRun: boss ? 1 : broodMaxRun(), coverWaves: broodCover(), avoid: boss ? lastBoss ?? undefined : undefined });
     if (boss) lastBoss = brood;
     broods.push(brood);
-    return planWave(w, waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack() });
+    return planWave(w, waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes });
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
@@ -837,7 +844,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const coming = lull > 0 ? plan : nextPlan;
     return suggestBuild({ wave: coming.wave, brood: coming.brood, counts: coming.counts,
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(),
-      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad });
+      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo });
   }
   function acceptSuggestion(claim?: unknown) {
     if (lull <= 0 || constructionDone) return;
@@ -1397,7 +1404,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     snapshot(): TdSnapshot {
       return {
-        t, phase, garage: phase === 'garage' ? garageView() : null,
+        t, level, phase, garage: phase === 'garage' ? garageView() : null,
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },

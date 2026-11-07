@@ -38,13 +38,13 @@ const lowFloor = (L, x0, y0, x1, y1) => B(L.g, x0, y0, -1.1, x1, y1, -.5, tri(sp
  * In station space (offset ox, oy): the loop runs (7,0)->(10,0)->(10,4)->(0,4)->(0,3), arm T2 (0,3)->(0,1) [swings to -x],
  * (0,1)->(0,0)->(4,0), arm T1 (4,0)->(7,0) [swings to -y]. Spur ends: T1 door at (4,-4) heading -y; T2 door at (-3,3) heading -x.
  */
-function doorStation(L, ox, oy, keys) {
-  const pal = PAL(), P = (x, y) => [x + ox, y + oy, 0];
+function doorStation(L, ox, oy, keys, oz = 0, bare = false) {
+  const pal = PAL(), P = (x, y) => [x + ox, y + oy, oz];
   const R1 = L.road(filletPath([P(7, 0), P(10, 0), P(10, 4), P(0, 4), P(0, 3)], 1), { pal });
   const R2 = L.road(filletPath([P(0, 1), P(0, 0), P(4, 0)], 1), { pal });
   const S1 = L.road(L3(P(4, -3), P(4, -4.7), UP), { pal }), S2 = L.road(L3(P(-2, 3), P(-3.7, 3), UP), { pal });
-  loopSlab(L.g, ox - .6, oy - .6, ox + 10.6, oy + 4.6, -.5, tri(L.th.turf), 1);
-  lowFloor(L, ox + 3.45, oy - 4.7, ox + 4.55, oy - .6); lowFloor(L, ox - 3.7, oy + 2.45, ox - .6, oy + 3.55);
+  if (!bare) { loopSlab(L.g, ox - .6, oy - .6, ox + 10.6, oy + 4.6, -.5, tri(L.th.turf), 1);
+    lowFloor(L, ox + 3.45, oy - 4.7, ox + 4.55, oy - .6); lowFloor(L, ox - 3.7, oy + 2.45, ox - .6, oy + 3.55); }
   const T1 = turntable(L, { key: keys[0], name: 'Turntable', pivot: P(4, 0), len: 3, open: -90 });
   const T2 = turntable(L, { key: keys[1], name: 'Turntable', pivot: P(0, 3), len: 2, base: -90, open: -90 });
   return { R1, R2, S1, S2, T1, T2, d1: [ox + 4, oy - 4], d2: [ox - 3, oy + 3], join: (x, y) => ({ to: R1, s: sAt(R1, P(x, y)), dir: 1 }) };
@@ -55,19 +55,44 @@ function doorStation(L, ox, oy, keys) {
  * snapped and hanging down the face, its far pier standing alone across the gap with a stub of deck, and stones falling.
  * The road runs south (-y) to the edge.
  */
-function brokenCliff(L, x, yEdge) {
+function brokenCliff(L, x, yEdge, z = 0, zBase = -7) {
   const g = L.g, th = L.th, rock = tri(sp(th, 0)), dark = tri(mixPal(sp(th, 0), tone('#5B4636'), .1)), deck = tri(PAL(), { side: true });
   // the crag: strata stepping in and out as they go down, so it reads as rock, not a slab
   const strata = [[1.2, .4, 0], [1.12, .32, -1.1], [1.2, .42, -1.9], [1.0, .26, -3.0], [.9, .16, -4.0], [.72, 0, -5.0], [.5, -.25, -5.9]];
   for (let i = 0; i < strata.length; i++) {
-    const [hw, back, z1] = strata[i], z0 = i + 1 < strata.length ? strata[i + 1][2] : z1 - 1.2, front = i ? -.08 * (i % 2) - .04 * i : 0;
-    B(g, x - hw, yEdge - front, z0, x + hw, yEdge + 1.6 + back, z1 - .02, i % 2 ? dark : rock); }
-  // the snapped first span, hanging from the lip, and its far pier with a stub of deck
-  const span = new T.Mesh(UNIT_BOX, deck); span.scale.set(.9, .12, 1.6); span.position.copy(V(x, yEdge - .25, -.75)); span.rotation.x = -1.15; g.add(span);
-  B(g, x - .3, yEdge - 4.3, -7, x + .3, yEdge - 3.7, -.14, rock);
-  const stub = new T.Mesh(UNIT_BOX, deck); stub.scale.set(1, .12, 1.0); stub.position.copy(V(x, yEdge - 3.3, -.06)); g.add(stub);
-  const bit = new T.Mesh(UNIT_BOX, deck); bit.scale.set(.5, .1, .4); bit.position.copy(V(x + .2, yEdge - 2.6, -.6)); bit.rotation.set(.5, .3, -.4); g.add(bit);
-  for (const [dx, dy, z, sz] of [[.3, -1.2, -1.6, .22], [-.4, -1.9, -2.7, .16], [.1, -2.3, -3.9, .12]]) { const st = new T.Mesh(UNIT_BOX, rock); st.scale.setScalar(sz); st.position.copy(V(x + dx, yEdge + dy, z)); st.rotation.set(z, dx * 3, dy); g.add(st); }
+    const [hw, back, z1] = strata[i], z0 = Math.max(i + 1 < strata.length ? strata[i + 1][2] : z1 - 1.2, zBase - z), front = i ? -.08 * (i % 2) - .04 * i : 0;
+    if (z + z1 <= zBase) break;
+    B(g, x - hw, yEdge - front, z + z0, x + hw, yEdge + 1.6 + back, z + z1 - .02, i % 2 ? dark : rock); }
+  // the snapped first span, hanging from the lip, and its far pier (standing on the far bank) with a stub of deck
+  const span = new T.Mesh(UNIT_BOX, deck); span.scale.set(.9, .12, 1.6); span.position.copy(V(x, yEdge - .25, z - .75)); span.rotation.x = -1.15; g.add(span);
+  B(g, x - .34, yEdge - 3.65, zBase, x + .34, yEdge - 3.05, z - .14, rock);
+  // the far stub is a real piece of road, lane and all, so the break reads as a bridge
+  const sr = new Road(L3([x, yEdge - 3.75, z], [x, yEdge - 2.5, z], UP)); g.add(ribbon(sr, 1, .12, deck)); g.add(ribbon(sr, .07, 0, L.lane, { lift: .012, dash: [.38, .2] }));
+  const span2 = new T.Mesh(UNIT_BOX, deck); span2.scale.set(.9, .12, 1.4); span2.position.copy(V(x, yEdge - 2.5 + .22, z - .68)); span2.rotation.x = 1.15; g.add(span2);
+  const bit = new T.Mesh(UNIT_BOX, deck); bit.scale.set(.5, .1, .4); bit.position.copy(V(x + .2, yEdge - 2.6, z - .6)); bit.rotation.set(.5, .3, -.4); g.add(bit);
+  for (const [dx, dy, sz, sz2] of [[.3, -1.2, -1.6, .22], [-.4, -1.9, -2.7, .16], [.1, -2.3, -3.9, .12]]) { const st = new T.Mesh(UNIT_BOX, rock); st.scale.setScalar(sz2); st.position.copy(V(x + dx, yEdge + dy, z + sz)); st.rotation.set(sz, dx * 3, dy); g.add(st); }
+}
+
+/**
+ * Terrain: one base platform (any outline) with plateaus of different heights standing on it, styled like the game's
+ * islands: turf tops with a lip, warm stone sides, a plinth where each plateau meets the base, and a stepped underside.
+ * A plateau's z is the road level on it; its top sits .5 below, where loop slabs sit, so turntable arms swing clear.
+ * o: { base: { outline: [[x, y]...], z, depth }, tops: [{ rect: [x0, y0, x1, y1], z }] }
+ */
+function terrain(L, o) {
+  const g = L.g, th = L.th, st = sp(th, 0), turfP = th.turf || st;
+  const side = tri({ t: turfP.t, l: st.l, r: st.r }), cap = tri(turfP), plinth = tri(mixPal({ t: turfP.t, l: st.l, r: st.r }, tone('#5B4636'), .12));
+  const baseTop = tri({ t: mixPal(turfP, th.idle || st, .55).t, l: st.l, r: st.r }), under = tri(mixPal(st, tone('#5B4636'), .18));
+  const { outline, z: bz, depth = 1.2 } = o.base, cx = outline.reduce((a, q) => a + q[0], 0) / outline.length, cy = outline.reduce((a, q) => a + q[1], 0) / outline.length;
+  land(g, outline, bz - depth, bz, baseTop);
+  // the underside steps in twice, so the platform reads as a carved, floating piece rather than a sheet
+  [[.94, .5], [.82, .6], [.6, .7]].reduce((z, [k, h]) => { land(g, outline.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]), z - h, z, under); return z - h; }, bz - depth);
+  for (const t of o.tops) {
+    const [x0, y0, x1, y1] = t.rect, top = t.z - .5;
+    B(g, x0 - .14, y0 - .14, bz, x1 + .14, y1 + .14, bz + .22, plinth);
+    B(g, x0, y0, bz + .22, x1, y1, top - .16, side);
+    B(g, x0 - .07, y0 - .07, top - .16, x1 + .07, y1 + .07, top, cap);
+  }
 }
 
 const LEVELS3 = [
@@ -164,21 +189,22 @@ const LEVELS3 = [
     hint: 'Every door here has the same white banner, and every door is open: ride into one and you ride out of its twin, wherever that is. Each loop has two turntables (<b>Y</b> and <b>A</b> here, <b>B</b> and <b>Z</b> on the next loop), each able to swing the road out to a door. Look through the doors before you choose: one leads on, one leads back, one leads nowhere.',
     build(L) {
       const th = L.th, g = L.g, P = L.props, pal = PAL(), white = ['#F4F1EA'];
-      const A = doorStation(L, 0, 0, ['y', 'a']), Bs = doorStation(L, 15, -12, ['b', 'z']); P.A = A; P.Bs = Bs;
-      // where the doors come out: B's way in, A's way back in, a road into the air, and home
-      const inB = strip(L, L3([28, -8, .006], [24, -8, .006], UP), { pal }); inB.joins = [{ k: 1, ...Bs.join(24, 4 - 12) }];
-      const inA = strip(L, L3([14, 4, .006], [9, 4, .006], UP), { pal }); inA.joins = [{ k: 1, ...A.join(9, 4) }];
-      const lost = strip(L, L3([-6, -8, .006], [-6, -9.6, .006], UP), { pal, noFloor: true, edgeText: 'The bridge was gone' }); brokenCliff(L, -6, -9.6);
-      const home = strip(L, L3([6, -12, .006], [6, -15.4, .006], UP), { goal: true });
-      // one landscape under it all, turf over rock, cut by the canyon the bridge used to cross, a river down in it
-      const outline = [[-9, 5.4], [29, 5.4], [29, -17.4], [-9, -17.4], [-9, -13.4], [4, -13.4], [4, -9.6], [-9, -9.6]];
-      land(g, outline, -1.2, -.52, tri(th.turf)); land(g, outline, -6, -1.2, tri(mixPal(sp(th, 0), tone('#8A6A4A'), .25)));
-      B(g, -9, -13.4, -6, 4, -9.6, -3.4, tri({ t: '#86C9DA', l: '#6AAFC2', r: '#5A9DB0' }));
-      const pair = (road, at, ang, to, far) => matchingDoors(L, { road, at, ang, to, far, farAng: ang, fixed: true, want: 0, banners: white, rtShift: 2, text: 'Through the door and out of its twin' });
-      pair(A.S2, A.d2, 0, inB, [28, -8]);              // A, swung left: on to the second loop
-      pair(A.S1, A.d1, -Math.PI / 2, lost, [-6, -8]);   // A, swung down: nowhere
-      pair(Bs.S1, Bs.d1, -Math.PI / 2, home, [6, -12]); // B, swung down: home
-      pair(Bs.S2, Bs.d2, 0, inA, [14, 4]);              // B, swung left: back to the start
+      // plateaus of four heights on one floating base: the first loop, the second loop up a step, a bluff that ends at a gorge, and home on a tall mesa
+      // the bluff and the mesa stand at one height, and the broken bridge once ran between them
+      const zA = 0, zB = 1.5, zL = 2.6, zH = 2.6, zb = -1.6;
+      terrain(L, { base: { outline: [[-5.6, 6.4], [16.4, 6.4], [16.4, -5.4], [30.4, -5.4], [30.4, -18.4], [3.6, -18.4], [3.6, -6.4], [-5.6, -6.4]], z: zb, depth: 1.2 },
+        tops: [{ rect: [-4.4, -5.4, 15.2, 5.2], z: zA }, { rect: [10.8, -17.2, 29.2, -6.6], z: zB }, { rect: [4.6, -9.6, 7.4, -6.6], z: zL }, { rect: [4.8, -17.6, 7.2, -13.3], z: zH }] });
+      const A = doorStation(L, 0, 0, ['y', 'a'], zA, true), Bs = doorStation(L, 15, -12, ['b', 'z'], zB, true); P.A = A; P.Bs = Bs;
+      // where the doors come out: B's way in, A's way back in, a road to a broken bridge, and home
+      const inB = L.road(L3([28, -8, zB], [24, -8, zB], UP), { pal }); inB.joins = [{ k: 1, ...Bs.join(24, 4 - 12) }];
+      const inA = L.road(L3([14, 4, zA], [9, 4, zA], UP), { pal }); inA.joins = [{ k: 1, ...A.join(9, 4) }];
+      const lost = L.road(L3([6, -8, zL], [6, -9.6, zL], UP), { pal, edgeText: 'The bridge was gone' }); brokenCliff(L, 6, -9.6, zL, zb);
+      const home = L.road(L3([6, -14.2, zH], [6, -17.0, zH], UP), { goal: true });
+      const pair = (road, at, ang, to, far, atZ, z) => matchingDoors(L, { road, at, ang, to, far, farAng: ang, atZ, z, fixed: true, want: 0, banners: white, rtShift: 2, text: 'Through the door and out of its twin' });
+      pair(A.S2, A.d2, 0, inB, [28, -8], zA, zB);              // A, swung left: on to the second loop
+      pair(A.S1, A.d1, -Math.PI / 2, lost, [6, -8], zA, zL);   // A, swung down: nowhere
+      pair(Bs.S1, Bs.d1, -Math.PI / 2, home, [6, -14.2], zB, zH); // B, swung down: home
+      pair(Bs.S2, Bs.d2, 0, inA, [14, 4], zB, zA);              // B, swung left: back to the start
       L.view.updaters.push(() => L.say(`A: ${Math.round(A.T1.ang)}° / ${Math.round(A.T2.ang)}° · B: ${Math.round(Bs.T1.ang)}° / ${Math.round(Bs.T2.ang)}°`));
     },
     spawn: (L) => ({ road: L.props.A.R1, s: 1, dir: 1 }),
@@ -187,7 +213,7 @@ const LEVELS3 = [
       A.T2.m.set(onA && farA && A.T2.ang > -89.5);
       const farB = W.road === Bs.R1 || W.road === Bs.T2.road || W.road === Bs.R2 && W.s < .5;
       Bs.T1.m.set(farB && Bs.T1.ang > -89.5); },
-    center: [11, -6, 0], pts: [[-3.7, 4.6, 0], [-6, -9.6, 0], [-7.2, -8, -5], [-6, -13.9, 0], [6, -15.4, 0], [25.6, -16.7, 0], [28, -8, 0], [14, 4.6, 0], [10.6, 4.6, 0], [-3.7, 3, 2.4]], pad: .7, scenery: false },
+    center: [11, -6, 0], pts: [[-5.6, 6.4, -1.6], [-5.6, -6.4, -1.6], [3.6, -18.4, -1.6], [30.4, -18.4, -1.6], [30.4, -5.4, -1.6], [16.4, 6.4, -1.6], [8, -6, -5], [6, -17, 5.2], [6, -8, 5.2], [28, -8, 4]], pad: .5, scenery: false },
 
   { id: 's-behind', name: 'Round the back', th: () => THEMES[1], cruise: [65, 92], yaws: [0, 90],
     // two holes, each hidden by the tower only from the angle you are not at when you reach it: each curtain needs its own turn
@@ -233,5 +259,5 @@ const LEVELS3 = [
 
 ];
 
-Object.assign($scope, { LEVELS3 });
+Object.assign($scope, { LEVELS3, terrain, land });
 }

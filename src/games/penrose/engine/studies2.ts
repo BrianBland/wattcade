@@ -163,7 +163,7 @@ function doorway(g, th, x, y, ang, z = 0) {
 }
 function matchingDoors(L, o) {
   const th = L.th, g = L.g, bs = o.banners || BANNERS;
-  const near = doorway(g, th, o.at[0], o.at[1], o.ang || 0), far = doorway(g, th, o.far[0], o.far[1], o.farAng || 0, o.z || 0);
+  const near = doorway(g, th, o.at[0], o.at[1], o.ang || 0, o.atZ || 0), far = doorway(g, th, o.far[0], o.far[1], o.farAng || 0, o.z || 0);
   far.bannerM.color.set(bs[o.want]);
   const st = { i: o.fixed ? o.want : 0, was: false, match: () => st.i === o.want, near, far };
   // a fixed pair is always open (no banner button): its use is in where it leads, which you see by looking through it

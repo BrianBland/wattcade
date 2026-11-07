@@ -1,0 +1,11 @@
+# Round 1 — Outpost Rock iteration 2 (v3)
+- New fine gravel; colour-key cleanup across stamps. One new model image, 10 total for style.
+- Automated PASS; exact dimensions; all keyed sheets keyFlat=1; props 8, decals 8, bridge 4. Road unchanged: 2.14× ground, 1px wobble.
+- Inspected review/overview.jpg after changes, all portrait layouts and landscape ring. Green fringe reduced; road has distinct fine shoulder instead of competing coarse plates.
+- Reads 4: all enemy colours stand apart; ochre dust stamps occasionally resemble empty build pads.
+- Style 4: convincing slate/wood/brass continuity, but ground is still less chunky than reference.
+- Composites 4: clean material transitions and keyed props; deck detail is longitudinally stretched by harness sampling.
+- Lighting 5: diffuse contacts remain correct on rotated map.
+- Scale 3: finer gravel improved; long lamp and some round props still overscale.
+- Variety 4: dark variant, props and stains create varied but readable ground.
+- Best full Outpost candidate v3. Remaining weakness: prop relative scale and repeated round spool shapes. Stop at two full-kit iterations to preserve generation efficiency.

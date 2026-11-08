@@ -79,10 +79,10 @@ export const CAMPAIGN: readonly LevelSpec[] = GROUND_STYLES.flatMap((ground, gi)
     roadStyle, pads: padsFor(roadStyle, CAMPAIGN_PADS[n]), depth: gi + Math.floor(n / 2), kind: 'campaign', index };
 }));
 
-/** A Quick Ride: any seed at a chosen length; road, ground and pads (8–14) come from the seed. */
-export function quickRide(seed: number, minutes: number): LevelSpec {
+/** A Quick Ride: any seed at a chosen length; road, ground (of `grounds`, default all) and pads (8–14) come from the seed. */
+export function quickRide(seed: number, minutes: number, grounds: readonly GroundStyle[] = GROUND_STYLES): LevelSpec {
   const r = makeRng(seed ^ 0x9e37);
-  const ground = GROUND_STYLES[Math.floor(r() * GROUND_STYLES.length)], roadStyle = ROAD_STYLES[Math.floor(r() * ROAD_STYLES.length)];
+  const ground = grounds[Math.floor(r() * grounds.length)], roadStyle = ROAD_STYLES[Math.floor(r() * ROAD_STYLES.length)];
   const pads = padsFor(roadStyle, 8 + Math.floor(r() * 7));
   return { id: `q${seed}-${minutes}`, name: `Quick ${minutes}′ · ${STYLE_NAME[ground]}`, seed, minutes, ground, roadStyle, pads, depth: 4, kind: 'quick' };
 }

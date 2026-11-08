@@ -37,10 +37,8 @@ export function rideObjective(s: TdSnapshot): RideObjective {
   return { label, title: 'Hold your rhythm', target: s.brood.cue, detail: next };
 }
 
-export function crewStatus(s: TdSnapshot): { title: string; detail: string } {
-  const title = `Auto-crew ${s.autoCrew ? 'on' : 'off'}`;
-  if (s.constructionDone) return { title, detail: 'Order complete · next order at recovery' };
-  const more = (s.ordersLeft ?? 1) > 1 ? ` · ${s.ordersLeft} orders this recovery` : '';
-  if (s.suggestion) return { title, detail: `${s.autoCrew ? 'Queued' : 'Suggested'}: ${s.suggestion.label} · ${s.suggestion.cost} scrap${more}` };
-  return { title, detail: s.autoCrew ? 'Plans the next order during recovery' : 'Accept a suggested order or use Workshop' };
+export function constructionStatus(s: TdSnapshot): { title: string; detail: string } {
+  return s.lull > 0
+    ? { title: 'Recovery · build now', detail: `${s.scrap} scrap · A opens Construction` }
+    : { title: 'Construction', detail: `${s.scrap} scrap · build any time with A` };
 }

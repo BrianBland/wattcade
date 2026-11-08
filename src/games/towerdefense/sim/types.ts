@@ -47,7 +47,7 @@ export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: 
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
-export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair' | 'crew'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
+export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 /** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
 export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
@@ -104,9 +104,6 @@ export interface TdSnapshot {
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;
   scrap: number;
-  autoCrew: boolean; suggestion: BuildSuggestion | null; constructionDone: boolean;
-  /** Work orders left this lull (a level that climbs fast allows more than one). */
-  ordersLeft: number;
   /** `slowFrom`: road distance where an active slow field starts (it runs to the turret), -1 when off */
   actions: ActionView[]; refill: number; slowFrom: number;
   /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */

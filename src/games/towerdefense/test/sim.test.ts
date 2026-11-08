@@ -195,17 +195,14 @@ describe('levels meta', () => {
     expect(starTotal({ [CAMPAIGN[0].id]: 3, [CAMPAIGN[1].id]: 5, bogus: 3 })).toBe(6);
     expect(UNLOCKS.map((u) => u.stars)).toEqual([...UNLOCKS.map((u) => u.stars)].sort((x, y) => x - y));
   });
-  it('a deep level pays catch-up scrap and extra work orders for the Endless waves it skips', () => {
+  it('a deep level pays catch-up scrap for the Endless waves it skips', () => {
     const ride = (index: number) => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3,
-        simOpts: { stars: 99, skipGarage: true, autoCrew: false, play: { campaign: index } } });
-      s.step(1);
-      expect(snap(s).ordersLeft).toBe(1); // the first wave is a warm-up
+        simOpts: { stars: 99, skipGarage: true, play: { campaign: index } } });
       for (let i = 0; i < 30 * 60 * 6 && snap(s).wave < 2; i++) s.step(1);
-      return { orders: snap(s).ordersLeft, earned: Number(s.sim.summary!().scrapEarned) };
+      return { earned: Number(s.sim.summary!().scrapEarned) };
     };
     const shallow = ride(0), deep = ride(CAMPAIGN.findIndex((c) => c.depth >= 5 && c.minutes === 15));
-    expect(deep.orders).toBeGreaterThan(shallow.orders);
     expect(deep.earned).toBeGreaterThan(shallow.earned + 100);
   });
   it('a veteran rider starts with the first 12★ of unlocks; Endless records its best wave', () => {
@@ -336,13 +333,13 @@ describe('workshop', () => {
     expect(snap(s).towers[0].kind).toBe('tesla');
     expect(snap(s).scrap).toBeLessThanOrEqual(scrap0 - towerBuildCost('tesla') + 2);
     // the built pad now offers an upgrade and a refund
-    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell', 'crew']);
+    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell']);
     s.sim.receive!({ type: 'close' }); s.step(1);
     expect(snap(s).workshop).toBeNull();
   });
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { stars: 99, skipGarage: true, autoCrew: false } });
+      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
       s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
       // a weak turret leaves the aliens to the tower: at full strength it kills the early stream before it arrives
       s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railLaserDps', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);

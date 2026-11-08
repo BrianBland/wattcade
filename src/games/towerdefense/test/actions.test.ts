@@ -18,7 +18,7 @@ const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as Td
 const action = (s: ReturnType<typeof createGameSession>, id: ActionId) => snap(s).actions.find(a => a.id === id)!;
 function rig() {
   const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1,
-    simOpts: { stars: 99, skipGarage: true, autoCrew: false } });
+    simOpts: { stars: 99, skipGarage: true } });
   s.tuning.set('towerdefense.startScrap', 1000);
   s.tuning.set('towerdefense.baseHp', 1000); // isolate input behavior from falling mid-gesture
   s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railLaserDps', 0);
@@ -108,7 +108,7 @@ describe('three combat actions and input contexts', () => {
     }
   });
   it('unusable actions do not consume their cooldowns', () => {
-    const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, autoCrew: false } });
+    const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true } });
     pad.tap('b'); pad.tap('y'); s.step(1);
     expect(action(s, 'overcharge').ready).toBe(true); expect(action(s, 'slow').ready).toBe(true);
     expect(action(s, 'rail').ready).toBe(false);

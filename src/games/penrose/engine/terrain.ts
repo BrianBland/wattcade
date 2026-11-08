@@ -126,10 +126,14 @@ function autoTerrain(L, o = {}) {
   for (const r of L.roads) for (const gp of r.gaps) { const a = r.end(gp.k).p, b = gp.to.end(gp.toK).p; for (let i = 0; i <= 6; i++) { const p = a.clone().lerp(b, i / 6); extra.push({ x: p.x, y: p.z, z: p.y, ri: -1, p, gap: true }); } }
   const all = pts.concat(extra);
   // open road ends: no other road within reach and no join, i.e. where the wheel would fall (and hole ends)
-  const falls = [];
+  const falls = [], dirs = yaws.map(y => toCam(y).normalize());
   L.roads.forEach((r, ri) => { if (r.closed || r.g || !r.S || r.S.length < 2 || r.goal) return;
     for (const k of [0, 1]) { const e = r.end(k), joined = (r.joins || []).some(j => j.k === k), gap = r.gaps.some(gp => gp.k === k);
       const near = pts.some(q => q.ri !== ri && q.p.distanceTo(e.p) < .45) || extra.some(q => !q.gap && q.p.distanceTo(e.p) < .9);
+      // an end that meets another road's end on screen from one of the level's camera angles is a perspective join, not a fall
+      const seen = !joined && !near && L.roads.some((r2, j) => j !== ri && !r2.closed && r2.S && [0, 1].some(k2 => { const q = r2.end(k2).p, dv = q.clone().sub(e.p);
+        return dv.length() > .5 && dirs.some(dd => dv.clone().cross(dd).length() < .35); }));
+      if (seen) continue;
       if (gap || (!joined && !near)) falls.push({ ri, x: e.p.x, y: e.p.z, z: e.p.y, dx: e.out.x, dy: e.out.z }); } });
   // plateau shapes live on one grid of half-metre cells: each cluster of flat road at one height takes the cells within a
   // metre of it, loses the cells beyond each fall (and across each hole), has its loops filled in, and is smoothed to curves
@@ -156,13 +160,24 @@ function autoTerrain(L, o = {}) {
     for (const P of parts(S)) { const F = fillHoles(P), own = qs.filter(q => F.has(key(...cellOf(q.x, q.y)))); if (own.length >= 6) comps.push({ z: z0, cells: F, pts: own, falls: fs.filter(f => F.has(key(...cellOf(f.x - f.dx * .3, f.y - f.dy * .3)))) }); }
   }
   const zMin = Math.min(...all.map(q => q.z)), bz = Math.floor((zMin - inset - 1.0) * 10) / 10;
-  const ray = new T.Raycaster(), dirs = yaws.map(y => toCam(y)), taken = new Set();
+  const ray = new T.Raycaster(), taken = new Set();
   const placed = [], why = L.terrainWhy = { comps: comps.length, crowd: 0, taken: 0, hides: 0, empty: 0, flat: pts.filter(q => q.flat).length, pts: pts.length };
   for (const c of comps.sort((a, b) => b.pts.length - a.pts.length)) {
-    const top = c.z - inset, own = new Set(c.pts), near = grow(c.cells, 1), far = grow(c.cells, 2);
+    const top = c.z - inset, own = new Set(c.pts);
+    // o.carve: rather than give up a plateau that a moving machine or a lower road comes near, cut it back from them (a lower
+    // road right under this level's own road still rules it out)
+    for (const [dx0, dy0, dr] of L.terrainCarve || []) for (const k of [...c.cells]) { const [i, j] = k.split(',').map(Number), [cx, cy] = ctr(i, j); if (Math.hypot(cx - dx0, cy - dy0) < dr) c.cells.delete(k); }
+    if (o.carve) { const ownCells = new Set(c.pts.map(q => key(...cellOf(q.x, q.y)))); let under = false;
+      for (const q of all) { if (own.has(q) || q.ri < 0) continue; const lower = !q.moving && q.z < c.z - .06; if (!q.moving && !lower) continue;
+        const rr = q.moving ? 1.1 : .9, [i, j] = cellOf(q.x, q.y), n = Math.ceil(rr / C) + 1;
+        for (let a = -n; a <= n; a++) for (let b = -n; b <= n; b++) { const k = key(i + a, j + b); if (!c.cells.has(k)) continue; const [cx, cy] = ctr(i + a, j + b); if (Math.hypot(cx - q.x, cy - q.y) > rr) continue;
+          if (lower && ownCells.has(k)) under = true; else c.cells.delete(k); } }
+      if (under || c.cells.size < 8) { why.crowd++; continue; } }
+    const near = grow(c.cells, 1), far = grow(c.cells, 2);
     // nothing else may stand on it or just over it, nothing moving may come near, and no other plateau may touch it
     const crowd = all.some(q => { if (own.has(q) || (q.ri >= 0 && L.terrainIgnore?.has(L.roads[q.ri]))) return false; const k = key(...cellOf(q.x, q.y));
-      if (q.moving) return far.has(k); if (!near.has(k)) return false;
+      if (q.moving) return !o.carve && far.has(k); if (!near.has(k)) return false;
+      if (o.carve && q.ri >= 0 && q.z < c.z - .06) return false;      // carved round above
       if (q.ri >= 0 && Math.abs(q.z - c.z) < .06) return false;          // more road on this level, or a turntable arm
       if (q.ri < 0 && !q.gap && q.z > top - .1) return false;            // a machine standing on it
       if (q.gap && Math.abs(q.z - c.z) < .2) return false;               // a hole on this level (its cells were cut away)
@@ -172,7 +187,7 @@ function autoTerrain(L, o = {}) {
     if (!outline.length) { why.empty++; continue; }
     // and from every camera angle it must stand in front of nothing that has to stay in view
     const body = outline.map(o => landMesh(o, bz, top + .05)), hides = all.some(q => !own.has(q) && dirs.some(d => { ray.set(q.p.clone().addScaledVector(d, 100), d.clone().negate()); return body.some(m => { const h = ray.intersectObject(m, false); return h.length && h[0].distance < 99.8; }); }));
-    if (hides) { why.hides++; continue; }
+    if (hides) { why.hides++; (why.hid ||= []).push(c.z + ':' + [...new Set(all.filter(q => !own.has(q) && dirs.some(d => { ray.set(q.p.clone().addScaledVector(d, 100), d.clone().negate()); return body.some(m => { const h = ray.intersectObject(m, false); return h.length && h[0].distance < 99.8; }); })).map(q => q.ri))].join(',')); continue; }
     for (const k of c.cells) taken.add(k);
     placed.push({ outline, cells: c.cells, top, z: c.z, falls: c.falls, area: c.cells.size * C * C });
   }

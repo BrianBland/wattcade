@@ -805,15 +805,15 @@ function makeLevel(def, idx) {
       for (const [k2, m] of Object.entries(r.caps)) m.visible = k2 === key; r.deck.visible = key === 'false,false'; }
   });
   // frame the hand-picked points plus every road, so nothing the wheel rides on is ever cropped
-  { const c = V(...def.center), m = .9, pad = def.pad ?? .8, Yx = new T.Vector3(0, 1, 0);
+  { const fr = def.frame ? def.frame(L) : def, c = V(...fr.center), m = .9, pad = def.pad ?? .8, Yx = new T.Vector3(0, 1, 0);
     g.updateMatrixWorld(true);
     // a level with a camera crank is framed separately for each camera angle it stops at; the view blends between them as it turns
     const frames = (def.yaws || [0]).map(yd => { const a = yd * Math.PI / 180, R2 = SR.clone().applyAxisAngle(Yx, a), U2 = SU.clone().applyAxisAngle(Yx, a), scr = p => { const d = p.clone().sub(c); return [d.dot(R2), d.dot(U2)]; };
       const b = [1e9, -1e9, 1e9, -1e9], add = (sx, sy, e = 0) => { b[0] = Math.min(b[0], sx - e); b[1] = Math.max(b[1], sx + e); b[2] = Math.min(b[2], sy - e); b[3] = Math.max(b[3], sy + e); };
       // the hand-picked points are chosen for the front view; a turned view is framed on its roads alone
-      if (!yd) for (const q of def.pts) add(...scr(V(...q)));
-      // a turned view also keeps the land in frame (terrain marks its meshes), so the plateaus are not cut off at the edges
-      else g.traverse(o => { if (!o.userData?.terrain || !o.geometry) return; o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
+      if (!yd) for (const q of fr.pts) add(...scr(V(...q)));
+      // every view also keeps the land in frame (terrain marks its meshes), so the plateaus are not cut off at the edges
+      if (yd || def.composed) g.traverse(o => { if (!o.userData?.terrain || !o.geometry) return; o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
         for (const x of [bb.min.x, bb.max.x]) for (const y of [bb.max.y]) for (const z of [bb.min.z, bb.max.z]) add(...scr(new T.Vector3(x, y, z).applyMatrix4(o.matrixWorld))); });
       for (const r of L.roads) for (const q of r.S) add(...scr(r.g ? q.p.clone().applyMatrix4(r.g.matrixWorld) : q.p), m);
       // leave room for each machine's badge dot, which sits just above it
@@ -821,7 +821,7 @@ function makeLevel(def, idx) {
       for (let it = 0; it < 3; it++) { const w = view.host.clientWidth || 600, h = w * view.aspect(w), upp = Math.max((b[1] - b[0] + 2 * pad) / w, (b[3] - b[2] + 2 * pad) / h);
         for (const [sx, sy] of hs) { b[0] = Math.min(b[0], sx - 16 * upp); b[1] = Math.max(b[1], sx + 16 * upp); b[3] = Math.max(b[3], sy + 28 * upp - pad); } }
       return { a, b }; });
-    view.frame(def.center, frames[0].b, pad); view.yawFrames = frames.length > 1 ? frames : null; view.yawK = undefined; }
+    view.frame(fr.center, frames[0].b, pad); view.yawFrames = frames.length > 1 ? frames : null; view.yawK = undefined; }
   if (def.decor) def.decor(L);
   const W = { mode: 'spawn', t: 0, road: null, s: 0, dir: 1, spin: 0, pos: new T.Vector2(), vel: new T.Vector2(), vz: 0, from: null };
   L.W = W;

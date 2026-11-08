@@ -25,6 +25,7 @@ import { install as terrain } from './terrain';
 import { install as cube } from './cube';
 import { install as studies2 } from './studies2';
 import { install as levels3 } from './levels3';
+import { install as compose } from './compose';
 
 /** Hand-built level defs, by id, from every module that has them. */
 const handBuilt = (E) => {
@@ -36,6 +37,7 @@ const handBuilt = (E) => {
 /** A level def for one campaign item ('id', '<tier>:<seed>' or 'cg:<seed>'), or null when the seed doesn't plan. */
 function defFor(E, pool, item) {
   if (pool[item]) return pool[item];
+  if (item.startsWith('bc:')) { const pl = E.composePlan(+item.slice(3)); return pl ? E.composeDef(pl) : null; }
   if (item.startsWith('cg:')) { const pl = E.curtainPlan(+item.slice(3)); return pl ? E.curtainDef(pl) : null; }
   const [ti, sd] = item.split(':').map(Number);
   if (!Number.isFinite(ti) || !Number.isFinite(sd)) return null;
@@ -45,7 +47,7 @@ function defFor(E, pool, item) {
 
 export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN): PenroseEngine {
   const E = { dom, hooks };
-  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, terrain, cube, studies2, levels3]) install(E);
+  for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, terrain, cube, studies2, levels3, compose]) install(E);
   const pool = handBuilt(E), LEVELS = E.LEVELS;
   for (const ch of campaign) for (const it of ch.levels) {
     const d = defFor(E, pool, it);

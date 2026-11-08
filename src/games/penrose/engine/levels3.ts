@@ -345,5 +345,5 @@ const LEVELS3 = [
     center: [0, -4, 1], pts: [[-12.6, -4, 0], [-12.6, 1.5, 0], [14.1, -2.6, 2], [14.1, 4.6, 2], [11, -2, -2], [.5, -16, 0], [-5.2, -9.1, 2], [1.4, -10.5, 2], [0, 0, -2]], pad: .8, scenery: false },
 ];
 
-Object.assign($scope, { LEVELS3 });
+Object.assign($scope, { LEVELS3, skyRoad, cliffAt });
 }

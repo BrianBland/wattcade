@@ -77,7 +77,7 @@ function clutchBridge(L, o) {
   const catM = basic(th.goal || '#E8553B'), px = -d.z, pz = d.x;
   for (const t of [span, max]) for (const sd of [-.55, .55]) { const q = a.clone().addScaledVector(d, t); CY(g, q.x + px * sd, q.z + pz * sd, .07, hz - .1, hz + .28, catM, 10); }
   const st = { len: 0, was: false, spans: () => st.len >= span && st.len <= max, locked: () => !st.m.on && st.len > 0 };
-  st.m = L.machine({ key: o.key || 'z', name: 'Clutch', size: .45, place: (h) => { if (o.btn) h.position.copy(V(o.btn[0], o.btn[1], .04)); else h.position.set(a.x - d.x * .9 + d.z * 1.1, .04, a.z - d.z * .9 + d.x * 1.1); g.add(h); },
+  st.m = L.machine({ key: o.key || 'z', name: 'Clutch', size: .45, place: (h) => { if (o.btn) h.position.copy(V(o.btn[0], o.btn[1], (o.btnZ || 0) + .04)); else h.position.set(a.x - d.x * .9 + d.z * 1.1, .04, a.z - d.z * .9 + d.x * 1.1); g.add(h); },
     tick(dt, drive) { if (this.on && drive > 0) { st.len += drive * (o.rate || .22); if (st.len > max) st.len = 0; } return this.on && drive > 0 ? .3 : 0; } });
   L.view.updaters.push(() => {
     const l = Math.max(.001, st.len); deck.scale.set(l, .08, .9); deck.position.set(a.x + d.x * l / 2, hz - .07, a.z + d.z * l / 2); deck.rotation.y = house.rotation.y; deck.visible = st.len > .02;
@@ -167,7 +167,7 @@ function matchingDoors(L, o) {
   far.bannerM.color.set(bs[o.want]);
   const st = { i: o.fixed ? o.want : 0, was: false, match: () => st.i === o.want, near, far };
   // a fixed pair is always open (no banner button): its use is in where it leads, which you see by looking through it
-  if (!o.fixed) st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), .04)); g.add(h); },
+  if (!o.fixed) st.m = L.machine({ key: o.key || 'a', name: 'Banner', size: .45, place: (h) => { h.position.copy(V(o.at[0] + (o.btn?.[0] ?? 0), o.at[1] + (o.btn?.[1] ?? 1.3), (o.atZ || 0) + .04)); g.add(h); },
     tick() { if (this.on !== st.was) { st.was = this.on; st.i = (st.i + 1) % bs.length; } return 0; } });
   // the view through: the main camera carried through the doors (far * near^-1 * camera), so looking into the near door
   // shows the far side from the same angle, as if the two doorways were one. Rendered at screen size, sampled in screen space.

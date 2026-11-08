@@ -4,6 +4,7 @@ import type { EffortKind, EffortView } from './efforts';
 import type { BuildSuggestion } from './construction';
 import type { WaveRole } from './waves';
 import type { TdLevel } from './level';
+import type { LevelSpec } from './campaign';
 
 export type ActionId = 'rail' | 'overcharge' | 'slow';
 /** `locked`: not yet unlocked with campaign stars (shown, never usable). */
@@ -94,6 +95,8 @@ export interface BossView {
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
+  /** The map the next Quick Ride would generate, so the renderer can build it in the background before it is asked for. */
+  nextQuick: Pick<LevelSpec, 'seed' | 'roadStyle' | 'ground' | 'pads'>;
   /** The map being played (same object for the whole session; the renderer derives its geometry from it). */
   level: TdLevel;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;

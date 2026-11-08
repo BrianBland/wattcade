@@ -7,7 +7,6 @@ import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
-import { generateLevel } from './generator';
 import {
   AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
@@ -15,7 +14,8 @@ import {
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
-import { BAKED_LEVELS, specKey } from './baked';
+import { specKey } from './baked';
+import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
@@ -93,7 +93,6 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const angDiff = (a: number, b: number) => Math.abs(a - b);
 type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) : never;
 
-const LEVEL_CACHE = new Map<string, TdLevel>();
 /** The level select's fixed facts per campaign level (stars and locks are added per snapshot). */
 const TILE_INFO = CAMPAIGN.map((c, index) => {
   const waves = levelWaves(c.minutes, bossCount(c.minutes, c.seed));
@@ -1007,12 +1006,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     rows.push({ kind: 'unlocks', name: `Stars · ${n}★`, desc: next ? `Next: ${next.name} at ${next.stars}★ · ${next.desc}` : 'Everything is unlocked' });
     return rows;
   }
-  /** A level's map, generated once per seed. */
-  function levelFor(spec: LevelSpec): TdLevel {
-    const key = specKey(spec);
-    let l = LEVEL_CACHE.get(key) ?? BAKED_LEVELS[key];
-    if (!l) { l = { ...generateLevel(spec.seed, { style: spec.roadStyle, ground: spec.ground, pads: spec.pads }).level, name: spec.name }; LEVEL_CACHE.set(key, l); }
-    return l;
+  /** The Quick Ride the next start would play (minutes only change its name), memoised for the snapshot. */
+  let nextQuickMemo: { k: string; v: TdSnapshot['nextQuick'] } | null = null;
+  function nextQuick(): TdSnapshot['nextQuick'] {
+    const open = campaignOpen(save.campaign), k = `${save.quickSeed}|${open}`;
+    if (nextQuickMemo?.k !== k) {
+      const q = quickRide(save.quickSeed, save.quickMinutes, quickGrounds(open));
+      nextQuickMemo = { k, v: { seed: q.seed, roadStyle: q.roadStyle, ground: q.ground, pads: q.pads } };
+    }
+    return nextQuickMemo.v;
   }
   function startLevel(spec: LevelSpec) {
     if (spec.kind === 'quick' && spec.seed === save.quickSeed) save.quickSeed++;
@@ -1571,7 +1573,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     snapshot(): TdSnapshot {
       return {
-        t, level, phase, garage: phase === 'garage' ? garageView() : null,
+        t, level, phase, garage: phase === 'garage' ? garageView() : null, nextQuick: nextQuick(),
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },

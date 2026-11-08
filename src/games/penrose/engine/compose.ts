@@ -8,8 +8,8 @@
  *  - camjoin: the road out stops in the air; a quarter turn of the camera joins it to a lane a level down
  *  - curtain: the road out has a hole; a quarter turn puts a tower in front of it, so it is not there
  *  - doors:   turn the banner on the loop's door until it matches the far door, and ride through
- * The chain runs east (+x) or south (-y) at every step, so on screen it only ever moves one way and never folds back over
- * itself; heights step up (see-saw) and down (camera join). Every beat brings its own build, hint and autopilot policy.
+ * The chain turns as it goes (any heading but straight back), so a level winds round on itself; a layout check keeps every
+ * part clear of the others on the ground and on screen from both camera angles. Heights step up (see-saw) and down (camera join). Every beat brings its own build, hint and autopilot policy.
  * composeDef(seed) gives a level definition (campaign item 'bc:<seed>'); levels stand on automatic terrain.
  * Installed into the shared engine scope after levels3 (see ./index.ts). */
 import * as T from 'three';
@@ -36,12 +36,89 @@ const BEATS = {
 const ADJ = ['Quiet', 'Tilted', 'Folded', 'Hidden', 'Mirror', 'Lantern', 'Hollow', 'Slow', 'Turning', 'Borrowed', 'Paper', 'Second', 'Sleeping', 'Painted', 'Drifting', 'Patient', 'Silver', 'Crooked', 'Glass', 'Distant'];
 const NOUN = ['Causeway', 'Cloister', 'Weir', 'Rampart', 'Terrace', 'Mill', 'Stair', 'Quay', 'Arbour', 'Gallery', 'Landing', 'Basin', 'Belfry', 'Orchard', 'Spillway', 'Court', 'Passage', 'Viaduct', 'Mooring', 'Watch'];
 
-/** Plan a level from a seed: the beat sequence, directions and heights. Pure (no three). */
+const DIRS = { e: [1, 0], n: [0, 1], w: [-1, 0], s: [0, -1] };
+const OPP = { e: 'w', w: 'e', n: 's', s: 'n' };
+/** Where a beat heading `dir` leaves a station (centre c, half-size h). The loop runs anticlockwise from the middle of its
+ * south side; the south exit sits .8 west of that point, since a fork at a loop's start point would never be crossed. */
+const exitOf = (c, h, dir) => dir === 'e' ? [c[0] + h[0], c[1]] : dir === 'w' ? [c[0] - h[0], c[1]] : dir === 'n' ? [c[0], c[1] + h[1]] : [c[0] - .8, c[1] - h[1]];
+/** The loop's heading at that exit point, travelling dir 1. */
+const loopHeading = { e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2, s: 0 };
+/** The centre of the station a beat heading `dir` runs into at F (the entry road's end); an entry from the south also
+ * keeps clear of the start point. */
+const stationAt = (F, h, dir) => dir === 'e' ? [F[0] + h[0], F[1]] : dir === 'w' ? [F[0] - h[0], F[1]] : dir === 'n' ? [F[0] + .8, F[1] + h[1]] : [F[0], F[1] - h[1]];
+const ENTRY = 1.6, GOAL = 4;
+/** Which headings a beat may take for the level's camera angle. A camera join's lane and a curtain's tower stand off the
+ * road along the view direction; only these headings keep them clear of the road and the loops. */
+const dirsFor = (kind, yaw) => kind === 'curtain' ? [yaw === 90 ? 'e' : 's'] : kind === 'camjoin' ? (yaw === 90 ? ['e', 'n', 'w'] : ['e', 's']) : ['e', 'n', 'w', 's'];
+
+/** A beat's geometry from its exit point E along d at height z: where its road ends (the entry road starts there) and the
+ * blocks it occupies, for the layout check. */
+function beatShape(kind, E, d, z, yaw) {
+  const r = [d[1], -d[0]], W = (u, v = 0) => [E[0] + d[0] * u + r[0] * v, E[1] + d[1] * u + r[1] * v];
+  const box = (u0, u1, v0, v1, z0, z1) => ({ pts: [W(u0, v0), W(u1, v0), W(u1, v1), W(u0, v1)], z0, z1 });
+  const B0 = BEATS[kind];
+  if (kind === 'seesaw') return { end: W(B0.gap), z: z + 2, parts: [box(0, B0.gap, -.9, .9, z, z + 2)] };
+  if (kind === 'camjoin') {
+    const [vx, vy] = camDir(yaw), e = W(3.5), lo = [e[0] - 2 * vx, e[1] - 2 * vy], end = [lo[0] + d[0] * 2, lo[1] + d[1] * 2];
+    const lane = { pts: [lo, end, [end[0] + r[0] * .01, end[1] + r[1] * .01], [lo[0] + r[0] * .01, lo[1] + r[1] * .01]], z0: z - 2, z1: z - 2 };
+    return { end, z: z - 2, parts: [box(0, 3.5, -.6, .6, z, z), lane] };
+  }
+  if (kind === 'curtain') {
+    const [vx, vy] = camDir(yaw), hc = W(3), tc = [hc[0] + 2.4 * vx, hc[1] + 2.4 * vy];
+    return { end: W(B0.gap), z, parts: [box(0, B0.gap, -.6, .6, z, z), { pts: [[tc[0] - .85, tc[1] - .85], [tc[0] + .85, tc[1] - .85], [tc[0] + .85, tc[1] + .85], [tc[0] - .85, tc[1] + .85]], z0: z - 2.4, z1: z + 3.8, tall: true }] };
+  }
+  const wide = kind === 'gate' || kind === 'mirror' ? 1.5 : .6, parts = [box(0, B0.gap, -wide, wide, z, z)];
+  // what the pool reflects is really there, up in the air off along the view diagonal: the sky road, the hung gate
+  const up = (bx, sh) => ({ ...bx, pts: bx.pts.map((p) => [p[0] - sh, p[1] - sh]), tall: true });
+  if (kind === 'mirror') parts.push(up(box(-.3, B0.gap + .3, -.7, .7, -2.4, 5), 5));
+  if (kind === 'gate') parts.push(up(box(1.8, 2.6, -1.5, 1.5, -2.4, 4.8), 4.28));
+  return { end: W(B0.gap), z, parts };
+}
+
+// ---- the layout check: no two parts of the chain that are not neighbours may touch, on the ground or on screen ----
+const hull = (P) => { P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); const lo = [], up = [];
+  for (const p of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of P.slice().reverse()) { while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  return lo.slice(0, -1).concat(up.slice(0, -1)); };
+/** Do two convex polygons come within `gap` of each other (separating axes)? */
+function touch(A, B, gap) {
+  for (const Q of [A, B]) for (let i = 0; i < Q.length; i++) {
+    const a = Q[i], b = Q[(i + 1) % Q.length], n = [b[1] - a[1], a[0] - b[0]], l = Math.hypot(n[0], n[1]) || 1;
+    const pr = (P) => P.map((p) => (p[0] * n[0] + p[1] * n[1]) / l);
+    const pa = pr(A), pb = pr(B);
+    if (Math.max(...pa) + gap <= Math.min(...pb) || Math.max(...pb) + gap <= Math.min(...pa)) return false;
+  }
+  return true;
+}
+/** A part as drawn from yaw: its top (where the road is) and its whole column down to the land's base. */
+const onScreen = (part, yaw, top) => { const [vx, vy] = camDir(yaw), pts = [];
+  for (const p of part.pts) for (const zz of top ? [part.z0, part.z1] : [part.z0 - 3, part.z1]) pts.push([(vy * p[0] - vx * p[1]) / Math.SQRT2, (2 * zz - vx * p[0] - vy * p[1]) / Math.sqrt(6)]);
+  return hull(pts); };
+const depth = (part, yaw) => { const [vx, vy] = camDir(yaw); let s = 0; for (const p of part.pts) s += vx * p[0] + vy * p[1]; return s / part.pts.length + (part.z0 + part.z1) / 2; };
+function clashes(part, placed, yaws) {
+  for (const q of placed) {
+    if (q.k === part.k || (Math.abs(q.k - part.k) <= 1 && !q.tall && !part.tall)) continue;
+    if (!q.tall && !part.tall && touch(part.pts, q.pts, .9)) return true;           // on the ground (towers may stand beside roads)
+    for (const yaw of yaws) {
+      // the nearer part, column and all, must not cover the farther one's road
+      const [near, far] = depth(part, yaw) > depth(q, yaw) ? [part, q] : [q, part];
+      if (touch(onScreen(near, yaw, false), onScreen(far, yaw, true), .25)) return true;
+    }
+  }
+  return false;
+}
+const stationPart = (c, h, z, k) => ({ pts: [[c[0] - h[0] - .3, c[1] - h[1] - .3], [c[0] + h[0] + .3, c[1] - h[1] - .3], [c[0] + h[0] + .3, c[1] + h[1] + .3], [c[0] - h[0] - .3, c[1] + h[1] + .3]], z0: z, z1: z + .3, k });
+
+/** Plan a level from a seed: the beat sequence, headings, heights and where every station stands. Pure (no three).
+ * The chain turns as it goes, so a level winds round on itself instead of running off in a line; the layout check keeps
+ * every part clear of the others on the ground and from both camera angles. */
 function composePlan(seed) {
   const R = mulberry((seed * 2654435761) >>> 0), pick = (a) => a[Math.floor(R() * a.length)];
-  const n = 3 + (R() < .6 ? 1 : 0) + (R() < .3 ? 1 : 0);
-  const yaw = R() < .5 ? 90 : -90, beats = [];
-  let z = R() < .5 ? 0 : 2, keys = 0, cam = false;
+  const n = 3 + (R() < .45 ? 1 : 0) + (R() < .15 ? 1 : 0);
+  const yaw = R() < .5 ? 90 : -90, beats = [], yaws = [0, yaw];
+  const sizes = Array.from({ length: n + 1 }, () => [2 + R() * 1.1, 1.5 + R() * .7]);
+  let z = R() < .5 ? 0 : 2, keys = 0, cam = false, c = [0, 0], prev = null;
+  const placed = [stationPart(c, sizes[0], z, 0)], centers = [[0, 0, z]];
   for (let i = 0; i < n; i++) {
     const ok = Object.keys(BEATS).filter((b) => {
       const B0 = BEATS[b], last = beats[beats.length - 1];
@@ -49,22 +126,41 @@ function composePlan(seed) {
       if (beats.filter((q) => q.kind === b).length >= 2) return false;
       if (keys + B0.keys + (B0.cam && !cam ? 1 : 0) > 4) return false;
       if (z + B0.dz < 0 || z + B0.dz > 4) return false;
-      if (b === 'mirror' && beats.some((q) => q.kind === 'gate') && last?.kind === 'gate') return false;
+      if (b === 'mirror' && last?.kind === 'gate') return false;
       return true; });
-    if (!ok.length) break;
     // favour the beats used least so far, so a level mixes its puzzles
-    const w = ok.map((b) => 1 / (1 + beats.filter((q) => q.kind === b).length * 2)), tot = w.reduce((a, b) => a + b, 0);
-    let r = R() * tot, kind = ok[0]; for (let k = 0; k < ok.length; k++) { r -= w[k]; if (r <= 0) { kind = ok[k]; break; } }
-    const B0 = BEATS[kind]; keys += B0.keys + (B0.cam && !cam ? 1 : 0); cam = cam || !!B0.cam;
-    // a curtain's tower stands on the camera side of its hole; only one heading per camera angle keeps it clear of the loops
-    const dir = kind === 'curtain' ? (yaw === 90 ? 'e' : 's') : kind === 'camjoin' && yaw === 90 ? 'e' : R() < .5 ? 'e' : 's';
-    beats.push({ kind, dir, z, want: 1 + Math.floor(R() * 2) }); z += B0.dz;
+    const w = ok.map((b) => 1 / (1 + beats.filter((q) => q.kind === b).length * 2));
+    let chosen = null;
+    while (ok.length && !chosen) {
+      const tot = w.reduce((a, b) => a + b, 0); let rr = R() * tot, ki = 0; for (let k = 0; k < ok.length; k++) { rr -= w[k]; if (rr <= 0) { ki = k; break; } }
+      const kind = ok[ki], last = i === n - 1;
+      // every heading the beat may take whose parts (and next station) fit; the one that keeps the level most compact wins,
+      // with a little chance in it, so the chain winds round on itself rather than running off in a line
+      const ds = dirsFor(kind, yaw).filter((dd) => dd !== (prev && OPP[prev]));
+      let best = null;
+      for (const dir of ds) {
+        const d = DIRS[dir], E = exitOf(c, sizes[i], dir), sh = beatShape(kind, E, d, z, yaw);
+        const F = [sh.end[0] + d[0] * (last ? GOAL : ENTRY), sh.end[1] + d[1] * (last ? GOAL : ENTRY)];
+        const parts = sh.parts.map((p) => ({ ...p, k: 2 * i + 1 })).concat([{ pts: [sh.end, F, [F[0] + d[1] * .01, F[1] - d[0] * .01], [sh.end[0] + d[1] * .01, sh.end[1] - d[0] * .01]], z0: sh.z, z1: sh.z, k: 2 * i + 1 }]);
+        const nc = last ? null : stationAt(F, sizes[i + 1], dir);
+        if (nc) parts.push(stationPart(nc, sizes[i + 1], sh.z, 2 * i + 2));
+        if (parts.some((p) => clashes(p, placed, yaws))) continue;
+        const xs = [], ys = []; for (const p of placed.concat(parts)) for (const q of p.pts) { xs.push(q[0]); ys.push(q[1]); }
+        const score = Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) + (dir === prev ? 3 : 0) + R() * 4;
+        if (!best || score < best.score) best = { kind, dir, parts, nc, z2: sh.z, score };
+      }
+      chosen = best;
+      if (!chosen) { ok.splice(ki, 1); w.splice(ki, 1); }
+    }
+    if (!chosen) break;
+    const B0 = BEATS[chosen.kind]; keys += B0.keys + (B0.cam && !cam ? 1 : 0); cam = cam || !!B0.cam;
+    beats.push({ kind: chosen.kind, dir: chosen.dir, z, want: 1 + Math.floor(R() * 2) });
+    placed.push(...chosen.parts); prev = chosen.dir; z = chosen.z2;
+    if (chosen.nc) { c = chosen.nc; centers.push([c[0], c[1], z]); }
   }
   const kinds = new Set(beats.map((b) => b.kind));
   if (beats.length < 3 || kinds.size < 3) return null;
-  // every station its own size, so the loops are not all one stamp
-  const sizes = beats.map(() => [2.2 + R() * 1.4, 1.6 + R() * .9]).concat([[2.2 + R() * 1.4, 1.6 + R() * .9]]);
-  return { seed, beats, yaw, cam, sizes, theme: pick([0, 1, 2, 3, 5]), name: `${pick(ADJ)} ${pick(NOUN)}` };
+  return { seed, beats, yaw, cam, sizes: sizes.slice(0, beats.length + 1), centers, theme: pick([0, 1, 2, 3, 5]), name: `${pick(ADJ)} ${pick(NOUN)}` };
 }
 
 /** The level definition for a plan. */
@@ -99,17 +195,17 @@ function buildComposed(L, plan, beats, camKey) {
   let S = station(0, 0, beats[0].z);
   if (camKey) P.cam = cameraCrank(L, { key: camKey, name: 'Camera', at: [-Math.min(1.2, sz(0)[0] - 1.3), 0, beats[0].z], detents: [0, plan.yaw] });
   beats.forEach((b, i) => {
-    const last = i === beats.length - 1, d = b.dir === 'e' ? [1, 0] : [0, -1], r = [d[1], -d[0]], z = b.z;
-    const E = b.dir === 'e' ? [S.c[0] + S.h[0], S.c[1]] : [S.c[0] - .8, S.c[1] - S.h[1]];   // (off the loop's start point, where a fork would never be crossed)
+    const last = i === beats.length - 1, d = DIRS[b.dir], r = [d[1], -d[0]], z = b.z;
+    const E = exitOf(S.c, S.h, b.dir);
     const W = (u, v = 0, zz = z) => [E[0] + d[0] * u + r[0] * v, E[1] + d[1] * u + r[1] * v, zz];
-    const loopDir = b.dir === 'e' ? Math.PI / 2 : 0;     // the loop's heading at its exit point, travelling dir 1
+    const loopDir = loopHeading[b.dir];
     const st = { kind: b.kind, S, roads: [], key: b.key };
     // the road that ends the beat: it runs on into the next station, or is the road home
     let entry = null;
     const finish = (from, zz) => {      // from: [x, y] where the entry road starts; it runs along d into the next station
-      const len = last ? 4 : 1.6, F = [from[0] + d[0] * len, from[1] + d[1] * len];
+      const len = last ? GOAL : ENTRY, F = [from[0] + d[0] * len, from[1] + d[1] * len];
       entry = L.road(L3([from[0], from[1], zz], [F[0], F[1], zz], UP), last ? { goal: true } : {});
-      if (!last) { const [hx, hy] = sz(P.S.length), c = b.dir === 'e' ? [F[0] + hx, F[1]] : [F[0], F[1] - hy]; const T2 = station(c[0], c[1], zz); entry.joins = [{ k: 1, to: T2, s: sAt(T2, [F[0], F[1], zz]), dir: 1 }]; st.T = T2; }
+      if (!last) { const c = plan.centers?.[P.S.length] || stationAt(F, sz(P.S.length), b.dir); const T2 = station(c[0], c[1], zz); entry.joins = [{ k: 1, to: T2, s: sAt(T2, [F[0], F[1], zz]), dir: 1 }]; st.T = T2; }
       st.roads.push(entry); return entry; };
     const fork = (to, when, text) => S.forks.push({ s: sAt(S, [E[0], E[1], z]), dir: 1, to, toK: 0, when, text });
     if (b.kind === 'gate' || b.kind === 'mirror') {
@@ -119,7 +215,7 @@ function buildComposed(L, plan, beats, camKey) {
         st.pool = reflection(L, { pool, wz, calm: 78, over(og) {
           const at = (p, zz) => V(p[0] - off, p[1] - off, zz);
           const box = (s, p, zz, mat, rc) => { const m = new T.Mesh(UNIT_BOX, mat); m.scale.set(s[0], s[2], s[1]); m.position.copy(at(p, zz)); m.userData.rc = rc; og.add(m); };
-          const across = b.dir === 'e' ? [.16, 2.2] : [2.2, .16];
+          const across = d[0] ? [.16, 2.2] : [2.2, .16];
           for (const v of [-.8, -.4, 0, .4, .8]) { const p = W(ug, v); box([.1, .1, h1 - h0], p, (h0 + h1) / 2, gateM, '#E2563F'); const tip = new T.Mesh(new T.ConeGeometry(.09, .22, 4), gateM); tip.rotation.x = Math.PI; tip.position.copy(at(p, h0 - .1)); tip.userData.rc = '#E2563F'; og.add(tip); }
           for (const zz of [h1, h0 + .35]) box([...across, .14], W(ug, 0), zz, gateM, '#E2563F');
           for (const v of [-1.2, 1.2]) { const p = W(ug, v), zt = h1 + .5, cyl = new T.Mesh(new T.CylinderGeometry(.2, .24, zt + 2.4, 12), stone); cyl.position.copy(at(p, (zt - 2.4) / 2)); cyl.userData.rc = '#E5CFA0'; og.add(cyl); (L.anchors ||= []).push([p[0] - off, p[1] - off, 1.1]); }
@@ -138,9 +234,11 @@ function buildComposed(L, plan, beats, camKey) {
       st.span = G - 2; finishFrom(X2);
       fork(X1, () => st.br.locked(), 'The bridge is locked, so the wheel heads for it');
     } else if (b.kind === 'seesaw') {
-      const a = Math.asin(1 / 2.5), X2 = 5 * Math.cos(a), base = b.dir === 'e' ? 180 : 90;
+      const a = Math.asin(1 / 2.5), X2 = 5 * Math.cos(a), base = Math.atan2(-d[1], -d[0]) * 180 / Math.PI;
       const A1 = L.road(L3(W(0), W(3), UP), {}); st.roads.push(A1);
-      st.ss = seesawM(L, { P: W(3 + X2), base, sd: 1, key: b.key, name: 'Spring' }); st.roads.push(st.ss.beam);
+      // the spring's post stands on the side of the beam away from the start view, so it hides none of the road
+      const br = base * Math.PI / 180, sd = Math.sin(br) - Math.cos(br) > 0 ? -1 : 1;
+      st.ss = seesawM(L, { P: W(3 + X2), base, sd, key: b.key, name: 'Spring' }); st.roads.push(st.ss.beam);
       { const fe = W(3 + X2); (L.terrainCarve ||= []).push([fe[0], fe[1], 1.5]); }
       const B1 = L.road(L3(W(3 + X2, 0, z + 2), W(BEATS.seesaw.gap, 0, z + 2), UP), { pal }); st.roads.push(B1);
       finishFrom(B1, z + 2);
@@ -165,7 +263,7 @@ function buildComposed(L, plan, beats, camKey) {
     } else if (b.kind === 'doors') {
       const far = W(3), X = L.road(L3(far, W(BEATS.doors.gap), UP), {}); st.roads.push(X);
       const ang = Math.PI - loopDir, farAng = Math.PI - Math.atan2(d[1], d[0]);
-      const btn = b.dir === 'e' ? [-1.2, 0] : [0, 1.2];
+      const btn = [-d[0] * 1.2, -d[1] * 1.2];
       st.doors = matchingDoors(L, { road: S, at: [E[0], E[1]], ang, atZ: z, to: X, far: [far[0], far[1]], farAng, z, key: b.key, want: b.want, btn, rtShift: 2 });
       finishFrom(X);
     }

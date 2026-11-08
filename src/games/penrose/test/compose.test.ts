@@ -30,7 +30,7 @@ describe('penrose beat composer plans', () => {
       for (const b of p.beats) { expect(b.z).toBe(z); z += BEATS[b.kind].dz; expect(z).toBeGreaterThanOrEqual(0); expect(z).toBeLessThanOrEqual(4); }
       for (const b of p.beats) {
         if (b.kind === 'curtain') expect(b.dir).toBe(p.yaw === 90 ? 'e' : 's');
-        if (b.kind === 'camjoin' && p.yaw === 90) expect(b.dir).toBe('e');
+        if (b.kind === 'camjoin') expect(p.yaw === 90 ? ['e', 'n', 'w'] : ['e', 's']).toContain(b.dir);
       }
       expect(p.sizes.length).toBe(p.beats.length + 1);
     }

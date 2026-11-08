@@ -149,7 +149,7 @@ void main() { vec2 p = vUv - .5; p.x *= 1.12 / 1.46; float r = length(p), a = at
   gl_FragColor = vec4(mix(col, mix(uC, vec3(1.), .35), rim * (1. - uOpen * .6)), 1.); }`;
 const BANNERS = ['#FF6B4A', '#FFC93C', '#46D6C2'];
 function doorway(g, th, x, y, ang, z = 0) {
-  const grp = new T.Group(); grp.position.copy(V(x, y, z)); grp.rotation.y = ang; g.add(grp);
+  const grp = new T.Group(); grp.position.copy(V(x, y, z)); grp.rotation.y = ang; grp.userData.rideThrough = true; g.add(grp);
   const stone = tri(sp(th, 0)), m = (sx, sy, sz, px, py, pz, mat) => { const b = new T.Mesh(UNIT_BOX, mat); b.scale.set(sx, sy, sz); b.position.set(px, py, pz); grp.add(b); return b; };
   for (const sd of [-.68, .68]) m(.24, 1.5, .24, 0, .75, sd, stone);
   m(.3, .22, 1.6, 0, 1.6, 0, stone);

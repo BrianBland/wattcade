@@ -1,6 +1,6 @@
 // @ts-nocheck
 /* Penrose Pedals engine: the screen-space audit for a loaded level. Per camera angle it lists roads that overlap on
- * screen without meeting, road samples hidden behind something that is not that road, and the perspective joins.
+ * screen without meeting, road samples hidden behind something that is not that road (or a doorway), and the perspective joins.
  * Used by scripts/penrose-audit.mjs while designing levels. */
 import * as T from 'three';
 
@@ -10,7 +10,8 @@ const { SD } = $scope;
 function auditLevel(L, o = {}) {
   const view = L.view, def = L.def, yaws = def.yaws || [0], Yx = new T.Vector3(0, 1, 0), out = [], step = o.step || .3;
   const own = new Map(); L.roads.forEach((r, i) => r.vis.forEach(m => own.set(m, i)));
-  const skip = new Set(); if (L.wheel) L.wheel.traverse(m => skip.add(m));
+  // the wheel, and doorways (ridden through, so the road under them is meant to be covered), hide nothing
+  const skip = new Set(); if (L.wheel) L.wheel.traverse(m => skip.add(m)); L.g.traverse(m => { if (m.userData.rideThrough) m.traverse(c => skip.add(c)); });
   const meshes = []; L.g.traverse(m => { if (m.isMesh && !skip.has(m) && m.visible !== false && !(m.material && m.material.transparent)) meshes.push(m); });
   const name = r => { for (const [k, v] of Object.entries(L.props)) { if (v === r) return k; if (v && typeof v === 'object') for (const [k2, v2] of Object.entries(v)) if (v2 === r) return k + '.' + k2; } return 'r' + L.roads.indexOf(r); };
   const ray = new T.Raycaster();
@@ -29,7 +30,7 @@ function auditLevel(L, o = {}) {
         if (pa.q2.distanceTo(pb.q2) < .9 && pa.p.distanceTo(pb.p) > 1.4 && !(nearJoin(A.r, pa.s) && nearJoin(B.r, pb.s))) n++; }
       if (n > (a === b ? 1 : 0)) over[name(A.r) + (a === b ? '' : '×' + name(B.r))] = n; }
     for (const { r, pts } of S) { let n = 0; for (const pt of pts) { const p = pt.p.clone(); p.y += .02; ray.set(p.clone().addScaledVector(SDr, 100), SDr.clone().negate()); const h = ray.intersectObjects(meshes, false).find(h => own.get(h.object) !== L.roads.indexOf(r));
-        if (h && h.distance < 99.75) n++; } if (n) hid[name(r)] = `${n}/${pts.length}`; }
+        if (h && h.distance < 99.75) { n++; if (o.who) { const w = h.object, q = w.getWorldPosition(new T.Vector3()); (o.whoList ||= []).push(`${yd} ${name(r)} <- ${w.geometry?.type} rc=${w.userData.rc || ''} own=${own.get(w) ?? '-'} at ${q.x.toFixed(1)},${q.z.toFixed(1)},${q.y.toFixed(1)}`); } } } if (n) hid[name(r)] = `${n}/${pts.length}`; }
     const jv = joins.map(([a, b]) => { const p = (a.p.y > b.p.y ? a : b).p.clone(); return `${name(a.r)}${a.k}~${name(b.r)}${b.k}`; });
     out.push({ yaw: yd, over, hid, joins: jv });
   }

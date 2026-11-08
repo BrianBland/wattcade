@@ -6,7 +6,7 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { B, CY, land, terrain, mixPal, basic, cameraCrank, liveGap, filletPath, turntable, L3, Road, UP, THEMES, V, conveyor, reflection, matchingDoors, clutchBridge, ftur, loopPts, loopSlab, ribbon, rider, sAt, sp, tone, tri } = $scope;
+const { turtle, B, CY, land, terrain, mixPal, basic, cameraCrank, liveGap, filletPath, turntable, L3, Road, UP, THEMES, V, conveyor, reflection, matchingDoors, clutchBridge, ftur, loopPts, loopSlab, ribbon, rider, sAt, sp, tone, tri } = $scope;
 
 const UNIT_BOX = new T.BoxGeometry(1, 1, 1);
 const PAL = () => tone('#F3E6C4');
@@ -310,6 +310,39 @@ const LEVELS3 = [
     spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
     solve(L, W, R) { R.gear = 4; R.cad = W.road === L.props.A ? 92 : 66; },
     center: [1.5, -2, 1], pts: [[-7.6, -4, 0], [-7.6, .6, 0], [10.6, -2.3, 0], [10.6, 3.2, 0], [7, -7.6, 0], [3.4, 3.2, 0], [-2.7, -6.8, 4.8], [.7, -6.7, 5], [2.5, -8.6, 5]], pad: .8, scenery: false },
+  { id: 's-seesaw', name: 'Push it over', th: () => THEMES[3], cruise: [65, 95], yaws: [0, -90], terrain: true,
+    // the see-saw is the way up and, wound, the way across; the way home is a road that only meets it from a quarter turn
+    hint: 'The see-saw rests tipped your way, so the wheel rides straight up it to the high loop. To come back across, clutch the spring (<b>Y</b>) and push, about 90 rpm in gear 4, until the beam tips over: then the ramp opens and carries you down onto its low end and up the other side. Keep pushing until you are across. On the far loop, the road home stops in the air from here: turn the camera (<b>A</b>) a quarter and it meets the lane below.',
+    build(L) {
+      const th = L.th, g = L.g, P = L.props, a = Math.asin(1 / 2.5), X2 = 5 * Math.cos(a), pal = sp(th, 1);
+      const ss = $scope.seesawM(L, { P: [0, 0, 0], base: 0, sd: 1, key: 'y', name: 'Spring' }); P.ss = ss;
+      const A = L.road(loopPts(-12, -3.4, -6, .9, 0, .8), { closed: true }); P.A = A;
+      const a1 = L.road(L3([-6, 0, 0], [0, 0, 0], UP)); P.a1 = a1;
+      const b1 = L.road(L3([X2, 0, 2], [8.5, 0, 2], UP), { pal }); P.b1 = b1;
+      const U = L.road(loopPts(8.5, -2, 13.5, 2, 2, .8), { closed: true, pal }); P.U = U;
+      b1.joins = [{ k: 1, to: U, s: sAt(U, [8.5, 0, 2]), dir: -1 }];
+      // the ramp: off the high loop's near side, round and down onto the beam's right end
+      const t = turtle(X2 + 5.9, 2, 90, 2); t.gr(-2 / (5.9 + 3 * Math.PI / 2)); t.fwd(1).arc(1, 90).fwd(2.9).arc(1, 90).fwd(2).arc(1, -90);
+      const ramp = L.road(t.pts, { pal }); P.ramp = ramp; (L.terrainIgnore ||= new Set()).add(ramp);
+      U.forks.push({ s: sAt(U, [X2 + 5.9, 2, 2]), dir: -1, to: ramp, toK: 0, when: () => ss.tip > .95, text: 'The beam is over, so the ramp is open' });
+      // across: from the beam's left end (up, when wound) to the far loop
+      const c = turtle(0, 0, 180, 2).fwd(.6).arc(1, 90).fwd(3.5); const c1 = L.road(c.pts, { pal }); P.c1 = c1;
+      const C = L.road(loopPts(-4.6, -8.5, 1.4, -4.5, 2, .8), { closed: true, pal }); P.C = C;
+      c1.joins = [{ k: 1, to: C, s: sAt(C, [-1.6, -4.5, 2]), dir: 1 }];
+      // home: a road that stops in the air, and a lane below that it meets only from the quarter-turned view
+      const c2 = L.road(L3([-1.5, -8.5, 2], [-1.5, -10.5, 2], UP), { pal, edgeText: 'From here the road home stops in the air' }); P.c2 = c2;
+      const home = L.road(L3([.5, -12.5, 0], [.5, -16, 0], UP), { goal: true }); P.home = home;
+      P.cam = cameraCrank(L, { key: 'a', name: 'Camera', at: [-9, -1.2, 0], detents: [0, -90] });
+      A.forks.push({ s: sAt(A, [-6, 0, 0]), dir: 1, to: a1, toK: 0, when: () => ss.tip < .05, text: 'The beam rests your way, so up it you go' });
+      C.forks.push({ s: sAt(C, [-1.5, -8.5, 2]), dir: 1, to: c2, toK: 0, when: () => P.cam.at(-90), text: 'From this side the road home meets the lane' });
+      L.view.updaters.push(() => L.say(`spring ${Math.round(ss.c * 100)}% · beam ${ss.tip > .95 ? 'over' : ss.tip < .05 ? 'resting' : 'tipping'} · camera ${P.cam.at(0) ? 'front' : P.cam.at(-90) ? 'quarter turn' : 'turning'}`));
+    },
+    spawn: (L) => ({ road: L.props.A, s: 1, dir: 1 }),
+    solve(L, W, R) { const P = L.props; R.gear = 4;
+      const push = W.road === P.U || W.road === P.ramp || (W.road === P.ss.beam && P.ss.tip > .5);
+      P.ss.m.set(push); R.cad = push ? 92 : 72;
+      P.cam.m.set(W.road === P.C ? !P.cam.at(-90) : !P.cam.at(0) && W.road !== P.c2 && W.road !== P.home); },
+    center: [0, -4, 1], pts: [[-12.6, -4, 0], [-12.6, 1.5, 0], [14.1, -2.6, 2], [14.1, 4.6, 2], [11, -2, -2], [.5, -16, 0], [-5.2, -9.1, 2], [1.4, -10.5, 2], [0, 0, -2]], pad: .8, scenery: false },
 ];
 
 Object.assign($scope, { LEVELS3 });

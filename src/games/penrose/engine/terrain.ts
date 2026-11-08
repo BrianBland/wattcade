@@ -161,7 +161,7 @@ function autoTerrain(L, o = {}) {
   for (const c of comps.sort((a, b) => b.pts.length - a.pts.length)) {
     const top = c.z - inset, own = new Set(c.pts), near = grow(c.cells, 1), far = grow(c.cells, 2);
     // nothing else may stand on it or just over it, nothing moving may come near, and no other plateau may touch it
-    const crowd = all.some(q => { if (own.has(q)) return false; const k = key(...cellOf(q.x, q.y));
+    const crowd = all.some(q => { if (own.has(q) || (q.ri >= 0 && L.terrainIgnore?.has(L.roads[q.ri]))) return false; const k = key(...cellOf(q.x, q.y));
       if (q.moving) return far.has(k); if (!near.has(k)) return false;
       if (q.ri >= 0 && Math.abs(q.z - c.z) < .06) return false;          // more road on this level, or a turntable arm
       if (q.ri < 0 && !q.gap && q.z > top - .1) return false;            // a machine standing on it

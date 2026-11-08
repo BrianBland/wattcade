@@ -102,6 +102,14 @@ describe('counters and goals', () => {
     expect(ids(r)).toContain('td_levels5');
     expect(ids(r)).not.toContain('td_levels15');
   });
+  it('Dynamo Defense level goals: boss colours, road styles, a 40-minute clear and Endless depth', () => {
+    const td = (gameSummary: Record<string, number>, events: SessionRecord['events'] = []) => rec({ gameId: 'towerdefense', gameSummary, events });
+    let p = defaultProfile();
+    p = awardSession(p, td({ bossColors: 2, roadStyles: 7, endlessBest: 19 }, [{ t: 60, type: 'levelCleared', data: { stars: 2, minutes: 30 } }])).profile;
+    for (const id of ['td_brood_hunter', 'td_cartographer', 'td_full_shift', 'td_night_watch']) expect(p.achievements).not.toContain(id);
+    const r = awardSession(p, td({ bossColors: 3, roadStyles: 8, endlessBest: 20 }, [{ t: 60, type: 'levelCleared', data: { stars: 1, minutes: 40 } }]));
+    expect(ids(r)).toEqual(expect.arrayContaining(['td_brood_hunter', 'td_cartographer', 'td_full_shift', 'td_night_watch']));
+  });
   it('sum accumulates across rides', () => {
     let p = defaultProfile();
     for (let i = 0; i < 4; i++) p = awardSession(p, rec({ gameId: 'starfighter', gameSummary: { kills: 13000 } })).profile;

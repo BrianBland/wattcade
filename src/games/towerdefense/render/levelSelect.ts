@@ -47,13 +47,16 @@ const tilePreview = (t: LevelTile, turned: boolean, detail: boolean) => {
 };
 const facts = (t: LevelTile) => `${t.minutes} min · ${t.waves} waves · ${t.bosses} boss${t.bosses === 1 ? '' : 'es'} · ${t.pads} pads · ${styleName(t.roadStyle)} road`;
 
-/** The ride select: Campaign, Quick Ride and Endless as cards; intensity and stars as rows. */
-export function modesHtml(gv: GarageView, turned: boolean): string {
+/**
+ * The ride select: Campaign, Quick Ride and Endless as cards; intensity and stars as rows. `maps` are the next Quick
+ * Ride and Endless maps once the background workers have built them (placeholders until then).
+ */
+export function modesHtml(gv: GarageView, turned: boolean, maps: { quick?: TdLevel | null; endless?: TdLevel | null } = {}): string {
   const card = (r: GarageRow, i: number, art: string) => `<button class="btn td-card ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}">${art}<span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`;
   const next = gv.levels[gv.campaignSel];
   const cards = gv.rows.map((r, i) => r.kind === 'campaign' ? card(r, i, next ? tilePreview(next, turned, false) : '')
-    : r.kind === 'quick' ? card(r, i, '<div class="td-card-art td-quick">?</div>')
-    : r.kind === 'start' ? card(r, i, '<div class="td-card-art td-endless">∞</div>') : '').join('');
+    : r.kind === 'quick' ? card(r, i, maps.quick ? levelPreviewSvg(maps.quick, turned, false) : '<div class="td-card-art td-quick">?</div>')
+    : r.kind === 'start' ? card(r, i, maps.endless ? levelPreviewSvg(maps.endless, turned, false) : '<div class="td-card-art td-endless">∞</div>') : '').join('');
   const rows = gv.rows.map((r, i) => r.kind === 'campaign' || r.kind === 'quick' || r.kind === 'start' ? ''
     : `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('');
   return `<div class="td-cards">${cards}</div>${rows}`;

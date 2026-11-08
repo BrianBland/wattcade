@@ -68,5 +68,12 @@ describe('level select', () => {
     }
     const level = BAKED_LEVELS[specKey(CAMPAIGN[0])];
     expect(levelPreviewSvg(level, false).match(/<circle/g)!.length).toBe(level.pads.length + 2);
+    // once the next Quick Ride and Endless maps are built, their cards preview them instead of a placeholder
+    const modes = { ...g, page: 'modes' as const };
+    expect(modesHtml(modes, false)).toContain('td-quick');
+    const withMaps = modesHtml(modes, false, { quick: level, endless: BAKED_LEVELS[specKey(CAMPAIGN[1])] });
+    expect(withMaps).not.toContain('td-quick');
+    expect(withMaps).not.toContain('td-endless');
+    expect(withMaps.match(/<svg class="td-map"/g)).toHaveLength(3);
   });
 });

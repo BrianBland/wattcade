@@ -97,6 +97,6 @@ describe('playing a level', () => {
     expect((s.sim.snapshot() as TdSnapshot).run?.id).toBe('c1');
     s.sim.receive!({ type: 'bail' }); s.step(1);
     const g = (s.sim.snapshot() as TdSnapshot).garage!;
-    expect(g.rows.slice(0, 4).map(r => r.kind)).toEqual(['campaign', 'quick', 'intensity', 'start']);
+    expect(g.rows.slice(0, 4).map(r => r.kind)).toEqual(['campaign', 'quick', 'start', 'intensity']);
   });
 });

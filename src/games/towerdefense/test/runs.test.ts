@@ -1,5 +1,5 @@
 /** The level select's Endless row (after Campaign, Quick Ride and Intensity). */
-const ENDLESS_ROW = 3;
+const ENDLESS_ROW = 2;
 import { describe, expect, it } from 'vitest';
 import { createGameSession, testProfile, TimelineInput } from '../../../core';
 import { module } from '../index';

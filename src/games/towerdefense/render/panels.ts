@@ -4,6 +4,7 @@ import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
 import { constructionStatus, rideObjective } from './objectives';
+import { levelSelectHtml, modesHtml } from './levelSelect';
 
 export interface Hit extends Box { action: unknown }
 
@@ -54,6 +55,38 @@ const CSS = `
 .td-menu .btn { flex-shrink:0; width:100%; text-align:left; display:flex; justify-content:space-between; padding:8px 12px; font-size:16px; }
 .td-menu .btn small { display:block; font-size:12px; text-transform:none; letter-spacing:0; }
 .td-menu .selected { border-color:var(--neon); }
+.td-map { display:block; width:100%; height:100%; border-radius:6px; }
+.td-cards { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; flex-shrink:0; }
+.td-hud[data-narrow="true"] .td-cards { grid-template-columns:1fr; }
+.td-menu .td-card { flex-direction:column; justify-content:flex-start; gap:8px; padding:8px; }
+.td-card .td-map, .td-card-art { width:100%; aspect-ratio:var(--map-aspect); height:auto; }
+.td-card-art { display:grid; place-items:center; border-radius:6px; background:#1b1d26; font-size:44px; font-weight:800; color:var(--dim); }
+.td-endless { color:var(--pink); } .td-quick { color:var(--neon); }
+.td-levels { display:grid; grid-template-columns:1fr; gap:10px; min-height:0; }
+.td-hud[data-wide="true"] .td-levels { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); align-items:start; }
+.td-hud[data-wide="true"] .td-preview { order:2; position:sticky; top:0; }
+.td-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
+.td-hud[data-wide="true"] .td-preview { grid-template-columns:1fr; }
+.td-preview .td-map { aspect-ratio:var(--map-aspect); width:auto; max-width:100%; height:28vh; justify-self:center; }
+.td-hud[data-wide="true"] .td-preview .td-map { width:100%; height:auto; }
+.td-preview h3 { margin:0 0 4px; color:var(--neon); font-size:20px; }
+.td-preview-text p { font-size:13px; margin:0 0 4px; }
+.td-preview-actions { display:flex; gap:8px; margin-top:8px; }
+.td-preview-actions .btn { width:auto; flex:1; justify-content:center; }
+.td-grid { display:flex; flex-direction:column; gap:6px; }
+.td-ground { display:grid; grid-template-columns:84px repeat(5, minmax(0,64px)); gap:6px; align-items:center; justify-content:start; }
+.td-hud[data-narrow="true"] .td-ground { grid-template-columns:62px repeat(5, minmax(0,1fr)); gap:4px; }
+.td-hud[data-narrow="true"] .td-ground > span { font-size:9px; letter-spacing:0; }
+.td-hud[data-wide="true"] .td-ground { grid-template-columns:84px repeat(5, minmax(0,1fr)); justify-content:stretch; }
+.td-ground > span { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+.td-tile { position:relative; padding:3px; border-radius:8px; border:1px solid var(--glass-line); background:var(--panel-solid); color:var(--fg); font:inherit; cursor:pointer; min-height:44px; }
+.td-tile .td-map { aspect-ratio:var(--map-aspect); height:auto; }
+.td-tile b { position:absolute; left:6px; top:5px; font-size:11px; text-shadow:0 1px 2px #000; }
+.td-tile i { display:block; font-style:normal; font-size:11px; color:#ffd24a; text-align:center; margin-top:2px; }
+.td-tile.selected { border-color:var(--neon); box-shadow:0 0 0 2px var(--neon); }
+.td-tile.next:not(.selected) { border-color:#ffd24a; }
+.td-tile.locked .td-map { opacity:.35; filter:grayscale(.8); }
+.td-tile.locked i { color:var(--dim); }
 .td-hud[data-narrow=true] .td-current { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
 .td-hud[data-narrow=true] .td-next { text-align:left; font-size:14px; }
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
@@ -100,6 +133,9 @@ export class TdHud {
       if (!button || button.disabled) return;
       const index = Number(button.dataset.index);
       if (button.dataset.command === 'garageRow') this.send?.({ type: 'garageRow', row: index });
+      if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
+      if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });
+      if (button.dataset.command === 'levelBack') this.send?.({ type: 'levelBack' });
     });
   }
 
@@ -119,6 +155,8 @@ export class TdHud {
   }
   resize(L: TdLayout, W: number) {
     this.root.dataset.narrow = String(W < 560);
+    this.root.dataset.wide = String(L.field.turned);
+    this.root.style.setProperty('--map-aspect', L.field.turned ? '112 / 80' : '80 / 112');
     this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
@@ -159,9 +197,19 @@ export class TdHud {
     this.menu.hidden = !s.garage;
     if (s.garage) {
       const gv = s.garage;
-      const previous = this.menu.querySelector<HTMLElement>('.selected')?.dataset.index;
-      this.html(this.menu, `<header><h2>${esc(gv.title)}</h2><b>${gv.stars}★</b></header><p>${esc(gv.subtitle)}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`);
-      if (previous !== String(gv.sel)) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+      const sel = this.menu.querySelector<HTMLElement>('.selected');
+      const previous = sel ? `${sel.dataset.command === 'levelTile' ? 'L' : ''}${sel.dataset.index}` : undefined;
+      const auto = gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`;
+      const head = `<header><h2>${esc(gv.title)}</h2><b>${gv.stars}★</b></header><p>${esc(gv.subtitle)}</p>`;
+      const turned = L.field.turned, results = gv.rows.some((r) => r.kind === 'next' || r.kind === 'finish');
+      const body = gv.page === 'campaign'
+        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, turned)}`
+        : results
+          ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
+          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, turned)}`;
+      this.html(this.menu, head + body);
+      const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
+      if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }
 }

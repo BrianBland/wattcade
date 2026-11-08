@@ -229,6 +229,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const empDmg = T.num('empDamage', 90, 0, 1000, 5, 'EMP damage to every enemy when a surge is won');
   const startScrapT = T.num('startScrap', 60, 0, 1000, 10);
   const scrapScale = T.num('scrapMult', 1, 0.2, 5, 0.1);
+  // A level's waves climb faster than Endless (its last wave fights like Endless wave levelPeakWave + depth), so
+  // each wave also pays the scrap the Endless waves it skipped would have: base + perWave x that Endless wave.
+  const catchUpBase = T.num('levelCatchUpScrap', 60, 0, 500, 5, 'scrap per Endless wave a level skips');
+  const catchUpPer = T.num('levelCatchUpPerWave', 35, 0, 200, 5, 'extra catch-up scrap per Endless wave number');
   const overchargeS = T.num('overchargeS', 10, 1, 30, 1);
   const overchargeMult = T.num('overchargeMult', 1.5, 1, 3, 0.1, 'tower fire-rate multiplier; stacks with sprint Overdrive');
   const overchargeCd = T.num('overchargeCooldownS', 60, 5, 180, 5);
@@ -296,7 +300,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let overchargeLeft = 0, slowLeft = 0, lastSprint = false;
   let currentRefill = 1;
   const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
-  let constructionDone = false;
+  /** Work orders left this lull: one, plus one per Endless wave a level skips here. */
+  let ordersLeft = 1;
+  const constructionDoneNow = () => ordersLeft <= 0;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
   let surge: SurgeView | null = null;
   let spin: SpinView | null = null, overclock = 0;
@@ -321,7 +327,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const dealt = { player: 0, tower: 0, emp: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
-  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0 };
+  const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0, levelsCleared: 0 };
 
   // ---------- helpers ----------
   function cue(name: string) { cues.push({ name, id: ++cueId }); if (cues.length > 40) cues.shift(); }
@@ -479,9 +485,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
-    constructionDone = false;
     plan = fresh ? planFor(wave) : nextPlan;
+    ordersLeft = 1 + (play && !fresh ? Math.max(0, dw(wave) - dw(wave - 1) - 1) : 0);
     nextPlan = planFor(wave + 1);
+    if (play && !fresh) for (let fw = dw(wave - 1) + 1; fw < dw(wave); fw++) gainScrap(catchUpBase() + catchUpPer() * fw);
     waveElapsed = 0;
     escorts.length = 0;
     schedule = plan.spawns.map((s) => ({ ...s }));
@@ -613,7 +620,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function levelDone() {
     const spec = play!.spec, stars = starsFor(baseHp / baseMaxHp, starTwo(), starThree());
     if (spec.kind === 'campaign') save.campaign[spec.id] = Math.max(save.campaign[spec.id] ?? 0, stars);
-    chain++;
+    chain++; stats.levelsCleared++;
     ctx.emit({ type: 'levelCleared', data: { id: spec.id, kind: spec.kind, name: spec.name, stars, minutes: spec.minutes, waves: play!.waves.length, intensity, ground: spec.ground, chain } });
     result = { spec, stars, failed: false };
     campaignSel = campaignOpen(save.campaign);
@@ -917,7 +924,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else if (r.kind === 'sell') sell(workshop.pad);
     else if (r.kind === 'crew') { autoCrewOn = !autoCrewOn; persist(); cue('select'); }
     else purchased = repair();
-    if (purchased && lull > 0) constructionDone = true;
+    if (purchased && lull > 0) ordersLeft--;
     workshopRevision++;
     workshop.row = clamp(workshop.row, 0, workshopRows(workshop.pad).length - 1);
   }
@@ -930,14 +937,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(), maxLevel: towerCap(),
       baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo });
   }
-  function acceptSuggestion(claim?: unknown) {
-    if (lull <= 0 || constructionDone) return;
+  function acceptSuggestion(claim?: unknown): boolean {
+    if (lull <= 0 || constructionDoneNow()) return false;
     const s = recommendation();
-    if (!s) return;
+    if (!s) return false;
     // Match the exact operation displayed by the renderer; never replace a stale claim with a different purchase.
     if (claim != null) {
       const c = claim as Partial<BuildSuggestion>;
-      if (c.wave !== s.wave || c.kind !== s.kind || c.pad !== s.pad || c.tower !== s.tower || c.level !== s.level || c.targetLevel !== s.targetLevel || c.cost !== s.cost) { cue('deny'); return; }
+      if (c.wave !== s.wave || c.kind !== s.kind || c.pad !== s.pad || c.tower !== s.tower || c.level !== s.level || c.targetLevel !== s.targetLevel || c.cost !== s.cost) { cue('deny'); return false; }
     }
     let ok = false;
     if (s.kind === 'repair') ok = repair();
@@ -948,7 +955,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else if (scrap >= s.cost) {
       while (towers[s.pad]!.level < s.targetLevel) { if (!upgrade(s.pad)) break; ok = true; }
     }
-    if (ok) constructionDone = true;
+    if (ok) ordersLeft--;
+    return ok;
   }
   function cancelRail() {
     railPointers.clear(); zDown = false; zHold = 0; zDumped = false;
@@ -1060,7 +1068,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     overchargeLeft = 0; slowLeft = 0; lastSprint = false; currentRefill = 1;
     Object.assign(cooldowns.overcharge, startCooldown(0));
     Object.assign(cooldowns.slow, startCooldown(0));
-    constructionDone = false; lockId = 0; lockLeft = 0; lastPaddle = 0;
+    ordersLeft = 1; lockId = 0; lockLeft = 0; lastPaddle = 0;
     leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
@@ -1174,7 +1182,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         menuHandled = true; purchased = true;
       } else if (a.type === 'construct' && !workshop && !purchased) {
         purchased = true;
-        if (lull > 0 && !constructionDone && recommendation()) acceptSuggestion(a.suggestion);
+        if (lull > 0 && !constructionDoneNow() && recommendation()) acceptSuggestion(a.suggestion);
         else if (a.suggestion == null) { openWorkshop(); menuHandled = true; }
       } else if (a.type === 'railCancel' || a.type === 'inputCancel') { cancelRail(); menuHandled = true; }
     }
@@ -1342,7 +1350,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
     // --- spawning (the easy wave's stream runs at half rate)
     if (lull > 0) {
-      if (lull <= dt && autoCrewOn && !workshop) acceptSuggestion();
+      if (lull <= dt && autoCrewOn && !workshop) while (acceptSuggestion());
       lull = Math.max(0, lull - dt); if (lull === 0) beginWave();
     }
     else {
@@ -1416,7 +1424,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     down: { type: `${kind}Down`, epoch: inputEpoch }, up: { type: `${kind}Up`, epoch: inputEpoch }, cancel: { type: `${kind}Cancel`, epoch: inputEpoch },
   });
   const playControls = (): ControlHint[] => {
-    const suggestion = lull > 0 && !constructionDone ? recommendation() : null;
+    const suggestion = lull > 0 && !constructionDoneNow() ? recommendation() : null;
     const build = suggestion?.tower ? ({ tesla: 'Tesla', flamer: 'Flame', lens: 'Lens' })[suggestion.tower] : 'Repair';
     const order = suggestion?.tower ? `${build} Lv${suggestion.targetLevel}` : build;
     return [
@@ -1549,7 +1557,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         flaming, flameRange: flameRange(), flamePower, laserId,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap,
-        autoCrew: autoCrewOn, suggestion: phase === 'run' && lull > 0 && !constructionDone ? recommendation() : null, constructionDone,
+        autoCrew: autoCrewOn, suggestion: phase === 'run' && lull > 0 && !constructionDoneNow() ? recommendation() : null, constructionDone: constructionDoneNow(), ordersLeft: Math.max(0, ordersLeft),
         actions: actionViews(), refill: currentRefill, slowFrom: slowLeft > 0 ? slowStart() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r })),
@@ -1584,6 +1592,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         spotlessWaves, bestRunSpotless,
         bossesKilled: stats.bosses, bestRunSurges,
         overdriveSeconds: Math.round(stats.overdriveS),
+        // the save's campaign as the ride ends (achievements take the max, so each level counts once)
+        campaignCleared: Object.values(save.campaign).filter((v) => v > 0).length,
+        campaignThreeStars: Object.values(save.campaign).filter((v) => v >= 3).length,
+        campaignStars: starTotal(save.campaign), endlessBest: save.endlessBest, levelsCleared: stats.levelsCleared,
       };
     },
     dispose() { persist(); },

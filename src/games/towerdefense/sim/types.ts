@@ -105,6 +105,8 @@ export interface TdSnapshot {
   spin: SpinView | null; overclock: number;
   scrap: number;
   autoCrew: boolean; suggestion: BuildSuggestion | null; constructionDone: boolean;
+  /** Work orders left this lull (a level that climbs fast allows more than one). */
+  ordersLeft: number;
   /** `slowFrom`: road distance where an active slow field starts (it runs to the turret), -1 when off */
   actions: ActionView[]; refill: number; slowFrom: number;
   /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */

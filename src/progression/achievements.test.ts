@@ -94,13 +94,13 @@ describe('counters and goals', () => {
   });
   it('max keeps the best, with progress', () => {
     let p = defaultProfile();
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 6 } })).profile;
-    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 2 } })).profile;
-    expect(p.counters!['towerdefense.bestWave']).toBe(6);
-    expect(achievementProgress(byId('td_wave10'), p)).toEqual({ frac: 0.75, label: 'Best 6/8 waves' });
-    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { wavesSurvived: 12 } }));
-    expect(ids(r)).toContain('td_wave10');
-    expect(ids(r)).not.toContain('td_wave25');
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { campaignCleared: 4 } })).profile;
+    p = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { campaignCleared: 1 } })).profile;
+    expect(p.counters!['towerdefense.levels']).toBe(4);
+    expect(achievementProgress(byId('td_levels5'), p)).toEqual({ frac: 0.8, label: 'Best 4/5 levels' });
+    const r = awardSession(p, rec({ gameId: 'towerdefense', gameSummary: { campaignCleared: 5 } }));
+    expect(ids(r)).toContain('td_levels5');
+    expect(ids(r)).not.toContain('td_levels15');
   });
   it('sum accumulates across rides', () => {
     let p = defaultProfile();

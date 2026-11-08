@@ -44,6 +44,10 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   count, tuned so a full-length level lets you max roughly half the pads.
 - Tower Lv 1–5 costs stay as they are today (`LEVEL_COST = [1.4, 2.4, 4, 7]` × base). Balance comes from tuning
   income, not from changing costs.
+- As built (phase 7): a level's difficulty climbs faster than Endless, so each wave also pays the scrap of the
+  Endless waves it skips and grants one extra work order per skipped wave. Short deep levels were falling for lack
+  of build time, not scrap. Steady z2 autopilot clears 28 of 30 campaign levels; the two deepest 40-minute
+  finales (Overgrown V, Blight V) need more than zone 2.
 
 ## 5. Meta: unlocks replace the Garage
 
@@ -52,6 +56,9 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   intensity, and later ground styles. Unlocks gate options. They never add stat creep.
 - Save v4: unlocks, campaign progress (stars per level) and the Endless best. Old best-wave stats are dropped
   (owner OK). Profiles with Garage progress are grandfathered into the starter unlock tier.
+- As built: slow field 4★, Overcharge 8★, Lv 4 12★, Hard 20★, Lv 5 30★; grandfathered riders get 12★ of unlocks.
+  Tower kinds are not gated: each counters one brood colour, so a locked kind would make some waves unwinnable.
+  Quick Ride offers the grounds the campaign has reached.
 
 ## 6. Achievements
 
@@ -66,6 +73,9 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   - chain two levels in one ride
   - one Endless depth goal
 - Keep the lifetime tallies: kills, scrap, hours, Tyrants, calls.
+- As built: six successors take the six freed rewards one for one (every achievement grants one item): Holding the
+  Line (5 levels), Fortress (15), Unbreakable (30), Clean Sweep (3★ on 10 levels), Hard Line, Double Shift.
+  Every-style, per-colour boss, 40-minute and Endless goals wait for new reward items.
 - **Revocation:** reworked or retired achievements are revoked along with their rewards. Bump
   `RULES_VERSION` (`src/progression/levels.ts`) and list the ids in `src/progression/rebalance.ts`.
   `rebalanceProfile` must subtract the bonus XP of ids that no longer exist, using a frozen table of their old

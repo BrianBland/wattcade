@@ -5,8 +5,18 @@ export { LAST_LEVEL, PICK_EVERY } from './legacyCatalog';
 export const COSMETICS_VERSION = 2;
 export const itemKey = (it: Pick<Item, 'slot' | 'id'>) => `${it.slot}:${it.id}`;
 
+/**
+ * Rewards whose achievement was retired and that moved to a successor (Dynamo Defense levels, Nov 2026). Owning
+ * them follows the new achievement; a rider who only had the retired one loses the item with it.
+ */
+const RESOURCED: Record<string, string> = {
+  'pet:robodog': 'td_levels5', 'jersey:hazard': 'td_levels15', 'title:w_unbreakable': 'td_levels30',
+  'bottoms:w_spotless_overalls': 'td_three_stars', 'trail:embers': 'td_hard', 'pet:turret': 'td_double_shift',
+};
+const resourced = (it: Item): Item => RESOURCED[itemKey(it)] ? { ...it, source: { achievement: RESOURCED[itemKey(it)] } } : it;
+
 /** Only the current shared rewards are available; ships belong to Cadenza. */
-export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => ROTATION[itemKey(it)] ?? it).filter(it => it.slot !== 'ship').concat([
+export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey(it)] ?? it)).filter(it => it.slot !== 'ship').concat([
   { slot: 'jersey', id: 'lh_workshirt', name: 'Island workshirt', source: { achievement: 'lh_foundations' },
     look: { pattern: 'overalls', base: '#526f79', ink: '#d4bf90' } },
   { slot: 'hat', id: 'none', name: 'No headwear', source: { default: true } },

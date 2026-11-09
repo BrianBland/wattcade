@@ -15,7 +15,7 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { B, CY, V, L3, UP, THEMES, sp, tri, tone, basic, rider, mulberry, loopPts, sAt, reflection, skyRoad, clutchBridge, seesawM, cameraCrank, liveGap, matchingDoors, cloudLayer } = $scope;
+const { B, CY, V, L3, UP, THEMES, sp, tri, tone, basic, rider, mulberry, turtle, loopPts, sAt, reflection, skyRoad, clutchBridge, seesawM, cameraCrank, liveGap, matchingDoors, cloudLayer } = $scope;
 
 const UNIT_BOX = new T.BoxGeometry(1, 1, 1);
 const HX = 2.6, HY = 1.8;                         // a station loop's half-size
@@ -47,6 +47,18 @@ const loopHeading = { e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2, s: 0 };
  * keeps clear of the start point. */
 const stationAt = (F, h, dir) => dir === 'e' ? [F[0] + h[0], F[1]] : dir === 'w' ? [F[0] - h[0], F[1]] : dir === 'n' ? [F[0] + .8, F[1] + h[1]] : [F[0], F[1] - h[1]];
 const ENTRY = 1.6, GOAL = 4;
+/** A knot: the road on to the next loop runs on, swings round a 270 degree turn while it climbs (or drops) two levels,
+ * and crosses back over itself on a bridge, leaving square to the way it came. KR is the turn's radius, KA the run before
+ * it; the crossing is KA - KR along. */
+const KR = 2.6, KA = 4.8;
+function knotShape(S0, d, z, side, dz, el) {
+  const l = [-d[1] * side, d[0] * side], P = (u, v) => [S0[0] + d[0] * u + l[0] * v, S0[1] + d[1] * u + l[1] * v];
+  const box = (u0, u1, v0, v1, z0, z1) => ({ pts: [P(u0, v0), P(u1, v0), P(u1, v1), P(u0, v1)], z0, z1 });
+  const z2 = z + dz, lo = Math.min(z, z2), hi = Math.max(z, z2);
+  return { d2: [-l[0], -l[1]], z2, F: P(KA - KR, -(2 + el)), cross: P(KA - KR, 0),
+    // (the turn is checked against its own beat and the loops either side too; the straights join them)
+    parts: [{ ...box(0, KA, -.6, .6, z, z), knot: true }, { ...box(KA - KR - .6, KA + KR + .6, -.6, 2 * KR + .6, lo, hi), knot: true, strict: true }, { ...box(KA - KR - .6, KA - KR + .6, -(2 + el), KR, z2, z2), knot: true, own: true }] };
+}
 /** Which headings a beat may take for the level's camera angle. A camera join's lane and a curtain's tower stand off the
  * road along the view direction; only these headings keep them clear of the road and the loops. */
 const dirsFor = (kind, yaw) => kind === 'curtain' ? [yaw === 90 ? 'e' : 's'] : kind === 'camjoin' ? (yaw === 90 ? ['e', 'n', 'w'] : ['e', 's']) : ['e', 'n', 'w', 's'];
@@ -65,13 +77,13 @@ function beatShape(kind, E, d, z, yaw) {
   }
   if (kind === 'curtain') {
     const [vx, vy] = camDir(yaw), hc = W(3), tc = [hc[0] + 2.4 * vx, hc[1] + 2.4 * vy];
-    return { end: W(B0.gap), z, parts: [box(0, B0.gap, -.6, .6, z, z), { pts: [[tc[0] - .85, tc[1] - .85], [tc[0] + .85, tc[1] - .85], [tc[0] + .85, tc[1] + .85], [tc[0] - .85, tc[1] + .85]], z0: z - 2.4, z1: z + 3.8, tall: true }] };
+    return { end: W(B0.gap), z, parts: [box(0, B0.gap, -.6, .6, z, z), { pts: [[tc[0] - .85, tc[1] - .85], [tc[0] + .85, tc[1] - .85], [tc[0] + .85, tc[1] + .85], [tc[0] - .85, tc[1] + .85]], z0: z - 2.4, z1: z + 3.8, tall: true, air: true }] };
   }
   const wide = kind === 'gate' || kind === 'mirror' ? 1.5 : .6, parts = [box(0, B0.gap, -wide, wide, z, z)];
   // what the pool reflects is really there, up in the air off along the view diagonal: the sky road, the hung gate
   const up = (bx, sh) => ({ ...bx, pts: bx.pts.map((p) => [p[0] - sh, p[1] - sh]), tall: true });
-  if (kind === 'mirror') parts.push(up(box(-.3, B0.gap + .3, -.7, .7, -2.4, 5), 5));
-  if (kind === 'gate') parts.push(up(box(1.8, 2.6, -1.5, 1.5, -2.4, 4.8), 4.28));
+  if (kind === 'mirror') parts.push({ ...up(box(-.3, B0.gap + .3, -.7, .7, 4.8, 5), 5), air: true });    // (on two slim posts)
+  if (kind === 'gate') parts.push({ ...up(box(1.8, 2.6, -1.5, 1.5, 3.1, 4.8), 4.28), air: true });
   return { end: W(B0.gap), z, parts };
 }
 
@@ -92,12 +104,13 @@ function touch(A, B, gap) {
 }
 /** A part as drawn from yaw: its top (where the road is) and its whole column down to the land's base. */
 const onScreen = (part, yaw, top) => { const [vx, vy] = camDir(yaw), pts = [];
-  for (const p of part.pts) for (const zz of top ? [part.z0, part.z1] : [part.z0 - 3, part.z1]) pts.push([(vy * p[0] - vx * p[1]) / Math.SQRT2, (2 * zz - vx * p[0] - vy * p[1]) / Math.sqrt(6)]);
+  for (const p of part.pts) for (const zz of top || part.air ? [part.z0, part.z1] : [part.z0 - 3, part.z1]) pts.push([(vy * p[0] - vx * p[1]) / Math.SQRT2, (2 * zz - vx * p[0] - vy * p[1]) / Math.sqrt(6)]);
   return hull(pts); };
 const depth = (part, yaw) => { const [vx, vy] = camDir(yaw); let s = 0; for (const p of part.pts) s += vx * p[0] + vy * p[1]; return s / part.pts.length + (part.z0 + part.z1) / 2; };
 function clashes(part, placed, yaws) {
   for (const q of placed) {
-    if (q.k === part.k || (Math.abs(q.k - part.k) <= 1 && !q.tall && !part.tall)) continue;
+    const hard = (a, b) => (a.strict || a.own) && !b.knot;
+    if (q.k === part.k ? !(hard(part, q) || hard(q, part)) : Math.abs(q.k - part.k) <= 1 && !q.tall && !part.tall && !q.strict && !part.strict) continue;
     if (!q.tall && !part.tall && touch(part.pts, q.pts, .9)) return true;           // on the ground (towers may stand beside roads)
     for (const yaw of yaws) {
       // the nearer part, column and all, must not cover the farther one's road
@@ -117,7 +130,7 @@ function composePlan(seed) {
   const n = 3 + (R() < .45 ? 1 : 0) + (R() < .15 ? 1 : 0);
   const yaw = R() < .5 ? 90 : -90, beats = [], yaws = [0, yaw];
   const sizes = Array.from({ length: n + 1 }, () => [2 + R() * 1.1, 1.5 + R() * .7]);
-  let z = R() < .5 ? 0 : 2, keys = 0, cam = false, c = [0, 0], prev = null;
+  let z = R() < .5 ? 0 : 2, keys = 0, cam = false, c = [0, 0], prev = null, knots = R() < .6 ? 1 : 0;
   const placed = [stationPart(c, sizes[0], z, 0)], centers = [[0, 0, z]];
   for (let i = 0; i < n; i++) {
     const ok = Object.keys(BEATS).filter((b) => {
@@ -138,24 +151,32 @@ function composePlan(seed) {
       // with a little chance in it, so the chain winds round on itself rather than running off in a line
       const ds = dirsFor(kind, yaw).filter((dd) => dd !== (prev && OPP[prev]));
       let best = null;
-      for (const dir of ds) {
+      // a level with a knot to spare tries one on the way to the next loop first (if the heights allow it)
+      const ways = [null]; if (knots && !last) for (const side of [1, -1]) for (const dz of [2, -2]) ways.unshift({ side, dz });
+      for (const dir of ds) for (const kn of ways) {
         const d = DIRS[dir], E = exitOf(c, sizes[i], dir), sh = beatShape(kind, E, d, z, yaw);
-        const F = [sh.end[0] + d[0] * (last ? GOAL : ENTRY), sh.end[1] + d[1] * (last ? GOAL : ENTRY)];
-        const parts = sh.parts.map((p) => ({ ...p, k: 2 * i + 1 })).concat([{ pts: [sh.end, F, [F[0] + d[1] * .01, F[1] - d[0] * .01], [sh.end[0] + d[1] * .01, sh.end[1] - d[0] * .01]], z0: sh.z, z1: sh.z, k: 2 * i + 1 }]);
-        const nc = last ? null : stationAt(F, sizes[i + 1], dir);
-        if (nc) parts.push(stationPart(nc, sizes[i + 1], sh.z, 2 * i + 2));
-        if (parts.some((p) => clashes(p, placed, yaws))) continue;
+        let F, d2 = d, z2 = sh.z, extra;
+        if (kn) {
+          if (sh.z + kn.dz < 0 || sh.z + kn.dz > 4) continue;
+          const ks = knotShape(sh.end, d, sh.z, kn.side, kn.dz, ENTRY); F = ks.F; d2 = ks.d2; z2 = ks.z2; extra = ks.parts;
+        } else { F = [sh.end[0] + d[0] * (last ? GOAL : ENTRY), sh.end[1] + d[1] * (last ? GOAL : ENTRY)]; extra = [{ pts: [sh.end, F, [F[0] + d[1] * .01, F[1] - d[0] * .01], [sh.end[0] + d[1] * .01, sh.end[1] - d[0] * .01]], z0: sh.z, z1: sh.z }]; }
+        const parts = sh.parts.concat(extra).map((p) => ({ ...p, k: 2 * i + 1 }));
+        const dir2 = Object.keys(DIRS).find((k) => DIRS[k][0] === d2[0] && DIRS[k][1] === d2[1]);
+        const nc = last ? null : stationAt(F, sizes[i + 1], dir2);
+        if (nc) parts.push(stationPart(nc, sizes[i + 1], z2, 2 * i + 2));
+        if (parts.some((p) => clashes(p, p.strict || p.own ? placed.concat(parts.filter((q) => q !== p && (p.strict || q.k === p.k))) : placed, yaws))) continue;   // (a knot's turn also against its own beat)
         const xs = [], ys = []; for (const p of placed.concat(parts)) for (const q of p.pts) { xs.push(q[0]); ys.push(q[1]); }
-        const score = Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) + (dir === prev ? 3 : 0) + R() * 4;
-        if (!best || score < best.score) best = { kind, dir, parts, nc, z2: sh.z, score };
+        const score = Math.max(...xs) - Math.min(...xs) + Math.max(...ys) - Math.min(...ys) + (dir === prev ? 3 : 0) + R() * 4 - (kn ? 30 : 0);
+        if (!best || score < best.score) best = { kind, dir, dir2, parts, nc, z2, score, knot: kn };
       }
       chosen = best;
       if (!chosen) { ok.splice(ki, 1); w.splice(ki, 1); }
     }
     if (!chosen) break;
     const B0 = BEATS[chosen.kind]; keys += B0.keys + (B0.cam && !cam ? 1 : 0); cam = cam || !!B0.cam;
-    beats.push({ kind: chosen.kind, dir: chosen.dir, z, want: 1 + Math.floor(R() * 2) });
-    placed.push(...chosen.parts); prev = chosen.dir; z = chosen.z2;
+    beats.push({ kind: chosen.kind, dir: chosen.dir, z, want: 1 + Math.floor(R() * 2), ...(chosen.knot ? { knot: chosen.knot } : {}) });
+    if (chosen.knot) knots--;
+    placed.push(...chosen.parts); prev = chosen.dir2; z = chosen.z2;
     if (chosen.nc) { c = chosen.nc; centers.push([c[0], c[1], z]); }
   }
   const kinds = new Set(beats.map((b) => b.kind));
@@ -202,10 +223,18 @@ function buildComposed(L, plan, beats, camKey) {
     const st = { kind: b.kind, S, roads: [], key: b.key };
     // the road that ends the beat: it runs on into the next station, or is the road home
     let entry = null;
-    const finish = (from, zz) => {      // from: [x, y] where the entry road starts; it runs along d into the next station
-      const len = last ? GOAL : ENTRY, F = [from[0] + d[0] * len, from[1] + d[1] * len];
-      entry = L.road(L3([from[0], from[1], zz], [F[0], F[1], zz], UP), last ? { goal: true } : {});
-      if (!last) { const c = plan.centers?.[P.S.length] || stationAt(F, sz(P.S.length), b.dir); const T2 = station(c[0], c[1], zz); entry.joins = [{ k: 1, to: T2, s: sAt(T2, [F[0], F[1], zz]), dir: 1 }]; st.T = T2; }
+    const finish = (from, zz) => {      // from: [x, y] where the entry road starts; it runs along d (or ties a knot) into the next station
+      let F, z2 = zz;
+      if (b.knot) {
+        const kn = b.knot, ks = knotShape(from, d, zz, kn.side, kn.dz, ENTRY); F = ks.F; z2 = ks.z2;
+        const t = turtle(from[0], from[1], Math.atan2(d[1], d[0]) * 180 / Math.PI, zz);
+        t.fwd(KA - KR).gr(kn.dz / (KR + 1.5 * Math.PI * KR)).fwd(KR).arc(KR, kn.side * 270).gr(0).fwd(KR + 2 + ENTRY);
+        entry = L.road(t.pts, {}); (L.terrainIgnore ||= new Set()).add(entry); entry.selfCross = true;
+        // it stands on piers (none where it crosses itself), clear of the land
+        for (let s = .8; s < entry.L - .4; s += 2.4) { const q = entry.at(s).p; if (Math.hypot(q.x - ks.cross[0], q.z - ks.cross[1]) < 1.4) continue; CY(g, q.x, q.z, .18, -2.4, q.y - .18, stone, 12); }
+        (L.anchors ||= []).push([ks.cross[0], ks.cross[1], 1.2]);
+      } else { const len = last ? GOAL : ENTRY; F = [from[0] + d[0] * len, from[1] + d[1] * len]; entry = L.road(L3([from[0], from[1], zz], [F[0], F[1], zz], UP), last ? { goal: true } : {}); }
+      if (!last) { const c = plan.centers[P.S.length]; const T2 = station(c[0], c[1], z2); entry.joins = [{ k: 1, to: T2, s: sAt(T2, [F[0], F[1], z2]), dir: 1 }]; st.T = T2; }
       st.roads.push(entry); return entry; };
     const fork = (to, when, text) => S.forks.push({ s: sAt(S, [E[0], E[1], z]), dir: 1, to, toK: 0, when, text });
     if (b.kind === 'gate' || b.kind === 'mirror') {

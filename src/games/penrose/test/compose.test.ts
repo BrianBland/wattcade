@@ -6,7 +6,7 @@ const mulberry = (a: number) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t 
 const scope: Record<string, any> = { mulberry };
 install(scope);
 const BEATS = scope.BEATS as Record<string, { keys: number; cam?: boolean; dz: number }>;
-type Plan = { beats: Array<{ kind: string; dir: string; z: number }>; yaw: number; cam: boolean; sizes: number[][]; name: string };
+type Plan = { beats: Array<{ kind: string; dir: string; z: number; knot?: { side: number; dz: number } }>; yaw: number; cam: boolean; sizes: number[][]; name: string };
 const plans = Array.from({ length: 300 }, (_, i) => scope.composePlan(i + 1) as Plan | null).filter((p): p is Plan => !!p);
 
 describe('penrose beat composer plans', () => {
@@ -27,7 +27,7 @@ describe('penrose beat composer plans', () => {
   it('keeps heights in range, runs every curtain and camera join the way that keeps them clear of the loops', () => {
     for (const p of plans) {
       let z = p.beats[0].z;
-      for (const b of p.beats) { expect(b.z).toBe(z); z += BEATS[b.kind].dz; expect(z).toBeGreaterThanOrEqual(0); expect(z).toBeLessThanOrEqual(4); }
+      for (const b of p.beats) { expect(b.z).toBe(z); z += BEATS[b.kind].dz + (b.knot?.dz ?? 0); expect(z).toBeGreaterThanOrEqual(0); expect(z).toBeLessThanOrEqual(4); }
       for (const b of p.beats) {
         if (b.kind === 'curtain') expect(b.dir).toBe(p.yaw === 90 ? 'e' : 's');
         if (b.kind === 'camjoin') expect(p.yaw === 90 ? ['e', 'n', 'w'] : ['e', 's']).toContain(b.dir);

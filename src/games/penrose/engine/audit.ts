@@ -26,6 +26,7 @@ function auditLevel(L, o = {}) {
     const S = L.roads.filter(r => !r.noDeck || r.closed).map(r => { const pts = []; for (let s = 0; s <= r.L; s += step) { const q = r.at(s); pts.push({ s, p: q.p, q2: v2(q.p) }); } return { r, pts }; });
     const over = {}, hid = {};
     for (let a = 0; a < S.length; a++) for (let b = a; b < S.length; b++) { const A = S[a], B = S[b]; let n = 0;
+      if (a === b && A.r.selfCross) continue;   // a knot: it bridges over itself on purpose
       for (const pa of A.pts) for (const pb of B.pts) { if (a === b && Math.abs(pa.s - pb.s) < 3) continue; if (a === b && A.r.closed && A.r.L - Math.abs(pa.s - pb.s) < 3) continue;
         if (pa.q2.distanceTo(pb.q2) < .9 && pa.p.distanceTo(pb.p) > 1.4 && !(nearJoin(A.r, pa.s) && nearJoin(B.r, pb.s))) n++; }
       if (n > (a === b ? 1 : 0)) over[name(A.r) + (a === b ? '' : '×' + name(B.r))] = n; }

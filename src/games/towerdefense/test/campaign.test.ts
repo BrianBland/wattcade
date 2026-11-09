@@ -29,7 +29,7 @@ describe('level wave lists', () => {
     expect(campaignOpen({})).toBe(0);
     expect(campaignOpen({ c1: 1, c2: 3 })).toBe(2);
     expect(quickRide(5, 30)).toEqual(quickRide(5, 30));
-    expect([starsFor(0.2), starsFor(0.6), starsFor(0.95)]).toEqual([1, 2, 3]);
+    expect([starsFor(0.2), starsFor(0.6), starsFor(0.84), starsFor(0.9)]).toEqual([1, 2, 2, 3]);
   });
 });
 
@@ -90,6 +90,15 @@ describe('playing a level', () => {
     expect(easy.hp).toBeLessThan(steady.hp); expect(hard.hp).toBeGreaterThan(steady.hp);
   }, 120_000);
 
+  it('a ride well under target leaks instead of collapsing, and stars count every hit the base took', () => {
+    // zone 2 on Hard is ~60 % of the Fireball target: it used to fire nothing and fall in wave 3
+    const r = runHeadless({ game: module, script: 'z2', minutes: 25, seed: 3, simOpts: { autopilot: true, actionBot: true, play: { campaign: 0 }, intensity: 'hard', stars: 99 } });
+    const end = r.events.findIndex(e => e.type === 'levelCleared' || e.type === 'levelFailed');
+    expect(r.events[end].type).toBe('levelCleared');
+    const lost = r.events.slice(0, end).filter(e => e.type === 'baseHit').reduce((a, e) => a + Number(e.data!.dmg), 0);
+    expect(lost).toBeGreaterThan(0);
+    expect(r.events[end].data!.stars).toBe(starsFor(1 - lost / 100));
+  }, 60_000);
   it('a new rider starts Campaign I; the select screen lists campaign, quick ride, intensity and endless', () => {
     const profile = testProfile();
     const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1 });

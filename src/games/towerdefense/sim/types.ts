@@ -49,8 +49,8 @@ export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
 export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair' | 'crew'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
-export interface GarageRow { kind: 'start' | 'upgrade' | 'auto'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
-export interface GarageView { breatherLeft: number; bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
+export interface GarageRow { kind: 'start' | 'upgrade' | 'auto' | 'campaign' | 'quick' | 'intensity' | 'next' | 'finish'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
+export interface GarageView { title: string; subtitle: string; breatherLeft: number; bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
@@ -83,7 +83,10 @@ export interface TdSnapshot {
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;
   forecast: { wave: number; boss: boolean; role: WaveRole; counts: WaveForecast };
   /** where the current wave sits in its set: three work waves, a boss, then an easy recovery wave */
-  set: { set: number; pos: number; role: WaveRole };
+  set: { set: number; pos: number; of: number; role: WaveRole; warmup: boolean };
+  /** The level being played (null = Endless): its wave count and estimated minutes. */
+  run: { id: string; name: string; kind: 'campaign' | 'quick'; minutes: number; waves: number; estMinutes: number } | null;
+  intensity: 'easy' | 'steady' | 'hard';
   brood: BroodView; nextBrood: BroodInfo | null;
   boss: BossView | null; matchup: Matchup;
   effort: EffortView | null;

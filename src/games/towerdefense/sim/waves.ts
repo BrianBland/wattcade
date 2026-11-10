@@ -31,6 +31,8 @@ export interface WaveOpts {
   swarmPack: number;
   /** Glider flight routes on this map (default 3). */
   routes?: number;
+  /** The wave's role when a level's wave list sets it (default: its place in endless sets of five). */
+  role?: WaveRole;
 }
 export interface BroodOrderOpts {
   /** No colour more than this many waves in a row. */
@@ -94,8 +96,8 @@ function pickKind(el: Exclude<Element, 'blue'>, w: number, rng: () => number): K
  * What wave `w` sends before brood colouring: `heavies` = colour slots (a heavy, or a swarm pack if blue), plus
  * Glider packs, prisms and the boss. Waves are long work intervals, so a wave carries several old waves' worth.
  */
-export function waveCounts(w: number, countScale = 1): { heavies: number; dart: number; prism: number; boss: number } {
-  const role = waveRole(w), boss = role === 'boss';
+export function waveCounts(w: number, countScale = 1, role: WaveRole = waveRole(w)): { heavies: number; dart: number; prism: number; boss: number } {
+  const boss = role === 'boss';
   const k = (boss ? 0.6 : role === 'easy' ? 0.25 : 1) * countScale;
   const n = (from: Kind, f: number) => (w >= KIND_FROM[from] ? Math.max(0, Math.round(f * k)) : 0);
   // the pre-brood mix of brutes, bastions, chargers and carriers, recoloured by the brood
@@ -107,7 +109,7 @@ export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
   const routes = o.routes ?? 3, route = () => Math.floor(rng() * routes) % routes;
   const window = o.spawnWindowS;
   const spawns: Spawn[] = [];
-  const counts = waveCounts(w, o.countScale);
+  const role = o.role ?? waveRole(w), counts = waveCounts(w, o.countScale, role);
   if (counts.boss) spawns.push({ at: 3, kind: 'boss', route: -1 });
   for (let p = 0; p < counts.dart / 4; p++) { // Gliders come in packs of 4 along one flight route
     const at = 2 + rng() * window, r = route();
@@ -128,5 +130,5 @@ export function planWave(w: number, rng: () => number, o: WaveOpts): WavePlan {
   spawns.sort((a, b) => a.at - b.at);
   const tally = { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 };
   for (const s of spawns) { tally[KINDS[s.kind].color]++; if (s.route >= 0) tally.air++; }
-  return { wave: w, boss: counts.boss > 0, role: waveRole(w), spawns, brood: o.brood, counts: tally };
+  return { wave: w, boss: counts.boss > 0, role, spawns, brood: o.brood, counts: tally };
 }

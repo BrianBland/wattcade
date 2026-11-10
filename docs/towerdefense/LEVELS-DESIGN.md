@@ -12,6 +12,8 @@ exploration results, map metrics and ground-kit notes. Where the two differ, thi
   cool-down wave**: the overworld handles cool-downs.
 - Bosses follow from length: about 0–1 boss at 15 min, 1 at 20–25, 2 at 30–40 and 3 at 60 (seeded variety within
   that band). A level ends when its last wave or last boss is cleared.
+- Difficulty: a level ramps from wave 1 to a peak (`levelPeakWave` + the level's depth) over its length, so a long
+  level is longer rather than deeper; later campaign levels have more depth. (Phase 6 tuning; phase 7 retunes income.)
 - **Chaining:** the clear screen offers **Next level**. The next level starts straight away, and its warm-up wave
   is the bridge between the two levels. Scrap resets and the base is rebuilt. **Finish** returns to the overworld.
 - Clear grade: 1–3 **stars** from base HP left (clear / ≥ 50% / ≥ 90%, tunable). A fall fails the level, with

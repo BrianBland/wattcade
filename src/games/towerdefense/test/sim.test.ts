@@ -199,7 +199,8 @@ describe('garage meta', () => {
     const profile: Profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bank: 500, bestWave: 5, upgrades: {} } } });
     let saved: any = null;
     const input = new TimelineInput([
-      { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Hull Plating (120)
+      // past Campaign, Quick Ride, Intensity and Endless -> Hull Plating (120)
+      ...[0, 1, 2, 3].flatMap((i) => [{ t: 0.1 + i * 0.1, press: 'down' as const }, { t: 0.15 + i * 0.1, release: 'down' as const }]),
       { t: 0.5, press: 'a' }, { t: 0.6, release: 'a' },       // buy
       { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // start now
     ]);
@@ -217,7 +218,8 @@ describe('garage meta', () => {
   it('best wave counts from a Forward Base start', () => {
     const profile: Profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 4, bank: 0, bestWave: 12, upgrades: { headstart: 3 } } } });
     let saved: any = null;
-    const s = createGameSession({ game: module, profile, input: new TimelineInput([{ t: 0.2, press: 'b' }]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    s.sim.receive!({ type: 'garageRow', row: 3 }); // Endless
     s.step(30);
     expect(snap(s).wave).toBe(7); // 1 + 2 x 3
     s.step(30 * 60 * 8);

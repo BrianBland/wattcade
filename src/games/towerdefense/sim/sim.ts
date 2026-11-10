@@ -6,6 +6,8 @@ import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refil
 import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
+import { CAMPAIGN, INTENSITIES, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
+import { generateLevel } from './generator';
 import {
   AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
@@ -15,7 +17,7 @@ import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, creat
 import { effortMet, scheduleCall, type EffortView } from './efforts';
 import { UPGRADES, autoInvest, lvl, metaMods, partsForWave, upgradeCost, type Levels, type MetaMods } from './meta';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
-import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan } from './waves';
+import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
 import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
@@ -30,11 +32,17 @@ export interface TdOpts {
   skipGarage?: boolean;
   /** Override the `baseHp` tunable (the deep-wave fixture reinforces the base). */
   baseHp?: number;
-  /** The map to play (default: level 0, today's painted serpentine). */
+  /** The Endless map (default: level 0, today's painted serpentine). */
   level?: TdLevel;
+  /** Start straight into a level instead of Endless (headless and tests): a campaign index or a Quick Ride. */
+  play?: { campaign: number } | { quick: { seed: number; minutes: number } };
+  /** Override the saved intensity. */
+  intensity?: Intensity;
 }
 export interface TdSave {
   v: 3; bestWave: number; bank: number; upgrades: Levels; runs: number; autoInvest: boolean; autoCrew: boolean;
+  /** Campaign stars per level id, the chosen intensity, Quick Ride length and the next Quick Ride seed. */
+  campaign: Record<string, number>; intensity: Intensity; quickMinutes: number; quickSeed: number;
   totals: { waves: number; kills: number; bosses: number; towers: number; surges: number; runsFallen: number; runsBailed: number };
 }
 /** Read legacy best-wave-only, v2 and v3 saves. Retired core fields are dropped; missing totals start at zero. */
@@ -45,6 +53,8 @@ export function readSave(raw: unknown): TdSave {
     v: 3, bestWave: s.bestWave ?? 0, bank: s.bank ?? 0, upgrades: { ...(s.upgrades ?? {}) }, runs: s.runs ?? 0,
     autoInvest: s.autoInvest ?? false,
     autoCrew: typeof s.autoCrew === 'boolean' ? s.autoCrew : true,
+    campaign: { ...(s.campaign ?? {}) }, intensity: INTENSITIES.includes(s.intensity as Intensity) ? s.intensity! : 'steady',
+    quickMinutes: (QUICK_MINUTES as readonly number[]).includes(s.quickMinutes ?? 0) ? s.quickMinutes! : 20, quickSeed: s.quickSeed ?? 1,
     totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, runsFallen: 0, runsBailed: 0, ...totals },
   };
 }
@@ -69,14 +79,27 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const angDiff = (a: number, b: number) => Math.abs(a - b);
 type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) : never;
 
+const LEVEL_CACHE = new Map<string, TdLevel>();
+
 export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapshot(): TdSnapshot } {
   const T = ctx.tuning;
   // The map: every road, pad, flight and turret position comes from the level's geometry.
-  const level = opts?.level ?? LEVEL_0, geo = levelGeometry(level);
-  const { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo;
-  const BASE_X = geo.base.x, BASE_Y = geo.base.y, BASE_R = geo.baseR;
+  // Levels swap the map between runs (useLevel); Endless plays `opts.level`.
+  const endlessLevel = opts?.level ?? LEVEL_0;
+  let level = endlessLevel, geo = levelGeometry(level);
+  let { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo;
+  let BASE_X = geo.base.x, BASE_Y = geo.base.y, BASE_R = geo.baseR;
   /** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
-  const PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
+  let PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
+  /** Switches the map (between runs only: towers are cleared). */
+  function useLevel(l: TdLevel) {
+    if (l === level) return;
+    level = l; geo = levelGeometry(l);
+    ({ pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, roadAt, flightAt, flightLength, angleTo, distTo } = geo);
+    BASE_X = geo.base.x; BASE_Y = geo.base.y; BASE_R = geo.baseR;
+    PAD_ORDERS = { portrait: geo.padOrder(false), landscape: geo.padOrder(true) };
+    towers = PADS.map(() => null);
+  }
   // Combat (especially ignition chains) consumes a variable number of random draws.
   // Keep future broods, packs and swarm intervals stable when damage or rider actions change.
   const waveRng = makeRng(Math.floor(ctx.rng() * 0x1_0000_0000));
@@ -129,6 +152,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const waveMax = T.num('waveMaxS', 150, 15, 400, 1, 'a work wave ends by this time even if aliens remain');
   const easyWaveS = T.num('easyWaveS', 120, 10, 400, 5, 'the easy recovery wave that closes each set lasts this long');
   const spawnWindow = T.num('heavySpawnWindowS', 75, 3, 240, 1);
+  // levels (docs/towerdefense/LEVELS-DESIGN.md §1–2)
+  const intensityEasy = T.num('intensityEasy', 0.8, 0.4, 1, 0.05, 'Easy intensity: work-wave trainer targets (grade, level, ERG) x this');
+  const intensityHard = T.num('intensityHard', 1.15, 1, 1.6, 0.05, 'Hard intensity: work-wave trainer targets x this');
+  const intensityEasyHp = T.num('intensityEasyHp', 0.8, 0.3, 1, 0.05, 'Easy intensity: enemy HP x this');
+  const intensityHardHp = T.num('intensityHardHp', 1.25, 1, 2.5, 0.05, 'Hard intensity: enemy HP x this');
+  const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'base HP share left for a two-star level clear');
+  const starThree = T.num('starThreeHp', 0.9, 0, 1, 0.05, 'base HP share left for a three-star level clear');
+  const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
   const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each wave: brood card, countdown, no new spawns');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
   const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
@@ -204,12 +235,29 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let fromWave = mods.maxStartWave;
 
   let phase: 'garage' | 'run' = 'garage';
+  /** The level being played (null = Endless), the last level's result for the clear screen, and launch choices. */
+  let play: { spec: LevelSpec; waves: LevelWave[] } | null = null;
+  let result: { spec: LevelSpec; stars: number; failed: boolean } | null = null;
+  let intensity: Intensity = opts?.intensity ?? save.intensity;
+  let campaignSel = campaignOpen(save.campaign), chain = 0;
+  /** After an Endless run, B and the pedalling auto-start go back into Endless. */
+  let lastEndless = false;
+  const levelWave = (w: number): LevelWave | undefined => play?.waves[w - 1];
+  const roleOf = (w: number): WaveRole => play ? levelWave(w)?.role ?? 'easy' : waveRole(w);
+  const depth = () => play?.spec.depth ?? 0;
+  /**
+   * The difficulty wave (enemy mix and HP) of a level's wave `w`: the level ramps from wave 1 to its peak
+   * (levelPeakWave + depth) over its length, so a long level is longer, not deeper. Endless: the wave itself.
+   */
+  const dw = (w: number) => !play ? w : Math.round(1 + (Math.min(w, play.waves.length) - 1) * (levelPeak() + depth() - 1) / Math.max(1, play.waves.length - 1));
+  const targetK = () => intensity === 'easy' ? intensityEasy() : intensity === 'hard' ? intensityHard() : 1;
+  const hpK = () => intensity === 'easy' ? intensityEasyHp() : intensity === 'hard' ? intensityHardHp() : 1;
   let started = false;
   let garageSel = 0, garageT = 0, garageBreather = 0;
   let t = 0, nextId = 1, fxId = 0, cueId = 0;
   let enemies: Enemy[] = [];
   const spawned: Enemy[] = [];
-  const towers: Array<Tower | null> = PADS.map(() => null);
+  let towers: Array<Tower | null> = PADS.map(() => null);
   let shells: Shell[] = [];
   let burns: Burn[] = [];
   let fireballT = 0;
@@ -284,11 +332,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (phase === 'garage') { ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
     const k = rampK();
     const mix = (a: number, b: number) => a + (b - a) * k;
-    if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade()) });
-    else if (weapon === 'flame') ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: mix(lullLevel(), flameLevel()) });
+    if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade() * targetK()) });
+    else if (weapon === 'flame') ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: mix(lullLevel(), Math.min(100, flameLevel() * targetK())) });
     else {
       const target = bossView()?.sprintBoost ? bossSprintFtp()
-        : effort?.kind === 'hold' && (effort.state === 'announced' || effort.state === 'active') ? effort.targetFtp : railFtp();
+        : effort?.kind === 'hold' && (effort.state === 'announced' || effort.state === 'active') ? effort.targetFtp : railFtp() * targetK();
       ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: mix(lullFtp(), target) });
     }
   }
@@ -321,9 +369,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   function spawn(kind: Kind, route: number, d = 0) {
     const k = KINDS[kind];
-    const w1 = wave - 1;
-    const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(wave / 5) * 0.35 : 1);
-    const hp = k.hp * hs;
+    const w1 = dw(wave) - 1;
+    const hs = (1 + hpScale() * w1 + hpScale2() * w1 * w1) * (kind === 'boss' ? 1 + Math.floor(dw(wave) / 5) * 0.35 : 1);
+    const hp = k.hp * hs * hpK();
     const e: Enemy = {
       id: nextId++, kind, route, d, len: route < 0 ? ROAD_LENGTH : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
@@ -409,12 +457,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   // ---------- waves ----------
   function planFor(w: number): WavePlan {
-    const boss = waveRole(w) === 'boss';
+    const role = roleOf(w), boss = role === 'boss';
     // Bosses take turns: a boss wave avoids the last boss's colour when the brood order allows it.
     const brood = nextBrood(broods, waveRng, { maxRun: boss ? 1 : broodMaxRun(), coverWaves: broodCover(), avoid: boss ? lastBoss ?? undefined : undefined });
     if (boss) lastBoss = brood;
     broods.push(brood);
-    return planWave(w, waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes });
+    const p = planWave(dw(w), waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
+    return { ...p, wave: w };
   }
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
@@ -435,9 +484,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function beginWave() {
     ctx.emit({ type: 'waveStart', data: { wave } });
     if (plan.boss) ctx.emit({ type: 'bossPhaseStarted', data: { wave, phase: 1, color: plan.brood, weapon } });
-    const { set, pos } = setOf(wave);
-    if (plan.role === 'easy') say(`Wave ${wave} · easy`, `Set ${set} done · ride easy and recover`, '#7dffb0');
-    else if (!plan.boss) say(`Wave ${wave}`, `Set ${set} · interval ${pos} of 3`, '#cfe3ff');
+    const { set, pos, of, warmup } = setView(wave);
+    if (warmup) say(`Wave ${wave} · warm-up`, `${play!.spec.name} · ride easy and warm up`, '#7dffb0');
+    else if (plan.role === 'easy') say(`Wave ${wave} · easy`, `Set ${set} done · ride easy and recover`, '#7dffb0');
+    else if (!plan.boss) say(`Wave ${wave}`, `Set ${set} · interval ${pos} of ${of}`, '#cfe3ff');
     cue('waveStart');
     const kind = scheduleCall(callSchedule, wave, plan.boss || plan.role === 'easy', weapon, () => ((wave * 7 + ELEMENTS.indexOf(plan.brood)) % 5) / 5, callGapMin(), callGapMax());
     if (kind) {
@@ -540,13 +590,34 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     cue('waveClear');
     wave++;
     persist();
+    if (play && wave > play.waves.length) { levelDone(); return; }
     startWave(false);
   }
+  /** Where a wave sits: its set, place and the set's work-wave count (a level's list, or endless sets of five). */
+  function setView(w: number): { set: number; pos: number; of: number; role: WaveRole; warmup: boolean } {
+    const lw = levelWave(w);
+    return lw ? { set: lw.set, pos: lw.pos, of: lw.of, role: lw.role, warmup: !!lw.warmup } : { ...setOf(w), of: 3, role: roleOf(w), warmup: false };
+  }
+  /** The last wave of a level is cleared: stars from the base HP left, then the clear screen (Next level / Finish). */
+  function levelDone() {
+    const spec = play!.spec, stars = starsFor(baseHp / baseMaxHp, starTwo(), starThree());
+    if (spec.kind === 'campaign') save.campaign[spec.id] = Math.max(save.campaign[spec.id] ?? 0, stars);
+    chain++;
+    ctx.emit({ type: 'levelCleared', data: { id: spec.id, kind: spec.kind, name: spec.name, stars, minutes: spec.minutes, waves: play!.waves.length, intensity, ground: spec.ground, chain } });
+    result = { spec, stars, failed: false };
+    campaignSel = campaignOpen(save.campaign);
+    endRun('done');
+  }
 
-  function endRun(reason: 'bail' | 'fell') {
+  function endRun(reason: 'bail' | 'fell' | 'done') {
     if (phase !== 'run') return;
     if (reason === 'fell') { stats.runsFallen++; save.totals.runsFallen++; }
-    else { stats.runsBailed++; save.totals.runsBailed++; }
+    else if (reason === 'bail') { stats.runsBailed++; save.totals.runsBailed++; }
+    if (play && reason !== 'done') {
+      ctx.emit({ type: 'levelFailed', data: { id: play.spec.id, kind: play.spec.kind, reason, wave } });
+      result = reason === 'fell' ? { spec: play.spec, stars: 0, failed: true } : null;
+      chain = 0;
+    }
     // Parts already enter the bank as earned; ending a run never adds them a second time.
     persist();
     runCallsWon = 0; runSpotless = 0; runSurges = 0;
@@ -561,8 +632,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     mods = metaMods(levels, save.bestWave); fromWave = Math.min(fromWave, mods.maxStartWave);
     resetCombat();
     trainerSync();
-    say(reason === 'fell' ? 'Base fell · back to the Garage' : 'Back to the Garage', `${partsRun} parts banked · take a breather`, '#ffd24a', true);
-    cue(reason === 'fell' ? 'baseFell' : 'uiClose');
+    if (reason === 'done') say(`${result!.spec.name} cleared`, `${'★'.repeat(result!.stars)}${'☆'.repeat(3 - result!.stars)} · ${partsRun} parts banked`, '#ffd24a', true);
+    else say(reason === 'fell' ? 'Base fell · back to the Garage' : 'Back to the Garage', `${partsRun} parts banked · take a breather`, '#ffd24a', true);
+    cue(reason === 'fell' ? 'baseFell' : reason === 'done' ? 'waveClear' : 'uiClose');
+    play = null;
   }
 
   // ---------- weapons ----------
@@ -577,7 +650,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     };
     if (weapon === 'gatling') return { wave: p.wave, color: p.brood, weapon, mode: 'sim', setting: `sim ${+gatlingGrade().toFixed(1)}% grade`, cue: 'spin fast · 90+ rpm' };
     if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(flameLevel())}%`, cue: 'grind 70–80 rpm' };
-    return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
+    return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * targetK() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
   }
   /** Mounts the brood's weapon (once per wave, at the start of its lull). */
   function selectWeapon(w: Weapon) {
@@ -594,7 +667,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
    * target is full output.
    */
   function weaponDemand(): number {
-    const full = weapon === 'flame' ? 0.85 : weapon === 'rail' ? railFtp() : 0.65;
+    // the weapon is rated at the intensity's target: an Easy ride at its easier setting fights as well
+    const full = (weapon === 'flame' ? 0.85 : weapon === 'rail' ? railFtp() : 0.65) * targetK();
     return lullFtp() + (full - lullFtp()) * rampK();
   }
   /**
@@ -893,43 +967,94 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   // ---------- garage ----------
+  /** The level after `spec` on the clear screen: the next campaign level, or a fresh Quick Ride at the same length. */
+  function nextSpec(spec: LevelSpec): LevelSpec | null {
+    if (spec.kind === 'quick') return quickRide(save.quickSeed, spec.minutes);
+    return CAMPAIGN[(spec.index ?? 0) + 1] ?? null;
+  }
+  const starText = (n: number) => `${'★'.repeat(n)}${'☆'.repeat(3 - n)}`;
+  const levelDesc = (spec: LevelSpec) => {
+    const waves = levelWaves(spec.minutes, bossCount(spec.minutes, spec.seed)), bosses = waves.filter(w => w.role === 'boss').length;
+    return `${spec.minutes} min · ${waves.length} waves · ${bosses} boss${bosses === 1 ? '' : 'es'}`;
+  };
   function garageRows(): GarageRow[] {
-    const rows: GarageRow[] = [{ kind: 'start', name: 'Start run', desc: mods.maxStartWave > 1 ? `From wave ${fromWave} (◀ ▶ to change)` : 'From wave 1' }];
+    if (result) {
+      const next = result.failed ? result.spec : nextSpec(result.spec);
+      const rows: GarageRow[] = [];
+      if (next) rows.push({ kind: 'next', name: result.failed ? `Retry · ${next.name}` : `Next level · ${next.name}`, desc: `${levelDesc(next)} · starts straight away` });
+      rows.push({ kind: 'finish', name: 'Finish', desc: 'Back to the level select' });
+      return rows;
+    }
+    const c = CAMPAIGN[campaignSel], open = campaignOpen(save.campaign), got = save.campaign[c.id] ?? 0;
+    const rows: GarageRow[] = [
+      { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''}${open > 0 ? ' · ◀ ▶ level' : ''}` },
+      { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length' },
+      { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: '◀ ▶ · scales work-wave trainer targets and alien HP' },
+      { kind: 'start', name: 'Endless', desc: mods.maxStartWave > 1 ? `Sets forever · from wave ${fromWave} (◀ ▶ to change)` : 'Sets forever · from wave 1' },
+    ];
     for (const d of UPGRADES) {
-      const l = lvl(levels, d.id), maxed = l >= d.max, c = maxed ? 0 : upgradeCost(d, l);
-      rows.push({ kind: 'upgrade', id: d.id, name: d.name, desc: d.desc, level: l, max: d.max, cost: maxed ? undefined : c, affordable: !maxed && bank >= c });
+      const l = lvl(levels, d.id), maxed = l >= d.max, cost = maxed ? 0 : upgradeCost(d, l);
+      rows.push({ kind: 'upgrade', id: d.id, name: d.name, desc: d.desc, level: l, max: d.max, cost: maxed ? undefined : cost, affordable: !maxed && bank >= cost });
     }
     rows.push({ kind: 'auto', name: `Auto-invest: ${autoInvestOn ? 'ON' : 'OFF'}`, desc: 'Spend parts on the cheapest upgrades before each run' });
     return rows;
   }
+  /** A level's map, generated once per seed. */
+  function levelFor(spec: LevelSpec): TdLevel {
+    const key = `${spec.seed}|${spec.roadStyle}|${spec.ground}`;
+    let l = LEVEL_CACHE.get(key);
+    if (!l) { l = { ...generateLevel(spec.seed, { style: spec.roadStyle, ground: spec.ground }).level, name: spec.name }; LEVEL_CACHE.set(key, l); }
+    return l;
+  }
+  function startLevel(spec: LevelSpec) {
+    if (spec.kind === 'quick' && spec.seed === save.quickSeed) save.quickSeed++;
+    play = { spec, waves: levelWaves(spec.minutes, bossCount(spec.minutes, spec.seed)) };
+    useLevel(levelFor(spec));
+    startRun();
+  }
+  /** A (or the auto-start, or B) on a row. */
+  function garageAct(row: GarageRow, primary: boolean) {
+    if (row.kind === 'next') { const next = result!.failed ? result!.spec : nextSpec(result!.spec); result = null; if (next) startLevel(next); return true; }
+    if (row.kind === 'finish') { result = null; chain = 0; garageSel = 0; cue('uiClose'); return false; }
+    if (row.kind === 'campaign') { if (!primary && lastEndless) startRun(); else startLevel(CAMPAIGN[campaignSel]); return true; }
+    if (row.kind === 'quick') { startLevel(quickRide(save.quickSeed, save.quickMinutes)); return true; }
+    if (row.kind === 'start') { startRun(); return true; }
+    if (!primary) { if (lastEndless) startRun(); else startLevel(CAMPAIGN[campaignSel]); return true; }
+    if (row.kind === 'intensity') { intensity = INTENSITIES[(INTENSITIES.indexOf(intensity) + 1) % INTENSITIES.length]; cue('select'); persist(); }
+    if (row.kind === 'auto') { autoInvestOn = !autoInvestOn; cue('select'); persist(); }
+    if (row.kind === 'upgrade') {
+      if (row.affordable) {
+        bank -= row.cost!; levels[row.id!] = (row.level ?? 0) + 1; cue('buy');
+        mods = metaMods(levels, save.bestWave); fromWave = Math.min(fromWave, mods.maxStartWave);
+        if (row.id === 'headstart') fromWave = mods.maxStartWave;
+        persist();
+      } else cue('deny');
+    }
+    return false;
+  }
   function garageUpdate(dt: number, inp: Readonly<InputState>) {
     const p = (b: Button) => inp.pressed.has(b);
-    const rows = garageRows();
+    let rows = garageRows();
     let act = false;
     for (const a of pending.splice(0)) if (a.type === 'garageRow' && typeof a.row === 'number' && a.row >= 0 && a.row < rows.length) { garageSel = a.row; act = true; }
+    garageSel = Math.min(garageSel, rows.length - 1);
     if (p('up')) { garageSel = (garageSel + rows.length - 1) % rows.length; garageT = 0; cue('select'); }
     if (p('down')) { garageSel = (garageSel + 1) % rows.length; garageT = 0; cue('select'); }
-    const row = rows[garageSel];
-    if ((p('left') || p('right')) && row.kind === 'start' && mods.maxStartWave > 1) {
-      fromWave = clamp(fromWave + (p('left') ? -1 : 1), 1, mods.maxStartWave); garageT = 0; cue('select');
-    }
-    if (p('b')) { startRun(); return; }
-    if (p('a') || act) {
+    const row = rows[garageSel], step = p('left') ? -1 : p('right') ? 1 : 0;
+    if (step) {
       garageT = 0;
-      if (row.kind === 'start') { startRun(); return; }
-      if (row.kind === 'auto') { autoInvestOn = !autoInvestOn; cue('select'); persist(); }
-      if (row.kind === 'upgrade') {
-        if (row.affordable) {
-          bank -= row.cost!; levels[row.id!] = (row.level ?? 0) + 1; cue('buy');
-          mods = metaMods(levels, save.bestWave); fromWave = Math.min(fromWave, mods.maxStartWave);
-          if (row.id === 'headstart') fromWave = mods.maxStartWave;
-          persist();
-        } else cue('deny');
-      }
+      if (row.kind === 'start' && mods.maxStartWave > 1) { fromWave = clamp(fromWave + step, 1, mods.maxStartWave); cue('select'); }
+      if (row.kind === 'campaign') { campaignSel = clamp(campaignSel + step, 0, campaignOpen(save.campaign)); cue('select'); }
+      if (row.kind === 'quick') { const i = QUICK_MINUTES.indexOf(save.quickMinutes as typeof QUICK_MINUTES[number]); save.quickMinutes = QUICK_MINUTES[clamp(i + step, 0, QUICK_MINUTES.length - 1)]; cue('select'); persist(); }
+      if (row.kind === 'intensity') { intensity = INTENSITIES[clamp(INTENSITIES.indexOf(intensity) + step, 0, INTENSITIES.length - 1)]; cue('select'); persist(); }
     }
+    // B starts the first row (the campaign level, or the next level on the clear screen; Endless again after Endless)
+    rows = garageRows();
+    if (p('b')) { if (garageAct(rows[0], false)) return; }
+    if (p('a') || act) { garageT = 0; if (garageAct(rows[garageSel], true)) return; }
     if (garageBreather > 0) garageBreather = Math.max(0, garageBreather - dt);
     else if (ctx.bike().cadence3s > garageCadence()) garageT += dt;
-    if (garageT >= garageAutostart()) startRun();
+    if (garageT >= garageAutostart()) garageAct(garageRows()[0], false);
   }
   function resetCombat() {
     cancelHolds(); inputEpoch++; workshopRevision++; discardEdges = true;
@@ -940,6 +1065,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
+    if (!play) useLevel(endlessLevel);
+    lastEndless = !play; result = null;
     if (autoInvestOn || autopilot) { const r = autoInvest(bank, levels); bank = r.bank; mods = metaMods(levels, save.bestWave); }
     if (autopilot) fromWave = mods.maxStartWave;
     phase = 'run';
@@ -958,8 +1085,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     callSchedule.nextWave = 2; callSchedule.lastWave = 0;
     trainerSync();
     baseMaxHp = baseHpMax() * mods.hpMult; baseHp = baseMaxHp;
-    wave = clamp(fromWave, 1, mods.maxStartWave);
-    scrap = Math.round(startScrapT() + mods.startScrap + (wave - 1) * 35);
+    wave = play ? 1 : clamp(fromWave, 1, mods.maxStartWave);
+    // a deeper level starts with the scrap a Forward Base start at that wave would have
+    scrap = Math.round(startScrapT() + mods.startScrap + (wave - 1) * 35 + depth() * 20);
     lastRevs = ctx.bike().crankRevs;
     persist();
     cue('go');
@@ -1137,8 +1265,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (overdrive && !wasOd) { cue('overdrive'); ctx.emit({ type: 'overdrive' }); }
     // The opening lasts a few seconds and the boss often dies before it; a sprint that lands inside it is the answer.
     if (overdrive) for (const e of enemies) if (!e.dead && e.boss?.exposed) { exposedSprinted = true; exposedBossIds.add(e.id); }
-    railCharging = bike.ftpFraction >= railMinFtp() && railCharges < railCap();
-    if (bike.ftpFraction >= railMinFtp()) {
+    railCharging = bike.ftpFraction >= railMinFtp() * targetK() && railCharges < railCap();
+    if (bike.ftpFraction >= railMinFtp() * targetK()) {
       railProgress += (dt / railPeriod()) * Math.min(1.5, bike.ftpFraction / 0.95) * mods.railRate;
       if (railProgress >= 1) {
         if (railCharges < railCap()) { railCharges++; railProgress -= 1; cue('railReady'); } else railProgress = 0;
@@ -1249,7 +1377,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function update(dt: Seconds) {
     if (!started) {
       started = true; lastRevs = ctx.bike().crankRevs;
-      if (opts?.skipGarage || autopilot || save.runs === 0) startRun();
+      const pl = opts?.play;
+      if (pl) startLevel('campaign' in pl ? CAMPAIGN[clamp(pl.campaign, 0, CAMPAIGN.length - 1)] : quickRide(pl.quick.seed, pl.quick.minutes));
+      else if (opts?.skipGarage || autopilot) startRun();
+      else if (save.runs === 0) startLevel(CAMPAIGN[0]); // a new rider starts the campaign
     }
     t += dt;
     const rawInput = ctx.input();
@@ -1276,7 +1407,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     save.upgrades = levels;
     save.autoInvest = autoInvestOn;
     save.autoCrew = autoCrewOn;
-    ctx.save({ ...save, totals: { ...save.totals }, upgrades: { ...levels } });
+    save.intensity = intensity;
+    ctx.save({ ...save, totals: { ...save.totals }, upgrades: { ...levels }, campaign: { ...save.campaign } });
   }
   const bestWave = () => Math.max(save.bestWave, phase === 'run' ? wave - 1 : 0);
   let killsBanked = 0;
@@ -1345,7 +1477,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullS(), rampS: rampS() };
   }
   function garageView(): GarageView {
-    return { breatherLeft: garageBreather, bank: Math.round(bank), sel: garageSel, rows: garageRows(), startWave: fromWave, maxStartWave: mods.maxStartWave, autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), autoInvest: autoInvestOn, bestWave: save.bestWave, runs: save.runs };
+    const title = result ? (result.failed ? `${result.spec.name} · base fell` : `${result.spec.name} cleared · ${starText(result.stars)}`) : 'Choose a ride';
+    const subtitle = result ? (result.failed ? 'No stars this time' : chain > 1 ? `${chain} levels in a row` : 'Next level or finish') : `Campaign ${Object.keys(save.campaign).length}/${CAMPAIGN.length} cleared · Endless best wave ${save.bestWave}`;
+    return { title, subtitle, breatherLeft: garageBreather, bank: Math.round(bank), sel: garageSel, rows: garageRows(), startWave: fromWave, maxStartWave: mods.maxStartWave, autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), autoInvest: autoInvestOn, bestWave: save.bestWave, runs: save.runs };
   }
   function workshopView(): WorkshopView | null {
     if (!workshop) return null;
@@ -1363,7 +1497,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   return {
     update,
     isOver: () => false,
-    menuActions: () => phase === 'run' ? [{ id: 'garage', label: 'Return to Garage · bank parts', action: { type: 'bail' } }] : [],
+    menuActions: () => phase === 'run' ? [{ id: 'garage', label: play ? 'Quit level · back to the level select' : 'Return to Garage · bank parts', action: { type: 'bail' } }] : [],
     inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
@@ -1408,7 +1542,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },
-        set: { ...setOf(wave), role: waveRole(wave) },
+        set: setView(wave),
+        run: play ? { id: play.spec.id, name: play.spec.name, kind: play.spec.kind, minutes: play.spec.minutes, waves: play.waves.length, estMinutes: estimateMinutes(play.waves) } : null,
+        intensity,
         boss: bossView(), matchup: matchup(), effort: effort ? { ...effort } : null,
         brood: broodView(), nextBrood: nextPlan ? broodInfo(nextPlan) : null,
         baseHp, baseMaxHp, baseHurt,

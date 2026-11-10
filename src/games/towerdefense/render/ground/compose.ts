@@ -98,6 +98,27 @@ export function roadIndex(line: readonly Pt[], band: number) {
   };
 }
 
+const BANDS = new WeakMap<TdLevel, number>();
+/**
+ * How far the gravel reaches from the road's centre line: 7.5 past the shoulder, narrowed where the road passes close
+ * to itself (a switchback's rows) so a strip of ground still shows between the passes. Bridges are crossings, not
+ * near passes, and stretches within 30 units of each other along the road are the same bend.
+ */
+export function gravelBand(level: TdLevel): number {
+  const known = BANDS.get(level);
+  if (known !== undefined) return known;
+  const hw = level.roadHalfWidth, sh = level.shoulder, line = levelGeometry(level).road, bridges = level.bridges ?? [];
+  const s: number[] = [0];
+  for (let i = 1; i < line.length; i++) s.push(s[i - 1] + Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y));
+  const open = line.map(p => bridges.every(b => Math.hypot(p.x - b.x, p.y - b.y) > hw * 3.4));
+  let clear = Infinity;
+  for (let i = 0; i < line.length; i++) if (open[i]) for (let j = i + 1; j < line.length; j++)
+    if (open[j] && s[j] - s[i] > 30) clear = Math.min(clear, Math.hypot(line[i].x - line[j].x, line[i].y - line[j].y));
+  const band = Math.max(hw + sh + 3.7, Math.min(hw + sh + 7.5, clear / 2 - 0.5));
+  BANDS.set(level, band);
+  return band;
+}
+
 /**
  * Composites the ground for `level` over `box` at K pixels per unit into `out` (RGBA, (box.w·K)×(box.h·K)), yielding
  * after every `rows` rows (the value is the share done). Layers: two bombed ground materials mixed by noise, the hive
@@ -108,7 +129,7 @@ export function* composeGround(level: TdLevel, kit: KitManifest, px: KitPixels, 
   const W = Math.round(box.w * K), H = Math.round(box.h * K);
   if (out.length < W * H * 4) throw new Error('composeGround: buffer too small');
   const geo = levelGeometry(level), hw = level.roadHalfWidth, sh = level.shoulder;
-  const rim = hw + sh + 2.2, band = hw + sh + 7.5, near = roadIndex(geo.road, band);
+  const rim = hw + sh + 2.2, band = gravelBand(level), near = roadIndex(geo.road, band);
   const groundA = bombed(px.groundA, 11, 1), groundB = bombed(px.groundB, 11, 5), gravel = bombed(px.gravel, 4.5, 3), hive = bombed(px.hive, 9, 7, true);
   const RD = px.road, cy = RD.h / 2, period = RD.w / RD.ppu;
   const T = level.turret, apronScale = level.turretR / 11;
@@ -165,7 +186,7 @@ export interface Placement { kind: 'decal' | 'prop' | 'mouth'; i: number; x: num
  * turret, props apart from each other. Seeded from the level, so a level always looks the same.
  */
 export function scatterPlan(level: TdLevel, kit: KitManifest, box: WorldBox): Placement[] {
-  const geo = levelGeometry(level), hw = level.roadHalfWidth, sh = level.shoulder, band = hw + sh + 7.5;
+  const geo = levelGeometry(level), hw = level.roadHalfWidth, sh = level.shoulder, band = gravelBand(level);
   const clear = (p: Pt, r: number) => geo.distanceToRoad(p) > hw + sh + r && level.pads.every(q => Math.hypot(q.x - p.x, q.y - p.y) > 6 + r)
     && Math.hypot(p.x - level.turret.x, p.y - level.turret.y) > level.turretR + 6 + r;
   let seed = 11 + ((level.seed ?? 0) % 100000) * 7 + level.id.length; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;

@@ -1,12 +1,12 @@
-// Seeded level generator: a deliberately drawn road in one of four styles, pads placed by a coverage search, and
+// Seeded level generator: a deliberately drawn road in one of six styles, pads placed by a coverage search, and
 // validators. Pure and deterministic (its own seeded rng): no DOM, no Math.random. Findings behind the numbers:
 // docs/towerdefense/LEVELS-HANDOFF.md §5 (branch td-ground-spike) and scripts/td-map-lab.
 import { makeRng } from '../../../core/rng';
 import { NARROW_ROAD, distanceToLine, type TdLevel } from './level';
 import { FIELD_H, FIELD_W, PAD_R, splineLine, type Pt } from './road';
 
-export type RoadStyle = 'zigzag' | 'trident' | 'lasso' | 'ring';
-export const ROAD_STYLES: readonly RoadStyle[] = ['zigzag', 'trident', 'lasso', 'ring'];
+export type RoadStyle = 'zigzag' | 'trident' | 'lasso' | 'ring' | 'switchback' | 'crossover';
+export const ROAD_STYLES: readonly RoadStyle[] = ['zigzag', 'trident', 'lasso', 'ring', 'switchback', 'crossover'];
 /** Ground kits (docs/towerdefense/ground-kit): the renderer draws a level in its style's kit. */
 export const GROUND_STYLES = ['outpost', 'scrapyard', 'badlands', 'volcanic', 'overgrown', 'blight'] as const;
 export type GroundStyle = typeof GROUND_STYLES[number];
@@ -22,8 +22,10 @@ export const PAD_BOX = { x0: PAD_R + 1, x1: 71, y0: 14, y1: 97 };
 export const LENGTH_BAND = { min: 230, max: 335 };
 /** Separate road passes keep this far apart (centre lines), away from bridges: a visible strip of ground between. */
 const MIN_SELF_CLEAR = 13;
-/** A level may hold fewer than the 12 pads asked for when its road leaves less room, but never fewer than this. */
+/** A level may hold fewer pads than asked for when its road leaves less room, but never fewer than this (for 12 asked). */
 export const MIN_PADS = 10;
+/** The fewest pads a level asking for `n` may settle for: two short of `n`, at most MIN_PADS, at least 4. */
+export const minPads = (n: number) => Math.min(MIN_PADS, Math.max(4, n - 2));
 const PAD_GAP = PAD_R * 2 + 4; // centre to centre
 const PAD_ROAD = NARROW_ROAD.roadHalfWidth + SHOULDER + PAD_R + 1; // centre to road centre line
 
@@ -110,7 +112,59 @@ function ring(rng: Rng): Pt[] {
     .line({ x: 40, y: 92 }).line(TURRET).pts;
 }
 
-const BUILDERS: Record<RoadStyle, (rng: Rng) => Pt[]> = { zigzag, trident, lasso, ring };
+/** Tight switchbacks in a narrow middle column (no room for pads between rows): pads line the flanks. */
+function switchback(rng: Rng): Pt[] {
+  const rows = 5, sp = between(rng, 16.5, 17.5), r = sp / 2; // rows a visible strip apart, too close for pads between
+  const xL = between(rng, 19, 21) + r, xR = between(rng, 59, 61) - r, y0 = between(rng, 14, 17);
+  const p = new Path(...HIVE, { x: xR + r, y: -8 }).line({ x: xR + r, y: y0 - r }).arc({ x: xR, y: y0 - r }, 90);
+  let left = true;
+  for (let i = 0; i < rows - 1; i++) {
+    const y = y0 + i * sp;
+    if (left) p.line({ x: xL, y }).arc({ x: xL, y: y + r }, -180);
+    else p.line({ x: xR, y }).arc({ x: xR, y: y + r }, 180);
+    left = !left;
+  }
+  const yl = y0 + (rows - 1) * sp, r2 = Math.min(8, (TURRET.y - yl) / 2.5);
+  if (left) p.line({ x: 40 + r2, y: yl }).arc({ x: 40 + r2, y: yl + r2 }, -90);
+  else p.line({ x: 40 - r2, y: yl }).arc({ x: 40 - r2, y: yl + r2 }, 90);
+  return p.line(TURRET).pts;
+}
+
+/** Down the side, back across in two rows climbing the field, then straight down the middle over both on bridges. */
+function crossover(rng: Rng): Pt[] {
+  const xS = between(rng, 75.3, 76), yA = between(rng, 76, 80), sp = between(rng, 26, 29), yB = yA - sp, rA = between(rng, 11, 13), rU = sp / 2;
+  const xUL = between(rng, 29, 32), xUR = between(rng, 45, 47), rT = between(rng, 4.5, 5.5);
+  return new Path(...HIVE, { x: xS, y: -8 }).line({ x: xS, y: yA - rA }).arc({ x: xS - rA, y: yA - rA }, 90)
+    .line({ x: xUL, y: yA }).arc({ x: xUL, y: yA - rU }, 180)
+    .line({ x: xUR, y: yB }).arc({ x: xUR, y: yB - rU }, -180)
+    .line({ x: TURRET.x + rT, y: yB - sp }).arc({ x: TURRET.x + rT, y: yB - sp + rT }, -90)
+    .line(TURRET).pts;
+}
+
+const BUILDERS: Record<RoadStyle, (rng: Rng) => Pt[]> = { zigzag, trident, lasso, ring, switchback, crossover };
+/**
+ * What each style can hold and the coverage bar it is searched to (a lower bar is the style's character, not a miss):
+ * a switchback's rows sit too close for pads between them, so pads line its ends and the flamer reaches about half
+ * the road; a crossover's two bridges leave the middle loop open. Bars measured over seeds 1–3 at 6–16 pads.
+ */
+export const STYLE_FIT: Record<RoadStyle, { pads: [number, number]; flame: number; gap: number }> = {
+  zigzag: { pads: [6, 16], flame: 0.88, gap: 22 },
+  trident: { pads: [6, 16], flame: 0.88, gap: 22 },
+  lasso: { pads: [6, 14], flame: 0.88, gap: 22 },
+  ring: { pads: [6, 16], flame: 0.88, gap: 22 },
+  switchback: { pads: [10, 14], flame: 0.58, gap: 28 },
+  crossover: { pads: [8, 14], flame: 0.76, gap: 22 },
+};
+/** The pads a style gets when `asked` are wanted: clamped to what it holds. */
+export const padsFor = (style: RoadStyle, asked = 12) => {
+  const [lo, hi] = STYLE_FIT[style].pads;
+  return Math.max(lo, Math.min(hi, Math.round(asked)));
+};
+/** The bar a level must clear: the style's, eased a little below 8 pads (few pads cannot reach every bend). */
+const barFor = (style: RoadStyle, pads: number) => {
+  const f = STYLE_FIT[style], ease = pads < 8 ? 0.92 : 1;
+  return { flame: f.flame * ease, gap: f.gap / ease };
+};
 
 // ---------- measuring a road ----------
 type RoadPt = Pt & { s: number };
@@ -243,11 +297,12 @@ function searchPads(f: Field, rng: Rng, n: number, iterations: number, log?: str
     if (distanceToLine(p, f.road.line) < PAD_ROAD) continue;
     cands.push(p);
   }
-  if (cands.length < MIN_PADS) { log?.push(`only ${cands.length} pad spots`); return []; }
+  const least = minPads(n);
+  if (cands.length < least) { log?.push(`only ${cands.length} pad spots`); return []; }
   const G2 = PAD_GAP * PAD_GAP;
   const fits = (sel: readonly number[], c: number, skip: number) =>
     sel.every((o, i) => i === skip || (cands[o].x - cands[c].x) ** 2 + (cands[o].y - cands[c].y) ** 2 >= G2);
-  // a spaced start: the fullest of a few random packings (a cramped road may hold fewer than n, down to MIN_PADS)
+  // a spaced start: the fullest of a few random packings (a cramped road may hold fewer than n, down to minPads(n))
   let sel: number[] = [];
   for (let k = 0; k < 8 && sel.length < n; k++) {
     const order = cands.map((_, i) => i);
@@ -256,7 +311,7 @@ function searchPads(f: Field, rng: Rng, n: number, iterations: number, log?: str
     for (const c of order) if (pack.length < n && fits(pack, c, -1)) pack.push(c);
     if (pack.length > sel.length) sel = pack;
   }
-  if (sel.length < MIN_PADS) { log?.push(`${cands.length} spots, ${sel.length} spaced`); return []; }
+  if (sel.length < least) { log?.push(`${cands.length} spots, ${sel.length} spaced`); return []; }
   n = sel.length;
   const value = (s: readonly number[]) => {
     const m = metrics(f, s.map(i => cands[i]));
@@ -321,13 +376,13 @@ const mirrorX = (p: Pt): Pt => ({ x: FIELD_W - p.x, y: p.y });
 
 /**
  * A level from a seed: road style (given or seeded), mirrored half the time, narrow-road sizes, searched pads. Retries
- * with derived seeds until the level validates and its coverage clears the bar (Flamer reach ≥ 88%, gap ≤ 22).
+ * with derived seeds until the level validates and clears its style's coverage bar (STYLE_FIT), else the best-covered try.
  */
 export function generateLevel(seed: number, opts: GenOpts = {}): Generated {
   const top = makeRng(seed >>> 0 || 1);
   const style = opts.style ?? ROAD_STYLES[Math.floor(top() * ROAD_STYLES.length)];
   const ground = opts.ground ?? GROUND_STYLES[Math.floor(top() * GROUND_STYLES.length)];
-  const nPads = opts.pads ?? 12, iterations = opts.iterations ?? 12000, log = opts.log;
+  const nPads = padsFor(style, opts.pads), bar = barFor(style, nPads), iterations = opts.iterations ?? 12000, log = opts.log;
   let fallback: Generated | null = null;
   for (let attempt = 1; attempt <= 12; attempt++) {
     const rng = makeRng(Math.floor(top() * 0x7fff_ffff) + 1);
@@ -342,7 +397,7 @@ export function generateLevel(seed: number, opts: GenOpts = {}): Generated {
     const field: Field = { road, bridges, air, samples, selfClear, roadDist: roadDistance(road.line),
       reach: reachable(road.line, bridges, NARROW_ROAD.roadHalfWidth + SHOULDER + 1.5) };
     const pads = searchPads(field, rng, nPads, iterations, opts.log);
-    if (pads.length < MIN_PADS) { log?.push(`${style} no room for ${MIN_PADS} pads`); continue; }
+    if (pads.length < minPads(nPads)) { log?.push(`${style} no room for ${minPads(nPads)} pads`); continue; }
     const names = padNames(pads);
     const level: TdLevel = {
       id: `gen-${seed}`, name: `${style[0].toUpperCase()}${style.slice(1)} ${seed}`, style: ground, seed, roadStyle: style,
@@ -352,7 +407,7 @@ export function generateLevel(seed: number, opts: GenOpts = {}): Generated {
     const m = metrics(field, pads), problems = validateLevel(level);
     const result = { level, style, attempts: attempt, metrics: m };
     if (problems.length) { log?.push(`${style} ${problems.join('; ')}`); continue; }
-    if (m.flame >= 0.88 && m.gap <= 22) return result;
+    if (m.flame >= bar.flame && m.gap <= bar.gap) return result;
     if (!fallback || m.flame > fallback.metrics.flame) fallback = result;
   }
   if (fallback) return fallback;

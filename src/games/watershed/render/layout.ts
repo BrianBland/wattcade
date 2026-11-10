@@ -14,23 +14,35 @@ export interface Layout {
   plan: Box;      // top-centre: the ride timeline
   meter: Box;     // water-style meter (heavy ↔ light) under the block card
   popup: Box;     // centred instruction popup (one or two lines)
+  /** Wide screen: the HUD cards sit in one strip along the top and the overview turns sideways (camFit). */
+  wide: boolean;
+  /** NDC band (of the un-offset camera, −1 bottom … 1 top) the overview valley must fit in: below the top strip, above the shell HUD. */
+  band: { yLo: number; yHi: number };
+  /** The "reset view" chip shown while the player has moved the camera: right edge, under the stats card. */
+  camChip: Box;
 }
 
 export function layout(W: number, H: number, insetB: number): Layout {
   const b = Math.max(0, Math.min(insetB, H / 2));
   const UH = Math.max(120, H - b);
   const pad = 12, colW = Math.min(W - 2 * pad, 290);
-  // left column: block card, then the ride timeline, then the water meter; stats top-right. The top-centre stays
-  // clear: in the up-valley view that's where the spring and the head of the valley are.
+  // Wide (landscape iPad): block · timeline/meter · stats in one strip across the top, so the sideways overview gets
+  // the whole width below it. Otherwise a left column (block card, ride timeline, water meter) with stats top-right;
+  // the top-centre stays clear: in the upright view that's where the spring and the head of the valley are.
+  const wide = W >= 860 && W / UH >= 1.2;
   const block: Box = { x: pad, y: pad, w: colW, h: 96 };
-  const plan: Box = { x: pad, y: block.y + block.h + 6, w: colW, h: 34 };
-  const meter: Box = { x: pad, y: plan.y + plan.h + 6, w: colW, h: 44 };
+  const plan: Box = wide ? { x: block.x + block.w + 8, y: pad, w: colW, h: 34 } : { x: pad, y: block.y + block.h + 6, w: colW, h: 34 };
+  const meter: Box = { x: plan.x, y: plan.y + plan.h + 6, w: colW, h: 44 };
   const narrow = W < 700;
   const stats: Box = narrow ? { x: pad, y: meter.y + meter.h + 6, w: colW, h: 70 } : { x: W - pad - 210, y: pad, w: 210, h: 96 };
   const pw = Math.min(W - 2 * pad, 600), ph = 92;
-  const below = narrow ? stats.y + stats.h + 12 : pad;
+  const below = narrow ? stats.y + stats.h + 12 : wide ? block.y + block.h + 12 : pad;
   const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.3), UH - ph - pad), w: pw, h: ph };
-  return { UH, viewOffsetY: b / 2, focusY: UH / 2, block, stats, plan, meter, popup };
+  const camChip: Box = { x: W - pad - 120, y: Math.max(pad, Math.min(UH - 40 - pad, stats.y + stats.h + 8)), w: 120, h: 40 };
+  // the overview's band: below the top strip when wide; otherwise up to the top (the column only covers sky/peaks)
+  const off = b / 2, top = wide ? block.y + block.h + 4 : 0;
+  const ndc = (row: number) => 1 - (2 * (row + off)) / H;
+  return { UH, viewOffsetY: off, focusY: UH / 2, block, stats, plan, meter, popup, wide, band: { yLo: ndc(UH - 4), yHi: ndc(top) }, camChip };
 }
 
 /**

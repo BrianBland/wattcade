@@ -15,7 +15,7 @@ const state = (patch: Partial<ConstructionState> = {}): ConstructionState => ({
   scrap: 1000, costMult: 1, baseHp: 100, baseMaxHp: 100, repairCost: 42, ...patch,
 });
 function session(input = new TimelineInput(), extra: Record<string, unknown> = {}, profile = testProfile()) {
-  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true, autoCrew: false, ...extra } });
+  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, autoCrew: false, ...extra } });
 }
 
 describe('crew recommendation', () => {
@@ -78,7 +78,9 @@ describe('construction input and persistence', () => {
     expect(after.constructionDone).toBe(true);
   });
   it('migrates old saves additively and preserves an explicit Commander choice', () => {
-    expect(readSave({ bestWave: 10, bank: 420, autoInvest: true })).toMatchObject({ bestWave: 10, bank: 420, autoInvest: true, autoCrew: true });
+    const old = readSave({ bestWave: 10, bank: 420, autoInvest: true });
+    expect(old).toMatchObject({ v: 4, veteran: true, endlessBest: 0, autoCrew: true });
+    expect(old).not.toHaveProperty('bank'); expect(old).not.toHaveProperty('bestWave');
     expect(readSave({ v: 2, autoCrew: false }).autoCrew).toBe(false);
   });
   it('controller A and a suggestion tap accept the same work order once per lull', () => {
@@ -124,7 +126,7 @@ describe('construction input and persistence', () => {
     let saved: unknown;
     const input = new TimelineInput([{ t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, { t: 0.4, press: 'a' }]);
     const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 1,
-      simOpts: { skipGarage: true }, onSave: d => { saved = d; } });
+      simOpts: { stars: 99, skipGarage: true }, onSave: d => { saved = d; } });
     s.step(1); s.sim.receive!({ type: 'pad', pad: BASE_PAD }); s.step(1);
     expect(snap(s).workshop!.rows[0].kind).toBe('repair');
     s.step(15); expect(snap(s).autoCrew).toBe(false);

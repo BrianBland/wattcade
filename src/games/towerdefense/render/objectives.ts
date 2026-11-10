@@ -40,6 +40,7 @@ export function rideObjective(s: TdSnapshot): RideObjective {
 export function crewStatus(s: TdSnapshot): { title: string; detail: string } {
   const title = `Auto-crew ${s.autoCrew ? 'on' : 'off'}`;
   if (s.constructionDone) return { title, detail: 'Order complete · next order at recovery' };
-  if (s.suggestion) return { title, detail: `${s.autoCrew ? 'Queued' : 'Suggested'}: ${s.suggestion.label} · ${s.suggestion.cost} scrap` };
+  const more = (s.ordersLeft ?? 1) > 1 ? ` · ${s.ordersLeft} orders this recovery` : '';
+  if (s.suggestion) return { title, detail: `${s.autoCrew ? 'Queued' : 'Suggested'}: ${s.suggestion.label} · ${s.suggestion.cost} scrap${more}` };
   return { title, detail: s.autoCrew ? 'Plans the next order during recovery' : 'Accept a suggested order or use Workshop' };
 }

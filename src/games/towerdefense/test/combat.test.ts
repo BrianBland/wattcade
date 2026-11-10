@@ -42,7 +42,7 @@ describe('element matchups', () => {
   });
   it('chains fire kills with a shared burst budget and emits renderer events', () => {
     const events: GameEvent[] = [];
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { autopilot: true }, onEmit: (e) => events.push(e) });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, autopilot: true }, onEmit: (e) => events.push(e) });
     s.tuning.set('towerdefense.ignitionChance', 1);
     s.tuning.set('towerdefense.ignitionRadius', 25);
     s.tuning.set('towerdefense.ignitionDamage', 100);
@@ -137,8 +137,8 @@ describe('boss ladder', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
-      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
-      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+      profile: testProfile(),
+      input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
@@ -161,8 +161,8 @@ describe('boss ladder', () => {
     const ride = (sprint: boolean) => {
       const events: Array<GameEvent & { t: number }> = [];
       const s = createGameSession({ game: module,
-        profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
-        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true }, onEmit: (e) => events.push(e) });
+        profile: testProfile(),
+        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true }, onEmit: (e) => events.push(e) });
       // Keep the route within reach to isolate the sprint damage bonus from
       // whether the boss reaches the turret during an Exposed window.
       s.tuning.set('towerdefense.turretRange', 200);
@@ -186,8 +186,8 @@ describe('boss ladder', () => {
   });
   it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
     const s = createGameSession({ game: module,
-      profile: testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bestWave: 12, upgrades: { headstart: 4 } } } }),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true, autoCrew: false } });
+      profile: testProfile(),
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true, autoCrew: false } });
     s.tuning.set('towerdefense.railLaserDps', 1);
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);

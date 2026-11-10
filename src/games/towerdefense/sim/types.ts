@@ -1,13 +1,13 @@
 // Snapshot view-model shared by the sim, renderer and tests. Plain data only.
 import type { Element, Kind, Matchup, TowerKind, Weapon } from './defs';
-import type { UpgradeId } from './meta';
 import type { EffortKind, EffortView } from './efforts';
 import type { BuildSuggestion } from './construction';
 import type { WaveRole } from './waves';
 import type { TdLevel } from './level';
 
 export type ActionId = 'rail' | 'overcharge' | 'slow';
-export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number }
+/** `locked`: not yet unlocked with campaign stars (shown, never usable). */
+export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number; locked?: boolean }
 
 /** How a hit landed under the matchup matrix. */
 export type HitClass = 'strong' | 'neutral' | 'resisted';
@@ -49,8 +49,9 @@ export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
 export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair' | 'crew'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
-export interface GarageRow { kind: 'start' | 'upgrade' | 'auto' | 'campaign' | 'quick' | 'intensity' | 'next' | 'finish'; id?: UpgradeId; name: string; desc: string; level?: number; max?: number; cost?: number; affordable?: boolean }
-export interface GarageView { title: string; subtitle: string; breatherLeft: number; bank: number; sel: number; rows: GarageRow[]; startWave: number; maxStartWave: number; autoLeft: number; autoS: number; autoInvest: boolean; bestWave: number; runs: number }
+/** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
+export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
+export interface GarageView { title: string; subtitle: string; breatherLeft: number; sel: number; rows: GarageRow[]; autoLeft: number; autoS: number; stars: number; endlessBest: number; runs: number }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }
@@ -102,8 +103,10 @@ export interface TdSnapshot {
   surge: SurgeView | null;
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;
-  scrap: number; partsRun: number; bank: number;
+  scrap: number;
   autoCrew: boolean; suggestion: BuildSuggestion | null; constructionDone: boolean;
+  /** Work orders left this lull (a level that climbs fast allows more than one). */
+  ordersLeft: number;
   /** `slowFrom`: road distance where an active slow field starts (it runs to the turret), -1 when off */
   actions: ActionView[]; refill: number; slowFrom: number;
   /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */

@@ -18,7 +18,7 @@ const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as Td
 const action = (s: ReturnType<typeof createGameSession>, id: ActionId) => snap(s).actions.find(a => a.id === id)!;
 function rig() {
   const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1,
-    simOpts: { skipGarage: true, autoCrew: false } });
+    simOpts: { stars: 99, skipGarage: true, autoCrew: false } });
   s.tuning.set('towerdefense.startScrap', 1000);
   s.tuning.set('towerdefense.baseHp', 1000); // isolate input behavior from falling mid-gesture
   s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railLaserDps', 0);
@@ -108,7 +108,7 @@ describe('three combat actions and input contexts', () => {
     }
   });
   it('unusable actions do not consume their cooldowns', () => {
-    const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true, autoCrew: false } });
+    const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, autoCrew: false } });
     pad.tap('b'); pad.tap('y'); s.step(1);
     expect(action(s, 'overcharge').ready).toBe(true); expect(action(s, 'slow').ready).toBe(true);
     expect(action(s, 'rail').ready).toBe(false);
@@ -127,7 +127,7 @@ describe('passive versus active riders', () => {
     let passiveWaves = 0, activeWaves = 0, passiveMinutes = 0, activeMinutes = 0;
     for (const seed of [1, 2, 3, 4]) {
       // Compare the first run; later runs keep the ride open and bank more towers and upgrades.
-      const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 90, seed, simOpts: { autopilot: true, actionBot } });
+      const run = (actionBot: boolean) => runHeadless({ game: module, script: 'z2', minutes: 90, seed, simOpts: { stars: 99, autopilot: true, actionBot } });
       const passive = run(false), active = run(true);
       const firstEnd = (r: typeof passive) => r.events.find(e => e.type === 'runEnded' && e.data?.reason === 'fell')!;
       const passiveEnd = firstEnd(passive), activeEnd = firstEnd(active);

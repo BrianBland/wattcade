@@ -592,42 +592,71 @@ const mirrorX = (p: Pt): Pt => ({ x: FIELD_W - p.x, y: p.y });
  * A level from a seed: road style (given or seeded), mirrored half the time, narrow-road sizes, searched pads. Retries
  * with derived seeds until the level validates and clears its style's coverage bar (STYLE_FIT), else the best-covered try.
  */
-export function generateLevel(seed: number, opts: GenOpts = {}): Generated {
+/** Everything an attempt needs, drawn up front so attempts can run independently (and in parallel). */
+export interface LevelPlan { seed: number; style: RoadStyle; ground: GroundStyle; nPads: number; attemptSeeds: number[] }
+export const MAX_ATTEMPTS = 12;
+
+export function planLevel(seed: number, opts: GenOpts = {}): LevelPlan {
   const top = makeRng(seed >>> 0 || 1);
   const style = opts.style ?? ROAD_STYLES[Math.floor(top() * ROAD_STYLES.length)];
   const ground = opts.ground ?? GROUND_STYLES[Math.floor(top() * GROUND_STYLES.length)];
-  const nPads = padsFor(style, opts.pads), bar = barFor(style, nPads), iterations = opts.iterations ?? 12000, log = opts.log;
+  const attemptSeeds = Array.from({ length: MAX_ATTEMPTS }, () => Math.floor(top() * 0x7fff_ffff) + 1);
+  return { seed, style, ground, nPads: padsFor(style, opts.pads), attemptSeeds };
+}
+
+/** One generation attempt (1-based). Null when the attempt is rejected outright. */
+export function runAttempt(plan: LevelPlan, attempt: number, opts: GenOpts = {}): { result: Generated; passed: boolean } | null {
+  const { seed, style, ground, nPads } = plan;
+  const bar = barFor(style, nPads), iterations = opts.iterations ?? 12000, log = opts.log;
+  const rng = makeRng(plan.attemptSeeds[attempt - 1]);
+  const mirror = rng() < 0.5, built = BUILDERS[style](rng), raw = (Array.isArray(built[0]) ? built : [built]) as Pt[][];
+  const lanes = mirror ? raw.map(l => l.map(mirrorX)) : raw, waypoints = lanes[0];
+  const roads = lanes.map(l => measureRoad(l, NARROW_ROAD.turretR)), road = roads[0];
+  const band = lengthBand(style), short = roads.find(r => r.length < band.min || r.length > band.max);
+  if (short) { log?.push(`${style} len ${short.length.toFixed(0)}`); return null; }
+  const bridges = crossings(road.walk);
+  const samples = roads.map(r => r.walk.filter((_, i) => i % 3 === 0));
+  const air = FLYERS.flatMap(a => Array.from({ length: 30 }, (_, i) => ({ x: a.x + (TURRET.x - a.x) * i / 29, y: a.y + (TURRET.y - a.y) * i / 29 })));
+  const selfClear = Math.min(...roads.map(r => selfClearance(r.walk, bridges)), laneClearance(roads));
+  if (selfClear < MIN_SELF_CLEAR) { log?.push(`${style} clear ${selfClear.toFixed(1)} bridges ${bridges.length}`); return null; }
+  const roadDist = roadDistance(roads.map(r => r.line)), culverts = lanes.length > 1 ? placeCulverts(roads, bridges, roadDist) : [];
+  const field: Field = { roads, bridges, air, samples, selfClear, roadDist,
+    reach: reachable(roads.map(r => r.line), [...bridges, ...culverts], NARROW_ROAD.roadHalfWidth + SHOULDER + 1.5) };
+  const pads = searchPads(field, rng, nPads, iterations, opts.log);
+  if (pads.length < minPads(nPads)) { log?.push(`${style} no room for ${minPads(nPads)} pads`); return null; }
+  const names = padNames(pads);
+  const level: TdLevel = {
+    id: `gen-${seed}`, name: `${style[0].toUpperCase()}${style.slice(1)} ${seed}`, style: ground, seed, roadStyle: style,
+    waypoints, pads: pads.map((p, i) => ({ ...p, name: names[i] })), turret: TURRET, shoulder: SHOULDER,
+    hiveMouth: waypoints[0], spawnY: SPAWN_Y, flyerSpawns: FLYERS, bridges, ...NARROW_ROAD,
+    ...(lanes.length > 1 ? { lanes: lanes.slice(1) } : {}), ...(culverts.length ? { culverts } : {}),
+  };
+  const m = metrics(field, pads), problems = validateLevel(level);
+  if (problems.length) { log?.push(`${style} ${problems.join('; ')}`); return null; }
+  return { result: { level, style, attempts: attempt, metrics: m }, passed: m.flame >= bar.flame && m.gap <= bar.gap };
+}
+
+/**
+ * Pick the level from attempt outcomes listed in attempt order: the first that passes the bar,
+ * else the best-flame fallback (earliest wins ties). Shared by the sequential and parallel paths.
+ */
+export function pickAttempt(plan: LevelPlan, outcomes: Array<{ result: Generated; passed: boolean } | null>): Generated {
   let fallback: Generated | null = null;
-  for (let attempt = 1; attempt <= 12; attempt++) {
-    const rng = makeRng(Math.floor(top() * 0x7fff_ffff) + 1);
-    const mirror = rng() < 0.5, built = BUILDERS[style](rng), raw = (Array.isArray(built[0]) ? built : [built]) as Pt[][];
-    const lanes = mirror ? raw.map(l => l.map(mirrorX)) : raw, waypoints = lanes[0];
-    const roads = lanes.map(l => measureRoad(l, NARROW_ROAD.turretR)), road = roads[0];
-    const band = lengthBand(style), short = roads.find(r => r.length < band.min || r.length > band.max);
-    if (short) { log?.push(`${style} len ${short.length.toFixed(0)}`); continue; }
-    const bridges = crossings(road.walk);
-    const samples = roads.map(r => r.walk.filter((_, i) => i % 3 === 0));
-    const air = FLYERS.flatMap(a => Array.from({ length: 30 }, (_, i) => ({ x: a.x + (TURRET.x - a.x) * i / 29, y: a.y + (TURRET.y - a.y) * i / 29 })));
-    const selfClear = Math.min(...roads.map(r => selfClearance(r.walk, bridges)), laneClearance(roads));
-    if (selfClear < MIN_SELF_CLEAR) { log?.push(`${style} clear ${selfClear.toFixed(1)} bridges ${bridges.length}`); continue; }
-    const roadDist = roadDistance(roads.map(r => r.line)), culverts = lanes.length > 1 ? placeCulverts(roads, bridges, roadDist) : [];
-    const field: Field = { roads, bridges, air, samples, selfClear, roadDist,
-      reach: reachable(roads.map(r => r.line), [...bridges, ...culverts], NARROW_ROAD.roadHalfWidth + SHOULDER + 1.5) };
-    const pads = searchPads(field, rng, nPads, iterations, opts.log);
-    if (pads.length < minPads(nPads)) { log?.push(`${style} no room for ${minPads(nPads)} pads`); continue; }
-    const names = padNames(pads);
-    const level: TdLevel = {
-      id: `gen-${seed}`, name: `${style[0].toUpperCase()}${style.slice(1)} ${seed}`, style: ground, seed, roadStyle: style,
-      waypoints, pads: pads.map((p, i) => ({ ...p, name: names[i] })), turret: TURRET, shoulder: SHOULDER,
-      hiveMouth: waypoints[0], spawnY: SPAWN_Y, flyerSpawns: FLYERS, bridges, ...NARROW_ROAD,
-      ...(lanes.length > 1 ? { lanes: lanes.slice(1) } : {}), ...(culverts.length ? { culverts } : {}),
-    };
-    const m = metrics(field, pads), problems = validateLevel(level);
-    const result = { level, style, attempts: attempt, metrics: m };
-    if (problems.length) { log?.push(`${style} ${problems.join('; ')}`); continue; }
-    if (m.flame >= bar.flame && m.gap <= bar.gap) return result;
-    if (!fallback || m.flame > fallback.metrics.flame) fallback = result;
+  for (const o of outcomes) {
+    if (!o) continue;
+    if (o.passed) return o.result;
+    if (!fallback || o.result.metrics.flame > fallback.metrics.flame) fallback = o.result;
   }
   if (fallback) return fallback;
-  throw new Error(`no valid ${style} level for seed ${seed}`);
+  throw new Error(`no valid ${plan.style} level for seed ${plan.seed}`);
+}
+
+export function generateLevel(seed: number, opts: GenOpts = {}): Generated {
+  const plan = planLevel(seed, opts), outcomes: Array<{ result: Generated; passed: boolean } | null> = [];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const o = runAttempt(plan, attempt, opts);
+    outcomes.push(o);
+    if (o?.passed) break;
+  }
+  return pickAttempt(plan, outcomes);
 }

@@ -18,7 +18,8 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
   score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
 
 ## Render (`render/`)
-`renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `terrainView.ts` (2× terrain,
+`renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `camFit.ts` (overview fitted to the screen;
+wide = sideways, spring left, HUD strip on top), `freeCam.ts` (pinch/drag/twist/wheel offset on the auto cam; double-tap resets), `terrainView.ts` (2× terrain,
 procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
 `skyLayer.ts` (cloud clears the highest ground under its footprint: `layout.ts#cloudAltitude`), `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
 `upsample.ts` (tested).

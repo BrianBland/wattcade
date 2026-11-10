@@ -1,18 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { cloudAltitude, layout } from '../render/layout';
+import { fitOverhead, overheadPitch, project, valleyOutline } from '../render/camFit';
 
 describe('watershed layout', () => {
   for (const [W, H, b] of [[1180, 820, 160], [820, 1180, 200], [390, 844, 180], [1366, 1024, 0]]) {
     it(`${W}x${H} inset ${b}: everything sits above the shell HUD`, () => {
       const L = layout(W, H, b);
       const limit = H - b;
-      for (const box of [L.block, L.stats, L.meter, L.plan, L.popup]) {
+      for (const box of [L.block, L.stats, L.meter, L.plan, L.popup, L.camChip]) {
         expect(box.y + box.h).toBeLessThanOrEqual(limit);
         expect(box.x).toBeGreaterThanOrEqual(0);
         expect(box.x + box.w).toBeLessThanOrEqual(W);
       }
       expect(L.focusY).toBeLessThan(limit);
       expect(L.viewOffsetY).toBeCloseTo(Math.min(b, H / 2) / 2);
+      // the HUD cards never overlap each other
+      const boxes = [L.block, L.stats, L.meter, L.plan, L.camChip];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const p = boxes[i], q = boxes[j];
+        expect(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y).toBe(true);
+      }
+    });
+
+    it(`${W}x${H} inset ${b}: the overview shows the whole valley inside the band, under the top strip when wide`, () => {
+      const L = layout(W, H, b), o = valleyOutline(96, 144), fov = (40 * Math.PI) / 180;
+      const fit = fitOverhead(o, fov, W / H, L.band.yLo, L.band.yHi, overheadPitch(L.wide), L.wide);
+      let xLo = 1, xHi = -1;
+      const off = L.viewOffsetY;
+      for (const [f, hgt] of o.heights) for (const z of [-o.zHalf, o.zHalf]) {
+        const q = project({ x: o.x0 + (o.x1 - o.x0) * f, y: hgt, z }, fit.pos, fit.tgt, fov, W / H)!;
+        expect(q).not.toBeNull();
+        expect(Math.abs(q.x)).toBeLessThanOrEqual(0.95);
+        const row = ((1 - q.y) * H) / 2 - off;    // screen row after the renderer's view offset
+        expect(row).toBeLessThanOrEqual(H - b);   // above the shell HUD
+        if (L.wide) expect(row).toBeGreaterThanOrEqual(L.block.y + L.block.h);   // below the HUD strip
+        xLo = Math.min(xLo, q.x); xHi = Math.max(xHi, q.x);
+      }
+      // the valley uses most of the width (the old upright landscape view used under half)
+      expect((xHi - xLo) / 2).toBeGreaterThan(W / (H - b) > 1.2 ? 0.7 : 0.6);
     });
   }
 });

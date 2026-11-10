@@ -55,6 +55,11 @@ def main():
     use(KIT / 'environment/road/portrait.webp')
     if (KIT / 'environment/road/landscape.webp').exists():
         use(KIT / 'environment/road/landscape.webp')
+    # Ground kits for generated levels (render/ground/kit.ts): stamps are `file` keys, the swatches sit under `files`.
+    for path in (KIT / 'kits').glob('*/kit.json'):
+        manifest(path)
+        for file in json.loads(path.read_text())['files'].values():
+            use(path.parent / file)
     # The retained production previews are the style references for future machinery art.
     for folder in ['outpost', 'towers']:
         use(KIT / folder / 'preview.png')

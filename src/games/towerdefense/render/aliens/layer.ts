@@ -148,7 +148,11 @@ export class AlienLayer {
       const q = v.P(c.x, c.y);
       this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, fade, 1 - k * 0.12);
     }
-    for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
+    this.drawLive(g, s.enemies, v, t, fallback);
+  }
+  /** Just these live aliens, back to front (e.g. again over a bridge deck). */
+  drawLive(g: G, enemies: readonly EnemyView[], v: View, t: number, fallback: (e: EnemyView, h: number) => void) {
+    for (const e of [...enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
       if (!this.drawOne(g, e, tr, v, t)) fallback(e, tr.h);
     }

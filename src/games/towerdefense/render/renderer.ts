@@ -12,6 +12,7 @@ import { TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
+import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
 import { along, cableRoutes, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
@@ -533,6 +534,7 @@ export class TdRenderer implements GameRenderer {
         if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
+      this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
       this.contactShadow(g, bx, by, k * 2.4);
@@ -633,6 +635,26 @@ export class TdRenderer implements GameRenderer {
     g.restore();
   }
   /** The slow field over the back stretch of the road. */
+  /**
+   * Bridge decks over the walkers below them: those show through as an x-ray outline in their brood colour, and
+   * whatever is on the deck (walkers on the upper pass, gliders) is drawn again on top of it.
+   */
+  private drawDecks(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, puppets: AlienLayer | null) {
+    const ds = decks(this.geo.level);
+    if (!ds.length || !this.battlefield.deck(g, this.view)) return;
+    const k = this.k, top: EnemyView[] = [];
+    for (const e of s.enemies) {
+      if (!onDeck(ds, e, e.radius)) continue;
+      if (e.flying || !underDeck(ds, e.progress * this.geo.roadLength)) { top.push(e); continue; }
+      const q = this.P(e.x, e.y), pulse = 0.55 + 0.2 * Math.sin(t * 6 + e.id);
+      g.save(); g.globalAlpha = pulse; g.strokeStyle = COL[e.element]; g.lineWidth = Math.max(1, 0.35 * k); g.setLineDash([0.9 * k, 0.6 * k]);
+      g.beginPath(); g.arc(q.x, q.y, e.radius * k, 0, TAU); g.stroke(); g.restore();
+    }
+    if (!top.length) return;
+    const rot = this.view.rot;
+    if (puppets) puppets.drawLive(g, top, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
+    else for (const e of top) { const q = this.P(e.x, e.y), h = this.heading.get(e.id)?.h ?? 0; drawEnemy(g, e, q.x, q.y, k, h, t); }
+  }
   private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     if (s.slowFrom < 0) return;
     const k = this.k;

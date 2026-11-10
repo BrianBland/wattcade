@@ -148,7 +148,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
   const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
   const railLaserDps = T.num('railLaserDps', 140, 0, 300, 1, 'targeting laser dps while Rail is selected (x ftpFraction / the current ERG target, max x1.5)');
-  const weaponPowerFloor = T.num('weaponPowerFloor', 0.7, 0, 1, 0.05, 'turret output at this fraction of the weapon demand; full output at the demand');
+  const weaponPowerFloor = T.num('weaponPowerFloor', 0.75, 0, 1, 0.05, 'below this fraction of the weapon demand the turret drops to its minimum; full output at the demand');
+  const weaponPowerMin = T.num('weaponPowerMin', 0.2, 0, 0.5, 0.05, 'turret output at the floor (fading to zero at no power), so a short ride leaks instead of collapsing');
   const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
   const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
   const turretRange = T.num('turretRange', 75, 20, 200, 1, 'Gatling and Rail laser reach from the turret: the upper road is the towers\' job');
@@ -182,8 +183,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const intensityEasyHp = T.num('intensityEasyHp', 0.8, 0.3, 1, 0.05, 'Easy intensity: enemy HP x this');
   const intensityHardHp = T.num('intensityHardHp', 1.25, 1, 2.5, 0.05, 'Hard intensity: enemy HP x this');
   const splitRoadHp = T.num('splitRoadHp', 0.8, 0.5, 1, 0.05, 'forks and merges: road walkers\' HP x this (a tower sees only one of the routes)');
-  const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'base HP share left for a two-star level clear');
-  const starThree = T.num('starThreeHp', 0.9, 0, 1, 0.05, 'base HP share left for a three-star level clear');
+  // Stars count every hit the base took over the level: clear heals keep the base standing, but don't erase leaks.
+  const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'two stars: at most this share of base HP lost over the whole level (heals not counted)');
+  const starThree = T.num('starThreeHp', 0.85, 0, 1, 0.05, 'three stars: at most 1 - this share of base HP lost over the whole level');
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
   const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each wave: brood card, countdown, no new spawns');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
@@ -295,6 +297,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let swapLeft = 0, swapTotal = 1;
   let aim = 0, targetId = 0, lockId = 0, lockLeft = 0, lastPaddle = 0;
   let baseMaxHp = baseHpMax(), baseHp = baseMaxHp, baseHurt = 99;
+  /** Base HP lost over the current run, heals not counted (level stars). */
+  let levelDmg = 0;
   let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0;
   let plan: WavePlan, nextPlan: WavePlan;
   let schedule: Spawn[] = [];
@@ -625,9 +629,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const lw = levelWave(w);
     return lw ? { set: lw.set, pos: lw.pos, of: lw.of, role: lw.role, warmup: !!lw.warmup } : { ...setOf(w), of: 3, role: roleOf(w), warmup: false };
   }
-  /** The last wave of a level is cleared: stars from the base HP left, then the clear screen (Next level / Finish). */
+  /** The last wave of a level is cleared: stars from the base HP lost over the level, then the clear screen (Next level / Finish). */
   function levelDone() {
-    const spec = play!.spec, stars = starsFor(baseHp / baseMaxHp, starTwo(), starThree());
+    const spec = play!.spec, stars = starsFor(1 - levelDmg / baseMaxHp, starTwo(), starThree());
     if (spec.kind === 'campaign') save.campaign[spec.id] = Math.max(save.campaign[spec.id] ?? 0, stars);
     chain++; stats.levelsCleared++;
     if (!save.roadsCleared.includes(spec.roadStyle)) save.roadsCleared.push(spec.roadStyle);
@@ -699,15 +703,17 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /**
    * The turret's share of its rated output for the weapon that spends watts. Fireball and Rail are rated at
-   * their trainer target, so a steady zone-2 ride (~0.65 FTP) is about half power and the brood gets through.
-   * Gatling spends crank revs, not watts, so it is not scaled here. Below `weaponPowerFloor` of the demand the
-   * turret is at the floor; at the demand it is at full.
+   * their trainer target, so a steady zone-2 ride (~0.65 FTP) is well under power and some of the brood gets
+   * through. Gatling spends crank revs, not watts, so it is not scaled here. From `weaponPowerFloor` of the demand
+   * up to the demand, output climbs from `weaponPowerMin` to full; below the floor it fades to zero, so a ride
+   * well under target leaks (fewer stars, a late fall) instead of collapsing in the first work wave.
    */
   function weaponPower(): number {
     if (weapon === 'gatling') return 1;
     const have = ctx.bike().ftpFraction / weaponDemand();
-    const floor = weaponPowerFloor();
-    return clamp((have - floor) / Math.max(1e-6, 1 - floor), 0, 1.5);
+    const floor = weaponPowerFloor(), min = weaponPowerMin();
+    if (have < floor) return min * clamp(have / Math.max(1e-6, floor), 0, 1);
+    return clamp(min + (1 - min) * (have - floor) / Math.max(1e-6, 1 - floor), 0, 1.5);
   }
 
   function fireRail(n: number) {
@@ -1135,7 +1141,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     resetCombat();
     callSchedule.nextWave = 2; callSchedule.lastWave = 0;
     trainerSync();
-    baseMaxHp = baseHpMax(); baseHp = baseMaxHp;
+    baseMaxHp = baseHpMax(); baseHp = baseMaxHp; levelDmg = 0;
     wave = play ? 1 : Math.max(1, Math.round(opts?.startWave ?? 1));
     scrap = Math.round(startScrapT() + (wave - 1) * 35 + depth() * 20);
     lastRevs = ctx.bike().crankRevs;
@@ -1382,7 +1388,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (e.d >= e.len - BASE_R) {
         e.dead = true;
         const dmg = e.dmg * (stalled() ? stallMult() : 1);
-        baseHp -= dmg; baseHurt = 0; leakDmg += dmg;
+        baseHp -= dmg; baseHurt = 0; leakDmg += dmg; levelDmg += dmg;
         addFx({ kind: 'baseHit', life: 0.5, dmg });
         cue(dmg >= 5 ? 'baseHitHeavy' : 'baseHit');
         ctx.emit({ type: 'baseHit', data: { dmg, kind: e.kind } });

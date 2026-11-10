@@ -16,7 +16,8 @@ exploration results, map metrics and ground-kit notes. Where the two differ, thi
   level is longer rather than deeper; later campaign levels have more depth. (Phase 6 tuning; phase 7 retunes income.)
 - **Chaining:** the clear screen offers **Next level**. The next level starts straight away, and its warm-up wave
   is the bridge between the two levels. Scrap resets and the base is rebuilt. **Finish** returns to the overworld.
-- Clear grade: 1–3 **stars** from base HP left (clear / ≥ 50% / ≥ 90%, tunable). A fall fails the level, with
+- Clear grade: 1–3 **stars** from the base HP lost over the whole level, clear heals not counted (owner,
+  2026-11-09): clear / at most 50 % lost / at most 15 % lost (`starTwoHp`, `starThreeHp`). A fall fails the level, with
   no stars.
 
 ## 2. Workout fit
@@ -52,6 +53,19 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   lull between waves is when the rider decides, and they can buy as much as scrap allows. Sweeps use a headless
   build bot (`botBuild`, on with autopilot) as a stand-in rider: Steady z2 clears 28 of 30 campaign levels; the
   deepest ground (Blight II, Blight V) needs more than zone 2.
+
+- Balance (2026-11-09): below its rated demand a Fireball or Railgun turret climbs from `weaponPowerMin` (20 %)
+  at `weaponPowerFloor` (75 % of the target) to full output at the target, and fades to zero below the floor, so
+  a short ride leaks instead of collapsing in wave 3. Sweeps of all 30 levels with the build bot and the action
+  bot (it fires the Railgun; without it deep Railgun waves looked like a wall), riders at a share of each target:
+
+  | Rider | Easy | Steady | Hard |
+  |---|---|---|---|
+  | on target | 30 × 3★ | 30 × 3★ | 30 × 3★ |
+  | 90 % | | 23 × 3★, 7 × 2★ | 23 × 3★, 7 × 2★ |
+  | 80 % | 19 × 3★, 11 × 2★ | 15 × 3★, 15 × 2★ | mostly 2★, 2 × 1★ |
+  | 70 % | mixed, 6 falls | mostly 2★/1★, 5 falls | mostly 2★/1★, 7 falls |
+  | zone 2 (0.65 FTP) | 30 × 3★ | 11 × 3★, 18 × 2★, 1 × 1★ | mixed, 8 falls |
 
 ## 5. Meta: unlocks replace the Garage
 

@@ -51,7 +51,22 @@ export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; to
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 /** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
 export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
-export interface GarageView { title: string; subtitle: string; breatherLeft: number; sel: number; rows: GarageRow[]; autoLeft: number; autoS: number; stars: number; endlessBest: number; runs: number }
+/** A campaign level on the level select. `key` finds its baked map (`BAKED_LEVELS`) for the preview. */
+export interface LevelTile {
+  index: number; id: string; key: string; name: string; ground: string; roadStyle: string;
+  minutes: number; pads: number; waves: number; bosses: number; stars: number; locked: boolean;
+}
+export interface GarageView {
+  title: string; subtitle: string; breatherLeft: number; sel: number; rows: GarageRow[]; autoLeft: number; autoS: number; stars: number; endlessBest: number; runs: number;
+  /** 'modes' = the ride select; 'campaign' = the level grid (5 levels per ground, one row each). */
+  page: 'modes' | 'campaign';
+  /** Every campaign level, in order (the grid on the campaign page, the next level's card on the modes page). */
+  levels: LevelTile[];
+  /** The selected tile on the campaign page; `open` = the furthest level open to play. */
+  levelSel: number; open: number;
+  /** The campaign level the Campaign card starts (the next open one, or the last one picked). */
+  campaignSel: number;
+}
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
 export interface Banner { text: string; sub: string; color: string; t0: number; big: boolean }

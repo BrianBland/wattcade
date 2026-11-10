@@ -6,7 +6,7 @@ import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refil
 import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
-import { CAMPAIGN, INTENSITIES, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
+import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
 import { generateLevel } from './generator';
 import {
   AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
@@ -15,10 +15,11 @@ import {
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
+import { BAKED_LEVELS, specKey } from './baked';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
-import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, LevelTile, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
@@ -93,6 +94,12 @@ const angDiff = (a: number, b: number) => Math.abs(a - b);
 type NewFx = Fx extends infer F ? (F extends Fx ? Omit<F, 'id' | 't0'> : never) : never;
 
 const LEVEL_CACHE = new Map<string, TdLevel>();
+/** The level select's fixed facts per campaign level (stars and locks are added per snapshot). */
+const TILE_INFO = CAMPAIGN.map((c, index) => {
+  const waves = levelWaves(c.minutes, bossCount(c.minutes, c.seed));
+  return { index, id: c.id, key: specKey(c), name: c.name, ground: c.ground, roadStyle: c.roadStyle, minutes: c.minutes, pads: c.pads,
+    waves: waves.length, bosses: waves.filter((w) => w.role === 'boss').length };
+});
 
 export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapshot(): TdSnapshot } {
   const T = ctx.tuning;
@@ -269,6 +276,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const hpK = () => intensity === 'easy' ? intensityEasyHp() : intensity === 'hard' ? intensityHardHp() : 1;
   let started = false;
   let garageSel = 0, garageT = 0, garageBreather = 0;
+  let menuPage: 'modes' | 'campaign' = 'modes', levelSel = 0;
   let t = 0, nextId = 1, fxId = 0, cueId = 0;
   let enemies: Enemy[] = [];
   const spawned: Enemy[] = [];
@@ -988,12 +996,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       rows.push({ kind: 'finish', name: 'Finish', desc: 'Back to the level select' });
       return rows;
     }
-    const c = CAMPAIGN[campaignSel], open = campaignOpen(save.campaign), got = save.campaign[c.id] ?? 0;
+    const c = CAMPAIGN[campaignSel], got = save.campaign[c.id] ?? 0;
     const rows: GarageRow[] = [
-      { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''}${open > 0 ? ' · ◀ ▶ level' : ''}` },
+      { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''} · A: all levels` },
       { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length' },
-      { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: `◀ ▶ · scales work-wave trainer targets and alien HP${isUnlocked('hard', stars()) ? '' : ' · Hard unlocks at 20★'}` },
       { kind: 'start', name: 'Endless', desc: `Sets forever · best wave ${save.endlessBest}` },
+      { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: `◀ ▶ · scales work-wave trainer targets and alien HP${isUnlocked('hard', stars()) ? '' : ' · Hard unlocks at 20★'}` },
     ];
     const n = stars(), next = nextUnlock(n);
     rows.push({ kind: 'unlocks', name: `Stars · ${n}★`, desc: next ? `Next: ${next.name} at ${next.stars}★ · ${next.desc}` : 'Everything is unlocked' });
@@ -1001,8 +1009,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** A level's map, generated once per seed. */
   function levelFor(spec: LevelSpec): TdLevel {
-    const key = `${spec.seed}|${spec.roadStyle}|${spec.ground}|${spec.pads}`;
-    let l = LEVEL_CACHE.get(key);
+    const key = specKey(spec);
+    let l = LEVEL_CACHE.get(key) ?? BAKED_LEVELS[key];
     if (!l) { l = { ...generateLevel(spec.seed, { style: spec.roadStyle, ground: spec.ground, pads: spec.pads }).level, name: spec.name }; LEVEL_CACHE.set(key, l); }
     return l;
   }
@@ -1015,8 +1023,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** A (or the auto-start, or B) on a row. */
   function garageAct(row: GarageRow, primary: boolean) {
     if (row.kind === 'next') { const next = result!.failed ? result!.spec : nextSpec(result!.spec); result = null; if (next) startLevel(next); return true; }
-    if (row.kind === 'finish') { result = null; chain = 0; garageSel = 0; cue('uiClose'); return false; }
-    if (row.kind === 'campaign') { if (!primary && lastEndless) startRun(); else startLevel(CAMPAIGN[campaignSel]); return true; }
+    if (row.kind === 'finish') {
+      // back to where the level came from: the level grid (on the next open level) or the ride select
+      if (result?.spec.kind === 'campaign') { menuPage = 'campaign'; levelSel = campaignSel; } else menuPage = 'modes';
+      result = null; chain = 0; garageSel = 0; cue('uiClose'); return false;
+    }
+    if (row.kind === 'campaign') {
+      if (!primary) { if (lastEndless) startRun(); else startLevel(CAMPAIGN[campaignSel]); return true; }
+      menuPage = 'campaign'; levelSel = campaignSel; cue('uiOpen'); return false;
+    }
     if (row.kind === 'quick') { startLevel(quickRide(save.quickSeed, save.quickMinutes, quickGrounds(campaignOpen(save.campaign)))); return true; }
     if (row.kind === 'start') { startRun(); return true; }
     if (!primary) { if (lastEndless) startRun(); else startLevel(CAMPAIGN[campaignSel]); return true; }
@@ -1025,11 +1040,43 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** The intensities on offer: Hard once it is unlocked. */
   function offered(): readonly Intensity[] { return isUnlocked('hard', stars()) ? INTENSITIES : INTENSITIES.filter((i) => i !== 'hard'); }
+  /** The level grid: ◀ ▶ step a level, ▲ ▼ a ground (row of five); A rides an open level, B goes back. */
+  function levelSelectUpdate(dt: number, inp: Readonly<InputState>) {
+    const p = (b: Button) => inp.pressed.has(b), open = campaignOpen(save.campaign);
+    const select = (i: number) => {
+      const next = clamp(i, 0, CAMPAIGN.length - 1);
+      if (next !== levelSel) { levelSel = next; cue('select'); }
+      if (levelSel <= open) campaignSel = levelSel;
+      garageT = 0;
+    };
+    const ride = () => {
+      if (levelSel > open) { cue('deny'); return false; }
+      campaignSel = levelSel; menuPage = 'modes'; startLevel(CAMPAIGN[levelSel]); return true;
+    };
+    for (const a of pending.splice(0)) {
+      if (a.type === 'levelTile' && Number.isInteger(a.index)) { if (a.index === levelSel) { if (ride()) return; } else select(a.index as number); }
+      else if (a.type === 'levelStart') { if (ride()) return; }
+      else if (a.type === 'levelBack') { menuPage = 'modes'; garageSel = 0; cue('uiClose'); return; }
+    }
+    if (p('left')) select(levelSel - 1);
+    if (p('right')) select(levelSel + 1);
+    if (p('up')) select(levelSel - LEVELS_PER_STYLE);
+    if (p('down')) select(levelSel + LEVELS_PER_STYLE);
+    if (p('b')) { menuPage = 'modes'; garageSel = 0; garageT = 0; cue('uiClose'); return; }
+    if (p('a') && ride()) return;
+    if (garageBreather > 0) garageBreather = Math.max(0, garageBreather - dt);
+    else if (ctx.bike().cadence3s > garageCadence()) garageT += dt;
+    if (garageT >= garageAutostart()) { menuPage = 'modes'; startLevel(CAMPAIGN[campaignSel]); }
+  }
   function garageUpdate(dt: number, inp: Readonly<InputState>) {
+    if (menuPage === 'campaign' && !result) { levelSelectUpdate(dt, inp); return; }
     const p = (b: Button) => inp.pressed.has(b);
     let rows = garageRows();
     let act = false;
     for (const a of pending.splice(0)) if (a.type === 'garageRow' && typeof a.row === 'number' && a.row >= 0 && a.row < rows.length) { garageSel = a.row; act = true; }
+      else if (a.type === 'levelTile' && !result && Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < CAMPAIGN.length) {
+        menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return;
+      }
     garageSel = Math.min(garageSel, rows.length - 1);
     if (p('up')) { garageSel = (garageSel + rows.length - 1) % rows.length; garageT = 0; cue('select'); }
     if (p('down')) { garageSel = (garageSel + 1) % rows.length; garageT = 0; cue('select'); }
@@ -1460,7 +1507,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function garageView(): GarageView {
     const title = result ? (result.failed ? `${result.spec.name} · base fell` : `${result.spec.name} cleared · ${starText(result.stars)}`) : 'Choose a ride';
     const subtitle = result ? (result.failed ? 'No stars this time' : chain > 1 ? `${chain} levels in a row` : 'Next level or finish') : `Campaign ${Object.keys(save.campaign).length}/${CAMPAIGN.length} cleared · ${stars()}★ · Endless best wave ${save.endlessBest}`;
-    return { title, subtitle, breatherLeft: garageBreather, sel: garageSel, rows: garageRows(), autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), stars: stars(), endlessBest: save.endlessBest, runs: save.runs };
+    const open = campaignOpen(save.campaign);
+    const levels = CAMPAIGN.map((c, i): LevelTile => ({ ...TILE_INFO[i], stars: save.campaign[c.id] ?? 0, locked: i > open }));
+    const page = result ? 'modes' : menuPage;
+    return { title: page === 'campaign' ? 'Campaign' : title, subtitle: page === 'campaign' ? `${Object.values(save.campaign).filter((v) => v > 0).length}/${CAMPAIGN.length} cleared · ${stars()}★` : subtitle,
+      breatherLeft: garageBreather, sel: garageSel, rows: garageRows(), autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), stars: stars(), endlessBest: save.endlessBest, runs: save.runs,
+      page, levels, levelSel, open, campaignSel };
   }
   function workshopView(): WorkshopView | null {
     if (!workshop) return null;

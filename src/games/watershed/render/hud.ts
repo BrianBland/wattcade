@@ -37,6 +37,8 @@ const CSS = `
 .ws-pop .t { font-size: 26px; font-weight: 800; letter-spacing:.01em }
 .ws-pop .s { font-size: 16px; opacity:.92; margin-top:4px }
 .ws-pop.salmon { border-color: #ff8a8a } .ws-pop.warn { background: rgba(110,30,20,0.8) }
+.ws-cam { pointer-events:auto; cursor:pointer; display:none; text-align:center; padding:9px 10px; font-size:15px; touch-action:manipulation }
+.ws-cam.on { display:block }
 .ws-stats .fish { grid-column: 1 / 3; font-size: 12px; letter-spacing: .08em; opacity:.8; text-transform: uppercase }
 `;
 
@@ -64,6 +66,7 @@ export class Hud {
   private pop = document.createElement('div'); private popLeft = 0;
   private menuEl = document.createElement('div'); private menuKey = ''; private send?: (a: unknown) => void;
   private planKey = '';
+  private cam = document.createElement('div'); private resetView?: () => void;
   private size: [number, number] = [800, 600]; private insetB = 0;
   private rpmLow = 60; private rpmHigh = 110;
 
@@ -74,6 +77,8 @@ export class Hud {
     this.block = mk('ws-block'); this.stats = mk('ws-stats'); this.plan = mk('ws-plan'); this.meter = mk('ws-meter');
     this.pop.className = 'ws-pop'; this.pop.innerHTML = '<div class="t"></div><div class="s"></div>'; this.root.appendChild(this.pop);
     this.meter.innerHTML = '<div class="row"><span>HEAVY · CARVES</span><span>LIGHT · CARRIES</span></div><div class="track"><div class="band"></div><div class="dot"></div></div>';
+    this.cam.className = 'ws-panel ws-cam'; this.cam.textContent = '⟲ Reset view'; this.root.appendChild(this.cam);
+    this.cam.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.resetView?.(); });
     this.menuEl.className = 'ws-menu'; this.menuEl.style.display = 'none'; this.root.appendChild(this.menuEl);
     container.append(this.style, this.root);
   }
@@ -102,6 +107,10 @@ export class Hud {
     (this.menuEl.querySelector('.hint') as HTMLElement).textContent = `◀▶ choose · Y warm-up · A start · starts by itself in ${Math.ceil(m.left)} s`;
   }
 
+  onResetView(cb: () => void) { this.resetView = cb; }
+  /** Show the reset-view chip while the player has moved the camera. */
+  setResetView(on: boolean) { if (this.cam.classList.contains('on') !== on) this.cam.classList.toggle('on', on); }
+
   setRpmRange(lo: number, hi: number) { this.rpmLow = lo; this.rpmHigh = hi; }
   setSize(w: number, h: number) { this.size = [w, h]; this.place(); }
   setInsetBottom(b: number) { this.insetB = b; this.place(); }
@@ -109,7 +118,7 @@ export class Hud {
   private place() {
     const L = layout(this.size[0], this.size[1], this.insetB);
     const put = (el: HTMLElement, b: Box) => Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, minHeight: '0' });
-    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter); put(this.pop, L.popup);
+    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter); put(this.pop, L.popup); put(this.cam, L.camChip);
   }
 
   /** A one-or-two-line instruction popup for `seconds`. */

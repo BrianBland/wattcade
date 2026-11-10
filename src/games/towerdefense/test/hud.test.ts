@@ -50,26 +50,23 @@ function hudFixture() {
   const initial = session.sim.snapshot() as TdSnapshot;
   session.sim.dispose?.();
   const snapshot: TdSnapshot = { ...initial, phase: 'run', garage: null, lull: 0, set: { set: 2, pos: 2, of: 3, role: 'work', warmup: false },
-    brood: { ...initial.brood, countdownS: 0 }, boss: null, effort: null, banner: null, workshop: null, constructionDone: false };
+    brood: { ...initial.brood, countdownS: 0 }, boss: null, effort: null, banner: null, workshop: null };
   const hud = new TdHud();
   const draw = (s: TdSnapshot, W = 1180, H = 820) => hud.render(s, layout(W, H, 160, true), W);
   return { snapshot, hud, draw, card: hud.root.querySelector<HTMLElement>('.td-objective')! };
 }
 
-it('shows set progress and the live crew order in the persistent landscape card', () => {
+it('shows set progress and the construction prompt in the persistent landscape card', () => {
   const { snapshot: s, hud, draw, card } = hudFixture();
-  draw({ ...s, autoCrew: true, suggestion: { wave: 2, kind: 'upgrade', pad: 1, tower: 'tesla', level: 1, targetLevel: 2, cost: 80, label: 'Upgrade Tesla to Lv 2' } });
+  draw({ ...s, scrap: 180 });
   expect(card.hidden).toBe(false);
   expect(card.textContent).toContain('Set 2 · Work 2/3');
   expect(card.textContent).toContain(s.brood.cue);
-  expect(card.textContent).toContain('Auto-crew on');
-  expect(card.textContent).toContain('Queued: Upgrade Tesla to Lv 2 · 80 scrap');
+  expect(card.textContent).toContain('180 scrap · build any time with A');
+  expect(card.textContent).not.toMatch(/Auto-crew|Queued/);
   expect(hud.root.querySelector<HTMLElement>('.td-event')!.hidden).toBe(true);
-  draw({ ...s, autoCrew: false });
-  expect(card.textContent).toContain('Auto-crew off');
-  expect(card.textContent).not.toContain('Queued:');
-  draw({ ...s, autoCrew: true, constructionDone: true });
-  expect(card.textContent).toContain('Order complete');
+  draw({ ...s, lull: 20, scrap: 90 });
+  expect(card.textContent).toContain('Recovery · build now');
 });
 
 it('shows effort targets, held progress and remaining time in one place, with compact fallback', () => {

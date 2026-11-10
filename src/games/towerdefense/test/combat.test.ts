@@ -187,7 +187,7 @@ describe('boss ladder', () => {
   it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
     const s = createGameSession({ game: module,
       profile: testProfile(),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true, autoCrew: false } });
+      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1);
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);

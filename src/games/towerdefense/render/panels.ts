@@ -3,7 +3,7 @@ import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { crewStatus, rideObjective } from './objectives';
+import { constructionStatus, rideObjective } from './objectives';
 
 export interface Hit extends Box { action: unknown }
 
@@ -153,7 +153,7 @@ export class TdHud {
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
-      const o = rideObjective(s), crew = crewStatus(s);
+      const o = rideObjective(s), crew = constructionStatus(s);
       this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div><div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
     }
     this.menu.hidden = !s.garage;

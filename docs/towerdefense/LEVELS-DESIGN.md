@@ -45,9 +45,10 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
 - Tower Lv 1–5 costs stay as they are today (`LEVEL_COST = [1.4, 2.4, 4, 7]` × base). Balance comes from tuning
   income, not from changing costs.
 - As built (phase 7): a level's difficulty climbs faster than Endless, so each wave also pays the scrap of the
-  Endless waves it skips and grants one extra work order per skipped wave. Short deep levels were falling for lack
-  of build time, not scrap. Steady z2 autopilot clears 28 of 30 campaign levels; the two deepest 40-minute
-  finales (Overgrown V, Blight V) need more than zone 2.
+  Endless waves it skips. Building is manual (owner, 2026-11-08): no Auto-crew and no one-tap work orders; the
+  lull between waves is when the rider decides, and they can buy as much as scrap allows. Sweeps use a headless
+  build bot (`botBuild`, on with autopilot) as a stand-in rider: Steady z2 clears 28 of 30 campaign levels; the
+  deepest ground (Blight II, Blight V) needs more than zone 2.
 
 ## 5. Meta: unlocks replace the Garage
 

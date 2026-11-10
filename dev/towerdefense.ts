@@ -30,7 +30,7 @@ const level: TdLevel | undefined = q.get('gen') ? generateLevel(Number(q.get('ge
 // Forward Base caps the start at bestWave - 2: wave 4 is the first boss in the five-wave set.
 const profile = testProfile();
 const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { skipGarage: true, autoCrew: q.get('crew') !== '0', actionBot: q.get('actions') === '1', level,
+  simOpts: { skipGarage: true, botBuild: q.get('bot') === '1', actionBot: q.get('actions') === '1', level,
     // `campaign=<index>` or `quick=<seed>[&minutes=]`: play a level; `intensity=easy|steady|hard`
     play: q.get('campaign') ? { campaign: Number(q.get('campaign')) } : q.get('quick') ? { quick: { seed: Number(q.get('quick')), minutes: Number(q.get('minutes') ?? 15) } } : undefined,
     intensity: q.get('intensity') ?? undefined, startWave: q.get('boss') === '1' ? 5 : undefined,

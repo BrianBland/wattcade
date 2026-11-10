@@ -25,9 +25,10 @@ export type { TdSnapshot } from './types';
 
 export interface TdOpts {
   autopilot?: boolean;
-  /** Headless actions are separate from Auto-crew; default off. */
+  /** Headless actions are separate from the build bot; default off. */
   actionBot?: boolean;
-  autoCrew?: boolean;
+  /** Headless and tests: a bot spends scrap on the suggested build when each lull ends (default: with autopilot). Players always build by hand. */
+  botBuild?: boolean;
   /** Go straight into the first run (tests); also done for new riders and autopilot. Later runs always use the Garage. */
   skipGarage?: boolean;
   /** Override the `baseHp` tunable (the deep-wave fixture reinforces the base). */
@@ -45,7 +46,7 @@ export interface TdOpts {
 }
 export interface TdSave {
   /** v4: levels and star unlocks; the Garage (parts, upgrades, Forward Base) and the old best wave are gone. */
-  v: 4; runs: number; autoCrew: boolean;
+  v: 4; runs: number;
   /** Best wave reached in Endless (since v4). */
   endlessBest: number;
   /** Had Garage progress before v4: starts with the unlocks up to VETERAN_STARS. */
@@ -65,7 +66,6 @@ export function readSave(raw: unknown): TdSave {
   const garage = (s.v ?? 0) < 4 && ((s.bank ?? 0) > 0 || Object.values(s.upgrades ?? {}).some((l) => l > 0));
   return {
     v: 4, runs: s.runs ?? 0, endlessBest: s.v === 4 ? s.endlessBest ?? 0 : 0, veteran: s.veteran === true || garage,
-    autoCrew: typeof s.autoCrew === 'boolean' ? s.autoCrew : true,
     campaign: { ...(s.campaign ?? {}) }, intensity: INTENSITIES.includes(s.intensity as Intensity) ? s.intensity! : 'steady',
     quickMinutes: (QUICK_MINUTES as readonly number[]).includes(s.quickMinutes ?? 0) ? s.quickMinutes! : 20, quickSeed: s.quickSeed ?? 1,
     totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, runsFallen: 0, runsBailed: 0, ...totals },
@@ -244,7 +244,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
   const save = readSave(ctx.load<unknown>());
   const autopilot = !!opts?.autopilot;
-  let autoCrewOn = opts?.autoCrew ?? save.autoCrew;
+  const botBuild = opts?.botBuild ?? !!opts?.autopilot;
   /** Campaign stars (or the veteran floor, or a test override): they open the unlocks. */
   const stars = () => opts?.stars ?? Math.max(starTotal(save.campaign), save.veteran ? VETERAN_STARS : 0);
   const towerCap = () => maxTowerLevel(stars());
@@ -300,9 +300,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let overchargeLeft = 0, slowLeft = 0, lastSprint = false;
   let currentRefill = 1;
   const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
-  /** Work orders left this lull: one, plus one per Endless wave a level skips here. */
-  let ordersLeft = 1;
-  const constructionDoneNow = () => ordersLeft <= 0;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
   let surge: SurgeView | null = null;
   let spin: SpinView | null = null, overclock = 0;
@@ -486,7 +483,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
     plan = fresh ? planFor(wave) : nextPlan;
-    ordersLeft = 1 + (play && !fresh ? Math.max(0, dw(wave) - dw(wave - 1) - 1) : 0);
     nextPlan = planFor(wave + 1);
     if (play && !fresh) for (let fw = dw(wave - 1) + 1; fw < dw(wave); fw++) gainScrap(catchUpBase() + catchUpPer() * fw);
     waveElapsed = 0;
@@ -880,20 +876,18 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   function workshopRows(pad: number): WorkshopRow[] {
-    const crew: WorkshopRow = { kind: 'crew', label: `Auto-crew: ${autoCrewOn ? 'ON' : 'OFF'}`, desc: 'Build the suggestion at the end of each lull', cost: 0, affordable: true };
-    if (pad === BASE_PAD) return [{ kind: 'repair', label: 'Repair base', desc: `+${REPAIR_HP} HP`, cost: repairCost(), affordable: scrap >= repairCost() && baseHp < baseMaxHp }, crew];
+    if (pad === BASE_PAD) return [{ kind: 'repair', label: 'Repair base', desc: `+${REPAIR_HP} HP`, cost: repairCost(), affordable: scrap >= repairCost() && baseHp < baseMaxHp }];
     const tw = towers[pad];
     if (!tw) return [...TOWER_KINDS.map((k): WorkshopRow => {
       const c = towerBuildCost(k, towerCostMult());
       return { kind: 'build', tower: k, label: TOWERS[k].name, desc: TOWERS[k].desc, cost: c, affordable: scrap >= c };
-    }), crew];
+    })];
     const rows: WorkshopRow[] = [];
     if (tw.level < towerCap()) {
       const c = towerUpgradeCost(tw.kind, tw.level, towerCostMult());
       rows.push({ kind: 'upgrade', tower: tw.kind, label: `Upgrade to Lv ${tw.level + 1}`, desc: `x${(LEVEL_DMG[tw.level] / LEVEL_DMG[tw.level - 1]).toFixed(1)} damage, more range`, cost: c, affordable: scrap >= c });
     }
     rows.push({ kind: 'sell', tower: tw.kind, label: 'Scrap it', desc: 'Refund half', cost: 0, affordable: true });
-    rows.push(crew);
     return rows;
   }
   /** Next-wave off-colour aliens are the towers' job. Suggestions follow the live matchup tunables. */
@@ -918,13 +912,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const rows = workshopRows(workshop.pad);
     if (row != null) workshop.row = clamp(row, 0, rows.length - 1);
     const r = rows[workshop.row]; if (!r) return;
-    let purchased = false;
-    if (r.kind === 'build') purchased = build(workshop.pad, r.tower!);
-    else if (r.kind === 'upgrade') purchased = upgrade(workshop.pad);
+    if (r.kind === 'build') build(workshop.pad, r.tower!);
+    else if (r.kind === 'upgrade') upgrade(workshop.pad);
     else if (r.kind === 'sell') sell(workshop.pad);
-    else if (r.kind === 'crew') { autoCrewOn = !autoCrewOn; persist(); cue('select'); }
-    else purchased = repair();
-    if (purchased && lull > 0) ordersLeft--;
+    else repair();
     workshopRevision++;
     workshop.row = clamp(workshop.row, 0, workshopRows(workshop.pad).length - 1);
   }
@@ -937,15 +928,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(), maxLevel: towerCap(),
       baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo });
   }
-  function acceptSuggestion(claim?: unknown): boolean {
-    if (lull <= 0 || constructionDoneNow()) return false;
+  /** The headless build bot (never a player feature): carries out the current suggestion. */
+  function botBuildOnce(): boolean {
     const s = recommendation();
     if (!s) return false;
-    // Match the exact operation displayed by the renderer; never replace a stale claim with a different purchase.
-    if (claim != null) {
-      const c = claim as Partial<BuildSuggestion>;
-      if (c.wave !== s.wave || c.kind !== s.kind || c.pad !== s.pad || c.tower !== s.tower || c.level !== s.level || c.targetLevel !== s.targetLevel || c.cost !== s.cost) { cue('deny'); return false; }
-    }
     let ok = false;
     if (s.kind === 'repair') ok = repair();
     else if (s.kind === 'build') {
@@ -955,7 +941,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     else if (scrap >= s.cost) {
       while (towers[s.pad]!.level < s.targetLevel) { if (!upgrade(s.pad)) break; ok = true; }
     }
-    if (ok) ordersLeft--;
     return ok;
   }
   function cancelRail() {
@@ -1068,7 +1053,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     overchargeLeft = 0; slowLeft = 0; lastSprint = false; currentRefill = 1;
     Object.assign(cooldowns.overcharge, startCooldown(0));
     Object.assign(cooldowns.slow, startCooldown(0));
-    ordersLeft = 1; lockId = 0; lockLeft = 0; lastPaddle = 0;
+    lockId = 0; lockLeft = 0; lastPaddle = 0;
     leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
@@ -1181,9 +1166,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         workshop.idle = 0; workshopAct(a.type === 'row' ? a.row as number : undefined);
         menuHandled = true; purchased = true;
       } else if (a.type === 'construct' && !workshop && !purchased) {
-        purchased = true;
-        if (lull > 0 && !constructionDoneNow() && recommendation()) acceptSuggestion(a.suggestion);
-        else if (a.suggestion == null) { openWorkshop(); menuHandled = true; }
+        purchased = true; openWorkshop(); menuHandled = true;
       } else if (a.type === 'railCancel' || a.type === 'inputCancel') { cancelRail(); menuHandled = true; }
     }
     // Navigation consumes the D-pad while the shared construction menu is open.
@@ -1350,7 +1333,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
     // --- spawning (the easy wave's stream runs at half rate)
     if (lull > 0) {
-      if (lull <= dt && autoCrewOn && !workshop) while (acceptSuggestion());
+      if (lull <= dt && botBuild && !workshop) for (let i = 0; i < 12 && botBuildOnce(); i++);
       lull = Math.max(0, lull - dt); if (lull === 0) beginWave();
     }
     else {
@@ -1407,7 +1390,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function persist() {
     bankKills();
     if (phase === 'run' && !play) save.endlessBest = Math.max(save.endlessBest, wave - 1);
-    save.autoCrew = autoCrewOn;
     save.intensity = intensity;
     ctx.save({ ...save, totals: { ...save.totals }, campaign: { ...save.campaign } });
   }
@@ -1424,12 +1406,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     down: { type: `${kind}Down`, epoch: inputEpoch }, up: { type: `${kind}Up`, epoch: inputEpoch }, cancel: { type: `${kind}Cancel`, epoch: inputEpoch },
   });
   const playControls = (): ControlHint[] => {
-    const suggestion = lull > 0 && !constructionDoneNow() ? recommendation() : null;
-    const build = suggestion?.tower ? ({ tesla: 'Tesla', flamer: 'Flame', lens: 'Lens' })[suggestion.tower] : 'Repair';
-    const order = suggestion?.tower ? `${build} Lv${suggestion.targetLevel}` : build;
     return [
-      { button: 'a', label: suggestion ? `${order} · ${suggestion.cost} scrap` : 'Construction', shortLabel: suggestion ? build : 'Build',
-        touch: { down: { type: 'construct', epoch: inputEpoch, ...(suggestion ? { suggestion } : {}) } } },
+      { button: 'a', label: 'Construction', shortLabel: 'Build', touch: { down: { type: 'construct', epoch: inputEpoch } } },
       ...actionViews().map((a): ControlHint => ({ button: a.id === 'rail' ? 'z' : a.id === 'overcharge' ? 'b' : 'y',
         label: a.id === 'rail' ? `Rail ${railCharges}/${railCap()} (hold = all)` : `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`,
         shortLabel: a.id === 'rail' ? `Rail ${railCharges}/${railCap()}` : a.id === 'overcharge' ? 'Boost' : 'Slow', active: a.usable,
@@ -1557,7 +1535,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         flaming, flameRange: flameRange(), flamePower, laserId,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap,
-        autoCrew: autoCrewOn, suggestion: phase === 'run' && lull > 0 && !constructionDoneNow() ? recommendation() : null, constructionDone: constructionDoneNow(), ordersLeft: Math.max(0, ordersLeft),
         actions: actionViews(), refill: currentRefill, slowFrom: slowLeft > 0 ? slowStart() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r })),

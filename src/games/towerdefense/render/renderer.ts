@@ -40,7 +40,7 @@ const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) 
 export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
   private mounted = false;
-  /** The next Quick Ride map last handed to the background pool. */
+  /** The next Quick Ride and Endless maps last handed to the background pool. */
   private prefetched = '';
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
@@ -461,7 +461,7 @@ export class TdRenderer implements GameRenderer {
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (s.level && s.level !== this.geo.level) this.setLevel(s.level);
-    if (s.nextQuick) { const k = specKey(s.nextQuick); if (k !== this.prefetched) { this.prefetched = k; void prefetchLevel(s.nextQuick); } }
+    if (s.nextMaps) { const k = s.nextMaps.map(specKey).join(','); if (k !== this.prefetched) { this.prefetched = k; for (const m of s.nextMaps) void prefetchLevel(m); } }
     if (!this.L) this.relayout();
     this.hud.render(s, this.L, this.W);
     const g = this.g, k = this.k, L = this.L;

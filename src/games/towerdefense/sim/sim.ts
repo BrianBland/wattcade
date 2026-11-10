@@ -6,7 +6,7 @@ import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refil
 import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
-import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
+import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, endlessMap, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
 import {
   AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
   TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
@@ -54,6 +54,10 @@ export interface TdSave {
   veteran: boolean;
   /** Campaign stars per level id, the chosen intensity, Quick Ride length and the next Quick Ride seed. */
   campaign: Record<string, number>; intensity: Intensity; quickMinutes: number; quickSeed: number;
+  /** The next Endless map's seed (each Endless run plays a new generated map). */
+  endlessSeed: number;
+  /** Brood colours whose Hive Tyrant this rider has destroyed, and road styles they have cleared a level on. */
+  bossColors: string[]; roadsCleared: string[];
   totals: { waves: number; kills: number; bosses: number; towers: number; surges: number; runsFallen: number; runsBailed: number };
 }
 type LegacySave = { v?: number; bestWave?: number; bank?: number; upgrades?: Record<string, number> };
@@ -68,7 +72,8 @@ export function readSave(raw: unknown): TdSave {
   return {
     v: 4, runs: s.runs ?? 0, endlessBest: s.v === 4 ? s.endlessBest ?? 0 : 0, veteran: s.veteran === true || garage,
     campaign: { ...(s.campaign ?? {}) }, intensity: INTENSITIES.includes(s.intensity as Intensity) ? s.intensity! : 'steady',
-    quickMinutes: (QUICK_MINUTES as readonly number[]).includes(s.quickMinutes ?? 0) ? s.quickMinutes! : 20, quickSeed: s.quickSeed ?? 1,
+    quickMinutes: (QUICK_MINUTES as readonly number[]).includes(s.quickMinutes ?? 0) ? s.quickMinutes! : 20, quickSeed: s.quickSeed ?? 1, endlessSeed: s.endlessSeed ?? 1,
+    bossColors: [...new Set(s.bossColors ?? [])], roadsCleared: [...new Set(s.roadsCleared ?? [])],
     totals: { waves: 0, kills: 0, bosses: 0, towers: 0, surges: 0, runsFallen: 0, runsBailed: 0, ...totals },
   };
 }
@@ -103,9 +108,9 @@ const TILE_INFO = CAMPAIGN.map((c, index) => {
 export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapshot(): TdSnapshot } {
   const T = ctx.tuning;
   // The map: every road, pad, flight and turret position comes from the level's geometry.
-  // Levels swap the map between runs (useLevel); Endless plays `opts.level`.
-  const endlessLevel = opts?.level ?? LEVEL_0;
-  let level = endlessLevel, geo = levelGeometry(level);
+  // Levels swap the map between runs (useLevel). Endless plays `opts.level` when given (tests, dev pages), else a
+  // new generated map per run (`endlessMap(save.endlessSeed)`). The painted level 0 sits behind the first menu.
+  let level = opts?.level ?? LEVEL_0, geo = levelGeometry(level);
   let { pads: PADS, basePad: BASE_PAD, roadLength: ROAD_LENGTH, flightAt, flightLength, angleTo, distTo } = geo;
   let BASE_X = geo.base.x, BASE_Y = geo.base.y, BASE_R = geo.baseR;
   /** ◀▶ workshop order: pads and the base (BASE_PAD = repair) as the screen shows them, per orientation. */
@@ -466,6 +471,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (e.kind === 'carrier') for (let i = 0; i < 3; i++) spawnAt('mini', e, (i - 1) * 2.5);
     if (e.kind === 'boss') {
       stats.bosses++; save.totals.bosses++;
+      if (e.boss && !save.bossColors.includes(e.boss.color)) save.bossColors.push(e.boss.color);
       say(`${def.name} destroyed!`, `+${got} scrap`, '#ffd24a', true);
       ctx.emit({ type: 'bossKilled', data: { wave, phases: e.boss?.phases ?? 0, color: e.boss?.color ?? 'gold', exposedSprinted: exposedBossIds.delete(e.id) } });
       addFx({ kind: 'hitStop', life: 0.1, seconds: 0.08 });
@@ -624,6 +630,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const spec = play!.spec, stars = starsFor(baseHp / baseMaxHp, starTwo(), starThree());
     if (spec.kind === 'campaign') save.campaign[spec.id] = Math.max(save.campaign[spec.id] ?? 0, stars);
     chain++; stats.levelsCleared++;
+    if (!save.roadsCleared.includes(spec.roadStyle)) save.roadsCleared.push(spec.roadStyle);
     ctx.emit({ type: 'levelCleared', data: { id: spec.id, kind: spec.kind, name: spec.name, stars, minutes: spec.minutes, waves: play!.waves.length, intensity, ground: spec.ground, chain } });
     result = { spec, stars, failed: false };
     campaignSel = campaignOpen(save.campaign);
@@ -999,22 +1006,24 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const rows: GarageRow[] = [
       { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''} · A: all levels` },
       { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length' },
-      { kind: 'start', name: 'Endless', desc: `Sets forever · best wave ${save.endlessBest}` },
+      { kind: 'start', name: 'Endless', desc: `Sets forever on a new map · best wave ${save.endlessBest}` },
       { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: `◀ ▶ · scales work-wave trainer targets and alien HP${isUnlocked('hard', stars()) ? '' : ' · Hard unlocks at 20★'}` },
     ];
     const n = stars(), next = nextUnlock(n);
     rows.push({ kind: 'unlocks', name: `Stars · ${n}★`, desc: next ? `Next: ${next.name} at ${next.stars}★ · ${next.desc}` : 'Everything is unlocked' });
     return rows;
   }
-  /** The Quick Ride the next start would play (minutes only change its name), memoised for the snapshot. */
-  let nextQuickMemo: { k: string; v: TdSnapshot['nextQuick'] } | null = null;
-  function nextQuick(): TdSnapshot['nextQuick'] {
-    const open = campaignOpen(save.campaign), k = `${save.quickSeed}|${open}`;
-    if (nextQuickMemo?.k !== k) {
-      const q = quickRide(save.quickSeed, save.quickMinutes, quickGrounds(open));
-      nextQuickMemo = { k, v: { seed: q.seed, roadStyle: q.roadStyle, ground: q.ground, pads: q.pads } };
+  const nextEndlessMap = () => endlessMap(save.endlessSeed, quickGrounds(campaignOpen(save.campaign)));
+  /** The generated maps the next Quick Ride and Endless run would play (minutes only change a name), memoised. */
+  let nextMapsMemo: { k: string; v: TdSnapshot['nextMaps'] } | null = null;
+  function nextMaps(): TdSnapshot['nextMaps'] {
+    const open = campaignOpen(save.campaign), k = `${save.quickSeed}|${save.endlessSeed}|${open}|${!!opts?.level}`;
+    if (nextMapsMemo?.k !== k) {
+      const q = quickRide(save.quickSeed, save.quickMinutes, quickGrounds(open)), e = nextEndlessMap();
+      const map = (m: typeof e) => ({ seed: m.seed, roadStyle: m.roadStyle, ground: m.ground, pads: m.pads });
+      nextMapsMemo = { k, v: opts?.level ? [map(q)] : [map(q), map(e)] };
     }
-    return nextQuickMemo.v;
+    return nextMapsMemo.v;
   }
   function startLevel(spec: LevelSpec) {
     if (spec.kind === 'quick' && spec.seed === save.quickSeed) save.quickSeed++;
@@ -1106,7 +1115,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
-    if (!play) useLevel(endlessLevel);
+    if (!play) {
+      if (opts?.level) useLevel(opts.level);
+      else { useLevel(levelFor(nextEndlessMap())); save.endlessSeed++; }
+    }
     lastEndless = !play; result = null;
     phase = 'run';
     save.runs++; stats.runs++;
@@ -1573,7 +1585,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     snapshot(): TdSnapshot {
       return {
-        t, level, phase, garage: phase === 'garage' ? garageView() : null, nextQuick: nextQuick(),
+        t, level, phase, garage: phase === 'garage' ? garageView() : null, nextMaps: nextMaps(),
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },
@@ -1626,7 +1638,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         // the save's campaign as the ride ends (achievements take the max, so each level counts once)
         campaignCleared: Object.values(save.campaign).filter((v) => v > 0).length,
         campaignThreeStars: Object.values(save.campaign).filter((v) => v >= 3).length,
-        campaignStars: starTotal(save.campaign), endlessBest: save.endlessBest, levelsCleared: stats.levelsCleared,
+        campaignStars: starTotal(save.campaign), endlessBest: save.endlessBest,
+        bossColors: save.bossColors.length, roadStyles: save.roadsCleared.length, levelsCleared: stats.levelsCleared,
       };
     },
     dispose() { persist(); },

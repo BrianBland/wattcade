@@ -87,6 +87,15 @@ export function quickRide(seed: number, minutes: number, grounds: readonly Groun
   return { id: `q${seed}-${minutes}`, name: `Quick ${minutes}′ · ${STYLE_NAME[ground]}`, seed, minutes, ground, roadStyle, pads, depth: 4, kind: 'quick' };
 }
 
+/**
+ * Endless's map for a run: seeded like a Quick Ride but from its own seed series, so Endless and Quick Ride never
+ * share a map. Each Endless run plays the next one.
+ */
+export function endlessMap(seed: number, grounds: readonly GroundStyle[] = GROUND_STYLES): Pick<LevelSpec, 'seed' | 'roadStyle' | 'ground' | 'pads' | 'name'> {
+  const { seed: s, roadStyle, ground, pads } = quickRide((seed + 0x4000) >>> 0, 0, grounds);
+  return { seed: s, roadStyle, ground, pads, name: `Endless · ${STYLE_NAME[ground]}` };
+}
+
 /** Stars from the base HP left when the last wave clears (a fall is no stars). */
 export function starsFor(hpFrac: number, two = 0.5, three = 0.9): 1 | 2 | 3 {
   return hpFrac >= three ? 3 : hpFrac >= two ? 2 : 1;

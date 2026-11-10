@@ -19,6 +19,15 @@ const resourced = (it: Item): Item => RESOURCED[itemKey(it)] ? { ...it, source: 
 export const ITEMS: Item[] = ORIGINAL_ITEMS.map(it => resourced(ROTATION[itemKey(it)] ?? it)).filter(it => it.slot !== 'ship').concat([
   { slot: 'jersey', id: 'lh_workshirt', name: 'Island workshirt', source: { achievement: 'lh_foundations' },
     look: { pattern: 'overalls', base: '#526f79', ink: '#d4bf90' } },
+  // Dynamo Defense level goals (Nov 2026): recoloured jersey patterns and paints, so they need no new art.
+  { slot: 'paint', id: 'tyrant_hide', name: 'Tyrant Hide', source: { achievement: 'td_brood_hunter' },
+    look: { frame: '#e8322b', frame2: '#7b3cff', kind: 'fade' } },
+  { slot: 'jersey', id: 'road_map', name: 'Road Map', source: { achievement: 'td_cartographer' },
+    look: { pattern: 'circuit', base: '#3a4a2a', ink: '#e9d9a6' } },
+  { slot: 'jersey', id: 'hi_vis', name: 'Hi-Vis', source: { achievement: 'td_full_shift' },
+    look: { pattern: 'hazard', base: '#ff7a1a', ink: '#15151c' } },
+  { slot: 'paint', id: 'night_watch', name: 'Night Watch', source: { achievement: 'td_night_watch' },
+    look: { frame: '#16205a', frame2: '#7df9ff', kind: 'glow' } },
   { slot: 'hat', id: 'none', name: 'No headwear', source: { default: true } },
   ...(['bottoms', 'hands', 'feet', 'eyewear', 'back'] as const).map(slot => ({
     slot, id: 'none', name: ({bottoms: 'Classic shorts', hands: 'Bare hands', feet: 'Basic shoes', eyewear: 'No eyewear', back: 'No back item'})[slot],

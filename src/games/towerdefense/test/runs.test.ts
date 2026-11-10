@@ -3,7 +3,9 @@ const ENDLESS_ROW = 2;
 import { describe, expect, it } from 'vitest';
 import { createGameSession, testProfile, TimelineInput } from '../../../core';
 import { module } from '../index';
-import type { TdSave } from '../sim/sim';
+import { readSave, type TdSave } from '../sim/sim';
+import { endlessMap, quickRide } from '../sim/campaign';
+import { specKey } from '../sim/baked';
 import type { TdSnapshot } from '../sim/types';
 
 function ride(script = 'z2') {
@@ -105,4 +107,24 @@ describe('endless runs', () => {
     expect(s.sim.summary().wavesSurvived).toBe(first);
     expect(s.sim.summary().wavesCleared).toBe(first * 2);
   });
+});
+
+describe('level goal records', () => {
+  it('save v4 keeps boss colours and cleared road styles, deduplicated, and starts Endless at map 1', () => {
+    const s = readSave({ v: 4, bossColors: ['red', 'red', 'blue'], roadsCleared: ['zigzag', 'zigzag'] });
+    expect(s.bossColors).toEqual(['red', 'blue']);
+    expect(s.roadsCleared).toEqual(['zigzag']);
+    expect(readSave({ v: 4 })).toMatchObject({ bossColors: [], roadsCleared: [], endlessSeed: 1 });
+  });
+  it('each Endless run plays the next generated map, apart from Quick Ride seeds', () => {
+    const a = endlessMap(1), b = endlessMap(2), q = quickRide(1, 20);
+    expect(specKey(a)).not.toBe(specKey(b));
+    expect(specKey(a)).not.toBe(specKey(q));
+    expect(a.name).toMatch(/^Endless · /);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true } });
+    s.step(2);
+    const snap = s.sim.snapshot() as TdSnapshot, first = endlessMap(1, ['outpost']);
+    expect(snap.level).toMatchObject({ seed: first.seed, roadStyle: first.roadStyle, name: first.name });
+    expect(snap.nextMaps.map(specKey)).toContain(specKey(endlessMap(2, ['outpost'])));
+  }, 30_000);
 });

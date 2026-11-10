@@ -37,6 +37,9 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   Lengths are mixed between 15 and 40 min.
 - **Quick Ride:** a random seed at a chosen length (15 / 20 / 30 / 40) and intensity.
 - **Endless:** today's sets forever on a generated map, with its own best-wave record.
+  As built: every Endless run plays the next map of its own seed series (`endlessMap(save.endlessSeed)`, grounds
+  the campaign has reached). The painted level 0 stays for tests and dev pages (`simOpts.level`). Quick Ride and
+  Endless maps are built in the background (`render/levelPool.ts`), and their cards preview them once built.
 
 ## 4. Economy
 
@@ -76,7 +79,11 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
 - Keep the lifetime tallies: kills, scrap, hours, Tyrants, calls.
 - As built: six successors take the six freed rewards one for one (every achievement grants one item): Holding the
   Line (5 levels), Fortress (15), Unbreakable (30), Clean Sweep (3★ on 10 levels), Hard Line, Double Shift.
-  Every-style, per-colour boss, 40-minute and Endless goals wait for new reward items.
+  The remaining goals followed with recoloured jerseys and paints (no new art): Brood Hunter (a Tyrant of every
+  brood colour, Tyrant Hide paint), Cartographer (a clear on all 8 road styles, Road Map jersey), Full Shift (clear
+  a 40-minute level, Hi-Vis jersey), Night Watch (20 Endless waves, Night Watch paint). The save keeps
+  `bossColors` and `roadsCleared` so the first two count across rides. "Every style" counts road styles, since a
+  Quick Ride reaches every road style early while every ground needs most of the campaign (Unbreakable covers that).
 - **Revocation:** reworked or retired achievements are revoked along with their rewards. Bump
   `RULES_VERSION` (`src/progression/levels.ts`) and list the ids in `src/progression/rebalance.ts`.
   `rebalanceProfile` must subtract the bonus XP of ids that no longer exist, using a frozen table of their old

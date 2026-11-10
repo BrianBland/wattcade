@@ -1,4 +1,5 @@
 // DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
@@ -206,7 +207,7 @@ export class TdHud {
         ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, turned)}`
         : results
           ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
-          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, turned)}`;
+          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, turned, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) })}`;
       this.html(this.menu, head + body);
       const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
       if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });

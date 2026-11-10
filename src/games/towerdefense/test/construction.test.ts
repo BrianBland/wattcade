@@ -15,7 +15,7 @@ const state = (patch: Partial<ConstructionState> = {}): ConstructionState => ({
   scrap: 1000, costMult: 1, baseHp: 100, baseMaxHp: 100, repairCost: 42, ...patch,
 });
 function session(input = new TimelineInput(), extra: Record<string, unknown> = {}, profile = testProfile()) {
-  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, ...extra } });
+  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, level: LEVEL_0, ...extra } });
 }
 
 describe('build bot recommendation (headless only)', () => {

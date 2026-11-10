@@ -452,7 +452,8 @@ function genDef3(plan, sol) {
           const kgR = plan.keygate && plan.R[plan.keygate.pocket];
           host.forks.push({ s: sG, dir: -1, to: ER[f.to], toK: 0, when: () => f.gate === 'all' ? P.held === P.keys.length : P.held >= kgR.need, text: f.gate === 'all' ? 'Every key, so the gate home opened' : 'The key gate opened' });
           if (f.gate === 'need') ER[f.to].joins = [{ k: 0, to: host, s: sG, dir: -1 }]; mkGate(ER[f.to], f.gate === 'all' ? 'all' : kgR.need); } }
-      if (!plan.views[1]) { const [bx, by] = lm; B(g, bx - .9, by - .9, -2.4, bx + .9, by + .9, 1.6, tri(sp(th, 0))); at(g, new T.Mesh(new T.SphereGeometry(.85, 20, 12, 0, TAU, 0, Math.PI / 2), tri(th.roof || th.mech)), bx, by, 1.6);
+      // the landmark tower stands on nothing, so a level on terrain goes without it
+      if (!plan.views[1] && !L.def?.terrain) { const [bx, by] = lm; B(g, bx - .9, by - .9, -2.4, bx + .9, by + .9, 1.6, tri(sp(th, 0))); at(g, new T.Mesh(new T.SphereGeometry(.85, 20, 12, 0, TAU, 0, Math.PI / 2), tri(th.roof || th.mech)), bx, by, 1.6);
         for (let k = 0; k < 2; k++) onFace(g, 'y', by + .9, bx, -.9 + k * 1.3, archGeo(.3, .7), basic((th.win || th.blue || th.leaf || th.stone).r)); }
       P.M = M; P.pocketOf = new Map(plan.R.filter(r => r.pocket).map(r => [ER[r.id], r.id]));
       L.view.updaters.push((tt, dt) => {

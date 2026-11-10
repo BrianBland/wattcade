@@ -51,8 +51,8 @@ describe('penrose sim (bike ↔ engine bridge)', () => {
     for (const a of s.sim.menuActions!()) s.sim.receive!(a.action);
     s.step(1);
     const cmds = (s.sim.snapshot() as PenroseSnapshot).cmds;
-    expect(cmds.map((c) => c.kind)).toEqual(['restart', 'solve', 'next', 'prev']);
-    expect(new Set(cmds.map((c) => c.id)).size).toBe(4);
+    expect(cmds.map((c) => c.kind)).toEqual(['hint', 'restart', 'solve', 'next', 'prev']);
+    expect(new Set(cmds.map((c) => c.id)).size).toBe(5);
   });
 
   it('machine load raises the trainer grade', () => {

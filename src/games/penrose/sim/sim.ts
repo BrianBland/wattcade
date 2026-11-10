@@ -11,7 +11,7 @@ export const FACE_KEYS: readonly FaceKey[] = ['y', 'a', 'b', 'z'];
 
 export type Command =
   | { id: number; kind: 'toggle'; key: FaceKey }
-  | { id: number; kind: 'restart' | 'next' | 'prev' | 'solve' | 'goto'; index?: number };
+  | { id: number; kind: 'restart' | 'next' | 'prev' | 'solve' | 'hint' | 'goto'; index?: number };
 
 export interface PenroseSave { done: string[]; at: number }
 
@@ -34,7 +34,7 @@ export type PenroseAction =
   | { type: 'won'; index: number; id: string; solved: boolean }
   | { type: 'fell'; index: number }
   | { type: 'load'; v: number }
-  | { type: 'cmd'; kind: 'restart' | 'next' | 'prev' | 'solve' }
+  | { type: 'cmd'; kind: 'restart' | 'next' | 'prev' | 'solve' | 'hint' }
   | { type: 'goto'; index: number };
 
 const isFace = (k: string): k is FaceKey => (FACE_KEYS as readonly string[]).includes(k);
@@ -102,6 +102,7 @@ export function createPenroseSim(ctx: GameContext): GameSim {
     isOver: () => false,
     menuActions(): readonly GameMenuAction[] {
       return [
+        { id: 'hint', label: 'Show or hide the hint', action: { type: 'cmd', kind: 'hint' } },
         { id: 'restart', label: 'Restart level', action: { type: 'cmd', kind: 'restart' } },
         { id: 'solve', label: 'Watch a solve', action: { type: 'cmd', kind: 'solve' } },
         { id: 'next', label: 'Skip to next level', action: { type: 'cmd', kind: 'next' } },

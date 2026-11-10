@@ -10,14 +10,17 @@ const CSS = `
 .pp-sky { position: absolute; inset: 0 }
 .pp-stage { position: absolute; overflow: hidden }
 .pp-stage canvas { display: block }
-.pp-status { position: absolute; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 2px; padding: 0 16px; pointer-events: none }
-.pp-status .pp-line { font: 600 14px ui-monospace, Menlo, monospace; color: #23263A; background: rgba(255,255,255,.62); border-radius: 999px; padding: 3px 12px; min-height: 1.6em; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.pp-status { position: absolute; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 2px; padding: 0 16px; pointer-events: none }
+.pp-status.show { display: flex }
+.pp-status .pp-line { display: none;  font: 600 14px ui-monospace, Menlo, monospace; color: #23263A; background: rgba(255,255,255,.62); border-radius: 999px; padding: 3px 12px; min-height: 1.6em; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
 .pp-status .pp-line:empty { visibility: hidden }
 .pp-status .pp-hint { font-size: 13px; line-height: 1.3; color: #23263A; background: rgba(255,255,255,.62); border-radius: 10px; padding: 3px 12px; max-width: 84ch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden }
 .pp-status .pp-hint:empty { display: none }
 .pp-badges { position: absolute; inset: 0; pointer-events: none }
 .pp-badges .badge { position: absolute; left: 0; top: 0; margin: -22px 0 0 -22px; width: 44px; height: 44px; border: 0; padding: 0; background: transparent; cursor: pointer; pointer-events: auto }
-.pp-badges .badge .disc, .pp-badges .badge svg { display: none }
+.pp-badges .badge svg { display: none }
+.pp-badges .badge .disc { display: grid; place-items: center; width: 22px; height: 22px; margin: 11px; border-radius: 50%; background: var(--c); color: #fff; font: 800 13px/1 "Atkinson Hyperlegible", "Helvetica Neue", Arial, sans-serif; box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 1px 3px rgba(0,0,0,.35); transition: transform .15s }
+.pp-badges .badge.on .disc { transform: scale(1.18); box-shadow: 0 0 0 3px #fff, 0 0 10px var(--c) }
 .pp-fade { position: absolute; inset: 0; opacity: 0; display: grid; place-items: center; text-align: center; pointer-events: none }
 .pp-fade .feb { font: 600 13px ui-monospace, Menlo, monospace; letter-spacing: .14em; text-transform: uppercase; color: #2A2640; opacity: .75 }
 .pp-fade .ftt { font-weight: 800; font-size: clamp(28px, 5vw, 52px); color: #2A2640; letter-spacing: -.01em; margin-top: 4px; text-shadow: 0 2px 0 rgba(255,255,255,.4) }
@@ -67,6 +70,7 @@ export class PenroseRenderer implements GameRenderer {
         // one button can drive a machine on each storey of a long level: list it once, with both names
         const byKey = new Map<string, string[]>(); for (const m of ms) byKey.set(m.key, [...(byKey.get(m.key) ?? []), m.name]);
         this.send({ type: 'level', index, id: def.id, name: def.name, machines: [...byKey].map(([key, names]) => ({ key, name: names.join(' / ') })) });
+        this.status?.classList.remove('show');   // a level starts with nothing written over it; the pause menu shows its hint
       },
       onAutopilot: () => {},
     });
@@ -108,6 +112,7 @@ export class PenroseRenderer implements GameRenderer {
     else if (c.kind === 'prev') e.load(e.index - 1);
     else if (c.kind === 'goto' && c.index !== undefined) e.load(c.index);
     else if (c.kind === 'solve') e.setAutopilot(!e.autopilot);
+    else if (c.kind === 'hint') this.status?.classList.toggle('show');
   }
 
   unmount() {

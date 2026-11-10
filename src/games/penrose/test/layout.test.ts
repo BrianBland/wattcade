@@ -8,12 +8,12 @@ describe('penrose layout vs HUD insets', () => {
       const { stage, status } = layout(W, H, { top: 0, right: 0, bottom: inset, left: 0 });
       for (const b of [stage, status]) expect(b.y + b.h).toBeLessThanOrEqual(H - inset + 1e-6);
       expect(stage.y + stage.h).toBeCloseTo(H - inset);
-      expect(stage.y).toBeGreaterThanOrEqual(status.y + status.h);
+      expect(status.y).toBeGreaterThanOrEqual(stage.y);
     });
   }
   it('fills the surface with no insets', () => {
     const { stage, status } = layout(1000, 600, { top: 0, right: 0, bottom: 0, left: 0 });
-    expect(status.h + stage.h).toBe(600);
+    expect(stage.h).toBe(600);
     expect(stage.w).toBe(1000);
   });
 });

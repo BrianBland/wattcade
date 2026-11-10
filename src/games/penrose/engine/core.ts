@@ -764,7 +764,8 @@ function makeLevel(def, idx) {
   L.machine = (m) => { const st = Object.assign({ on: false, load: 0 }, m); st.bloom = machine(view, th, m.place, m.size || .6);
     // the button colour is painted on the machine itself: a cap at its centre, so no badge has to float over the scene
     { const fc = FACE[m.key], r = (m.size || .6) * .62, cap = new T.Mesh(new T.CylinderGeometry(r, r, .1, 36), tri({ t: fc, l: mix(fc, '#000000', .22), r: mix(fc, '#000000', .38) }));
-      cap.position.y = .02; st.bloom.holder.add(cap); const ring = new T.Mesh(new T.RingGeometry(r * .62, r * .8, 36), basic('#FFFFFF', { opacity: .55, side: true })); ring.rotation.x = -Math.PI / 2; ring.position.y = .075; st.bloom.holder.add(ring); }
+      cap.position.y = .02; st.bloom.holder.add(cap); }
+    // its letter sits on that cap (the tap target's disc, see render/renderer.ts), so the button is read off the machine
     const bd = document.createElement('button'); bd.className = 'badge'; bd.style.setProperty('--c', FACE[m.key]); bd.setAttribute('aria-label', `${m.name} (${m.key.toUpperCase()} button)`); bd.setAttribute('aria-pressed', 'false');
     bd.innerHTML = `<span class="disc">${m.key.toUpperCase()}</span>${badgeIcon(m.key)}`; lvBadges.appendChild(bd);
     const mb = document.createElement('button'); mb.className = 'mbtn'; mb.style.setProperty('--c', FACE[m.key]); mb.setAttribute('aria-pressed', 'false'); mb.innerHTML = `<i>${m.key.toUpperCase()}</i>${m.name}`; ui.mach.appendChild(mb);

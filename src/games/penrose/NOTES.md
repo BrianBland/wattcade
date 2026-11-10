@@ -24,7 +24,7 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
 - `campaign.ts`: the chapters, as data: hand-built ids, `'<tier>:<seed>'` (gen9), `'cg:<seed>'` (curtain) or `'bc:<seed>'` (composer).
 - `render/renderer.ts`: builds the sky / stage / status / fade DOM, feeds the engine rider from the snapshot (not while
   the autopilot drives), reports level, wins, falls and load back through `send`.
-- `render/layout.ts`: status line and stage above the HUD inset (tested in `test/layout.test.ts`).
+- `render/layout.ts`: stage above the HUD inset (tested). No text over play: machine letters sit on caps; hint in pause menu.
 - `dev/penrose.html?level=N&inset=120`: fake-bike harness; `window.__pp` exposes the session and renderer.
 - Level design (with `npm run dev` up): `scripts/penrose-gen-sweep.mjs` (tiers | gen <tier> <from> <to> |
   curtain <from> <to>: plan, solve and idle-ride seeds), `scripts/penrose-audit.mjs [n|item...]` (overlaps, hidden

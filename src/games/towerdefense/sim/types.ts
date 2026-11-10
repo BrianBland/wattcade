@@ -12,8 +12,8 @@ export interface ActionView { id: ActionId; fill: number; ready: boolean; usable
 /** How a hit landed under the matchup matrix. */
 export type HitClass = 'strong' | 'neutral' | 'resisted';
 export interface EnemyView {
-  /** `route`: -1 on the road, else the Glider flight it follows; `flying` = route >= 0 */
-  id: number; kind: Kind; route: number; flying: boolean; x: number; y: number; angle: number; dist: number; radius: number;
+  /** `route`: -1 on the road, else the Glider flight it follows; `flying` = route >= 0. `lane`: which road it walks (default 0). */
+  id: number; kind: Kind; route: number; lane?: number; flying: boolean; x: number; y: number; angle: number; dist: number; radius: number;
   /** Current element: fixed colour, a prism's current colour, or a boss's (fixed) colour. */
   element: Element; gold: boolean; hp: number; maxHp: number; hurt: number;
   charging: boolean; /** seconds until a prism changes colour, and the colour it changes to */

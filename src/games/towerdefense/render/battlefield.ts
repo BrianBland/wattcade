@@ -102,9 +102,14 @@ export class Battlefield {
   /** The hive mouth breathes in the incoming brood's colour, so the spawn reads even under the status rows' edge. */
   hive(g: CanvasRenderingContext2D, v: View, s: TdSnapshot) {
     if (s.phase !== 'run') return;
-    const p = this.geo.roadAt(0), q = v.P(p.x, p.y), pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
+    const pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
     g.save(); g.globalCompositeOperation = 'lighter';
-    glowAt(g, COL[s.brood.color], q.x, q.y, (12 + 3 * pulse) * v.k, 0.18 + 0.12 * pulse);
+    for (const lane of this.geo.lanes) {
+      const p = lane.at(0), q = v.P(p.x, p.y);
+      // a fork's routes share their mouth: glow it once
+      if (lane !== this.geo.lanes[0] && Math.hypot(p.x - this.geo.roadAt(0).x, p.y - this.geo.roadAt(0).y) < 4) continue;
+      glowAt(g, COL[s.brood.color], q.x, q.y, (12 + 3 * pulse) * v.k, 0.18 + 0.12 * pulse);
+    }
     g.restore();
   }
   lighting(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, W: number, H: number) {

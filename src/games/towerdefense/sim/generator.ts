@@ -265,13 +265,54 @@ function laneClearance(roads: readonly Road[]): number {
  * pass under a bridge deck or through a culvert. Pads must sit on reachable ground.
  */
 const RS = 2, RX0 = -10, RY0 = -16, RW = Math.ceil((FIELD_W + 22) / RS) + 1, RH = Math.ceil((FIELD_H + 22) / RS) + 1;
+/**
+ * Exact distance to a polyline, only over the segments near `p`: each line's segments are bucketed by bounding box
+ * once, so a query within `r` reads a few buckets instead of the whole line. Returns the same value as
+ * `distanceToLine` whenever that is below `r`, and Infinity (or a value ≥ r) when it is not.
+ */
+const SEG_CELL = 4;
+type SegIndex = Map<number, number[]> & { stamp?: Int32Array; tick?: number };
+const segIndexes = new WeakMap<readonly Pt[], SegIndex>();
+function segIndex(line: readonly Pt[]): SegIndex {
+  let idx = segIndexes.get(line);
+  if (idx) return idx;
+  idx = new Map() as SegIndex;
+  idx.stamp = new Int32Array(line.length); idx.tick = 0;
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i];
+    for (let cy = Math.floor(Math.min(a.y, b.y) / SEG_CELL); cy <= Math.floor(Math.max(a.y, b.y) / SEG_CELL); cy++)
+      for (let cx = Math.floor(Math.min(a.x, b.x) / SEG_CELL); cx <= Math.floor(Math.max(a.x, b.x) / SEG_CELL); cx++) {
+        const k = cy * 4096 + cx, list = idx.get(k);
+        if (list) list.push(i); else idx.set(k, [i]);
+      }
+  }
+  segIndexes.set(line, idx);
+  return idx;
+}
+function distanceNear(p: Pt, line: readonly Pt[], r: number): number {
+  const idx = segIndex(line), seen = idx.stamp!, tick = ++idx.tick!;
+  let best = Infinity;
+  for (let cy = Math.floor((p.y - r) / SEG_CELL); cy <= Math.floor((p.y + r) / SEG_CELL); cy++)
+    for (let cx = Math.floor((p.x - r) / SEG_CELL); cx <= Math.floor((p.x + r) / SEG_CELL); cx++) {
+      const list = idx.get(cy * 4096 + cx);
+      if (list) for (const i of list) {
+        if (seen[i] === tick) continue;
+        seen[i] = tick;
+        const a = line[i - 1], b = line[i], dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2));
+        best = Math.min(best, Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
+      }
+    }
+  return best;
+}
+
 const rAt = (i: number, j: number): Pt => ({ x: RX0 + i * RS, y: RY0 + j * RS });
 /** Open cells: off every road (or on the turret deck). */
 function openGrid(lines: ReadonlyArray<readonly Pt[]>, clear: number): Uint8Array {
   const open = new Uint8Array(RW * RH);
   for (let j = 0; j < RH; j++) for (let i = 0; i < RW; i++) {
     const p = rAt(i, j);
-    open[j * RW + i] = lines.every(l => distanceToLine(p, l) >= clear) || Math.hypot(p.x - TURRET.x, p.y - TURRET.y) < NARROW_ROAD.turretR ? 1 : 0;
+    open[j * RW + i] = lines.every(l => distanceNear(p, l, clear) >= clear) || Math.hypot(p.x - TURRET.x, p.y - TURRET.y) < NARROW_ROAD.turretR ? 1 : 0;
   }
   return open;
 }
@@ -317,7 +358,7 @@ function placeCulverts(roads: readonly Road[], bridges: readonly Pt[], roadDist:
   const cands = roads.flatMap((r, li) => r.walk.filter((p, i) => i % 3 === 0 && p.x > 10 && p.x < 70 && p.y > 18 && p.y < 95
     && Math.hypot(p.x - TURRET.x, p.y - TURRET.y) > NARROW_ROAD.turretR + 10 && bridges.every(b => Math.hypot(b.x - p.x, b.y - p.y) > 16)
     // not where routes part or meet (on another route, or well clear of it)
-    && roads.every((o, k) => k === li || (d => d < 0.75 || d > 14)(distanceToLine(p, o.line)))));
+    && roads.every((o, k) => k === li || (d => d < 0.75 || d > 14)(distanceNear(p, o.line, 14)))));
   const out: Pt[] = [];
   let have = count(flood(open, bridges, clear));
   for (let n = 0; n < 2 && padGround.length - have > 12; n++) {
@@ -338,14 +379,22 @@ export interface LevelMetrics {
 interface Field { roads: Road[]; bridges: Pt[]; air: Pt[]; reach: (p: Pt) => boolean; samples: RoadPt[][]; roadDist: (p: Pt) => number; selfClear: number }
 
 /** Distance to the road centre line on a ½-unit grid (rasterised once per road; exact enough for pad clearance). */
-function roadDistance(lines: ReadonlyArray<readonly Pt[]>, cap = 20): (p: Pt) => number {
+// `cap` sits above every threshold the distance is compared with (PAD_ROAD + 0.8 at most), so a far cell reads `cap`.
+function roadDistance(lines: ReadonlyArray<readonly Pt[]>, cap = PAD_ROAD + 2): (p: Pt) => number {
   const S = 0.5, X0 = -6, Y0 = -14, W = Math.ceil((FIELD_W + 12) / S) + 1, H = Math.ceil((FIELD_H + 20) / S) + 1;
   const d = new Float32Array(W * H).fill(cap), r = Math.ceil(cap / S);
+  const cap2 = cap * cap;
   for (const p of lines.flat()) {
     const cx = Math.round((p.x - X0) / S), cy = Math.round((p.y - Y0) / S);
-    for (let j = Math.max(0, cy - r); j <= Math.min(H - 1, cy + r); j++) for (let i = Math.max(0, cx - r); i <= Math.min(W - 1, cx + r); i++) {
-      const q = j * W + i, dist = Math.hypot(X0 + i * S - p.x, Y0 + j * S - p.y);
-      if (dist < d[q]) d[q] = dist;
+    for (let j = Math.max(0, cy - r); j <= Math.min(H - 1, cy + r); j++) {
+      const dy = Y0 + j * S - p.y, dy2 = dy * dy;
+      if (dy2 >= cap2) continue;
+      for (let i = Math.max(0, cx - r); i <= Math.min(W - 1, cx + r); i++) {
+        const dx = X0 + i * S - p.x, d2 = dx * dx + dy2;
+        if (d2 >= cap2) continue; // stays at the cap
+        const q = j * W + i, dist = Math.sqrt(d2);
+        if (dist < d[q]) d[q] = dist;
+      }
     }
   }
   return (p) => {
@@ -394,6 +443,55 @@ function metrics(f: Field, pads: readonly Pt[]): LevelMetrics {
     air: air / f.air.length, twoPass: per[0].twoPass, selfClear: f.selfClear, bridges: f.bridges.length, lanes: f.roads.length };
 }
 /**
+ * The pad search's objective, kept incrementally: per candidate, the samples (and flyer points) it covers are listed
+ * once, and a swap only adds and removes those. Counts are integers, so `value()` equals scoring `metrics()` from scratch
+ * (same sums, same order) at a fraction of the cost.
+ */
+function coverScorer(f: Field, cands: readonly Pt[]) {
+  const near = (pts: readonly Pt[], c: Pt, r2: number) => {
+    const out: number[] = [];
+    for (let k = 0; k < pts.length; k++) { const dx = c.x - pts[k].x, dy = c.y - pts[k].y; if (dx * dx + dy * dy <= r2) out.push(k); }
+    return Int32Array.from(out);
+  };
+  const lanes = f.samples.map((samples, li) => {
+    const in24 = cands.map(c => near(samples, c, 576));
+    const in15 = in24.map((ks, c) => ks.filter(k => { const dx = cands[c].x - samples[k].x, dy = cands[c].y - samples[k].y; return dx * dx + dy * dy <= 225; }));
+    return { samples, L: f.roads[li].length, n: samples.length, in15, in24, w15: new Int32Array(samples.length), w24: new Int32Array(samples.length) };
+  });
+  // a pad sees two passes of lane 0 when its first and last Flamer-reach samples are more than 40 apart
+  const two = cands.map((_, c) => { const h = lanes[0].in15[c]; return h.length > 0 && lanes[0].samples[h[h.length - 1]].s - lanes[0].samples[h[0]].s > 40 ? 1 : 0; });
+  const airIn = cands.map(c => near(f.air, c, 576)), airW = new Int32Array(f.air.length);
+  const total = f.roads.reduce((a, r) => a + r.length, 0);
+  let twoPass = 0, airHit = 0;
+  const add = (c: number, d: 1 | -1) => {
+    for (const l of lanes) { for (const k of l.in15[c]) l.w15[k] += d; for (const k of l.in24[c]) l.w24[k] += d; }
+    for (const k of airIn[c]) { if (d > 0 ? airW[k]++ === 0 : --airW[k] === 0) airHit += d; }
+    twoPass += d * two[c];
+  };
+  return {
+    reset(sel: readonly number[]) {
+      for (const l of lanes) { l.w15.fill(0); l.w24.fill(0); }
+      airW.fill(0); twoPass = 0; airHit = 0;
+      for (const c of sel) add(c, 1);
+    },
+    swap(out: number, into: number) { add(out, -1); add(into, 1); },
+    value() {
+      const per = lanes.map((l) => {
+        let flame = 0, tesla = 0, gap = 0, run = 0;
+        for (let k = 0; k < l.n; k++) {
+          const w15 = l.w15[k];
+          if (w15) flame++;
+          tesla += Math.min(3, l.w24[k]); run = w15 ? 0 : run + 1; gap = Math.max(gap, run);
+        }
+        return { flame: flame / l.n, gap: gap * l.L / l.n, tesla: tesla / l.n };
+      });
+      const mean = (k: 'flame' | 'tesla') => per.reduce((a, c, i) => a + c[k] * f.roads[i].length, 0) / total;
+      const m = { flame: mean('flame'), tesla: mean('tesla'), air: airHit / f.air.length, gap: Math.max(...per.map(c => c.gap)), twoPass };
+      return m.flame * 3 + m.tesla * 0.4 + m.air * 0.5 - m.gap * 0.01 + m.twoPass * 0.03;
+    },
+  };
+}
+/**
  * Pads on a fixed road: candidates on a 1.5-unit grid that are individually valid (off the road, off the deck, inside
  * the HUD-safe box, reachable by a cable), then simulated annealing over which candidates to use, never letting two
  * pads overlap. Every state is valid, so the search spends its time on coverage.
@@ -404,7 +502,7 @@ function searchPads(f: Field, rng: Rng, n: number, iterations: number, log?: str
     const p = { x: Math.round(x * 2) / 2, y: Math.round(y * 2) / 2 };
     if (p.x < PAD_BOX.x0 || p.x > PAD_BOX.x1 || p.y < PAD_BOX.y0 || p.y > PAD_BOX.y1) continue;
     if (f.roadDist(p) < PAD_ROAD + 0.8 || Math.hypot(p.x - TURRET.x, p.y - TURRET.y) < NARROW_ROAD.turretR + PAD_R + 2 || !f.reach(p)) continue;
-    if (f.roads.some(r => distanceToLine(p, r.line) < PAD_ROAD)) continue;
+    if (f.roads.some(r => distanceNear(p, r.line, PAD_ROAD) < PAD_ROAD)) continue;
     cands.push(p);
   }
   const least = minPads(n);
@@ -423,11 +521,9 @@ function searchPads(f: Field, rng: Rng, n: number, iterations: number, log?: str
   }
   if (sel.length < least) { log?.push(`${cands.length} spots, ${sel.length} spaced`); return []; }
   n = sel.length;
-  const value = (s: readonly number[]) => {
-    const m = metrics(f, s.map(i => cands[i]));
-    return m.flame * 3 + m.tesla * 0.4 + m.air * 0.5 - m.gap * 0.01 + m.twoPass * 0.03;
-  };
-  let cur = value(sel), best = { sel, v: cur };
+  const score = coverScorer(f, cands);
+  score.reset(sel);
+  let cur = score.value(), best = { sel, v: cur };
   for (let it = 0; it < iterations; it++) {
     const T = 0.04 * (1 - it / iterations) + 0.001, i = Math.floor(rng() * n);
     let c: number;
@@ -438,9 +534,10 @@ function searchPads(f: Field, rng: Rng, n: number, iterations: number, log?: str
       for (let k = 0; k < 12; k++) { const q = Math.floor(rng() * cands.length), d = (cands[q].x - p.x - dx) ** 2 + (cands[q].y - p.y - dy) ** 2; if (d < bestD) { bestD = d; c = q; } }
     }
     if (c === sel[i] || !fits(sel, c, i)) continue;
-    const next = sel.slice(); next[i] = c;
-    const v = value(next);
-    if (v > cur || rng() < Math.exp((v - cur) / T)) { sel = next; cur = v; if (v > best.v) best = { sel, v }; }
+    score.swap(sel[i], c);
+    const v = score.value();
+    if (v > cur || rng() < Math.exp((v - cur) / T)) { const next = sel.slice(); next[i] = c; sel = next; cur = v; if (v > best.v) best = { sel, v }; }
+    else score.swap(c, sel[i]);
   }
   return best.sel.map(i => cands[i]);
 }

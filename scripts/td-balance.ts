@@ -1,5 +1,5 @@
 /** Fresh-save, first-run balance sweep. Never counts auto-restarts or garage investment.
- * npx tsx scripts/td-balance.ts [--seeds=1,2,3,4,5,6,7,8] [--minutes=90]
+ * npx tsx scripts/td-balance.ts [--seeds=1,2,3,4,5,6,7,8] [--minutes=90] [--level=0|narrow]
  *   [--multipliers=1.1,1.15,1.2] [--riders=z2,responsive,actions,recovery] [--json]
  */
 import { FIXED_DT } from '../src/contracts';
@@ -7,11 +7,13 @@ import { createGameSession, SCRIPTS, testProfile, TimelineInput, TuningRegistry,
 import { module } from '../src/games/towerdefense';
 import type { TdSnapshot } from '../src/games/towerdefense/sim/types';
 import { waveRole } from '../src/games/towerdefense/sim/waves';
+import { LEVEL_0, narrowed } from '../src/games/towerdefense/sim/level';
 
 const arg = (name: string, fallback: string) => process.argv.find(a => a.startsWith(`--${name}=`))?.split('=')[1] ?? fallback;
 const seeds = arg('seeds', '1,2,3,4,5,6,7,8').split(',').map(Number);
 const multipliers = arg('multipliers', 'default').split(',').map(n => n === 'default' ? undefined : Number(n));
 const minutes = Number(arg('minutes', '90'));
+const level = arg('level', '0') === 'narrow' ? narrowed(LEVEL_0) : LEVEL_0;
 const riders = {
   z2: { script: 'z2', actionBot: false },
   responsive: { script: 'hook-responsive', actionBot: false },
@@ -38,7 +40,7 @@ function measure(seed: number, rider: keyof typeof riders, multiplier?: number) 
   session = createGameSession({
     game: module, profile, input: new TimelineInput(SCRIPTS[runScript].input), seed, fake: { script: runScript },
     tuningRegistry: new TuningRegistry({ profileId: profile.id, storage: null }),
-    simOpts: { autopilot: true, actionBot },
+    simOpts: { autopilot: true, actionBot, level },
     onEmit(e) {
       if (e.type === 'broodAnnounced') recovering = true;
       if (e.type === 'waveStart') {

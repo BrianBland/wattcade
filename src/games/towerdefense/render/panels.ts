@@ -1,9 +1,11 @@
 // DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { crewStatus, rideObjective } from './objectives';
+import { constructionStatus, rideObjective } from './objectives';
+import { levelSelectHtml, modesHtml } from './levelSelect';
 
 export interface Hit extends Box { action: unknown }
 
@@ -54,6 +56,38 @@ const CSS = `
 .td-menu .btn { flex-shrink:0; width:100%; text-align:left; display:flex; justify-content:space-between; padding:8px 12px; font-size:16px; }
 .td-menu .btn small { display:block; font-size:12px; text-transform:none; letter-spacing:0; }
 .td-menu .selected { border-color:var(--neon); }
+.td-map { display:block; width:100%; height:100%; border-radius:6px; }
+.td-cards { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; flex-shrink:0; }
+.td-hud[data-narrow="true"] .td-cards { grid-template-columns:1fr; }
+.td-menu .td-card { flex-direction:column; justify-content:flex-start; gap:8px; padding:8px; }
+.td-card .td-map, .td-card-art { width:100%; aspect-ratio:var(--map-aspect); height:auto; }
+.td-card-art { display:grid; place-items:center; border-radius:6px; background:#1b1d26; font-size:44px; font-weight:800; color:var(--dim); }
+.td-endless { color:var(--pink); } .td-quick { color:var(--neon); }
+.td-levels { display:grid; grid-template-columns:1fr; gap:10px; min-height:0; }
+.td-hud[data-wide="true"] .td-levels { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); align-items:start; }
+.td-hud[data-wide="true"] .td-preview { order:2; position:sticky; top:0; }
+.td-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
+.td-hud[data-wide="true"] .td-preview { grid-template-columns:1fr; }
+.td-preview .td-map { aspect-ratio:var(--map-aspect); width:auto; max-width:100%; height:28vh; justify-self:center; }
+.td-hud[data-wide="true"] .td-preview .td-map { width:100%; height:auto; }
+.td-preview h3 { margin:0 0 4px; color:var(--neon); font-size:20px; }
+.td-preview-text p { font-size:13px; margin:0 0 4px; }
+.td-preview-actions { display:flex; gap:8px; margin-top:8px; }
+.td-preview-actions .btn { width:auto; flex:1; justify-content:center; }
+.td-grid { display:flex; flex-direction:column; gap:6px; }
+.td-ground { display:grid; grid-template-columns:84px repeat(5, minmax(0,64px)); gap:6px; align-items:center; justify-content:start; }
+.td-hud[data-narrow="true"] .td-ground { grid-template-columns:62px repeat(5, minmax(0,1fr)); gap:4px; }
+.td-hud[data-narrow="true"] .td-ground > span { font-size:9px; letter-spacing:0; }
+.td-hud[data-wide="true"] .td-ground { grid-template-columns:84px repeat(5, minmax(0,1fr)); justify-content:stretch; }
+.td-ground > span { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+.td-tile { position:relative; padding:3px; border-radius:8px; border:1px solid var(--glass-line); background:var(--panel-solid); color:var(--fg); font:inherit; cursor:pointer; min-height:44px; }
+.td-tile .td-map { aspect-ratio:var(--map-aspect); height:auto; }
+.td-tile b { position:absolute; left:6px; top:5px; font-size:11px; text-shadow:0 1px 2px #000; }
+.td-tile i { display:block; font-style:normal; font-size:11px; color:#ffd24a; text-align:center; margin-top:2px; }
+.td-tile.selected { border-color:var(--neon); box-shadow:0 0 0 2px var(--neon); }
+.td-tile.next:not(.selected) { border-color:#ffd24a; }
+.td-tile.locked .td-map { opacity:.35; filter:grayscale(.8); }
+.td-tile.locked i { color:var(--dim); }
 .td-hud[data-narrow=true] .td-current { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
 .td-hud[data-narrow=true] .td-next { text-align:left; font-size:14px; }
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
@@ -100,6 +134,9 @@ export class TdHud {
       if (!button || button.disabled) return;
       const index = Number(button.dataset.index);
       if (button.dataset.command === 'garageRow') this.send?.({ type: 'garageRow', row: index });
+      if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
+      if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });
+      if (button.dataset.command === 'levelBack') this.send?.({ type: 'levelBack' });
     });
   }
 
@@ -119,6 +156,8 @@ export class TdHud {
   }
   resize(L: TdLayout, W: number) {
     this.root.dataset.narrow = String(W < 560);
+    this.root.dataset.wide = String(L.field.turned);
+    this.root.style.setProperty('--map-aspect', L.field.turned ? '112 / 80' : '80 / 112');
     this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
@@ -130,12 +169,12 @@ export class TdHud {
     const run = s.phase === 'run', bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
-    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);
     const forecast = incoming
-      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/3`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
+      ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
       : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
     this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;
@@ -153,15 +192,25 @@ export class TdHud {
     this.html(this.event, `<b>${esc(headline)}</b><span>${esc(sub)}</span>`);
     this.objective.hidden = !L.objective || !run || !!s.workshop;
     if (L.objective) {
-      const o = rideObjective(s), crew = crewStatus(s);
+      const o = rideObjective(s), crew = constructionStatus(s);
       this.html(this.objective, `<div class="td-objective-main"><small>${esc(o.label)}</small><h3>${esc(o.title)}</h3><p>${esc(o.target)}</p>${o.progress === undefined ? '' : `<div class="bar" role="progressbar" aria-label="Effort progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(o.progress * 100)}"><i style="width:${pct(o.progress)}"></i></div>`}<p class="td-objective-detail">${esc(o.detail)}</p></div><div class="td-crew"><b>${esc(crew.title)}</b><p>${esc(crew.detail)}</p></div>`);
     }
     this.menu.hidden = !s.garage;
     if (s.garage) {
       const gv = s.garage;
-      const previous = this.menu.querySelector<HTMLElement>('.selected')?.dataset.index;
-      this.html(this.menu, `<header><h2>Garage</h2><b>${gv.bank} parts</b></header><p>Best wave ${gv.bestWave} · Run ${gv.runs + 1}</p><small>${gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`} · ▲▼ choose · A buy · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span><span>${r.cost ?? ''}</span></button>`).join('')}`);
-      if (previous !== String(gv.sel)) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+      const sel = this.menu.querySelector<HTMLElement>('.selected');
+      const previous = sel ? `${sel.dataset.command === 'levelTile' ? 'L' : ''}${sel.dataset.index}` : undefined;
+      const auto = gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`;
+      const head = `<header><h2>${esc(gv.title)}</h2><b>${gv.stars}★</b></header><p>${esc(gv.subtitle)}</p>`;
+      const turned = L.field.turned, results = gv.rows.some((r) => r.kind === 'next' || r.kind === 'finish');
+      const body = gv.page === 'campaign'
+        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, turned)}`
+        : results
+          ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
+          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, turned, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) })}`;
+      this.html(this.menu, head + body);
+      const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
+      if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }
 }

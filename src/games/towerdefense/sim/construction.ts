@@ -14,6 +14,8 @@ export interface BuildSuggestion {
 export interface ConstructionState {
   wave: number; brood: Element; counts: WaveForecast; towers: readonly CrewTower[];
   scrap: number; costMult: number; baseHp: number; baseMaxHp: number; repairCost: number;
+  /** The highest tower level unlocked (default TOWER_MAX_LEVEL). */
+  maxLevel?: number;
   matchup?: Matchup;
   /** Optional restriction for the workshop's highlighted pad; same recommendation rules. */
   pad?: number;
@@ -29,7 +31,7 @@ export function padCover(geo: TdGeometry): Record<TowerKind, number[]> {
   const cover = Object.fromEntries(TOWER_KINDS.map((kind) => [kind, geo.pads.map((p) => {
     const r = TOWERS[kind].range, near = (q: { x: number; y: number }) => Math.hypot(q.x - p.x, q.y - p.y) <= r;
     let n = 0;
-    for (let d = 0; d < geo.roadLength; d++) if (near(geo.roadAt(d))) n++;
+    for (const lane of geo.lanes) for (let d = 0; d < lane.length; d++) if (near(lane.at(d))) n += 1 / geo.lanes.length;
     if (TOWERS[kind].air) for (let route = 0; route < geo.routes; route++) for (let d = 0; d < geo.flightLength(route); d++) if (near(geo.flightAt(route, d))) n += 0.5;
     return n;
   })])) as Record<TowerKind, number[]>;
@@ -55,7 +57,7 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
     if (s.pad != null && p.id !== s.pad) continue;
     const existing = s.towers.find(t => t.pad === p.id);
     for (const kind of existing ? [existing.kind] : TOWER_KINDS) {
-      if (existing && existing.level >= TOWER_MAX_LEVEL) continue;
+      if (existing && existing.level >= (s.maxLevel ?? TOWER_MAX_LEVEL)) continue;
       const el = TOWERS[kind].element;
       const matrix = s.matchup ?? MATCHUP, row = matrix[TOWER_WEAPON[kind]];
       if (row[target] < 1) continue;
@@ -69,7 +71,7 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
       let cost = existing ? 0 : towerBuildCost(kind, s.costMult), targetLevel = existing?.level ?? 1;
       // A work order may fund several upgrade levels. Its complete cost and final level are
       // shown before acceptance, keeping one press per lull comparable to the old crew economy.
-      while (targetLevel < TOWER_MAX_LEVEL) {
+      while (targetLevel < (s.maxLevel ?? TOWER_MAX_LEVEL)) {
         const next = towerUpgradeCost(kind, targetLevel, s.costMult);
         if (cost + next > s.scrap) break;
         cost += next; targetLevel++;

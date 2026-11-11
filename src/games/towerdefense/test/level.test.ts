@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import { BASE_PAD, PADS, ROAD_LENGTH, flightAt, padOrder, roadAt } from '../sim/defs';
-import { LEVEL_0, levelGeometry, type TdLevel } from '../sim/level';
+import { BASE_PAD, BASE_R, KINDS, PADS, ROAD_LENGTH, flightAt, padOrder, roadAt } from '../sim/defs';
+import { LEVEL_0, NARROW_ROAD, levelGeometry, narrowed, type TdLevel } from '../sim/level';
 import { layout, fieldClearsHud } from '../render/layout';
 import { along, cableRoutes } from '../render/cables';
 import type { TdSnapshot } from '../sim/types';
@@ -73,6 +73,46 @@ describe('level data seam', () => {
       const p = along(r.pts, r.length, f);
       if (Math.hypot(p.x - T.x, p.y - T.y) < MIRROR.turretR - 1) continue; // under the deck, where the road ends
       expect(g.distanceToRoad(p), `pad ${r.pad}`).toBeGreaterThan(MIRROR.roadHalfWidth + MIRROR.shoulder + 0.5);
+    }
+  });
+
+  it('level 0 keeps its sizes: lane spread, boss radius, turret reach and art scale', () => {
+    const g = levelGeometry(LEVEL_0);
+    expect(g.laneSpread).toBe(2.25);
+    expect(g.bossRadius).toBe(KINDS.boss.radius);
+    expect(g.baseR).toBe(BASE_R);
+    expect(g.deckScale).toBe(1);
+  });
+
+  it('a narrow level keeps walkers within ±1.5 of its 8-unit road, with a smaller boss and turret', () => {
+    const level = narrowed(LEVEL_0), g = levelGeometry(level);
+    expect(level.roadHalfWidth * 2).toBe(8);
+    expect(level.painted).toBeUndefined();
+    expect(g.deckScale).toBeCloseTo(8 / 11, 6);
+    expect(g.baseR).toBeCloseTo(BASE_R * 8 / 11, 6);
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'sprints' }, seed: 3,
+      simOpts: { autopilot: true, level } });
+    let walkers = 0, bosses = 0;
+    for (let i = 0; i < 30 * 60 * 2 && bosses < 50; i++) {
+      s.step(10);
+      const snap = s.sim.snapshot() as TdSnapshot;
+      for (const e of snap.enemies) {
+        if (e.flying) continue;
+        walkers++;
+        if (e.kind === 'boss') { bosses++; expect(e.radius).toBe(NARROW_ROAD.bossRadius); }
+        // lane offset plus the walkers' wobble, inside the road
+        expect(g.distanceToRoad(e)).toBeLessThan(level.roadHalfWidth);
+      }
+    }
+    expect(walkers).toBeGreaterThan(200);
+    expect(bosses).toBeGreaterThan(0);
+  });
+
+  it('a narrow level clears the HUD in portrait and landscape', () => {
+    const level = narrowed(LEVEL_0);
+    for (const [W, H] of [[820, 1180], [1180, 820], [390, 844], [844, 390]]) {
+      const L = layout(W, H, { top: 0, bottom: 110, left: 0, right: 0 }, false, level);
+      expect(fieldClearsHud(L.field, [{ x: 0, y: H - 110, w: W, h: 110 }], level)).toBe(true);
     }
   });
 });

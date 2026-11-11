@@ -19,10 +19,8 @@ function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string,
 
 export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, powerZone: number): Hit[] {
   const hits: Hit[] = [], d = L.dock;
-  const suggestion = s.suggestion;
-  button(g, d.construct, suggestion ? `A · ${suggestion.label}` : 'A · Construction',
-    suggestion ? `${suggestion.cost} scrap · ${s.autoCrew ? 'crew accepts when lull ends' : 'tap to accept'}` : `${s.scrap} scrap · Auto-crew ${s.autoCrew ? 'ON' : 'OFF'}`, false, !s.workshop && !s.over);
-  hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', ...(suggestion ? { suggestion } : {}), epoch: s.inputEpoch } });
+  button(g, d.construct, 'A · Construction', `${s.scrap} scrap · build · upgrade · repair`, false, !s.workshop && !s.over);
+  hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', epoch: s.inputEpoch } });
   const boost = !s.workshop && s.boss?.weapon === 'rail' && (s.boss.telegraph || s.boss.exposed);
   button(g, d.workshop, boost ? '▲ Sprint boost' : '▼ Workshop', boost ? 'Hold for ERG push' : 'Build · upgrade · repair',
     boost ? s.boss!.sprintBoost : !!s.workshop, !s.over);
@@ -67,7 +65,7 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {
-    button(g, r.options[i], row.label, row.kind === 'crew' ? 'Tap to toggle' : row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable);
+    button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable);
     hits.push({ ...r.options[i], action: row.affordable ? { type: 'row', row: i, pad: ws.pad, revision: ws.revision, epoch: s.inputEpoch } : null });
   });
   button(g, r.close, 'B · Close', '◀▶ selects pads and the base');

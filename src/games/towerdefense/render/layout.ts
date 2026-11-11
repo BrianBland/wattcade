@@ -107,7 +107,7 @@ function focusOf(level: TdLevel) {
   if (focus) return focus;
   const T = level.turret;
   focus = [
-    ...levelGeometry(level).road.filter(p => p.y >= level.spawnY).map(p => ({ ...p, r: 8 })),
+    ...levelGeometry(level).roads.flat().filter(p => p.y >= level.spawnY).map(p => ({ ...p, r: 8 })),
     ...level.pads.map(p => ({ x: p.x, y: p.y, r: 9 })),
     { ...T, r: level.turretR },
     ...level.flyerSpawns.flatMap(spawn => Array.from({ length: 25 }, (_, i) => ({

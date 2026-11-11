@@ -88,7 +88,7 @@ export class AlienLayer {
       if (f.id <= this.lastFx) continue;
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind !== 'death' || firstPass) continue; // don't replay history on mount
-      const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(KINDS[f.ekind].radius, sp);
+      const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(f.ekind === 'boss' ? geoOf(s).bossRadius : KINDS[f.ekind].radius, sp);
       const tr = this.tracks.get(f.eid), h = tr?.h ?? Math.atan2(geoOf(s).base.y - f.y, geoOf(s).base.x - f.x), tint = sp.tint ? COL[f.color] : undefined;
       const corpse: Corpse = { species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined, boss: f.ekind === 'boss' };
       if (KINDS[f.ekind].heavy && tr) { // heavy deaths come apart: some real parts fly off, the husk is drawn without them
@@ -148,7 +148,11 @@ export class AlienLayer {
       const q = v.P(c.x, c.y);
       this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, fade, 1 - k * 0.12);
     }
-    for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
+    this.drawLive(g, s.enemies, v, t, fallback);
+  }
+  /** Just these live aliens, back to front (e.g. again over a bridge deck). */
+  drawLive(g: G, enemies: readonly EnemyView[], v: View, t: number, fallback: (e: EnemyView, h: number) => void) {
+    for (const e of [...enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
       if (!this.drawOne(g, e, tr, v, t)) fallback(e, tr.h);
     }

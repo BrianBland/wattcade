@@ -433,3 +433,63 @@ export function drawStoneWheel(g: G, t: number, giveUp: number, caught: number) 
   rect(g, '#3e7a2a', -r + 6, -4, 5, 3); rect(g, '#3e7a2a', r - 12, 6, 6, 3); // moss
   g.restore();
 }
+
+const CAVE_ROCK: Partial<Record<BiomeId, [string, string, string]>> = { // body, shadow, highlight
+  volcano: ['#4a2c26', '#2a1814', '#6e443a'], snow: ['#9fb4c8', '#5f7690', '#e8f2fb'], jungle: ['#56604a', '#323a2a', '#7f8c66'],
+  underwater: ['#3c5866', '#22343e', '#5f8494'], desert: ['#b9875a', '#80583a', '#d9a878'], moon: ['#7b7b86', '#4a4a56', '#a4a4b0'],
+};
+/** The Outrun bolt-hole: a rock bluff with a low tunnel through it, mouth at x0 (buffer px), `ppm` px per metre.
+ *  part 'back' goes before the rider (bluff + dark tunnel), 'front' after (shadow over the rider inside, the arch lip,
+ *  and rocks shaken loose when the chaser slams in; `crash` = seconds since that, or < 0). */
+export function drawCave(g: G, part: 'back' | 'front', x0: number, x1: number, roadY: number, ppm: number, biome: BiomeId, t: number, crash: number) {
+  const [body, dark, hi] = CAVE_ROCK[biome] ?? ['#6a5a4e', '#3e332c', '#8f7d6e'];
+  const holeH = Math.round(6.5 * ppm), top = Math.round(20 * ppm), tail = 14 * ppm;
+  const ry = Math.round(roadY);
+  const topAt = (x: number) => { // cliff at the mouth, a lumpy crest, a slope down after the exit
+    if (x < x0) return ry;
+    const lump = Math.sin(x * 0.11) * 3 + Math.sin(x * 0.37) * 1.5;
+    if (x <= x1) return ry - top - lump + Math.max(0, 6 - (x - x0)) * 1.2;
+    return ry - Math.max(0, top * (1 - (x - x1) / tail)) - lump * Math.max(0, 1 - (x - x1) / tail);
+  };
+  if (part === 'back') {
+    for (let x = Math.floor(x0); x < x1 + tail; x++) {
+      const y = Math.round(topAt(x));
+      if (y >= ry) continue;
+      g.fillStyle = body; g.fillRect(x, y, 1, ry - y + 1);
+      g.fillStyle = hi; g.fillRect(x, y, 1, 2);
+      if (hash01(Math.floor(x / 3) * 7) < 0.18) { g.fillStyle = dark; g.fillRect(x, y + 6 + Math.floor(hash01(x) * (ry - y - 10)), 1, 3); }
+    }
+    // the tunnel: black at the back, a faint glow from the far end
+    for (let x = Math.floor(x0); x < x1; x++) {
+      const k = (x - x0) / Math.max(1, x1 - x0), glow = Math.max(0, (k - 0.75) * 4);
+      g.fillStyle = glow > 0 ? `rgba(60,52,44,${0.6 + glow * 0.4})` : '#0c0a0a';
+      g.fillRect(x, ry - holeH, 1, holeH);
+    }
+    g.fillStyle = dark; g.fillRect(Math.floor(x0), ry - holeH - 3, Math.ceil(x1 - x0), 3); // roof
+    return;
+  }
+  // inside the bluff it's dark: shade the rider (and the hole) a little
+  g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(Math.floor(x0 + 4), ry - holeH, Math.max(0, Math.ceil(x1 - x0 - 8)), holeH);
+  // the arch lip round the mouth
+  g.fillStyle = body; g.fillRect(Math.floor(x0) - 2, ry - holeH - 4, 6, 5);
+  g.fillStyle = hi; g.fillRect(Math.floor(x0) - 3, ry - holeH - 5, 8, 2);
+  g.fillStyle = dark; g.fillRect(Math.floor(x0) + 3, ry - holeH, 2, holeH);
+  if (crash >= 0 && crash < 2.5) { // the bluff shudders: rocks rain off the face and a dust cloud rolls out
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const delay = hash01(i * 5 + 1) * 0.5, a = crash - delay;
+      if (a < 0) continue;
+      const fx = x0 - 4 - hash01(i * 5 + 2) * 18 + a * (hash01(i * 5 + 3) - 0.8) * 20, fy = ry - top + hash01(i * 5 + 4) * top * 0.5 + 0.5 * 120 * a * a;
+      if (fy > ry - 2) continue;
+      const sz = 2 + Math.floor(hash01(i * 9) * 4);
+      g.fillStyle = i % 3 ? body : hi; g.fillRect(Math.round(fx), Math.round(fy), sz, sz);
+    }
+    const k = Math.min(1, crash / 1.2);
+    g.globalAlpha = 0.65 * (1 - Math.max(0, (crash - 1) / 1.5));
+    for (let i = 0; i < 16; i++) {
+      const r = (6 + hash01(i * 3) * 10) * (0.4 + k), dx = -8 - hash01(i * 7) * 40 * k, dy = -hash01(i * 11) * top * 0.7 * k;
+      g.fillStyle = i % 2 ? '#d8cbb8' : '#b8a892'; g.beginPath(); g.arc(x0 + dx, ry + dy - r * 0.5, r, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+}

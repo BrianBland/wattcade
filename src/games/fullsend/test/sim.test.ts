@@ -146,6 +146,22 @@ describe('loops: pedal round', () => {
   });
 });
 
+describe('outrun: duck into the cave', () => {
+  it('you slip inside, the chaser slams into the mouth, and you coast to a stop in the dark', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().piece?.kind === 'outrun' && snap().phase === 'payoff'); i++) s.step(1);
+    const mouth = snap().piece!.x0;
+    expect(snap().piece!.len).toBeGreaterThan(20);
+    expect(Math.abs(snap().x - mouth)).toBeLessThan(4); // the sprint ends at the cave mouth
+    for (let i = 0; i < 30 * 10 && snap().phase === 'payoff'; i++) s.step(1);
+    const p = snap().piece!;
+    expect(p.crashAt).toBeGreaterThan(0);
+    expect(snap().x).toBeGreaterThan(mouth + 5); // inside
+    expect(snap().x).toBeLessThan(mouth + p.len); // and still in the dark
+  });
+});
+
 describe('flips', () => {
   it('holding a full lean in a long hop tucks into a flip; a clean landing counts it, with flow', () => {
     const lean: InputState = { held: new Set(), pressed: new Set(), released: new Set(), paddleL: 1, paddleR: 0, paddleIdleS: 0, source: 'script' };

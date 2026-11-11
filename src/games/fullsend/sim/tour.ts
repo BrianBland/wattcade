@@ -48,6 +48,8 @@ export const MEDAL_FTP: Record<PieceKind, [number, number, number]> = {
   outrun: [0.95, 1.05, 1.15],
 };
 
+/** How far (m) each chaser reaches ahead of its feet: where its nose hits the cave bluff. */
+export const CHASER_REACH: Record<ChaserKind, number> = { trex: 7.5, shark: 7, wheel: 4, boulder: 3.5, avalanche: 2, wave: 2.5 };
 export function chaserFor(biome: BiomeId): ChaserKind {
   if (biome === 'snow') return 'avalanche';
   if (biome === 'underwater') return 'shark';

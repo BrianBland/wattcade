@@ -17,7 +17,7 @@ export interface SignSpec {
 }
 
 const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
-const TARGET: Record<string, string> = { leap: 'GAP', smash: 'WALL', loop: 'LOOP', outrun: 'ESCAPE', dive: 'SURFACE' };
+const TARGET: Record<string, string> = { leap: 'GAP', smash: 'WALL', loop: 'LOOP', outrun: 'CAVE', dive: 'SURFACE' };
 
 /** Where the thing you're counting down to is (world m), what it's called, and the seconds left; null if nothing. */
 export function countdown(s: FullSendSnapshot): { label: string; x: number; m: number; s: number; phase: 'approach' | 'effort' } | null {
@@ -26,7 +26,7 @@ export function countdown(s: FullSendSnapshot): { label: string; x: number; m: n
   const left = Math.max(0, s.phaseS - s.phaseT);
   if (s.phase === 'approach') { const x = s.x + s.v * left; return { label: 'SPRINT', x, m: x - s.x, s: left, phase: 'approach' }; }
   if (s.phase !== 'effort') return null;
-  const x = p.kind === 'dive' ? p.x0 + p.len : p.kind === 'outrun' ? s.x + s.v * left : p.x0;
+  const x = p.kind === 'dive' ? p.x0 + p.len : p.x0;
   return { label: TARGET[p.kind], x, m: Math.max(0, x - s.x), s: left, phase: 'effort' };
 }
 
@@ -40,7 +40,7 @@ export function planSigns(s: FullSendSnapshot, from: number, to: number): SignSp
   if (c.phase === 'approach') {
     const lights = c.s > 3 ? 0 : c.s > 2 ? 1 : c.s > 1 ? 2 : c.s > 0.05 ? 3 : 4;
     out.push({ kind: 'gate', x: c.x, tone: 'red', title: 'START', lights });
-  } else if (p.kind === 'outrun' || p.kind === 'dive') out.push({ kind: 'gate', x: c.x, tone: 'green', title: p.kind === 'dive' ? 'AIR' : 'SAFE', lights: 4 });
+  } else if (p.kind === 'dive') out.push({ kind: 'gate', x: c.x, tone: 'green', title: 'AIR', lights: 4 });
   return out.filter((q) => q.x >= from && q.x <= to);
 }
 
@@ -52,7 +52,7 @@ export function signMessage(s: FullSendSnapshot, m: number | null): SignSpec | n
   if (s.phase === 'approach' && p && c) return { kind: 'count', x: 0, tone: 'yellow', title: p.title.toUpperCase(), big: dist, sub: `SPRINT IN · ${PIECE_VERB[p.kind]}` };
   if (s.phase === 'effort' && p && c) {
     const safe = p.kind === 'outrun' || p.kind === 'dive';
-    return { kind: 'count', x: 0, tone: safe ? 'green' : 'red', title: c.label, big: dist, sub: safe ? (p.kind === 'dive' ? 'to the surface' : 'to safety') : PIECE_VERB[p.kind] };
+    return { kind: 'count', x: 0, tone: safe ? 'green' : 'red', title: c.label, big: dist, sub: safe ? (p.kind === 'dive' ? 'to the surface' : 'to the cave') : PIECE_VERB[p.kind] };
   }
   if (s.fork) {
     const f = s.fork;

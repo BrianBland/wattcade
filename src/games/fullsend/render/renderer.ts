@@ -10,7 +10,7 @@ import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
-import { PIECE_VERB } from '../sim/tour';
+import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
@@ -18,7 +18,7 @@ import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, draw
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
-import { drawCanyonFloor, drawChaser, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
+import { drawCanyonFloor, drawCave, drawChaser, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
@@ -45,7 +45,7 @@ export class FullSendRenderer implements GameRenderer {
   private terrain: { key: string; t: Terrain } | null = null;
   private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
   /** Screen shake (buffer px), and the event markers it last reacted to. */
-  private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99 };
+  private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99, cave: -99 };
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
@@ -117,7 +117,8 @@ export class FullSendRenderer implements GameRenderer {
     const k = this.dpr / this.px; // CSS px -> buffer px
     const L = this.L, UH = L.UH * k, roadY0 = Math.round(L.roadY * k);
     // In an Outrun the rider moves right so whatever is chasing fits on screen behind them.
-    const wantFrac = (s.piece?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff')) || (s.piece?.kind === 'loop' && s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
+    const wantFrac = s.piece?.kind === 'outrun' && s.phase === 'payoff' ? 0.68 // room behind for the chaser hitting the cave
+      : (s.piece?.kind === 'outrun' && s.phase === 'effort') || (s.piece?.kind === 'loop' && s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
     this.riderFrac += (wantFrac - this.riderFrac) * Math.min(1, dt * 1.5);
     const RX = Math.round(this.riderFrac * W);
     const terr = this.terr(s);
@@ -236,10 +237,13 @@ export class FullSendRenderer implements GameRenderer {
         drawObstacle(g, ox, roadY(p.x0 + i * p.spacing), p.biome, i, hit, topple);
       }
     }
-    if (p?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff')) {
-      const cx = sx(s.x - p.gap);
-      const caughtAge = s.t - p.caughtAt;
-      drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
+    const caveOn = p?.kind === 'outrun' && s.phase !== 'approach' && sx(p.x0) < W + 10 && sx(p.x0 + p.len) + 14 * PPM > -10;
+    if (caveOn) drawCave(g, 'back', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, -1);
+    if (p?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff' || (p.crashAt > 0 && caveOn))) {
+      // slammed into the bluff: creatures faceplant and stay there; boulders, snow and water burst against it (into the dust)
+      const crashed = p.crashAt > 0, ca = s.t - p.crashAt, cxm = crashed ? p.x0 - CHASER_REACH[p.chaser] : s.x - p.gap;
+      const bursts = p.chaser === 'boulder' || p.chaser === 'avalanche' || p.chaser === 'wave';
+      if (!crashed || !bursts || ca < 0.25) drawChaser(g, p.chaser, sx(cxm), roadY(cxm), crashed ? 0 : t, crashed && !bursts ? ca : -1, s.t - p.caughtAt);
     }
 
     // ---- road signs: posts here (behind the rider), boards + text at full resolution in the overlay ----
@@ -289,6 +293,7 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
     }
     g.restore();
+    if (caveOn) drawCave(g, 'front', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, p!.crashAt > 0 ? s.t - p!.crashAt : -1);
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
@@ -340,6 +345,7 @@ export class FullSendRenderer implements GameRenderer {
     if (s.splashAt !== sn.splash) { this.shake = Math.max(this.shake, 6); sn.splash = s.splashAt; }
     if (hits > sn.hits) this.shake = Math.max(this.shake, 2.5);
     sn.hits = hits;
+    if (s.piece && s.piece.crashAt !== sn.cave) { if (s.piece.crashAt > 0) this.shake = Math.max(this.shake, 9); sn.cave = s.piece.crashAt; }
     if (s.piece && s.piece.caughtAt !== sn.caught) { if (s.piece.caughtAt > 0) this.shake = Math.max(this.shake, 5); sn.caught = s.piece.caughtAt; }
     if (s.jet === 'on') this.shake = Math.max(this.shake, 0.8);
     this.shake *= Math.exp(-dt * 7);

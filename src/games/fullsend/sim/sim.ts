@@ -1,6 +1,6 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
-import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
+import { CHASER_REACH, chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
 import { AIR_CELL, airItemAt, kickerLip, bumpH, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
 import { leapRange, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
@@ -30,10 +30,12 @@ const TIER_UP: Record<Tier, Tier> = { ground: 'sky', sky: 'moon', moon: 'moon', 
 export interface PieceView {
   kind: PieceKind; biome: BiomeId; title: string; finale: boolean;
   x0: number;
-  /** leap: gap width · smash: wall length · loop: radius · dive: tunnel length · outrun: 0. */
+  /** leap: gap width · smash: wall length · loop: radius · dive: tunnel length · outrun: the bolt-hole cave's length. */
   len: number;
   n: number; spacing: number; count: number; hitAt: number[]; toppledAt: number;
   chaser: ChaserKind; gap: number; caught: number; caughtAt: number;
+  /** outrun: when the chaser slammed into the cave mouth (sim time), or -99. */
+  crashAt: number;
   air: number; surfaced: boolean;
   /** Live score as an FTP fraction (built-up speed, or the mean so far for dive/outrun). */
   live: number;
@@ -152,6 +154,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     loopSlowMo: T.num('loopSlowMo', 0.6, 0.2, 1, 0.05, 'Slow-motion factor in loops (stretches the ride round so the trainer grade can follow)'),
     chaseGap: T.num('chaseGap', 18, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
     chaseMaxGap: T.num('chaseMaxGap', 24, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
+    caveLen: T.num('caveLen', 40, 20, 80, 1, 'Outrun: how deep the bolt-hole cave at the end is (m)'),
+    caveStop: T.num('caveStop', 0.6, 0.2, 0.95, 0.05, 'Outrun: how deep into the cave you coast to a stop (fraction of its length)'),
+    caveCreep: T.num('caveCreep', 4, 0, 10, 0.5, 'Outrun: rolling speed you keep in the cave (m/s)'),
+    caveChargeS: T.num('caveChargeS', 1.6, 0.6, 4, 0.1, 'Outrun: seconds for the chaser to reach the cave mouth after you duck in'),
     airMargin: T.num('airMargin', 1.08, 1, 1.5, 0.01, 'Dive air supply relative to the time a bronze pace needs'),
     hillStretch: T.num('hillStretch', 6, 1, 20, 0.5, 'Horizontal stretch of the warm-up hills at rocket speed'),
     maxGrade: T.num('maxGrade', 3, 0, 8, 0.5, 'Steepest cruising grade %, sent to the trainer in sim mode'),
@@ -254,6 +260,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let tier: Tier = 'ground', lift = 0, toTier: Tier | null = null, plunging = false, transFrom: BiomeId = cur, transMix = 0, warp = 0, tierT = 0, edgeX: number | null = null;
   let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, peakAlt = 0;
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
+  let chaseX = 0, chaseV = 0, caveDecel = 0; // outrun payoff: the chaser charging the cave mouth
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
   /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
@@ -395,11 +402,11 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     const len = s.kind === 'leap' ? leapRange(vB, tun.launchDeg(), g)
       : s.kind === 'loop' ? (0.26 * vB * vB) / tun.loopGravity() // big: bronze power gets you round if you keep pedalling; coasting doesn't
         : s.kind === 'dive' ? vB * s.effortS
-          : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : 0;
+          : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : s.kind === 'outrun' ? tun.caveLen() : 0;
     piece = {
       kind: s.kind, biome, title: pieceTitle(s.kind, biome), finale: !!s.finale,
       x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
-      chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, air: 1, surfaced: false,
+      chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, crashAt: -99, air: 1, surfaced: false,
       live: 0, medal: -1, th: t,
     };
     fracSum = 0; fracN = 0;
@@ -556,8 +563,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return;
     }
     if (piece.kind === 'outrun') {
-      piece.gap += v * dt; // the chaser trips and gives up
-      if (modeT > 3) endPayoff();
+      // you duck into the cave and coast to a stop in the dark; the chaser, far too big for the hole, charges into the rock
+      v = Math.max(tun.caveCreep(), v - caveDecel * dt);
+      if (piece.crashAt < 0) {
+        const stop = piece.x0 - CHASER_REACH[piece.chaser];
+        chaseX = Math.min(stop, chaseX + chaseV * dt);
+        if (chaseX >= stop) { piece.crashAt = now; ctx.emit({ type: 'chaserCrash', data: { chaser: piece.chaser } }); }
+      }
+      piece.gap = x - chaseX;
+      if ((piece.crashAt >= 0 && now - piece.crashAt > 2.2) || modeT > 6) endPayoff();
     }
   }
 
@@ -623,7 +637,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       // spinning faster spools the rocket faster (form, not watts)
       const cad = bike.cadence3s || 0, cadK = cad > 20 ? 1 + tun.cadenceSpool() * (cad / 90 - 1) : 1;
       const spoolS = tun.spoolS() / clamp(cadK, 0.6, 1.6);
-      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost * (1 + wind * tun.windSpeed()), dt, spoolS);
+      if (phase !== 'payoff' || ((mode === 'road' || mode === 'hop') && piece?.kind !== 'outrun')) v = spool(v, targetSpeed(pf, speedPerFtp()) * boost * (1 + wind * tun.windSpeed()), dt, spoolS);
 
       // phase machine
       // a fork in the road: ◀ / ▶ picks the branch while it's open (the plan is the default)
@@ -668,11 +682,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           piece.live = fracSum / fracN;
           const vChase = targetSpeed(piece.th[0], speedPerFtp()) * 0.97;
           piece.gap = Math.min(tun.chaseMaxGap(), piece.gap + (v - vChase) * dt);
+          piece.x0 = x + v * Math.max(0, phaseS() - phaseT); // the cave you're racing for
           if (piece.gap <= 0) { piece.caught++; piece.caughtAt = now; piece.gap = 25; v *= 0.6; }
           if (phaseT >= phaseS()) {
             const m = medalFor(piece.live, piece.th);
             finishPiece(piece.caught ? (Math.min(m, 1) as Medal) : m, piece.caught ? `caught ${piece.caught}×` : `${Math.round(piece.gap)} m clear`);
             piece.surfaced = true; go('payoff'); setMode('road');
+            piece.x0 = x; chaseX = x - piece.gap;
+            caveDecel = (v * v) / (2 * tun.caveStop() * piece.len); // coast to a stop well inside, whatever your speed
+            chaseV = Math.max(vChase, (piece.x0 - CHASER_REACH[piece.chaser] - chaseX) / tun.caveChargeS()); // it lunges for you as you slip inside
           }
         }
       } else if (phase === 'payoff') {

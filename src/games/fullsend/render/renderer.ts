@@ -11,11 +11,11 @@ import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
 import { layout, type FullSendLayout } from './layout';
-import { drawCanyonFloor, drawChaser, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
+import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
-const PPM = 2.5;          // low-res px per metre (the rocket covers a lot of ground)
-const VPM = PPM * 1.5;    // vertical px per metre (hills and jumps read taller)
-const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.35, BACK_PARALLAX = 0.05;
+const PPM = 4.5;          // low-res px per metre: the bike is ~6 m long, so the ground has to fly past to read as 80+ mph
+const VPM = PPM;          // vertical px per metre
+const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
 const RAMP_M = 14, RAMP_H = 4; // the kicker before a canyon lip and the landing ramp after it
 const MEDAL_COLORS = ['#9aa3b5', '#d98a4a', '#d8dde8', '#ffd23b'];
@@ -90,7 +90,10 @@ export class FullSendRenderer implements GameRenderer {
     const roadH = (x: number) => s.hill * terr.elev(x / s.stretch) * s.stretch;
     const p = s.piece;
     const lift = (x: number) => rampLift(p, x);
-    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0);
+    // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
+    const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
+    const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
+    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift;
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const sx = (x: number) => RX + (x - s.camX) * PPM;
     const sy = (h: number) => roadY0 - (h - this.camY) * VPM;
@@ -139,12 +142,12 @@ export class FullSendRenderer implements GameRenderer {
       if (Number.isFinite(gapX0)) this.sg.clearRect(gapX0 - 4, 0, gapX1 - gapX0 + 8, H);
       g.globalAlpha = w; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
     }
-    if (p?.kind === 'loop') drawLoop(g, sx(p.x0), sy(p.len), p.len * PPM, p.len * VPM, p.biome, t, 'back');
+    if (p?.kind === 'loop') drawLoop(g, sx(p.x0), sy(0) - p.len * PPM, p.len * PPM, p.biome, t, sy(0) + 1);
 
     // ---- road + ground ----
     const ground = col((l) => l.ground), groundDark = col((l) => l.groundDark), road = col((l) => l.road), edge = col((l) => l.roadEdge);
     const kind = scene[scene.length > 1 && s.mix > 0.5 ? 1 : 0][0].roadKind;
-    const floorY = sy(-14);
+    const floorY = sy(-10);
     for (let x = 0; x < W; x++) {
       const dd = s.camX + (x - RX) / PPM;
       if (inGap(x)) { drawCanyonFloor(g, x, sy(0) + 6, floorY, H, p!.biome, t, dd); continue; }
@@ -183,7 +186,8 @@ export class FullSendRenderer implements GameRenderer {
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
     const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0);
-    const rx = sx(s.x), ryy = sy(ry);
+    const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
+    const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     let rot = s.pitch;
     if (s.trick) {
       const a = Math.min(1, s.trick.age / 0.9);
@@ -196,8 +200,8 @@ export class FullSendRenderer implements GameRenderer {
     drawRocket(g, flame, t, s.v);
     if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
+    if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     g.restore();
-    if (p?.kind === 'loop') drawLoop(g, sx(p.x0), sy(p.len), p.len * PPM, p.len * VPM, p.biome, t, 'front');
 
     // ---- foreground and speed lines ----
     const fu = s.camX * PPM * FORE_PARALLAX;
@@ -209,7 +213,7 @@ export class FullSendRenderer implements GameRenderer {
         l.foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
       }
     });
-    const lines = Math.max(0, Math.min(1, (s.v - 50) / 40));
+    const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
     if (lines > 0) {
       g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';
       for (let i = 0; i < 14; i++) {

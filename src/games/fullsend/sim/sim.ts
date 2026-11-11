@@ -39,6 +39,8 @@ export interface FullSendSnapshot {
   last: (SetResult & { age: number }) | null;
   results: SetResult[];
   topKph: number; longestJumpM: number; airS: number; smashed: number; rodeM: number;
+  /** 0..1 hay/debris stuck to the rider after a smash. */
+  hay: number;
   hooks: Record<string, unknown>;
 }
 
@@ -54,12 +56,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     cruiseCap: T.num('cruiseCap', 0.85, 0.5, 1.5, 0.05, 'Outside sprints, power above this FTP fraction adds no speed (recovery stays recovery)'),
     approachS: T.num('approachS', 20, 5, 60, 1, 'Seconds of warning before each sprint'),
     tourScale: T.num('tourScale', 1, 0.1, 2, 0.05, 'Scales warm-up, recovery and cool-down lengths (not the sprints)'),
-    gravity: T.num('gravity', 40, 9.8, 80, 1, 'Game gravity (m/s²) for leaps and loops'),
+    gravity: T.num('gravity', 80, 9.8, 160, 1, 'Game gravity (m/s²) for leaps'),
     launchDeg: T.num('launchDeg', 35, 15, 55, 1, 'Ramp angle at the canyon lip'),
     slowMo: T.num('slowMo', 0.45, 0.15, 1, 0.05, 'Slow-motion factor for leaps, loops and smashes'),
-    smashN: T.num('smashN', 10, 3, 20, 1, 'Obstacles in a smash wall'),
-    chaseGap: T.num('chaseGap', 22, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
-    chaseMaxGap: T.num('chaseMaxGap', 30, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
+    smashN: T.num('smashN', 36, 3, 60, 1, 'Hay-bale columns (or crates, stalls…) in a smash wall'),
+    smashHoldS: T.num('smashHoldS', 6, 0, 20, 0.5, 'Seconds the debris stuck to you keeps dragging after a smash'),
+    loopGravity: T.num('loopGravity', 36, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
+    loopSlowMo: T.num('loopSlowMo', 0.6, 0.2, 1, 0.05, 'Slow-motion factor in loops (stretches the ride round so the trainer grade can follow)'),
+    chaseGap: T.num('chaseGap', 18, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
+    chaseMaxGap: T.num('chaseMaxGap', 24, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
     airMargin: T.num('airMargin', 1.08, 1, 1.5, 0.01, 'Dive air supply relative to the time a bronze pace needs'),
     hillStretch: T.num('hillStretch', 6, 1, 20, 0.5, 'Horizontal stretch of the warm-up hills at rocket speed'),
     maxGrade: T.num('maxGrade', 3, 0, 8, 0.5, 'Steepest cruising grade %, sent to the trainer in sim mode'),
@@ -99,6 +104,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let last: (SetResult & { at: number }) | null = null;
   const results: SetResult[] = [];
   let top = 0, longestJump = 0, airS = 0, smashed = 0, launchX = 0;
+  /** 0..1 debris (hay) stuck to the rider after a smash; it drags (trainer grade) until it falls off. */
+  let hay = 0;
   let pendingMedal: Medal = 0;
 
   const scale = () => tun.tourScale();
@@ -121,17 +128,24 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   /** Features reached at the end of the sprint ride toward you at your own speed, so the sprint lasts exactly `effortS`. */
   const atEnd = (kind: PieceKind) => kind === 'smash' || kind === 'leap' || kind === 'loop';
 
+  /** Grade round a loop: climbs to `loopGrade` at the top, then eases off to the airtime grade on the way down. */
+  function loopGradeAt(phi: number): number {
+    const u = ((phi % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    return u <= Math.PI ? tun.runupGrade() + (tun.loopGrade() - tun.runupGrade()) * (u / Math.PI)
+      : tun.loopGrade() + (tun.airGrade() - tun.loopGrade()) * ((u - Math.PI) / Math.PI);
+  }
+
   function startSet(i: number) {
     setIndex = i;
     const s = tour.sets[i], t = th[s.kind]();
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
     const len = s.kind === 'leap' ? leapRange(vB, tun.launchDeg(), g)
-      : s.kind === 'loop' ? loopRadius(vB, g)
+      : s.kind === 'loop' ? loopRadius(vB, tun.loopGravity())
         : s.kind === 'dive' ? vB * s.effortS
-          : s.kind === 'smash' ? (tun.smashN() - 1) * 5 + 4 : 0;
+          : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : 0;
     piece = {
       kind: s.kind, biome: s.biome, title: pieceTitle(s.kind, s.biome), finale: !!s.finale,
-      x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 5, count: 0, hitAt: [], toppledAt: -1,
+      x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
       chaser: chaserFor(s.biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, air: 1, surfaced: false,
       live: 0, medal: -1, th: t,
     };
@@ -170,7 +184,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       piece.count = smashCount(live / 0.97, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
     } else if (piece.kind === 'loop') {
-      loopV0 = v; loopPhi = 0; loopDir = 1; loopOff = loopExit(v, piece.len, tun.gravity());
+      loopV0 = v; loopPhi = 0; loopDir = 1; loopOff = loopExit(v, piece.len, tun.loopGravity());
       pendingMedal = loopOff ? 0 : medal; setMode('loop');
     }
   }
@@ -192,7 +206,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         } else if (y < 0 && x < far) { setMode('fall'); }
       } else if (mode === 'fall') {
         x += vx * dts * 0.3; y += vy * dts; vy -= g * dts; pitch += dt * 4;
-        if (y < -12 || modeT > 2) { fallFromX = x; fallFromY = y; rescueToX = far + 10; setMode('rescue'); trick = null; }
+        if (y < -9 || modeT > 2) { fallFromX = x; fallFromY = y; rescueToX = far + 10; setMode('rescue'); trick = null; }
       } else if (mode === 'rescue') {
         const k = clamp(modeT / 2.6, 0, 1);
         x = fallFromX + (rescueToX - fallFromX) * k;
@@ -210,7 +224,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (mode === 'smash') {
         x += v * dts * 0.6;
         for (let i = piece.hitAt.length; i < piece.count; i++) {
-          if (x >= piece.x0 + i * piece.spacing) { piece.hitAt.push(now); smashed++; } else break;
+          if (x >= piece.x0 + i * piece.spacing) { piece.hitAt.push(now); smashed++; hay = Math.min(1, hay + 0.07); } else break;
         }
         if (piece.count < piece.n && x >= piece.x0 + piece.count * piece.spacing - 1.2) {
           x = piece.x0 + piece.count * piece.spacing - 1.2; setMode('bounce');
@@ -228,7 +242,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return;
     }
     if (piece.kind === 'loop') {
-      const R = piece.len;
+      const R = piece.len, g = tun.loopGravity(), dts = dt * tun.loopSlowMo();
       if (mode === 'loop') {
         const sp = Math.max(loopSpeed(loopV0, R, g, loopPhi), loopOff?.slide ? 2 : 3);
         loopPhi += (loopDir * sp / R) * dts;
@@ -359,7 +373,13 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         else if (s.kind === 'dive') gr = tun.diveGrade();
         else gr = tun.runupGrade();
       } else if (phase === 'payoff') {
-        gr = mode === 'air' ? tun.airGrade() : mode === 'smash' || mode === 'bounce' ? tun.smashGrade() : mode === 'loop' ? tun.loopGrade() : mode === 'road' ? gr : 0;
+        gr = mode === 'air' ? tun.airGrade() : mode === 'smash' || mode === 'bounce' ? tun.smashGrade() + 2 * hay
+          : mode === 'loop' ? loopGradeAt(loopPhi) : mode === 'road' ? gr : 0;
+      }
+      // debris stuck to you after a smash keeps dragging until it falls off
+      if (mode !== 'smash' && mode !== 'bounce' && hay > 0) {
+        if (!(phase === 'payoff' && mode === 'air')) gr += tun.smashGrade() * hay;
+        hay = Math.max(0, hay - dt / Math.max(0.5, tun.smashHoldS()));
       }
       grade = +gr.toFixed(1);
       ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: grade });
@@ -393,7 +413,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,
         last: last ? { ...last, age: now - last.at } : null,
         results: [...results],
-        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x,
+        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay,
         hooks: { shielded: phase === 'effort', seg: phase },
       };
     },

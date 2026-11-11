@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { FullSendSnapshot } from '../sim/sim';
-import { countdown, MonotoneCountdown, planSigns } from '../render/signs';
+import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage } from '../render/signs';
 
 const ride = () => {
   const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick' }, seed: 3 });
@@ -22,7 +22,8 @@ describe('road signs and countdowns', () => {
     const gate = signs.find((q) => q.kind === 'gate')!;
     expect(gate.x).toBeCloseTo(c.x, 3);
     expect(gate.lights).toBe(0);
-    for (const b of signs.filter((q) => q.kind === 'count')) expect(c.x - b.x).toBeGreaterThan(0);
+    expect(signs.filter((q) => q.kind === 'count')).toHaveLength(0); // the distances live on the one distant sign
+    expect(signMessage(a, c.m)!.big).toBe(`${Math.round(c.m / 10) * 10} m`);
     const last = r.until((q) => q.phase === 'approach' && q.phaseS - q.phaseT < 1.5);
     expect(planSigns(last, last.x - 50, last.x + 5000).find((q) => q.kind === 'gate')!.lights).toBe(2);
   });
@@ -36,19 +37,24 @@ describe('road signs and countdowns', () => {
     expect(countdown(end)!.m).toBeLessThan(60);
     expect(countdown(end)!.label).toBe('WALL');
   });
-  it('keeps a board in view: every ~100 m window on an approach, a sprint or a fork holds at least one sign', () => {
-    const r = ride();
-    for (const f of [(q: FullSendSnapshot) => q.phase === 'approach' && q.phaseT > 2, (q: FullSendSnapshot) => q.phase === 'effort' && q.phaseT > 1, (q: FullSendSnapshot) => !!q.fork]) {
-      const q = r.until(f);
-      for (let x = q.x - 40; x < q.x + 40; x += 7) expect(planSigns(q, x, x + 95).length).toBeGreaterThan(0);
-    }
+  it('the distant sign starts fully on screen, drifts left slowly, and the next one comes in from the right', () => {
+    const W = 1024, UH = 650;
+    const r0 = distantSignRect(W, UH, 0)!;
+    expect(r0.x + r0.w).toBeLessThanOrEqual(W); expect(r0.x).toBeGreaterThan(W / 3);
+    expect(r0.y + r0.h).toBeLessThan(UH * 0.5);
+    const r1 = distantSignRect(W, UH, 100)!; expect(r1.x).toBeCloseTo(r0.x - 100, 5);
+    let visible = 0; const N = 2000;
+    for (let u = 0; u < N * 2; u += 2) if (distantSignRect(W, UH, u)) visible++;
+    expect(visible / N).toBeGreaterThan(0.9); // there's nearly always a sign up
+    // at cruising speed it takes ~half a minute to cross: 0.08 parallax of ~10 CSS px per metre at ~36 m/s
+    expect((W / (36 * 10 * DISTANT.parallax))).toBeGreaterThan(20);
   });
   it('a fork puts up route signs with the picked branch highlighted; the menu has no signs', () => {
     const r = ride();
     const f = r.until((q) => !!q.fork);
-    const signs = planSigns(f, f.x - 500, f.x + 2000).filter((q) => q.kind === 'fork');
-    expect(signs.length).toBeGreaterThan(0);
-    expect(signs[0].options!.filter((o) => o.on)).toHaveLength(1);
+    const sign = signMessage(f, null)!;
+    expect(sign.kind).toBe('fork');
+    expect(sign.options!.filter((o) => o.on)).toHaveLength(1);
     expect(planSigns({ ...f, menu: { row: 0, tour: 'quick', tours: [], reducedFlash: false, left: 1 } }, 0, 1e6)).toEqual([]);
   });
 });

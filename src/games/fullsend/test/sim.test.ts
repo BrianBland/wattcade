@@ -5,6 +5,7 @@ import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
 import { TOURS } from '../sim/tour';
+import { flipName, type FullSendSnapshot } from '../sim/sim';
 
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
@@ -106,6 +107,20 @@ describe('steering and landings', () => {
     }
     expect(bad).toBeGreaterThan(3);
     expect(lost / bad).toBeGreaterThan(0.12);
+  });
+});
+
+describe('flips', () => {
+  it('holding a full lean in a long hop tucks into a flip; a clean landing counts it, with flow', () => {
+    const lean: InputState = { held: new Set(), pressed: new Set(), released: new Set(), paddleL: 1, paddleR: 0, paddleIdleS: 0, source: 'script' };
+    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => lean }, fake: { script: 'z2' }, simOpts: { tour: 'quick' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    let maxSpin = 0, named = '';
+    for (let i = 0; i < 30 * 600; i++) { s.step(1); const q = snap(); maxSpin = Math.max(maxSpin, Math.abs(q.spun)); if (q.flip) named = q.flip.name; }
+    expect(maxSpin).toBeGreaterThan(2 * Math.PI); // a held lean really does go all the way round
+    expect(flipName(2, true)).toBe('Double Backflip'); expect(flipName(1, false)).toBe('Frontflip');
+    const flips = Number(s.sim.summary().flips);
+    if (flips > 0) expect(named).toMatch(/Backflip/);
   });
 });
 

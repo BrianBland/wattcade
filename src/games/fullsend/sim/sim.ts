@@ -92,11 +92,17 @@ export interface FullSendSnapshot {
   wind: number; crashAt: number;
   /** Started from the overworld (the renderer eases in from its framing). */
   fromLobby: boolean;
+  /** The last landed flip and how long ago; rotation from leaning since takeoff (rad, + = back). */
+  flip: { name: string; age: number } | null; spun: number;
   hooks: Record<string, unknown>;
 }
 
-const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Backflip', 'Seat Grab', 'Heel Clicker'];
+const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Tabletop', 'Seat Grab', 'Heel Clicker'];
+/** Name for a landed flip: n full turns, back (nose up, positive pitch) or front. */
+export const flipName = (n: number, back: boolean) => `${n >= 3 ? 'Triple ' : n === 2 ? 'Double ' : ''}${back ? 'Backflip' : 'Frontflip'}`;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+/** An angle wrapped to (−π, π]. */
+const wrapPi = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
 const medalScore = (m: string) => [...m].reduce((a, c) => a + ({ G: 3, S: 2, B: 1 } as Record<string, number>)[c] || a, 0);
 
 /** Full Send: a rocket-bike sprint workout. A fixed tour of set pieces; each one is a sprint, recoveries in between. */
@@ -129,6 +135,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     hopGravity: T.num('hopGravity', 30, 5, 80, 1, 'Gravity for hops off bumps: lower = more airtime, and you take off at lower speeds'),
     slopeGravity: T.num('slopeGravity', 15, 0, 40, 1, 'How much slopes speed you up or slow you down on top of your power (m/s² per unit slope)'),
     leanRate: T.num('leanRate', 3.5, 0.5, 8, 0.25, 'How fast you can lean the bike in the air (rad/s at full paddle / D-pad)'),
+    flipRate: T.num('flipRate', 7, 2, 14, 0.5, 'Hold a full lean and the bike tucks into a flip: rotation speeds up to this (rad/s)'),
+    flipFlow: T.num('flipFlow', 0.05, 0, 0.3, 0.01, 'Flow (speed bonus) per full flip on a clean landing'),
     flowMax: T.num('flowMax', 0.3, 0, 1, 0.05, 'Most extra cruising speed clean landings can build (fraction)'),
     flowPerfect: T.num('flowPerfect', 0.08, 0, 0.3, 0.01, 'Speed bonus for a perfect landing'),
     flowGood: T.num('flowGood', 0.03, 0, 0.3, 0.01, 'Speed bonus for a good landing'),
@@ -219,6 +227,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
+  /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
+  let spun = 0, leanHeld = 0, flips = 0, flip: { name: string; at: number } | null = null;
 
   const scale = () => tun.tourScale();
   /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
@@ -487,6 +497,31 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     }
   }
 
+  /** Lean input: left paddle / D-pad left = back (nose up), right = forward (nose down). */
+  function leanInput(): number {
+    const input = ctx.input();
+    return clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
+  }
+  /** Rotate the bike in the air. Hold a full lean and it tucks into a flip (faster, and it stops drifting back toward the
+   *  flight path); `path` is the flight path angle it drifts toward otherwise. */
+  function leanStep(lean: number, path: number, dt: Seconds) {
+    leanHeld = Math.abs(lean) > 0.9 ? leanHeld + dt : 0;
+    const tuck = clamp((leanHeld - 0.25) / 0.3, 0, 1);
+    const d = lean * (tun.leanRate() + (tun.flipRate() - tun.leanRate()) * tuck) * dt;
+    pitch += d; spun += d;
+    pitch += (path + 2 * Math.PI * Math.round((pitch - path) / (2 * Math.PI)) - pitch) * tun.leanDrift() * (1 - tuck) * dt;
+  }
+  /** Count the full turns since takeoff on a clean landing: flow, style, and a call-out. */
+  function landFlips(mult: number, now: number) {
+    const n = Math.floor((Math.abs(spun) + 0.6) / (2 * Math.PI)), back = spun > 0;
+    spun = 0;
+    if (n < 1) return;
+    flips += n; style++;
+    flip = { name: flipName(n, back), at: now };
+    flow = Math.min(tun.flowMax(), flow + tun.flipFlow() * n * mult);
+    ctx.emit({ type: 'trick', data: { name: flip.name, flips: n } });
+  }
+
   const sim = {
     update(dt: Seconds) {
       const now = ctx.clock.now();
@@ -655,17 +690,18 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           // lean: left paddle / D-pad left = back (nose up), right = forward (nose down); a slight drift toward the flight path
           const lean = opts.autolean
             ? clamp((Math.atan(slopeAt(x + v * Math.min(0.25, (vy + Math.sqrt(vy * vy + 2 * gH * gScale() * Math.max(0, y - ground))) / (gH * gScale())))) - pitch) * 4, -1, 1)
-            : clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
-          pitch += lean * tun.leanRate() * dt + (Math.atan2(vy, Math.max(1, v)) - pitch) * tun.leanDrift() * dt;
+            : leanInput();
+          leanStep(lean, Math.atan2(vy, Math.max(1, v)), dt);
           if (y <= ground && !plunging) {
             const rel = vy - v * slope; // how hard you hit, relative to the slope you land on
             y = ground; landAt = now; landImpact = -rel;
             if (trick && now - trick.t0 >= 0.9) { style++; trick = null; }
             hopAir += now - hopT0; hops++; longestHop = Math.max(longestHop, now - hopT0);
-            const raw = landingGrade(pitch - Math.atan(slope), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
+            const raw = landingGrade(wrapPi(pitch - Math.atan(slope)), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
             const airT = now - hopT0; // a crest skip (barely leaves the road) is never graded; tiny hops earn nothing but can still go wrong
             const lg: Landing = airT < 0.15 || (raw !== 'bad' && airT < tun.gradeAirS()) ? 'ok' : raw;
             if (!bouncing) landGrade = lg; // the bounce after a bad landing keeps its 'bad' call-out
+            if (lg === 'bad') spun = 0; // a flip that lands crossed up doesn't count
             if (lg === 'bad' && !bouncing) { // bad landing: bounce and lose speed (and the flow bonus)
               bads++; flow = 0; chain = 0; crashAt = now; v *= tun.badKeep(); bouncing = true; lift = Math.max(0, lift - tun.liftBad());
               vy = v * slope + 3 + Math.abs(rel) * 0.25; hopT0 = now; pitch = Math.atan(slope) + 0.35;
@@ -673,11 +709,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
               const mult = 1 + tun.chainStep() * Math.min(chain, 4); // clean landings in a row are worth more
               if (!bouncing && (lg === 'perfect' || lg === 'good')) { chain++; longestChain = Math.max(longestChain, chain); }
               else if (!bouncing && airT >= tun.gradeAirS()) chain = 0;
+              if (!bouncing) landFlips(mult, now);
               if (!bouncing && lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect() * mult); }
               else if (!bouncing && lg === 'good') flow = Math.min(tun.flowMax(), flow + tun.flowGood() * mult);
               flowPeak = Math.max(flowPeak, flow);
               if (rel < -7 && !bouncing && lg === 'ok') { vy = v * slope - rel * 0.22; hopT0 = now; bouncing = true; } // a little bounce off a hard flat landing
-              else { bouncing = false; setMode('road'); pitch = Math.atan(slope); }
+              else { bouncing = false; setMode('road'); pitch = Math.atan(slope); spun = 0; }
             }
           }
         }
@@ -802,6 +839,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
         fromLobby: !!lobbyBiome,
+        flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
         hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
     },
@@ -813,7 +851,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
-        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain,
+        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips,
         distanceKm: +(x / 1000).toFixed(1), route: route.map((r) => (r ? 'B' : 'A')).join(''), biomesSeen: new Set(visited).size, medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

@@ -311,14 +311,21 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   // rack: stays from the rear axle and the seat post up to the rocket's clamps
   seg(g, '#3a4052', 1, ax, [-11, -11.5]); seg(g, '#3a4052', 1, ax, [-5, -11.5]); seg(g, '#3a4052', 1, [-3.4, -12.6], [-5, -11.5]);
   const y0 = -15, len = 15, x0 = -18; // body from x0 to x0 + len, top at y0, 4 px tall
-  // exhaust
-  const fl = Math.max(0, power) * (12 + Math.sin(t * 40) * 3) + (v > 1 ? 2 : 0);
+  // exhaust: from a weak puff (slow, easy) to a long roaring plume with shock diamonds (fast and hard, or jetting)
+  const P = Math.max(0, Math.min(3, power)), fl = P * (16 + Math.sin(t * 40) * 3) + P * P * 9 + (v > 1 ? 2 : 0);
+  const cy = y0 + 2, wob = Math.sin(t * 33) * 0.6;
+  if (P > 0.9) { // smoke and heat trail behind the plume
+    g.globalAlpha = Math.min(0.5, (P - 0.9) * 0.4); g.fillStyle = '#c8ccd6';
+    for (let i = 0; i < 8; i++) { const d = fl + i * 7 + ((t * 90) % 7); g.fillRect(Math.round(x0 - 2 - d), Math.round(cy - 1 + Math.sin(t * 7 + i * 1.7) * (1 + i * 0.5)), 3 + (i >> 1), 2 + (i >> 2)); }
+    g.globalAlpha = 1;
+  }
   if (fl > 1) {
-    g.globalAlpha = 0.35; g.fillStyle = '#ffb020'; g.beginPath(); g.ellipse(x0 - 2 - fl * 0.45, y0 + 2, fl * 0.6, 3.2, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
-    poly(g, '#ff6a1a', [[x0 - 1, y0], [x0 - 2 - fl, y0 + 2 + Math.sin(t * 33) * 0.6], [x0 - 1, y0 + 4]]);
-    poly(g, '#ffe066', [[x0 - 1, y0 + 1], [x0 - 2 - fl * 0.55, y0 + 2], [x0 - 1, y0 + 3]]);
-    poly(g, '#ffffff', [[x0 - 1, y0 + 1.6], [x0 - 2 - fl * 0.2, y0 + 2], [x0 - 1, y0 + 2.4]]);
-    if (power > 1) { g.globalAlpha = 0.45; g.fillStyle = '#9aa3b5'; for (let i = 0; i < 4; i++) g.fillRect(Math.round(x0 - 4 - fl - i * 5 - ((t * 60) % 5)), Math.round(y0 + 1 + Math.sin(t * 9 + i) * 2), 3, 2); g.globalAlpha = 1; }
+    const w = 1.6 + Math.min(4, P * 1.5); // the plume widens as it grows
+    g.globalAlpha = 0.3 + Math.min(0.3, P * 0.1); g.fillStyle = '#ff9020'; g.beginPath(); g.ellipse(x0 - 2 - fl * 0.45, cy, fl * 0.6, w + 1.5, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+    poly(g, '#ff5a14', [[x0 - 1, cy - w], [x0 - 2 - fl, cy + wob], [x0 - 1, cy + w]]);
+    poly(g, '#ffd23b', [[x0 - 1, cy - w * 0.6], [x0 - 2 - fl * 0.6, cy], [x0 - 1, cy + w * 0.6]]);
+    poly(g, '#ffffff', [[x0 - 1, cy - 0.5], [x0 - 2 - fl * (0.15 + P * 0.06), cy], [x0 - 1, cy + 0.5]]);
+    if (P > 1.6) { g.fillStyle = '#fff6c0'; for (let i = 1; i <= 3; i++) { const dx = x0 - 2 - fl * (0.18 * i + 0.05); g.fillRect(Math.round(dx), Math.round(cy - 1), 2, 2); } } // shock diamonds
   }
   // nozzle bell
   poly(g, '#5e6678', [[x0 - 2, y0 - 0.8], [x0 + 1, y0 + 0.6], [x0 + 1, y0 + 3.4], [x0 - 2, y0 + 4.8]]);
@@ -334,6 +341,25 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   poly(g, '#e8463a', [[x0 + 1, y0 + 4], [x0 + 4, y0 + 4], [x0 - 0.5, y0 + 6.5]]);
   // clamps
   rect(g, '#2a2e3a', x0 + 3.5, y0 - 0.5, 1, 5); rect(g, '#2a2e3a', x0 + 10, y0 - 0.5, 1, 5);
+}
+
+/** Slipstream: wind wrapping round the rider at speed (curved streaks over the helmet and under the bike, trailing back).
+ *  Drawn in the rider's frame (origin at the rear-wheel contact, +x forward). `v` m/s. */
+export function drawSlipstream(g: G, v: number, t: number) {
+  const a = Math.max(0, Math.min(1, (v - 30) / 40));
+  if (a <= 0) return;
+  g.fillStyle = '#ffffff';
+  for (let i = 0; i < 7; i++) {
+    const lane = i % 3, phase = ((t * (2.2 + v / 25) + i * 0.37) % 1);
+    const len = 8 + a * 14, x = 12 - phase * (40 + a * 30); // streaks run front to back
+    const yBase = lane === 0 ? -34 : lane === 1 ? -26 : -2, bend = lane === 2 ? 1 : -1;
+    g.globalAlpha = a * 0.55 * Math.sin(phase * Math.PI);
+    for (let j = 0; j < len; j += 2) {
+      const xx = x - j, curve = xx > 0 ? bend * Math.min(6, xx * 0.25) : 0; // hugs the front, then streams straight back
+      g.fillRect(Math.round(xx), Math.round(yBase + curve + Math.sin(i * 2.1) * 2), 2, 1);
+    }
+  }
+  g.globalAlpha = 1;
 }
 
 /** A great white, ~80 px long, swimming just above the sea floor toward the rider (facing right). Jaws snap on a catch. */

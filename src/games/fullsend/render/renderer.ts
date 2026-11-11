@@ -13,12 +13,12 @@ import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
 import { FullSendSound } from './sound';
-import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs';
+import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
-import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
+import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
@@ -56,6 +56,8 @@ export class FullSendRenderer implements GameRenderer {
   /** Boards to draw this frame: spec + bottom-centre anchor in CSS px. */
   private signs: Array<{ sp: SignSpec; x: number; y: number }> = [];
   private cd = new MonotoneCountdown();
+  /** The distant sign: which message it shows and where the far layer was when that message went up. */
+  private signKey = ''; private signBase = 0; private farOff = 0;
   private L!: FullSendLayout;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
@@ -267,19 +269,15 @@ export class FullSendRenderer implements GameRenderer {
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
     this.riderBuf = { x: rx, y: ryy };
     let rot = s.pitch;
-    if (s.trick) {
-      const a = Math.min(1, s.trick.age / 0.9);
-      if (s.trick.name === 'Backflip') rot += a * Math.PI * 2;
-    }
     const shake = s.mode === 'bounce' ? Math.sin(t * 60) * 1.5 : s.mode === 'smash' ? Math.sin(t * 45) : 0;
     const crash = s.t - s.crashAt; // thrown by a bad landing: the bike flails, the rider sees stars
     if (crash >= 0 && crash < 0.9) rot += Math.sin(crash * 22) * 0.5 * (1 - crash / 0.9);
     const gearL = LOOKS[s.biome].rider;
     g.save(); g.translate(Math.round(rx + shake), Math.round(ryy)); g.rotate(-rot);
-    const flame = s.jet === 'on' ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
-    drawRocket(g, flame, t, s.v);
-    if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
+    drawRocket(g, rocketThrust(s), t, s.v);
+    if (s.trick) { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
+    drawSlipstream(g, s.v, t);
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     if (crash >= 0 && crash < 1.6) { // dizzy stars round the helmet
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
@@ -364,6 +362,7 @@ export class FullSendRenderer implements GameRenderer {
     if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
     m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
+    this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
     if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
@@ -390,6 +389,8 @@ export class FullSendRenderer implements GameRenderer {
     if (s.menu) { this.drawMenu(s.menu, font, panel); return; }
     this.menuHits = [];
     this.drawSigns();
+    const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+    this.drawDistant(s, signMessage(s, c?.m ?? null));
     const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
       m.textAlign = align; m.font = font(weight, size, italic);
       if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }
@@ -447,27 +448,20 @@ export class FullSendRenderer implements GameRenderer {
     // the big countdown (no boxes): title + distance on approach, giant 3-2-1-GO, then the sprint clock + distance
     const p = s.piece, B = L.banner, cxm = B.x + B.w / 2;
     const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
-    const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+    // (what's coming and how far is on the distant sign; up here only the sprint clock, the meter and 3-2-1-GO)
     if (s.phase === 'approach' && p && c) {
-      txt(p.title.toUpperCase(), cxm, B.y + 26, 34, '#ffd23b');
-      txt(`SPRINT IN ${Math.round(c.m / 10) * 10} m · ${PIECE_VERB[p.kind]} · shift up`, cxm, B.y + 58, 15, '#ffffff', 'center', 800, true, 4);
       if (c.s <= 3.2) {
         const n = c.s > 0.2 ? String(Math.ceil(c.s)) : 'GO!', k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
-        txt(n, this.cssW / 2, L.UH * 0.38, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
+        txt(n, this.cssW / 2, L.UH * 0.5, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
       }
     } else if (s.phase === 'effort' && p && c) {
       const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
       txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
-      txt(`${c.label} ${Math.round(c.m / 10) * 10} m`, cxm, B.y + 58, 18, '#ffffff', 'center', 900, true, 4);
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
-    } else if (s.fork) {
-      txt('FORK IN THE ROAD', cxm, B.y + 22, 24, '#ffd23b');
-      txt(`◀ ${s.fork.options[0].title}  ·  ${s.fork.options[1].title} ▶  ·  ${Math.ceil(s.fork.closesInS)} s`, cxm, B.y + 48, 14, '#ffffff', 'center', 800, true, 4);
-    } else if ((s.phase === 'recovery' || s.phase === 'warmup') && s.next) {
+    } else if (s.phase === 'recovery' || s.phase === 'warmup') {
       txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
-      txt(`next ▸ ${s.next.title} · ${mmss(s.next.inS)}`, cxm, B.y + 40, 13, '#d8d4ff', 'center', 700, true, 3);
-    } else if (s.phase === 'cooldown' || s.phase === 'done') {
+    } else if (s.phase === 'done') {
       txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
     }
 
@@ -487,6 +481,14 @@ export class FullSendRenderer implements GameRenderer {
     if (s.trick && s.trick.age < 1.4) {
       m.globalAlpha = Math.min(1, (1.4 - s.trick.age) * 2); m.textAlign = 'center'; m.font = font(900, 22, true); m.fillStyle = '#7af0ff';
       m.fillText(`${s.trick.name}!`, L.riderX * d, (L.roadY - 110) * d);
+      m.globalAlpha = 1;
+    }
+    if (s.flip && s.flip.age < 1.6) { // a landed flip: big and proud, above the rider
+      const fa = s.flip.age, sc = 1 + Math.max(0, 0.2 - fa) * 2;
+      m.globalAlpha = Math.min(1, (1.6 - fa) * 2.5); m.textAlign = 'center'; m.font = font(900, 30 * sc, true); m.fillStyle = '#ffd23b';
+      const fy = Math.min(L.roadY - 120, this.riderY - 80) - fa * 14;
+      m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
+      m.strokeText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d); m.fillText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d);
       m.globalAlpha = 1;
     }
     const fly = flightCall(s);
@@ -569,6 +571,45 @@ export class FullSendRenderer implements GameRenderer {
     }
   }
 
+  /** The one big sign everything is on: it stands far off (slow parallax) so it stays put long enough to read, and it is
+   *  an LED board, so its numbers count live. Fades if the rider flies in front of it. */
+  private drawDistant(s: FullSendSnapshot, msg: SignSpec | null) {
+    if (!msg) { this.signKey = ''; return; }
+    const key = `${s.phase}:${s.setIndex}:${msg.kind}`;
+    if (key !== this.signKey) { this.signKey = key; this.signBase = this.farOff; }
+    const r = distantSignRect(this.cssW, this.L.UH, this.farOff - this.signBase);
+    if (!r) return;
+    const m = this.g, d = this.dpr, sc = r.w / DISTANT.w;
+    const f = (w: number, size: number, it = false) => fsFont(w, size * sc * d, it);
+    const rx = this.L.riderX, ry = this.riderY, behind = rx + 30 > r.x && rx - 30 < r.x + r.w && ry > r.y - 10 && ry - 50 < r.y + r.h;
+    m.globalAlpha *= behind ? 0.3 : 1;
+    const TONE: Record<string, [string, string, string]> = { green: ['#0e6b3c', '#ffffff', '#ffd23b'], yellow: ['#ffd23b', '#1a1a1a', '#b3202c'], red: ['#b3202c', '#ffffff', '#ffd23b'], blue: ['#1d4fa8', '#ffffff', '#ffd23b'] };
+    const [bg, fg, hi] = TONE[msg.tone];
+    const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.6);
+    m.fillStyle = '#3a3f4c'; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
+    m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((r.x + 5) * d, (r.y + 5) * d, r.w * d, r.h * d);
+    m.fillStyle = bg; m.fillRect(r.x * d, r.y * d, r.w * d, r.h * d);
+    m.lineWidth = 3 * d; m.strokeStyle = fg; m.strokeRect((r.x + 6) * d, (r.y + 6) * d, (r.w - 12) * d, (r.h - 12) * d);
+    m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = fg;
+    const cx = r.x + r.w / 2, maxW = (r.w - 28) * d;
+    if (msg.kind === 'fork' && msg.options) {
+      m.font = f(900, 15); m.fillText(msg.title, cx * d, (r.y + 22 * sc) * d, maxW);
+      msg.options.forEach((o, i) => {
+        const ow = (r.w - 28) / 2, ox = r.x + 14 + i * ow;
+        if (o.on) { m.fillStyle = hi; m.fillRect((ox + 4) * d, (r.y + 38 * sc) * d, (ow - 8) * d, 60 * sc * d); }
+        m.fillStyle = o.on ? bg : fg; m.font = f(900, 17);
+        m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, (ox + ow / 2) * d, (r.y + 58 * sc) * d, (ow - 14) * d);
+        m.font = f(700, 13); m.fillText(o.biome, (ox + ow / 2) * d, (r.y + 82 * sc) * d, (ow - 14) * d);
+      });
+      m.fillStyle = fg; m.font = f(700, 12); m.fillText(msg.sub ?? '', cx * d, (r.y + r.h - 16 * sc) * d, maxW);
+    } else {
+      m.font = f(900, 20); m.fillText(msg.title, cx * d, (r.y + 26 * sc) * d, maxW);
+      m.font = f(900, 50, true); m.fillText(msg.big ?? '', cx * d, (r.y + 66 * sc) * d, maxW);
+      m.font = f(700, 14); m.fillText(msg.sub ?? '', cx * d, (r.y + r.h - 20 * sc) * d, maxW);
+    }
+    m.globalAlpha /= behind ? 0.3 : 1;
+  }
+
   /** Road-sign boards (full resolution) on the posts drawn in the buffer: highway green / caution yellow / start-gate red / blue. */
   private drawSigns() {
     const m = this.g, d = this.dpr;
@@ -631,6 +672,15 @@ export function rampLift(p: PieceView | null, x: number): number {
 function round(m: G, x: number, y: number, w: number, h: number, r: number) {
   m.beginPath(); m.moveTo(x + r, y); m.arcTo(x + w, y, x + w, y + h, r); m.arcTo(x + w, y + h, x, y + h, r);
   m.arcTo(x, y + h, x, y, r); m.arcTo(x, y, x + w, y, r); m.closePath();
+}
+
+/** Rocket thrust for the flame (0..3): your power, scaled up by speed (a weak push when slow and easy, a roaring plume
+ *  flat out); the jet and launches blast at the top. */
+export function rocketThrust(s: Pick<FullSendSnapshot, 'jet' | 'ftpFrac' | 'v' | 'phase' | 'toTier' | 'vy' | 'fromTier'>): number {
+  if (s.jet === 'on' || (s.toTier && s.toTier !== 'sea' && s.vy > 0)) return 3;
+  if (s.jet === 'weak') return 0.3;
+  const k = 0.35 + 0.65 * Math.min(1, Math.max(0, s.v / 55));
+  return Math.min(3, Math.max(0, s.ftpFrac) * k * (s.phase === 'effort' ? 1.5 : 1));
 }
 
 /** Landing call-out text near the rider (null for an ordinary landing). */

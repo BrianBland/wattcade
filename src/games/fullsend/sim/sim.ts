@@ -1,5 +1,5 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
-import { makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
+import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
 import { AIR_CELL, airItemAt, bumpH, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
@@ -15,6 +15,8 @@ export interface FullSendOpts {
   forks?: 'main' | 'alt' | 'alternate';
   /** Test/demo pilot: holds the jet (and asks for the power via hooks.powerFtp) when a ring is ahead and above. */
   autojet?: boolean;
+  /** Arriving from the overworld (warm-up lobby): start in its biome at its speed, so the hand-off doesn't cut. */
+  lobby?: { biome?: string; v?: number };
 }
 
 export type Phase = 'warmup' | 'approach' | 'effort' | 'payoff' | 'recovery' | 'cooldown' | 'done';
@@ -88,6 +90,8 @@ export interface FullSendSnapshot {
   tip: { id: string; text: string; age: number } | null;
   /** Wind on the cruise (−1 headwind … +1 tailwind), when the last bad landing threw you, and smash hits for shake. */
   wind: number; crashAt: number;
+  /** Started from the overworld (the renderer eases in from its framing). */
+  fromLobby: boolean;
   hooks: Record<string, unknown>;
 }
 
@@ -191,9 +195,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
   // ---- state ----
   let phase: Phase = 'warmup', phaseT = 0, setIndex = -1;
-  let x = 0, y = 0, v = 0, vx = 0, vy = 0, pitch = 0, mode: Mode = 'road', modeT = 0, camX = 0;
+  const lobbyBiome = (BIOMES as readonly string[]).includes(opts.lobby?.biome ?? '') ? opts.lobby!.biome as BiomeId : null;
+  let x = 0, y = 0, v = lobbyBiome ? Math.max(0, Math.min(30, Number(opts.lobby?.v) || 0)) : 0, vx = 0, vy = 0, pitch = 0, mode: Mode = 'road', modeT = 0, camX = 0;
   let hill = 1, grade = 0, frac = 0;
-  let cur: BiomeId = tour.sets[0].biome, next: BiomeId = cur, mix = 0;
+  let cur: BiomeId = lobbyBiome ?? tour.sets[0].biome, next: BiomeId = cur, mix = 0;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
   let loopV0 = 0, loopPhi = 0, loopDir = 1, loopOff: ReturnType<typeof loopExit> = null;
@@ -235,7 +240,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const MENU_ROWS = 3; // tour · fewer flashes · start
   function chooseTour(id: string) {
     tour = TOURS[id] ?? TOURS.classic;
-    cur = tour.sets[0].biome; next = cur; mix = 0;
+    cur = lobbyBiome ?? tour.sets[0].biome; next = cur; mix = 0;
     route = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
   }
   function startRide() {
@@ -795,7 +800,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold` : null }; }) } : null,
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
-        hooks: { shielded: phase === 'effort', seg: phase, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
+        fromLobby: !!lobbyBiome,
+        hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
     },
     isOver: () => !menu && phase === 'done',

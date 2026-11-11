@@ -11,6 +11,7 @@ import { RollingQueue, estimatedAnalysis, mediaServerConfig, loadAudioRange, loa
 import { createGameSession, DataHub, SCRIPTS } from '../core';
 import { InputHub } from '../input';
 import { ProfileStore, SessionStore, awardSession, defaultProfile, levelForXp, xpForLevel, ACHIEVEMENTS, ACHIEVEMENT_GAME, achievementProgress, MIN_AWARD_ACTIVE_S } from '../progression';
+import { lobbyBiomeOf, startBiomeFor, type LobbyExit } from './lobbyHandoff';
 import { getGame, lobbyGame } from '../games/registry';
 import { choosePick, equip, newUnlocks, pendingPicks, unlockHint } from '../cosmetics/unlocks';
 import type { Item, Slot } from '../cosmetics/types';
@@ -302,6 +303,7 @@ export function startSession(game: GameModule, profile: Profile, onSave: (d: unk
   active = createGameSession({
     game, profile, input, dataHub: useFake ? undefined : dataHub,
     fake: useFake ? { script: fakeScript } : false, onSave, media,
+    ...(lobbyExit ? { simOpts: { lobby: { biome: lobbyExit.biome, v: lobbyExit.v } } } : {}),
   });
   return active;
 }
@@ -411,6 +413,7 @@ export async function rollingMediaRun(ids: string[], mode: import('../media').Qu
 /** Call from user gestures (iOS only lets audio start from one). Cheap after the first time. */
 export function unlockMedia(): void { try { mediaEngine().unlock(); } catch { /* no Web Audio */ } }
 export async function finishSession(profile: Profile): Promise<{ record: SessionRecord; award: AwardView; profile: Profile }> {
+  try { adoptLobbyBiome(active.sim.snapshot()); } catch { /* best effort */ }
   const record: SessionRecord = active.finish();
   active.mixer?.panic?.(true); active = null;
   return creditRecord(profile, record);
@@ -460,6 +463,26 @@ let lobby: any = null;
 let lobbyMeta: { profileId: string | null; startedAt: number } = { profileId: null, startedAt: 0 };
 /** Road position carried across lobby restarts so the scenery never jumps. */
 let lobbyCarry: { startDistance: number; startBiome?: number; terrainSeed?: number } = lobbyDebugStart();
+/** Where the overworld left off, handed to the next game (`simOpts.lobby`) so it can pick up the same scene. */
+let lobbyExit: LobbyExit | null = null;
+/** The overworld's last picture, held up while the next game loads so the hand-off never shows a blank screen. */
+let lobbyFrame: HTMLCanvasElement | null = null;
+export function captureLobbyFrame(): void {
+  lobbyFrame = null;
+  try {
+    const src = document.querySelector<HTMLCanvasElement>('.game-host.stage .mount canvas');
+    if (!src || !src.width || !src.height) return;
+    const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+    c.getContext('2d')?.drawImage(src, 0, 0); lobbyFrame = c;
+  } catch { lobbyFrame = null; }
+}
+export function takeLobbyFrame(): HTMLCanvasElement | null { const f = lobbyFrame; lobbyFrame = null; return f; }
+/** A game that reported `hooks.lobbyBiome` brings the overworld back in that biome. */
+function adoptLobbyBiome(snapshot: unknown): void {
+  const b = lobbyBiomeOf(snapshot); if (!b || !lobbyExit) return;
+  const start = startBiomeFor(b, lobbyCarry.startDistance, lobbyExit.biomeM);
+  if (start != null) lobbyCarry = { ...lobbyCarry, startBiome: start };
+}
 /** `?biome=desert&at=0.9` starts the lobby ride in that biome, `at` km in (debug aid for screenshots). */
 function lobbyDebugStart(): { startDistance: number; startBiome?: number } {
   try {
@@ -506,6 +529,7 @@ export function stopLobby(): SessionRecord | null {
   if (!lobby) return null;
   const snap: any = lobby.sim.snapshot();
   lobbyCarry = { startDistance: snap.d, startBiome: snap.startBiome, terrainSeed: snap.terrainSeed };
+  lobbyExit = { biome: snap.biome, v: snap.v, biomeM: snap.biomeM };
   const rec = lobbyRecord();
   lobby.finish(); lobby = null;
   clearPendingRide();

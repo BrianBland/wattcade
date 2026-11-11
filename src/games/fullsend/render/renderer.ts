@@ -7,6 +7,7 @@ import type { RiderLook } from '../../../cosmetics/types';
 import { BIOME_NAMES, biomeWeights, hash01, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { LOOKS, type BiomeLook, type G } from '../../warmup/render/biomes';
 import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
+import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
@@ -16,9 +17,12 @@ import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs'
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
+import { HANDOFF, handoffMix, handoffRect } from './handoff';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
+/** `?hour=21` previews a time of day (the overworld reads the same parameter). */
+const HOUR = (() => { try { const v = new URLSearchParams(globalThis.location?.search ?? '').get('hour'); return v == null ? null : Number(v); } catch { return null; } })();
 const ROWS = 300;        // target low-res rows: a wide view so the rider is small, the road ahead is readable and speed shows
 const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
@@ -45,6 +49,9 @@ export class FullSendRenderer implements GameRenderer {
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
+  private dusk = 0;
+  /** Overworld hand-off: when we first drew, when the ride ended (s), and the rider's buffer position. */
+  private handIn = NaN; private handOut: number | null = null; private riderBuf = { x: 0, y: 0 };
   private sound = new FullSendSound();
   /** Boards to draw this frame: spec + bottom-centre anchor in CSS px. */
   private signs: Array<{ sp: SignSpec; x: number; y: number }> = [];
@@ -81,6 +88,8 @@ export class FullSendRenderer implements GameRenderer {
     this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
     this.L = layout(w, h, this.insets.bottom, this.insets.top);
   }
+  /** The ride is over: ease back into the overworld's framing before the shell cuts to it. */
+  ending(_info: { over: boolean }): number { this.handOut = performance.now() / 1000; return HANDOFF.outS + 0.3; }
   unmount() { this.sound.dispose(); this.canvas?.remove(); }
 
   private terr(s: FullSendSnapshot): Terrain {
@@ -131,17 +140,23 @@ export class FullSendRenderer implements GameRenderer {
     const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
 
     // ---- sky, sun/moon, clouds ----
+    // Same clock-driven daylight as the overworld, so riding in from it (or back out) keeps the time of day.
+    const now2 = new Date(), day = daylight(HOUR ?? now2.getHours() + now2.getMinutes() / 60);
+    const outdoor = wsum((l) => (l.outdoor ? 1 : 0)), night = day.night * outdoor, glow = day.glow * outdoor;
+    this.dusk = Math.max(night, wsum((l) => l.dusk ?? 0));
     const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
-    sky.addColorStop(0, col((l) => l.sky[0])); sky.addColorStop(1, col((l) => l.sky[1]));
+    sky.addColorStop(0, mixColor(col((l) => l.sky[0]), '#0a0f2a', night * 0.92));
+    sky.addColorStop(1, mixColor(mixColor(col((l) => l.sky[1]), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
     g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    const stars = wsum((l) => l.stars);
+    const stars = Math.max(wsum((l) => l.stars), night);
     if (stars > 0.02) for (let i = 0; i < 80; i++) {
       g.globalAlpha = stars * (0.5 + 0.5 * Math.sin(t * (1 + hash01(i) * 2) + i)); g.fillStyle = '#fff';
       g.fillRect(Math.round(hash01(i * 3 + 1) * W), Math.round(hash01(i * 3 + 2) * UH * 0.6), 1, 1);
     }
-    for (const [l, w] of scene) { g.globalAlpha = w; l.celestial(g, W, UH, t); }
+    for (const [l, w] of scene) { g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1); if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); }
+    g.globalAlpha = night; if (night > 0.02) { g.fillStyle = '#f4f1dc'; g.beginPath(); g.arc(W * 0.8, 24, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0a0f2a'; g.beginPath(); g.arc(W * 0.8 + 3, 22, 6, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
-    this.clouds(g, W, UH, t, s.camX, wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)));
+    this.clouds(g, W, UH, t, s.camX, wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)) * (1 - night * 0.92));
 
     // ---- backdrop and mid ground (parallax) ----
     const backY = Math.round(UH * 0.5 + vAlt * 0.25);
@@ -248,6 +263,7 @@ export class FullSendRenderer implements GameRenderer {
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
+    this.riderBuf = { x: rx, y: ryy };
     let rot = s.pitch;
     if (s.trick) {
       const a = Math.min(1, s.trick.age / 0.9);
@@ -334,13 +350,21 @@ export class FullSendRenderer implements GameRenderer {
       g.globalAlpha = 1;
     }
 
+    if (this.dusk > 0.01) { g.globalAlpha = this.dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     const m = this.g;
     m.imageSmoothingEnabled = false;
-    if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
-    m.drawImage(this.buf, dx, dy, W * this.px, H * this.px);
+    if (!Number.isFinite(this.handIn)) this.handIn = now;
+    const hand = handoffMix(s.fromLobby, now - this.handIn, this.handOut == null ? null : now - this.handOut);
+    if (hand > 0.001) {
+      const r = handoffRect(hand, { canvasW: this.canvas.width, canvasH: this.canvas.height, px: this.px, bufW: W, bufH: H, rider: this.riderBuf, uh: UH * this.px });
+      m.drawImage(this.buf, Math.round(r.x + dx), Math.round(r.y + dy), Math.round(r.w), Math.round(r.h));
+    } else {
+      if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+      m.drawImage(this.buf, dx, dy, W * this.px, H * this.px);
+    }
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
-    this.overlay(s);
+    if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
   }
 
   private clouds(g: G, W: number, UH: number, t: number, x: number, alpha: number) {

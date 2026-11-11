@@ -28,3 +28,4 @@ Design doc: the "Rocket bike sprint game: design brainstorm" Claude Doc. Dev gam
 ## Tests
 `npx vitest run src/games/fullsend` (scenarios via runHeadless, determinism, physics, tour lengths, layout).
 - Type (`render/fonts.ts`, self-hosted OFL woff2 in `render/fonts/`): `fsFont(w, px, italic)`; italic = Barlow Condensed ExtraBold Italic (titles, numerals, call-outs), upright = Overpass 700/900 (highway-style boards, labels, tips).
+- Overworld hand-off (`render/handoff.ts`, tested): the shell passes `simOpts.lobby` ({biome, v}); we start in that biome at that speed (`fromLobby`), draw at the lobby's pixel size/rider anchor and ease out to ours (`handoffMix`/`handoffRect`); `ending()` eases back in. `hooks.lobbyBiome` tells the shell which biome to resume the overworld in. Time of day follows the clock like the overworld (`daylight`, `?hour=`).

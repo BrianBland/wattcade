@@ -45,3 +45,10 @@ export function smashCount(ftpFrac: number, th: readonly [number, number, number
 export function powerZone(f: number): 1 | 2 | 3 | 4 | 5 {
   return f < 0.56 ? 1 : f < 0.76 ? 2 : f < 0.91 ? 3 : f < 1.06 ? 4 : 5;
 }
+
+export type Landing = 'perfect' | 'good' | 'ok' | 'bad';
+/** Grade a landing by how far the bike's pitch is from the slope it lands on (degrees thresholds). */
+export function landingGrade(diffRad: number, perfectDeg = 8, goodDeg = 15, badDeg = 28): Landing {
+  const d = (Math.abs(diffRad) * 180) / Math.PI;
+  return d <= perfectDeg ? 'perfect' : d <= goodDeg ? 'good' : d <= badDeg ? 'ok' : 'bad';
+}

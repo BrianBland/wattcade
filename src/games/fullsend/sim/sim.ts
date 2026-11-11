@@ -2,9 +2,14 @@ import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts'
 import { makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { chaserFor, MEDAL_FTP, pieceTitle, TOURS, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
 import { bumpH, takesOff } from './track';
+import { landingGrade, type Landing } from './physics';
 import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
-export interface FullSendOpts { seed?: number; tour?: string; terrainSeed?: number }
+export interface FullSendOpts {
+  seed?: number; tour?: string; terrainSeed?: number;
+  /** Test/demo pilot: steers every hop to match the slope it will land on. */
+  autolean?: boolean;
+}
 
 export type Phase = 'warmup' | 'approach' | 'effort' | 'payoff' | 'recovery' | 'cooldown' | 'done';
 /** How the bike is moving right now. */
@@ -44,6 +49,8 @@ export interface FullSendSnapshot {
   hay: number;
   /** Last landing off a hop (sim time) and how hard it was (m/s); hops so far. */
   landAt: number; landImpact: number; hops: number;
+  /** Landing speed bonus (fraction) and the last hop landing's grade. */
+  flow: number; landGrade: Landing | null;
   hooks: Record<string, unknown>;
 }
 
@@ -79,6 +86,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     bumpScale: T.num('bumpScale', 1.8, 0, 4, 0.1, 'Height of the rollers and kickers'),
     hopGravity: T.num('hopGravity', 30, 5, 80, 1, 'Gravity for hops off bumps: lower = more airtime, and you take off at lower speeds'),
     slopeGravity: T.num('slopeGravity', 15, 0, 40, 1, 'How much slopes speed you up or slow you down on top of your power (m/s² per unit slope)'),
+    leanRate: T.num('leanRate', 3.5, 0.5, 8, 0.25, 'How fast you can lean the bike in the air (rad/s at full paddle / D-pad)'),
+    flowMax: T.num('flowMax', 0.3, 0, 1, 0.05, 'Most extra cruising speed clean landings can build (fraction)'),
+    flowPerfect: T.num('flowPerfect', 0.08, 0, 0.3, 0.01, 'Speed bonus for a perfect landing'),
+    flowGood: T.num('flowGood', 0.03, 0, 0.3, 0.01, 'Speed bonus for a good landing'),
+    flowDecay: T.num('flowDecay', 0.006, 0, 0.1, 0.002, 'How fast the landing bonus fades (per second)'),
+    badKeep: T.num('badKeep', 0.8, 0.3, 1, 0.05, 'Fraction of speed you keep after a bad landing'),
+    leanDrift: T.num('leanDrift', 0.25, 0, 3, 0.05, 'How fast the bike drifts on its own toward its flight path in the air (1/s)'),
+    gradeAirS: T.num('gradeAirS', 0.35, 0, 2, 0.05, 'Hops shorter than this land as plain "ok" (no bonus) unless badly crossed up'),
+    perfectDeg: T.num('perfectDeg', 8, 1, 30, 1, 'Landing within this many degrees of the slope is perfect'),
+    goodDeg: T.num('goodDeg', 15, 2, 40, 1, 'Within this many degrees is good'),
+    badDeg: T.num('badDeg', 28, 5, 60, 1, 'Beyond this many degrees is a bad landing (bounce, lose speed)'),
     hopAirGradeS: T.num('hopAirGradeS', 0.8, 0.2, 3, 0.1, 'Hops longer than this (s) ease the trainer to the airtime grade'),
     smashGrade: T.num('smashGrade', 3, 0, 8, 0.5, 'Grade % while plowing through a wall'),
     diveGrade: T.num('diveGrade', 2, 0, 8, 0.5, 'Extra grade % underwater (water drag)'),
@@ -114,6 +132,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let top = 0, longestJump = 0, airS = 0, smashed = 0, launchX = 0;
   /** 0..1 debris (hay) stuck to the rider after a smash; it drags (trainer grade) until it falls off. */
   let hay = 0;
+  /** Extra cruising speed earned by clean landings (fraction), the last landing's grade, and whether we're bouncing off a bad one. */
+  let flow = 0, flowPeak = 0, landGrade: Landing | null = null, bouncing = false, perfects = 0, bads = 0;
   let hopT0 = 0, hopAir = 0, hops = 0, longestHop = 0, landAt = -99, landImpact = 0;
   let pendingMedal: Medal = 0;
 
@@ -304,7 +324,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
       // speed: sprint power counts only while sprinting; recovery is capped
       const pf = phase === 'effort' ? frac : Math.min(frac, tun.cruiseCap());
-      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()), dt, tun.spoolS());
+      flow = Math.max(0, flow - tun.flowDecay() * dt);
+      // clean landings buy cruising speed for the same watts (never during a sprint, so medals stay effort-only)
+      const boost = phase === 'effort' ? 1 : 1 + flow;
+      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost, dt, tun.spoolS());
 
       // phase machine
       if (phase === 'warmup') {
@@ -374,14 +397,31 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           else { y = ground; pitch = Math.atan(slope); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
         }
         if (mode === 'hop') {
-          vy -= gH * dt; y += vy * dt; pitch = Math.atan2(vy, Math.max(1, v));
+          vy -= gH * dt; y += vy * dt;
+          // lean: left paddle / D-pad left = back (nose up), right = forward (nose down); a slight drift toward the flight path
+          const lean = opts.autolean
+            ? clamp((Math.atan(slopeAt(x + v * 0.2)) - pitch) * 4, -1, 1)
+            : clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
+          pitch += lean * tun.leanRate() * dt + (Math.atan2(vy, Math.max(1, v)) - pitch) * tun.leanDrift() * dt;
           if (y <= ground) {
             const rel = vy - v * slope; // how hard you hit, relative to the slope you land on
             y = ground; landAt = now; landImpact = -rel;
             if (trick && now - trick.t0 >= 0.9) { style++; trick = null; }
             hopAir += now - hopT0; hops++; longestHop = Math.max(longestHop, now - hopT0);
-            if (rel < -7) { vy = v * slope - rel * 0.22; hopT0 = now; } // a little bounce off a flat landing
-            else { setMode('road'); pitch = Math.atan(slope); }
+            const raw = landingGrade(pitch - Math.atan(slope), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
+            const airT = now - hopT0; // a crest skip (barely leaves the road) is never graded; tiny hops earn nothing but can still go wrong
+            const lg: Landing = airT < 0.15 || (raw !== 'bad' && airT < tun.gradeAirS()) ? 'ok' : raw;
+            if (!bouncing) landGrade = lg; // the bounce after a bad landing keeps its 'bad' call-out
+            if (lg === 'bad' && !bouncing) { // bad landing: bounce and lose speed (and the flow bonus)
+              bads++; flow = 0; v *= tun.badKeep(); bouncing = true;
+              vy = v * slope + 3 + Math.abs(rel) * 0.25; hopT0 = now; pitch = Math.atan(slope) + 0.35;
+            } else {
+              if (!bouncing && lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect()); }
+              else if (!bouncing && lg === 'good') flow = Math.min(tun.flowMax(), flow + tun.flowGood());
+              flowPeak = Math.max(flowPeak, flow);
+              if (rel < -7 && !bouncing) { vy = v * slope - rel * 0.22; hopT0 = now; bouncing = true; } // a little bounce off a hard flat landing
+              else { bouncing = false; setMode('road'); pitch = Math.atan(slope); }
+            }
           }
         }
       }
@@ -417,8 +457,14 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     },
     hud(): GameHud {
       const s = set();
-      const controls: GameHud['controls'] = [{ button: 'a', label: 'Trick (in the air)', shortLabel: 'Trick', active: mode === 'air' }];
-      const base = { gears: true, controls, touchControls: ['a'] as GameHud['touchControls'] };
+      const air = mode === 'air' || mode === 'hop';
+      const controls: GameHud['controls'] = [
+        { button: 'paddles', label: 'Lean in the air: left = back, right = forward. Land parallel to the road for speed', shortLabel: 'Lean', active: air },
+        { button: 'left', label: 'Lean back (in the air)', shortLabel: 'Back', active: air, displayOrder: 0 },
+        { button: 'right', label: 'Lean forward (in the air)', shortLabel: 'Fwd', active: air, displayOrder: 1 },
+        { button: 'a', label: 'Trick (in the air)', shortLabel: 'Trick', active: air },
+      ];
+      const base = { gears: true, controls, touchControls: ['left', 'right', 'a'] as GameHud['touchControls'] };
       if (phase === 'effort' && s && piece) {
         return { ...base, targetZone: { min: powerZone(piece.th[0]), max: 5, label: piece.title, source: 'power' } };
       }
@@ -440,7 +486,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,
         last: last ? { ...last, age: now - last.at } : null,
         results: [...results],
-        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops,
+        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
         hooks: { shielded: phase === 'effort', seg: phase },
       };
     },
@@ -449,7 +495,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       const n = (m: number) => results.filter((r) => r.medal === m).length;
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
-        topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
+        topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
         distanceKm: +(x / 1000).toFixed(1), medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

@@ -9,7 +9,7 @@ hud.style.height = `${inset}px`;
 const session = createGameSession({
   game, profile: testProfile({ color: '#4cc9f0' }), input: new NullInput(),
   fake: { script: q.get('script') ?? 'hook-responsive' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { tour: q.get('tour') ?? 'classic' },
+  simOpts: { tour: q.get('tour') ?? 'classic', autolean: q.get('autolean') !== '0' },
 });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const r = await game.loadRenderer();

@@ -14,7 +14,8 @@ import { bumpH } from '../sim/track';
 import { layout, type FullSendLayout } from './layout';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
-const PPM = 4.5;          // low-res px per metre: the bike is ~6 m long, so the ground has to fly past to read as 80+ mph
+const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
+const ROWS = 300;        // target low-res rows: a wide view so the rider is small, the road ahead is readable and speed shows
 const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
@@ -54,7 +55,7 @@ export class FullSendRenderer implements GameRenderer {
     this.cssW = w; this.cssH = h;
     this.dpr = Math.min(2, globalThis.devicePixelRatio || 1);
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr);
-    this.px = Math.max(2, Math.floor(this.canvas.height / 230));
+    this.px = Math.max(2, Math.floor(this.canvas.height / ROWS));
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
     this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
     this.L = layout(w, h, this.insets.bottom, this.insets.top);
@@ -268,6 +269,10 @@ export class FullSendRenderer implements GameRenderer {
     m.fillText(spd, (L.speed.x + 12) * d, (L.speed.y + 22) * d);
     m.font = font(700, 12); m.fillStyle = '#bdb8e8';
     m.fillText(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% on the trainer`, (L.speed.x + 12) * d, (L.speed.y + 44) * d);
+    if (s.flow > 0.005 && L.speed.w >= 190) {
+      m.textAlign = 'right'; m.font = font(900, 13); m.fillStyle = '#7af0ff';
+      m.fillText(`FLOW +${Math.round(s.flow * 100)}%`, (L.speed.x + L.speed.w - 10) * d, (L.speed.y + 22) * d);
+    }
 
     // tour progress (top-right)
     panel(L.status, 0.55);
@@ -333,6 +338,12 @@ export class FullSendRenderer implements GameRenderer {
       m.fillText(`${s.trick.name}!`, L.riderX * d, (L.roadY - 110) * d);
       m.globalAlpha = 1;
     }
+    const la = s.t - s.landAt, call = landingCall(s.landGrade, s.flow);
+    if (call && la >= 0 && la < 1.3) {
+      m.globalAlpha = Math.min(1, (1.3 - la) * 2.5); m.textAlign = 'center'; m.font = font(900, call.size); m.fillStyle = call.color;
+      m.fillText(call.text, L.riderX * d, (L.roadY - 80 - la * 18) * d);
+      m.globalAlpha = 1;
+    }
   }
 
   /** Sprint meter: live FTP fraction against bronze / silver / gold, or the air / gap gauge. */
@@ -376,4 +387,12 @@ export function rampLift(p: PieceView | null, x: number): number {
 function round(m: G, x: number, y: number, w: number, h: number, r: number) {
   m.beginPath(); m.moveTo(x + r, y); m.arcTo(x + w, y, x + w, y + h, r); m.arcTo(x + w, y + h, x, y + h, r);
   m.arcTo(x, y + h, x, y, r); m.arcTo(x, y, x + w, y, r); m.closePath();
+}
+
+/** Landing call-out text near the rider (null for an ordinary landing). */
+export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number): { text: string; color: string; size: number } | null {
+  if (grade === 'perfect') return { text: `PERFECT · FLOW +${Math.round(flow * 100)}%`, color: '#7af0ff', size: 20 };
+  if (grade === 'good') return { text: 'CLEAN', color: '#b6f59a', size: 17 };
+  if (grade === 'bad') return { text: 'BAD LANDING', color: '#ff7a5a', size: 20 };
+  return null;
 }

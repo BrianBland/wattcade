@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { runHeadless } from '../../../core';
+import { createGameSession, runHeadless, testProfile } from '../../../core';
+import type { InputState } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
-import { leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
+import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
 import { TOURS } from '../sim/tour';
 
 describe('scenarios via runHeadless', () => {
@@ -72,5 +73,38 @@ describe('bumps (Line Rider hops)', () => {
     const z2 = runHeadless({ game: module, script: 'z2', minutes: 6, seed: 4, simOpts: { tour: 'quick' } }).summary;
     expect(Number(z2.hops)).toBeGreaterThan(10);
     expect(Number(z2.longestHopS)).toBeGreaterThan(0.4);
+  });
+});
+
+describe('steering and landings', () => {
+  const deg = (d: number) => (d * Math.PI) / 180;
+  it('grades a landing by how far the bike is from the slope', () => {
+    expect(landingGrade(deg(5))).toBe('perfect');
+    expect(landingGrade(deg(-12))).toBe('good');
+    expect(landingGrade(deg(20))).toBe('ok');
+    expect(landingGrade(deg(-35))).toBe('bad');
+  });
+  it('hands-off riding never crashes and earns no flow; good steering is faster for the same watts', () => {
+    const run = (autolean: boolean) => runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean } }).summary;
+    const hands = run(false), steer = run(true);
+    expect(Number(hands.badLandings)).toBe(0);
+    expect(Number(hands.flowPeakPct)).toBeLessThan(10);
+    expect(Number(steer.perfectLandings)).toBeGreaterThan(20);
+    expect(Number(steer.flowPeakPct)).toBeGreaterThanOrEqual(20);
+    expect(Number(steer.distanceKm)).toBeGreaterThan(Number(hands.distanceKm) * 1.08);
+  });
+  it('holding a hard forward lean crashes landings, which bounce and cost speed', () => {
+    const lean: InputState = { held: new Set(), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 1, paddleIdleS: 0, source: 'script' };
+    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => lean }, fake: { script: 'z2' }, simOpts: { tour: 'quick' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): { mode: string; v: number; landGrade: string | null } }).snapshot();
+    let bad = 0, lost = 0, prevV = 0, prevMode = '';
+    for (let i = 0; i < 60 * 240; i++) {
+      s.step(1);
+      const q = snap();
+      if (prevMode === 'hop' && q.landGrade === 'bad' && q.v < prevV * 0.9) { bad++; lost += 1 - q.v / prevV; }
+      prevV = q.v; prevMode = q.mode;
+    }
+    expect(bad).toBeGreaterThan(3);
+    expect(lost / bad).toBeGreaterThan(0.12);
   });
 });

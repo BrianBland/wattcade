@@ -1,8 +1,10 @@
+import { LEVEL_0 } from '../sim/level';
 import { describe, it, expect } from 'vitest';
 import { createGameSession, testProfile } from '../../../core';
 import type { Button, InputState } from '../../../contracts';
 import { module } from '../index';
 import { chooseTarget, stepTarget, targetQueue, threatOf, type TargetCand, type TargetOpts } from '../sim/targeting';
+import { padOrder } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 
 const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as TdSnapshot;
@@ -57,7 +59,7 @@ class Pad {
   state() { return this.st; }
 }
 const session = (input: Pad | { beginTick(): void; state(): InputState }, script = 'z2') =>
-  createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 2, simOpts: { skipGarage: true } });
+  createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 2, simOpts: { skipGarage: true, level: LEVEL_0 } });
 /** Steps until the turret mounts the Gatling (sim mode, where gears change the trainer). */
 function toGatlingWave(s: ReturnType<typeof session>) {
   s.step(1);
@@ -91,6 +93,20 @@ describe('input map (#120)', () => {
     const a = snap(s), b = snap(ref);
     expect(a.workshop).toBe(null);
     expect([a.scrap, a.railCharges, a.towers.length, a.targetId]).toEqual([b.scrap, b.railCharges, b.towers.length, b.targetId]);
+  });
+  it('in the workshop, left/right walk the pads in on-screen order for the reported orientation', () => {
+    const pad = new Pad(), s = session(pad);
+    s.step(30 * 50);
+    const walk = (order: number[]) => {
+      s.sim.receive!({ type: 'pad', pad: order[0], epoch: snap(s).inputEpoch }); s.step(1);
+      expect(snap(s).workshop?.pad).toBe(order[0]);
+      for (const want of [...order.slice(1), order[0]]) { pad.press('right'); s.step(1); expect(snap(s).workshop?.pad).toBe(want); }
+      pad.press('left'); s.step(1); expect(snap(s).workshop?.pad).toBe(order.at(-1));
+      pad.press('b'); s.step(1);
+    };
+    walk(padOrder(false));
+    s.sim.receive!({ type: 'padOrder', turned: true });
+    walk(padOrder(true));
   });
   it('D-pad left/right and the paddles step a target lock along the queue; it decays and up releases it', () => {
     const pad = new Pad(), s = session(pad);

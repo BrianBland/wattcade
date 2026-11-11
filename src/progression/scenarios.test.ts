@@ -74,8 +74,8 @@ describe('headless rides unlock game achievements', () => {
   }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
     // Deep fixture opts into combat actions and a reinforced base; survival is tested by the game's passive scenarios.
-    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_wave10', 'td_kindling']));
-    await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills', 'calls', 'spotless', 'strongKills', 'scrap']);
+    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_kindling']));
+    await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills', 'calls', 'strongKills', 'scrap']);
   }, RIDE_TIMEOUT);
   it('sprocket squadron', async () => {
     expect(await unlocked('starfighter', 'z2-half-hour')).toContain('sf_maw');

@@ -1,0 +1,149 @@
+{
+ "style": "scrapyard",
+ "source": "scrapyard-grok-b",
+ "ppu": 12,
+ "roadHalf": 4,
+ "roadRim": 1,
+ "roadBand": 9,
+ "files": {
+  "groundA": "ground_a.webp",
+  "groundB": "ground_b.webp",
+  "gravel": "gravel.webp",
+  "road": "road.webp",
+  "hive": "hive.webp"
+ },
+ "apron": {
+  "file": "apron.webp",
+  "w": 41.25,
+  "h": 40.75
+ },
+ "clearing": {
+  "file": "clearing.webp",
+  "w": 20.5,
+  "h": 20.25
+ },
+ "decals": [
+  {
+   "file": "decal0.webp",
+   "w": 16.5,
+   "h": 16.5
+  },
+  {
+   "file": "decal1.webp",
+   "w": 16,
+   "h": 15.5
+  },
+  {
+   "file": "decal2.webp",
+   "w": 11.5,
+   "h": 14.5
+  },
+  {
+   "file": "decal3.webp",
+   "w": 7,
+   "h": 20.5
+  },
+  {
+   "file": "decal4.webp",
+   "w": 9.5,
+   "h": 11.25
+  },
+  {
+   "file": "decal5.webp",
+   "w": 5.5,
+   "h": 5.25
+  },
+  {
+   "file": "decal6.webp",
+   "w": 5.25,
+   "h": 5.25
+  },
+  {
+   "file": "decal7.webp",
+   "w": 3.5,
+   "h": 3.5
+  },
+  {
+   "file": "decal8.webp",
+   "w": 3.25,
+   "h": 4.75
+  },
+  {
+   "file": "decal9.webp",
+   "w": 3.5,
+   "h": 4.5
+  },
+  {
+   "file": "decal10.webp",
+   "w": 3,
+   "h": 3
+  },
+  {
+   "file": "decal11.webp",
+   "w": 3.25,
+   "h": 3.25
+  },
+  {
+   "file": "decal12.webp",
+   "w": 3.25,
+   "h": 3.25
+  },
+  {
+   "file": "decal13.webp",
+   "w": 2.25,
+   "h": 2.5
+  }
+ ],
+ "props": [
+  {
+   "file": "prop0.webp",
+   "w": 29.5,
+   "h": 28.25
+  },
+  {
+   "file": "prop1.webp",
+   "w": 23.25,
+   "h": 25.5
+  },
+  {
+   "file": "prop2.webp",
+   "w": 19,
+   "h": 22.5
+  },
+  {
+   "file": "prop3.webp",
+   "w": 18.25,
+   "h": 19
+  },
+  {
+   "file": "prop4.webp",
+   "w": 9.5,
+   "h": 26.25
+  },
+  {
+   "file": "prop5.webp",
+   "w": 18.75,
+   "h": 9.75
+  },
+  {
+   "file": "prop6.webp",
+   "w": 10.75,
+   "h": 13
+  },
+  {
+   "file": "prop7.webp",
+   "w": 9.75,
+   "h": 12
+  }
+ ],
+ "deck": {
+  "file": "deck.webp",
+  "w": 96,
+  "h": 22.5
+ },
+ "hiveMouth": {
+  "file": "mouth.webp",
+  "w": 55.25,
+  "h": 53.25
+ }
+}

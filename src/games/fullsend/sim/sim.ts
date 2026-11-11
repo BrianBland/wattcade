@@ -3,7 +3,7 @@ import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/si
 import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
 import { AIR_CELL, airItemAt, kickerLip, bumpH, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
-import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
+import { leapRange, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
 export interface FullSendOpts {
   seed?: number; tour?: string; terrainSeed?: number;
@@ -96,6 +96,8 @@ export interface FullSendSnapshot {
   flip: { name: string; age: number } | null; spun: number;
   /** In a leap: what's leaping out of the pit (world m), when one last hit you, and the bullet-time factor (1 = normal). */
   hazards: HazardView[]; scorchAt: number; leapSlow: number;
+  /** Speed round a loop (m/s; 0 when not in one). */
+  loopV: number;
   hooks: Record<string, unknown>;
 }
 
@@ -145,7 +147,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     slowMo: T.num('slowMo', 0.45, 0.15, 1, 0.05, 'Slow-motion factor for leaps, loops and smashes'),
     smashN: T.num('smashN', 36, 3, 60, 1, 'Hay-bale columns (or crates, stalls…) in a smash wall'),
     smashHoldS: T.num('smashHoldS', 6, 0, 20, 0.5, 'Seconds the debris stuck to you keeps dragging after a smash'),
-    loopGravity: T.num('loopGravity', 36, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
+    loopGravity: T.num('loopGravity', 24, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
+    loopSpoolS: T.num('loopSpoolS', 0.7, 0.3, 5, 0.1, 'In a loop your pedalling drives the bike: seconds for speed to follow your power (stop pedalling and you fall off)'),
     loopSlowMo: T.num('loopSlowMo', 0.6, 0.2, 1, 0.05, 'Slow-motion factor in loops (stretches the ride round so the trainer grade can follow)'),
     chaseGap: T.num('chaseGap', 18, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
     chaseMaxGap: T.num('chaseMaxGap', 24, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
@@ -235,7 +238,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let cur: BiomeId = lobbyBiome ?? tour.sets[0].biome, next: BiomeId = cur, mix = 0;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
-  let loopV0 = 0, loopPhi = 0, loopDir = 1, loopOff: ReturnType<typeof loopExit> = null;
+  let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1;
   let fallFromX = 0, fallFromY = 0, rescueToX = 0;
   let trick: { name: string; t0: number } | null = null, trickCount = 0, style = 0;
   let last: (SetResult & { at: number }) | null = null;
@@ -390,7 +393,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     const biome: BiomeId = lay === 'sky' || lay === 'moon' ? tierBiome(lay) : s.biome;
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
     const len = s.kind === 'leap' ? leapRange(vB, tun.launchDeg(), g)
-      : s.kind === 'loop' ? loopRadius(vB, tun.loopGravity())
+      : s.kind === 'loop' ? (0.26 * vB * vB) / tun.loopGravity() // big: bronze power gets you round if you keep pedalling; coasting doesn't
         : s.kind === 'dive' ? vB * s.effortS
           : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : 0;
     piece = {
@@ -436,8 +439,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       piece.count = smashCount(live / 0.97, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
     } else if (piece.kind === 'loop') {
-      loopV0 = v; loopPhi = 0; loopDir = 1; loopOff = loopExit(v, piece.len, tun.loopGravity());
-      pendingMedal = loopOff ? 0 : medal; setMode('loop');
+      loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1;
+      pendingMedal = medal; setMode('loop');
     }
   }
   function payoff(dt: Seconds, now: number) {
@@ -519,22 +522,29 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'loop') {
       const R = piece.len, g = tun.loopGravity(), dts = dt * tun.loopSlowMo();
       if (mode === 'loop') {
-        const sp = Math.max(loopSpeed(loopV0, R, g, loopPhi), loopOff?.slide ? 2 : 3);
-        loopPhi += (loopDir * sp / R) * dts;
-        if (!loopOff && loopPhi >= Math.PI * 2) {
-          loopPhi = 0; x = piece.x0; y = 0; v = loopV0;
-          finishPiece(pendingMedal, 'all the way round'); setMode('road'); piece.surfaced = true;
-        } else if (loopOff && !loopOff.slide && loopPhi >= loopOff.angle) {
-          vy = 0; setMode('drop');
-        } else if (loopOff?.slide && loopDir > 0 && (loopPhi >= loopOff.angle || sp < 0.5)) {
-          loopDir = -1;
-        } else if (loopDir < 0 && loopPhi <= 0) {
-          loopPhi = 0; v = loopV0 * 0.3; finishPiece(0, 'rolled back'); endPayoff(); return;
+        // you pedal round: speed chases what your power asks for, while gravity pulls back on the way up
+        const vt = targetSpeed(frac, speedPerFtp());
+        piece.live = frac; // the meter shows what you're putting in round the loop
+        if (loopDir > 0) {
+          loopV += ((vt - loopV) / tun.loopSpoolS() - g * Math.sin(loopPhi)) * dts;
+          if (loopV <= 0.5 && loopPhi < Math.PI / 2) { loopDir = -1; loopV = 0; } // never reached the side: roll back
+          else {
+            loopPhi += (Math.max(0.5, loopV) / R) * dts;
+            const grip = (loopV * loopV) / R + g * Math.cos(loopPhi); // < 0 = not fast enough to stick to the roof
+            if (loopPhi > Math.PI / 2 && loopPhi < 1.5 * Math.PI && grip < 0) { vy = 0; setMode('drop'); }
+          }
+        } else {
+          loopV += g * Math.sin(loopPhi) * dts; loopPhi -= (loopV / R) * dts;
+          if (loopPhi <= 0) { loopPhi = 0; x = piece.x0; y = 0; v = Math.max(loopV, loopV0 * 0.3); finishPiece(0, 'rolled back'); endPayoff(); return; }
+        }
+        if (mode === 'loop' && loopPhi >= Math.PI * 2) {
+          loopPhi = 0; x = piece.x0; y = 0; v = Math.max(loopV, loopV0 * 0.8);
+          finishPiece(pendingMedal, 'pedalled round'); setMode('road'); piece.surfaced = true;
         }
         if (mode === 'loop') { x = piece.x0 + R * Math.sin(loopPhi); y = R * (1 - Math.cos(loopPhi)); pitch = loopPhi; }
       } else if (mode === 'drop') {
         vy -= g * dts; y += vy * dts; pitch += dt * 5;
-        if (y <= 0) { y = 0; pitch = 0; v = loopV0 * 0.35; x = piece.x0 + R + 4; finishPiece(0, 'foam pit'); endPayoff(); }
+        if (y <= 0) { y = 0; pitch = 0; v = loopV0 * 0.35; x = piece.x0 + R + 4; finishPiece(0, 'fell off · keep pedalling!'); endPayoff(); }
       } else {
         x += v * dt;
         if (modeT > 0.8) endPayoff();
@@ -902,7 +912,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold` : null }; }) } : null,
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
-        fromLobby: !!lobbyBiome,
+        fromLobby: !!lobbyBiome, loopV: mode === 'loop' ? loopV : 0,
         flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
         hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
         scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, runHeadless, testProfile } from '../../../core';
+import { createGameSession, NullInput, runHeadless, testProfile } from '../../../core';
 import type { InputState } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
 import { TOURS } from '../sim/tour';
-import { flipName, type FullSendSnapshot } from '../sim/sim';
+import { flipName, hazardY, leapHazards, type FullSendSnapshot } from '../sim/sim';
 
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
@@ -107,6 +107,42 @@ describe('steering and landings', () => {
     }
     expect(bad).toBeGreaterThan(3);
     expect(lost / bad).toBeGreaterThan(0.12);
+  });
+});
+
+describe('leaps', () => {
+  it('pit hazards peak right on your arc, so holding your line gets you hit', () => {
+    const vx = 50, vy0 = 35, g = 28, len = 120;
+    for (const z of leapHazards(3, 0, len, vx, vy0, g, 5)) {
+      const tx = z.x / vx, arc = vy0 * tx - (g * tx * tx) / 2;
+      expect(Math.abs(hazardY(z, tx) - arc)).toBeLessThan(2);
+      expect(z.x).toBeGreaterThan(len * 0.15); expect(z.x).toBeLessThan(len * 0.85);
+    }
+  });
+  it('steering round the hazards (the pilot dodges) gets hit less than riding hands-off', () => {
+    const run = (autolean: boolean) => Number(runHeadless({ game: module, script: 'hook-responsive', minutes: 14, seed: 3, simOpts: { tour: 'classic', forks: 'alternate', autolean } }).summary.scorched);
+    expect(run(true)).toBeLessThan(Math.max(1, run(false)));
+  });
+});
+
+describe('loops: pedal round', () => {
+  const toLoop = () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'classic', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().mode === 'loop'); i++) s.step(1);
+    return { s, snap };
+  };
+  const finish = (r: ReturnType<typeof toLoop>) => { for (let i = 0; i < 30 * 30 && r.snap().phase === 'payoff' && r.snap().piece?.medal === -1; i++) r.s.step(1); return r.snap().results.at(-1)!; };
+  it('keep pedalling hard and you get all the way round', () => {
+    const r = toLoop(); expect(r.snap().mode).toBe('loop');
+    expect(r.snap().piece!.len).toBeGreaterThan(20); // a big loop
+    expect(finish(r).detail).toBe('pedalled round');
+  });
+  it('stop pedalling in the loop and you fall off or roll back', () => {
+    const r = toLoop();
+    const fb = r.s.fakeBike!; fb.script = null; fb.manual = { cadence: 0, power: 0, hr: null };
+    const res = finish(r);
+    expect(res.medal).toBe(0); expect(res.detail).not.toBe('pedalled round');
   });
 });
 

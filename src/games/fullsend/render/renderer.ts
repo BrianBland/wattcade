@@ -117,7 +117,7 @@ export class FullSendRenderer implements GameRenderer {
     const k = this.dpr / this.px; // CSS px -> buffer px
     const L = this.L, UH = L.UH * k, roadY0 = Math.round(L.roadY * k);
     // In an Outrun the rider moves right so whatever is chasing fits on screen behind them.
-    const wantFrac = s.piece?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
+    const wantFrac = (s.piece?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff')) || (s.piece?.kind === 'loop' && s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
     this.riderFrac += (wantFrac - this.riderFrac) * Math.min(1, dt * 1.5);
     const RX = Math.round(this.riderFrac * W);
     const terr = this.terr(s);
@@ -126,11 +126,14 @@ export class FullSendRenderer implements GameRenderer {
     const lift = (x: number) => rampLift(p, x);
     // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
     const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
-    const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
+    const inLoopNow = p?.kind === 'loop' && s.phase === 'payoff' && (s.mode === 'loop' || s.mode === 'drop');
+    // approaching: lift a little so the loop's shape reads; inside it: follow the rider so they stay mid-screen
+    const loopLift = inLoopNow ? Math.max(0, s.y - (roadY0 - UH * 0.5) / VPM)
+      : loopOnScreen ? Math.min(Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM), (roadY0 - UH * 0.3) / VPM) : 0;
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
     const leaping = p?.kind === 'leap' && s.phase === 'payoff' && (s.mode === 'air' || s.mode === 'fall');
     // in a leap the camera frames the pit and you together (so you see what's coming up at you); otherwise it goes with you
-    const flyCam = leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
+    const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
     let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
     const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : 0)) + loopLift + flyCam;
@@ -467,6 +470,9 @@ export class FullSendRenderer implements GameRenderer {
       const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
       txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
+      this.meter(s, p);
+    } else if (s.phase === 'payoff' && p?.kind === 'loop' && s.mode === 'loop') {
+      txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
       this.meter(s, p);
     } else if (s.phase === 'recovery' || s.phase === 'warmup') {
       txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);

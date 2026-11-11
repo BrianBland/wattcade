@@ -7,6 +7,8 @@ import type { RiderLook } from '../../../cosmetics/types';
 import { BIOME_NAMES, biomeWeights, hash01, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { LOOKS, type BiomeLook, type G } from '../../warmup/render/biomes';
 import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
+import { coverage, drawSoft, drawSpans, drawVeil, layerSpans, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
+import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway';
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
@@ -26,6 +28,9 @@ const HOUR = (() => { try { const v = new URLSearchParams(globalThis.location?.s
 const ROWS = 360;        // target low-res rows: a wide view so the rider is small, the road ahead is readable and speed shows
 const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
+/** How fast a biome seam travels in each layer (the far hills see it first). Faster than the layers' own parallax so a
+ *  seam placed a few hundred metres ahead still rolls in from the horizon within a recovery; a haze squall hides that. */
+const SEAM_BACK = 0.3, SEAM_MID = 0.6;
 const MID_SLOT = 15, FORE_SLOT = 9;
 const SURFACE_M = 45; // the sea surface sits this far above the sea floor (matches the sim's default plunge)
 const RAMP_M = 14, RAMP_H = 4; // the kicker before a canyon lip and the landing ramp after it
@@ -49,6 +54,8 @@ export class FullSendRenderer implements GameRenderer {
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
+  /** The gateway's name board this frame (buffer px; drawn at full resolution in the overlay). */
+  private gate: { x: number; y: number; text: string; color: string; alpha: number } | null = null;
   private dusk = 0; private zoom = NaN; private cam = { x: 0, y: 0, s: 1 };
   /** Overworld hand-off: when we first drew, when the ride ended (s), and the rider's buffer position. */
   private handIn = NaN; private handOut: number | null = null; private riderBuf = { x: 0, y: 0 };
@@ -106,6 +113,13 @@ export class FullSendRenderer implements GameRenderer {
     });
   }
 
+  /** A continuous layer: split at the biome seam (each side drawn whole, clipped along a ragged cut), or, while flying
+   *  between altitude layers, dissolved as before (the cloud decks and splashes cover that). */
+  private split(blend: Scene | null, spans: readonly Span[], salt: number, draw: (look: BiomeLook, g: G) => void) {
+    if (blend) { this.layer(blend, draw); return; }
+    drawSpans(this.b, spans, this.LW, this.LH, salt, (id) => draw(LOOKS[id], this.b));
+  }
+
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as FullSendSnapshot;
     if (!s || typeof s.x !== 'number') return;
@@ -135,7 +149,17 @@ export class FullSendRenderer implements GameRenderer {
     const sy = (h: number) => roadY0 - (h - this.camY) * VPM;
     const roadY = (x: number) => sy(roadH(x) + lift(x));
 
-    const scene: Scene = biomeWeights({ cur: s.from, next: s.to, mix: s.mix }).filter(([, w]) => w > 0.002).map(([id, w]) => [LOOKS[id], w]);
+    // Biome seam: each layer splits where the seam falls in it; whole-scene values weigh biomes by how much sky they own.
+    const seams = s.seam ? [s.seam] : [];
+    const spansAt = (p: number) => layerSpans(s.biome, seams, (x) => RX + (x - s.camX) * PPM * p, W);
+    // a gateway that went up closer than usual still has to first show up beyond the right edge, even in the far hills
+    const far = s.seam ? Math.min(1, Math.max(SEAM_BACK, (W - RX + 40) / (s.seam.lead * PPM))) : SEAM_BACK;
+    const skySp = spansAt(far), midSp = spansAt(Math.max(SEAM_MID, far)), roadSp = spansAt(1), foreSp = spansAt(FORE_PARALLAX);
+    const soft = W * SEAM.skySoft;
+    const scene: Scene = (skySp.length > 1 ? coverage(skySp, W) : biomeWeights({ cur: s.from, next: s.to, mix: s.mix }))
+      .filter(([, w]) => w > 0.002).map(([id, w]) => [LOOKS[id], w]);
+    /** Only between altitude layers (no seam) do whole layers still dissolve, under the cloud decks and splashes. */
+    const blend = !seams.length && scene.length > 1 ? scene : null;
     const col = (f: (l: BiomeLook) => string) => blendColors(scene.map(([l, w]) => [f(l), w] as const));
     const wsum = (f: (l: BiomeLook) => number) => scene.reduce((a, [l, w]) => a + f(l) * w, 0);
 
@@ -144,71 +168,114 @@ export class FullSendRenderer implements GameRenderer {
     const now2 = new Date(), day = daylight(HOUR ?? now2.getHours() + now2.getMinutes() / 60);
     const outdoor = wsum((l) => (l.outdoor ? 1 : 0)), night = day.night * outdoor, glow = day.glow * outdoor;
     this.dusk = Math.max(night, wsum((l) => l.dusk ?? 0));
-    const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
-    sky.addColorStop(0, mixColor(col((l) => l.sky[0]), '#0a0f2a', night * 0.92));
-    sky.addColorStop(1, mixColor(mixColor(col((l) => l.sky[1]), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
-    g.fillStyle = sky; g.fillRect(0, 0, W, H);
-    const stars = Math.max(wsum((l) => l.stars), night);
-    if (stars > 0.02) for (let i = 0; i < 80; i++) {
-      g.globalAlpha = stars * (0.5 + 0.5 * Math.sin(t * (1 + hash01(i) * 2) + i)); g.fillStyle = '#fff';
-      g.fillRect(Math.round(hash01(i * 3 + 1) * W), Math.round(hash01(i * 3 + 2) * UH * 0.6), 1, 1);
+    if (skySp.length > 1) { // across a seam: each sky (with its own sun or planet) meets the next along a weather front
+      drawSoft(g, this.sg, skySp, W, H, soft, (id, gg) => {
+        const l = LOOKS[id], out = l.outdoor ? 1 : 0, sky = gg.createLinearGradient(0, 0, 0, UH * 0.7);
+        sky.addColorStop(0, mixColor(l.sky[0], '#0a0f2a', day.night * out * 0.92));
+        sky.addColorStop(1, mixColor(mixColor(l.sky[1], '#ff9a5a', day.glow * out * 0.65), '#1c2348', day.night * out * 0.85));
+        gg.fillStyle = sky; gg.fillRect(0, 0, W, H);
+        gg.globalAlpha = out ? 1 - day.night : 1; if (gg.globalAlpha > 0.01) l.celestial(gg, W, UH, t); gg.globalAlpha = 1;
+      });
+    } else {
+      const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
+      sky.addColorStop(0, mixColor(col((l) => l.sky[0]), '#0a0f2a', night * 0.92));
+      sky.addColorStop(1, mixColor(mixColor(col((l) => l.sky[1]), '#ff9a5a', glow * 0.65), '#1c2348', night * 0.85));
+      g.fillStyle = sky; g.fillRect(0, 0, W, H);
+      for (const [l, w] of scene) { g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1); if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); }
     }
-    for (const [l, w] of scene) { g.globalAlpha = w * (l.outdoor ? 1 - day.night : 1); if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); }
+    /** A per-biome number at screen x: across the seam's soft front, or the (altitude) blend. */
+    const skyAt = (x: number, f: (l: BiomeLook) => number) => (skySp.length > 1 ? softValue(skySp, x, soft, (id) => f(LOOKS[id])) : wsum(f));
+    for (let i = 0; i < 80; i++) {
+      const x = hash01(i * 3 + 1) * W, stars = Math.max(skyAt(x, (l) => l.stars), day.night * skyAt(x, (l) => (l.outdoor ? 1 : 0)));
+      if (stars <= 0.02) continue;
+      g.globalAlpha = stars * (0.5 + 0.5 * Math.sin(t * (1 + hash01(i) * 2) + i)); g.fillStyle = '#fff';
+      g.fillRect(Math.round(x), Math.round(hash01(i * 3 + 2) * UH * 0.6), 1, 1);
+    }
     g.globalAlpha = night; if (night > 0.02) { g.fillStyle = '#f4f1dc'; g.beginPath(); g.arc(W * 0.8, 24, 7, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0a0f2a'; g.beginPath(); g.arc(W * 0.8 + 3, 22, 6, 0, Math.PI * 2); g.fill(); }
     g.globalAlpha = 1;
-    this.clouds(g, W, UH, t, s.camX, wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)) * (1 - night * 0.92));
+    this.clouds(g, W, UH, t, s.camX, (x) => skyAt(x, (l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)) * (1 - night * 0.92));
 
     // ---- backdrop and mid ground (parallax) ----
     const backY = Math.round(UH * 0.5 + vAlt * 0.25);
-    this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
+    this.split(blend, skySp, 1, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
+    for (let i = 1; i < skySp.length; i++) { // a haze squall stands over the far cut
+      const x = skySp[i].x0;
+      if (x > -20 && x < W + 20) drawVeil(g, x, backY - 60, UH * 0.72 + vAlt * 0.45, mixColor(LOOKS[skySp[i - 1].id].haze, LOOKS[skySp[i].id].haze, 0.5), 34, 0.75);
+    }
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
     const midY = (lx: number) => midBase + Math.sin(lx / 60) * 2 + Math.sin(lx / 23);
-    g.globalAlpha = solid * Math.max(0, 1 + vAlt / 80); g.fillStyle = col((l) => l.mid); // falling: the far hills rise away
-    for (let x = 0; x < W; x += 2) { const y = Math.round(midY(x + mu - RX)); g.fillRect(x, y, 2, H - y); }
-    g.globalAlpha = 1;
-    const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
-    this.layer(scene, (l, gg) => {
-      for (let kk = k0; kk <= k1; kk++) {
-        const lx = kk * MID_SLOT + (hash01(kk * 17 + 3) - 0.5) * 8;
-        l.midProp(gg, hash01(kk * 31 + 5), Math.round(lx - mu + RX), Math.round(midY(lx)) + 1, t);
-      }
+    const farHills = Math.max(0, 1 + vAlt / 80); // falling: the far hills rise away
+    if (!blend) drawSpans(g, midSp, W, H, 3, (id, sp) => {
+      if (LOOKS[id].openSky) return;
+      g.globalAlpha = farHills; g.fillStyle = LOOKS[id].mid;
+      for (let x = Math.max(0, Math.floor((sp.x0 - SEAM.jag - 2) / 2) * 2); x < Math.min(W, sp.x1 + SEAM.jag + 2); x += 2) { const y = Math.round(midY(x + mu - RX)); g.fillRect(x, y, 2, H - y); }
+      g.globalAlpha = 1;
     });
+    else {
+      g.globalAlpha = solid * farHills; g.fillStyle = col((l) => l.mid);
+      for (let x = 0; x < W; x += 2) { const y = Math.round(midY(x + mu - RX)); g.fillRect(x, y, 2, H - y); }
+      g.globalAlpha = 1;
+    }
+    for (let i = 1; i < midSp.length; i++) { // a low mist bank over the mid-ground cut
+      const x = midSp[i].x0;
+      if (x > -20 && x < W + 20) drawVeil(g, x, midBase - 34, midBase + 26, mixColor(LOOKS[midSp[i - 1].id].haze, LOOKS[midSp[i].id].haze, 0.5), 26, 0.6 * farHills);
+    }
+    const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
+    const midProps = (only: BiomeLook | null, gg: G) => {
+      for (let kk = k0; kk <= k1; kk++) {
+        const lx = kk * MID_SLOT + (hash01(kk * 17 + 3) - 0.5) * 8, x = Math.round(lx - mu + RX);
+        (only ?? LOOKS[ownerAt(midSp, x)]).midProp(gg, hash01(kk * 31 + 5), x, Math.round(midY(lx)) + 1, t);
+      }
+    };
+    if (!blend) midProps(null, g); else this.layer(blend, (l, gg) => midProps(l, gg)); // props are never cut
 
     // ---- the gap / water / loop sit behind the road surface ----
     const gapX0 = p?.kind === 'leap' ? sx(p.x0) : NaN, gapX1 = p?.kind === 'leap' ? sx(p.x0 + p.len) : NaN;
     const inGap = (x: number) => x > gapX0 && x < gapX1;
-    for (const [l, w] of scene) if (l.roadside) {
+    const roadside = (l: BiomeLook, w: number, spans: readonly Span[] | null) => {
       this.sg.clearRect(0, 0, W, H);
-      l.roadside(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t);
+      const draw = (ll: BiomeLook) => ll.roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t);
+      // at a seam each group is drawn whole by the biome it is rooted in (never cut)
+      if (spans) for (const id of new Set(spans.map((sp) => sp.id))) LOOKS[id].roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t, (a, b) => ownerAt(spans, a) === id && ownerAt(spans, b) === id);
+      else draw(l);
       if (Number.isFinite(gapX0)) this.sg.clearRect(gapX0 - 4, 0, gapX1 - gapX0 + 8, H);
       if (s.edgeX !== null) this.sg.clearRect(sx(s.edgeX), 0, W, H);
       g.globalAlpha = w; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
-    }
+    };
+    if (!blend) roadside(scene[0][0], 1, roadSp);
+    else for (const [l, w] of scene) if (l.roadside) roadside(l, w, null);
     if (p?.kind === 'loop') drawLoop(g, sx(p.x0), sy(0) - p.len * PPM, p.len * PPM, p.biome, t, sy(0) + 1);
 
     // ---- road + ground ----
-    const ground = col((l) => l.ground), groundDark = col((l) => l.groundDark), road = col((l) => l.road), edge = col((l) => l.roadEdge);
-    const kind = scene[scene.length > 1 && s.mix > 0.5 ? 1 : 0][0].roadKind;
+    // across a seam each side keeps its own ground and road surface; the cut sits under the gateway
+    const groundDark = !blend ? LOOKS[ownerAt(roadSp, RX)].groundDark : col((l) => l.groundDark);
     const floorY = sy(-10);
-    for (let x = 0; x < W; x++) {
-      const dd = s.camX + (x - RX) / PPM;
-      if (inGap(x)) { drawCanyonFloor(g, x, sy(0) + 6, floorY, H, p!.biome, t, dd); continue; }
-      if (s.edgeX !== null && dd > s.edgeX) continue; // off the edge of the island: nothing but sky below
-      if (s.edgeX !== null && dd > s.edgeX - 12) { // the island's underside tapers away to a point
-        const y0 = Math.round(roadY(dd)), d = (s.edgeX - dd) / 12;
-        g.fillStyle = groundDark; g.fillRect(x, y0 + 6, 1, Math.round(6 + d * 60));
-        g.fillStyle = road; g.fillRect(x, y0, 1, 5);
-        continue;
+    const roadBand = (ground: string, gDark: string, road: string, edge: string, kind: BiomeLook['roadKind'], xa: number, xb: number) => {
+      for (let x = Math.max(0, Math.floor(xa)); x < Math.min(W, xb); x++) {
+        const dd = s.camX + (x - RX) / PPM;
+        if (inGap(x)) { drawCanyonFloor(g, x, sy(0) + 6, floorY, H, p!.biome, t, dd); continue; }
+        if (s.edgeX !== null && dd > s.edgeX) continue; // off the edge of the island: nothing but sky below
+        if (s.edgeX !== null && dd > s.edgeX - 12) { // the island's underside tapers away to a point
+          const y0 = Math.round(roadY(dd)), d = (s.edgeX - dd) / 12;
+          g.fillStyle = gDark; g.fillRect(x, y0 + 6, 1, Math.round(6 + d * 60));
+          g.fillStyle = road; g.fillRect(x, y0, 1, 5);
+          continue;
+        }
+        const y = Math.round(roadY(dd));
+        g.fillStyle = ground; g.fillRect(x, y + 6, 1, H - y);
+        if (hash01(Math.floor(dd * 1.2) * 7) < 0.25) { g.fillStyle = gDark; g.fillRect(x, y + 8 + Math.floor(hash01(Math.floor(dd)) * 20), 1, 1); }
+        g.fillStyle = road; g.fillRect(x, y, 1, 5);
+        g.fillStyle = edge; g.fillRect(x, y + 5, 1, 1);
+        if (kind === 'asphalt' && Math.floor(dd / 4) % 2 === 0) { g.fillStyle = '#f0e6a0'; g.fillRect(x, y + 2, 1, 1); }
+        else if (kind === 'planks' && Math.floor(dd / 1.2) % 2 === 0) { g.fillStyle = edge; g.fillRect(x, y + 1, 1, 1); }
       }
-      const y = Math.round(roadY(dd));
-      g.fillStyle = ground; g.fillRect(x, y + 6, 1, H - y);
-      if (hash01(Math.floor(dd * 1.2) * 7) < 0.25) { g.fillStyle = groundDark; g.fillRect(x, y + 8 + Math.floor(hash01(Math.floor(dd)) * 20), 1, 1); }
-      g.fillStyle = road; g.fillRect(x, y, 1, 5);
-      g.fillStyle = edge; g.fillRect(x, y + 5, 1, 1);
-      if (kind === 'asphalt' && Math.floor(dd / 4) % 2 === 0) { g.fillStyle = '#f0e6a0'; g.fillRect(x, y + 2, 1, 1); }
-      else if (kind === 'planks' && Math.floor(dd / 1.2) % 2 === 0) { g.fillStyle = edge; g.fillRect(x, y + 1, 1, 1); }
-    }
+    };
+    if (!blend) drawSpans(g, roadSp, W, H, 5, (id, sp) => {
+      const l = LOOKS[id];
+      roadBand(l.ground, l.groundDark, l.road, l.roadEdge, l.roadKind, sp.x0 - SEAM.jag - 2, sp.x1 + SEAM.jag + 2);
+    });
+    else roadBand(col((l) => l.ground), groundDark, col((l) => l.road), col((l) => l.roadEdge), scene[scene.length > 1 && s.mix > 0.5 ? 1 : 0][0].roadKind, 0, W);
     if (p?.kind === 'leap') { // canyon walls
       g.fillStyle = mixColor(groundDark, '#000000', 0.35);
       g.fillRect(Math.round(gapX0), Math.round(sy(0)) + 5, 3, H);
@@ -230,6 +297,17 @@ export class FullSendRenderer implements GameRenderer {
       const cx = sx(s.x - p.gap);
       const caughtAge = s.t - p.caughtAt;
       drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
+    }
+
+    // ---- the biome gateway: the seam itself, standing over the road where the next biome begins ----
+    this.gate = null;
+    if (s.seam) {
+      const gx = Math.round(sx(s.seam.x)), st = GATEWAYS[s.seam.to];
+      if (gx > -50 && gx < W + 50) {
+        const gy = Math.round(roadY(s.seam.x)), [bx, by] = boardCentre();
+        drawGateway(g, st, gx, gy, t);
+        this.gate = { x: gx + bx, y: gy + by + 0.5, text: BIOME_NAMES[s.seam.to], color: st.text, alpha: Math.min(1, Math.max(0, (Math.abs(gx - RX) - 12) / 14)) };
+      }
     }
 
     // ---- road signs: posts here (behind the rider), boards + text at full resolution in the overlay ----
@@ -298,7 +376,7 @@ export class FullSendRenderer implements GameRenderer {
     const la = s.t - s.landAt;
     if (la >= 0 && la < 0.6 && s.landImpact > 1.5 && !inLoop) {
       const k = la / 0.6, n = Math.min(10, Math.round(s.landImpact));
-      g.globalAlpha = 0.7 * (1 - k); g.fillStyle = col((l) => l.groundDark);
+      g.globalAlpha = 0.7 * (1 - k); g.fillStyle = groundDark;
       for (let i = 0; i < n; i++) {
         const dx = (hash01(i * 3 + 1) - 0.7) * 30 * k - k * 14, dy = -hash01(i * 3 + 2) * 8 * Math.sin(k * Math.PI);
         g.fillRect(Math.round(rx + dx), Math.round(roadY(s.x) + dy), 2, 2);
@@ -309,13 +387,14 @@ export class FullSendRenderer implements GameRenderer {
     // ---- foreground and speed lines ----
     const fu = s.camX * PPM * FORE_PARALLAX;
     const f0 = Math.floor((fu - RX - 10) / FORE_SLOT), f1 = Math.ceil((fu - RX + W + 10) / FORE_SLOT);
-    this.layer(scene, (l, gg) => {
+    const foreProps = (only: BiomeLook | null, gg: G) => {
       for (let kk = f0; kk <= f1; kk++) {
         const x = kk * FORE_SLOT - fu + RX;
         if (inGap(x) || (s.edgeX !== null && s.camX + (x - RX) / PPM > s.edgeX - 12)) continue;
-        l.foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
+        (only ?? LOOKS[ownerAt(foreSp, x)]).foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
       }
-    });
+    };
+    if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
     const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
     if (lines > 0) {
       g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';
@@ -367,12 +446,15 @@ export class FullSendRenderer implements GameRenderer {
     if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
   }
 
-  private clouds(g: G, W: number, UH: number, t: number, x: number, alpha: number) {
-    if (alpha < 0.02) return;
-    g.globalAlpha = alpha * 0.9; g.fillStyle = '#ffffff';
+  /** Clouds: each as solid as the sky it drifts through (`alphaAt(x)`), so they stay on their side of a weather front. */
+  private clouds(g: G, W: number, UH: number, t: number, x: number, alphaAt: (x: number) => number) {
+    g.fillStyle = '#ffffff';
     for (let i = 0; i < 6; i++) {
       const span = W + 80, sp = 2 + hash01(i * 9) * 4;
       const cx = ((hash01(i * 7) * span - t * sp - x * PPM * 0.03 * (1 + i * 0.2)) % span + span) % span - 40;
+      const a = alphaAt(cx + 12);
+      if (a < 0.02) continue;
+      g.globalAlpha = a * 0.9;
       const y = 10 + hash01(i * 11) * UH * 0.3, w = 14 + hash01(i * 13) * 18;
       g.fillRect(Math.round(cx), Math.round(y), Math.round(w), 4); g.fillRect(Math.round(cx + 4), Math.round(y - 3), Math.round(w * 0.5), 3);
     }
@@ -388,6 +470,11 @@ export class FullSendRenderer implements GameRenderer {
     if (s.menu) { this.drawMenu(s.menu, font, panel); return; }
     this.menuHits = [];
     this.drawSigns();
+    if (this.gate && this.gate.alpha > 0) { // the gateway's name board, at full resolution
+      const gt = this.gate, gx = (this.cam.x + gt.x * this.cam.s) / d, gy = (this.cam.y + gt.y * this.cam.s) / d;
+      m.globalAlpha = gt.alpha; m.textAlign = 'center'; m.fillStyle = gt.color; m.font = font(800, Math.max(8, 4.4 * this.cam.s / d));
+      m.fillText(gt.text, gx * d, gy * d); m.globalAlpha = 1;
+    }
     const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
       m.textAlign = align; m.font = font(weight, size, italic);
       if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }

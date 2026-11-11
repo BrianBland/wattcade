@@ -102,6 +102,19 @@ describe('Chapter 1 layout (#189)', () => {
   });
 });
 
+describe('the inland side of the highway', () => {
+  it('keeps the hills back from the road: no wall over the shoulder or the signs on it', () => {
+    const r = coastRoute(), stop = CH1.junction - CH1.townBefore - 100;
+    for (let at = 20; at < stop; at += 7) {
+      const p = r.offset(at, 0);
+      for (const [d, max] of [[6.3, 1.2], [10, 2.5], [16, 8], [30, 24]] as const) {
+        const q = r.offset(at, d);
+        expect(groundAt(q.x, q.z) - p.y, `s=${at} d=${d}`).toBeLessThan(max);
+      }
+    }
+  });
+});
+
 describe('corridor spans and structures', () => {
   it('keeps the terrain under a span (a bridge deck crosses a void instead of skipping the ground)', () => {
     const w = flatWorld(), c = { ...w.corridor!, span: (s: number) => s > 100 && s < 150 };

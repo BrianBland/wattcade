@@ -19,6 +19,8 @@ const C = COAST.idx;
 
 /** World extent (the pier reaches ~0.6 km west of the harbour). */
 export const BOUNDS: Region = { x0: -2400, x1: 1800, z0: -8400, z1: 160 };
+/** Clear inland shoulder (m past the flat verge, square to the road) before the hills may rise. */
+const SHOULDER = 4;
 const benchSlope = (z: number) => 0.06 + 0.35 * Math.min(1, spurK(z));
 
 export const enum T { ROAD = 1, GRAVEL, VERGE, CLIFF, SHORE, SEA, INLAND, CUT, TURNOUT, SAND, PAVE }
@@ -46,7 +48,10 @@ export function sample(x: number, z: number, out: Sample): Sample {
     const hills = 60 * fbm(x / 160, z / 160, 4, 7) * smooth(20, 160, dd) + 520 * smooth(90, 1400, dd) * (0.45 + 0.8 * fbm(x / 500, z / 500, 4, 9));
     let spur = 0;
     for (const sp of SPURS) spur += sp.h * spurW(z, sp) * (0.5 + 0.5 * smooth(0, 700, dd)) * smooth(6, 50, dd);
-    out.h = ry + cut + slope + hills + spur - 0.12 * tw;
+    // never a wall leaning over the road: within ~40 m the ground climbs no steeper than ~40° from a clear shoulder
+    // (measured square to the road, so bends get the same room); signs and posts on the shoulder stay in the open
+    const dx = (roadX(z - 1) - roadX(z + 1)) / 2, dp = d / Math.sqrt(1 + dx * dx) - 6 - 70 * tw;
+    out.h = ry + Math.min(cut + slope + hills + spur, cut + Math.max(0, dp - SHOULDER) * 0.85) - 0.12 * tw;
     out.t = dd < 6 + cut / 0.7 + 0.3 ? T.CUT : T.INLAND;
     return gorge(x, z, d, out);
   }
@@ -356,7 +361,7 @@ export function coastWorld(): WorldDef {
     bounds: BOUNDS, route: r, eye: 1.5, rig: { lane: 4.2, gaze: { ahead: 74, d: -16, dy: -5.5 } },
     terrain: { kind: 'height', fill: fillTerrain, height: (x, z) => Math.max(groundAt(x, z), SEA_LEVEL) },
     corridor: {
-      half: 6.2, support: 'ground', span: spanAt, thickness: 0.5, clearance: 6, edgeSkirt: 0.4, voxel: 0.125, farVoxel: 0.5, near: 200, seg: 32, range: 1500,
+      half: 6.2, support: 'ground', span: spanAt, thickness: 0.5, clearance: 6, edgeSkirt: 0.4, voxel: 0.125, farVoxel: 0.5, near: 100, seg: 32, range: 1500,
       surface: coastSurface(),
       graded: { end: pierGeom().start },
     },

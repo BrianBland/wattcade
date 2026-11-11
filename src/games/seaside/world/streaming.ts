@@ -37,7 +37,7 @@ export class TileStreamer<D> {
 
   constructor(readonly world: WorldDef, o: StreamOpts = {}) {
     this.lod = lodOf(world);
-    this.o = { lookaheadS: [1.5, 3, 6], lookaheadM: [40, 120], keepS: 8, maxTiles: 1600, propSeg: 64, propRange: 320, useRoute: true, ...o };
+    this.o = { lookaheadS: [1.5, 3, 6], lookaheadM: [40, 120], keepS: 8, maxTiles: 1600, propSeg: 64, propRange: 260, useRoute: true, ...o };
   }
 
   /** Pick the display set for a camera, queue what's missing, prefetch ahead on the route, evict stale tiles. */

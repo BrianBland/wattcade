@@ -14,6 +14,9 @@ export interface FullSendOpts {
 export type Phase = 'warmup' | 'approach' | 'effort' | 'payoff' | 'recovery' | 'cooldown' | 'done';
 /** How the bike is moving right now. */
 export type Mode = 'road' | 'hop' | 'air' | 'fall' | 'rescue' | 'smash' | 'bounce' | 'loop' | 'drop' | 'tow';
+/** Altitude layer: momentum launches you from the road to the sky islands and on to the moon; falling off lands you in the sea. */
+export type Tier = 'ground' | 'sky' | 'moon' | 'sea';
+const TIER_UP: Record<Tier, Tier> = { ground: 'sky', sky: 'moon', moon: 'moon', sea: 'ground' };
 
 /** One set piece on the road. `x0` is where it starts (ramp lip, wall face, loop entry, water's edge). */
 export interface PieceView {
@@ -51,6 +54,11 @@ export interface FullSendSnapshot {
   landAt: number; landImpact: number; hops: number;
   /** Landing speed bonus (fraction) and the last hop landing's grade. */
   flow: number; landGrade: Landing | null;
+  /** Altitude layer, the lift meter (0..1; full = the next takeoff launches you up a layer), height above the road (m),
+   *  the layer you're flying to (or falling to), and a counter that bumps when the height is re-based (renderer snaps its camera). */
+  tier: Tier; lift: number; alt: number; toTier: Tier | null; warp: number;
+  /** While falling off a sky island or the moon: where the edge is (no road beyond it). */
+  edgeX: number | null;
   hooks: Record<string, unknown>;
 }
 
@@ -100,6 +108,20 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     hopAirGradeS: T.num('hopAirGradeS', 0.8, 0.2, 3, 0.1, 'Hops longer than this (s) ease the trainer to the airtime grade'),
     smashGrade: T.num('smashGrade', 3, 0, 8, 0.5, 'Grade % while plowing through a wall'),
     diveGrade: T.num('diveGrade', 2, 0, 8, 0.5, 'Extra grade % underwater (water drag)'),
+    launchGain: T.num('launchGain', 1.2, 0, 4, 0.1, 'Extra hop launch at full flow (fraction of takeoff lift): momentum = bigger air'),
+    hopVyMax: T.num('hopVyMax', 26, 5, 80, 1, 'Cap on a hop\'s upward launch speed (m/s), so moon hops stay on screen-ish'),
+    liftFillS: T.num('liftFillS', 30, 5, 300, 5, 'Seconds of max flow to fill the lift meter (full = launch up to the next layer)'),
+    liftFloor: T.num('liftFloor', 0.08, 0, 0.3, 0.01, 'Flow below this drains the lift meter instead (up high, empty = you fall off)'),
+    liftBad: T.num('liftBad', 0.25, 0, 1, 0.05, 'Lift lost on a bad landing'),
+    skyLaunch: T.num('skyLaunch', 55, 20, 120, 1, 'Launch speed (m/s, straight up) of a sky launch / breach'),
+    moonLaunch: T.num('moonLaunch', 70, 20, 150, 1, 'Launch speed (m/s, straight up) of a moon shot'),
+    moonGravity: T.num('moonGravity', 0.35, 0.1, 1, 0.05, 'Hop gravity on the moon, as a fraction of normal (floaty hops)'),
+    seaGravity: T.num('seaGravity', 0.6, 0.1, 1, 0.05, 'Hop gravity underwater, as a fraction of normal'),
+    plungeM: T.num('plungeM', 45, 10, 200, 5, 'How far you fall off a sky island or the moon before splashing into the sea (m, each half)'),
+    moonS: T.num('moonS', 60, 10, 600, 5, 'Seconds of cruising you get on the moon before you drift off and fall'),
+    skyStartLift: T.num('skyStartLift', 0.3, 0, 1, 0.05, 'Lift meter on arrival at the sky islands (grace before you can fall off)'),
+    seaS: T.num('seaS', 40, 5, 300, 5, 'Seconds underwater after a fall before you breach back up to the road'),
+    seaGrade: T.num('seaGrade', 1.5, 0, 6, 0.5, 'Extra grade % on the sea floor (water drag)'),
     blendS: T.num('blendS', 8, 1, 30, 1, 'Seconds the scenery takes to dissolve into the next biome'),
   };
   const th: Record<PieceKind, () => [number, number, number]> = {} as never;
@@ -136,6 +158,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let flow = 0, flowPeak = 0, landGrade: Landing | null = null, bouncing = false, perfects = 0, bads = 0;
   let hopT0 = 0, hopAir = 0, hops = 0, longestHop = 0, landAt = -99, landImpact = 0;
   let pendingMedal: Medal = 0;
+  /** Altitude: layer, lift meter, where we're flying to (or falling to), the scenery we're leaving, and stats. */
+  let tier: Tier = 'ground', lift = 0, toTier: Tier | null = null, plunging = false, transFrom: BiomeId = cur, transMix = 0, warp = 0, tierT = 0, edgeX: number | null = null;
+  let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, peakAlt = 0;
 
   const scale = () => tun.tourScale();
   const set = (): TourSet | null => (setIndex >= 0 && setIndex < tour.sets.length ? tour.sets[setIndex] : null);
@@ -158,6 +183,23 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const setMode = (m: Mode) => { mode = m; modeT = 0; };
   /** Features reached at the end of the sprint ride toward you at your own speed, so the sprint lasts exactly `effortS`. */
   const atEnd = (kind: PieceKind) => kind === 'smash' || kind === 'leap' || kind === 'loop';
+  const tierBiome = (t: Tier): BiomeId => (t === 'sky' ? 'sky' : t === 'moon' ? 'moon' : t === 'sea' ? 'underwater' : cur);
+  const gScale = () => (tier === 'moon' ? tun.moonGravity() : tier === 'sea' ? tun.seaGravity() : 1);
+  const cruising = () => phase === 'warmup' || phase === 'recovery' || phase === 'cooldown';
+  const shown = (): BiomeId => tierBiome(tier);
+  /** Leave the road straight up: a sky launch, a moon shot, or a breach out of the sea. */
+  function launchUp(now: number) {
+    const to = TIER_UP[tier];
+    transFrom = shown(); toTier = to; transMix = 0; plunging = false;
+    launchVy = tier === 'sky' ? tun.moonLaunch() : tun.skyLaunch();
+    setMode('hop'); vy = launchVy; hopT0 = now; bouncing = false; landGrade = null;
+    ctx.emit({ type: 'launch', data: { from: tier, to } });
+  }
+  /** Run out of lift up high: drop off the edge, fall past the clouds, and splash into the sea. */
+  function plunge(now: number) {
+    transFrom = shown(); toTier = 'sea'; transMix = 0; plunging = true; edgeX = x;
+    setMode('hop'); vy = 4; hopT0 = now; bouncing = false;
+  }
 
   /** Grade round a loop: climbs to `loopGrade` at the top, then eases off to the airtime grade on the way down. */
   function loopGradeAt(phi: number): number {
@@ -169,15 +211,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   function startSet(i: number) {
     setIndex = i;
     const s = tour.sets[i], t = th[s.kind]();
+    const lay = toTier ?? tier; // up on the sky islands or the moon, the set piece happens up there
+    const biome: BiomeId = lay === 'sky' || lay === 'moon' ? tierBiome(lay) : s.biome;
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
     const len = s.kind === 'leap' ? leapRange(vB, tun.launchDeg(), g)
       : s.kind === 'loop' ? loopRadius(vB, tun.loopGravity())
         : s.kind === 'dive' ? vB * s.effortS
           : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : 0;
     piece = {
-      kind: s.kind, biome: s.biome, title: pieceTitle(s.kind, s.biome), finale: !!s.finale,
+      kind: s.kind, biome, title: pieceTitle(s.kind, biome), finale: !!s.finale,
       x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
-      chaser: chaserFor(s.biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, air: 1, surfaced: false,
+      chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, air: 1, surfaced: false,
       live: 0, medal: -1, th: t,
     };
     fracSum = 0; fracN = 0;
@@ -379,11 +423,23 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         if (nx && nx.biome !== cur) {
           next = nx.biome;
           if (phaseT >= phaseS() * 0.25) mix = Math.min(1, mix + dt / tun.blendS());
-          if (mix >= 1) { cur = next; mix = 0; ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
+          if (mix >= 1) { cur = next; mix = 0; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
         }
         if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(setIndex + 1); }
       } else if (phase === 'cooldown') {
         if (phaseT >= phaseS()) { go('done'); ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); }
+      }
+
+      // altitude: keep your flow up and the lift meter fills; up high, an empty meter drops you off the edge
+      tierT += dt;
+      if (cruising() && !toTier) {
+        lift = tier === 'moon' ? Math.max(0, lift - dt / tun.moonS()) // the moon is a prize: a fixed stay, then you drift off
+          : clamp(lift + ((flow - tun.liftFloor()) / Math.max(0.01, tun.flowMax())) * dt / tun.liftFillS(), 0, 1);
+        if ((tier === 'sky' || tier === 'moon') && lift <= 0 && mode === 'road') plunge(now);
+      }
+      if (tier === 'sea' && !toTier && mode === 'road') { // breach back to the road: after a while, or for any set piece but a dive
+        const needRoad = !!piece && phase === 'approach' && piece.kind !== 'dive';
+        if ((cruising() && (tierT >= tun.seaS() || lift >= 1)) || needRoad) launchUp(now);
       }
 
       // movement on the road
@@ -393,17 +449,38 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         x += v * dt;
         const ground = roadH(x), slope = slopeAt(x), gH = tun.hopGravity();
         if (mode === 'road') {
-          if (v > 5 && takesOff(v, curvAt(x), gH)) { setMode('hop'); vy = v * slope; hopT0 = now; y = ground; }
+          if (v > 5 && takesOff(v, curvAt(x), gH * gScale())) {
+            y = ground;
+            if (cruising() && lift >= 1 && tier !== 'moon' && tier !== 'sea') launchUp(now);
+            else { setMode('hop'); vy = Math.min(tun.hopVyMax(), v * slope * (1 + tun.launchGain() * flow / Math.max(0.01, tun.flowMax()))); hopT0 = now; }
+          }
           else { y = ground; pitch = Math.atan(slope); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
         }
         if (mode === 'hop') {
-          vy -= gH * dt; y += vy * dt;
+          vy -= gH * gScale() * dt; y += vy * dt;
+          peakAlt = Math.max(peakAlt, y - ground);
+          if (toTier && !plunging) { // flying up: the scenery dissolves on the way, and you arrive at the top of the arc
+            transMix = clamp(1 - vy / launchVy, 0, 1);
+            if (vy <= 0) {
+              tier = toTier; toTier = null; tierT = 0; transMix = 0;
+              lift = tier === 'moon' ? 1 : tier === 'sky' ? tun.skyStartLift() : 0;
+              if (tier === 'sky') skyVisits++; else if (tier === 'moon') moonVisits++;
+              ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
+            }
+          } else if (plunging) { // falling: past the clouds, into the sea (re-based halfway so the sea floor is under you)
+            transMix = clamp((ground - y) / tun.plungeM(), 0, 1);
+            if (ground - y >= tun.plungeM()) {
+              tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; lift = 0; flow = 0; splashdowns++; warp++; landGrade = null;
+              y = ground + tun.plungeM(); vy = Math.min(vy, -10); bouncing = true; edgeX = null; // the splashdown is never graded
+              ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
+            }
+          }
           // lean: left paddle / D-pad left = back (nose up), right = forward (nose down); a slight drift toward the flight path
           const lean = opts.autolean
-            ? clamp((Math.atan(slopeAt(x + v * 0.2)) - pitch) * 4, -1, 1)
+            ? clamp((Math.atan(slopeAt(x + v * Math.min(0.25, (vy + Math.sqrt(vy * vy + 2 * gH * gScale() * Math.max(0, y - ground))) / (gH * gScale())))) - pitch) * 4, -1, 1)
             : clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
           pitch += lean * tun.leanRate() * dt + (Math.atan2(vy, Math.max(1, v)) - pitch) * tun.leanDrift() * dt;
-          if (y <= ground) {
+          if (y <= ground && !plunging) {
             const rel = vy - v * slope; // how hard you hit, relative to the slope you land on
             y = ground; landAt = now; landImpact = -rel;
             if (trick && now - trick.t0 >= 0.9) { style++; trick = null; }
@@ -413,13 +490,13 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
             const lg: Landing = airT < 0.15 || (raw !== 'bad' && airT < tun.gradeAirS()) ? 'ok' : raw;
             if (!bouncing) landGrade = lg; // the bounce after a bad landing keeps its 'bad' call-out
             if (lg === 'bad' && !bouncing) { // bad landing: bounce and lose speed (and the flow bonus)
-              bads++; flow = 0; v *= tun.badKeep(); bouncing = true;
+              bads++; flow = 0; v *= tun.badKeep(); bouncing = true; lift = Math.max(0, lift - tun.liftBad());
               vy = v * slope + 3 + Math.abs(rel) * 0.25; hopT0 = now; pitch = Math.atan(slope) + 0.35;
             } else {
               if (!bouncing && lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect()); }
               else if (!bouncing && lg === 'good') flow = Math.min(tun.flowMax(), flow + tun.flowGood());
               flowPeak = Math.max(flowPeak, flow);
-              if (rel < -7 && !bouncing) { vy = v * slope - rel * 0.22; hopT0 = now; bouncing = true; } // a little bounce off a hard flat landing
+              if (rel < -7 && !bouncing && lg === 'ok') { vy = v * slope - rel * 0.22; hopT0 = now; bouncing = true; } // a little bounce off a hard flat landing
               else { bouncing = false; setMode('road'); pitch = Math.atan(slope); }
             }
           }
@@ -442,6 +519,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         gr = mode === 'air' ? tun.airGrade() : mode === 'smash' || mode === 'bounce' ? tun.smashGrade() + 2 * hay
           : mode === 'loop' ? loopGradeAt(loopPhi) : mode === 'road' ? gr : 0;
       }
+      if (tier === 'sea' && mode === 'road' && phase !== 'effort') gr += tun.seaGrade();
       if (mode === 'hop' && now - hopT0 > tun.hopAirGradeS()) gr = tun.airGrade(); // a long hop: light legs
       // debris stuck to you after a smash keeps dragging until it falls off
       if (mode !== 'smash' && mode !== 'bounce' && hay > 0) {
@@ -480,13 +558,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         t: now, tour: tour.id, tourName: tour.name, phase, phaseT, phaseS: phaseS(), setIndex, setCount: tour.sets.length,
         x, y, v, pitch, mode, camX, hill, grade, terrainSeed, stretch: tun.hillStretch(), maxGrade, bumpScale: tun.bumps() ? tun.bumpScale() : 0,
-        biome: mix < 0.5 ? cur : next, from: cur, to: next, mix,
+        ...(toTier ? { biome: transMix < 0.5 ? transFrom : tierBiome(toTier), from: transFrom, to: tierBiome(toTier), mix: transMix }
+          : tier !== 'ground' ? { biome: shown(), from: shown(), to: shown(), mix: 0 }
+            : { biome: mix < 0.5 ? cur : next, from: cur, to: next, mix }),
         piece: piece ? { ...piece, hitAt: [...piece.hitAt] } : null,
         next: nextInfo, speedPerFtp: speedPerFtp(), ftpFrac: frac,
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,
         last: last ? { ...last, age: now - last.at } : null,
         results: [...results],
         topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
+        tier, lift, alt: y - roadH(x), toTier, warp, edgeX,
         hooks: { shielded: phase === 'effort', seg: phase },
       };
     },
@@ -496,6 +577,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
+        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt),
         distanceKm: +(x / 1000).toFixed(1), medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

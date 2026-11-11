@@ -108,3 +108,20 @@ describe('steering and landings', () => {
     expect(lost / bad).toBeGreaterThan(0.12);
   });
 });
+
+describe('altitude: momentum takes you up to the sky islands and the moon', () => {
+  it('a rider who keeps their flow up launches to the sky, then the moon, falls into the sea and breaches back', () => {
+    const r = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true } });
+    const sm = r.summary;
+    expect(Number(sm.skyVisits)).toBeGreaterThanOrEqual(1);
+    expect(Number(sm.moonVisits)).toBeGreaterThanOrEqual(1);
+    expect(Number(sm.splashdowns)).toBeGreaterThanOrEqual(1);
+    const order = r.events.filter((e) => e.type === 'launch').map((e) => (e.data as { to: string }).to);
+    expect(order.slice(0, 3)).toEqual(['sky', 'moon', 'ground']); // the ground launch is the breach out of the sea
+  });
+  it('a hands-off rider stays on the road', () => {
+    const sm = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick' } }).summary;
+    expect(Number(sm.skyVisits)).toBe(0);
+    expect(Number(sm.peakAltM)).toBeLessThan(30);
+  });
+});

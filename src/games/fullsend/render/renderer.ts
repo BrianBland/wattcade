@@ -34,7 +34,7 @@ export class FullSendRenderer implements GameRenderer {
   private look: RiderLook | null = null;
   private color = '#00f0ff';
   private terrain: { key: string; t: Terrain } | null = null;
-  private camY = NaN; private lastNow = 0; private riderFrac = 0.28;
+  private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
   private L!: FullSendLayout;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
@@ -95,8 +95,12 @@ export class FullSendRenderer implements GameRenderer {
     // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
     const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
     const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
-    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift;
+    // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
+    const flyCam = s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
+    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam;
+    if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
+    const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
     const sx = (x: number) => RX + (x - s.camX) * PPM;
     const sy = (h: number) => roadY0 - (h - this.camY) * VPM;
     const roadY = (x: number) => sy(roadH(x) + lift(x));
@@ -119,12 +123,12 @@ export class FullSendRenderer implements GameRenderer {
     this.clouds(g, W, UH, t, s.camX, wsum((l) => (l.stars < 0.5 && l.rider !== 'scuba' ? 1 : 0)));
 
     // ---- backdrop and mid ground (parallax) ----
-    const backY = Math.round(UH * 0.5);
+    const backY = Math.round(UH * 0.5 + vAlt * 0.25);
     this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
-    const midBase = Math.round(UH * 0.62), mu = s.camX * PPM * MID_PARALLAX;
+    const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
     const midY = (lx: number) => midBase + Math.sin(lx / 60) * 2 + Math.sin(lx / 23);
-    g.globalAlpha = solid; g.fillStyle = col((l) => l.mid);
+    g.globalAlpha = solid * Math.max(0, 1 + vAlt / 80); g.fillStyle = col((l) => l.mid); // falling: the far hills rise away
     for (let x = 0; x < W; x += 2) { const y = Math.round(midY(x + mu - RX)); g.fillRect(x, y, 2, H - y); }
     g.globalAlpha = 1;
     const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
@@ -142,6 +146,7 @@ export class FullSendRenderer implements GameRenderer {
       this.sg.clearRect(0, 0, W, H);
       l.roadside(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t);
       if (Number.isFinite(gapX0)) this.sg.clearRect(gapX0 - 4, 0, gapX1 - gapX0 + 8, H);
+      if (s.edgeX !== null) this.sg.clearRect(sx(s.edgeX), 0, W, H);
       g.globalAlpha = w; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
     }
     if (p?.kind === 'loop') drawLoop(g, sx(p.x0), sy(0) - p.len * PPM, p.len * PPM, p.biome, t, sy(0) + 1);
@@ -153,6 +158,13 @@ export class FullSendRenderer implements GameRenderer {
     for (let x = 0; x < W; x++) {
       const dd = s.camX + (x - RX) / PPM;
       if (inGap(x)) { drawCanyonFloor(g, x, sy(0) + 6, floorY, H, p!.biome, t, dd); continue; }
+      if (s.edgeX !== null && dd > s.edgeX) continue; // off the edge of the island: nothing but sky below
+      if (s.edgeX !== null && dd > s.edgeX - 12) { // the island's underside tapers away to a point
+        const y0 = Math.round(roadY(dd)), d = (s.edgeX - dd) / 12;
+        g.fillStyle = groundDark; g.fillRect(x, y0 + 6, 1, Math.round(6 + d * 60));
+        g.fillStyle = road; g.fillRect(x, y0, 1, 5);
+        continue;
+      }
       const y = Math.round(roadY(dd));
       g.fillStyle = ground; g.fillRect(x, y + 6, 1, H - y);
       if (hash01(Math.floor(dd * 1.2) * 7) < 0.25) { g.fillStyle = groundDark; g.fillRect(x, y + 8 + Math.floor(hash01(Math.floor(dd)) * 20), 1, 1); }
@@ -190,6 +202,7 @@ export class FullSendRenderer implements GameRenderer {
     const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0);
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
+    this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
     let rot = s.pitch;
     if (s.trick) {
       const a = Math.min(1, s.trick.age / 0.9);
@@ -222,7 +235,7 @@ export class FullSendRenderer implements GameRenderer {
     this.layer(scene, (l, gg) => {
       for (let kk = f0; kk <= f1; kk++) {
         const x = kk * FORE_SLOT - fu + RX;
-        if (inGap(x)) continue;
+        if (inGap(x) || (s.edgeX !== null && s.camX + (x - RX) / PPM > s.edgeX - 12)) continue;
         l.foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
       }
     });
@@ -269,6 +282,12 @@ export class FullSendRenderer implements GameRenderer {
     m.fillText(spd, (L.speed.x + 12) * d, (L.speed.y + 22) * d);
     m.font = font(700, 12); m.fillStyle = '#bdb8e8';
     m.fillText(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% on the trainer`, (L.speed.x + 12) * d, (L.speed.y + 44) * d);
+    const lm = liftMeter(s);
+    m.font = font(800, 11); m.textAlign = 'left'; m.fillStyle = lm.color;
+    m.fillText(lm.label, (L.speed.x + 12) * d, (L.speed.y + 62) * d);
+    const bx = L.speed.x + 12 + m.measureText(lm.label).width / d + 8, bw = Math.max(16, L.speed.x + L.speed.w - 12 - bx);
+    m.fillStyle = 'rgba(255,255,255,0.18)'; m.fillRect(bx * d, (L.speed.y + 59) * d, bw * d, 6 * d);
+    m.fillStyle = lm.color; m.fillRect(bx * d, (L.speed.y + 59) * d, bw * Math.max(0, Math.min(1, s.lift)) * d, 6 * d);
     if (s.flow > 0.005 && L.speed.w >= 190) {
       m.textAlign = 'right'; m.font = font(900, 13); m.fillStyle = '#7af0ff';
       m.fillText(`FLOW +${Math.round(s.flow * 100)}%`, (L.speed.x + L.speed.w - 10) * d, (L.speed.y + 22) * d);
@@ -338,10 +357,18 @@ export class FullSendRenderer implements GameRenderer {
       m.fillText(`${s.trick.name}!`, L.riderX * d, (L.roadY - 110) * d);
       m.globalAlpha = 1;
     }
+    const fly = flightCall(s);
+    if (fly) {
+      m.textAlign = 'center'; m.font = font(900, 32 + 3 * Math.sin(s.t * 12)); m.fillStyle = fly.color;
+      m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
+      m.strokeText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d); m.fillText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d);
+    }
     const la = s.t - s.landAt, call = landingCall(s.landGrade, s.flow);
     if (call && la >= 0 && la < 1.3) {
       m.globalAlpha = Math.min(1, (1.3 - la) * 2.5); m.textAlign = 'center'; m.font = font(900, call.size); m.fillStyle = call.color;
-      m.fillText(call.text, L.riderX * d, (L.roadY - 80 - la * 18) * d);
+      const cy = Math.min(L.roadY - 80, this.riderY - 45) - la * 18;
+      m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
+      m.strokeText(call.text, L.riderX * d, cy * d); m.fillText(call.text, L.riderX * d, cy * d);
       m.globalAlpha = 1;
     }
   }
@@ -395,4 +422,23 @@ export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number):
   if (grade === 'good') return { text: 'CLEAN', color: '#b6f59a', size: 17 };
   if (grade === 'bad') return { text: 'BAD LANDING', color: '#ff7a5a', size: 20 };
   return null;
+}
+
+/** Lift meter label and colour: what a full meter gets you (or, up high, how long you've got). */
+export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift'>): { label: string; color: string } {
+  switch (s.tier) {
+    case 'ground': return { label: s.lift >= 1 ? 'LAUNCH READY' : 'LIFT → SKY', color: '#9fe8ff' };
+    case 'sky': return { label: s.lift >= 1 ? 'MOON SHOT READY' : 'LIFT → MOON', color: '#e6dcff' };
+    case 'moon': return { label: 'MOON TIME', color: '#fff3b0' };
+    case 'sea': return { label: 'SURFACING', color: '#6fe0d0' };
+  }
+}
+
+/** Big banner while flying between layers. */
+export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier'>): { text: string; color: string } | null {
+  if (!s.toTier) return null;
+  if (s.toTier === 'sea') return { text: s.tier === 'moon' ? 'LOST THE MOON!' : 'OFF THE EDGE!', color: '#ff9a6a' };
+  if (s.toTier === 'sky') return { text: 'SKY LAUNCH!', color: '#9fe8ff' };
+  if (s.toTier === 'moon') return { text: 'MOON SHOT!', color: '#fff3b0' };
+  return { text: 'BREACH!', color: '#6fe0d0' };
 }

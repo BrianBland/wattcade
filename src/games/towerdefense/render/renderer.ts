@@ -12,12 +12,15 @@ import { TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
+import { decks, onDeck, underDeck } from './ground/deck';
 import { Machinery } from './machinery';
-import { along, cableRoutes, strokeCrossings } from './cables';
+import { along, cableRoutes, culvertPlates, strokeCrossings } from './cables';
 import { DynamoSound } from './dynamoSound';
 import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
+import { prefetchLevel } from './levelPool';
+import { specKey } from '../sim/baked';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -37,6 +40,8 @@ const hash = (n: number) => { let h = (n * 374761393) | 0; h = (h ^ (h >>> 13)) 
 export class TdRenderer implements GameRenderer {
   private canvas!: HTMLCanvasElement;
   private mounted = false;
+  /** The next Quick Ride and Endless maps last handed to the background pool. */
+  private prefetched = '';
   private g!: CanvasRenderingContext2D;
   private color = '#4cc9f0';
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -221,11 +226,12 @@ export class TdRenderer implements GameRenderer {
     const hive = this.P(this.geo.level.hiveMouth.x, this.geo.level.hiveMouth.y), hg = g.createRadialGradient(hive.x, hive.y, 0, hive.x, hive.y, 60 * k);
     hg.addColorStop(0, 'rgba(70,24,100,0.7)'); hg.addColorStop(1, 'rgba(70,24,100,0)');
     g.fillStyle = hg; g.fillRect(0, 0, W, H);
-    const path = () => { g.beginPath(); this.geo.road.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
+    const path = () => { g.beginPath(); for (const line of this.geo.roads) line.forEach((p, i) => { const q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }); };
     g.lineCap = 'round'; g.lineJoin = 'round';
     path(); g.strokeStyle = '#3b3328'; g.lineWidth = (this.geo.level.roadHalfWidth + this.geo.level.shoulder) * 2 * k; g.stroke();
     path(); g.strokeStyle = '#7a6448'; g.lineWidth = this.geo.level.roadHalfWidth * 2 * k; g.stroke();
     g.fillStyle = '#12080f'; g.beginPath(); g.arc(hive.x, hive.y, 8 * k, 0, TAU); g.fill();
+    for (const lane of this.geo.lanes.slice(1)) { const m = this.P(lane.mouth.x, lane.mouth.y); g.beginPath(); g.arc(m.x, m.y, 8 * k, 0, TAU); g.fill(); }
     for (const p of this.geo.pads) { const q = this.P(p.x, p.y); g.fillStyle = '#4a3f33'; g.beginPath(); g.arc(q.x, q.y, 4.8 * k, 0, TAU); g.fill(); }
     const b = this.P(this.geo.base.x, this.geo.base.y);
     g.fillStyle = '#2a2620'; g.beginPath(); g.arc(b.x, b.y, (this.geo.level.turretR + 1) * k, 0, TAU); g.fill();
@@ -455,6 +461,7 @@ export class TdRenderer implements GameRenderer {
       (pointer.kind === 'boost' && (s.workshop || s.boss?.weapon !== 'rail' || !(s.boss.telegraph || s.boss.exposed)))) this.releaseHold(id, true);
     this.snap = s;
     if (s.level && s.level !== this.geo.level) this.setLevel(s.level);
+    if (s.nextMaps) { const k = s.nextMaps.map(specKey).join(','); if (k !== this.prefetched) { this.prefetched = k; for (const m of s.nextMaps) void prefetchLevel(m); } }
     if (!this.L) this.relayout();
     this.hud.render(s, this.L, this.W);
     const g = this.g, k = this.k, L = this.L;
@@ -496,6 +503,7 @@ export class TdRenderer implements GameRenderer {
     this.battlefield.lighting(g, this.view, s, this.W, this.H);
     if (s.phase === 'run') {
       this.drawCables(g, s, bike);
+      this.drawCulverts(g);
       this.drawRoadFx(g, s, t);
       this.drawBurns(g, s, t);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
@@ -533,6 +541,7 @@ export class TdRenderer implements GameRenderer {
         if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
+      this.drawDecks(g, s, t, puppets);
       this.drawFx(g, s, muzzle, t);
       this.drawParticles(g);
       this.contactShadow(g, bx, by, k * 2.4);
@@ -632,13 +641,51 @@ export class TdRenderer implements GameRenderer {
     }
     g.restore();
   }
+  /** Steel covers where cables run under the road (forks and merges): drawn over the cables, so they pass beneath. */
+  private drawCulverts(g: CanvasRenderingContext2D) {
+    const plates = culvertPlates(this.geo.level);
+    if (!plates.length) return;
+    const k = this.k, rot = this.view.rot;
+    for (const c of plates) {
+      const q = this.P(c.x, c.y), a = c.across * k, l = c.along * k;
+      g.save(); g.translate(q.x, q.y); g.rotate(c.angle + rot);
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(-l / 2 + 0.4 * k, -a / 2 + 0.6 * k, l, a);
+      g.fillStyle = '#3a3f44'; g.fillRect(-l / 2, -a / 2, l, a);
+      g.strokeStyle = '#1b1e21'; g.lineWidth = Math.max(1, 0.3 * k);
+      for (let i = 1; i < 5; i++) { const y = -a / 2 + a * i / 5; g.beginPath(); g.moveTo(-l / 2 + 0.4 * k, y); g.lineTo(l / 2 - 0.4 * k, y); g.stroke(); }
+      g.strokeStyle = '#80868c'; g.lineWidth = Math.max(1, 0.25 * k); g.strokeRect(-l / 2, -a / 2, l, a);
+      g.restore();
+    }
+  }
   /** The slow field over the back stretch of the road. */
+  /**
+   * Bridge decks over the walkers below them: those show through as an x-ray outline in their brood colour, and
+   * whatever is on the deck (walkers on the upper pass, gliders) is drawn again on top of it.
+   */
+  private drawDecks(g: CanvasRenderingContext2D, s: TdSnapshot, t: number, puppets: AlienLayer | null) {
+    const ds = decks(this.geo.level);
+    if (!ds.length || !this.battlefield.deck(g, this.view)) return;
+    const k = this.k, top: EnemyView[] = [];
+    for (const e of s.enemies) {
+      if (!onDeck(ds, e, e.radius)) continue;
+      if (e.flying || (e.lane ?? 0) > 0 || !underDeck(ds, e.progress * this.geo.roadLength)) { top.push(e); continue; }
+      const q = this.P(e.x, e.y), pulse = 0.55 + 0.2 * Math.sin(t * 6 + e.id);
+      g.save(); g.globalAlpha = pulse; g.strokeStyle = COL[e.element]; g.lineWidth = Math.max(1, 0.35 * k); g.setLineDash([0.9 * k, 0.6 * k]);
+      g.beginPath(); g.arc(q.x, q.y, e.radius * k, 0, TAU); g.stroke(); g.restore();
+    }
+    if (!top.length) return;
+    const rot = this.view.rot;
+    if (puppets) puppets.drawLive(g, top, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
+    else for (const e of top) { const q = this.P(e.x, e.y), h = this.heading.get(e.id)?.h ?? 0; drawEnemy(g, e, q.x, q.y, k, h, t); }
+  }
   private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
     if (s.slowFrom < 0) return;
     const k = this.k;
     g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = this.geo.level.roadHalfWidth * 2 * k;
     g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([3 * k, 2 * k]); g.beginPath();
-    for (let d = s.slowFrom, i = 0; d <= this.geo.roadLength; d += 2, i++) { const p = this.geo.roadAt(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
+    const from = s.slowFrom / this.geo.roadLength; // the same share of every road
+    for (const lane of this.geo.lanes)
+      for (let d = from * lane.length, i = 0; d <= lane.length; d += 2, i++) { const p = lane.at(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
     g.stroke(); g.restore();
   }
   /** Burning road left by the fireballs: a scorched patch with flame tongues licking up across it. */

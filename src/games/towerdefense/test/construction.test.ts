@@ -15,10 +15,10 @@ const state = (patch: Partial<ConstructionState> = {}): ConstructionState => ({
   scrap: 1000, costMult: 1, baseHp: 100, baseMaxHp: 100, repairCost: 42, ...patch,
 });
 function session(input = new TimelineInput(), extra: Record<string, unknown> = {}, profile = testProfile()) {
-  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { skipGarage: true, autoCrew: false, ...extra } });
+  return createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, level: LEVEL_0, ...extra } });
 }
 
-describe('crew recommendation', () => {
+describe('build bot recommendation (headless only)', () => {
   it('follows live matchup overrides and excludes towers resisted by the off-colour push', () => {
     const matchup = { ...MATCHUP, gatling: { ...MATCHUP.gatling, red: 2 }, flame: { ...MATCHUP.flame, red: 0.5 } };
     expect(suggestBuild(state({ matchup }))?.tower).toBe('tesla');
@@ -61,42 +61,19 @@ describe('crew recommendation', () => {
 });
 
 describe('construction input and persistence', () => {
-  it('executes a funded build and every quoted level once, charging the displayed total', () => {
-    const s = session();
-    s.tuning.set('towerdefense.startScrap', 1000); s.step(1);
-    const before = snap(s), suggestion = before.suggestion!;
-    expect(suggestion.targetLevel).toBeGreaterThan(1);
-    s.sim.receive!({ type: 'construct', suggestion: { ...suggestion, targetLevel: 1 } }); s.step(1);
+  it('A opens Construction; nothing is bought until the rider picks a row', () => {
+    const s = session(new TimelineInput([{ t: 0.2, press: 'a' }, { t: 0.3, release: 'a' }])); s.step(10);
+    expect(snap(s).workshop).not.toBeNull(); expect(snap(s).towers).toHaveLength(0);
+    s.sim.receive!({ type: 'construct' }); s.step(1);
     expect(snap(s).towers).toHaveLength(0);
-    expect(snap(s).scrap).toBe(before.scrap);
-    s.sim.receive!({ type: 'construct', suggestion });
-    s.sim.receive!({ type: 'construct', suggestion }); s.step(1);
-    const after = snap(s);
-    expect(after.towers).toHaveLength(1);
-    expect(after.towers[0]).toMatchObject({ pad: suggestion.pad, kind: suggestion.tower, level: suggestion.targetLevel });
-    expect(after.scrap).toBe(before.scrap - suggestion.cost);
-    expect(after.constructionDone).toBe(true);
   });
-  it('migrates old saves additively and preserves an explicit Commander choice', () => {
-    expect(readSave({ bestWave: 10, bank: 420, autoInvest: true })).toMatchObject({ bestWave: 10, bank: 420, autoInvest: true, autoCrew: true });
-    expect(readSave({ v: 2, autoCrew: false }).autoCrew).toBe(false);
+  it('old saves drop the Auto-crew setting with the Garage', () => {
+    const old = readSave({ bestWave: 10, bank: 420, autoInvest: true });
+    expect(old).toMatchObject({ v: 4, veteran: true, endlessBest: 0 });
+    for (const k of ['bank', 'bestWave', 'autoCrew']) expect(old).not.toHaveProperty(k);
   });
-  it('controller A and a suggestion tap accept the same work order once per lull', () => {
-    const input = new TimelineInput([{ t: 0.2, press: 'a' }, { t: 0.3, release: 'a' }]);
-    const a = session(input), b = session(); a.step(1); b.step(1);
-    const suggestion = snap(b).suggestion!;
-    expect(suggestion.wave).toBe(snap(b).brood.wave); expect(suggestion.wave).not.toBe(snap(b).nextBrood!.wave);
-    b.sim.receive!({ type: 'construct', suggestion });
-    b.sim.receive!({ type: 'construct', suggestion });
-    a.step(10); b.step(10);
-    expect(snap(a).towers.map(({ pad, kind, level }) => ({ pad, kind, level }))).toEqual(snap(b).towers.map(({ pad, kind, level }) => ({ pad, kind, level })));
-    expect(snap(a).scrap).toBe(snap(b).scrap);
-    expect(snap(a).constructionDone).toBe(true); expect(snap(a).workshop).toBeNull();
-  });
-  it('a stale quote or stale menu row cannot purchase a replacement operation', () => {
-    const s = session(); s.step(1);
-    s.sim.receive!({ type: 'construct', suggestion: { ...snap(s).suggestion!, cost: 1 } }); s.step(1);
-    expect(snap(s).towers).toHaveLength(0);
+  it('a rider builds and upgrades as often as scrap allows in one lull; a stale menu row cannot buy twice', () => {
+    const s = session(); s.tuning.set('towerdefense.startScrap', 1000); s.step(1);
     s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1);
     const ws = snap(s).workshop!;
     s.sim.receive!({ type: 'row', row: 0, pad: 1, revision: ws.revision });
@@ -104,33 +81,24 @@ describe('construction input and persistence', () => {
     expect(snap(s).towers).toHaveLength(1); expect(snap(s).towers[0].level).toBe(1);
     s.sim.receive!({ type: 'row', row: 0, pad: 1, revision: ws.revision }); s.step(1);
     expect(snap(s).towers[0].level).toBe(1);
+    const up = snap(s).workshop!;
+    expect(up.rows[0].kind).toBe('upgrade');
+    s.sim.receive!({ type: 'row', row: 0, pad: 1, revision: up.revision }); s.step(1);
+    expect(snap(s).towers[0].level).toBe(2);
+    s.sim.receive!({ type: 'pad', pad: 2 }); s.step(1);
+    s.sim.receive!({ type: 'row', row: 0, pad: 2, revision: snap(s).workshop!.revision }); s.step(1);
+    expect(snap(s).towers).toHaveLength(2);
+    expect(snap(s).lull).toBeGreaterThan(0);
   });
-  it('Auto-crew builds at the lull’s end without autopilot or manual input', () => {
-    const s = session(new NullInput(), { autoCrew: true }); s.step(1);
-    expect(snap(s).towers).toHaveLength(0);
-    s.step(30 * 44); expect(snap(s).towers).toHaveLength(0);
-    s.step(30 * 2); expect(snap(s).towers).toHaveLength(1);
-    expect(snap(s).constructionDone).toBe(true);
-    const commander = session(); commander.step(30 * 50); expect(snap(commander).towers).toHaveLength(0);
+  it('nothing builds itself for a rider; the headless build bot spends at the lull’s end', () => {
+    const rider = session(new NullInput()); rider.step(30 * 50); expect(snap(rider).towers).toHaveLength(0);
+    const bot = session(new NullInput(), { botBuild: true }); bot.step(1);
+    bot.step(30 * 44); expect(snap(bot).towers).toHaveLength(0);
+    bot.step(30 * 2); expect(snap(bot).towers.length).toBeGreaterThan(0);
   });
-  it('manual overrides consume the lull’s crew purchase and can be entered by touch, confirmed by controller', () => {
-    const s = session(new TimelineInput([{ t: 0.2, press: 'a' }, { t: 0.3, release: 'a' }]), { autoCrew: true });
-    s.step(1); s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1);
-    s.step(10); expect(snap(s).towers).toHaveLength(1);
-    s.sim.receive!({ type: 'close' }); s.step(30 * 20);
-    expect(snap(s).towers).toHaveLength(1); expect(snap(s).towers[0].level).toBe(1);
-  });
-  it('controller navigation reaches repairs and the saved Auto-crew toggle', () => {
-    let saved: unknown;
-    const input = new TimelineInput([{ t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, { t: 0.4, press: 'a' }]);
-    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 1,
-      simOpts: { skipGarage: true }, onSave: d => { saved = d; } });
-    s.step(1); s.sim.receive!({ type: 'pad', pad: BASE_PAD }); s.step(1);
-    expect(snap(s).workshop!.rows[0].kind).toBe('repair');
-    s.step(15); expect(snap(s).autoCrew).toBe(false);
-    expect(readSave(saved).autoCrew).toBe(false);
-    const reload = session(new NullInput(), { autoCrew: undefined }, testProfile({ gameData: { towerdefense: saved } }));
-    reload.step(30 * 50); expect(snap(reload).autoCrew).toBe(false); expect(snap(reload).towers).toHaveLength(0);
+  it('controller navigation reaches repairs', () => {
+    const s = session(); s.step(1); s.sim.receive!({ type: 'pad', pad: BASE_PAD }); s.step(1);
+    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['repair']);
   });
   it('rejects fractional and non-finite pad and row indices', () => {
     const s = session(); s.step(1);

@@ -11,7 +11,7 @@ export const scenarios: Array<{
   assert(summary: Summary, stats: SessionRecord['stats'], run: Run): string[];
 }> = [
   {
-    name: 'sprints', script: 'sprints', minutes: 20, seed: 1, simOpts: { autopilot: true },
+    name: 'sprints', script: 'sprints', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s) {
       const f: string[] = [];
       if (!(n(s, 'wavesSurvived') >= 6)) f.push(`wavesSurvived ${s.wavesSurvived} < 6`);
@@ -21,7 +21,7 @@ export const scenarios: Array<{
   },
   {
     // One mode per brood plus announced boss phases; the trainer follows that complete ladder.
-    name: 'brood-z2', script: 'z2', minutes: 20, seed: 1, simOpts: { autopilot: true },
+    name: 'brood-z2', script: 'z2', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       const collapse = (xs: string[]) => xs.filter((x, i) => i === 0 || x !== xs[i - 1]);
@@ -52,7 +52,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'idle-falls', script: 'idle', minutes: 5, seed: 1, simOpts: { autopilot: true },
+    name: 'idle-falls', script: 'idle', minutes: 5, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (run.isOver) f.push('falling should keep the session open');
@@ -67,7 +67,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'endless-restart', script: 'z2', minutes: 55, seed: 1, simOpts: { autopilot: true },
+    name: 'endless-restart', script: 'z2', minutes: 55, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (run.isOver) f.push('falling should keep the session open');
@@ -78,7 +78,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { autopilot: true, actionBot: true },
+    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true, actionBot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       for (const w of ['gatling', 'flame', 'rail']) {
@@ -94,7 +94,7 @@ export const scenarios: Array<{
   {
     // steady zone 2 for half an hour: the economy builds every pad, and the hands-off turret and the towers share the work
     // (effective damage, not kills: a kill count is mostly swarm drones and says little about who stops the heavies)
-    name: 'z2-economy', script: 'z2', minutes: 30, seed: 1, simOpts: { autopilot: true },
+    name: 'z2-economy', script: 'z2', minutes: 30, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s) {
       const f: string[] = [];
       const total = n(s, 'turretDamage') + n(s, 'towerDamage') + n(s, 'empDamage');
@@ -107,13 +107,12 @@ export const scenarios: Array<{
       if (!(n(s, 'towerUpgrades') >= 6)) f.push(`towerUpgrades ${s.towerUpgrades} < 6`);
       if (!(n(s, 'towerKills') >= 350)) f.push(`towerKills ${s.towerKills} < 350`);
       if (!(n(s, 'bossesKilled') >= 2)) f.push(`bossesKilled ${s.bossesKilled} < 2`);
-      if (!(n(s, 'partsEarned') > 0)) f.push('no garage parts earned');
       return f;
     },
   },
   {
     // Legacy storm-ready remains a passive endurance ride; called efforts now follow the weapon.
-    name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { autopilot: true },
+    name: 'surge-ready', script: 'storm-ready', minutes: 40, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'callsWon') >= 3)) f.push(`callsWon ${s.callsWon} < 3`);
@@ -125,7 +124,7 @@ export const scenarios: Array<{
     },
   },
   ...(['z2', 'hook-responsive', 'idle'] as const).map((script) => ({
-    name: `workout-${script}`, script, minutes: 30, seed: 1, simOpts: { autopilot: true },
+    name: `workout-${script}`, script, minutes: 30, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s: Summary, _stats: SessionRecord['stats'], run: Run) {
       const f: string[] = [];
       const calls = run.events.filter((e) => e.type === 'effortAnnounced');
@@ -151,7 +150,7 @@ export const scenarios: Array<{
     // Award-plumbing fixture: explicit actions and a reinforced base reach the deep-wave achievement.
     // Natural survival and damage share remain covered by the passive scenarios and four-seed comparisons.
     name: 'surge-ready-deep', script: 'hook-responsive', minutes: 40, seed: 1,
-    simOpts: { autopilot: true, actionBot: true, baseHp: 1000 },
+    simOpts: { stars: 99, autopilot: true, actionBot: true, baseHp: 1000 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'wavesSurvived') >= 14)) f.push(`wavesSurvived ${s.wavesSurvived} < 14`);

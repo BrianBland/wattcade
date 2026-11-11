@@ -12,9 +12,12 @@ exploration results, map metrics and ground-kit notes. Where the two differ, thi
   cool-down wave**: the overworld handles cool-downs.
 - Bosses follow from length: about 0–1 boss at 15 min, 1 at 20–25, 2 at 30–40 and 3 at 60 (seeded variety within
   that band). A level ends when its last wave or last boss is cleared.
+- Difficulty: a level ramps from wave 1 to a peak (`levelPeakWave` + the level's depth) over its length, so a long
+  level is longer rather than deeper; later campaign levels have more depth. (Phase 6 tuning; phase 7 retunes income.)
 - **Chaining:** the clear screen offers **Next level**. The next level starts straight away, and its warm-up wave
   is the bridge between the two levels. Scrap resets and the base is rebuilt. **Finish** returns to the overworld.
-- Clear grade: 1–3 **stars** from base HP left (clear / ≥ 50% / ≥ 90%, tunable). A fall fails the level, with
+- Clear grade: 1–3 **stars** from the base HP lost over the whole level, clear heals not counted (owner,
+  2026-11-09): clear / at most 50 % lost / at most 15 % lost (`starTwoHp`, `starThreeHp`). A fall fails the level, with
   no stars.
 
 ## 2. Workout fit
@@ -35,6 +38,9 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   Lengths are mixed between 15 and 40 min.
 - **Quick Ride:** a random seed at a chosen length (15 / 20 / 30 / 40) and intensity.
 - **Endless:** today's sets forever on a generated map, with its own best-wave record.
+  As built: every Endless run plays the next map of its own seed series (`endlessMap(save.endlessSeed)`, grounds
+  the campaign has reached). The painted level 0 stays for tests and dev pages (`simOpts.level`). Quick Ride and
+  Endless maps are built in the background (`render/levelPool.ts`), and their cards preview them once built.
 
 ## 4. Economy
 
@@ -42,6 +48,24 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   count, tuned so a full-length level lets you max roughly half the pads.
 - Tower Lv 1–5 costs stay as they are today (`LEVEL_COST = [1.4, 2.4, 4, 7]` × base). Balance comes from tuning
   income, not from changing costs.
+- As built (phase 7): a level's difficulty climbs faster than Endless, so each wave also pays the scrap of the
+  Endless waves it skips. Building is manual (owner, 2026-11-08): no Auto-crew and no one-tap work orders; the
+  lull between waves is when the rider decides, and they can buy as much as scrap allows. Sweeps use a headless
+  build bot (`botBuild`, on with autopilot) as a stand-in rider: Steady z2 clears 28 of 30 campaign levels; the
+  deepest ground (Blight II, Blight V) needs more than zone 2.
+
+- Balance (2026-11-09): below its rated demand a Fireball or Railgun turret climbs from `weaponPowerMin` (20 %)
+  at `weaponPowerFloor` (75 % of the target) to full output at the target, and fades to zero below the floor, so
+  a short ride leaks instead of collapsing in wave 3. Sweeps of all 30 levels with the build bot and the action
+  bot (it fires the Railgun; without it deep Railgun waves looked like a wall), riders at a share of each target:
+
+  | Rider | Easy | Steady | Hard |
+  |---|---|---|---|
+  | on target | 30 × 3★ | 30 × 3★ | 30 × 3★ |
+  | 90 % | | 23 × 3★, 7 × 2★ | 23 × 3★, 7 × 2★ |
+  | 80 % | 19 × 3★, 11 × 2★ | 15 × 3★, 15 × 2★ | mostly 2★, 2 × 1★ |
+  | 70 % | mixed, 6 falls | mostly 2★/1★, 5 falls | mostly 2★/1★, 7 falls |
+  | zone 2 (0.65 FTP) | 30 × 3★ | 11 × 3★, 18 × 2★, 1 × 1★ | mixed, 8 falls |
 
 ## 5. Meta: unlocks replace the Garage
 
@@ -50,6 +74,9 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   intensity, and later ground styles. Unlocks gate options. They never add stat creep.
 - Save v4: unlocks, campaign progress (stars per level) and the Endless best. Old best-wave stats are dropped
   (owner OK). Profiles with Garage progress are grandfathered into the starter unlock tier.
+- As built: slow field 4★, Overcharge 8★, Lv 4 12★, Hard 20★, Lv 5 30★; grandfathered riders get 12★ of unlocks.
+  Tower kinds are not gated: each counters one brood colour, so a locked kind would make some waves unwinnable.
+  Quick Ride offers the grounds the campaign has reached.
 
 ## 6. Achievements
 
@@ -64,6 +91,13 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   - chain two levels in one ride
   - one Endless depth goal
 - Keep the lifetime tallies: kills, scrap, hours, Tyrants, calls.
+- As built: six successors take the six freed rewards one for one (every achievement grants one item): Holding the
+  Line (5 levels), Fortress (15), Unbreakable (30), Clean Sweep (3★ on 10 levels), Hard Line, Double Shift.
+  The remaining goals followed with recoloured jerseys and paints (no new art): Brood Hunter (a Tyrant of every
+  brood colour, Tyrant Hide paint), Cartographer (a clear on all 8 road styles, Road Map jersey), Full Shift (clear
+  a 40-minute level, Hi-Vis jersey), Night Watch (20 Endless waves, Night Watch paint). The save keeps
+  `bossColors` and `roadsCleared` so the first two count across rides. "Every style" counts road styles, since a
+  Quick Ride reaches every road style early while every ground needs most of the campaign (Unbreakable covers that).
 - **Revocation:** reworked or retired achievements are revoked along with their rewards. Bump
   `RULES_VERSION` (`src/progression/levels.ts`) and list the ids in `src/progression/rebalance.ts`.
   `rebalanceProfile` must subtract the bonus XP of ids that no longer exist, using a frozen table of their old

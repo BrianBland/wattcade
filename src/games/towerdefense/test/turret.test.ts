@@ -1,3 +1,4 @@
+import { LEVEL_0 } from '../sim/level';
 import { describe, it, expect } from 'vitest';
 import { createGameSession, testProfile } from '../../../core';
 import type { Button, InputState } from '../../../contracts';
@@ -58,7 +59,7 @@ class Pad {
   state() { return this.st; }
 }
 const session = (input: Pad | { beginTick(): void; state(): InputState }, script = 'z2') =>
-  createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 2, simOpts: { skipGarage: true } });
+  createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 2, simOpts: { skipGarage: true, level: LEVEL_0 } });
 /** Steps until the turret mounts the Gatling (sim mode, where gears change the trainer). */
 function toGatlingWave(s: ReturnType<typeof session>) {
   s.step(1);

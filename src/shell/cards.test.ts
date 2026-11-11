@@ -11,7 +11,7 @@ function stubCtx(): CanvasRenderingContext2D {
 const SAVES: Record<string, unknown> = {
   dungeon: { bestFloor: 7, bank: 1234, runs: 12 },
   lighthouse: { buildings: ['cottage', null, 'pier'], shipsDockedTotal: 40, stormsWeatheredTotal: 2 },
-  towerdefense: { bestWave: 9 },
+  towerdefense: { v: 4, campaign: { a: 3, b: 2, c: 0 }, endlessBest: 9 },
   starfighter: { best: 12345.6 },
   hamster: { life: 5e6, rebirths: 2 },
   watershed: { rides: 3, bestCarved: 1400, bestDelta: 900 },
@@ -32,7 +32,7 @@ describe('arcade card hooks', () => {
   it('formats the specific lines', () => {
     const by = Object.fromEntries(games.map((g) => [g.id, g.progressLine?.(SAVES[g.id])]));
     expect(by.dungeon).toContain('Best floor 7');
-    expect(by.towerdefense).toBe('Best: wave 9');
+    expect(by.towerdefense).toBe('2 levels · 5★ · Endless wave 9');
     expect(by.lighthouse).toBe('2 buildings · 40 ships home · 2 storms');
   });
 });

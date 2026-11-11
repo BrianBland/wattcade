@@ -22,7 +22,8 @@ Design doc: the "Rocket bike sprint game: design brainstorm" Claude Doc. Dev gam
 - `props.ts`: canyon (lava / glacier / river), flooded tunnel, loop ribbon with A-frame supports (vines / lacquer + lanterns / steel), stacked square hay bales that burst into straw (and straw stuck on the rider), other smash obstacles, chasers (an animated T. rex, avalanche, wave, boulder), and the rocket on a rack over the back wheel (stays to the rear axle and seat post, nose under the saddle; flame scales with power).
 - `fx.ts`: cloud decks crossed on launches/falls, the sea surface, splashdown/breach splashes, re-entry fireball, rings and stars.
 - Camera follows big flights (`alt`), hills sink as you climb. Lift meter (`liftMeter`) in the speed panel; SKY LAUNCH / MOON SHOT / OFF THE EDGE / BREACH banners (`flightCall`).
-- Landing call-outs (PERFECT · FLOW +N% / CLEAN / BAD LANDING, `landingCall`) by the rider; FLOW +N% in the speed panel.
+- Landing call-outs (PERFECT · FLOW +N% / CLEAN / BAD LANDING, `landingCall`) by the rider; FLOW +N% under the speed plate.
+- Road signs (`signs.ts`, pure + tested): `planSigns` puts start gantries (3 red lights then green), distance boards (metres left, on a `SIGN` grid spaced so one is always in the ~100 m view), fork boards (pick highlighted) and NEXT billboards in the world; `countdown` feeds the big 3-2-1-GO and SPRINT/WALL distance, held monotone by `MonotoneCountdown`. HUD style: slanted plates, outlined italic type, caution-stripe tips, a highway-sign menu; no rounded boxes.
 - Preview: `dev/fullsend.html?script=hook-responsive&tour=classic&sec=300` (`autolean=0` to fly hands-off; `manual=1` exposes `window.__fs.until(pred)` for captures).
 ## Tests
 `npx vitest run src/games/fullsend` (scenarios via runHeadless, determinism, physics, tour lengths, layout).

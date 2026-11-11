@@ -12,6 +12,7 @@ import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
 import { FullSendSound } from './sound';
+import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
@@ -44,6 +45,9 @@ export class FullSendRenderer implements GameRenderer {
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
   private sound = new FullSendSound();
+  /** Boards to draw this frame: spec + bottom-centre anchor in CSS px. */
+  private signs: Array<{ sp: SignSpec; x: number; y: number }> = [];
+  private cd = new MonotoneCountdown();
   private L!: FullSendLayout;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
@@ -211,13 +215,15 @@ export class FullSendRenderer implements GameRenderer {
       drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
     }
 
-    // ---- fork signposts beside the road while you choose ----
-    if (s.fork) {
-      const pick = s.fork.pick;
-      for (let wx = Math.ceil((s.camX - RX / PPM) / 80) * 80 + 30; sx(wx) < W + 40; wx += 80) {
-        const px = Math.round(sx(wx)), py = Math.round(roadY(wx));
-        drawForkSign(g, px, py, pick, LOOKS[s.fork.options[0].biome].ground, LOOKS[s.fork.options[1].biome].ground);
-      }
+    // ---- road signs: posts here (behind the rider), boards + text at full resolution in the overlay ----
+    this.signs = [];
+    for (const sp of planSigns(s, s.camX - RX / PPM - 40, s.camX + (W - RX) / PPM + 40)) {
+      const px = Math.round(sx(sp.x)), py = Math.round(roadY(sp.x)), postH = sp.kind === 'gate' ? 52 : 40;
+      g.fillStyle = '#3a3f4c';
+      if (sp.kind === 'gate') { g.fillRect(px - 26, py - postH, 3, postH); g.fillRect(px + 23, py - postH, 3, postH); }
+      else if (sp.kind === 'fork' || sp.kind === 'next') { g.fillRect(px - 16, py - postH, 2, postH); g.fillRect(px + 14, py - postH, 2, postH); }
+      else g.fillRect(px - 1, py - postH, 2, postH);
+      this.signs.push({ sp, x: px / k, y: (py - postH) / k });
     }
 
     // ---- rings and stars up high ----
@@ -355,94 +361,86 @@ export class FullSendRenderer implements GameRenderer {
     m.textBaseline = 'middle';
     if (s.menu) { this.drawMenu(s.menu, font, panel); return; }
     this.menuHits = [];
-    if (s.tip) { // first-ride tip card, above the shell HUD
-      const T = L.tip, a = Math.min(1, s.tip.age * 3, (7 - s.tip.age) * 2);
-      m.globalAlpha = Math.max(0, a); panel(T, 0.82);
-      m.fillStyle = '#ffd23b'; m.fillRect(T.x * d, (T.y + 8) * d, 4 * d, (T.h - 16) * d);
-      m.textAlign = 'left'; m.fillStyle = '#ffffff'; m.font = font(700, 14);
-      wrap(m, s.tip.text, (T.x + 16) * d, (T.y + T.h / 2) * d, (T.w - 28) * d, 17 * d);
+    this.drawSigns();
+    const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
+      m.textAlign = align; m.font = `${italic ? 'italic ' : ''}${font(weight, size)}`;
+      if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }
+      m.fillStyle = color; m.fillText(t, x * d, y * d);
+    };
+    const slant = (x: number, y: number, w: number, h: number, sk: number) => { // a racing plate: a parallelogram
+      m.beginPath(); m.moveTo((x + sk) * d, y * d); m.lineTo((x + w) * d, y * d); m.lineTo((x + w - sk) * d, (y + h) * d); m.lineTo(x * d, (y + h) * d); m.closePath();
+    };
+    if (s.tip) { // first-ride tip: a yellow caution plate with hazard stripes, above the shell HUD
+      const T = L.tip, a = Math.max(0, Math.min(1, s.tip.age * 3, (7 - s.tip.age) * 2));
+      m.globalAlpha = a;
+      slant(T.x, T.y, T.w, T.h, 14); m.fillStyle = '#ffd23b'; m.fill(); m.lineWidth = 3 * d; m.strokeStyle = '#1a1a1a'; m.stroke();
+      m.save(); slant(T.x, T.y, 46, T.h, 14); m.clip();
+      for (let i = -2; i < 8; i++) { m.fillStyle = i % 2 ? '#1a1a1a' : '#ffd23b'; m.beginPath(); m.moveTo((T.x + i * 10) * d, (T.y + T.h) * d); m.lineTo((T.x + i * 10 + 10) * d, (T.y + T.h) * d); m.lineTo((T.x + i * 10 + 24) * d, T.y * d); m.lineTo((T.x + i * 10 + 14) * d, T.y * d); m.fill(); }
+      m.restore();
+      m.textAlign = 'left'; m.fillStyle = '#1a1a1a'; m.font = font(800, 14);
+      wrap(m, s.tip.text, (T.x + 56) * d, (T.y + T.h / 2) * d, (T.w - 76) * d, 17 * d);
       m.globalAlpha = 1;
     }
 
-    // speed (top-left)
-    panel(L.speed, 0.55);
-    m.textAlign = 'left'; m.fillStyle = '#ffffff'; m.font = font(900, 26);
+    // speed plate (top-left): slanted, big italic numerals, accent stripe in the layer's colour
+    const lm = liftMeter(s), S = L.speed;
+    slant(S.x, S.y, S.w, S.h, 14);
+    const gr = m.createLinearGradient(0, S.y * d, 0, (S.y + S.h) * d); gr.addColorStop(0, 'rgba(20,18,40,0.88)'); gr.addColorStop(1, 'rgba(8,6,20,0.88)');
+    m.fillStyle = gr; m.fill();
+    slant(S.x, S.y, 22, S.h, 14); m.fillStyle = lm.color; m.fill();
     const spd = formatSpeed(s.v * 3.6, this.units).replace(/\.\d/, '');
-    m.fillText(spd, (L.speed.x + 12) * d, (L.speed.y + 22) * d);
-    m.font = font(700, 12); m.fillStyle = '#bdb8e8';
-    const windTxt = s.wind < -0.2 ? ' · headwind' : s.wind > 0.2 ? ' · tailwind' : '';
-    m.fillText(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% on the trainer${windTxt}`, (L.speed.x + 12) * d, (L.speed.y + 44) * d);
-    const lm = liftMeter(s);
-    m.font = font(800, 11); m.textAlign = 'left'; m.fillStyle = lm.color;
-    m.fillText(lm.label, (L.speed.x + 12) * d, (L.speed.y + 62) * d);
-    const bx = L.speed.x + 12 + m.measureText(lm.label).width / d + 8, bw = Math.max(16, L.speed.x + L.speed.w - 12 - bx);
-    m.fillStyle = 'rgba(255,255,255,0.18)'; m.fillRect(bx * d, (L.speed.y + 59) * d, bw * d, 6 * d);
-    m.fillStyle = lm.color; m.fillRect(bx * d, (L.speed.y + 59) * d, bw * Math.max(0, Math.min(1, s.lift)) * d, 6 * d);
-    if (s.flow > 0.005 && L.speed.w >= 190) {
-      m.textAlign = 'right'; m.font = font(900, 13); m.fillStyle = '#7af0ff';
-      m.fillText(`FLOW +${Math.round(s.flow * 100)}%`, (L.speed.x + L.speed.w - 10) * d, (L.speed.y + 22) * d);
+    txt(spd, S.x + 26, S.y + 22, 28, '#ffffff', 'left', 900, true, 0);
+    const windTxt = s.wind < -0.2 ? ' · HEADWIND' : s.wind > 0.2 ? ' · TAILWIND' : '';
+    txt(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% TRAINER${windTxt}`, S.x + 24, S.y + 44, 11, '#bdb8e8', 'left', 800, false, 0);
+    // lift as chevrons
+    txt(lm.label, S.x + 20, S.y + 62, 10, lm.color, 'left', 900, false, 0);
+    const cx0 = S.x + 22 + m.measureText(lm.label).width / d + 8, n = 10, cw = Math.max(4, (S.x + S.w - 18 - cx0) / n);
+    for (let i = 0; i < n; i++) {
+      const on = s.lift * n > i + 0.5;
+      m.fillStyle = on ? lm.color : 'rgba(255,255,255,0.15)';
+      m.beginPath(); const xx = cx0 + i * cw;
+      m.moveTo(xx * d, (S.y + 57) * d); m.lineTo((xx + cw * 0.6) * d, (S.y + 57) * d); m.lineTo((xx + cw * 0.9) * d, (S.y + 62) * d);
+      m.lineTo((xx + cw * 0.6) * d, (S.y + 67) * d); m.lineTo(xx * d, (S.y + 67) * d); m.lineTo((xx + cw * 0.3) * d, (S.y + 62) * d); m.closePath(); m.fill();
     }
+    if (s.flow > 0.005) txt(`FLOW +${Math.round(s.flow * 100)}%`, S.x + 14, S.y + S.h + 14, 14, '#7af0ff', 'left', 900, true, 0);
 
-    // tour progress (top-right)
-    panel(L.status, 0.55);
-    m.textAlign = 'right'; m.font = font(800, 14); m.fillStyle = '#ffffff';
-    const sx = (L.status.x + L.status.w - 12) * d;
-    m.fillText(`${s.tourName} · ${Math.max(0, s.results.length)}/${s.setCount}`, sx, (L.status.y + 18) * d);
-    m.font = font(700, 18);
-    let mx = sx;
+    // tour progress (top-right): medal coins, no box
+    const st = L.status, rx0 = st.x + st.w - 6;
+    txt(`${s.tourName.toUpperCase()} · ${s.results.length}/${s.setCount}`, rx0, st.y + 14, 14, '#ffffff', 'right', 900, true, 4);
+    let mx = rx0 - 9;
     for (let i = s.setCount - 1; i >= 0; i--) {
-      const r = s.results[i];
-      m.fillStyle = r ? MEDAL_COLORS[r.medal] : '#ffffff33';
-      m.beginPath(); m.arc(mx - 7 * d, (L.status.y + 40) * d, 6 * d, 0, Math.PI * 2); m.fill();
-      mx -= 18 * d;
+      const r = s.results[i], cy = st.y + 38;
+      m.beginPath(); m.arc(mx * d, cy * d, 8 * d, 0, Math.PI * 2); m.fillStyle = 'rgba(8,8,20,0.85)'; m.fill();
+      m.beginPath(); m.arc(mx * d, cy * d, 6 * d, 0, Math.PI * 2); m.fillStyle = r ? MEDAL_COLORS[r.medal] : 'rgba(255,255,255,0.18)'; m.fill();
+      if (r && r.medal) { m.fillStyle = 'rgba(255,255,255,0.7)'; m.fillRect((mx - 3) * d, (cy - 4) * d, 2 * d, 2 * d); }
+      mx -= 20;
     }
 
-    // banner + meter
-    const p = s.piece, B = L.banner;
+    // the big countdown (no boxes): title + distance on approach, giant 3-2-1-GO, then the sprint clock + distance
+    const p = s.piece, B = L.banner, cxm = B.x + B.w / 2;
     const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
-    if (s.phase === 'approach' && p) {
-      const left = s.phaseS - s.phaseT;
-      panel(B);
-      m.textAlign = 'center'; m.fillStyle = '#ffd23b'; m.font = font(900, 30);
-      m.fillText(p.title.toUpperCase(), (B.x + B.w / 2) * d, (B.y + B.h * 0.36) * d);
-      m.fillStyle = '#ffffff'; m.font = font(700, 15);
-      m.fillText(left <= 3.2 ? (left > 0.2 ? String(Math.ceil(left)) : 'GO!') : `${PIECE_VERB[p.kind]} · ${Math.ceil(left)} s · shift up`, (B.x + B.w / 2) * d, (B.y + B.h * 0.74) * d);
-    } else if (s.phase === 'effort' && p) {
-      const left = s.phaseS - s.phaseT;
-      panel(B);
-      m.textAlign = 'center'; m.fillStyle = '#ff4d6d'; m.font = font(900, 30);
-      const word = p.kind === 'dive' ? 'SWIM FOR IT' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
-      m.fillText(`${word}  ${p.kind === 'dive' ? '' : mmss(left)}`.trim(), (B.x + B.w / 2) * d, (B.y + B.h * 0.36) * d);
-      m.fillStyle = '#ffffff'; m.font = font(700, 15);
-      m.fillText(p.title, (B.x + B.w / 2) * d, (B.y + B.h * 0.74) * d);
+    const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+    if (s.phase === 'approach' && p && c) {
+      txt(p.title.toUpperCase(), cxm, B.y + 26, 34, '#ffd23b');
+      txt(`SPRINT IN ${Math.round(c.m / 10) * 10} m · ${PIECE_VERB[p.kind]} · shift up`, cxm, B.y + 58, 15, '#ffffff', 'center', 800, true, 4);
+      if (c.s <= 3.2) {
+        const n = c.s > 0.2 ? String(Math.ceil(c.s)) : 'GO!', k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
+        txt(n, this.cssW / 2, L.UH * 0.38, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
+      }
+    } else if (s.phase === 'effort' && p && c) {
+      const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
+      txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
+      txt(`${c.label} ${Math.round(c.m / 10) * 10} m`, cxm, B.y + 58, 18, '#ffffff', 'center', 900, true, 4);
+      if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
     } else if (s.fork) {
-      panel(B);
-      const f = s.fork;
-      m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 13);
-      m.fillText(`FORK IN THE ROAD · ◀ ▶ to choose · ${Math.ceil(f.closesInS)} s`, (B.x + B.w / 2) * d, (B.y + B.h * 0.2) * d);
-      f.options.forEach((o, i) => {
-        const bx = B.x + 10 + i * (B.w - 20) / 2, bw = (B.w - 20) / 2 - 6 + (i ? 6 : 0), on = f.pick === i;
-        const by = B.y + B.h * 0.36, bh = B.h * 0.56;
-        m.fillStyle = on ? 'rgba(255,210,59,0.22)' : 'rgba(255,255,255,0.06)'; m.fillRect((bx + (i ? 6 : 0)) * d, by * d, (bw - (i ? 6 : 0)) * d, bh * d);
-        if (on) { m.strokeStyle = '#ffd23b'; m.lineWidth = 2 * d; m.strokeRect((bx + (i ? 6 : 0)) * d, by * d, (bw - (i ? 6 : 0)) * d, bh * d); }
-        const cx = bx + bw / 2 + (i ? 3 : 0);
-        m.fillStyle = on ? '#ffd23b' : '#cfd3e8'; m.font = font(900, 16);
-        m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, cx * d, (by + bh * 0.36) * d);
-        m.fillStyle = '#ffffff'; m.font = font(600, 12);
-        m.fillText(BIOME_NAMES[o.biome], cx * d, (by + bh * 0.74) * d);
-      });
+      txt('FORK IN THE ROAD', cxm, B.y + 22, 24, '#ffd23b');
+      txt(`◀ ${s.fork.options[0].title}  ·  ${s.fork.options[1].title} ▶  ·  ${Math.ceil(s.fork.closesInS)} s`, cxm, B.y + 48, 14, '#ffffff', 'center', 800, true, 4);
     } else if ((s.phase === 'recovery' || s.phase === 'warmup') && s.next) {
-      const b2 = { ...B, h: B.h * 0.6 };
-      panel(b2, 0.5);
-      m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 16);
-      const title = s.phase === 'warmup' ? `Warm-up · ${BIOME_NAMES[s.biome as BiomeId]}` : 'Recover';
-      m.fillText(`${title} · next: ${s.next.title} in ${mmss(s.next.inS)}`, (b2.x + b2.w / 2) * d, (b2.y + b2.h / 2) * d);
+      txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
+      txt(`next ▸ ${s.next.title} · ${mmss(s.next.inS)}`, cxm, B.y + 40, 13, '#d8d4ff', 'center', 700, true, 3);
     } else if (s.phase === 'cooldown' || s.phase === 'done') {
-      const b2 = { ...B, h: B.h * 0.6 };
-      panel(b2, 0.5);
-      m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 16);
-      m.fillText(s.phase === 'done' ? 'Tour complete' : `Cool-down · ${mmss(s.phaseS - s.phaseT)}`, (b2.x + b2.w / 2) * d, (b2.y + b2.h / 2) * d);
+      txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
     }
 
     // medal stamp
@@ -485,57 +483,108 @@ export class FullSendRenderer implements GameRenderer {
     }
   }
 
-  /** The setup screen: pick a tour (with your best), fewer flashes, start. Rows are tappable. */
-  private drawMenu(menu: NonNullable<FullSendSnapshot['menu']>, font: (w: number, s: number) => string, panel: (b: { x: number; y: number; w: number; h: number }, a?: number) => void) {
+  /** The setup screen, as a big green highway sign on two posts: pick a tour (with your best), fewer flashes, start. Rows are tappable. */
+  private drawMenu(menu: NonNullable<FullSendSnapshot['menu']>, font: (w: number, s: number) => string, _panel: unknown) {
     const m = this.g, d = this.dpr, M = this.L.menu;
-    panel(M, 0.86);
     this.menuHits = [];
-    m.textAlign = 'center'; m.fillStyle = '#ffd23b'; m.font = font(900, 30);
-    m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 32) * d);
+    m.fillStyle = '#5a5f6c'; m.fillRect((M.x + 40) * d, (M.y + M.h) * d, 8 * d, (this.L.UH - M.y - M.h) * d); m.fillRect((M.x + M.w - 48) * d, (M.y + M.h) * d, 8 * d, (this.L.UH - M.y - M.h) * d);
+    m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((M.x + 5) * d, (M.y + 5) * d, M.w * d, M.h * d);
+    m.fillStyle = '#0e6b3c'; m.fillRect(M.x * d, M.y * d, M.w * d, M.h * d);
+    m.lineWidth = 3 * d; m.strokeStyle = '#ffffff'; m.strokeRect((M.x + 6) * d, (M.y + 6) * d, (M.w - 12) * d, (M.h - 12) * d);
+    // exit tab
+    m.fillStyle = '#0e6b3c'; m.fillRect((M.x + M.w - 110) * d, (M.y - 22) * d, 96 * d, 24 * d);
+    m.strokeRect((M.x + M.w - 106) * d, (M.y - 18) * d, 88 * d, 18 * d);
+    m.textBaseline = 'middle'; m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 11);
+    m.fillText('EXIT 1 ▸ RIDE', (M.x + M.w - 62) * d, (M.y - 9) * d);
+    m.font = `italic ${font(900, 32)}`; m.fillStyle = '#ffffff';
+    m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 34) * d);
     const tours = menu.tours, ti = Math.max(0, tours.findIndex((q) => q.id === menu.tour)), tr = tours[ti];
     const rowH = (M.h - 70) / 3;
     const rows: Array<{ label: string; sub: string; act: () => void }> = [
-      { label: `◀  ${tr.name} · ~${tr.minutes} min  ▶`, sub: tr.best ? `Best: ${tr.best}` : 'Not ridden yet', act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
-      { label: `Fewer flashes: ${menu.reducedFlash ? 'On' : 'Off'}`, sub: 'No screen shake or flashing', act: () => this.send?.({ type: 'flash' }) },
-      { label: 'Start ride', sub: `A to start · starts by itself in ${Math.ceil(menu.left)} s`, act: () => this.send?.({ type: 'start' }) },
+      { label: `◀  ${tr.name.toUpperCase()} · ~${tr.minutes} MIN  ▶`, sub: tr.best ? `Best: ${tr.best}` : 'Not ridden yet', act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
+      { label: `FEWER FLASHES: ${menu.reducedFlash ? 'ON' : 'OFF'}`, sub: 'No screen shake or flashing', act: () => this.send?.({ type: 'flash' }) },
+      { label: 'START ▸', sub: `A to start · starts by itself in ${Math.ceil(menu.left)} s`, act: () => this.send?.({ type: 'start' }) },
     ];
     rows.forEach((r, i) => {
       const y = M.y + 60 + i * rowH, on = menu.row === i;
-      const box = { x: M.x + 14, y: y + 3, w: M.w - 28, h: rowH - 6 };
-      m.fillStyle = on ? 'rgba(255,210,59,0.18)' : 'rgba(255,255,255,0.05)'; round(m, box.x * d, box.y * d, box.w * d, box.h * d, 8 * d); m.fill();
-      if (on) { m.strokeStyle = '#ffd23b'; m.lineWidth = 2 * d; m.stroke(); }
-      m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = font(800, 17);
-      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.38) * d);
-      m.fillStyle = '#bdb8e8'; m.font = font(600, 12);
-      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.74) * d);
+      const box = { x: M.x + 16, y: y + 3, w: M.w - 32, h: rowH - 6 };
+      if (i) { m.fillStyle = 'rgba(255,255,255,0.35)'; m.fillRect((box.x + 10) * d, (y - 1) * d, (box.w - 20) * d, 1 * d); }
+      if (on) { m.fillStyle = '#ffd23b'; m.fillRect(box.x * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); m.fillRect((box.x + box.w - 6) * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); }
+      m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = `italic ${font(900, 18)}`;
+      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.4) * d);
+      m.fillStyle = '#cfe8d8'; m.font = font(600, 12);
+      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.76) * d);
       this.menuHits.push({ ...box, act: r.act });
     });
   }
 
-  /** Sprint meter: live FTP fraction against bronze / silver / gold, or the air / gap gauge. */
+  /** Sprint meter: a slanted, segmented bar (live FTP fraction vs bronze / silver / gold flags), or the air / gap gauge. */
   private meter(s: FullSendSnapshot, p: PieceView) {
     const m = this.g, d = this.dpr, M = this.L.meter;
-    const x = M.x * d, y = M.y * d, w = M.w * d, h = M.h * d;
-    m.fillStyle = 'rgba(5,4,13,0.72)'; round(m, x, y, w, h, 8 * d); m.fill();
-    const ix = x + 8 * d, iw = w - 16 * d, iy = y + 8 * d, ih = h - 16 * d;
+    const segs = 24, sk = 6, gap = 2, sw = (M.w - sk) / segs;
+    const seg = (i: number, col: string) => {
+      const x = M.x + i * sw; m.fillStyle = col; m.beginPath();
+      m.moveTo((x + sk) * d, M.y * d); m.lineTo((x + sw - gap + sk) * d, M.y * d); m.lineTo((x + sw - gap) * d, (M.y + M.h * 0.7) * d); m.lineTo(x * d, (M.y + M.h * 0.7) * d); m.closePath(); m.fill();
+      m.lineWidth = 1.5 * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.stroke();
+    };
     if (p.kind === 'dive') {
-      m.fillStyle = p.air > 0.25 ? '#4dc3ff' : '#ff4d6d'; m.fillRect(ix, iy, iw * p.air, ih);
-      m.fillStyle = '#ffffff'; m.font = `800 ${Math.round(13 * d)}px system-ui, sans-serif`; m.textAlign = 'left';
-      m.fillText('AIR', ix + 6 * d, iy + ih / 2);
-      const prog = Math.min(1, Math.max(0, (s.x - p.x0) / p.len));
-      m.textAlign = 'right'; m.fillText(`surface ${Math.round(prog * 100)}%`, ix + iw - 6 * d, iy + ih / 2);
+      for (let i = 0; i < segs; i++) seg(i, i / segs < p.air ? (p.air > 0.25 ? '#4dc3ff' : '#ff4d6d') : 'rgba(255,255,255,0.12)');
       return;
     }
-    const maxF = p.th[2] * 1.15, X = (f: number) => ix + (iw * Math.min(maxF, Math.max(0, f))) / maxF;
-    m.fillStyle = '#ffffff22'; m.fillRect(ix, iy, iw, ih);
-    const live = p.live, medal = live >= p.th[2] * 0.97 ? 3 : live >= p.th[1] * 0.97 ? 2 : live >= p.th[0] * 0.97 ? 1 : 0;
-    m.fillStyle = medal ? MEDAL_COLORS[medal] : '#ff4d6d'; m.fillRect(ix, iy, X(live) - ix, ih);
-    for (let i = 0; i < 3; i++) {
-      m.fillStyle = MEDAL_COLORS[i + 1]; m.fillRect(X(p.th[i]) - d, iy - 3 * d, 2 * d, ih + 6 * d);
+    const maxF = p.th[2] * 1.15, live = p.live;
+    const medal = live >= p.th[2] * 0.97 ? 3 : live >= p.th[1] * 0.97 ? 2 : live >= p.th[0] * 0.97 ? 1 : 0;
+    for (let i = 0; i < segs; i++) seg(i, (i + 0.5) / segs * maxF <= live ? (medal ? MEDAL_COLORS[medal] : '#ff4d6d') : 'rgba(255,255,255,0.12)');
+    for (let i = 0; i < 3; i++) { // medal flags
+      const fx = M.x + (M.w - sk) * Math.min(1, p.th[i] / maxF) + sk / 2;
+      m.fillStyle = MEDAL_COLORS[i + 1]; m.fillRect((fx - 1) * d, (M.y - 4) * d, 2 * d, (M.h * 0.7 + 8) * d);
+      m.beginPath(); m.moveTo((fx + 1) * d, (M.y - 4) * d); m.lineTo((fx + 9) * d, (M.y - 1) * d); m.lineTo((fx + 1) * d, (M.y + 2) * d); m.fill();
     }
-    if (p.kind === 'outrun') {
-      m.textAlign = 'right'; m.fillStyle = '#ffffff'; m.font = `800 ${Math.round(13 * d)}px system-ui, sans-serif`;
-      m.fillText(`${Math.max(0, Math.round(p.gap))} m ahead`, ix + iw - 6 * d, iy + ih / 2);
+  }
+
+  /** Road-sign boards (full resolution) on the posts drawn in the buffer: highway green / caution yellow / start-gate red / blue. */
+  private drawSigns() {
+    const m = this.g, d = this.dpr;
+    const TONE: Record<string, [string, string]> = { green: ['#0e6b3c', '#ffffff'], yellow: ['#ffd23b', '#1a1a1a'], red: ['#b3202c', '#ffffff'], blue: ['#1d4fa8', '#ffffff'] };
+    const f = (w: number, size: number, it = false) => `${it ? 'italic ' : ''}${w} ${Math.round(size * d)}px system-ui, sans-serif`;
+    const board = (x: number, y: number, w: number, h: number, tone: string) => {
+      const [bg, fg] = TONE[tone];
+      m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((x + 3) * d, (y + 3) * d, w * d, h * d);
+      m.fillStyle = bg; m.fillRect(x * d, y * d, w * d, h * d);
+      m.lineWidth = 2 * d; m.strokeStyle = fg; m.strokeRect((x + 4) * d, (y + 4) * d, (w - 8) * d, (h - 8) * d);
+      return fg;
+    };
+    m.textBaseline = 'middle';
+    for (const { sp, x, y } of this.signs) {
+      if (sp.kind === 'count') {
+        const w = 96, h = 54, fg = board(x - w / 2, y - h, w, h, sp.tone);
+        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(800, 10); m.fillText(sp.title, x * d, (y - h + 15) * d);
+        m.font = f(900, 22, true); m.fillText(sp.big ?? '', x * d, (y - h + 35) * d);
+      } else if (sp.kind === 'gate') {
+        const w = 190, h = 62, fg = board(x - w / 2, y - h, w, h, sp.tone);
+        m.fillStyle = '#111'; m.fillRect((x - w / 2) * d, (y - h) * d, w * d, 6 * d);
+        for (let i = 0; i < 12; i++) if (i % 2) { m.fillStyle = '#fff'; m.fillRect((x - w / 2 + i * w / 12) * d, (y - h) * d, (w / 12) * d, 3 * d); m.fillRect((x - w / 2 + (i - 1) * w / 12) * d, (y - h + 3) * d, (w / 12) * d, 3 * d); }
+        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(900, 17, true); m.fillText(sp.title, x * d, (y - h + 22) * d);
+        for (let i = 0; i < 3; i++) {
+          const lit = sp.lights === 4 ? '#3dff6a' : (sp.lights ?? 0) > i ? '#ff3030' : '#3a1010';
+          m.beginPath(); m.arc((x - 22 + i * 22) * d, (y - 18) * d, 7 * d, 0, Math.PI * 2); m.fillStyle = '#111'; m.fill();
+          m.beginPath(); m.arc((x - 22 + i * 22) * d, (y - 18) * d, 5 * d, 0, Math.PI * 2); m.fillStyle = lit; m.fill();
+        }
+      } else if (sp.kind === 'next') {
+        const w = 230, h = 58, fg = board(x - w / 2, y - h, w, h, sp.tone);
+        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(900, 15, true); m.fillText(sp.title, x * d, (y - h + 22) * d);
+        m.font = f(700, 12); m.fillText(sp.sub ?? '', x * d, (y - h + 41) * d);
+      } else if (sp.kind === 'fork' && sp.options) {
+        const w = 280, h = 92, fg = board(x - w / 2, y - h, w, h, sp.tone);
+        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(800, 11); m.fillText(sp.title, x * d, (y - h + 15) * d);
+        sp.options.forEach((o, i) => {
+          const ox = x - w / 2 + 10 + i * (w - 20) / 2, ow = (w - 20) / 2, col = o.on ? '#ffd23b' : fg;
+          if (o.on) { m.lineWidth = 2.5 * d; m.strokeStyle = '#ffd23b'; m.strokeRect((ox + 3) * d, (y - h + 26) * d, (ow - 6) * d, 46 * d); }
+          m.fillStyle = col; m.font = f(900, 13, true);
+          m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, (ox + ow / 2) * d, (y - h + 40) * d, (ow - 10) * d);
+          m.font = f(600, 11); m.fillText(o.biome, (ox + ow / 2) * d, (y - h + 58) * d, (ow - 10) * d);
+        });
+        m.fillStyle = fg; m.font = f(600, 10); m.fillText(sp.sub ?? '', x * d, (y - 9) * d);
+      }
     }
   }
 }
@@ -584,19 +633,6 @@ export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTi
   return { text: 'BREACH!', color: '#6fe0d0' };
 }
 
-/** A fork signpost: two arrow boards (left / right), each with a swatch of its biome; the picked one glows. */
-function drawForkSign(g: G, x: number, y: number, pick: 0 | 1, colA: string, colB: string) {
-  g.fillStyle = '#5a3b22'; g.fillRect(x - 1, y - 30, 2, 30);
-  const board = (dir: -1 | 1, yy: number, col: string, on: boolean) => {
-    const x0 = dir < 0 ? x - 18 : x + 1, x1 = dir < 0 ? x - 1 : x + 18;
-    g.fillStyle = on ? '#ffd23b' : '#d8c8a0';
-    g.beginPath(); g.moveTo(x0, yy); g.lineTo(x1, yy); g.lineTo(dir > 0 ? x1 + 4 : x1, yy + 4); g.lineTo(x1, yy + 8); g.lineTo(x0, yy + 8);
-    if (dir < 0) g.lineTo(x0 - 4, yy + 4); g.closePath(); g.fill();
-    g.fillStyle = col; g.fillRect(dir < 0 ? x0 + 3 : x1 - 9, yy + 2, 6, 4);
-  };
-  board(-1, y - 30, colA, pick === 0);
-  board(1, y - 20, colB, pick === 1);
-}
 
 /** Left-aligned word wrap, vertically centred on y (at most 3 lines). */
 function wrap(m: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {

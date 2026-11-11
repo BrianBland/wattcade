@@ -83,3 +83,24 @@ export function diveDip(x0: number, len: number, x: number): number {
   const r = Math.min(DIVE.ramp, len / 2), d = Math.min(x - x0, x0 + len - x);
   return d >= r ? -DIVE.depth : -DIVE.depth * 0.5 * (1 - Math.cos((Math.PI * d) / r));
 }
+
+/** The mega ramp that throws you up a layer (to the sky, the moon, out of the sea, or off the moon): a quarter-pipe of
+ *  radius R curling up to `deg` at the lip, with a booster pad on the road before it. Everything is relative to the lip x. */
+export const MEGA = (() => {
+  const R = 40, deg = 62, a = (deg * Math.PI) / 180;
+  return { R, deg, len: R * Math.sin(a), h: R * (1 - Math.cos(a)), padFrom: 70, padTo: 25 };
+})();
+/** Height of the mega ramp above the road at x (0 off it). */
+export function megaLift(lip: number | null, x: number): number {
+  if (lip === null || x > lip || x < lip - MEGA.len) return 0;
+  const u = x - (lip - MEGA.len);
+  return MEGA.R - Math.sqrt(MEGA.R * MEGA.R - u * u);
+}
+/** Slope of the mega ramp at x (0 off it). */
+export function megaSlope(lip: number | null, x: number): number {
+  if (lip === null || x > lip || x < lip - MEGA.len) return 0;
+  const u = x - (lip - MEGA.len);
+  return u / Math.sqrt(MEGA.R * MEGA.R - u * u);
+}
+/** Is x on the booster pad before the ramp? */
+export const onBooster = (lip: number | null, x: number) => lip !== null && x >= lip - MEGA.len - MEGA.padFrom && x <= lip - MEGA.len - MEGA.padTo;

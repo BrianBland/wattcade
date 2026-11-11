@@ -11,13 +11,14 @@ import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
-import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip } from '../sim/track';
+import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../sim/track';
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
+import { drawMegaRamp } from './mega';
 import { drawCanyonFloor, drawCave, drawChaser, drawFlood, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
@@ -124,7 +125,7 @@ export class FullSendRenderer implements GameRenderer {
     const terr = this.terr(s);
     const roadH = (x: number) => s.hill * (terr.elev(x / s.stretch) * s.stretch + s.bumpScale * bumpH(x, s.terrainSeed));
     const p = s.piece;
-    const lift = (x: number) => rampLift(p, x);
+    const lift = (x: number) => rampLift(p, x) + megaLift(s.mega, x);
     // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
     const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
     const inLoopNow = p?.kind === 'loop' && s.phase === 'payoff' && (s.mode === 'loop' || s.mode === 'drop');
@@ -137,7 +138,7 @@ export class FullSendRenderer implements GameRenderer {
     const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
     let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
-    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : p?.kind === 'dive' ? lift(s.camX) * 0.75 : 0)) + loopLift + flyCam;
+    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : p?.kind === 'dive' ? lift(s.camX) * 0.75 : megaLift(s.mega, s.camX) * 0.8)) + loopLift + flyCam;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
@@ -242,6 +243,9 @@ export class FullSendRenderer implements GameRenderer {
     }
     if (p?.kind === 'leap') for (const z of s.hazards) if (z.y > -11) drawHazard(g, p.biome, sx(z.x), sy(z.y), z.vy, t, z.hit);
 
+    // ---- the mega ramp: a booster pad on the road, then a steel-lipped quarter-pipe ----
+    if (s.mega !== null && sx(s.mega) > -40 && sx(s.mega - MEGA.len - MEGA.padFrom) < W + 40) drawMegaRamp(g, s.mega, sx, roadY, (x) => roadH(x), sy, PPM, t);
+
     // ---- obstacles and chasers ----
     if (p?.kind === 'smash') {
       for (let i = 0; i < p.n; i++) {
@@ -288,7 +292,7 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
-    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : p?.kind === 'dive' ? lift(s.x) : 0);
+    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : rampLift(p, s.x)) : p?.kind === 'dive' ? rampLift(p, s.x) : 0) + (s.mode === 'road' ? megaLift(s.mega, s.x) : 0);
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
@@ -724,8 +728,10 @@ function round(m: G, x: number, y: number, w: number, h: number, r: number) {
 
 /** Rocket thrust for the flame (0..3): your power, scaled up by speed (a weak push when slow and easy, a roaring plume
  *  flat out); the jet and launches blast at the top. */
-export function rocketThrust(s: Pick<FullSendSnapshot, 'jet' | 'ftpFrac' | 'v' | 'phase' | 'toTier' | 'vy' | 'fromTier'>): number {
+export function rocketThrust(s: Pick<FullSendSnapshot, 'jet' | 'ftpFrac' | 'v' | 'phase' | 'toTier' | 'vy' | 'fromTier' | 'x'> & { mega?: number | null }): number {
   if (s.jet === 'on' || (s.toTier && s.toTier !== 'sea' && s.vy > 0)) return 3;
+  const mega = s.mega ?? null; // the booster pad lights the rocket all the way up the mega ramp
+  if (mega !== null && s.x >= mega - MEGA.len - MEGA.padFrom && s.x <= mega + 2) return 3;
   if (s.jet === 'weak') return 0.3;
   const k = 0.35 + 0.65 * Math.min(1, Math.max(0, s.v / 55));
   return Math.min(3, Math.max(0, s.ftpFrac) * k * (s.phase === 'effort' ? 1.5 : 1));

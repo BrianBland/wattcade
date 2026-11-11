@@ -193,6 +193,19 @@ describe('altitude: momentum takes you up to the sky islands and the moon', () =
   });
 });
 
+describe('mega ramp', () => {
+  it('a full lift meter puts a mega ramp ahead, and you go up a layer off its lip (not off a random bump)', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, simOpts: { tour: 'quick', autolean: true }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 10 && snap().mega === null; i++) s.step(1);
+    const lip = snap().mega!, x0 = snap().x;
+    expect(lip - x0).toBeGreaterThan(150); // it shows up well ahead, so you see it coming
+    let launchX = NaN;
+    for (let i = 0; i < 30 * 30 && Number.isNaN(launchX); i++) { s.step(1); if (snap().toTier) launchX = snap().x; }
+    expect(Math.abs(launchX - lip)).toBeLessThan(3);
+  });
+});
+
 describe('jet, rings and stars up high', () => {
   it('a rider who jets (above the power line) to the rings catches them', () => {
     const sm = runHeadless({ game: module, script: 'target-follow', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true, autojet: true } }).summary;

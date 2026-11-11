@@ -13,7 +13,7 @@ import { buildLou, louArm, LOU } from '../world/lou';
 import { disposeSet } from './dispose';
 import { addGlow } from '../stills/later/kit';
 import { buildWing } from './flight';
-import { buildBird, MORNING_PAL } from './morning';
+import { ALBATROSS, Flier, glideFlap } from './birds';
 import { EVENING } from './flightShots';
 import { endingShot, type EndingShot } from './endingShots';
 import type { WorldView } from './worldView';
@@ -103,7 +103,7 @@ export class EndingSet {
   private halo: THREE.Mesh<THREE.TorusGeometry, THREE.MeshBasicMaterial>;
   private car = new THREE.Group();
   private arm = new THREE.Group();
-  private bird = new THREE.Group();
+  private bird: Flier;
 
   constructor(private view: WorldView) {
     const st = view.stage;
@@ -144,9 +144,9 @@ export class EndingSet {
     }
     this.car.visible = false;
     // the morning's white bird
-    addGrid(st, 'last bird', buildBird(), { palette: MORNING_PAL.linear, jitter: 0.02 }, this.bird, NONE);
-    this.bird.visible = false; this.bird.scale.setScalar(2.6);
-    this.root.add(this.rider, this.car, this.bird);
+    this.bird = new Flier(st, 'last bird', ALBATROSS);
+    this.bird.group.visible = false; this.bird.group.scale.setScalar(3);
+    this.root.add(this.rider, this.car, this.bird.group);
     st.scene.add(this.root);
   }
 
@@ -181,12 +181,13 @@ export class EndingSet {
       this.arm.rotation.set(0, 0, 0.25 + 0.4 * Math.sin(t * Math.PI * 2 * 1.6));
     }
     // the last shot: far out over the morning sea, gliding west
-    this.bird.visible = fx.morning !== null;
+    this.bird.group.visible = fx.morning !== null;
     if (fx.morning !== null) {
       const u = fx.morning, e = shot.eye, fwd = new THREE.Vector3(shot.target.x - e.x, 0, shot.target.z - e.z).normalize();
       const left = new THREE.Vector3(fwd.z, 0, -fwd.x);
-      this.bird.position.set(e.x, e.y + 30 + 6 * u + Math.sin(t * 0.9) * 0.5, e.z).addScaledVector(fwd, 300).addScaledVector(left, -40 + 160 * u);
-      this.bird.rotation.set(Math.sin(t * 0.7) * 0.08, Math.atan2(-left.z, left.x), 0);
+      this.bird.flap(glideFlap(t));
+      this.bird.group.position.set(e.x, e.y + 30 + 6 * u + Math.sin(t * 0.9) * 0.5, e.z).addScaledVector(fwd, 300).addScaledVector(left, -40 + 160 * u);
+      this.bird.group.rotation.set(Math.sin(t * 0.7) * 0.08, Math.atan2(-left.z, left.x), 0);
     }
   }
 

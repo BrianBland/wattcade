@@ -15,7 +15,8 @@ export { rideCam } from './rideCam';
 export interface MorningFx {
   /** Title card: marine-layer fog, 1 = thick. */ fog: number;
   /** Title card: eyelids, 0 shut .. 1 open; the world out of focus, 0 sharp .. 1 blurred. */ lids: number; blur: number;
-  /** Highway 1: the big white bird's glide 0..1 (null = not in the sky). */ bird: number | null;
+  /** Highway 1: the big white bird's glide 0..1 (null = not in the sky), where it is and which way it flies. */ bird: number | null;
+  birdAt?: V3; birdDir?: V3;
   /** The sea going glassy 0..1. */ calm: number;
   /** Gulls on the pier's end posts: 0 sitting .. 1 gone (null = none in shot). */ gulls: number | null;
   /** The Big One's shadow sliding in under the pier 0..1 (null = none). */ shadow: number | null;
@@ -196,7 +197,15 @@ export function morningShot(s: Pick<SeasideSnapshot, 'sceneId' | 'sceneT' | 'spe
       cam.target = lerpV(cam.target, shopDoor(), w);
     }
     const bird = id === 'highway' && p > 0.7 && p < 0.96 ? (p - 0.7) / 0.26 : null;
-    return { s: at, speed: s.speed * ((r1 - r0) / len) * R.k, ...cam, heading: R.heading, bars: true, rod: null, place: null, fx: { ...NO_FX, bird } };
+    const fx: MorningFx = { ...NO_FX, bird };
+    if (bird !== null) { // high ahead, gliding in toward you on a long bank; the eyes follow it
+      const e = cam.eye, f = R.heading, left = v(f.z, 0, -f.x);
+      // coming in toward you (wings broadside), drifting out to the sea side as it passes over
+      fx.birdAt = add(add(v(e.x, e.y + 32 + 10 * bird, e.z), f, 230 - 120 * bird), left, -10 + 50 * bird);
+      fx.birdDir = add(add(v(0, 0, 0), left, 0.38), f, -0.92);
+      cam.target = lerpV(cam.target, fx.birdAt, 0.4 * Math.sin(Math.PI * bird) ** 0.6);
+    }
+    return { s: at, speed: s.speed * ((r1 - r0) / len) * R.k, ...cam, heading: R.heading, bars: true, rod: null, place: null, fx };
   }
   switch (id) {
     case 'title': { // rolling off from a standstill, eyes opening (a few slow blinks), the world coming into focus

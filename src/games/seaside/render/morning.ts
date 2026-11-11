@@ -17,10 +17,13 @@ import { textAt, textWidth } from '../world/coastBuild';
 import { EVENING } from './flightShots';
 import { STORY } from '../sim/story';
 import { CAR_LANE, Traffic } from './traffic';
+import { ALBATROSS, Flier, GULL, glideFlap, gullFlap } from './birds';
 import { buildCar, CARS_PAL } from './cars';
 
 /** Scenes with cars on the highway (the shop outings fish at the turnout too). */
 const TRAFFIC_SCENES = new Set(['highway', 'turnout1', 'rollers', 'toPier', 'shop1', 'sunset']);
+/** Scenes with gulls crossing the road. */
+const GULL_SCENES = new Set(['title', 'highway', 'turnout1', 'rollers', 'toPier', 'shop1', 'sunset']);
 const BIG_PLAN_S = STORY.find((s) => s.id === 'bigOne')!.planS;
 import type { WorldView } from './worldView';
 
@@ -33,20 +36,6 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 const mixHex = (a: number, b: number, t: number) => new THREE.Color(a).lerp(new THREE.Color(b), clamp01(t)).getHex();
-
-/** A big white bird, wings spread (the angel's shape, seen once, far out). Faces +x. */
-export function buildBird(): VoxelGrid {
-  const g = new VoxelGrid(0.18);
-  g.wellipsoid([0, 0, 0], [1.1, 0.32, 0.3], P.white);
-  g.wellipsoid([1.05, 0.12, 0], [0.32, 0.26, 0.24], P.white);
-  g.wbox([1.32, 0.06, -0.06], [1.62, 0.14, 0.06], P.beak);
-  for (const side of [-1, 1]) for (let i = 0; i < 18; i++) {
-    const k = i / 17, z = side * (0.25 + k * 3.4), x = 0.25 - k * 0.7, w = 0.85 - k * 0.45;
-    g.wbox([x - w, 0.02 + k * 0.35, Math.min(z, z + side * 0.2)], [x + 0.15, 0.16 + k * 0.35, Math.max(z, z + side * 0.2)], k > 0.82 ? P.grey : P.white);
-  }
-  g.wbox([-1.6, -0.05, -0.35], [-0.9, 0.08, 0.35], P.white2);
-  return g;
-}
 
 /** A gull: sitting (wings folded) or flying (wings up). Faces +x. */
 function buildGull(flying: boolean): VoxelGrid {
@@ -108,7 +97,8 @@ function softEllipse(): THREE.Texture {
 export class MorningSet {
   readonly rig: FishingRig;
   private root = new THREE.Group();
-  private bird = new THREE.Group();
+  private bird: Flier;
+  private flock: Flier[] = [];
   private gulls: Array<{ g: THREE.Group; sit: THREE.Group; fly: THREE.Group; at: THREE.Vector3; dir: THREE.Vector3; lag: number }> = [];
   private shadow: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private shadowG = new THREE.Group();
@@ -135,8 +125,10 @@ export class MorningSet {
   constructor(private view: WorldView) {
     const st = view.stage;
     this.rig = new FishingRig(st);
-    addGrid(st, 'big bird', buildBird(), { palette: PAL.linear, jitter: 0.02 }, this.bird, NONE);
-    this.bird.visible = false; this.bird.scale.setScalar(2.6); // ~20 m across: big, even far out
+    this.bird = new Flier(st, 'big bird', ALBATROSS);
+    this.bird.group.visible = false; this.bird.group.scale.setScalar(4.2); // ~30 m across: huge, even far out
+    const gulls = new Map();
+    for (let i = 0; i < 6; i++) { const f = new Flier(st, `gull ${i}`, GULL, gulls); f.group.visible = false; this.flock.push(f); this.root.add(f.group); }
     const sit = buildGull(false), fly = buildGull(true), r = coastRoute(), Pg = pierGeom();
     for (let i = 0; i < 7; i++) {
       const g = new THREE.Group(), s = new THREE.Group(), f = new THREE.Group();
@@ -177,7 +169,7 @@ export class MorningSet {
     const door = shopDoor(), tn = r.tangent(CH1.shop);
     this.gone.position.set(door.x, door.y, door.z); this.gone.rotation.y = Math.atan2(-tn.z, tn.x); // facing the road
     this.gone.visible = false;
-    this.root.add(this.carRoot, this.bird, this.shadowG, this.lighthouse, this.splash, this.bubbles, this.gone);
+    this.root.add(this.carRoot, this.bird.group, this.shadowG, this.lighthouse, this.splash, this.bubbles, this.gone);
     st.scene.add(this.root);
   }
 
@@ -214,6 +206,7 @@ export class MorningSet {
       atmos = { fog: mixHex(sky.fog, white, fog), density: lerp(sky.fogDensity, 0.05, f), zenith: mixHex(sky.zenith, white, fog), horizon: mixHex(sky.horizon, white, fog), ink: 1 - f };
     }
     this.props(shot, t);
+    this.gullsFlying(snap.sceneId, shot, t);
     this.cars(snap.sceneId, shot, pose, t, dt);
     this.gone.visible = snap.sceneId === 'sunset';
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
@@ -222,6 +215,35 @@ export class MorningSet {
     const fishing = shot.rod === 'fish' ? snap.fishing : shot.rod === 'bigOne' ? bigOneView(snap.scene.progress * BIG_PLAN_S, snap.pull) : null;
     this.rig.update(fishing, t, shot.place ?? { waterY: SEA_LEVEL });
     return shot;
+  }
+
+  /**
+   * Gulls along the coast: every so often a few cross the road ahead, flapping, from the sea inland or back. While the
+   * big bird is up they fly out toward it, so you can see how small a gull is next to it.
+   */
+  private gullsFlying(id: string, shot: MorningShot, t: number) {
+    const on = GULL_SCENES.has(id) && shot.fx.under === 0 && (id !== 'title' || shot.fx.lids > 0.6);
+    const e = shot.eye, fwd = this.v3.set(shot.heading.x, 0, shot.heading.z).normalize().clone(), left = new THREE.Vector3(fwd.z, 0, -fwd.x);
+    const big = shot.fx.bird, cycle = 23, k = Math.floor(t / cycle), local = t - k * cycle, life = 13;
+    const h = (j: number) => hash2(k, j, 31);
+    const show = on && (big !== null || (local < life && h(1) < 0.75));
+    this.flock.forEach((f, i) => {
+      f.group.visible = show && i < (big !== null ? 6 : 3 + Math.floor(h(2) * 3));
+      if (!f.group.visible) return;
+      const row = Math.floor((i + 1) / 2), side = i % 2 ? 1 : -1, jitter = hash2(i, k, 33);
+      let ahead: number, across: number, up: number, dir: THREE.Vector3;
+      if (big !== null) { // out over the water ahead, on the same line as the big bird but much nearer
+        ahead = 42 + row * 5 + jitter * 6; across = -6 + 30 * big + side * row * 3; up = 12 + 4 * big + jitter * 3;
+        dir = left.clone().multiplyScalar(0.75).addScaledVector(fwd, -0.66).normalize();
+      } else {
+        const way = h(3) < 0.5 ? 1 : -1, u = local / life; // crossing the road ahead, sea side to inland or back
+        ahead = 28 + h(4) * 40 + row * 4; across = way * (55 - 110 * u) + side * row * 2.5; up = 5 + h(5) * 9 + jitter * 2;
+        dir = left.clone().multiplyScalar(-way).addScaledVector(fwd, 0.8).normalize(); // angled away: wings broadside
+      }
+      f.group.position.set(e.x, e.y + up + Math.sin(t * 2 + i) * 0.3, e.z).addScaledVector(fwd, ahead).addScaledVector(left, across);
+      f.group.rotation.set(0, 0, 0); f.group.rotateY(Math.atan2(-dir.z, dir.x)); f.group.rotateX(Math.sin(t * 1.3 + i) * 0.25);
+      f.flap(gullFlap(t, i + k));
+    });
   }
 
   /** Highway traffic: cars coming the other way and overtaking, on the highway scenes (and while you fish at the turnout). */
@@ -248,12 +270,14 @@ export class MorningSet {
   private props(shot: MorningShot, t: number) {
     const fx = shot.fx;
     // the big bird: far out over the water, gliding west, once
-    this.bird.visible = fx.bird !== null;
+    const bird = this.bird.group;
+    bird.visible = fx.bird !== null;
     if (fx.bird !== null) {
-      const u = fx.bird, e = shot.eye, fwd = new THREE.Vector3(shot.target.x - e.x, 0, shot.target.z - e.z).normalize();
-      const left = new THREE.Vector3(fwd.z, 0, -fwd.x);
-      this.bird.position.set(e.x, e.y + 34 + 12 * u + Math.sin(t * 0.9) * 0.6, e.z).addScaledVector(fwd, 280 + 30 * u).addScaledVector(left, 20 + 230 * u);
-      this.bird.rotation.set(Math.sin(t * 0.7) * 0.08, Math.atan2(-left.z, left.x), 0);
+      // banked toward you: from below, the whole spread of the wings shows
+      const at = fx.birdAt!, dir = new THREE.Vector3(fx.birdDir!.x, 0, fx.birdDir!.z).normalize();
+      bird.position.set(at.x, at.y + Math.sin(t * 0.9) * 0.6, at.z);
+      bird.rotation.set(0, 0, 0); bird.rotateY(Math.atan2(-dir.z, dir.x)); bird.rotateX(-0.32 + Math.sin(t * 0.7) * 0.08);
+      this.bird.flap(glideFlap(t));
     }
     // gulls on the end posts; they all leave at once
     const gs = fx.gulls;

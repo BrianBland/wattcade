@@ -33,7 +33,7 @@ export function roadHeading(s: number): V3 {
 /** How far the eyes have drifted out to the sea at route metres s (0..1): a slow look now and then, never on the pier. */
 export function seaGlance(s: number): number {
   const P = pierGeom(), w = Math.sin((2 * Math.PI * (s - 260)) / 610);
-  return 0.55 * clamp01((w - 0.55) / 0.45) ** 1.5 * (1 - smooth(P.junction - 160, P.junction - 60, s));
+  return 0.4 * clamp01((w - 0.55) / 0.45) ** 1.5 * (1 - smooth(P.junction - 160, P.junction - 60, s));
 }
 
 /** The riding camera at route metres s: right lane, eyes down the road (and the sea now and then); centred and level on

@@ -31,6 +31,7 @@ import { drawFishing } from './fishing2d';
 import { bellyHud, endCredits, END_TITLE, endTitle, inside, layout, type Box } from './layout';
 import { musicCredits } from './musicScore';
 import { SeasideSound } from './sound';
+import { DUSK, FONT_DESC, FONT_H, PAPER, PAPER_DIM, pixelBubble, pixelLabel, pixelPanel, pixelText, SIGN, textCells, unitFor, wrapCells, type PanelStyle } from './pixelHud';
 import titleFontUrl from './fonts/bodoni-moda-800-italic.woff2?url';
 
 const PARTS_PLAN_S = STORY.find((x) => x.id === 'spareParts')!.planS;
@@ -137,6 +138,7 @@ export class SeasideRenderer implements GameRenderer {
     if (!this.morning) {
       this.dropSets();
       this.morning = new MorningSet(this.ensureView('coast'));
+      loadTitleFont(); // the opening title shares the end title's face
     }
     return this.morning;
   }
@@ -303,10 +305,9 @@ export class SeasideRenderer implements GameRenderer {
     if (s.sceneId === 'title') { // small serif "Seaside" in the fog (pale while the eyes are still shut)
       const al = Math.max(0, Math.min(1, shot.fx.fog * 1.6 + (1 - shot.fx.lids), s.sceneT / 2));
       g.globalAlpha = al; g.fillStyle = shot.fx.lids < 0.5 ? '#e9e4d8' : '#3d4446'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = `${Math.round(Math.min(64, L.UH * 0.09))}px Georgia, serif`;
+      g.font = `italic 800 ${Math.round(Math.min(72, L.UH * 0.1))}px "Seaside Title", "Bodoni 72", Didot, Georgia, serif`;
       g.fillText('Seaside', W / 2, L.UH * 0.42);
-      g.font = `italic ${Math.round(Math.min(20, L.UH * 0.032))}px Georgia, serif`;
-      g.fillText('pedal to begin', W / 2, L.UH * 0.42 + Math.min(52, L.UH * 0.075));
+      pixelText(g, 'pedal to begin', W / 2, L.UH * 0.42 + Math.min(56, L.UH * 0.08), Math.max(2, Math.round(L.UH / 300)), g.fillStyle as string, 'center');
       g.globalAlpha = 1;
     }
     // the title is the Morning's card: no second card on top of it
@@ -325,16 +326,14 @@ export class SeasideRenderer implements GameRenderer {
     g.clearRect(0, 0, W, H);
     this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
     if (fx.lids < 1) this.drawLids(g, L, fx.lids, fx.heart);
-    const font = (px: number, style = '') => `${style}${Math.round(px)}px Georgia, serif`;
-    if (s.parts) { // three scratched icons: what's in hand
+    if (s.parts) { // three tags: what's in hand
       const T = B.tally, w = T.w / PARTS.length;
-      g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = font(T.h * 0.42);
       s.parts.items.forEach((it, i) => {
-        const x = T.x + w * i, on = it.got, near = s.parts!.reach === it.id;
-        g.fillStyle = on ? 'rgba(255,246,216,.92)' : near ? 'rgba(159,248,255,.85)' : 'rgba(20,6,18,.55)';
-        g.beginPath(); g.roundRect(x + 4, T.y, w - 8, T.h, 8); g.fill();
-        g.fillStyle = on ? '#2b1a12' : '#f7e7f0';
-        g.fillText(`${on ? '✓ ' : ''}${it.name.replace('the ', '')}`, x + w / 2, T.y + T.h / 2, w - 16);
+        const x = T.x + w * i, on = it.got, near = s.parts!.reach === it.id, label = `${on ? '✓ ' : ''}${it.name.replace('the ', '')}`;
+        const st: PanelStyle = on ? PAPER : near ? { fill: '#9ff8ff', ink: '#14303a', shadow: 'rgba(10,4,10,.4)' } : DUSK;
+        const u = Math.max(1, Math.min(unitFor(T.h), Math.floor((w - 16) / (textCells(label) + 6))));
+        const b = pixelPanel(g, { x: x + 4, y: T.y, w: w - 8, h: T.h }, u, st);
+        pixelLabel(g, label, b, u, on ? '#2b1a12' : near ? '#14303a' : '#f7e7f0');
       });
       const since = s.parts.allAt === null ? -1 : (s.scene.progress - s.parts.allAt) * PARTS_PLAN_S;
       if (since >= 2.5 && since < 9) this.popup(g, B.popup, 'Drill. Keep it turning.', Math.min(1, (since - 2.5) / 0.5, (9 - since) / 0.8));
@@ -367,7 +366,7 @@ export class SeasideRenderer implements GameRenderer {
   /** A scratched depth meter: a band per layer, ticks every 25 cm, the bit's mark at the bored depth, a label. */
   private drawDrillMeter(g: CanvasRenderingContext2D, M: Box, d: DrillView, layers: readonly DrillLayer[], label: string, bg: string): void {
     const k = (m: number) => M.y + (m / d.total) * M.h;
-    g.fillStyle = bg; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
+    pixelPanel(g, { x: M.x - 6, y: M.y - 6, w: M.w + 12, h: M.h + 12 }, 3, { ...DUSK, fill: bg });
     let acc = 0;
     for (const l of layers) {
       g.fillStyle = `#${l.color.toString(16).padStart(6, '0')}`; g.globalAlpha = 0.85;
@@ -377,8 +376,7 @@ export class SeasideRenderer implements GameRenderer {
     for (let m = 0; m <= d.total + 1e-6; m += 0.25) { const y = k(m), long = Math.abs(m - Math.round(m)) < 1e-6; g.beginPath(); g.moveTo(M.x + (long ? 0 : M.w * 0.12), y + (m * 7 % 2 - 1)); g.lineTo(M.x + M.w * 0.32, y - (m * 5 % 2 - 1)); g.stroke(); }
     const y = k(d.depth);
     g.fillStyle = '#fff6d8'; g.beginPath(); g.moveTo(M.x + M.w * 0.66, y); g.lineTo(M.x + M.w, y - 7); g.lineTo(M.x + M.w, y + 7); g.closePath(); g.fill();
-    g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff6d8'; g.font = `italic ${Math.round(Math.max(12, M.w * 0.28))}px Georgia, serif`;
-    g.fillText(label, M.x, M.y + M.h + 10);
+    pixelText(g, label, M.x, M.y + M.h + 12, 2, '#fff6d8');
   }
 
   /** Over the island: fishing prompts on the beach, the white of the surface fading, the fire's warmth once the
@@ -422,13 +420,12 @@ export class SeasideRenderer implements GameRenderer {
     if (fan && fan.eat < 1) { // a scratched gauge down the left: how hot the eel still is
       const M = bellyHud(W, H, this.insets).meter, al = Math.max(0, 1 - fan.eat * 3), k = fan.glow;
       g.globalAlpha = al;
-      g.fillStyle = 'rgba(20,8,6,.6)'; g.beginPath(); g.roundRect(M.x - 6, M.y - 6, M.w + 12, M.h + 12, 8); g.fill();
+      pixelPanel(g, { x: M.x - 6, y: M.y - 6, w: M.w + 12, h: M.h + 12 }, 3, { ...DUSK, fill: 'rgba(20,8,6,.6)' });
       const hot = `rgb(${Math.round(110 + 145 * k)},${Math.round(120 - 10 * k + 30 * k * k)},${Math.round(100 - 90 * k)})`;
       g.fillStyle = hot; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, M.h * k);
       if (fan.heat > 0.005) { g.fillStyle = 'rgba(255,200,120,.9)'; g.fillRect(M.x + M.w * 0.3, M.y + M.h * (1 - k), M.w * 0.4, Math.max(2, M.h * fan.heat)); }
       g.strokeStyle = 'rgba(255,240,230,.8)'; g.lineWidth = 1.5; g.strokeRect(M.x + M.w * 0.3, M.y, M.w * 0.4, M.h);
-      g.textAlign = 'left'; g.textBaseline = 'top'; g.fillStyle = '#fff2e0'; g.font = `italic ${Math.round(Math.max(12, M.w * 0.28))}px Georgia, serif`;
-      g.fillText(fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 10);
+      pixelText(g, fan.eat > 0 ? 'done' : fan.inBand ? 'cooling' : 'heating up', M.x, M.y + M.h + 12, 2, '#fff2e0');
       g.globalAlpha = 1;
     }
     const p = L.plate;
@@ -484,44 +481,45 @@ export class SeasideRenderer implements GameRenderer {
 
   private popup(g: CanvasRenderingContext2D, b: Box, text: string, alpha: number): void {
     g.globalAlpha = Math.max(0, alpha);
-    g.fillStyle = 'rgba(255,250,240,.94)'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
-    g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 10); g.fill(); g.stroke();
-    g.fillStyle = '#2b2b2b'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(b.h * 0.4)}px Georgia, serif`;
-    g.fillText(text, b.x + b.w / 2, b.y + b.h / 2, b.w - 24);
+    const u = Math.max(1, Math.min(unitFor(b.h), Math.floor((b.w - 24) / textCells(text))));
+    pixelLabel(g, text, pixelPanel(g, b, u, PAPER), u, PAPER.ink);
     g.globalAlpha = 1;
   }
 
   private drawBubbleAndCard(g: CanvasRenderingContext2D, s: SeasideSnapshot, L: ReturnType<typeof layout>): void {
-    // monologue bubble, top-left
+    // monologue bubble, top-left: pixel text on paper, sized to the line (wrapped in two if it must), tail toward you
     if (s.monologue) {
       const m = s.monologue, fade = Math.min(1, m.age / 0.3, (m.life - m.age) / 0.4), bb = L.bubble;
+      let u = unitFor(bb.h, 0.36), lines = [m.text];
+      while (u > 1) {
+        lines = wrapCells(m.text, Math.floor(bb.w / u) - 8);
+        if (lines.length <= 2 && lines.every((l) => textCells(l) <= Math.floor(bb.w / u) - 8)) break;
+        u--;
+      }
+      const cells = Math.max(...lines.map(textCells)), lh = FONT_H + FONT_DESC + 2;
       g.globalAlpha = Math.max(0, fade);
-      g.fillStyle = '#fff'; g.strokeStyle = '#2b2b2b'; g.lineWidth = 2;
-      g.beginPath(); g.roundRect(bb.x, bb.y, bb.w, bb.h, 12); g.fill(); g.stroke();
-      g.fillStyle = '#2b2b2b'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = `italic ${Math.round(bb.h * 0.38)}px Georgia, serif`;
-      g.fillText(m.text, bb.x + 16, bb.y + bb.h / 2, bb.w - 32);
+      const b = pixelBubble(g, { x: bb.x, y: bb.y, w: (cells + 8) * u, h: (lines.length * lh + 4) * u }, u);
+      lines.forEach((l, i) => pixelText(g, l, b.x + 4 * u, b.y + 3 * u + i * lh * u, u, PAPER.ink));
       g.globalAlpha = 1;
     }
 
-    // chapter card
+    // chapter card: a green highway sign
     if (s.chapterCard) {
-      const c = L.card, age = s.chapterCard.age, al = Math.max(0, Math.min(1, age / 0.6, (5 - age) / 0.8));
-      g.globalAlpha = al; g.fillStyle = 'rgba(10,10,10,.75)'; g.fillRect(c.x, c.y, c.w, c.h);
-      g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(c.h * 0.36)}px Georgia, serif`;
-      g.fillText(s.chapterCard.name, c.x + c.w / 2, c.y + c.h / 2); g.globalAlpha = 1;
+      const c = L.card, age = s.chapterCard.age, al = Math.max(0, Math.min(1, age / 0.6, (5 - age) / 0.8)), name = s.chapterCard.name;
+      const u = Math.max(2, Math.min(unitFor(c.h, 0.3), Math.floor((c.w - 24) / (textCells(name) + 10))));
+      const w = (textCells(name) + 14) * u, h = (FONT_H + 12) * u;
+      g.globalAlpha = al;
+      pixelLabel(g, name, pixelPanel(g, { x: c.x + (c.w - w) / 2, y: c.y + (c.h - h) / 2, w, h }, u, SIGN), u, '#f6f6f2');
+      g.globalAlpha = 1;
     }
   }
 
   private drawMenu(g: CanvasRenderingContext2D, s: SeasideSnapshot, rows: Box[]): void {
     const m = s.menu!;
-    g.textAlign = 'center'; g.textBaseline = 'middle';
     m.items.forEach((it, i) => {
-      const r = rows[i], on = i === m.index;
-      g.fillStyle = on ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)';
-      g.beginPath(); g.roundRect(r.x, r.y, r.w, r.h, 10); g.fill();
-      if (on) { g.strokeStyle = '#2b2b2b'; g.lineWidth = 3; g.stroke(); }
-      g.fillStyle = '#222'; g.font = `${Math.round(r.h * 0.36)}px Georgia, serif`;
-      g.fillText(on && m.autoIn >= 0 ? `${it.label}  (${Math.ceil(m.autoIn)})` : it.label, r.x + r.w / 2, r.y + r.h / 2, r.w - 24);
+      const r = rows[i], on = i === m.index, label = `${on ? '▶ ' : ''}${on && m.autoIn >= 0 ? `${it.label}  (${Math.ceil(m.autoIn)})` : it.label}`;
+      const u = Math.max(1, Math.min(unitFor(r.h, 0.34), Math.floor((r.w - 24) / (textCells(label) + 6))));
+      pixelLabel(g, label, pixelPanel(g, r, Math.max(2, u), on ? PAPER : PAPER_DIM), u, PAPER.ink);
     });
   }
 

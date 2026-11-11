@@ -1,13 +1,14 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { chaserFor, MEDAL_FTP, pieceTitle, TOURS, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
+import { bumpH, takesOff } from './track';
 import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
 export interface FullSendOpts { seed?: number; tour?: string; terrainSeed?: number }
 
 export type Phase = 'warmup' | 'approach' | 'effort' | 'payoff' | 'recovery' | 'cooldown' | 'done';
 /** How the bike is moving right now. */
-export type Mode = 'road' | 'air' | 'fall' | 'rescue' | 'smash' | 'bounce' | 'loop' | 'drop' | 'tow';
+export type Mode = 'road' | 'hop' | 'air' | 'fall' | 'rescue' | 'smash' | 'bounce' | 'loop' | 'drop' | 'tow';
 
 /** One set piece on the road. `x0` is where it starts (ramp lip, wall face, loop entry, water's edge). */
 export interface PieceView {
@@ -30,7 +31,7 @@ export interface FullSendSnapshot {
   phase: Phase; phaseT: number; phaseS: number;
   setIndex: number; setCount: number;
   x: number; y: number; v: number; pitch: number; mode: Mode; camX: number;
-  hill: number; grade: number; terrainSeed: number; stretch: number; maxGrade: number;
+  hill: number; grade: number; terrainSeed: number; stretch: number; maxGrade: number; bumpScale: number;
   biome: BiomeId; from: BiomeId; to: BiomeId; mix: number;
   piece: PieceView | null;
   next: { kind: PieceKind; title: string; biome: BiomeId; inS: number } | null;
@@ -41,6 +42,8 @@ export interface FullSendSnapshot {
   topKph: number; longestJumpM: number; airS: number; smashed: number; rodeM: number;
   /** 0..1 hay/debris stuck to the rider after a smash. */
   hay: number;
+  /** Last landing off a hop (sim time) and how hard it was (m/s); hops so far. */
+  landAt: number; landImpact: number; hops: number;
   hooks: Record<string, unknown>;
 }
 
@@ -72,6 +75,11 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     runupGrade: T.num('runupGrade', 1, -2, 6, 0.5, 'Grade % during a sprint run-up (gears supply the rest)'),
     loopGrade: T.num('loopGrade', 5, 0, 10, 0.5, 'Grade % the trainer climbs to at the end of a loop run-up and in the loop'),
     airGrade: T.num('airGrade', -2, -5, 2, 0.5, 'Grade % while airborne (light legs)'),
+    bumps: T.bool('bumps', true, 'Rollers and kickers on the cruising road (hop off them at speed)'),
+    bumpScale: T.num('bumpScale', 1.8, 0, 4, 0.1, 'Height of the rollers and kickers'),
+    hopGravity: T.num('hopGravity', 30, 5, 80, 1, 'Gravity for hops off bumps: lower = more airtime, and you take off at lower speeds'),
+    slopeGravity: T.num('slopeGravity', 15, 0, 40, 1, 'How much slopes speed you up or slow you down on top of your power (m/s² per unit slope)'),
+    hopAirGradeS: T.num('hopAirGradeS', 0.8, 0.2, 3, 0.1, 'Hops longer than this (s) ease the trainer to the airtime grade'),
     smashGrade: T.num('smashGrade', 3, 0, 8, 0.5, 'Grade % while plowing through a wall'),
     diveGrade: T.num('diveGrade', 2, 0, 8, 0.5, 'Extra grade % underwater (water drag)'),
     blendS: T.num('blendS', 8, 1, 30, 1, 'Seconds the scenery takes to dissolve into the next biome'),
@@ -106,12 +114,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let top = 0, longestJump = 0, airS = 0, smashed = 0, launchX = 0;
   /** 0..1 debris (hay) stuck to the rider after a smash; it drags (trainer grade) until it falls off. */
   let hay = 0;
+  let hopT0 = 0, hopAir = 0, hops = 0, longestHop = 0, landAt = -99, landImpact = 0;
   let pendingMedal: Medal = 0;
 
   const scale = () => tun.tourScale();
   const set = (): TourSet | null => (setIndex >= 0 && setIndex < tour.sets.length ? tour.sets[setIndex] : null);
   const speedPerFtp = () => tun.kmhPerFtp() / 3.6;
-  const roadH = (xx: number) => hill * terrain.elev(xx / tun.hillStretch()) * tun.hillStretch();
+  const roadH = (xx: number) => hill * (terrain.elev(xx / tun.hillStretch()) * tun.hillStretch() + (tun.bumps() ? tun.bumpScale() * bumpH(xx, terrainSeed) : 0));
+  const slopeAt = (xx: number) => (roadH(xx + 0.25) - roadH(xx - 0.25)) / 0.5;
+  const curvAt = (xx: number) => (roadH(xx + 0.5) - 2 * roadH(xx) + roadH(xx - 0.5)) / 0.25;
   const phaseS = (): number => {
     const s = set();
     switch (phase) {
@@ -293,7 +304,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
       // speed: sprint power counts only while sprinting; recovery is capped
       const pf = phase === 'effort' ? frac : Math.min(frac, tun.cruiseCap());
-      if (phase !== 'payoff' || mode === 'road') v = spool(v, targetSpeed(pf, speedPerFtp()), dt, tun.spoolS());
+      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()), dt, tun.spoolS());
 
       // phase machine
       if (phase === 'warmup') {
@@ -355,14 +366,29 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       // movement on the road
       // (leap, smash and loop payoffs move the bike themselves)
       const selfMoving = phase === 'payoff' && !!piece && atEnd(piece.kind);
-      if (!selfMoving && mode === 'road') {
+      if (!selfMoving && (mode === 'road' || mode === 'hop')) {
         x += v * dt;
-        y = roadH(x); pitch = Math.atan(((hill * terrain.grade(x / tun.hillStretch())) / 100) * 3);
+        const ground = roadH(x), slope = slopeAt(x), gH = tun.hopGravity();
+        if (mode === 'road') {
+          if (v > 5 && takesOff(v, curvAt(x), gH)) { setMode('hop'); vy = v * slope; hopT0 = now; y = ground; }
+          else { y = ground; pitch = Math.atan(slope); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
+        }
+        if (mode === 'hop') {
+          vy -= gH * dt; y += vy * dt; pitch = Math.atan2(vy, Math.max(1, v));
+          if (y <= ground) {
+            const rel = vy - v * slope; // how hard you hit, relative to the slope you land on
+            y = ground; landAt = now; landImpact = -rel;
+            if (trick && now - trick.t0 >= 0.9) { style++; trick = null; }
+            hopAir += now - hopT0; hops++; longestHop = Math.max(longestHop, now - hopT0);
+            if (rel < -7) { vy = v * slope - rel * 0.22; hopT0 = now; } // a little bounce off a flat landing
+            else { setMode('road'); pitch = Math.atan(slope); }
+          }
+        }
       }
       camX = phase === 'payoff' && piece?.kind === 'loop' && (mode === 'loop' || mode === 'drop') ? piece.x0 : x;
 
       // mid-air tricks (optional): A while airborne
-      const airborne = mode === 'air';
+      const airborne = mode === 'air' || mode === 'hop';
       if (airborne && input.pressed.has('a') && !trick) { trick = { name: TRICKS[trickCount % TRICKS.length], t0: now }; trickCount++; }
       if (!airborne && mode !== 'fall' && trick && now - trick.t0 > 0.9) trick = null;
 
@@ -376,6 +402,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         gr = mode === 'air' ? tun.airGrade() : mode === 'smash' || mode === 'bounce' ? tun.smashGrade() + 2 * hay
           : mode === 'loop' ? loopGradeAt(loopPhi) : mode === 'road' ? gr : 0;
       }
+      if (mode === 'hop' && now - hopT0 > tun.hopAirGradeS()) gr = tun.airGrade(); // a long hop: light legs
       // debris stuck to you after a smash keeps dragging until it falls off
       if (mode !== 'smash' && mode !== 'bounce' && hay > 0) {
         if (!(phase === 'payoff' && mode === 'air')) gr += tun.smashGrade() * hay;
@@ -406,14 +433,14 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         : nx ? { kind: nx.kind, title: pieceTitle(nx.kind, nx.biome), biome: nx.biome, inS: phaseS() - phaseT + tun.approachS() } : null;
       return {
         t: now, tour: tour.id, tourName: tour.name, phase, phaseT, phaseS: phaseS(), setIndex, setCount: tour.sets.length,
-        x, y, v, pitch, mode, camX, hill, grade, terrainSeed, stretch: tun.hillStretch(), maxGrade,
+        x, y, v, pitch, mode, camX, hill, grade, terrainSeed, stretch: tun.hillStretch(), maxGrade, bumpScale: tun.bumps() ? tun.bumpScale() : 0,
         biome: mix < 0.5 ? cur : next, from: cur, to: next, mix,
         piece: piece ? { ...piece, hitAt: [...piece.hitAt] } : null,
         next: nextInfo, speedPerFtp: speedPerFtp(), ftpFrac: frac,
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,
         last: last ? { ...last, age: now - last.at } : null,
         results: [...results],
-        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay,
+        topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops,
         hooks: { shielded: phase === 'effort', seg: phase },
       };
     },
@@ -422,7 +449,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       const n = (m: number) => results.filter((r) => r.medal === m).length;
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
-        topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style,
+        topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
         distanceKm: +(x / 1000).toFixed(1), medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

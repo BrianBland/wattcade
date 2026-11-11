@@ -10,6 +10,7 @@ import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
+import { bumpH } from '../sim/track';
 import { layout, type FullSendLayout } from './layout';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
@@ -87,7 +88,7 @@ export class FullSendRenderer implements GameRenderer {
     this.riderFrac += (wantFrac - this.riderFrac) * Math.min(1, dt * 1.5);
     const RX = Math.round(this.riderFrac * W);
     const terr = this.terr(s);
-    const roadH = (x: number) => s.hill * terr.elev(x / s.stretch) * s.stretch;
+    const roadH = (x: number) => s.hill * (terr.elev(x / s.stretch) * s.stretch + s.bumpScale * bumpH(x, s.terrainSeed));
     const p = s.piece;
     const lift = (x: number) => rampLift(p, x);
     // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
@@ -202,6 +203,17 @@ export class FullSendRenderer implements GameRenderer {
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     g.restore();
+    // dust kicked up by a hop landing
+    const la = s.t - s.landAt;
+    if (la >= 0 && la < 0.6 && s.landImpact > 1.5 && !inLoop) {
+      const k = la / 0.6, n = Math.min(10, Math.round(s.landImpact));
+      g.globalAlpha = 0.7 * (1 - k); g.fillStyle = col((l) => l.groundDark);
+      for (let i = 0; i < n; i++) {
+        const dx = (hash01(i * 3 + 1) - 0.7) * 30 * k - k * 14, dy = -hash01(i * 3 + 2) * 8 * Math.sin(k * Math.PI);
+        g.fillRect(Math.round(rx + dx), Math.round(roadY(s.x) + dy), 2, 2);
+      }
+      g.globalAlpha = 1;
+    }
 
     // ---- foreground and speed lines ----
     const fu = s.camX * PPM * FORE_PARALLAX;

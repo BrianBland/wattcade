@@ -53,3 +53,24 @@ describe('tours', () => {
     }
   });
 });
+
+import { bumpAt, bumpH, takesOff } from '../sim/track';
+describe('bumps (Line Rider hops)', () => {
+  it('are continuous and come back to the road', () => {
+    for (let x = 0; x < 20000; x += 0.25) expect(Math.abs(bumpH(x + 0.25, 7) - bumpH(x, 7))).toBeLessThan(0.6);
+    const b = [...Array(200).keys()].map((k) => bumpAt(k * 140 + 70, 7)).find((q) => q?.kind === 'kicker')!;
+    expect(bumpH(b.x0 - 0.01, 7)).toBe(0);
+    expect(bumpH(b.x0 + b.len + 0.01, 7)).toBe(0);
+    expect(bumpH(b.x0 + b.up, 7)).toBeCloseTo(b.h, 5);
+  });
+  it('fast riders take off over a crest that slow riders roll over', () => {
+    const curv = -0.03; // 1/m, a roller crest
+    expect(takesOff(40, curv, 30)).toBe(true);
+    expect(takesOff(20, curv, 30)).toBe(false);
+  });
+  it('a Z2 cruise already gets airtime, a faster cruise gets more', () => {
+    const z2 = runHeadless({ game: module, script: 'z2', minutes: 6, seed: 4, simOpts: { tour: 'quick' } }).summary;
+    expect(Number(z2.hops)).toBeGreaterThan(10);
+    expect(Number(z2.longestHopS)).toBeGreaterThan(0.4);
+  });
+});

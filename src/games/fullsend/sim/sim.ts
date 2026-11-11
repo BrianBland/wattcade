@@ -9,6 +9,8 @@ export interface FullSendOpts {
   seed?: number; tour?: string; terrainSeed?: number;
   /** Test/demo pilot: steers every hop to match the slope it will land on. */
   autolean?: boolean;
+  /** Route at each fork: 'main' (default, the tour's planned branch), 'alt', or 'alternate' (alt on odd sets). */
+  forks?: 'main' | 'alt' | 'alternate';
   /** Test/demo pilot: holds the jet (and asks for the power via hooks.powerFtp) when a ring is ahead and above. */
   autojet?: boolean;
 }
@@ -34,6 +36,7 @@ export interface PieceView {
   medal: Medal | -1;
   th: [number, number, number];
 }
+export interface ForkOption { kind: PieceKind; biome: BiomeId; title: string }
 export interface SetResult { kind: PieceKind; biome: BiomeId; title: string; medal: Medal; detail: string }
 
 export interface FullSendSnapshot {
@@ -66,6 +69,10 @@ export interface FullSendSnapshot {
   fromTier: Tier | null; splashAt: number; jet: 'on' | 'weak' | null; jetFtp: number;
   airH: [number, number] | null; got: Array<{ id: number; kind: AirKind; at: number }>;
   rings: number; stars: number; chain: number;
+  /** A fork in the road before the next set: two branches (same sprint length), the one you're on, and seconds left to choose. */
+  fork: { set: number; options: [ForkOption, ForkOption]; pick: 0 | 1; closesInS: number } | null;
+  /** Biomes you've been through this ride, in order. */
+  visited: BiomeId[];
   hooks: Record<string, unknown>;
 }
 
@@ -182,7 +189,20 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
 
   const scale = () => tun.tourScale();
-  const set = (): TourSet | null => (setIndex >= 0 && setIndex < tour.sets.length ? tour.sets[setIndex] : null);
+  /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
+  const route: Array<0 | 1> = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
+  const setAt = (i: number): TourSet | null => {
+    const b = tour.sets[i];
+    if (!b) return null;
+    return route[i] === 1 && b.alt ? { ...b, kind: b.alt.kind, biome: b.alt.biome } : b;
+  };
+  const set = (): TourSet | null => (setIndex >= 0 && setIndex < tour.sets.length ? setAt(setIndex) : null);
+  /** The set whose fork is ahead (the first set during the warm-up, the next one during a recovery), or -1. */
+  const forkSet = () => (phase === 'warmup' ? 0 : phase === 'recovery' && setIndex + 1 < tour.sets.length ? setIndex + 1 : -1);
+  /** When the fork is open (phase seconds): late in the warm-up, early in a recovery, before the scenery changes. */
+  const forkWindow = (): [number, number] => (phase === 'warmup' ? [phaseS() * 0.55, phaseS() * 0.75] : [phaseS() * 0.05, phaseS() * 0.3]);
+  const visited: BiomeId[] = [];
+  const visit = (b: BiomeId) => { if (visited[visited.length - 1] !== b) visited.push(b); };
   const speedPerFtp = () => tun.kmhPerFtp() / 3.6;
   const roadH = (xx: number) => hill * (terrain.elev(xx / tun.hillStretch()) * tun.hillStretch() + (tun.bumps() ? tun.bumpScale() * bumpH(xx, terrainSeed) : 0));
   const slopeAt = (xx: number) => (roadH(xx + 0.25) - roadH(xx - 0.25)) / 0.5;
@@ -246,7 +266,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
   function startSet(i: number) {
     setIndex = i;
-    const s = tour.sets[i], t = th[s.kind]();
+    const s = setAt(i)!, t = th[s.kind]();
     const lay = toTier ?? tier; // up on the sky islands or the moon, the set piece happens up there
     const biome: BiomeId = lay === 'sky' || lay === 'moon' ? tierBiome(lay) : s.biome;
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
@@ -410,8 +430,19 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost, dt, tun.spoolS());
 
       // phase machine
+      // a fork in the road: ◀ / ▶ picks the branch while it's open (the plan is the default)
+      const fs = forkSet(), fw = forkWindow();
+      if (fs >= 0 && tour.sets[fs].alt && !opts.forks && phaseT >= fw[0] && phaseT < fw[1]) {
+        if (input.pressed.has('left')) route[fs] = 0;
+        if (input.pressed.has('right')) route[fs] = 1;
+      }
       if (phase === 'warmup') {
-        if (phaseT >= phaseS()) startSet(0);
+        const nx = setAt(0)!;
+        if (nx.biome !== cur && phaseT >= fw[1]) {
+          next = nx.biome; mix = Math.min(1, mix + dt / tun.blendS());
+          if (mix >= 1) { cur = next; mix = 0; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
+        }
+        if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(0); }
       } else if (phase === 'approach' && s && piece) {
         piece.x0 = atEnd(s.kind) ? x + v * (phaseS() - phaseT + s.effortS) : x + v * (phaseS() - phaseT);
         if (phaseT >= phaseS()) {
@@ -455,10 +486,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (k >= 1) { x = end; piece.surfaced = true; finishPiece(0, 'turtle tow'); setMode('road'); v = targetSpeed(0.5, speedPerFtp()); }
         } else payoff(dt, now);
       } else if (phase === 'recovery') {
-        const nx = tour.sets[setIndex + 1];
+        const nx = setAt(setIndex + 1);
         if (nx && nx.biome !== cur) {
           next = nx.biome;
-          if (phaseT >= phaseS() * 0.25) mix = Math.min(1, mix + dt / tun.blendS());
+          if (phaseT >= forkWindow()[1]) mix = Math.min(1, mix + dt / tun.blendS());
           if (mix >= 1) { cur = next; mix = 0; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
         }
         if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(setIndex + 1); }
@@ -607,6 +638,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       grade = +gr.toFixed(1);
       ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: grade });
 
+      if (!toTier) visit(tier === 'ground' ? (mix < 0.5 ? cur : next) : shown());
       top = Math.max(top, v);
       ctx.debug('fullsend.phase', phase); ctx.debug('fullsend.kph', +(v * 3.6).toFixed(0)); ctx.debug('fullsend.grade', grade);
       if (piece) ctx.debug('fullsend.live', +piece.live.toFixed(2));
@@ -626,13 +658,28 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         return { ...base, targetZone: { min: powerZone(piece.th[0]), max: 5, label: piece.title, source: 'power' } };
       }
       if (phase === 'approach' && piece) return { ...base, targetZone: { min: 1, max: 3, label: `Get ready: ${piece.title}` } };
+      const fs = forkSet(), fw = forkWindow();
+      if (fs >= 0 && tour.sets[fs].alt && phaseT >= fw[0] && phaseT < fw[1]) {
+        const b = tour.sets[fs];
+        base.controls = [
+          { button: 'left', label: `Route: ${pieceTitle(b.kind, b.biome)}`, shortLabel: 'Route ◀', active: true, displayOrder: 0 },
+          { button: 'right', label: `Route: ${pieceTitle(b.alt!.kind, b.alt!.biome)}`, shortLabel: 'Route ▶', active: true, displayOrder: 1 },
+          ...controls.filter((c) => c.button !== 'left' && c.button !== 'right'),
+        ];
+      }
       if (jet) return { ...base, targetZone: { min: powerZone(tun.jetFtp()), max: 5, label: 'Jet: push!', source: 'power' } };
       if (phase === 'warmup') return { ...base, targetZone: { min: 1, max: 2, label: 'Warm-up' } };
       return { ...base, targetZone: { min: 1, max: 2, label: phase === 'cooldown' || phase === 'done' ? 'Cool-down' : 'Recover' } };
     },
     snapshot(): FullSendSnapshot {
       const now = ctx.clock.now();
-      const nx = phase === 'warmup' ? tour.sets[0] : phase === 'recovery' ? tour.sets[setIndex + 1] : null;
+      const nx = phase === 'warmup' ? setAt(0) : phase === 'recovery' ? setAt(setIndex + 1) : null;
+      const fs = forkSet(), fw = forkWindow();
+      const fork = fs >= 0 && tour.sets[fs].alt && phaseT >= fw[0] && phaseT < fw[1] ? {
+        set: fs, pick: route[fs],
+        options: [0, 1].map((r) => { const b = tour.sets[fs], k = r ? b.alt!.kind : b.kind, bi = r ? b.alt!.biome : b.biome; return { kind: k, biome: bi, title: pieceTitle(k, bi) }; }) as [ForkOption, ForkOption],
+        closesInS: fw[1] - phaseT,
+      } : null;
       const nextInfo = phase === 'approach' && piece ? { kind: piece.kind, title: piece.title, biome: piece.biome, inS: phaseS() - phaseT }
         : nx ? { kind: nx.kind, title: pieceTitle(nx.kind, nx.biome), biome: nx.biome, inS: phaseS() - phaseT + tun.approachS() } : null;
       return {
@@ -648,6 +695,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         results: [...results],
         topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
         tier, lift, alt: y - roadH(x), toTier, warp, edgeX,
+        fork, visited: [...visited],
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
         hooks: { shielded: phase === 'effort', seg: phase, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
@@ -659,7 +707,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
         skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain,
-        distanceKm: +(x / 1000).toFixed(1), medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
+        distanceKm: +(x / 1000).toFixed(1), route: route.map((r) => (r ? 'B' : 'A')).join(''), biomesSeen: new Set(visited).size, medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },
     dispose() { ctx.resistance.clear('terrain'); },

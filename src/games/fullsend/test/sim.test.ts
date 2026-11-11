@@ -142,3 +142,31 @@ describe('jet, rings and stars up high', () => {
     expect(Number(s.sim.summary().jetS)).toBe(0);
   });
 });
+
+describe('forks: pick your route', () => {
+  it('every set has an alternative branch with the same sprint length', () => {
+    for (const t of Object.values(TOURS)) for (const s of t.sets) {
+      expect(s.alt).toBeTruthy();
+      expect(s.alt!.kind !== s.kind || s.alt!.biome !== s.biome).toBe(true);
+    }
+  });
+  it('taking the other branch changes the set pieces and scenery, not the sprint lengths', () => {
+    const run = (forks: 'main' | 'alt') => runHeadless({ game: module, script: 'hook-responsive', minutes: 22, seed: 5, simOpts: { tour: 'quick', forks } });
+    const a = run('main'), b = run('alt');
+    expect(a.summary.route).toBe('AAAAA');
+    expect(b.summary.route).toBe('BBBBB');
+    const kinds = (r: typeof a) => r.events.filter((e) => e.type === 'setPiece').map((e) => (e.data as { kind: string }).kind);
+    expect(kinds(a)).toEqual(TOURS.quick.sets.map((s) => s.kind));
+    expect(kinds(b)).toEqual(TOURS.quick.sets.map((s) => s.alt!.kind));
+    expect(a.isOver && b.isOver).toBe(true); // (payoff animations differ in length, sprints don't)
+  });
+  it('pressing right while the fork is open takes the other branch', () => {
+    const right: InputState = { held: new Set(), pressed: new Set(['right']), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 0, source: 'script' };
+    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => right }, fake: { script: 'z2' }, simOpts: { tour: 'quick' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): { fork: { pick: number } | null; phase: string; piece: { kind: string } | null } }).snapshot();
+    let sawFork = false;
+    while (snap().phase === 'warmup') { s.step(30); if (snap().fork) { sawFork = true; expect(snap().fork!.pick).toBe(1); } }
+    expect(sawFork).toBe(true);
+    expect(snap().piece?.kind).toBe(TOURS.quick.sets[0].alt!.kind);
+  });
+});

@@ -198,6 +198,15 @@ export class FullSendRenderer implements GameRenderer {
       drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
     }
 
+    // ---- fork signposts beside the road while you choose ----
+    if (s.fork) {
+      const pick = s.fork.pick;
+      for (let wx = Math.ceil((s.camX - RX / PPM) / 80) * 80 + 30; sx(wx) < W + 40; wx += 80) {
+        const px = Math.round(sx(wx)), py = Math.round(roadY(wx));
+        drawForkSign(g, px, py, pick, LOOKS[s.fork.options[0].biome].ground, LOOKS[s.fork.options[1].biome].ground);
+      }
+    }
+
     // ---- rings and stars up high ----
     if (s.airH) {
       const d0 = s.camX + (0 - RX) / PPM - 10, d1 = s.camX + (W - RX) / PPM + 10;
@@ -352,6 +361,22 @@ export class FullSendRenderer implements GameRenderer {
       m.fillStyle = '#ffffff'; m.font = font(700, 15);
       m.fillText(p.title, (B.x + B.w / 2) * d, (B.y + B.h * 0.74) * d);
       this.meter(s, p);
+    } else if (s.fork) {
+      panel(B);
+      const f = s.fork;
+      m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 13);
+      m.fillText(`FORK IN THE ROAD · ◀ ▶ to choose · ${Math.ceil(f.closesInS)} s`, (B.x + B.w / 2) * d, (B.y + B.h * 0.2) * d);
+      f.options.forEach((o, i) => {
+        const bx = B.x + 10 + i * (B.w - 20) / 2, bw = (B.w - 20) / 2 - 6 + (i ? 6 : 0), on = f.pick === i;
+        const by = B.y + B.h * 0.36, bh = B.h * 0.56;
+        m.fillStyle = on ? 'rgba(255,210,59,0.22)' : 'rgba(255,255,255,0.06)'; m.fillRect((bx + (i ? 6 : 0)) * d, by * d, (bw - (i ? 6 : 0)) * d, bh * d);
+        if (on) { m.strokeStyle = '#ffd23b'; m.lineWidth = 2 * d; m.strokeRect((bx + (i ? 6 : 0)) * d, by * d, (bw - (i ? 6 : 0)) * d, bh * d); }
+        const cx = bx + bw / 2 + (i ? 3 : 0);
+        m.fillStyle = on ? '#ffd23b' : '#cfd3e8'; m.font = font(900, 16);
+        m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, cx * d, (by + bh * 0.36) * d);
+        m.fillStyle = '#ffffff'; m.font = font(600, 12);
+        m.fillText(BIOME_NAMES[o.biome], cx * d, (by + bh * 0.74) * d);
+      });
     } else if ((s.phase === 'recovery' || s.phase === 'warmup') && s.next) {
       const b2 = { ...B, h: B.h * 0.6 };
       panel(b2, 0.5);
@@ -475,4 +500,18 @@ export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTi
   if (s.toTier === 'sky') return { text: 'SKY LAUNCH!', color: '#9fe8ff' };
   if (s.toTier === 'moon') return { text: 'MOON SHOT!', color: '#fff3b0' };
   return { text: 'BREACH!', color: '#6fe0d0' };
+}
+
+/** A fork signpost: two arrow boards (left / right), each with a swatch of its biome; the picked one glows. */
+function drawForkSign(g: G, x: number, y: number, pick: 0 | 1, colA: string, colB: string) {
+  g.fillStyle = '#5a3b22'; g.fillRect(x - 1, y - 30, 2, 30);
+  const board = (dir: -1 | 1, yy: number, col: string, on: boolean) => {
+    const x0 = dir < 0 ? x - 18 : x + 1, x1 = dir < 0 ? x - 1 : x + 18;
+    g.fillStyle = on ? '#ffd23b' : '#d8c8a0';
+    g.beginPath(); g.moveTo(x0, yy); g.lineTo(x1, yy); g.lineTo(dir > 0 ? x1 + 4 : x1, yy + 4); g.lineTo(x1, yy + 8); g.lineTo(x0, yy + 8);
+    if (dir < 0) g.lineTo(x0 - 4, yy + 4); g.closePath(); g.fill();
+    g.fillStyle = col; g.fillRect(dir < 0 ? x0 + 3 : x1 - 9, yy + 2, 6, 4);
+  };
+  board(-1, y - 30, colA, pick === 0);
+  board(1, y - 20, colB, pick === 1);
 }

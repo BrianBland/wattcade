@@ -4,7 +4,11 @@ import type { BiomeId } from '../../warmup/sim/terrain';
 export type PieceKind = 'smash' | 'leap' | 'loop' | 'dive' | 'outrun';
 export type ChaserKind = 'trex' | 'avalanche' | 'wave' | 'boulder';
 
-export interface TourSet { kind: PieceKind; biome: BiomeId; effortS: number; recoveryS: number; finale?: boolean }
+export interface TourSet {
+  kind: PieceKind; biome: BiomeId; effortS: number; recoveryS: number; finale?: boolean;
+  /** The other branch at the fork before this set: same sprint length, different set piece and scenery. */
+  alt?: { kind: PieceKind; biome: BiomeId };
+}
 export interface Tour { id: string; name: string; warmupS: number; cooldownS: number; sets: TourSet[] }
 
 /** Fixed tours: each set piece lives in a biome that suits it, and the biome changes during the recovery before it. */
@@ -12,24 +16,24 @@ export const TOURS: Record<string, Tour> = {
   quick: {
     id: 'quick', name: 'Quick Send', warmupS: 240, cooldownS: 150,
     sets: [
-      { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75 },
-      { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 90 },
-      { kind: 'outrun', biome: 'volcano', effortS: 45, recoveryS: 140 },
-      { kind: 'loop', biome: 'jungle', effortS: 25, recoveryS: 110 },
-      { kind: 'leap', biome: 'snow', effortS: 20, recoveryS: 0, finale: true },
+      { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75, alt: { kind: 'leap', biome: 'seaside' } },
+      { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 90, alt: { kind: 'smash', biome: 'market' } },
+      { kind: 'outrun', biome: 'volcano', effortS: 45, recoveryS: 140, alt: { kind: 'dive', biome: 'underwater' } },
+      { kind: 'loop', biome: 'jungle', effortS: 25, recoveryS: 110, alt: { kind: 'outrun', biome: 'snow' } },
+      { kind: 'leap', biome: 'snow', effortS: 20, recoveryS: 0, finale: true, alt: { kind: 'loop', biome: 'market' } },
     ],
   },
   classic: {
     id: 'classic', name: 'Classic', warmupS: 300, cooldownS: 240,
     sets: [
-      { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75 },
-      { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 85 },
-      { kind: 'loop', biome: 'jungle', effortS: 25, recoveryS: 100 },
-      { kind: 'smash', biome: 'market', effortS: 10, recoveryS: 75 },
-      { kind: 'dive', biome: 'underwater', effortS: 45, recoveryS: 130 },
-      { kind: 'leap', biome: 'snow', effortS: 15, recoveryS: 85 },
-      { kind: 'outrun', biome: 'volcano', effortS: 60, recoveryS: 150 },
-      { kind: 'leap', biome: 'volcano', effortS: 20, recoveryS: 0, finale: true },
+      { kind: 'smash', biome: 'countryside', effortS: 10, recoveryS: 75, alt: { kind: 'leap', biome: 'seaside' } },
+      { kind: 'leap', biome: 'desert', effortS: 15, recoveryS: 85, alt: { kind: 'smash', biome: 'autumn' } },
+      { kind: 'loop', biome: 'jungle', effortS: 25, recoveryS: 100, alt: { kind: 'outrun', biome: 'marsh' } },
+      { kind: 'smash', biome: 'market', effortS: 10, recoveryS: 75, alt: { kind: 'leap', biome: 'snow' } },
+      { kind: 'dive', biome: 'underwater', effortS: 45, recoveryS: 130, alt: { kind: 'outrun', biome: 'desert' } },
+      { kind: 'leap', biome: 'snow', effortS: 15, recoveryS: 85, alt: { kind: 'smash', biome: 'snow' } },
+      { kind: 'outrun', biome: 'volcano', effortS: 60, recoveryS: 150, alt: { kind: 'dive', biome: 'marsh' } },
+      { kind: 'leap', biome: 'volcano', effortS: 20, recoveryS: 0, finale: true, alt: { kind: 'loop', biome: 'jungle' } },
     ],
   },
 };

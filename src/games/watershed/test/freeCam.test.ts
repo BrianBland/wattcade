@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { project, type V3 } from '../render/camFit';
-import { applyFreeCam, easeHome, FreeCamGestures, freeCamActive, freeCamHome, ZOOM_MAX, ZOOM_MIN } from '../render/freeCam';
+import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, inwardYaw, ZOOM_MAX, ZOOM_MIN } from '../render/freeCam';
+import { landmarks, nextLandmark } from '../render/landmarks';
 
 const FOV = (40 * Math.PI) / 180, W = 1180, H = 820, ASPECT = W / H;
 // the two overview cameras: upright (looking up the valley, −X) and sideways (looking across, −Z)
@@ -87,4 +88,60 @@ describe('watershed free camera gestures', () => {
     applyFreeCam(f2, { x: 200, y: 50, z: 0 }, t2, { x0: -80, x1: 90, z0: -55, z1: 55 });
     expect(t2.x).toBe(160);
   });
+});
+
+describe('watershed fly-to-landmark camera', () => {
+  for (const [name, pos, tgt] of CAMS) {
+    it(`${name}: focusing a landmark centres it, close and low`, () => {
+      const poi = { x: tgt.x - 30, y: 9, z: tgt.z + 20 };
+      const f = freeCamHome();
+      const goal = focusState(poi, tgt);
+      let arrived = false;
+      for (let k = 0; k < 400 && !arrived; k++) arrived = easeToward(f, goal, 1 / 60);
+      expect(arrived).toBe(true);
+      const p = { ...pos }, t = { ...tgt };
+      applyFreeCam(f, p, t);
+      const q = project(poi, p, t, FOV, ASPECT)!;
+      expect(Math.abs(q.x)).toBeLessThan(0.02); expect(Math.abs(q.y)).toBeLessThan(0.02);
+      const dist = Math.hypot(p.x - poi.x, p.y - poi.y, p.z - poi.z), dist0 = Math.hypot(pos.x - tgt.x, pos.y - tgt.y, pos.z - tgt.z);
+      expect(dist).toBeLessThan(dist0 * 0.25);
+      const elev = Math.asin((p.y - poi.y) / dist);
+      expect(elev).toBeGreaterThan(0.3); expect(elev).toBeLessThan(0.7);   // a three-quarter view, not straight down
+      expect(easeHome(f, 10)).toBe(true);
+      expect(f).toEqual(freeCamHome());
+    });
+  }
+});
+
+describe('watershed landmarks', () => {
+  const jobs = { mills: [{ kind: 'grist', x: 20, y: 46 }, { kind: 'saw', x: 66, y: 85 }], village: { x: 33, y: 95 }, dam: null as null | { x: number; y: number; broken: boolean } };
+  it('lists the spring, both mills and Millbrook, plus the dam only while it stands', () => {
+    const snap = (dam: typeof jobs.dam) => ({ sourceX: 48, jobs: { ...jobs, dam } }) as unknown as Parameters<typeof landmarks>[0];
+    expect(landmarks(snap(null)).map((l) => l.id)).toEqual(['spring', 'grist', 'saw', 'village']);
+    expect(landmarks(snap({ x: 40, y: 60, broken: false })).map((l) => l.id)).toEqual(['spring', 'grist', 'saw', 'village', 'dam']);
+    expect(landmarks(snap({ x: 40, y: 60, broken: true })).map((l) => l.id)).not.toContain('dam');
+  });
+  it('cycles through them and wraps', () => {
+    const list = landmarks({ sourceX: 48, jobs: { ...jobs } } as unknown as Parameters<typeof landmarks>[0]);
+    expect(nextLandmark(list, null)?.id).toBe('spring');
+    expect(nextLandmark(list, 'saw')?.id).toBe('village');
+    expect(nextLandmark(list, 'village')?.id).toBe('spring');
+    expect(nextLandmark(list, 'dam')?.id).toBe('spring');
+  });
+});
+
+describe('watershed landmark bearing', () => {
+  for (const [name, pos, tgt] of CAMS) {
+    it(`${name}: a landmark by a valley wall is viewed from the valley-centre side`, () => {
+      for (const z of [-30, 30]) {
+        const poi = { x: tgt.x, y: 5, z };
+        const f = focusState(poi, tgt, undefined, 1, inwardYaw(z, pos, tgt));
+        const p = { ...pos }, t = { ...tgt };
+        applyFreeCam(f, p, t);
+        expect(Math.sign(p.z - poi.z)).toBe(-Math.sign(z));   // camera sits toward z = 0
+        expect(Math.abs(p.z)).toBeLessThan(Math.abs(z) + 5);
+      }
+      expect(Math.abs(inwardYaw(0, pos, tgt))).toBeLessThan(1e-9);
+    });
+  }
 });

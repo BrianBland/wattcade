@@ -2,6 +2,7 @@
 import type { WatershedSnapshot } from '../sim/sim';
 import type { Style } from '../sim/plan';
 import { layout, type Box } from './layout';
+import type { Landmark, LandmarkId } from './landmarks';
 
 const STYLE_COLOR: Record<Style, string> = { grind: '#ff9a4a', spin: '#5fd6ff', steady: '#7dff9a', free: '#9aa7b4', salmon: '#ff8a8a' };
 const STYLE_WORD: Record<Style, string> = { grind: 'GRIND', spin: 'SPIN', steady: 'STEADY', free: 'EASY', salmon: 'SWIM' };
@@ -39,6 +40,10 @@ const CSS = `
 .ws-pop.salmon { border-color: #ff8a8a } .ws-pop.warn { background: rgba(110,30,20,0.8) }
 .ws-cam { pointer-events:auto; cursor:pointer; display:none; text-align:center; padding:9px 10px; font-size:15px; touch-action:manipulation }
 .ws-cam.on { display:block }
+.ws-look { pointer-events:none; display:flex; flex-direction:column; justify-content:flex-end; gap:6px; padding:0; background:none; border:none; backdrop-filter:none; -webkit-backdrop-filter:none }
+.ws-look .lk { pointer-events:auto; cursor:pointer; touch-action:manipulation; height:34px; box-sizing:border-box; display:flex; align-items:center; gap:6px; padding:0 10px; border-radius:17px; font-size:14px;
+  background: rgba(10,26,40,0.6); border:1px solid rgba(255,255,255,0.16); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); white-space:nowrap; overflow:hidden }
+.ws-look .lk.on { background: rgba(255,210,63,0.28); border-color:#ffd23f }
 .ws-stats .fish { grid-column: 1 / 3; font-size: 12px; letter-spacing: .08em; opacity:.8; text-transform: uppercase }
 `;
 
@@ -67,6 +72,7 @@ export class Hud {
   private menuEl = document.createElement('div'); private menuKey = ''; private send?: (a: unknown) => void;
   private planKey = '';
   private cam = document.createElement('div'); private resetView?: () => void;
+  private look = document.createElement('div'); private lookKey = ''; private onLook?: (id: LandmarkId) => void;
   private size: [number, number] = [800, 600]; private insetB = 0;
   private rpmLow = 60; private rpmHigh = 110;
 
@@ -79,6 +85,11 @@ export class Hud {
     this.meter.innerHTML = '<div class="row"><span>HEAVY · CARVES</span><span>LIGHT · CARRIES</span></div><div class="track"><div class="band"></div><div class="dot"></div></div>';
     this.cam.className = 'ws-panel ws-cam'; this.cam.textContent = '⟲ Reset view'; this.root.appendChild(this.cam);
     this.cam.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.resetView?.(); });
+    this.look.className = 'ws-panel ws-look'; this.root.appendChild(this.look);
+    this.look.addEventListener('pointerdown', (e) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>('.lk'); if (!el) return;
+      e.stopPropagation(); this.onLook?.(el.dataset.id as LandmarkId);
+    });
     this.menuEl.className = 'ws-menu'; this.menuEl.style.display = 'none'; this.root.appendChild(this.menuEl);
     container.append(this.style, this.root);
   }
@@ -89,7 +100,7 @@ export class Hud {
   private updateMenu(s: WatershedSnapshot) {
     const m = s.menu, open = !!m;
     this.menuEl.style.display = open ? 'block' : 'none';
-    for (const el of [this.block, this.stats, this.plan, this.meter]) el.style.visibility = open ? 'hidden' : 'visible';
+    for (const el of [this.block, this.stats, this.plan, this.meter, this.look]) el.style.visibility = open ? 'hidden' : 'visible';
     if (!m) return;
     const L = layout(this.size[0], this.size[1], this.insetB);
     this.menuEl.style.top = `${Math.max(12, L.UH * 0.16)}px`;
@@ -108,6 +119,15 @@ export class Hud {
   }
 
   onResetView(cb: () => void) { this.resetView = cb; }
+  /** Taps on a landmark button. */
+  onLandmark(cb: (id: LandmarkId) => void) { this.onLook = cb; }
+  /** The landmark buttons (rebuilt only when the list or the focused one changes). */
+  setLandmarks(list: Landmark[], active: LandmarkId | null) {
+    const key = list.map((l) => l.id).join(',') + '|' + active;
+    if (key === this.lookKey) return;
+    this.lookKey = key;
+    this.look.innerHTML = list.map((l) => `<div class="lk${l.id === active ? ' on' : ''}" data-id="${l.id}"><span>${l.icon}</span>${l.label}</div>`).join('');
+  }
   /** Show the reset-view chip while the player has moved the camera. */
   setResetView(on: boolean) { if (this.cam.classList.contains('on') !== on) this.cam.classList.toggle('on', on); }
 
@@ -118,7 +138,7 @@ export class Hud {
   private place() {
     const L = layout(this.size[0], this.size[1], this.insetB);
     const put = (el: HTMLElement, b: Box) => Object.assign(el.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, minHeight: '0' });
-    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter); put(this.pop, L.popup); put(this.cam, L.camChip);
+    put(this.block, L.block); put(this.stats, L.stats); put(this.plan, L.plan); put(this.meter, L.meter); put(this.pop, L.popup); put(this.cam, L.camChip); put(this.look, L.look); this.look.style.height = `${L.look.h}px`;
   }
 
   /** A one-or-two-line instruction popup for `seconds`. */

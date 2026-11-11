@@ -12,10 +12,18 @@ export interface FreeCamState {
   panX: number; panZ: number;
   /** Extra rotation around the vertical axis through the target (radians). */
   yaw: number;
+  /** Raise the look-at point by this much (world units): a landmark up on a terrace stays centred. */
+  lift: number;
+  /** 0 = the auto camera's angle; 1 = a low, three-quarter angle (TILT_ELEV above the horizon). */
+  tilt: number;
 }
 
-export const freeCamHome = (): FreeCamState => ({ zoom: 1, panX: 0, panZ: 0, yaw: 0 });
-export const freeCamActive = (f: FreeCamState) => Math.abs(f.zoom - 1) > 0.02 || Math.hypot(f.panX, f.panZ) > 0.5 || Math.abs(f.yaw) > 0.02;
+/** Elevation (radians above the horizon) of a fully tilted camera: low enough to see a water wheel's face. */
+export const TILT_ELEV = 0.5;
+
+export const freeCamHome = (): FreeCamState => ({ zoom: 1, panX: 0, panZ: 0, yaw: 0, lift: 0, tilt: 0 });
+export const freeCamActive = (f: FreeCamState) => Math.abs(f.zoom - 1) > 0.02 || Math.hypot(f.panX, f.panZ) > 0.5 || Math.abs(f.yaw) > 0.02
+  || Math.abs(f.lift) > 0.5 || f.tilt > 0.02;
 
 /** Fingers spreading by `factor` (> 1) bring the camera closer. */
 export function zoomBy(f: FreeCamState, factor: number): void {
@@ -58,6 +66,13 @@ export function applyFreeCam(f: FreeCamState, pos: V3, tgt: V3, bounds?: { x0: n
     const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
     const rx = ox * c - oz * s, rz = ox * s + oz * c; ox = rx; oz = rz;
   }
+  if (f.tilt > 0) {
+    // swing the camera down toward a low three-quarter view, keeping its distance and compass bearing
+    const hl = Math.hypot(ox, oz), len = Math.hypot(hl, oy), e = Math.atan2(oy, hl);
+    const e2 = e + (TILT_ELEV - e) * Math.min(1, f.tilt);
+    const hx = hl > 1e-3 ? ox / hl : Math.cos(f.yaw), hz = hl > 1e-3 ? oz / hl : Math.sin(f.yaw);
+    ox = Math.cos(e2) * len * hx; oz = Math.cos(e2) * len * hz; oy = Math.sin(e2) * len;
+  }
   ox *= f.zoom; oy *= f.zoom; oz *= f.zoom;
   let tx = tgt.x + f.panX, tz = tgt.z + f.panZ;
   if (bounds) {
@@ -65,17 +80,55 @@ export function applyFreeCam(f: FreeCamState, pos: V3, tgt: V3, bounds?: { x0: n
     const cz = Math.max(Math.min(bounds.z0, tgt.z), Math.min(Math.max(bounds.z1, tgt.z), tz));
     f.panX += cx - tx; f.panZ += cz - tz; tx = cx; tz = cz;   // don't let the offset wind up past the edge
   }
-  tgt.x = tx; tgt.z = tz;
+  tgt.x = tx; tgt.z = tz; tgt.y += f.lift;
   pos.x = tx + ox; pos.y = tgt.y + oy; pos.z = tz + oz;
 }
 
 /** Ease the free camera back to the auto camera; returns true once it's home. */
 export function easeHome(f: FreeCamState, dt: number, rate = 6): boolean {
   const k = 1 - Math.exp(-dt * rate);
-  f.zoom += (1 - f.zoom) * k; f.panX -= f.panX * k; f.panZ -= f.panZ * k; f.yaw -= f.yaw * k;
+  f.zoom += (1 - f.zoom) * k; f.panX -= f.panX * k; f.panZ -= f.panZ * k; f.yaw -= f.yaw * k; f.lift -= f.lift * k; f.tilt -= f.tilt * k;
   if (freeCamActive(f)) return false;
   Object.assign(f, freeCamHome());
   return true;
+}
+
+/** Zoom used when the camera flies to a landmark (fraction of the auto camera's distance). */
+export const FOCUS_ZOOM = 0.2;
+
+/**
+ * The free-camera state that centres world point `poi` for an auto camera currently looking at `autoTgt`: zoomed in
+ * to `zoom` and tilted down to a low angle, so a mill wheel or a dam fills the view.
+ */
+export function focusState(poi: V3, autoTgt: V3, zoom = FOCUS_ZOOM, tilt = 1, yaw = 0): FreeCamState {
+  return { zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom)), panX: poi.x - autoTgt.x, panZ: poi.z - autoTgt.z, yaw, lift: poi.y - autoTgt.y, tilt };
+}
+
+/**
+ * Yaw (for focusState) that puts the camera on the valley-centre side of a landmark at world z = `poiZ` (the valley
+ * axis is z = 0), so a low view of a mill by the valley wall looks in across the river instead of over the wall.
+ * `autoPos`/`autoTgt` are the auto camera; landmarks near the axis keep its bearing.
+ */
+export function inwardYaw(poiZ: number, autoPos: V3, autoTgt: V3): number {
+  const ax = autoPos.x - autoTgt.x, az = autoPos.z - autoTgt.z, al = Math.hypot(ax, az);
+  const bx = al > 1e-3 ? ax / al : 1, bz = al > 1e-3 ? az / al : 0;
+  const side = Math.max(-1, Math.min(1, -poiZ / 16));   // 0 near the axis, ±1 by the walls: lean the camera toward the centre
+  const dx = bx * (1 - Math.abs(side)) + 0.35 * Math.abs(side) * Math.sign(bx || 1), dz = bz * (1 - Math.abs(side)) + side;
+  let yaw = Math.atan2(dz, dx) - Math.atan2(bz, bx);
+  while (yaw > Math.PI) yaw -= Math.PI * 2;
+  while (yaw < -Math.PI) yaw += Math.PI * 2;
+  return yaw;
+}
+
+/** Ease `f` toward `goal` (a fly-to); returns true once it has arrived. */
+export function easeToward(f: FreeCamState, goal: FreeCamState, dt: number, rate = 3): boolean {
+  const k = 1 - Math.exp(-dt * rate);
+  let dy = goal.yaw - f.yaw;
+  while (dy > Math.PI) dy -= Math.PI * 2;
+  while (dy < -Math.PI) dy += Math.PI * 2;
+  f.zoom += (goal.zoom - f.zoom) * k; f.panX += (goal.panX - f.panX) * k; f.panZ += (goal.panZ - f.panZ) * k;
+  f.yaw += dy * k; f.lift += (goal.lift - f.lift) * k; f.tilt += (goal.tilt - f.tilt) * k;
+  return Math.abs(goal.zoom - f.zoom) < 0.01 && Math.hypot(goal.panX - f.panX, goal.panZ - f.panZ) < 0.2 && Math.abs(goal.lift - f.lift) < 0.2;
 }
 
 export interface CamView { pos: V3; tgt: V3; fovY: number; H: number }

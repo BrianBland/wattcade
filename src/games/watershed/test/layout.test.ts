@@ -7,7 +7,7 @@ describe('watershed layout', () => {
     it(`${W}x${H} inset ${b}: everything sits above the shell HUD`, () => {
       const L = layout(W, H, b);
       const limit = H - b;
-      for (const box of [L.block, L.stats, L.meter, L.plan, L.popup, L.camChip]) {
+      for (const box of [L.block, L.stats, L.meter, L.plan, L.popup, L.camChip, L.look]) {
         expect(box.y + box.h).toBeLessThanOrEqual(limit);
         expect(box.x).toBeGreaterThanOrEqual(0);
         expect(box.x + box.w).toBeLessThanOrEqual(W);
@@ -15,7 +15,7 @@ describe('watershed layout', () => {
       expect(L.focusY).toBeLessThan(limit);
       expect(L.viewOffsetY).toBeCloseTo(Math.min(b, H / 2) / 2);
       // the HUD cards never overlap each other
-      const boxes = [L.block, L.stats, L.meter, L.plan, L.camChip];
+      const boxes = [L.block, L.stats, L.meter, L.plan, L.camChip, L.look];
       for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
         const p = boxes[i], q = boxes[j];
         expect(p.x + p.w <= q.x || q.x + q.w <= p.x || p.y + p.h <= q.y || q.y + q.h <= p.y).toBe(true);

@@ -20,6 +20,8 @@ export interface Layout {
   band: { yLo: number; yHi: number };
   /** The "reset view" chip shown while the player has moved the camera: right edge, under the stats card. */
   camChip: Box;
+  /** Landmark buttons (fly the camera to a mill, the village, the dam): bottom-right, above the shell HUD. */
+  look: Box;
 }
 
 export function layout(W: number, H: number, insetB: number): Layout {
@@ -39,10 +41,12 @@ export function layout(W: number, H: number, insetB: number): Layout {
   const below = narrow ? stats.y + stats.h + 12 : wide ? block.y + block.h + 12 : pad;
   const popup: Box = { x: (W - pw) / 2, y: Math.min(Math.max(below, UH * 0.3), UH - ph - pad), w: pw, h: ph };
   const camChip: Box = { x: W - pad - 120, y: Math.max(pad, Math.min(UH - 40 - pad, stats.y + stats.h + 8)), w: 120, h: 40 };
+  const lookH = 5 * 34 + 2 * 6;
+  const look: Box = { x: W - pad - 132, y: Math.max(camChip.y + camChip.h + 8, UH - pad - lookH), w: 132, h: lookH };
   // the overview's band: below the top strip when wide; otherwise up to the top (the column only covers sky/peaks)
   const off = b / 2, top = wide ? block.y + block.h + 4 : 0;
   const ndc = (row: number) => 1 - (2 * (row + off)) / H;
-  return { UH, viewOffsetY: off, focusY: UH / 2, block, stats, plan, meter, popup, wide, band: { yLo: ndc(UH - 4), yHi: ndc(top) }, camChip };
+  return { UH, viewOffsetY: off, focusY: UH / 2, block, stats, plan, meter, popup, wide, band: { yLo: ndc(UH - 4), yHi: ndc(top) }, camChip, look };
 }
 
 /**

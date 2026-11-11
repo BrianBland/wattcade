@@ -14,14 +14,18 @@ CONTRACT-REQUEST: none. `requires: { erg: true }` (arcade gate: `src/shell/servi
 - `events.ts`: seeded geological event deck (quake/slide/volcano + rare meteor), heightfield edits to h and h0, `mat` grid.
 - `plan.ts`: `makePlan(20|30|45|60, skipWarmup?)` (pre-game menu; `PLAN` = 45 min, 16 blocks), each block with a `phase`, opt. `job`/`beavers`;
   menu Y/tap skips the warm-up (drops evaporate+cloud; rain starts from a `warmCloud`-size cloud).
-- `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer, hoods dart L/R, Y view, A boost); cues ring for the renderer;
+- `sim.ts`: ERG effect `flow`; controls (◀▶/paddles steer — in river blocks the *current marker* (`Emit.pull`, `current*` tunables),
+  hoods dart L/R, Y view, Z landmark, A boost); `flowLine.ts` traces where water goes; cues ring for the renderer;
   score; save `{rides, bestCarved, bestDelta, bestSalmon, bestScore}`.
 
 ## Render (`render/`)
 `renderer.ts` (drops as spray only, cameras per phase/view, cues → sound/popups), `camFit.ts` (overview fitted to the screen;
-wide = sideways, spring left, HUD strip on top), `freeCam.ts` (pinch/drag/twist/wheel offset on the auto cam; double-tap resets), `terrainView.ts` (2× terrain,
-procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
-`skyLayer.ts` (cloud clears the highest ground under its footprint: `layout.ts#cloudAltitude`), `jobsLayer.ts`, `eventsLayer.ts`, `creatures.ts`, `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
+wide = sideways, spring left, HUD strip on top), `freeCam.ts` (pinch/drag/twist/wheel offset on the auto cam; double-tap resets;
+`focusState`/`easeToward` fly to a landmark, close + tilted low), `landmarks.ts` (spring, mills, Millbrook, dam: Z cycles, HUD chips tap),
+`terrainView.ts` (2× mesh, but colour + normal come per pixel from fine-grid textures so triangles don't show; colour alpha = fresh cuts,
+drawn as dark wet crumbling earth), `waterView.ts` (merged liquid surface), `outerLand.ts` (world beyond + boundary fence),
+`skyLayer.ts` (cloud clears the highest ground under its footprint: `layout.ts#cloudAltitude`), `jobsLayer.ts` (+ `buildings.ts`: cottages, mills, dam sticks; chimney smoke), `eventsLayer.ts`, `creatures.ts` (no target markers;
+bears walk/rear/swipe, eagles spiral/bank/dive with a water shadow; spray), `wildlife.ts` (articulated bear, eagle, beaver + pose fns), `riverbank.ts`, `scenery.ts`, `models.ts`, `hud.ts`, pure `layout.ts`,
 `upsample.ts` (tested).
 
 ## Tools
@@ -30,16 +34,7 @@ procedural shader), `waterView.ts` (merged liquid surface), `outerLand.ts` (worl
 
 ## Numbers (seed 1, 46 min, testProfile FTP 200)
 Autopilot: 6/8 objectives, ~80+ salmon home, 2 springs. No steering: ~2 objectives. Sim ~0.4 ms/step (desktop).
-
 ## Gaps / next
 - Salmon/sky/job params are constants, not ctx.tuning yet. Renderer cost (55k-vertex meshes, riverbank) unprofiled
-  on iPad. Not built: story-mode levels (SPEC §6.4 "Later").
-- Shared HUD publishes the phase boost cooldown and Active status; steering/camera stay in start/pause help for controller users.
-
-## Achievement curve
-Salmon Shepherd and Breadbasket require 500 lifetime salmon and 200 lifetime
-harvests. Cadence Maestro and Miller each require three completed rides with at
-least 20 active minutes; their performance thresholds remain 90% in-band time and
-180 flour + 180 planks. Act of Nature requires two distinct completed geological
-events and a finished ride. Delta Builder's label now matches its 8,000 threshold.
-The Water Cycle remains an introduction. Existing earned rewards are preserved.
+  on iPad. Not built: campaign levels (design doc linked from the PR); per-pixel terrain maps upload ~440 KB at 10 Hz.
+- Achievement thresholds live in `achievements.ts` (500 salmon, 200 harvests, 3 rides ≥ 20 active min, 8,000 delta).

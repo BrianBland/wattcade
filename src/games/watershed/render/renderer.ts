@@ -11,7 +11,8 @@ import { SalmonLayer } from './creatures';
 import { Hud } from './hud';
 import { layout } from './layout';
 import { fitOverhead, overheadPitch, valleyOutline, type V3 } from './camFit';
-import { applyFreeCam, easeHome, FreeCamGestures, freeCamActive, freeCamHome } from './freeCam';
+import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome } from './freeCam';
+import { landmarks, nextLandmark, type LandmarkId } from './landmarks';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { TerrainView } from './terrainView';
 import { OuterLand } from './outerLand';
@@ -77,6 +78,8 @@ export class WatershedRenderer implements GameRenderer {
   private X = new THREE.Vector3(1, 0, 0); private tmpC = new THREE.Color();
   // the player's free camera (pinch / drag / twist) on top of the auto camera; eases home when the scene changes
   private free = freeCamHome(); private freeKey = ''; private homing = false;
+  /** The landmark the camera has flown to (Z or a tap on its button); null = the auto camera (+ free offsets). */
+  private focus: LandmarkId | null = null; private lastLook = -1;
   private freeView: { pos: V3; tgt: V3 } = { pos: { x: 0, y: 100, z: 0 }, tgt: { x: 0, y: 0, z: 0 } };
   private gest = new FreeCamGestures(this.free, () => ({ ...this.freeView, fovY: (this.camera.fov * Math.PI) / 180, H: this.size[1] }), () => { this.homing = true; });
   private detachGestures?: () => void;
@@ -106,7 +109,8 @@ export class WatershedRenderer implements GameRenderer {
     this.hud = new Hud(container);
     this.hud.setSend(ctx.send);
     this.hud.setInsetBottom(this.insetB);
-    this.hud.onResetView(() => { this.homing = true; });
+    this.hud.onResetView(() => { this.homing = true; this.focus = null; });
+    this.hud.onLandmark((id) => this.focusOn(id));
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
@@ -206,12 +210,31 @@ export class WatershedRenderer implements GameRenderer {
     };
   }
 
-  /** Layer the player's zoom / pan / rotate over the auto camera, easing it home when the phase or view changes. */
+  /** Fly the camera to a landmark (again on the same one = back to the auto camera). */
+  private focusOn(id: LandmarkId) {
+    if (this.focus === id) { this.focus = null; this.homing = true; } else { this.focus = id; this.homing = false; }
+  }
+
+  /**
+   * Layer the player's zoom / pan / rotate over the auto camera, easing it home when the phase or view changes.
+   * A focused landmark (Z cycles them, or tap its button) holds the camera on it, close and low, until the player
+   * drags, resets or taps it again.
+   */
   private applyFreeCamera(s: WatershedSnapshot, dt: number) {
+    const marks = landmarks(s);
+    const look = s.look ?? 0;
+    if (this.lastLook < 0) this.lastLook = look;
+    if (look !== this.lastLook) { this.lastLook = look; const n = nextLandmark(marks, this.focus); if (n) { this.focus = n.id; this.homing = false; } }
     const key = `${s.phase}|${s.view}|${s.salmon?.run ?? 0}`;
-    if (key !== this.freeKey) { if (this.freeKey) this.homing = true; this.freeKey = key; }
-    if (this.gest.touched || this.gest.active) { this.gest.touched = false; if (this.gest.active) this.homing = false; }
-    if (this.homing && easeHome(this.free, dt)) this.homing = false;
+    if (key !== this.freeKey) { if (this.freeKey && !this.focus) this.homing = true; this.freeKey = key; }
+    if (this.gest.touched || this.gest.active) { this.gest.touched = false; if (this.gest.active) { this.homing = false; this.focus = null; } }
+    const lm = this.focus ? marks.find((m) => m.id === this.focus) : undefined;
+    if (this.focus && !lm) { this.focus = null; this.homing = true; }
+    if (lm) {
+      const poi = { x: this.wx(lm.y), y: Math.max(SEA, this.terrainView!.heightAt(lm.x, lm.y)) + 1.5, z: this.wz(lm.x) };
+      easeToward(this.free, focusState(poi, { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z }), dt);
+    } else if (this.homing && easeHome(this.free, dt)) this.homing = false;
+    this.hud?.setLandmarks(marks, this.focus);
     const c = this.camera.position, pos = { x: c.x, y: c.y, z: c.z }, tgt = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z };
     const on = freeCamActive(this.free);
     if (on) {
@@ -490,6 +513,7 @@ export class WatershedRenderer implements GameRenderer {
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);
+    this.terrainView!.time.value = tNow / 1000;
     this.forest!.wind.value = tNow / 1000;
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
@@ -533,6 +557,7 @@ export class WatershedRenderer implements GameRenderer {
     this.ro?.disconnect();
     this.detachGestures?.();
     stopAmbient();
+    this.terrainView?.dispose();
     this.hud?.unmount();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;

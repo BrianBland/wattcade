@@ -44,6 +44,8 @@ export interface WatershedSnapshot {
   /** Recent one-shot cues for the renderer (sounds, popups); ids increase. */
   cues: Cue[];
   hooks: { cadence: number };
+  /** Bumped each time the rider presses Z (the renderer flies the camera to the next landmark). */
+  look: number;
 }
 
 export interface SkyView {
@@ -120,7 +122,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   let cutIdx = 0, deltaIdx = 0, saved = false;
   const salmon = new SalmonRun(terrain, ctx.rng);
   const BOOST_S = 3, BOOST_CD = 10;
-  let boostT = 0, boostCd = 0, view: 'overview' | 'follow' = 'overview';
+  let boostT = 0, boostCd = 0, view: 'overview' | 'follow' = 'overview', look = 0;
   const sky = new Sky(terrain.nx, terrain.ny, terrain.coastY, ctx.rng);
   let raining = 0;
   /** The springs (largest first). The first is the one the rider steers; the others stay where the rain put them. */
@@ -280,6 +282,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         if (p === 'shiftUpL') dart -= 1; else if (p === 'shiftDnL') dart -= 0.35;
         else if (p === 'shiftUpR') dart += 1; else if (p === 'shiftDnR') dart += 0.35;
         else if (p === 'y') { view = view === 'follow' ? 'overview' : 'follow'; cue('view', { view }, false); }
+        else if (p === 'z') { look++; cue('look', { n: look }, false); }
         else if (p === 'a' && boostCd <= 0 && !at.done) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
       }
       if (opts.autopilot && boostCd <= 0 && (b.phase === 'salmon' || b.phase === 'cloud')) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
@@ -375,6 +378,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
           { button: 'a', label: BOOST_LABEL[b.phase], shortLabel: b.phase === 'evaporate' ? 'Heat' : b.phase === 'rain' ? 'Burst' : BOOST_LABEL[b.phase], active: boostCd <= 0,
             cooldown: { fill: Math.max(0, 1 - boostCd / BOOST_CD), ready: boostCd <= 0 },
             ...(boostT > 0 ? { indicator: { status: 'Active' } } : {}) }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow', shortLabel: view === 'follow' ? 'Map' : 'Follow' },
+          { button: 'z', label: 'Look at a landmark', shortLabel: 'Look' },
         ],
       };
     },
@@ -404,6 +408,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         salmon: salmon.active ? salmonView() : null,
         cues,
         hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },
+        look,
       };
     },
     isOver: () => !menu && t >= rideS,

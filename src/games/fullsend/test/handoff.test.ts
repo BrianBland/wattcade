@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { handoffMix, handoffRect, HANDOFF, LOBBY_ANCHOR } from '../render/handoff';
+import { handoffMix, handoffRect, HANDOFF, LOBBY_ANCHOR, speedZoom, SPEED_ZOOM } from '../render/handoff';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import type { FullSendSnapshot } from '../sim/sim';
@@ -15,8 +15,8 @@ describe('overworld hand-off', () => {
     for (const [cw, ch] of [[2048, 1536], [1536, 2048], [1280, 720], [3000, 1400]]) {
       const px = Math.max(2, Math.floor(ch / 300)), bufW = Math.ceil(cw / px), bufH = Math.ceil(ch / px), uh = ch * 0.85;
       const rider = { x: Math.round(bufW * 0.28), y: Math.round((uh / px) * 0.68) };
-      for (let f = 0; f <= 1.0001; f += 0.1) {
-        const r = handoffRect(f, { canvasW: cw, canvasH: ch, px, bufW, bufH, rider, uh });
+      for (let f = 0; f <= 1.0001; f += 0.1) for (const zoom of [1, 1.2, SPEED_ZOOM.near]) {
+        const r = handoffRect(f, { canvasW: cw, canvasH: ch, px, bufW, bufH, rider, uh, zoom });
         expect(r.x).toBeLessThanOrEqual(0.5); expect(r.y).toBeLessThanOrEqual(0.5);
         expect(r.x + r.w).toBeGreaterThanOrEqual(cw - 0.5); expect(r.y + r.h).toBeGreaterThanOrEqual(ch - 0.5);
       }
@@ -25,6 +25,14 @@ describe('overworld hand-off', () => {
       expect(full.x + rider.x * px * full.z).toBeCloseTo(cw * LOBBY_ANCHOR.x, 5);
       expect(full.y + rider.y * px * full.z).toBeCloseTo(uh * LOBBY_ANCHOR.y, 5);
     }
+  });
+  it('zooms in when slow and out to the widest view flat out, about the rider', () => {
+    expect(speedZoom(0)).toBe(SPEED_ZOOM.near); expect(speedZoom(200)).toBe(SPEED_ZOOM.far);
+    for (let v = 0; v < 80; v += 5) expect(speedZoom(v + 5)).toBeLessThanOrEqual(speedZoom(v));
+    const o = { canvasW: 2048, canvasH: 1536, px: 4, bufW: 512, bufH: 384, rider: { x: 143, y: 200 }, uh: 1300 };
+    const r = handoffRect(0, { ...o, zoom: 1.3 });
+    expect(r.x + o.rider.x * o.px * r.z).toBeCloseTo(o.rider.x * o.px, 5); // the rider stays put
+    expect(r.y + o.rider.y * o.px * r.z).toBeCloseTo(o.rider.y * o.px, 5);
   });
   it('a ride started from the overworld begins in its biome at its speed, and reports where it ends', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, seed: 3,

@@ -18,11 +18,20 @@ export function handoffMix(fromLobby: boolean, sinceIn: number, sinceOut: number
   return Math.max(entering, leaving);
 }
 
-/** Destination rect (device px) for the low-res buffer so that, at mix f, pixels are the lobby's size and the rider sits
- *  where the lobby has it. `rider` is the rider's buffer position; `uh` the usable height in device px. */
-export function handoffRect(f: number, o: { canvasW: number; canvasH: number; px: number; bufW: number; bufH: number; rider: { x: number; y: number }; uh: number }) {
-  const lobbyPx = Math.max(2, Math.floor(o.canvasH / LOBBY_ROWS));
-  const z = 1 + (lobbyPx / o.px - 1) * f;
+/** Speed zoom: slow = closer in, flat out = the widest view. 1 = the buffer as drawn (the widest); the camera eases
+ *  toward this so it never jumps. Tunable here (render-only, not a bike↔game number). */
+export const SPEED_ZOOM = { slowV: 10, fastV: 70, near: 1.4, far: 1 };
+export function speedZoom(v: number): number {
+  const p = Math.max(0, Math.min(1, (v - SPEED_ZOOM.slowV) / (SPEED_ZOOM.fastV - SPEED_ZOOM.slowV)));
+  return SPEED_ZOOM.near + (SPEED_ZOOM.far - SPEED_ZOOM.near) * ease(p);
+}
+
+/** Destination rect (device px) for the low-res buffer, zoomed by `zoom` (≥ 1) about the rider, and at hand-off mix f
+ *  blended to the lobby's pixel size with the rider where the lobby has it. `rider` is the rider's buffer position;
+ *  `uh` the usable height in device px. */
+export function handoffRect(f: number, o: { canvasW: number; canvasH: number; px: number; bufW: number; bufH: number; rider: { x: number; y: number }; uh: number; zoom?: number }) {
+  const lobbyPx = Math.max(2, Math.floor(o.canvasH / LOBBY_ROWS)), z0 = Math.max(1, o.zoom ?? 1);
+  const z = z0 + (lobbyPx / o.px - z0) * f;
   const ourX = o.rider.x * o.px, ourY = o.rider.y * o.px;
   const ax = ourX + (o.canvasW * LOBBY_ANCHOR.x - ourX) * f, ay = ourY + (o.uh * LOBBY_ANCHOR.y - ourY) * f;
   return { x: ax - o.rider.x * o.px * z, y: ay - o.rider.y * o.px * z, w: o.bufW * o.px * z, h: o.bufH * o.px * z, z };

@@ -17,13 +17,13 @@ import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs'
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
-import { HANDOFF, handoffMix, handoffRect } from './handoff';
+import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
 const HOUR = (() => { try { const v = new URLSearchParams(globalThis.location?.search ?? '').get('hour'); return v == null ? null : Number(v); } catch { return null; } })();
-const ROWS = 300;        // target low-res rows: a wide view so the rider is small, the road ahead is readable and speed shows
+const ROWS = 360;        // target low-res rows: a wide view so the rider is small, the road ahead is readable and speed shows
 const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
@@ -49,7 +49,7 @@ export class FullSendRenderer implements GameRenderer {
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
-  private dusk = 0;
+  private dusk = 0; private zoom = NaN; private cam = { x: 0, y: 0, s: 1 };
   /** Overworld hand-off: when we first drew, when the ride ended (s), and the rider's buffer position. */
   private handIn = NaN; private handOut: number | null = null; private riderBuf = { x: 0, y: 0 };
   private sound = new FullSendSound();
@@ -240,7 +240,7 @@ export class FullSendRenderer implements GameRenderer {
       if (sp.kind === 'gate') { g.fillRect(px - 26, py - postH, 3, postH); g.fillRect(px + 23, py - postH, 3, postH); }
       else if (sp.kind === 'fork' || sp.kind === 'next') { g.fillRect(px - 16, py - postH, 2, postH); g.fillRect(px + 14, py - postH, 2, postH); }
       else g.fillRect(px - 1, py - postH, 2, postH);
-      this.signs.push({ sp, x: px / k, y: (py - postH) / k });
+      this.signs.push({ sp, x: px, y: py - postH }); // buffer px; drawSigns maps them through the camera
     }
 
     // ---- rings and stars up high ----
@@ -355,13 +355,13 @@ export class FullSendRenderer implements GameRenderer {
     m.imageSmoothingEnabled = false;
     if (!Number.isFinite(this.handIn)) this.handIn = now;
     const hand = handoffMix(s.fromLobby, now - this.handIn, this.handOut == null ? null : now - this.handOut);
-    if (hand > 0.001) {
-      const r = handoffRect(hand, { canvasW: this.canvas.width, canvasH: this.canvas.height, px: this.px, bufW: W, bufH: H, rider: this.riderBuf, uh: UH * this.px });
-      m.drawImage(this.buf, Math.round(r.x + dx), Math.round(r.y + dy), Math.round(r.w), Math.round(r.h));
-    } else {
-      if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
-      m.drawImage(this.buf, dx, dy, W * this.px, H * this.px);
-    }
+    // speed zoom: closer when slow, out to the full buffer flat out (eased, so a landing or a crash doesn't snap it)
+    const zt = s.menu ? speedZoom(0) : speedZoom(s.v);
+    this.zoom = Number.isFinite(this.zoom) ? this.zoom + (zt - this.zoom) * Math.min(1, dt * 0.8) : zt;
+    const r = handoffRect(hand, { canvasW: this.canvas.width, canvasH: this.canvas.height, px: this.px, bufW: W, bufH: H, rider: this.riderBuf, uh: UH * this.px, zoom: this.zoom });
+    if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+    this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
+    m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
     if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
@@ -580,7 +580,8 @@ export class FullSendRenderer implements GameRenderer {
       return fg;
     };
     m.textBaseline = 'middle';
-    for (const { sp, x, y } of this.signs) {
+    for (const sg of this.signs) {
+      const sp = sg.sp, x = (this.cam.x + sg.x * this.cam.s) / d, y = (this.cam.y + sg.y * this.cam.s) / d;
       if (sp.kind === 'count') {
         const w = 96, h = 54, fg = board(x - w / 2, y - h, w, h, sp.tone);
         m.textAlign = 'center'; m.fillStyle = fg; m.font = f(800, 10); m.fillText(sp.title, x * d, (y - h + 15) * d);

@@ -490,7 +490,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const sim = {
     update(dt: Seconds) {
       const now = ctx.clock.now();
-      if (menu) { updateMenu(dt); return; }
+      if (menu) { updateMenu(dt); y = roadH(x); return; } // sit on the road while the setup sign is up
       actions.length = 0;
       if (phase === 'done') return;
       if (tun.maxGrade() !== maxGrade) { maxGrade = tun.maxGrade(); terrain = makeTerrain(terrainSeed, maxGrade); }

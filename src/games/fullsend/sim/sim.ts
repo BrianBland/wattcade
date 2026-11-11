@@ -94,8 +94,31 @@ export interface FullSendSnapshot {
   fromLobby: boolean;
   /** The last landed flip and how long ago; rotation from leaning since takeoff (rad, + = back). */
   flip: { name: string; age: number } | null; spun: number;
+  /** In a leap: what's leaping out of the pit (world m), when one last hit you, and the bullet-time factor (1 = normal). */
+  hazards: HazardView[]; scorchAt: number; leapSlow: number;
   hooks: Record<string, unknown>;
 }
+
+/** Something that leaps out of a canyon pit at the rider (fireball, ice shard, piranha), peaking on your arc. */
+export interface Hazard { x: number; t0: number; vy: number; g: number; hit: boolean }
+export interface HazardView { x: number; y: number; vy: number; hit: boolean }
+/** Hazards for a leap from `x0` across `len` at launch speed (vx, vy0) with gravity g: each peaks where your arc crosses it,
+ *  ± a bit, so holding your line gets you hit and steering round them doesn't. Pure and seeded. */
+export function leapHazards(n: number, x0: number, len: number, vx: number, vy0: number, g: number, seed: number, floorY = -10): Hazard[] {
+  const out: Hazard[] = [], hg = 30;
+  for (let i = 0; i < n; i++) {
+    const h = (k: number) => { const q = Math.sin((seed + i * 97.13 + k * 13.7) * 12.9898) * 43758.5453; return q - Math.floor(q); };
+    const x = x0 + len * (0.25 + 0.5 * (n === 1 ? 0.5 : i / (n - 1))) + (h(1) - 0.5) * len * 0.08;
+    const tx = (x - x0) / vx, ry = vy0 * tx - (g * tx * tx) / 2 + (h(2) - 0.5) * 3; // your arc there, give or take
+    const rise = Math.sqrt((2 * Math.max(4, ry - floorY)) / hg);
+    out.push({ x, t0: tx - rise, vy: hg * rise, g: hg, hit: false });
+  }
+  return out;
+}
+export const hazardY = (z: Hazard, t: number, floorY = -10) => floorY + z.vy * (t - z.t0) - (z.g * (t - z.t0) ** 2) / 2;
+
+/** The far rim's landing ramp drops this steeply (rad); the renderer draws it to match. */
+export const LANDING_RAMP_SLOPE = 0.3;
 
 const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Tabletop', 'Seat Grab', 'Heel Clicker'];
 /** Name for a landed flip: n full turns, back (nose up, positive pitch) or front. */
@@ -114,7 +137,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     cruiseCap: T.num('cruiseCap', 0.85, 0.5, 1.5, 0.05, 'Outside sprints, power above this FTP fraction adds no speed (recovery stays recovery)'),
     approachS: T.num('approachS', 20, 5, 60, 1, 'Seconds of warning before each sprint'),
     tourScale: T.num('tourScale', 1, 0.1, 2, 0.05, 'Scales warm-up, recovery and cool-down lengths (not the sprints)'),
-    gravity: T.num('gravity', 80, 9.8, 160, 1, 'Game gravity (m/s²) for leaps'),
+    gravity: T.num('gravity', 28, 9.8, 160, 1, 'Game gravity (m/s²) for leaps: lower = longer, higher jumps'),
+    leapSlowMo: T.num('leapSlowMo', 0.3, 0.1, 1, 0.05, 'Bullet time at the top of a leap (eases in from the lip and back out for the landing)'),
+    leapDodge: T.num('leapDodge', 6, 0, 15, 0.5, 'How far (m) you can steer up or down off your arc in a leap, to dodge what comes out of the pit'),
+    leapHazards: T.num('leapHazards', 3, 0, 6, 1, 'Hazards that leap out of the pit at you (fireballs, ice shards, piranhas)'),
     launchDeg: T.num('launchDeg', 35, 15, 55, 1, 'Ramp angle at the canyon lip'),
     slowMo: T.num('slowMo', 0.45, 0.15, 1, 0.05, 'Slow-motion factor for leaps, loops and smashes'),
     smashN: T.num('smashN', 36, 3, 60, 1, 'Hay-bale columns (or crates, stalls…) in a smash wall'),
@@ -229,6 +255,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
   /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
   let spun = 0, leanHeld = 0, flips = 0, flip: { name: string; at: number } | null = null;
+  /** In a leap: the ballistic height (y adds your steering), steering offset, flight time (bullet-time seconds), what's
+   *  coming out of the pit, and hits taken. */
+  let leapY = 0, dodge = 0, leapT = 0, hazards: Hazard[] = [], scorched = 0, scorchAt = -99;
 
   const scale = () => tun.tourScale();
   /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
@@ -400,7 +429,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'leap') {
       const a = (tun.launchDeg() * Math.PI) / 180;
       vx = v * Math.cos(a); vy = v * Math.sin(a); launchX = x; setMode('air');
-      pendingMedal = medal;
+      pendingMedal = medal; leapY = 0; dodge = 0; leapT = 0; spun = 0; pitch = a * 0.5;
+      const pit = piece.biome === 'sky' ? 0 : Math.round(tun.leapHazards());
+      hazards = leapHazards(pit, piece.x0, piece.len, vx, vy, tun.gravity(), terrainSeed % 1000 + setIndex * 7);
     } else if (piece.kind === 'smash') {
       piece.count = smashCount(live / 0.97, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
@@ -416,15 +447,38 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'leap') {
       const far = piece.x0 + piece.len;
       if (mode === 'air') {
-        x += vx * dts; y += vy * dts; vy -= g * dts; airS += dt;
-        pitch = Math.atan2(vy, vx);
-        if (y <= 0 && x >= far) { // landed on the far rim
-          y = 0; v = Math.hypot(vx, vy) * 0.9; pitch = 0; longestJump = Math.max(longestJump, x - launchX);
+        // bullet time: eases in off the lip, deepest at the top, eases out for the landing
+        const prog = clamp((x - launchX) / Math.max(1, far - launchX), 0, 1);
+        const bt = 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * prog) ** 1.5, dtb = dt * bt;
+        x += vx * dtb; leapY += vy * dtb; vy -= g * dtb; airS += dt; leapT += dtb;
+        // steer: lean back to float up off your arc, forward to drop under it (the arc itself, so where you land, is
+        // set by your sprint); the offset melts away before the landing so nobody misses the rim by steering
+        const lean = opts.autolean ? dodgeFor(prog) : leanInput();
+        const room = 1 - clamp((prog - 0.8) / 0.15, 0, 1);
+        dodge += ((lean * tun.leapDodge() * room) - dodge) * Math.min(1, dt * 3);
+        y = leapY + dodge;
+        const ln = opts.autolean ? 0 : lean;
+        leanStep(ln * 0.6, Math.atan2(vy, vx), dt);
+        if (Math.abs(ln) < 0.1 && leanHeld === 0) pitch += (Math.atan2(vy, vx) * 0.5 - pitch) * 2 * dt; // hands off: the bike settles to match the landing ramp
+        for (const z of hazards) { // what leaps out of the pit
+          if (z.hit) continue;
+          if (Math.abs(z.x - x) < 2.6 && Math.abs(hazardY(z, leapT) - y) < 2.4) {
+            z.hit = true; scorched++; scorchAt = now; crashAt = now; flow = 0; chain = 0; spun = 0;
+            ctx.emit({ type: 'hazard', data: { biome: piece.biome } });
+          }
+        }
+        if (leapY <= 0 && x >= far) { // landed on the far rim: graded against the landing ramp, flips count
+          const lg = landingGrade(wrapPi(pitch + LANDING_RAMP_SLOPE), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
+          y = 0; leapY = 0; dodge = 0; v = Math.hypot(vx, vy) * (lg === 'bad' ? tun.badKeep() : 0.9); longestJump = Math.max(longestJump, x - launchX);
+          landGrade = lg; landAt = now; landImpact = 12;
+          if (lg === 'bad') { bads++; crashAt = now; flow = 0; chain = 0; spun = 0; }
+          else { if (lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect() * 2); } landFlips(2, now); }
+          pitch = 0;
           if (trick) { if (now - trick.t0 >= 0.9) style++; trick = null; }
           finishPiece(pendingMedal, `${Math.round(x - launchX)} m`);
           setMode('road');
           piece.surfaced = true; // reused as "landed"
-        } else if (y < 0 && x < far) { setMode('fall'); }
+        } else if (leapY < 0 && x < far) { setMode('fall'); y = leapY; dodge = 0; }
       } else if (mode === 'fall') {
         x += vx * dts * 0.3; y += vy * dts; vy -= g * dts; pitch += dt * 4;
         if (y < -9 || modeT > 2) { fallFromX = x; fallFromY = y; rescueToX = far + 10; setMode('rescue'); trick = null; }
@@ -497,6 +551,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     }
   }
 
+  /** Test/demo pilot in a leap: steer away from the next hazard that would hit you. */
+  function dodgeFor(prog: number): number {
+    if (prog > 0.8) return 0;
+    for (const z of hazards) {
+      if (z.hit || z.x < x - 3 || z.x > x + 18) continue;
+      const tz = leapT + (z.x - x) / Math.max(1, vx), zy = hazardY(z, tz), ry = leapY + vy * (tz - leapT);
+      if (Math.abs(zy - ry) < 5) return zy > ry ? -1 : 1;
+    }
+    return 0;
+  }
   /** Lean input: left paddle / D-pad left = back (nose up), right = forward (nose down). */
   function leanInput(): number {
     const input = ctx.input();
@@ -840,6 +904,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
         fromLobby: !!lobbyBiome,
         flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
+        hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
+        scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,
         hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
     },
@@ -851,7 +917,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
-        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips,
+        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips, scorched,
         distanceKm: +(x / 1000).toFixed(1), route: route.map((r) => (r ? 'B' : 'A')).join(''), biomesSeen: new Set(visited).size, medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

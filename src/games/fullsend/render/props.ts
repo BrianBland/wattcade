@@ -343,6 +343,38 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   rect(g, '#2a2e3a', x0 + 3.5, y0 - 0.5, 1, 5); rect(g, '#2a2e3a', x0 + 10, y0 - 0.5, 1, 5);
 }
 
+/** What leaps out of a canyon pit: a fireball (volcano), an ice shard (snow), a piranha (water) or a hot rock. `vy` > 0 =
+ *  rising. Burst into sparks / shards once it has hit you (`hit`). */
+export function drawHazard(g: G, biome: BiomeId, x: number, y: number, vy: number, t: number, hit: boolean) {
+  const X = Math.round(x), Y = Math.round(y);
+  g.save(); g.translate(X, Y); g.scale(2, 2); g.translate(-X, -Y); // big enough to read (and dodge) at a glance
+  if (biome === 'volcano' || biome === 'desert') {
+    const lava = biome === 'volcano';
+    if (lava) { // a trail of embers below it while it rises
+      g.globalAlpha = 0.6; g.fillStyle = '#ff6a1a';
+      for (let i = 1; i < 6; i++) g.fillRect(X - 1 + Math.round(Math.sin(t * 20 + i) * 1.5), Y + i * 3 * Math.sign(vy || 1), 2, 2);
+      g.globalAlpha = 1;
+    }
+    const r = hit ? 2 : 4 + Math.sin(t * 25) * 0.6;
+    g.fillStyle = lava ? '#ff5a14' : '#7a5236'; g.beginPath(); g.arc(X, Y, r + 1.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = lava ? '#ffd23b' : '#a8784e'; g.beginPath(); g.arc(X, Y, r, 0, Math.PI * 2); g.fill();
+    if (lava) { g.fillStyle = '#fff6c0'; g.fillRect(X - 1, Y - 1, 2, 2); }
+  } else if (biome === 'snow') {
+    g.fillStyle = '#2a5a80'; g.beginPath(); g.moveTo(X, Y - 9); g.lineTo(X + 4, Y + 5); g.lineTo(X - 4, Y + 5); g.closePath(); g.fill();
+    g.fillStyle = '#e8f6ff'; g.beginPath(); g.moveTo(X, Y - 7); g.lineTo(X + 3, Y + 4); g.lineTo(X - 3, Y + 4); g.closePath(); g.fill();
+    g.fillStyle = '#8cc8ec'; g.fillRect(X - 1, Y - 2, 1, 5);
+  } else { // a piranha, jaws open, arcing out of the river
+    const dir = vy > 0 ? -1 : 1;
+    g.save(); g.translate(X, Y); g.rotate(dir * 0.9);
+    g.fillStyle = '#c84a3a'; g.fillRect(-5, -2, 9, 5); g.fillStyle = '#5a6a7a'; g.fillRect(-5, -3, 9, 2);
+    g.fillStyle = '#5a6a7a'; g.beginPath(); g.moveTo(-5, 0); g.lineTo(-9, -3); g.lineTo(-9, 3); g.closePath(); g.fill();
+    g.fillStyle = '#ffffff'; g.fillRect(3, 0, 1, 1); g.fillRect(2, 2, 1, 1); g.fillStyle = '#111'; g.fillRect(1, -2, 1, 1);
+    g.restore();
+  }
+  if (hit) { g.fillStyle = '#ffd23b'; for (let i = 0; i < 6; i++) { const a = i * 1.05 + t * 3; g.fillRect(X + Math.round(Math.cos(a) * 6), Y + Math.round(Math.sin(a) * 6), 2, 2); } }
+  g.restore();
+}
+
 /** Slipstream: wind wrapping round the rider at speed (curved streaks over the helmet and under the bike, trailing back).
  *  Drawn in the rider's frame (origin at the rear-wheel contact, +x forward). `v` m/s. */
 export function drawSlipstream(g: G, v: number, t: number) {

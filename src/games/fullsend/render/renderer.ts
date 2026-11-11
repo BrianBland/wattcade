@@ -18,7 +18,7 @@ import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, draw
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
-import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
+import { drawCanyonFloor, drawChaser, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
@@ -28,7 +28,7 @@ const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
 const SURFACE_M = 45; // the sea surface sits this far above the sea floor (matches the sim's default plunge)
-const RAMP_M = 14, RAMP_H = 4; // the kicker before a canyon lip and the landing ramp after it
+const RAMP_M = 40, RAMP_H = 12; // the big launch ramp before a canyon lip and the landing ramp after it (its slope ≈ the sim's LANDING_RAMP_SLOPE)
 const MEDAL_COLORS = ['#9aa3b5', '#d98a4a', '#d8dde8', '#ffd23b'];
 type Scene = Array<[BiomeLook, number]>;
 
@@ -128,10 +128,12 @@ export class FullSendRenderer implements GameRenderer {
     const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
     const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
-    const flyCam = s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
+    const leaping = p?.kind === 'leap' && s.phase === 'payoff' && (s.mode === 'air' || s.mode === 'fall');
+    // in a leap the camera frames the pit and you together (so you see what's coming up at you); otherwise it goes with you
+    const flyCam = leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
     let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
-    const camTarget = smooth + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam;
+    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : 0)) + loopLift + flyCam;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
@@ -218,6 +220,7 @@ export class FullSendRenderer implements GameRenderer {
       g.fillRect(Math.round(gapX0), Math.round(sy(0)) + 5, 3, H);
       g.fillRect(Math.round(gapX1) - 3, Math.round(sy(0)) + 5, 3, H);
     }
+    if (p?.kind === 'leap') for (const z of s.hazards) if (z.y > -11) drawHazard(g, p.biome, sx(z.x), sy(z.y), z.vy, t, z.hit);
     if (p?.kind === 'dive') drawWater(g, sx(p.x0), sx(p.x0 + p.len), sy(0), sy(16), H, t);
 
     // ---- obstacles and chasers ----
@@ -350,6 +353,12 @@ export class FullSendRenderer implements GameRenderer {
       g.globalAlpha = 1;
     }
 
+    if (s.leapSlow < 0.95) { // bullet time: the edges darken and cool
+      const bt = (1 - s.leapSlow) / 0.7;
+      g.globalAlpha = 0.35 * bt; g.fillStyle = '#0a1438';
+      for (let i = 0; i < 10; i++) { const e = 10 - i; g.globalAlpha = 0.025 * bt * e / 2; g.fillRect(0, 0, W, i * 3); g.fillRect(0, H - i * 3, W, i * 3); g.fillRect(0, 0, i * 4, H); g.fillRect(W - i * 4, 0, i * 4, H); }
+      g.globalAlpha = 1;
+    }
     if (this.dusk > 0.01) { g.globalAlpha = this.dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     const m = this.g;
     m.imageSmoothingEnabled = false;
@@ -489,6 +498,14 @@ export class FullSendRenderer implements GameRenderer {
       const fy = Math.min(L.roadY - 120, this.riderY - 80) - fa * 14;
       m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
       m.strokeText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d); m.fillText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d);
+      m.globalAlpha = 1;
+    }
+    const sca = s.t - s.scorchAt;
+    if (sca >= 0 && sca < 1.2 && s.piece) {
+      const word = s.piece.biome === 'volcano' ? 'SCORCHED!' : s.piece.biome === 'snow' ? 'SHARDED!' : s.piece.biome === 'desert' ? 'ROCKED!' : 'CHOMPED!';
+      m.globalAlpha = Math.min(1, (1.2 - sca) * 2.5); m.textAlign = 'center'; m.font = font(900, 26, true); m.fillStyle = '#ff7a3a';
+      m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
+      m.strokeText(word, L.riderX * d, (this.riderY - 60) * d); m.fillText(word, L.riderX * d, (this.riderY - 60) * d);
       m.globalAlpha = 1;
     }
     const fly = flightCall(s);

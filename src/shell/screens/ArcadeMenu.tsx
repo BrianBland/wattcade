@@ -16,7 +16,7 @@ import { getDriveIn, subscribeDriveIn, toggleDriveIn } from '../drivein/store';
 import { carouselDims, carouselSlots, orderGames, ridesLine, type GameRides } from '../arcade';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
-const ACCENTS: Record<string, string> = { cadenza: '#ff2bd6', hamster: '#ffb020', watershed: '#2de2a6', dungeon: '#b26bff', lighthouse: '#ffd23b', towerdefense: '#00f0ff', starfighter: '#5b8cff' };
+const ACCENTS: Record<string, string> = { cadenza: '#ff2bd6', hamster: '#ffb020', watershed: '#2de2a6', dungeon: '#b26bff', lighthouse: '#ffd23b', towerdefense: '#00f0ff', starfighter: '#5b8cff', fullsend: '#ff6a1a' };
 const accentFor = (id: string) => ACCENTS[id] ?? '#00f0ff';
 /** Clips recorded from the real renderers by `npm run capture:cards` (public/cards/<id>.mp4 + .webp poster). */
 const clip = (id: string, ext: 'mp4' | 'webp') => `${import.meta.env.BASE_URL}cards/${id}.${ext}`;

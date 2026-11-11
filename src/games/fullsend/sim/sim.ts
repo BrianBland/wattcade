@@ -425,7 +425,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     piece.medal = medal;
     const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail };
     results.push(r); last = { ...r, at: ctx.clock.now() };
-    ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, finale: piece.finale } });
+    ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, caught: piece.caught, finale: piece.finale } });
   }
 
   function endPayoff() {

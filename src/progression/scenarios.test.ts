@@ -98,4 +98,8 @@ describe('headless rides unlock game achievements', () => {
     expect(await unlocked('cadenza', 'autopilot rides an automixed EDM set')).toEqual(expect.arrayContaining(['cz_first', 'cz_overdrive']));
     await counted('cadenza', 'autopilot rides an automixed EDM set', ['cleanZones', 'songs']);
   }, RIDE_TIMEOUT);
+  it('full send', async () => {
+    expect(await unlocked('fullsend', 'sprinting every set piece earns medals')).toEqual(expect.arrayContaining(['fs_first_tour', 'fs_loop']));
+    await counted('fullsend', 'sprinting every set piece earns medals', ['golds', 'hours']);
+  }, RIDE_TIMEOUT);
 });

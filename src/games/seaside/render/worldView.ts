@@ -33,6 +33,9 @@ export interface WorldFrame {
   aim?: { x: number; y: number; z: number };
   /** Show the bars (default true; hidden while the rod is in hand). */
   bars?: boolean;
+  /** The bike's direction of travel (world, horizontal): the bars point along it while the eyes look elsewhere
+   *  (default: wherever the camera looks). */
+  heading?: { x: number; y: number; z: number };
   /** Put the eye here instead of on the route (set pieces); the bob still applies. */
   eye?: { x: number; y: number; z: number };
   /** Override fog and sky for this frame (title fog, under water); omitted = the world's own. */
@@ -69,6 +72,7 @@ export class WorldView {
   private W = 1; private H = 1; private ratio: number;
   private lastT = -1; private lastReal = 0; private wallT = 0; private baseBarsY = -0.31;
   private overlayAcc = { n: 0, ms: 0, worst: 0, at: 0, text: '' };
+  private tmpV = new THREE.Vector3(); private tmpQ = new THREE.Quaternion();
 
   constructor(canvas: HTMLCanvasElement, public world: WorldDef, private o: WorldViewOpts = {}) {
     this.ratio = o.pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, 2);
@@ -195,11 +199,28 @@ export class WorldView {
     this.bars.visible = f.bars ?? true;
     cam.rotateZ(Math.sin(ph) * 0.006 + (f.roll ?? 0));
     cam.updateMatrixWorld();
-    this.bars.position.y = this.baseBarsY + Math.sin(ph * 2) * 0.003 - 0.35 * (f.barsDrop ?? 0);
+    this.bars.position.set(0, this.baseBarsY + Math.sin(ph * 2) * 0.003 - 0.35 * (f.barsDrop ?? 0), -0.46);
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     this.bars.rotation.set(-Math.asin(Math.max(-1, Math.min(1, fwd.y))) + 0.12, 0, Math.sin(ph) * 0.02); // undo the pitch at any heading
+    if (f.heading) this.turnBars(fwd, f.heading);
     aimSun(this.stage, cam.position.clone().addScaledVector(fwd, 55), new THREE.Vector3(...(f.atmos?.sunDir ?? w.sky.sunDir)), 75);
     this.terrain.update(cam.position, f.wall ?? f.t, { routeS: f.routeS, speed: f.speed });
+  }
+
+  /** Swing the bars about the eye (around world up) from where the eyes look to where the bike is going: a head turn. */
+  private turnBars(fwd: THREE.Vector3, heading: { x: number; z: number }) {
+    const fx = fwd.x, fz = fwd.z, fl = Math.hypot(fx, fz), hl = Math.hypot(heading.x, heading.z);
+    if (fl < 1e-4 || hl < 1e-4) return;
+    // signed angle about +y that turns the look direction onto the heading
+    const a = Math.max(-1.2, Math.min(1.2, -Math.atan2(fx * heading.z - fz * heading.x, fx * heading.x + fz * heading.z)));
+    if (Math.abs(a) < 1e-4) return;
+    // looking well away from the way you're going (over the shoulder, out to sea): the bars drop out of view
+    const off = Math.max(0, Math.min(1, (Math.abs(a) - 0.4) / 0.45));
+    this.bars.position.y -= 0.4 * off * off * (3 - 2 * off);
+    const up = this.tmpV.set(0, 1, 0).applyQuaternion(this.tmpQ.copy(this.stage.camera.quaternion).invert());
+    const q = this.tmpQ.setFromAxisAngle(up, a);
+    this.bars.position.applyQuaternion(q);
+    this.bars.quaternion.premultiply(q);
   }
 
   /** Dev overlay: fps, worst frame, triangles, draw calls, streaming, look. */

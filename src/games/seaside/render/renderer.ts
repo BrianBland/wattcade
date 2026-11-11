@@ -208,6 +208,7 @@ export class SeasideRenderer implements GameRenderer {
     const dt = this.tickClock(s);
     this.sound.update(s, bike, dt, this.clock);
     const shopOpen = !!s.shop && s.shop.bonusRemaining === null;
+    if (s.sceneId !== 'title') this.setBlur(0);
     if (!s.menu && ENDING_WORLD.has(s.sceneId)) {
       const shot = this.ensureEnding().frame(s, this.clock, dt, bike?.cadence3s ?? 0);
       if (shot) { this.diorama?.hide(); this.worldCanvas!.style.display = 'block'; if (this.overlayEl) this.overlayEl.style.display = 'block'; this.drawEndingHud(g, s, shot); return; }
@@ -297,9 +298,11 @@ export class SeasideRenderer implements GameRenderer {
     this.menuRows = []; this.shopTargets = [];
     this.spotBoxes = s.fishing?.phase === 'spot' ? L.fish.spots : [];
     if (s.fishing) drawFishing(g, s.fishing, L.fish, L.stage, s.sceneT, true);
-    if (s.sceneId === 'title') { // small serif "Seaside" in the fog
-      const al = Math.max(0, Math.min(1, shot.fx.fog * 1.6, s.sceneT / 2));
-      g.globalAlpha = al; g.fillStyle = '#3d4446'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    this.setBlur((this.morning?.blur ?? 0) * Math.min(16, W / 60));
+    if (shot.fx.lids < 1) this.drawLids(g, L, shot.fx.lids);
+    if (s.sceneId === 'title') { // small serif "Seaside" in the fog (pale while the eyes are still shut)
+      const al = Math.max(0, Math.min(1, shot.fx.fog * 1.6 + (1 - shot.fx.lids), s.sceneT / 2));
+      g.globalAlpha = al; g.fillStyle = shot.fx.lids < 0.5 ? '#e9e4d8' : '#3d4446'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.font = `${Math.round(Math.min(64, L.UH * 0.09))}px Georgia, serif`;
       g.fillText('Seaside', W / 2, L.UH * 0.42);
       g.font = `italic ${Math.round(Math.min(20, L.UH * 0.032))}px Georgia, serif`;
@@ -321,14 +324,7 @@ export class SeasideRenderer implements GameRenderer {
     const { W, H } = this, L = layout(W, H, this.insets), B = bellyHud(W, H, this.insets), fx = shot.fx;
     g.clearRect(0, 0, W, H);
     this.menuRows = []; this.shopTargets = []; this.spotBoxes = [];
-    if (fx.lids < 1) { // eyelids: black with an eye-shaped opening; a red heartbeat glow while they're shut
-      const cx = W / 2, cy = L.UH * 0.45, ry = Math.max(0.5, fx.lids * L.UH * 0.8), rx = W * 0.8;
-      g.save(); g.beginPath(); g.rect(0, 0, W, H); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#000'; g.fill('evenodd');
-      if (fx.lids < 0.98) { g.lineWidth = Math.max(8, L.UH * 0.06); g.strokeStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke(); }
-      g.restore();
-      const glow = fx.heart * (1 - fx.lids) * 0.5;
-      if (glow > 0.01) { const r = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, L.UH) * 0.5); r.addColorStop(0, `rgba(120,10,30,${glow})`); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, L.UH); }
-    }
+    if (fx.lids < 1) this.drawLids(g, L, fx.lids, fx.heart);
     const font = (px: number, style = '') => `${style}${Math.round(px)}px Georgia, serif`;
     if (s.parts) { // three scratched icons: what's in hand
       const T = B.tally, w = T.w / PARTS.length;
@@ -350,6 +346,22 @@ export class SeasideRenderer implements GameRenderer {
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(p.x, p.y + p.h - 3, p.w, 3);
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(p.x, p.y + p.h - 3, p.w * s.scene.progress, 3);
     this.drawBubbleAndCard(g, s, L);
+  }
+
+  /** Eyelids: black with an eye-shaped opening (0 shut .. 1 open); a red heartbeat glow while they're shut. */
+  private drawLids(g: CanvasRenderingContext2D, L: ReturnType<typeof layout>, lids: number, heart = 0): void {
+    const { W, H } = this, cx = W / 2, cy = L.UH * 0.45, ry = Math.max(0.5, lids * L.UH * 0.8), rx = W * 0.8;
+    g.save(); g.beginPath(); g.rect(0, 0, W, H); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.fillStyle = '#000'; g.fill('evenodd');
+    if (lids < 0.98) { g.lineWidth = Math.max(8, L.UH * 0.06); g.strokeStyle = 'rgba(0,0,0,.55)'; g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke(); }
+    g.restore();
+    const glow = heart * (1 - lids) * 0.5;
+    if (glow > 0.01) { const r = g.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, L.UH) * 0.5); r.addColorStop(0, `rgba(120,10,30,${glow})`); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, L.UH); }
+  }
+
+  /** The world canvas out of focus (CSS px of blur; 0 = sharp). */
+  private setBlur(px: number): void {
+    const f = px > 0.2 ? `blur(${px.toFixed(1)}px)` : '';
+    if (this.worldCanvas && this.worldCanvas.style.filter !== f) this.worldCanvas.style.filter = f;
   }
 
   /** A scratched depth meter: a band per layer, ticks every 25 cm, the bit's mark at the bored depth, a label. */

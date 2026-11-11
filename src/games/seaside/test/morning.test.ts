@@ -23,9 +23,51 @@ describe('Chapter 1 layout (#189)', () => {
       expect(Math.abs(b - a - m) / m).toBeLessThan(0.02);
     }
     // in order along one route that ends at the end of the pier
-    expect(rideSpan('highway')![1]).toBeLessThan(rideSpan('rollers')![0]);
+    expect(rideSpan('highway')![0]).toBeLessThan(rideSpan('rollers')![0]);
     expect(rideSpan('rollers')![1]).toBeLessThan(rideSpan('toPier')![0]);
-    expect(rideSpan('toPier')![1]).toBeCloseTo(coastRoute().length - PIER_FISH_BACK, 3);
+    expect(morningShot(snap('toPier', 1))!.s).toBeCloseTo(coastRoute().length - PIER_FISH_BACK, 3);
+  });
+
+  it('rides from the title through the stops without a jump: off the road into the turnout, back out, to the pier rail', () => {
+    const dist = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    const pairs: Array<[string, number, string, number]> = [['title', 1, 'highway', 0], ['highway', 1, 'turnout1', 0], ['turnout1', 1, 'rollers', 0], ['toPier', 1, 'pier', 0]];
+    for (const [a, pa, b, pb] of pairs) {
+      const A = morningShot(snap(a, pa))!, B = morningShot(snap(b, pb))!;
+      expect(dist(A.eye, B.eye), `${a} → ${b}`).toBeLessThan(0.05);
+      expect(A.heading.x * B.heading.x + A.heading.z * B.heading.z, `${a} → ${b} heading`).toBeGreaterThan(0.999);
+    }
+    // the pull-off crosses the road and stops along the sea edge of the turnout
+    const t = morningShot(snap('turnout1', 0))!, e = coastRoute().offset(CH1.turnout, edgeD(zOfS(CH1.turnout)));
+    expect(Math.hypot(t.eye.x - e.x, t.eye.z - e.z)).toBeLessThan(2);
+    expect(morningShot(snap('highway', 1))!.speed).toBeCloseTo(0, 6);
+    expect(morningShot(snap('rollers', 0))!.speed).toBeCloseTo(0, 6);
+    // and never leaps: small steps of progress make small steps on the ground
+    for (const id of ['title', 'highway', 'rollers', 'toPier']) {
+      const len = id === 'title' ? 300 : rideSpan(id)![1] - rideSpan(id)![0];
+      let last = morningShot(snap(id, 0))!.eye;
+      for (let i = 1; i <= 2000; i++) {
+        const e = morningShot(snap(id, i / 2000))!.eye;
+        expect(dist(e, last), `${id} ${i}`).toBeLessThan((len / 2000) * 1.6 + 0.01);
+        last = e;
+      }
+    }
+  });
+
+  it('rolls forward through the title while the eyes open and the world comes into focus', () => {
+    const a = morningShot(snap('title', 0))!, b = morningShot(snap('title', 0.5))!, c = morningShot(snap('title', 1))!;
+    expect(a.fx.lids).toBe(0);
+    expect(c.fx.lids).toBe(1);
+    expect(a.fx.blur).toBe(1);
+    expect(c.fx.blur).toBe(0);
+    expect(b.s).toBeGreaterThan(a.s + 10);
+    expect(c.speed).toBeGreaterThan(4);
+  });
+
+  it('points the bars down the road while the eyes drift to the sea', () => {
+    for (const p of [0.1, 0.3, 0.5, 0.7]) {
+      const sh = morningShot(snap('highway', p))!, t = coastRoute().tangent(sh.s);
+      expect(sh.heading.x * t.x + sh.heading.z * t.z).toBeGreaterThan(0.999);
+    }
   });
 
   it('builds the rollers to the scene’s trainer profile', () => {

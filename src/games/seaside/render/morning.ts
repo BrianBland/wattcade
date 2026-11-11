@@ -89,7 +89,7 @@ function buildGoneFishing(): VoxelGrid {
   return g;
 }
 
-interface Pose { eye: V3; target: V3 }
+interface Pose { eye: V3; target: V3; heading: V3 }
 
 /** A soft-edged ellipse (alpha map) for the Big One's shadow. */
 function softEllipse(): THREE.Texture {
@@ -122,6 +122,7 @@ export class MorningSet {
   private m4 = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v3 = new THREE.Vector3();
   /** Title fog thinned by pedalling (0..1), on top of the scene's own clearing. */
   private clearing = 0;
+  /** The title's focus blur this frame (0..1), after pedalling. */ blur = 0;
 
   constructor(private view: WorldView) {
     const st = view.stage;
@@ -178,7 +179,7 @@ export class MorningSet {
     if (!shot) return null;
     const fx = shot.fx;
     // camera: ease from the last shot when the scene changes (a cut when the jump is big)
-    let pose: Pose = { eye: shot.eye, target: shot.target };
+    let pose: Pose = { eye: shot.eye, target: shot.target, heading: shot.heading };
     if (this.last && this.last.id !== snap.sceneId) {
       const jump = Math.hypot(pose.eye.x - this.last.pose.eye.x, pose.eye.z - this.last.pose.eye.z);
       this.blend = jump < 400 && snap.sceneId !== 'bigOne' ? { from: this.last.pose, t0: t, dur: 2.4 } : null;
@@ -186,12 +187,13 @@ export class MorningSet {
     if (this.blend) {
       const k = ease((t - this.blend.t0) / this.blend.dur), f = this.blend.from;
       if (k >= 1) this.blend = null;
-      else pose = { eye: lerpV(f.eye, pose.eye, k), target: lerpV(f.target, pose.target, k) };
+      else pose = { eye: lerpV(f.eye, pose.eye, k), target: lerpV(f.target, pose.target, k), heading: lerpV(f.heading, pose.heading, k) };
     }
     this.last = { id: snap.sceneId, pose };
-    // atmosphere: the title's marine layer (pedalling thins it), under water (green → blue → black)
+    // atmosphere: the title's marine layer and blur (pedalling clears them sooner), under water (green → blue → black)
     if (snap.sceneId === 'title') this.clearing = clamp01(this.clearing + dt * (cadence > 40 ? 0.02 : -0.01));
     const fog = clamp01(fx.fog * (1 - this.clearing));
+    this.blur = clamp01(fx.blur * (1 - this.clearing));
     const sky = this.view.world.sky;
     let atmos: Parameters<WorldView['frame']>[0]['atmos'];
     if (fx.under > 0) {
@@ -206,7 +208,7 @@ export class MorningSet {
     this.props(shot, t);
     this.gone.visible = snap.sceneId === 'sunset';
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
-      bars: shot.bars, cadence: cadence || 86, atmos, calm: fx.calm });
+      heading: pose.heading, bars: shot.bars, cadence: cadence || 86, atmos, calm: fx.calm });
     // the rod is posed after the camera moves
     const fishing = shot.rod === 'fish' ? snap.fishing : shot.rod === 'bigOne' ? bigOneView(snap.scene.progress * BIG_PLAN_S, snap.pull) : null;
     this.rig.update(fishing, t, shot.place ?? { waterY: SEA_LEVEL });

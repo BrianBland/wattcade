@@ -11,7 +11,7 @@ const TIMES = (process.env.BENCH_T ?? '2,6,9.5,13,17.7,21.2,23').split(',').map(
 const server = await createServer({ server: { port: 5294, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const finish = (w: any) => { const c = w.__view.stage.renderer.getContext(); c.readPixels(0, 0, 1, 1, c.RGBA, c.UNSIGNED_BYTE, new Uint8Array(4)); }; // forces the GPU work to finish
 try {
   for (const v of variants) {

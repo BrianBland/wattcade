@@ -7,7 +7,7 @@ import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../c
 import type { MediaRun, SessionLike } from '../types';
 import { ProgramSync } from '../../media/clock';
 import { canPause, openingPhase, startTarget } from '../countGate';
-import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
+import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession, takeLobbyFrame } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer, PauseHistory } from '../hud/HudLayer';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
@@ -46,6 +46,16 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // The overworld's last frame stays up while the game loads; the "Preparing" card only appears if loading is slow.
+  const backdrop = useRef<HTMLDivElement>(null);
+  const [frame] = useState(takeLobbyFrame);
+  const [slow, setSlow] = useState(!frame);
+  useEffect(() => {
+    if (!frame) return;
+    if (backdrop.current) { frame.style.cssText = 'width:100%;height:100%;display:block'; backdrop.current.appendChild(frame); }
+    const id = setTimeout(() => setSlow(true), 900);
+    return () => clearTimeout(id);
+  }, []);
   const loadingRef = useRef(true);
   const [musicWait, setMusicWait] = useState('');
   const musicWaitRef = useRef('');
@@ -220,9 +230,11 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const hud = session?.sim.hud?.() ?? {};
   return (
     <div class="game-host">
+      {frame && <div ref={backdrop} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', transition: 'opacity 700ms ease-out', opacity: loading ? 1 : 0 }}
+        onTransitionEnd={() => backdrop.current?.remove()} />}
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
-      {loading && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
+      {loading && slow && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
       {(musicWait || (profile.settings?.debugStats && media?.timings)) && <div class="game-message chrome-ui">
         {musicWait ? <UiMessage title="Preparing music" busy>
           {musicWait}<BufferProgress read={() => music.current?.engine.bufferProgress() ?? null} />

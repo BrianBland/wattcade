@@ -18,6 +18,7 @@ export default defineConfig({
         seasideRide: resolve(__dirname, 'dev/seaside-ride.html'),
         seasideFishing: resolve(__dirname, 'dev/seaside-fishing.html'),
         seasideStills: resolve(__dirname, 'dev/seaside.html'),
+        fullsendPreview: resolve(__dirname, 'dev/fullsend.html'),
       },
     },
   },

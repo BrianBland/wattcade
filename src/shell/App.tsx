@@ -24,7 +24,7 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  lastProfileId, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
+  captureLobbyFrame, lastProfileId, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
@@ -104,6 +104,7 @@ export function App() {
   };
   const play = async (g: (typeof games)[number], media?: MediaRun) => {
     if (g.requires?.media?.length && !media) { go({ name: 'media', game: g }); return; } // music games pick songs first (the ride keeps going)
+    captureLobbyFrame(); // the game holds this picture up while it loads
     const rec = stopLobby(); // credit the warm-up before the game session starts
     if (rec) await credit(rec);
     go({ name: 'game', game: g, media });

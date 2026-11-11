@@ -117,8 +117,24 @@ const mixDark = (c: string) => c + 'aa';
 
 /** Column `i` of a smash wall. `hit` = seconds since it was smashed (<0 = intact); `topple` = seconds since it fell over after a bounce. */
 export function drawObstacle(g: G, x: number, roadY: number, biome: BiomeId, i: number, hit: number, topple: number) {
-  const kind = biome === 'countryside' ? 'hay' : biome === 'market' ? 'stall' : biome === 'snow' ? 'ice' : biome === 'autumn' ? 'leaves' : biome === 'underwater' ? 'coral' : 'crate';
-  const col = { hay: ['#e8c85a', '#b8962e'], stall: ['#c8763a', '#7a4a22'], ice: ['#cfefff', '#8cc8e8'], leaves: ['#d97a2e', '#9a4a1a'], coral: ['#ff7a9a', '#c84a6a'], crate: ['#a86b3c', '#6e4424'] }[kind];
+  const kind = biome === 'countryside' ? 'hay' : biome === 'market' ? 'stall' : biome === 'snow' ? 'ice' : biome === 'autumn' ? 'leaves' : biome === 'underwater' ? 'coral'
+    : biome === 'sky' ? 'cloud' : biome === 'moon' ? 'rock' : 'crate';
+  const col = { hay: ['#e8c85a', '#b8962e'], stall: ['#c8763a', '#7a4a22'], ice: ['#cfefff', '#8cc8e8'], leaves: ['#d97a2e', '#9a4a1a'], coral: ['#ff7a9a', '#c84a6a'],
+    crate: ['#a86b3c', '#6e4424'], cloud: ['#ffffff', '#dfe6f5'], rock: ['#a8a8b4', '#6e6e7c'] }[kind];
+  if (kind === 'cloud' && hit < 0) { // a stack of cloud puffs, bobbing
+    g.save(); g.translate(Math.round(x), Math.round(roadY));
+    if (topple >= 0) g.rotate(Math.min(Math.PI / 2, topple * 3));
+    for (let j = 0; j < 4; j++) { const r = 6 + (j % 2) * 2; g.fillStyle = col[j % 2]; g.beginPath(); g.arc(Math.sin(i + j) * 2, -r - j * 8 + Math.sin(i * 3 + j) * 1.5, r, 0, Math.PI * 2); g.fill(); }
+    g.restore(); return;
+  }
+  if (kind === 'rock' && hit < 0) { // a pile of moon rocks
+    g.save(); g.translate(Math.round(x), Math.round(roadY));
+    if (topple >= 0) g.rotate(Math.min(Math.PI / 2, topple * 3));
+    poly(g, col[1], [[-6, 0], [-7, -10], [-2, -20], [5, -18], [7, -6], [5, 0]]);
+    poly(g, col[0], [[-5, -2], [-5, -10], [-1, -18], [4, -16], [5, -7]]);
+    rect(g, '#80808c', -2, -12, 2, 2); rect(g, '#80808c', 1, -6, 2, 2);
+    g.restore(); return;
+  }
   if (kind === 'hay') { drawHayColumn(g, x, roadY, i, hit, topple); return; }
   const h = 18 + (i % 3) * 4, w = 10;
   if (hit >= 0) { // debris flying forward and up
@@ -194,6 +210,8 @@ export function drawHayOnRider(g: G, amount: number, t: number) {
 export function drawChaser(g: G, kind: ChaserKind, x: number, roadY: number, t: number, giveUp: number, caught: number) {
   g.save(); g.translate(Math.round(x), Math.round(roadY));
   if (kind === 'trex') { drawTrex(g, t, giveUp, caught); g.restore(); return; }
+  if (kind === 'shark') { drawShark(g, t, giveUp, caught); g.restore(); return; }
+  if (kind === 'wheel') { drawStoneWheel(g, t, giveUp, caught); g.restore(); return; }
   if (giveUp >= 0) g.translate(0, Math.min(30, giveUp * giveUp * 20));
   if (kind === 'avalanche') {
     for (let i = 0; i < 14; i++) {
@@ -316,4 +334,44 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   poly(g, '#e8463a', [[x0 + 1, y0 + 4], [x0 + 4, y0 + 4], [x0 - 0.5, y0 + 6.5]]);
   // clamps
   rect(g, '#2a2e3a', x0 + 3.5, y0 - 0.5, 1, 5); rect(g, '#2a2e3a', x0 + 10, y0 - 0.5, 1, 5);
+}
+
+/** A great white, ~80 px long, swimming just above the sea floor toward the rider (facing right). Jaws snap on a catch. */
+export function drawShark(g: G, t: number, giveUp: number, caught: number) {
+  const lunge = caught >= 0 && caught < 0.8 ? Math.sin((caught / 0.8) * Math.PI) : 0;
+  if (giveUp >= 0) { g.translate(-giveUp * 25, -giveUp * 10); g.rotate(-Math.min(0.5, giveUp * 0.4)); } // loses interest and peels away
+  const sw = Math.sin(t * 7), y0 = -22 + Math.sin(t * 2) * 2;
+  g.translate(lunge * 10, y0);
+  // tail (swishes), body, belly, fins
+  poly(g, '#5d7186', [[-44, 0], [-60, -14 + sw * 5], [-54, 0], [-60, 12 + sw * 5]]);
+  poly(g, '#6f849a', [[-46, -3], [-20, -12], [12, -11], [30, -4], [36, 1], [30, 5], [10, 9], [-20, 8], [-46, 3]]);
+  poly(g, '#e8eef2', [[-30, 5], [-6, 9], [20, 7], [32, 3], [22, 2], [-4, 4]]);
+  poly(g, '#56697d', [[-6, -11], [2, -26], [8, -11]]);
+  poly(g, '#56697d', [[2, 6], [-8, 16], [10, 8]]);
+  for (let i = 0; i < 3; i++) rect(g, '#4a5a6a', 14 + i * 3, -6, 1, 6); // gills
+  rect(g, '#111', 26, -5, 2, 2); // eye
+  // mouth: opens on the lunge, teeth
+  const open = 2 + lunge * 7;
+  poly(g, '#7a1a2a', [[24, 2], [37, 1 - open * 0.3], [37, 2 + open]]);
+  g.fillStyle = '#ffffff'; for (let i = 0; i < 4; i++) { g.fillRect(27 + i * 2.5, 1, 1, 2); g.fillRect(27 + i * 2.5, 1 + open, 1, -2); }
+  g.globalAlpha = 0.5; g.strokeStyle = '#cdf6ff'; // bubbles off the tail
+  for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(-56 - ((t * 30 + i * 9) % 30), -4 - i * 3, 1.5, 0, Math.PI * 2); g.stroke(); }
+  g.globalAlpha = 1;
+}
+
+/** A huge carved stone wheel (radius ~30 px) rolling after the rider, shedding dust. Topples over when it gives up. */
+export function drawStoneWheel(g: G, t: number, giveUp: number, caught: number) {
+  const r = 30, spin = t * 7 + (caught >= 0 && caught < 0.6 ? caught * 6 : 0);
+  if (giveUp >= 0) { const k = Math.min(1, giveUp / 1.2); g.translate(giveUp * 10, 0); g.rotate(k * 0.25); }
+  g.globalAlpha = 0.5; g.fillStyle = '#b89a6a';
+  for (let i = 0; i < 8; i++) { const a = ((t * 2 + hash01(i)) % 1); g.beginPath(); g.arc(-r * 0.6 - a * 40, -3 - a * 10 - hash01(i * 3) * 6, 2 + a * 5, 0, Math.PI * 2); g.fill(); }
+  g.globalAlpha = 1;
+  g.save(); g.translate(0, -r); g.rotate(spin);
+  g.fillStyle = '#7a6a54'; g.beginPath(); g.arc(0, 0, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#968466'; g.beginPath(); g.arc(-2, -2, r - 4, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#5a4c3a'; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, r - 9, 0, Math.PI * 2); g.stroke();
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; seg(g, '#5a4c3a', 2, [Math.cos(a) * 6, Math.sin(a) * 6], [Math.cos(a) * (r - 10), Math.sin(a) * (r - 10)]); }
+  g.fillStyle = '#5a4c3a'; g.beginPath(); g.arc(0, 0, 6, 0, Math.PI * 2); g.fill();
+  rect(g, '#3e7a2a', -r + 6, -4, 5, 3); rect(g, '#3e7a2a', r - 12, 6, 6, 3); // moss
+  g.restore();
 }

@@ -1,7 +1,7 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
-import { chaserFor, MEDAL_FTP, pieceTitle, TOURS, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
-import { AIR_CELL, airItemAt, bumpH, takesOff, type AirKind } from './track';
+import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
+import { AIR_CELL, airItemAt, bumpH, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
 import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
@@ -9,6 +9,8 @@ export interface FullSendOpts {
   seed?: number; tour?: string; terrainSeed?: number;
   /** Test/demo pilot: steers every hop to match the slope it will land on. */
   autolean?: boolean;
+  /** false = skip the setup screen (tests / headless). It's also skipped whenever `tour` is given. */
+  menu?: boolean;
   /** Route at each fork: 'main' (default, the tour's planned branch), 'alt', or 'alternate' (alt on odd sets). */
   forks?: 'main' | 'alt' | 'alternate';
   /** Test/demo pilot: holds the jet (and asks for the power via hooks.powerFtp) when a ring is ahead and above. */
@@ -35,6 +37,12 @@ export interface PieceView {
   live: number;
   medal: Medal | -1;
   th: [number, number, number];
+}
+/** What Full Send keeps in profile.gameData.fullsend. */
+export interface FullSendSave {
+  ver: 1; lastTour?: string; reducedFlash?: boolean; rides?: number; tipsSeen?: string[];
+  best?: Record<string, { golds: number; medals: string; topKph: number; longestChain: number; rings: number }>;
+  moonVisits?: number; maxAltM?: number;
 }
 export interface ForkOption { kind: PieceKind; biome: BiomeId; title: string }
 export interface SetResult { kind: PieceKind; biome: BiomeId; title: string; medal: Medal; detail: string }
@@ -73,11 +81,19 @@ export interface FullSendSnapshot {
   fork: { set: number; options: [ForkOption, ForkOption]; pick: 0 | 1; closesInS: number } | null;
   /** Biomes you've been through this ride, in order. */
   visited: BiomeId[];
+  /** The setup screen (before the ride), or null once riding. */
+  menu: { row: number; tour: string; tours: Array<{ id: string; name: string; minutes: number; best: string | null }>; reducedFlash: boolean; left: number } | null;
+  reducedFlash: boolean;
+  /** A one-time tip (first ride only), and how long it's been up. */
+  tip: { id: string; text: string; age: number } | null;
+  /** Wind on the cruise (−1 headwind … +1 tailwind), when the last bad landing threw you, and smash hits for shake. */
+  wind: number; crashAt: number;
   hooks: Record<string, unknown>;
 }
 
 const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Backflip', 'Seat Grab', 'Heel Clicker'];
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+const medalScore = (m: string) => [...m].reduce((a, c) => a + ({ G: 3, S: 2, B: 1 } as Record<string, number>)[c] || a, 0);
 
 /** Full Send: a rocket-bike sprint workout. A fixed tour of set pieces; each one is a sprint, recoveries in between. */
 export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): GameSim & { snapshot(): FullSendSnapshot } {
@@ -143,6 +159,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     starLift: T.num('starLift', 0.03, 0, 0.5, 0.01, 'Lift for a star'),
     chainStep: T.num('chainStep', 0.15, 0, 1, 0.05, 'Each clean landing in a row multiplies the next one\'s flow by this much more (up to 5 in a row)'),
     moonExitVy: T.num('moonExitVy', 25, 5, 80, 1, 'Launch speed (m/s up) off the moon when your moon time runs out'),
+    cadenceSpool: T.num('cadenceSpool', 0.5, 0, 2, 0.05, 'How much cadence speeds up the rocket (spool time × 90 rpm / cadence, softened by this)'),
+    windGrade: T.num('windGrade', 1.5, 0, 5, 0.25, 'Grade % a full headwind adds (a tailwind takes it off) on the cruise'),
+    windSpeed: T.num('windSpeed', 0.06, 0, 0.3, 0.01, 'Speed change (fraction) from a full head- / tailwind on the cruise'),
+    menuAutoS: T.num('menuAutoS', 30, 5, 120, 5, 'Seconds the setup screen waits before starting with the highlighted tour'),
     seaS: T.num('seaS', 40, 5, 300, 5, 'Seconds underwater after a fall before you breach back up to the road'),
     seaGrade: T.num('seaGrade', 1.5, 0, 6, 0.5, 'Extra grade % on the sea floor (water drag)'),
     blendS: T.num('blendS', 8, 1, 30, 1, 'Seconds the scenery takes to dissolve into the next biome'),
@@ -156,7 +176,14 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     th[k] = () => [fb(), fs(), fg()];
   }
 
-  const tour: Tour = TOURS[opts.tour ?? 'classic'] ?? TOURS.classic;
+  const save: FullSendSave = { ver: 1, ...(ctx.load<FullSendSave>() ?? {}) };
+  let tour: Tour = TOURS[opts.tour ?? save.lastTour ?? 'classic'] ?? TOURS.classic;
+  let menu = opts.menu !== false && opts.tour === undefined;
+  let menuRow = 0, menuT = 0, reducedFlash = !!save.reducedFlash;
+  const actions: Array<{ type: string; value?: unknown }> = [];
+  const tipsSeen = new Set(save.tipsSeen ?? []);
+  let tip: { id: string; text: string; at: number } | null = null, lastTipEnd = -99;
+  let wind = 0, crashAt = -99;
   const terrainSeed = opts.terrainSeed ?? Math.floor(ctx.rng() * 1e9);
   let maxGrade = tun.maxGrade();
   let terrain: Terrain = makeTerrain(terrainSeed, maxGrade);
@@ -190,7 +217,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
 
   const scale = () => tun.tourScale();
   /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
-  const route: Array<0 | 1> = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
+  let route: Array<0 | 1> = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
   const setAt = (i: number): TourSet | null => {
     const b = tour.sets[i];
     if (!b) return null;
@@ -203,6 +230,54 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const forkWindow = (): [number, number] => (phase === 'warmup' ? [phaseS() * 0.55, phaseS() * 0.75] : [phaseS() * 0.05, phaseS() * 0.3]);
   const visited: BiomeId[] = [];
   const visit = (b: BiomeId) => { if (visited[visited.length - 1] !== b) visited.push(b); };
+
+  // ---- setup screen, saves and first-ride tips ----
+  const MENU_ROWS = 3; // tour · fewer flashes · start
+  function chooseTour(id: string) {
+    tour = TOURS[id] ?? TOURS.classic;
+    cur = tour.sets[0].biome; next = cur; mix = 0;
+    route = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
+  }
+  function startRide() {
+    menu = false;
+    save.lastTour = tour.id; save.reducedFlash = reducedFlash; ctx.save(save);
+  }
+  function updateMenu(dt: Seconds) {
+    const inp = ctx.input();
+    for (const a of actions.splice(0)) {
+      if (a.type === 'tour' && typeof a.value === 'string') chooseTour(a.value);
+      else if (a.type === 'flash') reducedFlash = !reducedFlash;
+      else if (a.type === 'start') { startRide(); return; }
+      menuT = 0;
+    }
+    if (inp.pressed.size) menuT = 0;
+    if (inp.pressed.has('up')) menuRow = (menuRow + MENU_ROWS - 1) % MENU_ROWS;
+    if (inp.pressed.has('down')) menuRow = (menuRow + 1) % MENU_ROWS;
+    const dir = inp.pressed.has('left') || inp.pressed.has('shiftDnL') || inp.pressed.has('shiftDnR') ? -1 : inp.pressed.has('right') || inp.pressed.has('shiftUpL') || inp.pressed.has('shiftUpR') ? 1 : 0;
+    if (dir && menuRow === 0) { const i = TOUR_IDS.indexOf(tour.id as never); chooseTour(TOUR_IDS[(i + dir + TOUR_IDS.length) % TOUR_IDS.length]); }
+    if (dir && menuRow === 1) reducedFlash = !reducedFlash;
+    if (inp.pressed.has('a')) { if (menuRow === 1) reducedFlash = !reducedFlash; else { startRide(); return; } }
+    menuT += dt;
+    if (menuT >= tun.menuAutoS()) startRide();
+  }
+  /** Show a tip once per rider (saved as soon as it's shown), one at a time. */
+  function offerTip(id: string, text: string, now: number) {
+    if (tipsSeen.has(id) || tip || now - lastTipEnd < 3) return;
+    tip = { id, text, at: now }; tipsSeen.add(id);
+    save.tipsSeen = [...tipsSeen]; ctx.save(save);
+  }
+  function finishRide() {
+    const sm = sim.summary();
+    const golds = Number(sm.gold), b = save.best?.[tour.id];
+    const medals = String(sm.medals);
+    if (!b || golds > b.golds || (golds === b.golds && medalScore(medals) > medalScore(b.medals))) {
+      save.best = { ...(save.best ?? {}), [tour.id]: { golds, medals, topKph: Number(sm.topKph), longestChain: Number(sm.longestChain), rings: Number(sm.rings) } };
+    }
+    save.rides = (save.rides ?? 0) + 1;
+    save.moonVisits = (save.moonVisits ?? 0) + moonVisits;
+    save.maxAltM = Math.max(save.maxAltM ?? 0, Math.round(peakAlt));
+    ctx.save(save);
+  }
   const speedPerFtp = () => tun.kmhPerFtp() / 3.6;
   const roadH = (xx: number) => hill * (terrain.elev(xx / tun.hillStretch()) * tun.hillStretch() + (tun.bumps() ? tun.bumpScale() * bumpH(xx, terrainSeed) : 0));
   const slopeAt = (xx: number) => (roadH(xx + 0.25) - roadH(xx - 0.25)) / 0.5;
@@ -410,6 +485,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const sim = {
     update(dt: Seconds) {
       const now = ctx.clock.now();
+      if (menu) { updateMenu(dt); return; }
+      actions.length = 0;
       if (phase === 'done') return;
       if (tun.maxGrade() !== maxGrade) { maxGrade = tun.maxGrade(); terrain = makeTerrain(terrainSeed, maxGrade); }
       const bike = ctx.bike(), input = ctx.input();
@@ -427,14 +504,20 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       flow = Math.max(0, flow - tun.flowDecay() * dt);
       // clean landings buy cruising speed for the same watts (never during a sprint, so medals stay effort-only)
       const boost = phase === 'effort' ? 1 : 1 + flow;
-      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost, dt, tun.spoolS());
+      // wind on the cruise (ground and sky): a headwind slows you and adds grade, a tailwind the reverse
+      wind = cruising() && (tier === 'ground' || tier === 'sky') && !toTier ? windAt(x, terrainSeed) : 0;
+      // spinning faster spools the rocket faster (form, not watts)
+      const cad = bike.cadence3s || 0, cadK = cad > 20 ? 1 + tun.cadenceSpool() * (cad / 90 - 1) : 1;
+      const spoolS = tun.spoolS() / clamp(cadK, 0.6, 1.6);
+      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost * (1 + wind * tun.windSpeed()), dt, spoolS);
 
       // phase machine
       // a fork in the road: ◀ / ▶ picks the branch while it's open (the plan is the default)
       const fs = forkSet(), fw = forkWindow();
       if (fs >= 0 && tour.sets[fs].alt && !opts.forks && phaseT >= fw[0] && phaseT < fw[1]) {
-        if (input.pressed.has('left')) route[fs] = 0;
-        if (input.pressed.has('right')) route[fs] = 1;
+        offerTip('fork', 'Fork ahead! On the road, press ◀ or ▶ to pick your next set piece and scenery.', now);
+        if (mode === 'road' && input.pressed.has('left')) route[fs] = 0; // on the road only: in the air, ◀ ▶ lean
+        if (mode === 'road' && input.pressed.has('right')) route[fs] = 1;
       }
       if (phase === 'warmup') {
         const nx = setAt(0)!;
@@ -494,7 +577,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         }
         if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(setIndex + 1); }
       } else if (phase === 'cooldown') {
-        if (phaseT >= phaseS()) { go('done'); ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); }
+        if (phaseT >= phaseS()) { go('done'); ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); finishRide(); }
       }
 
       // altitude: keep your flow up and the lift meter fills; up high, an empty meter drops you off the edge
@@ -578,7 +661,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
             const lg: Landing = airT < 0.15 || (raw !== 'bad' && airT < tun.gradeAirS()) ? 'ok' : raw;
             if (!bouncing) landGrade = lg; // the bounce after a bad landing keeps its 'bad' call-out
             if (lg === 'bad' && !bouncing) { // bad landing: bounce and lose speed (and the flow bonus)
-              bads++; flow = 0; chain = 0; v *= tun.badKeep(); bouncing = true; lift = Math.max(0, lift - tun.liftBad());
+              bads++; flow = 0; chain = 0; crashAt = now; v *= tun.badKeep(); bouncing = true; lift = Math.max(0, lift - tun.liftBad());
               vy = v * slope + 3 + Math.abs(rel) * 0.25; hopT0 = now; pitch = Math.atan(slope) + 0.35;
             } else {
               const mult = 1 + tun.chainStep() * Math.min(chain, 4); // clean landings in a row are worth more
@@ -628,6 +711,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           : mode === 'loop' ? loopGradeAt(loopPhi) : mode === 'road' ? gr : 0;
       }
       if (tier === 'sea' && mode === 'road' && phase !== 'effort') gr += tun.seaGrade();
+      if (wind && mode === 'road') gr -= wind * tun.windGrade();
       if (jet === 'on') gr = Math.max(gr, tun.jetGrade());
       if (mode === 'hop' && now - hopT0 > tun.hopAirGradeS()) gr = tun.airGrade(); // a long hop: light legs
       // debris stuck to you after a smash keeps dragging until it falls off
@@ -639,11 +723,22 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: grade });
 
       if (!toTier) visit(tier === 'ground' ? (mix < 0.5 ? cur : next) : shown());
+      // first-ride tips
+      if (tip && now - tip.at > 7) { tip = null; lastTipEnd = now; }
+      if (phase === 'approach' && phaseT < 6) offerTip('gears', 'Sprint coming: shift up a few gears now, then go all out when it says GO.', now);
+      if (mode === 'hop' && now - hopT0 > 0.5 && !toTier) offerTip('lean', 'Airtime! Lean with the paddles or ◀ ▶ so you land parallel to the slope.', now);
+      if (landGrade === 'perfect' || landGrade === 'good') offerTip('landing', 'Clean landing: that adds FLOW, free speed for the same watts. Land crossed up and you bounce.', now);
+      if (tier === 'ground' && lift > 0.25) offerTip('lift', 'Keep the flow going to fill LIFT. When it\'s full, your next jump launches you into the sky.', now);
+      if (tier === 'sky' && !toTier) offerTip('sky', `Sky Islands! Hold B and pedal above ${Math.round(tun.jetFtp() * 100)}% FTP to jet up to the rings.`, now);
+      if (tier === 'moon' && !toTier) offerTip('moon', 'The Moon: low gravity and limited time. Rings give you more moon time.', now);
+      if (tier === 'sea' && !toTier) offerTip('sea', 'Splashdown! Keep pedalling: you\'ll breach back up to the road.', now);
+      if (wind < -0.3) offerTip('wind', 'Headwind: it\'s heavier for a while. A tailwind gives it back.', now);
       top = Math.max(top, v);
       ctx.debug('fullsend.phase', phase); ctx.debug('fullsend.kph', +(v * 3.6).toFixed(0)); ctx.debug('fullsend.grade', grade);
       if (piece) ctx.debug('fullsend.live', +piece.live.toFixed(2));
     },
     hud(): GameHud {
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose tour / options' }, { button: 'a', label: 'Start the ride', shortLabel: 'Start' }] };
       const s = set();
       const air = mode === 'air' || mode === 'hop';
       const controls: GameHud['controls'] = [
@@ -696,11 +791,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
         tier, lift, alt: y - roadH(x), toTier, warp, edgeX,
         fork, visited: [...visited],
+        menu: menu ? { row: menuRow, tour: tour.id, reducedFlash, left: Math.max(0, tun.menuAutoS() - menuT),
+          tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold` : null }; }) } : null,
+        reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
         hooks: { shielded: phase === 'effort', seg: phase, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
     },
-    isOver: () => phase === 'done',
+    isOver: () => !menu && phase === 'done',
+    inMenu: () => menu,
+    receive(a: unknown) { if (a && typeof a === 'object' && 'type' in a) actions.push(a as { type: string; value?: unknown }); },
     summary() {
       const n = (m: number) => results.filter((r) => r.medal === m).length;
       return {

@@ -47,3 +47,15 @@ export function airItemAt(k: number, seed: number, hMin: number, hMax: number): 
   const kind: AirKind = hash01(k * 5.91 + s + 12) < 0.35 ? 'ring' : 'star';
   return { id: k, kind, x: k * AIR_CELL + 10 + hash01(k * 2.33 + s + 13) * (AIR_CELL - 20), h: hMin + hash01(k * 7.77 + s + 14) * (hMax - hMin) };
 }
+
+/** Wind on the cruise: seeded zones (≤ 1 per `WIND_CELL` m), −1 = full headwind … +1 = full tailwind, eased in and out. */
+export const WIND_CELL = 900;
+export function windAt(x: number, seed: number): number {
+  const k = Math.floor(x / WIND_CELL), s = (seed % 6007) * 0.457;
+  if (hash01(k * 4.41 + s + 21) > 0.55) return 0;
+  const sign = hash01(k * 6.13 + s + 22) < 0.55 ? -1 : 1, mag = 0.5 + 0.5 * hash01(k * 2.71 + s + 23);
+  const x0 = k * WIND_CELL + 100 + hash01(k * 3.3 + s + 24) * 200, len = 300 + hash01(k * 5.7 + s + 25) * 250;
+  if (x < x0 || x > x0 + len) return 0;
+  const u = (x - x0) / len, ease = Math.min(1, u / 0.15, (1 - u) / 0.15);
+  return sign * mag * ease;
+}

@@ -8,6 +8,8 @@ export interface FullSendLayout {
   riderX: number; roadY: number;
   /** Set-piece banner (title + instruction), the sprint meter, the speed readout and the medal stamp. */
   banner: Box; meter: Box; speed: Box; stamp: Box; status: Box;
+  /** The setup screen (tour, options, start) and the first-ride tip card. */
+  menu: Box; tip: Box;
 }
 
 export function layout(W: number, H: number, insetBottom: number, insetTop = 0): FullSendLayout {
@@ -20,5 +22,9 @@ export function layout(W: number, H: number, insetBottom: number, insetTop = 0):
   const status: Box = { x: W - 16 - Math.min(240, W * 0.32), y: top, w: Math.min(240, W * 0.32), h: 56 };
   const sh = Math.min(120, UH * 0.22);
   const stamp: Box = { x: W / 2 - 160, y: UH * 0.36 - sh / 2, w: 320, h: sh };
-  return { UH, riderX: Math.round(W * 0.28), roadY: Math.round(UH * 0.68), banner, meter, speed, stamp, status };
+  const mw = Math.min(W - 32, 460), mh = Math.min(UH - top - 12, 250);
+  const menu: Box = { x: (W - mw) / 2, y: Math.max(top, (UH - mh) / 2), w: mw, h: mh };
+  const tw = Math.min(W - 32, 540), th = 52;
+  const tip: Box = { x: (W - tw) / 2, y: UH - th - 10, w: tw, h: th };
+  return { UH, riderX: Math.round(W * 0.28), roadY: Math.round(UH * 0.68), banner, meter, speed, stamp, status, menu, tip };
 }

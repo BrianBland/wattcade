@@ -6,7 +6,7 @@ describe('layout keeps foreground above the HUD', () => {
     it(`${W}x${H} inset ${inset}`, () => {
       const L = layout(W, H, inset);
       const limit = H - inset;
-      for (const b of [L.banner, L.meter, L.speed, L.status, L.stamp]) {
+      for (const b of [L.banner, L.meter, L.speed, L.status, L.stamp, L.menu, L.tip]) {
         expect(b.y + b.h).toBeLessThanOrEqual(limit);
         expect(b.x).toBeGreaterThanOrEqual(0);
         expect(b.x + b.w).toBeLessThanOrEqual(W);

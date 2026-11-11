@@ -32,10 +32,10 @@ export function drawSeaSurface(g: G, W: number, y: number, scroll: number, t: nu
 }
 
 /** A splash (into the sea, or breaking out of it): a crown of droplets, a white flash and bubbles. `age` in seconds. */
-export function drawSplash(g: G, x: number, y: number, age: number, big: boolean) {
+export function drawSplash(g: G, x: number, y: number, age: number, big: boolean, noFlash = false) {
   if (age < 0 || age > 1.4) return;
   const k = age / 1.4, n = big ? 34 : 20;
-  if (age < 0.15) { g.globalAlpha = (0.15 - age) / 0.15 * 0.6; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 30, 0, Math.PI * 2); g.fill(); }
+  if (age < 0.15 && !noFlash) { g.globalAlpha = (0.15 - age) / 0.15 * 0.6; g.fillStyle = '#ffffff'; g.beginPath(); g.arc(x, y, 30, 0, Math.PI * 2); g.fill(); }
   for (let i = 0; i < n; i++) {
     const a = -Math.PI * (0.1 + 0.8 * hash01(i * 3 + 1)), sp = (big ? 70 : 45) * (0.4 + hash01(i * 5 + 2));
     const dx = Math.cos(a) * sp * age, dy = Math.sin(a) * sp * age + 60 * age * age;

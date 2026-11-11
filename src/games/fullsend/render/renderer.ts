@@ -11,6 +11,7 @@ import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
+import { FullSendSound } from './sound';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
@@ -37,9 +38,16 @@ export class FullSendRenderer implements GameRenderer {
   private color = '#00f0ff';
   private terrain: { key: string; t: Terrain } | null = null;
   private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
+  /** Screen shake (buffer px), and the event markers it last reacted to. */
+  private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99 };
+  private send: ((a: unknown) => void) | null = null;
+  private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
+  private lastSnap: FullSendSnapshot | null = null;
+  private sound = new FullSendSound();
   private L!: FullSendLayout;
 
-  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets }) {
+  mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
+    this.send = ctx.send ?? null;
     this.units = unitsFor(ctx.profile);
     this.color = ctx.profile.color;
     this.look = riderLook({ ...ctx.profile, level: ctx.profile.level ?? 1, achievements: ctx.profile.achievements ?? [] });
@@ -47,6 +55,11 @@ export class FullSendRenderer implements GameRenderer {
     this.canvas = document.createElement('canvas');
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#4fa3e8';
     container.appendChild(this.canvas);
+    this.canvas.addEventListener('pointerdown', (e) => { // taps on the setup screen
+      if (!this.lastSnap?.menu) return;
+      const r = this.canvas.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+      for (const h of this.menuHits) if (px >= h.x && px <= h.x + h.w && py >= h.y && py <= h.y + h.h) { h.act(); break; }
+    });
     this.g = this.canvas.getContext('2d')!;
     this.buf = document.createElement('canvas'); this.b = this.buf.getContext('2d')!;
     this.scratch = document.createElement('canvas'); this.sg = this.scratch.getContext('2d')!;
@@ -62,7 +75,7 @@ export class FullSendRenderer implements GameRenderer {
     this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
     this.L = layout(w, h, this.insets.bottom, this.insets.top);
   }
-  unmount() { this.canvas?.remove(); }
+  unmount() { this.sound.dispose(); this.canvas?.remove(); }
 
   private terr(s: FullSendSnapshot): Terrain {
     const key = `${s.terrainSeed}:${s.maxGrade}`;
@@ -233,6 +246,8 @@ export class FullSendRenderer implements GameRenderer {
       if (s.trick.name === 'Backflip') rot += a * Math.PI * 2;
     }
     const shake = s.mode === 'bounce' ? Math.sin(t * 60) * 1.5 : s.mode === 'smash' ? Math.sin(t * 45) : 0;
+    const crash = s.t - s.crashAt; // thrown by a bad landing: the bike flails, the rider sees stars
+    if (crash >= 0 && crash < 0.9) rot += Math.sin(crash * 22) * 0.5 * (1 - crash / 0.9);
     const gearL = LOOKS[s.biome].rider;
     g.save(); g.translate(Math.round(rx + shake), Math.round(ryy)); g.rotate(-rot);
     const flame = s.jet === 'on' ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
@@ -240,6 +255,9 @@ export class FullSendRenderer implements GameRenderer {
     if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
+    if (crash >= 0 && crash < 1.6) { // dizzy stars round the helmet
+      for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
+    }
     g.restore();
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
@@ -250,7 +268,7 @@ export class FullSendRenderer implements GameRenderer {
     if (Number.isFinite(deckAt)) drawCloudDeck(g, W, sy(roadH(s.camX) + deckAt), deckScroll, t, 0.9, s.toTier === 'moon' ? '#eef0ff' : '#ffffff');
     const underSea = (s.tier === 'sea' && !s.toTier) || (s.fromTier === 'sea' && s.toTier === 'ground');
     if (underSea) drawSeaSurface(g, W, sy(roadH(s.camX) + SURFACE_M), s.camX * PPM, t);
-    drawSplash(g, rx, sy(roadH(s.x) + SURFACE_M), s.t - s.splashAt, s.fromTier !== 'sea');
+    drawSplash(g, rx, sy(roadH(s.x) + SURFACE_M), s.t - s.splashAt, s.fromTier !== 'sea', s.reducedFlash);
 
     // dust kicked up by a hop landing
     const la = s.t - s.landAt;
@@ -285,9 +303,35 @@ export class FullSendRenderer implements GameRenderer {
       g.globalAlpha = 1;
     }
 
+    // screen shake on big moments (never with fewer flashes on)
+    const sn = this.seen, hits = s.piece?.hitAt.length ?? 0;
+    if (s.landAt !== sn.land) { if (s.landImpact > 12) this.shake = Math.max(this.shake, 2 + s.landImpact * 0.08); sn.land = s.landAt; }
+    if (s.crashAt !== sn.crash) { this.shake = Math.max(this.shake, 5); sn.crash = s.crashAt; }
+    if (s.splashAt !== sn.splash) { this.shake = Math.max(this.shake, 6); sn.splash = s.splashAt; }
+    if (hits > sn.hits) this.shake = Math.max(this.shake, 2.5);
+    sn.hits = hits;
+    if (s.piece && s.piece.caughtAt !== sn.caught) { if (s.piece.caughtAt > 0) this.shake = Math.max(this.shake, 5); sn.caught = s.piece.caughtAt; }
+    if (s.jet === 'on') this.shake = Math.max(this.shake, 0.8);
+    this.shake *= Math.exp(-dt * 7);
+    const sh = s.reducedFlash ? 0 : this.shake;
+    const dx = Math.round(Math.sin(t * 91) * sh) * this.px, dy = Math.round(Math.cos(t * 77) * sh) * this.px;
+
+    if (Math.abs(s.wind) > 0.05) { // wind: leaves / dust blowing past (fast toward you in a headwind, drifting along in a tailwind)
+      g.globalAlpha = Math.min(0.8, Math.abs(s.wind)); g.fillStyle = s.wind < 0 ? '#e8e2c8' : '#c8f0d8';
+      for (let i = 0; i < 24; i++) {
+        const sp = (s.wind < 0 ? 420 : 90) + hash01(i * 3) * 120, y = UH * 0.25 + hash01(i * 7) * UH * 0.6;
+        const x = W - (((t * sp) + hash01(i * 11) * W) % W);
+        g.fillRect(Math.round(x), Math.round(y + Math.sin(t * 4 + i) * 3), s.wind < 0 ? 5 : 2, 1);
+      }
+      g.globalAlpha = 1;
+    }
+
     const m = this.g;
     m.imageSmoothingEnabled = false;
-    m.drawImage(this.buf, 0, 0, W * this.px, H * this.px);
+    if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
+    m.drawImage(this.buf, dx, dy, W * this.px, H * this.px);
+    this.lastSnap = s;
+    this.sound.update(s, dt > 0);
     this.overlay(s);
   }
 
@@ -309,6 +353,16 @@ export class FullSendRenderer implements GameRenderer {
     const font = (w: number, size: number) => `${w} ${Math.round(size * d)}px system-ui, sans-serif`;
     const panel = (b: { x: number; y: number; w: number; h: number }, a = 0.72) => { m.fillStyle = `rgba(5,4,13,${a})`; round(m, b.x * d, b.y * d, b.w * d, b.h * d, 10 * d); m.fill(); };
     m.textBaseline = 'middle';
+    if (s.menu) { this.drawMenu(s.menu, font, panel); return; }
+    this.menuHits = [];
+    if (s.tip) { // first-ride tip card, above the shell HUD
+      const T = L.tip, a = Math.min(1, s.tip.age * 3, (7 - s.tip.age) * 2);
+      m.globalAlpha = Math.max(0, a); panel(T, 0.82);
+      m.fillStyle = '#ffd23b'; m.fillRect(T.x * d, (T.y + 8) * d, 4 * d, (T.h - 16) * d);
+      m.textAlign = 'left'; m.fillStyle = '#ffffff'; m.font = font(700, 14);
+      wrap(m, s.tip.text, (T.x + 16) * d, (T.y + T.h / 2) * d, (T.w - 28) * d, 17 * d);
+      m.globalAlpha = 1;
+    }
 
     // speed (top-left)
     panel(L.speed, 0.55);
@@ -316,7 +370,8 @@ export class FullSendRenderer implements GameRenderer {
     const spd = formatSpeed(s.v * 3.6, this.units).replace(/\.\d/, '');
     m.fillText(spd, (L.speed.x + 12) * d, (L.speed.y + 22) * d);
     m.font = font(700, 12); m.fillStyle = '#bdb8e8';
-    m.fillText(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% on the trainer`, (L.speed.x + 12) * d, (L.speed.y + 44) * d);
+    const windTxt = s.wind < -0.2 ? ' · headwind' : s.wind > 0.2 ? ' · tailwind' : '';
+    m.fillText(`${s.grade > 0 ? '▲' : s.grade < 0 ? '▼' : '■'} ${Math.abs(s.grade).toFixed(1)}% on the trainer${windTxt}`, (L.speed.x + 12) * d, (L.speed.y + 44) * d);
     const lm = liftMeter(s);
     m.font = font(800, 11); m.textAlign = 'left'; m.fillStyle = lm.color;
     m.fillText(lm.label, (L.speed.x + 12) * d, (L.speed.y + 62) * d);
@@ -410,7 +465,7 @@ export class FullSendRenderer implements GameRenderer {
     }
     const fly = flightCall(s);
     if (fly) {
-      m.textAlign = 'center'; m.font = font(900, 32 + 3 * Math.sin(s.t * 12)); m.fillStyle = fly.color;
+      m.textAlign = 'center'; m.font = font(900, s.reducedFlash ? 32 : 32 + 3 * Math.sin(s.t * 12)); m.fillStyle = fly.color;
       m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
       m.strokeText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d); m.fillText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d);
     }
@@ -428,6 +483,33 @@ export class FullSendRenderer implements GameRenderer {
       m.strokeText(call.text, L.riderX * d, cy * d); m.fillText(call.text, L.riderX * d, cy * d);
       m.globalAlpha = 1;
     }
+  }
+
+  /** The setup screen: pick a tour (with your best), fewer flashes, start. Rows are tappable. */
+  private drawMenu(menu: NonNullable<FullSendSnapshot['menu']>, font: (w: number, s: number) => string, panel: (b: { x: number; y: number; w: number; h: number }, a?: number) => void) {
+    const m = this.g, d = this.dpr, M = this.L.menu;
+    panel(M, 0.86);
+    this.menuHits = [];
+    m.textAlign = 'center'; m.fillStyle = '#ffd23b'; m.font = font(900, 30);
+    m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 32) * d);
+    const tours = menu.tours, ti = Math.max(0, tours.findIndex((q) => q.id === menu.tour)), tr = tours[ti];
+    const rowH = (M.h - 70) / 3;
+    const rows: Array<{ label: string; sub: string; act: () => void }> = [
+      { label: `◀  ${tr.name} · ~${tr.minutes} min  ▶`, sub: tr.best ? `Best: ${tr.best}` : 'Not ridden yet', act: () => this.send?.({ type: 'tour', value: tours[(ti + 1) % tours.length].id }) },
+      { label: `Fewer flashes: ${menu.reducedFlash ? 'On' : 'Off'}`, sub: 'No screen shake or flashing', act: () => this.send?.({ type: 'flash' }) },
+      { label: 'Start ride', sub: `A to start · starts by itself in ${Math.ceil(menu.left)} s`, act: () => this.send?.({ type: 'start' }) },
+    ];
+    rows.forEach((r, i) => {
+      const y = M.y + 60 + i * rowH, on = menu.row === i;
+      const box = { x: M.x + 14, y: y + 3, w: M.w - 28, h: rowH - 6 };
+      m.fillStyle = on ? 'rgba(255,210,59,0.18)' : 'rgba(255,255,255,0.05)'; round(m, box.x * d, box.y * d, box.w * d, box.h * d, 8 * d); m.fill();
+      if (on) { m.strokeStyle = '#ffd23b'; m.lineWidth = 2 * d; m.stroke(); }
+      m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = font(800, 17);
+      m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.38) * d);
+      m.fillStyle = '#bdb8e8'; m.font = font(600, 12);
+      m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.74) * d);
+      this.menuHits.push({ ...box, act: r.act });
+    });
   }
 
   /** Sprint meter: live FTP fraction against bronze / silver / gold, or the air / gap gauge. */
@@ -514,4 +596,14 @@ function drawForkSign(g: G, x: number, y: number, pick: 0 | 1, colA: string, col
   };
   board(-1, y - 30, colA, pick === 0);
   board(1, y - 20, colB, pick === 1);
+}
+
+/** Left-aligned word wrap, vertically centred on y (at most 3 lines). */
+function wrap(m: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lineH: number) {
+  const words = text.split(' '), lines: string[] = [];
+  let cur = '';
+  for (const w of words) { const t = cur ? `${cur} ${w}` : w; if (m.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  const ls = lines.slice(0, 3), y0 = y - ((ls.length - 1) * lineH) / 2;
+  ls.forEach((l, i) => m.fillText(l, x, y0 + i * lineH));
 }

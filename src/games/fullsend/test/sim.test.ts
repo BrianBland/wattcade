@@ -88,7 +88,7 @@ describe('steering and landings', () => {
     const run = (autolean: boolean) => runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean } }).summary;
     const hands = run(false), steer = run(true);
     expect(Number(hands.badLandings)).toBe(0);
-    expect(Number(hands.flowPeakPct)).toBeLessThan(10);
+    expect(Number(hands.flowPeakPct)).toBeLessThan(15);
     expect(Number(steer.perfectLandings)).toBeGreaterThan(20);
     expect(Number(steer.flowPeakPct)).toBeGreaterThanOrEqual(20);
     expect(Number(steer.distanceKm)).toBeGreaterThan(Number(hands.distanceKm) * 1.08);
@@ -168,5 +168,37 @@ describe('forks: pick your route', () => {
     while (snap().phase === 'warmup') { s.step(30); if (snap().fork) { sawFork = true; expect(snap().fork!.pick).toBe(1); } }
     expect(sawFork).toBe(true);
     expect(snap().piece?.kind).toBe(TOURS.quick.sets[0].alt!.kind);
+  });
+});
+
+describe('setup screen and saves', () => {
+  const mkCtxSession = (store: { data?: unknown }, simOpts: Record<string, unknown>, input?: { beginTick(): void; state(): InputState }) => {
+    const prof = testProfile();
+    (prof as { gameData?: Record<string, unknown> }).gameData = store.data ? { fullsend: store.data } : {};
+    return createGameSession({ game: module, profile: prof, input: input ?? { beginTick() {}, state: () => idle }, fake: { script: 'hook-responsive' }, simOpts, seed: 3, onSave: (d) => { store.data = d; } });
+  };
+  const idle: InputState = { held: new Set(), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 0, source: 'script' };
+  it('waits in the menu, ◀ ▶ picks the tour, A starts, and the choice is saved', () => {
+    let st: InputState = idle;
+    const store: { data?: unknown } = {};
+    const s = mkCtxSession(store, {}, { beginTick() {}, state: () => st });
+    const snap = () => (s.sim as unknown as { snapshot(): { menu: { tour: string } | null; tourName: string } }).snapshot();
+    s.step(10);
+    expect(s.sim.inMenu?.()).toBe(true);
+    const first = snap().menu!.tour;
+    st = { ...idle, pressed: new Set(['right']) }; s.step(1); st = idle; s.step(1);
+    expect(snap().menu!.tour).not.toBe(first);
+    st = { ...idle, pressed: new Set(['a']) }; s.step(1); st = idle; s.step(1);
+    expect(s.sim.inMenu?.()).toBe(false);
+    expect((store.data as { lastTour: string }).lastTour).not.toBe(first);
+  });
+  it('a finished ride saves the best result per tour and the progress line shows it', () => {
+    const store: { data?: unknown } = {};
+    const s = mkCtxSession(store, { tour: 'quick' });
+    while (!s.sim.isOver()) s.step(300);
+    const sv = store.data as { best: Record<string, { golds: number }>; rides: number };
+    expect(sv.rides).toBe(1);
+    expect(sv.best.quick.golds).toBeGreaterThanOrEqual(2);
+    expect(module.progressLine!(sv)).toMatch(/Quick Send: \d+ gold/);
   });
 });

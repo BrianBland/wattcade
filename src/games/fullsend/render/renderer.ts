@@ -15,6 +15,7 @@ import { FullSendSound } from './sound';
 import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
+import { fsFont, loadFonts } from './fonts';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
@@ -51,6 +52,7 @@ export class FullSendRenderer implements GameRenderer {
   private L!: FullSendLayout;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
+    void loadFonts();
     this.send = ctx.send ?? null;
     this.units = unitsFor(ctx.profile);
     this.color = ctx.profile.color;
@@ -356,14 +358,14 @@ export class FullSendRenderer implements GameRenderer {
   /** Banner, sprint meter, speed, medal stamp: full resolution, all inside the usable height. */
   private overlay(s: FullSendSnapshot) {
     const m = this.g, d = this.dpr, L = this.L;
-    const font = (w: number, size: number) => `${w} ${Math.round(size * d)}px system-ui, sans-serif`;
+    const font = (w: number, size: number, it = false) => fsFont(w, size * d, it);
     const panel = (b: { x: number; y: number; w: number; h: number }, a = 0.72) => { m.fillStyle = `rgba(5,4,13,${a})`; round(m, b.x * d, b.y * d, b.w * d, b.h * d, 10 * d); m.fill(); };
     m.textBaseline = 'middle';
     if (s.menu) { this.drawMenu(s.menu, font, panel); return; }
     this.menuHits = [];
     this.drawSigns();
     const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
-      m.textAlign = align; m.font = `${italic ? 'italic ' : ''}${font(weight, size)}`;
+      m.textAlign = align; m.font = font(weight, size, italic);
       if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }
       m.fillStyle = color; m.fillText(t, x * d, y * d);
     };
@@ -448,7 +450,7 @@ export class FullSendRenderer implements GameRenderer {
       const a = Math.min(1, s.last.age * 4, (3.5 - s.last.age) / 0.6), S = L.stamp;
       m.globalAlpha = a; m.textAlign = 'center';
       const sc = 1 + Math.max(0, 0.25 - s.last.age) * 2;
-      m.font = font(900, 54 * sc); m.fillStyle = '#000a';
+      m.font = font(900, 54 * sc, true); m.fillStyle = '#000a';
       const label = s.last.medal ? MEDAL_NAMES[s.last.medal].toUpperCase() : s.last.detail === 'rescued' ? 'RESCUED!' : 'SO CLOSE';
       m.fillText(label, (S.x + S.w / 2) * d + 3 * d, (S.y + S.h * 0.4) * d + 3 * d);
       m.fillStyle = MEDAL_COLORS[s.last.medal]; m.fillText(label, (S.x + S.w / 2) * d, (S.y + S.h * 0.4) * d);
@@ -457,25 +459,25 @@ export class FullSendRenderer implements GameRenderer {
       m.globalAlpha = 1;
     }
     if (s.trick && s.trick.age < 1.4) {
-      m.globalAlpha = Math.min(1, (1.4 - s.trick.age) * 2); m.textAlign = 'center'; m.font = font(900, 22); m.fillStyle = '#7af0ff';
+      m.globalAlpha = Math.min(1, (1.4 - s.trick.age) * 2); m.textAlign = 'center'; m.font = font(900, 22, true); m.fillStyle = '#7af0ff';
       m.fillText(`${s.trick.name}!`, L.riderX * d, (L.roadY - 110) * d);
       m.globalAlpha = 1;
     }
     const fly = flightCall(s);
     if (fly) {
-      m.textAlign = 'center'; m.font = font(900, s.reducedFlash ? 32 : 32 + 3 * Math.sin(s.t * 12)); m.fillStyle = fly.color;
+      m.textAlign = 'center'; m.font = font(900, s.reducedFlash ? 32 : 32 + 3 * Math.sin(s.t * 12), true); m.fillStyle = fly.color;
       m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
       m.strokeText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d); m.fillText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d);
     }
     if (s.jet) {
-      m.textAlign = 'center'; m.font = font(900, s.jet === 'on' ? 16 : 14); m.fillStyle = s.jet === 'on' ? '#ffb030' : '#ff7a5a';
+      m.textAlign = 'center'; m.font = font(900, s.jet === 'on' ? 16 : 14, s.jet === 'on'); m.fillStyle = s.jet === 'on' ? '#ffb030' : '#ff7a5a';
       const txt = s.jet === 'on' ? 'JET!' : `PEDAL HARDER · JET NEEDS ${Math.round(s.jetFtp * 100)}% FTP`;
       m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
       m.strokeText(txt, L.riderX * d, (this.riderY + 26) * d); m.fillText(txt, L.riderX * d, (this.riderY + 26) * d);
     }
     const la = s.t - s.landAt, call = landingCall(s.landGrade, s.flow, s.chain);
     if (call && la >= 0 && la < 1.3) {
-      m.globalAlpha = Math.min(1, (1.3 - la) * 2.5); m.textAlign = 'center'; m.font = font(900, call.size); m.fillStyle = call.color;
+      m.globalAlpha = Math.min(1, (1.3 - la) * 2.5); m.textAlign = 'center'; m.font = font(900, call.size, true); m.fillStyle = call.color;
       const cy = Math.min(L.roadY - 80, this.riderY - 45) - la * 18;
       m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
       m.strokeText(call.text, L.riderX * d, cy * d); m.fillText(call.text, L.riderX * d, cy * d);
@@ -484,7 +486,7 @@ export class FullSendRenderer implements GameRenderer {
   }
 
   /** The setup screen, as a big green highway sign on two posts: pick a tour (with your best), fewer flashes, start. Rows are tappable. */
-  private drawMenu(menu: NonNullable<FullSendSnapshot['menu']>, font: (w: number, s: number) => string, _panel: unknown) {
+  private drawMenu(menu: NonNullable<FullSendSnapshot['menu']>, font: (w: number, s: number, it?: boolean) => string, _panel: unknown) {
     const m = this.g, d = this.dpr, M = this.L.menu;
     this.menuHits = [];
     m.fillStyle = '#5a5f6c'; m.fillRect((M.x + 40) * d, (M.y + M.h) * d, 8 * d, (this.L.UH - M.y - M.h) * d); m.fillRect((M.x + M.w - 48) * d, (M.y + M.h) * d, 8 * d, (this.L.UH - M.y - M.h) * d);
@@ -496,7 +498,7 @@ export class FullSendRenderer implements GameRenderer {
     m.strokeRect((M.x + M.w - 106) * d, (M.y - 18) * d, 88 * d, 18 * d);
     m.textBaseline = 'middle'; m.textAlign = 'center'; m.fillStyle = '#ffffff'; m.font = font(800, 11);
     m.fillText('EXIT 1 ▸ RIDE', (M.x + M.w - 62) * d, (M.y - 9) * d);
-    m.font = `italic ${font(900, 32)}`; m.fillStyle = '#ffffff';
+    m.font = font(900, 32, true); m.fillStyle = '#ffffff';
     m.fillText('FULL SEND', (M.x + M.w / 2) * d, (M.y + 34) * d);
     const tours = menu.tours, ti = Math.max(0, tours.findIndex((q) => q.id === menu.tour)), tr = tours[ti];
     const rowH = (M.h - 70) / 3;
@@ -510,7 +512,7 @@ export class FullSendRenderer implements GameRenderer {
       const box = { x: M.x + 16, y: y + 3, w: M.w - 32, h: rowH - 6 };
       if (i) { m.fillStyle = 'rgba(255,255,255,0.35)'; m.fillRect((box.x + 10) * d, (y - 1) * d, (box.w - 20) * d, 1 * d); }
       if (on) { m.fillStyle = '#ffd23b'; m.fillRect(box.x * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); m.fillRect((box.x + box.w - 6) * d, (box.y + 4) * d, 6 * d, (box.h - 8) * d); }
-      m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = `italic ${font(900, 18)}`;
+      m.fillStyle = on ? '#ffd23b' : '#ffffff'; m.font = font(900, 18, true);
       m.fillText(r.label, (M.x + M.w / 2) * d, (box.y + box.h * 0.4) * d);
       m.fillStyle = '#cfe8d8'; m.font = font(600, 12);
       m.fillText(r.sub, (M.x + M.w / 2) * d, (box.y + box.h * 0.76) * d);
@@ -545,7 +547,7 @@ export class FullSendRenderer implements GameRenderer {
   private drawSigns() {
     const m = this.g, d = this.dpr;
     const TONE: Record<string, [string, string]> = { green: ['#0e6b3c', '#ffffff'], yellow: ['#ffd23b', '#1a1a1a'], red: ['#b3202c', '#ffffff'], blue: ['#1d4fa8', '#ffffff'] };
-    const f = (w: number, size: number, it = false) => `${it ? 'italic ' : ''}${w} ${Math.round(size * d)}px system-ui, sans-serif`;
+    const f = (w: number, size: number, it = false) => fsFont(w, size * d, it);
     const board = (x: number, y: number, w: number, h: number, tone: string) => {
       const [bg, fg] = TONE[tone];
       m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((x + 3) * d, (y + 3) * d, w * d, h * d);
@@ -571,7 +573,7 @@ export class FullSendRenderer implements GameRenderer {
         }
       } else if (sp.kind === 'next') {
         const w = 230, h = 58, fg = board(x - w / 2, y - h, w, h, sp.tone);
-        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(900, 15, true); m.fillText(sp.title, x * d, (y - h + 22) * d);
+        m.textAlign = 'center'; m.fillStyle = fg; m.font = f(900, 15); m.fillText(sp.title, x * d, (y - h + 22) * d);
         m.font = f(700, 12); m.fillText(sp.sub ?? '', x * d, (y - h + 41) * d);
       } else if (sp.kind === 'fork' && sp.options) {
         const w = 280, h = 92, fg = board(x - w / 2, y - h, w, h, sp.tone);
@@ -579,7 +581,7 @@ export class FullSendRenderer implements GameRenderer {
         sp.options.forEach((o, i) => {
           const ox = x - w / 2 + 10 + i * (w - 20) / 2, ow = (w - 20) / 2, col = o.on ? '#ffd23b' : fg;
           if (o.on) { m.lineWidth = 2.5 * d; m.strokeStyle = '#ffd23b'; m.strokeRect((ox + 3) * d, (y - h + 26) * d, (ow - 6) * d, 46 * d); }
-          m.fillStyle = col; m.font = f(900, 13, true);
+          m.fillStyle = col; m.font = f(900, 13);
           m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, (ox + ow / 2) * d, (y - h + 40) * d, (ow - 10) * d);
           m.font = f(600, 11); m.fillText(o.biome, (ox + ow / 2) * d, (y - h + 58) * d, (ow - 10) * d);
         });

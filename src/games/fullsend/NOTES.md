@@ -27,3 +27,4 @@ Design doc: the "Rocket bike sprint game: design brainstorm" Claude Doc. Dev gam
 - Preview: `dev/fullsend.html?script=hook-responsive&tour=classic&sec=300` (`autolean=0` to fly hands-off; `manual=1` exposes `window.__fs.until(pred)` for captures).
 ## Tests
 `npx vitest run src/games/fullsend` (scenarios via runHeadless, determinism, physics, tour lengths, layout).
+- Type (`render/fonts.ts`, self-hosted OFL woff2 in `render/fonts/`): `fsFont(w, px, italic)`; italic = Barlow Condensed ExtraBold Italic (titles, numerals, call-outs), upright = Overpass 700/900 (highway-style boards, labels, tips).

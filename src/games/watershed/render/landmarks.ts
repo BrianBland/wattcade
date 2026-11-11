@@ -8,8 +8,8 @@ export interface Landmark { id: LandmarkId; label: string; icon: string; /** gri
 export function landmarks(s: Pick<WatershedSnapshot, 'sourceX' | 'jobs'>): Landmark[] {
   const out: Landmark[] = [{ id: 'spring', label: 'Spring', icon: '💧', x: s.sourceX, y: 3 }];
   for (const m of s.jobs.mills) {
-    // between the mill house and its wheel (the model sits 3 cells across from the mill's x, the wheel ~3 further)
-    out.push(m.kind === 'grist' ? { id: 'grist', label: 'Grist mill', icon: '🌾', x: m.x + 4.5, y: m.y } : { id: 'saw', label: 'Sawmill', icon: '🪵', x: m.x + 4.5, y: m.y });
+    // between the mill house (3 cells across from the mill's x) and its wheel (back on the mill's x, by the river)
+    out.push(m.kind === 'grist' ? { id: 'grist', label: 'Grist mill', icon: '🌾', x: m.x + 1.5, y: m.y } : { id: 'saw', label: 'Sawmill', icon: '🪵', x: m.x + 1.5, y: m.y });
   }
   const v = s.jobs.village;
   out.push({ id: 'village', label: 'Millbrook', icon: '🏘️', x: v.x, y: v.y });

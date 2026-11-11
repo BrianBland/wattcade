@@ -11,7 +11,7 @@ import { SalmonLayer } from './creatures';
 import { Hud } from './hud';
 import { layout } from './layout';
 import { fitOverhead, overheadPitch, valleyOutline, type V3 } from './camFit';
-import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome } from './freeCam';
+import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, inwardYaw } from './freeCam';
 import { landmarks, nextLandmark, type LandmarkId } from './landmarks';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { TerrainView } from './terrainView';
@@ -79,7 +79,7 @@ export class WatershedRenderer implements GameRenderer {
   // the player's free camera (pinch / drag / twist) on top of the auto camera; eases home when the scene changes
   private free = freeCamHome(); private freeKey = ''; private homing = false;
   /** The landmark the camera has flown to (Z or a tap on its button); null = the auto camera (+ free offsets). */
-  private focus: LandmarkId | null = null; private lastLook = -1;
+  private focus: LandmarkId | null = null; private lastLook = -1; private focusRaise = 0;
   private freeView: { pos: V3; tgt: V3 } = { pos: { x: 0, y: 100, z: 0 }, tgt: { x: 0, y: 0, z: 0 } };
   private gest = new FreeCamGestures(this.free, () => ({ ...this.freeView, fovY: (this.camera.fov * Math.PI) / 180, H: this.size[1] }), () => { this.homing = true; });
   private detachGestures?: () => void;
@@ -232,7 +232,8 @@ export class WatershedRenderer implements GameRenderer {
     if (this.focus && !lm) { this.focus = null; this.homing = true; }
     if (lm) {
       const poi = { x: this.wx(lm.y), y: Math.max(SEA, this.terrainView!.heightAt(lm.x, lm.y)) + 1.5, z: this.wz(lm.x) };
-      easeToward(this.free, focusState(poi, { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z }), dt);
+      const at = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z }, ap = this.camera.position;
+      easeToward(this.free, focusState(poi, at, undefined, 1, inwardYaw(poi.z, { x: ap.x, y: ap.y, z: ap.z }, at)), dt);
     } else if (this.homing && easeHome(this.free, dt)) this.homing = false;
     this.hud?.setLandmarks(marks, this.focus);
     const c = this.camera.position, pos = { x: c.x, y: c.y, z: c.z }, tgt = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z };
@@ -241,6 +242,10 @@ export class WatershedRenderer implements GameRenderer {
       applyFreeCam(this.free, pos, tgt, { x0: this.wx(0) - 10, x1: this.wx(this.ny - 1) + 40, z0: -this.nx / 2 - 10, z1: this.nx / 2 + 10 });
       const tv = this.terrainView!, ground = Math.max(SEA, tv.heightAt(pos.z + this.nx / 2, pos.x + this.ny / 2));
       pos.y = Math.max(pos.y, ground + 3);
+      // a low landmark view must not look through a hillside: rise (smoothly) until the line of sight clears
+      const need = lm ? this.clearHeight(pos, tgt) - pos.y : 0;
+      this.focusRaise += (Math.max(0, need) - this.focusRaise) * (1 - Math.exp(-dt * 4));
+      pos.y += this.focusRaise;
       this.camera.position.set(pos.x, pos.y, pos.z);
       this.camera.lookAt(tgt.x, tgt.y, tgt.z);
     }
@@ -363,6 +368,17 @@ export class WatershedRenderer implements GameRenderer {
   }
 
   /** Raise `cam` until its line of sight to `look` clears the terrain (canyon walls, ridges) with some margin. */
+  /** Camera height at (cam.x, cam.z) whose line of sight to `look` clears the terrain (and water) by a margin. */
+  private clearHeight(cam: V3, look: V3): number {
+    const tv = this.terrainView!, hAt = (wx: number, wz: number) => Math.max(SEA, tv.heightAt(wz + this.nx / 2, wx + this.ny / 2));
+    let need = hAt(cam.x, cam.z) + 3;
+    for (let k = 1; k < 10; k++) {
+      const t = k / 10, ground = hAt(cam.x + (look.x - cam.x) * t, cam.z + (look.z - cam.z) * t);
+      need = Math.max(need, (ground + 4 - look.y * t) / (1 - t));   // + clearance for trees on the way
+    }
+    return need;
+  }
+
   private liftClear(cam: THREE.Vector3, look: THREE.Vector3) {
     const tv = this.terrainView!, hAt = (wx: number, wz: number) => tv.heightAt(wz + this.nx / 2, wx + this.ny / 2);
     let need = hAt(cam.x, cam.z) + 3;

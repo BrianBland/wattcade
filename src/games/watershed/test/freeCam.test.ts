@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { project, type V3 } from '../render/camFit';
-import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, ZOOM_MAX, ZOOM_MIN } from '../render/freeCam';
+import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, inwardYaw, ZOOM_MAX, ZOOM_MIN } from '../render/freeCam';
 import { landmarks, nextLandmark } from '../render/landmarks';
 
 const FOV = (40 * Math.PI) / 180, W = 1180, H = 820, ASPECT = W / H;
@@ -128,4 +128,20 @@ describe('watershed landmarks', () => {
     expect(nextLandmark(list, 'village')?.id).toBe('spring');
     expect(nextLandmark(list, 'dam')?.id).toBe('spring');
   });
+});
+
+describe('watershed landmark bearing', () => {
+  for (const [name, pos, tgt] of CAMS) {
+    it(`${name}: a landmark by a valley wall is viewed from the valley-centre side`, () => {
+      for (const z of [-30, 30]) {
+        const poi = { x: tgt.x, y: 5, z };
+        const f = focusState(poi, tgt, undefined, 1, inwardYaw(z, pos, tgt));
+        const p = { ...pos }, t = { ...tgt };
+        applyFreeCam(f, p, t);
+        expect(Math.sign(p.z - poi.z)).toBe(-Math.sign(z));   // camera sits toward z = 0
+        expect(Math.abs(p.z)).toBeLessThan(Math.abs(z) + 5);
+      }
+      expect(Math.abs(inwardYaw(0, pos, tgt))).toBeLessThan(1e-9);
+    });
+  }
 });

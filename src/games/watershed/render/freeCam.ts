@@ -100,8 +100,24 @@ export const FOCUS_ZOOM = 0.2;
  * The free-camera state that centres world point `poi` for an auto camera currently looking at `autoTgt`: zoomed in
  * to `zoom` and tilted down to a low angle, so a mill wheel or a dam fills the view.
  */
-export function focusState(poi: V3, autoTgt: V3, zoom = FOCUS_ZOOM, tilt = 1): FreeCamState {
-  return { zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom)), panX: poi.x - autoTgt.x, panZ: poi.z - autoTgt.z, yaw: 0, lift: poi.y - autoTgt.y, tilt };
+export function focusState(poi: V3, autoTgt: V3, zoom = FOCUS_ZOOM, tilt = 1, yaw = 0): FreeCamState {
+  return { zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom)), panX: poi.x - autoTgt.x, panZ: poi.z - autoTgt.z, yaw, lift: poi.y - autoTgt.y, tilt };
+}
+
+/**
+ * Yaw (for focusState) that puts the camera on the valley-centre side of a landmark at world z = `poiZ` (the valley
+ * axis is z = 0), so a low view of a mill by the valley wall looks in across the river instead of over the wall.
+ * `autoPos`/`autoTgt` are the auto camera; landmarks near the axis keep its bearing.
+ */
+export function inwardYaw(poiZ: number, autoPos: V3, autoTgt: V3): number {
+  const ax = autoPos.x - autoTgt.x, az = autoPos.z - autoTgt.z, al = Math.hypot(ax, az);
+  const bx = al > 1e-3 ? ax / al : 1, bz = al > 1e-3 ? az / al : 0;
+  const side = Math.max(-1, Math.min(1, -poiZ / 16));   // 0 near the axis, ±1 by the walls: lean the camera toward the centre
+  const dx = bx * (1 - Math.abs(side)) + 0.35 * Math.abs(side) * Math.sign(bx || 1), dz = bz * (1 - Math.abs(side)) + side;
+  let yaw = Math.atan2(dz, dx) - Math.atan2(bz, bx);
+  while (yaw > Math.PI) yaw -= Math.PI * 2;
+  while (yaw < -Math.PI) yaw += Math.PI * 2;
+  return yaw;
 }
 
 /** Ease `f` toward `goal` (a fly-to); returns true once it has arrived. */

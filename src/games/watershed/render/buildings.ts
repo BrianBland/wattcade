@@ -67,16 +67,16 @@ export function wheelGeometry(r: number, width: number): THREE.BufferGeometry {
 export function millModel(kind: 'grist' | 'saw'): THREE.Group {
   const g = new THREE.Group();
   const stoneBase = [box(2.6, 1.1, 2.3, 0, 0.55, 0, 0x8c867a)];
-  for (let k = 0; k < 14; k++) stoneBase.push(box(0.36, 0.2, 0.05, -1.1 + (k % 7) * 0.36 + (Math.floor(k / 7) % 2) * 0.18, 0.3 + Math.floor(k / 7) * 0.4, 1.16, 0x7a746a));
+  for (let k = 0; k < 14; k++) stoneBase.push(box(0.36, 0.2, 0.05, -1.1 + (k % 7) * 0.36 + (Math.floor(k / 7) % 2) * 0.18, 0.3 + Math.floor(k / 7) * 0.4, -1.16, 0x7a746a));
   const { geo, chimney } = houseGeometry({ w: 2.6, d: 2.3, wallH: 1.4, wall: 0xf1e3c4, roof: kind === 'grist' ? 0xa8402e : 0x2e6e4a, shutter: kind === 'grist' ? 0x2e6e4a : 0xa8402e });
   geo.translate(0, 0.8, 0);
   const extra: THREE.BufferGeometry[] = [];
   if (kind === 'grist') {
     // a flume on posts that pours onto the top of the overshot wheel, and flour sacks by the door
     // (water comes from upstream, −X, along the wheel's side of the mill)
-    extra.push(box(3.4, 0.18, 0.55, -1.75, 3.55, 1.75, 0x6a4628), box(3.4, 0.3, 0.06, -1.75, 3.67, 2.03, 0x5a3a20), box(3.4, 0.3, 0.06, -1.75, 3.67, 1.47, 0x5a3a20));
-    for (const x of [-2.4, -3.3]) extra.push(box(0.14, 3.5, 0.14, x, 1.75, 1.75, 0x5a3a20));
-    extra.push(box(3.3, 0.05, 0.42, -1.7, 3.66, 1.75, 0x6fb8e0));   // water in the flume
+    extra.push(box(3.4, 0.18, 0.55, -1.75, 3.55, -1.75, 0x6a4628), box(3.4, 0.3, 0.06, -1.75, 3.67, -2.03, 0x5a3a20), box(3.4, 0.3, 0.06, -1.75, 3.67, -1.47, 0x5a3a20));
+    for (const x of [-2.4, -3.3]) extra.push(box(0.14, 3.5, 0.14, x, 1.75, -1.75, 0x5a3a20));
+    extra.push(box(3.3, 0.05, 0.42, -1.7, 3.66, -1.75, 0x6fb8e0));   // water in the flume
     for (let k = 0; k < 3; k++) extra.push(paint(at(new THREE.SphereGeometry(0.3, 10, 8).scale(1, 1.3, 0.9), 1.6, 0.35, -0.6 + k * 0.55), 0xe8d7a8));
   } else {
     // a frame saw in an open shed and a stacked log pile
@@ -93,9 +93,9 @@ export function millModel(kind: 'grist' | 'saw'): THREE.Group {
   const r = kind === 'grist' ? 1.65 : 1.45;
   const wheel = new THREE.Mesh(wheelGeometry(r, 0.8), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }));
   wheel.name = 'wheel'; wheel.castShadow = true;
-  // the axle runs out of the mill's river side (+Z); the wheel's plane faces across the river (axis along Z)
+  // the axle runs out of the mill's river side (−Z, toward the saddle it sits below); axis along Z
   wheel.rotation.order = 'YXZ'; wheel.rotation.y = Math.PI / 2;
-  wheel.position.set(0, kind === 'grist' ? 1.75 : 1.35, 1.75);
+  wheel.position.set(0, kind === 'grist' ? 1.75 : 1.35, -1.75);
   g.add(wheel);
   const smoke = new THREE.Object3D(); smoke.name = 'chimney'; smoke.position.copy(chimney).add(new THREE.Vector3(0, 0.8, 0)); g.add(smoke);
   return g;

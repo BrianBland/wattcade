@@ -6,7 +6,8 @@ import { scenarios } from '../scenarios';
 import { progressLine } from '../card';
 import { BASE_PAD, BASE_X, BASE_Y, ELEMENTS, ELEMENT_WEAPON, FIELD_H, FIELD_W, KIND_FROM, KINDS, PADS, ROAD_LENGTH, TOWERS, flightAt, flightLength, padOrder, roadAt, towerBuildCost, type Element } from '../sim/defs';
 import { clearHealFor, nextBrood, planWave, waveCounts, waveRole, type WaveOpts } from '../sim/waves';
-import { UPGRADES, autoInvest, metaMods, upgradeCost } from '../sim/meta';
+import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, starTotal } from '../sim/unlocks';
+import { CAMPAIGN } from '../sim/campaign';
 import { readSave } from '../sim/sim';
 import type { TdSnapshot } from '../sim/types';
 
@@ -129,7 +130,7 @@ describe('clear heal', () => {
     expect(clearHealFor(25, 0, { ...o, leakZero: 0 })).toBe(26);
   });
   it('the dynamo stalls after stallGraceS under 15 rpm; leaks then hit x2.2', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(30 * 10);
     expect(snap(s).stalled).toBe(false);
     s.fakeBike!.useScript(null); s.fakeBike!.manual.cadence = 0; s.fakeBike!.manual.power = 0;
@@ -144,7 +145,7 @@ describe('clear heal', () => {
   });
   it('a rider who stops pedalling gets no heal from leaked waves', () => {
     // a reinforced base outlasts the long first wave, which then times out with its leaks
-    const r = runHeadless({ game: module, script: 'idle', minutes: 8, seed: 1, simOpts: { autopilot: true, baseHp: 1000 } });
+    const r = runHeadless({ game: module, script: 'idle', minutes: 8, seed: 1, simOpts: { stars: 99, autopilot: true, baseHp: 1000 } });
     const cleared = r.events.filter((e) => e.type === 'waveCleared');
     expect(cleared.length).toBeGreaterThan(0);
     for (const e of cleared) { expect(Number(e.data?.leakDmg)).toBeGreaterThan(0); expect(e.data?.heal).toBe(0); }
@@ -177,53 +178,48 @@ describe('waves', () => {
   });
 });
 
-describe('garage meta', () => {
-  it('auto-invest buys the cheapest upgrades and mods apply', () => {
-    const l = {};
-    const r = autoInvest(1000, l);
-    expect(r.bought.length).toBeGreaterThan(3);
-    expect(r.bank).toBeLessThan(Math.min(...UPGRADES.map((d) => upgradeCost(d, 0))) * 2);
-    const m = metaMods({ plating: 2, capacity: 1, foundry: 2, headstart: 3 }, 20);
-    expect(m.hpMult).toBeCloseTo(1.2); expect(m.railExtra).toBe(1); expect(m.towerCostMult).toBeCloseTo(0.9);
-    expect(m.maxStartWave).toBe(7);
-    expect(metaMods({ headstart: 9 }, 6).maxStartWave).toBe(4); // capped at best - 2
-  });
-  it('reads old saves and shows progress', () => {
-    const s = readSave({ bestWave: 9 });
-    expect(s).toMatchObject({ v: 3, bestWave: 9, bank: 0, runs: 0 });
-    expect(progressLine({ bestWave: 9 })).toBe('Best: wave 9');
-    expect(progressLine({ bestWave: 12, bank: 340 })).toBe('Best: wave 12 · 340 parts');
+describe('levels meta', () => {
+  it('old Garage saves migrate to veterans and the card waits for v4 progress', () => {
+    const s = readSave({ bestWave: 9, bank: 300, upgrades: { plating: 2 } });
+    expect(s).toMatchObject({ v: 4, endlessBest: 0, veteran: true, runs: 0 });
+    expect(s).not.toHaveProperty('bank'); expect(s).not.toHaveProperty('upgrades');
+    expect(readSave({ v: 3, bestWave: 4 }).veteran).toBe(false); // never bought anything
+    expect(progressLine({ bestWave: 9 })).toBeNull();
+    expect(progressLine({ v: 4, campaign: { x: 3 }, endlessBest: 0 })).toBe('1 levels · 3★');
     expect(progressLine(undefined)).toBeNull();
   });
-  it('a returning rider shops in the garage, then starts the run', () => {
-    const profile: Profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 1, bank: 500, bestWave: 5, upgrades: {} } } });
-    let saved: any = null;
-    const input = new TimelineInput([
-      { t: 0.2, press: 'down' }, { t: 0.3, release: 'down' }, // -> Hull Plating (120)
-      { t: 0.5, press: 'a' }, { t: 0.6, release: 'a' },       // buy
-      { t: 0.8, press: 'b' }, { t: 0.9, release: 'b' },       // start now
-    ]);
-    const s = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
-    s.step(3);
-    expect(snap(s).phase).toBe('garage');
-    expect(s.sim.hud!().controls!.some((c) => c.label === 'Buy / start')).toBe(true);
-    s.step(30);
-    expect(saved.upgrades.plating).toBe(1);
-    expect(saved.bank).toBe(380);
-    expect(snap(s).phase).toBe('run');
-    expect(snap(s).baseMaxHp).toBeCloseTo(110);
-    expect(saved.runs).toBe(2);
+  it('stars gate the unlocks: tower levels, the slow field and Hard', () => {
+    expect(maxTowerLevel(0)).toBe(3); expect(maxTowerLevel(12)).toBe(4); expect(maxTowerLevel(30)).toBe(5);
+    expect(isUnlocked('slow', 3)).toBe(false); expect(isUnlocked('slow', 4)).toBe(true);
+    expect(nextUnlock(9)?.id).toBe('tier4'); expect(nextUnlock(99)).toBeNull();
+    expect(starTotal({ [CAMPAIGN[0].id]: 3, [CAMPAIGN[1].id]: 5, bogus: 3 })).toBe(6);
+    expect(UNLOCKS.map((u) => u.stars)).toEqual([...UNLOCKS.map((u) => u.stars)].sort((x, y) => x - y));
   });
-  it('best wave counts from a Forward Base start', () => {
-    const profile: Profile = testProfile({ gameData: { towerdefense: { v: 2, runs: 4, bank: 0, bestWave: 12, upgrades: { headstart: 3 } } } });
+  it('a deep level pays catch-up scrap for the Endless waves it skips', () => {
+    const ride = (index: number) => {
+      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3,
+        simOpts: { stars: 99, skipGarage: true, play: { campaign: index } } });
+      for (let i = 0; i < 30 * 60 * 6 && snap(s).wave < 2; i++) s.step(1);
+      return { earned: Number(s.sim.summary!().scrapEarned) };
+    };
+    const shallow = ride(0), deep = ride(CAMPAIGN.findIndex((c) => c.depth >= 5 && c.minutes === 15));
+    expect(deep.earned).toBeGreaterThan(shallow.earned + 100);
+  });
+  it('a veteran rider starts with the first 12★ of unlocks; Endless records its best wave', () => {
+    const profile: Profile = testProfile({ gameData: { towerdefense: { v: 3, runs: 4, bank: 50, bestWave: 12, upgrades: {} } } });
     let saved: any = null;
-    const s = createGameSession({ game: module, profile, input: new TimelineInput([{ t: 0.2, press: 'b' }]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, onSave: (d) => { saved = d; } });
+    s.step(1);
+    const gv = snap(s).garage!;
+    expect(gv.stars).toBe(VETERAN_STARS);
+    expect(gv.rows.find((r) => r.kind === 'unlocks')!.desc).toContain('Hard');
+    s.sim.receive!({ type: 'garageRow', row: gv.rows.findIndex((r) => r.kind === 'start') }); // Endless
     s.step(30);
-    expect(snap(s).wave).toBe(7); // 1 + 2 x 3
-    s.step(30 * 60 * 8);
-    expect(snap(s).wave).toBeGreaterThanOrEqual(9);
-    expect(s.sim.isOver()).toBe(false);
-    expect(saved.bestWave).toBe(Math.max(12, snap(s).wave - 1));
+    expect(snap(s).phase).toBe('run'); expect(snap(s).wave).toBe(1);
+    s.step(30 * 60 * 6);
+    expect(snap(s).wave).toBeGreaterThanOrEqual(3);
+    expect(saved.endlessBest).toBe(snap(s).wave - 1);
+    expect(saved.veteran).toBe(true); expect(saved.runs).toBe(5);
   });
   it('first run skips the garage; intro shows play controls', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
@@ -236,7 +232,7 @@ describe('garage meta', () => {
 describe('brood waves', () => {
   const weaponEffect = (s: ReturnType<typeof createGameSession>) => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
   it('each wave opens with a lull: card + countdown in the snapshot, no spawns, then the wave', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(30);
     const b = snap(s).brood;
     expect(b.wave).toBe(1);
@@ -255,7 +251,7 @@ describe('brood waves', () => {
     expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
   });
   it('the next weapon\'s trainer setting eases in over the last rampS of the lull', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(30 * 2);
     const b = snap(s).brood;
     const val = () => { const e = weaponEffect(s); return e.gradePct ?? e.levelPct ?? e.ftpFraction ?? NaN; };
@@ -271,7 +267,7 @@ describe('brood waves', () => {
   });
   it('weapon buttons and weapon taps no longer switch weapons', () => {
     const input = new TimelineInput([{ t: 1, press: 'a' }, { t: 1.1, release: 'a' }, { t: 2, press: 'b' }, { t: 2.1, release: 'b' }, { t: 3, press: 'y' }, { t: 3.1, release: 'y' }]);
-    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(10);
     const w = snap(s).weapon;
     s.sim.receive!({ type: 'weapon', w: w === 'rail' ? 'gatling' : 'rail' });
@@ -282,7 +278,7 @@ describe('brood waves', () => {
 
 describe('effort targets', () => {
   function ride(kind: 'spin' | 'grind' | 'hold', cadence: number, power: number) {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { autopilot: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 5, simOpts: { stars: 99, autopilot: true } });
     let n = 0;
     while (!(snap(s).effort?.kind === kind && snap(s).effort?.state === 'active') && n++ < 30 * 60 * 45) s.step(1);
     const call = snap(s).effort!;
@@ -323,7 +319,7 @@ describe('workshop', () => {
       { t: 0.5, press: 'down' }, { t: 0.6, release: 'down' },
       { t: 0.8, press: 'up' }, { t: 0.9, release: 'up' },
     ]);
-    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { skipGarage: true } });
+    const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(20);
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
@@ -337,13 +333,13 @@ describe('workshop', () => {
     expect(snap(s).towers[0].kind).toBe('tesla');
     expect(snap(s).scrap).toBeLessThanOrEqual(scrap0 - towerBuildCost('tesla') + 2);
     // the built pad now offers an upgrade and a refund
-    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell', 'crew']);
+    expect(snap(s).workshop!.rows.map((r) => r.kind)).toEqual(['upgrade', 'sell']);
     s.sim.receive!({ type: 'close' }); s.step(1);
     expect(snap(s).workshop).toBeNull();
   });
   it('towers only fire on pedal power', () => {
     const run = (script: string) => {
-      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { skipGarage: true, autoCrew: false } });
+      const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
       s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
       // a weak turret leaves the aliens to the tower: at full strength it kills the early stream before it arrives
       s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railLaserDps', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
@@ -364,7 +360,7 @@ function rigged() {
   const st = { held, pressed, released, paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' } as unknown as InputState;
   let skip = false;
   const input = { beginTick() { if (skip) skip = false; else { pressed.clear(); released.clear(); } }, state: () => st };
-  const session = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'intervals' }, seed: 3, simOpts: { skipGarage: true } });
+  const session = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
   return { fresh: () => { skip = true; }, session, held, pressed, released, charges: () => snap(session).railCharges };
 }
 

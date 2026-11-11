@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
-const output = '/tmp/towerdefense-layout';
+const output = process.env.TOWERDEFENSE_OUT ?? '/tmp/towerdefense-layout';
 await mkdir(output, { recursive: true });
 const base = process.env.TOWERDEFENSE_BASE ?? 'http://127.0.0.1:5205';
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH ?? '/usr/bin/chromium', args: ['--no-sandbox'] });

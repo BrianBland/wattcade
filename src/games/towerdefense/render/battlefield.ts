@@ -1,10 +1,12 @@
-import { BASE_X, BASE_Y, PADS, roadAt } from '../sim/defs';
-import { PAD_R, PAINTED_PADS, PAINT_BOXES, type PaintOrientation } from '../sim/road';
+import { PAD_R, type PaintOrientation } from '../sim/road';
+import { LEVEL_0, levelGeometry, type TdGeometry } from '../sim/level';
 import type { TdSnapshot } from '../sim/types';
 import type { View } from './aliens/layer';
 import { boundedLights, type Point } from './battlefieldMath';
 import { COL, glowAt } from './sprites';
 import { loadImage } from './assets';
+import { GroundBaker, type Baked } from './ground/bake';
+import { screenBox, type WorldBox } from './ground/compose';
 interface Light extends Point { r: number; color: string; strength: number }
 
 /**
@@ -17,7 +19,13 @@ export class Battlefield {
   private paintings: Partial<Record<PaintOrientation, HTMLImageElement>> = {};
   private darkness: HTMLCanvasElement | null = null;
   private lightKey = '';
+  /** Ground for levels without a painting, baked from the level's kit (vector ground stands in meanwhile). */
+  private baker: GroundBaker;
+  private baked: Baked | null = null;
+  /** The level being drawn; the renderer sets it from the snapshot. Only a painted level uses the paintings. */
+  geo: TdGeometry = levelGeometry(LEVEL_0);
   constructor(base: string, onBackground: () => void) {
+    this.baker = new GroundBaker(base, onBackground);
     // A missing painting is fine: the other orientation or the vector ground stands in.
     this.loaded = Promise.all((['portrait', 'landscape'] as const).map(o =>
       loadImage(`${base}td/environment/road/${o}.webp`).then(image => { this.paintings[o] = image; onBackground(); }, () => {}),
@@ -25,12 +33,14 @@ export class Battlefield {
   }
 
   get ready() { return !!(this.paintings.portrait || this.paintings.landscape); }
-  /** Paints the ground behind the field; false when no painting has loaded. */
+  /** Paints the ground behind the field; false while none is ready (no painting loaded, or the kit ground baking). */
   paint(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
+    const painted = this.geo.level.painted;
+    if (!painted) return this.kitGround(g, v, W, H);
     const own = v.turned ? this.paintings.landscape : this.paintings.portrait;
     const o: PaintOrientation | null = own ? (v.turned ? 'landscape' : 'portrait') : this.paintings.portrait ? 'portrait' : null;
     if (!o) return false;
-    const image = this.paintings[o]!, { x0, y0, x1, y1 } = PAINT_BOXES[o];
+    const image = this.paintings[o]!, { x0, y0, x1, y1 } = painted.boxes[o];
     g.fillStyle = '#0d1118'; g.fillRect(0, 0, W, H);
     g.save();
     if (o === 'landscape') { const c = v.P(x0, y1); g.drawImage(image, c.x, c.y, (y1 - y0) * v.k, (x1 - x0) * v.k); }
@@ -40,7 +50,31 @@ export class Battlefield {
       g.drawImage(image, 0, 0, (x1 - x0) * v.k, (y1 - y0) * v.k);
     }
     g.restore();
-    for (const p of PADS.slice(PAINTED_PADS)) this.plate(g, v, p.x, p.y, p.id);
+    for (const p of this.geo.pads.slice(painted.pads)) this.plate(g, v, p.x, p.y, p.id);
+    return true;
+  }
+  /** Bake resolution: about 60 % of the screen's device pixels per unit (the kits hold 12), within 6–10. */
+  private kitGround(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
+    const K = Math.max(6, Math.min(10, Math.round(v.k * v.dpr * 0.6)));
+    const b = this.baker.get(this.geo.level, screenBox(v.P, W, H), K);
+    this.baked = b;
+    if (!b) return false;
+    g.fillStyle = '#0d1118'; g.fillRect(0, 0, W, H);
+    this.blit(g, v, b.ground, b.box);
+    return true;
+  }
+  /** A world-space canvas over `box`, through the view (upright or turned). */
+  private blit(g: CanvasRenderingContext2D, v: View, image: HTMLCanvasElement, box: WorldBox) {
+    const a = v.P(box.x0, box.y0);
+    g.save(); g.translate(a.x, a.y); if (v.turned) g.transform(0, 1, -1, 0, 0, 0);
+    g.drawImage(image, 0, 0, box.w * v.k, box.h * v.k);
+    g.restore();
+  }
+  /** Bridge decks over the aliens below them; false when there are none on screen yet. */
+  deck(g: CanvasRenderingContext2D, v: View) {
+    const b = this.baked;
+    if (!b?.deck || b.level !== this.geo.level) return false;
+    this.blit(g, v, b.deck.canvas, b.deck.box);
     return true;
   }
   /**
@@ -68,12 +102,18 @@ export class Battlefield {
   /** The hive mouth breathes in the incoming brood's colour, so the spawn reads even under the status rows' edge. */
   hive(g: CanvasRenderingContext2D, v: View, s: TdSnapshot) {
     if (s.phase !== 'run') return;
-    const p = roadAt(0), q = v.P(p.x, p.y), pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
+    const pulse = 0.5 + 0.5 * Math.sin(s.t * 2);
     g.save(); g.globalCompositeOperation = 'lighter';
-    glowAt(g, COL[s.brood.color], q.x, q.y, (12 + 3 * pulse) * v.k, 0.18 + 0.12 * pulse);
+    for (const lane of this.geo.lanes) {
+      const p = lane.at(0), q = v.P(p.x, p.y);
+      // a fork's routes share their mouth: glow it once
+      if (lane !== this.geo.lanes[0] && Math.hypot(p.x - this.geo.roadAt(0).x, p.y - this.geo.roadAt(0).y) < 4) continue;
+      glowAt(g, COL[s.brood.color], q.x, q.y, (12 + 3 * pulse) * v.k, 0.18 + 0.12 * pulse);
+    }
     g.restore();
   }
   lighting(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, W: number, H: number) {
+    const { pads: PADS, base: { x: BASE_X, y: BASE_Y } } = this.geo;
     const lights: Light[] = [{ x: BASE_X, y: BASE_Y, r: 16, color: '#71e8ff', strength: 0.22 }];
     for (const tw of s.towers) { const p = PADS[tw.pad]; lights.push({ x: p.x, y: p.y, r: 8, color: COL[tw.kind === 'tesla' ? 'blue' : tw.kind === 'flamer' ? 'red' : 'purple'], strength: 0.14 }); }
     const ambientCount = lights.length;

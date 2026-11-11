@@ -7,10 +7,12 @@ const role = (r: string) => r === 'boss' ? 'Boss' : r === 'easy' ? 'Recovery' : 
 
 /** Read the same live effort/boss state as the sim; recovery always takes priority over stale calls. */
 export function rideObjective(s: TdSnapshot): RideObjective {
-  const label = `Set ${s.set.set} · ${s.set.role === 'work' ? `Work ${s.set.pos}/3` : role(s.set.role)}`;
+  const label = `${s.run ? `${s.run.name} · W${s.wave}/${s.run.waves} · ` : ''}${s.set.warmup ? 'Warm-up' : `Set ${s.set.set} · ${s.set.role === 'work' ? `Work ${s.set.pos}/${s.set.of}` : role(s.set.role)}`}`;
   const next = `Next: ${role(s.forecast.role).toLowerCase()}`;
   if (s.brood.countdownS > 0) return { label, title: 'Recover', target: 'Easy spin · catch your breath',
     detail: `${role(s.set.role)} starts in ${seconds(s.brood.countdownS)}` };
+  if (s.set.warmup) return { label, title: 'Warm-up wave', target: 'Ride easy · build your first towers',
+    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
   if (s.set.role === 'easy') return { label, title: 'Recovery wave', target: 'Ride easy · no called efforts',
     detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
   const b = s.boss;
@@ -35,9 +37,8 @@ export function rideObjective(s: TdSnapshot): RideObjective {
   return { label, title: 'Hold your rhythm', target: s.brood.cue, detail: next };
 }
 
-export function crewStatus(s: TdSnapshot): { title: string; detail: string } {
-  const title = `Auto-crew ${s.autoCrew ? 'on' : 'off'}`;
-  if (s.constructionDone) return { title, detail: 'Order complete · next order at recovery' };
-  if (s.suggestion) return { title, detail: `${s.autoCrew ? 'Queued' : 'Suggested'}: ${s.suggestion.label} · ${s.suggestion.cost} scrap` };
-  return { title, detail: s.autoCrew ? 'Plans the next order during recovery' : 'Accept a suggested order or use Workshop' };
+export function constructionStatus(s: TdSnapshot): { title: string; detail: string } {
+  return s.lull > 0
+    ? { title: 'Recovery · build now', detail: `${s.scrap} scrap · A opens Construction` }
+    : { title: 'Construction', detail: `${s.scrap} scrap · build any time with A` };
 }

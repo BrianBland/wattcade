@@ -1,10 +1,11 @@
 // Everything that makes the island feel alive and reacts to nearby buildings:
 // paths between buildings, flowers/trees/gardens that grow with in-zone riding, villagers, fishers, porters, gulls, butterflies, smoke.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, PIER_LEN, PLOTS, plotHeight } from '../sim/layout';
 import { plotYaw, SHORE_KINDS } from './buildings';
 import type { Seg, Terrain } from './world';
-import { lam, mergeStatic, mulberry, pick, softTexture } from './util';
+import { blob, cone, cyl, ico, lam, mergeStatic, mulberry, pick, softTexture } from './util';
 import type { Season } from '../sim/extras';
 
 const FLOWER_COLS = [0xff6fa8, 0xffd23f, 0xffffff, 0xb07cff, 0xff5a4f, 0xff9f43, 0x6cb4ff, 0xffb3e6];
@@ -59,14 +60,16 @@ export class Life {
       const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.castShadow = shadow; m.receiveShadow = true;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(m); return m;
     };
-    const white = () => new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    this.flowers = inst(new THREE.IcosahedronGeometry(0.14, 0), white(), 3500);
-    const grassGeo = new THREE.ConeGeometry(0.1, 0.55, 3); grassGeo.translate(0, 0.27, 0);
+    const white = () => new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.flowers = inst(blob(0.14, 0, 1, 1), white(), 3500); // a smooth 80-triangle bead
+    const grassGeo = cone(0.1, 0.55, 3); grassGeo.translate(0, 0.27, 0);
     this.grass = inst(grassGeo, white(), 2200);
-    const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1, 5); trunkGeo.translate(0, 0.5, 0);
+    const trunkGeo = cyl(0.12, 0.18, 1, 5); trunkGeo.translate(0, 0.5, 0);
     this.trunks = inst(trunkGeo, lam(0x6b4a2e), 260, true);
-    this.crowns = inst(new THREE.IcosahedronGeometry(1, 0), white(), 260, true);
-    const pineGeo = new THREE.ConeGeometry(0.9, 2.4, 6); pineGeo.translate(0, 1.2, 0);
+    this.crowns = inst(blob(1, 0.14, 5, 2), white(), 260, true);
+    // pine: three stacked tiers, smooth enough that no facet reads as a big triangle
+    const tiers = [[0.9, 1.3, 0.75], [0.7, 1.1, 1.35], [0.45, 0.9, 1.9]].map(([r, h, y]) => { const c = cone(r, h, 14); c.translate(0, y, 0); c.deleteAttribute('uv'); return c; });
+    const pineGeo = mergeGeometries(tiers)!; tiers.forEach((t) => t.dispose());
     this.pines = inst(pineGeo, white(), 80, true);
     this.patches = inst(new THREE.BoxGeometry(1, 0.12, 0.6), lam(0x6e4b2f), 40);
     this.group.add(this.extras);
@@ -319,10 +322,10 @@ export class Life {
   private makePerson(seed: number): { g: THREE.Group; body: THREE.Mesh } {
     const r = mulberry(seed * 53 + 11);
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.24, 0.62, 6), lam(pick(r, CLOTHES))); body.position.y = 0.31;
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lam(pick(r, SKIN))); head.position.y = 0.76;
+    const body = new THREE.Mesh(cyl(0.17, 0.24, 0.62, 6), lam(pick(r, CLOTHES))); body.position.y = 0.31;
+    const head = new THREE.Mesh(ico(0.16, 0), lam(pick(r, SKIN))); head.position.y = 0.76;
     g.add(body, head);
-    if (r() < 0.45) { const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.22, 0.12, 6), lam(pick(r, [0xf4e2a1, 0x34495e, 0xc0392b, 0x2e7d32]))); hat.position.y = 0.9; g.add(hat); }
+    if (r() < 0.45) { const hat = new THREE.Mesh(cyl(0.1, 0.22, 0.12, 6), lam(pick(r, [0xf4e2a1, 0x34495e, 0xc0392b, 0x2e7d32]))); hat.position.y = 0.9; g.add(hat); }
     this.group.add(g);
     return { g, body };
   }
@@ -359,7 +362,7 @@ export class Life {
     this.nodes.forEach((n, i) => {
       if (n.kind !== 'pierEnd') return;
       const { g, body } = this.makePerson(100 + i);
-      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 2.2, 4), lam(0x5e472b)); rod.position.set(0, 0.55, 0.6); rod.rotation.x = 1.0; g.add(rod);
+      const rod = new THREE.Mesh(cyl(0.02, 0.03, 2.2, 4), lam(0x5e472b)); rod.position.set(0, 0.55, 0.6); rod.rotation.x = 1.0; g.add(rod);
       this.walkers.push({ g, body, rod, role: 'fisher', home: i, at: i, route: [], x: n.x + 0.45, z: n.z, wait: 0, speed: 0, seed: 100 + i, hidden: false, pier: n.plot });
       const dest = market >= 0 ? market : (homes[0] ?? 0);
       for (let k = 0; k < 2; k++) {

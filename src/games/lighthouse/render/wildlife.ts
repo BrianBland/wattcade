@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y } from '../sim/layout';
 import type { Fx } from './fx';
 import { waveHeight } from './sea';
-import { lam, mulberry } from './util';
+import { cone, cyl, ico, lam, mulberry, sphere } from './util';
 import { REEFS } from './world';
 
 export interface WildFrame {
@@ -19,10 +19,10 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 function dolphinModel(): THREE.Group {
   const g = new THREE.Group();
   const skin = lam(0x5d7d96), belly = lam(0xcfdbe3);
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), skin); body.scale.set(2.3, 0.62, 0.66);
-  const under = new THREE.Mesh(new THREE.SphereGeometry(0.46, 8, 6), belly); under.scale.set(2.0, 0.45, 0.55); under.position.y = -0.1;
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.6, 6), skin); snout.rotation.z = -Math.PI / 2; snout.position.x = 1.3;
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.55, 4), skin); fin.position.set(-0.1, 0.38, 0); fin.rotation.z = 0.5; fin.scale.z = 0.3;
+  const body = new THREE.Mesh(sphere(0.5, 8, 6), skin); body.scale.set(2.3, 0.62, 0.66);
+  const under = new THREE.Mesh(sphere(0.46, 8, 6), belly); under.scale.set(2.0, 0.45, 0.55); under.position.y = -0.1;
+  const snout = new THREE.Mesh(cone(0.16, 0.6, 6), skin); snout.rotation.z = -Math.PI / 2; snout.position.x = 1.3;
+  const fin = new THREE.Mesh(cone(0.22, 0.55, 4), skin); fin.position.set(-0.1, 0.38, 0); fin.rotation.z = 0.5; fin.scale.z = 0.3;
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.9), skin); tail.position.x = -1.25;
   g.add(body, under, snout, fin, tail);
   return g;
@@ -31,13 +31,13 @@ function dolphinModel(): THREE.Group {
 function whaleModel(): { g: THREE.Group; fluke: THREE.Group } {
   const g = new THREE.Group();
   const skin = lam(0x2f3e4c), belly = lam(0x9fb0bd);
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), skin); body.scale.set(5.2, 1.25, 1.5);
-  const chin = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 6), belly); chin.scale.set(4.2, 0.8, 1.2); chin.position.set(0.6, -0.5, 0);
+  const body = new THREE.Mesh(sphere(1, 10, 8), skin); body.scale.set(5.2, 1.25, 1.5);
+  const chin = new THREE.Mesh(sphere(1, 10, 6), belly); chin.scale.set(4.2, 0.8, 1.2); chin.position.set(0.6, -0.5, 0);
   const finL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 2.8), skin); finL.position.set(1.8, -0.5, 1.6); finL.rotation.set(0.3, 0.5, 0);
   const finR = finL.clone(); finR.position.z = -1.6; finR.rotation.set(-0.3, -0.5, 0);
-  const hump = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.6, 5), skin); hump.position.set(-2.4, 1.05, 0);
+  const hump = new THREE.Mesh(cone(0.4, 0.6, 5), skin); hump.position.set(-2.4, 1.05, 0);
   const fluke = new THREE.Group(); fluke.position.x = -5;
-  const stock = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.7, 2.2, 6), skin); stock.rotation.z = Math.PI / 2; stock.position.x = -0.6;
+  const stock = new THREE.Mesh(cyl(0.35, 0.7, 2.2, 6), skin); stock.rotation.z = Math.PI / 2; stock.position.x = -0.6;
   const blade = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 4.2), skin); blade.position.x = -1.8;
   fluke.add(stock, blade);
   g.add(body, chin, finL, finR, hump, fluke);
@@ -47,10 +47,10 @@ function whaleModel(): { g: THREE.Group; fluke: THREE.Group } {
 function sealModel(): { g: THREE.Group; head: THREE.Object3D } {
   const g = new THREE.Group();
   const skin = lam(0x8b8f93);
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), skin); body.scale.set(1.5, 0.55, 0.65);
+  const body = new THREE.Mesh(sphere(0.5, 8, 6), skin); body.scale.set(1.5, 0.55, 0.65);
   const head = new THREE.Group(); head.position.set(0.7, 0.2, 0);
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.26, 7, 5), skin);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.06, 5, 4), lam(0x222222)); nose.position.x = 0.25;
+  const skull = new THREE.Mesh(sphere(0.26, 7, 5), skin);
+  const nose = new THREE.Mesh(sphere(0.06, 5, 4), lam(0x222222)); nose.position.x = 0.25;
   head.add(skull, nose);
   g.add(body, head);
   return { g, head };
@@ -58,10 +58,10 @@ function sealModel(): { g: THREE.Group; head: THREE.Object3D } {
 
 function puffinModel(): THREE.Group {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.5, 6), lam(0x1d1f24)); body.position.y = 0.25;
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.17, 6, 5), lam(0xf4f4f0)); chest.position.set(0.09, 0.24, 0); chest.scale.set(0.6, 1.2, 1);
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 5), lam(0xf4f4f0)); face.position.set(0.04, 0.55, 0);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.18, 4), lam(0xff6a1a)); beak.rotation.z = -Math.PI / 2; beak.position.set(0.18, 0.54, 0);
+  const body = new THREE.Mesh(cyl(0.16, 0.22, 0.5, 6), lam(0x1d1f24)); body.position.y = 0.25;
+  const chest = new THREE.Mesh(sphere(0.17, 6, 5), lam(0xf4f4f0)); chest.position.set(0.09, 0.24, 0); chest.scale.set(0.6, 1.2, 1);
+  const face = new THREE.Mesh(sphere(0.13, 6, 5), lam(0xf4f4f0)); face.position.set(0.04, 0.55, 0);
+  const beak = new THREE.Mesh(cone(0.07, 0.18, 4), lam(0xff6a1a)); beak.rotation.z = -Math.PI / 2; beak.position.set(0.18, 0.54, 0);
   const feet = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.22), lam(0xff7a2a)); feet.position.y = 0.02;
   g.add(body, chest, face, beak, feet);
   return g;
@@ -69,7 +69,7 @@ function puffinModel(): THREE.Group {
 
 function sheepModel(): { g: THREE.Group; head: THREE.Object3D } {
   const g = new THREE.Group();
-  const wool = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42, 0), lam(0xf3f0e6)); wool.scale.set(1.25, 0.9, 0.95); wool.position.y = 0.55;
+  const wool = new THREE.Mesh(ico(0.42, 0), lam(0xf3f0e6)); wool.scale.set(1.25, 0.9, 0.95); wool.position.y = 0.55;
   const head = new THREE.Group(); head.position.set(0.5, 0.62, 0);
   const face = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.22), lam(0x2b2622)); face.position.x = 0.1;
   const ears = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.42), lam(0x2b2622)); ears.position.set(0.02, 0.08, 0);

@@ -2,7 +2,7 @@
 // as they dock, holds their cap in a storm, and climbs the tower at dusk to light the lamp.
 import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y } from '../sim/layout';
-import { lam } from './util';
+import { cyl, ico, lam } from './util';
 
 const GALLERY_Y = LIGHTHOUSE_Y + 13.3, GALLERY_R = 1.62, DOOR = { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z + 2.55 };
 const GARDEN = { x: LIGHTHOUSE.x + 3.2, z: LIGHTHOUSE.z + 4.6 };
@@ -24,17 +24,17 @@ export class Keeper {
 
   constructor() {
     const g = this.group;
-    this.body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.27, 0.7, 7), lam(0x23395a)); this.body.position.y = 0.35;
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.24, 0.07, 7), lam(0x3a2a1a)); belt.position.y = 0.36;
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), lam(0xf2c9a0)); head.position.y = 0.86;
-    const beard = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), lam(0xf4f1ea)); beard.position.set(0.09, 0.78, 0); beard.scale.set(0.8, 0.9, 1.1);
+    this.body = new THREE.Mesh(cyl(0.2, 0.27, 0.7, 7), lam(0x23395a)); this.body.position.y = 0.35;
+    const belt = new THREE.Mesh(cyl(0.235, 0.24, 0.07, 7), lam(0x3a2a1a)); belt.position.y = 0.36;
+    const head = new THREE.Mesh(ico(0.17, 0), lam(0xf2c9a0)); head.position.y = 0.86;
+    const beard = new THREE.Mesh(ico(0.13, 0), lam(0xf4f1ea)); beard.position.set(0.09, 0.78, 0); beard.scale.set(0.8, 0.9, 1.1);
     this.cap = new THREE.Group();
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.12, 8), lam(0x1d2a40)); crown.position.y = 1.0;
+    const crown = new THREE.Mesh(cyl(0.17, 0.18, 0.12, 8), lam(0x1d2a40)); crown.position.y = 1.0;
     const peak = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.26), lam(0x111111)); peak.position.set(0.15, 0.95, 0);
     this.cap.add(crown, peak);
     this.arm = new THREE.Group(); this.arm.position.set(0, 0.6, 0.24);
     const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), lam(0x23395a)); sleeve.position.y = -0.2;
-    const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), lam(0xf2c9a0)); hand.position.y = -0.43;
+    const hand = new THREE.Mesh(ico(0.06, 0), lam(0xf2c9a0)); hand.position.y = -0.43;
     this.arm.add(sleeve, hand);
     const other = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), lam(0x23395a)); other.position.set(0, 0.4, -0.24);
     g.add(this.body, belt, head, beard, this.cap, this.arm, other);

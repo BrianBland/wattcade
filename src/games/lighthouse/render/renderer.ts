@@ -11,7 +11,7 @@ import { Life } from './life';
 import { createSea, waveHeight, type Sea } from './sea';
 import { Sky } from './sky';
 import type { ShipView, Snap } from './snap';
-import { disposeShared, lam, mergeStatic, mesh } from './util';
+import { cyl, disposeShared, lam, mergeStatic, mesh } from './util';
 import { Fx } from './fx';
 import { Wildlife, type WildFrame } from './wildlife';
 import { Keeper } from './keeper';
@@ -139,7 +139,7 @@ export class LighthouseRenderer implements GameRenderer {
     const { x0, x1, z, y } = BRIDGE, L = x1 - x0, cx = (x0 + x1) / 2;
     g.add(mesh(new THREE.BoxGeometry(L, 0.2, 1.8), wood, cx, y, z));
     for (let x = x0 + 1; x < x1; x += 2.2) for (const dz of [-0.85, 0.85]) {
-      g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, y + 3, 5), dark, x, (y - 3) / 2, z + dz, false));
+      g.add(mesh(cyl(0.12, 0.12, y + 3, 5), dark, x, (y - 3) / 2, z + dz, false));
       g.add(mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), dark, x, y + 0.5, z + dz, false));
     }
     for (const dz of [-0.85, 0.85]) g.add(mesh(new THREE.BoxGeometry(L, 0.08, 0.08), dark, cx, y + 0.95, z + dz, false));

@@ -1,14 +1,62 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const mats = new Map<string, THREE.MeshLambertMaterial>();
-/** Shared smooth-shaded Lambert material per colour. */
-export function lam(color: number | string): THREE.MeshLambertMaterial {
-  const k = String(color);
-  let m = mats.get(k);
-  if (!m) { m = new THREE.MeshLambertMaterial({ color }); mats.set(k, m); }
+type Detail = 'plain' | 'tiles' | 'planks' | 'stone';
+/**
+ * Surface detail for flat-coloured props, in world space (works merged and instanced): a faint mottling so big flat
+ * faces never read as single-colour triangles; `tiles` adds roof courses, `planks` adds board seams.
+ */
+export function withDetail<M extends THREE.Material>(m: M, kind: Detail = 'plain'): M {
+  m.customProgramCacheKey = () => `lh-detail-${kind}`;
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vDWPos;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        { vec4 lp = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+          lp = instanceMatrix * lp;
+          #endif
+          vDWPos = (modelMatrix * lp).xyz; }`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vDWPos;' + NOISE_GLSL)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        { vec3 p = vDWPos;
+          float n = fbm(p.xz * 1.7 + p.y * 1.3) - 0.5;
+          float k = 1.0 + n * 0.1;
+          ${kind === 'tiles' ? `
+          float row = fract(p.y * 7.0);
+          float off = step(0.5, fract(p.y * 3.5)) * 0.5;
+          float col = fract((p.x + p.z) * 4.0 + off);
+          k *= 1.0 - 0.22 * smoothstep(0.78, 0.95, row) - 0.08 * smoothstep(0.9, 0.98, col) * (1.0 - smoothstep(0.78, 0.95, row));
+          k *= 0.94 + 0.12 * hash12(floor(vec2((p.x + p.z) * 4.0 + off, p.y * 7.0)));` : ''}
+          ${kind === 'planks' ? `
+          float b = fract((p.x * 0.7 + p.z * 0.7) * 3.2);
+          k *= 1.0 - 0.18 * smoothstep(0.88, 0.97, b);
+          k *= 0.93 + 0.12 * hash12(vec2(floor((p.x * 0.7 + p.z * 0.7) * 3.2), 3.0));` : ''}
+          ${kind === 'stone' ? `
+          float cy = p.y * 3.2, cr = floor(cy);
+          float cx = (p.x + p.z * 0.83) * 2.2 + step(0.5, fract(cr * 0.5)) * 0.5;
+          float mort = max(smoothstep(0.86, 0.96, fract(cy)), smoothstep(0.9, 0.98, fract(cx)));
+          k *= (1.0 - 0.2 * mort) * (0.9 + 0.16 * hash12(vec2(floor(cx), cr)));` : ''}
+          diffuseColor.rgb *= k; }`);
+  };
   return m;
 }
+/** Shared smooth-shaded Lambert material per colour (with world-space surface detail). */
+export function lam(color: number | string, kind: Detail = 'plain'): THREE.MeshLambertMaterial {
+  const k = `${color}:${kind}`;
+  let m = mats.get(k);
+  if (!m) { m = withDetail(new THREE.MeshLambertMaterial({ color }), kind); mats.set(k, m); }
+  return m;
+}
+/** Roof material: tile courses. */
+export const tiles = (color: number | string) => lam(color, 'tiles');
+/** Masonry material: block courses with mortar lines. */
+export const stone = (color: number | string) => lam(color, 'stone');
+/** Timber material: board seams (decks, piers, sheds). */
+export const planks = (color: number | string) => lam(color, 'planks');
 export function disposeShared() { for (const m of mats.values()) m.dispose(); mats.clear(); geos.clear(); }
 
 // ---------- smooth primitives ----------
@@ -88,13 +136,36 @@ export function softTexture(size = 64, hard = 0): THREE.Texture {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 
-/** Triangular prism roof (ridge along x). */
+/** Pitched roof (ridge along x): a gable prism under two thick overhanging slabs and a ridge cap. */
 export function roofGeo(w: number, h: number, d: number): THREE.BufferGeometry {
-  const s = new THREE.Shape(); s.moveTo(-d / 2, 0); s.lineTo(d / 2, 0); s.lineTo(0, h); s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: w, bevelEnabled: false });
-  g.translate(0, 0, -w / 2); g.rotateY(Math.PI / 2);
-  return g;
+  return cached(`roof:${w}:${h}:${d}`, () => {
+    const s = new THREE.Shape(); s.moveTo(-d / 2 + 0.06, 0); s.lineTo(d / 2 - 0.06, 0); s.lineTo(0, h - 0.06); s.closePath();
+    const prism = new THREE.ExtrudeGeometry(s, { depth: w - 0.16, bevelEnabled: false });
+    prism.translate(0, 0, -(w - 0.16) / 2); prism.rotateY(Math.PI / 2);
+    const t = Math.min(0.1, h * 0.12), L = Math.hypot(d / 2, h), a = Math.atan2(h, d / 2);
+    const parts: THREE.BufferGeometry[] = [prism];
+    for (const side of [-1, 1]) {
+      const slab = new RoundedBoxGeometry(w, t, L + 0.12, 1, t * 0.45);
+      slab.rotateX(side * a);
+      // centre of the slope, nudged out along its normal so the slab sits on the prism
+      slab.translate(0, h / 2 + Math.cos(a) * t / 2, side * (d / 4) + side * Math.sin(a) * t / 2);
+      parts.push(slab);
+    }
+    const ridge = new THREE.CylinderGeometry(t * 0.9, t * 0.9, w + 0.04, 10); ridge.rotateZ(Math.PI / 2); ridge.translate(0, h + t * 0.3, 0);
+    parts.push(ridge);
+    for (const p of parts) { p.deleteAttribute('uv'); }
+    const g = mergeGeometries(parts.map((p) => (p.index ? p.toNonIndexed() : p)))!;
+    return g;
+  });
 }
+/** Box with softly rounded edges (cached); thin boards and tiny parts stay plain boxes. */
+export function box(w: number, h: number, d: number): THREE.BufferGeometry {
+  const m = Math.min(w, h, d);
+  if (m < 0.12) return cached(`b:${w}:${h}:${d}`, () => new THREE.BoxGeometry(w, h, d));
+  return cached(`rb:${w}:${h}:${d}`, () => new RoundedBoxGeometry(w, h, d, 2, Math.min(0.08, m * 0.18)));
+}
+/** Capsule (limbs): radius r, straight length len, centred. */
+export const capsule = (r: number, len: number) => cached(`cap:${r}:${len}`, () => new THREE.CapsuleGeometry(r, len, 4, 10));
 
 /**
  * Merge every static mesh under `root` into one mesh per material (fewer draw calls on iPad).

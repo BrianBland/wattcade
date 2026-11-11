@@ -1,12 +1,14 @@
 // Town decorations bought in the Decorate tab, placed automatically along the town's own paths, plus the visitors'
 // gifts (carousel, bandstand, telescope) and festival dressing. Rebuilt only when the town or decor changes.
 import * as THREE from 'three';
+import { Figure } from './people';
+import { openBoat } from './hull';
 import type { DecorId, GiftId } from '../sim/extras';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, PLOTS, plotHeight } from '../sim/layout';
 import type { Life } from './life';
 import { HUBS } from './life';
 import { waveHeight } from './sea';
-import { cone, cyl, ico, lam, mergeStatic, mesh, mulberry, pick, softTexture, sphere, torus } from './util';
+import { box, cone, cyl, ico, lam, mergeStatic, mesh, mulberry, pick, planks, softTexture, sphere, torus } from './util';
 
 const FLAG_COLS = [0xff5a5a, 0xffd23f, 0x4fb3ff, 0x7ddc6a, 0xff9fd0, 0xffffff, 0xb07cff, 0xff9f43];
 const SQ = HUBS[0];
@@ -112,7 +114,7 @@ export class Decor {
         if (PLOTS.some((p) => Math.hypot(p.x - x, p.z - z) < 1.8) || islandHeight(x, z) < 0.6) continue;
         const y = ground(x, z);
         this.stat.add(mesh(cyl(0.05, 0.07, 1.7, 5), lam(0x2d3138), x, y + 0.85, z, false));
-        this.stat.add(mesh(new THREE.BoxGeometry(0.26, 0.32, 0.26), lam(0xffd890), x, y + 1.85, z, false));
+        this.stat.add(mesh(box(0.26, 0.32, 0.26), lam(0xffd890), x, y + 1.85, z, false));
         const glow = new THREE.Sprite(this.lanternMat); glow.position.set(x, y + 1.85, z); glow.scale.setScalar(1.6); this.group.add(glow);
         n++;
       }
@@ -122,8 +124,8 @@ export class Decor {
   private benches(level: number, spot: (cx: number, cz: number, r0: number, r1: number, clear: number, seed: number) => [number, number] | null) {
     const bench = (x: number, z: number, yaw: number) => {
       const g = new THREE.Group(), wood = lam(0x8b6b3e), iron = lam(0x2d3138);
-      g.add(mesh(new THREE.BoxGeometry(1.3, 0.08, 0.4), wood, 0, 0.45, 0), mesh(new THREE.BoxGeometry(1.3, 0.35, 0.06), wood, 0, 0.7, -0.2));
-      for (const sx of [-0.55, 0.55]) g.add(mesh(new THREE.BoxGeometry(0.06, 0.45, 0.4), iron, sx, 0.22, 0, false));
+      g.add(mesh(box(1.3, 0.08, 0.4), wood, 0, 0.45, 0), mesh(box(1.3, 0.35, 0.06), wood, 0, 0.7, -0.2));
+      for (const sx of [-0.55, 0.55]) g.add(mesh(box(0.06, 0.45, 0.4), iron, sx, 0.22, 0, false));
       g.position.set(x, ground(x, z), z); g.rotation.y = yaw; this.stat.add(g);
     };
     for (const [i, a] of [[0, 0.5], [1, 2.6], [2, 4.4]].slice(0, 2 + (level >= 2 ? 1 : 0))) {
@@ -136,7 +138,7 @@ export class Decor {
       for (let i = 0; i < 5; i++) {
         const p = spot(SQ.x, SQ.z - 6, 3, 18, 1.0, 300 + i); if (!p) continue;
         const [x, z] = p, y = ground(x, z), g = new THREE.Group();
-        const cloth = mesh(new THREE.BoxGeometry(1.4, 0.03, 1.0), lam(pick(r, [0xe25555, 0x4f8fe0, 0xf2c94c, 0x6cc070])), 0, 0.02, 0, false);
+        const cloth = mesh(box(1.4, 0.03, 1.0), lam(pick(r, [0xe25555, 0x4f8fe0, 0xf2c94c, 0x6cc070])), 0, 0.02, 0, false);
         const basket = mesh(cyl(0.18, 0.15, 0.22, 6), lam(0xb08850), 0.35, 0.13, 0.2);
         g.add(cloth, basket); g.position.set(x, y, z); g.rotation.y = r() * 3; this.stat.add(g);
       }
@@ -145,9 +147,11 @@ export class Decor {
 
   private rowboat(): { g: THREE.Group; oar: THREE.Object3D } {
     const g = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(2, 0.35, 0.8), lam(0xc0703a)); shell.position.y = 0.15;
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.05, 0.75), lam(0xe8dcc0)); seat.position.y = 0.33;
-    const oar = new THREE.Group(); const o = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.4), lam(0x8b6b3e)); oar.add(o); oar.position.y = 0.4;
+    const shell = openBoat(2.2, 0.85, 0.42, 0xc0703a); shell.position.y = 0.2;
+    const seat = new THREE.Mesh(box(0.15, 0.05, 0.7), planks(0xe8dcc0)); seat.position.y = 0.33;
+    const oar = new THREE.Group(); const o = new THREE.Mesh(cyl(0.025, 0.025, 2.4, 8), lam(0x8b6b3e)); o.rotation.x = Math.PI / 2; oar.add(o);
+    for (const z of [-1.15, 1.15]) { const bl = new THREE.Mesh(box(0.03, 0.14, 0.4), lam(0x8b6b3e)); bl.position.z = z; oar.add(bl); }
+    oar.position.y = 0.4;
     g.add(shell, seat, oar);
     g.traverse((x) => { x.castShadow = true; });
     return { g, oar };
@@ -164,7 +168,8 @@ export class Decor {
     if (level >= 2) for (const [cx, cz, r, ph] of [[16, 28, 6, 0], [-6, 27, 5, 2]] as const) {
       const b = this.rowboat(); this.group.add(b.g);
       const rower = new THREE.Group();
-      rower.add(mesh(cyl(0.14, 0.2, 0.5, 6), lam(0xd35400), 0, 0.55, 0), mesh(ico(0.13, 0), lam(0xf2c9a0), 0, 0.92, 0));
+      const fig = new Figure(700 + cx, { clothes: 0xd35400 }); fig.pose('sit'); fig.arms.forEach((a) => { a.rotation.x = -1.2; });
+      fig.g.position.y = 0.3; fig.g.rotation.y = Math.PI / 2; rower.add(fig.g);
       b.g.add(rower);
       this.rowers.push({ g: b.g, cx, cz, r, ph, oar: b.oar });
     }
@@ -200,11 +205,11 @@ export class Decor {
 
   private statue(x: number, z: number) {
     const y = ground(x, z), stone = lam(0xb9b4aa);
-    this.stat.add(mesh(new THREE.BoxGeometry(1.1, 0.9, 1.1), lam(0x9a948a), x, y + 0.45, z));
+    this.stat.add(mesh(box(1.1, 0.9, 1.1), lam(0x9a948a), x, y + 0.45, z));
     this.stat.add(mesh(cyl(0.32, 0.42, 1.3, 7), stone, x, y + 1.55, z));
     this.stat.add(mesh(ico(0.3, 0), stone, x, y + 2.45, z));
     this.stat.add(mesh(cyl(0.3, 0.32, 0.2, 8), stone, x, y + 2.75, z));
-    const arm = mesh(new THREE.BoxGeometry(0.16, 0.8, 0.16), stone, x + 0.35, y + 2.3, z); arm.rotation.z = -2.5; this.stat.add(arm); // a heroic wave
+    const arm = mesh(box(0.16, 0.8, 0.16), stone, x + 0.35, y + 2.3, z); arm.rotation.z = -2.5; this.stat.add(arm); // a heroic wave
   }
 
   private makeCarousel(x: number, z: number) {
@@ -217,7 +222,7 @@ export class Decor {
     const horses: THREE.Object3D[] = [];
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2, h = new THREE.Group();
-      h.add(mesh(new THREE.BoxGeometry(0.7, 0.32, 0.22), lam(pick(mulberry(i + 3), [0xffffff, 0xf6d6a8, 0x9a6a4a, 0xd0d8ff])), 0, 0, 0), mesh(new THREE.BoxGeometry(0.18, 0.35, 0.18), lam(0xffffff), 0.35, 0.22, 0));
+      h.add(mesh(box(0.7, 0.32, 0.22), lam(pick(mulberry(i + 3), [0xffffff, 0xf6d6a8, 0x9a6a4a, 0xd0d8ff])), 0, 0, 0), mesh(box(0.18, 0.35, 0.18), lam(0xffffff), 0.35, 0.22, 0));
       h.add(mesh(cyl(0.03, 0.03, 2.3, 4), lam(0xd4a63a), 0, 0.6, 0, false));
       h.position.set(Math.cos(a) * 1.5, 1.1, Math.sin(a) * 1.5); h.rotation.y = -a; h.userData.a = a;
       g.add(h); horses.push(h);
@@ -234,8 +239,9 @@ export class Decor {
     this.stat.add(g);
     if (fest) for (let i = 0; i < 3; i++) { // the band plays during festivals
       const m = new THREE.Group(), a = (i / 3) * Math.PI * 2;
-      m.add(mesh(cyl(0.16, 0.22, 0.6, 6), lam([0xc0392b, 0x2e7d32, 0x34495e][i]), 0, 0.3, 0), mesh(ico(0.15, 0), lam(0xf2c9a0), 0, 0.72, 0));
-      m.add(mesh(cyl(0.05, 0.12, 0.4, 6), lam(0xd4a63a), 0.2, 0.5, 0, false));
+      const fig = new Figure(800 + i, { clothes: [0xc0392b, 0x2e7d32, 0x34495e][i], hat: 0x1d2a40 });
+      fig.arms.forEach((a) => { a.rotation.x = -1.0; }); fig.g.rotation.y = Math.PI / 2; m.add(fig.g);
+      const horn = mesh(cone(0.11, 0.4, 16, 1, true), lam(0xd4a63a), 0.32, 0.55, 0, false); horn.rotation.z = -Math.PI / 2; m.add(horn);
       m.position.set(x + Math.cos(a) * 0.9, y + 0.45, z + Math.sin(a) * 0.9); m.rotation.y = -a + Math.PI; m.userData.y = y + 0.45;
       this.group.add(m); this.musicians.push(m);
     }

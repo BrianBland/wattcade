@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y } from '../sim/layout';
 import type { Fx } from './fx';
 import { waveHeight } from './sea';
-import { cone, cyl, ico, lam, mulberry, sphere } from './util';
+import { box, cone, cyl, ico, lam, mulberry, sphere } from './util';
 import { REEFS } from './world';
 
 export interface WildFrame {
@@ -23,7 +23,7 @@ function dolphinModel(): THREE.Group {
   const under = new THREE.Mesh(sphere(0.46, 8, 6), belly); under.scale.set(2.0, 0.45, 0.55); under.position.y = -0.1;
   const snout = new THREE.Mesh(cone(0.16, 0.6, 6), skin); snout.rotation.z = -Math.PI / 2; snout.position.x = 1.3;
   const fin = new THREE.Mesh(cone(0.22, 0.55, 4), skin); fin.position.set(-0.1, 0.38, 0); fin.rotation.z = 0.5; fin.scale.z = 0.3;
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.9), skin); tail.position.x = -1.25;
+  const tail = new THREE.Mesh(box(0.28, 0.06, 0.9), skin); tail.position.x = -1.25;
   g.add(body, under, snout, fin, tail);
   return g;
 }
@@ -33,12 +33,12 @@ function whaleModel(): { g: THREE.Group; fluke: THREE.Group } {
   const skin = lam(0x2f3e4c), belly = lam(0x9fb0bd);
   const body = new THREE.Mesh(sphere(1, 10, 8), skin); body.scale.set(5.2, 1.25, 1.5);
   const chin = new THREE.Mesh(sphere(1, 10, 6), belly); chin.scale.set(4.2, 0.8, 1.2); chin.position.set(0.6, -0.5, 0);
-  const finL = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 2.8), skin); finL.position.set(1.8, -0.5, 1.6); finL.rotation.set(0.3, 0.5, 0);
+  const finL = new THREE.Mesh(box(1.4, 0.12, 2.8), skin); finL.position.set(1.8, -0.5, 1.6); finL.rotation.set(0.3, 0.5, 0);
   const finR = finL.clone(); finR.position.z = -1.6; finR.rotation.set(-0.3, -0.5, 0);
   const hump = new THREE.Mesh(cone(0.4, 0.6, 5), skin); hump.position.set(-2.4, 1.05, 0);
   const fluke = new THREE.Group(); fluke.position.x = -5;
   const stock = new THREE.Mesh(cyl(0.35, 0.7, 2.2, 6), skin); stock.rotation.z = Math.PI / 2; stock.position.x = -0.6;
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 4.2), skin); blade.position.x = -1.8;
+  const blade = new THREE.Mesh(box(1.1, 0.14, 4.2), skin); blade.position.x = -1.8;
   fluke.add(stock, blade);
   g.add(body, chin, finL, finR, hump, fluke);
   return { g, fluke };
@@ -62,7 +62,7 @@ function puffinModel(): THREE.Group {
   const chest = new THREE.Mesh(sphere(0.17, 6, 5), lam(0xf4f4f0)); chest.position.set(0.09, 0.24, 0); chest.scale.set(0.6, 1.2, 1);
   const face = new THREE.Mesh(sphere(0.13, 6, 5), lam(0xf4f4f0)); face.position.set(0.04, 0.55, 0);
   const beak = new THREE.Mesh(cone(0.07, 0.18, 4), lam(0xff6a1a)); beak.rotation.z = -Math.PI / 2; beak.position.set(0.18, 0.54, 0);
-  const feet = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.04, 0.22), lam(0xff7a2a)); feet.position.y = 0.02;
+  const feet = new THREE.Mesh(box(0.2, 0.04, 0.22), lam(0xff7a2a)); feet.position.y = 0.02;
   g.add(body, chest, face, beak, feet);
   return g;
 }
@@ -71,11 +71,11 @@ function sheepModel(): { g: THREE.Group; head: THREE.Object3D } {
   const g = new THREE.Group();
   const wool = new THREE.Mesh(ico(0.42, 0), lam(0xf3f0e6)); wool.scale.set(1.25, 0.9, 0.95); wool.position.y = 0.55;
   const head = new THREE.Group(); head.position.set(0.5, 0.62, 0);
-  const face = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.24, 0.22), lam(0x2b2622)); face.position.x = 0.1;
-  const ears = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.42), lam(0x2b2622)); ears.position.set(0.02, 0.08, 0);
+  const face = new THREE.Mesh(box(0.3, 0.24, 0.22), lam(0x2b2622)); face.position.x = 0.1;
+  const ears = new THREE.Mesh(box(0.06, 0.06, 0.42), lam(0x2b2622)); ears.position.set(0.02, 0.08, 0);
   head.add(face, ears);
   g.add(wool, head);
-  const leg = new THREE.BoxGeometry(0.08, 0.32, 0.08), lm = lam(0x2b2622);
+  const leg = box(0.08, 0.32, 0.08), lm = lam(0x2b2622);
   for (const [x, z] of [[0.28, 0.17], [0.28, -0.17], [-0.28, 0.17], [-0.28, -0.17]]) { const l = new THREE.Mesh(leg, lm); l.position.set(x, 0.16, z); g.add(l); }
   g.traverse((o) => { o.castShadow = true; });
   return { g, head };

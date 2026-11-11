@@ -1,7 +1,7 @@
 // Static island: terrain (vertex-coloured, flat-shaded, paths painted in), coast rocks, islets, and the lighthouse.
 import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y, noise2 } from '../sim/layout';
-import { blob, NOISE_GLSL, cone, cyl, ico, lam, rock, mergeStatic, mesh, mulberry, roofGeo, softTexture, sphere, torus } from './util';
+import { NOISE_GLSL, blob, box, cone, cyl, ico, lam, mergeStatic, mesh, mulberry, rock, roofGeo, softTexture, sphere, stone, tiles, torus } from './util';
 import type { Season } from '../sim/extras';
 
 export type Seg = [number, number, number, number]; // x1 z1 x2 z2
@@ -172,15 +172,15 @@ export function createLighthouse(color: string): Lighthouse {
   grp.position.set(X, Y, Z);
   const H = 12, R0 = 2.1, R1 = 1.35;
   const rAt = (y: number) => R0 - (R0 - R1) * (y / H);
-  grp.add(mesh(cyl(2.9, 3.2, 1.2, 10), lam(0x9a948a), 0, 0.3, 0));
+  grp.add(mesh(cyl(2.9, 3.2, 1.2, 10), stone(0x9a948a), 0, 0.3, 0));
   grp.add(mesh(cyl(R1, R0, H, 18, 1), lam(0xf4f1e8), 0, 0.9 + H / 2, 0));
   const stripe = new THREE.MeshLambertMaterial({ color: new THREE.Color(color) });
   for (const [y0, y1] of [[3, 5], [7.4, 9.4]]) grp.add(mesh(cyl(rAt(y1) + 0.04, rAt(y0) + 0.04, y1 - y0, 18), stripe, 0, 0.9 + (y0 + y1) / 2, 0));
   // door + windows
-  grp.add(mesh(new THREE.BoxGeometry(0.9, 1.6, 0.3), lam(0x5a3a22), 0, 1.7, R0 - 0.05));
+  grp.add(mesh(box(0.9, 1.6, 0.3), lam(0x5a3a22), 0, 1.7, R0 - 0.05));
   const winMat = new THREE.MeshBasicMaterial({ color: 0x2a3440 });
   for (const [y, ang] of [[4.2, 0.4], [6.3, -0.5], [8.6, 0.2], [10.6, -0.3]]) {
-    const w = mesh(new THREE.BoxGeometry(0.4, 0.7, 0.2), winMat, Math.sin(ang) * rAt(y - 0.9), y, Math.cos(ang) * rAt(y - 0.9), false); w.rotation.y = ang; grp.add(w);
+    const w = mesh(box(0.4, 0.7, 0.2), winMat, Math.sin(ang) * rAt(y - 0.9), y, Math.cos(ang) * rAt(y - 0.9), false); w.rotation.y = ang; grp.add(w);
   }
   const top = 0.9 + H;
   grp.add(mesh(cyl(2.15, 1.6, 0.4, 18), lam(0x3c414a), 0, top + 0.2, 0));
@@ -191,17 +191,17 @@ export function createLighthouse(color: string): Lighthouse {
   grp.add(mesh(cyl(1.15, 1.15, 1.7, 10), glassMat, 0, lanternY, 0, false));
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
-    const bar = mesh(new THREE.BoxGeometry(0.08, 1.7, 0.08), lam(0x2d3138), Math.cos(a) * 1.17, lanternY, Math.sin(a) * 1.17, false); grp.add(bar);
+    const bar = mesh(box(0.08, 1.7, 0.08), lam(0x2d3138), Math.cos(a) * 1.17, lanternY, Math.sin(a) * 1.17, false); grp.add(bar);
   }
-  grp.add(mesh(cone(1.5, 1.3, 10), lam(0x8c2f2a), 0, lanternY + 1.5, 0));
+  grp.add(mesh(cone(1.5, 1.3, 10), tiles(0x8c2f2a), 0, lanternY + 1.5, 0));
   grp.add(mesh(sphere(0.22, 8, 6), lam(0xc9a43a), 0, lanternY + 2.25, 0));
   // keeper's cottage + fence
   const cot = new THREE.Group(); cot.position.set(4.2, 0, 2.6); cot.rotation.y = -0.4;
-  cot.add(mesh(new THREE.BoxGeometry(3, 1.8, 2.2), lam(0xf0ebe0), 0, 0.9, 0));
-  cot.add(mesh(roofGeo(3.3, 1.2, 2.6), lam(0x8c2f2a), 0, 1.8, 0));
-  cot.add(mesh(new THREE.BoxGeometry(0.4, 1, 0.4), lam(0x9a948a), 0.9, 2.5, -0.3));
-  const cw = mesh(new THREE.BoxGeometry(0.5, 0.5, 0.1), winMat, -0.7, 1.0, 1.12, false); cot.add(cw);
-  cot.add(mesh(new THREE.BoxGeometry(0.6, 1.1, 0.1), lam(0x4a6a8a), 0.5, 0.55, 1.12, false));
+  cot.add(mesh(box(3, 1.8, 2.2), lam(0xf0ebe0), 0, 0.9, 0));
+  cot.add(mesh(roofGeo(3.3, 1.2, 2.6), tiles(0x8c2f2a), 0, 1.8, 0));
+  cot.add(mesh(box(0.4, 1, 0.4), lam(0x9a948a), 0.9, 2.5, -0.3));
+  const cw = mesh(box(0.5, 0.5, 0.1), winMat, -0.7, 1.0, 1.12, false); cot.add(cw);
+  cot.add(mesh(box(0.6, 1.1, 0.1), lam(0x4a6a8a), 0.5, 0.55, 1.12, false));
   grp.add(cot);
 
   // ivy + climbing roses (shown bottom-up as the island blooms)
@@ -252,7 +252,7 @@ export function createLighthouse(color: string): Lighthouse {
   grp.add(brass);
   const pennant = new THREE.Group(); pennant.visible = false; pennant.position.set(0, lanternY + 2.3, 0);
   pennant.add(mesh(cyl(0.04, 0.04, 2, 5), lam(0x2d3138), 0, 1, 0, false));
-  const flag = mesh(new THREE.BoxGeometry(1.2, 0.6, 0.03), stripe, 0.62, 1.65, 0, false); pennant.add(flag);
+  const flag = mesh(box(1.2, 0.6, 0.03), stripe, 0.62, 1.65, 0, false); pennant.add(flag);
   grp.add(pennant);
   grp.add(beam);
   mergeStatic(grp, (o) => o === beam || o === brass || o === pennant);

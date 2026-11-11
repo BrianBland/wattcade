@@ -26,7 +26,7 @@ export class CurrentLayer {
     }
     this.ripple = new THREE.Mesh(new THREE.RingGeometry(1.8, 2.2, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xeaf8ff, transparent: true, opacity: 0.5, depthWrite: false }));
     this.marker.add(this.ripple);
-    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.32, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.85, depthWrite: false }), DOTS);
+    this.dots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.85, depthWrite: false }), DOTS);
     this.dots.frustumCulled = false; this.dots.renderOrder = 4;
     this.group.add(this.marker, this.dots);
     this.group.visible = false;
@@ -46,7 +46,7 @@ export class CurrentLayer {
     this.marker.position.y += 0.25 * Math.sin(time * 3);
     const ph = (time * 0.9) % 1;
     this.ripple.scale.setScalar(0.8 + ph * 0.8); (this.ripple.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - ph);
-    this.marker.scale.setScalar(c.steering ? 1.15 : 0.9);
+    this.marker.scale.setScalar(c.steering ? 2 : 1.6);   // readable from the overview
     // the line: re-traced a few times a second (the ground and water change slowly)
     this.acc += dt;
     if (this.acc > 0.25) { this.acc = 0; this.path = traceFlow(s.h, depth, s.nx, s.ny, c.x, c.y, { maxSteps: 260 }); }

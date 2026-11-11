@@ -127,7 +127,9 @@ export class FullSendRenderer implements GameRenderer {
     const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
     const flyCam = s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
-    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam;
+    // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
+    let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
+    const camTarget = smooth + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb

@@ -1,7 +1,7 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
-import { AIR_CELL, airItemAt, bumpH, takesOff, windAt, type AirKind } from './track';
+import { AIR_CELL, airItemAt, kickerLip, bumpH, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
 import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
@@ -620,11 +620,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         x += v * dt;
         const ground = roadH(x), slope = slopeAt(x), gH = tun.hopGravity();
         if (mode === 'road') {
-          if (v > 5 && takesOff(v, curvAt(x), gH * gScale())) {
+          const lipSlope = tun.bumps() && hill > 0.5 ? kickerLip(x - v * dt, x, terrainSeed) : null;
+          if (v > 5 && (lipSlope !== null || takesOff(v, curvAt(x), gH * gScale()))) {
             y = ground;
             if (cruising() && lift >= 1 && tier !== 'moon' && tier !== 'sea') launchUp(now);
             else if (tier === 'moon' && moonDoneAt >= 0 && !toTier) leaveMoon(now);
-            else { setMode('hop'); vy = Math.min(tun.hopVyMax(), v * slope * (1 + tun.launchGain() * flow / Math.max(0.01, tun.flowMax()))); hopT0 = now; }
+            else { setMode('hop'); vy = Math.min(tun.hopVyMax(), v * (lipSlope !== null ? lipSlope * hill * tun.bumpScale() : slope) * (1 + tun.launchGain() * flow / Math.max(0.01, tun.flowMax()))); hopT0 = now; }
           }
           else { y = ground; pitch = Math.atan(slope); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
         }

@@ -16,7 +16,21 @@ export function bumpAt(x: number, seed: number): Bump | null {
     const up = 16 + hash01(k * 2.9 + s + 3) * 14, down = 5 + hash01(k * 4.1 + s + 4) * 4;
     return { kind: 'kicker', x0, len: up + down, h: 2 + hash01(k * 6.7 + s + 5) * 2.5, up };
   }
-  return { kind: 'roller', x0, len: 28 + hash01(k * 8.3 + s + 6) * 44, h: 1.5 + hash01(k * 9.1 + s + 7) * 2.5, up: 0 };
+  if (hash01(k * 1.93 + s + 8) < 0.5) return null; // rollers are occasional: most of the cruise is smooth road
+  return { kind: 'roller', x0, len: 40 + hash01(k * 8.3 + s + 6) * 40, h: 1.5 + hash01(k * 9.1 + s + 7) * 2.5, up: 0 };
+}
+
+/** The face slope (rise/run) of a kicker whose lip lies in (x0, x1], or null. A lip is a sharp edge: whatever your speed,
+ *  crossing it on the road launches you off the face's angle (it never just rolls over). */
+export function kickerLip(x0: number, x1: number, seed: number): number | null {
+  if (!(x1 > x0)) return null;
+  for (let k = Math.floor(x0 / CELL); k <= Math.floor(x1 / CELL); k++) {
+    const b = bumpAt(k * CELL + 1, seed);
+    if (!b || b.kind !== 'kicker') continue;
+    const lip = b.x0 + b.up;
+    if (lip > x0 && lip <= x1) return (2 * b.h) / b.up;
+  }
+  return null;
 }
 
 /** Height (m) the bumps add at x. Continuous everywhere. */

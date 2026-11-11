@@ -70,6 +70,27 @@ export function drawFireball(g: G, x: number, y: number, dir: number, heat: numb
   g.globalAlpha = 1;
 }
 
+/** The re-entry trail: points (buffer px, newest last) with their age (s). Hot near you, cooling to a wide grey smoke. */
+export function drawTrail(g: G, pts: Array<{ x: number; y: number; age: number }>, heat: number) {
+  if (pts.length < 2 || heat <= 0.01) return;
+  g.lineCap = 'round';
+  for (let i = 0; i < pts.length - 1; i++) { // smoke first (wide, billowing), then the fire on top
+    const a = pts[i], b = pts[i + 1], k = Math.min(1, a.age / 3);
+    g.globalAlpha = (1 - k) * 0.55 * heat; g.strokeStyle = i % 2 ? '#7a706c' : '#8e8480';
+    g.lineWidth = 8 + k * 26 + Math.sin(i * 1.7) * 3;
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (a.age > 0.9) continue;
+    const k = a.age / 0.9;
+    g.globalAlpha = (1 - k) * heat; g.strokeStyle = k < 0.2 ? '#fff3c0' : k < 0.5 ? '#ffb030' : '#ff5a1a';
+    g.lineWidth = 10 * (1 - k) + 3;
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  g.lineCap = 'butt'; g.globalAlpha = 1;
+}
+
 /** A golden ring to fly through (seen edge-on, so an upright ellipse), or its burst once caught. */
 export function drawRing(g: G, x: number, y: number, t: number, caughtAge = -1) {
   if (caughtAge >= 0) {

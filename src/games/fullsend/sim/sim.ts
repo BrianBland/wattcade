@@ -207,6 +207,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     ringLift: T.num('ringLift', 0.12, 0, 1, 0.01, 'Lift for a ring (on the moon: extra moon time, as a fraction of moonS)'),
     starLift: T.num('starLift', 0.03, 0, 0.5, 0.01, 'Lift for a star'),
     chainStep: T.num('chainStep', 0.15, 0, 1, 0.05, 'Each clean landing in a row multiplies the next one\'s flow by this much more (up to 5 in a row)'),
+    moonFallM: T.num('moonFallM', 170, 45, 400, 5, 'How far you fall off the moon (re-entry) before the sea (m)'),
+    reentryV: T.num('reentryV', 38, 15, 80, 1, 'Re-entry: top falling speed off the moon (m/s), so the burn lasts'),
     moonExitVy: T.num('moonExitVy', 25, 5, 80, 1, 'Launch speed (m/s up) off the moon when your moon time runs out'),
     megaLead: T.num('megaLead', 220, 80, 600, 10, 'How far ahead (m) the mega ramp appears once you are due to go up a layer (or off the moon)'),
     cadenceSpool: T.num('cadenceSpool', 0.5, 0, 2, 0.05, 'How much cadence speeds up the rocket (spool time × 90 rpm / cadence, softened by this)'),
@@ -780,8 +782,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
               ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
             }
           } else if (plunging) { // falling: past the clouds, into the sea (re-based halfway so the sea floor is under you)
-            transMix = clamp((ground - y) / tun.plungeM(), 0, 1);
-            if (ground - y >= tun.plungeM()) {
+            const fallM = fromTier === 'moon' ? tun.moonFallM() : tun.plungeM(); // from the moon it's a long way down
+            if (fromTier === 'moon') vy = Math.max(vy, -tun.reentryV()); // air drag: a long, steady burn you can watch
+            transMix = clamp((ground - y) / fallM, 0, 1);
+            if (ground - y >= fallM) {
               tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; megaX = null; lift = 0; flow = 0; splashdowns++; warp++; landGrade = null;
               fromTier = null; splashAt = now; chain = 0;
               y = ground + tun.plungeM(); vy = Math.min(vy, -10); bouncing = true; edgeX = null; // the splashdown is never graded

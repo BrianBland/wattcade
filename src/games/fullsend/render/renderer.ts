@@ -14,7 +14,7 @@ import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
 import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../sim/track';
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
-import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
+import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
@@ -46,6 +46,7 @@ export class FullSendRenderer implements GameRenderer {
   private terrain: { key: string; t: Terrain } | null = null;
   private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
   /** Screen shake (buffer px), and the event markers it last reacted to. */
+  private trail: Array<{ x: number; y: number; t: number }> = []; private trailWarp = 0;
   private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99, cave: -99 };
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
@@ -135,12 +136,13 @@ export class FullSendRenderer implements GameRenderer {
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
     const leaping = p?.kind === 'leap' && s.phase === 'payoff' && (s.mode === 'air' || s.mode === 'fall');
     // in a leap the camera frames the pit and you together (so you see what's coming up at you); otherwise it goes with you
-    const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
+    const falling = s.toTier === 'sea' && s.alt < -2; // falling to the sea: hold yourself high in the frame, looking down
+    const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : falling ? s.alt + 2 - Math.min(1, -s.alt / 30) * (UH * 0.3) / VPM : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
     let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
     const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : p?.kind === 'dive' ? lift(s.camX) * 0.75 : megaLift(s.mega, s.camX) * 0.8)) + loopLift + flyCam;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
-    this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
+    this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * (falling ? 10 : 5)) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
     const sx = (x: number) => RX + (x - s.camX) * PPM;
     const sy = (h: number) => roadY0 - (h - this.camY) * VPM;
@@ -315,11 +317,21 @@ export class FullSendRenderer implements GameRenderer {
     if (diveOn) drawFlood(g, Math.max(-10, sx(p!.x0)), Math.min(W + 10, sx(p!.x0 + p!.len)), (x) => { const dd = s.camX + (x - RX) / PPM, top = roadH(dd), dip = diveDip(p!.x0, p!.len, dd); return [sy(top + dip) + 5, sy(top + Math.min(DIVE.water, dip + DIVE.roof)), dip + DIVE.roof > DIVE.water]; }, t);
     if (caveOn) drawCave(g, 'front', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, p!.crashAt > 0 ? s.t - p!.crashAt : -1);
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
+    // re-entry: a long smoke-and-fire trail behind you (world points, so it streams away as you fall)
+    const burning = s.fromTier === 'moon' && s.toTier === 'sea';
+    if (!burning || s.warp !== this.trailWarp) this.trail.length = 0;
+    this.trailWarp = s.warp;
+    if (burning) {
+      const last = this.trail[this.trail.length - 1];
+      if (!last || last.t !== s.t) this.trail.push({ x: s.x, y: s.y, t: s.t });
+      while (this.trail.length && s.t - this.trail[0].t > 3) this.trail.shift();
+      drawTrail(g, this.trail.map((q) => ({ x: sx(q.x), y: sy(q.y) - 6, age: s.t - q.t })), Math.min(1, Math.max(0, (-s.vy - 8) / 25)));
+    }
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
     }
     const deckScroll = s.camX * PPM * 0.9;
-    const deckAt = s.toTier === 'sky' ? 28 : s.toTier === 'moon' ? 38 : s.toTier === 'sea' ? -24 : NaN;
+    const deckAt = s.toTier === 'sky' ? 28 : s.toTier === 'moon' ? 38 : s.toTier === 'sea' ? (s.fromTier === 'moon' ? -90 : -24) : NaN;
     if (Number.isFinite(deckAt)) drawCloudDeck(g, W, sy(roadH(s.camX) + deckAt), deckScroll, t, 0.9, s.toTier === 'moon' ? '#eef0ff' : '#ffffff');
     const underSea = (s.tier === 'sea' && !s.toTier) || (s.fromTier === 'sea' && s.toTier === 'ground');
     if (underSea) drawSeaSurface(g, W, sy(roadH(s.camX) + SURFACE_M), s.camX * PPM, t);

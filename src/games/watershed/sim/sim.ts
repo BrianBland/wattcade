@@ -46,6 +46,8 @@ export interface WatershedSnapshot {
   hooks: { cadence: number };
   /** Bumped each time the rider presses Z (the renderer flies the camera to the next landmark). */
   look: number;
+  /** The rider's current marker during river blocks (grid coords), else null. */
+  current: { x: number; y: number; steering: boolean } | null;
 }
 
 export interface SkyView {
@@ -92,6 +94,11 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
     erode: tn.num('erode', DEFAULT_WATER.erode, 0, 5, 0.05, 'Erosion: pickup rate'),
     deposit: tn.num('deposit', DEFAULT_WATER.deposit, 0, 5, 0.05, 'Erosion: drop rate'),
     massExp: tn.num('massExp', DEFAULT_WATER.massExp, 0, 2, 0.05, 'Erosion: how much heavier parcels dig harder'),
+    currentK: tn.num('currentK', 3, 0, 10, 0.1, 'Current marker: sideways pull per cell of offset (cells/s² per cell)'),
+    currentMax: tn.num('currentMax', 10, 0, 30, 0.5, 'Current marker: strongest sideways pull (cells/s²)'),
+    currentRows: tn.num('currentRows', 8, 2, 20, 1, 'Current marker: rows above/below it that feel the pull'),
+    currentMinSpeed: tn.num('currentMinSpeed', 0.6, 0.1, 5, 0.1, 'Current marker: slowest drift downstream (rows/s, e.g. across a lake)'),
+    currentMaxSpeed: tn.num('currentMaxSpeed', 4, 0.5, 12, 0.5, 'Current marker: fastest drift downstream (rows/s)'),
     talus: tn.num('talus', DEFAULT_WATER.talus, 0.2, 4, 0.05, 'Banks: steepest soil step before it slumps'),
   };
   const params = (): WaterParams => ({
@@ -123,6 +130,8 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
   const salmon = new SalmonRun(terrain, ctx.rng);
   const BOOST_S = 3, BOOST_CD = 10;
   let boostT = 0, boostCd = 0, view: 'overview' | 'follow' = 'overview', look = 0;
+  /** The rider's current marker (river blocks): grid position, seconds since the last steering input, passes made. */
+  const cur = { x: NX / 2, y: 4, idle: 99, passes: 0 };
   const sky = new Sky(terrain.nx, terrain.ny, terrain.coastY, ctx.rng);
   let raining = 0;
   /** The springs (largest first). The first is the one the rider steers; the others stay where the rain put them. */
@@ -325,9 +334,34 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         const o = jobs.objective;
         const goal = o && o.state === 'active' && o.target ? (o.kind === 'village' ? (o.target.x < NX / 2 ? NX - 22 : 22) : o.target.x) : springs[0].x + 10 * Math.sin((2 * Math.PI * t) / 240);
         sourceX += clamp(goal - sourceX, -tun.steerRate() * dt, tun.steerRate() * dt);
+        if (b.phase === 'river') { cur.x += clamp(goal - cur.x, -tun.steerRate() * dt, tun.steerRate() * dt); cur.idle = 0; }
         if (o && o.kind === 'dam' && o.state === 'active' && boostCd <= 0) { boostT = BOOST_S; boostCd = BOOST_CD; cue('boost', { phase: b.phase }); }
       }
+      else if (b.phase === 'river') {
+        // river blocks: the rider steers the current marker at the river's head; near the top it carries the spring
+        const move = steer * tun.steerRate() * dt + dart * tun.shiftStep();
+        cur.x -= move;
+        cur.idle = Math.abs(steer) > 0.05 || dart !== 0 ? 0 : cur.idle + dt;
+      }
       else sourceX -= steer * tun.steerRate() * dt + dart * tun.shiftStep();
+      let pull: Emit['pull'];
+      if (b.phase === 'river' && !salmon.active) {
+        // the marker rides the water down the valley at (a damped) local flow speed, so it lingers where the river
+        // pools and decides (lakes behind the ridges), then starts again at the spring once it reaches the coast
+        let n = 0, vy = 0, cx = 0;
+        for (let q = 0; q < water.n; q++) {
+          const dx = water.x[q] - cur.x, dy = water.y[q] - cur.y;
+          if (dy * dy < 16 && dx * dx < 144) { n++; vy += water.vy[q]; cx += water.x[q]; }
+        }
+        const v = n >= 3 ? clamp((vy / n) * 0.6, tun.currentMinSpeed(), tun.currentMaxSpeed()) : tun.currentMaxSpeed() * 0.5;
+        cur.y += v * dt;
+        // left alone for a while, the marker relaxes onto the water it's riding (so an idle rider doesn't drag the river)
+        if (cur.idle > 4 && n >= 3) cur.x += clamp(cx / n - cur.x, -2 * dt, 2 * dt);
+        cur.x = clamp(cur.x, 6, NX - 6);
+        if (cur.y >= terrain.coastY - 3) { cur.y = 4; cur.x = sourceX; cur.passes++; cue('currentTop', { passes: cur.passes }, false); }
+        if (cur.y < 12) sourceX = cur.x;
+        pull = { x: cur.x, y: cur.y, r: tun.currentRows(), reach: 30, k: tun.currentK(), max: tun.currentMax() };
+      } else { cur.y = 4; cur.x = sourceX; }
       sourceX = clamp(sourceX, 12, NX - 12);
       if (b.phase === 'river' || b.phase === 'salmon') flow = !flowing ? 0 : area ? raining : tun.flowPerFtp() * powerFrac * (boosting && b.phase === 'river' ? 1.5 : 1);
 
@@ -337,6 +371,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         speed: tun.speedLow() + (tun.speedHigh() - tun.speedLow()) * cadNorm,
         sourceX, spread: 1 + 3 * cadNorm,
         erodeMul: 1 + tun.bandBonus() * bonus,
+        pull,
       };
       water.step(dt, emit, params());
       if (b.phase === 'river' || b.phase === 'salmon') for (const c of jobs.update(dt, { n: water.n, x: water.x, y: water.y, vx: water.vx, vy: water.vy, vol: water.vol }, water.w, nearW)) jobCue(c);
@@ -373,7 +408,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
         controls: [
-          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Move the spring', shortLabel: 'Steer' },
+          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Steer the current', shortLabel: 'Steer' },
           { button: 'left', label: 'Steer left' }, { button: 'right', label: 'Steer right' }, { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' },
           { button: 'a', label: BOOST_LABEL[b.phase], shortLabel: b.phase === 'evaporate' ? 'Heat' : b.phase === 'rain' ? 'Burst' : BOOST_LABEL[b.phase], active: boostCd <= 0,
             cooldown: { fill: Math.max(0, 1 - boostCd / BOOST_CD), ready: boostCd <= 0 },
@@ -409,6 +444,7 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
         cues,
         hooks: { cadence: salmon.active && salmon.needLeap ? 102 : bandMid(at.block) },
         look,
+        current: at.block.phase === 'river' && !salmon.active && !menu ? { x: cur.x, y: cur.y, steering: cur.idle < 4 } : null,
       };
     },
     isOver: () => !menu && t >= rideS,

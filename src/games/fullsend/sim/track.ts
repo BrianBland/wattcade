@@ -35,3 +35,15 @@ export function bumpH(x: number, seed: number): number {
  * round (v² · h″ < −g). `curv` is the road's second derivative (1/m).
  */
 export const takesOff = (v: number, curv: number, g: number) => v * v * curv < -g;
+
+/** Things to catch up high (sky islands and the moon): golden rings and stars, at most one per `AIR_CELL` metres. */
+export const AIR_CELL = 60;
+export type AirKind = 'ring' | 'star';
+export interface AirItem { id: number; kind: AirKind; x: number; h: number }
+/** The item in cell k (or null), floating `h` metres above the road, between hMin and hMax. */
+export function airItemAt(k: number, seed: number, hMin: number, hMax: number): AirItem | null {
+  const s = (seed % 7919) * 0.613;
+  if (hash01(k * 3.17 + s + 11) > 0.7) return null;
+  const kind: AirKind = hash01(k * 5.91 + s + 12) < 0.35 ? 'ring' : 'star';
+  return { id: k, kind, x: k * AIR_CELL + 10 + hash01(k * 2.33 + s + 13) * (AIR_CELL - 20), h: hMin + hash01(k * 7.77 + s + 14) * (hMax - hMin) };
+}

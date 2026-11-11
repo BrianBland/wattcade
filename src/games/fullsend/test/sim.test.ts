@@ -117,11 +117,28 @@ describe('altitude: momentum takes you up to the sky islands and the moon', () =
     expect(Number(sm.moonVisits)).toBeGreaterThanOrEqual(1);
     expect(Number(sm.splashdowns)).toBeGreaterThanOrEqual(1);
     const order = r.events.filter((e) => e.type === 'launch').map((e) => (e.data as { to: string }).to);
-    expect(order.slice(0, 3)).toEqual(['sky', 'moon', 'ground']); // the ground launch is the breach out of the sea
+    expect(order.slice(0, 4)).toEqual(['sky', 'moon', 'sea', 'ground']); // thrown off the moon, then the breach out of the sea
   });
   it('a hands-off rider stays on the road', () => {
     const sm = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick' } }).summary;
     expect(Number(sm.skyVisits)).toBe(0);
     expect(Number(sm.peakAltM)).toBeLessThan(30);
+  });
+});
+
+describe('jet, rings and stars up high', () => {
+  it('a rider who jets (above the power line) to the rings catches them', () => {
+    const sm = runHeadless({ game: module, script: 'target-follow', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true, autojet: true } }).summary;
+    expect(Number(sm.jetS)).toBeGreaterThan(2);
+    expect(Number(sm.rings)).toBeGreaterThanOrEqual(3);
+    expect(Number(sm.stars)).toBeGreaterThanOrEqual(1);
+  });
+  it('holding the jet at Z2 power does nothing', () => {
+    const jetIn: InputState = { held: new Set(['b']), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 0, source: 'script' };
+    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => jetIn }, fake: { script: 'z2' }, simOpts: { tour: 'quick', autolean: true }, seed: 3 });
+    let weak = 0;
+    for (let i = 0; i < 30 * 300; i++) { s.step(1); if ((s.sim as unknown as { snapshot(): { jet: string | null } }).snapshot().jet === 'weak') weak++; }
+    expect(weak).toBeGreaterThan(0);
+    expect(Number(s.sim.summary().jetS)).toBe(0);
   });
 });

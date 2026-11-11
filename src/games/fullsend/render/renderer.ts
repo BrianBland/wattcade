@@ -10,7 +10,8 @@ import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { PIECE_VERB } from '../sim/tour';
-import { bumpH } from '../sim/track';
+import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
+import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
 
@@ -19,6 +20,7 @@ const ROWS = 300;        // target low-res rows: a wide view so the rider is sma
 const VPM = PPM;          // vertical px per metre
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
+const SURFACE_M = 45; // the sea surface sits this far above the sea floor (matches the sim's default plunge)
 const RAMP_M = 14, RAMP_H = 4; // the kicker before a canyon lip and the landing ramp after it
 const MEDAL_COLORS = ['#9aa3b5', '#d98a4a', '#d8dde8', '#ffd23b'];
 type Scene = Array<[BiomeLook, number]>;
@@ -196,6 +198,19 @@ export class FullSendRenderer implements GameRenderer {
       drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
     }
 
+    // ---- rings and stars up high ----
+    if (s.airH) {
+      const d0 = s.camX + (0 - RX) / PPM - 10, d1 = s.camX + (W - RX) / PPM + 10;
+      for (let kk = Math.floor(d0 / AIR_CELL); kk <= Math.floor(d1 / AIR_CELL); kk++) {
+        const it = airItemAt(kk, s.terrainSeed, s.airH[0], s.airH[1]);
+        if (!it) continue;
+        const caught = s.got.find((q) => q.id === it.id), age = caught ? s.t - caught.at : -1;
+        if (caught && age > 0.7) continue;
+        const ix = Math.round(sx(it.x)), iy = Math.round(sy(roadH(it.x) + it.h) - 6);
+        if (it.kind === 'ring') drawRing(g, ix, iy, t, age); else drawStar(g, ix, iy, t, age);
+      }
+    }
+
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
@@ -211,12 +226,23 @@ export class FullSendRenderer implements GameRenderer {
     const shake = s.mode === 'bounce' ? Math.sin(t * 60) * 1.5 : s.mode === 'smash' ? Math.sin(t * 45) : 0;
     const gearL = LOOKS[s.biome].rider;
     g.save(); g.translate(Math.round(rx + shake), Math.round(ryy)); g.rotate(-rot);
-    const flame = s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
+    const flame = s.jet === 'on' ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
     drawRocket(g, flame, t, s.v);
     if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     g.restore();
+    // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
+    if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
+      drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
+    }
+    const deckScroll = s.camX * PPM * 0.9;
+    const deckAt = s.toTier === 'sky' ? 28 : s.toTier === 'moon' ? 38 : s.toTier === 'sea' ? -24 : NaN;
+    if (Number.isFinite(deckAt)) drawCloudDeck(g, W, sy(roadH(s.camX) + deckAt), deckScroll, t, 0.9, s.toTier === 'moon' ? '#eef0ff' : '#ffffff');
+    const underSea = (s.tier === 'sea' && !s.toTier) || (s.fromTier === 'sea' && s.toTier === 'ground');
+    if (underSea) drawSeaSurface(g, W, sy(roadH(s.camX) + SURFACE_M), s.camX * PPM, t);
+    drawSplash(g, rx, sy(roadH(s.x) + SURFACE_M), s.t - s.splashAt, s.fromTier !== 'sea');
+
     // dust kicked up by a hop landing
     const la = s.t - s.landAt;
     if (la >= 0 && la < 0.6 && s.landImpact > 1.5 && !inLoop) {
@@ -363,7 +389,13 @@ export class FullSendRenderer implements GameRenderer {
       m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
       m.strokeText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d); m.fillText(fly.text, this.cssW / 2 * d, (L.UH * 0.3) * d);
     }
-    const la = s.t - s.landAt, call = landingCall(s.landGrade, s.flow);
+    if (s.jet) {
+      m.textAlign = 'center'; m.font = font(900, s.jet === 'on' ? 16 : 14); m.fillStyle = s.jet === 'on' ? '#ffb030' : '#ff7a5a';
+      const txt = s.jet === 'on' ? 'JET!' : `PEDAL HARDER · JET NEEDS ${Math.round(s.jetFtp * 100)}% FTP`;
+      m.lineWidth = 4 * d; m.strokeStyle = 'rgba(10,12,40,0.8)'; m.lineJoin = 'round';
+      m.strokeText(txt, L.riderX * d, (this.riderY + 26) * d); m.fillText(txt, L.riderX * d, (this.riderY + 26) * d);
+    }
+    const la = s.t - s.landAt, call = landingCall(s.landGrade, s.flow, s.chain);
     if (call && la >= 0 && la < 1.3) {
       m.globalAlpha = Math.min(1, (1.3 - la) * 2.5); m.textAlign = 'center'; m.font = font(900, call.size); m.fillStyle = call.color;
       const cy = Math.min(L.roadY - 80, this.riderY - 45) - la * 18;
@@ -417,9 +449,10 @@ function round(m: G, x: number, y: number, w: number, h: number, r: number) {
 }
 
 /** Landing call-out text near the rider (null for an ordinary landing). */
-export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number): { text: string; color: string; size: number } | null {
-  if (grade === 'perfect') return { text: `PERFECT · FLOW +${Math.round(flow * 100)}%`, color: '#7af0ff', size: 20 };
-  if (grade === 'good') return { text: 'CLEAN', color: '#b6f59a', size: 17 };
+export function landingCall(grade: FullSendSnapshot['landGrade'], flow: number, chain = 0): { text: string; color: string; size: number } | null {
+  const x = chain >= 2 ? ` ×${chain}` : '';
+  if (grade === 'perfect') return { text: `PERFECT${x} · FLOW +${Math.round(flow * 100)}%`, color: '#7af0ff', size: 20 };
+  if (grade === 'good') return { text: `CLEAN${x}`, color: '#b6f59a', size: 17 };
   if (grade === 'bad') return { text: 'BAD LANDING', color: '#ff7a5a', size: 20 };
   return null;
 }
@@ -435,9 +468,10 @@ export function liftMeter(s: Pick<FullSendSnapshot, 'tier' | 'lift'>): { label: 
 }
 
 /** Big banner while flying between layers. */
-export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier'>): { text: string; color: string } | null {
+export function flightCall(s: Pick<FullSendSnapshot, 'tier' | 'toTier' | 'fromTier' | 'vy'>): { text: string; color: string } | null {
   if (!s.toTier) return null;
-  if (s.toTier === 'sea') return { text: s.tier === 'moon' ? 'LOST THE MOON!' : 'OFF THE EDGE!', color: '#ff9a6a' };
+  if (s.toTier === 'sea' && s.fromTier === 'moon') return s.vy < -12 ? { text: 'RE-ENTRY!', color: '#ffb030' } : { text: 'LOST THE MOON!', color: '#ff9a6a' };
+  if (s.toTier === 'sea') return { text: 'OFF THE EDGE!', color: '#ff9a6a' };
   if (s.toTier === 'sky') return { text: 'SKY LAUNCH!', color: '#9fe8ff' };
   if (s.toTier === 'moon') return { text: 'MOON SHOT!', color: '#fff3b0' };
   return { text: 'BREACH!', color: '#6fe0d0' };

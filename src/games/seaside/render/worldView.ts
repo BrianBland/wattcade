@@ -15,7 +15,7 @@ import { PostFX } from './post';
 import { rowToCameraY, viewLayout } from './viewLayout';
 
 export interface WorldViewOpts {
-  /** Drawing-buffer pixels per CSS pixel (default min(devicePixelRatio, 2)). */ pixelRatio?: number;
+  /** Drawing-buffer pixels per CSS pixel (default min(devicePixelRatio, 1.5)). */ pixelRatio?: number;
   pixel?: PixelSetting;
   workers?: number;
   stream?: TerrainLODOpts['stream'];
@@ -75,7 +75,9 @@ export class WorldView {
   private tmpV = new THREE.Vector3(); private tmpQ = new THREE.Quaternion();
 
   constructor(canvas: HTMLCanvasElement, public world: WorldDef, private o: WorldViewOpts = {}) {
-    this.ratio = o.pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, 2);
+    // 1.5 drawing-buffer pixels per CSS pixel at most: the frame is fill-bound (scene + outline/bloom post), and at 2× a
+    // Retina iPad shades 78 % more pixels for detail the chunky voxels and ink lines don't show
+    this.ratio = o.pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, 1.5);
     const sk = world.sky;
     this.stage = makeStage(canvas, 1, 1, { ...sk, sunDir: new THREE.Vector3(...sk.sunDir) }, { preserve: o.preserve ?? false, shadowMap: 2048 });
     this.stage.renderer.setPixelRatio(1);

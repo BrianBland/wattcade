@@ -37,6 +37,12 @@ try {
       await page.screenshot({ path: `${dir}/t${t}.png`, timeout: 180_000 });
     }
     const lod = await page.evaluate(() => (window as any).__view.terrain.stats);
+    const parts = await page.evaluate(() => { // triangles on screen by part (role : voxel size)
+      const out: Record<string, number> = {};
+      (window as any).__view.terrain.root.traverse((o: any) => { if (!o.isMesh || !o.visible) return; const k = `${o.userData.role}:${o.userData.voxel}`; out[k] = (out[k] ?? 0) + (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+      return Object.entries(out).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${(n / 1e3).toFixed(0)}k`).join(' · ');
+    });
+    console.log(`  parts: ${parts}`);
     console.log(`  lod: ${lod.leaves} leaves in ${lod.clusters} clusters, ${lod.built} tiles built in ${lod.buildMs.toFixed(0)} ms of worker time, ${lod.workers} workers`);
     console.log(`${label.padEnd(28)} build ${String(ready.buildMs).padStart(6)} ms · first frame ${firstMs} ms · faces ${(lod.faces / 1e6).toFixed(2)} M · max tris ${(tris / 1e6).toFixed(2)} M · calls ${calls} · render avg ${(rows.reduce((a, b) => a + b, 0) / rows.length).toFixed(0)} ms (${rows.map((x) => x.toFixed(0)).join(' ')})`);
     await page.close();

@@ -12,6 +12,9 @@ const num = (k: string, d: number) => (q.get(k) !== null ? Number(q.get(k)) : d)
 const capture = !!q.get('capture');
 const canvas = document.getElementById('c') as HTMLCanvasElement, fpsEl = document.getElementById('fps')!, hud = document.getElementById('hud')!;
 const world = getWorld(q.get('world') ?? 'coast');
+// perf experiments: &lod=splitK:0.7,res:32 overrides LOD knobs; &shadows=0 turns live prop shadows off
+if (q.get('lod')) world.lod = { ...world.lod, ...Object.fromEntries(q.get('lod')!.split(',').map((kv) => { const [k, v] = kv.split(':'); return [k, Number(v)]; })) };
+if (q.get('shadows') === '0') world.sky = { ...world.sky, shadows: false };
 const speed = num('speed', world.id === 'coast' ? 8.5 : 3), s0 = num('s', 0);
 const W = capture ? num('w', 1280) : innerWidth, H = capture ? num('h', 720) : innerHeight;
 if (capture) { const wrap = document.getElementById('wrap')!; wrap.style.width = `${W}px`; wrap.style.height = `${H}px`; }

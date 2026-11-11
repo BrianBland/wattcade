@@ -16,7 +16,11 @@ import { bigOneView, morningShot, shopDoor, type MorningShot, type V3 } from './
 import { textAt, textWidth } from '../world/coastBuild';
 import { EVENING } from './flightShots';
 import { STORY } from '../sim/story';
+import { CAR_LANE, Traffic } from './traffic';
+import { buildCar, CARS_PAL } from './cars';
 
+/** Scenes with cars on the highway (the shop outings fish at the turnout too). */
+const TRAFFIC_SCENES = new Set(['highway', 'turnout1', 'rollers', 'toPier', 'shop1', 'sunset']);
 const BIG_PLAN_S = STORY.find((s) => s.id === 'bigOne')!.planS;
 import type { WorldView } from './worldView';
 
@@ -120,6 +124,10 @@ export class MorningSet {
   private last: { id: string; pose: Pose } | null = null;
   private blend: { from: Pose; t0: number; dur: number } | null = null;
   private m4 = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v3 = new THREE.Vector3();
+  private traffic = new Traffic();
+  private carTemplates = new Map<string, THREE.Group>();
+  private carMeshes = new Map<number, THREE.Group>();
+  private carRoot = new THREE.Group();
   /** Title fog thinned by pedalling (0..1), on top of the scene's own clearing. */
   private clearing = 0;
   /** The title's focus blur this frame (0..1), after pedalling. */ blur = 0;
@@ -169,7 +177,7 @@ export class MorningSet {
     const door = shopDoor(), tn = r.tangent(CH1.shop);
     this.gone.position.set(door.x, door.y, door.z); this.gone.rotation.y = Math.atan2(-tn.z, tn.x); // facing the road
     this.gone.visible = false;
-    this.root.add(this.bird, this.shadowG, this.lighthouse, this.splash, this.bubbles, this.gone);
+    this.root.add(this.carRoot, this.bird, this.shadowG, this.lighthouse, this.splash, this.bubbles, this.gone);
     st.scene.add(this.root);
   }
 
@@ -206,6 +214,7 @@ export class MorningSet {
       atmos = { fog: mixHex(sky.fog, white, fog), density: lerp(sky.fogDensity, 0.05, f), zenith: mixHex(sky.zenith, white, fog), horizon: mixHex(sky.horizon, white, fog), ink: 1 - f };
     }
     this.props(shot, t);
+    this.cars(snap.sceneId, shot, pose, t, dt);
     this.gone.visible = snap.sceneId === 'sunset';
     this.view.frame({ t, routeS: shot.s, speed: shot.speed, look: snap.look.name, dream: snap.look.dream, eye: pose.eye, aim: pose.target,
       heading: pose.heading, bars: shot.bars, cadence: cadence || 86, atmos, calm: fx.calm });
@@ -213,6 +222,27 @@ export class MorningSet {
     const fishing = shot.rod === 'fish' ? snap.fishing : shot.rod === 'bigOne' ? bigOneView(snap.scene.progress * BIG_PLAN_S, snap.pull) : null;
     this.rig.update(fishing, t, shot.place ?? { waterY: SEA_LEVEL });
     return shot;
+  }
+
+  /** Highway traffic: cars coming the other way and overtaking, on the highway scenes (and while you fish at the turnout). */
+  private cars(id: string, shot: MorningShot, pose: Pose, t: number, dt: number) {
+    const on = (id === 'title' ? shot.fx.lids > 0.5 : TRAFFIC_SCENES.has(id)) && shot.fx.under === 0;
+    const r = coastRoute(), lat = r.nearest(pose.eye.x, pose.eye.z, 60)?.d ?? 4.2;
+    const cars = this.traffic.step(t, dt, shot.s, lat, on), live = new Set<number>();
+    for (const c of cars) {
+      live.add(c.id);
+      let m = this.carMeshes.get(c.id);
+      if (!m) {
+        const key = `${c.model}:${c.colour}`;
+        let tpl = this.carTemplates.get(key);
+        if (!tpl) { tpl = new THREE.Group(); addGrid(this.view.stage, `car ${key}`, buildCar(c.model, c.colour), { palette: CARS_PAL.linear, jitter: 0.03 }, tpl, { cast: true, receive: false }); this.carTemplates.set(key, tpl); }
+        m = tpl.clone(); this.carMeshes.set(c.id, m); this.carRoot.add(m);
+      }
+      const p = r.offset(Math.max(0, Math.min(r.length, c.s)), c.dir > 0 ? CAR_LANE.with : CAR_LANE.toward), tg = r.tangent(Math.max(0, Math.min(r.length, c.s)));
+      m.position.set(p.x, p.y - 0.12, p.z);
+      m.rotation.y = Math.atan2(tg.x * c.dir, tg.z * c.dir);
+    }
+    for (const [id, m] of this.carMeshes) if (!live.has(id)) { this.carRoot.remove(m); this.carMeshes.delete(id); }
   }
 
   private props(shot: MorningShot, t: number) {
@@ -288,7 +318,7 @@ export class MorningSet {
 
   dispose(): void {
     this.rig.dispose();
-    disposeSet(this.mouth, this.root);
+    disposeSet(this.mouth, this.root, ...this.carTemplates.values());
   }
 }
 

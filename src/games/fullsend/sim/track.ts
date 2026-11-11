@@ -73,3 +73,13 @@ export function windAt(x: number, seed: number): number {
   const u = (x - x0) / len, ease = Math.min(1, u / 0.15, (1 - u) / 0.15);
   return sign * mag * ease;
 }
+
+/** The flooded tunnel in a Dive: the road ramps down (cosine) into a sunken tunnel, runs along its floor, and climbs out
+ *  at the far end. Depth below the road (m, ≤ 0) at x for a tunnel starting at x0 of length len. The water line sits at
+ *  DIVE.water, so you ride down into it; the tunnel roof is DIVE.roof above the floor. */
+export const DIVE = { depth: 16, ramp: 28, water: -3, roof: 9 };
+export function diveDip(x0: number, len: number, x: number): number {
+  if (x <= x0 || x >= x0 + len) return 0;
+  const r = Math.min(DIVE.ramp, len / 2), d = Math.min(x - x0, x0 + len - x);
+  return d >= r ? -DIVE.depth : -DIVE.depth * 0.5 * (1 - Math.cos((Math.PI * d) / r));
+}

@@ -27,21 +27,24 @@ export function drawCanyonFloor(g: G, x: number, topY: number, floorY: number, H
   if (lava && hash01(Math.floor(dd) * 13 + Math.floor(t * 2)) < 0.03) rect(g, '#ffe066', x, fy - 3, 1, 2); // bubbles
 }
 
-/** A flooded tunnel: water from the road up to a rock ceiling. */
-export function drawWater(g: G, x0: number, x1: number, roadY: number, ceilY: number, H: number, t: number) {
-  const a = Math.max(-10, x0), b = Math.min(g.canvas.width + 10, x1);
-  if (b <= a) return;
-  g.globalAlpha = 0.38; g.fillStyle = '#1f6fd0'; g.fillRect(Math.round(a), Math.round(ceilY), Math.round(b - a), Math.round(roadY - ceilY + 6));
-  g.globalAlpha = 1;
-  g.fillStyle = '#34303f'; g.fillRect(Math.round(a), 0, Math.round(b - a), Math.round(ceilY));
-  g.fillStyle = '#4c465c';
-  for (let x = Math.round(a); x < b; x += 3) g.fillRect(x, Math.round(ceilY) - 2 - Math.round(hash01(x * 7) * 3), 3, 3);
+/** The water in a flooded tunnel, drawn over the rider (who is in it). `band(x)` gives [floor, water line] in buffer px
+ *  and whether that line is the open surface (vs the tunnel roof). */
+export function drawFlood(g: G, x0: number, x1: number, band: (x: number) => [number, number, boolean], t: number) {
+  for (let x = Math.floor(x0); x < x1; x++) {
+    const [fy, wy, open] = band(x);
+    if (wy >= fy) continue;
+    g.fillStyle = 'rgba(31,111,208,0.42)'; g.fillRect(x, Math.round(wy), 1, Math.round(fy - wy));
+    if (open) { // the open pool's surface glints where it meets the air
+      g.fillStyle = Math.sin(x * 0.5 + t * 4) > 0.3 ? '#d8f6ff' : '#8fd0ff'; g.fillRect(x, Math.round(wy), 1, 1);
+    }
+  }
   g.fillStyle = '#d8f6ffaa';
-  for (let i = 0; i < 26; i++) {
-    const x = a + hash01(i * 3 + 1) * (b - a), y = roadY - ((t * (12 + hash01(i) * 10) + hash01(i * 3 + 2) * 60) % Math.max(10, roadY - ceilY));
+  for (let i = 0; i < 30; i++) { // bubbles drifting up
+    const x = x0 + hash01(i * 3 + 1) * (x1 - x0), [fy, wy] = band(x), h = fy - wy;
+    if (h < 6) continue;
+    const y = fy - ((t * (10 + hash01(i) * 10) + hash01(i * 3 + 2) * 60) % h);
     g.fillRect(Math.round(x + Math.sin(t * 2 + i) * 2), Math.round(y), 1, 1);
   }
-  if (x1 > -20 && x1 < g.canvas.width + 20) { rect(g, '#ffffffaa', x1 - 1, ceilY, 2, roadY - ceilY); } // the surface exit
 }
 
 const TAU = Math.PI * 2;

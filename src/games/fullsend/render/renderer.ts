@@ -11,14 +11,14 @@ import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
 import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
-import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
+import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip } from '../sim/track';
 import { FullSendSound } from './sound';
 import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
 import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
-import { drawCanyonFloor, drawCave, drawChaser, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream, drawWater } from './props';
+import { drawCanyonFloor, drawCave, drawChaser, drawFlood, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
@@ -137,7 +137,7 @@ export class FullSendRenderer implements GameRenderer {
     const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
     let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
-    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : 0)) + loopLift + flyCam;
+    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : p?.kind === 'dive' ? lift(s.camX) * 0.75 : 0)) + loopLift + flyCam;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
@@ -224,8 +224,23 @@ export class FullSendRenderer implements GameRenderer {
       g.fillRect(Math.round(gapX0), Math.round(sy(0)) + 5, 3, H);
       g.fillRect(Math.round(gapX1) - 3, Math.round(sy(0)) + 5, 3, H);
     }
+    // the flooded tunnel: the road dips under the ground into a dark, water-filled bore
+    const diveOn = p?.kind === 'dive' && sx(p.x0) < W && sx(p.x0 + p.len) > 0;
+    if (diveOn) {
+      const a = Math.max(0, Math.floor(sx(p!.x0))), b = Math.min(W, Math.ceil(sx(p!.x0 + p!.len)));
+      for (let x = a; x < b; x++) {
+        const dd = s.camX + (x - RX) / PPM, top = roadH(dd), dip = diveDip(p!.x0, p!.len, dd);
+        const floorY = Math.round(sy(top + dip)), roofY = Math.round(sy(top + dip + DIVE.roof)), surfY = Math.round(sy(top));
+        if (roofY > surfY) { // the ground over the tunnel
+          g.fillStyle = ground; g.fillRect(x, surfY, 1, roofY - surfY);
+          g.fillStyle = edge; g.fillRect(x, surfY, 1, 2);
+          if (hash01(Math.floor(dd * 1.2) * 7) < 0.3) { g.fillStyle = groundDark; g.fillRect(x, surfY + 4 + Math.floor(hash01(Math.floor(dd)) * Math.max(1, roofY - surfY - 6)), 1, 1); }
+          g.fillStyle = '#3a3448'; g.fillRect(x, roofY - 2 - Math.round(hash01(x * 7) * 2), 1, 3); // rough roof
+        }
+        g.fillStyle = '#1a2230'; g.fillRect(x, Math.max(roofY, surfY), 1, Math.max(0, floorY - Math.max(roofY, surfY))); // the bore
+      }
+    }
     if (p?.kind === 'leap') for (const z of s.hazards) if (z.y > -11) drawHazard(g, p.biome, sx(z.x), sy(z.y), z.vy, t, z.hit);
-    if (p?.kind === 'dive') drawWater(g, sx(p.x0), sx(p.x0 + p.len), sy(0), sy(16), H, t);
 
     // ---- obstacles and chasers ----
     if (p?.kind === 'smash') {
@@ -273,7 +288,7 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
-    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0);
+    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : p?.kind === 'dive' ? lift(s.x) : 0);
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
@@ -293,6 +308,7 @@ export class FullSendRenderer implements GameRenderer {
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
     }
     g.restore();
+    if (diveOn) drawFlood(g, Math.max(-10, sx(p!.x0)), Math.min(W + 10, sx(p!.x0 + p!.len)), (x) => { const dd = s.camX + (x - RX) / PPM, top = roadH(dd), dip = diveDip(p!.x0, p!.len, dd); return [sy(top + dip) + 5, sy(top + Math.min(DIVE.water, dip + DIVE.roof)), dip + DIVE.roof > DIVE.water]; }, t);
     if (caveOn) drawCave(g, 'front', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, p!.crashAt > 0 ? s.t - p!.crashAt : -1);
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
@@ -614,8 +630,10 @@ export class FullSendRenderer implements GameRenderer {
     m.globalAlpha *= behind ? 0.3 : 1;
     const TONE: Record<string, [string, string, string]> = { green: ['#0e6b3c', '#ffffff', '#ffd23b'], yellow: ['#ffd23b', '#1a1a1a', '#b3202c'], red: ['#b3202c', '#ffffff', '#ffd23b'], blue: ['#1d4fa8', '#ffffff', '#ffd23b'] };
     const [bg, fg, hi] = TONE[msg.tone];
-    const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.6);
-    m.fillStyle = '#3a3f4c'; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
+    // the legs fade out downward: it's far away, so they mustn't read as standing on (or in) the foreground road
+    const legTop = r.y + r.h, legBot = legTop + Math.min(70, Math.max(10, this.L.UH * 0.6 - legTop));
+    const lg = m.createLinearGradient(0, legTop * d, 0, legBot * d); lg.addColorStop(0, '#3a3f4c'); lg.addColorStop(1, 'rgba(58,63,76,0)');
+    m.fillStyle = lg; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
     m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((r.x + 5) * d, (r.y + 5) * d, r.w * d, r.h * d);
     m.fillStyle = bg; m.fillRect(r.x * d, r.y * d, r.w * d, r.h * d);
     m.lineWidth = 3 * d; m.strokeStyle = fg; m.strokeRect((r.x + 6) * d, (r.y + 6) * d, (r.w - 12) * d, (r.h - 12) * d);
@@ -690,6 +708,7 @@ export class FullSendRenderer implements GameRenderer {
 
 /** Height of the kicker ramp before a canyon lip and the landing ramp after it (m). */
 export function rampLift(p: PieceView | null, x: number): number {
+  if (p?.kind === 'dive') return diveDip(p.x0, p.len, x);
   if (!p || p.kind !== 'leap') return 0;
   if (x > p.x0 - RAMP_M && x <= p.x0) { const k = (x - (p.x0 - RAMP_M)) / RAMP_M; return RAMP_H * k * k; }
   const far = p.x0 + p.len;

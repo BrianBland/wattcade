@@ -8,7 +8,8 @@ import { BIOME_NAMES, biomeWeights, hash01, makeTerrain, type BiomeId, type Terr
 import { LOOKS, type BiomeLook, type G } from '../../warmup/render/biomes';
 import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
 import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, layerSpans, seamKind, visibleSeams, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
-import { drawPortal, drawPortalFlash, PORTAL, portalFlash, portalOpen } from '../../warmup/render/portal';
+import { drawPortalFlash, portalFlash } from '../../warmup/render/portal';
+import { crossingOf, drawGantry, drawKicker, drawLaunchSmoke, drawSeaAhead, drawVent, HOPS, hopAt, KICKER } from './crossing';
 import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway';
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
@@ -136,7 +137,10 @@ export class FullSendRenderer implements GameRenderer {
     const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
     const flyCam = s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
-    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam;
+    // into / out of the sea and to / from the Moon: a dive, a breach, a launch or a re-entry over the seam (crossing.ts)
+    const cross = s.seam ? crossingOf(s.seam) : null, cdm = s.seam ? s.x - s.seam.x : 0;
+    const hop = cross ? hopAt(cross, cdm) : { h: 0, slope: 0 };
+    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam + hop.h * 0.5;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
     this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
@@ -230,6 +234,7 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the gap / water / loop sit behind the road surface ----
     const gapX0 = p?.kind === 'leap' ? sx(p.x0) : NaN, gapX1 = p?.kind === 'leap' ? sx(p.x0 + p.len) : NaN;
     const inGap = (x: number) => x > gapX0 && x < gapX1;
+    const seaX = cross === 'dive' && cdm < 0 ? sx(s.seam!.x + KICKER.lipM) + 1 : Infinity;
     const roadside = (l: BiomeLook, w: number, spans: readonly Span[] | null) => {
       this.sg.clearRect(0, 0, W, H);
       const draw = (ll: BiomeLook) => ll.roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t);
@@ -238,6 +243,7 @@ export class FullSendRenderer implements GameRenderer {
       else draw(l);
       if (Number.isFinite(gapX0)) this.sg.clearRect(gapX0 - 4, 0, gapX1 - gapX0 + 8, H);
       if (s.edgeX !== null) this.sg.clearRect(sx(s.edgeX), 0, W, H);
+      if (seaX < W) this.sg.clearRect(seaX, 0, W, H); // open sea past the kicker
       g.globalAlpha = w; g.drawImage(this.scratch, 0, 0); g.globalAlpha = 1;
     };
     if (!blend) roadside(scene[0][0], 1, roadSp);
@@ -300,17 +306,21 @@ export class FullSendRenderer implements GameRenderer {
     this.gate = null;
     if (s.seam) {
       const gx = Math.round(sx(s.seam.x)), st = GATEWAYS[s.seam.to], to = s.seam.to;
-      if (seamKind(s.seam) === 'portal') { // a window onto the far side, shut once you're through
-        const open = portalOpen(s.seam.x, s.x), gy = Math.round(roadY(s.seam.x));
-        if (gx > -50 && gx < W + 50 && open > 0) {
-          drawPortal(g, gx, gy, t, open, to, (gg) => {
-            const l = LOOKS[s.x >= s.seam!.x ? s.seam!.from : to]; // looking back through it: where you came from
-            skyPaint(l, gg); l.backdrop(gg, W, Math.round(gy - PORTAL.ry * 1.1), s.camX * PPM * BACK_PARALLAX, t);
-            gg.fillStyle = l.mid; gg.fillRect(0, Math.round(gy) - 12, W, H); // the far side, seen close up
-            gg.fillStyle = l.ground; gg.fillRect(0, gy + 2, W, H);
-            gg.fillStyle = l.road; gg.fillRect(0, gy - 4, W, 5);
-          });
-          this.gate = { x: gx, y: gy - PORTAL.ry * 2 - 7, text: BIOME_NAMES[to], color: '#ffffff', alpha: Math.min(1, Math.max(0, (gx - RX - 12) / 14)) };
+      if (cross) { // the way in or out: a kicker into the sea, a vent out of it, a launch pad, a burn
+        const sm = s.seam, past = cdm >= 0, H0 = HOPS[cross], ax = sx(sm.x + H0.a), ay = roadY(sm.x + H0.a);
+        const since = t - this.portalAt;
+        if (cross === 'dive' && !past) {
+          const lip = sm.x + KICKER.lipM;
+          drawSeaAhead(g, sx(lip) + 1, roadY(lip), W, H, t);
+          drawKicker(g, sx(lip), roadY(lip), KICKER.lenM * PPM, KICKER.hM * VPM);
+        }
+        if (cross === 'surface' && !past) drawVent(g, ax, ay, 0, t);
+        if (cross === 'launch' && cdm < 10) drawGantry(g, Math.round(ax - 18), Math.round(ay), t);
+        if ((cross === 'launch' || cross === 'reentry') && cdm < 40) drawLaunchSmoke(g, ax, ay + 10, UH * 0.35, t, cross === 'reentry');
+        if (past && (cross === 'dive' || cross === 'surface')) drawSplash(g, sx(sm.x), sy(roadH(sm.x) + hopAt(cross, 0).h), since, true, s.reducedFlash);
+        if (!past && gx > -50 && gx < W + 50) {
+          const lx = cross === 'dive' ? sx(sm.x + KICKER.lipM) : ax;
+          this.gate = { x: lx, y: roadY(sm.x + (cross === 'dive' ? KICKER.lipM : H0.a)) - 30, text: BIOME_NAMES[sm.to], color: '#ffffff', alpha: Math.min(1, Math.max(0, (lx - RX - 12) / 14)) };
         }
       } else if (gx > -50 && gx < W + 50) {
         const gy = Math.round(roadY(s.seam.x)), [bx, by] = boardCentre();
@@ -346,12 +356,12 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
-    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0);
+    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0) + hop.h;
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
     this.riderBuf = { x: rx, y: ryy };
-    let rot = s.pitch;
+    let rot = s.pitch + Math.atan(hop.slope) * 0.8;
     if (s.trick) {
       const a = Math.min(1, s.trick.age / 0.9);
       if (s.trick.name === 'Backflip') rot += a * Math.PI * 2;
@@ -361,7 +371,7 @@ export class FullSendRenderer implements GameRenderer {
     if (crash >= 0 && crash < 0.9) rot += Math.sin(crash * 22) * 0.5 * (1 - crash / 0.9);
     const gearL = LOOKS[s.biome].rider;
     g.save(); g.translate(Math.round(rx + shake), Math.round(ryy)); g.rotate(-rot);
-    const flame = s.jet === 'on' ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
+    const flame = s.jet === 'on' || (cross && cross !== 'dive' && hop.slope > 0) ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
     drawRocket(g, flame, t, s.v);
     if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
@@ -371,6 +381,7 @@ export class FullSendRenderer implements GameRenderer {
     }
     g.restore();
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
+    if (cross === 'reentry' && cdm >= 0 && hop.slope < 0) drawFireball(g, rx, ryy, Math.atan2(-hop.slope * 3, 1), Math.min(1, hop.h / 8), t);
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
     }
@@ -399,13 +410,13 @@ export class FullSendRenderer implements GameRenderer {
     const foreProps = (only: BiomeLook | null, gg: G) => {
       for (let kk = f0; kk <= f1; kk++) {
         const x = kk * FORE_SLOT - fu + RX;
-        if (inGap(x) || (s.edgeX !== null && s.camX + (x - RX) / PPM > s.edgeX - 12)) continue;
+        if (inGap(x) || x > seaX - 4 || (s.edgeX !== null && s.camX + (x - RX) / PPM > s.edgeX - 12)) continue;
         (only ?? LOOKS[ownerAt(foreSp, x)]).foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
       }
     };
     if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
     // riding through a portal: the scene has already swapped behind this flash
-    drawPortalFlash(g, W, H, RX, roadY(s.x) - 20, portalFlash(t - this.portalAt) * (s.reducedFlash ? 0.4 : 1), this.portalTo);
+    drawPortalFlash(g, W, H, rx, ryy - 10, portalFlash(t - this.portalAt) * (s.reducedFlash ? 0.3 : cross === 'dive' || cross === 'surface' || this.portalTo === 'underwater' ? 0.35 : 0.7), this.portalTo);
     const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
     if (lines > 0) {
       g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';

@@ -27,21 +27,24 @@ export function drawCanyonFloor(g: G, x: number, topY: number, floorY: number, H
   if (lava && hash01(Math.floor(dd) * 13 + Math.floor(t * 2)) < 0.03) rect(g, '#ffe066', x, fy - 3, 1, 2); // bubbles
 }
 
-/** A flooded tunnel: water from the road up to a rock ceiling. */
-export function drawWater(g: G, x0: number, x1: number, roadY: number, ceilY: number, H: number, t: number) {
-  const a = Math.max(-10, x0), b = Math.min(g.canvas.width + 10, x1);
-  if (b <= a) return;
-  g.globalAlpha = 0.38; g.fillStyle = '#1f6fd0'; g.fillRect(Math.round(a), Math.round(ceilY), Math.round(b - a), Math.round(roadY - ceilY + 6));
-  g.globalAlpha = 1;
-  g.fillStyle = '#34303f'; g.fillRect(Math.round(a), 0, Math.round(b - a), Math.round(ceilY));
-  g.fillStyle = '#4c465c';
-  for (let x = Math.round(a); x < b; x += 3) g.fillRect(x, Math.round(ceilY) - 2 - Math.round(hash01(x * 7) * 3), 3, 3);
+/** The water in a flooded tunnel, drawn over the rider (who is in it). `band(x)` gives [floor, water line] in buffer px
+ *  and whether that line is the open surface (vs the tunnel roof). */
+export function drawFlood(g: G, x0: number, x1: number, band: (x: number) => [number, number, boolean], t: number) {
+  for (let x = Math.floor(x0); x < x1; x++) {
+    const [fy, wy, open] = band(x);
+    if (wy >= fy) continue;
+    g.fillStyle = 'rgba(31,111,208,0.42)'; g.fillRect(x, Math.round(wy), 1, Math.round(fy - wy));
+    if (open) { // the open pool's surface glints where it meets the air
+      g.fillStyle = Math.sin(x * 0.5 + t * 4) > 0.3 ? '#d8f6ff' : '#8fd0ff'; g.fillRect(x, Math.round(wy), 1, 1);
+    }
+  }
   g.fillStyle = '#d8f6ffaa';
-  for (let i = 0; i < 26; i++) {
-    const x = a + hash01(i * 3 + 1) * (b - a), y = roadY - ((t * (12 + hash01(i) * 10) + hash01(i * 3 + 2) * 60) % Math.max(10, roadY - ceilY));
+  for (let i = 0; i < 30; i++) { // bubbles drifting up
+    const x = x0 + hash01(i * 3 + 1) * (x1 - x0), [fy, wy] = band(x), h = fy - wy;
+    if (h < 6) continue;
+    const y = fy - ((t * (10 + hash01(i) * 10) + hash01(i * 3 + 2) * 60) % h);
     g.fillRect(Math.round(x + Math.sin(t * 2 + i) * 2), Math.round(y), 1, 1);
   }
-  if (x1 > -20 && x1 < g.canvas.width + 20) { rect(g, '#ffffffaa', x1 - 1, ceilY, 2, roadY - ceilY); } // the surface exit
 }
 
 const TAU = Math.PI * 2;
@@ -311,14 +314,21 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   // rack: stays from the rear axle and the seat post up to the rocket's clamps
   seg(g, '#3a4052', 1, ax, [-11, -11.5]); seg(g, '#3a4052', 1, ax, [-5, -11.5]); seg(g, '#3a4052', 1, [-3.4, -12.6], [-5, -11.5]);
   const y0 = -15, len = 15, x0 = -18; // body from x0 to x0 + len, top at y0, 4 px tall
-  // exhaust
-  const fl = Math.max(0, power) * (12 + Math.sin(t * 40) * 3) + (v > 1 ? 2 : 0);
+  // exhaust: from a weak puff (slow, easy) to a long roaring plume with shock diamonds (fast and hard, or jetting)
+  const P = Math.max(0, Math.min(3, power)), fl = P * (16 + Math.sin(t * 40) * 3) + P * P * 9 + (v > 1 ? 2 : 0);
+  const cy = y0 + 2, wob = Math.sin(t * 33) * 0.6;
+  if (P > 0.9) { // smoke and heat trail behind the plume
+    g.globalAlpha = Math.min(0.5, (P - 0.9) * 0.4); g.fillStyle = '#c8ccd6';
+    for (let i = 0; i < 8; i++) { const d = fl + i * 7 + ((t * 90) % 7); g.fillRect(Math.round(x0 - 2 - d), Math.round(cy - 1 + Math.sin(t * 7 + i * 1.7) * (1 + i * 0.5)), 3 + (i >> 1), 2 + (i >> 2)); }
+    g.globalAlpha = 1;
+  }
   if (fl > 1) {
-    g.globalAlpha = 0.35; g.fillStyle = '#ffb020'; g.beginPath(); g.ellipse(x0 - 2 - fl * 0.45, y0 + 2, fl * 0.6, 3.2, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
-    poly(g, '#ff6a1a', [[x0 - 1, y0], [x0 - 2 - fl, y0 + 2 + Math.sin(t * 33) * 0.6], [x0 - 1, y0 + 4]]);
-    poly(g, '#ffe066', [[x0 - 1, y0 + 1], [x0 - 2 - fl * 0.55, y0 + 2], [x0 - 1, y0 + 3]]);
-    poly(g, '#ffffff', [[x0 - 1, y0 + 1.6], [x0 - 2 - fl * 0.2, y0 + 2], [x0 - 1, y0 + 2.4]]);
-    if (power > 1) { g.globalAlpha = 0.45; g.fillStyle = '#9aa3b5'; for (let i = 0; i < 4; i++) g.fillRect(Math.round(x0 - 4 - fl - i * 5 - ((t * 60) % 5)), Math.round(y0 + 1 + Math.sin(t * 9 + i) * 2), 3, 2); g.globalAlpha = 1; }
+    const w = 1.6 + Math.min(4, P * 1.5); // the plume widens as it grows
+    g.globalAlpha = 0.3 + Math.min(0.3, P * 0.1); g.fillStyle = '#ff9020'; g.beginPath(); g.ellipse(x0 - 2 - fl * 0.45, cy, fl * 0.6, w + 1.5, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+    poly(g, '#ff5a14', [[x0 - 1, cy - w], [x0 - 2 - fl, cy + wob], [x0 - 1, cy + w]]);
+    poly(g, '#ffd23b', [[x0 - 1, cy - w * 0.6], [x0 - 2 - fl * 0.6, cy], [x0 - 1, cy + w * 0.6]]);
+    poly(g, '#ffffff', [[x0 - 1, cy - 0.5], [x0 - 2 - fl * (0.15 + P * 0.06), cy], [x0 - 1, cy + 0.5]]);
+    if (P > 1.6) { g.fillStyle = '#fff6c0'; for (let i = 1; i <= 3; i++) { const dx = x0 - 2 - fl * (0.18 * i + 0.05); g.fillRect(Math.round(dx), Math.round(cy - 1), 2, 2); } } // shock diamonds
   }
   // nozzle bell
   poly(g, '#5e6678', [[x0 - 2, y0 - 0.8], [x0 + 1, y0 + 0.6], [x0 + 1, y0 + 3.4], [x0 - 2, y0 + 4.8]]);
@@ -334,6 +344,57 @@ export function drawRocket(g: G, power: number, t: number, v: number) {
   poly(g, '#e8463a', [[x0 + 1, y0 + 4], [x0 + 4, y0 + 4], [x0 - 0.5, y0 + 6.5]]);
   // clamps
   rect(g, '#2a2e3a', x0 + 3.5, y0 - 0.5, 1, 5); rect(g, '#2a2e3a', x0 + 10, y0 - 0.5, 1, 5);
+}
+
+/** What leaps out of a canyon pit: a fireball (volcano), an ice shard (snow), a piranha (water) or a hot rock. `vy` > 0 =
+ *  rising. Burst into sparks / shards once it has hit you (`hit`). */
+export function drawHazard(g: G, biome: BiomeId, x: number, y: number, vy: number, t: number, hit: boolean) {
+  const X = Math.round(x), Y = Math.round(y);
+  g.save(); g.translate(X, Y); g.scale(2, 2); g.translate(-X, -Y); // big enough to read (and dodge) at a glance
+  if (biome === 'volcano' || biome === 'desert') {
+    const lava = biome === 'volcano';
+    if (lava) { // a trail of embers below it while it rises
+      g.globalAlpha = 0.6; g.fillStyle = '#ff6a1a';
+      for (let i = 1; i < 6; i++) g.fillRect(X - 1 + Math.round(Math.sin(t * 20 + i) * 1.5), Y + i * 3 * Math.sign(vy || 1), 2, 2);
+      g.globalAlpha = 1;
+    }
+    const r = hit ? 2 : 4 + Math.sin(t * 25) * 0.6;
+    g.fillStyle = lava ? '#ff5a14' : '#7a5236'; g.beginPath(); g.arc(X, Y, r + 1.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = lava ? '#ffd23b' : '#a8784e'; g.beginPath(); g.arc(X, Y, r, 0, Math.PI * 2); g.fill();
+    if (lava) { g.fillStyle = '#fff6c0'; g.fillRect(X - 1, Y - 1, 2, 2); }
+  } else if (biome === 'snow') {
+    g.fillStyle = '#2a5a80'; g.beginPath(); g.moveTo(X, Y - 9); g.lineTo(X + 4, Y + 5); g.lineTo(X - 4, Y + 5); g.closePath(); g.fill();
+    g.fillStyle = '#e8f6ff'; g.beginPath(); g.moveTo(X, Y - 7); g.lineTo(X + 3, Y + 4); g.lineTo(X - 3, Y + 4); g.closePath(); g.fill();
+    g.fillStyle = '#8cc8ec'; g.fillRect(X - 1, Y - 2, 1, 5);
+  } else { // a piranha, jaws open, arcing out of the river
+    const dir = vy > 0 ? -1 : 1;
+    g.save(); g.translate(X, Y); g.rotate(dir * 0.9);
+    g.fillStyle = '#c84a3a'; g.fillRect(-5, -2, 9, 5); g.fillStyle = '#5a6a7a'; g.fillRect(-5, -3, 9, 2);
+    g.fillStyle = '#5a6a7a'; g.beginPath(); g.moveTo(-5, 0); g.lineTo(-9, -3); g.lineTo(-9, 3); g.closePath(); g.fill();
+    g.fillStyle = '#ffffff'; g.fillRect(3, 0, 1, 1); g.fillRect(2, 2, 1, 1); g.fillStyle = '#111'; g.fillRect(1, -2, 1, 1);
+    g.restore();
+  }
+  if (hit) { g.fillStyle = '#ffd23b'; for (let i = 0; i < 6; i++) { const a = i * 1.05 + t * 3; g.fillRect(X + Math.round(Math.cos(a) * 6), Y + Math.round(Math.sin(a) * 6), 2, 2); } }
+  g.restore();
+}
+
+/** Slipstream: wind wrapping round the rider at speed (curved streaks over the helmet and under the bike, trailing back).
+ *  Drawn in the rider's frame (origin at the rear-wheel contact, +x forward). `v` m/s. */
+export function drawSlipstream(g: G, v: number, t: number) {
+  const a = Math.max(0, Math.min(1, (v - 30) / 40));
+  if (a <= 0) return;
+  g.fillStyle = '#ffffff';
+  for (let i = 0; i < 7; i++) {
+    const lane = i % 3, phase = ((t * (2.2 + v / 25) + i * 0.37) % 1);
+    const len = 8 + a * 14, x = 12 - phase * (40 + a * 30); // streaks run front to back
+    const yBase = lane === 0 ? -34 : lane === 1 ? -26 : -2, bend = lane === 2 ? 1 : -1;
+    g.globalAlpha = a * 0.55 * Math.sin(phase * Math.PI);
+    for (let j = 0; j < len; j += 2) {
+      const xx = x - j, curve = xx > 0 ? bend * Math.min(6, xx * 0.25) : 0; // hugs the front, then streams straight back
+      g.fillRect(Math.round(xx), Math.round(yBase + curve + Math.sin(i * 2.1) * 2), 2, 1);
+    }
+  }
+  g.globalAlpha = 1;
 }
 
 /** A great white, ~80 px long, swimming just above the sea floor toward the rider (facing right). Jaws snap on a catch. */
@@ -374,4 +435,64 @@ export function drawStoneWheel(g: G, t: number, giveUp: number, caught: number) 
   g.fillStyle = '#5a4c3a'; g.beginPath(); g.arc(0, 0, 6, 0, Math.PI * 2); g.fill();
   rect(g, '#3e7a2a', -r + 6, -4, 5, 3); rect(g, '#3e7a2a', r - 12, 6, 6, 3); // moss
   g.restore();
+}
+
+const CAVE_ROCK: Partial<Record<BiomeId, [string, string, string]>> = { // body, shadow, highlight
+  volcano: ['#4a2c26', '#2a1814', '#6e443a'], snow: ['#9fb4c8', '#5f7690', '#e8f2fb'], jungle: ['#56604a', '#323a2a', '#7f8c66'],
+  underwater: ['#3c5866', '#22343e', '#5f8494'], desert: ['#b9875a', '#80583a', '#d9a878'], moon: ['#7b7b86', '#4a4a56', '#a4a4b0'],
+};
+/** The Outrun bolt-hole: a rock bluff with a low tunnel through it, mouth at x0 (buffer px), `ppm` px per metre.
+ *  part 'back' goes before the rider (bluff + dark tunnel), 'front' after (shadow over the rider inside, the arch lip,
+ *  and rocks shaken loose when the chaser slams in; `crash` = seconds since that, or < 0). */
+export function drawCave(g: G, part: 'back' | 'front', x0: number, x1: number, roadY: number, ppm: number, biome: BiomeId, t: number, crash: number) {
+  const [body, dark, hi] = CAVE_ROCK[biome] ?? ['#6a5a4e', '#3e332c', '#8f7d6e'];
+  const holeH = Math.round(6.5 * ppm), top = Math.round(20 * ppm), tail = 14 * ppm;
+  const ry = Math.round(roadY);
+  const topAt = (x: number) => { // cliff at the mouth, a lumpy crest, a slope down after the exit
+    if (x < x0) return ry;
+    const lump = Math.sin(x * 0.11) * 3 + Math.sin(x * 0.37) * 1.5;
+    if (x <= x1) return ry - top - lump + Math.max(0, 6 - (x - x0)) * 1.2;
+    return ry - Math.max(0, top * (1 - (x - x1) / tail)) - lump * Math.max(0, 1 - (x - x1) / tail);
+  };
+  if (part === 'back') {
+    for (let x = Math.floor(x0); x < x1 + tail; x++) {
+      const y = Math.round(topAt(x));
+      if (y >= ry) continue;
+      g.fillStyle = body; g.fillRect(x, y, 1, ry - y + 1);
+      g.fillStyle = hi; g.fillRect(x, y, 1, 2);
+      if (hash01(Math.floor(x / 3) * 7) < 0.18) { g.fillStyle = dark; g.fillRect(x, y + 6 + Math.floor(hash01(x) * (ry - y - 10)), 1, 3); }
+    }
+    // the tunnel: black at the back, a faint glow from the far end
+    for (let x = Math.floor(x0); x < x1; x++) {
+      const k = (x - x0) / Math.max(1, x1 - x0), glow = Math.max(0, (k - 0.75) * 4);
+      g.fillStyle = glow > 0 ? `rgba(60,52,44,${0.6 + glow * 0.4})` : '#0c0a0a';
+      g.fillRect(x, ry - holeH, 1, holeH);
+    }
+    g.fillStyle = dark; g.fillRect(Math.floor(x0), ry - holeH - 3, Math.ceil(x1 - x0), 3); // roof
+    return;
+  }
+  // inside the bluff it's dark: shade the rider (and the hole) a little
+  g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(Math.floor(x0 + 4), ry - holeH, Math.max(0, Math.ceil(x1 - x0 - 8)), holeH);
+  // the arch lip round the mouth
+  g.fillStyle = body; g.fillRect(Math.floor(x0) - 2, ry - holeH - 4, 6, 5);
+  g.fillStyle = hi; g.fillRect(Math.floor(x0) - 3, ry - holeH - 5, 8, 2);
+  g.fillStyle = dark; g.fillRect(Math.floor(x0) + 3, ry - holeH, 2, holeH);
+  if (crash >= 0 && crash < 2.5) { // the bluff shudders: rocks rain off the face and a dust cloud rolls out
+    const n = 14;
+    for (let i = 0; i < n; i++) {
+      const delay = hash01(i * 5 + 1) * 0.5, a = crash - delay;
+      if (a < 0) continue;
+      const fx = x0 - 4 - hash01(i * 5 + 2) * 18 + a * (hash01(i * 5 + 3) - 0.8) * 20, fy = ry - top + hash01(i * 5 + 4) * top * 0.5 + 0.5 * 120 * a * a;
+      if (fy > ry - 2) continue;
+      const sz = 2 + Math.floor(hash01(i * 9) * 4);
+      g.fillStyle = i % 3 ? body : hi; g.fillRect(Math.round(fx), Math.round(fy), sz, sz);
+    }
+    const k = Math.min(1, crash / 1.2);
+    g.globalAlpha = 0.65 * (1 - Math.max(0, (crash - 1) / 1.5));
+    for (let i = 0; i < 16; i++) {
+      const r = (6 + hash01(i * 3) * 10) * (0.4 + k), dx = -8 - hash01(i * 7) * 40 * k, dy = -hash01(i * 11) * top * 0.7 * k;
+      g.fillStyle = i % 2 ? '#d8cbb8' : '#b8a892'; g.beginPath(); g.arc(x0 + dx, ry + dy - r * 0.5, r, 0, Math.PI * 2); g.fill();
+    }
+    g.globalAlpha = 1;
+  }
 }

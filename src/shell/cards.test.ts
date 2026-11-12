@@ -16,6 +16,7 @@ const SAVES: Record<string, unknown> = {
   hamster: { life: 5e6, rebirths: 2 },
   watershed: { rides: 3, bestCarved: 1400, bestDelta: 900 },
   cadenza: { plays: 2, bestScore: 123456 },
+  fullsend: { ver: 1, best: { quick: { golds: 3, medals: 'GGSBG', topKph: 140, longestChain: 4, rings: 2 } }, moonVisits: 1 },
 };
 
 describe('arcade card hooks', () => {

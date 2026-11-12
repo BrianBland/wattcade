@@ -1,4 +1,4 @@
-import { circle, line, poly, rect, type G } from './prims';
+import { circle, line, oval, poly, rect, type G } from './prims';
 
 /** What a trail animates with: `speed` m/s (intensity), `color` the rider's, `x0` where it starts (behind the rear wheel). */
 export interface TrailCtx { t: number; speed: number; color: string; x0: number }
@@ -56,6 +56,27 @@ const TRAILS: Record<string, (g: G, c: TrailCtx, k: number) => void> = {
   },
   embers: (g, c, k) => stream(c, k, 1.4, 16, (i, a, x, y) => { alpha(g, a, k); circle(g, i % 2 ? '#ffd23b' : '#ff8a1a', x, y - a * 6, 0.4 + (1 - a) * 0.5); }),
   cogs: (g, c, k) => stream(c, k, 0.8, 18, (i, a, x, y) => { alpha(g, a, k); g.save(); g.translate(x, y + a * 2); g.rotate(c.t * 3 + i); circle(g, '#c6ccd6', 0, 0, 0.7); circle(g, '#3a3f48', 0, 0, 0.3); g.restore(); }),
+  reentry: (g, c, k) => { // Full Send: you brought the burn back from the moon: a plasma sheath, sparks and a smoke ribbon
+    const len = 6 + k * 24, x0 = c.x0 + 1.5, y0 = -4.5, w0 = 1.4 + k * 1.4;
+    const flick = (i: number) => Math.sin(c.t * 34 + i * 1.9) * 0.45 + Math.sin(c.t * 21 + i * 0.7) * 0.3;
+    // smoke ribbon first: thickens, cools, drifts up and away behind the fire
+    for (let i = 0; i < 9; i++) {
+      const a = (c.t * 0.9 + i / 9) % 1, x = x0 - len * 0.55 - a * (10 + k * 22), y = y0 - a * 3.5 + Math.sin(c.t * 2 + i) * 0.6;
+      g.globalAlpha = (1 - a) * 0.55 * k; circle(g, i % 2 ? '#8e8480' : '#a39a96', x, y, 1 + a * 2.6);
+    }
+    // the sheath: layered tapered cones with flickering edges, red outside to white-hot at the core
+    const cone = (col: string, wf: number, lf: number, al: number) => {
+      const pts: Array<[number, number]> = [[x0, y0 - w0 * wf]];
+      for (let i = 1; i <= 6; i++) { const u = i / 6; pts.push([x0 - len * lf * u, y0 - w0 * wf * (1 - u * 0.85) + flick(i) * u]); }
+      for (let i = 6; i >= 1; i--) { const u = i / 6; pts.push([x0 - len * lf * u + 0.6, y0 + w0 * wf * (1 - u * 0.85) + flick(i + 9) * u]); }
+      pts.push([x0, y0 + w0 * wf]);
+      g.globalAlpha = al * k; poly(g, col, ...pts);
+    };
+    cone('#b3202c', 1.25, 1, 0.55); cone('#ff5a1a', 1, 0.82, 0.85); cone('#ffb030', 0.72, 0.6, 0.95); cone('#fff3c0', 0.42, 0.36, 1);
+    // bow glow where it starts, and sparks flicked off the edges
+    g.globalAlpha = 0.45 * k; oval(g, '#ffd86a', x0 + 0.4, y0, 1.4 + w0 * 0.6, w0 * 1.5);
+    stream(c, k, 2.2, 14, (i, a, x, y) => { alpha(g, a, k); rect(g, i % 3 ? '#ffd23b' : '#ffffff', x - 2, y - 1 - a * (i % 2 ? 4 : -2), 0.5, 0.5); });
+  },
   flames: (g, c) => {
     const hot = Math.max(0, (c.speed - 4) / 6), len = 3 + hot * 14;
     if (hot <= 0) return;

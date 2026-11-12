@@ -14,15 +14,16 @@ import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway'
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
 import { MEDAL_NAMES } from '../sim/physics';
-import { PIECE_VERB } from '../sim/tour';
-import { AIR_CELL, airItemAt, bumpH } from '../sim/track';
+import { CHASER_REACH, PIECE_VERB } from '../sim/tour';
+import { AIR_CELL, airItemAt, bumpH, DIVE, diveDip, MEGA, megaLift } from '../sim/track';
 import { FullSendSound } from './sound';
-import { countdown, MonotoneCountdown, planSigns, type SignSpec } from './signs';
-import { drawCloudDeck, drawFireball, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
+import { countdown, distantSignRect, DISTANT, MonotoneCountdown, planSigns, signMessage, type SignSpec } from './signs';
+import { drawCloudDeck, drawFireball, drawTrail, drawRing, drawSeaSurface, drawSplash, drawStar } from './fx';
 import { layout, type FullSendLayout } from './layout';
 import { fsFont, loadFonts } from './fonts';
 import { HANDOFF, handoffMix, handoffRect, speedZoom } from './handoff';
-import { drawCanyonFloor, drawChaser, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawWater } from './props';
+import { drawMegaRamp } from './mega';
+import { drawCanyonFloor, drawCave, drawChaser, drawFlood, drawHazard, drawHayOnRider, drawLoop, drawObstacle, drawRocket, drawSlipstream } from './props';
 
 const PPM = 5.2;          // low-res px per metre: the bike sprite is ~5 m long, so the ground has to fly past to read as 80+ mph
 /** `?hour=21` previews a time of day (the overworld reads the same parameter). */
@@ -35,7 +36,7 @@ const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.6, BACK_PARALLAX = 0.05;
 const SEAM_BACK = 0.3, SEAM_MID = 0.6;
 const MID_SLOT = 15, FORE_SLOT = 9;
 const SURFACE_M = 45; // the sea surface sits this far above the sea floor (matches the sim's default plunge)
-const RAMP_M = 14, RAMP_H = 4; // the kicker before a canyon lip and the landing ramp after it
+const RAMP_M = 40, RAMP_H = 12; // the big launch ramp before a canyon lip and the landing ramp after it (its slope ≈ the sim's LANDING_RAMP_SLOPE)
 const MEDAL_COLORS = ['#9aa3b5', '#d98a4a', '#d8dde8', '#ffd23b'];
 type Scene = Array<[BiomeLook, number]>;
 
@@ -44,6 +45,8 @@ export class FullSendRenderer implements GameRenderer {
   private units: UnitSystem = 'imperial';
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
+  /** Sky + far backdrop, split off so the distant sign can stand between it and the rest of the scene. */
+  private far!: HTMLCanvasElement; private fg!: G;
   private scratch!: HTMLCanvasElement; private sg!: G;
   private dpr = 1; private px = 3; private LW = 300; private LH = 200; private cssW = 800; private cssH = 600;
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -53,7 +56,8 @@ export class FullSendRenderer implements GameRenderer {
   private lastX: number | null = null; private portalAt = -99; private portalTo: BiomeId = 'underwater';
   private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
   /** Screen shake (buffer px), and the event markers it last reacted to. */
-  private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99 };
+  private trail: Array<{ x: number; y: number; t: number }> = []; private trailWarp = 0;
+  private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99, cave: -99 };
   private send: ((a: unknown) => void) | null = null;
   private menuHits: Array<{ x: number; y: number; w: number; h: number; act: () => void }> = [];
   private lastSnap: FullSendSnapshot | null = null;
@@ -66,6 +70,8 @@ export class FullSendRenderer implements GameRenderer {
   /** Boards to draw this frame: spec + bottom-centre anchor in CSS px. */
   private signs: Array<{ sp: SignSpec; x: number; y: number }> = [];
   private cd = new MonotoneCountdown();
+  /** The distant sign: which message it shows and where the far layer was when that message went up. */
+  private signKey = ''; private signBase = 0; private farOff = 0;
   private L!: FullSendLayout;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
@@ -85,6 +91,7 @@ export class FullSendRenderer implements GameRenderer {
     });
     this.g = this.canvas.getContext('2d')!;
     this.buf = document.createElement('canvas'); this.b = this.buf.getContext('2d')!;
+    this.far = document.createElement('canvas'); this.fg = this.far.getContext('2d')!;
     this.scratch = document.createElement('canvas'); this.sg = this.scratch.getContext('2d')!;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -95,7 +102,7 @@ export class FullSendRenderer implements GameRenderer {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr);
     this.px = Math.max(2, Math.floor(this.canvas.height / ROWS));
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
-    this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
+    this.buf.width = this.scratch.width = this.far.width = this.LW; this.buf.height = this.scratch.height = this.far.height = this.LH;
     this.L = layout(w, h, this.insets.bottom, this.insets.top);
   }
   /** The ride is over: ease back into the overworld's framing before the shell cuts to it. */
@@ -125,24 +132,33 @@ export class FullSendRenderer implements GameRenderer {
     const k = this.dpr / this.px; // CSS px -> buffer px
     const L = this.L, UH = L.UH * k, roadY0 = Math.round(L.roadY * k);
     // In an Outrun the rider moves right so whatever is chasing fits on screen behind them.
-    const wantFrac = s.piece?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
+    const wantFrac = s.piece?.kind === 'outrun' && s.phase === 'payoff' ? 0.68 // room behind for the chaser hitting the cave
+      : (s.piece?.kind === 'outrun' && s.phase === 'effort') || (s.piece?.kind === 'loop' && s.phase === 'payoff') ? 0.5 : L.riderX / this.cssW;
     this.riderFrac += (wantFrac - this.riderFrac) * Math.min(1, dt * 1.5);
     const RX = Math.round(this.riderFrac * W);
     const terr = this.terr(s);
     const roadH = (x: number) => s.hill * (terr.elev(x / s.stretch) * s.stretch + s.bumpScale * bumpH(x, s.terrainSeed));
     const p = s.piece;
-    const lift = (x: number) => rampLift(p, x);
+    const lift = (x: number) => rampLift(p, x) + megaLift(s.mega, x);
     // A loop is drawn round (PPM both ways) and is taller than the space above the road, so the camera rises to fit it.
     const loopOnScreen = p?.kind === 'loop' && (s.phase === 'effort' || s.phase === 'payoff') && RX + (p.x0 - p.len - s.camX) * PPM < W + 30;
-    const loopLift = loopOnScreen ? Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM) : 0;
+    const inLoopNow = p?.kind === 'loop' && s.phase === 'payoff' && (s.mode === 'loop' || s.mode === 'drop');
+    // approaching: lift a little so the loop's shape reads; inside it: follow the rider so they stay mid-screen
+    const loopLift = inLoopNow ? Math.max(0, s.y - (roadY0 - UH * 0.5) / VPM)
+      : loopOnScreen ? Math.min(Math.max(0, (2 * p!.len * PPM + 16 - roadY0) / VPM), (roadY0 - UH * 0.3) / VPM) : 0;
     // big flights (sky launches, moon shots, falling off the edge): the camera goes with you
-    const flyCam = s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
     // into / out of the sea and to / from the Moon: a dive, a breach, a launch or a re-entry over the seam (crossing.ts)
     const cross = s.seam ? crossingOf(s.seam) : null, cdm = s.seam ? s.x - s.seam.x : 0;
     const hop = cross ? hopAt(cross, cdm) : { h: 0, slope: 0 };
-    const camTarget = roadH(s.camX) + (p?.kind === 'leap' ? lift(s.camX) : 0) + loopLift + flyCam + hop.h * 0.5;
+    const leaping = p?.kind === 'leap' && s.phase === 'payoff' && (s.mode === 'air' || s.mode === 'fall');
+    // in a leap the camera frames the pit and you together (so you see what's coming up at you); otherwise it goes with you
+    const falling = s.toTier === 'sea' && s.alt < -2; // falling to the sea: hold yourself high in the frame, looking down
+    const flyCam = inLoopNow ? 0 : leaping ? Math.max(0, s.y * 0.65 - 2) : falling ? s.alt + 2 - Math.min(1, -s.alt / 30) * (UH * 0.3) / VPM : s.alt > 6 ? s.alt - 6 : s.alt < -2 ? s.alt + 2 : 0;
+    // the camera rides a smoothed road (±30 m average) so rollers and kickers don't bob the whole picture
+    let smooth = 0; for (let i = -3; i <= 3; i++) smooth += roadH(s.camX + i * 10) / 7;
+    const camTarget = (leaping ? 0 : smooth + (p?.kind === 'leap' ? lift(s.camX) : p?.kind === 'dive' ? lift(s.camX) * 0.75 : megaLift(s.mega, s.camX) * 0.8)) + loopLift + flyCam + hop.h * 0.5;
     if (s.warp !== this.warp) { this.warp = s.warp; this.camY = NaN; } // height re-based mid-fall: cut, don't pan
-    this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * 5) : camTarget;
+    this.camY = Number.isFinite(this.camY) ? this.camY + (camTarget - this.camY) * Math.min(1, dt * (falling ? 10 : 5)) : camTarget;
     const vAlt = Math.max(-150, Math.min(400, (this.camY - roadH(s.camX)) * VPM)); // the hills sink as you climb
     const sx = (x: number) => RX + (x - s.camX) * PPM;
     const sy = (h: number) => roadY0 - (h - this.camY) * VPM;
@@ -203,6 +219,8 @@ export class FullSendRenderer implements GameRenderer {
     // far landmarks are never cut: across a seam the old biome's sink behind the hills while the new one's rise
     if (blend) this.layer(blend, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
     else for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(g, W, Math.round(backY + d * UH * 0.45), s.camX * PPM * BACK_PARALLAX, t);
+    // everything so far is the far layer; the rest (hills, trees, road, you) is drawn over the distant sign
+    this.fg.clearRect(0, 0, W, H); this.fg.drawImage(this.buf, 0, 0); g.clearRect(0, 0, W, H);
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
     const midY = (lx: number) => midBase + Math.sin(lx / 60) * 2 + Math.sin(lx / 23);
@@ -252,7 +270,9 @@ export class FullSendRenderer implements GameRenderer {
 
     // ---- road + ground ----
     // across a seam each side keeps its own ground and road surface; the cut sits under the gateway
-    const groundDark = !blend ? LOOKS[ownerAt(roadSp, RX)].groundDark : col((l) => l.groundDark);
+    const here = LOOKS[ownerAt(roadSp, RX)];
+    const groundDark = !blend ? here.groundDark : col((l) => l.groundDark);
+    const ground = !blend ? here.ground : col((l) => l.ground), edge = !blend ? here.roadEdge : col((l) => l.roadEdge); // the flooded tunnel's roof
     const floorY = sy(-10);
     const roadBand = (ground: string, gDark: string, road: string, edge: string, kind: BiomeLook['roadKind'], xa: number, xb: number) => {
       for (let x = Math.max(0, Math.floor(xa)); x < Math.min(W, xb); x++) {
@@ -284,7 +304,26 @@ export class FullSendRenderer implements GameRenderer {
       g.fillRect(Math.round(gapX0), Math.round(sy(0)) + 5, 3, H);
       g.fillRect(Math.round(gapX1) - 3, Math.round(sy(0)) + 5, 3, H);
     }
-    if (p?.kind === 'dive') drawWater(g, sx(p.x0), sx(p.x0 + p.len), sy(0), sy(16), H, t);
+    // the flooded tunnel: the road dips under the ground into a dark, water-filled bore
+    const diveOn = p?.kind === 'dive' && sx(p.x0) < W && sx(p.x0 + p.len) > 0;
+    if (diveOn) {
+      const a = Math.max(0, Math.floor(sx(p!.x0))), b = Math.min(W, Math.ceil(sx(p!.x0 + p!.len)));
+      for (let x = a; x < b; x++) {
+        const dd = s.camX + (x - RX) / PPM, top = roadH(dd), dip = diveDip(p!.x0, p!.len, dd);
+        const floorY = Math.round(sy(top + dip)), roofY = Math.round(sy(top + dip + DIVE.roof)), surfY = Math.round(sy(top));
+        if (roofY > surfY) { // the ground over the tunnel
+          g.fillStyle = ground; g.fillRect(x, surfY, 1, roofY - surfY);
+          g.fillStyle = edge; g.fillRect(x, surfY, 1, 2);
+          if (hash01(Math.floor(dd * 1.2) * 7) < 0.3) { g.fillStyle = groundDark; g.fillRect(x, surfY + 4 + Math.floor(hash01(Math.floor(dd)) * Math.max(1, roofY - surfY - 6)), 1, 1); }
+          g.fillStyle = '#3a3448'; g.fillRect(x, roofY - 2 - Math.round(hash01(x * 7) * 2), 1, 3); // rough roof
+        }
+        g.fillStyle = '#1a2230'; g.fillRect(x, Math.max(roofY, surfY), 1, Math.max(0, floorY - Math.max(roofY, surfY))); // the bore
+      }
+    }
+    if (p?.kind === 'leap') for (const z of s.hazards) if (z.y > -11) drawHazard(g, p.biome, sx(z.x), sy(z.y), z.vy, t, z.hit);
+
+    // ---- the mega ramp: a booster pad on the road, then a steel-lipped quarter-pipe ----
+    if (s.mega !== null && sx(s.mega) > -40 && sx(s.mega - MEGA.len - MEGA.padFrom) < W + 40) drawMegaRamp(g, s.mega, sx, roadY, (x) => roadH(x), sy, PPM, t);
 
     // ---- obstacles and chasers ----
     if (p?.kind === 'smash') {
@@ -296,10 +335,13 @@ export class FullSendRenderer implements GameRenderer {
         drawObstacle(g, ox, roadY(p.x0 + i * p.spacing), p.biome, i, hit, topple);
       }
     }
-    if (p?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff')) {
-      const cx = sx(s.x - p.gap);
-      const caughtAge = s.t - p.caughtAt;
-      drawChaser(g, p.chaser, cx, roadY(s.x - p.gap), t, s.phase === 'payoff' ? s.phaseT : -1, caughtAge);
+    const caveOn = p?.kind === 'outrun' && s.phase !== 'approach' && sx(p.x0) < W + 10 && sx(p.x0 + p.len) + 14 * PPM > -10;
+    if (caveOn) drawCave(g, 'back', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, -1);
+    if (p?.kind === 'outrun' && (s.phase === 'effort' || s.phase === 'payoff' || (p.crashAt > 0 && caveOn))) {
+      // slammed into the bluff: creatures faceplant and stay there; boulders, snow and water burst against it (into the dust)
+      const crashed = p.crashAt > 0, ca = s.t - p.crashAt, cxm = crashed ? p.x0 - CHASER_REACH[p.chaser] : s.x - p.gap;
+      const bursts = p.chaser === 'boulder' || p.chaser === 'avalanche' || p.chaser === 'wave';
+      if (!crashed || !bursts || ca < 0.25) drawChaser(g, p.chaser, sx(cxm), roadY(cxm), crashed ? 0 : t, crashed && !bursts ? ca : -1, s.t - p.caughtAt);
     }
 
     // ---- the biome gateway: the seam itself, standing over the road where the next biome begins ----
@@ -356,37 +398,45 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the rider and the rocket ----
     const look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
     const air = s.mode === 'air' || s.mode === 'fall' || s.mode === 'rescue';
-    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : lift(s.x)) : 0) + hop.h;
+    const ry = s.y + (p?.kind === 'leap' ? (air ? RAMP_H : rampLift(p, s.x)) : p?.kind === 'dive' ? rampLift(p, s.x) : 0) + (s.mode === 'road' ? megaLift(s.mega, s.x) : 0) + hop.h;
     const inLoop = p?.kind === 'loop' && (s.mode === 'loop' || s.mode === 'drop');
     const rx = sx(s.x), ryy = inLoop ? sy(0) - s.y * PPM : sy(ry);
     this.riderY = ryy / k; // CSS px, for call-outs that follow the rider
     this.riderBuf = { x: rx, y: ryy };
     let rot = s.pitch + Math.atan(hop.slope) * 0.8;
-    if (s.trick) {
-      const a = Math.min(1, s.trick.age / 0.9);
-      if (s.trick.name === 'Backflip') rot += a * Math.PI * 2;
-    }
     const shake = s.mode === 'bounce' ? Math.sin(t * 60) * 1.5 : s.mode === 'smash' ? Math.sin(t * 45) : 0;
     const crash = s.t - s.crashAt; // thrown by a bad landing: the bike flails, the rider sees stars
     if (crash >= 0 && crash < 0.9) rot += Math.sin(crash * 22) * 0.5 * (1 - crash / 0.9);
     const gearL = LOOKS[s.biome].rider;
     g.save(); g.translate(Math.round(rx + shake), Math.round(ryy)); g.rotate(-rot);
-    const flame = s.jet === 'on' || (cross && cross !== 'dive' && hop.slope > 0) ? 2.4 : s.jet === 'weak' ? 0.25 + 0.25 * Math.abs(Math.sin(t * 17)) : s.phase === 'effort' ? Math.min(1.6, s.ftpFrac) : Math.min(0.8, s.ftpFrac);
-    drawRocket(g, flame, t, s.v);
-    if (s.trick && s.trick.name !== 'Backflip') { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
+    drawRocket(g, cross && cross !== 'dive' && hop.slope > 0 ? 2.4 : rocketThrust(s), t, s.v);
+    if (s.trick) { g.translate(0, -Math.sin(Math.min(1, s.trick.age / 0.9) * Math.PI) * 4); }
     drawRider(g, look, bike.crankRevs, s.x, { t, speed: Math.min(s.v, 20), gear: gearL === 'road' ? null : gearL });
+    drawSlipstream(g, s.v, t);
     if (s.hay > 0.02 || s.mode === 'smash') drawHayOnRider(g, Math.max(s.hay, s.mode === 'smash' ? 0.3 : 0), t);
     if (crash >= 0 && crash < 1.6) { // dizzy stars round the helmet
       for (let i = 0; i < 3; i++) { const a = t * 6 + (i * Math.PI * 2) / 3; g.fillStyle = i % 2 ? '#ffd23b' : '#ffffff'; g.fillRect(Math.round(Math.cos(a) * 7) - 1, Math.round(-30 + Math.sin(a) * 2.5), 2, 2); }
     }
     g.restore();
+    if (diveOn) drawFlood(g, Math.max(-10, sx(p!.x0)), Math.min(W + 10, sx(p!.x0 + p!.len)), (x) => { const dd = s.camX + (x - RX) / PPM, top = roadH(dd), dip = diveDip(p!.x0, p!.len, dd); return [sy(top + dip) + 5, sy(top + Math.min(DIVE.water, dip + DIVE.roof)), dip + DIVE.roof > DIVE.water]; }, t);
+    if (caveOn) drawCave(g, 'front', sx(p!.x0), sx(p!.x0 + p!.len), roadY(p!.x0), PPM, p!.biome, t, p!.crashAt > 0 ? s.t - p!.crashAt : -1);
     // ---- transitions: re-entry, cloud decks, the sea surface, splashes ----
     if (cross === 'reentry' && cdm >= 0 && hop.slope < 0) drawFireball(g, rx, ryy, Math.atan2(-hop.slope * 3, 1), Math.min(1, hop.h / 8), t);
+    // re-entry: a long smoke-and-fire trail behind you (world points, so it streams away as you fall)
+    const burning = s.fromTier === 'moon' && s.toTier === 'sea';
+    if (!burning || s.warp !== this.trailWarp) this.trail.length = 0;
+    this.trailWarp = s.warp;
+    if (burning) {
+      const last = this.trail[this.trail.length - 1];
+      if (!last || last.t !== s.t) this.trail.push({ x: s.x, y: s.y, t: s.t });
+      while (this.trail.length && s.t - this.trail[0].t > 3) this.trail.shift();
+      drawTrail(g, this.trail.map((q) => ({ x: sx(q.x), y: sy(q.y) - 6, age: s.t - q.t })), Math.min(1, Math.max(0, (-s.vy - 8) / 25)));
+    }
     if (s.fromTier === 'moon' && s.toTier === 'sea' && s.vy < -12) {
       drawFireball(g, rx, ryy, Math.atan2(-s.vy, s.v), Math.min(1, (-s.vy - 12) / 30), t);
     }
     const deckScroll = s.camX * PPM * 0.9;
-    const deckAt = s.toTier === 'sky' ? 28 : s.toTier === 'moon' ? 38 : s.toTier === 'sea' ? -24 : NaN;
+    const deckAt = s.toTier === 'sky' ? 28 : s.toTier === 'moon' ? 38 : s.toTier === 'sea' ? (s.fromTier === 'moon' ? -90 : -24) : NaN;
     if (Number.isFinite(deckAt)) drawCloudDeck(g, W, sy(roadH(s.camX) + deckAt), deckScroll, t, 0.9, s.toTier === 'moon' ? '#eef0ff' : '#ffffff');
     const underSea = (s.tier === 'sea' && !s.toTier) || (s.fromTier === 'sea' && s.toTier === 'ground');
     if (underSea) drawSeaSurface(g, W, sy(roadH(s.camX) + SURFACE_M), s.camX * PPM, t);
@@ -435,6 +485,7 @@ export class FullSendRenderer implements GameRenderer {
     if (s.splashAt !== sn.splash) { this.shake = Math.max(this.shake, 6); sn.splash = s.splashAt; }
     if (hits > sn.hits) this.shake = Math.max(this.shake, 2.5);
     sn.hits = hits;
+    if (s.piece && s.piece.crashAt !== sn.cave) { if (s.piece.crashAt > 0) this.shake = Math.max(this.shake, 9); sn.cave = s.piece.crashAt; }
     if (s.piece && s.piece.caughtAt !== sn.caught) { if (s.piece.caughtAt > 0) this.shake = Math.max(this.shake, 5); sn.caught = s.piece.caughtAt; }
     if (s.jet === 'on') this.shake = Math.max(this.shake, 0.8);
     this.shake *= Math.exp(-dt * 7);
@@ -451,6 +502,12 @@ export class FullSendRenderer implements GameRenderer {
       g.globalAlpha = 1;
     }
 
+    if (s.leapSlow < 0.95) { // bullet time: the edges darken and cool
+      const bt = (1 - s.leapSlow) / 0.7;
+      g.globalAlpha = 0.35 * bt; g.fillStyle = '#0a1438';
+      for (let i = 0; i < 10; i++) { const e = 10 - i; g.globalAlpha = 0.025 * bt * e / 2; g.fillRect(0, 0, W, i * 3); g.fillRect(0, H - i * 3, W, i * 3); g.fillRect(0, 0, i * 4, H); g.fillRect(W - i * 4, 0, i * 4, H); }
+      g.globalAlpha = 1;
+    }
     if (this.dusk > 0.01) { g.globalAlpha = this.dusk * 0.42; g.fillStyle = '#0a1030'; g.fillRect(0, 0, W, H); g.globalAlpha = 1; }
     const m = this.g;
     m.imageSmoothingEnabled = false;
@@ -462,6 +519,14 @@ export class FullSendRenderer implements GameRenderer {
     const r = handoffRect(hand, { canvasW: this.canvas.width, canvasH: this.canvas.height, px: this.px, bufW: W, bufH: H, rider: this.riderBuf, uh: UH * this.px, zoom: this.zoom });
     if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
+    this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
+    m.drawImage(this.far, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
+    if (hand < 0.35 && !s.menu) { // the distant sign stands behind the hills and trees
+      m.globalAlpha = 1 - hand / 0.35;
+      const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+      this.drawDistant(s, signMessage(s, c?.m ?? null));
+      m.globalAlpha = 1;
+    }
     m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
@@ -497,6 +562,7 @@ export class FullSendRenderer implements GameRenderer {
       m.globalAlpha = gt.alpha; m.textAlign = 'center'; m.fillStyle = gt.color; m.font = font(800, Math.max(8, 4.4 * this.cam.s / d));
       m.fillText(gt.text, gx * d, gy * d); m.globalAlpha = 1;
     }
+    const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
     const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
       m.textAlign = align; m.font = font(weight, size, italic);
       if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }
@@ -554,27 +620,23 @@ export class FullSendRenderer implements GameRenderer {
     // the big countdown (no boxes): title + distance on approach, giant 3-2-1-GO, then the sprint clock + distance
     const p = s.piece, B = L.banner, cxm = B.x + B.w / 2;
     const mmss = (sec: number) => { const v = Math.max(0, Math.ceil(sec)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; };
-    const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+    // (what's coming and how far is on the distant sign; up here only the sprint clock, the meter and 3-2-1-GO)
     if (s.phase === 'approach' && p && c) {
-      txt(p.title.toUpperCase(), cxm, B.y + 26, 34, '#ffd23b');
-      txt(`SPRINT IN ${Math.round(c.m / 10) * 10} m · ${PIECE_VERB[p.kind]} · shift up`, cxm, B.y + 58, 15, '#ffffff', 'center', 800, true, 4);
       if (c.s <= 3.2) {
         const n = c.s > 0.2 ? String(Math.ceil(c.s)) : 'GO!', k2 = s.reducedFlash ? 0 : 1 - (c.s % 1);
-        txt(n, this.cssW / 2, L.UH * 0.38, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
+        txt(n, this.cssW / 2, L.UH * 0.5, 110 + 30 * k2, n === 'GO!' ? '#6dff8a' : '#ff4d6d', 'center', 900, true, 8);
       }
     } else if (s.phase === 'effort' && p && c) {
       const word = p.kind === 'dive' ? 'SWIM FOR IT!' : p.kind === 'outrun' ? 'RUN!' : 'SPRINT!';
       txt(`${word} ${p.kind === 'dive' ? '' : mmss(c.s)}`.trim(), cxm, B.y + 26, 34, '#ff4d6d');
-      txt(`${c.label} ${Math.round(c.m / 10) * 10} m`, cxm, B.y + 58, 18, '#ffffff', 'center', 900, true, 4);
       if (c.s < 0.6 && p.kind !== 'dive' && p.kind !== 'outrun' && !s.reducedFlash) txt('GO GO GO', this.cssW / 2, L.UH * 0.38, 60, '#ffd23b', 'center', 900, true, 6);
       this.meter(s, p);
-    } else if (s.fork) {
-      txt('FORK IN THE ROAD', cxm, B.y + 22, 24, '#ffd23b');
-      txt(`◀ ${s.fork.options[0].title}  ·  ${s.fork.options[1].title} ▶  ·  ${Math.ceil(s.fork.closesInS)} s`, cxm, B.y + 48, 14, '#ffffff', 'center', 800, true, 4);
-    } else if ((s.phase === 'recovery' || s.phase === 'warmup') && s.next) {
+    } else if (s.phase === 'payoff' && p?.kind === 'loop' && s.mode === 'loop') {
+      txt('KEEP PEDALLING!', cxm, B.y + 26, 34, s.reducedFlash ? '#ffd23b' : (Math.sin(s.t * 10) > 0 ? '#ffd23b' : '#ffffff'));
+      this.meter(s, p);
+    } else if (s.phase === 'recovery' || s.phase === 'warmup') {
       txt(s.phase === 'warmup' ? `WARM-UP · ${BIOME_NAMES[s.biome as BiomeId].toUpperCase()}` : 'RECOVER', cxm, B.y + 18, 18, '#ffffff', 'center', 900, true, 4);
-      txt(`next ▸ ${s.next.title} · ${mmss(s.next.inS)}`, cxm, B.y + 40, 13, '#d8d4ff', 'center', 700, true, 3);
-    } else if (s.phase === 'cooldown' || s.phase === 'done') {
+    } else if (s.phase === 'done') {
       txt(s.phase === 'done' ? 'TOUR COMPLETE!' : `COOL-DOWN · ${mmss(s.phaseS - s.phaseT)}`, cxm, B.y + 22, s.phase === 'done' ? 34 : 20, s.phase === 'done' ? '#ffd23b' : '#ffffff');
     }
 
@@ -594,6 +656,22 @@ export class FullSendRenderer implements GameRenderer {
     if (s.trick && s.trick.age < 1.4) {
       m.globalAlpha = Math.min(1, (1.4 - s.trick.age) * 2); m.textAlign = 'center'; m.font = font(900, 22, true); m.fillStyle = '#7af0ff';
       m.fillText(`${s.trick.name}!`, L.riderX * d, (L.roadY - 110) * d);
+      m.globalAlpha = 1;
+    }
+    if (s.flip && s.flip.age < 1.6) { // a landed flip: big and proud, above the rider
+      const fa = s.flip.age, sc = 1 + Math.max(0, 0.2 - fa) * 2;
+      m.globalAlpha = Math.min(1, (1.6 - fa) * 2.5); m.textAlign = 'center'; m.font = font(900, 30 * sc, true); m.fillStyle = '#ffd23b';
+      const fy = Math.min(L.roadY - 120, this.riderY - 80) - fa * 14;
+      m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
+      m.strokeText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d); m.fillText(`${s.flip.name.toUpperCase()}!`, L.riderX * d, fy * d);
+      m.globalAlpha = 1;
+    }
+    const sca = s.t - s.scorchAt;
+    if (sca >= 0 && sca < 1.2 && s.piece) {
+      const word = s.piece.biome === 'volcano' ? 'SCORCHED!' : s.piece.biome === 'snow' ? 'SHARDED!' : s.piece.biome === 'desert' ? 'ROCKED!' : 'CHOMPED!';
+      m.globalAlpha = Math.min(1, (1.2 - sca) * 2.5); m.textAlign = 'center'; m.font = font(900, 26, true); m.fillStyle = '#ff7a3a';
+      m.lineWidth = 5 * d; m.strokeStyle = 'rgba(10,12,40,0.85)'; m.lineJoin = 'round';
+      m.strokeText(word, L.riderX * d, (this.riderY - 60) * d); m.fillText(word, L.riderX * d, (this.riderY - 60) * d);
       m.globalAlpha = 1;
     }
     const fly = flightCall(s);
@@ -676,6 +754,44 @@ export class FullSendRenderer implements GameRenderer {
     }
   }
 
+  /** The one big sign everything is on: it stands far off (slow parallax) so it stays put long enough to read, and it is
+   *  an LED board, so its numbers count live. Fades if the rider flies in front of it. */
+  private drawDistant(s: FullSendSnapshot, msg: SignSpec | null) {
+    if (!msg) { this.signKey = ''; return; }
+    const key = `${s.phase}:${s.setIndex}:${msg.kind}`;
+    if (key !== this.signKey) { this.signKey = key; this.signBase = this.farOff; }
+    const r = distantSignRect(this.cssW, this.L.UH, this.farOff - this.signBase);
+    if (!r) return;
+    const m = this.g, d = this.dpr, sc = r.w / DISTANT.w;
+    const f = (w: number, size: number, it = false) => fsFont(w, size * sc * d, it);
+    const TONE: Record<string, [string, string, string]> = { green: ['#0e6b3c', '#ffffff', '#ffd23b'], yellow: ['#ffd23b', '#1a1a1a', '#b3202c'], red: ['#b3202c', '#ffffff', '#ffd23b'], blue: ['#1d4fa8', '#ffffff', '#ffd23b'] };
+    const [bg, fg, hi] = TONE[msg.tone];
+    // the legs run down behind the hills (they fade out low, for open-sky layers with no hills to hide them)
+    const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.8);
+    const lg = m.createLinearGradient(0, legTop * d, 0, legBot * d); lg.addColorStop(0, '#3a3f4c'); lg.addColorStop(1, 'rgba(58,63,76,0)');
+    m.fillStyle = lg; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
+    m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((r.x + 5) * d, (r.y + 5) * d, r.w * d, r.h * d);
+    m.fillStyle = bg; m.fillRect(r.x * d, r.y * d, r.w * d, r.h * d);
+    m.lineWidth = 3 * d; m.strokeStyle = fg; m.strokeRect((r.x + 6) * d, (r.y + 6) * d, (r.w - 12) * d, (r.h - 12) * d);
+    m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = fg;
+    const cx = r.x + r.w / 2, maxW = (r.w - 28) * d;
+    if (msg.kind === 'fork' && msg.options) {
+      m.font = f(900, 15); m.fillText(msg.title, cx * d, (r.y + 22 * sc) * d, maxW);
+      msg.options.forEach((o, i) => {
+        const ow = (r.w - 28) / 2, ox = r.x + 14 + i * ow;
+        if (o.on) { m.fillStyle = hi; m.fillRect((ox + 4) * d, (r.y + 38 * sc) * d, (ow - 8) * d, 60 * sc * d); }
+        m.fillStyle = o.on ? bg : fg; m.font = f(900, 17);
+        m.fillText(`${i ? '' : '◀ '}${o.title}${i ? ' ▶' : ''}`, (ox + ow / 2) * d, (r.y + 58 * sc) * d, (ow - 14) * d);
+        m.font = f(700, 13); m.fillText(o.biome, (ox + ow / 2) * d, (r.y + 82 * sc) * d, (ow - 14) * d);
+      });
+      m.fillStyle = fg; m.font = f(700, 12); m.fillText(msg.sub ?? '', cx * d, (r.y + r.h - 16 * sc) * d, maxW);
+    } else {
+      m.font = f(900, 20); m.fillText(msg.title, cx * d, (r.y + 26 * sc) * d, maxW);
+      m.font = f(900, 50, true); m.fillText(msg.big ?? '', cx * d, (r.y + 66 * sc) * d, maxW);
+      m.font = f(700, 14); m.fillText(msg.sub ?? '', cx * d, (r.y + r.h - 20 * sc) * d, maxW);
+    }
+  }
+
   /** Road-sign boards (full resolution) on the posts drawn in the buffer: highway green / caution yellow / start-gate red / blue. */
   private drawSigns() {
     const m = this.g, d = this.dpr;
@@ -727,6 +843,7 @@ export class FullSendRenderer implements GameRenderer {
 
 /** Height of the kicker ramp before a canyon lip and the landing ramp after it (m). */
 export function rampLift(p: PieceView | null, x: number): number {
+  if (p?.kind === 'dive') return diveDip(p.x0, p.len, x);
   if (!p || p.kind !== 'leap') return 0;
   if (x > p.x0 - RAMP_M && x <= p.x0) { const k = (x - (p.x0 - RAMP_M)) / RAMP_M; return RAMP_H * k * k; }
   const far = p.x0 + p.len;
@@ -738,6 +855,17 @@ export function rampLift(p: PieceView | null, x: number): number {
 function round(m: G, x: number, y: number, w: number, h: number, r: number) {
   m.beginPath(); m.moveTo(x + r, y); m.arcTo(x + w, y, x + w, y + h, r); m.arcTo(x + w, y + h, x, y + h, r);
   m.arcTo(x, y + h, x, y, r); m.arcTo(x, y, x + w, y, r); m.closePath();
+}
+
+/** Rocket thrust for the flame (0..3): your power, scaled up by speed (a weak push when slow and easy, a roaring plume
+ *  flat out); the jet and launches blast at the top. */
+export function rocketThrust(s: Pick<FullSendSnapshot, 'jet' | 'ftpFrac' | 'v' | 'phase' | 'toTier' | 'vy' | 'fromTier' | 'x'> & { mega?: number | null }): number {
+  if (s.jet === 'on' || (s.toTier && s.toTier !== 'sea' && s.vy > 0)) return 3;
+  const mega = s.mega ?? null; // the booster pad lights the rocket all the way up the mega ramp
+  if (mega !== null && s.x >= mega - MEGA.len - MEGA.padFrom && s.x <= mega + 2) return 3;
+  if (s.jet === 'weak') return 0.3;
+  const k = 0.35 + 0.65 * Math.min(1, Math.max(0, s.v / 55));
+  return Math.min(3, Math.max(0, s.ftpFrac) * k * (s.phase === 'effort' ? 1.5 : 1));
 }
 
 /** Landing call-out text near the rider (null for an ordinary landing). */

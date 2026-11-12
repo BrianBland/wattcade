@@ -11,12 +11,12 @@ import { module as seaside } from './seaside';
 import { module as fullsend } from './fullsend';
 
 /** Games shown in the arcade picker, most polished first (the picker sorts by the rider's recent plays; this breaks ties). */
-export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighthouse, towerdefense, starfighter];
+export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighthouse, towerdefense, starfighter, fullsend];
 /**
  * Games still in development: in the picker only with the dev flag (`?dev=1` once, remembered in localStorage;
  * `?dev=0` clears it) or on the Vite dev server. The headless runner always has them.
  */
-export const devGames: GameModule[] = [seaside, fullsend];
+export const devGames: GameModule[] = [seaside];
 export function devFlag(): boolean {
   const env = (import.meta as { env?: { DEV?: boolean; MODE?: string } }).env;
   if (env?.DEV && env.MODE !== 'test') return true;

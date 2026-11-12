@@ -38,6 +38,8 @@ export class FullSendRenderer implements GameRenderer {
   private units: UnitSystem = 'imperial';
   private canvas!: HTMLCanvasElement; private g!: G;
   private buf!: HTMLCanvasElement; private b!: G;
+  /** Sky + far backdrop, split off so the distant sign can stand between it and the rest of the scene. */
+  private far!: HTMLCanvasElement; private fg!: G;
   private scratch!: HTMLCanvasElement; private sg!: G;
   private dpr = 1; private px = 3; private LW = 300; private LH = 200; private cssW = 800; private cssH = 600;
   private insets: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -79,6 +81,7 @@ export class FullSendRenderer implements GameRenderer {
     });
     this.g = this.canvas.getContext('2d')!;
     this.buf = document.createElement('canvas'); this.b = this.buf.getContext('2d')!;
+    this.far = document.createElement('canvas'); this.fg = this.far.getContext('2d')!;
     this.scratch = document.createElement('canvas'); this.sg = this.scratch.getContext('2d')!;
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -89,7 +92,7 @@ export class FullSendRenderer implements GameRenderer {
     this.canvas.width = Math.round(w * this.dpr); this.canvas.height = Math.round(h * this.dpr);
     this.px = Math.max(2, Math.floor(this.canvas.height / ROWS));
     this.LW = Math.ceil(this.canvas.width / this.px); this.LH = Math.ceil(this.canvas.height / this.px);
-    this.buf.width = this.scratch.width = this.LW; this.buf.height = this.scratch.height = this.LH;
+    this.buf.width = this.scratch.width = this.far.width = this.LW; this.buf.height = this.scratch.height = this.far.height = this.LH;
     this.L = layout(w, h, this.insets.bottom, this.insets.top);
   }
   /** The ride is over: ease back into the overworld's framing before the shell cuts to it. */
@@ -174,6 +177,8 @@ export class FullSendRenderer implements GameRenderer {
     // ---- backdrop and mid ground (parallax) ----
     const backY = Math.round(UH * 0.5 + vAlt * 0.25);
     this.layer(scene, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
+    // everything so far is the far layer; the rest (hills, trees, road, you) is drawn over the distant sign
+    this.fg.clearRect(0, 0, W, H); this.fg.drawImage(this.buf, 0, 0); g.clearRect(0, 0, W, H);
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
     const midY = (lx: number) => midBase + Math.sin(lx / 60) * 2 + Math.sin(lx / 23);
@@ -411,8 +416,15 @@ export class FullSendRenderer implements GameRenderer {
     const r = handoffRect(hand, { canvasW: this.canvas.width, canvasH: this.canvas.height, px: this.px, bufW: W, bufH: H, rider: this.riderBuf, uh: UH * this.px, zoom: this.zoom });
     if (dx || dy) { m.fillStyle = '#000'; m.fillRect(0, 0, this.canvas.width, this.canvas.height); }
     this.cam = { x: Math.round(r.x + dx), y: Math.round(r.y + dy), s: r.w / W };
-    m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
     this.farOff = s.camX * (PPM / k) * DISTANT.parallax;
+    m.drawImage(this.far, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
+    if (hand < 0.35 && !s.menu) { // the distant sign stands behind the hills and trees
+      m.globalAlpha = 1 - hand / 0.35;
+      const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
+      this.drawDistant(s, signMessage(s, c?.m ?? null));
+      m.globalAlpha = 1;
+    }
+    m.drawImage(this.buf, this.cam.x, this.cam.y, Math.round(r.w), Math.round(r.h));
     this.lastSnap = s;
     this.sound.update(s, dt > 0);
     if (hand < 0.35) { m.globalAlpha = 1 - hand / 0.35; this.overlay(s); m.globalAlpha = 1; } // HUD + signs fade with the hand-off
@@ -440,7 +452,6 @@ export class FullSendRenderer implements GameRenderer {
     this.menuHits = [];
     this.drawSigns();
     const c0 = countdown(s), c = c0 ? { ...c0, m: this.cd.value(`${s.setIndex}:${c0.phase}`, c0.m) } : null;
-    this.drawDistant(s, signMessage(s, c?.m ?? null));
     const txt = (t: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'center', weight = 900, italic = true, outline = 4) => {
       m.textAlign = align; m.font = font(weight, size, italic);
       if (outline) { m.lineWidth = outline * d; m.strokeStyle = 'rgba(8,8,20,0.9)'; m.lineJoin = 'round'; m.strokeText(t, x * d, y * d); }
@@ -642,12 +653,10 @@ export class FullSendRenderer implements GameRenderer {
     if (!r) return;
     const m = this.g, d = this.dpr, sc = r.w / DISTANT.w;
     const f = (w: number, size: number, it = false) => fsFont(w, size * sc * d, it);
-    const rx = this.L.riderX, ry = this.riderY, behind = rx + 30 > r.x && rx - 30 < r.x + r.w && ry > r.y - 10 && ry - 50 < r.y + r.h;
-    m.globalAlpha *= behind ? 0.3 : 1;
     const TONE: Record<string, [string, string, string]> = { green: ['#0e6b3c', '#ffffff', '#ffd23b'], yellow: ['#ffd23b', '#1a1a1a', '#b3202c'], red: ['#b3202c', '#ffffff', '#ffd23b'], blue: ['#1d4fa8', '#ffffff', '#ffd23b'] };
     const [bg, fg, hi] = TONE[msg.tone];
-    // the legs fade out downward: it's far away, so they mustn't read as standing on (or in) the foreground road
-    const legTop = r.y + r.h, legBot = legTop + Math.min(70, Math.max(10, this.L.UH * 0.6 - legTop));
+    // the legs run down behind the hills (they fade out low, for open-sky layers with no hills to hide them)
+    const legTop = r.y + r.h, legBot = Math.max(legTop + 10, this.L.UH * 0.8);
     const lg = m.createLinearGradient(0, legTop * d, 0, legBot * d); lg.addColorStop(0, '#3a3f4c'); lg.addColorStop(1, 'rgba(58,63,76,0)');
     m.fillStyle = lg; m.fillRect((r.x + r.w * 0.2) * d, legTop * d, 5 * d, (legBot - legTop) * d); m.fillRect((r.x + r.w * 0.8 - 5) * d, legTop * d, 5 * d, (legBot - legTop) * d);
     m.fillStyle = 'rgba(0,0,0,0.35)'; m.fillRect((r.x + 5) * d, (r.y + 5) * d, r.w * d, r.h * d);
@@ -670,7 +679,6 @@ export class FullSendRenderer implements GameRenderer {
       m.font = f(900, 50, true); m.fillText(msg.big ?? '', cx * d, (r.y + 66 * sc) * d, maxW);
       m.font = f(700, 14); m.fillText(msg.sub ?? '', cx * d, (r.y + r.h - 20 * sc) * d, maxW);
     }
-    m.globalAlpha /= behind ? 0.3 : 1;
   }
 
   /** Road-sign boards (full resolution) on the posts drawn in the buffer: highway green / caution yellow / start-gate red / blue. */

@@ -7,7 +7,8 @@ import type { RiderLook } from '../../../cosmetics/types';
 import { BIOME_NAMES, biomeWeights, hash01, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { LOOKS, type BiomeLook, type G } from '../../warmup/render/biomes';
 import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
-import { coverage, drawSoft, drawSpans, drawVeil, drawWaterline, horizonSwap, layerSpans, seamKind, shaped, surfaceRow, waterEdge, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
+import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, layerSpans, seamKind, visibleSeams, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
+import { drawPortal, drawPortalFlash, PORTAL, portalFlash, portalOpen } from '../../warmup/render/portal';
 import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway';
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
@@ -48,6 +49,7 @@ export class FullSendRenderer implements GameRenderer {
   private look: RiderLook | null = null;
   private color = '#00f0ff';
   private terrain: { key: string; t: Terrain } | null = null;
+  private lastX: number | null = null; private portalAt = -99; private portalTo: BiomeId = 'underwater';
   private camY = NaN; private lastNow = 0; private riderFrac = 0.28; private warp = 0; private riderY = 0;
   /** Screen shake (buffer px), and the event markers it last reacted to. */
   private shake = 0; private seen = { land: -99, crash: -99, splash: -99, hits: 0, caught: -99 };
@@ -143,16 +145,11 @@ export class FullSendRenderer implements GameRenderer {
     const roadY = (x: number) => sy(roadH(x) + lift(x));
 
     // Biome seam: each layer splits where the seam falls in it; whole-scene values weigh biomes by how much sky they own.
-    const seams = s.seam ? [s.seam] : [];
-    // into / out of the sea the seam is one place in every layer: a beach shelving into a level surface that rises over you
-    const waterOf = () => {
-      const k = s.seam ? seamKind(s.seam) : 'gate';
-      if (!s.seam || (k !== 'dive' && k !== 'surface')) return null;
-      const y0 = roadY(s.seam.x) + 3, dir: 1 | -1 = k === 'dive' ? 1 : -1, surf = surfaceRow(y0, dir * (s.x - s.seam.x) * PPM);
-      return { edge: waterEdge(sx(s.seam.x), y0, dir, surf), y0, surf, dir };
-    };
-    const wl = waterOf();
-    const spansAt = (p: number) => layerSpans(s.biome, seams, (x) => RX + (x - s.camX) * PPM * (wl ? 1 : p), W, undefined, { H, edge: () => wl?.edge });
+    // to and from the sea and the Moon the seam is a portal: nothing beyond it shows until you ride through
+    const seams = visibleSeams(s.seam ? [s.seam] : [], s.x);
+    if (s.seam && seamKind(s.seam) === 'portal' && this.lastX != null && this.lastX < s.seam.x && s.x >= s.seam.x && s.x - this.lastX < 20) { this.portalAt = t; this.portalTo = s.seam.to; }
+    this.lastX = s.x;
+    const spansAt = (p: number) => layerSpans(s.biome, seams, (x) => RX + (x - s.camX) * PPM * p, W);
     // a gateway that went up closer than usual still has to first show up beyond the right edge, even in the far hills
     const far = s.seam ? Math.min(1, Math.max(SEAM_BACK, (W - RX + 40) / (s.seam.lead * PPM))) : SEAM_BACK;
     const skySp = spansAt(far), midSp = spansAt(Math.max(SEAM_MID, far)), roadSp = spansAt(1), foreSp = spansAt(FORE_PARALLAX);
@@ -169,21 +166,15 @@ export class FullSendRenderer implements GameRenderer {
     const now2 = new Date(), day = daylight(HOUR ?? now2.getHours() + now2.getMinutes() / 60);
     const outdoor = wsum((l) => (l.outdoor ? 1 : 0)), night = day.night * outdoor, glow = day.glow * outdoor;
     this.dusk = Math.max(night, wsum((l) => l.dusk ?? 0));
-    if (skySp.length > 1 && shaped(skySp)) drawSpans(g, skySp, W, H, 0, (id) => { // the sea surface is a hard line
-      const l = LOOKS[id], out = l.outdoor ? 1 : 0, sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
+    const skyPaint = (l: BiomeLook, gg: G) => {
+      const out = l.outdoor ? 1 : 0, sky = gg.createLinearGradient(0, 0, 0, UH * 0.7);
       sky.addColorStop(0, mixColor(l.sky[0], '#0a0f2a', day.night * out * 0.92));
       sky.addColorStop(1, mixColor(mixColor(l.sky[1], '#ff9a5a', day.glow * out * 0.65), '#1c2348', day.night * out * 0.85));
-      g.fillStyle = sky; g.fillRect(0, 0, W, H);
-      g.globalAlpha = out ? 1 - day.night : 1; if (g.globalAlpha > 0.01) l.celestial(g, W, UH, t); g.globalAlpha = 1;
-    });
-    else if (skySp.length > 1) { // across a seam: each sky (with its own sun or planet) meets the next along a weather front
-      drawSoft(g, this.sg, skySp, W, H, soft, (id, gg) => {
-        const l = LOOKS[id], out = l.outdoor ? 1 : 0, sky = gg.createLinearGradient(0, 0, 0, UH * 0.7);
-        sky.addColorStop(0, mixColor(l.sky[0], '#0a0f2a', day.night * out * 0.92));
-        sky.addColorStop(1, mixColor(mixColor(l.sky[1], '#ff9a5a', day.glow * out * 0.65), '#1c2348', day.night * out * 0.85));
-        gg.fillStyle = sky; gg.fillRect(0, 0, W, H);
-        gg.globalAlpha = out ? 1 - day.night : 1; if (gg.globalAlpha > 0.01) l.celestial(gg, W, UH, t); gg.globalAlpha = 1;
-      });
+      gg.fillStyle = sky; gg.fillRect(0, 0, W, H);
+      gg.globalAlpha = out ? 1 - day.night : 1; if (gg.globalAlpha > 0.01) l.celestial(gg, W, UH, t); gg.globalAlpha = 1;
+    };
+    if (skySp.length > 1) { // across a seam: each sky (with its own sun or planet) meets the next along a weather front
+      drawSoft(g, this.sg, skySp, W, H, soft, (id, gg) => skyPaint(LOOKS[id], gg));
     } else {
       const sky = g.createLinearGradient(0, 0, 0, UH * 0.7);
       sky.addColorStop(0, mixColor(col((l) => l.sky[0]), '#0a0f2a', night * 0.92));
@@ -207,7 +198,6 @@ export class FullSendRenderer implements GameRenderer {
     const backY = Math.round(UH * 0.5 + vAlt * 0.25);
     // far landmarks are never cut: across a seam the old biome's sink behind the hills while the new one's rise
     if (blend) this.layer(blend, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
-    else if (shaped(skySp)) drawSpans(g, skySp, W, H, 1, (id) => LOOKS[id].backdrop(g, W, backY, s.camX * PPM * BACK_PARALLAX, t));
     else for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(g, W, Math.round(backY + d * UH * 0.45), s.camX * PPM * BACK_PARALLAX, t);
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
@@ -224,7 +214,7 @@ export class FullSendRenderer implements GameRenderer {
       for (let x = 0; x < W; x += 2) { const y = Math.round(midY(x + mu - RX)); g.fillRect(x, y, 2, H - y); }
       g.globalAlpha = 1;
     }
-    for (let i = 1; i < midSp.length && !wl; i++) { // a low mist bank over the mid-ground cut
+    for (let i = 1; i < midSp.length; i++) { // a low mist bank over the mid-ground cut
       const x = midSp[i].x0;
       if (x > -20 && x < W + 20) drawVeil(g, x, midBase - 34, midBase + 26, mixColor(LOOKS[midSp[i - 1].id].haze, LOOKS[midSp[i].id].haze, 0.5), 26, 0.6 * farHills);
     }
@@ -235,8 +225,7 @@ export class FullSendRenderer implements GameRenderer {
         (only ?? LOOKS[ownerAt(midSp, x)]).midProp(gg, hash01(kk * 31 + 5), x, Math.round(midY(lx)) + 1, t);
       }
     };
-    if (!blend && wl) drawSpans(g, midSp, W, H, 3, (id) => midProps(LOOKS[id], g)); // half in the water is fine
-    else if (!blend) midProps(null, g); else this.layer(blend, (l, gg) => midProps(l, gg)); // props are never cut
+    if (!blend) midProps(null, g); else this.layer(blend, (l, gg) => midProps(l, gg)); // props are never cut
 
     // ---- the gap / water / loop sit behind the road surface ----
     const gapX0 = p?.kind === 'leap' ? sx(p.x0) : NaN, gapX1 = p?.kind === 'leap' ? sx(p.x0 + p.len) : NaN;
@@ -245,8 +234,7 @@ export class FullSendRenderer implements GameRenderer {
       this.sg.clearRect(0, 0, W, H);
       const draw = (ll: BiomeLook) => ll.roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t);
       // at a seam each group is drawn whole by the biome it is rooted in (never cut)
-      if (spans && wl) drawSpans(this.sg, spans, W, H, 4, (id) => draw(LOOKS[id]));
-      else if (spans) for (const id of new Set(spans.map((sp) => sp.id))) LOOKS[id].roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t, (a, b) => ownerAt(spans, a) === id && ownerAt(spans, b) === id);
+      if (spans) for (const id of new Set(spans.map((sp) => sp.id))) LOOKS[id].roadside?.(this.sg, W, (x) => roadY(s.camX + (x - RX) / PPM), s.camX * PPM - RX, t, (a, b) => ownerAt(spans, a) === id && ownerAt(spans, b) === id);
       else draw(l);
       if (Number.isFinite(gapX0)) this.sg.clearRect(gapX0 - 4, 0, gapX1 - gapX0 + 8, H);
       if (s.edgeX !== null) this.sg.clearRect(sx(s.edgeX), 0, W, H);
@@ -311,8 +299,20 @@ export class FullSendRenderer implements GameRenderer {
     // ---- the biome gateway: the seam itself, standing over the road where the next biome begins ----
     this.gate = null;
     if (s.seam) {
-      const gx = Math.round(sx(s.seam.x)), st = GATEWAYS[s.seam.to];
-      if (gx > -50 && gx < W + 50) {
+      const gx = Math.round(sx(s.seam.x)), st = GATEWAYS[s.seam.to], to = s.seam.to;
+      if (seamKind(s.seam) === 'portal') { // a window onto the far side, shut once you're through
+        const open = portalOpen(s.seam.x, s.x), gy = Math.round(roadY(s.seam.x));
+        if (gx > -50 && gx < W + 50 && open > 0) {
+          drawPortal(g, gx, gy, t, open, to, (gg) => {
+            const l = LOOKS[s.x >= s.seam!.x ? s.seam!.from : to]; // looking back through it: where you came from
+            skyPaint(l, gg); l.backdrop(gg, W, Math.round(gy - PORTAL.ry * 1.1), s.camX * PPM * BACK_PARALLAX, t);
+            gg.fillStyle = l.mid; gg.fillRect(0, Math.round(gy) - 12, W, H); // the far side, seen close up
+            gg.fillStyle = l.ground; gg.fillRect(0, gy + 2, W, H);
+            gg.fillStyle = l.road; gg.fillRect(0, gy - 4, W, 5);
+          });
+          this.gate = { x: gx, y: gy - PORTAL.ry * 2 - 7, text: BIOME_NAMES[to], color: '#ffffff', alpha: Math.min(1, Math.max(0, (gx - RX - 12) / 14)) };
+        }
+      } else if (gx > -50 && gx < W + 50) {
         const gy = Math.round(roadY(s.seam.x)), [bx, by] = boardCentre();
         drawGateway(g, st, gx, gy, t);
         this.gate = { x: gx + bx, y: gy + by + 0.5, text: BIOME_NAMES[s.seam.to], color: st.text, alpha: Math.min(1, Math.max(0, (Math.abs(gx - RX) - 12) / 14)) };
@@ -403,9 +403,9 @@ export class FullSendRenderer implements GameRenderer {
         (only ?? LOOKS[ownerAt(foreSp, x)]).foreProp(gg, hash01(kk * 13 + 9), Math.round(x), Math.round(roadY(s.camX + (x - RX) / PPM) + 10 + hash01(kk * 5) * 12));
       }
     };
-    if (!blend && wl) drawSpans(g, foreSp, W, H, 7, (id) => foreProps(LOOKS[id], g));
-    else if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
-    if (wl) drawWaterline(g, wl.edge, wl.y0, wl.surf, wl.dir, W, t);
+    if (!blend) foreProps(null, g); else this.layer(blend, (l, gg) => foreProps(l, gg));
+    // riding through a portal: the scene has already swapped behind this flash
+    drawPortalFlash(g, W, H, RX, roadY(s.x) - 20, portalFlash(t - this.portalAt) * (s.reducedFlash ? 0.4 : 1), this.portalTo);
     const lines = Math.max(0, Math.min(1, (s.v - 20) / 50));
     if (lines > 0) {
       g.globalAlpha = 0.35 * lines; g.fillStyle = '#ffffff';

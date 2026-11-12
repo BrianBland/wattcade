@@ -9,7 +9,8 @@ import { riderLook } from '../../../cosmetics/unlocks';
 import type { RiderLook } from '../../../cosmetics/types';
 import { daylight } from './daylight';
 import { layerAlphas, mixColor } from './blend';
-import { coverage, drawGantry, drawLaunchSmoke, drawSoft, drawSpans, drawVeil, drawWaterline, hopAt, horizonSwap, seamKind, shaped, surfaceRow, waterEdge, type Seam, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Span } from './seam';
+import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, seamKind, visibleSeams, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Span } from './seam';
+import { drawPortal, drawPortalFlash, PORTAL, portalFlash, portalOpen } from './portal';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
 import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
 import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
@@ -26,23 +27,6 @@ const RIDGE_M_PER_PX = 4;
 const wrap = (x: number, span: number) => ((x % span) + span) % span; // the far ridge shows the same road, zoomed out
 const MID_PARALLAX = 0.5, FORE_PARALLAX = 1.35, BACK_PARALLAX = 0.05;
 const MID_SLOT = 15, FORE_SLOT = 9;
-/** Rocket hop over a launch / re-entry seam: metres each side of the pad, and peak height (buffer px). */
-const HOP_M = 22, HOP_PX = 70;
-/** Rocket thrust under the bike (rider-local coordinates, wheels on y = 0). */
-function drawThrust(g: G, t: number, k: number) {
-  const f = 0.8 + 0.2 * Math.sin(t * 40);
-  g.fillStyle = '#ffd23b'; g.beginPath(); g.moveTo(-8, 1); g.lineTo(-2, 1); g.lineTo(-5 - k * 2, 1 + 14 * k * f); g.closePath(); g.fill();
-  g.fillStyle = '#ff6a1a'; g.beginPath(); g.moveTo(-7, 1); g.lineTo(-3, 1); g.lineTo(-5, 1 + 8 * k * f); g.closePath(); g.fill();
-}
-/** Coming home from the Moon: a re-entry glow around the bike and a streak trailing up behind. */
-function drawReentryGlow(g: G, t: number, k: number) {
-  g.globalAlpha = 0.35 + 0.25 * Math.sin(t * 30);
-  g.fillStyle = '#ff8a2a'; g.beginPath(); g.ellipse(2, -12, 16, 18, 0, 0, Math.PI * 2); g.fill();
-  g.globalAlpha = 0.5 * k; g.fillStyle = '#ffd23b';
-  g.beginPath(); g.moveTo(-10, -20); g.lineTo(-40, -55); g.lineTo(-30, -60); g.lineTo(4, -26); g.closePath(); g.fill();
-  g.globalAlpha = 1;
-}
-
 interface Actor { kind: BiomeLook['actor']; x: number; y: number; vx: number; vy: number; t0: number; seed: number; beamAt: number; color: string; leaveAt: number }
 const PARROTS = ['#e74c3c', '#3b82ff', '#ffd23b', '#2de26a'];
 const FISH = ['#ffb020', '#ff6b8a', '#4dabf7', '#ffe066', '#c56cf0'];
@@ -69,6 +53,7 @@ export class WarmupRenderer implements GameRenderer {
   private crankSample = NaN; private crankSampleAt = 0;
   private distanceSample = NaN; private distanceSampleAt = 0;
   private weeds: Weed[] = []; private nextWeedAt = 0; private weedRng: (() => number) | null = null;
+  private lastD: number | null = null; private portalAt = -99; private portalTo: BiomeId = 'underwater';
   private lastBiome: string | null = null; private lastDriveIn = false; private titleAt = -99; private title = '';
   private texts: Text[] = [];
   private lastNow = 0;
@@ -151,21 +136,17 @@ export class WarmupRenderer implements GameRenderer {
     // Biome seams: each parallax layer is split where the boundary falls *in that layer*, so the next biome shows on
     // the horizon first and every layer meets under the gateway as you ride through it (see seam.ts).
     const biomeM = s.biomeM, start = s.startBiome;
-    const seams = roadSeams(s.d, W * RIDGE_M_PER_PX + 300, biomeM, (k) => biomeOfSeg(k, start));
+    // Portals (to and from the sea and the Moon) hide whatever lies beyond them until you ride through.
+    const allSeams = roadSeams(s.d, W * RIDGE_M_PER_PX + 300, biomeM, (k) => biomeOfSeg(k, start));
+    const seams = visibleSeams(allSeams, s.d);
+    if (this.lastD != null && s.d > this.lastD && s.d - this.lastD < 20) for (const sm of allSeams) {
+      if (seamKind(sm) === 'portal' && sm.x > this.lastD && sm.x <= s.d) { this.portalAt = t; this.portalTo = sm.to; if (di < 0.5) play('whoosh', { vol: 0.7 }); }
+    }
+    this.lastD = s.d;
     const elevation = terr.elev(s.d);
     const roadY = (dd: number) => roadY0 - (terr.elev(dd) - elevation) * vscale;
-    // Into / out of the sea and to / from the Moon the seam is one place in every layer: a waterline, or the launch pad.
     const roadX = (x: number) => RX + (x - s.d) * PPM;
-    /** The sea side-on: a beach shelving into a level surface, which rises over you as you ride in (sinks as you ride out). */
-    const waterOf = (sm: Seam) => {
-      const k = seamKind(sm);
-      if (k !== 'dive' && k !== 'surface') return null;
-      const sx = roadX(sm.x), y0 = roadY(sm.x) + 3, dir: 1 | -1 = k === 'dive' ? 1 : -1;
-      const surf = surfaceRow(y0, dir * (s.d - sm.x) * PPM);
-      return { edge: waterEdge(sx, y0, dir, surf), y0, surf, dir };
-    };
-    const water = (sm: Seam) => waterOf(sm)?.edge;
-    const spansAt = (p: number) => layerSpans(s.biome, seams, (x, sm) => RX + (x - s.d) * PPM * (seamKind(sm) === 'gate' ? p : 1), W, SEAM.jag + 1, { H, edge: water });
+    const spansAt = (p: number) => layerSpans(s.biome, seams, (x) => RX + (x - s.d) * PPM * p, W);
     const skySp = spansAt(BACK_PARALLAX), midSp = spansAt(MID_PARALLAX), roadSp = spansAt(1), foreSp = spansAt(FORE_PARALLAX);
     const soft = W * SEAM.skySoft;
     // whole-scene values (daylight, weeds, ...) weigh each biome by how much of the sky it owns, plus the Drive-In by time
@@ -201,8 +182,7 @@ export class WarmupRenderer implements GameRenderer {
       gg.globalAlpha = l.outdoor ? 1 - day.night : 1; if (gg.globalAlpha > 0.01) l.celestial(gg, W, UH, t); gg.globalAlpha = 1;
     };
     if (di < 0.998) {
-      if (shaped(skySp)) drawSpans(g, skySp, W, H, 0, (id) => skyPaint(LOOKS[id], g)); // the sea surface is a hard line
-      else drawSoft(g, this.sg, skySp, W, H, soft, (id, gg) => skyPaint(LOOKS[id], gg));
+      drawSoft(g, this.sg, skySp, W, H, soft, (id, gg) => skyPaint(LOOKS[id], gg));
     }
     if (di > 0.002) { g.globalAlpha = di; g.drawImage((this.sg.clearRect(0, 0, W, H), skyPaint(DRIVE_IN, this.sg), this.scratch), 0, 0); g.globalAlpha = 1; }
     for (let i = 0; i < 90; i++) {
@@ -222,8 +202,7 @@ export class WarmupRenderer implements GameRenderer {
     // landmarks out there are never cut: the old biome's sink behind the hills while the new one's rise into view
     const sink = UH * 0.45;
     this.props(di, (gg) => {
-      if (shaped(skySp)) drawSpans(gg, skySp, W, H, 1, (id) => LOOKS[id].backdrop(gg, W, backY, bu, t)); // cut by the waterline
-      else for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(gg, W, Math.round(backY + d * sink), bu, t);
+      for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(gg, W, Math.round(backY + d * sink), bu, t);
     },
       (gg) => DRIVE_IN.backdrop(gg, W, backY, bu, t));
 
@@ -243,7 +222,6 @@ export class WarmupRenderer implements GameRenderer {
     });
 
     for (let i = 1; i < skySp.length && di < 0.5; i++) { // a mist bank over the ridge cut
-      if (skySp[i].l) continue; // a waterline needs no mist
       const x = skySp[i].x0, haze = mixColor(LOOKS[skySp[i - 1].id].haze, LOOKS[skySp[i].id].haze, 0.5);
       if (x > -20 && x < W + 20) drawVeil(g, x, ridgeBase - 26, UH * 0.7, haze, 30, 0.7 * (1 - di * 2));
     }
@@ -270,7 +248,7 @@ export class WarmupRenderer implements GameRenderer {
     });
     for (let i = 1; i < midSp.length && di < 0.5; i++) { // a low mist bank over the mid-ground cut
       const x = midSp[i].x0;
-      if (!midSp[i].l && x > -20 && x < W + 20) drawVeil(g, x, midBase - 34, midBase + 26, mixColor(LOOKS[midSp[i - 1].id].haze, LOOKS[midSp[i].id].haze, 0.5), 26, 0.6 * (1 - di * 2));
+      if (x > -20 && x < W + 20) drawVeil(g, x, midBase - 34, midBase + 26, mixColor(LOOKS[midSp[i - 1].id].haze, LOOKS[midSp[i].id].haze, 0.5), 26, 0.6 * (1 - di * 2));
     }
     const k0 = Math.floor((mu - RX - 30) / MID_SLOT), k1 = Math.ceil((mu - RX + W + 30) / MID_SLOT);
     const midProps = (gg: G, only: BiomeLook | null) => {
@@ -279,7 +257,7 @@ export class WarmupRenderer implements GameRenderer {
         (only ?? LOOKS[ownerAt(midSp, x)]).midProp(gg, hash01(k * 31 + 5), x, Math.round(midY(lx)) + 1, t);
       }
     };
-    this.props(di, (gg) => (shaped(midSp) ? drawSpans(gg, midSp, W, H, 3, (id) => midProps(gg, LOOKS[id])) : midProps(gg, null)), (gg) => midProps(gg, DRIVE_IN));
+    this.props(di, (gg) => midProps(gg, null), (gg) => midProps(gg, DRIVE_IN));
     const weedW = wsum((l) => (l.weeds ? 1 : 0));
     this.updateWeeds(t, s, W, weedW);
     const weedAtLane = (lane: WeedLane) => this.drawWeeds(g, lane, t, s, RX, roadY, midY, weedW);
@@ -290,8 +268,7 @@ export class WarmupRenderer implements GameRenderer {
     // Each group is drawn whole by the biome it is rooted in (never cut at the seam).
     const roadsideY = (x: number) => roadY(s.d + (x - RX) / PPM);
     this.props(di, (gg) => {
-      if (shaped(roadSp)) drawSpans(gg, roadSp, W, H, 4, (id) => LOOKS[id].roadside?.(gg, W, roadsideY, s.d * PPM - RX, t)); // half in the water is fine
-      else for (const id of new Set(roadSp.map((sp) => sp.id))) LOOKS[id].roadside?.(gg, W, roadsideY, s.d * PPM - RX, t, roadSp.length > 1 ? (a, b) => ownerAt(roadSp, a) === id && ownerAt(roadSp, b) === id : undefined);
+      for (const id of new Set(roadSp.map((sp) => sp.id))) LOOKS[id].roadside?.(gg, W, roadsideY, s.d * PPM - RX, t, roadSp.length > 1 ? (a, b) => ownerAt(roadSp, a) === id && ownerAt(roadSp, b) === id : undefined);
     },
       (gg) => DRIVE_IN.roadside?.(gg, W, roadsideY, s.d * PPM - RX, t));
 
@@ -325,6 +302,20 @@ export class WarmupRenderer implements GameRenderer {
       const bd = k * biomeM, sx = RX + (bd - s.d) * PPM;
       if (sx < -50 || sx > W + 50) continue;
       const sy = roadY(bd), to = biomeOfSeg(k, start), st = GATEWAYS[to];
+      if (seamKind({ from: biomeOfSeg(k - 1, start), to }) === 'portal') { // a window onto the far side, shut once you're through
+        const open = portalOpen(bd, s.d);
+        if (di > 0.5 || open <= 0) continue;
+        drawPortal(g, Math.round(sx), Math.round(sy), t, open, to, (gg) => {
+          const l = LOOKS[s.d >= bd ? biomeOfSeg(k - 1, start) : to]; // looking back through it: where you came from
+          skyPaint(l, gg); l.backdrop(gg, W, Math.round(sy - PORTAL.ry * 1.1), bu, t);
+          gg.fillStyle = l.mid; gg.fillRect(0, Math.round(sy) - 12, W, H); // the far side, seen close up
+          gg.fillStyle = l.ground; gg.fillRect(0, Math.round(sy) + 2, W, H);
+          gg.fillStyle = l.road; gg.fillRect(0, Math.round(sy) - 4, W, 5);
+        });
+        const clear = Math.min(1, Math.max(0, (sx - RX - 12) / 14)) * (1 - di);
+        if (clear > 0) this.texts.push({ s: BIOME_NAMES[to], x: sx, y: sy - PORTAL.ry * 2 - 7, size: 4.4, color: '#ffffff', align: 'center', alpha: clear, glow: st.trim });
+        continue;
+      }
       g.globalAlpha = 1 - di; drawGateway(g, st, Math.round(sx), Math.round(sy), t); g.globalAlpha = 1;
       const [bx, by] = boardCentre(), clear = Math.min(1, Math.max(0, (Math.abs(sx - RX) - 12) / 14)) * (1 - di);
       if (clear > 0) this.texts.push({ s: BIOME_NAMES[to], x: sx + bx, y: sy + by + 0.5, size: 4.4, color: st.text, align: 'center', alpha: clear });
@@ -347,18 +338,6 @@ export class WarmupRenderer implements GameRenderer {
       this.texts.push({ s: r.name, x, y: y - 31, size: 3.6, color: '#ffffff', align: 'center', alpha: fade });
     }
 
-    // ---- the Moon: a launch gantry and smoke on the way up, a dust plume on the way down ----
-    let hop = 0, hopKind: 'launch' | 'reentry' | null = null, hopDm = 0;
-    if (di < 0.5) for (const sm of seams) {
-      const k = seamKind(sm), sx = roadX(sm.x);
-      if (k !== 'launch' && k !== 'reentry') continue;
-      const dm = s.d - sm.x, h = hopAt(dm, HOP_M);
-      if (h > hop) { hop = h; hopKind = k; hopDm = dm; }
-      if (sx < -80 || sx > W + 80) continue;
-      if (k === 'launch') drawGantry(g, Math.round(sx - 52), Math.round(roadY(sm.x - 52 / PPM)), t);
-      drawLaunchSmoke(g, sx, roadY(sm.x) + 16, UH * (k === 'launch' ? 0.3 : 0.42), t, k === 'reentry');
-    }
-
     // ---- rider (towing the projector in the Drive-In) ----
     const slope = (s.grade / 100) * s.exaggeration;   // drawn slope (exaggerated like the road)
     const gear = dom.rider, look = this.look ?? riderLook({ level: 1, achievements: [], color: this.color });
@@ -370,9 +349,7 @@ export class WarmupRenderer implements GameRenderer {
       drawProjectorBeam(g, RX + lens[0] * c - lens[1] * sn, roadY0 + bob + lens[0] * sn + lens[1] * c, screenBuf, t);
       g.globalAlpha = 1;
     }
-    g.save(); g.translate(RX, roadY0 + 0.5 + bob - Math.round(hop * HOP_PX)); g.rotate(-Math.atan(slope) - (hopKind ? Math.sign(-hopDm) * hop * 0.15 : 0));
-    if (hopKind === 'launch' && hopDm < HOP_M * 0.4) drawThrust(g, t, Math.min(1, hop + 0.4)); // the hop up through the smoke
-    if (hopKind === 'reentry' && hopDm < 0) drawReentryGlow(g, t, hop);
+    g.save(); g.translate(RX, roadY0 + 0.5 + bob); g.rotate(-Math.atan(slope));
     if (lights > 0.3) { // headlight
       g.fillStyle = `rgba(255,244,200,${0.18 * lights})`; g.beginPath(); g.moveTo(8, -10); g.lineTo(60, -18); g.lineTo(60, 4); g.closePath(); g.fill();
     }
@@ -398,12 +375,9 @@ export class WarmupRenderer implements GameRenderer {
         (only ?? LOOKS[ownerAt(foreSp, x)]).foreProp(gg, hash01(k * 13 + 9), Math.round(x), Math.round(roadY(dd) + 10 + hash01(k * 5) * 12));
       }
     };
-    this.props(di, (gg) => (shaped(foreSp) ? drawSpans(gg, foreSp, W, H, 7, (id) => foreProps(gg, LOOKS[id])) : foreProps(gg, null)), (gg) => foreProps(gg, DRIVE_IN));
-    // the sea surface along each waterline, over everything
-    if (di < 0.5) for (const sm of seams) {
-      const w = waterOf(sm);
-      if (w) drawWaterline(g, w.edge, w.y0, w.surf, w.dir, W, t);
-    }
+    this.props(di, (gg) => foreProps(gg, null), (gg) => foreProps(gg, DRIVE_IN));
+    // riding through a portal: the whole scene has already swapped behind this flash
+    if (di < 0.5) drawPortalFlash(g, W, H, RX, roadY0 - 20, portalFlash(t - this.portalAt), this.portalTo);
 
     this.particles(g, W, H, t, s, midSp, soft, di, night);
     this.updateActors(g, W, UH, t, dt, s, dom);

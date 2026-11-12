@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { coverage, edgeOffset, hopAt, horizonSwap, seamKind, shaped, surfaceRow, waterEdge, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
+import { coverage, edgeOffset, horizonSwap, seamKind, visibleSeams, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
 import { biomeOfSeg } from '../sim/terrain';
+import { portalFlash, portalOpen } from '../render/portal';
 
 const seam: Seam = { x: 1000, from: 'desert', to: 'volcano' };
 /** A layer with parallax p, rider at screen 100, camera at road position d. */
@@ -61,30 +62,36 @@ describe('biome seams', () => {
     }
     expect(lastOld).toBe(1); expect(lastNew).toBe(0);
   });
-  it('the sea and the Moon get their own kind of seam', () => {
-    expect(seamKind({ from: 'seaside', to: 'underwater' })).toBe('dive');
-    expect(seamKind({ from: 'underwater', to: 'jungle' })).toBe('surface');
-    expect(seamKind({ from: 'snow', to: 'moon' })).toBe('launch');
-    expect(seamKind({ from: 'moon', to: 'autumn' })).toBe('reentry');
+  it('the sea and the Moon are reached through portals; everything else is a gate', () => {
+    expect(seamKind({ from: 'seaside', to: 'underwater' })).toBe('portal');
+    expect(seamKind({ from: 'underwater', to: 'seaside' })).toBe('portal');
+    expect(seamKind({ from: 'snow', to: 'moon' })).toBe('portal');
+    expect(seamKind({ from: 'moon', to: 'desert' })).toBe('portal');
     expect(seamKind({ from: 'desert', to: 'volcano' })).toBe('gate');
   });
-  it('riding into the sea: a beach shelving into a level surface that rises over the camera', () => {
-    const y0 = 180, sx = 300;
-    const ahead = waterEdge(sx, y0, 1, surfaceRow(y0, -50 * 9));
-    expect(ahead(y0 + 10)).toBe(sx);                       // below the road the cut is the shore
-    expect(ahead(y0 - 20)).toBeGreaterThan(sx);            // the beach shelves out to sea
-    expect(ahead(y0 - 60)).toBeGreaterThan(1e4);           // above the shallow surface it is dry
-    expect(surfaceRow(y0, 400)).toBeLessThan(0);           // well in: the surface is over the top of the screen
-    const out = waterEdge(sx, y0, -1, surfaceRow(y0, -100));
-    expect(out(y0 - 20)).toBeLessThan(sx);                 // surfacing: the sea is behind you
-    const sp = layerSpans('seaside', [{ x: 1000, from: 'seaside', to: 'underwater' }], layer(990, 1), 400, 5, { H: 200, edge: (_, x) => waterEdge(x, y0, 1, surfaceRow(y0, -90)) });
-    expect(shaped(sp)).toBe(true); expect(sp.map((q) => q.id)).toEqual(['seaside', 'underwater']);
-    // a waterline still on screen keeps the sea even when the shore has scrolled off the left
-    const past = layerSpans('seaside', [{ x: 1000, from: 'seaside', to: 'underwater' }], layer(1100, 1), 400, 5, { H: 200, edge: (_, x) => waterEdge(x, y0, 1, 20) });
-    expect(past.map((q) => q.id)).toEqual(['seaside', 'underwater']);
+  it('nothing beyond a portal shows until you ride through it, and nothing before it once you have', () => {
+    const chain: Seam[] = [
+      { x: 100, from: 'countryside', to: 'seaside' }, { x: 200, from: 'seaside', to: 'underwater' },
+      { x: 300, from: 'underwater', to: 'jungle' }, { x: 400, from: 'jungle', to: 'desert' },
+    ];
+    expect(visibleSeams(chain, 150).map((s) => s.x)).toEqual([100]);
+    expect(visibleSeams(chain, 250)).toEqual([]);
+    expect(visibleSeams(chain, 300).map((s) => s.x)).toEqual([400]);
+    const biomeAtD = (d: number) => [...chain].reverse().find((s) => s.x <= d)?.to ?? 'countryside';
+    // in every layer, even the far hills, the screen is all one biome right up to the portal
+    const far = (d: number) => layerSpans(biomeAtD(d), visibleSeams(chain, d), (x) => 100 + (x - d) * 9 * 0.05, 400);
+    expect(far(199).map((s) => s.id)).toEqual(['countryside', 'seaside']); // the gate behind still shows far off; the sea does not
+    expect(far(200).map((s) => s.id)).toEqual(['underwater']);
+    expect(far(300).map((s) => s.id)).toEqual(['jungle', 'desert']);
   });
-  it('the rocket hop peaks over the pad and lands either side', () => {
-    expect(hopAt(0, 20)).toBe(1); expect(hopAt(-20, 20)).toBe(0); expect(hopAt(25, 20)).toBe(0); expect(hopAt(10, 20)).toBeCloseTo(0.75);
+  it('a portal is open ahead, shuts behind you, and flashes briefly as you go through', () => {
+    expect(portalOpen(100, 50)).toBe(1);
+    expect(portalOpen(100, 103)).toBeGreaterThan(0);
+    expect(portalOpen(100, 120)).toBe(0);
+    expect(portalFlash(0)).toBe(1);
+    expect(portalFlash(0.2)).toBeLessThan(portalFlash(0.1));
+    expect(portalFlash(1)).toBe(0);
+    expect(portalFlash(-1)).toBe(0);
   });
   it('overworld seams sit on every biome boundary and chain', () => {
     const s = roadSeams(5000, 2000, 1200, (k) => biomeOfSeg(k, 2));

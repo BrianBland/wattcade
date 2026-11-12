@@ -540,10 +540,15 @@
 .chrome-ui.menu .topbar .btn {font-size:13px;color:var(--ui-color-text)}
 .chrome-ui.menu .topbar .btn .count {color:var(--ui-color-muted);font-variant-numeric:tabular-nums;margin-left:4px}
 .chrome-ui.menu .topbar .tb-divider {flex:none;width:1px;height:24px;margin:0 4px;background:var(--ui-color-line)}
-.chrome-ui.menu .topbar .ui-button.ui-button.ui-button.tb-toggle::before {background:transparent;box-shadow:none}
-.chrome-ui.menu .topbar .ui-button.ui-button.ui-button.tb-toggle:hover::before {background:var(--ui-color-hover)}
-.chrome-ui.menu .topbar .btn.tb-toggle {color:var(--ui-color-muted)}
-.chrome-ui.menu .topbar .btn.tb-toggle b {color:var(--ui-color-text);margin-left:4px}
+.chrome-ui.menu .topbar .pixel-icon {width:18px;height:18px;flex:none}
+.chrome-ui.menu .topbar .btn.tb-road {gap:8px}
+.chrome-ui.menu .topbar .btn.tb-road .pixel-icon {color:var(--ui-color-success)}
+.chrome-ui.menu .topbar .place .pixel-icon {color:var(--ui-color-gold);margin-right:6px}
+.chrome-ui.menu .topbar .btn.tb-icon {width:44px;padding:0;justify-content:center;color:#ffd98a}
+.chrome-ui.menu .topbar .btn.tb-icon .pixel-icon {width:22px;height:22px}
+/* Help is a key like its neighbours, not a floating glyph. */
+.chrome-ui.menu .topbar .ui-tooltip>button {position:relative;isolation:isolate;width:44px;color:var(--ui-color-text);font-weight:800}
+.chrome-ui.menu .topbar .ui-tooltip>button::before {content:'';position:absolute;inset:3px 0;z-index:-1;clip-path:var(--ui-key-cut);background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge),inset -1px 0 var(--ui-color-key-edge)}
 .chrome-ui.menu .topbar .btn.reward {color:var(--ui-color-violet-text)}
 .chrome-ui.menu .topbar .badge {display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:6px;padding:0 4px;background:var(--ui-color-violet);color:var(--ui-color-background);font:800 11px/1 var(--ui-font-numeric)}
 .chrome-ui.menu .topbar .btn.end-ride {flex:none;margin-left:auto;padding:8px 14px;font-weight:750}
@@ -563,3 +568,11 @@
 .end-ride-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .end-ride-actions .btn {min-width:0;min-height:48px;justify-content:center}
 @media(max-width:400px){.end-ride-actions {grid-template-columns:1fr}}
+/* Phones: the toolbar collapses to icons (names stay in aria-labels) so every key fits one row. */
+@media(max-width:480px){
+ .chrome-ui.menu .topbar .tb-label {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .chrome-ui.menu .topbar .btn:has(>.tb-label) {min-width:44px;padding:8px 10px;justify-content:center}
+ .chrome-ui.menu .topbar .place .pixel-icon {margin-right:0}
+ .chrome-ui.menu .topbar .btn.tb-road {gap:0}
+ .chrome-ui.menu .arcade-actions {justify-content:space-between}
+}

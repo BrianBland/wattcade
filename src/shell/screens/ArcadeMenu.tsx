@@ -7,6 +7,7 @@ import type { GameModule, Profile } from '../../contracts';
 import { UiTooltip } from '../../ui';
 import { Btn, Dot, XpBar } from '../components/Bits';
 import { RiderAvatar } from '../components/RiderAvatar';
+import { PixelIcon } from '../chrome/PixelIcon';
 import { achievementViews, gameRides, getDeviceStatus, levelView, lobbyHills, missingRequirement, pendingPicks, setLobbyHills, subscribeDevices } from '../services';
 import { toast } from '../components/Toasts';
 import { play } from '../../audio/sfx';
@@ -171,12 +172,12 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onEndRide, e
         <div class="rider-chip"><RiderAvatar profile={profile} size="small" road={false} still={!animate} />
           <div class="who"><b>{profile.name}</b><XpBar lv={levelView(profile.xp)} compact /></div></div>
         <div class="arcade-actions" ref={toolbar} role="toolbar" aria-label="Arcade">
-          <Btn small focused={idx === 0} onClick={bar[0]} class="place"><Dot on={st.trainer.connected} busy={st.trainer.busy} /><Dot on={st.controller.connected} busy={st.controller.busy} /><Dot on={st.hr.connected} busy={st.hr.busy} />Devices</Btn>
-          <Btn small focused={idx === 1} onClick={bar[1]} class="place">Achievements <span class="count">{ach.filter((a) => a.unlocked).length}/{ach.length}</span></Btn>
+          <Btn small focused={idx === 0} onClick={bar[0]} class="place"><Dot on={st.trainer.connected} busy={st.trainer.busy} /><Dot on={st.controller.connected} busy={st.controller.busy} /><Dot on={st.hr.connected} busy={st.hr.busy} /><span class="tb-label">Devices</span></Btn>
+          <Btn small focused={idx === 1} onClick={bar[1]} class="place" label={`Achievements ${ach.filter((a) => a.unlocked).length} of ${ach.length}`}><PixelIcon kind="trophy" /><span class="tb-label">Achievements</span> <span class="count">{ach.filter((a) => a.unlocked).length}/{ach.length}</span></Btn>
           <Btn small focused={idx === 2} onClick={bar[2]} class={`place${picks ? ' reward' : ''}`}>Locker{picks > 0 && <span class="badge" aria-label={`${picks} reward${picks > 1 ? 's' : ''} ready`}>{picks}</span>}</Btn>
           <span class="tb-divider" aria-hidden="true" />
-          <Btn small focused={idx === 3} onClick={toggleHills} class="tb-toggle">Road: <b>{hills ? 'Hills' : 'Flat'}</b></Btn>
-          {!driveIn && <Btn small focused={idx === DRIVE} onClick={toggleDriveIn} class="tb-toggle projector">Drive-In</Btn>}
+          <Btn small focused={idx === 3} onClick={toggleHills} class="tb-road" label={`Road: ${hills ? 'Hills' : 'Flat'}`}><PixelIcon kind={hills ? 'hills' : 'flat'} /><span class="tb-label">{hills ? 'Hills' : 'Flat'}</span></Btn>
+          {!driveIn && <Btn small focused={idx === DRIVE} onClick={toggleDriveIn} class="tb-icon projector" label="Drive-In: watch on the big screen"><PixelIcon kind="drivein" /></Btn>}
           <span class="arcade-help"><UiTooltip label="Arcade help" focused={idx === HELP}>Swipe to browse games, then tap the selected game to play. Pedal to keep riding while you choose. End ride saves your ride and hands the bike to the next rider.</UiTooltip></span>
         </div>
         <Btn small focused={idx === END} onClick={askEnd} class="end-ride"><i class="stop" aria-hidden="true" />End ride</Btn>

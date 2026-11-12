@@ -252,15 +252,16 @@ function drawJetWings(g: G, base: string, ink: string, accent: string, hip: P, s
   const k = Math.min(1, speed / 9), fl = Math.sin(t * 31) * 0.4 + Math.sin(t * 17) * 0.3;
   const wing = (dx: number, dy: number, body: string, edge: string, near: boolean) => {
     const P = (x: number, y: number): P => [rx + dx + x, ry + dy + y];
-    const outline: P[] = [P(1.6, -1), P(-12.6, -5.6), P(-13.6, -8.8), P(-14.8, -5.2), P(-4.4, 0.6), P(-0.6, 1)];
+    // a delta-ish swept wing: broad chord at the shoulder, tapering back to a narrow tip with a small upturned winglet
+    const outline: P[] = [P(2.4, -1.6), P(-11.8, -5.4), P(-12.6, -6.8), P(-13.4, -5.2), P(-12.4, -4.2), P(-6.4, 1.6), P(-1.2, 1.8)];
     g.strokeStyle = ink; g.lineWidth = 0.5; g.beginPath(); outline.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.closePath(); g.stroke();
     poly(g, body, ...outline);
     if (!near) return;
-    line(g, edge, 0.7, P(1.4, -1.1), P(-12.6, -5.8)); // leading edge catches the light
-    line(g, ink, 0.3, P(-3, -0.6), P(-10.4, -3.8)); // panel line
-    poly(g, accent, P(-9.6, -4.4), P(-11.4, -5.2), P(-12.4, -4), P(-10.6, -3.3)); // a stripe near the tip
-    poly(g, accent, P(-13.6, -8.8), P(-12.6, -5.6), P(-13.4, -5.4)); // winglet edge
-    if (k > 0.5) { g.globalAlpha = (k - 0.5) * 0.9; line(g, '#ffffff', 0.35, P(-13.6, -8.8), P(-13.6 - 8 - speed * 1.2, -8.9)); g.globalAlpha = 1; } // contrail
+    line(g, edge, 0.7, P(2.2, -1.7), P(-11.8, -5.5)); // leading edge catches the light
+    line(g, ink, 0.3, P(-2.4, -0.4), P(-9.6, -3.6)); // panel line
+    poly(g, accent, P(-8.8, -4.6), P(-10.6, -5.1), P(-11.2, -4.2), P(-9.4, -3.4)); // a stripe near the tip
+    poly(g, accent, P(-12.6, -6.8), P(-11.8, -5.4), P(-12.4, -5.3)); // winglet edge
+    if (k > 0.5) { g.globalAlpha = (k - 0.5) * 0.9; line(g, '#ffffff', 0.35, P(-13.4, -5.2), P(-13.4 - 8 - speed * 1.2, -5.3)); g.globalAlpha = 1; } // contrail
   };
   const jet = (cx: number, cy: number, s: number) => {
     const f = (1.4 + 9 * k + fl) * s;
@@ -275,9 +276,9 @@ function drawJetWings(g: G, base: string, ink: string, accent: string, hip: P, s
     oval(g, '#15151c', cx + 2.2 * s, cy, 0.35 * s, 0.85 * s); rect(g, '#c6ccd6', cx + 1.7 * s, cy - 0.95 * s, 0.4 * s, 1.9 * s); // intake lip
     rect(g, '#2a2f40', cx - 2.5 * s, cy - 0.7 * s, 0.5 * s, 1.4 * s); // nozzle
   };
-  wing(1.4, -2.2, shadeHex(base, 0.62), ink, false); jet(rx - 5.2 + 1.4, ry - 1.4 - 2.2, 0.8); // far side
+  wing(1.4, -2.2, shadeHex(base, 0.62), ink, false); jet(rx - 3.6 + 1.4, ry + 0.4 - 2.2, 0.8); // far side
   line(g, '#2a2f40', 0.8, [rx + 1, ry - 1.2], [rx - 0.6, ry + 1.6]); // harness strap
-  wing(0, 0, base, '#ffffff', true); jet(rx - 6.4, ry + 0.2, 1);
+  wing(0, 0, base, '#ffffff', true); jet(rx - 4.4, ry + 1.8, 1);
 }
 const shadeHex = (hex: string, f: number) => {
   const n = parseInt(hex.slice(1, 7), 16), c = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));

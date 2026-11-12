@@ -238,10 +238,11 @@ export function gardenIsland(g:G,x:number,y:number,size:number,seed:number,t:num
     for(let j=0;j<4;j++)rect(g,'#f0ebdf',x+size*.64+(j%2)*2,y+((t*12+j*8)%(size*.65)),1,3);
   }
 }
-function scenery(id:BiomeId,g:G,w:number,yAt:(x:number)=>number,scroll:number,t:number) {
+function scenery(id:BiomeId,g:G,w:number,yAt:(x:number)=>number,scroll:number,t:number,keep?:(x0:number,x1:number)=>boolean) {
   const span=id==='market'?320:280;
   for(let k=Math.floor((scroll-160)/span);k<=(scroll+w+160)/span;k++) {
     const seed=hash01(k*97+41), x=k*span-scroll+22+seed*26;
+    if(keep&&!keep(x-45,x+205)) continue; // at a seam: not wholly on this biome's side
     const y=yAt(x)-4, b=x+142, by=yAt(b)-7, variant=Math.floor(hash01(k*19+73)*3);
     // Smaller groves use a slower apparent depth and a raised ground line.
     if(id==='countryside'||id==='autumn'||id==='jungle') {
@@ -336,7 +337,7 @@ function snowBackdrop(g:G,w:number,y:number,u:number) {
 export function polishWorld(looks:Record<BiomeId,BiomeLook>):Record<BiomeId,BiomeLook> {
   for(const id of Object.keys(looks) as BiomeId[]) {
     const look=looks[id], original=look.midProp;
-    look.roadside=(g,w,y,scroll,t)=>scenery(id,g,w,y,scroll,t);
+    look.roadside=(g,w,y,scroll,t,keep)=>scenery(id,g,w,y,scroll,t,keep);
     // Keep distant life and modest background detail, with ample open patches.
     look.midProp=(g,h,x,y,t)=>{if(id==='sky'||id==='market'||id==='marsh'||id==='autumn')return;if(h<.18)original(g,h,x,y,t);};
   }

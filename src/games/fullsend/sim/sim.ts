@@ -51,6 +51,12 @@ export interface FullSendSave {
 export interface ForkOption { kind: PieceKind; biome: BiomeId; title: string }
 export interface SetResult { kind: PieceKind; biome: BiomeId; title: string; medal: Medal; detail: string }
 
+/** Where the next ground biome begins (m), the biomes either side, and how far ahead it was when it went up (m). */
+export interface Seam { x: number; from: BiomeId; to: BiomeId; lead: number }
+
+/** Closest a biome gateway goes up ahead of you (m): it must appear off the right edge of the screen. */
+export const SEAM_MIN_M = 150;
+
 export interface FullSendSnapshot {
   t: number; tour: string; tourName: string;
   phase: Phase; phaseT: number; phaseS: number;
@@ -58,6 +64,9 @@ export interface FullSendSnapshot {
   x: number; y: number; v: number; vy: number; pitch: number; mode: Mode; camX: number;
   hill: number; grade: number; terrainSeed: number; stretch: number; maxGrade: number; bumpScale: number;
   biome: BiomeId; from: BiomeId; to: BiomeId; mix: number;
+  /** On the ground, the next biome begins at a place on the road (a gateway at `x`), not with a cross-fade. Kept
+   *  until it is well behind, so the renderer can split the scenery there. `mix` only blends the altitude layers. */
+  seam: Seam | null;
   piece: PieceView | null;
   next: { kind: PieceKind; title: string; biome: BiomeId; inS: number } | null;
   speedPerFtp: number; ftpFrac: number;
@@ -217,7 +226,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     menuAutoS: T.num('menuAutoS', 30, 5, 120, 5, 'Seconds the setup screen waits before starting with the highlighted tour'),
     seaS: T.num('seaS', 40, 5, 300, 5, 'Seconds underwater after a fall before you breach back up to the road'),
     seaGrade: T.num('seaGrade', 1.5, 0, 6, 0.5, 'Extra grade % on the sea floor (water drag)'),
-    blendS: T.num('blendS', 8, 1, 30, 1, 'Seconds the scenery takes to dissolve into the next biome'),
+    seamM: T.num('seamM', 450, 150, 1500, 25, 'Most metres ahead the next biome begins (its gateway) once the fork closes; closer if the phase would end first'),
   };
   const th: Record<PieceKind, () => [number, number, number]> = {} as never;
   for (const k of Object.keys(MEDAL_FTP) as PieceKind[]) {
@@ -246,7 +255,9 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const lobbyBiome = (BIOMES as readonly string[]).includes(opts.lobby?.biome ?? '') ? opts.lobby!.biome as BiomeId : null;
   let x = 0, y = 0, v = lobbyBiome ? Math.max(0, Math.min(30, Number(opts.lobby?.v) || 0)) : 0, vx = 0, vy = 0, pitch = 0, mode: Mode = 'road', modeT = 0, camX = 0;
   let hill = 1, grade = 0, frac = 0;
-  let cur: BiomeId = lobbyBiome ?? tour.sets[0].biome, next: BiomeId = cur, mix = 0;
+  let cur: BiomeId = lobbyBiome ?? tour.sets[0].biome;
+  /** Where the next ground biome begins (see snapshot `seam`). */
+  let seam: Seam | null = null;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
   let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1;
@@ -295,7 +306,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   const MENU_ROWS = 3; // tour · fewer flashes · start
   function chooseTour(id: string) {
     tour = TOURS[id] ?? TOURS.classic;
-    cur = lobbyBiome ?? tour.sets[0].biome; next = cur; mix = 0;
+    cur = lobbyBiome ?? tour.sets[0].biome; seam = null;
     route = tour.sets.map((_, i) => (opts.forks === 'alt' || (opts.forks === 'alternate' && i % 2 === 1) ? 1 : 0));
   }
   function startRide() {
@@ -654,13 +665,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         if (mode === 'road' && input.pressed.has('left')) route[fs] = 0; // on the road only: in the air, ◀ ▶ lean
         if (mode === 'road' && input.pressed.has('right')) route[fs] = 1;
       }
+      // the next biome: once the fork closes, its gateway goes up on the road ahead; you change biome riding through it
+      if (seam && x >= seam.x && cur !== seam.to) { cur = seam.to; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
+      if (seam && x - seam.x > tun.seamM()) seam = null; // well behind (even the far hills): forget it
+      const upcoming = phase === 'warmup' ? setAt(0) : phase === 'recovery' ? setAt(setIndex + 1) : null;
+      if (upcoming && upcoming.biome !== cur && phaseT >= fw[1] && (!seam || seam.x <= x)) { // reached well before the set piece
+        const lead = clamp(v * (phaseS() - phaseT) * 0.75, SEAM_MIN_M, tun.seamM());
+        seam = { x: x + lead, from: cur, to: upcoming.biome, lead };
+      }
       if (phase === 'warmup') {
-        const nx = setAt(0)!;
-        if (nx.biome !== cur && phaseT >= fw[1]) {
-          next = nx.biome; mix = Math.min(1, mix + dt / tun.blendS());
-          if (mix >= 1) { cur = next; mix = 0; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
-        }
-        if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(0); }
+        if (phaseT >= phaseS()) startSet(0);
       } else if (phase === 'approach' && s && piece) {
         piece.x0 = atEnd(s.kind) ? x + v * (phaseS() - phaseT + s.effortS) : x + v * (phaseS() - phaseT);
         if (phaseT >= phaseS()) {
@@ -708,13 +722,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           if (k >= 1) { x = end; piece.surfaced = true; finishPiece(0, 'turtle tow'); setMode('road'); v = targetSpeed(0.5, speedPerFtp()); }
         } else payoff(dt, now);
       } else if (phase === 'recovery') {
-        const nx = setAt(setIndex + 1);
-        if (nx && nx.biome !== cur) {
-          next = nx.biome;
-          if (phaseT >= forkWindow()[1]) mix = Math.min(1, mix + dt / tun.blendS());
-          if (mix >= 1) { cur = next; mix = 0; if (tier === 'ground' && !toTier) ctx.emit({ type: 'biomeReached', data: { biome: cur } }); }
-        }
-        if (phaseT >= phaseS()) { if (mix > 0) { cur = next; mix = 0; } startSet(setIndex + 1); }
+        if (phaseT >= phaseS()) startSet(setIndex + 1);
       } else if (phase === 'cooldown') {
         if (phaseT >= phaseS()) { go('done'); ctx.emit({ type: 'tourComplete', data: { tour: tour.id } }); finishRide(); }
       }
@@ -870,7 +878,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       grade = +gr.toFixed(1);
       ctx.resistance.set({ id: 'terrain', mode: 'sim', gradePct: grade });
 
-      if (!toTier) visit(tier === 'ground' ? (mix < 0.5 ? cur : next) : shown());
+      if (!toTier) visit(tier === 'ground' ? cur : shown());
       // first-ride tips
       if (tip && now - tip.at > 7) { tip = null; lastTipEnd = now; }
       if (phase === 'approach' && phaseT < 6) offerTip('gears', 'Sprint coming: shift up a few gears now, then go all out when it says GO.', now);
@@ -930,7 +938,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         x, y, v, vy: mode === 'hop' || mode === 'air' ? vy : 0, pitch, mode, camX, hill, grade, terrainSeed, stretch: tun.hillStretch(), maxGrade, bumpScale: tun.bumps() ? tun.bumpScale() : 0,
         ...(toTier ? { biome: transMix < 0.5 ? transFrom : tierBiome(toTier), from: transFrom, to: tierBiome(toTier), mix: transMix }
           : tier !== 'ground' ? { biome: shown(), from: shown(), to: shown(), mix: 0 }
-            : { biome: mix < 0.5 ? cur : next, from: cur, to: next, mix }),
+            : { biome: cur, from: cur, to: cur, mix: 0 }),
+        seam: tier === 'ground' && !toTier ? seam : null,
         piece: piece ? { ...piece, hitAt: [...piece.hitAt] } : null,
         next: nextInfo, speedPerFtp: speedPerFtp(), ftpFrac: frac,
         trick: trick ? { name: trick.name, age: now - trick.t0 } : null, style,

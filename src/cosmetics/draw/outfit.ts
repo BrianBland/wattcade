@@ -124,6 +124,14 @@ export function drawEyewear(g: G, value: OutfitLook['eyewear']) {
   if (kind === 'stars') {
     line(g, base, .65, [-2.5,-.8],[3,-.8]);star(g,base,2,-.6,2.6);star(g,ink,2,-.6,1.15);star(g,base,-.9,-.9,1.4);circle(g,ink,-.9,-.9,.45);return;
   }
+  if (kind === 'stopwatch') { // Full Send bullet time: dark wraparounds with a stopwatch over the leading eye
+    line(g, base, .6, [-2.7,-1.2],[2.8,-1.2]); poly(g,base,[-.4,-1.6],[3.3,-1.6],[3.5,-.4],[2.7,.6],[-.2,.4]);
+    rect(g,'#2a2f40',1.6,-3.6,.8,.7); rect(g,'#2a2f40',2.7,-3.2,.6,.5); // crown + lap button
+    circle(g,'#c6ccd6',2,-.9,1.9); circle(g,'#f5f2d6',2,-.9,1.4);
+    for(let i=0;i<4;i++){const a=i*TAU/4;rect(g,ink,2+Math.cos(a)*1.1-.15,-.9+Math.sin(a)*1.1-.15,.3,.3);}
+    line(g,accent,.35,[2,-.9],[2.8,-1.9]); line(g,ink,.3,[2,-.9],[2,-.1]); circle(g,ink,2,-.9,.3);
+    return;
+  }
   if (kind === 'monocle' || kind === 'runes') {
     ring(g,base,.6,1.7,-.5,1.5);circle(g,ink,1.7,-.5,.9);line(g,accent,.35,[1.5,1],[.5,3.7]);
     if(kind==='runes'){star(g,accent,3,-1.9,.7);rect(g,base,-1.1,-1.4,1.3,1.7);}return;
@@ -149,6 +157,7 @@ export function drawBack(g: G, value: OutfitLook['back'], hip: P, shoulder: P, t
     poly(g,base,shoulder,[shoulder[0]-length,shoulder[1]+2+wave],[shoulder[0]-length+1,shoulder[1]+(kind==='cape'?10:4)+wave],[shoulder[0]-2,shoulder[1]+5]);
     line(g,ink,.7,[shoulder[0]-2,shoulder[1]+3],[shoulder[0]-length+2,shoulder[1]+4+wave]);return;
   }
+  if (kind === 'jetwings') { drawJetWings(g, base, ink, accent, hip, shoulder, t, speed); return; }
   g.save();g.translate(...hip);g.rotate(Math.atan2(shoulder[1]-hip[1],shoulder[0]-hip[0]));
   if (kind === 'dyson') {
     ring(g,accent,.6,5,-6,5.8);
@@ -164,9 +173,6 @@ export function drawBack(g: G, value: OutfitLook['back'], hip: P, shoulder: P, t
     line(g,accent,1.2,[3.8,-7.5],[5.5,-1]);
     if(kind==='flamer'){line(g,ink,.7,[2,-7],[0,-9],[-2,-5]);circle(g,ink,6,-6,1);}
     if(kind==='tanks')line(g,accent,.8,[7,-6],[9,-3],[7,0]);
-  } else if (kind === 'jetwings') { // Full Send: swept wings off the shoulders with a jet under each, lit when you're moving
-    poly(g,base,[4,-8],[-8,-14],[-9.6,-12.6],[-6,-10.4],[2.4,-5]);poly(g,ink,[3,-7.2],[-8,-13.2],[-8.8,-12.6],[2,-6]);
-    for(const [x,y] of [[-1.2,-8.6],[-5,-11]] as const){rect(g,accent,x-1.2,y-.2,2.4,1.1);if(speed>.6){const f=1.6+Math.sin(t*23+x)*.6;poly(g,'#f47935',[x-1.2,y+.1],[x-1.2-f,y+.35],[x-1.2,y+.7]);}}
   } else if (kind === 'arsenal') {
     poly(g,base,[1,-2],[7,-2],[7,-5],[1,-5]);line(g,ink,1.1,[0,-7],[9,-3]);line(g,accent,.8,[0,-2],[9,-7]);
     poly(g,ink,[9,-3],[11,-2],[10,-4]);ring(g,accent,.7,5,-7,4);rect(g,base,0,-8,2,3);
@@ -191,6 +197,12 @@ export function drawGloves(g: G, value: OutfitLook['gloves'], elbow: P, hand: P)
   const w = resolveWear(value); if (inactive(w)) return;
   const { kind, base, ink, accent = ink } = w!;
   segment(g,elbow,hand,l=>{
+    if(kind==='wheel'){ // Full Send flip mitts: each fist is a little spoked wheel
+      rect(g,base,l-1.8,-1,2.4,2);rect(g,ink,l-1.8,-1.1,.6,2.2);
+      circle(g,'#15151c',l+1.4,0,1.9);circle(g,'#c6ccd6',l+1.4,0,1.35);circle(g,base,l+1.4,0,1.05);
+      for(let i=0;i<3;i++){const a=i*Math.PI/3+.4;line(g,'#c6ccd6',.22,[l+1.4-Math.cos(a)*1,-Math.sin(a)*1],[l+1.4+Math.cos(a)*1,Math.sin(a)*1]);}
+      circle(g,accent,l+1.4,0,.42);return;
+    }
     if(kind==='claws'){
       poly(g,base,[l-2,-1],[l,-2.3],[l+2.9,-2.1],[l+3.5,-.8],[l+.7,-.4],[l+3.1,.7],[l+2.2,2.1],[l,2.1],[l-1.7,1.1]);
       poly(g,ink,[l-1.3,-.7],[l,-1.7],[l+2.5,-1.6],[l+2.8,-1],[l+.3,-.9]);rect(g,accent,l-2,-1.2,.7,2.4);return;
@@ -231,3 +243,43 @@ export function drawWearItem(g: G, slot: WearSlot, look: WearLook, t: number) {
   else if(slot==='eyewear'){g.save();g.translate(-1,-3);g.scale(1.7,1.7);drawEyewear(g,look);g.restore();}
   else drawBack(g,look,[0,1],[0,-7],t,6);
 }
+
+/** Full Send jet wings, drawn level with the world (not along the spine) so the jets always blow straight back:
+ *  a swept wing off each shoulder blade with a lit leading edge, a winglet, and a turbojet slung under it whose
+ *  flame and the wingtip contrails grow with speed. */
+function drawJetWings(g: G, base: string, ink: string, accent: string, hip: P, shoulder: P, t: number, speed: number) {
+  const rx = hip[0] + (shoulder[0] - hip[0]) * 0.72, ry = hip[1] + (shoulder[1] - hip[1]) * 0.72;
+  const k = Math.min(1, speed / 9), fl = Math.sin(t * 31) * 0.4 + Math.sin(t * 17) * 0.3;
+  const wing = (dx: number, dy: number, body: string, edge: string, near: boolean) => {
+    const P = (x: number, y: number): P => [rx + dx + x, ry + dy + y];
+    const outline: P[] = [P(1.6, -1), P(-12.6, -5.6), P(-13.6, -8.8), P(-14.8, -5.2), P(-4.4, 0.6), P(-0.6, 1)];
+    g.strokeStyle = ink; g.lineWidth = 0.5; g.beginPath(); outline.forEach((q, i) => (i ? g.lineTo(...q) : g.moveTo(...q))); g.closePath(); g.stroke();
+    poly(g, body, ...outline);
+    if (!near) return;
+    line(g, edge, 0.7, P(1.4, -1.1), P(-12.6, -5.8)); // leading edge catches the light
+    line(g, ink, 0.3, P(-3, -0.6), P(-10.4, -3.8)); // panel line
+    poly(g, accent, P(-9.6, -4.4), P(-11.4, -5.2), P(-12.4, -4), P(-10.6, -3.3)); // a stripe near the tip
+    poly(g, accent, P(-13.6, -8.8), P(-12.6, -5.6), P(-13.4, -5.4)); // winglet edge
+    if (k > 0.5) { g.globalAlpha = (k - 0.5) * 0.9; line(g, '#ffffff', 0.35, P(-13.6, -8.8), P(-13.6 - 8 - speed * 1.2, -8.9)); g.globalAlpha = 1; } // contrail
+  };
+  const jet = (cx: number, cy: number, s: number) => {
+    const f = (1.4 + 9 * k + fl) * s;
+    if (speed > 0.6) {
+      g.globalAlpha = 0.85; poly(g, '#ff6a1a', [cx - 2.2 * s, cy - 0.85 * s], [cx - 2.2 * s - f, cy], [cx - 2.2 * s, cy + 0.85 * s]);
+      poly(g, '#ffd23b', [cx - 2.2 * s, cy - 0.5 * s], [cx - 2.2 * s - f * 0.6, cy], [cx - 2.2 * s, cy + 0.5 * s]);
+      poly(g, '#fffbe6', [cx - 2.2 * s, cy - 0.25 * s], [cx - 2.2 * s - f * 0.3, cy], [cx - 2.2 * s, cy + 0.25 * s]);
+      if (k > 0.6) for (let i = 1; i <= 2; i++) circle(g, '#ffffffcc', cx - 2.2 * s - f * 0.22 * i, cy, 0.3 * s);
+      g.globalAlpha = 1;
+    }
+    oval(g, '#3c4256', cx, cy, 2.4 * s, 0.95 * s); oval(g, '#8a92a6', cx + 0.3 * s, cy - 0.35 * s, 1.8 * s, 0.3 * s);
+    oval(g, '#15151c', cx + 2.2 * s, cy, 0.35 * s, 0.85 * s); rect(g, '#c6ccd6', cx + 1.7 * s, cy - 0.95 * s, 0.4 * s, 1.9 * s); // intake lip
+    rect(g, '#2a2f40', cx - 2.5 * s, cy - 0.7 * s, 0.5 * s, 1.4 * s); // nozzle
+  };
+  wing(1.4, -2.2, shadeHex(base, 0.62), ink, false); jet(rx - 5.2 + 1.4, ry - 1.4 - 2.2, 0.8); // far side
+  line(g, '#2a2f40', 0.8, [rx + 1, ry - 1.2], [rx - 0.6, ry + 1.6]); // harness strap
+  wing(0, 0, base, '#ffffff', true); jet(rx - 6.4, ry + 0.2, 1);
+}
+const shadeHex = (hex: string, f: number) => {
+  const n = parseInt(hex.slice(1, 7), 16), c = (v: number) => Math.max(0, Math.min(255, Math.round(v * f)));
+  return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => c(v).toString(16).padStart(2, '0')).join('')}`;
+};

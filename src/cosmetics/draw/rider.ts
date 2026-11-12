@@ -5,7 +5,7 @@ import { drawCape, drawTorso, legsOf } from './jersey';
 import { circle, joint, line, poly, rect, shade, SKIN, TAU, type G, type P } from './prims';
 import { drawPet, FLIERS, FLY_AT, RUN_AT, type PetCtx } from './pets';
 import { drawTrail } from './trails';
-import { bottomColors, bottomLength, drawBack, drawBottomDetail, drawHipWear, drawEyewear, drawFootwear, drawGloves, resolveWear } from './outfit';
+import { bottomColors, bottomLength, drawBack, drawBackFront, drawBottomDetail, drawHipWear, drawEyewear, drawFootwear, drawGloves, resolveWear } from './outfit';
 import { drawCensor } from './censor';
 
 export interface RiderOpts {
@@ -219,6 +219,7 @@ function bodyShapes(c: BikeCtx, look: RiderLook, def: BikeDef, who: 'rider' | 's
   drawHipWear(g, outfit?.bottoms, hip, t);
   limb(g, SKIN, sh, [head[0] - 0.5, head[1] + 2], 1.8);
   drawTorso(g, j, hip, sh, t);
+  if (who === 'rider' && outfit?.back) drawBackFront(g, outfit.back, hip, sh, t, c.speed);
   const elbow = joint(sh, def.hand, 4.1, 4.3, -1);
   limb(g, SKIN, sh, elbow, 2.4, 2.1);
   limb(g, SKIN, elbow, def.hand, 2.1, 1.7);

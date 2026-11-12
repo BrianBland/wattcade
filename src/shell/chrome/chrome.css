@@ -381,7 +381,7 @@
 .chrome-ui.menu .xp.compact {font-size:11px;gap:6px}.chrome-ui.menu .xp.compact>b {white-space:nowrap;flex:none}
 .chrome-ui.menu .xp.compact>.dim {display:none}.chrome-ui.menu .xp.compact .bar {min-width:40px}
 @media(max-width:760px){.chrome-ui.menu .arcade-actions {flex-basis:100%}.chrome-ui.menu .topbar {flex-wrap:wrap}.chrome-ui.menu .topbar>.spacer {display:block}}
-@media(max-height:550px) and (min-width:761px){.chrome-ui.menu .topbar {flex-wrap:nowrap;overflow:visible}.chrome-ui.menu .topbar>.who {min-width:110px;width:130px}.chrome-ui.menu .arcade-actions {flex-basis:auto}}
+@media(max-height:550px) and (min-width:761px){.chrome-ui.menu .topbar {flex-wrap:nowrap;overflow:visible}.chrome-ui.menu .who {min-width:110px;width:130px}.chrome-ui.menu .arcade-actions {flex-basis:auto}}
 .chrome-ui.menu .projector,.chrome-ui.menu .projector.on {filter:none;animation:none}
 @media(max-width:700px){.chrome-ui.control-intro .controls-close {margin-left:auto}}
 .mp-mobile-nav {display:none}
@@ -463,13 +463,6 @@
 .chrome-ui.menu .gc-info h3 {font-size:24px}
 .chrome-ui.menu .gc-info .blurb {font-size:14px}
 .chrome-ui.menu .gc-stats {font-size:12px}
-/* The arcade toolbar is navigation, not a row of decisions: flat labels with full 44px targets,
-   so the keys stay legible and more of them fit before the strip scrolls. */
-.chrome-ui.menu .topbar .btn {font-size:13px;color:var(--ui-color-muted)}
-.chrome-ui.menu .topbar .ui-button.ui-button.ui-button::before {background:transparent;box-shadow:none}
-.chrome-ui.menu .topbar .ui-button.ui-button.ui-button:hover::before {background:var(--ui-color-hover)}
-.chrome-ui.menu .topbar .btn.reward {color:var(--ui-color-violet-text)}
-.chrome-ui.menu .topbar .btn.reward::after {content:'';width:6px;height:6px;margin-left:6px;background:var(--ui-color-violet)}
 .carousel-caption {display:flex;flex-wrap:wrap;gap:4px 20px;justify-content:center;align-self:center;padding:4px 12px;background:color-mix(in srgb,var(--ui-color-background) 72%,transparent);color:var(--ui-color-muted);font:500 12px/1.4 var(--ui-font-family);flex:none}
 .carousel-caption span:nth-child(2) {color:var(--ui-color-gold);font-variant-numeric:tabular-nums}
 /* Tabs are attached to their content; their underline owns selection. */
@@ -537,5 +530,36 @@
 .chrome-history .ride-history-dialog {width:min(600px,100%);min-width:0;max-height:calc(100dvh - 24px);overflow:auto;padding:24px;background:var(--ui-color-background);color:var(--ui-color-text);border:0;border-top:2px solid var(--ui-color-gold);border-radius:0;box-shadow:none}
 .chrome-history h2 {font:750 28px/1.2 var(--ui-font-family);letter-spacing:-.03em;color:var(--ui-color-text);text-transform:none;text-shadow:none}
 .chrome-history .ui-button {margin-top:20px}
-/* Give the toolbar the whole row; an auto margin right-aligns it but collapses (stays scrollable) on overflow. */
-@media(min-width:761px){.chrome-ui.menu .topbar>.spacer {display:none}.chrome-ui.menu .arcade-actions>:first-child {margin-left:auto}}
+
+/* Arcade top bar: a solid console strip. Rider on the left; places (raised keys), ride toggles (quiet
+   labels) and help scroll if needed; End ride is pinned at the right and never scrolls away. */
+.chrome-ui.menu .topbar {display:flex;flex-wrap:nowrap;align-items:center;gap:12px;padding:6px 8px 6px 6px;background:color-mix(in srgb,var(--ui-color-background) 84%,transparent);border:0;border-bottom:2px solid var(--ui-color-key-edge);box-shadow:inset 0 1px #ffffff14}
+.chrome-ui.menu .topbar>.spacer {display:none}
+.chrome-ui.menu .rider-chip {display:flex;align-items:center;gap:10px;flex:none;min-width:0;padding-right:12px;border-right:1px solid var(--ui-color-line)}
+.chrome-ui.menu .arcade-actions {flex:1;min-width:0;gap:6px;padding:4px}
+.chrome-ui.menu .topbar .btn {font-size:13px;color:var(--ui-color-text)}
+.chrome-ui.menu .topbar .btn .count {color:var(--ui-color-muted);font-variant-numeric:tabular-nums;margin-left:4px}
+.chrome-ui.menu .topbar .tb-divider {flex:none;width:1px;height:24px;margin:0 4px;background:var(--ui-color-line)}
+.chrome-ui.menu .topbar .ui-button.ui-button.ui-button.tb-toggle::before {background:transparent;box-shadow:none}
+.chrome-ui.menu .topbar .ui-button.ui-button.ui-button.tb-toggle:hover::before {background:var(--ui-color-hover)}
+.chrome-ui.menu .topbar .btn.tb-toggle {color:var(--ui-color-muted)}
+.chrome-ui.menu .topbar .btn.tb-toggle b {color:var(--ui-color-text);margin-left:4px}
+.chrome-ui.menu .topbar .btn.reward {color:var(--ui-color-violet-text)}
+.chrome-ui.menu .topbar .badge {display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:6px;padding:0 4px;background:var(--ui-color-violet);color:var(--ui-color-background);font:800 11px/1 var(--ui-font-numeric)}
+.chrome-ui.menu .topbar .btn.end-ride {flex:none;margin-left:auto;padding:8px 14px;font-weight:750}
+.chrome-ui.menu .topbar .end-ride .stop {width:10px;height:10px;margin-right:8px;background:var(--ui-color-orange);box-shadow:inset 0 -2px #0004}
+@media(max-width:760px){
+ .chrome-ui.menu .topbar {flex-wrap:wrap;gap:6px 8px;padding:6px}
+ .chrome-ui.menu .rider-chip {flex:1;border-right:0;padding-right:0}
+ .chrome-ui.menu .arcade-actions {order:3;flex-basis:100%;padding:2px}
+ .chrome-ui.menu .topbar .tb-divider,.chrome-ui.menu .topbar .btn .count {display:none}
+}
+@media(max-height:550px) and (min-width:761px){.chrome-ui.menu .topbar {gap:8px;padding:4px 6px}.chrome-ui.menu .rider-chip {padding-right:8px}}
+/* End ride confirmation. */
+.end-ride-confirm.overlay-modal {background:color-mix(in srgb,var(--ui-color-background) 70%,transparent);-webkit-backdrop-filter:none;backdrop-filter:none;padding:12px}
+.end-ride-confirm .modal {width:min(460px,100%);min-width:0;gap:0;padding:24px;background:var(--ui-color-background);border:0;border-top:2px solid var(--ui-color-orange);border-radius:0;box-shadow:none;animation:none}
+.chrome-ui.end-ride-confirm h2 {font:900 34px/1.1 var(--ui-font-family);letter-spacing:-1px;margin:6px 0 10px;color:var(--ui-color-text)}
+.chrome-ui.end-ride-confirm p {margin:0 0 20px;color:var(--ui-color-muted);font:14px/1.5 var(--ui-font-family)}
+.end-ride-actions {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.end-ride-actions .btn {min-width:0;min-height:48px;justify-content:center}
+@media(max-width:400px){.end-ride-actions {grid-template-columns:1fr}}

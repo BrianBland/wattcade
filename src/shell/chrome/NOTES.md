@@ -15,3 +15,4 @@
 - Arcade toolbar scrolls horizontally, focused controls scroll into view, carousel fits its cards immediately below the toolbar (short landscape uses a side-by-side card), cards share a vertical centerline, and help uses a viewport-positioned tooltip outside clipping containers. Game-owned menus stay unchanged.
 
 - Post-#203 readability refinements: explicit absent/partial/failed device states, bounded square rider portraits, equal stepper/choice columns, visible carousel instructions, gold-selected rewards with violet labels.
+- Arcade top bar: one End ride (no Switch rider). `EndRideConfirm` states the 2-minute save rule; saved rides go summary → rewards → rider picker, short/demo rides go straight to the picker.

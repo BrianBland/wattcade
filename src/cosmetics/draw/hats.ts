@@ -4,7 +4,7 @@ import { circle, line, oval, poly, quad, rect, shade, SKIN, TAU, type G } from '
 export interface HatCtx { t: number; color: string; speed: number; crank: number }
 
 /** Hats that hide the hair/face (the head isn't drawn under them). */
-export const FULL_HEAD = new Set(['pumpkin', 'knight', 'football', 'bucket', 'dino']);
+export const FULL_HEAD = new Set(['pumpkin', 'knight', 'football', 'bucket', 'dino', 'astronaut']);
 
 /**
  * Draws hat `id` around a head centred at (0,0), radius 2.4, facing +x. Unknown ids draw the road helmet.
@@ -123,6 +123,12 @@ export const HATS: Record<string, (g: G, c: HatCtx, col: string) => void> = {
   },
   sweatband: (g, _c, col) => { line(g, col, 1.1, [-2.4, -1.2], [2.4, -1.4]); line(g, '#f5f5fa', 0.3, [-2.2, -1.3], [2.3, -1.4]); },
   sunhat: (g) => { oval(g, '#e6c27a', 0, -2.1, 4.8, 1); oval(g, '#e6c27a', 0, -2.3, 2.2, 2.2, 0, true); rect(g, '#e8322b', -2.2, -2.9, 4.4, 0.6); },
+  astronaut: (g, c, col) => { // Full Send moonshot: white shell, gold sun visor that catches the light, a whip antenna
+    circle(g, '#f2f4f8', -0.2, -0.6, 3.4); rect(g, '#c6ccd6', -3.2, 2.2, 6, 1.2); rect(g, col, -3.4, -0.9, 1, 2.4);
+    oval(g, '#c8901a', 1, -0.7, 2.2, 1.7); oval(g, '#ffd86a', 0.7, -1.2, 1.3, 0.8);
+    rect(g, '#ffffffcc', 1.4 + Math.sin(c.t * 1.7) * 0.4, -1.8, 0.6, 0.5);
+    line(g, '#9aa0aa', 0.3, [-1.8, -3.6], [-2.6, -6]); circle(g, Math.floor(c.t * 2) % 2 ? '#ff4d6d' : '#7a2030', -2.6, -6.2, 0.45);
+  },
   bubble: (g) => { g.fillStyle = '#d7f1ff55'; g.strokeStyle = '#e8f6ff'; g.lineWidth = 0.6; g.beginPath(); g.arc(0, 0, 4, 0, TAU); g.fill(); g.stroke(); rect(g, '#ffffffaa', 1, -3, 1.2, 1.2); rect(g, '#c6ccd6', -2.6, 3.2, 5.2, 0.9); },
   headphones: (g, _c, col) => { g.strokeStyle = '#2a2a3a'; g.lineWidth = 0.6; g.beginPath(); g.arc(-0.2, -0.2, 2.9, Math.PI * 1.05, Math.PI * 1.95); g.stroke(); oval(g, col, -0.6, 0.2, 1, 1.4); oval(g, '#2a2a3a', -0.6, 0.2, 0.5, 0.9); },
   fishing: (g, c) => { oval(g, '#b7a77a', -0.2, -1.6, 2.6, 2, 0, true); poly(g, '#a8986a', [-3.6, -1.2], [3.4, -1.2], [2.6, -2], [-2.8, -2]); const s = Math.sin(c.t * 3) * 0.5; line(g, '#9a9aa8', 0.2, [2, -1.4], [3 + s, 0.6]); circle(g, '#e8322b', 3 + s, 0.9, 0.4); },

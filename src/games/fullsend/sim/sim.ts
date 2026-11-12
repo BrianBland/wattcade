@@ -1,9 +1,9 @@
 import type { GameContext, GameHud, GameSim, Seconds } from '../../../contracts';
 import { BIOMES, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
-import { chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
-import { AIR_CELL, airItemAt, bumpH, takesOff, windAt, type AirKind } from './track';
+import { CHASER_REACH, chaserFor, MEDAL_FTP, pieceTitle, TOUR_IDS, TOURS, tourMinutes, type ChaserKind, type PieceKind, type Tour, type TourSet } from './tour';
+import { AIR_CELL, airItemAt, kickerLip, bumpH, MEGA, megaSlope, takesOff, windAt, type AirKind } from './track';
 import { landingGrade, type Landing } from './physics';
-import { leapRange, loopExit, loopRadius, loopSpeed, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
+import { leapRange, MEDAL_NAMES, medalFor, powerZone, smashCount, spool, targetSpeed, type Medal } from './physics';
 
 export interface FullSendOpts {
   seed?: number; tour?: string; terrainSeed?: number;
@@ -30,10 +30,12 @@ const TIER_UP: Record<Tier, Tier> = { ground: 'sky', sky: 'moon', moon: 'moon', 
 export interface PieceView {
   kind: PieceKind; biome: BiomeId; title: string; finale: boolean;
   x0: number;
-  /** leap: gap width · smash: wall length · loop: radius · dive: tunnel length · outrun: 0. */
+  /** leap: gap width · smash: wall length · loop: radius · dive: tunnel length · outrun: the bolt-hole cave's length. */
   len: number;
   n: number; spacing: number; count: number; hitAt: number[]; toppledAt: number;
   chaser: ChaserKind; gap: number; caught: number; caughtAt: number;
+  /** outrun: when the chaser slammed into the cave mouth (sim time), or -99. */
+  crashAt: number;
   air: number; surfaced: boolean;
   /** Live score as an FTP fraction (built-up speed, or the mean so far for dive/outrun). */
   live: number;
@@ -74,6 +76,8 @@ export interface FullSendSnapshot {
   tier: Tier; lift: number; alt: number; toTier: Tier | null; warp: number;
   /** While falling off a sky island or the moon: where the edge is (no road beyond it). */
   edgeX: number | null;
+  /** Lip x of the mega ramp that launches you up a layer (it stays in the scene until you've left it behind), or null. */
+  mega: number | null;
   /** The layer you're falling from (re-entry from the moon burns), when you last hit or left water, the jet (on / held but
    *  under the power line), the heights rings and stars float at on this layer (null = none here), and what you've caught. */
   fromTier: Tier | null; splashAt: number; jet: 'on' | 'weak' | null; jetFtp: number;
@@ -92,11 +96,42 @@ export interface FullSendSnapshot {
   wind: number; crashAt: number;
   /** Started from the overworld (the renderer eases in from its framing). */
   fromLobby: boolean;
+  /** The last landed flip and how long ago; rotation from leaning since takeoff (rad, + = back). */
+  flip: { name: string; age: number } | null; spun: number;
+  /** In a leap: what's leaping out of the pit (world m), when one last hit you, and the bullet-time factor (1 = normal). */
+  hazards: HazardView[]; scorchAt: number; leapSlow: number;
+  /** Speed round a loop (m/s; 0 when not in one). */
+  loopV: number;
   hooks: Record<string, unknown>;
 }
 
-const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Backflip', 'Seat Grab', 'Heel Clicker'];
+/** Something that leaps out of a canyon pit at the rider (fireball, ice shard, piranha), peaking on your arc. */
+export interface Hazard { x: number; t0: number; vy: number; g: number; hit: boolean }
+export interface HazardView { x: number; y: number; vy: number; hit: boolean }
+/** Hazards for a leap from `x0` across `len` at launch speed (vx, vy0) with gravity g: each peaks where your arc crosses it,
+ *  ± a bit, so holding your line gets you hit and steering round them doesn't. Pure and seeded. */
+export function leapHazards(n: number, x0: number, len: number, vx: number, vy0: number, g: number, seed: number, floorY = -10): Hazard[] {
+  const out: Hazard[] = [], hg = 30;
+  for (let i = 0; i < n; i++) {
+    const h = (k: number) => { const q = Math.sin((seed + i * 97.13 + k * 13.7) * 12.9898) * 43758.5453; return q - Math.floor(q); };
+    const x = x0 + len * (0.25 + 0.5 * (n === 1 ? 0.5 : i / (n - 1))) + (h(1) - 0.5) * len * 0.08;
+    const tx = (x - x0) / vx, ry = vy0 * tx - (g * tx * tx) / 2 + (h(2) - 0.5) * 3; // your arc there, give or take
+    const rise = Math.sqrt((2 * Math.max(4, ry - floorY)) / hg);
+    out.push({ x, t0: tx - rise, vy: hg * rise, g: hg, hit: false });
+  }
+  return out;
+}
+export const hazardY = (z: Hazard, t: number, floorY = -10) => floorY + z.vy * (t - z.t0) - (z.g * (t - z.t0) ** 2) / 2;
+
+/** The far rim's landing ramp drops this steeply (rad); the renderer draws it to match. */
+export const LANDING_RAMP_SLOPE = 0.3;
+
+const TRICKS = ['No-Hander', 'Superman', 'Can-Can', 'Tabletop', 'Seat Grab', 'Heel Clicker'];
+/** Name for a landed flip: n full turns, back (nose up, positive pitch) or front. */
+export const flipName = (n: number, back: boolean) => `${n >= 3 ? 'Triple ' : n === 2 ? 'Double ' : ''}${back ? 'Backflip' : 'Frontflip'}`;
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
+/** An angle wrapped to (−π, π]. */
+const wrapPi = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
 const medalScore = (m: string) => [...m].reduce((a, c) => a + ({ G: 3, S: 2, B: 1 } as Record<string, number>)[c] || a, 0);
 
 /** Full Send: a rocket-bike sprint workout. A fixed tour of set pieces; each one is a sprint, recoveries in between. */
@@ -108,15 +143,23 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     cruiseCap: T.num('cruiseCap', 0.85, 0.5, 1.5, 0.05, 'Outside sprints, power above this FTP fraction adds no speed (recovery stays recovery)'),
     approachS: T.num('approachS', 20, 5, 60, 1, 'Seconds of warning before each sprint'),
     tourScale: T.num('tourScale', 1, 0.1, 2, 0.05, 'Scales warm-up, recovery and cool-down lengths (not the sprints)'),
-    gravity: T.num('gravity', 80, 9.8, 160, 1, 'Game gravity (m/s²) for leaps'),
+    gravity: T.num('gravity', 28, 9.8, 160, 1, 'Game gravity (m/s²) for leaps: lower = longer, higher jumps'),
+    leapSlowMo: T.num('leapSlowMo', 0.3, 0.1, 1, 0.05, 'Bullet time at the top of a leap (eases in from the lip and back out for the landing)'),
+    leapDodge: T.num('leapDodge', 6, 0, 15, 0.5, 'How far (m) you can steer up or down off your arc in a leap, to dodge what comes out of the pit'),
+    leapHazards: T.num('leapHazards', 3, 0, 6, 1, 'Hazards that leap out of the pit at you (fireballs, ice shards, piranhas)'),
     launchDeg: T.num('launchDeg', 35, 15, 55, 1, 'Ramp angle at the canyon lip'),
     slowMo: T.num('slowMo', 0.45, 0.15, 1, 0.05, 'Slow-motion factor for leaps, loops and smashes'),
     smashN: T.num('smashN', 36, 3, 60, 1, 'Hay-bale columns (or crates, stalls…) in a smash wall'),
     smashHoldS: T.num('smashHoldS', 6, 0, 20, 0.5, 'Seconds the debris stuck to you keeps dragging after a smash'),
-    loopGravity: T.num('loopGravity', 36, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
+    loopGravity: T.num('loopGravity', 24, 6, 120, 1, 'Gravity in loops (lower = bigger loop, longer ride round it)'),
+    loopSpoolS: T.num('loopSpoolS', 0.7, 0.3, 5, 0.1, 'In a loop your pedalling drives the bike: seconds for speed to follow your power (stop pedalling and you fall off)'),
     loopSlowMo: T.num('loopSlowMo', 0.6, 0.2, 1, 0.05, 'Slow-motion factor in loops (stretches the ride round so the trainer grade can follow)'),
     chaseGap: T.num('chaseGap', 18, 5, 60, 1, 'Starting gap (m) to whatever is chasing you in an Outrun'),
     chaseMaxGap: T.num('chaseMaxGap', 24, 10, 80, 1, 'It never falls further behind than this (m), so it stays on screen'),
+    caveLen: T.num('caveLen', 40, 20, 80, 1, 'Outrun: how deep the bolt-hole cave at the end is (m)'),
+    caveStop: T.num('caveStop', 0.6, 0.2, 0.95, 0.05, 'Outrun: how deep into the cave you coast to a stop (fraction of its length)'),
+    caveCreep: T.num('caveCreep', 4, 0, 10, 0.5, 'Outrun: rolling speed you keep in the cave (m/s)'),
+    caveChargeS: T.num('caveChargeS', 1.6, 0.6, 4, 0.1, 'Outrun: seconds for the chaser to reach the cave mouth after you duck in'),
     airMargin: T.num('airMargin', 1.08, 1, 1.5, 0.01, 'Dive air supply relative to the time a bronze pace needs'),
     hillStretch: T.num('hillStretch', 6, 1, 20, 0.5, 'Horizontal stretch of the warm-up hills at rocket speed'),
     maxGrade: T.num('maxGrade', 3, 0, 8, 0.5, 'Steepest cruising grade %, sent to the trainer in sim mode'),
@@ -129,6 +172,8 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     hopGravity: T.num('hopGravity', 30, 5, 80, 1, 'Gravity for hops off bumps: lower = more airtime, and you take off at lower speeds'),
     slopeGravity: T.num('slopeGravity', 15, 0, 40, 1, 'How much slopes speed you up or slow you down on top of your power (m/s² per unit slope)'),
     leanRate: T.num('leanRate', 3.5, 0.5, 8, 0.25, 'How fast you can lean the bike in the air (rad/s at full paddle / D-pad)'),
+    flipRate: T.num('flipRate', 7, 2, 14, 0.5, 'Hold a full lean and the bike tucks into a flip: rotation speeds up to this (rad/s)'),
+    flipFlow: T.num('flipFlow', 0.05, 0, 0.3, 0.01, 'Flow (speed bonus) per full flip on a clean landing'),
     flowMax: T.num('flowMax', 0.3, 0, 1, 0.05, 'Most extra cruising speed clean landings can build (fraction)'),
     flowPerfect: T.num('flowPerfect', 0.08, 0, 0.3, 0.01, 'Speed bonus for a perfect landing'),
     flowGood: T.num('flowGood', 0.03, 0, 0.3, 0.01, 'Speed bonus for a good landing'),
@@ -162,7 +207,10 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     ringLift: T.num('ringLift', 0.12, 0, 1, 0.01, 'Lift for a ring (on the moon: extra moon time, as a fraction of moonS)'),
     starLift: T.num('starLift', 0.03, 0, 0.5, 0.01, 'Lift for a star'),
     chainStep: T.num('chainStep', 0.15, 0, 1, 0.05, 'Each clean landing in a row multiplies the next one\'s flow by this much more (up to 5 in a row)'),
+    moonFallM: T.num('moonFallM', 170, 45, 400, 5, 'How far you fall off the moon (re-entry) before the sea (m)'),
+    reentryV: T.num('reentryV', 38, 15, 80, 1, 'Re-entry: top falling speed off the moon (m/s), so the burn lasts'),
     moonExitVy: T.num('moonExitVy', 25, 5, 80, 1, 'Launch speed (m/s up) off the moon when your moon time runs out'),
+    megaLead: T.num('megaLead', 220, 80, 600, 10, 'How far ahead (m) the mega ramp appears once you are due to go up a layer (or off the moon)'),
     cadenceSpool: T.num('cadenceSpool', 0.5, 0, 2, 0.05, 'How much cadence speeds up the rocket (spool time × 90 rpm / cadence, softened by this)'),
     windGrade: T.num('windGrade', 1.5, 0, 5, 0.25, 'Grade % a full headwind adds (a tailwind takes it off) on the cruise'),
     windSpeed: T.num('windSpeed', 0.06, 0, 0.3, 0.01, 'Speed change (fraction) from a full head- / tailwind on the cruise'),
@@ -201,7 +249,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let cur: BiomeId = lobbyBiome ?? tour.sets[0].biome, next: BiomeId = cur, mix = 0;
   let piece: PieceView | null = null;
   let fracSum = 0, fracN = 0;
-  let loopV0 = 0, loopPhi = 0, loopDir = 1, loopOff: ReturnType<typeof loopExit> = null;
+  let loopV0 = 0, loopV = 0, loopPhi = 0, loopDir = 1;
   let fallFromX = 0, fallFromY = 0, rescueToX = 0;
   let trick: { name: string; t0: number } | null = null, trickCount = 0, style = 0;
   let last: (SetResult & { at: number }) | null = null;
@@ -215,10 +263,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   let pendingMedal: Medal = 0;
   /** Altitude: layer, lift meter, where we're flying to (or falling to), the scenery we're leaving, and stats. */
   let tier: Tier = 'ground', lift = 0, toTier: Tier | null = null, plunging = false, transFrom: BiomeId = cur, transMix = 0, warp = 0, tierT = 0, edgeX: number | null = null;
+  let megaX: number | null = null, megaArmed = false; // the mega ramp ahead (or just behind) and whether it still launches you
   let launchVy = 1, skyVisits = 0, moonVisits = 0, splashdowns = 0, peakAlt = 0;
   let fromTier: Tier | null = null, splashAt = -99, jet: 'on' | 'weak' | null = null, jetS = 0, moonDoneAt = -1;
+  let chaseX = 0, chaseV = 0, caveDecel = 0; // outrun payoff: the chaser charging the cave mouth
   const caught = new Set<number>(); const got: Array<{ id: number; kind: AirKind; at: number }> = [];
   let rings = 0, stars = 0, chain = 0, longestChain = 0, prevX = 0, wantPower: number | undefined;
+  /** Rotation from leaning since takeoff (rad, + = back), how long a full lean has been held, and the last landed flip. */
+  let spun = 0, leanHeld = 0, flips = 0, flip: { name: string; at: number } | null = null;
+  /** In a leap: the ballistic height (y adds your steering), steering offset, flight time (bullet-time seconds), what's
+   *  coming out of the pit, and hits taken. */
+  let leapY = 0, dodge = 0, leapT = 0, hazards: Hazard[] = [], scorched = 0, scorchAt = -99;
 
   const scale = () => tun.tourScale();
   /** Branch taken at each set's fork (0 = the tour's plan, 1 = its alternative). */
@@ -328,6 +383,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
   /** Run out of lift up high: drop off the edge, fall past the clouds, and splash into the sea. */
   function plunge(now: number) {
     transFrom = shown(); fromTier = tier; toTier = 'sea'; transMix = 0; plunging = true; edgeX = x;
+    megaArmed = false; megaX = null;
     setMode('hop'); vy = 4; hopT0 = now; bouncing = false; landGrade = null;
   }
   /** Moon time's up: the next ramp throws you off the moon, and it's a long way down (re-entry, then the sea). */
@@ -351,13 +407,13 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     const biome: BiomeId = lay === 'sky' || lay === 'moon' ? tierBiome(lay) : s.biome;
     const g = tun.gravity(), vB = targetSpeed(t[0], speedPerFtp()) * 0.97;
     const len = s.kind === 'leap' ? leapRange(vB, tun.launchDeg(), g)
-      : s.kind === 'loop' ? loopRadius(vB, tun.loopGravity())
+      : s.kind === 'loop' ? (0.26 * vB * vB) / tun.loopGravity() // big: bronze power gets you round if you keep pedalling; coasting doesn't
         : s.kind === 'dive' ? vB * s.effortS
-          : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : 0;
+          : s.kind === 'smash' ? (tun.smashN() - 1) * 2.4 + 4 : s.kind === 'outrun' ? tun.caveLen() : 0;
     piece = {
       kind: s.kind, biome, title: pieceTitle(s.kind, biome), finale: !!s.finale,
       x0: x + 1e4, len, n: s.kind === 'smash' ? Math.round(tun.smashN()) : 0, spacing: 2.4, count: 0, hitAt: [], toppledAt: -1,
-      chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, air: 1, surfaced: false,
+      chaser: chaserFor(biome), gap: tun.chaseGap(), caught: 0, caughtAt: -99, crashAt: -99, air: 1, surfaced: false,
       live: 0, medal: -1, th: t,
     };
     fracSum = 0; fracN = 0;
@@ -369,7 +425,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     piece.medal = medal;
     const r: SetResult = { kind: piece.kind, biome: piece.biome, title: piece.title, medal, detail };
     results.push(r); last = { ...r, at: ctx.clock.now() };
-    ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, finale: piece.finale } });
+    ctx.emit({ type: 'setPiece', data: { kind: piece.kind, biome: piece.biome, medal, caught: piece.caught, finale: piece.finale } });
   }
 
   function endPayoff() {
@@ -390,13 +446,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'leap') {
       const a = (tun.launchDeg() * Math.PI) / 180;
       vx = v * Math.cos(a); vy = v * Math.sin(a); launchX = x; setMode('air');
-      pendingMedal = medal;
+      pendingMedal = medal; leapY = 0; dodge = 0; leapT = 0; spun = 0; pitch = a * 0.5;
+      const pit = piece.biome === 'sky' ? 0 : Math.round(tun.leapHazards());
+      hazards = leapHazards(pit, piece.x0, piece.len, vx, vy, tun.gravity(), terrainSeed % 1000 + setIndex * 7);
     } else if (piece.kind === 'smash') {
       piece.count = smashCount(live / 0.97, piece.th, piece.n);
       pendingMedal = medal; setMode('smash');
     } else if (piece.kind === 'loop') {
-      loopV0 = v; loopPhi = 0; loopDir = 1; loopOff = loopExit(v, piece.len, tun.loopGravity());
-      pendingMedal = loopOff ? 0 : medal; setMode('loop');
+      loopV0 = v; loopV = v; loopPhi = 0; loopDir = 1;
+      pendingMedal = medal; setMode('loop');
     }
   }
   function payoff(dt: Seconds, now: number) {
@@ -406,15 +464,38 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'leap') {
       const far = piece.x0 + piece.len;
       if (mode === 'air') {
-        x += vx * dts; y += vy * dts; vy -= g * dts; airS += dt;
-        pitch = Math.atan2(vy, vx);
-        if (y <= 0 && x >= far) { // landed on the far rim
-          y = 0; v = Math.hypot(vx, vy) * 0.9; pitch = 0; longestJump = Math.max(longestJump, x - launchX);
+        // bullet time: eases in off the lip, deepest at the top, eases out for the landing
+        const prog = clamp((x - launchX) / Math.max(1, far - launchX), 0, 1);
+        const bt = 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * prog) ** 1.5, dtb = dt * bt;
+        x += vx * dtb; leapY += vy * dtb; vy -= g * dtb; airS += dt; leapT += dtb;
+        // steer: lean back to float up off your arc, forward to drop under it (the arc itself, so where you land, is
+        // set by your sprint); the offset melts away before the landing so nobody misses the rim by steering
+        const lean = opts.autolean ? dodgeFor(prog) : leanInput();
+        const room = 1 - clamp((prog - 0.8) / 0.15, 0, 1);
+        dodge += ((lean * tun.leapDodge() * room) - dodge) * Math.min(1, dt * 3);
+        y = leapY + dodge;
+        const ln = opts.autolean ? 0 : lean;
+        leanStep(ln * 0.6, Math.atan2(vy, vx), dt);
+        if (Math.abs(ln) < 0.1 && leanHeld === 0) pitch += (Math.atan2(vy, vx) * 0.5 - pitch) * 2 * dt; // hands off: the bike settles to match the landing ramp
+        for (const z of hazards) { // what leaps out of the pit
+          if (z.hit) continue;
+          if (Math.abs(z.x - x) < 2.6 && Math.abs(hazardY(z, leapT) - y) < 2.4) {
+            z.hit = true; scorched++; scorchAt = now; crashAt = now; flow = 0; chain = 0; spun = 0;
+            ctx.emit({ type: 'hazard', data: { biome: piece.biome } });
+          }
+        }
+        if (leapY <= 0 && x >= far) { // landed on the far rim: graded against the landing ramp, flips count
+          const lg = landingGrade(wrapPi(pitch + LANDING_RAMP_SLOPE), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
+          y = 0; leapY = 0; dodge = 0; v = Math.hypot(vx, vy) * (lg === 'bad' ? tun.badKeep() : 0.9); longestJump = Math.max(longestJump, x - launchX);
+          landGrade = lg; landAt = now; landImpact = 12;
+          if (lg === 'bad') { bads++; crashAt = now; flow = 0; chain = 0; spun = 0; }
+          else { if (lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect() * 2); } landFlips(2, now); }
+          pitch = 0;
           if (trick) { if (now - trick.t0 >= 0.9) style++; trick = null; }
           finishPiece(pendingMedal, `${Math.round(x - launchX)} m`);
           setMode('road');
           piece.surfaced = true; // reused as "landed"
-        } else if (y < 0 && x < far) { setMode('fall'); }
+        } else if (leapY < 0 && x < far) { setMode('fall'); y = leapY; dodge = 0; }
       } else if (mode === 'fall') {
         x += vx * dts * 0.3; y += vy * dts; vy -= g * dts; pitch += dt * 4;
         if (y < -9 || modeT > 2) { fallFromX = x; fallFromY = y; rescueToX = far + 10; setMode('rescue'); trick = null; }
@@ -455,22 +536,29 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
     if (piece.kind === 'loop') {
       const R = piece.len, g = tun.loopGravity(), dts = dt * tun.loopSlowMo();
       if (mode === 'loop') {
-        const sp = Math.max(loopSpeed(loopV0, R, g, loopPhi), loopOff?.slide ? 2 : 3);
-        loopPhi += (loopDir * sp / R) * dts;
-        if (!loopOff && loopPhi >= Math.PI * 2) {
-          loopPhi = 0; x = piece.x0; y = 0; v = loopV0;
-          finishPiece(pendingMedal, 'all the way round'); setMode('road'); piece.surfaced = true;
-        } else if (loopOff && !loopOff.slide && loopPhi >= loopOff.angle) {
-          vy = 0; setMode('drop');
-        } else if (loopOff?.slide && loopDir > 0 && (loopPhi >= loopOff.angle || sp < 0.5)) {
-          loopDir = -1;
-        } else if (loopDir < 0 && loopPhi <= 0) {
-          loopPhi = 0; v = loopV0 * 0.3; finishPiece(0, 'rolled back'); endPayoff(); return;
+        // you pedal round: speed chases what your power asks for, while gravity pulls back on the way up
+        const vt = targetSpeed(frac, speedPerFtp());
+        piece.live = frac; // the meter shows what you're putting in round the loop
+        if (loopDir > 0) {
+          loopV += ((vt - loopV) / tun.loopSpoolS() - g * Math.sin(loopPhi)) * dts;
+          if (loopV <= 0.5 && loopPhi < Math.PI / 2) { loopDir = -1; loopV = 0; } // never reached the side: roll back
+          else {
+            loopPhi += (Math.max(0.5, loopV) / R) * dts;
+            const grip = (loopV * loopV) / R + g * Math.cos(loopPhi); // < 0 = not fast enough to stick to the roof
+            if (loopPhi > Math.PI / 2 && loopPhi < 1.5 * Math.PI && grip < 0) { vy = 0; setMode('drop'); }
+          }
+        } else {
+          loopV += g * Math.sin(loopPhi) * dts; loopPhi -= (loopV / R) * dts;
+          if (loopPhi <= 0) { loopPhi = 0; x = piece.x0; y = 0; v = Math.max(loopV, loopV0 * 0.3); finishPiece(0, 'rolled back'); endPayoff(); return; }
+        }
+        if (mode === 'loop' && loopPhi >= Math.PI * 2) {
+          loopPhi = 0; x = piece.x0; y = 0; v = Math.max(loopV, loopV0 * 0.8);
+          finishPiece(pendingMedal, 'pedalled round'); setMode('road'); piece.surfaced = true;
         }
         if (mode === 'loop') { x = piece.x0 + R * Math.sin(loopPhi); y = R * (1 - Math.cos(loopPhi)); pitch = loopPhi; }
       } else if (mode === 'drop') {
         vy -= g * dts; y += vy * dts; pitch += dt * 5;
-        if (y <= 0) { y = 0; pitch = 0; v = loopV0 * 0.35; x = piece.x0 + R + 4; finishPiece(0, 'foam pit'); endPayoff(); }
+        if (y <= 0) { y = 0; pitch = 0; v = loopV0 * 0.35; x = piece.x0 + R + 4; finishPiece(0, 'fell off · keep pedalling!'); endPayoff(); }
       } else {
         x += v * dt;
         if (modeT > 0.8) endPayoff();
@@ -482,9 +570,51 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return;
     }
     if (piece.kind === 'outrun') {
-      piece.gap += v * dt; // the chaser trips and gives up
-      if (modeT > 3) endPayoff();
+      // you duck into the cave and coast to a stop in the dark; the chaser, far too big for the hole, charges into the rock
+      v = Math.max(tun.caveCreep(), v - caveDecel * dt);
+      if (piece.crashAt < 0) {
+        const stop = piece.x0 - CHASER_REACH[piece.chaser];
+        chaseX = Math.min(stop, chaseX + chaseV * dt);
+        if (chaseX >= stop) { piece.crashAt = now; ctx.emit({ type: 'chaserCrash', data: { chaser: piece.chaser } }); }
+      }
+      piece.gap = x - chaseX;
+      if ((piece.crashAt >= 0 && now - piece.crashAt > 2.2) || modeT > 6) endPayoff();
     }
+  }
+
+  /** Test/demo pilot in a leap: steer away from the next hazard that would hit you. */
+  function dodgeFor(prog: number): number {
+    if (prog > 0.8) return 0;
+    for (const z of hazards) {
+      if (z.hit || z.x < x - 3 || z.x > x + 18) continue;
+      const tz = leapT + (z.x - x) / Math.max(1, vx), zy = hazardY(z, tz), ry = leapY + vy * (tz - leapT);
+      if (Math.abs(zy - ry) < 5) return zy > ry ? -1 : 1;
+    }
+    return 0;
+  }
+  /** Lean input: left paddle / D-pad left = back (nose up), right = forward (nose down). */
+  function leanInput(): number {
+    const input = ctx.input();
+    return clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
+  }
+  /** Rotate the bike in the air. Hold a full lean and it tucks into a flip (faster, and it stops drifting back toward the
+   *  flight path); `path` is the flight path angle it drifts toward otherwise. */
+  function leanStep(lean: number, path: number, dt: Seconds) {
+    leanHeld = Math.abs(lean) > 0.9 ? leanHeld + dt : 0;
+    const tuck = clamp((leanHeld - 0.25) / 0.3, 0, 1);
+    const d = lean * (tun.leanRate() + (tun.flipRate() - tun.leanRate()) * tuck) * dt;
+    pitch += d; spun += d;
+    pitch += (path + 2 * Math.PI * Math.round((pitch - path) / (2 * Math.PI)) - pitch) * tun.leanDrift() * (1 - tuck) * dt;
+  }
+  /** Count the full turns since takeoff on a clean landing: flow, style, and a call-out. */
+  function landFlips(mult: number, now: number) {
+    const n = Math.floor((Math.abs(spun) + 0.6) / (2 * Math.PI)), back = spun > 0;
+    spun = 0;
+    if (n < 1) return;
+    flips += n; style++;
+    flip = { name: flipName(n, back), at: now };
+    flow = Math.min(tun.flowMax(), flow + tun.flipFlow() * n * mult);
+    ctx.emit({ type: 'trick', data: { name: flip.name, flips: n } });
   }
 
   const sim = {
@@ -514,7 +644,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       // spinning faster spools the rocket faster (form, not watts)
       const cad = bike.cadence3s || 0, cadK = cad > 20 ? 1 + tun.cadenceSpool() * (cad / 90 - 1) : 1;
       const spoolS = tun.spoolS() / clamp(cadK, 0.6, 1.6);
-      if (phase !== 'payoff' || mode === 'road' || mode === 'hop') v = spool(v, targetSpeed(pf, speedPerFtp()) * boost * (1 + wind * tun.windSpeed()), dt, spoolS);
+      if (phase !== 'payoff' || ((mode === 'road' || mode === 'hop') && piece?.kind !== 'outrun')) v = spool(v, targetSpeed(pf, speedPerFtp()) * boost * (1 + wind * tun.windSpeed()), dt, spoolS);
 
       // phase machine
       // a fork in the road: ◀ / ▶ picks the branch while it's open (the plan is the default)
@@ -559,11 +689,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           piece.live = fracSum / fracN;
           const vChase = targetSpeed(piece.th[0], speedPerFtp()) * 0.97;
           piece.gap = Math.min(tun.chaseMaxGap(), piece.gap + (v - vChase) * dt);
+          piece.x0 = x + v * Math.max(0, phaseS() - phaseT); // the cave you're racing for
           if (piece.gap <= 0) { piece.caught++; piece.caughtAt = now; piece.gap = 25; v *= 0.6; }
           if (phaseT >= phaseS()) {
             const m = medalFor(piece.live, piece.th);
             finishPiece(piece.caught ? (Math.min(m, 1) as Medal) : m, piece.caught ? `caught ${piece.caught}×` : `${Math.round(piece.gap)} m clear`);
             piece.surfaced = true; go('payoff'); setMode('road');
+            piece.x0 = x; chaseX = x - piece.gap;
+            caveDecel = (v * v) / (2 * tun.caveStop() * piece.len); // coast to a stop well inside, whatever your speed
+            chaseV = Math.max(vChase, (piece.x0 - CHASER_REACH[piece.chaser] - chaseX) / tun.caveChargeS()); // it lunges for you as you slip inside
           }
         }
       } else if (phase === 'payoff') {
@@ -591,14 +725,15 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         lift = tier === 'moon' ? Math.max(0, lift - dt / tun.moonS()) // the moon is a prize: a fixed stay, then you drift off
           : clamp(lift + ((flow - tun.liftFloor()) / Math.max(0.01, tun.flowMax())) * dt / tun.liftFillS(), 0, 1);
         if (tier === 'sky' && lift <= 0 && mode === 'road') plunge(now);
-        if (tier === 'moon' && lift <= 0) { // out of moon time: the next ramp launches you off (or you drift off anyway)
-          if (moonDoneAt < 0) moonDoneAt = now;
-          else if (mode === 'road' && now - moonDoneAt > 6) leaveMoon(now);
-        }
+        if (tier === 'moon' && lift <= 0 && moonDoneAt < 0) moonDoneAt = now; // out of moon time: a mega ramp throws you off
+        const due = tier === 'moon' ? moonDoneAt >= 0 : tier === 'sea' ? tierT >= tun.seaS() || lift >= 1 : lift >= 1;
+        if (due && !megaArmed && mode === 'road') { megaX = x + tun.megaLead(); megaArmed = true; ctx.emit({ type: 'megaRamp', data: { tier } }); }
       }
+      if (megaArmed && megaX !== null && !cruising() && x < megaX - MEGA.len - MEGA.padFrom) { megaArmed = false; megaX = null; } // a set piece came first
+      if (!megaArmed && megaX !== null && x > megaX + 400) megaX = null;
       if (tier === 'sea' && !toTier && mode === 'road') { // breach back to the road: after a while, or for any set piece but a dive
         const needRoad = !!piece && phase === 'approach' && piece.kind !== 'dive';
-        if ((cruising() && (tierT >= tun.seaS() || lift >= 1)) || needRoad) launchUp(now);
+        if (needRoad) { megaArmed = false; megaX = null; launchUp(now); } // a set piece is coming: straight up, no time for the ramp
       }
 
       // jet (up high only): hold B / up and pedal above the power line, and the rocket lifts you
@@ -619,14 +754,18 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (!selfMoving && (mode === 'road' || mode === 'hop')) {
         x += v * dt;
         const ground = roadH(x), slope = slopeAt(x), gH = tun.hopGravity();
+        if (megaArmed && megaX !== null && x >= megaX && !toTier) { // off the lip of the mega ramp: up a layer (or off the moon)
+          megaArmed = false; y = ground + MEGA.h; pitch = (MEGA.deg * Math.PI) / 180; spun = 0;
+          if (tier === 'moon') leaveMoon(now); else launchUp(now);
+        }
         if (mode === 'road') {
-          if (v > 5 && takesOff(v, curvAt(x), gH * gScale())) {
+          const lipSlope = tun.bumps() && hill > 0.5 ? kickerLip(x - v * dt, x, terrainSeed) : null;
+          const nearMega = megaArmed && megaX !== null && x > megaX - MEGA.len - MEGA.padFrom - 40; // stay down for the run-in
+          if (v > 5 && !nearMega && (lipSlope !== null || takesOff(v, curvAt(x), gH * gScale()))) {
             y = ground;
-            if (cruising() && lift >= 1 && tier !== 'moon' && tier !== 'sea') launchUp(now);
-            else if (tier === 'moon' && moonDoneAt >= 0 && !toTier) leaveMoon(now);
-            else { setMode('hop'); vy = Math.min(tun.hopVyMax(), v * slope * (1 + tun.launchGain() * flow / Math.max(0.01, tun.flowMax()))); hopT0 = now; }
+            { setMode('hop'); vy = Math.min(tun.hopVyMax(), v * (lipSlope !== null ? lipSlope * hill * tun.bumpScale() : slope) * (1 + tun.launchGain() * flow / Math.max(0.01, tun.flowMax()))); hopT0 = now; }
           }
-          else { y = ground; pitch = Math.atan(slope); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
+          else { y = ground; pitch = Math.atan(slope + megaSlope(megaArmed ? megaX : null, x)); v = Math.max(0, v - tun.slopeGravity() * slope * dt); }
         }
         if (mode === 'hop') {
           if (jet === 'on') { if (vy < tun.jetVyMax()) vy = Math.min(tun.jetVyMax(), vy + tun.jetAccel() * dt); jetS += dt; }
@@ -637,15 +776,17 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
             transMix = clamp(1 - vy / launchVy, 0, 1);
             if (fromTier === 'sea' && was < 0.35 && transMix >= 0.35) splashAt = now; // breaking the surface
             if (vy <= 0) {
-              tier = toTier; toTier = null; tierT = 0; transMix = 0; fromTier = null;
+              tier = toTier; toTier = null; tierT = 0; transMix = 0; fromTier = null; megaX = null;
               lift = tier === 'moon' ? 1 : tier === 'sky' ? tun.skyStartLift() : 0;
               if (tier === 'sky') skyVisits++; else if (tier === 'moon') moonVisits++;
               ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
             }
           } else if (plunging) { // falling: past the clouds, into the sea (re-based halfway so the sea floor is under you)
-            transMix = clamp((ground - y) / tun.plungeM(), 0, 1);
-            if (ground - y >= tun.plungeM()) {
-              tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; lift = 0; flow = 0; splashdowns++; warp++; landGrade = null;
+            const fallM = fromTier === 'moon' ? tun.moonFallM() : tun.plungeM(); // from the moon it's a long way down
+            if (fromTier === 'moon') vy = Math.max(vy, -tun.reentryV()); // air drag: a long, steady burn you can watch
+            transMix = clamp((ground - y) / fallM, 0, 1);
+            if (ground - y >= fallM) {
+              tier = 'sea'; toTier = null; plunging = false; transMix = 0; tierT = 0; megaX = null; lift = 0; flow = 0; splashdowns++; warp++; landGrade = null;
               fromTier = null; splashAt = now; chain = 0;
               y = ground + tun.plungeM(); vy = Math.min(vy, -10); bouncing = true; edgeX = null; // the splashdown is never graded
               ctx.emit({ type: 'biomeReached', data: { biome: shown() } });
@@ -654,17 +795,18 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
           // lean: left paddle / D-pad left = back (nose up), right = forward (nose down); a slight drift toward the flight path
           const lean = opts.autolean
             ? clamp((Math.atan(slopeAt(x + v * Math.min(0.25, (vy + Math.sqrt(vy * vy + 2 * gH * gScale() * Math.max(0, y - ground))) / (gH * gScale())))) - pitch) * 4, -1, 1)
-            : clamp(Math.abs(input.paddleL) - Math.abs(input.paddleR) + (input.held.has('left') ? 1 : 0) - (input.held.has('right') ? 1 : 0), -1, 1);
-          pitch += lean * tun.leanRate() * dt + (Math.atan2(vy, Math.max(1, v)) - pitch) * tun.leanDrift() * dt;
+            : leanInput();
+          leanStep(lean, Math.atan2(vy, Math.max(1, v)), dt);
           if (y <= ground && !plunging) {
             const rel = vy - v * slope; // how hard you hit, relative to the slope you land on
             y = ground; landAt = now; landImpact = -rel;
             if (trick && now - trick.t0 >= 0.9) { style++; trick = null; }
             hopAir += now - hopT0; hops++; longestHop = Math.max(longestHop, now - hopT0);
-            const raw = landingGrade(pitch - Math.atan(slope), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
+            const raw = landingGrade(wrapPi(pitch - Math.atan(slope)), tun.perfectDeg(), tun.goodDeg(), tun.badDeg());
             const airT = now - hopT0; // a crest skip (barely leaves the road) is never graded; tiny hops earn nothing but can still go wrong
             const lg: Landing = airT < 0.15 || (raw !== 'bad' && airT < tun.gradeAirS()) ? 'ok' : raw;
             if (!bouncing) landGrade = lg; // the bounce after a bad landing keeps its 'bad' call-out
+            if (lg === 'bad') spun = 0; // a flip that lands crossed up doesn't count
             if (lg === 'bad' && !bouncing) { // bad landing: bounce and lose speed (and the flow bonus)
               bads++; flow = 0; chain = 0; crashAt = now; v *= tun.badKeep(); bouncing = true; lift = Math.max(0, lift - tun.liftBad());
               vy = v * slope + 3 + Math.abs(rel) * 0.25; hopT0 = now; pitch = Math.atan(slope) + 0.35;
@@ -672,11 +814,12 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
               const mult = 1 + tun.chainStep() * Math.min(chain, 4); // clean landings in a row are worth more
               if (!bouncing && (lg === 'perfect' || lg === 'good')) { chain++; longestChain = Math.max(longestChain, chain); }
               else if (!bouncing && airT >= tun.gradeAirS()) chain = 0;
+              if (!bouncing) landFlips(mult, now);
               if (!bouncing && lg === 'perfect') { perfects++; flow = Math.min(tun.flowMax(), flow + tun.flowPerfect() * mult); }
               else if (!bouncing && lg === 'good') flow = Math.min(tun.flowMax(), flow + tun.flowGood() * mult);
               flowPeak = Math.max(flowPeak, flow);
               if (rel < -7 && !bouncing && lg === 'ok') { vy = v * slope - rel * 0.22; hopT0 = now; bouncing = true; } // a little bounce off a hard flat landing
-              else { bouncing = false; setMode('road'); pitch = Math.atan(slope); }
+              else { bouncing = false; setMode('road'); pitch = Math.atan(slope); spun = 0; }
             }
           }
         }
@@ -794,13 +937,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
         last: last ? { ...last, age: now - last.at } : null,
         results: [...results],
         topKph: top * 3.6, longestJumpM: longestJump, airS, smashed, rodeM: x, hay, landAt, landImpact, hops, flow, landGrade,
-        tier, lift, alt: y - roadH(x), toTier, warp, edgeX,
+        tier, lift, alt: y - roadH(x), toTier, warp, edgeX, mega: megaX,
         fork, visited: [...visited],
         menu: menu ? { row: menuRow, tour: tour.id, reducedFlash, left: Math.max(0, tun.menuAutoS() - menuT),
           tours: TOUR_IDS.map((id) => { const b = save.best?.[id]; return { id, name: TOURS[id].name, minutes: tourMinutes(TOURS[id], tun.approachS()), best: b ? `${b.medals} · ${b.golds} gold` : null }; }) } : null,
         reducedFlash, tip: tip ? { id: tip.id, text: tip.text, age: now - tip.at } : null, wind, crashAt,
         fromTier, splashAt, jet, jetFtp: tun.jetFtp(), airH: airH(), got: got.map((g) => ({ ...g })), rings, stars, chain,
-        fromLobby: !!lobbyBiome,
+        fromLobby: !!lobbyBiome, loopV: mode === 'loop' ? loopV : 0,
+        flip: flip ? { name: flip.name, age: now - flip.at } : null, spun,
+        hazards: phase === 'payoff' && piece?.kind === 'leap' && (mode === 'air' || mode === 'fall') ? hazards.map((z) => ({ x: z.x, y: hazardY(z, leapT), vy: z.vy - z.g * (leapT - z.t0), hit: z.hit })) : [],
+        scorchAt, leapSlow: phase === 'payoff' && piece?.kind === 'leap' && mode === 'air' ? 1 - (1 - tun.leapSlowMo()) * Math.sin(Math.PI * clamp((x - launchX) / Math.max(1, piece.x0 + piece.len - launchX), 0, 1)) ** 1.5 : 1,
         hooks: { shielded: phase === 'effort', seg: phase, lobbyBiome: cur, ...(wantPower !== undefined ? { powerFtp: wantPower } : {}) },
       };
     },
@@ -812,7 +958,7 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       return {
         tour: tour.name, sets: results.length, gold: n(3), silver: n(2), bronze: n(1), missed: n(0),
         topKph: Math.round(top * 3.6), longestJumpM: Math.round(longestJump), smashed, tricks: style, hops, perfectLandings: perfects, badLandings: bads, flowPeakPct: Math.round(flowPeak * 100), hopAirS: +hopAir.toFixed(1), longestHopS: +longestHop.toFixed(2),
-        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain,
+        skyVisits, moonVisits, splashdowns, peakAltM: Math.round(peakAlt), rings, stars, jetS: +jetS.toFixed(1), longestChain, flips, scorched,
         distanceKm: +(x / 1000).toFixed(1), route: route.map((r) => (r ? 'B' : 'A')).join(''), biomesSeen: new Set(visited).size, medals: results.map((r) => MEDAL_NAMES[r.medal][0]).join(''),
       };
     },

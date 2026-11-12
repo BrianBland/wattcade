@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createGameSession, runHeadless, testProfile } from '../../../core';
+import { createGameSession, NullInput, runHeadless, testProfile } from '../../../core';
 import type { InputState } from '../../../contracts';
 import { module } from '../index';
 import { scenarios } from '../scenarios';
 import { landingGrade, leapRange, loopExit, loopRadius, medalFor, smashCount, targetSpeed } from '../sim/physics';
 import { TOURS } from '../sim/tour';
+import { flipName, hazardY, leapHazards, type FullSendSnapshot } from '../sim/sim';
 
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
@@ -109,6 +110,72 @@ describe('steering and landings', () => {
   });
 });
 
+describe('leaps', () => {
+  it('pit hazards peak right on your arc, so holding your line gets you hit', () => {
+    const vx = 50, vy0 = 35, g = 28, len = 120;
+    for (const z of leapHazards(3, 0, len, vx, vy0, g, 5)) {
+      const tx = z.x / vx, arc = vy0 * tx - (g * tx * tx) / 2;
+      expect(Math.abs(hazardY(z, tx) - arc)).toBeLessThan(2);
+      expect(z.x).toBeGreaterThan(len * 0.15); expect(z.x).toBeLessThan(len * 0.85);
+    }
+  });
+  it('steering round the hazards (the pilot dodges) gets hit less than riding hands-off', () => {
+    const run = (autolean: boolean) => Number(runHeadless({ game: module, script: 'hook-responsive', minutes: 14, seed: 3, simOpts: { tour: 'classic', forks: 'alternate', autolean } }).summary.scorched);
+    expect(run(true)).toBeLessThan(Math.max(1, run(false)));
+  });
+});
+
+describe('loops: pedal round', () => {
+  const toLoop = () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'classic', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().mode === 'loop'); i++) s.step(1);
+    return { s, snap };
+  };
+  const finish = (r: ReturnType<typeof toLoop>) => { for (let i = 0; i < 30 * 30 && r.snap().phase === 'payoff' && r.snap().piece?.medal === -1; i++) r.s.step(1); return r.snap().results.at(-1)!; };
+  it('keep pedalling hard and you get all the way round', () => {
+    const r = toLoop(); expect(r.snap().mode).toBe('loop');
+    expect(r.snap().piece!.len).toBeGreaterThan(20); // a big loop
+    expect(finish(r).detail).toBe('pedalled round');
+  });
+  it('stop pedalling in the loop and you fall off or roll back', () => {
+    const r = toLoop();
+    const fb = r.s.fakeBike!; fb.script = null; fb.manual = { cadence: 0, power: 0, hr: null };
+    const res = finish(r);
+    expect(res.medal).toBe(0); expect(res.detail).not.toBe('pedalled round');
+  });
+});
+
+describe('outrun: duck into the cave', () => {
+  it('you slip inside, the chaser slams into the mouth, and you coast to a stop in the dark', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'hook-responsive' }, simOpts: { tour: 'quick', forks: 'main' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 30 && !(snap().piece?.kind === 'outrun' && snap().phase === 'payoff'); i++) s.step(1);
+    const mouth = snap().piece!.x0;
+    expect(snap().piece!.len).toBeGreaterThan(20);
+    expect(Math.abs(snap().x - mouth)).toBeLessThan(4); // the sprint ends at the cave mouth
+    for (let i = 0; i < 30 * 10 && snap().phase === 'payoff'; i++) s.step(1);
+    const p = snap().piece!;
+    expect(p.crashAt).toBeGreaterThan(0);
+    expect(snap().x).toBeGreaterThan(mouth + 5); // inside
+    expect(snap().x).toBeLessThan(mouth + p.len); // and still in the dark
+  });
+});
+
+describe('flips', () => {
+  it('holding a full lean in a long hop tucks into a flip; a clean landing counts it, with flow', () => {
+    const lean: InputState = { held: new Set(), pressed: new Set(), released: new Set(), paddleL: 1, paddleR: 0, paddleIdleS: 0, source: 'script' };
+    const s = createGameSession({ game: module, profile: testProfile(), input: { beginTick() {}, state: () => lean }, fake: { script: 'z2' }, simOpts: { tour: 'quick' }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    let maxSpin = 0, named = '';
+    for (let i = 0; i < 30 * 600; i++) { s.step(1); const q = snap(); maxSpin = Math.max(maxSpin, Math.abs(q.spun)); if (q.flip) named = q.flip.name; }
+    expect(maxSpin).toBeGreaterThan(2 * Math.PI); // a held lean really does go all the way round
+    expect(flipName(2, true)).toBe('Double Backflip'); expect(flipName(1, false)).toBe('Frontflip');
+    const flips = Number(s.sim.summary().flips);
+    if (flips > 0) expect(named).toMatch(/Backflip/);
+  });
+});
+
 describe('altitude: momentum takes you up to the sky islands and the moon', () => {
   it('a rider who keeps their flow up launches to the sky, then the moon, falls into the sea and breaches back', () => {
     const r = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick', autolean: true } });
@@ -123,6 +190,19 @@ describe('altitude: momentum takes you up to the sky islands and the moon', () =
     const sm = runHeadless({ game: module, script: 'z2', minutes: 10, seed: 3, simOpts: { tour: 'quick' } }).summary;
     expect(Number(sm.skyVisits)).toBe(0);
     expect(Number(sm.peakAltM)).toBeLessThan(30);
+  });
+});
+
+describe('mega ramp', () => {
+  it('a full lift meter puts a mega ramp ahead, and you go up a layer off its lip (not off a random bump)', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), fake: { script: 'z2' }, simOpts: { tour: 'quick', autolean: true }, seed: 3 });
+    const snap = () => (s.sim as unknown as { snapshot(): FullSendSnapshot }).snapshot();
+    for (let i = 0; i < 30 * 60 * 10 && snap().mega === null; i++) s.step(1);
+    const lip = snap().mega!, x0 = snap().x;
+    expect(lip - x0).toBeGreaterThan(150); // it shows up well ahead, so you see it coming
+    let launchX = NaN;
+    for (let i = 0; i < 30 * 30 && Number.isNaN(launchX); i++) { s.step(1); if (snap().toTier) launchX = snap().x; }
+    expect(Math.abs(launchX - lip)).toBeLessThan(3);
   });
 });
 

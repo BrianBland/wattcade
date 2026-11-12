@@ -249,7 +249,8 @@ export function drawWearItem(g: G, slot: WearSlot, look: WearLook, t: number) {
  *  `drawBackFront`). Both are swept, broad at the root and tapering to a winglet, with a turbojet under each blowing
  *  straight back; flame and wingtip contrails grow with speed. */
 const JW = {
-  far: { root: [[1.4, -0.6], [-3, 0.4]] as P[], tip: [[-9.4, -7.4], [-11.2, -6.6]] as P[], wl: [-10.6, -9] as P, jet: [-5.2, -2.4] as P, s: 0.7 },
+  // the far wing mirrors the near one (same sweep, chord and taper), a touch shorter for perspective
+  far: { root: [[1.4, -0.4], [-2.8, 0.6]] as P[], tip: [[-8.8, -6.2], [-11, -5.8]] as P[], wl: [-11.4, -8.2] as P, jet: [-5.8, -2.2] as P, s: 0.85 },
   near: { root: [[1.6, 0.4], [-2.8, 1.4]] as P[], tip: [[-9.2, 8.8], [-11.6, 8.4]] as P[], wl: [-11.2, 6.2] as P, jet: [-6.2, 5.6] as P, s: 1.05 },
 };
 function jetWing(g: G, side: 'far' | 'near', base: string, ink: string, accent: string, hip: P, shoulder: P, t: number, speed: number) {

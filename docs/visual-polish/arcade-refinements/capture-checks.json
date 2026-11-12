@@ -1,0 +1,32 @@
+{
+  "checks": [
+    "after: pause 390×844",
+    "after: connect 390×844",
+    "after: riders 390×844",
+    "after: arcade 390×844",
+    "after: controls 390×844",
+    "after: locker 390×844",
+    "after: reward 390×844",
+    "after: pause 1180×820",
+    "after: connect 1180×820",
+    "after: riders 1180×820",
+    "after: arcade 1180×820",
+    "after: controls 1180×820",
+    "after: locker 1180×820",
+    "after: reward 1180×820",
+    "before: pause 390×844",
+    "before: connect 390×844",
+    "before: riders 390×844",
+    "before: arcade 390×844",
+    "before: controls 390×844",
+    "before: locker 390×844",
+    "before: reward 390×844",
+    "before: pause 1180×820",
+    "before: connect 1180×820",
+    "before: riders 1180×820",
+    "before: arcade 1180×820",
+    "before: controls 1180×820",
+    "before: locker 1180×820",
+    "before: reward 1180×820"
+  ]
+}

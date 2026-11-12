@@ -4,7 +4,8 @@ import { pickOptions, riderLook, withItem } from '../../cosmetics/unlocks';
 import { SLOT_NAMES } from '../../cosmetics/types';
 import { LAST_LEVEL } from '../../cosmetics/catalog';
 import { Btn } from '../components/Bits';
-import { KeyHints } from '../components/ui';
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
 import { ItemArt, RiderAvatar } from '../components/RiderAvatar';
 import { pendingPicks, pickReward } from '../services';
 import { useMenuNav } from '../useMenuNav';
@@ -14,6 +15,8 @@ import { play } from '../../audio/sfx';
 export function RewardPick({ profile, onProfile, onDone }: { profile: Profile; onProfile: (p: Profile) => void; onDone: () => void }) {
   const level = pendingPicks(profile)[0];
   const opts = level ? pickOptions(profile, level) : [];
+  const [narrow,setNarrow]=useState(() => innerWidth<=760);
+  useEffect(()=>{const resize=()=>setNarrow(innerWidth<=760);addEventListener('resize',resize);return()=>removeEventListener('resize',resize);},[]);
   const [selected,setSelected]=useState(1), [saving,setSaving]=useState(false), [error,setError]=useState('');
   const busy=useRef(false);
   const take = async (i: number) => {
@@ -27,7 +30,7 @@ export function RewardPick({ profile, onProfile, onDone }: { profile: Profile; o
     finally {busy.current=false;setSaving(false);}
   };
   const later=()=>{if(!busy.current)onDone();};
-  const [idx,setIdx]=useMenuNav(opts.length+2,[opts.length,2],i=>{if(i===opts.length+1)later();else void take(i<opts.length?i:selected);},later,true,{initial:1});
+  const [idx,setIdx]=useMenuNav(opts.length+2,[...(narrow ? opts.map(()=>1) : [opts.length]),2],i=>{if(i===opts.length+1)later();else void take(i<opts.length?i:selected);},later,true,{initial:1});
   useEffect(()=>{if(idx<opts.length)setSelected(idx);},[idx,level]);
   useEffect(()=>{setSelected(Math.min(1,opts.length-1));setIdx(Math.min(1,opts.length-1));},[level]);
   if (!level) return null;
@@ -43,7 +46,7 @@ export function RewardPick({ profile, onProfile, onDone }: { profile: Profile; o
       </div>
       <div class="reward-actions"><Btn primary focused={idx===opts.length} disabled={saving} onClick={()=>void take(selected)}>{saving?'Saving…':'Choose & equip'}</Btn><Btn focused={idx===opts.length+1} disabled={saving} onClick={later}>Decide later →</Btn></div>
       {error&&<p role="alert">{error}</p>}
-      <KeyHints hints={[["lr","Preview"],["a","Choose & equip"],["b","Later"]]}/>
+      <ChromeHints hints={[["lr","Preview"],["a","Choose & equip"],["b","Later"]]}/>
     </div>
   );
 }

@@ -81,6 +81,10 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [W, setW] = useState(0);
+  const focusSelected = useRef(false);
+  useLayoutEffect(() => {
+    if (focusSelected.current) { box.current?.querySelector<HTMLElement>('.gc.active')?.focus(); focusSelected.current = false; }
+  }, [sel]);
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
     const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); setW(el.clientWidth);
@@ -93,7 +97,8 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
   const lastK = useRef<Record<string, number>>({});
   const jumped = (id: string, k: number) => { const was = lastK.current[id]; lastK.current[id] = k; return was !== undefined && Math.abs(k - was) > games.length / 2; };
   return (
-    <div class={`carousel${narrow ? ' narrow' : ''}`} ref={box}
+    <div role="region" aria-roledescription="carousel" aria-label="Choose a game" class={`carousel${narrow ? ' narrow' : ''}`} ref={box}
+      onPointerCancel={() => { swipeX.current = null; swiped.current = false; }}
       onPointerDown={(e) => { swipeX.current = e.clientX; swiped.current = false; }}
       onPointerUp={(e) => {
         const x0 = swipeX.current; swipeX.current = null;
@@ -104,7 +109,7 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
       {W>0 && games.map((g, i) => {
         const s = slots[i], active = i === sel;
         return (
-          <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}`} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
+          <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}`} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();focusSelected.current=true;play('uiMove');onSel((sel+(e.key==='ArrowRight'?1:-1)+games.length)%games.length);return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
             style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
             <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
@@ -167,6 +172,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, onEn
         ? <div class="di-toggle-row"><Btn focused={idx === B} onClick={toggleDriveIn} class="projector on">Drive-In · show games</Btn></div>
         : <Carousel visible={animate} games={list} sel={sel} focused={idx === B} profile={profile} rides={rides}
             onSel={(i) => { setSel(i); setIdx(B); }} onPlay={onPlay} />}
+      {!driveIn && <div class="carousel-caption"><span>Swipe or use ← → to browse</span><span aria-live="polite">{sel + 1} / {n}</span><span>Tap selected game to play</span></div>}
       <ChromeHints hints={[['dpad', 'Move'], ['a', driveIn ? 'Show games' : 'Play'], ['b', 'Switch rider'], ['shift', 'Gears'], ...(driveIn ? [['y', 'Next channel'], ['z', 'Prev channel']] as [string, string][] : [])]} />
     </div>
   );

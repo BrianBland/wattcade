@@ -93,7 +93,7 @@
 .chrome-pause .modal.pause { display:flex; flex-direction:column; gap:0; width:min(560px,100%); min-width:0; max-height:100dvh; height:100%; padding:clamp(20px,4vw,var(--ui-size-touch)); background:transparent; border:0; border-radius:0; box-shadow:none; animation:none; }
 .chrome-pause h2 { font:900 46px/1.1 system-ui; margin:5px 0 0; letter-spacing:-1.5px; }
 .pause-caption { margin:10px 0 22px; color:var(--dim); font:13px/1.5 system-ui; }
-.chrome-pause .pause>.btn.primary { align-self:flex-start; min-width:220px; margin-bottom:24px; }
+.chrome-pause .pause-ride-actions { flex-shrink:0; margin-bottom:24px; }
 .chrome-pause .fields { gap:0; }
 .chrome-pause .modal.pause .field { background:none; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:12px 0; grid-template-columns:minmax(100px,1fr) minmax(0,1.2fr); gap:4px 14px; transform:none; }
 .chrome-pause .field.focused { box-shadow:inset 3px 0 var(--ui-color-accent); padding-left:10px!important; }
@@ -156,7 +156,7 @@
 @media(max-height:550px) and (min-width:761px){
  .chrome-pause .modal.pause { width:600px; padding:20px 32px; }
  .chrome-pause .pause-caption { margin-bottom:12px; }
- .chrome-pause .pause>.btn.primary { margin-bottom:12px; }
+ .chrome-pause .pause-ride-actions { margin-bottom:12px; }
  .chrome-ui.screen { padding:24px; }
  .rider-portrait { min-height:100px; }
  .rider-portrait .rider-av.hero { height:160px; }
@@ -407,3 +407,122 @@
 
 .chrome-ui .btn.primary:active:not(:disabled) {transform:translate(var(--ui-size-button-depth),var(--ui-size-button-depth));box-shadow:none}
 @media(prefers-reduced-motion:reduce){.chrome-ui .btn.primary:active:not(:disabled){transform:none}}
+
+/* Readability pass: restrained arcade depth, readable labels, clear status. */
+.chrome-ui .btn.small {font-size:13px}
+.chrome-ui .screen-head .sub {font-size:15px}
+.chrome-ui .chrome-eyebrow {font-size:11px}
+.chrome-ui .bar {height:6px}
+.chrome-ui .dot {width:8px;height:8px;background:var(--ui-color-orange)}
+.chrome-ui .dot.on {background:var(--ui-color-success)}
+.chrome-ui .device.on .device-symbol,.chrome-ui .device-live {color:var(--ui-color-success)}
+.chrome-ui .device.on .device-symbol {background:color-mix(in srgb,var(--ui-color-success) 8%,transparent)}
+.chrome-ui .card.device {padding:12px;border:1px solid var(--ui-color-line);margin-bottom:10px;background:color-mix(in srgb,var(--ui-color-surface) 50%,transparent)}
+.chrome-ui .card.device.focused {padding:12px;box-shadow:inset 3px 0 var(--ui-color-focus)}
+.chrome-ui .device[data-connection=disconnected],.chrome-ui .device[data-connection=partial] {border-left:3px solid var(--ui-color-orange);background:color-mix(in srgb,var(--ui-color-orange) 4%,var(--ui-color-background))}
+.chrome-ui .device[data-connection=error] {border-left:3px solid var(--ui-color-danger)}
+.chrome-ui .device[data-connection=busy] {border-left:3px solid var(--ui-color-accent)}
+.chrome-ui .device-state {font-size:13px}
+.chrome-ui .device:is([data-connection=disconnected],[data-connection=partial]) .device-state {color:var(--ui-color-orange);font-weight:650}
+.chrome-ui .device[data-connection=error] .device-state {color:var(--ui-color-danger);font-weight:650}
+.chrome-ui .device-status {min-height:44px;padding:8px 10px;background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge);font-size:13px;flex:none}
+.chrome-ui .device-connect {gap:12px}
+.chrome-ui .device>.warn {color:var(--ui-color-danger);font-size:13px}
+.chrome-ui .device-help,.chrome-ui .device>.dim {font-size:13px}
+.chrome-ui .device-help summary {display:flex;align-items:center}
+.chrome-ui .connection-layout {gap:24px}
+/* Keep the rider's pixels square and the portrait modest on wide displays. */
+.rider-portrait {min-height:0;justify-content:center;padding:16px;background:linear-gradient(160deg,color-mix(in srgb,var(--ui-color-violet) 10%,transparent),transparent);border-top:1px solid color-mix(in srgb,var(--ui-color-violet) 45%,transparent)}
+.rider-portrait .rider-av.hero {width:220px;height:220px;max-width:100%;flex:none;aspect-ratio:1}
+.rider-portrait::after {display:none}
+.rider-showcase {max-width:480px}
+.rider-details {padding-top:12px}
+.rider-entry small,.rider-details .dim.small {font-size:12px}
+.rider-entry.selected {background:color-mix(in srgb,var(--ui-color-gold) 5%,transparent)}
+.chrome-ui.rider-editor .chrome-head>.rider-av.big {width:130px;height:130px;aspect-ratio:1}
+/* Shallow utility keys retain the same style as the primary ride actions. */
+.chrome-pause .pause-actions {gap:4px;margin-top:16px}
+.chrome-pause .pause-actions .btn {padding:10px 14px;border:0;color:var(--ui-color-text)}
+.chrome-pause .pause-actions .btn:nth-last-child(-n+2) {color:var(--ui-color-text)}
+.chrome-pause .pause-actions .btn.focused {padding-left:14px;box-shadow:none;outline:2px solid var(--ui-color-focus)}
+.chrome-pause .field>small {font-size:12px}
+.chrome-pause .field label {font-size:14px}
+.chrome-pause .pause-caption {font-size:14px}
+.chrome-pause .fields .field-ctl {justify-content:flex-end}
+.chrome-pause .key-hints {font-size:12px}
+/* Small game-card edge and a visible browsing hint, without extra arrow buttons. */
+.chrome-ui.menu .gc {border:1px solid var(--ui-color-line);border-radius:0;background:var(--ui-color-background)}
+.chrome-ui.menu .gc.active {border-top:2px solid var(--ui-color-orange)}
+.chrome-ui.menu .gc.active::before {display:none}
+.chrome-ui.menu .gc-info {background:linear-gradient(140deg,color-mix(in srgb,var(--ui-color-orange) 4%,transparent),transparent)}
+.chrome-ui.menu .gc-info h3 {font-size:24px}
+.chrome-ui.menu .gc-info .blurb {font-size:14px}
+.chrome-ui.menu .gc-stats {font-size:12px}
+.chrome-ui.menu .topbar .btn {font-size:13px}
+.carousel-caption {display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;color:var(--ui-color-muted);font:500 12px/1.4 var(--ui-font-family);flex:none}
+.carousel-caption span:nth-child(2) {color:var(--ui-color-gold);font-variant-numeric:tabular-nums}
+/* Tabs are attached to their content; their underline owns selection. */
+:is(.chrome-ui,.cosmetic-ui) :is(.tabs,.mp-tabs) .ui-button.ui-button {background:none;box-shadow:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--ui-color-muted)}
+:is(.chrome-ui,.cosmetic-ui) :is(.tabs,.mp-tabs) .ui-button.ui-button::before {display:none}
+:is(.chrome-ui,.cosmetic-ui) :is(.tabs,.mp-tabs) .ui-button.ui-button:is(.on,.primary) {border-bottom-color:var(--ui-color-gold);color:var(--ui-color-gold);box-shadow:none}
+.chrome-ui.media-picker .mp-tabs .btn,.chrome-ui.media-picker .mp-mode .ui-tab {font-size:13px}
+.chrome-ui.media-picker .mp-row .step,.chrome-ui.media-picker .mp-qrow .step {background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge)}
+.chrome-ui.control-intro .controls-card {border-top:2px solid var(--ui-color-gold)}
+.chrome-ui.control-intro .controls-heading small {font-size:12px}
+.chrome-ui.control-intro .controls-close {background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge);font-size:24px}
+.chrome-ui.control-intro .legend-binding {font-size:14px}
+.chrome-ui.control-intro .controls-card footer {font-size:12px}
+/* Rewards keep their pixel art, with gold interaction and quiet violet scenery. */
+.cosmetic-ui {--lime:var(--ui-color-success);background:var(--ui-color-background);color:var(--ui-color-text);font:16px/1.4 var(--ui-font-family)}
+.cosmetic-ui h1,.cosmetic-ui h2,.cosmetic-ui h3 {font-family:var(--ui-font-family);font-style:normal;text-shadow:none;color:var(--ui-color-text);letter-spacing:-.03em}
+.cosmetic-ui h1 {font-size:48px;line-height:1.05;font-weight:850;margin:0}
+.cosmetic-ui .sub {font-size:18px;color:var(--ui-color-muted)}
+.cosmetic-ui .locker-hero {padding:20px;border:0;border-top:1px solid color-mix(in srgb,var(--ui-color-violet) 50%,transparent);border-radius:0;background:linear-gradient(160deg,color-mix(in srgb,var(--ui-color-violet) 12%,var(--ui-color-background)),var(--ui-color-background) 85%);box-shadow:none}
+.cosmetic-ui .locker-hero>.rider-av.hero {width:180px;height:180px;margin:auto}
+.cosmetic-ui .locker-items {padding:16px;border:0;border-top:1px solid var(--ui-color-line);border-radius:0;background:none;box-shadow:none;min-width:0}
+.cosmetic-ui .item-grid {gap:8px}
+.cosmetic-ui .item-tile {padding:10px 8px;border:1px solid var(--ui-color-line);border-radius:0;background:#101f2b;box-shadow:none;min-height:44px;min-width:0}
+.cosmetic-ui .item-tile.on,.cosmetic-ui .pick-card.selected {border-color:var(--ui-color-gold);background:color-mix(in srgb,var(--ui-color-gold) 5%,#101f2b)}
+.cosmetic-ui .item-name {font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.cosmetic-ui :is(.item-status,.item-hint) {font-size:12px;line-height:1.4}
+.cosmetic-ui .item-tile.on .item-status {color:var(--ui-color-success)}
+.cosmetic-ui .item-tile:not(.locked):not(.on) .item-status {color:var(--ui-color-gold)}
+.cosmetic-ui .item-tile.locked {opacity:1;filter:none;color:var(--ui-color-muted)}
+.cosmetic-ui .reward-eyebrow,.cosmetic-ui .pick-card>.dim.small:nth-child(2) {color:var(--ui-color-violet-text)}
+.cosmetic-ui .pick-card {padding:18px 10px;border:1px solid var(--ui-color-line);border-radius:0;background:#101f2b;box-shadow:none}
+.cosmetic-ui .pick-card.selected {border-color:var(--ui-color-gold);background:color-mix(in srgb,var(--ui-color-gold) 5%,#101f2b)}
+.cosmetic-ui .pick-card::after {display:none}
+.cosmetic-ui :is(.item-tile,.pick-card):is(.focused,:focus-visible) {outline:2px solid var(--ui-color-focus);outline-offset:2px;transform:none;box-shadow:none}
+.cosmetic-ui .reward-outfit>.rider-av {width:180px;height:180px;margin:auto;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--ui-color-violet) 12%,var(--ui-color-background)))}
+.cosmetic-ui .reward-actions {gap:8px}
+.chrome-ui .summary-grid>.panel,.chrome-ui .result-card,.chrome-ui .ui-message {border-top:1px solid var(--ui-color-line)}
+.chrome-ui .chrome-eyebrow::before {background:var(--ui-color-orange)}
+@media(max-width:760px){
+ .chrome-ui .connection-layout {gap:16px}
+ .chrome-ui .device-connect {flex-wrap:nowrap;gap:8px}
+ .chrome-ui .device-symbol {width:32px;height:32px}
+ .chrome-ui .device-status {padding:8px 6px;gap:4px;font-size:12px}
+ .chrome-ui .device-heading {flex:1;min-width:0}
+ .chrome-ui .device-heading strong {font-size:16px}
+ .chrome-ui .device>.warn,.chrome-ui .device>.dim,.chrome-ui .device>.row,.chrome-ui .device-live,.chrome-ui .device-help {margin-left:40px}
+ .rider-portrait .rider-av.hero {width:160px;height:160px}
+ .rider-portrait {padding:8px}
+ .chrome-ui.rider-editor .chrome-head>.rider-av.big {width:84px;height:84px}
+ .rider-showcase {max-width:none}
+ .cosmetic-ui h1 {font-size:32px}
+ .cosmetic-ui .sub {font-size:16px}
+ .cosmetic-ui .locker-hero {padding:16px}
+ .cosmetic-ui .locker-hero>.rider-av.hero {width:128px;height:128px}
+ .cosmetic-ui .locker-items {padding:8px}
+ .cosmetic-ui .pick-row {grid-template-columns:1fr;gap:8px}
+ .cosmetic-ui .pick-card {display:grid;grid-template-columns:80px minmax(0,1fr);align-items:center;text-align:left;padding:10px;column-gap:12px}
+ .cosmetic-ui .pick-card .rider-av.hero {grid-column:1;grid-row:1/5;width:80px;height:80px}
+ .cosmetic-ui .pick-card h3 {font-size:17px;margin:0}
+ .cosmetic-ui .pick-card .dim.small {font-size:12px}
+}
+@media(max-height:550px){.carousel-caption{font-size:11px;gap:6px 16px}.chrome-pause .pause-ride-actions{margin-bottom:12px}}
+
+.chrome-history {background:color-mix(in srgb,var(--ui-color-background) 92%,transparent);padding:12px}
+.chrome-history .ride-history-dialog {width:min(600px,100%);min-width:0;max-height:calc(100dvh - 24px);overflow:auto;padding:24px;background:var(--ui-color-background);color:var(--ui-color-text);border:0;border-top:2px solid var(--ui-color-gold);border-radius:0;box-shadow:none}
+.chrome-history h2 {font:750 28px/1.2 var(--ui-font-family);letter-spacing:-.03em;color:var(--ui-color-text);text-transform:none;text-shadow:none}
+.chrome-history .ui-button {margin-top:20px}

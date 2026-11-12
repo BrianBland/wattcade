@@ -46,12 +46,14 @@ export function Connect({ onDone }: { onDone: () => void }) {
       <div class="connection-layout" ref={list}><div class="device-row">
         {ITEMS.map((it, i) => {
           const s = st[it.kind];
+          const partial = it.kind === 'controller' && s.connected && controllerCount() < 2;
+          const state = s.busy ? 'busy' : s.error ? 'error' : partial ? 'partial' : s.connected ? 'connected' : 'disconnected';
           return (
-            <section class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`}>
-              <button type="button" class="device-connect" aria-label={`${s.connected ? 'Disconnect' : 'Connect'} ${it.label}`} disabled={s.busy} onClick={() => { setIdx(4); act(i); }}>
+            <section data-connection={state} class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`}>
+              <button type="button" class="device-connect" aria-label={`${s.connected ? 'Disconnect' : 'Connect'} ${it.label}`} aria-busy={s.busy || undefined} disabled={s.busy} onClick={() => { setIdx(4); act(i); }}>
                 <span class="device-symbol"><PixelIcon kind={it.kind} /></span>
-                <span class="device-heading"><strong>{it.label}</strong><span class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.connected ? `Connected${it.kind === 'trainer' && s.detail ? ` · ${s.detail}` : ''}` : it.kind === 'trainer' ? 'Connect your bike' : 'Optional'}</span></span>
-                <span class="device-status">{s.busy ? <Spinner /> : <Dot on={s.connected} />}{s.busy ? 'Connecting' : s.connected ? 'Disconnect' : 'Connect'}</span>
+                <span class="device-heading"><strong>{it.label}</strong><span class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.error ? 'Connection failed' : partial ? 'One side connected · add the other side' : s.connected ? `Connected${it.kind === 'trainer' && s.detail ? ` · ${s.detail}` : ''}` : `Not connected${it.kind === 'trainer' ? ' · connect your bike' : ' · optional'}`}</span></span>
+                <span class="device-status" aria-hidden="true">{s.busy ? <Spinner /> : <Dot on={s.connected} />}{s.busy ? 'Connecting' : s.connected ? 'Disconnect' : 'Connect'}</span>
               </button>
               {s.connected && <div class="device-live">{live(it.kind)}</div>}
               {it.kind === 'hr' && !s.busy && s.detail && <div class="dim small">{s.detail}</div>}
@@ -67,7 +69,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
               )}
               {s.busy && <button class="btn small" onClick={(e) => { e.stopPropagation(); void disconnectDevice(it.kind); }}>Cancel connection</button>}
               {!s.connected && !s.busy && s.detail && it.kind !== 'hr' && <div class="dim small">{s.detail}</div>}
-              {s.error && <div class="warn">{s.error}</div>}
+              {s.error && <div class="warn" role="alert">{s.error}</div>}
               {it.kind === 'controller' && s.connected && <div class="dim small">fw {controllerInfo.firmware ?? '?'}</div>}
               {it.kind === 'controller' && s.connected && controllerCount() < 2 && (
                 <button class="btn small" disabled={s.busy} onClick={(e) => { e.stopPropagation(); void addSecondController(); }}>+ Add other side</button>

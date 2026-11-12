@@ -17,7 +17,7 @@ The compatibility components in `shell/components/Bits.tsx` and `ui.tsx` use the
 
 ## Visual language
 
-Pocket Arcade is the production default: warm navy surfaces, cream text, mint interaction accents, gold milestones, small pixel icons and restrained hairline separators. Primary buttons have a 3px solid key edge; progress uses 10px segments separated by 2px ticks. These treatments live in the shared DOM and Canvas adapters. Display headings use weight 900. Body copy and labels stay in readable system type; pixel art belongs in illustrations/icons. Chrome has no bloom, glass blur, decorative outlines or pill-shaped panels. Small 2px corner radii are allowed. A selected list row uses a 4px mint edge; keyboard/controller focus uses a 2px outline with a 3px offset. Keep selected, focused, pressed, disabled and busy states distinct.
+Pocket Arcade is the production default: warm navy surfaces, cream text, gold actions, selection and milestones, mint connection/equipped status, small pixel icons and restrained separators. Primary and secondary buttons use a shallow 2px inset bevel and two-step 4px pixel corners. Only the painted face is cut: the full rectangular touch target and focus ring remain intact. Progress uses 10px segments separated by 2px ticks. These treatments live in the shared DOM and Canvas adapters. Display headings use weight 900. Body copy and labels stay in readable system type; pixel art belongs in illustrations/icons. Chrome has no bloom, glass blur, decorative outlines or pill-shaped panels. Panels stay square and quiet. A selected list row uses a narrow gold edge; keyboard/controller focus uses a 2px outline with a 2px offset. Keep selected, focused, pressed, disabled and busy states distinct.
 
 | Role | Token | Use |
 | --- | --- | --- |
@@ -27,9 +27,12 @@ Pocket Arcade is the production default: warm navy surfaces, cream text, mint in
 | Text | `text` | Main labels and values |
 | Secondary | `muted`, `subtle` | Descriptions and eyebrows |
 | Action/focus | `accent`, `focus` | Primary action, selection and focus |
-| On primary | `onAccent` | Text on mint buttons |
-| Key edge | `accentEdge` | Solid primary-button depth, never a glow |
+| On primary | `onAccent` | Dark text on gold buttons |
+| Key edge | `accentEdge` | Inset bottom edge, never a floating shadow |
 | Achievement | `gold` | Unlocks, earned XP, milestone accents |
+| Success | `success` | Connected devices and Equipped; distinct from selection |
+| Warm accent | `orange` | Tiny heading/game-card accents and absent peripheral indicators |
+| Atmosphere | `violet`, `violetText` | Quiet rider backdrop and reward/category labels; never selection |
 | Error | `danger` | Failures and destructive actions |
 | Separator | `line` | Quiet dividers and progress tracks |
 
@@ -44,7 +47,7 @@ Use 4/8/12/16/24/32px spacing. Body text is normally 14px, secondary text 12px, 
 | `UiButton` | `drawButton` | primary/quiet/danger DOM variants; focused, pressed, selected, disabled states; use one main action per decision |
 | `UiPanel` | `drawPanel` | Group related content without framing every individual value |
 | `UiReadout` | `drawReadout` | Label + value, with no button styling or mandatory touch height |
-| `UiProgress` | `drawProgress` | Clamped 0–1 progress; mint or gold; DOM exposes accessible progress values |
+| `UiProgress` | `drawProgress` | Clamped 0–1 progress; gold by default; DOM exposes accessible progress values |
 | `UiTabs` | `drawTab` | Selected tabs with a quiet underline; DOM handles arrow/Home/End focus and skips disabled tabs |
 | `UiListRow` | `drawListRow` | Whole-row selection/action; selected and focused are separate states |
 | `UiTooltip` | `drawTooltip` | Extra help on hover/focus or deliberate tap; never hide essential instructions here |
@@ -78,9 +81,18 @@ For shell screens use `chrome-ui` and the shared shell adapters. `chrome.css` ow
 - On phones, use compact tabs for large sibling panels (Browse/Queue/Preview in music) and scroll long content within the chosen panel. Keep Continue/Save/Cancel reachable. Hover history and optional help must not reserve persistent game space.
 - A label must remain readable at narrow widths. Use concise labels, wrapping, or explicit ellipsis plus accessible full text. Never shrink the entire interface to fit a desktop layout.
 
+## Screen refinements
+
+- Rider portraits use bounded square canvases (220px desktop, 160px phone); pixel artwork retains its proportions without dominating landscape screens.
+- The game carousel shows adjacent cards, a position counter and swipe/arrow-key guidance. No separate previous/next buttons. Keyboard focus follows the selected card; Enter launches that card.
+- Pause leads with equally sized Resume ride and End ride keys. Resume remains the default and B/Escape resumes. Settings follow, then Controls/History/Restart. A game lobby uses Exit game in the same top-level slot.
+- Left/value/right settings use equal 44px keys and a shared centered value column, including units. Align control wells across neighboring fields.
+- Reward cards stack on phones; controller navigation follows the visible layout. Gold marks the selection, purple labels/category atmosphere, mint Equipped. Physical hints appear only with a connected controller.
+- Before/after screenshots and the color study are in `docs/visual-polish/arcade-refinements/` and `docs/visual-polish/accent-revision/`.
+
 ## Canvas adoption
 
-Draw in **logical CSS pixels**, after scaling the context for the backing-store DPR. Leave room for the primary button’s `UI.size.buttonDepth` (3px) edge on its right/bottom as well as focus outlines. Canvas helpers draw the supplied state; they do not own input, callbacks, simulation, timers, device connection or focus. Map pointer coordinates into those same logical pixels before using `hitTest`. Pass `disabled=true` to exclude unavailable actions.
+Draw in **logical CSS pixels**, after scaling the context for the backing-store DPR. The bevel stays inside the supplied button bounds. Leave room outside only for focus outlines. Canvas helpers draw the supplied state; they do not own input, callbacks, simulation, timers, device connection or focus. Map pointer coordinates into those same logical pixels before using `hitTest`. Pass `disabled=true` to exclude unavailable actions.
 
 ```ts
 import { aboveHud, drawButton, drawProgress, hitTest } from '../ui/canvas';
@@ -100,9 +112,9 @@ Provide a matching keyboard/controller action and an accessible DOM control or e
 
 ## Motion and feedback
 
-Primary keys depress by their 3px edge depth on press; reduced-motion DOM styles keep their position fixed. Use 120ms for quick feedback and 200ms for ordinary transitions. No scaling on focus, looping chrome glow, or ornamental idle animation. Preserve meaningful game animation and brief earned-reward feedback. Respect reduced-motion preferences for UI transitions, count-ups and scrolling. DOM widgets disable transitions/animations automatically; Canvas callers should not add unconditional pulses.
+On press the key’s inset lighting reverses; its hit target and label stay fixed. Use 120ms for quick feedback and 200ms for ordinary transitions. No scaling on focus, looping chrome glow, or ornamental idle animation. Preserve meaningful game animation and brief earned-reward feedback. Respect reduced-motion preferences for UI transitions, count-ups and scrolling. DOM widgets disable transitions/animations automatically; Canvas callers should not add unconditional pulses.
 
-Errors explain what failed and offer a recovery action. Loading states say what is loading. Empty states explain what to do next. Connection failures must not masquerade as successful setup; enabled configuration and a verified connection are distinct states.
+Absent peripherals say “Not connected · optional” (or “connect your bike” for the trainer), with a warm left edge and a visible Connect action. A partially connected controller says “One side connected”; connecting, failed and connected states stay distinct. Errors explain what failed and offer a recovery action. Loading states say what is loading. Empty states explain what to do next. Connection failures must not masquerade as successful setup; enabled configuration and a verified connection are distinct states.
 
 ## Adoption checklist
 

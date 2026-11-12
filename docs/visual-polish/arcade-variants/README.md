@@ -1,5 +1,7 @@
 # Arcade chrome directions
 
+Historical #203 design study. The current production refinements and revised color roles are documented in [the arcade UI review](../arcade-refinements/README.md).
+
 Pocket Arcade is now the production default; Sunset Sprint and Coin-Op remain review-only variants. These original comparison captures use the same rider selector, ride summary and arcade menu. Layout, content, touch sizes and the higher carousel placement are shared. Current production captures are in [Pocket Arcade](../pocket-arcade/README.md).
 
 The experiment changes four common treatments: token palette, display typography, primary-button edges, and selected/progress accents. Pocket Arcade now lives in the canonical tokens and shared DOM/Canvas primitives. The other two are still one dev stylesheet (`dev/chrome-variants.css`) activated by a query parameter; there are no new runtime dependencies. They do not yet include complete Canvas equivalents or theme persistence, so they are not settings choices.

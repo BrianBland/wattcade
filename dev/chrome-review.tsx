@@ -15,6 +15,7 @@ import { UiMessage, UiButton } from '../src/ui';
 import { Connect } from '../src/shell/screens/Connect';
 import { ProfileEditor } from '../src/shell/screens/ProfileEditor';
 import { ProfilePicker } from '../src/shell/screens/ProfilePicker';
+import { PauseHistory } from '../src/shell/hud/HudLayer';
 import { PauseMenu } from '../src/shell/screens/PauseMenu';
 import { achievementToast, toast, Toasts } from '../src/shell/components/Toasts';
 import { getDeviceStatus } from '../src/shell/services';
@@ -43,6 +44,7 @@ else if(view==='media')render(<MediaPicker game={games[0]} profile={profiles[0]}
 else if(view==='result')render(<ResultBanner profile={profiles[0]} over={false} durationS={1200} summary={{distanceKm:8.4,climbM:106}} xp={280} onContinue={()=>toast('Open ride summary')}/>,root);
 else if(view==='controls')render(<GameIntro game={games[0]} hud={{targetZone:{min:2,max:3},controls:[{button:'left',label:'Move left'},{button:'right',label:'Move right'},{button:'a',label:'Boost'},{button:'b',label:'Brake'}]}} profile={profiles[0]} mode="pre" count={null} onStart={()=>toast('Start ride')} onBack={()=>toast('Back to arcade')}/>,root);
 else if(view==='loading'||view==='error')render(<div class="game-loading chrome-ui"><UiMessage busy={view==='loading'} tone={view==='error'?'error':'info'} title={view==='error'?'Could not start the ride':'Preparing your ride'} action={<UiButton onClick={()=>toast('Back to arcade')}>Back</UiButton>}>{view==='error'?'The scene could not be loaded. Try again from the arcade.':'Your ride starts when the scene is ready.'}</UiMessage></div>,root);
+else if(view==='history')render(<PauseHistory ftp={200} onClose={()=>toast('Back to pause')}/>,root);
 else if(view==='pause')render(<PauseMenu layout="auto" onLayout={on} onResume={on} onQuit={on} onHelp={on} onRestart={on} onHistory={on} onExtension={on}/>,root);
 else {root.style.pointerEvents='none';setTimeout(()=>achievementToast('Kilojoule Club','Ride a total of 2,500 kJ.',50),200);}
 

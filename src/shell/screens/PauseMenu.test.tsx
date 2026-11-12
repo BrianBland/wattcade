@@ -17,15 +17,20 @@ it('reaches History with the controller and keeps fake bike instructions in paus
  }finally{act(()=>render(null,el));}
 });
 
-it('keeps exit selectable and navigates to additional game actions', async () => {
+it('puts End ride beside Resume and keeps game actions reachable below settings', async () => {
   const container = document.createElement('div'); document.body.append(container);
   const onQuit = vi.fn(), onExtension = vi.fn();
   try {
-    await act(async () => render(<PauseMenu initial={6} layout="auto" onLayout={() => {}} onResume={() => {}} onHelp={() => {}} onRestart={() => {}} onQuit={onQuit}
+    await act(async () => render(<PauseMenu layout="auto" onLayout={() => {}} onResume={() => {}} onHelp={() => {}} onRestart={() => {}} onQuit={onQuit}
       extensions={[{ id: 'custom', label: 'Game action', action: { type: 'custom' } }]} onExtension={onExtension} />, container));
+    const rideActions = [...container.querySelectorAll('.pause-ride-actions button')];
+    expect(rideActions.map(button => button.textContent)).toEqual(['Resume ride →', 'End ride']);
+    expect(container.querySelector('.focused')?.textContent).toBe('Resume ride →');
+    await act(async () => deliverMenuPresses(new Set(['right'])));
     await act(async () => deliverMenuPresses(new Set(['a'])));
     expect(onQuit).toHaveBeenCalledOnce();
-    await act(async () => deliverMenuPresses(new Set(['down'])));
+    // Difficulty, layout, sound, utility actions, then the game action.
+    for (let i = 0; i < 6; i++) await act(async () => deliverMenuPresses(new Set(['down'])));
     await act(async () => deliverMenuPresses(new Set(['a'])));
     expect(onExtension).toHaveBeenCalledWith({ type: 'custom' });
     expect(onQuit).toHaveBeenCalledOnce();
@@ -36,4 +41,19 @@ it('keeps exit selectable and navigates to additional game actions', async () =>
   } finally {
     await act(async () => render(null, container)); container.remove();
   }
+});
+
+it('keeps Exit game as the top-level action in a game lobby and B resumes', () => {
+  const el = document.createElement('div'), onQuit = vi.fn(), onResume = vi.fn();
+  try {
+    act(() => render(<PauseMenu quitLabel="Exit game" layout="auto" onLayout={() => {}} onResume={onResume} onQuit={onQuit} onHelp={() => {}} onRestart={() => {}} onExtension={() => {}} />, el));
+    const exit = el.querySelectorAll<HTMLButtonElement>('.pause-ride-actions button')[1];
+    expect(exit.textContent).toBe('Exit game');
+    act(() => exit.click());
+    expect(onQuit).toHaveBeenCalledOnce();
+    act(() => deliverMenuPresses(new Set(['right'])));
+    act(() => deliverMenuPresses(new Set(['b'])));
+    expect(onResume).toHaveBeenCalledOnce();
+    expect(onQuit).toHaveBeenCalledOnce();
+  } finally { act(() => render(null, el)); }
 });

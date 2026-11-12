@@ -1,10 +1,10 @@
-# Flat game chrome
+# Arcade game chrome
 - `chrome.css` composes shell screens; canonical tokens/widgets are in `src/ui/`. See `docs/UI_STYLE_GUIDE.md` and `/dev/ui-kit.html` for DOM/Canvas adoption.
-- Pocket Arcade default: warm navy/cream surfaces, mint primary/focus, gold achievement accent, pixel eyebrow stars, 900-weight headings and tactile 3px primary edges. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
+- Pocket Arcade default: warm navy/cream surfaces, gold primary/focus, mint connected/equipped status, purple reward atmosphere, pixel eyebrow stars, 900-weight headings and shallow 2px inset key bevels. System type with integer-grid `PixelIcon` accents; no glow or glass blur.
 - Connect keeps its device lifecycle, saved-watch actions, retries/cancel and optional media-server settings (collapsed on every visit, including saved setups; summary shows Optional/Enabled/Connected; controller A toggles). The setup list scrolls independently while Continue remains reachable.
 - ProfilePicker has a roster + one live selected-rider showcase. Touch previews first, then explicit Ride/Edit; controller A starts, Y edits. Phone roster scrolls horizontally with gestures; controller focus scrolls into view.
 - New/edit rider uses flat scrolling fields, an animated preview and pinned Save/Cancel with quieter backup/delete actions. Aim is removed from editor fields; stored aim behavior is preserved. Color choices are semantic 44px buttons, and controller navigation follows the action rows.
-- Pause uses vertical menu navigation matching its visual order, preserving difficulty/layout/sound/help/history/restart/quit and game extension actions. Short screens scroll the sheet.
+- Pause starts with Resume/End ride side by side, then uses vertical menu navigation matching its visual order, preserving difficulty/layout/sound/help/history/restart/quit and game extension actions. Short screens scroll the sheet.
 - `ChromeHints` follows Bluetooth and gamepad connection changes. Physical A/B labels only appear with a controller attached.
 - Menu sheets stop above the measured live HUD. Read-only achievement notifications use the upper right, clear of the bottom HUD and touch actions and expire after 6 seconds; regular toast API/lifetime stays compatible.
 - `achievementToast` carries achievement description and bonus XP from `previewAward`; earning/saving progression is unchanged.
@@ -13,3 +13,5 @@
 - Results/summary/achievements, arcade toolbar/carousel, media panels, controls guide and loading/error states use shared widgets/tokens. Summary is D-pad scrollable; result and summary share rider-selected units.
 - Phone/portrait music uses Browse/Queue/Preview tabs; controller focus selects the relevant panel. Search still takes over the visual viewport while the keyboard is open. Queue/undo/mode/start remain unchanged.
 - Arcade toolbar scrolls horizontally, focused controls scroll into view, carousel fits its cards immediately below the toolbar (short landscape uses a side-by-side card), cards share a vertical centerline, and help uses a viewport-positioned tooltip outside clipping containers. Game-owned menus stay unchanged.
+
+- Post-#203 readability refinements: explicit absent/partial/failed device states, bounded square rider portraits, equal stepper/choice columns, visible carousel instructions, gold-selected rewards with violet labels. Captures and coverage: `docs/visual-polish/arcade-refinements/README.md`.

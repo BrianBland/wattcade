@@ -49,3 +49,33 @@
 @media(max-width:599px){.ui-field.ui-field {grid-template-columns:minmax(0,1fr)}.ui-field.ui-field>small{grid-column:1}}
 
 @media(prefers-reduced-motion:reduce){.ui-button.ui-button.primary:active:not(:disabled){transform:none}}
+
+/* Shallow pixel keys. Only the painted face is cut; the full rectangle remains
+   a touch target and the focus ring is never clipped. No floating drop shadow. */
+:root { --ui-key-cut:polygon(4px 0,calc(100% - 4px) 0,calc(100% - 4px) 2px,calc(100% - 2px) 2px,calc(100% - 2px) 4px,100% 4px,100% calc(100% - 4px),calc(100% - 2px) calc(100% - 4px),calc(100% - 2px) calc(100% - 2px),calc(100% - 4px) calc(100% - 2px),calc(100% - 4px) 100%,4px 100%,4px calc(100% - 2px),2px calc(100% - 2px),2px calc(100% - 4px),0 calc(100% - 4px),0 4px,2px 4px,2px 2px,4px 2px); }
+.ui-button.ui-button.ui-button,
+:is(.ui-root,.chrome-ui,.cosmetic-ui,.control-intro) .ui-button.ui-button {
+ --key-face:var(--ui-color-key); --key-light:var(--ui-color-key-light); --key-edge:var(--ui-color-key-edge);
+ position:relative; isolation:isolate; min-width:44px; min-height:44px; border:0; border-radius:0; background:none; box-shadow:none; color:var(--ui-color-text); transform:none;
+}
+.ui-button.ui-button.ui-button::before {content:'';position:absolute;inset:3px 0;z-index:-1;pointer-events:none;clip-path:var(--ui-key-cut);background:var(--key-face);box-shadow:inset 0 1px var(--key-light),inset 1px 0 #ffffff12,inset 0 -2px var(--key-edge),inset -1px 0 var(--key-edge)}
+.ui-button.ui-button.ui-button.primary,
+:is(.ui-root,.chrome-ui,.cosmetic-ui,.control-intro) .ui-button.ui-button.primary {--key-face:var(--ui-color-accent);--key-light:var(--ui-color-accent-light);--key-edge:var(--ui-color-accent-edge);color:var(--ui-color-on-accent);background:none;box-shadow:none}
+.ui-button.ui-button.ui-button.primary::before {inset:1px 0}
+.ui-button.ui-button.ui-button.danger {color:var(--ui-color-danger)}
+.ui-button.ui-button.ui-button.selected {--key-face:var(--ui-color-raised);box-shadow:inset 3px 0 var(--ui-color-accent)}
+.ui-button.ui-button.ui-button:is(:focus-visible,.focused) {outline:2px solid var(--ui-color-focus);outline-offset:2px;transform:none}
+.ui-button.ui-button.ui-button:active:not(:disabled) {transform:none}
+.ui-button.ui-button.ui-button:active:not(:disabled)::before {box-shadow:inset 0 2px var(--key-edge),inset 0 -1px var(--key-light)}
+/* Values share a single centered well, flanked by identical 44px keys. */
+:is(.ui-root,.chrome-ui,.cosmetic-ui) :is(.ui-stepper.ui-stepper,.ui-choice.ui-choice),.ui-stepper.ui-stepper,.ui-choice.ui-choice {display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:4px;width:100%;max-width:260px;min-width:0;background:var(--ui-color-hover);border:0;border-radius:0}
+:is(.ui-root,.chrome-ui,.cosmetic-ui) :is(.ui-stepper,.ui-choice) .step,.ui-stepper .step,.ui-choice .step {width:44px;min-width:44px;min-height:44px;display:grid;place-items:center;padding:0;border:0;border-radius:0;color:var(--ui-color-text);background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge);font:700 20px/1 var(--ui-font-family)}
+.stepper-value {display:flex;justify-content:center;align-items:center;min-width:0;gap:3px;padding:0 2px}
+.ui-stepper.ui-stepper .stepper-value input {width:100%;max-width:76px;min-width:0;padding:0;font-variant-numeric:tabular-nums;appearance:textfield}
+.ui-stepper input::-webkit-inner-spin-button,.ui-stepper input::-webkit-outer-spin-button {appearance:none;margin:0}
+.ui-stepper .unit {font:500 12px/1.2 var(--ui-font-family);color:var(--ui-color-muted);flex:none}
+:is(.ui-root,.chrome-ui,.cosmetic-ui) .ui-choice.ui-choice b,.ui-choice.ui-choice b {min-width:0;text-align:center;font:650 14px/1.3 var(--ui-font-family);overflow-wrap:anywhere}
+:is(.ui-stepper,.ui-choice) .step:focus-visible {outline:2px solid var(--ui-color-focus);outline-offset:2px}
+.ui-toggle.ui-toggle i {border-radius:2px;box-shadow:inset 0 1px #ffffff30,inset 0 -1px #0008}
+.ui-toggle.ui-toggle i::after {border-radius:1px}
+.ui-toggle.ui-toggle.on i {background:var(--ui-color-success)}

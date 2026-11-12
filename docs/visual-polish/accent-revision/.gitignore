@@ -1,0 +1,5 @@
+# Raw pairs are reproducible; the rendered studies and PDF are committed.
+/locker-*.png
+/reward-390-*.png
+/reward-1180-*.png
+!locker-comparison.png

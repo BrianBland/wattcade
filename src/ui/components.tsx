@@ -248,10 +248,10 @@ export function UiStepper({
   return <span class="ui-stepper stepper"><button type="button" class="step" onKeyDown={nativeButtonKey} aria-label="Decrease" onClick={e => {
       e.stopPropagation();
       set(value - step);
-    }}>−</button><input type="number" aria-label="Value" value={value.toFixed(digits)} step={step} min={Number.isFinite(min) ? min : undefined} max={Number.isFinite(max) ? max : undefined} onInput={e => {
+    }}>−</button><span class="stepper-value"><input type="number" aria-label="Value" value={value.toFixed(digits)} step={step} min={Number.isFinite(min) ? min : undefined} max={Number.isFinite(max) ? max : undefined} onInput={e => {
       const v = Number(e.currentTarget.value);
       if (Number.isFinite(v)) onChange(v);
-    }} onBlur={() => set(value)} />{unit && <span class="unit">{unit}</span>}<button type="button" class="step" onKeyDown={nativeButtonKey} aria-label="Increase" onClick={e => {
+    }} onBlur={() => set(value)} />{unit && <span class="unit">{unit}</span>}</span><button type="button" class="step" onKeyDown={nativeButtonKey} aria-label="Increase" onClick={e => {
       e.stopPropagation();
       set(value + step);
     }}>+</button></span>;

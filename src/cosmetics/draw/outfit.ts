@@ -164,6 +164,9 @@ export function drawBack(g: G, value: OutfitLook['back'], hip: P, shoulder: P, t
     line(g,accent,1.2,[3.8,-7.5],[5.5,-1]);
     if(kind==='flamer'){line(g,ink,.7,[2,-7],[0,-9],[-2,-5]);circle(g,ink,6,-6,1);}
     if(kind==='tanks')line(g,accent,.8,[7,-6],[9,-3],[7,0]);
+  } else if (kind === 'jetwings') { // Full Send: swept wings off the shoulders with a jet under each, lit when you're moving
+    poly(g,base,[4,-8],[-8,-14],[-9.6,-12.6],[-6,-10.4],[2.4,-5]);poly(g,ink,[3,-7.2],[-8,-13.2],[-8.8,-12.6],[2,-6]);
+    for(const [x,y] of [[-1.2,-8.6],[-5,-11]] as const){rect(g,accent,x-1.2,y-.2,2.4,1.1);if(speed>.6){const f=1.6+Math.sin(t*23+x)*.6;poly(g,'#f47935',[x-1.2,y+.1],[x-1.2-f,y+.35],[x-1.2,y+.7]);}}
   } else if (kind === 'arsenal') {
     poly(g,base,[1,-2],[7,-2],[7,-5],[1,-5]);line(g,ink,1.1,[0,-7],[9,-3]);line(g,accent,.8,[0,-2],[9,-7]);
     poly(g,ink,[9,-3],[11,-2],[10,-4]);ring(g,accent,.7,5,-7,4);rect(g,base,0,-8,2,3);

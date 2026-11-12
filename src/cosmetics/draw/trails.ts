@@ -56,6 +56,15 @@ const TRAILS: Record<string, (g: G, c: TrailCtx, k: number) => void> = {
   },
   embers: (g, c, k) => stream(c, k, 1.4, 16, (i, a, x, y) => { alpha(g, a, k); circle(g, i % 2 ? '#ffd23b' : '#ff8a1a', x, y - a * 6, 0.4 + (1 - a) * 0.5); }),
   cogs: (g, c, k) => stream(c, k, 0.8, 18, (i, a, x, y) => { alpha(g, a, k); g.save(); g.translate(x, y + a * 2); g.rotate(c.t * 3 + i); circle(g, '#c6ccd6', 0, 0, 0.7); circle(g, '#3a3f48', 0, 0, 0.3); g.restore(); }),
+  reentry: (g, c, k) => { // Full Send: a white-hot streak in an orange sheath, cooling into grey smoke puffs
+    const len = 8 + k * 26;
+    for (let i = 0; i < len; i += 1.5) {
+      const u = i / len; g.globalAlpha = (1 - u) * k;
+      const w = 1.6 + u * 3.4;
+      rect(g, u < 0.15 ? '#fff6c8' : u < 0.4 ? '#ffb030' : u < 0.6 ? '#e8401a' : '#8e8480', c.x0 - i - 1.5, -4.5 - w / 2 + Math.sin(c.t * 25 + i) * 0.3 * u, 1.5, w);
+    }
+    stream(c, k, 1.1, 22, (i, a, x, y) => { if (a < 0.4) return; alpha(g, a, k * 0.6); circle(g, i % 2 ? '#9a908c' : '#7a706c', x - 6, y - a * 2, 0.8 + a * 1.6); });
+  },
   flames: (g, c) => {
     const hot = Math.max(0, (c.speed - 4) / 6), len = 3 + hot * 14;
     if (hot <= 0) return;

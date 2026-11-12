@@ -10,20 +10,23 @@ import { FakeBikeHelp } from '../hud/FakeBikeHelp';
 import { useMenuNav } from '../useMenuNav';
 import { setSoundEnabled, soundEnabled } from '../../audio/sfx';
 import './pause.css';
+import { PaddleSettings, PADDLE_KEYS, type PaddleTuning } from './PaddleSettings';
 
 const clampDiff = (v: number) => Math.min(1.5, Math.max(0.5, +v.toFixed(2)));
 
-export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, extensions = [], onExtension, quitLabel = 'End ride' }: { extensions?: readonly GameMenuAction[]; onExtension: (action: unknown) => void; initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
+export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayout, initial = 0, fake = false, onHistory, extensions = [], onExtension, quitLabel = 'End ride', tuning }: { tuning?: PaddleTuning; extensions?: readonly GameMenuAction[]; onExtension: (action: unknown) => void; initial?: number; fake?: boolean; onHistory?: () => void; quitLabel?: string; layout: HudLayout; onLayout: (v: HudLayout) => void; onResume: () => void; onQuit: () => void; onHelp: () => void; onRestart: () => void }) {
   const card = useRef<HTMLDivElement>(null);
   const [diff, setDiff] = useState(getDifficulty);
   const setD = (v: number) => { const c = clampDiff(v); setDiff(c); debugActions.setDifficulty(c); };
   const [sound, setSound] = useState(soundEnabled());
   const toggleSound = () => { setSoundEnabled(!sound); setSound(!sound); };
+  const [steering, setSteering] = useState(false);
+  const hasPaddles = tuning && PADDLE_KEYS.every(k => tuning.get(`cadenza.${k}`) !== undefined);
   const tail = [{ label: 'Controls', run: onHelp }, ...(onHistory ? [{ label: 'History', run: onHistory }] : []), { label: '↻ Restart', run: onRestart }];
   const layouts = ['auto', 'touch', 'controller'] as const;
   const cycleLayout = (d: number) => onLayout(layouts[(layouts.indexOf(layout) + d + layouts.length) % layouts.length]);
-  const actions = [onResume, onQuit, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run), ...extensions.map(entry => () => onExtension(entry.action))];
-  const [idx, setIdx] = useMenuNav(actions.length, [2, ...actions.slice(2).map(() => 1)], (i) => actions[i](), onResume, true, {
+  const actions = [onResume, onQuit, () => setD(diff + 0.05), () => cycleLayout(1), toggleSound, ...tail.map(a => a.run), ...extensions.map(entry => () => onExtension(entry.action)), ...(hasPaddles ? [() => setSteering(true)] : [])];
+  const [idx, setIdx] = useMenuNav(actions.length, [2, ...actions.slice(2).map(() => 1)], (i) => actions[i](), onResume, !steering, {
     initial,
     onAdjust: (i, d) => {
       if (i === 2) { setD(diff + d * 0.05); return true; }
@@ -32,7 +35,8 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
       return false;
     },
   });
-  useLayoutEffect(() => { card.current?.querySelector<HTMLElement>('.focused')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }, [idx]);
+  useLayoutEffect(() => { card.current?.querySelector<HTMLElement>('.focused')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }, [idx, steering]);
+  if (steering && tuning) return <PaddleSettings tuning={tuning} onBack={() => setSteering(false)} onResume={onResume} />;
   return (
     <div class="overlay-modal chrome-ui chrome-pause">
       <div class="modal pause" ref={card} role="dialog" aria-modal="true" aria-labelledby="pause-title">
@@ -52,6 +56,7 @@ export function PauseMenu({ onResume, onQuit, onHelp, onRestart, layout, onLayou
           {tail.map((a, i) => <Btn key={a.label} focused={idx === i + 5} onClick={a.run}>{a.label}</Btn>)}
         </div>
         {extensions.map((entry, i) => <Btn key={entry.id} focused={idx === 5 + tail.length + i} onClick={() => onExtension(entry.action)}>{entry.label}</Btn>)}
+        {hasPaddles && <Btn focused={idx === 5 + tail.length + extensions.length} onClick={() => { setIdx(5 + tail.length + extensions.length); setSteering(true); }}>Paddle steering</Btn>}
         {fake && <FakeBikeHelp />}
         <ChromeHints hints={[['dpad', 'Move'], ['lr', 'Change'], ['a', 'Select'], ['b', 'Resume']]} />
       </div>

@@ -4,6 +4,8 @@ import type { Button, InputState, Seconds } from '../contracts';
 export interface InputSource {
   beginTick(dt: Seconds): void;
   state(): Readonly<InputState>;
+  /** Optional live, game-scoped input tuning; scripted inputs already contain processed values. */
+  bindTuning?(registry: { get(key: string): unknown }, namespace: string): void;
 }
 
 export interface TimelineEvent { t: Seconds; press?: Button; release?: Button; paddleL?: number; paddleR?: number }

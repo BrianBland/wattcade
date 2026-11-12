@@ -4,6 +4,8 @@ import {act} from 'preact/test-utils';
 import {expect,it,vi} from 'vitest';
 import {deliverMenuPresses} from '../menuInput';
 import {PauseMenu} from './PauseMenu';
+import { TuningRegistry } from '../../core/tuning';
+import type { Button } from '../../contracts';
 
 it('reaches History with the controller and keeps fake bike instructions in pause only when applicable', () => {
  const el=document.createElement('div'),onHistory=vi.fn();
@@ -56,4 +58,54 @@ it('keeps Exit game as the top-level action in a game lobby and B resumes', () =
     expect(onResume).toHaveBeenCalledOnce();
     expect(onQuit).toHaveBeenCalledOnce();
   } finally { act(() => render(null, el)); }
+});
+
+function paddleTuning() {
+  const tuning = new TuningRegistry({ storage: null }), t = tuning.scoped('cadenza');
+  t.choice('paddleMode', 'continuous', ['stepped', 'continuous']);
+  t.choice('paddleCurve', 'linear', ['linear', 'quadratic']);
+  t.num('paddleDeadzone', 15, 0, 60, 1);
+  t.num('paddleSwitchThreshold', 30, 5, 90, 1);
+  return tuning;
+}
+
+it('adjusts saved paddle settings by controller without resuming, and returns to the selected pause action', async () => {
+  const container = document.createElement('div'); document.body.append(container);
+  const tuning = paddleTuning(), onResume = vi.fn();
+  const press = async (button: Button) => { await act(async () => deliverMenuPresses(new Set([button]))); };
+  try {
+    await act(async () => render(<PauseMenu initial={7} layout="auto" onLayout={() => {}} onResume={onResume} onHelp={() => {}} onRestart={() => {}} onQuit={() => {}} onExtension={() => {}} tuning={tuning} />, container));
+    await press('a'); expect(container.querySelector('h2')?.textContent).toBe('Paddle steering');
+    await press('right'); expect(tuning.get('cadenza.paddleMode')).toBe('stepped');
+    await press('down'); await press('a'); expect(tuning.get('cadenza.paddleCurve')).toBe('quadratic');
+    await press('down'); await press('left'); expect(tuning.get('cadenza.paddleDeadzone')).toBe(14);
+    await press('down'); await press('right'); expect(tuning.get('cadenza.paddleSwitchThreshold')).toBe(31);
+    expect(onResume).not.toHaveBeenCalled();
+    await press('b'); expect(container.querySelector('h2')?.textContent).toBe('Paused.');
+    expect(container.querySelector('button.focused')?.textContent).toBe('Paddle steering');
+    await press('a'); expect(container.querySelector<HTMLInputElement>('input[aria-label="Paddle deadzone"]')?.value).toBe('14');
+    await press('down'); await press('down'); await press('down'); await press('down'); await press('down'); await press('a');
+    expect(onResume).toHaveBeenCalledOnce();
+  } finally { await act(async () => render(null, container)); container.remove(); }
+});
+
+it('offers touch changes, clamps numeric settings and keeps stepped threshold available in continuous mode', async () => {
+  const container = document.createElement('div'); document.body.append(container);
+  const tuning = paddleTuning();
+  const click = async (label: string) => { const b = [...container.querySelectorAll('button')].find(b => b.textContent === label)!; await act(async () => b.click()); };
+  try {
+    await act(async () => render(<PauseMenu layout="auto" onLayout={() => {}} onResume={() => {}} onHelp={() => {}} onRestart={() => {}} onQuit={() => {}} onExtension={() => {}} tuning={tuning} />, container));
+    await click('Paddle steering');
+    expect(container.textContent).toContain('Applies only in stepped mode');
+    await click('Continuous'); await click('Linear');
+    expect(tuning.get('cadenza.paddleMode')).toBe('stepped'); expect(tuning.get('cadenza.paddleCurve')).toBe('quadratic');
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="Paddle deadzone"]')!;
+    await act(async () => { input.value = '99'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(tuning.get('cadenza.paddleDeadzone')).toBe(60);
+    const threshold = container.querySelector<HTMLInputElement>('input[aria-label="Lane switch threshold"]')!;
+    await act(async () => { threshold.value = '-1'; threshold.dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(tuning.get('cadenza.paddleSwitchThreshold')).toBe(5);
+    await click('Back'); await click('Paddle steering');
+    expect(container.querySelector<HTMLInputElement>('input[aria-label="Paddle deadzone"]')!.value).toBe('60');
+  } finally { await act(async () => render(null, container)); container.remove(); }
 });

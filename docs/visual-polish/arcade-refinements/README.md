@@ -30,8 +30,10 @@ These are real browser captures of production components. Before uses main at `f
 ## Validation and reproduction
 
 - `npm run typecheck`
-- `npm test -- src/ui src/shell`: 49 files, 235 tests
+- `npm test -- src/ui src/shell`: 49 files, 237 tests
 - `npm run build`
+- `CADENZA_TEST_URL=http://127.0.0.1:5178 node scripts/cadenza-paddles-smoke.mjs`: actual pause/settings/session integration at four screen sizes.
+- Latest main’s Cadenza paddle-steering settings are preserved when opening/returning from pause; the shared value controls retain their accessible labels.
 - `CHROME_REVIEW_URL=http://127.0.0.1:5178 node scripts/check-chrome.mjs`: 14 shell views at 320×568, 390×844, 844×390 and 1180×820; button height, overflow, HUD clearance, menu actions and media workflows.
 - `CHROME_REVIEW_URL=http://127.0.0.1:5178 node scripts/check-ui-kit.mjs`: standalone DOM/Canvas gallery, native activation, tabs, tooltips, reduced motion and touch targets.
 - `node scripts/capture-ui-refinements.mjs`: before on port 5180, after on 5178 (override with `UI_BEFORE_URL`/`UI_AFTER_URL`). Checks pause button geometry, aligned selectors, square portraits and device labels while capturing seven views at phone/desktop sizes. `UI_CAPTURE_VERSION` and `UI_CAPTURE_VIEWS` optionally narrow regeneration.

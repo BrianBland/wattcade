@@ -4,7 +4,7 @@ CONTRACT-REQUEST: none.
 makeRng, SimClock, TuningRegistry, BikeStateStore, ResistanceMixer, DataHub, GameLoop, FakeBike, FakeTrainer,
 SCRIPTS, SessionRecorder, InputSource, TimelineInput/NullInput (local scripted input for headless),
 createGameSession, runHeadless, testProfile (FTP 200 / maxHr 185 / 75 kg).
-- `createGameSession` per CLAUDE.md. Extras: optional `tuningRegistry` opt; session also exposes `dataHub`, `clock`, `loop`, `commands` (all mixer commands sent).
+- `createGameSession` per CLAUDE.md. Extras: optional `tuningRegistry` opt; calls optional input `bindTuning(registry, gameId)` after sim creation; session also exposes `dataHub`, `clock`, `loop`, `commands` (all mixer commands sent).
   Fake bike is on when `fake` is truthy, or when `fake` is undefined and no `dataHub` was passed. `fake:false` = real devices only.
   `pause()` = loop pause + mixer.panic(true) (sends sim/0 immediately); `resume()` reverses.
 - Step order: clock.advance -> input.beginTick -> fakeBike.tick -> bikeStore.tick -> mixer.tick -> sim.update -> recorder.tick.

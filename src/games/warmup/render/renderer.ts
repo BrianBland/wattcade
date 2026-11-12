@@ -9,7 +9,7 @@ import { riderLook } from '../../../cosmetics/unlocks';
 import type { RiderLook } from '../../../cosmetics/types';
 import { daylight } from './daylight';
 import { layerAlphas, mixColor } from './blend';
-import { coverage, drawSoft, drawSpans, drawVeil, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Span } from './seam';
+import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Span } from './seam';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
 import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
 import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
@@ -189,7 +189,10 @@ export class WarmupRenderer implements GameRenderer {
 
     // ---- distant backdrop and the ridge: cut at the far seam ----
     const backY = Math.round(UH * 0.5), bu = s.d * PPM * BACK_PARALLAX;
-    this.split(skySp, 1, di, (l, gg) => l.backdrop(gg, W, backY, bu, t));
+    // landmarks out there are never cut: the old biome's sink behind the hills while the new one's rise into view
+    const sink = UH * 0.45;
+    this.props(di, (gg) => { for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(gg, W, Math.round(backY + d * sink), bu, t); },
+      (gg) => DRIVE_IN.backdrop(gg, W, backY, bu, t));
 
     // ---- the real road, seen from afar (rolling ridge) ----
     const ridgeBase = Math.round(UH * 0.6), ridgeV = Math.max(0.6, s.hill * s.exaggeration * 0.7);
@@ -206,9 +209,9 @@ export class WarmupRenderer implements GameRenderer {
       gg.stroke();
     });
 
-    for (let i = 1; i < skySp.length && di < 0.5; i++) { // a haze squall stands over the far cut (backdrop and ridge)
+    for (let i = 1; i < skySp.length && di < 0.5; i++) { // a mist bank over the ridge cut
       const x = skySp[i].x0, haze = mixColor(LOOKS[skySp[i - 1].id].haze, LOOKS[skySp[i].id].haze, 0.5);
-      if (x > -20 && x < W + 20) drawVeil(g, x, backY - 60, UH * 0.7, haze, 34, 0.75 * (1 - di * 2));
+      if (x > -20 && x < W + 20) drawVeil(g, x, ridgeBase - 26, UH * 0.7, haze, 30, 0.7 * (1 - di * 2));
     }
 
     // ---- the Drive-In screen: pinned (no parallax), in front of the ridge, behind the ground ----

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverage, edgeOffset, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
+import { coverage, edgeOffset, horizonSwap, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
 import { biomeOfSeg } from '../sim/terrain';
 
 const seam: Seam = { x: 1000, from: 'desert', to: 'volcano' };
@@ -47,6 +47,19 @@ describe('biome seams', () => {
       expect(softWeights(sp, x, 160).reduce((a, [, w]) => a + w, 0)).toBeCloseTo(1);
     }
     expect(softValue(sp, sp[0].x1, 160, (id) => (id === 'volcano' ? 1 : 0))).toBeCloseTo(0.5);
+  });
+  it('far landmarks are never cut: the old ones sink and the new ones rise as the far seam sweeps across', () => {
+    const at = (d: number) => horizonSwap(layerSpans('desert', [seam], layer(d, 0.05), 400), 400);
+    expect(at(0)).toEqual([['desert', 0]]); // seam not on screen yet
+    const sunk = (d: number, id: string) => at(d).find(([b]) => b === id)?.[1] ?? 1;
+    let lastOld = 0, lastNew = 1;
+    for (let d = 300; d <= 1600; d += 50) {
+      const o = sunk(d, 'desert'), n = sunk(d, 'volcano');
+      expect(o).toBeGreaterThanOrEqual(lastOld - 1e-9); expect(n).toBeLessThanOrEqual(lastNew + 1e-9);
+      lastOld = o; lastNew = n;
+      const order = at(d); for (let i = 1; i < order.length; i++) expect(order[i][1]).toBeLessThanOrEqual(order[i - 1][1]); // the one coming up drawn in front
+    }
+    expect(lastOld).toBe(1); expect(lastNew).toBe(0);
   });
   it('overworld seams sit on every biome boundary and chain', () => {
     const s = roadSeams(5000, 2000, 1200, (k) => biomeOfSeg(k, 2));

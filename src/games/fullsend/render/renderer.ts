@@ -7,7 +7,7 @@ import type { RiderLook } from '../../../cosmetics/types';
 import { BIOME_NAMES, biomeWeights, hash01, makeTerrain, type BiomeId, type Terrain } from '../../warmup/sim/terrain';
 import { LOOKS, type BiomeLook, type G } from '../../warmup/render/biomes';
 import { blendColors, layerAlphas, mixColor } from '../../warmup/render/blend';
-import { coverage, drawSoft, drawSpans, drawVeil, layerSpans, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
+import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, layerSpans, ownerAt, SEAM, softValue, type Span } from '../../warmup/render/seam';
 import { boardCentre, drawGateway, GATEWAYS } from '../../warmup/render/gateway';
 import { daylight } from '../../warmup/render/daylight';
 import type { FullSendSnapshot, PieceView } from '../sim/sim';
@@ -113,13 +113,6 @@ export class FullSendRenderer implements GameRenderer {
     });
   }
 
-  /** A continuous layer: split at the biome seam (each side drawn whole, clipped along a ragged cut), or, while flying
-   *  between altitude layers, dissolved as before (the cloud decks and splashes cover that). */
-  private split(blend: Scene | null, spans: readonly Span[], salt: number, draw: (look: BiomeLook, g: G) => void) {
-    if (blend) { this.layer(blend, draw); return; }
-    drawSpans(this.b, spans, this.LW, this.LH, salt, (id) => draw(LOOKS[id], this.b));
-  }
-
   render(snapshot: unknown, bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as FullSendSnapshot;
     if (!s || typeof s.x !== 'number') return;
@@ -197,11 +190,9 @@ export class FullSendRenderer implements GameRenderer {
 
     // ---- backdrop and mid ground (parallax) ----
     const backY = Math.round(UH * 0.5 + vAlt * 0.25);
-    this.split(blend, skySp, 1, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
-    for (let i = 1; i < skySp.length; i++) { // a haze squall stands over the far cut
-      const x = skySp[i].x0;
-      if (x > -20 && x < W + 20) drawVeil(g, x, backY - 60, UH * 0.72 + vAlt * 0.45, mixColor(LOOKS[skySp[i - 1].id].haze, LOOKS[skySp[i].id].haze, 0.5), 34, 0.75);
-    }
+    // far landmarks are never cut: across a seam the old biome's sink behind the hills while the new one's rise
+    if (blend) this.layer(blend, (l, gg) => l.backdrop(gg, W, backY, s.camX * PPM * BACK_PARALLAX, t));
+    else for (const [id, d] of horizonSwap(skySp, W)) LOOKS[id].backdrop(g, W, Math.round(backY + d * UH * 0.45), s.camX * PPM * BACK_PARALLAX, t);
     const solid = 1 - wsum((l) => (l.openSky ? 1 : 0));
     const midBase = Math.round(UH * 0.62 + vAlt * 0.45), mu = s.camX * PPM * MID_PARALLAX;
     const midY = (lx: number) => midBase + Math.sin(lx / 60) * 2 + Math.sin(lx / 23);

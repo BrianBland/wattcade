@@ -4,8 +4,9 @@
 // Every parallax layer is split at the seam's position *in that layer*, so the new land slides in depth-first: you
 // see its far mountains and sky on the horizon long before you reach it, the mid hills next, and all the layers meet
 // under the gateway exactly as you ride through. Nothing cross-fades: props belong wholly to the side they stand on,
-// continuous bands (backdrop, ridge, ground) are cut along a ragged natural edge, the sky changes along a soft
-// weather front, and the old sun or moon sets while the new one rises.
+// continuous bands (ridge, mid ground, ground) are cut along a ragged natural edge under a mist bank, the far
+// backdrop's landmarks are never cut (the old ones sink behind the hills while the new ones rise, `horizonSwap`), and
+// the sky, with its own sun or planet, changes along a soft weather front that travels with the far seam.
 import type { BiomeId } from '../sim/terrain';
 import type { G } from './paint';
 import { rgb } from './blend';
@@ -153,4 +154,19 @@ export function roadSeams(d: number, range: number, biomeM: number, biomeOfSeg: 
   const k0 = Math.max(1, Math.floor((d - range) / biomeM)), k1 = Math.min(k0 + 64, Math.ceil((d + range) / biomeM));
   for (let k = k0; k <= k1; k++) out.push({ x: k * biomeM, from: biomeOfSeg(k - 1), to: biomeOfSeg(k) });
   return out;
+}
+
+/**
+ * The far backdrop is never cut: its landmarks (a volcano, the mesas, the sea) are whole pictures. Instead, as the far
+ * seam sweeps across the screen, the outgoing biome's backdrop sinks behind the near ridge and the incoming one rises
+ * over it, like cresting a hill into new country. Returns each biome with how far it has sunk (0 = up, 1 = hidden),
+ * in drawing order (most sunk first, so the one coming up is in front).
+ */
+export function horizonSwap(spans: readonly Span[], W: number): Array<[BiomeId, number]> {
+  if (spans.length === 1) return [[spans[0].id, 0]];
+  const order = new Map(spans.map((s, i) => [s.id, i]));
+  return coverage(spans, W)
+    .map(([id, c]) => [id, 1 - smooth((c - 0.3) / 0.4)] as [BiomeId, number])
+    .filter(([, d]) => d < 0.999)
+    .sort((a, b) => b[1] - a[1] || order.get(a[0])! - order.get(b[0])!);
 }

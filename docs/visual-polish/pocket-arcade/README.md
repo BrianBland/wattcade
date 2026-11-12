@@ -1,7 +1,5 @@
 # Pocket Arcade — production default
 
-Historical #203 design study. The current production refinements and revised color roles are documented in [the arcade UI review](../arcade-refinements/README.md).
-
 Pocket Arcade now lives in the shared UI tokens, DOM widgets, Canvas adapter and
 shell chrome. These captures use the default styles, with no variant parameter.
 

@@ -1,9 +1,0 @@
-{
-  "checks": [
-    "locker 390×844: gold selection, unchanged geometry, 44px targets, no overflow",
-    "reward 390×844: gold selection, unchanged geometry, 44px targets, no overflow",
-    "locker 1180×820: gold selection, unchanged geometry, 44px targets, no overflow",
-    "reward 1180×820: gold selection, unchanged geometry, 44px targets, no overflow"
-  ],
-  "errors": []
-}

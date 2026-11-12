@@ -49,7 +49,7 @@ export function Connect({ onDone }: { onDone: () => void }) {
           const partial = it.kind === 'controller' && s.connected && controllerCount() < 2;
           const state = s.busy ? 'busy' : s.error ? 'error' : partial ? 'partial' : s.connected ? 'connected' : 'disconnected';
           return (
-            <section data-connection={state} class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`}>
+            <section data-connection={state} data-required={it.kind === 'trainer' || undefined} class={`card tile device${idx === i ? ' focused' : ''}${s.connected ? ' on' : ''}`}>
               <button type="button" class="device-connect" aria-label={`${s.connected ? 'Disconnect' : 'Connect'} ${it.label}`} aria-busy={s.busy || undefined} disabled={s.busy} onClick={() => { setIdx(4); act(i); }}>
                 <span class="device-symbol"><PixelIcon kind={it.kind} /></span>
                 <span class="device-heading"><strong>{it.label}</strong><span class="device-state">{s.busy ? (s.detail ? `Connecting: ${s.detail}` : 'Connecting…') : s.error ? 'Connection failed' : partial ? 'One side connected · add the other side' : s.connected ? `Connected${it.kind === 'trainer' && s.detail ? ` · ${s.detail}` : ''}` : `Not connected${it.kind === 'trainer' ? ' · connect your bike' : ' · optional'}`}</span></span>

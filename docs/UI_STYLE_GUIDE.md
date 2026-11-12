@@ -31,8 +31,8 @@ Pocket Arcade is the production default: warm navy surfaces, cream text, gold ac
 | Key edge | `accentEdge` | Inset bottom edge, never a floating shadow |
 | Achievement | `gold` | Unlocks, earned XP, milestone accents |
 | Success | `success` | Connected devices and Equipped; distinct from selection |
-| Warm accent | `orange` | Tiny heading/game-card accents and absent peripheral indicators |
-| Atmosphere | `violet`, `violetText` | Quiet rider backdrop and reward/category labels; never selection |
+| Attention | `orange` | Eyebrow marks; a missing trainer or a half-connected Ride. Never for optional devices that are simply absent |
+| Rewards | `violet`, `violetText` | Rider backdrop, reward/category labels, the Locker “reward ready” cue; never selection |
 | Error | `danger` | Failures and destructive actions |
 | Separator | `line` | Quiet dividers and progress tracks |
 
@@ -84,11 +84,10 @@ For shell screens use `chrome-ui` and the shared shell adapters. `chrome.css` ow
 ## Screen refinements
 
 - Rider portraits use bounded square canvases (220px desktop, 160px phone); pixel artwork retains its proportions without dominating landscape screens.
-- The game carousel shows adjacent cards, a position counter and swipe/arrow-key guidance. No separate previous/next buttons. Keyboard focus follows the selected card; Enter launches that card.
+- The game carousel shows adjacent cards, a position counter and swipe/arrow-key guidance. The selected card keeps its game's own accent colour on its top edge. The arcade toolbar is flat navigation (no key faces) so it fits on one row. No separate previous/next buttons. Keyboard focus follows the selected card; Enter launches that card.
 - Pause leads with equally sized Resume ride and End ride keys. Resume remains the default and B/Escape resumes. Settings follow, then Controls/History/Restart. A game lobby uses Exit game in the same top-level slot.
 - Left/value/right settings use equal 44px keys and a shared centered value column, including units. Align control wells across neighboring fields.
 - Reward cards stack on phones; controller navigation follows the visible layout. Gold marks the selection, purple labels/category atmosphere, mint Equipped. Physical hints appear only with a connected controller.
-- Before/after screenshots and the color study are in `docs/visual-polish/arcade-refinements/` and `docs/visual-polish/accent-revision/`.
 
 ## Canvas adoption
 
@@ -114,7 +113,7 @@ Provide a matching keyboard/controller action and an accessible DOM control or e
 
 On press the key’s inset lighting reverses; its hit target and label stay fixed. Use 120ms for quick feedback and 200ms for ordinary transitions. No scaling on focus, looping chrome glow, or ornamental idle animation. Preserve meaningful game animation and brief earned-reward feedback. Respect reduced-motion preferences for UI transitions, count-ups and scrolling. DOM widgets disable transitions/animations automatically; Canvas callers should not add unconditional pulses.
 
-Absent peripherals say “Not connected · optional” (or “connect your bike” for the trainer), with a warm left edge and a visible Connect action. A partially connected controller says “One side connected”; connecting, failed and connected states stay distinct. Errors explain what failed and offer a recovery action. Loading states say what is loading. Empty states explain what to do next. Connection failures must not masquerade as successful setup; enabled configuration and a verified connection are distinct states.
+Device cards carry a status edge: mint connected, gold connecting, orange needs attention (trainer missing, one Ride side), red failed. Optional peripherals that are absent stay quiet: “Not connected · optional” in muted text with a visible Connect action. A partially connected controller says “One side connected”; connecting, failed and connected states stay distinct. Errors explain what failed and offer a recovery action. Loading states say what is loading. Empty states explain what to do next. Connection failures must not masquerade as successful setup; enabled configuration and a verified connection are distinct states.
 
 ## Adoption checklist
 

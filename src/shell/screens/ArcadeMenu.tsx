@@ -162,7 +162,7 @@ export function ArcadeMenu({ games, profile, onPlay: launch, onNav, onBack, onEn
         <div class="arcade-actions" ref={toolbar}><Btn small focused={idx === 0} onClick={toggleHills}>{hills ? 'Road: Hills' : 'Road: Flat'}</Btn>
         <Btn small focused={idx === 1} onClick={bar[1]}><Dot on={st.trainer.connected} busy={st.trainer.busy} /><Dot on={st.controller.connected} busy={st.controller.busy} /><Dot on={st.hr.connected} busy={st.hr.busy} />Devices</Btn>
         <Btn small focused={idx === 2} onClick={bar[2]}>Achievements {ach.filter((a) => a.unlocked).length}/{ach.length}</Btn>
-        <Btn small focused={idx === 3} onClick={bar[3]}>{pendingPicks(profile).length ? 'Locker · reward ready' : 'Locker'}</Btn>
+        <Btn small focused={idx === 3} onClick={bar[3]} class={pendingPicks(profile).length ? 'reward' : undefined}>{pendingPicks(profile).length ? 'Locker · reward ready' : 'Locker'}</Btn>
         <Btn small focused={idx === 4} onClick={onBack}>Switch rider</Btn>
         {onEndRide && <Btn small focused={idx === 5} onClick={onEndRide}>End ride</Btn>}
         {!driveIn && <Btn small focused={idx === (onEndRide ? 6 : 5)} onClick={toggleDriveIn} class="projector">Drive-In</Btn>}

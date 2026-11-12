@@ -104,7 +104,7 @@
 .chrome-pause .stepper input { border:0; background:none; color:var(--fg); font-size:14px; min-height:var(--ui-size-touch); min-width:0; width:62px; }
 .chrome-pause .choice b { font-size:13px; min-width:90px; }
 .chrome-pause .toggle { border:0; border-radius:0; box-shadow:none; background:none; font:650 13px system-ui; }
-.chrome-pause .toggle.on { color:var(--ui-color-accent); }
+.chrome-pause .toggle.on { color:var(--ui-color-success); }
 .chrome-pause .pause-actions { display:flex; flex-direction:column; gap:0; align-items:stretch; margin:8px 0; }
 .chrome-pause .pause-actions .btn { width:100%; justify-content:space-between; min-height:48px; background:transparent; border-bottom:1px solid var(--line); border-radius:0; padding:10px 0; }
 .chrome-pause .pause-actions .btn::after { content:'→'; color:#83a9b6; }
@@ -413,17 +413,22 @@
 .chrome-ui .screen-head .sub {font-size:15px}
 .chrome-ui .chrome-eyebrow {font-size:11px}
 .chrome-ui .bar {height:6px}
-.chrome-ui .dot {width:8px;height:8px;background:var(--ui-color-orange)}
+.chrome-ui .dot {width:8px;height:8px;background:var(--ui-color-disabled)}
 .chrome-ui .dot.on {background:var(--ui-color-success)}
 .chrome-ui .device.on .device-symbol,.chrome-ui .device-live {color:var(--ui-color-success)}
 .chrome-ui .device.on .device-symbol {background:color-mix(in srgb,var(--ui-color-success) 8%,transparent)}
 .chrome-ui .card.device {padding:12px;border:1px solid var(--ui-color-line);margin-bottom:10px;background:color-mix(in srgb,var(--ui-color-surface) 50%,transparent)}
-.chrome-ui .card.device.focused {padding:12px;box-shadow:inset 3px 0 var(--ui-color-focus)}
-.chrome-ui .device[data-connection=disconnected],.chrome-ui .device[data-connection=partial] {border-left:3px solid var(--ui-color-orange);background:color-mix(in srgb,var(--ui-color-orange) 4%,var(--ui-color-background))}
-.chrome-ui .device[data-connection=error] {border-left:3px solid var(--ui-color-danger)}
-.chrome-ui .device[data-connection=busy] {border-left:3px solid var(--ui-color-accent)}
+/* Status edge: mint connected, gold connecting, orange needs attention (missing trainer or one Ride
+   side), red failed. Optional peripherals that are simply absent stay quiet. Focus is the outline. */
+.chrome-ui .card.device {border-left:3px solid var(--ui-color-line)}
+.chrome-ui .card.device.focused {padding:12px;box-shadow:none;outline:2px solid var(--ui-color-focus);outline-offset:-2px}
+.chrome-ui .device[data-connection=connected] {border-left-color:var(--ui-color-success)}
+.chrome-ui .device[data-connection=busy] {border-left-color:var(--ui-color-gold)}
+.chrome-ui .device:is([data-connection=partial],[data-required][data-connection=disconnected]) {border-left-color:var(--ui-color-orange);background:color-mix(in srgb,var(--ui-color-orange) 4%,var(--ui-color-background))}
+.chrome-ui .device[data-connection=error] {border-left-color:var(--ui-color-danger)}
 .chrome-ui .device-state {font-size:13px}
-.chrome-ui .device:is([data-connection=disconnected],[data-connection=partial]) .device-state {color:var(--ui-color-orange);font-weight:650}
+.chrome-ui .device:is([data-connection=partial],[data-required][data-connection=disconnected]) .device-state {color:var(--ui-color-orange);font-weight:650}
+.chrome-ui .device[data-connection=busy] .dot {background:var(--ui-color-gold)}
 .chrome-ui .device[data-connection=error] .device-state {color:var(--ui-color-danger);font-weight:650}
 .chrome-ui .device-status {min-height:44px;padding:8px 10px;background:var(--ui-color-key);box-shadow:inset 0 1px var(--ui-color-key-light),inset 0 -2px var(--ui-color-key-edge);font-size:13px;flex:none}
 .chrome-ui .device-connect {gap:12px}
@@ -452,14 +457,20 @@
 .chrome-pause .key-hints {font-size:12px}
 /* Small game-card edge and a visible browsing hint, without extra arrow buttons. */
 .chrome-ui.menu .gc {border:1px solid var(--ui-color-line);border-radius:0;background:var(--ui-color-background)}
-.chrome-ui.menu .gc.active {border-top:2px solid var(--ui-color-orange)}
-.chrome-ui.menu .gc.active::before {display:none}
-.chrome-ui.menu .gc-info {background:linear-gradient(140deg,color-mix(in srgb,var(--ui-color-orange) 4%,transparent),transparent)}
+/* Each game keeps its own colour on the selected card's top edge and info wash. */
+.chrome-ui.menu .gc.active::before {height:2px}
+.chrome-ui.menu .gc-info {background:linear-gradient(140deg,color-mix(in srgb,var(--accent) 7%,transparent),transparent)}
 .chrome-ui.menu .gc-info h3 {font-size:24px}
 .chrome-ui.menu .gc-info .blurb {font-size:14px}
 .chrome-ui.menu .gc-stats {font-size:12px}
-.chrome-ui.menu .topbar .btn {font-size:13px}
-.carousel-caption {display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:center;color:var(--ui-color-muted);font:500 12px/1.4 var(--ui-font-family);flex:none}
+/* The arcade toolbar is navigation, not a row of decisions: flat labels with full 44px targets,
+   so the keys stay legible and more of them fit before the strip scrolls. */
+.chrome-ui.menu .topbar .btn {font-size:13px;color:var(--ui-color-muted)}
+.chrome-ui.menu .topbar .ui-button.ui-button.ui-button::before {background:transparent;box-shadow:none}
+.chrome-ui.menu .topbar .ui-button.ui-button.ui-button:hover::before {background:var(--ui-color-hover)}
+.chrome-ui.menu .topbar .btn.reward {color:var(--ui-color-violet-text)}
+.chrome-ui.menu .topbar .btn.reward::after {content:'';width:6px;height:6px;margin-left:6px;background:var(--ui-color-violet)}
+.carousel-caption {display:flex;flex-wrap:wrap;gap:4px 20px;justify-content:center;align-self:center;padding:4px 12px;background:color-mix(in srgb,var(--ui-color-background) 72%,transparent);color:var(--ui-color-muted);font:500 12px/1.4 var(--ui-font-family);flex:none}
 .carousel-caption span:nth-child(2) {color:var(--ui-color-gold);font-variant-numeric:tabular-nums}
 /* Tabs are attached to their content; their underline owns selection. */
 :is(.chrome-ui,.cosmetic-ui) :is(.tabs,.mp-tabs) .ui-button.ui-button {background:none;box-shadow:none;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--ui-color-muted)}
@@ -526,3 +537,5 @@
 .chrome-history .ride-history-dialog {width:min(600px,100%);min-width:0;max-height:calc(100dvh - 24px);overflow:auto;padding:24px;background:var(--ui-color-background);color:var(--ui-color-text);border:0;border-top:2px solid var(--ui-color-gold);border-radius:0;box-shadow:none}
 .chrome-history h2 {font:750 28px/1.2 var(--ui-font-family);letter-spacing:-.03em;color:var(--ui-color-text);text-transform:none;text-shadow:none}
 .chrome-history .ui-button {margin-top:20px}
+/* Give the toolbar the whole row; an auto margin right-aligns it but collapses (stays scrollable) on overflow. */
+@media(min-width:761px){.chrome-ui.menu .topbar>.spacer {display:none}.chrome-ui.menu .arcade-actions>:first-child {margin-left:auto}}

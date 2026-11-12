@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coverage, edgeOffset, horizonSwap, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
+import { coverage, edgeOffset, hopAt, horizonSwap, seamKind, shaped, surfaceRow, waterEdge, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Seam } from '../render/seam';
 import { biomeOfSeg } from '../sim/terrain';
 
 const seam: Seam = { x: 1000, from: 'desert', to: 'volcano' };
@@ -60,6 +60,31 @@ describe('biome seams', () => {
       const order = at(d); for (let i = 1; i < order.length; i++) expect(order[i][1]).toBeLessThanOrEqual(order[i - 1][1]); // the one coming up drawn in front
     }
     expect(lastOld).toBe(1); expect(lastNew).toBe(0);
+  });
+  it('the sea and the Moon get their own kind of seam', () => {
+    expect(seamKind({ from: 'seaside', to: 'underwater' })).toBe('dive');
+    expect(seamKind({ from: 'underwater', to: 'jungle' })).toBe('surface');
+    expect(seamKind({ from: 'snow', to: 'moon' })).toBe('launch');
+    expect(seamKind({ from: 'moon', to: 'autumn' })).toBe('reentry');
+    expect(seamKind({ from: 'desert', to: 'volcano' })).toBe('gate');
+  });
+  it('riding into the sea: a beach shelving into a level surface that rises over the camera', () => {
+    const y0 = 180, sx = 300;
+    const ahead = waterEdge(sx, y0, 1, surfaceRow(y0, -50 * 9));
+    expect(ahead(y0 + 10)).toBe(sx);                       // below the road the cut is the shore
+    expect(ahead(y0 - 20)).toBeGreaterThan(sx);            // the beach shelves out to sea
+    expect(ahead(y0 - 60)).toBeGreaterThan(1e4);           // above the shallow surface it is dry
+    expect(surfaceRow(y0, 400)).toBeLessThan(0);           // well in: the surface is over the top of the screen
+    const out = waterEdge(sx, y0, -1, surfaceRow(y0, -100));
+    expect(out(y0 - 20)).toBeLessThan(sx);                 // surfacing: the sea is behind you
+    const sp = layerSpans('seaside', [{ x: 1000, from: 'seaside', to: 'underwater' }], layer(990, 1), 400, 5, { H: 200, edge: (_, x) => waterEdge(x, y0, 1, surfaceRow(y0, -90)) });
+    expect(shaped(sp)).toBe(true); expect(sp.map((q) => q.id)).toEqual(['seaside', 'underwater']);
+    // a waterline still on screen keeps the sea even when the shore has scrolled off the left
+    const past = layerSpans('seaside', [{ x: 1000, from: 'seaside', to: 'underwater' }], layer(1100, 1), 400, 5, { H: 200, edge: (_, x) => waterEdge(x, y0, 1, 20) });
+    expect(past.map((q) => q.id)).toEqual(['seaside', 'underwater']);
+  });
+  it('the rocket hop peaks over the pad and lands either side', () => {
+    expect(hopAt(0, 20)).toBe(1); expect(hopAt(-20, 20)).toBe(0); expect(hopAt(25, 20)).toBe(0); expect(hopAt(10, 20)).toBeCloseTo(0.75);
   });
   it('overworld seams sit on every biome boundary and chain', () => {
     const s = roadSeams(5000, 2000, 1200, (k) => biomeOfSeg(k, 2));

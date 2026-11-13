@@ -15,6 +15,7 @@ import { timeAgo } from '../format';
 import { useMenuNav } from '../useMenuNav';
 import { getDriveIn, subscribeDriveIn, toggleDriveIn } from '../drivein/store';
 import { EndRideConfirm, type EndRideStatus } from './EndRideConfirm';
+import { isWip } from '../../games/registry';
 import { carouselDims, carouselSlots, orderGames, ridesLine, type GameRides } from '../arcade';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
@@ -46,6 +47,16 @@ function CardArt({ game, color, live }: { game: GameModule; color: string; live:
   return <canvas class="card-media" ref={ref} />;
 }
 
+/** Caution tape across a card's art for a game still under construction (purely decorative; the game stays playable). */
+export function CautionTape() {
+  return (
+    <div class="gc-tape" aria-hidden="true">
+      <div class="tape a"><span>UNDER CONSTRUCTION · UNDER CONSTRUCTION · UNDER CONSTRUCTION</span></div>
+      <div class="tape b"><span>CAUTION · WORK IN PROGRESS · CAUTION · WORK IN PROGRESS</span></div>
+    </div>
+  );
+}
+
 /** The game's recorded clip: looping video on the focused card, still poster elsewhere. */
 function CardMedia({ game, color, live, selected }: { game: GameModule; color: string; live: boolean; selected: boolean }) {
   const [missing, setMissing] = useState(false);
@@ -63,7 +74,7 @@ function ActiveInfo({ game, profile, rides }: { game: GameModule; profile: Profi
   const ridden = ridesLine(rides);
   return (
     <div class="gc-info" key={game.id}>
-      <h3>{game.title}</h3>
+      <h3>{game.title}{isWip(game.id) && <span class="wip-chip">Under construction</span>}</h3>
       <div class="tags">{game.tags.map((t) => <span class={`tag ${t}`}>{TAG_LABEL[t] ?? t}</span>)}</div>
       <p class="blurb">{game.blurb}</p>
       <div class="gc-stats">
@@ -111,10 +122,10 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
       {W>0 && games.map((g, i) => {
         const s = slots[i], active = i === sel;
         return (
-          <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}`} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();focusSelected.current=true;play('uiMove');onSel((sel+(e.key==='ArrowRight'?1:-1)+games.length)%games.length);return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
+          <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}${isWip(g.id)?' (under construction)':''}`} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();focusSelected.current=true;play('uiMove');onSel((sel+(e.key==='ArrowRight'?1:-1)+games.length)%games.length);return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
             style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
-            <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
+            <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{isWip(g.id) && <CautionTape />}{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
             {active ? <ActiveInfo game={g} profile={profile} rides={rides[g.id]} /> : <div class="gc-title">{g.title}</div>}
           </div>
         );

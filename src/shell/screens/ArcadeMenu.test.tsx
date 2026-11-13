@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { render } from 'preact';
 import { act } from 'preact/test-utils';
 import { ArcadeMenu } from './ArcadeMenu';
-import { games } from '../../games/registry';
+import { games, isWip, pickerGames, wipGames } from '../../games/registry';
 import { defaultProfile } from '../../progression';
 
 let host: HTMLDivElement | undefined;
@@ -54,4 +54,26 @@ it('has one End ride action that confirms before ending', async () => {
   await act(() => confirm.click());
   expect(onEndRide).toHaveBeenCalledTimes(1);
   expect(host.querySelector('.end-ride-confirm')).toBeNull();
+});
+
+it('lists games under construction with caution tape and keeps them playable', async () => {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
+  expect(wipGames.length).toBeGreaterThan(0);
+  expect(pickerGames).toEqual([...games, ...wipGames]);
+  expect(games.some((g) => isWip(g.id))).toBe(false);
+  const wip = wipGames[0]!, onPlay = vi.fn();
+  host = document.createElement('div'); document.body.appendChild(host);
+  await act(() => render(<ArcadeMenu games={pickerGames} profile={defaultProfile('Test')} onPlay={onPlay} onNav={() => {}} onEndRide={() => {}} />, host!));
+  const cards = [...host.querySelectorAll<HTMLElement>('.gc')];
+  const taped = cards.filter((c) => c.querySelector('.gc-tape')).map((c) => c.getAttribute('aria-label') ?? '');
+  expect(taped).toHaveLength(wipGames.length);
+  expect(taped.every((l) => /under construction/.test(l))).toBe(true);
+  const card = cards.find((c) => (c.getAttribute('aria-label') ?? '').includes(wip.title))!;
+  await act(() => card.click()); // select
+  const active = host.querySelector<HTMLElement>('.gc.active')!;
+  expect(active.querySelector('.wip-chip')).not.toBeNull();
+  await act(() => active.click()); // play
+  expect(onPlay).toHaveBeenCalledWith(wip);
 });

@@ -29,7 +29,10 @@ try {
       const session = createGameSession({ game: module, profile, input, fake: { script: 'z2' }, media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, simOpts: { difficulty: 'pro' } });
       session.pause();
       const host = document.createElement('div'); document.body.append(host);
-      window.__paddleTrial = { session, input, resumes: 0 };
+      // HMR versions the menu module too; use the instance PauseMenu subscribed to.
+      const menuInputUrl = performance.getEntriesByType('resource').map(r => r.name).find(url => /\/shell\/menuInput\.ts(?:\?|$)/.test(url));
+      if (!menuInputUrl) throw new Error('Pause menu input module did not load');
+      window.__paddleTrial = { session, input, resumes: 0, menuInputUrl };
       render(h(PauseMenu, { tuning: session.tuning, layout: 'auto', onLayout() {}, onHelp() {}, onQuit() {}, onRestart() {}, onExtension() {}, onResume() { window.__paddleTrial.resumes++; session.resume(); render(null, host); } }), host);
     });
     await page.getByRole('button', { name: 'Paddle steering', exact: true }).click();
@@ -53,13 +56,13 @@ try {
     await page.getByRole('button', { name: /^Back/ }).click();
     await page.waitForTimeout(150); // allow the parent menu's input subscription to mount
     // Actual menu input delivery (same path as the controller) reopens the focused action.
-    await page.evaluate(async () => { const { deliverMenuPresses } = await import('/src/shell/menuInput.ts'); deliverMenuPresses(new Set(['a'])); });
+    await page.evaluate(async () => { const { deliverMenuPresses } = await import(window.__paddleTrial.menuInputUrl); deliverMenuPresses(new Set(['a'])); });
     await page.getByRole('heading', { name: 'Paddle steering' }).waitFor();
     await page.waitForTimeout(150);
     assert.equal(await page.getByRole('spinbutton', { name: 'Paddle deadzone' }).inputValue(), '0');
     // Move focus to Resume with the controller; it must scroll into view in short landscape.
     for (const button of ['down', 'down', 'down', 'down', 'down']) {
-      await page.evaluate(async button => { const { deliverMenuPresses } = await import('/src/shell/menuInput.ts'); deliverMenuPresses(new Set([button])); }, button);
+      await page.evaluate(async button => { const { deliverMenuPresses } = await import(window.__paddleTrial.menuInputUrl); deliverMenuPresses(new Set([button])); }, button);
       await page.waitForTimeout(40);
     }
     const resume = page.getByRole('button', { name: 'Resume' });
@@ -67,7 +70,7 @@ try {
     await page.screenshot({ path: `out/cadenza-paddles/${width}x${height}-resume.png` });
     const resumeBounds = await resume.boundingBox();
     assert(resumeBounds.y >= -1 && resumeBounds.y + resumeBounds.height <= height + 1, JSON.stringify({ resumeBounds, height }));
-    await page.evaluate(async () => { const { deliverMenuPresses } = await import('/src/shell/menuInput.ts'); deliverMenuPresses(new Set(['a'])); });
+    await page.evaluate(async () => { const { deliverMenuPresses } = await import(window.__paddleTrial.menuInputUrl); deliverMenuPresses(new Set(['a'])); });
     await page.locator('.paddle-settings').waitFor({ state: 'detached' });
     assert.equal(await page.evaluate(() => window.__paddleTrial.resumes), 1);
     // Construct the rider's next session using persisted browser storage.

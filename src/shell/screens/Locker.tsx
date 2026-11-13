@@ -5,7 +5,8 @@ import { itemsIn } from '../../cosmetics/catalog';
 import { isUnlocked, loadout, nextReward, riderLook, titleOf, withItem } from '../../cosmetics/unlocks';
 import { SLOT_GROUPS, SLOT_NAMES, type Item } from '../../cosmetics/types';
 import { Btn } from '../components/Bits';
-import { KeyHints } from '../components/ui';
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
 import { ItemArt, RiderAvatar } from '../components/RiderAvatar';
 import { equipItem, itemHint, pendingPicks } from '../services';
 import { useMenuNav } from '../useMenuNav';
@@ -88,7 +89,7 @@ export function Locker({ profile, onProfile, onPick, onBack }: { profile: Profil
           </div>
         </div>
       </div>
-      <KeyHints hints={[['dpad', 'Browse'], ['a', 'Equip'], ['b', 'Back']]} />
+      <ChromeHints hints={[['dpad', 'Browse'], ['a', 'Equip'], ['b', 'Back']]} />
     </div>
   );
 }

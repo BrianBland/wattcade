@@ -6,7 +6,7 @@ import type { Profile } from '../contracts';
 
 const restore = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('./services', () => ({ restoreSavedSetup: restore, listProfiles: async () => [], lastProfileId: async () => null,
-  takePendingRide: () => null, bindDebugInput: () => () => {}, rememberProfile: vi.fn() }));
+  takePendingRide: () => null, bindDebugInput: () => () => {}, rememberProfile: vi.fn(), WARMUP_CREDIT_S: 120 }));
 vi.mock('./drivein/store', () => ({ handleChannelPress: () => false, loadDriveIn: () => {}, setDriveInVisible: () => {} }));
 vi.mock('./menuInput', () => ({ setMenuGate: () => {} }));
 vi.mock('../audio/sfx', () => ({ play: () => {}, unlockAudio: () => {} }));

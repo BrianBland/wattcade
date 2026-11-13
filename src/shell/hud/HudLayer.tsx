@@ -1,4 +1,6 @@
 import './ribbon.css';
+import '../chrome/chrome.css';
+import { UiButton } from '../../ui';
 import './status.css';
 import '../game/controls.css';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
@@ -51,9 +53,9 @@ function readFrame(session: SessionLike, profile: Profile): Frame {
 /** Controller-accessible history, opened from the pause menu without adding a gameplay binding. */
 export function PauseHistory({ ftp, onClose }: { ftp: number; onClose(): void }) {
   useMenuNav(1, 1, onClose, onClose);
-  return <div class="overlay-modal"><section class="modal ride-history-dialog" role="dialog" aria-modal="true" aria-label="Recent effort">
+  return <div class="overlay-modal chrome-ui chrome-history"><section class="modal ride-history-dialog" role="dialog" aria-modal="true" aria-label="Recent effort">
     <h2>Recent effort</h2><p class="dim">Power and heart rate · Last 3 minutes</p>
-    <RideHistory bars={rideHistory.bars} ftp={ftp} /><button class="btn" onClick={onClose}>Back</button>
+    <RideHistory bars={rideHistory.bars} ftp={ftp} /><UiButton focused onClick={onClose}>Back to pause</UiButton>
   </section></div>;
 }
 

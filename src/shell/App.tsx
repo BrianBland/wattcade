@@ -5,6 +5,7 @@ import { DebugOverlay } from '../debug/DebugOverlay';
 import { loadFlag } from '../debug/flag';
 import { Achievements } from './screens/Achievements';
 import { ArcadeMenu } from './screens/ArcadeMenu';
+import type { EndRideStatus } from './screens/EndRideConfirm';
 import { Connect } from './screens/Connect';
 import { GameHost } from './screens/GameHost';
 import { ProfileEditor } from './screens/ProfileEditor';
@@ -109,14 +110,20 @@ export function App() {
     if (rec) await credit(rec);
     go({ name: 'game', game: g, media });
   };
+  const endRideStatus = (): EndRideStatus => {
+    if (!lobbyIsReal()) return { kind: 'demo' };
+    const activeS = lobbyActiveSeconds(), leftS = WARMUP_CREDIT_S - activeS;
+    return leftS > 0 ? { kind: 'short', activeS, leftS } : { kind: 'save', activeS };
+  };
+  /** After an ended ride (and its summary / rewards), hand the bike back to the rider picker. */
+  const rideEnded = useRef(false);
+  const home = () => { const ended = rideEnded.current; rideEnded.current = false; go({ name: ended ? 'profiles' : 'menu' }); };
+  /** Confirmed End ride: save it if it counts (real devices, >= WARMUP_CREDIT_S pedalling), then back to the rider picker. */
   const endRide = async () => {
-    if (!lobbyIsReal()) { toast('Demo ride: connect a trainer to save rides'); return; }
-    const left = WARMUP_CREDIT_S - lobbyActiveSeconds();
-    if (left > 0) { toast(`Pedal ${formatDuration(left)} more to save this ride`); return; }
-    const rec = stopLobby(); if (!rec) return;
-    const r = await creditRide(rec, profileRef.current);
-    setRestartKey((k) => k + 1);
-    if (r) { applyCredit(r); go({ name: 'summary', record: r.record, award: r.award }); }
+    const rec = endRideStatus().kind === 'save' ? stopLobby() : null;
+    const r = rec ? await creditRide(rec, profileRef.current) : null;
+    if (r) { applyCredit(r); rideEnded.current = true; setRestartKey((k) => k + 1); go({ name: 'summary', record: r.record, award: r.award }); return; }
+    go({ name: 'profiles' }); // a short or demo ride is discarded when the lobby restarts for the picker
   };
   const restartGame = async (g: (typeof games)[number], media?: MediaRun) => {
     const p = profileRef.current;
@@ -139,17 +146,17 @@ export function App() {
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
         onDelete={screen.profileId ? async (p) => { await deleteProfile(p.id); await refresh(); go({ name: 'profiles' }); } : undefined} />; break;
     case 'connect': body = <Connect onDone={() => go({ name: profile ? 'menu' : 'profiles' })} />; break;
-    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} onEndRide={() => void endRide()} />; break;
+    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onEndRide={() => void endRide()} endRideStatus={endRideStatus} minRideS={WARMUP_CREDIT_S} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
-    case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={() => go({ name: 'menu' })} />; break;
+    case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={home} />; break;
     case 'pick': body = profile && <RewardPick profile={profile} onProfile={updateProfile} onDone={() => go({ name: 'locker' })} />; break;
     case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
         onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
         onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }} />; break;
-    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
-    case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>go({name:screen.award.picks>0?'pick':'menu'})}/>; break;
+    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : screen.award.picks > 0 ? go({ name: 'pick' }) : home()} />; break;
+    case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>screen.award.picks>0?go({name:'pick'}):home()}/>; break;
   }
   const inGame = screen.name === 'game';
   const driveInRider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;

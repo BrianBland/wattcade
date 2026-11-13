@@ -80,3 +80,16 @@ it('keeps segmented progress decoration inside the filled portion, including par
   expect(g.save).toHaveBeenCalledTimes(7);
   expect(g.restore).toHaveBeenCalledTimes(7);
 });
+
+it('keeps beveled keys within their touch bounds in every state', () => {
+  const g = { save:vi.fn(),restore:vi.fn(),fillRect:vi.fn(),strokeRect:vi.fn(),fillText:vi.fn(),measureText:()=>({width:20}) } as unknown as CanvasRenderingContext2D;
+  const r = {x:8,y:12,w:120,h:44};
+  for (const state of [{},{primary:true},{pressed:true},{primary:true,pressed:true},{selected:true},{disabled:true}]) {
+    vi.mocked(g.fillRect).mockClear(); drawButton(g,r,'Ride',state);
+    for (const [x,y,w,h] of vi.mocked(g.fillRect).mock.calls) {
+      expect(x).toBeGreaterThanOrEqual(r.x); expect(y).toBeGreaterThanOrEqual(r.y);
+      expect(w).toBeGreaterThanOrEqual(0); expect(h).toBeGreaterThanOrEqual(0);
+      expect(x+w).toBeLessThanOrEqual(r.x+r.w); expect(y+h).toBeLessThanOrEqual(r.y+r.h);
+    }
+  }
+});

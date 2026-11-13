@@ -57,7 +57,11 @@ try {
         assert.match(await page.locator('.toast').innerText(), /Saved rider: Alex/);
         await page.getByText('Max grade', { exact: true }).scrollIntoViewIfNeeded();
       }
-      if (view === 'pause') await page.getByRole('button', { name: /Finish ride/ }).scrollIntoViewIfNeeded();
+      if (view === 'pause') {
+        const top=page.locator('.pause-ride-actions button');assert.equal(await top.count(),2);
+        const a=await top.nth(0).boundingBox(),b=await top.nth(1).boundingBox();
+        assert.equal(a.y,b.y);assert.equal(a.width,b.width);assert.ok(b.y+b.height<=height);
+      }
       if (view === 'achievement') await page.waitForSelector('.achievement-toast');
       if (['summary','result','achievements','loading','error'].includes(view)) {
         const action=page.locator(view==='summary'?'.screen-head .btn':view==='result'?'.result-card .btn':view==='achievements'?'.screen-head .btn':'.ui-message .ui-button');
@@ -73,7 +77,14 @@ try {
         assert.ok(Math.max(...centers)-Math.min(...centers)<2,`${context}: carousel cards should share a centerline`);
         await page.getByRole('button',{name:'Arcade help',exact:true}).click();await page.waitForSelector('[role=tooltip]');
         const tip=await page.locator('[role=tooltip]').boundingBox();assert.ok(tip.x>=0&&tip.x+tip.width<=width&&tip.y>=0,`${context}: tooltip should escape toolbar clipping and fit the viewport`);
-        await page.keyboard.press('Escape');await page.getByRole('button',{name:/^Play /}).focus();await page.keyboard.press('Enter');await page.waitForSelector('.toast');assert.equal(await page.locator('.toast').count(),1);
+        await page.keyboard.press('Escape');await page.getByRole('button',{name:/^Play /}).focus();
+        const old=await page.locator('.gc.active').getAttribute('aria-label');
+        await page.keyboard.press('ArrowRight');await page.waitForTimeout(100);
+        assert.notEqual(await page.locator('.gc.active').getAttribute('aria-label'),old);
+        assert.equal(await page.locator('.gc.active').evaluate(e=>e===document.activeElement),true);
+        await page.keyboard.press('ArrowLeft');await page.waitForTimeout(100);
+        assert.equal(await page.locator('.gc.active').getAttribute('aria-label'),old);
+        await page.keyboard.press('Enter');await page.waitForSelector('.toast');assert.equal(await page.locator('.toast').count(),1);
       }
       if(view==='media') {
         await page.getByRole('button',{name:'Generated',exact:true}).click();

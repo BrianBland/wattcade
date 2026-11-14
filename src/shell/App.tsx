@@ -17,7 +17,9 @@ import { markControlsSeen } from './game/controlsSeen';
 import { UnlockReveal } from './screens/UnlockReveal';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
-import { entranceFor, type StageEntrance } from './warmup/entrance';
+import { approachS, entranceFor, spawnNow, type StageEntrance } from './warmup/entrance';
+import { loadEstimateS, recordLoadS } from './game/loadTimes';
+import { cardClip } from './cardClip';
 import { EntryChip } from './screens/EntryChip';
 import { cancelPrewarm, prewarmGame } from './game/prewarm';
 import { Delayed } from './components/Delayed';
@@ -30,7 +32,7 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  captureLobbyFrame, lastProfileId, saveSettings, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
+  captureLobbyFrame, lastProfileId, saveSettings, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S, lobbySession,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
@@ -120,15 +122,27 @@ export function App() {
     if (g.requires?.media?.length && !media) { go({ name: 'media', game: g }); return; } // music games pick songs first (the ride keeps going)
     const p = profileRef.current;
     if (!p) return;
-    // load the game in the background first; its portal / gate opens on the road once it is ready to show
-    const key = Date.now();
+    // Load the game in the background first. Its portal / gate goes on the road early enough that, at the rider's speed,
+    // they reach it just after the load is expected to finish (a padded estimate from this device's past loads).
+    const key = Date.now(), t0 = performance.now(), estimate = loadEstimateS(g.id);
     entryKey.current = key; jumpAsked.current = false; setEntryReady(false); setEntrance(null);
     go({ name: 'entering', game: g, media });
-    await prewarmGame(g, p, media);
-    if (entryKey.current !== key || screenRef.current.name !== 'entering') return; // cancelled or moved on
+    const live = () => entryKey.current === key && screenRef.current.name === 'entering';
+    let spawned = false;
+    const spawn = (hold: boolean) => { spawned = true; setEntrance({ ...entranceFor(g, 'enter', key, { mp4: cardClip(g.id, 'mp4'), poster: cardClip(g.id, 'webp') }), ...(hold ? { hold: true } : {}) }); };
+    const timer = window.setInterval(() => {
+      if (!live() || spawned) { clearInterval(timer); return; }
+      const snap = lobbySession()?.sim.snapshot() as { v?: number; riderView?: { aheadM?: number } } | undefined;
+      if (spawnNow((performance.now() - t0) / 1000, estimate, approachS(snap?.v ?? 0, snap?.riderView?.aheadM ?? 25))) spawn(true);
+    }, 200);
+    const warm = await prewarmGame(g, p, media);
+    clearInterval(timer);
+    if (warm) recordLoadS(g.id, (performance.now() - t0) / 1000);
+    if (!live()) return; // cancelled or moved on
     setEntryReady(true);
-    setEntrance({ ...entranceFor(g, 'enter', p, key), ...(jumpAsked.current ? { jump: true } : {}) });
-    if (jumpAsked.current) jumpFallback(g, media);
+    if (!spawned) spawn(false);
+    else setEntrance((e) => (e && e.key === key ? { ...e, hold: false } : e)); // loaded: the rider may ride in now
+    if (jumpAsked.current) { setEntrance((e) => (e && e.key === key ? { ...e, jump: true } : e)); jumpFallback(g, media); }
   };
   const entryKey = useRef(0);
   const jumpAsked = useRef(false);
@@ -153,7 +167,7 @@ export function App() {
   /** Back on the road from a game: the rider rides out of its portal (or through confetti), then it clears. */
   const exitTimer = useRef(0);
   const rideOut = (g: (typeof games)[number]) => {
-    setEntrance(entranceFor(g, 'exit', profileRef.current));
+    setEntrance(entranceFor(g, 'exit'));
     clearTimeout(exitTimer.current);
     exitTimer.current = window.setTimeout(() => setEntrance((e) => (e?.kind === 'exit' ? null : e)), EXIT_CLEAR_MS);
   };

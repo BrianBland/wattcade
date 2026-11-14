@@ -14,7 +14,7 @@ import { DriveInScreen, type DriveInApi } from '../drivein/DriveInScreen';
 import { getDriveIn } from '../drivein/store';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
 import type { LobbyEntrance } from '../../games/warmup/render/entrance';
-import { spawnAheadM, type StageEntrance } from './entrance';
+import { HOLD_GAP_M, spawnAheadM, type StageEntrance } from './entrance';
 
 /** Stop pedalling this long after a creditable ride and it is saved on its own (a fresh ride starts). */
 export const AUTO_SAVE_IDLE_S = 180;
@@ -105,17 +105,22 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
     size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 };
     let raf = 0, last = performance.now(), still = 0, sinceCheck = 0, sentTo: unknown = null, sentOn = false;
     // the entrance placed on the road: which request it is, where it stands, whether A moved it, and whether it fired
+    let lastWant: StageEntrance | null = null;
     let placed: { key: number; x: number; jumped: boolean; fired: boolean; r: LobbyRenderer } | null = null;
     const placeEntrance = (snap: { d?: number; v?: number; riderView?: { aheadM?: number } }) => {
       const want = entranceRef.current, r = renderer.current, d = snap.d;
+      if (want !== lastWant) { if (lastWant && lastWant.key !== want?.key) lastWant.dispose?.(); lastWant = want; } // a replaced entrance lets go of its clip
       if (!want || !r?.setEntrance || typeof d !== 'number') { if (!want && placed) { placed.r.setEntrance?.(null); placed = null; } return; }
+      const show = (x: number) => r.setEntrance!({ kind: want.kind, style: want.style, x, color: want.color, label: want.label, ...(want.art ? { art: want.art } : {}) });
       if (placed?.key === want.key && placed.r === r) {
-        if (want.kind === 'enter' && want.jump && !placed.jumped) { placed.jumped = true; placed.x = d; r.setEntrance({ ...want, x: d }); }
+        if (want.kind !== 'enter') return;
+        if (want.hold) { if (placed.x < d + HOLD_GAP_M) { placed.x = d + HOLD_GAP_M; show(placed.x); } } // still loading: it keeps just ahead
+        else if (want.jump && !placed.jumped) { placed.jumped = true; placed.x = d; show(d); }
         return;
       }
       const x = want.kind === 'exit' ? d : d + spawnAheadM(snap.v ?? 0, snap.riderView?.aheadM ?? 25);
       placed = { key: want.key, x, jumped: false, fired: false, r };
-      r.setEntrance({ kind: want.kind, style: want.style, x, color: want.color, label: want.label, ...(want.art ? { art: want.art } : {}) });
+      show(x);
     };
     const draws = new FrameGate(60);
     let drawDt = 0;
@@ -155,6 +160,7 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
       detachKeys(); detachPad(); detachFake();
       window.removeEventListener('pointerdown', wake); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', checkpointLobby);
       void lock?.release();
+      lastWant?.dispose?.();
     };
   }, []);
 

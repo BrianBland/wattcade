@@ -16,11 +16,11 @@ import { useMenuNav } from '../useMenuNav';
 import { getDriveIn, subscribeDriveIn, toggleDriveIn } from '../drivein/store';
 import { EndRideConfirm, type EndRideStatus } from './EndRideConfirm';
 import { isWip } from '../../games/registry';
+import { cardClip } from '../cardClip';
 import { carouselDims, carouselSlots, orderGames, ridesLine, type GameRides } from '../arcade';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
-/** Clips recorded from the real renderers by `npm run capture:cards` (public/cards/<id>.mp4 + .webp poster). */
-const clip = (id: string, ext: 'mp4' | 'webp') => `${import.meta.env.BASE_URL}cards/${id}.${ext}`;
+const clip = cardClip;
 
 /** Fallback banner when a game has no recorded clip: its drawCard art (animated only while focused). */
 function CardArt({ game, color, live }: { game: GameModule; color: string; live: boolean }) {

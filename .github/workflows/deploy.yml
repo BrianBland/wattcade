@@ -2,6 +2,13 @@ name: Deploy
 
 # Every push to main that passes CI is deployed to production (Workers static assets).
 # Skips with a notice until the CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets exist.
+#
+# Arcade card clips are build output, recorded from the real renderers (scripts/capture-cards.ts) and cached per game under
+# a key of everything that can change them (scripts/cards-key.ts). New code never waits for them:
+#   deploy         ships right away with the cached clips (out of date ones included) and lists the games whose clip is stale;
+#   clips          records just those games and saves the cache (outside the production lock; a newer run's clips cancels it);
+#   publish-clips  redeploys this commit with the new clips, unless main has moved on (that run's deploy publishes them).
+
 on:
   workflow_run:
     workflows: [CI]
@@ -9,9 +16,8 @@ on:
     types: [completed]
   workflow_dispatch:
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
+env:
+  SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   deploy:
@@ -19,6 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    outputs:
+      stale: ${{ steps.cards.outputs.stale }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -29,15 +40,109 @@ jobs:
       - uses: actions/checkout@v4
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.SHA }}
       - uses: actions/setup-node@v4
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         with:
           node-version: 22
           cache: npm
+      - name: Install
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: npm ci
+      - name: Restore card clips
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/cards
+          key: cards-${{ github.run_id }}
+          restore-keys: cards-
+      - name: Publish cached card clips
+        id: cards
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: npm run capture:cards -- --cache .cache/cards --cached-only
       - name: Build and deploy
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: |
-          npm ci
+          npm run build
+          npx wrangler deploy
+
+  clips:
+    needs: deploy
+    if: needs.deploy.outputs.stale != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # every clip from scratch takes ~11 min (Watershed ~6); any other single game is under ~1.5 min
+    concurrency:
+      group: deploy-clips
+      cancel-in-progress: true
+    outputs:
+      key: ${{ steps.saved.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Restore card clips
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/cards
+          key: cards-${{ github.run_id }}
+          restore-keys: cards-
+      - name: Record stale card clips (${{ needs.deploy.outputs.stale }})
+        run: |
+          command -v ffmpeg >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          npx playwright-core install --with-deps chromium
+          npm run capture:cards -- --cache .cache/cards
+      - name: Save card clips
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/cards
+          key: cards-${{ hashFiles('.cache/cards/*.key') }}
+      - id: saved
+        run: echo "key=cards-${{ hashFiles('.cache/cards/*.key') }}" >> "$GITHUB_OUTPUT"
+
+  publish-clips:
+    needs: clips
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+      - name: Still the latest commit on main?
+        id: head
+        run: |
+          HEAD=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$HEAD" = "$SHA" ]; then echo "latest=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice title=Card clips::main moved on ($HEAD); its deploy publishes these clips from the cache."; fi
+      - uses: actions/setup-node@v4
+        if: steps.head.outputs.latest == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        if: steps.head.outputs.latest == 'true'
+        run: npm ci
+      - name: Restore card clips
+        if: steps.head.outputs.latest == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/cards
+          key: ${{ needs.clips.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Build and deploy with the new clips
+        if: steps.head.outputs.latest == 'true'
+        run: |
+          npm run capture:cards -- --cache .cache/cards --cached-only
           npm run build
           npx wrangler deploy

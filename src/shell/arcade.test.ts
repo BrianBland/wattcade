@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 import type { GameModule } from '../contracts';
 import { games } from '../games/registry';
 import { carouselDims, carouselSlots, loopOffset, orderGames, ridesByGame, ridesLine } from './arcade';
@@ -56,12 +54,5 @@ describe('arcade picker', () => {
     const s = carouselSlots(7, 0, carouselDims(800));
     expect(s[3].opacity).toBe(0);
     expect(s[4].opacity).toBe(0);
-  });
-  it('has a recorded clip and poster for every game (npm run capture:cards)', () => {
-    for (const x of games) for (const ext of ['mp4', 'webp']) {
-      const f = join(process.cwd(), 'public', 'cards', `${x.id}.${ext}`);
-      expect(existsSync(f), f).toBe(true);
-      expect(statSync(f).size).toBeLessThan(1_000_000);
-    }
   });
 });

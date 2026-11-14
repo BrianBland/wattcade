@@ -1,6 +1,6 @@
 # fullsend — Full Send (rocket-bike sprint workout), 2D mockup
 CONTRACT-REQUEST: none.
-Design doc: the "Rocket bike sprint game: design brainstorm" Claude Doc. In the arcade (`games`); card art is `card.ts` (`drawCard`, a rocket bike at sunset); `public/cards/fullsend.*` are recordings of it, not gameplay (not in `capture-cards.ts` SHOTS yet). Achievements + rewards: `achievements.ts` (14, first tour → golds everywhere / 10 h) and the `fs_*` items + `t_full_send` title in `cosmetics/catalog.ts`.
+Design doc: the "Rocket bike sprint game: design brainstorm" Claude Doc. In the arcade (`games`); card art is `card.ts` (`drawCard`, a rocket bike at sunset); the card clip is a quick-tour sprint into the hay wall (`shell/cards/shots.ts`). Achievements + rewards: `achievements.ts` (14, first tour → golds everywhere / 10 h) and the `fs_*` items + `t_full_send` title in `cosmetics/catalog.ts`.
 ## Sim (`sim/`)
 - `tour.ts`: fixed tours (`quick` ~19 min, `classic` ~27 min). Each set = a set piece in a chosen biome with an effort length and a recovery. Titles, chaser per biome (volcano/jungle/desert = T. rex, snow = avalanche, sea = wave, moon/sky = boulder), default medal thresholds (FTP fractions).
 - `physics.ts` (pure, tested): speed is linear in power/FTP (`kmhPerFtp`, 200) with a spool lag, so the same canyon works at any FTP. Leap gap = ballistic range at bronze speed; `smashCount`; `medalFor`.

@@ -71,7 +71,7 @@ describe('renderer loading gate',()=>{
     expect(mocks.session.frame).toHaveBeenCalled(); // the menu runs, trainer still neutral
     mocks.session.sim.inMenu.mockReturnValue(false);
     await act(async()=>loop(start+300));
-    expect(container.querySelector('[data-count]')?.textContent).toBe('0'); // GO, no 3-2-1
+    expect(container.textContent).not.toContain('Start game'); expect(container.querySelector('[data-count]')).toBeNull(); // GO: no 3-2-1, no splash
     expect(mocks.panic).toHaveBeenLastCalledWith(false);
   });
   it('skips the controls card once the rider has seen these controls',async()=>{
@@ -84,7 +84,7 @@ describe('renderer loading gate',()=>{
     await act(async()=>{render(<GameHost game={game} profile={profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} onControlsSeen={seen} />,container);});
     await act(async()=>resolveReady());
     expect(container.textContent).not.toContain('Start game');
-    expect(container.querySelector('[data-count]')?.textContent).toBe('0');
+    expect(container.querySelector('[data-count]')).toBeNull();
     expect(mocks.panic).toHaveBeenLastCalledWith(false); expect(seen).not.toHaveBeenCalled();
   });
   it('remembers the controls when the rider starts from the card',async()=>{
@@ -95,7 +95,7 @@ describe('renderer loading gate',()=>{
     await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} onControlsSeen={seen} />,container);});
     await act(async()=>resolveReady());
     await act(async()=>container.querySelector<HTMLButtonElement>('button')!.click());
-    expect(seen).toHaveBeenCalledOnce(); expect(container.querySelector('[data-count]')?.textContent).toBe('0');
+    expect(seen).toHaveBeenCalledOnce(); expect(container.querySelector('[data-count]')).toBeNull(); expect(mocks.panic).toHaveBeenLastCalledWith(false);
   });
   it('updates actual HUD shape when content or legend changes inside the same reserved band',async()=>{
     await mount();

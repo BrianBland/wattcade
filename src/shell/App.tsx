@@ -29,8 +29,8 @@ import {
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
-/** Arcade picker list (dev-only games appear with the dev flag). */
-const games = pickerGames();
+/** Arcade picker list (games under construction included; their cards wear caution tape). */
+const games = pickerGames;
 
 /** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
 export const SLEEP_S = 25;

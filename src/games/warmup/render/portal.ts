@@ -81,7 +81,7 @@ export function drawPortal(g: G, x: number, y: number, t: number, k: number, to:
     o.clearRect(0, 0, w, h);
     if (window) { o.save(); o.translate(-(cx - rx), -(cy - ry)); try { window(o); } catch { /* bad window: swirl only */ } o.restore(); }
     const img = o.getImageData(0, 0, w, h), px = img.data;
-    const deep = mix(R, black, 0.72), mid = mix(R, black, 0.35), lit = mix(R, white, 0.45);
+    const deep = mix(R, black, 0.72), mid = mix(R, black, 0.35);
     for (let j = 0; j < h; j++) {
       const dy = j - ry, half = ovalHalf(rx, ry, dy);
       for (let i = 0; i < w; i++) {
@@ -90,10 +90,10 @@ export function drawPortal(g: G, x: number, y: number, t: number, k: number, to:
         const nx = dx / rx, ny = dy / ry, r = Math.sqrt(nx * nx + ny * ny);
         const arm = (((Math.atan2(ny, nx) / (Math.PI * 2)) * 3 + r * 1.7 - t * 0.55) % 1 + 1) % 1;
         if (!window || px[q + 3] === 0) { // no far side: the portal's own colours, in hard bands
-          const c = r < 0.22 ? lit : arm < 0.3 ? mid : deep;
+          const c = arm < 0.3 ? mid : deep;
           px[q] = c[0]; px[q + 1] = c[1]; px[q + 2] = c[2]; px[q + 3] = 255;
         }
-        const s = arm < 0.16 ? swirl : r < 0.18 ? swirl * 0.8 : 0; // swirl arms and a bright eye, stepped, no gradients
+        const s = arm < 0.16 && r > 0.12 ? swirl : 0; // swirl arms, stepped, no gradients; they meet in the dark middle
         if (s > 0) { px[q] += (255 - px[q]) * s; px[q + 1] += (255 - px[q + 1]) * s; px[q + 2] += (255 - px[q + 2]) * s; }
       }
     }

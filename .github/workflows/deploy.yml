@@ -70,7 +70,7 @@ jobs:
     needs: deploy
     if: needs.deploy.outputs.stale != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # every clip from scratch takes ~11 min (Watershed ~6); any other single game is under ~1.5 min
+    timeout-minutes: 45 # every clip from scratch takes ~18 min (Watershed ~6, after ~40 s of headless sim before the first frame); any other single game is under ~3.5 min
     concurrency:
       group: deploy-clips
       cancel-in-progress: true

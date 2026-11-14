@@ -37,8 +37,12 @@ async function record(browser: Browser, base: string, id: string, shot: CardShot
       performance.now = () => vt; Date.now = () => Math.floor(t0 + vt);
       (window as unknown as { __vclock: (ms: number) => void }).__vclock = (ms) => { vt += ms; };
     });
-    await page.goto(`${base}/dev/capture.html?game=${id}&manual=1&${shotQuery(shot)}`);
-    await page.waitForFunction(() => (window as unknown as { __advance?: unknown }).__advance, null, { polling: 200, timeout: 300_000 });
+    // Don't wait for `load`: capture.ts steps the sim `sec` seconds synchronously while the module runs, which holds the
+    // load event (Watershed's 1500 s takes minutes on CI). __advance appearing is the real readiness signal.
+    await page.goto(`${base}/dev/capture.html?game=${id}&manual=1&${shotQuery(shot)}`, { waitUntil: 'commit' });
+    const t0 = Date.now();
+    await page.waitForFunction(() => (window as unknown as { __advance?: unknown }).__advance, null, { polling: 1000, timeout: 900_000 });
+    console.log(`  ${id}: ready in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     const advance = (ms: number) => page.evaluate((m) => (window as unknown as { __advance: (ms: number) => void }).__advance(m), ms);
     const step = 1000 / FPS;
     for (let i = 0; i < FPS * 2; i++) await advance(step); // settle: textures, intro tweens

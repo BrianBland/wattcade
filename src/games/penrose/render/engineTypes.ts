@@ -27,6 +27,8 @@ export interface EngineHooks {
 }
 
 export interface PenroseEngine {
+  /** Resolves once the campaign's level list is complete (it is built between frames; see createPenroseEngine). */
+  readonly whenReady: Promise<void>;
   readonly levels: LevelInfo[];
   readonly index: number;
   readonly autopilot: boolean;

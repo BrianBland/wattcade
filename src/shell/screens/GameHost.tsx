@@ -16,6 +16,7 @@ import { controlsSignature, needsControls, playControls } from '../game/controls
 import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
+import { adoptWarm, disposeWarm, takeWarmGame } from '../game/prewarm';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
@@ -112,6 +113,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
 
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
+    const warmJob = takeWarmGame(game.id, profile.id);
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
     const hudLayout = () => { if (!disposed) renderer?.setInsets?.(readInsets()); };
@@ -150,10 +152,19 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           duckAmbient('music', true); // the game's own ambience would fight the music
         }
         debugActions.panic(true); // trainer neutral through the controls card and the game's menu, until GO
-        renderer = await game.loadRenderer(); rendererRef.current = renderer;
-        if (disposed) { renderer.unmount(); return; }
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
+        const warm = warmJob ? await warmJob : null; // loaded while the rider rode to the portal
+        if (warm) {
+          if (disposed) { disposeWarm(warm); return; }
+          warm.attach((a) => session.sim.receive?.(a), musicFx);
+          adoptWarm(warm, mount.current!);
+          renderer = warm.renderer; rendererRef.current = renderer;
+          renderer.resize?.(mount.current!.clientWidth, mount.current!.clientHeight);
+        } else {
+          renderer = await game.loadRenderer(); rendererRef.current = renderer;
+          if (disposed) { renderer.unmount(); return; }
+          renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
+        }
         renderer.setInsets?.(readInsets());
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });

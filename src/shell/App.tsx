@@ -19,6 +19,7 @@ import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
 import { entranceFor, type StageEntrance } from './warmup/entrance';
 import { EntryChip } from './screens/EntryChip';
+import { cancelPrewarm, prewarmGame } from './game/prewarm';
 import { Delayed } from './components/Delayed';
 import { MediaPicker } from './media/MediaPicker';
 import { Toasts, toast } from './components/Toasts';
@@ -117,8 +118,25 @@ export function App() {
   };
   const play = async (g: (typeof games)[number], media?: MediaRun) => {
     if (g.requires?.media?.length && !media) { go({ name: 'media', game: g }); return; } // music games pick songs first (the ride keeps going)
-    setEntrance(entranceFor(g, 'enter', profileRef.current)); // ride into the game's portal / gate on the road
+    const p = profileRef.current;
+    if (!p) return;
+    // load the game in the background first; its portal / gate opens on the road once it is ready to show
+    const key = Date.now();
+    entryKey.current = key; jumpAsked.current = false; setEntryReady(false); setEntrance(null);
     go({ name: 'entering', game: g, media });
+    await prewarmGame(g, p, media);
+    if (entryKey.current !== key || screenRef.current.name !== 'entering') return; // cancelled or moved on
+    setEntryReady(true);
+    setEntrance({ ...entranceFor(g, 'enter', p, key), ...(jumpAsked.current ? { jump: true } : {}) });
+    if (jumpAsked.current) jumpFallback(g, media);
+  };
+  const entryKey = useRef(0);
+  const jumpAsked = useRef(false);
+  const [entryReady, setEntryReady] = useState(false);
+  /** After A (jump in), go in anyway if the road hasn't shown the rider going through by then. */
+  const jumpFallback = (g: (typeof games)[number], media?: MediaRun) => {
+    const key = entryKey.current;
+    window.setTimeout(() => { if (screenRef.current.name === 'entering' && entryKey.current === key) void enterGame(g, media); }, JUMP_FALLBACK_MS);
   };
   /** The rider went through the entrance (or the lobby isn't running): leave for the game. */
   const entering = useRef(false);
@@ -180,12 +198,14 @@ export function App() {
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
     case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={home} />; break;
     case 'pick': body = profile && <RewardPick profile={profile} onProfile={updateProfile} onDone={() => go({ name: 'locker' })} />; break;
-    case 'entering': body = <EntryChip key={entrance?.key} game={screen.game} onJump={() => {
+    case 'entering': body = <EntryChip game={screen.game} ready={entryReady} onJump={() => {
+        if (jumpAsked.current) return;
+        jumpAsked.current = true; // still loading: the entrance opens at the rider once ready
+        if (!entryReady) return;
         setEntrance((e) => (e && e.kind === 'enter' ? { ...e, jump: true } : e));
-        const g = screen.game, m = screen.media; // no road to ride (lobby not drawing yet): go straight in
-        window.setTimeout(() => { if (screenRef.current.name === 'entering') void enterGame(g, m); }, JUMP_FALLBACK_MS);
+        jumpFallback(screen.game, screen.media);
       }}
-      onCancel={() => { setEntrance(null); go({ name: 'menu' }); }} />; break;
+      onCancel={() => { entryKey.current = 0; cancelPrewarm(); setEntrance(null); go({ name: 'menu' }); }} />; break;
     case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={() => void quitGame(screen.game)}

@@ -583,3 +583,5 @@
 .entry-chip-label b {color:var(--entry-accent);font-weight:900}
 .entry-chip-actions {display:flex;gap:8px}
 .entry-chip .key-hints {flex-basis:100%;justify-content:center}
+.entry-chip-dots::after {content:'…';display:inline-block;animation:entryDots 1s steps(3,end) infinite;overflow:hidden;vertical-align:bottom;width:1ch}
+@keyframes entryDots {from{width:0}to{width:1.2ch}}

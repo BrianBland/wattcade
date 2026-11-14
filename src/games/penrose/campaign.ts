@@ -19,3 +19,12 @@ export const CAMPAIGN: Chapter[] = [
   { name: '8 · Everything at once', levels: ['bc:22', 'bc:3', 'bc:13', 'bc:9', 'bc:29', 'bc:52'] },
   { name: '9 · The Cube', levels: ['x-cube'] },
 ];
+
+/**
+ * For each main-generator campaign level, the sub-seed that plans first (`plan3For(...).sub`). Planning tries sub-seeds
+ * in order and the failing ones cost up to a second of CPU per level; starting at the known one makes the same level
+ * in a few ms. Re-take these (the sweep prints `sub`) when gen9.ts changes; a stale entry falls back to the full search.
+ */
+export const PLAN_SUB: Record<string, number> = {
+  '3:11': 2, '3:28': 20, '10:5': 24, '10:45': 13, '0:7': 33, '8:4': 18, '8:30': 39, '7:38': 20, '5:4': 0, '9:46': 9, '6:28': 4, '6:20': 35,
+};

@@ -17,7 +17,7 @@ try {
         let item, about = '';
         if (mode === 'gen') {
           const r = t.candidates(tier, [sd])[0]; if (!r.plan) continue;
-          item = `${tier}:${sd}`; about = `${r.sig} · ${r.sol.stops} stops · ${r.sol.minutes.toFixed(1)} min`;
+          item = `${tier}:${sd}`; about = `sub ${r.sub} · ${r.sig} · ${r.sol.stops} stops · ${r.sol.minutes.toFixed(1)} min`;
         } else {
           const pl = t.curtainPlan(sd); if (!pl) continue;
           item = `cg:${sd}`; about = `${pl.name} · holes ${pl.holes.map((h) => h.kind + h.yaw).join(',')}`;

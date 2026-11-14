@@ -461,6 +461,9 @@ export class LighthouseRenderer implements GameRenderer {
     return Math.min(14, shotAt + 4.5);
   }
 
+  /** Compile the scene's shaders without blocking the page where the browser can (parallel shader compile). */
+  async prepare() { if (this.renderer) await this.renderer.compileAsync(this.scene, this.camera); }
+
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     let s = snapshot as Snap;
     if (!this.renderer || !s || s.fog === undefined || !s.grow) return;

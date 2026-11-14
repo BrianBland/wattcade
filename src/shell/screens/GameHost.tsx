@@ -172,6 +172,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         if (probe.current) ro.observe(probe.current);
         await renderer.ready?.();
         if (disposed) return;
+        if (!warm && renderer.prepare) { try { await renderer.prepare(session.sim.snapshot()); } catch { /* best effort */ } if (disposed) return; }
         session.idle(0); // discard presses made while loading before exposing game controls
         renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
         loadingRef.current = false; setLoading(false);

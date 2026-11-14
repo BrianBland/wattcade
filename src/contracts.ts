@@ -226,6 +226,10 @@ export interface GameRenderer {
   setInsets?(insets: Insets): void;
   /** Await after mount before advancing the simulation or countdown. */
   ready?(): Promise<void>;
+  /** Optional: get everything the first frame of `snapshot` needs (scene built, shaders compiled, e.g. three's
+   *  `compileAsync`) without blocking the page for long, so the shell can load the game while the overworld keeps
+   *  moving. Called after ready(), before the first render. */
+  prepare?(snapshot: unknown): Promise<void>;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
   /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the

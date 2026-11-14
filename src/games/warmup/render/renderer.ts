@@ -432,13 +432,11 @@ export class WarmupRenderer implements GameRenderer {
       return;
     }
     const art = e.art ? this.artFrame(e.art, t) : null;
-    drawPortal(g, sx, sy, t, k, { rim: e.color, glow: e.color }, (gg) => {
-      const rx = PORTAL.rx * k, ry = PORTAL.ry * k, cy = sy - ry - 1;
-      const grad = gg.createRadialGradient(sx, cy, 0, sx, cy, ry);
-      grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.35, e.color); grad.addColorStop(1, '#0b1d26');
-      gg.fillStyle = grad; gg.fillRect(sx - rx, cy - ry, rx * 2, ry * 2);
-      if (art) gg.drawImage(art, sx - rx, cy - ry, rx * 2, ry * 2);
-    });
+    // the game's clip through the window when there is one, else the portal's own pixel swirl
+    drawPortal(g, sx, sy, t, k, { rim: e.color, glow: e.color }, art ? (gg) => {
+      const rx = Math.round(PORTAL.rx * k), ry = Math.round(PORTAL.ry * k), cy = sy - ry - 1;
+      gg.drawImage(art, sx - rx, cy - ry, rx * 2 + 1, ry * 2 + 1);
+    } : null, art ? 0.12 : 0.3);
     const clear = Math.min(1, Math.max(0, (sx - this.LW * 0.3 - 12) / 14)) * k;
     if (e.label && clear > 0) this.texts.push({ s: e.label, x: sx, y: sy - PORTAL.ry * 2 - 7, size: 4.4, color: '#ffffff', align: 'center', alpha: clear, glow: e.color });
   }

@@ -18,3 +18,13 @@ describe('entranceOpen', () => {
     expect(entranceOpen(e, 50, ENTRANCE.exitHoldS + ENTRANCE.exitShutS + 1)).toBe(0);
   });
 });
+
+describe('ovalHalf (pixel portal outline)', () => {
+  it('is widest at the middle row, a point at the ends, and off the oval beyond', async () => {
+    const { ovalHalf } = await import('./portal');
+    expect(ovalHalf(18, 32, 0)).toBe(18);
+    expect(ovalHalf(18, 32, 32)).toBe(0);
+    expect(ovalHalf(18, 32, 33)).toBe(-1);
+    for (let dy = 0; dy < 32; dy++) expect(ovalHalf(18, 32, dy)).toBeGreaterThanOrEqual(ovalHalf(18, 32, dy + 1));
+  });
+});

@@ -499,6 +499,14 @@ export class WatershedRenderer implements GameRenderer {
     setAmbient('surf', 0.07, 420, 0.5);
   }
 
+  /** Build the world for the first snapshot and compile its shaders off the main thread where the browser can. */
+  async prepare(snapshot: unknown) {
+    const s = snapshot as WatershedSnapshot;
+    if (!this.renderer || !s || !s.h) return;
+    if (!this.terrainView) this.build(s);
+    await this.renderer.compileAsync(this.scene, this.camera);
+  }
+
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as WatershedSnapshot;
     if (!this.renderer || !s || !s.h) return;

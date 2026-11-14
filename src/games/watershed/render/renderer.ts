@@ -504,6 +504,8 @@ export class WatershedRenderer implements GameRenderer {
     const s = snapshot as WatershedSnapshot;
     if (!this.renderer || !s || !s.h) return;
     if (!this.terrainView) this.build(s);
+    await new Promise((r) => setTimeout(r, 0)); // let the page draw a frame between building and compiling
+    if (!this.renderer) return;
     await this.renderer.compileAsync(this.scene, this.camera);
   }
 

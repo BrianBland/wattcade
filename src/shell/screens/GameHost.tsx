@@ -170,7 +170,10 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);
         if (probe.current) ro.observe(probe.current);
-        await renderer.ready?.();
+        // A game loaded ahead of time was readied then; readying it again only catches up with a size change (say the
+        // game's HUD is shorter than the overworld's), which games redo lazily, so it never holds the Preparing screen.
+        if (warm) void renderer.ready?.()?.catch?.(() => {});
+        else await renderer.ready?.();
         if (disposed) return;
         if (!warm && renderer.prepare) { try { await renderer.prepare(session.sim.snapshot()); } catch { /* best effort */ } if (disposed) return; }
         session.idle(0); // discard presses made while loading before exposing game controls

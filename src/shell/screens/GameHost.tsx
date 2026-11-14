@@ -87,13 +87,13 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
   const shownControls = useRef(false); // the full card was shown this session (skip the "controls are in Menu" hint)
-  /** GO: release the trainer, ease the game's resistance in and start the music. No splash: the ride just starts (a short sound marks it). */
+  /** GO: release the trainer, ease the game's resistance in and start the music. No splash or sound: the ride just starts (games that race can run their own countdowns). */
   const go = () => {
     const session = sessionRef.current; if (!session || phaseRef.current === 'play') return;
     session.idle(0); // drop the press that started it
     debugActions.panic(false); session.mixer?.rampIn();
     void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
-    setPhase('play'); play('go');
+    setPhase('play');
     toast(shownControls.current ? 'Tap Menu for ride options' : 'Controls and ride options: tap Menu');
   };
   /** Leaving the controls card: a game still showing its own pre-game menu (variant / loadout) is run through it before GO. */

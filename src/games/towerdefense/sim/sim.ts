@@ -1572,6 +1572,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0))) return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start', shortLabel: 'Buy' }, { button: 'b', label: 'Start run', shortLabel: 'Start' }, ...gearHints()],
+        playControls: playControls(),
       };
       const boss = bossView();
       const call = effort && (effort.state === 'active' || effort.state === 'announced') ? effort : null;

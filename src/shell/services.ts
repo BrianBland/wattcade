@@ -41,6 +41,7 @@ export const listProfiles = (): Promise<Profile[]> => profileStore.list();
 export const saveProfile = (p: Profile): Promise<Profile> => profileStore.update(p);
 export const awardProfile = (p: Profile): Promise<Profile> => profileStore.award(p);
 export const saveGameData = (profileId: string, gameId: string, data: unknown): Promise<void> => profileStore.updateGameData(profileId, gameId, data);
+export const saveSettings = (profileId: string, patch: Partial<Profile['settings']>): Promise<void> => profileStore.updateSettings(profileId, patch);
 export const deleteProfile = (id: string): Promise<void> => profileStore.delete(id);
 export async function createProfile(name: string): Promise<Profile> {
   return profileStore.create(name);

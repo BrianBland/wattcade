@@ -153,6 +153,9 @@ describe('stores', () => {
     expect(awarded).toMatchObject({ ftp: 180, xp: 20 });
     expect(awarded.gameData).toMatchObject({ towerdefense: { bank: 40 }, _progression: { rules: 3 } });
     expect((await s.get(a.id))!.gameData.towerdefense).toEqual({ bank: 40 });
+    await s.updateSettings(a.id, { controlsSeen: { dungeon: 'c1' } });
+    expect((await s.get(a.id))!.settings.controlsSeen).toEqual({ dungeon: 'c1' });
+    expect((await s.get(a.id))!.gameData.towerdefense).toEqual({ bank: 40 });
     await s.updateGameData(a.id, 'dungeon', { coins: 9 });
     expect((await s.get(a.id))!.ftp).toBe(180);
     expect((await s.get(a.id))!.gameData).toMatchObject({ towerdefense: { bank: 40 }, dungeon: { coins: 9 } });

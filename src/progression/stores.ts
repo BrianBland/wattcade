@@ -71,6 +71,13 @@ export class ProfileStore {
       return { ...current, gameData: { ...current.gameData, [gameId]: structuredClone(data) } };
     }, this.store);
   }
+  /** Merge settings into the stored profile without rewriting XP, game saves, or other settings. */
+  async updateSettings(profileId: string, patch: Partial<Profile['settings']>): Promise<void> {
+    await updateValue<Profile>(profileId, (current) => {
+      if (!current) throw new Error('The player profile no longer exists');
+      return { ...current, settings: { ...current.settings, ...structuredClone(patch) } };
+    }, this.store);
+  }
   async delete(id: string): Promise<void> {
     await del(id, this.store);
     if ((await this.getLastProfileId()) === id) await del('lastProfileId', this.store);

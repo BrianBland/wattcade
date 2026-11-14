@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   session: { frame: vi.fn(), idle: vi.fn(() => new Set()), pause: vi.fn(), resume: vi.fn(), ctx: { bike: () => ({}) }, sim: { snapshot: () => ({}), isOver: () => false, inMenu: vi.fn(() => false), menuActions: vi.fn((): import('../../contracts').GameMenuAction[] => []), receive: vi.fn() } },
   raf: vi.fn((_cb: FrameRequestCallback) => 1), panic: vi.fn(), system: null as null | ((action: string) => void), quit: vi.fn(), abandon: vi.fn(),
 }));
-vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, takeLobbyFrame: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
+vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward: () => null, takeLobbyFrame: () => null, getFake: () => false, activeSession: () => null, mediaEngine: vi.fn(), hasConnectedController: () => false, onSystem: (fn: (action: string) => void) => { mocks.system = fn; return () => {}; }, debugActions: { panic: mocks.panic }, input: { attachKeyboard: () => () => {}, attachGamepad: () => () => {}, attachTouch: () => () => {}, state: () => ({}) } }));
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
 vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride', extensions, onExtension }: { onQuit: () => void; quitLabel?: string; extensions: import('../../contracts').GameMenuAction[]; onExtension: (action: unknown) => void }) => h('div', {}, extensions.map(entry => h('button', { onClick: () => onExtension(entry.action) }, entry.label)), h('button', { onClick: onQuit }, quitLabel)) }));
@@ -58,15 +58,44 @@ describe('renderer loading gate',()=>{
     expect(container.textContent).toContain('Start game');expect(container.querySelector('[data-count]')).toBeNull();
     expect(mocks.session.frame).not.toHaveBeenCalled();
   });
-  it('teaches gameplay controls after a built-in loadout closes before accepting a fresh start press',async()=>{
+  it('teaches gameplay controls before a built-in loadout, then says GO when the loadout closes',async()=>{
     mocks.session.sim.inMenu.mockReturnValue(true);await mount();await act(async()=>resolveReady());
+    expect(container.textContent).toContain('Start game');
     const loop=mocks.raf.mock.calls.at(-1)![0] as unknown as FrameRequestCallback;
-    const start=performance.now();mocks.session.sim.inMenu.mockReturnValue(false);
-    await act(async()=>loop(start+100));
-    expect(container.textContent).toContain('Start game');expect(container.querySelector('[data-count]')).toBeNull();
+    const start=performance.now();
     mocks.session.idle.mockReturnValueOnce(new Set(['a']));
+    await act(async()=>loop(start+100)); // A on the card opens the game's menu, not GO
+    expect(container.textContent).not.toContain('Start game');expect(container.querySelector('[data-count]')).toBeNull();
+    expect(mocks.panic).not.toHaveBeenCalledWith(false);
     await act(async()=>loop(start+200));
-    expect(container.querySelector('[data-count]')?.textContent).toBe('3');
+    expect(mocks.session.frame).toHaveBeenCalled(); // the menu runs, trainer still neutral
+    mocks.session.sim.inMenu.mockReturnValue(false);
+    await act(async()=>loop(start+300));
+    expect(container.textContent).not.toContain('Start game'); expect(container.querySelector('[data-count]')).toBeNull(); // GO: no 3-2-1, no splash
+    expect(mocks.panic).toHaveBeenLastCalledWith(false);
+  });
+  it('skips the controls card once the rider has seen these controls',async()=>{
+    const seen = vi.fn();
+    const { controlsSignature } = await import('../game/controlsSeen');
+    const ready = new Promise<void>((resolve)=>{resolveReady=resolve;});
+    renderer = {mount:vi.fn(),setInsets:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
+    const game = {id:'starfighter',title:'Sprocket Squadron',loadRenderer:async()=>renderer} as unknown as GameModule;
+    const profile = {level:1,settings:{controlsSeen:{starfighter:controlsSignature([],'touch')}}} as unknown as Profile;
+    await act(async()=>{render(<GameHost game={game} profile={profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} onControlsSeen={seen} />,container);});
+    await act(async()=>resolveReady());
+    expect(container.textContent).not.toContain('Start game');
+    expect(container.querySelector('[data-count]')).toBeNull();
+    expect(mocks.panic).toHaveBeenLastCalledWith(false); expect(seen).not.toHaveBeenCalled();
+  });
+  it('remembers the controls when the rider starts from the card',async()=>{
+    const seen = vi.fn();
+    const ready = new Promise<void>((resolve)=>{resolveReady=resolve;});
+    renderer = {mount:vi.fn(),setInsets:vi.fn(),render:vi.fn(),unmount:vi.fn(),ready:()=>ready};
+    const game = {id:'starfighter',title:'Sprocket Squadron',loadRenderer:async()=>renderer} as unknown as GameModule;
+    await act(async()=>{render(<GameHost game={game} profile={{level:1} as Profile} onQuit={mocks.quit} onAbandon={mocks.abandon} onRestart={()=>{}} onSave={()=>{}} onControlsSeen={seen} />,container);});
+    await act(async()=>resolveReady());
+    await act(async()=>container.querySelector<HTMLButtonElement>('button')!.click());
+    expect(seen).toHaveBeenCalledOnce(); expect(container.querySelector('[data-count]')).toBeNull(); expect(mocks.panic).toHaveBeenLastCalledWith(false);
   });
   it('updates actual HUD shape when content or legend changes inside the same reserved band',async()=>{
     await mount();
@@ -82,7 +111,7 @@ describe('renderer loading gate',()=>{
     panelBounds.mockReturnValue(rect(992,184)); window.dispatchEvent(new Event(HUD_LAYOUT_EVENT));
     expect(renderer.setInsets).toHaveBeenLastCalledWith({top:0,right:0,left:0,bottom:188,occlusions:[{x:0,y:992,w:820,h:184}]});
   });
-  for(const menu of [false,true])it(`holds ${menu?'the game menu':'the intro and countdown'} until renderer readiness`,async()=>{
+  for(const menu of [false,true])it(`holds the controls card${menu?' and the game menu':''} until renderer readiness`,async()=>{
     mocks.session.sim.inMenu.mockReturnValue(menu); await mount();
     expect(container.textContent).toContain('Preparing Dynamo Defense');
     expect(container.textContent).not.toContain('Start game');
@@ -92,7 +121,7 @@ describe('renderer loading gate',()=>{
     expect(container.querySelector('.game-loading')).toBeNull();
     expect(renderer.render).toHaveBeenCalledOnce(); expect(mocks.raf).toHaveBeenCalledOnce();
     expect(mocks.session.idle).toHaveBeenCalledWith(0); // discard presses accumulated on the loading screen
-    if(!menu)expect(container.textContent).toContain('Start game');
+    expect(container.textContent).toContain('Start game'); // first play: the card comes first, menu or not
   });
   it('shows a recoverable error without starting the simulation when assets fail',async()=>{
     await mount(); await act(async()=>rejectReady(new Error('Texture unavailable')));

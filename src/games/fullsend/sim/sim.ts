@@ -894,16 +894,16 @@ export function createFullSendSim(ctx: GameContext, opts: FullSendOpts = {}): Ga
       if (piece) ctx.debug('fullsend.live', +piece.live.toFixed(2));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose tour / options' }, { button: 'a', label: 'Start the ride', shortLabel: 'Start' }] };
       const s = set();
       const air = mode === 'air' || mode === 'hop';
-      const controls: GameHud['controls'] = [
+      const controls: NonNullable<GameHud['controls']> = [
         { button: 'paddles', label: 'Lean in the air: left = back, right = forward. Land parallel to the road for speed', shortLabel: 'Lean', active: air },
         { button: 'left', label: 'Lean back (in the air)', shortLabel: 'Back', active: air, displayOrder: 0 },
         { button: 'right', label: 'Lean forward (in the air)', shortLabel: 'Fwd', active: air, displayOrder: 1 },
         { button: 'a', label: 'Trick (in the air)', shortLabel: 'Trick', active: air },
         { button: 'b', label: `Jet (sky and moon): hold and pedal above ${Math.round(tun.jetFtp() * 100)}% FTP to climb to the rings`, shortLabel: 'Jet', active: (tier === 'sky' || tier === 'moon') && !toTier },
       ];
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose tour / options' }, { button: 'a', label: 'Start the ride', shortLabel: 'Start' }], playControls: controls };
       const base = { gears: true, controls, touchControls: ['left', 'right', 'a', 'b'] as GameHud['touchControls'] };
       if (phase === 'effort' && s && piece) {
         return { ...base, targetZone: { min: powerZone(piece.th[0]), max: 5, label: piece.title, source: 'power' } };

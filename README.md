@@ -38,7 +38,7 @@ npm run build
 npm run sim -- --game dungeon --script sprints --minutes 20 --seed 1 --autopilot
 npm run sim:all      # every game × scenario headless; exits non-zero on failure
 npm run snap:watershed -- --script grind --minutes 15 --every 5   # top-down PNGs of the river sim in out/watershed/
-npm run capture:cards -- [--only hamster]   # re-record the arcade clips (needs `npm run dev -- --port 5199`, ffmpeg, Playwright's Chromium)
+npm run capture:cards -- [--only hamster]   # record the arcade clips into public/cards (CI does this on deploy; needs ffmpeg, Playwright's Chromium)
 ```
 
 Dev pages (with `npm run dev`): `/probe.html` (Bluetooth probe), `/media-lab.html` (Music Lab), `/dev/watershed.html?script=spin&min=20&autopilot=1` (Watershed on the fake bike, fast-forwarded, without the shell), `/dev/cadenza.html?autopilot=1` (Cadenza on a synth set), `/dev/squadron.html?sec=375&craft=escort` (Squadron on a silent synth timeline; `menu=1` opens craft selection), `/dev/capture.html?game=<id>&sec=600&opts={"autopilot":true}` (any game's renderer, fast-forwarded, no HUD; what `capture:cards` records).
@@ -89,14 +89,14 @@ Bluefy does not use Chrome flags. Its App Store release notes advertise `getDevi
 The site is static, so it ships as a Worker with no script: `wrangler.jsonc` points `assets` at `dist/`.
 
 **One-time setup**
-1. `npx wrangler login`, then `npm run deploy` for the first deploy. It lands at `https://wattcade.<your-subdomain>.workers.dev`, which is HTTPS and works in Bluefy.
+1. `npx wrangler login`, then `npm run deploy` for the first deploy. It lands at `https://wattcade.<your-subdomain>.workers.dev`, which is HTTPS and works in Bluefy. A local deploy ships whatever is in `public/cards` (run `npm run capture:cards` first, or the arcade cards show their art until the next CI deploy).
 2. The custom domain `wattcade.brianb.land` is declared in `routes` in `wrangler.jsonc` (the zone must be on your Cloudflare account). Edit it there rather than in the dashboard, since deploys treat the file as the source of truth.
 3. Optional gate: Zero Trust → Access → self-hosted application on that hostname, with an email allow-list (free).
 
 **CI/CD (GitHub Actions)**
 - `ci.yml`: typecheck, tests, `sim:all`, build on every PR and push to main.
-- `deploy.yml`: deploys to production after CI passes on main (also manually via *Run workflow*).
-- `preview.yml`: each same-repo PR gets a `pr-<n>` preview URL, posted as a PR comment.
+- `deploy.yml`: deploys to production after CI passes on main (also manually via *Run workflow*), without waiting on the arcade card clips: it ships with the cached ones, then a `clips` job re-records only the games whose clip is out of date (each clip is cached under a key of its game's code, shot, harness and dependency versions; a change to shared code such as `src/core` re-records all of them, ~11 min, Watershed ~6 of it, any other game under ~1.5 min) and `publish-clips` redeploys with them, unless main has moved on (the next deploy then publishes them from the cache). A failed recording keeps the previous clip and only warns.
+- `preview.yml`: each same-repo PR gets a `pr-<n>` preview URL, posted as a PR comment. It reuses main's cached card clips without re-recording (`--cached-only`).
 - Secrets (repo Settings → Secrets → Actions): `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. Create the token from the **Edit Cloudflare Workers** template. Create a GitHub environment named `production` (optionally with required reviewers). Without the secrets, deploy and preview steps skip with a notice.
 
 Profiles and progress live in the browser's IndexedDB, and there's no backend. Use **Export JSON** in the profile editor to keep a backup. When persistence moves server-side, add a Worker `main` plus a D1 binding in `wrangler.jsonc`, and put auth (Cloudflare Access, or Google OAuth) in front of the API routes.
@@ -114,7 +114,7 @@ src/progression/        profiles (IndexedDB), XP/levels, achievements, sessions
 src/media/              music core: song analysis (beats, sections, key), library (IndexedDB), mix planner
                         (continuous / automix / crossfade), program timeline, two-deck player, synth demo songs
 src/shell/, src/debug/  Preact screens (arcade carousel, Drive-In, HUD, warm-up stage) + debug overlay
-public/cards/           arcade clips + posters per game (recorded by scripts/capture-cards.ts)
+public/cards/           arcade clips + posters per game: build output (gitignored), recorded by scripts/capture-cards.ts in CI
 src/games/<id>/         index.ts, sim/ (pure), render/ (DOM/Canvas/Three), scenarios.ts, test/
 ```
 
@@ -137,7 +137,7 @@ Games never talk to devices. They read `ctx.bike()` and `ctx.input()`, and set *
    - `ctx.save(data)` / `ctx.load()` persist per-profile game data.
 6. **Scenarios:** in `scenarios.ts`, export `scenarios = [{ name, script, minutes, seed, simOpts, assert(summary, stats, run) }]`. Then `npm run sim:all` checks your balance headlessly, and an `autopilot` flag in `simOpts` lets the sim steer itself.
 7. **Register** the module in `src/games/registry.ts` (its position there is the picker's tie-break order).
-8. **Card clip:** add a shot to `SHOTS` in `scripts/capture-cards.ts` (script, how far to fast-forward, crop) and run `npm run capture:cards -- --only mygame`. `src/shell/arcade.test.ts` checks every game has `public/cards/<id>.mp4` + `.webp`.
+8. **Card clip:** add a shot to `CARD_SHOTS` in `src/shell/cards/shots.ts` (script, how far to fast-forward, crop); `shots.test.ts` checks every arcade game has one. The deploy workflow records the clip (and re-records it whenever the game's code changes, keyed by `scripts/cards-key.ts`); `npm run capture:cards -- --only mygame` records it locally. Without a clip the card shows `drawCard`.
 
 ## Cadenza online music
 

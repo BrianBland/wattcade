@@ -1,5 +1,7 @@
 import type { SectionKind } from '../../../contracts';
-export type CraftId = 'cruiser' | 'escort';
+import type { Drive } from './drive';
+import type { WeaponKind } from './weapons';
+export type CraftId = 'cruiser' | 'gunship' | 'escort' | 'striker';
 export interface SfSave {
   v: 3; best: number; legacyBest: number; runs: number; onTargetS: number; unlockCredit: number;
   craft: CraftId; totals: { kills: number; bosses: number }; legacy?: Record<string, unknown>;
@@ -26,10 +28,16 @@ export interface EnemyView {
 }
 export interface ShotView { id: number; x: number; y: number; vx: number; vy: number; damage: number; kind: 'pulse' | 'missile' | 'wing'; tier: number }
 export interface LaserView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; at: number; hitAt: number; side: number; height: number; damage: number; hit: boolean; tier: number; full?: boolean; heavy?: boolean; amp?: number }
-export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
+/** Escort arc lightning: the struck chain as (x, y, height) triples starting at the ship, drawn briefly from `at`. */
+export interface ArcView { id: number; at: number; pts: number[]; tier: number; /** Fired on a bar line (drawn bigger). */ major?: boolean }
+/** Striker rail: an instant beam from the ship's cannon (`sx`, `sy`) to its target. */
+export interface RailView { id: number; at: number; sx: number; sy: number; x: number; y: number; height: number; tier: number }
+/** Gunship flak shell: lobbed from the ship, it bursts over its target at `hitAt` (a beat), catching everything within `radius`. */
+export interface ShellView { id: number; targetId: number; sx: number; sy: number; x: number; y: number; height: number; at: number; hitAt: number; radius: number; tier: number; hit: boolean }
+export interface BoltView { id: number; kind: 'pink' | 'amber'; height: number; x: number; y: number; vx: number; vy: number; grazed?: boolean; /** Already passed through a rolling ship (counted once). */ evaded?: boolean; /** Fired aimed at a rider missing the drive: it can hit an on-band ship. */ open?: boolean; /** Part of a gated wall: drawn larger. */ wall?: boolean }
 /** A lancer's beam: a dashed warning from `warnAt`, an instant beam at `fireAt` (on a bar line) until `until`. */
-export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean }
-export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' }
+export interface BeamView { id: number; ownerId: number; x: number; y: number; warnAt: number; fireAt: number; until: number; fired?: boolean; open?: boolean }
+export interface FxView { id: number; x: number; y: number; at: number; size?: number; ground?: boolean; /** Route distance when a ground effect started (it stays put on the terrain). */ s?: number; kind: 'boom' | 'intercept' | 'nova' | 'upgrade' | 'graze' | 'perfect' | 'beam' | 'volley' | 'strike' | 'flak' }
 /** A biome's frame: its origin pose and route distance there (straight biomes are laid out along it). */
 export interface WorldFrame { x: number; z: number; h: number; s: number; biome: number; seed: number }
 export interface SfSnapshot {
@@ -38,22 +46,31 @@ export interface SfSnapshot {
   bar: number;
   /** Beat count (changes on every beat) and current low/mid/high band energy 0..1, for music-reactive lighting. */
   beatIndex: number; bands: [number, number, number];
-  /** Selected formation (paddles cycle formations), and where an untargeted elite wing is relative to it. */
-  selectedGroup: number | null; eliteHint: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
+  /** Formation under your guns (own flank), and which way an incoming elite wing's flank is. */
+  selectedGroup: number | null; eliteHint: -1 | 0 | 1;
+  /** Flank station the ship holds or is heading for: -1 left, 0 centre, 1 right. */
+  station: -1 | 0 | 1; elites: { cleared: number; seen: number }; done: boolean; craft: CraftId; escortUnlocked: boolean; ergAvailable: boolean;
   /** Persistent craft progress (hangar + HUD); `tester` = everything unlocked for playtesting. */
   crafts: Record<CraftId, { level: number; progress: number; next: string | null; minutesToNext: number | null; unlocked: boolean; arsenalCap: number }>; tester: boolean;
   heavy: boolean; ace: boolean; fullLock: number; eaten: number;
   /** Visual height offset from the weave pattern, the current weave pattern, and the latest barrel roll (sim time). */
   lift: number; pattern: string; roll: { at: number; dur: number; dir: number } | null;
+  /** Rider's evasive roll: 0..1 while enemy fire passes through the ship (bump over the window), else 0; `evadeAt` = its start. */
+  evade: number; evadeAt: number;
   /** 0..1 smoothed music intensity: weapons swell with the track (Beat Hazard's idea), enemy density with it. */
   amp: number;
   menuLeft: number; sector: number; sectorName: string; section: SectionKind; intensity: number; beat: number;
   song: string; shipX: number; shipY: number; bank: number; dodge: number; hull: number; shield: number; quality: number;
   effort: { status: 'on' | 'under' | 'over' | 'recover' | 'settling'; targetWatts: number; floorWatts: number; ceilingWatts: number; erg: boolean };
-  upcoming: { label: string; left: number; watts: number } | null;
-  cadence: { min: number; max: number; left: number; progress: number } | null;
+  /** Next drive change, announced ahead: Escort watts or the Cruiser's spin ask. */
+  upcoming: { label: string; level: Drive; left: number; watts: number | null; rpm: number | null } | null;
+  /** Music drive now: level, ground speed (units/s), whether the rider meets it (`exposed`: missed past the grace, some fire connects), the Cruiser's spin ask, speed relative to cruising. */
+  drive: { level: Drive; speed: number; met: boolean; exposed: boolean; rpm: number | null; rel: number; /** Terrain rise toward the ship, extra FOV and camera drop (fraction of height), from drive pace. */ dip: number; fov: number; tilt: number };
   charge: number; coverLeft: number; rejoinLeft: number; gunLevel: number; wingmen: number; missiles: boolean;
   score: number; kills: number; salvage: number; combo: number; deaths: number;
+  /** The craft's beat weapon, and its live arcs, rails and flak shells (missiles are `lasers`). */
+  weapon: WeaponKind; arcs: ArcView[]; rails: RailView[]; shells: ShellView[];
+  /** Targets with missiles (or shells) in flight; `lockCapacity` is the bar-line salvo size. */
   selectedId: number | null; locks: number[]; lockCapacity: number; lockProgress: number; volleyFlash: number; lasers: LaserView[];
   enemies: EnemyView[]; shots: ShotView[]; bolts: BoltView[]; fx: FxView[]; beams: BeamView[];
   boss: { name: string; stage: string; hp: number; maxHp: number; left: number } | null;
@@ -68,5 +85,7 @@ export interface SfSnapshot {
   segment: { index: number; title: string; biome: number; seed: number; nextBiome: number; nextSeed: number; switchIn: number; breather: boolean };
   /** End-of-segment scorecard, shown during the breather. */
   scorecard: { title: string; grade: 'S' | 'A' | 'B' | 'C' | 'D'; score: number; clearPct: number; onTargetPct: number; perfects: number; elites: string; boss: string; at: number } | null;
-  hooks: { powerFtp: number; cadence: number; boss: boolean };
+  /** Tempo Striker's latest strike: the swept span along the ship's row (x0 → x1) and its window (sim time). */
+  strike: { x0: number; x1: number; from: number; until: number } | null;
+  hooks: { powerFtp: number; cadence: number; boss: boolean; drive: Drive };
 }

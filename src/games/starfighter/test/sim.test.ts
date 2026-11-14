@@ -7,7 +7,8 @@ import { inCombat, MAX_BOLTS, bulletPattern, wallPattern, groupOf } from '../sim
 import { newRoute, extendRoute, choreograph, missDistance, routeX, ROUTE } from '../sim/flight';
 import { createWeave } from '../sim/weave';
 import { createDirector, cadenceFor } from '../sim/director';
-import { escortAvailable, migrateSave } from '../sim/save';
+import { isOpenBiome } from '../sim/segments';
+import { escortAvailable, strikerAvailable, migrateSave } from '../sim/save';
 import { upgradeCost, UPGRADES } from '../sim/meta';
 import { arsenalTier, craftLevel, perks } from '../sim/progression';
 import type { SfSave, SfSnapshot } from '../sim/types';
@@ -32,6 +33,13 @@ describe('endurance music combat', () => {
     expect(r.snap().effort).toMatchObject({ floorWatts: 112, ceilingWatts: 150, erg: false });
     expect(r.s.commands.every(c => c.mode !== 'erg')).toBe(true);
   });
+  it('names a song once: a biome change inside the same song does not announce it again', () => {
+    const tl = longMusic(); tl.songs = [{ ...tl.songs[0], t0: 0, t1: tl.durationS, title: 'Long Mix' }];
+    const r = rig({}, 'z2', tl), banners = new Set<string>(); let maxSeg = 0;
+    while (r.snap().segment.index < 2 && r.s.ctx.media!.positionS() < 1200) { r.seconds(1); banners.add(r.snap().banner); maxSeg = Math.max(maxSeg, r.snap().segment.index); }
+    expect(maxSeg).toBe(2); expect(banners.has('New airspace')).toBe(true);
+    expect([...banners].some(b => b.includes('Long Mix'))).toBe(false);
+  }, 30_000);
   it('sustained shortfall weakens guns and permits ramming; restored riding recovers', () => {
     const r = rig({}, 'idle'); let weakest = 1, lowestShield = 100;
     for (let i = 0; i < 100; i++) { r.seconds(0.25); weakest = Math.min(weakest, r.snap().quality); lowestShield = Math.min(lowestShield, r.snap().shield); }
@@ -76,16 +84,67 @@ describe('endurance music combat', () => {
     const r = rig({}, 'z2', tl); r.seconds(22);
     expect(r.s.sim.isOver()).toBe(true); expect(r.snap().t).toBeCloseTo(20, 1);
   });
-  it('uncertain online analysis never asks for cadence', () => {
+  it('uncertain online analysis never leaves cruise or asks for a spin', () => {
     const tl = longMusic(); tl.confidence = 'metadata';
-    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60);
-    for (let i = 0; i < 240; i++) { r.seconds(1); expect(r.snap().cadence).toBeNull(); }
+    const r = rig({}, 'cadence-follow', tl);
+    for (let i = 0; i < 240; i++) {
+      r.seconds(1); const s = r.snap();
+      expect(s.drive.level).toBe('cruise'); expect(s.upcoming).toBeNull(); expect(r.s.sim.hud!().targetCadence).toBeUndefined();
+    }
+    expect(r.snap().drive.speed).toBeCloseTo(22, 0);
   });
-  it('full beat analysis can offer a cadence bonus without changing the endurance target', () => {
-    const tl = longMusic(); tl.beats = Array.from({ length: 1200 }, (_, i) => i * 0.5); tl.phrases = Array.from({ length: 40 }, (_, i) => i * 16);
-    const r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.cadenceGapS', 60); r.seconds(65);
-    expect(r.snap().cadence).toMatchObject({ min: 83, max: 97 }); expect(r.snap().effort.ceilingWatts).toBe(150);
-  });
+  it('the ride swells with the music: announced pushes and burns, earned speed, a relative spin ask, a burn shout', () => {
+    const r = rig({}, 'cadence-follow', longMusic());
+    let prev = 'cruise', lastUpcoming: SfSnapshot['upcoming'] = null, burnFrom = -1, longestBurn = 0, maxSpeed = 0, shout = false;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30 * 600; i++) {
+      r.s.step(1); const s = r.snap(); seen.add(s.drive.level);
+      if (s.drive.level !== prev && s.drive.level !== 'cruise' && s.t > 20) {
+        // Every rise was announced ahead, with the rider's spin ask.
+        expect(lastUpcoming?.level).toBe(s.drive.level); expect(lastUpcoming?.rpm).toBe(s.drive.rpm);
+      }
+      if (s.drive.level === 'burn') { if (burnFrom < 0) burnFrom = s.t; longestBurn = Math.max(longestBurn, s.t - burnFrom); maxSpeed = Math.max(maxSpeed, s.drive.speed);
+        expect(s.drive.rpm).toBeGreaterThanOrEqual(90); expect(s.effort.ceilingWatts).toBeLessThanOrEqual(Math.round(0.78 * 200)); } else burnFrom = -1;
+      if (/^Burn · \d+ down/.test(s.banner)) shout = true;
+      prev = s.drive.level; lastUpcoming = s.upcoming;
+    }
+    expect([...seen].sort()).toEqual(['burn', 'cruise', 'push']);
+    expect(longestBurn).toBeLessThanOrEqual(91); expect(maxSpeed).toBeGreaterThan(40); expect(shout).toBe(true);
+    const sum = r.s.sim.summary();
+    expect(Number(sum.burnHeldPct)).toBeGreaterThan(85); expect(Number(sum.absorbed)).toBe(0); expect(Number(sum.deaths)).toBe(0);
+    // The Cruiser's resistance stays gentle: a fraction of a percent of extra grade.
+    expect(r.s.commands.every(c => c.mode !== 'sim' || c.gradePct <= 0.6)).toBe(true);
+    expect(r.s.commands.some(c => c.mode === 'sim' && c.gradePct > 0)).toBe(true);
+  }, 30_000);
+  it('missing the spin ask slows the ship and lets some fire through, less than riding below the band', () => {
+    const r = rig({}, 'z2', longMusic()); let burnSpeed = 0, frames = 0, exposedEarly = false;
+    for (let i = 0; i < 30 * 400; i++) {
+      r.s.step(1); const s = r.snap();
+      if (s.drive.level === 'burn' && !s.drive.met) { burnSpeed += s.drive.speed; frames++; expect(s.quality).toBeGreaterThan(0.9); }
+      if (s.drive.level === 'cruise' && s.drive.exposed) exposedEarly = true;
+    }
+    expect(frames).toBeGreaterThan(0); expect(burnSpeed / frames).toBeLessThan(34); expect(exposedEarly).toBe(false);
+    const sum = r.s.sim.summary(), idle = rig({}, 'idle', longMusic()); idle.seconds(400);
+    expect(Number(sum.driveHits)).toBeGreaterThan(0); expect(Number(sum.hits)).toBe(Number(sum.driveHits));
+    expect(Number(sum.absorbed)).toBe(0); expect(Number(sum.hits)).toBeLessThan(Number(idle.s.sim.summary().hits) / 3);
+  }, 30_000);
+  it('Escort ERG steps with the drive and stays conversational', () => {
+    const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); r.seconds(600);
+    const watts = r.s.commands.flatMap(c => c.mode === 'erg' ? [c.watts] : []);
+    expect(Math.max(...watts)).toBeLessThanOrEqual(141); expect(Math.max(...watts)).toBeGreaterThan(134);
+    expect(watts.some(w => w < 126)).toBe(true);
+  }, 30_000);
+  it('the next place starts where the ship is when the song changes, whatever the drive', () => {
+    for (const script of ['cadence-follow', 'z2']) {
+      const r = rig({}, script, longMusic()); let before = r.snap(), changes = 0;
+      for (let i = 0; i < 30 * 900; i++) {
+        r.s.step(1); const s = r.snap();
+        if (s.segment.index !== before.segment.index) { changes++; expect(Math.abs(s.frames.cur.s - before.frames.next.s)).toBeLessThan(4); }
+        before = s;
+      }
+      expect(changes).toBeGreaterThan(1);
+    }
+  }, 60_000);
   it('same seed and rider produce identical results', () => {
     const run = () => { const r = rig({}, 'z2', longMusic()); r.seconds(100); return r.s.sim.summary(); };
     expect(run()).toEqual(run());
@@ -101,33 +160,77 @@ describe('musical locks and paddle targeting', () => {
     }
     expect(sawLocks).toBe(true); expect(sawLasers).toBe(true); expect(Number(r.s.sim.summary().volleys)).toBeGreaterThan(5);
   });
-  it('touch retarget cycles formations spatially and preserves already painted locks', () => {
-    const r = rig(); const groupsOf = () => { const m = new Map<number, number[]>(); for (const e of r.snap().enemies.filter(inCombat)) { const k = groupOf(e); m.set(k, [...(m.get(k) ?? []), e.x]); } return [...m].map(([k, xs]) => ({ k, x: xs.reduce((a, b) => a + b, 0) / xs.length })).sort((a, b) => a.x - b.x || a.k - b.k); };
-    for (let i = 0; i < 300; i++) { r.seconds(0.1); if (groupsOf().length >= 3 && r.snap().locks.length > 0) break; }
-    const groups = groupsOf(); expect(groups.length).toBeGreaterThan(2);
-    const previous = r.snap().selectedGroup, painted = [...r.snap().locks];
-    r.s.sim.receive!({ type: 'target', direction: 1 }); r.s.step(1);
-    expect(r.snap().selectedGroup).toBe(groups[(groups.findIndex(g => g.k === previous) + 1) % groups.length].k);
-    expect(r.snap().locks.slice(0, painted.length)).toEqual(painted);
-    r.s.sim.receive!({ type: 'target', direction: -1 }); r.s.step(1); expect(r.snap().selectedGroup).toBe(previous);
+  it('touch moves one flank per press at once, as an evasive roll; a second press goes on to the far flank; the edge leans', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); r.seconds(12);
+    const lane = () => { const s = r.snap(); return s.station; };
+    const start = lane(), dir = start <= 0 ? 1 : -1, x0 = r.snap().shipX, t0 = r.snap().t;
+    r.s.sim.receive!({ type: 'target', direction: dir }); r.s.step(1);
+    expect(lane()).toBe(start + dir);
+    // The roll starts this frame (no wait for a beat), protects, and lands a flank (22 units) over in under half a second.
+    expect(r.snap().roll?.at).toBeLessThanOrEqual(t0 + 1 / 30 + 1e-6); expect(r.snap().evade).toBeGreaterThan(0);
+    r.s.step(2); expect(Math.sign(r.snap().shipX - x0)).toBe(dir);
+    r.seconds(0.45); expect(Math.abs(r.snap().shipX - x0)).toBeGreaterThan(15); r.seconds(0.2); expect(r.snap().evade).toBe(0);
+    // From an edge, a double press goes all the way across.
+    const edge = rig({}, 'z2', tl); edge.seconds(12);
+    for (let k = 0; k < 3; k++) { edge.s.sim.receive!({ type: 'target', direction: -1 }); edge.s.step(1); }
+    edge.seconds(6); expect(edge.snap().station).toBe(-1); expect(edge.snap().shipX).toBeLessThan(-12);
+    edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1); edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1);
+    expect(edge.snap().station).toBe(1); edge.seconds(7); expect(edge.snap().shipX).toBeGreaterThan(12);
+    // Pressing into the edge leans out a little and comes back; the station does not change.
+    const leans: string[] = []; edge.s.ctx.emit = ((e: { type: string }) => { if (e.type === 'lean') leans.push(e.type); }) as typeof edge.s.ctx.emit;
+    edge.s.sim.receive!({ type: 'target', direction: 1 }); edge.s.step(1); expect(leans).toHaveLength(1); expect(edge.snap().station).toBe(1);
   });
-  it('both shifters change Cruiser gears; analog paddles retarget; B releases locks; Z snaps to an elite or flagship', () => {
+  it('both shifters change Cruiser gears; analog paddles move flanks; Z dives to an elite wing', () => {
     const input = new TimelineInput([{ t: 20.1, press: 'shiftUpR' }, { t: 20.2, release: 'shiftUpR' }, { t: 20.4, press: 'shiftUpL' }, { t: 20.5, release: 'shiftUpL' },
-      { t: 20.8, paddleR: 0.9 }, { t: 21.0, paddleR: 0 }]);
+      { t: 20.8, paddleL: 0.9 }, { t: 21.0, paddleL: 0 }]);
     const r = rig({}, 'z2', undefined, undefined, input); r.s.tuning.set('starfighter.novaChargeS',10); r.seconds(20);
     const gear = r.s.ctx.bike().gear!; r.seconds(0.35); expect(r.s.ctx.bike().gear).toBeGreaterThan(gear);
     const afterOne = r.s.ctx.bike().gear!; r.seconds(0.3); expect(r.s.ctx.bike().gear).toBeGreaterThan(afterOne);
     r.seconds(1); expect(r.snap().charge).toBe(100); expect(r.snap().coverLeft).toBe(0);
-    expect(r.s.recorder.events.filter(e => e.type === 'retarget')).toHaveLength(1);
-    // B: painted locks fire on the next beat instead of waiting for the bar.
-    const b = rig({}, 'z2', longMusic()); for (let i = 0; i < 900 && !(b.snap().locks.length >= 2 && b.snap().volleyFlash === 0); i++) b.s.step(1);
-    const volleys = Number(b.s.sim.summary().volleys); b.s.sim.receive!({ type: 'release' }); b.seconds(0.6);
-    expect(Number(b.s.sim.summary().volleys)).toBe(volleys + 1);
-    // Z: snap to an elite wing while one is crossing.
+    // One firm squeeze is one move (re-armed only on release).
+    expect(r.s.recorder.events.filter(e => e.type === 'flank' && e.data?.rider)).toHaveLength(1);
+    // Z: dive to the flank of an incoming elite wing.
     const z = rig({}, 'z2', longMusic()); for (let i = 0; i < 30 * 600 && !z.snap().eliteHint; i++) z.s.step(1);
-    z.s.sim.receive!({ type: 'snap' }); z.s.step(1);
-    expect(z.snap().enemies.find(e => e.id === z.snap().selectedId)?.elite).toBe(true);
+    const elite = z.snap().enemies.find(e => e.elite)!, want = Math.max(-1, Math.min(1, Math.round((elite.entry?.toX ?? elite.x) / 22))) || 0;
+    z.s.sim.receive!({ type: 'snap' }); z.s.step(1); expect(z.snap().station).toBe(want); expect(z.snap().eliteHint).toBe(0);
   });
+  it('locks fill your own flank first and spill only into the next; elites lock only from their own flank', () => {
+    const r = rig({}, 'z2', longMusic()); let checked = 0;
+    r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => {
+      if (e.type !== 'lockAcquired') return;
+      // At acquisition the target is within reach of the ship's lane (the weave adds up to 7 either way).
+      const s = r.snap(), en = s.enemies.find(x => x.id === e.data?.target); if (!en) return;
+      const dx = Math.abs(en.x - s.shipX); expect(dx).toBeLessThan(26 + 8); if (en.elite) expect(dx).toBeLessThan(13 + 8); checked++;
+    }) as typeof r.s.ctx.emit;
+    r.seconds(300); expect(checked).toBeGreaterThan(100);
+  }, 20_000);
+  it('the hands-off pilot changes flank on swing peaks at most every four bars and leaves a rider alone for a phrase', () => {
+    const tl = longMusic(), r = rig({}, 'cadence-follow', tl); const pilot: number[] = [];
+    r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => { if (e.type === 'flank' && !e.data?.rider) pilot.push(r.snap().t); }) as typeof r.s.ctx.emit;
+    r.seconds(300); const moves = pilot.filter((t, i) => i === 0 || t - pilot[i - 1] > 1e-6); expect(moves.length).toBeGreaterThan(5);
+    // A two-flank pilot move is two steps at once; decisions are at least about four bars apart.
+    const bar = 4 * 60 / 130; for (let i = 1; i < moves.length; i++) expect(moves[i] - moves[i - 1]).toBeGreaterThan(bar * 3);
+    const quiet: number[] = []; r.s.ctx.emit = ((e: { type: string; data?: Record<string, unknown> }) => { if (e.type === 'flank' && !e.data?.rider) quiet.push(r.snap().t); }) as typeof r.s.ctx.emit;
+    r.s.sim.receive!({ type: 'target', direction: 1 }); r.seconds(15); expect(quiet).toHaveLength(0);
+  }, 20_000);
+  it('evasive rolls let enemy fire pass through, with a cooldown so mashing is not permanent cover', () => {
+    const steer = (gap: number, until: number) => { const ev: Array<{ t: number; press?: 'left' | 'right'; release?: 'left' | 'right' }> = []; let k = 0;
+      for (let t = 12; t < until; t += gap) { const b = k++ % 2 ? 'left' as const : 'right' as const; ev.push({ t, press: b }, { t: t + 0.05, release: b }); } return new TimelineInput(ev); };
+    // Under the band (idle), fire is aimed at the ship: rolling through it is the rider's own dodge.
+    const r = rig({}, 'idle', longMusic(), undefined, steer(1.1, 200)); r.seconds(200);
+    expect(Number(r.s.sim.summary().evaded)).toBeGreaterThan(5);
+    // Mashing every 0.15 s for 30 s: every press still moves, but rolls are spaced by the cooldown (~1 s apart).
+    const m = rig({}, 'z2', longMusic(), undefined, steer(0.15, 42)); m.seconds(43);
+    expect(Number(m.s.sim.summary().evades)).toBeLessThanOrEqual(32); expect(Number(m.s.sim.summary().evades)).toBeGreaterThan(10);
+  }, 30_000);
+  it('rider flank moves never get an on-band ship hit: fire aimed at the new line is spent as grazes', () => {
+    const events: Array<{ t: number; press?: 'left' | 'right'; release?: 'left' | 'right' }> = [];
+    let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let t = 12; t < 400; t += 0.7 + rand() * 2.5) { const b = rand() < 0.5 ? 'left' as const : 'right' as const; events.push({ t, press: b }, { t: t + 0.1, release: b }); }
+    const r = rig({}, 'cadence-follow', longMusic(), undefined, new TimelineInput(events)); r.seconds(400);
+    const sum = r.s.sim.summary(); expect(Number(sum.hits)).toBe(0); expect(Number(sum.absorbed)).toBe(0);
+    expect(r.s.recorder.events.filter(e => e.type === 'flank' && e.data?.rider).length).toBeGreaterThan(80);
+  }, 30_000);
   it('flagship batteries expose the reactor and leave with an escaping boss', () => {
     const r = rig(); r.s.tuning.set('starfighter.bossEveryS',120); r.s.tuning.set('starfighter.bossHull',200);
     for (let i = 0; i < 30 * 120 && !r.snap().boss; i++) r.s.step(1); r.seconds(1);
@@ -202,12 +305,13 @@ describe('spectacle encounters', () => {
     expect(Number(sum.clearPct)).toBeGreaterThan(20);expect(Number(sum.perfects)).toBeGreaterThan(0);expect(Number(sum.absorbed)).toBe(0);
     expect(r.snap().clear.rate).toBeCloseTo(Number(sum.clearPct)/100,1);
   }, 15_000);
-  it('elite wings reward attentive targeting and never lower the clear rate when ignored', () => {
+  it('elite wings reward riding to their flank and never lower the clear rate when ignored', () => {
     const auto = rig({}, 'z2', longMusic()), smart = rig({ smartTarget: true }, 'z2', longMusic());
     auto.seconds(900); smart.seconds(900);
     const a = auto.s.sim.summary(), b = smart.s.sim.summary();
-    expect(Number(a.elitesSeen)).toBeGreaterThan(5); expect(Number(a.elitesCleared)).toBe(0);
-    expect(Number(b.elitesCleared)).toBeGreaterThanOrEqual(2); expect(Number(b.score)).toBeGreaterThan(Number(a.score));
+    // Elites dive down a flank the ship is not on: the pilot catches a few by chance, an attentive rider most of them.
+    expect(Number(a.elitesSeen)).toBeGreaterThan(5); expect(Number(b.elitesCleared)).toBeGreaterThan(Number(a.elitesCleared) * 3);
+    expect(Number(b.elitesCleared)).toBeGreaterThan(Number(b.elitesSeen) / 2); expect(Number(b.score)).toBeGreaterThan(Number(a.score) * 1.15);
     expect(Math.abs(Number(b.clearPct) - Number(a.clearPct))).toBeLessThan(10);
     expect(Number(a.absorbed) + Number(b.absorbed)).toBe(0);
   }, 20_000);
@@ -228,12 +332,18 @@ describe('spectacle encounters', () => {
     expect(fires.every(f => tl.beats.some(b => Math.abs(b - f) < 0.04))).toBe(true); expect(longest).toBeGreaterThan(1);
     expect(Number(r.s.sim.summary().absorbed)).toBe(0); expect(r.snap().deaths).toBe(0);
   }, 15_000);
+  it('the first song draws its own biome, even when the snapshot is read before the first update', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7]) {
+      const r = rig({}, 'z2', synthTimeline({ style: 'mixed', songs: 4, seed })); r.snap(); r.s.step(2);
+      expect(r.snap().frames.cur.biome).toBe(r.snap().segment.biome);
+    }
+  });
   it('the route turns gently only over open biomes, and ground units stay put in the world', () => {
     const r = rig({}, 'z2', longMusic()); let turnedIso = false, maxRate = 0;
     const tracked = new Map<number, { x: number; z: number }>();
     for (let i = 0; i < 30 * 900; i++) {
       r.s.step(1); const s = r.snap();
-      if (s.world.turn) { expect([1, 3]).toContain(s.frames.cur.biome); turnedIso = true; }
+      if (s.world.turn) { expect(isOpenBiome(s.frames.cur.biome)).toBe(true); turnedIso = true; }
       maxRate = Math.max(maxRate, Math.abs(s.world.turn));
       if (i % 15) continue;
       for (const e of s.enemies) if (e.ground && e.hp > 0) {
@@ -243,7 +353,8 @@ describe('spectacle encounters', () => {
         if (prev) expect(Math.hypot(prev.x - w.x, prev.z - w.z)).toBeLessThan(0.01); else tracked.set(e.id, w);
       }
     }
-    expect(turnedIso).toBe(true); expect(maxRate).toBeLessThan(0.1); expect(Number(r.s.sim.summary().absorbed)).toBe(0);
+    // Turns are arcs in distance: faster drives sweep them faster, still gently (≤ ~9°/s at burn speed).
+    expect(turnedIso).toBe(true); expect(maxRate).toBeLessThan(0.16); expect(Number(r.s.sim.summary().absorbed)).toBe(0);
   }, 30_000);
   it('new arsenal tiers unfold on bar lines', () => {
     const tl = longMusic(), r = rig({}, 'z2', tl); r.s.tuning.set('starfighter.arsenalPace', 10); const ups: number[] = [];
@@ -251,14 +362,15 @@ describe('spectacle encounters', () => {
     r.seconds(240);
     expect(ups.length).toBe(4); for (const u of ups) expect(tl.downbeats.some(d => Math.abs(d - u) < 0.04) || tl.phrases.some(d => Math.abs(d - u) < 0.04)).toBe(true);
   });
-  it('locks tick on sixteenths, volleys release on beats, and laser impacts land on beats', () => {
-    const tl = longMusic(), r = rig({}, 'z2', tl); const volleys: number[] = [], locks: number[] = [], impacts: number[] = []; const seen = new Set<number>();
-    r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') volleys.push(p); if (ev.type === 'lockAcquired') locks.push(p); }) as typeof r.s.ctx.emit;
+  it('missiles launch on beats with a salvo on each bar line, and land on the next beat', () => {
+    const tl = longMusic(), r = rig({}, 'z2', tl); const launches: number[] = [], fulls: number[] = [], impacts: number[] = []; const seen = new Set<number>();
+    r.s.ctx.emit = ((ev: { type: string }) => { const p = r.s.ctx.media!.positionS(); if (ev.type === 'lockVolley') launches.push(p); if (ev.type === 'fullLock') fulls.push(p); }) as typeof r.s.ctx.emit;
     for (let i = 0; i < 30 * 180; i++) { r.s.step(1); for (const l of r.snap().lasers) if (l.hit && !seen.has(l.id)) { seen.add(l.id); impacts.push(r.s.ctx.media!.positionS()); } }
-    const sixteenths = tl.beats.flatMap((b, i) => { const n = tl.beats[i + 1] ?? b + 0.5; return [0, 1, 2, 3].map(k => b + (n - b) * k / 4); });
     const on = (xs: number[], grid: number[]) => xs.filter(x => grid.some(g => Math.abs(g - x) < 0.04)).length / xs.length;
-    expect(volleys.length).toBeGreaterThan(20); expect(on(volleys, tl.beats)).toBeGreaterThan(0.9);
-    expect(on(impacts, tl.beats)).toBeGreaterThan(0.9); expect(on(locks, sixteenths)).toBeGreaterThan(0.9);
+    // Firing every beat, not after a slow build: hundreds of launches in three minutes, all on the grid.
+    expect(launches.length).toBeGreaterThan(200); expect(on(launches, tl.beats)).toBeGreaterThan(0.95);
+    expect(fulls.length).toBeGreaterThan(20); expect(on(fulls, tl.downbeats)).toBeGreaterThan(0.95);
+    expect(on(impacts, tl.beats)).toBeGreaterThan(0.9);
   }, 15_000);
   it('sustains moderate bullet patterns and destroyable ground enemies within fixed budgets', () => {
     const r=rig({},'z2',longMusic());let peak=0,ground=false,tank=false;
@@ -295,7 +407,7 @@ describe('craft selection and save migration', () => {
     const t = rig({ craft: 'escort', skipHangar: false }); t.s.tuning.set('starfighter.testerUnlockAll', 1); t.s.step(1);
     expect(t.snap()).toMatchObject({ tester: true, escortUnlocked: true }); expect(t.snap().crafts.cruiser.level).toBe(10);
     t.s.tuning.set('starfighter.arsenalPace', 20); t.s.sim.receive!({ type: 'launch' }); t.seconds(200);
-    expect(t.snap().gunLevel).toBe(8); expect(t.snap().heavy).toBe(true); expect(t.snap().lockCapacity).toBe(11);
+    expect(t.snap().gunLevel).toBe(8); expect(t.snap().heavy).toBe(true); expect(t.snap().lockCapacity).toBe(14);
   });
   it('Escort signatures: wingmen shoot down bullets and a phrase beam sweeps the lane', () => {
     const r = rig({ craft: 'escort' }, 'z2', longMusic(), { bank: 1000 }); const events: string[] = [];
@@ -311,6 +423,38 @@ describe('craft selection and save migration', () => {
     r.s.sim.receive!({ type: 'craft', craft: 'escort' }); r.seconds(1); expect(r.snap().craft).toBe('cruiser');
     r.s.sim.receive!({ type: 'launch' }); r.seconds(1); expect(r.snap().phase).toBe('run');
   });
+  it('the Tempo Striker unlocks at Cruiser level 5 or Escort level 3 and stays unlocked', () => {
+    const base = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser'] };
+    expect(rig({ craft: 'striker' }).snap().craft).toBe('cruiser');
+    expect(rig({ craft: 'striker' }, 'z2', undefined, { ...base, craftS: { cruiser: 209 * 60, escort: 89 * 60, striker: 0 } }).snap().craft).toBe('cruiser');
+    expect(strikerAvailable(migrateSave({ ...base, craftS: { cruiser: 210 * 60, escort: 0 } }))).toBe(true);
+    const viaEscort = rig({ craft: 'striker' }, 'z2', undefined, { ...base, craftS: { cruiser: 0, escort: 90 * 60, striker: 0 } });
+    expect(viaEscort.snap().craft).toBe('striker'); expect(viaEscort.snap().crafts.striker.unlocked).toBe(true);
+    viaEscort.s.sim.dispose!(); expect(viaEscort.saved().unlocked).toContain('striker');
+    // Controller craft cycling reaches it in the hangar.
+    const menu = rig({ skipHangar: false }, 'z2', undefined, { ...base, craft: 'cruiser', craftS: { cruiser: 210 * 60, escort: 0, striker: 0 } },
+      new TimelineInput([{ t: 0.2, press: 'left' }, { t: 0.3, release: 'left' }]));
+    menu.seconds(1); expect(menu.snap().craft).toBe('striker');
+  });
+  it('the Striker rides harder in ERG with a spin ask, and its flank moves strike what they pass', () => {
+    const save = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser', 'striker'], craftS: { cruiser: 0, escort: 0, striker: 0 } };
+    const r = rig({ craft: 'striker' }, 'cadence-follow', longMusic(), save); let rpmSeen = 0;
+    for (let i = 0; i < 600; i++) { r.seconds(1); if (r.snap().drive.level === 'burn') rpmSeen = Math.max(rpmSeen, r.snap().drive.rpm ?? 0); }
+    const watts = r.s.commands.flatMap(c => c.mode === 'erg' ? [c.watts] : []);
+    expect(Math.max(...watts)).toBeLessThanOrEqual(Math.round(0.88 * 200) + 1); expect(Math.max(...watts)).toBeGreaterThan(165);
+    expect(watts.some(w => w < 140)).toBe(true); expect(rpmSeen).toBeGreaterThan(95);
+    const sum = r.s.sim.summary(); expect(Number(sum.strikeHits)).toBeGreaterThan(10); expect(Number(sum.hits)).toBe(0); expect(r.snap().drive.level).toBeDefined();
+    expect(r.s.sim.hud!().gears).toBe(false);
+  }, 30_000);
+  it('the Striker on a trainer without ERG rides gears with a higher band and more resistance', () => {
+    const profile = testProfile(); profile.gameData.starfighter = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 0, craft: 'striker', totals: { kills: 0, bosses: 0 }, unlocked: ['cruiser', 'striker'], craftS: { cruiser: 0, escort: 0, striker: 0 } };
+    const hub = new DataHub(), trainer = new FakeTrainer(); trainer.capabilities.erg = false; hub.attachTrainer(trainer);
+    const s = createGameSession({ game: module, profile, input: new NullInput(), dataHub: hub, fake: false, simOpts: { craft: 'striker', skipHangar: true }, media: { timeline: longMusic() } });
+    let burnFloor = 0; for (let i = 0; i < 400; i++) { s.step(30); const snap = s.sim.snapshot() as SfSnapshot; if (snap.drive.level === 'burn') burnFloor = Math.max(burnFloor, snap.effort.floorWatts); }
+    expect((s.sim.snapshot() as SfSnapshot).craft).toBe('striker'); expect(s.sim.hud!().gears).toBe(true);
+    expect(s.commands.every(c => c.mode !== 'erg')).toBe(true); expect(burnFloor).toBe(160);
+    expect(Math.max(...s.commands.flatMap(c => c.mode === 'sim' ? [c.gradePct] : []))).toBeCloseTo(1.2, 5);
+  }, 30_000);
   it('keeps the cruiser available and blocks the ERG craft on an unsupported trainer', () => {
     const profile = testProfile(); profile.gameData.starfighter = { bank: 1000 };
     const hub = new DataHub(), trainer = new FakeTrainer(); trainer.capabilities.erg = false; hub.attachTrainer(trainer);

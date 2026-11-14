@@ -62,8 +62,8 @@ export function ZoneWidget({ bike, view, target, cadenceTarget, bars, ftp, fake,
             <div class="zw-reading" aria-label={`${Math.round(bike.cadence3s)} revolutions per minute`} title="Cadence (rpm)"><MetricIcon source="cadence" /><b>{Math.round(bike.cadence3s)}</b></div>
             {cadenceTarget ? <em class="zw-cad-guide" title={cadenceTarget.label} aria-label={`Cadence target ${cadenceRange(cadenceTarget)} rpm`}>{cad === 'low' ? '↑ ' : cad === 'high' ? '↓ ' : ''}{cadenceRange(cadenceTarget)}</em> : <span class="zw-unit">rpm</span>}
           </div>
-          <div class="zw-clock"><div class="zw-reading" aria-label={`Ride time ${formatDuration(bike.activeSeconds)}`} title="Ride time (pedalling)"><MetricIcon source="clock" /><b>{formatDuration(bike.activeSeconds)}</b></div></div>
-          {gears && <div class="zw-gear"><div class="zw-reading" aria-label={`Gear ${bike.gear}`} title="Current virtual gear"><MetricIcon source="gear" /><b>{bike.gear}</b></div><span class="zw-gear-label">Gear</span>{gearControls && <div class="zw-gear-controls">{gearControls}</div>}</div>}
+          <div class="zw-clock"><div class="zw-reading" aria-label={`Ride time ${formatDuration(bike.activeSeconds)}`} title="Ride time (pedalling)"><MetricIcon source="clock" /><b>{formatDuration(bike.activeSeconds)}</b></div><span class="zw-unit zw-time-label">Time</span></div>
+          {gears && <div class={`zw-gear${gearControls ? ' has-controls' : ''}`}><div class="zw-gear-metric"><div class="zw-reading" aria-label={`Gear ${bike.gear}`} title="Current virtual gear"><MetricIcon source="gear" /><b>{bike.gear}</b></div><span class="zw-unit zw-gear-label">Gear</span></div>{gearControls && <div class="zw-gear-controls">{gearControls}</div>}</div>}
           {!gears && <div class="zw-trainer" aria-label={`Trainer ${trainer}`} title="Trainer: last commanded target (not measured output)">{trainer}</div>}
         </div>
       </div>

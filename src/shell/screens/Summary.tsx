@@ -1,18 +1,23 @@
-import { unitsFor, formatDistance, formatElevation, formatSpeed } from '../../units';
-import { useEffect, useState } from 'preact/hooks';
+import { PixelIcon } from '../chrome/PixelIcon';
+import '../chrome/chrome.css';
+import { ChromeHints } from '../chrome/ChromeHints';
+import { unitsFor } from '../../units';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Profile, SessionRecord } from '../../contracts';
 import { item } from '../../cosmetics/catalog';
 import { riderLook } from '../../cosmetics/unlocks';
 import type { Slot } from '../../cosmetics/types';
 import { ItemArt } from '../components/RiderAvatar';
 import type { AwardView } from '../types';
+import { UiPanel, UiProgress } from '../../ui';
 import { Btn, Stat, ZoneBar } from '../components/Bits';
-import { CountUp, KeyHints } from '../components/ui';
-import { downsample, formatDuration, formatValue, prettyKey } from '../format';
+import { CountUp } from '../components/ui';
+import { downsample, formatDuration, rideMetricValue, rideMetricLabel } from '../format';
 import { levelView } from '../services';
 import { getGame } from '../../games/registry';
 import { ZONE_COLORS } from '../hud/zoneMath';
 import { play } from '../../audio/sfx';
+import { onMenuPress } from '../menuInput';
 import { useMenuNav } from '../useMenuNav';
 
 const N = 120;
@@ -39,17 +44,12 @@ function RideChart({ record, ftp }: { record: SessionRecord; ftp: number }) {
 /** Staged reveal: stats -> chart & zones -> rewards (XP count-up, bar fill, level-up, achievements). */
 export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { record: SessionRecord; award: AwardView; xpAfter: number; ftp: number; profile?: Profile | null; onDone: () => void }) {
   useMenuNav(1, 1, onDone, onDone);
+  const scroller=useRef<HTMLDivElement>(null);
+  useEffect(()=>onMenuPress(p=>{const el=scroller.current;if(!el)return;if(p.has('down'))el.scrollBy({top:el.clientHeight*.6,behavior:'smooth'});if(p.has('up'))el.scrollBy({top:-el.clientHeight*.6,behavior:'smooth'});}),[]);
   const s = record.stats;
   const units = unitsFor(profile);
-  const summaryValue = (key: string, value: number | string | boolean) => {
-    if (typeof value === 'number') {
-      if (key === 'distanceKm') return formatDistance(value, units);
-      if (key === 'climbM') return formatElevation(value, units);
-      if (key === 'topKph' || key === 'avgKph') return formatSpeed(value, units);
-    }
-    return formatValue(value);
-  };
-  const summaryLabel = (key: string) => ({ distanceKm: 'Distance', climbM: 'Climb', topKph: 'Top speed', avgKph: 'Avg speed' }[key] ?? prettyKey(key));
+  const summaryValue=(key:string,value:number|string|boolean)=>rideMetricValue(key,value,units);
+  const summaryLabel=rideMetricLabel;
   const game = getGame(record.gameId);
   const warm = record.gameId === 'warmup';
   const leveled = award.levelAfter > award.levelBefore;
@@ -71,14 +71,14 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
     ['Avg HR', s.avgHr ?? NaN, (n) => (Number.isFinite(n) ? `${Math.round(n)} bpm` : '--')], ['Sprints', s.sprints, (n) => String(Math.round(n))],
   ];
   return (
-    <div class="screen summary">
-      <div class="screen-head">
-        <div><h1>{warm ? 'Warm-up done' : 'Ride complete'}</h1><div class="sub">{game?.title ?? record.gameId}</div></div>
+    <div class="screen chrome-ui summary" ref={scroller}>
+      <div class="screen-head chrome-head">
+        <div><div class="chrome-eyebrow">YOUR RIDE / COMPLETE</div><h1>{warm ? 'Warm-up done' : 'Ride complete'}</h1><div class="sub">{game?.title ?? record.gameId}</div></div>
         <span class="spacer" />
         <Btn primary focused onClick={onDone}>{award.newItems.length ? 'View new gear →' : award.picks > 0 ? 'Choose reward →' : 'Continue →'}</Btn>
       </div>
       <div class="summary-grid">
-        <div class="panel">
+        <UiPanel class="panel summary-ride">
           <div class="stats">{stats.map(([l, v, f], i) => <Stat label={l} value={<CountUp to={v} format={f} delayMs={i * 80} />} delayMs={i * 80} />)}</div>
           <h2 class="gap-top">Your ride</h2>
           <div class="reveal" style={{ animationDelay: '500ms' }}><RideChart record={record} ftp={ftp} /><ZoneBar zoneSeconds={s.zoneSeconds} /></div>
@@ -86,14 +86,14 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
             <h2 class="gap-top">{warm ? 'Route' : 'Game'}</h2>
             <div class="stats compact">{Object.entries(record.gameSummary).map(([k, v], i) => <Stat label={summaryLabel(k)} value={summaryValue(k, v)} delayMs={700 + i * 60} />)}</div>
           </>}
-        </div>
-        <div class="panel rewards reveal" style={{ animationDelay: '1100ms' }}>
+        </UiPanel>
+        <UiPanel class="panel rewards reveal" style={{ animationDelay: '1100ms' }}>
           <h2>Rewards</h2>
           <div class="xp-gain">+<CountUp to={award.xpGained} delayMs={1300} ms={1100} tick /> XP</div>
           <div class="row"><b>Level {after.level}</b><span class="spacer" /><span class="dim">{Math.round(after.xp)} / {after.nextXp}</span></div>
-          <div class="bar big"><i style={{ width: `${bar * 100}%` }} /></div>
+          <UiProgress class="bar big" value={bar} label="Level progress"/>
           {leveled && <div class="levelup reveal" style={{ animationDelay: '2300ms' }}>LEVEL UP! {award.levelBefore} → {award.levelAfter}</div>}
-          {shownAch.map((a, i) => <div class="badge on reveal" style={{ animationDelay: `${2600 + i * 500}ms` }}><span class="medal">★</span><b>{a.name}</b></div>)}
+          {shownAch.map((a, i) => <div class="badge on reveal" style={{ animationDelay: `${2600 + i * 500}ms` }}><span class="medal"><PixelIcon kind="trophy"/></span><b>{a.name}</b></div>)}
           {moreAch > 0 && <div class="dim reveal" style={{ animationDelay: `${2600 + shownAch.length * 500}ms` }}>+{moreAch} more achievements</div>}
           {award.newItems.length > 0 && <div class="new-gear reveal" style={{ animationDelay: `${gearAt}ms` }}>
             <h2>New gear</h2>
@@ -103,10 +103,10 @@ export function Summary({ record, award, xpAfter, ftp, profile, onDone }: { reco
             })}</div>
             {award.newItems.length > 8 && <div class="dim small">+{award.newItems.length - 8} more in your Locker</div>}
           </div>}
-          {award.picks > 0 && <div class="levelup reveal" style={{ animationDelay: `${gearAt + 300}ms` }}>🎁 A reward pick is waiting!</div>}
-        </div>
+          {award.picks > 0 && <div class="levelup reveal" style={{ animationDelay: `${gearAt + 300}ms` }}>A reward pick is waiting.</div>}
+        </UiPanel>
       </div>
-      <KeyHints hints={[['a', 'Continue']]} />
+      <ChromeHints hints={[['a', 'Continue']]} />
     </div>
   );
 }

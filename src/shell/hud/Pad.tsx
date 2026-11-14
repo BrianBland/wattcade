@@ -43,7 +43,7 @@ export function PadKey({ b, held, merged, pos, send, disabled = false, block = f
       onPointerMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) release(e.pointerId, true); }}
       onContextMenu={(e) => e.preventDefault()}>
       {cd && <i class="pk-fill" aria-hidden="true" />}
-      {!actionOnly && !touchNameOnly && <b>{b.glyph}</b>}{(actionOnly || !merged) && b.label && !reference && <span>{compact ? b.label : b.shortLabel ?? b.label}</span>}
+      {!actionOnly && !touchNameOnly && <b>{reference?b.glyph.replace('◀','←').replace('▶','→').replace('▲','↑').replace('▼','↓'):b.glyph}</b>}{(actionOnly || !merged) && b.label && !reference && <span>{compact ? b.label : b.shortLabel ?? b.label}</span>}
     </button>
   );
 }

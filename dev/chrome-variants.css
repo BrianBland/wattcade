@@ -1,0 +1,27 @@
+/* Review-only alternatives to the Pocket Arcade production default. */
+:root[data-arcade-variant] .chrome-eyebrow {display:inline-flex;align-items:center;gap:8px;color:var(--ui-color-gold);font-weight:800}
+:root[data-arcade-variant] .chrome-eyebrow::before {content:'';display:inline-block;flex:none}
+:root[data-arcade-variant] :is(.chrome-ui.screen h1,.chrome-ui .rider-details h2,.chrome-ui .result-card h1,.chrome-pause h2) {font-weight:900}
+:root[data-arcade-variant] .chrome-ui .ui-button.primary {font-weight:800}
+:root[data-arcade-variant] .chrome-ui .ui-button.primary:active {transform:translate(2px,2px);box-shadow:none}
+:root[data-arcade-variant] .chrome-ui .rider-details h2 {font-size:clamp(30px,3.2vw,40px);line-height:1.15}
+/* Pocket Arcade is now the production default in src/ui and shell/chrome. */
+:root[data-arcade-variant] .chrome-eyebrow::before {clip-path:none}
+/* B — Sunset Sprint: sportier coral, slanted display type, and a tiny racing-stripe accent. */
+:root[data-arcade-variant=sprint] {--ui-color-accent:#ff9b76;--ui-color-focus:#ff9b76;--ui-color-gold:#f6d66e;--ui-color-text:#fff1db;--ui-color-background:#192632;--ui-color-surface:#233541;--ui-color-raised:#314553;--ui-color-on-accent:#291e23}
+:root[data-arcade-variant=sprint] .chrome-eyebrow::before {width:13px;height:10px;transform:skewX(-20deg);background:repeating-linear-gradient(90deg,var(--ui-color-accent) 0 3px,transparent 3px 5px)}
+:root[data-arcade-variant=sprint] :is(.chrome-ui.screen h1,.chrome-ui .rider-details h2,.chrome-ui .result-card h1,.chrome-pause h2) {font-style:italic;letter-spacing:-1px}
+:root[data-arcade-variant=sprint] .chrome-ui .ui-button.primary {box-shadow:inset 0 -3px 0 #d87561;border-radius:2px}
+:root[data-arcade-variant=sprint] .chrome-ui .ui-button.primary::before {content:'';width:9px;height:12px;flex:none;transform:skewX(-20deg);background:repeating-linear-gradient(90deg,#291e23 0 2px,transparent 2px 4px);opacity:.7}
+:root[data-arcade-variant=sprint] .chrome-ui .rider-entry.selected {background:color-mix(in srgb,var(--ui-color-accent) 9%,transparent);box-shadow:inset 4px 0 var(--ui-color-accent)}
+:root[data-arcade-variant=sprint] .chrome-ui :is(.ui-progress,.bar:not(.zone-bar))>i {background-image:repeating-linear-gradient(-45deg,transparent 0 7px,#19263266 7px 10px)}
+/* C — Coin-Op: the boldest option, with lemon keys, purple ink, and chunky score-like numerals. */
+:root[data-arcade-variant=coinop] {--ui-color-accent:#f5df67;--ui-color-focus:#f5df67;--ui-color-gold:#f5c875;--ui-color-text:#f9f2e0;--ui-color-background:#22243d;--ui-color-surface:#2b2f4c;--ui-color-raised:#383d60;--ui-color-muted:#b6bed3;--ui-color-subtle:#9faac8;--ui-color-on-accent:#23233b}
+:root[data-arcade-variant=coinop] .chrome-eyebrow {font-family:ui-monospace,monospace;letter-spacing:1px}
+:root[data-arcade-variant=coinop] .chrome-eyebrow::before {width:4px;height:4px;margin-right:12px;background:var(--ui-color-accent);box-shadow:6px 0 0 #82dfdc,12px 0 0 var(--ui-color-accent)}
+:root[data-arcade-variant=coinop] :is(.chrome-ui.screen h1,.chrome-ui .rider-details h2,.chrome-ui .result-card h1,.chrome-pause h2) {font-family:ui-monospace,monospace;font-size:clamp(28px,3.7vw,44px);letter-spacing:-1.3px}
+:root[data-arcade-variant=coinop] .chrome-ui .ui-button.primary {border-radius:0;box-shadow:inset -3px -3px 0 #c6a54f,3px 3px 0 #111428}
+:root[data-arcade-variant=coinop] .chrome-ui .rider-entry.selected {background:var(--ui-color-surface);box-shadow:inset 4px 0 var(--ui-color-accent)}
+:root[data-arcade-variant=coinop] :is(.chrome-ui .ui-readout>b,.chrome-ui .xp-gain,.chrome-ui .result-xp) {font-family:ui-monospace,monospace;font-weight:800}
+:root[data-arcade-variant=coinop] .chrome-ui :is(.ui-progress,.bar:not(.zone-bar))>i {background-image:repeating-linear-gradient(90deg,transparent 0 6px,#22243d 6px 8px)}
+@media(prefers-reduced-motion:reduce){:root[data-arcade-variant] .chrome-ui .ui-button.primary:active {transform:none}}

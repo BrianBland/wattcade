@@ -10,6 +10,9 @@ import { SEA, sample } from '../sim/terrain';
 import { SalmonLayer } from './creatures';
 import { Hud } from './hud';
 import { layout } from './layout';
+import { fitOverhead, overheadPitch, valleyOutline, type V3 } from './camFit';
+import { applyFreeCam, easeHome, easeToward, focusState, FreeCamGestures, freeCamActive, freeCamHome, inwardYaw } from './freeCam';
+import { landmarks, nextLandmark, type LandmarkId } from './landmarks';
 import { Clouds, Forest, SeaSurface, skyTexture } from './scenery';
 import { TerrainView } from './terrainView';
 import { OuterLand } from './outerLand';
@@ -18,6 +21,7 @@ import { SkyLayer } from './skyLayer';
 import { JobsLayer } from './jobsLayer';
 import { EventsLayer } from './eventsLayer';
 import { WaterView } from './waterView';
+import { CurrentLayer } from './currentLayer';
 
 const DROP_SCALE = 0.85;   // drop radius per cbrt(volume): exaggerated on purpose
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -31,7 +35,7 @@ const POPUPS: Record<string, [string, string, number, '' | 'salmon' | 'warn']> =
   evaporate: ['Rise from the sea.', 'Spin to lift vapor · steer into the sunlight (paddles, ◀▶, shifters) · A: heat wave', 6, ''],
   cloud: ['Gather your cloud.', 'Drift inland and steer into the cloudlets · a bigger cloud means more rain', 5, ''],
   rain: ['Rain on the mountains!', 'Grind for a downpour, spin for drizzle · your spring rises where it rains most', 6, ''],
-  intro: ['You are the river.', 'Grind to carve deep · spin to carry silt · steer the spring ◀▶ · Y: follow view', 6, ''],
+  intro: ['You are the river.', 'Grind to carve deep · spin to carry silt · steer the glowing current ◀▶ to choose the river\'s path · Z: look at landmarks', 7, ''],
   salmonRun: ['The salmon are running!', 'Follow them home up the river you carved', 5, 'salmon'],
   salmonGo: ['Dodge the bears and eagles!', 'Steer with the paddles, ◀▶ or the shifters · A: sprint · spin past 95 rpm to leap falls', 6, 'salmon'],
   salmonStuck: ['Falls ahead!', 'Spin past 95 rpm to leap', 3, 'warn'],
@@ -57,7 +61,7 @@ export class WatershedRenderer implements GameRenderer {
   private sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
   private terrainView?: TerrainView; private water?: WaterView; private outer?: OuterLand; private landTick = 0;
   private drops?: THREE.InstancedMesh; private spring = new THREE.Group(); private extraSprings: THREE.Group[] = []; private springRing?: THREE.Mesh;
-  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private geo?: EventsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer;
+  private forest?: Forest; private bank?: Riverbank; private skyLayer?: SkyLayer; private jobs?: JobsLayer; private geo?: EventsLayer; private clouds?: Clouds; private sea?: SeaSurface; private salmon?: SalmonLayer; private current?: CurrentLayer;
   private hud?: Hud;
   private ro?: ResizeObserver;
   private size: [number, number] = [800, 600]; private insetB = 0;
@@ -73,6 +77,13 @@ export class WatershedRenderer implements GameRenderer {
   private treeAcc = 0; private dropsDirty = true; private dropK = 1;
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private v = new THREE.Vector3(); private sc = new THREE.Vector3(); private dir = new THREE.Vector3();
   private X = new THREE.Vector3(1, 0, 0); private tmpC = new THREE.Color();
+  // the player's free camera (pinch / drag / twist) on top of the auto camera; eases home when the scene changes
+  private free = freeCamHome(); private freeKey = ''; private homing = false;
+  /** The landmark the camera has flown to (Z or a tap on its button); null = the auto camera (+ free offsets). */
+  private focus: LandmarkId | null = null; private lastLook = -1; private focusRaise = 0;
+  private freeView: { pos: V3; tgt: V3 } = { pos: { x: 0, y: 100, z: 0 }, tgt: { x: 0, y: 0, z: 0 } };
+  private gest = new FreeCamGestures(this.free, () => ({ ...this.freeView, fovY: (this.camera.fov * Math.PI) / 180, H: this.size[1] }), () => { this.homing = true; });
+  private detachGestures?: () => void;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
     this.insetB = ctx.insets?.bottom ?? 0;
@@ -84,6 +95,7 @@ export class WatershedRenderer implements GameRenderer {
     r.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none';
     container.appendChild(r.domElement);
     this.renderer = r;
+    this.detachGestures = this.attachGestures(r.domElement);
 
     const s = this.scene;
     s.background = skyTexture();
@@ -98,6 +110,8 @@ export class WatershedRenderer implements GameRenderer {
     this.hud = new Hud(container);
     this.hud.setSend(ctx.send);
     this.hud.setInsetBottom(this.insetB);
+    this.hud.onResetView(() => { this.homing = true; this.focus = null; });
+    this.hud.onLandmark((id) => this.focusOn(id));
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
     if (typeof ResizeObserver !== 'undefined') {
       this.ro = new ResizeObserver(() => this.resize(container.clientWidth || 800, container.clientHeight || 600));
@@ -155,22 +169,90 @@ export class WatershedRenderer implements GameRenderer {
     this.geo = new EventsLayer(this.wx, this.wz, (x, y) => this.terrainView!.heightAt(x, y));
     this.clouds = new Clouds(ny + 60);
     this.salmon = new SalmonLayer(this.color, this.wx, this.wz);
+    this.current = new CurrentLayer(this.color, this.wx, this.wz);
 
-    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.geo.group, this.clouds.group, this.salmon.group);
+    this.scene.add(this.terrainView.mesh, this.water.mesh, this.outer.group, this.sea.mesh, this.drops, this.spring, this.forest.group, this.bank.group, this.skyLayer.group, this.jobs.group, this.geo.group, this.clouds.group, this.salmon.group, this.current.group);
     this.frameCamera();
   }
 
+  /**
+   * The overview: fitted to the screen (camFit). Upright it looks up the valley (spring at the top, sea at the bottom,
+   * left/right across the valley); on a wide screen it turns sideways (spring left, sea right) so the long valley fills
+   * the width under the HUD strip instead of a tall strip with forest either side.
+   */
   private frameCamera() {
     if (!this.nx) return;
-    const span = Math.max(this.ny, this.nx * 1.3);
-    const aspect = this.size[0] / Math.max(1, this.size[1]);
-    // look UP the valley from above the delta (spring at the top of the screen, sea at the bottom), so left/right on
-    // screen is across the valley in every phase
-    const k = Math.max(1, 1.35 / Math.max(0.5, aspect));   // portrait screens sit further back
-    void span;
-    this.camBase.pos.set(this.wx(this.ny - 1) + 62 * k, 172 * k, 0);
-    this.camBase.tgt.set(this.wx(this.ny * 0.36), 0, 0);
+    const [w, h] = this.size, L = layout(w, h, this.insetB);
+    const fit = fitOverhead(valleyOutline(this.nx, this.ny), (this.camera.fov * Math.PI) / 180, w / Math.max(1, h), L.band.yLo, L.band.yHi, overheadPitch(L.wide), L.wide);
+    this.camBase.pos.set(fit.pos.x, fit.pos.y, fit.pos.z);
+    this.camBase.tgt.set(fit.tgt.x, fit.tgt.y, fit.tgt.z);
     if (!this.camInit) { this.camPos.copy(this.camBase.pos); this.camTgt.copy(this.camBase.tgt); this.camInit = true; }
+  }
+
+  /** Pointer / wheel listeners for the free camera on the canvas (the HUD and touch pad sit above it). */
+  private attachGestures(el: HTMLElement): () => void {
+    const at = (e: PointerEvent) => { const b = el.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top] as const; };
+    const down = (e: PointerEvent) => {
+      const [x, y] = at(e);
+      try { el.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+      this.gest.down(e.pointerId, x, y, e.timeStamp, e.button === 2 || e.shiftKey);
+    };
+    const move = (e: PointerEvent) => { const [x, y] = at(e); this.gest.move(e.pointerId, x, y); };
+    const up = (e: PointerEvent) => this.gest.up(e.pointerId, e.timeStamp);
+    const cancel = (e: PointerEvent) => this.gest.cancel(e.pointerId);
+    const wheel = (e: WheelEvent) => { e.preventDefault(); this.gest.wheel(e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY); };
+    const menu = (e: Event) => e.preventDefault();
+    el.addEventListener('pointerdown', down); el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
+    el.addEventListener('wheel', wheel, { passive: false }); el.addEventListener('contextmenu', menu);
+    return () => {
+      el.removeEventListener('pointerdown', down); el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel);
+      el.removeEventListener('wheel', wheel); el.removeEventListener('contextmenu', menu);
+    };
+  }
+
+  /** Fly the camera to a landmark (again on the same one = back to the auto camera). */
+  private focusOn(id: LandmarkId) {
+    if (this.focus === id) { this.focus = null; this.homing = true; } else { this.focus = id; this.homing = false; }
+  }
+
+  /**
+   * Layer the player's zoom / pan / rotate over the auto camera, easing it home when the phase or view changes.
+   * A focused landmark (Z cycles them, or tap its button) holds the camera on it, close and low, until the player
+   * drags, resets or taps it again.
+   */
+  private applyFreeCamera(s: WatershedSnapshot, dt: number) {
+    const marks = landmarks(s);
+    const look = s.look ?? 0;
+    if (this.lastLook < 0) this.lastLook = look;
+    if (look !== this.lastLook) { this.lastLook = look; const n = nextLandmark(marks, this.focus); if (n) { this.focus = n.id; this.homing = false; } }
+    const key = `${s.phase}|${s.view}|${s.salmon?.run ?? 0}`;
+    if (key !== this.freeKey) { if (this.freeKey && !this.focus) this.homing = true; this.freeKey = key; }
+    if (this.gest.touched || this.gest.active) { this.gest.touched = false; if (this.gest.active) { this.homing = false; this.focus = null; } }
+    const lm = this.focus ? marks.find((m) => m.id === this.focus) : undefined;
+    if (this.focus && !lm) { this.focus = null; this.homing = true; }
+    if (lm) {
+      const poi = { x: this.wx(lm.y), y: Math.max(SEA, this.terrainView!.heightAt(lm.x, lm.y)) + 1.5, z: this.wz(lm.x) };
+      const at = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z }, ap = this.camera.position;
+      easeToward(this.free, focusState(poi, at, undefined, 1, inwardYaw(poi.z, { x: ap.x, y: ap.y, z: ap.z }, at)), dt);
+    } else if (this.homing && easeHome(this.free, dt)) this.homing = false;
+    this.hud?.setLandmarks(marks, this.focus);
+    const c = this.camera.position, pos = { x: c.x, y: c.y, z: c.z }, tgt = { x: this.camTgt.x, y: this.camTgt.y, z: this.camTgt.z };
+    const on = freeCamActive(this.free);
+    if (on) {
+      applyFreeCam(this.free, pos, tgt, { x0: this.wx(0) - 10, x1: this.wx(this.ny - 1) + 40, z0: -this.nx / 2 - 10, z1: this.nx / 2 + 10 });
+      const tv = this.terrainView!, ground = Math.max(SEA, tv.heightAt(pos.z + this.nx / 2, pos.x + this.ny / 2));
+      pos.y = Math.max(pos.y, ground + 3);
+      // a low landmark view must not look through a hillside: rise (smoothly) until the line of sight clears
+      const need = lm ? this.clearHeight(pos, tgt) - pos.y : 0;
+      this.focusRaise += (Math.max(0, need) - this.focusRaise) * (1 - Math.exp(-dt * 4));
+      pos.y += this.focusRaise;
+      this.camera.position.set(pos.x, pos.y, pos.z);
+      this.camera.lookAt(tgt.x, tgt.y, tgt.z);
+    }
+    this.freeView = { pos, tgt };
+    this.hud?.setResetView(on && !this.homing);
   }
 
   /** World point on the river centreline at grid row y (from the salmon view's path), at the water surface. */
@@ -288,6 +370,17 @@ export class WatershedRenderer implements GameRenderer {
   }
 
   /** Raise `cam` until its line of sight to `look` clears the terrain (canyon walls, ridges) with some margin. */
+  /** Camera height at (cam.x, cam.z) whose line of sight to `look` clears the terrain (and water) by a margin. */
+  private clearHeight(cam: V3, look: V3): number {
+    const tv = this.terrainView!, hAt = (wx: number, wz: number) => Math.max(SEA, tv.heightAt(wz + this.nx / 2, wx + this.ny / 2));
+    let need = hAt(cam.x, cam.z) + 3;
+    for (let k = 1; k < 10; k++) {
+      const t = k / 10, ground = hAt(cam.x + (look.x - cam.x) * t, cam.z + (look.z - cam.z) * t);
+      need = Math.max(need, (ground + 4 - look.y * t) / (1 - t));   // + clearance for trees on the way
+    }
+    return need;
+  }
+
   private liftClear(cam: THREE.Vector3, look: THREE.Vector3) {
     const tv = this.terrainView!, hAt = (wx: number, wz: number) => tv.heightAt(wz + this.nx / 2, wx + this.ny / 2);
     let need = hAt(cam.x, cam.z) + 3;
@@ -354,13 +447,13 @@ export class WatershedRenderer implements GameRenderer {
         case 'springRises': this.popup('intro'); play('splash'); play('chime', { vol: 0.8 }); break;
         case 'cloudlet': play('pickup', { vol: 0.6 }); break;
         case 'menuMove': play('uiMove'); break;
-        case 'rideLength': play('uiSelect'); this.popup('evaporate'); break;
+        case 'rideLength': play('uiSelect'); if (!d.skipWarmup) this.popup('evaporate'); break;   // else the rain block's popup greets
         case 'objective': this.hud?.popup(String(d.title), String(d.goal), 5); play('horn', { vol: 0.5 }); break;
         case 'objectiveDone': this.hud?.popup('Done! ✓', JOB_DONE[String(d.kind)] ?? 'Nice work', 3, 'salmon'); play('reward'); break;
         case 'objectiveFailed': this.hud?.popup('Missed it', JOB_MISS[String(d.kind)] ?? 'Next time', 3, 'warn'); play('deny', { vol: 0.5 }); break;
         case 'beavers': this.hud?.popup('Beavers!', 'They are damming the river. Spin to flush the dam away', 4, 'warn'); play('plop'); break;
         case 'damBroken': this.hud?.popup('Dam broken!', 'The river runs free', 2.5, 'salmon'); play('explode', { vol: 0.4 }); play('splash'); break;
-        case 'flooding': this.hud?.popup('Millbrook is flooding!', 'Steer the spring away, grind a deeper channel', 2.5, 'warn'); play('bell', { vol: 0.6 }); break;
+        case 'flooding': this.hud?.popup('Millbrook is flooding!', 'Steer the current away, grind a deeper channel', 2.5, 'warn'); play('bell', { vol: 0.6 }); break;
         case 'millTurning': play('chime', { vol: 0.5, minGapS: 3 }); break;
         case 'harvest': play('coin', { vol: 0.4, minGapS: 1 }); break;
         case 'boost': play('surge', { vol: 0.5 }); this.hud?.popup(BOOST_TEXT[String(d.phase)] ?? 'Boost!', '', 1.6); break;
@@ -438,13 +531,16 @@ export class WatershedRenderer implements GameRenderer {
     this.clouds!.update(dt);
     this.sea!.update(tNow / 1000);
     this.water!.tick(tNow / 1000);
+    this.terrainView!.time.value = tNow / 1000;
     this.forest!.wind.value = tNow / 1000;
     this.bank!.update(s, this.water!, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.skyLayer!.update(s, dt, tNow / 1000, (x, y) => this.terrainView!.heightAt(x, y));
     this.jobs!.update(s, dt, tNow / 1000);
     this.geo!.update(s, dt, tNow / 1000, (kind, state) => this.eventCue(kind, state));
     this.salmon!.update(s, s.salmon, dt, tNow / 1000);
+    this.current!.update(s, this.water!.depth, (x, y) => this.terrainView!.heightAt(x, y), dt, tNow / 1000);
     this.updateCamera(s, dt, tNow / 1000);
+    this.applyFreeCamera(s, dt);
     const shake = this.geo!.shake;
     if (shake > 0.01) this.camera.position.add(this.cA.set((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
     // the boundary fence lights up near whatever the rider is steering
@@ -467,7 +563,7 @@ export class WatershedRenderer implements GameRenderer {
     this.frameCamera(); this.applyView();
   }
 
-  setInsets(i: Insets) { this.insetB = i.bottom; this.hud?.setInsetBottom(i.bottom); this.applyView(); }
+  setInsets(i: Insets) { this.insetB = i.bottom; this.hud?.setInsetBottom(i.bottom); this.frameCamera(); this.applyView(); }
 
   /** Render edge-to-edge, but shift the view so the valley is centred above the shell HUD. */
   private applyView() {
@@ -478,7 +574,9 @@ export class WatershedRenderer implements GameRenderer {
 
   unmount() {
     this.ro?.disconnect();
+    this.detachGestures?.();
     stopAmbient();
+    this.terrainView?.dispose();
     this.hud?.unmount();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;

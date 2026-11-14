@@ -3,7 +3,9 @@ import * as THREE from 'three';
 import type { BikeState, GameRenderer, InputState, Insets, Profile } from '../../../contracts';
 import { NO_INSETS } from '../../../contracts';
 import type { SfSnapshot } from '../sim/types';
-import { bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
+import { batteryModel, bossModel, disposeModel, isSharedGeometry, geometries, heavyModel, shipModel } from './models';
+import { FLAGSHIPS, flagshipClock, updateFlagship } from './flagships';
+import { BOSS_MAIN_AT } from './blast';
 import { layout } from './layout';
 import { createSpace } from './space';
 import { createCombat } from './combat';
@@ -16,22 +18,28 @@ import { WING_OFFSETS } from '../sim/progression';
 
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
-  private scene = new THREE.Scene(); private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 800);
+  private warm: THREE.Object3D[] = [];
+  private scene = new THREE.Scene(); // Far plane beyond the fog's end (1150), so a lowered camera never sees past the drawn world.
+  private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1600);
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
   private craft?: THREE.Group; private craftKind = ''; private color = '#5b8cff'; private send?: (a: unknown) => void;
   private enemies = new Map<number, THREE.Group>(); private wings: THREE.Group[] = [];
-  private bullets?: THREE.InstancedMesh; private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
+  private enemyFire?: ReturnType<typeof createBullets>; private effects?: THREE.InstancedMesh;
   private combat?: ReturnType<typeof createCombat>; private ghosts: THREE.Group[] = [];
-  private starfield?: THREE.Points; private halo?: THREE.Mesh; private space?: ReturnType<typeof createSpace>;
+  private starfield?: THREE.Points; private shieldColor = new THREE.Color(); private space?: ReturnType<typeof createSpace>;
   private lastFxId = 0;
   private matrix = new THREE.Object3D(); private lastMenu = ''; private last?: SfSnapshot;
-  private cameraBase = new THREE.Vector3(); private turnRoll = 0; private post?: SquadronPost;
+  private cameraBase = new THREE.Vector3(); private turnRoll = 0;
+  /** Terrain lift (the ship flies lower in pushes and burns) and the speed FOV widening, both eased. */
+  private lift = 0; private fovAdd = 0; private tilt = 0; private altT = -1;
+  /** Blizzard strength (arctic only): light when cruising, heavy in pushes, a whiteout-ish burn, with gusts. */
+  private blizzard = 0; private post?: SquadronPost;
   private lastScoreAt = -1; private tierSeen = 0; private tierAt = new Map<number, number>(); private liveryKey = '';
   private heavy?: THREE.Group; private beams?: THREE.InstancedMesh;
-  private hud!: SquadronHud; private lastGrazeId = 0; private lastPerfectAt = -1;
+  private hud!: SquadronHud; private lastGrazeId = 0; private lastEvadeAt = -99; private lastPerfectAt = -1;
   private controls = (event: Event) => {
     const el = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-    if (el?.dataset.action === 'target') this.send?.({ type: 'target', direction: Number(el.dataset.direction) });
+    if (el?.dataset.action === 'flank' || el?.dataset.action === 'target') this.send?.({ type: 'flank', direction: Number(el.dataset.direction) });
     if (el?.dataset.action === 'nova') this.send?.({ type: 'nova' });
     if (el?.dataset.action === 'launch') this.send?.({ type: 'launch' });
     if (el?.dataset.action === 'craft') this.send?.({ type: 'craft', craft: el.dataset.craft });
@@ -58,19 +66,24 @@ export class SfRenderer implements GameRenderer {
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(stars, 3));
     this.starfield = new THREE.Points(geo, new THREE.PointsMaterial({ color: '#7898bf', size: 0.4, transparent: true, opacity: 0.7 })); this.starfield.visible = false; this.scene.add(this.starfield);
     this.space = createSpace(this.scene); this.combat = createCombat(this.scene);
+    // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears. A flagship and a battery
+    // join briefly so their hull and plasma shaders are ready before the first boss arrives (kept, not disposed, so the
+    // programs stay cached).
+    this.warm = [bossModel(0), batteryModel(0)]; for (const w of this.warm) this.scene.add(w);
+    this.webgl?.compile(this.scene, this.camera);
+    for (const w of this.warm) this.scene.remove(w);
     for (let i=0;i<2;i++) {
       const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
       ghost.visible=false;this.ghosts.push(ghost);this.scene.add(ghost);
     }
-    this.halo = new THREE.Mesh(geometries.ring, new THREE.MeshBasicMaterial({ color: '#86e7ff', transparent: true, opacity: 0.35, depthWrite: false })); this.scene.add(this.halo);
     const makePool = (geo: THREE.BufferGeometry, color: string, count: number) => {
       const pool = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }), count);
       pool.count = 0; pool.frustumCulled = false; this.scene.add(pool); return pool;
     };
-    this.bullets = makePool(geometries.box, '#ffffff', 300); this.enemyFire = createBullets(this.scene);
+    this.enemyFire = createBullets(this.scene);
     this.effects = makePool(geometries.ring, '#ffcc8a', 160);
-    this.beams = makePool(geometries.box, '#8ff6ff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
+    this.beams = makePool(geometries.box, '#b98bff', 4); const beamMat = this.beams.material as THREE.MeshBasicMaterial; beamMat.blending = THREE.AdditiveBlending; beamMat.depthWrite = false; beamMat.opacity = 0.55;
     this.observer = new ResizeObserver(() => this.resize(container.clientWidth, container.clientHeight)); this.observer.observe(container);
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
@@ -97,6 +110,8 @@ export class SfRenderer implements GameRenderer {
     this.lastFxId=Math.max(this.lastFxId,...s.fx.map(f=>f.id));
     this.last = { ...s, locks: [...s.locks] };
     const grazes = s.fx.filter(f => f.kind === 'graze' && f.id > this.lastGrazeId);
+    // Evasive roll: a quick rising whoosh the moment the rider steers, so the move is felt even before it is seen.
+    if (s.evade > 0 && s.evadeAt !== this.lastEvadeAt) { this.lastEvadeAt = s.evadeAt; play('whoosh', { vol: 0.3, pitch: 1.5, minGapS: 0.15 }); }
     if (grazes.length) { play('uiTick', { vol: 0.16, pitch: 1.7 + Math.min(0.5, grazes.length * 0.1), minGapS: 0.09 }); this.lastGrazeId = grazes[grazes.length - 1].id; }
     if (s.clear.last?.perfect && s.clear.last.at !== this.lastPerfectAt) { this.lastPerfectAt = s.clear.last.at; if (bigPerfect(s.clear.streak)) play('milestone', { vol: 0.35, minGapS: 1 }); else play('uiTick', { vol: 0.25, pitch: 1.2 }); }
     if (s.scorecard && s.scorecard.at !== this.lastScoreAt) { this.lastScoreAt = s.scorecard.at; play(s.scorecard.grade === 'S' ? 'levelup' : 'reward', { vol: 0.35 }); }
@@ -104,7 +119,7 @@ export class SfRenderer implements GameRenderer {
     this.webgl.info.reset(); // bloom renders in passes; count draw calls per frame
     if (this.craftKind !== s.craft) {
       if (this.craft) { this.scene.remove(this.craft); disposeModel(this.craft); }
-      this.craft = shipModel(this.color, s.craft === 'escort' ? 'escort' : 'player'); this.craftKind = s.craft; this.scene.add(this.craft);
+      this.craft = shipModel(this.color, s.craft === 'cruiser' ? 'player' : s.craft); this.craftKind = s.craft; this.scene.add(this.craft);
       this.liveryKey = '';
     }
     const craft = this.craft!, hangar = s.phase === 'hangar', level = s.crafts[s.craft].level;
@@ -152,44 +167,48 @@ export class SfRenderer implements GameRenderer {
     this.wings.forEach((wing, i) => { wing.visible = i < s.wingmen; wing.scale.setScalar(hangar ? 1 : 0.5); wing.position.set(hx + WING_OFFSETS[i] * lift, hy + (hangar ? 0 : s.lift * 0.6), hz + 3 * lift + (i > 1 ? 4 : 0)); wing.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.8 + rollAt((s.roll?.dur ?? 0) / 2 * (i + 1))); });
     if (s.heavy && !this.heavy) { this.heavy = heavyModel(this.color); this.heavy.scale.setScalar(1.1); this.scene.add(this.heavy); }
     if (this.heavy) { this.heavy.visible = s.heavy; this.heavy.position.set(hx, hy - 1, hz + 9 * lift); this.heavy.rotation.set(0, craft.rotation.y, hangar ? 0 : s.bank * 0.6); this.heavy.scale.setScalar(hangar ? 2 : 1.1); }
-    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
-    this.combat?.update(s);
+    this.ghosts.forEach((g,i)=>{g.visible=s.dodge>0.12||s.evade>0;g.position.set(s.shipX-s.bank*(i+1)*9,10,s.shipY-50+(i+1)*2);g.rotation.z=s.bank*0.6;g.scale.copy(this.craft!.scale);});
+    // The shield: a shimmering ring of cells round the ship (gold when ace), brighter under cover and with ride quality.
+    this.combat?.update(s, this.lift, this.blizzard, hangar ? null : { x: hx, y: hy + 0.4, z: hz, r: 5 + s.beat * 0.6 + s.dodge * 2 + s.evade * 3,
+      color: this.shieldColor.set(s.ace ? '#ffd34d' : '#86e7ff'), alpha: (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40) });
     const live = new Set<number>();
+    flagshipClock.time.value = s.t % 1000; flagshipClock.beat.value = s.beat;
     for (const e of s.enemies) {
       live.add(e.id); let model = this.enemies.get(e.id);
-      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
-        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === o.material)) lights.push([o.material, o.material.color.clone()]); }); model.userData.lights = lights; }
+      const parent = e.parentId !== undefined ? s.enemies.find(p => p.id === e.parentId) : undefined;
+      if (!model) { model = e.kind === 'boss' ? bossModel(e.bossStyle) : parent ? batteryModel(parent.bossStyle) : shipModel(e.elite ? '#ffd34d' : e.kind === 'armor' ? '#ffbc3d' : e.kind === 'weaver' ? '#ed3cc6' : '#ff704a', e.kind); model.scale.multiplyScalar(e.kind === 'boss' ? 1 : 1.1); this.enemies.set(e.id, model); this.scene.add(model);
+        const lights: Array<[THREE.MeshBasicMaterial, THREE.Color]> = []; model.traverse(o => { if (o instanceof THREE.Mesh) for (const mm of Array.isArray(o.material) ? o.material : [o.material]) if (mm instanceof THREE.MeshBasicMaterial && !lights.some(([m]) => m === mm)) lights.push([mm, mm.color.clone()]); }); model.userData.lights = lights; }
       // Running lights breathe on the beat.
       for (const [m, base] of (model.userData.lights ?? []) as Array<[THREE.MeshBasicMaterial, THREE.Color]>) m.color.copy(base).multiplyScalar(0.7 + s.beat * 0.55);
-      model.position.set(e.x,e.ground?-3.8:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
+      model.position.set(e.x,e.ground?-3.8+this.lift:e.kind==='boss'?13-s.beat*0.25:10+Math.sin(e.age)*1.2-s.beat*0.35,e.y-50);
       model.rotation.z=e.ground?0:e.passing||e.entry&&e.age<e.entry.duration?Math.sin(e.heading??0)*-0.5:Math.sin(e.age*1.4)*0.22;
+      if (e.kind === 'boss') { model.rotation.z = flagshipRoll(e); updateFlagship(model, s.t, Math.max(0, Math.min(1, (1 - e.hp / Math.max(1, e.maxHp)) * 1.25 - 0.1))); model.userData.at = [e.x, e.y]; }
+      else if (parent) {
+        // Batteries sit on their flagship's hardpoints and roll with it.
+        const r = flagshipRoll(parent), spec = FLAGSHIPS[parent.bossStyle % FLAGSHIPS.length], my = (e.mountX ?? 0) === 0 ? spec.mount.c : spec.mount.s;
+        model.position.y = 13 - s.beat * 0.25 - (e.mountX ?? 0) * Math.sin(r) + my * Math.cos(r); model.rotation.z = r;
+      }
       model.rotation.y=e.ground?(e.kind==='tank'?Math.sin(e.age*0.6)*0.15:0):Math.PI;
       model.traverse(o=>{if(o.name==='barrel')o.rotation.y=Math.atan2(s.shipX-e.x,s.shipY-e.y)-model!.rotation.y;});
     }
-    for (const [id, model] of this.enemies) if (!live.has(id)) { this.scene.remove(model); disposeModel(model); this.enemies.delete(id); }
+    for (const [id, model] of this.enemies) if (!live.has(id)) {
+      // A destroyed flagship lingers as a burning wreck through its chain of detonations, listing and sinking, and is
+      // gone when the reactor blows. Anything else is removed at once.
+      const wreck = s.fx.find(f => f.kind === 'boom' && (f.size ?? 1) >= 2.5 && s.t - f.at < BOSS_MAIN_AT);
+      if (model.userData.flagship !== undefined && wreck && Math.abs(wreck.x - model.position.x) < 1 && !hangar) {
+        const u = (s.t - wreck.at) / BOSS_MAIN_AT;
+        model.position.y = 13 - 4 * u * u; model.rotation.z = 0.35 * u * u; model.rotation.x = -0.12 * u; updateFlagship(model, s.t, 1); continue;
+      }
+      this.scene.remove(model); disposeModel(model); this.enemies.delete(id);
+    }
     const mat = this.matrix;
-    // Pulse shots change shape with the arsenal: dots, then bolts, then long spears (white, then gold at the top tiers).
-    const pulseColor = new THREE.Color();
-    s.shots.slice(0, 300).forEach((b, i) => {
-      const len = b.kind === 'wing' ? 2.5 : b.tier >= 4 ? 4.8 : b.tier >= 2 ? 3.2 : 1.4, width = b.kind === 'wing' ? 0.28 : b.tier >= 4 ? 0.36 : b.tier >= 2 ? 0.28 : 0.4;
-      mat.position.set(b.x, 10.7, b.y - 50); mat.rotation.set(0, Math.atan2(b.vx, b.vy), 0); mat.scale.set(width, 0.25, len); mat.updateMatrix(); this.bullets!.setMatrixAt(i, mat.matrix);
-      this.bullets!.setColorAt(i, pulseColor.set(b.kind === 'wing' ? '#a4f3ff' : b.tier >= 7 ? '#ffe27a' : b.tier >= 4 ? '#effcff' : '#a4f3ff'));
-    });
-    if (this.bullets!.instanceColor) this.bullets!.instanceColor.needsUpdate = true;
-    this.bullets!.count = Math.min(300, s.shots.length); this.bullets!.instanceMatrix.needsUpdate = true;
+    // Player pulse shots are drawn by the combat layer as glowing bolts (render/vfx.ts).
     this.enemyFire!.update(s.bolts, s.beat);
-    const shockwaves = s.fx.filter(f => f.kind !== 'intercept' && f.kind !== 'graze' && f.kind !== 'beam' && s.t-f.at < (f.kind==='boom'?0.6:f.kind==='volley'?0.5:1.6)).slice(-160);
-    shockwaves.forEach((f, i) => { const age = s.t - f.at, size = f.kind === 'nova' ? age * 85 : f.kind === 'volley' ? age * 36 + 3 : f.kind === 'perfect' ? age * 40 + 2 : f.kind === 'boom' ? age * 8 + 1 : age * 4 + 0.5;
-      mat.position.set(f.x, 0.8, f.y - 50); mat.rotation.set(0, 0, 0); mat.scale.set(size, Math.max(0.1, 1 - age / 1.6), size); mat.updateMatrix(); this.effects!.setMatrixAt(i, mat.matrix); });
-    this.effects!.count = shockwaves.length; this.effects!.instanceMatrix.needsUpdate = true;
-    // Escort phrase beam: a bright column sweeping up the ship's lane, narrowing as it fades.
-    const beams = s.fx.filter(f => f.kind === 'beam' && s.t - f.at < 0.6).slice(-4);
-    beams.forEach((f, i) => { const life = 1 - (s.t - f.at) / 0.6, length = 140;
-      mat.position.set(f.x, 10.5, f.y - 50 - length / 2); mat.rotation.set(0, 0, 0); mat.scale.set((f.size ?? 9) * 2 * life, 0.8, length); mat.updateMatrix(); this.beams!.setMatrixAt(i, mat.matrix); });
-    this.beams!.count = beams.length; this.beams!.instanceMatrix.needsUpdate = true;
-    this.halo!.position.set(hx, hy + 0.4, hz); this.halo!.visible = !hangar; this.halo!.scale.setScalar(5 + s.beat * 0.6 + s.dodge*2);
-    (this.halo!.material as THREE.MeshBasicMaterial).color.set(s.ace ? '#ffd34d' : '#86e7ff');
-    (this.halo!.material as THREE.MeshBasicMaterial).opacity = (s.coverLeft > 0 ? 0.6 : 0.12 + s.quality * 0.22) * Math.min(1, s.shield / 40);
+    // Shock rings (full lock, perfect, nova, upgrade) are soft particles in the combat layer now.
+    this.effects!.count = 0;
+    // Escort phrase plasma beam: a violet column sweeping up the ship's lane, narrowing as it fades.
+    // The Escort's plasma beam column is drawn by the combat layer.
+    this.beams!.count = 0;
     this.starfield!.position.z = (s.t * 1.5) % 30;
     // The world passes beneath through the ship's route pose; the next biome takes over at its frame line.
     this.space?.update(s.t, s.intensity, SECTORS[(s.sector - 1) % 5].accent, s.beat, s.bar, s.bar > 0.0005 ? -Math.log(s.bar) / 3 : 9,
@@ -197,7 +216,16 @@ export class SfRenderer implements GameRenderer {
       s.enemies.filter(e => e.ground && e.hp > 0).map(e => ({ x: e.x, z: e.y - 50 })), { beatIndex: s.beatIndex, bands: s.bands });
     // A barely-there settle of the camera on each bar line, and a gentle roll into turns.
     this.turnRoll += (s.world.turn * 2.2 - this.turnRoll) * 0.04;
-    this.camera.position.set(this.cameraBase.x, this.cameraBase.y - s.bar * 0.45, this.cameraBase.z - s.bar * 0.3);
+    // Lower and faster in pushes and burns: the terrain rises toward the ship and the view widens a touch with speed.
+    const k = this.altT < 0 || s.t < this.altT ? 1 : Math.min(1, (s.t - this.altT) / 0.9); this.altT = s.t;
+    this.lift += ((hangar ? 0 : s.drive.dip) - this.lift) * k; this.space?.setLift(this.lift);
+    const fov = hangar ? 0 : s.drive.fov; if (Math.abs(fov - this.fovAdd) > 0.01) { this.fovAdd += (fov - this.fovAdd) * k; this.camera.fov = 48 + this.fovAdd; this.camera.updateProjectionMatrix(); }
+    // A lower camera (pulled back a little, same aim) reads as flying lower and faster.
+    this.tilt += ((hangar ? 0 : s.drive.tilt) - this.tilt) * k;
+    { const arctic = !hangar && s.frames.cur.biome === 4, dt = Math.min(0.1, k * 0.9), gust = 0.12 * (0.5 + 0.5 * Math.sin(s.t * 0.37) * Math.sin(s.t * 0.13 + 1));
+      const want = arctic ? Math.min(1, 0.35 + (s.drive.level === 'burn' ? 0.55 : s.drive.level === 'push' ? 0.3 : 0) + gust) : 0;
+      this.blizzard += (want - this.blizzard) * Math.min(1, dt / 2.5); this.space?.setWeather(this.blizzard); }
+    this.camera.position.set(this.cameraBase.x, this.cameraBase.y * (1 - this.tilt) - s.bar * 0.45, this.cameraBase.z * (1 + this.tilt * 0.35) - s.bar * 0.3);
     this.camera.up.set(Math.sin(this.turnRoll), Math.cos(this.turnRoll), 0); this.camera.lookAt(0, 0, -6);
     this.webgl.setViewport(0, 0, this.w, this.h); this.post!.grade(s.section, s.intensity); this.post!.render(this.scene, this.camera, s.bar, performance.now());
     this.hud?.update(s);
@@ -212,9 +240,12 @@ export class SfRenderer implements GameRenderer {
     for (const m of mats) m.dispose();
     // Shared model geometry lives for the module lifetime and supports repeated renderer mounts.
     for (const g of geos) if (!isSharedGeometry(g) && !isKitGeometry(g)) g.dispose();
-    for (const pool of [this.bullets, this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
+    for (const pool of [this.effects, this.beams]) pool?.dispose(); this.enemyFire?.dispose();
+    for (const w of this.warm) disposeModel(w); this.warm = [];
     this.combat?.dispose(); this.space?.dispose();
     this.post?.dispose(); this.webgl?.dispose(); this.webgl?.domElement.remove(); this.overlay?.remove();
     this.container?.querySelector('[data-squadron-backdrop]')?.remove();
   }
 }
+/** A capital ship barely rolls: a slow sway, steadier than the fighters'. */
+const flagshipRoll = (e: { age: number; entry?: { duration: number }; heading?: number }) => e.entry && e.age < e.entry.duration ? Math.sin(e.heading ?? 0) * -0.12 : Math.sin(e.age * 0.7) * 0.035;

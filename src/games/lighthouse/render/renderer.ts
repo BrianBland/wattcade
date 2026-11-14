@@ -11,7 +11,7 @@ import { Life } from './life';
 import { createSea, waveHeight, type Sea } from './sea';
 import { Sky } from './sky';
 import type { ShipView, Snap } from './snap';
-import { disposeShared, lam, mergeStatic, mesh } from './util';
+import { box, cyl, disposeShared, lam, mergeStatic, mesh, planks } from './util';
 import { Fx } from './fx';
 import { Wildlife, type WildFrame } from './wildlife';
 import { Keeper } from './keeper';
@@ -135,14 +135,14 @@ export class LighthouseRenderer implements GameRenderer {
   }
 
   private makeBridge(): THREE.Group {
-    const g = new THREE.Group(), wood = lam(0x8b6b3e), dark = lam(0x5e472b);
+    const g = new THREE.Group(), wood = planks(0x8b6b3e), dark = lam(0x5e472b);
     const { x0, x1, z, y } = BRIDGE, L = x1 - x0, cx = (x0 + x1) / 2;
-    g.add(mesh(new THREE.BoxGeometry(L, 0.2, 1.8), wood, cx, y, z));
+    g.add(mesh(box(L, 0.2, 1.8), wood, cx, y, z));
     for (let x = x0 + 1; x < x1; x += 2.2) for (const dz of [-0.85, 0.85]) {
-      g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, y + 3, 5), dark, x, (y - 3) / 2, z + dz, false));
-      g.add(mesh(new THREE.BoxGeometry(0.08, 0.9, 0.08), dark, x, y + 0.5, z + dz, false));
+      g.add(mesh(cyl(0.12, 0.12, y + 3, 5), dark, x, (y - 3) / 2, z + dz, false));
+      g.add(mesh(box(0.08, 0.9, 0.08), dark, x, y + 0.5, z + dz, false));
     }
-    for (const dz of [-0.85, 0.85]) g.add(mesh(new THREE.BoxGeometry(L, 0.08, 0.08), dark, cx, y + 0.95, z + dz, false));
+    for (const dz of [-0.85, 0.85]) g.add(mesh(box(L, 0.08, 0.08), dark, cx, y + 0.95, z + dz, false));
     mergeStatic(g);
     return g;
   }
@@ -389,7 +389,7 @@ export class LighthouseRenderer implements GameRenderer {
       // floating cargo for spilled ships
       if (sh.state === 'spilled' && !o.crates) {
         o.crates = new THREE.Group();
-        for (let i = 0; i < 7; i++) { const c = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), lam(0xa07a4a)); c.userData.a = i * 0.9; c.userData.r = 1.5 + (i % 3); o.crates.add(c); }
+        for (let i = 0; i < 7; i++) { const c = new THREE.Mesh(box(0.5, 0.4, 0.5), lam(0xa07a4a)); c.userData.a = i * 0.9; c.userData.r = 1.5 + (i % 3); o.crates.add(c); }
         o.crates.position.copy(p); this.scene.add(o.crates);
       }
       if (o.crates) {

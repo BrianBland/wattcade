@@ -14,8 +14,10 @@ export interface BiomeLook {
   roadStructure?: 'boardwalk' | 'floating';
   /** Floating worlds leave the rolling ridge and solid mid-ground transparent. */
   openSky?: boolean;
-  /** Large scenery rooted beside the actual road, painted behind the rider. */
-  roadside?(g: G, w: number, roadY: (x: number) => number, scroll: number, t: number): void;
+  /** Large scenery rooted beside the actual road, painted behind the rider. `keep(x0, x1)`, when given, says whether a
+   *  group spanning screen x0..x1 belongs to this biome: at a biome seam each group is drawn whole on its own side, and a
+   *  group that would straddle the seam is left out (a clearing at the gateway). */
+  roadside?(g: G, w: number, roadY: (x: number) => number, scroll: number, t: number, keep?: (x0: number, x1: number) => boolean): void;
   stars: number;                  // 0..1 star visibility
   /** Distant scenery band (parallax ~0.05). `u` = layer scroll in px, `y` = band base. */
   backdrop(g: G, w: number, y: number, u: number, t: number): void;

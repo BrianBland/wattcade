@@ -26,6 +26,11 @@ describe('segments', () => {
     expect(plan.map(s => [s.t0, s.t1])).toEqual([[0, 200], [200, 600]]);
     expect(planSegments(mix(600, [[0, 200], [200, 260], [260, 600]]))[0].seed).toBe(plan[0].seed);
   });
+  it('numbers the parts of a split song so only its first place names the song', () => {
+    const plan = planSegments(mix(1200, [[0, 300], [300, 1200]]));
+    expect(plan.length).toBeGreaterThan(2); expect(plan.slice(0, 2).map(s => [s.title, s.part])).toEqual([['Song 0', 0], ['Song 1', 0]]);
+    for (const [i, s] of plan.slice(2).entries()) expect([s.title, s.part]).toEqual(['Song 1', i + 1]);
+  });
   it('commits the current segment through timeline revisions and falls back to fixed windows without music', () => {
     const tl = mix(900, [[0, 300], [300, 900]]), seg = createSegmenter(tl, () => 360, () => 150);
     const first = seg.at(10).segment; tl.songs[0].t1 = 280; tl.songs[1].t0 = 280;

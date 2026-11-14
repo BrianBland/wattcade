@@ -1,5 +1,5 @@
 # penrose (Penrose Pedals)
-CONTRACT-REQUEST: none. Dev-flag game (`devGames`), ported from the design prototype (36 levels in 9 chapters).
+CONTRACT-REQUEST: none. Under-construction game (`wipGames`, caution tape in the picker), ported from the design prototype (36 levels in 9 chapters).
 
 ## What it is
 An isometric perception-puzzle ride. The wheel never stops; loops hold it, and it leaves a loop only where a piece

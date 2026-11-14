@@ -2,7 +2,9 @@
 // as they dock, holds their cap in a storm, and climbs the tower at dusk to light the lamp.
 import * as THREE from 'three';
 import { islandHeight, LIGHTHOUSE, LIGHTHOUSE_Y } from '../sim/layout';
-import { lam } from './util';
+import { box, capsule, cyl, ico, lam, sphere } from './util';
+
+const KEEPER_COAT = new THREE.LatheGeometry([[0, 0.3], [0.15, 0.3], [0.17, 0.36], [0.175, 0.46], [0.165, 0.56], [0.165, 0.62], [0.14, 0.67], [0.08, 0.705], [0, 0.715]].map(([x, y]) => new THREE.Vector2(x, y)), 18);
 
 const GALLERY_Y = LIGHTHOUSE_Y + 13.3, GALLERY_R = 1.62, DOOR = { x: LIGHTHOUSE.x, z: LIGHTHOUSE.z + 2.55 };
 const GARDEN = { x: LIGHTHOUSE.x + 3.2, z: LIGHTHOUSE.z + 4.6 };
@@ -18,28 +20,46 @@ export interface KeeperFrame {
 
 export class Keeper {
   readonly group = new THREE.Group();
-  private arm: THREE.Group; private cap: THREE.Object3D; private body: THREE.Mesh;
+  private arm: THREE.Group; private cap: THREE.Object3D; private body: THREE.Mesh; private legs: THREE.Group[] = [];
   private up = false; private first = true; private climbT = -1; private climbingUp = true;
   private ang = 0.6; private gx = GARDEN.x; private gz = GARDEN.z; private tx = GARDEN.x; private tz = GARDEN.z; private wait = 2;
 
   constructor() {
-    const g = this.group;
-    this.body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.27, 0.7, 7), lam(0x23395a)); this.body.position.y = 0.35;
-    const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.24, 0.07, 7), lam(0x3a2a1a)); belt.position.y = 0.36;
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), lam(0xf2c9a0)); head.position.y = 0.86;
-    const beard = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), lam(0xf4f1ea)); beard.position.set(0.09, 0.78, 0); beard.scale.set(0.8, 0.9, 1.1);
+    // Built facing +x (the code below turns the keeper with face()). Shares the islanders' shapes.
+    const g = this.group, coat = lam(0x23395a), skin = lam(0xf2c9a0);
+    const add = (parent: THREE.Object3D, geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
+      const me = new THREE.Mesh(geo, m); me.position.set(x, y, z); parent.add(me); return me;
+    };
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Group(); leg.position.set(0, 0.36, sz * 0.075);
+      add(leg, capsule(0.055, 0.2), lam(0x2d3138), 0, -0.155, 0);
+      add(leg, sphere(0.06), lam(0x2a221c), 0.03, -0.31, 0).scale.set(1.3, 0.55, 0.9);
+      this.legs.push(leg); g.add(leg);
+    }
+    this.body = add(g, KEEPER_COAT, coat, 0, 0, 0);
+    add(g, cyl(0.168, 0.168, 0.05, 24), lam(0x3a2a1a), 0, 0.4, 0);
+    add(g, sphere(0.13), skin, 0, 0.83, 0);
+    add(g, sphere(0.026), skin, 0.128, 0.84, 0);
+    const beard = add(g, ico(0.11), lam(0xf4f1ea), 0.07, 0.76, 0); beard.scale.set(0.8, 0.9, 1.15);
     this.cap = new THREE.Group();
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.18, 0.12, 8), lam(0x1d2a40)); crown.position.y = 1.0;
-    const peak = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.26), lam(0x111111)); peak.position.set(0.15, 0.95, 0);
-    this.cap.add(crown, peak);
-    this.arm = new THREE.Group(); this.arm.position.set(0, 0.6, 0.24);
-    const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), lam(0x23395a)); sleeve.position.y = -0.2;
-    const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.06, 0), lam(0xf2c9a0)); hand.position.y = -0.43;
-    this.arm.add(sleeve, hand);
-    const other = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), lam(0x23395a)); other.position.set(0, 0.4, -0.24);
-    g.add(this.body, belt, head, beard, this.cap, this.arm, other);
+    add(this.cap, cyl(0.14, 0.145, 0.1, 20), lam(0x1d2a40), 0, 0.95, 0);
+    add(this.cap, cyl(0.15, 0.15, 0.02, 20), lam(0x111111), 0, 0.905, 0);
+    const peak = add(this.cap, box(0.14, 0.02, 0.22), lam(0x111111), 0.15, 0.905, 0); peak.rotation.z = -0.15;
+    this.arm = new THREE.Group(); this.arm.position.set(0, 0.645, 0.175);
+    add(this.arm, capsule(0.042, 0.2), coat, 0, -0.14, 0);
+    add(this.arm, sphere(0.045), skin, 0, -0.29, 0);
+    const other = new THREE.Group(); other.position.set(0, 0.645, -0.175); other.rotation.x = 0.12;
+    add(other, capsule(0.042, 0.2), coat, 0, -0.14, 0);
+    add(other, sphere(0.045), skin, 0, -0.29, 0);
+    g.add(this.cap, this.arm, other);
     g.traverse((o) => { o.castShadow = true; });
     g.scale.setScalar(1.4);
+  }
+
+  /** Swing the legs while walking. */
+  private stride(t: number, moving: boolean) {
+    const s = moving ? Math.sin(t * 8) * 0.5 : 0;
+    this.legs[0].rotation.z = s; this.legs[1].rotation.z = -s;
   }
 
   /** Is the keeper on the gallery (not mid-climb)? */
@@ -74,6 +94,7 @@ export class Keeper {
     this.ang += Math.sign(d) * Math.min(Math.abs(d), f.dt * (walk ? 0.45 : 0.9));
     const x = LIGHTHOUSE.x + Math.cos(this.ang) * GALLERY_R, z = LIGHTHOUSE.z + Math.sin(this.ang) * GALLERY_R;
     g.position.set(x, GALLERY_Y + (walk ? Math.abs(Math.sin(f.t * 7)) * 0.04 : 0), z);
+    this.stride(f.t * 0.875, walk);
     const ox = Math.cos(this.ang), oz = Math.sin(this.ang);
     if (f.dockAge < 7) { // wave at the ship
       this.face(ox, oz);
@@ -104,6 +125,7 @@ export class Keeper {
       this.gx += ((this.tx - this.gx) / d) * st; this.gz += ((this.tz - this.gz) / d) * st;
       this.face(this.tx - this.gx, this.tz - this.gz);
     }
+    this.stride(f.t, d >= 0.05);
     g.position.set(this.gx, Math.max(LIGHTHOUSE_Y - 0.5, islandHeight(this.gx, this.gz)) + (d >= 0.05 ? Math.abs(Math.sin(f.t * 8)) * 0.05 : 0), this.gz);
   }
 }

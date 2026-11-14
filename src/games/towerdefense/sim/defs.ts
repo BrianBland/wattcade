@@ -1,5 +1,6 @@
 // Dynamo Defense catalogues and field geometry. Pure data + math; no DOM, no rng.
-import { FLYER_SPAWNS, ROAD, ROAD_PADS, ROAD_PAD_NAMES, SPAWN_Y, TURRET } from './road';
+import { TURRET } from './road';
+import { LEVEL_0, levelGeometry } from './level';
 export type Element = 'blue' | 'red' | 'purple';
 export type Weapon = 'gatling' | 'flame' | 'rail';
 export type Kind = 'mini' | 'dart' | 'brute' | 'charger' | 'armor' | 'carrier' | 'prism' | 'boss';
@@ -73,50 +74,24 @@ export const BASE_Y = TURRET.y;
 /** An alien this close to the end of the road (or its flight) has reached the turret. */
 export const BASE_R = 8;
 
-type P = { x: number; y: number };
-/** The walkable road: ROAD from where it crosses the spawn edge to the turret, with cumulative distances. */
-const ROAD_TABLE = (() => {
-  const first = Math.max(0, ROAD.findIndex((p) => p.y >= SPAWN_Y) - 1);
-  const pts = ROAD.slice(first), cum = [0];
-  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
-  return { pts, cum, len: cum[cum.length - 1] };
-})();
-export const ROAD_LENGTH = ROAD_TABLE.len;
-/** Point `d` units along the road from the spawn edge, with the unit normal (pointing to the walker's left). */
-export function roadAt(d: number): { x: number; y: number; nx: number; ny: number } {
-  const { pts, cum, len } = ROAD_TABLE, dd = Math.max(0, Math.min(len, d));
-  let lo = 0, hi = pts.length - 1;
-  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= dd) lo = m; else hi = m; }
-  const seg = cum[hi] - cum[lo] || 1, k = (dd - cum[lo]) / seg, a = pts[lo], b = pts[hi];
-  const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
-  return { x: a.x + tx * k, y: a.y + ty * k, nx: ty / tl, ny: -tx / tl };
-}
-/** Road distance of the nearest road point to (x, y). */
-export function roadDistanceOf(x: number, y: number): number {
-  let best = Infinity, at = 0;
-  for (let i = 0; i < ROAD_TABLE.pts.length; i++) { const p = ROAD_TABLE.pts[i], d = Math.hypot(p.x - x, p.y - y); if (d < best) { best = d; at = ROAD_TABLE.cum[i]; } }
-  return at;
-}
-/** The road for drawing (every `step` samples, always ending at the turret). */
-export function roadPolyline(step = 4): P[] {
-  const pts = ROAD_TABLE.pts;
-  return pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
-}
-/** Glider flight `route` (an index into FLYER_SPAWNS): straight from its spawn to the turret. */
-export const flightLength = (route: number): number => Math.hypot(TURRET.x - FLYER_SPAWNS[route].x, TURRET.y - FLYER_SPAWNS[route].y);
-export function flightAt(route: number, d: number): { x: number; y: number; nx: number; ny: number } {
-  const a = FLYER_SPAWNS[route], len = flightLength(route), k = Math.max(0, Math.min(1, d / len));
-  const tx = (TURRET.x - a.x) / len, ty = (TURRET.y - a.y) / len;
-  return { x: a.x + (TURRET.x - a.x) * k, y: a.y + (TURRET.y - a.y) * k, nx: ty, ny: -tx };
-}
-
+/**
+ * Level 0's geometry under the old single-map names, for dev pages and tests that pin today's map. Sim and renderer
+ * code reads a level's `TdGeometry` (`sim/level.ts`) instead.
+ */
+const G0 = levelGeometry(LEVEL_0);
+export const ROAD_LENGTH = G0.roadLength;
+export const roadAt = G0.roadAt;
+export const roadDistanceOf = G0.roadDistanceOf;
+export const roadPolyline = G0.roadPolyline;
+export const flightLength = G0.flightLength;
+export const flightAt = G0.flightAt;
 /** Aim angle from the base to a point: 0 = straight up, negative = left. */
 export const angleTo = (x: number, y: number): number => Math.atan2(x - BASE_X, BASE_Y - y);
 export const distTo = (x: number, y: number): number => Math.hypot(x - BASE_X, y - BASE_Y);
 export const AIM_LIMIT = 1.45;
 
-/** Eight build pads beside the road. `s` = road distance of the nearest stretch (workshop order: spawn → turret). */
-export interface Pad { id: number; x: number; y: number; name: string; s: number }
-export const PADS: Pad[] = ROAD_PADS.map((p, id) => ({ id, x: p.x, y: p.y, name: ROAD_PAD_NAMES[id], s: roadDistanceOf(p.x, p.y) }));
+export type { Pad } from './level';
+export const PADS = G0.pads;
 /** The workshop's pseudo-pad for the base (repair). */
-export const BASE_PAD = PADS.length;
+export const BASE_PAD = G0.basePad;
+export const padOrder = G0.padOrder;

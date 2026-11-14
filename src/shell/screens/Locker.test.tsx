@@ -8,7 +8,7 @@ import { migrateCosmetics } from '../../cosmetics/migrate';
 const mocks = vi.hoisted(() => ({ equip: vi.fn(), press: null as null | ((s: Set<string>) => void) }));
 vi.mock('../services', async () => {
   const { pendingPicks } = await import('../../cosmetics/unlocks');
-  return { pendingPicks, equipItem: mocks.equip, itemHint: () => 'Reach the required level' };
+  return { hasConnectedController: () => false, subscribeDevices: () => () => {}, pendingPicks, equipItem: mocks.equip, itemHint: () => 'Reach the required level' };
 });
 vi.mock('../menuInput', () => ({ onMenuPress: (f: typeof mocks.press) => { mocks.press = f; return () => { mocks.press = null; }; } }));
 vi.mock('../../audio/sfx', () => ({ play: vi.fn() }));

@@ -1,0 +1,10 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wattcade · Arcade variations</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:28px;background:#091b26;color:#f5efdd;font-family:system-ui}h1{font-size:27px;margin:0 0 8px;letter-spacing:-.7px}p{font-size:14px;line-height:1.5;color:#abc0c9;margin:0 0 22px}.grid{display:grid;grid-template-columns:repeat(3,390px);gap:20px}.grid.baseline{grid-template-columns:repeat(4,390px)}figure{margin:0}figcaption{height:88px;padding:10px 0}b{display:block;font-size:20px;letter-spacing:-.3px}small{display:block;color:#b2c7cd;font-size:12px;line-height:1.6;margin-top:4px;max-width:360px}.frame{height:650px;overflow:hidden}img{display:block;width:390px;height:844px}.desktop .grid{grid-template-columns:repeat(3,590px)}.desktop .grid.baseline{grid-template-columns:repeat(4,590px)}.desktop .frame{height:410px}.desktop img{width:590px;height:410px}.desktop figcaption{height:76px}
+</style>
+<h1>A little more arcade.</h1><p>Same components and layouts · four shared treatments: palette, display type, button edges, selection/progress</p><div class="grid"></div>
+<script>
+const q=new URLSearchParams(location.search),view=q.get('view')??'riders',size=q.has('desktop')?'desktop':'phone';document.body.classList.toggle('desktop',size==='desktop');
+const options=[['pocket','A · Pocket Arcade','Mint + warm gold · tactile keys · pixel accents'],['sprint','B · Sunset Sprint','Coral + cream · italic titles · racing stripes'],['coinop','C · Coin-Op','Lemon + purple ink · score-like type · harder edges']];if(q.has('baseline')){options.unshift(['base','Current','The existing flat theme, for comparison']);document.querySelector('.grid').classList.add('baseline');}
+document.querySelector('.grid').innerHTML=options.map(([id,title,desc])=>`<figure><figcaption><b>${title}</b><small>${desc}</small></figcaption><div class="frame"><img src="${id}-${size}-${view}.png" alt="${title}, ${view}"></div></figure>`).join('');
+</script></html>

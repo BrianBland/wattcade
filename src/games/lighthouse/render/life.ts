@@ -1,23 +1,23 @@
 // Everything that makes the island feel alive and reacts to nearby buildings:
 // paths between buildings, flowers/trees/gardens that grow with in-zone riding, villagers, fishers, porters, gulls, butterflies, smoke.
 import * as THREE from 'three';
+import { Figure } from './people';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BRIDGE, HARBOUR, islandHeight, LIGHTHOUSE, PIER_LEN, PLOTS, plotHeight } from '../sim/layout';
 import { plotYaw, SHORE_KINDS } from './buildings';
 import type { Seg, Terrain } from './world';
-import { lam, mergeStatic, mulberry, pick, softTexture } from './util';
+import { blob, box, cone, cyl, ico, lam, mergeStatic, mulberry, pick, softTexture } from './util';
 import type { Season } from '../sim/extras';
 
 const FLOWER_COLS = [0xff6fa8, 0xffd23f, 0xffffff, 0xb07cff, 0xff5a4f, 0xff9f43, 0x6cb4ff, 0xffb3e6];
 const WILD_COLS = [0xffffff, 0xfff27a, 0xd9b8ff, 0xffc2dd, 0xfff6c8];
-const CLOTHES = [0x3b6ea5, 0xc0392b, 0x2e7d32, 0xf1c40f, 0x8e44ad, 0xe67e22, 0x34495e, 0xd35400, 0x16a085];
-const SKIN = [0xf2c9a0, 0xd9a577, 0xa7754d, 0x7a5236, 0xf5d5b8];
 const SNOW = new THREE.Color(0xf4f8fb);
 /** The village square (first hub) and the lighthouse yard. */
 export const HUBS = [{ x: HARBOUR.x - 2, z: HARBOUR.z - 4 }, { x: LIGHTHOUSE.x + 7, z: LIGHTHOUSE.z + 1.5 }];
 
 interface Node { x: number; z: number; kind: string; plot: number; deck?: number; land: number }
 interface Walker {
-  g: THREE.Group; body: THREE.Mesh; crate?: THREE.Mesh; rod?: THREE.Mesh;
+  g: THREE.Group; body: Figure; crate?: THREE.Mesh; rod?: THREE.Mesh;
   role: 'villager' | 'fisher' | 'porter' | 'kid';
   home: number; at: number; route: number[]; x: number; z: number; wait: number; speed: number; seed: number; hidden: boolean;
   goal?: number; // greeting a ship / heading to the festival: the node being walked to
@@ -59,16 +59,18 @@ export class Life {
       const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.castShadow = shadow; m.receiveShadow = true;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(m); return m;
     };
-    const white = () => new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    this.flowers = inst(new THREE.IcosahedronGeometry(0.14, 0), white(), 3500);
-    const grassGeo = new THREE.ConeGeometry(0.1, 0.55, 3); grassGeo.translate(0, 0.27, 0);
+    const white = () => new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.flowers = inst(blob(0.14, 0, 1, 1), white(), 3500); // a smooth 80-triangle bead
+    const grassGeo = cone(0.1, 0.55, 3); grassGeo.translate(0, 0.27, 0);
     this.grass = inst(grassGeo, white(), 2200);
-    const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1, 5); trunkGeo.translate(0, 0.5, 0);
+    const trunkGeo = cyl(0.12, 0.18, 1, 5); trunkGeo.translate(0, 0.5, 0);
     this.trunks = inst(trunkGeo, lam(0x6b4a2e), 260, true);
-    this.crowns = inst(new THREE.IcosahedronGeometry(1, 0), white(), 260, true);
-    const pineGeo = new THREE.ConeGeometry(0.9, 2.4, 6); pineGeo.translate(0, 1.2, 0);
+    this.crowns = inst(blob(1, 0.14, 5, 2), white(), 260, true);
+    // pine: three stacked tiers, smooth enough that no facet reads as a big triangle
+    const tiers = [[0.9, 1.3, 0.75], [0.7, 1.1, 1.35], [0.45, 0.9, 1.9]].map(([r, h, y]) => { const c = cone(r, h, 14); c.translate(0, y, 0); c.deleteAttribute('uv'); return c; });
+    const pineGeo = mergeGeometries(tiers)!; tiers.forEach((t) => t.dispose());
     this.pines = inst(pineGeo, white(), 80, true);
-    this.patches = inst(new THREE.BoxGeometry(1, 0.12, 0.6), lam(0x6e4b2f), 40);
+    this.patches = inst(box(1, 0.12, 0.6), lam(0x6e4b2f), 40);
     this.group.add(this.extras);
     // smoke puffs (per-vertex alpha)
     const N = 240;
@@ -306,8 +308,8 @@ export class Life {
   private addWashing(x: number, z: number, r: () => number) {
     const h = islandHeight(x, z), a = r() * Math.PI;
     const dx = Math.cos(a) * 0.9, dz = Math.sin(a) * 0.9;
-    for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.06), lam(0x6b4a2e)); p.position.set(x + dx * s, h + 0.6, z + dz * s); this.extras.add(p); }
-    const line = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.02, 0.02), lam(0xdddddd)); line.position.set(x, h + 1.15, z); line.rotation.y = -a; this.extras.add(line);
+    for (const s of [-1, 1]) { const p = new THREE.Mesh(box(0.06, 1.2, 0.06), lam(0x6b4a2e)); p.position.set(x + dx * s, h + 0.6, z + dz * s); this.extras.add(p); }
+    const line = new THREE.Mesh(box(1.8, 0.02, 0.02), lam(0xdddddd)); line.position.set(x, h + 1.15, z); line.rotation.y = -a; this.extras.add(line);
     for (let k = 0; k < 3; k++) {
       const cl = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.45), new THREE.MeshLambertMaterial({ color: pick(r, [0xffffff, 0x6cb4ff, 0xff8f8f, 0xfff27a, 0xa0e0a0]), side: THREE.DoubleSide }));
       const f = (k - 1) * 0.5;
@@ -316,19 +318,14 @@ export class Life {
     }
   }
 
-  private makePerson(seed: number): { g: THREE.Group; body: THREE.Mesh } {
-    const r = mulberry(seed * 53 + 11);
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.24, 0.62, 6), lam(pick(r, CLOTHES))); body.position.y = 0.31;
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), lam(pick(r, SKIN))); head.position.y = 0.76;
-    g.add(body, head);
-    if (r() < 0.45) { const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.22, 0.12, 6), lam(pick(r, [0xf4e2a1, 0x34495e, 0xc0392b, 0x2e7d32]))); hat.position.y = 0.9; g.add(hat); }
-    this.group.add(g);
-    return { g, body };
+  private makePerson(seed: number): { g: THREE.Group; body: Figure } {
+    const body = new Figure(seed);
+    this.group.add(body.g);
+    return { g: body.g, body };
   }
 
   private spawnWalkers() {
-    for (const w of this.walkers) { this.group.remove(w.g); if (w.kite) this.group.remove(w.kite.k, w.kite.line); }
+    for (const w of this.walkers) { this.group.remove(w.g); w.g.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); if (w.kite) this.group.remove(w.kite.k, w.kite.line); }
     this.walkers = [];
     const b = this.buildings;
     const count = (k: string) => b.filter((x) => x === k).length;
@@ -359,12 +356,12 @@ export class Life {
     this.nodes.forEach((n, i) => {
       if (n.kind !== 'pierEnd') return;
       const { g, body } = this.makePerson(100 + i);
-      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 2.2, 4), lam(0x5e472b)); rod.position.set(0, 0.55, 0.6); rod.rotation.x = 1.0; g.add(rod);
+      const rod = new THREE.Mesh(cyl(0.02, 0.03, 2.2, 4), lam(0x5e472b)); rod.position.set(0, 0.55, 0.6); rod.rotation.x = 1.0; g.add(rod);
       this.walkers.push({ g, body, rod, role: 'fisher', home: i, at: i, route: [], x: n.x + 0.45, z: n.z, wait: 0, speed: 0, seed: 100 + i, hidden: false, pier: n.plot });
       const dest = market >= 0 ? market : (homes[0] ?? 0);
       for (let k = 0; k < 2; k++) {
         const p = this.makePerson(200 + i * 2 + k);
-        const crate = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), lam(0xa07a4a)); crate.position.y = 1.05; p.g.add(crate);
+        const crate = new THREE.Mesh(box(0.4, 0.3, 0.4), lam(0xa07a4a)); crate.position.y = 1.05; p.g.add(crate);
         this.walkers.push({ g: p.g, body: p.body, crate, role: 'porter', home: dest, at: i, route: [], x: n.x, z: n.z, wait: k * 4, speed: 1.3, seed: 200 + k, hidden: true, a: i, b: dest, pier: n.plot });
       }
     });
@@ -399,7 +396,7 @@ export class Life {
         w.hidden = indoors;
         w.g.position.set(n.x + 0.45, (n.deck ?? 0) - 0.15, n.z);
         w.g.rotation.y = 0;
-        w.body.scale.y = 0.75;
+        w.body.pose('sit');
         const tug = Math.sin(t * 0.7 + w.seed) > 0.96 ? 0.25 : 0;
         w.rod!.rotation.x = 1.0 + Math.sin(t * 1.3 + w.seed) * 0.05 - tug;
         w.g.visible = !w.hidden;
@@ -436,7 +433,7 @@ export class Life {
             const x = n.x + ((w.seed % 3) - 1) * 0.45, z = n.z - (w.seed % 4) * 0.5;
             w.g.position.set(x, this.heightAt(x, z) + hop, z); w.g.rotation.y = 0;
           }
-          w.body.scale.y = 1; w.g.visible = true;
+          w.body.pose(goal === 0 ? 'walk' : 'wave', t + w.seed); w.g.visible = true;
           this.flyKite(w, t, false);
           continue;
         }
@@ -450,7 +447,7 @@ export class Life {
       }
       const moving = w.route.length > 0;
       const kind = this.nodes[w.at]?.kind;
-      w.body.scale.y = !moving && kind === 'garden' ? 0.65 : 1;
+      w.body.pose(moving ? (w.crate?.visible ? 'carry' : 'walk') : kind === 'garden' ? 'kneel' : 'stand', t + w.seed);
       w.g.position.set(w.x, this.heightAt(w.x, w.z) + (moving ? Math.abs(Math.sin(t * 9 + w.seed)) * 0.08 : 0), w.z);
       w.g.visible = !w.hidden;
       this.flyKite(w, t, !w.hidden && !indoors && (f.windy ?? 0) > 0.3 && w.seed % 2 === 0);
@@ -489,11 +486,11 @@ export class Life {
   }
 
   private makeGulls() {
-    const wing = new THREE.BoxGeometry(0.12, 0.03, 0.9);
+    const wing = box(0.12, 0.03, 0.9);
     const white = lam(0xf6f6f6);
     for (let i = 0; i < 7; i++) {
       const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.14), white);
+      const body = new THREE.Mesh(box(0.5, 0.12, 0.14), white);
       const l = new THREE.Mesh(wing, white), r = new THREE.Mesh(wing, white);
       l.position.z = -0.45; r.position.z = 0.45;
       const lp = new THREE.Group(); lp.add(l); const rp = new THREE.Group(); rp.add(r);

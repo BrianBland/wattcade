@@ -4,8 +4,12 @@ import { after } from './director';
  * A segment is one "place" in the ride: normally a song, but long tracks (DJ mixes) split at natural seams and very
  * short songs merge. Each segment has its own biome, at most one flagship, and ends with a breather + scorecard.
  */
-export interface Segment { index: number; t0: number; t1: number; title: string; seed: number; biome: number; bossAt: number | null }
-export const SEGMENT = { minS: 120, maxS: 420, targetS: 330, seamWindowS: 90, minBossSegS: 150, bossLeadS: 80, firstBossS: 120, biomes: 4 };
+/** `part` counts segments within one song (0 = the song's first place; mixes split into parts 1, 2, …). */
+export interface Segment { index: number; t0: number; t1: number; title: string; part: number; seed: number; biome: number; bossAt: number | null }
+/** Biome ids (render/space.ts draws them). Open biomes lie on world axes, so the route may turn over them. */
+export const BIOME = { carrier: 0, city: 1, canyon: 2, ocean: 3, arctic: 4, lava: 5 } as const;
+export const isOpenBiome = (b: number) => b === BIOME.city || b === BIOME.ocean || b === BIOME.arctic;
+export const SEGMENT = { minS: 120, maxS: 420, targetS: 330, seamWindowS: 90, minBossSegS: 150, bossLeadS: 80, firstBossS: 120, biomes: 6 };
 const hash = (text: string) => { let h = 2166136261; for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619); return h >>> 0; };
 
 /** Song spans, with very short songs merged into the next one. */
@@ -55,7 +59,7 @@ export function planSegments(tl: MediaTimeline): Segment[] {
     for (let k = 0; k < cuts.length - 1; k++) {
       const seed = hash(`${span.key}#${k}`), index = out.length, prev = out[index - 1];
       let biome = seed % SEGMENT.biomes; if (prev && biome === prev.biome) biome = (biome + 1) % SEGMENT.biomes;
-      out.push({ index, t0: cuts[k], t1: cuts[k + 1], title: span.title, seed, biome, bossAt: bossFor(tl, cuts[k], cuts[k + 1], index === 0) });
+      out.push({ index, t0: cuts[k], t1: cuts[k + 1], title: span.title, part: k, seed, biome, bossAt: bossFor(tl, cuts[k], cuts[k + 1], index === 0) });
     }
   }
   return out;
@@ -63,7 +67,7 @@ export function planSegments(tl: MediaTimeline): Segment[] {
 /** Without a timeline (harness/endless): fixed windows with one boss each, matching the old cadence. */
 export function fallbackSegment(index: number, every: number, firstBoss: number): Segment {
   const t0 = index * every, seed = hash(`endless#${index}`);
-  return { index, t0, t1: t0 + every, title: '', seed, biome: (seed % SEGMENT.biomes + index) % SEGMENT.biomes, bossAt: t0 + (index === 0 ? Math.min(firstBoss, every * 0.5) : every * 0.42) };
+  return { index, t0, t1: t0 + every, title: '', part: 0, seed, biome: (seed % SEGMENT.biomes + index) % SEGMENT.biomes, bossAt: t0 + (index === 0 ? Math.min(firstBoss, every * 0.5) : every * 0.42) };
 }
 /**
  * Commits one segment at a time: the current segment never shifts when the timeline is revised (streamed songs,

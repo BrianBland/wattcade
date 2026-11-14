@@ -118,6 +118,9 @@ export class Sky {
     return cues;
   }
 
+  /** Skip the warm-up: a ready-made cloud of `size` over the peaks (no vapor/cloudlets credited: the rider didn't make it). */
+  preset(size: number): void { this.size = size; this.x = this.nx / 2; this.y = 13; }
+
   /** Hang over the peaks and rain. Returns the rain footprint for the water sim (cells). */
   rain(dt: number, inp: { steer: number; nudge: number; autopilot: boolean; flow: number }, p: SkyParams): { x: number; y: number; r: number } {
     this.t += dt;

@@ -41,6 +41,26 @@ describe('salmon run', () => {
     s.lane = -0.8; for (let k = 0; k < 20; k++) s.updatePath(w);
     expect(s.px[30]).toBeLessThan(36);
   });
+  it('keeps the school in one river when another channel runs deeper', () => {
+    const { s } = setup();
+    // two separate rivers (far apart): the school's (x = 30) is the deeper one when the run starts
+    const two = (a: number, b: number) => {
+      const w = new Float32Array(NX * NY);
+      for (let j = 0; j < NY; j++) { for (let i = 28; i <= 32; i++) w[j * NX + i] = a; for (let i = 64; i <= 68; i++) w[j * NX + i] = b; }
+      return w;
+    };
+    let w = two(1, 0.5);
+    for (let k = 0; k < 10; k++) s.updatePath(w);
+    s.start(8, P);
+    run(s, w, 20);
+    expect(s.pos(s.y, 0).x).toBeCloseTo(30, 0);
+    // the other river floods and becomes the deepest at the mouth: the path must not hop over to it
+    w = two(0.5, 2);
+    const xs: number[] = [];
+    for (let k = 0; k < 20; k++) { s.updatePath(w); run(s, w, 1); xs.push(s.pos(s.y, 0).x); }
+    for (const x of xs) expect(Math.abs(x - 30)).toBeLessThan(2);
+    for (let j = 0; j < NY; j += 8) expect(Math.abs(s.px[j] - 30)).toBeLessThan(2);
+  });
   it('swims upstream and gets home faster at higher cadence', () => {
     const a = setup(), b = setup();
     a.s.start(10, P); b.s.start(10, P);

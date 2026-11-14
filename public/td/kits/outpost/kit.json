@@ -1,0 +1,94 @@
+{
+ "style": "outpost",
+ "source": "outpost-codex",
+ "ppu": 12,
+ "roadHalf": 4,
+ "roadRim": 1,
+ "roadBand": 9,
+ "files": {
+  "groundA": "ground_a.webp",
+  "groundB": "ground_b.webp",
+  "gravel": "gravel.webp",
+  "road": "road.webp",
+  "hive": "hive.webp"
+ },
+ "apron": {
+  "file": "apron.webp",
+  "w": 26.5,
+  "h": 26.25
+ },
+ "clearing": {
+  "file": "clearing.webp",
+  "w": 12.75,
+  "h": 12.25
+ },
+ "decals": [
+  {
+   "file": "decal0.webp",
+   "w": 9.5,
+   "h": 10
+  },
+  {
+   "file": "decal1.webp",
+   "w": 9.75,
+   "h": 9
+  },
+  {
+   "file": "decal2.webp",
+   "w": 8,
+   "h": 7
+  }
+ ],
+ "props": [
+  {
+   "file": "prop0.webp",
+   "w": 9.5,
+   "h": 9.5
+  },
+  {
+   "file": "prop1.webp",
+   "w": 19.75,
+   "h": 4.75
+  },
+  {
+   "file": "prop2.webp",
+   "w": 7.5,
+   "h": 6.75
+  },
+  {
+   "file": "prop3.webp",
+   "w": 6,
+   "h": 6
+  },
+  {
+   "file": "prop4.webp",
+   "w": 6.5,
+   "h": 7.25
+  },
+  {
+   "file": "prop5.webp",
+   "w": 4.25,
+   "h": 4.5
+  },
+  {
+   "file": "prop6.webp",
+   "w": 4.25,
+   "h": 4
+  },
+  {
+   "file": "prop7.webp",
+   "w": 5,
+   "h": 4.25
+  }
+ ],
+ "deck": {
+  "file": "deck.webp",
+  "w": 56.25,
+  "h": 10.5
+ },
+ "hiveMouth": {
+  "file": "mouth.webp",
+  "w": 20.5,
+  "h": 20.25
+ }
+}

@@ -27,7 +27,8 @@ function patch(material: THREE.MeshStandardMaterial, fragment: string, key: stri
         #endif
         vLZ = (modelMatrix * wp).z; vWPos = toWorld((modelMatrix * wp).xyz); vWNormal = dirToWorld(vWNormal);`);
     shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${VARYINGS}
-      uniform vec2 uWave; uniform vec4 uMusic; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}`)
+      uniform vec2 uWave; uniform vec4 uMusic; float shHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float shNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(shHash(i),shHash(i+vec2(1,0)),f.x),mix(shHash(i+vec2(0,1)),shHash(i+vec2(1,1)),f.x),f.y);}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${fragment}`);
   };
   material.customProgramCacheKey = () => key;
@@ -38,9 +39,12 @@ export function windowed(material: THREE.MeshStandardMaterial) {
   return patch(material, `
     if (abs(vWNormal.y) < 0.5) {
       vec2 t = normalize(vec2(-vWNormal.z, vWNormal.x));
-      vec2 uv = vec2(dot(vWPos.xz, t) / 2.4, (vWPos.y + 6.0) / 2.8);
+      // Each building (keyed by its origin) picks a window rhythm: bay width, floor height, and grid / ribbon / strip panes.
+      float bs = shHash(floor(vOrigin.xz / 3.0) + vec2(5.3, 1.7)), cw = mix(1.8, 3.0, fract(bs * 7.0)), ch = mix(2.5, 3.3, fract(bs * 13.0));
+      vec2 uv = vec2(dot(vWPos.xz, t) / cw, (vWPos.y + 6.0) / ch);
       vec2 cell = floor(uv), f = fract(uv);
-      float pane = step(0.18, f.x) * step(f.x, 0.82) * step(0.25, f.y) * step(f.y, 0.78) * step(1.0, vWPos.y + 4.5);
+      vec4 m = bs < 0.4 ? vec4(0.18, 0.82, 0.25, 0.78) : bs < 0.7 ? vec4(0.0, 1.0, 0.3, 0.72) : vec4(0.36, 0.64, 0.12, 0.9);
+      float pane = step(m.x, f.x) * step(f.x, m.y) * step(m.z, f.y) * step(f.y, m.w) * step(1.0, vWPos.y + 4.5);
       float h = shHash(cell + floor(vWPos.xz / 40.0) * 7.0), lit = step(0.6, h);
       // Beat flicker: about 7% of windows re-roll their state on every beat (people switching lights on and off).
       if (fract(h * 91.7) < 0.07) lit = step(0.5, shHash(cell + vec2(uMusic.x * 0.37, uMusic.x * 1.13)));
@@ -64,11 +68,40 @@ export function windowed(material: THREE.MeshStandardMaterial) {
       diffuseColor.rgb *= 0.9 + 0.1 * step(0.46, max(g.x, g.y));
     }`, 'sq-windowed');
 }
-/** Rock: sedimentary strata bands and a darker, wetter base. */
+/**
+ * Curtain-wall glass towers: a mullion grid over dark glass that reflects a dusk sky (deeper low, brighter high), with
+ * a few office floors lit warm and the bar-line wave passing over the glass.
+ */
+export function curtain(material: THREE.MeshStandardMaterial) {
+  return patch(material, `
+    if (abs(vWNormal.y) < 0.5) {
+      vec2 tg = normalize(vec2(-vWNormal.z, vWNormal.x));
+      float u = dot(vWPos.xz, tg), v = vWPos.y + 6.0;
+      vec2 g = abs(fract(vec2(u / 1.6, v / 3.0)) - 0.5);
+      float mull = clamp(step(0.46, g.x) + step(0.465, g.y), 0.0, 1.0), frac = clamp((vWPos.y - vBase) / max(1.0, vH), 0.0, 1.0);
+      vec3 sky = mix(vec3(0.03, 0.08, 0.2), vec3(0.3, 0.55, 0.8), frac * frac);
+      float lit = step(0.8, shHash(vec2(floor(v / 3.0), floor(vOrigin.x) + floor(vOrigin.z) * 7.0))) * step(1.0, vWPos.y + 4.5);
+      diffuseColor.rgb = mix(diffuseColor.rgb * 0.25, vec3(0.5, 0.55, 0.6), mull * 0.8);
+      float wave = exp(-abs(vLZ - uWave.x) / 16.0) * uWave.y;
+      totalEmissiveRadiance += (sky * 0.5 + vec3(1.0, 0.82, 0.55) * lit * 0.4 + vec3(0.3, 0.6, 0.7) * wave * 0.3) * (1.0 - mull);
+    }`, 'sq-curtain');
+}
+/**
+ * Rock: warped sedimentary strata of uneven thickness (on top of the kit's vertex-colour bands), vertical erosion
+ * streaks down steep faces, wind-blown dust on ledges and tops, fine grit, and a darker, damper base.
+ */
 export function strata(material: THREE.MeshStandardMaterial) {
   return patch(material, `
-    float band = sin(vWPos.y * 1.7 + shHash(floor(vWPos.xz / 9.0)) * 3.0) * 0.5 + 0.5;
-    diffuseColor.rgb *= 0.78 + 0.32 * band;
+    float n = shNoise(vWPos.xz * 0.08 + vWPos.y * 0.05);
+    float y = vWPos.y + (n - 0.5) * 3.0;
+    float band = sin(y * 1.9 + shHash(floor(vWPos.xz / 14.0)) * 3.0) * 0.5 + 0.5, fine = sin(y * 7.3 + n * 4.0) * 0.5 + 0.5;
+    diffuseColor.rgb *= 0.82 + 0.2 * band + 0.06 * fine;
+    // Streaks follow the face across (a safe tangent: the normal may point straight up).
+    vec2 tr = vec2(-vWNormal.z, vWNormal.x); vec2 tg = dot(tr, tr) > 1e-6 ? normalize(tr) : vec2(1.0, 0.0);
+    float steep = clamp(1.0 - abs(vWNormal.y), 0.0, 1.0), streak = shNoise(vec2(dot(vWPos.xz, tg) * 0.9, vWPos.y * 0.06));
+    diffuseColor.rgb *= mix(1.0, 0.8 + 0.3 * streak, steep);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.55, 0.4), smoothstep(0.6, 0.95, vWNormal.y) * 0.25 * (0.6 + 0.4 * n));
+    diffuseColor.rgb *= 0.94 + 0.12 * shHash(floor(vWPos.xz * 3.0 + vWPos.y * 2.0));
     diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.7, 0.62, 0.62), smoothstep(-2.0, -5.5, vWPos.y));`, 'sq-strata');
 }
 /** Plated metal (roofs, decks, hulls): panel seams and slight tonal variation per panel. */
@@ -91,4 +124,29 @@ export function foliage(material: THREE.MeshStandardMaterial) {
   return patch(material, `
     float lump = shHash(floor(vWPos.xz * 2.2 + vWPos.y * 1.7));
     diffuseColor.rgb *= (0.78 + 0.3 * lump) * mix(0.75, 1.15, clamp(vWNormal.y * 0.5 + 0.5, 0.0, 1.0));`, 'sq-foliage');
+}
+/**
+ * Lava-field rock (basalt, scoria, ash cones): vesicular grit, grey ash settling on ledges and tops, a warm underglow
+ * near the ground from the lava around it, and molten rock where the geometry's `glow` attribute marks it (crater
+ * lakes, flows) — a crusted, slowly shifting emissive that swells with the bass. Stays non-negative (bloom safety).
+ */
+export function magma(material: THREE.MeshStandardMaterial) {
+  patch(material, `
+    float n = shNoise(vWPos.xz * 0.35 + vWPos.y * 0.21), grit = shHash(floor(vWPos.xz * 4.0 + vWPos.y * 3.0));
+    diffuseColor.rgb *= 0.86 + 0.18 * n + 0.08 * grit;
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.22, 0.21, 0.2), smoothstep(0.7, 0.95, vWNormal.y) * 0.35 * n);
+    float foot = smoothstep(-3.0, -6.0, vWPos.y);
+    totalEmissiveRadiance += vec3(0.5, 0.12, 0.02) * foot * (0.12 + 0.1 * uMusic.y);
+    float crust = smoothstep(0.35, 0.75, shNoise(vWPos.xz * 0.9 + vec2(vWPos.y * 0.4, uMusic.x * 0.05)));
+    float g = clamp(vGlow, 0.0, 1.0) * mix(1.0, 0.3, crust);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.02, 0.01), clamp(vGlow, 0.0, 1.0) * 0.85);
+    totalEmissiveRadiance += vec3(1.0, 0.36, 0.06) * g * (0.75 + 0.35 * uMusic.y);`, 'sq-magma');
+  const base = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    base.call(material, shader, renderer);
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float glow; varying float vGlow;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = glow;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vGlow;');
+  };
+  return material;
 }

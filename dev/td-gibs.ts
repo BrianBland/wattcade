@@ -13,7 +13,7 @@ const v: View = { P: (x, y) => ({ x: x * K, y: y * K }), rot: 0, turned: false, 
 const cast: Array<[Kind, number, number]> = [['brute', 20, 38], ['charger', 44, 38], ['armor', 68, 38], ['boss', 94, 34]];
 const enemy = (i: number, kind: Kind, x: number, y: number): EnemyView => ({
   id: i + 1, kind, route: -1, flying: false, x, y, angle: 0, dist: 50, radius: KINDS[kind].radius, element: KINDS[kind].color === 'gold' || KINDS[kind].color === 'prism' ? 'purple' : KINDS[kind].color as EnemyView['element'],
-  gold: kind === 'boss', hp: 10, maxHp: 10, hurt: 0, charging: false, shiftIn: 0, next: null, progress: 0.5, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0,
+  gold: kind === 'boss', hp: 10, maxHp: 10, hurt: 0, charging: false, shiftIn: 0, next: null, progress: 0.5, bossPhase: 0, telegraph: false, exposed: false, staggerS: 0, shield: 0,
   hitT: -1, hitCls: 'neutral', hitDmg: 0,
 });
 let last = -1;

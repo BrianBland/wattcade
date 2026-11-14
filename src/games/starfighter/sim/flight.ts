@@ -14,13 +14,19 @@ const ease = (u: number) => u * u * u * (u * (u * 6 - 15) + 10);
 export function routeX(r: Route, t: number): number { return laneX(r, t) + (r.weave ? r.weave(t) : 0); }
 /** 0..1: how much a lane change is under way at t (a smooth bump over each move). */
 export function moveActivity(r: Route, t: number): number {
-  for (const m of r.moves) if (t > m.start && t < m.end && m.end > m.start) { const u = (t - m.start) / (m.end - m.start), b = Math.sin(Math.PI * u); return b * b; }
+  const m = activeMove(r, t);
+  if (t > m.start && t < m.end && m.end > m.start && m.to !== m.from) { const u = (t - m.start) / (m.end - m.start), b = Math.sin(Math.PI * u); return b * b; }
   return 0;
+}
+/** The move that governs t: the latest one started at or before t (an interrupting move takes over from the one it cut). */
+export function activeMove(r: Route, t: number): Move {
+  let m = r.moves[0];
+  for (const move of r.moves) { if (move.start <= t) m = move; else break; }
+  return m;
 }
 /** Planned lane position (without the weave). */
 export function laneX(r: Route, t: number): number {
-  let m = r.moves[0];
-  for (const move of r.moves) { if (move.start <= t) m = move; else break; }
+  const m = activeMove(r, t);
   if (t >= m.end) return m.to;
   return m.from + (m.to - m.from) * ease(clamp((t - m.start) / Math.max(1e-6, m.end - m.start), 0, 1));
 }
@@ -78,4 +84,34 @@ export function choreograph<T extends Shot>(r: Route, t: number, ex: number, ey:
     if (turned.every(safe)) return turned;
   }
   return shots.filter(safe);
+}
+/**
+ * Flanks: the field has three stations (left, centre, right). The ship holds its station (the weave plays around it)
+ * until the rider (or the hands-off pilot) commands a move, which starts on a beat and lasts a whole number of beats.
+ */
+export const FLANK = { x: 22, lean: 4, reach: 13, spill: 26 };
+export const stationX = (station: number) => station * FLANK.x;
+/** Keep the schedule `ROUTE.ahead` long by holding the last lane; drops moves that ended long ago. */
+export function holdRoute(r: Route, t: number): void {
+  while (r.moves.length > 1 && r.moves[1].end < t - 1) r.moves.shift();
+  while (routeEnd(r) < t + ROUTE.ahead) { const last = r.moves[r.moves.length - 1]; r.moves.push({ start: last.end, end: last.end + 1, from: last.to, to: last.to }); }
+}
+/** True when a lateral move (not a hold) is running or scheduled after t. */
+export const movePending = (r: Route, t: number) => { const a = activeMove(r, t); return r.moves.some(m => (m === a || m.start > t) && m.end > t && m.to !== m.from); };
+/**
+ * Schedule a move to `to` over `dur` from `start`; a running move finishes first (the new one queues behind it), and
+ * any queued move or hold after that is replaced. Returns the actual start.
+ * `interrupt`: start exactly at `start` from wherever the route is then, cutting a running move short. The cut move
+ * keeps its parameters (the route before `start` is unchanged, so the ship never jumps); the new move governs from `start`.
+ */
+export function commandMove(r: Route, start: number, dur: number, to: number, interrupt = false): number {
+  const cur = activeMove(r, start), running = !interrupt && cur.start < start && cur.end > start && cur.to !== cur.from ? cur : null;
+  const at = running ? running.end : start;
+  const from = laneX(r, at);
+  r.moves = r.moves.filter(m => m.start < at);
+  const last = r.moves[r.moves.length - 1];
+  if (!interrupt && last && last.end > at) last.end = at;
+  r.moves.push({ start: at, end: at + dur, from, to });
+  holdRoute(r, at);
+  return at;
 }

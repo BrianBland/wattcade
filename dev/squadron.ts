@@ -7,18 +7,23 @@ const q = new URLSearchParams(location.search), profile = testProfile({ color: '
 if (q.get('unlocked') === '1' || q.get('craft') === 'escort') profile.gameData.starfighter = { bank: 1000 };
 // ?level=N seeds both craft at level N (minutes from the level table); ?pace=N speeds in-ride arsenal tiers.
 const LEVEL_MIN = [0, 45, 90, 150, 210, 285, 360, 450, 540, 630], seedMin = LEVEL_MIN[Math.max(0, Math.min(9, Number(q.get('level') ?? 1) - 1))];
-if (q.get('level')) profile.gameData.starfighter = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: seedMin * 60, unlockCredit: 1000, craft: q.get('craft') ?? 'cruiser', totals: { kills: 0, bosses: 0 }, craftS: { cruiser: seedMin * 60, escort: seedMin * 60 }, unlocked: ['cruiser', 'escort'] };
+if (q.get('level')) profile.gameData.starfighter = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: seedMin * 60, unlockCredit: 1000, craft: q.get('craft') ?? 'cruiser', totals: { kills: 0, bosses: 0 }, craftS: { cruiser: seedMin * 60, gunship: seedMin * 60, escort: seedMin * 60, striker: seedMin * 60 }, unlocked: ['cruiser', 'gunship', 'escort', 'striker'] };
+else if (q.get('craft') === 'gunship' || q.get('craft') === 'striker' || q.get('unlocked') === '1') profile.gameData.starfighter = { v: 3, best: 0, legacyBest: 0, runs: 1, onTargetS: 0, unlockCredit: 1000, craft: q.get('craft') ?? 'cruiser', totals: { kills: 0, bosses: 0 }, craftS: { cruiser: 0, gunship: 0, escort: 0, striker: 0 }, unlocked: ['cruiser', 'gunship', 'escort', 'striker'] };
 const session = createGameSession({ game: module, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'z2' },
   seed: Number(q.get('seed') ?? 1), simOpts: { skipHangar: q.get('menu') !== '1', craft: q.get('craft') ?? 'cruiser' },
   media: { timeline: synthTimeline({ style: (q.get('style') ?? 'mixed') as 'mixed', songs: Number(q.get('songs') ?? 20), seed: Number(q.get('mseed') ?? 3) }) } });
 if (q.get('tester') === '1') session.tuning.set('starfighter.testerUnlockAll', 1);
 if (q.get('weave')) session.tuning.set('starfighter.weave', Number(q.get('weave')));
 if (q.get('pace')) session.tuning.set('starfighter.arsenalPace', Number(q.get('pace')));
+// ?tune=burnDip:6,burnFov:3 sets any starfighter tunable.
+for (const kv of (q.get('tune') ?? '').split(',').filter(Boolean)) { const [k, v] = kv.split(':'); session.tuning.set(`starfighter.${k}`, Number(v)); }
 const renderer = new SfRenderer();
 renderer.mount(document.getElementById('app')!, { profile, send: a => session.sim.receive?.(a), insets: { top: 0, left: 0, right: 0, bottom: Number(q.get('inset') ?? 100) } });
 session.step(Math.round(Number(q.get('sec') ?? 0) * 30));
 const frame = () => renderer.render(session.sim.snapshot(), session.ctx.bike(), session.ctx.input());
 const api = { advance(seconds: number, render = true) { session.step(Math.round(seconds * 30)); if(render) frame(); }, snapshot: () => session.sim.snapshot(),
+  // Review: draw a doctored snapshot (e.g. a chosen flagship, or explosions at fixed ages).
+  draw: (s: unknown) => renderer.render(s, session.ctx.bike(), session.ctx.input()),
   resources: () => renderer.debugResources(), audit: (on: boolean) => renderer.debugAudit(on), position: () => session.ctx.media?.positionS() ?? 0, script: (name: string) => session.fakeBike?.useScript(name),
   dispose: () => { renderer.unmount(); session.sim.dispose?.(); } };
 Object.assign(window, { __squadron: api });

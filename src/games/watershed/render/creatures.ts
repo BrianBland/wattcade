@@ -1,13 +1,63 @@
-// Salmon run visuals: the school (instanced, smoothed, wiggling, leaping), bears on the banks, diving eagles,
-// and danger markers on the water so dodges are readable from the saddle.
+// Salmon run visuals: the school (instanced, smoothed, wiggling, leaping), bears that lumber to the bank, rear and
+// swipe, and eagles that spiral down (their shadow sharpening on the water) and dive. No target markers: the animals' own
+// body language is the warning. Spray bursts on every strike.
 import * as THREE from 'three';
 import { SEA, sample } from '../sim/terrain';
 import type { SalmonView, WatershedSnapshot } from '../sim/sim';
-import { bearModel, eagleModel, salmonGeometry, swimMaterial } from './models';
+import { salmonGeometry, swimMaterial } from './models';
+import { bearModel, eagleModel, poseBear, poseEagle } from './wildlife';
 
 const MAX_FISH = 24;
 
-interface PredObj { g: THREE.Group; marker: THREE.Mesh; kind: 'bear' | 'eagle'; seen: number }
+interface PredObj {
+  g: THREE.Group; kind: 'bear' | 'eagle'; seen: number; shadow: THREE.Mesh | null;
+  /** Motion bookkeeping: last world position, smoothed speed, gait/wing-beat phase, heading and attitude. */
+  last: THREE.Vector3; speed: number; gait: number; yaw: number; roll: number; pitch: number; rear: number; ang: number;
+  splashed: boolean; away: THREE.Vector3;
+}
+
+/** A pool of spray droplets for strikes (instanced, ballistic, render-only). */
+class Splash {
+  readonly mesh: THREE.InstancedMesh;
+  private p: Float32Array; private v: Float32Array; private life: Float32Array; private next = 0;
+  private m = new THREE.Matrix4();
+  constructor(private max = 64) {
+    this.mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.16, 8, 6), new THREE.MeshStandardMaterial({ color: 0xeaf8ff, roughness: 0.2, transparent: true, opacity: 0.9 }), max);
+    this.mesh.frustumCulled = false;
+    this.p = new Float32Array(max * 3); this.v = new Float32Array(max * 3); this.life = new Float32Array(max);
+    for (let i = 0; i < max; i++) { this.m.makeScale(0, 0, 0); this.mesh.setMatrixAt(i, this.m); }
+  }
+  burst(at: THREE.Vector3, n: number, up: number) {
+    for (let k = 0; k < n; k++) {
+      const i = this.next++ % this.max, a = Math.random() * Math.PI * 2, r = 0.6 + Math.random() * 1.4;
+      this.p.set([at.x, at.y, at.z], i * 3);
+      this.v.set([Math.cos(a) * r, up * (0.6 + Math.random() * 0.6), Math.sin(a) * r], i * 3);
+      this.life[i] = 0.7 + Math.random() * 0.4;
+    }
+  }
+  update(dt: number) {
+    for (let i = 0; i < this.max; i++) {
+      if (this.life[i] <= 0) continue;
+      this.life[i] -= dt;
+      this.v[i * 3 + 1] -= 12 * dt;
+      for (let c = 0; c < 3; c++) this.p[i * 3 + c] += this.v[i * 3 + c] * dt;
+      const s = this.life[i] > 0 ? Math.min(1, this.life[i] * 2) : 0;
+      this.m.makeScale(s, s * 1.3, s).setPosition(this.p[i * 3], this.p[i * 3 + 1], this.p[i * 3 + 2]);
+      this.mesh.setMatrixAt(i, this.m);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+function shadowTexture(): THREE.Texture | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); if (!g) return null;
+  const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.6)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
 
 export class SalmonLayer {
   readonly group = new THREE.Group();
@@ -18,6 +68,9 @@ export class SalmonLayer {
   private m = new THREE.Matrix4(); private q = new THREE.Quaternion(); private e = new THREE.Euler(); private p = new THREE.Vector3(); private sc = new THREE.Vector3();
   private hop = 0;
   private swim = { value: 0 };
+  private splash = new Splash();
+  private shadowTex = shadowTexture();
+  private cA = new THREE.Vector3(); private cB = new THREE.Vector3();
 
   constructor(color: string, private wx: (j: number) => number, private wz: (i: number) => number) {
     const mat = swimMaterial(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0.05, side: THREE.DoubleSide }), this.swim);
@@ -27,7 +80,7 @@ export class SalmonLayer {
     for (let k = 1; k <= MAX_FISH; k++) this.fish.setColorAt(k, new THREE.Color().setScalar(0.92 + (k % 4) * 0.03));
     this.ring = new THREE.Mesh(new THREE.TorusGeometry(2, 0.16, 6, 28), new THREE.MeshBasicMaterial({ color }));
     this.ring.rotation.x = -Math.PI / 2;
-    this.group.add(this.fish, this.ring);
+    this.group.add(this.fish, this.ring, this.splash.mesh);
     this.group.visible = false;
   }
 
@@ -64,7 +117,8 @@ export class SalmonLayer {
     const L = this.shown[0];
     if (L) { this.ring.position.set(L.x, L.y - 0.05, L.z); this.ring.scale.setScalar(1 + 0.1 * Math.sin(time * 5)); }
 
-    // predators
+    // predators: no target markers. Bears telegraph by walking to the bank and rearing up; eagles circle lower
+    // and lower, their shadow on the water sharpening, then fold their wings and dive.
     const live = new Set<number>();
     for (const pr of view.predators) {
       live.add(pr.id);
@@ -72,54 +126,103 @@ export class SalmonLayer {
       if (!o) { o = this.makePred(pr.kind); this.preds.set(pr.id, o); }
       o.seen += dt;
       const appear = Math.min(1, o.seen / 0.6);
-      const mat = o.marker.material as THREE.MeshBasicMaterial;
-      if (pr.kind === 'bear') {
-        // bears charge in from the woods to the water's edge, swipe, then run back off
-        const bx = pr.x + pr.side * 11 * (1 - pr.enter), by = pr.y;
-        const ground = sample(h, nx, ny, bx, by);
-        const lunge = pr.struck >= 0 ? Math.min(1, pr.struck * 4) * Math.max(0, 1 - (pr.struck - 0.6) * 1.5) : 0;
-        o.g.position.set(this.wx(by), ground - (1 - appear) * 3, this.wz(bx - pr.side * lunge * 1.6));
-        o.g.rotation.y = pr.side > 0 ? Math.PI / 2 : -Math.PI / 2;
-        const paw = o.g.getObjectByName('paw'); if (paw) paw.position.y = 0.65 + lunge * 1.4 + (pr.struck < 0 && pr.t < 1.5 ? 0.4 : 0);
-        // danger band: the bear's half of the channel at its row
-        const mx = (bx + pr.cx) / 2;
-        o.marker.position.set(this.wx(by), surface(mx, by) + 0.08, this.wz(mx));
-        o.marker.scale.set(3.2, 1, Math.abs(bx - pr.cx) + 0.6);
-        mat.opacity = pr.struck >= 0 ? Math.max(0, 0.5 - pr.struck * 0.3) : 0.18 + 0.3 * Math.max(0, 1 - pr.t / 4) * (0.6 + 0.4 * Math.sin(time * 12));
-        if (pr.struck > 2) o.g.position.y -= (pr.struck - 2) * 6;
-      } else {
-        const ex = pr.x, ey = pr.y;
-        const ws = surface(ex, ey);
-        const pre = Math.max(0, pr.t), ang = time * 2.2;
-        const r = pr.struck >= 0 ? 0 : Math.min(5, pre * 1.6);
-        const alt = pr.struck >= 0 ? pr.struck * 9 : pre * 4 + 0.3;
-        o.g.position.set(this.wx(ey) + Math.cos(ang) * r, ws + 0.6 + alt, this.wz(ex) + Math.sin(ang) * r);
-        o.g.rotation.set(0, -ang + (pr.struck >= 0 ? 0 : Math.PI / 2), pr.struck >= 0 ? -0.6 : pre < 1 ? 0.5 : 0);
-        const flap = Math.sin(time * (pre < 1 ? 4 : 9)) * 0.5;
-        const wl = o.g.getObjectByName('wl'), wr = o.g.getObjectByName('wr');
-        if (wl && wr) { wl.rotation.x = flap; wr.rotation.x = -flap; }
-        o.g.scale.setScalar(appear * 1.2);
-        o.marker.position.set(this.wx(ey), ws + 0.08, this.wz(ex));
-        const rr = 1.2 + Math.min(3, pre) * 0.6;
-        o.marker.scale.set(rr, 1, rr);
-        mat.opacity = pr.struck >= 0 ? 0 : 0.25 + 0.35 * (0.5 + 0.5 * Math.sin(time * 14));
-      }
+      if (pr.kind === 'bear') this.updateBear(o, pr, h, nx, ny, surface, dt, time);
+      else this.updateEagle(o, pr, surface, dt, time, appear);
     }
     for (const [id, o] of this.preds) if (!live.has(id)) { this.dropPred(o); this.preds.delete(id); }
+    this.splash.update(dt);
+  }
+
+  private updateBear(o: PredObj, pr: SalmonView['predators'][number], h: Float32Array, nx: number, ny: number, surface: (x: number, y: number) => number, dt: number, time: number) {
+    // bears lumber in from the woods to the water's edge, rear up as the school nears, swipe, then run back off
+    const bx = pr.x + pr.side * 11 * (1 - pr.enter), by = pr.y;
+    const lunge = pr.struck >= 0 ? Math.min(1, pr.struck * 4) * Math.max(0, 1 - (pr.struck - 0.6) * 1.5) : 0;
+    const gx = bx - pr.side * lunge * 1.6;
+    const ground = Math.max(sample(h, nx, ny, gx, by), SEA - 0.4);
+    this.p.set(this.wx(by), ground, this.wz(gx));
+    if (pr.struck > 2) this.p.y -= (pr.struck - 2) * 6;
+    const vx = o.seen > dt ? (this.p.x - o.last.x) / Math.max(1e-3, dt) : 0, vz = o.seen > dt ? (this.p.z - o.last.z) / Math.max(1e-3, dt) : 0;
+    o.last.copy(this.p);
+    const speed = Math.hypot(vx, vz);
+    o.speed += (speed - o.speed) * (1 - Math.exp(-dt * 6));
+    o.gait += dt * (1.5 + o.speed * 1.6);
+    // face where it's going when moving, else the water
+    const faceWater = pr.side > 0 ? Math.PI / 2 : -Math.PI / 2;
+    const want = o.speed > 1.2 ? Math.atan2(-vz, vx) : faceWater;
+    let dy = want - o.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    o.yaw += dy * (1 - Math.exp(-dt * 5));
+    o.g.position.copy(this.p);
+    o.g.rotation.y = o.yaw;
+    const rearT = pr.struck < 0 && pr.enter > 0.85 && pr.t < 1.6 ? 1 : 0;
+    o.rear += (rearT - o.rear) * (1 - Math.exp(-dt * (rearT ? 4 : 10)));
+    const swipe = pr.struck >= 0 && pr.struck < 0.7 ? pr.struck / 0.7 : 0;
+    poseBear(o.g, { gait: o.gait, stride: Math.min(1, o.speed / 5), rear: o.rear, swipe, look: 0.25 * Math.sin(time * 0.7 + pr.id), roar: Math.max(o.rear * 0.8, swipe > 0 ? 1 - swipe : 0) });
+    if (pr.struck >= 0 && !o.splashed) {
+      o.splashed = true;
+      const mx = gx - pr.side * 1.5;
+      this.splash.burst(this.cA.set(this.wx(by), surface(mx, by) + 0.1, this.wz(mx)), 18, 3.5);
+    }
+  }
+
+  private updateEagle(o: PredObj, pr: SalmonView['predators'][number], surface: (x: number, y: number) => number, dt: number, time: number, appear: number) {
+    const ex = pr.x, ey = pr.y, ws = surface(ex, ey);
+    const pre = Math.max(0, pr.t);
+    if (pr.struck >= 0) {
+      // climb away along the line it dived on, beating hard (carrying a salmon when it caught one)
+      if (!o.splashed) { o.splashed = true; o.away.set(Math.cos(o.ang), 0, Math.sin(o.ang)); this.splash.burst(this.cA.set(this.wx(ey), ws + 0.1, this.wz(ex)), 14, 2.5); }
+      const k = pr.struck;
+      this.p.set(this.wx(ey) + o.away.x * k * 7, ws + 0.4 + k * k * 4 + k * 3, this.wz(ex) + o.away.z * k * 7);
+    } else {
+      // a slow, tightening spiral above the school's spot, gliding with the odd lazy wing beat
+      o.ang += dt * (0.8 + 1.2 / (1 + pre));
+      const r = Math.min(7, pre * 1.9), alt = pre * 4.2 + 0.3;
+      this.p.set(this.wx(ey) + Math.cos(o.ang) * r, ws + 0.5 + alt, this.wz(ex) + Math.sin(o.ang) * r);
+    }
+    const v = this.cB.copy(this.p).sub(o.last).divideScalar(Math.max(1e-3, dt));
+    if (o.seen <= dt) v.set(Math.cos(o.ang + Math.PI / 2), 0, Math.sin(o.ang + Math.PI / 2));
+    o.last.copy(this.p);
+    const horiz = Math.hypot(v.x, v.z);
+    const yaw = horiz > 0.05 ? Math.atan2(-v.z, v.x) : o.yaw;
+    let dyaw = yaw - o.yaw; while (dyaw > Math.PI) dyaw -= Math.PI * 2; while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    const k = 1 - Math.exp(-dt * 6);
+    o.yaw += dyaw * k;
+    const turn = dt > 0 ? dyaw / dt : 0;
+    o.roll += (Math.max(-0.9, Math.min(0.9, -turn * 0.35)) - o.roll) * k;
+    const diving = pr.struck < 0 && pre < 1.1;
+    const pitch = diving ? -0.9 * (1 - pre / 1.1) : Math.max(-0.6, Math.min(0.7, Math.atan2(v.y, Math.max(0.5, horiz))));
+    o.pitch += (pitch - o.pitch) * k;
+    o.g.position.copy(this.p);
+    o.g.rotation.set(o.roll, o.yaw, o.pitch, 'YZX');
+    o.g.scale.setScalar(appear * 1.25);
+    const tuck = diving ? Math.min(1, (1.1 - pre) / 0.6) * (pre > 0.15 ? 1 : pre / 0.15) : 0;
+    const climbing = pr.struck >= 0;
+    const flap = climbing ? 1 : diving ? 0 : 0.15 + 0.85 * Math.max(0, Math.sin(time * 0.9 + pr.id * 2)) ** 3;
+    o.gait += dt * (climbing ? 10 : 6);
+    poseEagle(o.g, { beat: o.gait, flap, tuck, reach: pr.struck < 0 ? (pre < 0.5 ? 1 - pre / 0.5 : 0) : Math.max(0, 1 - pr.struck * 1.5) * 0.6, carrying: climbing && pr.caught > 0 });
+    // its shadow on the water: soft and faint high up, darker and tighter as it drops
+    if (o.shadow) {
+      const alt = Math.max(0, this.p.y - ws);
+      o.shadow.position.set(this.p.x, ws + 0.06, this.p.z);
+      o.shadow.scale.setScalar(1.4 + alt * 0.08);
+      (o.shadow.material as THREE.MeshBasicMaterial).opacity = appear * Math.max(0, 0.5 - alt * 0.018) * (climbing ? Math.max(0, 1 - pr.struck) : 1);
+    }
   }
 
   private makePred(kind: 'bear' | 'eagle'): PredObj {
     const g = kind === 'bear' ? bearModel() : eagleModel();
-    const mg = kind === 'bear' ? new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2) : new THREE.RingGeometry(0.75, 1, 28).rotateX(-Math.PI / 2);
-    const marker = new THREE.Mesh(mg, new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.3, depthWrite: false }));
-    marker.renderOrder = 3;
-    this.group.add(g, marker);
-    return { g, marker, kind, seen: 0 };
+    g.traverse((x) => { (x as THREE.Mesh).castShadow = true; });
+    let shadow: THREE.Mesh | null = null;
+    if (kind === 'eagle') {
+      shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a1a24, map: this.shadowTex, transparent: true, opacity: 0, depthWrite: false }));
+      shadow.renderOrder = 3; this.group.add(shadow);
+    }
+    this.group.add(g);
+    return { g, kind, seen: 0, shadow, last: new THREE.Vector3(), speed: 0, gait: 0, yaw: 0, roll: 0, pitch: 0, rear: 0, ang: Math.random() * Math.PI * 2, splashed: false, away: new THREE.Vector3(1, 0, 0) };
   }
   private dropPred(o: PredObj) {
-    this.group.remove(o.g, o.marker);
+    this.group.remove(o.g);
     o.g.traverse((x) => { const m = x as THREE.Mesh; m.geometry?.dispose(); });
-    o.marker.geometry.dispose();
+    if (o.shadow) { this.group.remove(o.shadow); o.shadow.geometry.dispose(); }
   }
 
   /** Smoothed leader position (world), for the camera. */

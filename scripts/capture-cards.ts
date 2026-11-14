@@ -9,7 +9,7 @@
 //   --base <url>    use a running dev server instead of starting one
 // Games are recorded one at a time: pages share the browser's one (software) GPU process, so parallel pages just contend.
 // Shots (script, sim time, crop) are in src/shell/cards/shots.ts. Needs ffmpeg and Playwright's Chromium.
-// A game that fails keeps its last cached clip, or has none (the card falls back to its drawCard art); exit code stays 0.
+// A game that fails keeps its last cached clip, or has none (the card falls back to a plain accent-coloured banner); exit code stays 0.
 import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

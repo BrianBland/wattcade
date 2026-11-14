@@ -9,6 +9,7 @@ import { module as watershed } from './watershed';
 import { module as cadenza } from './cadenza';
 import { module as seaside } from './seaside';
 import { module as fullsend } from './fullsend';
+import { module as penrose } from './penrose';
 
 /** Games shown in the arcade picker, most polished first (the picker sorts by the rider's recent plays; this breaks ties). */
 export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighthouse, towerdefense, starfighter, fullsend];
@@ -16,7 +17,7 @@ export const games: GameModule[] = [cadenza, hamster, watershed, dungeon, lighth
  * Games still under construction: always in the picker and playable, but their card wears caution tape
  * (`isWip`) and they sort after finished games on ties. The headless runner has them too.
  */
-export const wipGames: GameModule[] = [seaside];
+export const wipGames: GameModule[] = [seaside, penrose];
 /** True for a game whose picker card should show the under-construction tape. */
 export const isWip = (id: string): boolean => wipGames.some((g) => g.id === id);
 /** The picker's list: finished games, then the ones under construction. */

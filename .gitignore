@@ -8,6 +8,8 @@ out
 .venv-media/
 .env.local
 .cache/
+# Arcade card clips are build output: CI records them on deploy (npm run capture:cards).
+/public/cards/
 
 # Tower Defense review output is reproducible; approved nested source cutouts stay tracked.
 /docs/towerdefense/art-briefs/flamer-rounds/*/*.png

@@ -6,6 +6,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'towerdefense',
+  accent: '#00f0ff',
   title: 'Dynamo Defense',
   blurb: 'Your pedaling powers the base. Each wave is one alien brood and brings the weapon to match; build towers for the rest, sprint for Overdrive.',
   progressLine, drawCard,

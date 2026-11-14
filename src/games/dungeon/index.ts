@@ -6,6 +6,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'dungeon',
+  accent: '#b26bff',
   title: 'Crank Crawler',
   blurb: 'Endless dungeon dive: pedal to shoot, loot ever-better weapons and gear, level up. Zone 2 heals; sprint to crack boss shields.',
   progressLine, drawCard,

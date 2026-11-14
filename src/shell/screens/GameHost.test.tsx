@@ -11,7 +11,6 @@ vi.mock('../services', () => ({ startSession: () => mocks.session, previewAward:
 vi.mock('../fakeKeysDom', () => ({ attachFakeKeys: () => () => {} }));
 vi.mock('../hud/HudLayer', () => ({ HudLayer: () => null }));
 vi.mock('./PauseMenu', () => ({ PauseMenu: ({ onQuit, quitLabel = 'Finish ride', extensions, onExtension }: { onQuit: () => void; quitLabel?: string; extensions: import('../../contracts').GameMenuAction[]; onExtension: (action: unknown) => void }) => h('div', {}, extensions.map(entry => h('button', { onClick: () => onExtension(entry.action) }, entry.label)), h('button', { onClick: onQuit }, quitLabel)) }));
-vi.mock('../game/ResultBanner', () => ({ ResultBanner: () => null }));
 vi.mock('../game/GameIntro', () => ({ GameIntro: ({onStart,count}: {onStart:()=>void;count:number|null}) => count != null ? h('div',{'data-count':count},count) : h('button',{onClick:onStart},'Start game'), IntroHelp: () => null }));
 vi.mock('../components/Toasts', () => ({ toast: vi.fn(), achievementToast: vi.fn() }));
 vi.mock('../../debug/flag', () => ({ loadFlag: () => false, saveFlag: vi.fn() }));

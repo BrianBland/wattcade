@@ -19,8 +19,10 @@ export function portalFlash(since: number, dur = PORTAL.flashS): number {
   const q = 1 - since / dur;
   return q * q;
 }
-/** The portal's colours come from where it leads. */
-export function portalColors(to: BiomeId): { rim: string; glow: string } {
+export interface PortalColors { rim: string; glow: string }
+/** The portal's colours come from where it leads: a biome's gateway trim, or explicit colours (a game's accent). */
+export function portalColors(to: BiomeId | PortalColors): PortalColors {
+  if (typeof to !== 'string') return to;
   const st = GATEWAYS[to];
   return { rim: st.trim, glow: st.post };
 }
@@ -29,7 +31,7 @@ export function portalColors(to: BiomeId): { rim: string; glow: string } {
  * Draw a portal standing on the road at (x, y), opened `k` (0..1). `window` paints the far side (full-screen; it is
  * clipped to the portal), so the destination shows through it before you ride in.
  */
-export function drawPortal(g: G, x: number, y: number, t: number, k: number, to: BiomeId, window: (g: G) => void) {
+export function drawPortal(g: G, x: number, y: number, t: number, k: number, to: BiomeId | PortalColors, window: (g: G) => void) {
   if (k <= 0.02) return;
   const rx = PORTAL.rx * k, ry = PORTAL.ry * k, cy = y - ry - 1, { rim, glow } = portalColors(to);
   // halo
@@ -74,7 +76,7 @@ export function drawPortal(g: G, x: number, y: number, t: number, k: number, to:
 }
 
 /** The flash as you ride through: the portal's colour, white at the centre, over the whole scene. */
-export function drawPortalFlash(g: G, W: number, H: number, cx: number, cy: number, f: number, to: BiomeId) {
+export function drawPortalFlash(g: G, W: number, H: number, cx: number, cy: number, f: number, to: BiomeId | PortalColors) {
   if (f <= 0.01) return;
   const { rim } = portalColors(to);
   g.globalAlpha = 0.7 * f; g.fillStyle = rim; g.fillRect(0, 0, W, H);

@@ -1,14 +1,17 @@
-// Ride-end timeline: an optional game recap (GameRenderer.ending), then the result banner, then leave.
+// Ride-end timeline: an optional game recap (GameRenderer.ending), a beat on the final frame, then the rider rides
+// back out to the overworld (the summary follows there).
 /** Longest recap a game may ask for (seconds). */
 export const MAX_RECAP_S = 15;
+/** The final frame stays up at least this long, so the end registers before the rider rides out. */
+export const MIN_END_S = 1.2;
+/** A press this soon after the end doesn't count (it was meant for the game). */
+const A_GRACE_S = 0.6;
 
 /**
- * What the ending phase shows `elapsed` seconds in, given the game's recap length `holdS`.
- * A skips the recap (returns the new hold), and on the banner continues once it has been up for a moment.
+ * Whether to leave the game `elapsed` seconds into its ending, given the game's recap length `holdS`.
+ * The rider leaves after the recap (or MIN_END_S without one); A skips ahead once the grace has passed.
  */
-export function endingStep(elapsed: number, holdS: number, pressedA: boolean, resultS: number): { show: 'recap' | 'banner'; holdS: number; leave: boolean } {
-  const hold = Math.max(0, Math.min(MAX_RECAP_S, holdS));
-  if (elapsed < hold) return pressedA && elapsed > 0.6 ? { show: 'banner', holdS: elapsed, leave: false } : { show: 'recap', holdS: hold, leave: false };
-  const onBanner = elapsed - hold;
-  return { show: 'banner', holdS: hold, leave: onBanner > 0.6 && (pressedA || onBanner >= resultS) };
+export function endingStep(elapsed: number, holdS: number, pressedA: boolean): { leave: boolean } {
+  const hold = Math.max(MIN_END_S, Math.min(MAX_RECAP_S, holdS));
+  return { leave: elapsed >= hold || (pressedA && elapsed > A_GRACE_S) };
 }

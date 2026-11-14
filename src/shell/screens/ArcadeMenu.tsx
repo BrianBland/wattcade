@@ -19,8 +19,6 @@ import { isWip } from '../../games/registry';
 import { carouselDims, carouselSlots, orderGames, ridesLine, type GameRides } from '../arcade';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
-const ACCENTS: Record<string, string> = { cadenza: '#ff2bd6', hamster: '#ffb020', watershed: '#2de2a6', dungeon: '#b26bff', lighthouse: '#ffd23b', towerdefense: '#00f0ff', starfighter: '#5b8cff', fullsend: '#ff6a1a' };
-const accentFor = (id: string) => ACCENTS[id] ?? '#00f0ff';
 /** Clips recorded from the real renderers by `npm run capture:cards` (public/cards/<id>.mp4 + .webp poster). */
 const clip = (id: string, ext: 'mp4' | 'webp') => `${import.meta.env.BASE_URL}cards/${id}.${ext}`;
 
@@ -123,7 +121,7 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
         const s = slots[i], active = i === sel;
         return (
           <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}${isWip(g.id)?' (under construction)':''}`} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();focusSelected.current=true;play('uiMove');onSel((sel+(e.key==='ArrowRight'?1:-1)+games.length)%games.length);return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
-            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
+            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': g.accent ?? '#00f0ff', ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
             <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{isWip(g.id) && <CautionTape />}{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
             {active ? <ActiveInfo game={g} profile={profile} rides={rides[g.id]} /> : <div class="gc-title">{g.title}</div>}

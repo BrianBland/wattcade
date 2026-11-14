@@ -12,6 +12,7 @@ import { layerAlphas, mixColor } from './blend';
 import { coverage, drawSoft, drawSpans, drawVeil, horizonSwap, seamKind, visibleSeams, layerSpans, ownerAt, roadSeams, SEAM, softValue, softWeights, type Span } from './seam';
 import { drawPortal, drawPortalFlash, PORTAL, portalFlash, portalOpen } from './portal';
 import { boardCentre, drawGateway, GATEWAYS } from './gateway';
+import { ART, drawConfetti, drawStartGate, entranceOpen, ENTRANCE, GATE_BOARD, paintArt, type LobbyEntrance } from './entrance';
 import { DRIVE_IN, drawProjectorBeam, drawScreenFrame, type BufRect } from './driveIn';
 import { drawTumbleweed, LANE_PARALLAX, makeWeed, weedAt, weedGone, type Weed, type WeedLane } from './tumbleweed';
 import { landmarkNear, Soundscape, speedFactor, type SceneId } from './soundscape';
@@ -61,6 +62,9 @@ export class WarmupRenderer implements GameRenderer {
   private actorRng: (() => number) | null = null;
   private screen: ScreenRect | null = null;
   private ridge: number[] = [];
+  /** A game's entrance on the road (set by the shell), when it appeared and when the rider went through. */
+  private entrance: { e: LobbyEntrance; since: number; through: number | null } | null = null;
+  private art: { c: HTMLCanvasElement; g: CanvasRenderingContext2D; at: number } | null = null;
   private profileCache: { terrain: Terrain; hill: number; d: number; at: number; es: number[]; grades: number[]; lo: number; span: number } | null = null;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; insets?: Insets; send?: (action: unknown) => void }) {
@@ -80,6 +84,19 @@ export class WarmupRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   setInsets(i: Insets) { this.insets = i; }
+  /**
+   * A game's entrance on the road (null clears it). Moving an 'enter' entrance (same kind, new x) keeps its age; an
+   * exit portal flashes as it appears (you just came through it).
+   */
+  setEntrance(e: LobbyEntrance | null) {
+    const now = performance.now() / 1000, cur = this.entrance;
+    if (!e) { this.entrance = null; return; }
+    const same = cur && cur.e.kind === e.kind && cur.e.style === e.style && cur.e.color === e.color;
+    this.entrance = { e, since: same ? cur!.since : now, through: same ? cur!.through : e.kind === 'exit' ? now : null };
+    if (!same && e.kind === 'exit' && e.style === 'portal') play('whoosh', { vol: 0.6 });
+  }
+  /** True once the rider has ridden into the current 'enter' entrance. */
+  entered(): boolean { return this.entrance?.e.kind === 'enter' && this.entrance.through != null; }
   /** The Drive-In video rectangle (CSS px, relative to this surface), or null while it is off. Drawn as a frame in the backdrop. */
   setScreen(r: ScreenRect | null) { this.screen = r; }
   resize(w: number, h: number) {
@@ -320,6 +337,7 @@ export class WarmupRenderer implements GameRenderer {
       const [bx, by] = boardCentre(), clear = Math.min(1, Math.max(0, (Math.abs(sx - RX) - 12) / 14)) * (1 - di);
       if (clear > 0) this.texts.push({ s: BIOME_NAMES[to], x: sx + bx, y: sy + by + 0.5, size: 4.4, color: st.text, align: 'center', alpha: clear });
     }
+    this.drawEntrance(g, t, s.d, roadX, roadY);
     weedAtLane('road');
 
     // ---- local riders, in the farther lane and behind the player's silhouette ----
@@ -365,6 +383,8 @@ export class WarmupRenderer implements GameRenderer {
     drawRider(g, look, crank, wheelDistance, { t, speed: s.v, gear: gear === 'road' ? null : gear, trailer: di > 0.5 });
     g.restore();
     weedAtLane('near');
+    const en = this.entrance;
+    if (en?.e.style === 'gate' && en.e.kind === 'exit') drawConfetti(g, RX, roadY0 - 18, t - en.since, roadY0 + 2, en.e.color);
 
     // ---- foreground bits ----
     const fu = s.d * PPM * FORE_PARALLAX;
@@ -378,6 +398,7 @@ export class WarmupRenderer implements GameRenderer {
     this.props(di, (gg) => foreProps(gg, null), (gg) => foreProps(gg, DRIVE_IN));
     // riding through a portal: the whole scene has already swapped behind this flash
     if (di < 0.5) drawPortalFlash(g, W, H, RX, roadY0 - 20, portalFlash(t - this.portalAt), this.portalTo);
+    if (en?.e.style === 'portal' && en.through != null) drawPortalFlash(g, W, H, RX, roadY0 - 20, portalFlash(t - en.through), { rim: en.e.color, glow: en.e.color });
 
     this.particles(g, W, H, t, s, midSp, soft, di, night);
     this.updateActors(g, W, UH, t, dt, s, dom);
@@ -391,6 +412,45 @@ export class WarmupRenderer implements GameRenderer {
     m.imageSmoothingEnabled = false;
     m.drawImage(this.buf, 0, 0, W * this.px, H * this.px);
     this.overlay(s, RX, roadY0, UH, t);
+  }
+
+  /** The game entrance standing on the road (portal or start gate), with its name over it. */
+  private drawEntrance(g: G, t: number, d: number, roadX: (x: number) => number, roadY: (x: number) => number) {
+    const en = this.entrance; if (!en) return;
+    const { e } = en;
+    if (e.kind === 'enter' && en.through == null && d >= e.x) { // ridden through: the game takes over behind the flash
+      en.through = t;
+      if (e.style === 'portal') play('whoosh', { vol: 0.7 });
+    }
+    if (e.kind === 'exit' && e.style === 'gate') return; // leaving a gate game is confetti, not a structure
+    const sx = Math.round(roadX(e.x)), sy = Math.round(roadY(e.x));
+    if (sx < -60 || sx > this.LW + 60) return;
+    const k = entranceOpen(e, d, t - en.since);
+    if (e.style === 'gate') {
+      drawStartGate(g, sx, sy, t, e.color, Math.min(1, (t - en.since) / ENTRANCE.growS));
+      if (e.label) this.texts.push({ s: e.label.toUpperCase(), x: sx, y: sy + GATE_BOARD.dy, size: 4, color: '#ffffff', align: 'center' });
+      return;
+    }
+    const art = e.art ? this.artFrame(e.art, t) : null;
+    drawPortal(g, sx, sy, t, k, { rim: e.color, glow: e.color }, (gg) => {
+      const rx = PORTAL.rx * k, ry = PORTAL.ry * k, cy = sy - ry - 1;
+      const grad = gg.createRadialGradient(sx, cy, 0, sx, cy, ry);
+      grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.35, e.color); grad.addColorStop(1, '#0b1d26');
+      gg.fillStyle = grad; gg.fillRect(sx - rx, cy - ry, rx * 2, ry * 2);
+      if (art) gg.drawImage(art, sx - rx, cy - ry, rx * 2, ry * 2);
+    });
+    const clear = Math.min(1, Math.max(0, (sx - this.LW * 0.3 - 12) / 14)) * k;
+    if (e.label && clear > 0) this.texts.push({ s: e.label, x: sx, y: sy - PORTAL.ry * 2 - 7, size: 4.4, color: '#ffffff', align: 'center', alpha: clear, glow: e.color });
+  }
+  /** The game's card art, re-rendered at a modest rate into a small tall canvas for the portal window. */
+  private artFrame(art: NonNullable<LobbyEntrance['art']>, t: number): HTMLCanvasElement | null {
+    if (!this.art) {
+      const c = document.createElement('canvas'); c.width = ART.w; c.height = ART.h;
+      const g = c.getContext('2d'); if (!g) return null;
+      this.art = { c, g, at: -1 };
+    }
+    if (t - this.art.at >= 1 / ART.fps) { this.art.at = t; paintArt(this.art.g, art, ART.w, ART.h, t); }
+    return this.art.c;
   }
 
   /** Per-biome one-shots. They fade out when the rider stops and duck for music / the Drive-In video. No looping noise bed: that reads as constant static behind the menus. */

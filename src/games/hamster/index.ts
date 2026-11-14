@@ -6,6 +6,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'hamster',
+  accent: '#ffb020',
   title: 'HAMSTERGRID',
   blurb: 'Cookie-clicker idle empire. Your hamsters only run when you do. Hold Zone 2 to go mind-numbingly fast, all the way to a Dyson swarm.',
   progressLine, drawCard,

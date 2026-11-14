@@ -1,4 +1,4 @@
-import type { GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
+import type { ControlHint, GameContext, GameHud, GameSim, MediaTimeline, SectionKind } from '../../../contracts';
 import { synthTimeline } from '../../../media/synth/queue';
 import { extendTrack, buildTrack, COLOR_POINTS, DIFF, DIFFICULTIES, effortAt, ZONE_FLOOR, zoneIndexAt, type Difficulty, type Mode, type Phase, type Track } from './track';
 import { rideIndexAt } from './ride';
@@ -370,15 +370,17 @@ export function createCadenzaSim(ctx: GameContext, opts: CadenzaOpts = {}): Game
       ctx.debug('ws.p', +p.toFixed(2)); ctx.debug('ws.zone', `${z.n} ${z.kind}`); ctx.debug('ws.shield', Math.round(shield));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start', shortLabel: 'Start' }] };
-      const e = lastEffort, erg = trainer === 'erg';
+      const erg = trainer === 'erg';
+      const play: ControlHint[] = [
+        { button: 'left', label: 'Left lane' }, { button: 'right', label: 'Right lane' }, { button: 'z', label: 'Left', displayOrder: 0 }, { button: 'a', label: 'Right', displayOrder: 1 }, { button: 'paddles', label: tun.paddleMode() === 'continuous' ? 'Position' : 'Lane' },
+        ...(erg ? [] : [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }]),
+      ];
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Select / Start', shortLabel: 'Start' }], playControls: play };
+      const e = lastEffort;
       return {
         touchControls: ['z', 'a'], // One touch target per lane; arrow bindings remain in the guide.
         targetZone: { ...e.target, label: `${e.target.label}${erg ? ' (ERG)' : ''}` }, gears: !erg,
-        controls: [
-          { button: 'left', label: 'Left lane' }, { button: 'right', label: 'Right lane' }, { button: 'z', label: 'Left', displayOrder: 0 }, { button: 'a', label: 'Right', displayOrder: 1 }, { button: 'paddles', label: tun.paddleMode() === 'continuous' ? 'Position' : 'Lane' },
-          ...(erg ? [] : [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }]),
-        ],
+        controls: play,
       };
     },
     snapshot(): CadenzaSnapshot {

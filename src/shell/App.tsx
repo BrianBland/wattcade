@@ -13,6 +13,7 @@ import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
 import { Locker } from './screens/Locker';
 import { RewardPick } from './screens/RewardPick';
+import { markControlsSeen } from './game/controlsSeen';
 import { UnlockReveal } from './screens/UnlockReveal';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
@@ -25,7 +26,7 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  captureLobbyFrame, lastProfileId, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
+  captureLobbyFrame, lastProfileId, saveSettings, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
@@ -154,7 +155,8 @@ export function App() {
     case 'game':
       body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
         onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
-        onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }} />; break;
+        onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }}
+        onControlsSeen={(sig) => { const cur = profileRef.current; if (!cur) return; const next = markControlsSeen(cur, screen.game.id, sig); setProfile(next); void saveSettings(cur.id, { controlsSeen: next.settings.controlsSeen }); }} />; break;
     case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : screen.award.picks > 0 ? go({ name: 'pick' }) : home()} />; break;
     case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>screen.award.picks>0?go({name:'pick'}):home()}/>; break;
   }

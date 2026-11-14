@@ -1477,9 +1477,23 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
     const T = DEFAULT_TARGETS[dir.seg];
     return { min: T.zone[0], max: T.zone[1], label: `${curse && dir.seg === 'explore' ? 'Cursed: ride it out' : T.label}${erg ? ` · ERG ${Math.round(dirCfg().targets[dir.seg].erg * 100)}%` : ''}`, ...(T.source ? { source: T.source } : {}) };
   }
+  function runControls(): ControlHint[] {
+    return [
+      ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
+        const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
+        return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
+          cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
+      }),
+      { button: 'left', label: 'Previous stance', active: true }, { button: 'right', label: 'Next stance', active: true },
+      { button: 'paddles', label: 'Zoom in/out: either paddle direction or pinch', shortLabel: 'Zoom ±' },
+      { button: 'shiftersL', label: 'Gear' },
+      { button: 'shiftersR', label: 'Gear' },
+    ];
+  }
   function hud(): GameHud {
     if (phase === 'camp') return {
       controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / select', shortLabel: 'Select' }, { button: 'b', label: 'Begin descent', shortLabel: 'Start' }],
+      playControls: runControls(),
       gears: !erg, targetZone: { min: 1, max: 2, label: deaths ? 'Cool down' : 'Warm up' },
     };
     const sh = bossShield();
@@ -1491,17 +1505,7 @@ export function createDungeonSim(ctx: GameContext, opts?: DungeonOpts): GameSim 
       : act ? { min: 2, max: 2, label: 'Shrine: hold Z2' }
       : paceZone();
     return {
-      controls: [
-        ...(['strike', 'ward', 'rally', 'potion'] as ActionId[]).map((id): ControlHint => {
-          const usable = id === 'rally' ? spinCalled() : id === 'potion' ? P.potions > 0 && P.hp < P.maxHp : true, ready = cds[id].left <= 0;
-          return { button: ACTION_BUTTON[id], label: ACTION_LABEL[id], active: ready && usable,
-            cooldown: { fill: readyFrac(cds[id]), ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } };
-        }),
-        { button: 'left', label: 'Previous stance', active: true }, { button: 'right', label: 'Next stance', active: true },
-        { button: 'paddles', label: 'Zoom in/out: either paddle direction or pinch', shortLabel: 'Zoom ±' },
-        { button: 'shiftersL', label: 'Gear' },
-        { button: 'shiftersR', label: 'Gear' },
-      ],
+      controls: runControls(),
       gears: !erg, targetZone: target,
       targetCadence: dir.seg === 'spinup' ? { min: dirCfg().spinRpm, label: 'Spin up!' } : act?.kind === 'whirl' ? { min: Math.round(whirlRpm()), label: 'Shrine: spin!' }
         : phase === 'run' ? { min: STANCES[stance].band[0], max: STANCES[stance].band[1], label: `${STANCES[stance].name} style` } : undefined, // called targets win

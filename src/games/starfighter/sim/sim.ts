@@ -1,4 +1,4 @@
-import type { GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
+import type { ControlHint, GameContext, GameHud, GameSim, MediaTimeline } from '../../../contracts';
 import { after, clamp, createDirector } from './director';
 import { createDrive, rank, DRIVES, spanDistance, timeAtDistance, type Drive, type DriveSpan } from './drive';
 import { craftName, escortAvailable, gunshipAvailable, strikerAvailable, migrateSave } from './save';
@@ -833,17 +833,22 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const hard = craft === 'striker' && level !== 'cruise' && coverLeft <= 0 && rejoinLeft <= 0;
       return { gears: gears(), targetZone: { min: coverLeft > 0 || rejoinLeft > 0 ? 1 : hard ? 3 : 2, max: hard ? 3 : 2, source: 'power', label: menu ? 'Choose your craft' : effort.status === 'recover' ? 'Easy spin' : level === 'burn' ? 'Burn' : level === 'push' ? 'Push' : 'Hold Zone 2' },
         ...(rpmAsk !== null ? { targetCadence: { min: rpmAsk, max: rpmAsk + 15, label: level === 'burn' ? 'Burn · spin up' : 'Push · spin up' } } : {}),
-        controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : [
-          ...(gears() ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }] : []),
-          { button: 'left', label: 'Flank ◀' }, { button: 'right', label: 'Flank ▶' },
-          { button: 'paddles', label: 'Flank ◀ ▶' }, { button: 'z', label: 'Elite flank', active: eliteHint !== 0 },
-          { button: 'a', label: 'Nova', active: charge >= 100 && coverLeft <= 0 && rejoinLeft <= 0,
-            cooldown: { fill: Math.min(1, charge / 100), ready: charge >= 100 },
-            ...(coverLeft > 0 ? { indicator: { status: `Cover ${Math.ceil(coverLeft)}s` } } : rejoinLeft > 0 ? { indicator: { status: `Rejoin ${Math.ceil(rejoinLeft)}s` } } : {}) }] };
+        ...(menu ? { playControls: flightControls() } : {}),
+        controls: menu ? [{ button: 'dpad', label: 'Craft' }, { button: 'a', label: 'Launch' }] : flightControls() };
     },
     summary: () => ({ score: Math.round(score), kills, bossesDefeated: bosses, bossesEscaped: escaped, sector, sectorsCleared: bosses, deaths, maxCombo, scrap: salvage, powerUps: gunLevel - 1, gunLevel, onTargetS: Math.round(onTargetS), craft, volleys, dodges, grazes: grazed, absorbed, perfects, clearPct: clearTotal ? Math.round(clearKilled / clearTotal * 100) : 0, clearKilled, clearTotal, formations, bulletsFired, groundKills, goldens: gunLevel - 1, craftLevel: levelOf(craft), eaten, elitesCleared: eliteCleared, elitesSeen: eliteSeen, grades: grades.join(''), strikeHits, evades, evaded, burns, burnS: Math.round(burnS), hits, driveHits, burnHeldPct: burnS ? Math.round(burnHeldS / burnS * 100) : 0, distance: Math.round(dist), bestGrade: ['S', 'A', 'B', 'C', 'D'].find(g => grades.includes(g)) ?? '' }),
     dispose() { persist(); ctx.resistance.clear('squadron'); ctx.resistance.useVirtualGears(true); },
   };
+  /** Gameplay mapping (also taught on the controls card while the hangar is open). */
+  function flightControls(): ControlHint[] {
+    return [
+      ...(gears() ? [{ button: 'shiftersL' as const, label: 'Gears' }, { button: 'shiftersR' as const, label: 'Gears' }] : []),
+      { button: 'left', label: 'Flank ◀' }, { button: 'right', label: 'Flank ▶' },
+      { button: 'paddles', label: 'Flank ◀ ▶' }, { button: 'z', label: 'Elite flank', active: eliteHint !== 0 },
+      { button: 'a', label: 'Nova', active: charge >= 100 && coverLeft <= 0 && rejoinLeft <= 0,
+        cooldown: { fill: Math.min(1, charge / 100), ready: charge >= 100 },
+        ...(coverLeft > 0 ? { indicator: { status: `Cover ${Math.ceil(coverLeft)}s` } } : rejoinLeft > 0 ? { indicator: { status: `Rejoin ${Math.ceil(rejoinLeft)}s` } } : {}) }];
+  }
   /** Each arsenal tier paints locks faster: in-ride growth is what lets a rider clear whole formations. */
   /** Impact time for a volley fired now: the next beat when it is a natural flight time away. */
   function impactAt() { const nb = timeline?.beats.length ? beatAfter(t + 0.35) : t + 0.52; return nb - t <= 0.95 && nb > t + 0.3 ? nb : t + 0.52; }

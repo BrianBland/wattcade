@@ -400,21 +400,22 @@ export function createWatershedSim(ctx: GameContext, opts: WatershedOpts = {}): 
       ctx.debug('watershed.carved', Math.round(carved)); ctx.debug('watershed.delta', Math.round(delta));
     },
     hud(): GameHud {
-      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length', shortLabel: 'Length' }, { button: 'y', label: skipWarmup ? 'Include warm-up' : 'Skip warm-up', shortLabel: 'Warm-up' }, { button: 'a', label: 'Start' }] };
       const b = planAt(t, scale, plan).block;
       const fish = salmon.active;
       const label = { grind: 'Grind', spin: 'Spin', steady: b.phase === 'evaporate' ? 'Spin' : 'Steady', salmon: salmon.needLeap ? 'Leap: 95+' : 'Swim', free: 'Easy' }[b.style];
+      const controls: NonNullable<GameHud['controls']> = [
+        { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Steer the current', shortLabel: 'Steer' },
+        { button: 'left', label: 'Steer left' }, { button: 'right', label: 'Steer right' }, { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' },
+        { button: 'a', label: BOOST_LABEL[b.phase], shortLabel: b.phase === 'evaporate' ? 'Heat' : b.phase === 'rain' ? 'Burst' : BOOST_LABEL[b.phase], active: boostCd <= 0,
+          cooldown: { fill: Math.max(0, 1 - boostCd / BOOST_CD), ready: boostCd <= 0 },
+          ...(boostT > 0 ? { indicator: { status: 'Active' } } : {}) }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow', shortLabel: view === 'follow' ? 'Map' : 'Follow' },
+        { button: 'z', label: 'Look at a landmark', shortLabel: 'Look' },
+      ];
+      if (menu) return { gears: false, controls: [{ button: 'dpad', label: 'Choose ride length', shortLabel: 'Length' }, { button: 'y', label: skipWarmup ? 'Include warm-up' : 'Skip warm-up', shortLabel: 'Warm-up' }, { button: 'a', label: 'Start' }], playControls: controls };
       return {
         targetCadence: fish && salmon.needLeap ? { min: DEFAULT_SALMON.leapRpm, label } : b.rpm ? { ...b.rpm, label } : undefined,
         gears: false,
-        controls: [
-          { button: 'paddles', label: b.phase === 'evaporate' ? 'Steer the vapor' : b.phase === 'cloud' || b.phase === 'rain' ? 'Steer the cloud' : fish ? 'Steer the school' : 'Steer the current', shortLabel: 'Steer' },
-          { button: 'left', label: 'Steer left' }, { button: 'right', label: 'Steer right' }, { button: 'shiftersL', label: 'Dart left' }, { button: 'shiftersR', label: 'Dart right' },
-          { button: 'a', label: BOOST_LABEL[b.phase], shortLabel: b.phase === 'evaporate' ? 'Heat' : b.phase === 'rain' ? 'Burst' : BOOST_LABEL[b.phase], active: boostCd <= 0,
-            cooldown: { fill: Math.max(0, 1 - boostCd / BOOST_CD), ready: boostCd <= 0 },
-            ...(boostT > 0 ? { indicator: { status: 'Active' } } : {}) }, { button: 'y', label: view === 'follow' ? 'Overview' : 'Follow', shortLabel: view === 'follow' ? 'Map' : 'Follow' },
-          { button: 'z', label: 'Look at a landmark', shortLabel: 'Look' },
-        ],
+        controls,
       };
     },
     snapshot(): WatershedSnapshot {

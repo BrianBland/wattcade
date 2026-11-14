@@ -17,6 +17,8 @@ export interface ProfileSettings {
   paddleDeadzone: number;  // 0..100, default 15
   maxGradePct: number;     // safety cap, default 12
   ergCapFtpFraction: number; // default 1.5
+  /** Game id -> controls signature the rider last saw on the full controls card (shell-owned; absent = never seen). */
+  controlsSeen?: Record<string, string>;
 }
 export interface Profile {
   id: string; name: string; color: string;           // color = hex, used for the player avatar in all games
@@ -185,6 +187,8 @@ export interface GameHud {
   targetZone?: ZoneTarget;         // zone band the game wants now
   targetCadence?: CadenceTarget;   // cadence band the game wants now (shown next to the rpm readout)
   controls?: ControlHint[];        // current button mapping; shown in the controller legend
+  /** While a pre-game menu is open (`inMenu`): the gameplay mapping that follows it, for the controls card shown before the menu. */
+  playControls?: ControlHint[];
   /** Primary touch buttons to show in the HUD when the controller legend is hidden; uses the same controls and cooldowns. */
   touchControls?: Button[];
   /** Keep a compact controller guide visible where there is no pregame controls popup. */
@@ -198,7 +202,7 @@ export interface GameSim {
   hud?(): GameHud;                 // read by the shell each frame; keep it cheap and plain-data
   snapshot(): unknown;             // plain data view-model consumed by renderer and tests
   isOver(): boolean;
-  /** Optional: true while the sim shows its own pre-game menu (camp, loadout). The shell runs the sim through it and starts the 3-2-1-GO countdown only after it ends. */
+  /** Optional: true while the sim shows its own pre-game menu (camp, loadout). The shell runs the sim through it (trainer neutral) and says GO only after it ends. */
   inMenu?(): boolean;
   /** Extra pause actions available in the current game state. Never replaces the shell exit action. */
   menuActions?(): readonly GameMenuAction[];

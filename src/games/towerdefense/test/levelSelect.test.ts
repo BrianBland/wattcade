@@ -4,7 +4,8 @@ import { module } from '../index';
 import { CAMPAIGN } from '../sim/campaign';
 import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { generateLevel } from '../sim/generator';
-import { levelPreviewSvg, levelSelectHtml, modesHtml } from '../render/levelSelect';
+import { levelImage, levelSelectHtml, modesHtml } from '../render/levelSelect';
+import { loadingHtml, loadingStage } from '../render/panels';
 import type { GarageView, TdSnapshot } from '../sim/types';
 
 const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
@@ -57,23 +58,64 @@ describe('level select', () => {
     const s = menu(3);
     s.sim.receive!({ type: 'levelTile', index: 3 }); s.step(1);
     const g: GarageView = snap(s).garage!;
-    for (const turned of [false, true]) {
-      const html = levelSelectHtml(g, turned);
-      expect(html.match(/data-command="levelTile"/g)).toHaveLength(CAMPAIGN.length);
-      expect(html).toContain(CAMPAIGN[3].name);
-      expect(html).toContain(`${CAMPAIGN[3].minutes} min`);
-      expect(html.match(/class="td-tile[^"]*locked/g)!.length).toBe(CAMPAIGN.length - 4);
-      expect(html).toContain(turned ? 'viewBox="0 0 112 80"' : 'viewBox="0 0 80 112"');
-      expect(modesHtml({ ...g, page: 'modes' }, turned)).toContain('td-card');
-    }
+    const art = (l: { id: string }, preview: boolean) => l.id === BAKED_LEVELS[specKey(CAMPAIGN[3])].id ? `blob:${preview ? 'big' : 'tile'}` : null;
+    const html = levelSelectHtml(g, art);
+    expect(html.match(/data-command="levelTile"/g)).toHaveLength(CAMPAIGN.length);
+    expect(html).toContain(CAMPAIGN[3].name);
+    expect(html).toContain(`${CAMPAIGN[3].minutes} min`);
+    expect(html.match(/class="td-tile[^"]*locked/g)!.length).toBe(CAMPAIGN.length - 4);
+    // real art where it is made (the big preview uses the big image), a waiting tile in the ground colour elsewhere
+    expect(html).toContain('src="blob:big"'); expect(html).toContain('src="blob:tile"');
+    expect(html.match(/td-map-wait/g)).toHaveLength(CAMPAIGN.length - 1);
+    expect(html).not.toContain('<svg');
+    expect(modesHtml({ ...g, page: 'modes' })).toContain('td-card');
     const level = BAKED_LEVELS[specKey(CAMPAIGN[0])];
-    expect(levelPreviewSvg(level, false).match(/<circle/g)!.length).toBe(level.pads.length + 2);
-    // once the next Quick Ride and Endless maps are built, their cards preview them instead of a placeholder
+    expect(levelImage(level, undefined)).toContain('--ground:#3d4038');
+    expect(levelImage(level, () => 'blob:x')).toBe('<img class="td-map" src="blob:x" alt="" draggable="false">');
+    // once the next Quick Ride and Endless maps are built, their cards show them instead of a placeholder
     const modes = { ...g, page: 'modes' as const };
-    expect(modesHtml(modes, false)).toContain('td-quick');
-    const withMaps = modesHtml(modes, false, { quick: level, endless: BAKED_LEVELS[specKey(CAMPAIGN[1])] });
+    expect(modesHtml(modes)).toContain('td-quick');
+    const withMaps = modesHtml(modes, { quick: level, endless: BAKED_LEVELS[specKey(CAMPAIGN[1])] }, () => 'blob:card');
     expect(withMaps).not.toContain('td-quick');
     expect(withMaps).not.toContain('td-endless');
-    expect(withMaps.match(/<svg class="td-map"/g)).toHaveLength(3);
+    expect(withMaps.match(/<img class="td-map"/g)).toHaveLength(3);
+  });
+});
+
+describe('level loading', () => {
+  it('a renderer that gates loads holds a new level (time, trainer, input) until levelReady', () => {
+    const s = menu(3);
+    s.sim.receive!({ type: 'loadGate' });
+    s.sim.receive!({ type: 'levelTile', index: 2 }); s.step(1);
+    s.sim.receive!({ type: 'levelStart' }); s.step(1);
+    expect(snap(s).phase).toBe('run'); expect(snap(s).loading).toBe(true);
+    const t = snap(s).t, lull = snap(s).lull;
+    s.step(60);
+    expect(snap(s).t).toBe(t); expect(snap(s).lull).toBe(lull); expect(snap(s).loading).toBe(true);
+    expect(s.sim.hud!().targetZone?.label).toBe('Preparing the level');
+    s.sim.receive!({ type: 'levelReady' }); s.step(1);
+    expect(snap(s).loading).toBe(false); expect(snap(s).t).toBeGreaterThan(t);
+  });
+  it('gives up waiting after levelLoadMaxS, and never waits without a gate', () => {
+    const s = menu(3);
+    s.sim.receive!({ type: 'loadGate' });
+    s.sim.receive!({ type: 'levelTile', index: 0 }); s.step(1);
+    s.sim.receive!({ type: 'levelStart' }); s.step(1);
+    expect(snap(s).loading).toBe(true);
+    s.step(Math.ceil(12 * 30) + 2);
+    expect(snap(s).loading).toBe(false);
+    const free = menu(3);
+    free.sim.receive!({ type: 'levelTile', index: 0 }); free.step(1);
+    free.sim.receive!({ type: 'levelStart' }); free.step(1);
+    expect(snap(free).loading).toBe(false);
+  });
+  it('the loading card names the level and shows its picture and a progress bar', () => {
+    const s = menu(3);
+    s.sim.receive!({ type: 'levelTile', index: 2 }); s.step(1);
+    s.sim.receive!({ type: 'levelStart' }); s.step(1);
+    const html = loadingHtml(snap(s), (_l, preview) => (preview ? 'blob:big' : null));
+    expect(html).toContain(CAMPAIGN[2].name); expect(html).toContain('Campaign');
+    expect(html).toContain('src="blob:big"'); expect(html).toContain('role="progressbar"');
+    expect(loadingStage(0)).not.toBe(loadingStage(0.5)); expect(loadingStage(1)).toBe('Waking the hive');
   });
 });

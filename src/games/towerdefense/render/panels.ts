@@ -5,9 +5,14 @@ import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
 import { constructionStatus, rideObjective } from './objectives';
-import { levelSelectHtml, modesHtml } from './levelSelect';
+import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
+import type { TdLevel } from '../sim/level';
 
 export interface Hit extends Box { action: unknown }
+/** The loading card's live parts: how far the level's art is (0..1) and its picture. */
+export interface LoadingView { progress: number }
+/** A level's picture for one orientation (`preview`: the big one when it exists). */
+export type TdArt = (level: TdLevel, turned: boolean, preview: boolean) => string | null;
 
 const CSS = `
 .td-hud { position:absolute; inset:0; pointer-events:none; color:var(--fg); font:inherit; }
@@ -56,7 +61,29 @@ const CSS = `
 .td-menu .btn { flex-shrink:0; width:100%; text-align:left; display:flex; justify-content:space-between; padding:8px 12px; font-size:16px; }
 .td-menu .btn small { display:block; font-size:12px; text-transform:none; letter-spacing:0; }
 .td-menu .selected { border-color:var(--neon); }
-.td-map { display:block; width:100%; height:100%; border-radius:6px; }
+.td-map { display:block; width:100%; height:100%; border-radius:6px; object-fit:cover; }
+.td-map-wait { background:linear-gradient(100deg, transparent 30%, rgba(255,255,255,.08) 50%, transparent 70%) 0 0 / 250% 100%, var(--ground, #2b2d30); animation:td-shimmer 1.4s linear infinite; }
+@keyframes td-shimmer { from { background-position:100% 0, 0 0; } to { background-position:-150% 0, 0 0; } }
+.td-loading { display:grid; place-items:center; pointer-events:auto; }
+.td-loading-card { width:min(440px, 100%); max-height:100%; box-sizing:border-box; display:flex; flex-direction:column; gap:10px; padding:14px; overflow:hidden; animation:td-rise .3s ease-out; }
+@keyframes td-rise { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
+.td-loading-art { position:relative; overflow:hidden; border-radius:10px; aspect-ratio:var(--map-aspect); max-height:46vh; box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px var(--glass-line); }
+.td-loading-art .td-map { position:absolute; inset:0; border-radius:0; animation:td-drift 9s ease-in-out infinite alternate; }
+.td-loading-art::after { content:''; position:absolute; inset:0; background:linear-gradient(115deg, transparent 35%, rgba(130,240,255,.18) 50%, transparent 65%) 0 0 / 300% 100%; animation:td-sweep 2.2s ease-in-out infinite; }
+@keyframes td-drift { from { transform:scale(1.04); } to { transform:scale(1.12) translate(-1.5%, 1%); } }
+@keyframes td-sweep { from { background-position:100% 0; } to { background-position:-100% 0; } }
+.td-loading-card small { color:var(--dim); }
+.td-loading-card h2 { margin:0; color:var(--neon); font-size:clamp(22px,3.2vw,30px); font-style:italic; line-height:1.1; }
+.td-loading-card p { margin:0; color:var(--dim); font-size:14px; }
+.td-loading-bar { position:relative; height:8px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden; }
+.td-loading-bar > i { position:absolute; inset:0 auto 0 0; border-radius:inherit; background:linear-gradient(90deg, var(--neon), #ffd24a); box-shadow:0 0 12px var(--neon); transition:width .25s ease-out; }
+.td-loading-bar > i::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent) 0 0 / 40% 100% no-repeat; animation:td-glint 1.1s linear infinite; }
+@keyframes td-glint { from { background-position:-40% 0; } to { background-position:140% 0; } }
+.td-loading-status { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--dim); }
+.td-loading-status b { color:var(--fg); font-weight:700; }
+.td-hud[data-wide="true"] .td-loading-card { width:min(620px, 100%); display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); align-items:center; column-gap:16px; }
+.td-hud[data-wide="true"] .td-loading-art { grid-row:span 5; max-height:none; }
+@media (prefers-reduced-motion: reduce) { .td-loading-art .td-map, .td-loading-art::after, .td-loading-bar > i::after, .td-map-wait { animation:none; } }
 .td-cards { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; flex-shrink:0; }
 .td-hud[data-narrow="true"] .td-cards { grid-template-columns:1fr; }
 .td-menu .td-card { flex-direction:column; justify-content:flex-start; gap:8px; padding:8px; }
@@ -124,6 +151,9 @@ export class TdHud {
   private event = this.box('td-event');
   private objective = this.box('td-objective panel');
   private menu = this.box('td-menu panel');
+  private loadingCard = this.box('td-loading');
+  /** Level pictures for the menus and the loading card (the renderer's LevelArt). */
+  art: TdArt | null = null;
   private markup = new WeakMap<HTMLElement, string>();
 
   constructor(private send?: (a: unknown) => void) {
@@ -161,12 +191,24 @@ export class TdHud {
     this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
-    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage]] as const) this.place(el, box);
+    for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
     if (L.objective) this.place(this.objective, L.objective);
   }
-  render(s: TdSnapshot, L: TdLayout, W: number) {
+  render(s: TdSnapshot, L: TdLayout, W: number, loading: LoadingView | null = null) {
     this.resize(L, W);
-    const run = s.phase === 'run', bd = s.brood;
+    const turned = L.field.turned, art: ArtLookup = (l, preview) => this.art?.(l, turned, preview) ?? null;
+    this.loadingCard.hidden = !loading;
+    if (loading) {
+      this.html(this.loadingCard, loadingHtml(s, art));
+      const p = Math.max(0, Math.min(1, loading.progress)), bar = this.loadingCard.querySelector<HTMLElement>('.td-loading-bar');
+      if (bar) {
+        bar.setAttribute('aria-valuenow', String(Math.round(p * 100)));
+        (bar.firstElementChild as HTMLElement).style.width = `${Math.max(4, p * 100).toFixed(1)}%`;
+        const status = this.loadingCard.querySelector('.td-loading-status')!;
+        status.firstElementChild!.textContent = `${loadingStage(p)}…`; status.lastElementChild!.textContent = `${Math.round(p * 100)}%`;
+      }
+    }
+    const run = s.phase === 'run' && !loading, bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
     this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
@@ -202,17 +244,34 @@ export class TdHud {
       const previous = sel ? `${sel.dataset.command === 'levelTile' ? 'L' : ''}${sel.dataset.index}` : undefined;
       const auto = gv.breatherLeft > 0 ? `Take a breather · ${Math.ceil(gv.breatherLeft)}s` : `Pedal to start in ${Math.ceil(gv.autoLeft)}s`;
       const head = `<header><h2>${esc(gv.title)}</h2><b>${gv.stars}★</b></header><p>${esc(gv.subtitle)}</p>`;
-      const turned = L.field.turned, results = gv.rows.some((r) => r.kind === 'next' || r.kind === 'finish');
+      const results = gv.rows.some((r) => r.kind === 'next' || r.kind === 'finish');
       const body = gv.page === 'campaign'
-        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, turned)}`
+        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, art)}`
         : results
           ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
-          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, turned, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) })}`;
+          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) }, art)}`;
       this.html(this.menu, head + body);
       const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
       if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }
+}
+
+/** What the loading card says about where the work is. */
+export function loadingStage(progress: number): string {
+  return progress < 0.12 ? 'Unpacking the ground kit' : progress < 0.8 ? 'Laying the road' : progress < 1 ? 'Raising the outpost' : 'Waking the hive';
+}
+/** The card over the menu while a level's art is made: its picture, name, facts and a progress bar (set live by render). */
+export function loadingHtml(s: TdSnapshot, art: ArtLookup): string {
+  const l = s.level, run = s.run;
+  const kicker = run ? (run.kind === 'campaign' ? 'Campaign' : 'Quick Ride') : 'Endless';
+  const facts = run ? `${run.minutes} min · ${run.waves} waves · ${l.pads.length} pads · ${styleName(l.roadStyle ?? '')} road`
+    : `Sets forever · ${l.pads.length} pads${l.roadStyle ? ` · ${styleName(l.roadStyle)} road` : ''}`;
+  const name = run?.name ?? l.name;
+  return `<div class="td-loading-card panel" role="status" aria-live="polite"><div class="td-loading-art">${levelImage(l, art, true)}</div>`
+    + `<small>${esc(kicker)} · next up</small><h2>${esc(name)}</h2><p>${esc(facts)}</p>`
+    + `<div class="td-loading-bar" role="progressbar" aria-label="Preparing the level" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="width:4%"></i></div>`
+    + `<div class="td-loading-status"><b>${loadingStage(0)}…</b><span>0%</span></div></div>`;
 }
 
 export function matchupCopy(s: Pick<TdSnapshot, 'matchup'>, element: Element): string {

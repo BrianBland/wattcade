@@ -20,7 +20,10 @@ import { PAYOFF_STYLE, cableHeat, shimmerBands, stepBlend } from './overdrive';
 import { HitFeedback, type Callout, type HitEvent } from './hitFeedback';
 import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } from './structureFx';
 import { prefetchLevel } from './levelPool';
-import { specKey } from '../sim/baked';
+import { BAKED_LEVELS, specKey } from '../sim/baked';
+import { knownLevel } from '../sim/levelCache';
+import { LevelArt } from './levelArt';
+import { levelKey } from './ground/bake';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -48,6 +51,12 @@ export class TdRenderer implements GameRenderer {
   private W = 800; private H = 600; private dpr = 1;
   private L!: TdLayout;
   private bg: HTMLCanvasElement | null = null;
+  /** The background holds the level's real ground (not the vector stand-in). */
+  private bgReal = false;
+  /** Menu and loading-card pictures of the levels. */
+  private art: LevelArt | null = null;
+  /** The menu's wish list last handed to `art`, the loading episode's levelReady sent, the held menu frame dimmed. */
+  private artWish = ''; private readySent = false; private heldDim = false;
   private send?: (a: unknown) => void;
   private hits: Hit[] = [];
   private hud!: TdHud;
@@ -102,8 +111,9 @@ export class TdRenderer implements GameRenderer {
     this.insets = ctx.insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
     this.color = ctx.profile.color || this.color;
     this.aliens = new AlienLayer(import.meta.env.BASE_URL);
-    this.battlefield = new Battlefield(import.meta.env.BASE_URL, () => { this.bg = null; });
+    this.battlefield = new Battlefield(import.meta.env.BASE_URL, (baked) => { this.bg = null; if (baked) this.art?.offer(baked, this.view.turned); });
     this.machinery = new Machinery(import.meta.env.BASE_URL);
+    this.art = new LevelArt(import.meta.env.BASE_URL, this.machinery, () => {});
     this.machinery.profile = ctx.profile;
     this.send = ctx.send;
     this.dpr = Math.min(2, (globalThis as { devicePixelRatio?: number }).devicePixelRatio ?? 1);
@@ -111,7 +121,10 @@ export class TdRenderer implements GameRenderer {
     this.canvas.style.cssText = 'width:100%;height:100%;display:block;background:#0a0e16;touch-action:none';
     container.appendChild(this.canvas);
     this.hud = new TdHud(ctx.send);
+    this.hud.art = (l, turned, preview) => this.art?.url(l, turned, preview) ?? null;
     container.appendChild(this.hud.root);
+    // hold each new level until its art is drawn (the sim waits for levelReady; see render)
+    ctx.send?.({ type: 'loadGate' });
     this.g = this.canvas.getContext('2d')!;
     this.canvas.addEventListener('pointerdown', this.onPointer);
     this.canvas.addEventListener('pointerup', this.onUp);
@@ -142,6 +155,7 @@ export class TdRenderer implements GameRenderer {
   setInsets(i: Insets) { if (JSON.stringify(i) !== JSON.stringify(this.insets)) { this.insets = i; this.relayout(); } }
   unmount() {
     this.mounted = false;
+    this.art?.stop();
     this.onBlur(); window.removeEventListener('blur', this.onBlur);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.canvas?.removeEventListener('pointerdown', this.onPointer);
@@ -164,6 +178,40 @@ export class TdRenderer implements GameRenderer {
     this.L = layout(this.W, this.H, this.insets, this.hudControls, this.geo.level); this.hud?.resize(this.L, this.W); this.bg = null;
     this.view.turned = this.L.field.turned; this.view.rot = this.L.field.turned ? Math.PI / 2 : 0;
     this.send?.({ type: 'padOrder', turned: this.view.turned });
+  }
+
+  /** The canvas keeps its last (menu) frame under the loading card, dimmed once. */
+  private holdMenuFrame() {
+    if (this.heldDim) return;
+    this.heldDim = true;
+    const g = this.g; g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = 'rgba(6,8,14,0.55)'; g.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+  /** The view a level would be drawn in now (its own layout clearance), for baking it ahead of time. */
+  private viewFor(level: TdLevel): View {
+    const f = layout(this.W, this.H, this.insets, this.hudControls, level).field;
+    return { P: (x, y) => toScreen(f, { x, y }), rot: f.turned ? Math.PI / 2 : 0, turned: f.turned, k: f.k, dpr: this.dpr };
+  }
+  /**
+   * In the menus: bake the level that A (or the auto-start) would start, at its in-game size, so it appears at once;
+   * and make the menu pictures, the ones on screen first.
+   */
+  private readyMenu(s: TdSnapshot) {
+    const gv = s.garage!, turned = this.view.turned;
+    const tile = (i: number) => { const t = gv.levels[i]; return t ? BAKED_LEVELS[t.key] ?? null : null; };
+    const quick = s.nextMaps?.[0] ? knownLevel(s.nextMaps[0]) : null, endless = s.nextMaps?.[1] ? knownLevel(s.nextMaps[1]) : null;
+    if (gv.nextMap) void prefetchLevel(gv.nextMap);
+    const next = gv.nextMap ? knownLevel(gv.nextMap) : null, campaign = tile(gv.campaignSel);
+    const row = gv.rows[gv.sel]?.kind;
+    const primary = gv.nextMap ? next
+      : gv.page === 'campaign' ? (gv.levels[gv.levelSel]?.locked ? campaign : tile(gv.levelSel))
+      : row === 'quick' ? quick : row === 'start' ? endless : campaign;
+    if (primary) this.battlefield.prepare(primary, this.viewFor(primary), this.W, this.H);
+    const centre = gv.page === 'campaign' ? gv.levelSel : gv.campaignSel;
+    const order = [...gv.levels.keys()].sort((a, b) => Math.abs(a - centre) - Math.abs(b - centre)).map(tile);
+    const wish = [primary, next, campaign, quick, endless, ...order].filter((l): l is TdLevel => !!l);
+    const key = `${turned}|${wish.map(levelKey).join(',')}`;
+    if (key !== this.artWish) { this.artWish = key; this.art?.want(wish, turned); }
   }
 
   // ---------- coordinates ----------
@@ -209,7 +257,8 @@ export class TdRenderer implements GameRenderer {
     const c = document.createElement('canvas'); c.width = this.canvas.width; c.height = this.canvas.height;
     const g = c.getContext('2d')!; g.scale(this.dpr, this.dpr);
     this.view.k = this.k; this.view.dpr = this.dpr;
-    if (!this.battlefield.paint(g, this.view, this.W, this.H)) this.vectorGround(g);
+    this.bgReal = this.battlefield.paint(g, this.view, this.W, this.H);
+    if (!this.bgReal) this.vectorGround(g);
     return c;
   }
   /** Stand-in ground until a painting loads: rock, the road from the hive mouth, pad clearings and the turret apron. */
@@ -463,14 +512,23 @@ export class TdRenderer implements GameRenderer {
     if (s.level && s.level !== this.geo.level) this.setLevel(s.level);
     if (s.nextMaps) { const k = s.nextMaps.map(specKey).join(','); if (k !== this.prefetched) { this.prefetched = k; for (const m of s.nextMaps) void prefetchLevel(m); } }
     if (!this.L) this.relayout();
-    this.hud.render(s, this.L, this.W);
+    if (s.garage) this.readyMenu(s);
+    else if (this.artWish) { this.artWish = ''; this.art?.want([], this.view.turned); } // no menu art baking during play
+    if (!this.bg) this.bg = this.buildBg();
+    // A new level waits (sim `loading`) until its real ground is drawable; meanwhile the menu frame stays up under
+    // the loading card. Usually the menu already baked it, and the level appears at once.
+    const waiting = !!s.loading && !this.bgReal;
+    if (!s.loading) this.readySent = false;
+    else if (!waiting && !this.readySent) { this.readySent = true; this.send?.({ type: 'levelReady' }); }
+    this.hud.render(s, this.L, this.W, waiting ? { progress: this.battlefield.progress(this.geo.level) } : null);
+    if (waiting) { this.holdMenuFrame(); return; }
+    this.heldDim = false;
     const g = this.g, k = this.k, L = this.L;
     const firstFrame = this.lastT < 0;
     const dt = this.lastT < 0 ? 0 : Math.max(0, Math.min(0.1, s.t - this.lastT));
     const realDt = 1 / 60;
     this.lastT = s.t; this.wall += realDt;
     const t = s.t;
-    if (!this.bg) this.bg = this.buildBg();
     this.playCues(s);
     this.consumeFx(s, !firstFrame);
     if (s.phase === 'run') { for (const h of this.hitFx.hits(s.enemies, s.t)) this.hitFeedback(h); for (const c of this.hitFx.callouts(s.fx, s.t)) this.callout(c); }

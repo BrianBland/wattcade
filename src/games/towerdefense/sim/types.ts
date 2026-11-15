@@ -67,6 +67,8 @@ export interface GarageView {
   levelSel: number; open: number;
   /** The campaign level the Campaign card starts (the next open one, or the last one picked). */
   campaignSel: number;
+  /** On a level's result page: the map Next level (or Retry) starts, so the renderer can ready it. */
+  nextMap?: Pick<LevelSpec, 'seed' | 'roadStyle' | 'ground' | 'pads'>;
 }
 export interface SurgeView { state: 'active' | 'won' | 'failed'; progress: number; needS: number; leftS: number; zone: number; t0: number }
 export interface SpinView { state: 'active' | 'won' | 'failed'; held: number; needS: number; leftS: number; rpm: number; t0: number }
@@ -95,6 +97,8 @@ export interface BossView {
 
 export interface TdSnapshot {
   t: number; phase: 'garage' | 'run'; garage: GarageView | null;
+  /** A new level or run is waiting for the renderer's `levelReady` (only after it sent `loadGate`): nothing moves. */
+  loading?: boolean;
   /** The maps the next Quick Ride and Endless run would generate, so the renderer can build them in the background. */
   nextMaps: Array<Pick<LevelSpec, 'seed' | 'roadStyle' | 'ground' | 'pads'>>;
   /** The map being played (same object for the whole session; the renderer derives its geometry from it). */

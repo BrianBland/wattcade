@@ -491,7 +491,9 @@ function tryPlan3(tier, sd) { const plan = planLevel3(sd, tier); if (!plan) retu
   if ((plan.special || tier.must) && !has(plan.special || tier.must)) why.push('missing the tier machine'); { const nl = plan.machines.filter(m => m.type === 'lift').length; if (nl > 1) why.push('two lifts share one cadence'); if (nl && plan.machines.some(m => m.type === 'seesaw')) why.push('lift and see-saw fight over cadence'); } if (tier.camera && (sol.pj || 0) < 2) why.push('too few perspective joins on the way'); if (tier.camera && (sol.camMoves || 0) < 2) why.push('the camera turns fewer than twice'); if (tier.camera && plan.pockets.filter(p => p.key && /seen from/.test(p.where)).length < 2) why.push('fewer than two keys need perspective'); if (plan.special === 'lift' && !plan.machines.some(m => m.type === 'tt' || m.type === 'cross')) why.push('no turn machine');
   return { bad: why, plan, sol }; }
 const SUB3 = 40;
-function plan3For(tierIdx, seed) { const tier = TIERS[tierIdx], fails = [];
+/** `from`: the sub-seed known to plan first (campaign.ts PLAN_SUB), skipping the search; it falls back to a full search if that one fails. */
+function plan3For(tierIdx, seed, from = 0) { const tier = TIERS[tierIdx], fails = [];
+  if (from > 0) { const sd = seed * 1000 + from, r = tryPlan3(tier, sd); if (!r.bad.length) return { seed, sub: from, sd, fails, ...r }; }
   for (let a = 0; a < SUB3; a++) { const sd = seed * 1000 + a, r = tryPlan3(tier, sd); if (!r.bad.length) return { seed, sub: a, sd, fails, ...r }; fails.push(...r.bad); }
   return { seed, bad: ['no pass in ' + SUB3], fails }; }
 function candidates3(tierIdx, seeds) { const out = [];

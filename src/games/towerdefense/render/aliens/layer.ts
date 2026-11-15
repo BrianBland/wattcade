@@ -39,6 +39,7 @@ export class AlienLayer {
   private flinchT = -99;
   private gibs: Array<{ species: SpeciesId; gib: Gib }> = [];
   failed = false;
+  private bakedKey: string | null = null;
   readonly loaded: Promise<void> = Promise.resolve();
 
   constructor(base: string) {
@@ -51,15 +52,16 @@ export class AlienLayer {
   /** Bake the initial poses while the shell holds the simulation on its loading screen. */
   async prepare(v: View, cancelled = () => false) {
     await this.loaded;
-    const cache = this.cache!;
-    this.sizeKey = `${Math.round(v.k * 100)}|${v.dpr}`; cache.clear();
+    const cache = this.cache!, key = `${Math.round(v.k * 100)}|${v.dpr}`;
+    if (this.bakedKey === key && this.sizeKey === key && !cache.pending) return; // already baked at this size (a game loaded ahead of time is readied again when shown)
+    this.sizeKey = key; this.bakedKey = null; cache.clear();
     for (const sp of SPECIES_LIST) {
       const def=KINDS[sp.kind], length=alienLengthUnits(def.radius,sp)*v.k*v.dpr;
       const colors = sp.tint ? ['blue','red','purple'] as const : [sp.kind === 'boss' ? 'gold' : def.color] as Array<Element|'gold'>;
       for (const color of colors) cache.get(sp.id,length,COL[color],sp.tint?COL[color]:undefined);
     }
     while (cache.pending && !cancelled()) { cache.pump(); await new Promise<void>(resolve => setTimeout(resolve,0)); }
-    if (cancelled()) cache.clear();
+    if (cancelled()) cache.clear(); else this.bakedKey = key;
   }
 
   get ready() { return !!this.cache; }

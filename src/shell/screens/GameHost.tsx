@@ -15,13 +15,12 @@ import { loadHudLayout, resolveHudLayout, saveHudLayout } from '../hud/layout';
 import { controlsSignature, needsControls, playControls } from '../game/controlsSeen';
 import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
-import { ResultBanner } from '../game/ResultBanner';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
+import { adoptWarm, disposeWarm, takeWarmGame } from '../game/prewarm';
+import { rememberInsets } from '../game/gameInsets';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
-/** The result banner stays this long before the summary (A skips). */
-export const RESULT_S = 4;
 /** Ride milestone toast every this many pedalling seconds. */
 export const MILESTONE_S = 600;
 
@@ -31,7 +30,7 @@ const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 /**
  * Runs a game: controls card (first play, or when the controls/input changed) -> the game's own pre-game menu, if any
  * (trainer held neutral) -> GO: resistance ramps in at once, no countdown -> play (pause menu, mid-ride toasts) ->
- * optional recap -> a short result banner -> onQuit (summary).
+ * optional recap -> onQuit (the rider rides out onto the overworld, then the summary).
  */
 export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, onSave, onControlsSeen }: {
   game: GameModule; profile: Profile; media?: MediaRun; onQuit: () => void; onAbandon: () => void; onRestart: () => void; onSave: (d: unknown) => void;
@@ -63,7 +62,6 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [musicWait, setMusicWait] = useState('');
   const musicWaitRef = useRef('');
   const [phase, setPhaseState] = useState<Phase>('intro');
-  const [ending, setEnding] = useState<{ over: boolean; durationS: number; summary: Record<string, number | string>; xp: number | null } | null>(null);
   const phaseRef = useRef<Phase>('intro');
   const setPhase = (p: Phase) => { phaseRef.current = p; setPhaseState(p); };
   const pausedRef = useRef(false);
@@ -73,7 +71,6 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const timers = useRef({ ending: 0, hold: 0, playS: 0 });
   const controlsSig = useRef<string | null>(null); // set while the controls card is owed this session
   const rendererRef = useRef<GameRenderer | null>(null);
-  const [recap, setRecap] = useState(false);
   const left = useRef(false); // leaving (quit/abandon) happens once
   const leave = (fn: () => void) => { if (left.current) return; left.current = true; fn(); };
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
@@ -106,25 +103,22 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   };
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
-    const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
     pausedRef.current = false; setPaused(false); setHelp(false); setHistory(false);
     debugActions.panic(true);
     if (music.current) { music.current.engine.setVolume(0); setTimeout(() => music.current?.engine.stop(), 1500); }
-    let summary: Record<string, number | string> = {};
-    try { summary = s?.sim.summary?.() ?? {}; } catch { /* best effort */ }
-    const pv = previewAward(profile);
-    setEnding({ over, durationS: timers.current.playS, summary, xp: pv?.xp ?? null });
     let hold = 0;
     try { hold = Math.min(MAX_RECAP_S, Math.max(0, Number(rendererRef.current?.ending?.({ over }) ?? 0) || 0)); } catch { /* best effort */ }
-    timers.current.ending = 0; timers.current.hold = hold; setRecap(hold > 0); setPhase('ending');
+    timers.current.ending = 0; timers.current.hold = hold; setPhase('ending');
     if (hold === 0) play(over ? 'gameOver' : 'reward');
   };
 
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
+    const warmJob = takeWarmGame(game.id, profile.id);
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
-    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(readInsets()); };
+    const remember = (i: Insets) => { const el = mount.current; if (el) rememberInsets(game.id, el.clientWidth, el.clientHeight, hasConnectedController(), i); return i; };
+    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(remember(readInsets())); };
     window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
@@ -160,17 +154,30 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           duckAmbient('music', true); // the game's own ambience would fight the music
         }
         debugActions.panic(true); // trainer neutral through the controls card and the game's menu, until GO
-        renderer = await game.loadRenderer(); rendererRef.current = renderer;
-        if (disposed) { renderer.unmount(); return; }
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
-        renderer.setInsets?.(readInsets());
+        const warm = warmJob ? await warmJob : null; // loaded while the rider rode to the portal
+        if (warm) {
+          if (disposed) { disposeWarm(warm); return; }
+          warm.attach((a) => session.sim.receive?.(a), musicFx);
+          adoptWarm(warm, mount.current!);
+          renderer = warm.renderer; rendererRef.current = renderer;
+          renderer.resize?.(mount.current!.clientWidth, mount.current!.clientHeight);
+        } else {
+          renderer = await game.loadRenderer(); rendererRef.current = renderer;
+          if (disposed) { renderer.unmount(); return; }
+          renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
+        }
+        renderer.setInsets?.(remember(readInsets()));
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);
         if (probe.current) ro.observe(probe.current);
-        await renderer.ready?.();
+        // A game loaded ahead of time was readied then; readying it again only catches up with a size change (say the
+        // game's HUD is shorter than the overworld's), which games redo lazily, so it never holds the Preparing screen.
+        if (warm) void renderer.ready?.()?.catch?.(() => {});
+        else await renderer.ready?.();
         if (disposed) return;
+        if (!warm && renderer.prepare) { try { await renderer.prepare(session.sim.snapshot()); } catch { /* best effort */ } if (disposed) return; }
         session.idle(0); // discard presses made while loading before exposing game controls
         renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
         loadingRef.current = false; setLoading(false);
@@ -216,11 +223,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           } else {
             const p = session.idle(dt);
             T.ending += dt;
-            const wasRecap = T.ending - dt < T.hold;
-            const e = endingStep(T.ending, T.hold, p.has('a'), RESULT_S);
-            T.hold = e.holdS;
-            if (wasRecap && e.show === 'banner') { setRecap(false); play('reward'); }
-            if (e.leave) { disposed = true; leave(cb.current.onQuit); return; }
+            if (endingStep(T.ending, T.hold, p.has('a')).leave) { disposed = true; leave(cb.current.onQuit); return; }
           }
           renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
           raf = requestAnimationFrame(loop);
@@ -267,7 +270,6 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
             : { onQuit: () => toEnding(false) })} />
       )}
-      {phase === 'ending' && ending && !recap && <ResultBanner {...ending} profile={profile} onContinue={() => leave(onQuit)} />}
     </div>
   );
 }

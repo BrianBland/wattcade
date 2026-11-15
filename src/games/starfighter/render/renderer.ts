@@ -19,6 +19,7 @@ import { WING_OFFSETS } from '../sim/progression';
 export class SfRenderer implements GameRenderer {
   private container?: HTMLElement; private webgl?: THREE.WebGLRenderer; private overlay?: HTMLDivElement;
   private warm: THREE.Object3D[] = [];
+  private compiled = false;
   private scene = new THREE.Scene(); // Far plane beyond the fog's end (1150), so a lowered camera never sees past the drawn world.
   private camera = new THREE.PerspectiveCamera(48, 1, 0.1, 1600);
   private insets: Insets = NO_INSETS; private w = 800; private h = 600; private observer?: ResizeObserver;
@@ -69,9 +70,7 @@ export class SfRenderer implements GameRenderer {
     // Compile every scenery shader now (all biomes), not mid-ride when a biome first appears. A flagship and a battery
     // join briefly so their hull and plasma shaders are ready before the first boss arrives (kept, not disposed, so the
     // programs stay cached).
-    this.warm = [bossModel(0), batteryModel(0)]; for (const w of this.warm) this.scene.add(w);
-    this.webgl?.compile(this.scene, this.camera);
-    for (const w of this.warm) this.scene.remove(w);
+    this.warm = [bossModel(0), batteryModel(0)]; // compiled in prepare()
     for (let i=0;i<2;i++) {
       const ghost=shipModel('#26dfff','player'); ghost.traverse(o=>{if(/^(tier|trim|stripe)-/.test(o.name))o.visible=false;});
       ghost.traverse(o=>{if(o instanceof THREE.Mesh) for(const m of Array.isArray(o.material)?o.material:[o.material]) {m.transparent=true;m.opacity=0.14;m.depthWrite=false;} });
@@ -98,6 +97,15 @@ export class SfRenderer implements GameRenderer {
     this.camera.setViewOffset(fw, fh, -l.field.x, -l.field.y, this.w, this.h); this.camera.updateProjectionMatrix();
     this.hud?.place(l);
   }
+  /** Compile every scenery shader (all biomes, plus a flagship and a battery) before the ride, without blocking the
+   *  page where the browser can (parallel shader compile), not mid-ride when one first appears. */
+  async prepare() {
+    if (!this.webgl || this.compiled) return;
+    for (const w of this.warm) this.scene.add(w);
+    try { await this.webgl.compileAsync(this.scene, this.camera); } finally { for (const w of this.warm) this.scene.remove(w); }
+    this.compiled = true;
+  }
+
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as SfSnapshot;
     if (this.last && s.t > this.last.t && s.t-this.last.t < 0.2) {

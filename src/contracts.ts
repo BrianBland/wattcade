@@ -226,10 +226,14 @@ export interface GameRenderer {
   setInsets?(insets: Insets): void;
   /** Await after mount before advancing the simulation or countdown. */
   ready?(): Promise<void>;
+  /** Optional: get everything the first frame of `snapshot` needs (scene built, shaders compiled, e.g. three's
+   *  `compileAsync`) without blocking the page for long, so the shell can load the game while the overworld keeps
+   *  moving. Called after ready(), before the first render. */
+  prepare?(snapshot: unknown): Promise<void>;
   render(snapshot: unknown, bike: Readonly<BikeState>, input: Readonly<InputState>): void;
   resize?(w: number, h: number): void;
-  /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the shell's
-   *  result banner (capped at 15; A skips). The sim no longer steps, so animate on wall-clock time. */
+  /** Optional: the ride just ended (quit or game over). Return seconds of the game's own recap to play before the
+   *  rider rides back out to the overworld (capped at 15; A skips). The sim no longer steps, so animate on wall-clock time. */
   ending?(info: { over: boolean }): number | void;
   unmount(): void;
 }
@@ -244,6 +248,11 @@ export interface GameModule {
   progressLine?(save: unknown): string | null;
   /** Optional: animated banner art for the arcade card (Canvas 2D, ~16:7). `t` = seconds; `color` = rider colour. Keep it tiny. */
   drawCard?(g: CanvasRenderingContext2D, w: number, h: number, t: number, color: string): void;
+  /** Optional: the game's signature colour (portal rim, entry chip). Default white. */
+  accent?: string;
+  /** Optional: how the overworld rider gets into (and back out of) this game. 'portal' (default) opens one on the road;
+   *  'gate' is a start gate on the same road for games drawn in the overworld's own style, leaving with confetti. */
+  entry?: 'portal' | 'gate';
   /** Optional: this game's achievements (ids are global and never change; see AchievementDef). Rides in other games never satisfy them unless `check`/`count` says so. */
   achievements?: AchievementDef[];
   /** Optional: a small preview of what this game makes of a queue (track profile, effort), drawn in the media picker. Pure Canvas 2D. */

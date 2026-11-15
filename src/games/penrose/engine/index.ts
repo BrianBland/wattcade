@@ -6,7 +6,7 @@
  * Coordinates: sketch (x, y = depth, z = up) → three.js (x, z, y). See ../NOTES.md.
  */
 import type { EngineDom, EngineHooks, PenroseEngine } from '../render/engineTypes';
-import { CAMPAIGN } from '../campaign';
+import { CAMPAIGN, PLAN_SUB } from '../campaign';
 import { install as core } from './core';
 import { install as machines } from './machines';
 import { install as levels } from './levels';
@@ -41,23 +41,40 @@ function defFor(E, pool, item) {
   if (item.startsWith('cg:')) { const pl = E.curtainPlan(+item.slice(3)); return pl ? E.curtainDef(pl) : null; }
   const [ti, sd] = item.split(':').map(Number);
   if (!Number.isFinite(ti) || !Number.isFinite(sd)) return null;
-  const r = E.penroseGen9.plan3For(ti, sd);
+  const r = E.penroseGen9.plan3For(ti, sd, PLAN_SUB[item] ?? 0);
   return r.plan ? E.genDef3(r.plan, r.sol) : null;
 }
 
-export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN): PenroseEngine {
+/** Wait for the next macrotask, so the page can draw a frame between pieces of work. */
+const yieldToPage = () => new Promise((r) => setTimeout(r, 0));
+
+/**
+ * Build the engine. Planning the generated campaign levels takes seconds of CPU, so by default the level list is built
+ * in pieces between frames (`opts.sliced`, the game's renderer) and `whenReady` resolves once it is complete; pass
+ * `{ sliced: false }` to build it all before returning (tools and tests).
+ */
+export function createPenroseEngine(dom: EngineDom, hooks: EngineHooks, campaign = CAMPAIGN, opts: { sliced?: boolean } = {}): PenroseEngine {
   const E = { dom, hooks };
   for (const install of [core, machines, levels, studies, gen9, persp, machines2, combos, gravity, gravity2, curtain, audit, decor, surfaces, terrain, cube, studies2, levels3, compose]) install(E);
   const pool = handBuilt(E), LEVELS = E.LEVELS;
-  for (const ch of campaign) for (const it of ch.levels) {
-    const d = defFor(E, pool, it);
-    if (d) LEVELS.push(Object.assign(Object.create(d), { chapter: ch.name, item: it }));
-  }
+  const items = campaign.flatMap((ch) => ch.levels.map((it) => [ch.name, it]));
+  const add = ([chapter, it]) => { const d = defFor(E, pool, it); if (d) LEVELS.push(Object.assign(Object.create(d), { chapter, item: it })); };
+  let whenReady = Promise.resolve();
+  if (opts.sliced) {
+    whenReady = (async () => {
+      let t = performance.now();
+      for (const item of items) {
+        add(item);
+        if (performance.now() - t > 8) { await yieldToPage(); t = performance.now(); } // keep each piece short
+      }
+    })();
+  } else for (const item of items) add(item);
   const st = () => E.state();
   const wrap = (i) => ((i % LEVELS.length) + LEVELS.length) % LEVELS.length;
   // a long level can give two machines one button; the one on the wall in front of you (live) takes the press
   const machineFor = (key) => { const ms = st().LVL ? st().LVL.machines.filter((m) => m.key === key) : []; return ms.find((m) => !m.live || m.live()) || ms[0]; };
   return {
+    whenReady,
     get levels() { return LEVELS.map((d) => ({ id: d.id, name: d.name, chapter: d.chapter, item: d.item })); },
     get index() { return st().lvIndex; },
     get level() { return st().LVL; },

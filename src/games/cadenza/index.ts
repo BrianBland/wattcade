@@ -6,6 +6,7 @@ import { drawCard, mediaPreview, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'cadenza',
+  accent: '#ff2bd6',
   title: 'Cadenza',
   blurb: 'Ride your music. Builds climb, drops dive into sprints; steer through the beat and keep your shield up with your legs.',
   progressLine, drawCard, mediaPreview,

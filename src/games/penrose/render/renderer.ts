@@ -46,6 +46,7 @@ export class PenroseRenderer implements GameRenderer {
   private loadSent = -1;
   private loadT = 0;
   private status: HTMLElement | null = null;
+  private levelsReady = false;
 
   mount(container: HTMLElement, ctx: { profile: Readonly<Profile>; send?: (action: unknown) => void; insets?: Insets }) {
     if (ctx.send) this.send = ctx.send as (a: PenroseAction) => void;
@@ -73,10 +74,14 @@ export class PenroseRenderer implements GameRenderer {
         this.status?.classList.remove('show');   // a level starts with nothing written over it; the pause menu shows its hint
       },
       onAutopilot: () => {},
-    });
+    }, undefined, { sliced: true });
+    void this.engine.whenReady.then(() => { this.levelsReady = true; });
     stage.insertBefore(stage.lastChild as Node, badges); // the canvas goes under the tap targets
     if (typeof ResizeObserver === 'function') { this.ro = new ResizeObserver(() => this.applyLayout()); this.ro.observe(container); }
   }
+
+  /** The level list is built between frames after mount (seconds of level planning); nothing plays until it is done. */
+  ready(): Promise<void> { return this.engine?.whenReady ?? Promise.resolve(); }
 
   setInsets(insets: Insets) { this.insets = insets; this.applyLayout(); }
 
@@ -92,7 +97,7 @@ export class PenroseRenderer implements GameRenderer {
 
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as PenroseSnapshot, e = this.engine;
-    if (!e || !s) return;
+    if (!e || !s || !this.levelsReady) return;
     const now = performance.now(), dt = this.lastT ? Math.min(0.05, (now - this.lastT) / 1000) : 1 / 60; this.lastT = now;
     if (!this.started) { this.started = true; this.lastCmd = s.cmds.at(-1)?.id ?? 0; e.load(Math.min(s.start, e.levels.length - 1)); }
     for (const c of s.cmds) if (c.id > this.lastCmd) { this.lastCmd = c.id; this.apply(c); }

@@ -6,6 +6,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'lighthouse',
+  accent: '#ffd23b',
   title: "Keeper's Light",
   blurb: 'Hold Zone 2 to keep the lamp bright, guide ships home, and watch your island town bloom. Survive the storms.',
   progressLine, drawCard,

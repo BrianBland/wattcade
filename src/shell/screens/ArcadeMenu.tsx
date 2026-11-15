@@ -1,6 +1,5 @@
 import '../chrome/chrome.css';
 import { ChromeHints } from '../chrome/ChromeHints';
-import { FrameGate } from '../warmup/frameGate';
 import { usePageVisible } from '../usePageVisible';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { GameModule, Profile } from '../../contracts';
@@ -16,35 +15,17 @@ import { useMenuNav } from '../useMenuNav';
 import { getDriveIn, subscribeDriveIn, toggleDriveIn } from '../drivein/store';
 import { EndRideConfirm, type EndRideStatus } from './EndRideConfirm';
 import { isWip } from '../../games/registry';
+import { cardClip } from '../cardClip';
 import { carouselDims, carouselSlots, orderGames, ridesLine, type GameRides } from '../arcade';
 
 const TAG_LABEL: Record<string, string> = { zone2: 'Zone 2', sprint: 'Sprint', intervals: 'Intervals', erg: 'ERG' };
-const ACCENTS: Record<string, string> = { cadenza: '#ff2bd6', hamster: '#ffb020', watershed: '#2de2a6', dungeon: '#b26bff', lighthouse: '#ffd23b', towerdefense: '#00f0ff', starfighter: '#5b8cff', fullsend: '#ff6a1a' };
-const accentFor = (id: string) => ACCENTS[id] ?? '#00f0ff';
-/** Clips recorded from the real renderers by `npm run capture:cards` (public/cards/<id>.mp4 + .webp poster). */
-const clip = (id: string, ext: 'mp4' | 'webp') => `${import.meta.env.BASE_URL}cards/${id}.${ext}`;
+const clip = cardClip;
 
-/** Fallback banner when a game has no recorded clip: its drawCard art (animated only while focused). */
-function CardArt({ game, color, live }: { game: GameModule; color: string; live: boolean }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const c = ref.current, draw = game.drawCard;
-    if (!c || !draw) return;
-    const g = c.getContext('2d'); if (!g) return;
-    let raf = 0;
-    const size = () => { const dpr = Math.min(2, globalThis.devicePixelRatio || 1); c.width = Math.max(1, Math.round(c.clientWidth * dpr)); c.height = Math.max(1, Math.round(c.clientHeight * dpr)); };
-    const t0 = performance.now();
-    const draws = new FrameGate();
-    const frame = (now: number) => {
-      if (!live || draws.ready(now)) try { g.clearRect(0, 0, c.width, c.height); draw(g, c.width, c.height, 2 + (live ? (now - t0) / 1000 : 0), color); } catch { /* art must never break the menu */ }
-      if (live) raf = requestAnimationFrame(frame);
-    };
-    size(); frame(performance.now());
-    const ro = new ResizeObserver(() => { size(); if (!live) frame(performance.now()); });
-    ro.observe(c);
-    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [game, color, live]);
-  return <canvas class="card-media" ref={ref} />;
+/** Fallback banner when a game has no recorded clip (local dev, or a new game before deploy records one): plain
+ *  colour in the game's accent. Never drawCard's vector art. */
+function CardArt({ game }: { game: GameModule }) {
+  const a = game.accent ?? '#00f0ff';
+  return <div class="card-media card-plain" style={{ background: `linear-gradient(180deg, color-mix(in srgb, ${a} 55%, #0b1020) 0 50%, color-mix(in srgb, ${a} 35%, #0b1020) 50% 100%)` }} />;
 }
 
 /** Caution tape across a card's art for a game still under construction (purely decorative; the game stays playable). */
@@ -62,7 +43,7 @@ function CardMedia({ game, color, live, selected }: { game: GameModule; color: s
   const [missing, setMissing] = useState(false);
   const vid = useRef<HTMLVideoElement>(null);
   useEffect(() => { const v = vid.current; if (!v) return; v.muted = true; if (live) v.play?.()?.catch?.(() => { /* poster stays */ }); else v.pause(); }, [live, selected]); // iOS: muted inline autoplay
-  if (missing) return <CardArt game={game} color={color} live={live} />;
+  if (missing) return <CardArt game={game} />;
   if (!selected) return <img class="card-media" src={clip(game.id, 'webp')} alt="" draggable={false} onError={() => setMissing(true)} />;
   return <video class="card-media" ref={vid} src={clip(game.id, 'mp4')} poster={clip(game.id, 'webp')} muted loop playsInline disablePictureInPicture onError={() => setMissing(true)} />;
 }
@@ -123,7 +104,7 @@ function Carousel({ games, sel, focused, profile, rides, visible, onSel, onPlay 
         const s = slots[i], active = i === sel;
         return (
           <div role="button" tabIndex={active?0:-1} aria-label={`${active?'Play':'Preview'} ${g.title}${isWip(g.id)?' (under construction)':''}`} onKeyDown={e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();focusSelected.current=true;play('uiMove');onSel((sel+(e.key==='ArrowRight'?1:-1)+games.length)%games.length);return;}if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();if(active)onPlay(g);else onSel(i);}}} class={`card gc${active ? ' active' : ''}${active && focused ? ' focused' : ''}`} key={g.id}
-            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': accentFor(g.id), ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
+            style={{ transform: `translateX(${s.x}px)`, width: `${s.w}px`, opacity: s.opacity, zIndex: s.z, '--accent': g.accent ?? '#00f0ff', ...(jumped(g.id, s.k) ? { transition: 'none' } : {}) } as Record<string, string | number>}
             onClick={() => { if (swiped.current) return; if (active) onPlay(g); else { play('uiMove'); onSel(i); } }}>
             <div class="gc-media"><CardMedia game={g} color={profile.color} selected={active} live={active && visible} />{isWip(g.id) && <CautionTape />}{!active && missingRequirement(g) && <span class="gc-warn">⚠</span>}</div>
             {active ? <ActiveInfo game={g} profile={profile} rides={rides[g.id]} /> : <div class="gc-title">{g.title}</div>}

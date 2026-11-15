@@ -120,6 +120,9 @@ export class CadenzaRenderer implements GameRenderer {
     this.city.addTo(this.scene);
   }
 
+  /** Compile the scene's shaders without blocking the page where the browser can (parallel shader compile). */
+  async prepare() { if (this.renderer) await this.renderer.compileAsync(this.scene, this.camera); }
+
   render(snapshot: unknown, _bike: Readonly<BikeState>, _input: Readonly<InputState>) {
     const s = snapshot as CadenzaSnapshot;
     if (!this.renderer || !this.post || !this.hud || !this.craft) return;

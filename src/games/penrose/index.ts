@@ -4,6 +4,7 @@ import { drawCard } from './card';
 
 export const module: GameModule = {
   id: 'penrose',
+  accent: '#c9b6ff',
   title: 'Penrose Pedals',
   blurb: 'Impossible roads and machines you drive with your legs. Turn the world until two roads meet, and the wheel rides across.',
   tags: ['zone2'],

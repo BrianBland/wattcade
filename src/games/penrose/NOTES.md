@@ -38,3 +38,4 @@ Lifts follow cadence, the tide follows average effort (FTP-relative), see-saws t
 
 Checked: all 36 levels solve on the engine autopilot inside the port (same times as the prototype), and the full
 vitest suite and `tsc` pass.
+- Loading: the renderer builds the campaign's level list between frames (`createPenroseEngine(..., { sliced: true })`, `ready()` = `whenReady`), and `campaign.ts` `PLAN_SUB` gives each generated level the sub-seed that plans, so it isn't searched for (same levels; was ~5 s of CPU). Re-take `PLAN_SUB` (the sweep prints `sub`) when gen9 changes.

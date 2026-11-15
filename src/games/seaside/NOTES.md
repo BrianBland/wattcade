@@ -29,12 +29,12 @@
 - `renderer.ts`: one WorldView, `setWorld` coast / belly / island / cavern; dioramas; `FlightSet` (coast) for re-entry
   and the wings. `cavern.ts` torch flames/lights, eels (`LEAPS`), embers, line smoke, fan + eel; `gate.ts`: glowing
   glyph decals (`runes.ts`: ragged mixed-size lines, gaps packed with small glyphs), drill rig, tunnel, the Earth.
-- `morningShots.ts` (pure): rides on `rideSpan`, fixed stop poses. #194 `flightShots.ts`: glide over the sea → cypress
+- `morningShots.ts` (pure): `rideSpan` rails; `rideCam.ts` camera + bike heading (bars follow), `Leg`s into/out of stops; title rolls 200 m. #194 `flightShots.ts`: glide over the sea → cypress
   (`CYPRESS.clear`) → `rideCam(LAND_S)` = Sunset start; Sunset ends at `LIFT_S` (the hard right). #195 `endingShots.ts`:
   cliff path off the bend → over the road at `CLIFF.passS` (Lou's car under) → angel climb `SUNWARD`; `ending.ts` set.
 - `worldView.ts`: eye / atmos / calm / roll / post (+ `shimmer` heat haze) per frame; streaming + dissolves on a wall
-  clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `shopView.ts` dioramas (+ seeds); `perf.ts` governor.
+  clock; bar pitch from the view direction. `fishingRig.ts` shared rod; `traffic.ts`/`cars.ts`, `birds.ts`; HUD kit `pixelHud.ts` (bitmap font, pixel panels); `shopView.ts` dioramas (+ seeds); `perf.ts` governor.
 - Sound (#197, `docs/seaside/AUDIO.md`): pure `soundMix.ts` (beds, voices, `SoundTicker`, `musicFor`); `sound.ts`, `music.ts` play it.
 ## Verification (no media committed): typecheck, test, `npm run sim -- --game seaside --script z2 --minutes 150`
-- `scripts/seaside-{morning,belly,island,cavern,flight,ending,shop,sound}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`.
-  Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430 (fill-bound walls), hall ≈ 290. iPad fps unmeasured. Blue strip on the inland shoulder (predates #189).
+- `scripts/seaside-{morning,belly,island,cavern,flight,ending,shop,sound}-review.ts`, `seaside-{bench,hitch,pops}.ts`, `/dev/seaside-play.html`. Frames are
+  fill-bound (view capped at 1.5 px/CSS px). Swiftshader ms/frame: coast ≈ 250, belly ≈ 100, island 110–1100, cave ≈ 430, hall ≈ 290. iPad fps unmeasured.

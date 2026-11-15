@@ -11,7 +11,7 @@ const TIMES = (process.env.BENCH_T ?? '2,6,9.5,13,17.7,21.2,23').split(',').map(
 const server = await createServer({ server: { port: 5294, strictPort: false, hmr: false, watch: null }, logLevel: 'error' });
 await server.listen();
 const base = server.resolvedUrls!.local[0].replace(/\/$/, '');
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const finish = (w: any) => { const c = w.__view.stage.renderer.getContext(); c.readPixels(0, 0, 1, 1, c.RGBA, c.UNSIGNED_BYTE, new Uint8Array(4)); }; // forces the GPU work to finish
 try {
   for (const v of variants) {
@@ -37,6 +37,12 @@ try {
       await page.screenshot({ path: `${dir}/t${t}.png`, timeout: 180_000 });
     }
     const lod = await page.evaluate(() => (window as any).__view.terrain.stats);
+    const parts = await page.evaluate(() => { // triangles on screen by part (role : voxel size)
+      const out: Record<string, number> = {};
+      (window as any).__view.terrain.root.traverse((o: any) => { if (!o.isMesh || !o.visible) return; const k = `${o.userData.role}:${o.userData.voxel}`; out[k] = (out[k] ?? 0) + (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+      return Object.entries(out).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${(n / 1e3).toFixed(0)}k`).join(' · ');
+    });
+    console.log(`  parts: ${parts}`);
     console.log(`  lod: ${lod.leaves} leaves in ${lod.clusters} clusters, ${lod.built} tiles built in ${lod.buildMs.toFixed(0)} ms of worker time, ${lod.workers} workers`);
     console.log(`${label.padEnd(28)} build ${String(ready.buildMs).padStart(6)} ms · first frame ${firstMs} ms · faces ${(lod.faces / 1e6).toFixed(2)} M · max tris ${(tris / 1e6).toFixed(2)} M · calls ${calls} · render avg ${(rows.reduce((a, b) => a + b, 0) / rows.length).toFixed(0)} ms (${rows.map((x) => x.toFixed(0)).join(' ')})`);
     await page.close();

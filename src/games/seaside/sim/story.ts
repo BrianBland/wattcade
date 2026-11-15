@@ -28,7 +28,7 @@ const at = (v: number) => ({ m: v }), effort = { effortS: true as const }, timed
 const RAW: Raw[] = [
   // ---------- Morning ----------
   { id: 'title', ch: 0, kind: 'cutscene', title: 'Title', min: 1, e: [[1, 45]], len: timed, tr: sim(0), look: 'morning', dream: 0.1 },
-  { id: 'highway', ch: 0, kind: 'ride', title: 'Highway 1', min: 7, e: [[3, 50], [4, 63]], len: at(8), tr: swell(0.5, 1.5, 3),
+  { id: 'highway', ch: 0, kind: 'ride', title: 'Highway 1', min: 7, e: [[3, 50], [4, 63]], len: at(7.6), tr: swell(0.5, 1.5, 3),
     say: ['Good day for it.', "Wind's out of the north. Figures.", 'Big bird.'], look: 'morning', dream: 0.12 },
   { id: 'turnout1', fish: 'turnout', ch: 0, kind: 'fish', title: 'Turnout 1', min: 6, e: [[2, 55], [0.13, 135], [1.87, 58], [0.13, 135], [1.87, 58]], len: effort, tr: res(20), sizes: [0.1, 0.15],
     say: ['Lunch, maybe.', 'That counts. That definitely counts.'], look: 'morning', dream: 0.15 },

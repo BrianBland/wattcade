@@ -221,11 +221,12 @@ describe('levels meta', () => {
     expect(saved.endlessBest).toBe(snap(s).wave - 1);
     expect(saved.veteran).toBe(true); expect(saved.runs).toBe(5);
   });
-  it('first run skips the garage; intro shows play controls', () => {
+  it('the first visit opens on the ride select; the intro card shows the play controls that follow it', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
-    expect(s.sim.hud!().controls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
+    expect(s.sim.inMenu!()).toBe(true);
+    expect(s.sim.hud!().playControls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
     s.step(1);
-    expect(snap(s).phase).toBe('run');
+    expect(snap(s).phase).toBe('garage');
   });
 });
 

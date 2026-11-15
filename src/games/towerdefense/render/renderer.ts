@@ -8,7 +8,7 @@ import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
-import { TdHud, type Hit } from './panels';
+import { NARROW_W, TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
 import { Battlefield } from './battlefield';
@@ -22,7 +22,7 @@ import { ALARM_EVERY_S, FALL_S, HEAD_DELAY_S, damageState, dropDone, pipFlash } 
 import { prefetchLevel } from './levelPool';
 import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { knownLevel } from '../sim/levelCache';
-import { LevelArt } from './levelArt';
+import { LevelArt, type ArtWish } from './levelArt';
 import { levelKey } from './ground/bake';
 
 const TAU = Math.PI * 2;
@@ -209,9 +209,13 @@ export class TdRenderer implements GameRenderer {
     if (primary) this.battlefield.prepare(primary, this.viewFor(primary), this.W, this.H);
     const centre = gv.page === 'campaign' ? gv.levelSel : gv.campaignSel;
     const order = [...gv.levels.keys()].sort((a, b) => Math.abs(a - centre) - Math.abs(b - centre)).map(tile);
-    const wish = [primary, next, campaign, quick, endless, ...order].filter((l): l is TdLevel => !!l);
-    const key = `${turned}|${wish.map(levelKey).join(',')}`;
-    if (key !== this.artWish) { this.artWish = key; this.art?.want(wish, turned); }
+    // the ride-select cards get card-sized pictures (landscape-shaped on a narrow screen's one-column cards)
+    const cardTurned = turned || this.W < NARROW_W;
+    const cards = gv.page === 'modes' ? [campaign, quick, endless].filter((l): l is TdLevel => !!l).map((level) => ({ level, turned: cardTurned, big: true })) : [];
+    const tiles = [primary, next, campaign, quick, endless, ...order].filter((l): l is TdLevel => !!l).map((level) => ({ level, turned }));
+    const wish: ArtWish[] = [...cards, ...tiles];
+    const key = wish.map((w) => `${levelKey(w.level)}${w.turned ? 'L' : 'P'}${w.big ? 'B' : ''}`).join(',');
+    if (key !== this.artWish) { this.artWish = key; this.art?.want(wish); }
   }
 
   // ---------- coordinates ----------
@@ -513,7 +517,7 @@ export class TdRenderer implements GameRenderer {
     if (s.nextMaps) { const k = s.nextMaps.map(specKey).join(','); if (k !== this.prefetched) { this.prefetched = k; for (const m of s.nextMaps) void prefetchLevel(m); } }
     if (!this.L) this.relayout();
     if (s.garage) this.readyMenu(s);
-    else if (this.artWish) { this.artWish = ''; this.art?.want([], this.view.turned); } // no menu art baking during play
+    else if (this.artWish) { this.artWish = ''; this.art?.want([]); } // no menu art baking during play
     if (!this.bg) this.bg = this.buildBg();
     // A new level waits (sim `loading`) until its real ground is drawable; meanwhile the menu frame stays up under
     // the loading card. Usually the menu already baked it, and the level appears at once.

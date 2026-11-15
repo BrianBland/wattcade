@@ -5,7 +5,7 @@ import { CAMPAIGN } from '../sim/campaign';
 import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { generateLevel } from '../sim/generator';
 import { levelImage, levelSelectHtml, modesHtml } from '../render/levelSelect';
-import { loadingHtml, loadingStage } from '../render/panels';
+import { loadingHtml, loadingStage, swipeStep } from '../render/panels';
 import type { GarageView, TdSnapshot } from '../sim/types';
 
 const snap = (s: ReturnType<typeof createGameSession>) => s.sim.snapshot() as TdSnapshot;
@@ -60,7 +60,7 @@ describe('level select', () => {
     const g: GarageView = snap(s).garage!;
     const art = (l: { id: string }, preview: boolean) => l.id === BAKED_LEVELS[specKey(CAMPAIGN[3])].id ? `blob:${preview ? 'big' : 'tile'}` : null;
     const html = levelSelectHtml(g, art);
-    expect(html.match(/data-command="levelTile"/g)).toHaveLength(CAMPAIGN.length);
+    expect(html.match(/class="td-tile[^"]*" data-command="levelTile"/g)).toHaveLength(CAMPAIGN.length);
     expect(html).toContain(CAMPAIGN[3].name);
     expect(html).toContain(`${CAMPAIGN[3].minutes} min`);
     expect(html.match(/class="td-tile[^"]*locked/g)!.length).toBe(CAMPAIGN.length - 4);
@@ -117,5 +117,33 @@ describe('level loading', () => {
     expect(html).toContain(CAMPAIGN[2].name); expect(html).toContain('Campaign');
     expect(html).toContain('src="blob:big"'); expect(html).toContain('role="progressbar"');
     expect(loadingStage(0)).not.toBe(loadingStage(0.5)); expect(loadingStage(1)).toBe('Waking the hive');
+  });
+});
+
+describe('touch steppers', () => {
+  it('a card\'s own ◀ ▶ (garageStep) steps the campaign level and the Quick Ride length without starting a ride', () => {
+    const s = menu(3);
+    const quick = () => snap(s).garage!.rows[1].name;
+    expect(quick()).toContain('20 min');
+    s.sim.receive!({ type: 'garageStep', row: 1, step: 1 }); s.step(1);
+    expect(snap(s).phase).toBe('garage'); expect(snap(s).garage!.sel).toBe(1); expect(quick()).not.toContain('20 min');
+    s.sim.receive!({ type: 'garageStep', row: 1, step: -1 }); s.step(1);
+    expect(quick()).toContain('20 min');
+    const before = snap(s).garage!.campaignSel;
+    s.sim.receive!({ type: 'garageStep', row: 0, step: -1 }); s.step(1);
+    expect(snap(s).garage!.campaignSel).toBe(before - 1); expect(snap(s).phase).toBe('garage');
+    s.sim.receive!({ type: 'garageStep', row: 0, step: 7 }); s.step(1); // malformed: ignored
+    expect(snap(s).garage!.campaignSel).toBe(before - 1);
+  });
+  it('cards and the level picture carry ◀ ▶ buttons; a sideways swipe is a step, a scroll is not', () => {
+    const s = menu(3);
+    const g = snap(s).garage!;
+    const modes = modesHtml(g);
+    expect(modes.match(/data-command="garageStep"/g)).toHaveLength(4); // Campaign and Quick Ride cards
+    const grid = levelSelectHtml({ ...g, page: 'campaign', levelSel: 0 });
+    expect(grid).toContain('data-swipe="levelTile"');
+    expect(grid.match(/class="td-step/g)).toHaveLength(1); // the first level has no previous
+    expect(swipeStep(-80, 10)).toBe(1); expect(swipeStep(80, -5)).toBe(-1);
+    expect(swipeStep(30, 0)).toBe(0); expect(swipeStep(60, 80)).toBe(0);
   });
 });

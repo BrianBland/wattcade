@@ -38,7 +38,17 @@ const facts = (t: LevelTile) => `${t.minutes} min · ${t.waves} waves · ${t.bos
  * Ride and Endless maps once the background workers have built them (placeholders until then); `art` finds pictures.
  */
 export function modesHtml(gv: GarageView, maps: { quick?: TdLevel | null; endless?: TdLevel | null } = {}, art?: ArtLookup): string {
-  const card = (r: GarageRow, i: number, art: string) => `<button class="btn td-card ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}">${art}<span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`;
+  // Campaign (level) and Quick Ride (length) cards carry their own ◀ ▶ over the picture, and swipe the same way.
+  const steps = (r: GarageRow, i: number) => {
+    const what = r.kind === 'campaign' ? 'level' : r.kind === 'quick' ? 'length' : '';
+    return what ? `<button class="td-step prev" data-command="garageStep" data-index="${i}" data-step="-1" aria-label="Previous ${what}">‹</button>`
+      + `<button class="td-step next" data-command="garageStep" data-index="${i}" data-step="1" aria-label="Next ${what}">›</button>` : '';
+  };
+  const card = (r: GarageRow, i: number, art: string) => {
+    const stepper = steps(r, i);
+    return `<div class="btn td-card ${i === gv.sel ? 'selected' : ''}" role="button" tabindex="0" data-command="garageRow" data-index="${i}"${stepper ? ` data-swipe="garageStep"` : ''}>`
+      + `<div class="td-card-pic">${art}${stepper}</div><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></div>`;
+  };
   const next = gv.levels[gv.campaignSel];
   const cards = gv.rows.map((r, i) => r.kind === 'campaign' ? card(r, i, next ? tilePreview(next, art, true) : '')
     : r.kind === 'quick' ? card(r, i, maps.quick ? levelImage(maps.quick, art, true) : '<div class="td-card-art td-quick">?</div>')
@@ -56,7 +66,12 @@ export function levelSelectHtml(gv: GarageView, art?: ArtLookup): string {
   const grid = grounds.map((row) => `<div class="td-ground"><span>${esc(row[0].name.split(' ')[0])}</span>${row.map((t) =>
     `<button class="td-tile ${t.index === gv.levelSel ? 'selected' : ''} ${t.locked ? 'locked' : ''} ${t.index === gv.open ? 'next' : ''}" data-command="levelTile" data-index="${t.index}" aria-label="${esc(t.name)}${t.locked ? ' (locked)' : ''}">${tilePreview(t, art)}<b>${esc(t.name.split(' ').slice(1).join(' '))}</b><i>${t.locked ? '🔒' : t.stars ? starText(t.stars) : 'new'}</i></button>`).join('')}</div>`).join('');
   const status = sel.locked ? `Locked · clear ${gv.levels[sel.index - 1]?.name ?? 'the level before'} first` : sel.stars ? `Best ${starText(sel.stars)} · ride again for more stars` : 'Not cleared yet';
-  const preview = `<div class="td-preview">${tilePreview(sel, art, true)}<div class="td-preview-text"><h3>${esc(sel.name)}</h3><p>${esc(facts(sel))}</p><p>${esc(status)}</p>`
+  const step = (d: -1 | 1) => {
+    const i = sel.index + d;
+    return i < 0 || i >= gv.levels.length ? '' : `<button class="td-step ${d < 0 ? 'prev' : 'next'}" data-command="levelTile" data-index="${i}" aria-label="${d < 0 ? 'Previous' : 'Next'} level">${d < 0 ? '‹' : '›'}</button>`;
+  };
+  // ◀ ▶ over the big picture (and a swipe on it) step the level, like the controller's ◀ ▶
+  const preview = `<div class="td-preview"><div class="td-preview-pic" data-swipe="levelTile" data-index="${sel.index}" data-max="${gv.levels.length - 1}">${tilePreview(sel, art, true)}${step(-1)}${step(1)}</div><div class="td-preview-text"><h3>${esc(sel.name)}</h3><p>${esc(facts(sel))}</p><p>${esc(status)}</p>`
     + `<div class="td-preview-actions"><button class="btn" data-command="levelStart" ${sel.locked ? 'disabled' : ''}>A · Ride</button><button class="btn" data-command="levelBack">B · Back</button></div></div></div>`;
   return `<div class="td-levels">${preview}<div class="td-grid">${grid}</div></div>`;
 }

@@ -9,6 +9,8 @@ import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } fro
 import type { TdLevel } from '../sim/level';
 
 export interface Hit extends Box { action: unknown }
+/** Below this width the HUD goes narrow: one column of ride-select cards, with landscape-shaped pictures. */
+export const NARROW_W = 560;
 /** The loading card's live parts: how far the level's art is (0..1) and its picture. */
 export interface LoadingView { progress: number }
 /** A level's picture for one orientation (`preview`: the big one when it exists). */
@@ -86,7 +88,17 @@ const CSS = `
 @media (prefers-reduced-motion: reduce) { .td-loading-art .td-map, .td-loading-art::after, .td-loading-bar > i::after, .td-map-wait { animation:none; } }
 .td-cards { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; flex-shrink:0; }
 .td-hud[data-narrow="true"] .td-cards { grid-template-columns:1fr; }
-.td-menu .td-card { flex-direction:column; justify-content:flex-start; gap:8px; padding:8px; }
+.td-menu .td-card { flex-direction:column; justify-content:flex-start; gap:8px; padding:8px; cursor:pointer; }
+.td-card-pic, .td-preview-pic { position:relative; touch-action:pan-y; }
+.td-card-pic { width:100%; }
+.td-card-pic > .td-map, .td-card-pic > .td-card-art { width:100%; }
+.td-hud[data-narrow="true"] .td-card-pic > .td-map, .td-hud[data-narrow="true"] .td-card-pic > .td-card-art { aspect-ratio:112 / 80; }
+.td-card[data-swipe] { touch-action:pan-y; }
+.td-step { position:absolute; top:50%; width:44px; height:44px; margin-top:-22px; display:grid; place-items:center; padding:0 0 3px; border-radius:50%; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 30px/1 system-ui, sans-serif; cursor:pointer; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); box-shadow:0 2px 8px rgba(0,0,0,.4); pointer-events:auto; }
+.td-step.prev { left:6px; } .td-step.next { right:6px; }
+.td-step:active { background:var(--neon); color:#05101a; }
+.td-preview-pic { justify-self:center; max-width:100%; }
+.td-hud[data-wide="true"] .td-preview-pic { width:100%; }
 .td-card .td-map, .td-card-art { width:100%; aspect-ratio:var(--map-aspect); height:auto; }
 .td-card-art { display:grid; place-items:center; border-radius:6px; background:#1b1d26; font-size:44px; font-weight:800; color:var(--dim); }
 .td-endless { color:var(--pink); } .td-quick { color:var(--neon); }
@@ -95,7 +107,7 @@ const CSS = `
 .td-hud[data-wide="true"] .td-preview { order:2; position:sticky; top:0; }
 .td-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
 .td-hud[data-wide="true"] .td-preview { grid-template-columns:1fr; }
-.td-preview .td-map { aspect-ratio:var(--map-aspect); width:auto; max-width:100%; height:28vh; justify-self:center; }
+.td-preview .td-map { aspect-ratio:var(--map-aspect); width:auto; max-width:100%; height:28vh; }
 .td-hud[data-wide="true"] .td-preview .td-map { width:100%; height:auto; }
 .td-preview h3 { margin:0 0 4px; color:var(--neon); font-size:20px; }
 .td-preview-text p { font-size:13px; margin:0 0 4px; }
@@ -159,16 +171,46 @@ export class TdHud {
   constructor(private send?: (a: unknown) => void) {
     this.root.className = 'td-hud';
     const style = document.createElement('style'); style.textContent = CSS; this.root.append(style);
+    this.root.addEventListener('pointerdown', this.onSwipeStart);
+    this.root.addEventListener('pointerup', this.onSwipeEnd);
+    this.root.addEventListener('pointercancel', () => { this.swipe = null; });
+    this.root.addEventListener('keydown', e => { // the cards are role=button divs (they hold ◀ ▶ buttons)
+      const el = e.target as HTMLElement;
+      if ((e.key === 'Enter' || e.key === ' ') && el.getAttribute?.('role') === 'button') { e.preventDefault(); el.click(); }
+    });
     this.root.addEventListener('click', e => {
-      const button = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-command]');
-      if (!button || button.disabled) return;
+      if (this.swiped) { this.swiped = false; e.preventDefault(); e.stopPropagation(); return; } // the click that ends a swipe
+      const button = (e.target as HTMLElement).closest<HTMLElement>('[data-command]');
+      if (!button || (button as HTMLButtonElement).disabled) return;
       const index = Number(button.dataset.index);
       if (button.dataset.command === 'garageRow') this.send?.({ type: 'garageRow', row: index });
+      if (button.dataset.command === 'garageStep') this.send?.({ type: 'garageStep', row: index, step: Number(button.dataset.step) });
       if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
       if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });
       if (button.dataset.command === 'levelBack') this.send?.({ type: 'levelBack' });
     });
   }
+
+  private swipe: { id: number; x: number; y: number; el: HTMLElement } | null = null;
+  private swiped = false;
+  /** A sideways swipe on a card or the level picture steps it (left = next), like ◀ ▶. */
+  private onSwipeStart = (e: PointerEvent) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-swipe]');
+    this.swipe = el && !(e.target as HTMLElement).closest('.td-step') ? { id: e.pointerId, x: e.clientX, y: e.clientY, el } : null;
+  };
+  private onSwipeEnd = (e: PointerEvent) => {
+    const sw = this.swipe; this.swipe = null;
+    if (!sw || sw.id !== e.pointerId) return;
+    const s = swipeStep(e.clientX - sw.x, e.clientY - sw.y);
+    if (!s) return;
+    this.swiped = true; setTimeout(() => { this.swiped = false; }, 400);
+    const index = Number(sw.el.dataset.index);
+    if (sw.el.dataset.swipe === 'garageStep') this.send?.({ type: 'garageStep', row: index, step: s });
+    else if (sw.el.dataset.swipe === 'levelTile') {
+      const to = index + s;
+      if (to >= 0 && to <= Number(sw.el.dataset.max)) this.send?.({ type: 'levelTile', index: to });
+    }
+  };
 
   private box(className: string) {
     const el = document.createElement('div'); el.className = `td-box ${className}`; this.root.append(el); return el;
@@ -185,7 +227,7 @@ export class TdHud {
     el.scrollTop = scroll;
   }
   resize(L: TdLayout, W: number) {
-    this.root.dataset.narrow = String(W < 560);
+    this.root.dataset.narrow = String(W < NARROW_W);
     this.root.dataset.wide = String(L.field.turned);
     this.root.style.setProperty('--map-aspect', L.field.turned ? '112 / 80' : '80 / 112');
     this.root.dataset.column = String(L.column);
@@ -197,6 +239,7 @@ export class TdHud {
   render(s: TdSnapshot, L: TdLayout, W: number, loading: LoadingView | null = null) {
     this.resize(L, W);
     const turned = L.field.turned, art: ArtLookup = (l, preview) => this.art?.(l, turned, preview) ?? null;
+    const cardTurned = turned || W < NARROW_W, cardArt: ArtLookup = (l, preview) => this.art?.(l, cardTurned, preview) ?? null;
     this.loadingCard.hidden = !loading;
     if (loading) {
       this.html(this.loadingCard, loadingHtml(s, art));
@@ -249,12 +292,17 @@ export class TdHud {
         ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, art)}`
         : results
           ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
-          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) }, art)}`;
+          : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) }, cardArt)}`;
       this.html(this.menu, head + body);
       const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
       if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
     }
   }
+}
+
+/** A finished drag as a step: a mostly sideways move of 40+ px; left = next (+1), right = previous (-1), else 0. */
+export function swipeStep(dx: number, dy: number): -1 | 0 | 1 {
+  return Math.abs(dx) >= 40 && Math.abs(dx) > 1.5 * Math.abs(dy) ? (dx < 0 ? 1 : -1) : 0;
 }
 
 /** What the loading card says about where the work is. */

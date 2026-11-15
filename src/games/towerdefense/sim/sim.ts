@@ -1093,15 +1093,19 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (menuPage === 'campaign' && !result) { levelSelectUpdate(dt, inp); return; }
     const p = (b: Button) => inp.pressed.has(b);
     let rows = garageRows();
-    let act = false;
+    let act = false, touchStep = 0;
     for (const a of pending.splice(0)) if (a.type === 'garageRow' && typeof a.row === 'number' && a.row >= 0 && a.row < rows.length) { garageSel = a.row; act = true; }
+      // a card's own ◀ ▶ (or a swipe on it): select that row and step it, without starting anything
+      else if (a.type === 'garageStep' && Number.isInteger(a.row) && (a.row as number) >= 0 && (a.row as number) < rows.length && (a.step === 1 || a.step === -1)) {
+        garageSel = a.row as number; touchStep = a.step as number;
+      }
       else if (a.type === 'levelTile' && !result && Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < CAMPAIGN.length) {
         menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return;
       }
     garageSel = Math.min(garageSel, rows.length - 1);
     if (p('up')) { garageSel = (garageSel + rows.length - 1) % rows.length; garageT = 0; cue('select'); }
     if (p('down')) { garageSel = (garageSel + 1) % rows.length; garageT = 0; cue('select'); }
-    const row = rows[garageSel], step = p('left') ? -1 : p('right') ? 1 : 0;
+    const row = rows[garageSel], step = touchStep || (p('left') ? -1 : p('right') ? 1 : 0);
     if (step) {
       garageT = 0;
       if (row.kind === 'campaign') { campaignSel = clamp(campaignSel + step, 0, campaignOpen(save.campaign)); cue('select'); }
@@ -1439,7 +1443,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const pl = opts?.play;
       if (pl) startLevel('campaign' in pl ? CAMPAIGN[clamp(pl.campaign, 0, CAMPAIGN.length - 1)] : quickRide(pl.quick.seed, pl.quick.minutes));
       else if (opts?.skipGarage || autopilot) startRun();
-      else if (save.runs === 0) startLevel(CAMPAIGN[0]); // a new rider starts the campaign
     }
     if (phase === 'run' && loading) { // waiting for the renderer: the level holds still, the trainer stays neutral
       loadingS += dt; pending.length = 0; discardEdges = true; lastRevs = ctx.bike().crankRevs;
@@ -1564,7 +1567,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     update,
     isOver: () => false,
     menuActions: () => phase === 'run' ? [{ id: 'garage', label: play ? 'Quit level · back to the level select' : 'End the run · back to the ride select', action: { type: 'bail' } }] : [],
-    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
+    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
       if (a?.type === 'padOrder') { padsTurned = (a as { turned?: unknown }).turned === true; return; }
@@ -1584,7 +1587,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
-      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0))) return {
+      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot))) return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start', shortLabel: 'Buy' }, { button: 'b', label: 'Start run', shortLabel: 'Start' }, ...gearHints()],
         playControls: playControls(),

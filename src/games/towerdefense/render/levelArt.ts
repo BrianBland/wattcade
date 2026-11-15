@@ -43,13 +43,16 @@ export function drawStill(g: CanvasRenderingContext2D, src: Baked, level: TdLeve
   machinery?.still(g, geo, b.x, b.y, k, turned ? Math.PI / 2 : 0);
 }
 
+/** One picture to make: a level in one orientation, tile-sized or card-sized (`big`). */
+export interface ArtWish { level: TdLevel; turned: boolean; big?: boolean }
+
 const toUrl = (c: HTMLCanvasElement) => new Promise<string | null>((resolve) => {
   if (typeof c.toBlob !== 'function') { resolve(c.toDataURL()); return; }
   c.toBlob((blob) => resolve(blob ? URL.createObjectURL(blob) : null), 'image/webp', 0.86);
 });
 
 export class LevelArt {
-  private queue: Array<{ level: TdLevel; turned: boolean }> = [];
+  private queue: ArtWish[] = [];
   private busy = false;
   private stopped = false;
   constructor(private base: string, private machinery: Machinery, private onChange: () => void) {}
@@ -58,10 +61,17 @@ export class LevelArt {
   url(level: TdLevel, turned: boolean, preview = false): string | null {
     return (preview && URLS.get(artKey(level, turned, 'preview'))) || URLS.get(artKey(level, turned, 'tile')) || null;
   }
-  /** Tiles to bake, most wanted first (replaces the previous wish list; the tile under way finishes). */
-  want(levels: readonly TdLevel[], turned: boolean) {
+  /**
+   * Pictures to bake, most wanted first (replaces the previous wish list; the one under way finishes). `big` bakes a
+   * card-sized picture (PREVIEW_K) into the preview slot, unless a screen bake already gave one.
+   */
+  want(wishes: readonly ArtWish[]) {
     const seen = new Set<string>();
-    this.queue = levels.filter((l) => { const k = artKey(l, turned, 'tile'); if (URLS.has(k) || seen.has(k)) return false; seen.add(k); return true; }).map((level) => ({ level, turned }));
+    this.queue = wishes.filter((w) => {
+      const k = artKey(w.level, w.turned, w.big ? 'preview' : 'tile');
+      if (URLS.has(k) || seen.has(k)) return false;
+      seen.add(k); return true;
+    });
     void this.pump();
   }
   /** A finished screen bake of `level`: cut its big preview (once per level and orientation). */
@@ -86,11 +96,11 @@ export class LevelArt {
     try {
       await this.machinery.loaded.catch(() => {});
       for (let job = this.queue.shift(); job && !this.stopped; job = this.queue.shift()) {
-        const key = artKey(job.level, job.turned, 'tile');
+        const key = artKey(job.level, job.turned, job.big ? 'preview' : 'tile'), k = job.big ? PREVIEW_K : TILE_K;
         if (URLS.has(key)) continue;
-        const b = await bakeGround(this.base, job.level, { x0: 0, y0: 0, w: FIELD_W, h: FIELD_H }, TILE_K, () => this.stopped).catch(() => null);
-        if (!b) continue;
-        const url = await this.encode(b, job.level, job.turned, TILE_K);
+        const b = await bakeGround(this.base, job.level, { x0: 0, y0: 0, w: FIELD_W, h: FIELD_H }, k, () => this.stopped).catch(() => null);
+        if (!b || URLS.has(key)) continue;
+        const url = await this.encode(b, job.level, job.turned, k);
         if (url) { URLS.set(key, url); this.onChange(); }
       }
     } finally { this.busy = false; }

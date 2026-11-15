@@ -17,6 +17,7 @@ import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
 import { adoptWarm, disposeWarm, takeWarmGame } from '../game/prewarm';
+import { rememberInsets } from '../game/gameInsets';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
@@ -116,7 +117,8 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     const warmJob = takeWarmGame(game.id, profile.id);
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
-    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(readInsets()); };
+    const remember = (i: Insets) => { const el = mount.current; if (el) rememberInsets(game.id, el.clientWidth, el.clientHeight, hasConnectedController(), i); return i; };
+    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(remember(readInsets())); };
     window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
@@ -165,7 +167,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           if (disposed) { renderer.unmount(); return; }
           renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
         }
-        renderer.setInsets?.(readInsets());
+        renderer.setInsets?.(remember(readInsets()));
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);

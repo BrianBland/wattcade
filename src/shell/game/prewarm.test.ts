@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { GameModule, Profile } from '../../contracts';
 import { defaultProfile } from '../../progression';
 
-vi.mock('../services', () => ({ input: { state: () => ({ held: new Set(), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0 }) } }));
+vi.mock('../services', () => ({ hasConnectedController: () => false, input: { state: () => ({ held: new Set(), pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0 }) } }));
 import { adoptWarm, cancelPrewarm, prewarmGame, takeWarmGame } from './prewarm';
 
 function fakeGame(id = 'fake') {

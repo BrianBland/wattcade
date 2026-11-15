@@ -4,7 +4,8 @@
 import type { GameModule, GameRenderer, Insets, MediaTimeline, MusicFx, Profile } from '../../contracts';
 import { readHudInsets } from '../hud/insets';
 import { createGameSession, NullInput } from '../../core';
-import { input } from '../services';
+import { hasConnectedController, input } from '../services';
+import { rememberedInsets } from './gameInsets';
 
 export interface WarmGame {
   gameId: string; profileId: string;
@@ -47,7 +48,8 @@ export function prewarmGame(game: GameModule, profile: Profile, media?: { timeli
       const attach = (s: (a: unknown) => void, fx?: (fx: MusicFx) => void) => { send = s; fxOut = fx; for (const a of queued.splice(0)) s(a); };
       // each step gets frames of its own, so the overworld keeps moving between them
       await nextFrame();
-      const insets = lobbyInsets(); // the HUD the game will have: a game sized for it doesn't re-prepare after the portal
+      // lay it out for the HUD it will have (what it had last time here, else the overworld's), so it needn't redo layout-sized work after the portal
+      const insets = rememberedInsets(game.id, host.clientWidth, host.clientHeight, hasConnectedController()) ?? lobbyInsets();
       renderer.mount(host, { profile, send: (a) => { if (send) send(a); else if (queued.length < 200) queued.push(a); }, insets, musicFx: (fx) => fxOut?.(fx), hudControls: true });
       renderer.setInsets?.(insets);
       await nextFrame();

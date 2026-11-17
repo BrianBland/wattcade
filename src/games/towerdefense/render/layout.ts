@@ -84,7 +84,8 @@ export function layout(W: number, H: number, inset: number | Insets, hudControls
   const brood = { x: area.x + (area.w - bw) / 2, y: area.y + (area.h - bh) / 2, w: bw, h: bh };
   const ww = Math.min(area.w, 480);
   const workshop = { x: area.x + (area.w - ww) / 2, y: area.y, w: ww, h: area.h };
-  const gw = Math.min(W - 2 * pad, 620 * u);
+  // landscape menus spread wider, so the campaign grid and its preview sit side by side
+  const gw = Math.min(W - 2 * pad, (field.turned ? 980 : 620) * u);
   const objectiveH = current.y - status.y - status.h - 2 * pad;
   const objective = column && objectiveH >= 240
     ? { x: status.x, y: status.y + status.h + pad, w: status.w, h: objectiveH }

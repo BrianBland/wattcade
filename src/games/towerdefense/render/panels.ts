@@ -1,4 +1,4 @@
-// DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+// DOM foreground: the shell's font with the game's own riveted-plate theme (theme.ts). The map stays Canvas 2D.
 import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
@@ -7,6 +7,7 @@ import type { Box, TdLayout } from './layout';
 import { constructionStatus, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
+import { THEME_CSS } from './theme';
 
 export interface Hit extends Box { action: unknown }
 /** Below this width the HUD goes narrow: one column of ride-select cards, with landscape-shaped pictures. */
@@ -99,32 +100,37 @@ const CSS = `
 .td-step:active { background:var(--neon); color:#05101a; }
 .td-reroll { position:absolute; top:6px; right:6px; min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 13px/1 inherit; cursor:pointer; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
 .td-reroll:active { background:var(--neon); color:#05101a; }
-.td-preview-pic { justify-self:center; max-width:100%; }
-.td-hud[data-wide="true"] .td-preview-pic { width:100%; }
 .td-card .td-map, .td-card-art { width:100%; aspect-ratio:var(--map-aspect); height:auto; }
 .td-card-art { display:grid; place-items:center; border-radius:6px; background:#1b1d26; font-size:44px; font-weight:800; color:var(--dim); }
 .td-endless { color:var(--pink); } .td-quick { color:var(--neon); }
-.td-levels { display:grid; grid-template-columns:1fr; gap:10px; min-height:0; }
-.td-hud[data-wide="true"] .td-levels { grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); align-items:start; }
-.td-hud[data-wide="true"] .td-preview { order:2; position:sticky; top:0; }
-.td-preview { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
-.td-hud[data-wide="true"] .td-preview { grid-template-columns:1fr; }
-.td-preview .td-map { aspect-ratio:var(--map-aspect); width:auto; max-width:100%; height:28vh; }
-.td-hud[data-wide="true"] .td-preview .td-map { width:100%; height:auto; }
+/* Campaign page: the selected level's picture and facts on top, the ground × level grid filling the rest. The tiles
+   take the largest size that fits the grid's box (container units), so neither axis is left mostly empty. */
+.td-menu.td-campaign { overflow:auto; }
+.td-levels { flex:1 1 auto; min-height:420px; display:flex; flex-direction:column; gap:12px; container-type:size; }
+.td-preview { flex:0 0 auto; height:clamp(150px, 36cqh, 460px); display:grid; grid-template-columns:auto minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:14px; align-items:stretch; }
+.td-preview-pic { height:100%; min-height:0; aspect-ratio:var(--map-aspect); max-width:58cqw; justify-self:start; overflow:hidden; border-radius:3px; }
+.td-preview-pic > .td-map { width:100%; height:100%; }
 .td-preview h3 { margin:0 0 4px; color:var(--neon); font-size:20px; }
+.td-preview-text { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; }
 .td-preview-text p { font-size:13px; margin:0 0 4px; }
-.td-preview-actions { display:flex; gap:8px; margin-top:8px; }
-.td-preview-actions .btn { width:auto; flex:1; justify-content:center; }
-.td-grid { display:flex; flex-direction:column; gap:6px; }
-.td-ground { display:grid; grid-template-columns:84px repeat(5, minmax(0,64px)); gap:6px; align-items:center; justify-content:start; }
-.td-hud[data-narrow="true"] .td-ground { grid-template-columns:62px repeat(5, minmax(0,1fr)); gap:4px; }
+.td-preview-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto; padding-top:8px; }
+.td-menu .td-preview-actions .btn { width:auto; flex:0 1 150px; min-width:108px; justify-content:center; }
+.td-grid { flex:1 1 0; min-height:0; display:flex; flex-direction:column; justify-content:center; gap:6px; container-type:size; }
+.td-hud[data-wide="true"] .td-levels { flex-direction:row; align-items:stretch; }
+.td-hud[data-wide="true"] .td-preview { order:2; flex:0 0 34%; height:auto; grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr); align-content:start; }
+.td-hud[data-wide="true"] .td-preview-pic { width:100%; height:auto; max-width:none; }
+.td-hud[data-wide="true"] .td-menu .td-preview-actions .btn { flex:1 1 0; }
+.td-ground { --lab:84px; --gap:6px; display:grid; grid-template-columns:var(--lab) repeat(5, minmax(0,64px)); gap:var(--gap); align-items:center; justify-content:center; }
+@supports (container-type:size) {
+  .td-ground { grid-template-columns:var(--lab) repeat(5, min(calc((100cqw - var(--lab) - 5 * var(--gap)) / 5), calc(((100cqh - 5 * var(--gap)) / 6 - 8px) * 1.4))); }
+}
+.td-hud[data-narrow="true"] .td-ground { --lab:62px; --gap:4px; }
 .td-hud[data-narrow="true"] .td-ground > span { font-size:9px; letter-spacing:0; }
-.td-hud[data-wide="true"] .td-ground { grid-template-columns:84px repeat(5, minmax(0,1fr)); justify-content:stretch; }
 .td-ground > span { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
 .td-tile { position:relative; padding:3px; border-radius:8px; border:1px solid var(--glass-line); background:var(--panel-solid); color:var(--fg); font:inherit; cursor:pointer; min-height:44px; }
-.td-tile .td-map { aspect-ratio:var(--map-aspect); height:auto; }
+.td-tile .td-map { aspect-ratio:112 / 80; height:auto; }
 .td-tile b { position:absolute; left:6px; top:5px; font-size:11px; text-shadow:0 1px 2px #000; }
-.td-tile i { display:block; font-style:normal; font-size:11px; color:#ffd24a; text-align:center; margin-top:2px; }
+.td-tile i { position:absolute; left:3px; right:3px; bottom:3px; padding:8px 0 2px; border-radius:0 0 3px 3px; background:linear-gradient(transparent, #000c); font-style:normal; font-size:11px; line-height:1; color:#ffd24a; text-align:center; pointer-events:none; }
 .td-tile.selected { border-color:var(--neon); box-shadow:0 0 0 2px var(--neon); }
 .td-tile.next:not(.selected) { border-color:#ffd24a; }
 .td-tile.locked .td-map { opacity:.35; filter:grayscale(.8); }
@@ -154,7 +160,7 @@ const CSS = `
 .td-hud[data-compact=true] .td-current .td-count { font-size:24px; }
 `;
 
-const color = (e: Element) => ({ blue: 'var(--neon)', red: 'var(--bad)', purple: 'var(--pink)' })[e];
+const color = (e: Element) => `var(--td-${e})`;
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -172,7 +178,7 @@ export class TdHud {
 
   constructor(private send?: (a: unknown) => void) {
     this.root.className = 'td-hud';
-    const style = document.createElement('style'); style.textContent = CSS; this.root.append(style);
+    const style = document.createElement('style'); style.textContent = CSS + THEME_CSS; this.root.append(style);
     this.root.addEventListener('pointerdown', this.onSwipeStart);
     this.root.addEventListener('pointerup', this.onSwipeEnd);
     this.root.addEventListener('pointercancel', () => { this.swipe = null; });
@@ -233,7 +239,7 @@ export class TdHud {
     this.root.dataset.narrow = String(W < NARROW_W);
     this.root.dataset.wide = String(L.field.turned);
     this.root.style.setProperty('--map-aspect', L.field.turned ? '112 / 80' : '80 / 112');
-    this.root.dataset.column = String(L.column);
+        this.root.dataset.column = String(L.column);
     this.root.dataset.compact = String(L.column && L.UH < 360);
     this.root.dataset.objectiveCompact = String(!!L.objective && L.objective.h < 280);
     for (const [el, box] of [[this.status, L.status], [this.current, L.current], [this.event, L.brood], [this.menu, L.garage], [this.loadingCard, L.garage]] as const) this.place(el, box);
@@ -292,10 +298,11 @@ export class TdHud {
       const head = `<header><h2>${esc(gv.title)}</h2><b>${gv.stars}★</b></header><p>${esc(gv.subtitle)}</p>`;
       const results = gv.rows.some((r) => r.kind === 'next' || r.kind === 'finish');
       const body = gv.page === 'campaign'
-        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, art)}`
+        ? `<small>${auto} · ◀▶▲▼ choose · A ride · B back</small>${levelSelectHtml(gv, art, (l, preview) => this.art?.(l, true, preview) ?? null)}`
         : results
           ? `<small>${auto} · ▲▼ choose · A select · B start</small>${gv.rows.map((r, i) => `<button class="btn ${i === gv.sel ? 'selected' : ''}" data-command="garageRow" data-index="${i}"><span>${esc(r.name)}<small>${esc(r.desc)}</small></span></button>`).join('')}`
           : `<small>${auto} · ▲▼ choose · A select · B start</small>${modesHtml(gv, { quick: s.nextMaps?.[0] && knownLevel(s.nextMaps[0]), endless: s.nextMaps?.[1] && knownLevel(s.nextMaps[1]) }, cardArt)}`;
+      this.menu.classList.toggle('td-campaign', gv.page === 'campaign');
       this.html(this.menu, head + body);
       const now = gv.page === 'campaign' ? `L${gv.levelSel}` : String(gv.sel);
       if (previous !== now) this.menu.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });

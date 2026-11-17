@@ -109,3 +109,41 @@ whole-command elapsed time, CPU seconds, and runner-minute rounding. Retain exis
 intentional skips. Check typecheck, asset validation and build too. A local test
 improvement does not establish hosted queue time, monetary savings or PR-to-merge
 improvement; confirm comparable hosted runs after pushing these commits.
+
+Cold ordering hints are the files taking at least 25 seconds in the recorded
+hosted run. To refresh them, collect a passing full run's per-file durations and
+update both provenance fields in `scripts/ci/test-timings.json`. Live Vitest
+failure/timing history takes precedence. Stale or missing hints affect ordering
+only: unknown tests remain in the inventory. To roll back scheduling, remove the
+`maxWorkers`, `sequence` and the sequencer class/imports from `vitest.config.ts`; the full
+checks and measurement receipts remain usable independently.
+
+## Local paired result
+
+On the same Linux workspace (2 CPU quota, Node v24.19.0, Vitest 5.0.3,
+8 GiB memory limit), one full run per variant produced:
+
+| Full test command | Original defaults | Longest-first + 100% workers |
+| --- | ---: | ---: |
+| Workers | 1 | 2 |
+| Elapsed seconds | 601.322 | 368.198 |
+| Child CPU seconds | 671.416 | 728.664 |
+| Allocated runner-seconds at fixed machine size | 601.322 | 368.198 |
+| Files | 219 | 219 |
+| Passing / intentionally skipped tests | 1,628 / 3 | 1,628 / 3 |
+
+Elapsed/allocated runner time fell **38.8%**, while CPU seconds rose **8.5%**.
+This is a worthwhile feedback/allocated-machine-time tradeoff, not a reduction
+in executed CPU work. At a fixed per-minute machine rate the shorter allocation
+would cost less; a service charging CPU-seconds could charge more. Actual dollar
+savings for this public repository remain unestablished.
+
+Both runs used the same JSON reporter. The original results cache was absent;
+the candidate used `--no-cache` after a clean lockfile install. Production and
+test sources were unchanged. Full sorted `(file, test name, status)` inventories
+and file lists were identical, including all intentional skips. The test/status
+inventory SHA-256 is `743cd15acb317d5a345c6a80f97d92c7b3b927652e013c9d1bf6445492012134`.
+The two scheduling changes were measured together; no separate speedup is assigned
+to either. One pair is a qualification sample, not a statistical performance claim.
+Node 24 is the supplied local runtime, so this pair does not establish the size of
+a Node 22 hosted improvement. Node 22 compatibility is qualified separately below.

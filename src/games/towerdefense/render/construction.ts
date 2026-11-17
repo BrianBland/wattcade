@@ -19,12 +19,13 @@ function bolt(g: CanvasRenderingContext2D, x: number, y: number, r = 4.4) {
   d.addColorStop(0, TD.brassHi); d.addColorStop(0.45, TD.brass); d.addColorStop(1, TD.brassLo);
   g.fillStyle = d; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
 }
-/** A strip of yellow and black hazard stripes. */
-export function hazard(g: CanvasRenderingContext2D, b: Box) {
-  g.save(); g.beginPath(); g.rect(b.x, b.y, b.w, b.h); g.clip();
-  g.fillStyle = '#16110b'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = TD.brass;
-  for (let x = b.x - b.h; x < b.x + b.w + b.h; x += 14) { g.beginPath(); g.moveTo(x, b.y + b.h); g.lineTo(x + b.h, b.y); g.lineTo(x + b.h + 7, b.y); g.lineTo(x + 7, b.y + b.h); g.fill(); }
-  g.restore(); g.strokeStyle = '#000'; g.lineWidth = 1; g.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+/** A riveted steel strap (theme.ts STRAP): a dark band, lit on top, with a rivet every 28px. */
+export function strap(g: CanvasRenderingContext2D, b: Box) {
+  const f = g.createLinearGradient(0, b.y, 0, b.y + b.h);
+  f.addColorStop(0, '#5c4c3a'); f.addColorStop(0.35, '#2b231b'); f.addColorStop(1, '#1a140f');
+  g.fillStyle = f; g.fillRect(b.x, b.y, b.w, b.h);
+  g.strokeStyle = '#000'; g.lineWidth = 1; g.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+  for (let x = b.x + 14; x < b.x + b.w - 4; x += 28) bolt(g, x, b.y + b.h / 2, Math.min(1.8, b.h / 3));
 }
 
 /** A bevelled, bolted tread plate (theme.ts), shared by the workshop body and the fallback dock. */
@@ -108,7 +109,7 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   g.save(); plate(g, { x: r.body.x - 6, y: r.body.y - 6, w: r.body.w + 12, h: r.body.h + 12 });
   g.fillStyle = TD.brass; g.font = `900 13px ${font}`; g.textAlign = 'center';
   g.fillText(`${p.name.toUpperCase()} · ${s.scrap} SCRAP`, cx, r.body.y + 19, r.body.w - 24);
-  hazard(g, { x: r.body.x + 20, y: r.body.y + 25, w: r.body.w - 40, h: 4 });
+  strap(g, { x: r.body.x + 20, y: r.body.y + 24, w: r.body.w - 40, h: 6 });
   g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('◀▶ pad · ▲▼ option · A confirm', cx, r.body.y + 40);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];

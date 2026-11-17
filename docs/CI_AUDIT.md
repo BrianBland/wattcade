@@ -147,3 +147,40 @@ The two scheduling changes were measured together; no separate speedup is assign
 to either. One pair is a qualification sample, not a statistical performance claim.
 Node 24 is the supplied local runtime, so this pair does not establish the size of
 a Node 22 hosted improvement. Node 22 compatibility is qualified separately below.
+
+## Final qualification
+
+The final configuration also passed the complete suite on **Node v22.23.5**:
+219 files, 1,628 passing tests, the same three intentional skips, and the same
+file/test/status inventory. Full test command: 393.369 s elapsed, 779.270 s child
+CPU. This is a separate compatibility run, not a paired Node 22 speedup result.
+Typecheck (4.410 s), asset validation (0.068 s), and build (1.544 s) passed on
+Node 22 before that test run, exercising the new command order.
+
+Additional checks passed:
+
+- actionlint v1.7.12 on all four workflows; `git diff --check`.
+- Workflow names, trigger definitions and job IDs match the originals. Deploy and
+  Preview remain byte-for-byte unchanged. All five original commands remain;
+  no command check is conditional or allowed to ignore failure. Only diagnostic
+  artifact storage is best effort. Measurement JSON also remains in job logs.
+- Measurement wrapper: successful command, exit 7, missing executable (127),
+  and SIGTERM (143) all preserve the expected exit and write receipts.
+- Sequencer: retains each specification exactly once, including unknown files;
+  leaves the input array unchanged and preserves empty inventories and project boundaries;
+  cached failures run first and live durations override cold hints.
+
+Machine-readable local receipts and inventory digests are in
+`docs/ci/local-results.json`. The full suite ran for both variants and again on
+Node 22. No affected tests were omitted and no test/source behavior was changed.
+Superseded Seaside-review cancellation is validated structurally; its savings
+have not been measured. No production or preview deployment was performed.
+
+After these commits are pushed, compare equivalent first-attempt hosted runs on
+the same runner class and runtime, retaining failures and cancellations in total
+compute. Use workflow creation to last required check for feedback (including
+queue/setup/artifact overhead), and sum job elapsed time for allocated compute.
+Compare CPU receipts separately and apply actual account rates/rounding only
+when known. The new seven-day artifacts make that follow-up measurable; this
+local result does not promise a hosted percentage, a dollar saving or a delivery
+cycle improvement.

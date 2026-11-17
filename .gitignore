@@ -8,6 +8,7 @@ out
 .venv-media/
 .env.local
 .cache/
+.ci-metrics/
 
 # Tower Defense review output is reproducible; approved nested source cutouts stay tracked.
 /docs/towerdefense/art-briefs/flamer-rounds/*/*.png

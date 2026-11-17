@@ -31,6 +31,7 @@ def main():
         "max_child_rss_kib": after.ru_maxrss,
         "runner_os": sys.platform,
         "runner_arch": os.uname().machine,
+        "cpu_affinity_count": len(os.sched_getaffinity(0)),
         "revision": os.environ.get("GITHUB_SHA"),
         "run_id": os.environ.get("GITHUB_RUN_ID"),
         "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),

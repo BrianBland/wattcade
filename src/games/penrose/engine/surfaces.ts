@@ -114,7 +114,7 @@ function tileTex(style, pal, seed) {
 // track reads first and the land stays quiet underneath it, however busy its pattern.
 function groundPal(th) {
   const turf = th.turf || th.stone, st = th.stone, ink = th.ink || '#2A2A33', quiet = (h, k) => mix(h, ink, k);
-  return { grass: quiet(turf.t, .08), grassDark: quiet(turf.l, .1), stone: quiet(st.l, .13), stoneDark: quiet(st.r, .15), soil: '#8A5E3C', terra: '#D98A5F', accent: th.goal || '#E8553B',
+  return { grass: quiet(turf.t, .03), grassDark: quiet(turf.l, .06), stone: quiet(st.l, .13), stoneDark: quiet(st.r, .15), soil: '#8A5E3C', terra: '#D98A5F', accent: th.goal || '#E8553B',
     bloom: ['#FFFFFF', th.goal || '#EE6C98', '#FFD45A', '#B9A2F0'] };
 }
 /** A material for a solid whose top shows `top` and whose sides show `side` (styles above), in world space. */

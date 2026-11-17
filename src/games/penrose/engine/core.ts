@@ -390,12 +390,15 @@ const THEMES = [
 // sp(th, 1) is the road deck (and the loop slabs and posts that carry it). A theme's `deck` keeps the track the lightest,
 // cleanest surface in the scene, a step above the ground it crosses: Monument Valley's walkways and Echochrome's lines
 // read first because nothing else on screen shares their value.
+// A machine at rest (`idle`) is a muted version of the deck, so a turntable arm or lift deck carrying the road reads as the
+// same road until it is engaged; the garden's green moves off the road and onto the land (lawn base, see ./terrain.ts).
 const DECKS = {
-  garden: { t: '#FBF3E2', l: '#E5CFA0', r: '#C2A574' },
-  night: { t: '#8D94D6', l: '#4F5594', r: '#383D74' },
-  brass: { t: '#F1D594', l: '#BD914B', r: '#8E6630' },
+  garden: { deck: { t: '#FBF3E2', l: '#E5CFA0', r: '#C2A574' }, idle: { t: '#EDE4CC', l: '#CDBE98', r: '#AD9D77' } },
+  night: { deck: { t: '#8D94D6', l: '#4F5594', r: '#383D74' }, idle: { t: '#7479B2', l: '#4C5186', r: '#383C69' } },
+  brass: { deck: { t: '#F1D594', l: '#BD914B', r: '#8E6630' }, idle: { t: '#D9C493', l: '#A88E5F', r: '#7F6B45' } },
 };
-const sp = (th, k) => th.ramp ? th.ramp[k % th.ramp.length] : (k % 3 === 1 && (th.deck || DECKS[th.id])) || th.stone;
+for (const th of THEMES) if (DECKS[th.id]) Object.assign(th, DECKS[th.id]);
+const sp = (th, k) => th.ramp ? th.ramp[k % th.ramp.length] : (k % 3 === 1 && th.deck) || th.stone;
 
 /* ---------- theme decoration ---------- */
 function windowsOn(g, th, face, plane, u0, u1, z0, z1, opt = {}) {

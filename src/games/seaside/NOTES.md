@@ -1,5 +1,5 @@
 # Seaside — runtime, voxels, workout, fishing, Lou’s shop, Chapters 1, 2a, 2b, 3a–3c, ending, narrative, sound (#184–197)
-~2 h story ride (#183); storyboard + media on unmerged PR #175. `devGames` (`?dev=1` / vite dev) until all chapters land.
+~2 h story ride (#183); storyboard + media on unmerged PR #175. in `wipGames` (caution tape on its picker card) until all chapters land.
 ## Sim (`sim/`)
 - `story.ts` 33 scenes; `types.ts` additive snapshot. `workout.ts` scene-mode effect per tick; all `seaside.*`.
 - `graph.ts` plan / route / effort / checkpoints; `pace.ts` power⅓ × nudge. `sim.ts` menu → story, saves at chapters /

@@ -11,11 +11,13 @@ import { onMenuPress } from '../menuInput';
 import { useMenuNav } from '../useMenuNav';
 import './controls.css';
 
-/** Full guide before the countdown or from Pause. Starting is always explicit. */
-export function GameIntro({ game, hud, profile, mode, count, onStart, onBack, fake, scrollRef }: {
+/** Full controls guide before riding (first play) or from Pause. Starting is always explicit. */
+export function GameIntro({ game, hud, profile, mode, count, onStart, onBack, fake, scrollRef, startLabel }: {
   game: GameModule; hud: GameHud; profile: Profile; mode: 'pre' | 'help';
   count: number | null; onStart: () => void; onBack: () => void; fake?: boolean;
   scrollRef?: RefObject<HTMLDivElement | null>;
+  /** Replaces "Start ride →" (e.g. when the game's own setup menu comes next). */
+  startLabel?: string;
 }) {
   const ownRef = useRef<HTMLDivElement>(null), card = scrollRef ?? ownRef, tz = hud.targetZone;
   useLayoutEffect(() => {
@@ -53,8 +55,8 @@ export function GameIntro({ game, hud, profile, mode, count, onStart, onBack, fa
     {best && <p class="dim small">Your best: {best}</p>}
     <ControlLegend hud={hud} />
     {fake && <FakeBikeHelp />}
-    <footer><ChromeHints hints={[['ud','Scroll'],['a',mode==='pre'?'Start':'Back'],['b',mode==='pre'?'Menu':'Back']]} />
-      <div class="intro-actions">{mode === 'pre' && <Btn onClick={onBack}>Back to menu</Btn>}<Btn primary focused onClick={mode === 'pre' ? onStart : onBack}>{mode === 'pre' ? 'Start ride →' : 'Back to pause →'}</Btn></div>
+    <footer><ChromeHints hints={[['ud','Scroll'],['a',mode==='pre'?(startLabel?'Next':'Start'):'Back'],['b',mode==='pre'?'Menu':'Back']]} />
+      <div class="intro-actions">{mode === 'pre' && <Btn onClick={onBack}>Back to menu</Btn>}<Btn primary focused onClick={mode === 'pre' ? onStart : onBack}>{mode === 'pre' ? startLabel ?? 'Start ride →' : 'Back to pause →'}</Btn></div>
     </footer>
   </div></div>;
 }

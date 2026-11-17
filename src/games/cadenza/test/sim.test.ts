@@ -119,12 +119,22 @@ describe('Cadenza controls', () => {
   });
   it('paddles set absolute position: pull = that side, rest = centre, the stronger paddle leads', () => {
     expect(ride([{ t: 1, paddleR: 1 }], 2).x).toBeCloseTo(1, 3);
-    expect(ride([{ t: 1, paddleL: 0.8 }], 2).x).toBeCloseTo(-1, 3);
+    expect(ride([{ t: 1, paddleL: 0.8 }], 2).x).toBeCloseTo(-0.8, 3);
     expect(ride([{ t: 1, paddleR: 1 }, { t: 1.5, paddleR: 0 }], 2.5).x).toBeCloseTo(0, 3);          // let go → centre
-    expect(ride([{ t: 1, paddleL: 0.5, paddleR: 0.9 }], 2).x).toBeCloseTo(1, 3);                     // right is stronger
-    expect(ride([{ t: 1, paddleR: 0.2 }], 2).x).toBeCloseTo(0, 3);                                     // a light touch stays put
+    expect(ride([{ t: 1, paddleL: 0.5, paddleR: 0.9 }], 2).x).toBeCloseTo(0.9, 3);                     // right is stronger
+    expect(ride([{ t: 1, paddleR: 0.2 }], 2).x).toBeCloseTo(0.2, 3);                                     // a light touch moves proportionally
     // while the paddles rest, buttons work as usual
     expect(ride([{ t: 1, paddleR: 1 }, { t: 1.3, paddleR: 0 }, { t: 1.6, press: 'z' }, { t: 1.7, release: 'z' }], 2.5).x).toBeCloseTo(-1, 3);
+  });
+  it('judges only the lane containing most of the ship, for pickups and mines', () => {
+    for (const color of [0, -1]) for (const position of [0.49, 0.51, -0.49, -0.51]) {
+      const session = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([{ t: 0, paddleR: Math.max(0, position), paddleL: Math.max(0, -position) }]), media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) }, fake: { script: 'z2' }, simOpts: { difficulty: 'pro' } });
+      const track = (session.sim.snapshot() as CadenzaSnapshot).track;
+      track.blocks.splice(0, track.blocks.length, { t: 2, lane: 0, color, zone: 0 });
+      session.step(90);
+      const summary = session.sim.summary();
+      expect(color < 0 ? summary.greysHit : summary.collected).toBe(Math.abs(position) < 0.5 ? 1 : 0);
+    }
   });
   it('elite (5 lanes): half a pull is one lane over, a full pull is the edge; holding a button repeats', () => {
     const elite = (tl: Parameters<typeof ride>[0], secs: number) => {

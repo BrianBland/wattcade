@@ -23,6 +23,21 @@ const V2_CHANGED = [
   'ws_cloud', 'ws_canyon', 'ws_miller', 'ws_dam_buster', 'ws_breadbasket',
 ];
 
+/**
+ * v3 (Nov 2026): Dynamo Defense moved to levels, so its best-wave and Spotless/Workshop achievements were retired
+ * (successors in games/towerdefense/achievements.ts take their rewards). Retired ids are always revoked; their
+ * bonus XP is frozen here because the definitions are gone.
+ */
+const V3_RETIRED: Record<string, number> = {
+  td_wave10: 40, td_wave25: 80, td_wave50: 150, td_spotless: 60, td_untouchable: 120, td_workshop: 150,
+};
+
+/** Each rules step: ids whose goals changed (kept only if the profile already meets the new goal) and retired ids. */
+const STEPS: ReadonlyArray<{ v: number; changed: readonly string[]; retired?: Readonly<Record<string, number>> }> = [
+  { v: 2, changed: V2_CHANGED },
+  { v: 3, changed: [], retired: V3_RETIRED },
+];
+
 type ProgressionData = { rules?: number; stormsWeathered?: number };
 const dataOf = (p: Readonly<Profile>): ProgressionData => (p.gameData?.['_progression'] as ProgressionData | undefined) ?? {};
 
@@ -31,14 +46,17 @@ export function rebalanceProfile(p: Profile, list: readonly AchievementDef[] = A
   const data = dataOf(p);
   if ((data.rules ?? 1) >= RULES_VERSION) return p;
   const byId = new Map(list.map((a) => [a.id, a]));
-  const changed = new Set(V2_CHANGED);
+  const steps = STEPS.filter((s) => s.v > (data.rules ?? 1));
+  const changed = new Set(steps.flatMap((s) => s.changed));
+  const retired: Record<string, number> = Object.assign({}, ...steps.map((s) => s.retired ?? {}));
   // A changed goal achievement stays if the saved counters/lifetime already meet the new goal; a changed feat is revoked.
   const revoked = (p.achievements ?? []).filter((id) => {
+    if (id in retired) return true;
     if (!changed.has(id)) return false;
     const a = byId.get(id);
     return !a || a.goal == null || achievementValue(a, p) < a.goal;
   });
-  const bonus = revoked.reduce((s, id) => s + (byId.get(id)?.bonusXp ?? 0), 0);
+  const bonus = revoked.reduce((s, id) => s + (byId.get(id)?.bonusXp ?? retired[id] ?? 0), 0);
   const xp = Math.max(0, p.xp - bonus), level = levelForXp(xp);
   // Picks at levels no longer reached are forgotten: the rider picks again on the way back up.
   const picks = Object.fromEntries(Object.entries(p.cosmetics?.picks ?? {}).filter(([l]) => Number(l) <= level));

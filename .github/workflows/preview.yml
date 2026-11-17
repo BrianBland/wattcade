@@ -35,12 +35,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Card clips: the latest ones recorded by a deploy (main), not re-recorded here, so previews stay quick.
+      - name: Restore card clips
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/cards
+          key: cards-${{ github.run_id }}
+          restore-keys: cards-
       - name: Build and create the Preview
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         id: upload
         run: |
           set -euo pipefail
           npm ci
+          npm run capture:cards -- --cache .cache/cards --cached-only
           npm run build
           npx wrangler preview --name "$PREVIEW_NAME" \
             --message "PR #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}" \

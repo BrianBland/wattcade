@@ -1,0 +1,114 @@
+{
+ "style": "badlands",
+ "source": "badlands-grok-c",
+ "ppu": 12,
+ "roadHalf": 4,
+ "roadRim": 1,
+ "roadBand": 9,
+ "files": {
+  "groundA": "ground_a.webp",
+  "groundB": "ground_b.webp",
+  "gravel": "gravel.webp",
+  "road": "road.webp",
+  "hive": "hive.webp"
+ },
+ "apron": {
+  "file": "apron.webp",
+  "w": 42.5,
+  "h": 42.5
+ },
+ "clearing": {
+  "file": "clearing.webp",
+  "w": 21.25,
+  "h": 21.25
+ },
+ "decals": [
+  {
+   "file": "decal0.webp",
+   "w": 15.75,
+   "h": 16
+  },
+  {
+   "file": "decal1.webp",
+   "w": 15.25,
+   "h": 15.25
+  },
+  {
+   "file": "decal2.webp",
+   "w": 15.5,
+   "h": 15.25
+  },
+  {
+   "file": "decal3.webp",
+   "w": 14.5,
+   "h": 15
+  },
+  {
+   "file": "decal4.webp",
+   "w": 15,
+   "h": 14.5
+  },
+  {
+   "file": "decal5.webp",
+   "w": 10.75,
+   "h": 10.5
+  }
+ ],
+ "props": [
+  {
+   "file": "prop0.webp",
+   "w": 42.5,
+   "h": 24.75
+  },
+  {
+   "file": "prop1.webp",
+   "w": 15.25,
+   "h": 23.25
+  },
+  {
+   "file": "prop2.webp",
+   "w": 17.75,
+   "h": 16.25
+  },
+  {
+   "file": "prop3.webp",
+   "w": 18.5,
+   "h": 17.5
+  },
+  {
+   "file": "prop4.webp",
+   "w": 23,
+   "h": 17
+  },
+  {
+   "file": "prop5.webp",
+   "w": 7,
+   "h": 7
+  },
+  {
+   "file": "prop6.webp",
+   "w": 4,
+   "h": 12.25
+  },
+  {
+   "file": "prop7.webp",
+   "w": 7.75,
+   "h": 7.75
+  },
+  {
+   "file": "prop8.webp",
+   "w": 3.25,
+   "h": 3
+  }
+ ],
+ "deck": {
+  "file": "deck.webp",
+  "w": 86.75,
+  "h": 18.25
+ },
+ "hiveMouth": {
+  "file": "mouth.webp",
+  "w": 54.5,
+  "h": 54.5
+ }
+}

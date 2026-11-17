@@ -7,6 +7,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'starfighter',
+  accent: '#5b8cff',
   title: 'Sprocket Squadron',
   blurb: 'Hold the groove. Pick your flank and your craft fires on the beat: missiles, flak, arc lightning or rails. Auto-dodge through bright carrier battles. Ride Zone 2, grow your arsenal, and break flagships.',
   progressLine, drawCard,

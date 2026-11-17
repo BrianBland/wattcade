@@ -14,7 +14,7 @@ const q = new URLSearchParams(location.search), game = getGame(q.get('game') ?? 
 const profile = testProfile(q.has('shop') ? { gameData: { hamster: { v: 1, gens: [20, 5, 1], bank: 1e7, unlocks: ['upgrades', 'market', 'vibes'] } } } : {}), off = input.attachKeyboard(window);
 const session = createGameSession({ game, profile, input, fake: { script: 'z2' }, seed: 3,
   media: { timeline: synthTimeline({ style: 'edm', songs: 1, short: true }) },
-  simOpts: { autopilot: q.get('menu') !== '1', skipGarage: q.get('menu') !== '1', autoCrew: true, actionBot: true } });
+  simOpts: { autopilot: q.get('menu') !== '1', skipGarage: q.get('menu') !== '1', botBuild: true, actionBot: true } });
 session.step(Math.max(1, Number(q.get('sec') ?? 5) * 30));
 const hud = session.sim.hud?.bind(session.sim); let fixture: GameHud | null = null;
 session.sim.hud = () => fixture ?? hud?.() ?? {};

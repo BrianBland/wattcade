@@ -4,6 +4,7 @@ import { createSeasideSim, type SeasideOpts } from './sim/sim';
 
 export const module: GameModule = {
   id: 'seaside',
+  accent: '#9fd3f5',
   title: 'Seaside',
   blurb: 'A slow ride down Highway 1 with a fishing rod. Two hours, three chapters.',
   tags: ['zone2'],

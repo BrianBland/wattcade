@@ -1,6 +1,6 @@
 // Sky dome, sun/moon, stars, clouds, fog banks, rain and lightning.
 import * as THREE from 'three';
-import { mulberry, softTexture } from './util';
+import { ico, mulberry, softTexture } from './util';
 
 export interface SkyState { t: number; dt: number; day: number; fog: number; storm: number; warn: number; lightningAge: number; camTarget: THREE.Vector3; rainbow?: number;
   /** Cosmetic calm-weather mood, blending from `prev` to `kind` as `k` goes 0 -> 1. */
@@ -25,7 +25,7 @@ export class Sky {
   private dome: THREE.Mesh; private uni: { top: { value: THREE.Color }; hor: { value: THREE.Color } };
   private sun: THREE.Sprite; private moon: THREE.Sprite; private stars: THREE.Points;
   private clouds: Array<{ g: THREE.Group; speed: number; x0: number }> = [];
-  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+  private cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   private banks: Array<{ s: THREE.Sprite; x0: number; z: number; sp: number }> = [];
   private rain: THREE.LineSegments; private rainPos: Float32Array;
   private bolt: THREE.Line; private lastLightning = 99;
@@ -56,7 +56,7 @@ export class Sky {
     this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, fog: false, depthWrite: false }));
     this.group.add(this.stars);
     // clouds: clusters of flattened icospheres drifting overhead
-    const puff = new THREE.IcosahedronGeometry(1, 0);
+    const puff = ico(1, 0);
     for (let i = 0; i < 16; i++) {
       const g = new THREE.Group();
       const n = 4 + Math.floor(r() * 4);

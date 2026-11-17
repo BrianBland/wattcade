@@ -23,6 +23,7 @@ export interface LevelView { level: number; progress: number; xp: number; nextXp
 
 /** Minimal view of core's GameSession used by the shell. */
 export interface SessionLike {
+  tuning?: Pick<import('../core/tuning').TuningRegistry, 'get' | 'list' | 'set'>;
   frame(realDtS: number): void;
   /** Advance bike/devices/mixer without the sim (intros); returns presses. */
   idle(realDtS: number): ReadonlySet<Button>;
@@ -37,8 +38,10 @@ export type Screen =
   | { name: 'profiles' } | { name: 'editor'; profileId: string | null } | { name: 'connect' }
   | { name: 'menu' } | { name: 'achievements' } | { name: 'locker' } | { name: 'pick' }
   | { name: 'media'; game: GameModule }
+  /** Riding toward the game's entrance on the overworld road. */
+  | { name: 'entering'; game: GameModule; media?: MediaRun }
   | { name: 'game'; game: GameModule; run?: number; media?: MediaRun }
-  | { name: 'summary'; record: SessionRecord; award: AwardView }
+  | { name: 'summary'; record: SessionRecord; award: AwardView; /** Wait this long first (riding out of a game). */ delayMs?: number }
   | { name: 'unlocks'; award: AwardView };
 /** The music a game was started with (from the media picker). */
 export interface MediaRun { ids: string[]; mode: QueueMode; items: MixItem[]; plan: MixPlan; timeline: MediaTimeline; rolling?: import('../media/online/rolling').RangeSource; timings?: import('../media/online/timing').MediaTimings }

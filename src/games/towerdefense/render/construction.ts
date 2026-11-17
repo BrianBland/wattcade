@@ -1,28 +1,48 @@
 // Big, inset-aware touch targets; the controller operates the very same WorkshopView.
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { BASE_PAD, BASE_X, BASE_Y, PADS } from '../sim/defs';
+import { geoOf } from '../sim/level';
 import { toScreen } from './fieldView';
 import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import type { Hit } from './panels';
+import { TD } from './theme';
+
+/** A riveted gunmetal plate with a bronze rim (theme.ts), shared by the workshop body and the fallback dock. */
+export function plate(g: CanvasRenderingContext2D, b: Box, r: number, rivets = true) {
+  const fill = g.createLinearGradient(0, b.y, 0, b.y + b.h);
+  fill.addColorStop(0, TD.plateHi); fill.addColorStop(0.4, TD.plate); fill.addColorStop(1, TD.plateLo);
+  g.save(); g.shadowColor = '#000a'; g.shadowBlur = 18; g.shadowOffsetY = 6;
+  g.fillStyle = fill; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, r); g.fill(); g.restore();
+  g.strokeStyle = TD.edge; g.lineWidth = 1; g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, r); g.stroke();
+  g.strokeStyle = '#c99a4e22'; g.beginPath(); g.roundRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8, Math.max(1, r - 3)); g.stroke();
+  if (!rivets) return;
+  for (const [x, y] of [[b.x + 8, b.y + 8], [b.x + b.w - 8, b.y + 8], [b.x + 8, b.y + b.h - 8], [b.x + b.w - 8, b.y + b.h - 8]]) {
+    const rv = g.createRadialGradient(x - 0.6, y - 0.6, 0, x, y, 2.6);
+    rv.addColorStop(0, TD.brassHi); rv.addColorStop(0.55, TD.brassLo); rv.addColorStop(1, '#0000');
+    g.fillStyle = rv; g.beginPath(); g.arc(x, y, 2.6, 0, Math.PI * 2); g.fill();
+  }
+}
 
 function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string, selected = false, enabled = true) {
-  const css = getComputedStyle(g.canvas);
+  const font = getComputedStyle(g.canvas).fontFamily;
   g.save(); g.globalAlpha = enabled ? 1 : 0.5;
-  g.fillStyle = css.getPropertyValue('--panel-solid'); g.strokeStyle = css.getPropertyValue(selected ? '--neon' : '--glass-line');
-  g.lineWidth = selected ? 2 : 1; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 8); g.fill(); g.stroke();
+  const fill = g.createLinearGradient(0, b.y, 0, b.y + b.h);
+  fill.addColorStop(0, selected ? '#3a2d18' : '#211c16'); fill.addColorStop(1, TD.plateLo);
+  if (selected) { g.shadowColor = '#e8b24a88'; g.shadowBlur = 14; }
+  g.fillStyle = fill; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 5); g.fill(); g.shadowBlur = 0;
+  g.strokeStyle = selected ? TD.brass : TD.edgeDim; g.lineWidth = selected ? 2 : 1;
+  g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 5); g.stroke();
+  g.strokeStyle = '#ffdca014'; g.lineWidth = 1; g.beginPath(); g.moveTo(b.x + 5, b.y + 1.5); g.lineTo(b.x + b.w - 5, b.y + 1.5); g.stroke();
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `bold 13px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--fg'); g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
-  if (sub) { g.font = `11px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--dim'); g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
+  g.font = `bold 13px ${font}`; g.fillStyle = selected ? TD.brassHi : TD.text; g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
+  if (sub) { g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
   g.restore();
 }
 
 export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, powerZone: number): Hit[] {
   const hits: Hit[] = [], d = L.dock;
-  const suggestion = s.suggestion;
-  button(g, d.construct, suggestion ? `A · ${suggestion.label}` : 'A · Construction',
-    suggestion ? `${suggestion.cost} scrap · ${s.autoCrew ? 'crew accepts when lull ends' : 'tap to accept'}` : `${s.scrap} scrap · Auto-crew ${s.autoCrew ? 'ON' : 'OFF'}`, false, !s.workshop && !s.over);
-  hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', ...(suggestion ? { suggestion } : {}), epoch: s.inputEpoch } });
+  button(g, d.construct, 'A · Construction', `${s.scrap} scrap · build · upgrade · repair`, false, !s.workshop && !s.over);
+  hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', epoch: s.inputEpoch } });
   const boost = !s.workshop && s.boss?.weapon === 'rail' && (s.boss.telegraph || s.boss.exposed);
   button(g, d.workshop, boost ? '▲ Sprint boost' : '▼ Workshop', boost ? 'Hold for ERG push' : 'Build · upgrade · repair',
     boost ? s.boss!.sprintBoost : !!s.workshop, !s.over);
@@ -57,17 +77,18 @@ export function radialLayout(W: number, UH: number, anchor: { x: number; y: numb
 
 export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, W: number): Hit[] {
   const ws = s.workshop!;
-  const p = ws.pad < BASE_PAD ? PADS[ws.pad] : { x: BASE_X, y: BASE_Y, name: 'Base' };
+  const geo = geoOf(s), p = ws.pad < geo.basePad ? geo.pads[ws.pad] : { ...geo.base, name: 'Base' };
   const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length);
-  const css = getComputedStyle(g.canvas);
-  g.save(); g.fillStyle = css.getPropertyValue('--panel-solid'); g.beginPath(); g.roundRect(r.body.x - 4, r.body.y - 4, r.body.w + 8, r.body.h + 8, 12); g.fill();
-  g.fillStyle = css.getPropertyValue('--neon'); g.font = `bold 13px ${css.fontFamily}`; g.textAlign = 'center';
-  g.fillText(`${p.name} · ${s.scrap} scrap`, r.body.x + r.body.w / 2, r.body.y + 19);
-  g.font = `11px ${css.fontFamily}`; g.fillStyle = css.getPropertyValue('--dim'); g.fillText('◀▶ pad · ▲▼ option · A confirm', r.body.x + r.body.w / 2, r.body.y + 36);
+  const font = getComputedStyle(g.canvas).fontFamily, cx = r.body.x + r.body.w / 2;
+  g.save(); plate(g, { x: r.body.x - 4, y: r.body.y - 4, w: r.body.w + 8, h: r.body.h + 8 }, 7);
+  g.fillStyle = TD.brass; g.font = `800 13px ${font}`; g.textAlign = 'center';
+  g.fillText(`${p.name.toUpperCase()} · ${s.scrap} SCRAP`, cx, r.body.y + 19, r.body.w - 24);
+  g.strokeStyle = TD.edgeDim; g.beginPath(); g.moveTo(r.body.x + 14, r.body.y + 25.5); g.lineTo(r.body.x + r.body.w - 14, r.body.y + 25.5); g.stroke();
+  g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('◀▶ pad · ▲▼ option · A confirm', cx, r.body.y + 38);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {
-    button(g, r.options[i], row.label, row.kind === 'crew' ? 'Tap to toggle' : row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable);
+    button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable);
     hits.push({ ...r.options[i], action: row.affordable ? { type: 'row', row: i, pad: ws.pad, revision: ws.revision, epoch: s.inputEpoch } : null });
   });
   button(g, r.close, 'B · Close', '◀▶ selects pads and the base');

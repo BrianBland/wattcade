@@ -4,7 +4,7 @@ import { circle, line, oval, poly, rect, TAU, type G } from './prims';
 export interface PetCtx { t: number; speed: number; gait: number; color: string }
 
 /** Runners trot ahead of the front wheel; fliers hover behind the rider's shoulder. */
-export const FLIERS = new Set(['bee', 'parrot', 'bat', 'dragon', 'ghost', 'gull', 'drone', 'miniufo', 'ember']);
+export const FLIERS = new Set(['pocketrocket', 'bee', 'parrot', 'bat', 'dragon', 'ghost', 'gull', 'drone', 'miniufo', 'ember']);
 /** Where each kind sits in rider space (ground at y = 0). */
 export const RUN_AT: [number, number] = [15, 0];
 export const FLY_AT: [number, number] = [-12, -25];
@@ -95,6 +95,20 @@ const PETS: Record<string, (g: G, c: PetCtx, rest: boolean) => void> = {
     rect(g,'#293d35',2.8,-7.1-b,.6,.7);poly(g,'#324d38',[3,-6-b],[5,-6.2-b],[4.5,-5.4-b],[3.2,-5.4-b]);rect(g,'#f3ebce',3.6,-6-b,.6,.5);
     for(let i=0;i<4;i++)poly(g,'#32824d',[-3.7+i*1.1,-3.7-i*.3-b],[-3.2+i*1.1,-4.7-i*.3-b],[-2.7+i*1.1,-4-i*.3-b]);
     line(g, '#3a8a3a', 0.5, [1.4, -4.4 - b], [2.2, -4 - b + Math.sin(c.t * 9) * 0.3]);
+  },
+  boulder: (g, c, rest) => { // Full Send: a pebble of the boulder that chased you, rolling to keep up (googly eyes stay upright)
+    const r = 2.6, a = rest ? 0 : c.gait * 0.8;
+    g.save(); g.translate(0, -r); g.rotate(a);
+    circle(g, '#7a7480', 0, 0, r); rect(g, '#5a5460', -1.6, -1.2, 1.2, 0.8); rect(g, '#5a5460', 0.6, 0.8, 1.1, 0.7); rect(g, '#9a94a0', -0.4, -2.2, 1.4, 0.6);
+    g.restore();
+    for (const x of [0.6, 1.8]) { circle(g, '#ffffff', x, -r - 0.6, 0.6); circle(g, '#15151c', x + (rest ? -0.2 : 0.2), -r - 0.5, 0.3); }
+  },
+  pocketrocket: (g, c) => { // Full Send: a little rocket that flies along behind your shoulder, flame flaring with your speed
+    const y = hover(c), f = 1.4 + Math.min(4, c.speed * 0.35) + Math.sin(c.t * 40) * 0.5;
+    poly(g, '#ff8a1a', [-2.4, y - 0.6], [-2.4 - f, y], [-2.4, y + 0.6]); poly(g, '#fff3a0', [-2.4, y - 0.3], [-2.4 - f * 0.5, y], [-2.4, y + 0.3]);
+    rect(g, '#e8ecf2', -2.4, y - 0.9, 4, 1.8); poly(g, c.color, [1.6, y - 0.9], [3.4, y], [1.6, y + 0.9]);
+    poly(g, '#ff4d6d', [-2.4, y - 0.9], [-3.2, y - 2], [-1.4, y - 0.9]); poly(g, '#ff4d6d', [-2.4, y + 0.9], [-3.2, y + 2], [-1.4, y + 0.9]);
+    circle(g, '#7fd4ff', 0.4, y, 0.45);
   },
   penguin: (g, c, rest) => {
     const w = rest ? 0 : Math.sin(c.gait) * 0.18;

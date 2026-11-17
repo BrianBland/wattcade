@@ -57,3 +57,15 @@ it('controller selection expands and collapses optional media setup', async () =
   await act(() => m.activate(3)); expect(panel.open).toBe(true);
   await act(() => m.activate(3)); expect(panel.open).toBe(false);
 });
+
+it('names absent optional peripherals explicitly and distinguishes an active connection', async () => {
+  m.status.hr.busy = false; m.status.hr.error = undefined; m.status.hr.connected = false;
+  m.status.trainer.connected = true;
+  try {
+    await mount();
+    const absent = host.querySelector('[data-connection="disconnected"]')!;
+    expect(absent.querySelector('.device-state')?.textContent).toContain('Not connected');
+    expect(absent.querySelector('.device-status')?.textContent).toBe('Connect');
+    expect(host.querySelector('[data-connection="connected"] .device-state')?.textContent).toContain('Connected');
+  } finally { m.status.trainer.connected = false; }
+});

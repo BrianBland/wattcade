@@ -7,7 +7,7 @@ import { choosePick,equip } from '../../cosmetics/unlocks';
 import { RewardPick } from './RewardPick';
 import { UnlockReveal } from './UnlockReveal';
 const mocks=vi.hoisted(()=>({pick:vi.fn(),equip:vi.fn(),press:null as null|((s:Set<string>)=>void)}));
-vi.mock('../services',async()=>{const {pendingPicks}=await import('../../cosmetics/unlocks');return {pendingPicks,pickReward:mocks.pick,equipItem:mocks.equip};});
+vi.mock('../services',async()=>{const {pendingPicks}=await import('../../cosmetics/unlocks');return {hasConnectedController:()=>false,subscribeDevices:()=>()=>{},pendingPicks,pickReward:mocks.pick,equipItem:mocks.equip};});
 vi.mock('../menuInput',()=>({onMenuPress:(f:(s:Set<string>)=>void)=>{mocks.press=f;return()=>{mocks.press=null;};}}));
 vi.mock('../../audio/sfx',()=>({play:vi.fn()}));
 vi.mock('../components/RiderAvatar',()=>({ItemArt:()=> <span>item art</span>,RiderAvatar:()=> <span>outfit preview</span>}));
@@ -43,4 +43,17 @@ it('controller equip persists the earned item and then continues',async()=>{
   act(()=>render(<UnlockReveal profile={testProfile({level:7})} items={[{slot:'pet',id:'corgi',name:'Corgi'}]} onProfile={onProfile} onDone={onDone}/>,host));
   await act(()=>mocks.press?.(new Set(['a'])));
   expect(onProfile.mock.calls[0][0].cosmetics.loadout.pet).toBe('corgi');expect(onDone).toHaveBeenCalledTimes(1);
+});
+
+it('navigates stacked phone rewards vertically before reaching the confirm action', () => {
+  const oldWidth=window.innerWidth;
+  Object.defineProperty(window,'innerWidth',{configurable:true,value:390});
+  try {
+    act(()=>render(<RewardPick profile={testProfile({level:5})} onProfile={vi.fn()} onDone={vi.fn()}/>,host));
+    act(()=>mocks.press?.(new Set(['down'])));
+    expect(host.querySelector('.pick-card.selected')?.textContent).toContain('Racerback tank');
+    expect(mocks.pick).not.toHaveBeenCalled();
+    act(()=>mocks.press?.(new Set(['down'])));
+    expect(host.querySelector('.btn.focused')?.textContent).toBe('Choose & equip');
+  } finally {Object.defineProperty(window,'innerWidth',{configurable:true,value:oldWidth});}
 });

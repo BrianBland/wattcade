@@ -11,21 +11,14 @@ const check = (id: string, record: Partial<SessionRecord>) => {
   const full = { gameId: 'towerdefense', events: [], gameSummary: {}, durationS: 0, samples: Array.from({ length: record.durationS ?? 0 }, (_, t) => ({ t, power: 130, cadence: 90 })), ...record } as unknown as SessionRecord;
   return a.check ? a.check(profile, full, []) : false;
 };
-const cleared = (leak = 0, spotless = leak === 0): Ev => ({ t: 0, type: 'waveCleared', data: { leakDmg: leak, spotless } });
-const end: Ev = { t: 0, type: 'runEnded', data: { reason: 'bail' } };
 const burst = (ordinal: number): Ev => ({ t: 0, type: 'burst', data: { ordinal, chain: 1 } });
-const built = (pad: number, tower: string): Ev => ({ t: 0, type: 'towerBuilt', data: { pad, tower } });
-const up = (pad: number, tower: string, level: number): Ev => ({ t: 0, type: 'towerUpgraded', data: { pad, tower, level } });
 
-it('Untouchable needs four Spotless waves in a row, and a leak-free wave is not Spotless', () => {
-  expect(achievements.find((a) => a.id === 'td_spotless')!.goal).toBe(25);
-  const leaked = () => cleared(0, false);
-  expect(check('td_untouchable', { events: [...Array.from({ length: 2 }, () => cleared()), end, ...Array.from({ length: 2 }, () => cleared())] })).toBe(false);
-  expect(check('td_untouchable', { events: [...Array.from({ length: 3 }, () => cleared()), leaked(), ...Array.from({ length: 3 }, () => cleared())] })).toBe(false);
-  expect(check('td_untouchable', { events: Array.from({ length: 4 }, () => cleared()) })).toBe(true);
-  expect(check('td_untouchable', { events: [leaked(), end, ...Array.from({ length: 4 }, () => cleared())] })).toBe(true);
-  // a summary from the sim counts even when the events were not kept
-  expect(check('td_untouchable', { gameSummary: { bestRunSpotless: 4 } })).toBe(true);
+it('level achievements read the campaign save at ride end and the cleared-level events', () => {
+  const lv = (stars: number, data: Record<string, number | string> = {}): Ev => ({ t: 0, type: 'levelCleared', data: { stars, chain: 1, intensity: 'steady', ...data } });
+  expect(check('td_hard', { events: [lv(2, { intensity: 'hard' })] })).toBe(true);
+  expect(check('td_hard', { events: [lv(2), { t: 0, type: 'levelFailed', data: { intensity: 'hard' } }] })).toBe(false);
+  expect(check('td_double_shift', { events: [lv(1), lv(3, { chain: 2 })] })).toBe(true);
+  expect(check('td_double_shift', { events: [lv(1), lv(3)] })).toBe(false);
 });
 
 it('Surge Protector is one run of called efforts, and still reads the old surge tally', () => {
@@ -51,18 +44,6 @@ it('Iron Lungs requires 12 calls, all three kinds, no failures or pending calls,
   expect(check('td_iron_lungs', { ...r, events: [...events, { t: 20, type: 'effortFailed' }] })).toBe(false);
   expect(check('td_iron_lungs', { ...r, durationS: 1799 })).toBe(false);
   expect(check('td_iron_lungs', { ...r, samples: [] })).toBe(false);
-});
-
-it('Full Workshop needs a level 5 of each kind standing together', () => {
-  const shop = [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), built(2, 'lens'), up(2, 'lens', 4)];
-  expect(check('td_workshop', { events: shop })).toBe(false);
-  expect(check('td_workshop', { events: [...shop, up(2, 'lens', 5)] })).toBe(true);
-  expect(check('td_workshop', { events: [...shop, { t: 0, type: 'towerSold', data: { pad: 0 } }, up(2, 'lens', 5)] })).toBe(false);
-  expect(check('td_workshop', { events: [...shop, up(2, 'lens', 5), { t: 0, type: 'towerSold', data: { pad: 0 } }] })).toBe(true);
-  // sold the tesla (pad reused) before the lens caught up: never all three at once
-  expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(0, 'lens'), up(0, 'lens', 5), built(1, 'flamer'), up(1, 'flamer', 5)] })).toBe(false);
-  // a fall clears the field; the second run has to rebuild
-  expect(check('td_workshop', { events: [built(0, 'tesla'), up(0, 'tesla', 5), built(1, 'flamer'), up(1, 'flamer', 5), end, built(2, 'lens'), up(2, 'lens', 5)] })).toBe(false);
 });
 
 it('Exposed! counts each defeated, exposed-sprinted boss once, not mere sprint events', () => {

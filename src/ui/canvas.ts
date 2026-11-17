@@ -59,24 +59,37 @@ export function drawPanel(g: CanvasRenderingContext2D, r: Rect) {
   g.fillRect(r.x, r.y, r.w, r.h);
   g.restore();
 }
+/** A two-step 4px corner, painted entirely inside the rectangular hit target. */
+function pixelRect(g: CanvasRenderingContext2D, r: Rect, color: string) {
+  if (r.w <= 0 || r.h <= 0) return;
+  const cut = Math.min(4, r.w / 2, r.h / 2), step = cut / 2;
+  g.fillStyle = color;
+  g.fillRect(r.x + cut, r.y, r.w - cut * 2, r.h);
+  g.fillRect(r.x + step, r.y + step, r.w - step * 2, r.h - step * 2);
+  g.fillRect(r.x, r.y + cut, r.w, r.h - cut * 2);
+}
 export function drawButton(g: CanvasRenderingContext2D, r: Rect, label: string, state: WidgetState & {
   primary?: boolean;
 } = {}) {
   g.save();
   g.globalAlpha = state.disabled ? .45 : 1;
-  const depth = state.primary ? UI.size.buttonDepth : 0;
-  const offset = state.pressed && !state.disabled ? depth : 0;
-  if (state.primary && !offset) {
-    g.fillStyle = UI.color.accentEdge;
-    g.fillRect(r.x + depth, r.y + depth, r.w, r.h);
+  const inset = state.primary ? 1 : 3;
+  const pressed = state.pressed && !state.disabled;
+  const face = { x:r.x, y:r.y + inset, w:r.w, h:Math.max(0,r.h - inset * 2) };
+  const edge = state.primary ? UI.color.accentEdge : UI.color.keyEdge;
+  const light = state.primary ? UI.color.accentLight : UI.color.keyLight;
+  pixelRect(g, face, edge);
+  pixelRect(g, { ...face, y:face.y + (pressed ? UI.size.buttonDepth : 0), h:Math.max(0,face.h - UI.size.buttonDepth) },
+    state.primary ? UI.color.accent : state.selected ? UI.color.raised : UI.color.key);
+  if (face.w > 8 && face.h > 4) {
+    g.fillStyle = light;
+    g.fillRect(face.x + 4, pressed ? face.y + face.h - 1 : face.y, face.w - 8, 1);
   }
-  g.fillStyle = state.primary ? UI.color.accent : state.pressed ? UI.color.raised : UI.color.surface;
-  g.fillRect(r.x + offset, r.y + offset, r.w, r.h);
   if (state.selected) {
     g.fillStyle = UI.color.accent;
-    g.fillRect(r.x, r.y, 4, r.h);
+    g.fillRect(r.x, face.y + 4, Math.min(3,r.w), Math.max(0,face.h - 8));
   }
-  text(g, label, r.x + 12 + offset, r.y + r.h / 2 + offset, UI.font.body, state.primary ? UI.color.onAccent : UI.color.text, Math.max(0, r.w - 24), state.primary ? 800 : 650);
+  text(g, label, r.x + 12, r.y + r.h / 2, UI.font.body, state.primary ? UI.color.onAccent : UI.color.text, Math.max(0, r.w - 24), state.primary ? 800 : 650);
   if (state.focused && !state.disabled) focus(g, r);
   g.restore();
 }

@@ -13,6 +13,8 @@ import { attachFakeKeys } from '../fakeKeysDom';
 import { DriveInScreen, type DriveInApi } from '../drivein/DriveInScreen';
 import { getDriveIn } from '../drivein/store';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
+import type { LobbyEntrance } from '../../games/warmup/render/entrance';
+import { holdX, spawnAheadM, type StageEntrance } from './entrance';
 
 /** Stop pedalling this long after a creditable ride and it is saved on its own (a fresh ride starts). */
 export const AUTO_SAVE_IDLE_S = 180;
@@ -24,22 +26,32 @@ const deviceKey = () => { const s = getDeviceStatus(); return `${getFake()}|${s.
  * The Warm-up Ride behind every menu: runs the lobby session, draws the scenery full-bleed, and drives the
  * shared InputHub for the menus. Restarts the ride (keeping the road position) when the rider or devices change.
  */
-export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible, onSession, onRideEnded }: {
+type LobbyRenderer = GameRenderer & {
+  setScreen?(r: { x: number; y: number; w: number; h: number } | null): void;
+  setEntrance?(e: LobbyEntrance | null): void; entered?(): boolean;
+};
+
+export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible, onSession, onRideEnded, entrance = null, onEntered }: {
   profile: Profile | null; profiles: readonly Profile[]; hud: boolean; restartKey: number;
   /** The lobby menu screen is up, so the Drive-In screen may show. */
   driveInVisible: boolean;
   onSession: (s: SessionLike | null) => void;
   /** A creditable ride ended because of a restart, rider change, auto-save or leaving for a game. */
   onRideEnded: (r: SessionRecord) => void;
+  /** A game's entrance on the road: one to ride into ('enter'), or the one just ridden out of ('exit'). */
+  entrance?: StageEntrance | null;
+  /** The rider went through the 'enter' entrance (called right after the frame that shows it, flash and all). */
+  onEntered?: () => void;
 }) {
   const mount = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
-  const renderer = useRef<(GameRenderer & { setScreen?(r: { x: number; y: number; w: number; h: number } | null): void }) | null>(null);
+  const renderer = useRef<LobbyRenderer | null>(null);
+  const entranceRef = useRef<StageEntrance | null>(entrance); entranceRef.current = entrance;
   const driveIn = useRef<DriveInApi | null>(null);
   const size = useRef({ w: 0, h: 0, inset: 0 });
   const [devKey, setDevKey] = useState(deviceKey);
   const [autoSaves, setAutoSaves] = useState(0);
-  const cb = useRef({ onSession, onRideEnded }); cb.current = { onSession, onRideEnded };
+  const cb = useRef({ onSession, onRideEnded, onEntered }); cb.current = { onSession, onRideEnded, onEntered };
   const riders = useMemo(() => profiles.filter(p => p.id !== profile?.id)
     .map(p => ({ id: p.id, name: p.name, look: riderLook(p) })), [profiles, profile?.id]);
   const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
@@ -92,6 +104,24 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
 
     size.current = { w: el.clientWidth, h: el.clientHeight, inset: probe.current?.offsetHeight ?? 0 };
     let raf = 0, last = performance.now(), still = 0, sinceCheck = 0, sentTo: unknown = null, sentOn = false;
+    // the entrance placed on the road: which request it is, where it stands, whether A moved it, and whether it fired
+    let lastWant: StageEntrance | null = null;
+    let placed: { key: number; x: number; d: number; jumped: boolean; fired: boolean; r: LobbyRenderer } | null = null;
+    const placeEntrance = (snap: { d?: number; v?: number; riderView?: { aheadM?: number } }) => {
+      const want = entranceRef.current, r = renderer.current, d = snap.d;
+      if (want !== lastWant) { if (lastWant && lastWant.key !== want?.key) lastWant.dispose?.(); lastWant = want; } // a replaced entrance lets go of its clip
+      if (!want || !r?.setEntrance || typeof d !== 'number') { if (!want && placed) { placed.r.setEntrance?.(null); placed = null; } return; }
+      const show = (x: number) => r.setEntrance!({ kind: want.kind, style: want.style, x, color: want.color, label: want.label, ...(want.art ? { art: want.art } : {}) });
+      if (placed?.key === want.key && placed.r === r) {
+        if (want.kind !== 'enter') return;
+        if (want.hold) { const x = holdX(placed.x, placed.d, d); placed.d = d; if (x !== placed.x) { placed.x = x; show(x); } } // still loading: it backs away as you near it
+        else if (want.jump && !placed.jumped) { placed.jumped = true; placed.x = d; show(d); }
+        return;
+      }
+      const x = want.kind === 'exit' ? d : d + spawnAheadM(snap.v ?? 0, snap.riderView?.aheadM ?? 25);
+      placed = { key: want.key, x, d, jumped: false, fired: false, r };
+      show(x);
+    };
     const draws = new FrameGate(60);
     let drawDt = 0;
     const loop = (now: number) => {
@@ -108,8 +138,10 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
           const { w, h, inset } = size.current;
           // the DOM video and the canvas frame share one rect, computed before the canvas draws
           renderer.current?.setScreen?.(driveIn.current?.tick(Math.min(0.25, drawDt), w, h, inset, (snap as { driveIn?: number }).driveIn ?? 0) ?? null);
+          placeEntrance(snap as { d?: number });
           renderer.current?.render(snap, s.ctx.bike(), input.state());
           drawDt = 0;
+          if (placed && !placed.fired && entranceRef.current?.kind === 'enter' && placed.r.entered?.()) { placed.fired = true; cb.current.onEntered?.(); }
         }
         still = s.ctx.bike().cadence3s < 10 ? still + dt : 0;
         sinceCheck += dt;
@@ -128,6 +160,7 @@ export function WarmupStage({ profile, profiles, hud, restartKey, driveInVisible
       detachKeys(); detachPad(); detachFake();
       window.removeEventListener('pointerdown', wake); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('pagehide', checkpointLobby);
       void lock?.release();
+      lastWant?.dispose?.();
     };
   }, []);
 

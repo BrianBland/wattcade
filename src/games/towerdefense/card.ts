@@ -1,8 +1,10 @@
 // Arcade card: banner art + progress line (shell calls these; keep tiny, no renderer imports).
 export function progressLine(save: unknown): string | null {
-  const sv = save as { bestWave?: number; bank?: number } | undefined;
-  if (!sv?.bestWave) return null;
-  return `Best: wave ${sv.bestWave}${sv.bank ? ` · ${sv.bank} parts` : ''}`;
+  const sv = save as { v?: number; campaign?: Record<string, number>; endlessBest?: number } | undefined;
+  if (!sv || (sv.v ?? 0) < 4) return null; // pre-levels saves carry nothing the card can show
+  const got = Object.values(sv.campaign ?? {}), stars = got.reduce((a, v) => a + Math.max(0, Math.min(3, v)), 0);
+  const parts = [got.length ? `${got.filter((v) => v > 0).length} levels · ${stars}★` : '', sv.endlessBest ? `Endless wave ${sv.endlessBest}` : ''].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
 }
 
 const COLS = ['#4aa8ff', '#ff5a3c', '#b46cff'];

@@ -8,7 +8,7 @@ const h3 = (x: number, y: number, z: number) => {
   return s - Math.floor(s);
 };
 /** Smooth-ish 3D value noise in [−1, 1] for displacing vertices. */
-function noise3(x: number, y: number, z: number): number {
+export function noise3(x: number, y: number, z: number): number {
   const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
   const fx = x - ix, fy = y - iy, fz = z - iz;
   const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
@@ -18,7 +18,7 @@ function noise3(x: number, y: number, z: number): number {
 }
 
 /** Displace along the normal by noise, then bake a vertical colour gradient (lo → hi over y0..y1). */
-function organic(g: THREE.BufferGeometry, amp: number, freq: number, lo: THREE.Color, hi: THREE.Color, y0: number, y1: number, seed = 0): THREE.BufferGeometry {
+export function organic(g: THREE.BufferGeometry, amp: number, freq: number, lo: THREE.Color, hi: THREE.Color, y0: number, y1: number, seed = 0): THREE.BufferGeometry {
   g = g.index ? g.toNonIndexed() : g;
   g.computeVertexNormals();
   const p = g.getAttribute('position') as THREE.BufferAttribute, n = g.getAttribute('normal') as THREE.BufferAttribute;
@@ -36,7 +36,7 @@ function organic(g: THREE.BufferGeometry, amp: number, freq: number, lo: THREE.C
   g.deleteAttribute('normal');
   return smoothNormals(g);
 }
-function smoothNormals(g: THREE.BufferGeometry): THREE.BufferGeometry {
+export function smoothNormals(g: THREE.BufferGeometry): THREE.BufferGeometry {
   const p = g.getAttribute('position') as THREE.BufferAttribute;
   const key = (i: number) => `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
   const acc = new Map<string, THREE.Vector3>(), a = new THREE.Vector3(), b = new THREE.Vector3(), cc = new THREE.Vector3();
@@ -96,7 +96,7 @@ export function swayMaterial(mat: THREE.MeshStandardMaterial, time: { value: num
 
 // ---------- helpers for merged, vertex-coloured models ----------
 /** Non-indexed copy of `g` with every vertex painted `color` (so parts can be merged into one instanced mesh). */
-function paint(g: THREE.BufferGeometry, color: number | THREE.Color): THREE.BufferGeometry {
+export function paint(g: THREE.BufferGeometry, color: number | THREE.Color): THREE.BufferGeometry {
   const n = g.index ? g.toNonIndexed() : g.clone();
   n.deleteAttribute('uv');
   if (!n.getAttribute('normal')) n.computeVertexNormals();
@@ -106,7 +106,7 @@ function paint(g: THREE.BufferGeometry, color: number | THREE.Color): THREE.Buff
   n.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return n;
 }
-const at = (g: THREE.BufferGeometry, x: number, y: number, z: number) => { g.translate(x, y, z); return g; };
+export const at = (g: THREE.BufferGeometry, x: number, y: number, z: number) => { g.translate(x, y, z); return g; };
 /** A cartoon eye: white ball, black pupil looking outward along +z (mirror with side = −1), tiny highlight. */
 function eye(r: number, x: number, y: number, z: number, side: 1 | -1, look = new THREE.Vector3(0.35, 0.1, 1)): THREE.BufferGeometry[] {
   const d = look.clone().setZ(look.z * side).normalize();
@@ -115,7 +115,7 @@ function eye(r: number, x: number, y: number, z: number, side: 1 | -1, look = ne
   const glint = at(new THREE.SphereGeometry(r * 0.18, 8, 6), x + d.x * r * 0.75 + r * 0.2, y + d.y * r * 0.75 + r * 0.3, z + d.z * r * 0.92);
   return [paint(white, 0xffffff), paint(pupil, 0x111111), paint(glint, 0xffffff)];
 }
-const merged = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts.map((g) => { const n = g.index ? g.toNonIndexed() : g; if (n.getAttribute('uv')) n.deleteAttribute('uv'); return n; }))!;
+export const merged = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts.map((g) => { const n = g.index ? g.toNonIndexed() : g; if (n.getAttribute('uv')) n.deleteAttribute('uv'); return n; }))!;
 
 // ---------- fauna (cartoon, colourful) ----------
 /** Sockeye in spawning colours: bright red body, green head, pale belly, googly eyes; nose +X, length ~2. */

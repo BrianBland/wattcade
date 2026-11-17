@@ -52,6 +52,11 @@ export interface Emit {
   area?: { x: number; y: number; r: number; w?: number; h?: number };   // disc of radius r, or a w × h rectangle
   /** Several springs: each parcel picks one by share (sourceX is ignored when present). */
   sources?: Array<{ x: number; share: number }>;
+  /**
+   * The rider's current: water within `r` rows of row `y` (and `reach` cells across) is pulled across the valley
+   * toward column `x` with accel `k`·dx, capped at `max` (cells/s²), fading with distance in rows.
+   */
+  pull?: { x: number; y: number; r: number; reach: number; k: number; max: number };
 }
 
 export const REF_VOL = 0.35;
@@ -71,6 +76,7 @@ export class Water {
   readonly w: Float32Array;
   private gx: Float32Array; private gy: Float32Array; private s: Float32Array;
   private spawnAcc = 0;
+  private pull: Emit['pull'] | null = null;
   private thermalAcc = 0;
   stats: WaterStats = { eroded: 0, deposited: 0, toSea: 0, spawned: 0, dropped: 0 };
   /** Bumped whenever terrain heights change (renderers re-upload on change). */
@@ -88,6 +94,7 @@ export class Water {
   step(dt: number, emit: Emit, p: WaterParams, substeps = 2): void {
     this.spawn(dt, emit, p);
     const h = dt / substeps;
+    this.pull = emit.pull ?? null;
     for (let k = 0; k < substeps; k++) this.substep(h, emit.erodeMul, p);
     this.thermalAcc += dt;
     if (this.thermalAcc >= 0.2) { this.thermal(p); this.thermalAcc = 0; }
@@ -166,7 +173,13 @@ export class Water {
       const ground = sample(hgt, nx, ny, x, y);
       const inSea = ground < SEA;
       const depth = inSea ? SEA - ground + sample(this.w, nx, ny, x, y) : sample(this.w, nx, ny, x, y);
-      vx += ax * dt; vy += ay * dt + (inSea ? p.seaDrift * dt : 0);
+      let px = 0;
+      const pl = this.pull;
+      if (pl && !inSea) {
+        const fy = 1 - Math.abs(y - pl.y) / pl.r, dx = pl.x - x;
+        if (fy > 0 && Math.abs(dx) < pl.reach) px = Math.max(-pl.max, Math.min(pl.max, pl.k * dx)) * fy;
+      }
+      vx += (ax + px) * dt; vy += ay * dt + (inSea ? p.seaDrift * dt : 0);
       const drag = (p.friction + p.shallowDrag / (depth + 0.1) + (inSea ? 0.6 : 0)) * this.kDrag[q];
       const damp = 1 / (1 + drag * dt);
       vx *= damp; vy *= damp;

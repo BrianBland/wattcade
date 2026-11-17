@@ -17,3 +17,5 @@
 - Music buffering keeps the existing error/status text and shows actual ready-audio progress after five seconds.
 - Per-player media timing diagnostics are opt-in and collapsed by default; ordinary music progress remains independent.
 - Main integration keeps BufferProgress inside the shared music-wait message; debug-only timings remain available outside waits in a shared panel, without a false busy state.
+
+- Cadenza Pause → Paddle steering saves movement/curve/deadzone/switch threshold to the rider’s game tuning; Back keeps the ride paused. The submenu follows the current pause chrome and touch/controller widgets. `PauseMenu.test.tsx` and `scripts/cadenza-paddles-smoke.mjs` cover navigation, numeric bounds and persistence.

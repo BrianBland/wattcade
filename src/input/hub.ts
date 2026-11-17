@@ -24,6 +24,8 @@ export class InputHub {
   private debounceMs: number; private hwHeld = new Set<Button>(); private lastHwRelease = new Map<Button, number>();
   /** Response-curve exponent for analog paddles/sticks after deadzone (1 = linear; 2 = gentle near rest, full at max). */
   paddleExpo: number;
+  private tuning?: { get(key: string): unknown };
+  private tuningNs = '';
   private rideRaw: ControllerRawState = { buttons: EMPTY, paddleL: 0, paddleR: 0 };
   private kbHeld = new Set<Button>(); private kbPaddle = { L: 0, R: 0 };
   private kbDown = { L: new Set<number>(), R: new Set<number>() } as Record<'L' | 'R', Set<number>>;
@@ -49,6 +51,16 @@ export class InputHub {
 
   applySettings(s: ProfileSettings): void {
     this.deadzone = s.paddleDeadzone;
+    this.tuning = undefined;
+  }
+
+  bindTuning(registry: { get(key: string): unknown }, namespace: string): void {
+    this.tuning = registry; this.tuningNs = namespace;
+  }
+
+  private paddleDeadzone(): number {
+    const value = this.tuning?.get(`${this.tuningNs}.paddleDeadzone`);
+    return typeof value === 'number' ? value : this.deadzone;
   }
 
   state(): Readonly<InputState> { return this.cur; }
@@ -102,9 +114,12 @@ export class InputHub {
 
   private paddles(): { l: number; r: number } {
     const pick = (...v: number[]) => v.reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0);
-    const curve = (v: number) => applyExpo(v, this.paddleExpo);
-    const rideL = curve(applyDeadzone(this.rideRaw.paddleL, this.deadzone, true));
-    const rideR = curve(applyDeadzone(this.rideRaw.paddleR, this.deadzone));
+    const response = this.tuning?.get(`${this.tuningNs}.paddleCurve`);
+    const expo = response === 'linear' ? 1 : response === 'quadratic' ? 2 : this.paddleExpo;
+    const curve = (v: number) => applyExpo(v, expo);
+    const deadzone = this.paddleDeadzone();
+    const rideL = curve(applyDeadzone(this.rideRaw.paddleL, deadzone, true));
+    const rideR = curve(applyDeadzone(this.rideRaw.paddleR, deadzone));
     return {
       l: pick(rideL, this.kbPaddle.L, curve(this.padPaddle.L), this.script?.paddleL ?? 0),
       r: pick(rideR, this.kbPaddle.R, curve(this.padPaddle.R), this.script?.paddleR ?? 0),
@@ -195,7 +210,7 @@ export class InputHub {
         const btn = PAD_BUTTONS[idx]; if (btn) { held.add(btn); any = true; }
       });
       const ax = p.axes;
-      const dz = this.deadzone / 100;
+      const dz = this.paddleDeadzone() / 100;
       const f = (v: number) => (Math.abs(v) <= dz ? 0 : Math.sign(v) * Math.min(1, (Math.abs(v) - dz) / (1 - dz)));
       const a = ax.length > 0 ? f(ax[0]) : 0; const b = ax.length > 2 ? f(ax[2]) : 0;
       if (Math.abs(a) > Math.abs(l)) l = a; if (Math.abs(b) > Math.abs(r)) r = b;

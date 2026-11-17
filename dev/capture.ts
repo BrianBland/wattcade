@@ -1,6 +1,7 @@
-// Dev harness for the arcade card clips (scripts/capture-cards.ts): one game's real renderer on the fake bike, no shell, no HUD.
+// Dev harness for arcade card shots (src/shell/cards/shots.ts): one game's real renderer on the fake bike, no shell, no HUD.
 //   /dev/capture.html?game=hamster&script=z2&sec=900&seed=1&opts={"autopilot":true}&media=edm
-// Steps the sim `sec` seconds headlessly first so the clip shows a game in full swing, then renders in real time.
+// Steps the sim `sec` seconds headlessly first so it shows a game in full swing, then renders in real time
+// (manual=1: only when a script calls __advance(ms), on a virtual clock, for frame-exact screenshots).
 import { createGameSession, NullInput, testProfile } from '../src/core';
 import { synthTimeline } from '../src/media/synth/queue';
 import { getGame } from '../src/games/registry';

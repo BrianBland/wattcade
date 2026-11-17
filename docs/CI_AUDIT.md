@@ -4,6 +4,11 @@ Audited checkout: `3d4137d0592abc027681df7939e52454eeac4740` (clean branch `work
 Measurements collected 17 November 2026. The checkout predates current remote
 history; this audit changes the supplied checkout rather than silently updating it.
 
+PR integration subsequently merged `40db586` from main, preserving the original
+three implementation commits. README and ignore-file conflicts retain both main's
+card-clip changes and the CI changes here. The measurements below remain scoped
+to the original checkout; the PR's full hosted suite validates the newer inventory.
+
 ## Sources and applicability
 
 Read [Vincent Koc's article](https://vincent.build/openclaw-ci-cost-reduction/),

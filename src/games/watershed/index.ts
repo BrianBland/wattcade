@@ -6,6 +6,7 @@ import { drawCard, progressLine } from './card';
 export const module: GameModule = {
   achievements,
   id: 'watershed',
+  accent: '#2de2a6',
   title: 'Watershed',
   blurb: 'You are the river. ERG sets how much water you are; your cadence decides if it carves gorges or races silt to the sea.',
   progressLine, drawCard,

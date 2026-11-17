@@ -5,6 +5,7 @@ import { DebugOverlay } from '../debug/DebugOverlay';
 import { loadFlag } from '../debug/flag';
 import { Achievements } from './screens/Achievements';
 import { ArcadeMenu } from './screens/ArcadeMenu';
+import type { EndRideStatus } from './screens/EndRideConfirm';
 import { Connect } from './screens/Connect';
 import { GameHost } from './screens/GameHost';
 import { ProfileEditor } from './screens/ProfileEditor';
@@ -12,9 +13,16 @@ import { ProfilePicker } from './screens/ProfilePicker';
 import { Summary } from './screens/Summary';
 import { Locker } from './screens/Locker';
 import { RewardPick } from './screens/RewardPick';
+import { markControlsSeen } from './game/controlsSeen';
 import { UnlockReveal } from './screens/UnlockReveal';
 import { HudLayer } from './hud/HudLayer';
 import { WarmupStage } from './warmup/WarmupStage';
+import { approachS, entranceFor, spawnNow, type StageEntrance } from './warmup/entrance';
+import { loadEstimateS, recordLoadS } from './game/loadTimes';
+import { cardClip } from './cardClip';
+import { EntryChip } from './screens/EntryChip';
+import { cancelPrewarm, prewarmGame } from './game/prewarm';
+import { Delayed } from './components/Delayed';
 import { MediaPicker } from './media/MediaPicker';
 import { Toasts, toast } from './components/Toasts';
 import { FullscreenButton } from './components/FullscreenButton';
@@ -24,17 +32,23 @@ import { formatDuration } from './format';
 import { play as sfx, unlockAudio } from '../audio/sfx';
 import {
   abandonSession, bindDebugInput, createProfile, creditRide, deleteProfile, finishSession, listProfiles, lobbyActiveSeconds, lobbyIsReal,
-  lastProfileId, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S,
+  captureLobbyFrame, lastProfileId, saveSettings, rememberProfile, restoreSavedSetup, saveGameData, saveProfile, stopLobby, takePendingRide, unlockMedia, WARMUP_CREDIT_S, lobbySession,
 } from './services';
 import type { MediaRun, Screen, SessionLike } from './types';
 
-/** Arcade picker list (dev-only games appear with the dev flag). */
-const games = pickerGames();
+/** Arcade picker list (games under construction included; their cards wear caution tape). */
+const games = pickerGames;
 
 /** Menus fade away after this long without menu input, leaving the ride as a screensaver. */
 export const SLEEP_S = 25;
 const SLEEPY: ReadonlyArray<Screen['name']> = ['profiles', 'menu', 'achievements', 'summary', 'locker'];
-const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'achievements', 'connect', 'summary', 'media', 'locker', 'pick'];
+const HUD_SCREENS: ReadonlyArray<Screen['name']> = ['menu', 'entering', 'achievements', 'connect', 'summary', 'media', 'locker', 'pick'];
+/** How long the summary waits after a game so the rider is seen riding back out of it first. */
+const SUMMARY_DELAY_MS = 1200;
+/** How long the exit portal / confetti stays requested (the renderer shuts it sooner as the rider rides on). */
+const EXIT_CLEAR_MS = 6000;
+/** After A (jump in), go in anyway if the road hasn't shown the rider going through by then. */
+const JUMP_FALLBACK_MS = 1500;
 /** Buttons that count as using the menu (shifters are for riding, so they never wake it). */
 const NAV = new Set<Button>(['up', 'down', 'left', 'right', 'a', 'b', 'y', 'z']);
 
@@ -47,6 +61,7 @@ export function App() {
   const [draft, setDraft] = useState<Profile | null>(null);
   const [lobby, setLobby] = useState<SessionLike | null>(null);
   const [restartKey, setRestartKey] = useState(0);
+  const [entrance, setEntrance] = useState<StageEntrance | null>(null);
   const [asleep, setAsleepState] = useState(false);
   const asleepRef = useRef(false);
   const setAsleep = (v: boolean) => { asleepRef.current = v; setAsleepState(v); };
@@ -96,7 +111,8 @@ export function App() {
     return () => clearInterval(id);
   }, [screen.name]);
 
-  const go = (s: Screen) => setScreen(s);
+  const screenRef = useRef(screen); screenRef.current = screen;
+  const go = (s: Screen) => { screenRef.current = s; setScreen(s); };
   /** A profile change from a screen (Locker equips, reward picks): already saved; refresh state + the picker list. */
   const updateProfile = (p: Profile) => { setProfile(p); void refresh(); };
   const edit = async (p: Profile | null) => {
@@ -104,29 +120,83 @@ export function App() {
   };
   const play = async (g: (typeof games)[number], media?: MediaRun) => {
     if (g.requires?.media?.length && !media) { go({ name: 'media', game: g }); return; } // music games pick songs first (the ride keeps going)
+    const p = profileRef.current;
+    if (!p) return;
+    // Load the game in the background first. Its portal / gate goes on the road early enough that, at the rider's speed,
+    // they reach it just after the load is expected to finish (a padded estimate from this device's past loads).
+    const key = Date.now(), t0 = performance.now(), estimate = loadEstimateS(g.id);
+    entryKey.current = key; jumpAsked.current = false; setEntryReady(false); setEntrance(null);
+    go({ name: 'entering', game: g, media });
+    const live = () => entryKey.current === key && screenRef.current.name === 'entering';
+    let spawned = false;
+    const spawn = (hold: boolean) => { spawned = true; setEntrance({ ...entranceFor(g, 'enter', key, { mp4: cardClip(g.id, 'mp4'), poster: cardClip(g.id, 'webp') }), ...(hold ? { hold: true } : {}) }); };
+    const timer = window.setInterval(() => {
+      if (!live() || spawned) { clearInterval(timer); return; }
+      const snap = lobbySession()?.sim.snapshot() as { v?: number; riderView?: { aheadM?: number } } | undefined;
+      if (spawnNow((performance.now() - t0) / 1000, estimate, approachS(snap?.v ?? 0, snap?.riderView?.aheadM ?? 25))) spawn(true);
+    }, 200);
+    const warm = await prewarmGame(g, p, media);
+    clearInterval(timer);
+    if (warm) recordLoadS(g.id, (performance.now() - t0) / 1000);
+    if (!live()) return; // cancelled or moved on
+    setEntryReady(true);
+    if (!spawned) spawn(false);
+    else setEntrance((e) => (e && e.key === key ? { ...e, hold: false } : e)); // loaded: the rider may ride in now
+    if (jumpAsked.current) { setEntrance((e) => (e && e.key === key ? { ...e, jump: true } : e)); jumpFallback(g, media); }
+  };
+  const entryKey = useRef(0);
+  const jumpAsked = useRef(false);
+  const [entryReady, setEntryReady] = useState(false);
+  /** After A (jump in), go in anyway if the road hasn't shown the rider going through by then. */
+  const jumpFallback = (g: (typeof games)[number], media?: MediaRun) => {
+    const key = entryKey.current;
+    window.setTimeout(() => { if (screenRef.current.name === 'entering' && entryKey.current === key) void enterGame(g, media); }, JUMP_FALLBACK_MS);
+  };
+  /** The rider went through the entrance (or the lobby isn't running): leave for the game. */
+  const entering = useRef(false);
+  const enterGame = async (g: (typeof games)[number], media?: MediaRun) => {
+    if (entering.current) return;
+    entering.current = true;
+    captureLobbyFrame(); // the game holds this picture (the flash) up while it loads
     const rec = stopLobby(); // credit the warm-up before the game session starts
     if (rec) await credit(rec);
+    setEntrance(null);
     go({ name: 'game', game: g, media });
+    entering.current = false;
   };
+  /** Back on the road from a game: the rider rides out of its portal (or through confetti), then it clears. */
+  const exitTimer = useRef(0);
+  const rideOut = (g: (typeof games)[number]) => {
+    setEntrance(entranceFor(g, 'exit'));
+    clearTimeout(exitTimer.current);
+    exitTimer.current = window.setTimeout(() => setEntrance((e) => (e?.kind === 'exit' ? null : e)), EXIT_CLEAR_MS);
+  };
+  const endRideStatus = (): EndRideStatus => {
+    if (!lobbyIsReal()) return { kind: 'demo' };
+    const activeS = lobbyActiveSeconds(), leftS = WARMUP_CREDIT_S - activeS;
+    return leftS > 0 ? { kind: 'short', activeS, leftS } : { kind: 'save', activeS };
+  };
+  /** After an ended ride (and its summary / rewards), hand the bike back to the rider picker. */
+  const rideEnded = useRef(false);
+  const home = () => { const ended = rideEnded.current; rideEnded.current = false; go({ name: ended ? 'profiles' : 'menu' }); };
+  /** Confirmed End ride: save it if it counts (real devices, >= WARMUP_CREDIT_S pedalling), then back to the rider picker. */
   const endRide = async () => {
-    if (!lobbyIsReal()) { toast('Demo ride: connect a trainer to save rides'); return; }
-    const left = WARMUP_CREDIT_S - lobbyActiveSeconds();
-    if (left > 0) { toast(`Pedal ${formatDuration(left)} more to save this ride`); return; }
-    const rec = stopLobby(); if (!rec) return;
-    const r = await creditRide(rec, profileRef.current);
-    setRestartKey((k) => k + 1);
-    if (r) { applyCredit(r); go({ name: 'summary', record: r.record, award: r.award }); }
+    const rec = endRideStatus().kind === 'save' ? stopLobby() : null;
+    const r = rec ? await creditRide(rec, profileRef.current) : null;
+    if (r) { applyCredit(r); rideEnded.current = true; setRestartKey((k) => k + 1); go({ name: 'summary', record: r.record, award: r.award }); return; }
+    go({ name: 'profiles' }); // a short or demo ride is discarded when the lobby restarts for the picker
   };
   const restartGame = async (g: (typeof games)[number], media?: MediaRun) => {
     const p = profileRef.current;
     if (p) { const r = await finishSession(p); setProfile(r.profile); void refresh(); toast(`Ride saved · +${r.award.xpGained} XP`, 'good'); }
     go({ name: 'game', game: g, run: Date.now(), media });
   };
-  const quitGame = async () => {
+  const quitGame = async (g: (typeof games)[number]) => {
     const p = profileRef.current;
+    rideOut(g);
     if (!p) return go({ name: 'menu' });
     const r = await finishSession(p);
-    setProfile(r.profile); void refresh(); go({ name: 'summary', record: r.record, award: r.award });
+    setProfile(r.profile); void refresh(); go({ name: 'summary', record: r.record, award: r.award, delayMs: SUMMARY_DELAY_MS });
   };
 
   let body;
@@ -138,17 +208,26 @@ export function App() {
         onSave={async (p) => { await saveProfile(p); await refresh(); go({ name: 'profiles' }); }}
         onDelete={screen.profileId ? async (p) => { await deleteProfile(p.id); await refresh(); go({ name: 'profiles' }); } : undefined} />; break;
     case 'connect': body = <Connect onDone={() => go({ name: profile ? 'menu' : 'profiles' })} />; break;
-    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onBack={() => go({ name: 'profiles' })} onEndRide={() => void endRide()} />; break;
+    case 'menu': body = profile && <ArcadeMenu visible={!asleep} games={games} profile={profile} onPlay={(g) => void play(g)} onNav={(to) => go({ name: to })} onEndRide={() => void endRide()} endRideStatus={endRideStatus} minRideS={WARMUP_CREDIT_S} />; break;
     case 'achievements': body = profile && <Achievements profile={profile} onBack={() => go({ name: 'menu' })} />; break;
-    case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={() => go({ name: 'menu' })} />; break;
+    case 'locker': body = profile && <Locker profile={profile} onProfile={updateProfile} onPick={() => go({ name: 'pick' })} onBack={home} />; break;
     case 'pick': body = profile && <RewardPick profile={profile} onProfile={updateProfile} onDone={() => go({ name: 'locker' })} />; break;
+    case 'entering': body = <EntryChip game={screen.game} ready={entryReady} onJump={() => {
+        if (jumpAsked.current) return;
+        jumpAsked.current = true; // still loading: the entrance opens at the rider once ready
+        if (!entryReady) return;
+        setEntrance((e) => (e && e.kind === 'enter' ? { ...e, jump: true } : e));
+        jumpFallback(screen.game, screen.media);
+      }}
+      onCancel={() => { entryKey.current = 0; cancelPrewarm(); setEntrance(null); go({ name: 'menu' }); }} />; break;
     case 'media': body = profile && <MediaPicker game={screen.game} profile={profile} onStart={(m) => void play(screen.game, m)} onBack={() => go({ name: 'menu' })} />; break;
     case 'game':
-      body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={quitGame}
-        onAbandon={() => { abandonSession(); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
-        onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }} />; break;
-    case 'summary': body = <Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : go({ name: screen.award.picks > 0 ? 'pick' : 'menu' })} />; break;
-    case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>go({name:screen.award.picks>0?'pick':'menu'})}/>; break;
+      body = profile && <GameHost key={screen.run ?? 0} game={screen.game} profile={profile} media={screen.media} onQuit={() => void quitGame(screen.game)}
+        onAbandon={() => { abandonSession(); rideOut(screen.game); go({ name: 'menu' }); }} onRestart={() => void restartGame(screen.game, screen.media)}
+        onSave={(d) => { const cur = profileRef.current; if (!cur) return; setProfile({ ...cur, gameData: { ...cur.gameData, [screen.game.id]: d } }); void saveGameData(cur.id, screen.game.id, d); }}
+        onControlsSeen={(sig) => { const cur = profileRef.current; if (!cur) return; const next = markControlsSeen(cur, screen.game.id, sig); setProfile(next); void saveSettings(cur.id, { controlsSeen: next.settings.controlsSeen }); }} />; break;
+    case 'summary': body = <Delayed key={screen.record.startedAt} ms={screen.delayMs ?? 0}><Summary record={screen.record} award={screen.award} xpAfter={profile?.xp ?? 0} ftp={profile?.ftp ?? 200} profile={profile} onDone={() => screen.award.newItems.length ? go({name:'unlocks',award:screen.award}) : screen.award.picks > 0 ? go({ name: 'pick' }) : home()} /></Delayed>; break;
+    case 'unlocks': body = profile && <UnlockReveal profile={profile} items={screen.award.newItems} onProfile={updateProfile} onDone={()=>screen.award.picks>0?go({name:'pick'}):home()}/>; break;
   }
   const inGame = screen.name === 'game';
   const driveInRider = screen.name === 'profiles' || screen.name === 'editor' ? null : profile;
@@ -158,7 +237,8 @@ export function App() {
   const hud = !inGame && !!rider && !!lobby && HUD_SCREENS.includes(screen.name);
   return (
     <>
-      {!inGame && <WarmupStage profile={rider} profiles={profiles} hud={hud} restartKey={restartKey} driveInVisible={screen.name === 'menu'} onSession={setLobby} onRideEnded={(r) => void credit(r)} />}
+      {!inGame && <WarmupStage profile={rider} profiles={profiles} hud={hud} restartKey={restartKey} driveInVisible={screen.name === 'menu'} onSession={setLobby} onRideEnded={(r) => void credit(r)}
+        entrance={entrance} onEntered={() => { if (screen.name === 'entering') void enterGame(screen.game, screen.media); }} />}
       <div class={`screens${asleep ? ' asleep' : ''}${hud ? ' with-hud' : ''}`}>{body}</div>
       {hud && lobby && rider && (
         <div class="hud-host">

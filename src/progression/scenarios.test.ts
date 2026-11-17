@@ -74,8 +74,8 @@ describe('headless rides unlock game achievements', () => {
   }, RIDE_TIMEOUT);
   it('dynamo defense', async () => {
     // Deep fixture opts into combat actions and a reinforced base; survival is tested by the game's passive scenarios.
-    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_wave10', 'td_kindling']));
-    await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills', 'calls', 'spotless', 'strongKills', 'scrap']);
+    expect(await unlocked('towerdefense', 'surge-ready-deep')).toEqual(expect.arrayContaining(['td_kindling']));
+    await counted('towerdefense', 'surge-ready-deep', ['bosses', 'kills', 'calls', 'strongKills', 'scrap']);
   }, RIDE_TIMEOUT);
   it('sprocket squadron', async () => {
     expect(await unlocked('starfighter', 'z2-half-hour')).toContain('sf_maw');
@@ -97,5 +97,9 @@ describe('headless rides unlock game achievements', () => {
   it('cadenza', async () => {
     expect(await unlocked('cadenza', 'autopilot rides an automixed EDM set')).toEqual(expect.arrayContaining(['cz_first', 'cz_overdrive']));
     await counted('cadenza', 'autopilot rides an automixed EDM set', ['cleanZones', 'songs']);
+  }, RIDE_TIMEOUT);
+  it('full send', async () => {
+    expect(await unlocked('fullsend', 'sprinting every set piece earns medals')).toEqual(expect.arrayContaining(['fs_first_tour', 'fs_loop']));
+    await counted('fullsend', 'sprinting every set piece earns medals', ['golds', 'hours']);
   }, RIDE_TIMEOUT);
 });

@@ -1,6 +1,7 @@
 // Draws the aliens with the cut-out puppets: per-enemy gait (see ./track), heading, strike pose near the base, hurt
 // flash, a death curl into a fading husk, and brood-tinted splats that stay until the wave ends.
-import { BASE_X, BASE_Y, KINDS, type Element } from '../../sim/defs';
+import { KINDS, type Element } from '../../sim/defs';
+import { geoOf } from '../../sim/level';
 import type { EnemyView, Fx, TdSnapshot } from '../../sim/types';
 import { COL } from '../sprites';
 import { DEATH_FRAMES, FrameCache, LiveCanvas, husk, loadPuppets, type Frame } from './puppets';
@@ -38,6 +39,7 @@ export class AlienLayer {
   private flinchT = -99;
   private gibs: Array<{ species: SpeciesId; gib: Gib }> = [];
   failed = false;
+  private bakedKey: string | null = null;
   readonly loaded: Promise<void> = Promise.resolve();
 
   constructor(base: string) {
@@ -50,15 +52,16 @@ export class AlienLayer {
   /** Bake the initial poses while the shell holds the simulation on its loading screen. */
   async prepare(v: View, cancelled = () => false) {
     await this.loaded;
-    const cache = this.cache!;
-    this.sizeKey = `${Math.round(v.k * 100)}|${v.dpr}`; cache.clear();
+    const cache = this.cache!, key = `${Math.round(v.k * 100)}|${v.dpr}`;
+    if (this.bakedKey === key && this.sizeKey === key && !cache.pending) return; // already baked at this size (a game loaded ahead of time is readied again when shown)
+    this.sizeKey = key; this.bakedKey = null; cache.clear();
     for (const sp of SPECIES_LIST) {
       const def=KINDS[sp.kind], length=alienLengthUnits(def.radius,sp)*v.k*v.dpr;
       const colors = sp.tint ? ['blue','red','purple'] as const : [sp.kind === 'boss' ? 'gold' : def.color] as Array<Element|'gold'>;
       for (const color of colors) cache.get(sp.id,length,COL[color],sp.tint?COL[color]:undefined);
     }
     while (cache.pending && !cancelled()) { cache.pump(); await new Promise<void>(resolve => setTimeout(resolve,0)); }
-    if (cancelled()) cache.clear();
+    if (cancelled()) cache.clear(); else this.bakedKey = key;
   }
 
   get ready() { return !!this.cache; }
@@ -79,7 +82,7 @@ export class AlienLayer {
       live.add(e.id);
       const sp = SPECIES_OF_KIND[e.kind];
       let tr = this.tracks.get(e.id);
-      if (!tr) { tr = newTrack(e); this.tracks.set(e.id, tr); }
+      if (!tr) { tr = newTrack(e, geoOf(s).base); this.tracks.set(e.id, tr); }
       advanceTrack(tr, e, sp, alienLengthUnits(e.radius, sp), s.t, dt);
     }
     const firstPass = this.lastFx < 0;
@@ -87,8 +90,8 @@ export class AlienLayer {
       if (f.id <= this.lastFx) continue;
       this.lastFx = Math.max(this.lastFx, f.id);
       if (f.kind !== 'death' || firstPass) continue; // don't replay history on mount
-      const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(KINDS[f.ekind].radius, sp);
-      const tr = this.tracks.get(f.eid), h = tr?.h ?? Math.atan2(BASE_Y - f.y, BASE_X - f.x), tint = sp.tint ? COL[f.color] : undefined;
+      const sp = SPECIES_OF_KIND[f.ekind], len = alienLengthUnits(f.ekind === 'boss' ? geoOf(s).bossRadius : KINDS[f.ekind].radius, sp);
+      const tr = this.tracks.get(f.eid), h = tr?.h ?? Math.atan2(geoOf(s).base.y - f.y, geoOf(s).base.x - f.x), tint = sp.tint ? COL[f.color] : undefined;
       const corpse: Corpse = { species: sp.id, x: f.x, y: f.y, h, t0: s.t, tint, outline: COL[f.color], len, fadeAt: this.lull ? s.t : undefined, boss: f.ekind === 'boss' };
       if (KINDS[f.ekind].heavy && tr) { // heavy deaths come apart: some real parts fly off, the husk is drawn without them
         const P = this.cache.puppet(sp.id), boss = f.ekind === 'boss', pin = { phase: tr.cycles, attack: tr.attack };
@@ -147,7 +150,11 @@ export class AlienLayer {
       const q = v.P(c.x, c.y);
       this.blit(g, fr, q.x, q.y, c.h + v.rot + k * 0.5, v.dpr, fade, 1 - k * 0.12);
     }
-    for (const e of [...s.enemies].sort((a, b) => a.y - b.y)) {
+    this.drawLive(g, s.enemies, v, t, fallback);
+  }
+  /** Just these live aliens, back to front (e.g. again over a bridge deck). */
+  drawLive(g: G, enemies: readonly EnemyView[], v: View, t: number, fallback: (e: EnemyView, h: number) => void) {
+    for (const e of [...enemies].sort((a, b) => a.y - b.y)) {
       const tr = this.tracks.get(e.id); if (!tr) continue;
       if (!this.drawOne(g, e, tr, v, t)) fallback(e, tr.h);
     }

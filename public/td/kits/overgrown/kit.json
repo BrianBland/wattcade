@@ -1,0 +1,159 @@
+{
+ "style": "overgrown",
+ "source": "overgrown-grok-b",
+ "ppu": 12,
+ "roadHalf": 4,
+ "roadRim": 1,
+ "roadBand": 9,
+ "files": {
+  "groundA": "ground_a.webp",
+  "groundB": "ground_b.webp",
+  "gravel": "gravel.webp",
+  "road": "road.webp",
+  "hive": "hive.webp"
+ },
+ "apron": {
+  "file": "apron.webp",
+  "w": 42,
+  "h": 41.25
+ },
+ "clearing": {
+  "file": "clearing.webp",
+  "w": 24.75,
+  "h": 24.25
+ },
+ "decals": [
+  {
+   "file": "decal0.webp",
+   "w": 17,
+   "h": 18
+  },
+  {
+   "file": "decal1.webp",
+   "w": 13.5,
+   "h": 17.75
+  },
+  {
+   "file": "decal2.webp",
+   "w": 17.25,
+   "h": 15
+  },
+  {
+   "file": "decal3.webp",
+   "w": 12.5,
+   "h": 16.5
+  },
+  {
+   "file": "decal4.webp",
+   "w": 6.5,
+   "h": 13.25
+  },
+  {
+   "file": "decal5.webp",
+   "w": 5,
+   "h": 4.75
+  },
+  {
+   "file": "decal6.webp",
+   "w": 3.5,
+   "h": 3.75
+  },
+  {
+   "file": "decal7.webp",
+   "w": 3.5,
+   "h": 3.75
+  },
+  {
+   "file": "decal8.webp",
+   "w": 2.75,
+   "h": 3.5
+  },
+  {
+   "file": "decal9.webp",
+   "w": 3.25,
+   "h": 3
+  },
+  {
+   "file": "decal10.webp",
+   "w": 3,
+   "h": 3.25
+  },
+  {
+   "file": "decal11.webp",
+   "w": 3,
+   "h": 3
+  },
+  {
+   "file": "decal12.webp",
+   "w": 2.75,
+   "h": 3
+  },
+  {
+   "file": "decal13.webp",
+   "w": 3,
+   "h": 2.75
+  },
+  {
+   "file": "decal14.webp",
+   "w": 2.5,
+   "h": 2.5
+  },
+  {
+   "file": "decal15.webp",
+   "w": 3,
+   "h": 2.5
+  }
+ ],
+ "props": [
+  {
+   "file": "prop0.webp",
+   "w": 27.25,
+   "h": 28
+  },
+  {
+   "file": "prop1.webp",
+   "w": 27,
+   "h": 27.75
+  },
+  {
+   "file": "prop2.webp",
+   "w": 29.75,
+   "h": 13.75
+  },
+  {
+   "file": "prop3.webp",
+   "w": 16.5,
+   "h": 15.5
+  },
+  {
+   "file": "prop4.webp",
+   "w": 14.25,
+   "h": 17.25
+  },
+  {
+   "file": "prop5.webp",
+   "w": 20.5,
+   "h": 18.75
+  },
+  {
+   "file": "prop6.webp",
+   "w": 8.25,
+   "h": 8.25
+  },
+  {
+   "file": "prop7.webp",
+   "w": 8,
+   "h": 8.25
+  }
+ ],
+ "deck": {
+  "file": "deck.webp",
+  "w": 96,
+  "h": 21.25
+ },
+ "hiveMouth": {
+  "file": "mouth.webp",
+  "w": 48.75,
+  "h": 45
+ }
+}

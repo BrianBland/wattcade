@@ -7,33 +7,35 @@ import type { GameModule, GameRenderer, Insets, MusicFx, Profile } from '../../c
 import type { MediaRun, SessionLike } from '../types';
 import { ProgramSync } from '../../media/clock';
 import { canPause, openingPhase, startTarget } from '../countGate';
-import { debugActions, getFake, activeSession, input, mediaEngine, onSystem, previewAward, startSession } from '../services';
+import { debugActions, getFake, activeSession, hasConnectedController, input, mediaEngine, onSystem, previewAward, startSession, takeLobbyFrame } from '../services';
 import { attachFakeKeys } from '../fakeKeysDom';
 import { HudLayer, PauseHistory } from '../hud/HudLayer';
 import { HUD_LAYOUT_EVENT, readHudInsets } from '../hud/insets';
-import { loadHudLayout, saveHudLayout } from '../hud/layout';
+import { loadHudLayout, resolveHudLayout, saveHudLayout } from '../hud/layout';
+import { controlsSignature, needsControls, playControls } from '../game/controlsSeen';
 import { PauseMenu } from './PauseMenu';
 import { GameIntro, IntroHelp } from '../game/GameIntro';
-import { ResultBanner } from '../game/ResultBanner';
 import { endingStep, MAX_RECAP_S } from '../game/ending';
+import { adoptWarm, disposeWarm, takeWarmGame } from '../game/prewarm';
+import { rememberInsets } from '../game/gameInsets';
 import { achievementToast, toast } from '../components/Toasts';
 import { duckAmbient, play, unlockAudio } from '../../audio/sfx';
 
-/** The result banner stays this long before the summary (A skips). */
-export const RESULT_S = 4;
 /** Ride milestone toast every this many pedalling seconds. */
 export const MILESTONE_S = 600;
-const COUNT_STEP_S = 0.9;
 
-type Phase = 'intro' | 'menu' | 'count' | 'play' | 'ending';
+type Phase = 'intro' | 'menu' | 'play' | 'ending';
 const isFake = () => getFake() || !!(activeSession() as any)?.fakeBike;
 
 /**
- * Runs a game: intro card (controls, target zone) -> 3-2-1-GO with the trainer held neutral, then resistance ramps in ->
- * play (pause menu, mid-ride toasts) -> a short result banner -> onQuit (summary).
+ * Runs a game: controls card (first play, or when the controls/input changed) -> the game's own pre-game menu, if any
+ * (trainer held neutral) -> GO: resistance ramps in at once, no countdown -> play (pause menu, mid-ride toasts) ->
+ * optional recap -> onQuit (the rider rides out onto the overworld, then the summary).
  */
-export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, onSave }: {
+export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, onSave, onControlsSeen }: {
   game: GameModule; profile: Profile; media?: MediaRun; onQuit: () => void; onAbandon: () => void; onRestart: () => void; onSave: (d: unknown) => void;
+  /** The rider started from the full controls card: remember this signature so it isn't shown again. */
+  onControlsSeen?: (signature: string) => void;
 }) {
   // music games: one player for the queue; the sim is locked to it during play (ProgramSync), the session idles while it buffers
   const music = useRef<{ engine: ReturnType<typeof mediaEngine>; sync: ProgramSync } | null>(null);
@@ -46,21 +48,29 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
   const [pauseFocus, setPauseFocus] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  // The overworld's last frame stays up while the game loads; the "Preparing" card only appears if loading is slow.
+  const backdrop = useRef<HTMLDivElement>(null);
+  const [frame] = useState(takeLobbyFrame);
+  const [slow, setSlow] = useState(!frame);
+  useEffect(() => {
+    if (!frame) return;
+    if (backdrop.current) { frame.style.cssText = 'width:100%;height:100%;display:block'; backdrop.current.appendChild(frame); }
+    const id = setTimeout(() => setSlow(true), 900);
+    return () => clearTimeout(id);
+  }, []);
   const loadingRef = useRef(true);
   const [musicWait, setMusicWait] = useState('');
   const musicWaitRef = useRef('');
   const [phase, setPhaseState] = useState<Phase>('intro');
-  const [count, setCount] = useState<number | null>(null);
-  const [ending, setEnding] = useState<{ over: boolean; durationS: number; summary: Record<string, number | string>; xp: number | null } | null>(null);
   const phaseRef = useRef<Phase>('intro');
   const setPhase = (p: Phase) => { phaseRef.current = p; setPhaseState(p); };
   const pausedRef = useRef(false);
   const sessionRef = useRef<SessionLike | null>(null);
   const [session, setSession] = useState<SessionLike | null>(null);
   const [layout, setLayout] = useState(loadHudLayout);
-  const timers = useRef({ count: 0, ending: 0, hold: 0, playS: 0, shown: 3 });
+  const timers = useRef({ ending: 0, hold: 0, playS: 0 });
+  const controlsSig = useRef<string | null>(null); // set while the controls card is owed this session
   const rendererRef = useRef<GameRenderer | null>(null);
-  const [recap, setRecap] = useState(false);
   const left = useRef(false); // leaving (quit/abandon) happens once
   const leave = (fn: () => void) => { if (left.current) return; left.current = true; fn(); };
   const cb = useRef({ onQuit, onAbandon }); cb.current = { onQuit, onAbandon };
@@ -73,34 +83,42 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     if (phaseRef.current === 'menu') { if (p) s.pause(); else s.resume(); return; } // trainer stays neutral; no music yet
     if (p) { s.sim.receive?.({ type: 'inputCancel' }); s.pause(); debugActions.panic(true); music.current?.engine.pause(); } else { debugActions.panic(false); s.resume(); music.current?.engine.resume(); }
   };
-  /** The only way into the countdown: a game still showing its own pre-game menu (variant / loadout) is run through it first. */
-  const startCount = () => {
+  const shownControls = useRef(false); // the full card was shown this session (skip the "controls are in Menu" hint)
+  /** GO: release the trainer, ease the game's resistance in and start the music. No splash or sound: the ride just starts (games that race can run their own countdowns). */
+  const go = () => {
+    const session = sessionRef.current; if (!session || phaseRef.current === 'play') return;
+    session.idle(0); // drop the press that started it
+    debugActions.panic(false); session.mixer?.rampIn();
+    void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
+    setPhase('play');
+    toast(shownControls.current ? 'Tap Menu for ride options' : 'Controls and ride options: tap Menu');
+  };
+  /** Leaving the controls card: a game still showing its own pre-game menu (variant / loadout) is run through it before GO. */
+  const startFromCard = () => {
     if (loadingRef.current) return;
+    if (phaseRef.current === 'intro' && controlsSig.current) { onControlsSeen?.(controlsSig.current); controlsSig.current = null; shownControls.current = true; }
     const to = startTarget(phaseRef.current, !!sessionRef.current?.sim.inMenu?.());
-    if (to === 'menu') setPhase('menu');
-    else if (to === 'count') { timers.current.count = 0; timers.current.shown = 3; setPhase('count'); setCount(3); play('count'); }
+    if (to === 'menu') { sessionRef.current?.idle(0); setPhase('menu'); }
+    else if (to === 'go') go();
   };
   const toEnding = (over: boolean) => {
     if (phaseRef.current === 'ending') return;
-    const s = sessionRef.current as (SessionLike & { sim: { summary?(): Record<string, number | string> } }) | null;
     pausedRef.current = false; setPaused(false); setHelp(false); setHistory(false);
     debugActions.panic(true);
     if (music.current) { music.current.engine.setVolume(0); setTimeout(() => music.current?.engine.stop(), 1500); }
-    let summary: Record<string, number | string> = {};
-    try { summary = s?.sim.summary?.() ?? {}; } catch { /* best effort */ }
-    const pv = previewAward(profile);
-    setEnding({ over, durationS: timers.current.playS, summary, xp: pv?.xp ?? null });
     let hold = 0;
     try { hold = Math.min(MAX_RECAP_S, Math.max(0, Number(rendererRef.current?.ending?.({ over }) ?? 0) || 0)); } catch { /* best effort */ }
-    timers.current.ending = 0; timers.current.hold = hold; setRecap(hold > 0); setPhase('ending');
+    timers.current.ending = 0; timers.current.hold = hold; setPhase('ending');
     if (hold === 0) play(over ? 'gameOver' : 'reward');
   };
 
   useEffect(() => {
     loadingRef.current = true; setLoading(true); setError('');
+    const warmJob = takeWarmGame(game.id, profile.id);
     let raf = 0, disposed = false, ro: ResizeObserver | null = null, renderer: GameRenderer | null = null, lock: { release(): Promise<void> } | null = null;
     const readInsets = (): Insets => readHudInsets(mount.current, probe.current);
-    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(readInsets()); };
+    const remember = (i: Insets) => { const el = mount.current; if (el) rememberInsets(game.id, el.clientWidth, el.clientHeight, hasConnectedController(), i); return i; };
+    const hudLayout = () => { if (!disposed) renderer?.setInsets?.(remember(readInsets())); };
     window.addEventListener(HUD_LAYOUT_EVENT, hudLayout);
     const detachKeys = input.attachKeyboard(window);
     const detachPad = input.attachGamepad();
@@ -123,27 +141,47 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
       try {
         const session = startSession(game, profile, onSave, media ? { timeline: media.timeline, ...(media.rolling?.announce ? { announce: (id: string, t: number) => media.rolling?.announce?.(id, t) } : {}) } : undefined);
         sessionRef.current = session; setSession(session);
-        if (openingPhase(!!session.sim.inMenu?.()) === 'menu') setPhase('menu'); // the game's own menu replaces the intro card
+        const firstHud = session.sim.hud?.() ?? {};
+        const sig = controlsSignature(playControls(firstHud), resolveHudLayout(loadHudLayout(), hasConnectedController()));
+        const showCard = needsControls(profile, game.id, sig);
+        controlsSig.current = showCard ? sig : null;
+        const opening = openingPhase(showCard, !!session.sim.inMenu?.());
+        if (opening === 'menu') setPhase('menu'); // seen these controls: straight into the game's own menu
+        const goOnReady = opening === 'go';
         if (media && session.media) {
           const engine = mediaEngine(); engine.load(media.plan, media.rolling); engine.setVolume(1); engine.preload();
           music.current = { engine, sync: new ProgramSync() };
           duckAmbient('music', true); // the game's own ambience would fight the music
         }
-        debugActions.panic(true); // trainer neutral through the intro and countdown
-        renderer = await game.loadRenderer(); rendererRef.current = renderer;
-        if (disposed) { renderer.unmount(); return; }
+        debugActions.panic(true); // trainer neutral through the controls card and the game's menu, until GO
         const musicFx = music.current ? (fx: MusicFx) => music.current?.engine.setFx(fx) : undefined;
-        renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
-        renderer.setInsets?.(readInsets());
+        const warm = warmJob ? await warmJob : null; // loaded while the rider rode to the portal
+        if (warm) {
+          if (disposed) { disposeWarm(warm); return; }
+          warm.attach((a) => session.sim.receive?.(a), musicFx);
+          adoptWarm(warm, mount.current!);
+          renderer = warm.renderer; rendererRef.current = renderer;
+          renderer.resize?.(mount.current!.clientWidth, mount.current!.clientHeight);
+        } else {
+          renderer = await game.loadRenderer(); rendererRef.current = renderer;
+          if (disposed) { renderer.unmount(); return; }
+          renderer.mount(mount.current!, { profile, send: (a) => session.sim.receive?.(a), insets: readInsets(), musicFx, hudControls: true });
+        }
+        renderer.setInsets?.(remember(readInsets()));
         const el = mount.current!;
         ro = new ResizeObserver(() => { if (!disposed) { renderer?.resize?.(el.clientWidth, el.clientHeight); renderer?.setInsets?.(readInsets()); } });
         ro.observe(el);
         if (probe.current) ro.observe(probe.current);
-        await renderer.ready?.();
+        // A game loaded ahead of time was readied then; readying it again only catches up with a size change (say the
+        // game's HUD is shorter than the overworld's), which games redo lazily, so it never holds the Preparing screen.
+        if (warm) void renderer.ready?.()?.catch?.(() => {});
+        else await renderer.ready?.();
         if (disposed) return;
+        if (!warm && renderer.prepare) { try { await renderer.prepare(session.sim.snapshot()); } catch { /* best effort */ } if (disposed) return; }
         session.idle(0); // discard presses made while loading before exposing game controls
         renderer.render(session.sim.snapshot(), session.ctx.bike(), input.state());
         loadingRef.current = false; setLoading(false);
+        if (goOnReady) go();
         let last = performance.now();
         const T = timers.current;
         const loop = (now: number) => {
@@ -158,26 +196,13 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
             const p = session.idle(dt);
             if (p.has('down')) introScroll.current?.scrollBy({ top: 140, behavior: 'smooth' });
             if (p.has('up')) introScroll.current?.scrollBy({ top: -140, behavior: 'smooth' });
-            if (p.has('a')) startCount();
+            if (p.has('a')) startFromCard();
             else if (p.has('b')) { disposed = true; leave(cb.current.onAbandon); return; }
-          } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), count down once it's dismissed
+          } else if (ph === 'menu') { // the game's own pre-game menu: run the sim (trainer stays neutral), GO once it's dismissed
             if (!pausedRef.current) {
               session.frame(dt);
               if (session.sim.isOver()) toEnding(true);
-              else if (!session.sim.inMenu?.()) { session.idle(0); setPhase('intro'); }
-            }
-          } else if (ph === 'count') {
-            session.idle(dt);
-            T.count += dt;
-            const step = Math.floor(T.count / COUNT_STEP_S); // 0,1,2 -> 3,2,1 ; 3 -> GO
-            const shown = Math.max(0, 3 - step);
-            if (shown !== T.shown) { T.shown = shown; setCount(shown); play(shown === 0 ? 'go' : 'count'); }
-            if (step >= 3) { // GO: release the trainer and ease the game's resistance in (and start the music)
-              debugActions.panic(false); session.mixer?.rampIn();
-              void music.current?.engine.start(0).catch((e) => toast(`Music: ${e instanceof Error ? e.message : e}`));
-              setPhase('play');
-              toast('Tap Menu for ride options');
-              setTimeout(() => setCount(null), 700);
+              else if (!session.sim.inMenu?.()) go(); // the menu's own Start is GO
             }
           } else if (ph === 'play') {
             if (!pausedRef.current) {
@@ -198,11 +223,7 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
           } else {
             const p = session.idle(dt);
             T.ending += dt;
-            const wasRecap = T.ending - dt < T.hold;
-            const e = endingStep(T.ending, T.hold, p.has('a'), RESULT_S);
-            T.hold = e.holdS;
-            if (wasRecap && e.show === 'banner') { setRecap(false); play('reward'); }
-            if (e.leave) { disposed = true; leave(cb.current.onQuit); return; }
+            if (endingStep(T.ending, T.hold, p.has('a')).leave) { disposed = true; leave(cb.current.onQuit); return; }
           }
           renderer!.render(session.sim.snapshot(), session.ctx.bike(), input.state());
           raf = requestAnimationFrame(loop);
@@ -217,12 +238,15 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
     };
   }, [game]);
 
-  const hud = session?.sim.hud?.() ?? {};
+  const liveHud = session?.sim.hud?.() ?? {};
+  const hud = { ...liveHud, controls: playControls(liveHud) }; // the card and help teach gameplay, also while a game menu is open
   return (
     <div class="game-host">
+      {frame && <div ref={backdrop} style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', transition: 'opacity 700ms ease-out', opacity: loading ? 1 : 0 }}
+        onTransitionEnd={() => backdrop.current?.remove()} />}
       <div class="mount" ref={mount} />
       <div class="hud-probe" ref={probe} />
-      {loading && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
+      {loading && slow && !error && <div class="game-loading chrome-ui"><UiMessage title={`Preparing ${game.title}`} busy action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>Your ride starts when the scene is ready.</UiMessage></div>}
       {(musicWait || (profile.settings?.debugStats && media?.timings)) && <div class="game-message chrome-ui">
         {musicWait ? <UiMessage title="Preparing music" busy>
           {musicWait}<BufferProgress read={() => music.current?.engine.bufferProgress() ?? null} />
@@ -230,22 +254,22 @@ export function GameHost({ game, profile, media, onQuit, onAbandon, onRestart, o
         </UiMessage> : <UiPanel><MediaTimingStats timings={media?.timings} /></UiPanel>}
       </div>}
       {error && <div class="game-loading chrome-ui"><UiMessage title="Could not start the ride" tone="error" action={<Btn onClick={()=>leave(onAbandon)}>Back</Btn>}>{error}</UiMessage></div>}
-      {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro' || phase === 'count' || phase === 'ending'} layout={layout} fake={isFake()}
+      {session && <HudLayer session={session} profile={profile} paused={paused || loading || phase === 'intro' || phase === 'ending'} layout={layout} fake={isFake()}
         onControls={() => { if (canPause(phaseRef.current)) { setPause(true); setHelp(true); } }} />}
-      {session && !loading && !error && (phase === 'intro' || count != null) && (
-        <GameIntro game={game} hud={hud} profile={profile} fake={isFake()} scrollRef={introScroll} mode="pre" count={phase === 'intro' ? null : count}
-          onStart={startCount} onBack={() => leave(onAbandon)} />
+      {session && !loading && !error && phase === 'intro' && (
+        <GameIntro game={game} hud={hud} profile={profile} fake={isFake()} scrollRef={introScroll} mode="pre" count={null}
+          startLabel={session.sim.inMenu?.() ? 'Next: choose your setup →' : undefined}
+          onStart={startFromCard} onBack={() => leave(onAbandon)} />
       )}
       {paused && help && session && <IntroHelp game={game} hud={hud} profile={profile} fake={isFake()} onClose={() => setHelp(false)} />}
       {paused && history && <PauseHistory ftp={profile.ftp} onClose={() => setHistory(false)} />}
       {paused && !help && !history && (
-        <PauseMenu fake={isFake()} onHistory={() => { setPauseFocus(5); setHistory(true); }} layout={layout} onLayout={(v) => { setLayout(v); saveHudLayout(v); }}
-          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(4); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
+        <PauseMenu tuning={session?.tuning} fake={isFake()} onHistory={() => { setPauseFocus(6); setHistory(true); }} layout={layout} onLayout={(v) => { setLayout(v); saveHudLayout(v); }}
+          onResume={() => setPause(false)} onHelp={() => { setPauseFocus(5); setHelp(true); }} initial={pauseFocus} onRestart={onRestart}
           extensions={session?.sim.menuActions?.() ?? []} onExtension={(action) => { session?.sim.receive?.(action); setPause(false); }}
           {...(phase === 'menu' || session?.sim.inMenu?.() ? { quitLabel: 'Exit game', onQuit: () => leave(onAbandon) }
             : { onQuit: () => toEnding(false) })} />
       )}
-      {phase === 'ending' && ending && !recap && <ResultBanner {...ending} profile={profile} onContinue={() => leave(onQuit)} />}
     </div>
   );
 }

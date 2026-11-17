@@ -76,12 +76,12 @@ function shadowAt(g: G, x: number, y: number, rx: number, ry: number) { g.fillSt
 /** Boss close-up: the boss looms (32 px art) over a corridor, the hero small in front, back to camera. 64×64 native. */
 /** Boss close-up, 64×64 native. wand: 'over' (the game's own placement, over the body), 'side' (held out to the right,
  *  clear of the body), 'raised' (held up behind the shoulder, the hero drawn on top). */
-function bossScene(boss: string, wand: 'over' | 'side' | 'raised' = 'side', theme = 3): HTMLCanvasElement {
+function bossScene(boss: string, wand: 'over' | 'side' | 'raised' = 'side', theme = 3, bossY = 8): HTMLCanvasElement {
   const N = 64, c = canvas(N), g = ctx(c); g.imageSmoothingEnabled = false; g.fillStyle = '#1a1626'; g.fillRect(0, 0, N, N);
   buildBackground(world(theme, (x, y) => (y < 1 ? 1 : x === 0 || x === 3 ? (y < 2 ? 1 : 0) : 0), 4, 4)).draw(g, 0, 0, N, N, 1);
   torch(g, 8, 4, 0.3); torch(g, 56, 4, 0.7);
   glow(g, 8, 6, 22, '255,160,70', 0.22); glow(g, 56, 6, 22, '255,160,70', 0.22);
-  const b = sprite2(boss, 'attack', 0); shadowAt(g, 36, 9 + b.height - 2, 13, 3); g.drawImage(b, 36 - b.width / 2 | 0, 8);
+  const b = sprite2(boss, 'attack', 0); shadowAt(g, 36, bossY + 1 + b.height - 2, 13, 3); g.drawImage(b, 36 - b.width / 2 | 0, bossY);
   const h = sprite2('hero', 'attack', 0, heroPalette(HERO));
   const ang = wand === 'raised' ? -1.25 : -0.95, ws = heldWeapon({ base: 'bolt', element: 'storm', rarity: 4, variant: 2 } as never, ang);
   const [wx, wy] = wand === 'over' ? [14 + Math.cos(ang) * 6, 54 + Math.sin(ang) * 6] : wand === 'side' ? [25, 50] : [19, 43];
@@ -124,12 +124,12 @@ function waveLine(g: G, text: string, cx: number, y: number, m: Mark, amp: numbe
   g.restore(); return tot;
 }
 /** Delve's pixel mark, made dramatic: a deep carved extrusion, a pale top edge, stone-to-violet face and a magic glow. */
-function pixelBevel(g: G, text: string, size: number, x: number, y: number, face: string[], ext: string, glowCol: string) {
+function pixelBevel(g: G, text: string, size: number, x: number, y: number, face: string[], ext: string, glowCol: string, steps = 3) {
   g.imageSmoothingEnabled = false; g.textBaseline = 'top'; g.font = pixelFont(size);
   const w = measurePixel(g, text), o = Math.max(1, Math.round(size / 10)), x0 = Math.round(x - w / 2);
   g.save(); g.shadowColor = glowCol; g.shadowBlur = 40; g.fillStyle = glowCol; fillText(g, text, x0, y + 2 * o); g.restore();
-  g.fillStyle = '#07050d'; for (const [dx, dy] of [[-o, -o], [o, -o], [-o, 0], [o, 0], [0, -o], [-o, 4 * o], [o, 4 * o], [0, 5 * o], [-o, 2 * o], [o, 2 * o]]) fillText(g, text, x0 + dx, y + dy);
-  g.fillStyle = ext; for (let i = 1; i <= 3; i++) fillText(g, text, x0, y + i * o);
+  g.fillStyle = '#07050d'; for (const [dx, dy] of [[-o, -o], [o, -o], [-o, 0], [o, 0], [0, -o], [-o, (steps + 1) * o], [o, (steps + 1) * o], [0, (steps + 2) * o], [-o, 2 * o], [o, 2 * o]]) fillText(g, text, x0 + dx, y + dy);
+  g.fillStyle = ext; for (let i = 1; i <= steps; i++) fillText(g, text, x0, y + i * o);
   const band = (col: string, a: number, b: number) => { g.save(); g.beginPath(); g.rect(0, y + size * a, S, size * (b - a)); g.clip(); g.fillStyle = col; fillText(g, text, x0, y); g.restore(); };
   band(face[0], -0.2, 0.3); band(face[1], 0.3, 0.6); band(face[2], 0.6, 1.2);
   // pale top edge: the face again, clipped to the top o pixels of each stroke, via a one-step-down mask
@@ -160,6 +160,9 @@ async function main() {
   const side = bossScene('arch_necromancer', 'side'), raised = bossScene('arch_necromancer', 'raised');
   make('dungeon-wand-side', (g) => { blowUp(g, side); pixelMark(g, 'DELVE', 120, S / 2, 24, 'center'); });
   make('dungeon-wand-raised', (g) => { blowUp(g, raised); pixelMark(g, 'DELVE', 120, S / 2, 24, 'center'); });
+  const low = bossScene('arch_necromancer', 'side', 3, 15);
+  make('dungeon-type-gold-soft', (g) => { blowUp(g, low); pixelBevel(g, 'DELVE', 100, S / 2, 12, ['#fff0a0', '#ffd84a', '#ff9f2e', '#fff8d0'], '#5a250a', '#9b5cff88', 1); });
+  make('dungeon-type-gold-lowboss', (g) => { blowUp(g, low); pixelMark(g, 'DELVE', 110, S / 2, 14, 'center'); });
   make('dungeon-type-carved', (g) => { blowUp(g, side); pixelBevel(g, 'DELVE', 120, S / 2, 20, ['#f3eaff', '#c7b3ff', '#8a63e6', '#ffffff'], '#3b2370', '#9b5cff'); });
   make('dungeon-type-gold', (g) => { blowUp(g, side); pixelBevel(g, 'DELVE', 120, S / 2, 20, ['#fff4b8', '#ffd84a', '#ff9f2e', '#ffffff'], '#6a2c0c', '#b46bff'); });
   make('dungeon-type-uncial', (g) => { blowUp(g, side); shade(g, 'top', 0.55, '10,6,24', 0.3);

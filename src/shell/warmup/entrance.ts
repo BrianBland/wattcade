@@ -15,18 +15,35 @@ export function spawnAheadM(v: number, aheadM: number, maxS = MAX_APPROACH_S): n
   return Math.max(minM, Math.min(offscreen, Math.max(0, v) * maxS));
 }
 
-/** Seconds to ride to a newly spawned entrance at speed `v` (m/s), given the visible road ahead. */
-export function approachS(v: number, aheadM: number, maxS = MAX_APPROACH_S): number {
-  return spawnAheadM(v, aheadM, maxS) / Math.max(0.5, v);
+/**
+ * Seconds to ride to a newly spawned entrance at speed `v` (m/s), given the visible road ahead. Conservative: it assumes
+ * the rider may speed up by `speedUp` on the way.
+ */
+export function approachS(v: number, aheadM: number, maxS = MAX_APPROACH_S, speedUp = 1.3): number {
+  return spawnAheadM(v, aheadM, maxS) / Math.max(0.5, v * speedUp);
 }
-/** Load estimates are stretched by this much, so the rider reaches the entrance after the game is ready. */
-export const LOAD_MARGIN = 1.25;
-/** Spawn the entrance now? Yes once the rider would reach it no sooner than the (padded) load is expected to finish. */
-export function spawnNow(elapsedS: number, estimateS: number, approach: number, margin = LOAD_MARGIN): boolean {
-  return elapsedS + approach >= estimateS * margin;
+/** Load estimates are stretched by this much and padded by LOAD_PAD_S, so the rider reaches the entrance after the game is ready. */
+export const LOAD_MARGIN = 1.5;
+export const LOAD_PAD_S = 0.75;
+/**
+ * Spawn the entrance now, before the game has loaded? Only with an estimate (`estimateS`: this device's past loads of
+ * the game; null when it has never loaded here, and then the entrance waits for the load), and only once the rider
+ * could not reach it before the padded estimate is up.
+ */
+export function spawnNow(elapsedS: number, estimateS: number | null, approach: number, margin = LOAD_MARGIN, padS = LOAD_PAD_S): boolean {
+  return estimateS != null && elapsedS + approach >= estimateS * margin + padS;
 }
-/** Metres an entrance that is still loading keeps ahead of the rider (it drifts along rather than letting them in). */
-export const HOLD_GAP_M = 3;
+/** If the rider still catches an entrance that is loading: it never comes nearer than this (m)... */
+export const HOLD_GAP_M = 4;
+/** ...and within HOLD_EASE_M it backs away at HOLD_DRIFT of the rider's speed, so they close on it slowly instead of pinning it in place. */
+export const HOLD_EASE_M = 14;
+export const HOLD_DRIFT = 0.8;
+/** Where a loading entrance at `x` stands after the rider moves from `d0` to `d` (m). */
+export function holdX(x: number, d0: number, d: number): number {
+  const moved = Math.max(0, d - d0);
+  const eased = x - d < HOLD_EASE_M ? x + moved * HOLD_DRIFT : x;
+  return Math.max(eased, d + HOLD_GAP_M);
+}
 
 /** What the shell asks the overworld to show: entering a game, or coming back out of one. */
 export interface StageEntrance {

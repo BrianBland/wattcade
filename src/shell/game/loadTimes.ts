@@ -1,17 +1,15 @@
 // How long each game takes to load in the background on this device, so its entrance can be on the road early and the
 // rider reaches it just after the game is ready. Kept per browser (it is a property of the device).
 const KEY = 'wattcade.gameLoadS';
-/** A game never loaded here: assume this many seconds. */
-export const DEFAULT_LOAD_S = 3;
 
 function read(): Record<string, number> {
   try { const v = JSON.parse(localStorage.getItem(KEY) ?? '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
 
-/** Expected background load time for `gameId` (seconds). */
-export function loadEstimateS(gameId: string): number {
+/** Expected background load time for `gameId` (seconds), or null when it has never loaded on this device. */
+export function loadEstimateS(gameId: string): number | null {
   const v = read()[gameId];
-  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : DEFAULT_LOAD_S;
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
 }
 
 /** Fold a new measurement in, leaning slow: a slower load counts in full, a faster one only moves the estimate a little. */

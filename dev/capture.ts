@@ -9,7 +9,7 @@ import { getGame } from '../src/games/registry';
 const q = new URLSearchParams(location.search);
 const game = getGame(q.get('game') ?? '')!;
 const profile = testProfile({ color: q.get('color') ?? '#ff2bd6' });
-const media = q.get('media') ? { timeline: synthTimeline({ style: q.get('media') as 'edm', songs: 2, seed: 1, mix: 'automix' }) } : undefined;
+const media = q.get('media') ? { timeline: synthTimeline({ style: q.get('media') as 'edm', songs: 2, seed: Number(q.get('mseed') ?? 1), mix: 'automix' }) } : undefined;
 const session = createGameSession({
   game, profile, input: new NullInput(), fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
   simOpts: JSON.parse(q.get('opts') ?? '{}'), ...(media ? { media } : {}),

@@ -192,7 +192,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const starTwo = T.num('starTwoHp', 0.5, 0, 1, 0.05, 'two stars: at most this share of base HP lost over the whole level (heals not counted)');
   const starThree = T.num('starThreeHp', 0.85, 0, 1, 0.05, 'three stars: at most 1 - this share of base HP lost over the whole level');
   const levelPeak = T.num('levelPeakWave', 7, 2, 30, 1, 'a level\'s last wave fights like this endless wave (+ the level\'s depth)');
-  const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each wave: brood card, countdown, no new spawns');
+  const lullS = T.num('lullS', 45, 0, 120, 1, 'recovery lull before each work or boss wave: brood card, countdown, no new spawns');
+  const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'lull before the first wave of a level or run: time to pick a first tower, then straight in');
+  const easyLullS = T.num('easyLullS', 25, 0, 120, 1, 'lull before an easy recovery wave (the easy wave is itself the recovery)');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
   const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
   const lullLevel = T.num('lullLevelPct', 10, 0, 100, 1, 'resistance level early in the lull (Fireball brood next)');
@@ -311,7 +313,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let baseMaxHp = baseHpMax(), baseHp = baseMaxHp, baseHurt = 99;
   /** Base HP lost over the current run, heals not counted (level stars). */
   let levelDmg = 0;
-  let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0;
+  let wave = 1, waveElapsed = 0, wavesSurvived = 0, lull = 0, lullLen = 0;
   let plan: WavePlan, nextPlan: WavePlan;
   let schedule: Spawn[] = [];
   let miniTimer = 2;
@@ -517,7 +519,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     waveElapsed = 0;
     escorts.length = 0;
     schedule = plan.spawns.map((s) => ({ ...s }));
-    lull = lullS();
+    lull = lullLen = fresh ? firstLullS() : plan.role === 'easy' ? easyLullS() : lullS();
     const b = broodInfo(plan);
     ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
     if (plan.boss) ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: 1, color: b.color, weapon: b.weapon, mode: b.mode, countdownS: lull } });
@@ -1557,7 +1559,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function broodView(): BroodView {
     const b = plan ? broodInfo({ ...plan, brood: WEAPON_ELEMENT[weapon] }) : { wave, color: WEAPON_ELEMENT[weapon], weapon, mode: 'sim' as const, setting: '', cue: '' };
-    return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullS(), rampS: rampS() };
+    return { ...b, countdownS: phase === 'run' ? lull : 0, lullS: lullLen, rampS: rampS() };
   }
   function garageView(): GarageView {
     const title = result ? (result.failed ? `${result.spec.name} · base fell` : `${result.spec.name} cleared · ${starText(result.stars)}`) : 'Choose a ride';

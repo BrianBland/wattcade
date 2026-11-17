@@ -58,20 +58,19 @@ export function modesHtml(gv: GarageView, maps: { quick?: TdLevel | null; endles
   return `<div class="td-cards">${cards}</div>${rows}`;
 }
 
-/** The campaign page: one row of five tiles per ground, and a large preview of the selected level. */
-export function levelSelectHtml(gv: GarageView, art?: ArtLookup): string {
+/**
+ * The campaign page: one row of five tiles per ground, and a large preview of the selected level. `tileArt` finds the
+ * grid's pictures (landscape-shaped in every orientation, so a row of five fills the panel's width).
+ */
+export function levelSelectHtml(gv: GarageView, art?: ArtLookup, tileArt: ArtLookup | undefined = art): string {
   const sel = gv.levels[gv.levelSel];
   const grounds: LevelTile[][] = [];
   for (const t of gv.levels) (grounds[Math.floor(t.index / 5)] ??= []).push(t);
   const grid = grounds.map((row) => `<div class="td-ground"><span>${esc(row[0].name.split(' ')[0])}</span>${row.map((t) =>
-    `<button class="td-tile ${t.index === gv.levelSel ? 'selected' : ''} ${t.locked ? 'locked' : ''} ${t.index === gv.open ? 'next' : ''}" data-command="levelTile" data-index="${t.index}" aria-label="${esc(t.name)}${t.locked ? ' (locked)' : ''}">${tilePreview(t, art)}<b>${esc(t.name.split(' ').slice(1).join(' '))}</b><i>${t.locked ? '🔒' : t.stars ? starText(t.stars) : 'new'}</i></button>`).join('')}</div>`).join('');
+    `<button class="td-tile ${t.index === gv.levelSel ? 'selected' : ''} ${t.locked ? 'locked' : ''} ${t.index === gv.open ? 'next' : ''}" data-command="levelTile" data-index="${t.index}" aria-label="${esc(t.name)}${t.locked ? ' (locked)' : ''}">${tilePreview(t, tileArt)}<b>${esc(t.name.split(' ').slice(1).join(' '))}</b><i>${t.locked ? '🔒' : t.stars ? starText(t.stars) : 'new'}</i></button>`).join('')}</div>`).join('');
   const status = sel.locked ? `Locked · clear ${gv.levels[sel.index - 1]?.name ?? 'the level before'} first` : sel.stars ? `Best ${starText(sel.stars)} · ride again for more stars` : 'Not cleared yet';
-  const step = (d: -1 | 1) => {
-    const i = sel.index + d;
-    return i < 0 || i >= gv.levels.length ? '' : `<button class="td-step ${d < 0 ? 'prev' : 'next'}" data-command="levelTile" data-index="${i}" aria-label="${d < 0 ? 'Previous' : 'Next'} level">${d < 0 ? '‹' : '›'}</button>`;
-  };
-  // ◀ ▶ over the big picture (and a swipe on it) step the level, like the controller's ◀ ▶
-  const preview = `<div class="td-preview"><div class="td-preview-pic" data-swipe="levelTile" data-index="${sel.index}" data-max="${gv.levels.length - 1}">${tilePreview(sel, art, true)}${step(-1)}${step(1)}</div><div class="td-preview-text"><h3>${esc(sel.name)}</h3><p>${esc(facts(sel))}</p><p>${esc(status)}</p>`
+  // the tiles pick levels by tap; a swipe on the big picture steps the level, like the controller's ◀ ▶
+  const preview = `<div class="td-preview"><div class="td-preview-pic" data-swipe="levelTile" data-index="${sel.index}" data-max="${gv.levels.length - 1}">${tilePreview(sel, art, true)}</div><div class="td-preview-text"><h3>${esc(sel.name)}</h3><p>${esc(facts(sel))}</p><p>${esc(status)}</p>`
     + `<div class="td-preview-actions"><button class="btn" data-command="levelStart" ${sel.locked ? 'disabled' : ''}>A · Ride</button><button class="btn" data-command="levelBack">B · Back</button></div></div></div>`;
   return `<div class="td-levels">${preview}<div class="td-grid">${grid}</div></div>`;
 }

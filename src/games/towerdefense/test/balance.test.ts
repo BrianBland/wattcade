@@ -9,7 +9,7 @@ describe('balance comparisons', () => {
     for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), seed,
         fake: { script: 'z2' }, simOpts: { autopilot: true, baseHp: 1000 } });
-      for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 10, heavySpawnWindowS: 3, lullS: 12 })) {
+      for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 10, heavySpawnWindowS: 3, lullS: 12, easyLullS: 12, firstLullS: 12 })) {
         s.tuning.set(`towerdefense.${key}`, value);
       }
       const snap = () => s.sim.snapshot() as TdSnapshot;
@@ -44,7 +44,7 @@ describe('balance comparisons', () => {
       for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
         const s = createGameSession({ game: module, profile: testProfile(), input: new NullInput(), seed,
           fake: { script: 'td-test-on-target' }, simOpts: { autopilot: true, baseHp: 1000 } });
-        for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 40, heavySpawnWindowS: 3, lullS: 12 })) {
+        for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 40, heavySpawnWindowS: 3, lullS: 12, easyLullS: 12, firstLullS: 12 })) {
           s.tuning.set(`towerdefense.${key}`, value);
         }
         const snap = () => s.sim.snapshot() as TdSnapshot;

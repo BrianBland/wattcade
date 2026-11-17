@@ -175,8 +175,8 @@ async function main() {
   const rule = (g: G, x0: number, x1: number, y: number, col: string) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); g.lineWidth = 1; g.beginPath(); g.moveTo(x0 + 8, y + 5); g.lineTo(x1 - 8, y + 5); g.stroke();
     g.fillStyle = col; g.beginPath(); const m = (x0 + x1) / 2; g.moveTo(m, y - 6); g.lineTo(m + 6, y + 2.5); g.lineTo(m, y + 11); g.lineTo(m - 6, y + 2.5); g.closePath(); g.fill(); };
   make('lighthouse-fell', (g) => { lh(g); const R = S - 30;
-    line(g, "Keeper's", R - 6, 96, { font: 'italic 400 50px "IM Fell English"', fill: '#f6e7c1', glow: '#000d', blur: 12 }, 'right');
-    line(g, 'LIGHT', R, 172, { font: '400 72px "IM Fell English SC"', fill: vgrad(['#fffaf0', '#f3d79a']), glow: '#ffcf6a', blur: 22, track: 2 }, 'right');
+    line(g, "Keeper's", R - 6, 96, { font: 'italic 400 50px "IM Fell English"', fill: '#f6e7c1', stroke: '#f6e7c1', sw: 2.2, glow: '#000d', blur: 12 }, 'right');
+    line(g, 'LIGHT', R, 172, { font: '400 72px "IM Fell English SC"', fill: vgrad(['#fffaf0', '#f3d79a']), stroke: '#f0d494', sw: 3.6, glow: '#ffcf6a', blur: 22, track: 3 }, 'right');
     rule(g, R - 180, R, 192, '#f3d79acc'); });
   make('lighthouse-playfair', (g) => { lh(g); const R = S - 28;
     line(g, "KEEPER'S", R, 86, { font: '900 30px "Playfair Display SC"', fill: '#f6e7c1', glow: '#000d', blur: 10, track: 7 }, 'right');

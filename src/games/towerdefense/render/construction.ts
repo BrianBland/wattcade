@@ -7,35 +7,61 @@ import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionBu
 import type { Hit } from './panels';
 import { TD } from './theme';
 
-/** A riveted gunmetal plate with a bronze rim (theme.ts), shared by the workshop body and the fallback dock. */
-export function plate(g: CanvasRenderingContext2D, b: Box, r: number, rivets = true) {
+/** Bevelled steel edges: lit top and left, shaded bottom and right (theme.ts BEVEL). */
+function bevel(g: CanvasRenderingContext2D, b: Box, w: number, lit = '#7a6650', shade = '#15100c') {
+  g.fillStyle = lit; g.fillRect(b.x, b.y, b.w, w); g.fillRect(b.x, b.y, w, b.h);
+  g.fillStyle = shade; g.fillRect(b.x, b.y + b.h - w, b.w, w); g.fillRect(b.x + b.w - w, b.y, w, b.h);
+  g.strokeStyle = '#000'; g.lineWidth = 1; g.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1); g.strokeRect(b.x + w + 0.5, b.y + w + 0.5, b.w - 2 * w - 1, b.h - 2 * w - 1);
+}
+function bolt(g: CanvasRenderingContext2D, x: number, y: number, r = 4.4) {
+  g.fillStyle = '#000'; g.beginPath(); g.arc(x, y, r + 0.8, 0, Math.PI * 2); g.fill();
+  const d = g.createRadialGradient(x - r * 0.3, y - r * 0.35, 0, x, y, r);
+  d.addColorStop(0, TD.brassHi); d.addColorStop(0.45, TD.brass); d.addColorStop(1, TD.brassLo);
+  g.fillStyle = d; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+}
+/** A riveted steel strap (theme.ts STRAP): a dark band, lit on top, with a rivet every 28px. */
+export function strap(g: CanvasRenderingContext2D, b: Box) {
+  const f = g.createLinearGradient(0, b.y, 0, b.y + b.h);
+  f.addColorStop(0, '#5c4c3a'); f.addColorStop(0.35, '#2b231b'); f.addColorStop(1, '#1a140f');
+  g.fillStyle = f; g.fillRect(b.x, b.y, b.w, b.h);
+  g.strokeStyle = '#000'; g.lineWidth = 1; g.strokeRect(b.x - 0.5, b.y - 0.5, b.w + 1, b.h + 1);
+  for (let x = b.x + 14; x < b.x + b.w - 4; x += 28) bolt(g, x, b.y + b.h / 2, Math.min(1.8, b.h / 3));
+}
+
+/** A bevelled, bolted tread plate (theme.ts), shared by the workshop body and the fallback dock. */
+export function plate(g: CanvasRenderingContext2D, b: Box, bolts = true) {
   const fill = g.createLinearGradient(0, b.y, 0, b.y + b.h);
-  fill.addColorStop(0, TD.plateHi); fill.addColorStop(0.4, TD.plate); fill.addColorStop(1, TD.plateLo);
-  g.save(); g.shadowColor = '#000a'; g.shadowBlur = 18; g.shadowOffsetY = 6;
-  g.fillStyle = fill; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, r); g.fill(); g.restore();
-  g.strokeStyle = TD.edge; g.lineWidth = 1; g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, r); g.stroke();
-  g.strokeStyle = '#c99a4e22'; g.beginPath(); g.roundRect(b.x + 4, b.y + 4, b.w - 8, b.h - 8, Math.max(1, r - 3)); g.stroke();
-  if (!rivets) return;
-  for (const [x, y] of [[b.x + 8, b.y + 8], [b.x + b.w - 8, b.y + 8], [b.x + 8, b.y + b.h - 8], [b.x + b.w - 8, b.y + b.h - 8]]) {
-    const rv = g.createRadialGradient(x - 0.6, y - 0.6, 0, x, y, 2.6);
-    rv.addColorStop(0, TD.brassHi); rv.addColorStop(0.55, TD.brassLo); rv.addColorStop(1, '#0000');
-    g.fillStyle = rv; g.beginPath(); g.arc(x, y, 2.6, 0, Math.PI * 2); g.fill();
-  }
+  fill.addColorStop(0, TD.plateHi); fill.addColorStop(0.45, TD.plate); fill.addColorStop(1, TD.plateLo);
+  g.save(); g.shadowColor = '#000c'; g.shadowBlur = 20; g.shadowOffsetY = 8;
+  g.fillStyle = fill; g.fillRect(b.x, b.y, b.w, b.h); g.restore();
+  g.save(); g.beginPath(); g.rect(b.x, b.y, b.w, b.h); g.clip(); g.lineWidth = 2; // diamond tread
+  g.strokeStyle = '#ffffff07';
+  for (let x = b.x - b.h; x < b.x + b.w; x += 9) { g.beginPath(); g.moveTo(x, b.y + b.h); g.lineTo(x + b.h, b.y); g.stroke(); }
+  g.strokeStyle = '#00000026';
+  for (let x = b.x; x < b.x + b.w + b.h; x += 9) { g.beginPath(); g.moveTo(x, b.y + b.h); g.lineTo(x - b.h, b.y); g.stroke(); }
+  g.restore();
+  bevel(g, b, 3, '#7a6650', '#15100c');
+  if (!bolts) return;
+  for (const [x, y] of [[b.x + 11, b.y + 11], [b.x + b.w - 11, b.y + 11], [b.x + 11, b.y + b.h - 11], [b.x + b.w - 11, b.y + b.h - 11]]) bolt(g, x, y);
 }
 
 function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string, selected = false, enabled = true) {
   const font = getComputedStyle(g.canvas).fontFamily;
   g.save(); g.globalAlpha = enabled ? 1 : 0.5;
+  g.fillStyle = '#000'; g.fillRect(b.x, b.y + 3, b.w, b.h); // the key's depth
+  if (selected) { g.shadowColor = '#e8b24aaa'; g.shadowBlur = 16; }
   const fill = g.createLinearGradient(0, b.y, 0, b.y + b.h);
-  fill.addColorStop(0, selected ? '#3a2d18' : '#211c16'); fill.addColorStop(1, TD.plateLo);
-  if (selected) { g.shadowColor = '#e8b24a88'; g.shadowBlur = 14; }
-  g.fillStyle = fill; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 5); g.fill(); g.shadowBlur = 0;
-  g.strokeStyle = selected ? TD.brass : TD.edgeDim; g.lineWidth = selected ? 2 : 1;
-  g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 5); g.stroke();
-  g.strokeStyle = '#ffdca014'; g.lineWidth = 1; g.beginPath(); g.moveTo(b.x + 5, b.y + 1.5); g.lineTo(b.x + b.w - 5, b.y + 1.5); g.stroke();
+  fill.addColorStop(0, selected ? '#4a3a22' : '#3a3128'); fill.addColorStop(0.45, selected ? '#2a2116' : '#221c16'); fill.addColorStop(1, '#17120e');
+  g.fillStyle = fill; g.fillRect(b.x, b.y, b.w, b.h); g.shadowBlur = 0;
+  bevel(g, b, 2, selected ? TD.brassHi : '#7a6650', selected ? TD.brassLo : '#15100c');
+  if (selected) { // the lamp
+    const x = b.x + b.w - 10, y = b.y + 10, lamp = g.createRadialGradient(x - 1, y - 1, 0, x, y, 4.5);
+    lamp.addColorStop(0, '#fff6d0'); lamp.addColorStop(0.45, '#ffb020'); lamp.addColorStop(1, '#8a4f00');
+    g.shadowColor = '#ffb020'; g.shadowBlur = 8; g.fillStyle = lamp; g.beginPath(); g.arc(x, y, 4.5, 0, Math.PI * 2); g.fill(); g.shadowBlur = 0;
+  }
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `bold 13px ${font}`; g.fillStyle = selected ? TD.brassHi : TD.text; g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
-  if (sub) { g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
+  g.font = `800 13px ${font}`; g.fillStyle = selected ? TD.brassHi : TD.text; g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.36 : 0.5), b.w - 24);
+  if (sub) { g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.72, b.w - 16); }
   g.restore();
 }
 
@@ -80,11 +106,11 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   const geo = geoOf(s), p = ws.pad < geo.basePad ? geo.pads[ws.pad] : { ...geo.base, name: 'Base' };
   const r = radialLayout(W, L.UH, toScreen(L.field, p), ws.rows.length);
   const font = getComputedStyle(g.canvas).fontFamily, cx = r.body.x + r.body.w / 2;
-  g.save(); plate(g, { x: r.body.x - 4, y: r.body.y - 4, w: r.body.w + 8, h: r.body.h + 8 }, 7);
-  g.fillStyle = TD.brass; g.font = `800 13px ${font}`; g.textAlign = 'center';
+  g.save(); plate(g, { x: r.body.x - 6, y: r.body.y - 6, w: r.body.w + 12, h: r.body.h + 12 });
+  g.fillStyle = TD.brass; g.font = `900 13px ${font}`; g.textAlign = 'center';
   g.fillText(`${p.name.toUpperCase()} · ${s.scrap} SCRAP`, cx, r.body.y + 19, r.body.w - 24);
-  g.strokeStyle = TD.edgeDim; g.beginPath(); g.moveTo(r.body.x + 14, r.body.y + 25.5); g.lineTo(r.body.x + r.body.w - 14, r.body.y + 25.5); g.stroke();
-  g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('◀▶ pad · ▲▼ option · A confirm', cx, r.body.y + 38);
+  strap(g, { x: r.body.x + 20, y: r.body.y + 24, w: r.body.w - 40, h: 6 });
+  g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('◀▶ pad · ▲▼ option · A confirm', cx, r.body.y + 40);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {

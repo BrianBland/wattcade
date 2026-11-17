@@ -93,7 +93,7 @@ describe('construction input and persistence', () => {
   it('nothing builds itself for a rider; the headless build bot spends at the lull’s end', () => {
     const rider = session(new NullInput()); rider.step(30 * 50); expect(snap(rider).towers).toHaveLength(0);
     const bot = session(new NullInput(), { botBuild: true }); bot.step(1);
-    bot.step(30 * 44); expect(snap(bot).towers).toHaveLength(0);
+    bot.step(30 * 14); expect(snap(bot).towers).toHaveLength(0); // the 15 s first lull
     bot.step(30 * 2); expect(snap(bot).towers.length).toBeGreaterThan(0);
   });
   it('controller navigation reaches repairs', () => {

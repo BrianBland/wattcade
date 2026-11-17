@@ -237,19 +237,33 @@ describe('brood waves', () => {
     s.step(30);
     const b = snap(s).brood;
     expect(b.wave).toBe(1);
-    expect(b.countdownS).toBeGreaterThan(43); expect(b.countdownS).toBeLessThan(45);
+    expect(b.countdownS).toBeGreaterThan(13); expect(b.countdownS).toBeLessThan(15); // the short first lull (firstLullS)
+    expect(b.lullS).toBe(15);
     expect(b.weapon).toBe(ELEMENT_WEAPON[b.color]);
     expect(snap(s).weapon).toBe(b.weapon);
     expect(b.cue.length).toBeGreaterThan(4);
     expect(snap(s).nextBrood?.wave).toBe(2);
     expect(snap(s).enemies).toHaveLength(0);
-    s.step(30 * 45);
+    s.step(30 * 15);
     expect(snap(s).brood.countdownS).toBe(0);
     let seen = 0; // the turret can drop a lone drone within a second of its spawn, so watch every frame
     for (let i = 0; i < 30 * 10; i++) { s.step(1); seen = Math.max(seen, snap(s).enemies.length); }
     expect(seen).toBeGreaterThan(0);
     const evs = s.finish().events.map((e) => e.type);
     expect(evs.indexOf('broodAnnounced')).toBeLessThan(evs.indexOf('waveStart'));
+  });
+  it('lulls: short before the first wave, shorter before an easy recovery wave, full before work waves', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true, baseHp: 1000 } });
+    for (const [key, value] of Object.entries({ waveMinS: 5, waveMaxS: 15, easyWaveS: 10, heavySpawnWindowS: 3 })) s.tuning.set(`towerdefense.${key}`, value);
+    const seen = new Map<string, number>();
+    for (let i = 0; i < 30 * 60 * 6 && seen.size < 3; i++) {
+      s.step(1);
+      const v = snap(s);
+      if (v.lull <= 0) continue;
+      const kind = v.set.warmup || v.brood.wave === 1 ? 'first' : v.set.role === 'easy' ? 'easy' : 'work';
+      if (!seen.has(kind)) seen.set(kind, v.brood.lullS);
+    }
+    expect(Object.fromEntries(seen)).toEqual({ first: 15, work: 45, easy: 25 });
   });
   it('the next weapon\'s trainer setting eases in over the last rampS of the lull', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
@@ -260,7 +274,7 @@ describe('brood waves', () => {
     const [lullV, fullV] = { gatling: [0, 1], flame: [10, 35], rail: [0.5, 0.95] }[b.weapon];
     expect(weaponEffect(s).mode).toBe(mode);
     expect(val()).toBeCloseTo(lullV); // recovery, early in the lull
-    s.step(30 * 38); // 3 s into the 8 s ramp at the end of the 45 s lull
+    s.step(30 * 8); // 3 s into the 8 s ramp at the end of the 15 s first lull
     expect(val()).toBeGreaterThan(lullV); expect(val()).toBeLessThan(fullV);
     s.step(30 * 5);
     expect(val()).toBeCloseTo(fullV);

@@ -109,7 +109,7 @@ describe('input map (#120)', () => {
     walk(padOrder(true));
   });
   it('D-pad left/right and the paddles step a target lock along the queue; it decays and up releases it', () => {
-    const pad = new Pad(), s = session(pad);
+    const pad = new Pad(), s = session(pad, 'idle'); // a rider at rest: the turret doesn't fire, so locked aliens live on
     let n = 0; // wait for a few aliens on the field, with one in the turret's reach
     while (!(snap(s).enemies.length >= 3 && snap(s).targetId > 0) && n++ < 30 * 240) s.step(1);
     pad.press('right'); s.step(1);

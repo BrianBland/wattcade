@@ -144,7 +144,7 @@ const SF: Mark = { font: '70px "Russo One"', fill: vgrad(['#ffffff', '#bcd2ff', 
 const WATER = vgrad(['#e9fbff', '#8fe0ff', '#2f9be8', '#1c6fd0']);
 type Out = Record<string, string>;
 async function main() {
-  const names = ['cad-scene', 'cad-rear-0', 'lh-scene', 'td-scene', 'td-scene-tight', 'ws-cloud1', 'ws-cloud4', 'ws-cloud5', 'sf-c0', 'sf-c2', 'sf-c2t', 'sf-2'];
+  const names = ['cad-scene', 'cad-rear-0', 'cad-craft', 'lh-scene', 'td-scene', 'td-scene-tight', 'ws-cloud1', 'ws-cloud4', 'ws-cloud5', 'sf-c0', 'sf-c2', 'sf-c2t', 'sf-2'];
   const im = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await load(n)] as const))) as Record<string, HTMLImageElement>;
   for (const f of ['74px Audiowide', '76px Bungee', '70px "Russo One"', '800 84px "Baloo 2"', '700 80px Fredoka', '400 40px "IM Fell English SC"', 'italic 400 40px "IM Fell English"', '900 40px "Playfair Display SC"', '900 40px "Cinzel Decorative"', '400 40px "Uncial Antiqua"', '700 40px Cinzel']) await document.fonts.load(f);
   const out: Out = {}, list = document.getElementById('out')!;
@@ -207,6 +207,19 @@ async function main() {
   for (const [n, size] of [['PULSEWING', 66], ['PULSAR', 96], ['PULSEJET', 72], ['STARBASS', 72], ['BASSWING', 70]] as const) {
     make(`starfighter-name-${n.toLowerCase()}`, (g) => { carrier(g); sfName(g, n, size); });
   }
+  // ---- Hero key art: 16:9, no text, an intentional crop of the subject (shown briefly before the clip plays).
+  const HW = 960, HH = 540;
+  const wide = (id: string, draw: (g: G) => void) => { const c = canvas(HW, HH), g = ctx(c); draw(g); out[id] = c.toDataURL('image/png'); };
+  wide('hero-cadenza', (g) => { g.filter = 'brightness(0.55) saturate(1.3) contrast(1.15)'; g.drawImage(im['cad-scene'], 0, -230, HW, HW); g.filter = 'none';
+    g.globalCompositeOperation = 'screen'; g.drawImage(im['cad-craft'], 130, -100, 720, 720); g.globalCompositeOperation = 'source-over'; });
+  wide('hero-dungeon', (g) => { const N = 96, M = 54, c = canvas(N, M), d = ctx(c); d.imageSmoothingEnabled = false; d.fillStyle = '#1a1626'; d.fillRect(0, 0, N, M);
+    buildBackground(world(3, (x, y) => (y < 1 ? 1 : 0), 6, 4)).draw(d, 0, 0, N, 64, 1);
+    torch(d, 14, 4, 0.3); torch(d, 82, 4, 0.7); glow(d, 14, 6, 24, '255,160,70', 0.22); glow(d, 82, 6, 24, '255,160,70', 0.22);
+    const b = sprite2('arch_necromancer', 'attack', 0); shadowAt(d, 58, 9 + b.height - 2, 13, 3); d.drawImage(b, 58 - b.width / 2 | 0, 8);
+    const h = sprite2('hero', 'attack', 0, heroPalette(HERO)); shadowAt(d, 26, 45, 6, 2); d.drawImage(h, 18, 28);
+    const ang = -0.45, ws = heldWeapon({ base: 'bolt', element: 'storm', rarity: 4, variant: 2 } as never, ang); d.drawImage(ws, 36 - ws.width / 2 | 0, 32 - ws.height / 2 | 0);
+    for (const k of [0.35, 0.7]) { const pr = projectileSprite({ style: 'bolt', color: '#7fe7ff', angle: ang, age: k, variant: 2 }); d.drawImage(pr, Math.round(40 + 14 * k - pr.width / 2), Math.round(30 - 7 * k - pr.height / 2)); }
+    g.imageSmoothingEnabled = false; g.drawImage(c, 0, 0, N, M, 0, 0, HW, HH); g.imageSmoothingEnabled = true; });
   (window as unknown as { __icons: Out }).__icons = out;
 }
 main().catch((e) => { console.error(e); (window as unknown as { __err: string }).__err = String(e); });

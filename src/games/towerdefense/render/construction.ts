@@ -81,11 +81,12 @@ export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout
 
 export function radialLayout(W: number, UH: number, anchor: { x: number; y: number }, count: number): { body: Box; options: Box[]; close: Box } {
   const gap = 8, w = Math.min(154, (W - 3 * gap) / 2), h = 48;
-  const radial = UH >= 300 && count <= 4;
-  const rows = radial ? (count === 4 ? 3 : 2) : Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
+  // Up to three options sit as a triangle around the pad (one on top, two below); four or more fill a 2-column grid,
+  // so the four towers read as a compact 2x2.
+  const radial = UH >= 300 && count <= 3;
+  const rows = radial ? 2 : Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
   const body = { x: Math.max(gap, Math.min(W - gap - bw, anchor.x - bw / 2)), y: Math.max(gap, Math.min(UH - gap - bh, anchor.y - bh / 2)), w: bw, h: bh };
-  // Four quadrants around the selected pad, with a two-column fallback for extra options.
-  const positions = [[(w + gap) / 2, 0], [0, h + gap], [w + gap, h + gap], [(w + gap) / 2, 2 * (h + gap)]];
+  const positions = [[(w + gap) / 2, 0], [0, h + gap], [w + gap, h + gap]];
   const options = Array.from({ length: count }, (_, i) => ({
     x: body.x + (radial ? positions[i][0] : (i % 2) * (w + gap)),
     y: body.y + 48 + (radial ? positions[i][1] : Math.floor(i / 2) * (h + gap)), w, h,

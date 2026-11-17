@@ -205,7 +205,7 @@ const CUBES = [
       /* ---- lower storey ---- */
       // wall 0: a loop and a wall turntable whose arm, swung level, leads to the corner
       const L0 = road(wallLoopPts(F[0], -2.2, .6, 1.0, 2.8, .45, .02), { closed: true }); P.L0 = L0;
-      const disc = wallArm(L, { F: F[0], parent: cube, pivot: [.6, 1.9], len: 1.2, stops: [0, 179], start: 179, at: [1.6, 3.4], key: 'y', name: 'Wall turntable', edgeText: 'The arm pointed up into the air, so the wheel dropped' }); P.disc = disc;
+      const disc = wallArm(L, { F: F[0], parent: cube, pivot: [.6, 1.9], len: 1.2, stops: [0, 90], start: 90, at: [1.6, 3.4], key: 'y', name: 'Wall turntable', edgeText: 'The arm pointed up into the air, so the wheel dropped' }); P.disc = disc;
       L0.forks.push({ s: sAt(L0, F[0].at(.6, 1.9, .02)), dir: 1, to: disc.road, toK: 0, when: () => disc.at(0), text: 'The arm is level, so the wheel rides out' });
       const c0 = cornerPts(F, 0, 1.8, 1.9, -1.2); const E0 = road(c0.pts); P.E0 = E0;
 
@@ -299,6 +299,9 @@ const CUBES = [
         const keep = [[disc, 0, [.6, 1.9], 1.4], [beam, 3, [-1.2, 3.38], 0], [sail, 0, [-.9, pz], 1.9], [arm, 1, [-.7, apz], 0]];
         for (const [, k, c, rr] of keep) if (rr) for (let a = 0; a < 360; a += 20) onWall[k].push([c[0] + rr * Math.cos(a * Math.PI / 180), c[1] + rr * Math.sin(a * Math.PI / 180)]);
         onWall[1].push([1.45, 4.95], [.5, 4.95], [2.4, 4.95]);   // the awning's hinge line
+        // each machine's button cap, and the beam's whole swing, keep their wall clear too
+        for (const [k, u, z] of [[0, 1.6, 3.4], [3, 1.5, 1.1], [0, -1.55, zA + .6], [1, -1.0, 4.6], [1, -1.45, zB + .9]]) for (let a = 0; a < 360; a += 45) onWall[k].push([u + .45 * Math.cos(a * Math.PI / 180), z + .45 * Math.sin(a * Math.PI / 180)]);
+        for (let a = 75; a <= 105; a += 5) for (let r = 0; r <= 4.8; r += .3) onWall[3].push([-1.2 + r * Math.cos(a * Math.PI / 180), 3.38 + r * Math.sin(a * Math.PI / 180)]);
         F.forEach((f, k) => {
           const clear = (u, z, rad) => onWall[k].every(([a, b]) => Math.hypot(a - u, b - z) > rad);
           wallArt(L, cube, { centre: f.at(0, H / 2, 0), u: f.u, up: Zup, n: f.n, w: 2 * h - 2 * R2 - .1, h: H, style: 'niches', seed: 11 + k, clear, storey: STOREY,

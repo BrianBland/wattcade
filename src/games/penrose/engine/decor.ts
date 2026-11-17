@@ -81,7 +81,7 @@ function wallPattern(style, w, h, seed, pal, o = {}) {
     const nw = .34, nh = 1.0, step = .78;
     for (let zb = .45; zb + nh < h - .3; zb += 1.55) for (let uc = -w / 2 + .55; uc <= w / 2 - .55; uc += step) {
       const zc = zb + nh / 2; if (lines.some((z) => Math.abs(z - zc) < nh / 2 + .2)) continue;
-      if (![[0, 0], [0, nh / 2], [0, -nh / 2]].every(([du, dz]) => clear(uc + du, zc + dz, .62))) continue;
+      if (![[0, 0], [0, nh / 2], [0, -nh / 2]].every(([du, dz]) => clear(uc + du, zc + dz, .85))) continue;
       const x = (uc + w / 2) * ppm, yb = H - zb * ppm, yt = H - (zb + nh) * ppm, r = nw / 2 * ppm;
       g.fillStyle = D(.28); g.beginPath(); g.moveTo(x - r, yb); g.lineTo(x - r, yt + r); g.arc(x, yt + r, r, Math.PI, 0); g.lineTo(x + r, yb); g.closePath(); g.fill();
       g.fillStyle = L(.75); g.fillRect(x - r - 6, yb - 2, 2 * r + 12, 6);

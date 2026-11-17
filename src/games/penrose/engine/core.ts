@@ -801,8 +801,9 @@ function makeLevel(def, idx) {
   const v2 = p => { const q = p.clone().applyMatrix4(view.camera.matrixWorldInverse); return new T.Vector2(q.x, q.y); }, dir2 = (p, d) => v2(p.clone().add(d)).sub(v2(p));
   const L = { def, idx, th, g, view, roads: [], machines: [], props: {}, wins: 0, sayText: '', v2 };
   const lane = tri(tone(th.lane), { side: true, fresh: true }); L.lane = lane;
+  // a theme with its own deck lays every road in it: goal, pier and far roads ask for stone, which used to be the same colour
   L.road = (samples, o = {}) => { const r = new Road(samples, o); L.roads.push(r); const host = o.g || g;
-    r.vo = { host, w: o.w || 1, th: o.th ?? .5, mat: o.mat || tri(o.pal || sp(th, 1), { side: true }), laneMat: o.laneMat || lane }; r.vis = [];
+    r.vo = { host, w: o.w || 1, th: o.th ?? .5, mat: o.mat || tri((o.pal === th.stone && th.deck) || o.pal || sp(th, 1), { side: true }), laneMat: o.laneMat || lane }; r.vis = [];
     if (!o.noDeck) { const m = ribbon(r, r.vo.w, r.vo.th, r.vo.mat); host.add(m); r.vis.push(m); r.deck = m; }
     if (!o.noLane) { const m = ribbon(r, .07, 0, r.vo.laneMat, { lift: .012, dash: [.38, .2] }); host.add(m); r.vis.push(m); }
     return r; };
@@ -965,8 +966,8 @@ function makeLevel(def, idx) {
     if (W.mode === 'spawn') W.t += dt;
     pose(dt);
     if (goalRoad) { const e = goalRoad.end(1); goalRing.position.copy(e.p).add(new T.Vector3(0, .5, 0)); goalGlow.position.copy(goalRing.position); goalRing.material.rotation = t * .8; goalRing.scale.setScalar(1 + .08 * Math.sin(t * 3)); }
-    // badges follow their machines
-    L.machines.forEach((m, i) => { const p = new T.Vector3(); m.bloom.holder.getWorldPosition(p); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
+    // badges follow their machines, anchored on the cap's outer face so on a wall the letter sits on the cap, not inside the wall
+    L.machines.forEach((m, i) => { const p = m.bloom.holder.localToWorld(new T.Vector3(0, .07, 0)); const [x, y] = view.project(p); m.bd.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; });
     if (W.mode === 'win' && W.t > .5 && L.state === 'play') { L.state = 'won'; L.wonT = 0; hooks.onWon(L.idx); }
     if (W.mode === 'dead' && W.t > .4 && L.state === 'play') {
       // a level with checkpoints (a long one) puts the wheel back on the loop it last reached, not at the start

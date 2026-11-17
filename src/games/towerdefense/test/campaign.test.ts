@@ -99,13 +99,13 @@ describe('playing a level', () => {
     expect(lost).toBeGreaterThan(0);
     expect(r.events[end].data!.stars).toBe(starsFor(1 - lost / 100));
   }, 60_000);
-  it('a new rider starts Campaign I; the select screen lists campaign, quick ride, intensity and endless', () => {
+  it('a new rider opens on the ride select with Campaign I first: campaign, quick ride, endless, intensity', () => {
     const profile = testProfile();
     const s = createGameSession({ game: module, profile, input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1 });
     s.step(1);
-    expect((s.sim.snapshot() as TdSnapshot).run?.id).toBe('c1');
-    s.sim.receive!({ type: 'bail' }); s.step(1);
+    expect(s.sim.inMenu!()).toBe(true);
     const g = (s.sim.snapshot() as TdSnapshot).garage!;
+    expect(g.page).toBe('modes'); expect(g.sel).toBe(0); expect(g.levels[g.campaignSel].id).toBe('c1');
     expect(g.rows.slice(0, 4).map(r => r.kind)).toEqual(['campaign', 'quick', 'start', 'intensity']);
   });
 });

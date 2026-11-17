@@ -124,6 +124,10 @@ export class Machinery {
     const b = v.P(this.geo.base.x, this.geo.base.y), name = `muzzle_${s.weapon === 'flame' ? 'flamer' : s.weapon}`, a = s.aimAngle + v.rot;
     return this.outpost.anchor(name, b.x, b.y, 22 * this.geo.deckScale * v.k / 440, a) ?? { x: b.x + Math.sin(a) * 7 * this.geo.deckScale * v.k, y: b.y - Math.cos(a) * 7 * this.geo.deckScale * v.k };
   }
+  /** The outpost at rest (Gatling up, no rider) at screen (x, y), for menu stills; `k` px per unit. False until loaded. */
+  still(g: CanvasRenderingContext2D, geo: TdGeometry, x: number, y: number, k: number, rot: number) {
+    return this.outpost.draw(g, x, y, 22 * geo.deckScale * k / 440, { angle: rot - 0.35, revs: 0, level: 5, grid: 0.4, weapon: 'gatling', charge: 0, damage: 0, age: 99, t: 0 });
+  }
   base(g: CanvasRenderingContext2D, v: View, s: TdSnapshot, bike: Readonly<BikeState>) {
     const look = this.profile ? riderLook(this.profile) : null, b = v.P(this.geo.base.x, this.geo.base.y);
     const ready = this.outpost.draw(g, b.x, b.y, 22 * this.geo.deckScale * v.k / 440, {

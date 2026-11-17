@@ -169,6 +169,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const garageAutostart = T.num('garageAutostartS', 30, 5, 120, 1, 'pedalling seconds before a run auto-starts');
   const garageCadence = T.num('garageCadenceRpm', 30, 15, 90, 1, 'cadence needed for Garage auto-start');
   const garageBreatherS = T.num('garageBreatherS', 6, 0, 30, 1, 'breather before the next auto-start countdown');
+  const levelLoadMaxS = T.num('levelLoadMaxS', 12, 0, 60, 1, 'longest a level start waits for the renderer to ready its art (trainer neutral)');
   const hpScale = T.num('hpScalePerWave', 0.2, 0, 2, 0.01);
   const hpScale2 = T.num('hpScaleQuad', 0.02, 0, 0.2, 0.001, 'extra HP per wave^2');
   const countScale = T.num('waveCountScale', 1, 0.3, 3, 0.1, 'heavy enemies per wave multiplier');
@@ -281,6 +282,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const targetK = () => intensity === 'easy' ? intensityEasy() : intensity === 'hard' ? intensityHard() : 1;
   const hpK = () => intensity === 'easy' ? intensityEasyHp() : intensity === 'hard' ? intensityHardHp() : 1;
   let started = false;
+  // Load gate: a renderer that sends `loadGate` holds each new level/run (time, trainer, input) until it sends
+  // `levelReady`, so the level appears fully drawn; capped at levelLoadMaxS. Headless runs never gate.
+  let loadGate = false, loading = false, loadingS = 0;
   let garageSel = 0, garageT = 0, garageBreather = 0;
   let menuPage: 'modes' | 'campaign' = 'modes', levelSel = 0;
   let t = 0, nextId = 1, fxId = 0, cueId = 0;
@@ -1011,7 +1015,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const c = CAMPAIGN[campaignSel], got = save.campaign[c.id] ?? 0;
     const rows: GarageRow[] = [
       { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''} · A: all levels` },
-      { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length' },
+      { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length · Y new map' },
       { kind: 'start', name: 'Endless', desc: `Sets forever on a new map · best wave ${save.endlessBest}` },
       { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: `◀ ▶ · scales work-wave trainer targets and alien HP${isUnlocked('hard', stars()) ? '' : ' · Hard unlocks at 20★'}` },
     ];
@@ -1057,6 +1061,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** The intensities on offer: Hard once it is unlocked. */
   function offered(): readonly Intensity[] { return isUnlocked('hard', stars()) ? INTENSITIES : INTENSITIES.filter((i) => i !== 'hard'); }
+  /** Quick Ride: skip to the next seed's map (the card previews it; the background builds it). */
+  function rerollQuick() { save.quickSeed++; garageT = 0; cue('select'); persist(); }
   /** The level grid: ◀ ▶ step a level, ▲ ▼ a ground (row of five); A rides an open level, B goes back. */
   function levelSelectUpdate(dt: number, inp: Readonly<InputState>) {
     const p = (b: Button) => inp.pressed.has(b), open = campaignOpen(save.campaign);
@@ -1089,21 +1095,26 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (menuPage === 'campaign' && !result) { levelSelectUpdate(dt, inp); return; }
     const p = (b: Button) => inp.pressed.has(b);
     let rows = garageRows();
-    let act = false;
+    let act = false, touchStep = 0;
     for (const a of pending.splice(0)) if (a.type === 'garageRow' && typeof a.row === 'number' && a.row >= 0 && a.row < rows.length) { garageSel = a.row; act = true; }
+      // a card's own ◀ ▶ (or a swipe on it): select that row and step it, without starting anything
+      else if (a.type === 'garageStep' && Number.isInteger(a.row) && (a.row as number) >= 0 && (a.row as number) < rows.length && (a.step === 1 || a.step === -1)) {
+        garageSel = a.row as number; touchStep = a.step as number;
+      } else if (a.type === 'quickReroll') { rerollQuick(); garageSel = rows.findIndex((r) => r.kind === 'quick'); }
       else if (a.type === 'levelTile' && !result && Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < CAMPAIGN.length) {
         menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return;
       }
     garageSel = Math.min(garageSel, rows.length - 1);
     if (p('up')) { garageSel = (garageSel + rows.length - 1) % rows.length; garageT = 0; cue('select'); }
     if (p('down')) { garageSel = (garageSel + 1) % rows.length; garageT = 0; cue('select'); }
-    const row = rows[garageSel], step = p('left') ? -1 : p('right') ? 1 : 0;
+    const row = rows[garageSel], step = touchStep || (p('left') ? -1 : p('right') ? 1 : 0);
     if (step) {
       garageT = 0;
       if (row.kind === 'campaign') { campaignSel = clamp(campaignSel + step, 0, campaignOpen(save.campaign)); cue('select'); }
       if (row.kind === 'quick') { const i = QUICK_MINUTES.indexOf(save.quickMinutes as typeof QUICK_MINUTES[number]); save.quickMinutes = QUICK_MINUTES[clamp(i + step, 0, QUICK_MINUTES.length - 1)]; cue('select'); persist(); }
       if (row.kind === 'intensity') { const o = offered(); intensity = o[clamp(o.indexOf(intensity) + step, 0, o.length - 1)]; cue('select'); persist(); }
     }
+    if (p('y') && row.kind === 'quick') rerollQuick();
     // B starts the first row (the campaign level, or the next level on the clear screen; Endless again after Endless)
     rows = garageRows();
     if (p('b')) { if (garageAct(rows[0], false)) return; }
@@ -1148,6 +1159,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     persist();
     cue('go');
     startWave(true);
+    loading = loadGate && levelLoadMaxS() > 0; loadingS = 0;
   }
 
   /** Announces a boss's events and carries out its tricks. */
@@ -1434,7 +1446,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const pl = opts?.play;
       if (pl) startLevel('campaign' in pl ? CAMPAIGN[clamp(pl.campaign, 0, CAMPAIGN.length - 1)] : quickRide(pl.quick.seed, pl.quick.minutes));
       else if (opts?.skipGarage || autopilot) startRun();
-      else if (save.runs === 0) startLevel(CAMPAIGN[0]); // a new rider starts the campaign
+    }
+    if (phase === 'run' && loading) { // waiting for the renderer: the level holds still, the trainer stays neutral
+      loadingS += dt; pending.length = 0; discardEdges = true; lastRevs = ctx.bike().crankRevs;
+      ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 });
+      if (loadingS >= levelLoadMaxS()) { loading = false; trainerSync(); }
+      ctx.debug('phase', 'loading');
+      return;
     }
     t += dt;
     const rawInput = ctx.input();
@@ -1530,9 +1548,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const open = campaignOpen(save.campaign);
     const levels = CAMPAIGN.map((c, i): LevelTile => ({ ...TILE_INFO[i], stars: save.campaign[c.id] ?? 0, locked: i > open }));
     const page = result ? 'modes' : menuPage;
+    const nextUp = result ? (result.failed ? result.spec : nextSpec(result.spec)) : null;
     return { title: page === 'campaign' ? 'Campaign' : title, subtitle: page === 'campaign' ? `${Object.values(save.campaign).filter((v) => v > 0).length}/${CAMPAIGN.length} cleared · ${stars()}★` : subtitle,
       breatherLeft: garageBreather, sel: garageSel, rows: garageRows(), autoLeft: garageAutostart() - garageT, autoS: garageAutostart(), stars: stars(), endlessBest: save.endlessBest, runs: save.runs,
-      page, levels, levelSel, open, campaignSel };
+      page, levels, levelSel, open, campaignSel, ...(nextUp ? { nextMap: { seed: nextUp.seed, roadStyle: nextUp.roadStyle, ground: nextUp.ground, pads: nextUp.pads } } : {}) };
   }
   function workshopView(): WorkshopView | null {
     if (!workshop) return null;
@@ -1551,10 +1570,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     update,
     isOver: () => false,
     menuActions: () => phase === 'run' ? [{ id: 'garage', label: play ? 'Quit level · back to the level select' : 'End the run · back to the ride select', action: { type: 'bail' } }] : [],
-    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0)),
+    inMenu: () => phase === 'garage' && (started || !(opts?.skipGarage || autopilot)),
     receive(action: unknown) {
       const a = action as { type?: unknown } | null;
       if (a?.type === 'padOrder') { padsTurned = (a as { turned?: unknown }).turned === true; return; }
+      if (a?.type === 'loadGate') { loadGate = true; return; }
+      if (a?.type === 'levelReady') { loading = false; return; }
       if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
       if (a?.type === 'boostCancel') {
         cancelBoost();
@@ -1569,11 +1590,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
-      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot || save.runs === 0))) return {
+      if (phase === 'garage' && (started || !(opts?.skipGarage || autopilot))) return {
         gears: true, targetZone: { min: 2, max: 2, label: 'Warm up' },
         controls: [{ button: 'dpad', label: 'Choose' }, { button: 'a', label: 'Buy / start', shortLabel: 'Buy' }, { button: 'b', label: 'Start run', shortLabel: 'Start' }, ...gearHints()],
         playControls: playControls(),
       };
+      if (phase === 'run' && loading) return { gears: true, targetZone: { min: 1, max: 2, label: 'Preparing the level' }, controls: [] };
       const boss = bossView();
       const call = effort && (effort.state === 'active' || effort.state === 'announced') ? effort : null;
       const powerZone = (ftp: number): 1 | 2 | 3 | 4 | 5 => ftp < 0.56 ? 1 : ftp < 0.76 ? 2 : ftp < 0.91 ? 3 : ftp < 1.06 ? 4 : 5;
@@ -1592,7 +1614,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     },
     snapshot(): TdSnapshot {
       return {
-        t, level, phase, garage: phase === 'garage' ? garageView() : null, nextMaps: nextMaps(),
+        t, level, phase, garage: phase === 'garage' ? garageView() : null, nextMaps: nextMaps(), loading: phase === 'run' && loading,
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },

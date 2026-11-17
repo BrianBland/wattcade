@@ -5,7 +5,8 @@ import type { View } from './aliens/layer';
 import { boundedLights, type Point } from './battlefieldMath';
 import { COL, glowAt } from './sprites';
 import { loadImage } from './assets';
-import { GroundBaker, type Baked } from './ground/bake';
+import { GroundBaker, levelKey, type Baked } from './ground/bake';
+import type { TdLevel } from '../sim/level';
 import { screenBox, type WorldBox } from './ground/compose';
 interface Light extends Point { r: number; color: string; strength: number }
 
@@ -24,7 +25,7 @@ export class Battlefield {
   private baked: Baked | null = null;
   /** The level being drawn; the renderer sets it from the snapshot. Only a painted level uses the paintings. */
   geo: TdGeometry = levelGeometry(LEVEL_0);
-  constructor(base: string, onBackground: () => void) {
+  constructor(base: string, onBackground: (baked?: Baked) => void) {
     this.baker = new GroundBaker(base, onBackground);
     // A missing painting is fine: the other orientation or the vector ground stands in.
     this.loaded = Promise.all((['portrait', 'landscape'] as const).map(o =>
@@ -54,9 +55,19 @@ export class Battlefield {
     return true;
   }
   /** Bake resolution: about 60 % of the screen's device pixels per unit (the kits hold 12), within 6–10. */
+  private static bakeK(v: View) { return Math.max(6, Math.min(10, Math.round(v.k * v.dpr * 0.6))); }
+  /**
+   * Bakes `level`'s ground in the background for the view it will be drawn in (the menu calls this for the level A
+   * would start). True once it is ready to draw (a painted level: once its painting is in).
+   */
+  prepare(level: TdLevel, v: View, W: number, H: number): boolean {
+    if (level.painted) return this.ready;
+    return this.baker.prepare(level, screenBox(v.P, W, H), Battlefield.bakeK(v));
+  }
+  /** 0..1: how far the ground for `level` is (for the loading card). */
+  progress(level: TdLevel): number { return level.painted ? (this.ready ? 1 : 0) : this.baker.progress(level); }
   private kitGround(g: CanvasRenderingContext2D, v: View, W: number, H: number) {
-    const K = Math.max(6, Math.min(10, Math.round(v.k * v.dpr * 0.6)));
-    const b = this.baker.get(this.geo.level, screenBox(v.P, W, H), K);
+    const b = this.baker.get(this.geo.level, screenBox(v.P, W, H), Battlefield.bakeK(v));
     this.baked = b;
     if (!b) return false;
     g.fillStyle = '#0d1118'; g.fillRect(0, 0, W, H);
@@ -73,7 +84,7 @@ export class Battlefield {
   /** Bridge decks over the aliens below them; false when there are none on screen yet. */
   deck(g: CanvasRenderingContext2D, v: View) {
     const b = this.baked;
-    if (!b?.deck || b.level !== this.geo.level) return false;
+    if (!b?.deck || levelKey(b.level) !== levelKey(this.geo.level)) return false; // a menu prebake carries its own copy of the map
     this.blit(g, v, b.deck.canvas, b.deck.box);
     return true;
   }

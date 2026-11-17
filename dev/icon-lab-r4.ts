@@ -171,20 +171,20 @@ async function main() {
     bevel(g, 'DELVE', S / 2, 116, { font: '900 108px "Cinzel Decorative"', fill: vgrad(['#fffbe8', '#ffd76a', '#c27a1a']), stroke: '#1a0d05', sw: 8, glow: '#9b5cff', blur: 44 }, 'center', 3, '#fff8d8', '#3a1d05', 6); });
 
   // ---- Keeper's Light: option 2 layout (sky top right), with period lettering.
-  const lh = (g: G) => { g.drawImage(im['lh-scene'], -60, 0, S + 60, S + 60); shade(g, 'tr', 0.6, '5,8,20', 0.5); };
+  const lh = (g: G) => { g.drawImage(im['lh-scene'], -205, -30, S + 215, S + 215); shade(g, 'tr', 0.6, '5,8,20', 0.5); };
   const rule = (g: G, x0: number, x1: number, y: number, col: string) => { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(x0, y); g.lineTo(x1, y); g.stroke(); g.lineWidth = 1; g.beginPath(); g.moveTo(x0 + 8, y + 5); g.lineTo(x1 - 8, y + 5); g.stroke();
     g.fillStyle = col; g.beginPath(); const m = (x0 + x1) / 2; g.moveTo(m, y - 6); g.lineTo(m + 6, y + 2.5); g.lineTo(m, y + 11); g.lineTo(m - 6, y + 2.5); g.closePath(); g.fill(); };
   make('lighthouse-fell', (g) => { lh(g); const R = S - 30;
-    line(g, "Keeper's", R - 6, 92, { font: 'italic 400 52px "IM Fell English"', fill: '#f6e7c1', glow: '#000d', blur: 12 }, 'right');
-    line(g, 'LIGHT', R, 180, { font: '400 104px "IM Fell English SC"', fill: vgrad(['#fffaf0', '#f3d79a']), glow: '#ffcf6a', blur: 22, track: 4 }, 'right');
-    rule(g, R - 230, R, 204, '#f3d79acc'); });
+    line(g, "Keeper's", R - 6, 96, { font: 'italic 400 50px "IM Fell English"', fill: '#f6e7c1', glow: '#000d', blur: 12 }, 'right');
+    line(g, 'LIGHT', R, 172, { font: '400 72px "IM Fell English SC"', fill: vgrad(['#fffaf0', '#f3d79a']), glow: '#ffcf6a', blur: 22, track: 2 }, 'right');
+    rule(g, R - 180, R, 192, '#f3d79acc'); });
   make('lighthouse-playfair', (g) => { lh(g); const R = S - 28;
-    line(g, "KEEPER'S", R, 86, { font: '900 34px "Playfair Display SC"', fill: '#f6e7c1', glow: '#000d', blur: 10, track: 9 }, 'right');
-    bevel(g, 'Light', R, 176, { font: '900 112px "Playfair Display SC"', fill: vgrad(['#fff6d6', '#f2c04a', '#b67a14']), stroke: '#1d1203', sw: 5, glow: '#ffcf6a', blur: 26 }, 'right', 2, '#fffbe8', '#3a2405', 3);
-    rule(g, R - 250, R, 200, '#f2c04acc'); });
+    line(g, "KEEPER'S", R, 86, { font: '900 30px "Playfair Display SC"', fill: '#f6e7c1', glow: '#000d', blur: 10, track: 7 }, 'right');
+    bevel(g, 'Light', R, 168, { font: '900 84px "Playfair Display SC"', fill: vgrad(['#fff6d6', '#f2c04a', '#b67a14']), stroke: '#1d1203', sw: 5, glow: '#ffcf6a', blur: 26 }, 'right', 2, '#fffbe8', '#3a2405', 3);
+    rule(g, R - 200, R, 190, '#f2c04acc'); });
   make('lighthouse-brass', (g) => { lh(g); const R = S - 26;
-    line(g, "KEEPER'S", R - 4, 90, { font: '700 36px "Cinzel Decorative"', fill: '#f6e7c1', glow: '#000d', blur: 10, track: 5 }, 'right');
-    bevel(g, 'Light', R, 182, { font: '900 96px "Cinzel Decorative"', fill: vgrad(['#fff6d6', '#e9b949', '#9a6410']), stroke: '#1d1203', sw: 5, glow: '#ffcf6a', blur: 24 }, 'right', 2, '#fffbe8', '#3a2405', 3); });
+    line(g, "KEEPER'S", R - 4, 90, { font: '700 30px "Cinzel Decorative"', fill: '#f6e7c1', glow: '#000d', blur: 10, track: 5 }, 'right');
+    bevel(g, 'Light', R, 170, { font: '900 76px "Cinzel Decorative"', fill: vgrad(['#fff6d6', '#e9b949', '#9a6410']), stroke: '#1d1203', sw: 5, glow: '#ffcf6a', blur: 24 }, 'right', 2, '#fffbe8', '#3a2405', 3); });
 
   // ---- Dynamo Defense: the compressed scene: dynamo firing, the tesla's arc through the brood.
   make('towerdefense-scene', (g) => { g.drawImage(im['td-scene'], 0, 0, S, S); vignette(g, 0.35); shade(g, 'bottom', 0.75, '14,10,6', 0.3); line(g, 'DYNAMO', S - 26, S - 34, TD, 'right'); });

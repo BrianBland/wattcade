@@ -145,7 +145,7 @@ describe('touch steppers', () => {
     s.sim.receive!({ type: 'quickReroll' }); s.step(1);
     expect(snap(s).phase).toBe('garage'); expect(snap(s).nextMaps[0].seed).toBe(seed + 1); expect(snap(s).garage!.sel).toBe(1);
   });
-  it('cards and the level picture carry ◀ ▶ buttons; a sideways swipe is a step, a scroll is not', () => {
+  it('the Quick Ride card carries ◀ ▶ buttons, the level picture only a swipe; a sideways swipe is a step, a scroll is not', () => {
     const s = menu(3);
     const g = snap(s).garage!;
     const modes = modesHtml(g);
@@ -153,7 +153,7 @@ describe('touch steppers', () => {
     expect(modes).toContain('data-command="quickReroll"');
     const grid = levelSelectHtml({ ...g, page: 'campaign', levelSel: 0 });
     expect(grid).toContain('data-swipe="levelTile"');
-    expect(grid.match(/class="td-step/g)).toHaveLength(1); // the first level has no previous
+    expect(grid).not.toContain('td-step'); // the tiles pick levels
     expect(swipeStep(-80, 10)).toBe(1); expect(swipeStep(80, -5)).toBe(-1);
     expect(swipeStep(30, 0)).toBe(0); expect(swipeStep(60, 80)).toBe(0);
   });

@@ -58,13 +58,16 @@ export function modesHtml(gv: GarageView, maps: { quick?: TdLevel | null; endles
   return `<div class="td-cards">${cards}</div>${rows}`;
 }
 
-/** The campaign page: one row of five tiles per ground, and a large preview of the selected level. */
-export function levelSelectHtml(gv: GarageView, art?: ArtLookup): string {
+/**
+ * The campaign page: one row of five tiles per ground, and a large preview of the selected level. `tileArt` finds the
+ * grid's pictures (landscape-shaped in every orientation, so a row of five fills the panel's width).
+ */
+export function levelSelectHtml(gv: GarageView, art?: ArtLookup, tileArt: ArtLookup | undefined = art): string {
   const sel = gv.levels[gv.levelSel];
   const grounds: LevelTile[][] = [];
   for (const t of gv.levels) (grounds[Math.floor(t.index / 5)] ??= []).push(t);
   const grid = grounds.map((row) => `<div class="td-ground"><span>${esc(row[0].name.split(' ')[0])}</span>${row.map((t) =>
-    `<button class="td-tile ${t.index === gv.levelSel ? 'selected' : ''} ${t.locked ? 'locked' : ''} ${t.index === gv.open ? 'next' : ''}" data-command="levelTile" data-index="${t.index}" aria-label="${esc(t.name)}${t.locked ? ' (locked)' : ''}">${tilePreview(t, art)}<b>${esc(t.name.split(' ').slice(1).join(' '))}</b><i>${t.locked ? '🔒' : t.stars ? starText(t.stars) : 'new'}</i></button>`).join('')}</div>`).join('');
+    `<button class="td-tile ${t.index === gv.levelSel ? 'selected' : ''} ${t.locked ? 'locked' : ''} ${t.index === gv.open ? 'next' : ''}" data-command="levelTile" data-index="${t.index}" aria-label="${esc(t.name)}${t.locked ? ' (locked)' : ''}">${tilePreview(t, tileArt)}<b>${esc(t.name.split(' ').slice(1).join(' '))}</b><i>${t.locked ? '🔒' : t.stars ? starText(t.stars) : 'new'}</i></button>`).join('')}</div>`).join('');
   const status = sel.locked ? `Locked · clear ${gv.levels[sel.index - 1]?.name ?? 'the level before'} first` : sel.stars ? `Best ${starText(sel.stars)} · ride again for more stars` : 'Not cleared yet';
   const step = (d: -1 | 1) => {
     const i = sel.index + d;

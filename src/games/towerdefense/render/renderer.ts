@@ -212,8 +212,11 @@ export class TdRenderer implements GameRenderer {
     // the ride-select cards get card-sized pictures (landscape-shaped on a narrow screen's one-column cards)
     const cardTurned = turned || this.W < NARROW_W;
     const cards = gv.page === 'modes' ? [campaign, quick, endless].filter((l): l is TdLevel => !!l).map((level) => ({ level, turned: cardTurned, big: true })) : [];
-    const tiles = [primary, next, campaign, quick, endless, ...order].filter((l): l is TdLevel => !!l).map((level) => ({ level, turned }));
-    const wish: ArtWish[] = [...cards, ...tiles];
+    const tiles = [primary, next, campaign, quick, endless].filter((l): l is TdLevel => !!l).map((level) => ({ level, turned }));
+    // the campaign grid's tiles are landscape-shaped in every orientation
+    const grid = order.filter((l): l is TdLevel => !!l).map((level) => ({ level, turned: true }));
+    if (gv.page !== 'campaign') grid.length = 0;
+    const wish: ArtWish[] = gv.page === 'campaign' ? [...tiles.slice(0, 1), ...grid, ...tiles.slice(1)] : [...cards, ...tiles, ...order.filter((l): l is TdLevel => !!l).map((level) => ({ level, turned }))];
     const key = wish.map((w) => `${levelKey(w.level)}${w.turned ? 'L' : 'P'}${w.big ? 'B' : ''}`).join(',');
     if (key !== this.artWish) { this.artWish = key; this.art?.want(wish); }
   }

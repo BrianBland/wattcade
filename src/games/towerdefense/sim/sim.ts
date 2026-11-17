@@ -1015,7 +1015,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const c = CAMPAIGN[campaignSel], got = save.campaign[c.id] ?? 0;
     const rows: GarageRow[] = [
       { kind: 'campaign', name: `Campaign · ${c.name}`, desc: `${levelDesc(c)}${got ? ` · ${starText(got)}` : ''} · A: all levels` },
-      { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length' },
+      { kind: 'quick', name: `Quick Ride · ${save.quickMinutes} min`, desc: 'A new seeded map · ◀ ▶ length · Y new map' },
       { kind: 'start', name: 'Endless', desc: `Sets forever on a new map · best wave ${save.endlessBest}` },
       { kind: 'intensity', name: `Intensity · ${INTENSITY_NAME[intensity]}`, desc: `◀ ▶ · scales work-wave trainer targets and alien HP${isUnlocked('hard', stars()) ? '' : ' · Hard unlocks at 20★'}` },
     ];
@@ -1061,6 +1061,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   /** The intensities on offer: Hard once it is unlocked. */
   function offered(): readonly Intensity[] { return isUnlocked('hard', stars()) ? INTENSITIES : INTENSITIES.filter((i) => i !== 'hard'); }
+  /** Quick Ride: skip to the next seed's map (the card previews it; the background builds it). */
+  function rerollQuick() { save.quickSeed++; garageT = 0; cue('select'); persist(); }
   /** The level grid: ◀ ▶ step a level, ▲ ▼ a ground (row of five); A rides an open level, B goes back. */
   function levelSelectUpdate(dt: number, inp: Readonly<InputState>) {
     const p = (b: Button) => inp.pressed.has(b), open = campaignOpen(save.campaign);
@@ -1098,7 +1100,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       // a card's own ◀ ▶ (or a swipe on it): select that row and step it, without starting anything
       else if (a.type === 'garageStep' && Number.isInteger(a.row) && (a.row as number) >= 0 && (a.row as number) < rows.length && (a.step === 1 || a.step === -1)) {
         garageSel = a.row as number; touchStep = a.step as number;
-      }
+      } else if (a.type === 'quickReroll') { rerollQuick(); garageSel = rows.findIndex((r) => r.kind === 'quick'); }
       else if (a.type === 'levelTile' && !result && Number.isInteger(a.index) && (a.index as number) >= 0 && (a.index as number) < CAMPAIGN.length) {
         menuPage = 'campaign'; levelSel = a.index as number; garageT = 0; cue('uiOpen'); return;
       }
@@ -1112,6 +1114,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (row.kind === 'quick') { const i = QUICK_MINUTES.indexOf(save.quickMinutes as typeof QUICK_MINUTES[number]); save.quickMinutes = QUICK_MINUTES[clamp(i + step, 0, QUICK_MINUTES.length - 1)]; cue('select'); persist(); }
       if (row.kind === 'intensity') { const o = offered(); intensity = o[clamp(o.indexOf(intensity) + step, 0, o.length - 1)]; cue('select'); persist(); }
     }
+    if (p('y') && row.kind === 'quick') rerollQuick();
     // B starts the first row (the campaign level, or the next level on the clear screen; Endless again after Endless)
     rows = garageRows();
     if (p('b')) { if (garageAct(rows[0], false)) return; }

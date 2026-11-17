@@ -135,11 +135,18 @@ describe('touch steppers', () => {
     s.sim.receive!({ type: 'garageStep', row: 0, step: 7 }); s.step(1); // malformed: ignored
     expect(snap(s).garage!.campaignSel).toBe(before - 1);
   });
+  it('New map rerolls the Quick Ride seed (the card previews the next map) without starting it', () => {
+    const s = menu(3);
+    const seed = snap(s).nextMaps[0].seed;
+    s.sim.receive!({ type: 'quickReroll' }); s.step(1);
+    expect(snap(s).phase).toBe('garage'); expect(snap(s).nextMaps[0].seed).toBe(seed + 1); expect(snap(s).garage!.sel).toBe(1);
+  });
   it('cards and the level picture carry ◀ ▶ buttons; a sideways swipe is a step, a scroll is not', () => {
     const s = menu(3);
     const g = snap(s).garage!;
     const modes = modesHtml(g);
-    expect(modes.match(/data-command="garageStep"/g)).toHaveLength(4); // Campaign and Quick Ride cards
+    expect(modes.match(/data-command="garageStep"/g)).toHaveLength(2); // the Quick Ride card (Campaign opens the grid)
+    expect(modes).toContain('data-command="quickReroll"');
     const grid = levelSelectHtml({ ...g, page: 'campaign', levelSel: 0 });
     expect(grid).toContain('data-swipe="levelTile"');
     expect(grid.match(/class="td-step/g)).toHaveLength(1); // the first level has no previous

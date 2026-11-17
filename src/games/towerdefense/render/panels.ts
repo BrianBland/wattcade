@@ -97,6 +97,8 @@ const CSS = `
 .td-step { position:absolute; top:50%; width:44px; height:44px; margin-top:-22px; display:grid; place-items:center; padding:0 0 3px; border-radius:50%; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 30px/1 system-ui, sans-serif; cursor:pointer; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); box-shadow:0 2px 8px rgba(0,0,0,.4); pointer-events:auto; }
 .td-step.prev { left:6px; } .td-step.next { right:6px; }
 .td-step:active { background:var(--neon); color:#05101a; }
+.td-reroll { position:absolute; top:6px; right:6px; min-height:36px; padding:0 12px; border-radius:99px; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 13px/1 inherit; cursor:pointer; backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+.td-reroll:active { background:var(--neon); color:#05101a; }
 .td-preview-pic { justify-self:center; max-width:100%; }
 .td-hud[data-wide="true"] .td-preview-pic { width:100%; }
 .td-card .td-map, .td-card-art { width:100%; aspect-ratio:var(--map-aspect); height:auto; }
@@ -184,6 +186,7 @@ export class TdHud {
       if (!button || (button as HTMLButtonElement).disabled) return;
       const index = Number(button.dataset.index);
       if (button.dataset.command === 'garageRow') this.send?.({ type: 'garageRow', row: index });
+      if (button.dataset.command === 'quickReroll') this.send?.({ type: 'quickReroll' });
       if (button.dataset.command === 'garageStep') this.send?.({ type: 'garageStep', row: index, step: Number(button.dataset.step) });
       if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
       if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });

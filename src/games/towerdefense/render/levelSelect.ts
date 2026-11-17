@@ -38,12 +38,12 @@ const facts = (t: LevelTile) => `${t.minutes} min · ${t.waves} waves · ${t.bos
  * Ride and Endless maps once the background workers have built them (placeholders until then); `art` finds pictures.
  */
 export function modesHtml(gv: GarageView, maps: { quick?: TdLevel | null; endless?: TdLevel | null } = {}, art?: ArtLookup): string {
-  // Campaign (level) and Quick Ride (length) cards carry their own ◀ ▶ over the picture, and swipe the same way.
-  const steps = (r: GarageRow, i: number) => {
-    const what = r.kind === 'campaign' ? 'level' : r.kind === 'quick' ? 'length' : '';
-    return what ? `<button class="td-step prev" data-command="garageStep" data-index="${i}" data-step="-1" aria-label="Previous ${what}">‹</button>`
-      + `<button class="td-step next" data-command="garageStep" data-index="${i}" data-step="1" aria-label="Next ${what}">›</button>` : '';
-  };
+  // The Quick Ride card carries its own ◀ ▶ (length) over the picture, swipes the same way, and rerolls its map.
+  // (The Campaign card opens the level grid, which picks levels, so it has none.)
+  const steps = (r: GarageRow, i: number) => r.kind !== 'quick' ? ''
+    : `<button class="td-step prev" data-command="garageStep" data-index="${i}" data-step="-1" aria-label="Shorter ride">‹</button>`
+      + `<button class="td-step next" data-command="garageStep" data-index="${i}" data-step="1" aria-label="Longer ride">›</button>`
+      + `<button class="td-reroll" data-command="quickReroll" aria-label="New map">⟳ New map</button>`;
   const card = (r: GarageRow, i: number, art: string) => {
     const stepper = steps(r, i);
     return `<div class="btn td-card ${i === gv.sel ? 'selected' : ''}" role="button" tabindex="0" data-command="garageRow" data-index="${i}"${stepper ? ` data-swipe="garageStep"` : ''}>`

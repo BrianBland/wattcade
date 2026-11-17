@@ -325,7 +325,7 @@ describe('workshop', () => {
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
     expect(ws.pad).toBeLessThan(PADS.length);
-    expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'flamer', 'lens']);
+    expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'flamer', 'lens', 'mortar']);
     expect(s.sim.hud!().controls!.some((c) => c.label === 'Build / upgrade')).toBe(true);
     // pick the tesla row by tap, then build it
     const scrap0 = snap(s).scrap;

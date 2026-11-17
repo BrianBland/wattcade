@@ -155,6 +155,12 @@ export function drawTower(g: CanvasRenderingContext2D, tw: TowerView, x: number,
     g.fillStyle = '#6a5048'; g.fillRect(-r * 0.22, -r * 0.95, r * 0.44, r * 0.7);
     g.fillStyle = '#8a6a50'; g.beginPath(); g.moveTo(-r * 0.22, -r * 0.95); g.lineTo(-r * 0.38, -r * 1.2); g.lineTo(r * 0.38, -r * 1.2); g.lineTo(r * 0.22, -r * 0.95); g.closePath(); g.fill();
     if (on) glowAt(g, '#ff9a50', 0, -r * 0.1, r * (0.5 + flash * 0.5), 0.4 + flash * 0.4);
+  } else if (tw.kind === 'mortar') { // a round breech and a stubby barrel that kicks back when it fires
+    g.fillStyle = '#4a4e44'; g.beginPath(); g.arc(0, 0, r * 0.62, 0, TAU); g.fill();
+    g.rotate(tw.angle); g.translate(0, flash * r * 0.18);
+    g.fillStyle = '#2a2d28'; g.fillRect(-r * 0.24, -r * 1.05, r * 0.48, r * 0.95);
+    g.strokeStyle = '#b08a4a'; g.lineWidth = Math.max(1, k * 0.25); g.beginPath(); g.arc(0, -r * 1.05, r * 0.26, 0, TAU); g.stroke();
+    if (on) glowAt(g, MORTAR_COL, 0, 0, r * (0.45 + tw.charge * 0.3 + flash * 0.6), 0.3 + flash * 0.5);
   } else {
     g.strokeStyle = '#5a6278'; g.lineWidth = Math.max(1, k * 0.35);
     for (const a of [-0.5, 0.5, Math.PI]) { g.beginPath(); g.moveTo(0, -r * 0.5); g.lineTo(Math.sin(a) * r * 0.7, Math.cos(a) * r * 0.5); g.stroke(); }
@@ -214,4 +220,7 @@ export function drawBase(g: CanvasRenderingContext2D, o: {
   if (o.hurt < 0.4) { glowAt(g, '#ff3020', x, y, R * 2.2, (0.4 - o.hurt) * 1.6); }
 }
 
-export const TOWER_ICON_COLOR: Record<TowerKind, string> = { tesla: COL.blue, flamer: COL.red, lens: COL.purple };
+/** The neutral Mortar's colour: a hazard-lamp lemon, paler and greener than the boss gold and the brass trim. */
+export const MORTAR_COL = '#f4e65c';
+/** One colour per tower kind, shared by range rings, pad lights and the workshop menu. */
+export const TOWER_ICON_COLOR: Record<TowerKind, string> = { tesla: COL.blue, flamer: COL.red, lens: COL.purple, mortar: MORTAR_COL };

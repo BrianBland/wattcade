@@ -6,8 +6,11 @@ export const TD = {
   edge: '#6e5130', edgeDim: '#43321f', brass: '#e8b24a', brassHi: '#ffdb8e', brassLo: '#9a6a28', copper: '#c8743c',
   text: '#f2e7d0', dim: '#b9a685', mute: '#7d6e58', ink: '#140f08',
   hp: '#9ccf45', hpHi: '#cdf27a', bad: '#ff5a3a',
-  blue: '#5cc8ff', red: '#ff6a3d', purple: '#cf7dff',
+  blue: '#5cc8ff', red: '#ff6a3d', purple: '#cf7dff', yellow: '#f6ea62',
 } as const;
+
+/** Each tower's colour in the workshop: its brood colour, and hazard yellow for the neutral Mortar. */
+export const TOWER_TINT = { tesla: TD.blue, flamer: TD.red, lens: TD.purple, mortar: TD.yellow } as const;
 
 /** Custom properties on `.td-hud`; the CSS below only refers to these. */
 export const THEME_VARS = Object.entries(TD).map(([k, v]) => `--td-${k}:${v};`).join('');

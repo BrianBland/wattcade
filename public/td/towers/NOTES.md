@@ -1,8 +1,8 @@
 # Tower puppets — approved production rigs
 
-Runtime index: Tesla, Prism and compact-burner Flamethrower A (owner: “I like A”).
-Tesla/Prism, shared pad and reused Mortar chassis/fittings retain their source pixels.
-The retired Mortar weapon rig is recoverable from main commit 44514c3.
+Runtime index: Tesla, Prism, compact-burner Flamethrower A (owner: “I like A”) and the Mortar.
+Tesla/Prism, shared pad and Mortar chassis/fittings retain their source pixels.
+The Mortar's weapon rig (head, barrel, L3/L5 fittings) is restored unchanged from commit 44514c3.
 Approved A source cutouts live in docs/towerdefense/art-briefs/flamer-rounds/flamer-production-1/source/.
 
 Offsets, pivots, mounts and anchors use the assembled 224×224 rest frame.

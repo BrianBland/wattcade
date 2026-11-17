@@ -80,7 +80,7 @@ export interface BroodInfo {
   /** trainer setting, e.g. 'resistance 35%' */ setting: string;
   /** one-line riding cue, e.g. 'grind 70–80 rpm' */ cue: string;
 }
-/** The current (or, during the lull, the coming) wave's brood; `countdownS` = lull seconds left (0 once the wave is on). */
+/** The current (or, during the lull, the coming) wave's brood; `countdownS` = lull seconds left (0 once the wave is on), `lullS` = that lull's full length. */
 export interface BroodView extends BroodInfo { countdownS: number; lullS: number; rampS: number }
 /** A wave's aliens per colour (gold = boss, prism = shifting); `air` = Gliders among the blue. */
 export type WaveForecast = Record<Element | 'gold' | 'prism', number> & { air: number };

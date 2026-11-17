@@ -10,6 +10,8 @@ exploration results, map metrics and ground-kit notes. Where the two differ, thi
 - Structure: **warm-up wave → sets → done.** The warm-up is an easy wave at recovery settings. A set is 2–3 work
   waves followed by a boss of one brood colour, and an easy recovery wave sits between sets. There is **no
   cool-down wave**: the overworld handles cool-downs.
+- Lulls (owner, 2026-11-17: hop in faster): 15 s before the first wave (`firstLullS`), 25 s before an easy
+  recovery wave (`easyLullS`), 45 s before work and boss waves (`lullS`: interval rest plus build time).
 - Bosses follow from length: about 0–1 boss at 15 min, 1 at 20–25, 2 at 30–40 and 3 at 60 (seeded variety within
   that band). A level ends when its last wave or last boss is cleared.
 - Difficulty: a level ramps from wave 1 to a peak (`levelPeakWave` + the level's depth) over its length, so a long

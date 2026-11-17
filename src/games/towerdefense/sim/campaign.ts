@@ -26,7 +26,11 @@ export interface LevelSpec {
   index?: number;
 }
 
-/** Rough minutes per wave including its lull (lull 45 s + a 90–150 s work wave; bosses run longer). */
+/**
+ * Rough minutes per wave including its lull (lull 45 s + a 90–150 s work wave; bosses run longer). Sizes the wave
+ * lists, so it is left as tuned: the shorter first (15 s) and easy-wave (25 s) lulls make a level run ~0.5–1.5 min
+ * under its estimate without changing which waves it has.
+ */
 export const WAVE_MIN = { work: 2.75, boss: 3.25, easy: 2.75 } as const;
 export interface LevelWave { role: WaveRole; warmup?: boolean; set: number; pos: number; of: number }
 

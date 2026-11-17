@@ -1,4 +1,4 @@
-// DOM foreground uses the shell's font, glass surfaces and color tokens. The map stays Canvas 2D.
+// DOM foreground: the shell's font with the game's own riveted-plate theme (theme.ts). The map stays Canvas 2D.
 import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
@@ -7,6 +7,7 @@ import type { Box, TdLayout } from './layout';
 import { constructionStatus, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
+import { THEME_CSS } from './theme';
 
 export interface Hit extends Box { action: unknown }
 /** Below this width the HUD goes narrow: one column of ride-select cards, with landscape-shaped pictures. */
@@ -154,7 +155,7 @@ const CSS = `
 .td-hud[data-compact=true] .td-current .td-count { font-size:24px; }
 `;
 
-const color = (e: Element) => ({ blue: 'var(--neon)', red: 'var(--bad)', purple: 'var(--pink)' })[e];
+const color = (e: Element) => `var(--td-${e})`;
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -172,7 +173,7 @@ export class TdHud {
 
   constructor(private send?: (a: unknown) => void) {
     this.root.className = 'td-hud';
-    const style = document.createElement('style'); style.textContent = CSS; this.root.append(style);
+    const style = document.createElement('style'); style.textContent = CSS + THEME_CSS; this.root.append(style);
     this.root.addEventListener('pointerdown', this.onSwipeStart);
     this.root.addEventListener('pointerup', this.onSwipeEnd);
     this.root.addEventListener('pointercancel', () => { this.swipe = null; });

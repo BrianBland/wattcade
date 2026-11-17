@@ -6,12 +6,13 @@
 import * as T from 'three';
 
 export function install($scope) {
-const { V, mulberry, TAU } = $scope;
+const { V, mulberry, TAU, HAZE, HAZE_GLSL } = $scope;
 
 const DECAL_VS = `varying vec3 vW; varying vec2 vUv;
 void main() { vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 // the same face-by-normal shading as the three-tone material, applied to the pattern's colours as a brightness factor
-const DECAL_FS = `uniform sampler2D map; uniform float opacity; varying vec3 vW; varying vec2 vUv;
+const DECAL_FS = HAZE_GLSL + `
+uniform sampler2D map; uniform float opacity; varying vec3 vW; varying vec2 vUv;
 void main() {
   vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
   vec3 cz = vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]); vec2 h = normalize(cz.xz + vec2(1e-5)), h0 = vec2(0.70710678);
@@ -20,7 +21,7 @@ void main() {
   vec3 w = pow(max(n, vec3(0.0)), vec3(1.6)); float s = w.x + w.y + w.z + 1e-4;
   float k = (0.72 * w.x + 1.0 * w.y + 0.86 * w.z) / s;
   vec4 t = texture2D(map, vUv);
-  gl_FragColor = vec4(t.rgb * k, t.a * opacity); }`;
+  gl_FragColor = vec4(haze(t.rgb * k, vW.y), t.a * opacity); }`;
 
 const STYLES = ['tiles', 'arcade', 'mosaic', 'chevron', 'meander', 'niches', 'panel'];
 const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
@@ -111,7 +112,7 @@ function wallArt(L, parent, o) {
   const th = L.th, style = o.style || STYLES[(o.seed >>> 0) % STYLES.length];
   const pal = o.pal || { light: '#FFFFFF', dark: th.ink || '#22223A', accent: th.goal || '#FF8E6E' };
   const tex = wallPattern(style, o.w, o.h, o.seed, pal, o);
-  const mat = new T.ShaderMaterial({ uniforms: { map: { value: tex }, opacity: { value: o.opacity ?? 1 } }, vertexShader: DECAL_VS, fragmentShader: DECAL_FS,
+  const mat = new T.ShaderMaterial({ uniforms: { ...HAZE, map: { value: tex }, opacity: { value: o.opacity ?? 1 } }, vertexShader: DECAL_VS, fragmentShader: DECAL_FS,
     transparent: true, depthWrite: false, side: T.DoubleSide, extensions: { derivatives: true }, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const m = new T.Mesh(new T.PlaneGeometry(o.w, o.h), mat);
   const ex = V(...o.u).normalize(), ey = V(...o.up).normalize(), ez = V(...o.n).normalize();

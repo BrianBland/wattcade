@@ -105,7 +105,7 @@ const blowUp = (g: G, c: HTMLCanvasElement, sx = 0, sy = 0, sw = c.width, sh = c
 
 type Out = Record<string, string>;
 async function main() {
-  const names = ['cad-scene', 'cad-scene2', 'cad-craft', 'lh-scene', 'lh-scene2', 'lh-lantern', 'td-tesla', 'td-tesla2', 'td-dynamo', 'td-wide', 'ws-river', 'ws-delta'];
+  const names = ['cad-scene', 'cad-scene2', 'cad-craft', 'lh-scene', 'lh-scene2', 'lh-lantern', 'td-tesla', 'td-tesla2', 'td-dynamo', 'td-wide', 'ws-river', 'ws-delta', 'ws-cloud'];
   const im = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await load(n).catch(() => null)] as const))) as Record<string, HTMLImageElement | null>;
   for (const f of ['86px Audiowide', '900 100px Cinzel', '700 38px Cinzel', '64px Bungee', '900 76px Fraunces']) await document.fonts.load(f);
   const out: Out = {}, list = document.getElementById('out')!;
@@ -160,6 +160,7 @@ async function main() {
   // ---- Watershed ----
   if (im['ws-river']) {
     make('watershed-river', (g) => { g.drawImage(im['ws-river']!, 0, 0, S, S); shade(g, 'tl', 0.6, '4,24,26', 0.45); line(g, 'Watershed', 26, 86, WS); });
+    if (im['ws-cloud']) make('watershed-cloud', (g) => { g.drawImage(im['ws-cloud']!, 0, 30, S, S); shade(g, 'top', 0.7, '4,24,26', 0.3); line(g, 'Watershed', S / 2, 78, { ...WS, font: '900 78px Fraunces' }, 'center'); });
     if (im['ws-delta']) make('watershed-delta', (g) => { g.drawImage(im['ws-delta']!, 0, 0, S, S); shade(g, 'bottom', 0.7, '4,24,26', 0.35); line(g, 'Watershed', S - 26, S - 34, { ...WS, font: '900 70px Fraunces' }, 'right'); });
   }
   (window as unknown as { __icons: Out }).__icons = out;

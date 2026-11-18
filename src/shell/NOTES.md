@@ -9,7 +9,7 @@
 - `debug/`: `panels.tsx` (device, derived, controller, mixer, tuning), `TrainerTest.tsx`, `types.ts` (`DebugSnapshot`, `DebugActions`), polled at 5 Hz from `services.debugSnapshot()`.
 - Flow: connect -> profiles -> menu -> game -> summary. On quit: `session.finish()`, SessionStore.save, `awardSession`, profile saved.
 - No device connected (or Fake toggle on) => session uses core FakeBike with chosen script. Real devices => shared `dataHub`.
-- Pause (system `pause`): `session.pause()` + mixer panic; resume releases. Wake lock requested in GameHost.
+- Pause (system `pause`): `session.pause()` + mixer panic; resume releases. Screen kept awake by `wakeLock.ts` `keepScreenAwake()` (GameHost + WarmupStage hold it): Wake Lock API re-requested on visibility/gesture, plus a muted inline looping video when the API is missing/refuses and always on iOS (WKWebView/home-screen can grant without honoring).
 - Debug overlay: system action `toggleDebug` (persisted); sets `input.debugOpen` (shifters -> difficulty/timeScale). Trainer test via mixer effect `trainer-test`; fake sliders edit `fakeBike.manual`.
 - HUD chip shows ride time (`bike.activeSeconds`, pedalling time). Pause menu has a Sound on/off toggle (`wattcade.sound` flag).
 - `src/audio/sfx.ts`: shared WebAudio synth (`play(name, { minGapS })`, `unlockAudio()` called by GameHost on mount/gesture). Renderers import it; nothing runs in Node.

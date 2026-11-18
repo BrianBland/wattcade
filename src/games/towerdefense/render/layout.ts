@@ -129,3 +129,15 @@ export function fieldClearsHud(view: FieldView, shape: readonly HudOcclusion[], 
     });
   });
 }
+
+/** Peak scale of the boss name card's slam-in. */
+export const BOSS_CARD_SLAM = 1.35;
+/**
+ * Boss name card placement: centred on the free area over the field (L.banner), never the full canvas,
+ * so landscape's left status column cannot cover its first letters. `fit` shrinks the text so the
+ * widest line, at the slam-in peak, stays inside 94% of that area.
+ */
+export function bossCard(L: TdLayout, titleW: number, subW: number): { x: number; y: number; fit: number } {
+  const widest = Math.max(1, titleW, subW) * BOSS_CARD_SLAM;
+  return { x: L.banner.x, y: L.banner.y, fit: Math.min(1, (L.banner.w * 0.94) / widest) };
+}

@@ -150,3 +150,21 @@ export function magma(material: THREE.MeshStandardMaterial) {
   };
   return material;
 }
+/**
+ * Per-instance dissolve for scenery that enters and leaves view (ships, boats): the geometry's instanced `aFade`
+ * (0..1) discards a screen-space dither of fragments, so a hull fades out opaque and depth-correct, no sorting.
+ * Chains onto any patch above (call it last).
+ */
+export function dithered<M extends THREE.Material>(material: M): M {
+  const prev = material.onBeforeCompile.bind(material), key = material.customProgramCacheKey.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    prev(shader, renderer);
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nattribute float aFade; varying float vFade;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFade = aFade;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vFade;')
+      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+      if (vFade < 0.999 && vFade <= fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))) discard;`);
+  };
+  material.customProgramCacheKey = () => key() + '+fade';
+  return material;
+}

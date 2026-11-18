@@ -46,6 +46,7 @@ CONTRACT-REQUESTs: none. Root added optional `ctx.trainerCapabilities()` for cap
 - encounters.ts supplies continuous top/side entrances, combat eligibility, gunner designation, fire intervals, and readable aimed/fan/petal patterns. No offscreen acquisition or firing; flagship mounts follow its entering hull.
 - Up to 60 aircraft plus ground groups; 160-projectile budget (~60 live on average). Ground turrets/tanks have separate models, aiming barrels, and ground laser impacts; passing a ground unit does not ram the ship.
 - Scenery is regenerated per frame from (segment seed, tile) into fixed-size instance pools; no geometry/material allocation on biome changes.
+- Ships/boats never pop: pools in space.ts `FADES` carry an instanced `aFade` (shading.ts `dithered` discard); render/fade.ts `viewFade` (view edges) × `clearFade` (route/island clearance, continuous) set it. `routeAhead` spans s−420..s+1500 so samples join/leave off screen.
 - Flagship batteries group with the flagship for targeting; auto-select prefers the flagship group during a fight.
 
 ## Achievement curve

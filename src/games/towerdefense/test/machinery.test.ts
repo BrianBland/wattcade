@@ -53,8 +53,8 @@ describe('tower shots leave the art and land on its attack flash', async () => {
     prism: (await import('../../../../public/td/towers/prism/manifest.json')).default,
     flamer,
   };
-  it('puts each tower muzzle on its emitter: Prism crystal tip, Tesla orb, above the pad centre', () => {
-    expect(towers.prism.anchors.muzzle).toMatchObject({ parent: 'head', position: [112, 18] });
+  it('puts each tower muzzle on its emitter: Prism crystal centre, Tesla orb, above the pad centre', () => {
+    expect(towers.prism.anchors.muzzle).toMatchObject({ parent: 'head', position: [112, 54] });
     expect(towers.tesla.anchors.muzzle).toMatchObject({ parent: 'head', position: [112, 44] });
     for (const m of Object.values(towers)) expect(m.anchors.muzzle.position[1]).toBeLessThan(m.anchors.range_center.position[1] - 40);
   });

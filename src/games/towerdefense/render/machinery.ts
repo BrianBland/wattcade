@@ -126,7 +126,7 @@ export class Machinery {
     const p = this.geo.pads[tw.pad], at = v.P(p.x, p.y), a = tw.angle + v.rot;
     return this.towerAnchor(tw, v, t) ?? { x: at.x + Math.sin(a) * 3.5 * v.k, y: at.y - Math.cos(a) * 3.5 * v.k };
   }
-  /** The tower art's `muzzle` anchor on screen (Tesla's orb, the Prism's crystal tip, the Flamer's nozzle); null until its puppet loads. */
+  /** The tower art's `muzzle` anchor on screen (Tesla's orb, the Prism's crystal centre, the Flamer's nozzle); null until its puppet loads. */
   towerAnchor(tw: TowerView, v: View, t = tw.firedAt + 99) {
     const p = this.geo.pads[tw.pad]; if (!p) return null;
     const at = v.P(p.x, p.y);

@@ -88,7 +88,10 @@ export class ScreenWake {
         if (this.holders === 0) { void s.release().catch(() => {}); return; }
         this.sentinel = s; this.nativeFailed = false;
         s.addEventListener?.('release', () => { if (this.sentinel === s) this.sentinel = null; });
-      }, () => { this.pending = false; this.nativeFailed = true; this.refresh(); });
+      }, () => { // asked again only on the next gesture or visibility change, never in a loop
+        this.pending = false; this.nativeFailed = true;
+        if (this.holders > 0 && this.env.doc.visibilityState === 'visible') this.playVideo();
+      });
     }
     if (this.useVideo()) this.playVideo();
   }

@@ -9,13 +9,19 @@ import { loadImage, loadManifest } from './assets';
 import { levelPosition, partPose, posedPoint } from './puppetPose';
 import { dropPose, dropsFor } from './structureFx';
 interface Part { name: string; file: string; glow?: string; offset: number[]; pivot: number[]; parent: string | null; z: number; minLevel?: number; weapon?: string; minCharge?: number; emissiveOnly?: boolean; damageStage?: number; aims?: boolean; recoil?: { distancePx: number }; axialSpin?: { frames: string[]; frameGlows: string[] } }
-interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; offsetsByLevel?: Record<string, number[]>; parent?: string } }
+export interface Animation { durationMs: number; frameDurationMs: number; glowGain?: number[][]; glowStrength?: number[][]; effectOpacity: number[][]; effect: { file: string; frames: number; frameSize: number[]; offset: number[]; offsetsByLevel?: Record<string, number[]>; parent?: string } }
 interface Anchor { parent: string; position: number[]; positionsByLevel?: Record<string, number[]> }
 interface Manifest { parts: Part[]; size: number[]; padDiameterPx?: number; deckDiameterPx?: number; aim?: { enabled?: boolean }; animations?: { passive: Animation; attack: Animation }; anchors?: Record<string, Anchor> }
 function curve(keys: number[][], ms: number) {
   for (let i = 1; i < keys.length; i++) if (ms <= keys[i][0]) { const a = keys[i - 1], b = keys[i]; return a[1] + (b[1] - a[1]) * (ms - a[0]) / (b[0] - a[0]); }
   return keys[keys.length - 1][1];
 }
+/** When an attack strip flashes brightest (its peak effect opacity), in ms from the strip's start. */
+export function attackPeakMs(a: Pick<Animation, 'effectOpacity'>) {
+  let best = a.effectOpacity[0]; for (const k of a.effectOpacity) if (k[1] > best[1]) best = k; return best[0];
+}
+/** The attack strip's clock `age` seconds after a shot: it starts at the flash peak, so the peak lands on the shot. */
+export function attackClock(a: Pick<Animation, 'effectOpacity'>, age: number) { return age * 1000 + attackPeakMs(a); }
 class Puppet {
   m: Manifest | null = null;
   readonly loaded: Promise<void>;
@@ -52,9 +58,11 @@ class Puppet {
   draw(g: CanvasRenderingContext2D, x: number, y: number, scale: number, opts: { angle: number; revs: number; level: number; grid: number; weapon?: string; charge?: number; damage?: number; age: number; t: number; rider?: () => void; drop?: { level: number; from: number; built: boolean; age: number } }) {
     const m = this.m; if (!m) return false;
     g.save(); g.translate(x, y); g.scale(scale, scale); g.translate(-m.size[0] / 2, -m.size[1] / 2);
-    const attack = !!m.animations && opts.age >= 0 && opts.age * 1000 < m.animations.attack.durationMs;
+    // The shot is drawn at full strength the instant the sim fires, so the attack strip enters at its flash peak.
+    const attackMs = m.animations && opts.age >= 0 ? attackClock(m.animations.attack, opts.age) : Infinity;
+    const attack = !!m.animations && attackMs < m.animations.attack.durationMs;
     const animation = m.animations?.[attack ? 'attack' : 'passive'];
-    const ms = animation ? (attack ? opts.age * 1000 : opts.t * 1000 % animation.durationMs) : 0;
+    const ms = animation ? (attack ? attackMs : opts.t * 1000 % animation.durationMs) : 0;
     let riderDrawn = false;
     for (const p of m.parts) {
       if ((p.minLevel ?? 1) > opts.level || p.weapon && p.weapon !== opts.weapon || (p.minCharge ?? 0) > (opts.charge ?? 0) || (p.damageStage ?? 0) > (opts.damage ?? 0)) continue;

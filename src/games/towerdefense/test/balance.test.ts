@@ -18,19 +18,24 @@ describe('balance comparisons', () => {
       for (let second = 0; second < 180 && snap().wave < 5; second++) s.step(30);
       expect(snap().wave).toBe(5);
       modes.add(snap().brood.mode);
-      const recovery = { gatling: 0, flame: 10, rail: 0.5 }[snap().weapon];
-      expect(snap().brood.setting).toBe({ gatling: 'sim 0% grade', flame: 'resistance 10%', rail: 'ERG 50% FTP' }[snap().weapon]);
+      // The Fireball level is learned from the rider's watts, so its card quotes whatever that level is today.
+      const flameCard = /^resistance (\d+)%$/.exec(snap().brood.setting);
+      const flame = snap().weapon === 'flame';
+      const recovery = flame ? Number(flameCard?.[1]) : { gatling: 0, rail: 0.5 }[snap().weapon as 'gatling' | 'rail'];
+      if (flame) expect(flameCard).not.toBeNull();
+      else expect(snap().brood.setting).toBe({ gatling: 'sim 0% grade', rail: 'ERG 50% FTP' }[snap().weapon as 'gatling' | 'rail']);
+      const nearRecovery = () => flame ? expect(Math.abs(value()! - recovery)).toBeLessThan(1.5) : expect(value()).toBeCloseTo(recovery);
       expect(snap().brood.cue).toContain('recover');
       s.step(30 * 9); // Last part of the incoming easy lull would normally ramp up.
       expect(snap().lull).toBeGreaterThan(0);
-      expect(value()).toBeCloseTo(recovery);
+      nearRecovery();
       s.step(30 * 4);
       expect(snap().lull).toBe(0);
-      expect(value()).toBeCloseTo(recovery);
+      nearRecovery();
       for (let second = 0; second < 60 && snap().wave < 6; second++) s.step(30);
       expect(snap().wave).toBe(6);
       s.step(30 * 9);
-      const [low, high] = { gatling: [0, 1], flame: [10, 35], rail: [0.5, 0.95] }[snap().weapon];
+      const [low, high] = { gatling: [0, 1], flame: [recovery + 1, 50], rail: [0.5, 0.95] }[snap().weapon];
       expect(value()).toBeGreaterThan(low); expect(value()).toBeLessThan(high);
     }
     expect([...modes].sort()).toEqual(['erg', 'resistance', 'sim']);

@@ -133,28 +133,32 @@ describe('boss ladder', () => {
     expect(advanceBoss(b, 12, 1, timing)).toContain('telegraph');
     expect(advanceBoss(b, 3, 1, timing)).toContain('exposed');
   });
-  it('an optional hold-Up push makes a Rail opening sprintable without changing trainer mode; A stays construction', () => {
+  it('a Rail opening frees the ERG lock to sprint, an optional hold-Up push is ERG; A stays construction', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
       profile: testProfile(),
       input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
     s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
+    s.tuning.set('towerdefense.bossExposedS', 8); // the scripted rider starts the push from 0.65 FTP
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
-    expect(effect().ftpFraction).toBe(0.95);
+    // the sprint window frees the ERG lock (zone 5 is impossible under ERG) and the gears go live
+    expect(effect().mode).toBe('sim');
+    expect(s.sim.hud!().gears).toBe(true);
     expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Construction');
-    held.add('a'); s.step(1); expect(effect().ftpFraction).toBe(0.95); held.delete('a');
+    held.add('a'); s.step(1); expect(effect().mode).toBe('sim'); held.delete('a');
     held.add('up'); s.step(1);
     expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(1.35);
     expect(snapshot(s).boss?.sprintBoost).toBe(true);
     let sprinted = false;
-    for (let i = 0; i < 30 * 7; i++) { s.step(1); sprinted ||= Boolean(snapshot(s).boss?.exposed && s.ctx.bike().sprinting); }
+    for (let i = 0; i < 30 * 9; i++) { s.step(1); sprinted ||= Boolean(snapshot(s).boss?.exposed && s.ctx.bike().sprinting); }
     expect(sprinted).toBe(true);
+    expect(snapshot(s).boss?.exposed).toBe(true);
     held.delete('up'); s.step(1);
-    expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(0.95);
+    expect(effect().mode).toBe('sim'); // still in the window: back to a free sprint, not the ERG lock
     expect(snapshot(s).boss?.sprintBoost).toBe(false);
   });
   it('sprinting only in Exposed windows kills a boss faster at the same cadence and power', () => {
@@ -169,7 +173,10 @@ describe('boss ladder', () => {
       s.tuning.set('towerdefense.flameRange', 120);
       // Hold watts and cadence identical to isolate the sprint bonus from extra fire rate / watts.
       const bike = s.ctx.bike;
-      s.ctx.bike = () => ({ ...bike(), sprinting: sprint && Boolean(snapshot(s).boss?.exposed) });
+      // Rail sprint windows free the ERG lock, so the scripted rider holds the Rail demand through the Rail fight.
+      s.ctx.bike = () => { const b = bike(), boss = snapshot(s).boss;
+        const rail = boss?.weapon === 'rail' && !boss.pending;
+        return { ...b, sprinting: sprint && Boolean(boss?.exposed), ...(rail ? { ftpFraction: 0.95, power3s: 0.95 * (s.ctx.profile.ftp || 200), powerZone: 4 as const } : {}) }; };
       const stops: number[] = [];
       for (let i = 0; i < 30 * 240 && !events.some((e) => e.type === 'bossKilled'); i++) {
         s.step(1);
@@ -196,13 +203,13 @@ describe('boss ladder', () => {
     s.sim.receive!({ type: 'boostDown', pointer: 1, epoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
     s.sim.receive!({ type: 'boostDown', pointer: 2, epoch }); s.sim.receive!({ type: 'boostUp', pointer: 1, epoch }); s.step(1);
     expect(effect().ftpFraction).toBe(1.35);
-    s.sim.receive!({ type: 'boostUp', pointer: 2, epoch }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
+    s.sim.receive!({ type: 'boostUp', pointer: 2, epoch }); s.step(1); expect(effect().mode).toBe('sim');
     s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
     s.sim.receive!({ type: 'construct' }); s.step(1); expect(snapshot(s).workshop).not.toBeNull(); expect(effect().ftpFraction).toBe(0.95);
     s.sim.receive!({ type: 'close' }); s.step(1); s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
-    expect(effect().ftpFraction).toBe(0.95);
-    s.sim.receive!({ type: 'boostDown', pointer: 4, epoch: snapshot(s).inputEpoch }); s.step(1);
-    s.sim.receive!({ type: 'inputCancel' }); s.step(1); expect(effect().ftpFraction).toBe(0.95);
+    expect(effect().mode).toBe('sim');
+    s.sim.receive!({ type: 'boostDown', pointer: 4, epoch: snapshot(s).inputEpoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
+    s.sim.receive!({ type: 'inputCancel' }); s.step(1); expect(effect().mode).toBe('sim');
   });
 });
 

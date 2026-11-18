@@ -14,6 +14,7 @@ import {
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
+import { canObserve, levelFor as fireballLevelFor, observeK, priorK, type FireballLevelTuning } from './fireballLevel';
 import { specKey } from './baked';
 import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
@@ -132,7 +133,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const gatlingRevs = T.num('gatlingRevsPerShot', 0.25, 0.05, 2, 0.05, 'crank revs per Gatling bullet');
   const gatlingDmg = T.num('gatlingDamage', 30, 0.5, 60, 0.5);
   const gatlingGrade = T.num('gatlingGradePct', 1, 0, 6, 0.5, 'sim-mode grade while Gatling selected');
-  const flameLevel = T.num('flameLevelPct', 35, 0, 100, 1, 'resistance level while Fireball selected');
+  const flameLevel = T.num('flameLevelPct', 18, 1, 100, 1, 'starting resistance level for the Fireball demand at the cue cadence (then learned from the rider\'s watts)');
+  const flameFtp = T.num('flameFtpFraction', 0.85, 0.4, 1.3, 0.01, 'Fireball power demand (ftpFraction) in a work wave');
+  const flameCueRpm = T.num('flameCueRpm', 75, 50, 100, 1, 'cadence the Fireball resistance level is chosen for');
+  const flameAlpha = T.num('flameRpmExponent', 1.5, 1, 2.5, 0.1, 'resistance-mode power ~ rpm^this (how steeply the brake climbs with cadence)');
+  const flameMaxLevel = T.num('flameMaxLevelPct', 50, 5, 100, 1, 'highest resistance level the Fireball will ask for');
+  const flameCalTau = T.num('flameCalTauS', 20, 2, 120, 1, 'seconds to learn the trainer\'s resistance response');
   const flameDpw = T.num('flameDpsPerWatt', 1.5, 0.02, 3, 0.01, 'Fireball damage per second per watt (power3s), split between fireball impact and burning ground');
   const flameRange = T.num('flameRange', 70, 10, 120, 1, 'how far the Fireball turret lobs fireballs');
   const fireballPeriod = T.num('fireballPeriodS', 0.7, 0.2, 3, 0.05, 'seconds between Fireball shots');
@@ -193,7 +199,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const easyLullS = T.num('easyLullS', 25, 0, 120, 1, 'lull before an easy recovery wave (the easy wave is itself the recovery)');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
   const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
-  const lullLevel = T.num('lullLevelPct', 10, 0, 100, 1, 'resistance level early in the lull (Fireball brood next)');
   const lullFtp = T.num('lullFtpFraction', 0.5, 0.3, 1, 0.05, 'ERG target early in the lull (Railgun brood next)');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
@@ -364,13 +369,25 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const easy = plan?.role === 'easy';
     return phase !== 'run' || easy ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
   }
+  const fireTuning = (): FireballLevelTuning => ({ cueRpm: flameCueRpm(), alpha: flameAlpha(), minPct: 1, maxPct: flameMaxLevel(), tauS: flameCalTau() });
+  /** Learned Fireball trainer response: ftpFraction per level % at the cue cadence (prior: `flameLevelPct` gives the demand). */
+  const fireK0 = () => priorK(flameLevel(), flameFtp());
+  let fireK = fireK0(), fireLevel = 0, fireLevelPrev = -1, fireSteadyS = 0;
   function trainerSync() {
     if (phase === 'garage') { ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
     const k = rampK();
     const mix = (a: number, b: number) => a + (b - a) * k;
     if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade() * targetK()) });
-    else if (weapon === 'flame') ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: mix(lullLevel(), Math.min(100, flameLevel() * targetK())) });
-    else {
+    else if (weapon === 'flame') {
+      // a resistance level is chosen for a power: the ramp eases the demand (recovery -> work) and the learned
+      // trainer response turns it into a level, so a strong brake does not force a 45 rpm grind
+      fireLevel = +fireballLevelFor(weaponDemand(), fireK, fireTuning()).toFixed(1);
+      ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: fireLevel });
+    }
+    else if (railSprintFree()) {
+      // a boss sprint window asks for zone 5, which an ERG lock can never give: free the brake (gears live)
+      ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: gatlingGrade() * targetK() });
+    } else {
       const target = bossView()?.sprintBoost ? bossSprintFtp()
         : effort?.kind === 'hold' && (effort.state === 'announced' || effort.state === 'active') ? effort.targetFtp : railFtp() * targetK();
       ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: mix(lullFtp(), target) });
@@ -681,11 +698,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       wave: p.wave, color: p.brood, weapon,
       mode: weapon === 'gatling' ? 'sim' : weapon === 'flame' ? 'resistance' : 'erg',
       setting: weapon === 'gatling' ? `sim ${+lullGrade().toFixed(1)}% grade`
-        : weapon === 'flame' ? `resistance ${Math.round(lullLevel())}%` : `ERG ${Math.round(lullFtp() * 100)}% FTP`,
+        : weapon === 'flame' ? `resistance ${Math.round(fireballLevelFor(lullFtp(), fireK, fireTuning()))}%` : `ERG ${Math.round(lullFtp() * 100)}% FTP`,
       cue: 'ride easy · recover',
     };
     if (weapon === 'gatling') return { wave: p.wave, color: p.brood, weapon, mode: 'sim', setting: `sim ${+gatlingGrade().toFixed(1)}% grade`, cue: 'spin fast · 90+ rpm' };
-    if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(flameLevel())}%`, cue: 'grind 70–80 rpm' };
+    if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(fireballLevelFor(flameFtp() * targetK(), fireK, fireTuning()))}%`, cue: 'grind 70–80 rpm' };
     return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * targetK() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
   }
   /** Mounts the brood's weapon (once per wave, at the start of its lull). */
@@ -704,7 +721,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
    */
   function weaponDemand(): number {
     // the weapon is rated at the intensity's target: an Easy ride at its easier setting fights as well
-    const full = (weapon === 'flame' ? 0.85 : weapon === 'rail' ? railFtp() : 0.65) * targetK();
+    const full = (weapon === 'flame' ? flameFtp() : weapon === 'rail' ? railFtp() : 0.65) * targetK();
     return lullFtp() + (full - lullFtp()) * rampK();
   }
   /**
@@ -979,6 +996,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return phase === 'run' && !workshop && weapon === 'rail' &&
       enemies.some(e => !e.dead && e.boss && !e.boss.pending && (e.boss.telegraph || e.boss.exposed));
   }
+  /** Rail boss sprint window without the hold-Up ERG push: the rider sprints freely in sim mode. */
+  function railSprintFree() { return boostAvailable() && !bossView()?.sprintBoost; }
   function useAction(id: ActionId) {
     if (phase !== 'run' || workshop) return;
     if (id === 'rail') { fireRail(1); return; }
@@ -1319,6 +1338,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     if (swapLeft > 0) swapLeft = Math.max(0, swapLeft - dt);
     weaponSeconds[weapon] += dt;
+    // learn how hard this trainer's brake is from the watts the rider makes at the level we set
+    if (weapon === 'flame' && bike.trainerMode === 'resistance') {
+      fireSteadyS = Math.abs(fireLevel - fireLevelPrev) < 1.5 ? fireSteadyS + dt : 0;
+      if (fireSteadyS === 0) fireLevelPrev = fireLevel;
+      if (canObserve(fireLevel, bike.cadence3s, bike.ftpFraction, fireSteadyS)) fireK = observeK(fireK, fireK0(), fireLevel, bike.cadence3s, bike.ftpFraction, dt, fireTuning());
+    } else fireSteadyS = 0;
 
     // --- dynamo: grid power, overdrive, rail charge
     grid = clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
@@ -1488,7 +1513,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // ---------- views ----------
   /** Shifters are always gears (they only change the trainer in the Gatling's sim mode). */
   const gearHints = (): ControlHint[] => [{ button: 'shiftersL', label: 'Gear', active: gearsLive() }, { button: 'shiftersR', label: 'Gear', active: gearsLive() }];
-  const gearsLive = () => phase !== 'run' || weapon === 'gatling';
+  const gearsLive = () => phase !== 'run' || weapon === 'gatling' || railSprintFree();
   const heldTouch = (kind: 'rail' | 'boost'): ControlHint['touch'] => ({
     down: { type: `${kind}Down`, epoch: inputEpoch }, up: { type: `${kind}Up`, epoch: inputEpoch }, cancel: { type: `${kind}Cancel`, epoch: inputEpoch },
   });

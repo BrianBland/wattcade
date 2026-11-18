@@ -68,8 +68,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
   let onTargetS = 0, salvage = 0, earned = 0, gunLevel = 1, banner = '', bannerUntil = 0;
   let x = 0, shipY = SHIP_Y, bank = 0, dodge = 0, absorbed = 0, selectedId: number | null = null;
   let volleyAt = -99, volleys = 0, dodges = 0, beatCount = 0, railSide = 1;
-  const segmenter = createSegmenter(timeline, tun.bossEvery, tun.firstBoss);
-  let plannedSeg = -1, lastTitle = '', seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
+  const segmenter = createSegmenter(timeline, tun.bossEvery, tun.firstBoss, { endless: opts.endless });
+  let finalSeg = false, plannedSeg = -1, lastTitle = '', seg: Segment | null = null, segBase = { t: 0, onTargetS: 0, clearKilled: 0, clearTotal: 0, perfects: 0, airResolved: 0, eliteCleared: 0, eliteSeen: 0 };
   let segBoss: 'defeated' | 'escaped' | null = null, bossDone = false, airResolved = 0, scorecard: SfSnapshot['scorecard'] = null; const grades: string[] = [];
   // World route: s = route distance at the ship's route point. Straight in carrier/canyon; gentle arcs in city/ocean.
   const world = new WorldRoute(), routeS = () => 126 + dist;
@@ -425,7 +425,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
       const want = levelSpeed(driveMet ? level : DRIVES[Math.max(0, rank(level) - 1)]);
       let targetSpeed = want;
       // In the breather, ease the speed so the ship reaches the next place exactly as the song changes.
-      if (breatherNow && switchS > 0 && seg) targetSpeed = clamp((switchS - routeS()) / Math.max(0.5, seg.t1 - p), tun.speedCruise() * 0.7, tun.speedCruise() * 1.8);
+      if (breatherNow && switchS > 0 && seg && !finalSeg) targetSpeed = clamp((switchS - routeS()) / Math.max(0.5, seg.t1 - p), tun.speedCruise() * 0.7, tun.speedCruise() * 1.8);
       speed += (targetSpeed - speed) * (1 - Math.exp(-dt / (targetSpeed > speed ? 1.2 : 2)));
       pace += (want - pace) * (1 - Math.exp(-dt / (want > pace ? 1.2 : 2)));
       dist += speed * dt;
@@ -507,6 +507,8 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         planTurns(world, sNow, sEnd, isOpenBiome(seg.biome), mulberry(seg.seed ^ 0x7e11), snap);
         const o = world.pose(sNow); curFrame = { ...o, s: sNow, biome: seg.biome, seed: seg.seed }; switchS = -1;
       }
+      // The set's last place has no next one: no seam ahead, and the breather keeps its own speed.
+      finalSeg = !segmenter.peek();
       // Where the next place starts: forecast from the drive, gliding (never jumping) as the rider's speed differs.
       { const target = routeS() + spanDistance(aheadSpans(seg.t1), expectSpeed);
         switchS = switchS < 0 ? target : switchS + clamp(target - switchS, -6 * dt, 6 * dt); }
@@ -818,7 +820,7 @@ export function createSfSim(ctx: GameContext, opts: SfOpts = {}): GameSim {
         boss: boss ? { stage: enemies.some(e=>e.parentId===boss!.id && e.hp>0) ? 'Destroy the batteries' : 'Reactor exposed', name: ['Iron Dreadnought', 'Hive Carrier', 'Twin Lancer', 'Spiral Core', 'The Maw'][boss.bossStyle], hp: boss.hp, maxHp: boss.maxHp, left: Math.max(0, tun.bossTime() - (p - bossStart)) } : null,
         bossIn: !boss && bossAt !== null ? Math.max(0, bossAt - p) : null,
         clear: { rate: clearTotal ? clearKilled / clearTotal : 0, perfects, streak: perfectStreak, last: lastClear },
-        ...(() => { const s = routeS(), pose = world.pose(s), cur = seg ?? segmenter.at(p).segment, next = segmenter.peek(), sw = switchS > 0 ? switchS : s + Math.max(0, cur.t1 - p) * speed, np = world.pose(sw);
+        ...(() => { const s = routeS(), pose = world.pose(s), cur = seg ?? segmenter.at(p).segment, next = segmenter.peek(), sw = !next ? s + 1e5 : switchS > 0 ? switchS : s + Math.max(0, cur.t1 - p) * speed, np = world.pose(sw);
           // Samples at fixed route distances (multiples of 30) from behind the camera to past the haze, so the city's
           // "near the route" test never flickers as the ship moves.
           const ahead: number[] = []; for (let q = Math.floor((s - 300) / 30) * 30; q <= s + 1350; q += 30) { const w = world.pose(q); ahead.push(w.x, w.z); }

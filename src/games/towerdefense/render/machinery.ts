@@ -104,7 +104,7 @@ export class Machinery {
   readonly loaded: Promise<void>;
   constructor(base: string) {
     this.outpost = new Puppet(base, 'outpost');
-    this.towers = { tesla: new Puppet(base, 'towers/tesla'), flamer: new Puppet(base, 'towers/flamer'), lens: new Puppet(base, 'towers/prism') };
+    this.towers = { tesla: new Puppet(base, 'towers/tesla'), flamer: new Puppet(base, 'towers/flamer'), lens: new Puppet(base, 'towers/prism'), mortar: new Puppet(base, 'towers/mortar') };
     this.loaded = Promise.all([this.outpost.loaded, ...Object.values(this.towers).map(p => p.loaded)]).then(() => {});
   }
   /** Towers stay upright on screen; only their aim turns with the field. */
@@ -135,7 +135,7 @@ export class Machinery {
       charge: Math.floor(3 * (s.railCharges + s.railProgress) / Math.max(1, s.railMaxCharges)), damage: s.baseHp / s.baseMaxHp < 0.25 ? 2 : s.baseHp / s.baseMaxHp < 0.5 ? 1 : 0, age: 99, t: s.t,
       rider: look ? () => { g.save(); g.beginPath(); g.rect(300, 321, 76, 47); g.clip(); g.translate(338, 366); g.scale(1.7, 1.7); drawRider(g, look, bike.crankRevs, 0, { t: s.t }); g.restore(); } : undefined,
     });
-    const flash = s.fx.some(f => (f.kind === 'tracer' || f.kind === 'beam') && s.t - f.t0 < 0.08) || s.shells.some(sh => sh.k < 0.12);
+    const flash = s.fx.some(f => (f.kind === 'tracer' || f.kind === 'beam') && s.t - f.t0 < 0.08) || s.shells.some(sh => !sh.tower && sh.k < 0.12);
     if (ready && flash) { const m = this.muzzle(v, s); glowAt(g, WEAPON_COLOR[s.weapon], m.x, m.y, 2.5 * v.k, 0.8); }
     return ready;
   }

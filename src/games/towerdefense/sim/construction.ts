@@ -1,6 +1,6 @@
 // Shared, deterministic recommendation for the rider and Auto-crew.
 import {
-  ELEMENTS, MATCHUP, TOWER_WEAPON, LEVEL_DMG, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
+  ELEMENTS, MATCHUP, towerMatch, LEVEL_DMG, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
 } from './defs';
 import { LEVEL_0, levelGeometry, type TdGeometry } from './level';
 import type { WaveForecast } from './types';
@@ -39,6 +39,9 @@ export function padCover(geo: TdGeometry): Record<TowerKind, number[]> {
   return cover;
 }
 
+/** Share of the off-colour ground push a neutral tower is credited with; it is never the strongest answer. */
+const NEUTRAL_SHARE = 0.2;
+
 export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
   const geo = s.geo ?? levelGeometry(LEVEL_0), BASE_PAD = geo.basePad, PAD_COVER = padCover(geo);
   if (s.baseHp < s.baseMaxHp * 0.4 && s.scrap >= s.repairCost) return {
@@ -59,13 +62,16 @@ export function suggestBuild(s: ConstructionState): BuildSuggestion | null {
     for (const kind of existing ? [existing.kind] : TOWER_KINDS) {
       if (existing && existing.level >= (s.maxLevel ?? TOWER_MAX_LEVEL)) continue;
       const el = TOWERS[kind].element;
-      const matrix = s.matchup ?? MATCHUP, row = matrix[TOWER_WEAPON[kind]];
-      if (row[target] < 1) continue;
+      const matrix = s.matchup ?? MATCHUP, mult = towerMatch(kind, target, matrix);
+      if (mult < 1) continue;
       // The turret handles the brood; towers cover the other colours, including the blue stream and its Gliders.
       // Counts alone overvalue the swarm, so heavies are weighted by their base damage. Ground-only towers can't
       // answer the Gliders. Existing same-colour towers discount more of the same.
       const air = TOWERS[kind].air ? c.air * 0.5 : 0;
-      const demand = (c[el] * severity[el] + c.prism * 2 + c.gold * 10 + (el === 'blue' ? 3 : 0) + air) * (el === s.brood ? 0.25 : 1) * row[target];
+      // A neutral tower (Mortar) answers every off-colour ground push at x1, so it sees a share of all of them.
+      const pressure = el ? c[el] * severity[el] + (el === 'blue' ? 3 : 0)
+        : off.reduce((n, e) => n + c[e] * severity[e], 0) * NEUTRAL_SHARE;
+      const demand = (pressure + c.prism * 2 + c.gold * 10 + air) * (el && el === s.brood ? 0.25 : 1) * mult;
       const coverage = s.towers.filter(t => TOWERS[t.kind].element === el).reduce((n, t) => n + LEVEL_DMG[t.level - 1] * 0.6, 0);
       const best = Math.max(...PAD_COVER[kind]), placement = 0.4 + 0.6 * PAD_COVER[kind][p.id] / Math.max(1, best);
       let cost = existing ? 0 : towerBuildCost(kind, s.costMult), targetLevel = existing?.level ?? 1;

@@ -13,7 +13,8 @@
 - Power cables (`cables.ts`): grid-routed from under the deck to each pad, never across the road (only pad 2 feeds through pad 6); a pulse per pedal half-stroke. Muzzles come from outpost manifest anchors; towers get contact shadows.
 - Outpost: crank-driven flywheel, cosmetic rider through the masked cab, six-phase Gatling, sequential rail caps.
 - Selected weapon head aims; HP thresholds enable cumulative damage overlays and shot effects light the muzzle.
-- Towers: approved compact-burner Flamethrower A replaces the Mortar stand-in; Tesla/Prism and reused Mortar chassis/fittings are unchanged; retired weapon pieces are pruned. All production rigs must decode before gameplay.
+- Towers: Tesla, compact-burner Flamethrower A, Prism and the Mortar (its original rig restored from 44514c3: barrel recoil, no effect strips; shells and the concussion sparks are drawn in code). All production rigs must decode before gameplay.
+- Tower colours: `TOWER_ICON_COLOR` (field rings, pad lights) and `theme.ts` `TOWER_TINT` (workshop rows: lamp strip, wash, rim, name). Mortar = hazard yellow, kept paler/greener than boss gold and the brass trim. Review: `/dev/td-battlefield.html?ws=1&rich=1&row=3`.
 - Part pixels, nozzle flare strips and muzzle anchors share parent aim/recoil transforms (`puppetPose.ts`); tier coordinates select the highest unlocked L1/L3/L5 tip/flare offset, including L2/L4.
 - Frame emission follows manifest animation keys; fixed sockets and cab do not inherit flywheel motion.
 - Ground lighting before actors preserves silhouette contrast; cached quarter-resolution ambient darkness

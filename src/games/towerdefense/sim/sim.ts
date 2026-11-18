@@ -9,7 +9,7 @@ import { LEVEL_0, levelGeometry, type TdLevel } from './level';
 import { CAMPAIGN, INTENSITIES, LEVELS_PER_STYLE, INTENSITY_NAME, QUICK_MINUTES, bossCount, campaignOpen, estimateMinutes, levelWaves, quickRide, endlessMap, starsFor, type Intensity, type LevelSpec, type LevelWave } from './campaign';
 import {
   AIM_LIMIT, ELEMENTS, ELEMENT_WEAPON, KINDS, LEVEL_DMG, LEVEL_RANGE, MATCHUP,
-  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
+  TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, TOWER_WEAPON, WEAPON_ELEMENT, towerMatch, WEAPON_NAME, WEAPONS, towerBuildCost, towerUpgradeCost,
   type Element, type Matchup, type Kind, type TowerKind, type Weapon,
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
@@ -86,10 +86,14 @@ interface Enemy {
   /** element of the last hit (for death effects: a fire kill bursts a red alien) */ lastEl: Element | null;
   /** last hit for renderer feedback: time, matchup class, damage dealt that tick */ hitT: number; hitCls: HitClass; hitDmg: number;
   spawnT: number; charging: boolean; boss: BossState | null;
+  /** seconds of Mortar concussion left (slowed by mortarDazeSlow) */ dazed: number;
 }
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
-/** A turret fireball: bursts for `dmg`, then the ground burns at `burnDps` for burnS. */
-interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnDps: number }
+/**
+ * A lobbed shell. The turret's fireball bursts for `dmg`, then the ground burns at `burnDps` for burnS. A Mortar
+ * round (`tower` = its pad) bursts neutral and concusses: everything it hits on the road is slowed briefly.
+ */
+interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnDps: number; tower?: number }
 interface Burn { x: number; y: number; r: number; left: number; total: number; dps: number }
 
 const WORKSHOP_IDLE_S = 10;
@@ -227,6 +231,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const towerNominal = T.num('towerNominalFtp', 0.65, 0.2, 1.5, 0.05, 'ftpFraction at which towers fire at their rated speed');
   const towerMaxBoost = T.num('towerMaxBoost', 1.6, 1, 3, 0.1, 'cap on tower speed from extra watts');
   const towerDmgT = T.num('towerDamageMult', 0.85, 0.1, 5, 0.05, 'all tower damage x (turret vs tower damage share)');
+  const mortarFlight = T.num('mortarFlightS', 1.1, 0.2, 3, 0.05, 'seconds a Mortar shell is in the air (it leads its target by this much)');
+  const mortarSplashT = T.num('mortarSplashMult', 1, 0.2, 3, 0.05, 'Mortar blast radius x');
+  const mortarDazeS = T.num('mortarDazeS', 1, 0, 5, 0.1, 'seconds a Mortar blast concusses the ground aliens it hits (not the boss)');
+  const mortarDazeSlow = T.num('mortarDazeSlow', 0.3, 0, 0.9, 0.05, 'speed fraction a concussed alien loses');
   const teslaChain = T.num('teslaChain', 3, 1, 10, 1, 'Tesla chain targets at Lv 1');
   const teslaChainPerLv = T.num('teslaChainPerLevel', 0.5, 0, 2, 0.25, 'extra Tesla chain targets per level (floored)');
   const towerCostT = T.num('towerCostMult', 1, 0.2, 5, 0.05, 'all tower build/upgrade costs x');
@@ -414,7 +422,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       id: nextId++, kind, route, lane, d, len: route < 0 ? geo.lanes[lane].length : flightLength(route), off: route >= 0 ? (ctx.rng() - 0.5) * 3 : (ctx.rng() - 0.5) * (kind === 'boss' ? 1 : geo.laneSpread * 2),
       phase: ctx.rng() * 12, x: 0, y: 0, angle: 0, dist: 99,
       hp, maxHp: hp, speed: k.speed * Math.min(1.5, 1 + 0.012 * w1), dmg: k.dmg, dead: false, hurt: 0, lastEl: null, hitT: -1, hitCls: 'neutral', hitDmg: 0,
-      spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null,
+      spawnT: 5, charging: false, boss: kind === 'boss' ? createBossState(plan.brood, bossPhases()) : null, dazed: 0,
     };
     if (e.boss) e.boss.age = exposedEvery() / 2; // first opening is half a cycle in, then every full cycle
     place(e);
@@ -788,7 +796,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const brood = plan?.brood;
     for (const tw of towers) {
       if (!tw) continue;
-      const covers = brood != null && match[TOWER_WEAPON[tw.kind]][brood]() >= 1;
+      const w = TOWER_WEAPON[tw.kind], covers = brood != null && (w ? match[w][brood]() : 1) >= 1;
       const rate = (covers ? fed : 1) * boost;
       const def = TOWERS[tw.kind], p = PADS[tw.pad], dmg = def.dmg * LEVEL_DMG[tw.level - 1] * towerDmgT();
       tw.cd = Math.max(-0.01, tw.cd - dt * rate);
@@ -829,6 +837,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
           if (Math.abs(da) <= half + radiusOf(e) / Math.max(3, Math.hypot(e.x - p.x, e.y - p.y))) hit(e, dmg, 'red', 'tower');
         }
         cue('flameTower');
+      } else if (tw.kind === 'mortar') {
+        // Lead the target along its road; the shell bursts where it lands and spares fliers.
+        const flight = mortarFlight(), ahead = geo.lanes[target.lane].at(target.d + travelSpeed(target) * flight);
+        shells.push({ x0: p.x, y0: p.y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg, r: (def.splash ?? 6) * mortarSplashT(), burnDps: 0, tower: tw.pad });
+        cue('mortar');
       } else {
         addFx({ kind: 'lens', life: 0.35, x0: p.x, y0: p.y - 3, x1: target.x, y1: target.y });
         hit(target, dmg, 'purple', 'tower');
@@ -842,7 +855,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       s.t += dt;
       if (s.t < s.flight) continue;
       addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r });
-      for (const e of enemies) if (!e.dead && e.route < 0 && Math.hypot(e.x - s.x1, e.y - s.y1) <= s.r + radiusOf(e)) hit(e, s.dmg, 'red');
+      const mortar = s.tower != null, el = mortar ? null : 'red', src = mortar ? 'tower' : 'player';
+      for (const e of enemies) if (!e.dead && e.route < 0 && Math.hypot(e.x - s.x1, e.y - s.y1) <= s.r + radiusOf(e)) {
+        hit(e, s.dmg, el, src);
+        if (mortar && !e.boss) e.dazed = Math.max(e.dazed, mortarDazeS()); // the Tyrant shrugs it off
+      }
       if (s.burnDps > 0) burns.push({ x: s.x1, y: s.y1, r: s.r, left: burnS(), total: burnS(), dps: s.burnDps });
       cue('explode');
     }
@@ -864,7 +881,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const slowStart = () => ROAD_LENGTH * slowFrom();
   function travelSpeed(e: Enemy) {
     return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= e.len * slowFrom() ? 1 - slowFraction() : 1)
-      * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1);
+      * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1) * (e.dazed > 0 ? 1 - mortarDazeSlow() : 1);
   }
 
   function build(pad: number, kind: TowerKind): boolean {
@@ -1394,7 +1411,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     // --- enemies move / hit the base
     for (const e of enemies) {
       if (e.dead) continue;
-      e.hurt = Math.max(0, e.hurt - dt);
+      e.hurt = Math.max(0, e.hurt - dt); e.dazed = Math.max(0, e.dazed - dt);
       e.charging = e.boss ? e.boss.chargeS > 0 : e.kind === 'charger' && e.d / e.len > 0.5;
       e.d += travelSpeed(e) * dt;
       place(e);
@@ -1519,7 +1536,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       shiftIn: si, next: shifting ? ELEMENTS[(ELEMENTS.indexOf(el) + 1) % 3] : null, progress: e.d / e.len,
       shield: e.boss && e.boss.shieldMax > 0 ? e.boss.shield / e.boss.shieldMax : 0,
       bossPhase: e.boss ? e.boss.phase + 1 : 0, telegraph: !!e.boss?.telegraph && !e.boss?.pending, exposed: !!e.boss?.exposed && !e.boss?.pending, staggerS: e.boss?.staggerS ?? 0,
-      hitT: e.hitT, hitCls: e.hitCls, hitDmg: e.hitDmg,
+      hitT: e.hitT, hitCls: e.hitCls, hitDmg: e.hitDmg, ...(e.dazed > 0 ? { dazed: e.dazed } : {}),
     };
   }
   function bossView(): BossView | null {
@@ -1634,7 +1651,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         scrap,
         actions: actionViews(), refill: currentRefill, slowFrom: slowLeft > 0 ? slowStart() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
-        shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r })),
+        shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r, ...(s.tower != null ? { tower: true } : {}) })),
         burns: burns.map((b): BurnView => ({ x: b.x, y: b.y, r: b.r, k: b.left / b.total })),
         workshop: workshopView(),
         enemies: enemies.map(enemyView), fx: fx.slice(), banner,

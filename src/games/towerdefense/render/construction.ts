@@ -5,7 +5,7 @@ import { geoOf } from '../sim/level';
 import { toScreen } from './fieldView';
 import { drawActionButton, effortFlourish, effortTint } from '../../kit/actionButton';
 import type { Hit } from './panels';
-import { TD } from './theme';
+import { TD, TOWER_TINT } from './theme';
 
 /** A riveted gunmetal plate with a bronze rim (theme.ts), shared by the workshop body and the fallback dock. */
 export function plate(g: CanvasRenderingContext2D, b: Box, r: number, rivets = true) {
@@ -23,19 +23,37 @@ export function plate(g: CanvasRenderingContext2D, b: Box, r: number, rivets = t
   }
 }
 
-function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string, selected = false, enabled = true) {
+/**
+ * A workshop plate. `tint` colour-codes a tower's rows: a lit lamp strip down the left edge, a wash of that colour
+ * behind the label, a tinted rim and a tinted name, so each tower reads by colour before its name is read.
+ */
+function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string, selected = false, enabled = true, tint?: string) {
   const font = getComputedStyle(g.canvas).fontFamily;
   g.save(); g.globalAlpha = enabled ? 1 : 0.5;
   const fill = g.createLinearGradient(0, b.y, 0, b.y + b.h);
   fill.addColorStop(0, selected ? '#3a2d18' : '#211c16'); fill.addColorStop(1, TD.plateLo);
-  if (selected) { g.shadowColor = '#e8b24a88'; g.shadowBlur = 14; }
+  if (selected) { g.shadowColor = tint ? tint + '99' : '#e8b24a88'; g.shadowBlur = 14; }
   g.fillStyle = fill; g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 5); g.fill(); g.shadowBlur = 0;
-  g.strokeStyle = selected ? TD.brass : TD.edgeDim; g.lineWidth = selected ? 2 : 1;
+  const lamp = tint ? 6 : 0;
+  if (tint) {
+    g.save(); g.beginPath(); g.roundRect(b.x, b.y, b.w, b.h, 5); g.clip();
+    const wash = g.createLinearGradient(b.x, 0, b.x + b.w, 0);
+    wash.addColorStop(0, tint + (selected ? '40' : '2a')); wash.addColorStop(0.7, tint + '00');
+    g.fillStyle = wash; g.fillRect(b.x, b.y, b.w, b.h);
+    const bar = g.createLinearGradient(0, b.y, 0, b.y + b.h);
+    bar.addColorStop(0, tint); bar.addColorStop(1, tint + 'aa');
+    g.shadowColor = tint; g.shadowBlur = 8; g.fillStyle = bar; g.fillRect(b.x, b.y, lamp, b.h);
+    g.restore();
+  }
+  g.strokeStyle = selected ? TD.brass : tint ? tint + '77' : TD.edgeDim; g.lineWidth = selected ? 2 : 1;
   g.beginPath(); g.roundRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, 5); g.stroke();
-  g.strokeStyle = '#ffdca014'; g.lineWidth = 1; g.beginPath(); g.moveTo(b.x + 5, b.y + 1.5); g.lineTo(b.x + b.w - 5, b.y + 1.5); g.stroke();
+  g.strokeStyle = '#ffdca014'; g.lineWidth = 1; g.beginPath(); g.moveTo(b.x + 5 + lamp, b.y + 1.5); g.lineTo(b.x + b.w - 5, b.y + 1.5); g.stroke();
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.font = `bold 13px ${font}`; g.fillStyle = selected ? TD.brassHi : TD.text; g.fillText(label, b.x + b.w / 2, b.y + b.h * (sub ? 0.35 : 0.5), b.w - 12);
-  if (sub) { g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText(sub, b.x + b.w / 2, b.y + b.h * 0.73, b.w - 12); }
+  const cx = b.x + (b.w + lamp) / 2, room = b.w - 12 - lamp;
+  g.font = `bold 13px ${font}`; g.fillStyle = tint ?? (selected ? TD.brassHi : TD.text);
+  if (tint) { g.shadowColor = '#000'; g.shadowOffsetY = 1; }
+  g.fillText(label, cx, b.y + b.h * (sub ? 0.35 : 0.5), room); g.shadowColor = '#0000'; g.shadowOffsetY = 0;
+  if (sub) { g.font = `11px ${font}`; g.fillStyle = selected ? TD.text : TD.dim; g.fillText(sub, cx, b.y + b.h * 0.73, room); }
   g.restore();
 }
 
@@ -63,11 +81,12 @@ export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout
 
 export function radialLayout(W: number, UH: number, anchor: { x: number; y: number }, count: number): { body: Box; options: Box[]; close: Box } {
   const gap = 8, w = Math.min(154, (W - 3 * gap) / 2), h = 48;
-  const radial = UH >= 300 && count <= 4;
-  const rows = radial ? (count === 4 ? 3 : 2) : Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
+  // Up to three options sit as a triangle around the pad (one on top, two below); four or more fill a 2-column grid,
+  // so the four towers read as a compact 2x2.
+  const radial = UH >= 300 && count <= 3;
+  const rows = radial ? 2 : Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
   const body = { x: Math.max(gap, Math.min(W - gap - bw, anchor.x - bw / 2)), y: Math.max(gap, Math.min(UH - gap - bh, anchor.y - bh / 2)), w: bw, h: bh };
-  // Four quadrants around the selected pad, with a two-column fallback for extra options.
-  const positions = [[(w + gap) / 2, 0], [0, h + gap], [w + gap, h + gap], [(w + gap) / 2, 2 * (h + gap)]];
+  const positions = [[(w + gap) / 2, 0], [0, h + gap], [w + gap, h + gap]];
   const options = Array.from({ length: count }, (_, i) => ({
     x: body.x + (radial ? positions[i][0] : (i % 2) * (w + gap)),
     y: body.y + 48 + (radial ? positions[i][1] : Math.floor(i / 2) * (h + gap)), w, h,
@@ -88,7 +107,7 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {
-    button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable);
+    button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable, row.tower && TOWER_TINT[row.tower]);
     hits.push({ ...r.options[i], action: row.affordable ? { type: 'row', row: i, pad: ws.pad, revision: ws.revision, epoch: s.inputEpoch } : null });
   });
   button(g, r.close, 'B · Close', '◀▶ selects pads and the base');

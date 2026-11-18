@@ -24,6 +24,8 @@ export interface EnemyView {
   bossPhase: number; telegraph: boolean; exposed: boolean; staggerS: number;
   /** last hit (sim time), its matchup class and the damage dealt that tick: renderer hit feedback */
   hitT: number; hitCls: HitClass; hitDmg: number;
+  /** seconds of Mortar concussion left (absent when not concussed) */
+  dazed?: number;
 }
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
@@ -44,7 +46,8 @@ export type Fx =
   | { id: number; t0: number; life: number; kind: 'emp' }
   | { id: number; t0: number; life: number; kind: 'baseHit'; dmg: number };
 /** A turret fireball in flight (`k` 0 → 1) toward a road point; it bursts with radius `r`. */
-export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number }
+/** `tower`: a Mortar round lobbed from the pad at (x0, y0); otherwise the turret's fireball. */
+export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: number; r: number; tower?: true }
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }

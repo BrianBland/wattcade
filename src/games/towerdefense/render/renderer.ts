@@ -7,7 +7,7 @@ import { BOSS_NAME, BOSS_TRICK } from '../sim/boss';
 import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
-import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt } from './sprites';
+import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt, TOWER_ICON_COLOR } from './sprites';
 import { NARROW_W, TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
@@ -28,7 +28,7 @@ import { levelKey } from './ground/bake';
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
 const CUES: Record<string, { s: SfxName; gap?: number; vol?: number; pitch?: number }> = {
-  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'teslaCrack', gap: 0.08, vol: 0.7 }, fireball: { s: 'mortarThump', gap: 0.12, vol: 0.8 }, flameTower: { s: 'shoot', gap: 0.5, vol: 0.12, pitch: 0.5 },
+  shoot: { s: 'shoot', gap: 0.07, vol: 0.45 }, zap: { s: 'teslaCrack', gap: 0.08, vol: 0.7 }, fireball: { s: 'mortarThump', gap: 0.12, vol: 0.8 }, flameTower: { s: 'shoot', gap: 0.5, vol: 0.12, pitch: 0.5 }, mortar: { s: 'mortarThump', gap: 0.15, vol: 0.55, pitch: 0.8 },
   explode: { s: 'explode', gap: 0.12, vol: 0.55 }, lens: { s: 'prismBeam', gap: 0.1 }, rail: { s: 'railShot' }, railReady: { s: 'railReady' },
   swap: { s: 'swap' }, kill: { s: 'chitinCrunchBig', gap: 0.05, vol: 0.9 }, bossStart: { s: 'bossStart' }, bossDie: { s: 'bossDie' },
   build: { s: 'rivetBuild' }, upgrade: { s: 'boltOn' }, deny: { s: 'deny' }, coin: { s: 'coin' }, repair: { s: 'potion' }, buy: { s: 'buy' },
@@ -604,6 +604,7 @@ export class TdRenderer implements GameRenderer {
         if (!puppets) drawEnemy(g, e, x, y, k, h, t);
         if (e.kind === 'boss') this.bossTrick(g, e, s, x, y, h, t);
         if (e.id === s.targetId || e.id === s.lock?.id) this.reticle(g, e, x, y, t, e.id === s.lock?.id);
+        if (e.dazed) this.daze(g, e, x, y, t);
       }
       for (const id of this.heading.keys()) if (!live.has(id)) this.heading.delete(id);
       this.drawDecks(g, s, t, puppets);
@@ -804,8 +805,8 @@ export class TdRenderer implements GameRenderer {
         const kind = built?.kind ?? ws!.rows[ws!.row]?.tower, lv = built ? Math.min(5, built.level + (ws!.rows[ws!.row]?.kind === 'upgrade' ? 1 : 0)) : 1;
         if (kind) {
           const rr = TOWERS[kind].range * LEVEL_RANGE[lv - 1] * k;
-          g.fillStyle = COL[TOWERS[kind].element] + '14'; g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill();
-          g.strokeStyle = COL[TOWERS[kind].element] + '88'; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([1.5 * k, 1.5 * k]);
+          g.fillStyle = TOWER_ICON_COLOR[kind] + '14'; g.beginPath(); g.arc(x, y, rr, 0, TAU); g.fill();
+          g.strokeStyle = TOWER_ICON_COLOR[kind] + '88'; g.lineWidth = Math.max(1, k * 0.3); g.setLineDash([1.5 * k, 1.5 * k]);
           g.beginPath(); g.arc(x, y, rr, 0, TAU); g.stroke(); g.setLineDash([]);
         }
         g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5);
@@ -855,10 +856,31 @@ export class TdRenderer implements GameRenderer {
     for (let i = 0; i < 4; i++) { const q = a + i * Math.PI / 2; g.beginPath(); g.arc(x, y, r, q, q + 0.6); g.stroke(); }
   }
 
-  /** Fireballs climb from the launcher's mouth and drop onto their road point. */
+  /** Mortar concussion: little sparks circling over a dazed alien's head, fading as it recovers. */
+  private daze(g: CanvasRenderingContext2D, e: EnemyView, x: number, y: number, t: number) {
+    const k = this.k, r = (e.radius * 0.7 + 0.6) * k, cy = y - e.radius * k * 0.9, a = Math.min(1, (e.dazed ?? 0) * 2);
+    g.save(); g.globalAlpha = a; g.fillStyle = TOWER_ICON_COLOR.mortar;
+    for (let i = 0; i < 3; i++) {
+      const q = t * 5 + i * TAU / 3, sx = x + Math.cos(q) * r, sy = cy + Math.sin(q) * r * 0.35;
+      g.beginPath(); g.arc(sx, sy, Math.max(1, 0.4 * k), 0, TAU); g.fill();
+    }
+    g.restore();
+  }
+
+  /** Fireballs climb from the launcher's mouth and drop onto their road point; Mortar rounds arc high from their pad. */
   private drawShells(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }) {
     const k = this.k;
     for (const sh of s.shells) {
+      if (sh.tower) {
+        const a = this.P(sh.x0, sh.y0), end = this.P(sh.x1, sh.y1), x = a.x + (end.x - a.x) * sh.k, y0 = a.y + (end.y - a.y) * sh.k;
+        const lift = Math.sin(Math.PI * sh.k) * 20 * k, sc = 1 + 0.5 * Math.sin(Math.PI * sh.k);
+        g.fillStyle = 'rgba(0,0,0,0.3)'; g.beginPath(); g.ellipse(x, y0, 1.1 * k, 0.55 * k, 0, 0, TAU); g.fill();
+        g.save(); g.globalCompositeOperation = 'lighter'; glowAt(g, TOWER_ICON_COLOR.mortar, x, y0 - lift, 1.8 * k * sc, 0.35); g.restore();
+        g.fillStyle = '#2b2e2a'; g.beginPath(); g.arc(x, y0 - lift, 0.75 * k * sc, 0, TAU); g.fill();
+        g.fillStyle = '#9aa08c'; g.beginPath(); g.arc(x - 0.25 * k * sc, y0 - lift - 0.25 * k * sc, 0.25 * k * sc, 0, TAU); g.fill();
+        if (this.particles.length < 600 && Math.random() < 0.35) this.particles.push({ x, y: y0 - lift, vx: (Math.random() - 0.5) * k, vy: -k, age: 0, life: 0.45, size: 0.8 * k, color: '', kind: 'smoke' });
+        continue;
+      }
       const end = this.P(sh.x1, sh.y1), x = muzzle.x + (end.x - muzzle.x) * sh.k, y0 = muzzle.y + (end.y - muzzle.y) * sh.k;
       const lift = Math.sin(Math.PI * sh.k) * 12 * k;
       g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(x, y0, 1.2 * k, 0.6 * k, 0, 0, TAU); g.fill();

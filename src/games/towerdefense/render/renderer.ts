@@ -24,7 +24,7 @@ import { BAKED_LEVELS, specKey } from '../sim/baked';
 import { knownLevel } from '../sim/levelCache';
 import { LevelArt, type ArtWish } from './levelArt';
 import { levelKey } from './ground/bake';
-import { SQUASH, drawBurnFlames, drawBurnGround, fireShares, flameHeat, trackPatches, type Patch } from './burnFx';
+import { SQUASH, drawBurnFlames, drawBurnGround, fireShares, flameHeat, prepareBurnSprites, trackPatches, type Patch } from './burnFx';
 
 const TAU = Math.PI * 2;
 // cue -> sound, with a rate limit (s) and volume
@@ -139,7 +139,7 @@ export class TdRenderer implements GameRenderer {
     this.resize(container.clientWidth || 800, container.clientHeight || 600);
   }
   async ready() {
-    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded]);
+    await Promise.all([this.battlefield.loaded, this.machinery.loaded, this.aliens!.loaded, prepareBurnSprites(() => !this.mounted)]);
     if (!this.mounted) return;
     let scale: number;
     do {
@@ -494,8 +494,11 @@ export class TdRenderer implements GameRenderer {
         if (allowHitStop) this.hitStopUntil = Math.max(this.hitStopUntil, performance.now() + Math.min(0.1, f.seconds) * 1000);
       } else if (f.kind === 'boom' || f.kind === 'burst') {
         const { x, y } = this.P(f.x, f.y);
-        this.ring(x, y, '#ffb070', f.r * k * 0.3, f.r * k * 0.8, 0.35);
-        this.burst(x, y, '#ff9a50', 8, 26 * k, 0.6 * k, 0.4);
+        // A fireball splashes burning embers outward; the ground fire (burnFx) and a hot flash (drawFx) do the rest.
+        for (let i = 0; i < 10 && this.particles.length < 600; i++) {
+          const a = Math.random() * TAU, v = (8 + Math.random() * 16) * k;
+          this.particles.push({ x, y: y - k, vx: Math.cos(a) * v, vy: Math.sin(a) * v * SQUASH - 6 * k, age: 0, life: 0.45 + Math.random() * 0.35, size: (0.25 + Math.random() * 0.25) * k, color: '', kind: 'ember', spin: Math.random() * TAU });
+        }
         // The impact throws up a little soot that climbs away, so it doesn't park a grey disc over the burning road.
         for (let i = 0; i < 2; i++) this.particles.push({ x: x + (Math.random() - 0.5) * 3 * k, y: y - k, vx: (Math.random() - 0.5) * 4 * k, vy: -(6 + Math.random() * 4) * k, age: 0, life: 0.9, size: 1.3 * k, color: 'soot', kind: 'smoke' });
         this.shake = Math.max(this.shake, 0.25);

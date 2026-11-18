@@ -30,8 +30,8 @@ export interface EnemyView {
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
   | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean }
-  | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }> }
-  | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number }
+  | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }>; /** firing tower's pad: the renderer starts the arc at its art's muzzle */ pad?: number }
+  | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number; /** firing tower's pad: the renderer starts the beam at its crystal */ pad?: number }
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
   /** an ignition burst; `chain` groups bursts from one fire kill, `ordinal` counts them (1, 2, …) */
   | { id: number; t0: number; life: number; kind: 'burst'; x: number; y: number; r: number; chain: number; ordinal: number }

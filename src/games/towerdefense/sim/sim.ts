@@ -842,7 +842,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
           }
           cur = nxt;
         }
-        addFx({ kind: 'zap', life: 0.22, pts });
+        addFx({ kind: 'zap', life: 0.22, pts, pad: tw.pad });
         cue('zap');
       } else if (tw.kind === 'flamer') {
         // A continuous cone: every pulse burns every ground alien inside it.
@@ -860,7 +860,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         shells.push({ x0: p.x, y0: p.y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg, r: (def.splash ?? 6) * mortarSplashT(), burnDps: 0, tower: tw.pad });
         cue('mortar');
       } else {
-        addFx({ kind: 'lens', life: 0.35, x0: p.x, y0: p.y - 3, x1: target.x, y1: target.y });
+        addFx({ kind: 'lens', life: 0.35, x0: p.x, y0: p.y - 3, x1: target.x, y1: target.y, pad: tw.pad });
         hit(target, dmg, 'purple', 'tower');
         cue('lens');
       }

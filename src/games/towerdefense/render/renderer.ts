@@ -890,7 +890,12 @@ export class TdRenderer implements GameRenderer {
     }
   }
 
-  /** Turret shots start at the muzzle; tower effects at their pads. */
+  /** Where a tower's shot leaves its art (the manifest `muzzle` anchor), or null so the caller uses the sim's point. */
+  private towerOrigin(s: TdSnapshot, pad: number | undefined, t: number) {
+    const tw = pad === undefined ? undefined : s.towers.find((q) => q.pad === pad);
+    return tw ? this.machinery.towerAnchor(tw as TowerView, this.view, t) : null;
+  }
+  /** Turret shots start at the muzzle; tower shots at their art's muzzle anchor (Prism crystal, Tesla orb). */
   private drawFx(g: CanvasRenderingContext2D, s: TdSnapshot, muzzle: { x: number; y: number }, t: number) {
     const k = this.k, rot = this.view.rot;
     g.globalCompositeOperation = 'lighter'; g.lineCap = 'round';
@@ -911,18 +916,18 @@ export class TdRenderer implements GameRenderer {
       } else if (f.kind === 'zap') {
         g.strokeStyle = LIGHT.blue; g.globalAlpha = life; g.lineWidth = Math.max(1, k * 0.4);
         g.beginPath();
-        f.pts.forEach((p, i) => {
-          const { x, y } = this.P(p.x, p.y);
+        const pts = f.pts.map((p, i) => i ? this.P(p.x, p.y) : this.towerOrigin(s, f.pad, t) ?? this.P(p.x, p.y));
+        pts.forEach(({ x, y }, i) => {
           if (!i) { g.moveTo(x, y); return; }
-          const pr = this.P(f.pts[i - 1].x, f.pts[i - 1].y);
+          const pr = pts[i - 1];
           for (let j = 1; j < 5; j++) g.lineTo(pr.x + (x - pr.x) * j / 5 + (Math.random() - 0.5) * 2.2 * k, pr.y + (y - pr.y) * j / 5 + (Math.random() - 0.5) * 2.2 * k);
           g.lineTo(x, y);
         });
         g.stroke();
-        for (const p of f.pts.slice(1)) { const q = this.P(p.x, p.y); glowAt(g, COL.blue, q.x, q.y, 2.5 * k, life); }
+        for (const q of pts.slice(1)) glowAt(g, COL.blue, q.x, q.y, 2.5 * k, life);
         g.globalAlpha = 1;
       } else if (f.kind === 'lens') {
-        const a = this.P(f.x0, f.y0), b = this.P(f.x1, f.y1);
+        const a = this.towerOrigin(s, f.pad, t) ?? this.P(f.x0, f.y0), b = this.P(f.x1, f.y1);
         g.strokeStyle = COL.purple; g.globalAlpha = life * 0.7; g.lineWidth = 2 * k * life;
         g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
         g.strokeStyle = '#fff'; g.globalAlpha = life; g.lineWidth = 0.6 * k;

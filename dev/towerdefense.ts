@@ -38,7 +38,7 @@ const session = createGameSession({ game: module, profile, input, fake: { script
     play: q.get('campaign') ? { campaign: Number(q.get('campaign')) } : q.get('quick') ? { quick: { seed: Number(q.get('quick')), minutes: Number(q.get('minutes') ?? 15) } } : undefined,
     intensity: q.get('intensity') ?? undefined, startWave: q.get('boss') === '1' ? 5 : undefined,
     stars: q.get('stars') ? Number(q.get('stars')) : undefined } });
-if (q.get('boss') === '1') session.tuning.set('towerdefense.railLaserDps', 1); // keep the demo's first opening available for input checks
+if (q.get('boss') === '1') session.tuning.set('towerdefense.railDamageMult', 0.01); // keep the demo's first opening available for input checks
 session.step(Math.max(1, Math.round(Number(q.get('sec') ?? 0) * 30)));
 const r = await module.loadRenderer(), app = document.getElementById('field')!;
 r.mount(app, { profile: session.ctx.profile, send: a => session.sim.receive?.(a), insets: { top: 0, right: 0, bottom: inset, left: 0 }, hudControls: useHud });

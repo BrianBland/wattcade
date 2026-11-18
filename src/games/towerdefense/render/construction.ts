@@ -43,20 +43,15 @@ export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout
   const hits: Hit[] = [], d = L.dock;
   button(g, d.construct, 'A · Construction', `${s.scrap} scrap · build · upgrade · repair`, false, !s.workshop && !s.over);
   hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', epoch: s.inputEpoch } });
-  const boost = !s.workshop && s.boss?.weapon === 'rail' && (s.boss.telegraph || s.boss.exposed);
-  button(g, d.workshop, boost ? '▲ Sprint boost' : '▼ Workshop', boost ? 'Hold for ERG push' : 'Build · upgrade · repair',
-    boost ? s.boss!.sprintBoost : !!s.workshop, !s.over);
-  hits.push({ ...d.workshop, action: s.over ? null : boost ? { type: 'boostHold', epoch: s.inputEpoch } : { type: s.workshop ? 'close' : 'pad', pad: -1, epoch: s.inputEpoch } });
+  button(g, d.workshop, '▼ Workshop', 'Build · upgrade · repair', !!s.workshop, !s.over);
+  hits.push({ ...d.workshop, action: s.over ? null : { type: s.workshop ? 'close' : 'pad', pad: -1, epoch: s.inputEpoch } });
   const labels = { overcharge: ['B', 'Overcharge', '#ff7855'], slow: ['Y', 'Slow field', '#55baff'], rail: ['Z', `Rail · ${s.railCharges}/${s.railMaxCharges}`, '#c790ff'] };
   s.actions.forEach((a, i) => {
     const [glyph, label, color] = labels[a.id], b = d.actions[i];
     drawActionButton(g, { ...b, label: a.activeS > 0 ? `${label} · ${Math.ceil(a.activeS)}s` : label,
       glyph, fill: a.fill, ready: a.ready, usable: a.usable, readyColor: color,
       effortTint: effortTint(powerZone), flourish: effortFlourish(powerZone), t: s.t, scale: Math.min(1, b.h / 60) });
-    if (a.id === 'rail' && s.zHold > 0) {
-      g.fillStyle = '#eee0ff'; g.fillRect(b.x + 4, b.y + b.h - 5, (b.w - 8) * Math.min(1, s.zHold / s.railDumpHoldS), 3);
-    }
-    hits.push({ ...b, action: !a.usable || !a.ready ? null : { type: a.id === 'rail' ? 'railHold' : 'action', id: a.id, epoch: s.inputEpoch } });
+    hits.push({ ...b, action: !a.usable || !a.ready ? null : { type: 'action', id: a.id, epoch: s.inputEpoch } });
   });
   return hits;
 }

@@ -12,6 +12,7 @@ import { readSave } from '../sim/sim';
 import type { TdSnapshot } from '../sim/types';
 
 const snap = (s: { sim: { snapshot(): unknown } }) => s.sim.snapshot() as TdSnapshot;
+const s_noErg = (s: ReturnType<typeof createGameSession>) => expect(s.mixer.debug().activeEffects.some((e) => e.mode === 'erg')).toBe(false);
 
 describe('scenarios via runHeadless', () => {
   for (const sc of scenarios) {
@@ -224,7 +225,8 @@ describe('levels meta', () => {
   it('the first visit opens on the ride select; the intro card shows the play controls that follow it', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
     expect(s.sim.inMenu!()).toBe(true);
-    expect(s.sim.hud!().playControls!.find(c => c.button === 'z')?.label).toMatch(/^Rail 0\/3 \(hold = all\)$/); // before the first update (game intro)
+    expect(s.sim.hud!().playControls!.find(c => c.button === 'shiftersR')?.label).toBe('Tier I'); // before the first update (game intro)
+    expect(s.sim.hud!().playControls!.some(c => c.button === 'z')).toBe(false); // the Railgun fires itself
     s.step(1);
     expect(snap(s).phase).toBe('garage');
   });
@@ -265,20 +267,24 @@ describe('brood waves', () => {
     }
     expect(Object.fromEntries(seen)).toEqual({ first: 15, work: 45, easy: 25 });
   });
-  it('the next weapon\'s trainer setting eases in over the last rampS of the lull', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
-    s.step(30 * 2);
-    const b = snap(s).brood;
-    const val = () => { const e = weaponEffect(s); return e.gradePct ?? e.levelPct ?? e.ftpFraction ?? NaN; };
-    const mode = { gatling: 'sim', flame: 'resistance', rail: 'erg' }[b.weapon];
-    const [lullV, fullV] = { gatling: [0, 1], flame: [10, 35], rail: [0.5, 0.95] }[b.weapon];
-    expect(weaponEffect(s).mode).toBe(mode);
-    expect(val()).toBeCloseTo(lullV); // recovery, early in the lull
-    s.step(30 * 8); // 3 s into the 8 s ramp at the end of the 15 s first lull
-    expect(val()).toBeGreaterThan(lullV); expect(val()).toBeLessThan(fullV);
-    s.step(30 * 5);
-    expect(val()).toBeCloseTo(fullV);
-    expect(weaponEffect(s).mode).toBe(mode);
+  it('the game is the gearbox: resistance mode all run, the shifters step the tier and the level eases after it', () => {
+    const h = rigged('z2');
+    h.session.step(30 * 2);
+    expect(weaponEffect(h.session).mode).toBe('resistance');
+    expect(snap(h.session).tier).toBe(1);
+    const lv1 = weaponEffect(h.session).levelPct!;
+    h.pressed.clear(); h.pressed.add('shiftUpR'); h.fresh(); h.session.step(1);
+    h.pressed.clear(); h.pressed.add('shiftUpL'); h.fresh(); h.session.step(1);
+    expect(snap(h.session).tier).toBe(3);
+    expect(weaponEffect(h.session).levelPct!).toBeLessThan(lv1 * 1.5); // eases in, not a wall
+    h.session.step(30 * 5);
+    expect(weaponEffect(h.session).levelPct!).toBeCloseTo(lv1 * 0.75 / 0.45, 0);
+    for (let i = 0; i < 4; i++) { h.pressed.clear(); h.pressed.add('shiftUpR'); h.fresh(); h.session.step(1); }
+    expect(snap(h.session).tier).toBe(5);
+    h.pressed.clear(); h.pressed.add('shiftDnL'); h.fresh(); h.session.step(1);
+    expect(snap(h.session).tier).toBe(4);
+    expect(h.session.mixer.debug().gear).toBe(6); // the shifters never move a trainer gear in a run
+    s_noErg(h.session);
   });
   it('weapon buttons and weapon taps no longer switch weapons', () => {
     const input = new TimelineInput([{ t: 1, press: 'a' }, { t: 1.1, release: 'a' }, { t: 2, press: 'b' }, { t: 2.1, release: 'b' }, { t: 3, press: 'y' }, { t: 3.1, release: 'y' }]);
@@ -357,7 +363,7 @@ describe('workshop', () => {
       const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script }, seed: 4, simOpts: { stars: 99, skipGarage: true } });
       s.tuning.set('towerdefense.baseHp', 1000); // keep the tower present to isolate power gating
       // a weak turret leaves the aliens to the tower: at full strength it kills the early stream before it arrives
-      s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railLaserDps', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
+      s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.railDamageMult', 0); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02);
       s.sim.receive!({ type: 'pad', pad: 3 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(30 * 180);
       return { towers: snap(s).towers.length, kills: Number(s.sim.summary().towerKills), fired: snap(s).towers[0]?.firedAt > 0 };
     };
@@ -370,31 +376,25 @@ describe('workshop', () => {
   });
 });
 
-function rigged() {
+function rigged(script = 'intervals') {
   const held = new Set<string>(), pressed = new Set<string>(), released = new Set<string>();
   const st = { held, pressed, released, paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' } as unknown as InputState;
   let skip = false;
   const input = { beginTick() { if (skip) skip = false; else { pressed.clear(); released.clear(); } }, state: () => st };
-  const session = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
+  const session = createGameSession({ game: module, profile: testProfile(), input, fake: { script }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
   return { fresh: () => { skip = true; }, session, held, pressed, released, charges: () => snap(session).railCharges };
 }
 
 describe('rail', () => {
-  it('caps charges at 3 and hold-Z dumps with railFired{charges:3}', () => {
-    const h = rigged();
-    h.session.step(30 * 120);
-    expect(h.charges()).toBe(3);
-    h.pressed.add('z'); h.held.add('z'); h.fresh();
-    h.session.step(30);
-    const ev = h.session.finish().events.find(e => e.type === 'railFired');
-    expect(ev?.data?.charges).toBe(3);
-  });
-  it('tap Z fires one charge', () => {
-    const h = rigged();
-    h.session.step(30 * 120);
-    h.pressed.add('z'); h.held.add('z'); h.fresh(); h.session.step(1);
-    h.held.delete('z'); h.released.add('z'); h.fresh(); h.session.step(1);
-    const evs = h.session.finish().events.filter(e => e.type === 'railFired');
-    expect(evs.map(e => e.data?.charges)).toEqual([1]);
+  it('fires slow pulses by itself, no button: full pulses at heavies, quick snaps at light aliens', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4 } });
+    let n = 0;
+    while (snap(s).weapon !== 'rail' && n++ < 30 * 60 * 20) s.step(30);
+    expect(snap(s).weapon).toBe('rail');
+    s.step(30 * 90);
+    const evs = s.finish().events.filter(e => e.type === 'railFired');
+    expect(evs.length).toBeGreaterThan(3);
+    expect(evs.every(e => e.data?.tier === 4)).toBe(true);
+    expect(snap(s).railMaxCharges).toBe(1);
   });
 });

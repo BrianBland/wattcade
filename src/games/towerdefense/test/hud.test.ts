@@ -39,7 +39,9 @@ it('announces the incoming brood through recovery, then leaves combat controls t
     expect(strip.querySelector('.td-count')).toBeNull();
     expect(strip.textContent).toContain(WEAPON_NAME[combat.brood.weapon]);
     expect(hud.root.querySelector('.td-next')?.textContent).toBe(`Next: ${combat.nextBrood!.color.toUpperCase()} BROOD → ${WEAPON_NAME[combat.nextBrood!.weapon]}`);
-    expect(hud.root.querySelectorAll('button')).toHaveLength(0);
+    // the only buttons over combat are the tier steppers (− / +), for touch riders without shifters
+    expect([...hud.root.querySelectorAll<HTMLElement>('button')].map((b) => b.dataset.command)).toEqual(['tier', 'tier']);
+    expect(hud.root.querySelector('.td-tier b')?.textContent).toBe('I');
   } finally {
     hud.root.remove(); session.sim.dispose?.();
   }
@@ -93,7 +95,7 @@ it('prioritizes boss phases and sprint windows, then recovery over stale effort 
   const boss: NonNullable<TdSnapshot['boss']> = { id: 1, name: 'Bulwark Tyrant', phase: 1, phaseCount: 3, color: 'purple', weapon: 'rail', pending: false, countdownS: 0, telegraph: true, exposed: false, windowLeftS: 4, sprintBoost: false, charge: null, shield: 0 };
   draw({ ...s, boss });
   expect(card.textContent).toContain('Bulwark Tyrant · phase 1/3');
-  expect(card.textContent).toContain('Hold ▲ for the ERG push');
+  expect(card.textContent).toContain('Shift to tier V');
   draw({ ...s, boss: { ...boss, exposed: true, telegraph: false } });
   expect(card.textContent).toContain('Exposed');
   draw({ ...s, boss: { ...boss, pending: true, countdownS: 7 } });

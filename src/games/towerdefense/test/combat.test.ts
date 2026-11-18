@@ -133,32 +133,21 @@ describe('boss ladder', () => {
     expect(advanceBoss(b, 12, 1, timing)).toContain('telegraph');
     expect(advanceBoss(b, 3, 1, timing)).toContain('exposed');
   });
-  it('a Rail opening frees the ERG lock to sprint, an optional hold-Up push is ERG; A stays construction', () => {
+  it('a Rail boss opening keeps the gearbox: resistance mode, the HUD asks for tier V, A stays construction', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
       profile: testProfile(),
       input: { beginTick() {}, state: () => state }, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
-    s.tuning.set('towerdefense.railLaserDps', 1); // keep the first Rail phase alive through its opening
-    s.tuning.set('towerdefense.bossExposedS', 8); // the scripted rider starts the push from 0.65 FTP
+    s.tuning.set('towerdefense.railDamageMult', 0.01); // keep the first Rail phase alive through its opening
     const effect = () => s.mixer.debug().activeEffects.find((e) => e.id === 'weapon')!;
     for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
     expect(snapshot(s).boss?.weapon).toBe('rail');
     expect(snapshot(s).boss?.telegraph).toBe(true);
-    // the sprint window frees the ERG lock (zone 5 is impossible under ERG) and the gears go live
-    expect(effect().mode).toBe('sim');
-    expect(s.sim.hud!().gears).toBe(true);
+    expect(effect().mode).toBe('resistance'); // no ERG lock to escape: the rider shifts up and sprints
+    expect(snapshot(s).suggestedTier).toBe(5);
+    expect(s.sim.hud!().targetZone?.min).toBe(5);
     expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Construction');
-    held.add('a'); s.step(1); expect(effect().mode).toBe('sim'); held.delete('a');
-    held.add('up'); s.step(1);
-    expect(effect().mode).toBe('erg'); expect(effect().ftpFraction).toBe(1.35);
-    expect(snapshot(s).boss?.sprintBoost).toBe(true);
-    let sprinted = false;
-    for (let i = 0; i < 30 * 9; i++) { s.step(1); sprinted ||= Boolean(snapshot(s).boss?.exposed && s.ctx.bike().sprinting); }
-    expect(sprinted).toBe(true);
-    expect(snapshot(s).boss?.exposed).toBe(true);
-    held.delete('up'); s.step(1);
-    expect(effect().mode).toBe('sim'); // still in the window: back to a free sprint, not the ERG lock
     expect(snapshot(s).boss?.sprintBoost).toBe(false);
   });
   it('sprinting only in Exposed windows kills a boss faster at the same cadence and power', () => {
@@ -190,26 +179,6 @@ describe('boss ladder', () => {
       return events.find((e) => e.type === 'bossKilled')!.t;
     };
     expect(ride(true)).toBeLessThan(ride(false) - 0.2);
-  });
-  it('touch boss boost releases normally and is canceled by construction, pause, and stale input', () => {
-    const s = createGameSession({ game: module,
-      profile: testProfile(),
-      input: new TimelineInput(), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, startWave: 9, skipGarage: true } });
-    s.tuning.set('towerdefense.railLaserDps', 1);
-    for (let i = 0; i < 30 * 90 && !snapshot(s).boss?.telegraph; i++) s.step(1);
-    expect(snapshot(s).boss?.weapon).toBe('rail'); expect(snapshot(s).boss?.telegraph).toBe(true);
-    const effect = () => s.mixer.debug().activeEffects.find(e => e.id === 'weapon')!;
-    const epoch = snapshot(s).inputEpoch;
-    s.sim.receive!({ type: 'boostDown', pointer: 1, epoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
-    s.sim.receive!({ type: 'boostDown', pointer: 2, epoch }); s.sim.receive!({ type: 'boostUp', pointer: 1, epoch }); s.step(1);
-    expect(effect().ftpFraction).toBe(1.35);
-    s.sim.receive!({ type: 'boostUp', pointer: 2, epoch }); s.step(1); expect(effect().mode).toBe('sim');
-    s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
-    s.sim.receive!({ type: 'construct' }); s.step(1); expect(snapshot(s).workshop).not.toBeNull(); expect(effect().ftpFraction).toBe(0.95);
-    s.sim.receive!({ type: 'close' }); s.step(1); s.sim.receive!({ type: 'boostDown', pointer: 3, epoch }); s.step(1);
-    expect(effect().mode).toBe('sim');
-    s.sim.receive!({ type: 'boostDown', pointer: 4, epoch: snapshot(s).inputEpoch }); s.step(1); expect(effect().ftpFraction).toBe(1.35);
-    s.sim.receive!({ type: 'inputCancel' }); s.step(1); expect(effect().mode).toBe('sim');
   });
 });
 

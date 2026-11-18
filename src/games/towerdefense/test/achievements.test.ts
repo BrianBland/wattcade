@@ -57,10 +57,10 @@ it('Exposed! counts each defeated, exposed-sprinted boss once, not mere sprint e
   expect(a.count!.of(record, profile)).toBe(1);
   expect(a.count!.of({ ...record, gameId: 'dungeon' }, profile)).toBe(0);
 });
-it('Triple Rail requires repeated full volleys and On Call is a longer lifetime goal', () => {
+it('Triple Rail counts Railgun pulses that hit 3 or more and On Call is a longer lifetime goal', () => {
   const a = achievements.find(a => a.id === 'triple_rail')!;
   expect(a.goal).toBe(25);
-  expect(a.count!.of({ gameId: 'towerdefense', events: [1,2,3,3].map(charges => ({ t: 0, type: 'railFired', data: { charges } })) } as unknown as SessionRecord, profile)).toBe(2);
+  expect(a.count!.of({ gameId: 'towerdefense', events: [1,2,3,5].map(hits => ({ t: 0, type: 'railFired', data: { charges: 1, hits } })) } as unknown as SessionRecord, profile)).toBe(2);
   expect(achievements.find(a => a.id === 'td_on_call')!.goal).toBe(40);
 });
 

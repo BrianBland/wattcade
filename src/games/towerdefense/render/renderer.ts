@@ -882,7 +882,8 @@ export class TdRenderer implements GameRenderer {
         g.globalAlpha = 1;
       } else if (f.kind === 'beam') {
         const a = f.angle + rot, ex = muzzle.x + Math.sin(a) * 160 * k, ey = muzzle.y - Math.cos(a) * 160 * k;
-        g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = (f.spread ? 3.5 : 4.5) * k * life;
+        // the pulse is as wide as the tier's beam (field units), a quick snap half that
+        g.strokeStyle = COL.purple; g.globalAlpha = life * 0.6; g.lineWidth = Math.max(2.5, (f.width ?? 1.5) * k) * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke();
         g.strokeStyle = '#ffffff'; g.globalAlpha = life; g.lineWidth = 1.2 * k * life;
         g.beginPath(); g.moveTo(muzzle.x, muzzle.y); g.lineTo(ex, ey); g.stroke(); g.globalAlpha = 1;

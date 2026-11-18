@@ -3,6 +3,7 @@ import { knownLevel } from '../sim/levelCache';
 import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
+import { roman } from '../sim/tiers';
 import type { Box, TdLayout } from './layout';
 import { constructionStatus, rideObjective } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
@@ -35,6 +36,13 @@ const CSS = `
 .td-current { display:flex; gap:16px; justify-content:space-between; align-items:center; }
 .td-current b { color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; }
 .td-current small { display:block; margin-top:3px; }
+.td-tier { display:flex; align-items:center; gap:6px; pointer-events:auto; }
+.td-tier-pips { display:flex; gap:3px; align-items:flex-end; }
+.td-tier-pips i { width:7px; border:1px solid var(--glass-line); background:transparent; }
+.td-tier-pips i.on { background:var(--brood); border-color:var(--brood); }
+.td-tier-pips i.want { box-shadow:0 0 0 2px var(--neon); }
+.td-tier b { font-size:15px; min-width:2.6em; text-align:center; font-style:normal; }
+.td-tier button { width:36px; height:36px; border-radius:50%; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 18px/1 system-ui, sans-serif; cursor:pointer; padding:0; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
 .td-hud .td-current.incoming { padding:8px 16px; }
 .td-current.incoming .td-brood b { font-size:28px; line-height:1; }
@@ -164,6 +172,13 @@ const color = (e: Element) => `var(--td-${e})`;
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+/** Intensity tier: five pips (lit to the current tier, ringed at the one the flow calls for), the numeral, and touch steppers. */
+export function tierHtml(s: TdSnapshot): string {
+  const pips = Array.from({ length: s.tierCount }, (_, i) => `<i class="${i < s.tier ? 'on' : ''}${i + 1 === s.suggestedTier ? ' want' : ''}" style="height:${7 + i * 3}px"></i>`).join('');
+  const name = roman(s.tier);
+  return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}"><button data-command="tier" data-step="-1" aria-label="Tier down">−</button><span class="td-tier-pips">${pips}</span><b>${name}</b><button data-command="tier" data-step="1" aria-label="Tier up">+</button></div>`;
+}
+
 export class TdHud {
   readonly root = document.createElement('div');
   private status = this.box('td-status panel');
@@ -197,6 +212,7 @@ export class TdHud {
       if (button.dataset.command === 'levelTile') this.send?.({ type: 'levelTile', index });
       if (button.dataset.command === 'levelStart') this.send?.({ type: 'levelStart' });
       if (button.dataset.command === 'levelBack') this.send?.({ type: 'levelBack' });
+      if (button.dataset.command === 'tier') this.send?.({ type: Number(button.dataset.step) > 0 ? 'tierUp' : 'tierDown' });
     });
   }
 
@@ -270,12 +286,12 @@ export class TdHud {
     const forecast = incoming
       ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
       : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
-    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div><div class="td-next">${forecast}</div>`);
+    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {
       headline = boss.pending ? `Phase ${boss.phase + 1} in ${Math.ceil(boss.countdownS)}s` : boss.charge === 'warn' ? 'Ram charge incoming' : boss.charge === 'on' ? 'Ram charging' : boss.exposed ? `Exposed · ${Math.ceil(boss.windowLeftS)}s` : boss.telegraph ? `Sprint in ${Math.ceil(boss.windowLeftS)}s` : '';
-      sub = boss.pending ? `${BOSS_ESCALATION[boss.color]} · same weapon` : boss.charge ? 'Burn it down before it closes' : boss.weapon === 'rail' ? 'Hold ▲ for ERG sprint' : 'Sprint for ×1.5 damage';
+      sub = boss.pending ? `${BOSS_ESCALATION[boss.color]} · same weapon` : boss.charge ? 'Burn it down before it closes' : 'Shift to V · sprint for ×1.5 damage';
     } else if (e) {
       headline = e.state === 'announced' ? `${e.kind} in ${Math.ceil(e.countdownS)}s` : e.state === 'active' ? `${e.kind} · ${Math.ceil(Math.max(0, e.needS - e.heldS))}s more · ${Math.ceil(e.leftS)}s left` : `${e.kind} ${e.state}`;
       sub = e.kind === 'spin' ? `${e.minRpm}+ rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : e.kind === 'grind' ? `${e.minRpm}–${e.maxRpm} rpm · ≥${Math.round(e.minFtp * 100)}% FTP` : `${Math.round(e.minFtp * 100)}–${Math.round(e.maxFtp * 100)}% FTP`;

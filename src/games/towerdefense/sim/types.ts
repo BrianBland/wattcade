@@ -27,7 +27,7 @@ export interface EnemyView {
 }
 export type Fx =
   | { id: number; t0: number; life: number; kind: 'tracer'; x0: number; y0: number; x1: number; y1: number; hit: boolean }
-  | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean }
+  | { id: number; t0: number; life: number; kind: 'beam'; angle: number; spread: boolean; width?: number }
   | { id: number; t0: number; life: number; kind: 'zap'; pts: Array<{ x: number; y: number }> }
   | { id: number; t0: number; life: number; kind: 'lens'; x0: number; y0: number; x1: number; y1: number }
   | { id: number; t0: number; life: number; kind: 'boom'; x: number; y: number; r: number }
@@ -118,6 +118,9 @@ export interface TdSnapshot {
   weapon: Weapon; swapLeft: number; swapS: number;
   /** the turret always aims itself; `lock` = the rider's decaying target lock (k 1 → 0), null when none */
   aimAngle: number; targetId: number; lock: { id: number; k: number } | null;
+  /** Intensity tier I–V picked by the shifters, how many there are, the tier the flow calls for, and the current tier's rated ftpFraction. */
+  tier: number; tierCount: number; suggestedTier: number; tierFtp: number;
+  /** Railgun pulse: 1 when banked, progress toward the next pulse (railMaxCharges is 1). */
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   /** Flamer lobbing fireballs; `flameRange` = how far it can lob */
   flaming: boolean; flameRange: number; flamePower: number; /** enemy the rail's targeting laser is burning (0 = none) */ laserId: number;

@@ -14,7 +14,8 @@ import {
 } from './defs';
 import { BOSS_ESCALATION, BOSS_NAME, BOSS_TRICK, advanceBoss, bossHpFloor, createBossState, openBoss, shieldHit, swarmPackFor, type BossState, type BossTricks } from './boss';
 import { effortMet, scheduleCall, type EffortView } from './efforts';
-import { canObserve, levelFor as fireballLevelFor, observeK, priorK, type FireballLevelTuning } from './fireballLevel';
+import { canObserve, levelFor as gearboxLevelFor, observeK, priorK, type FireballLevelTuning } from './fireballLevel';
+import { TIER_FTP_DEFAULT, beamHits, clampTier, effortFactor, fireballPeriod as fireballPeriodAt, fireballShape, gatlingShape, railShape, riderTier, roman, type Tier } from './tiers';
 import { specKey } from './baked';
 import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
@@ -45,6 +46,8 @@ export interface TdOpts {
   stars?: number;
   /** Tests only: start Endless at this wave (with the scrap that depth would have earned). */
   startWave?: number;
+  /** Headless and tests: hold this intensity tier, or 'auto' (default with autopilot) to shift to the rider's watts. */
+  tier?: number | 'auto';
 }
 export interface TdSave {
   /** v4: levels and star unlocks; the Garage (parts, upgrades, Forward Base) and the old best wave are gone. */
@@ -90,7 +93,7 @@ interface Enemy {
 }
 interface Tower { pad: number; kind: TowerKind; level: number; cd: number; angle: number; firedAt: number }
 /** A turret fireball: bursts for `dmg`, then the ground burns at `burnDps` for burnS. */
-interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnDps: number }
+interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; flight: number; dmg: number; r: number; burnS: number; burnDps: number }
 interface Burn { x: number; y: number; r: number; left: number; total: number; dps: number }
 
 const WORKSHOP_IDLE_S = 10;
@@ -132,33 +135,29 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // weapons (spec)
   const gatlingRevs = T.num('gatlingRevsPerShot', 0.25, 0.05, 2, 0.05, 'crank revs per Gatling bullet');
   const gatlingDmg = T.num('gatlingDamage', 30, 0.5, 60, 0.5);
-  const gatlingGrade = T.num('gatlingGradePct', 1, 0, 6, 0.5, 'sim-mode grade while Gatling selected');
-  const flameLevel = T.num('flameLevelPct', 18, 1, 100, 1, 'starting resistance level for the Fireball demand at the cue cadence (then learned from the rider\'s watts)');
-  const flameFtp = T.num('flameFtpFraction', 0.85, 0.4, 1.3, 0.01, 'Fireball power demand (ftpFraction) in a work wave');
-  const flameCueRpm = T.num('flameCueRpm', 75, 50, 100, 1, 'cadence the Fireball resistance level is chosen for');
-  const flameAlpha = T.num('flameRpmExponent', 1.5, 1, 2.5, 0.1, 'resistance-mode power ~ rpm^this (how steeply the brake climbs with cadence)');
-  const flameMaxLevel = T.num('flameMaxLevelPct', 50, 5, 100, 1, 'highest resistance level the Fireball will ask for');
-  const flameCalTau = T.num('flameCalTauS', 20, 2, 120, 1, 'seconds to learn the trainer\'s resistance response');
+  // intensity tiers (shifters) and the game-owned resistance gearbox
+  const tierFtpT = TIER_FTP_DEFAULT.map((v, i) => T.num(`tier${i + 1}Ftp`, v, 0.2, 1.6, 0.01, `tier ${roman(i + 1)}: rated power (ftpFraction) at the gearbox reference cadence, Steady intensity`));
+  const startTier = T.num('startTier', 1, 1, 5, 1, 'intensity tier a run starts in');
+  const gearRefRpm = T.num('gearboxRefRpm', 85, 50, 110, 1, 'cadence at which a tier makes its rated power');
+  const gearPriorLevel = T.num('gearboxPriorLevelPct', 17, 1, 100, 1, 'starting guess: the resistance level that gives 1.0 FTP at the reference cadence (then learned from the rider\'s watts)');
+  const gearAlpha = T.num('gearboxRpmExponent', 1.5, 1, 2.5, 0.1, 'resistance-mode power ~ rpm^this (how steeply the brake climbs with cadence)');
+  const gearMaxLevel = T.num('gearboxMaxLevelPct', 60, 5, 100, 1, 'highest resistance level the gearbox will ask for');
+  const gearCalTau = T.num('gearboxCalTauS', 20, 2, 120, 1, 'seconds to learn the trainer\'s resistance response');
+  const gearShiftTau = T.num('gearboxShiftS', 0.7, 0, 5, 0.1, 'time constant of the resistance change after a shift (so a two-click jump is not a wall)');
+  const gearReliefRpm = T.num('gearboxReliefRpm', 55, 0, 90, 1, 'below this cadence the gearbox eases the brake so a bogged-down rider can spin back up (0 = off)');
+  const gearReliefFloor = T.num('gearboxReliefFloor', 0.6, 0.2, 1, 0.05, 'lowest share of the tier\'s resistance while relief is on');
+  const effortCap = T.num('tierEffortCap', 1.2, 1, 2, 0.05, 'most of a tier\'s rated output a rider can get by spinning over its rated watts');
   const flameDpw = T.num('flameDpsPerWatt', 1.5, 0.02, 3, 0.01, 'Fireball damage per second per watt (power3s), split between fireball impact and burning ground');
   const flameRange = T.num('flameRange', 70, 10, 120, 1, 'how far the Fireball turret lobs fireballs');
-  const fireballPeriod = T.num('fireballPeriodS', 0.7, 0.2, 3, 0.05, 'seconds between Fireball shots');
+  const fireballPeriod = T.num('fireballPeriodS', 0.7, 0.2, 3, 0.05, 'seconds between Fireball shots at the gearbox reference cadence (quicker when spinning faster)');
   const fireballFlight = T.num('fireballFlightS', 0.8, 0.2, 3, 0.05);
-  const fireballRadius = T.num('fireballRadius', 6, 2, 15, 0.5, 'fireball burst and burning-ground radius');
-  const burnS = T.num('burnS', 4, 0.5, 15, 0.5, 'seconds a fireball\'s ground keeps burning');
-  const burnShare = T.num('burnShare', 0.6, 0, 1, 0.05, 'share of a fireball\'s damage dealt by the burning ground instead of the burst');
-  const railFtp = T.num('railFtpFraction', 0.95, 0.5, 1.3, 0.01, 'ERG target while Rail selected');
-  const railMinFtp = T.num('railMinFtp', 0.75, 0.3, 1.2, 0.01, 'ftpFraction needed to charge rail');
-  const railPeriod = T.num('railChargeS', 20, 3, 120, 1, 'seconds per rail charge at 0.95 FTP');
-  const railMax = T.num('railMaxCharges', 3, 1, 8, 1);
-  const railDmg = T.num('railDamage', 110, 10, 1000, 5);
-  const railWidth = T.num('railBeamWidth', 0.1, 0.02, 0.5, 0.01);
-  const railDumpHold = T.num('railDumpHoldS', 0.5, 0.1, 2, 0.1);
-  const railLaserDps = T.num('railLaserDps', 140, 0, 300, 1, 'targeting laser dps while Rail is selected (x ftpFraction / the current ERG target, max x1.5)');
-  const weaponPowerFloor = T.num('weaponPowerFloor', 0.75, 0, 1, 0.05, 'below this fraction of the weapon demand the turret drops to its minimum; full output at the demand');
-  const weaponPowerMin = T.num('weaponPowerMin', 0.2, 0, 0.5, 0.05, 'turret output at the floor (fading to zero at no power), so a short ride leaks instead of collapsing');
+  const railPulseS = T.num('railPulseS', 4, 1, 20, 0.5, 'a full Railgun pulse banks this many seconds of the tier\'s rated watts');
+  const railDmgMult = T.num('railDamageMult', 1, 0, 3, 0.05, 'Railgun pulse damage x (tests and balance)');
+  const railSnapMin = T.num('railSnapMinShare', 0.05, 0.02, 1, 0.01, 'least share of a full pulse a quick snap at a light alien spends');
+  const railSnapS = T.num('railSnapS', 0.2, 0.1, 3, 0.05, 'shortest gap between Railgun shots');
   const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
   const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
-  const turretRange = T.num('turretRange', 75, 20, 200, 1, 'Gatling and Rail laser reach from the turret: the upper road is the towers\' job');
+  const turretRange = T.num('turretRange', 75, 20, 200, 1, 'Gatling and Railgun reach from the turret: the upper road is the towers\' job');
   const lockS = T.num('lockS', 6, 1, 30, 0.5, 'seconds a target lock (paddles / D-pad left-right step it closer or further) lasts');
   const targetStick = T.num('targetStickS', 3, 0, 20, 0.5, 'keep the current target while it arrives within this many seconds of the best one');
   const match = Object.fromEntries(WEAPONS.map((w) => [w, Object.fromEntries(ELEMENTS.map((e) =>
@@ -198,8 +197,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const firstLullS = T.num('firstLullS', 15, 0, 120, 1, 'lull before the first wave of a level or run: time to pick a first tower, then straight in');
   const easyLullS = T.num('easyLullS', 25, 0, 120, 1, 'lull before an easy recovery wave (the easy wave is itself the recovery)');
   const rampS = T.num('rampS', 8, 0, 30, 1, 'last seconds of the lull in which the next weapon\'s trainer setting ramps in');
-  const lullGrade = T.num('lullGradePct', 0, -2, 4, 0.5, 'sim grade early in the lull (Gatling brood next)');
-  const lullFtp = T.num('lullFtpFraction', 0.5, 0.3, 1, 0.05, 'ERG target early in the lull (Railgun brood next)');
   const broodShare = T.num('broodShare', 0.8, 0.34, 1, 0.05, 'share of a wave\'s heavies in its brood colour (the rest are for the towers)');
   const broodMaxRun = T.num('broodMaxRun', 2, 1, 5, 1, 'no brood colour more than N waves in a row');
   const swarmPack = T.num('swarmPackSize', 5, 1, 12, 1, 'blue slots are swarm packs of N darts or drones');
@@ -222,7 +219,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const bossShieldOther = T.num('bossShieldOtherMult', 0.5, 0.1, 2, 0.05, 'Bulwark Tyrant: laser and tower damage to plates');
   const bossTricks = (): BossTricks => ({ swarmEveryS: bossSwarmEvery(), swarmPack: bossSwarmPack(), chargeEveryS: bossChargeEvery(),
     chargeWarnS: bossChargeWarn(), chargeS: bossChargeS(), shieldShare: bossShieldShare() });
-  const bossSprintFtp = T.num('bossSprintFtp', 1.35, 1.2, 1.6, 0.05, 'optional hold-Up ERG push during a Rail boss opening');
   const clearHeal = T.num('earlyClearHeal', 14, 0, 100, 1, 'base HP restored when a wave is cleared before its timeout');
   const speedHeal = T.num('speedClearHeal', 12, 0, 100, 1, 'extra heal for a fast clear: all of it at waveMinS, none at waveMaxS');
   const stallMult = T.num('stallDamageMult', 2.2, 1, 5, 0.1, 'leaks hit this much harder while the dynamo is stalled (shields down)');
@@ -318,16 +314,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let railVolley = false;
   let ignitionChainId = 0;
   let revAcc = 0, lastRevs = 0;
-  let railCharges = 0, railProgress = 0, railFired = 0, railCharging = false;
-  let zHold = 0, zDown = false, zDumped = false;
-  const railPointers = new Set<number>();
-  const boostPointers = new Set<number>();
-  let boostBlocked = false;
-  let inputEpoch = 0, workshopRevision = 0, railBlocked = false, discardEdges = false;
+  let railBank = 0, railFired = 0, railCooldown = 0;
+  let tier: Tier = clampTier(startTier());
+  let gearLevel = 0, gearRelief = 1;
+  let inputEpoch = 0, workshopRevision = 0, discardEdges = false;
   let overchargeLeft = 0, slowLeft = 0, lastSprint = false;
   let currentRefill = 1;
   const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
-  let flaming = false, flamePower = 0, grid = 0, overdrive = false, laserId = 0;
+  let flaming = false, flamePower = 0, grid = 0, overdrive = false;
   let surge: SurgeView | null = null;
   let spin: SpinView | null = null, overclock = 0;
   let effort: EffortView | null = null;
@@ -351,6 +345,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const kills: Record<string, number> = { blue: 0, red: 0, purple: 0, gold: 0 };
   const dealt = { player: 0, tower: 0, emp: 0 };
   const weaponSeconds: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
+  const dealtW: Record<Weapon, number> = { gatling: 0, flame: 0, rail: 0 };
   const stats = { towersBuilt: 0, towerUpgrades: 0, scrapEarned: 0, surgesWon: 0, surgesFailed: 0, spinsWon: 0, spinsFailed: 0, overclockS: 0, runs: 0, runsFallen: 0, runsBailed: 0, bosses: 0, overdriveS: 0, empKills: 0, heavyKills: 0, towerKills: 0, turretKills: 0, ignitionBursts: 0, levelsCleared: 0 };
 
   // ---------- helpers ----------
@@ -369,33 +364,26 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const easy = plan?.role === 'easy';
     return phase !== 'run' || easy ? 0 : lull <= 0 ? 1 : ramp <= 0 || lull >= ramp ? 0 : 1 - lull / ramp;
   }
-  const fireTuning = (): FireballLevelTuning => ({ cueRpm: flameCueRpm(), alpha: flameAlpha(), minPct: 1, maxPct: flameMaxLevel(), tauS: flameCalTau() });
-  /** Learned Fireball trainer response: ftpFraction per level % at the cue cadence (prior: `flameLevelPct` gives the demand). */
-  const fireK0 = () => priorK(flameLevel(), flameFtp());
-  let fireK = fireK0(), fireLevel = 0, fireLevelPrev = -1, fireSteadyS = 0;
-  function trainerSync() {
-    if (phase === 'garage') { ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
-    const k = rampK();
-    const mix = (a: number, b: number) => a + (b - a) * k;
-    if (phase !== 'run' || weapon === 'gatling') ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: mix(lullGrade(), gatlingGrade() * targetK()) });
-    else if (weapon === 'flame') {
-      // a resistance level is chosen for a power: the ramp eases the demand (recovery -> work) and the learned
-      // trainer response turns it into a level, so a strong brake does not force a 45 rpm grind
-      fireLevel = +fireballLevelFor(weaponDemand(), fireK, fireTuning()).toFixed(1);
-      ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: fireLevel });
-    }
-    else if (railSprintFree()) {
-      // a boss sprint window asks for zone 5, which an ERG lock can never give: free the brake (gears live)
-      ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: gatlingGrade() * targetK() });
-    } else {
-      const target = bossView()?.sprintBoost ? bossSprintFtp()
-        : effort?.kind === 'hold' && (effort.state === 'announced' || effort.state === 'active') ? effort.targetFtp : railFtp() * targetK();
-      ctx.resistance.set({ id: 'weapon', mode: 'erg', ftpFraction: mix(lullFtp(), target) });
-    }
+  /** A tier's rated power for this ride (Easy/Hard scale it like every trainer target). */
+  const ratedFtp = (t: number) => tierFtpT[clampTier(t) - 1]() * targetK();
+  const gearTuning = (): FireballLevelTuning => ({ cueRpm: gearRefRpm(), alpha: gearAlpha(), minPct: 1, maxPct: gearMaxLevel(), tauS: gearCalTau() });
+  /** Learned trainer response: ftpFraction per resistance level % at the reference cadence. */
+  const gearK0 = () => priorK(gearPriorLevel(), 1);
+  let gearK = gearK0(), gearLevelPrev = -1, gearSteadyS = 0;
+  /** The level the gearbox asks for at the current tier (before easing and relief). */
+  const gearTarget = () => gearboxLevelFor(ratedFtp(tier), gearK, gearTuning());
+  /**
+   * The trainer stays in resistance mode for the whole run: the game is the gearbox. Each tier asks for the level
+   * that makes its rated watts at the reference cadence for this rider and trainer; cadence moves watts from there.
+   */
+  function trainerSync(dt = 0) {
+    if (phase !== 'run') { ctx.resistance.useVirtualGears(true); ctx.resistance.set({ id: 'weapon', mode: 'sim', gradePct: 0 }); return; }
+    ctx.resistance.useVirtualGears(false);
+    const want = gearTarget(), tau = gearShiftTau();
+    gearLevel = gearLevel <= 0 || tau <= 0 || dt <= 0 ? want : gearLevel + (want - gearLevel) * (1 - Math.exp(-dt / tau));
+    ctx.resistance.set({ id: 'weapon', mode: 'resistance', levelPct: +(gearLevel * gearRelief).toFixed(1) });
   }
   trainerSync();
-  ctx.resistance.useVirtualGears(true); // all four shifters are gears (sim mode only); no game action reads a shifter
-  const railCap = () => railMax();
   const towerCostMult = () => towerCostT();
   const repairCost = () => 30 + wave * 3;
   const gainScrap = (n: number) => { const v = Math.max(0, Math.round(n * scrapScale())); scrap += v; stats.scrapEarned += v; return v; };
@@ -456,6 +444,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const raw = e.boss ? shieldHit(e.boss, base * mult * exposure, railVolley, bossShieldRail(), bossShieldOther()) : base * mult * exposure;
     if (e.boss && e.boss.shieldMax > 0 && e.boss.shield <= 0) { e.boss.shieldMax = 0; bossEvents(e, ['shieldBroken']); }
     const damage = Math.min(Math.max(0, e.hp - floor), raw);
+    if (src === 'player') dealtW[weapon] += damage;
     dealt[src] += damage; // effective damage, including ignition; no overkill or damage through phase gates
     e.hp -= damage;
     e.hurt = 0.12; e.lastEl = el;
@@ -583,8 +572,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         addFx({ kind: 'emp', life: 1.2 });
         for (const alien of enemies) if (!alien.dead) hit(alien, KINDS[alien.kind].heavy ? empDmg() : 9999, null, 'emp');
         const b = gainScrap(20 + wave * 2);
-        if (railCharges < railCap()) railCharges++;
-        say('Dynamo charged!', `EMP · +${b} scrap · +1 rail charge`, '#7df9ff', true); cue('emp');
+        railBank = Math.max(railBank, railCost());
+        say('Dynamo charged!', `EMP · +${b} scrap · Railgun pulse ready`, '#7df9ff', true); cue('emp');
       } else stats.surgesFailed++;
       ctx.emit({ type: won ? 'surgeWon' : 'surgeFailed', data: { wave: e.wave, kind: e.kind } });
     }
@@ -681,8 +670,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     enemies = []; spawned.length = 0; shells = []; burns = []; schedule = []; fx = [];
     towers.fill(null); workshop = null; pending.length = 0;
     surge = null; spin = null; overclock = 0; effort = null; escorts.length = 0;
-    exposedBossIds.clear(); grid = 0; overdrive = false; flaming = false; flamePower = 0; laserId = 0; targetId = 0;
-    railCharges = 0; railProgress = 0; railCharging = false; zDown = false; zHold = 0; zDumped = false;
+    exposedBossIds.clear(); grid = 0; overdrive = false; flaming = false; flamePower = 0; targetId = 0;
+    railBank = 0;
     resetCombat();
     trainerSync();
     if (reason === 'done') say(`${result!.spec.name} cleared`, `${'★'.repeat(result!.stars)}${'☆'.repeat(3 - result!.stars)}`, '#ffd24a', true);
@@ -692,18 +681,21 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
 
   // ---------- weapons ----------
+  /** The tier the incoming flow calls for: recovery II, Gatling work III, Fireball/Railgun work IV, boss openings V. */
+  function suggestedTier(p: WavePlan | undefined = plan, w: Weapon = weapon, now = true): Tier {
+    if (now && phase === 'run') {
+      const b = enemies.find((e) => !e.dead && e.boss && !e.boss.pending)?.boss;
+      if (b && (b.telegraph || b.exposed)) return 5;
+    }
+    if (!p || p.role === 'easy' || (now && lull > rampS())) return 2;
+    return w === 'gatling' && !p.boss ? 3 : 4;
+  }
   function broodInfo(p: WavePlan): BroodInfo {
     const weapon = ELEMENT_WEAPON[p.brood];
-    if (p.role === 'easy') return {
-      wave: p.wave, color: p.brood, weapon,
-      mode: weapon === 'gatling' ? 'sim' : weapon === 'flame' ? 'resistance' : 'erg',
-      setting: weapon === 'gatling' ? `sim ${+lullGrade().toFixed(1)}% grade`
-        : weapon === 'flame' ? `resistance ${Math.round(fireballLevelFor(lullFtp(), fireK, fireTuning()))}%` : `ERG ${Math.round(lullFtp() * 100)}% FTP`,
-      cue: 'ride easy · recover',
-    };
-    if (weapon === 'gatling') return { wave: p.wave, color: p.brood, weapon, mode: 'sim', setting: `sim ${+gatlingGrade().toFixed(1)}% grade`, cue: 'spin fast · 90+ rpm' };
-    if (weapon === 'flame') return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `resistance ${Math.round(fireballLevelFor(flameFtp() * targetK(), fireK, fireTuning()))}%`, cue: 'grind 70–80 rpm' };
-    return { wave: p.wave, color: p.brood, weapon, mode: 'erg', setting: `ERG ${Math.round(railFtp() * targetK() * 100)}% FTP`, cue: 'hold steady · 85–95 rpm' };
+    const want = suggestedTier(p, weapon, false);
+    const cue = p.role === 'easy' ? `ride easy · tier ${roman(want)}`
+      : weapon === 'gatling' ? `spin fast · tier ${roman(want)}` : weapon === 'flame' ? `tier ${roman(want)} · 85+ rpm` : `tier ${roman(want)}+ · steady`;
+    return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `tier ${roman(want)} · ${Math.round(ratedFtp(want) * 100)}% FTP`, cue };
   }
   /** Mounts the brood's weapon (once per wave, at the start of its lull). */
   function selectWeapon(w: Weapon) {
@@ -714,46 +706,32 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   const stalled = () => phase === 'run' && stallT >= stallGrace();
   const odMult = () => (overdrive ? overdriveMult() : 1);
-  /**
-   * The ftpFraction the trainer is asking for right now, eased with it: recovery (`lullFtpFraction`) on easy
-   * waves and early in a lull, the weapon's full demand in a work wave. Riding a recovery wave at its recovery
-   * target is full output.
-   */
-  function weaponDemand(): number {
-    // the weapon is rated at the intensity's target: an Easy ride at its easier setting fights as well
-    const full = (weapon === 'flame' ? flameFtp() : weapon === 'rail' ? railFtp() : 0.65) * targetK();
-    return lullFtp() + (full - lullFtp()) * rampK();
-  }
-  /**
-   * The turret's share of its rated output for the weapon that spends watts. Fireball and Rail are rated at
-   * their trainer target, so a steady zone-2 ride (~0.65 FTP) is well under power and some of the brood gets
-   * through. Gatling spends crank revs, not watts, so it is not scaled here. From `weaponPowerFloor` of the demand
-   * up to the demand, output climbs from `weaponPowerMin` to full; below the floor it fades to zero, so a ride
-   * well under target leaks (fewer stars, a late fall) instead of collapsing in the first work wave.
-   */
-  function weaponPower(): number {
-    if (weapon === 'gatling') return 1;
-    const have = ctx.bike().ftpFraction / weaponDemand();
-    const floor = weaponPowerFloor(), min = weaponPowerMin();
-    if (have < floor) return min * clamp(have / Math.max(1e-6, floor), 0, 1);
-    return clamp(min + (1 - min) * (have - floor) / Math.max(1e-6, 1 - floor), 0, 1.5);
-  }
+  /** Share of the current tier's rated output the rider is delivering (mostly cadence on a real trainer). */
+  const effortK = () => ctx.bike().cadence3s < 15 ? 0 : effortFactor(ctx.bike().ftpFraction, ratedFtp(tier), effortCap());
+  /** FTP-seconds one Railgun pulse banks at the current tier. */
+  const railCost = () => ratedFtp(tier) * railPulseS();
 
-  function fireRail(n: number) {
-    n = Math.min(n, railCharges);
-    if (n <= 0) return;
-    railCharges -= n; railFired += n;
-    const spread = 0.42;
-    for (let i = 0; i < n; i++) {
-      const a = aim + (n === 1 ? 0 : (i - (n - 1) / 2) * spread);
-      addFx({ kind: 'beam', life: 0.45, angle: a, spread: n > 1 });
-      for (const e of enemies) {
-        if (e.dead) continue;
-        if (angDiff(e.angle, a) <= railWidth() + radiusOf(e) / Math.max(4, e.dist)) { railVolley = true; hit(e, railDmg() * odMult(), 'purple'); railVolley = false; }
-      }
-    }
+  /**
+   * One Railgun pulse along the aim: the tier sets damage, width and how many it passes through. A pulse spends
+   * only what it needs: a full pulse for anything tough, a quick snap (a share of the bank) for light aliens.
+   * Returns false (nothing spent) when the bank cannot pay for the shot yet.
+   */
+  function fireRail(): boolean {
+    const shape = railShape(tier), live = enemies.filter((e) => !e.dead);
+    const hits = beamHits(live.map((e) => ({ x: e.x, y: e.y, r: radiusOf(e) })), BASE_X, BASE_Y, aim, shape.width, turretRange(), shape.pierce);
+    if (!hits.length) return false;
+    const full = shape.dmg * railDmgMult() * Math.min(1, effortK()) * odMult();
+    const toughest = Math.max(...hits.map((i) => live[i].hp / Math.max(1e-6, full * match.rail[elementOf(live[i])]())));
+    const share = live.some((e, i) => hits.includes(i) && (e.boss || KINDS[e.kind].heavy)) ? 1 : clamp(toughest * 1.1, railSnapMin(), 1);
+    if (railBank < railCost() * share - 1e-9) return false;
+    railBank -= railCost() * share; railFired++; railCooldown = railSnapS();
+    addFx({ kind: 'beam', life: 0.45, angle: aim, spread: false, width: shape.width * (share < 1 ? 0.5 : 1) });
+    railVolley = share >= 1;
+    for (const i of hits) hit(live[i], full * share, 'purple');
+    railVolley = false;
     cue('rail');
-    ctx.emit({ type: 'railFired', data: { charges: n } });
+    ctx.emit({ type: 'railFired', data: { charges: 1, hits: hits.length, tier, full: share >= 1 } });
+    return true;
   }
 
   /** Closest live enemy (to the base) inside an angular cone around `a`. */
@@ -801,7 +779,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     // A watt weapon's brood is that weapon's job. Any tower the brood does not resist answers to the same
     // watts, or the others cover the wave and the push never matters. A resisted tower, and every tower
     // during a Gatling wave (the turret spends revs there), keeps its cadence-powered rate.
-    const fed = weapon === 'gatling' ? 1 : weaponPower();
+    // A watt weapon's brood is that weapon's job: a tower the brood does not resist answers to how close the rider
+    // is to the tier the flow calls for, or the towers cover the wave and the push never matters. Resisted towers,
+    // and every tower during a Gatling wave, keep their cadence-powered rate.
+    const fed = weapon === 'gatling' ? 1 : Math.min(1, effortFactor(ctx.bike().ftpFraction, ratedFtp(suggestedTier())));
     const brood = plan?.brood;
     for (const tw of towers) {
       if (!tw) continue;
@@ -860,7 +841,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (s.t < s.flight) continue;
       addFx({ kind: 'boom', life: 0.5, x: s.x1, y: s.y1, r: s.r });
       for (const e of enemies) if (!e.dead && e.route < 0 && Math.hypot(e.x - s.x1, e.y - s.y1) <= s.r + radiusOf(e)) hit(e, s.dmg, 'red');
-      if (s.burnDps > 0) burns.push({ x: s.x1, y: s.y1, r: s.r, left: burnS(), total: burnS(), dps: s.burnDps });
+      if (s.burnDps > 0) burns.push({ x: s.x1, y: s.y1, r: s.r, left: s.burnS, total: s.burnS, dps: s.burnDps });
       cue('explode');
     }
     shells = shells.filter((s) => s.t < s.flight);
@@ -873,8 +854,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function lobFireball(target: Enemy, damage: number) {
     const flight = fireballFlight(), ahead = target.route < 0 ? geo.lanes[target.lane].at(target.d + travelSpeed(target) * flight) : target;
-    const share = clamp(burnShare(), 0, 1);
-    shells.push({ x0: BASE_X, y0: BASE_Y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg: damage * (1 - share), r: fireballRadius(), burnDps: damage * share / Math.max(0.1, burnS()) });
+    const shape = fireballShape(tier), share = clamp(shape.burnShare, 0, 1);
+    shells.push({ x0: BASE_X, y0: BASE_Y, x1: ahead.x, y1: ahead.y, t: 0, flight, dmg: damage * (1 - share), r: shape.radius, burnS: shape.burnS, burnDps: damage * share / Math.max(0.1, shape.burnS) });
     cue('fireball');
   }
   /** Where the slow field starts on lane 0 (each road is covered from the same share of its length). */
@@ -943,12 +924,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     let p = pad ?? -1;
     if (p < 0) p = recommendation()?.pad ?? PAD_ORDER().find((i) => i < BASE_PAD && !towers[i]) ?? PAD_ORDER()[0];
     workshop = { pad: p, row: p < BASE_PAD && !towers[p] ? suggestTower(p) : 0, idle: 0 };
-    workshopRevision++; inputEpoch++; cancelHolds();
+    workshopRevision++; inputEpoch++; 
     cue('uiOpen');
   }
   function closeWorkshop() {
     if (!workshop) return;
-    workshop = null; workshopRevision++; inputEpoch++; cancelHolds(); cue('uiClose');
+    workshop = null; workshopRevision++; inputEpoch++;  cue('uiClose');
   }
   function workshopAct(row?: number) {
     if (!workshop) return;
@@ -986,21 +967,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     return ok;
   }
-  function cancelRail() {
-    railPointers.clear(); zDown = false; zHold = 0; zDumped = false;
-    railBlocked = true;
-  }
-  function cancelBoost() { boostPointers.clear(); boostBlocked = true; }
-  function cancelHolds() { cancelRail(); cancelBoost(); }
-  function boostAvailable() {
-    return phase === 'run' && !workshop && weapon === 'rail' &&
-      enemies.some(e => !e.dead && e.boss && !e.boss.pending && (e.boss.telegraph || e.boss.exposed));
-  }
-  /** Rail boss sprint window without the hold-Up ERG push: the rider sprints freely in sim mode. */
-  function railSprintFree() { return boostAvailable() && !bossView()?.sprintBoost; }
   function useAction(id: ActionId) {
     if (phase !== 'run' || workshop) return;
-    if (id === 'rail') { fireRail(1); return; }
+    if (id === 'rail') return;
     if (!isReady(cooldowns[id]) || !isUnlocked(id, stars())) return;
     if (id === 'overcharge') {
       if (!towers.some(Boolean) || grid <= 0 || !enemies.some(e => !e.dead)) return;
@@ -1145,7 +1114,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (garageT >= garageAutostart()) garageAct(garageRows()[0], false);
   }
   function resetCombat() {
-    cancelHolds(); inputEpoch++; workshopRevision++; discardEdges = true;
+     inputEpoch++; workshopRevision++; discardEdges = true;
     overchargeLeft = 0; slowLeft = 0; lastSprint = false; currentRefill = 1;
     Object.assign(cooldowns.overcharge, startCooldown(0));
     Object.assign(cooldowns.slow, startCooldown(0));
@@ -1164,10 +1133,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     enemies = []; spawned.length = 0; shells = []; burns = []; fireballT = 0; schedule = []; fx = []; towers.fill(null);
     workshop = null; banner = null;
     weapon = 'gatling'; swapLeft = 0; swapTotal = 1; aim = 0; targetId = 0;
-    revAcc = 0; railCharges = 0; railProgress = 0; railCharging = false;
-    zDown = false; zHold = 0; zDumped = false;
+    revAcc = 0; railBank = 0; gearLevel = 0; gearRelief = 1;
+    tier = clampTier(typeof opts?.tier === 'number' ? opts.tier : startTier());
     surge = null; effort = null; spin = null; overclock = 0;
-    flaming = false; flamePower = 0; grid = 0; overdrive = false; laserId = 0;
+    flaming = false; flamePower = 0; grid = 0; overdrive = false;
     wavesSurvived = 0; runSurges = 0; runCallsWon = 0; runSpotless = 0; waveElapsed = 0; lull = 0; miniTimer = 2;
     baseHurt = 99;
     resetCombat();
@@ -1250,8 +1219,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (p('b')) commands.push(hadWorkshop ? { type: 'close', epoch } : { type: 'action', id: 'overcharge', epoch });
     if (p('y')) commands.push({ type: 'action', id: 'slow', epoch });
     if (p('down') && !hadWorkshop) commands.push({ type: 'pad', pad: -1, epoch });
+    // Shifters (either hood) and the touch stepper pick the intensity tier; the gearbox follows.
+    let shift = (['shiftUpL', 'shiftUpR'] as const).filter(p).length - (['shiftDnL', 'shiftDnR'] as const).filter(p).length;
     let menuHandled = hadWorkshop, purchased = false;
     for (const a of commands) {
+      if (a.type === 'tierUp' || a.type === 'tierDown') { if (a.epoch == null || a.epoch === inputEpoch) shift += a.type === 'tierUp' ? 1 : -1; continue; }
       if (a.type === 'bail') { endRun('bail'); return; }
       if (a.epoch != null && a.epoch !== inputEpoch) continue;
       if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= BASE_PAD) {
@@ -1267,7 +1239,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         menuHandled = true; purchased = true;
       } else if (a.type === 'construct' && !workshop && !purchased) {
         purchased = true; openWorkshop(); menuHandled = true;
-      } else if (a.type === 'railCancel' || a.type === 'inputCancel') { cancelRail(); menuHandled = true; }
+      } else if (a.type === 'inputCancel') menuHandled = true;
+    }
+    if (opts?.tier === 'auto' || (opts?.tier == null && autopilot)) shift = riderTier(bike.ftpFraction, ratedFtp) - tier;
+    if (shift) {
+      const next = clampTier(tier + shift);
+      if (next !== tier) { tier = next; cue('select'); ctx.emit({ type: 'tierChanged', data: { tier } }); }
     }
     // Navigation consumes the D-pad while the shared construction menu is open.
     if (hadWorkshop && workshop) {
@@ -1305,33 +1282,13 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (bike.sprinting && !lastSprint && sprintCompletes()) { completeCooldown(cooldowns.overcharge); completeCooldown(cooldowns.slow); }
     lastSprint = bike.sprinting;
 
-    if (!inp.held.has('z') && !p('z')) railBlocked = false;
-    if (!inp.held.has('up')) boostBlocked = false;
     if (!menuHandled && !workshop) {
       const used = new Set<ActionId>();
       for (const a of commands) {
         if (a.epoch != null && a.epoch !== inputEpoch) continue;
-        const id = a.type === 'rail' ? 'rail' : a.id;
-        if ((a.type === 'action' || a.type === 'rail') && (id === 'rail' || id === 'overcharge' || id === 'slow') && !used.has(id)) {
-          useAction(id); used.add(id);
-        } else if (a.type === 'railDown' && Number.isInteger(a.pointer) && !railBlocked) {
-          railPointers.add(a.pointer as number);
-          if (!zDown) { zDown = true; zHold = 0; zDumped = false; }
-        } else if (a.type === 'railUp' && Number.isInteger(a.pointer)) railPointers.delete(a.pointer as number);
-        else if (a.type === 'boostDown' && Number.isInteger(a.pointer) && boostAvailable()) boostPointers.add(a.pointer as number);
-        else if (a.type === 'boostUp' && Number.isInteger(a.pointer)) boostPointers.delete(a.pointer as number);
-      }
-      if (p('z') && !railBlocked && !zDown) { zDown = true; zHold = 0; zDumped = false; }
-      if (zDown && (railPointers.size > 0 || inp.held.has('z'))) {
-        zHold += dt;
-        if (!zDumped && zHold >= railDumpHold()) { zDumped = true; fireRail(railCharges); }
-      }
-      if (zDown && railPointers.size === 0 && !inp.held.has('z')) {
-        if (!zDumped) fireRail(1);
-        zDown = false; zHold = 0;
+        if (a.type === 'action' && (a.id === 'overcharge' || a.id === 'slow') && !used.has(a.id)) { useAction(a.id); used.add(a.id); }
       }
       if (opts?.actionBot && lull <= 0) {
-        if (railCharges >= railCap() && enemies.some(e => !e.dead && e.dist < 75)) fireRail(railCharges);
         if (overchargeLeft <= 0 && enemies.filter(e => !e.dead).length >= 6) useAction('overcharge');
         if (slowLeft <= 0 && enemies.some(e => !e.dead && e.d / e.len > 0.65)) useAction('slow');
       }
@@ -1339,11 +1296,16 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (swapLeft > 0) swapLeft = Math.max(0, swapLeft - dt);
     weaponSeconds[weapon] += dt;
     // learn how hard this trainer's brake is from the watts the rider makes at the level we set
-    if (weapon === 'flame' && bike.trainerMode === 'resistance') {
-      fireSteadyS = Math.abs(fireLevel - fireLevelPrev) < 1.5 ? fireSteadyS + dt : 0;
-      if (fireSteadyS === 0) fireLevelPrev = fireLevel;
-      if (canObserve(fireLevel, bike.cadence3s, bike.ftpFraction, fireSteadyS)) fireK = observeK(fireK, fireK0(), fireLevel, bike.cadence3s, bike.ftpFraction, dt, fireTuning());
-    } else fireSteadyS = 0;
+    if (bike.trainerMode === 'resistance') {
+      gearSteadyS = Math.abs(gearLevel - gearLevelPrev) < 1.5 ? gearSteadyS + dt : 0;
+      if (gearSteadyS === 0) gearLevelPrev = gearLevel;
+      if (gearRelief >= 0.999 && canObserve(gearLevel, bike.cadence3s, bike.ftpFraction, gearSteadyS)) gearK = observeK(gearK, gearK0(), gearLevel, bike.cadence3s, bike.ftpFraction, dt, gearTuning());
+    } else gearSteadyS = 0;
+    // spiral guard: a bogged-down rider gets the brake eased until they spin back up
+    const relief = gearReliefRpm(), floor = gearReliefFloor();
+    if (relief <= 0) gearRelief = 1;
+    else if (bike.cadence3s >= 15 && bike.cadence3s < relief) gearRelief = Math.max(floor, gearRelief - dt * 0.5);
+    else if (bike.cadence3s >= relief + 10) gearRelief = Math.min(1, gearRelief + dt * (1 - floor) / 8);
 
     // --- dynamo: grid power, overdrive, rail charge
     grid = clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
@@ -1358,12 +1320,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (overdrive && !wasOd) { cue('overdrive'); ctx.emit({ type: 'overdrive' }); }
     // The opening lasts a few seconds and the boss often dies before it; a sprint that lands inside it is the answer.
     if (overdrive) for (const e of enemies) if (!e.dead && e.boss?.exposed) { exposedSprinted = true; exposedBossIds.add(e.id); }
-    railCharging = bike.ftpFraction >= railMinFtp() * targetK() && railCharges < railCap();
-    if (bike.ftpFraction >= railMinFtp() * targetK()) {
-      railProgress += (dt / railPeriod()) * Math.min(1.5, bike.ftpFraction / 0.95);
-      if (railProgress >= 1) {
-        if (railCharges < railCap()) { railCharges++; railProgress -= 1; cue('railReady'); } else railProgress = 0;
-      }
+    // the Railgun banks watts while mounted; a pulse costs the tier's rated watts for railPulseS
+    if (weapon === 'rail' && bike.cadence3s >= 15) {
+      const was = railBank < railCost();
+      railBank = Math.min(railCost(), railBank + bike.ftpFraction * dt);
+      if (was && railBank >= railCost()) cue('railReady');
     }
 
     updateEffort(dt);
@@ -1378,41 +1339,49 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
 
     updateBosses(dt);
-    if (!boostAvailable()) { boostPointers.clear(); boostBlocked = inp.held.has('up'); }
 
     // --- firing
     flaming = false; flamePower = 0;
     const ready = swapLeft <= 0;
     const revs = bike.crankRevs - lastRevs; lastRevs = bike.crankRevs;
     if (weapon === 'gatling' && ready) {
+      // cadence sets the rate (crank revs per pellet); the tier sets pellet size: damage, pierce and splash
       revAcc += Math.max(0, revs);
       let shots = 0;
-      const perShot = gatlingRevs() / (overclock > 0 ? 2 : 1);
+      const perShot = gatlingRevs() / (overclock > 0 ? 2 : 1), shape = gatlingShape(tier);
+      const dmg = gatlingDmg() * shape.dmg * effortK() * odMult();
       while (revAcc >= perShot && shots < 12) {
         revAcc -= perShot; shots++;
         const e = nearestInCone(aim, 0.1, turretRange());
         const end = e ? { x: e.x, y: e.y } : { x: BASE_X + Math.sin(aim) * 110, y: BASE_Y - Math.cos(aim) * 110 };
-        if (e) hit(e, gatlingDmg() * odMult() * weaponPower(), 'blue');
+        if (e) {
+          hit(e, dmg, 'blue');
+          // a big pellet carries on through small aliens behind the first, and bursts on impact
+          if (shape.pierce > 1) {
+            const live = enemies.filter((o) => !o.dead && o !== e && !KINDS[o.kind].heavy && o.dist > e.dist);
+            for (const i of beamHits(live.map((o) => ({ x: o.x, y: o.y, r: radiusOf(o) })), BASE_X, BASE_Y, aim, 1.2, turretRange(), shape.pierce - 1)) hit(live[i], dmg * 0.7, 'blue');
+          }
+          if (shape.splash > 0) for (const o of enemies) if (!o.dead && o !== e && Math.hypot(o.x - e.x, o.y - e.y) <= shape.splash + radiusOf(o)) hit(o, dmg * 0.5, 'blue');
+        }
         addFx({ kind: 'tracer', life: 0.1, x0: BASE_X + Math.sin(aim) * 7 * geo.deckScale, y0: BASE_Y - Math.cos(aim) * 7 * geo.deckScale, x1: end.x, y1: end.y, hit: !!e });
       }
       if (shots) cue('shoot');
     } else if (weapon === 'flame' && ready && bike.power3s > 5) {
-      // Watts set each fireball's damage; it lobs on a steady beat at whatever it's aiming at on the road.
+      // Watts set each fireball's damage, cadence its beat, the tier its size and how long the ground burns.
       flaming = true;
       flamePower = clamp(bike.power3s / (ctx.profile.ftp || 200), 0, 1.5);
       fireballT -= dt;
       if (fireballT <= 0 && tgt && tgt.route < 0 && angDiff(tgt.angle, aim) < 0.25) {
-        fireballT = fireballPeriod();
-        lobFireball(tgt, bike.power3s * flameDpw() * odMult() * weaponPower() * fireballPeriod());
+        const period = fireballPeriodAt(fireballPeriod(), bike.cadence3s, gearRefRpm());
+        fireballT = period;
+        lobFireball(tgt, bike.power3s * flameDpw() * odMult() * Math.min(1, effortK()) * period);
       }
     }
     updateFireballs(dt);
 
-    laserId = 0;
-    if (weapon === 'rail' && ready && bike.cadence3s > 15) {
-      const e = nearestInCone(aim, 0.06, turretRange());
-      if (e) { laserId = e.id; hit(e, railLaserDps() * Math.min(1.5, bike.ftpFraction / weaponDemand()) * odMult() * weaponPower() * dt, 'purple'); }
-    }
+    // the Railgun fires a slow pulse once it has banked enough, along the aim at whatever is lined up
+    railCooldown = Math.max(0, railCooldown - dt);
+    if (weapon === 'rail' && ready && railCooldown <= 0 && tgt && angDiff(tgt.angle, aim) < 0.08 && tgt.dist <= turretRange() + radiusOf(tgt)) fireRail();
 
     updateTowers(dt);
 
@@ -1454,7 +1423,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route); }
     }
     if (spawned.length) { enemies.push(...spawned); spawned.length = 0; }
-    trainerSync();
+    trainerSync(dt);
 
     // --- waves
     // a work wave ends when the field is clear (after waveMinS), or at waveMaxS; the easy wave runs its full length
@@ -1495,7 +1464,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     ctx.debug('baseHp', Math.round(baseHp));
     ctx.debug('scrap', scrap);
     ctx.debug('grid', +grid.toFixed(2));
-    ctx.debug('railCharges', railCharges);
+    for (const w of WEAPONS) ctx.debug(`dealt_${w}`, Math.round(dealtW[w]));
+    ctx.debug('tier', tier); ctx.debug('gearLevel', +gearLevel.toFixed(1)); ctx.debug('gearK', +gearK.toFixed(4)); ctx.debug('railBank', +(railBank / Math.max(1e-6, railCost())).toFixed(2));
     ctx.debug('enemies', enemies.length);
   }
 
@@ -1511,28 +1481,22 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function bankKills() { const k = kills.blue + kills.red + kills.purple + kills.gold; save.totals.kills += k - killsBanked; killsBanked = k; }
 
   // ---------- views ----------
-  /** Shifters are always gears (they only change the trainer in the Gatling's sim mode). */
-  const gearHints = (): ControlHint[] => [{ button: 'shiftersL', label: 'Gear', active: gearsLive() }, { button: 'shiftersR', label: 'Gear', active: gearsLive() }];
-  const gearsLive = () => phase !== 'run' || weapon === 'gatling' || railSprintFree();
-  const heldTouch = (kind: 'rail' | 'boost'): ControlHint['touch'] => ({
-    down: { type: `${kind}Down`, epoch: inputEpoch }, up: { type: `${kind}Up`, epoch: inputEpoch }, cancel: { type: `${kind}Cancel`, epoch: inputEpoch },
-  });
+  /** In a run the shifters pick the intensity tier (the game is the gearbox); in the menus they are plain gears. */
+  const gearHints = (run = phase === 'run'): ControlHint[] => run
+    ? [{ button: 'shiftersL', label: `Tier ${roman(tier)}`, shortLabel: 'Tier' }, { button: 'shiftersR', label: `Tier ${roman(tier)}`, shortLabel: 'Tier' }]
+    : [{ button: 'shiftersL', label: 'Gear', active: true }, { button: 'shiftersR', label: 'Gear', active: true }];
   const playControls = (): ControlHint[] => {
     return [
       { button: 'a', label: 'Construction', shortLabel: 'Build', touch: { down: { type: 'construct', epoch: inputEpoch } } },
-      ...actionViews().map((a): ControlHint => ({ button: a.id === 'rail' ? 'z' : a.id === 'overcharge' ? 'b' : 'y',
-        label: a.id === 'rail' ? `Rail ${railCharges}/${railCap()} (hold = all)` : `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`,
-        shortLabel: a.id === 'rail' ? `Rail ${railCharges}/${railCap()}` : a.id === 'overcharge' ? 'Boost' : 'Slow', active: a.usable,
-        ...(a.id === 'rail' ? { indicator: { label: `Rail ${railCharges}/${railCap()}` } } : {}),
+      ...actionViews().map((a): ControlHint => ({ button: a.id === 'overcharge' ? 'b' : 'y',
+        label: `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`,
+        shortLabel: a.id === 'overcharge' ? 'Boost' : 'Slow', active: a.usable,
         ...(a.locked ? { indicator: { label: a.id === 'overcharge' ? 'Overcharge' : 'Slow field', status: `${UNLOCKS.find((u) => u.id === a.id)!.stars}★`, ready: false } } : {}),
-        ...(a.id === 'rail' ? { touch: heldTouch('rail') } : {}),
         cooldown: { fill: a.fill, ready: a.ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } })),
       { button: 'left', label: 'Target closer', shortLabel: 'Closer' }, { button: 'right', label: 'Target further', shortLabel: 'Further' },
-      { button: 'up', label: boostAvailable() ? 'Sprint boost (hold)' : 'Release target lock', shortLabel: boostAvailable() ? 'Boost' : 'Release',
-        ...(boostAvailable() ? { active: bossView()?.sprintBoost, touch: heldTouch('boost'),
-          indicator: { label: 'Sprint boost', status: bossView()?.sprintBoost ? 'Hold ↑' : 'Not yet', ready: !!bossView()?.sprintBoost } } : {}) },
+      { button: 'up', label: 'Release target lock', shortLabel: 'Release' },
       { button: 'down', label: 'Workshop', shortLabel: 'Shop' },
-      { button: 'paddles', label: 'Step target', shortLabel: 'Target' }, ...gearHints(),
+      { button: 'paddles', label: 'Step target', shortLabel: 'Target' }, ...gearHints(true),
     ];
   };
   function enemyView(e: Enemy): EnemyView {
@@ -1555,9 +1519,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       return { id: e.id, name: BOSS_NAME[color], phase: b.phase + 1, phaseCount: b.phases, color, weapon: ELEMENT_WEAPON[color],
         pending: b.pending, countdownS: b.countdownS, charge: b.chargeS > 0 ? 'on' : b.warnS > 0 ? 'warn' : null,
         shield: b.shieldMax > 0 ? b.shield / b.shieldMax : 0,
-        telegraph: b.telegraph && !b.pending, exposed: b.exposed && !b.pending, windowLeftS: b.windowLeftS,
-        sprintBoost: weapon === 'rail' && !b.pending && (b.telegraph || b.exposed) && !workshop &&
-          ((!boostBlocked && ctx.input().held.has('up')) || boostPointers.size > 0) };
+        telegraph: b.telegraph && !b.pending, exposed: b.exposed && !b.pending, windowLeftS: b.windowLeftS, sprintBoost: false };
     }
     if (plan?.boss && (lull > 0 || schedule.some((s) => s.kind === 'boss'))) {
       return { id: 0, name: BOSS_NAME[plan.brood], phase: 1, phaseCount: Math.max(2, Math.min(3, Math.round(bossPhases()))), color: plan.brood,
@@ -1589,7 +1551,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return [
       { id: 'overcharge', fill: readyFrac(cooldowns.overcharge), ready: isReady(cooldowns.overcharge), usable: live && grid > 0 && towers.some(Boolean) && enemies.some(e => !e.dead) && isUnlocked('overcharge', stars()), activeS: overchargeLeft, ...(isUnlocked('overcharge', stars()) ? {} : { locked: true }) },
       { id: 'slow', fill: readyFrac(cooldowns.slow), ready: isReady(cooldowns.slow), usable: live && enemies.some(e => !e.dead) && isUnlocked('slow', stars()), activeS: slowLeft, ...(isUnlocked('slow', stars()) ? {} : { locked: true }) },
-      { id: 'rail', fill: railCharges >= railCap() ? 1 : Math.min(1, railProgress), ready: railCharges > 0, usable: live && railCharges > 0, activeS: 0 },
     ];
   }
 
@@ -1603,17 +1564,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       if (a?.type === 'padOrder') { padsTurned = (a as { turned?: unknown }).turned === true; return; }
       if (a?.type === 'loadGate') { loadGate = true; return; }
       if (a?.type === 'levelReady') { loading = false; return; }
-      if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; cancelHolds(); return; }
-      if (a?.type === 'boostCancel') {
-        cancelBoost();
-        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].type === 'boostDown' || pending[i].type === 'boostUp') pending.splice(i, 1);
-        return;
-      }
-      if (a?.type === 'railCancel') {
-        cancelRail();
-        for (let i = pending.length - 1; i >= 0; i--) if (pending[i].type === 'railDown' || pending[i].type === 'railUp') pending.splice(i, 1);
-        return;
-      }
+      if (a?.type === 'inputCancel') { pending.length = 0; inputEpoch++; discardEdges = true; return; }
       if (a && typeof a.type === 'string' && pending.length < 32) pending.push({ ...a } as { type: string });
     },
     hud(): GameHud {
@@ -1626,18 +1577,19 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const boss = bossView();
       const call = effort && (effort.state === 'active' || effort.state === 'announced') ? effort : null;
       const powerZone = (ftp: number): 1 | 2 | 3 | 4 | 5 => ftp < 0.56 ? 1 : ftp < 0.76 ? 2 : ftp < 0.91 ? 3 : ftp < 1.06 ? 4 : 5;
+      const want = suggestedTier();
       const tz: GameHud['targetZone'] = boss?.exposed || boss?.telegraph
         ? { min: 5, max: 5, label: boss.exposed ? 'Exposed · sprint!' : `Sprint in ${Math.ceil(boss.windowLeftS)}s`, source: 'power' }
         : call ? { min: powerZone(call.minFtp), max: powerZone(call.maxFtp), label: call.state === 'announced' ? `${call.kind} in ${Math.ceil(call.countdownS)}s` : effortCue(call), source: 'power' }
-        : lull > rampS() ? { min: 1, max: 2, label: `Recover · ${WEAPON_NAME[weapon]} next` }
-        : plan?.role === 'easy' ? { min: 1, max: 2, label: 'Easy wave · recover' }
-        : weapon === 'rail' ? { min: 3, max: 4, label: 'Charge rail', source: 'power' } : { min: 2, max: 3, label: 'Power the towers' };
+        : lull > rampS() ? { min: 1, max: 2, label: `Recover · tier ${roman(want)} · ${WEAPON_NAME[weapon]} next` }
+        : plan?.role === 'easy' ? { min: 1, max: 2, label: `Easy wave · tier ${roman(want)}` }
+        : { min: powerZone(ratedFtp(want)), max: powerZone(ratedFtp(want)), label: `Tier ${roman(want)} · you're on ${roman(tier)}`, source: 'power' };
       const targetCadence: GameHud['targetCadence'] = call?.kind === 'spin' ? { min: call.minRpm, label: 'Spin up the Gatling' } : call?.kind === 'grind' ? { min: call.minRpm, max: call.maxRpm, label: 'Grind at power' } : undefined;
       if (workshop) return {
-        gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'b'],
+        gears: false, targetZone: tz, targetCadence, touchControls: ['a', 'b'],
         controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade', shortLabel: 'Build' }, { button: 'b', label: 'Close' }, ...gearHints()],
       };
-      return { gears: gearsLive(), targetZone: tz, targetCadence, touchControls: ['a', 'down', ...(boostAvailable() ? ['up' as const] : []), 'b', 'y', 'z'], controls: playControls() };
+      return { gears: false, targetZone: tz, targetCadence, touchControls: ['a', 'down', 'b', 'y'], controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -1653,8 +1605,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         baseHp, baseMaxHp, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, targetId, lock: lock(),
-        railCharges, railMaxCharges: railCap(), railProgress: Math.min(1, railProgress), railCharging, zHold, railDumpHoldS: railDumpHold(),
-        flaming, flameRange: flameRange(), flamePower, laserId,
+        tier, tierCount: 5, suggestedTier: suggestedTier(), tierFtp: ratedFtp(tier),
+        railCharges: railBank >= railCost() ? 1 : 0, railMaxCharges: 1, railProgress: Math.min(1, railBank / Math.max(1e-6, railCost())), railCharging: weapon === 'rail' && railBank < railCost(), zHold: 0, railDumpHoldS: 0.5,
+        flaming, flameRange: flameRange(), flamePower, laserId: 0,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap,
         actions: actionViews(), refill: currentRefill, slowFrom: slowLeft > 0 ? slowStart() : -1, inputEpoch,
@@ -1667,7 +1620,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         over: false, bestWave: bestWave(), kills: { ...kills },
         hooks: { storm: false, surge: effort?.state === 'active',
           cadence: effort && (effort.state === 'active' || effort.state === 'announced') ? effort.kind === 'grind' ? (effort.minRpm + effort.maxRpm) / 2 : effort.kind === 'spin' ? effort.minRpm + 3 : undefined : undefined,
-          powerFtp: effort?.targetFtp ?? weaponDemand(), shielded: bossView()?.exposed ?? false },
+          powerFtp: effort?.targetFtp ?? ratedFtp(suggestedTier()), shielded: bossView()?.exposed ?? false },
       };
     },
     summary() {

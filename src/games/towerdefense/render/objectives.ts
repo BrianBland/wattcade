@@ -20,9 +20,9 @@ export function rideObjective(s: TdSnapshot): RideObjective {
     const phase = `${b.name} · phase ${b.phase}/${b.phaseCount}`;
     if (b.pending) return { label: phase, title: `Phase ${b.phase + 1} next`, target: `${BOSS_ESCALATION[b.color]} · same weapon`, detail: `Starts in ${seconds(b.countdownS)}` };
     if (b.exposed) return { label: phase, title: 'Exposed', target: 'Push now · damage window open', detail: `${seconds(b.windowLeftS)} remaining` };
-    if (b.telegraph) return { label: phase, title: 'Prepare to sprint', target: b.weapon === 'rail' ? 'Hold ▲ for the ERG push' : 'Sprint for ×1.5 damage', detail: `Opening in ${seconds(b.windowLeftS)}` };
+    if (b.telegraph) return { label: phase, title: 'Prepare to sprint', target: 'Shift to tier V · sprint for ×1.5 damage', detail: `Opening in ${seconds(b.windowLeftS)}` };
     if (b.charge) return { label: phase, title: b.charge === 'warn' ? 'Ram charge incoming' : 'Ram charging', target: 'Burn it down before it reaches the base', detail: s.brood.cue };
-    if (b.shield > 0) return { label: phase, title: 'Shield plates up', target: 'Fire rail charges to break them', detail: `${Math.round(b.shield * 100)}% plates left · openings break them fast` };
+    if (b.shield > 0) return { label: phase, title: 'Shield plates up', target: 'Railgun pulses at tier IV+ crack them', detail: `${Math.round(b.shield * 100)}% plates left · openings break them fast` };
     return { label: phase, title: 'Hold your rhythm', target: s.brood.cue, detail: 'Watch for the next sprint window' };
   }
   const e = s.effort;

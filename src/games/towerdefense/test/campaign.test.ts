@@ -78,8 +78,9 @@ describe('playing a level', () => {
 
   it('intensity scales work-wave trainer targets and alien HP; recovery stays put', () => {
     const grade = (intensity: string) => {
-      const run = runHeadless({ game: module, script: 'z2', minutes: 8, seed: 4, simOpts: { autopilot: true, play: { campaign: 0 }, intensity } });
-      const grades = run.mixerCommands.map(c => (c as { gradePct?: number }).gradePct).filter((g): g is number => typeof g === 'number');
+      // the same tier asks for more watts (a stiffer gearbox) on Hard and fewer on Easy
+      const run = runHeadless({ game: module, script: 'z2', minutes: 8, seed: 4, simOpts: { autopilot: true, play: { campaign: 0 }, intensity, tier: 3 } });
+      const grades = run.mixerCommands.map(c => (c as { levelPct?: number }).levelPct).filter((g): g is number => typeof g === 'number');
       const { s } = play({ play: { campaign: 0 }, intensity });
       let hp = 0;
       for (let i = 0; i < 30 * 60 * 6; i += 30) { s.step(30); for (const e of (s.sim.snapshot() as TdSnapshot).enemies) if (e.kind === 'mini') hp = Math.max(hp, e.maxHp); }
@@ -91,7 +92,7 @@ describe('playing a level', () => {
   }, 120_000);
 
   it('a ride well under target leaks instead of collapsing, and stars count every hit the base took', () => {
-    // zone 2 on Hard is ~60 % of the Fireball target: it used to fire nothing and fall in wave 3
+    // zone 2 on Hard sits under every tier's rated power: it leaks (fewer stars) instead of falling
     const r = runHeadless({ game: module, script: 'z2', minutes: 25, seed: 3, simOpts: { autopilot: true, actionBot: true, play: { campaign: 0 }, intensity: 'hard', stars: 99 } });
     const end = r.events.findIndex(e => e.type === 'levelCleared' || e.type === 'levelFailed');
     expect(r.events[end].type).toBe('levelCleared');

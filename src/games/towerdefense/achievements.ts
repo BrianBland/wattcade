@@ -26,7 +26,7 @@ function ironLungs(r: Readonly<SessionRecord>): boolean {
 }
 
 export const achievements: AchievementDef[] = [
-  tally(G, 'tripleVolleys', r => countEvents(r, 'railFired', d => Number(d.charges) === 3))({ id: 'triple_rail', name: 'Triple Rail', desc: 'Fire 25 fully charged rail volleys', bonusXp: 40, goal: 25, unit: ' volleys' }),
+  tally(G, 'tripleVolleys', r => countEvents(r, 'railFired', d => Number(d.hits) >= 3))({ id: 'triple_rail', name: 'Triple Rail', desc: 'Hit 3 aliens with one Railgun pulse 25 times', bonusXp: 40, goal: 25, unit: ' pulses' }),
   levels({ id: 'td_levels5', name: 'Holding the Line', desc: 'Clear 5 Dynamo Defense campaign levels', bonusXp: 40, goal: 5, unit: ' levels' }),
   levels({ id: 'td_levels15', name: 'Fortress', desc: 'Clear 15 campaign levels', bonusXp: 80, goal: 15, unit: ' levels' }),
   levels({ id: 'td_levels30', name: 'Unbreakable', desc: 'Clear all 30 campaign levels', bonusXp: 150, goal: 30, unit: ' levels' }),

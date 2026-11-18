@@ -68,21 +68,23 @@ function toGatlingWave(s: ReturnType<typeof session>) {
 }
 
 describe('input map (#120)', () => {
-  it('all four shifters change gear on both hoods and trigger no game action', () => {
+  it('all four shifters step the intensity tier on both hoods and trigger no game action', () => {
     const pad = new Pad(), ref = session(new Pad()), s = session(pad);
     toGatlingWave(s); toGatlingWave(ref);
-    const g0 = s.mixer.gear;
+    const g0 = s.mixer.gear, t0 = snap(s).tier;
     for (const b of ['shiftUpL', 'shiftUpR', 'shiftUpR', 'shiftDnL'] as Button[]) { pad.press(b); s.step(1); ref.step(1); }
-    expect(s.mixer.gear).toBe(g0 + 2);
+    expect(snap(s).tier).toBe(t0 + 2);
+    expect(s.mixer.gear).toBe(g0); // the game is the gearbox: no trainer gear moves in a run
     const a = snap(s), b = snap(ref);
-    expect(a.lock).toBe(b.lock); expect(a.workshop).toBe(null); expect(a.railCharges).toBe(b.railCharges); expect(a.weapon).toBe(b.weapon);
+    expect(a.lock).toBe(b.lock); expect(a.workshop).toBe(null); expect(a.weapon).toBe(b.weapon);
     const hud = s.sim.hud!();
-    expect(hud.gears).toBe(true);
+    expect(hud.gears).toBe(false);
     const hints = new Map(hud.controls!.map((c) => [c.button, c.label]));
-    expect(hints.get('shiftersL')).toBe('Gear'); expect(hints.get('shiftersR')).toBe('Gear');
+    expect(hints.get('shiftersL')).toBe('Tier III'); expect(hints.get('shiftersR')).toBe('Tier III');
     expect(hints.get('paddles')).toBe('Step target');
     expect(hints.get('a')).toBe('Construction');
     expect(hints.get('b')).toBe('Overcharge'); expect(hints.get('y')).toBe('Slow field');
+    expect(hints.has('z')).toBe(false);
   });
   it('A opens construction and B closes without firing a combat action', () => {
     const pad = new Pad(), ref = session(new Pad()), s = session(pad);
@@ -141,7 +143,7 @@ describe('input map (#120)', () => {
       if (v.lull > 0 || !v.enemies.length) continue;
       engaged.set(v.wave, (engaged.get(v.wave) ?? false) || v.targetId > 0);
     }
-    expect(engaged.size).toBeGreaterThanOrEqual(7);
+    expect(engaged.size).toBeGreaterThanOrEqual(6); // a rider who never shifts stays in tier I
     expect([...engaged].filter(([, e]) => !e)).toEqual([]);
     expect(Number(s.sim.summary().turretKills)).toBeGreaterThan(100);
   });

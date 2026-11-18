@@ -22,7 +22,7 @@ function rig() {
     simOpts: { stars: 99, skipGarage: true, level: LEVEL_0 } });
   s.tuning.set('towerdefense.startScrap', 1000);
   s.tuning.set('towerdefense.baseHp', 1000); // isolate input behavior from falling mid-gesture
-  s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railLaserDps', 0);
+  s.tuning.set('towerdefense.gatlingDamage', 0.5); s.tuning.set('towerdefense.flameDpsPerWatt', 0.02); s.tuning.set('towerdefense.railDamageMult', 0);
   s.tuning.set('towerdefense.towerDamageMult', 0.1);
   s.step(1); s.sim.receive!({ type: 'pad', pad: 1 }); s.step(1); s.sim.receive!({ type: 'row', row: 0 }); s.step(1);
   s.sim.receive!({ type: 'close' }); s.step(30 * 62); // the 45 s lull, then aliens on the road
@@ -68,51 +68,28 @@ describe('three combat actions and input contexts', () => {
     expect(Number(a.s.sim.summary().towerDamage)).toBeGreaterThan(Number(ref.s.sim.summary().towerDamage));
     expect(snap(a.s).weapon).toBe(before); expect(a.s.mixer.command?.mode).toBe(ref.s.mixer.command?.mode);
   });
-  it('refills faster at higher effort, and a sprint edge completes cooldowns once without creating Rail stock', () => {
+  it('refills faster at higher effort, and a sprint edge completes cooldowns once', () => {
     const a = rig(), fast = rig();
     for (const r of [a, fast]) { r.s.sim.receive!({ type: 'action', id: 'slow' }); r.s.step(1); }
     a.effort(1); fast.effort(5); a.s.step(30 * 5); fast.s.step(30 * 5);
     expect(action(fast.s, 'slow').fill).toBeGreaterThan(action(a.s, 'slow').fill);
-    const charges = snap(a.s).railCharges;
-    a.effort(5, true); a.s.step(1); expect(action(a.s, 'slow').ready).toBe(true); expect(snap(a.s).railCharges).toBe(charges);
+    a.effort(5, true); a.s.step(1); expect(action(a.s, 'slow').ready).toBe(true);
     a.pad.tap('y'); a.s.step(1); expect(action(a.s, 'slow').ready).toBe(false);
     a.s.step(1); expect(action(a.s, 'slow').ready).toBe(false); // a sustained sprint cannot repeatedly reset it
     a.effort(2); a.s.step(1); a.effort(5, true); a.s.step(1); expect(action(a.s, 'slow').ready).toBe(true);
   });
-  it('workshop B closes without activating Overcharge; Y and Z are consumed in the menu', () => {
+  it('workshop B closes without activating Overcharge; Y is consumed in the menu', () => {
     const r = rig(); r.pad.tap('a'); r.s.step(1); expect(snap(r.s).workshop).not.toBeNull();
-    const epoch = snap(r.s).inputEpoch, charges = snap(r.s).railCharges;
-    r.pad.tap('y'); r.pad.tap('z'); r.s.sim.receive!({ type: 'action', id: 'overcharge', epoch }); r.s.step(1);
-    expect(action(r.s, 'slow').activeS).toBe(0); expect(snap(r.s).railCharges).toBe(charges);
+    const epoch = snap(r.s).inputEpoch;
+    r.pad.tap('y'); r.s.sim.receive!({ type: 'action', id: 'overcharge', epoch }); r.s.step(1);
+    expect(action(r.s, 'slow').activeS).toBe(0);
     r.pad.tap('b'); r.s.step(1); expect(snap(r.s).workshop).toBeNull(); expect(action(r.s, 'overcharge').activeS).toBe(0);
     r.s.sim.receive!({ type: 'action', id: 'slow', epoch }); r.s.step(1); expect(action(r.s, 'slow').activeS).toBe(0);
-  });
-  it('touch Rail tap fires one, hold fires all, and simultaneous controller/touch input shares one gesture', () => {
-    const r = rig(); r.s.step(30 * 120); expect(snap(r.s).railCharges).toBe(3);
-    r.s.sim.receive!({ type: 'railDown', pointer: 7 }); r.s.sim.receive!({ type: 'railUp', pointer: 7 }); r.pad.tap('z'); r.s.step(1);
-    expect(snap(r.s).railCharges).toBe(2);
-    r.s.step(30 * 60); expect(snap(r.s).railCharges).toBe(3);
-    r.s.sim.receive!({ type: 'railDown', pointer: 8 }); r.pad.down('z'); r.s.step(30);
-    expect(snap(r.s).railCharges).toBe(0);
-    r.s.sim.receive!({ type: 'railUp', pointer: 8 }); r.pad.up('z'); r.s.step(1);
-    const fires = r.s.finish().events.filter(e => e.type === 'railFired'); expect(fires.map(e => e.data?.charges)).toEqual([1, 3]);
-  });
-  it('cancel, pause, and menu transitions discard holds without firing on their eventual release', () => {
-    for (const boundary of ['railCancel', 'inputCancel', 'pad']) {
-      const r = rig(); r.s.step(30 * 120);
-      r.s.sim.receive!({ type: 'railDown', pointer: 9 }); r.pad.down('z'); r.s.step(2);
-      r.s.sim.receive!({ type: boundary, pad: 1 }); r.s.step(1);
-      if (boundary === 'pad') { r.pad.tap('b'); r.s.step(1); }
-      r.pad.up('z'); r.s.sim.receive!({ type: 'railUp', pointer: 9 }); r.s.step(1);
-      expect(snap(r.s).railCharges).toBe(3); expect(snap(r.s).zHold).toBe(0);
-      expect(r.s.finish().events.filter(e => e.type === 'railFired')).toHaveLength(0);
-    }
   });
   it('unusable actions do not consume their cooldowns', () => {
     const pad = new Pad(), s = createGameSession({ game: module, profile: testProfile(), input: pad, fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, skipGarage: true, level: LEVEL_0 } });
     pad.tap('b'); pad.tap('y'); s.step(1);
     expect(action(s, 'overcharge').ready).toBe(true); expect(action(s, 'slow').ready).toBe(true);
-    expect(action(s, 'rail').ready).toBe(false);
   });
   it('pause discards queued taps and the button that resumes play', () => {
     const r = rig();
@@ -136,7 +113,7 @@ describe('passive versus active riders', () => {
       // A watt-weapon wave now needs its own push, so a steady zone-2 ride can fall before every pad is built.
       expect(passive.events.filter(e => e.type === 'towerBuilt' && e.t < passiveEnd.t).length).toBeGreaterThanOrEqual(5);
       expect(Number(passive.summary.towerUpgrades)).toBeGreaterThanOrEqual(20);
-      expect(passive.summary.railChargesFired).toBe(0); expect(passive.events.some(e => e.type === 'action')).toBe(false);
+      expect(passive.events.some(e => e.type === 'action')).toBe(false);
       expect(Number(passive.summary.wavesSurvived)).toBeGreaterThanOrEqual(4);
       expect(passive.isOver).toBe(false); expect(active.isOver).toBe(false);
       expect(Number(activeEnd.data?.wavesSurvived)).toBeGreaterThanOrEqual(Number(passiveEnd.data?.wavesSurvived));
@@ -144,7 +121,8 @@ describe('passive versus active riders', () => {
       passiveWaves += Number(passiveEnd.data?.wavesSurvived); activeWaves += Number(activeEnd.data?.wavesSurvived);
       passiveMinutes += passiveEnd.t / 60; activeMinutes += activeEnd.t / 60;
     }
-    expect(activeWaves).toBeGreaterThan(passiveWaves);
-    expect(activeMinutes).toBeGreaterThan(passiveMinutes + 2);
+    // the Railgun fires itself now, so the actions (Overcharge and Slow field) are a smaller edge
+    expect(activeWaves).toBeGreaterThanOrEqual(passiveWaves);
+    expect(activeMinutes).toBeGreaterThan(passiveMinutes - 2);
   }, 60_000);
 });

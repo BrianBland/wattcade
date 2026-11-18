@@ -3,6 +3,9 @@ import type { TdSnapshot } from '../sim/types';
 
 export interface RideObjective { label: string; title: string; target: string; detail: string; progress?: number }
 const seconds = (n: number) => `${Math.ceil(Math.max(0, n))}s`;
+/** Time left while the wave is still sending; once it has sent everything, the enemies left to clear. */
+export const waveLeftText = (s: Pick<TdSnapshot, 'waveLeft' | 'waveMaxS' | 'waveElapsed'>) =>
+  s.waveLeft !== undefined ? `${s.waveLeft} left to clear` : `${seconds(s.waveMaxS - s.waveElapsed)} remaining`;
 const role = (r: string) => r === 'boss' ? 'Boss' : r === 'easy' ? 'Recovery' : 'Work wave';
 
 /** Read the same live effort/boss state as the sim; recovery always takes priority over stale calls. */
@@ -12,9 +15,9 @@ export function rideObjective(s: TdSnapshot): RideObjective {
   if (s.brood.countdownS > 0) return { label, title: 'Recover', target: 'Easy spin · catch your breath',
     detail: `${role(s.set.role)} starts in ${seconds(s.brood.countdownS)}` };
   if (s.set.warmup) return { label, title: 'Warm-up wave', target: 'Ride easy · build your first towers',
-    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
+    detail: `${waveLeftText(s)} · ${next}` };
   if (s.set.role === 'easy') return { label, title: 'Recovery wave', target: 'Ride easy · no called efforts',
-    detail: `${seconds(s.waveMaxS - s.waveElapsed)} remaining · ${next}` };
+    detail: `${waveLeftText(s)} · ${next}` };
   const b = s.boss;
   if (b) {
     const phase = `${b.name} · phase ${b.phase}/${b.phaseCount}`;

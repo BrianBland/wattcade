@@ -174,9 +174,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const hpScale2 = T.num('hpScaleQuad', 0.02, 0, 0.2, 0.001, 'extra HP per wave^2');
   const countScale = T.num('waveCountScale', 1, 0.3, 3, 0.1, 'heavy enemies per wave multiplier');
   const miniInterval = T.num('miniIntervalS', 1.6, 0.3, 6, 0.1);
-  const waveMin = T.num('waveMinS', 90, 5, 300, 1, 'a work wave lasts at least this long (the interval)');
+  const waveMin = T.num('waveMinS', 90, 5, 300, 1, 'a work wave\'s drone stream runs to this minus 40 s (the wave ends once everything it sent is dead); full fast-clear heal at or before this');
   const waveMax = T.num('waveMaxS', 150, 15, 400, 1, 'a work wave ends by this time even if aliens remain');
-  const easyWaveS = T.num('easyWaveS', 120, 10, 400, 5, 'the easy recovery wave that closes each set lasts this long');
+  const easyWaveS = T.num('easyWaveS', 120, 10, 400, 5, 'easy recovery wave: its drone stream runs to this minus 30 s and it ends once the field is clear (at the latest this plus 30 s)');
   const spawnWindow = T.num('heavySpawnWindowS', 75, 3, 240, 1);
   // levels (docs/towerdefense/LEVELS-DESIGN.md §1–2)
   const intensityEasy = T.num('intensityEasy', 0.8, 0.4, 1, 0.05, 'Easy intensity: work-wave trainer targets (grade, level, ERG) x this');
@@ -503,6 +503,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const p = planWave(dw(w), waveRng, { spawnWindowS: spawnWindow(), countScale: countScale(), brood, broodShare: broodShare(), swarmPack: swarmPack(), routes: geo.routes, role });
     return { ...p, wave: w };
   }
+  /** Seconds the wave's drone stream runs (it also runs while scheduled spawns remain). */
+  const streamS = () => plan.role === 'easy' ? easyWaveS() - 30 : waveMin() - 40;
+  /** The wave has nothing left to send: every scheduled spawn is out and its drone stream is over. */
+  const waveSent = () => schedule.length === 0 && waveElapsed >= streamS();
   /** Plans wave `wave` and opens its lull: the brood card counts down while the next weapon mounts and its trainer setting ramps in. */
   function startWave(fresh: boolean) {
     plan = fresh ? planFor(wave) : nextPlan;
@@ -1419,12 +1423,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     else {
       waveElapsed += dt;
-      // the drone stream runs until the wave has sent everything and waveMinS has passed, so the field can clear
-      const easy = plan.role === 'easy';
-      if (schedule.length || waveElapsed < (easy ? easyWaveS() - 30 : waveMin() - 40)) miniTimer -= dt;
+      // the drone stream runs until the wave has sent everything and its stream time has passed, so the field can clear
+      if (!waveSent()) miniTimer -= dt;
       if (miniTimer <= 0) {
         spawn('mini', -1);
-        miniTimer = (miniInterval() / (1 + 0.1 * (wave - 1))) * (0.7 + swarmRng() * 0.6) * (easy ? 2 : 1);
+        miniTimer = (miniInterval() / (1 + 0.1 * (wave - 1))) * (0.7 + swarmRng() * 0.6) * (plan.role === 'easy' ? 2 : 1);
       }
       while (schedule.length && schedule[0].at <= waveElapsed) { const s = schedule.shift()!; spawn(s.kind, s.route); }
     }
@@ -1432,11 +1435,12 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     trainerSync();
 
     // --- waves
-    // a work wave ends when the field is clear (after waveMinS), or at waveMaxS; the easy wave runs its full length
-    const fieldClear = enemies.length === 0 && schedule.length === 0 && escorts.length === 0;
+    // Any wave ends as soon as it has sent everything and every enemy in it is dead (owner, 2026-11-18), straight
+    // into the next lull. Otherwise a work or boss wave ends at waveMaxS, an easy wave 30 s after easyWaveS.
+    const fieldClear = waveSent() && enemies.length === 0 && escorts.length === 0;
     if (baseHp > 0 && lull <= 0) {
-      if (plan.role === 'easy') { if (waveElapsed >= easyWaveS() && (fieldClear || waveElapsed >= easyWaveS() + 30)) clearWave(false); }
-      else if ((waveElapsed >= waveMin() && fieldClear) || waveElapsed >= waveMax()) clearWave(waveElapsed < waveMax());
+      if (plan.role === 'easy') { if (fieldClear || waveElapsed >= easyWaveS() + 30) clearWave(false); }
+      else if (fieldClear || waveElapsed >= waveMax()) clearWave(waveElapsed < waveMax());
     }
 
     if (baseHp <= 0) { baseHp = 0; endRun('fell'); }
@@ -1618,6 +1622,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       return {
         t, level, phase, garage: phase === 'garage' ? garageView() : null, nextMaps: nextMaps(), loading: phase === 'run' && loading,
         wave, waveElapsed, waveMaxS: plan?.role === 'easy' ? easyWaveS() : waveMax(), wavesSurvived, lull,
+        waveLeft: phase === 'run' && plan && lull <= 0 && waveSent() ? enemies.filter((e) => !e.dead).length + escorts.length : undefined,
         forecast: nextPlan ? { wave: nextPlan.wave, boss: nextPlan.boss, role: nextPlan.role, counts: { ...nextPlan.counts } }
           : { wave: 1, boss: false, role: 'work', counts: { blue: 0, red: 0, purple: 0, gold: 0, prism: 0, air: 0 } },
         set: setView(wave),

@@ -265,6 +265,32 @@ describe('brood waves', () => {
     }
     expect(Object.fromEntries(seen)).toEqual({ first: 15, work: 45, easy: 25 });
   });
+  it('a wave ends as soon as it has sent everything and all its enemies are dead, straight into the next lull', () => {
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { autopilot: true, baseHp: 1000 } });
+    s.tuning.set('towerdefense.heavySpawnWindowS', 3); // everything out early: the drone stream sets the wave's earliest end
+    const ran = new Map<number, { role: string; elapsed: number; left: number[] }>();
+    for (let i = 0; i < 30 * 60 * 20 && ran.size < 6; i++) {
+      s.step(1);
+      const v = snap(s);
+      if (v.lull > 0) continue;
+      const r = ran.get(v.wave) ?? { role: v.set.role, elapsed: 0, left: [] };
+      r.elapsed = v.waveElapsed;
+      if (v.waveLeft !== undefined) r.left.push(v.waveLeft);
+      ran.set(v.wave, r);
+    }
+    const done = [...ran.entries()].slice(0, -1); // the last one may still be running
+    expect(done.map(([, r]) => r.role)).toContain('easy');
+    for (const [w, r] of done) {
+      // work: the stream runs to waveMinS - 40 = 50 s; easy: to easyWaveS - 30 = 90 s. Neither waits out its old floor.
+      const [from, floor] = r.role === 'easy' ? [90, 120] : [50, 90];
+      expect(r.elapsed, `wave ${w} (${r.role})`).toBeGreaterThanOrEqual(from - 0.1);
+      expect(r.elapsed, `wave ${w} (${r.role})`).toBeLessThan(floor);
+      expect(r.left.length, `wave ${w} shows what is left once sent`).toBeGreaterThan(0);
+    }
+    const evs = s.finish().events;
+    const cleared = evs.filter((e) => e.type === 'waveCleared'), announced = evs.filter((e) => e.type === 'broodAnnounced');
+    for (const c of cleared) expect(announced.some((a) => a.t === c.t && a.data?.wave === Number(c.data?.wave) + 1)).toBe(true);
+  });
   it('the next weapon\'s trainer setting eases in over the last rampS of the lull', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(30 * 2);

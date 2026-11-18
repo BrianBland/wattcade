@@ -104,6 +104,8 @@ export interface TdSnapshot {
   /** The map being played (same object for the whole session; the renderer derives its geometry from it). */
   level: TdLevel;
   wave: number; waveElapsed: number; waveMaxS: number; wavesSurvived: number; lull: number;
+  /** Once the wave has sent everything: enemies still alive (it ends when this reaches 0). Absent while it is still sending or in a lull. */
+  waveLeft?: number;
   forecast: { wave: number; boss: boolean; role: WaveRole; counts: WaveForecast };
   /** where the current wave sits in its set: three work waves, a boss, then an easy recovery wave */
   set: { set: number; pos: number; of: number; role: WaveRole; warmup: boolean };

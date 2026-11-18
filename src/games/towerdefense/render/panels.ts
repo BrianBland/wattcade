@@ -4,7 +4,7 @@ import { BOSS_ESCALATION } from '../sim/boss';
 import { WEAPONS, WEAPON_NAME, type Element } from '../sim/defs';
 import type { TdSnapshot } from '../sim/types';
 import type { Box, TdLayout } from './layout';
-import { constructionStatus, rideObjective } from './objectives';
+import { constructionStatus, rideObjective, waveLeftText } from './objectives';
 import { levelImage, levelSelectHtml, modesHtml, styleName, type ArtLookup } from './levelSelect';
 import type { TdLevel } from '../sim/level';
 import { THEME_CSS } from './theme';
@@ -263,7 +263,7 @@ export class TdHud {
     const run = s.phase === 'run' && !loading, bd = s.brood;
     for (const el of [this.status, this.current]) el.hidden = !run;
     const pct = (n: number) => `${Math.max(0, Math.min(100, n * 100))}%`;
-    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : `${Math.ceil(Math.max(0, s.waveMaxS - s.waveElapsed))}s remaining`}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
+    this.html(this.status, `<div class="td-stat"><b>WAVE ${s.wave}${s.run ? `<small>/${s.run.waves}</small>` : ''}</b><small>${s.lull > 0 ? 'Recovery' : waveLeftText(s)}</small><div class="bar"><i style="width:${pct(s.waveElapsed / s.waveMaxS)}"></i></div></div><div class="td-stat td-hp ${s.baseHp / s.baseMaxHp < .25 ? 'low' : ''}"><b>${Math.ceil(s.baseHp)}<small>/ ${s.baseMaxHp} BASE</small></b><div class="bar"><i style="width:${pct(s.baseHp / s.baseMaxHp)}"></i></div></div><div class="td-stat td-scrap"><b>${s.scrap}</b><small>Scrap</small></div>`);
     this.current.style.setProperty('--brood', color(bd.color));
     const incoming = bd.countdownS > 0;
     this.current.classList.toggle('incoming', incoming);

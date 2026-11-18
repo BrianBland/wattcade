@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
 import { TdHud } from '../render/panels';
+import { waveLeftText } from '../render/objectives';
 import { layout } from '../render/layout';
 import type { TdSnapshot } from '../sim/types';
 import { WEAPON_NAME } from '../sim/defs';
@@ -114,4 +115,9 @@ it('prioritizes boss phases and sprint windows, then recovery over stale effort 
   expect(card.hidden).toBe(true);
   draw({ ...s, workshop: { pad: 1, row: 0, rows: [], idleLeft: 10, revision: 1 } });
   expect(card.hidden).toBe(true);
+});
+
+it('the wave readout counts down while the wave sends, then shows the enemies left to clear', () => {
+  expect(waveLeftText({ waveMaxS: 150, waveElapsed: 40.2 })).toBe('110s remaining');
+  expect(waveLeftText({ waveMaxS: 150, waveElapsed: 80, waveLeft: 3 })).toBe('3 left to clear');
 });

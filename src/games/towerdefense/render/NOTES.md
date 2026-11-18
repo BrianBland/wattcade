@@ -6,7 +6,7 @@
 - Single road: `fieldView.ts` is the one world↔screen transform (uniform scale; landscape turned 90°, turret left). Sprites stay upright; aims add `view.rot`.
 - Ground: `td/environment/road/{portrait,landscape}.webp` via `PAINT_BOXES`; landscape falls back to the turned portrait painting, then vector ground.
 - DOM status/current-brood rows reserve space above the portrait field; landscape places status upper left, objective/crew in the middle and brood/forecast lower left above actual controls; field scale/position stay unchanged.
-- Fireballs lob from the outpost's manifest muzzle and leave burning ground; flyers pass over the fire.
+- Fireballs lob from the outpost's manifest muzzle and leave burning ground (`burnFx.ts`): cached scorch/coal/flame sprites, layered tongues over ground actors, embers/smoke, a 5 s cooling scar; flyers pass over the fire.
 - Flamethrower cones start at the tower's manifest muzzle, with particles and a short ground-only cone.
 - The hive mouth breathes in the incoming brood colour; brood-tinted splats remain independent of the painting.
 - Brood-tinted splats and curled husks remain for the wave, then fade; both are capped at 160 decals.

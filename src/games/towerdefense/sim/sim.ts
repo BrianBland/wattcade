@@ -1436,7 +1436,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (baseHp <= 0) { baseHp = 0; endRun('fell'); }
   }
 
+  /** effortK as of the last update, for the snapshot (which must not read the bike). */
+  let tierOutput = 1;
   function update(dt: Seconds) {
+    tierOutput = effortK();
     if (!started) {
       started = true; lastRevs = ctx.bike().crankRevs;
       const pl = opts?.play;
@@ -1605,7 +1608,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         baseHp, baseMaxHp, baseHurt,
         weapon, swapLeft, swapS: swapTotal,
         aimAngle: aim, targetId, lock: lock(),
-        tier, tierCount: 5, suggestedTier: suggestedTier(), tierFtp: ratedFtp(tier),
+        tier, tierCount: 5, suggestedTier: suggestedTier(), tierFtp: ratedFtp(tier), tierOutput,
         railCharges: railBank >= railCost() ? 1 : 0, railMaxCharges: 1, railProgress: Math.min(1, railBank / Math.max(1e-6, railCost())), railCharging: weapon === 'rail' && railBank < railCost(), zHold: 0, railDumpHoldS: 0.5,
         flaming, flameRange: flameRange(), flamePower, laserId: 0,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,

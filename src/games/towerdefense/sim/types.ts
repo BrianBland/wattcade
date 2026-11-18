@@ -120,6 +120,8 @@ export interface TdSnapshot {
   aimAngle: number; targetId: number; lock: { id: number; k: number } | null;
   /** Intensity tier I–V picked by the shifters, how many there are, the tier the flow calls for, and the current tier's rated ftpFraction. */
   tier: number; tierCount: number; suggestedTier: number; tierFtp: number;
+  /** How much of the current tier's rated output the rider is making (0 … the effort cap): what scales the shots. */
+  tierOutput: number;
   /** Railgun pulse: 1 when banked, progress toward the next pulse (railMaxCharges is 1). */
   railCharges: number; railMaxCharges: number; railProgress: number; railCharging: boolean; zHold: number; railDumpHoldS: number;
   /** Flamer lobbing fireballs; `flameRange` = how far it can lob */

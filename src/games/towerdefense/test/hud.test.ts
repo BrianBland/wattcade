@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { createGameSession, NullInput, testProfile } from '../../../core';
 import { module } from '../index';
-import { TdHud } from '../render/panels';
+import { TdHud, tierHtml } from '../render/panels';
 import { layout } from '../render/layout';
 import type { TdSnapshot } from '../sim/types';
 import { WEAPON_NAME } from '../sim/defs';
@@ -116,4 +116,20 @@ it('prioritizes boss phases and sprint windows, then recovery over stale effort 
   expect(card.hidden).toBe(true);
   draw({ ...s, workshop: { pad: 1, row: 0, rows: [], idleLeft: 10, revision: 1 } });
   expect(card.hidden).toBe(true);
+});
+
+it('the gearbox lights tiers up to the current one, marks the called tier and cues the key toward it', () => {
+  const { snapshot } = hudFixture();
+  const el = document.createElement('div');
+  el.innerHTML = tierHtml({ ...snapshot, tier: 2, suggestedTier: 4, tierFtp: 0.6, tierOutput: 0.5 });
+  expect(el.querySelector('.td-slots b')?.textContent).toBe('II');
+  expect([...el.querySelectorAll('.td-slots .lit')].map((n) => n.textContent)).toEqual(['I']);
+  expect(el.querySelector('.td-slots .call')?.textContent).toBe('IV');
+  expect(el.querySelector('[data-step="1"]')!.classList.contains('cue')).toBe(true);
+  expect(el.querySelector('[data-step="-1"]')!.classList.contains('cue')).toBe(false);
+  expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(true);
+  expect(el.querySelector('.td-tier-read')?.textContent).toBe('60%FTP');
+  el.innerHTML = tierHtml({ ...snapshot, tier: 4, suggestedTier: 4, tierFtp: 0.9, tierOutput: 1.1 });
+  expect(el.querySelectorAll('.cue')).toHaveLength(0);
+  expect(el.querySelector('.td-load')!.classList.contains('short')).toBe(false);
 });

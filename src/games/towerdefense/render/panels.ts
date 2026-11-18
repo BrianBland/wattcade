@@ -33,19 +33,36 @@ const CSS = `
 .td-hp .bar > i { background:var(--lime); }
 .td-hp.low .bar > i { background:var(--bad); }
 .td-scrap { text-align:right; color:var(--warn); }
-.td-current { display:flex; gap:16px; justify-content:space-between; align-items:center; }
-.td-current b { color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; }
+.td-current { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); grid-template-areas:"brood tier next"; gap:6px 14px; align-items:center; }
+.td-brood { grid-area:brood; min-width:0; }
+.td-brood b { display:block; color:var(--brood); font-size:clamp(16px,2vw,22px); font-style:italic; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .td-current small { display:block; margin-top:3px; }
-.td-tier { display:flex; align-items:center; gap:6px; pointer-events:auto; }
-.td-tier-pips { display:flex; gap:3px; align-items:flex-end; }
-.td-tier-pips i { width:7px; border:1px solid var(--glass-line); background:transparent; }
-.td-tier-pips i.on { background:var(--brood); border-color:var(--brood); }
-.td-tier-pips i.want { box-shadow:0 0 0 2px var(--neon); }
-.td-tier b { font-size:15px; min-width:2.6em; text-align:center; font-style:normal; }
-.td-tier button { width:36px; height:36px; border-radius:50%; border:1px solid var(--glass-line); background:rgba(8,10,18,.62); color:var(--fg); font:700 18px/1 system-ui, sans-serif; cursor:pointer; padding:0; }
+.td-tier { grid-area:tier; display:flex; align-items:center; gap:8px; min-width:0; pointer-events:auto; }
+.td-gate { flex:1 1 auto; width:150px; min-width:110px; display:flex; flex-direction:column; gap:3px; padding:3px 4px 4px; background:var(--td-well); border:1px solid #000; border-radius:3px; box-shadow:inset 0 2px 5px #000, 0 1px 0 #ffdca014; }
+.td-slots { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:3px; align-items:end; }
+.td-slots > * { position:relative; display:grid; place-items:center; height:16px; font-size:10px; font-weight:800; font-style:normal; line-height:1; letter-spacing:.03em; color:var(--td-mute); border:1px solid #000; border-radius:2px;
+  background:linear-gradient(180deg, #ffffff08, transparent 60%), var(--td-plateLo); box-shadow:inset 0 1px 0 #ffdca00f; transition:background .2s, height .2s; }
+.td-slots > :nth-child(2) { height:18px; } .td-slots > :nth-child(3) { height:19px; } .td-slots > :nth-child(4) { height:21px; } .td-slots > :nth-child(5) { height:23px; }
+.td-slots > .lit { color:#2a1c0a; background:linear-gradient(180deg, #c9964a, #8f6327); box-shadow:inset 0 1px 0 #ffdb8e55; }
+.td-slots > b { color:var(--td-ink); font-size:12px; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff9, 0 0 10px #e8b24aaa; text-shadow:none; }
+.td-slots > .call { outline:1px solid var(--td-copper); outline-offset:1px; box-shadow:0 0 8px #c8743c88; }
+.td-slots > span.call:not(.lit) { color:#e59a62; }
+.td-load { position:relative; height:4px; border-radius:1px; background:#000; overflow:hidden; }
+.td-load > i { display:block; height:100%; background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass)); box-shadow:0 0 6px #e8b24a88; transition:width .3s; }
+.td-load.short > i { background:linear-gradient(180deg, #ff8a5c, var(--td-copper)); box-shadow:none; }
+.td-key { flex:none; width:34px; height:34px; display:grid; place-items:center; padding:0 0 2px; border:1px solid #000; border-radius:4px; cursor:pointer; color:var(--td-brass); font:900 20px/1 system-ui, sans-serif;
+  background:linear-gradient(180deg, #ffffff10, transparent 45%), var(--td-plateHi); box-shadow:inset 0 1px 0 #ffdca026, inset 0 -2px 0 #0007, 0 2px 0 #000; }
+.td-key:active { transform:translateY(1px); box-shadow:inset 0 2px 4px #000; }
+.td-key.cue { color:var(--td-ink); background:linear-gradient(180deg, var(--td-brassHi), var(--td-brass) 50%, var(--td-brassLo)); box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 12px #e8b24a99; animation:td-cue 1.2s ease-in-out infinite; }
+@keyframes td-cue { 50% { box-shadow:inset 0 1px 0 #fff8, inset 0 -2px 0 #0005, 0 2px 0 #000, 0 0 18px 2px #ffdb8ecc; } }
+.td-tier-read { flex:none; display:flex; flex-direction:column; align-items:flex-end; gap:2px; line-height:1; }
+.td-tier-read strong { font-size:17px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--td-text); text-shadow:0 2px 0 #000; }
+.td-hud .td-tier-read small { margin:0; font-size:9px; letter-spacing:.12em; color:var(--td-dim); }
+.td-next { grid-area:next; min-width:0; justify-self:end; }
 .td-next { color:var(--dim); font-size:15px; text-align:right; }
+.td-next > span { display:block; }
 .td-hud .td-current.incoming { padding:8px 16px; }
-.td-current.incoming .td-brood b { font-size:28px; line-height:1; }
+.td-current.incoming .td-brood b { font-size:26px; line-height:1.05; }
 .td-count { display:block; color:var(--brood); font-size:28px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
 .td-event { display:flex; flex-direction:column; justify-content:center; gap:8px; text-align:center; text-shadow:0 2px 4px var(--bg); overflow:auto; }
 .td-event b { font-size:clamp(24px,3.4vw,38px); color:var(--neon); text-transform:uppercase; }
@@ -143,19 +160,24 @@ const CSS = `
 .td-tile.next:not(.selected) { border-color:#ffd24a; }
 .td-tile.locked .td-map { opacity:.35; filter:grayscale(.8); }
 .td-tile.locked i { color:var(--dim); }
-.td-hud[data-narrow=true] .td-current { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
-.td-hud[data-narrow=true] .td-next { text-align:left; font-size:14px; }
 .td-hud[data-narrow=true] .td-stat small { display:block; margin:0; font-size:10px; letter-spacing:0; }
 .td-hud[data-narrow=true] .td-status { gap:12px; }
 .td-hud[data-narrow=true] .panel { padding:8px 12px; }
-.td-hud[data-narrow=true] .td-current.incoming { flex-direction:row; align-items:center; }
-.td-hud[data-narrow=true] .td-current.incoming .td-brood b { font-size:18px; }
-.td-hud[data-narrow=true] .td-current.incoming .td-next { text-align:right; }
+.td-hud[data-narrow=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier"; align-content:center; gap:5px 10px; }
+.td-hud[data-narrow=true] .td-current .td-brood b { font-size:18px; }
+.td-hud[data-narrow=true] .td-next { font-size:13px; }
+.td-hud[data-narrow=true] .td-count { font-size:22px; }
 .td-hud[data-column=true] .td-status { grid-template-columns:1fr; gap:8px; align-content:center; }
 .td-hud[data-column=true] .td-scrap { text-align:left; }
-.td-hud[data-column=true] .td-current, .td-hud[data-column=true] .td-current.incoming { flex-direction:column; align-items:flex-start; justify-content:center; gap:6px; }
-.td-hud[data-column=true] .td-next { text-align:left; font-size:14px; }
-.td-hud[data-column=true] .td-current b, .td-hud[data-column=true] .td-current.incoming .td-brood b { font-size:20px; line-height:1.15; }
+.td-hud[data-column=true] .td-current { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:"brood next" "tier tier" "detail detail"; align-content:center; gap:8px 10px; }
+.td-hud[data-column=true] .td-next { display:contents; }
+.td-hud[data-column=true] .td-next > strong { grid-area:next; justify-self:end; }
+.td-hud[data-column=true] .td-next > small, .td-hud[data-column=true] .td-next > span { grid-area:detail; margin:0; text-align:left; font-size:13px; }
+.td-hud[data-column=true] .td-next > small { font-size:11px; }
+.td-hud[data-column=true] .td-current .td-brood b { font-size:21px; line-height:1.1; }
+.td-hud[data-column=true] .td-slots > * { height:18px; font-size:11px; } .td-hud[data-column=true] .td-slots > :nth-child(2) { height:20px; } .td-hud[data-column=true] .td-slots > :nth-child(3) { height:22px; }
+.td-hud[data-column=true] .td-slots > :nth-child(4) { height:24px; } .td-hud[data-column=true] .td-slots > :nth-child(5) { height:26px; } .td-hud[data-column=true] .td-slots > b { font-size:13px; }
+.td-hud[data-column=true] .td-key { width:38px; height:38px; }
 .td-hud[data-column=true] .td-stat b { font-size:22px; }
 .td-hud[data-compact=true] .td-status, .td-hud[data-compact=true] .td-current { overflow:auto; pointer-events:auto; overscroll-behavior:contain; padding:6px 10px; }
 .td-hud[data-compact=true] .td-status { grid-template-columns:1fr auto; gap:4px 8px; }
@@ -163,8 +185,9 @@ const CSS = `
 .td-hud[data-compact=true] .td-stat b { font-size:18px; }
 .td-hud[data-compact=true] .td-stat small, .td-hud[data-compact=true] .td-current small { font-size:10px; letter-spacing:0; }
 .td-hud[data-compact=true] .td-stat small { margin-left:4px; }
-.td-hud[data-compact=true] .td-current, .td-hud[data-compact=true] .td-current.incoming { gap:4px; }
-.td-hud[data-compact=true] .td-current b, .td-hud[data-compact=true] .td-current.incoming .td-brood b { font-size:16px; }
+.td-hud[data-compact=true] .td-current { gap:4px 8px; }
+.td-hud[data-compact=true] .td-tier-read { display:none; }
+.td-hud[data-compact=true] .td-current .td-brood b { font-size:16px; }
 .td-hud[data-compact=true] .td-current .td-count { font-size:24px; }
 `;
 
@@ -172,11 +195,21 @@ const color = (e: Element) => `var(--td-${e})`;
 // Snapshot strings are game-owned, but garage descriptions may contain a profile-derived value.
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Intensity tier: five pips (lit to the current tier, ringed at the one the flow calls for), the numeral, and touch steppers. */
+/**
+ * The gearbox: five stepped slots I–V (lit up to the current tier, copper-marked at the tier the flow calls for),
+ * an output strip (how much of the tier's rated power the rider is making: what fills the shots), the rated %FTP,
+ * and touch keys. The key toward the called tier glows.
+ */
 export function tierHtml(s: TdSnapshot): string {
-  const pips = Array.from({ length: s.tierCount }, (_, i) => `<i class="${i < s.tier ? 'on' : ''}${i + 1 === s.suggestedTier ? ' want' : ''}" style="height:${7 + i * 3}px"></i>`).join('');
-  const name = roman(s.tier);
-  return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}"><button data-command="tier" data-step="-1" aria-label="Tier down">−</button><span class="td-tier-pips">${pips}</span><b>${name}</b><button data-command="tier" data-step="1" aria-label="Tier up">+</button></div>`;
+  const name = roman(s.tier), call = s.suggestedTier, out = Math.max(0, s.tierOutput ?? 1);
+  const slots = Array.from({ length: s.tierCount }, (_, i) => {
+    const t = i + 1, cls = `${t < s.tier ? 'lit' : ''}${t === call ? ' call' : ''}`.trim(), attr = cls ? ` class="${cls}"` : '';
+    return t === s.tier ? `<b${attr}>${roman(t)}</b>` : `<span${attr}>${roman(t)}</span>`;
+  }).join('');
+  const key = (step: -1 | 1) => `<button class="td-key${(step > 0 ? call > s.tier : call < s.tier) ? ' cue' : ''}" data-command="tier" data-step="${step}" aria-label="Tier ${step > 0 ? 'up' : 'down'}">${step > 0 ? '+' : '−'}</button>`;
+  return `<div class="td-tier" aria-label="Intensity tier ${name} of ${s.tierCount}${call !== s.tier ? `, ride calls for ${roman(call)}` : ''}">${key(-1)}`
+    + `<div class="td-gate"><div class="td-slots">${slots}</div><div class="td-load${out < 0.85 ? ' short' : ''}" title="Output"><i style="width:${(Math.min(1, out) * 100).toFixed(0)}%"></i></div></div>`
+    + `${key(1)}<div class="td-tier-read"><strong>${Math.round(s.tierFtp * 100)}%</strong><small>FTP</small></div></div>`;
 }
 
 export class TdHud {
@@ -285,8 +318,8 @@ export class TdHud {
     this.current.classList.toggle('incoming', incoming);
     const forecast = incoming
       ? `<strong class="td-count">${Math.ceil(bd.countdownS)}s</strong><small>W${bd.wave} · ${s.set.warmup ? 'Warm-up' : s.set.role === 'boss' ? 'Boss' : s.set.role === 'easy' ? 'Easy' : `Set ${s.set.set} · ${s.set.pos}/${s.set.of}`} · ${s.set.role === 'easy' ? 'Recovery' : bd.countdownS <= bd.rampS ? 'Ramping' : 'Recover'}</small>`
-      : s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood';
-    this.html(this.current, `<div class="td-brood"><b>${bd.color} brood · ${WEAPON_NAME[bd.weapon]}</b><small>${esc(bd.setting)}</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
+      : `<span>${s.nextBrood ? `Next: ${s.nextBrood.color.toUpperCase()} BROOD → ${WEAPON_NAME[s.nextBrood.weapon]}` : 'Final brood'}</span>`;
+    this.html(this.current, `<div class="td-brood"><b>${WEAPON_NAME[bd.weapon]}</b><small>${bd.color} brood</small></div>${run ? tierHtml(s) : ''}<div class="td-next">${forecast}</div>`);
     const e = s.effort, boss = s.boss, bn = s.banner;
     let headline = '', sub = '';
     if (boss) {

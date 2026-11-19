@@ -1,9 +1,9 @@
-# Cloudcup
+# Scrapjet Rally
 
-Design discussion in BrianBland/wattcade#293. The arcade picker includes Windmill Isles as a work-in-progress game. Choose a pace with either paddle or the arrow controls, then press A to launch.
+Design discussion #293 and playable PR #294. The internal cloudcup ID preserves arcade history and best finishes from the first prototype.
 
-Hold either paddle to accelerate sideways. Release to hold the current line. Steering duration works even with binary input. Gold chevrons boost speed for three seconds. A mint diamond stores one gust. A fires at the nearest unfinished opponent ahead. Nearby opponents mark the rider’s current position 65 course units before a squall hits. Purple lightning can be dodged. A hit slows the skiff and requests a temporary SIM grade through the mixer.
+Magnet Mile is a three-lap salvage-yard race. Hold a paddle to steer, release to keep your line. Choose Rookie, Hotshot or Outlaw on the grid. Their nominal rival pace matches 55%, 78% and 102% of rider FTP before pilot variation, items and boosts.
 
-The three classes set rival effort relative to FTP. At the default tuning their nominal pace matches 55%, 78%, or 102% FTP before pilot differences, items and boosts. The player's speed uses the square root of their three-second power fraction. The three-lap race covers 3240 game units.
+Gold strips give three seconds of boost. A goo drum arms one lob. Press A with a rival ahead to launch it. The blob arcs for 0.8 seconds before halving the target's pace for four seconds. Rival spills mark a patch of road 65 game units ahead. Hitting a spill costs speed and adds a temporary grade through the resistance mixer. Two seconds at 110% FTP purge the goo early. Otherwise it wears off after eight seconds. The threshold, duration and grade are tunable.
 
-The sim owns finish order, impacts and class selection. Canvas projects skiffs, pickups and road markings through the same depth function. All art is procedural. The first hardware playtest should check short steering corrections, warning distance and grade pulse feel.
+The deterministic sim owns projectile timing and recovery. Canvas layers a painted panorama, a projected grit-textured road, distinct rider sprites and world-space splat effects. The environment and character paintings were created with ImageGen. The road, pickup art, shadows and animation are procedural. A physical ride is still needed to tune steering and recovery effort.

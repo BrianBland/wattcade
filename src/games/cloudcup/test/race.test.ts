@@ -59,7 +59,7 @@ it('raises opponent pace across all three classes', () => {
   expect(distances[0]).toBeLessThan(distances[1]);
   expect(distances[1]).toBeLessThan(distances[2]);
 });
-it('awards pickups across the track, fires a held gust and completes three laps', () => {
+it('awards pickups across the track, lobs goo and completes three laps', () => {
   const r = race();
   r.press('right');
   r.press('a');
@@ -72,25 +72,30 @@ it('awards pickups across the track, fires a held gust and completes three laps'
   while (r.snap().next === 1 && r.snap().time < 60) r.session.step(1);
   expect(r.snap().item).toBe(true);
   r.press('a');
-  expect(r.snap().gusts).toBe(1);
+  expect(r.snap().lobs).toBe(1);
+  const target = r.snap().shot!.target;
+  expect(r.snap().rivals[target].slow).toBe(0);
+  r.session.step(25);
+  expect(r.snap().shot).toBeNull();
+  expect(r.snap().rivals[target].slow).toBeGreaterThan(3);
   r.session.step(30 * 360);
   expect(r.snap().at).toBe(FINISH);
-  expect(r.session.sim.summary()).toMatchObject({ Laps: 3, Class: 'Gale' });
+  expect(r.session.sim.summary()).toMatchObject({ Laps: 3, Class: 'Outlaw' });
 });
 it('telegraphs a patch of road and applies a temporary grade only on a hit', () => {
   for (const dodge of [false, true]) {
     const r = race();
     r.press('a');
-    while (!r.snap().squall && r.snap().time < 20) r.session.step(1);
-    expect(r.snap().squall!.at - r.snap().at).toBeGreaterThan(60);
+    while (!r.snap().slick && r.snap().time < 20) r.session.step(1);
+    expect(r.snap().slick!.at - r.snap().at).toBeGreaterThan(60);
     if (dodge) r.paddle(-1, 20);
-    while (r.snap().squall && r.snap().time < 30) r.session.step(1);
+    while (r.snap().slick && r.snap().time < 30) r.session.step(1);
     expect(r.snap().hits).toBe(dodge ? 0 : 1);
-    const pulse = () => r.session.mixer.debug().activeEffects.find((e) => e.id === 'squall');
+    const pulse = () => r.session.mixer.debug().activeEffects.find((e) => e.id === 'slick');
     if (dodge) expect(pulse()).toBeUndefined();
     else expect(pulse()).toMatchObject({ mode: 'sim', gradePct: 2.5 });
     expect(r.snap().slow > 0).toBe(!dodge);
-    r.session.step(100);
+    r.session.step(245);
     expect(r.snap().slow).toBe(0);
     expect(pulse()).toBeUndefined();
   }
@@ -109,4 +114,21 @@ it('gives two riders at the same FTP fraction the same pace', () => {
     return rider.snap().at;
   };
   expect(distance(150)).toBeCloseTo(distance(300), 0);
+});
+
+it('purges the sticky load early after a sustained FTP-scaled sprint', () => {
+  const r = race(160);
+  r.press('a');
+  while (!r.snap().hits && r.snap().time < 25) r.session.step(1);
+  expect(r.snap().slow).toBeGreaterThan(7);
+  const start = r.snap().time;
+  const bike = r.session.fakeBike!;
+  bike.useScript(null);
+  bike.manual = { cadence: 100, power: 220, hr: null };
+  while (r.snap().purge === 0 && r.snap().time - start < 7) r.session.step(1);
+  expect(r.snap().purge).toBeGreaterThan(0);
+  r.session.step(61);
+  expect(r.snap().slow).toBe(0);
+  expect(r.snap().time - start).toBeLessThan(7);
+  expect(r.session.mixer.debug().activeEffects.find((e) => e.id === 'slick')).toBeUndefined();
 });

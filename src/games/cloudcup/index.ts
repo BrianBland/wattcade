@@ -4,10 +4,10 @@ import { drawCard } from './art';
 
 export const module: GameModule = {
   id: 'cloudcup',
-  title: 'Cloudcup',
+  title: 'Scrapjet Rally',
   accent: '#ffad57',
   blurb:
-    'Fly the Windmill Isles. Hold either paddle to steer, catch gold boost strips and scoop up gusts to blow past three rival skiffs.',
+    'Thread a hoverjet through the Magnet Mile scrapyard. Grab goo drums, splat the rider ahead and sprint to clear gummed-up jets.',
   tags: ['intervals'],
   drawCard,
   createSim: (ctx) => createRace(ctx),

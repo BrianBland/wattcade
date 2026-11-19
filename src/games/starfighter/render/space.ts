@@ -5,6 +5,7 @@ import { isOpenBiome } from '../sim/segments';
 import { biomeParams, mulberry, riverX, cityRoads, seaIslands, type BiomeParams, type SeaIsland } from './terrain';
 import { curtain, dithered, foliage, lawn, magma, plated, sceneryMusic, sceneryPose, sceneryWave, strata, windowed } from './shading';
 import { clearFade, inView, viewFade } from './fade';
+import { bendHalf, laneAt, type LaneIsland } from './lanes';
 import { cloudTexture, kit } from './kit';
 /** Horizon haze per biome (carrier sky, city dusk, canyon warm dust, ocean sea mist, polar white, volcanic smoke). */
 export const HAZE = ['#8ec9ef', '#2a3a5c', '#c89a86', '#6fa9cf', '#dce7f0', '#3a1d17'];
@@ -312,6 +313,8 @@ export function createSpace(scene: THREE.Scene) {
   /** Route-aware city: blocks near the path ahead stay low so the ship never flies through a tower. */
   let routePts:number[]=[];
   const nearRoute=(wx:number,wz:number,r:number)=>{for(let i=0;i<routePts.length;i+=2){const dx=wx-routePts[i],dz=wz-routePts[i+1];if(dx*dx+dz*dz<r*r)return true;}return false;};
+  /** Widest island bend a lane ship needs (largest island radius 95 + half a carrier + margin). */
+  const BEND_MAX=95+35+20;
   const routeDist=(wx:number,wz:number)=>{let m=Infinity;for(let i=0;i<routePts.length;i+=2){const dx=wx-routePts[i],dz=wz-routePts[i+1];m=Math.min(m,dx*dx+dz*dz);}return Math.sqrt(m);};
   const wrap=(v:number,m:number)=>((v%m)+m)%m;
   /** The camera's ground footprint: narrow under the ship, widening toward the haze (with a margin for tall objects). */
@@ -592,8 +595,8 @@ export function createSpace(scene: THREE.Scene) {
           let j0=1e9,j1=-1e9,u0=1e9,u1=-1e9;for(const [wx,wz] of corners){const o=wx*nx+wz*nz,u=wx*dx+wz*dz;j0=Math.min(j0,o);j1=Math.max(j1,o);u0=Math.min(u0,u);u1=Math.max(u1,u);}
           for(let j=Math.floor(j0/spacing);j<=Math.ceil(j1/spacing);j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
             const r=mulberry(P.seed^(j*7919)^(kk*104729)^0x1ce);if(r()<0.5)continue;
-            const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o,f=clearFade(routeDist(wx,wz),20);if(f<0.01)continue;
-            const yaw=Math.atan2(-dx,-dz),g=f*viewFadeW(wx,wz);if(!addW(icebreakers,wx,-6,wz,1,1,1,yaw,f))continue;addW(shade,wx+4,-5.96,wz+5,10*g,0.02,40*g,yaw);addW(wakes,wx-dx*17,-5.9,wz-dz*17,9*g,1,20*g,yaw);
+            const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o; // sails on under the flight path
+            const yaw=Math.atan2(-dx,-dz),g=viewFadeW(wx,wz);if(!addW(icebreakers,wx,-6,wz,1,1,1,yaw))continue;addW(shade,wx+4,-5.96,wz+5,10*g,0.02,40*g,yaw);addW(wakes,wx-dx*17,-5.9,wz-dz*17,9*g,1,20*g,yaw);
           }
         }
         // Islands in view (shared with the ground shader through uIsl, nearest 16 to the ship).
@@ -606,19 +609,25 @@ export function createSpace(scene: THREE.Scene) {
         const islandGap=(wx:number,wz:number)=>{let m=Infinity;for(const I of islAll)m=Math.min(m,Math.hypot(wx-I.x,wz-I.z)-I.r);return m;};
         if(b===3)for(const fam of [0,1,2]){
           // The fleet sails world lanes (two warship headings and a merchant lane per seed); ships are indexed along lanes
-          // so none wraps in view. Near the route ahead or an island a hull dissolves (over ~45 units) rather than
-          // vanishing, so none pops in or out mid-sea, and none sails through an island.
+          // so none wraps in view. Ships never vanish mid-sea: they steer around islands (render/lanes.ts) and sail on
+          // under the flight path. Only carriers, whose mast reaches flying height, dissolve near the route ahead.
           const merchant=fam===2,ang=(P.seed%628)/100+fam*2.1,dx=-Math.sin(ang),dz=-Math.cos(ang),nx=-dz,nz=dx,spacing=merchant?150:170,gap=merchant?300:360,speed=merchant?4.8:3.5+fam;
           let j0=1e9,j1=-1e9,u0=1e9,u1=-1e9;for(const [wx,wz] of corners){const o=wx*nx+wz*nz,u=wx*dx+wz*dz;j0=Math.min(j0,o);j1=Math.max(j1,o);u0=Math.min(u0,u);u1=Math.max(u1,u);}
-          for(let j=Math.floor(j0/spacing);j<=Math.ceil(j1/spacing);j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
+          for(let j=Math.floor(j0/spacing)-1;j<=Math.ceil(j1/spacing)+1;j++)for(let kk=Math.floor((u0-speed*time)/gap)-1;kk<=Math.ceil((u1-speed*time)/gap);kk++){
+            // (one extra lane each side: an island bend can carry a ship ~150 sideways into view)
             const r=mulberry(P.seed^(j*7919)^(kk*104729)^(fam*31));if(r()<(merchant?0.3:0.35))continue;
             const u0k=r(),kind=merchant?(u0k<0.45?3:u0k<0.8?4:5):(u0k<0.18?0:r()<0.5?1:2),len=[70,48,28,62,66,9][kind],beam=[12,8.5,4.6,10.5,11,2.6][kind];
-            const u=kk*gap+r()*gap*0.5+speed*time,o=j*spacing+(r()-0.5)*60,wx=dx*u+nx*o,wz=dz*u+nz*o;
-            const f=clearFade(routeDist(wx,wz),kind===0?28:kind===5?10:16)*clearFade(islandGap(wx,wz),len*0.6,40);if(f<0.01)continue;
-            const yaw=Math.atan2(-dx,-dz),pool=[carriers,battleships,destroyers,containers,tankers,sails][kind],g=f*viewFadeW(wx,wz);
+            const u=kk*gap+r()*gap*0.5+speed*time,o0=j*spacing+(r()-0.5)*60;
+            // Islands this lane bends around: every one whose bend could reach the ship (a world-fixed set, so no jumps).
+            const bx=dx*u+nx*o0,bz=dz*u+nz*o0,reach=bendHalf(BEND_MAX)+20,bends:LaneIsland[]=[];
+            for(const I of seaIslands(P.seed,bx-reach,bx+reach,bz-reach,bz+reach))bends.push({u:I.x*dx+I.z*dz,o:I.x*nx+I.z*nz,clear:I.r+len*0.5+20});
+            const {o,slope}=laneAt(u,o0,bends),wx=dx*u+nx*o,wz=dz*u+nz*o,hn=Math.hypot(1,slope),hx=(dx+nx*slope)/hn,hz=(dz+nz*slope)/hn,px=-hz,pz=hx;
+            // Safety net only (two islands squeezing one lane): a hull that would still touch land dissolves.
+            const f=(kind===0?clearFade(routeDist(wx,wz),28):1)*clearFade(islandGap(wx,wz),len*0.5,12);if(f<0.01)continue;
+            const yaw=Math.atan2(-hx,-hz),pool=[carriers,battleships,destroyers,containers,tankers,sails][kind],g=f*viewFadeW(wx,wz);
             if(!addW(pool,wx,-6,wz,1,1,1,yaw,f))continue;addW(shade,wx+4,-5.96,wz+5,(beam+2)*g,0.02,(len+3)*g,yaw); // shadow turns with the hull
-            addW(wakes,wx-dx*len*0.45,-5.9,wz-dz*len*0.45,beam*1.1*g,1,len*0.45*g,yaw);
-            if(kind===0)for(let q=0;q<5;q++){const a=-20+q*7;addW(jets,wx+dx*a+nx*((q%2)*3-2),-1.5,wz+dz*a+nz*((q%2)*3-2),1.1*g,1.1*g,1.1*g,yaw+0.6);}
+            addW(wakes,wx-hx*len*0.45,-5.9,wz-hz*len*0.45,beam*1.1*g,1,len*0.45*g,yaw);
+            if(kind===0)for(let q=0;q<5;q++){const a=-20+q*7;addW(jets,wx+hx*a+px*((q%2)*3-2),-1.5,wz+hz*a+pz*((q%2)*3-2),1.1*g,1.1*g,1.1*g,yaw+0.6);}
           }
         }
         // The bow's ski-jump (3D), its back edge 30 units before the deck's tip.

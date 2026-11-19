@@ -88,7 +88,7 @@ it('a zone-2 half hour unlocks at most one Dynamo Defense achievement', () => {
 it('real boss victories record exposed sprints per boss, without awarding five victories at once', async () => {
   const { runHeadless } = await import('../../../core');
   const { module } = await import('../index');
-  const r = runHeadless({ game: module, script: 'hook-responsive', minutes: 35, seed: 11, simOpts: { autopilot: true, actionBot: true } });
+  const r = runHeadless({ game: module, script: 'hook-responsive', minutes: 35, seed: 11, simOpts: { autopilot: true } });
   const bosses = r.events.filter(e => e.type === 'bossKilled');
   expect(bosses.length).toBeGreaterThan(0);
   expect(bosses.every(e => typeof e.data?.exposedSprinted === 'boolean')).toBe(true);

@@ -189,10 +189,10 @@ describe('levels meta', () => {
     expect(progressLine({ v: 4, campaign: { x: 3 }, endlessBest: 0 })).toBe('1 levels · 3★');
     expect(progressLine(undefined)).toBeNull();
   });
-  it('stars gate the unlocks: tower levels, the slow field and Hard', () => {
-    expect(maxTowerLevel(0)).toBe(3); expect(maxTowerLevel(12)).toBe(4); expect(maxTowerLevel(30)).toBe(5);
-    expect(isUnlocked('slow', 3)).toBe(false); expect(isUnlocked('slow', 4)).toBe(true);
-    expect(nextUnlock(9)?.id).toBe('tier4'); expect(nextUnlock(99)).toBeNull();
+  it('stars gate the unlocks: the Mortar, tower levels and Hard', () => {
+    expect(maxTowerLevel(0)).toBe(3); expect(maxTowerLevel(8)).toBe(4); expect(maxTowerLevel(30)).toBe(5);
+    expect(isUnlocked('mortar', 3)).toBe(false); expect(isUnlocked('mortar', 4)).toBe(true);
+    expect(nextUnlock(5)?.id).toBe('tier4'); expect(nextUnlock(99)).toBeNull();
     expect(starTotal({ [CAMPAIGN[0].id]: 3, [CAMPAIGN[1].id]: 5, bogus: 3 })).toBe(6);
     expect(UNLOCKS.map((u) => u.stars)).toEqual([...UNLOCKS.map((u) => u.stars)].sort((x, y) => x - y));
   });
@@ -226,7 +226,7 @@ describe('levels meta', () => {
     const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'z2' }, seed: 3 });
     expect(s.sim.inMenu!()).toBe(true);
     expect(s.sim.hud!().playControls!.find(c => c.button === 'shiftersR')?.label).toBe('Tier I'); // before the first update (game intro)
-    expect(s.sim.hud!().playControls!.some(c => c.button === 'z')).toBe(false); // the Railgun fires itself
+    expect(s.sim.hud!().playControls!.filter(c => ['y', 'b', 'z'].includes(c.button)).map((c) => c.shortLabel)).toEqual(['Gatling', 'Fireball', 'Railgun']);
     s.step(1);
     expect(snap(s).phase).toBe('garage');
   });
@@ -335,18 +335,15 @@ describe('effort targets', () => {
 });
 
 describe('workshop', () => {
-  it('▼ opens it on an empty pad, A builds, B closes', () => {
-    const input = new TimelineInput([
-      { t: 0.5, press: 'down' }, { t: 0.6, release: 'down' },
-      { t: 0.8, press: 'up' }, { t: 0.9, release: 'up' },
-    ]);
+  it('A opens it on the cursor\'s empty pad, a row tap builds, close closes', () => {
+    const input = new TimelineInput([{ t: 0.5, press: 'a' }, { t: 0.6, release: 'a' }]);
     const s = createGameSession({ game: module, profile: testProfile(), input, fake: { script: 'z2' }, seed: 3, simOpts: { stars: 99, skipGarage: true } });
     s.step(20);
     const ws = snap(s).workshop!;
     expect(ws).not.toBeNull();
     expect(ws.pad).toBeLessThan(PADS.length);
     expect(ws.rows.filter(r => r.kind === 'build').map((r) => r.tower)).toEqual(['tesla', 'flamer', 'lens', 'mortar']);
-    expect(s.sim.hud!().controls!.some((c) => c.label === 'Build / upgrade')).toBe(true);
+    expect(s.sim.hud!().controls!.some((c) => c.label === 'Build / upgrade / Exit')).toBe(true);
     // pick the tesla row by tap, then build it
     const scrap0 = snap(s).scrap;
     s.sim.receive!({ type: 'row', row: 0 }); s.step(1);
@@ -387,7 +384,7 @@ function rigged(script = 'intervals') {
 
 describe('rail', () => {
   it('fires slow pulses by itself, no button: full pulses at heavies, quick snaps at light aliens', () => {
-    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4 } });
+    const s = createGameSession({ game: module, profile: testProfile(), input: new TimelineInput([]), fake: { script: 'intervals' }, seed: 3, simOpts: { stars: 99, skipGarage: true, tier: 4, weapon: 'auto' } });
     let n = 0;
     while (snap(s).weapon !== 'rail' && n++ < 30 * 60 * 20) s.step(30);
     expect(snap(s).weapon).toBe('rail');

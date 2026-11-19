@@ -8,6 +8,7 @@ import { toScreen, toWorld } from './fieldView';
 import type { EnemyView, Fx, TdSnapshot, TowerView } from '../sim/types';
 import { layout, type TdLayout } from './layout';
 import { COL, LIGHT, WEAPON_COLOR, drawBase, drawEnemy, drawTower, glowAt, TOWER_ICON_COLOR } from './sprites';
+import { TD } from './theme';
 import { NARROW_W, TdHud, type Hit } from './panels';
 import { drawConstruction, drawDock } from './construction';
 import { AlienLayer, type View } from './aliens/layer';
@@ -590,7 +591,6 @@ export class TdRenderer implements GameRenderer {
     if (s.phase === 'run') {
       this.drawCables(g, s, bike);
       this.drawCulverts(g);
-      this.drawRoadFx(g, s, t);
       this.drawBurns(g, s, dt);
       this.aliens?.update(s, this.view, dt, (x, y, size) => this.fireBurst(x, y, size));
       this.aliens?.drawGround(g, this.view, t);
@@ -745,7 +745,6 @@ export class TdRenderer implements GameRenderer {
       g.restore();
     }
   }
-  /** The slow field over the back stretch of the road. */
   /**
    * Bridge decks over the walkers below them: those show through as an x-ray outline in their brood colour, and
    * whatever is on the deck (walkers on the upper pass, gliders) is drawn again on top of it.
@@ -766,16 +765,7 @@ export class TdRenderer implements GameRenderer {
     if (puppets) puppets.drawLive(g, top, this.view, t, (e, h) => { const q = this.P(e.x, e.y); drawEnemy(g, e, q.x, q.y, k, h + rot, t); });
     else for (const e of top) { const q = this.P(e.x, e.y), h = this.heading.get(e.id)?.h ?? 0; drawEnemy(g, e, q.x, q.y, k, h, t); }
   }
-  private drawRoadFx(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
-    if (s.slowFrom < 0) return;
-    const k = this.k;
-    g.save(); g.strokeStyle = '#55baff'; g.globalAlpha = 0.3 + 0.1 * Math.sin(t * 4); g.lineWidth = this.geo.level.roadHalfWidth * 2 * k;
-    g.lineCap = 'round'; g.lineJoin = 'round'; g.setLineDash([3 * k, 2 * k]); g.beginPath();
-    const from = s.slowFrom / this.geo.roadLength; // the same share of every road
-    for (const lane of this.geo.lanes)
-      for (let d = from * lane.length, i = 0; d <= lane.length; d += 2, i++) { const p = lane.at(d), q = this.P(p.x, p.y); i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y); }
-    g.stroke(); g.restore();
-  }
+
   /** Burning road left by the fireballs: a charred scorch with glowing coals (layered flames draw over the actors). */
   private drawBurns(g: CanvasRenderingContext2D, s: TdSnapshot, dt: number) {
     this.patches = trackPatches(this.patches, s.burns, s.t);
@@ -844,6 +834,29 @@ export class TdRenderer implements GameRenderer {
       }
     }
     if (ws?.pad === this.geo.basePad) { const b = this.P(this.geo.base.x, this.geo.base.y); g.strokeStyle = '#ffd24a'; g.lineWidth = Math.max(2, k * 0.5); g.beginPath(); g.arc(b.x, b.y, (this.geo.level.turretR + 1) * k, 0, TAU); g.stroke(); }
+    if (s.padCursor >= 0 && !s.over) this.drawCursor(g, s, t);
+  }
+  /** The D-pad's pad cursor: brass corner brackets around the pad (or the base) and a tag for what A does there. */
+  private drawCursor(g: CanvasRenderingContext2D, s: TdSnapshot, t: number) {
+    const k = this.k, base = s.padCursor === this.geo.basePad, pad = base ? null : this.geo.pads[s.padCursor];
+    if (!base && !pad) return;
+    const c = base ? this.P(this.geo.base.x, this.geo.base.y) : this.P(pad!.x, pad!.y);
+    const r = (base ? this.geo.level.turretR + 1.5 : 5.6) * k * (1 + 0.04 * Math.sin(t * 5)), arm = r * 0.42;
+    g.save(); g.lineCap = 'square';
+    for (const [w, col] of [[Math.max(4, k * 0.9), '#000a'], [Math.max(2, k * 0.45), TD.brass]] as const) {
+      g.strokeStyle = col; g.lineWidth = w;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        g.beginPath(); g.moveTo(c.x + sx * r, c.y + sy * (r - arm)); g.lineTo(c.x + sx * r, c.y + sy * r); g.lineTo(c.x + sx * (r - arm), c.y + sy * r); g.stroke();
+      }
+    }
+    const built = !base && s.towers.some((q) => q.pad === s.padCursor);
+    const label = `A · ${base ? 'Repair' : built ? 'Upgrade' : 'Build'}`, font = getComputedStyle(g.canvas).fontFamily;
+    g.font = `800 ${Math.round(Math.max(11, Math.min(14, k * 2.2)))}px ${font}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const tw = g.measureText(label).width + 12, th = Math.max(18, Math.min(22, k * 3.4)), ty = c.y - r - th / 2 - 4;
+    g.fillStyle = '#120f0ce6'; g.strokeStyle = TD.edge; g.lineWidth = 1;
+    g.beginPath(); g.rect(c.x - tw / 2, ty - th / 2, tw, th); g.fill(); g.stroke();
+    g.fillStyle = TD.brass; g.fillText(label, c.x, ty + 0.5);
+    g.restore();
   }
 
   /** The turret's target gets a white reticle; a rider's lock gets a gold one that holds still. */

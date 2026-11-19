@@ -2,7 +2,6 @@
 // Your pedalling is the base's dynamo: crank revs feed the Gatling, watts feed the Flame and the towers,
 // sustained threshold power charges the Railgun, sprints trigger Overdrive and Power Surges fire an EMP.
 import type { Button, ControlHint, GameContext, GameHud, GameSim, InputState, Seconds } from '../../../contracts';
-import { completeCooldown, effortFlourish, effortTint, isReady, readyFrac, refillRate, startCooldown, tickCooldown } from '../../../core/cooldown';
 import { makeRng } from '../../../core/rng';
 import { suggestBuild, type BuildSuggestion } from './construction';
 import { LEVEL_0, levelGeometry, type TdLevel } from './level';
@@ -21,15 +20,15 @@ import { levelFor } from './levelCache';
 import { UNLOCKS, VETERAN_STARS, isUnlocked, maxTowerLevel, nextUnlock, quickGrounds, starTotal } from './unlocks';
 import { chooseTarget, stepTarget, type Lock, type TargetCand } from './targeting';
 import { clearHealFor, nextBrood, planWave, setOf, waveRole, type Spawn, type WavePlan, type WaveRole } from './waves';
-import type { ActionId, ActionView, Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, LevelTile, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
+import type { Banner, BossView, BroodInfo, BroodView, BurnView, EnemyView, Fx, HitClass, GarageRow, GarageView, LevelTile, ShellView, SpinView, SurgeView, TdSnapshot, TowerView, WorkshopRow, WorkshopView } from './types';
 
 export * from './defs';
 export type { TdSnapshot } from './types';
 
 export interface TdOpts {
   autopilot?: boolean;
-  /** Headless actions are separate from the build bot; default off. */
-  actionBot?: boolean;
+  /** Headless and tests: mount the incoming brood's weapon by itself at each lull ('auto', default with autopilot). Riders switch by hand. */
+  weapon?: 'auto' | 'manual';
   /** Headless and tests: a bot spends scrap on the suggested build when each lull ends (default: with autopilot). Players always build by hand. */
   botBuild?: boolean;
   /** Go straight into the first run (tests); also done for new riders and autopilot. Later runs always use the Garage. */
@@ -101,6 +100,8 @@ interface Shell { x0: number; y0: number; x1: number; y1: number; t: number; fli
 interface Burn { x: number; y: number; r: number; left: number; total: number; dps: number }
 
 const WORKSHOP_IDLE_S = 10;
+/** Face buttons mount the turret's weapons. */
+const WEAPON_BUTTONS = [['y', 'gatling'], ['b', 'flame'], ['z', 'rail']] as const satisfies ReadonlyArray<readonly [Button, Weapon]>;
 const REPAIR_HP = 25;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const angDiff = (a: number, b: number) => Math.abs(a - b);
@@ -159,10 +160,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const railDmgMult = T.num('railDamageMult', 1, 0, 3, 0.05, 'Railgun pulse damage x (tests and balance)');
   const railSnapMin = T.num('railSnapMinShare', 0.05, 0.02, 1, 0.01, 'least share of a full pulse a quick snap at a light alien spends');
   const railSnapS = T.num('railSnapS', 0.2, 0.1, 3, 0.05, 'shortest gap between Railgun shots');
-  const swapS = T.num('swapS', 1.5, 0.1, 5, 0.1, 'seconds to mount the next brood\'s weapon');
+  const swapS = T.num('swapS', 3, 0.1, 8, 0.1, 'seconds to mount a weapon (Y / B / Z): the turret holds fire meanwhile');
   const turnRate = T.num('turretTurnRate', 6, 1, 20, 0.5, 'rad/s the turret slews toward its target');
   const turretRange = T.num('turretRange', 75, 20, 200, 1, 'Gatling and Railgun reach from the turret: the upper road is the towers\' job');
-  const lockS = T.num('lockS', 6, 1, 30, 0.5, 'seconds a target lock (paddles / D-pad left-right step it closer or further) lasts');
+  const lockS = T.num('lockS', 6, 1, 30, 0.5, 'seconds a target lock (the paddles step it closer or further) lasts');
   const targetStick = T.num('targetStickS', 3, 0, 20, 0.5, 'keep the current target while it arrives within this many seconds of the best one');
   const match = Object.fromEntries(WEAPONS.map((w) => [w, Object.fromEntries(ELEMENTS.map((e) =>
     [e, T.num(`match_${w}_${e}`, MATCHUP[w][e], 0, 3, 0.05)]))])) as Record<Weapon, Record<Element, () => number>>;
@@ -258,14 +259,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   // each wave also pays the scrap the Endless waves it skipped would have: base + perWave x that Endless wave.
   const catchUpBase = T.num('levelCatchUpScrap', 60, 0, 500, 5, 'scrap per Endless wave a level skips');
   const catchUpPer = T.num('levelCatchUpPerWave', 35, 0, 200, 5, 'extra catch-up scrap per Endless wave number');
-  const overchargeS = T.num('overchargeS', 10, 1, 30, 1);
-  const overchargeMult = T.num('overchargeMult', 1.5, 1, 3, 0.1, 'tower fire-rate multiplier; stacks with sprint Overdrive');
-  const overchargeCd = T.num('overchargeCooldownS', 60, 5, 180, 5);
-  const slowS = T.num('slowS', 8, 1, 30, 1);
-  const slowFraction = T.num('slowFraction', 0.4, 0, 0.9, 0.05, 'fraction of movement speed removed inside the slow field');
-  const slowFrom = T.num('slowFromFraction', 0.45, 0, 0.95, 0.05, 'the slow field covers the road from this share of its length to the turret');
-  const slowCd = T.num('slowCooldownS', 50, 5, 180, 5);
-  const sprintCompletes = T.bool('cdSprintCompletes', true, 'a sprint edge completes Overcharge and Slow cooldowns (not rail stock)');
 
   const save = readSave(ctx.load<unknown>());
   const autopilot = !!opts?.autopilot;
@@ -326,9 +319,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   let tier: Tier = clampTier(startTier());
   let gearLevel = 0, gearRelief = 1;
   let inputEpoch = 0, workshopRevision = 0, discardEdges = false;
-  let overchargeLeft = 0, slowLeft = 0, lastSprint = false;
-  let currentRefill = 1;
-  const cooldowns = { overcharge: startCooldown(0), slow: startCooldown(0) };
+  /** The pad the D-pad has selected outside the build menu (A opens it there); BASE_PAD = the base. */
+  let padCursor = -1;
   let flaming = false, flamePower = 0, grid = 0, overdrive = false;
   let surge: SurgeView | null = null;
   let spin: SpinView | null = null, overclock = 0;
@@ -529,7 +521,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const b = broodInfo(plan);
     ctx.emit({ type: 'broodAnnounced', data: { wave, color: b.color, weapon: b.weapon, mode: b.mode } });
     if (plan.boss) ctx.emit({ type: 'bossPhaseAnnounced', data: { wave, phase: 1, color: b.color, weapon: b.weapon, mode: b.mode, countdownS: lull } });
-    selectWeapon(b.weapon);
+    if (autoWeapon) selectWeapon(b.weapon);
     if (lull <= 0) beginWave();
   }
   /** The lull is over: spawns start. */
@@ -705,7 +697,9 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       : weapon === 'gatling' ? `spin fast · tier ${roman(want)}` : weapon === 'flame' ? `tier ${roman(want)} · 85+ rpm` : `tier ${roman(want)}+ · steady`;
     return { wave: p.wave, color: p.brood, weapon, mode: 'resistance', setting: `tier ${roman(want)} · ${Math.round(ratedFtp(want) * 100)}% FTP`, cue };
   }
-  /** Mounts the brood's weapon (once per wave, at the start of its lull). */
+  /** Bots mount the incoming brood's weapon at its lull; riders pick with Y / B / Z. */
+  const autoWeapon = opts?.weapon === 'auto' || (opts?.weapon == null && autopilot);
+  /** Mounts a weapon: the turret is silent for `swapS` while it changes (asking for the one being mounted does nothing). */
   function selectWeapon(w: Weapon) {
     if (w === weapon || phase !== 'run') return;
     weapon = w; swapTotal = swapLeft = swapS(); revAcc = 0;
@@ -783,7 +777,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return Math.hypot(e.x - p.x, e.y - p.y) <= r + radiusOf(e);
   }
   function updateTowers(dt: number) {
-    const boost = grid * odMult() * (overchargeLeft > 0 ? overchargeMult() : 1);
+    const boost = grid * odMult();
     // A watt weapon's brood is that weapon's job. Any tower the brood does not resist answers to the same
     // watts, or the others cover the wave and the push never matters. A resisted tower, and every tower
     // during a Gatling wave (the turret spends revs there), keeps its cadence-powered rate.
@@ -876,15 +870,14 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     cue('fireball');
   }
   /** Where the slow field starts on lane 0 (each road is covered from the same share of its length). */
-  const slowStart = () => ROAD_LENGTH * slowFrom();
   function travelSpeed(e: Enemy) {
-    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1) * (slowLeft > 0 && e.route < 0 && e.d >= e.len * slowFrom() ? 1 - slowFraction() : 1)
+    return e.speed * (e.charging ? e.boss ? bossChargeMult() : 2.6 : 1)
       * (e.boss?.pending || (e.boss?.staggerS ?? 0) > 0 ? 0.2 : 1) * (e.dazed > 0 ? 1 - mortarDazeSlow() : 1);
   }
 
   function build(pad: number, kind: TowerKind): boolean {
     const c = towerBuildCost(kind, towerCostMult());
-    if (towers[pad] || scrap < c) { cue('deny'); return false; }
+    if (towers[pad] || scrap < c || !kindOpen(kind)) { cue('deny'); return false; }
     scrap -= c;
     towers[pad] = { pad, kind, level: 1, cd: 0.5, angle: 0, firedAt: -9 };
     stats.towersBuilt++; save.totals.towers++;
@@ -916,12 +909,15 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     return true;
   }
 
+  /** The Mortar is earned with campaign stars; the colour towers are always open. */
+  const kindOpen = (k: TowerKind) => k !== 'mortar' || isUnlocked('mortar', stars());
   function workshopRows(pad: number): WorkshopRow[] {
     if (pad === BASE_PAD) return [{ kind: 'repair', label: 'Repair base', desc: `+${REPAIR_HP} HP`, cost: repairCost(), affordable: scrap >= repairCost() && baseHp < baseMaxHp }];
     const tw = towers[pad];
     if (!tw) return [...TOWER_KINDS.map((k): WorkshopRow => {
-      const c = towerBuildCost(k, towerCostMult());
-      return { kind: 'build', tower: k, label: TOWERS[k].name, desc: TOWERS[k].desc, cost: c, affordable: scrap >= c };
+      const c = towerBuildCost(k, towerCostMult()), open = kindOpen(k);
+      return { kind: 'build', tower: k, label: TOWERS[k].name, desc: open ? TOWERS[k].desc : `Unlocks at ${UNLOCKS.find((u) => u.id === k)!.stars}★`, cost: c, affordable: open && scrap >= c,
+        ...(open ? {} : { locked: true }) };
     })];
     const rows: WorkshopRow[] = [];
     if (tw.level < towerCap()) {
@@ -935,11 +931,47 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function suggestTower(pad: number): number {
     const suggestion = recommendation(pad);
     return suggestion?.tower ? TOWER_KINDS.indexOf(suggestion.tower)
-      : Math.max(0, TOWER_KINDS.findIndex(k => towerBuildCost(k, towerCostMult()) <= scrap));
+      : Math.max(0, TOWER_KINDS.findIndex(k => kindOpen(k) && towerBuildCost(k, towerCostMult()) <= scrap));
+  }
+  /** Where the pad cursor rests until the rider moves it: the suggested build, else the first empty pad. */
+  function cursorPad(): number {
+    if (padCursor < 0 || padCursor > BASE_PAD) padCursor = recommendation()?.pad ?? PAD_ORDER().find((i) => i < BASE_PAD && !towers[i]) ?? PAD_ORDER()[0];
+    return padCursor;
+  }
+  /**
+   * The pad (or the base) the D-pad reaches from `from`: the nearest one within 60° of the pressed direction on screen
+   * (landscape turns the field a quarter turn), favouring the straight-ahead one. `from` when nothing lies that way.
+   */
+  function padStep(from: number, dir: 'left' | 'right' | 'up' | 'down'): number {
+    const at = (i: number) => (i === BASE_PAD ? { x: BASE_X, y: BASE_Y } : PADS[i]);
+    const sx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0, sy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+    const [dx, dy] = padsTurned ? [sy, -sx] : [sx, sy]; // screen direction in field coordinates
+    const o = at(from);
+    let best = from, bestScore = Infinity;
+    for (let i = 0; i <= BASE_PAD; i++) {
+      if (i === from) continue;
+      const q = at(i), vx = q.x - o.x, vy = q.y - o.y, d = Math.hypot(vx, vy);
+      const cos = d > 0 ? (vx * dx + vy * dy) / d : -1;
+      if (cos < 0.5) continue;
+      const score = d * (1 + 2 * (1 - cos));
+      if (score < bestScore) { bestScore = score; best = i; }
+    }
+    return best;
+  }
+  /**
+   * The build menu is a two-column grid of options with Exit across the bottom (row index `count`). The D-pad moves
+   * through it; up from the top row and down from Exit wrap around.
+   */
+  function menuStep(row: number, count: number, dir: 'left' | 'right' | 'up' | 'down'): number {
+    const exit = count;
+    if (row >= exit) return dir === 'up' ? Math.max(0, count - 1 - ((count - 1) % 2)) : dir === 'down' ? 0 : row;
+    if (dir === 'left' || dir === 'right') { const n = row ^ 1; return n < count ? n : row; }
+    if (dir === 'up') return row >= 2 ? row - 2 : exit;
+    return row + 2 < count ? row + 2 : exit;
   }
   function openWorkshop(pad?: number) {
-    let p = pad ?? -1;
-    if (p < 0) p = recommendation()?.pad ?? PAD_ORDER().find((i) => i < BASE_PAD && !towers[i]) ?? PAD_ORDER()[0];
+    const p = pad ?? cursorPad();
+    padCursor = p;
     workshop = { pad: p, row: p < BASE_PAD && !towers[p] ? suggestTower(p) : 0, idle: 0 };
     workshopRevision++; inputEpoch++; 
     cue('uiOpen');
@@ -951,7 +983,8 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   function workshopAct(row?: number) {
     if (!workshop) return;
     const rows = workshopRows(workshop.pad);
-    if (row != null) workshop.row = clamp(row, 0, rows.length - 1);
+    if (row != null) workshop.row = clamp(row, 0, rows.length);
+    if (workshop.row >= rows.length) { closeWorkshop(); return; } // Exit
     const r = rows[workshop.row]; if (!r) return;
     if (r.kind === 'build') build(workshop.pad, r.tower!);
     else if (r.kind === 'upgrade') upgrade(workshop.pad);
@@ -967,7 +1000,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     const coming = lull > 0 ? plan : nextPlan;
     return suggestBuild({ wave: coming.wave, brood: coming.brood, counts: coming.counts,
       towers: towers.filter((tw): tw is Tower => !!tw), scrap, costMult: towerCostMult(), maxLevel: towerCap(),
-      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo });
+      baseHp, baseMaxHp, repairCost: repairCost(), matchup: matchup(), pad, geo, kinds: TOWER_KINDS.filter(kindOpen) });
   }
   /** The headless build bot (never a player feature): carries out the current suggestion. */
   function botBuildOnce(): boolean {
@@ -984,21 +1017,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     }
     return ok;
   }
-  function useAction(id: ActionId) {
-    if (phase !== 'run' || workshop) return;
-    if (id === 'rail') return;
-    if (!isReady(cooldowns[id]) || !isUnlocked(id, stars())) return;
-    if (id === 'overcharge') {
-      if (!towers.some(Boolean) || grid <= 0 || !enemies.some(e => !e.dead)) return;
-      overchargeLeft = overchargeS(); Object.assign(cooldowns.overcharge, startCooldown(overchargeCd())); cue('overdrive');
-    } else {
-      // The field covers the back stretch of the road, where aliens are about to arrive. Gliders fly over it.
-      if (!enemies.some(e => !e.dead && e.route < 0)) return;
-      slowLeft = slowS();
-      Object.assign(cooldowns.slow, startCooldown(slowCd())); cue('surge');
-    }
-    ctx.emit({ type: 'action', data: { id, wave, ...(id === 'slow' ? { from: Math.round(slowStart()) } : {}) } });
-  }
+
 
   // ---------- garage ----------
   /** The level after `spec` on the clear screen: the next campaign level, or a fresh Quick Ride at the same length. */
@@ -1132,10 +1151,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   }
   function resetCombat() {
      inputEpoch++; workshopRevision++; discardEdges = true;
-    overchargeLeft = 0; slowLeft = 0; lastSprint = false; currentRefill = 1;
-    Object.assign(cooldowns.overcharge, startCooldown(0));
-    Object.assign(cooldowns.slow, startCooldown(0));
-    lockId = 0; lockLeft = 0; lastPaddle = 0;
+    lockId = 0; lockLeft = 0; lastPaddle = 0; padCursor = -1;
     leakDmg = 0; stallT = 0; escorts.length = 0;
   }
   function startRun() {
@@ -1231,19 +1247,20 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
 
     const epoch = inputEpoch, hadWorkshop = !!workshop;
     const commands = pending.splice(0);
-    // Both adapters enter this queue. One command owns a purchase per tick.
+    // Both adapters enter this queue. One command owns a purchase per tick. Y / B / Z mount a weapon in or out of
+    // the build menu (the turret keeps fighting while you build); A opens the menu at the pad cursor, or confirms in it.
     if (p('a')) commands.push({ type: hadWorkshop ? 'confirm' : 'construct', epoch });
-    if (p('b')) commands.push(hadWorkshop ? { type: 'close', epoch } : { type: 'action', id: 'overcharge', epoch });
-    if (p('y')) commands.push({ type: 'action', id: 'slow', epoch });
-    if (p('down') && !hadWorkshop) commands.push({ type: 'pad', pad: -1, epoch });
+    for (const [b, w] of WEAPON_BUTTONS) if (p(b)) commands.push({ type: 'weapon', weapon: w, epoch });
     // Shifters (either hood) and the touch stepper pick the intensity tier; the gearbox follows.
     let shift = (['shiftUpL', 'shiftUpR'] as const).filter(p).length - (['shiftDnL', 'shiftDnR'] as const).filter(p).length;
-    let menuHandled = hadWorkshop, purchased = false;
+    let menuHandled = hadWorkshop, purchased = false, mounted = false;
     for (const a of commands) {
       if (a.type === 'tierUp' || a.type === 'tierDown') { if (a.epoch == null || a.epoch === inputEpoch) shift += a.type === 'tierUp' ? 1 : -1; continue; }
       if (a.type === 'bail') { endRun('bail'); return; }
       if (a.epoch != null && a.epoch !== inputEpoch) continue;
-      if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= BASE_PAD) {
+      if (a.type === 'weapon') {
+        if (!mounted && WEAPONS.includes(a.weapon as Weapon)) { mounted = true; selectWeapon(a.weapon as Weapon); }
+      } else if (a.type === 'pad' && Number.isInteger(a.pad) && (a.pad as number) >= -1 && (a.pad as number) <= BASE_PAD) {
         menuHandled = true;
         if (workshop && workshop.pad === a.pad) closeWorkshop();
         else openWorkshop((a.pad as number) < 0 ? undefined : a.pad as number);
@@ -1251,11 +1268,11 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       else if ((a.type === 'row' || a.type === 'confirm') && workshop && !purchased) {
         if (a.revision != null && a.revision !== workshopRevision) continue;
         if (a.pad != null && a.pad !== workshop.pad) continue;
-        if (a.type === 'row' && (!Number.isInteger(a.row) || (a.row as number) < 0 || (a.row as number) >= workshopRows(workshop.pad).length)) continue;
+        if (a.type === 'row' && (!Number.isInteger(a.row) || (a.row as number) < 0 || (a.row as number) > workshopRows(workshop.pad).length)) continue;
         workshop.idle = 0; workshopAct(a.type === 'row' ? a.row as number : undefined);
         menuHandled = true; purchased = true;
       } else if (a.type === 'construct' && !workshop && !purchased) {
-        purchased = true; openWorkshop(); menuHandled = true;
+        purchased = true; openWorkshop(cursorPad()); menuHandled = true;
       } else if (a.type === 'inputCancel') menuHandled = true;
     }
     if (opts?.tier === 'auto' || (opts?.tier == null && autopilot)) shift = riderTier(bike.ftpFraction, ratedFtp) - tier;
@@ -1263,28 +1280,21 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
       const next = clampTier(tier + shift);
       if (next !== tier) { tier = next; cue('select'); ctx.emit({ type: 'tierChanged', data: { tier } }); }
     }
-    // Navigation consumes the D-pad while the shared construction menu is open.
+    // The D-pad walks the build menu while it is open, and the pad cursor over the field otherwise.
+    const dir = p('left') ? 'left' : p('right') ? 'right' : p('up') ? 'up' : p('down') ? 'down' : null;
     if (hadWorkshop && workshop) {
       workshop.idle += dt;
       if (inp.pressed.size) workshop.idle = 0;
-      if (p('left') || p('right')) {
-        const order = PAD_ORDER(), i = order.indexOf(workshop.pad), n = order.length;
-        workshop.pad = order[(i + (p('left') ? n - 1 : 1)) % n];
-        workshop.row = workshop.pad < BASE_PAD && !towers[workshop.pad] ? suggestTower(workshop.pad) : 0;
-        workshopRevision++;
-        cue('select');
+      if (dir) {
+        const next = menuStep(workshop.row, workshopRows(workshop.pad).length, dir);
+        if (next !== workshop.row) { workshop.row = next; workshopRevision++; cue('select'); }
       }
-      const count = workshopRows(workshop.pad).length;
-      if (p('up')) { workshop.row = (workshop.row + count - 1) % count; workshopRevision++; cue('select'); }
-      if (p('down')) { workshop.row = (workshop.row + 1) % count; workshopRevision++; cue('select'); }
       if (workshop.idle >= WORKSHOP_IDLE_S) closeWorkshop();
-    } else if (!menuHandled) {
-      // D-pad left/right steps a target lock one alien closer / further along the queue; up releases it
-      if (p('left')) stepLock(-1);
-      if (p('right')) stepLock(1);
-      if (p('up') && lockLeft > 0) { lockLeft = 0; lockId = 0; cue('select'); }
+    } else if (!menuHandled && dir) {
+      const next = padStep(cursorPad(), dir);
+      if (next !== padCursor) { padCursor = next; cue('select'); } else cue('deny');
     }
-    // paddles step it too (left = closer, right = further), once per press; holding one keeps the lock alive
+    // paddles step a target lock (left = closer, right = further), once per press; holding one keeps the lock alive
     const pd = inp.paddleR - inp.paddleL, paddle = !autopilot && Math.abs(pd) >= 0.5 ? Math.sign(pd) : 0;
     if (paddle && paddle !== lastPaddle && !workshop) stepLock(paddle < 0 ? -1 : 1);
     else if (paddle && lockId) lockLeft = lockS();
@@ -1292,24 +1302,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     lockLeft = Math.max(0, lockLeft - dt);
     if (lockId && !enemies.some(e => e.id === lockId && !e.dead)) { lockId = 0; lockLeft = 0; }
     grid = bike.cadence3s < 15 ? 0 : clamp(bike.ftpFraction / towerNominal(), 0, towerMaxBoost());
-    overchargeLeft = Math.max(0, overchargeLeft - dt); slowLeft = Math.max(0, slowLeft - dt);
-    const refill = refillRate(Math.min(5, bike.powerZone));
-    currentRefill = refill;
-    tickCooldown(cooldowns.overcharge, dt, refill); tickCooldown(cooldowns.slow, dt, refill);
-    if (bike.sprinting && !lastSprint && sprintCompletes()) { completeCooldown(cooldowns.overcharge); completeCooldown(cooldowns.slow); }
-    lastSprint = bike.sprinting;
-
-    if (!menuHandled && !workshop) {
-      const used = new Set<ActionId>();
-      for (const a of commands) {
-        if (a.epoch != null && a.epoch !== inputEpoch) continue;
-        if (a.type === 'action' && (a.id === 'overcharge' || a.id === 'slow') && !used.has(a.id)) { useAction(a.id); used.add(a.id); }
-      }
-      if (opts?.actionBot && lull <= 0) {
-        if (overchargeLeft <= 0 && enemies.filter(e => !e.dead).length >= 6) useAction('overcharge');
-        if (slowLeft <= 0 && enemies.some(e => !e.dead && e.d / e.len > 0.65)) useAction('slow');
-      }
-    }
     if (swapLeft > 0) swapLeft = Math.max(0, swapLeft - dt);
     weaponSeconds[weapon] += dt;
     // learn how hard this trainer's brake is from the watts the rider makes at the level we set
@@ -1505,20 +1497,19 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
   const gearHints = (run = phase === 'run'): ControlHint[] => run
     ? [{ button: 'shiftersL', label: `Tier ${roman(tier)}`, shortLabel: 'Tier' }, { button: 'shiftersR', label: `Tier ${roman(tier)}`, shortLabel: 'Tier' }]
     : [{ button: 'shiftersL', label: 'Gear', active: true }, { button: 'shiftersR', label: 'Gear', active: true }];
-  const playControls = (): ControlHint[] => {
-    return [
-      { button: 'a', label: 'Construction', shortLabel: 'Build', touch: { down: { type: 'construct', epoch: inputEpoch } } },
-      ...actionViews().map((a): ControlHint => ({ button: a.id === 'overcharge' ? 'b' : 'y',
-        label: `${a.id === 'overcharge' ? 'Overcharge' : 'Slow field'}${a.activeS > 0 ? ` · ${Math.ceil(a.activeS)}s` : ''}`,
-        shortLabel: a.id === 'overcharge' ? 'Boost' : 'Slow', active: a.usable,
-        ...(a.locked ? { indicator: { label: a.id === 'overcharge' ? 'Overcharge' : 'Slow field', status: `${UNLOCKS.find((u) => u.id === a.id)!.stars}★`, ready: false } } : {}),
-        cooldown: { fill: a.fill, ready: a.ready, tint: effortTint(ctx.bike().powerZone), flourish: effortFlourish(ctx.bike().powerZone) } })),
-      { button: 'left', label: 'Target closer', shortLabel: 'Closer' }, { button: 'right', label: 'Target further', shortLabel: 'Further' },
-      { button: 'up', label: 'Release target lock', shortLabel: 'Release' },
-      { button: 'down', label: 'Workshop', shortLabel: 'Shop' },
-      { button: 'paddles', label: 'Step target', shortLabel: 'Target' }, ...gearHints(true),
-    ];
-  };
+  /** Y / B / Z chips: which weapon is mounted, and the mount in progress (the turret is silent until it lands). */
+  const weaponHints = (): ControlHint[] => WEAPON_BUTTONS.map(([button, w], i): ControlHint => {
+    const on = weapon === w, mounting = on && swapLeft > 0;
+    return { button, label: `Mount the ${WEAPON_NAME[w]}`, shortLabel: WEAPON_NAME[w], displayOrder: i, active: !on || mounting,
+      touch: { down: { type: 'weapon', weapon: w, epoch: inputEpoch } },
+      indicator: { label: WEAPON_NAME[w], status: mounting ? 'Mounting' : on ? 'Mounted' : '', ready: on && !mounting, ...(mounting ? { fill: 1 - swapLeft / swapTotal } : {}) } };
+  });
+  const playControls = (): ControlHint[] => [
+    ...weaponHints(),
+    { button: 'a', label: 'Build menu at the selected pad', shortLabel: 'Build', touch: { down: { type: 'construct', epoch: inputEpoch } } },
+    { button: 'dpad', label: 'Select a pad', shortLabel: 'Pad' },
+    { button: 'paddles', label: 'Step target', shortLabel: 'Target' }, ...gearHints(true),
+  ];
   function enemyView(e: Enemy): EnemyView {
     const el = elementOf(e), si = shiftIn(e);
     const shifting = e.kind === 'prism';
@@ -1566,13 +1557,6 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
     if (!workshop) return null;
     return { pad: workshop.pad, row: workshop.row, rows: workshopRows(workshop.pad), idleLeft: WORKSHOP_IDLE_S - workshop.idle, revision: workshopRevision };
   }
-  function actionViews(): ActionView[] {
-    const live = phase === 'run' && !workshop;
-    return [
-      { id: 'overcharge', fill: readyFrac(cooldowns.overcharge), ready: isReady(cooldowns.overcharge), usable: live && grid > 0 && towers.some(Boolean) && enemies.some(e => !e.dead) && isUnlocked('overcharge', stars()), activeS: overchargeLeft, ...(isUnlocked('overcharge', stars()) ? {} : { locked: true }) },
-      { id: 'slow', fill: readyFrac(cooldowns.slow), ready: isReady(cooldowns.slow), usable: live && enemies.some(e => !e.dead) && isUnlocked('slow', stars()), activeS: slowLeft, ...(isUnlocked('slow', stars()) ? {} : { locked: true }) },
-    ];
-  }
 
   return {
     update,
@@ -1606,10 +1590,10 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         : { min: powerZone(ratedFtp(want)), max: powerZone(ratedFtp(want)), label: `Tier ${roman(want)} · you're on ${roman(tier)}`, source: 'power' };
       const targetCadence: GameHud['targetCadence'] = call?.kind === 'spin' ? { min: call.minRpm, label: 'Spin up the Gatling' } : call?.kind === 'grind' ? { min: call.minRpm, max: call.maxRpm, label: 'Grind at power' } : undefined;
       if (workshop) return {
-        gears: false, targetZone: tz, targetCadence, touchControls: ['a', 'b'],
-        controls: [{ button: 'dpad', label: '◀▶ pad · ▲▼ option', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade', shortLabel: 'Build' }, { button: 'b', label: 'Close' }, ...gearHints()],
+        gears: false, targetZone: tz, targetCadence, touchControls: [],
+        controls: [{ button: 'dpad', label: 'Choose an option or Exit', shortLabel: 'Choose' }, { button: 'a', label: 'Build / upgrade / Exit', shortLabel: 'OK' }, ...weaponHints().map((h) => ({ ...h, indicator: false as const })), ...gearHints()],
       };
-      return { gears: false, targetZone: tz, targetCadence, touchControls: ['a', 'down', 'b', 'y'], controls: playControls() };
+      return { gears: false, targetZone: tz, targetCadence, touchControls: ['y', 'b', 'z'], controls: playControls() };
     },
     snapshot(): TdSnapshot {
       return {
@@ -1630,7 +1614,7 @@ export function createTdSim(ctx: GameContext, opts?: TdOpts): GameSim & { snapsh
         flaming, flameRange: flameRange(), flamePower, laserId: 0,
         grid, overdrive, stalled: stalled(), surge: surge ? { ...surge } : null, spin: spin ? { ...spin } : null, overclock,
         scrap,
-        actions: actionViews(), refill: currentRefill, slowFrom: slowLeft > 0 ? slowStart() : -1, inputEpoch,
+        padCursor: phase === 'run' && !workshop ? cursorPad() : -1, inputEpoch,
         towers: towers.filter((x): x is Tower => !!x).map((x): TowerView => ({ pad: x.pad, kind: x.kind, level: x.level, angle: x.angle, charge: clamp(1 - x.cd / TOWERS[x.kind].period, 0, 1), firedAt: x.firedAt })),
         shells: shells.map((s): ShellView => ({ x0: s.x0, y0: s.y0, x1: s.x1, y1: s.y1, k: s.t / s.flight, r: s.r, ...(s.tower != null ? { tower: true } : {}) })),
         burns: burns.map((b): BurnView => ({ x: b.x, y: b.y, r: b.r, k: b.left / b.total })),

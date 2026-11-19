@@ -57,34 +57,34 @@ function button(g: CanvasRenderingContext2D, b: Box, label: string, sub: string,
   g.restore();
 }
 
+const WEAPON_KEYS = [['Y', 'gatling', 'Gatling', '#55baff'], ['B', 'flame', 'Fireball', '#ff7855'], ['Z', 'rail', 'Railgun', '#c790ff']] as const;
+
 export function drawDock(g: CanvasRenderingContext2D, s: TdSnapshot, L: TdLayout, powerZone: number): Hit[] {
   const hits: Hit[] = [], d = L.dock;
   button(g, d.construct, 'A · Construction', `${s.scrap} scrap · build · upgrade · repair`, false, !s.workshop && !s.over);
   hits.push({ ...d.construct, action: s.workshop || s.over ? null : { type: 'construct', epoch: s.inputEpoch } });
-  button(g, d.workshop, '▼ Workshop', 'Build · upgrade · repair', !!s.workshop, !s.over);
+  button(g, d.workshop, s.workshop ? 'Exit' : 'Workshop', s.workshop ? 'Close the build menu' : 'Build · upgrade · repair', !!s.workshop, !s.over);
   hits.push({ ...d.workshop, action: s.over ? null : { type: s.workshop ? 'close' : 'pad', pad: -1, epoch: s.inputEpoch } });
-  const labels = { overcharge: ['B', 'Overcharge', '#ff7855'], slow: ['Y', 'Slow field', '#55baff'], rail: ['Z', `Rail · ${s.railCharges}/${s.railMaxCharges}`, '#c790ff'] };
-  s.actions.forEach((a, i) => {
-    const [glyph, label, color] = labels[a.id], b = d.actions[i];
-    drawActionButton(g, { ...b, label: a.activeS > 0 ? `${label} · ${Math.ceil(a.activeS)}s` : label,
-      glyph, fill: a.fill, ready: a.ready, usable: a.usable, readyColor: color,
+  // Y / B / Z mount the turret's weapons: the mounted one is lit, and fills while it mounts.
+  WEAPON_KEYS.forEach(([glyph, w, label, color], i) => {
+    const b = d.actions[i], on = s.weapon === w, fill = on && s.swapLeft > 0 ? 1 - s.swapLeft / s.swapS : 1;
+    drawActionButton(g, { ...b, label: on ? (fill < 1 ? `${label} · mounting` : `${label} · mounted`) : label,
+      glyph, fill: on ? fill : 1, ready: on && fill >= 1, usable: !s.over, readyColor: color,
       effortTint: effortTint(powerZone), flourish: effortFlourish(powerZone), t: s.t, scale: Math.min(1, b.h / 60) });
-    hits.push({ ...b, action: !a.usable || !a.ready ? null : { type: 'action', id: a.id, epoch: s.inputEpoch } });
+    hits.push({ ...b, action: s.over || on ? null : { type: 'weapon', weapon: w, epoch: s.inputEpoch } });
   });
   return hits;
 }
 
 export function radialLayout(W: number, UH: number, anchor: { x: number; y: number }, count: number): { body: Box; options: Box[]; close: Box } {
   const gap = 8, w = Math.min(154, (W - 3 * gap) / 2), h = 48;
-  // Up to three options sit as a triangle around the pad (one on top, two below); four or more fill a 2-column grid,
-  // so the four towers read as a compact 2x2.
-  const radial = UH >= 300 && count <= 3;
-  const rows = radial ? 2 : Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
+  // A two-column grid the D-pad walks (the four towers read as a 2x2), with Exit across the bottom. A lone option
+  // on the last row is centred.
+  const rows = Math.ceil(count / 2), bw = w * 2 + gap, bh = 48 + rows * (h + gap) + 48;
   const body = { x: Math.max(gap, Math.min(W - gap - bw, anchor.x - bw / 2)), y: Math.max(gap, Math.min(UH - gap - bh, anchor.y - bh / 2)), w: bw, h: bh };
-  const positions = [[(w + gap) / 2, 0], [0, h + gap], [w + gap, h + gap]];
   const options = Array.from({ length: count }, (_, i) => ({
-    x: body.x + (radial ? positions[i][0] : (i % 2) * (w + gap)),
-    y: body.y + 48 + (radial ? positions[i][1] : Math.floor(i / 2) * (h + gap)), w, h,
+    x: body.x + (i === count - 1 && count % 2 ? (w + gap) / 2 : (i % 2) * (w + gap)),
+    y: body.y + 48 + Math.floor(i / 2) * (h + gap), w, h,
   }));
   return { body, options, close: { x: body.x, y: body.y + bh - 44, w: bw, h: 44 } };
 }
@@ -98,14 +98,14 @@ export function drawConstruction(g: CanvasRenderingContext2D, s: TdSnapshot, L: 
   g.fillStyle = TD.brass; g.font = `800 13px ${font}`; g.textAlign = 'center';
   g.fillText(`${p.name.toUpperCase()} · ${s.scrap} SCRAP`, cx, r.body.y + 19, r.body.w - 24);
   g.strokeStyle = TD.edgeDim; g.beginPath(); g.moveTo(r.body.x + 14, r.body.y + 25.5); g.lineTo(r.body.x + r.body.w - 14, r.body.y + 25.5); g.stroke();
-  g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('◀▶ pad · ▲▼ option · A confirm', cx, r.body.y + 38);
+  g.font = `11px ${font}`; g.fillStyle = TD.dim; g.fillText('D-pad choose · A confirm', cx, r.body.y + 38);
   // Swallow the body before adding actionable targets; hits are searched front-to-back.
   const hits: Hit[] = [{ ...r.body, action: null }];
   ws.rows.forEach((row, i) => {
     button(g, r.options[i], row.label, row.cost ? `${row.cost} scrap${row.affordable ? '' : ' · need more'}` : row.desc, ws.row === i, row.affordable, row.tower && TOWER_TINT[row.tower]);
     hits.push({ ...r.options[i], action: row.affordable ? { type: 'row', row: i, pad: ws.pad, revision: ws.revision, epoch: s.inputEpoch } : null });
   });
-  button(g, r.close, 'B · Close', '◀▶ selects pads and the base');
+  button(g, r.close, 'Exit', 'Back to the field', ws.row >= ws.rows.length);
   hits.push({ ...r.close, action: { type: 'close', epoch: s.inputEpoch } });
   g.restore(); return hits;
 }

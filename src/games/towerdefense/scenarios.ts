@@ -71,7 +71,7 @@ export const scenarios: Array<{
     },
   },
   {
-    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true, actionBot: true },
+    name: 'intervals', script: 'intervals', minutes: 20, seed: 1, simOpts: { stars: 99, autopilot: true },
     assert(s, _stats, run) {
       const f: string[] = [];
       for (const w of ['gatling', 'flame', 'rail']) {
@@ -140,15 +140,14 @@ export const scenarios: Array<{
     },
   })),
   {
-    // Award-plumbing fixture: explicit actions and a reinforced base reach the deep-wave achievement.
+    // Award-plumbing fixture: a reinforced base reaches the deep-wave achievement.
     // Natural survival and damage share remain covered by the passive scenarios and four-seed comparisons.
     name: 'surge-ready-deep', script: 'hook-responsive', minutes: 40, seed: 1,
-    simOpts: { stars: 99, autopilot: true, actionBot: true, baseHp: 1000 },
+    simOpts: { stars: 99, autopilot: true, baseHp: 1000 },
     assert(s, _stats, run) {
       const f: string[] = [];
       if (!(n(s, 'wavesSurvived') >= 14)) f.push(`wavesSurvived ${s.wavesSurvived} < 14`);
       if (!(n(s, 'surgesWon') >= 3) || n(s, 'surgesFailed') !== 0) f.push('deep rider did not answer the surges');
-      if (!run.events.some(e => e.type === 'action')) f.push('deep rider never used combat actions');
       return f;
     },
   },

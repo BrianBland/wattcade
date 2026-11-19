@@ -33,7 +33,7 @@ const level: TdLevel | undefined = q.get('gen') ? generateLevel(Number(q.get('ge
 const cleared = q.get('select') == null ? null : Number(q.get('select'));
 const profile = cleared == null ? testProfile() : testProfile({ gameData: { towerdefense: { v: 4, runs: 3, campaign: Object.fromEntries(CAMPAIGN.slice(0, cleared).map((c, i) => [c.id, (i % 3) + 1])) } } });
 const session = createGameSession({ game: module, profile, input, fake: { script: q.get('script') ?? 'z2' }, seed: Number(q.get('seed') ?? 1),
-  simOpts: { skipGarage: cleared == null, botBuild: q.get('bot') === '1', actionBot: q.get('actions') === '1', level,
+  simOpts: { skipGarage: cleared == null, botBuild: q.get('bot') === '1', weapon: q.get('weapon') === 'auto' ? 'auto' : undefined, level,
     // `campaign=<index>` or `quick=<seed>[&minutes=]`: play a level; `intensity=easy|steady|hard`
     play: q.get('campaign') ? { campaign: Number(q.get('campaign')) } : q.get('quick') ? { quick: { seed: Number(q.get('quick')), minutes: Number(q.get('minutes') ?? 15) } } : undefined,
     intensity: q.get('intensity') ?? undefined, startWave: q.get('boss') === '1' ? 5 : undefined,

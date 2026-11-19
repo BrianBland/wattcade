@@ -6,9 +6,6 @@ import type { WaveRole } from './waves';
 import type { TdLevel } from './level';
 import type { LevelSpec } from './campaign';
 
-export type ActionId = 'rail' | 'overcharge' | 'slow';
-/** `locked`: not yet unlocked with campaign stars (shown, never usable). */
-export interface ActionView { id: ActionId; fill: number; ready: boolean; usable: boolean; activeS: number; locked?: boolean }
 
 /** How a hit landed under the matchup matrix. */
 export type HitClass = 'strong' | 'neutral' | 'resisted';
@@ -51,7 +48,8 @@ export interface ShellView { x0: number; y0: number; x1: number; y1: number; k: 
 /** Burning road left by a fireball; `k` = share of its burn time left. */
 export interface BurnView { x: number; y: number; r: number; k: number }
 export interface TowerView { pad: number; kind: TowerKind; level: number; angle: number; charge: number; firedAt: number }
-export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean }
+/** `locked`: a tower kind not yet earned with campaign stars (shown, never buildable). */
+export interface WorkshopRow { kind: 'build' | 'upgrade' | 'sell' | 'repair'; tower?: TowerKind; label: string; desc: string; cost: number; affordable: boolean; locked?: boolean }
 export interface WorkshopView { pad: number; row: number; rows: WorkshopRow[]; idleLeft: number; revision: number }
 /** A ride-select row. `unlocks` shows the star count and the next unlock (A does nothing). */
 export interface GarageRow { kind: 'start' | 'campaign' | 'quick' | 'intensity' | 'unlocks' | 'next' | 'finish'; name: string; desc: string }
@@ -134,8 +132,8 @@ export interface TdSnapshot {
   /** cadence drill; `overclock` = seconds of double Gatling fire left */
   spin: SpinView | null; overclock: number;
   scrap: number;
-  /** `slowFrom`: road distance where an active slow field starts (it runs to the turret), -1 when off */
-  actions: ActionView[]; refill: number; slowFrom: number;
+  /** The pad the D-pad has selected (A opens the build menu there; the base is `basePad`); -1 in a menu or out of a run. */
+  padCursor: number;
   /** Changes when a menu opens/closes; stale touch captures must not dispatch into a new context. */
   inputEpoch: number;
   towers: TowerView[]; shells: ShellView[]; burns: BurnView[]; workshop: WorkshopView | null;

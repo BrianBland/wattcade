@@ -133,7 +133,7 @@ describe('boss ladder', () => {
     expect(advanceBoss(b, 12, 1, timing)).toContain('telegraph');
     expect(advanceBoss(b, 3, 1, timing)).toContain('exposed');
   });
-  it('a Rail boss opening keeps the gearbox: resistance mode, the HUD asks for tier V, A stays construction', () => {
+  it('a Rail boss opening keeps the gearbox: resistance mode, the HUD asks for tier V, A stays the build menu', () => {
     const held = new Set<Button>();
     const state: InputState = { held, pressed: new Set(), released: new Set(), paddleL: 0, paddleR: 0, paddleIdleS: 99, source: 'script' };
     const s = createGameSession({ game: module,
@@ -147,7 +147,7 @@ describe('boss ladder', () => {
     expect(effect().mode).toBe('resistance'); // no ERG lock to escape: the rider shifts up and sprints
     expect(snapshot(s).suggestedTier).toBe(5);
     expect(s.sim.hud!().targetZone?.min).toBe(5);
-    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Construction');
+    expect(s.sim.hud!().controls!.find((c) => c.button === 'a')?.label).toBe('Build menu at the selected pad');
     expect(snapshot(s).boss?.sprintBoost).toBe(false);
   });
   it('sprinting only in Exposed windows kills a boss faster at the same cadence and power', () => {
@@ -155,7 +155,7 @@ describe('boss ladder', () => {
       const events: Array<GameEvent & { t: number }> = [];
       const s = createGameSession({ game: module,
         profile: testProfile(),
-        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true }, onEmit: (e) => events.push(e) });
+        input: new TimelineInput([]), fake: { script: 'z2' }, seed: 1, simOpts: { stars: 99, startWave: 9, skipGarage: true, weapon: 'auto' }, onEmit: (e) => events.push(e) });
       // Keep the route within reach to isolate the sprint damage bonus from
       // whether the boss reaches the turret during an Exposed window.
       s.tuning.set('towerdefense.turretRange', 200);

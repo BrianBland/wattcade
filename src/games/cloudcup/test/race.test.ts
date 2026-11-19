@@ -196,7 +196,7 @@ it('weights salvage toward trailers and caps both directions of crew pace adjust
   expect(packPace(0)).toBe(1);
 });
 
-function balanceRide() {
+function balanceRide(counter = true) {
   const r = race();
   r.press('a');
   const fake = r.session.fakeBike!;
@@ -209,13 +209,29 @@ function balanceRide() {
       const error = x - s.x - s.lateralSpeed * 0.13;
       r.paddle(Math.abs(error) > 0.045 ? Math.sign(error) : 0);
       const attacker = s.rivals.find((p) => p.windup > 0.18 && p.windup < 0.65);
-      if (attacker && !s.reload) r.press(attacker.x < s.x ? 'a' : 'b');
+      if (counter && attacker && !s.reload) r.press(attacker.x < s.x ? 'a' : 'b');
       else r.session.step(1);
     }
     return r.snap();
   }
   return ride;
 }
+it('gives the rider a draftable exit and time at class effort after a missed counter', () => {
+  const ride = balanceRide(false);
+  let s = ride(0, 0.78);
+  for (let i = 0; i < 15 && !s.hits; i++) s = ride(1, 0.78);
+  expect(s.hits).toBe(1);
+  let sawWake = false;
+  for (let i = 0; i < 21; i++) {
+    s = ride(1, 0.78);
+    expect(s.hits).toBe(1);
+    expect(s.rivals.every((r) => !r.windup && !r.strike)).toBe(true);
+    sawWake ||= s.draft > 0.5;
+  }
+  expect(sawWake).toBe(true);
+  expect(s.slow).toBe(0);
+  expect(ride(55, 0.78).hits).toBeGreaterThan(1);
+});
 it('brings back a strong early leader who stops pedaling', () => {
   const ride = balanceRide(),
     lead = ride(24, 1.7);

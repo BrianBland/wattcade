@@ -113,11 +113,16 @@ export function createRace(ctx: GameContext) {
     rivals,
   };
   let paddleReady = true;
+  // After a hit the attacker takes point along the contested line. The
+  // victim can follow that bike out of overload before the crew comes back.
+  let regroupUntil = 0,
+    pointRider = 0,
+    exitLine = 0;
   function say(message: string) {
     s.message = message;
     s.notice = 1.35;
   }
-  function damage(side: number) {
+  function damage(side: number, attacker: number) {
     if (s.shield > 0) {
       s.shield = 0;
       s.grace = 1;
@@ -127,6 +132,13 @@ export function createRace(ctx: GameContext) {
     s.shove = side * 3.6;
     s.slow = 7;
     s.purge = 0;
+    pointRider = attacker;
+    exitLine = clamp(s.x, -0.75, 0.75);
+    regroupUntil = s.time + s.slow + [20, 16, 13][s.tier];
+    for (const rival of rivals) {
+      rival.windup = 0;
+      rival.strike = 0;
+    }
     s.hits++;
     s.speed *= 0.84;
     s.impact = 0.33;
@@ -265,7 +277,8 @@ export function createRace(ctx: GameContext) {
         }
       }
     }
-    const lead = Math.floor(s.time / 12) % 3;
+    const regrouping = s.time < regroupUntil;
+    const lead = regrouping ? pointRider : Math.floor(s.time / 12) % 3;
     rivals.forEach((r, i) => {
       if (r.finish !== null || recover(r, dt)) return;
       const oldAt = r.at,
@@ -283,6 +296,7 @@ export function createRace(ctx: GameContext) {
           ? s.x + flankSide * 0.5
           : s.x + 0.24 * Math.sin(s.time * 0.65)
         : Math.sin(s.time * 0.27 + i * 2) * 0.88;
+      if (regrouping && nearby) wantedX = exitLine + (flank ? flankSide * 0.58 : 0);
       const ahead = r.at + 14,
         fork = Math.max(forkWidth(ahead), forkWidth(r.at));
       if (fork > 0) {
@@ -294,7 +308,7 @@ export function createRace(ctx: GameContext) {
       r.x += (vx + r.shove) * dt;
       r.shove *= Math.exp(-dt * 4);
       r.lean += (clamp(-vx * 0.36 - turn * 0.2, -0.6, 0.6) - r.lean) * dt * 5;
-      const wantedGap = flank ? 1.5 : 9;
+      const wantedGap = regrouping && flank ? 16 + flankSide * 3 : flank ? 1.5 : 9;
       const tactical = nearby
         ? clamp(s.speed + (wantedGap - gap) * 0.85, paceSpeed * 0.8, paceSpeed * 1.13)
         : paceSpeed;
@@ -353,7 +367,7 @@ export function createRace(ctx: GameContext) {
         !s.slow &&
         swingConnects(-dz, -dx, r.side, 1 - r.strike / 0.34)
       )
-        damage(r.side);
+        damage(r.side, i);
       if (r.windup) {
         r.windup = Math.max(0, r.windup - dt);
         if (!r.windup) {
@@ -366,6 +380,7 @@ export function createRace(ctx: GameContext) {
         !s.grace &&
         !r.flight &&
         flank &&
+        s.time >= regroupUntil &&
         !s.slow &&
         !r.stun &&
         !r.cooldown &&

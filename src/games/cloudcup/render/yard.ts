@@ -1,6 +1,17 @@
 import * as T from 'three';
 import { LAP, world } from '../sim/track';
-import { deck as deckSpan, forkWidth, missing, rises, LIP, LAND, LAUNCH_SPEED, salvage } from '../sim/deck';
+import {
+  deck as deckSpan,
+  forkWidth,
+  missing,
+  rises,
+  FORK,
+  JOIN,
+  LIP,
+  LAND,
+  LAUNCH_SPEED,
+  salvage,
+} from '../sim/deck';
 import { pads } from '../sim/race';
 
 export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[], anisotropy: number) {
@@ -33,6 +44,42 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   const deck = new T.Mesh(geometry, new T.MeshStandardMaterial({ map: roadMap, roughness: 0.93 }));
   deck.receiveShadow = true;
   scene.add(deck);
+  // A low steel fascia with a painted shoulder follows the same banked
+  // cross-sections as the left deck, including the widening and merge.
+  const trimPoints: number[] = [],
+    trimIndices: number[] = [],
+    trimColors: number[] = [];
+  const shoulderColor = new T.Color('#77c5ad'),
+    girderColor = new T.Color('#304448');
+  for (const outer of [true, false]) {
+    const start = trimPoints.length / 3;
+    for (let at = FORK; at <= JOIN; at += 2) {
+      const span = deckSpan(at, false),
+        edge = outer ? span.lo : span.hi;
+      const taper = forkWidth(at);
+      const inside = edge + (outer ? 1 : -1) * 0.06 * taper;
+      const section = [world(at, inside, 0.022), world(at, edge, 0.022), world(at, edge, -0.46 * taper)];
+      for (const [i, v] of section.entries()) {
+        trimPoints.push(v.x, v.y, v.z);
+        const color = i === 2 ? girderColor : shoulderColor;
+        trimColors.push(color.r, color.g, color.b);
+      }
+      if (at === JOIN) continue;
+      const row = start + 3 * ((at - FORK) / 2);
+      for (const k of [row, row + 1]) trimIndices.push(k, k + 1, k + 3, k + 1, k + 4, k + 3);
+    }
+  }
+  const trimGeometry = new T.BufferGeometry();
+  trimGeometry.setAttribute('position', new T.Float32BufferAttribute(trimPoints, 3));
+  trimGeometry.setAttribute('color', new T.Float32BufferAttribute(trimColors, 3));
+  trimGeometry.setIndex(trimIndices);
+  trimGeometry.computeVertexNormals();
+  const fascia = new T.Mesh(
+    trimGeometry,
+    new T.MeshStandardMaterial({ vertexColors: true, side: T.DoubleSide }),
+  );
+  fascia.receiveShadow = true;
+  scene.add(fascia);
   const blocks: { matrix: T.Matrix4; color: T.Color }[] = [];
   const scratch = new T.Object3D();
   function block(
@@ -64,10 +111,11 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
       if (missing(d, right)) continue;
       const edge = right ? span.hi : span.lo,
         fork = forkWidth(d);
-      block(d, edge, -0.22 + lift, 0.22, 0.45, 4.2, at % 12 === 0 ? '#b07844' : '#504047');
-      if (fork > 0.05) {
-        const inner = right ? span.lo : span.hi;
-        block(d, inner, lift - 0.19, 0.19, 0.44, 4.18, right ? '#e6a345' : '#64c5bd');
+      if (right || !fork)
+        block(d, edge, -0.22 + lift, 0.22, 0.45, 4.2, at % 12 === 0 ? '#b07844' : '#504047');
+      if (right && fork > 0.05) {
+        const inner = span.lo;
+        block(d, inner, lift - 0.19, 0.19, 0.44, 4.18, '#e6a345');
       }
       if (at % 8 === 0) {
         block(d, edge, lift + 0.02, 0.12, 0.035, 2.5, '#ffce78');
@@ -95,7 +143,7 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   }
   const sectors = [
     [40, 'MAGNET MILE'],
-    [290, 'THE CRUSHER'],
+    [JOIN + 12, 'THE CRUSHER'],
     [610, 'BONEYARD'],
     [915, 'LAST CHANCE'],
   ] as const;
@@ -223,7 +271,7 @@ export function buildYard(scene: T.Scene, roadMap: T.Texture, props: T.Texture[]
   // Their teeth catch the sun and cast moving shadows across the apex.
   const machines: T.Group[] = [];
   for (const side of [-1, 1]) {
-    const p = world(302, side * 1.45, 3.2);
+    const p = world(JOIN + 24, side * 1.45, 3.2);
     const motor = new T.Group();
     motor.position.set(p.x, p.y, p.z);
     motor.rotation.y = -p.yaw;

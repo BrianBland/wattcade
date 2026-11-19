@@ -3,8 +3,13 @@
 export const LAP = 1080;
 const count = 720;
 function route(a: number) {
+  // The third harmonic pinches the quarter-lap hairpin to a cusp. Ease it
+  // out locally so even the offset bridge edges have room to round the bend.
+  const fromHairpin = (a - Math.PI / 2) / 1.1;
+  const blend = Math.max(0, 1 - fromHairpin * fromHairpin) ** 3;
+  const hairpinOffset = 30 * blend * Math.cos(3 * a);
   return {
-    x: 138 * (1 - Math.cos(a)) + 38 * (1 - Math.cos(3 * a)) + 14 * Math.sin(2 * a),
+    x: hairpinOffset + 138 * (1 - Math.cos(a)) + 38 * (1 - Math.cos(3 * a)) + 14 * Math.sin(2 * a),
     z: -154 * Math.sin(a) + 17 * Math.sin(3 * a),
     y: 5 * Math.sin(2 * a - 0.8) + 2.6 * Math.sin(4 * a + 0.2),
   };

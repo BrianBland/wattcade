@@ -97,11 +97,12 @@ const CSS = `
 .td-radar.v .td-scope::after, .td-radar.h .td-scope::after { content:''; position:absolute; background:#e8b24a8c; }
 .td-radar.v .td-scope::after { left:0; right:0; bottom:0; height:2px; }
 .td-radar.h .td-scope::after { top:0; bottom:0; left:0; width:2px; }
-.td-blip { --c:var(--td-blue); position:absolute; width:calc(var(--k) * var(--bmax)); aspect-ratio:1; border-radius:50%; mix-blend-mode:screen; opacity:.62;
-  background:radial-gradient(circle, color-mix(in srgb, var(--c) 85%, #fff) 0 9%, color-mix(in srgb, var(--c) 55%, transparent) 26%, color-mix(in srgb, var(--c) 16%, transparent) 50%, transparent 70%); }
+.td-blip { --c:#4aa8ff; position:absolute; width:calc(var(--k) * var(--bmax)); aspect-ratio:1; border-radius:50%; opacity:.85;
+  background:radial-gradient(circle, var(--c) 0 16%, color-mix(in srgb, var(--c) 50%, transparent) 34%, color-mix(in srgb, var(--c) 12%, transparent) 54%, transparent 70%); }
 .td-radar.v .td-blip { --bmax:36px; left:calc(var(--x) * 100%); bottom:calc(var(--p) * 100%); transform:translate(-50%, 50%); }
 .td-radar.h .td-blip { --bmax:20px; left:calc(var(--p) * 100%); top:calc(var(--x) * 100%); transform:translate(-50%, -50%); }
-.td-blip.red { --c:var(--td-red); } .td-blip.purple { --c:var(--td-purple); } .td-blip.prism { --c:#b9a8d8; }
+/* the enemies' own body colours (sprites COL), not the lighter UI tints: purple has to read as violet, not pink */
+.td-blip.red { --c:#ff5a3c; } .td-blip.purple { --c:#a95cff; }
 .td-blip.air { opacity:.8; background:radial-gradient(circle, color-mix(in srgb, var(--c) 35%, transparent) 0, transparent 65%); }
 .td-blip.air::after { content:''; position:absolute; left:50%; top:50%; width:5px; height:5px; border:solid #cfeefc; border-width:1.5px 0 0 1.5px; }
 .td-radar.v .td-blip.air::after { transform:translate(-50%, -25%) rotate(225deg); }

@@ -98,8 +98,8 @@ export type FlowStage = 'warm-up' | 'build' | 'peak' | 'boss' | 'trough';
  */
 /** One radar blip: a spawn group (one road or the air, one colour, spawning within a few seconds of each other). */
 export interface RadarBlip {
-  /** seconds until it comes into the turret's reach (0 = in reach now); total HP; `prism` = Stalkers (they cycle colour) */
-  etaS: number; hp: number; color: Element | 'prism';
+  /** seconds until it comes into the turret's reach (0 = in reach now); total HP (a Stalker counts a third in each colour) */
+  etaS: number; hp: number; color: Element;
   /** the road it walks (0-based), -1 = the air (Gliders); `n` aliens in it; `key` = its spawn window (stable jitter) */
   lane: number; n: number; key: number; boss?: boolean;
 }

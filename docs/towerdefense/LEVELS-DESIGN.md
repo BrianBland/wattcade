@@ -1,19 +1,22 @@
 # Dynamo Defense: levels design
 
 Agreed with the owner on 2026-11-07. Builds on `LEVELS-HANDOFF.md` (branch `td-ground-spike`), which keeps the
-exploration results, map metrics and ground-kit notes. Where the two differ, this file wins.
+exploration results, map metrics and ground-kit notes. Where the two differ, this file wins. The continuous-combat
+redesign (owner, 2026-11-18; design doc https://claude.ai/artifact/YQ8rHrAopkk4YWDhvCzf4E) replaced waves, lulls,
+trainer modes and called efforts; the sections below are updated to match it.
 
 ## 1. Levels
 
 - A **level** is a generated map (road, pads, turret, hive, Glider spawns, ground style) plus a **wave plan** with
   a **fixed length**. Every level comes from a seed, and the same seed always gives the same level.
-- Structure: **warm-up wave → sets → done.** The warm-up is an easy wave at recovery settings. A set is 2–3 work
-  waves followed by a boss of one brood colour, and an easy recovery wave sits between sets. There is **no
-  cool-down wave**: the overworld handles cool-downs.
-- Lulls (owner, 2026-11-17: hop in faster): 15 s before the first wave (`firstLullS`), 25 s before an easy
-  recovery wave (`easyLullS`), 45 s before work and boss waves (`lullS`: interval rest plus build time).
+- Structure: **warm-up → sets → done**, as one continuous stream of segments ("waves" in code) that roll into
+  each other with no lulls. A set is 2–3 build segments (`segmentS` 120, pressure ramps from `buildPressure` 0.75
+  to the set's peak), a peak or a boss peak, then a trough (`troughS` 100, half-rate drones, a clean trough heals
+  `troughHeal` 30). Only a fresh run has a quiet start (`firstLullS` 15). There is **no cool-down**: the overworld
+  handles cool-downs. Building happens any time; troughs are the natural moment.
 - Bosses follow from length: about 0–1 boss at 15 min, 1 at 20–25, 2 at 30–40 and 3 at 60 (seeded variety within
-  that band). A level ends when its last wave or last boss is cleared.
+  that band). A boss peak lasts until the boss dies, capped at `bossPeakMaxS` 300; a boss alive at the cap breaks
+  through for 30 base damage. A level ends when its last segment is done (it waits up to 45 s for the field).
 - Difficulty: a level ramps from wave 1 to a peak (`levelPeakWave` + the level's depth) over its length, so a long
   level is longer rather than deeper; later campaign levels have more depth. (Phase 6 tuning; phase 7 retunes income.)
 - **Chaining:** the clear screen offers **Next level**. The next level starts straight away, and its warm-up wave
@@ -25,11 +28,12 @@ exploration results, map metrics and ground-kit notes. Where the two differ, thi
 ## 2. Workout fit
 
 - Length is a property of the level. Campaign levels run **15–40 min**, mostly short enough to chain two of them.
-- **Intensity** (Easy / Steady / Hard) is picked at launch. It scales the work-wave trainer targets (sim grade,
-  resistance level, ERG % FTP) and enemy HP together. Recovery and warm-up waves stay at recovery settings. All
-  factors are `towerdefense.*` tunables.
-- Per-wave trainer mapping is unchanged: Gatling = sim grade, Fireball = resistance level, Rail = ERG, plus called
-  efforts.
+- **Intensity** (Easy / Steady / Hard) is picked at launch. It scales every tier's rated power and enemy HP
+  together. All factors are `towerdefense.*` tunables.
+- The rider sets the effort: the shifters pick tier I–V (0.45–1.05 FTP at 85 rpm on Steady), the trainer stays in
+  resistance mode and the game is the gearbox. The flow suggests a tier (warm-up I, trough II, build III, peak
+  and boss IV, boss openings V). Any weapon can be mounted at any tier (Y / B / Z, 3 s swap); sprinting is
+  Overdrive. There are no called efforts.
 
 ## 3. Selector and modes
 
@@ -56,7 +60,7 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   build bot (`botBuild`, on with autopilot) as a stand-in rider: Steady z2 clears 28 of 30 campaign levels; the
   deepest ground (Blight II, Blight V) needs more than zone 2.
 
-- Balance (2026-11-09): below its rated demand a Fireball or Railgun turret climbs from `weaponPowerMin` (20 %)
+- Balance (2026-11-09, superseded by the 2026-11-19 sweep below): below its rated demand a Fireball or Railgun turret climbs from `weaponPowerMin` (20 %)
   at `weaponPowerFloor` (75 % of the target) to full output at the target, and fades to zero below the floor, so
   a short ride leaks instead of collapsing in wave 3. Sweeps of all 30 levels with the build bot and the action
   bot (it fires the Railgun; without it deep Railgun waves looked like a wall), riders at a share of each target:
@@ -69,14 +73,25 @@ The selector is an in-game screen that replaces the Garage front page. It uses t
   | 70 % | mixed, 6 falls | mostly 2★/1★, 5 falls | mostly 2★/1★, 7 falls |
   | zone 2 (0.65 FTP) | 30 × 3★ | 11 × 3★, 18 × 2★, 1 × 1★ | mixed, 8 falls |
 
+- Balance (continuous combat, 2026-11-19): riders at a share of the suggested tier's power (`follow-power`),
+  build bot and weapon bot, campaign levels I-1, I-3, I-5 and III-3 (15/25/40/25 min), seeds 1–2. One boss break-
+  through costs 30 HP, so it alone drops a level to 2★. Details in [BALANCE.md](BALANCE.md).
+
+  | Rider | Easy | Steady | Hard |
+  |---|---|---|---|
+  | 100 % and 115 % | all 3★ | all 3★ | all 3★ |
+  | 85 % | 7 × 3★, 1 × 2★ | 5 × 3★, 3 × 2★ | 4 × 3★, 4 × 2★ |
+  | 70 % | 3 × 3★, 3 × 2★, 2 × 1★ | 1 × 3★, 5 × 2★, 2 falls | 6 × 2★, 2 falls |
+
 ## 5. Meta: unlocks replace the Garage
 
 - The permanent stat upgrades go: `sim/meta.ts` UPGRADES, parts, autoInvest and Forward Base.
-- **Unlocks are earned with stars:** tower kinds, the Lv 4 and Lv 5 tiers, Overcharge and Slow field, Hard
-  intensity, and later ground styles. Unlocks gate options. They never add stat creep.
+- **Unlocks are earned with stars:** the Mortar, the Lv 4 and Lv 5 tiers, Hard intensity, and later ground styles. Unlocks gate options. They never add stat creep.
 - Save v4: unlocks, campaign progress (stars per level) and the Endless best. Old best-wave stats are dropped
   (owner OK). Profiles with Garage progress are grandfathered into the starter unlock tier.
-- As built: slow field 4★, Overcharge 8★, Lv 4 12★, Hard 20★, Lv 5 30★; grandfathered riders get 12★ of unlocks.
+- As built: Mortar 4★, Lv 4 8★, Hard 20★, Lv 5 30★; grandfathered riders get 12★ of unlocks. (Overcharge and
+  Slow field were dropped with the continuous-combat redesign: sprint Overdrive is the effort trigger and the
+  Mortar's concussion is the slow.)
   Tower kinds are not gated: each counters one brood colour, so a locked kind would make some waves unwinnable.
   Quick Ride offers the grounds the campaign has reached.
 

@@ -1,4 +1,4 @@
-// Shared, deterministic recommendation for the rider and Auto-crew.
+// Shared, deterministic build recommendation for the rider (workshop preselect) and the headless build bot.
 import {
   ELEMENTS, MATCHUP, towerMatch, LEVEL_DMG, TOWERS, TOWER_KINDS, TOWER_MAX_LEVEL, towerBuildCost, towerUpgradeCost, type Element, type Matchup, type TowerKind,
 } from './defs';
